@@ -2558,6 +2558,52 @@
         "cancel": "取消",
         "accept": "重新傳送"
       }
+    },
+    "outbound": {
+      "listAria": "依裝置顯示的傳送進度",
+      "progressAria": "傳送到 {{device}} 的進度",
+      "unknownTotal": "總大小未知",
+      "percent": "{{percent}}%",
+      "items": "已完成 {{completed}} / {{total}} 項",
+      "state": {
+        "no_items": "無內容",
+        "waiting": "等待中",
+        "in_progress": "傳送中",
+        "unconfirmed": "結果未確認",
+        "partially_unconfirmed": "部分結果未確認",
+        "completed": "已送達",
+        "failed": "失敗",
+        "partially_failed": "部分失敗",
+        "cancelled": "已取消",
+        "partially_cancelled": "部分已取消"
+      },
+      "itemState": {
+        "failed": "失敗",
+        "cancelled": "已取消"
+      },
+      "kind": {
+        "file": "檔案 {{index}}",
+        "representation": "內容 {{index}}",
+        "directory_unit": "資料夾 {{index}}",
+        "unknown": "項目 {{index}}"
+      },
+      "reason": {
+        "network_unavailable": "網路無法使用",
+        "timed_out": "逾時",
+        "access_denied": "存取被拒",
+        "storage_unavailable": "儲存空間無法使用",
+        "integrity_check_failed": "完整性檢查失敗",
+        "interrupted": "已中斷",
+        "unknown": "未知原因"
+      },
+      "cancel": {
+        "local_user": "已由你取消",
+        "remote_peer": "對方已取消",
+        "replaced": "已被新的傳送取代",
+        "timeout": "逾時",
+        "connectivity_recovery": "網路恢復",
+        "unknown": "未知原因"
+      }
     }
   },
   "quickPanel": {

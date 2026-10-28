@@ -233,10 +233,11 @@ export function reduceClipboardRealtimeEvent(
   }
 
   if (event.eventType === 'file-transfer.progress') {
-    return result(
-      state,
-      reduceTransferProgress(event.payload as FileTransferProgressEvent, event.ts)
-    )
+    const payload = event.payload as FileTransferProgressEvent
+    // Sender-side state is read from the Engine's outbound snapshot
+    // (`useOutboundProgress`); a sending byte counter must not shadow it.
+    if (payload.direction === 'sending') return result(state)
+    return result(state, reduceTransferProgress(payload, event.ts))
   }
 
   return result(state)

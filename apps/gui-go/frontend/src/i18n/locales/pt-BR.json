@@ -2582,6 +2582,52 @@
         "cancel": "Cancelar",
         "accept": "Enviar novamente"
       }
+    },
+    "outbound": {
+      "listAria": "Progresso do envio por dispositivo",
+      "progressAria": "Progresso do envio para {{device}}",
+      "unknownTotal": "Tamanho total desconhecido",
+      "percent": "{{percent}}%",
+      "items": "{{completed}} de {{total}} itens concluídos",
+      "state": {
+        "no_items": "Sem itens",
+        "waiting": "Aguardando",
+        "in_progress": "Enviando",
+        "unconfirmed": "Resultado não confirmado",
+        "partially_unconfirmed": "Parcialmente não confirmado",
+        "completed": "Entregue",
+        "failed": "Falhou",
+        "partially_failed": "Falha parcial",
+        "cancelled": "Cancelado",
+        "partially_cancelled": "Parcialmente cancelado"
+      },
+      "itemState": {
+        "failed": "Falhou",
+        "cancelled": "Cancelado"
+      },
+      "kind": {
+        "file": "Arquivo {{index}}",
+        "representation": "Conteúdo {{index}}",
+        "directory_unit": "Pasta {{index}}",
+        "unknown": "Item {{index}}"
+      },
+      "reason": {
+        "network_unavailable": "Rede indisponível",
+        "timed_out": "Tempo esgotado",
+        "access_denied": "Acesso negado",
+        "storage_unavailable": "Armazenamento indisponível",
+        "integrity_check_failed": "Falha na verificação de integridade",
+        "interrupted": "Interrompido",
+        "unknown": "Motivo desconhecido"
+      },
+      "cancel": {
+        "local_user": "Cancelado por você",
+        "remote_peer": "Cancelado pelo outro dispositivo",
+        "replaced": "Substituído por um envio mais novo",
+        "timeout": "Tempo esgotado",
+        "connectivity_recovery": "Recuperação de rede",
+        "unknown": "Motivo desconhecido"
+      }
     }
   },
   "quickPanel": {

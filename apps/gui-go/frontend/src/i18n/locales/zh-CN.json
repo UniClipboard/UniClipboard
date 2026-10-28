@@ -2558,6 +2558,52 @@
         "cancel": "取消",
         "accept": "重新发送"
       }
+    },
+    "outbound": {
+      "listAria": "按设备显示的发送进度",
+      "progressAria": "发送到 {{device}} 的进度",
+      "unknownTotal": "总大小未知",
+      "percent": "{{percent}}%",
+      "items": "已完成 {{completed}} / {{total}} 项",
+      "state": {
+        "no_items": "无内容",
+        "waiting": "等待中",
+        "in_progress": "发送中",
+        "unconfirmed": "结果未确认",
+        "partially_unconfirmed": "部分结果未确认",
+        "completed": "已送达",
+        "failed": "失败",
+        "partially_failed": "部分失败",
+        "cancelled": "已取消",
+        "partially_cancelled": "部分已取消"
+      },
+      "itemState": {
+        "failed": "失败",
+        "cancelled": "已取消"
+      },
+      "kind": {
+        "file": "文件 {{index}}",
+        "representation": "内容 {{index}}",
+        "directory_unit": "文件夹 {{index}}",
+        "unknown": "项目 {{index}}"
+      },
+      "reason": {
+        "network_unavailable": "网络不可用",
+        "timed_out": "超时",
+        "access_denied": "访问被拒绝",
+        "storage_unavailable": "存储不可用",
+        "integrity_check_failed": "完整性校验失败",
+        "interrupted": "已中断",
+        "unknown": "未知原因"
+      },
+      "cancel": {
+        "local_user": "已由你取消",
+        "remote_peer": "对方已取消",
+        "replaced": "已被新的发送取代",
+        "timeout": "超时",
+        "connectivity_recovery": "网络恢复",
+        "unknown": "未知原因"
+      }
     }
   },
   "quickPanel": {

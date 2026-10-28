@@ -2561,6 +2561,52 @@
         "cancel": "キャンセル",
         "accept": "再送信"
       }
+    },
+    "outbound": {
+      "listAria": "デバイスごとの送信の進行状況",
+      "progressAria": "{{device}} への送信の進行状況",
+      "unknownTotal": "合計サイズ不明",
+      "percent": "{{percent}}%",
+      "items": "{{total}} 件中 {{completed}} 件完了",
+      "state": {
+        "no_items": "項目なし",
+        "waiting": "待機中",
+        "in_progress": "送信中",
+        "unconfirmed": "結果未確認",
+        "partially_unconfirmed": "一部の結果が未確認",
+        "completed": "送達済み",
+        "failed": "失敗",
+        "partially_failed": "一部失敗",
+        "cancelled": "キャンセル済み",
+        "partially_cancelled": "一部キャンセル"
+      },
+      "itemState": {
+        "failed": "失敗",
+        "cancelled": "キャンセル済み"
+      },
+      "kind": {
+        "file": "ファイル {{index}}",
+        "representation": "コンテンツ {{index}}",
+        "directory_unit": "フォルダ {{index}}",
+        "unknown": "項目 {{index}}"
+      },
+      "reason": {
+        "network_unavailable": "ネットワークに接続できません",
+        "timed_out": "タイムアウト",
+        "access_denied": "アクセスが拒否されました",
+        "storage_unavailable": "ストレージを利用できません",
+        "integrity_check_failed": "整合性チェックに失敗",
+        "interrupted": "中断されました",
+        "unknown": "不明な理由"
+      },
+      "cancel": {
+        "local_user": "自分でキャンセルしました",
+        "remote_peer": "相手がキャンセルしました",
+        "replaced": "新しい送信に置き換えられました",
+        "timeout": "タイムアウト",
+        "connectivity_recovery": "ネットワーク回復",
+        "unknown": "不明な理由"
+      }
     }
   },
   "quickPanel": {

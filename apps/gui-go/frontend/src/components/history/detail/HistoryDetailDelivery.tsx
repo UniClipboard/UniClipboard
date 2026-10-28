@@ -14,6 +14,7 @@ import { summarize, syncSummaryView } from '@/components/clipboard/EntryDelivery
 import { useResendAction } from '@/hooks/useResendAction'
 import { cn } from '@/lib/utils'
 import { DETAIL_SECTION_LABEL } from './detail-styles'
+import HistoryDetailOutbound from './HistoryDetailOutbound'
 
 function statusDot(status: EntryDeliveryStatusView): string {
   switch (status.tag) {
@@ -159,6 +160,12 @@ export default function HistoryDetailDelivery({ delivery }: { delivery: EntryDel
           ))}
         </ul>
       )}
+      <HistoryDetailOutbound
+        entryId={entryId}
+        deviceNames={Object.fromEntries(
+          deliveries.map(d => [d.targetDeviceId, deviceLabel(d.targetDeviceName, d.targetDeviceId)])
+        )}
+      />
     </section>
   )
 }

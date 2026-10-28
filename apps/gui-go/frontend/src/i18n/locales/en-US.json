@@ -2566,6 +2566,52 @@
         "cancel": "Cancel",
         "accept": "Send again"
       }
+    },
+    "outbound": {
+      "listAria": "Send progress by device",
+      "progressAria": "Send progress to {{device}}",
+      "unknownTotal": "Total size unknown",
+      "percent": "{{percent}}%",
+      "items": "{{completed}} of {{total}} items done",
+      "state": {
+        "no_items": "No items",
+        "waiting": "Waiting",
+        "in_progress": "Sending",
+        "unconfirmed": "Result unconfirmed",
+        "partially_unconfirmed": "Partly unconfirmed",
+        "completed": "Delivered",
+        "failed": "Failed",
+        "partially_failed": "Partly failed",
+        "cancelled": "Cancelled",
+        "partially_cancelled": "Partly cancelled"
+      },
+      "itemState": {
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "kind": {
+        "file": "File {{index}}",
+        "representation": "Content {{index}}",
+        "directory_unit": "Folder {{index}}",
+        "unknown": "Item {{index}}"
+      },
+      "reason": {
+        "network_unavailable": "Network unavailable",
+        "timed_out": "Timed out",
+        "access_denied": "Access denied",
+        "storage_unavailable": "Storage unavailable",
+        "integrity_check_failed": "Integrity check failed",
+        "interrupted": "Interrupted",
+        "unknown": "Unknown reason"
+      },
+      "cancel": {
+        "local_user": "Cancelled by you",
+        "remote_peer": "Cancelled by the other device",
+        "replaced": "Replaced by a newer send",
+        "timeout": "Timed out",
+        "connectivity_recovery": "Network recovery",
+        "unknown": "Unknown reason"
+      }
     }
   },
   "quickPanel": {

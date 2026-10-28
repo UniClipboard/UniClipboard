@@ -2602,6 +2602,52 @@
         "cancel": "Отмена",
         "accept": "Отправить снова"
       }
+    },
+    "outbound": {
+      "listAria": "Ход отправки по устройствам",
+      "progressAria": "Ход отправки на {{device}}",
+      "unknownTotal": "Общий размер неизвестен",
+      "percent": "{{percent}}%",
+      "items": "Готово {{completed}} из {{total}}",
+      "state": {
+        "no_items": "Нет элементов",
+        "waiting": "Ожидание",
+        "in_progress": "Отправка",
+        "unconfirmed": "Результат не подтверждён",
+        "partially_unconfirmed": "Частично не подтверждено",
+        "completed": "Доставлено",
+        "failed": "Ошибка",
+        "partially_failed": "Частичная ошибка",
+        "cancelled": "Отменено",
+        "partially_cancelled": "Частично отменено"
+      },
+      "itemState": {
+        "failed": "Ошибка",
+        "cancelled": "Отменено"
+      },
+      "kind": {
+        "file": "Файл {{index}}",
+        "representation": "Содержимое {{index}}",
+        "directory_unit": "Папка {{index}}",
+        "unknown": "Элемент {{index}}"
+      },
+      "reason": {
+        "network_unavailable": "Сеть недоступна",
+        "timed_out": "Время ожидания истекло",
+        "access_denied": "Доступ запрещён",
+        "storage_unavailable": "Хранилище недоступно",
+        "integrity_check_failed": "Проверка целостности не пройдена",
+        "interrupted": "Прервано",
+        "unknown": "Неизвестная причина"
+      },
+      "cancel": {
+        "local_user": "Отменено вами",
+        "remote_peer": "Отменено другим устройством",
+        "replaced": "Заменено более новой отправкой",
+        "timeout": "Время ожидания истекло",
+        "connectivity_recovery": "Восстановление сети",
+        "unknown": "Неизвестная причина"
+      }
     }
   },
   "quickPanel": {

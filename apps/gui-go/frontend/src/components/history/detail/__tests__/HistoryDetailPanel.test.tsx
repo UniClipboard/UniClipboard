@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { store } from '@/store'
 import HistoryDetailPanel from '../HistoryDetailPanel'
 
 vi.mock('react-i18next', () => ({
@@ -122,11 +124,13 @@ const item: DisplayClipboardItem = {
 function renderPanel(overrides: Partial<DisplayClipboardItem> | null = {}) {
   const handlers = { onCopy: vi.fn(), onToggleFavorite: vi.fn(), onDelete: vi.fn() }
   render(
-    <HistoryDetailPanel
-      item={overrides === null ? null : { ...item, ...overrides }}
-      copySuccess={false}
-      {...handlers}
-    />
+    <Provider store={store}>
+      <HistoryDetailPanel
+        item={overrides === null ? null : { ...item, ...overrides }}
+        copySuccess={false}
+        {...handlers}
+      />
+    </Provider>
   )
   return handlers
 }

@@ -29,3 +29,7 @@
 - 已把签名作业改为一次性 GitHub 托管 runner，先 swapoff，再将私钥经 stdin 导入容器 tmpfs，不把私钥放入 Docker 环境配置。增加同路径的独立测试密钥验收作业。
 - 本地内存签名验收通过：bootstrap 的秘密传输、重新导入、包/数据库签名验证和普通磁盘目录拒绝。处理了 GPG agent 异步退出导致卸载忙的问题：杀死独立 agent 后惰性卸载仅内存挂载。
 - Bash 语法、Python 编译、actionlint、git diff --check 通过；尚未取得完整应用 CI 结果。
+- 已提交并推送 c4f58990c（授权边界）、3a4be253e（Secrets 内存签名）、f8ce81b7d（正式身份文档）。生产签名身份变量与 Secrets 已核对，仅输出了名称与公钥指纹。
+- PACMAN_SIGNING_ENABLED 已设为 true；发布仍仅 main 手动选择 publish 且全部验收通过后执行。
+- 已取消过时的未开始验收 40606677780，避免阻塞同分支并发锁。当前验收为 https://github.com/UniClipboard/UniClipboard/actions/runs/40607744388 ，build 与 signing-acceptance 均排队，尚未取得 GitHub runner。
+- 正式软件源未发布；仍缺完整应用/托管签名验收结果、分支集成及包含包管理器更新保护的新稳定标签。

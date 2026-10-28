@@ -3,6 +3,7 @@ import HistoryPage from '@ui-history-page'
 import SettingsPage, { settingsOwnsWindowTop } from '@ui-settings-page'
 import type { ReactNode } from 'react'
 import { Navigate, Route } from 'react-router'
+import ResendConfirmDialog from '@/components/clipboard/ResendConfirmDialog'
 import { DeviceTrustDialogHost } from '@/components/device/DeviceTrustDialogHost'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import StartupModals from '@/components/StartupModals'
@@ -32,6 +33,7 @@ export function AuthenticatedRoutes({ fullTitleBar }: AuthenticatedRoutesProps) 
         <Route path="*" element={<Navigate to="/" replace />} />
       </DiagnosticsRoutes>
       <Toaster />
+      <ResendConfirmDialog />
       <StartupModals />
       <DeviceTrustDialogHost />
     </DeviceTrustProvider>

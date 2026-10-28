@@ -40,12 +40,14 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  confirmableResendTargets,
   isResendEntryError,
   resendEntry,
   type ResendEntryCommandError,
   type ResendEntryReportDto,
 } from '@/api/tauri-command/clipboard_delivery'
 import { toast } from '@/components/ui/toast'
+import { requestResendConfirmation } from '@/hooks/resendConfirmation'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('resend-action')
@@ -116,6 +118,112 @@ export function __resetResendActionStoreForTests(): void {
 }
 
 // ============================================================================
+// Reconcile-then-confirm core
+// ============================================================================
+
+type ResendItem = { entryId: string; targetDeviceIds: string[] | null }
+
+interface ResendItemResult {
+  entryId: string
+  /** Final report; the confirmed second request replaces the reconcile-only one. */
+  report?: ResendEntryReportDto
+  error?: unknown
+  /** The user was asked to start a new transfer and declined. */
+  declined: boolean
+}
+
+/**
+ * Resend by reconciling with the existing task first (`confirmNewTransfer`
+ * false). Targets whose task is settled / not retained / unsupported can only
+ * get a new transfer after one explicit confirmation for the whole batch;
+ * running, superseded, unreachable and busy targets are never bypassed.
+ */
+async function resendWithConfirmation(items: readonly ResendItem[]): Promise<ResendItemResult[]> {
+  const first = await Promise.allSettled(
+    items.map(item =>
+      resendEntry({
+        entryId: item.entryId,
+        targetDeviceIds: item.targetDeviceIds,
+      })
+    )
+  )
+  const results: ResendItemResult[] = first.map((outcome, index) =>
+    outcome.status === 'fulfilled'
+      ? {
+          entryId: items[index].entryId,
+          report: outcome.value,
+          declined: false,
+        }
+      : {
+          entryId: items[index].entryId,
+          error: outcome.reason,
+          declined: false,
+        }
+  )
+
+  const confirmable = results.map(result =>
+    result.report ? confirmableResendTargets(result.report) : []
+  )
+  const targetIds = new Set(confirmable.flatMap(targets => targets.map(t => t.targetDeviceId)))
+  if (targetIds.size === 0) return results
+
+  const confirmed = await requestResendConfirmation({
+    entryCount: confirmable.filter(targets => targets.length > 0).length,
+    targetDeviceIds: Array.from(targetIds),
+    duplicateFilesPossible: confirmable.some(targets =>
+      targets.some(t => t.duplicateFilesPossible)
+    ),
+  })
+  if (!confirmed) {
+    confirmable.forEach((targets, index) => {
+      if (targets.length > 0) results[index].declined = true
+    })
+    return results
+  }
+
+  await Promise.all(
+    confirmable.map(async (targets, index) => {
+      if (targets.length === 0) return
+      try {
+        const second = await resendEntry({
+          entryId: results[index].entryId,
+          targetDeviceIds: targets.map(t => t.targetDeviceId),
+          confirmNewTransfer: true,
+        })
+        results[index].report = mergeReports(results[index].report, second)
+      } catch (err) {
+        results[index].error = err
+      }
+    })
+  )
+  return results
+}
+
+/** Targets answered by the confirmed request replace their reconcile-only result. */
+function mergeReports(
+  first: ResendEntryReportDto | undefined,
+  second: ResendEntryReportDto
+): ResendEntryReportDto {
+  if (!first) return second
+  const replaced = new Set(second.reconciled.map(target => target.targetDeviceId))
+  return {
+    accepted: first.accepted + second.accepted,
+    duplicate: first.duplicate + second.duplicate,
+    offline: first.offline + second.offline,
+    errored: first.errored + second.errored,
+    pending: first.pending + second.pending,
+    reconciled: [
+      ...first.reconciled.filter(target => !replaced.has(target.targetDeviceId)),
+      ...second.reconciled,
+    ],
+  }
+}
+
+function hasDelivery(report: ResendEntryReportDto): boolean {
+  return report.accepted + report.duplicate + report.pending > 0
+}
+
+// ============================================================================
 // Hook
 // ============================================================================
 
@@ -157,11 +265,11 @@ export function useResendAction(): UseResendActionResult {
     }) => {
       params.onStart()
       try {
-        const report = await resendEntry({
-          entryId: params.entryId,
-          targetDeviceIds: params.targetDeviceIds,
-        })
-        emitResendSuccess(report, t)
+        const [result] = await resendWithConfirmation([
+          { entryId: params.entryId, targetDeviceIds: params.targetDeviceIds },
+        ])
+        if (result.error !== undefined) throw result.error
+        if (result.report) emitResendOutcome(result.report, result.declined, t)
       } catch (err) {
         log.warn({ err, entryId: params.entryId }, 'resend entry command failed')
         toast.error(translateResendError(err, t))
@@ -219,21 +327,37 @@ export function useResendAction(): UseResendActionResult {
         if (deviceId) markPeerStart(id, deviceId)
         else markEntryStart(id)
       }
-      const results = await Promise.allSettled(
-        ids.map(id =>
-          resendEntry({ entryId: id, targetDeviceIds: deviceId ? [deviceId] : null }).finally(
-            () => {
-              if (deviceId) markPeerSettle(id, deviceId)
-              else markEntrySettle(id)
-            }
-          )
+      let results: ResendItemResult[]
+      try {
+        results = await resendWithConfirmation(
+          ids.map(id => ({
+            entryId: id,
+            targetDeviceIds: deviceId ? [deviceId] : null,
+          }))
         )
-      )
-      const sent = results.filter(result => result.status === 'fulfilled').length
-      const firstError = results.find(result => result.status === 'rejected')
-      if (firstError) log.warn({ err: firstError.reason, count: ids.length }, 'bulk resend failed')
-      if (sent === 0 && firstError) {
-        toast.error(translateResendError(firstError.reason, t))
+      } finally {
+        for (const id of ids) {
+          if (deviceId) markPeerSettle(id, deviceId)
+          else markEntrySettle(id)
+        }
+      }
+      const sent = results.filter(result => result.report && hasDelivery(result.report)).length
+      // Reconciled against an existing task, or the user declined a new transfer.
+      const kept = results.filter(result => result.report && !hasDelivery(result.report)).length
+      const firstError = results.find(result => result.error !== undefined)
+      if (firstError) log.warn({ err: firstError.error, count: ids.length }, 'bulk resend failed')
+      if (sent === 0 && kept === 0 && firstError) {
+        toast.error(translateResendError(firstError.error, t))
+        return
+      }
+      if (kept > 0) {
+        toast.info(
+          t('delivery.resend.success.bulkReconciled', {
+            sent,
+            kept,
+            total: ids.length,
+          })
+        )
         return
       }
       toast.success(t('delivery.resend.success.bulk', { sent, total: ids.length }))
@@ -261,16 +385,44 @@ export function useResendAction(): UseResendActionResult {
   }
 }
 
-function emitResendSuccess(
-  report: ResendEntryReportDto,
-  t: (key: string, opts?: Record<string, unknown>) => string
-) {
-  const total =
-    report.accepted + report.duplicate + report.offline + report.errored + report.pending
+type Translate = (key: string, opts?: Record<string, unknown>) => string
+
+/**
+ * Report what actually happened. Counters only count real deliveries, so a
+ * resend that merely reconciled with an existing task is never reported as a
+ * new send; unreachable and unretained tasks stay "unconfirmed", not failed.
+ */
+function emitResendOutcome(report: ResendEntryReportDto, declined: boolean, t: Translate) {
+  if (hasDelivery(report)) {
+    const total =
+      report.accepted + report.duplicate + report.offline + report.errored + report.pending
+    toast.success(
+      t('delivery.resend.success.summary', {
+        accepted: report.accepted,
+        total,
+      })
+    )
+    return
+  }
+  const count = (...states: string[]) =>
+    report.reconciled.filter(target => states.includes(target.state)).length
+  const kinds: Array<[string, number]> = [
+    ['busy', count('busy')],
+    ['unreachable', count('unreachable')],
+    ['declined', declined ? count('settled', 'not_retained', 'unsupported') : 0],
+    ['running', count('running')],
+    ['superseded', count('superseded')],
+  ]
+  const hit = kinds.find(([, n]) => n > 0)
+  if (hit) {
+    toast.info(t(`delivery.resend.reconciled.${hit[0]}`, { count: hit[1] }))
+    return
+  }
+  // Nothing was delivered and no reconciliation explains it (offline / errored only).
   toast.success(
     t('delivery.resend.success.summary', {
       accepted: report.accepted,
-      total,
+      total: report.accepted + report.duplicate + report.offline + report.errored + report.pending,
     })
   )
 }

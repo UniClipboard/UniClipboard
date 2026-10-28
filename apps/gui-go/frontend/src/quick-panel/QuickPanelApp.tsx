@@ -3,6 +3,7 @@ import { LazyMotion, domMax } from 'framer-motion'
 import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
+import ResendConfirmDialog from '@/components/clipboard/ResendConfirmDialog'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import { Toaster } from '@/components/ui/toaster'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
@@ -188,6 +189,7 @@ const QuickPanelApp: React.FC = () => {
           </ShortcutProvider>
         )}
         <Toaster />
+        <ResendConfirmDialog />
       </VisualEffectsProvider>
     </LazyMotion>
   )

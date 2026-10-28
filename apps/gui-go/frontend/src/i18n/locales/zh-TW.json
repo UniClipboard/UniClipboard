@@ -2530,7 +2530,8 @@
       },
       "success": {
         "summary": "已觸發重發 · {{accepted}}/{{total}} 接收",
-        "bulk": "已傳送 {{sent}} / {{total}} 項"
+        "bulk": "已傳送 {{sent}} / {{total}} 項",
+        "bulkReconciled": "已傳送 {{sent}} / {{total}} 項 · {{kept}} 項沿用原傳輸或未發起"
       },
       "error": {
         "synchronizationDisabled": "同步已關閉。請先開啟同步，再重發內容。",
@@ -2542,6 +2543,20 @@
         "noEligibleTargets": "沒有可重發的裝置。",
         "entryNotFound": "條目 {{entryIdShort}} 不存在。",
         "internal": "重發失敗:{{message}}"
+      },
+      "reconciled": {
+        "busy": "對方裝置忙碌中，請稍後再試。",
+        "unreachable": "結果未確認：裝置離線或核對未完成，未重新下載。",
+        "declined": "未發起新傳輸，先前的結果仍未確認。",
+        "running": "已在傳送中，原傳輸繼續，未重新下載。",
+        "superseded": "已被較新的傳輸取代，未重新傳送。"
+      },
+      "confirm": {
+        "title": "發起新的傳輸？",
+        "description": "先前的傳輸無法繼續或確認結果。要向 {{devices}} 重新傳送 {{count}} 項內容嗎？",
+        "duplicateWarning": "對方裝置上可能出現重複檔案。",
+        "cancel": "取消",
+        "accept": "重新傳送"
       }
     }
   },

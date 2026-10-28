@@ -2530,7 +2530,8 @@
       },
       "success": {
         "summary": "已触发重发 · {{accepted}}/{{total}} 接收",
-        "bulk": "已发送 {{sent}} / {{total}} 项"
+        "bulk": "已发送 {{sent}} / {{total}} 项",
+        "bulkReconciled": "已发送 {{sent}} / {{total}} 项 · {{kept}} 项沿用原传输或未发起"
       },
       "error": {
         "synchronizationDisabled": "同步已关闭。请先开启同步，再重发内容。",
@@ -2542,6 +2543,20 @@
         "noEligibleTargets": "没有可重发的设备。",
         "entryNotFound": "条目 {{entryIdShort}} 不存在。",
         "internal": "重发失败:{{message}}"
+      },
+      "reconciled": {
+        "busy": "对方设备正忙，请稍后再试。",
+        "unreachable": "结果未确认：设备离线或核对未完成，未重新下载。",
+        "declined": "未发起新传输，之前的结果仍未确认。",
+        "running": "已在发送中，原传输继续，未重新下载。",
+        "superseded": "已被更新的传输取代，未重新发送。"
+      },
+      "confirm": {
+        "title": "发起新的传输？",
+        "description": "之前的传输无法继续或确认结果。要向 {{devices}} 重新发送 {{count}} 项内容吗？",
+        "duplicateWarning": "对方设备上可能出现重复文件。",
+        "cancel": "取消",
+        "accept": "重新发送"
       }
     }
   },

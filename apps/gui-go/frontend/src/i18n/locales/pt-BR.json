@@ -2554,7 +2554,8 @@
       },
       "success": {
         "summary": "Reenvio despachado · {{accepted}}/{{total}} aceitos",
-        "bulk": "{{sent}} de {{total}} itens enviados"
+        "bulk": "{{sent}} de {{total}} itens enviados",
+        "bulkReconciled": "{{sent}} de {{total}} itens enviados · {{kept}} mantiveram a transferência existente ou não foram iniciados"
       },
       "error": {
         "synchronizationDisabled": "A sincronização está desativada. Ative-a para reenviar o conteúdo.",
@@ -2566,6 +2567,20 @@
         "noEligibleTargets": "Nenhum dispositivo elegível para o reenvio.",
         "entryNotFound": "Entrada {{entryIdShort}} não encontrada.",
         "internal": "Falha ao reenviar: {{message}}"
+      },
+      "reconciled": {
+        "busy": "O dispositivo de destino está ocupado. Tente novamente mais tarde.",
+        "unreachable": "Resultado não confirmado: o dispositivo está offline ou a verificação não terminou. Nada foi baixado de novo.",
+        "declined": "Nenhuma nova transferência foi iniciada. O resultado anterior continua não confirmado.",
+        "running": "Já está sendo enviado. A transferência original continua; nada foi baixado de novo.",
+        "superseded": "Uma transferência mais recente substituiu esta. Nada foi reenviado."
+      },
+      "confirm": {
+        "title": "Iniciar uma nova transferência?",
+        "description": "A transferência anterior não pode ser continuada nem confirmada. Iniciar uma nova transferência de {{count}} item(ns) para {{devices}}?",
+        "duplicateWarning": "O dispositivo de destino pode acabar com arquivos duplicados.",
+        "cancel": "Cancelar",
+        "accept": "Enviar novamente"
       }
     }
   },

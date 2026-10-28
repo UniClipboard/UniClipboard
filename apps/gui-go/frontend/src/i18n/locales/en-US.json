@@ -2538,7 +2538,8 @@
       },
       "success": {
         "summary": "Resend dispatched · {{accepted}}/{{total}} accepted",
-        "bulk": "Sent {{sent}} of {{total}} items"
+        "bulk": "Sent {{sent}} of {{total}} items",
+        "bulkReconciled": "Sent {{sent}} of {{total}} items · {{kept}} kept their existing transfer or were not started"
       },
       "error": {
         "synchronizationDisabled": "Sync is disabled. Turn it on to resend content.",
@@ -2550,6 +2551,20 @@
         "noEligibleTargets": "No eligible peers to resend to.",
         "entryNotFound": "Entry {{entryIdShort}} not found.",
         "internal": "Resend failed: {{message}}"
+      },
+      "reconciled": {
+        "busy": "The receiving device is busy. Try again later.",
+        "unreachable": "Result unconfirmed: the device is offline or the check did not finish. Nothing was downloaded again.",
+        "declined": "No new transfer was started. The earlier result stays unconfirmed.",
+        "running": "Already sending. The original transfer continues; nothing was downloaded again.",
+        "superseded": "A newer transfer has replaced this one. Nothing was sent again."
+      },
+      "confirm": {
+        "title": "Start a new transfer?",
+        "description": "The earlier transfer cannot be continued or confirmed. Start a new transfer of {{count}} item(s) to {{devices}}?",
+        "duplicateWarning": "The receiving device may end up with duplicate files.",
+        "cancel": "Cancel",
+        "accept": "Send again"
       }
     }
   },

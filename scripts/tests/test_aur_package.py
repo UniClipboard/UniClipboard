@@ -37,5 +37,41 @@ class AurPackageTests(unittest.TestCase):
             self.assertIn('https://github.com/UniClipboard/UniClipboard.git', output.read_text())
 
 
+class StablePackageTests(unittest.TestCase):
+    def test_stable_renderer_requires_exact_version_tag(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory) / 'repo'
+            recipe = repo / 'packaging/aur/uniclipboard-git'
+            recipe.mkdir(parents=True)
+            shutil.copyfile(ROOT / 'packaging/aur/uniclipboard-git/PKGBUILD', recipe / 'PKGBUILD')
+            app = repo / 'apps/gui-go/app.json'
+            app.parent.mkdir(parents=True)
+            app.write_text(json.dumps({'version': '1.5.0'}))
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(repo), *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.invalid')
+            git('add', '.')
+            git('commit', '-qm', 'Stable source')
+            output = Path(directory) / 'PKGBUILD'
+            def render():
+                return subprocess.run(['bash', str(ROOT / 'scripts/ci/render-arch-release.sh'),
+                                       str(repo), str(output)], capture_output=True, text=True)
+            self.assertNotEqual(render().returncode, 0)
+            git('tag', 'v1.5.0')
+            self.assertEqual(render().returncode, 0)
+            values = subprocess.check_output(['bash', '-c',
+                'source "$1"; declare -p pkgname pkgver conflicts source; '
+                '! declare -F pkgver; declare -F build package', '_', str(output)], text=True)
+            self.assertIn('pkgname="uniclipboard"', values)
+            self.assertIn('pkgver="1.5.0"', values)
+            self.assertIn('uniclipboard-git', values)
+            self.assertIn('#commit=' + git('rev-parse', 'HEAD'), values)
+            git('commit', '--allow-empty', '-qm', 'After release')
+            self.assertNotEqual(render().returncode, 0)
+
+
 if __name__ == '__main__':
     unittest.main()

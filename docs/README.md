@@ -183,3 +183,5 @@ When updating documentation:
 - **Project DeepWiki**: https://deepwiki.com/UniClipboard/UniClipboard (interactive diagrams)
 - **GitHub Repository**: https://github.com/UniClipboard/UniClipboard
 - **CLAUDE.md**: Project-specific instructions for Claude Code (in repository root)
+
+- [pacman 二进制软件源](architecture/pacman-repository.md)：正式包构建、签名快照及上线前验收边界。

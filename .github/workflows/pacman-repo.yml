@@ -1,0 +1,188 @@
+name: Pacman repository
+
+# Publication is opt-in and requires the dedicated secure signing runner.
+on:
+  push:
+    branches: [feat/pacman-repository]
+    paths:
+      - '.github/workflows/pacman-repo.yml'
+      - 'scripts/ci/*arch*'
+      - 'scripts/ci/*pacman*'
+      - 'scripts/tests/*pacman*'
+      - 'scripts/tests/test_aur_package.py'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable version tag, for example v1.5.0'
+        required: true
+        type: string
+      publish:
+        description: 'Publish signed x86_64 repository (main only, secure signer required)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: pacman-repository-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 120
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - run: pacman -Syu --noconfirm --needed git python
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve a stable release tag
+        id: source
+        env:
+          RELEASE_TAG: ${{ inputs.tag || 'v1.5.0' }}
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          commit="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          bash scripts/ci/build-aur-package.sh "$PWD" "$commit" "$GITHUB_WORKSPACE/built" stable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pacman-stable-x86_64
+          path: built
+          if-no-files-found: error
+          retention-days: 14
+  acceptance:
+    needs: build
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 30
+    steps:
+      - run: pacman -Syu --noconfirm --needed git python
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pacman-stable-x86_64
+          path: built
+      - name: Verify signed repository transactions with disposable keys and databases
+        run: |
+          python scripts/tests/test_aur_package.py
+          python scripts/tests/test_pacman_github.py
+          python scripts/tests/pacman_repo_acceptance.py
+          python scripts/tests/pacman_repo_acceptance.py --package-dir built
+  native-install:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+      - uses: actions/download-artifact@v4
+        with:
+          name: pacman-stable-x86_64
+          path: built
+      - name: Prepare isolated WebKit container
+        run: src/scripts/ci/prepare-webkit-container-profile.sh
+      - name: Install and launch the real package
+        shell: bash
+        run: |
+          pkg="$(realpath built/*.pkg.tar.zst)"
+          mkdir native-install-evidence
+          docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
+            --security-opt "apparmor=$UC_WEBKIT_CI_APPARMOR_PROFILE" \
+            -v "$GITHUB_WORKSPACE/src:/work:ro" -v "$pkg:/in/package.pkg.tar.zst:ro" \
+            -v "$GITHUB_WORKSPACE/native-install-evidence:/out" archlinux:base-devel \
+            bash /work/scripts/ci/check-arch-package.sh /in/package.pkg.tar.zst /out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pacman-native-install-x86_64
+          path: native-install-evidence
+          retention-days: 14
+
+  publish-preflight:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main and a configured secure signing runner
+        env:
+          BRANCH: ${{ github.ref }}
+          ENABLED: ${{ vars.PACMAN_SIGNING_ENABLED }}
+          FINGERPRINT: ${{ vars.PACMAN_SIGNING_FINGERPRINT }}
+        shell: bash
+        run: |
+          [[ "$BRANCH" == refs/heads/main ]]
+          [[ "$ENABLED" == true ]] || { echo 'Configure the pacman-signing runner first'; exit 1; }
+          [[ "$FINGERPRINT" =~ ^([A-F0-9]{40}|[A-F0-9]{64})$ ]]
+
+  sign:
+    needs: [build, acceptance, native-install, publish-preflight]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, pacman-signing]
+    environment: pacman-production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require package-manager update protection in the release source
+        env:
+          SOURCE_COMMIT: ${{ needs.build.outputs.commit }}
+        shell: bash
+        run: |
+          # This merged fix introduced pacman ownership and disabled GUI self-update.
+          git merge-base --is-ancestor b28e77779 "$SOURCE_COMMIT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: pacman-stable-x86_64
+          path: built
+      - name: Sign using the existing secure GPG agent
+        env:
+          FINGERPRINT: ${{ vars.PACMAN_SIGNING_FINGERPRINT }}
+        shell: bash
+        run: |
+          packages=(built/*.pkg.tar.zst)
+          [[ "${#packages[@]}" == 1 ]]
+          python3 scripts/ci/assemble-pacman-repo.py "${packages[0]}" signed \
+            --arch x86_64 --fingerprint "$FINGERPRINT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pacman-signed-x86_64
+          path: signed
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: sign
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - run: pacman -Syu --noconfirm --needed git python github-cli
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: pacman-signed-x86_64
+          path: signed
+      - name: Verify public signatures and publish the dedicated channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINGERPRINT: ${{ vars.PACMAN_SIGNING_FINGERPRINT }}
+        shell: bash
+        run: |
+          export GNUPGHOME="$(mktemp -d)"
+          trap 'gpgconf --kill all; rm -rf "$GNUPGHOME"' EXIT
+          gpg --batch --import signed/uniclipboard.asc
+          python scripts/ci/publish-pacman-github.py signed --arch x86_64 \
+            --fingerprint "$FINGERPRINT" --repository "$GITHUB_REPOSITORY" --publish

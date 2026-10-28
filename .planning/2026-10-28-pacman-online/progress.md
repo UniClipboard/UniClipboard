@@ -19,3 +19,13 @@
 - 已创建 GitHub pacman-production Environment，并通过 deployment branch policy 限制 main；设置 PACMAN_SIGNING_ENABLED=false。
 - 已触发完整构建：https://github.com/UniClipboard/UniClipboard/actions/runs/40606677780 。截至本次记录仍排队，完整应用尚无结果。
 - 已向用户询问现有 GPG 硬件密钥或专用安全签名环境；未获答复。生产发布仍需安全签名身份/runner、新稳定版本及完整 CI 通过。
+
+
+## 用户授权的 Secrets 签名方案
+- 用户明确同意仅针对 pacman 发布签名密钥使用 GitHub Environment Secrets 与临时内存文件系统，例外已限定写入 VISION.md / AGENTS.md。
+- 本机启用了 swap，非特权 tmpfs noswap 挂载不受内核支持；改用用户/挂载命名空间内的 ramfs，已实测成功。
+- 已生成两年有效的 Ed25519 正式签名密钥，指纹 4E577D740471BCE42B86AA469C10EDAECA69D90C。
+- 私钥及撤销证书经 stdin 存入 pacman-production 的 PACMAN_GPG_PRIVATE_KEY / PACMAN_GPG_REVOCATION_CERT。只把公钥和指纹写入 packaging/arch/signing/。
+- 已把签名作业改为一次性 GitHub 托管 runner，先 swapoff，再将私钥经 stdin 导入容器 tmpfs，不把私钥放入 Docker 环境配置。增加同路径的独立测试密钥验收作业。
+- 本地内存签名验收通过：bootstrap 的秘密传输、重新导入、包/数据库签名验证和普通磁盘目录拒绝。处理了 GPG agent 异步退出导致卸载忙的问题：杀死独立 agent 后惰性卸载仅内存挂载。
+- Bash 语法、Python 编译、actionlint、git diff --check 通过；尚未取得完整应用 CI 结果。

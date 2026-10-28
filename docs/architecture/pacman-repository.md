@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-本仓提供正式版 Arch 包构建、签名快照、验收和 GitHub Releases 发布入口。**生产签名环境尚未配置，软件源尚未上线**。计划使用现有 GitHub 仓库，不需要自建服务器或域名。既有应用生产发布门禁、R2 发布目录与 AUR 发布流程不变。
+本仓提供正式版 Arch 包构建、签名快照、验收和 GitHub Releases 发布入口。**生产签名密钥已配置，软件源尚未上线**。计划使用现有 GitHub 仓库，不需要自建服务器或域名。既有应用生产发布门禁、R2 发布目录与 AUR 发布流程不变。
 
 当前自动构建只覆盖 x86_64。快照格式支持 aarch64，但上线该架构前必须提供原生 Arch Linux ARM 构建环境，确认 GTK4/WebKitGTK 依赖并完成原生安装验收；不使用 x86_64 Arch 容器模拟已支持 ARM。
 
@@ -24,7 +24,7 @@ bash scripts/ci/build-aur-package.sh /work/source <release-commit> /work/output 
 
 ## 签名与不可变快照
 
-生产签名必须使用既有安全签名设备或安全存储，由 GPG agent 提供密钥操作；脚本只接受完整指纹，不接收、导入或导出私钥。不要为方便 CI 将私钥写入仓库或普通配置文件。pacman 的 OpenPGP 信任链独立于应用自更新的 minisign 信任链。
+按用户明确授权及 `VISION.md` 中的专用例外，生产私钥与撤销证书保存在 GitHub `pacman-production` Environment Secrets。生成时使用不可交换的 ramfs；一次性 GitHub 托管 runner 签名前关闭交换空间，私钥通过标准输入导入临时 tmpfs，任务结束销毁。不得写入仓库、日志、构建产物、容器配置或普通磁盘文件。快照组装工具仍只接受完整指纹；Secrets 的导入由专用签名入口负责。pacman 的 OpenPGP 信任链独立于应用自更新的 minisign 信任链。
 
 签名机需要 Python、GnuPG、libarchive 的 bsdtar 和 pacman 的 repo-add：
 
@@ -59,30 +59,54 @@ https://github.com/UniClipboard/UniClipboard/releases/download/pacman-stable-x86
 
 此地址是已选定的发布入口，但尚未上线。Release 标记为预发布且不设为 latest，以免影响正常应用版本发现；这里的预发布标记只用于 GitHub 的渠道隔离，包仍只接受正式稳定版本。
 
-`scripts/ci/publish-pacman-github.py` 默认只验证与展示计划；传入 `--publish` 才写入 GitHub。发布前校验数据库和包的签名及完整指纹、旧数据库签名和版本排序，拒绝同版本、降级、不可变 Release 与不完整旧数据库。首次发布先创建草稿，上传完整内容后再公开。后续发布先追加包与签名、检查 GitHub 报告的 SHA-256，再更新数据库；旧包不删除，不重写已有包名。CI 串行化同一分支发布，只允许 main 写生产渠道，不导入私钥。
+`scripts/ci/publish-pacman-github.py` 默认只验证与展示计划；传入 `--publish` 才写入 GitHub。发布前校验数据库和包的签名及完整指纹、旧数据库签名和版本排序，拒绝同版本、降级、不可变 Release 与不完整旧数据库。首次发布先创建草稿，上传完整内容后再公开。后续发布先追加包与签名、检查 GitHub 报告的 SHA-256，再更新数据库；旧包不删除，不重写已有包名。CI 串行化同一分支发布，只允许 main 写生产渠道；私钥仅在受保护的签名作业内导入内存目录。
 
 GitHub 不提供多个 Release 附件的原子替换，因此数据库与独立签名切换期间可能短暂验签失败；用户稍后重新执行完整更新即可，禁止关闭签名校验。写入失败可能留下待修复的渠道，维护者必须核对数据库与签名后恢复；脚本不会自动绕过已有渠道校验。此方案保证包校验与旧包保留，不承诺无中断切换。若未来需要原子快照切换，可再迁移到具备该能力的托管入口。
 
 仓库配置：
 
-- 准备带 `self-hosted`、`Linux`、`pacman-signing` 标签的专用 runner，安装 Python、GnuPG、bsdtar、repo-add，并接入安全 GPG agent。不要在普通文件中存储生产私钥，也不要在不可信 PR 上运行此 runner。
+- 签名使用一次性 GitHub 托管 Linux runner，由 `scripts/ci/pacman-signing-container.sh` 关闭交换空间并创建内存目录。私钥通过标准输入进入容器，不通过容器环境变量传递，避免 Docker 把私钥保存到磁盘配置。
+- `PACMAN_GPG_PRIVATE_KEY` 和 `PACMAN_GPG_REVOCATION_CERT` 保存于 `pacman-production` Environment Secrets；只有签名步骤接收私钥。撤销证书不进入日常签名步骤。
 - 配置 `pacman-production` Environment，仅允许 main 部署；按团队管理要求配置审核人。
 - 配置仓库变量 `PACMAN_SIGNING_FINGERPRINT` 为完整大写指纹，确认签名环境就绪后才将 `PACMAN_SIGNING_ENABLED` 设为 `true`。
 - main 上手动运行 Pacman repository 工作流，输入正式标签并选 publish。签名和发布均依赖构建、签名事务验收及原生 GUI 安装验收成功。
 - 生产包源提交必须包含 b28e77779 引入的包管理器更新保护；现有 v1.5.0 只能用于构建验收，不能发布到生产软件源。需要包含该修复的新稳定标签。
 
-首次上线必须通过真实公开 HTTPS 地址执行下载与完整安装升级验收，并在独立可信渠道公布正式指纹。正式密钥尚未确定时不得用临时测试密钥公开发布。
+正式公钥与指纹保存在 `packaging/arch/signing/`。当前指纹：
+
+```text
+4E57 7D74 0471 BCE4 2B86 AA46 9C10 EDAE CA69 D90C
+```
+
+该 Ed25519 密钥有效期两年，维护者需在到期前完成轮换。首次上线必须通过真实公开 HTTPS 地址执行下载与完整安装升级验收，并在独立可信渠道公布正式指纹。
+
+首次配置工具（已有生产 Secret 时拒绝覆盖，不能用于隐式轮换）：
+
+```bash
+bash scripts/ci/with-memory-gpg.sh python3 scripts/ci/pacman-signing-secrets.py bootstrap \
+  --public-directory packaging/arch/signing
+```
+
+该入口自动生成专用签名密钥、公钥和撤销证书，将私有材料通过标准输入存入 Environment Secrets，仅将公钥与指纹写入仓库。需要 Linux 用户命名空间、挂载命名空间和 ramfs 支持；不得改用普通磁盘目录绕过检查。
+
+本地签名机制验收使用独立测试密钥，不接触生产 Secret：
+
+```bash
+bash scripts/ci/with-memory-gpg.sh python3 scripts/tests/pacman_signing_acceptance.py
+```
+
+Secrets 不能通过 API 直接读回。私钥丢失或疑似泄露时，应按受保护的人工恢复流程使用撤销证书，并公布新指纹；不要直接再次执行 bootstrap 覆盖原密钥。
 
 ## 安装与迁移（上线后）
 
-以下 GitHub 地址已确定但尚未上线，指纹仍为占位符；必须先由维护者公布完整指纹及独立可信渠道的指纹说明。用户需验证下载公钥的完整指纹，再导入并本地签名：
+以下 GitHub 地址已确定但尚未上线，指纹如上；仍需在独立可信渠道公布指纹说明。用户需验证下载公钥的完整指纹，再导入并本地签名：
 
 ```bash
 curl --fail --location --output uniclipboard.asc \
   'https://github.com/UniClipboard/UniClipboard/releases/download/pacman-stable-x86_64/uniclipboard.asc'
 gpg --show-keys --with-fingerprint uniclipboard.asc
 sudo pacman-key --add uniclipboard.asc
-sudo pacman-key --lsign-key '<VERIFIED_FULL_FINGERPRINT>'
+sudo pacman-key --lsign-key 4E577D740471BCE42B86AA469C10EDAECA69D90C
 ```
 
 上线后在 `/etc/pacman.conf` 追加以下内容（目前仅规划 x86_64）：

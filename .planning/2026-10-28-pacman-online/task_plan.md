@@ -13,10 +13,10 @@
 7. 原生 ARM 构建及验收：pending（首发 x86_64）
 
 ## Next Step
-等待完整应用 CI 获得 runner；等待用户落实安全签名身份和 runner。正式发布前需要包含包管理器更新保护的新稳定版本。
+等待完整应用与托管签名 CI 获得 runner；正式发布前需要包含包管理器更新保护的新稳定版本。
 
 ## 待落实
-托管已选择 GitHub Releases；待落实正式签名身份、安全签名 runner、包含更新保护的新稳定标签及原生 aarch64 构建环境。生产 release 原有门禁继续保留。
+托管已选择 GitHub Releases；正式签名身份已生成并存入 Environment Secrets；待落实完整 CI、包含更新保护的新稳定标签及原生 aarch64 构建环境。生产 release 原有门禁继续保留。
 
 ## 验收限制与错误记录
 - 首次直接运行验收因 pacman-key 要求 root 失败；本机 sudo 与 Docker 均无权限。确认 unshare --user --map-root-user 可用后，全部测试改用用户命名空间。

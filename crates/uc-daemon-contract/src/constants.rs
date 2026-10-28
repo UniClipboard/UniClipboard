@@ -36,7 +36,6 @@ pub mod ws_event {
     pub const PEERS_CONNECTION_CHANGED: &str = "peers.connectionChanged";
     pub const PAIRED_DEVICES_SNAPSHOT: &str = "paired-devices.snapshot";
     pub const PAIRED_DEVICES_CHANGED: &str = "paired-devices.changed";
-    pub const PAIRING_SNAPSHOT: &str = "pairing.snapshot";
     pub const PAIRING_UPDATED: &str = "pairing.updated";
     pub const PAIRING_VERIFICATION_REQUIRED: &str = "pairing.verification_required";
     pub const PAIRING_COMPLETE: &str = "pairing.complete";

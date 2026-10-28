@@ -277,48 +277,6 @@ export interface Settings {
 }
 
 // ============================================================================
-// 向后兼容的类型别名 (用于旧代码)
-// ============================================================================
-
-/** @deprecated 使用 GeneralSettings 替代 */
-export type GeneralSetting = GeneralSettings
-
-/** @deprecated 使用 SyncSettings 替代 */
-export type SyncSetting = SyncSettings
-
-/** @deprecated 使用 SecuritySettings 替代，注意字段名不同 */
-export interface SecuritySetting {
-  end_to_end_encryption: boolean
-  password: string
-}
-
-// ============================================================================
-// 旧架构的类型 (保留用于向后兼容，但后端已不再返回这些字段)
-// ============================================================================
-
-/** @deprecated 后端新架构中不存在此设置 */
-export interface NetworkSetting {
-  sync_method: string
-  cloud_server: string
-  webserver_port: number
-  custom_peer_device: boolean
-  peer_device_addr: string | null
-  peer_device_port: number | null
-}
-
-/** @deprecated 后端新架构中不存在此设置 */
-export interface StorageSetting {
-  auto_clear_history: string
-  history_retention_days: number
-  max_history_items: number
-}
-
-/** @deprecated 后端新架构中不存在此设置 */
-export interface AboutSetting {
-  version: string
-}
-
-// ============================================================================
 // 设置上下文接口 - 更新为使用新类型
 // ============================================================================
 

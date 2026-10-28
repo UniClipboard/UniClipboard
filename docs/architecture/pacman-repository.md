@@ -139,3 +139,7 @@ python3 scripts/tests/test_aur_package.py
 ```
 
 CI 的完整包验签下载使用 `--package-dir built`。这不会宣称完整 GUI 或两种架构均已原生安装成功。上线前仍需实际执行完整包的原生安装与 GUI 检查、真实版本间升级、AUR 冲突迁移，并确认生产 HTTPS 托管的完整性和渠道切换行为。
+
+## 已完成的验收记录
+
+[GitHub Actions 运行 40607744388](https://github.com/UniClipboard/UniClipboard/actions/runs/40607744388) 已通过 x86_64 完整应用构建、临时密钥的软件源验签与事务、仅内存签名机制，以及干净 Arch 容器中的原生安装和 GUI/daemon/WebView 启动检查。源标签为 v1.5.0，仅用于构建验收；生产签名、公开发布、真实新旧应用版本间升级及 aarch64 安装未在该运行中执行。

@@ -33,3 +33,11 @@
 - PACMAN_SIGNING_ENABLED 已设为 true；发布仍仅 main 手动选择 publish 且全部验收通过后执行。
 - 已取消过时的未开始验收 40606677780，避免阻塞同分支并发锁。当前验收为 https://github.com/UniClipboard/UniClipboard/actions/runs/40607744388 ，build 与 signing-acceptance 均排队，尚未取得 GitHub runner。
 - 正式软件源未发布；仍缺完整应用/托管签名验收结果、分支集成及包含包管理器更新保护的新稳定标签。
+
+
+## 完整 CI 验收完成
+- 用户通知运行完成后，核实 40607744388 为 success；build、signing-acceptance、acceptance、native-install 全部通过，生产 sign/publish 按预期跳过。
+- 原生安装日志的 16 项检查均 PASS：依赖安装、pacman 文件归属/完整性、GUI/daemon 动态依赖、桌面入口/图标、WebKit 命名空间、Secret Service、真实安装路径的 GUI/daemon/WebView 运行、连接文件和顶层窗口。
+- 事务验收确认 AUR 冲突、安装、升级、卸载、缺包/篡改/不可信签名拒绝；完整应用包的签名下载也通过。
+- 工件 pacman-stable-x86_64（约 32.7 MB）与 pacman-native-install-x86_64 均可从该运行获取。构建源是 v1.5.0，仅用于验收；不能绕过生产源更新保护门禁。
+- 准备 PR：分支名符合范围；docs-site 保持现有可用 AUR 安装说明，未上线源暂不作为可用安装渠道宣传；遥测与 Rust tracing 无适用变更。

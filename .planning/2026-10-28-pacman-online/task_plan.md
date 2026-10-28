@@ -9,14 +9,15 @@
 3. 隔离 pacman 安装、升级及拒绝损坏签名验证（小型测试包）：complete
 4. 仅构建 CI 与中文运行文档：complete
 5. GitHub Releases 托管与生产发布代码、部署环境：complete
-6. 完整应用 CI 实跑、安全签名环境、新稳定版本及上线验收：pending
-7. 原生 ARM 构建及验收：pending（首发 x86_64）
+6. 完整应用与内存签名 CI 验收：complete
+7. 分支合入、新稳定版本、正式签名与公开源验收：pending
+8. 原生 ARM 构建及验收：pending（首发 x86_64）
 
 ## Next Step
-等待完整应用与托管签名 CI 获得 runner；正式发布前需要包含包管理器更新保护的新稳定版本。
+创建合入 PR，随后使用包含包管理器更新保护的新稳定版本执行正式签名和公开源验收。
 
 ## 待落实
-托管已选择 GitHub Releases；正式签名身份已生成并存入 Environment Secrets；待落实完整 CI、包含更新保护的新稳定标签及原生 aarch64 构建环境。生产 release 原有门禁继续保留。
+托管已选择 GitHub Releases；正式签名身份已生成并存入 Environment Secrets；完整构建和验收已通过；待落实分支合入、包含更新保护的新稳定标签及原生 aarch64 构建环境。生产 release 原有门禁继续保留。
 
 ## 验收限制与错误记录
 - 首次直接运行验收因 pacman-key 要求 root 失败；本机 sudo 与 Docker 均无权限。确认 unshare --user --map-root-user 可用后，全部测试改用用户命名空间。

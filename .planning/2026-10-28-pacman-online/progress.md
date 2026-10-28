@@ -10,3 +10,12 @@
 - --package-dir 分支也用小型测试包独立跑通，未冒称完整应用下载验收。
 - bash -n、Python 编译检查、actionlint、git diff --check 均通过。
 - 未提交、未推送、未触发远端 CI、未公开发布。已向用户询问正式 HTTPS 地址和签名公钥指纹，尚无答复。
+
+## 后续授权实施
+- 已提交并推送 feat/pacman-repository：67e7186db、9cec29ab2、7175f0720、9bb92b874。
+- 发布脚本增加旧库签名验证、严格版本递增、包名碰撞校验、远端上传摘要校验、旧包保留，以及首次草稿发布。
+- 增加发布器的四项本地测试，均通过；actionlint 通过。没有使用生产私钥或发布公开软件源。
+- 生产流水线默认关闭；仅 main 的手动 publish 可进入签名，签名依赖构建、事务与 native GUI 验收。签名使用安全 agent，无私钥导入或导出步骤。
+- 已创建 GitHub pacman-production Environment，并通过 deployment branch policy 限制 main；设置 PACMAN_SIGNING_ENABLED=false。
+- 已触发完整构建：https://github.com/UniClipboard/UniClipboard/actions/runs/40606677780 。截至本次记录仍排队，完整应用尚无结果。
+- 已向用户询问现有 GPG 硬件密钥或专用安全签名环境；未获答复。生产发布仍需安全签名身份/runner、新稳定版本及完整 CI 通过。

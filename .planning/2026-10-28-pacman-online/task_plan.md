@@ -8,10 +8,12 @@
 2. 正式标签构建入口与签名快照：complete
 3. 隔离 pacman 安装、升级及拒绝损坏签名验证（小型测试包）：complete
 4. 仅构建 CI 与中文运行文档：complete
-5. 完整应用 CI 实跑、原生 ARM 验收、生产托管与发布接入：pending
+5. GitHub Releases 托管与生产发布代码、部署环境：complete
+6. 完整应用 CI 实跑、安全签名环境、新稳定版本及上线验收：pending
+7. 原生 ARM 构建及验收：pending（首发 x86_64）
 
 ## Next Step
-推送分支运行完整应用 CI；生产签名身份和安全签名 runner 仍待用户提供。
+等待完整应用 CI 获得 runner；等待用户落实安全签名身份和 runner。正式发布前需要包含包管理器更新保护的新稳定版本。
 
 ## 待落实
 托管已选择 GitHub Releases；待落实正式签名身份、安全签名 runner、包含更新保护的新稳定标签及原生 aarch64 构建环境。生产 release 原有门禁继续保留。

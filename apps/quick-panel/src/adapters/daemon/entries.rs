@@ -67,7 +67,7 @@ impl DaemonHistory {
             EntryAction::Delete => context.clipboard_client().delete_entry(&id).await,
             EntryAction::Send(peer) => context
                 .clipboard_client()
-                .resend_entry(&id, peer.map(|p| vec![p]))
+                .resend_entry(&id, peer.map(|p| vec![p]), false)
                 .await
                 .map(|_| ()),
         };

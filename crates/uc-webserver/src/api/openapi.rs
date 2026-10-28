@@ -118,6 +118,10 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
     DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
     EntrySourceDto,
 };
+use uc_daemon_contract::api::dto::clipboard_outbound::{
+    OutboundProgressItemDto, OutboundProgressResponse, ReconcileOutboundProgressRequest,
+    ReconcileOutboundProgressResponse, ResendTargetProgressDto,
+};
 use uc_daemon_contract::api::dto::config::{
     ConfigImportRejectionReasonDto, ConfigImportStatusResponse, ExportConfigRequest,
     ExportConfigResponse, ImportConfigRequest, ImportConfigResponse, PreviewImportRequest,
@@ -140,8 +144,9 @@ use uc_daemon_contract::api::dto::envelope::{
     LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
     MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
     MobileSyncSettingsEnvelope, NetworkLogStatusEnvelope, NetworkRecoveryStatusEnvelope,
-    PeerSnapshotListEnvelope, PresenceRefreshEnvelope, PreviewImportEnvelope,
-    ProfileRecoveryEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
+    OutboundProgressEnvelope, OutboundProgressListEnvelope, PeerSnapshotListEnvelope,
+    PresenceRefreshEnvelope, PreviewImportEnvelope, ProfileRecoveryEnvelope,
+    ReconcileOutboundProgressEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
     RelayOverviewEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope,
     RestartAcceptedEnvelope, RestoreEntryEnvelope, RetryEntryReceiveEnvelope,
     RotateMobilePasswordEnvelope, SearchCountEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope,
@@ -217,6 +222,9 @@ impl Modify for ContractMeta {
         crate::api::clipboard::list_entry_receive_progress,
         crate::api::clipboard::cancel_entry_receive,
         crate::api::clipboard::retry_entry_receive,
+        crate::api::clipboard::get_outbound_progress,
+        crate::api::clipboard::list_outbound_progress,
+        crate::api::clipboard::reconcile_outbound_progress,
         crate::api::routes::restore_clipboard_entry_handler,
         crate::api::routes::capture_current_clipboard_handler,
         // ── clipboard binary (octet-stream, doc-only) ──────────────
@@ -354,6 +362,9 @@ impl Modify for ContractMeta {
             EntryDeliveryViewEnvelope,
             EntryReceiveProgressEnvelope,
             EntryReceiveProgressListEnvelope,
+            OutboundProgressEnvelope,
+            OutboundProgressListEnvelope,
+            ReconcileOutboundProgressEnvelope,
             CancelEntryReceiveEnvelope,
             RetryEntryReceiveEnvelope,
             // ── clipboard: payload + request DTOs ──────────────────
@@ -374,6 +385,11 @@ impl Modify for ContractMeta {
             CancelTransferRequest,
             CancelTransferResponse,
             EntryReceiveProgressResponse,
+            OutboundProgressResponse,
+            OutboundProgressItemDto,
+            ReconcileOutboundProgressRequest,
+            ReconcileOutboundProgressResponse,
+            ResendTargetProgressDto,
             CancelEntryReceiveRequest,
             CancelEntryReceiveResponse,
             ReceiveItemResponse,
@@ -882,6 +898,7 @@ mod assembly_smoke_tests {
         // The tag layout adds four paths and four operations: 99 / 111.
         // The network-library log status adds one path and one operation: 100 / 112.
         // The selective receive retry adds one path and one operation: 102 / 114.
+        // Outbound progress query, list and reconcile add three paths and three operations: 105 / 117.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -890,8 +907,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            102,
-            "expected exactly 102 path templates, found {}: {:?}",
+            105,
+            "expected exactly 105 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -905,8 +922,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 114,
-            "expected exactly 114 operations across all paths, found {operation_count}"
+            operation_count, 117,
+            "expected exactly 117 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.
@@ -925,6 +942,9 @@ mod assembly_smoke_tests {
             "getEntryReceiveProgress",
             "cancelEntryReceive",
             "retryEntryReceive",
+            "getOutboundProgress",
+            "listOutboundProgress",
+            "reconcileOutboundProgress",
             "getSpaceProtection",
             "getDeviceGroupChoices",
             "chooseDeviceGroup",

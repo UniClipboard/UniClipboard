@@ -432,7 +432,7 @@ async fn run_send_via_daemon(
         SendMode::Resend => {
             let entry_id_str = resend_id.expect("resend id present");
             let resend_spinner = ui::spinner("Resending entry via daemon...");
-            match service.resend_entry(&entry_id_str, peers).await {
+            match service.resend_entry(&entry_id_str, peers, false).await {
                 Ok(resp) => {
                     ui::spinner_finish_success(
                         &resend_spinner,

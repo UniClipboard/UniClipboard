@@ -97,12 +97,3 @@ pub struct DaemonStartupStatus {
     pub service_failed: bool,
     pub progress: StartupSnapshotDto,
 }
-impl DaemonStartupStatus {
-    pub fn is_failed(&self) -> bool {
-        self.service_failed
-            || matches!(
-                self.progress.state,
-                StartupStateDto::Failed | StartupStateDto::Interrupted
-            )
-    }
-}

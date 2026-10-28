@@ -13,18 +13,6 @@ pub struct WsSubscribeRequest {
     pub topics: Vec<String>,
 }
 
-/// Acknowledgement sent back to the client after a successful subscribe action.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct WsSubscribeResponse {
-    /// The action that was processed (e.g. `"subscribe"`).
-    pub action: String,
-    /// Topics that were accepted and subscribed.
-    pub topics: Vec<String>,
-    /// Server-side timestamp (ms since epoch).
-    pub ts: i64,
-}
-
 /// Error response sent via HTTP status + JSON body when the WebSocket upgrade fails.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]

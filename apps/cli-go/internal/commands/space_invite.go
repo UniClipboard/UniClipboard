@@ -27,6 +27,7 @@ const (
 type inviteEvent struct {
 	Event           string  `json:"event"`
 	Code            *string `json:"code,omitempty"`
+	FullInvitation  *string `json:"full_invitation,omitempty"`
 	ExpiresAtMs     *int64  `json:"expires_at_ms,omitempty"`
 	SponsorDeviceID *string `json:"sponsor_device_id,omitempty"`
 	JoinerDeviceID  *string `json:"joiner_device_id,omitempty"`
@@ -34,8 +35,9 @@ type inviteEvent struct {
 }
 
 type issueInvitationResponse struct {
-	Code        string `json:"code"`
-	ExpiresAtMs int64  `json:"expiresAtMs"`
+	Code           string `json:"code"`
+	FullInvitation string `json:"fullInvitation"`
+	ExpiresAtMs    int64  `json:"expiresAtMs"`
 }
 
 type setupPairingCompletedEvent struct {
@@ -55,15 +57,16 @@ func (o inviteOutput) spinner(message string) *ui.Spinner {
 	return ui.NewSpinner(message)
 }
 
-func (o inviteOutput) invitationIssued(spinner *ui.Spinner, code string, expiresAtMs int64) error {
+func (o inviteOutput) invitationIssued(spinner *ui.Spinner, code, fullInvitation string, expiresAtMs int64) error {
 	if o.json {
 		clearSpinner(spinner)
-		return emitInviteEvent(inviteEvent{Event: "invitation_issued", Code: &code, ExpiresAtMs: &expiresAtMs})
+		return emitInviteEvent(inviteEvent{Event: "invitation_issued", Code: &code, FullInvitation: &fullInvitation, ExpiresAtMs: &expiresAtMs})
 	}
 	spinnerSuccess(spinner, "Invitation issued")
 	ui.Bar()
 	ui.VerificationCode(code)
 	ui.Info("expires_at", rfc3339Millis(expiresAtMs))
+	ui.Info("Full invitation (VPN or another network)", fullInvitation)
 	ui.Bar()
 	if _, err := fmt.Fprintf(os.Stdout, "INVITATION_CODE=%s\n", code); err != nil {
 		return fmt.Errorf("Failed to write invitation code: %v", err)
@@ -183,13 +186,13 @@ func runSpaceInvite(ctx *cli.Context) int {
 	defer ws.Close()
 	outcomes := pairingOutcomes(ws)
 
-	spinner := out.spinner("Requesting invitation from rendezvous...")
+	spinner := out.spinner("Requesting invitation...")
 	var invitation issueInvitationResponse
 	if err := client.Enveloped(bg, daemonclient.Request{Method: http.MethodPost, Path: "/v2/setup/issue-invitation"}, &invitation); err != nil {
 		out.requestFailed(spinner, invitationRequestErrorMessage(err))
 		return exitcode.Error
 	}
-	if err := out.invitationIssued(spinner, invitation.Code, invitation.ExpiresAtMs); err != nil {
+	if err := out.invitationIssued(spinner, invitation.Code, invitation.FullInvitation, invitation.ExpiresAtMs); err != nil {
 		ui.Error(err.Error())
 		return exitcode.Error
 	}

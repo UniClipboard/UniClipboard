@@ -8,7 +8,7 @@ import {
   type SwitchSpaceResponse,
 } from '@/api/daemon/setupV2'
 import { type JoinAdmissionResolution, useJoinAdmission } from '@/hooks/useJoinAdmission'
-import { INVITATION_CODE_LENGTH } from '@/lib/invitation-code'
+import { classifyInvitationInput } from '@/lib/invitation-code'
 import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import { fetchLocalDeviceInfo, fetchSpaceMembers } from '@/store/slices/devicesSlice'
@@ -59,7 +59,7 @@ export function useSwitchSpace({
   const activeJoinId = useRef<string | null>(null)
   const operation = useRef(0)
 
-  const codeComplete = code.length === INVITATION_CODE_LENGTH
+  const codeComplete = classifyInvitationInput(code) !== 'invalid'
   const canSubmit = codeComplete && pass.length > 0 && step === 'input'
 
   // Keep the close timer stable across parent renders.

@@ -94,6 +94,7 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
             network: self
                 .network
                 .map(|network| app_settings::NetworkSettingsPatch {
+                    bind_port: network.bind_port,
                     allow_relay_fallback: network.allow_relay_fallback,
                     allow_overlay_network_addrs: network.allow_overlay_network_addrs,
                     custom_relay_urls: network.custom_relay_urls,
@@ -190,6 +191,7 @@ impl IntoApiDto<SettingsDto> for (app_settings::SettingsView, &DesktopSettings) 
                 auto_save_dir: view.file_sync.auto_save_dir.clone(),
             },
             network: NetworkSettingsDto {
+                bind_port: view.network.bind_port,
                 allow_relay_fallback: view.network.allow_relay_fallback,
                 allow_overlay_network_addrs: view.network.allow_overlay_network_addrs,
                 custom_relay_urls: view.network.custom_relay_urls,
@@ -540,6 +542,40 @@ pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
                 double_tap_modifier: quick_panel.double_tap_modifier.map(IntoDomain::into_domain),
             },
         ),
+    }
+}
+
+#[cfg(test)]
+mod network_tests {
+    use super::*;
+
+    #[test]
+    fn bind_port_patch_preserves_absent_random_and_fixed_values() {
+        for (wire, expected) in [
+            (serde_json::json!({}), None),
+            (serde_json::json!({"bindPort": 0}), Some(0)),
+            (serde_json::json!({"bindPort": 51820}), Some(51820)),
+            (serde_json::json!({"bindPort": 65535}), Some(65535)),
+        ] {
+            let dto: SettingsPatchDto =
+                serde_json::from_value(serde_json::json!({"network": wire})).unwrap();
+            let patch: app_settings::SettingsPatch = dto.into_domain();
+            assert_eq!(patch.network.unwrap().bind_port, expected);
+        }
+    }
+
+    #[test]
+    fn bind_port_summary_round_trips_through_camel_case_wire() {
+        for port in [None, Some(1), Some(51820), Some(65535)] {
+            let mut summary = app_settings::SettingsView::default();
+            summary.network.bind_port = port;
+            let dto: SettingsDto = (summary, &DesktopSettings::default()).into_api_dto();
+            let wire = serde_json::to_value(dto).unwrap();
+            assert_eq!(wire["network"]["bindPort"], serde_json::json!(port));
+            assert!(wire["network"].get("bind_port").is_none());
+            let decoded: SettingsDto = serde_json::from_value(wire).unwrap();
+            assert_eq!(decoded.network.bind_port, port);
+        }
     }
 }
 

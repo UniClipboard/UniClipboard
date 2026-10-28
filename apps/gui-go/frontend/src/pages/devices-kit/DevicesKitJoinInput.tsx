@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { FullInvitationField } from '@/components/FullInvitationField'
 import type { useSwitchSpace } from '@/hooks/useSwitchSpace'
-import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/lib/invitation-code'
+import {
+  shortInvitationInput,
+  INVITATION_CODE_LENGTH,
+  formatInvitationCode,
+} from '@/lib/invitation-code'
 import {
   Button,
   CodeField,
@@ -78,17 +83,27 @@ export function DevicesKitJoinInput({
             <InlineNotice tone="info" title={t('devices.switchSpace.subtitle')} />
           </>
         ) : (
-          <CodeField
-            id="switch-code"
-            label={t('devices.switchSpace.labels.code')}
-            length={INVITATION_CODE_LENGTH}
-            value={model.code}
-            onValueChange={value => {
-              model.setCode(value)
-              model.setPass('')
-            }}
-            autoFocus
-          />
+          <>
+            <CodeField
+              id="switch-code"
+              label={t('devices.switchSpace.labels.code')}
+              length={INVITATION_CODE_LENGTH}
+              value={shortInvitationInput(model.code)}
+              onValueChange={value => {
+                model.setCode(value)
+                model.setPass('')
+              }}
+              autoFocus
+            />
+            <FullInvitationField
+              id="switch-full-invitation"
+              value={model.code}
+              onChange={value => {
+                model.setCode(value)
+                model.setPass('')
+              }}
+            />
+          </>
         )}
       </form>
     </TaskPanel>

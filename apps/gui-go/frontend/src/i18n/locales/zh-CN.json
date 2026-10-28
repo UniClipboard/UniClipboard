@@ -615,25 +615,32 @@
           "builtInRelays": "内置中继"
         },
         "loadError": "加载设置失败:",
+        "bindPort": {
+          "label": "固定网络端口",
+          "description": "留空时每次启动使用随机 UDP 端口；填写 1-65535 可方便配置防火墙及 WireGuard 等 VPN。修改后需重启守护进程。",
+          "placeholder": "随机端口（默认）",
+          "invalid": "请输入 1 到 65535 的整数，或留空以使用随机端口。",
+          "saveError": "保存网络端口失败：{{message}}。已恢复为原来的设置。"
+        },
         "lanOnly": {
           "label": "LAN-only 模式",
-          "description": "关闭公网中继回落，仅通过同局域网完成设备同步。重启后生效。",
-          "infoIconAriaLabel": "查看 LAN-only 模式开启后仍走外网的请求清单",
+          "description": "禁用中继、公共 rendezvous 和 DNS/pkarr 发现。通过本地发现或完整邀请连接设备，例如经 VPN 配对。重启后生效。",
+          "infoIconAriaLabel": "查看 LAN-only 配对与互联网请求详情",
           "saveError": "保存失败：{{message}}。已恢复到上一次的设置。",
           "disclosure": {
-            "title": "LAN-only 开启后仍会走外网的请求",
-            "intro": "以下 4 类请求由独立模块控制，不受 LAN-only 影响：",
-            "rendezvous": {
-              "title": "首次配对 rendezvous",
-              "description": "配对新设备时仍需联网经 rendezvous.uniclipboard.app 完成 NodeId 交换；已配对设备的日常同步不再使用 rendezvous。"
+            "title": "LAN-only 配对与互联网请求",
+            "intro": "LAN-only 为设备连接禁用中继服务器、公共 rendezvous 和 DNS/pkarr 发现。遥测与更新检查由独立设置控制。",
+            "pairing": {
+              "title": "无需公共 rendezvous 的配对",
+              "description": "六位短码仅通过本地网络发现解析。本地发现不可用时（例如通过 VPN），请从发出邀请的设备复制并粘贴完整邀请。如需继续使用六位短码，可先关闭 LAN-only 模式完成一次配对，再重新开启；已配对的设备会保存彼此的地址。"
+            },
+            "discovery": {
+              "title": "本地设备发现",
+              "description": "设备通过本地网络上的 mDNS 发现。DNS/pkarr 查询已禁用。"
             },
             "telemetry": {
               "title": "遥测",
               "description": "遥测由「通用 → 遥测」开关独立控制，与 LAN-only 无关；如需关闭，请到「通用」分类。"
-            },
-            "pkarr": {
-              "title": "pkarr DHT NodeId 解析",
-              "description": "跨网段连接通过 pkarr 公网 DHT 解析对端 NodeId，性质类似 DNS。关闭会导致跨网段连接率从约 90% 跌至接近 0。"
             },
             "autoUpdate": {
               "title": "自动更新 GitHub 检查",
@@ -2725,15 +2732,20 @@
       "hint": "配对完成前请保持两台设备都在线。",
       "hintExpired": "邀请码已失效，请取消后重新生成。",
       "actions": {
-        "cancel": "取消邀请"
-      }
+        "cancel": "取消邀请",
+        "copyFullInvitation": "复制完整邀请",
+        "fullInvitationCopied": "已复制完整邀请"
+      },
+      "fullInvitationHint": "通过 VPN 或其他网络配对、本地发现不可用时使用。请仅分享给你希望配对的设备。",
+      "copyError": "无法复制邀请，请重试。"
     },
     "redeemInvitation": {
       "title": "加入已有空间",
       "subtitle": "输入对方设备显示的邀请码，以及创建空间时设置的口令。",
       "labels": {
         "code": "邀请码",
-        "passphrase": "空间口令"
+        "passphrase": "空间口令",
+        "fullInvitation": "完整邀请（VPN 或其他网络）"
       },
       "placeholders": {
         "passphrase": "输入对方在创建空间时使用的口令"
@@ -2757,7 +2769,8 @@
         "back": "返回",
         "joining": "正在加入...",
         "submit": "加入空间"
-      }
+      },
+      "fullInvitationHint": "也可以粘贴以 ucspace1_ 开头的完整邀请，注意区分大小写。"
     },
     "joinPending": {
       "processing": {

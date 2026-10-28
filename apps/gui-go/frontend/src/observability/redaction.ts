@@ -1,4 +1,5 @@
-const sensitiveKeyPattern = /password|passphrase|pass[12]|secret|token|auth|api_?key|file_?paths?/
+const sensitiveKeyPattern =
+  /password|passphrase|pass[12]|secret|token|auth|api_?key|file_?paths?|invitation/
 
 export function redactSensitiveArgs(value: unknown): unknown {
   return redactValue(value, new WeakMap())

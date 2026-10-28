@@ -58,16 +58,17 @@ describe('LanOnlyDisclosure', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
-  it('Test 5: PopoverContent 含 4 类外网请求标题', async () => {
+  it('describes local pairing alongside telemetry and updates', async () => {
     const user = userEvent.setup()
     render(<LanOnlyDisclosure />)
     await user.click(screen.getByRole('button', { name: /查看 LAN-only|View the list/ }))
-    // 4 类清单标题（zh-CN 锁定 — i18n 已切到 zh-CN）
-    expect(screen.getByText(/首次配对 rendezvous|First-pairing rendezvous/)).toBeInTheDocument()
-    expect(screen.getByText(/^遥测$|^Telemetry$/)).toBeInTheDocument()
     expect(
-      screen.getByText(/pkarr DHT NodeId 解析|pkarr DHT NodeId resolution/)
+      screen.getByText(/无需公共 rendezvous 的配对|Pairing without public rendezvous/)
     ).toBeInTheDocument()
+    expect(screen.getByText(/^遥测$|^Telemetry$/)).toBeInTheDocument()
+    expect(screen.getByText(/本地设备发现|Local device discovery/)).toBeInTheDocument()
+    expect(screen.getByText(/六位短码仅通过本地网络发现解析/)).toHaveTextContent('完整邀请')
+    expect(screen.getByText(/DNS\/pkarr 查询已禁用/)).toBeInTheDocument()
     expect(screen.getByText(/自动更新 GitHub 检查|Auto-update GitHub check/)).toBeInTheDocument()
   })
 
@@ -80,17 +81,15 @@ describe('LanOnlyDisclosure', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
-  it('Test 7: Popover 标题 + intro 文案双语命中', async () => {
+  it('explains the disabled connection services', async () => {
     const user = userEvent.setup()
     render(<LanOnlyDisclosure />)
     await user.click(screen.getByRole('button', { name: /查看 LAN-only|View the list/ }))
     expect(
-      screen.getByText(/LAN-only 开启后仍会走外网的请求|Requests that still reach the internet/)
+      screen.getByText(/LAN-only 配对与互联网请求|LAN-only pairing and internet requests/)
     ).toBeInTheDocument()
     expect(
-      screen.getByText(
-        /以下 4 类请求由独立模块控制|The following 4 request types are controlled by independent modules/
-      )
+      screen.getByText(/禁用中继服务器、公共 rendezvous 和 DNS\/pkarr|disables relay servers/)
     ).toBeInTheDocument()
   })
 })

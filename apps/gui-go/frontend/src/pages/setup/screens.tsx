@@ -23,14 +23,16 @@ import { useTranslation } from 'react-i18next'
 import type { JoinSpaceEndReason } from '@/api/daemon/setupV2'
 import { AppStateShell } from '@/components/app/AppStateShell'
 import { ConfigImportReplacementDialog } from '@/components/config-import/ConfigImportReplacementDialog'
+import { FullInvitationInput } from '@/components/FullInvitationInput'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
+import { LegacyCopyFullInvitationButton } from '@/components/LegacyCopyFullInvitationButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Progress } from '@/components/ui/progress'
 import { useConfigImport, type ConfigImportErrorKind } from '@/hooks/useConfigImport'
-import { INVITATION_CODE_LENGTH } from '@/lib/invitation-code'
+import { INVITATION_CODE_LENGTH, shortInvitationInput } from '@/lib/invitation-code'
 import { cn } from '@/lib/utils'
 import { useInitializeSpaceForm, type InitializeSpaceSubmit } from './useInitializeSpaceForm'
 import { useInvitationCountdown } from './useInvitationCountdown'
@@ -360,11 +362,13 @@ export function InitializeSpaceScreen({
 
 export function ShowInvitationScreen({
   code,
+  fullInvitation,
   expiresAtMs,
   onCancel,
   loading,
 }: {
   code: string
+  fullInvitation?: string
   expiresAtMs: number
   onCancel: () => void
   loading?: boolean
@@ -418,6 +422,12 @@ export function ShowInvitationScreen({
             {expired ? t('expired') : t('expiresIn', { remaining: remainingLabel })}
           </p>
         </div>
+        {fullInvitation && (
+          <LegacyCopyFullInvitationButton
+            invitation={fullInvitation}
+            disabled={expired || loading}
+          />
+        )}
       </div>
     </ScreenShell>
   )
@@ -491,7 +501,7 @@ export function RedeemInvitationScreen({
           <div data-testid="setup-redeem-code" className="w-fit">
             <InvitationCodeInput
               id="join-code"
-              value={code}
+              value={shortInvitationInput(code)}
               onChange={value => {
                 setCode(value)
                 if (value.length === INVITATION_CODE_LENGTH) passInputRef.current?.focus()
@@ -503,6 +513,12 @@ export function RedeemInvitationScreen({
           </div>
         </div>
 
+        <FullInvitationInput
+          id="join-full-invitation"
+          value={code}
+          onChange={setCode}
+          disabled={loading}
+        />
         <AnimatePresence initial={false}>
           {codeComplete && (
             <m.div

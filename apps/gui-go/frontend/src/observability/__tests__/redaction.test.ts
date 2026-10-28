@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { redactSensitiveArgs } from '../redaction'
 
 describe('redactSensitiveArgs', () => {
+  it('redacts full invitations in both API naming conventions', () => {
+    expect(
+      redactSensitiveArgs({ fullInvitation: 'ucspace1_Test', full_invitation: 'ucspace1_Test' })
+    ).toEqual({ fullInvitation: '[REDACTED]', full_invitation: '[REDACTED]' })
+  })
+
   it('redacts the named request inside content unlock positional arguments', () => {
     expect(redactSensitiveArgs({ arg0: { passphrase: 'never-record-this' } })).toEqual({
       arg0: { passphrase: '[REDACTED]' },

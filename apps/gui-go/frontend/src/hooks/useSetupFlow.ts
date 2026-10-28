@@ -47,7 +47,7 @@ export type SetupScreen =
   /** S6 — migrate an existing setup from an exported bundle. */
   | { kind: 'import_config' }
   /** S3 — sponsor: showing invitation code with countdown. */
-  | { kind: 'show_invitation'; code: string; expiresAtMs: number }
+  | { kind: 'show_invitation'; code: string; fullInvitation?: string; expiresAtMs: number }
   /** S4 — joiner: paste invitation code + passphrase. */
   | { kind: 'redeem_invitation' }
   /** S4a — joiner: durable admission is waiting for its final outcome. */
@@ -112,6 +112,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
       return {
         kind: 'show_invitation',
         code: flow.code,
+        fullInvitation: flow.fullInvitation,
         expiresAtMs: flow.expiresAtMs,
       }
     }

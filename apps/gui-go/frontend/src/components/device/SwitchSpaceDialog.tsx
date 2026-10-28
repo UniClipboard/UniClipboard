@@ -1,5 +1,6 @@
 import { AlertCircle, ArrowRightLeft, CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
+import { FullInvitationInput } from '@/components/FullInvitationInput'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useDialogSessionReset } from '@/hooks/useDialogSessionReset'
 import { useSwitchSpace } from '@/hooks/useSwitchSpace'
+import { shortInvitationInput } from '@/lib/invitation-code'
 import { cn } from '@/lib/utils'
 
 interface SwitchSpaceDialogProps {
@@ -79,7 +81,7 @@ function SwitchSpaceDialogInner({
           </Label>
           <InvitationCodeInput
             id="switch-code"
-            value={code}
+            value={shortInvitationInput(code)}
             onChange={setCode}
             invalid={errorKind === 'invitation_not_found' || errorKind === 'invitation_expired'}
             autoFocus
@@ -87,6 +89,7 @@ function SwitchSpaceDialogInner({
           />
         </div>
 
+        <FullInvitationInput id="switch-full-invitation" value={code} onChange={setCode} />
         {codeComplete && (
           <div className="w-0 min-w-full space-y-2">
             <Label htmlFor="switch-pass" className="text-muted-foreground">

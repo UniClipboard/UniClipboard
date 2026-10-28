@@ -24,9 +24,13 @@ const (
 )
 
 // normalizeInvitationCode formats six ASCII digits as `XXX-XXX`; any other
-// input is only compacted (whitespace and `-` removed, ASCII uppercased)
+// input, except a full invitation, is only compacted (whitespace and `-` removed, ASCII uppercased)
 // for the daemon to reject.
 func normalizeInvitationCode(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "ucspace1_") {
+		return trimmed
+	}
 	var b strings.Builder
 	for _, c := range raw {
 		if unicode.IsSpace(c) || c == '-' {

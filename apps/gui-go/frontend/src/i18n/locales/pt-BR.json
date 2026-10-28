@@ -616,25 +616,32 @@
           "builtInRelays": "Relays integrados"
         },
         "loadError": "Falha ao carregar as configurações:",
+        "bindPort": {
+          "label": "Porta de rede fixa",
+          "description": "Deixe em branco para usar uma porta UDP aleatória a cada inicialização, ou informe 1-65535 para firewalls e VPNs como WireGuard. Requer reiniciar o daemon.",
+          "placeholder": "Aleatória (padrão)",
+          "invalid": "Informe um número inteiro de 1 a 65535, ou deixe em branco para usar uma porta aleatória.",
+          "saveError": "Falha ao salvar a porta de rede: {{message}}. A configuração anterior foi restaurada."
+        },
         "lanOnly": {
           "label": "LAN-only Mode",
-          "description": "Desativa o fallback pelo relay público. Os dispositivos sincronizam somente na mesma rede local. Tem efeito após reiniciar.",
-          "infoIconAriaLabel": "Ver a lista de requisições que ainda chegam à internet quando o LAN-only Mode está ativado",
+          "description": "Desativa relays, rendezvous público e descoberta por DNS/pkarr. Use a descoberta local ou um convite completo, por exemplo via VPN. Entra em vigor após reiniciar.",
+          "infoIconAriaLabel": "Ver detalhes de pareamento e solicitações à internet no modo LAN-only",
           "saveError": "Falha ao salvar: {{message}}. A configuração anterior foi restaurada.",
           "disclosure": {
-            "title": "Requisições que ainda chegam à internet com o LAN-only Mode ativado",
-            "intro": "Os 4 tipos de requisição a seguir são controlados por módulos independentes e não são afetados pelo LAN-only Mode:",
-            "rendezvous": {
-              "title": "Rendezvous do primeiro pareamento",
-              "description": "Parear um novo dispositivo ainda exige acesso a rendezvous.uniclipboard.app para trocar os NodeIds. Depois do pareamento, a sincronização do dia a dia não usa mais o rendezvous."
+            "title": "Pareamento e solicitações à internet no modo LAN-only",
+            "intro": "O modo LAN-only desativa servidores de relay, rendezvous público e descoberta por DNS/pkarr para conexões entre dispositivos. A telemetria e a busca de atualizações têm controles separados.",
+            "pairing": {
+              "title": "Pareamento sem rendezvous público",
+              "description": "Códigos de seis dígitos são resolvidos apenas pela descoberta na rede local. Se a descoberta estiver indisponível, por exemplo via VPN, copie e cole o convite completo do dispositivo que emitiu o convite. Para continuar usando um código de seis dígitos, faça o pareamento uma vez com o LAN-only Mode desativado e depois ative-o novamente; os dispositivos pareados guardam os endereços uns dos outros."
+            },
+            "discovery": {
+              "title": "Descoberta local de dispositivos",
+              "description": "A descoberta de dispositivos usa mDNS na rede local. As consultas DNS/pkarr são desativadas."
             },
             "telemetry": {
               "title": "Telemetria",
               "description": "A telemetria é controlada de forma independente em Geral → Telemetria, e não pelo LAN-only Mode. Para desativá-la, vá até a seção Geral."
-            },
-            "pkarr": {
-              "title": "Resolução de NodeId pela DHT pkarr",
-              "description": "Conexões entre sub-redes diferentes resolvem os NodeIds dos pares pela DHT pública pkarr, algo parecido com o DNS. Desativá-la derrubaria a taxa de conexão entre sub-redes de cerca de 90% para quase zero."
             },
             "autoUpdate": {
               "title": "Verificação de atualizações no GitHub",
@@ -2749,15 +2756,20 @@
       "hint": "Os dois dispositivos precisam ficar online durante o pareamento.",
       "hintExpired": "O código não é mais válido. Cancele e crie um novo convite.",
       "actions": {
-        "cancel": "Cancelar convite"
-      }
+        "cancel": "Cancelar convite",
+        "copyFullInvitation": "Copiar convite completo",
+        "fullInvitationCopied": "Convite completo copiado"
+      },
+      "fullInvitationHint": "Use em uma VPN ou outra rede quando a descoberta local não estiver disponível. Compartilhe apenas com o dispositivo que deseja parear.",
+      "copyError": "Não foi possível copiar o convite. Tente novamente."
     },
     "redeemInvitation": {
       "title": "Entrar em um Espaço existente",
       "subtitle": "Digite o código de convite exibido no outro dispositivo e informe a mesma frase secreta usada para criar o Espaço.",
       "labels": {
         "code": "Código de convite",
-        "passphrase": "Frase secreta do Espaço"
+        "passphrase": "Frase secreta do Espaço",
+        "fullInvitation": "Convite completo (VPN ou outra rede)"
       },
       "placeholders": {
         "passphrase": "Digite a frase secreta do dispositivo anfitrião"
@@ -2781,7 +2793,8 @@
         "back": "Voltar",
         "joining": "Entrando...",
         "submit": "Entrar no Espaço"
-      }
+      },
+      "fullInvitationHint": "Ou cole um convite completo começando com ucspace1_. Maiúsculas e minúsculas são diferenciadas."
     },
     "joinPending": {
       "processing": {

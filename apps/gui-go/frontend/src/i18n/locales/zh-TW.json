@@ -615,25 +615,32 @@
           "builtInRelays": "內建中繼"
         },
         "loadError": "載入設定失敗:",
+        "bindPort": {
+          "label": "固定網路連接埠",
+          "description": "留空時每次啟動使用隨機 UDP 連接埠；填入 1-65535 可方便設定防火牆及 WireGuard 等 VPN。修改後需重新啟動背景服務。",
+          "placeholder": "隨機連接埠（預設）",
+          "invalid": "請輸入 1 到 65535 的整數，或留空以使用隨機連接埠。",
+          "saveError": "儲存網路連接埠失敗：{{message}}。已還原先前的設定。"
+        },
         "lanOnly": {
           "label": "LAN-only 模式",
-          "description": "關閉公網中繼回落，僅通過同區域網路完成裝置同步。重新啟動後生效。",
-          "infoIconAriaLabel": "查看 LAN-only 模式開啓後仍走外網的請求清單",
+          "description": "停用中繼、公共 rendezvous 和 DNS/pkarr 探索。透過本機探索或完整邀請連接裝置，例如經 VPN 配對。重新啟動後生效。",
+          "infoIconAriaLabel": "查看 LAN-only 配對與網際網路請求詳情",
           "saveError": "儲存失敗：{{message}}。已恢復到上一次的設定。",
           "disclosure": {
-            "title": "LAN-only 開啓後仍會走外網的請求",
-            "intro": "以下 4 類請求由獨立模塊控制，不受 LAN-only 影響：",
-            "rendezvous": {
-              "title": "首次配對 rendezvous",
-              "description": "配對新裝置時仍需聯網經 rendezvous.uniclipboard.app 完成 NodeId 交換；已配對裝置的日常同步不再使用 rendezvous。"
+            "title": "LAN-only 配對與網際網路請求",
+            "intro": "LAN-only 為裝置連線停用中繼伺服器、公共 rendezvous 和 DNS/pkarr 探索。遙測與更新檢查由獨立設定控制。",
+            "pairing": {
+              "title": "無需公共 rendezvous 的配對",
+              "description": "六位短碼僅透過本機網路探索解析。本機探索無法使用時（例如透過 VPN），請從發出邀請的裝置複製並貼上完整邀請。如需繼續使用六位短碼，可先關閉 LAN-only 模式完成一次配對，再重新開啟；已配對的裝置會保存彼此的位址。"
+            },
+            "discovery": {
+              "title": "本機裝置探索",
+              "description": "裝置透過本機網路上的 mDNS 探索。DNS/pkarr 查詢已停用。"
             },
             "telemetry": {
               "title": "遙測",
               "description": "遙測由「通用 → 遙測」開關獨立控制，與 LAN-only 無關；如需關閉，請到「通用」分類。"
-            },
-            "pkarr": {
-              "title": "pkarr DHT NodeId 解析",
-              "description": "跨網段連接通過 pkarr 公網 DHT 解析對端 NodeId，性質類似 DNS。關閉會導致跨網段連接率從約 90% 跌至接近 0。"
             },
             "autoUpdate": {
               "title": "自動更新 GitHub 檢查",
@@ -2725,15 +2732,20 @@
       "hint": "配對完成前請保持兩台裝置都在線。",
       "hintExpired": "邀請碼已失效，請取消後重新生成。",
       "actions": {
-        "cancel": "取消邀請"
-      }
+        "cancel": "取消邀請",
+        "copyFullInvitation": "複製完整邀請",
+        "fullInvitationCopied": "已複製完整邀請"
+      },
+      "fullInvitationHint": "透過 VPN 或其他網路配對、本機探索無法使用時使用。請僅分享給你希望配對的裝置。",
+      "copyError": "無法複製邀請，請重試。"
     },
     "redeemInvitation": {
       "title": "加入已有空間",
       "subtitle": "輸入對方裝置顯示的邀請碼，以及建立空間時設定的口令。",
       "labels": {
         "code": "邀請碼",
-        "passphrase": "空間口令"
+        "passphrase": "空間口令",
+        "fullInvitation": "完整邀請（VPN 或其他網路）"
       },
       "placeholders": {
         "passphrase": "輸入對方在建立空間時使用的口令"
@@ -2757,7 +2769,8 @@
         "back": "返回",
         "joining": "正在加入...",
         "submit": "加入空間"
-      }
+      },
+      "fullInvitationHint": "也可以貼上以 ucspace1_ 開頭的完整邀請，注意區分大小寫。"
     },
     "joinPending": {
       "processing": {

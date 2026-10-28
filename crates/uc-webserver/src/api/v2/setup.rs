@@ -164,8 +164,13 @@ pub(crate) async fn issue_invitation(
         .execute(Operation::IssueInvitation)
         .await
         .map_err(map_issue_engine_err)?;
+    invitation_response(result).map(|response| Json(ApiEnvelope::now(response)))
+}
+
+fn invitation_response(result: OperationResult) -> Result<IssueInvitationResponse, ApiError> {
     let OperationResult::InvitationIssued {
         invitation_code,
+        full_invitation,
         expires_at_ms,
         ..
     } = result
@@ -174,10 +179,11 @@ pub(crate) async fn issue_invitation(
             "engine returned an unexpected invitation result",
         ));
     };
-    Ok(Json(ApiEnvelope::now(IssueInvitationResponse {
+    Ok(IssueInvitationResponse {
         code: invitation_code,
+        full_invitation,
         expires_at_ms,
-    })))
+    })
 }
 
 fn map_issue_engine_err(err: EngineError) -> ApiError {
@@ -504,6 +510,7 @@ pub(crate) async fn get_state(
         has_completed: view.has_completed,
         current_invitation: view.current_invitation.map(|invitation| CurrentInvitation {
             code: invitation.invitation_code,
+            full_invitation: invitation.full_invitation,
             expires_at_ms: invitation.expires_at_ms,
         }),
         device_name: view.device_name,
@@ -865,6 +872,22 @@ mod tests {
     //! boundary ownership are covered in `uc-engine`.
 
     use super::*;
+
+    #[test]
+    fn invitation_response_preserves_the_full_invitation() {
+        let response = invitation_response(OperationResult::InvitationIssued {
+            invitation_code: "012-345".to_string(),
+            full_invitation: "ucspace1_Test-Payload".to_string(),
+            expires_at_ms: 1_745_577_600_000,
+            availability: uc_engine::InvitationAvailability::SameLocalNetwork,
+        })
+        .unwrap();
+        let wire = serde_json::to_value(&response).unwrap();
+        assert_eq!(wire["code"], "012-345");
+        assert_eq!(wire["fullInvitation"], "ucspace1_Test-Payload");
+        assert!(wire.get("full_invitation").is_none());
+        assert!(!format!("{response:?}").contains("Test-Payload"));
+    }
 
     #[test]
     fn invitation_failures_do_not_misreport_membership_as_network_startup() {

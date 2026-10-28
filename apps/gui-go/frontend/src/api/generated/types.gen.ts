@@ -511,6 +511,7 @@ export type CreateHistoryTagRequest = {
 export type CurrentInvitation = {
     code: string;
     expiresAtMs: number;
+    fullInvitation: string;
 };
 
 /**
@@ -2093,6 +2094,7 @@ export type InitializeSpaceResponse = {
 export type IssueInvitationResponse = {
     code: string;
     expiresAtMs: number;
+    fullInvitation: string;
 };
 
 export type JoinSpaceAttentionReason = 'outcome_cannot_be_proven';
@@ -2799,6 +2801,10 @@ export type NetworkRecoveryStatusResponse = {
 export type NetworkSettingsDto = {
     allowOverlayNetworkAddrs?: boolean;
     allowRelayFallback: boolean;
+    /**
+     * Saved P2P UDP port. `None` selects a random port on each daemon start.
+     */
+    bindPort?: number | null;
     congestionController?: CongestionControllerDto;
     customRelayUrls?: Array<string>;
 };
@@ -2809,6 +2815,10 @@ export type NetworkSettingsDto = {
 export type NetworkSettingsPatchDto = {
     allowOverlayNetworkAddrs?: boolean | null;
     allowRelayFallback?: boolean | null;
+    /**
+     * Absent or null = unchanged; 0 = random; 1-65535 = fixed. Requires restart.
+     */
+    bindPort?: number | null;
     congestionController?: CongestionControllerDto | null;
     customRelayUrls?: Array<string> | null;
 };

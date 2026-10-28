@@ -4,10 +4,14 @@ import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
 import { issuePairingInvitation, redeemInvitation, switchSpace } from '@/api/daemon/setupV2'
 import * as sdk from '@/api/generated/sdk.gen'
 
-describe('six-digit invitation requests', () => {
+describe('invitation requests', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it.each(['000001', '000-001'])('submits the complete canonical code for %s', async code => {
+  it.each([
+    ['000001', '000-001'],
+    ['000-001', '000-001'],
+    [' \nucspace1_AbC-012_xyz\t', 'ucspace1_AbC-012_xyz'],
+  ])('submits the invitation without changing admission material', async (code, expected) => {
     vi.spyOn(daemonClient, 'callEnveloped').mockImplementation(async call => {
       await call()
       return {} as never
@@ -20,12 +24,12 @@ describe('six-digit invitation requests', () => {
 
     expect(redeem).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.objectContaining({ code: '000-001' }),
+        body: expect.objectContaining({ code: expected }),
       })
     )
     expect(switchRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.objectContaining({ code: '000-001' }),
+        body: expect.objectContaining({ code: expected }),
       })
     )
   })

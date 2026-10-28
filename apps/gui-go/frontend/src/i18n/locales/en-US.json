@@ -615,25 +615,32 @@
           "builtInRelays": "Built-in relays"
         },
         "loadError": "Failed to load settings:",
+        "bindPort": {
+          "label": "Fixed network port",
+          "description": "Leave empty for a random UDP port on each start, or enter 1-65535 for firewalls and VPNs such as WireGuard. Requires a daemon restart.",
+          "placeholder": "Random (default)",
+          "invalid": "Enter an integer from 1 to 65535, or leave empty for a random port.",
+          "saveError": "Failed to save network port: {{message}}. Reverted to the previous setting."
+        },
         "lanOnly": {
           "label": "LAN-only Mode",
-          "description": "Disable public-relay fallback. Devices sync only over the same local network. Takes effect after restart.",
-          "infoIconAriaLabel": "View the list of requests that still reach the internet when LAN-only Mode is on",
+          "description": "Disable relays, public rendezvous, and DNS/pkarr discovery. Use local discovery or a full invitation, for example over a VPN. Takes effect after restart.",
+          "infoIconAriaLabel": "View LAN-only pairing and internet request details",
           "saveError": "Save failed: {{message}}. Reverted to the previous setting.",
           "disclosure": {
-            "title": "Requests that still reach the internet with LAN-only Mode on",
-            "intro": "The following 4 request types are controlled by independent modules and are not affected by LAN-only Mode:",
-            "rendezvous": {
-              "title": "First-pairing rendezvous",
-              "description": "Pairing a new device still requires reaching rendezvous.uniclipboard.app to exchange NodeIds. Once paired, day-to-day sync no longer uses rendezvous."
+            "title": "LAN-only pairing and internet requests",
+            "intro": "LAN-only disables relay servers, public rendezvous, and DNS/pkarr discovery for device connections. Telemetry and update checks have separate controls.",
+            "pairing": {
+              "title": "Pairing without public rendezvous",
+              "description": "Six-digit codes resolve only through local network discovery. If discovery is unavailable, such as over a VPN, copy and paste the full invitation from the inviting device. To keep using a six-digit code, pair once with LAN-only Mode off, then turn it back on; synced devices keep each other's addresses."
+            },
+            "discovery": {
+              "title": "Local device discovery",
+              "description": "Device discovery uses mDNS on the local network. DNS/pkarr lookups are disabled."
             },
             "telemetry": {
               "title": "Telemetry",
               "description": "Telemetry is controlled independently by General → Telemetry, not by LAN-only Mode. To disable it, go to the General section."
-            },
-            "pkarr": {
-              "title": "pkarr DHT NodeId resolution",
-              "description": "Cross-subnet connections resolve peer NodeIds via the public pkarr DHT, similar in nature to DNS. Disabling it would drop cross-subnet connection rate from ~90% to near zero."
             },
             "autoUpdate": {
               "title": "Auto-update GitHub check",
@@ -2733,15 +2740,20 @@
       "hint": "Both devices must remain online while pairing.",
       "hintExpired": "The code is no longer valid. Cancel and start a new invitation.",
       "actions": {
-        "cancel": "Cancel invitation"
-      }
+        "cancel": "Cancel invitation",
+        "copyFullInvitation": "Copy full invitation",
+        "fullInvitationCopied": "Full invitation copied"
+      },
+      "fullInvitationHint": "Use this for a VPN or another network when local discovery is unavailable. Share it only with the device you want to pair.",
+      "copyError": "Could not copy the invitation. Try again."
     },
     "redeemInvitation": {
       "title": "Join an existing space",
       "subtitle": "Enter the invitation code shown on the other device, then provide the same passphrase used to create the space.",
       "labels": {
         "code": "Invitation code",
-        "passphrase": "Space passphrase"
+        "passphrase": "Space passphrase",
+        "fullInvitation": "Full invitation (VPN or another network)"
       },
       "placeholders": {
         "passphrase": "Enter the passphrase from the host device"
@@ -2765,7 +2777,8 @@
         "back": "Back",
         "joining": "Joining...",
         "submit": "Join space"
-      }
+      },
+      "fullInvitationHint": "Or paste a full invitation starting with ucspace1_. It is case-sensitive."
     },
     "joinPending": {
       "processing": {

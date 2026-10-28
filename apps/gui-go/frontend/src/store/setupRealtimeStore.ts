@@ -46,6 +46,7 @@ export type SetupFlow =
   /** Sponsor has issued an invitation; resume the show-code screen on launch. */
   | {
       kind: 'invitation_pending'
+      fullInvitation?: string
       code: string
       expiresAtMs: number
       deviceName: string | null
@@ -97,6 +98,7 @@ function flowFromState(
     return {
       kind: 'invitation_pending',
       code: state.currentInvitation.code,
+      fullInvitation: state.currentInvitation.fullInvitation,
       expiresAtMs: state.currentInvitation.expiresAtMs,
       deviceName: state.deviceName,
       completion,
@@ -128,6 +130,13 @@ export function applyIssuedInvitation(invitation: CurrentInvitation) {
   completionRevision += 1
   update({
     kind: 'invitation_pending',
+    fullInvitation:
+      invitation.fullInvitation ??
+      (snapshot.flow.kind === 'invitation_pending' &&
+      snapshot.flow.code === invitation.code &&
+      snapshot.flow.expiresAtMs === invitation.expiresAtMs
+        ? snapshot.flow.fullInvitation
+        : undefined),
     code: invitation.code,
     expiresAtMs: invitation.expiresAtMs,
     deviceName: deviceNameFromFlow(snapshot.flow),

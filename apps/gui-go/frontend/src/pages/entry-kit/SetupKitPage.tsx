@@ -58,6 +58,7 @@ export default function SetupPage({ onCompleteSetup }: Props = {}) {
         <SetupKitInvitation
           key={screen.code}
           code={screen.code}
+          fullInvitation={screen.fullInvitation}
           expiresAtMs={screen.expiresAtMs}
           onCancel={flow.cancelInvitation}
           loading={loading}

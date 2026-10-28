@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ActiveJoinSpaceResponse, RedeemInvitationErrorKind } from '@/api/daemon/setupV2'
-import { INVITATION_CODE_LENGTH } from '@/lib/invitation-code'
+import { classifyInvitationInput } from '@/lib/invitation-code'
 import { redeemErrorMessage } from './setup-error-messages'
 
 export type RedeemInvitationSubmit = (input: {
@@ -19,7 +19,7 @@ export function useRedeemInvitationForm(onSubmit: RedeemInvitationSubmit, loadin
   const [pass, setPass] = useState('')
   const [errorKind, setErrorKind] = useState<RedeemInvitationErrorKind | null>(null)
 
-  const codeComplete = code.length === INVITATION_CODE_LENGTH
+  const codeComplete = classifyInvitationInput(code) !== 'invalid'
   const canSubmit = codeComplete && pass.length > 0 && !loading
 
   const submit = async (event?: FormEvent) => {

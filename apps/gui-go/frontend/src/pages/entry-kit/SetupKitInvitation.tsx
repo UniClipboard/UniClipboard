@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { CopyFullInvitationButton } from '@/components/CopyFullInvitationButton'
 import { useInvitationCountdown } from '@/pages/setup/useInvitationCountdown'
 import { Button, EntryPage, ProgressBar, Text } from '@/ui-kit'
 import appIcon from '@/updater/app-icon.png'
@@ -7,11 +8,13 @@ import { EntryKitFrame } from './EntryKitFrame'
 /** S4/S5 · the invitation code with its countdown; it is cancelled automatically when it expires. */
 export function SetupKitInvitation({
   code,
+  fullInvitation,
   expiresAtMs,
   onCancel,
   loading,
 }: {
   code: string
+  fullInvitation?: string
   expiresAtMs: number
   onCancel: () => void
   loading?: boolean
@@ -44,6 +47,9 @@ export function SetupKitInvitation({
               {display}
             </Text>
           </div>
+          {fullInvitation && (
+            <CopyFullInvitationButton invitation={fullInvitation} disabled={expired || loading} />
+          )}
           <ProgressBar label={t('expiresIn', { remaining: remainingLabel })} value={progress} />
           <span role="timer">
             <Text role="caption" tone={expired ? 'critical' : 'secondary'}>

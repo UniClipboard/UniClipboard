@@ -46,6 +46,35 @@ describe('setup screens e2e selectors', () => {
     await new Promise(resolve => setTimeout(resolve, 60))
   })
 
+  it('copies the full invitation and accepts it in the join form', async () => {
+    await i18n.changeLanguage('en-US')
+    const invitation = 'ucspace1_AbC-012_xyz'
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const submit = vi.fn().mockResolvedValue({ ok: true, redeem: null })
+    const { rerender } = render(
+      <ShowInvitationScreen
+        code="012345"
+        fullInvitation={invitation}
+        expiresAtMs={activeInvitationAtMs}
+        onCancel={() => {}}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Copy full invitation' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(invitation))
+    rerender(<RedeemInvitationScreen onSubmit={submit} onBack={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Full invitation (VPN or another network)'), {
+      target: { value: invitation },
+    })
+    fireEvent.change(await screen.findByLabelText('Space passphrase'), {
+      target: { value: 'space-passphrase' },
+    })
+    fireEvent.click(screen.getByTestId('setup-redeem-submit'))
+    await waitFor(() =>
+      expect(submit).toHaveBeenCalledWith({ code: invitation, passphrase: 'space-passphrase' })
+    )
+  })
+
   it('lets a sponsor continue directly into device invitation from the space-ready screen', async () => {
     const user = userEvent.setup()
     const onInvite = vi.fn().mockResolvedValue({ ok: true })

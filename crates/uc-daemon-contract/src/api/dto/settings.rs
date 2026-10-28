@@ -372,6 +372,7 @@ mod relay_credential_wire_tests {
                 allow_overlay_network_addrs: false,
                 custom_relay_urls: vec![relay_url.to_string()],
                 congestion_controller: CongestionControllerDto::Cubic,
+                bind_port: None,
             },
             quick_panel: QuickPanelSettingsDto::default(),
         }
@@ -853,6 +854,10 @@ pub struct NetworkSettingsDto {
     pub custom_relay_urls: Vec<String>,
     #[serde(default)]
     pub congestion_controller: CongestionControllerDto,
+    /// Saved P2P UDP port. `None` selects a random port on each daemon start.
+    #[serde(default)]
+    #[schema(maximum = 65535)]
+    pub bind_port: Option<u16>,
 }
 
 /// 快捷面板出现位置 DTO。wire form: `center` | `follow_cursor`。
@@ -1044,6 +1049,10 @@ pub struct NetworkSettingsPatchDto {
     pub allow_overlay_network_addrs: Option<bool>,
     pub custom_relay_urls: Option<Vec<String>>,
     pub congestion_controller: Option<CongestionControllerDto>,
+    /// Absent or null = unchanged; 0 = random; 1-65535 = fixed. Requires restart.
+    #[serde(default)]
+    #[schema(maximum = 65535)]
+    pub bind_port: Option<u16>,
 }
 
 /// 快捷面板字段 patch DTO 镜像 — `null` = 不修改。
@@ -1092,11 +1101,16 @@ mod network_dto_tests {
             allow_overlay_network_addrs: false,
             custom_relay_urls: Vec::new(),
             congestion_controller: CongestionControllerDto::default(),
+            bind_port: Some(51820),
         };
         let json = serde_json::to_string(&dto).expect("serialize");
         assert_eq!(
             json,
-            r#"{"allowRelayFallback":true,"allowOverlayNetworkAddrs":false,"customRelayUrls":[],"congestionController":"cubic"}"#
+            r#"{"allowRelayFallback":true,"allowOverlayNetworkAddrs":false,"customRelayUrls":[],"congestionController":"cubic","bindPort":51820}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<NetworkSettingsDto>(&json).unwrap(),
+            dto
         );
     }
 
@@ -1120,6 +1134,43 @@ mod network_dto_tests {
         assert!(dto.allow_relay_fallback);
         assert!(!dto.allow_overlay_network_addrs);
         assert!(dto.custom_relay_urls.is_empty());
+        assert_eq!(dto.bind_port, None);
+    }
+
+    #[test]
+    fn bind_port_patch_preserves_unchanged_random_and_fixed_values() {
+        for (wire, expected) in [
+            ("{}", None),
+            (r#"{"bindPort":null}"#, None),
+            (r#"{"bindPort":0}"#, Some(0)),
+            (r#"{"bindPort":1}"#, Some(1)),
+            (r#"{"bindPort":51820}"#, Some(51820)),
+            (r#"{"bindPort":65535}"#, Some(65535)),
+        ] {
+            let dto: NetworkSettingsPatchDto = serde_json::from_str(wire).unwrap();
+            assert_eq!(dto.bind_port, expected, "{wire}");
+            let serialized = serde_json::to_value(&dto).unwrap();
+            assert_eq!(serialized["bindPort"], serde_json::json!(expected));
+            assert!(serialized.get("bind_port").is_none());
+            let decoded: NetworkSettingsPatchDto = serde_json::from_value(serialized).unwrap();
+            assert_eq!(decoded.bind_port, expected);
+        }
+    }
+
+    #[test]
+    fn bind_port_rejects_invalid_numeric_values_and_types() {
+        for value in [
+            serde_json::json!(-1),
+            serde_json::json!(65536),
+            serde_json::json!(1.5),
+            serde_json::json!("51820"),
+            serde_json::json!(true),
+        ] {
+            let patch = serde_json::json!({"bindPort": value});
+            assert!(serde_json::from_value::<NetworkSettingsPatchDto>(patch).is_err());
+            let read = serde_json::json!({"allowRelayFallback": true, "bindPort": value});
+            assert!(serde_json::from_value::<NetworkSettingsDto>(read).is_err());
+        }
     }
 
     #[test]

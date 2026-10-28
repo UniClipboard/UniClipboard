@@ -117,6 +117,42 @@ export interface ResendEntryReportDto {
   offline: number
   errored: number
   pending: number
+  /** Per-target reconciliation with the existing task. Counters above only count real deliveries. */
+  reconciled: ResendTargetReconciliation[]
+}
+
+/** Reconciliation of a resend against the task that already exists for one target. */
+export type ResendReconciliationState =
+  | 'running'
+  | 'settled'
+  | 'superseded'
+  | 'not_retained'
+  | 'unsupported'
+  | 'unreachable'
+  | 'busy'
+
+export interface ResendTargetReconciliation {
+  targetDeviceId: string
+  state: ResendReconciliationState
+  newTransferRequested: boolean
+  /** The new transfer may leave duplicate files on the receiver. */
+  duplicateFilesPossible: boolean
+}
+
+/**
+ * Targets for which the user may explicitly start a new transfer. running,
+ * superseded, unreachable and busy can never be bypassed by confirmation.
+ */
+export function confirmableResendTargets(
+  report: ResendEntryReportDto
+): ResendTargetReconciliation[] {
+  return report.reconciled.filter(
+    target =>
+      !target.newTransferRequested &&
+      (target.state === 'settled' ||
+        target.state === 'not_retained' ||
+        target.state === 'unsupported')
+  )
 }
 
 /** 不可重发的细分原因。i18n key 命名约定:`delivery.resend.error.notResendable.<variant>`。 */
@@ -130,7 +166,11 @@ export type NotResendableReasonDto = 'remoteOrigin' | 'payloadLost'
 export type ResendEntryCommandError =
   | { code: 'SYNCHRONIZATION_DISABLED' }
   | { code: 'ENTRY_NOT_FOUND'; entryId: string }
-  | { code: 'ENTRY_NOT_RESENDABLE'; entryId: string; reason: NotResendableReasonDto }
+  | {
+      code: 'ENTRY_NOT_RESENDABLE'
+      entryId: string
+      reason: NotResendableReasonDto
+    }
   | { code: 'TARGET_NOT_TRUSTED'; deviceId: string }
   | { code: 'NO_ELIGIBLE_TARGETS' }
   | { code: 'STORAGE'; message: string }
@@ -140,6 +180,12 @@ export type ResendEntryCommandError =
 export interface ResendEntryArgs {
   entryId: string
   targetDeviceIds?: string[] | null
+  /**
+   * Explicit user confirmation to start a new transfer after a settled /
+   * not-retained / unsupported reconciliation. Defaults to `false`: only
+   * reconcile with the existing task, never re-download silently.
+   */
+  confirmNewTransfer?: boolean
 }
 
 /**
@@ -197,11 +243,18 @@ export async function resendEntry(args: ResendEntryArgs): Promise<ResendEntryRep
   try {
     const data = await daemonClient.callEnveloped(() =>
       resendClipboardEntrySdk({
-        body: { entryId: args.entryId, peers: args.targetDeviceIds ?? null },
+        body: {
+          entryId: args.entryId,
+          peers: args.targetDeviceIds ?? null,
+          confirmNewTransfer: args.confirmNewTransfer ?? false,
+        },
         throwOnError: true,
       })
     )
-    return data as unknown as ResendEntryReportDto
+    const report = data as unknown as Omit<ResendEntryReportDto, 'reconciled'> & {
+      reconciled?: ResendTargetReconciliation[]
+    }
+    return { ...report, reconciled: report.reconciled ?? [] }
   } catch (error) {
     throw toResendEntryError(error)
   }

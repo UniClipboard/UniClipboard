@@ -24,6 +24,9 @@ use crate::api::dto::clipboard_command::{
     RetryEntryReceiveResponse,
 };
 use crate::api::dto::clipboard_delivery::EntryDeliveryViewDto;
+use crate::api::dto::clipboard_outbound::{
+    OutboundProgressResponse, ReconcileOutboundProgressResponse,
+};
 use crate::api::dto::config::{
     ConfigImportStatusResponse, ExportConfigResponse, ImportConfigResponse, PreviewImportResponse,
 };
@@ -102,6 +105,9 @@ use crate::api::types::{
     EntryDeliveryViewEnvelope = ApiEnvelope<EntryDeliveryViewDto>,
     EntryReceiveProgressEnvelope = ApiEnvelope<Option<EntryReceiveProgressResponse>>,
     EntryReceiveProgressListEnvelope = ApiEnvelope<Vec<EntryReceiveProgressResponse>>,
+    OutboundProgressEnvelope = ApiEnvelope<Option<OutboundProgressResponse>>,
+    OutboundProgressListEnvelope = ApiEnvelope<Vec<OutboundProgressResponse>>,
+    ReconcileOutboundProgressEnvelope = ApiEnvelope<ReconcileOutboundProgressResponse>,
     CancelEntryReceiveEnvelope = ApiEnvelope<CancelEntryReceiveResponse>,
     RetryEntryReceiveEnvelope = ApiEnvelope<RetryEntryReceiveResponse>,
     DeviceTrustEnvelope = ApiEnvelope<DeviceTrustSnapshotDto>,

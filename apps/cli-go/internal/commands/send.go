@@ -59,11 +59,21 @@ type dispatchOutcome struct {
 
 // resendOutcome mirrors `ResendResponse`.
 type resendOutcome struct {
-	Accepted  int `json:"accepted"`
-	Duplicate int `json:"duplicate"`
-	Offline   int `json:"offline"`
-	Errored   int `json:"errored"`
-	Pending   int `json:"pending"`
+	Accepted   int                  `json:"accepted"`
+	Duplicate  int                  `json:"duplicate"`
+	Offline    int                  `json:"offline"`
+	Errored    int                  `json:"errored"`
+	Pending    int                  `json:"pending"`
+	Reconciled []resendTargetResult `json:"reconciled"`
+}
+
+// resendTargetResult mirrors `ResendTargetProgressDto`. The nested snapshot is
+// not decoded: the CLI only acts on the reconciliation state.
+type resendTargetResult struct {
+	TargetDeviceID         string `json:"targetDeviceId"`
+	State                  string `json:"state"`
+	NewTransferRequested   bool   `json:"newTransferRequested"`
+	DuplicateFilesPossible bool   `json:"duplicateFilesPossible"`
 }
 
 func runSend(ctx *cli.Context) int {
@@ -154,7 +164,7 @@ func runSend(ctx *cli.Context) int {
 
 	switch {
 	case resend:
-		return runResendViaDaemon(client, resendID, peerFilter, asJSON)
+		return runResendViaDaemon(client, resendID, peerFilter, asJSON, ctx.Bool("confirm-new-transfer"))
 	case input.kind == sendInputFile:
 		return runSendFileViaDaemon(client, input.paths[0], peerFilter, asJSON, true, interrupts).exitCode
 	case input.kind == sendInputFiles:
@@ -346,8 +356,46 @@ type dispatchRequest struct {
 }
 
 type resendRequest struct {
-	EntryID string   `json:"entryId"`
-	Peers   []string `json:"peers"`
+	EntryID            string   `json:"entryId"`
+	Peers              []string `json:"peers"`
+	ConfirmNewTransfer bool     `json:"confirmNewTransfer"`
+}
+
+// confirmableResendStates are the reconciliation states after which the user
+// may explicitly start a new transfer. running, superseded, unreachable and
+// busy can never be bypassed by confirmation.
+func confirmableTargets(results []resendTargetResult) []resendTargetResult {
+	var out []resendTargetResult
+	for _, r := range results {
+		if r.NewTransferRequested {
+			continue
+		}
+		switch r.State {
+		case "settled", "not_retained", "unsupported":
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func describeResendState(r resendTargetResult) string {
+	switch r.State {
+	case "running":
+		return "already sending; continuing the original task"
+	case "settled":
+		return "original task already finished"
+	case "superseded":
+		return "replaced by a newer attempt"
+	case "not_retained":
+		return "result unconfirmed: the peer no longer holds the task"
+	case "unsupported":
+		return "result unconfirmed: the peer's version cannot be checked"
+	case "unreachable":
+		return "result unconfirmed: peer offline or check incomplete"
+	case "busy":
+		return "peer busy; try again later"
+	}
+	return r.State
 }
 
 func runSendTextViaDaemon(client *daemonclient.Client, text string, peers []string, asJSON bool) int {
@@ -380,14 +428,25 @@ func runSendTextViaDaemon(client *daemonclient.Client, text string, peers []stri
 	return exitcode.Success
 }
 
-func runResendViaDaemon(client *daemonclient.Client, entryID string, peers []string, asJSON bool) int {
-	spinner := ui.NewSpinner("Resending entry via daemon...")
+func postResend(client *daemonclient.Client, entryID string, peers []string, confirm bool) (resendOutcome, error) {
 	var resp resendOutcome
 	err := client.Enveloped(context.Background(), daemonclient.Request{
 		Method: http.MethodPost,
 		Path:   "/clipboard/resend",
-		JSON:   resendRequest{EntryID: entryID, Peers: peers},
+		JSON:   resendRequest{EntryID: entryID, Peers: peers, ConfirmNewTransfer: confirm},
 	}, &resp)
+	if resp.Reconciled == nil {
+		resp.Reconciled = []resendTargetResult{}
+	}
+	return resp, err
+}
+
+// runResendViaDaemon reconciles with the existing task first. A new transfer is
+// started only after explicit confirmation (`--confirm-new-transfer` or an
+// interactive yes), never silently.
+func runResendViaDaemon(client *daemonclient.Client, entryID string, peers []string, asJSON, confirm bool) int {
+	spinner := ui.NewSpinner("Resending entry via daemon...")
+	resp, err := postResend(client, entryID, peers, confirm)
 	if err != nil {
 		spinner.FinishError("Resend failed: " + err.Error())
 		return exitcode.Error
@@ -395,20 +454,72 @@ func runResendViaDaemon(client *daemonclient.Client, entryID string, peers []str
 	summary := fmt.Sprintf("%d accepted, %d duplicate, %d offline, %d error(s), %d pending",
 		resp.Accepted, resp.Duplicate, resp.Offline, resp.Errored, resp.Pending)
 	spinner.FinishSuccess(summary)
+
+	pending := confirmableTargets(resp.Reconciled)
+	if len(pending) > 0 && !asJSON && !confirm && ui.StderrIsTerminal() {
+		renderResend(entryID, summary, resp)
+		ids := make([]string, 0, len(pending))
+		for _, r := range pending {
+			ids = append(ids, r.TargetDeviceID)
+		}
+		ok, perr := ui.Confirm(fmt.Sprintf("Start a new transfer to %d device(s)? Files may be duplicated on the receiver.", len(ids)), false)
+		if perr == nil && ok {
+			spinner = ui.NewSpinner("Starting new transfer via daemon...")
+			resp, err = postResend(client, entryID, ids, true)
+			if err != nil {
+				spinner.FinishError("Resend failed: " + err.Error())
+				return exitcode.Error
+			}
+			summary = fmt.Sprintf("%d accepted, %d duplicate, %d offline, %d error(s), %d pending",
+				resp.Accepted, resp.Duplicate, resp.Offline, resp.Errored, resp.Pending)
+			spinner.FinishSuccess(summary)
+			pending = nil
+		}
+	}
+
 	if asJSON {
 		if rendered, err := output.Pretty(resp); err == nil {
 			fmt.Println(rendered)
 		}
 	} else {
-		ui.Bar()
-		ui.Info("entry", entryID)
-		ui.Info("summary", summary)
-		ui.Bar()
+		renderResend(entryID, summary, resp)
 	}
-	if resp.Accepted == 0 && resp.Duplicate == 0 && resp.Pending == 0 {
+	if len(pending) > 0 && !confirm {
+		if !asJSON {
+			ui.Warn("No new transfer was started. Re-run with --confirm-new-transfer to start one (files may be duplicated).")
+		}
+		return exitcode.ConfirmationRequired
+	}
+	if resp.Accepted == 0 && resp.Duplicate == 0 && resp.Pending == 0 && !hasRunning(resp.Reconciled) {
 		return exitcode.Error
 	}
 	return exitcode.Success
+}
+
+func hasRunning(results []resendTargetResult) bool {
+	for _, r := range results {
+		if r.State == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+func renderResend(entryID, summary string, resp resendOutcome) {
+	ui.Bar()
+	ui.Info("entry", entryID)
+	ui.Info("summary", summary)
+	for _, r := range resp.Reconciled {
+		detail := describeResendState(r)
+		if r.NewTransferRequested {
+			detail = "new transfer requested"
+			if r.DuplicateFilesPossible {
+				detail += " (files may be duplicated)"
+			}
+		}
+		ui.Info("·", fmt.Sprintf("%s → %s", r.TargetDeviceID, detail))
+	}
+	ui.Bar()
 }
 
 func renderDaemonDispatch(resp *dispatchOutcome) {

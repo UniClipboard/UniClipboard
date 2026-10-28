@@ -2813,6 +2813,120 @@ export type NetworkSettingsPatchDto = {
     customRelayUrls?: Array<string> | null;
 };
 
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type OutboundProgressEnvelope = {
+    data?: OutboundProgressResponse | null;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * One item (file, representation or directory unit) of an outbound attempt.
+ */
+export type OutboundProgressItemDto = {
+    cancellationReason?: string | null;
+    /**
+     * `None` means unknown, not zero. Reaching `total_bytes` does not imply completion.
+     */
+    completedBytes?: number | null;
+    failureReason?: string | null;
+    index: number;
+    /**
+     * `file` | `representation` | `directory_unit` | `unknown`.
+     */
+    kind: string;
+    /**
+     * Last phase observed before the item left the running states.
+     */
+    lastKnownPhase?: string | null;
+    round?: number | null;
+    /**
+     * `waiting` | `transferring` | `processing` | `retrying` | `completed` |
+     * `failed` | `cancelled` | `unconfirmed`.
+     */
+    state: string;
+    /**
+     * `None` means the total is unknown, not zero.
+     */
+    totalBytes?: number | null;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type OutboundProgressListEnvelope = {
+    data: Array<OutboundProgressResponse>;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Full outbound snapshot for one (entry, target device) pair.
+ */
+export type OutboundProgressResponse = {
+    /**
+     * Current attempt; `None` when no attempt is known.
+     */
+    attemptId?: string | null;
+    entryId: string;
+    /**
+     * `waiting` | `live` | `unconfirmed` | `settled`.
+     */
+    freshness: string;
+    /**
+     * `false` when the Engine has no freshness evidence (for example after a restart).
+     */
+    freshnessAvailable: boolean;
+    items?: Array<OutboundProgressItemDto>;
+    itemsCancelled: number;
+    itemsCompleted: number;
+    itemsFailed: number;
+    itemsRunning: number;
+    itemsTotal: number;
+    itemsUnconfirmed: number;
+    itemsWaiting: number;
+    /**
+     * Monotonic per (entry, target); older revisions must not overwrite newer ones.
+     */
+    revision: number;
+    /**
+     * `no_items` | `waiting` | `in_progress` | `unconfirmed` | `partially_unconfirmed` |
+     * `completed` | `failed` | `partially_failed` | `cancelled` | `partially_cancelled`.
+     */
+    state: string;
+    targetDeviceId: string;
+};
+
 export type PairingConfirmationDto = 'awaiting_peer_confirmation' | 'unconfirmed' | 'confirmed';
 
 export type PairingSettingsDto = {
@@ -3080,6 +3194,50 @@ export type ReceiveItemResponse = {
     /**
      * `"pending"` | `"transferring"` | `"completed"` | `"failed"` | `"cancelled"`.
      * `"completed"` means the item was saved, not only downloaded.
+     */
+    state: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type ReconcileOutboundProgressEnvelope = {
+    data: ReconcileOutboundProgressResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /clipboard/entries/{id}/outbound/{deviceId}/reconcile`.
+ */
+export type ReconcileOutboundProgressRequest = {
+    /**
+     * The attempt the caller is looking at. A newer attempt answers `superseded`.
+     */
+    expectedAttemptId?: string | null;
+};
+
+/**
+ * Response body for `POST /clipboard/entries/{id}/outbound/{deviceId}/reconcile`.
+ */
+export type ReconcileOutboundProgressResponse = {
+    /**
+     * `running` | `settled` | `superseded` | `not_retained` | `unsupported` |
+     * `unreachable` | `busy`.
      */
     state: string;
 };
@@ -3426,6 +3584,12 @@ export type ResendEnvelope = {
  */
 export type ResendRequest = {
     /**
+     * Explicit user confirmation to start a new transfer when the existing
+     * task cannot be continued or adopted. Defaults to `false`: reconcile
+     * the existing task only, never re-download silently.
+     */
+    confirmNewTransfer?: boolean;
+    /**
      * ID of the previously captured entry to resend.
      */
     entryId: string;
@@ -3444,6 +3608,31 @@ export type ResendResponse = {
     errored: number;
     offline: number;
     pending: number;
+    /**
+     * Per-target reconciliation of existing tasks. The counters above only
+     * count real deliveries; use this to tell reused, adopted and refused targets apart.
+     */
+    reconciled?: Array<ResendTargetProgressDto>;
+};
+
+/**
+ * Per-target reconciliation result of a resend request.
+ */
+export type ResendTargetProgressDto = {
+    current?: OutboundProgressResponse | null;
+    /**
+     * The new transfer may leave duplicate files on the receiver.
+     */
+    duplicateFilesPossible: boolean;
+    /**
+     * A new transfer was actually requested for this target.
+     */
+    newTransferRequested: boolean;
+    /**
+     * Same values as [`ReconcileOutboundProgressResponse::state`].
+     */
+    state: string;
+    targetDeviceId: string;
 };
 
 /**
@@ -5411,6 +5600,90 @@ export type GetClipboardEntryFileResponses = {
 
 export type GetClipboardEntryFileResponse = GetClipboardEntryFileResponses[keyof GetClipboardEntryFileResponses];
 
+export type GetOutboundProgressData = {
+    body?: never;
+    path: {
+        /**
+         * Source clipboard entry ID
+         */
+        id: string;
+        /**
+         * Target device ID
+         */
+        device_id: string;
+    };
+    query?: never;
+    url: '/clipboard/entries/{id}/outbound/{device_id}';
+};
+
+export type GetOutboundProgressErrors = {
+    /**
+     * Malformed request
+     */
+    400: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Outbound progress is unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetOutboundProgressError = GetOutboundProgressErrors[keyof GetOutboundProgressErrors];
+
+export type GetOutboundProgressResponses = {
+    /**
+     * Current outbound snapshot or null
+     */
+    200: OutboundProgressEnvelope;
+};
+
+export type GetOutboundProgressResponse = GetOutboundProgressResponses[keyof GetOutboundProgressResponses];
+
+export type ReconcileOutboundProgressData = {
+    body: ReconcileOutboundProgressRequest;
+    path: {
+        /**
+         * Source clipboard entry ID
+         */
+        id: string;
+        /**
+         * Target device ID
+         */
+        device_id: string;
+    };
+    query?: never;
+    url: '/clipboard/entries/{id}/outbound/{device_id}/reconcile';
+};
+
+export type ReconcileOutboundProgressErrors = {
+    /**
+     * Malformed request
+     */
+    400: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Outbound progress is unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type ReconcileOutboundProgressError = ReconcileOutboundProgressErrors[keyof ReconcileOutboundProgressErrors];
+
+export type ReconcileOutboundProgressResponses = {
+    /**
+     * Reconciliation outcome
+     */
+    200: ReconcileOutboundProgressEnvelope;
+};
+
+export type ReconcileOutboundProgressResponse2 = ReconcileOutboundProgressResponses[keyof ReconcileOutboundProgressResponses];
+
 export type GetEntryReceiveProgressData = {
     body?: never;
     path: {
@@ -5542,6 +5815,35 @@ export type GetClipboardEntryResourceResponses = {
 };
 
 export type GetClipboardEntryResourceResponse = GetClipboardEntryResourceResponses[keyof GetClipboardEntryResourceResponses];
+
+export type ListOutboundProgressData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/clipboard/outbound';
+};
+
+export type ListOutboundProgressErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Outbound progress is unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type ListOutboundProgressError = ListOutboundProgressErrors[keyof ListOutboundProgressErrors];
+
+export type ListOutboundProgressResponses = {
+    /**
+     * Outbound snapshots listed
+     */
+    200: OutboundProgressListEnvelope;
+};
+
+export type ListOutboundProgressResponse = ListOutboundProgressResponses[keyof ListOutboundProgressResponses];
 
 export type ListEntryReceiveProgressData = {
     body?: never;

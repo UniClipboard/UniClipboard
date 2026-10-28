@@ -2533,7 +2533,8 @@
       },
       "success": {
         "summary": "再送信しました · {{accepted}}/{{total}} 件を受け付けました",
-        "bulk": "{{total}} 件中 {{sent}} 件を送信しました"
+        "bulk": "{{total}} 件中 {{sent}} 件を送信しました",
+        "bulkReconciled": "{{total}} 件中 {{sent}} 件を送信 · {{kept}} 件は既存の転送を継続、または未開始です"
       },
       "error": {
         "synchronizationDisabled": "同期が無効です。コンテンツを再送するには同期を有効にしてください。",
@@ -2545,6 +2546,66 @@
         "noEligibleTargets": "再送信できるピアがありません",
         "entryNotFound": "エントリ {{entryIdShort}} が見つかりません。",
         "internal": "再送信に失敗しました: {{message}}"
+      },
+      "reconciled": {
+        "busy": "相手のデバイスが処理中です。しばらくしてからやり直してください。",
+        "unreachable": "結果は未確認です：デバイスがオフライン、または確認が完了していません。再ダウンロードはしていません。",
+        "declined": "新しい転送は開始していません。以前の結果は未確認のままです。",
+        "running": "すでに送信中です。元の転送を継続し、再ダウンロードはしていません。",
+        "superseded": "より新しい転送に置き換えられたため、再送信していません。"
+      },
+      "confirm": {
+        "title": "新しい転送を開始しますか？",
+        "description": "以前の転送は継続も結果の確認もできません。{{devices}} へ {{count}} 件を新しく送信しますか？",
+        "duplicateWarning": "受信側に重複したファイルができる可能性があります。",
+        "cancel": "キャンセル",
+        "accept": "再送信"
+      }
+    },
+    "outbound": {
+      "listAria": "デバイスごとの送信の進行状況",
+      "progressAria": "{{device}} への送信の進行状況",
+      "unknownTotal": "合計サイズ不明",
+      "percent": "{{percent}}%",
+      "items": "{{total}} 件中 {{completed}} 件完了",
+      "state": {
+        "no_items": "項目なし",
+        "waiting": "待機中",
+        "in_progress": "送信中",
+        "unconfirmed": "結果未確認",
+        "partially_unconfirmed": "一部の結果が未確認",
+        "completed": "送達済み",
+        "failed": "失敗",
+        "partially_failed": "一部失敗",
+        "cancelled": "キャンセル済み",
+        "partially_cancelled": "一部キャンセル"
+      },
+      "itemState": {
+        "failed": "失敗",
+        "cancelled": "キャンセル済み"
+      },
+      "kind": {
+        "file": "ファイル {{index}}",
+        "representation": "コンテンツ {{index}}",
+        "directory_unit": "フォルダ {{index}}",
+        "unknown": "項目 {{index}}"
+      },
+      "reason": {
+        "network_unavailable": "ネットワークに接続できません",
+        "timed_out": "タイムアウト",
+        "access_denied": "アクセスが拒否されました",
+        "storage_unavailable": "ストレージを利用できません",
+        "integrity_check_failed": "整合性チェックに失敗",
+        "interrupted": "中断されました",
+        "unknown": "不明な理由"
+      },
+      "cancel": {
+        "local_user": "自分でキャンセルしました",
+        "remote_peer": "相手がキャンセルしました",
+        "replaced": "新しい送信に置き換えられました",
+        "timeout": "タイムアウト",
+        "connectivity_recovery": "ネットワーク回復",
+        "unknown": "不明な理由"
       }
     }
   },

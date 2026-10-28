@@ -95,6 +95,7 @@ pub trait DaemonService: Send + Sync {
         &self,
         entry_id: &str,
         peers: Option<Vec<String>>,
+        confirm_new_transfer: bool,
     ) -> Result<ResendResponse>;
 
     async fn cancel_transfer(

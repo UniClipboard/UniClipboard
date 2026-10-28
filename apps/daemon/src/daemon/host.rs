@@ -162,9 +162,9 @@ async fn run_async_with_diagnostics(
             signal?;
             let shutdown = match starting.await.map_err(anyhow::Error::new) {
                 Ok(Ok((engine, events))) => {
-                    let result = engine
-                    .shutdown_until_complete()
-                    .await
+                    let result = uc_bootstrap::settle_engine_release(
+                        engine.shutdown_until_released().await,
+                    )
                     .map_err(anyhow::Error::new);
                     drop(events);
                     result
@@ -257,9 +257,7 @@ async fn run_async_with_diagnostics(
             tracing::warn!("system wake forwarding task failed");
         }
     }
-    let shutdown = engine
-        .shutdown_until_complete()
-        .await
+    let shutdown = uc_bootstrap::settle_engine_release(engine.shutdown_until_released().await)
         .map_err(anyhow::Error::new);
 
     if let Err(error) = &result {

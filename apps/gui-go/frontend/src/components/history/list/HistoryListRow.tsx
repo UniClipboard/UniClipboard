@@ -1,6 +1,7 @@
 import { Pin } from 'lucide-react'
 import React, { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { shallowEqual } from 'react-redux'
 import InlineTextSummary from '@/components/clipboard/InlineTextSummary'
 import HistoryCardTransferProgress from '@/components/history/history-card/HistoryCardTransferProgress'
 import { useResourceImageUrl } from '@/components/history/history-card/useResourceImageUrl'
@@ -15,6 +16,7 @@ import {
   selectEntryTransferStatus,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
+import { IDLE_OUTBOUND, selectOutboundActivity } from '@/store/slices/outboundProgressSlice'
 import { formatClockTime } from './history-list-format'
 import { historyKind, KIND_GLYPH, KIND_TINT, rowChips, type HistoryKind } from './history-list-kind'
 import { rowTitle } from './history-row-title'
@@ -99,12 +101,23 @@ function HistoryListRow({
     isFileType ? selectEntryTransferStatus(state, item.id) : undefined
   )
   const status = isFileType ? resolveEntryTransferStatus(entryStatus, transfer) : undefined
+  // Sender-side activity comes only from the Engine's outbound snapshot; an
+  // unconfirmed or settled snapshot is not activity, so nothing animates.
+  const outbound = useAppSelector(
+    state => (isFileType ? selectOutboundActivity(state, item.id) : IDLE_OUTBOUND),
+    shallowEqual
+  )
+  const shown =
+    transfer ??
+    (outbound.running
+      ? { bytesTransferred: outbound.bytes, totalBytes: outbound.total }
+      : undefined)
   const percent =
-    transfer && transfer.totalBytes && transfer.totalBytes > 0
-      ? Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100)
+    shown && shown.totalBytes && shown.totalBytes > 0
+      ? Math.round((shown.bytesTransferred / shown.totalBytes) * 100)
       : 0
   // Same rule as HistoryCard: a directory send's byte percentage is meaningless.
-  const hideByteProgress = (item.isDirectory ?? false) && transfer?.direction === 'sending'
+  const hideByteProgress = (item.isDirectory ?? false) && outbound.running && !transfer
 
   // The hovered row still drives the page's hover shortcuts (c / d).
   useEffect(() => () => onHoverChange(item.id, false), [item.id, onHoverChange])
@@ -172,8 +185,8 @@ function HistoryListRow({
       />
       <HistoryCardTransferProgress
         isFileType={isFileType}
-        isTransferring={status === 'transferring'}
-        transfer={transfer}
+        isTransferring={status === 'transferring' || outbound.running}
+        transfer={shown}
         percent={percent}
         hideByteProgress={hideByteProgress}
       />

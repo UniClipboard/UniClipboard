@@ -78,8 +78,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// (status): 100 / 112.
 // Preserved config-import status adds one path and operation: 101 / 113.
 // Selective receive retry adds one path and operation: 102 / 114.
-const EXPECTED_PATHS: usize = 102;
-const EXPECTED_OPERATIONS: usize = 114;
+// Outbound progress query, list and reconcile add three paths and operations: 105 / 117.
+const EXPECTED_PATHS: usize = 105;
+const EXPECTED_OPERATIONS: usize = 117;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

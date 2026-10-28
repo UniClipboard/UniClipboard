@@ -122,10 +122,11 @@ impl DaemonService for HttpWsDaemonService {
         &self,
         entry_id: &str,
         peers: Option<Vec<String>>,
+        confirm_new_transfer: bool,
     ) -> Result<ResendResponse> {
         self.ctx
             .clipboard_client()
-            .resend_entry(entry_id, peers)
+            .resend_entry(entry_id, peers, confirm_new_transfer)
             .await
     }
 

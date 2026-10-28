@@ -14,6 +14,7 @@ pub mod wiring;
 // (`pub(crate)`), reachable only within the composition root.
 
 pub use entrypoint::cli::{build_cli_engine_runtime, CliEngineRuntime};
+pub use entrypoint::engine_release::settle_engine_release;
 pub use layer::platform::SystemClipboardWiring;
 pub use observability::tracing::{
     init_daemon_tracing_subscriber, init_tracing_subscriber, install_panic_logging_hook,

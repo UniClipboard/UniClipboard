@@ -187,10 +187,12 @@ impl DaemonClipboardClient {
         &self,
         entry_id: &str,
         peers: Option<Vec<String>>,
+        confirm_new_transfer: bool,
     ) -> Result<ResendResponse> {
         let req_body = ResendRequest {
             entry_id: entry_id.to_string(),
             peers,
+            confirm_new_transfer,
         };
         Ok(enveloped_request(
             &self.http,

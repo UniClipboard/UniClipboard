@@ -15,17 +15,19 @@ use serde_json::json;
 use uc_engine::error_codes::{
     ENTRY_DELIVERY_FAILED_CODE, ENTRY_DELIVERY_NOT_FOUND_CODE, HISTORY_FAILED_CODE,
     HISTORY_INVALID_INPUT_CODE, HISTORY_NOT_FOUND_CODE, HISTORY_UNSUPPORTED_CONTENT_CODE,
-    RECEIVE_FAILED_CODE, RECEIVE_INVALID_INPUT_CODE, RECEIVE_UNAVAILABLE_CODE,
-    RESEND_DISPATCH_FAILED_CODE, RESEND_STORAGE_FAILED_CODE, TRANSFER_CANCEL_FAILED_CODE,
-    TRANSFER_CANCEL_UNAVAILABLE_CODE,
+    OUTBOUND_PROGRESS_ACCESS_DENIED_CODE, OUTBOUND_PROGRESS_INVALID_DATA_CODE,
+    OUTBOUND_PROGRESS_INVALID_INPUT_CODE, OUTBOUND_PROGRESS_UNAVAILABLE_CODE, RECEIVE_FAILED_CODE,
+    RECEIVE_INVALID_INPUT_CODE, RECEIVE_UNAVAILABLE_CODE, RESEND_DISPATCH_FAILED_CODE,
+    RESEND_STORAGE_FAILED_CODE, TRANSFER_CANCEL_FAILED_CODE, TRANSFER_CANCEL_UNAVAILABLE_CODE,
 };
 use uc_engine::{
     CancelEntryReceiveInput, CancelInboundTransferInput, EngineError, EntryNotResendableReason,
     EntryReceiveCancellationOutcome, EntryReceiveProgressInput, EntryReceiveRetryOutcome,
     HistoryEntryInput, InboundTransferCancellationOutcome, ListHistoryEntriesInput, Operation,
-    OperationResult, ReceiveItemSummary, ReceiveProgressSummary, ReceiveRetryUnavailableReason,
-    ResendEntryInput, ResendEntryOutcome, RetryEntryReceiveInput, SendFilesInput,
-    SendTargetOutcome, SendTextInput, SetHistoryEntryFavoriteInput, TransferCancellationReason,
+    OperationResult, OutboundProgressInput, ReceiveItemSummary, ReceiveProgressSummary,
+    ReceiveRetryUnavailableReason, ReconcileOutboundProgressInput, ResendEntryInput,
+    ResendEntryOutcome, RetryEntryReceiveInput, SendFilesInput, SendTargetOutcome, SendTextInput,
+    SetHistoryEntryFavoriteInput, TransferCancellationReason,
 };
 use utoipa::IntoParams;
 
@@ -37,6 +39,9 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     RetryEntryReceiveRequest, RetryEntryReceiveResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
+use uc_daemon_contract::api::dto::clipboard_outbound::{
+    OutboundProgressResponse, ReconcileOutboundProgressRequest, ReconcileOutboundProgressResponse,
+};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
 use crate::api::dto::clipboard::{
@@ -92,6 +97,15 @@ pub fn router() -> Router<DaemonApiState> {
         .route(
             "/clipboard/entries/:id/receive/retry",
             post(retry_entry_receive),
+        )
+        .route("/clipboard/outbound", get(list_outbound_progress))
+        .route(
+            "/clipboard/entries/:id/outbound/:device_id",
+            get(get_outbound_progress),
+        )
+        .route(
+            "/clipboard/entries/:id/outbound/:device_id/reconcile",
+            post(reconcile_outbound_progress),
         )
         .route("/clipboard/stats", get(get_stats))
         .route("/clipboard/entries/:id/resource", get(get_entry_resource))
@@ -165,6 +179,157 @@ pub(crate) async fn list_entry_receive_progress(
         .map(receive_progress_response)
         .collect();
     Ok(Json(ApiEnvelope::now(progress)))
+}
+
+/// GET /clipboard/entries/:id/outbound/:device_id
+///
+/// Full sender-side snapshot for one (entry, target device) pair, or `null`
+/// when the Engine holds no outbound task for it.
+#[utoipa::path(
+    get,
+    path = "/clipboard/entries/{id}/outbound/{device_id}",
+    operation_id = "getOutboundProgress",
+    tag = "clipboard",
+    params(
+        ("id" = String, Path, description = "Source clipboard entry ID"),
+        ("device_id" = String, Path, description = "Target device ID"),
+    ),
+    responses(
+        (status = 200, description = "Current outbound snapshot or null", body = OutboundProgressEnvelope),
+        (status = 400, description = "Malformed request", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 503, description = "Outbound progress is unavailable", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn get_outbound_progress(
+    State(state): State<DaemonApiState>,
+    Path((entry_id, device_id)): Path<(String, String)>,
+) -> Result<Json<ApiEnvelope<Option<OutboundProgressResponse>>>, ApiError> {
+    let result = state
+        .execute(Operation::QueryOutboundProgress(OutboundProgressInput {
+            entry_id,
+            target_device_id: device_id,
+        }))
+        .await
+        .map_err(|error| map_outbound_progress_err("get_progress", error))?;
+    let OperationResult::OutboundProgress(progress) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected outbound-progress result",
+        ));
+    };
+    Ok(Json(ApiEnvelope::now(
+        progress.map(IntoApiDto::into_api_dto),
+    )))
+}
+
+/// GET /clipboard/outbound
+///
+/// Every retained outbound snapshot, one per (entry, target device).
+#[utoipa::path(
+    get,
+    path = "/clipboard/outbound",
+    operation_id = "listOutboundProgress",
+    tag = "clipboard",
+    responses(
+        (status = 200, description = "Outbound snapshots listed", body = OutboundProgressListEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 503, description = "Outbound progress is unavailable", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn list_outbound_progress(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<Vec<OutboundProgressResponse>>>, ApiError> {
+    let result = state
+        .execute(Operation::ListOutboundProgress)
+        .await
+        .map_err(|error| map_outbound_progress_err("list_progress", error))?;
+    let OperationResult::OutboundProgressList(progress) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected outbound-progress-list result",
+        ));
+    };
+    Ok(Json(ApiEnvelope::now(
+        progress.into_iter().map(IntoApiDto::into_api_dto).collect(),
+    )))
+}
+
+/// POST /clipboard/entries/:id/outbound/:device_id/reconcile
+///
+/// Reconciles with the existing outbound task without starting a new transfer.
+/// `expectedAttemptId` fences the call to the attempt the caller is looking at.
+#[utoipa::path(
+    post,
+    path = "/clipboard/entries/{id}/outbound/{device_id}/reconcile",
+    operation_id = "reconcileOutboundProgress",
+    tag = "clipboard",
+    params(
+        ("id" = String, Path, description = "Source clipboard entry ID"),
+        ("device_id" = String, Path, description = "Target device ID"),
+    ),
+    request_body = ReconcileOutboundProgressRequest,
+    responses(
+        (status = 200, description = "Reconciliation outcome", body = ReconcileOutboundProgressEnvelope),
+        (status = 400, description = "Malformed request", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 503, description = "Outbound progress is unavailable", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn reconcile_outbound_progress(
+    State(state): State<DaemonApiState>,
+    Path((entry_id, device_id)): Path<(String, String)>,
+    body: Result<Json<ReconcileOutboundProgressRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<ApiEnvelope<ReconcileOutboundProgressResponse>>, ApiError> {
+    let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let result = state
+        .execute(Operation::ReconcileOutboundProgress(
+            ReconcileOutboundProgressInput {
+                entry_id,
+                target_device_id: device_id,
+                expected_attempt_id: req.expected_attempt_id,
+            },
+        ))
+        .await
+        .map_err(|error| map_outbound_progress_err("reconcile_progress", error))?;
+    let OperationResult::OutboundProgressReconciliation(state) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected outbound-reconciliation result",
+        ));
+    };
+    Ok(Json(ApiEnvelope::now(ReconcileOutboundProgressResponse {
+        state: state.to_string(),
+    })))
+}
+
+/// Map outbound progress failures. Access and read errors keep their own
+/// `code` so clients never present them as "not retained".
+fn map_outbound_progress_err(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        OUTBOUND_PROGRESS_INVALID_INPUT_CODE => (
+            "invalid_input",
+            ApiError::bad_request("invalid outbound progress request"),
+        ),
+        OUTBOUND_PROGRESS_ACCESS_DENIED_CODE => (
+            "access_denied",
+            ApiError::internal("outbound progress access was denied")
+                .with_code("OUTBOUND_PROGRESS_ACCESS_DENIED"),
+        ),
+        OUTBOUND_PROGRESS_INVALID_DATA_CODE => (
+            "invalid_data",
+            ApiError::internal("outbound progress data is unreadable")
+                .with_code("OUTBOUND_PROGRESS_INVALID_DATA"),
+        ),
+        OUTBOUND_PROGRESS_UNAVAILABLE_CODE => (
+            "unavailable",
+            ApiError::service_unavailable("outbound progress is unavailable")
+                .with_code("OUTBOUND_PROGRESS_UNAVAILABLE"),
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("outbound progress operation failed"),
+        ),
+    };
+    log_facade_failure("clipboard_outbound", op, variant, api.status, &api.message);
+    api
 }
 
 fn receive_progress_response(progress: ReceiveProgressSummary) -> EntryReceiveProgressResponse {
@@ -736,6 +901,7 @@ async fn resend_entry(
 
     let result = state
         .execute(Operation::ResendEntry(ResendEntryInput {
+            confirm_new_transfer: req.confirm_new_transfer,
             entry_id: req.entry_id,
             target_devices: req.peers.unwrap_or_default(),
         }))

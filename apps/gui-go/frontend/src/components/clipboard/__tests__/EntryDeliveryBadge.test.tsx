@@ -266,6 +266,7 @@ describe('EntryDeliveryBadge', () => {
       offline: 0,
       errored: 0,
       pending: 0,
+      reconciled: [],
     }
 
     function deliveryWithFailingPeer(): EntryDeliveryView {
@@ -372,6 +373,7 @@ describe('EntryDeliveryBadge', () => {
         offline: 1,
         errored: 0,
         pending: 0,
+        reconciled: [],
       } satisfies ResendEntryReportDto)
 
       render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)

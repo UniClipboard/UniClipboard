@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::clipboard_outbound::ResendTargetProgressDto;
+
 // ── POST /clipboard/dispatch ─────────────────────────────────────
 
 /// Request body for `POST /clipboard/dispatch`.
@@ -86,6 +88,11 @@ pub struct ResendRequest {
     /// Optional target device IDs.
     #[serde(default)]
     pub peers: Option<Vec<String>>,
+    /// Explicit user confirmation to start a new transfer when the existing
+    /// task cannot be continued or adopted. Defaults to `false`: reconcile
+    /// the existing task only, never re-download silently.
+    #[serde(default)]
+    pub confirm_new_transfer: bool,
 }
 
 /// Response body for `POST /clipboard/resend`.
@@ -97,6 +104,10 @@ pub struct ResendResponse {
     pub offline: usize,
     pub errored: usize,
     pub pending: usize,
+    /// Per-target reconciliation of existing tasks. The counters above only
+    /// count real deliveries; use this to tell reused, adopted and refused targets apart.
+    #[serde(default)]
+    pub reconciled: Vec<ResendTargetProgressDto>,
 }
 
 // ── POST /clipboard/cancel-transfer/:transfer_id ─────────────────

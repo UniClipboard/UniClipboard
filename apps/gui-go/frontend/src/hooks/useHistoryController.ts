@@ -19,6 +19,7 @@ import { toast } from '@/components/ui/toast'
 import { useCopyFeedback } from '@/hooks/useCopyFeedback'
 import { useDeleteFlow } from '@/hooks/useDeleteFlow'
 import { useHistoryData } from '@/hooks/useHistoryData'
+import { useOutboundProgress } from '@/hooks/useOutboundProgress'
 import { useSelectionTagSummary } from '@/hooks/useSelectionTagSummary'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
@@ -57,6 +58,7 @@ export function useHistoryController() {
   useShortcutScope('clipboard')
   // Activate the file-transfer progress event listener for this page.
   useTransferProgress()
+  useOutboundProgress()
 
   // Prime the paired-device list so the row context menu's "send to device"
   // submenu has names to show even when the user lands here before ever

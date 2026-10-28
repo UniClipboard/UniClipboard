@@ -2538,7 +2538,8 @@
       },
       "success": {
         "summary": "Resend dispatched · {{accepted}}/{{total}} accepted",
-        "bulk": "Sent {{sent}} of {{total}} items"
+        "bulk": "Sent {{sent}} of {{total}} items",
+        "bulkReconciled": "Sent {{sent}} of {{total}} items · {{kept}} kept their existing transfer or were not started"
       },
       "error": {
         "synchronizationDisabled": "Sync is disabled. Turn it on to resend content.",
@@ -2550,6 +2551,66 @@
         "noEligibleTargets": "No eligible peers to resend to.",
         "entryNotFound": "Entry {{entryIdShort}} not found.",
         "internal": "Resend failed: {{message}}"
+      },
+      "reconciled": {
+        "busy": "The receiving device is busy. Try again later.",
+        "unreachable": "Result unconfirmed: the device is offline or the check did not finish. Nothing was downloaded again.",
+        "declined": "No new transfer was started. The earlier result stays unconfirmed.",
+        "running": "Already sending. The original transfer continues; nothing was downloaded again.",
+        "superseded": "A newer transfer has replaced this one. Nothing was sent again."
+      },
+      "confirm": {
+        "title": "Start a new transfer?",
+        "description": "The earlier transfer cannot be continued or confirmed. Start a new transfer of {{count}} item(s) to {{devices}}?",
+        "duplicateWarning": "The receiving device may end up with duplicate files.",
+        "cancel": "Cancel",
+        "accept": "Send again"
+      }
+    },
+    "outbound": {
+      "listAria": "Send progress by device",
+      "progressAria": "Send progress to {{device}}",
+      "unknownTotal": "Total size unknown",
+      "percent": "{{percent}}%",
+      "items": "{{completed}} of {{total}} items done",
+      "state": {
+        "no_items": "No items",
+        "waiting": "Waiting",
+        "in_progress": "Sending",
+        "unconfirmed": "Result unconfirmed",
+        "partially_unconfirmed": "Partly unconfirmed",
+        "completed": "Delivered",
+        "failed": "Failed",
+        "partially_failed": "Partly failed",
+        "cancelled": "Cancelled",
+        "partially_cancelled": "Partly cancelled"
+      },
+      "itemState": {
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "kind": {
+        "file": "File {{index}}",
+        "representation": "Content {{index}}",
+        "directory_unit": "Folder {{index}}",
+        "unknown": "Item {{index}}"
+      },
+      "reason": {
+        "network_unavailable": "Network unavailable",
+        "timed_out": "Timed out",
+        "access_denied": "Access denied",
+        "storage_unavailable": "Storage unavailable",
+        "integrity_check_failed": "Integrity check failed",
+        "interrupted": "Interrupted",
+        "unknown": "Unknown reason"
+      },
+      "cancel": {
+        "local_user": "Cancelled by you",
+        "remote_peer": "Cancelled by the other device",
+        "replaced": "Replaced by a newer send",
+        "timeout": "Timed out",
+        "connectivity_recovery": "Network recovery",
+        "unknown": "Unknown reason"
       }
     }
   },

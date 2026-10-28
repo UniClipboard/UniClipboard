@@ -5,7 +5,7 @@ import { formatFileSize } from '@/utils'
 interface HistoryCardTransferProgressProps {
   isFileType: boolean
   isTransferring: boolean
-  transfer?: TransferProgressInfo
+  transfer?: Pick<TransferProgressInfo, 'bytesTransferred' | 'totalBytes'>
   percent: number
   /** When true (directory sends), suppress the byte-progress bar and byte text —
    * their percentage is meaningless — and show a constant full-width activity

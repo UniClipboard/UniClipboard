@@ -78,6 +78,7 @@ describe('useResendAction — shared in-flight store', () => {
         offline: 0,
         errored: 0,
         pending: 0,
+        reconciled: [],
       })
       await resendPromise
     })
@@ -115,6 +116,7 @@ describe('useResendAction — shared in-flight store', () => {
         offline: 0,
         errored: 0,
         pending: 0,
+        reconciled: [],
       })
       await firstPromise
     })

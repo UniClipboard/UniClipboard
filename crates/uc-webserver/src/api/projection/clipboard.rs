@@ -10,11 +10,15 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
     DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
     EntrySourceDto,
 };
+use uc_daemon_contract::api::dto::clipboard_outbound::{
+    OutboundProgressItemDto, OutboundProgressResponse, ResendTargetProgressDto,
+};
 use uc_engine::{
     DeliveryFailureReasonSummary, EntryDeliveryStatusSummary, EntryDeliveryTargetSummary,
     EntryDeliveryViewSummary, EntrySourceSummary, HistoryClearSummary, HistoryEntryDetailSummary,
-    HistoryEntryResourceSummary, HistoryEntrySummary, HistoryStatsSummary, ResendReportSummary,
-    SendReportSummary, SendTargetOutcome,
+    HistoryEntryResourceSummary, HistoryEntrySummary, HistoryStatsSummary,
+    OutboundProgressItemSummary, OutboundProgressSummary, ResendReportSummary,
+    ResendTargetProgressSummary, SendReportSummary, SendTargetOutcome,
 };
 
 use super::IntoApiDto;
@@ -208,6 +212,65 @@ impl IntoApiDto<ResendResponse> for ResendReportSummary {
             offline: self.offline,
             errored: self.errored,
             pending: self.pending,
+            reconciled: self
+                .reconciled
+                .into_iter()
+                .map(IntoApiDto::into_api_dto)
+                .collect(),
+        }
+    }
+}
+
+impl IntoApiDto<OutboundProgressItemDto> for OutboundProgressItemSummary {
+    fn into_api_dto(self) -> OutboundProgressItemDto {
+        OutboundProgressItemDto {
+            kind: self.kind.to_string(),
+            index: self.index,
+            state: self.state.to_string(),
+            last_known_phase: self.last_known_phase.map(|phase| phase.to_string()),
+            round: self.round,
+            completed_bytes: self.completed_bytes,
+            total_bytes: self.total_bytes,
+            failure_reason: self.failure_reason.map(|reason| reason.to_string()),
+            cancellation_reason: self.cancellation_reason.map(|reason| reason.to_string()),
+        }
+    }
+}
+
+impl IntoApiDto<OutboundProgressResponse> for OutboundProgressSummary {
+    fn into_api_dto(self) -> OutboundProgressResponse {
+        OutboundProgressResponse {
+            entry_id: self.entry_id,
+            target_device_id: self.target_device_id,
+            attempt_id: self.attempt_id,
+            revision: self.revision,
+            freshness: self.freshness.to_string(),
+            freshness_available: self.freshness_available,
+            state: self.state.to_string(),
+            items_total: self.items_total,
+            items_waiting: self.items_waiting,
+            items_running: self.items_running,
+            items_completed: self.items_completed,
+            items_failed: self.items_failed,
+            items_cancelled: self.items_cancelled,
+            items_unconfirmed: self.items_unconfirmed,
+            items: self
+                .items
+                .into_iter()
+                .map(IntoApiDto::into_api_dto)
+                .collect(),
+        }
+    }
+}
+
+impl IntoApiDto<ResendTargetProgressDto> for ResendTargetProgressSummary {
+    fn into_api_dto(self) -> ResendTargetProgressDto {
+        ResendTargetProgressDto {
+            target_device_id: self.target_device_id,
+            state: self.state.to_string(),
+            current: self.current.map(IntoApiDto::into_api_dto),
+            new_transfer_requested: self.new_transfer_requested,
+            duplicate_files_possible: self.duplicate_files_possible,
         }
     }
 }

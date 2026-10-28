@@ -5275,6 +5275,197 @@
         },
         "type": "object"
       },
+      "OutboundProgressEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OutboundProgressResponse"
+              }
+            ],
+            "nullable": true
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ts"
+        ],
+        "type": "object"
+      },
+      "OutboundProgressItemDto": {
+        "description": "One item (file, representation or directory unit) of an outbound attempt.",
+        "properties": {
+          "cancellationReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "completedBytes": {
+            "description": "`None` means unknown, not zero. Reaching `total_bytes` does not imply completion.",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "failureReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "index": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "description": "`file` | `representation` | `directory_unit` | `unknown`.",
+            "type": "string"
+          },
+          "lastKnownPhase": {
+            "description": "Last phase observed before the item left the running states.",
+            "nullable": true,
+            "type": "string"
+          },
+          "round": {
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "state": {
+            "description": "`waiting` | `transferring` | `processing` | `retrying` | `completed` |\n`failed` | `cancelled` | `unconfirmed`.",
+            "type": "string"
+          },
+          "totalBytes": {
+            "description": "`None` means the total is unknown, not zero.",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "index",
+          "state"
+        ],
+        "type": "object"
+      },
+      "OutboundProgressListEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/OutboundProgressResponse"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "OutboundProgressResponse": {
+        "description": "Full outbound snapshot for one (entry, target device) pair.",
+        "properties": {
+          "attemptId": {
+            "description": "Current attempt; `None` when no attempt is known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "entryId": {
+            "type": "string"
+          },
+          "freshness": {
+            "description": "`waiting` | `live` | `unconfirmed` | `settled`.",
+            "type": "string"
+          },
+          "freshnessAvailable": {
+            "description": "`false` when the Engine has no freshness evidence (for example after a restart).",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OutboundProgressItemDto"
+            },
+            "type": "array"
+          },
+          "itemsCancelled": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemsCompleted": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemsFailed": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemsRunning": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemsTotal": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemsUnconfirmed": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemsWaiting": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "description": "Monotonic per (entry, target); older revisions must not overwrite newer ones.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "description": "`no_items` | `waiting` | `in_progress` | `unconfirmed` | `partially_unconfirmed` |\n`completed` | `failed` | `partially_failed` | `cancelled` | `partially_cancelled`.",
+            "type": "string"
+          },
+          "targetDeviceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entryId",
+          "targetDeviceId",
+          "revision",
+          "freshness",
+          "freshnessAvailable",
+          "state",
+          "itemsTotal",
+          "itemsWaiting",
+          "itemsRunning",
+          "itemsCompleted",
+          "itemsFailed",
+          "itemsCancelled",
+          "itemsUnconfirmed"
+        ],
+        "type": "object"
+      },
       "PairingConfirmationDto": {
         "enum": [
           "awaiting_peer_confirmation",
@@ -5738,6 +5929,48 @@
         "required": [
           "itemId",
           "kind",
+          "state"
+        ],
+        "type": "object"
+      },
+      "ReconcileOutboundProgressEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReconcileOutboundProgressResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ReconcileOutboundProgressRequest": {
+        "description": "Request body for `POST /clipboard/entries/{id}/outbound/{deviceId}/reconcile`.",
+        "properties": {
+          "expectedAttemptId": {
+            "description": "The attempt the caller is looking at. A newer attempt answers `superseded`.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ReconcileOutboundProgressResponse": {
+        "description": "Response body for `POST /clipboard/entries/{id}/outbound/{deviceId}/reconcile`.",
+        "properties": {
+          "state": {
+            "description": "`running` | `settled` | `superseded` | `not_retained` | `unsupported` |\n`unreachable` | `busy`.",
+            "type": "string"
+          }
+        },
+        "required": [
           "state"
         ],
         "type": "object"
@@ -6384,6 +6617,10 @@
       "ResendRequest": {
         "description": "Request body for `POST /clipboard/resend`.",
         "properties": {
+          "confirmNewTransfer": {
+            "description": "Explicit user confirmation to start a new transfer when the existing\ntask cannot be continued or adopted. Defaults to `false`: reconcile\nthe existing task only, never re-download silently.",
+            "type": "boolean"
+          },
           "entryId": {
             "description": "ID of the previously captured entry to resend.",
             "type": "string"
@@ -6424,6 +6661,13 @@
           "pending": {
             "minimum": 0,
             "type": "integer"
+          },
+          "reconciled": {
+            "description": "Per-target reconciliation of existing tasks. The counters above only\ncount real deliveries; use this to tell reused, adopted and refused targets apart.",
+            "items": {
+              "$ref": "#/components/schemas/ResendTargetProgressDto"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -6432,6 +6676,41 @@
           "offline",
           "errored",
           "pending"
+        ],
+        "type": "object"
+      },
+      "ResendTargetProgressDto": {
+        "description": "Per-target reconciliation result of a resend request.",
+        "properties": {
+          "current": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OutboundProgressResponse"
+              }
+            ],
+            "nullable": true
+          },
+          "duplicateFilesPossible": {
+            "description": "The new transfer may leave duplicate files on the receiver.",
+            "type": "boolean"
+          },
+          "newTransferRequested": {
+            "description": "A new transfer was actually requested for this target.",
+            "type": "boolean"
+          },
+          "state": {
+            "description": "Same values as [`ReconcileOutboundProgressResponse::state`].",
+            "type": "string"
+          },
+          "targetDeviceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetDeviceId",
+          "state",
+          "newTransferRequested",
+          "duplicateFilesPossible"
         ],
         "type": "object"
       },
@@ -9636,6 +9915,176 @@
         ]
       }
     },
+    "/clipboard/entries/{id}/outbound/{device_id}": {
+      "get": {
+        "description": "Full sender-side snapshot for one (entry, target device) pair, or `null`\nwhen the Engine holds no outbound task for it.",
+        "operationId": "getOutboundProgress",
+        "parameters": [
+          {
+            "description": "Source clipboard entry ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target device ID",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundProgressEnvelope"
+                }
+              }
+            },
+            "description": "Current outbound snapshot or null"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Outbound progress is unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/entries/:id/outbound/:device_id",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/entries/{id}/outbound/{device_id}/reconcile": {
+      "post": {
+        "description": "Reconciles with the existing outbound task without starting a new transfer.\n`expectedAttemptId` fences the call to the attempt the caller is looking at.",
+        "operationId": "reconcileOutboundProgress",
+        "parameters": [
+          {
+            "description": "Source clipboard entry ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target device ID",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconcileOutboundProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileOutboundProgressEnvelope"
+                }
+              }
+            },
+            "description": "Reconciliation outcome"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Outbound progress is unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/entries/:id/outbound/:device_id/reconcile",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
     "/clipboard/entries/{id}/receive": {
       "get": {
         "operationId": "getEntryReceiveProgress",
@@ -9879,6 +10328,56 @@
           }
         ],
         "summary": "GET /clipboard/entries/:id/resource",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/outbound": {
+      "get": {
+        "description": "Every retained outbound snapshot, one per (entry, target device).",
+        "operationId": "listOutboundProgress",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundProgressListEnvelope"
+                }
+              }
+            },
+            "description": "Outbound snapshots listed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Outbound progress is unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/outbound",
         "tags": [
           "clipboard"
         ]

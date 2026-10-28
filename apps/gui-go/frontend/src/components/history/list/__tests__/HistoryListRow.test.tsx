@@ -14,7 +14,14 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-vi.mock('@/store/hooks', () => ({ useAppSelector: () => undefined }))
+vi.mock('@/store/hooks', () => ({
+  // Empty transfer and outbound caches: the row has no activity.
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({
+      fileTransfer: { activeTransfers: {}, entryTransferMap: {}, entryStatusById: {} },
+      outboundProgress: { byEntry: {} },
+    }),
+}))
 
 vi.mock('@/components/history/history-card/useResourceImageUrl', () => ({
   useResourceImageUrl: () => null,

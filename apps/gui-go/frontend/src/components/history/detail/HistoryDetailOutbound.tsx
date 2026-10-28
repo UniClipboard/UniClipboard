@@ -4,22 +4,14 @@ import type { OutboundProgressItemDto } from '@/api/generated/types.gen'
 import type { OutboundProgressSnapshot } from '@/api/outbound_progress'
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/store/hooks'
-import { selectOutboundByEntry, selectOutboundList } from '@/store/slices/outboundProgressSlice'
+import {
+  isOutboundRunning,
+  selectOutboundByEntry,
+  selectOutboundList,
+} from '@/store/slices/outboundProgressSlice'
 import { formatFileSize } from '@/utils'
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string
-
-/**
- * Only a live, running attempt animates. An unconfirmed or settled snapshot
- * never does: the host does not guess an outcome from a timer.
- */
-function isRunning(snapshot: OutboundProgressSnapshot): boolean {
-  return (
-    snapshot.freshness !== 'unconfirmed' &&
-    snapshot.freshness !== 'settled' &&
-    (snapshot.state === 'in_progress' || snapshot.state === 'waiting')
-  )
-}
 
 function tone(state: string): string {
   if (state === 'completed') return 'text-emerald-600 dark:text-emerald-400'
@@ -49,7 +41,7 @@ function itemDetail(item: OutboundProgressItemDto, t: Translate): string | null 
 function OutboundRow({ snapshot, name }: { snapshot: OutboundProgressSnapshot; name: string }) {
   const { t } = useTranslation()
   const items = snapshot.items ?? []
-  const running = isRunning(snapshot)
+  const running = isOutboundRunning(snapshot)
   const { done, total } = aggregateBytes(items)
   const showBar = items.length > 0 && snapshot.state !== 'no_items'
   // Reaching the total never means completed; the batch state decides.

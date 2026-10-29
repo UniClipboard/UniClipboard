@@ -58,16 +58,20 @@ def _wait_join_settled(r, profile=None, timeout=150):
     raise RuntimeError("join never settled")
 
 
-def _start_invite(r, profile, cli, json_mode=False, timeout=90):
-    """Spawn `space invite` and wait for its invitation code."""
+def _start_invite(r, profile, cli, json_mode=False, timeout=90, require_full=False):
+    """Spawn `space invite` and capture its codes from stdout and stderr."""
     args = (["--json"] if json_mode else []) + ["space", "invite"]
     handle = r.spawn("invite", args, profile=profile, cli=cli)
     fd = handle["proc"].stdout
+    err_fd = handle["proc"].stderr
     os.set_blocking(fd.fileno(), False)
-    buf, code, deadline = b"", None, time.time() + timeout
-    while time.time() < deadline and code is None:
+    os.set_blocking(err_fd.fileno(), False)
+    buf, err_buf, code, full, deadline = b"", b"", None, None, time.time() + timeout
+    while time.time() < deadline:
         buf += fd.read() or b""
-        for line in buf.decode(errors="replace").splitlines():
+        err_buf += err_fd.read() or b""
+        # Parse complete lines so a partial pipe read cannot truncate a ticket.
+        for line in buf.decode(errors="replace").split("\n")[:-1]:
             if line.startswith("INVITATION_CODE="):
                 code = line.split("=", 1)[1].strip()
             elif line.startswith("{"):
@@ -77,13 +81,24 @@ def _start_invite(r, profile, cli, json_mode=False, timeout=90):
                     continue
                 if event.get("event") == "invitation_issued":
                     code = event["code"]
-        if handle["proc"].poll() is not None and code is None:
+                    full = event.get("full_invitation")
+        if not json_mode:
+            for line in ANSI_RE.sub("", _text(err_buf)).split("\n")[:-1]:
+                match = re.search(r"Full invitation \(VPN or another network\): (ucspace1_[A-Za-z0-9_-]+)$", line)
+                if match:
+                    full = match.group(1)
+        if (code is not None and (not require_full or full)) or handle["proc"].poll() is not None:
             break
         time.sleep(0.3)
     os.set_blocking(fd.fileno(), True)
+    os.set_blocking(err_fd.fileno(), True)
     handle["prefix"] = buf
+    handle["stderr_prefix"] = err_buf
+    handle["full_invitation"] = full
     if code is None:
         raise RuntimeError("no invitation code: " + buf.decode(errors="replace"))
+    if require_full and not full:
+        raise RuntimeError("no full invitation in invite output")
     return handle, code
 
 
@@ -91,7 +106,7 @@ def _finish_invite(r, handle, label):
     """Interrupt a running invite and record its normalized transcript."""
     step = r.finish(handle, sig=signal.SIGINT, timeout=30, compare=False)
     r.note(label, {"exit": step.code, "stdout": _strip_code(handle["prefix"] + step.out),
-                   "stderr": _strip_code(step.err)})
+                   "stderr": _strip_code(handle["stderr_prefix"] + step.err)})
 
 
 def _wait_members(r, profile, count=2, timeout=90):
@@ -265,13 +280,15 @@ def space_invite_interrupt(r):
                                          "stderr": _strip_code(step.err)})
 
 
-def _pair_with(r, invite_cli, join_cli, json_invite=False, json_join=False):
+def _pair_with(r, invite_cli, join_cli, json_invite=False, json_join=False, code_transform=None):
     """Init a sponsor, run invite with `invite_cli`, join with `join_cli`.
     Returns (sponsor, joiner, invite handle, join step)."""
     sponsor, joiner = r.profile, r.profile + "-b"
     r.extra_profiles.append(joiner)
     init_space(r, profile=sponsor, name="compat-sponsor")
     handle, code = _start_invite(r, sponsor, cli=invite_cli, json_mode=json_invite)
+    if code_transform is not None:
+        code = code_transform(code)
     join_args = (["--json"] if json_join else []) + ["space", "join", "--code", code, "--passphrase", PASSPHRASE,
                                                      "--device-name", "compat-joiner"]
     step = run(r, "join", join_args, cli=join_cli, profile=joiner, compare=False, timeout=150)
@@ -304,7 +321,60 @@ def space_invite_pairing_json(r):
     _finish_invite(r, handle, "invite json interrupted after join")
 
 
+@scenario
+def space_invite_full_invitation(r):
+    """Go exposes a full invitation in text and JSON; Rust exposes only the short code.
+    The differing transcripts are intentional (see README.md)."""
+    init_space(r)
+    for label, json_mode in (("human", False), ("json", True)):
+        _stop_daemon(r)
+        handle, code = _start_invite(r, r.profile, cli="self", json_mode=json_mode,
+                                     require_full=r.flavor == "go")
+        assert CODE_RE.fullmatch(code), "invite did not retain its six-digit short code"
+        full = handle["full_invitation"]
+        if r.flavor == "go":
+            assert full and re.fullmatch(r"ucspace1_[A-Za-z0-9_-]+", full), "invalid full invitation"
+        else:
+            assert full is None, "Rust baseline unexpectedly exposes full invitations"
+        _finish_invite(r, handle, f"invite {label} full invitation output")
+
+
 # ---------------------------------------------------------------- join
+
+
+@scenario
+def space_join_full_invitation(r):
+    """Go redeems an opaque, mixed-case full invitation with pasted whitespace.
+    Rust lacks full-invitation support, so its explicit skip intentionally differs."""
+    if r.flavor == "rust":
+        r.note("full invitation join", {"skipped": "Rust CLI does not support full invitations"})
+        return
+    sponsor, joiner = r.profile, r.profile + "-b"
+    r.extra_profiles.append(joiner)
+    init_space(r, profile=sponsor, name="compat-sponsor")
+    handle, _ = _start_invite(r, sponsor, cli="self", json_mode=True, require_full=True)
+    full = handle["full_invitation"]
+    assert re.fullmatch(r"ucspace1_[A-Za-z0-9_-]+", full), "invalid full invitation"
+    payload = full.removeprefix("ucspace1_")
+    assert re.search(r"[a-z]", payload) and re.search(r"[A-Z]", payload), "ticket must exercise case preservation"
+    step = r.run("join pasted full invitation",
+                 ["space", "join", "--code", " \t" + full + "\n ", "--passphrase", PASSPHRASE,
+                  "--device-name", "compat-joiner"], profile=joiner, timeout=150)
+    assert step.code == 0, "full invitation join failed"
+    _wait_members(r, sponsor)
+    r.finish(handle, sig=signal.SIGINT, timeout=30, compare=False)
+    r.note("full invitation join", {"joined": True, "sponsor_lists_joiner": True})
+
+
+@scenario
+def space_join_short_code_normalization(r):
+    """Both CLIs still redeem six digits after removing pasted whitespace and hyphens."""
+    sponsor, joiner, handle, step = _pair_with(
+        r, "rust", "self", code_transform=lambda code: " \t" + " - ".join(code.replace("-", "")) + "\n ")
+    _note_join(r, "join pasted short code", step)
+    assert step.code == 0, "normalized short code join failed"
+    _wait_members(r, sponsor)
+    r.finish(handle, sig=signal.SIGINT, timeout=30, compare=False)
 
 
 @scenario

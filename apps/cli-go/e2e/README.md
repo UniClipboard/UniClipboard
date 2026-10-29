@@ -31,6 +31,19 @@ python3 apps/cli-go/e2e/compat.py --rust target/compat/rust --go target/compat/g
 `summary.tsv` 按场景列出 `same` / `DIFF`；`<scenario>.diff` 是归一化后的统一差异，
 `<scenario>.<flavor>.txt` 是原始步骤记录。`pair` 夹具需要访问生产 rendezvous 服务。
 
+### 完整邀请与短码验收
+
+- `space_invite_full_invitation` 检查短码仍存在，Go 的人类可读输出包含完整邀请，JSON 的
+  `invitation_issued` 事件包含 `full_invitation`；Rust 仍只输出短码。
+- `space_join_full_invitation` 在 Go 侧使用真实 daemon 签发的大小写混合完整邀请，加入时
+  保留邀请大小写并去除首尾空白，最后确认 sponsor 已列出加入设备。Rust CLI 不支持完整
+  邀请，此侧明确记录跳过，不用短码替代完整邀请冒充兼容。
+- `space_join_short_code_normalization` 在两侧验证六位短码夹带空白和连字符时仍能加入。
+
+前两个场景的 `DIFF` 是上级 README 差异表中的预期差异，运行器仍返回非零，不将其改写成
+`same`；验收时须检查对应记录与断言。完整邀请的易变值统一归一化为 `<FULL_INVITATION>`，
+但不删除输出字段或掩盖功能差异。场景需要真实 daemon 与邀请服务，`--list` 只验证发现和导入。
+
 ## 前台与用户服务验收
 
 ```sh

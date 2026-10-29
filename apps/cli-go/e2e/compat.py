@@ -29,6 +29,7 @@ from isolated import isolated_env  # noqa: E402
 import scenarios  # noqa: E402
 
 NORMALIZERS = [
+    (re.compile(r"\bucspace1_[A-Za-z0-9_-]+"), "<FULL_INVITATION>"),
     (re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"), "<UUID>"),
     (re.compile(r"\b[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}\b"), "<FINGERPRINT>"),
     (re.compile(r"(pid\\?[\"']?\s*[:=]?\s*)\d+"), r"\1<PID>"),

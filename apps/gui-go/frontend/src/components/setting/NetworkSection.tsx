@@ -106,26 +106,30 @@ const NetworkSection: React.FC = () => {
       (saveInFlightRef.current ?? Promise.resolve())
         .catch(() => {})
         .then(() => updateNetworkSetting(payload))
-    ).then(
-      () => {
-        if (saveGenerationRef.current === generation) setDraftOverride(null)
-      },
-      err => {
-        log.error({ err }, 'Failed to save network settings')
-        if (saveGenerationRef.current === generation) {
-          setDraftOverride(null)
-          const message = err instanceof Error ? err.message : String(err)
-          const errorKey =
-            payload.bindPort !== undefined
-              ? 'settings.sections.network.bindPort.saveError'
-              : relayChanged
-                ? 'settings.sections.network.lanOnly.saveError'
-                : 'settings.sections.network.allowOverlayAddrs.saveError'
-          showSaveError(t(errorKey, { message }))
-        }
-        throw err
-      }
     )
+      .then(
+        () => {
+          if (saveGenerationRef.current === generation) setDraftOverride(null)
+        },
+        err => {
+          log.error({ err }, 'Failed to save network settings')
+          if (saveGenerationRef.current === generation) {
+            setDraftOverride(null)
+            const message = err instanceof Error ? err.message : String(err)
+            const errorKey =
+              payload.bindPort !== undefined
+                ? 'settings.sections.network.bindPort.saveError'
+                : relayChanged
+                  ? 'settings.sections.network.lanOnly.saveError'
+                  : 'settings.sections.network.allowOverlayAddrs.saveError'
+            showSaveError(t(errorKey, { message }))
+          }
+          throw err
+        }
+      )
+      .finally(() => {
+        if (saveInFlightRef.current === save) saveInFlightRef.current = null
+      })
     saveInFlightRef.current = save
     return save
   }

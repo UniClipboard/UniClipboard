@@ -1126,6 +1126,121 @@ describe('network saves across restart and navigation', () => {
     expect(screen.getByRole('button', { name: /立即重启|Restart now/ })).toBeInTheDocument()
   })
 
+  it('restarts after a successful save followed by a settled failed save', async () => {
+    vi.useFakeTimers()
+    const mockUpdate = vi
+      .fn<UpdateNetworkSettingFn>()
+      .mockResolvedValueOnce({ restartRequired: true })
+      .mockRejectedValueOnce(new Error('save failed'))
+    setupSetting({ updateNetworkSetting: mockUpdate })
+    render(<NetworkSection />)
+    fireEvent.click(screen.getByRole('switch', { name: /LAN-only/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith({ allowRelayFallback: false })
+    expect(screen.getByRole('button', { name: /立即重启|Restart now/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('switch', { name: /允许虚拟网络地址|Allow Overlay/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mockUpdate).toHaveBeenLastCalledWith({ allowOverlayNetworkAddrs: true })
+    expect(screen.getByText(/保存失败|Save failed/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /立即重启|Restart now/ }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mockRestartDaemon).toHaveBeenCalledTimes(1)
+    expect(mockUpdate).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports an in-flight save failure on restart and allows retry after it settles', async () => {
+    vi.useFakeTimers()
+    let fail!: (reason: Error) => void
+    const mockUpdate = vi
+      .fn<UpdateNetworkSettingFn>()
+      .mockResolvedValueOnce({ restartRequired: true })
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            fail = reject
+          })
+      )
+    setupSetting({ updateNetworkSetting: mockUpdate })
+    render(<NetworkSection />)
+    fireEvent.click(screen.getByRole('switch', { name: /LAN-only/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    fireEvent.click(screen.getByRole('switch', { name: /允许虚拟网络地址|Allow Overlay/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    fireEvent.click(screen.getByRole('button', { name: /立即重启|Restart now/ }))
+    expect(mockRestartDaemon).not.toHaveBeenCalled()
+    await act(async () => {
+      fail(new Error('save failed'))
+    })
+    expect(mockRestartDaemon).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /重试|Retry/ }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mockRestartDaemon).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps later saves chained while earlier saves settle', async () => {
+    vi.useFakeTimers()
+    let finishFirst!: (value: { restartRequired: boolean }) => void
+    let finishSecond!: (value: { restartRequired: boolean }) => void
+    const mockUpdate = vi
+      .fn<UpdateNetworkSettingFn>()
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            finishFirst = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            finishSecond = resolve
+          })
+      )
+      .mockResolvedValueOnce({ restartRequired: true })
+    setupSetting({ updateNetworkSetting: mockUpdate })
+    render(<NetworkSection />)
+    fireEvent.click(screen.getByRole('switch', { name: /LAN-only/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    fireEvent.click(screen.getByRole('switch', { name: /允许虚拟网络地址|Allow Overlay/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      finishFirst({ restartRequired: true })
+    })
+    expect(mockUpdate).toHaveBeenCalledTimes(2)
+    fireEvent.change(screen.getByRole('textbox', { name: /固定网络端口|Fixed network port/ }), {
+      target: { value: '51820' },
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mockUpdate).toHaveBeenCalledTimes(2)
+    fireEvent.click(screen.getByRole('button', { name: /立即重启|Restart now/ }))
+    expect(mockRestartDaemon).not.toHaveBeenCalled()
+    await act(async () => {
+      finishSecond({ restartRequired: true })
+    })
+    expect(mockUpdate).toHaveBeenCalledTimes(3)
+    expect(mockUpdate).toHaveBeenLastCalledWith({ bindPort: 51820 })
+    expect(mockRestartDaemon).toHaveBeenCalledTimes(1)
+  })
+
   it('does not restart if flushing the pending save fails', async () => {
     vi.useFakeTimers()
     setupSetting({ updateNetworkSetting: vi.fn().mockRejectedValue(new Error('save failed')) })

@@ -1,6 +1,6 @@
 # Windows 自建 GitHub Runner 运维说明
 
-UniClipboard Desktop 的 Windows 应用构建和 CLI 构建会先检查专用 Windows 真机是否在线且空闲。可用时使用真机；离线、忙碌、查询失败或缺少状态凭据时，改用 GitHub 提供的 `windows-latest`，同一次构建只会选择一处执行。
+UniClipboard Desktop 的 Windows x86_64 应用构建和 CLI 构建会先检查专用 Windows runner 是否在线且空闲。可用时使用自建 runner；离线、忙碌、查询失败或缺少状态凭据时，使用 GitHub 提供的 `windows-latest`。Windows ARM64 交叉构建固定使用 `windows-latest`，因为自建 runner 未验证具备 ARM64 MSVC 和 LLVM 组件。
 
 ## 当前配置
 

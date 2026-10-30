@@ -126,6 +126,12 @@ jobs:
         with:
           node-version: lts/*
 
+      - name: Set up Python on Windows
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
       - name: Configure package build mode
         id: build-mode
         env:
@@ -314,7 +320,9 @@ jobs:
       - name: Summarize MBX cache requests
         if: always() && hashFiles('scripts/ci/summarize-mbx.py') != ''
         shell: bash
-        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then python_cmd=python; else python_cmd=python3; fi
+          "$python_cmd" scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
 
       - name: Retain MBX compiler evidence
         if: always()

@@ -103,8 +103,11 @@ impl Panel {
         let list = div()
             .on_children_prepainted(move |_, window, cx| {
                 let tracker = anchor_tracker.clone();
-                window.defer(cx, move |_, cx| {
-                    let _ = tracker.update(cx, |this, cx| this.update_preview_anchor(cx));
+                window.defer(cx, move |window, cx| {
+                    let _ = tracker.update(cx, |this, cx| {
+                        this.update_preview_anchor(cx);
+                        this.sync_visible_thumbnails(window, cx);
+                    });
                 });
             })
             .id("history-list")

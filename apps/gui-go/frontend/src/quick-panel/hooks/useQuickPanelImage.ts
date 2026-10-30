@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
-import { useResourceImageDescriptor } from '@/hooks/useResourceImageDescriptor'
 
 /**
  * Quick-panel aspect-ratio cache, module-scoped so scrolling the launcher back
@@ -13,9 +12,8 @@ import { useResourceImageDescriptor } from '@/hooks/useResourceImageDescriptor'
  *   image dimensions; decoding the resource supplies the intrinsic ratio.
  *   Caching it keeps later masonry layouts stable.
  *
- * Image descriptor resolution (the daemon fetch + blob decode) is shared with
- * the rest of the app via {@link useResourceImageDescriptor} /
- * {@link useBlobImageObjectUrl} — not duplicated here.
+ * Thumbnail bytes are shared with the rest of the app through
+ * {@link useBlobImageObjectUrl}.
  */
 const aspectRatioCache = new Map<string, number>()
 
@@ -56,7 +54,7 @@ export function useQuickPanelImage(
   options: UseQuickPanelImageOptions = {}
 ): QuickPanelImage {
   const { enabled = true } = options
-  const descriptor = useResourceImageDescriptor(entryId, enabled)
+  const descriptor = `/clipboard/entries/${encodeURIComponent(entryId)}/thumbnail`
 
   const [aspectRatioState, setAspectRatioState] = useState(() => initialAspectRatioState(entryId))
 

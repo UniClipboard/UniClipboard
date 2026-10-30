@@ -57,6 +57,7 @@ pub enum ServiceError {
     ImageBadFormat,
     ImageUnsupported,
     ImageUndecodable,
+    ThumbnailBusy,
 }
 
 impl fmt::Display for ServiceError {
@@ -77,6 +78,7 @@ impl fmt::Display for ServiceError {
             Self::ImageBadFormat => crate::text::t().service.image_bad_format,
             Self::ImageUnsupported => crate::text::t().service.image_unsupported,
             Self::ImageUndecodable => crate::text::t().service.image_undecodable,
+            Self::ThumbnailBusy => crate::text::t().service.image_unreadable,
         })
     }
 }

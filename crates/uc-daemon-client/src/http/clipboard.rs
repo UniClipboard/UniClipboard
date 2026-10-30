@@ -452,6 +452,26 @@ impl DaemonClipboardClient {
             .to_vec();
         Ok(Some(bytes))
     }
+
+    /// Fetch an entry's thumbnail through the authenticated binary endpoint.
+    pub async fn entry_thumbnail(&self, entry_id: &str) -> Result<Vec<u8>> {
+        let entry_id = encode_path_segment(entry_id)?;
+        let path = format!("{}/{entry_id}/thumbnail", http_route::CLIPBOARD_ENTRIES);
+        let response = send_checked(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::GET,
+            &path,
+            |r| r,
+        )
+        .await?;
+        Ok(response
+            .bytes()
+            .await
+            .map_err(|source| DaemonRequestError::Decode { path, source })?
+            .to_vec())
+    }
 }
 
 /// Extract the `filename="..."` (or bare `filename=...`) value from a

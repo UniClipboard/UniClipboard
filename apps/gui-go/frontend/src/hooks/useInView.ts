@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * Tracks whether the returned ref's element has ever intersected the
- * viewport. Sticky: once true, stays true — consumers gating a one-time fetch
- * on this (e.g. deferred thumbnail loading in a non-virtualized list) don't
- * want to re-fetch every time the element scrolls in and out of view.
+ * Tracks whether the returned ref's element intersects the viewport.
  *
  * Falls back to `true` immediately in environments without
  * `IntersectionObserver` (e.g. some test runners) so gated consumers degrade
@@ -20,7 +17,6 @@ export function useInView<T extends Element>(
   const [inView, setInView] = useState(false)
 
   useEffect(() => {
-    if (inView) return
     const el = ref.current
     if (!el) return
     if (typeof IntersectionObserver === 'undefined') {
@@ -29,13 +25,13 @@ export function useInView<T extends Element>(
     }
     const observer = new IntersectionObserver(
       entries => {
-        if (entries.some(entry => entry.isIntersecting)) setInView(true)
+        setInView(entries.some(entry => entry.isIntersecting))
       },
       { rootMargin }
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [inView, rootMargin])
+  }, [rootMargin])
 
   return [ref, inView]
 }

@@ -867,12 +867,12 @@ fn daemon_binary_resource_handlers_delegate_to_engine() {
     let blob_handler = handler
         .split("async fn get_blob(")
         .nth(1)
-        .and_then(|source| source.split("async fn get_thumbnail(").next())
+        .and_then(|source| source.split("/// GET /clipboard/entries/:id/file").next())
         .expect("blob handler must remain discoverable");
     let thumbnail_handler = handler
-        .split("async fn get_thumbnail(")
+        .split("async fn get_entry_thumbnail(")
         .nth(1)
-        .and_then(|source| source.split("async fn get_entry_file(").next())
+        .and_then(|source| source.split("/// GET /clipboard/blobs/:blob_id").next())
         .expect("thumbnail handler must remain discoverable");
     let file_handler = handler
         .split("async fn get_entry_file(")

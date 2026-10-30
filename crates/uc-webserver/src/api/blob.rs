@@ -19,8 +19,72 @@ use crate::api::server::DaemonApiState;
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
         .route("/clipboard/blobs/:blob_id", get(get_blob))
-        .route("/clipboard/entries/:id/thumbnail", get(get_thumbnail))
+        .route("/clipboard/entries/:id/thumbnail", get(get_entry_thumbnail))
         .route("/clipboard/entries/:id/file", get(get_entry_file))
+}
+
+/// Read the authoritative preview thumbnail for a history entry.
+#[utoipa::path(
+    get,
+    path = "/clipboard/entries/{id}/thumbnail",
+    tag = "clipboard",
+    operation_id = "getClipboardEntryThumbnail",
+    params(("id" = String, Path, description = "Entry identifier")),
+    responses(
+        (status = 200, description = "Thumbnail bytes", content_type = "application/octet-stream", body = Vec<u8>),
+        (status = 404, description = "Entry not found"),
+        (status = 410, description = "Thumbnail unavailable"),
+        (status = 503, description = "Thumbnail not ready; retry later"),
+        (status = 500, description = "Thumbnail read failed")
+    )
+)]
+#[tracing::instrument(skip_all, fields(trace_id = %uuid::Uuid::new_v4()))]
+async fn get_entry_thumbnail(
+    State(state): State<DaemonApiState>,
+    Path(entry_id): Path<String>,
+) -> impl IntoResponse {
+    tracing::debug!("entry thumbnail requested");
+    match state
+        .execute(Operation::ReadEntryThumbnail(HistoryEntryInput {
+            entry_id,
+        }))
+        .await
+    {
+        Ok(OperationResult::ThumbnailRead(result)) => (
+            StatusCode::OK,
+            [(
+                header::CONTENT_TYPE,
+                result
+                    .media_type
+                    .unwrap_or_else(|| "application/octet-stream".to_string()),
+            )],
+            result.bytes,
+        )
+            .into_response(),
+        Ok(_) => unexpected_resource_result("get_entry_thumbnail"),
+        Err(error) => {
+            let (status, message) = match error.code() {
+                1462 => (StatusCode::NOT_FOUND, "entry not found"),
+                1465 if error.is_retryable() => {
+                    (StatusCode::SERVICE_UNAVAILABLE, "thumbnail not ready")
+                }
+                1466 => (StatusCode::GONE, "thumbnail unavailable"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "thumbnail read failed"),
+            };
+            if status == StatusCode::SERVICE_UNAVAILABLE {
+                tracing::debug!("entry thumbnail not ready");
+            } else {
+                log_facade_failure(
+                    "resource",
+                    "get_entry_thumbnail",
+                    "engine_error",
+                    status,
+                    message,
+                );
+            }
+            (status, message).into_response()
+        }
+    }
 }
 
 /// GET /clipboard/blobs/:blob_id
@@ -84,60 +148,6 @@ async fn get_blob(
         }
         Ok(_) => unexpected_resource_result("get_blob"),
         Err(error) => map_resource_error("get_blob", error, "blob not found"),
-    }
-}
-
-/// GET /clipboard/entries/:id/thumbnail
-///
-/// Serves a bounded thumbnail resolved by clipboard entry identifier. Binary endpoint: the
-/// response is `application/octet-stream` (the resolved MIME type when known),
-/// NOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints
-/// exempt). Returns 404 if the thumbnail is unknown, 500 on an internal
-/// resolution failure.
-#[utoipa::path(
-    get,
-    path = "/clipboard/entries/{id}/thumbnail",
-    tag = "clipboard",
-    operation_id = "getClipboardThumbnail",
-    params(
-        ("id" = String, Path, description = "Clipboard entry identifier"),
-    ),
-    responses(
-        (
-            status = 200,
-            description = "Raw thumbnail bytes",
-            content_type = "application/octet-stream",
-            body = Vec<u8>,
-        ),
-        (status = 404, description = "Thumbnail not found", content_type = "text/plain", body = String),
-        (status = 503, description = "Thumbnail temporarily unavailable; retry after unlock or load completes", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", content_type = "text/plain", body = String),
-    )
-)]
-async fn get_thumbnail(
-    State(state): State<DaemonApiState>,
-    Path(entry_id): Path<String>,
-) -> impl IntoResponse {
-    match state
-        .execute(Operation::ReadEntryThumbnail(HistoryEntryInput {
-            entry_id,
-        }))
-        .await
-    {
-        Ok(OperationResult::ThumbnailRead(result)) => {
-            let content_type = result
-                .media_type
-                .as_deref()
-                .unwrap_or("application/octet-stream");
-            (
-                StatusCode::OK,
-                [(header::CONTENT_TYPE, content_type.to_string())],
-                result.bytes,
-            )
-                .into_response()
-        }
-        Ok(_) => unexpected_resource_result("get_thumbnail"),
-        Err(error) => map_resource_error("get_thumbnail", error, "thumbnail not found"),
     }
 }
 

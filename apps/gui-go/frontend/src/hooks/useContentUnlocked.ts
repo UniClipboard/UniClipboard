@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { clearBlobImageCache } from '@/api/daemon/blob-image-cache'
 import { listen } from '@/host/event'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc'
@@ -21,9 +22,15 @@ export function useContentUnlocked(enabled = true) {
       const current = ++request
       try {
         const result = await commands.getContentUnlocked()
-        if (!cancelled && current === request) setResult({ generation, unlocked: result })
+        if (!cancelled && current === request) {
+          if (!result) {
+            clearBlobImageCache()
+          }
+          setResult({ generation, unlocked: result })
+        }
       } catch {
         if (!cancelled && current === request) {
+          clearBlobImageCache()
           setResult({ generation, unlocked: false })
           log.warn('Could not verify content access; keeping content hidden')
         }

@@ -1,5 +1,6 @@
 import { createLogger } from '@/lib/logger'
 import { daemonClient } from './client'
+import { DaemonApiError, DaemonErrorCode } from './errors'
 
 const log = createLogger('blob-image-cache')
 
@@ -34,6 +35,13 @@ async function fetchAndCache(path: string, generation: number): Promise<string |
     touch(path, objectUrl)
     return objectUrl
   } catch (err) {
+    if (
+      path.endsWith('/thumbnail') &&
+      err instanceof DaemonApiError &&
+      err.code === DaemonErrorCode.SERVICE_UNAVAILABLE
+    ) {
+      throw err
+    }
     log.error({ err, path }, 'failed to fetch blob image')
     return null
   }
@@ -86,6 +94,13 @@ export async function getBlobImageObjectUrl(path: string): Promise<string | null
 /** Read an existing object URL before paint without starting a fetch. */
 export function peekBlobImageObjectUrl(path: string): string | null {
   return cache.get(path) ?? null
+}
+
+/** Drop a URL that the image decoder rejected. */
+export function invalidateBlobImageObjectUrl(path: string): void {
+  const url = cache.get(path)
+  cache.delete(path)
+  if (url) URL.revokeObjectURL(url)
 }
 
 /**

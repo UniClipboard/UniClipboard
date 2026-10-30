@@ -7,33 +7,22 @@ import {
   useQuickPanelImageAspectRatioEpoch,
 } from '@/quick-panel/hooks/useQuickPanelImage'
 
-const { getClipboardEntryResource } = vi.hoisted(() => ({
-  getClipboardEntryResource: vi.fn(),
-}))
+const { resolveImage } = vi.hoisted(() => ({ resolveImage: vi.fn() }))
 
-vi.mock('@/api/daemon/clipboard', () => ({
-  getClipboardEntryResource,
-}))
-
-function inlineResource(data: string) {
-  return {
-    blobId: null,
-    mimeType: 'image/png',
-    sizeBytes: data.length,
-    url: null,
-    inlineData: data,
-  }
-}
+vi.mock('@/hooks/useBlobImageObjectUrl', () => ({ useBlobImageObjectUrl: resolveImage }))
 
 describe('useQuickPanelImage', () => {
   beforeEach(() => {
-    getClipboardEntryResource.mockReset()
-    getClipboardEntryResource.mockResolvedValue(inlineResource('ZZZZ'))
+    resolveImage.mockReset()
+    resolveImage.mockImplementation((_path: string, enabled: boolean) =>
+      enabled ? 'blob:thumbnail' : null
+    )
   })
 
-  it('resolves url via the shared descriptor + blob resolution', async () => {
+  it('resolves the entry thumbnail', async () => {
     const { result } = renderHook(() => useQuickPanelImage('qp-entry-1'))
-    await waitFor(() => expect(result.current.url).toBe('data:image/png;base64,ZZZZ'))
+    await waitFor(() => expect(result.current.url).toBe('blob:thumbnail'))
+    expect(resolveImage).toHaveBeenCalledWith('/clipboard/entries/qp-entry-1/thumbnail', true)
   })
 
   it('does not resolve url when disabled', async () => {
@@ -42,7 +31,10 @@ describe('useQuickPanelImage', () => {
       await Promise.resolve()
     })
     expect(result.current.url).toBeNull()
-    expect(getClipboardEntryResource).not.toHaveBeenCalled()
+    expect(resolveImage).toHaveBeenCalledWith(
+      '/clipboard/entries/qp-entry-disabled/thumbnail',
+      false
+    )
   })
 
   it('picks up an aspect ratio already published by another instance', () => {

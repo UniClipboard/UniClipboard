@@ -53,6 +53,7 @@ impl Panel {
     /// Gives back every bitmap and stops the work that would make more.
     fn clear_images(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.tasks.thumbnails = None;
+        self.visible_thumbnails.clear();
         self.tasks.preview_decode = None;
         self.preview_decoding = None;
         for (_, data) in self.thumbnails.drain() {
@@ -527,21 +528,13 @@ impl Panel {
     /// A hidden panel draws nothing, so it loads nothing; the next show searches and loads again.
     /// Only one image is decoded at a time, since a screenshot needs width x height x 4 bytes
     /// while it is decoded, and the images in flight are held in memory in their encoded form.
-    fn load_thumbnails(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn load_thumbnails(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // A new pass replaces the running one, even when nothing is left to load: the old pass
         // must not put back a bitmap that was just given back.
         self.tasks.thumbnails = None;
-        if !self.state.session.visible {
-            return;
-        }
         // Bitmaps of entries that left the list are given back; a session cannot pile them up.
-        let listed: std::collections::HashSet<&str> = self
-            .state
-            .search
-            .items
-            .iter()
-            .map(|item| item.entry_id.as_str())
-            .collect();
+        let listed: std::collections::HashSet<&str> =
+            self.visible_thumbnails.iter().map(String::as_str).collect();
         let gone: Vec<String> = self
             .thumbnails
             .keys()
@@ -553,16 +546,22 @@ impl Panel {
                 cx.drop_image(data.image, Some(window));
             }
         }
+        if !self.state.session.visible || self.state.search.loading {
+            return;
+        }
         let ids = self
-            .state
-            .search
-            .items
+            .visible_thumbnails
             .iter()
-            .filter(|item| {
-                quick_panel_core::content::has_image_preview(item)
-                    && !self.thumbnails.contains_key(&item.entry_id)
+            .filter(|id| {
+                !self.thumbnails.contains_key(*id)
+                    && self
+                        .state
+                        .search
+                        .items
+                        .iter()
+                        .any(|item| &item.entry_id == *id)
             })
-            .map(|item| item.entry_id.clone())
+            .cloned()
             .collect::<Vec<_>>();
         if ids.is_empty() {
             return;
@@ -585,7 +584,21 @@ impl Panel {
                             let gate = gate.clone();
                             tasks.spawn(
                                 async move {
-                                    let result = history.preview(id.clone(), "image".into()).await;
+                                    let mut retries = 0u32;
+                                    let result = loop {
+                                        let result =
+                                            history.preview(id.clone(), "thumbnail".into()).await;
+                                        if !matches!(result, Err(ServiceError::ThumbnailBusy))
+                                            || retries >= 5
+                                        {
+                                            break result;
+                                        }
+                                        tokio::time::sleep(std::time::Duration::from_millis(
+                                            500 * (1 << retries),
+                                        ))
+                                        .await;
+                                        retries += 1;
+                                    };
                                     // Decoding is CPU work and must not hold a runtime worker.
                                     let decoded = match result {
                                         Ok(data) => {
@@ -633,6 +646,8 @@ impl Panel {
                     // is in the current results. Anything else was never drawn, so dropping it
                     // is all the release it needs.
                     let wanted = this.state.session.visible
+                        && !this.state.search.loading
+                        && this.visible_thumbnails.contains(&id)
                         && this
                             .state
                             .search

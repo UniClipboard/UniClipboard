@@ -2807,6 +2807,9 @@ export type NetworkSettingsDto = {
     bindPort?: number | null;
     congestionController?: CongestionControllerDto;
     customRelayUrls?: Array<string>;
+    peerAddresses?: {
+        [key: string]: PeerAddressDto;
+    };
 };
 
 /**
@@ -2821,6 +2824,12 @@ export type NetworkSettingsPatchDto = {
     bindPort?: number | null;
     congestionController?: CongestionControllerDto | null;
     customRelayUrls?: Array<string> | null;
+    /**
+     * Only listed devices change. An address sets or replaces a hint; null removes it. Omitted devices stay unchanged. Applies immediately without restart.
+     */
+    peerAddresses?: {
+        [key: string]: PeerAddressDto | null;
+    };
 };
 
 export type PairingConfirmationDto = 'awaiting_peer_confirmation' | 'unconfirmed' | 'confirmed';
@@ -2838,6 +2847,17 @@ export type PairingSettingsPatchDto = {
     sessionTimeout?: number | null;
     stepTimeout?: number | null;
     userVerificationTimeout?: number | null;
+};
+
+/**
+ * A user-configured discovery hint. Identity and LAN-only policy remain Engine-owned.
+ */
+export type PeerAddressDto = {
+    /**
+     * Unicast IPv4 or IPv6 literal, never a hostname.
+     */
+    ip: string;
+    port: number;
 };
 
 export type PeerSnapshotDto = {
@@ -4161,7 +4181,7 @@ export type SettingsSnapshotPayload = {
 export type SettingsUpdateResultDto = {
     /**
      * Whether the patch touched fields requiring a daemon restart (currently
-     * only `network.*`).
+     * bind-time network options and diagnostics).
      */
     restartRequired: boolean;
     success: boolean;

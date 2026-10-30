@@ -25,11 +25,11 @@ use uc_engine::{
 
 use crate::api::dto::error::{log_engine_failure, log_facade_failure, ApiError};
 use crate::api::dto::settings::{
-    CustomRelayDto, CustomRelayMutationDto, CustomRelayMutationResultDto, RelayCredentialEditDto,
-    RelayCredentialRequestDto, RelayCredentialStatusDto, RelayEntrySourceDto, RelayOverviewDto,
-    RelayOverviewEntryDto, RelayProbeCredentialDto, RelayProbeOutcomeDto, RelayProbeRequestDto,
-    RelayRoutingModeDto, RelaySaveRequestDto, RelaySaveResultDto, SettingsDto, SettingsPatchDto,
-    SettingsUpdateResultDto,
+    CustomRelayDto, CustomRelayMutationDto, CustomRelayMutationResultDto, NetworkSettingsPatchDto,
+    RelayCredentialEditDto, RelayCredentialRequestDto, RelayCredentialStatusDto,
+    RelayEntrySourceDto, RelayOverviewDto, RelayOverviewEntryDto, RelayProbeCredentialDto,
+    RelayProbeOutcomeDto, RelayProbeRequestDto, RelayRoutingModeDto, RelaySaveRequestDto,
+    RelaySaveResultDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
 use crate::api::projection::settings::desktop_patch;
 use crate::api::projection::{IntoApiDto, IntoDomain};
@@ -449,7 +449,8 @@ async fn update_settings_handler(
     // The rejection text can quote the submitted value, so it is not logged or returned.
     let Json(payload) = body.map_err(|_| ApiError::bad_request("invalid settings request body"))?;
 
-    // D-D1: `network` changes and `debugMode` take effect after a restart.
+    // Bind-time network options and `debugMode` take effect after a restart.
+    // Configured peer addresses are discovery hints read immediately by Engine.
     // The check is by presence: GUI patches carry only the leaves the user
     // changed (ADR-013 section 9).
     let debug_mode_changed = payload
@@ -462,7 +463,11 @@ async fn update_settings_handler(
                 uc_observability::installed_log_profile(),
             )
         });
-    let restart_required = payload.network.is_some() || debug_mode_changed;
+    let restart_required = payload
+        .network
+        .as_ref()
+        .is_some_and(network_patch_requires_restart)
+        || debug_mode_changed;
 
     let telemetry_update = payload.general.as_ref().and_then(|g| g.telemetry_enabled);
     let analytics_update = payload
@@ -544,6 +549,14 @@ async fn update_settings_handler(
         success: true,
         restart_required,
     })))
+}
+
+fn network_patch_requires_restart(patch: &NetworkSettingsPatchDto) -> bool {
+    patch.bind_port.is_some()
+        || patch.allow_relay_fallback.is_some()
+        || patch.allow_overlay_network_addrs.is_some()
+        || patch.custom_relay_urls.is_some()
+        || patch.congestion_controller.is_some()
 }
 
 /// POST /settings/relay-probe
@@ -853,6 +866,22 @@ fn relay_credential_error_to_api(op: &'static str, error: EngineError) -> ApiErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn peer_address_patches_apply_without_restart() {
+        let patch = serde_json::from_value::<NetworkSettingsPatchDto>(serde_json::json!({
+            "peerAddresses": {"peer": {"ip": "10.0.0.2", "port": 5000}}
+        }))
+        .unwrap();
+        assert!(!network_patch_requires_restart(&patch));
+        assert!(!network_patch_requires_restart(
+            &NetworkSettingsPatchDto::default()
+        ));
+        assert!(network_patch_requires_restart(&NetworkSettingsPatchDto {
+            bind_port: Some(5000),
+            ..patch
+        }));
+    }
 
     #[test]
     fn probe_outcome_maps_success_with_latency() {

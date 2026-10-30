@@ -17,11 +17,11 @@ mod app_settings {
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::settings::{
     CongestionControllerDto, ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto,
-    GeneralSettingsDto, NetworkSettingsDto, PairingSettingsDto, QuickPanelDoubleTapModifierDto,
-    QuickPanelPositionDto, QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto,
-    RuleEvaluationDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto, ShortcutKeyDto,
-    StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto, TrayIconDto, UpdateChannelDto,
-    WindowSizeDto,
+    GeneralSettingsDto, NetworkSettingsDto, PairingSettingsDto, PeerAddressDto,
+    QuickPanelDoubleTapModifierDto, QuickPanelPositionDto, QuickPanelSettingsDto,
+    RetentionPolicyDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto, SettingsDto,
+    SettingsPatchDto, ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto,
+    TrayIconDto, UpdateChannelDto, WindowSizeDto,
 };
 use uc_desktop_settings::{
     DesktopSettings, DesktopSettingsPatch, DoubleTapModifier,
@@ -29,6 +29,24 @@ use uc_desktop_settings::{
     QuickPanelSettingsPatch as DesktopQuickPanelSettingsPatch, ShortcutBinding, StartupMode, Theme,
     TrayIcon, UpdateChannel, WindowSize,
 };
+
+impl IntoDomain<uc_engine::PeerAddressSetting> for PeerAddressDto {
+    fn into_domain(self) -> uc_engine::PeerAddressSetting {
+        uc_engine::PeerAddressSetting {
+            ip: self.ip,
+            port: self.port,
+        }
+    }
+}
+
+impl IntoApiDto<PeerAddressDto> for uc_engine::PeerAddressSetting {
+    fn into_api_dto(self) -> PeerAddressDto {
+        PeerAddressDto {
+            ip: self.ip,
+            port: self.port,
+        }
+    }
+}
 
 impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
     fn into_domain(self) -> app_settings::SettingsPatch {
@@ -95,6 +113,12 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                 .network
                 .map(|network| app_settings::NetworkSettingsPatch {
                     bind_port: network.bind_port,
+                    peer_addresses: network.peer_addresses.map(|changes| {
+                        changes
+                            .into_iter()
+                            .map(|(device, address)| (device, address.map(IntoDomain::into_domain)))
+                            .collect()
+                    }),
                     allow_relay_fallback: network.allow_relay_fallback,
                     allow_overlay_network_addrs: network.allow_overlay_network_addrs,
                     custom_relay_urls: network.custom_relay_urls,
@@ -192,6 +216,12 @@ impl IntoApiDto<SettingsDto> for (app_settings::SettingsView, &DesktopSettings) 
             },
             network: NetworkSettingsDto {
                 bind_port: view.network.bind_port,
+                peer_addresses: view
+                    .network
+                    .peer_addresses
+                    .into_iter()
+                    .map(|(device, address)| (device, address.into_api_dto()))
+                    .collect(),
                 allow_relay_fallback: view.network.allow_relay_fallback,
                 allow_overlay_network_addrs: view.network.allow_overlay_network_addrs,
                 custom_relay_urls: view.network.custom_relay_urls,
@@ -548,6 +578,47 @@ pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
 #[cfg(test)]
 mod network_tests {
     use super::*;
+
+    #[test]
+    fn peer_address_patch_projects_only_supplied_devices_and_null_removals() {
+        let dto: SettingsPatchDto = serde_json::from_value(serde_json::json!({
+            "network": {"peerAddresses": {
+                "device-a": {"ip": "10.10.0.2", "port": 51820}, "device-b": null
+            }}
+        }))
+        .unwrap();
+        let patch: app_settings::SettingsPatch = dto.into_domain();
+        let changes = patch.network.unwrap().peer_addresses.unwrap();
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes["device-a"].as_ref().unwrap().ip, "10.10.0.2");
+        assert_eq!(changes["device-a"].as_ref().unwrap().port, 51820);
+        assert_eq!(changes["device-b"], None);
+        let absent: SettingsPatchDto =
+            serde_json::from_value(serde_json::json!({"network": {}})).unwrap();
+        let patch: app_settings::SettingsPatch = absent.into_domain();
+        assert!(patch.network.unwrap().peer_addresses.is_none());
+    }
+
+    #[test]
+    fn peer_address_summary_round_trips_through_wire() {
+        let mut summary = app_settings::SettingsView::default();
+        summary.network.peer_addresses.insert(
+            "device-a".into(),
+            uc_engine::PeerAddressSetting {
+                ip: "fd00::2".into(),
+                port: 51820,
+            },
+        );
+        let dto: SettingsDto = (summary, &DesktopSettings::default()).into_api_dto();
+        let wire = serde_json::to_value(&dto).unwrap();
+        assert_eq!(
+            wire["network"]["peerAddresses"]["device-a"],
+            serde_json::json!({"ip": "fd00::2", "port": 51820})
+        );
+        assert!(wire["network"].get("peer_addresses").is_none());
+        let decoded: SettingsDto = serde_json::from_value(wire).unwrap();
+        assert_eq!(decoded.network.peer_addresses, dto.network.peer_addresses);
+    }
 
     #[test]
     fn bind_port_patch_preserves_absent_random_and_fixed_values() {

@@ -5255,6 +5255,12 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "peerAddresses": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PeerAddressDto"
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -5295,6 +5301,18 @@
             },
             "nullable": true,
             "type": "array"
+          },
+          "peerAddresses": {
+            "additionalProperties": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/PeerAddressDto"
+                }
+              ],
+              "nullable": true
+            },
+            "description": "Only listed devices change. An address sets or replaces a hint; null removes it. Omitted devices stay unchanged. Applies immediately without restart.",
+            "type": "object"
           }
         },
         "type": "object"
@@ -5369,6 +5387,26 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "PeerAddressDto": {
+        "description": "A user-configured discovery hint. Identity and LAN-only policy remain Engine-owned.",
+        "properties": {
+          "ip": {
+            "description": "Unicast IPv4 or IPv6 literal, never a hostname.",
+            "type": "string"
+          },
+          "port": {
+            "format": "int32",
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ip",
+          "port"
+        ],
         "type": "object"
       },
       "PeerSnapshotDto": {
@@ -7560,7 +7598,7 @@
         "description": "Folded payload for `PUT /settings` (ADR-008 §0.1).\n\nThe current handler returns `success` and `restartRequired` as top-level\nsiblings of the `{data,ts}` envelope. This DTO folds those siblings INTO the\npayload so the endpoint can return `ApiEnvelope<SettingsUpdateResultDto>`\nwith no bespoke wrapper. P1 only defines the type; the handler is rewired in\nP2.",
         "properties": {
           "restartRequired": {
-            "description": "Whether the patch touched fields requiring a daemon restart (currently\nonly `network.*`).",
+            "description": "Whether the patch touched fields requiring a daemon restart (currently\nbind-time network options and diagnostics).",
             "type": "boolean"
           },
           "success": {

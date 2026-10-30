@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::time::Duration;
 
@@ -25,7 +25,7 @@ use utoipa::ToSchema;
 pub struct SettingsUpdateResultDto {
     pub success: bool,
     /// Whether the patch touched fields requiring a daemon restart (currently
-    /// only `network.*`).
+    /// bind-time network options and diagnostics).
     pub restart_required: bool,
 }
 
@@ -368,6 +368,7 @@ mod relay_credential_wire_tests {
                 auto_save_dir: None,
             },
             network: NetworkSettingsDto {
+                peer_addresses: BTreeMap::new(),
                 allow_relay_fallback: true,
                 allow_overlay_network_addrs: false,
                 custom_relay_urls: vec![relay_url.to_string()],
@@ -847,6 +848,8 @@ pub enum CongestionControllerDto {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkSettingsDto {
+    #[serde(default)]
+    pub peer_addresses: BTreeMap<String, PeerAddressDto>,
     pub allow_relay_fallback: bool,
     #[serde(default)]
     pub allow_overlay_network_addrs: bool,
@@ -858,6 +861,37 @@ pub struct NetworkSettingsDto {
     #[serde(default)]
     #[schema(maximum = 65535)]
     pub bind_port: Option<u16>,
+}
+
+/// A user-configured discovery hint. Identity and LAN-only policy remain Engine-owned.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerAddressDto {
+    /// Unicast IPv4 or IPv6 literal, never a hostname.
+    pub ip: String,
+    #[schema(minimum = 1, maximum = 65535)]
+    pub port: u16,
+}
+
+impl fmt::Debug for PeerAddressDto {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PeerAddressDto([REDACTED])")
+    }
+}
+
+// Utoipa v4 cannot derive nullable referenced map values. Build the map schema
+// explicitly so generated clients preserve null as the item-removal operation.
+fn peer_address_patch_schema() -> utoipa::openapi::Object {
+    use utoipa::openapi::{schema::AllOfBuilder, ObjectBuilder, Ref, Schema};
+    ObjectBuilder::new()
+        .description(Some("Only listed devices change. An address sets or replaces a hint; null removes it. Omitted devices stay unchanged. Applies immediately without restart."))
+        .additional_properties(Some(Schema::AllOf(
+            AllOfBuilder::new()
+                .item(Ref::from_schema_name("PeerAddressDto"))
+                .nullable(true)
+                .build(),
+        )))
+        .build()
 }
 
 /// 快捷面板出现位置 DTO。wire form: `center` | `follow_cursor`。
@@ -1045,6 +1079,11 @@ pub struct FileSyncSettingsPatchDto {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkSettingsPatchDto {
+    /// Absent = unchanged. Only listed devices change; null removes an entry.
+    /// Changes apply immediately without a network restart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(schema_with = peer_address_patch_schema)]
+    pub peer_addresses: Option<BTreeMap<String, Option<PeerAddressDto>>>,
     pub allow_relay_fallback: Option<bool>,
     pub allow_overlay_network_addrs: Option<bool>,
     pub custom_relay_urls: Option<Vec<String>>,
@@ -1095,8 +1134,45 @@ mod network_dto_tests {
     use super::*;
 
     #[test]
+    fn peer_addresses_preserve_item_scoped_set_remove_and_absence() {
+        let wire = serde_json::json!({"peerAddresses": {
+            "device-a": {"ip": "fd00::2", "port": 51820}, "device-b": null
+        }});
+        let patch: NetworkSettingsPatchDto = serde_json::from_value(wire.clone()).unwrap();
+        let changes = patch.peer_addresses.as_ref().unwrap();
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes["device-a"].as_ref().unwrap().ip, "fd00::2");
+        assert_eq!(changes["device-b"], None);
+        let encoded = serde_json::to_value(&patch).unwrap();
+        assert_eq!(encoded["peerAddresses"], wire["peerAddresses"]);
+        assert!(encoded.get("peer_addresses").is_none());
+        let decoded: NetworkSettingsPatchDto = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded.peer_addresses, patch.peer_addresses);
+        let absent: NetworkSettingsPatchDto = serde_json::from_str("{}").unwrap();
+        assert!(absent.peer_addresses.is_none());
+        assert!(serde_json::to_value(absent)
+            .unwrap()
+            .get("peerAddresses")
+            .is_none());
+        let address = changes["device-a"].as_ref().unwrap();
+        assert!(!format!("{patch:?}").contains(&address.ip));
+        assert!(!format!("{address:?}").contains("51820"));
+    }
+
+    #[test]
+    fn peer_address_patch_schema_allows_null_map_values() {
+        let schema = serde_json::to_value(peer_address_patch_schema()).unwrap();
+        assert_eq!(schema["additionalProperties"]["nullable"], true);
+        assert_eq!(
+            schema["additionalProperties"]["allOf"][0]["$ref"],
+            "#/components/schemas/PeerAddressDto"
+        );
+    }
+
+    #[test]
     fn dto_serializes_camel_case_wire() {
         let dto = NetworkSettingsDto {
+            peer_addresses: BTreeMap::new(),
             allow_relay_fallback: true,
             allow_overlay_network_addrs: false,
             custom_relay_urls: Vec::new(),
@@ -1106,7 +1182,7 @@ mod network_dto_tests {
         let json = serde_json::to_string(&dto).expect("serialize");
         assert_eq!(
             json,
-            r#"{"allowRelayFallback":true,"allowOverlayNetworkAddrs":false,"customRelayUrls":[],"congestionController":"cubic","bindPort":51820}"#
+            r#"{"peerAddresses":{},"allowRelayFallback":true,"allowOverlayNetworkAddrs":false,"customRelayUrls":[],"congestionController":"cubic","bindPort":51820}"#
         );
         assert_eq!(
             serde_json::from_str::<NetworkSettingsDto>(&json).unwrap(),
@@ -1135,6 +1211,7 @@ mod network_dto_tests {
         assert!(!dto.allow_overlay_network_addrs);
         assert!(dto.custom_relay_urls.is_empty());
         assert_eq!(dto.bind_port, None);
+        assert!(dto.peer_addresses.is_empty());
     }
 
     #[test]

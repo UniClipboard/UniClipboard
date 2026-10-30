@@ -45,8 +45,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # iroh P2P bench deps (optional, gated behind the `iroh` feature)
 # Both come from the Engine git source (its third_party/iroh submodule) at the same
 # revision as the root `uc-engine` dependency, so the workspace resolves one iroh stack.
-iroh = { git = "https://github.com/UniClipboard/Engine.git", rev = "e3bd7bd20d6be47799607d3d7b896002cd6c9442", optional = true }
-iroh-blobs = { git = "https://github.com/UniClipboard/Engine.git", rev = "e3bd7bd20d6be47799607d3d7b896002cd6c9442", optional = true }
+iroh = { git = "https://github.com/UniClipboard/Engine.git", rev = "e763515dfc0aaf4ba6f2c9b05200e1d39db167d4", optional = true }
+iroh-blobs = { git = "https://github.com/UniClipboard/Engine.git", rev = "e763515dfc0aaf4ba6f2c9b05200e1d39db167d4", optional = true }
 noq-proto = { version = "1.3", optional = true }
 futures-lite = { version = "2", optional = true }
 time = { version = "0.3", features = ["formatting", "macros"], optional = true }

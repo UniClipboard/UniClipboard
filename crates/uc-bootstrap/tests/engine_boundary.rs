@@ -10,7 +10,7 @@ fn daemon_production_host_starts_and_stops_only_the_engine() {
     assert!(
         source.contains("prepare_desktop_engine_host")
             && source.contains("Engine::start")
-            && compact.contains("engine.shutdown_until_complete()"),
+            && compact.contains("engine.shutdown_until_released()"),
         "daemon host must own one Engine from platform preparation through complete shutdown"
     );
     assert!(

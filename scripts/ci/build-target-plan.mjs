@@ -86,7 +86,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     platform,
     plan: JSON.stringify(
       buildTargetPlan(platform, {
-        windowsRunner: platform === 'windows-arm64' ? 'windows-latest' : (process.env.WINDOWS_RUNNER || 'windows-latest'),
+        windowsRunner:
+          platform === 'windows-arm64'
+            ? 'windows-latest'
+            : process.env.WINDOWS_RUNNER || 'windows-latest',
         signpathProduction: process.env.SIGNPATH_PRODUCTION === 'true',
       })
     ),

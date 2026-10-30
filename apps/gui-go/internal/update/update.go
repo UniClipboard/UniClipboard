@@ -23,6 +23,9 @@ import (
 	"golang.org/x/mod/semver"
 )
 
+// ErrInstallUnsupported indicates that the current installation cannot install updates in place.
+var ErrInstallUnsupported = errors.New("in-place update install is not implemented on this platform")
+
 // Channel names an update feed. The empty channel resolves to Stable.
 type Channel string
 

@@ -123,7 +123,7 @@ jobs:
 
       - name: Inspect Windows build tools
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           whoami
           Get-CimInstance Win32_Service -Filter "Name LIKE 'actions.runner.%'" | Select-Object Name, StartName, State | Format-Table

@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-10-30 06:22 UTC",
+  "checked_at": "2026-10-30 09:07 UTC",
   "channels": {
     "aur": {
       "status": "published",
-      "version": "1.5.0.r7.g12b93b5-1"
+      "version": "1.6.0.alpha.1.r2.g4ff837b-1"
     },
     "brew-gui": {
       "status": "published",

@@ -126,7 +126,10 @@ jobs:
         shell: powershell
         run: |
           $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
-          $args = @('modify', '--installPath', 'D:\BuildTools', '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64', '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang', '--quiet', '--norestart', '--wait')
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $channel = & $vswhere -all -products '*' -property channelId | Select-Object -First 1
+          if (-not $channel) { throw 'Visual Studio channel not found' }
+          $args = @('modify', '--channelId', $channel, '--installPath', 'D:\BuildTools', '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64', '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang', '--quiet', '--norestart')
           $process = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
           Write-Output "Installer exit code: $($process.ExitCode)"
           if ($process.ExitCode -ne 0) { exit $process.ExitCode }

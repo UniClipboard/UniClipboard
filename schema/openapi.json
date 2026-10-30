@@ -10349,6 +10349,9 @@
           "410": {
             "description": "Thumbnail unavailable"
           },
+          "423": {
+            "description": "Encryption session locked"
+          },
           "500": {
             "description": "Thumbnail read failed"
           },

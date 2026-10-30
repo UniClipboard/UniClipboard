@@ -36,7 +36,14 @@ export function useContentUnlocked(enabled = true) {
         }
       }
     }
-    const unlisten = listen('content-lock-changed', () => void check())
+    const onChange = () => {
+      // Events carry no authoritative state. Hide content and invalidate
+      // pending image responses before asking the host for the current grant.
+      clearBlobImageCache()
+      setResult({ generation, unlocked: false })
+      void check()
+    }
+    const unlisten = listen('content-lock-changed', onChange)
     void unlisten
       .then(() => {
         if (!cancelled) void check()
@@ -44,7 +51,7 @@ export function useContentUnlocked(enabled = true) {
       .catch(() => {
         log.warn('Content lock listener unavailable; status checks remain active')
       })
-    const unsubscribe = daemonWs.subscribe(['encryption', 'content-lock'], () => void check())
+    const unsubscribe = daemonWs.subscribe(['encryption', 'content-lock'], onChange)
     const timer = window.setInterval(() => void check(), 5_000)
     window.addEventListener('focus', check)
     void check()

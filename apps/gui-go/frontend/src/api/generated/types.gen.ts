@@ -5829,6 +5829,10 @@ export type GetClipboardEntryThumbnailErrors = {
      */
     410: unknown;
     /**
+     * Encryption session locked
+     */
+    423: unknown;
+    /**
      * Thumbnail read failed
      */
     500: unknown;

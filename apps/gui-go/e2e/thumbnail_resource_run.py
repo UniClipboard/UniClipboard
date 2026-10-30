@@ -170,6 +170,21 @@ def main():
                 raise AssertionError('missing entry unexpectedly succeeded')
             except urllib.error.HTTPError as error:
                 assert error.code == 404, f'missing entry returned {error.code}'
+            request(base, '/encryption/lock', 'POST', b'{}', hdr)
+            for _ in range(3):
+                try:
+                    request(base, thumbnail_paths[0], headers=hdr)
+                    raise AssertionError('encrypted session lock leaked a thumbnail')
+                except urllib.error.HTTPError as error:
+                    assert error.code == 423, f'encryption lock returned {error.code}'
+            request(base, '/content-lock/unlock', 'POST', json.dumps({'passphrase': PASSPHRASE}).encode(), hdr)
+            original_after_unlock, _ = request(base, original_paths[0], headers=hdr)
+            assert hashlib.sha256(original_after_unlock).hexdigest() == images[0]['original_sha256']
+            unlocked_thumbnail, _ = request(base, thumbnail_paths[0], headers=hdr)
+            assert unlocked_thumbnail, 'thumbnail did not load after unlock'
+            result['encryption_lock_repeated_status'] = [423, 423, 423]
+            result['original_unchanged_after_unlock'] = True
+            result['thumbnail_after_unlock'] = True
             request(base, '/content-lock/revoke', 'POST', b'{}', hdr)
             try:
                 request(base, thumbnail_paths[0], headers=hdr)

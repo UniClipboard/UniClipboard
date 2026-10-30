@@ -34,6 +34,7 @@ pub fn router() -> Router<DaemonApiState> {
         (status = 200, description = "Thumbnail bytes", content_type = "application/octet-stream", body = Vec<u8>),
         (status = 404, description = "Entry not found"),
         (status = 410, description = "Thumbnail unavailable"),
+        (status = 423, description = "Encryption session locked"),
         (status = 503, description = "Thumbnail not ready; retry later"),
         (status = 500, description = "Thumbnail read failed")
     )
@@ -69,6 +70,7 @@ async fn get_entry_thumbnail(
                     (StatusCode::SERVICE_UNAVAILABLE, "thumbnail not ready")
                 }
                 1466 => (StatusCode::GONE, "thumbnail unavailable"),
+                1467 => (StatusCode::LOCKED, "encryption session locked"),
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "thumbnail read failed"),
             };
             if status == StatusCode::SERVICE_UNAVAILABLE {

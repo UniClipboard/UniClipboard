@@ -14,7 +14,10 @@ import {
 import { daemonClient } from '../src/api/daemon/client'
 import { DaemonApiError, DaemonErrorCode } from '../src/api/daemon/errors'
 import { useBlobImageObjectUrl } from '../src/hooks/useBlobImageObjectUrl'
+import { useContentUnlocked } from '../src/hooks/useContentUnlocked'
+import { daemonWs } from '../src/lib/daemon-ws'
 import { loadImageBlob } from '../src/lib/image-handoff'
+import { commands } from '../src/lib/ipc'
 
 const input = await Bun.stdin.text()
 const { base, authorization, originalPath, thumbnailPath, expectedSha256 } = JSON.parse(input)
@@ -24,14 +27,19 @@ const assert = (condition: unknown, message: string) => {
 let pauseFirst = false
 let release: (() => void) | undefined
 let started: (() => void) | undefined
-const startedFirst = new Promise<void>(resolve => {
+let startedFirst = new Promise<void>(resolve => {
   started = resolve
 })
 let requests = 0
 let busyResponses = 0
+let lockedResponses = 0
 // The session bridge is host-owned. Keep HTTP and the production cache real.
 daemonClient.fetchBlob = async (path: string): Promise<Blob> => {
   requests++
+  if (lockedResponses > 0) {
+    lockedResponses--
+    throw new DaemonApiError(DaemonErrorCode.ENCRYPTION_NOT_READY, 'session locked')
+  }
   if (busyResponses > 0) {
     busyResponses--
     throw new DaemonApiError(DaemonErrorCode.SERVICE_UNAVAILABLE, 'thumbnail busy')
@@ -96,10 +104,81 @@ await act(async () => {
 })
 assert(requests === beforeHidden, 'retry continued after hiding')
 busyResponses = 0
+clearBlobImageCache()
+lockedResponses = 1
+await act(async () => {
+  root.render(React.createElement(Probe, { enabled: true }))
+})
+const whileLocked = requests
+await act(async () => {
+  await new Promise(resolve => setTimeout(resolve, 750))
+})
+assert(requests === whileLocked, 'locked thumbnail retried without unlock')
+await act(async () => {
+  root.render(React.createElement(Probe, { enabled: false }))
+})
+await act(async () => {
+  root.render(React.createElement(Probe, { enabled: true }))
+})
+await act(async () => {
+  await new Promise(resolve => setTimeout(resolve, 250))
+})
+assert(hookUrl, 'thumbnail did not reload after confirmed unlock')
 await act(async () => {
   root.unmount()
 })
 clearBlobImageCache()
+
+// Exercise the real content-lock hook with a simulated host grant event.
+const originalQuery = commands.getContentUnlocked
+const originalSubscribe = daemonWs.subscribe
+let grant = true
+let change: (() => void) | undefined
+commands.getContentUnlocked = async () => grant
+daemonWs.subscribe = ((_topics: unknown, callback: () => void) => {
+  change = callback
+  return () => {}
+}) as typeof daemonWs.subscribe
+const lockRoot = createRoot(dom.window.document.getElementById('root')!)
+let unlocked: boolean | null = null
+function LockProbe() {
+  unlocked = useContentUnlocked().unlocked
+  return null
+}
+await act(async () => {
+  lockRoot.render(React.createElement(LockProbe))
+})
+assert(unlocked === true, 'initial host grant was not observed')
+startedFirst = new Promise<void>(resolve => {
+  started = resolve
+})
+pauseFirst = true
+const pendingLock = getBlobImageObjectUrl(`${thumbnailPath}?lockrace=1`)
+await startedFirst
+grant = false
+await act(async () => {
+  change?.()
+})
+assert(unlocked === false, 'lock event did not hide content')
+release?.()
+assert((await pendingLock) === null, 'lock event allowed a stale response into the cache')
+assert(
+  peekBlobImageObjectUrl(`${thumbnailPath}?lockrace=1`) === null,
+  'lock event retained a thumbnail'
+)
+grant = true
+await act(async () => {
+  change?.()
+})
+assert(unlocked === true, 'host unlock was not observed')
+await act(async () => {
+  lockRoot.unmount()
+})
+commands.getContentUnlocked = originalQuery
+daemonWs.subscribe = originalSubscribe
+startedFirst = new Promise<void>(resolve => {
+  started = resolve
+})
 dom.window.close()
 assert(peekBlobImageObjectUrl(originalPath) === null, 'clear retained an original URL')
 let revoked = false
@@ -146,6 +225,9 @@ console.log(
     lruEviction: true,
     retryAfterBusy: true,
     hiddenRetryCancelled: true,
+    noRetryWhileLocked: true,
+    reloadAfterUnlock: true,
+    lockEventInvalidatesPendingResponse: true,
     requests,
     runtime: 'bun',
     hostSessionBridge: 'replaced',

@@ -34,15 +34,27 @@ on:
         type: string
         default: 'main'
 
+# Serialize publication against the same base without cancelling an active release.
+concurrency:
+  group: prepare-release-${{ inputs.base_branch || 'main' }}
+  cancel-in-progress: false
+
+env:
+  BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
+  HUSKY: '0'
+
 jobs:
   prepare:
+    name: Prepare version
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-    env:
-      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
-      BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      base_sha: ${{ steps.base.outputs.sha }}
+      previous_tag: ${{ steps.changelog-context.outputs.previous_tag }}
+      previous_version: ${{ steps.changelog-context.outputs.previous_version }}
+      range_expression: ${{ steps.changelog-context.outputs.range_expression }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -56,6 +68,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
+
+      - name: Pin release base
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Determine version
         id: version
@@ -118,8 +134,6 @@ jobs:
           rm -f "${TEMP_OUTPUT}"
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
 
       - name: Refresh Cargo.lock for workspace members
         run: cargo update --workspace
@@ -142,6 +156,63 @@ jobs:
             --version "${VERSION}" \
             --date "${RELEASE_DATE}"
 
+      - name: Commit version bump
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/gui-go/app.json Cargo.toml Cargo.lock packages/desktop-host-go/buildinfo/buildinfo.go docs/changelog/
+          git commit -m "chore: bump version to ${VERSION}"
+
+      - name: Save release checkpoint
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: git bundle create "$RUNNER_TEMP/release.bundle" HEAD "^$BASE_SHA"
+
+      - name: Upload release checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-version
+          path: ${{ runner.temp }}/release.bundle
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  format:
+    name: Format release
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+    steps:
+      - name: Checkout pinned base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Download release checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: release-version
+          path: ${{ runner.temp }}/release-checkpoint
+
+      - name: Restore release branch
+        run: |
+          git fetch "$RUNNER_TEMP/release-checkpoint/release.bundle" HEAD
+          git checkout -B "release/v$VERSION" FETCH_HEAD
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -155,23 +226,69 @@ jobs:
           cargo fmt --all
           bun run format
 
-      - name: Commit version bump
+      - name: Commit release formatting
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          git add package.json apps/gui-go/app.json Cargo.toml Cargo.lock packages/desktop-host-go/buildinfo/buildinfo.go docs/changelog/
+          git diff --cached --quiet || git commit -m "chore: format release v${VERSION}"
+
+      - name: Save release checkpoint
+        run: git bundle create "$RUNNER_TEMP/release.bundle" HEAD "^$BASE_SHA"
+
+      - name: Upload release checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-formatted
+          path: ${{ runner.temp }}/release.bundle
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  changelog:
+    name: Finalize changelog
+    needs: [prepare, format]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+    steps:
+      - name: Checkout pinned base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Download release checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: release-formatted
+          path: ${{ runner.temp }}/release-checkpoint
+
+      - name: Restore release branch
+        run: |
+          git fetch "$RUNNER_TEMP/release-checkpoint/release.bundle" HEAD
+          git checkout -B "release/v$VERSION" FETCH_HEAD
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json apps/gui-go/app.json Cargo.toml Cargo.lock packages/desktop-host-go/buildinfo/buildinfo.go docs/changelog/
-          git commit -m "chore: bump version to ${VERSION}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
 
       - name: Render Codex changelog prompt
         if: env.CODEX_API_KEY != ''
         id: render-codex-changelog-prompt
         env:
           CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
-          VERSION: ${{ steps.version.outputs.version }}
-          PREVIOUS_TAG: ${{ steps.changelog-context.outputs.previous_tag }}
-          PREVIOUS_VERSION: ${{ steps.changelog-context.outputs.previous_version }}
-          RANGE_EXPRESSION: ${{ steps.changelog-context.outputs.range_expression }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
+          PREVIOUS_VERSION: ${{ needs.prepare.outputs.previous_version }}
+          RANGE_EXPRESSION: ${{ needs.prepare.outputs.range_expression }}
           CHANNEL: ${{ inputs.channel }}
         run: |
           node --input-type=module <<'EOF'
@@ -214,29 +331,80 @@ jobs:
             exit 1
           fi
 
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           node scripts/changelog-draft.js validate --version "${VERSION}"
 
       - name: Commit codex changes
         if: env.CODEX_API_KEY != ''
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           git add docs/changelog/
           git diff --cached --quiet || git commit -m "docs: polish changelog for v${VERSION}"
 
+      - name: Save release checkpoint
+        run: git bundle create "$RUNNER_TEMP/release.bundle" HEAD "^$BASE_SHA"
+
+      - name: Upload release checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-finalized
+          path: ${{ runner.temp }}/release.bundle
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  publish:
+    name: Create release PR
+    needs: [prepare, changelog]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Checkout pinned base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Download release checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: release-finalized
+          path: ${{ runner.temp }}/release-checkpoint
+
+      - name: Restore release branch
+        run: |
+          git fetch "$RUNNER_TEMP/release-checkpoint/release.bundle" HEAD
+          git checkout -B "release/v$VERSION" FETCH_HEAD
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Push release branch
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          git push origin "release/v${VERSION}"
+          BRANCH="release/v$VERSION"
+          REMOTE_SHA=$(git ls-remote --heads origin "refs/heads/$BRANCH" | cut -f1)
+          if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" != "$(git rev-parse HEAD)" ]; then
+            echo "Remote branch $BRANCH differs from the finalized checkpoint; refusing to overwrite it." >&2
+            exit 1
+          fi
+          git push origin "HEAD:refs/heads/$BRANCH"
 
       - name: Create pull request
         env:
           GITHUB_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          PR_URL=$(gh pr create \
-            --title "release: v${VERSION}" \
-            --body "$(cat <<EOF
+          PR_URL=$(gh pr list --state open --base "$BASE_BRANCH" --head "release/v$VERSION" --json url --jq '.[0].url // empty')
+          if [ -n "$PR_URL" ]; then
+            echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          cat > "$RUNNER_TEMP/release-pr-body.md" <<EOF
           ## Release v${VERSION}
 
           This PR prepares the release of v${VERSION} (base: \`${BASE_BRANCH}\`).
@@ -252,7 +420,9 @@ jobs:
 
           > **Do not manually create a tag.** Merging this PR handles everything.
           EOF
-          )" \
+          PR_URL=$(gh pr create \
+            --title "release: v${VERSION}" \
+            --body-file "$RUNNER_TEMP/release-pr-body.md" \
             --base "${BASE_BRANCH}" \
             --head "release/v${VERSION}")
 
@@ -261,7 +431,6 @@ jobs:
 
       - name: Summary
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           echo "## Release Preparation Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** v${VERSION}" >> $GITHUB_STEP_SUMMARY

@@ -26,7 +26,7 @@ export function buildTargetPlan(
     },
     'windows-arm64': {
       platform: 'windows-latest',
-      runner: windowsRunner,
+      runner: 'windows-latest',
       target: 'aarch64-pc-windows-msvc',
       args: '--target aarch64-pc-windows-msvc',
     },

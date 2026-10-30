@@ -121,17 +121,6 @@ jobs:
           # MBX inherits predictions from earlier Cargo.lock revisions through Git history.
           fetch-depth: 0
 
-      - name: Configure Windows ARM64 compiler
-        if: runner.os == 'Windows' && runner.environment == 'self-hosted' && matrix.target == 'aarch64-pc-windows-msvc'
-        shell: powershell
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
-          if (-not $installation) { throw 'Visual Studio ARM64 and LLVM components are required' }
-          $clang = Join-Path $installation 'VC\Tools\Llvm\x64\bin'
-          if (-not (Test-Path (Join-Path $clang 'clang.exe'))) { throw 'Visual Studio clang.exe was not found' }
-          Add-Content -Path $env:GITHUB_PATH -Value $clang -Encoding utf8
-
       - name: setup node
         uses: actions/setup-node@v6
         with:

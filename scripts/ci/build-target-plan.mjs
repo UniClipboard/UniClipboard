@@ -26,7 +26,7 @@ export function buildTargetPlan(
     },
     'windows-arm64': {
       platform: 'windows-latest',
-      runner: 'windows-latest',
+      runner: windowsRunner,
       target: 'aarch64-pc-windows-msvc',
       args: '--target aarch64-pc-windows-msvc',
     },
@@ -86,7 +86,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     platform,
     plan: JSON.stringify(
       buildTargetPlan(platform, {
-        windowsRunner: process.env.WINDOWS_RUNNER || 'windows-latest',
+        windowsRunner: platform === 'windows-arm64' ? 'windows-latest' : (process.env.WINDOWS_RUNNER || 'windows-latest'),
         signpathProduction: process.env.SIGNPATH_PRODUCTION === 'true',
       })
     ),

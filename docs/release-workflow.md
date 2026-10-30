@@ -9,6 +9,17 @@
 `v1.2.0-alpha.3` tag。重复前缀、空白、数字前导零及不符合现有版本格式的输入会失败。
 本地 `bump-version.js --to` 仍使用不带 `v` 的版本号。
 
+准备流程分为四个串行作业：`prepare`（版本与生成文件）、`format`（格式化）、
+`changelog`（完善并校验更新日志）、`publish`（推送分支并创建 PR）。前三个作业
+各自将提交保存为 Git bundle 构建产物，保留 30 天；后续作业从固定的基准提交
+恢复成果，不需要重新计算版本或重复已成功的更新日志生成。
+
+某个作业失败后，在该次运行中选择 **Re-run failed jobs**，即可复用此前成功
+作业的成果；不要选择 **Re-run all jobs**，也不必重新触发工作流。
+例如，创建 PR 失败后只需重跑 `publish`。该作业允许重复推送相同提交并复用
+已有的开放 PR；如果远端发布分支已被修改，则停止，避免覆盖人工改动。
+构建产物过期或被删除后，无法继续从该阶段恢复。相同基准分支的准备流程串行执行。
+
 > **当前状态：** 标准流程是手动 `prepare-release` → release PR → 合并 → `tag-on-merge` 推送版本 tag → `release.yml`。`release.yml` 现在在对外写入前执行生产签名前提、固定源提交、版本一致性与资产门禁；缺少生产 Windows 签名后端时它失败关闭。Go/Wails 宿主的流水线、门禁和离线验收见 [`docs/architecture/gui-go-release-pipeline.md`](architecture/gui-go-release-pipeline.md)。下文关于安装包、签名与渠道的部分仍是旧流水线的设计记录，以前述文档为准。版本号脚本仍然可用。
 
 ## 版本管理脚本

@@ -50,6 +50,19 @@ describe('Settings API', () => {
     teardownMockClient()
   })
 
+  it('sends item-scoped address sets and null removals through the generated SDK', async () => {
+    for (const address of [{ ip: 'fd00::2', port: 51820 }, null]) {
+      updateSdkMock.mockResolvedValueOnce({
+        data: { data: { success: true, restartRequired: false }, ts: Date.now() },
+      })
+      await updateSettings({ network: { peerAddresses: { peer: address } } })
+      expect(updateSdkMock).toHaveBeenLastCalledWith({
+        body: { network: { peerAddresses: { peer: address } } },
+        throwOnError: true,
+      })
+    }
+  })
+
   // ── GET /settings ───────────────────────────────────────────
 
   describe('getSettings()', () => {

@@ -1669,6 +1669,19 @@
     "deletingLabel": "Deleting..."
   },
   "devices": {
+    "directAddress": {
+      "title": "Direct address",
+      "hint": "For VPNs or networks where devices cannot find each other automatically. Enter the peer’s IP address and P2P UDP port. LAN-only restrictions still apply.",
+      "ip": "IP address",
+      "port": "Port",
+      "save": "Save",
+      "clear": "Clear",
+      "saving": "Saving…",
+      "invalidIp": "Enter a unicast IPv4 or IPv6 address, not a hostname.",
+      "invalidPort": "Enter a port from 1 to 65535.",
+      "saveError": "Could not save the direct address.",
+      "loadError": "Could not load the direct address."
+    },
     "title": "Device Management",
     "addNew": "Invite New Device",
     "thisDevice": {

@@ -4,6 +4,7 @@ import { deriveBadgeKind, derivePeerStatusTone } from '@/components/device/conne
 import type { DeviceRowStatus } from '@/components/device/device-trust-view'
 import { usePeerSyncPreferences } from '@/hooks/usePeerSyncPreferences'
 import { useSettingSelector } from '@/hooks/useSetting'
+import { DevicesKitPeerAddress } from '@/pages/devices-kit/DevicesKitPeerAddress'
 import { Button, Disclosure, EntityHeader, SettingsGroup, SettingsRow, Text } from '@/ui-kit'
 import { deviceIcon, dotTone } from './devices-kit-model'
 import { DevicesKitCopyButton } from './DevicesKitCopyButton'
@@ -74,6 +75,7 @@ export function DevicesKitPeerDetail({
         globalSyncOff={globalSyncOff}
         globalFileSyncOff={globalFileSyncOff}
       />
+      <DevicesKitPeerAddress key={device.peerId} deviceId={device.peerId} />
       <Disclosure label={t('devices.settings.sections.connection')} defaultOpen={unprotected}>
         <SettingsGroup>
           <DevicesKitFact

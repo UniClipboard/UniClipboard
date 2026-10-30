@@ -8,6 +8,7 @@ import CopyIconButton from '@/components/device/CopyIconButton'
 import type { DeviceRowStatus } from '@/components/device/device-trust-view'
 import { getDeviceIcon } from '@/components/device/device-utils'
 import PanelFactRow from '@/components/device/PanelFactRow'
+import { PeerAddressControl } from '@/components/device/PeerAddressControl'
 import StatusDot from '@/components/device/StatusDot'
 import SyncPreferencesControl from '@/components/device/SyncPreferencesControl'
 import { Badge } from '@/components/ui/badge'
@@ -137,6 +138,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
               onRestoreDefaults={handleRestoreDefaults}
             />
           </section>
+          <PeerAddressControl key={deviceId} deviceId={deviceId} />
           <details
             open={!!protectionStatus && protectionStatus !== 'protected'}
             className="group overflow-hidden rounded-xl border border-border/60 bg-card text-card-foreground"

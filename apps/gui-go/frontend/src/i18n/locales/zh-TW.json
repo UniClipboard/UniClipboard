@@ -1662,6 +1662,19 @@
     "deletingLabel": "刪除中..."
   },
   "devices": {
+    "directAddress": {
+      "title": "直連位址",
+      "hint": "適用於 VPN 或裝置無法自動探索彼此的網路。請輸入對端的 IP 位址和 P2P UDP 連接埠。僅區域網路模式的限制仍然適用。",
+      "ip": "IP 位址",
+      "port": "連接埠",
+      "save": "儲存",
+      "clear": "清除",
+      "saving": "儲存中…",
+      "invalidIp": "請輸入單播 IPv4 或 IPv6 位址，不支援主機名稱。",
+      "invalidPort": "請輸入 1 至 65535 之間的連接埠。",
+      "saveError": "無法儲存直連位址。",
+      "loadError": "無法載入直連位址。"
+    },
     "title": "裝置管理",
     "addNew": "邀請新裝置",
     "deviceTrustUnavailable": "裝置狀態暫時無法使用。請稍後重試。",

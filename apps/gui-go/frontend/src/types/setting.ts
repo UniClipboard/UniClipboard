@@ -1,4 +1,4 @@
-import type { TrayIconDto } from '@/api/generated/types.gen'
+import type { PeerAddressDto, TrayIconDto } from '@/api/generated/types.gen'
 
 // ============================================================================
 // 新架构类型定义 - 与 Rust 后端 uc-core/src/settings/model.rs 完全匹配
@@ -188,11 +188,18 @@ export interface FileSyncSettings {
 export type CongestionController = 'cubic' | 'bbr3'
 
 export interface NetworkSettings {
+  peerAddresses?: Record<string, PeerAddressDto>
   allowRelayFallback: boolean
   allowOverlayNetworkAddrs: boolean
   customRelayUrls: string[]
   congestionController: CongestionController
   bindPort?: number | null
+}
+
+export type NetworkSettingsPatch = Partial<
+  Omit<NetworkSettings, 'customRelayUrls' | 'peerAddresses'>
+> & {
+  peerAddresses?: Record<string, PeerAddressDto | null>
 }
 
 export type RelayCredentialEdit =
@@ -356,7 +363,7 @@ export interface SettingContextType {
   ) => Promise<void>
   updateFileSyncSetting: (newFileSyncSetting: Partial<FileSyncSettings>) => Promise<void>
   updateNetworkSetting: (
-    newNetworkSetting: Partial<Omit<NetworkSettings, 'customRelayUrls'>>
+    newNetworkSetting: NetworkSettingsPatch
   ) => Promise<{ restartRequired: boolean }>
   mutateCustomRelay: (mutation: CustomRelayMutation) => Promise<CustomRelayMutationResult>
   updateQuickPanelSetting: (

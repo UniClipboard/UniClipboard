@@ -66,9 +66,7 @@ const baseSetting: Settings = makeBaseSettings({
   general: { theme: 'light', themeColor: 'zinc', language: 'zh-CN' },
 })
 
-type UpdateNetworkSettingFn = (
-  newNetworkSetting: Partial<NetworkSettings>
-) => Promise<{ restartRequired: boolean }>
+type UpdateNetworkSettingFn = SettingContextType['updateNetworkSetting']
 type SaveRelayFn = SettingContextType['mutateCustomRelay']
 
 interface SetupArgs {

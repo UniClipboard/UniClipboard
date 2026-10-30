@@ -19,13 +19,17 @@
  * boundary.
  */
 
+import { updateSettings } from '@/api/daemon/settings'
 import {
   getLocalDeviceInfo as getLocalDeviceInfoSdk,
   listPairedDevices as listPairedDevicesSdk,
   unpairDevice as unpairDeviceSdk,
 } from '@/api/generated/sdk.gen'
 import type { DeviceTrustSnapshotDto } from '@/api/generated/types.gen'
+import { createLogger } from '@/lib/logger'
 import { daemonClient } from './client'
+
+const log = createLogger('members')
 
 export interface LocalDeviceInfo {
   peerId: string
@@ -102,5 +106,12 @@ export async function getPairedPeersWithStatus(): Promise<SpaceMember[]> {
  * 取消配对：从本机成员仓库移除该设备。
  */
 export async function unpairDevice(peerId: string): Promise<DeviceTrustSnapshotDto> {
-  return daemonClient.callEnveloped(() => unpairDeviceSdk({ body: { peerId }, throwOnError: true }))
+  const result = await daemonClient.callEnveloped(() =>
+    unpairDeviceSdk({ body: { peerId }, throwOnError: true })
+  )
+  // Cleanup is best effort and must never delay or fail a successful unpair.
+  void updateSettings({ network: { peerAddresses: { [peerId]: null } } }).catch(() => {
+    log.warn('Failed to clear configured peer address after unpair')
+  })
+  return result
 }

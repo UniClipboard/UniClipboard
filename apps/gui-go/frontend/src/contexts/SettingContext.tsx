@@ -144,7 +144,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   // Update network settings (Phase 95); 透传 restartRequired。
   // 反向命名铁律：此处 partial 真值传递，绝不取反；UI 取反点仅在 NetworkSection.tsx。
   const updateNetworkSetting = async (
-    newNetworkSetting: Partial<Settings['network']>
+    newNetworkSetting: NonNullable<SettingsPatchInput['network']>
   ): Promise<{ restartRequired: boolean }> => {
     return await saveSetting({ network: newNetworkSetting })
   }

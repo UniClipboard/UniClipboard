@@ -1662,6 +1662,19 @@
     "deletingLabel": "删除中..."
   },
   "devices": {
+    "directAddress": {
+      "title": "直连地址",
+      "hint": "适用于 VPN 或设备无法自动发现彼此的网络。请输入对端的 IP 地址和 P2P UDP 端口。仅局域网模式的限制仍然适用。",
+      "ip": "IP 地址",
+      "port": "端口",
+      "save": "保存",
+      "clear": "清除",
+      "saving": "保存中…",
+      "invalidIp": "请输入单播 IPv4 或 IPv6 地址，不支持主机名。",
+      "invalidPort": "请输入 1 至 65535 之间的端口。",
+      "saveError": "无法保存直连地址。",
+      "loadError": "无法加载直连地址。"
+    },
     "title": "设备管理",
     "addNew": "邀请新设备",
     "thisDevice": {

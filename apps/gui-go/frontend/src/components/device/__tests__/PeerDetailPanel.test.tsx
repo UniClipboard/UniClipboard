@@ -23,6 +23,16 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }))
 
+vi.mock('@/hooks/useSetting', () => ({
+  useSettingSelector: (selector: (context: unknown) => unknown) =>
+    selector({
+      setting: { network: { peerAddresses: {} } },
+      loading: false,
+      error: null,
+      updateNetworkSetting: vi.fn(),
+    }),
+}))
+
 vi.mock('@/host/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }))

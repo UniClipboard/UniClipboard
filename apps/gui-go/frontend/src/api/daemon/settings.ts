@@ -35,6 +35,7 @@ import {
 } from '@/api/generated/sdk.gen'
 import type {
   CustomRelayMutationDto,
+  PeerAddressDto,
   RelayCredentialEditDto,
   RelayCredentialStatusDto,
   RelayProbeCredentialDto,
@@ -50,6 +51,7 @@ import type {
   CustomRelayMutation,
   CustomRelayMutationResult,
   RelayOverview,
+  NetworkSettingsPatch,
 } from '@/types/setting'
 import { daemonClient } from './client'
 import { DaemonApiError } from './errors'
@@ -226,6 +228,7 @@ export interface FileSyncSettings {
 export type CongestionController = 'cubic' | 'bbr3'
 
 export interface NetworkSettings {
+  peerAddresses?: Record<string, PeerAddressDto>
   allowRelayFallback: boolean
   allowOverlayNetworkAddrs: boolean
   customRelayUrls: string[]
@@ -319,7 +322,7 @@ export interface SettingsPatchInput {
   }
   keyboardShortcuts?: Record<string, ShortcutKey>
   fileSync?: Partial<FileSyncSettings>
-  network?: Partial<NetworkSettings>
+  network?: NetworkSettingsPatch & Pick<Partial<NetworkSettings>, 'customRelayUrls'>
   quickPanel?: Partial<QuickPanelSettings>
 }
 

@@ -1681,6 +1681,19 @@
     "deletingLabel": "Excluindo..."
   },
   "devices": {
+    "directAddress": {
+      "title": "Endereço direto",
+      "hint": "Para VPNs ou redes em que os dispositivos não se encontram automaticamente. Insira o endereço IP e a porta P2P UDP do outro dispositivo. As restrições do modo de rede local continuam em vigor.",
+      "ip": "Endereço IP",
+      "port": "Porta",
+      "save": "Salvar",
+      "clear": "Limpar",
+      "saving": "Salvando…",
+      "invalidIp": "Insira um endereço IPv4 ou IPv6 unicast, não um nome de host.",
+      "invalidPort": "Insira uma porta de 1 a 65535.",
+      "saveError": "Não foi possível salvar o endereço direto.",
+      "loadError": "Não foi possível carregar o endereço direto."
+    },
     "title": "Gerenciamento de dispositivos",
     "addNew": "Convidar novo dispositivo",
     "deviceTrustUnavailable": "O status do dispositivo está temporariamente indisponível. Tente novamente em instantes.",

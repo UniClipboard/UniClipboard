@@ -27,9 +27,7 @@ const assert = (condition: unknown, message: string) => {
 let pauseFirst = false
 let release: (() => void) | undefined
 let started: (() => void) | undefined
-let startedFirst = new Promise<void>(resolve => {
-  started = resolve
-})
+let startedFirst: Promise<void>
 let requests = 0
 let busyResponses = 0
 let lockedResponses = 0

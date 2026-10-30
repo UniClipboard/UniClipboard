@@ -552,11 +552,20 @@ async fn update_settings_handler(
 }
 
 fn network_patch_requires_restart(patch: &NetworkSettingsPatchDto) -> bool {
-    patch.bind_port.is_some()
-        || patch.allow_relay_fallback.is_some()
-        || patch.allow_overlay_network_addrs.is_some()
-        || patch.custom_relay_urls.is_some()
-        || patch.congestion_controller.is_some()
+    // Exhaustive on purpose: a new network field must decide whether it needs a restart.
+    let NetworkSettingsPatchDto {
+        peer_addresses: _,
+        allow_relay_fallback,
+        allow_overlay_network_addrs,
+        custom_relay_urls,
+        congestion_controller,
+        bind_port,
+    } = patch;
+    bind_port.is_some()
+        || allow_relay_fallback.is_some()
+        || allow_overlay_network_addrs.is_some()
+        || custom_relay_urls.is_some()
+        || congestion_controller.is_some()
 }
 
 /// POST /settings/relay-probe

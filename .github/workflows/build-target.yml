@@ -132,9 +132,18 @@ jobs:
           }
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           if (Test-Path $vswhere) { & $vswhere -all -products '*' -format json -property installationPath }
+          if (Test-Path $vswhere) {
+            foreach ($component in @('Microsoft.VisualStudio.Component.VC.Tools.ARM64', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang', 'Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset')) {
+              Write-Output "Component $component"
+              & $vswhere -all -products '*' -requires $component -property installationPath
+            }
+          }
+          Get-ChildItem 'D:\BuildTools\VC\Tools\MSVC' -Recurse -Filter cl.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+          Get-ChildItem 'D:\BuildTools\VC\Tools\Llvm' -Recurse -Filter clang.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
           foreach ($path in @('C:\Program Files\LLVM\bin\clang.exe', 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe')) {
             Write-Output "$path : $(Test-Path $path)"
           }
+          exit 1
 
       - name: setup node
         uses: actions/setup-node@v6

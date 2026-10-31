@@ -17,14 +17,17 @@ export const test = base.extend({
       })
     } finally {
       let index = 0
-      for (const context of owned) {
-        for (const page of context.pages()) {
-          if (!page.isClosed())
-            await page.screenshot({
-              path: path.join(await outputFor(selectedSuite), `context-final-${index++}.png`),
-            })
+      try {
+        for (const context of owned) {
+          for (const page of context.pages()) {
+            if (!page.isClosed())
+              await page.screenshot({
+                path: path.join(await outputFor(selectedSuite), `context-final-${index++}.png`),
+              })
+          }
         }
-        await context.close()
+      } finally {
+        for (const context of owned) await context.close()
       }
     }
   },

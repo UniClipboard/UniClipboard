@@ -1340,14 +1340,6 @@ export type EntryProjectionResponseDto = {
     hasDetail: boolean;
     id: string;
     /**
-     * Original image height in pixels (only for image entries).
-     */
-    imageHeight?: number | null;
-    /**
-     * Original image width in pixels (only for image entries).
-     */
-    imageWidth?: number | null;
-    /**
      * Whether this file entry was captured as a directory. `true` lets the
      * sender UI render status only (no byte percentage) for directory sends,
      * whose reverse progress aliases every member onto one id. Defaults to
@@ -1365,7 +1357,6 @@ export type EntryProjectionResponseDto = {
     payloadState?: string | null;
     preview: string;
     sizeBytes: number;
-    thumbnailUrl?: string | null;
     updatedAt: number;
 };
 
@@ -5816,6 +5807,44 @@ export type GetClipboardEntryResourceResponses = {
 
 export type GetClipboardEntryResourceResponse = GetClipboardEntryResourceResponses[keyof GetClipboardEntryResourceResponses];
 
+export type GetClipboardThumbnailData = {
+    body?: never;
+    path: {
+        /**
+         * Clipboard entry identifier
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/clipboard/entries/{id}/thumbnail';
+};
+
+export type GetClipboardThumbnailErrors = {
+    /**
+     * Thumbnail not found
+     */
+    404: string;
+    /**
+     * Internal server error
+     */
+    500: string;
+    /**
+     * Thumbnail temporarily unavailable; retry after unlock or load completes
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetClipboardThumbnailError = GetClipboardThumbnailErrors[keyof GetClipboardThumbnailErrors];
+
+export type GetClipboardThumbnailResponses = {
+    /**
+     * Raw thumbnail bytes
+     */
+    200: Blob | File;
+};
+
+export type GetClipboardThumbnailResponse = GetClipboardThumbnailResponses[keyof GetClipboardThumbnailResponses];
+
 export type ListOutboundProgressData = {
     body?: never;
     path?: never;
@@ -5986,40 +6015,6 @@ export type GetClipboardStatsResponses = {
 };
 
 export type GetClipboardStatsResponse = GetClipboardStatsResponses[keyof GetClipboardStatsResponses];
-
-export type GetClipboardThumbnailData = {
-    body?: never;
-    path: {
-        /**
-         * Representation identifier
-         */
-        rep_id: string;
-    };
-    query?: never;
-    url: '/clipboard/thumbnails/{rep_id}';
-};
-
-export type GetClipboardThumbnailErrors = {
-    /**
-     * Thumbnail not found
-     */
-    404: ApiErrorResponse;
-    /**
-     * Internal server error
-     */
-    500: ApiErrorResponse;
-};
-
-export type GetClipboardThumbnailError = GetClipboardThumbnailErrors[keyof GetClipboardThumbnailErrors];
-
-export type GetClipboardThumbnailResponses = {
-    /**
-     * Raw thumbnail bytes
-     */
-    200: Blob | File;
-};
-
-export type GetClipboardThumbnailResponse = GetClipboardThumbnailResponses[keyof GetClipboardThumbnailResponses];
 
 export type ExportConfigData = {
     body: ExportConfigRequest;

@@ -16,7 +16,6 @@ function makeDto(overrides: Partial<ClipboardEntryDto> = {}): ClipboardEntryDto 
     sizeBytes: 5,
     capturedAt: 1,
     contentType: 'text/plain',
-    thumbnailUrl: null,
     isEncrypted: false,
     isFavorited: false,
     updatedAt: 2,
@@ -58,14 +57,12 @@ describe('projectClipboardEntry', () => {
     expect(projectClipboardEntry(makeDto({ contentType: 'file' })).isDirectory).toBe(false)
   })
 
-  it('preserves image dimensions from daemon DTOs', () => {
+  it('leaves image dimensions for resource decoding', () => {
     const entry = projectClipboardEntry(
       makeDto({
         preview: 'Image (123 bytes)',
         sizeBytes: 123,
         contentType: 'image/png',
-        imageWidth: 1920,
-        imageHeight: 1080,
       })
     )
 
@@ -73,10 +70,10 @@ describe('projectClipboardEntry', () => {
     expect(entry.content).toEqual({
       thumbnail: null,
       size: 123,
-      width: 1920,
-      height: 1080,
+      width: 0,
+      height: 0,
     })
-    expect(getItemPreview(entry)).toBe('Image | 1920×1080 | 123 B')
+    expect(getItemPreview(entry)).toBe('Image | 123 B')
   })
 
   it('parses file URI lists, keeping per-file missing flags', () => {

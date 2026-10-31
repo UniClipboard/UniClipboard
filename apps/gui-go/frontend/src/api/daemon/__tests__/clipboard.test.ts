@@ -49,7 +49,6 @@ describe('ClipboardEntryDto type', () => {
       sizeBytes: 13,
       capturedAt: 1710000000000,
       contentType: 'text/plain',
-      thumbnailUrl: null,
       isEncrypted: false,
       isFavorited: false,
       updatedAt: 1710000000000,
@@ -76,7 +75,6 @@ describe('ClipboardEntryDto type', () => {
       // Links are the `text` category plus a derived `link` tag, not a
       // physical category of their own.
       contentType: 'text',
-      thumbnailUrl: null,
       isEncrypted: false,
       isFavorited: true,
       updatedAt: 1710000000000,
@@ -100,7 +98,6 @@ describe('ClipboardEntryDto type', () => {
       sizeBytes: 102400,
       capturedAt: 1710000000000,
       contentType: 'file',
-      thumbnailUrl: null,
       isEncrypted: false,
       isFavorited: false,
       updatedAt: 1710000000000,
@@ -129,7 +126,6 @@ describe('ClipboardEntriesResponse type', () => {
           sizeBytes: 12,
           capturedAt: 1710000000000,
           contentType: 'text/plain',
-          thumbnailUrl: null,
           isEncrypted: false,
           isFavorited: false,
           updatedAt: 1710000000000,

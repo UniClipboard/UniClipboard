@@ -13,6 +13,8 @@ require (
 	golang.org/x/mod v0.41.0
 )
 
+require github.com/edsrzf/mmap-go v1.2.0
+
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect

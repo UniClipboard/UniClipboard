@@ -9,10 +9,12 @@
 // brought hpke-rs 0.7 and quick-xml 0.41: those advisories are fixed, not waived.
 
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { satisfies } from 'semver'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
@@ -21,7 +23,13 @@ const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
 // through jsonwebtoken and upstream still ships no fixed release, so the entry
 // stays until one does. It is accepted only because the RSA code path is never
 // entered: the JWT layer signs and verifies with HS256 (HMAC) alone.
-const EXPECTED_ADVISORIES = ['RUSTSEC-2023-0071']
+const EXPECTED_ADVISORIES = [
+  'RUSTSEC-2023-0071',
+  'RUSTSEC-2026-0387',
+  'RUSTSEC-2026-0367',
+  'RUSTSEC-2026-0368',
+  'RUSTSEC-2026-0369',
+]
 
 // The advisory applies to this crate; a version bump means the exception has to
 // be re-reviewed against whatever upstream changed.
@@ -30,7 +38,7 @@ const REVIEWED_VERSIONS = new Map([['rsa', '0.9.10']])
 // Files that decide which JWT algorithms are used. Any RSA-family algorithm here
 // would make the vulnerable path reachable and void the exception.
 const JWT_ALGORITHM_SOURCES = ['crates/uc-webserver/src/security/claims.rs']
-const RSA_JWT_ALGORITHM_PATTERN = /Algorithm::(?:RS|PS)\d{3}/
+const PUBLIC_KEY_JWT_ALGORITHM_PATTERN = /Algorithm::(?:(?:RS|PS|ES)\d{3}|EdDSA)/
 
 const RUST_SOURCE_ROOTS = ['apps', 'crates', 'tools']
 const PRODUCTION_TARGETS = [
@@ -89,8 +97,8 @@ function checkVulnerablePathStaysUnreachable(metadata, problems) {
   }
 
   for (const source of JWT_ALGORITHM_SOURCES) {
-    if (RSA_JWT_ALGORITHM_PATTERN.test(read(source))) {
-      addProblem(problems, 'affected API use', `${source} selects an RSA JWT algorithm`)
+    if (PUBLIC_KEY_JWT_ALGORITHM_PATTERN.test(read(source))) {
+      addProblem(problems, 'affected API use', `${source} selects a public-key JWT algorithm`)
     }
   }
 
@@ -104,11 +112,11 @@ function checkVulnerablePathStaysUnreachable(metadata, problems) {
         continue
       }
       if (!entry.isFile() || !entry.name.endsWith('.rs')) continue
-      if (RSA_JWT_ALGORITHM_PATTERN.test(readFileSync(absolutePath, 'utf8'))) {
+      if (PUBLIC_KEY_JWT_ALGORITHM_PATTERN.test(readFileSync(absolutePath, 'utf8'))) {
         addProblem(
           problems,
           'affected API use',
-          `${relative(REPOSITORY_ROOT, absolutePath)} selects an RSA JWT algorithm`
+          `${relative(REPOSITORY_ROOT, absolutePath)} selects a public-key JWT algorithm`
         )
       }
     }
@@ -166,6 +174,113 @@ function checkAuditConfiguration(problems) {
   }
 }
 
+// The old bigint version is allowed only below jsonwebtoken's unused ECDSA
+// backend. Every active Engine bigint version must already contain the fix.
+function checkBigintBoundary(metadata, problems) {
+  const packages = new Map(metadata.packages.map(pkg => [pkg.id, pkg]))
+  const parents = new Map()
+  for (const node of metadata.resolve.nodes) {
+    for (const dependency of node.deps) {
+      const ids = parents.get(dependency.pkg) ?? []
+      ids.push(node.id)
+      parents.set(dependency.pkg, ids)
+    }
+  }
+  const reviewed = new Set([
+    'crypto-bigint@0.5.5',
+    'elliptic-curve@0.13.8',
+    'ecdsa@0.16.9',
+    'primeorder@0.13.6',
+    'p256@0.13.2',
+    'p384@0.13.1',
+    'jsonwebtoken@10.4.0',
+  ])
+  const bigintPackages = metadata.packages.filter(pkg => pkg.name === 'crypto-bigint')
+  if (!bigintPackages.some(pkg => pkg.version === '0.5.5')) {
+    addProblem(
+      problems,
+      'bigint exception',
+      'remove or review the exception after 0.5.5 disappears'
+    )
+  }
+  for (const pkg of bigintPackages) {
+    if (pkg.version !== '0.5.5') {
+      if (!satisfies(pkg.version, '>=0.7.6')) {
+        addProblem(problems, 'bigint version', `${pkg.version} is not patched`)
+      }
+      continue
+    }
+    const pending = [pkg.id]
+    const seen = new Set()
+    while (pending.length > 0) {
+      const id = pending.pop()
+      if (seen.has(id)) continue
+      seen.add(id)
+      const consumer = packages.get(id)
+      if (!reviewed.has(`${consumer.name}@${consumer.version}`)) {
+        addProblem(problems, 'bigint consumer', `${consumer.name}@${consumer.version} needs review`)
+      }
+      if (consumer.name !== 'jsonwebtoken') pending.push(...(parents.get(id) ?? []))
+    }
+  }
+}
+
+// zip 1.1.4 never parses user content. It runs only in the reviewed Swagger
+// build script, using these immutable vendored bytes (no symlinks/SUID/SGID).
+function checkSwaggerBoundary(metadata, problems) {
+  const packages = new Map(metadata.packages.map(pkg => [pkg.id, pkg]))
+  const swagger = metadata.packages.find(pkg => pkg.name === 'utoipa-swagger-ui')
+  const vendored = metadata.packages.find(pkg => pkg.name === 'utoipa-swagger-ui-vendored')
+  const zip = metadata.packages.find(pkg => pkg.name === 'zip' && pkg.version === '1.1.4')
+  for (const pkg of metadata.packages.filter(pkg => pkg.name === 'zip')) {
+    if (pkg.version !== '1.1.4' && !satisfies(pkg.version, '>=9.0.0')) {
+      addProblem(problems, 'zip version', `zip@${pkg.version} is not patched and is not reviewed`)
+    }
+  }
+  if (
+    !swagger ||
+    swagger.version !== '7.1.0' ||
+    !vendored ||
+    vendored.version !== '0.1.2' ||
+    !zip
+  ) {
+    addProblem(
+      problems,
+      'Swagger versions',
+      'review or remove the zip exceptions after dependency changes'
+    )
+    return
+  }
+  const node = metadata.resolve.nodes.find(node => node.id === swagger.id)
+  if (!node?.features.includes('vendored')) {
+    addProblem(problems, 'Swagger input', 'vendored feature must remain enabled')
+  }
+  for (const parent of metadata.resolve.nodes) {
+    for (const dependency of parent.deps.filter(dependency => dependency.pkg === zip.id)) {
+      if (parent.id !== swagger.id || dependency.dep_kinds.some(kind => kind.kind !== 'build')) {
+        addProblem(
+          problems,
+          'zip consumer',
+          `${packages.get(parent.id).name} is outside the reviewed build-only path`
+        )
+      }
+    }
+  }
+  for (const [pkg, file, expected] of [
+    [swagger, 'build.rs', '59b2d2af0bc300b5d5449fcd44326f7f6e44ff3f9e92d7b0848150b3003d1303'],
+    [
+      vendored,
+      'res/v5.17.14.zip',
+      '481244d0812097b11fbaeef79f71d942b171617f9c9f9514e63acbe13e71ccdc',
+    ],
+  ]) {
+    const actual = createHash('sha256')
+      .update(readFileSync(join(dirname(pkg.manifest_path), file)))
+      .digest('hex')
+    if (actual !== expected) addProblem(problems, 'Swagger input', `${pkg.name}/${file} changed`)
+  }
+}
+
 function main() {
   const problems = []
   const metadata = JSON.parse(run('cargo', ['metadata', '--format-version', '1', '--locked']))
@@ -174,6 +289,8 @@ function main() {
   checkVulnerablePathStaysUnreachable(metadata, problems)
   checkProductionFeatures(problems)
   checkAuditConfiguration(problems)
+  checkBigintBoundary(metadata, problems)
+  checkSwaggerBoundary(metadata, problems)
 
   if (problems.length > 0) {
     console.error('Cargo audit exception assumptions changed:')

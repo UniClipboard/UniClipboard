@@ -1,5 +1,10 @@
 # ADR-003: Thumbnail Resource Protocol for Preview Thumbnails
 
+## 状态
+
+已被 Engine 的按条目读取缩略图契约取代。当前 Desktop HTTP 契约见
+[按历史条目读取缩略图](entry-thumbnail-api.md)。下文保留原决策，不代表当前实现。
+
 ## Context
 
 Thumbnail bytes are generated and stored as blobs, but the thumbnail blob id is only

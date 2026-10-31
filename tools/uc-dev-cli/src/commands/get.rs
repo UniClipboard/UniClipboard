@@ -856,7 +856,6 @@ mod tests {
             size_bytes: 0,
             captured_at: 0,
             content_type: content_type.to_string(),
-            thumbnail_url: None,
             is_encrypted: false,
             is_favorited: false,
             updated_at: 0,
@@ -867,8 +866,6 @@ mod tests {
             link_urls: None,
             link_domains: None,
             file_sizes: None,
-            image_width: None,
-            image_height: None,
             is_directory: false,
             payload_state: None,
         }

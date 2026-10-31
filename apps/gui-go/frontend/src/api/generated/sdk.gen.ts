@@ -389,6 +389,25 @@ export const getClipboardEntryResource = <ThrowOnError extends boolean = false>(
 });
 
 /**
+ * GET /clipboard/entries/:id/thumbnail
+ *
+ * Serves a bounded thumbnail resolved by clipboard entry identifier. Binary endpoint: the
+ * response is `application/octet-stream` (the resolved MIME type when known),
+ * NOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints
+ * exempt). Returns 404 if the thumbnail is unknown, 500 on an internal
+ * resolution failure.
+ */
+export const getClipboardThumbnail = <ThrowOnError extends boolean = false>(options: Options<GetClipboardThumbnailData, ThrowOnError>) => (options.client ?? client).get<GetClipboardThumbnailResponses, GetClipboardThumbnailErrors, ThrowOnError>({
+    security: [{
+            in: 'query',
+            name: 'auth',
+            type: 'apiKey'
+        }, { name: 'Authorization', type: 'apiKey' }],
+    url: '/clipboard/entries/{id}/thumbnail',
+    ...options
+});
+
+/**
  * GET /clipboard/outbound
  *
  * Every retained outbound snapshot, one per (entry, target device).
@@ -463,25 +482,6 @@ export const getClipboardStats = <ThrowOnError extends boolean = false>(options?
             type: 'apiKey'
         }, { name: 'Authorization', type: 'apiKey' }],
     url: '/clipboard/stats',
-    ...options
-});
-
-/**
- * GET /clipboard/thumbnails/:rep_id
- *
- * Serves the raw bytes of a representation's thumbnail. Binary endpoint: the
- * response is `application/octet-stream` (the resolved MIME type when known),
- * NOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints
- * exempt). Returns 404 if the thumbnail is unknown, 500 on an internal
- * resolution failure.
- */
-export const getClipboardThumbnail = <ThrowOnError extends boolean = false>(options: Options<GetClipboardThumbnailData, ThrowOnError>) => (options.client ?? client).get<GetClipboardThumbnailResponses, GetClipboardThumbnailErrors, ThrowOnError>({
-    security: [{
-            in: 'query',
-            name: 'auth',
-            type: 'apiKey'
-        }, { name: 'Authorization', type: 'apiKey' }],
-    url: '/clipboard/thumbnails/{rep_id}',
     ...options
 });
 

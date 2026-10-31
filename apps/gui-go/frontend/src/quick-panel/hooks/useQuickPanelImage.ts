@@ -9,11 +9,9 @@ import { useResourceImageDescriptor } from '@/hooks/useResourceImageDescriptor'
  * does NOT re-flicker aspect ratios in the image wall. Keyed by entry id:
  *
  * - `aspectRatioCache` — the intrinsic aspect ratio measured on `<img.onLoad>`
- *   the first time we saw this entry. The daemon does carry image dimensions
- *   on the entry (`imageWidth`/`imageHeight`) and on the search DTO, but the
- *   quick panel's `DisplayItem` projection currently drops them; caching the
- *   measured value here is enough to keep the masonry layout stable on
- *   subsequent renders without threading dimensions through the projection.
+ *   the first time we saw this entry. History summaries no longer carry
+ *   image dimensions; decoding the resource supplies the intrinsic ratio.
+ *   Caching it keeps later masonry layouts stable.
  *
  * Image descriptor resolution (the daemon fetch + blob decode) is shared with
  * the rest of the app via {@link useResourceImageDescriptor} /

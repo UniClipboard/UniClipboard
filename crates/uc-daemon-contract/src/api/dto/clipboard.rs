@@ -19,8 +19,6 @@ pub struct EntryProjectionResponseDto {
     pub size_bytes: i64,
     pub captured_at: i64,
     pub content_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub thumbnail_url: Option<String>,
     pub is_encrypted: bool,
     pub is_favorited: bool,
     pub updated_at: i64,
@@ -37,12 +35,6 @@ pub struct EntryProjectionResponseDto {
     pub link_domains: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_sizes: Option<Vec<i64>>,
-    /// Original image width in pixels (only for image entries).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_width: Option<i32>,
-    /// Original image height in pixels (only for image entries).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_height: Option<i32>,
     /// Whether this file entry was captured as a directory. `true` lets the
     /// sender UI render status only (no byte percentage) for directory sends,
     /// whose reverse progress aliases every member onto one id. Defaults to

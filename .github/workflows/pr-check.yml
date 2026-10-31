@@ -229,6 +229,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install dependency guard packages
+        run: bun install --frozen-lockfile --ignore-scripts
+
       - name: Start shared Engine MBX cache
         uses: ./.github/actions/engine-build-cache
         with:

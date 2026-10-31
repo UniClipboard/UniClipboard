@@ -35,6 +35,8 @@ test('mobile-connection: original assertions', async ({ app, page }) => {
             await page.getByRole('tab', { name: new RegExp(devices.connectMobile.direct) }).click()
             await page.getByTestId('add-device-invitation-code').waitFor()
           }
+          // The incoming tab can render before the outgoing panel finishes its exit transition.
+          await expect.poll(() => page.getByRole('tabpanel').count()).toBe(1)
           const overflow = await page.getByRole('dialog').evaluate(dialog => {
             const rect = dialog.getBoundingClientRect()
             return (

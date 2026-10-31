@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
+import { expect } from 'e2e'
 import { test, outputFor } from './page.mjs'
 import { selectedPlatform as platform } from './suites.mjs'
 
@@ -100,7 +101,8 @@ test('theme-palette: original assertions', async ({ app, page }) => {
         await page.keyboard.press('Escape')
       }
       await apply('default', mode)
-      await page.waitForTimeout(180)
+      // React's theme observer and the skin transition must settle before the original comparison.
+      await expect.poll(colors).toEqual(baseline)
       assert.deepEqual(await colors(), baseline, `${platform} ${mode}: default restored`)
       await apply('default', mode, false, {
         primary: '#aa3377',

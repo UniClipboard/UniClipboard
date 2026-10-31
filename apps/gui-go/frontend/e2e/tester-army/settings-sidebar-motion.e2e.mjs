@@ -10,6 +10,11 @@ test('settings-sidebar-motion: original assertions', async ({ app, page }) => {
   await page.getByRole('button', { name: '显示侧边栏', exact: true }).waitFor()
   // The fixture defaults to reduced motion. Exercise the CSS transition explicitly as well.
   for (const reduced of [false, true]) {
+    await page.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' })
+    const mediaReduced = await page.evaluate(
+      () => matchMedia('(prefers-reduced-motion: reduce)').matches
+    )
+    assert.equal(mediaReduced, reduced, 'the browser uses the requested motion preference')
     await page.evaluate(reduced => {
       document.documentElement.dataset.ucReduceMotion = String(reduced)
     }, reduced)
@@ -44,7 +49,7 @@ test('settings-sidebar-motion: original assertions', async ({ app, page }) => {
         } while (frameTime - start < 400)
         return samples
       })
-      evidence.push({ reduced, opening, frames })
+      evidence.push({ reduced, mediaReduced, opening, frames })
       await writeFile(`${output}/frames.json`, JSON.stringify(evidence, null, 2) + '\n')
       assert.ok(
         frames.every(frame => frame.sameNode),

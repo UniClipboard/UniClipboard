@@ -71,6 +71,29 @@ jobs:
           (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
           (cd apps/gui-go && go build -tags gtk4,e2e -o ../../target/gui-go/gui-go .)
           git diff --exit-code
+      - name: Record reusable binary identities
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, subprocess, tomllib
+          from pathlib import Path
+          files = ['target/debug/uniclipd', 'target/gui-go/uniclip', 'target/gui-go/gui-go']
+          receipt = {
+              'desktop_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'engine_sha': tomllib.loads(Path('Cargo.toml').read_text())['workspace']['dependencies']['uc-engine']['rev'],
+              'binaries': {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in files},
+          }
+          Path('target/gui-go/binary-source.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+      - name: Retain binaries for runner-only diagnosis
+        uses: actions/upload-artifact@v7
+        with:
+          name: history-window-binaries-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            target/debug/uniclipd
+            target/gui-go/uniclip
+            target/gui-go/gui-go
+            target/gui-go/binary-source.json
+          if-no-files-found: error
       - name: Navigate both directions with all 50 records visible
         env:
           GDK_BACKEND: x11

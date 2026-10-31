@@ -129,6 +129,10 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             inserted_requests=0
             while time.monotonic()<deadline and proc.poll() is None:
                 rows=[json.loads(x) for x in evidence.read_text().splitlines() if x.strip()]
+                if re.search(r'UI process exited pid=\d+ error=',(tmp/'gui.log').read_text(errors='replace')):
+                    result['error']='Native UI child exited before scenario completion'
+                    result['native_steps']=rows
+                    break
                 if any(row.get('step')=='window-begin' for row in rows) and not control_file.read_text():
                     control_file.write_text('open-main history-window\n')
                 if any(row.get('step')=='window-large-viewport' for row in rows):
@@ -151,6 +155,8 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
                     break
                 time.sleep(1)
             result['elapsed_seconds']=round(time.monotonic()-beginning,2)
+            if not result['passed'] and not result.get('error'):
+                result['error']=f'GUI scenario incomplete; owner exit code={proc.poll()}; elapsed={result["elapsed_seconds"]}s'
     except Exception as exc:
         result['error']=f'{type(exc).__name__}: {exc}'
         result['traceback']=traceback.format_exc()
@@ -164,7 +170,13 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             text=(tmp/'gui.log').read_text(errors='replace')
             for secret in (locals().get('session'), locals().get('auth'), locals().get('conn',{}).get('token'), locals().get('setup',{}).get('password')):
                 if secret: text=text.replace(str(secret),'[redacted]')
-            result['gui_log']=re.sub(r'(?i)(Bearer|Session)\s+[A-Za-z0-9_.-]+',r'\1 [redacted]',text)[-16000:]
+            text=re.sub(r'(?i)(Bearer|Session)\s+[A-Za-z0-9_.-]+',r'\1 [redacted]',text)
+            log_path=a.out.with_suffix('.gui.log')
+            log_path.write_text(text)
+            result['gui_log_file']=log_path.name
+            result['gui_log_sha256']=hashlib.sha256(text.encode()).hexdigest()
+            result['gui_log_head']=text[:16000]
+            result['gui_log']=text[-16000:]
         try:
             if portable_env:
                 stopped=cli(portable_env,'stop',check=False,timeout=60)

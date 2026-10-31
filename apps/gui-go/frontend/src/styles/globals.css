@@ -558,21 +558,21 @@ html[data-uc-low-effects='true'] .glass-strong {
   background-color: var(--background);
 }
 
-/* Skin elevation tokens exclude focus rings and selection outlines. */
+/* Policy overrides inline palette tokens; focus rings and selection outlines are excluded. */
 html[data-uc-low-effects='true'] .mac-theme {
   --glass: var(--window);
   --glass-clear: var(--window);
   --glass-tinted: var(--popup-opaque);
-  --glass-shadow: none;
-  --menu-shadow: none;
-  --win-shadow: none;
+  --glass-shadow: none !important;
+  --menu-shadow: none !important;
+  --win-shadow: none !important;
 }
 
 html[data-uc-low-effects='true'] .adw-theme {
-  --pop-shadow: none;
-  --dialog-shadow: none;
-  --toast-shadow: none;
-  --card-shadow: none;
+  --pop-shadow: none !important;
+  --dialog-shadow: none !important;
+  --toast-shadow: none !important;
+  --card-shadow: none !important;
 }
 
 /* Cover the native macOS backdrop as well as the CSS fallback. */

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real macOS WebView E2E for the bounded history window.
+"""Real native WebView E2E for the bounded history window.
 
 Requires an acceptance app, built daemon and Go CLI. Uses only synthetic images,
 a throwaway HOME and a unique profile; system clipboard access stays disabled.
@@ -9,6 +9,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -22,8 +23,11 @@ from pathlib import Path
 
 p = argparse.ArgumentParser()
 p.add_argument('--grid', action='store_true')
+p.add_argument('--large-viewport', action='store_true')
 p.add_argument('--repo', required=True, type=Path)
-p.add_argument('--app', required=True, type=Path)
+binary_args=p.add_mutually_exclusive_group(required=True)
+binary_args.add_argument('--app', type=Path)
+binary_args.add_argument('--gui', type=Path)
 p.add_argument('--out', required=True, type=Path)
 a = p.parse_args()
 repo = a.repo.resolve()
@@ -36,7 +40,7 @@ from thumbnail_resource_run import png
 a.out.parent.mkdir(parents=True, exist_ok=True)
 result = {'desktop_sha': subprocess.check_output(['git','rev-parse','HEAD'], cwd=repo, text=True).strip(),
           'driver_sha256': hashlib.sha256((repo / 'apps/gui-go/frontend/src/e2e/history-window.ts').read_bytes()).hexdigest(),
-          'runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), 'gui_started': False, 'passed': False,
+          'runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), 'gui_started': False, 'passed': False, 'platform':sys.platform, 'large_viewport':a.large_viewport,
           'image_dimensions': [512,384], 'image_count': 120, 'view': 'grid' if a.grid else 'list', 'steps': []}
 result['engine_revision'] = tomllib.loads((repo/'Cargo.toml').read_text())['workspace']['dependencies']['uc-engine']['rev']
 result['desktop_worktree_clean'] = not subprocess.check_output(['git','status','--porcelain'], cwd=repo, text=True).strip()
@@ -46,6 +50,8 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
     tmp=Path(temporary)
     evidence=tmp/'native.jsonl'
     evidence.write_text('')
+    control_file=tmp/'control.txt'
+    control_file.write_text('')
     try:
         start(tmp, 0, True)
         info=json.loads((tmp/'daemon.json').read_text())
@@ -90,10 +96,11 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         if remaining: raise RuntimeError(f'{len(remaining)} original resources did not become ready')
         search=daemon_request('/search/query?query=&limit=200&offset=0',session_headers)
         ordered_ids=[item['entryId'] for item in search['items']]
-        gui_env=isolated_env(info['home'], info['profile'], {'PATH': str(repo/'target/debug')+os.pathsep+os.environ['PATH'], 'UC_GUI_GO_ISOLATED':'1', 'UC_GUI_GO_EVIDENCE':str(evidence),'UC_GUI_GO_E2E_PHASE':'history-window','UC_GUI_GO_E2E_SECRET':json.dumps({'ids':ordered_ids,'grid':a.grid}),'UC_GUI_GO_E2E_VISIBLE':'1','UC_GUI_GO_EXIT_MODE':'full','UC_GPUI_QUICK_PANEL':'0'})
-        binary=a.app/'Contents/MacOS/gui-go'
+        desktop_keys=('DISPLAY','XAUTHORITY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR','XDG_SESSION_TYPE','DBUS_SESSION_BUS_ADDRESS','GDK_BACKEND','WEBKIT_DISABLE_DMABUF_RENDERER')
+        gui_env=isolated_env(info['home'], info['profile'], {**{key:os.environ[key] for key in desktop_keys if key in os.environ},'PATH': str(repo/'target/debug')+os.pathsep+os.environ['PATH'], 'UC_GUI_GO_ISOLATED':'1', 'UC_GUI_GO_EVIDENCE':str(evidence),'UC_GUI_GO_E2E_PHASE':'history-window','UC_GUI_GO_E2E_SECRET':json.dumps({'ids':ordered_ids,'grid':a.grid,'largeViewport':a.large_viewport}),'UC_GUI_GO_E2E_CONTROL_FILE':str(control_file),'UC_GUI_GO_E2E_VISIBLE':'1','UC_GUI_GO_EXIT_MODE':'full','UC_GPUI_QUICK_PANEL':'0'})
+        binary=a.gui.resolve() if a.gui else a.app/'Contents/MacOS/gui-go'
         result['gui_sha256']=hashlib.sha256(binary.read_bytes()).hexdigest()
-        result['daemon_sha256']=hashlib.sha256((a.app/'Contents/MacOS/uniclipd').read_bytes()).hexdigest()
+        result['daemon_sha256']=hashlib.sha256(((repo/'target/debug/uniclipd') if a.gui else (a.app/'Contents/MacOS/uniclipd')).read_bytes()).hexdigest()
         with (tmp/'gui.log').open('w') as log:
             proc=subprocess.Popen([str(binary)],env=gui_env,stdout=log,stderr=subprocess.STDOUT)
             result['gui_started']=True
@@ -101,6 +108,12 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             inserted_requests=0
             while time.monotonic()<deadline and proc.poll() is None:
                 rows=[json.loads(x) for x in evidence.read_text().splitlines() if x.strip()]
+                if any(row.get('step')=='window-begin' for row in rows) and not control_file.read_text():
+                    control_file.write_text('open-main history-window\n')
+                if any(row.get('step')=='window-large-viewport' for row in rows):
+                    result['passed']=any(row.get('step')=='window-large-viewport' and row.get('ok') for row in rows)
+                    result['native_steps']=rows
+                    break
                 requested=sum(row.get('step')=='window-insert-request' for row in rows)
                 if requested > inserted_requests:
                     name=f'window-insert-{inserted_requests}.png'
@@ -121,10 +134,16 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         result['error']=f'{type(exc).__name__}: {exc}'
         result['traceback']=traceback.format_exc()
     finally:
+        result['gui_exit_before_cleanup']=proc.poll() if proc else None
         if proc and proc.poll() is None:
             proc.terminate()
             try: proc.wait(timeout=15)
             except subprocess.TimeoutExpired: result['gui_stop']='termination timed out'
+        if (tmp/'gui.log').exists():
+            text=(tmp/'gui.log').read_text(errors='replace')
+            for secret in (locals().get('session'), locals().get('auth'), locals().get('conn',{}).get('token'), locals().get('setup',{}).get('password')):
+                if secret: text=text.replace(str(secret),'[redacted]')
+            result['gui_log']=re.sub(r'(?i)(Bearer|Session)\s+[A-Za-z0-9_.-]+',r'\1 [redacted]',text)[-16000:]
         if (tmp/'daemon.json').exists():
             try: stop(tmp)
             except Exception as exc: result['daemon_stop_error']=str(exc)

@@ -153,8 +153,7 @@ jobs:
           WEBKIT_DISABLE_DMABUF_RENDERER: "1"
         run: |
           mkdir -p artifacts/history-window
-          aa-exec -p "$UC_WEBKIT_CI_APPARMOR_PROFILE" -- \
-            dbus-run-session -- xvfb-run -a -s '-screen 0 2560x1920x24' \
+          dbus-run-session -- xvfb-run -a -s '-screen 0 2560x1920x24' \
             python3 apps/gui-go/e2e/history_window_run.py --repo "$PWD" \
             --gui "$PWD/target/gui-go/gui-go" --grid --large-viewport \
             --out "$PWD/artifacts/history-window/linux-large-viewport.json"

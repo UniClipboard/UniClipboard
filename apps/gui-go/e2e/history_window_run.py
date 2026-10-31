@@ -106,15 +106,18 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
                 entry_id=head[0]['id'] if head else None
                 if entry_id and entry_id not in materialized:
                     try:
-                        resource=daemon_request('/clipboard/entries/'+entry_id+'/resource',session_headers)
-                        if resource.get('url'):
-                            materialized.add(entry_id)
-                            break
+                        request=urllib.request.Request(info['daemonUrl']+'/clipboard/entries/'+entry_id+'/thumbnail',headers=session_headers)
+                        with urllib.request.urlopen(request,timeout=120) as response:
+                            assert response.headers.get_content_type().startswith('image/'), 'fixture thumbnail is not an image'
+                            assert response.read(), 'fixture thumbnail is empty'
+                        materialized.add(entry_id)
+                        break
                     except urllib.error.HTTPError as error:
                         if error.code not in (404,409,503): raise
                 time.sleep(.1)
             else: raise RuntimeError(f'synthetic image {i} did not materialize')
             result['sequential_source_ready_count']=len(materialized)
+            result['fixture_thumbnail_readiness_reads']=len(materialized)
         result['image_sha256']=hashes
         entries=daemon_request('/clipboard/entries?limit=200&offset=0',session_headers)
         entries=[entry for entry in entries if entry.get('contentType')=='image']
@@ -141,7 +144,10 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         result['gui_sha256']=hashlib.sha256(binary.read_bytes()).hexdigest()
         result['daemon_sha256']=hashlib.sha256(((repo/'target/debug/uniclipd') if a.gui else (a.app/'Contents/MacOS/uniclipd')).read_bytes()).hexdigest()
         with (tmp/'gui.log').open('w') as log:
-            proc=subprocess.Popen([str(binary)],env=gui_env,stdout=log,stderr=subprocess.STDOUT)
+            command=[str(binary)]
+            if a.gui and os.environ.get('UC_WEBKIT_CI_APPARMOR_PROFILE'):
+                command=['aa-exec','-p',os.environ['UC_WEBKIT_CI_APPARMOR_PROFILE'],'--',*command]
+            proc=subprocess.Popen(command,env=gui_env,stdout=log,stderr=subprocess.STDOUT)
             result['gui_started']=True
             beginning=time.monotonic(); deadline=beginning+180
             inserted_requests=0

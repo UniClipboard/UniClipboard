@@ -162,8 +162,12 @@ func ProbeForReuse(timeout time.Duration) (Outcome, error) {
 		if !live {
 			return outcome, nil
 		}
-		if err := startupFailure(nil); err != nil {
+		active, err := startupState(nil)
+		if err != nil {
 			return Outcome{}, err
+		}
+		if active {
+			deadline = time.Now().Add(timeout)
 		}
 		if !time.Now().Before(deadline) {
 			return Outcome{}, startupTimeout(timeout)
@@ -258,24 +262,30 @@ func startupTimeout(timeout time.Duration) *Error {
 	return &Error{Kind: ErrStartupTimeout, Timeout: timeout, Profile: os.Getenv("UC_PROFILE"), BaseURL: currentBaseURL()}
 }
 
-// startupFailure reads the independent service before the business API exists.
-func startupFailure(attempt *daemonproc.StartupAttempt) error {
+// startupState reads the independent service before the business API exists.
+// An active startup owns its own lifetime; the health deadline applies only
+// when there is no running startup to observe.
+func startupState(attempt *daemonproc.StartupAttempt) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
 	defer cancel()
 	conn, err := daemonproc.ReadStartupConnFile()
 	if err != nil {
-		return &Error{Kind: ErrProbe, Err: err}
+		return false, &Error{Kind: ErrProbe, Err: err}
 	}
 	if conn == nil || (attempt != nil && (conn.PID != attempt.PID() || conn.InstanceID != attempt.InstanceID())) {
-		return nil
+		return false, nil
 	}
 	body, err := daemonclient.ReadStartupStatusAt(ctx, *conn)
 	if err != nil {
-		return &Error{Kind: ErrProbe, Err: errctx.Wrap("failed to read daemon startup status", err)}
+		return false, &Error{Kind: ErrProbe, Err: errctx.Wrap("failed to read daemon startup status", err)}
 	}
 	if len(body) == 0 {
-		return nil
+		return false, nil
 	}
+	return classifyStartupStatus(body, os.Getenv("UC_PROFILE"))
+}
+
+func classifyStartupStatus(body []byte, profile string) (bool, error) {
 	var status struct {
 		ServiceFailed bool `json:"service_failed"`
 		Progress      struct {
@@ -293,10 +303,10 @@ func startupFailure(attempt *daemonproc.StartupAttempt) error {
 		} `json:"progress"`
 	}
 	if err := json.Unmarshal(body, &status); err != nil {
-		return &Error{Kind: ErrProbe, Err: errctx.Wrap("failed to decode daemon startup status", err)}
+		return false, &Error{Kind: ErrProbe, Err: errctx.Wrap("failed to decode daemon startup status", err)}
 	}
 	if !status.ServiceFailed && status.Progress.State != "failed" && status.Progress.State != "interrupted" {
-		return nil
+		return status.Progress.State != "" && status.Progress.State != "ready", nil
 	}
 	details := "source=daemon.startup, state=" + status.Progress.State
 	if status.Progress.Upgrade != nil && status.Progress.Upgrade.CurrentStep != "" {
@@ -305,7 +315,7 @@ func startupFailure(attempt *daemonproc.StartupAttempt) error {
 	if status.Progress.Failure != nil {
 		details += fmt.Sprintf(", reason=%s, retryable=%t", status.Progress.Failure.Reason, status.Progress.Failure.Retryable)
 	}
-	return &Error{Kind: ErrStartupFailed, Profile: os.Getenv("UC_PROFILE"), Details: details,
+	return false, &Error{Kind: ErrStartupFailed, Profile: profile, Details: details,
 		Retryable: status.Progress.AllowedActions.Retry || (status.Progress.Failure != nil && status.Progress.Failure.Retryable)}
 }
 
@@ -422,8 +432,12 @@ func WaitHealthyForAttempt(timeout time.Duration, residency string, attempt *dae
 		case Incompatible:
 			return IncompatibleError(outcome)
 		}
-		if err := startupFailure(attempt); err != nil {
+		active, err := startupState(attempt)
+		if err != nil {
 			return err
+		}
+		if active {
+			deadline = time.Now().Add(timeout)
 		}
 		if !time.Now().Before(deadline) {
 			return startupTimeout(timeout)

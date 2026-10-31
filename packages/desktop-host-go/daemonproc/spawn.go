@@ -160,9 +160,57 @@ func ReleaseFailedStartup(ctx context.Context, attempt *StartupAttempt) error {
 	if conn == nil || conn.PID != attempt.PID() || conn.InstanceID != attempt.InstanceID() {
 		return fmt.Errorf("the owned startup service has not published its run identity; retry later")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, conn.BaseURL()+"/startup/exit", nil)
+	status, err := requestOwnedStartup(ctx, conn, attempt, "/startup/exit")
 	if err != nil {
 		return err
+	}
+	if status != http.StatusAccepted {
+		return fmt.Errorf("owned daemon refused startup retry (HTTP %d)", status)
+	}
+	return attempt.Wait(ctx)
+}
+
+// StopStartingDaemon requests shutdown from the exact spawned run, even before daemon.conn exists.
+func StopStartingDaemon(ctx context.Context, attempt *StartupAttempt) error {
+	if attempt == nil || attempt.done == nil {
+		return fmt.Errorf("startup attempt has no owned child handle")
+	}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if attempt.Exited() {
+			return nil
+		}
+		conn, err := ReadStartupConnFile()
+		if err != nil {
+			return err
+		}
+		if conn != nil && conn.PID == attempt.PID() && conn.InstanceID == attempt.InstanceID() {
+			status, err := requestOwnedStartup(ctx, conn, attempt, "/startup/stop")
+			if err == nil {
+				if status != http.StatusAccepted {
+					return fmt.Errorf("owned daemon refused startup stop (HTTP %d)", status)
+				}
+				return attempt.Wait(ctx)
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+		}
+		select {
+		case <-attempt.done:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func requestOwnedStartup(ctx context.Context, conn *ConnFile, attempt *StartupAttempt, path string) (int, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, conn.BaseURL()+path, nil)
+	if err != nil {
+		return 0, err
 	}
 	request.Header.Set("Authorization", "Bearer "+conn.Token)
 	request.Header.Set("X-UniClipboard-Startup-Instance", attempt.InstanceID())
@@ -170,11 +218,8 @@ func ReleaseFailedStartup(ctx context.Context, attempt *StartupAttempt) error {
 	defer client.CloseIdleConnections()
 	response, err := client.Do(request)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("owned daemon refused startup retry (HTTP %d)", response.StatusCode)
-	}
-	return attempt.Wait(ctx)
+	return response.StatusCode, nil
 }

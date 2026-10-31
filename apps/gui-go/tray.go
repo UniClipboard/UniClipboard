@@ -51,6 +51,9 @@ func (h *HostService) initTray() {
 	t.quit = menu.Add(labels.quit).OnClick(func(*application.Context) { h.quit(false) })
 	t.menu = menu
 	t.setActionsEnabled(false)
+	t.open.SetEnabled(true)
+	t.settings.SetEnabled(true)
+	t.quit.SetEnabled(true)
 
 	t.tray = h.app.SystemTray.New()
 	if runtime.GOOS == "linux" {
@@ -62,6 +65,7 @@ func (h *HostService) initTray() {
 	t.icon.show()
 	t.tray.SetTooltip("UniClipboard")
 	t.tray.SetMenu(menu)
+	t.tray.OnClick(h.showMainWindow)
 	// Set before the refresh goroutine and the event handlers below exist, so every render sees it. t.mu keeps the
 	// root items (labels, sync state) still while the platform reads the menu.
 	t.devices.mu.Lock() // publishMenu reads the field under this lock
@@ -86,7 +90,6 @@ func (h *HostService) initTray() {
 func (h *HostService) startTray() {
 	t := h.tray
 	t.setActionsEnabled(true)
-	t.tray.OnClick(h.showMainWindow)
 	watchSystemTheme(h.app, func() { go t.icon.show() }) // an event handler may run on the main thread, which the icon call waits for
 
 	// The sync toggle label follows the daemon's settings through the settings watcher (applySettings).

@@ -98,7 +98,7 @@ func (h *HostService) openMainWindow() *application.WebviewWindow {
 	if runtime.GOOS == "linux" {
 		minWidth = 640
 	}
-	size, maximized := h.loadMainWindowSize()
+	size, maximized, provisional := h.loadMainWindowSize()
 	size.Width, size.Height = max(size.Width, minWidth), max(size.Height, 600)
 	w := h.app.Window.NewWithOptions(quietOptions(withWindowMaterial(application.WebviewWindowOptions{
 		Name: "main", Title: "UniClipboard", URL: "/", Width: size.Width, Height: size.Height, MinWidth: minWidth, MinHeight: 600,
@@ -111,7 +111,7 @@ func (h *HostService) openMainWindow() *application.WebviewWindow {
 	// Use the runtime frame dimensions: macOS construction sizes the content
 	// rectangle, whereas Size and SetSize use the outer window frame.
 	w.SetSize(size.Width, size.Height)
-	h.rememberMainWindowSize(w, size, maximized)
+	h.rememberMainWindowSize(w, size, maximized, provisional)
 	if maximized {
 		w.Maximise()
 	}
@@ -283,7 +283,14 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 		return
 	}
 	defer h.bootstrapping.Store(false)
+	showEarly := !h.automaticLaunch && !(restartedGUI && hasArg(os.Args[1:], backgroundRestartArg))
+	if showEarly && !retry {
+		h.showMainWindow()
+	}
 	spawnedDaemon, err := h.attachStartupDaemon(retry)
+	if h.quitting.Load() {
+		return
+	}
 	if err != nil {
 		h.startupFailed(err)
 		return
@@ -293,6 +300,7 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 		h.fatal(err)
 	}
 	h.client.Store(client)
+	h.emit(daemonConnectionChanged, nil)
 	startup, _ := h.loadStartupSettings()
 	h.lightweight.Store(startup.lightweight())
 	show := shouldOpenAtLaunch(startup.BackgroundStartup, h.automaticLaunch,
@@ -314,7 +322,9 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 		h.tray = nil
 	}
 	if show {
-		h.deferShowUntilReady()
+		if !showEarly {
+			h.deferShowUntilReady()
+		}
 	} else {
 		h.setDockIconVisible(false) // no window yet: run as a menu bar app until one is shown
 	}
@@ -371,11 +381,19 @@ func (h *HostService) attachStartupDaemon(retry bool) (bool, error) {
 		log.Print(daemonlife.IncompatibleError(outcome))
 		return false, incompatibleDaemonError(outcome)
 	case daemonlife.Absent:
+		h.exitIntent.mu.Lock()
+		if h.quitting.Load() {
+			h.exitIntent.mu.Unlock()
+			return false, fmt.Errorf("GUI is shutting down")
+		}
 		attempt, err := daemonproc.SpawnDetachedDaemonForStartup("gui")
+		if err == nil {
+			h.startupAttempt.Store(attempt)
+		}
+		h.exitIntent.mu.Unlock()
 		if err != nil {
 			return false, err
 		}
-		h.startupAttempt.Store(attempt)
 		return true, daemonlife.WaitHealthyForAttempt(daemonlife.StartupTimeout, "", attempt)
 	case daemonlife.Compatible:
 		if outcome.Health.Residency == daemonlife.ResidencyOneshot {

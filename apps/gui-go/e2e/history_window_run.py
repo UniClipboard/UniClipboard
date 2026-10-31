@@ -11,6 +11,7 @@ import json
 import os
 import re
 import socket
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -33,7 +34,7 @@ a = p.parse_args()
 repo = a.repo.resolve()
 sys.path.insert(0, str(repo / 'apps/gui-go/e2e'))
 from history_kit_browser_daemon import start, stop, env_for
-from file_preview_run import cli
+from file_preview_run import PASSPHRASE, cli
 from run import isolated_env
 from thumbnail_resource_run import png
 
@@ -46,6 +47,7 @@ result['engine_revision'] = tomllib.loads((repo/'Cargo.toml').read_text())['work
 result['desktop_worktree_clean'] = not subprocess.check_output(['git','status','--porcelain'], cwd=repo, text=True).strip()
 result['source_patch_sha256'] = hashlib.sha256(subprocess.check_output(['git','diff','HEAD'],cwd=repo)).hexdigest()
 proc = None
+portable_env = None
 with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
     tmp=Path(temporary)
     evidence=tmp/'native.jsonl'
@@ -53,9 +55,25 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
     control_file=tmp/'control.txt'
     control_file.write_text('')
     try:
-        start(tmp, 0, True)
-        info=json.loads((tmp/'daemon.json').read_text())
-        env=env_for(info['home'],info['profile'])
+        if a.gui:
+            # Linux isolation requires a complete portable installation, not only a temporary HOME.
+            for source,name in [(a.gui.resolve(),'gui-go'),(repo/'target/gui-go/uniclip','uniclip'),(repo/'target/debug/uniclipd','uniclipd')]:
+                shutil.copy2(source,tmp/name)
+            profile='gui-go-'+tmp.name
+            portable_env=isolated_env(str(tmp),profile,{'UC_PORTABLE':'1','PATH':str(tmp)+os.pathsep+os.environ['PATH']})
+            def cli(env,*args,timeout=120,check=True):
+                response=subprocess.run([str(tmp/'uniclip'),*args],env=env,capture_output=True,text=True,timeout=timeout)
+                if check and response.returncode: raise RuntimeError(f'isolated CLI failed: {response.stderr}')
+                return response
+            cli(portable_env,'space','init','--passphrase',PASSPHRASE,'--device-name','history-window')
+            cli(portable_env,'start')
+            connection=next((tmp/'data').rglob('daemon.conn'))
+            value=json.loads(connection.read_text())
+            info={'home':str(tmp),'profile':profile,'conn':str(connection),'daemonUrl':f"http://{value.get('host','127.0.0.1')}:{value['port']}"}
+        else:
+            start(tmp, 0, True)
+            info=json.loads((tmp/'daemon.json').read_text())
+        env=portable_env or env_for(info['home'],info['profile'])
         with socket.socket() as sock:
             sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
         setup=json.loads(cli(env,'--json','mobile','setup','--non-interactive','--label','memory-test','--ip','127.0.0.1','--accept-network-risk','--port',str(port)).stdout)
@@ -97,8 +115,8 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         search=daemon_request('/search/query?query=&limit=200&offset=0',session_headers)
         ordered_ids=[item['entryId'] for item in search['items']]
         desktop_keys=('DISPLAY','XAUTHORITY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR','XDG_SESSION_TYPE','DBUS_SESSION_BUS_ADDRESS','GDK_BACKEND','WEBKIT_DISABLE_DMABUF_RENDERER')
-        gui_env=isolated_env(info['home'], info['profile'], {**{key:os.environ[key] for key in desktop_keys if key in os.environ},'PATH': str(repo/'target/debug')+os.pathsep+os.environ['PATH'], 'UC_GUI_GO_ISOLATED':'1', 'UC_GUI_GO_EVIDENCE':str(evidence),'UC_GUI_GO_E2E_PHASE':'history-window','UC_GUI_GO_E2E_SECRET':json.dumps({'ids':ordered_ids,'grid':a.grid,'largeViewport':a.large_viewport}),'UC_GUI_GO_E2E_CONTROL_FILE':str(control_file),'UC_GUI_GO_E2E_VISIBLE':'1','UC_GUI_GO_EXIT_MODE':'full','UC_GPUI_QUICK_PANEL':'0'})
-        binary=a.gui.resolve() if a.gui else a.app/'Contents/MacOS/gui-go'
+        gui_env=isolated_env(info['home'], info['profile'], {**({'UC_PORTABLE':'1'} if a.gui else {}),**{key:os.environ[key] for key in desktop_keys if key in os.environ},'PATH': str(repo/'target/debug')+os.pathsep+os.environ['PATH'], 'UC_GUI_GO_ISOLATED':'1', 'UC_GUI_GO_EVIDENCE':str(evidence),'UC_GUI_GO_E2E_PHASE':'history-window','UC_GUI_GO_E2E_SECRET':json.dumps({'ids':ordered_ids,'grid':a.grid,'largeViewport':a.large_viewport}),'UC_GUI_GO_E2E_CONTROL_FILE':str(control_file),'UC_GUI_GO_E2E_VISIBLE':'1','UC_GUI_GO_EXIT_MODE':'full','UC_GPUI_QUICK_PANEL':'0'})
+        binary=(tmp/'gui-go') if a.gui else a.app/'Contents/MacOS/gui-go'
         result['gui_sha256']=hashlib.sha256(binary.read_bytes()).hexdigest()
         result['daemon_sha256']=hashlib.sha256(((repo/'target/debug/uniclipd') if a.gui else (a.app/'Contents/MacOS/uniclipd')).read_bytes()).hexdigest()
         with (tmp/'gui.log').open('w') as log:
@@ -144,9 +162,12 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             for secret in (locals().get('session'), locals().get('auth'), locals().get('conn',{}).get('token'), locals().get('setup',{}).get('password')):
                 if secret: text=text.replace(str(secret),'[redacted]')
             result['gui_log']=re.sub(r'(?i)(Bearer|Session)\s+[A-Za-z0-9_.-]+',r'\1 [redacted]',text)[-16000:]
-        if (tmp/'daemon.json').exists():
-            try: stop(tmp)
-            except Exception as exc: result['daemon_stop_error']=str(exc)
+        try:
+            if portable_env:
+                stopped=cli(portable_env,'stop',check=False,timeout=60)
+                result['daemon_stop_code']=stopped.returncode
+            elif (tmp/'daemon.json').exists(): stop(tmp)
+        except Exception as exc: result['daemon_stop_error']=str(exc)
         a.out.write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({'passed': result['passed'],'error': result.get('error'),'output':str(a.out)}))
 sys.exit(0 if result['passed'] else 1)

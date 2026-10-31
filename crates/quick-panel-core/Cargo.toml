@@ -15,7 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 async-trait = "0.1"
 chrono = "0.4"
-pinyin = "0.10"
+pinyin = "0.11"
 # Only the channel types: no runtime is started here.
 tokio = { version = "1", default-features = false, features = ["sync"] }
 uc-daemon-contract = { path = "../uc-daemon-contract" }

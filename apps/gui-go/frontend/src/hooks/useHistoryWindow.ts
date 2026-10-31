@@ -157,6 +157,7 @@ export function useHistoryWindow(
       } finally {
         if (request.current === controller) {
           refreshing.current = false
+          request.current = null
           setLoading(false)
         }
       }
@@ -224,6 +225,24 @@ export function useHistoryWindow(
     },
     [load, loading, window.offset]
   )
+  const navigate = useCallback(
+    (direction: 'newer' | 'older') => {
+      if (!encryptionReady || request.current || totalRef.current === null) return
+      const offset = Math.max(
+        0,
+        Math.min(
+          Math.max(0, totalRef.current - HISTORY_WINDOW_CAPACITY),
+          current.current.offset + (direction === 'older' ? BUFFER : -BUFFER)
+        )
+      )
+      if (offset === current.current.offset) return
+      if (idle.current) clearTimeout(idle.current)
+      idle.current = null
+      idleMode.current = false
+      void load(offset, HISTORY_WINDOW_CAPACITY)
+    },
+    [encryptionReady, load]
+  )
   const refetch = useCallback(() => {
     void load(
       current.current.offset,
@@ -257,6 +276,7 @@ export function useHistoryWindow(
     failure,
     state,
     reportViewport,
+    navigate,
     refetch,
     hasMore: total !== null && window.offset + window.items.length < total,
     growWindow: () => {

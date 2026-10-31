@@ -1,0 +1,175 @@
+name: History window GUI E2E
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/history-window-gui-e2e.yml"
+      - "apps/gui-go/e2e/history_window_run.py"
+      - "apps/gui-go/frontend/src/e2e/history-window.ts"
+      - "apps/gui-go/frontend/src/hooks/useHistoryWindow.ts"
+      - "apps/gui-go/frontend/src/ui-kit/use-windowed-scroll.ts"
+  workflow_dispatch:
+    inputs:
+      reuse_binaries_from_run:
+        description: 'Optional same-repository run containing source-identical history-window binaries'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  linux:
+    name: Linux large viewport navigation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: desktop-build-cache-reader
+    env:
+      UC_MBX_BUILD_IMAGE: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        if: inputs.reuse_binaries_from_run == ''
+        with:
+          toolchain: 1.95.0
+      - uses: actions/setup-go@v6
+        if: inputs.reuse_binaries_from_run == ''
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache-dependency-path: |
+            apps/gui-go/go.sum
+            apps/cli-go/go.sum
+            packages/desktop-host-go/go.sum
+      - uses: oven-sh/setup-bun@v2
+        if: inputs.reuse_binaries_from_run == ''
+        with:
+          bun-version: latest
+      - name: Install native WebView and isolated display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config clang cmake \
+            libssl-dev libdbus-1-dev libgtk-4-dev libwebkitgtk-6.0-dev \
+            libx11-dev libwayland-dev libxkbcommon-dev xvfb xauth dbus-x11 python3-venv apparmor bubblewrap
+      - name: Permit WebKit namespaces only for this disposable CI process
+        run: scripts/ci/prepare-webkit-container-profile.sh
+      - name: Verify the isolated WebKit namespace prerequisite
+        run: |
+          aa-exec -p "$UC_WEBKIT_CI_APPARMOR_PROFILE" -- \
+            bwrap --unshare-user --unshare-net --ro-bind / / --proc /proc --dev /dev /usr/bin/true
+      - uses: ./.github/actions/engine-build-cache
+        if: inputs.reuse_binaries_from_run == ''
+        with:
+          cache-key: history-window-gui
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+      - uses: Swatinem/rust-cache@v2
+        if: inputs.reuse_binaries_from_run == ''
+        with:
+          cache-targets: false
+          save-if: false
+      - name: Restore existing Ubuntu Linux GUI CAS snapshot
+        if: inputs.reuse_binaries_from_run == ''
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          scene: linux-gui
+      - name: Build exact checkout
+        if: inputs.reuse_binaries_from_run == ''
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          (cd apps/gui-go/frontend && VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux bun run build)
+          test "$(cat apps/gui-go/frontend/dist/.ui-platform)" = linux
+          cargo build --locked -p uc-daemon
+          (cd packages/desktop-host-go && go generate ./buildinfo)
+          mkdir -p target/gui-go
+          (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
+          (cd apps/gui-go && go build -tags gtk4,e2e -o ../../target/gui-go/gui-go .)
+          git diff --exit-code
+      - name: Record reusable binary identities
+        if: inputs.reuse_binaries_from_run == ''
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, subprocess, tomllib
+          from pathlib import Path
+          files = ['target/debug/uniclipd', 'target/gui-go/uniclip', 'target/gui-go/gui-go']
+          receipt = {
+              'desktop_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'engine_sha': tomllib.loads(Path('Cargo.toml').read_text())['workspace']['dependencies']['uc-engine']['rev'],
+              'binaries': {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in files},
+          }
+          Path('target/gui-go/binary-source.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+      - name: Download existing binaries
+        if: inputs.reuse_binaries_from_run != ''
+        uses: actions/download-artifact@v6
+        with:
+          pattern: history-window-binaries-*
+          merge-multiple: true
+          path: target
+          run-id: ${{ inputs.reuse_binaries_from_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify reused binary source and checksums
+        if: inputs.reuse_binaries_from_run != ''
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, re, subprocess, tomllib
+          from pathlib import Path
+          receipt = json.loads(Path('target/gui-go/binary-source.json').read_text())
+          assert re.fullmatch(r'[0-9a-f]{40}', receipt['desktop_sha'])
+          assert receipt['engine_sha'] == tomllib.loads(Path('Cargo.toml').read_text())['workspace']['dependencies']['uc-engine']['rev']
+          assert set(receipt['binaries']) == {'target/debug/uniclipd', 'target/gui-go/uniclip', 'target/gui-go/gui-go'}
+          # The harness and CI environment may change; every embedded/product input must match.
+          subprocess.run(['git', 'diff', '--exit-code', receipt['desktop_sha'], 'HEAD', '--',
+              'apps', 'crates', 'packages', 'tools', 'Cargo.toml', 'Cargo.lock', '.cargo',
+              'rust-toolchain.toml', 'bun.lock', 'package.json',
+              ':(exclude)apps/gui-go/e2e'], check=True)
+          for name, expected in receipt['binaries'].items():
+              path = Path(name)
+              assert name in ('target/debug/uniclipd', 'target/gui-go/uniclip', 'target/gui-go/gui-go')
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, name
+              path.chmod(0o755)
+          print(json.dumps({'reused_binary_source': receipt['desktop_sha'],
+                            'engine_source': receipt['engine_sha'], 'checksums_verified': True}))
+          PY
+      - name: Retain binaries for runner-only diagnosis
+        uses: actions/upload-artifact@v7
+        with:
+          name: history-window-binaries-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            target/debug/uniclipd
+            target/gui-go/uniclip
+            target/gui-go/gui-go
+            target/gui-go/binary-source.json
+          if-no-files-found: error
+      - name: Navigate both directions with all 50 records visible
+        env:
+          GDK_BACKEND: x11
+          WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+        run: |
+          mkdir -p artifacts/history-window
+          dbus-run-session -- xvfb-run -a -s '-screen 0 2560x1920x24' \
+            python3 apps/gui-go/e2e/history_window_run.py --repo "$PWD" \
+            --gui "$PWD/target/gui-go/gui-go" --grid --large-viewport \
+            --out "$PWD/artifacts/history-window/linux-large-viewport.json"
+      - name: Summarize MBX compiler reuse
+        if: always() && inputs.reuse_binaries_from_run == ''
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+      - name: Retain MBX compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: history-window-mbx-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: history-window-linux-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/history-window/
+          if-no-files-found: warn

@@ -631,6 +631,7 @@ export interface ListGroup {
 export interface HistoryWindowViewport {
   offset: number
   onVisibleRange: (start: number, end: number, scrolling?: boolean) => void
+  onNavigate: (direction: 'newer' | 'older') => void
 }
 
 export interface GroupedListProps {

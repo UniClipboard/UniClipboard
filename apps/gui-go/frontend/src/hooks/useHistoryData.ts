@@ -275,7 +275,11 @@ export function useHistoryData() {
     searchLoading: live.isLoading,
     hasMore: live.hasMore,
     handleLoadMore: live.growWindow,
-    viewport: { offset: live.offset, onVisibleRange: live.reportViewport },
+    viewport: {
+      offset: live.offset,
+      onVisibleRange: live.reportViewport,
+      onNavigate: live.navigate,
+    },
     /** Index availability for the current query: `degraded` while rebuilding. */
     indexState: live.state,
     /** Optimistically drop an entry after the user deletes it. */

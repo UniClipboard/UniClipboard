@@ -2,11 +2,14 @@ import SettingsPage from '@ui-settings-page'
 import { LazyMotion, domMax } from 'framer-motion'
 import { useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
+import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { SettingContext } from '@/contexts/setting-context'
 import { ShortcutContext, type ShortcutContextType } from '@/contexts/shortcut-context'
 import { UpdateContext, type UpdateContextType } from '@/contexts/update-context'
+import { store } from '@/store'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 import type { SettingContextType } from '@/types/setting'
 import { installSettingsFixtureEnvironment } from './settings-environment'
@@ -105,4 +108,10 @@ export default function SettingsPageFixture() {
   )
 }
 
-createRoot(document.getElementById('root')!).render(<SettingsPageFixture />)
+createRoot(document.getElementById('root')!).render(
+  <Provider store={store}>
+    <DeviceTrustProvider enabled={false}>
+      <SettingsPageFixture />
+    </DeviceTrustProvider>
+  </Provider>
+)

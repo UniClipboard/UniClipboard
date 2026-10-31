@@ -8,8 +8,14 @@ import { HostRejection, installFakeHost } from './fake-host'
 // queries with neutral values, and records every native command it receives
 // in `window.__ucNativeCalls` so a run shows exactly what was not native.
 const params = new URLSearchParams(location.search)
-const baseUrl = params.get('daemon') ?? ''
-const sessionToken = params.get('token') ?? ''
+declare global {
+  interface Window {
+    __ucBrowserDaemon?: { baseUrl: string; sessionToken: string }
+  }
+}
+// The runner injects a session in memory so its URL and reports contain no credentials.
+const baseUrl = window.__ucBrowserDaemon?.baseUrl ?? params.get('daemon') ?? ''
+const sessionToken = window.__ucBrowserDaemon?.sessionToken ?? params.get('token') ?? ''
 const errors: string[] = []
 Object.assign(window, { __ucPageErrors: errors })
 window.addEventListener('error', e => errors.push(`error: ${e.message}`))

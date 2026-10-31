@@ -1,0 +1,419 @@
+[
+  {
+    "path": "apps/gui-go/frontend/e2e/app-entry-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["none"],
+    "verifiedPlatforms": ["none"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/app-entry.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/app-entry-kit-browser.mjs",
+    "status": "partially-migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos", "linux", "windows"],
+    "verifiedPlatforms": ["linux", "windows"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/app-entry-kit.e2e.mjs",
+    "reason": "macOS: original native-material assertion fails in the legacy runner too",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/appearance-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["none"],
+    "verifiedPlatforms": ["none"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/appearance.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/device-tasks-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": ["disabled", "error"],
+    "platforms": ["macos", "linux", "windows"],
+    "verifiedPlatforms": ["macos", "linux", "windows"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/device-tasks.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/devices-kit-browser.mjs",
+    "status": "retained-fixture-dependency",
+    "kind": "browser",
+    "scenarioSignals": [
+      "sidebar-device-rows",
+      "sidebar-device-filters-history",
+      "sidebar-devices-collapse",
+      "sheet-opens-from-labelled-entry",
+      "local-switch-and-rebuild-confirmation",
+      "phone-detail",
+      "invite-from-add-menu",
+      "invitation-is-not-modal",
+      "invitation-outlives-the-sheet",
+      "cancel-invitation-revokes-it",
+      "devices-route-opens-the-sheet",
+      "sheet-animates-in-and-out",
+      "dark-appearance"
+    ],
+    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/devices-kit-lifecycle.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/devices-kit-passphrase-lifecycle.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/file-preview-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [","],
+    "platforms": ["macos", "linux", "windows"],
+    "verifiedPlatforms": ["macos", "linux", "windows"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/file-preview.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-compact-browser.mjs",
+    "status": "retained-existing-failure",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["linux"],
+    "verifiedPlatforms": [],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/history-compact.e2e.mjs",
+    "reason": "original compact inspector click is intercepted by an open overlay in the legacy runner too",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-detail-regressions.mjs",
+    "status": "retained-existing-failure",
+    "kind": "browser",
+    "scenarioSignals": [","],
+    "platforms": ["macos", "linux", "windows"],
+    "verifiedPlatforms": [],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/history-detail-regressions.e2e.mjs",
+    "reason": "original warm-image-stable assertion fails in the legacy runner too",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-kit-browser.mjs",
+    "status": "retained-fixture-dependency",
+    "kind": "browser",
+    "scenarioSignals": [
+      "page-loads",
+      "select-and-detail",
+      "image-entry",
+      "keyboard-arrows",
+      "copy",
+      "pin-persists",
+      "search-and-delete-key-in-field",
+      "filter-type",
+      "multi-select",
+      "context-menu-focus-return",
+      "delete-confirm-cancel-restores-focus",
+      "delete-one-persists",
+      "delete-batch-persists",
+      "tags-add-remove-persist",
+      "send-menu",
+      "select-filter-focus-return",
+      "tab-order",
+      ":",
+      "error-feedback-no-false-success",
+      "search-failure-observed",
+      "tag-manager",
+      "grid-view",
+      "quick-look",
+      "paging",
+      "compact-pane",
+      "overlay-pane",
+      "dark",
+      "narrow-and-scaled",
+      "grid-paging"
+    ],
+    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-kit-seed.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-row-hover-browser.mjs",
+    "status": "retained-existing-failure",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["none"],
+    "verifiedPlatforms": [],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/history-row-hover.e2e.mjs",
+    "reason": "original history-favorite DOM lookup is null in the legacy runner too",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-search-browser.mjs",
+    "status": "retained-fixture-dependency",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-tag-menu-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos"],
+    "verifiedPlatforms": ["macos"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/history-tag-menu.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-token-api.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-token-seed.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/history-window-review-daemon.ts",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": ["/"]
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/image-cache-daemon.ts",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/macos-design-browser.mjs",
+    "status": "retained-existing-failure",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos"],
+    "verifiedPlatforms": [],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/macos-design.e2e.mjs",
+    "reason": "original prototype background-color assertion fails in the legacy runner too",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/mobile-connection-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["none"],
+    "verifiedPlatforms": ["none"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/mobile-connection.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/quick-panel-unlock-browser.mjs",
+    "status": "retained-fixture-dependency",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/settings-design-browser.mjs",
+    "status": "retained-existing-failure",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["none"],
+    "verifiedPlatforms": [],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/settings-design.e2e.mjs",
+    "reason": "legacy startup-mode combobox assertion no longer matches the current control",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/settings-scroll-memory-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["none"],
+    "verifiedPlatforms": ["none"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/settings-scroll-memory.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/settings-sidebar-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos", "linux", "windows"],
+    "verifiedPlatforms": ["macos", "linux", "windows"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/settings-sidebar.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/settings-sidebar-motion-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos", "linux"],
+    "verifiedPlatforms": ["macos", "linux"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/settings-sidebar-motion.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/settings-sync-api.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/shortcut-recorder-api.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/sidebar-animation-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos"],
+    "verifiedPlatforms": ["macos"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/sidebar-animation.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/sidebar-toggle-app-browser.mjs",
+    "status": "retained-fixture-dependency",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/startup-chunk-check.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/startup-first-frame-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos", "windows", "linux", "none"],
+    "verifiedPlatforms": ["macos", "windows", "linux", "none"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/startup-first-frame.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/startup-frame-observer.js",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/startup-splash-build-check.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/tag-manager-layout-browser.mjs",
+    "status": "retained-fixture-dependency",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/theme-palette-browser.mjs",
+    "status": "migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos", "linux", "windows"],
+    "verifiedPlatforms": ["macos", "linux", "windows"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/theme-palette.e2e.mjs",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/theme-palette-run.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/tray-icon-settings-api.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/typography-browser.mjs",
+    "status": "retained-existing-failure",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["none"],
+    "verifiedPlatforms": [],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/typography.e2e.mjs",
+    "reason": "original transfer-progress 50% assertion times out in the legacy runner too",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/ui-kit-browser.mjs",
+    "status": "partially-migrated",
+    "kind": "browser",
+    "scenarioSignals": [",", ","],
+    "platforms": ["macos", "linux", "windows"],
+    "verifiedPlatforms": ["linux", "windows"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/ui-kit.e2e.mjs",
+    "reason": "macOS: original native-mode popup assertion fails in the legacy runner too",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/ui-kit-bundle-check.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": ["?", "?"]
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/ui-kit-run.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/visual-effects-browser.mjs",
+    "status": "partially-migrated",
+    "kind": "browser",
+    "scenarioSignals": [],
+    "platforms": ["macos", "linux", "windows"],
+    "verifiedPlatforms": ["windows"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/visual-effects.e2e.mjs",
+    "reason": "macOS/Linux: original shadow-token assertion fails in the legacy runner too",
+    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/visual-effects-server.mjs",
+    "status": "retained",
+    "kind": "helper-or-nonvisual",
+    "scenarioSignals": []
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/custom-relays.e2e.mjs",
+    "status": "migrated",
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/custom-relays.e2e.mjs"
+  },
+  {
+    "path": "apps/gui-go/frontend/e2e/relay-overview.e2e.mjs",
+    "status": "migrated",
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/relay-overview.e2e.mjs"
+  }
+]

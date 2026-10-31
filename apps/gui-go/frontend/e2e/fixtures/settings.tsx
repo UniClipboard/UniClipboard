@@ -1,6 +1,7 @@
 import { LazyMotion, domMax } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
 import { CustomRelayMutationError } from '@/api/daemon'
 import InsetSurface from '@/components/layout/InsetSurface'
@@ -9,11 +10,13 @@ import { SETTINGS_CATEGORIES } from '@/components/setting/settings-config'
 import SettingsPageHeader from '@/components/setting/SettingsPageHeader'
 import SettingsSidebar from '@/components/setting/SettingsSidebar'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { SettingContext } from '@/contexts/setting-context'
 import { ShortcutContext, type ShortcutContextType } from '@/contexts/shortcut-context'
 import { UpdateContext, type UpdateContextType } from '@/contexts/update-context'
 import SettingContentLayout from '@/layouts/SettingContentLayout'
 import { applyThemeOverrides, applyThemePreset } from '@/lib/theme-engine'
+import { store } from '@/store'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 import type { CustomRelay, CustomRelayMutation, SettingContextType } from '@/types/setting'
 import { installSettingsFixtureEnvironment } from './settings-environment'
@@ -293,4 +296,10 @@ export default function SettingsFixture() {
     </SettingContext.Provider>
   )
 }
-createRoot(document.getElementById('root')!).render(<SettingsFixture />)
+createRoot(document.getElementById('root')!).render(
+  <Provider store={store}>
+    <DeviceTrustProvider enabled={false}>
+      <SettingsFixture />
+    </DeviceTrustProvider>
+  </Provider>
+)

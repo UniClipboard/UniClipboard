@@ -1,0 +1,64 @@
+name: TesterArmy native capability
+on:
+  pull_request:
+    paths:
+      - 'apps/gui-go/e2e/tester-army-native/**'
+      - 'apps/gui-go/cmd/webview-probe/**'
+      - 'e2e.native.config.ts'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/tester-army-native.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capability:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      E2E_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - run: bun install --frozen-lockfile
+      - run: node apps/gui-go/e2e/tester-army-native/protocol.mjs
+      - name: Ephemeral WKWebView read-back, without a window
+        if: runner.os == 'macOS'
+        run: swift apps/gui-go/e2e/tester-army-native/wkwebview.swift > target/tester-army-native/wkwebview.json
+      - name: Ephemeral WebKitGTK read-back in an owned Xvfb
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 xvfb
+          xvfb-run -a /usr/bin/python3 apps/gui-go/e2e/tester-army-native/webkitgtk.py > target/tester-army-native/webkitgtk.json
+      - uses: actions/setup-go@v6
+        if: runner.os == 'Windows'
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+      - name: Build owned WebView2 host
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p target
+          (cd apps/gui-go && go build -tags e2e -o ../../target/webview-probe.exe ./cmd/webview-probe)
+      - name: Characterize the actual WebView2 target
+        if: runner.os == 'Windows'
+        run: node apps/gui-go/e2e/tester-army-native/webview2.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tester-army-native-${{ matrix.os }}
+          path: target/tester-army-native/
+          if-no-files-found: error

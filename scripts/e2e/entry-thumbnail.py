@@ -100,8 +100,8 @@ def main():
             check('entry thumbnail not found', 'GET', route, 404)
             check('legacy representation route removed', 'GET', '/clipboard/thumbnails/' + str(uuid.uuid4()), 404)
             check('lock encryption session', 'POST', '/encryption/lock', 200, {})
-            locked = check('locked thumbnail is unavailable', 'GET', route, 503)
-            assert locked['details']['retryable'] is True, locked
+            locked = check('locked thumbnail requires confirmed unlock', 'GET', route, 423)
+            assert locked == 'encryption session locked', locked
             check('unlock encryption session', 'POST', '/encryption/unlock-with-passphrase', 200,
                 {'passphrase': password})
             check('thumbnail recovers after unlock', 'GET', route, 404)

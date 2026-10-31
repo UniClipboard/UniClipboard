@@ -68,7 +68,6 @@ describe('projectClipboardEntry', () => {
 
     expect(entry.type).toBe('image')
     expect(entry.content).toEqual({
-      thumbnail: null,
       size: 123,
       width: 0,
       height: 0,

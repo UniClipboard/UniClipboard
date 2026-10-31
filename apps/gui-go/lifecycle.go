@@ -93,7 +93,15 @@ func (h *HostService) announceDaemonStop() {
 
 // stopDaemonOnExit terminates the connected daemon and waits for it to exit.
 func (h *HostService) stopDaemonOnExit() {
-	if h.keepDaemon.Load() || h.daemon() == nil {
+	if h.keepDaemon.Load() {
+		return
+	}
+	if h.daemon() == nil {
+		if attempt := h.startupAttempt.Load(); attempt != nil && !attempt.Exited() && daemonproc.IsActiveDaemon(attempt.PID()) {
+			if err := daemonproc.StopDaemon(attempt.PID(), requestDaemonGracefulStop, daemonStopTimeout); err != nil {
+				log.Printf("failed to stop starting daemon on exit: %v", err)
+			}
+		}
 		return
 	}
 	h.announceDaemonStop()

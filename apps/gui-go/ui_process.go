@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -369,6 +370,7 @@ func (h *HostService) handleUIRequest(m uiPacket) (any, error) {
 		if e.Name == daemonConnectionChanged {
 			if client, err := daemonclient.FromEnv(); err == nil {
 				h.client.Store(client)
+				h.restoreProvisionalMainWindowSize()
 			}
 		}
 		h.app.Event.Emit(e.Name, payload)
@@ -390,11 +392,11 @@ func (h *HostService) handleUIRequest(m uiPacket) (any, error) {
 	return nil, nil
 }
 func (h *HostService) bootstrapUI() {
-	client, err := daemonclient.FromEnv()
-	if err != nil {
-		h.fatal(err)
+	if outcome, err := daemonlife.Probe(); err == nil && outcome.Kind == daemonlife.Compatible {
+		if client, err := daemonclient.FromEnv(); err == nil {
+			h.client.Store(client)
+		}
 	}
-	h.client.Store(client)
 	h.readyMu.Lock()
 	h.ready = true
 	h.readyMu.Unlock()

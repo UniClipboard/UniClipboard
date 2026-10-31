@@ -84,9 +84,13 @@ func (h *HostService) GetDeviceID(ctx context.Context) (string, error) {
 func (h *HostService) GetDeviceMeta(ctx context.Context) (DeviceMeta, error) {
 	ctx, cancel := commandContext(ctx, "get_device_meta")
 	defer cancel()
-	id, err := h.deviceID(ctx)
-	if err != nil {
-		return DeviceMeta{}, err
+	var id string
+	if h.daemon() != nil {
+		var err error
+		id, err = h.deviceID(ctx)
+		if err != nil {
+			return DeviceMeta{}, err
+		}
 	}
 	return DeviceMeta{
 		DeviceID:        id,

@@ -211,7 +211,11 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
                     for secret in (locals().get('session'),locals().get('auth'),locals().get('value',{}).get('token'),locals().get('setup',{}).get('password')):
                         if secret: text=text.replace(str(secret),'[redacted]')
                     text=re.sub(r'(?i)(Bearer|Session)\s+[A-Za-z0-9_.-]+',r'\1 [redacted]',text)
-                    fixture_logs.append({'file':str(path.relative_to(tmp/'data')),'tail':text[-24000:]})
+                    directory=a.out.parent/(a.out.stem+'.fixture-logs')
+                    directory.mkdir(exist_ok=True)
+                    saved=directory/(str(len(fixture_logs))+'.log')
+                    saved.write_text(text)
+                    fixture_logs.append({'file':str(path.relative_to(tmp/'data')),'artifact':str(saved.relative_to(a.out.parent)),'sha256':hashlib.sha256(text.encode()).hexdigest(),'tail':text[-24000:]})
             result['fixture_logs']=fixture_logs
         try:
             if portable_env:

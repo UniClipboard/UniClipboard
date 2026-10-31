@@ -14,6 +14,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { satisfies } from 'semver'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
@@ -204,13 +205,9 @@ function checkBigintBoundary(metadata, problems) {
   }
   for (const pkg of bigintPackages) {
     if (pkg.version !== '0.5.5') {
-      const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(pkg.version)
-      const patched =
-        match &&
-        (Number(match[1]) > 0 ||
-          Number(match[2]) > 7 ||
-          (Number(match[2]) === 7 && Number(match[3]) >= 6))
-      if (!patched) addProblem(problems, 'bigint version', `${pkg.version} is not patched`)
+      if (!satisfies(pkg.version, '>=0.7.6')) {
+        addProblem(problems, 'bigint version', `${pkg.version} is not patched`)
+      }
       continue
     }
     const pending = [pkg.id]
@@ -235,6 +232,11 @@ function checkSwaggerBoundary(metadata, problems) {
   const swagger = metadata.packages.find(pkg => pkg.name === 'utoipa-swagger-ui')
   const vendored = metadata.packages.find(pkg => pkg.name === 'utoipa-swagger-ui-vendored')
   const zip = metadata.packages.find(pkg => pkg.name === 'zip' && pkg.version === '1.1.4')
+  for (const pkg of metadata.packages.filter(pkg => pkg.name === 'zip')) {
+    if (pkg.version !== '1.1.4' && !satisfies(pkg.version, '>=9.0.0')) {
+      addProblem(problems, 'zip version', `zip@${pkg.version} is not patched and is not reviewed`)
+    }
+  }
   if (
     !swagger ||
     swagger.version !== '7.1.0' ||

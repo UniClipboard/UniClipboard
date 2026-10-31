@@ -10346,9 +10346,9 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
+                  "type": "string"
                 }
               }
             },
@@ -10356,9 +10356,9 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
+                  "type": "string"
                 }
               }
             },

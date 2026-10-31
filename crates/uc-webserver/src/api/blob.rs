@@ -109,9 +109,9 @@ async fn get_blob(
             content_type = "application/octet-stream",
             body = Vec<u8>,
         ),
-        (status = 404, description = "Thumbnail not found", body = ApiErrorResponse),
+        (status = 404, description = "Thumbnail not found", content_type = "text/plain", body = String),
         (status = 503, description = "Thumbnail temporarily unavailable; retry after unlock or load completes", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", content_type = "text/plain", body = String),
     )
 )]
 async fn get_thumbnail(

@@ -5823,11 +5823,11 @@ export type GetClipboardThumbnailErrors = {
     /**
      * Thumbnail not found
      */
-    404: ApiErrorResponse;
+    404: string;
     /**
      * Internal server error
      */
-    500: ApiErrorResponse;
+    500: string;
     /**
      * Thumbnail temporarily unavailable; retry after unlock or load completes
      */

@@ -33,6 +33,7 @@ struct StartupApi {
     failed: Arc<AtomicBool>,
     instance_id: String,
     retry: CancellationToken,
+    stop: CancellationToken,
 }
 
 async fn snapshot(State(state): State<StartupApi>, headers: HeaderMap) -> Response {
@@ -122,6 +123,26 @@ async fn exit_for_retry(State(state): State<StartupApi>, headers: HeaderMap) -> 
     StatusCode::ACCEPTED
 }
 
+#[tracing::instrument(name = "daemon.startup.stop", skip_all, fields(trace_id = %uuid::Uuid::new_v4()))]
+async fn stop_owned_run(State(state): State<StartupApi>, headers: HeaderMap) -> StatusCode {
+    let bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let instance = headers
+        .get("X-UniClipboard-Startup-Instance")
+        .and_then(|value| value.to_str().ok());
+    if !bearer.is_some_and(|token| state.token.verify(token))
+        || instance != Some(state.instance_id.as_str())
+    {
+        tracing::warn!(outcome = "unauthorized", "startup stop refused");
+        return StatusCode::UNAUTHORIZED;
+    }
+    state.stop.cancel();
+    tracing::info!(outcome = "accepted", "owned daemon stop requested");
+    StatusCode::ACCEPTED
+}
+
 pub struct StartupServer {
     cancel: CancellationToken,
     task: Option<JoinHandle<std::io::Result<()>>>,
@@ -129,6 +150,7 @@ pub struct StartupServer {
     ready: Arc<AtomicBool>,
     failed: Arc<AtomicBool>,
     retry: CancellationToken,
+    stop: CancellationToken,
 }
 
 impl StartupServer {
@@ -147,9 +169,11 @@ impl StartupServer {
             .filter(|value| value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
             .unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
         let retry = CancellationToken::new();
+        let stop_request = CancellationToken::new();
         let router = Router::new()
             .route("/startup", get(snapshot))
             .route("/startup/exit", post(exit_for_retry))
+            .route("/startup/stop", post(stop_owned_run))
             .fallback(|| async { StatusCode::SERVICE_UNAVAILABLE })
             .with_state(StartupApi {
                 started_at,
@@ -159,6 +183,7 @@ impl StartupServer {
                 failed: failed.clone(),
                 instance_id: instance_id.clone(),
                 retry: retry.clone(),
+                stop: stop_request.clone(),
             });
         let cancel = CancellationToken::new();
         let stop = cancel.clone();
@@ -181,11 +206,16 @@ impl StartupServer {
             ready,
             failed,
             retry,
+            stop: stop_request,
         })
     }
 
     pub async fn retry_requested(&self) {
         self.retry.cancelled().await;
+    }
+
+    pub fn stop_token(&self) -> CancellationToken {
+        self.stop.clone()
     }
 
     pub fn ready_flag(&self) -> Arc<AtomicBool> {

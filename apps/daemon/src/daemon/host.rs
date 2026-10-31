@@ -158,7 +158,12 @@ async fn run_async_with_diagnostics(
     ));
     let started = tokio::select! {
         result = &mut starting => result.map_err(anyhow::Error::new).and_then(|result| result.map_err(anyhow::Error::new)),
-        signal = wait_for_shutdown_signal() => {
+        signal = async {
+            tokio::select! {
+                result = wait_for_shutdown_signal() => result,
+                () = startup_server.stop_token().cancelled_owned() => Ok(()),
+            }
+        } => {
             signal?;
             let shutdown = match starting.await.map_err(anyhow::Error::new) {
                 Ok(Ok((engine, events))) => {
@@ -194,6 +199,7 @@ async fn run_async_with_diagnostics(
             tokio::select! {
                 signal = wait_for_shutdown_signal() => { signal?; }
                 () = startup_server.retry_requested() => {}
+                () = startup_server.stop_token().cancelled_owned() => {}
             }
             startup_server.shutdown().await?;
             return Err(error);
@@ -248,6 +254,7 @@ async fn run_async_with_diagnostics(
         desktop_settings,
         analytics.sink(),
         startup_server.ready_flag(),
+        startup_server.stop_token(),
         diagnostics,
     )
     .await;
@@ -271,7 +278,10 @@ async fn run_async_with_diagnostics(
             StartupStep::ServiceStart,
             StartupFailureClass::Internal,
         );
-        wait_for_shutdown_signal().await?;
+        tokio::select! {
+            signal = wait_for_shutdown_signal() => { signal?; }
+            () = startup_server.stop_token().cancelled_owned() => {}
+        }
     }
     startup_server.shutdown().await?;
     result.and(shutdown)
@@ -286,6 +296,7 @@ async fn run_daemon_surfaces(
     desktop_settings: Arc<DesktopSettingsStore>,
     analytics_sink: Arc<dyn AnalyticsPort>,
     startup_ready: Arc<std::sync::atomic::AtomicBool>,
+    startup_stop: CancellationToken,
     diagnostics: Arc<EngineDaemonDiagnostics>,
 ) -> anyhow::Result<()> {
     // ADR-011: the bearer token lives inside `daemon.conn` (load-or-create);
@@ -378,6 +389,9 @@ async fn run_daemon_surfaces(
     let mut http_completed = false;
     let mut controlled_oneshot_exit = false;
     tokio::select! {
+        () = startup_stop.cancelled() => {
+            info!("owned daemon stop requested via startup control plane");
+        }
         result = wait_for_shutdown_signal(), if run_mode.listens_to_os_signals() => {
             result?;
             info!("shutdown signal received");

@@ -89,26 +89,22 @@ export const verifiedPlatforms = {
   'settings-sidebar-motion': ['macos', 'linux'],
   appearance: ['none'],
   'app-entry': ['none'],
-  'app-entry-kit': ['linux', 'windows'],
+  'app-entry-kit': ['macos', 'linux', 'windows'],
   'mobile-connection': ['none'],
   'theme-palette': ['macos', 'linux', 'windows'],
-  'ui-kit': ['linux', 'windows'],
-  'visual-effects': ['windows'],
+  'ui-kit': ['macos', 'linux', 'windows'],
+  'visual-effects': ['macos', 'linux', 'windows'],
   'file-preview': ['macos', 'linux', 'windows'],
   'device-tasks': ['macos', 'linux', 'windows'],
   'settings-scroll-memory': ['none'],
   'history-tag-menu': ['macos'],
+  'history-compact': ['linux'],
+  'macos-design': ['macos'],
 }
 export const retainedReasons = {
-  'app-entry-kit': 'macOS: original native-material assertion fails in the legacy runner too',
-  'ui-kit': 'macOS: original native-mode popup assertion fails in the legacy runner too',
-  'visual-effects': 'macOS/Linux: original shadow-token assertion fails in the legacy runner too',
   'history-row-hover': 'original history-favorite DOM lookup is null in the legacy runner too',
   typography: 'original transfer-progress 50% assertion times out in the legacy runner too',
   'history-detail-regressions':
     'original warm-image-stable assertion fails in the legacy runner too',
-  'history-compact':
-    'original compact inspector click is intercepted by an open overlay in the legacy runner too',
   'settings-design': 'legacy startup-mode combobox assertion no longer matches the current control',
-  'macos-design': 'original prototype background-color assertion fails in the legacy runner too',
 }

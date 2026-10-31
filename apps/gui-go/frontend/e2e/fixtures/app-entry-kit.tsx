@@ -2,6 +2,7 @@
 // responses. Build it with a target, like the gallery:
 //   UC_UI_PLATFORM=macos UI_FIXTURE_ENTRY=e2e/fixtures/app-entry-kit.tsx node e2e/visual-effects-server.mjs
 // `?view=…&theme=light|dark&language=…`. Nothing here reaches a daemon, keyring or the user's profile.
+import { AutoResult, EffectsMode, EffectsReason, SystemMotion } from '@host/models'
 import { LazyMotion, domMax } from 'framer-motion'
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -13,6 +14,7 @@ import { TitleBar } from '@/components/TitleBar'
 import { makeUpgradePreview } from '@/dev/upgrade-preview-model'
 import i18n from '@/i18n'
 import { pendingStartupSnapshot } from '@/lib/startup-progress'
+import { INITIAL_EFFECTS, initializeVisualEffects } from '@/lib/visual-effects-store'
 import ProfileRecoveryPage from '@/pages/entry-kit/ProfileRecoveryKitPage'
 import { SetupKitEntry } from '@/pages/entry-kit/SetupKitEntry'
 import { SetupKitImport } from '@/pages/entry-kit/SetupKitImport'
@@ -31,7 +33,23 @@ import { HostRejection, installFakeHost } from './fake-host'
 import '@/App.css'
 
 const CORRECT_PASSPHRASE = 'fixture-passphrase'
+// The entry fixture simulates an effects-enabled host; system motion remains authoritative.
+const effectsSnapshot = () => {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+  return {
+    ...INITIAL_EFFECTS,
+    sessionId: 'entry-fixture',
+    mode: EffectsMode.EffectsModeEffects,
+    autoForSession: AutoResult.AutoResultEffects,
+    systemMotion: reduced ? SystemMotion.SystemMotionReduce : SystemMotion.SystemMotionAllow,
+    lowEffects: false,
+    reduceMotion: reduced,
+    reason: EffectsReason.EffectsReasonManual,
+  }
+}
 installFakeHost({
+  GetVisualEffects: effectsSnapshot,
+  ReportVisualEffectsEnvironment: effectsSnapshot,
   UnlockContentFromKeyring: async () => {
     await new Promise(resolve => setTimeout(resolve, 400))
     return false
@@ -45,6 +63,7 @@ installFakeHost({
     throw new HostRejection({ code: 'WRONG_PASSPHRASE', message: 'fixture' })
   },
 })
+initializeVisualEffects()
 window.fetch = async () => {
   throw new Error('Network access is disabled in the entry fixture')
 }

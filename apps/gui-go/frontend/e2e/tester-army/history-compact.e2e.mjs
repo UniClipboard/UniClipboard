@@ -36,8 +36,15 @@ for (const scheme of ['light', 'dark']) {
     const detail = page.locator('[data-pane="detail"]')
     const back = page.getByRole('button', { name: '返回列表' })
     const toggle = page.locator('.adw-split-toggle')
+    async function resize(size) {
+      await page.setViewportSize(size)
+      await page.waitForFunction(width => {
+        const split = document.querySelector('.adw-split')
+        return split && split.hasAttribute('data-single-pane') === width <= 760
+      }, size.width)
+    }
     for (const width of [640, 739, 760, 761, 900, 1100, 1280]) {
-      await page.setViewportSize({ width, height: 945 })
+      await resize({ width, height: 945 })
       await page.waitForTimeout(150)
       assert.equal((await root.getAttribute('data-single-pane')) !== null, width <= 760)
       const metrics = await page.evaluate(() => {
@@ -55,7 +62,7 @@ for (const scheme of ['light', 'dark']) {
       await page.screenshot({ path: path.join(output, `${scheme}-${width}-list.png`) })
       results.push({ scheme, width, ...metrics })
     }
-    await page.setViewportSize({ width: 739, height: 945 })
+    await resize({ width: 739, height: 945 })
     await page.locator('.adw-glist').focus()
     await page.keyboard.press('ArrowDown')
     assert.equal(await detail.isVisible(), false, 'arrow selection must stay in the list')
@@ -85,14 +92,14 @@ for (const scheme of ['light', 'dark']) {
     await back.waitFor()
     await back.click()
     assert.equal(await scroller.evaluate(el => el.scrollTop), before)
-    // Ctrl-click and Shift-click select without navigating away.
-    await row.click({ modifiers: ['Control'] })
+    // The platform selection modifier and Shift select without navigating away.
+    await row.click({ modifiers: ['ControlOrMeta'] })
     assert.equal(await detail.isVisible(), false)
     await row.click({ modifiers: ['Shift'] })
     assert.equal(await detail.isVisible(), false)
     // Sidebar is modal at both compact widths, never a squeezed inline column.
     for (const width of [739, 900]) {
-      await page.setViewportSize({ width, height: 945 })
+      await resize({ width, height: 945 })
       await toggle.click()
       const drawer = page.getByRole('dialog')
       await drawer.waitFor()
@@ -108,14 +115,14 @@ for (const scheme of ['light', 'dark']) {
       await page.getByRole('dialog').waitFor({ state: 'hidden' })
     }
     // A detail stays open across wide/narrow transitions; returning restores one full-width list.
-    await page.setViewportSize({ width: 739, height: 945 })
+    await resize({ width: 739, height: 945 })
     await page.locator('.adw-glist').focus()
     await page.keyboard.press('Enter')
     await back.waitFor()
-    await page.setViewportSize({ width: 1100, height: 945 })
+    await resize({ width: 1100, height: 945 })
     await list.waitFor({ state: 'visible' })
     assert.equal(await detail.isVisible(), true)
-    await page.setViewportSize({ width: 640, height: 600 })
+    await resize({ width: 640, height: 600 })
     await back.waitFor()
     await page.screenshot({ path: path.join(output, `${scheme}-640-detail.png`) })
     await back.click()

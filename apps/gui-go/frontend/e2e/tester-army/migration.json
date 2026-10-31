@@ -11,7 +11,7 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/app-entry-kit-browser.mjs",
-    "status": "partially-migrated",
+    "status": "migrated",
     "kind": "browser",
     "scenarioSignals": [
       "recovery: terminal key loss offers diagnostics instead of a disabled form",
@@ -22,10 +22,9 @@
       "setup: invitation issue failure is reported"
     ],
     "platforms": ["macos", "linux", "windows"],
-    "verifiedPlatforms": ["linux", "windows"],
+    "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/app-entry-kit.e2e.mjs",
-    "reason": "macOS: original native-material assertion fails in the legacy runner too",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
   },
   {
     "path": "apps/gui-go/frontend/e2e/appearance-browser.mjs",
@@ -96,14 +95,13 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-compact-browser.mjs",
-    "status": "retained-existing-failure",
+    "status": "migrated",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["linux"],
-    "verifiedPlatforms": [],
+    "verifiedPlatforms": ["linux"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/history-compact.e2e.mjs",
-    "reason": "original compact inspector click is intercepted by an open overlay in the legacy runner too",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-detail-regressions.mjs",
@@ -236,14 +234,13 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/macos-design-browser.mjs",
-    "status": "retained-existing-failure",
+    "status": "migrated",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos"],
-    "verifiedPlatforms": [],
+    "verifiedPlatforms": ["macos"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/macos-design.e2e.mjs",
-    "reason": "original prototype background-color assertion fails in the legacy runner too",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
   },
   {
     "path": "apps/gui-go/frontend/e2e/mobile-connection-browser.mjs",
@@ -437,7 +434,7 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/ui-kit-browser.mjs",
-    "status": "partially-migrated",
+    "status": "migrated",
     "kind": "browser",
     "scenarioSignals": [
       "the served bundle is the requested platform",
@@ -478,10 +475,9 @@
       "no page errors"
     ],
     "platforms": ["macos", "linux", "windows"],
-    "verifiedPlatforms": ["linux", "windows"],
+    "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/ui-kit.e2e.mjs",
-    "reason": "macOS: original native-mode popup assertion fails in the legacy runner too",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
   },
   {
     "path": "apps/gui-go/frontend/e2e/ui-kit-bundle-check.mjs",
@@ -497,14 +493,13 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/visual-effects-browser.mjs",
-    "status": "partially-migrated",
+    "status": "migrated",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos", "linux", "windows"],
-    "verifiedPlatforms": ["windows"],
+    "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/visual-effects.e2e.mjs",
-    "reason": "macOS/Linux: original shadow-token assertion fails in the legacy runner too",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
   },
   {
     "path": "apps/gui-go/frontend/e2e/visual-effects-server.mjs",

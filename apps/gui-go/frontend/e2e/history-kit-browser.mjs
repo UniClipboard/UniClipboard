@@ -119,6 +119,28 @@ export async function runScenarios({
     } catch (error) {
       results.steps.push({ name, ok: false, error: redactEvidence(String(error?.stack ?? error)) })
       console.log(`FAIL ${name}`)
+      try {
+        const diagnostic = await page.evaluate(() => ({
+          focused: {
+            tag: document.activeElement?.tagName,
+            role: document.activeElement?.getAttribute('role'),
+            label: document.activeElement?.getAttribute('aria-label'),
+          },
+          renderedRows: document.querySelectorAll('[data-item-id]').length,
+          selectedRows: document.querySelectorAll('[data-item-id][aria-selected="true"]').length,
+          historyWindow: {
+            total: document.documentElement.dataset.historyWindowTotal,
+            count: document.documentElement.dataset.historyWindowCount,
+            offset: document.documentElement.dataset.historyWindowOffset,
+          },
+        }))
+        await writeFile(
+          path.join(output, `diagnostic-${name}.json`),
+          redactEvidence(JSON.stringify(diagnostic, null, 2)) + '\n'
+        )
+      } catch (diagnosticError) {
+        results.steps.at(-1).diagnosticError = redactEvidence(String(diagnosticError))
+      }
       await page?.screenshot({ path: path.join(output, `failed-${name}.png`) }).catch(() => {})
       await reset().catch(() => {})
     }
@@ -329,7 +351,7 @@ export async function runScenarios({
         row: box('[data-item-id]'),
         pageOverflowX: document.documentElement.scrollWidth - window.innerWidth,
         skin: document.querySelector('[data-ui-skin]')?.getAttribute('data-ui-skin'),
-        colorScheme: document.querySelector('[data-ui-skin]')?.getAttribute('data-color-scheme'),
+        colorScheme: getComputedStyle(document.querySelector('[data-ui-skin]')).colorScheme,
         material: [...document.querySelectorAll('[data-window-material]')].map(el =>
           el.getAttribute('data-window-material')
         ),
@@ -389,6 +411,7 @@ export async function runScenarios({
     })
 
     await step('keyboard-arrows', async () => {
+      await list().focus()
       const before = (await selectedIds())[0]
       await page.keyboard.press('ArrowDown')
       const down = (await selectedIds())[0]
@@ -626,6 +649,15 @@ export async function runScenarios({
       )
       await shot('send-menu')
       await page.keyboard.press('Escape')
+      await menu.waitFor({ state: 'hidden' })
+      await page.waitForFunction(
+        () => {
+          const active = document.activeElement
+          return /Send to/.test(active?.getAttribute('aria-label') ?? active?.textContent ?? '')
+        },
+        null,
+        { timeout: 5000 }
+      )
       const focus = await activeDescription()
       assert.ok(/Send to/.test(focus ?? ''), `focus after the send menu: ${focus}`)
       return { items, focus }
@@ -731,10 +763,11 @@ export async function runScenarios({
       await dialog.waitFor()
       const grid = dialog.getByRole('grid')
       await grid.waitFor()
-      const tagRows = await grid.locator('[data-row-id]').count()
+      const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') })
+      const tagRows = await dataRows.count()
       await shot('tag-manager')
       // Row menu: the context menu of the first row offers Rename, Merge into (submenu) and the colours.
-      await grid.locator('[data-row-id]').first().click({ button: 'right' })
+      await dataRows.first().click({ button: 'right' })
       const menu = page.getByRole('menu').first()
       await menu.waitFor()
       const items = await menu.getByRole('menuitem').allTextContents()

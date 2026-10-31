@@ -3,6 +3,7 @@
 // follows the component boards (C1 to C5) of the desktop design canvas.
 //   UC_UI_PLATFORM=windows UI_FIXTURE_ENTRY=e2e/fixtures/ui-kit-gallery.tsx node e2e/visual-effects-server.mjs
 // `?scheme=light|dark` renders one scheme; the default shows both side by side like the boards.
+import { useReducedMotion } from 'framer-motion'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -36,6 +37,7 @@ import {
   UiRoot,
 } from '@/ui-kit'
 import type { ColorScheme, ItemListItem, MenuEntry, SidebarNavSection } from '@/ui-kit'
+import { GuiVisualEffects } from '@/ui-kit/visual-effects'
 import '@/App.css'
 
 const clipActions: MenuEntry[] = [
@@ -456,16 +458,19 @@ output[data-testid="event-log"] { font-family: monospace; font-size: 0.75rem; op
 `
 
 export default function Gallery() {
+  const reduceMotion = useReducedMotion() ?? true
   const param = new URLSearchParams(window.location.search).get('scheme')
   const schemes: ColorScheme[] = param === 'light' || param === 'dark' ? [param] : ['light', 'dark']
   return (
     <>
       <style>{galleryCss}</style>
-      <main className="ui-kit-gallery" data-testid="ui-kit-gallery">
-        {schemes.map(scheme => (
-          <Board key={scheme} scheme={scheme} />
-        ))}
-      </main>
+      <GuiVisualEffects value={{ lowEffects: false, reduceMotion }}>
+        <main className="ui-kit-gallery" data-testid="ui-kit-gallery">
+          {schemes.map(scheme => (
+            <Board key={scheme} scheme={scheme} />
+          ))}
+        </main>
+      </GuiVisualEffects>
     </>
   )
 }

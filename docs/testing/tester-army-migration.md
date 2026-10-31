@@ -14,16 +14,16 @@
 
 `apps/gui-go/frontend/e2e/tester-army/suites.mjs` 是运行矩阵的唯一来源。`migration.json` 记录每个原入口的迁移状态。不要把候选测试接入完成等同于运行通过。
 
-已接入 21 组原有浏览器断言。15 组至少有一个通过的皮肤，共 29 个测试组与皮肤组合。其中 12 组按原默认参数完整通过，3 组只完成部分皮肤。
+已接入 21 组原有浏览器断言。17 组按原有目标范围通过，共 35 个测试组与皮肤组合。其余四组保留原断言和旧入口。
 
 | 测试组 | 已验证皮肤 |
 | --- | --- |
 | 设置侧边栏、文件预览、设备任务、主题调色板 | macOS、Windows、Linux |
 | 设置侧边栏动效 | macOS、Linux |
-| 初始化与恢复页面、组件库 | Windows、Linux；macOS 保留旧路径 |
-| 跨窗口效果设置 | Windows；macOS/Linux 保留旧路径 |
+| 初始化与恢复页面、组件库、跨窗口效果设置 | macOS、Windows、Linux |
 | 启动首帧 | macOS、Windows、Linux、无平台构建 |
-| 标签菜单、侧边栏动画 | macOS |
+| 标签菜单、侧边栏动画、macOS 设计原型 | macOS |
+| 紧凑历史布局 | Linux |
 | 外观、旧初始化页面、移动连接、设置滚动记忆 | 无平台构建；不代表当前原生皮肤验收 |
 
 此外，两个中继测试使用通用 SDK 定位器运行。真实 daemon 用例验证历史显示、页面置顶、API 回读、重载持久化和进程清理。它使用真实 HTTP/WS 客户端与既有模拟原生宿主，不验证原生窗口或剪贴板。
@@ -47,7 +47,7 @@ bun run e2e:browser:layouts ui-kit --platform macos
 node apps/gui-go/frontend/e2e/tester-army/assertion-inventory.mjs
 ```
 
-多数已完整迁移的旧可执行文件成为薄入口，断言只保存在新测试中。`startup-first-frame-browser.mjs` 仍支持 `--platform` 和 `--out` 导出。`theme-palette-run.mjs` 直接委托新运行器，不再启动第二套服务。部分皮肤失败的原脚本，以及侧边栏动画的自定义宽度入口仍保留。旧 `ui-kit-run.mjs --serve` 继续用于人工预览。
+多数已完整迁移的旧可执行文件成为薄入口，断言只保存在新测试中。`startup-first-frame-browser.mjs` 仍支持 `--platform` 和 `--out` 导出。`theme-palette-run.mjs` 直接委托新运行器，不再启动第二套服务。仍未通过的原脚本，以及侧边栏动画的自定义宽度入口继续保留。旧 `ui-kit-run.mjs --serve` 继续用于人工预览。
 
 仅在 macOS 上运行当前真实 daemon 用例：
 
@@ -76,18 +76,24 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 
 | 测试组 | 原路径失败 |
 | --- | --- |
-| macOS 初始化页面、macOS 组件库 | 模拟原生材质标记断言失败 |
-| macOS/Linux 效果设置 | 流畅模式的阴影 token 断言失败 |
 | 历史行悬停 | 旧 `history-favorite` DOM 查询返回空值 |
 | 排版 | 合成文件传输的 `50%` 状态断言超时 |
 | 历史详情回归 | `warm-image-stable` 断言发现没有图片的帧 |
-| 紧凑历史布局 | 原点击被仍打开的弹层拦截 |
 | 旧设置设计 | 旧“启动方式”组合框断言不匹配当前控件 |
-| macOS 设计原型 | 原型背景色断言失败 |
 
 `legacy-baseline.mjs <测试组> <皮肤>` 可复跑这些保留的合成浏览器脚本。它使用同一固定 Playwright 版本，保存旧路径退出码和日志。它不运行用户资料或真实设备场景。
 
 修正了两个测试夹具缺陷：中继探测信封按当前 API 使用 `tag`；设置夹具安装当前页面要求的 Redux 和设备信任 Provider。设备信任 Provider 在合成夹具中禁用后台刷新。这些修正没有修改产品逻辑或放宽断言。
+
+## 已修复的迁移阻塞
+
+流畅模式的 CSS 策略原本不能覆盖皮肤内联主题变量。策略中的阴影变量现在显式覆盖内联调色板；焦点环和选择轮廓不变。三种皮肤执行原阴影、跨窗口、动效、表单和重载检查。
+
+组件画廊显式提供正常效果的展示上下文，并使用现有 Motion 媒体钩子。入口夹具通过既有宿主传输提供效果快照并初始化偏好。模拟材质仅用于原浏览器分支，不代表原生窗口验收。设计原型直接复用统一主题函数，避免 token 已迁出 CSS 后变成透明色。原背景色和材质比较值保持。
+
+紧凑历史在 macOS Chromium 上使用 Playwright 的 `ControlOrMeta` 选择手势，避免 Control 点击打开右键菜单。窗口缩放先等待原单栏布局生效，再执行原键盘与焦点检查。底层 Playwright 页面设置有限动作等待，失败仍返回非零。
+
+历史交互独立聚焦列表后执行原方向键断言；标签表格使用语义数据行，明暗状态读取实际计算样式，菜单关闭后等待原目标恢复焦点。原比较值和真实 API 回读保持。剩余网格旧断言要求超过 100 条同时驻留，而当前 `history-window-policy.ts` 的容量为 50；不会为旧断言扩大容量。完整候选仍运行并保留失败。
 
 ## 真实后端套件迁移
 

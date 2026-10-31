@@ -30,7 +30,9 @@ export const test = base.extend({
   },
   page: async ({ app }, provide) => {
     await app.open('/runner-blank.html')
-    await provide(surfaceOf(browserEngine).page())
+    const page = surfaceOf(browserEngine).page()
+    page.setDefaultTimeout(15_000)
+    await provide(page)
   },
 })
 export async function outputFor(name) {

@@ -9,6 +9,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -95,7 +96,7 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         if remaining: raise RuntimeError(f'{len(remaining)} original resources did not become ready')
         search=daemon_request('/search/query?query=&limit=200&offset=0',session_headers)
         ordered_ids=[item['entryId'] for item in search['items']]
-        desktop_keys=('DISPLAY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR','XDG_SESSION_TYPE','DBUS_SESSION_BUS_ADDRESS','GDK_BACKEND','WEBKIT_DISABLE_DMABUF_RENDERER')
+        desktop_keys=('DISPLAY','XAUTHORITY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR','XDG_SESSION_TYPE','DBUS_SESSION_BUS_ADDRESS','GDK_BACKEND','WEBKIT_DISABLE_DMABUF_RENDERER')
         gui_env=isolated_env(info['home'], info['profile'], {**{key:os.environ[key] for key in desktop_keys if key in os.environ},'PATH': str(repo/'target/debug')+os.pathsep+os.environ['PATH'], 'UC_GUI_GO_ISOLATED':'1', 'UC_GUI_GO_EVIDENCE':str(evidence),'UC_GUI_GO_E2E_PHASE':'history-window','UC_GUI_GO_E2E_SECRET':json.dumps({'ids':ordered_ids,'grid':a.grid,'largeViewport':a.large_viewport}),'UC_GUI_GO_E2E_CONTROL_FILE':str(control_file),'UC_GUI_GO_E2E_VISIBLE':'1','UC_GUI_GO_EXIT_MODE':'full','UC_GPUI_QUICK_PANEL':'0'})
         binary=a.gui.resolve() if a.gui else a.app/'Contents/MacOS/gui-go'
         result['gui_sha256']=hashlib.sha256(binary.read_bytes()).hexdigest()
@@ -133,10 +134,16 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         result['error']=f'{type(exc).__name__}: {exc}'
         result['traceback']=traceback.format_exc()
     finally:
+        result['gui_exit_before_cleanup']=proc.poll() if proc else None
         if proc and proc.poll() is None:
             proc.terminate()
             try: proc.wait(timeout=15)
             except subprocess.TimeoutExpired: result['gui_stop']='termination timed out'
+        if (tmp/'gui.log').exists():
+            text=(tmp/'gui.log').read_text(errors='replace')
+            for secret in (locals().get('session'), locals().get('auth'), locals().get('conn',{}).get('token'), locals().get('setup',{}).get('password')):
+                if secret: text=text.replace(str(secret),'[redacted]')
+            result['gui_log']=re.sub(r'(?i)(Bearer|Session)\s+[A-Za-z0-9_.-]+',r'\1 [redacted]',text)[-16000:]
         if (tmp/'daemon.json').exists():
             try: stop(tmp)
             except Exception as exc: result['daemon_stop_error']=str(exc)

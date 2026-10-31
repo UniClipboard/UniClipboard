@@ -182,6 +182,12 @@ export async function runHistoryWindowScenario({
         return (
           rows.length > 0 &&
           rows.every(row => {
+            const tile = row.querySelector<HTMLElement>('[role="img"]')
+            if (!tile) return false
+            const rect = tile.getBoundingClientRect()
+            const bounds = scroller.getBoundingClientRect()
+            // A row border may intersect while its thumbnail remains clipped outside the scroller.
+            if (rect.bottom <= bounds.top || rect.top >= bounds.bottom) return true
             const image = row.querySelector<HTMLImageElement>('img')
             return image?.complete && image.naturalWidth > 0
           })

@@ -49,7 +49,7 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/devices-kit-browser.mjs",
-    "status": "retained-fixture-dependency",
+    "status": "migrated-browser-branch",
     "kind": "browser",
     "scenarioSignals": [
       "sidebar-device-rows",
@@ -66,7 +66,11 @@
       "sheet-animates-in-and-out",
       "dark-appearance"
     ],
-    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+    "reason": "All 19 original scenarios include credential and synthetic passphrase lifecycles. The original CLI retains its bootstrap; assertions have one shared owner.",
+    "verifiedPlatforms": ["macos", "windows", "linux"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/devices-kit.e2e.mjs",
+    "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
+    "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes."
   },
   {
     "path": "apps/gui-go/frontend/e2e/devices-kit-lifecycle.mjs",
@@ -122,7 +126,7 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-kit-browser.mjs",
-    "status": "retained-fixture-dependency",
+    "status": "partially-migrated",
     "kind": "browser",
     "scenarioSignals": [
       "page-loads",
@@ -154,7 +158,13 @@
       "narrow-and-scaled",
       "grid-paging"
     ],
-    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+    "reason": "Only empty-history light/dark scenarios pass in all three skins. Seeded scenarios retain the real image-thumbnail 503 and platform-specific material/rail failures. Native CDP bootstrap remains on the original path.",
+    "verifiedPlatforms": ["macos", "windows", "linux"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/history-kit.e2e.mjs",
+    "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
+    "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes.",
+    "verifiedSeeds": ["empty"],
+    "retainedSeeds": ["history"]
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-kit-seed.mjs",
@@ -175,14 +185,20 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-search-browser.mjs",
-    "status": "retained-fixture-dependency",
+    "status": "partially-migrated",
     "kind": "browser",
     "scenarioSignals": [
       "meeting agenda: roadmap review",
       "release notes for version 1.2",
       "grocery list: milk, eggs, coffee"
     ],
-    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+    "reason": "Only the components phase passes. The original WebDriver full-page detail predicate also fails; Windows/Linux rail assumptions remain in their original assertions.",
+    "verifiedPlatforms": ["none"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/history-search.e2e.mjs",
+    "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
+    "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes.",
+    "verifiedPhases": ["components"],
+    "retainedPhases": ["fullPage", "fullPageWindows", "fullPageLinuxSystemFrame"]
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-tag-menu-browser.mjs",
@@ -241,7 +257,7 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/quick-panel-unlock-browser.mjs",
-    "status": "retained-fixture-dependency",
+    "status": "migrated-browser-branch",
     "kind": "browser",
     "scenarioSignals": [
       "keyring unlock grants real daemon content access",
@@ -256,7 +272,11 @@
       "reopened WebView panel shows history without unlocking again",
       "explicit revocation still locks the reopened panel"
     ],
-    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+    "reason": "All 17 original checks use a real isolated daemon. Retain the legacy portable bootstrap for hosts not covered by the new macOS HOME fixture.",
+    "verifiedPlatforms": ["macos", "windows", "linux"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/quick-panel-unlock.e2e.mjs",
+    "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
+    "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes."
   },
   {
     "path": "apps/gui-go/frontend/e2e/settings-design-browser.mjs",
@@ -334,10 +354,14 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/sidebar-toggle-app-browser.mjs",
-    "status": "retained-fixture-dependency",
+    "status": "retained-existing-failure",
     "kind": "browser",
     "scenarioSignals": [],
-    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+    "reason": "The replacement reproduces the original focus assertion: the 900px drawer moves focus into navigation while the old check requires the toggle to keep focus.",
+    "verifiedPlatforms": [],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/sidebar-toggle-app.e2e.mjs",
+    "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
+    "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes."
   },
   {
     "path": "apps/gui-go/frontend/e2e/startup-chunk-check.mjs",
@@ -369,10 +393,14 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/tag-manager-layout-browser.mjs",
-    "status": "retained-fixture-dependency",
+    "status": "migrated-browser-branch",
     "kind": "browser",
     "scenarioSignals": [],
-    "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
+    "reason": "Original geometry and filtering assertions pass with each skin’s actual header elements. Retain the legacy external-daemon bootstrap until host parity is verified.",
+    "verifiedPlatforms": ["macos", "linux"],
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/tag-manager-layout.e2e.mjs",
+    "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
+    "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes."
   },
   {
     "path": "apps/gui-go/frontend/e2e/theme-palette-browser.mjs",

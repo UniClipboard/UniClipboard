@@ -41,7 +41,8 @@
     "check:host-structure": "node scripts/architecture/check-host-events.mjs && cd apps/gui-go && go run ./cmd/hostcontract lint && go run ./cmd/hostcontract e2e-table -check && go run ./cmd/hostcontract docs -check",
     "e2e:browser": "cross-env E2E_TELEMETRY_DISABLED=1 node node_modules/e2e/dist/cli/bin.js run",
     "e2e:browser:daemon": "cross-env E2E_TELEMETRY_DISABLED=1 node node_modules/e2e/dist/cli/bin.js run --config e2e.daemon.config.ts",
-    "e2e:browser:layouts": "node apps/gui-go/frontend/e2e/tester-army/run-layouts.mjs"
+    "e2e:browser:layouts": "node apps/gui-go/frontend/e2e/tester-army/run-layouts.mjs",
+    "e2e:browser:backends": "node apps/gui-go/frontend/e2e/tester-army/run-backends.mjs"
   },
   "lint-staged": {
     "Cargo.toml": [

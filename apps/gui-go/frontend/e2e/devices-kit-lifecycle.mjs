@@ -6,12 +6,17 @@ export async function credentialReopen({ page, sheet, option, openSheet, closeSh
   const label = `lifecycle-${branch}`
   await sheet().getByRole('button', { name: 'Add', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Connect Phone…' }).click()
+  await sheet()
+    .getByRole('button', { name: /^Regular sync/ })
+    .click()
   const registration = page.getByRole('dialog').last()
   await registration.getByLabel('Device label', { exact: true }).fill(label)
   await registration.getByRole('button', { name: 'Add', exact: true }).click()
-  await option(label).waitFor()
   const qr = () => sheet().locator('svg[aria-label="QR code that auto-fills the sync credentials"]')
   await qr().waitFor()
+  await sheet().getByRole('button', { name: 'Done', exact: true }).click()
+  await option(label).waitFor()
+  // Completing the registration task discards its one-time credential before closing the sheet.
   // The fresh panel intentionally hides Edit. First verify the handoff expires on close.
   await closeSheet()
   await sheet().waitFor({ state: 'detached' })

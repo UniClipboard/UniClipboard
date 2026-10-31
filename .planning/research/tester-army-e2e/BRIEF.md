@@ -47,3 +47,19 @@ The two legacy relay scripts and both TesterArmy replacements passed on macOS. T
 ## Expanded migration
 
 The public `surfaceOf()` API was validated with runner-owned pages and contexts. It preserves raw Playwright assertion semantics where the portable SDK has no direct equivalent. Raw operations are explicitly out of band: keep scenario JSON and screenshots rather than claiming SDK step tracing. The catalog now contains 21 original assertion groups; 15 groups have 29 verified suite/skin combinations. Six groups and three partial platform gaps retain their original failure paths. Seeded real-daemon suites remain explicitly unported, because the minimal fixture is not equivalent. Native runtime probes and an identity-checked WebView2 characterization run separately from browser acceptance.
+
+## Remaining backend migration: failure model and implementation order
+
+Before changing the fixture, enumerate failures: wrong profile/HOME or system keychain access;
+clipboard writes; session/token disclosure through URLs, traces or files; leaked daemon/listener;
+wrong seed count or content classification; missing phone source identity; stale search index;
+expired or rate-limited sessions; recreated browser contexts losing authentication; component-only
+results confused with full-page results; synthetic lifecycle routes confused with real key changes;
+WebDriver keyboard translations changing modifier semantics; cleanup replacing the primary failure.
+
+Use the existing CLI isolation owner and real HTTP/mobile/file ingestion. Transfer bootstrap
+credentials only over pipes and install sessions before navigation. The framework owns the browser
+and server; each backend attempt owns a fresh daemon and removes its HOME. First migrate tag layout,
+then the Playwright history/devices/panel bodies, then translate the two WebDriver bodies. Retain
+original entry points until their replacement assertions actually pass. Run empty and seeded History
+separately. Record each source snapshot and repeat CI after commits. Existing native paths stay intact.

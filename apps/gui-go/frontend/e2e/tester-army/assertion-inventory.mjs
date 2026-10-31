@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
-import ts from 'typescript'
+import { inventory } from './assertion-source.mjs'
 
 const sourceRoot = 'apps/gui-go/frontend/e2e'
 const names = [
@@ -28,32 +27,7 @@ const names = [
   'startup-first-frame',
   'sidebar-animation',
 ]
-function inventory(source, name) {
-  const file = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
-  const assertions = []
-  const scenarioSignals = []
-  function visit(node) {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.expression.getText(file) === 'assert'
-    ) {
-      assertions.push(node.getText(file))
-    }
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      ['test', 'step', 'check', 'flow'].includes(node.expression.text) &&
-      node.arguments[0] &&
-      ts.isStringLiteralLike(node.arguments[0])
-    ) {
-      scenarioSignals.push(node.arguments[0].text)
-    }
-    ts.forEachChild(node, visit)
-  }
-  visit(file)
-  return { sha256: createHash('sha256').update(source).digest('hex'), assertions, scenarioSignals }
-}
+
 const rows = []
 for (const name of names) {
   const oldPath = `${sourceRoot}/${name}${name === 'history-detail-regressions' ? '' : '-browser'}.mjs`

@@ -52,6 +52,9 @@ jobs:
       - name: Verify browser to real daemon
         if: runner.os == 'macOS'
         run: bun run e2e:browser:daemon
+      - name: Verify isolated real-backend suites
+        if: runner.os == 'macOS'
+        run: bun run e2e:browser:backends
       - name: Record source and artifact checksums
         if: always()
         run: python apps/gui-go/frontend/e2e/tester-army/receipt.py
@@ -66,6 +69,8 @@ jobs:
             target/tester-army-daemon-server.log
             target/tester-army-layout/
             target/tester-army-layout-report/
+            target/tester-army-backend/
+            target/tester-army-backend-report/
             target/tester-army-receipt.json
             target/tester-army-SHA256SUMS
           if-no-files-found: error

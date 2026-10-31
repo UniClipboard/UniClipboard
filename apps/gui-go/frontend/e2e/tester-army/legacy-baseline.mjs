@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import { createWriteStream } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import path from 'node:path'
@@ -106,6 +107,11 @@ try {
         platform,
         exitCode,
         source: filename,
+        head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+        dirty: Boolean(execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()),
+        sourceSha256: createHash('sha256')
+          .update(await readFile(path.join(root, 'apps/gui-go/frontend/e2e', filename)))
+          .digest('hex'),
         playwrightVersion: require('playwright-core/package.json').version,
       },
       null,
@@ -113,6 +119,7 @@ try {
     ) + '\n'
   )
   console.log(`${name}/${platform}: legacy exit ${exitCode}`)
+  process.exitCode = exitCode ?? 1
 } finally {
   if (server) {
     server.kill()

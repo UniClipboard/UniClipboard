@@ -89,11 +89,44 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 
 修正了两个测试夹具缺陷：中继探测信封按当前 API 使用 `tag`；设置夹具安装当前页面要求的 Redux 和设备信任 Provider。设备信任 Provider 在合成夹具中禁用后台刷新。这些修正没有修改产品逻辑或放宽断言。
 
-## 未迁移的真实后端套件
+## 真实后端套件迁移
 
-`history-kit-browser.mjs`、`devices-kit-browser.mjs`、`history-search-browser.mjs`、`tag-manager-layout-browser.mjs`、`quick-panel-unlock-browser.mjs` 和 `sidebar-toggle-app-browser.mjs` 保留原路径。它们依赖既有多条目、LAN 手机、配对、重新建组或 Rust 测试夹具。新的单条目 daemon 用例不是等价替代。
+`backend-suites.mjs` 声明六组候选范围与已验证运行矩阵。当前真实后端夹具仅在 macOS 宿主运行。Windows/Linux 皮肤在独立浏览器上下文中构建和运行，不代表对应原生宿主验收。其他宿主的旧外部 daemon 或便携目录入口继续保留。
 
-这些套件尚未完成迁移，不应标记为框架固有限制。后续须先建立等价的隔离数据与凭据生命周期，再逐条迁移断言。非 GUI 的 API、模块图、构建和发布检查保留原入口。
+| 套件 | 已验证范围 | 保留范围 |
+| --- | --- | --- |
+| 标签管理布局 | macOS/Linux 皮肤；原明暗、宽度、文字换行、筛选与行数断言 | 其他宿主的原启动入口 |
+| 管理设备 | 三种皮肤；全部 19 个场景，包括关闭动画、两种凭据重开和四种密码变更流程 | 未验证宿主的原启动入口 |
+| 快捷面板解锁 | 三种皮肤；全部 17 条检查，包括错误密码、客户端退出和显式撤销 | 原生面板及未验证宿主的原入口 |
+| 历史页面 | 三种皮肤的空历史明暗场景 | 有数据场景的缩略图、材质及平台导航假设；原生 CDP 验收 |
+| 历史搜索 | 真实五条目数据的组件阶段 | 完整页面的旧详情布局与平台图标栏断言 |
+| 完整应用侧边栏 | 已建立等价空资料夹具并运行原检查 | 900 像素抽屉焦点断言仍失败 |
+
+默认命令只运行已通过的 12 个套件、皮肤、数据与阶段组合，并打印保留原因。显式指定套件时运行完整候选范围，原断言失败仍返回非零退出码。
+
+```bash
+bun run e2e:browser:backends
+bun run e2e:browser:backends devices-kit --platform macos
+bun run e2e:browser:backends history-kit --platform windows --seed history
+bun run e2e:browser:backends history-search --platform none --phase components
+node apps/gui-go/frontend/e2e/tester-army/backend-assertion-inventory.mjs
+```
+
+夹具使用真实 CLI 初始化、HTTP、文件发送及手机 LAN 入站接口。历史数据包含 130 条分页记录、两条文件、一条手机图片和五条命名文本。搜索数据保留原三条手机文本、`design-notes.md`、`todo.txt` 及设备名称。手机 LAN 监听器是实际后端服务，使用随机端口和随机凭据；它只在本次隔离 daemon 的生命周期内运行。其公布地址为 loopback；此接口本身不提供 loopback-only 监听保证，不能把它描述为已经验证的仅回环绑定。
+
+`backend.py` 是新真实后端夹具及原最小 smoke 用例的生命周期所有者。会话、文件令牌与随机 passphrase 只通过管道和内存交接。浏览器导航 URL 不含凭据。项目现有 HTTP/WS 客户端仍可能在内部请求中使用查询参数认证，因此后端用例关闭原始协议 trace，只输出去除查询参数的状态记录，并脱敏诊断中的会话与配对码。手动截图遮盖配对码和凭据 QR；不将真实凭据写入公开结果。
+
+历史和设备场景由原脚本导出一个断言入口。导入脚本不会启动旧浏览器。原 CLI 和原生 CDP 启动入口继续调用同一断言实现；TesterArmy 提供其管理的页面与上下文。无需维护两套业务断言。`backend-assertion-inventory.mjs` 保留六组原源码身份与当前断言所有者，静态数量不作为运行通过证据。
+
+修正的夹具问题包括：API 回读不再对有效的全局内容授权重复解锁；故障注入按路径匹配，避免认证查询参数使拦截失效；宿主夹具提供当前效果、主题、更新与窗口代次快照；表单错误沿输入框的可访问说明定位；动效检查等待实际退出动画结束。连接手机流程增加当前产品要求的同步方式选择和完成步骤。原授权、密码、QR 生命周期与结果断言保持。
+
+尚未通过的候选不是框架缺少浏览器驱动：
+
+- 固定 Engine `9c1d83d9a06c7d88d325a2d8aa4d6a214fa436ce` 的隔离图片入站验证中，原始资源接口返回有效 PNG，缩略图接口仍返回 503。没有用合成缩略图替换后端结果。
+- 原 WebDriver 搜索脚本与新 Playwright 候选均在旧详情几何条件处失败。旧 Windows/Linux 图标栏条件继续保留，不能以组件阶段通过替代完整页面通过。
+- macOS 侧边栏在窄窗口中使用模态抽屉。当前导航实现会把焦点移入导航区。旧断言要求焦点留在切换按钮，两者冲突。没有为了通过旧断言破坏抽屉焦点行为。
+
+后端工件分别位于 `target/tester-army-backend/<皮肤>/<套件>/<数据>/<阶段>/` 和 `target/tester-army-backend-report/`。每次矩阵运行清理自己选中的公开输出目录，避免旧失败或旧成功文件混入新结果。报告包含原场景结果、截图、脱敏诊断、执行阶段和清理回执。`receipt.py` 汇总每份报告自己的 HEAD 与脏状态；旧轮次不能作为新源码通过证据。
 
 ## 原生可行性
 
@@ -101,7 +134,7 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 
 - WKWebView：使用官方非持久网站数据存储和 `isInspectable` 接口运行隔离 JavaScript 回读。不创建窗口，不激活 App。`isInspectable` 对接 Safari Web Inspector，不是 Chromium CDP。Web 引擎明确拒绝 `browser: 'webkit'` 与 CDP 连接同时使用。
 - WebKitGTK：在一次性 CI 的专属 Xvfb 中使用官方临时 WebContext 回读 JavaScript。它只证明原生运行时可用。现有 Web 引擎不接收其原生 Web Inspector/WebDriver 协议。
-- WebView2：使用当前固定 Wails 版本在一次性 Windows runner 上启动独立可见原生控件，设置专属临时用户数据目录和随机 loopback CDP 端口。先读取真实原生页面的 target ID，再用 TesterArmy 的持久连接契约尝试驱动同一 target。若框架创建其他页面，不计为原生通过。上下文协议不兼容与其他执行失败分别报告。正常点击需要可见控件；隐藏控件不作为可点击验收。先关闭控件并等待宿主退出，再删除临时数据目录，避免宿主的 COM 引用仍持有文件。进程退出和临时数据删除均须通过。
+- WebView2：使用当前固定 Wails 版本在一次性 Windows runner 上启动独立可见原生控件，设置专属临时用户数据目录和随机 loopback CDP 端口。先读取真实原生页面的 target ID，再用 TesterArmy 的持久连接契约尝试驱动同一 target。若框架创建其他页面，不计为原生通过。上下文协议不兼容与其他执行失败分别报告。正常点击需要可见控件；隐藏控件不作为可点击验收。先关闭控件并等待宿主退出，再删除临时数据目录，避免宿主的 COM 引用仍持有文件。若此前没有探针错误，则进程退出和临时数据删除均须通过；已有错误时保留原错误并记录清理结果。
 
 原生探针工作流为 `.github/workflows/tester-army-native.yml`。探针结果不等于 UniClipboard 产品的原生 GUI 验收。所有原生窗口、托盘、全局快捷键、系统剪贴板、安装包及发布验收继续使用旧路径。
 

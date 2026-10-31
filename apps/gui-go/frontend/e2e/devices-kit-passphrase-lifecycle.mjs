@@ -13,9 +13,9 @@ export async function passphraseLifecycle(driver, outcome, detachOwner = false) 
     releaseResponse = resolve
   })
   let issues = 0
-  const setupPattern = '**/v2/setup/state'
-  const changePattern = '**/encryption/passphrase'
-  const issuePattern = '**/v2/setup/issue-invitation'
+  const setupPattern = url => url.pathname === '/v2/setup/state'
+  const changePattern = url => url.pathname === '/encryption/passphrase'
+  const issuePattern = url => url.pathname === '/v2/setup/issue-invitation'
   await page.route(setupPattern, async route => {
     const response = await route.fetch()
     const body = await response.json()
@@ -75,6 +75,17 @@ export async function passphraseLifecycle(driver, outcome, detachOwner = false) 
     await openSheet()
     assert.equal(await page.locator('#new-space-passphrase').isDisabled(), true)
     await page.mouse.click(1, page.viewportSize().height - 1)
+    // Settle the actual exit animation before deciding whether the backdrop dismissed the sheet.
+    await page.evaluate(async () => {
+      await new Promise(requestAnimationFrame)
+      const animations =
+        document.querySelector('[role="dialog"]')?.getAnimations({ subtree: true }) ?? []
+      await Promise.all(
+        animations
+          .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+          .map(animation => animation.finished.catch(() => undefined))
+      )
+    })
     // Backdrop dismissal differs by skin; either outcome must preserve the pending controller.
     const backdropDismissed = !(await sheet().isVisible())
     if (backdropDismissed) {

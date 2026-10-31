@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { build, loadConfigFromFile, preview } from 'vite'
 
 process.chdir(fileURLToPath(new URL('../..', import.meta.url)))
-const outDir = await mkdtemp(path.join(tmpdir(), 'uc-relay-browser-'))
+const outDir = await mkdtemp(path.join(tmpdir(), 'uc-gui-browser-'))
 let server
 let stopping = false
 async function stop() {
@@ -28,6 +28,8 @@ try {
       : `e2e/fixtures/${fixture}.tsx`
   const inputs =
     process.env.UC_TESTER_DAEMON === '1' ? [input, 'e2e/fixtures/history-full-app.tsx'] : [input]
+  if (process.env.UC_TESTER_BACKENDS === '1')
+    inputs.push('e2e/fixtures/history-search-components.tsx')
   await build({
     ...loaded.config,
     configFile: false,
@@ -46,7 +48,11 @@ try {
   const manifest = JSON.parse(await readFile(path.join(outDir, '.vite/manifest.json'), 'utf8'))
   for (const input of mainDocument ? [] : inputs) {
     const entry = manifest[input]
-    const name = input.includes('history-full-app') ? 'history.html' : 'index.html'
+    const name = input.includes('history-full-app')
+      ? 'history.html'
+      : input.includes('history-search-components')
+        ? 'components.html'
+        : 'index.html'
     await writeFile(
       path.join(outDir, name),
       `<!doctype html><html><head><meta charset="utf-8">${(entry.css || []).map(file => `<link rel="stylesheet" href="/${file}">`).join('')}</head><body><div id="root"></div><script type="module" src="/${entry.file}"></script></body></html>`

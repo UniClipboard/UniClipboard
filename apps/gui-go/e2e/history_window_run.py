@@ -75,21 +75,6 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             start(tmp, 0, True)
             info=json.loads((tmp/'daemon.json').read_text())
         env=portable_env or env_for(info['home'],info['profile'])
-        with socket.socket() as sock:
-            sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
-        setup=json.loads(cli(env,'--json','mobile','setup','--non-interactive','--label','memory-test','--ip','127.0.0.1','--accept-network-risk','--port',str(port)).stdout)
-        auth='Basic '+base64.b64encode(f"{setup['username']}:{setup['password']}".encode()).decode()
-        for _ in range(100):
-            try:
-                with socket.create_connection(('127.0.0.1',port), timeout=1): break
-            except OSError: time.sleep(.1)
-        hashes=[]
-        for i in range(120):
-            name=f'memory-{i:02}.png'; image=png(512,384,i); hashes.append(hashlib.sha256(image).hexdigest())
-            for path,body,kind in [('/file/'+name,image,'image/png'),('/SyncClipboard.json',json.dumps({'type':'Image','text':name,'dataName':name,'hasData':True}).encode(),'application/json')]:
-                req=urllib.request.Request(f'http://127.0.0.1:{port}{path}',data=body,method='PUT',headers={'Authorization':auth,'Content-Type':kind})
-                with urllib.request.urlopen(req,timeout=120) as response: assert response.status < 300
-        result['image_sha256']=hashes
         conn=json.loads(Path(info['conn']).read_text())
         def daemon_request(path, headers, body=None):
             request=urllib.request.Request(info['daemonUrl']+path, data=body, headers=headers)
@@ -99,6 +84,38 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         unlocked=daemon_request('/content-lock/unlock', {**session_headers,'Content-Type':'application/json'}, json.dumps({'passphrase':PASSPHRASE}).encode())
         assert unlocked.get('unlocked') is True, 'content grant was not unlocked'
         result['content_unlocked_before_history']=True
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
+        setup=json.loads(cli(env,'--json','mobile','setup','--non-interactive','--label','memory-test','--ip','127.0.0.1','--accept-network-risk','--port',str(port)).stdout)
+        auth='Basic '+base64.b64encode(f"{setup['username']}:{setup['password']}".encode()).decode()
+        for _ in range(100):
+            try:
+                with socket.create_connection(('127.0.0.1',port), timeout=1): break
+            except OSError: time.sleep(.1)
+        hashes=[]
+        materialized=set()
+        for i in range(120):
+            name=f'memory-{i:02}.png'; image=png(512,384,i); hashes.append(hashlib.sha256(image).hexdigest())
+            for path,body,kind in [('/file/'+name,image,'image/png'),('/SyncClipboard.json',json.dumps({'type':'Image','text':name,'dataName':name,'hasData':True}).encode(),'application/json')]:
+                req=urllib.request.Request(f'http://127.0.0.1:{port}{path}',data=body,method='PUT',headers={'Authorization':auth,'Content-Type':kind})
+                with urllib.request.urlopen(req,timeout=120) as response: assert response.status < 300
+            # Complete each synthetic fixture before starting the next upload.
+            deadline=time.monotonic()+120
+            while time.monotonic()<deadline:
+                head=daemon_request('/clipboard/entries?limit=1&offset=0',session_headers)
+                entry_id=head[0]['id'] if head else None
+                if entry_id and entry_id not in materialized:
+                    try:
+                        resource=daemon_request('/clipboard/entries/'+entry_id+'/resource',session_headers)
+                        if resource.get('url'):
+                            materialized.add(entry_id)
+                            break
+                    except urllib.error.HTTPError as error:
+                        if error.code not in (404,409,503): raise
+                time.sleep(.1)
+            else: raise RuntimeError(f'synthetic image {i} did not materialize')
+            result['sequential_source_ready_count']=len(materialized)
+        result['image_sha256']=hashes
         entries=daemon_request('/clipboard/entries?limit=200&offset=0',session_headers)
         entries=[entry for entry in entries if entry.get('contentType')=='image']
         assert len(entries)==120, f'expected 120 images, got {len(entries)}'

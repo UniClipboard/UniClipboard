@@ -153,11 +153,12 @@ export function useHistoryController() {
       try {
         await dispatch(removeClipboardItem(id)).unwrap()
         data.removeItem(id)
+        data.refetch()
       } catch {
         toast.error(t('clipboard.errors.deleteFailed', 'Delete failed'))
       }
     },
-    [dispatch, t, data.removeItem]
+    [dispatch, t, data.removeItem, data.refetch]
   )
 
   const {
@@ -518,6 +519,7 @@ export function useHistoryController() {
     setScrollState,
     hasMore: data.hasMore,
     handleLoadMore: data.handleLoadMore,
+    viewport: data.viewport,
     handleHoverChange,
     selectedId,
     copySuccessId,

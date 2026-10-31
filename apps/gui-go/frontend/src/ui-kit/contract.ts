@@ -628,7 +628,13 @@ export interface ListGroup {
  * removes a row and Shift selects a range. Rows show multi-selection the platform way (macOS has no
  * checkboxes). Each row element carries `data-item-id`.
  */
+export interface HistoryWindowViewport {
+  offset: number
+  onVisibleRange: (start: number, end: number, scrolling?: boolean) => void
+}
+
 export interface GroupedListProps {
+  viewport?: HistoryWindowViewport
   label: string
   groups: ListGroup[]
   items: ItemListItem[]
@@ -738,6 +744,7 @@ export interface GridItem {
  * work the same; the arrow keys move in two dimensions.
  */
 export interface GroupedGridProps {
+  viewport?: HistoryWindowViewport
   label: string
   groups: ListGroup[]
   items: GridItem[]

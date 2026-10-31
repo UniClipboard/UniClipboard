@@ -65,6 +65,22 @@ const DELETE = 'delete'
 export default function HistoryKitPage() {
   const { t } = useTranslation()
   const c = useHistoryController()
+  useEffect(() => {
+    if (import.meta.env.VITE_GUI_GO_E2E !== '1') return
+    document.documentElement.dataset.historyWindowTotal = String(c.browseCount)
+    document.documentElement.dataset.historyWindowPeakCount = String(
+      Math.max(Number(document.documentElement.dataset.historyWindowPeakCount ?? 0), c.items.length)
+    )
+    document.documentElement.dataset.historyWindowCount = String(c.items.length)
+    document.documentElement.dataset.historyWindowOffset = String(c.viewport.offset)
+    document.documentElement.dataset.historyWindowIds = JSON.stringify(c.items.map(item => item.id))
+  }, [c.items, c.viewport.offset, c.browseCount])
+  useEffect(() => {
+    if (import.meta.env.VITE_GUI_GO_E2E !== '1') return
+    const remove = (event: Event) => c.requestDelete([(event as CustomEvent<string>).detail])
+    document.addEventListener('uc-e2e-history-delete', remove)
+    return () => document.removeEventListener('uc-e2e-history-delete', remove)
+  }, [c.requestDelete])
   const chrome = useLibraryChrome()
   const colorScheme = useAppliedColorScheme()
   const routerLocation = useLocation()
@@ -369,6 +385,7 @@ export default function HistoryKitPage() {
             ) : view === 'grid' ? (
               <HistoryKitGrid
                 items={c.items}
+                viewport={c.viewport}
                 sourceDeviceNames={c.sourceDeviceNames}
                 size={gridSize}
                 selection={selection}
@@ -385,6 +402,7 @@ export default function HistoryKitPage() {
             ) : (
               <HistoryKitList
                 items={c.items}
+                viewport={c.viewport}
                 sourceDeviceNames={c.sourceDeviceNames}
                 tagNames={c.historyTags.available ? c.tagNames : undefined}
                 selection={selection}

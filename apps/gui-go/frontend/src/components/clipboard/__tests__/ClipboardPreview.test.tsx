@@ -12,6 +12,8 @@ vi.mock('@/host/core', () => ({
 // assertable without standing up the real fetch + URL.createObjectURL path.
 const cachedImages = vi.hoisted(() => new Map<string, string>())
 vi.mock('@/api/daemon/blob-image-cache', () => ({
+  retainBlobImage: vi.fn(),
+  releaseBlobImage: vi.fn(),
   getBlobImageObjectUrl: vi.fn(async (path: string) => {
     const url = `blob:mock-${path}`
     cachedImages.set(path, url)

@@ -4,6 +4,7 @@ import type { KeyboardEvent, MouseEvent } from 'react'
 import { GroupedVirtuoso } from 'react-virtuoso'
 import type { GroupedVirtuosoHandle } from 'react-virtuoso'
 import type { GroupedListProps } from '@/ui-kit/contract'
+import { useWindowedScroll, revealWindowItem } from '@/ui-kit/use-windowed-scroll'
 import { useGroupedListStyles } from './grouped-list-styles'
 import { GroupedListFooter } from './GroupedListFooter'
 import { GroupedListRow } from './GroupedListRow'
@@ -30,6 +31,7 @@ export function GroupedList({
   onActivate,
   onDelete,
   onEndReached,
+  viewport,
   contextMenu,
   footer,
 }: GroupedListProps) {
@@ -47,14 +49,20 @@ export function GroupedList({
   const rowId = (id: string) => `${domId}-row-${id}`
 
   const reveal = (id: string) => {
+    if (viewport) {
+      revealWindowItem(listRef.current, id)
+      return
+    }
     const index = items.findIndex(item => item.id === id)
-    if (index >= 0) virtuoso.current?.scrollIntoView({ index, behavior: 'auto' })
+    if (index >= 0) virtuoso.current?.scrollIntoView({ index: index, behavior: 'auto' })
   }
 
   const selectOne = (id: string) => {
     anchor.current = id
     onSelectionChange([id])
   }
+
+  useWindowedScroll(listRef, items, viewport)
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return
@@ -101,6 +109,41 @@ export function GroupedList({
     }
   }
 
+  const groupStarts: number[] = []
+  groups.reduce((start, group) => {
+    groupStarts.push(start)
+    return start + group.count
+  }, 0)
+  const renderGroup = (index: number) => {
+    const group = groups[index]
+    return (
+      <div className={styles.header} role="presentation">
+        <span className={styles.headerTitle}>{group.title}</span>
+        {group.detail ? <span className={styles.headerDetail}>{group.detail}</span> : null}
+        {group.trailing ? <span className={styles.headerTrailing}>{group.trailing}</span> : null}
+      </div>
+    )
+  }
+  const renderItem = (index: number) => {
+    const item = items[index]
+    if (!item) return null
+    const selected = selection.includes(item.id)
+    return (
+      <GroupedListRow
+        item={item}
+        domId={rowId(item.id)}
+        selected={selected}
+        multi={selection.length > 1}
+        cursor={item.id === cursor}
+        onMouseDown={event => onRowMouseDown(event, item.id)}
+        onContextMenu={() => {
+          pendingMenuIds.current = selected ? selection : [item.id]
+        }}
+        onDoubleClick={() => onActivate?.(item.id)}
+      />
+    )
+  }
+
   const list = (
     <div
       ref={listRef}
@@ -117,48 +160,39 @@ export function GroupedList({
         pendingMenuIds.current = event.target === event.currentTarget ? selection : []
       }}
     >
-      <GroupedVirtuoso
-        ref={virtuoso}
-        className={styles.scroller}
-        // The listbox is the one tab stop; Virtuoso's scroller is focusable by default.
-        tabIndex={-1}
-        groupCounts={groups.map(group => group.count)}
-        endReached={() => onEndReached?.()}
-        increaseViewportBy={240}
-        context={{ footer }}
-        components={footerComponents}
-        groupContent={index => {
-          const group = groups[index]
-          return (
-            <div className={styles.header} role="presentation">
-              <span className={styles.headerTitle}>{group.title}</span>
-              {group.detail ? <span className={styles.headerDetail}>{group.detail}</span> : null}
-              {group.trailing ? (
-                <span className={styles.headerTrailing}>{group.trailing}</span>
-              ) : null}
+      {viewport ? (
+        <div
+          data-history-window-scroller
+          className={styles.scroller}
+          style={{ overflowY: 'auto', height: '100%', overflowAnchor: 'none' }}
+        >
+          {groups.map((group, groupIndex) => (
+            <div key={groupIndex}>
+              {renderGroup(groupIndex)}
+              {Array.from({ length: group.count }, (_, local) => (
+                <div key={items[groupStarts[groupIndex] + local].id}>
+                  {renderItem(groupStarts[groupIndex] + local)}
+                </div>
+              ))}
             </div>
-          )
-        }}
-        itemContent={index => {
-          const item = items[index]
-          if (!item) return null
-          const selected = selection.includes(item.id)
-          return (
-            <GroupedListRow
-              item={item}
-              domId={rowId(item.id)}
-              selected={selected}
-              multi={selection.length > 1}
-              cursor={item.id === cursor}
-              onMouseDown={event => onRowMouseDown(event, item.id)}
-              onContextMenu={() => {
-                pendingMenuIds.current = selected ? selection : [item.id]
-              }}
-              onDoubleClick={() => onActivate?.(item.id)}
-            />
-          )
-        }}
-      />
+          ))}
+          {footer}
+        </div>
+      ) : (
+        <GroupedVirtuoso
+          ref={virtuoso}
+          className={styles.scroller}
+          // The listbox is the one tab stop; Virtuoso's scroller is focusable by default.
+          tabIndex={-1}
+          groupCounts={groups.map(group => group.count)}
+          endReached={() => onEndReached?.()}
+          increaseViewportBy={240}
+          context={{ footer }}
+          components={footerComponents}
+          groupContent={renderGroup}
+          itemContent={renderItem}
+        />
+      )}
     </div>
   )
 

@@ -7,11 +7,13 @@ import { useNow } from '@/hooks/useRelativeTime'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { formatShortcutHint } from '@/lib/shortcut-format'
 import { GroupedList, Text, type ItemListItem, type MenuEntry } from '@/ui-kit'
+import type { HistoryWindowViewport } from '@/ui-kit/contract'
 import { dayGroups, imageSize } from './history-kit-model'
 import { HistoryKitRowLeading } from './HistoryKitRowLeading'
 import { HistoryKitRowTrailing } from './HistoryKitRowTrailing'
 
 interface HistoryKitListProps {
+  viewport?: HistoryWindowViewport
   items: DisplayClipboardItem[]
   sourceDeviceNames: Record<string, string>
   tagNames?: ReadonlyMap<string, string | null>
@@ -49,6 +51,7 @@ export function HistoryKitList({
   hasMore,
   loading,
   onLoadMore,
+  viewport,
   contextMenu,
   highlight,
 }: HistoryKitListProps) {
@@ -82,13 +85,14 @@ export function HistoryKitList({
     <GroupedList
       label={t('history.kit.listLabel')}
       groups={groups}
+      viewport={viewport}
       items={rows}
       selection={selection}
       onSelectionChange={onSelectionChange}
       onActivate={onCopy}
       onInspect={onInspect}
       onDelete={onDelete}
-      onEndReached={hasMore ? onLoadMore : undefined}
+      onEndReached={viewport ? undefined : hasMore ? onLoadMore : undefined}
       contextMenu={contextMenu}
       footer={
         loading || hasMore ? (

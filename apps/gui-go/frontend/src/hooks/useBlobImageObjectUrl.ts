@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
-import { getBlobImageObjectUrl, peekBlobImageObjectUrl } from '@/api/daemon/blob-image-cache'
+import {
+  getBlobImageObjectUrl,
+  peekBlobImageObjectUrl,
+  retainBlobImage,
+  releaseBlobImage,
+} from '@/api/daemon/blob-image-cache'
 import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
 
 function scheduleRetry(callback: () => void, delay: number): () => void {
@@ -39,6 +44,7 @@ export function useBlobImageObjectUrl(descriptor: string | null, enabled = true)
   useEffect(() => {
     if (!descriptor || !enabled || descriptor.startsWith('data:')) return
 
+    retainBlobImage(descriptor)
     let cancelled = false
     let cancelRetry: (() => void) | undefined
     let attempts = 0
@@ -66,6 +72,7 @@ export function useBlobImageObjectUrl(descriptor: string | null, enabled = true)
     return () => {
       cancelled = true
       cancelRetry?.()
+      releaseBlobImage(descriptor)
     }
   }, [descriptor, enabled])
 

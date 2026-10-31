@@ -3,6 +3,7 @@ import { useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 're
 import { GroupedVirtuoso, type GroupedVirtuosoHandle } from 'react-virtuoso'
 import type { GroupedListProps } from '@/ui-kit/contract'
 import { useSinglePaneLayout } from '@/ui-kit/skins/linux/adaptive-layout'
+import { useWindowedScroll, revealWindowItem } from '@/ui-kit/use-windowed-scroll'
 import { Highlighted } from './highlighted'
 import { listStep } from './list-keys'
 import { MenuPanel } from './menus'
@@ -25,6 +26,7 @@ export function GroupedList({
   onInspect,
   onDelete,
   onEndReached,
+  viewport,
   contextMenu,
   footer,
 }: GroupedListProps) {
@@ -40,9 +42,15 @@ export function GroupedList({
   const rowId = (id: string) => `${domId}-row-${id}`
 
   const reveal = (id: string) => {
+    if (viewport) {
+      revealWindowItem(listRef.current, id)
+      return
+    }
     const index = items.findIndex(item => item.id === id)
-    if (index >= 0) virtuoso.current?.scrollIntoView({ index, behavior: 'auto' })
+    if (index >= 0) virtuoso.current?.scrollIntoView({ index: index, behavior: 'auto' })
   }
+
+  useWindowedScroll(listRef, items, viewport)
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return
@@ -80,6 +88,64 @@ export function GroupedList({
     return start + group.count
   }, 0)
 
+  const renderGroup = (index: number) => {
+    const group = groups[index]
+    return (
+      <div className="adw-glist-header" role="presentation">
+        <span className="adw-glist-header-title">{group.title}</span>
+        {group.detail && <span className="adw-glist-header-detail">{group.detail}</span>}
+        <span className="adw-split-spacer" />
+        {group.trailing && <span className="adw-glist-header-trailing">{group.trailing}</span>}
+      </div>
+    )
+  }
+  const renderItem = (index: number, groupIndex: number) => {
+    const item = items[index]
+    if (!item) return null
+    const isSelected = selection.includes(item.id)
+    // Rows of a day group form one boxed list: the cell draws its first and last edge.
+    const first = index === groupStarts[groupIndex]
+    const last = index === groupStarts[groupIndex] + groups[groupIndex].count - 1
+    return (
+      <div
+        className="adw-glist-cell"
+        data-first={first ? '' : undefined}
+        data-last={last ? '' : undefined}
+      >
+        <div
+          id={rowId(item.id)}
+          className="adw-row"
+          role="option"
+          aria-selected={isSelected}
+          aria-label={item.title}
+          data-item-id={item.id}
+          data-cursor={item.id === cursor ? '' : undefined}
+          onMouseDown={event => onRowMouseDown(event, item.id)}
+          onClick={event => {
+            if (singlePane && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+              onInspect?.(item.id)
+            }
+          }}
+          onContextMenu={() => {
+            setMenuIds(isSelected ? selection : [item.id])
+          }}
+          onDoubleClick={() => {
+            if (!singlePane || !onInspect) onActivate?.(item.id)
+          }}
+        >
+          {item.leading}
+          <span className="adw-row-text">
+            <span className="adw-row-title" data-mono={item.monospace ? '' : undefined}>
+              <Highlighted text={item.title} terms={item.highlight} />
+            </span>
+            {item.subtitle && <span className="adw-row-meta">{item.subtitle}</span>}
+          </span>
+          {item.trailing && <span className="adw-row-trailing">{item.trailing}</span>}
+        </div>
+      </div>
+    )
+  }
+
   const list = (
     <div
       ref={listRef}
@@ -93,77 +159,40 @@ export function GroupedList({
       // A right-click outside any row has nothing to act on; a row sets its ids after this.
       onContextMenuCapture={() => setMenuIds([])}
     >
-      <GroupedVirtuoso
-        ref={virtuoso}
-        className="adw-glist-scroller"
-        // The list is the one tab stop; the scroller must not take focus from it.
-        tabIndex={-1}
-        groupCounts={groups.map(group => group.count)}
-        endReached={() => onEndReached?.()}
-        increaseViewportBy={240}
-        groupContent={index => {
-          const group = groups[index]
-          return (
-            <div className="adw-glist-header" role="presentation">
-              <span className="adw-glist-header-title">{group.title}</span>
-              {group.detail && <span className="adw-glist-header-detail">{group.detail}</span>}
-              <span className="adw-split-spacer" />
-              {group.trailing && (
-                <span className="adw-glist-header-trailing">{group.trailing}</span>
-              )}
+      {viewport ? (
+        <div
+          data-history-window-scroller
+          className={'adw-glist-scroller'}
+          style={{ overflowY: 'auto', height: '100%', overflowAnchor: 'none' }}
+        >
+          {groups.map((group, groupIndex) => (
+            <div key={groupIndex}>
+              {renderGroup(groupIndex)}
+              {Array.from({ length: group.count }, (_, local) => (
+                <div key={items[groupStarts[groupIndex] + local].id}>
+                  {renderItem(groupStarts[groupIndex] + local, groupIndex)}
+                </div>
+              ))}
             </div>
-          )
-        }}
-        itemContent={(index, groupIndex) => {
-          const item = items[index]
-          if (!item) return null
-          const isSelected = selection.includes(item.id)
-          // Rows of a day group form one boxed list: the cell draws its first and last edge.
-          const first = index === groupStarts[groupIndex]
-          const last = index === groupStarts[groupIndex] + groups[groupIndex].count - 1
-          return (
-            <div
-              className="adw-glist-cell"
-              data-first={first ? '' : undefined}
-              data-last={last ? '' : undefined}
-            >
-              <div
-                id={rowId(item.id)}
-                className="adw-row"
-                role="option"
-                aria-selected={isSelected}
-                aria-label={item.title}
-                data-item-id={item.id}
-                data-cursor={item.id === cursor ? '' : undefined}
-                onMouseDown={event => onRowMouseDown(event, item.id)}
-                onClick={event => {
-                  if (singlePane && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-                    onInspect?.(item.id)
-                  }
-                }}
-                onContextMenu={() => {
-                  setMenuIds(isSelected ? selection : [item.id])
-                }}
-                onDoubleClick={() => {
-                  if (!singlePane || !onInspect) onActivate?.(item.id)
-                }}
-              >
-                {item.leading}
-                <span className="adw-row-text">
-                  <span className="adw-row-title" data-mono={item.monospace ? '' : undefined}>
-                    <Highlighted text={item.title} terms={item.highlight} />
-                  </span>
-                  {item.subtitle && <span className="adw-row-meta">{item.subtitle}</span>}
-                </span>
-                {item.trailing && <span className="adw-row-trailing">{item.trailing}</span>}
-              </div>
-            </div>
-          )
-        }}
-        components={{
-          Footer: () => (footer ? <div className="adw-glist-footer">{footer}</div> : null),
-        }}
-      />
+          ))}
+          {footer}
+        </div>
+      ) : (
+        <GroupedVirtuoso
+          ref={virtuoso}
+          className="adw-glist-scroller"
+          // The list is the one tab stop; the scroller must not take focus from it.
+          tabIndex={-1}
+          groupCounts={groups.map(group => group.count)}
+          endReached={() => onEndReached?.()}
+          increaseViewportBy={240}
+          groupContent={renderGroup}
+          itemContent={renderItem}
+          components={{
+            Footer: () => (footer ? <div className="adw-glist-footer">{footer}</div> : null),
+          }}
+        />
+      )}
     </div>
   )
 

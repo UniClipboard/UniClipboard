@@ -13,6 +13,7 @@ const log = createLogger('use-clipboard-event-stream')
 export interface UseClipboardEventStreamOptions {
   enabled?: boolean
   throttleMs?: number
+  onLocalInvalidate?: () => void
   onLocalItem: (item: ClipboardEntry) => void
   onRemoteInvalidate: () => void
   onDeleted: (id: string) => void
@@ -22,10 +23,16 @@ export function useClipboardEventStream({
   enabled = true,
   throttleMs = 300,
   onLocalItem,
+  onLocalInvalidate,
   onRemoteInvalidate,
   onDeleted,
 }: UseClipboardEventStreamOptions): void {
   const dispatch = useAppDispatch()
+  const handleLocalInvalidate = useEffectEvent(() => {
+    if (!onLocalInvalidate) return false
+    onLocalInvalidate()
+    return true
+  })
   const handleLocalItem = useEffectEvent(onLocalItem)
   const handleRemoteInvalidate = useEffectEvent(onRemoteInvalidate)
   const handleDeleted = useEffectEvent(onDeleted)
@@ -43,6 +50,7 @@ export function useClipboardEventStream({
     const reducer = createClipboardEventReducer({ now: () => Date.now(), throttleMs })
 
     const flushLocalFetch = (ids: string[]) => {
+      if (handleLocalInvalidate()) return
       void getClipboardEntries(50, 0)
         .then(response => {
           if (cancelled) return

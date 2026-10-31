@@ -1,4 +1,4 @@
-import { Call } from '@wailsio/runtime'
+import { Call, Window } from '@wailsio/runtime'
 import { daemonClient } from '@/api/daemon/client'
 import i18n from '@/i18n'
 
@@ -25,12 +25,12 @@ export async function runHistoryWindowScenario({
     visibility: document.visibilityState,
     path: location.pathname,
   })
-  await control('reopen-main')
   await reachMainLayout()
   await waitFor('visible history window', () => document.visibilityState === 'visible')
   const configuration = JSON.parse(String(await Call.ByName('main.EvidenceService.Secret'))) as {
     ids: string[]
     grid: boolean
+    largeViewport?: boolean
   }
   const mode = configuration.grid ? 'grid' : 'list'
   $(
@@ -38,12 +38,12 @@ export async function runHistoryWindowScenario({
   )!.click()
   await waitFor(`${mode} mode`, () =>
     configuration.grid
-      ? document.querySelector('.mac-grid')
-      : document.querySelector('.mac-row[data-item-id]') && !document.querySelector('.mac-grid')
+      ? document.querySelector('.mac-grid, .adw-grid')
+      : document.querySelector('[data-item-id]') && !document.querySelector('.mac-grid, .adw-grid')
   )
   await record('window-view', true, { mode })
   const scroller = await waitFor('bounded history', () =>
-    document.querySelector<HTMLElement>('.mac-glist-scroller')
+    document.querySelector<HTMLElement>('[data-history-window-scroller]')
   )
   const cache = await import('@/api/daemon/blob-image-cache')
   let maxRecords = 0
@@ -69,6 +69,79 @@ export async function runHistoryWindowScenario({
     const row = visible()[0]
     return { id: row.dataset.itemId!, top: row.getBoundingClientRect().top }
   }
+  if (configuration.largeViewport) {
+    await Window.SetSize(2400, 1800)
+    const slider = document.querySelector<HTMLInputElement>('[role="slider"], input[type="range"]')
+    if (slider) {
+      slider.focus()
+      slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+    }
+    await waitFor(
+      'all 50 records fit',
+      () => visible().length === 50 && scroller.scrollHeight <= scroller.clientHeight + 1
+    )
+    const offsets: number[] = []
+    for (const direction of [1, -1]) {
+      for (let step = 0; step < 9; step++) {
+        const before = Number(document.documentElement.dataset.historyWindowOffset)
+        const target = Math.max(0, Math.min(70, before + direction * 10))
+        // Exercise the ordinary wheel path even though scrollTop cannot change.
+        scroller.dispatchEvent(
+          new WheelEvent('wheel', { deltaY: direction * 100, bubbles: true, cancelable: true })
+        )
+        await waitFor(
+          'large viewport navigation',
+          () =>
+            Number(document.documentElement.dataset.historyWindowOffset) === target &&
+            visible().length === 50
+        )
+        await sleep(850)
+        check()
+        offsets.push(Number(document.documentElement.dataset.historyWindowOffset))
+      }
+    }
+    const grid = scroller.closest<HTMLElement>('[role="listbox"]')!
+    for (const [key, offset] of [
+      ['PageDown', 10],
+      ['PageUp', 0],
+    ] as const) {
+      grid.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+      await waitFor(
+        'large viewport keyboard navigation',
+        () =>
+          Number(document.documentElement.dataset.historyWindowOffset) === offset &&
+          visible().length === 50
+      )
+      check()
+    }
+    await waitFor(
+      'large viewport thumbnails decoded',
+      () =>
+        visible().every(row => {
+          const image = row.querySelector<HTMLImageElement>('img')
+          return image?.complete && image.naturalWidth > 0
+        }),
+      15000
+    )
+    check()
+    const passed =
+      Math.max(...offsets) === 70 && offsets.at(-1) === 0 && maxRecords === 50 && maxImages > 0
+    await record('window-large-viewport', passed, {
+      offsets,
+      maxRecords,
+      maxImages,
+      visible: visible().length,
+      scrollHeight: scroller.scrollHeight,
+      clientHeight: scroller.clientHeight,
+      innerWidth,
+      innerHeight,
+      visibility: document.visibilityState,
+      input: 'scripted wheel and PageUp/PageDown events in native WebView',
+    })
+    if (!passed) throw new Error('Large viewport failed bidirectional navigation')
+    await control('exit')
+    return
+  }
   const verifyIdle = async () => {
     await sleep(2000)
     check()
@@ -85,6 +158,23 @@ export async function runHistoryWindowScenario({
         cache.historyImageCachePaths().filter(path => path.endsWith('/thumbnail')).length === count,
       15000
     )
+    await record('window-image-readiness', true, {
+      visibility: document.visibilityState,
+      scrollTop: scroller.scrollTop,
+      bounds: scroller.getBoundingClientRect().toJSON(),
+      rows: visible().map(row => {
+        const image = row.querySelector<HTMLImageElement>('img')
+        const tile = row.querySelector<HTMLElement>('[role="img"]')
+        return {
+          id: row.dataset.itemId,
+          row: row.getBoundingClientRect().toJSON(),
+          tile: tile?.getBoundingClientRect().toJSON(),
+          hasImage: !!image,
+          complete: image?.complete,
+          naturalWidth: image?.naturalWidth,
+        }
+      }),
+    })
     await waitFor(
       'visible thumbnails decoded',
       () => {
@@ -92,6 +182,12 @@ export async function runHistoryWindowScenario({
         return (
           rows.length > 0 &&
           rows.every(row => {
+            const tile = row.querySelector<HTMLElement>('[role="img"]')
+            if (!tile) return false
+            const rect = tile.getBoundingClientRect()
+            const bounds = scroller.getBoundingClientRect()
+            // A row border may intersect while its thumbnail remains clipped outside the scroller.
+            if (rect.bottom <= bounds.top || rect.top >= bounds.bottom) return true
             const image = row.querySelector<HTMLImageElement>('img')
             return image?.complete && image.naturalWidth > 0
           })
@@ -217,7 +313,7 @@ export async function runHistoryWindowScenario({
     maxImages > 0 && offsets.some(offset => offset > 0) && offsets.at(-1)! < Math.max(...offsets)
   await record('image-memory-all-ready', passed, {
     visibility: document.visibilityState,
-    view: document.querySelector('.mac-grid') ? 'grid' : 'list',
+    view: document.querySelector('.mac-grid, .adw-grid') ? 'grid' : 'list',
     maxRecords,
     maxImages,
     deepMutation,

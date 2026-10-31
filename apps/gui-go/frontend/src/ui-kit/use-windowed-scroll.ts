@@ -42,11 +42,29 @@ export function useWindowedScroll(
     if (indices.length)
       viewport.onVisibleRange(Math.min(...indices), Math.max(...indices), scrolling)
   })
+  const navigateWithoutOverflow = useEffectEvent((direction: 'newer' | 'older') => {
+    const scroll = scroller()
+    if (!scroll || scroll.scrollHeight > scroll.clientHeight + 1) return false
+    viewport?.onNavigate(direction)
+    return true
+  })
   useEffect(() => {
     const host = root.current
     if (!host || !enabled) return
     const onScroll = () => measure(true)
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+      if (navigateWithoutOverflow(event.deltaY > 0 ? 'older' : 'newer')) event.preventDefault()
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
+      if (event.key !== 'PageDown' && event.key !== 'PageUp') return
+      if (navigateWithoutOverflow(event.key === 'PageDown' ? 'older' : 'newer'))
+        event.preventDefault()
+    }
     host.addEventListener('scroll', onScroll, true)
+    host.addEventListener('wheel', onWheel, { passive: false })
+    host.addEventListener('keydown', onKeyDown)
     const resize = new ResizeObserver(() => measure())
     resize.observe(host)
     const mutations = new MutationObserver(() => measure())
@@ -54,6 +72,8 @@ export function useWindowedScroll(
     const frame = requestAnimationFrame(() => measure())
     return () => {
       host.removeEventListener('scroll', onScroll, true)
+      host.removeEventListener('wheel', onWheel)
+      host.removeEventListener('keydown', onKeyDown)
       resize.disconnect()
       mutations.disconnect()
       cancelAnimationFrame(frame)

@@ -28,6 +28,33 @@ async fn startup_is_authenticated_available_before_engine_and_retains_interrupti
         .unwrap();
     assert_eq!(state["progress"]["state"], "preparing");
     assert_eq!(state["service_ready"], false);
+    let stop_url = format!("http://127.0.0.1:{}/startup/stop", conn.port);
+    let instance = conn.instance_id.as_deref().unwrap();
+    assert_eq!(client.post(&stop_url).send().await.unwrap().status(), 401);
+    assert_eq!(
+        client
+            .post(&stop_url)
+            .bearer_auth(token.as_str())
+            .header("X-UniClipboard-Startup-Instance", "another-run")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    assert!(!server.stop_token().is_cancelled());
+    assert_eq!(
+        client
+            .post(&stop_url)
+            .bearer_auth(token.as_str())
+            .header("X-UniClipboard-Startup-Instance", instance)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        202
+    );
+    assert!(server.stop_token().is_cancelled());
     let first_elapsed = state["progress"]["elapsed_ms"].as_u64().unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
     let refreshed: serde_json::Value = client

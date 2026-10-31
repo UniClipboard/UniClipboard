@@ -31,10 +31,16 @@ export async function runHistoryWindowScenario({
     ids: string[]
     grid: boolean
   }
-  if (configuration.grid) {
-    $(`[role="radio"][aria-label="${i18n.t('history.kit.viewGrid')}"]`)!.click()
-    await waitFor('grid mode', () => document.querySelector('.mac-grid'))
-  }
+  const mode = configuration.grid ? 'grid' : 'list'
+  $(
+    `[role="radio"][aria-label="${i18n.t(configuration.grid ? 'history.kit.viewGrid' : 'history.kit.viewList')}"]`
+  )!.click()
+  await waitFor(`${mode} mode`, () =>
+    configuration.grid
+      ? document.querySelector('.mac-grid')
+      : document.querySelector('.mac-row[data-item-id]') && !document.querySelector('.mac-grid')
+  )
+  await record('window-view', true, { mode })
   const scroller = await waitFor('bounded history', () =>
     document.querySelector<HTMLElement>('.mac-glist-scroller')
   )
@@ -73,6 +79,20 @@ export async function runHistoryWindowScenario({
     )
     const count = Number(document.documentElement.dataset.historyWindowCount)
     await waitFor('idle thumbnails ready', () => cache.historyImageCacheSize() === count, 15000)
+    await waitFor(
+      'visible thumbnails decoded',
+      () => {
+        const rows = visible()
+        return (
+          rows.length > 0 &&
+          rows.every(row => {
+            const image = row.querySelector<HTMLImageElement>('img')
+            return image?.complete && image.naturalWidth > 0
+          })
+        )
+      },
+      15000
+    )
     check()
     if (count !== expected)
       throw new Error(`Idle window has ${count} records, expected ${expected}`)

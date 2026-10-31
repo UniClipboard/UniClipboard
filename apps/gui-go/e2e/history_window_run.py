@@ -156,14 +156,14 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             inserted_requests=0
             while time.monotonic()<deadline and proc.poll() is None:
                 rows=[json.loads(x) for x in evidence.read_text().splitlines() if x.strip()]
-                if re.search(r'UI process exited pid=\d+ error=',(tmp/'gui.log').read_text(errors='replace')):
-                    result['error']='Native UI child exited before scenario completion'
-                    result['native_steps']=rows
-                    break
                 if any(row.get('step')=='window-begin' for row in rows) and not control_file.read_text():
                     control_file.write_text('open-main history-window\n')
                 if any(row.get('step')=='window-large-viewport' for row in rows):
                     result['passed']=any(row.get('step')=='window-large-viewport' and row.get('ok') for row in rows)
+                    result['native_steps']=rows
+                    break
+                if re.search(r'UI process exited pid=\d+ error=',(tmp/'gui.log').read_text(errors='replace')):
+                    result['error']='Native UI child exited before scenario completion'
                     result['native_steps']=rows
                     break
                 requested=sum(row.get('step')=='window-insert-request' for row in rows)
@@ -181,6 +181,14 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
                     result['passed']=all(any(x.get('step')==name and x.get('ok') for x in result['steps']) for name in ['image-memory-loaded','image-memory-scroll-0','image-memory-scroll-1','image-memory-scroll-2','image-memory-all-ready','image-memory-idle'])
                     break
                 time.sleep(1)
+            # The GUI syncs its terminal evidence before exiting between polls.
+            rows=[json.loads(x) for x in evidence.read_text().splitlines() if x.strip()]
+            result['native_steps']=rows
+            result['steps']=[x for x in rows if str(x.get('step','')).startswith(('history-window','image-memory','window-','driver-error'))]
+            final=next((row for row in rows if row.get('step')=='window-large-viewport'),None)
+            if final is not None:
+                result['passed']=bool(final.get('ok'))
+                if result['passed']: result.pop('error',None)
             result['elapsed_seconds']=round(time.monotonic()-beginning,2)
             if not result['passed'] and not result.get('error'):
                 result['error']=f'GUI scenario incomplete; owner exit code={proc.poll()}; elapsed={result["elapsed_seconds"]}s'

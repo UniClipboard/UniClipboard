@@ -64,7 +64,7 @@ def main():
             try:
                 value = json.loads(raw)
             except ValueError:
-                value = None
+                value = raw.decode('utf-8')
             return response.code, value
 
         def check(label, method, route, expected, body=None):

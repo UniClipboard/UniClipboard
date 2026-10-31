@@ -69,11 +69,13 @@ export function GroupedGrid({
   const columns = Math.max(1, Math.floor((width - 2 * PADDING + GAP) / (cardWidth + GAP)))
   // Virtuoso deduplicates endReached by data identity as well as the last index.
   // Rebuild rows only when their inputs change, not when pagination updates the parent.
-  const { rows, rowOfItem } = useMemo(() => {
+  const { rows, rowOfItem, sections } = useMemo(() => {
     const rows: Row[] = []
     const rowOfItem: number[] = []
+    const sections: Array<{ group: ListGroup; items: GridItem[] }> = []
     let start = 0
     for (const group of groups) {
+      sections.push({ group, items: items.slice(start, start + group.count) })
       rows.push({ kind: 'header', group })
       for (let i = start; i < start + group.count; i += columns) {
         const chunk = items.slice(i, Math.min(i + columns, start + group.count))
@@ -82,7 +84,7 @@ export function GroupedGrid({
       }
       start += group.count
     }
-    return { rows, rowOfItem }
+    return { rows, rowOfItem, sections }
   }, [groups, items, columns])
 
   useWindowedScroll(gridRef, items, viewport)
@@ -203,8 +205,11 @@ export function GroupedGrid({
           className="adw-glist-scroller"
           style={{ overflowY: 'auto', height: '100%', overflowAnchor: 'none' }}
         >
-          {rows.map((row, index) => (
-            <div key={index}>{renderRow(row)}</div>
+          {sections.map(({ group, items: cards }) => (
+            <div key={group.id}>
+              {renderRow({ kind: 'header', group })}
+              {renderRow({ kind: 'cards', items: cards })}
+            </div>
           ))}
           {footer}
         </div>

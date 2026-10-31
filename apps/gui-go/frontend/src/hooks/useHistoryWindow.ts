@@ -51,6 +51,7 @@ export function useHistoryWindow(
   const firstQuery = useRef(true)
   const previousModel = useRef(model)
   const request = useRef<AbortController | null>(null)
+  const refreshing = useRef(false)
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleMode = useRef(false)
   const visible = useRef({ start: 0, end: 29 })
@@ -60,6 +61,9 @@ export function useHistoryWindow(
   }, [total])
   const load = useCallback(
     async (offset: number, count: number, refresh = false) => {
+      // Superseding work inherits refresh ownership until an authoritative read completes.
+      refresh = refresh || refreshing.current
+      refreshing.current = refresh
       request.current?.abort()
       const controller = new AbortController()
       request.current = controller
@@ -151,7 +155,10 @@ export function useHistoryWindow(
           )
         controller.abort()
       } finally {
-        if (request.current === controller) setLoading(false)
+        if (request.current === controller) {
+          refreshing.current = false
+          setLoading(false)
+        }
       }
     },
     [model]

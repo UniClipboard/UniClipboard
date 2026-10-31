@@ -67,6 +67,7 @@ class ClipboardPreviewCache {
 
     try {
       const value = await promise
+      // Compare request identity, not its awaited value: invalidation may have replaced the slot.
       if (value && this.inFlight.get(entryId) === promise) {
         this.cache.set(entryId, {
           value,
@@ -75,6 +76,7 @@ class ClipboardPreviewCache {
       }
       return value
     } finally {
+      // An obsolete request must not remove a newer pending request.
       if (this.inFlight.get(entryId) === promise) this.inFlight.delete(entryId)
     }
   }

@@ -6,6 +6,7 @@ import {
   releaseBlobImage,
 } from '@/api/daemon/blob-image-cache'
 import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
+import { imageRetryDelay } from '@/lib/image-retry'
 
 function scheduleRetry(callback: () => void, delay: number): () => void {
   const timer = setTimeout(callback, delay)
@@ -56,13 +57,11 @@ export function useBlobImageObjectUrl(descriptor: string | null, enabled = true)
         .catch(error => {
           if (cancelled) return
           if (
-            descriptor.endsWith('/thumbnail') &&
             error instanceof DaemonApiError &&
             error.code === DaemonErrorCode.SERVICE_UNAVAILABLE
           ) {
-            const delay = Math.min(500 * 2 ** attempts, 8000)
+            cancelRetry = scheduleRetry(load, imageRetryDelay(attempts))
             attempts = Math.min(attempts + 1, 4)
-            cancelRetry = scheduleRetry(load, delay + Math.random() * 500)
           } else {
             setResolved({ descriptor, url: null })
           }

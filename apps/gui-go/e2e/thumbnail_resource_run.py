@@ -75,6 +75,13 @@ def main():
               'engine_revision': manifest['workspace']['dependencies']['uc-engine']['rev'],
               'scenario_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'gui_started': False, 'passed': False}
+    result['review_source_sha256'] = {
+        relative: hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+        for relative in ['apps/gui-go/frontend/e2e/history-window-review-daemon.ts',
+                         'apps/gui-go/frontend/src/api/daemon/blob-image-cache.ts',
+                         'apps/gui-go/frontend/src/hooks/useHistoryWindow.ts',
+                         'apps/gui-go/frontend/src/hooks/useHistoryWindowImages.ts']
+    }
     with tempfile.TemporaryDirectory(prefix='uc-thumbnail-run-') as tmp:
         out = Path(tmp)
         home = None
@@ -165,6 +172,18 @@ def main():
                     text=True, capture_output=True, check=True, timeout=180,
                 )
                 result['frontend_cache_integration'] = json.loads(client.stdout.strip().splitlines()[-1])
+                review = subprocess.run(
+                    ['bun', 'run', 'e2e/history-window-review-daemon.ts'],
+                    cwd=ROOT / 'apps/gui-go/frontend',
+                    input=json.dumps({'base': base, 'authorization': hdr['Authorization'],
+                                      'thumbnailPaths': thumbnail_paths, 'mobileUrl': mobile,
+                                      'mobileAuthorization': auth}),
+                    text=True, capture_output=True, check=False, timeout=180,
+                )
+                if review.returncode:
+                    result['history_window_review'] = {'passed': False, 'stderr': review.stderr}
+                    raise RuntimeError('History window review E2E failed')
+                result['history_window_review'] = json.loads(review.stdout.strip().splitlines()[-1])
             try:
                 request(base, '/clipboard/entries/00000000-0000-0000-0000-000000000000/thumbnail', headers=hdr)
                 raise AssertionError('missing entry unexpectedly succeeded')

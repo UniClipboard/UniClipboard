@@ -23,18 +23,23 @@ const inFlight = new Map<string, { promise: Promise<string | null>; controller: 
  */
 let cacheGeneration = 0
 const consumers = new Map<string, number>()
+const buffers = new Map<string, number>()
+type ImageLease = 'visible' | 'buffer'
 
-export function retainBlobImage(path: string): void {
-  consumers.set(path, (consumers.get(path) ?? 0) + 1)
+export function retainBlobImage(path: string, lease: ImageLease = 'visible'): void {
+  const owners = lease === 'visible' ? consumers : buffers
+  owners.set(path, (owners.get(path) ?? 0) + 1)
 }
 
-export function releaseBlobImage(path: string): void {
-  const count = (consumers.get(path) ?? 1) - 1
+export function releaseBlobImage(path: string, lease: ImageLease = 'visible'): void {
+  const owners = lease === 'visible' ? consumers : buffers
+  const count = (owners.get(path) ?? 1) - 1
   if (count > 0) {
-    consumers.set(path, count)
+    owners.set(path, count)
     return
   }
-  consumers.delete(path)
+  owners.delete(path)
+  if (consumers.has(path) || buffers.has(path)) return
   invalidateBlobImageObjectUrl(path)
   // Detach pending work so it cannot populate the cache after its last viewer leaves.
   inFlight.get(path)?.controller.abort()
@@ -52,8 +57,10 @@ async function fetchAndCache(
     if (generation !== cacheGeneration || !active()) return null
     // Release the oldest URL before allocating another one at capacity.
     if (cache.size >= MAX_ENTRIES && !cache.has(path)) {
-      const oldest = cache.keys().next().value
-      if (oldest !== undefined) invalidateBlobImageObjectUrl(oldest)
+      const oldest = [...cache.keys()].find(key => !consumers.has(key))
+      if (oldest === undefined)
+        throw new DaemonApiError(DaemonErrorCode.SERVICE_UNAVAILABLE, 'Image cache is in use')
+      invalidateBlobImageObjectUrl(oldest)
     }
     const objectUrl = URL.createObjectURL(blob)
     // If the cache was cleared while this fetch was in flight, don't
@@ -66,11 +73,7 @@ async function fetchAndCache(
     return objectUrl
   } catch (err) {
     if (signal.aborted) return null
-    if (
-      path.endsWith('/thumbnail') &&
-      err instanceof DaemonApiError &&
-      err.code === DaemonErrorCode.SERVICE_UNAVAILABLE
-    ) {
+    if (err instanceof DaemonApiError && err.code === DaemonErrorCode.SERVICE_UNAVAILABLE) {
       throw err
     }
     log.error({ err, path }, 'failed to fetch blob image')
@@ -82,13 +85,6 @@ function touch(path: string, objectUrl: string): void {
   // Re-insert to move this key to the most-recently-used end.
   cache.delete(path)
   cache.set(path, objectUrl)
-  while (cache.size > MAX_ENTRIES) {
-    const oldestKey = cache.keys().next().value as string | undefined
-    if (oldestKey === undefined) break
-    const oldest = cache.get(oldestKey)
-    cache.delete(oldestKey)
-    if (oldest) URL.revokeObjectURL(oldest)
-  }
 }
 
 /**

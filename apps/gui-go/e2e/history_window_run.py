@@ -29,7 +29,7 @@ a = p.parse_args()
 repo = a.repo.resolve()
 sys.path.insert(0, str(repo / 'apps/gui-go/e2e'))
 from history_kit_browser_daemon import start, stop, env_for
-from file_preview_run import PASSPHRASE, cli
+from file_preview_run import cli
 from run import isolated_env
 from thumbnail_resource_run import png
 
@@ -80,8 +80,10 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
                 try:
                     resource=daemon_request('/clipboard/entries/'+entry_id+'/resource',session_headers)
                     if resource.get('url'): remaining.remove(entry_id)
-                except urllib.error.HTTPError:
-                    pass
+                except urllib.error.HTTPError as error:
+                    # The original may still be materializing after the capture was listed.
+                    if error.code not in (404, 409, 503):
+                        raise
             if remaining: time.sleep(1)
         result['source_ready_count']=120-len(remaining)
         result['source_ready_wait_seconds']=round(time.monotonic()-started,2)

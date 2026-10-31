@@ -78,7 +78,12 @@ export async function runHistoryWindowScenario({
       Math.min(configuration.ids.length, Math.max(...indices) + 11) - first
     )
     const count = Number(document.documentElement.dataset.historyWindowCount)
-    await waitFor('idle thumbnails ready', () => cache.historyImageCacheSize() === count, 15000)
+    await waitFor(
+      'idle thumbnails ready',
+      () =>
+        cache.historyImageCachePaths().filter(path => path.endsWith('/thumbnail')).length === count,
+      15000
+    )
     await waitFor(
       'visible thumbnails decoded',
       () => {
@@ -100,6 +105,9 @@ export async function runHistoryWindowScenario({
   }
   const mutate = async () => {
     const beforeInsert = anchor()
+    const beforeNodes = visible().map(row => ({ id: row.dataset.itemId!, row }))
+    const retainedNodes = () =>
+      beforeNodes.every(({ id, row }) => document.querySelector(`[data-item-id="${id}"]`) === row)
     const evidence = async (stage: string) =>
       record('window-mutation', true, {
         stage,
@@ -128,6 +136,7 @@ export async function runHistoryWindowScenario({
       ? Math.abs(insertedAnchor.getBoundingClientRect().top - beforeInsert.top)
       : Infinity
     await evidence('after-insert')
+    if (!retainedNodes()) throw new Error('Insertion remounted a retained visible record')
     if (insertDelta > 2) throw new Error(`Insertion moved anchor by ${insertDelta}px`)
     const head = await daemonClient.request<{ data: { items: Array<{ entryId: string }> } }>(
       '/search/query?query=&limit=1&offset=0'
@@ -156,6 +165,7 @@ export async function runHistoryWindowScenario({
       ? Math.abs(deletedAnchor.getBoundingClientRect().top - beforeInsert.top)
       : Infinity
     await evidence('after-delete')
+    if (!retainedNodes()) throw new Error('Deletion remounted a retained visible record')
     if (deleteDelta > 2) throw new Error(`Deletion moved anchor by ${deleteDelta}px`)
 
     return { insertDelta, deleteDelta }

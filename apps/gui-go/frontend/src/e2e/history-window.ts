@@ -25,6 +25,7 @@ export async function runHistoryWindowScenario({
     visibility: document.visibilityState,
     path: location.pathname,
   })
+  await control('reopen-main')
   await reachMainLayout()
   await waitFor('visible history window', () => document.visibilityState === 'visible')
   const configuration = JSON.parse(String(await Call.ByName('main.EvidenceService.Secret'))) as {

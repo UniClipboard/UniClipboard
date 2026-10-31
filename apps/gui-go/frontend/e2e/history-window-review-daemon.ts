@@ -293,7 +293,7 @@ console.log(
     busyAttempts: attempts.length,
     busyIntervalsMs: attempts.slice(1).map((time, index) => time - attempts[index]),
     preloadDisposed: selectedCase === 'all' || selectedCase === 'preload',
-    previewOldCompletionDiscarded: selectedCase === 'all' || selectedCase === 'preview',
+    previewOldCompletionNotCached: selectedCase === 'all' || selectedCase === 'preview',
     previewReplacementShared: selectedCase === 'all' || selectedCase === 'preview',
     previewRetainAndClearDiscarded: selectedCase === 'all' || selectedCase === 'preview',
     idleRefreshAuthoritative: selectedCase === 'all' || selectedCase === 'refresh',

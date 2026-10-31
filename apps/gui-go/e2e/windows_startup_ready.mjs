@@ -67,12 +67,13 @@ try {
     UC_PROFILE: profile,
     UC_PORTABLE: '1',
     UC_GUI_GO_ISOLATED: '1',
+    UC_GPUI_QUICK_PANEL: '0',
     UC_DISABLE_SYSTEM_CLIPBOARD: '1',
     UC_DEV_SERVER_PORT: String(vitePort),
     FRONTEND_DEVSERVER_URL: `http://127.0.0.1:${vitePort}`,
     UC_GUI_GO_E2E_PHASE: 'startup-observe',
-    UC_GUI_GO_E2E_VISIBLE: '0',
-    UC_GUI_GO_E2E_HIDDEN: '1',
+    UC_GUI_GO_E2E_VISIBLE: framework ? '1' : '0',
+    UC_GUI_GO_E2E_HIDDEN: framework ? '0' : '1',
     UC_GUI_GO_EXIT_MODE: 'full',
     UC_GUI_GO_EVIDENCE: path.join(sandbox, 'native.jsonl'),
     UC_GUI_GO_E2E_BROWSER_ARGS: `--remote-debugging-port=${debugPort}`,
@@ -205,15 +206,6 @@ try {
     ])
     socket.close()
   }
-  // Only stop children created by this run, including the sandbox's daemon.
-  const connRoot = path.join(sandbox, 'data', `app.uniclipboard.desktop-${profile}`)
-  const daemonPids = new Set()
-  for (const name of ['daemon.conn', 'daemon-startup.conn']) {
-    const connPath = path.join(connRoot, name)
-    if (fs.existsSync(connPath)) {
-      daemonPids.add(JSON.parse(fs.readFileSync(connPath, 'utf8')).pid)
-    }
-  }
   const cleanup = {
     systemClipboardDisabled: true,
     guiIsolated: true,
@@ -223,57 +215,73 @@ try {
     sandboxRemoved: false,
     forced: false,
   }
-  if (host) {
-    cleanup.hostExitedNormally = await Promise.race([
-      host.closed.then(code => code === 0),
-      delay(15000).then(() => false),
-    ])
-  }
-  for (const pid of daemonPids) {
-    try {
-      process.kill(pid, 0)
-    } catch {
-      continue
+  try {
+    // Only connection files inside this run's portable sandbox can nominate a daemon.
+    const connRoot = path.join(sandbox, 'data', `app.uniclipboard.desktop-${profile}`)
+    const daemonPids = new Set()
+    for (const name of ['daemon.conn', 'daemon-startup.conn']) {
+      const connPath = path.join(connRoot, name)
+      if (fs.existsSync(connPath)) daemonPids.add(JSON.parse(fs.readFileSync(connPath, 'utf8')).pid)
     }
-    // A PID from a connection file is not sufficient ownership proof.
-    const actual = execFileSync(
+    if (host)
+      cleanup.hostExitedNormally = await Promise.race([
+        host.closed.then(code => code === 0),
+        delay(15000).then(() => false),
+      ])
+    for (const pid of daemonPids) {
+      try {
+        process.kill(pid, 0)
+      } catch {
+        continue
+      }
+      // A PID from a connection file is not sufficient ownership proof.
+      const actual = execFileSync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `(Get-Process -Id ${pid} -ErrorAction Stop).Path`,
+        ],
+        { encoding: 'utf8', timeout: 5000 }
+      ).trim()
+      assert.equal(
+        path.resolve(actual).toLowerCase(),
+        path.join(sandbox, 'uniclipd.exe').toLowerCase()
+      )
+      process.kill(pid)
+      cleanup.forced = true
+    }
+  } catch (error) {
+    cleanup.errorType = error.name
+  } finally {
+    for (const child of children.reverse()) {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill()
+        if (child === host) cleanup.forced = true
+      }
+      await Promise.race([child.closed, delay(5000)])
+    }
+  }
+  try {
+    const remaining = execFileSync(
       'powershell.exe',
       [
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        `(Get-Process -Id ${pid} -ErrorAction Stop).Path`,
+        `@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith('${sandbox.replaceAll("'", "''")}' + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) }).Count`,
       ],
       { encoding: 'utf8', timeout: 5000 }
     ).trim()
-    assert.equal(
-      path.resolve(actual).toLowerCase(),
-      path.join(sandbox, 'uniclipd.exe').toLowerCase()
-    )
-    process.kill(pid)
-    cleanup.forced = true
+    cleanup.daemonExited = remaining === '0' && !cleanup.errorType
+  } catch (error) {
+    cleanup.errorType = error.name
   }
-  for (const child of children.reverse()) {
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill()
-      if (child === host) cleanup.forced = true
-    }
-    await Promise.race([child.closed, delay(5000)])
-  }
-  const remaining = execFileSync(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      `@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith('${sandbox.replaceAll("'", "''")}' + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) }).Count`,
-    ],
-    { encoding: 'utf8', timeout: 5000 }
-  ).trim()
-  cleanup.daemonExited = remaining === '0'
   if (framework) {
     // Export public evidence only; never copy daemon connection files, private stores or raw logs.
-    const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+    const hash = file =>
+      fs.existsSync(file) ? createHash('sha256').update(fs.readFileSync(file)).digest('hex') : null
     const sourceFiles = [
       'apps/gui-go/e2e/windows_startup_ready.mjs',
       'apps/gui-go/e2e/windows-startup-scenarios.mjs',

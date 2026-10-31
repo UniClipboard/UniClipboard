@@ -103,7 +103,8 @@ export const verifiedPlatforms = {
 }
 export const retainedReasons = {
   'history-row-hover': 'original history-favorite DOM lookup is null in the legacy runner too',
-  typography: 'original transfer-progress 50% assertion times out in the legacy runner too',
+  typography:
+    'current byte label and 50% fill pass; the original content/progress non-overlap assertion still fails at 360px',
   'history-detail-regressions':
     'original warm-image-stable assertion fails in the legacy runner too',
   'settings-design': 'legacy startup-mode combobox assertion no longer matches the current control',

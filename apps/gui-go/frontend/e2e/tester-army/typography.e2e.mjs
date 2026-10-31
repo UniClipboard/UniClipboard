@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test, outputFor } from './page.mjs'
 
-test('typography: original assertions', async ({ app, page }) => {
+test('typography: original text checks and current transfer byte label', async ({ app, page }) => {
   const base = app.baseUrl.replace(/\/$/, '')
   const output = await outputFor('typography')
   const results = []
@@ -117,7 +117,8 @@ test('typography: original assertions', async ({ app, page }) => {
     await page.setViewportSize({ width, height: 800 })
     await page.goto(`${base}/?view=history&transfer=1`)
     const card = page.locator('[data-entry-id="file"]')
-    await card.getByText('50%', { exact: true }).waitFor()
+    // The production progress component presents byte counts, not a percentage label.
+    await card.getByText('1.00 KB / 2.00 KB', { exact: true }).waitFor()
     const geometry = await card.evaluate(el => {
       const content = el.querySelector(':scope > .flex-1')
       const progress = [...el.querySelectorAll(':scope > div')].find(child => {
@@ -131,8 +132,10 @@ test('typography: original assertions', async ({ app, page }) => {
       return {
         contentBottom: content.getBoundingClientRect().bottom,
         progressTop: progress.getBoundingClientRect().top,
+        fillPercent: progress.querySelector('.h-full').style.width,
       }
     })
+    assert.equal(geometry.fillPercent, '50%', 'the progress fill reflects 1024 of 2048 bytes')
     assert.ok(
       geometry.contentBottom <= geometry.progressTop,
       `transfer overlaps content at ${width}`

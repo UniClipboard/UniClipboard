@@ -1,0 +1,79 @@
+name: History window GUI E2E
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/history-window-gui-e2e.yml"
+      - "apps/gui-go/e2e/history_window_run.py"
+      - "apps/gui-go/frontend/src/e2e/history-window.ts"
+      - "apps/gui-go/frontend/src/hooks/useHistoryWindow.ts"
+      - "apps/gui-go/frontend/src/ui-kit/use-windowed-scroll.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux large viewport navigation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache-dependency-path: |
+            apps/gui-go/go.sum
+            apps/cli-go/go.sum
+            packages/desktop-host-go/go.sum
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install native WebView and isolated display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config clang cmake \
+            libssl-dev libdbus-1-dev libgtk-4-dev libwebkitgtk-6.0-dev \
+            libx11-dev libwayland-dev libxkbcommon-dev xvfb xauth dbus-x11
+      - uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: history-window-gui
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+          save-if: false
+      - name: Build exact checkout
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          (cd apps/gui-go/frontend && VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux bun run build)
+          test "$(cat apps/gui-go/frontend/dist/.ui-platform)" = linux
+          cargo build --locked -p uc-daemon
+          (cd packages/desktop-host-go && go generate ./buildinfo)
+          mkdir -p target/gui-go
+          (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
+          (cd apps/gui-go && go build -tags gtk4,e2e -o ../../target/gui-go/gui-go .)
+          git diff --exit-code
+      - name: Navigate both directions with all 50 records visible
+        env:
+          GDK_BACKEND: x11
+          WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+        run: |
+          mkdir -p artifacts/history-window
+          dbus-run-session -- xvfb-run -a -s '-screen 0 2560x1920x24' \
+            python3 apps/gui-go/e2e/history_window_run.py --repo "$PWD" \
+            --gui "$PWD/target/gui-go/gui-go" --grid --large-viewport \
+            --out "$PWD/artifacts/history-window/linux-large-viewport.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: history-window-linux-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/history-window/
+          if-no-files-found: warn

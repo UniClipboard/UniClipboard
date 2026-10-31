@@ -101,7 +101,32 @@ export async function runHistoryWindowScenario({
         offsets.push(Number(document.documentElement.dataset.historyWindowOffset))
       }
     }
-    const passed = Math.max(...offsets) === 70 && offsets.at(-1) === 0 && maxRecords === 50
+    const grid = scroller.closest<HTMLElement>('[role="listbox"]')!
+    for (const [key, offset] of [
+      ['PageDown', 10],
+      ['PageUp', 0],
+    ] as const) {
+      grid.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+      await waitFor(
+        'large viewport keyboard navigation',
+        () =>
+          Number(document.documentElement.dataset.historyWindowOffset) === offset &&
+          visible().length === 50
+      )
+      check()
+    }
+    await waitFor(
+      'large viewport thumbnails decoded',
+      () =>
+        visible().every(row => {
+          const image = row.querySelector<HTMLImageElement>('img')
+          return image?.complete && image.naturalWidth > 0
+        }),
+      15000
+    )
+    check()
+    const passed =
+      Math.max(...offsets) === 70 && offsets.at(-1) === 0 && maxRecords === 50 && maxImages > 0
     await record('window-large-viewport', passed, {
       offsets,
       maxRecords,
@@ -112,7 +137,7 @@ export async function runHistoryWindowScenario({
       innerWidth,
       innerHeight,
       visibility: document.visibilityState,
-      input: 'scripted wheel events in native WebView',
+      input: 'scripted wheel and PageUp/PageDown events in native WebView',
     })
     if (!passed) throw new Error('Large viewport failed bidirectional navigation')
     await control('exit')

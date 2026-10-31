@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
-import { test } from './page.mjs'
+import { writeFile } from 'node:fs/promises'
+import { test, outputFor } from './page.mjs'
 
 test('settings-sidebar-motion: original assertions', async ({ app, page }) => {
   const base = app.baseUrl.replace(/\/$/, '')
+  const output = await outputFor('settings-sidebar-motion')
+  const evidence = []
   await page.goto(base)
   await page.getByRole('button', { name: '显示侧边栏', exact: true }).waitFor()
   // The fixture defaults to reduced motion. Exercise the CSS transition explicitly as well.
@@ -25,18 +28,24 @@ test('settings-sidebar-motion: original assertions', async ({ app, page }) => {
           return Number(style.opacity) * colorAlpha
         }
         const samples = []
-        const start = performance.now()
+        // CSS animations use the frame timeline, which can lag the wall clock on a busy runner.
+        let start
+        let frameTime
         do {
-          await new Promise(requestAnimationFrame)
+          frameTime = await new Promise(requestAnimationFrame)
+          start ??= frameTime
           const scrim = root.querySelector(scrimSelector)
           samples.push({
+            elapsed: frameTime - start,
             opacity: scrim ? scrimAlpha(scrim) : null,
             sameNode: scrim !== null && scrim === initialScrim,
             intercepts: scrim ? getComputedStyle(scrim).pointerEvents !== 'none' : false,
           })
-        } while (performance.now() - start < 400)
+        } while (frameTime - start < 400)
         return samples
       })
+      evidence.push({ reduced, opening, frames })
+      await writeFile(`${output}/frames.json`, JSON.stringify(evidence, null, 2) + '\n')
       assert.ok(
         frames.every(frame => frame.sameNode),
         'keep the scrim mounted through both transitions'

@@ -46,3 +46,8 @@ dbus-run-session -- xvfb-run -a -s '-screen 0 2560x1920x24' \
 ```
 
 `.github/workflows/history-window-gui-e2e.yml` 提供独立 Linux 运行器。该场景验证 WebKitGTK 的视口、导航和缓存上限，不验证 Wayland、物理输入或完整 Linux 桌面交互。
+
+
+GitHub 托管 Ubuntu 运行器通过现有 `prepare-webkit-container-profile.sh` 创建专用 AppArmor 配置。只有本次验收进程通过 `aa-exec` 使用该配置，允许 WebKit 创建沙箱所需的用户命名空间。先用 bubblewrap 验证该前提，再启动 GUI；不关闭 WebKit 沙箱或主机命名空间限制。
+
+手动触发工作流时，可用 `reuse_binaries_from_run` 指定同仓库的历史构建运行。工作流先比较全部产品输入和前端源码，再核对三个二进制的校验和。任何差异都会失败。运行器与 CI 环境允许变化；工件中的二进制仍保留原始构建提交，不改标为当前提交。

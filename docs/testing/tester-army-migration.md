@@ -157,3 +157,24 @@ node apps/gui-go/frontend/e2e/tester-army/backend-assertion-inventory.mjs
 - 原生控件探针使用一次性 runner 或没有可见窗口的本任务进程。不得把调试端口指向用户正在使用的 WebView。
 
 浏览器 CI 位于 `.github/workflows/tester-army-e2e.yml`，覆盖三种主机系统。工作流配置、一次本机通过、远端 CI 通过和真实设备验收是不同证据。
+
+
+## 后端启动诊断与清理回执
+
+隔离辅助进程只输出有限诊断字段：阶段、操作类别、退出码、异常类型和系统错误码。它不保存命令参数、异常消息、HTTP 错误正文或原始标准错误。父夹具再次验证字段白名单，最多保留 200 条事件。`isolation.json` 保存独立的清理结果。清理失败时保留私有沙箱，并将 `daemonExited` 标为未知；不得推断清理成功。旧 CI 的就绪前退出仍没有已确认根因。
+
+## 当前侧栏契约
+
+`sidebar-toggle-app` 的框架断言依据 `use-split-navigation.ts` 验证当前模态导航。在 900 像素下，打开抽屉必须将焦点移入导航，并使背景内容不可交互；Escape 必须关闭抽屉并恢复按钮焦点。在 1200 像素下，侧栏保持内联行为。按钮数量、展开状态、标签和快捷键检查保留。旧 WebDriver 入口继续保留其原断言，不能将本次契约更新描述为旧断言全部通过。
+
+## Windows 产品原生迁移入口
+
+```bash
+python apps/gui-go/e2e/build_windows.py --mode e2e --part go
+cargo build --locked -p uc-daemon --bin uniclipd
+node apps/gui-go/e2e/windows_startup_ready.mjs --tester-army
+```
+
+此入口运行真实产品宿主、Windows 皮肤和真实 daemon。它将原启动与初始化断言提取为共同入口，并运行原空历史明暗场景。TesterArmy 必须驱动产品原有 WebView2 target。独立浏览器页面不能计为通过。夹具使用便携沙箱、专属 profile、禁用系统剪贴板和原生面板。框架关闭协议跟踪，避免保存初始化密码。公开工件只包含源码与二进制身份、断言、截图和清理回执，不包含连接文件、私有存储或原始日志。
+
+工作流 `tester-army-native.yml` 的 `windows-product` 作业执行这条链路。新增入口只有在实际 Windows 作业通过且清理回执成立时才计为已迁移。原入口不带该参数时继续运行原 CDP 路径。托盘、面板、系统快捷键、系统剪贴板、安装包及有数据历史仍使用各自原生入口。

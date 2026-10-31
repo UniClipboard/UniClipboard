@@ -7,6 +7,13 @@ on:
       - 'apps/gui-go/go.mod'
       - 'apps/gui-go/go.sum'
       - 'e2e.native.config.ts'
+      - 'e2e.windows-product.config.ts'
+      - 'apps/gui-go/e2e/windows_startup_ready.mjs'
+      - 'apps/gui-go/e2e/windows-startup-scenarios.mjs'
+      - 'apps/gui-go/frontend/**'
+      - 'apps/gui-go/*.go'
+      - 'crates/uc-daemon/**'
+      - 'Cargo.lock'
       - 'package.json'
       - 'bun.lock'
       - '.github/workflows/tester-army-native.yml'
@@ -64,3 +71,41 @@ jobs:
           name: tester-army-native-${{ matrix.os }}
           path: target/tester-army-native/
           if-no-files-found: error
+  windows-product:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      E2E_TELEMETRY_DISABLED: '1'
+      CARGO_BUILD_JOBS: '3'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+      - run: bun install --frozen-lockfile
+      - name: Build pinned real daemon
+        shell: bash
+        run: bash scripts/build-cache/mbx.sh --exec cargo build --locked -p uc-daemon --bin uniclipd
+      - name: Build the Windows product frontend and host
+        run: python apps/gui-go/e2e/build_windows.py --mode e2e --part go
+      - name: Drive the product's original WebView2
+        run: node apps/gui-go/e2e/windows_startup_ready.mjs --tester-army
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tester-army-windows-product
+          path: target/tester-army-windows-product/
+          if-no-files-found: error
+          retention-days: 14

@@ -1,11 +1,13 @@
 // Run from the repository root after building target/debug/uniclipd.exe.
 // Requires Go and Node with the built-in WebSocket API (Node 22+).
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { runStartupScenarios } from './windows-startup-scenarios.mjs'
 
 assert.equal(process.platform, 'win32')
 const root = fileURLToPath(new URL('../../../', import.meta.url))
@@ -15,6 +17,9 @@ const sandboxParent = process.argv.includes('--long-path')
 fs.mkdirSync(sandboxParent, { recursive: true })
 const sandbox = fs.mkdtempSync(path.join(sandboxParent, 'uc-gui-go-'))
 const profile = `gui-go-${Date.now().toString(36)}`
+const framework = process.argv.includes('--tester-army')
+const publicOutput = path.join(root, 'target/tester-army-windows-product')
+if (framework) fs.mkdirSync(publicOutput, { recursive: true })
 const children = []
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function waitFor(probe, label, timeout = 60000) {
@@ -35,11 +40,14 @@ async function freePort() {
 }
 function start(command, args, options = {}) {
   const child = spawn(command, args, { windowsHide: true, ...options })
+  child.closed = new Promise(resolve => child.once('close', resolve))
   children.push(child)
   return child
 }
 let socket
 let command
+let failure = false
+let host
 const evidence = []
 try {
   const binary = path.join(sandbox, 'gui-go.exe')
@@ -55,6 +63,7 @@ try {
   const env = {
     ...process.env,
     UNICLIPBOARD_ENV: 'development',
+    UC_UI_PLATFORM: 'windows',
     UC_PROFILE: profile,
     UC_PORTABLE: '1',
     UC_GUI_GO_ISOLATED: '1',
@@ -81,7 +90,7 @@ try {
     }
   }, 'Vite ready')
   const output = fs.openSync(path.join(sandbox, 'host.log'), 'w')
-  const host = start(binary, [], { env, stdio: ['ignore', output, output] })
+  host = start(binary, [], { env, stdio: ['ignore', output, output] })
   fs.closeSync(output)
   const page = await waitFor(async () => {
     if (host.exitCode !== null) throw new Error(`Host exited: ${host.exitCode}`)
@@ -153,48 +162,37 @@ try {
       throw new Error(result.exceptionDetails.text + ': ' + result.result.description)
     return result.result.value
   }
-  const status = await waitFor(
-    () => evaluate(`import('/src/lib/ipc.ts').then(m => m.commands.getDaemonStartupStatus())`),
-    'startup status'
-  )
-  assert.equal(status.service_ready, true)
-  evidence.push({
-    step: 'native-startup-status',
-    serviceReady: status.service_ready,
-    state: status.progress.state,
-  })
-  await waitFor(
-    () => evaluate(`!!document.querySelector('[data-testid="setup-entry-create"]')`),
-    'setup screen leaves startup'
-  )
-  evidence.push({ step: 'setup-screen', ok: true })
-  await evaluate(`document.querySelector('[data-testid="setup-entry-create"]').click()`)
-  await waitFor(() => evaluate(`!!document.querySelector('#device-name')`), 'setup form')
-  await evaluate(`(() => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    for (const [selector, value] of [['#device-name','synthetic-startup-device'],['#pass1','synthetic-startup-passphrase'],['#pass2','synthetic-startup-passphrase']]) {
-      const input = document.querySelector(selector); setter.call(input,value); input.dispatchEvent(new Event('input',{bubbles:true}));
-    }
-  })()`)
-  await delay(300)
-  await evaluate(`document.querySelector('[data-testid="setup-initialize-submit"]').click()`)
-  await waitFor(
-    () =>
-      evaluate(
-        `!!document.querySelector('[data-testid="setup-complete-later"]') || location.pathname.startsWith('/history')`
-      ),
-    'setup completed'
-  )
-  await evaluate(`document.querySelector('[data-testid="setup-complete-later"]')?.click()`)
-  await waitFor(
-    () =>
-      evaluate(
-        `location.pathname.startsWith('/history') && !!document.querySelector('a[href="/settings"]')`
-      ),
-    'authenticated history screen'
-  )
-  evidence.push({ step: 'authenticated-history-screen', ok: true })
+  if (framework) {
+    const runner = start(
+      process.execPath,
+      [
+        path.join(root, 'node_modules/e2e/dist/cli/bin.js'),
+        'run',
+        '--config',
+        'e2e.windows-product.config.ts',
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          E2E_TELEMETRY_DISABLED: '1',
+          UC_NATIVE_ENDPOINT: `http://127.0.0.1:${debugPort}`,
+          UC_NATIVE_URL: page.url,
+          UC_NATIVE_TARGET_ID: page.id,
+          UC_NATIVE_PROFILE: profile,
+        },
+        stdio: 'inherit',
+      }
+    )
+    const code = await runner.closed
+    assert.equal(code, 0, 'Windows native product framework suite failed')
+  } else {
+    await runStartupScenarios({ waitFor, evaluate, evidence, delay })
+  }
   console.log(JSON.stringify({ sandbox, evidence }, null, 2))
+} catch (error) {
+  failure = true
+  throw error
 } finally {
   fs.writeFileSync(path.join(sandbox, 'startup-ready.json'), JSON.stringify(evidence, null, 2))
   if (command && socket?.readyState === WebSocket.OPEN) {
@@ -216,13 +214,108 @@ try {
       daemonPids.add(JSON.parse(fs.readFileSync(connPath, 'utf8')).pid)
     }
   }
+  const cleanup = {
+    systemClipboardDisabled: true,
+    guiIsolated: true,
+    portable: true,
+    hostExitedNormally: false,
+    daemonExited: false,
+    sandboxRemoved: false,
+    forced: false,
+  }
+  if (host) {
+    cleanup.hostExitedNormally = await Promise.race([
+      host.closed.then(code => code === 0),
+      delay(15000).then(() => false),
+    ])
+  }
   for (const pid of daemonPids) {
     try {
-      process.kill(pid)
+      process.kill(pid, 0)
     } catch {
-      // The host may already have stopped its daemon during the full quit.
+      continue
+    }
+    // A PID from a connection file is not sufficient ownership proof.
+    const actual = execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `(Get-Process -Id ${pid} -ErrorAction Stop).Path`,
+      ],
+      { encoding: 'utf8', timeout: 5000 }
+    ).trim()
+    assert.equal(
+      path.resolve(actual).toLowerCase(),
+      path.join(sandbox, 'uniclipd.exe').toLowerCase()
+    )
+    process.kill(pid)
+    cleanup.forced = true
+  }
+  for (const child of children.reverse()) {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill()
+      if (child === host) cleanup.forced = true
+    }
+    await Promise.race([child.closed, delay(5000)])
+  }
+  const remaining = execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith('${sandbox.replaceAll("'", "''")}' + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) }).Count`,
+    ],
+    { encoding: 'utf8', timeout: 5000 }
+  ).trim()
+  cleanup.daemonExited = remaining === '0'
+  if (framework) {
+    // Export public evidence only; never copy daemon connection files, private stores or raw logs.
+    const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+    const sourceFiles = [
+      'apps/gui-go/e2e/windows_startup_ready.mjs',
+      'apps/gui-go/e2e/windows-startup-scenarios.mjs',
+      'apps/gui-go/e2e/tester-army-native/windows-product.e2e.mjs',
+      'apps/gui-go/frontend/e2e/history-kit-browser.mjs',
+      'e2e.windows-product.config.ts',
+      'Cargo.lock',
+      'bun.lock',
+    ]
+    const identity = {
+      head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+      dirty:
+        execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim() !==
+        '',
+      sourceSha256: Object.fromEntries(
+        sourceFiles.map(file => [file, hash(path.join(root, file))])
+      ),
+      binariesSha256: Object.fromEntries(
+        ['gui-go.exe', 'uniclipd.exe'].map(file => [file, hash(path.join(sandbox, file))])
+      ),
+    }
+    if (cleanup.daemonExited) {
+      for (let retry = 0; retry < 100; retry++) {
+        try {
+          fs.rmSync(sandbox, { recursive: true })
+          cleanup.sandboxRemoved = true
+          break
+        } catch {
+          await delay(100)
+        }
+      }
+    }
+    fs.writeFileSync(
+      path.join(publicOutput, 'isolation.json'),
+      JSON.stringify({ ...identity, ...cleanup }, null, 2)
+    )
+    if (!failure) {
+      assert.equal(cleanup.hostExitedNormally, true, 'native host must quit normally')
+      assert.equal(cleanup.forced, false, 'forced termination is not successful native cleanup')
+      assert.equal(cleanup.daemonExited, true, 'no owned product processes may remain')
+      assert.equal(cleanup.sandboxRemoved, true, 'private portable profile must be removed')
     }
   }
-  for (const child of children.reverse()) if (child.exitCode === null) child.kill()
-  console.log(`Evidence retained at ${sandbox}`)
+  console.log(framework ? `Public evidence: ${publicOutput}` : `Evidence retained at ${sandbox}`)
 }

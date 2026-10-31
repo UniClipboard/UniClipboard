@@ -27,8 +27,9 @@ if (
 export const backendOutput = `target/tester-army-backend/${backendPlatform}/${backendName}/${backendSeed}/${backendPhase}`
 export const backendReport = `target/tester-army-backend-report/${backendPlatform}/${backendName}/${backendSeed}/${backendPhase}`
 
-// Each entry has passed its original functional assertions; other candidates stay explicit.
+// Each entry has passed its stated functional contract; retained candidates stay explicit.
 export const verifiedBackendRuns = [
+  { suite: 'sidebar-toggle-app', platform: 'macos', seed: 'empty' },
   ...['macos', 'linux'].map(platform => ({ suite: 'tag-manager-layout', platform, seed: 'empty' })),
   ...['macos', 'windows', 'linux'].map(platform => ({
     suite: 'quick-panel-unlock',
@@ -52,6 +53,4 @@ export const retainedBackendReasons = {
     'LAN image thumbnail returns 503 while original PNG bytes are readable; platform-specific material/rail assumptions also remain in the original scenarios',
   'history-search/fullPage':
     'original WebDriver and replacement both fail the old detail geometry predicate; legacy rail assumptions remain in the Windows/Linux branches',
-  'sidebar-toggle-app':
-    '900px drawer intentionally moves focus into navigation; original assertion requires focus to remain on the toggle',
 }

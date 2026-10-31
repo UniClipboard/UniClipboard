@@ -31,15 +31,83 @@ export const test = base.extend({
     const drained = once(lines, 'close')
     let cleanup
     let failed
-    proc.stderr.resume()
+    const diagnostics = []
+    let rejectedDiagnostics = 0
+    const stderr = createInterface({ input: proc.stderr })
+    const stderrDrained = once(stderr, 'close')
+    stderr.on('line', line => {
+      // Store only the helper's finite diagnostic schema, never arbitrary stderr.
+      try {
+        const value = JSON.parse(line)
+        if (
+          ![
+            'stage',
+            'command-start',
+            'command-exit',
+            'command-failed',
+            'failure',
+            'cleanup-failed',
+          ].includes(value.event) ||
+          ![
+            'profile',
+            'space-init',
+            'daemon-start',
+            'connection',
+            'authentication',
+            'unlock',
+            'settings',
+            'ready',
+            'cleanup',
+            'seed-empty',
+            'seed-panel',
+            'seed-devices',
+            'seed-history',
+            'seed-search',
+            'seed-smoke',
+          ].includes(value.stage)
+        )
+          throw new Error('unexpected diagnostic schema')
+        const safe = { event: value.event, stage: value.stage }
+        if (['space', 'start', 'stop', 'send', 'mobile'].includes(value.operation))
+          safe.operation = value.operation
+        if (Number.isInteger(value.returnCode)) safe.returnCode = value.returnCode
+        if (Number.isInteger(value.errno)) safe.errno = value.errno
+        if (
+          [
+            'RuntimeError',
+            'AssertionError',
+            'TimeoutExpired',
+            'FileNotFoundError',
+            'PermissionError',
+            'HTTPError',
+            'URLError',
+            'JSONDecodeError',
+            'ValueError',
+            'OSError',
+            'TimeoutError',
+          ].includes(value.errorType)
+        )
+          safe.errorType = value.errorType
+        diagnostics.push(safe)
+        if (diagnostics.length > 200) diagnostics.shift()
+      } catch {
+        rejectedDiagnostics++
+      }
+    })
     let timer
     try {
       const ready = await Promise.race([
         new Promise(resolve =>
           lines.on('line', line => {
-            const value = JSON.parse(line)
-            if (value.phase === 'cleanup') cleanup = value
-            else resolve(value)
+            try {
+              const value = JSON.parse(line)
+              if (value.phase === 'cleanup') cleanup = value
+              else if (typeof value.baseUrl === 'string' && typeof value.sessionToken === 'string')
+                resolve(value)
+              else rejectedDiagnostics++
+            } catch {
+              rejectedDiagnostics++
+            }
           })
         ),
         closed.then(([code]) => {
@@ -75,7 +143,7 @@ export const test = base.extend({
             )
           }),
         ])
-        await drained
+        await Promise.all([drained, stderrDrained])
       } catch (error) {
         cleanupError = error.message
       } finally {
@@ -84,7 +152,11 @@ export const test = base.extend({
       const code = outcome?.[0] ?? null
       await writeFile(
         `${backendOutput}/isolation.json`,
-        JSON.stringify({ exitCode: code, cleanupError, ...cleanup }, null, 2) + '\n'
+        JSON.stringify(
+          { exitCode: code, cleanupError, ...cleanup, diagnostics, rejectedDiagnostics },
+          null,
+          2
+        ) + '\n'
       )
       if (!failed) {
         assert.equal(code, 0, 'isolated backend must exit cleanly')

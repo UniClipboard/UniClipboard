@@ -106,6 +106,7 @@ export async function runScenarios({
   createContext,
   preparePage,
   guiSession,
+  nativePage,
 }) {
   const pagingCount = Math.max(0, daemon.seeded - 8)
   const pagingEntry = index => `Paging entry ${String(index).padStart(3, '0')}`
@@ -288,10 +289,13 @@ export async function runScenarios({
     const end = Date.now() + 60_000
     for (;;) {
       const pages = browser.contexts().flatMap(context => context.pages())
-      const main = pages.find(candidate => {
-        const url = candidate.url()
-        return url.startsWith('http://wails.localhost') && !/quick-panel|updater/.test(url)
-      })
+      const main =
+        nativePage && !nativePage.isClosed()
+          ? nativePage
+          : pages.find(candidate => {
+              const url = candidate.url()
+              return url.startsWith('http://wails.localhost') && !/quick-panel|updater/.test(url)
+            })
       if (main) return main
       assert.ok(Date.now() < end, `no main window among ${pages.map(candidate => candidate.url())}`)
       await new Promise(resolve => setTimeout(resolve, 500))

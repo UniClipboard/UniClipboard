@@ -18,10 +18,21 @@ sys.path.insert(0, str(ROOT / 'apps/cli-go/e2e'))
 from isolated import isolated_env
 
 
+def diagnostic(event, stage, error=None, **fields):
+    # Never serialize exception messages, command arguments, CLI output or HTTP bodies.
+    value = {'event': event, 'stage': stage, **fields}
+    if error is not None:
+        value['errorType'] = type(error).__name__
+        if isinstance(error, OSError):
+            value['errno'] = error.errno
+    print(json.dumps(value), file=sys.stderr, flush=True)
+
+
 class Backend:
     def __init__(self, mode):
         if sys.platform != 'darwin' or Path.cwd() != ROOT:
             raise RuntimeError('backend acceptance requires repository-root macOS HOME isolation')
+        self.stage = 'profile'
         self.mode = mode
         self.home = tempfile.mkdtemp(prefix='uc-gui-go-tester-')
         self.profile = 'gui-go-' + Path(self.home).name
@@ -35,8 +46,15 @@ class Backend:
         self.start_attempted = False
 
     def command(self, *args, allow_send_failure=False, timeout=90):
-        result = subprocess.run([str(ROOT / 'target/gui-go/uniclip'), *args], env=self.env,
-                                capture_output=True, text=True, encoding='utf-8', timeout=timeout)
+        operation = args[0] if args[0] != '--json' else args[1]
+        diagnostic('command-start', self.stage, operation=operation)
+        try:
+            result = subprocess.run([str(ROOT / 'target/gui-go/uniclip'), *args], env=self.env,
+                                    capture_output=True, text=True, encoding='utf-8', timeout=timeout)
+        except Exception as error:
+            diagnostic('command-failed', self.stage, error, operation=operation)
+            raise
+        diagnostic('command-exit', self.stage, operation=operation, returnCode=result.returncode)
         if result.returncode and not (allow_send_failure and 'snapshotHash' in result.stdout):
             raise RuntimeError(f'isolated CLI exited {result.returncode}')
         return result
@@ -50,16 +68,22 @@ class Backend:
             return json.load(response)['data']
 
     def start(self):
+        self.stage = 'space-init'
         self.command('space', 'init', '--passphrase', self.passphrase, '--device-name', 'search-node' if self.mode == 'search' else 'kit-browser')
         self.start_attempted = True
+        self.stage = 'daemon-start'
         self.command('start')
+        self.stage = 'connection'
         connections = list(Path(self.home).rglob('daemon.conn'))
         assert len(connections) == 1, 'expected one isolated daemon connection'
         self.connection = json.loads(connections[0].read_text(encoding='utf-8'))
         self.base = f"http://127.0.0.1:{self.connection['port']}"
+        self.stage = 'authentication'
         self.session = self.request('/auth/connect', {'pid': os.getpid(), 'clientType': 'gui'},
                                     authorization='Bearer ' + self.connection['token'])['sessionToken']
+        self.stage = 'unlock'
         self.request('/content-lock/unlock', {'passphrase': self.passphrase})
+        self.stage = 'settings'
         self.request('/settings', {'general': {'language': 'zh-CN' if self.mode == 'smoke' else 'en-US'}}, method='PUT')
 
     def send(self, text):
@@ -94,6 +118,7 @@ class Backend:
         return put
 
     def seed(self, mode):
+        self.stage = 'seed-' + mode
         self.seeded = 0
         if mode in ('history', 'devices'):
             extra = 130 if mode == 'history' else 0
@@ -148,6 +173,7 @@ class Backend:
                 'text': 'TesterArmy isolated history acceptance'}
 
     def close(self):
+        self.stage = 'cleanup'
         remaining = list(Path(self.home).rglob('daemon.conn'))
         pid = None
         if remaining:
@@ -179,15 +205,35 @@ class Backend:
 
 
 def serve(mode):
-    backend = Backend(mode)
+    backend = None
+    failed = False
     try:
+        backend = Backend(mode)
+        diagnostic('stage', backend.stage)
         backend.start()
         backend.seed(mode)
+        backend.stage = 'ready'
+        diagnostic('stage', backend.stage)
         print(json.dumps(backend.ready()), flush=True)
         sys.stdin.buffer.read()
+    except Exception as error:
+        failed = True
+        diagnostic('failure', backend.stage if backend else 'profile', error)
     finally:
-        print(json.dumps(backend.close()), flush=True)
+        if backend is not None:
+            try:
+                receipt = backend.close()
+            except Exception as error:
+                failed = True
+                diagnostic('cleanup-failed', backend.stage, error)
+                receipt = {'phase': 'cleanup', 'profile': backend.profile,
+                           'homeRemoved': not Path(backend.home).exists(),
+                           'daemonExited': None, 'sandboxPreserved': Path(backend.home).exists(),
+                           'systemClipboardDisabled': backend.env['UC_DISABLE_SYSTEM_CLIPBOARD'] == '1',
+                           'guiIsolated': backend.env['UC_GUI_GO_ISOLATED'] == '1'}
+            print(json.dumps(receipt), flush=True)
+    return 1 if failed else 0
 
 
 if __name__ == '__main__':
-    serve(sys.argv[1] if len(sys.argv) > 1 else 'empty')
+    sys.exit(serve(sys.argv[1] if len(sys.argv) > 1 else 'empty'))

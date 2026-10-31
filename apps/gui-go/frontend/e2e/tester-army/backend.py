@@ -60,7 +60,7 @@ class Backend:
         self.session = self.request('/auth/connect', {'pid': os.getpid(), 'clientType': 'gui'},
                                     authorization='Bearer ' + self.connection['token'])['sessionToken']
         self.request('/content-lock/unlock', {'passphrase': self.passphrase})
-        self.request('/settings', {'general': {'language': 'en-US'}}, method='PUT')
+        self.request('/settings', {'general': {'language': 'zh-CN' if self.mode == 'smoke' else 'en-US'}}, method='PUT')
 
     def send(self, text):
         self.request('/clipboard/dispatch', {'text': text})

@@ -101,6 +101,11 @@ test('app-entry: original assertions', async ({ app, page }) => {
       }
     }
 
+    // Test content tab order with native system chrome, matching the original macOS fixture.
+    // App-drawn caption controls on Linux/Windows have separate window-frame coverage.
+    await page.addInitScript(() =>
+      localStorage.setItem('uniclipboard.useSystemWindowFrame', 'system')
+    )
     // Unlock: keyring attempt falls back to the inline passphrase form.
     await page.setViewportSize(sizes[0])
     await open('unlock')

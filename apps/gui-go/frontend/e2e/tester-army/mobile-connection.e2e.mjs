@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { expect } from 'e2e'
 import { test, outputFor } from './page.mjs'
 
 test('mobile-connection: original assertions', async ({ app, page }) => {
@@ -112,6 +113,8 @@ test('mobile-connection: original assertions', async ({ app, page }) => {
     .getByRole('button', { name: devices.mobileSync.add.advanced.title, exact: true })
     .click()
   const footer = page.locator('[data-slot="dialog-footer"]')
+  // Wait for the outgoing tab's exit transition before measuring the single active panel.
+  await expect.poll(() => page.getByRole('tabpanel').count()).toBe(1)
   const beforeScroll = await footer.boundingBox()
   await page.getByRole('tabpanel').evaluate(panel => {
     panel.scrollTop = panel.scrollHeight

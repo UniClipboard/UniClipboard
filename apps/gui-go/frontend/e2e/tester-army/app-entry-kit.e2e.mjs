@@ -264,6 +264,10 @@ test('app-entry-kit: original assertions', async ({ app, page }) => {
       )
     }
 
+    // Keep native window chrome outside this content-only keyboard flow on every host.
+    await page.addInitScript(() =>
+      localStorage.setItem('uniclipboard.useSystemWindowFrame', 'system')
+    )
     await flow(
       'unlock: keyring fallback, wrong passphrase, show/hide, right passphrase',
       async () => {

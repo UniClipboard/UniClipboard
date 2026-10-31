@@ -4,6 +4,8 @@ on:
     paths:
       - 'apps/gui-go/e2e/tester-army-native/**'
       - 'apps/gui-go/cmd/webview-probe/**'
+      - 'apps/gui-go/go.mod'
+      - 'apps/gui-go/go.sum'
       - 'e2e.native.config.ts'
       - 'package.json'
       - 'bun.lock'
@@ -41,7 +43,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 xvfb
-          xvfb-run -a /usr/bin/python3 apps/gui-go/e2e/tester-army-native/webkitgtk.py > target/tester-army-native/webkitgtk.json
+          xvfb-run -a /usr/bin/python3 apps/gui-go/e2e/tester-army-native/webkitgtk.py target/tester-army-native/webkitgtk.json
       - uses: actions/setup-go@v6
         if: runner.os == 'Windows'
         with:

@@ -2,6 +2,7 @@
 """Run under an owned Xvfb; never connect to the user's graphical session."""
 import json
 import sys
+from pathlib import Path
 import gi
 
 gi.require_version('Gtk', '3.0')
@@ -17,8 +18,12 @@ def finished(webview, result, _):
     value = webview.evaluate_javascript_finish(result).to_string()
     if value != 'isolated WebKitGTK':
         raise RuntimeError('native JavaScript read-back failed')
-    print(json.dumps({'nativeRuntime': 'WebKitGTK', 'ephemeralStore': True,
-                      'javascriptReadback': True, 'testerArmyAcceptance': False}), flush=True)
+    report = {'nativeRuntime': 'WebKitGTK', 'ephemeralStore': True,
+              'javascriptReadback': True, 'testerArmyAcceptance': False}
+    if len(sys.argv) > 1:
+        Path(sys.argv[1]).write_text(json.dumps(report) + '\n')
+    else:
+        print(json.dumps(report), flush=True)
     Gtk.main_quit()
 
 

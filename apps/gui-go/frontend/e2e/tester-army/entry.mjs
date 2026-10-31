@@ -8,11 +8,18 @@ import { suites } from './suites.mjs'
 export function runEntry(name) {
   const root = fileURLToPath(new URL('../../../../../', import.meta.url))
   const input = process.argv.slice(2)
-  const option = key => (input.includes(key) ? input[input.indexOf(key) + 1] : undefined)
-  const platform = option('--platform') || process.env.UC_UI_PLATFORM
-  const out =
-    option('--out') ||
-    (name === 'device-tasks' ? input.find(arg => !arg.startsWith('--')) : undefined)
+  let platform = process.env.UC_UI_PLATFORM
+  let out
+  for (let index = 0; index < input.length; index++) {
+    const arg = input[index]
+    if (arg === '--platform' || arg === '--out') {
+      const value = input[++index]
+      if (!value || value.startsWith('--')) throw new Error(`${arg} requires a value`)
+      if (arg === '--platform') platform = value
+      else out = value
+    } else if (name === 'device-tasks' && !arg.startsWith('--') && !out) out = arg
+    else throw new Error(`Unknown option: ${arg}`)
+  }
   const args = ['apps/gui-go/frontend/e2e/tester-army/run-layouts.mjs', name]
   const skins = suites[name].platforms.includes(platform) ? [platform] : suites[name].platforms
   if (skins.length === 1) args.push('--platform', skins[0])

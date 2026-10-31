@@ -13,7 +13,14 @@
     "path": "apps/gui-go/frontend/e2e/app-entry-kit-browser.mjs",
     "status": "partially-migrated",
     "kind": "browser",
-    "scenarioSignals": [],
+    "scenarioSignals": [
+      "recovery: terminal key loss offers diagnostics instead of a disabled form",
+      "entry backgrounds match with and without native material (simulated)",
+      "unlock: keyring fallback, wrong passphrase, show/hide, right passphrase",
+      "reset: typed RESET guard, Escape closes, focus returns to the link",
+      "setup: choice keyboard, field validation, service error, back, join error",
+      "setup: invitation issue failure is reported"
+    ],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/app-entry-kit.e2e.mjs",
@@ -34,7 +41,7 @@
     "path": "apps/gui-go/frontend/e2e/device-tasks-browser.mjs",
     "status": "migrated",
     "kind": "browser",
-    "scenarioSignals": ["disabled", "error"],
+    "scenarioSignals": [],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/device-tasks.e2e.mjs",
@@ -77,7 +84,7 @@
     "path": "apps/gui-go/frontend/e2e/file-preview-browser.mjs",
     "status": "migrated",
     "kind": "browser",
-    "scenarioSignals": [","],
+    "scenarioSignals": [],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/file-preview.e2e.mjs",
@@ -98,7 +105,15 @@
     "path": "apps/gui-go/frontend/e2e/history-detail-regressions.mjs",
     "status": "retained-existing-failure",
     "kind": "browser",
-    "scenarioSignals": [","],
+    "scenarioSignals": [
+      "long-text-reachable",
+      "warm-switch-stable",
+      "same-item-refresh-stable",
+      "image-facts-stable",
+      "warm-image-stable",
+      "selection-scroll-reset",
+      "page-errors"
+    ],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": [],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/history-detail-regressions.e2e.mjs",
@@ -127,7 +142,6 @@
       "send-menu",
       "select-filter-focus-return",
       "tab-order",
-      ":",
       "error-feedback-no-false-success",
       "search-failure-observed",
       "tag-manager",
@@ -163,7 +177,11 @@
     "path": "apps/gui-go/frontend/e2e/history-search-browser.mjs",
     "status": "retained-fixture-dependency",
     "kind": "browser",
-    "scenarioSignals": [],
+    "scenarioSignals": [
+      "meeting agenda: roadmap review",
+      "release notes for version 1.2",
+      "grocery list: milk, eggs, coffee"
+    ],
     "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
   },
   {
@@ -192,7 +210,7 @@
     "path": "apps/gui-go/frontend/e2e/history-window-review-daemon.ts",
     "status": "retained",
     "kind": "helper-or-nonvisual",
-    "scenarioSignals": ["/"]
+    "scenarioSignals": []
   },
   {
     "path": "apps/gui-go/frontend/e2e/image-cache-daemon.ts",
@@ -225,7 +243,19 @@
     "path": "apps/gui-go/frontend/e2e/quick-panel-unlock-browser.mjs",
     "status": "retained-fixture-dependency",
     "kind": "browser",
-    "scenarioSignals": [],
+    "scenarioSignals": [
+      "keyring unlock grants real daemon content access",
+      "wrong passphrase shows the expected localized error",
+      "wrong passphrase leaves the daemon locked",
+      "wrong passphrase leaves history hidden",
+      "passphrase unlock grants real daemon content access",
+      "standalone panel never requests the main unlock window",
+      "standalone panel uses the real passphrase command",
+      "no unhandled page errors",
+      "authorization survives the unlocking client process exit",
+      "reopened WebView panel shows history without unlocking again",
+      "explicit revocation still locks the reopened panel"
+    ],
     "reason": "Exact scenarios depend on the existing multi-entry/phone/peer lifecycle fixture or Rust harness; the new minimal daemon fixture is not equivalent. Preserve original assertions and invocation."
   },
   {
@@ -243,7 +273,18 @@
     "path": "apps/gui-go/frontend/e2e/settings-scroll-memory-browser.mjs",
     "status": "migrated",
     "kind": "browser",
-    "scenarioSignals": [],
+    "scenarioSignals": [
+      "first visit starts at top",
+      "switching to a fresh category starts at top",
+      "returning to a category restores its own position",
+      "the other category keeps its own position",
+      "short category stays within its own range",
+      "a short category does not shrink the stored offset of a long one",
+      "a switch in the same frame as the scroll keeps the offset",
+      "a clamped restore does not shrink the stored offset",
+      "settings controls still usable",
+      "reopened window starts at top"
+    ],
     "platforms": ["none"],
     "verifiedPlatforms": ["none"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/settings-scroll-memory.e2e.mjs",
@@ -370,7 +411,44 @@
     "path": "apps/gui-go/frontend/e2e/ui-kit-browser.mjs",
     "status": "partially-migrated",
     "kind": "browser",
-    "scenarioSignals": [",", ","],
+    "scenarioSignals": [
+      "the served bundle is the requested platform",
+      "button click reports no event object",
+      "disabled button is disabled",
+      "icon-only button is named by its label",
+      "toggle button exposes aria-pressed",
+      "search field reports the value",
+      "switch toggles with Space",
+      "checkbox reports checked state",
+      "select opens a listbox in a portal and picks by keyboard",
+      "segmented control is a named radio group; arrows move the selection",
+      "Tab into the segmented control keeps its value",
+      "menu opens by keyboard, Escape closes and returns focus",
+      "menu item reports its id",
+      "filter menu shows its count and reports the action",
+      "context menu opens at the pointer on right-click",
+      "toolbar keeps one tab stop and moves with arrow keys",
+      "item list selects, activates with Enter and deletes with Delete",
+      "item list jumps with Home and End",
+      "multi-select list shows checkboxes and accumulates the selection",
+      "single-select list has no checkboxes",
+      "sidebar navigation moves with arrow keys and selects with Enter",
+      "sidebar navigation marks the current item",
+      "removable tag and search token have their own named remove button",
+      "notice action and dismiss",
+      "alert dialog traps focus, confirms and returns focus",
+      "dialog opened from a context menu returns focus to the row",
+      "browser rendering never claims a native window material",
+      "Tab order follows the board",
+      "windows light and dark tokens",
+      "portal popups inherit the scheme of their root",
+      "alerts share aligned controls and fit narrow windows in both themes",
+      "native-mode popups are opaque enough to read (host parameter simulated)",
+      "a theme unlike the system appearance falls back from the native material (simulated)",
+      "reduce motion stops the skin's transitions and animations (media emulated)",
+      "narrow viewport has no horizontal scroll",
+      "no page errors"
+    ],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/ui-kit.e2e.mjs",
@@ -381,7 +459,7 @@
     "path": "apps/gui-go/frontend/e2e/ui-kit-bundle-check.mjs",
     "status": "retained",
     "kind": "helper-or-nonvisual",
-    "scenarioSignals": ["?", "?"]
+    "scenarioSignals": []
   },
   {
     "path": "apps/gui-go/frontend/e2e/ui-kit-run.mjs",
@@ -409,11 +487,13 @@
   {
     "path": "apps/gui-go/frontend/e2e/custom-relays.e2e.mjs",
     "status": "migrated",
-    "replacement": "apps/gui-go/frontend/e2e/tester-army/custom-relays.e2e.mjs"
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/custom-relays.e2e.mjs",
+    "scenarioSignals": []
   },
   {
     "path": "apps/gui-go/frontend/e2e/relay-overview.e2e.mjs",
     "status": "migrated",
-    "replacement": "apps/gui-go/frontend/e2e/tester-army/relay-overview.e2e.mjs"
+    "replacement": "apps/gui-go/frontend/e2e/tester-army/relay-overview.e2e.mjs",
+    "scenarioSignals": []
   }
 ]

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, execFileSync } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
+import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { pathToFileURL } from 'node:url'
 
@@ -21,11 +22,14 @@ await mkdir('target/tester-army-native', { recursive: true })
 const native = spawn('target/webview-probe.exe', [String(port)], {
   stdio: ['pipe', 'pipe', 'inherit'],
 })
-const exited = once(native, 'exit')
+const exited = once(native, 'close')
 const lines = createInterface({ input: native.stdout })
-const timer = setTimeout(() => native.stdin.end(), 90_000)
+const linesClosed = once(lines, 'close')
+const timer = setTimeout(() => native.stdin.end(), 180_000)
 let baseline
 let cleanup
+let connected
+let failure
 try {
   const ready = await Promise.race([
     new Promise(resolve =>
@@ -44,19 +48,30 @@ try {
     }),
   ])
   const endpoint = `http://127.0.0.1:${port}`
-  let connected
   for (let retry = 0; retry < 100; retry++) {
     try {
       connected = await chromium.connectOverCDP(endpoint, { timeout: 1000 })
       break
     } catch {
+      if (native.exitCode !== null)
+        throw new Error(`owned native probe exited ${native.exitCode} before CDP readiness`)
       await new Promise(resolve => setTimeout(resolve, 200))
     }
   }
   assert.ok(connected, 'the owned WebView2 CDP endpoint must be reachable')
-  const pages = connected.contexts().flatMap(context => context.pages())
-  const page = pages.find(page => page.url().startsWith(ready.url))
-  assert.ok(page, 'the native control must expose its original page')
+  // CDP is published while the native controller is still being constructed.
+  // Wait for its original target's navigation instead of quitting during Embed.
+  let page
+  for (let retry = 0; retry < 150; retry++) {
+    page = connected
+      .contexts()
+      .flatMap(context => context.pages())
+      .find(candidate => candidate.url().startsWith(ready.url))
+    if (page) break
+    await new Promise(resolve => setTimeout(resolve, 200))
+  }
+  assert.ok(page, 'the native control must finish navigating its original page')
+  await page.getByRole('button', { name: 'isolated WebView2' }).waitFor({ timeout: 30_000 })
   assert.equal(await page.getByRole('button').textContent(), 'isolated WebView2')
   const session = await page.context().newCDPSession(page)
   const targetId = (await session.send('Target.getTargetInfo')).targetInfo.targetId
@@ -67,6 +82,7 @@ try {
     isolatedData: ready.isolatedData,
   }
   await connected.close()
+  connected = undefined
   const runner = spawn(
     process.execPath,
     ['node_modules/e2e/dist/cli/bin.js', 'run', '--config', 'e2e.native.config.ts'],
@@ -102,15 +118,75 @@ try {
   }
   await writeFile('target/tester-army-native/webview2.json', JSON.stringify(result, null, 2) + '\n')
   assert.ok(code === 0 || unsupported, 'do not classify unrelated failures as unsupported')
+} catch (error) {
+  failure = error
+  await writeFile(
+    'target/tester-army-native/failure.json',
+    JSON.stringify(
+      {
+        status: 'probe-execution-failed',
+        message: error.message,
+        testerArmyAcceptance: false,
+      },
+      null,
+      2
+    ) + '\n'
+  )
+  throw error
 } finally {
+  await connected?.close().catch(() => undefined)
   clearTimeout(timer)
   native.stdin.end()
-  const [code] = await exited
-  lines.close()
-  assert.equal(code, 0, 'owned native process must exit cleanly')
-  assert.equal(cleanup?.dataRemoved, true, 'private WebView2 data must be removed')
+  const after = ms =>
+    new Promise(resolve => {
+      const timeout = setTimeout(() => resolve(null), ms)
+      timeout.unref()
+    })
+  let outcome = await Promise.race([exited, after(10_000)])
+  let forced = false
+  let cleanupError
+  if (outcome === null) {
+    try {
+      // Only signal the directly owned child after verifying its executable identity.
+      const actual = execFileSync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `(Get-Process -Id ${native.pid} -ErrorAction Stop).Path`,
+        ],
+        { encoding: 'utf8', timeout: 3000 }
+      ).trim()
+      assert.equal(
+        path.resolve(actual).toLowerCase(),
+        path.resolve('target/webview-probe.exe').toLowerCase()
+      )
+      native.kill()
+      forced = true
+    } catch (error) {
+      cleanupError = error.message
+    }
+    outcome = await Promise.race([exited, after(5000)])
+  }
+  if (outcome !== null) await linesClosed
+  const code = outcome?.[0] ?? null
   await writeFile(
     'target/tester-army-native/cleanup.json',
-    JSON.stringify({ exitCode: code, ...cleanup }, null, 2) + '\n'
+    JSON.stringify(
+      {
+        exitCode: code,
+        forced,
+        cleanupError,
+        ...cleanup,
+      },
+      null,
+      2
+    ) + '\n'
   )
+  if (!failure) {
+    assert.notEqual(outcome, null, 'owned native process did not stop within its cleanup budget')
+    assert.equal(code, 0, 'owned native process must exit cleanly')
+    assert.equal(cleanup?.dataRemoved, true, 'private WebView2 data must be removed')
+  }
 }

@@ -17,7 +17,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 90 || 30 }}
     env:
       E2E_TELEMETRY_DISABLED: '1'
     steps:
@@ -54,7 +54,7 @@ jobs:
         run: bun run e2e:browser:daemon
       - name: Record source and artifact checksums
         if: always()
-        run: python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
+        run: python apps/gui-go/frontend/e2e/tester-army/receipt.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:

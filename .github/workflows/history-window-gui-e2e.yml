@@ -18,6 +18,9 @@ jobs:
     name: Linux large viewport navigation
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    environment: desktop-build-cache-reader
+    env:
+      UC_MBX_BUILD_IMAGE: ubuntu:24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,14 +44,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential pkg-config clang cmake \
             libssl-dev libdbus-1-dev libgtk-4-dev libwebkitgtk-6.0-dev \
-            libx11-dev libwayland-dev libxkbcommon-dev xvfb xauth dbus-x11
+            libx11-dev libwayland-dev libxkbcommon-dev xvfb xauth dbus-x11 python3-venv
       - uses: ./.github/actions/engine-build-cache
         with:
           cache-key: history-window-gui
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
       - uses: Swatinem/rust-cache@v2
         with:
           cache-targets: false
           save-if: false
+      - name: Restore existing Ubuntu Linux GUI CAS snapshot
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          scene: linux-gui
       - name: Build exact checkout
         run: |
           set -euo pipefail
@@ -71,6 +81,16 @@ jobs:
             python3 apps/gui-go/e2e/history_window_run.py --repo "$PWD" \
             --gui "$PWD/target/gui-go/gui-go" --grid --large-viewport \
             --out "$PWD/artifacts/history-window/linux-large-viewport.json"
+      - name: Summarize MBX compiler reuse
+        if: always()
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+      - name: Retain MBX compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: history-window-mbx-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v7
         if: always()
         with:

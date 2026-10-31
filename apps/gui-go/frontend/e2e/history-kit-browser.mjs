@@ -33,28 +33,6 @@ async function runLegacy() {
   await mkdir(output, { recursive: true })
 
   const cdp = process.env.HISTORY_KIT_CDP
-  const server = cdp
-    ? null
-    : spawn('node', ['e2e/visual-effects-server.mjs'], {
-        env: {
-          ...process.env,
-          UI_FIXTURE_ENTRY: 'e2e/fixtures/history-full-app.tsx',
-          UI_FIXTURE_PORT: String(port),
-        },
-        stdio: ['ignore', 'pipe', 'inherit'],
-      })
-  if (server) {
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('fixture server did not start')), 180_000)
-      server.stdout.on('data', chunk => {
-        if (String(chunk).includes(`127.0.0.1:${port}`)) {
-          clearTimeout(timer)
-          resolve()
-        }
-      })
-      server.on('exit', code => reject(new Error(`fixture server exited: ${code}`)))
-    })
-  }
 
   // GUI session tokens live five minutes and the fixture hands the same one out on refresh, so each page context
   // opens its own session with the daemon's file token (daemon.conn in the isolated data dir).
@@ -65,10 +43,41 @@ async function runLegacy() {
   async function pageUrl() {
     return `http://127.0.0.1:${port}/?${new URLSearchParams({ daemon: daemon.daemonUrl, token: await guiSession(), platform })}`
   }
-  const browser = cdp
-    ? await chromium.connectOverCDP(cdp)
-    : await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
+  let server
+  let browser
   try {
+    server = cdp
+      ? null
+      : spawn('node', ['e2e/visual-effects-server.mjs'], {
+          env: {
+            ...process.env,
+            UI_FIXTURE_ENTRY: 'e2e/fixtures/history-full-app.tsx',
+            UI_FIXTURE_PORT: String(port),
+          },
+          stdio: ['ignore', 'pipe', 'inherit'],
+        })
+    if (server) {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('fixture server did not start')), 180_000)
+        server.stdout.on('data', chunk => {
+          if (String(chunk).includes(`127.0.0.1:${port}`)) {
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+        server.once('exit', code => {
+          clearTimeout(timer)
+          reject(new Error(`fixture server exited: ${code}`))
+        })
+        server.once('error', error => {
+          clearTimeout(timer)
+          reject(error)
+        })
+      })
+    }
+    browser = cdp
+      ? await chromium.connectOverCDP(cdp)
+      : await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
     await runScenarios({
       daemon,
       output,
@@ -80,8 +89,11 @@ async function runLegacy() {
       preparePage: async page => page.goto(await pageUrl()),
     })
   } finally {
-    await browser.close()
-    server?.kill()
+    try {
+      await browser?.close()
+    } finally {
+      server?.kill()
+    }
   }
 }
 
@@ -176,9 +188,15 @@ export async function runScenarios({
   let apiToken
   async function api(pathname) {
     apiToken ??= await guiSession()
-    const response = await fetch(`${daemon.daemonUrl}${pathname}`, {
-      headers: { Authorization: `Session ${apiToken}` },
-    })
+    const request = () =>
+      fetch(`${daemon.daemonUrl}${pathname}`, {
+        headers: { Authorization: `Session ${apiToken}` },
+      })
+    let response = await request()
+    if (response.status === 401) {
+      apiToken = await guiSession()
+      response = await request()
+    }
     return { status: response.status, body: response.ok ? await response.json() : null }
   }
   const entry = async id => api(`/clipboard/entries/${encodeURIComponent(id)}`)
@@ -295,6 +313,7 @@ export async function runScenarios({
     assert.deepEqual(found, [], 'a fresh profile starts with no stored History layout')
   }
   async function newPage(options = {}) {
+    if (!cdp) await closePage()
     if (cdp) {
       page ??= await mainWindowPage()
       if (!results.nativeUrl) {
@@ -328,7 +347,10 @@ export async function runScenarios({
   }
   results.consoleErrors = []
   const closePage = async () => {
-    if (!cdp) await page.context().close()
+    if (!cdp && page) {
+      await page.context().close()
+      page = undefined
+    }
   }
   const geometry = () =>
     page.evaluate(() => {
@@ -717,10 +739,16 @@ export async function runScenarios({
           body: '{"code":"internal","message":"injected"}',
         })
       )
-      await favoriteButton('Pin').click()
-      await page.getByText('Failed to update favorite status').first().waitFor({ timeout: 10_000 })
-      await shot('error-pin-failed')
-      await page.unroute('**/clipboard/entries/*/favorite**')
+      try {
+        await favoriteButton('Pin').click()
+        await page
+          .getByText('Failed to update favorite status')
+          .first()
+          .waitFor({ timeout: 10_000 })
+        await shot('error-pin-failed')
+      } finally {
+        await page.unroute('**/clipboard/entries/*/favorite**')
+      }
       await page.waitForTimeout(500)
       const shownPinned = await favoriteButton('Unpin').count()
       const read = await listed(id)
@@ -740,14 +768,18 @@ export async function runScenarios({
         })
       )
       const field = page.getByRole('combobox', { name: 'Search history' })
-      await field.fill('docker')
-      await page.waitForTimeout(2000)
-      const observed = {
-        rows: await rows().count(),
-        listPane: (await page.locator('[data-pane="list"]').innerText()).slice(0, 160),
+      let observed
+      try {
+        await field.fill('docker')
+        await page.waitForTimeout(2000)
+        observed = {
+          rows: await rows().count(),
+          listPane: (await page.locator('[data-pane="list"]').innerText()).slice(0, 160),
+        }
+        await shot('error-search-failed')
+      } finally {
+        await page.unroute('**/search/query**')
       }
-      await shot('error-search-failed')
-      await page.unroute('**/search/query**')
       await field.fill('')
       await row('Paging entry').waitFor()
       // Asserted after the page is restored, so a failure here does not leave the injected route behind.

@@ -56,6 +56,10 @@ test('macOS prototype original assertions', async ({ app, createContext }) => {
   await page.getByRole('option', { name: /github\.com/ }).click({ button: 'right' })
   const menu = page.getByRole('menu')
   await menu.waitFor()
+  // Visibility can precede the focus manager's handoff from the list to the popup.
+  await page.waitForFunction(() =>
+    document.querySelector('[role="menu"]')?.contains(document.activeElement)
+  )
   await page.keyboard.press('ArrowDown')
   await page.waitForTimeout(250)
   await shot('context-menu-open')

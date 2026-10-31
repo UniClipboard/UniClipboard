@@ -229,7 +229,7 @@ impl Modify for ContractMeta {
         crate::api::routes::capture_current_clipboard_handler,
         // ── clipboard binary (octet-stream, doc-only) ──────────────
         crate::api::blob::get_blob,
-        crate::api::blob::get_thumbnail,
+        crate::api::blob::get_entry_thumbnail,
         crate::api::blob::get_entry_file,
         // ── search ─────────────────────────────────────────────────
         crate::api::search::search_query_handler,

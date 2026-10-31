@@ -7,6 +7,7 @@ import HistoryCardTransferProgress from '@/components/history/history-card/Histo
 import { useResourceImageUrl } from '@/components/history/history-card/useResourceImageUrl'
 import { useTagTints } from '@/components/history/tags/tag-colors-context'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useInView } from '@/hooks/useInView'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { tagLabel } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
@@ -58,16 +59,21 @@ function KindBadge({ item, kind }: { item: DisplayClipboardItem; kind: HistoryKi
 }
 
 function ImageThumb({ entryId }: { entryId: string }) {
-  const url = useResourceImageUrl(entryId)
-  return url ? (
-    <img
-      src={url}
-      alt=""
-      className="h-9 w-12 rounded-md border border-border object-cover"
-      draggable={false}
-    />
-  ) : (
-    <span className={cn('h-9 w-12 rounded-md border border-border', KIND_TINT.image)} />
+  const [ref, visible] = useInView<HTMLSpanElement>()
+  const url = useResourceImageUrl(entryId, visible)
+  return (
+    <span ref={ref} className="inline-flex">
+      {url ? (
+        <img
+          src={url}
+          alt=""
+          className="h-9 w-12 rounded-md border border-border object-cover"
+          draggable={false}
+        />
+      ) : (
+        <span className={cn('h-9 w-12 rounded-md border border-border', KIND_TINT.image)} />
+      )}
+    </span>
   )
 }
 

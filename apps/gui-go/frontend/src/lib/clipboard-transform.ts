@@ -47,7 +47,6 @@ export function projectClipboardEntry(dto: ClipboardEntryDto): ClipboardEntry {
   } else if (isImage) {
     type = 'image'
     content = {
-      thumbnail: null,
       size: dto.sizeBytes,
       width: 0,
       height: 0,

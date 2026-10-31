@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GridItem, GroupedGridProps, ListGroup } from '@/ui-kit/contract'
+import { useWindowedScroll, revealWindowItem } from '@/ui-kit/use-windowed-scroll'
 import { MenuPanel } from './menus'
 import { useAnchoredSelection } from './selection'
 
@@ -42,6 +43,7 @@ export function GroupedGrid({
   onActivate,
   onDelete,
   onEndReached,
+  viewport,
   contextMenu,
   footer,
 }: GroupedGridProps) {
@@ -68,11 +70,13 @@ export function GroupedGrid({
   const columns = Math.max(1, Math.floor((width - 2 * PADDING + GAP) / (cardWidth + GAP)))
   // Virtuoso deduplicates endReached by data identity as well as the last index.
   // Rebuild rows only when their inputs change, not when pagination updates the parent.
-  const { rows, rowOfItem } = useMemo(() => {
+  const { rows, rowOfItem, sections } = useMemo(() => {
     const rows: Row[] = []
     const rowOfItem: number[] = []
+    const sections: Array<{ group: ListGroup; items: GridItem[] }> = []
     let start = 0
     for (const group of groups) {
+      sections.push({ group, items: items.slice(start, start + group.count) })
       rows.push({ kind: 'header', group })
       for (let i = start; i < start + group.count; i += columns) {
         const chunk = items.slice(i, Math.min(i + columns, start + group.count))
@@ -81,8 +85,10 @@ export function GroupedGrid({
       }
       start += group.count
     }
-    return { rows, rowOfItem }
+    return { rows, rowOfItem, sections }
   }, [groups, items, columns])
+
+  useWindowedScroll(gridRef, items, viewport)
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return
@@ -102,7 +108,8 @@ export function GroupedGrid({
       const id = ids[Math.max(0, Math.min(ids.length - 1, next))]
       select.moveTo(id, event.shiftKey)
       const row = rowOfItem[ids.indexOf(id)]
-      if (row !== undefined) virtuoso.current?.scrollIntoView({ index: row, behavior: 'auto' })
+      if (viewport) revealWindowItem(gridRef.current, id)
+      else if (row !== undefined) virtuoso.current?.scrollIntoView({ index: row, behavior: 'auto' })
     } else if (event.metaKey && event.key.toLowerCase() === 'a') {
       event.preventDefault()
       select.selectAll()
@@ -161,6 +168,26 @@ export function GroupedGrid({
     )
   }
 
+  const renderRow = (row: Row) =>
+    row.kind === 'header' ? (
+      <div className="mac-glist-header" role="presentation">
+        <span className="mac-glist-header-title">{row.group.title}</span>
+        {row.group.detail && <span className="mac-glist-header-detail">{row.group.detail}</span>}
+        <span className="mac-split-spacer" />
+        {row.group.trailing && (
+          <span className="mac-glist-header-trailing">{row.group.trailing}</span>
+        )}
+      </div>
+    ) : (
+      <div
+        className="mac-grid-row"
+        role="presentation"
+        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      >
+        {row.items.map(card)}
+      </div>
+    )
+
   const grid = (
     <div
       ref={gridRef}
@@ -173,39 +200,34 @@ export function GroupedGrid({
       onKeyDown={onKeyDown}
       onContextMenuCapture={() => setMenuIds([])}
     >
-      <Virtuoso
-        ref={virtuoso}
-        className="mac-glist-scroller"
-        tabIndex={-1}
-        data={rows}
-        endReached={() => onEndReached?.()}
-        increaseViewportBy={300}
-        itemContent={(_, row) =>
-          row.kind === 'header' ? (
-            <div className="mac-glist-header" role="presentation">
-              <span className="mac-glist-header-title">{row.group.title}</span>
-              {row.group.detail && (
-                <span className="mac-glist-header-detail">{row.group.detail}</span>
-              )}
-              <span className="mac-split-spacer" />
-              {row.group.trailing && (
-                <span className="mac-glist-header-trailing">{row.group.trailing}</span>
-              )}
+      {viewport ? (
+        <div
+          data-history-window-scroller
+          className="mac-glist-scroller"
+          style={{ overflowY: 'auto', height: '100%', overflowAnchor: 'none' }}
+        >
+          {sections.map(({ group, items: cards }) => (
+            <div key={group.id}>
+              {renderRow({ kind: 'header', group })}
+              {renderRow({ kind: 'cards', items: cards })}
             </div>
-          ) : (
-            <div
-              className="mac-grid-row"
-              role="presentation"
-              style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-            >
-              {row.items.map(card)}
-            </div>
-          )
-        }
-        components={{
-          Footer: () => (footer ? <div className="mac-glist-footer">{footer}</div> : null),
-        }}
-      />
+          ))}
+          {footer}
+        </div>
+      ) : (
+        <Virtuoso
+          ref={virtuoso}
+          className="mac-glist-scroller"
+          tabIndex={-1}
+          data={rows}
+          endReached={() => onEndReached?.()}
+          increaseViewportBy={300}
+          itemContent={(_, row) => renderRow(row)}
+          components={{
+            Footer: () => (footer ? <div className="mac-glist-footer">{footer}</div> : null),
+          }}
+        />
+      )}
     </div>
   )
   if (!contextMenu) return grid

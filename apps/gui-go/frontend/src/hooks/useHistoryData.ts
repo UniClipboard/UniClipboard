@@ -9,13 +9,16 @@ import {
 } from '@/hooks/historySessionSnapshot'
 import { buildLiveSearchModel, type LiveSearchQueryModel } from '@/hooks/liveSearchModel'
 import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
-import { useLiveSearch } from '@/hooks/useLiveSearch'
+import { useHistoryWindow } from '@/hooks/useHistoryWindow'
+import { useHistoryWindowImages } from '@/hooks/useHistoryWindowImages'
 import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { clipboardPreviewCache } from '@/lib/clipboard-preview-cache'
+import { HISTORY_WINDOW_CAPACITY } from '@/lib/history-window-policy'
 import { useAppSelector } from '@/store/hooks'
 import { type PendingClipboardEntry } from '@/store/slices/clipboardSlice'
 
-/** Live-list page size; the window grows by this as the user scrolls. */
-const PAGE_SIZE = 100
+/** Maximum number of records retained by the history window. */
+const PAGE_SIZE = HISTORY_WINDOW_CAPACITY
 
 function formatBytesShort(bytes: number): string {
   if (bytes <= 0) return '0 B'
@@ -48,7 +51,7 @@ function buildPendingFileContent(entry: PendingClipboardEntry): ClipboardFileIte
 // ── Search/filter state ─────────────────────────────────────────
 // `searchQuery` is the raw input value; `submittedQuery` is what was actually
 // sent to the engine (debounced while typing, immediate on Enter). The list
-// window is owned by `useLiveSearch` and collapses back to one page whenever the
+// window is owned by `useHistoryWindow` and resets whenever the
 // query model changes, so no `searchLimit` lives here anymore.
 
 interface SearchState {
@@ -180,8 +183,11 @@ export function useHistoryData() {
     ]
   )
 
-  const initialLiveSnapshot: HistoryLiveSnapshot | null = readHistorySessionSnapshot()?.live ?? null
-  const live = useLiveSearch({ model, initialSnapshot: initialLiveSnapshot, pageSize: PAGE_SIZE })
+  const live = useHistoryWindow(model, readHistorySessionSnapshot()?.live ?? null)
+  useHistoryWindowImages(live.items)
+  useEffect(() => {
+    clipboardPreviewCache.retain(new Set(live.items.map(item => item.id)))
+  }, [live.items])
   const previousSnapshot = readHistorySessionSnapshot()
 
   // Merge incoming-transfer placeholders (Redux overlay, still owned by the
@@ -206,8 +212,10 @@ export function useHistoryData() {
             },
           ]
     )
-    return [...pendingDisplayItems, ...live.items]
-  }, [isSearchActive, live.items, pendingItems, deviceNameByPeerId, t])
+    return live.offset === 0
+      ? [...pendingDisplayItems, ...live.items].slice(0, PAGE_SIZE)
+      : live.items
+  }, [isSearchActive, live.items, live.offset, pendingItems, deviceNameByPeerId, t])
 
   const actions = useMemo(
     () => ({
@@ -225,16 +233,16 @@ export function useHistoryData() {
   const liveSnapshot = useMemo<HistoryLiveSnapshot>(
     () => ({
       model,
+      offset: live.offset,
       items: live.items,
       total: live.total,
       hasMore: live.hasMore,
       state: live.state,
     }),
-    [model, live.items, live.total, live.hasMore, live.state]
+    [model, live.offset, live.items, live.total, live.hasMore, live.state]
   )
 
   useEffect(() => {
-    if (live.items.length === 0) return
     writeHistorySessionSnapshot({
       searchState: state,
       live: liveSnapshot,
@@ -267,6 +275,7 @@ export function useHistoryData() {
     searchLoading: live.isLoading,
     hasMore: live.hasMore,
     handleLoadMore: live.growWindow,
+    viewport: { offset: live.offset, onVisibleRange: live.reportViewport },
     /** Index availability for the current query: `degraded` while rebuilding. */
     indexState: live.state,
     /** Optimistically drop an entry after the user deletes it. */

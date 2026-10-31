@@ -95,7 +95,7 @@ pub struct DaemonApiState {
     /// [`adr-008-perf-spike-results.md`](../../../../../docs/architecture/adr-008-perf-spike-results.md)
     /// §4). This semaphore pins the worst case to `MAX_CONCURRENT_BLOB_PULLS ×
     /// payload` until the streaming reader supersedes it. Thumbnails are
-    /// exempt (small, served via the separate `/clipboard/thumbnails` route).
+    /// exempt (small, served via the entry-thumbnail route).
     pub large_blob_semaphore: Arc<Semaphore>,
     /// Daemon residency mode surfaced in the health/status handshake
     /// (ADR-008 P5-L L1). Mapped from the daemon's `DaemonRunMode` at the

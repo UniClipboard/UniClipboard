@@ -10,9 +10,16 @@ vi.mock('@/host/core', () => ({
 
 // Resolve daemon blob paths to a deterministic object URL so `<img src>` is
 // assertable without standing up the real fetch + URL.createObjectURL path.
+const cachedImages = vi.hoisted(() => new Map<string, string>())
 vi.mock('@/api/daemon/blob-image-cache', () => ({
-  getBlobImageObjectUrl: vi.fn(async (path: string) => `blob:mock-${path}`),
-  peekBlobImageObjectUrl: vi.fn(() => null),
+  retainBlobImage: vi.fn(),
+  releaseBlobImage: vi.fn(),
+  getBlobImageObjectUrl: vi.fn(async (path: string) => {
+    const url = `blob:mock-${path}`
+    cachedImages.set(path, url)
+    return url
+  }),
+  peekBlobImageObjectUrl: vi.fn((path: string) => cachedImages.get(path) ?? null),
 }))
 
 const previewMock = vi.hoisted((): { value: ClipboardPreviewData | null } => ({
@@ -80,6 +87,7 @@ function createPdfFileItem(): DisplayClipboardItem {
 
 describe('ClipboardPreview', () => {
   beforeEach(() => {
+    cachedImages.clear()
     previewMock.value = {
       entryId: 'image-file-entry',
       contentType: 'image',

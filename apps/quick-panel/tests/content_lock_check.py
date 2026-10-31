@@ -51,7 +51,7 @@ READS = [
     ("entry file", "GET", "/clipboard/entries/{id}/file"),
     ("entry receive", "GET", "/clipboard/entries/{id}/receive"),
     ("blob", "GET", "/clipboard/blobs/does-not-exist"),
-    ("thumbnail", "GET", "/clipboard/thumbnails/does-not-exist"),
+    ("thumbnail", "GET", "/clipboard/entries/does-not-exist/thumbnail"),
     ("receives", "GET", "/clipboard/receives"),
     ("stats", "GET", "/clipboard/stats"),
 ]

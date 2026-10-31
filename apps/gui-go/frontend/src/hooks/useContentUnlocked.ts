@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { clearBlobImageCache } from '@/api/daemon/blob-image-cache'
 import { listen } from '@/host/event'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc'
@@ -21,15 +22,28 @@ export function useContentUnlocked(enabled = true) {
       const current = ++request
       try {
         const result = await commands.getContentUnlocked()
-        if (!cancelled && current === request) setResult({ generation, unlocked: result })
+        if (!cancelled && current === request) {
+          if (!result) {
+            clearBlobImageCache()
+          }
+          setResult({ generation, unlocked: result })
+        }
       } catch {
         if (!cancelled && current === request) {
+          clearBlobImageCache()
           setResult({ generation, unlocked: false })
           log.warn('Could not verify content access; keeping content hidden')
         }
       }
     }
-    const unlisten = listen('content-lock-changed', () => void check())
+    const onChange = () => {
+      // Events carry no authoritative state. Hide content and invalidate
+      // pending image responses before asking the host for the current grant.
+      clearBlobImageCache()
+      setResult({ generation, unlocked: false })
+      void check()
+    }
+    const unlisten = listen('content-lock-changed', onChange)
     void unlisten
       .then(() => {
         if (!cancelled) void check()
@@ -37,7 +51,7 @@ export function useContentUnlocked(enabled = true) {
       .catch(() => {
         log.warn('Content lock listener unavailable; status checks remain active')
       })
-    const unsubscribe = daemonWs.subscribe(['encryption', 'content-lock'], () => void check())
+    const unsubscribe = daemonWs.subscribe(['encryption', 'content-lock'], onChange)
     const timer = window.setInterval(() => void check(), 5_000)
     window.addEventListener('focus', check)
     void check()

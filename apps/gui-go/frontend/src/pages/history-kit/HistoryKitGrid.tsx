@@ -7,10 +7,12 @@ import { rowTitle } from '@/components/history/list/history-row-title'
 import { useNow } from '@/hooks/useRelativeTime'
 import type { ClipboardTextItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { GroupedGrid, Icon, type GridItem, type MenuEntry } from '@/ui-kit'
+import type { HistoryWindowViewport } from '@/ui-kit/contract'
 import { dayGroups, imageSize } from './history-kit-model'
 import { HistoryKitThumbnail } from './HistoryKitThumbnail'
 
 interface HistoryKitGridProps {
+  viewport?: HistoryWindowViewport
   items: DisplayClipboardItem[]
   sourceDeviceNames: Record<string, string>
   size: number
@@ -41,6 +43,7 @@ export function HistoryKitGrid({
   onDelete,
   hasMore,
   onLoadMore,
+  viewport,
   contextMenu,
 }: HistoryKitGridProps) {
   const { t, i18n } = useTranslation()
@@ -84,13 +87,14 @@ export function HistoryKitGrid({
     <GroupedGrid
       label={t('history.kit.listLabel')}
       groups={groups}
+      viewport={viewport}
       items={cards}
       size={size}
       selection={selection}
       onSelectionChange={onSelectionChange}
       onActivate={onOpen}
       onDelete={onDelete}
-      onEndReached={hasMore ? onLoadMore : undefined}
+      onEndReached={viewport ? undefined : hasMore ? onLoadMore : undefined}
       contextMenu={contextMenu}
     />
   )

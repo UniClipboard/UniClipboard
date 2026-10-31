@@ -38,12 +38,10 @@ describe('clipboard-utils', () => {
     expect(
       getItemPreview(createEntry('text', { display_text: 'hello', has_detail: true, size: 5 }))
     ).toBe('hello')
-    expect(
-      getItemPreview(createEntry('image', { thumbnail: null, size: 1, width: 1, height: 1 }))
-    ).toBe('Image | 1×1 | 1 B')
-    expect(
-      getItemPreview(createEntry('image', { thumbnail: null, size: 0, width: 0, height: 0 }))
-    ).toBe('Image')
+    expect(getItemPreview(createEntry('image', { size: 1, width: 1, height: 1 }))).toBe(
+      'Image | 1×1 | 1 B'
+    )
+    expect(getItemPreview(createEntry('image', { size: 0, width: 0, height: 0 }))).toBe('Image')
     expect(
       getItemPreview(
         createEntry('richtext', { display_text: '<p>hi</p>', has_detail: false, size: 5 })

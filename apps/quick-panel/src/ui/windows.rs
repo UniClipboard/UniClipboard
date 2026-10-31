@@ -115,6 +115,51 @@ impl Panel {
         }
     }
 
+    pub(super) fn sync_visible_thumbnails(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let items = &self.state.search.items;
+        let visible = if !self.state.session.visible || self.state.search.loading {
+            Vec::new()
+        } else if self.state.search.filters.images_only() {
+            quick_panel_core::grid::visible(self.state.search.grid_top, items.len())
+                .filter_map(|index| items.get(index))
+                .filter(|item| quick_panel_core::content::has_image_preview(item))
+                .filter(|item| {
+                    let Some(mut bounds) = self.image_bounds.get(&item.entry_id).copied() else {
+                        return false;
+                    };
+                    bounds.origin += self.scroll.offset();
+                    let intersection = bounds.intersect(&self.scroll.bounds());
+                    intersection.size.width > gpui::px(0.)
+                        && intersection.size.height > gpui::px(0.)
+                })
+                .map(|item| item.entry_id.clone())
+                .collect()
+        } else {
+            let viewport = self.scroll.bounds();
+            let lead = self.list_lead(cx);
+            items
+                .iter()
+                .enumerate()
+                .filter_map(|(index, item)| {
+                    if !quick_panel_core::content::has_image_preview(item) {
+                        return None;
+                    }
+                    let mut bounds = self.scroll.bounds_for_item(index + lead)?;
+                    bounds.origin += self.scroll.offset();
+                    let intersection = bounds.intersect(&viewport);
+                    (intersection.size.width > gpui::px(0.)
+                        && intersection.size.height > gpui::px(0.))
+                    .then(|| item.entry_id.clone())
+                })
+                .collect()
+        };
+        if self.visible_thumbnails != visible {
+            self.visible_thumbnails = visible;
+            self.load_thumbnails(window, cx);
+            cx.notify();
+        }
+    }
+
     pub(super) fn update_preview_anchor(&mut self, cx: &mut Context<Self>) {
         let next = (|| {
             if !self.state.session.visible
@@ -174,11 +219,13 @@ impl Panel {
         &mut self,
         id: String,
         mut bounds: gpui::Bounds<gpui::Pixels>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         bounds.origin -= self.scroll.offset();
         self.image_bounds.insert(id, bounds);
         self.update_preview_anchor(cx);
+        self.sync_visible_thumbnails(window, cx);
     }
 
     pub(super) fn preview_snapshot(&self, cx: &App) -> PreviewSnapshot {

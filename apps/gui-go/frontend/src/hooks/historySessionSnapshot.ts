@@ -3,8 +3,9 @@ import type { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
 import type { LiveSearchQueryModel } from '@/hooks/liveSearchModel'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { HISTORY_WINDOW_CAPACITY } from '@/lib/history-window-policy'
 
-export const HISTORY_SESSION_ITEM_CAP = 100
+export const HISTORY_SESSION_ITEM_CAP = HISTORY_WINDOW_CAPACITY
 
 export interface HistorySearchStateSnapshot {
   activeFilter: Filter
@@ -17,6 +18,7 @@ export interface HistorySearchStateSnapshot {
 }
 
 export interface HistoryLiveSnapshot {
+  offset?: number
   model: LiveSearchQueryModel
   items: DisplayClipboardItem[]
   total: number | null

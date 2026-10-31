@@ -27,7 +27,6 @@ export interface ClipboardTextItem {
 }
 
 export interface ClipboardImageItem {
-  thumbnail?: string | null
   size: number
   width: number
   height: number

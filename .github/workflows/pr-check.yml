@@ -423,6 +423,16 @@ jobs:
       - name: Restore E2E CAS snapshot
         uses: ./.github/actions/mbx-snapshot
 
+      - name: Record Engine build source state
+        shell: bash
+        run: |
+          engine_manifest="$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "uc-engine") | .manifest_path')"
+          engine_root="$(cd "$(dirname "$engine_manifest")/../.." && pwd)"
+          git -C "$engine_root" rev-parse HEAD
+          git -C "$engine_root" status --porcelain -- .cargo/config.toml crates bindings compatibility tests third_party Cargo.toml Cargo.lock rust-toolchain.toml
+          git -C "$engine_root" submodule status --recursive
+          git -C "$engine_root/third_party/iroh" status --porcelain --untracked-files=all
+
       - name: Build E2E Rust tools
         uses: ./.github/actions/build-e2e-rust
 

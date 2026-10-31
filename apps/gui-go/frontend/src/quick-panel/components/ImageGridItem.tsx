@@ -1,5 +1,7 @@
+import { useMergedRefs } from '@base-ui/utils/useMergedRefs'
 import { Star } from 'lucide-react'
 import React from 'react'
+import { useInView } from '@/hooks/useInView'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
 import { clampImageCardAspectRatio, isMac } from '@/quick-panel/constants'
@@ -44,13 +46,15 @@ const ImageGridItem: React.FC<ImageGridItemProps> = React.memo(
     shortcutKey,
   }) => {
     const itemRef = useQuickPanelItemRef(itemRefs, index)
-    const { url, aspectRatio } = useQuickPanelImage(item.id)
+    const [visibleRef, visible] = useInView<HTMLDivElement>()
+    const ref = useMergedRefs(itemRef, visibleRef)
+    const { url, aspectRatio } = useQuickPanelImage(item.id, { enabled: visible })
     const displayAspectRatio = clampImageCardAspectRatio(aspectRatio)
     const isUnavailable = item.isUnavailable
 
     return (
       <div
-        ref={itemRef}
+        ref={ref}
         role="option"
         aria-selected={isSelected}
         tabIndex={-1}

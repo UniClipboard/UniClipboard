@@ -115,6 +115,8 @@ pub struct Panel {
     image_bounds: HashMap<String, gpui::Bounds<gpui::Pixels>>,
     /// Small bitmaps for the entries in the list, by entry id.
     thumbnails: HashMap<String, ImageData>,
+    /// Entry IDs whose rows or grid cells intersect the current viewport.
+    visible_thumbnails: Vec<String>,
     /// The full-size bitmap of the entry being previewed. Never more than one.
     preview_image: Option<(String, ImageData)>,
     /// The entry whose preview image has arrived from the daemon and is being decoded.
@@ -235,6 +237,7 @@ impl Panel {
             preview_anchor: None,
             image_bounds: HashMap::new(),
             thumbnails: HashMap::new(),
+            visible_thumbnails: Vec::new(),
             preview_image: None,
             preview_decoding: None,
             decode_gate: Arc::new(tokio::sync::Semaphore::new(1)),

@@ -5807,11 +5807,11 @@ export type GetClipboardEntryResourceResponses = {
 
 export type GetClipboardEntryResourceResponse = GetClipboardEntryResourceResponses[keyof GetClipboardEntryResourceResponses];
 
-export type GetClipboardThumbnailData = {
+export type GetClipboardEntryThumbnailData = {
     body?: never;
     path: {
         /**
-         * Clipboard entry identifier
+         * Entry identifier
          */
         id: string;
     };
@@ -5819,31 +5819,37 @@ export type GetClipboardThumbnailData = {
     url: '/clipboard/entries/{id}/thumbnail';
 };
 
-export type GetClipboardThumbnailErrors = {
+export type GetClipboardEntryThumbnailErrors = {
     /**
-     * Thumbnail not found
+     * Entry not found
      */
-    404: string;
+    404: unknown;
     /**
-     * Internal server error
+     * Thumbnail unavailable
      */
-    500: string;
+    410: unknown;
     /**
-     * Thumbnail temporarily unavailable; retry after unlock or load completes
+     * Encryption session locked
      */
-    503: ApiErrorResponse;
+    423: unknown;
+    /**
+     * Thumbnail read failed
+     */
+    500: unknown;
+    /**
+     * Thumbnail not ready; retry later
+     */
+    503: unknown;
 };
 
-export type GetClipboardThumbnailError = GetClipboardThumbnailErrors[keyof GetClipboardThumbnailErrors];
-
-export type GetClipboardThumbnailResponses = {
+export type GetClipboardEntryThumbnailResponses = {
     /**
-     * Raw thumbnail bytes
+     * Thumbnail bytes
      */
     200: Blob | File;
 };
 
-export type GetClipboardThumbnailResponse = GetClipboardThumbnailResponses[keyof GetClipboardThumbnailResponses];
+export type GetClipboardEntryThumbnailResponse = GetClipboardEntryThumbnailResponses[keyof GetClipboardEntryThumbnailResponses];
 
 export type ListOutboundProgressData = {
     body?: never;

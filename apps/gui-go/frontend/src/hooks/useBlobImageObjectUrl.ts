@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
-import { getBlobImageObjectUrl, peekBlobImageObjectUrl } from '@/api/daemon/blob-image-cache'
+import {
+  getBlobImageObjectUrl,
+  peekBlobImageObjectUrl,
+  retainBlobImage,
+  releaseBlobImage,
+} from '@/api/daemon/blob-image-cache'
+import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
+import { imageRetryDelay } from '@/lib/image-retry'
+
+function scheduleRetry(callback: () => void, delay: number): () => void {
+  const timer = setTimeout(callback, delay)
+  return () => clearTimeout(timer)
+}
 
 /**
  * Resolve an image descriptor into a displayable `<img src>`.
@@ -18,7 +30,7 @@ export function useBlobImageObjectUrl(descriptor: string | null, enabled = true)
   // Track the descriptor the resolved URL belongs to so a changed descriptor
   // invalidates the old URL during the same render (before the effect runs),
   // instead of painting one stale frame of the previous entry's image.
-  const [resolved, setResolved] = useState<{ descriptor: string | null; url: string | null }>({
+  const [, setResolved] = useState<{ descriptor: string | null; url: string | null }>({
     descriptor: null,
     url: null,
   })
@@ -28,22 +40,38 @@ export function useBlobImageObjectUrl(descriptor: string | null, enabled = true)
       ? null
       : descriptor.startsWith('data:')
         ? descriptor
-        : (peekBlobImageObjectUrl(descriptor) ??
-          (resolved.descriptor === descriptor ? resolved.url : null))
+        : peekBlobImageObjectUrl(descriptor)
 
   useEffect(() => {
     if (!descriptor || !enabled || descriptor.startsWith('data:')) return
 
+    retainBlobImage(descriptor)
     let cancelled = false
-    getBlobImageObjectUrl(descriptor)
-      .then(objectUrl => {
-        if (!cancelled) setResolved({ descriptor, url: objectUrl })
-      })
-      .catch(() => {
-        if (!cancelled) setResolved({ descriptor, url: null })
-      })
+    let cancelRetry: (() => void) | undefined
+    let attempts = 0
+    const load = () => {
+      getBlobImageObjectUrl(descriptor)
+        .then(objectUrl => {
+          if (!cancelled) setResolved({ descriptor, url: objectUrl })
+        })
+        .catch(error => {
+          if (cancelled) return
+          if (
+            error instanceof DaemonApiError &&
+            error.code === DaemonErrorCode.SERVICE_UNAVAILABLE
+          ) {
+            cancelRetry = scheduleRetry(load, imageRetryDelay(attempts))
+            attempts = Math.min(attempts + 1, 4)
+          } else {
+            setResolved({ descriptor, url: null })
+          }
+        })
+    }
+    load()
     return () => {
       cancelled = true
+      cancelRetry?.()
+      releaseBlobImage(descriptor)
     }
   }, [descriptor, enabled])
 

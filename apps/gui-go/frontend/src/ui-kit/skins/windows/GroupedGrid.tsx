@@ -10,6 +10,7 @@ import { CheckmarkFilled } from '@fluentui/react-icons'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import type { GridItem, GroupedGridProps } from '@/ui-kit/contract'
+import { useWindowedScroll } from '@/ui-kit/use-windowed-scroll'
 import { selectRange } from './list-keys'
 import { useMenuStyles } from './menu-styles'
 import { MenuEntries } from './MenuEntries'
@@ -174,6 +175,7 @@ export function GroupedGrid({
   onActivate,
   onDelete,
   onEndReached,
+  viewport,
   contextMenu,
   footer,
 }: GroupedGridProps) {
@@ -220,6 +222,8 @@ export function GroupedGrid({
     const top = children[0]?.offsetTop
     return Math.max(1, children.filter(child => child.offsetTop === top).length)
   }
+  useWindowedScroll(gridRef, items, viewport)
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || items.length === 0) return
     const found = items.findIndex(item => item.id === cursor)
@@ -294,7 +298,12 @@ export function GroupedGrid({
       onContextMenuCapture={event => {
         pendingMenuIds.current = event.target === event.currentTarget ? selection : []
       }}
-      style={{ '--w11-card-width': width } as React.CSSProperties}
+      style={
+        {
+          '--w11-card-width': width,
+          overflowAnchor: viewport ? 'none' : undefined,
+        } as React.CSSProperties
+      }
     >
       {sections.map(({ group, groupItems }) => (
         <div key={group.id} role="presentation">

@@ -24,6 +24,34 @@ impl DaemonHistory {
         kind: String,
     ) -> Result<PreviewData, ServiceError> {
         let client = self.context()?.clipboard_client();
+        if kind == "thumbnail" {
+            let bytes = client.entry_thumbnail(&id).await.map_err(|error| {
+                if error
+                    .downcast_ref::<uc_daemon_client::http::DaemonRequestError>()
+                    .and_then(|error| error.status())
+                    .is_some_and(|status| status.as_u16() == 503)
+                {
+                    ServiceError::ThumbnailBusy
+                } else {
+                    ServiceError::ImageUnreadable
+                }
+            })?;
+            let format = image::guess_format(&bytes).map_err(|_| ServiceError::ImageUnsupported)?;
+            let (width, height) =
+                image::ImageReader::with_format(std::io::Cursor::new(&bytes), format)
+                    .into_dimensions()
+                    .map_err(|_| ServiceError::ImageUndecodable)?;
+            return Ok(PreviewData {
+                text: None,
+                image: Some(ImagePayload {
+                    bytes,
+                    mime: format.to_mime_type().into(),
+                    width,
+                    height,
+                }),
+                size: 0,
+            });
+        }
         if kind == "text" || kind == "richtext" {
             let detail = client
                 .entry_detail(&id)

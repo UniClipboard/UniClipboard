@@ -1,6 +1,6 @@
 import { Image as ImageIcon } from 'lucide-react'
 import React, { useState } from 'react'
-import { invalidateResourceImageDescriptor } from '@/hooks/useResourceImageDescriptor'
+import { invalidateBlobImageObjectUrl } from '@/api/daemon/blob-image-cache'
 import { cn } from '@/lib/utils'
 import {
   reportQuickPanelImageAspectRatio,
@@ -71,10 +71,12 @@ const QuickPanelImage: React.FC<QuickPanelImageProps> = ({
             }
           }}
           onError={() => {
-            // Drop the descriptor cache so a subsequent mount refetches. Not
+            // Drop the rejected URL so a subsequent mount refetches. Not
             // retried in-place: repeated 404s would burn requests on a resource
             // that's genuinely gone.
-            invalidateResourceImageDescriptor(entryId)
+            invalidateBlobImageObjectUrl(
+              `/clipboard/entries/${encodeURIComponent(entryId)}/thumbnail`
+            )
             setFailedUrl(url)
           }}
         />

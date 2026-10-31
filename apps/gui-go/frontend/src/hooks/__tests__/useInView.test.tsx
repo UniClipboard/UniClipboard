@@ -65,7 +65,7 @@ describe('useInView', () => {
     expect(getByTestId('probe').textContent).toBe('false')
   })
 
-  it('is sticky — stays true after becoming visible even if observer would fire again', () => {
+  it('returns to false after the element leaves the viewport', () => {
     const { getByTestId } = render(<Probe />)
     act(() => {
       observedCallback?.(
@@ -74,8 +74,13 @@ describe('useInView', () => {
       )
     })
     expect(getByTestId('probe').textContent).toBe('true')
-    // Once in view, the observer is disconnected — no further callbacks matter.
-    expect(disconnectSpy).toHaveBeenCalled()
+    act(() => {
+      observedCallback?.(
+        [{ isIntersecting: false } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    })
+    expect(getByTestId('probe').textContent).toBe('false')
   })
 
   it('falls back to true immediately when IntersectionObserver is unavailable', () => {

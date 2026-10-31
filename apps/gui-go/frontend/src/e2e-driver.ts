@@ -176,6 +176,16 @@ async function run() {
     await reachMainLayout()
     return (await import('@/e2e/linux-scroll')).runLinuxScroll(record, control)
   }
+  if (phase === 'history-window')
+    return (await import('@/e2e/history-window')).runHistoryWindowScenario({
+      reachMainLayout,
+      record,
+      control,
+      waitFor,
+      historyRows,
+      sleep,
+      $,
+    })
   if (phase === 'history-kit') return runHistoryKitScenario()
   if (phase.startsWith('linux-kit-')) {
     // Linux kit flows (e2e/linux-kit-flows.ts): the kit Settings page.

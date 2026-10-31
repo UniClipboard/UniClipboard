@@ -67,7 +67,8 @@ class ClipboardPreviewCache {
 
     try {
       const value = await promise
-      if (value) {
+      // Compare request identity, not its awaited value: invalidation may have replaced the slot.
+      if (value && this.inFlight.get(entryId) === promise) {
         this.cache.set(entryId, {
           value,
           expiresAt: Date.now() + this.ttlMs,
@@ -75,13 +76,19 @@ class ClipboardPreviewCache {
       }
       return value
     } finally {
-      this.inFlight.delete(entryId)
+      // An obsolete request must not remove a newer pending request.
+      if (this.inFlight.get(entryId) === promise) this.inFlight.delete(entryId)
     }
   }
 
   invalidate(entryId: string): void {
     this.cache.delete(entryId)
     this.inFlight.delete(entryId)
+  }
+
+  retain(ids: ReadonlySet<string>): void {
+    for (const id of this.cache.keys()) if (!ids.has(id)) this.cache.delete(id)
+    for (const id of this.inFlight.keys()) if (!ids.has(id)) this.inFlight.delete(id)
   }
 
   clear(): void {

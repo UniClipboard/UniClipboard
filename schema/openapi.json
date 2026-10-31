@@ -10319,11 +10319,10 @@
     },
     "/clipboard/entries/{id}/thumbnail": {
       "get": {
-        "description": "Serves a bounded thumbnail resolved by clipboard entry identifier. Binary endpoint: the\nresponse is `application/octet-stream` (the resolved MIME type when known),\nNOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints\nexempt). Returns 404 if the thumbnail is unknown, 500 on an internal\nresolution failure.",
-        "operationId": "getClipboardThumbnail",
+        "operationId": "getClipboardEntryThumbnail",
         "parameters": [
           {
-            "description": "Clipboard entry identifier",
+            "description": "Entry identifier",
             "in": "path",
             "name": "id",
             "required": true,
@@ -10342,37 +10341,22 @@
                 }
               }
             },
-            "description": "Raw thumbnail bytes"
+            "description": "Thumbnail bytes"
           },
           "404": {
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Thumbnail not found"
+            "description": "Entry not found"
+          },
+          "410": {
+            "description": "Thumbnail unavailable"
+          },
+          "423": {
+            "description": "Encryption session locked"
           },
           "500": {
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Internal server error"
+            "description": "Thumbnail read failed"
           },
           "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Thumbnail temporarily unavailable; retry after unlock or load completes"
+            "description": "Thumbnail not ready; retry later"
           }
         },
         "security": [
@@ -10383,7 +10367,7 @@
             "session_header": []
           }
         ],
-        "summary": "GET /clipboard/entries/:id/thumbnail",
+        "summary": "Read the authoritative preview thumbnail for a history entry.",
         "tags": [
           "clipboard"
         ]

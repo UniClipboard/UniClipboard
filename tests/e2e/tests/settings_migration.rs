@@ -297,7 +297,8 @@ fn assert_v1_2_0_values(settings: &Value) {
     let general = &settings["general"];
     for (key, expected) in [
         ("autoStart", json!(true)),
-        ("startupMode", json!("silent")),
+        ("startupMode", json!("normal")),
+        ("backgroundStartup", json!(true)),
         ("restoreLastEntryOnStartup", json!(true)),
         ("autoCheckUpdate", json!(false)),
         ("autoDownloadUpdate", json!(false)),
@@ -579,6 +580,7 @@ async fn schema_2_legacy_rules_apply_and_the_engine_migration_does_not_reimport(
     assert_import_read(&run, &legacy);
     let settings = run.settings().await;
     assert_eq!(settings["general"]["startupMode"], json!("lightweight"));
+    assert_eq!(settings["general"]["backgroundStartup"], json!(true));
     assert_eq!(settings["general"]["themeColorLight"], json!("blue"));
     assert_eq!(settings["general"]["themeColorDark"], json!("rose"));
     let product = run.bytes(PRODUCT).unwrap();
@@ -608,10 +610,9 @@ async fn schema_2_legacy_rules_apply_and_the_engine_migration_does_not_reimport(
         &[(LEGACY, &legacy)],
     )
     .await;
-    assert_eq!(
-        silent.settings().await["general"]["startupMode"],
-        json!("silent")
-    );
+    let silent_settings = silent.settings().await;
+    assert_eq!(silent_settings["general"]["startupMode"], json!("normal"));
+    assert_eq!(silent_settings["general"]["backgroundStartup"], json!(true));
     run.note("completed", settings);
     run.keep();
     silent.keep();

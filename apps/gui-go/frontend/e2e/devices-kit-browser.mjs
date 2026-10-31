@@ -114,30 +114,34 @@ export async function runScenarios({
     } catch (error) {
       results.steps.push({ name, ok: false, error: redactEvidence(String(error?.stack ?? error)) })
       console.log(`FAIL ${name}`)
-      await writeFile(
-        path.join(output, `diagnostic-${name}.json`),
-        redactEvidence(
-          JSON.stringify(
-            await page.evaluate(() => ({
-              path: location.pathname,
-              dialogs: [...document.querySelectorAll('[role="dialog"]')].map(el => ({
-                label: el.getAttribute('aria-label'),
-                hidden: el.getAttribute('aria-hidden'),
-                height: el.getBoundingClientRect().height,
+      try {
+        await writeFile(
+          path.join(output, `diagnostic-${name}.json`),
+          redactEvidence(
+            JSON.stringify(
+              await page.evaluate(() => ({
+                path: location.pathname,
+                dialogs: [...document.querySelectorAll('[role="dialog"]')].map(el => ({
+                  label: el.getAttribute('aria-label'),
+                  hidden: el.getAttribute('aria-hidden'),
+                  height: el.getBoundingClientRect().height,
+                })),
+                options: [...document.querySelectorAll('[role="option"]')].map(el => ({
+                  label: el.getAttribute('aria-label'),
+                  selected: el.getAttribute('aria-selected'),
+                })),
+                buttons: [...document.querySelectorAll('button')]
+                  .map(el => el.getAttribute('aria-label') || el.textContent?.trim())
+                  .filter(Boolean),
               })),
-              options: [...document.querySelectorAll('[role="option"]')].map(el => ({
-                label: el.getAttribute('aria-label'),
-                selected: el.getAttribute('aria-selected'),
-              })),
-              buttons: [...document.querySelectorAll('button')]
-                .map(el => el.getAttribute('aria-label') || el.textContent?.trim())
-                .filter(Boolean),
-            })),
-            null,
-            2
+              null,
+              2
+            )
           )
         )
-      )
+      } catch (diagnosticError) {
+        results.steps.at(-1).diagnosticError = redactEvidence(String(diagnosticError))
+      }
       if (!sensitive)
         await page
           ?.screenshot({

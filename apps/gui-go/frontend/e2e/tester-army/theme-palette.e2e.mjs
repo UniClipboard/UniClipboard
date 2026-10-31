@@ -108,7 +108,12 @@ test('theme-palette: original assertions', async ({ app, page }) => {
         primary: '#aa3377',
         background: '#252a32',
       })
-      await page.waitForTimeout(180)
+      await expect
+        .poll(async () => {
+          const { root, button } = await colors()
+          return { root, button }
+        })
+        .toEqual({ root: 'rgb(37, 42, 50)', button: 'rgb(170, 51, 119)' })
       const custom = await colors()
       assert.equal(custom.root, 'rgb(37, 42, 50)')
       assert.equal(custom.button, 'rgb(170, 51, 119)')

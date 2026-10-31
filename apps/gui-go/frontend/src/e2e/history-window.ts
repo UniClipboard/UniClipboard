@@ -38,9 +38,8 @@ export async function runHistoryWindowScenario({
   )!.click()
   await waitFor(`${mode} mode`, () =>
     configuration.grid
-      ? document.querySelector('.mac-grid, .linux-grid')
-      : document.querySelector('[data-item-id]') &&
-        !document.querySelector('.mac-grid, .linux-grid')
+      ? document.querySelector('.mac-grid, .adw-grid')
+      : document.querySelector('[data-item-id]') && !document.querySelector('.mac-grid, .adw-grid')
   )
   await record('window-view', true, { mode })
   const scroller = await waitFor('bounded history', () =>
@@ -159,6 +158,23 @@ export async function runHistoryWindowScenario({
         cache.historyImageCachePaths().filter(path => path.endsWith('/thumbnail')).length === count,
       15000
     )
+    await record('window-image-readiness', true, {
+      visibility: document.visibilityState,
+      scrollTop: scroller.scrollTop,
+      bounds: scroller.getBoundingClientRect().toJSON(),
+      rows: visible().map(row => {
+        const image = row.querySelector<HTMLImageElement>('img')
+        const tile = row.querySelector<HTMLElement>('[role="img"]')
+        return {
+          id: row.dataset.itemId,
+          row: row.getBoundingClientRect().toJSON(),
+          tile: tile?.getBoundingClientRect().toJSON(),
+          hasImage: !!image,
+          complete: image?.complete,
+          naturalWidth: image?.naturalWidth,
+        }
+      }),
+    })
     await waitFor(
       'visible thumbnails decoded',
       () => {
@@ -291,7 +307,7 @@ export async function runHistoryWindowScenario({
     maxImages > 0 && offsets.some(offset => offset > 0) && offsets.at(-1)! < Math.max(...offsets)
   await record('image-memory-all-ready', passed, {
     visibility: document.visibilityState,
-    view: document.querySelector('.mac-grid, .linux-grid') ? 'grid' : 'list',
+    view: document.querySelector('.mac-grid, .adw-grid') ? 'grid' : 'list',
     maxRecords,
     maxImages,
     deepMutation,

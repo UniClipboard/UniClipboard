@@ -12,4 +12,21 @@ ignore = [
   # (HMAC) — the vulnerable RSA code path is never reached. Re-evaluate if a
   # fix ships or if RSA-based JWT algorithms are ever adopted.
   "RUSTSEC-2023-0071",
+  # crypto-bigint 0.5.5 is confined to jsonwebtoken's unused ECDSA backend.
+  # All JWT signing and validation uses HS256; no secret-integer operation is
+  # reached through that backend. Engine's active crypto-bigint 0.7 dependency
+  # is updated to a patched version. The guard below rejects any other old
+  # version, ECDSA JWT use, or new consumer of the 0.5.5 dependency chain.
+  # https://rustsec.org/advisories/RUSTSEC-2026-0387.html
+  "RUSTSEC-2026-0387",
+  # zip 1.1.4 is only a build dependency of utoipa-swagger-ui 7.1.0.
+  # Its input is the fixed, checksummed Swagger UI vendored archive, never
+  # user or network input. The reviewed archive contains no symlinks or
+  # privileged permission bits. There is no compatible zip-9 update in this
+  # utoipa-4 integration. check-cargo-audit-exceptions.mjs pins the consumer,
+  # build-only edge, vendored feature, build script and exact archive bytes.
+  # Drop/review these exceptions when the Swagger integration changes.
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
 ]

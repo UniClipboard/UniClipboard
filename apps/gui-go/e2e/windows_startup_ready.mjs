@@ -76,6 +76,7 @@ try {
     UC_GUI_GO_E2E_HIDDEN: framework ? '0' : '1',
     UC_GUI_GO_EXIT_MODE: 'full',
     UC_GUI_GO_EVIDENCE: path.join(sandbox, 'native.jsonl'),
+    UC_GUI_GO_E2E_CONTROL_FILE: path.join(sandbox, 'control.txt'),
     UC_GUI_GO_E2E_BROWSER_ARGS: `--remote-debugging-port=${debugPort}`,
   }
   start(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js')], {
@@ -196,16 +197,9 @@ try {
   throw error
 } finally {
   fs.writeFileSync(path.join(sandbox, 'startup-ready.json'), JSON.stringify(evidence, null, 2))
-  if (command && socket?.readyState === WebSocket.OPEN) {
-    await Promise.race([
-      command('Runtime.evaluate', {
-        expression: `import('/node_modules/@wailsio/runtime/dist/index.js').then(m => m.Call.ByName('main.EvidenceService.Control','exit'))`,
-        awaitPromise: true,
-      }).catch(() => {}),
-      delay(3000),
-    ])
-    socket.close()
-  }
+  // Teardown must remain available after the framework releases its CDP connection.
+  fs.appendFileSync(path.join(sandbox, 'control.txt'), 'exit\n')
+  socket?.close()
   const cleanup = {
     systemClipboardDisabled: true,
     guiIsolated: true,
@@ -226,7 +220,7 @@ try {
     if (host)
       cleanup.hostExitedNormally = await Promise.race([
         host.closed.then(code => code === 0),
-        delay(15000).then(() => false),
+        delay(45000).then(() => false),
       ])
     for (const pid of daemonPids) {
       try {
@@ -278,6 +272,18 @@ try {
   } catch (error) {
     cleanup.errorType = error.name
   }
+  try {
+    cleanup.controlExitAcknowledged = fs
+      .readFileSync(path.join(sandbox, 'native.jsonl'), 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .some(line => {
+        const value = JSON.parse(line)
+        return value.step === 'control-exit' && value.ok === true
+      })
+  } catch {
+    cleanup.controlExitAcknowledged = false
+  }
   if (framework) {
     // Export public evidence only; never copy daemon connection files, private stores or raw logs.
     const hash = file =>
@@ -319,6 +325,11 @@ try {
       JSON.stringify({ ...identity, ...cleanup }, null, 2)
     )
     if (!failure) {
+      assert.equal(
+        cleanup.controlExitAcknowledged,
+        true,
+        'the product must acknowledge the owned exit request'
+      )
       assert.equal(cleanup.hostExitedNormally, true, 'native host must quit normally')
       assert.equal(cleanup.forced, false, 'forced termination is not successful native cleanup')
       assert.equal(cleanup.daemonExited, true, 'no owned product processes may remain')

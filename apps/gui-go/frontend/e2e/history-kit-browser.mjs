@@ -6,6 +6,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { openGuiSession } from './browser-daemon-session.mjs'
 import { redactEvidence } from './evidence-redaction.mjs'
+import { assertBoundedGrid } from './history-bounded-grid.mjs'
 
 async function runLegacy() {
   // Browser run of the kit History page against a REAL isolated daemon (DOM and keyboard in Chromium; not a native
@@ -952,23 +953,8 @@ export async function runScenarios({
 
     // Last: it sets a viewport that a native (CDP) run cannot reliably undo.
     await step('grid-paging', async () => {
-      // In a window taller than a loaded page the grid must load every page by itself, without any scrolling. (This
-      // does not separate the end observer being re-created per page from one created once: each load re-renders the
-      // grid, so the end marker reports a new intersection either way.)
       await newPage({ viewport: { width: 1280, height: 12_000 }, deviceScaleFactor: 1 })
-      await page.getByRole('radio', { name: 'Grid' }).click()
-      await rows().first().waitFor()
-      await rows()
-        .filter({ hasText: pagingEntry(0) })
-        .first()
-        .waitFor({ timeout: 15_000 })
-      const loaded = await rows().count()
-      const pages = Math.ceil(daemon.seeded / 100)
-      assert.ok(
-        loaded > (pages - 1) * 100,
-        `the grid reached its last page (${loaded} cards, ${pages} pages)`
-      )
-      return { loaded, pages }
+      return assertBoundedGrid({ page, rows, list, api })
     })
   }
 

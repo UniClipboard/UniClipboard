@@ -1,4 +1,5 @@
 export const backendSuites = {
+  'history-window-grid': { platforms: ['macos', 'windows', 'linux'], seeds: ['history'] },
   'tag-manager-layout': { platforms: ['macos', 'linux'], seeds: ['empty'] },
   'history-kit': { platforms: ['macos', 'windows', 'linux'], seeds: ['history', 'empty'] },
   'devices-kit': { platforms: ['macos', 'windows', 'linux'], seeds: ['devices'] },
@@ -29,6 +30,11 @@ export const backendReport = `target/tester-army-backend-report/${backendPlatfor
 
 // Each entry has passed its stated functional contract; retained candidates stay explicit.
 export const verifiedBackendRuns = [
+  ...['macos', 'windows', 'linux'].map(platform => ({
+    suite: 'history-window-grid',
+    platform,
+    seed: 'history',
+  })),
   { suite: 'sidebar-toggle-app', platform: 'macos', seed: 'empty' },
   ...['macos', 'linux'].map(platform => ({ suite: 'tag-manager-layout', platform, seed: 'empty' })),
   ...['macos', 'windows', 'linux'].map(platform => ({
@@ -50,7 +56,7 @@ export const verifiedBackendRuns = [
 ]
 export const retainedBackendReasons = {
   'history-kit/history':
-    'LAN image thumbnail returns 503 while original PNG bytes are readable; platform-specific material/rail assumptions also remain in the original scenarios',
+    'the full original suite retains image, material, rail and focus assertions; focused bounded-grid acceptance is separate',
   'history-search/fullPage':
     'original WebDriver and replacement both fail the old detail geometry predicate; legacy rail assumptions remain in the Windows/Linux branches',
 }

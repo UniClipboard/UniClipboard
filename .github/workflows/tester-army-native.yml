@@ -95,6 +95,19 @@ jobs:
           go-version-file: apps/gui-go/go.mod
           cache: false
       - run: bun install --frozen-lockfile
+      - name: Start the existing shared Engine build cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: tester-army-native
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          shared-key: pr-check
+          cache-targets: false
+          save-if: false
       - name: Build pinned real daemon
         shell: bash
         run: bash scripts/build-cache/mbx.sh --exec cargo build --locked -p uc-daemon --bin uniclipd

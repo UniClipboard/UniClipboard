@@ -40,7 +40,8 @@ class Backend:
             'PATH': str(ROOT / 'target/debug') + os.pathsep + os.environ['PATH'],
             'UC_GUI_GO_ISOLATED': '1',
         })
-        self.passphrase = secrets.token_urlsafe(24)
+        # Hex preserves 192 random bits and satisfies the CLI's hyphen-value restriction.
+        self.passphrase = secrets.token_hex(24)
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self.connection = None
         self.start_attempted = False

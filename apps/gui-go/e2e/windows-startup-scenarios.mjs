@@ -38,7 +38,9 @@ export async function runStartupScenarios({ waitFor, evaluate, evidence, delay }
   await waitFor(
     () =>
       evaluate(
-        `location.pathname.startsWith('/history') && !!document.querySelector('a[href="/settings"]')`
+        `import('/src/i18n/index.ts').then(({default: i18n}) =>
+          location.pathname.startsWith('/history') && [...document.querySelectorAll('nav button')]
+            .some(button => button.textContent?.includes(i18n.t('history.kit.settings'))))`
       ),
     'authenticated history screen'
   )

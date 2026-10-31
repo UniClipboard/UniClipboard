@@ -7,11 +7,20 @@ import { nativeEngine } from './engine.mjs'
 
 const output = 'target/tester-army-windows-product'
 test('Windows product: original native startup, setup and empty history', async ({ app }) => {
+  await mkdir(output, { recursive: true })
   await app.open('/')
   const page = surfaceOf(nativeEngine).page()
   const session = await page.context().newCDPSession(page)
   try {
     const { targetInfo } = await session.send('Target.getTargetInfo')
+    await writeFile(
+      `${output}/native-target.json`,
+      JSON.stringify(
+        { expected: process.env.UC_NATIVE_TARGET_ID, actual: targetInfo.targetId, url: page.url() },
+        null,
+        2
+      ) + '\n'
+    )
     assert.equal(
       targetInfo.targetId,
       process.env.UC_NATIVE_TARGET_ID,

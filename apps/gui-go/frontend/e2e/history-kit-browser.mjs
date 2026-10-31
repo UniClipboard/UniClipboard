@@ -351,7 +351,9 @@ export async function runScenarios({
         row: box('[data-item-id]'),
         pageOverflowX: document.documentElement.scrollWidth - window.innerWidth,
         skin: document.querySelector('[data-ui-skin]')?.getAttribute('data-ui-skin'),
-        colorScheme: getComputedStyle(document.querySelector('[data-ui-skin]')).colorScheme,
+        colorScheme:
+          document.querySelector('[data-ui-skin]')?.getAttribute('data-color-scheme') ??
+          getComputedStyle(document.querySelector('[data-ui-skin]')).colorScheme,
         material: [...document.querySelectorAll('[data-window-material]')].map(el =>
           el.getAttribute('data-window-material')
         ),

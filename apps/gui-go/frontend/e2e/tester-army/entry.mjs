@@ -17,7 +17,8 @@ export function runEntry(name) {
       if (!value || value.startsWith('--')) throw new Error(`${arg} requires a value`)
       if (arg === '--platform') platform = value
       else out = value
-    } else if (name === 'device-tasks' && !arg.startsWith('--') && !out) out = arg
+    } else if (['device-tasks', 'history-compact'].includes(name) && !arg.startsWith('--') && !out)
+      out = arg
     else throw new Error(`Unknown option: ${arg}`)
   }
   const args = ['apps/gui-go/frontend/e2e/tester-army/run-layouts.mjs', name]

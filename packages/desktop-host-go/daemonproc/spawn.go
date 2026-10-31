@@ -191,7 +191,7 @@ func StopStartingDaemon(ctx context.Context, attempt *StartupAttempt) error {
 				if status != http.StatusAccepted {
 					return fmt.Errorf("owned daemon refused startup stop (HTTP %d)", status)
 				}
-				return nil
+				return attempt.Wait(ctx)
 			}
 			if ctx.Err() != nil {
 				return ctx.Err()

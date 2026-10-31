@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { pathToFileURL } from 'node:url'
@@ -30,6 +31,7 @@ let baseline
 let cleanup
 let connected
 let failure
+let dataDir
 try {
   const ready = await Promise.race([
     new Promise(resolve =>
@@ -47,6 +49,10 @@ try {
       throw new Error(`owned native probe exited ${code}`)
     }),
   ])
+  const privateData = path.resolve(ready.dataDir)
+  assert.equal(path.dirname(privateData).toLowerCase(), path.resolve(tmpdir()).toLowerCase())
+  assert.ok(path.basename(privateData).startsWith('uc-gui-go-webview-probe-'))
+  dataDir = privateData
   const endpoint = `http://127.0.0.1:${port}`
   for (let retry = 0; retry < 100; retry++) {
     try {
@@ -142,7 +148,7 @@ try {
       const timeout = setTimeout(() => resolve(null), ms)
       timeout.unref()
     })
-  let outcome = await Promise.race([exited, after(10_000)])
+  let outcome = await Promise.race([exited, after(15_000)])
   let forced = false
   let cleanupError
   if (outcome === null) {
@@ -171,6 +177,21 @@ try {
   }
   if (outcome !== null) await linesClosed
   const code = outcome?.[0] ?? null
+  let dataRemoved = false
+  // WebView2 may release its profile after the host exits. Never delete an active profile.
+  if (outcome !== null && dataDir) {
+    for (let retry = 0; retry < 200; retry++) {
+      try {
+        await rm(dataDir, { recursive: true, force: true })
+        dataRemoved = true
+        break
+      } catch (error) {
+        cleanupError = error.message
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    }
+    if (dataRemoved) cleanupError = undefined
+  }
   await writeFile(
     'target/tester-army-native/cleanup.json',
     JSON.stringify(
@@ -179,6 +200,7 @@ try {
         forced,
         cleanupError,
         ...cleanup,
+        dataRemoved,
       },
       null,
       2
@@ -187,6 +209,7 @@ try {
   if (!failure) {
     assert.notEqual(outcome, null, 'owned native process did not stop within its cleanup budget')
     assert.equal(code, 0, 'owned native process must exit cleanly')
-    assert.equal(cleanup?.dataRemoved, true, 'private WebView2 data must be removed')
+    assert.equal(cleanup?.windowClosed, true, 'the native control must close normally')
+    assert.equal(dataRemoved, true, 'private WebView2 data must be removed')
   }
 }

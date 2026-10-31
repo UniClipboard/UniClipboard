@@ -101,7 +101,7 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 
 - WKWebView：使用官方非持久网站数据存储和 `isInspectable` 接口运行隔离 JavaScript 回读。不创建窗口，不激活 App。`isInspectable` 对接 Safari Web Inspector，不是 Chromium CDP。Web 引擎明确拒绝 `browser: 'webkit'` 与 CDP 连接同时使用。
 - WebKitGTK：在一次性 CI 的专属 Xvfb 中使用官方临时 WebContext 回读 JavaScript。它只证明原生运行时可用。现有 Web 引擎不接收其原生 Web Inspector/WebDriver 协议。
-- WebView2：使用当前固定 Wails 版本启动独立隐藏原生控件，设置专属临时用户数据目录和随机 loopback CDP 端口。先读取真实原生页面的 target ID，再用 TesterArmy 的持久连接契约尝试驱动同一 target。若框架创建其他页面，不计为原生通过。上下文协议不兼容与其他执行失败分别报告。进程退出和临时数据删除均须通过。
+- WebView2：使用当前固定 Wails 版本在一次性 Windows runner 上启动独立可见原生控件，设置专属临时用户数据目录和随机 loopback CDP 端口。先读取真实原生页面的 target ID，再用 TesterArmy 的持久连接契约尝试驱动同一 target。若框架创建其他页面，不计为原生通过。上下文协议不兼容与其他执行失败分别报告。正常点击需要可见控件；隐藏控件不作为可点击验收。先关闭控件并等待宿主退出，再删除临时数据目录，避免宿主的 COM 引用仍持有文件。进程退出和临时数据删除均须通过。
 
 原生探针工作流为 `.github/workflows/tester-army-native.yml`。探针结果不等于 UniClipboard 产品的原生 GUI 验收。所有原生窗口、托盘、全局快捷键、系统剪贴板、安装包及发布验收继续使用旧路径。
 

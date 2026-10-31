@@ -52,10 +52,11 @@ export function useBlobImageObjectUrl(descriptor: string | null, enabled = true)
           if (
             descriptor.endsWith('/thumbnail') &&
             error instanceof DaemonApiError &&
-            error.code === DaemonErrorCode.SERVICE_UNAVAILABLE &&
-            attempts < 5
+            error.code === DaemonErrorCode.SERVICE_UNAVAILABLE
           ) {
-            cancelRetry = scheduleRetry(load, Math.min(500 * 2 ** attempts++, 8000))
+            const delay = Math.min(500 * 2 ** attempts, 8000)
+            attempts = Math.min(attempts + 1, 4)
+            cancelRetry = scheduleRetry(load, delay + Math.random() * 500)
           } else {
             setResolved({ descriptor, url: null })
           }

@@ -176,6 +176,30 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  windows-update-signature:
+    name: Windows legacy signature E2E
+    needs: changes
+    if: ${{ needs.changes.outputs.gui_go == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+      - name: Verify legacy signatures through real downloads and mapped files
+        working-directory: apps/gui-go
+        run: go run ./e2e/legacy_signature ../../target/windows-legacy-signature
+      - name: Retain signature verification receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-legacy-signature-${{ github.run_id }}
+          path: target/windows-legacy-signature/receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
   rust:
     name: Rust Check
     needs: changes

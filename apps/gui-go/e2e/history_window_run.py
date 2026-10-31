@@ -22,6 +22,7 @@ from pathlib import Path
 
 p = argparse.ArgumentParser()
 p.add_argument('--grid', action='store_true')
+p.add_argument('--large-viewport', action='store_true')
 p.add_argument('--repo', required=True, type=Path)
 p.add_argument('--app', required=True, type=Path)
 p.add_argument('--out', required=True, type=Path)
@@ -46,6 +47,8 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
     tmp=Path(temporary)
     evidence=tmp/'native.jsonl'
     evidence.write_text('')
+    control_file=tmp/'control.txt'
+    control_file.write_text('')
     try:
         start(tmp, 0, True)
         info=json.loads((tmp/'daemon.json').read_text())
@@ -90,7 +93,7 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         if remaining: raise RuntimeError(f'{len(remaining)} original resources did not become ready')
         search=daemon_request('/search/query?query=&limit=200&offset=0',session_headers)
         ordered_ids=[item['entryId'] for item in search['items']]
-        gui_env=isolated_env(info['home'], info['profile'], {'PATH': str(repo/'target/debug')+os.pathsep+os.environ['PATH'], 'UC_GUI_GO_ISOLATED':'1', 'UC_GUI_GO_EVIDENCE':str(evidence),'UC_GUI_GO_E2E_PHASE':'history-window','UC_GUI_GO_E2E_SECRET':json.dumps({'ids':ordered_ids,'grid':a.grid}),'UC_GUI_GO_E2E_VISIBLE':'1','UC_GUI_GO_EXIT_MODE':'full','UC_GPUI_QUICK_PANEL':'0'})
+        gui_env=isolated_env(info['home'], info['profile'], {'PATH': str(repo/'target/debug')+os.pathsep+os.environ['PATH'], 'UC_GUI_GO_ISOLATED':'1', 'UC_GUI_GO_EVIDENCE':str(evidence),'UC_GUI_GO_E2E_PHASE':'history-window','UC_GUI_GO_E2E_SECRET':json.dumps({'ids':ordered_ids,'grid':a.grid,'largeViewport':a.large_viewport}),'UC_GUI_GO_E2E_CONTROL_FILE':str(control_file),'UC_GUI_GO_E2E_VISIBLE':'1','UC_GUI_GO_EXIT_MODE':'full','UC_GPUI_QUICK_PANEL':'0'})
         binary=a.app/'Contents/MacOS/gui-go'
         result['gui_sha256']=hashlib.sha256(binary.read_bytes()).hexdigest()
         result['daemon_sha256']=hashlib.sha256((a.app/'Contents/MacOS/uniclipd').read_bytes()).hexdigest()
@@ -101,6 +104,12 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             inserted_requests=0
             while time.monotonic()<deadline and proc.poll() is None:
                 rows=[json.loads(x) for x in evidence.read_text().splitlines() if x.strip()]
+                if any(row.get('step')=='window-begin' for row in rows) and not control_file.read_text():
+                    control_file.write_text('show-main history-window\n')
+                if any(row.get('step')=='window-large-viewport' for row in rows):
+                    result['passed']=any(row.get('step')=='window-large-viewport' and row.get('ok') for row in rows)
+                    result['native_steps']=rows
+                    break
                 requested=sum(row.get('step')=='window-insert-request' for row in rows)
                 if requested > inserted_requests:
                     name=f'window-insert-{inserted_requests}.png'

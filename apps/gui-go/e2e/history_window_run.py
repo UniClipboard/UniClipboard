@@ -84,6 +84,9 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
         unlocked=daemon_request('/content-lock/unlock', {**session_headers,'Content-Type':'application/json'}, json.dumps({'passphrase':PASSPHRASE}).encode())
         assert unlocked.get('unlocked') is True, 'content grant was not unlocked'
         result['content_unlocked_before_history']=True
+        if a.gui:
+            daemon_request('/diagnostics/capture/start', {**session_headers,'Content-Type':'application/json'}, json.dumps({'durationSeconds':180}).encode())
+            result['detailed_source_capture']=True
         with socket.socket() as sock:
             sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
         setup=json.loads(cli(env,'--json','mobile','setup','--non-interactive','--label','memory-test','--ip','127.0.0.1','--accept-network-risk','--port',str(port)).stdout)

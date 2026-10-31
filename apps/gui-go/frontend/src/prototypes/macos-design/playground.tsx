@@ -6,6 +6,7 @@ import {
   type WindowMaterial,
 } from '@/prototypes/macos-design/window'
 import { PortalContainer } from '@/ui-kit/skins/macos/portal'
+import { macTheme } from '@/ui-kit/skins/macos/theme'
 
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
@@ -42,6 +43,7 @@ export function Playground({
       className="mac-theme"
       data-mac-theme={theme}
       style={{
+        ...macTheme(theme === 'dark' ? 'dark' : 'light', null),
         minHeight: '100vh',
         background: shell === 'native' ? 'transparent' : 'var(--wall)',
         display: 'flex',

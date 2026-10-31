@@ -95,6 +95,9 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             with urllib.request.urlopen(request,timeout=120) as response: return json.load(response)['data']
         session=daemon_request('/auth/connect', {'Authorization':'Bearer '+conn['token'],'Content-Type':'application/json'}, json.dumps({'pid':os.getpid(),'clientType':'gui'}).encode())['sessionToken']
         session_headers={'Authorization':'Session '+session}
+        unlocked=daemon_request('/content-lock/unlock', {**session_headers,'Content-Type':'application/json'}, json.dumps({'passphrase':PASSPHRASE}).encode())
+        assert unlocked.get('unlocked') is True, 'content grant was not unlocked'
+        result['content_unlocked_before_history']=True
         entries=daemon_request('/clipboard/entries?limit=200&offset=0',session_headers)
         entries=[entry for entry in entries if entry.get('contentType')=='image']
         assert len(entries)==120, f'expected 120 images, got {len(entries)}'

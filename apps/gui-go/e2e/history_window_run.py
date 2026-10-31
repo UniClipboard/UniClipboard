@@ -20,6 +20,7 @@ import tomllib
 import traceback
 import urllib.request
 import urllib.error
+import urllib.parse
 from pathlib import Path
 
 p = argparse.ArgumentParser()
@@ -158,6 +159,8 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             if not result['passed'] and not result.get('error'):
                 result['error']=f'GUI scenario incomplete; owner exit code={proc.poll()}; elapsed={result["elapsed_seconds"]}s'
     except Exception as exc:
+        if isinstance(exc,urllib.error.HTTPError):
+            result['http_failure']={'status':exc.code,'path':urllib.parse.urlsplit(exc.url).path,'body':exc.read().decode(errors='replace')}
         result['error']=f'{type(exc).__name__}: {exc}'
         result['traceback']=traceback.format_exc()
     finally:
@@ -177,6 +180,16 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
             result['gui_log_sha256']=hashlib.sha256(text.encode()).hexdigest()
             result['gui_log_head']=text[:16000]
             result['gui_log']=text[-16000:]
+        if not result['passed'] and portable_env:
+            fixture_logs=[]
+            for path in sorted((tmp/'data').rglob('*')):
+                if path.is_file() and ('logs' in path.parts) and path.suffix not in ('.zip','.db'):
+                    text=path.read_text(errors='replace')
+                    for secret in (locals().get('session'),locals().get('auth'),locals().get('value',{}).get('token'),locals().get('setup',{}).get('password')):
+                        if secret: text=text.replace(str(secret),'[redacted]')
+                    text=re.sub(r'(?i)(Bearer|Session)\s+[A-Za-z0-9_.-]+',r'\1 [redacted]',text)
+                    fixture_logs.append({'file':str(path.relative_to(tmp/'data')),'tail':text[-24000:]})
+            result['fixture_logs']=fixture_logs
         try:
             if portable_env:
                 stopped=cli(portable_env,'stop',check=False,timeout=60)

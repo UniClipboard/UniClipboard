@@ -199,6 +199,8 @@ export async function runScenarios({
   const row = text => rows().filter({ hasText: text }).first()
   const list = () => page.getByRole('listbox', { name: 'Clipboard history' })
   const detail = () => page.getByRole('region', { name: 'Item detail' })
+  const favoriteButton = name =>
+    (platform === 'windows' ? detail() : page).getByRole('button', { name, exact: true })
   const selectedIds = () =>
     page.evaluate(() =>
       [...document.querySelectorAll('[data-item-id][aria-selected="true"]')].map(
@@ -416,8 +418,15 @@ export async function runScenarios({
       const target = row('Q4 roadmap')
       await target.click()
       const id = await target.getAttribute('data-item-id')
-      await page.getByRole('button', { name: 'Pin', exact: true }).click()
-      await page.getByRole('button', { name: 'Unpin', exact: true }).waitFor()
+      const saved = page.waitForResponse(
+        response =>
+          new URL(response.url()).pathname === `/clipboard/entries/${id}/favorite` &&
+          response.request().method() === 'POST'
+      )
+      saved.catch(() => {})
+      await favoriteButton('Pin').click()
+      await saved
+      await favoriteButton('Unpin').waitFor()
       const read = await listed(id)
       const favorited = read?.isFavorited
       assert.equal(favorited, true, `daemon read-back ${JSON.stringify(read)}`)
@@ -674,12 +683,12 @@ export async function runScenarios({
           body: '{"code":"internal","message":"injected"}',
         })
       )
-      await page.getByRole('button', { name: 'Pin', exact: true }).click()
+      await favoriteButton('Pin').click()
       await page.getByText('Failed to update favorite status').first().waitFor({ timeout: 10_000 })
       await shot('error-pin-failed')
       await page.unroute('**/clipboard/entries/*/favorite**')
       await page.waitForTimeout(500)
-      const shownPinned = await page.getByRole('button', { name: 'Unpin', exact: true }).count()
+      const shownPinned = await favoriteButton('Unpin').count()
       const read = await listed(id)
       assert.equal(read?.isFavorited, false, 'nothing was pinned in the daemon')
       assert.equal(shownPinned, 0, 'the page does not claim it is pinned')

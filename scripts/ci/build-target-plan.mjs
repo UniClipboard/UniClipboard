@@ -3,10 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { selectBuildPlatforms } from './select-build-platforms.mjs'
 
 // One authority for build, packaging and native acceptance targets.
-export function buildTargetPlan(
-  platform,
-  { windowsRunner = 'windows-latest', signpathProduction = false } = {}
-) {
+export function buildTargetPlan(platform, { signpathProduction = false } = {}) {
   const targets = {
     'macos-aarch64': {
       platform: 'macos-latest',
@@ -20,13 +17,13 @@ export function buildTargetPlan(
     },
     'windows-x86_64': {
       platform: 'windows-latest',
-      runner: windowsRunner,
+      runner: 'windows-latest',
       target: 'x86_64-pc-windows-msvc',
       args: '',
     },
     'windows-arm64': {
       platform: 'windows-latest',
-      runner: windowsRunner,
+      runner: 'windows-latest',
       target: 'aarch64-pc-windows-msvc',
       args: '--target aarch64-pc-windows-msvc',
     },
@@ -86,10 +83,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     platform,
     plan: JSON.stringify(
       buildTargetPlan(platform, {
-        windowsRunner:
-          platform === 'windows-arm64'
-            ? 'windows-latest'
-            : process.env.WINDOWS_RUNNER || 'windows-latest',
         signpathProduction: process.env.SIGNPATH_PRODUCTION === 'true',
       })
     ),

@@ -5,7 +5,7 @@ import { selectBuildPlatforms } from '../ci/select-build-platforms.mjs'
 describe('shared build target plan', () => {
   it('keeps component features and native acceptance architectures separate', () => {
     for (const platform of [...selectBuildPlatforms('all'), 'ubuntu-22.04', 'ubuntu-22.04-arm']) {
-      const plan = buildTargetPlan(platform, { windowsRunner: 'dedicated-windows' })
+      const plan = buildTargetPlan(platform)
       expect(plan.matrix).toHaveLength(platform === 'linux-gui' ? 0 : 1)
       expect(plan.components.map(e => e.component)).toEqual(
         platform === 'linux-gui'
@@ -16,7 +16,7 @@ describe('shared build target plan', () => {
       )
       for (const entry of plan.components) expect(entry.target).toBe(plan.matrix[0].target)
       if (platform.startsWith('windows')) {
-        expect(plan.components[0].runner).toBe('dedicated-windows')
+        expect(plan.components[0].runner).toBe('windows-latest')
         expect(plan.windows[0].smoke).toBe(
           platform.endsWith('arm64') ? 'windows-11-arm' : 'windows-latest'
         )

@@ -176,15 +176,9 @@ jobs:
           else
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
-      - name: Select Windows runner once
-        id: windows-runner
-        env:
-          RUNNER_STATUS_TOKEN: ${{ secrets.WINDOWS_RUNNER_STATUS_TOKEN }}
-        run: node scripts/ci/select-windows-runner.mjs
       - name: Select independent platform pipelines
         id: platforms
         env:
-          WINDOWS_RUNNER: ${{ steps.windows-runner.outputs.runner }}
           SIGNPATH_PRODUCTION: ${{ inputs.require_signing == true && vars.SIGNPATH_PRODUCTION_POLICY_SLUG != '' }}
           UC_PLATFORM: ${{ inputs.platform || 'all' }}
           UC_BUILD_MODE: ${{ inputs.build_mode || 'release' }}

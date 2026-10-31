@@ -1,8 +1,11 @@
 # Windows 自建 GitHub Runner 运维说明
 
-UniClipboard Desktop 的 Windows x86_64 应用构建和 CLI 构建会先检查专用 Windows runner 是否在线且空闲。可用时使用自建 runner；离线、忙碌、查询失败或缺少状态凭据时，使用 GitHub 提供的 `windows-latest`。Windows ARM64 交叉构建固定使用 `windows-latest`，因为自建 runner 未验证具备 ARM64 MSVC 和 LLVM 组件。
+UniClipboard Desktop 的 Windows 应用构建和 CLI 构建固定使用 GitHub 托管的 `windows-latest`。x64 使用 `x86_64-pc-windows-msvc`；ARM64 在 x64 托管运行器上交叉构建，使用 `aarch64-pc-windows-msvc`。原生 ARM64 验收仍使用 `windows-11-arm`。签名策略与工件格式不变。
 
-## 当前配置
+工作流不再查询自建运行器状态，也不再使用 `WINDOWS_RUNNER_STATUS_TOKEN`。下文保留旧运行器的运维与移除步骤；本次工作流变更不停止服务，也不移除注册。
+
+已触发运行和已有标签中的工作流不会自动采用新配置。重新运行旧发布仍使用原工作流。应从包含修复的新版本标签发布，不要移动已有标签。`release.yml` 的手动入口会升级版本并推送提交，不是重发旧版本的入口。
+## 历史配置
 
 - Runner 名称：`uniclipboard-windows-x64-01`
 - 专用标签：`uniclipboard-desktop-windows-x64`
@@ -43,7 +46,7 @@ sc.exe config actions.runner.UniClipboard-UniClipboard.uniclipboard-windows-x64-
 Start-Service 'actions.runner.UniClipboard-UniClipboard.uniclipboard-windows-x64-01'
 ```
 
-停用后，新的 Windows 构建会在前置检查中选择 GitHub 提供的机器。已经选中自建机器但尚未开始的任务不具备原生二次改派能力，因此应先确认没有正在等待或运行的任务再停用。
+包含新配置的 Windows 构建始终使用 GitHub 托管运行器。旧工作流中已经选中自建运行器的任务不能自动改派。停用前，先确认没有等待或运行中的旧任务。
 
 ## 永久移除
 
@@ -62,6 +65,6 @@ cd D:\actions-runner-uniclipboard
 ## 安全边界
 
 - 不把公开 PR 或其他不受信任来源的代码交给这台长期存在的机器。
-- `WINDOWS_RUNNER_STATUS_TOKEN` 只用于 GitHub 提供的前置选择任务，不会传入 Windows 构建。它至少需要目标仓库的管理只读权限；应优先使用只授予该仓库和该权限的专用凭据。
+- 当前工作流不使用运行器状态凭据。删除旧凭据前，先确认没有其他使用方。
 - 代码检出关闭凭据保留，避免仓库写入凭据留在自建机器的工作目录中。
-- 状态查询失败时默认使用 GitHub 提供的机器，不因凭据或接口故障阻塞构建。
+- 保留旧运行器注册不影响当前发布路由。

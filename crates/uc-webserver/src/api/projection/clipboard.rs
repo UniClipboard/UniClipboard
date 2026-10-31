@@ -36,7 +36,6 @@ impl IntoApiDto<EntryProjectionResponseDto> for HistoryEntrySummary {
             size_bytes: self.size_bytes,
             captured_at: self.captured_at_ms,
             content_type: self.content_type,
-            thumbnail_url: self.thumbnail_url,
             is_encrypted: self.is_encrypted,
             is_favorited: self.is_favorited,
             updated_at: self.updated_at_ms,
@@ -47,8 +46,6 @@ impl IntoApiDto<EntryProjectionResponseDto> for HistoryEntrySummary {
             link_urls: self.link_urls,
             link_domains: self.link_domains,
             file_sizes: self.file_sizes,
-            image_width: self.image_width,
-            image_height: self.image_height,
             is_directory: self.is_directory,
             payload_state: self.payload_state,
         }

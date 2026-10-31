@@ -2669,18 +2669,6 @@
           "id": {
             "type": "string"
           },
-          "imageHeight": {
-            "description": "Original image height in pixels (only for image entries).",
-            "format": "int32",
-            "nullable": true,
-            "type": "integer"
-          },
-          "imageWidth": {
-            "description": "Original image width in pixels (only for image entries).",
-            "format": "int32",
-            "nullable": true,
-            "type": "integer"
-          },
           "isDirectory": {
             "description": "Whether this file entry was captured as a directory. `true` lets the\nsender UI render status only (no byte percentage) for directory sends,\nwhose reverse progress aliases every member onto one id. Defaults to\n`false` for non-file entries and older responses that omit the field.",
             "type": "boolean"
@@ -2716,10 +2704,6 @@
           "sizeBytes": {
             "format": "int64",
             "type": "integer"
-          },
-          "thumbnailUrl": {
-            "nullable": true,
-            "type": "string"
           },
           "updatedAt": {
             "format": "int64",
@@ -10333,6 +10317,78 @@
         ]
       }
     },
+    "/clipboard/entries/{id}/thumbnail": {
+      "get": {
+        "description": "Serves a bounded thumbnail resolved by clipboard entry identifier. Binary endpoint: the\nresponse is `application/octet-stream` (the resolved MIME type when known),\nNOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints\nexempt). Returns 404 if the thumbnail is unknown, 500 on an internal\nresolution failure.",
+        "operationId": "getClipboardThumbnail",
+        "parameters": [
+          {
+            "description": "Clipboard entry identifier",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Raw thumbnail bytes"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Thumbnail not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Thumbnail temporarily unavailable; retry after unlock or load completes"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/entries/:id/thumbnail",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
     "/clipboard/outbound": {
       "get": {
         "description": "Every retained outbound snapshot, one per (entry, target device).",
@@ -10647,68 +10703,6 @@
           }
         ],
         "summary": "GET /clipboard/stats",
-        "tags": [
-          "clipboard"
-        ]
-      }
-    },
-    "/clipboard/thumbnails/{rep_id}": {
-      "get": {
-        "description": "Serves the raw bytes of a representation's thumbnail. Binary endpoint: the\nresponse is `application/octet-stream` (the resolved MIME type when known),\nNOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints\nexempt). Returns 404 if the thumbnail is unknown, 500 on an internal\nresolution failure.",
-        "operationId": "getClipboardThumbnail",
-        "parameters": [
-          {
-            "description": "Representation identifier",
-            "in": "path",
-            "name": "rep_id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "format": "binary",
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Raw thumbnail bytes"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Thumbnail not found"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Internal server error"
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "summary": "GET /clipboard/thumbnails/:rep_id",
         "tags": [
           "clipboard"
         ]

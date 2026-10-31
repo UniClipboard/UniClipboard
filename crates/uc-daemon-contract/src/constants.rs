@@ -166,8 +166,6 @@ pub mod http_route {
     pub const STORAGE_CLEAR_CACHE: &str = "/storage/clear-cache";
     /// GET /clipboard/blobs/:blob_id — serve raw blob binary content
     pub const CLIPBOARD_BLOBS: &str = "/clipboard/blobs";
-    /// GET /clipboard/thumbnails/:rep_id — serve raw thumbnail binary content
-    pub const CLIPBOARD_THUMBNAILS: &str = "/clipboard/thumbnails";
     /// GET /content-lock — whether history-derived content may be shown to GUI-class clients
     pub const CONTENT_LOCK: &str = "/content-lock";
     /// POST /content-lock/unlock — verify the passphrase and grant content access

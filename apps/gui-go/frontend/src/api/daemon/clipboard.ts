@@ -54,7 +54,6 @@ export interface ClipboardEntryDto {
    * `isFileContentType` / `isImageContentType` / `isRichTextContentType`.
    */
   contentType: string
-  thumbnailUrl: string | null
   isEncrypted: boolean
   isFavorited: boolean
   updatedAt: number
@@ -74,10 +73,6 @@ export interface ClipboardEntryDto {
   /** True when a file entry was captured as a directory. Absent on older daemon
    * responses (defaults to non-directory). */
   isDirectory?: boolean
-  /** Original image width in pixels (only for image entries). */
-  imageWidth?: number | null
-  /** Original image height in pixels (only for image entries). */
-  imageHeight?: number | null
   /**
    * `paste_rep` 的 payload_state, 仅在该 entry 已不可恢复时输出 (`"Lost"`)。
    * 其他状态字段缺省 (undefined)。前端按此把"内容已丢失"的 entry 灰显, 让

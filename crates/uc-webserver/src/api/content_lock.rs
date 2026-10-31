@@ -540,7 +540,7 @@ mod tests {
             "/clipboard/entries/{id}/resource",
             "/clipboard/entries/clear",
             "/clipboard/blobs/{blob_id}",
-            "/clipboard/thumbnails/{rep_id}",
+            "/clipboard/entries/{id}/thumbnail",
             "/clipboard/receives",
             "/clipboard/restore/{entry_id}",
             "/clipboard/stats",

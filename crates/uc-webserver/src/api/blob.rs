@@ -10,7 +10,7 @@ use axum::routing::get;
 use axum::Router;
 use uc_engine::{
     BlobResourceInput, EngineError, EngineErrorCategory, HistoryEntryInput, Operation,
-    OperationResult, ThumbnailResourceInput,
+    OperationResult,
 };
 
 use crate::api::dto::error::log_facade_failure;
@@ -19,7 +19,7 @@ use crate::api::server::DaemonApiState;
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
         .route("/clipboard/blobs/:blob_id", get(get_blob))
-        .route("/clipboard/thumbnails/:rep_id", get(get_thumbnail))
+        .route("/clipboard/entries/:id/thumbnail", get(get_thumbnail))
         .route("/clipboard/entries/:id/file", get(get_entry_file))
 }
 
@@ -87,20 +87,20 @@ async fn get_blob(
     }
 }
 
-/// GET /clipboard/thumbnails/:rep_id
+/// GET /clipboard/entries/:id/thumbnail
 ///
-/// Serves the raw bytes of a representation's thumbnail. Binary endpoint: the
+/// Serves a bounded thumbnail resolved by clipboard entry identifier. Binary endpoint: the
 /// response is `application/octet-stream` (the resolved MIME type when known),
 /// NOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints
 /// exempt). Returns 404 if the thumbnail is unknown, 500 on an internal
 /// resolution failure.
 #[utoipa::path(
     get,
-    path = "/clipboard/thumbnails/{rep_id}",
+    path = "/clipboard/entries/{id}/thumbnail",
     tag = "clipboard",
     operation_id = "getClipboardThumbnail",
     params(
-        ("rep_id" = String, Path, description = "Representation identifier"),
+        ("id" = String, Path, description = "Clipboard entry identifier"),
     ),
     responses(
         (
@@ -110,16 +110,17 @@ async fn get_blob(
             body = Vec<u8>,
         ),
         (status = 404, description = "Thumbnail not found", body = ApiErrorResponse),
+        (status = 503, description = "Thumbnail temporarily unavailable; retry after unlock or load completes", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn get_thumbnail(
     State(state): State<DaemonApiState>,
-    Path(rep_id): Path<String>,
+    Path(entry_id): Path<String>,
 ) -> impl IntoResponse {
     match state
-        .execute(Operation::ReadThumbnail(ThumbnailResourceInput {
-            representation_id: rep_id,
+        .execute(Operation::ReadEntryThumbnail(HistoryEntryInput {
+            entry_id,
         }))
         .await
     {
@@ -236,6 +237,16 @@ fn map_resource_error(
         .category()
     {
         EngineErrorCategory::NotFound => ("not_found", StatusCode::NOT_FOUND, not_found_message),
+        EngineErrorCategory::Unavailable => {
+            return crate::api::dto::error::log_engine_failure(
+                "resource",
+                op,
+                "unavailable",
+                crate::api::dto::error::ApiError::service_unavailable("resource unavailable"),
+                &error,
+            )
+            .into_response();
+        }
         _ => (
             "internal",
             StatusCode::INTERNAL_SERVER_ERROR,

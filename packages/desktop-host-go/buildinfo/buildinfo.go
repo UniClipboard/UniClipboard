@@ -6,4 +6,4 @@ package buildinfo
 const PackageVersion = "1.6.0-alpha.3"
 
 // DaemonAPIRevision is the daemon contract revision the daemon must report.
-const DaemonAPIRevision = "1"
+const DaemonAPIRevision = "2"

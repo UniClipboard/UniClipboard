@@ -47,10 +47,10 @@ export function projectClipboardEntry(dto: ClipboardEntryDto): ClipboardEntry {
   } else if (isImage) {
     type = 'image'
     content = {
-      thumbnail: dto.thumbnailUrl ?? null,
+      thumbnail: null,
       size: dto.sizeBytes,
-      width: dto.imageWidth ?? 0,
-      height: dto.imageHeight ?? 0,
+      width: 0,
+      height: 0,
     }
   } else if (isRichText) {
     type = 'richtext'

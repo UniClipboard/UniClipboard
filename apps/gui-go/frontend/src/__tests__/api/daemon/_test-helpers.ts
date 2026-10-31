@@ -146,7 +146,6 @@ export function makeEntryDto(overrides: Partial<ClipboardEntryDto> = {}): Clipbo
     sizeBytes: 13,
     capturedAt: 1710000000000,
     contentType: 'text/plain',
-    thumbnailUrl: null,
     isEncrypted: false,
     isFavorited: false,
     updatedAt: 1710000000000,

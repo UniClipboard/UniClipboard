@@ -855,7 +855,7 @@ fn daemon_binary_resource_handlers_delegate_to_engine() {
     }
     for engine_call in [
         "Operation::ReadBlob",
-        "Operation::ReadThumbnail",
+        "Operation::ReadEntryThumbnail",
         "Operation::ReadEntryFile",
     ] {
         assert!(

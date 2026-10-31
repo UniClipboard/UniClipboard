@@ -63,8 +63,8 @@ func main() {
 		if rejected != nil {
 			_ = rejected.Close()
 		}
-		if err == nil {
-			panic("legacy signature accepted with an untrusted key")
+		if err == nil || update.Classify(err) != update.FailureParse {
+			panic(fmt.Sprintf("expected signature rejection with an untrusted key, got: %v", err))
 		}
 		checks = append(checks, fmt.Sprintf("legacy %d-byte HTTP download, file verification, cleanup and untrusted-key rejection", size))
 	}

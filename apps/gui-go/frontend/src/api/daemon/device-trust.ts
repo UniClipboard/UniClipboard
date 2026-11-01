@@ -5,45 +5,19 @@ import {
   getDeviceGroupChoices as getDeviceGroupChoicesSdk,
 } from '@/api/generated/sdk.gen'
 import type {
-  DeviceCompatibilityDto,
   DeviceGroupChoiceIssueDto,
-  DeviceGroupChoiceOptionDto,
   DeviceGroupChoiceOutcomeDto,
   DeviceGroupChoiceResultDto,
   DeviceGroupChoicesDto,
-  DeviceGroupRelationshipDto,
-  DeviceMembershipDto,
-  DeviceReachabilityDto,
-  DeviceSyncRelationshipDto,
-  DeviceTrustActionDto,
-  DeviceTrustChangeDto,
-  DeviceTrustChoiceDto,
-  DeviceTrustImpactDto,
   DeviceTrustRelationshipDto,
   DeviceTrustSnapshotDto,
-  DeviceTrustUnavailableReasonDto,
-  InboundPairingDto,
   JoinSpaceResponse as GeneratedJoinSpaceResponse,
-  PendingInboundMemberDto,
 } from '@/api/generated/types.gen'
 
-export type DeviceMembership = DeviceMembershipDto
-export type DeviceReachability = DeviceReachabilityDto
-export type DeviceGroupRelationship = DeviceGroupRelationshipDto
-export type DeviceCompatibility = DeviceCompatibilityDto
-export type DeviceSyncRelationship = DeviceSyncRelationshipDto
-export type DeviceTrustChoice = DeviceTrustChoiceDto
-export type DeviceTrustAction = DeviceTrustActionDto
-export type DeviceTrustUnavailableReason = DeviceTrustUnavailableReasonDto
-export type DeviceTrustImpact = DeviceTrustImpactDto
-export type DeviceTrustChange = DeviceTrustChangeDto
 export type DeviceTrustRelationship = DeviceTrustRelationshipDto
-export type PendingInboundMember = PendingInboundMemberDto
-export type InboundPairing = InboundPairingDto
 export type DeviceTrustSnapshot = Omit<DeviceTrustSnapshotDto, 'currentJoin'> & {
   currentJoin?: JoinSpaceResponse | null
 }
-export type DeviceGroupChoice = DeviceGroupChoiceOptionDto
 export type DeviceGroupIssue = DeviceGroupChoiceIssueDto
 export type DeviceGroupChoices = Omit<DeviceGroupChoicesDto, 'deviceTrust'> & {
   deviceTrust: DeviceTrustSnapshot

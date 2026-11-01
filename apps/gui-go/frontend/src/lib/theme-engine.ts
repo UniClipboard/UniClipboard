@@ -849,24 +849,6 @@ export function applyThemeOverrides(
   }
 }
 
-/**
- * 获取某个 token 在(preset + override)叠加后的最终值。
- * 用于 UI 中的色块预览(picker 弹出前需要展示当前生效色)。
- */
-export function getEffectiveTokenValue(
-  themeName: string | null | undefined,
-  mode: ThemeMode,
-  token: OverridableToken,
-  overrides: Record<string, string> | null | undefined
-): string {
-  const override = overrides?.[token]
-  if (override) return override
-  const preset = getPresetOrDefault(themeName)
-  const tokens = mode === 'dark' ? preset.dark : preset.light
-  // OVERRIDABLE_TOKENS 的 key 都恰好是 ThemeTokens 上的字段名(camelCase 同 token name)。
-  return tokens[token as keyof ThemeTokens] as string
-}
-
 export function getThemePreviewDots(
   themeName: string | null | undefined,
   mode: ThemeMode

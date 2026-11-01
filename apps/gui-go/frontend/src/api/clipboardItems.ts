@@ -1,9 +1,6 @@
 import { daemonClient } from '@/api/daemon/client'
 import {
-  deleteClipboardEntry as daemonDeleteEntry,
-  restoreClipboardEntry as daemonRestoreEntry,
   toggleFavorite as daemonToggleFavorite,
-  clearClipboardHistory as daemonClearHistory,
   getClipboardStats as daemonGetStats,
   getClipboardEntryResource as daemonGetResource,
   getEntryDetail as daemonGetDetail,
@@ -204,32 +201,6 @@ export function getResourceImageUrl(resource: ClipboardEntryResource): string | 
   return null
 }
 
-/**
- * 删除剪贴板条目
- */
-export async function deleteClipboardItem(id: string): Promise<boolean> {
-  try {
-    await daemonDeleteEntry(id)
-    return true
-  } catch (error) {
-    log.error({ err: error }, '删除剪贴板条目失败')
-    throw error
-  }
-}
-
-/**
- * 清空所有剪贴板历史记录
- */
-export async function clearClipboardItems(): Promise<number> {
-  try {
-    const result = await daemonClearHistory()
-    return result.deletedCount
-  } catch (error) {
-    log.error({ err: error }, '清空剪贴板历史记录失败')
-    throw error
-  }
-}
-
 /** Retry daemon lifecycle readiness and deferred clipboard services. */
 export async function syncClipboardItems(): Promise<boolean> {
   try {
@@ -237,19 +208,6 @@ export async function syncClipboardItems(): Promise<boolean> {
     return true
   } catch (error) {
     log.error({ err: error }, '同步剪贴板内容失败')
-    throw error
-  }
-}
-
-/**
- * 复制剪贴板内容（恢复到系统剪贴板）
- */
-export async function copyClipboardItem(id: string): Promise<boolean> {
-  try {
-    await daemonRestoreEntry(id)
-    return true
-  } catch (error) {
-    log.error({ err: error }, '复制剪贴板记录失败')
     throw error
   }
 }
@@ -278,20 +236,6 @@ export async function unfavoriteClipboardItem(id: string): Promise<boolean> {
     log.error({ err: error }, '取消收藏剪贴板条目失败')
     throw error
   }
-}
-
-/**
- * Copy a file entry to the system clipboard via the daemon restore endpoint.
- *
- * Routes through the typed `restoreClipboardEntry` wrapper, which now reads the
- * enveloped `{ data, ts }` restore response (ADR-008 §0.1) and discards the
- * body. The success body is irrelevant here; the 410 `PAYLOAD_UNAVAILABLE`
- * error (whose `entry_id`/`rep_id`/`state` context lives in
- * `ApiErrorResponse.details` per §0.3) still propagates as a `DaemonApiError`
- * so callers can render the "content unavailable" UX.
- */
-export async function copyFileToClipboard(entryId: string): Promise<void> {
-  await daemonRestoreEntry(entryId)
 }
 
 /**

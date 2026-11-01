@@ -11,11 +11,6 @@ export const NO_TAG_COLORS: TagColors = {}
  * that show tags provide it; without a provider every tag is gray. */
 export const TagColorsContext = createContext<TagColors>(NO_TAG_COLORS)
 
-/** The tint of the tag `tagId`, from the nearest {@link TagColorsContext}. */
-export function useTagTint(tagId: string): ReturnType<typeof tagTint> {
-  return tagTint(use(TagColorsContext)[tagId])
-}
-
 /** A lookup of tag tints, for components that tint many tags. */
 export function useTagTints(): (tagId: string) => ReturnType<typeof tagTint> {
   const colors = use(TagColorsContext)

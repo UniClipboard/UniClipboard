@@ -59,7 +59,11 @@ def main():
     version = subprocess.check_output([str(collector), '--version'], text=True).strip()
     if version != 'otelcol-contrib version ' + VERSION:
         parser.error('requires Collector Contrib ' + VERSION)
-    receipt = {'status': 'started', 'zipSha256': hashlib.sha256(args.zip.read_bytes()).hexdigest(),
+    digest = hashlib.sha256()
+    with args.zip.open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    receipt = {'status': 'started', 'zipSha256': digest.hexdigest(),
                'collectorVersion': VERSION, 'duplicateAllowed': args.allow_duplicate, 'duplicateRecords': None,
                'duplicateReason': 'backend deduplication is not observable through OTLP', 'expected': {}}
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
@@ -69,6 +73,8 @@ def main():
         with tempfile.TemporaryDirectory(prefix='uc-otel-import-') as temporary:
             root = Path(temporary)
             with zipfile.ZipFile(args.zip) as archive:
+                if archive.getinfo('otel/manifest.json').file_size > 256 * 1024:
+                    raise ValueError('OTLP manifest exceeds quota')
                 manifest = json.loads(archive.read('otel/manifest.json'))
                 expected, receivers, pipelines = {}, {}, {}
                 for signal, (counter, *_) in SIGNALS.items():
@@ -77,6 +83,9 @@ def main():
                     if declared is None:
                         expected[signal] = 0
                         continue
+                    info = archive.getinfo(name)
+                    if info.file_size > 8 * 1024 * 1024 or info.file_size != declared['bytes']:
+                        raise ValueError(f'{signal} size exceeds quota or manifest')
                     data = archive.read(name)
                     if len(data) != declared['bytes'] or hashlib.sha256(data).hexdigest() != declared['sha256']:
                         raise ValueError(f'{signal} hash or length mismatch')

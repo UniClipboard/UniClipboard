@@ -5,13 +5,15 @@
 文件按信号保存完整 OTLP JSON 请求，每行一个请求。空文件表示没有该信号。
 用户端无需安装 Collector。导出不会上传数据。
 
-从解压目录运行一次性导入器。参数中的 ZIP 为原诊断包：
+从可信源码工作区运行一次性导入器。参数中的 ZIP 为原诊断包：
 
 ```bash
-OTEL_IMPORT_ENDPOINT=http://127.0.0.1:4318 python3 import/import.py diagnostics.zip --collector /path/to/otelcol-contrib --receipt import-receipt.json
+OTEL_IMPORT_ENDPOINT=http://127.0.0.1:4318 python3 packages/desktop-host-go/diaglogs/import/import.py diagnostics.zip --collector /path/to/otelcol-contrib --receipt import-receipt.json
 ```
 
-导入器校验固定版本、文件大小和 SHA-256。
+客户提供的 ZIP 属于外部输入。包内脚本仅作版本参考。
+运行包内脚本前，先核对它与可信源码副本的 SHA-256 一致。
+导入器校验固定版本、文件大小、容量上限和 SHA-256。
 导入器使用临时配置读取每个文件一次。
 接收和发送计数均与 ZIP 一致后，导入器停止 Collector。
 发送失败或超时会返回失败，并保留计数。

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 
+UNKNOWN_IDENTITY = object()
 ROOT = Path(__file__).resolve().parents[4]
 spec = importlib.util.spec_from_file_location('isolated_backend', ROOT / 'apps/gui-go/frontend/e2e/tester-army/backend.py')
 module = importlib.util.module_from_spec(spec)
@@ -19,7 +20,19 @@ spec.loader.exec_module(module)
 
 def identity(pid):
     result = subprocess.run(['ps', '-p', str(pid), '-o', 'lstart=,comm='], capture_output=True, text=True, timeout=5)
-    return result.stdout.strip() if result.returncode == 0 else None
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    if result.returncode == 1 and not result.stdout.strip() and not result.stderr.strip():
+        return None
+    raise OSError('native process identity probe failed')
+
+
+def cleanup_identity(pid):
+    try:
+        return identity(pid)
+    except (subprocess.TimeoutExpired, OSError):
+        # Unknown ownership must not authorize signaling or private-home removal.
+        return UNKNOWN_IDENTITY
 
 
 def emit(value):
@@ -146,11 +159,11 @@ def run():
                 except subprocess.TimeoutExpired:
                     host.kill()
                     host.wait(timeout=10)
-        if ui_pid and ui_identity and identity(ui_pid) == ui_identity:
+        if ui_pid and ui_identity and cleanup_identity(ui_pid) == ui_identity:
             deadline = time.monotonic() + 10
-            while identity(ui_pid) == ui_identity and time.monotonic() < deadline:
+            while cleanup_identity(ui_pid) == ui_identity and time.monotonic() < deadline:
                 time.sleep(.1)
-            if identity(ui_pid) == ui_identity:
+            if cleanup_identity(ui_pid) == ui_identity:
                 forced = True
                 try:
                     os.kill(ui_pid, signal.SIGKILL)
@@ -158,9 +171,11 @@ def run():
                     # The owned UI exited after the identity check.
                     pass
                 deadline = time.monotonic() + 10
-                while identity(ui_pid) == ui_identity and time.monotonic() < deadline:
+                while cleanup_identity(ui_pid) == ui_identity and time.monotonic() < deadline:
                     time.sleep(.1)
-        ui_exited = not ui_pid or (ui_identity is not None and identity(ui_pid) != ui_identity)
+        ui_state = cleanup_identity(ui_pid) if ui_pid else None
+        ui_exited = not ui_pid or (ui_identity is not None and ui_state is not UNKNOWN_IDENTITY
+                                   and ui_state != ui_identity)
         acknowledged = bool(evidence and evidence.exists() and any(
             row.get('step') == 'control-exit' and row.get('ok') is True
             for row in evidence_records(evidence)))
@@ -183,9 +198,12 @@ def run():
                 forced = True
                 backend.process.terminate()
                 backend.process.wait(timeout=30)
-            cleanup = {'sandboxPreserved': True, 'homeRemoved': False, 'daemonExited': None}
+            cleanup = {'sandboxPreserved': True, 'homeRemoved': False,
+                       'daemonExited': backend.process is not None and backend.process.poll() is not None,
+                       'daemonExitCode': backend.process.returncode if backend.process else None}
         cleanup.update(phase='cleanup', hostExitCode=host.returncode if host else None,
-                       uiExited=ui_exited, controlExitAcknowledged=acknowledged,
+                       uiExited=ui_exited, uiIdentityKnown=ui_state is not UNKNOWN_IDENTITY,
+                       controlExitAcknowledged=acknowledged,
                        forced=forced or cleanup.get('forced', False))
         if 'request' in locals():
             cleanup.update(runId=request.get('runId'), attemptId=request.get('attemptId'))

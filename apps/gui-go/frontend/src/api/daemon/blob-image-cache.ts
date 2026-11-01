@@ -1,4 +1,7 @@
-import { HISTORY_WINDOW_CAPACITY } from '@/lib/history-window-policy'
+import {
+  HISTORY_IMAGE_WINDOW_CAPACITY,
+  HISTORY_IMAGE_SELECTED_CAPACITY,
+} from '@/lib/history-window-policy'
 import { createLogger } from '@/lib/logger'
 import { daemonClient } from './client'
 import { DaemonApiError, DaemonErrorCode } from './errors'
@@ -8,9 +11,26 @@ const log = createLogger('blob-image-cache')
 /**
  * Upper bound on cached object URLs. Each entry pins the decoded image bytes in
  * memory until revoked, so the cache is LRU-bounded; evicting an entry revokes
- * its object URL. Sized for a virtualized history list's working set.
+ * its object URL. The history window has 50 slots and the selected detail has one reservation.
  */
-const MAX_ENTRIES = HISTORY_WINDOW_CAPACITY
+const MAX_ENTRIES = HISTORY_IMAGE_WINDOW_CAPACITY
+let selectedPath: string | null = null
+let selectedOwner: symbol | null = null
+
+/** Reserve exactly one URL for the inspected entry, independently of list leases. */
+export function reserveSelectedBlobImage(path: string | null): () => void {
+  const owner = Symbol()
+  const previous = selectedPath
+  selectedOwner = owner
+  selectedPath = path
+  if (previous && previous !== path) releaseUnowned(previous)
+  return () => {
+    if (selectedOwner !== owner) return
+    selectedOwner = null
+    selectedPath = null
+    if (path) releaseUnowned(path)
+  }
+}
 
 /** path -> object URL. Insertion order is the LRU order (Map preserves it). */
 const cache = new Map<string, string>()
@@ -39,7 +59,11 @@ export function releaseBlobImage(path: string, lease: ImageLease = 'visible'): v
     return
   }
   owners.delete(path)
-  if (consumers.has(path) || buffers.has(path)) return
+  releaseUnowned(path)
+}
+
+function releaseUnowned(path: string): void {
+  if (consumers.has(path) || buffers.has(path) || selectedPath === path) return
   invalidateBlobImageObjectUrl(path)
   // Detach pending work so it cannot populate the cache after its last viewer leaves.
   inFlight.get(path)?.controller.abort()
@@ -56,8 +80,13 @@ async function fetchAndCache(
     const blob = await daemonClient.fetchBlob(path, { signal })
     if (generation !== cacheGeneration || !active()) return null
     // Release the oldest URL before allocating another one at capacity.
-    if (cache.size >= MAX_ENTRIES && !cache.has(path)) {
-      const oldest = [...cache.keys()].find(key => !consumers.has(key))
+    const reserved = selectedPath !== null && cache.has(selectedPath) ? 1 : 0
+    const full =
+      path === selectedPath
+        ? cache.size >= MAX_ENTRIES + HISTORY_IMAGE_SELECTED_CAPACITY
+        : cache.size - reserved >= MAX_ENTRIES
+    if (full && !cache.has(path)) {
+      const oldest = [...cache.keys()].find(key => key !== selectedPath && !consumers.has(key))
       if (oldest === undefined)
         throw new DaemonApiError(DaemonErrorCode.SERVICE_UNAVAILABLE, 'Image cache is in use')
       invalidateBlobImageObjectUrl(oldest)

@@ -1,4 +1,6 @@
+import { useLayoutEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { reserveSelectedBlobImage } from '@/api/daemon/blob-image-cache'
 import { PreviewContent } from '@/components/clipboard/ClipboardPreview'
 import { useHistoryImageActions } from '@/components/history/detail/useHistoryImageActions'
 import { describeSource } from '@/components/history/history-card/history-card-utils'
@@ -63,6 +65,7 @@ export function HistoryKitDetail({
   const { cancelling, cancel } = useCancelEntryTransfer(item?.id, state.transfer)
   const imageDescriptor =
     state.preview?.contentType === 'image' ? (state.preview.imageBlobPath ?? null) : null
+  useLayoutEffect(() => reserveSelectedBlobImage(imageDescriptor), [imageDescriptor])
   const imageActions = useHistoryImageActions(
     item?.id,
     imageDescriptor,

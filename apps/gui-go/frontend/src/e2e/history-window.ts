@@ -56,7 +56,8 @@ export async function runHistoryWindowScenario({
       Number(document.documentElement.dataset.historyWindowPeakCount ?? 0)
     )
     maxImages = Math.max(maxImages, cache.historyImageCacheSize())
-    if (maxRecords > 50 || maxImages > 50) throw new Error('History cache exceeded 50')
+    if (maxRecords > 50 || maxImages > 51)
+      throw new Error('History exceeded 50 records or 51 image URLs')
   }
   const visible = () => {
     const bounds = scroller.getBoundingClientRect()
@@ -77,23 +78,35 @@ export async function runHistoryWindowScenario({
       slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     }
     await waitFor(
-      'all 50 records fit',
-      () => visible().length === 50 && scroller.scrollHeight <= scroller.clientHeight + 1
+      'large viewport records loaded',
+      () => Number(document.documentElement.dataset.historyWindowCount) === 50
     )
+    const nativeOverflow = scroller.scrollHeight > scroller.clientHeight + 1
     const offsets: number[] = []
     for (const direction of [1, -1]) {
       for (let step = 0; step < 9; step++) {
         const before = Number(document.documentElement.dataset.historyWindowOffset)
         const target = Math.max(0, Math.min(70, before + direction * 10))
-        // Exercise the ordinary wheel path even though scrollTop cannot change.
-        scroller.dispatchEvent(
-          new WheelEvent('wheel', { deltaY: direction * 100, bubbles: true, cancelable: true })
-        )
-        await waitFor(
-          'large viewport navigation',
-          () =>
-            Number(document.documentElement.dataset.historyWindowOffset) === target &&
-            visible().length === 50
+        // Synthetic wheel events need an explicit native-position update when overflow exists.
+        const wheel = new WheelEvent('wheel', {
+          deltaY: direction * 100,
+          bubbles: true,
+          cancelable: true,
+        })
+        scroller.dispatchEvent(wheel)
+        if (nativeOverflow) {
+          if (wheel.defaultPrevented)
+            throw new Error('Overflow wheel also triggered explicit navigation')
+          scroller.scrollTop = direction > 0 ? scroller.scrollHeight - scroller.clientHeight : 0
+        }
+        await waitFor('large viewport navigation', () =>
+          nativeOverflow
+            ? visible().length > 0 &&
+              (direction > 0
+                ? Number(document.documentElement.dataset.historyWindowOffset) > 0
+                : Number(document.documentElement.dataset.historyWindowOffset) === 0)
+            : Number(document.documentElement.dataset.historyWindowOffset) === target &&
+              visible().length === 50
         )
         await sleep(850)
         check()
@@ -105,12 +118,21 @@ export async function runHistoryWindowScenario({
       ['PageDown', 10],
       ['PageUp', 0],
     ] as const) {
-      grid.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
-      await waitFor(
-        'large viewport keyboard navigation',
-        () =>
-          Number(document.documentElement.dataset.historyWindowOffset) === offset &&
-          visible().length === 50
+      const keyboard = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      grid.dispatchEvent(keyboard)
+      if (nativeOverflow) {
+        if (keyboard.defaultPrevented)
+          throw new Error('Overflow Page key also triggered explicit navigation')
+        scroller.scrollTop = key === 'PageDown' ? scroller.scrollHeight - scroller.clientHeight : 0
+      }
+      await waitFor('large viewport keyboard navigation', () =>
+        nativeOverflow
+          ? visible().length > 0 &&
+            (offset > 0
+              ? Number(document.documentElement.dataset.historyWindowOffset) > 0
+              : Number(document.documentElement.dataset.historyWindowOffset) === 0)
+          : Number(document.documentElement.dataset.historyWindowOffset) === offset &&
+            visible().length === 50
       )
       check()
     }
@@ -125,7 +147,7 @@ export async function runHistoryWindowScenario({
     )
     check()
     const passed =
-      Math.max(...offsets) === 70 && offsets.at(-1) === 0 && maxRecords === 50 && maxImages > 0
+      Math.max(...offsets) > 0 && offsets.at(-1) === 0 && maxRecords === 50 && maxImages > 0
     await record('window-large-viewport', passed, {
       offsets,
       maxRecords,
@@ -136,7 +158,9 @@ export async function runHistoryWindowScenario({
       innerWidth,
       innerHeight,
       visibility: document.visibilityState,
-      input: 'scripted wheel and PageUp/PageDown events in native WebView',
+      nativeOverflow,
+      input:
+        'scripted wheel and PageUp/PageDown; native scroll position advances only with overflow',
     })
     if (!passed) throw new Error('Large viewport failed bidirectional navigation')
     await control('exit')
@@ -155,7 +179,10 @@ export async function runHistoryWindowScenario({
     await waitFor(
       'idle thumbnails ready',
       () =>
-        cache.historyImageCachePaths().filter(path => path.endsWith('/thumbnail')).length === count,
+        cache.historyImageCachePaths().filter(path => path.endsWith('/thumbnail')).length >=
+          count &&
+        cache.historyImageCachePaths().filter(path => path.endsWith('/thumbnail')).length <=
+          count + 1,
       15000
     )
     await record('window-image-readiness', true, {
@@ -267,6 +294,71 @@ export async function runHistoryWindowScenario({
 
     return { insertDelta, deleteDelta }
   }
+  // Exercise continuous input without a settle loop between movements. Sampling
+  // every frame catches both intermediate window publication and thumb reversal.
+  await sleep(2000)
+  const initialRow = visible()[0]
+  initialRow.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }))
+  if (configuration.grid) initialRow.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+  const selectedId = initialRow.dataset.itemId!
+  await waitFor(
+    'selected detail before fast scroll',
+    () =>
+      document.querySelector<HTMLElement>('[data-testid="clipboard-detail"]')?.dataset.entryId ===
+      selectedId
+  )
+  await sleep(100)
+  const samples: Array<{ ratio: number; absolute: number | null; total: number; offset: number }> =
+    []
+  let selectedEvicted = false
+  for (let step = 0; step < 90; step++) {
+    scroller.scrollTop += Math.max(1, (scroller.scrollHeight - scroller.clientHeight) / 90)
+    await sleep(16)
+    check()
+    const ratio = scroller.scrollTop / Math.max(1, scroller.scrollHeight - scroller.clientHeight)
+    const previous = Math.max(0, ...samples.map(sample => sample.ratio))
+    if (ratio + 0.01 < previous)
+      throw new Error(`Fast scroll thumb reversed: ${previous} -> ${ratio}`)
+    const rows = visible()
+    const absolute = rows.length ? configuration.ids.indexOf(rows[0].dataset.itemId!) : null
+    const total = Number(document.documentElement.dataset.historyWindowTotal)
+    if (absolute !== null && absolute >= 0) {
+      const tolerance = Math.max(0.04, rows.length / total + 0.03)
+      if (Math.abs(ratio - absolute / total) > tolerance)
+        throw new Error(
+          `Fast scroll position disagrees with result rank: ${ratio}, ${absolute}/${total}`
+        )
+    }
+    const ids = JSON.parse(document.documentElement.dataset.historyWindowIds ?? '[]') as string[]
+    selectedEvicted ||= !ids.includes(selectedId)
+    const detailId = document.querySelector<HTMLElement>('[data-testid="clipboard-detail"]')
+      ?.dataset.entryId
+    if (detailId !== selectedId)
+      throw new Error('Selection/detail changed during fast scroll eviction')
+    samples.push({
+      ratio,
+      absolute,
+      total,
+      offset: Number(document.documentElement.dataset.historyWindowOffset),
+    })
+  }
+  await waitFor('fast scroll rows loaded', () => visible().length > 0)
+  const fastPassed =
+    selectedEvicted && samples.filter(sample => sample.absolute !== null).length >= 10
+  await record('window-fast-scroll', fastPassed, {
+    samples,
+    selectedId,
+    selectedEvicted,
+    maxRecords,
+    maxImages,
+  })
+  if (!fastPassed) throw new Error('Fast scroll did not exercise selected-record eviction')
+  scroller.scrollTop = 0
+  await waitFor(
+    'return to head after fast scroll',
+    () => Number(document.documentElement.dataset.historyWindowOffset) === 0 && visible().length > 0
+  )
+
   let deepMutation: { insertDelta: number; deleteDelta: number } | null = null
   const offsets: number[] = []
   const positions: number[] = []
@@ -305,7 +397,11 @@ export async function runHistoryWindowScenario({
   const ids = new Set<string>(JSON.parse(document.documentElement.dataset.historyWindowIds ?? '[]'))
   const obsolete = cache.historyImageCachePaths().filter(path => {
     const match = path.match(/entries\/([^/]+)\/thumbnail/)
-    return match && !ids.has(decodeURIComponent(match[1]))
+    return (
+      match &&
+      !ids.has(decodeURIComponent(match[1])) &&
+      decodeURIComponent(match[1]) !== document.documentElement.dataset.historySelectedId
+    )
   })
   if (obsolete.length) throw new Error('Evicted record retained thumbnail URL')
   const { insertDelta, deleteDelta } = await mutate()

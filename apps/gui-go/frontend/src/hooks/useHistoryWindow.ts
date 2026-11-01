@@ -17,6 +17,15 @@ import {
 import { createLogger } from '@/lib/logger'
 import type { SearchQueryFailure } from '@/lib/search-query-failure'
 
+type RecordWindow = {
+  offset: number
+  items: DisplayClipboardItem[]
+  modelKey: string
+  reveal?: { id: string }
+  targetIndex?: number
+}
+
+const EMPTY_ITEMS: DisplayClipboardItem[] = []
 const log = createLogger('history-window')
 
 function bufferedRange(start: number, end: number) {
@@ -35,13 +44,23 @@ export function useHistoryWindow(
   snapshot: HistoryLiveSnapshot | null = null
 ) {
   const { encryptionReady, isLocked } = useEncryptionSessionState()
-  const [window, setWindow] = useState<{ offset: number; items: DisplayClipboardItem[] }>(() =>
+  const modelKey = JSON.stringify(model)
+  const [window, setWindow] = useState<RecordWindow>(() =>
     snapshot && JSON.stringify(snapshot.model) === JSON.stringify(model) && !model.query.trim()
-      ? { offset: snapshot.offset ?? 0, items: snapshot.items.slice(0, HISTORY_WINDOW_CAPACITY) }
-      : { offset: 0, items: [] }
+      ? {
+          offset: snapshot.offset ?? 0,
+          items: snapshot.items.slice(0, HISTORY_WINDOW_CAPACITY),
+          modelKey,
+        }
+      : { offset: 0, items: [], modelKey }
   )
-  const [total, setTotal] = useState<number | null>(null)
+  const [total, setTotal] = useState<number | null>(() =>
+    snapshot && JSON.stringify(snapshot.model) === modelKey && !model.query.trim()
+      ? snapshot.total
+      : null
+  )
   const [loading, setLoading] = useState(true)
+  const [headRevision, setHeadRevision] = useState(0)
   const [failure, setFailure] = useState<SearchQueryFailure | null>(null)
   const [state, setState] = useState<'ready' | 'degraded'>('ready')
   const current = useRef(window)
@@ -52,6 +71,7 @@ export function useHistoryWindow(
   const previousModel = useRef(model)
   const request = useRef<AbortController | null>(null)
   const refreshing = useRef(false)
+  const requestedRange = useRef<{ offset: number; count: number; locating?: boolean } | null>(null)
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleMode = useRef(false)
   const visible = useRef({ start: 0, end: 29 })
@@ -60,38 +80,35 @@ export function useHistoryWindow(
     totalRef.current = total
   }, [total])
   const load = useCallback(
-    async (offset: number, count: number, refresh = false) => {
+    async (
+      offset: number,
+      count: number,
+      refresh = false,
+      revealIndex?: number,
+      cursor?: { id: string; index: number; delta: number }
+    ) => {
       // Superseding work inherits refresh ownership until an authoritative read completes.
       refresh = refresh || refreshing.current
       refreshing.current = refresh
       request.current?.abort()
       const controller = new AbortController()
       request.current = controller
-      const end = offset + Math.min(HISTORY_WINDOW_CAPACITY, count)
+      offset = Math.max(0, offset)
+      count = Math.max(0, Math.min(HISTORY_WINDOW_CAPACITY, count))
+      requestedRange.current = { offset, count, locating: cursor !== undefined }
+      let end = offset + count
       const previous = current.current
-      const kept = refresh
+      let kept = refresh
         ? []
         : previous.items.filter(
             (_, i) => previous.offset + i >= offset && previous.offset + i < end
           )
-      const keptOffset = Math.max(offset, previous.offset)
-      const retained = { offset: kept.length ? keptOffset : offset, items: kept }
-      if (!refresh) {
-        current.current = retained
-        setWindow(retained)
-      }
+      let keptOffset = Math.max(offset, previous.offset)
       setLoading(true)
       setFailure(null)
       try {
-        const parts: Array<{ offset: number; items: DisplayClipboardItem[] }> = []
-        if (kept.length) parts.push({ offset: keptOffset, items: kept })
-        const gaps = kept.length
-          ? [
-              [offset, keptOffset],
-              [keptOffset + kept.length, end],
-            ]
-          : [[offset, end]]
         const readPage = async (start: number, stop: number) => {
+          if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError')
           const response = (
             await querySearch(
               { ...liveModelToSearchParams(model), offset: start, limit: stop - start },
@@ -105,6 +122,39 @@ export function useHistoryWindow(
             state: response.state,
           }
         }
+        if (cursor) {
+          // An evicted cursor's last known rank may have changed without any
+          // overlap between windows. Probe that rank, then scan bounded pages
+          // only when necessary; never publish these probes as record windows.
+          const first = Math.max(0, cursor.index - BUFFER)
+          let page = await readPage(first, first + HISTORY_WINDOW_CAPACITY)
+          let found = page.items.findIndex(item => item.id === cursor.id)
+          for (let scan = 0; found < 0 && scan < page.total; scan += HISTORY_WINDOW_CAPACITY) {
+            if (controller.signal.aborted) return
+            if (scan === first) continue
+            page = await readPage(scan, scan + HISTORY_WINDOW_CAPACITY)
+            found = page.items.findIndex(item => item.id === cursor.id)
+          }
+          if (controller.signal.aborted || found < 0) return
+          revealIndex = Math.max(
+            0,
+            Math.min(Math.max(0, page.total - 1), page.offset + found + cursor.delta)
+          )
+          offset = Math.max(0, revealIndex - BUFFER)
+          end = offset + count
+          kept = []
+          keptOffset = offset
+          refreshing.current = true
+          requestedRange.current = { offset, count, locating: cursor !== undefined }
+        }
+        const parts: Array<{ offset: number; items: DisplayClipboardItem[] }> = []
+        if (kept.length) parts.push({ offset: keptOffset, items: kept })
+        const gaps = kept.length
+          ? [
+              [offset, keptOffset],
+              [keptOffset + kept.length, end],
+            ]
+          : [[offset, end]]
         const pages = await Promise.all(
           gaps.filter(([start, stop]) => stop > start).map(([start, stop]) => readPage(start, stop))
         )
@@ -123,19 +173,25 @@ export function useHistoryWindow(
         }
         parts.push(...pages)
         parts.sort((a, b) => a.offset - b.offset)
-        const next = {
+        const items = parts.flatMap(part => part.items).slice(0, HISTORY_WINDOW_CAPACITY)
+        const target = revealIndex === undefined ? null : items[revealIndex - actualOffset]
+        const next: RecordWindow = {
+          modelKey,
           offset: actualOffset,
-          items: parts.flatMap(part => part.items).slice(0, HISTORY_WINDOW_CAPACITY),
+          items,
+          reveal: target ? { id: target.id } : undefined,
+          targetIndex: revealIndex,
         }
         current.current = next
         setWindow(next)
+        return next
       } catch (error) {
         if (controller.signal.aborted) return
         if (
           error instanceof DaemonApiError &&
           error.code === DaemonErrorCode.ENCRYPTION_NOT_READY
         ) {
-          setWindow({ offset: 0, items: [] })
+          setWindow({ offset: 0, items: [], modelKey })
           setTotal(null)
           return
         }
@@ -158,22 +214,24 @@ export function useHistoryWindow(
         if (request.current === controller) {
           refreshing.current = false
           request.current = null
+          requestedRange.current = null
           setLoading(false)
         }
       }
     },
-    [model]
+    [model, modelKey]
   )
   useEffect(() => {
     request.current?.abort()
     if (previousModel.current !== model) {
       previousModel.current = model
-      current.current = { offset: 0, items: [] }
+      current.current = { offset: 0, items: [], modelKey }
       setWindow(current.current)
+      setTotal(null)
     }
     if (!encryptionReady) {
       if (isLocked) {
-        setWindow({ offset: 0, items: [] })
+        setWindow({ offset: 0, items: [], modelKey })
         setTotal(null)
       }
       return
@@ -204,17 +262,27 @@ export function useHistoryWindow(
         Math.max(0, (totalRef.current ?? Infinity) - offset)
       )
       const cached = current.current
+      const pending = requestedRange.current
+      const samePending =
+        !pending?.locating && pending?.offset === offset && pending.count === count
+      const superseding = scrolling && pending !== null && !samePending
       if (
-        !loading &&
+        (!loading || scrolling) &&
         !idleMode.current &&
         (absolute.start < cached.offset + BUFFER ||
-          absolute.end >= cached.offset + cached.items.length - BUFFER)
+          absolute.end >= cached.offset + cached.items.length - BUFFER ||
+          superseding)
       ) {
-        if (offset !== cached.offset || count > cached.items.length) void load(offset, count)
+        if (
+          !samePending &&
+          (offset !== cached.offset || count > cached.items.length || superseding)
+        )
+          void load(offset, count)
       }
       if (idle.current) return
       idle.current = setTimeout(() => {
         idle.current = null
+        if (requestedRange.current?.locating) return
         idleMode.current = true
         const range = visible.current
         const { offset: first, count: bufferedCount } = bufferedRange(range.start, range.end)
@@ -268,8 +336,59 @@ export function useHistoryWindow(
     onRemoteInvalidate: refetch,
     onDeleted: refetch,
   })
+  const ensureItem = useCallback(
+    async (index: number) => {
+      index = Math.max(0, Math.min(Math.max(0, (totalRef.current ?? 1) - 1), index))
+      const cached = current.current
+      const item = cached.items[index - cached.offset]
+      if (item && !refreshing.current) {
+        const next = { ...cached, reveal: { id: item.id } }
+        current.current = next
+        setWindow(next)
+        return item
+      }
+      if (idle.current) clearTimeout(idle.current)
+      idle.current = null
+      idleMode.current = false
+      const next = await load(Math.max(0, index - BUFFER), HISTORY_WINDOW_CAPACITY, false, index)
+      return next?.items[index - next.offset] ?? null
+    },
+    [load]
+  )
+  const ensureNeighbor = useCallback(
+    async (id: string, index: number, delta: number) => {
+      if (idle.current) clearTimeout(idle.current)
+      idle.current = null
+      idleMode.current = false
+      const next = await load(
+        Math.max(0, index - BUFFER),
+        HISTORY_WINDOW_CAPACITY,
+        true,
+        undefined,
+        { id, index, delta }
+      )
+      if (!next || next.targetIndex === undefined) return null
+      const item = next.items[next.targetIndex - next.offset]
+      return item ? { item, index: next.targetIndex } : null
+    },
+    [load]
+  )
   return {
-    items: window.items,
+    items: window.modelKey === modelKey ? window.items : EMPTY_ITEMS,
+    resultsReady: window.modelKey === modelKey && total !== null,
+    resultKey: modelKey,
+    isAtTop: () => current.current.offset === 0 && visible.current.start === 0,
+    ensureItem,
+    ensureNeighbor,
+    reveal: window.modelKey === modelKey ? window.reveal : undefined,
+    headRevision,
+    moveToTop: async () => {
+      const next = await load(0, HISTORY_WINDOW_CAPACITY, true)
+      if (next) {
+        visible.current = { start: 0, end: Math.min(29, Math.max(0, next.items.length - 1)) }
+        setHeadRevision(revision => revision + 1)
+      }
+    },
     offset: window.offset,
     total,
     isLoading: encryptionReady && loading,
@@ -282,7 +401,12 @@ export function useHistoryWindow(
     growWindow: () => {
       if (!loading) void load(window.offset + 10, HISTORY_WINDOW_CAPACITY)
     },
-    removeItem: (id: string) =>
-      setWindow(value => ({ ...value, items: value.items.filter(item => item.id !== id) })),
+    removeItem: (id: string) => {
+      setWindow(value => {
+        const next = { ...value, items: value.items.filter(item => item.id !== id) }
+        current.current = next
+        return next
+      })
+    },
   }
 }

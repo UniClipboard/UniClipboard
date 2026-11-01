@@ -10,14 +10,20 @@ import {
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GridItem, GroupedGridProps, ListGroup } from '@/ui-kit/contract'
-import { useWindowedScroll, revealWindowItem } from '@/ui-kit/use-windowed-scroll'
+import {
+  useWindowedScroll,
+  revealWindowItem,
+  moveWindowSelection,
+} from '@/ui-kit/use-windowed-scroll'
 import { MenuPanel } from './menus'
 import { useAnchoredSelection } from './selection'
 
 const GAP = 14
 const PADDING = 16
 
-type Row = { kind: 'header'; group: ListGroup } | { kind: 'cards'; items: GridItem[] }
+type Row =
+  | { kind: 'header'; group: ListGroup }
+  | { kind: 'cards'; items: GridItem[]; leading?: number }
 
 function hostOf(text: string | undefined) {
   try {
@@ -73,10 +79,10 @@ export function GroupedGrid({
   const { rows, rowOfItem, sections } = useMemo(() => {
     const rows: Row[] = []
     const rowOfItem: number[] = []
-    const sections: Array<{ group: ListGroup; items: GridItem[] }> = []
+    const sections: Array<{ group: ListGroup; items: GridItem[]; start: number }> = []
     let start = 0
     for (const group of groups) {
-      sections.push({ group, items: items.slice(start, start + group.count) })
+      sections.push({ group, items: items.slice(start, start + group.count), start })
       rows.push({ kind: 'header', group })
       for (let i = start; i < start + group.count; i += columns) {
         const chunk = items.slice(i, Math.min(i + columns, start + group.count))
@@ -88,11 +94,19 @@ export function GroupedGrid({
     return { rows, rowOfItem, sections }
   }, [groups, items, columns])
 
-  useWindowedScroll(gridRef, items, viewport)
+  const spacing = useWindowedScroll(gridRef, items, viewport, {
+    columns,
+    rowHeightRem: 16,
+    key: String(size),
+  })
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return
     const index = ids.indexOf(cursor)
+    if (moveWindowSelection(event.key, index, items.length, columns, viewport)) {
+      event.preventDefault()
+      return
+    }
     const step: Record<string, number> = {
       ArrowLeft: -1,
       ArrowRight: 1,
@@ -128,11 +142,12 @@ export function GroupedGrid({
     select.pointerDown(event, id)
   }
 
-  const card = (item: GridItem) => {
+  const card = (item: GridItem, leading?: number) => {
     const selected = selection.includes(item.id)
     return (
       <div
         key={item.id}
+        style={leading ? { gridColumnStart: leading + 1 } : undefined}
         id={cardId(item.id)}
         className="mac-card"
         role="option"
@@ -184,7 +199,7 @@ export function GroupedGrid({
         role="presentation"
         style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
       >
-        {row.items.map(card)}
+        {row.items.map((item, index) => card(item, index === 0 ? row.leading : undefined))}
       </div>
     )
 
@@ -196,7 +211,7 @@ export function GroupedGrid({
       tabIndex={0}
       aria-label={label}
       aria-multiselectable
-      aria-activedescendant={cursor ? cardId(cursor) : undefined}
+      aria-activedescendant={cursor && ids.includes(cursor) ? cardId(cursor) : undefined}
       onKeyDown={onKeyDown}
       onContextMenuCapture={() => setMenuIds([])}
     >
@@ -206,12 +221,18 @@ export function GroupedGrid({
           className="mac-glist-scroller"
           style={{ overflowY: 'auto', height: '100%', overflowAnchor: 'none' }}
         >
-          {sections.map(({ group, items: cards }) => (
+          <div aria-hidden="true" style={{ height: spacing.top }} />
+          {sections.map(({ group, items: cards, start }) => (
             <div key={group.id}>
               {renderRow({ kind: 'header', group })}
-              {renderRow({ kind: 'cards', items: cards })}
+              {renderRow({
+                kind: 'cards',
+                items: cards,
+                leading: ((viewport?.offset ?? 0) + start) % columns,
+              })}
             </div>
           ))}
+          <div aria-hidden="true" style={{ height: spacing.bottom }} />
           {footer}
         </div>
       ) : (

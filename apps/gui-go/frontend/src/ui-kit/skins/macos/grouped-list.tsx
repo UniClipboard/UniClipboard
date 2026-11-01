@@ -2,7 +2,11 @@ import { ContextMenu as BaseContextMenu } from '@base-ui/react/context-menu'
 import { useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { GroupedVirtuoso, type GroupedVirtuosoHandle } from 'react-virtuoso'
 import type { GroupedListProps } from '@/ui-kit/contract'
-import { useWindowedScroll, revealWindowItem } from '@/ui-kit/use-windowed-scroll'
+import {
+  useWindowedScroll,
+  revealWindowItem,
+  moveWindowSelection,
+} from '@/ui-kit/use-windowed-scroll'
 import { Highlighted } from './highlighted'
 import { listStep } from './list-keys'
 import { MenuPanel } from './menus'
@@ -47,11 +51,15 @@ export function GroupedList({
     if (index >= 0) virtuoso.current?.scrollIntoView({ index: index, behavior: 'auto' })
   }
 
-  useWindowedScroll(listRef, items, viewport)
+  const spacing = useWindowedScroll(listRef, items, viewport)
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return
     const index = items.findIndex(item => item.id === cursor)
+    if (moveWindowSelection(event.key, index, items.length, 1, viewport)) {
+      event.preventDefault()
+      return
+    }
     const next = listStep(event.key, index, items.length)
     if (next !== null) {
       event.preventDefault()
@@ -136,7 +144,9 @@ export function GroupedList({
       tabIndex={0}
       aria-label={label}
       aria-multiselectable
-      aria-activedescendant={cursor ? rowId(cursor) : undefined}
+      aria-activedescendant={
+        cursor && items.some(item => item.id === cursor) ? rowId(cursor) : undefined
+      }
       onKeyDown={onKeyDown}
       // A right-click outside any row has nothing to act on; a row sets its ids after this.
       onContextMenuCapture={() => setMenuIds([])}
@@ -147,6 +157,7 @@ export function GroupedList({
           className={'mac-glist-scroller'}
           style={{ overflowY: 'auto', height: '100%', overflowAnchor: 'none' }}
         >
+          <div aria-hidden="true" style={{ height: spacing.top }} />
           {groups.map((group, groupIndex) => (
             <div key={groupIndex}>
               {renderGroup(groupIndex)}
@@ -157,6 +168,7 @@ export function GroupedList({
               ))}
             </div>
           ))}
+          <div aria-hidden="true" style={{ height: spacing.bottom }} />
           {footer}
         </div>
       ) : (

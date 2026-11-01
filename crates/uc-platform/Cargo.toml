@@ -113,6 +113,7 @@ libdbus-sys = { version = "0.2", features = ["vendored"] }
 #       what the watcher needs for selection-change notifications.
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus = "0.9"
+dbus-secret-service = { version = "=4.1.0", features = ["crypto-rust"] }
 rustix = { version = "0.38", features = ["event", "fs", "pipe"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }

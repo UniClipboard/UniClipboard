@@ -442,15 +442,6 @@ export const selectReceiveCancellationIncomplete = (state: RootState, entryId: s
   return !!attemptId && state.fileTransfer.currentAttemptByEntry?.[entryId] === attemptId
 }
 
-export const selectActiveTransfers = (state: RootState): TransferProgressInfo[] => {
-  return Object.values(state.fileTransfer.activeTransfers).filter(t => t.status === 'active')
-}
-
-export const selectIsEntryTransferring = (state: RootState, entryId: string): boolean => {
-  const transfer = selectTransferByEntryId(state, entryId)
-  return transfer?.status === 'active'
-}
-
 /** Select durable entry-level transfer status (persisted, survives progress cleanup). */
 export const selectEntryTransferStatus = (
   state: RootState,

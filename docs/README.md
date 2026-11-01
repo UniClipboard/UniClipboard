@@ -1,189 +1,35 @@
-# UniClipboard Documentation
+# UniClipboard 桌面端文档
 
-UniClipboard Desktop is a privacy-first, cross-device clipboard synchronization tool built with a Go/Wails desktop host, React, and a modular Rust workspace.
+桌面端由 Go/Wails 宿主、React 界面、独立 daemon 和 Go CLI 组成。daemon 通过固定提交的 `uc-engine` 使用核心业务能力。Engine 的内部实现由独立仓库 `UniClipboard/Engine` 维护。
 
-This documentation set is a mix of:
+## 开发入口
 
-- **Current-state guides** that should match the codebase today
-- **Architecture intent** documents that describe target boundaries and design rules
+- [项目概览](overview.md)：运行时结构、源码位置和开发命令。
+- [产品方向与安全底线](../VISION.md)：产品范围、密文持久化和锁定决策。
+- [仓库规则](../AGENTS.md)：按任务读取对应规则。
+- [桌面宿主](../apps/gui-go/README.md)：Go/Wails 开发、构建与打包。
+- [Go CLI](../apps/cli-go/AGENTS.md)：用户命令行实现。
 
-When documentation conflicts with code, treat the code as the source of truth and update the docs.
+## 当前架构
 
-## Quick Navigation
+- [Engine 消费边界](architecture/engine-repository-checks.md)：固定版本、公开入口和迁出目录检查。
+- [桌面启动装配](architecture/bootstrap.md)：宿主能力准备与 Engine 启动的责任边界。
+- [跨平台核心接口](architecture/uc-engine-interface.md)：操作、事件和生命周期。
+- [核心诊断与桌面日志](architecture/engine-diagnostic-runtime.md)：诊断合同与日志文件所有权。
+- [宿主命令](architecture/gui-go-host-commands.md)：从 Go 合同生成的命令表。
+- [启动与资料升级](architecture/startup-upgrade-progress.md)：启动进度和升级状态。
+- [自动连接](specs/automatic-peer-connections.md)：宿主与 Engine 的责任边界。
+- [接收结果与选择性重试](architecture/receive-item-results.md)：逐文件结果、重试和取消语义。
 
-**For New Developers:**
+## 验证与发布
 
-- [Project Overview](overview.md) - What is UniClipboard and how it works
-- [Architecture Principles](architecture/principles.md) - Understanding Hexagonal Architecture
-- [Module Boundaries](architecture/module-boundaries.md) - What each crate/layer may depend on
+- [GUI E2E 编写规范](testing/gui-e2e-authoring.md)：新增测试的分类、注册、隔离、运行与工件要求。
+- [明文探针](development/plaintext-probe.md)：持久化数据和日志的内容泄漏检查。
+- [编译缓存](ci/shared-compiler-cache.md)：本地与 CI 缓存配置。
+- [发布流程](release-workflow.md)：构建、签名、发布和更新渠道。
+- [无头节点部署](../deploy/vps/README.md)：Docker 与 Caddy 部署。
+- [pacman 软件源](architecture/pacman-repository.md)：签名快照与上线验收。
 
-**For Implementation:**
+## 历史资料
 
-- [GUI E2E 编写规范](testing/gui-e2e-authoring.md) - 新增测试的分类、注册、隔离、运行与工件要求
-
-- [自动连接的桌面宿主接入](specs/automatic-peer-connections.md) - 前台、系统唤醒与 Engine 的责任边界和验证记录
-
-- [Bootstrap System](architecture/bootstrap.md) - How dependency injection works
-- [核心诊断与桌面日志装配](architecture/engine-diagnostic-runtime.md) - 共同运行时接入、文件所有权及验证范围
-- [Wayland 快捷面板](architecture/quick-panel-wayland.md) - Layer Shell 生命周期、Omarchy 配置与粘贴能力边界
-- [Linux AppImage 库打包策略](architecture/linux-appimage-library-policy.md) - 宿主驱动栈相关库的打包边界、#1612 根因与验证范围
-- [跨平台核心接口](architecture/uc-engine-interface.md) - 宿主操作、生命周期、事件与能力边界
-- [接收项结果与选择性重试](architecture/receive-item-results.md) - 逐文件接收结果、选择性重试与取消未完成的宿主语义
-- [桌面配对全流程观测规格](specs/2026-09-06-desktop-pairing-observability-spec.md) - 保留 Sentry，开发时通过 Jaeger 串联加入空间的完整过程（待实施）
-- [Local Encrypted Search Design](architecture/local-encrypted-search.md) - V1 local search architecture for encrypted history
-- [Snapshot Cache Pipeline ADR](architecture/snapshot-cache/adr-001-snapshot-cache-pipeline.md) - Cache/spool/worker design decisions
-- [Error Handling](guides/error-handling.md) - Error handling strategy
-- [明文探针验收](development/plaintext-probe.md) - 检查数据库、缓存、索引、临时目录和日志是否残留业务原文
-- [GitHub Releases Updater](guides/github-releases-updater.md) - Auto-update pipeline with latest.json
-
-**For Operators / Deployment:**
-
-- [Headless VPS Server Node](../deploy/vps/README.md) - Docker + Caddy stack and provisioning runbook for a self-hosted always-online member ([ADR-007](architecture/adr-007-headless-server-node-deployment.md))
-
-**For Code Review:**
-
-- [Coding Standards](guides/coding-standards.md) - Code style and conventions
-- [Module Boundaries](architecture/module-boundaries.md) - Architecture compliance checklist
-
-**For Reference:**
-
-- [DeepWiki Documentation](https://deepwiki.com/UniClipboard/UniClipboard) - Interactive diagrams and flows
-- [Connection Stability Recovery PRD](p2p/2026-04-11-connection-stability-recovery-prd.md) - Focused product requirements for self-healing after temporary mDNS loss
-- [主动刷新共享设备 PRD](product/2026-08-07-shared-device-refresh-prd.md) - 新设备主动发现并自动连接同一 Space 中的共享设备
-- [Paired Sync Reliability Draft](p2p/2026-04-11-paired-sync-reliability-draft.md) - Product behavior draft for durable paired-device clipboard delivery
-- [Paired Sync Reliability Worklist](p2p/2026-04-11-paired-sync-reliability-worklist.md) - Build-ready checklist for the first reliability fix
-
-## Architecture at a Glance
-
-```
-┌───────────────────────────────────────┐   ┌──────────────────┐
-│       GUI (Go/Wails + React)           │   │  CLI (uc-cli)    │
-│  Quick Panel / Tray / Settings        │   │  uniclip 命令行  │
-└──────────────────┬────────────────────┘   └────────┬─────────┘
-                   │  HTTP + WebSocket (127.0.0.1)    │
-                   └──────────────────┬───────────────┘
-                                      ▼
-┌──────────────────────────────────────────────────────────────┐
-│                     Daemon (uniclipd)                         │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │ uc-webserver (axum API)                                │  │
-│  └────────────────────────┬───────────────────────────────┘  │
-│  ┌────────────────────────▼───────────────────────────────┐  │
-│  │ uc-bootstrap（唯一组合根）                              │  │
-│  │   ↓ wires                                              │  │
-│  │ uc-application (use cases / facades)                   │  │
-│  │   ↓ depends on                                         │  │
-│  │ uc-core (domain models + port traits)                  │  │
-│  │   ↑ implemented by                                     │  │
-│  │ uc-infra (SQLite/iroh/crypto) + uc-platform (OS)       │  │
-│  └────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
-```
-
-**核心原则**：GUI 和 CLI 是 daemon 的纯客户端，不内嵌业务栈。所有业务逻辑在 daemon 内通过 `uc-bootstrap` 装配运行。
-
-启动期间的资料升级、进度访问和自动连接见[桌面启动与资料升级进度](architecture/startup-upgrade-progress.md)。
-
-## Current State
-
-The codebase is already organized around a modular Rust workspace and hexagonal boundaries, but the migration is still ongoing in practice.
-
-- Core domain, application use cases, infrastructure adapters, and platform adapters all exist as first-class crates
-- The Go/Wails host (`apps/gui-go`) is the only desktop host; the retired Tauri host is recorded in [gui-go-tauri-retirement](architecture/gui-go-tauri-retirement.md)
-- Historical migration notes may still refer to removed legacy paths or earlier architecture phases
-- Avoid relying on old completion percentages; prefer current code and current docs
-
-## Getting Started
-
-1. **Read** [Project Overview](overview.md) to understand the system
-2. **Study** [Architecture Principles](architecture/principles.md) to grasp the design
-3. **Review** [Module Boundaries](architecture/module-boundaries.md) before making changes
-4. **Follow** [Coding Standards](guides/coding-standards.md) when implementing
-
-## Development Workflow
-
-```bash
-# Install dependencies (uses Bun)
-bun install
-
-# Start frontend-only dev server
-bun run dev
-
-# Start the full desktop app in development (Go/Wails host)
-bun wails:dev
-
-# Run frontend tests
-bun run test
-
-# Run Rust workspace tests
-cargo test --workspace
-
-# Local macOS build and package
-apps/gui-go/build.sh
-```
-
-### 可选的 mbx 开发缓存
-
-新建 worktree 时，可让 daemon 及宿主开发脚本触发的 Cargo 构建共用 mbx 编译缓存：
-
-```bash
-bun mbx:exec -- bun wails:dev
-bun mbx:exec -- bun wails:dev:profile a
-```
-
-入口固定 mbx 1.18.0 并校验下载包的 SHA-256；仅对子命令移除
-`RUSTC_WRAPPER=sccache`，不修改全局环境。
-
-mbx 缓存由 `MBX_CACHE_DIR` 指定，未指定时采用 mbx 平台默认目录；多个 worktree
-可共用此缓存，`uni-build-storage` 仍为每个 worktree 管理独立 target。入口默认将
-mbx 缓存容量上限设为 20 GiB，Cargo 构建时输出命中摘要；CI 保留原生 JSON 统计。
-一个 worktree 尽量始终使用同一条构建路线，切换普通 Cargo 与 mbx 可能触发重编译。
-
-固定入口目前覆盖 macOS arm64、Linux x86_64 和 Linux arm64；Windows 保留原有 sccache。
-CI 与 Linux 打包容器的共享 R2 配置和验证边界见 [编译缓存](ci/shared-compiler-cache.md)。
-
-## Documentation Guide
-
-### How to Use These Documents
-
-**When implementing a feature:**
-
-1. Check [Module Boundaries](architecture/module-boundaries.md) to understand which crates are involved
-2. Review [Bootstrap System](architecture/bootstrap.md) to see how to inject dependencies
-3. Follow [Error Handling](guides/error-handling.md) for proper error propagation
-
-**When reviewing code:**
-
-1. Verify architecture compliance using [Module Boundaries](architecture/module-boundaries.md) checklists
-2. Check [Coding Standards](guides/coding-standards.md) for style and conventions
-3. Ensure error handling follows [Error Handling](guides/error-handling.md) strategy
-
-**When making architectural decisions:**
-
-1. Reference [Architecture Principles](architecture/principles.md) for core principles
-2. Review [Bootstrap System](architecture/bootstrap.md) for dependency injection patterns
-3. Prefer current architecture docs and code over historical planning material
-
-### Document Conventions
-
-- **✅ Allowed**: What you SHOULD do
-- **❌ Prohibited**: What you MUST NOT do
-- **⚠️ Warning**: Common pitfalls to avoid
-- **Iron Rule**: Critical architectural constraint that cannot be violated
-
-## Contributing to Documentation
-
-When updating documentation:
-
-1. Keep it focused on **principles**, not implementation details
-2. Use **examples** from actual code when possible
-3. Update **cross-references** if moving or renaming sections
-4. **Avoid duplication** - link to existing sections instead of repeating
-
-## Additional Resources
-
-- **Project DeepWiki**: https://deepwiki.com/UniClipboard/UniClipboard (interactive diagrams)
-- **GitHub Repository**: https://github.com/UniClipboard/UniClipboard
-- **CLAUDE.md**: Project-specific instructions for Claude Code (in repository root)
-
-- [pacman 二进制软件源](architecture/pacman-repository.md)：正式包构建、签名快照及上线前验收边界。
+[Tauri 宿主退役记录](architecture/gui-go-tauri-retirement.md) 保留迁移范围与当时的验证结果。标记为历史文档的指南不再作为开发入口。ADR 保留决策背景；实现位置与当前行为以当前源码和对应现状文档为准。

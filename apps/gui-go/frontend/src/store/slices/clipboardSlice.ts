@@ -53,20 +53,6 @@ export const removeClipboardItem = createAsyncThunk(
   }
 )
 
-export const clearAllItems = createAsyncThunk(
-  'clipboard/clearAll',
-  async (_, { rejectWithValue }) => {
-    try {
-      // Daemon API: POST /clipboard/entries/clear
-      const { clearClipboardHistory } = await import('@/api/daemon/clipboard')
-      await clearClipboardHistory()
-      return true
-    } catch {
-      return rejectWithValue('清空剪贴板内容失败')
-    }
-  }
-)
-
 export const copyToClipboard = createAsyncThunk(
   'clipboard/copyItem',
   async (id: string, { rejectWithValue }) => {

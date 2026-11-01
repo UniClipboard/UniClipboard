@@ -120,7 +120,7 @@ Each peer uses a different `UC_PROFILE` so their data, vault, and logs do not co
 
 ### Build a Release Bundle
 
-Release packaging for the Go/Wails host is not rebuilt yet, so the release workflow is intentionally blocked (see [`docs/architecture/gui-go-tauri-retirement.md`](./docs/architecture/gui-go-tauri-retirement.md)). For a local macOS build and package, run `apps/gui-go/build.sh`. The Linux and Windows packagers are `apps/gui-go/e2e/package_linux.py` and `apps/gui-go/e2e/package_windows.py`. Daemon binaries for the packagers are staged with `node scripts/stage-daemon.mjs`.
+Go/Wails 宿主使用当前[发布流水线](./docs/release-workflow.md)。维护者通过 [`prepare-release.yml`](./.github/workflows/prepare-release.yml) 创建发布 PR；合并后由 [`tag-on-merge.yml`](./.github/workflows/tag-on-merge.yml) 推送版本标签，再触发 [`release.yml`](./.github/workflows/release.yml)。独立构建入口为 [`build.yml`](./.github/workflows/build.yml)。本地 macOS 构建与打包用 `apps/gui-go/build.sh`；Linux 与 Windows 打包分别用 `apps/gui-go/e2e/package_linux.py` 和 `apps/gui-go/e2e/package_windows.py`。打包前用 `node scripts/stage-daemon.mjs` 暂存 daemon 二进制。
 
 ### Release-time Secrets (Telemetry)
 
@@ -348,7 +348,7 @@ Include:
 
 ## Release Process
 
-Releases are driven by maintainers via the GitHub Actions `Release` workflow. End-to-end version bump rules, channel definitions (`stable` / `alpha` / `beta` / `rc`), and packaging details are documented in [`docs/release-workflow.md`](./docs/release-workflow.md). Contributors generally do not need to bump versions manually — the workflow handles it.
+维护者从 GitHub Actions 的 `Prepare Release` 工作流开始发布。该工作流更新版本并创建发布 PR。合并后，标签触发 `Release` 工作流构建并发布产物。版本规则、发布渠道（`stable` / `alpha` / `beta` / `rc`）与更新渠道提升流程见 [`docs/release-workflow.md`](./docs/release-workflow.md)。贡献者通常无需手动修改版本号。
 
 If your change should appear in the user-facing changelog, mention it in your PR description so the release notes can pick it up. The format follows [`docs/CHANGELOG_TEMPLATE.md`](./docs/CHANGELOG_TEMPLATE.md): only user-perceivable changes, one line each, no internal jargon.
 

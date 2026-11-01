@@ -16,7 +16,3 @@ export function readSettingsScrollOffset(category: string): number {
 export function rememberSettingsScrollOffset(category: string, offset: number): void {
   offsets.set(category, Math.max(0, offset))
 }
-
-export function clearSettingsScrollOffsets(): void {
-  offsets.clear()
-}

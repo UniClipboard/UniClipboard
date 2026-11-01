@@ -11,23 +11,12 @@ import {
 import type React from 'react'
 import type { EntrySourceView } from '@/api/tauri-command/clipboard_delivery'
 import type {
-  ClipboardEntryTag,
   ClipboardFileItem,
   ClipboardImageItem,
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
 import { formatFileSize } from '@/utils'
-
-export const TYPE_COLOR: Record<string, string> = {
-  text: 'rgb(140,150,160)',
-  code: 'rgb(140,120,210)',
-  link: 'rgb(70,145,210)',
-  richtext: 'rgb(120,125,190)',
-  image: 'rgb(80,160,110)',
-  file: 'rgb(175,140,100)',
-  unknown: 'rgb(140,150,160)',
-}
 
 export const TYPE_ICONS: Record<string, React.ElementType> = {
   text: FileText,
@@ -37,22 +26,6 @@ export const TYPE_ICONS: Record<string, React.ElementType> = {
   image: ImageIcon,
   file: File,
   unknown: FileText,
-}
-
-export const TAG_STYLE: Record<
-  ClipboardEntryTag,
-  { text: string; border: string; background: string }
-> = {
-  code: {
-    text: TYPE_COLOR.code,
-    border: 'rgba(140,120,210,0.28)',
-    background: 'rgba(140,120,210,0.08)',
-  },
-  link: {
-    text: TYPE_COLOR.link,
-    border: 'rgba(70,145,210,0.28)',
-    background: 'rgba(70,145,210,0.08)',
-  },
 }
 
 const SOURCE_CONFIG: Record<EntrySourceView['tag'], { icon: React.ElementType; color: string }> = {
@@ -122,29 +95,6 @@ export function describeSource(
     return { Icon: cfg.icon, color: cfg.color, label: t('clipboard.source.local') }
   }
   return { Icon: cfg.icon, color: cfg.color, label: null }
-}
-
-export function detectCodeLanguage(code: string): string | null {
-  const s = code.slice(0, 1500)
-  const has = (re: RegExp) => re.test(s)
-  if (has(/^\s*<\?php/)) return 'PHP'
-  if (has(/^#!\s*\/.*\b(?:bash|zsh|sh)\b/m) || has(/\b(?:fi|esac|elif)\b/)) return 'Shell'
-  if (has(/\bfn\s+\w+/) && has(/\b(?:let\s+mut|impl|pub\s+fn|->\s*\w)/)) return 'Rust'
-  if (has(/\bfunc\s+\w+/) && has(/\bpackage\s+\w+/)) return 'Go'
-  if (has(/\bdef\s+\w+\s*\(/) || has(/^\s*(?:from\s+\w+\s+import|import\s+\w+)/m)) return 'Python'
-  if (has(/:\s*(?:string|number|boolean|void|unknown|any)\b/) || has(/\binterface\s+\w+/)) {
-    return 'TypeScript'
-  }
-  if (has(/\b(?:public|private|protected)\s+(?:static\s+)?(?:class|void|int|String)\b/)) {
-    return 'Java'
-  }
-  if (has(/#include\s*[<"]/)) return 'C++'
-  if (has(/^\s*(?:SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|CREATE\s+TABLE)\b/im)) return 'SQL'
-  if (has(/^\s*[{[]/) && has(/"\w+"\s*:/) && !has(/\bfunction\b|=>/)) return 'JSON'
-  if (has(/<\/[a-z][\w-]*>/i) && has(/<[a-z][\w-]*[\s/>]/i)) return 'HTML'
-  if (has(/[.#]?[\w-]+\s*\{[^}]*:[^}]*;/)) return 'CSS'
-  if (has(/=>/) || has(/\b(?:const|let|var|function)\b/)) return 'JavaScript'
-  return null
 }
 
 export function imageTitle(

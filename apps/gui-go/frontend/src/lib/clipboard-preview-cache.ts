@@ -99,11 +99,3 @@ class ClipboardPreviewCache {
 }
 
 export const clipboardPreviewCache = new ClipboardPreviewCache()
-
-export function clearClipboardPreviewCache(): void {
-  clipboardPreviewCache.clear()
-}
-
-export function invalidateClipboardPreview(entryId: string): void {
-  clipboardPreviewCache.invalidate(entryId)
-}

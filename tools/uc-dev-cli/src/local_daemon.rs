@@ -267,40 +267,6 @@ pub(crate) async fn wait_for_running_daemon() -> Result<(), LocalDaemonError> {
     wait_for_daemon_health(&mut probe, STARTUP_TIMEOUT, POLL_INTERVAL, None).await
 }
 
-/// Probe-then-reuse-or-spawn entry used by the `#[autostop]` business-command
-/// seam (rewritten to `ensure_local_daemon_running_capture` by
-/// `uc-cli-macros`). The background `start` path now goes through the
-/// promote-aware [`ensure_or_promote_local_daemon`]; this one stays the
-/// non-promoting reference path with byte-identical Compatible/Incompatible/
-/// Absent semantics (the autostop machinery is dormant in this tree, so it has
-/// no in-crate caller yet — hence `#[allow(dead_code)]`).
-#[allow(dead_code)]
-pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDaemonError> {
-    // Classify the daemon (if any) already bound to this profile (ADR-008 P5-L
-    // L2). Compatible → reuse it; Incompatible → clear error (do NOT spawn a
-    // competitor or kill it — restart/takeover is L8); Absent → spawn below.
-    match probe_running_for_reuse().await? {
-        ProbeOutcome::Compatible(_) => {
-            return Ok(LocalDaemonSession {
-                base_url: resolve_base_url()?,
-                spawned: false,
-            });
-        }
-        ProbeOutcome::Incompatible {
-            details,
-            observed_package_version,
-            ..
-        } => {
-            return Err(incompatible_daemon_error(details, observed_package_version));
-        }
-        ProbeOutcome::Absent => {}
-    }
-
-    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
-        .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-    spawn_and_wait_healthy(&client, STARTUP_TIMEOUT).await
-}
-
 /// The action [`ensure_or_promote_local_daemon`] takes for a probed daemon
 /// (ADR-008 P5-L L8d-2). Extracted as a pure, total function so the
 /// branch-selection logic has a single source of truth the unit tests exercise
@@ -329,13 +295,8 @@ fn classify_probe_action(outcome: &ProbeOutcome) -> ProbeAction {
     }
 }
 
-/// ADR-008 P5-L L8d-2: probe-then-reuse-or-promote-or-spawn entry for the
-/// background `start` path. Behaviour-equivalent to
-/// [`ensure_local_daemon_running`] in production (residency is never `Oneshot`,
-/// so the promote branch is dead code → single probe + the same spawn tail), and
-/// adds one capability: when the running daemon is a transient `Oneshot` (only
-/// reachable once a Oneshot supervisor exists, P5-1), it requests a controlled
-/// restart to promote it to the persistent `target` residency.
+/// Reuse a compatible persistent daemon, promote an Oneshot daemon, or spawn
+/// a detached daemon when none is running.
 ///
 /// * `Compatible(Oneshot)` → [`promote_oneshot_daemon`] (controlled restart).
 /// * `Compatible(other)`   → reuse the already-persistent daemon (`spawned:false`).
@@ -409,9 +370,6 @@ pub async fn spawn_oneshot_and_wait_within(
 ///    explicitly (`spawn_detached_daemon` reads it from the handover).
 /// 4. Wait until the new daemon is healthy AND reports the requested `target`
 ///    residency before returning `spawned:true`.
-///
-/// Dead code in production: nothing spawns a `Oneshot` daemon until P5-1, so this
-/// is never reached (residency is always `Standalone`/`ServerHeadless`).
 async fn promote_oneshot_daemon(
     client: &Client,
     target: DaemonResidency,
@@ -482,10 +440,8 @@ async fn promote_oneshot_daemon(
     }
 }
 
-/// Slow path shared by the Absent arms of [`ensure_local_daemon_running`] and
-/// [`ensure_or_promote_local_daemon`]: spawn a detached daemon and wait for it to
-/// become healthy. Returns `spawned:true`. Show a spinner so the user sees
-/// progress — daemon cold start can take many seconds in debug builds.
+/// Spawn a detached daemon and wait for it to become healthy.
+/// Returns `spawned:true` and displays startup progress.
 async fn spawn_and_wait_healthy(
     client: &Client,
     timeout: Duration,
@@ -660,9 +616,8 @@ pub(crate) fn incompatible_outcome_error(outcome: ProbeOutcome) -> LocalDaemonEr
 
 /// Probe `/health` and classify the running daemon (ADR-008 P5-L L2).
 ///
-/// Resolves the daemon address fresh on every call (ADR-011): `daemon.conn`
-/// first, with the legacy profile-hash address as a P1 fallback for old
-/// daemons. No connection file in the single-track regime → `Absent`.
+/// Resolves the daemon address from `daemon.conn` on every call (ADR-011).
+/// A missing connection file maps to `Absent`.
 ///
 /// Connect/timeout errors map to [`ProbeOutcome::Absent`] (no daemon to talk
 /// to); a non-2xx response or an undecodable / version-mismatched body maps to

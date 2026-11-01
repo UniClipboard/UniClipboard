@@ -1,13 +1,4 @@
-/**
- * `src/api/tauri-command/` — TS wrappers for Tauri commands that go directly
- * to the in-process `AppFacade` (does NOT route through the daemon webserver).
- *
- * This is the GUI in-process facade entry point; future GUI features should
- * land here, and the existing `src/api/daemon/*` HTTP path will be migrated
- * over time. See the project memory `project_gui_uses_inprocess_facade.md`.
- *
- * Backend equivalents live in the desktop host (`apps/gui-go`) and the daemon API.
- */
+/** Settings host commands and mobile sync daemon API wrappers. */
 
 export * from './mobile_sync'
 export * from './settings'

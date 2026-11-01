@@ -50,7 +50,6 @@ const KNOWN_DESCRIPTIONS = {
     'Platform-independent logic of the GPUI quick panel: query model, state machine, ports',
   'uc-dev-cli':
     '`uc-dev-cli` development and diagnostics CLI (user-facing `uniclip` is apps/cli-go)',
-  'uc-cli-macros': 'Proc-macros for uc-dev-cli (internal)',
   'p2p-bench': 'Throwaway perf-spike bins (not shipped; publish = false)',
 }
 
@@ -88,7 +87,7 @@ const LAYER_ORDER = [
   },
   {
     comment: 'Shells / entrypoints',
-    members: ['uc-cli', 'uc-cli-macros', 'p2p-bench'],
+    members: ['p2p-bench'],
   },
 ]
 

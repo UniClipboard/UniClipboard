@@ -59,10 +59,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
   })
   const [checkEncryption] = useLazyGetEncryptionSessionStatusQuery()
 
-  useEncryptionState(
-    () => dispatch({ type: 'encryptionReady' }),
-    () => dispatch({ type: 'encryptionNotReady' })
-  )
+  useEncryptionState(() => dispatch({ type: 'encryptionReady' }))
 
   const encryptionQueryErrorMessage = encryptionQueryError
     ? typeof encryptionQueryError === 'object' && 'message' in encryptionQueryError

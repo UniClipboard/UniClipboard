@@ -59,7 +59,7 @@ CLI 默认依赖图已不再包含 `uc-observability`、`uc-observability-contra
 
 ### 3. 处理诊断、测试与 GUI 的剩余候选
 
-- `uc-cli-macros` 仍是工作区成员，但没有其他包声明依赖它。删除整个旧宏包能减少工作区维护和构建工作；它目前并不进入普通 CLI 的依赖图。
+- `uc-cli-macros` 已于 2026-11-01 删除。删除前没有其他包声明依赖它；旧宏生成的自动停机接口也已不存在。
 - `p2p-bench` 的 `bytes`、`tracing`，`tests/e2e` 的 `assert_cmd`、`predicates` 没有找到使用点；需分别覆盖诊断工具的可选功能与独立测试工作区后清理。
 - `uc-tauri` 的 `base64`、`core-foundation`、`mockall`、测试用 `sentry`，打包壳的测试用 `tempfile`、`tokio` 也是候选；应与完整 GUI 打包验证一起处理。
 

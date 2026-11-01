@@ -1,10 +1,10 @@
 # PROJECT KNOWLEDGE BASE
 
-**最后刷新：** 2026-10-31（自动；16 个工作区 crate）
+**最后刷新：** 2026-11-01（自动；15 个工作区 crate）
 
 ## OVERVIEW
 
-桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，桌面 GUI 宿主（Go/Wails，唯一的桌面宿主）位于 `apps/gui-go/`，其共享 React 前端源码位于 `apps/gui-go/frontend/src`。可移植引擎由独立的 `UniClipboard/Engine` 仓库拥有，本仓通过一个固定发布标签使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
+桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，桌面 GUI 宿主（Go/Wails，唯一的桌面宿主）位于 `apps/gui-go/`，其共享 React 前端源码位于 `apps/gui-go/frontend/src`。可移植引擎由独立的 `UniClipboard/Engine` 仓库拥有，本仓通过一个固定提交使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
 
 ## STRUCTURE
 
@@ -15,7 +15,7 @@
 |  |- quick-panel/         # GPUI quick panel app (`uniclip-quick-panel`, macOS default)
 |- tools/                # Development-only crates (never in production builds)
 |  |- uc-dev-cli/          # `uc-dev-cli` development and diagnostics CLI (user-facing `uniclip` is apps/cli-go)
-|- crates/               # Library crates (13)
+|- crates/               # Library crates (12)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
 |  |- uc-app-paths/     # Lightweight directory-layout authority (data/cache/tmp)
@@ -28,7 +28,6 @@
 |  |- uc-webserver/     # Daemon's 127.0.0.1 HTTP + WebSocket API (OpenAPI / ApiEnvelope)
 |  |- uc-daemon-client/ # Daemon HTTP + WS client (used by GUI + CLI)
 |  # -- Shells / entrypoints --
-|  |- uc-cli-macros/    # Proc-macros for uc-dev-cli (internal)
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
 |  # -- Other --
 |  |- uc-desktop-settings/ # Desktop product settings owned by the daemon: model, per-field validation, lenient loading, atomic storage, revision and change notification. No Engine or HTTP dependency.
@@ -42,7 +41,7 @@
 | ------------------------- | ------------------------------------------ | ----------------------------------------------------------------------- |
 | Desktop host (Go/Wails)   | `apps/gui-go/`                             | Window/tray/updater/packaging; talks to the daemon over loopback HTTP/WS |
 | Host command contract     | `apps/gui-go/*.go` (`HostService`), `docs/architecture/gui-go-host-commands.md` | Go methods are the contract; Wails generates the TS bindings |
-| Engine 发布版本           | `Cargo.toml`                               | 所有使用方共享一个固定的 `UniClipboard/Engine` 发布标签                 |
+| Engine 固定提交           | `Cargo.toml`                               | 所有使用方共享一个固定的 `UniClipboard/Engine` 提交                 |
 | Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`          | Desktop paths, secure storage and clipboard selection                   |
 | Quick panel (GPUI)        | `apps/quick-panel/`, `crates/quick-panel-core/` | Native macOS quick panel hosted by the Go shell                    |
 | Platform adapters         | `crates/uc-platform/src/`                  | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
@@ -60,7 +59,7 @@ The desktop host is Go (`apps/gui-go`); the Rust binaries are `apps/daemon` (`un
 - Rust commands run from the repo root (the cargo workspace root); stop if `Cargo.toml` absent.
 - Portable engine, protocol, persistence, migration, and binding changes belong in `UniClipboard/Engine`; never recreate those packages here.
   - Exception (D10, ADR-013): Desktop product-shell preferences (tray, windows, OS shortcuts, login item, updater, UI language, appearance) are persisted by the daemon through `crates/uc-desktop-settings` in `<app_data_root>/desktop-settings.json`. Add new product fields there, not to Engine settings. The file is plaintext configuration and must never hold clipboard content, data derived from it, or credentials.
-- 升级引擎时，只修改根目录 `Cargo.toml` 中唯一的固定发布标签，并同步更新 `Cargo.lock`。
+- 升级引擎时，只修改根目录 `Cargo.toml` 中唯一的固定提交，并同步更新 `Cargo.lock`。
 - Desktop-only capability flow: platform adapter -> `uc-bootstrap/src/wiring/` -> `HostCapabilities` -> `Engine::start`.
 - Host handlers (Go) and daemon HTTP routes call app-layer use cases; avoid direct `deps` access from the transport layer.
 - Event payloads sent to the frontend must use camelCase field names.
@@ -74,7 +73,7 @@ The desktop host is Go (`apps/gui-go`); the Rust binaries are `apps/daemon` (`un
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - Copying core source, migrations, bindings, or LAN protocol packages back into desktop.
-- 对 `UniClipboard/Engine` 拥有的包使用本地路径、分支或非发布标签。
+- 对 `UniClipboard/Engine` 拥有的包使用本地路径或分支。
 - Depending on core implementation packages from desktop production code instead of `uc-engine`.
 - Adding business logic inside host command handlers or platform adapters.
 - Reintroducing code under any `src-legacy/` path.

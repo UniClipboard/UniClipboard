@@ -73,8 +73,6 @@ const HISTORY_EXCLUDES = [
   'docs/guides/device-group-gui-testing.md',
   'docs/architecture/commands-layer-specification.md',
   'docs/architecture/commands-status.md',
-  'docs/architecture/bootstrap.md',
-  'docs/architecture/desktop-theme-preferences.md',
   'scripts/architecture/check-tauri-retired.mjs',
 ]
 

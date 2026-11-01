@@ -6,7 +6,7 @@
 
 - 官方源码快照：[`caf51eb9f8de765b1ecac5ce3cd511a925b2fc2f`](https://github.com/tester-army/e2e/tree/caf51eb9f8de765b1ecac5ce3cd511a925b2fc2f)。
 - 上游采用 Apache-2.0，包含 `LICENSE` 和 `NOTICE`。本仓没有复制上游实现。npm 产物由 `bun.lock` 的版本和完整性值标识，不假定它与源码快照字节相同。
-- Node 要求为 `^22.22.3 || >=24.8.0`。CI 使用 Node 24。
+- Node 要求为 `^22.22.3 || >=24.8.0`。CI 固定使用 Node 26.13.0。该版本包含修复 macOS `setTypeOfService EINVAL` 的 Undici 8.x。
 - Web 引擎使用 Playwright 1.64.1。使用它自己的安装入口，避免浏览器版本不匹配。
 - 全部测试使用确定性操作。不配置模型、订阅或云浏览器。命令通过 `E2E_TELEMETRY_DISABLED=1` 关闭遥测。
 

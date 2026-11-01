@@ -26,7 +26,26 @@ def emit(value):
     print(json.dumps(value), flush=True)
 
 
+def evidence_records(path):
+    try:
+        lines = path.read_bytes().splitlines()
+    except OSError:
+        return []
+    records = []
+    for line in lines:
+        try:
+            record = json.loads(line.decode('utf-8'))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            # A partial writer record must not prevent owned-process cleanup.
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+    return records
+
+
 def run():
+    if not __debug__:
+        raise RuntimeError('native ownership checks require Python assertions enabled')
     backend = host = None
     ui_pid = ui_identity = None
     control = evidence = None
@@ -48,7 +67,8 @@ def run():
         binary = app / 'Contents/MacOS/gui-go'
         ui_binary = app / 'Contents/Helpers/UniClipboardUI.app/Contents/MacOS/gui-go'
         build = json.loads((ROOT / 'target/gui-go/macos-native-build.json').read_text())
-        assert build['head'] == subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True, timeout=10).strip()
+        assert build['head'] == head
         binary_hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in
                          [('host', binary), ('ui', ui_binary), ('daemon', ROOT / 'target/debug/uniclipd'),
                           ('cli', ROOT / 'target/gui-go/uniclip')]}
@@ -57,7 +77,8 @@ def run():
         backend.start()
         for text in texts:
             backend.send(text)
-        assert len(backend.request('/clipboard/entries?limit=10')) == 2
+        entries = backend.request('/clipboard/entries?limit=10')
+        assert len(entries) == 2
         control = Path(backend.home) / 'native-control'
         evidence = Path(backend.home) / 'native-evidence.jsonl'
         control.write_text('')
@@ -73,12 +94,13 @@ def run():
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
             assert host.poll() is None, 'owned host exited before readiness'
-            rows = [json.loads(line) for line in evidence.read_text().splitlines()]
-            ready = next((row for row in rows if row['step'] == 'ui-page-ready'), None)
+            rows = evidence_records(evidence)
+            ready = next((row for row in rows if row.get('step') == 'ui-page-ready'), None)
             if ready:
                 assert ready['detail']['daemonConnected']
                 ui_pid = ready['detail']['pid']
-                assert int(subprocess.check_output(['ps', '-p', str(ui_pid), '-o', 'ppid='], text=True)) == host.pid
+                parent_pid = int(subprocess.check_output(['ps', '-p', str(ui_pid), '-o', 'ppid='], text=True, timeout=10))
+                assert parent_pid == host.pid
                 ui_identity = identity(ui_pid)
                 assert ui_identity and ui_identity.endswith(str(ui_binary))
                 window = subprocess.run([str(inspector), str(ui_pid)], capture_output=True, text=True, timeout=5)
@@ -90,7 +112,8 @@ def run():
         connections = list(Path(backend.home).rglob('daemon.conn'))
         assert len(connections) == 1
         assert json.loads(connections[0].read_text())['pid'] == backend.process.pid, 'product must reuse the owned daemon'
-        assert backend.request('/health')['residency'] == 'standalone'
+        health = backend.request('/health')
+        assert health['residency'] == 'standalone'
         receipt = {
             'runId': request['runId'], 'attemptId': request['attemptId'],
             'profile': backend.profile, 'hostPid': host.pid, 'uiPid': ui_pid,
@@ -104,7 +127,7 @@ def run():
         (output / 'native-launch.json').write_text(json.dumps(receipt, indent=2) + '\n')
         emit({'phase': 'ready', **receipt})
         sys.stdin.buffer.read()
-    except BaseException as error:
+    except (Exception, KeyboardInterrupt) as error:
         failed = True
         emit({'phase': 'failure', 'errorType': type(error).__name__})
     finally:
@@ -132,6 +155,7 @@ def run():
                 try:
                     os.kill(ui_pid, signal.SIGKILL)
                 except ProcessLookupError:
+                    # The owned UI exited after the identity check.
                     pass
                 deadline = time.monotonic() + 10
                 while identity(ui_pid) == ui_identity and time.monotonic() < deadline:
@@ -139,7 +163,7 @@ def run():
         ui_exited = not ui_pid or (ui_identity is not None and identity(ui_pid) != ui_identity)
         acknowledged = bool(evidence and evidence.exists() and any(
             row.get('step') == 'control-exit' and row.get('ok') is True
-            for row in (json.loads(line) for line in evidence.read_text().splitlines())))
+            for row in evidence_records(evidence)))
         cleanup = {}
         connection_owned = True
         if backend is not None:

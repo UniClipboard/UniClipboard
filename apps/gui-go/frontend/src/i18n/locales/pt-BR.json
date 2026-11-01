@@ -939,6 +939,17 @@
         "applyUnknown": "Salvo, mas não se sabe se o atalho está ativo. ({{error}})"
       },
       "quickPanel": {
+        "accessibility": {
+          "groupTitle": "Permissões do sistema",
+          "label": "Permissão de acessibilidade",
+          "description": "Permita que o Painel Rápido insira o conteúdo selecionado no aplicativo anterior e detecte toques duplos nas teclas modificadoras. Autorize o UniClipboard nos Ajustes do Sistema.",
+          "checking": "Verificando",
+          "granted": "Concedida",
+          "denied": "Não concedida",
+          "error": "Não foi possível verificar a permissão",
+          "retry": "Tentar novamente",
+          "openSettings": "Abrir Ajustes do Sistema"
+        },
         "compositorShortcuts": "No Wayland, os atalhos de ativação são gerenciados pelo ambiente de trabalho. Associe o comando abaixo a um atalho nas configurações do compositor.",
         "title": "Painel rápido",
         "featureTitle": "Recurso",

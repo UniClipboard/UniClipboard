@@ -938,6 +938,17 @@
         "applyUnknown": "已儲存，但無法確認快捷鍵是否生效。（{{error}}）"
       },
       "quickPanel": {
+        "accessibility": {
+          "groupTitle": "系統權限",
+          "label": "輔助使用權限",
+          "description": "允許快捷面板將所選內容輸入至先前使用的應用程式，並偵測修飾鍵雙擊。請在系統設定中授予 UniClipboard 權限。",
+          "checking": "檢查中",
+          "granted": "已授權",
+          "denied": "未授權",
+          "error": "無法檢查權限",
+          "retry": "重試",
+          "openSettings": "開啟系統設定"
+        },
         "compositorShortcuts": "Wayland 下的喚起快捷鍵由桌面環境管理。請在視窗管理器設定中為以下命令綁定快捷鍵。",
         "title": "快捷面板",
         "featureTitle": "功能",

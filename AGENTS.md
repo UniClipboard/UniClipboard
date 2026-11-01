@@ -51,6 +51,7 @@ Use when:
 - evaluating whether a change is a patch or a refactor
 - processing AI review comments
 - updating docs or scripts with repository hygiene constraints
+- 编写 CI / PR 检查：先读工作流规则中的条件路由要求；涉及 Rust 编译或预热时，再读 `docs/ci/shared-compiler-cache.md`
 
 ### 2. Architecture / boundaries / commit planning
 Read: `docs/agent/architecture-rules.md`

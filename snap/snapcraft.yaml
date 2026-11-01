@@ -55,7 +55,7 @@ slots:
 
 apps:
   uniclipboard:
-    command: usr/bin/uniclipboard
+    command: usr/bin/uniclipboard-launch
     extensions: [gnome]
     desktop: usr/share/applications/uniclipboard.desktop
     common-id: app.uniclipboard.desktop
@@ -112,6 +112,8 @@ parts:
       - python3-yaml
     stage-packages:
       - libwebkitgtk-6.0-4
+      # Keep the application-owned security library reproducible on both architectures.
+      - libxml2=2.9.14+dfsg-1.3ubuntu3.10
     build-environment:
       # NOTE: build-environment 的值会被 craft-parts 用双引号包裹后注入构建
       # 脚本(export KEY="VALUE"),且不转义值里的内层字符。含 $VAR 的值(如
@@ -189,6 +191,15 @@ parts:
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipboard"
       install -Dm755 target/release/uniclipd \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipd"
+      install -Dm755 snap/local/uniclipboard-launch \
+        "${CRAFT_PART_INSTALL}/usr/bin/uniclipboard-launch"
+      # Stage packages are unpacked into the part install tree before override-build.
+      # Preserve only libxml2 in a private path that platform cleanup does not own.
+      SECURITY_LIBDIR="${CRAFT_PART_INSTALL}/usr/lib/uniclipboard-security"
+      mkdir -p "${SECURITY_LIBDIR}"
+      cp -a "${CRAFT_PART_INSTALL}/usr/lib/${CRAFT_ARCH_TRIPLET_BUILD_FOR}"/libxml2.so.2* \
+        "${SECURITY_LIBDIR}/"
+      test -r "${SECURITY_LIBDIR}/libxml2.so.2"
       # The desktop entry names its icon by explicit ${SNAP} path. A bare theme
       # name makes snapcraft (>= 9.1) guess a hicolor size directory from the
       # empty ones staged by hicolor-icon-theme and write a nonexistent path

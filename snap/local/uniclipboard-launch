@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+# Run after the GNOME/Mesa command-chain so this application-owned fix wins.
+SECURITY_LIBDIR="${SNAP:?}/usr/lib/uniclipboard-security"
+test -r "${SECURITY_LIBDIR}/libxml2.so.2"
+export LD_LIBRARY_PATH="${SECURITY_LIBDIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+exec "${SNAP}/usr/bin/uniclipboard" "$@"

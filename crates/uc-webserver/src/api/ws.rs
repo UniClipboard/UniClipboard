@@ -29,12 +29,7 @@ use crate::api::dto::error::ApiError;
 use crate::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
 use crate::api::event_emitter::refresh_required_ws_event;
 use crate::api::server::DaemonApiState;
-use crate::api::types::{
-    DaemonWsEvent, PairingFailurePayload, PairingSessionChangedPayload, PairingSessionSummaryDto,
-    PairingVerificationPayload, PeerConnectionChangedPayload, PeerNameUpdatedPayload,
-    PeerSnapshotDto, PeersChangedFullPayload, SpaceMemberDto, SpaceMembersChangedPayload,
-    StatusResponse,
-};
+use crate::api::types::DaemonWsEvent;
 use crate::security::claims::SessionTokenClaims;
 use crate::security::rate_limiter::{RateLimitDecision, AUTHENTICATED_MAX_REQUESTS};
 
@@ -703,85 +698,6 @@ fn snapshot_event<T: Serialize>(
         ts: chrono::Utc::now().timestamp_millis(),
         payload: serde_json::to_value(payload).context("failed to encode websocket payload")?,
     })
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Compile-time type witnesses
-// ---------------------------------------------------------------------------
-
-/// Compile-time assertion that all required types are reachable from this module.
-#[allow(dead_code)]
-fn _event_type_markers(
-    _: StatusResponse,
-    _: Vec<PeerSnapshotDto>,
-    _: Vec<SpaceMemberDto>,
-    _: Vec<PairingSessionSummaryDto>,
-) -> (
-    [&'static str; 9],
-    PairingSessionChangedPayload,
-    PairingVerificationPayload,
-    PairingFailurePayload,
-    PeersChangedFullPayload,
-    PeerNameUpdatedPayload,
-    PeerConnectionChangedPayload,
-    SpaceMembersChangedPayload,
-) {
-    (
-        [
-            ws_event::STATUS_UPDATED,
-            ws_event::PEERS_CHANGED,
-            ws_event::PEERS_NAME_UPDATED,
-            ws_event::PEERS_CONNECTION_CHANGED,
-            ws_event::PAIRED_DEVICES_CHANGED,
-            ws_event::PAIRING_UPDATED,
-            ws_event::PAIRING_VERIFICATION_REQUIRED,
-            ws_event::PAIRING_COMPLETE,
-            ws_event::PAIRING_FAILED,
-        ],
-        PairingSessionChangedPayload {
-            session_id: String::new(),
-            state: String::new(),
-            stage: String::new(),
-            peer_id: None,
-            device_name: None,
-            updated_at_ms: 0,
-            ts: 0,
-        },
-        PairingVerificationPayload {
-            session_id: String::new(),
-            kind: String::new(),
-            peer_id: None,
-            device_name: None,
-            code: None,
-            error: None,
-            local_fingerprint: None,
-            peer_fingerprint: None,
-        },
-        PairingFailurePayload {
-            session_id: String::new(),
-            peer_id: None,
-            error: String::new(),
-            reason: String::new(),
-        },
-        PeersChangedFullPayload { peers: vec![] },
-        PeerNameUpdatedPayload {
-            peer_id: String::new(),
-            device_name: String::new(),
-        },
-        PeerConnectionChangedPayload {
-            peer_id: String::new(),
-            device_name: None,
-            connected: false,
-        },
-        SpaceMembersChangedPayload {
-            peer_id: String::new(),
-            device_name: None,
-            connected: false,
-        },
-    )
 }
 
 #[cfg(test)]

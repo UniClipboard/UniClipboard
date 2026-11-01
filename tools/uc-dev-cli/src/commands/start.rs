@@ -114,11 +114,7 @@ async fn check_setup_complete(json: bool) -> Option<i32> {
 }
 
 async fn run_background(json: bool, server: bool) -> i32 {
-    // ADR-008 P5-L L8d-2: background `start` is promote-aware. If a transient
-    // Oneshot daemon is running it requests a controlled restart to converge on
-    // the persistent `target` residency; otherwise it behaves exactly as before
-    // (reuse a compatible daemon, error on incompatible, spawn when absent).
-    // In production no Oneshot daemon exists, so the promote branch is dead code.
+    // Promote a transient Oneshot daemon to the requested persistent residency.
     let target = promote_target_residency(server);
     run_start_background_with(
         || local_daemon::ensure_or_promote_local_daemon(target),
@@ -156,8 +152,8 @@ where
     // `--server` → residency mapping does not apply here.
     //
     // Check if daemon is already running using probe-only (no spawn).
-    // We must NOT use ensure_local_daemon_running() here because it would
-    // spawn a background daemon, conflicting with the foreground spawn below.
+    // Keep this probe free of background spawning; this path owns the
+    // foreground child below.
     //
     // ADR-008 P5-L L2: classify the probe. Compatible → report already_running;
     // Incompatible → surface a clear error and refuse to spawn a competitor

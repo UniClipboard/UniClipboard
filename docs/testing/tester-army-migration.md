@@ -171,7 +171,7 @@ node apps/gui-go/frontend/e2e/tester-army/backend-assertion-inventory.mjs
 - 合成浏览器夹具不连接用户 daemon，不使用系统剪贴板，不发送桌面键盘事件，不激活用户 App，不停止其他线程的进程。
 - 原生控件探针使用一次性 runner 或没有可见窗口的本任务进程。不得把调试端口指向用户正在使用的 WebView。
 
-浏览器 CI 位于 `.github/workflows/tester-army-e2e.yml`，覆盖三种主机系统。工作流配置、一次本机通过、远端 CI 通过和真实设备验收是不同证据。
+浏览器 CI 位于 `.github/workflows/tester-army-e2e.yml`，覆盖三种主机系统；真实后端测试单独在 macOS 运行。PR 由 `pr-check.yml` 统一调用两个 TesterArmy 可复用工作流，路径条件集中在 `.github/ci-paths.yml`，分别控制浏览器、真实后端、各平台能力检查和 Windows 产品测试。两个工作流保留手动全量入口。工作流配置、一次本机通过、远端 CI 通过和真实设备验收是不同证据。
 
 
 ## 后端启动诊断与清理回执
@@ -215,7 +215,7 @@ Windows 启动候选已根据实际原生失败工件，将旧设置链接定位
 
 macOS 与 Linux 的列表组件明确以强调色填充表示多选，不显示复选框。当前断言保留三项范围选择、两项切换选择、全选与 Escape 检查，并验证两条选中行的填充不同于未选中行。Windows 的原复选标记检查保持。历史报告保存前统一脱敏已知凭据与传输令牌，断言输入不变。
 
-两个生成标准数据的 Node 子进程分别设置 60 秒预算。超时继续进入辅助进程的原错误和清理路径。工作流路径同时覆盖 Windows 构建脚本、CLI、共享 Go 宿主、嵌套 Go 包、daemon、Rust crate、工具链与构建缓存输入，避免产品源码变更跳过原生检查。
+两个生成标准数据的 Node 子进程分别设置 60 秒预算。超时继续进入辅助进程的原错误和清理路径。`.github/ci-paths.yml` 的 Windows 产品条件覆盖构建脚本、CLI、共享 Go 宿主、嵌套 Go 包、daemon 及其本地依赖、工具链与构建缓存输入，避免产品源码变更跳过原生检查。
 
 
 夹具现在直接持有一个 `standalone` daemon 子进程，再执行真实 CLI 初始化与 `start`，并校验连接文件 PID 未变、健康回执仍为 `standalone`。并发回收线程负责回收已退出子进程，避免 CLI 等待僵尸 PID 消失。正常清理必须有退出码 0，且没有夹具强制终止。通用 CLI 的临时进程提升路径仍保留；此 fixture 变更不宣称修复该路径的竞态。

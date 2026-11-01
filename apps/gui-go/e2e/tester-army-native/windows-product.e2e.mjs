@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { surfaceOf, test } from '@e2e-dev/web'
+import { openGuiSession } from '../../frontend/e2e/browser-daemon-session.mjs'
 import { runScenarios } from '../../frontend/e2e/history-kit-browser.mjs'
 import { runStartupScenarios } from '../windows-startup-scenarios.mjs'
 import { nativeEngine } from './engine.mjs'
+import { openWindowsDaemon, seedWindowsHistory } from './windows-history-seed.mjs'
 
 const output = 'target/tester-army-windows-product'
-test('Windows product: original native startup, setup and empty history', async ({ app }) => {
+test('Windows product: native startup, setup and all original history scenarios', async ({
+  app,
+}) => {
   await mkdir(output, { recursive: true })
   await app.open('/')
   const page = surfaceOf(nativeEngine).page()
@@ -40,7 +44,6 @@ test('Windows product: original native startup, setup and empty history', async 
     }
     throw new Error(`Timed out: ${label}`)
   }
-  await mkdir(output, { recursive: true })
   try {
     await runStartupScenarios({
       waitFor,
@@ -48,14 +51,58 @@ test('Windows product: original native startup, setup and empty history', async 
       evidence,
       delay,
     })
-    await runScenarios({
-      daemon: { seeded: 0, profile: process.env.UC_NATIVE_PROFILE },
-      output,
-      platform: 'windows',
-      cdp: true,
-      browser: page.context().browser(),
-      nativePage: page,
-    })
+    const daemon = await openWindowsDaemon()
+    const runHistory = async phase => {
+      await mkdir(`${output}/${phase}`, { recursive: true })
+      await runScenarios({
+        daemon,
+        output: `${output}/${phase}`,
+        platform: 'windows',
+        cdp: true,
+        browser: page.context().browser(),
+        nativePage: page,
+        guiSession: () => openGuiSession(daemon),
+      })
+    }
+    await runHistory('empty')
+    await seedWindowsHistory(daemon)
+    await writeFile(
+      `${output}/seed-receipt.json`,
+      JSON.stringify(
+        {
+          entries: daemon.seeded,
+          transport: ['HTTP dispatch', 'CLI file ingestion', 'mobile LAN image ingestion'],
+          privateProfile: true,
+        },
+        null,
+        2
+      ) + '\n'
+    )
+    await runHistory('history')
+    const finalSession = await page.context().newCDPSession(page)
+    try {
+      const { targetInfo } = await finalSession.send('Target.getTargetInfo')
+      assert.equal(
+        targetInfo.targetId,
+        process.env.UC_NATIVE_TARGET_ID,
+        'all phases retain the original native target'
+      )
+      await writeFile(
+        `${output}/native-target.json`,
+        JSON.stringify(
+          {
+            expected: process.env.UC_NATIVE_TARGET_ID,
+            actual: targetInfo.targetId,
+            final: targetInfo.targetId,
+            url: page.url(),
+          },
+          null,
+          2
+        ) + '\n'
+      )
+    } finally {
+      await finalSession.detach()
+    }
     await app.screenshot('product-history')
   } finally {
     await writeFile(`${output}/startup-ready.json`, JSON.stringify(evidence, null, 2) + '\n')

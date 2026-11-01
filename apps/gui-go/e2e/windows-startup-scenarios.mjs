@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 
+export const STARTUP_PASSPHRASE = 'synthetic-startup-passphrase'
+
 // Shared by the original CDP launcher and the TesterArmy native product suite.
 export async function runStartupScenarios({ waitFor, evaluate, evidence, delay }) {
   const status = await waitFor(
@@ -21,7 +23,8 @@ export async function runStartupScenarios({ waitFor, evaluate, evidence, delay }
   await waitFor(() => evaluate(`!!document.querySelector('#device-name')`), 'setup form')
   await evaluate(`(() => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    for (const [selector, value] of [['#device-name','synthetic-startup-device'],['#pass1','synthetic-startup-passphrase'],['#pass2','synthetic-startup-passphrase']]) {
+    const passphrase = ${JSON.stringify(STARTUP_PASSPHRASE)};
+    for (const [selector, value] of [['#device-name','synthetic-startup-device'],['#pass1',passphrase],['#pass2',passphrase]]) {
       const input = document.querySelector(selector); setter.call(input,value); input.dispatchEvent(new Event('input',{bubbles:true}));
     }
   })()`)

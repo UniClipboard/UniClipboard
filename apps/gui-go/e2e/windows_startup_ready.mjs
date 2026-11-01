@@ -48,6 +48,7 @@ let socket
 let command
 let failure = false
 let host
+let launchedEnv
 const evidence = []
 try {
   const binary = path.join(sandbox, 'gui-go.exe')
@@ -58,6 +59,18 @@ try {
   })
   assert.equal(build.status, 0, 'Go E2E host build failed')
   fs.copyFileSync(path.join(root, 'target/debug/uniclipd.exe'), path.join(sandbox, 'uniclipd.exe'))
+  if (framework) {
+    const built = path.join(root, 'target/gui-go/windows-e2e')
+    const manifest = JSON.parse(fs.readFileSync(path.join(built, 'manifest.json'), 'utf8'))
+    assert.equal(
+      manifest.commit,
+      execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+    )
+    assert.equal(manifest.dirty, false, 'portable CLI must come from the clean current source')
+    const bytes = fs.readFileSync(path.join(built, 'uniclip.exe'))
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), manifest.sha256['uniclip.exe'])
+    fs.writeFileSync(path.join(sandbox, 'uniclip.exe'), bytes)
+  }
   const vitePort = await freePort()
   const debugPort = await freePort()
   const env = {
@@ -79,6 +92,7 @@ try {
     UC_GUI_GO_E2E_CONTROL_FILE: path.join(sandbox, 'control.txt'),
     UC_GUI_GO_E2E_BROWSER_ARGS: `--remote-debugging-port=${debugPort}`,
   }
+  launchedEnv = env
   start(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js')], {
     cwd: path.join(root, 'apps/gui-go/frontend'),
     env,
@@ -172,16 +186,20 @@ try {
         'run',
         '--config',
         'e2e.windows-product.config.ts',
+        'apps/gui-go/e2e/tester-army-native/windows-history-seed.mjs',
+        'apps/gui-go/frontend/e2e/history-bounded-grid.mjs',
+        'apps/gui-go/frontend/e2e/history-seed-data.mjs',
       ],
       {
         cwd: root,
         env: {
-          ...process.env,
+          ...env,
           E2E_TELEMETRY_DISABLED: '1',
           UC_NATIVE_ENDPOINT: `http://127.0.0.1:${debugPort}`,
           UC_NATIVE_URL: page.url,
           UC_NATIVE_TARGET_ID: page.id,
           UC_NATIVE_PROFILE: profile,
+          UC_NATIVE_SANDBOX: sandbox,
         },
         stdio: 'inherit',
       }
@@ -201,9 +219,9 @@ try {
   fs.appendFileSync(path.join(sandbox, 'control.txt'), 'exit\n')
   socket?.close()
   const cleanup = {
-    systemClipboardDisabled: true,
-    guiIsolated: true,
-    portable: true,
+    systemClipboardDisabled: launchedEnv?.UC_DISABLE_SYSTEM_CLIPBOARD === '1',
+    guiIsolated: launchedEnv?.UC_GUI_GO_ISOLATED === '1',
+    portable: launchedEnv?.UC_PORTABLE === '1',
     hostExitedNormally: false,
     daemonExited: false,
     sandboxRemoved: false,
@@ -294,6 +312,9 @@ try {
       'apps/gui-go/e2e/tester-army-native/windows-product.e2e.mjs',
       'apps/gui-go/frontend/e2e/history-kit-browser.mjs',
       'e2e.windows-product.config.ts',
+      'apps/gui-go/e2e/tester-army-native/windows-history-seed.mjs',
+      'apps/gui-go/frontend/e2e/history-bounded-grid.mjs',
+      'apps/gui-go/frontend/e2e/history-seed-data.mjs',
       'Cargo.lock',
       'bun.lock',
     ]
@@ -306,7 +327,10 @@ try {
         sourceFiles.map(file => [file, hash(path.join(root, file))])
       ),
       binariesSha256: Object.fromEntries(
-        ['gui-go.exe', 'uniclipd.exe'].map(file => [file, hash(path.join(sandbox, file))])
+        ['gui-go.exe', 'uniclipd.exe', 'uniclip.exe'].map(file => [
+          file,
+          hash(path.join(sandbox, file)),
+        ])
       ),
     }
     if (cleanup.daemonExited) {

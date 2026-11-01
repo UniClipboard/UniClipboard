@@ -30,6 +30,7 @@ export const backendReport = `target/tester-army-backend-report/${backendPlatfor
 
 // Each entry has passed its stated functional contract; retained candidates stay explicit.
 export const verifiedBackendRuns = [
+  { suite: 'history-kit', platform: 'windows', seed: 'history' },
   ...['macos', 'windows', 'linux'].map(platform => ({
     suite: 'history-window-grid',
     platform,

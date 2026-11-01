@@ -550,14 +550,29 @@ export async function runScenarios({
       ids = await selectedIds()
       assert.equal(ids.length, 2, `ctrl-click removes ${ids.length}`)
       const checkboxes = await page.locator('[data-row-check="checked"]').count()
-      assert.ok(checkboxes >= 2, `multi-select check marks ${checkboxes}`)
+      let appearance
+      if (platform === 'windows') {
+        assert.ok(checkboxes >= 2, `multi-select check marks ${checkboxes}`)
+      } else {
+        // AppKit and Adwaita explicitly use filled selected rows without checkboxes.
+        assert.equal(checkboxes, 0, 'this skin represents selection without checkboxes')
+        appearance = await rows().evaluateAll(cards => ({
+          selected: cards
+            .filter(card => card.getAttribute('aria-selected') === 'true')
+            .map(card => getComputedStyle(card).backgroundColor),
+          unselected: getComputedStyle(cards[3]).backgroundColor,
+        }))
+        assert.equal(appearance.selected.length, 2)
+        for (const color of appearance.selected)
+          assert.notEqual(color, appearance.unselected, 'selected rows have a visible accent fill')
+      }
       await shot('multi-select')
       await page.keyboard.press(`${modifier}+a`)
       await page.waitForTimeout(300)
       const all = (await selectedIds()).length
       assert.ok(all >= 10, `select all ${all}`)
       await page.keyboard.press('Escape')
-      return { range: 3, afterCtrlClick: 2, selectAll: all, checkboxes }
+      return { range: 3, afterCtrlClick: 2, selectAll: all, checkboxes, appearance }
     })
 
     await step('context-menu-focus-return', async () => {
@@ -1036,10 +1051,19 @@ export async function runScenarios({
     results.nativeCalls = await page?.evaluate(() => window.__ucNativeCalls ?? []).catch(() => null)
     // A run that reached no step proves nothing.
     results.passed = results.steps.length > 0 && results.steps.every(s => s.ok)
-    await writeFile(
-      path.join(output, 'browser-results.json'),
-      `${JSON.stringify(results, null, 2)}\n`
+    const publicResults = JSON.stringify(
+      results,
+      (_, value) => {
+        if (typeof value !== 'string') return value
+        let safe = redactEvidence(value)
+        for (const secret of [daemon.fileToken, daemon.sessionToken, daemon.passphrase])
+          if (typeof secret === 'string' && secret.length)
+            safe = safe.replaceAll(secret, '[redacted]')
+        return safe
+      },
+      2
     )
+    await writeFile(path.join(output, 'browser-results.json'), `${publicResults}\n`)
     console.log(
       JSON.stringify({ passed: results.passed, steps: results.steps.map(s => [s.name, s.ok]) })
     )

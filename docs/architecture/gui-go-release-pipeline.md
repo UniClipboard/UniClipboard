@@ -18,7 +18,7 @@
 | 位置 | 变更 |
 | --- | --- |
 | `release.yml` `validate` | 原无条件 `exit 1` 改为 `scripts/ci/release_gate.py prerequisites`：必须恰好配置一个生产 Windows 签名后端（唯一例外：alpha 且 `ALLOW_UNSIGNED_WINDOWS_ALPHA=true`，或 stable 且 `ALLOW_UNSIGNED_WINDOWS_STABLE=true` 时可不配置，见下文“无生产签名的 Windows 包”；beta 与 rc 不可绕过，测试签名在任何情况下都不满足），即 `WINDOWS_SIGN_BACKEND` 为 `azure`/`pfx`，**或** SignPath 生产（变量 `SIGNPATH_PRODUCTION_POLICY_SLUG` 与 `SIGNPATH_PRODUCTION_CERT_THUMBPRINT`），且有更新签名私钥，否则失败。测试签名（self-test、SignPath test-signing）永远不满足；两个后端同时存在也失败。随后 `release_gate.py source` 固定 `source_sha`，并要求 tag 版本与 `package.json`、`apps/gui-go/app.json`、`Cargo.toml`、`buildinfo.go`、`Cargo.lock` 工作区成员一致，且 `Cargo.toml` 与 `Cargo.lock` 的 Engine 版本固定一致。 |
-| `release.yml` `build` / `build-cli` / `create-release` | 一律检出并构建 `needs.validate.outputs.source_sha`（完整提交 SHA），而不是移动的分支或 tag 名。 |
+| `release.yml` `build`（经 `release-build.yml` 调用桌面端与 CLI 构建）/ `create-release` | 一律检出并构建 `needs.validate.outputs.source_sha`（完整提交 SHA），而不是移动的分支或 tag 名。 |
 | `release.yml` `create-release` | 收集、签名、清单、登记改为一次调用 `scripts/ci/assemble_release_assets.py`（见下），其后才是原有的 SHA256SUMS、tag（仅 dispatch）、Release、R2、FlareRelease。 |
 | `release.yml` 渠道分发 | Snap：alpha 仍异步触发，但 `release=false`，只产出 artifact；COPR：alpha 仍触发，但 `dry_run=true`，只产出 SRPM。推送商店与提交 COPR 需要人显式 `workflow_dispatch`。npm 与 GitCode 镜像入口不变（见下）。 |
 | `apps/gui-go/e2e/package_linux.py` | deb 的 `Control: Version` 把预发布分隔符换成 `~`（与 rpm 既有约定一致）；`Conflicts`/`Replaces`/`Provides` 同样使用该写法。文件名与更新语义版本不变。 |
@@ -26,6 +26,8 @@
 ### 构建调度与缓存边界
 
 `build.yml` 是手动构建、发布和缓存预热的公共入口。它先固定源码提交，再按 macOS ARM64、macOS x64、Windows ARM64、Windows x64 分别调用 `build-target.yml`；正式的全平台构建另调用 Linux GUI 流程。每条架构内部完成后即可打包，不等待其他架构的 sidecar。正式发布仍等待全部要求的平台通过现有门禁。
+
+`release.yml` 用同一个 `fail-fast: true` 矩阵调用 `release-build.yml` 的桌面端与 Linux CLI 构建。发布调用中的各层构建、打包矩阵也启用失败取消。任一平台或架构的构建任务失败后，GitHub Actions 会取消其余运行中和排队中的矩阵任务；取消期间仍可执行清理与证据上传步骤。只有全部构建成功，`create-release` 才能开始。公共工作流通过 `github.workflow` 识别发布调用；手动构建与缓存预热保留原有的失败后继续行为。
 
 `build-target.yml` 内的 daemon 与 quick-panel 在独立作业中并行构建，保持各自原有的 Cargo 依赖特性。没有把两个包合并到同一次 Cargo 调用：那会统一依赖特性，例如把 quick-panel 的 `serde_json/preserve_order` 引入 daemon。两个编译作业各自生成来源记录，汇合作业通过 `scripts/ci/merge-sidecar-components.mjs` 核对源码、构建模式、编译器、锁文件、工作流运行和重试次数，以及每个文件的 SHA-256 与大小，再生成原有的 `sidecar-<target>` 工件及合并来源记录。签名、打包和验收继续消费这个工件。
 

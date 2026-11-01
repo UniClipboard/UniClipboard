@@ -47,9 +47,11 @@ export const test = base.extend({
             'command-failed',
             'failure',
             'cleanup-failed',
+            'cleanup-command-failed',
           ].includes(value.event) ||
           ![
             'profile',
+            'owned-daemon-startup',
             'space-init',
             'daemon-start',
             'connection',
@@ -160,6 +162,8 @@ export const test = base.extend({
       )
       if (!failed) {
         assert.equal(code, 0, 'isolated backend must exit cleanly')
+        assert.equal(cleanup?.forced, false, 'owned backend must not require forced termination')
+        assert.equal(cleanup?.daemonExitCode, 0, 'the owned daemon must exit successfully')
         for (const key of ['homeRemoved', 'daemonExited', 'systemClipboardDisabled', 'guiIsolated'])
           assert.equal(cleanup?.[key], true, `backend ${key}`)
       }

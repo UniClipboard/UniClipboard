@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 
@@ -44,9 +45,11 @@ class Backend:
         self.passphrase = secrets.token_hex(24)
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self.connection = None
-        self.start_attempted = False
+        self.process = None
+        self.reaper = None
 
     def command(self, *args, allow_send_failure=False, timeout=90):
+        assert self.process is not None, 'start the fixture-owned daemon before CLI commands'
         operation = args[0] if args[0] != '--json' else args[1]
         diagnostic('command-start', self.stage, operation=operation)
         try:
@@ -68,20 +71,46 @@ class Backend:
         with self.opener.open(req, timeout=30) as response:
             return json.load(response)['data']
 
+    def spawn(self):
+        assert self.process is None, 'the fixture owns exactly one daemon child'
+        self.stage = 'owned-daemon-startup'
+        self.process = subprocess.Popen([str(ROOT / 'target/debug/uniclipd')],
+            env={**self.env, 'UC_DAEMON_RUN_MODE': '', 'UC_DAEMON_NO_TAKEOVER': '1'},
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # CLI stop waits for PID disappearance, so reap concurrently while that command runs.
+        self.reaper = threading.Thread(target=self.process.wait, daemon=True)
+        self.reaper.start()
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if self.process.poll() is not None:
+                raise RuntimeError('owned daemon exited before publishing its connection')
+            connections = list(Path(self.home).rglob('daemon.conn'))
+            if connections:
+                assert len(connections) == 1, 'expected one owned daemon connection'
+                connection = json.loads(connections[0].read_text(encoding='utf-8'))
+                assert connection['pid'] == self.process.pid, 'daemon connection must belong to the owned child'
+                self.connection = connection
+                return
+            time.sleep(.1)
+        raise RuntimeError('owned daemon connection readiness timed out')
+
     def start(self):
+        self.spawn()
         self.stage = 'space-init'
         self.command('space', 'init', '--passphrase', self.passphrase, '--device-name', 'search-node' if self.mode == 'search' else 'kit-browser')
-        self.start_attempted = True
         self.stage = 'daemon-start'
         self.command('start')
         self.stage = 'connection'
         connections = list(Path(self.home).rglob('daemon.conn'))
         assert len(connections) == 1, 'expected one isolated daemon connection'
         self.connection = json.loads(connections[0].read_text(encoding='utf-8'))
+        assert self.connection['pid'] == self.process.pid, 'CLI must reuse the fixture-owned standalone daemon'
         self.base = f"http://127.0.0.1:{self.connection['port']}"
         self.stage = 'authentication'
         self.session = self.request('/auth/connect', {'pid': os.getpid(), 'clientType': 'gui'},
                                     authorization='Bearer ' + self.connection['token'])['sessionToken']
+        self.residency = self.request('/health')['residency']
+        assert self.residency == 'standalone', 'the fixture requires a persistent daemon'
         self.stage = 'unlock'
         self.request('/content-lock/unlock', {'passphrase': self.passphrase})
         self.stage = 'settings'
@@ -129,12 +158,12 @@ class Backend:
             self.files([('invoice-0921.txt', b'Invoice 0921\nTotal: 42.00\n'), ('pixel.png', pixel)])
             put = self.mobile()
             png = subprocess.check_output(['node', '--input-type=module', '-e',
-                "import { gradientPng } from './apps/gui-go/frontend/e2e/history-seed-data.mjs'; process.stdout.write(gradientPng())"], cwd=ROOT)
+                "import { gradientPng } from './apps/gui-go/frontend/e2e/history-seed-data.mjs'; process.stdout.write(gradientPng())"], cwd=ROOT, timeout=60)
             put('/file/gradient-sample.png', png, 'image/png')
             put('/SyncClipboard.json', json.dumps({'type': 'Image', 'text': 'gradient-sample.png',
                 'dataName': 'gradient-sample.png', 'hasData': True}).encode())
             texts = json.loads(subprocess.check_output(['node', '--input-type=module', '-e',
-                "import { HISTORY_TEXTS } from './apps/gui-go/frontend/e2e/history-seed-data.mjs'; process.stdout.write(JSON.stringify(HISTORY_TEXTS))"], cwd=ROOT))
+                "import { HISTORY_TEXTS } from './apps/gui-go/frontend/e2e/history-seed-data.mjs'; process.stdout.write(JSON.stringify(HISTORY_TEXTS))"], cwd=ROOT, timeout=60))
             for text in texts:
                 self.send(text)
                 time.sleep(.2)
@@ -168,38 +197,45 @@ class Backend:
             self.request('/content-lock/revoke', {})
 
     def ready(self):
-        return {'baseUrl': self.base, 'daemonUrl': self.base, 'sessionToken': self.session,
+        return {'daemonPid': self.process.pid, 'residency': self.residency,
+                'baseUrl': self.base, 'daemonUrl': self.base, 'sessionToken': self.session,
                 'fileToken': self.connection['token'], 'passphrase': self.passphrase,
                 'profile': self.profile, 'seeded': self.seeded,
                 'text': 'TesterArmy isolated history acceptance'}
 
     def close(self):
         self.stage = 'cleanup'
-        remaining = list(Path(self.home).rglob('daemon.conn'))
-        pid = None
-        if remaining:
-            assert len(remaining) == 1, 'ambiguous isolated daemon ownership'
-            pid = json.loads(remaining[0].read_text(encoding='utf-8'))['pid']
-            self.command('--json', 'stop', timeout=60)
-            for _ in range(300):
-                try:
-                    os.kill(pid, 0)
-                except ProcessLookupError:
-                    break
-                time.sleep(.1)
-            else:
-                raise RuntimeError('owned daemon did not exit; preserve its private sandbox')
-        elif self.start_attempted:
-            if self.connection is None:
-                raise RuntimeError('startup ownership unresolved; preserve the private sandbox')
+        forced = False
+        stop_succeeded = True
+        code = None
+        if self.process is not None:
+            if self.process.poll() is None:
+                remaining = list(Path(self.home).rglob('daemon.conn'))
+                if remaining:
+                    assert len(remaining) == 1, 'ambiguous isolated daemon ownership'
+                    connection = json.loads(remaining[0].read_text(encoding='utf-8'))
+                    assert connection['pid'] == self.process.pid, 'refuse to stop an unexpected daemon'
+                    try:
+                        self.command('--json', 'stop', timeout=60)
+                    except Exception as error:
+                        stop_succeeded = False
+                        diagnostic('cleanup-command-failed', self.stage, error)
+                else:
+                    # A failed pre-readiness child is still owned by its Popen handle.
+                    self.process.terminate()
+                    forced = True
             try:
-                os.kill(self.connection['pid'], 0)
-            except ProcessLookupError:
-                pass
-            else:
-                raise RuntimeError('owned daemon remains without its connection file; preserve the private sandbox')
+                code = self.process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                forced = True
+                code = self.process.wait(timeout=10)
+        if self.reaper is not None:
+            self.reaper.join(timeout=1)
         shutil.rmtree(self.home)
-        return {'phase': 'cleanup', 'profile': self.profile, 'daemonPid': pid,
+        return {'phase': 'cleanup', 'profile': self.profile,
+                'daemonPid': self.process.pid if self.process else None,
+                'daemonExitCode': code, 'forced': forced, 'stopSucceeded': stop_succeeded,
                 'homeRemoved': not Path(self.home).exists(), 'daemonExited': True,
                 'systemClipboardDisabled': self.env['UC_DISABLE_SYSTEM_CLIPBOARD'] == '1',
                 'guiIsolated': self.env['UC_GUI_GO_ISOLATED'] == '1'}
@@ -224,6 +260,8 @@ def serve(mode):
         if backend is not None:
             try:
                 receipt = backend.close()
+                if receipt['forced'] or not receipt['stopSucceeded'] or receipt['daemonExitCode'] not in (None, 0):
+                    failed = True
             except Exception as error:
                 failed = True
                 diagnostic('cleanup-failed', backend.stage, error)

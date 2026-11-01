@@ -86,9 +86,10 @@ class ClipboardPreviewCache {
     this.inFlight.delete(entryId)
   }
 
-  retain(ids: ReadonlySet<string>): void {
-    for (const id of this.cache.keys()) if (!ids.has(id)) this.cache.delete(id)
-    for (const id of this.inFlight.keys()) if (!ids.has(id)) this.inFlight.delete(id)
+  retain(ids: ReadonlySet<string>, selectedId: string | null = null): void {
+    for (const id of this.cache.keys()) if (id !== selectedId && !ids.has(id)) this.cache.delete(id)
+    for (const id of this.inFlight.keys())
+      if (id !== selectedId && !ids.has(id)) this.inFlight.delete(id)
   }
 
   clear(): void {

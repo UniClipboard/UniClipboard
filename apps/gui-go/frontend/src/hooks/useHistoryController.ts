@@ -80,7 +80,17 @@ export function useHistoryController() {
       })
   }, [dispatch])
 
-  const data = useHistoryData()
+  const initialSnapshot = readHistorySessionSnapshot()
+  const [selection, setSelection] = useState(() => ({
+    id: initialSnapshot?.selectedId ?? null,
+    item: initialSnapshot?.selectedItem ?? (null as DisplayClipboardItem | null),
+    index: initialSnapshot?.selectedIndex ?? (null as number | null),
+    items: [] as DisplayClipboardItem[],
+    offset: initialSnapshot?.live?.offset ?? 0,
+    key: JSON.stringify(initialSnapshot?.live?.model ?? null),
+  }))
+  const [checkedState, setCheckedState] = useState<ReadonlyMap<string, boolean>>(() => new Map())
+  const data = useHistoryData(selection.id)
   // One revision drives both tag sources: bump it after any tag change.
   const [tagRevision, setTagRevision] = useState(0)
   const { searchableTags, historyTags, layout: tagLayout } = useTagCatalog(tagRevision)
@@ -90,8 +100,6 @@ export function useHistoryController() {
     setTagRevision(revision => revision + 1)
     refetch()
   }, [refetch])
-  const initialSnapshot = readHistorySessionSnapshot()
-
   // Hover only selects a keyboard shortcut target; visual state belongs to the card.
   const hoveredIdRef = useRef<string | null>(null)
   const handleHoverChange = useCallback((id: string, hovered: boolean) => {
@@ -111,7 +119,17 @@ export function useHistoryController() {
   const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({})
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const { copySuccessId, promotedId, markCopied } = useCopyFeedback()
+  const { copySuccessId, markCopied } = useCopyFeedback()
+  // The engine moves a restored entry to the result head. Re-read the current
+  // window in place rather than scrolling the reader away; the copied entry
+  // keeps its selected projection until it is loaded again at its new rank.
+  const refreshAfterCopy = useCallback(
+    (id: string) => {
+      setSelection(previous => (previous.id === id ? { ...previous, index: null } : previous))
+      refetch()
+    },
+    [refetch]
+  )
 
   // ── Copy handler ──────────────────────────────────────────────
   const handleCopy = useCallback(
@@ -119,6 +137,7 @@ export function useHistoryController() {
       try {
         await dispatch(copyToClipboard(id)).unwrap()
         markCopied(id)
+        refreshAfterCopy(id)
         return true
       } catch (err) {
         // `copyToClipboard` rejects with a specific, user-facing reason for
@@ -130,7 +149,7 @@ export function useHistoryController() {
         return false
       }
     },
-    [dispatch, t, markCopied]
+    [dispatch, t, markCopied, refreshAfterCopy]
   )
 
   const handleCopyFilePaths = useCallback(
@@ -138,13 +157,14 @@ export function useHistoryController() {
       try {
         await restoreClipboardEntry(id, { filePathsOnly: true })
         markCopied(id)
+        refreshAfterCopy(id)
         return true
       } catch {
         toast.error(t('clipboard.errors.copyFailed'))
         return false
       }
     },
-    [markCopied, t]
+    [markCopied, t, refreshAfterCopy]
   )
 
   // ── Delete flow ───────────────────────────────────────────────
@@ -152,6 +172,14 @@ export function useHistoryController() {
     async (id: string) => {
       try {
         await dispatch(removeClipboardItem(id)).unwrap()
+        setSelection(previous =>
+          previous.id === id ? { ...previous, id: null, item: null, index: null } : previous
+        )
+        setCheckedState(previous => {
+          const next = new Map(previous)
+          next.delete(id)
+          return next
+        })
         data.removeItem(id)
         data.refetch()
       } catch {
@@ -187,90 +215,132 @@ export function useHistoryController() {
     [t]
   )
 
-  // Float the just-copied entry to the front of the list, with optimistic
-  // favorite overrides applied on top of the engine's `isFavorited`.
+  // Ordering belongs to the engine. A copy refreshes the head rather than
+  // promoting a row inside a deep window and corrupting its absolute index.
   const orderedItems = useMemo(() => {
     const hasOverrides = Object.keys(favoriteOverrides).length > 0
-    const base = hasOverrides
+    return hasOverrides
       ? data.baseItems.map(it =>
           it.id in favoriteOverrides ? { ...it, isFavorited: favoriteOverrides[it.id] } : it
         )
       : data.baseItems
-    if (!promotedId) return base
-    const idx = base.findIndex(it => it.id === promotedId)
-    if (idx <= 0) return base
-    return [base[idx], ...base.slice(0, idx), ...base.slice(idx + 1)]
-  }, [data.baseItems, promotedId, favoriteOverrides])
+  }, [data.baseItems, favoriteOverrides])
+  const offset = data.viewport.offset
+  const resultKey = data.resultKey
+  const resultsReady = data.resultsReady
+  const queryChanged = selection.key !== resultKey
 
-  const [selection, setSelection] = useState<{
-    id: string | null
-    items: DisplayClipboardItem[]
-  }>(() => ({ id: initialSnapshot?.selectedId ?? null, items: [] }))
-
-  if (selection.items !== orderedItems) {
+  if (selection.items !== orderedItems || (queryChanged && resultsReady)) {
     const ids = new Set(orderedItems.map(item => item.id))
-    const firstItemId = orderedItems[0]?.id ?? null
-    const previousFirstItemId = selection.items[0]?.id ?? null
-    const previousIds = new Set(selection.items.map(item => item.id))
-    let nextId = selection.id
-
-    if (nextId !== null && !ids.has(nextId)) nextId = null
-    if (firstItemId !== null && nextId === null) nextId = firstItemId
-    if (
-      previousFirstItemId !== null &&
-      nextId === previousFirstItemId &&
-      firstItemId !== previousFirstItemId &&
-      !previousIds.has(firstItemId)
-    ) {
-      nextId = firstItemId
+    let id = selection.id
+    let index = selection.index
+    const previousIndex = selection.items.findIndex(item => item.id === id)
+    const sharedIndex = orderedItems.findIndex(item =>
+      selection.items.some(old => old.id === item.id)
+    )
+    if (sharedIndex >= 0 && index !== null) {
+      const oldIndex = selection.items.findIndex(item => item.id === orderedItems[sharedIndex].id)
+      index += offset + sharedIndex - selection.offset - oldIndex
     }
-
-    setSelection({ id: nextId, items: orderedItems })
+    const inLoadedRange = index !== null && index >= offset && index < offset + orderedItems.length
+    if (
+      resultsReady &&
+      id !== null &&
+      !ids.has(id) &&
+      (queryChanged || inLoadedRange || data.browseCount === 0)
+    )
+      id = null
+    const first = orderedItems[0]?.id ?? null
+    if (
+      !queryChanged &&
+      data.isAtTop() &&
+      offset === 0 &&
+      selection.offset === 0 &&
+      previousIndex === 0 &&
+      selection.index === 0 &&
+      id === selection.items[0]?.id &&
+      first &&
+      first !== id &&
+      !selection.items.some(item => item.id === first)
+    )
+      id = first
+    if (id === null && first !== null && resultsReady) id = first
+    const loadedIndex = orderedItems.findIndex(item => item.id === id)
+    const item =
+      loadedIndex >= 0 ? orderedItems[loadedIndex] : id === selection.id ? selection.item : null
+    if (loadedIndex >= 0) index = offset + loadedIndex
+    if (id === null) index = null
+    setSelection({
+      id,
+      item,
+      index,
+      items: orderedItems,
+      offset,
+      key: resultsReady ? resultKey : selection.key,
+    })
+    if (queryChanged && resultsReady) {
+      setCheckedState(previous => new Map([...previous].filter(([checked]) => ids.has(checked))))
+    }
   }
-
   const selectedId = selection.id
+  const selectedItem = useMemo(
+    () =>
+      selection.item
+        ? selection.id && selection.id in favoriteOverrides
+          ? { ...selection.item, isFavorited: favoriteOverrides[selection.id] }
+          : selection.item
+        : null,
+    [selection.item, selection.id, favoriteOverrides]
+  )
   const orderedItemIds = useMemo(() => new Set(orderedItems.map(item => item.id)), [orderedItems])
 
-  const selectedItem = useMemo(
-    () => orderedItems.find(it => it.id === selectedId) ?? null,
-    [orderedItems, selectedId]
+  // Bulk selection owns identities, not off-window record projections.
+  const checkedIds = useMemo(() => new Set(checkedState.keys()), [checkedState])
+  const toggleChecked = useCallback(
+    (id: string) => {
+      setCheckedState(prev => {
+        const next = new Map(prev)
+        if (!next.delete(id))
+          next.set(id, orderedItems.find(item => item.id === id)?.isFavorited === true)
+        return next
+      })
+    },
+    [orderedItems]
   )
-
-  // ── Bulk selection (HList.dc.html checkboxes) ─────────────────
-  // Independent of `selectedId`, the previewed row. Ids that leave the list
-  // (deleted, filtered out) drop out of the effective set on their own.
-  const [checkedState, setCheckedState] = useState<ReadonlySet<string>>(() => new Set())
-  const checkedIds = useMemo(() => {
-    const ids = new Set<string>()
-    for (const id of checkedState) if (orderedItemIds.has(id)) ids.add(id)
-    return ids
-  }, [checkedState, orderedItemIds])
-  const toggleChecked = useCallback((id: string) => {
-    setCheckedState(prev => {
-      const next = new Set(prev)
-      if (!next.delete(id)) next.add(id)
-      return next
-    })
-  }, [])
-  const clearChecked = useCallback(() => setCheckedState(new Set()), [])
-  /** Replaces the checked rows, for lists that select ranges or every row at once. */
-  const setChecked = useCallback((ids: readonly string[]) => setCheckedState(new Set(ids)), [])
+  const clearChecked = useCallback(() => setCheckedState(new Map()), [])
+  /** Keep only identities and pin flags for off-window bulk actions. */
+  const setChecked = useCallback(
+    (ids: readonly string[]) =>
+      setCheckedState(
+        previous =>
+          new Map(
+            ids.map(id => [
+              id,
+              orderedItems.find(item => item.id === id)?.isFavorited ?? previous.get(id) ?? false,
+            ])
+          )
+      ),
+    [orderedItems]
+  )
   const checkedItems = useMemo(
     () => orderedItems.filter(item => checkedIds.has(item.id)),
     [orderedItems, checkedIds]
   )
-
-  // Pin all checked rows, or unpin them when every one is already pinned.
-  const pinChecked = useCallback(() => {
-    const pin = checkedItems.some(item => item.isFavorited !== true)
-    for (const item of checkedItems) {
-      const current = item.isFavorited === true
-      if (current !== pin) void handleToggleFavorite(item.id, current)
+  const checkedPins = new Map(
+    [...checkedState].map(([id, pinned]) => [
+      id,
+      favoriteOverrides[id] ?? orderedItems.find(item => item.id === id)?.isFavorited ?? pinned,
+    ])
+  )
+  const checkedAllPinned = checkedPins.size > 0 && [...checkedPins.values()].every(Boolean)
+  const pinChecked = () => {
+    for (const [id, current] of checkedPins) {
+      if (current === checkedAllPinned) void handleToggleFavorite(id, current)
     }
-  }, [checkedItems, handleToggleFavorite])
+  }
   const deleteChecked = useCallback(
-    () => requestDelete(checkedItems.map(item => item.id)),
-    [checkedItems, requestDelete]
+    () => requestDelete([...checkedIds]),
+    [checkedIds, requestDelete]
   )
 
   useShortcut({
@@ -434,20 +504,35 @@ export function useHistoryController() {
     [runTagChange]
   )
 
+  const navigation = useRef<{ index: number; delta: number; token: symbol } | null>(null)
   const handleCardClick = useCallback(
-    (id: string) => setSelection({ id, items: orderedItems }),
-    [orderedItems]
+    (id: string) => {
+      navigation.current = null
+      const index = orderedItems.findIndex(item => item.id === id)
+      if (index < 0) return
+      setSelection({
+        id,
+        item: orderedItems[index],
+        index: offset + index,
+        items: orderedItems,
+        offset,
+        key: resultKey,
+      })
+    },
+    [orderedItems, offset, resultKey]
   )
 
   useEffect(() => {
-    if (selectedId !== null) updateHistorySessionSelection(selectedId)
-  }, [selectedId])
+    updateHistorySessionSelection(selectedId, selectedItem, selection.index)
+  }, [selectedId, selectedItem, selection.index])
 
   const writeCurrentSnapshot = useEffectEvent((nextScrollState: StateSnapshot) => {
     writeHistorySessionSnapshot({
       searchState: data.filter,
       live: data.liveSnapshot,
       selectedId,
+      selectedItem,
+      selectedIndex: selection.index,
       seenIds: Array.from(seenIds),
       scrollState: nextScrollState,
     })
@@ -460,6 +545,52 @@ export function useHistoryController() {
       })
     }
   }, [])
+
+  const moveSelection = useCallback(
+    async (movement: number | 'first' | 'last') => {
+      const start = navigation.current?.index ?? selection.index ?? offset
+      const target = Math.max(
+        0,
+        Math.min(
+          Math.max(0, data.viewport.total - 1),
+          movement === 'first'
+            ? 0
+            : movement === 'last'
+              ? data.viewport.total - 1
+              : start + movement
+        )
+      )
+      const token = Symbol()
+      const delta = typeof movement === 'number' ? (navigation.current?.delta ?? 0) + movement : 0
+      navigation.current = { index: target, delta, token }
+      let resolved: { item: DisplayClipboardItem; index: number } | null
+      if (
+        typeof movement === 'number' &&
+        selection.id !== null &&
+        !orderedItemIds.has(selection.id)
+      ) {
+        resolved = await data.ensureNeighbor(selection.id, selection.index ?? 0, delta)
+      } else {
+        const item = await data.ensureItem(target)
+        resolved = item ? { item, index: target } : null
+      }
+      if (navigation.current?.token !== token) return null
+      navigation.current = null
+      if (!resolved) return null
+      const { item, index } = resolved
+      setSelection(previous => ({ ...previous, id: item.id, item, index }))
+      return item.id
+    },
+    [
+      data.ensureItem,
+      data.ensureNeighbor,
+      data.viewport.total,
+      selection.id,
+      selection.index,
+      orderedItemIds,
+      offset,
+    ]
+  )
 
   // Heading reflects the active quick view / content-type filter ("收藏",
   // "文本", …), falling back to "全部" while unfiltered.
@@ -519,7 +650,7 @@ export function useHistoryController() {
     setScrollState,
     hasMore: data.hasMore,
     handleLoadMore: data.handleLoadMore,
-    viewport: data.viewport,
+    viewport: { ...data.viewport, resetKey: resultKey, onMoveSelection: moveSelection },
     handleHoverChange,
     selectedId,
     copySuccessId,
@@ -528,6 +659,7 @@ export function useHistoryController() {
     // Bulk selection.
     checkedIds,
     checkedItems,
+    checkedAllPinned,
     toggleChecked,
     clearChecked,
     setChecked,

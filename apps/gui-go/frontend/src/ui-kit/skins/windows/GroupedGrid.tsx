@@ -10,7 +10,11 @@ import { CheckmarkFilled } from '@fluentui/react-icons'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import type { GridItem, GroupedGridProps } from '@/ui-kit/contract'
-import { useWindowedScroll } from '@/ui-kit/use-windowed-scroll'
+import {
+  useWindowedScroll,
+  useGridColumns,
+  moveWindowSelection,
+} from '@/ui-kit/use-windowed-scroll'
 import { selectRange } from './list-keys'
 import { useMenuStyles } from './menu-styles'
 import { MenuEntries } from './MenuEntries'
@@ -196,7 +200,7 @@ export function GroupedGrid({
   useEffect(() => {
     const end = endRef.current
     const root = gridRef.current
-    if (!end || !root) return
+    if (!end || !root || viewport) return
     const observer = new IntersectionObserver(
       entries => {
         if (entries.some(entry => entry.isIntersecting)) endReached.current?.()
@@ -205,7 +209,7 @@ export function GroupedGrid({
     )
     observer.observe(end)
     return () => observer.disconnect()
-  }, [items.length])
+  }, [items.length, viewport])
 
   const selectOne = (id: string) => {
     anchor.current = id
@@ -222,11 +226,20 @@ export function GroupedGrid({
     const top = children[0]?.offsetTop
     return Math.max(1, children.filter(child => child.offsetTop === top).length)
   }
-  useWindowedScroll(gridRef, items, viewport)
+  const columns = useGridColumns(gridRef, 10 + Math.min(1, Math.max(0, size)) * 6, 0.75, 0)
+  const spacing = useWindowedScroll(gridRef, items, viewport, {
+    columns,
+    rowHeightRem: 16,
+    key: String(size),
+  })
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || items.length === 0) return
     const found = items.findIndex(item => item.id === cursor)
+    if (moveWindowSelection(event.key, found, items.length, columns, viewport)) {
+      event.preventDefault()
+      return
+    }
     const index = Math.max(0, found)
     const step: Record<string, number> = {
       ArrowLeft: -1,
@@ -281,19 +294,22 @@ export function GroupedGrid({
   const sections = groups.map(group => {
     const groupItems = items.slice(offset, offset + group.count)
     offset += group.count
-    return { group, groupItems }
+    return { group, groupItems, start: offset - group.count }
   })
   const width = `${10 + Math.min(1, Math.max(0, size)) * 6}rem`
 
   const grid = (
     <div
       ref={gridRef}
+      data-history-window-scroller={viewport ? true : undefined}
       className={styles.grid}
       role="listbox"
       tabIndex={0}
       aria-label={label}
       aria-multiselectable
-      aria-activedescendant={cursor ? cardId(cursor) : undefined}
+      aria-activedescendant={
+        cursor && items.some(item => item.id === cursor) ? cardId(cursor) : undefined
+      }
       onKeyDown={onKeyDown}
       onContextMenuCapture={event => {
         pendingMenuIds.current = event.target === event.currentTarget ? selection : []
@@ -305,7 +321,8 @@ export function GroupedGrid({
         } as React.CSSProperties
       }
     >
-      {sections.map(({ group, groupItems }) => (
+      {viewport && <div aria-hidden="true" style={{ height: spacing.top }} />}
+      {sections.map(({ group, groupItems, start }) => (
         <div key={group.id} role="presentation">
           <div className={styles.header} role="presentation">
             <span className={styles.headerTitle}>{group.title}</span>
@@ -314,12 +331,23 @@ export function GroupedGrid({
               <span className={styles.headerTrailing}>{group.trailing}</span>
             ) : null}
           </div>
-          <div className={styles.cards} role="presentation">
-            {groupItems.map(item => {
+          <div
+            className={styles.cards}
+            role="presentation"
+            style={
+              viewport ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined
+            }
+          >
+            {groupItems.map((item, local) => {
               const selected = selection.includes(item.id)
               return (
                 <div
                   key={item.id}
+                  style={
+                    viewport && local === 0
+                      ? { gridColumnStart: ((viewport.offset + start) % columns) + 1 }
+                      : undefined
+                  }
                   id={cardId(item.id)}
                   role="option"
                   aria-selected={selected}
@@ -350,6 +378,7 @@ export function GroupedGrid({
           </div>
         </div>
       ))}
+      {viewport && <div aria-hidden="true" style={{ height: spacing.bottom }} />}
       <div ref={endRef} role="presentation" />
       {footer ? <div className={styles.footer}>{footer}</div> : null}
     </div>

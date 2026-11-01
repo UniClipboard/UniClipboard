@@ -67,6 +67,7 @@ export default function HistoryKitPage() {
   const c = useHistoryController()
   useEffect(() => {
     if (import.meta.env.VITE_GUI_GO_E2E !== '1') return
+    document.documentElement.dataset.historySelectedId = c.selectedId ?? ''
     document.documentElement.dataset.historyWindowTotal = String(c.browseCount)
     document.documentElement.dataset.historyWindowPeakCount = String(
       Math.max(Number(document.documentElement.dataset.historyWindowPeakCount ?? 0), c.items.length)
@@ -74,7 +75,7 @@ export default function HistoryKitPage() {
     document.documentElement.dataset.historyWindowCount = String(c.items.length)
     document.documentElement.dataset.historyWindowOffset = String(c.viewport.offset)
     document.documentElement.dataset.historyWindowIds = JSON.stringify(c.items.map(item => item.id))
-  }, [c.items, c.viewport.offset, c.browseCount])
+  }, [c.items, c.viewport.offset, c.browseCount, c.selectedId])
   useEffect(() => {
     if (import.meta.env.VITE_GUI_GO_E2E !== '1') return
     const remove = (event: Event) => c.requestDelete([(event as CustomEvent<string>).detail])
@@ -165,10 +166,12 @@ export default function HistoryKitPage() {
   }
   const showDetail = view === 'list' || inspector
 
-  const multi = c.checkedItems.length > 1
-  const selection = multi ? c.checkedItems.map(item => item.id) : c.selectedId ? [c.selectedId] : []
+  const multi = c.checkedIds.size > 1
+  const selection = multi ? [...c.checkedIds] : c.selectedId ? [c.selectedId] : []
   const selectedItems = multi ? c.checkedItems : c.selectedItem ? [c.selectedItem] : []
-  const allPinned = selectedItems.length > 0 && selectedItems.every(item => item.isFavorited)
+  const allPinned = multi
+    ? c.checkedAllPinned
+    : selectedItems.length > 0 && selectedItems.every(item => item.isFavorited)
 
   const select = (ids: string[]) => {
     const last = ids[ids.length - 1]
@@ -236,6 +239,10 @@ export default function HistoryKitPage() {
     onAction: (action: string, ids: string[]) => {
       if (action === COPY) void c.handleCopy(ids[0])
       else if (action === PIN) {
+        if (ids.length === c.checkedIds.size && ids.every(id => c.checkedIds.has(id))) {
+          c.pinChecked()
+          return
+        }
         const items = c.items.filter(item => ids.includes(item.id))
         const pin = items.some(item => item.isFavorited !== true)
         for (const item of items) {
@@ -318,7 +325,7 @@ export default function HistoryKitPage() {
               ? undefined
               : multi
                 ? t('history.kit.selectedOf', {
-                    count: c.checkedItems.length,
+                    count: c.checkedIds.size,
                     total: c.browseCount,
                   })
                 : c.browseCount.toLocaleString()
@@ -426,7 +433,11 @@ export default function HistoryKitPage() {
               {multi ? (
                 <HistoryKitSelection
                   ids={selection}
-                  summary={selectionSummary(c.checkedItems, t)}
+                  summary={
+                    c.checkedItems.length === c.checkedIds.size
+                      ? selectionSummary(c.checkedItems, t)
+                      : ''
+                  }
                   tagging={
                     c.historyTags.available
                       ? {

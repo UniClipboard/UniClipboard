@@ -7,7 +7,7 @@ import { rowTitle } from '@/components/history/list/history-row-title'
 import { useNow } from '@/hooks/useRelativeTime'
 import type { ClipboardTextItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { GroupedGrid, Icon, type GridItem, type MenuEntry } from '@/ui-kit'
-import type { HistoryWindowViewport } from '@/ui-kit/contract'
+import type { HistoryWindowViewport } from '@/ui-kit'
 import { dayGroups, imageSize } from './history-kit-model'
 import { HistoryKitThumbnail } from './HistoryKitThumbnail'
 

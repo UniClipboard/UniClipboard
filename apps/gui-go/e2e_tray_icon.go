@@ -64,9 +64,9 @@ var (
 
 // compareTrayIconToDesign checks the glyph twice. First its shape: rendered with the design's macOS-light colours on the design's 44 px / 36 px
 // canvas, it is compared with the independently rasterized design board by counting pixels that differ by more than fuzz (out of 255) in any
-// channel. That is a shape check only: the design's own geometry is not what the tray receives. Second the PRODUCTION frame, rendered with
+// channel. That is a shape check only. Second the PRODUCTION frame, rendered with
 // trayIconSpec, which is the image handed to the tray: the template alpha rule at the sampled points, no clipping at the image edge, and on
-// macOS a long side of 17 to 19 pt (the design's own 18 pt grid would show a smaller glyph next to neighbouring status items).
+// macOS a long side of 15 to 16 pt, using the design's 18 pt grid inside the 22 pt status item.
 func compareTrayIconToDesign(dir string) (map[string]any, bool) {
 	const fuzz = 77 // 30%: anti-aliasing differences between two rasterizers
 	bg := color.NRGBA{0xE9, 0xE9, 0xEC, 255}
@@ -128,7 +128,7 @@ func compareTrayIconToDesign(dir string) (map[string]any, bool) {
 	sizeOK := !clipped
 	if runtime.GOOS == "darwin" {
 		longest := max(widthPx, heightPx)
-		sizeOK = sizeOK && longest >= 34 && longest <= 38 // 17 to 19 pt at 2x
+		sizeOK = sizeOK && longest >= 30 && longest <= 32 // 15 to 16 pt at 2x
 	}
 	results["productionSize"] = map[string]any{"widthPx": widthPx, "heightPx": heightPx, "clipped": clipped, "pass": sizeOK}
 	return results, shapeOK && alphaOK && sizeOK

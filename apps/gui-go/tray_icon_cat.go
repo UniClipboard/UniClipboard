@@ -18,12 +18,19 @@ var trayCatPNG []byte
 // tintedCat draws the cat for a tray that shows its pixels as they are (Windows, Linux): the image's alpha, scaled to the platform's
 // size and filled with its foreground colour. A black template image as is would vanish on a dark taskbar or panel.
 func tintedCat(s iconSpec) ([]byte, error) {
+	return scaledCat(s, s.size)
+}
+
+// scaledCat scales the source alpha into a centred square and fills it with the
+// foreground colour. Black makes a macOS template; other colours suit Windows/Linux.
+func scaledCat(s iconSpec, art int) ([]byte, error) {
 	src, err := png.Decode(bytes.NewReader(trayCatPNG))
 	if err != nil {
 		return nil, err
 	}
 	mask := image.NewAlpha(image.Rect(0, 0, s.size, s.size))
-	xdraw.CatmullRom.Scale(mask, mask.Bounds(), src, src.Bounds(), xdraw.Src, nil)
+	off := (s.size - art) / 2
+	xdraw.CatmullRom.Scale(mask, image.Rect(off, off, off+art, off+art), src, src.Bounds(), xdraw.Src, nil)
 	img := image.NewNRGBA(mask.Bounds())
 	for i, a := range mask.Pix {
 		if a == 0 {

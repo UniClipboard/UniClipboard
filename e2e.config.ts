@@ -27,6 +27,7 @@ export default {
         command: {
           executable: 'node',
           inheritEnv: [buildLeaseEnv],
+          env: { UC_UI_PLATFORM: 'linux' },
           args: ['apps/gui-go/frontend/e2e/tester-army/server.mjs', '{port}'],
           log: 'target/tester-army-server.log',
         },

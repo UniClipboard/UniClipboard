@@ -78,3 +78,20 @@ bun run e2e:gui layouts quick-panel-accessibility startup-first-frame
 全量前端覆盖率检查未通过：241 个测试文件中 238 个通过；1561 个测试中 1557 个通过。剩余失败为语言键缺失、接收状态测试刷新，以及两个快捷面板设置测试。修复前提交 `f75c4fc73427cb576c40678cff066a80bf766892` 上已独立复现这些失败；设置测试使用明确平台运行，以绕过本次修复的构建故障。设置测试的模拟模块缺少 `getQuickPanelAccessibilityPermission`。本次未改动这些测试或接收状态逻辑。
 
 构建与覆盖率日志分别位于 `target/pr2179-build-after.log`、`target/pr2179-coverage-after.log`。修复前对照日志位于 `target/pr2179-baseline-tests.log`、`target/pr2179-baseline-setting-tests.log`。这些结果证明构建故障已修复，不证明整个 CI 已通过。
+
+## 后端历史网格 CI 时序修复
+
+提交 `6c3a1d01bbad14060f11996b9b697613ef01585f` 的 CI 已通过前端检查、覆盖率检查、三种宿主的浏览器测试和 Windows 产品测试。唯一失败为作业 `124902726819` 中 macOS 皮肤的 `history-window-grid`。
+
+失败发生在首次切换网格后。50 张卡片已经挂载，但 `ResizeObserver` 尚未将可用宽度写入列数。测试把初始一列布局当作最终布局测量，得到驻留卡片高度 34811、视口高度 11912。卡片数量不能证明响应式网格已就绪。
+
+共享断言现等待卡片容器使用多列网格，再测量几何。修复不增加固定延时，不重试失败断言，不放宽高度阈值。原有 50 条驻留限制、真实后端顺序、全部记录可达和反向导航断言均保留。复跑命令为：
+
+```bash
+bun run e2e:gui backends history-window-grid --seed history
+python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
+```
+
+CI 原始日志位于 `target/pr2179-backend-job.log`。下载的失败报告与同轮 Windows、Linux 通过证据位于 `target/pr2179-ci-backend/`。本地复跑日志位于 `target/pr2179-grid-after.log`。本地首次启动因缺少后端二进制而失败；构建隔离 daemon 和 CLI 后才开始场景验证。该准备失败不计为产品回归。
+
+本地验证环境为 macOS、Node 24.22.2、Chromium。三种皮肤均通过，每种皮肤访问全部 138 条记录，每个窗口保留 50 条记录，并反向返回首个窗口。macOS 驻留卡片高度为 1445.125，视口高度为 11912。三次运行均正常清理，没有强制结束后端。截图、场景 JSON、运行报告和清理回执位于标准后端工件目录；源码为 `6c3a1d01bbad14060f11996b9b697613ef01585f` 加本次测试等待条件修改。公开回执记录源码脏状态与校验和。新提交的 CI 结果须单独核对。

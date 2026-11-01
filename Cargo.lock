@@ -11929,15 +11929,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "uc-cli-macros"
-version = "1.6.0-alpha.5"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "uc-content-hash"
 version = "1.1.0-rc.23"
 source = "git+https://github.com/UniClipboard/Engine.git?rev=d532978d8bc9740a64460ee08b6e97a85fe4b590#d532978d8bc9740a64460ee08b6e97a85fe4b590"

@@ -180,13 +180,13 @@ describe('Rust development CLI stays out of production builds', () => {
           manifest.match(new RegExp(`^${key} = \\[\\n([\\s\\S]*?)\\n\\]`, 'm'))?.[1] ?? ''
         ).matchAll(/"([^"]+)"/g),
       ].map(match => match[1])
-    const tools = ['tools/uc-dev-cli', 'crates/uc-cli-macros']
+    const tools = ['tools/uc-dev-cli']
     const members = list('members')
     for (const tool of tools) expect(members).toContain(tool)
     // `--workspace` and `-p` still reach the tools, a bare `cargo build` does not,
     // and nothing else may silently drop out of the default set.
     expect(list('default-members')).toEqual(members.filter(member => !tools.includes(member)))
-    for (const file of ['tools/uc-dev-cli/Cargo.toml', 'crates/uc-cli-macros/Cargo.toml']) {
+    for (const file of ['tools/uc-dev-cli/Cargo.toml']) {
       expect(fs.readFileSync(path.join(root, file), 'utf8'), file).toMatch(/^publish = false$/m)
     }
   })

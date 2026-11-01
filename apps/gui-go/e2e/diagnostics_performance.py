@@ -71,7 +71,14 @@ def run(out):
         pid = worker.pid
         register(pid)
         report['phases']['baselineAtNs'] = time.time_ns()
-        time.sleep(3)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            rows, _ = records(export('baseline'))
+            if any(point['name'] == 'process.memory.usage' for point in for_pid(rows, pid)):
+                break
+            time.sleep(0.2)
+        else:
+            raise TimeoutError('registered host baseline was not sampled')
         report['phases']['loadAtNs'] = time.time_ns()
         worker.stdin.write('load\n')
         worker.stdin.flush()

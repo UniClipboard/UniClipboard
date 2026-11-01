@@ -73,3 +73,9 @@ export interface SettingAlertProps {
   cancelHint?: ReactNode
   confirmHint?: ReactNode
 }
+
+export interface SettingButtonProps {
+  children: ReactNode
+  onClick: () => void
+  disabled?: boolean
+}

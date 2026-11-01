@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getEntryReceive, retryEntryReceive } from '@/api/file_transfer'
+import { daemonWs } from '@/lib/daemon-ws'
 import type { ReceiveSnapshot } from '@/lib/receive-items'
 import fileTransferReducer, {
   markReceiveCancellationIncomplete,
-  setReceiveAttemptState,
 } from '@/store/slices/fileTransferSlice'
 import ReceiveItemsPanel from '../ReceiveItemsPanel'
 
@@ -21,6 +21,10 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/api/file_transfer', () => ({
   getEntryReceive: vi.fn(),
   retryEntryReceive: vi.fn(),
+}))
+
+vi.mock('@/lib/daemon-ws', () => ({
+  daemonWs: { subscribe: vi.fn(() => vi.fn()), onReconnect: vi.fn(() => vi.fn()) },
 }))
 
 vi.mock('@/observability/errors', () => ({ reportError: vi.fn() }))
@@ -146,13 +150,15 @@ describe('ReceiveItemsPanel', () => {
   it('queries again when an event says the attempt changed', async () => {
     getMock.mockResolvedValueOnce(snap('a1', 'receiving', [file('y', 'transferring')]))
     getMock.mockResolvedValue(snap('a1', 'failed', [file('y', 'failed')]))
-    const store = renderPanel()
+    renderPanel()
     await screen.findAllByTestId('receive-item')
 
     act(() => {
-      store.dispatch(
-        setReceiveAttemptState({ entryId: 'entry-1', attemptId: 'a1', state: 'failed' })
-      )
+      const callback = vi.mocked(daemonWs.subscribe).mock.lastCall![1]
+      callback({
+        eventType: 'clipboard.receive_attempt_state_changed',
+        payload: { entryId: 'entry-1', attemptId: 'a1', state: 'failed' },
+      })
     })
 
     await waitFor(() =>

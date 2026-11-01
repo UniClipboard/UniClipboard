@@ -1,8 +1,9 @@
 import { isExperimentalFeature } from '@/components/setting/experimental-features'
 import { ExperimentalBadge } from '@/components/setting/ExperimentalBadge'
-import { AlertDialog, Select, SettingsGroup, SettingsRow, Switch } from '@/ui-kit'
+import { AlertDialog, Button, Select, SettingsGroup, SettingsRow, Switch } from '@/ui-kit'
 import type {
   SettingAlertProps,
+  SettingButtonProps,
   SettingGroupProps,
   SettingRowProps,
   SettingSelectProps,
@@ -87,3 +88,7 @@ export function SettingAlert({
 
 export { InlineNotice as SettingNotice } from '@/ui-kit'
 export { SettingPresentationRoot } from './kit-root'
+
+export function SettingButton(props: SettingButtonProps) {
+  return <Button variant="standard" size="small" {...props} />
+}

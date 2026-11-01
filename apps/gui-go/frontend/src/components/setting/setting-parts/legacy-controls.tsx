@@ -1,4 +1,5 @@
 import {
+  Button,
   Select,
   SelectContent,
   SelectItem,
@@ -6,7 +7,7 @@ import {
   SelectValue,
   Switch,
 } from '@/components/ui'
-import type { SettingSelectProps, SettingSwitchProps } from './types'
+import type { SettingButtonProps, SettingSelectProps, SettingSwitchProps } from './types'
 
 export function SettingSwitch({
   checked,
@@ -60,4 +61,8 @@ export function SettingSelect({
       </Select>
     </div>
   )
+}
+
+export function SettingButton(props: SettingButtonProps) {
+  return <Button variant="outline" size="sm" {...props} />
 }

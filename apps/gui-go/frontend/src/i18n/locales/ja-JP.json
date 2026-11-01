@@ -938,6 +938,17 @@
         "applyUnknown": "保存されましたが、ショートカットが有効かどうか確認できません。（{{error}}）"
       },
       "quickPanel": {
+        "accessibility": {
+          "groupTitle": "システム権限",
+          "label": "アクセシビリティ権限",
+          "description": "クイックパネルが選択した内容を直前のアプリに入力し、修飾キーのダブルタップを検出できるようにします。システム設定で UniClipboard にアクセスを許可してください。",
+          "checking": "確認中",
+          "granted": "許可済み",
+          "denied": "未許可",
+          "error": "権限を確認できませんでした",
+          "retry": "再試行",
+          "openSettings": "システム設定を開く"
+        },
         "compositorShortcuts": "Wayland の呼び出しショートカットはデスクトップ環境が管理します。コンポジターの設定で次のコマンドにキーを割り当ててください。",
         "title": "クイック パネル",
         "featureTitle": "機能",

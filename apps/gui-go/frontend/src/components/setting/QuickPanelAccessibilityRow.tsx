@@ -1,8 +1,8 @@
+import { SettingButton } from '@ui-setting-parts'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/toast'
 import { openUrl } from '@/host/opener'
 import { createLogger } from '@/lib/logger'
-import { Button, Text } from '@/ui-kit'
 import { SettingRow } from './SettingRow'
 import type { AccessibilityStatus } from './useQuickPanelAccessibility'
 
@@ -30,24 +30,19 @@ export function QuickPanelAccessibilityRow({
     >
       <div className="flex flex-wrap items-center justify-end gap-2">
         <span role="status" aria-live="polite">
-          <Text role="body" tone="secondary">
+          <span className="text-ui-body text-muted-foreground">
             {t(`settings.sections.quickPanel.accessibility.${status}`)}
-          </Text>
+          </span>
         </span>
         {status === 'error' ? (
-          <Button variant="standard" size="small" onClick={onRetry}>
+          <SettingButton onClick={onRetry}>
             {t('settings.sections.quickPanel.accessibility.retry')}
-          </Button>
+          </SettingButton>
         ) : (
           status !== 'granted' && (
-            <Button
-              variant="standard"
-              size="small"
-              onClick={openSettings}
-              disabled={status === 'checking'}
-            >
+            <SettingButton onClick={openSettings} disabled={status === 'checking'}>
               {t('settings.sections.quickPanel.accessibility.openSettings')}
-            </Button>
+            </SettingButton>
           )
         )}
       </div>

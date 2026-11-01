@@ -113,6 +113,7 @@ func (u *uiProcess) startLocked() (*uiPeer, error) {
 	select {
 	case <-ready:
 		log.Printf("UI process ready pid=%d", cmd.Process.Pid)
+		u.host.registerDiagnosticPID(context.Background(), uint32(cmd.Process.Pid), "gui")
 		return peer, nil
 	case <-exited:
 		return nil, errors.New("UI process exited before readiness")

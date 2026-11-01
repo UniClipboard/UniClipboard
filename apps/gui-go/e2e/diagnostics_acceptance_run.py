@@ -82,6 +82,23 @@ def verify_export(path, pinned):
                         runJsonCommit=run_json.get('engine_source_commit'), runJsonState=run_json.get('engine_source_state'),
                         commitMatchesPin=run_json.get('engine_source_commit') == pinned)
             out['runs'].append(info)
+        otel = json.loads(z.read('otel/manifest.json'))
+        out['otel'] = otel
+        for file in otel['files']:
+            data = z.read(file['name'])
+            assert len(data) == file['bytes']
+            assert hashlib.sha256(data).hexdigest() == file['sha256']
+        if manifest['mode'] == 'online':
+            assert otel['history']['coverage'] == 'registered_processes'
+            assert any(host['role'] == 'gui' for host in otel['history']['hostCoverage'])
+            metrics = z.read('otel/metrics.jsonl').decode()
+            assert 'process.memory.usage' in metrics
+            assert 'uc.process.cpu.time' in metrics
+            assert 'resourceMetrics' in metrics
+        else:
+            assert otel['liveFlush'] is False
+            assert otel['state'] in ('unavailable', 'encrypted_unavailable')
+        assert 'import/import.py' in names
         out['entries'] = len(names)
     return out
 

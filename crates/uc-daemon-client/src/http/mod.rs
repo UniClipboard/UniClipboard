@@ -161,7 +161,7 @@ pub(crate) async fn get_session_token(
     let snapshot = connection_state
         .snapshot()
         .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
-    get_session_token_for_snapshot(http, connection_state, pid, &snapshot).await
+    get_session_token_for_snapshot(http, connection_state, pid, &snapshot, "gui").await
 }
 
 async fn get_session_token_for_snapshot(
@@ -169,6 +169,7 @@ async fn get_session_token_for_snapshot(
     connection_state: &DaemonConnectionState,
     pid: u32,
     snapshot: &(uc_daemon_contract::api::auth::DaemonConnectionInfo, u64),
+    client_type: &str,
 ) -> Result<String> {
     let (connection, revision) = snapshot;
     let now = SystemTime::now()
@@ -180,7 +181,8 @@ async fn get_session_token_for_snapshot(
         return Ok(token);
     }
 
-    let new_token = exchange_session_token_for_connection(http, connection, pid, "gui").await?;
+    let new_token =
+        exchange_session_token_for_connection(http, connection, pid, client_type).await?;
     let expires_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -255,8 +257,8 @@ async fn authorized_daemon_request_for_snapshot(
 
     // GUI clients benefit from token caching (long-running process).
     // CLI and other types use fresh tokens each call.
-    let session_token = if client_type == "gui" {
-        get_session_token_for_snapshot(http, connection_state, pid, &snapshot).await?
+    let session_token = if matches!(client_type, "gui" | "quick-panel") {
+        get_session_token_for_snapshot(http, connection_state, pid, &snapshot, client_type).await?
     } else {
         exchange_session_token_for_connection(http, connection, pid, client_type)
             .await?

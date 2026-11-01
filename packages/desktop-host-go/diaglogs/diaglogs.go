@@ -171,7 +171,7 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 		return Report{}, err
 	}
 	networkRuns := selectNetwork(logsDir)
-	if len(names) == 0 && len(networkRuns.runs) == 0 {
+	if len(names) == 0 && len(networkRuns.runs) == 0 && !hasOfflineHistory(logsDir) {
 		return Report{}, ErrNoLogs
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(destination), ".logs-*.zip")
@@ -218,7 +218,11 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 		return Report{}, err
 	}
 	report.Network = network
-	if len(report.IncludedFiles) == 0 && !networkHasFiles(network) {
+	otelHasFiles, err := collectOfflineOTel(archive, logsDir)
+	if err != nil {
+		return Report{}, err
+	}
+	if len(report.IncludedFiles) == 0 && !networkHasFiles(network) && !otelHasFiles {
 		return Report{}, ErrNoLogs
 	}
 	if report.UnreadableFiles == nil {

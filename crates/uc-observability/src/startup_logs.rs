@@ -1,7 +1,7 @@
 //! Desktop diagnostic package assembly for live and offline export.
 
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -31,6 +31,16 @@ pub struct DiagnosticArchiveRequest {
     /// The independent network-library log. `live` is `None` when no running
     /// daemon prepared the export.
     pub network: NetworkArchiveRequest,
+    pub otel: Option<OtelArchiveSnapshot>,
+}
+
+/// Frozen records supplied by the process observability owner.
+#[derive(Debug, Clone)]
+pub struct OtelArchiveSnapshot {
+    pub metrics: String,
+    pub logs: String,
+    pub traces: String,
+    pub summary: Value,
 }
 
 /// Facts about the exporting host that explain how the logs were produced.
@@ -158,6 +168,7 @@ pub fn export_startup_logs_with_status(
             startup_status,
             host: None,
             network: NetworkArchiveRequest::default(),
+            otel: None,
         },
     )?;
     Ok(())
@@ -175,6 +186,7 @@ pub fn export_diagnostic_logs(
     let network_selection = network_archive::select(logs_dir, request.since, &request.network);
     if candidates.is_empty()
         && network_selection.is_empty()
+        && !has_offline_history(logs_dir)
         && matches!(request.mode, DiagnosticArchiveMode::Offline)
     {
         return Err(ExportError::new(
@@ -259,6 +271,9 @@ pub fn export_diagnostic_logs(
             network_archive::collect(network_selection, &request.network, &mut archive, options)
                 .map_err(ExportError::archive_write)?;
         in_window += report.network.file_count();
+        let otel_has_files = write_otel(&mut archive, options, request.otel.as_ref(), logs_dir)
+            .map_err(ExportError::archive_write)?;
+        in_window += usize::from(otel_has_files);
         let manifest = DiagnosticArchiveManifest {
             schema_version: 1,
             mode: request.mode,
@@ -460,4 +475,76 @@ struct DiagnosticArchiveManifest<'a> {
     startup_status: Option<Value>,
     host: Option<HostManifest>,
     collection: &'a DiagnosticArchiveReport,
+}
+
+fn write_otel<W: Write + std::io::Seek>(
+    archive: &mut zip::ZipWriter<W>,
+    options: SimpleFileOptions,
+    snapshot: Option<&OtelArchiveSnapshot>,
+    logs_dir: &Path,
+) -> Result<bool> {
+    use sha2::{Digest, Sha256};
+    let mut files = Vec::new();
+    if let Some(snapshot) = snapshot {
+        for (signal, content) in [
+            ("metrics", &snapshot.metrics),
+            ("logs", &snapshot.logs),
+            ("traces", &snapshot.traces),
+        ] {
+            let name = format!("otel/{signal}.jsonl");
+            archive.start_file(&name, options)?;
+            archive.write_all(content.as_bytes())?;
+            files.push(serde_json::json!({"name": name, "bytes": content.len(), "sha256": format!("{:x}", Sha256::digest(content.as_bytes())), "requests": content.lines().count(), "state": if content.is_empty() { "missing" } else { "partial" }}));
+        }
+    }
+    let mut offline_state = "unavailable";
+    let mut offline_reason = "engine_offline_key_unavailable";
+    if snapshot.is_none() && has_offline_history(logs_dir) {
+        let content = File::open(logs_dir.join("otel-history/history.enc")).and_then(|input| {
+            let mut content = Vec::new();
+            input.take(8 * 1024 * 1024 + 1).read_to_end(&mut content)?;
+            if content.len() > 8 * 1024 * 1024 {
+                return Err(io::Error::other("history exceeds quota"));
+            }
+            Ok(content)
+        });
+        match content {
+            Ok(content) => {
+                archive.start_file("otel/history.enc", options)?;
+                archive.write_all(&content)?;
+                files.push(serde_json::json!({"name": "otel/history.enc", "bytes": content.len(), "sha256": format!("{:x}", Sha256::digest(&content)), "state": "encrypted_unavailable"}));
+                offline_state = "encrypted_unavailable";
+            }
+            Err(_) => {
+                offline_state = "partial";
+                offline_reason = "history_unreadable";
+            }
+        }
+    }
+    let summary = serde_json::json!({"schemaVersion": 1, "format": "OTLP JSONL", "collectorVersion": "0.139.0", "liveFlush": snapshot.is_some(), "history": snapshot.map(|s| &s.summary), "state": if snapshot.is_some() { "partial" } else { offline_state }, "reason": if snapshot.is_some() { "registered_processes_only" } else { offline_reason }, "files": files});
+    archive.start_file("otel/manifest.json", options)?;
+    serde_json::to_writer_pretty(&mut *archive, &summary)?;
+    for (name, content) in [
+        (
+            "import/import.py",
+            include_str!("../../../packages/desktop-host-go/diaglogs/import/import.py"),
+        ),
+        (
+            "import/collector.yaml",
+            include_str!("../../../packages/desktop-host-go/diaglogs/import/collector.yaml"),
+        ),
+        (
+            "import/README.md",
+            include_str!("../../../packages/desktop-host-go/diaglogs/import/README.md"),
+        ),
+    ] {
+        archive.start_file(name, options)?;
+        archive.write_all(content.as_bytes())?;
+    }
+    Ok(!files.is_empty())
+}
+
+fn has_offline_history(logs_dir: &Path) -> bool {
+    fs::symlink_metadata(logs_dir.join("otel-history/history.enc"))
+        .is_ok_and(|info| info.is_file() && info.len() > 0 && info.len() <= 8 * 1024 * 1024)
 }

@@ -110,6 +110,7 @@ fn online_export_embeds_engine_preparation_and_reports_actual_files() {
         &logs,
         &output,
         DiagnosticArchiveRequest {
+            otel: None,
             mode: DiagnosticArchiveMode::Online,
             since: Some(Utc.with_ymd_and_hms(2026, 9, 11, 0, 0, 0).unwrap()),
             engine_preparation: Some(preparation),
@@ -164,6 +165,7 @@ fn online_export_keeps_a_partial_package_when_a_managed_file_is_unreadable() {
         &logs,
         &output,
         DiagnosticArchiveRequest {
+            otel: None,
             mode: DiagnosticArchiveMode::Online,
             since: None,
             engine_preparation: Some(serde_json::json!({ "flush": "completed" })),
@@ -230,6 +232,7 @@ fn offline_export_fails_when_every_log_is_outside_the_window() {
         &logs,
         &output,
         DiagnosticArchiveRequest {
+            otel: None,
             mode: DiagnosticArchiveMode::Offline,
             since: Some(Utc::now() + chrono::Duration::days(1)),
             engine_preparation: None,
@@ -303,6 +306,7 @@ fn offline_export_fails_when_unreadable_logs_are_outside_the_window() {
         &logs,
         &output,
         DiagnosticArchiveRequest {
+            otel: None,
             mode: DiagnosticArchiveMode::Offline,
             since: since_2026_09_02(),
             engine_preparation: None,
@@ -333,6 +337,7 @@ fn online_export_does_not_report_unreadable_logs_outside_the_window() {
         &logs,
         &output,
         DiagnosticArchiveRequest {
+            otel: None,
             mode: DiagnosticArchiveMode::Online,
             since: since_2026_09_02(),
             engine_preparation: None,
@@ -458,6 +463,7 @@ fn the_manifest_describes_the_exporting_host() {
         &logs,
         &output,
         DiagnosticArchiveRequest {
+            otel: None,
             mode: DiagnosticArchiveMode::Online,
             since: None,
             engine_preparation: None,

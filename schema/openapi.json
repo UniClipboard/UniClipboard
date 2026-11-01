@@ -2798,6 +2798,14 @@
             "minimum": 0,
             "type": "integer"
           },
+          "snapshotVersion": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReceiveSnapshotVersionResponse"
+              }
+            ],
+            "nullable": true
+          },
           "state": {
             "type": "string"
           },
@@ -5890,13 +5898,89 @@
         },
         "type": "object"
       },
+      "ReceiveContentLocatorResponse": {
+        "description": "Typed original content position. File and representation indices are independent.",
+        "discriminator": {
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "index": {
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "file"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "index": {
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "representation"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "directory_unit"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "ReceiveItemResponse": {
         "description": "One selectable result of the current receive attempt.\n\n`item_id` is opaque and bound to the attempt that was queried; callers pass\nit back to the retry route unchanged and never build it from file names.",
         "properties": {
+          "content": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReceiveContentLocatorResponse"
+              }
+            ],
+            "nullable": true
+          },
           "failureReason": {
             "description": "`\"network_unavailable\"` | `\"timed_out\"` | `\"access_denied\"` |\n`\"storage_unavailable\"` | `\"integrity_check_failed\"` | `\"interrupted\"` |\n`\"unknown\"`. Fixed categories only, never raw error text.",
             "nullable": true,
             "type": "string"
+          },
+          "historyFileIndex": {
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
           },
           "itemId": {
             "type": "string"
@@ -5908,12 +5992,63 @@
           "state": {
             "description": "`\"pending\"` | `\"transferring\"` | `\"completed\"` | `\"failed\"` | `\"cancelled\"`.\n`\"completed\"` means the item was saved, not only downloaded.",
             "type": "string"
+          },
+          "transfer": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReceiveItemTransferResponse"
+              }
+            ],
+            "nullable": true
           }
         },
         "required": [
           "itemId",
           "kind",
           "state"
+        ],
+        "type": "object"
+      },
+      "ReceiveItemTransferResponse": {
+        "description": "Current-round network bytes, distinct from the saved-byte aggregate.",
+        "properties": {
+          "receivedBytes": {
+            "description": "Unsigned decimal bytes; unknown is never encoded as zero.",
+            "type": "string"
+          },
+          "round": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalBytes": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "receivedBytes",
+          "round"
+        ],
+        "type": "object"
+      },
+      "ReceiveSnapshotVersionResponse": {
+        "description": "Decimal strings preserve the Engine's 64-bit revisions in JavaScript.",
+        "properties": {
+          "attemptRevision": {
+            "type": "string"
+          },
+          "producerId": {
+            "type": "string"
+          },
+          "snapshotRevision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "producerId",
+          "attemptRevision",
+          "snapshotRevision"
         ],
         "type": "object"
       },

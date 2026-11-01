@@ -111,8 +111,10 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
     CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchFileOutcomeResponse,
     DispatchFileRequest, DispatchOutcomeResponse, DispatchTextRequest,
-    EntryReceiveProgressResponse, PerTargetOutcomeDto, ReceiveItemResponse, ResendRequest,
-    ResendResponse, RestoreEntryResponse, RetryEntryReceiveRequest, RetryEntryReceiveResponse,
+    EntryReceiveProgressResponse, PerTargetOutcomeDto, ReceiveContentLocatorResponse,
+    ReceiveItemResponse, ReceiveItemTransferResponse, ReceiveSnapshotVersionResponse,
+    ResendRequest, ResendResponse, RestoreEntryResponse, RetryEntryReceiveRequest,
+    RetryEntryReceiveResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::{
     DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
@@ -393,6 +395,9 @@ impl Modify for ContractMeta {
             CancelEntryReceiveRequest,
             CancelEntryReceiveResponse,
             ReceiveItemResponse,
+            ReceiveContentLocatorResponse,
+            ReceiveSnapshotVersionResponse,
+            ReceiveItemTransferResponse,
             RetryEntryReceiveRequest,
             RetryEntryReceiveResponse,
             // ── clipboard: delivery view (ADR-008 P3-1) ────────────

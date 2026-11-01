@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { receiveTransferMetrics } from '@/lib/receive-file-progress'
 import type { ReceiveItem } from '@/lib/receive-items'
 import { ProgressBar, Text } from '@/ui-kit'
 import { formatFileSize } from '@/utils'
@@ -16,13 +17,7 @@ export function HistoryKitFileReceiveProgress({
   index?: number
 }) {
   const { t } = useTranslation()
-  const bytes = item.transfer ? BigInt(item.transfer.receivedBytes) : null
-  const total = item.transfer?.totalBytes != null ? BigInt(item.transfer.totalBytes) : null
-  const percent =
-    bytes !== null && total !== null && total > 0n
-      ? Math.min(100, Number((bytes * 10000n) / total) / 100)
-      : undefined
-  const active = item.state === 'pending' || item.state === 'transferring'
+  const { received: bytes, total, percent, showBar } = receiveTransferMetrics(item)
   return (
     <div
       data-receive-file-state={item.state}
@@ -36,7 +31,7 @@ export function HistoryKitFileReceiveProgress({
           {percent !== undefined && ` · ${Math.round(percent)}%`}
         </Text>
       </div>
-      {(percent !== undefined || (active && item.transfer != null)) && (
+      {showBar && (
         <ProgressBar
           label={t('clipboard.receive.fileProgressAria', { file: name })}
           value={percent}

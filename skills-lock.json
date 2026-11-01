@@ -7,10 +7,23 @@
       "skillPath": "skills/beui/SKILL.md",
       "computedHash": "376f66cd971464942de99b11bf17d939d98d894904f4b2fea0570446baefff1a"
     },
+    "create-formal-verification-skill": {
+      "source": "cursor/plugins",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "pstack/skills/create-formal-verification-skill/SKILL.md",
+      "computedHash": "ecccfa683447517ba3ebcfbd3099e1f8b05b4b41875a0194942182564d553997"
+    },
     "ralph-loop": {
       "source": "andrelandgraf/fullstackrecipes",
       "sourceType": "github",
       "computedHash": "f7e1f79b58ab0b0423d716e20267a065f8c899f9e97acd5bab8e0433399a8568"
+    },
+    "statechart": {
+      "source": "cursor/plugins",
+      "sourceType": "github",
+      "skillPath": "harness/pstack/claude-code/skills/statechart/SKILL.md",
+      "computedHash": "ab7f305663449c2f6d832cd273879cee3caeebd65536fa525ccaf03eb6963374"
     },
     "systematic-debugging": {
       "source": "obra/superpowers",

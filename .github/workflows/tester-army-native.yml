@@ -50,6 +50,9 @@ jobs:
       - name: Collect macOS native history without launching the desktop
         if: runner.os == 'macOS'
         run: node node_modules/e2e/dist/cli/bin.js list --config e2e.macos-history.config.ts > target/tester-army-native/macos-history-collection.txt
+      - name: Collect macOS native file transfer without launching the desktop
+        if: runner.os == 'macOS'
+        run: node node_modules/e2e/dist/cli/bin.js list --config e2e.macos-file-transfer.config.ts > target/tester-army-native/macos-file-transfer-collection.txt
       - name: Ephemeral WKWebView read-back, without a window
         if: runner.os == 'macOS'
         run: swift apps/gui-go/e2e/tester-army-native/wkwebview.swift > target/tester-army-native/wkwebview.json

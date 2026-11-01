@@ -22,7 +22,13 @@ function tone(status: EntryDeliveryStatusView): StatusTone {
  * per-device states; a device that has not received it can be sent it again. The design's "In
  * clipboard" and "In history" are not states the Engine reports, so the Engine's own wording is used.
  */
-export function HistoryKitDelivery({ delivery }: { delivery: EntryDeliveryView }) {
+export function HistoryKitDelivery({
+  delivery,
+  showOutboundProgress = true,
+}: {
+  delivery: EntryDeliveryView
+  showOutboundProgress?: boolean
+}) {
   const { t } = useTranslation()
   const action = useResendAction()
   const { source, deliveries, entryId } = delivery
@@ -69,15 +75,17 @@ export function HistoryKitDelivery({ delivery }: { delivery: EntryDeliveryView }
       ) : (
         <InsetList label={t('delivery.list.title')} rows={rows} />
       )}
-      <HistoryDetailOutbound
-        entryId={entryId}
-        deviceNames={Object.fromEntries(
-          deliveries.map(target => [
-            target.targetDeviceId,
-            target.targetDeviceName ?? target.targetDeviceId.slice(0, 8),
-          ])
-        )}
-      />
+      {showOutboundProgress && (
+        <HistoryDetailOutbound
+          entryId={entryId}
+          deviceNames={Object.fromEntries(
+            deliveries.map(target => [
+              target.targetDeviceId,
+              target.targetDeviceName ?? target.targetDeviceId.slice(0, 8),
+            ])
+          )}
+        />
+      )}
       <Text role="caption" tone="tertiary">
         {t('history.kit.encryptionNote')}
       </Text>

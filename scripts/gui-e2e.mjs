@@ -24,11 +24,15 @@ const singles = {
   browser: [...sdk],
   daemon: [...sdk, '--config', 'e2e.daemon.config.ts'],
   'native-macos-history': ['apps/gui-go/e2e/tester-army-native/run-macos-history.mjs'],
+  'native-macos-file-transfer': [
+    'apps/gui-go/e2e/tester-army-native/run-macos-history.mjs',
+    'file-transfer',
+  ],
   'native-windows-product': ['apps/gui-go/e2e/windows_startup_ready.mjs', '--tester-army'],
 }
 if (!group || ['--help', '-h'].includes(group)) {
   console.log(
-    'Usage: bun run e2e:gui list|browser|daemon|layouts|backends|native-macos-history|native-windows-product [suite] [--platform skin] [--seed seed] [--phase phase] [--out new-directory]'
+    'Usage: bun run e2e:gui list|browser|daemon|layouts|backends|native-macos-history|native-macos-file-transfer|native-windows-product [suite] [--platform skin] [--seed seed] [--phase phase] [--out new-directory]'
   )
   process.exit(0)
 }
@@ -47,6 +51,8 @@ if (group === 'list') {
         },
         native: {
           'native-macos-history': 'darwin; real AX product acceptance',
+          'native-macos-file-transfer':
+            'darwin; native AX file progress and real paired Engine transfer',
           'native-windows-product': 'win32; prebuilt real WebView2 product',
         },
         limits:
@@ -166,8 +172,11 @@ if (matrix) {
     for (const [name, reason] of Object.entries(retained))
       console.log(`RETAINED ${name}: ${reason}`)
 } else {
-  if (group === 'native-macos-history' && (process.platform !== 'darwin' || args.length))
-    throw new Error('native-macos-history requires macOS and takes no arguments')
+  if (
+    ['native-macos-history', 'native-macos-file-transfer'].includes(group) &&
+    (process.platform !== 'darwin' || args.length)
+  )
+    throw new Error(`${group} requires macOS and takes no arguments`)
   if (
     group === 'native-windows-product' &&
     (process.platform !== 'win32' || args.some(arg => arg !== '--long-path'))

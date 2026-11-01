@@ -1570,6 +1570,9 @@
       "syncFailedDetail": "ファイルの同期に失敗しました: {{reason}}"
     },
     "receive": {
+      "fileProgressAria": "{{file}} を受信",
+      "progressUnavailable": "ファイルごとの進行状況を取得できません",
+      "wholeFileSet": "ファイルセット全体",
       "failedCount": "{{count}} 件失敗",
       "cancelledCount": "{{count}} 件キャンセル済み",
       "details": "受信の詳細",
@@ -2580,7 +2583,17 @@
         "cancelled": "キャンセル済み",
         "partially_cancelled": "一部キャンセル"
       },
+      "fileTargets": "{{total}} 台中 {{completed}} 台に送信済み",
+      "failedTargets": "{{count}} 台で失敗",
+      "itemProgressAria": "{{device}} への {{file}} の送信",
+      "unknownBytes": "不明",
       "itemState": {
+        "waiting": "待機中",
+        "transferring": "送信中",
+        "processing": "処理中",
+        "retrying": "再試行中",
+        "completed": "完了",
+        "unconfirmed": "結果未確認",
         "failed": "失敗",
         "cancelled": "キャンセル済み"
       },

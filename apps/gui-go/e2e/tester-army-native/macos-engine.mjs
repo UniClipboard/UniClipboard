@@ -18,7 +18,7 @@ export const nativeHistoryTexts = ['Native history adapter alpha', 'Native histo
 
 const failure = (code, message, retryable = false) => new EngineError(code, message, { retryable })
 
-export function macosHistory() {
+export function macosProduct({ scenario = 'history' } = {}) {
   let info, attempt, child, closed, launch, cleanup, session, driverEnv
   let refs = new Map()
   let events = []
@@ -99,11 +99,10 @@ export function macosHistory() {
       ],
       context
     )
-    if (!data.complete || data.window?.id !== launch.windowId || data.app !== launch.appName)
-      throw failure(
-        'ENGINE_FAILURE',
-        'Native accessibility observation is incomplete or has a different owner'
-      )
+    if (data.window?.id !== launch.windowId || data.app !== launch.appName)
+      throw failure('ENGINE_FAILURE', 'Native accessibility observation has a different owner')
+    if (!data.complete)
+      throw failure('NODE_STALE', 'Native accessibility tree changed during observation', true)
     const bounds = data.tree.bounds
     if (!bounds || bounds.width <= 0 || bounds.height <= 0)
       throw failure('ENGINE_FAILURE', 'Native window has no visible bounds')
@@ -132,7 +131,12 @@ export function macosHistory() {
       const secure =
         tokens.has('secure') || tokens.has('protected') || /secure|password/i.test(node.role || '')
       const role =
-        { radiobutton: 'radio', statictext: 'text', textfield: 'textbox' }[node.role] || node.role
+        {
+          radiobutton: 'radio',
+          statictext: 'text',
+          textfield: 'textbox',
+          progressindicator: 'progressbar',
+        }[node.role] || node.role
       const states = Object.fromEntries(
         ['checked', 'disabled', 'selected', 'expanded', 'pressed', 'focused', 'hidden']
           .filter(state => tokens.has(state))
@@ -314,6 +318,7 @@ export function macosHistory() {
           attemptId: context.attemptId,
           appPath: path.resolve(info.projectRoot, info.app.appPath),
           texts: nativeHistoryTexts,
+          scenario,
         }) + '\n'
       )
       try {
@@ -346,6 +351,9 @@ export function macosHistory() {
       const sources = [
         'apps/gui-go/e2e/tester-army-native/macos-engine.mjs',
         'apps/gui-go/e2e/tester-army-native/macos-product.py',
+        'apps/gui-go/e2e/tester-army-native/macos-file-transfer.py',
+        'apps/gui-go/e2e/tester-army-native/macos-file-transfer.e2e.mjs',
+        'e2e.macos-file-transfer.config.ts',
         'apps/gui-go/e2e/tester-army-native/macos-history.e2e.mjs',
         'apps/gui-go/frontend/e2e/tester-army/backend.py',
         'apps/gui-go/e2e/window_id.swift',
@@ -399,9 +407,11 @@ export function macosHistory() {
       })
       context.environment({
         platform: 'macos',
+        scenario,
         driver: `agent-desktop ${status.version}`,
         nativeWindow: launch.windowId,
       })
+      if (scenario === 'file-transfer') child.stdin.write(JSON.stringify({ action: 'send' }) + '\n')
     },
     async observe(context, options) {
       const value = await snapshot(context)

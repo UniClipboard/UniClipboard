@@ -101,6 +101,12 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "totalBytes": event.total_bytes,
             }),
         ),
+        EngineEvent::ReceiveProgressChanged => (
+            ws_topic::FILE_TRANSFER,
+            ws_event::FILE_TRANSFER_RECEIVE_PROGRESS_CHANGED,
+            now_ms(),
+            serde_json::json!({}),
+        ),
         EngineEvent::OutboundProgressChanged => (
             ws_topic::FILE_TRANSFER,
             ws_event::FILE_TRANSFER_OUTBOUND_PROGRESS_CHANGED,

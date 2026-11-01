@@ -64,3 +64,20 @@ export function receiveFileContent(
     file_missing: metadata.map(file => file?.missing ?? true),
   }
 }
+
+/** Keep exact counter arithmetic outside the platform presentation. */
+export function receiveTransferMetrics(item: ReceiveItem) {
+  const received = item.transfer ? BigInt(item.transfer.receivedBytes) : null
+  const total = item.transfer?.totalBytes != null ? BigInt(item.transfer.totalBytes) : null
+  const percent =
+    received !== null && total !== null && total > 0n
+      ? Math.min(100, Number((received * 10000n) / total) / 100)
+      : undefined
+  const active = item.state === 'pending' || item.state === 'transferring'
+  return {
+    received,
+    total,
+    percent,
+    showBar: percent !== undefined || (active && item.transfer != null),
+  }
+}

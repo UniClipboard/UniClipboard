@@ -5,24 +5,10 @@
  * interprets the daemon snapshot for display and for building a retry request.
  */
 
-export interface ReceiveItem {
-  /** Opaque, bound to the queried attempt. Pass back to retry unchanged. */
-  itemId: string
-  kind: string
-  state: string
-  failureReason?: string | null
-}
+import type { EntryReceiveProgressResponse, ReceiveItemResponse } from '@/api/generated/types.gen'
 
-export interface ReceiveSnapshot {
-  entryId: string
-  attemptId: string
-  state: string
-  totalBytes: number
-  completedBytes: number
-  itemsTotal: number
-  itemsCompleted: number
-  items: ReceiveItem[]
-}
+export type ReceiveItem = ReceiveItemResponse
+export type ReceiveSnapshot = EntryReceiveProgressResponse & { items: ReceiveItem[] }
 
 export interface ReceiveRetryOutcome {
   outcome: string

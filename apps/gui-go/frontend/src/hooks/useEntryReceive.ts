@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getEntryDetail } from '@/api/daemon/clipboard'
 import { getEntryReceive, retryEntryReceive } from '@/api/file_transfer'
-import { retryableItemIds, retryOutcomeMessageKey } from '@/lib/receive-items'
+import { isFileContentType, parseFileItemsFromUriList } from '@/lib/clipboard-utils'
+import { daemonWs } from '@/lib/daemon-ws'
+import {
+  isOlderReceiveSnapshot,
+  receiveFileMappingKey,
+  type ReceiveHistoryFiles,
+} from '@/lib/receive-file-progress'
+import { retryableItemIds, retryOutcomeMessageKey, type ReceiveSnapshot } from '@/lib/receive-items'
 import { reportError } from '@/observability/errors'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   applyReceiveSnapshot,
-  entryStatusForAttemptState,
+  invalidateReceiveSnapshot,
   selectReceiveCancellationIncomplete,
   selectReceiveSnapshot,
 } from '@/store/slices/fileTransferSlice'
@@ -20,8 +28,7 @@ export interface RetryMessage {
  * Per-item receive results of one entry.
  *
  * The daemon snapshot is the only source of item results. Events (attempt state
- * and transfer progress in the store) are invalidation signals: when they stop
- * agreeing with the stored snapshot, the snapshot is read again. A reply is only
+ * and transfer progress) are invalidation signals that trigger a complete read. A reply is only
  * applied if it answers the latest request, and the store drops replies of
  * attempts that were already replaced.
  */
@@ -33,64 +40,130 @@ export function useEntryReceive(entryId: string | undefined) {
   const cancelIncomplete = useAppSelector(state =>
     entryId ? selectReceiveCancellationIncomplete(state, entryId) : false
   )
-  const currentAttempt = useAppSelector(state =>
-    entryId ? state.fileTransfer.currentAttemptByEntry?.[entryId] : undefined
-  )
-  const entryStatus = useAppSelector(state =>
-    entryId ? state.fileTransfer.entryStatusById[entryId]?.status : undefined
-  )
-  // Items whose bytes have fully arrived: a new one means saving is about to settle.
-  const arrivedItems = useAppSelector(state => {
-    if (!entryId) return 0
-    const transferId = state.fileTransfer.entryTransferMap[entryId]
-    const progress = transferId
-      ? state.fileTransfer.activeTransfers[transferId]?.itemProgress
-      : undefined
-    if (!progress) return 0
-    return Object.values(progress).filter(
-      item => item.totalBytes !== null && item.bytesTransferred >= item.totalBytes
-    ).length
-  })
-
   const [retrying, setRetrying] = useState(false)
   const [retryMessage, setRetryMessage] = useState<RetryMessage | null>(null)
-  const latestRequest = useRef(0)
-
-  const refresh = useCallback(async () => {
-    if (!entryId) return
-    const request = ++latestRequest.current
-    try {
-      const next = await getEntryReceive(entryId)
-      if (request !== latestRequest.current || !next) return
-      dispatch(applyReceiveSnapshot(next))
-    } catch (error) {
-      reportError(error, { command: 'getEntryReceive' })
-    }
-  }, [dispatch, entryId])
-
-  const inSync =
-    !!snapshot &&
-    snapshot.attemptId === currentAttempt &&
-    // `cancelling` / `failing` leave the entry status alone, so they never disagree.
-    (entryStatusForAttemptState(snapshot.state) ?? entryStatus) === entryStatus
-  const lastRead = useRef<{ entryId: string; arrivedItems: number } | null>(null)
+  const [metadata, setMetadata] = useState<{ key: string; files: ReceiveHistoryFiles } | null>(null)
+  const refreshRef = useRef<() => Promise<void>>(async () => {})
+  const retireRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     if (!entryId) return
-    const previous = lastRead.current
-    lastRead.current = { entryId, arrivedItems }
-    const firstRead = previous?.entryId !== entryId
-    const itemArrived = previous !== null && !firstRead && previous.arrivedItems !== arrivedItems
-    // Read on first sight, when an item's bytes arrived, and whenever events and
-    // the stored snapshot disagree. Applying a snapshot restores agreement, so a
-    // read never triggers another read by itself.
-    if (firstRead || itemArrived || !inSync) void refresh()
-  }, [arrivedItems, entryId, inSync, refresh])
+    let cancelled = false
+    let generation = 0
+    let dirty = false
+    let running: Promise<void> | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let accepted: ReceiveSnapshot | null = null
+    let cached: { key: string; files: ReceiveHistoryFiles } | null = null
+    const retire = () => {
+      generation += 1
+      cached = null
+      accepted = null
+      dispatch(invalidateReceiveSnapshot(entryId))
+    }
+    const refresh = (): Promise<void> => {
+      dirty = true
+      if (running) return running
+      running = (async () => {
+        while (dirty && !cancelled) {
+          dirty = false
+          const ticket = generation
+          try {
+            let next = await getEntryReceive(entryId)
+            if (cancelled || ticket !== generation) continue
+            if (!next) {
+              dispatch(invalidateReceiveSnapshot(entryId))
+              continue
+            }
+            if (accepted && isOlderReceiveSnapshot(next, accepted)) continue
+            const key = receiveFileMappingKey(next)
+            if (next.items.some(item => item.historyFileIndex != null) && cached?.key !== key) {
+              const detail = await getEntryDetail(entryId)
+              const confirmed = await getEntryReceive(entryId)
+              if (cancelled || ticket !== generation) continue
+              if (!confirmed || receiveFileMappingKey(confirmed) !== key) {
+                dirty = true
+                continue
+              }
+              if (accepted && isOlderReceiveSnapshot(confirmed, accepted)) continue
+              next = confirmed
+              if (detail?.mimeType && isFileContentType(detail.mimeType)) {
+                cached = { key, files: parseFileItemsFromUriList(detail.content) }
+                if (!cancelled && ticket === generation) setMetadata(cached)
+              }
+            }
+            accepted = next
+            dispatch(applyReceiveSnapshot(next))
+          } catch (error) {
+            if (!cancelled && ticket === generation)
+              reportError(error, { command: 'getEntryReceive' })
+          }
+        }
+      })().finally(() => {
+        running = null
+      })
+      return running
+    }
+    const schedule = () => {
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = null
+        void refresh()
+      }, 100)
+    }
+    const reconnect = () => {
+      retire()
+      void refresh()
+    }
+    const visible = () => {
+      if (document.visibilityState === 'visible') schedule()
+    }
+    refreshRef.current = refresh
+    retireRef.current = retire
+    retire()
+    void refresh()
+    const unsubscribe = daemonWs.subscribe(['file-transfer', 'clipboard', 'system'], event => {
+      if (event.eventType === 'system.refresh_required') {
+        reconnect()
+        return
+      }
+      if (event.eventType === 'file-transfer.receive_progress_changed') {
+        schedule()
+        return
+      }
+      if (
+        ![
+          'file-transfer.progress',
+          'file-transfer.status_changed',
+          'clipboard.receive_attempt_state_changed',
+          'clipboard.new_content',
+        ].includes(event.eventType)
+      )
+        return
+      const payload = event.payload as { entryId?: string } | null
+      if (payload?.entryId === entryId) schedule()
+    })
+    const offReconnect = daemonWs.onReconnect(reconnect)
+    document.addEventListener('visibilitychange', visible)
+    return () => {
+      cancelled = true
+      generation += 1
+      if (timer) clearTimeout(timer)
+      unsubscribe()
+      offReconnect()
+      document.removeEventListener('visibilitychange', visible)
+      if (refreshRef.current === refresh) {
+        refreshRef.current = async () => {}
+        retireRef.current = () => {}
+      }
+    }
+  }, [dispatch, entryId])
 
   const retry = useCallback(async () => {
     if (!entryId || !snapshot || retrying) return
     const itemIds = retryableItemIds(snapshot)
     if (itemIds.length === 0) return
+    retireRef.current()
     setRetrying(true)
     try {
       const result = await retryEntryReceive(entryId, snapshot.attemptId, itemIds)
@@ -99,14 +172,17 @@ export function useEntryReceive(entryId: string | undefined) {
         tone: result.outcome === 'accepted' ? 'info' : 'warning',
       })
       // Whatever the outcome, the next snapshot (a new attempt when accepted) is the truth.
-      await refresh()
+      retireRef.current()
+      await refreshRef.current()
     } catch (error) {
       reportError(error, { command: 'retryEntryReceive' })
       setRetryMessage({ key: 'clipboard.receive.retry.failed', tone: 'error' })
     } finally {
       setRetrying(false)
     }
-  }, [entryId, refresh, retrying, snapshot])
+  }, [entryId, retrying, snapshot])
 
-  return { snapshot, cancelIncomplete, retrying, retryMessage, retry }
+  const historyFiles =
+    snapshot && metadata?.key === receiveFileMappingKey(snapshot) ? metadata.files : null
+  return { snapshot, historyFiles, cancelIncomplete, retrying, retryMessage, retry }
 }

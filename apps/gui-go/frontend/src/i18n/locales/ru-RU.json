@@ -1600,6 +1600,9 @@
       "syncFailedDetail": "Не удалось синхронизировать файл: {{reason}}"
     },
     "receive": {
+      "fileProgressAria": "Получение {{file}}",
+      "progressUnavailable": "Прогресс файла недоступен",
+      "wholeFileSet": "Весь набор файлов",
       "failedCount": "С ошибкой: {{count}}",
       "cancelledCount": "Отменено: {{count}}",
       "details": "Подробности получения",
@@ -2621,7 +2624,17 @@
         "cancelled": "Отменено",
         "partially_cancelled": "Частично отменено"
       },
+      "fileTargets": "Доставлено на {{completed}} из {{total}} устройств",
+      "failedTargets": "Сбой на {{count}} устройствах",
+      "itemProgressAria": "{{file}} → {{device}}",
+      "unknownBytes": "Неизвестно",
       "itemState": {
+        "waiting": "Ожидание",
+        "transferring": "Отправка",
+        "processing": "Обработка",
+        "retrying": "Повторная попытка",
+        "completed": "Завершено",
+        "unconfirmed": "Результат не подтверждён",
         "failed": "Ошибка",
         "cancelled": "Отменено"
       },

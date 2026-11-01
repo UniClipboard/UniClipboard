@@ -35,7 +35,8 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
     CancelTransferResponse, DispatchFileOutcomeResponse, DispatchFileRequest,
     DispatchOutcomeResponse, DispatchTextRequest, EntryReceiveProgressResponse,
-    PerTargetOutcomeDto, ReceiveItemResponse, ResendRequest, ResendResponse,
+    PerTargetOutcomeDto, ReceiveContentLocatorResponse, ReceiveItemResponse,
+    ReceiveItemTransferResponse, ReceiveSnapshotVersionResponse, ResendRequest, ResendResponse,
     RetryEntryReceiveRequest, RetryEntryReceiveResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
@@ -334,6 +335,13 @@ fn map_outbound_progress_err(op: &'static str, error: EngineError) -> ApiError {
 
 fn receive_progress_response(progress: ReceiveProgressSummary) -> EntryReceiveProgressResponse {
     EntryReceiveProgressResponse {
+        snapshot_version: progress
+            .snapshot_version
+            .map(|version| ReceiveSnapshotVersionResponse {
+                producer_id: version.producer_id,
+                attempt_revision: version.attempt_revision.to_string(),
+                snapshot_revision: version.snapshot_revision.to_string(),
+            }),
         entry_id: progress.entry_id,
         attempt_id: progress.attempt_id,
         state: progress.state.to_string(),
@@ -351,6 +359,23 @@ fn receive_progress_response(progress: ReceiveProgressSummary) -> EntryReceivePr
 
 fn receive_item_response(item: ReceiveItemSummary) -> ReceiveItemResponse {
     ReceiveItemResponse {
+        content: item.content.map(|content| match content {
+            uc_engine::ReceiveContentLocator::File { index } => {
+                ReceiveContentLocatorResponse::File { index }
+            }
+            uc_engine::ReceiveContentLocator::Representation { index } => {
+                ReceiveContentLocatorResponse::Representation { index }
+            }
+            uc_engine::ReceiveContentLocator::DirectoryUnit => {
+                ReceiveContentLocatorResponse::DirectoryUnit
+            }
+        }),
+        transfer: item.transfer.map(|transfer| ReceiveItemTransferResponse {
+            received_bytes: transfer.received_bytes.to_string(),
+            total_bytes: transfer.total_bytes.map(|bytes| bytes.to_string()),
+            round: transfer.round,
+        }),
+        history_file_index: item.history_file_index,
         item_id: item.item_id,
         kind: item.kind.to_string(),
         state: item.state,
@@ -1346,6 +1371,9 @@ mod tests {
         failure_reason: Option<ReceiveItemFailureReason>,
     ) -> ReceiveItemSummary {
         ReceiveItemSummary {
+            content: None,
+            transfer: None,
+            history_file_index: None,
             item_id: item_id.to_owned(),
             kind,
             state: state.to_owned(),
@@ -1356,6 +1384,7 @@ mod tests {
     #[test]
     fn receive_progress_and_stale_cancel_use_stable_wire_values() {
         let response = receive_progress_response(ReceiveProgressSummary {
+            snapshot_version: None,
             entry_id: "entry".to_owned(),
             attempt_id: "attempt-2".to_owned(),
             state: "receiving".to_owned(),
@@ -1381,6 +1410,7 @@ mod tests {
     #[test]
     fn receive_progress_keeps_each_item_result_beside_the_aggregate() {
         let response = receive_progress_response(ReceiveProgressSummary {
+            snapshot_version: None,
             entry_id: "entry".to_owned(),
             attempt_id: "attempt-1".to_owned(),
             state: "failed".to_owned(),
@@ -1421,6 +1451,7 @@ mod tests {
         ];
         for (kind, wire) in kinds {
             let response = receive_progress_response(ReceiveProgressSummary {
+                snapshot_version: None,
                 entry_id: "entry".to_owned(),
                 attempt_id: "attempt".to_owned(),
                 state: "failed".to_owned(),

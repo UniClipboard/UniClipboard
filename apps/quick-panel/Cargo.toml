@@ -13,16 +13,16 @@ path = "src/main.rs"
 anyhow = "1"
 async-trait = "0.1"
 async-channel = "2"
-base64 = "0.22"
+base64 = "0.23"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 chrono = "0.4"
-csscolorparser = "0.8"
+csscolorparser = "0.9"
 serde_json = "1"
 raw-window-handle = "0.6"
 gpui = "=0.2.2"
-gpui-component = "=0.5.1"
+gpui-component = "=0.6.1"
 gpui-component-assets = "=0.5.1"
-global-hotkey = "0.8"
+global-hotkey = "0.9"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 tokio-util = "0.7"
 tracing = "0.1"
@@ -35,7 +35,7 @@ quick-panel-core = { path = "../../crates/quick-panel-core" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWorkspace", "NSRunningApplication"] }
-core-graphics = { version = "0.24", features = ["elcapitan"] }
+core-graphics = { version = "0.25", features = ["elcapitan"] }
 # Same versions and features as the GUI's modifier double-tap reader, which this crate copies.
 objc2-application-services = { version = "0.3", default-features = false, features = ["HIServices", "AXUIElement"] }
 objc2-core-graphics = { version = "0.3", features = ["CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
@@ -46,7 +46,7 @@ objc2-quartz-core = "0.3"
 # The `windows` version and its feature set are the ones GPUI already resolves on Windows, so no
 # second copy enters the lock file.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Globalization",
   "Win32_Graphics_Gdi",

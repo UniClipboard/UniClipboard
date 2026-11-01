@@ -46,6 +46,10 @@
 - 每个发布文件的字节必须等于某个 workflow artifact 内的文件，索引里记录来源 artifact 名。
 - 每个平台的打包证据（`package-manifest.json`、`provenance.json`）必须来自固定的 `source_sha`、非脏检出、版本等于 `V`；Windows 证据的 `signing.provider` 必须是 `signed`（azure/pfx）或 `signpath`（生产策略），并有与发布字节绑定的严格回执（见下文）；仅 alpha 在显式开关下接受 `signed=false` 且无 signing 块。升级验收用的 `newer` 包刻意使用另一版本，被跳过。
 
+## macOS CLI 签名
+
+`scripts/ci/package-cli.sh` 将 `apps/gui-go/app.json` 中的 `identifier` 加上 `.uniclipd` 作为 CLI 归档内守护进程的签名标识符，使其与应用内捆绑的守护进程保持相同的钥匙串指定要求（designated requirement）。签名后读取并核对标识符，不匹配即停止打包；`uniclip` 的签名参数不变。
+
 ## Windows 生产签名：SignPath 接线
 
 项目确定使用 SignPath 签名。`WINDOWS_SIGN_BACKEND` 只表达 `sign.py` 的本地后端（`azure`/`pfx`），不足以描述 SignPath（SignPath 是远程提交，没有本地私钥），所以前提门禁只认 `azure`/`pfx` 是不够的；现在 SignPath 生产由一组没有默认值的仓库变量选择，不新造 `sign.py` 后端：

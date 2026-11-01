@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Package the CLI release archive: `uniclip` plus the `uniclipd` daemon it
 # spawns as a sibling (ADR-008 D13). macOS binaries are signed and notarized.
+# The daemon carries the app daemon's signing identifier to keep the same
+# keychain designated requirement as the bundled daemon.
 #
 # Usage: package-cli.sh <target-triple> <uniclip-path> <uniclipd-path>
 #
@@ -60,10 +62,16 @@ if [[ "$TARGET" == *-apple-darwin ]]; then
     exit 1
   fi
   echo "Signing with: $IDENTITY"
-  for BIN_NAME in uniclip uniclipd; do
-    codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$STAGE/$BIN_NAME"
-    codesign --verify --verbose "$STAGE/$BIN_NAME"
-  done
+  DAEMON_IDENTIFIER="$(node -p "require('./apps/gui-go/app.json').identifier").uniclipd"
+  codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$STAGE/uniclip"
+  codesign --verify --verbose "$STAGE/uniclip"
+  codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" --identifier "$DAEMON_IDENTIFIER" "$STAGE/uniclipd"
+  codesign --verify --verbose "$STAGE/uniclipd"
+  SIGNED_DAEMON_IDENTIFIER=$(codesign -dv "$STAGE/uniclipd" 2>&1 | sed -n 's/^Identifier=//p')
+  if [ "$SIGNED_DAEMON_IDENTIFIER" != "$DAEMON_IDENTIFIER" ]; then
+    echo "ERROR: uniclipd signing identifier mismatch: expected '$DAEMON_IDENTIFIER', got '$SIGNED_DAEMON_IDENTIFIER'" >&2
+    exit 1
+  fi
 
   # notarytool requires a zip archive. stapler only works on bundles, so
   # Gatekeeper checks the ticket of these bare binaries online.

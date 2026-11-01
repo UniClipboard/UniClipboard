@@ -293,6 +293,37 @@ describe('Go CLI build info', () => {
   })
 })
 
+describe('macOS CLI signing', () => {
+  const root = path.resolve(__dirname, '../..')
+  const source = fs.readFileSync(path.join(root, 'scripts/ci/package-cli.sh'), 'utf8')
+  const appPackaging = fs.readFileSync(
+    path.join(root, 'apps/gui-go/packaging/macos/package.py'),
+    'utf8'
+  )
+
+  it('gives the daemon the bundled daemon identifier derived from app.json', () => {
+    expect(source).toContain(
+      `DAEMON_IDENTIFIER="$(node -p "require('./apps/gui-go/app.json').identifier").uniclipd"`
+    )
+    expect(source).toContain(
+      'codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" --identifier "$DAEMON_IDENTIFIER" "$STAGE/uniclipd"'
+    )
+    expect(appPackaging).toContain('CFG = json.loads((GUI_DIR / "app.json").read_text())')
+    expect(appPackaging).toContain('(DAEMON, ".uniclipd")')
+    expect(appPackaging).toContain(
+      '["--identifier", CFG["identifier"] + suffix + VARIANTS[a.variant]["suffix"]'
+    )
+    expect(appPackaging).toMatch(/"shipping": \{[^\n]*"suffix": ""/)
+  })
+
+  it('keeps uniclip signing without an explicit identifier', () => {
+    const cliSigning = source.match(/^\s*codesign --force[^\n]*"\$STAGE\/uniclip"$/m)?.[0].trim()
+    expect(cliSigning).toBe(
+      'codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$STAGE/uniclip"'
+    )
+  })
+})
+
 describe('CLI daemon debug symbols', () => {
   const source = read('build-cli.yml')
 

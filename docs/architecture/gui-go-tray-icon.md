@@ -22,7 +22,7 @@
 - 平台适配：
   - macOS：模板图（只用 alpha，菜单栏深浅色自动着色），保留 44 × 44 px（2x、22 pt）图像，按设计的 36 px（18 pt）网格居中绘制，两侧网格留白各 4 px。字形几何约 13.5 × 15 pt；含抗锯齿的 alpha 包围盒为 28 × 30 px（14 × 15 pt）。此前把网格放大到 44 px 的实现导致图标偏大（#2135），现恢复设计尺寸。尺寸常量与生成函数位于不受平台构建标签限制的 `tray_icon_macos.go`，Linux CI 也能验证 macOS 几何。
   - Windows：按当前任务栏主题画一份（浅色 `#1B1B1B`，深色 `#FFFFFF`），尺寸取系统小图标尺寸（`SM_CXSMICON`，系统 DPI）；任务栏主题变化时（`SystemThemeChanged`）在独立 goroutine 里重画。不用 Wails 的亮/暗两份图标：读源码可知，运行期调用 `SetIcon` 或 `SetDarkModeIcon` 时，只要两个模式共用一个句柄，后设置的就会同时替换两个模式，两份图标无法保持分开。
-  - Linux：22 px，StatusNotifierItem 忽略模板标志，必须给出显式颜色：默认浅色图标 `#CDD6F4`（设计的深色栏环境），桌面配色方案为 `prefer-light`（`gsettings` 读取）时用深色 `#1B1B1B`；配色在显示图标时读一次。
+  - Linux：22 px，StatusNotifierItem 忽略模板标志，必须给出显式颜色。`XDG_CURRENT_DESKTOP` 按 `:` 分段、不区分大小写匹配 `KDE` 时，按 XDG 配置目录优先级读取 `plasmarc` 的 `[Theme] name`；缺失则取 `kdeglobals` 的 `[KDE] LookAndFeelPackage` 对应默认值中的 `[plasmarc][Theme] name`，仍缺失则用 `default`。按 XDG 数据目录优先级读取 `plasma/desktoptheme/<name>/colors` 的 `[Colors:Window] BackgroundNormal`；无有效颜色则取 `kdeglobals` 同名颜色，再取 `[General] ColorScheme`（缺失时取外观包默认值）对应的 `color-schemes/<Scheme>.colors`。以 KDE 的 `qGray=(r*11+g*16+b*5)/32 < 192` 判定深色面板，用浅色图标 `#CDD6F4`，否则用深色 `#1B1B1B`。未能解析 KDE 颜色及非 KDE 桌面保持原有 `gsettings` 规则：仅 `prefer-light` 用深色图标，其余用浅色。`SystemThemeChanged` 触发重画；KDE 另每秒按路径检查各配置目录的 `plasmarc`、`kdeglobals` 的修改时间、大小和存在状态，变化时重画当前样式。
 - Entry points: `initTray` in `tray.go` calls `newTrayIcon(...).show()` to show the default glyph; `applySettings` in `settings_watch.go` calls `setStyle` to apply `general.trayIcon`. `show` and `setStyle` in `tray_icon.go` render and apply under one lock, and a theme repaint draws the style currently shown. The cat is in `tray_icon_cat.go` and in `catTrayImage` of each platform file.
 
 ## Tray icon style preference (`general.trayIcon`)
@@ -37,8 +37,8 @@
 ## 失败模型
 
 - **F1 模板图 alpha**：macOS 模板图只读 alpha。预期：交给托盘的图像里，卡片内部（只有描边的地方）alpha 为 0，描边中心线 alpha 为 255（采样点选在 16 px 以上的尺寸都落在整像素上的位置）。
-- **F2 菜单被图标刷新牵连**：换图标若走 `SetMenu` / `Menu.Update`，会在菜单展开时关闭子菜单（t-0188 已修复的缺陷）。预期：只调用图标 API，不碰菜单发布路径；图标只在启动时和（Windows）任务栏主题变化时设置。
-- **F3 主线程自锁**：Wails 的图标调用在主线程执行并等待，应用事件回调可能就在主线程上。预期：主题变化回调通过独立 goroutine 调用 `show`，回调本身不等待。
+- **F2 菜单被图标刷新牵连**：换图标若走 `SetMenu` / `Menu.Update`，会在菜单展开时关闭子菜单（t-0188 已修复的缺陷）。预期：只调用图标 API，不碰菜单发布路径；启动、样式偏好变化、Windows 任务栏主题变化、Linux 系统主题事件或 KDE 配置变化时设置图标。
+- **F3 主线程自锁**：Wails 的图标调用在主线程执行并等待，应用事件回调可能就在主线程上。预期：Windows、Linux 的主题变化回调通过独立 goroutine 调用 `show`，回调本身不等待；KDE 轮询复用同一回调。
 - **F4 平台差异**：macOS 模板图随菜单栏自动着色；Windows 按任务栏主题着色；Linux 忽略模板标志，必须显式着色。
 - **F5 重复来源**：字形的几何只有一份，各平台只在尺寸与颜色上不同。
 - **F6 持久化**：图标不写任何东西到磁盘或数据库，没有持久化明文的问题。
@@ -79,7 +79,7 @@
 - `run16` 时屏幕又被锁住，原生检查报告为受阻，没有绕过，所以最终源码上没有原生运行；`run15` 之后只改了未使用的路径命令与参数、采样点和文档，渲染对照在 `run16` 里重新通过。
 - `go vet`（默认与 `-tags=e2e`）在 macOS 通过。`GOOS=windows go vet` 在 main 上已有的 `validateIsolation` 重复定义处中止，所以 Windows 的图标文件没有被类型检查到；这不是通过。
 
-未验证：macOS 浅色菜单栏的外观（`run15` 的菜单栏是深色外观）；Windows 运行时（任务栏主题切换、小图标尺寸，16 px 时字形线条是否清晰，以及不同显示器 DPI 不重画这个已知边界）；Linux 运行时，以及精简后的源码在 Linux 上的构建（测试主机当时不可达）。
+未验证：macOS 浅色菜单栏的外观（`run15` 的菜单栏是深色外观）；Windows 运行时（任务栏主题切换、小图标尺寸，16 px 时字形线条是否清晰，以及不同显示器 DPI 不重画这个已知边界）；真实 KDE/GNOME 桌面的 Linux 运行时（包括主题切换时延与菜单保持展开），以及精简后的源码在 Linux 上的构建（测试主机当时不可达）。Linux 新增单元测试仅覆盖配置检测、颜色选择与文件指纹变化，不代表原生运行时验收；非 KDE 栏独立配色（如 XFCE/waybar）、忽略 `colors` 文件的第三方 Plasma SVG 样式、壁纸上的半透明面板仍是边界。
 
 合并 `origin/main` 之后（普通 merge，源码 `7f71d7bbc`）：
 

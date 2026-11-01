@@ -2,30 +2,26 @@ package main
 
 import (
 	"context"
-	"image/color"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-// A StatusNotifierItem host draws the pixmap as it is: there is no template image and no way to ask the bar for its colour. The design's
-// Linux environment is a dark bar with a light icon (Catppuccin #CDD6F4); a dark icon is used when the desktop reports a light colour
-// scheme. A bar whose colour differs from the desktop scheme is a boundary this does not detect. 22 px is the design's Linux size.
+// StatusNotifierItem hosts draw explicit colours at the design's 22 px size.
+// KDE uses the Plasma style's panel colour, falling back to application colours;
+// other desktops and unresolved KDE colours use the existing gsettings rule.
+// System theme events and KDE KConfig polling repaint the currently shown style.
+// Boundaries: non-KDE bars with independent colours (XFCE/waybar), third-party
+// Plasma SVGs that ignore the colors file, and translucent panels over wallpaper.
 const linuxTrayPx = 22
 
-var (
-	linuxLightIcon = iconPalette{fg: color.NRGBA{0xCD, 0xD6, 0xF4, 255}}
-	linuxDarkIcon  = iconPalette{fg: color.NRGBA{0x1B, 0x1B, 0x1B, 255}}
-)
-
 func trayIconSpec() iconSpec {
-	pal := linuxLightIcon
-	if gsetting("org.gnome.desktop.interface", "color-scheme") == "'prefer-light'" {
-		pal = linuxDarkIcon
-	}
-	return iconSpec{size: linuxTrayPx, art: linuxTrayPx, pal: pal}
+	env := linuxDesktopEnv{getenv: os.Getenv, readFile: readLinuxThemeFile}
+	return iconSpec{size: linuxTrayPx, art: linuxTrayPx, pal: iconPalette{fg: linuxTrayPalette(env, gsetting)}}
 }
 
 func applyTrayIcon(tray *application.SystemTray, data []byte) { tray.SetIcon(data) }
@@ -33,8 +29,24 @@ func applyTrayIcon(tray *application.SystemTray, data []byte) { tray.SetIcon(dat
 // catTrayImage tints the cat's alpha with the same size and colour the glyph gets.
 func catTrayImage() ([]byte, error) { return tintedCat(trayIconSpec()) }
 
-// watchSystemTheme: the colour scheme is read when the icon is shown; a later change needs a restart (a boundary, see the document).
-func watchSystemTheme(*application.App, func()) {}
+// watchSystemTheme asks for a repaint when the portal colour scheme changes (Wails' SystemThemeChanged) and, on KDE, when plasmarc or
+// kdeglobals changes; changed only calls the icon API, never the menu publish path, so an open menu stays open.
+func watchSystemTheme(app *application.App, changed func()) {
+	app.Event.OnApplicationEvent(events.Linux.SystemThemeChanged, func(*application.ApplicationEvent) { changed() })
+	env := linuxDesktopEnv{getenv: os.Getenv, readFile: readLinuxThemeFile}
+	if !env.isKDE() {
+		return
+	}
+	poll := newKDEThemePoll(env, changed)
+	// This goroutine lives for the GUI process lifetime, like the tray itself.
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			poll()
+		}
+	}()
+}
 
 func gsetting(schema, key string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

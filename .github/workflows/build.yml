@@ -189,7 +189,8 @@ jobs:
     name: ${{ matrix.platform }}
     needs: setup-platforms
     strategy:
-      fail-fast: false
+      # Reusable workflows retain the top-level caller's workflow name.
+      fail-fast: ${{ github.workflow == 'Release' }}
       matrix: ${{ fromJSON(needs.setup-platforms.outputs.matrix) }}
     uses: ./.github/workflows/build-target.yml
     with:

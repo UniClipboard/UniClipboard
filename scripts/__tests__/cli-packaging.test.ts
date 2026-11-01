@@ -89,7 +89,7 @@ describe('shipped uniclipd builds', () => {
     // The CLI must reuse the sidecar, never rebuild the daemon in the app job.
     expect(build.match(/-p uc-daemon/g) ?? []).toHaveLength(0)
 
-    const release = read('release.yml')
+    const release = read('release-build.yml')
     expect(release).toContain('package_cli: true')
     expect(release).toContain('linux_only: true')
     expect(step(read('build-cli.yml'), 'Select CLI targets')).toContain(

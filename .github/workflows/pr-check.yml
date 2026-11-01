@@ -33,6 +33,12 @@ jobs:
       e2e: ${{ steps.filter.outputs.e2e }}
       membership: ${{ steps.filter.outputs.membership }}
       tooling: ${{ steps.filter.outputs.tooling }}
+      testerarmy_browser: ${{ steps.filter.outputs.testerarmy_browser }}
+      testerarmy_backend: ${{ steps.filter.outputs.testerarmy_backend }}
+      testerarmy_native_macos: ${{ steps.filter.outputs.testerarmy_native_macos }}
+      testerarmy_native_linux: ${{ steps.filter.outputs.testerarmy_native_linux }}
+      testerarmy_native_windows: ${{ steps.filter.outputs.testerarmy_native_windows }}
+      testerarmy_windows_product: ${{ steps.filter.outputs.testerarmy_windows_product }}
 
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +73,65 @@ jobs:
     uses: ./.github/workflows/membership-e2e.yml
     with:
       tier: pr
+
+  testerarmy-browser:
+    needs: changes
+    if: ${{ needs.changes.outputs.testerarmy_browser == 'true' }}
+    uses: ./.github/workflows/tester-army-e2e.yml
+    with:
+      run_browser: true
+      run_backend: false
+
+  testerarmy-backend:
+    needs: changes
+    if: ${{ needs.changes.outputs.testerarmy_backend == 'true' }}
+    uses: ./.github/workflows/tester-army-e2e.yml
+    with:
+      run_browser: false
+      run_backend: true
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+      BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
+  testerarmy-native-macos:
+    needs: changes
+    if: ${{ needs.changes.outputs.testerarmy_native_macos == 'true' }}
+    uses: ./.github/workflows/tester-army-native.yml
+    with:
+      run_capability: true
+      run_windows_product: false
+      capability_runner: macos-latest
+
+  testerarmy-native-linux:
+    needs: changes
+    if: ${{ needs.changes.outputs.testerarmy_native_linux == 'true' }}
+    uses: ./.github/workflows/tester-army-native.yml
+    with:
+      run_capability: true
+      run_windows_product: false
+      capability_runner: ubuntu-latest
+
+  testerarmy-native-windows:
+    needs: changes
+    if: ${{ needs.changes.outputs.testerarmy_native_windows == 'true' }}
+    uses: ./.github/workflows/tester-army-native.yml
+    with:
+      run_capability: true
+      run_windows_product: false
+      capability_runner: windows-latest
+
+  testerarmy-windows-product:
+    needs: changes
+    if: ${{ needs.changes.outputs.testerarmy_windows_product == 'true' }}
+    uses: ./.github/workflows/tester-army-native.yml
+    with:
+      run_capability: false
+      run_windows_product: true
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+      BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
 
   tooling:
     name: Repository tooling tests

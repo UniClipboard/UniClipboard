@@ -96,7 +96,7 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 
 ## 6. CI 与交付
 
-1. 检查 `.github/workflows/tester-army-e2e.yml` 和 `tester-army-native.yml` 的路径过滤、测试收集和工件上传。新增文件位于目录内不一定代表新增测试已运行。
+1. 在 `.github/ci-paths.yml` 核对路径条件，在 `.github/workflows/pr-check.yml` 核对调用条件，再检查 `tester-army-e2e.yml` 和 `tester-army-native.yml` 的测试收集与工件上传。新增文件位于目录内不一定代表新增测试已运行。
 2. 先通过显式候选，再通过加入后的默认矩阵。保留实际执行证据。修改源码后重新核对精确 HEAD，旧版本通过不能证明新版本通过。
 3. 报告分别列出实际通过、实际失败和未运行范围。编译、收集成功、能力探针成功和 CI 跳过均不能写为产品原生验收通过。
 4. 现有失败、未知契约和不支持的平台继续保留入口。记录限制和后续处理，不静默删除测试。

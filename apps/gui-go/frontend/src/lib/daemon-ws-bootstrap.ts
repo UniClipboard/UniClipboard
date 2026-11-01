@@ -29,6 +29,7 @@ let connectionEstablished = false
 let connectionPromise: Promise<void> | null = null
 let shutdownListenerUnlisten: UnlistenFn | null = null
 let connectionChangedListenerUnlisten: UnlistenFn | null = null
+let listenerRegistrationPromise: Promise<void> | null = null
 
 /** Reset the bootstrap state so the next `connectDaemonWs()` call re-fetches
  *  connection_info + refreshes the JWT session. Used by the test helper. */
@@ -127,7 +128,15 @@ export function resetConnectDaemonWsForTests(): void {
  * Idempotent — calling more than once is a no-op (the existing listener
  * stays installed). Safe to call before `connectDaemonWs()` resolves.
  */
-export async function registerDaemonShutdownListener(): Promise<void> {
+export function registerDaemonShutdownListener(): Promise<void> {
+  if (listenerRegistrationPromise) return listenerRegistrationPromise
+  listenerRegistrationPromise = registerDaemonListeners().finally(() => {
+    listenerRegistrationPromise = null
+  })
+  return listenerRegistrationPromise
+}
+
+async function registerDaemonListeners(): Promise<void> {
   if (!shutdownListenerUnlisten) {
     try {
       shutdownListenerUnlisten = await listen(APP_SHUTDOWN_EVENT, () => {
@@ -146,6 +155,9 @@ export async function registerDaemonShutdownListener(): Promise<void> {
   if (!connectionChangedListenerUnlisten) {
     try {
       connectionChangedListenerUnlisten = await listen(DAEMON_CONNECTION_CHANGED_EVENT, () => {
+        // The initial connection is already polling the current daemon address.
+        // Resetting it here can strand callers waiting for its WebSocket to open.
+        if (connectionPromise && !connectionEstablished) return
         void reconnectDaemonWs().catch(err => {
           log.error({ err }, 'failed to reconnect after daemon connection changed')
         })

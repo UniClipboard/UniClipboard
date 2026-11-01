@@ -1,13 +1,17 @@
 use keyring::Entry;
 
+#[cfg(target_os = "linux")]
+mod linux;
+
 use crate::ports::{SecureStorageError, SecureStorageProvider};
 
 const SERVICE_NAME: &str = "UniClipboard";
 
 /// True when `msg` is the deterministic Secret Service rejection of a binary write,
-/// caused by the `secret-service` crate hardcoding `content_type: "text/plain"` on
-/// every write with no way to request `application/octet-stream`. A backend that
-/// strictly validates UTF-8 for text-declared content rejects the write outright
+/// caused by keyring 3.6.3 declaring raw binary writes as `text/plain`. The Linux
+/// writer below bypasses those writes and requests `application/octet-stream`.
+/// A backend that strictly validates UTF-8 for text-declared content rejects
+/// the write outright
 /// with wording to this effect (observed: "Secret value contains invalid UTF-8
 /// sequences but content_type declares text encoding; use application/octet-stream
 /// for binary data"). This is distinct from KWallet's issue #838 (write succeeds,
@@ -194,8 +198,14 @@ impl SecureStorageProvider for SystemSecureStorage {
     }
 
     fn set(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
-        let entry = self.entry_for_key(key)?;
-        entry.set_secret(value).map_err(|err| match err {
+        #[cfg(target_os = "linux")]
+        let result = linux::set_secret(&self.service_name, key, value);
+        #[cfg(not(target_os = "linux"))]
+        let result = {
+            let entry = self.entry_for_key(key)?;
+            entry.set_secret(value)
+        };
+        result.map_err(|err| match err {
             keyring::Error::PlatformFailure(msg) => classify_platform_failure(&msg.to_string()),
             _ => SecureStorageError::Other(format!("failed to write secure storage: {err}")),
         })

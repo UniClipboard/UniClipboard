@@ -79,7 +79,7 @@ Omarchy 环境的「设置 → 外观 → 主题」显示「跟随 Omarchy 主�
 三端计算样式验收按顺序运行，覆盖浅深模式、窗口背景、主按钮、设置开关、选中行、弹层与恢复默认：
 
 ```bash
-NODE_OPTIONS=--max-old-space-size=1536 node apps/gui-go/frontend/e2e/theme-palette-run.mjs
+NODE_OPTIONS=--max-old-space-size=1536 bun run e2e:gui layouts theme-palette
 ```
 
 验收需要已有的 Playwright 与 Chromium，可通过 `PLAYWRIGHT_MODULE`、`PLAYWRIGHT_EXECUTABLE_PATH` 指定；结果和截图保存在系统临时目录中的 `uc-theme-<platform>`。这项浏览器验收不替代 macOS、Windows 原生 WebView 验收。

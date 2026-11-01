@@ -39,7 +39,12 @@ export const test = base.extend({
   },
 })
 export async function outputFor(name) {
-  const output = path.resolve('target/tester-army-layout', selectedPlatform, name)
+  const output = path.resolve(
+    'target/tester-army-layout',
+    selectedPlatform,
+    selectedSuite,
+    name === selectedSuite ? '' : name
+  )
   await mkdir(output, { recursive: true })
   return output
 }

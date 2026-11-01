@@ -352,6 +352,8 @@ export function macosHistory() {
         'e2e.macos-history.config.ts',
         'apps/gui-go/e2e/tester-army-native/run-macos-history.mjs',
         'apps/gui-go/build.sh',
+        'scripts/gui-e2e.mjs',
+        'apps/gui-go/frontend/e2e/tester-army/build-lease.mjs',
         'package.json',
         'bun.lock',
         'Cargo.lock',

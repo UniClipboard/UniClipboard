@@ -1,17 +1,17 @@
 [
   {
     "path": "apps/gui-go/frontend/e2e/app-entry-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["none"],
     "verifiedPlatforms": ["none"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/app-entry.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/app-entry-kit-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [
       "recovery: terminal key loss offers diagnostics instead of a disabled form",
@@ -24,27 +24,27 @@
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/app-entry-kit.e2e.mjs",
-    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/appearance-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["none"],
     "verifiedPlatforms": ["none"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/appearance.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/device-tasks-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/device-tasks.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/devices-kit-browser.mjs",
@@ -69,7 +69,8 @@
     "verifiedPlatforms": ["macos", "windows", "linux"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/devices-kit.e2e.mjs",
     "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
-    "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes."
+    "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes.",
+    "assertionOwner": "apps/gui-go/frontend/e2e/scenarios/devices-kit.mjs"
   },
   {
     "path": "apps/gui-go/frontend/e2e/devices-kit-lifecycle.mjs",
@@ -85,23 +86,23 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/file-preview-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/file-preview.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-compact-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["linux"],
     "verifiedPlatforms": ["linux"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/history-compact.e2e.mjs",
-    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-detail-regressions.mjs",
@@ -156,13 +157,13 @@
       "narrow-and-scaled",
       "grid-paging"
     ],
-    "reason": "Only empty-history light/dark scenarios pass in all three skins. Seeded scenarios retain the real image-thumbnail 503 and platform-specific material/rail failures. Native CDP bootstrap remains on the original path.",
+    "reason": "Empty-history scenarios pass in all three skins; Windows seeded history is also verified. Full macOS/Linux seeded history remains a candidate. External-daemon and native-CDP bootstraps retain their original scope.",
     "verifiedPlatforms": ["macos", "windows", "linux"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/history-kit.e2e.mjs",
     "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
     "retirement": "Keep failing assertions and unverified host/native bootstrap paths. Retire a path only after its exact scope passes.",
-    "verifiedSeeds": ["empty"],
-    "retainedSeeds": ["history"]
+    "assertionOwner": "apps/gui-go/frontend/e2e/scenarios/history-kit.mjs",
+    "coverage": "catalog.mjs#verifiedBackendRuns"
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-kit-seed.mjs",
@@ -200,13 +201,13 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-tag-menu-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos"],
     "verifiedPlatforms": ["macos"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/history-tag-menu.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/history-token-api.mjs",
@@ -234,23 +235,23 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/macos-design-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos"],
     "verifiedPlatforms": ["macos"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/macos-design.e2e.mjs",
-    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/mobile-connection-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["none"],
     "verifiedPlatforms": ["none"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/mobile-connection.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/quick-panel-unlock-browser.mjs",
@@ -288,7 +289,7 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/settings-scroll-memory-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [
       "first visit starts at top",
@@ -305,27 +306,27 @@
     "platforms": ["none"],
     "verifiedPlatforms": ["none"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/settings-scroll-memory.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/settings-sidebar-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/settings-sidebar.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/settings-sidebar-motion-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos", "linux"],
     "verifiedPlatforms": ["macos", "linux"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/settings-sidebar-motion.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/settings-sync-api.mjs",
@@ -368,13 +369,13 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/startup-first-frame-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos", "windows", "linux", "none"],
     "verifiedPlatforms": ["macos", "windows", "linux", "none"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/startup-first-frame.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/startup-frame-observer.js",
@@ -393,7 +394,7 @@
     "status": "migrated-browser-branch",
     "kind": "browser",
     "scenarioSignals": [],
-    "reason": "Original geometry and filtering assertions pass with each skin’s actual header elements. Retain the legacy external-daemon bootstrap until host parity is verified.",
+    "reason": "Original geometry and filtering assertions pass with each skin\u2019s actual header elements. Retain the legacy external-daemon bootstrap until host parity is verified.",
     "verifiedPlatforms": ["macos", "linux"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/tag-manager-layout.e2e.mjs",
     "hostScope": "macOS isolated real daemon; skin emulation is not native acceptance",
@@ -401,19 +402,20 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/theme-palette-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/theme-palette.e2e.mjs",
-    "retirement": "Retire each original assertion body only after its replacement passes; retained failures keep the original path."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/theme-palette-run.mjs",
-    "status": "retained",
+    "status": "retired-entry",
     "kind": "helper-or-nonvisual",
-    "scenarioSignals": []
+    "scenarioSignals": [],
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/tray-icon-settings-api.mjs",
@@ -434,7 +436,7 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/ui-kit-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [
       "the served bundle is the requested platform",
@@ -477,7 +479,7 @@
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/ui-kit.e2e.mjs",
-    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/ui-kit-bundle-check.mjs",
@@ -487,19 +489,21 @@
   },
   {
     "path": "apps/gui-go/frontend/e2e/ui-kit-run.mjs",
-    "status": "retained",
+    "status": "retired-entry",
     "kind": "helper-or-nonvisual",
-    "scenarioSignals": []
+    "scenarioSignals": [],
+    "replacement": "apps/gui-go/frontend/e2e/ui-kit-preview.mjs",
+    "retirement": "Automated acceptance uses e2e:gui layouts ui-kit; manual preview has no test driver."
   },
   {
     "path": "apps/gui-go/frontend/e2e/visual-effects-browser.mjs",
-    "status": "migrated",
+    "status": "retired-entry",
     "kind": "browser",
     "scenarioSignals": [],
     "platforms": ["macos", "linux", "windows"],
     "verifiedPlatforms": ["macos", "linux", "windows"],
     "replacement": "apps/gui-go/frontend/e2e/tester-army/visual-effects.e2e.mjs",
-    "retirement": "Original browser entry delegates to the framework; assertions have one owner. Native host acceptance remains separate."
+    "retirement": "Removed after verified replacement coverage. Use the canonical e2e:gui layouts command; original source remains in Git."
   },
   {
     "path": "apps/gui-go/frontend/e2e/visual-effects-server.mjs",

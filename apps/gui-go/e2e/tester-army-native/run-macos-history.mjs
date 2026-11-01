@@ -37,6 +37,7 @@ async function run(command, args) {
   }
 }
 
+await rm(path.join(root, 'target/tester-army-macos-history'), { recursive: true, force: true })
 await run('bash', ['apps/gui-go/build.sh', 'e2e'])
 assert.equal(git('rev-parse', 'HEAD'), head, 'source HEAD changed while building')
 assert.equal(git('status', '--porcelain'), status, 'working-tree state changed while building')
@@ -71,7 +72,6 @@ await writeFile(
     2
   ) + '\n'
 )
-await rm(path.join(root, 'target/tester-army-macos-history'), { recursive: true, force: true })
 await run(process.execPath, [
   'node_modules/e2e/dist/cli/bin.js',
   'run',

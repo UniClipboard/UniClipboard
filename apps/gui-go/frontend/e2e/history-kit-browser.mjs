@@ -267,7 +267,21 @@ export async function runScenarios({
     ])
     if (!(await unlock.isVisible())) return
     await page.screenshot({ path: path.join(output, 'native-unlock.png') })
-    await unlock.click()
+    try {
+      await unlock.click()
+    } catch (error) {
+      // A native reload can restore its existing session after the lock screen was observed.
+      if (
+        error?.name !== 'TimeoutError' ||
+        (await unlock.isVisible()) ||
+        !(await ready.first().isVisible())
+      )
+        throw error
+      ;(results.nativeUnlockTransitions ??= []).push({
+        state: 'content-ready-before-unlock-click',
+        viewport: page.viewportSize(),
+      })
+    }
     const passphrase = page.locator('#unlock-passphrase')
     await Promise.race([
       passphrase.waitFor({ timeout: 30_000 }),

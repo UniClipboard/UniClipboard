@@ -1,0 +1,139 @@
+name: TesterArmy native capability
+on:
+  pull_request:
+    paths:
+      - 'apps/gui-go/e2e/tester-army-native/**'
+      - 'apps/gui-go/cmd/webview-probe/**'
+      - 'apps/gui-go/go.mod'
+      - 'apps/gui-go/go.sum'
+      - 'e2e.native.config.ts'
+      - 'e2e.windows-product.config.ts'
+      - 'e2e.macos-history.config.ts'
+      - 'apps/gui-go/build.sh'
+      - 'apps/gui-go/e2e/windows_startup_ready.mjs'
+      - 'apps/gui-go/e2e/windows-startup-scenarios.mjs'
+      - 'apps/gui-go/e2e/build_windows.py'
+      - 'apps/cli-go/**'
+      - 'packages/desktop-host-go/**'
+      - 'apps/gui-go/frontend/**'
+      - 'apps/gui-go/*.go'
+      - 'apps/gui-go/**/*.go'
+      - 'apps/daemon/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'rust-toolchain.toml'
+      - '.github/actions/engine-build-cache/**'
+      - 'scripts/build-cache/**'
+      - 'crates/uc-daemon/**'
+      - 'Cargo.lock'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/tester-army-native.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capability:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      E2E_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26.13.0'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - run: bun install --frozen-lockfile
+      - run: node apps/gui-go/e2e/tester-army-native/protocol.mjs
+      - name: Collect macOS native history without launching the desktop
+        if: runner.os == 'macOS'
+        run: node node_modules/e2e/dist/cli/bin.js list --config e2e.macos-history.config.ts > target/tester-army-native/macos-history-collection.txt
+      - name: Ephemeral WKWebView read-back, without a window
+        if: runner.os == 'macOS'
+        run: swift apps/gui-go/e2e/tester-army-native/wkwebview.swift > target/tester-army-native/wkwebview.json
+      - name: Ephemeral WebKitGTK read-back in an owned Xvfb
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 xvfb
+          xvfb-run -a /usr/bin/python3 apps/gui-go/e2e/tester-army-native/webkitgtk.py target/tester-army-native/webkitgtk.json
+      - uses: actions/setup-go@v6
+        if: runner.os == 'Windows'
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+      - name: Build owned WebView2 host
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p target
+          (cd apps/gui-go && go build -tags e2e -o ../../target/webview-probe.exe ./cmd/webview-probe)
+      - name: Characterize the actual WebView2 target
+        if: runner.os == 'Windows'
+        run: node apps/gui-go/e2e/tester-army-native/webview2.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tester-army-native-${{ matrix.os }}
+          path: target/tester-army-native/
+          if-no-files-found: error
+  windows-product:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      E2E_TELEMETRY_DISABLED: '1'
+      CARGO_BUILD_JOBS: '3'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26.13.0'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+      - run: bun install --frozen-lockfile
+      - name: Start the existing shared Engine build cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: tester-army-native
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          shared-key: pr-check
+          cache-targets: false
+          save-if: false
+      - name: Build pinned real daemon
+        shell: bash
+        run: bash scripts/build-cache/mbx.sh --exec cargo build --locked -p uc-daemon --bin uniclipd
+      - name: Build the Windows product frontend and host
+        run: python apps/gui-go/e2e/build_windows.py --mode e2e --part go
+      - name: Drive the product's original WebView2
+        run: node apps/gui-go/e2e/windows_startup_ready.mjs --tester-army
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tester-army-windows-product
+          path: target/tester-army-windows-product/
+          if-no-files-found: error
+          retention-days: 14

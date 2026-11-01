@@ -68,7 +68,7 @@ export function installSettingsFixtureEnvironment() {
     }
     if (url.pathname.startsWith('/fixture-daemon/')) {
       if (url.pathname === '/fixture-daemon/settings/relay-probe') {
-        return Response.json({ data: { kind: 'success', latencyMs: 12 }, ts: Date.now() })
+        return Response.json({ data: { tag: 'success', latencyMs: 12 }, ts: Date.now() })
       }
       if (url.pathname === '/fixture-daemon/settings/relay-overview') {
         const scripted = window.__relayOverviewFixture!

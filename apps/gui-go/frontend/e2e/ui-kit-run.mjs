@@ -32,6 +32,24 @@ if (!['windows', 'macos', 'linux'].includes(platform ?? '')) {
   process.exit(2)
 }
 
+if (!serveOnly) {
+  const root = path.resolve(frontend, '../../..')
+  const test = spawn(
+    process.execPath,
+    ['apps/gui-go/frontend/e2e/tester-army/run-layouts.mjs', 'ui-kit', '--platform', platform],
+    {
+      cwd: root,
+      stdio: 'inherit',
+      env: process.env,
+    }
+  )
+  const code = await new Promise((resolve, reject) => {
+    test.once('error', reject)
+    test.once('exit', resolve)
+  })
+  process.exit(code ?? 1)
+}
+
 const server = spawn(process.execPath, ['e2e/visual-effects-server.mjs'], {
   cwd: frontend,
   env: {
@@ -61,19 +79,4 @@ try {
   console.error(error.message)
   process.exit(1)
 }
-if (serveOnly) {
-  console.log(`[ui-kit] ${platform} gallery at http://127.0.0.1:${port}/ (Ctrl+C to stop)`)
-} else {
-  const e2e = spawn(process.execPath, ['e2e/ui-kit-browser.mjs'], {
-    cwd: frontend,
-    env: {
-      ...process.env,
-      UI_KIT_PLATFORM: platform,
-      UI_KIT_TEST_URL: `http://127.0.0.1:${port}`,
-    },
-    stdio: 'inherit',
-  })
-  const code = await new Promise(resolve => e2e.on('exit', resolve))
-  stop()
-  process.exit(code ?? 1)
-}
+console.log(`[ui-kit] ${platform} gallery at http://127.0.0.1:${port}/ (Ctrl+C to stop)`)

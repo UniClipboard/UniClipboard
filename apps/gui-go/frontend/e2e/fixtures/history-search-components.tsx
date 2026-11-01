@@ -26,8 +26,8 @@ window.addEventListener('unhandledrejection', e =>
   pageErrors.push(`rejection: ${String(e.reason)}`)
 )
 const params = new URLSearchParams(location.search)
-const baseUrl = params.get('daemon') ?? ''
-const sessionToken = params.get('token') ?? ''
+const baseUrl = window.__ucBrowserDaemon?.baseUrl ?? params.get('daemon') ?? ''
+const sessionToken = window.__ucBrowserDaemon?.sessionToken ?? params.get('token') ?? ''
 installFakeHost({
   GetDaemonSession: () => ({ sessionToken, expiresInSecs: 300, refreshAtSecs: 240 }),
 })

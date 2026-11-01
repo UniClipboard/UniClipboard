@@ -31,6 +31,7 @@ import {
   Tag,
 } from '@/ui-kit/skins/macos/parts'
 import { PortalContainer, usePortalContainer } from '@/ui-kit/skins/macos/portal'
+import { macTheme } from '@/ui-kit/skins/macos/theme'
 
 type Theme = 'light' | 'dark'
 
@@ -41,7 +42,7 @@ function Panel({ theme, height, children }: { theme: Theme; height: number; chil
       ref={setElement}
       className="board-panel mac-theme"
       data-mac-theme={theme}
-      style={{ left: theme === 'light' ? 40 : 870, height }}
+      style={{ ...macTheme(theme, null), left: theme === 'light' ? 40 : 870, height }}
       aria-label={theme === 'light' ? 'Light' : 'Dark'}
     >
       <span className="board-panel-label">{theme.toUpperCase()}</span>

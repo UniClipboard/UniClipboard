@@ -1,3 +1,11 @@
+import {
+  AutoResult,
+  DownloadPhase,
+  EffectsMode,
+  EffectsPersistence,
+  EffectsReason,
+  SystemMotion,
+} from '@host/models'
 import { pendingStartupSnapshot } from '@/lib/startup-progress'
 import { HostRejection, installFakeHost } from './fake-host'
 
@@ -8,8 +16,14 @@ import { HostRejection, installFakeHost } from './fake-host'
 // queries with neutral values, and records every native command it receives
 // in `window.__ucNativeCalls` so a run shows exactly what was not native.
 const params = new URLSearchParams(location.search)
-const baseUrl = params.get('daemon') ?? ''
-const sessionToken = params.get('token') ?? ''
+declare global {
+  interface Window {
+    __ucBrowserDaemon?: { baseUrl: string; sessionToken: string }
+  }
+}
+// The runner injects a session in memory so its URL and reports contain no credentials.
+const baseUrl = window.__ucBrowserDaemon?.baseUrl ?? params.get('daemon') ?? ''
+const sessionToken = window.__ucBrowserDaemon?.sessionToken ?? params.get('token') ?? ''
 const errors: string[] = []
 Object.assign(window, { __ucPageErrors: errors })
 window.addEventListener('error', e => errors.push(`error: ${e.message}`))
@@ -19,14 +33,13 @@ window.addEventListener('unhandledrejection', e => errors.push(`rejection: ${Str
 // daemon, so the page sees real values.
 async function daemonData(path: string, body?: unknown) {
   const url = new URL(`${baseUrl}${path}`)
-  url.searchParams.set('auth', `Session ${sessionToken}`)
   const res = await fetch(
     url,
     body === undefined
-      ? undefined
+      ? { headers: { Authorization: `Session ${sessionToken}` } }
       : {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { Authorization: `Session ${sessionToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         }
   )
@@ -35,7 +48,43 @@ async function daemonData(path: string, body?: unknown) {
   return response.data
 }
 
+Object.assign(window, { __UC_MAIN_WINDOW_GENERATION__: 'isolated-browser-generation' })
+let effectsRevision = 0
+const effectsSnapshot = () => {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+  return {
+    sessionId: 'isolated-browser',
+    revision: ++effectsRevision,
+    mode: EffectsMode.EffectsModeEffects,
+    autoForSession: AutoResult.AutoResultEffects,
+    nextAuto: null,
+    systemMotion: reduced ? SystemMotion.SystemMotionReduce : SystemMotion.SystemMotionAllow,
+    reduceMotion: reduced,
+    lowEffects: reduced,
+    reason: EffectsReason.EffectsReasonManual,
+    persistence: EffectsPersistence.EffectsPersistenceSessionOnly,
+  }
+}
 installFakeHost({
+  GetVisualEffects: effectsSnapshot,
+  ReportVisualEffectsEnvironment: effectsSnapshot,
+  GetDesktopTheme: () => ({
+    revision: 1,
+    followOmarchyTheme: false,
+    omarchyAvailable: false,
+    theme: null,
+    windowCornerRadius: null,
+  }),
+  GetDownloadProgress: () => ({
+    phase: DownloadPhase.DownloadPhaseIdle,
+    downloaded: 0,
+    total: null,
+    version: null,
+    currentVersion: '0.0.0-e2e',
+    body: null,
+    date: null,
+  }),
+  MarkMainWindowReady: () => undefined,
   // Host-only state: the native host reports the daemon it supervises as
   // ready; here the daemon is the test's, already up. Version is the daemon's.
   GetDaemonStartupStatus: async () => ({

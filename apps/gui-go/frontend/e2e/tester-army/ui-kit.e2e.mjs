@@ -1,0 +1,619 @@
+import assert from 'node:assert/strict'
+import { writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { test, outputFor } from './page.mjs'
+import { selectedPlatform as platform } from './suites.mjs'
+
+test('ui-kit: original assertions', async ({ app, page }) => {
+  const base = app.baseUrl.replace(/\/$/, '')
+  const output = await outputFor('ui-kit')
+  const expectedPlatform = platform
+  const results = []
+  // Closes whatever a failed check left open (a modal menu or dialog hides the rest of the page from
+  // the accessibility tree), so one failure does not cascade into every later check.
+  let closeOverlays = async () => {}
+  const check = async (name, run) => {
+    try {
+      await run()
+      results.push({ name, ok: true })
+    } catch (error) {
+      results.push({ name, ok: false, error: error.message.replace(/\s+/g, ' ').slice(0, 400) })
+      await closeOverlays().catch(() => {})
+    }
+  }
+  page.setDefaultTimeout(5000)
+  closeOverlays = async () => {
+    for (let i = 0; i < 3; i++) await page.keyboard.press('Escape')
+    const cancel = page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' })
+    if (await cancel.count()) await cancel.click()
+  }
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  // React and the component libraries report misuse (controlled/uncontrolled switches, duplicate
+  // keys, missing names) through console.error.
+  page.on('console', message => {
+    // The preview server has no favicon; that request is not a page error.
+    if (message.type() === 'error' && !message.location().url.endsWith('/favicon.ico'))
+      errors.push(`console: ${message.text()}`)
+  })
+  await page.goto(`${base}/?scheme=light`)
+  const board = page.getByTestId('board-light')
+  // The first load of a cold preview server can take longer than one interaction.
+  await board.waitFor({ timeout: 30000 })
+  const skin = await page.locator('[data-ui-skin]').first().getAttribute('data-ui-skin')
+  await check('the served bundle is the requested platform', async () => {
+    assert.equal(skin, expectedPlatform, 'data-ui-skin of the rendered UiRoot')
+    const marker = await page.request.get(`${base}/.ui-platform`)
+    assert.equal(marker.ok(), true, 'the gallery bundle has a .ui-platform marker')
+    assert.equal((await marker.text()).trim(), expectedPlatform, '.ui-platform of the bundle')
+  })
+  const log = board.getByTestId('event-log')
+  const expectLog = async text => assert.equal(await log.textContent(), text)
+  const focusedName = () =>
+    page.evaluate(() => {
+      const el = document.activeElement
+      return el?.getAttribute('aria-label') || el?.textContent?.trim() || el?.tagName
+    })
+  // Libraries may move focus one frame after the event that opens a popup or wraps a focus trap;
+  // a user's next key press is far later than that, so wait briefly instead of reading at once.
+  const expectFocus = async (matches, timeout = 1000) => {
+    const deadline = Date.now() + timeout
+    let name = await focusedName()
+    while (!matches(name) && Date.now() < deadline) {
+      await page.waitForTimeout(25)
+      name = await focusedName()
+    }
+    assert.ok(matches(name), `focus is on "${name}"`)
+  }
+
+  await check('button click reports no event object', async () => {
+    await board.getByRole('button', { name: 'Copy', exact: true }).first().click()
+    await expectLog('click:copy')
+  })
+  await check('disabled button is disabled', async () => {
+    const disabled = board.getByRole('button', { name: 'Copy', exact: true }).nth(1)
+    assert.equal(await disabled.isDisabled(), true)
+  })
+  await check('icon-only button is named by its label', async () => {
+    await board.getByRole('button', { name: 'More', exact: true }).click()
+    await expectLog('click:more')
+  })
+  await check('toggle button exposes aria-pressed', async () => {
+    const pin = board.getByRole('button', { name: 'Pin', exact: true })
+    assert.equal(await pin.getAttribute('aria-pressed'), 'false')
+    await pin.click()
+    await expectLog('pressed:true')
+    assert.equal(
+      await board.getByRole('button', { name: 'Pinned', exact: true }).getAttribute('aria-pressed'),
+      'true'
+    )
+  })
+  await check('search field reports the value', async () => {
+    await board.getByRole('searchbox', { name: 'Search history' }).fill('docker')
+    await expectLog('query:docker')
+  })
+  await check('switch toggles with Space', async () => {
+    const sync = board.getByRole('switch', { name: 'Sync' })
+    await sync.focus()
+    await page.keyboard.press('Space')
+    await expectLog('sync:true')
+    assert.equal(await sync.isChecked(), true)
+  })
+  await check('checkbox reports checked state', async () => {
+    await board.getByRole('checkbox', { name: 'Select', exact: true }).click()
+    await expectLog('check:false')
+  })
+  await check('select opens a listbox in a portal and picks by keyboard', async () => {
+    const device = board.getByRole('combobox', { name: 'Device' })
+    await device.focus()
+    await page.keyboard.press('Enter')
+    const listbox = page
+      .getByRole('listbox')
+      .filter({ has: page.getByRole('option', { name: 'Pixel 8' }) })
+    await listbox.waitFor()
+    assert.equal(
+      await listbox.evaluate(el => Boolean(el.closest('[data-testid="board-light"]'))),
+      false
+    )
+    // The listbox is ready for keys a frame after it opens: focus moves into it (Base UI) or the
+    // expanded combobox points at an option (Fluent). Keys sent before that reach the closed
+    // trigger (arrows are ignored, Enter closes the list); a user's next key comes far later.
+    await page.waitForFunction(() => {
+      const active = document.activeElement
+      if (active?.closest('[role="listbox"]')) return true
+      return (
+        active?.getAttribute('role') === 'combobox' &&
+        active.getAttribute('aria-expanded') === 'true' &&
+        Boolean(active.getAttribute('aria-activedescendant'))
+      )
+    })
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
+    await expectLog('device:pixel')
+    await listbox.waitFor({ state: 'hidden' })
+  })
+  await check('segmented control is a named radio group; arrows move the selection', async () => {
+    const group = board.getByRole('radiogroup', { name: 'Theme' })
+    await group.getByRole('radio', { name: 'Dark' }).click()
+    await expectLog('theme:dark')
+    await page.keyboard.press('ArrowRight')
+    assert.equal(await focusedName(), 'System')
+    await expectLog('theme:system')
+    assert.equal(await group.getByRole('radio', { name: 'System' }).isChecked(), true)
+  })
+  await check('Tab into the segmented control keeps its value', async () => {
+    const group = board.getByRole('radiogroup', { name: 'Theme' })
+    await group.getByRole('radio', { name: 'Light' }).click()
+    await expectLog('theme:light')
+    await board.getByRole('combobox', { name: 'Device' }).focus()
+    await page.keyboard.press('Tab')
+    await expectFocus(name => ['Light', 'Dark', 'System'].includes(name))
+    await expectLog('theme:light')
+    assert.equal(await group.getByRole('radio', { name: 'Light' }).isChecked(), true)
+  })
+  await check('menu opens by keyboard, Escape closes and returns focus', async () => {
+    const trigger = board.getByRole('button', { name: 'More commands' })
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+    const menu = page.getByRole('menu')
+    await menu.waitFor()
+    assert.equal(await menu.getByRole('menuitem').count(), 6)
+    assert.equal(
+      await menu.evaluate(el => Boolean(el.closest('[data-testid="board-light"]'))),
+      false
+    )
+    await expectFocus(name => name.startsWith('Copy'))
+    await page.keyboard.press('ArrowDown')
+    await expectFocus(name => name.startsWith('Send to'))
+    await page.screenshot({ path: path.join(output, `${skin}-menu-open.png`) })
+    await page.keyboard.press('Escape')
+    await menu.waitFor({ state: 'hidden' })
+    assert.equal(await trigger.evaluate(el => el === document.activeElement), true)
+  })
+  await check('menu item reports its id', async () => {
+    await board.getByRole('button', { name: 'More commands' }).click()
+    await page.getByRole('menuitem', { name: /^Edit/ }).click()
+    await expectLog('menu:edit')
+  })
+  await check('filter menu shows its count and reports the action', async () => {
+    await board.getByRole('button', { name: /^Tag/ }).click()
+    await page.getByRole('menuitem', { name: /^Invoices/ }).click()
+    await expectLog('filter:invoices')
+  })
+  await check('context menu opens at the pointer on right-click', async () => {
+    const row = board
+      .getByRole('listbox', { name: 'Today' })
+      .getByRole('option', { name: 'invoice-0921.pdf' })
+    // A modal context menu hides the page from the accessibility tree, so measure the row first.
+    const rowBox = await row.boundingBox()
+    await row.click({ button: 'right' })
+    const menu = page.getByRole('menu')
+    await menu.waitFor()
+    const menuBox = await menu.boundingBox()
+    assert.ok(Math.abs(menuBox.y - (rowBox.y + rowBox.height / 2)) < rowBox.height * 2)
+    await page.getByRole('menuitem', { name: /^Pin/ }).click()
+    await expectLog('context:pin')
+  })
+  await check('toolbar keeps one tab stop and moves with arrow keys', async () => {
+    const toolbar = board.getByRole('toolbar', { name: 'Item commands' })
+    await toolbar.getByRole('button', { name: 'Copy' }).focus()
+    await page.keyboard.press('ArrowRight')
+    assert.equal(await focusedName(), 'Send to…')
+  })
+  await check('item list selects, activates with Enter and deletes with Delete', async () => {
+    const list = board.getByRole('listbox', { name: 'Today' })
+    await list.getByRole('option', { name: 'invoice-0921.pdf' }).click()
+    await expectLog('selection:invoice')
+    assert.equal(
+      await list.getByRole('option', { name: 'invoice-0921.pdf' }).getAttribute('aria-selected'),
+      'true'
+    )
+    await page.keyboard.press('ArrowUp')
+    assert.equal(await focusedName(), 'Q4 roadmap: ship LAN-only Mode, then per-device gates')
+    await page.keyboard.press('Enter')
+    await expectLog('activate:roadmap')
+    await list.getByRole('option', { name: 'invoice-0921.pdf' }).focus()
+    await page.keyboard.press('Delete')
+    await expectLog('delete:invoice')
+  })
+  await check('item list jumps with Home and End', async () => {
+    const list = board.getByRole('listbox', { name: 'Today' })
+    await list.getByRole('option', { name: 'https://github.com/UniClipboard/UniClipboard' }).focus()
+    await page.keyboard.press('End')
+    assert.equal(await focusedName(), 'invoice-0921.pdf')
+    await page.keyboard.press('Home')
+    assert.equal(await focusedName(), 'git rebase -i HEAD~3')
+  })
+  // Keyboard only: how a pointer click extends the selection is platform-specific (contract).
+  await check('multi-select list shows checkboxes and accumulates the selection', async () => {
+    const list = board.getByRole('listbox', { name: 'Multi-select' })
+    assert.equal(await list.getAttribute('aria-multiselectable'), 'true')
+    assert.equal(await list.getByRole('checkbox').count(), 2)
+    await list.getByRole('option', { name: 'invoice-0921.pdf' }).focus()
+    await page.keyboard.press('Space')
+    await expectLog('multi:roadmap,invoice')
+    await page.keyboard.press('ArrowUp')
+    await page.keyboard.press('Space')
+    await expectLog('multi:invoice')
+    await page.keyboard.press('Space')
+    await expectLog('multi:invoice,roadmap')
+  })
+  await check('single-select list has no checkboxes', async () => {
+    const list = board.getByRole('listbox', { name: 'Today' })
+    assert.equal(await list.getByRole('checkbox').count(), 0)
+  })
+  await check('sidebar navigation moves with arrow keys and selects with Enter', async () => {
+    const nav = board.getByRole('navigation', { name: 'Library' })
+    await nav.getByRole('button', { name: /^All items/ }).focus()
+    await page.keyboard.press('ArrowDown')
+    assert.equal((await focusedName()).startsWith('Pinned'), true)
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
+    await expectLog('nav:deleted')
+    // One tab stop: Tab leaves the navigation instead of walking its items.
+    await page.keyboard.press('Tab')
+    assert.equal(await nav.evaluate(el => el.contains(document.activeElement)), false)
+  })
+  await check('sidebar navigation marks the current item', async () => {
+    const nav = board.getByRole('navigation', { name: 'Library' })
+    await nav.getByRole('button', { name: /^Pinned/ }).click()
+    await expectLog('nav:pinned')
+    assert.equal(
+      await nav.getByRole('button', { name: /^Pinned/ }).getAttribute('aria-current'),
+      'page'
+    )
+  })
+  await check('removable tag and search token have their own named remove button', async () => {
+    // The tag text is not a remove button: clicking it must not remove the tag.
+    const before = await log.textContent()
+    const chip = board
+      .getByRole('button', { name: 'Remove #finance', exact: true })
+      .locator('xpath=..')
+    await chip.getByText('#finance', { exact: true }).click()
+    await expectLog(before)
+    await board.getByRole('button', { name: 'Remove #finance', exact: true }).click()
+    await expectLog('remove:#finance')
+    await board.getByRole('button', { name: 'Remove from: iPhone 16', exact: true }).click()
+    await expectLog('remove:from')
+  })
+  await check('notice action and dismiss', async () => {
+    await board.getByRole('button', { name: 'Open settings' }).click()
+    await expectLog('notice:settings')
+    await board.getByRole('button', { name: 'Dismiss', exact: true }).click()
+    await expectLog('notice:dismiss')
+  })
+  await check('alert dialog traps focus, confirms and returns focus', async () => {
+    const trigger = board
+      .getByRole('toolbar', { name: 'Item commands' })
+      .getByRole('button', { name: 'Delete' })
+    await trigger.click()
+    const dialog = page.getByRole('alertdialog', { name: 'Delete from all devices?' })
+    await dialog.waitFor()
+    assert.equal(
+      await dialog.evaluate(el => Boolean(el.closest('[data-testid="board-light"]'))),
+      false
+    )
+    // Destructive confirmation: initial focus is on Cancel, so Enter does not destroy data.
+    await expectFocus(name => name === 'Cancel')
+    const dialogElement = await dialog.elementHandle()
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press('Tab')
+      await page.waitForFunction(el => el.contains(document.activeElement), dialogElement, {
+        timeout: 1000,
+      })
+    }
+    await page.screenshot({ path: path.join(output, `${skin}-dialog-open.png`) })
+    await dialog.getByRole('button', { name: 'Delete' }).click()
+    await expectLog('dialog:confirm')
+    await dialog.waitFor({ state: 'hidden' })
+    assert.equal(await trigger.evaluate(el => el === document.activeElement), true)
+  })
+  await check('dialog opened from a context menu returns focus to the row', async () => {
+    const row = board
+      .getByRole('listbox', { name: 'Today' })
+      .getByRole('option', { name: 'git rebase -i HEAD~3' })
+    const rowElement = await row.elementHandle()
+    await row.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: /^Delete from all devices/ }).click()
+    const dialog = page.getByRole('alertdialog', { name: 'Delete from all devices?' })
+    await dialog.waitFor()
+    await page.keyboard.press('Escape')
+    await dialog.waitFor({ state: 'hidden' }).catch(async () => {
+      // Alert dialogs may ignore Escape; cancel explicitly.
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
+      await dialog.waitFor({ state: 'hidden' })
+    })
+    await page.waitForFunction(el => el === document.activeElement, rowElement, { timeout: 1000 })
+  })
+  await check('browser rendering never claims a native window material', async () => {
+    const materials = await page
+      .locator('[data-window-material]')
+      .evaluateAll(els => els.map(el => el.getAttribute('data-window-material')))
+    assert.ok(materials.length >= 2, 'every Surface carries data-window-material')
+    for (const material of materials)
+      assert.ok(['css-fallback', 'solid'].includes(material), material)
+  })
+  await check('Tab order follows the board', async () => {
+    await page.goto(`${base}/?scheme=light`)
+    await board.waitFor()
+    const order = []
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press('Tab')
+      order.push(await focusedName())
+    }
+    assert.deepEqual(order, [
+      'Copy',
+      'Send to…',
+      'Edit',
+      'More',
+      'Pin',
+      'Search history',
+      'Type',
+      'Tag1',
+    ])
+  })
+
+  // Skin-specific visual tokens, from the Win11 colour board.
+  if (skin === 'windows') {
+    await check('windows light and dark tokens', async () => {
+      await page.goto(base)
+      const sample = scheme =>
+        page.evaluate(scheme => {
+          const root = document.querySelector(`[data-testid="board-${scheme}"]`).parentElement
+          const primary = root.querySelector('button')
+          return {
+            base: getComputedStyle(root).backgroundColor,
+            primary: getComputedStyle(primary).backgroundColor,
+            primaryText: getComputedStyle(primary).color,
+            weight: getComputedStyle(primary).fontWeight,
+          }
+        }, scheme)
+      const light = await sample('light')
+      const dark = await sample('dark')
+      assert.deepEqual(light, {
+        base: 'rgb(243, 243, 243)',
+        primary: 'rgb(0, 95, 184)',
+        primaryText: 'rgb(255, 255, 255)',
+        weight: '400',
+      })
+      assert.deepEqual(dark, {
+        base: 'rgb(32, 32, 32)',
+        primary: 'rgb(96, 205, 255)',
+        primaryText: 'rgb(0, 0, 0)',
+        weight: '400',
+      })
+    })
+    await check('portal popups inherit the scheme of their root', async () => {
+      await page.goto(`${base}/?scheme=dark`)
+      const dark = page.getByTestId('board-dark')
+      await dark.getByRole('button', { name: 'More commands' }).click()
+      const menu = page.getByRole('menu')
+      await menu.waitFor()
+      const color = await menu.evaluate(
+        el => getComputedStyle(el.querySelector('[role="menuitem"]')).color
+      )
+      assert.equal(color, 'rgb(255, 255, 255)')
+      // Skin variables must reach the portal mount node, not only the provider root: the menu flyout is the
+      // skin's dark solid layer (#2D2D2D), not Fluent's default.
+      assert.equal(
+        await menu.evaluate(el => getComputedStyle(el.closest('.fui-MenuPopover')).backgroundColor),
+        'rgb(45, 45, 45)'
+      )
+      await page.keyboard.press('Escape')
+    })
+  }
+
+  // In native mode the page background is cleared so the window material shows. WKWebView does
+  // not blur the native layer behind a transparent page, so a popup cannot rely on backdrop-filter
+  // to hide what is under it: its own background must be nearly opaque. The host parameter is
+  // simulated here; this checks the skin's CSS for that branch and proves nothing native.
+  if (skin === 'macos') {
+    await check('alerts share aligned controls and fit narrow windows in both themes', async () => {
+      const measurements = []
+      for (const scheme of ['light', 'dark']) {
+        for (const width of [900, 390, 280]) {
+          await page.setViewportSize({ width, height: 600 })
+          await page.goto(`${base}/?scheme=${scheme}`)
+          const themedBoard = page.getByTestId(`board-${scheme}`)
+          await themedBoard.waitFor()
+          for (const typed of [false, true]) {
+            const trigger = typed
+              ? themedBoard.getByRole('button', {
+                  name: 'Reset and start over',
+                })
+              : themedBoard
+                  .getByRole('toolbar', { name: 'Item commands' })
+                  .getByRole('button', { name: 'Delete' })
+            await trigger.click()
+            const dialog = page.getByRole('alertdialog')
+            await dialog.waitFor()
+            await page.waitForFunction(
+              el => Math.abs(el.getBoundingClientRect().width - el.offsetWidth) < 0.5,
+              await dialog.elementHandle()
+            )
+            const metrics = await dialog.evaluate(el => {
+              const rect = el.getBoundingClientRect()
+              const style = getComputedStyle(el)
+              const left = rect.left + parseFloat(style.paddingLeft)
+              const right = rect.right - parseFloat(style.paddingRight)
+              const controls = [...el.querySelectorAll('button, input')].map(control => {
+                const box = control.getBoundingClientRect()
+                return { left: box.left, right: box.right }
+              })
+              return {
+                left,
+                right,
+                controls,
+                dialogLeft: rect.left,
+                dialogRight: rect.right,
+                scrollWidth: el.scrollWidth,
+                clientWidth: el.clientWidth,
+              }
+            })
+            measurements.push({ scheme, width, typed, ...metrics })
+            await page.screenshot({
+              path: path.join(
+                output,
+                `macos-alert-${scheme}-${width}-${typed ? 'typed' : 'plain'}.png`
+              ),
+            })
+            await writeFile(
+              path.join(output, 'macos-alert-layout.json'),
+              JSON.stringify(measurements, null, 2)
+            )
+            assert.ok(
+              metrics.dialogLeft >= 0 && metrics.dialogRight <= width,
+              'alert fits the window'
+            )
+            assert.ok(
+              metrics.scrollWidth <= metrics.clientWidth + 1,
+              'alert has no horizontal overflow'
+            )
+            for (const control of metrics.controls) {
+              assert.ok(
+                Math.abs(control.left - metrics.left) <= 1,
+                'control aligns with the left inset'
+              )
+              assert.ok(
+                Math.abs(control.right - metrics.right) <= 1,
+                'control aligns with the right inset'
+              )
+            }
+            if (typed) {
+              const confirm = dialog.getByRole('button', {
+                name: 'Reset',
+                exact: true,
+              })
+              assert.equal(await confirm.isDisabled(), true)
+              await dialog.getByLabel('Type RESET to confirm').fill('RESET')
+              assert.equal(await confirm.isDisabled(), false)
+            }
+            await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+            await dialog.waitFor({ state: 'hidden' })
+          }
+        }
+      }
+      await page.setViewportSize({ width: 1720, height: 1200 })
+    })
+    await check(
+      'native-mode popups are opaque enough to read (host parameter simulated)',
+      async () => {
+        for (const scheme of ['light', 'dark']) {
+          // The skin shows the native material only while the theme matches the system appearance.
+          await page.emulateMedia({ colorScheme: scheme })
+          await page.goto(`${base}/?scheme=${scheme}&window-material=liquid-glass`)
+          const native = page.getByTestId(`board-${scheme}`)
+          await native.waitFor()
+          // Measured only in the native branch: a fallback page would pass trivially.
+          assert.equal(
+            await page.evaluate(() => document.documentElement.dataset.windowMaterial ?? null),
+            'native-liquid-glass',
+            `${scheme} board is in native mode`
+          )
+          await native.getByRole('button', { name: /^Tag/ }).click()
+          const menu = page.getByRole('menu')
+          await menu.waitFor()
+          // rgb() is opaque, rgba() carries alpha; anything else fails below.
+          const alpha = await menu.evaluate(el => {
+            const background = getComputedStyle(el).backgroundColor
+            const rgba = background.match(/^rgba\(([^)]+)\)$/)
+            if (rgba) {
+              const parts = rgba[1].split(',').map(Number)
+              return parts.length === 4 ? parts[3] : null
+            }
+            return /^rgb\([^)]+\)$/.test(background) ? 1 : null
+          })
+          await page.screenshot({
+            path: path.join(output, `${skin}-native-sim-menu-${scheme}.png`),
+          })
+          await page.keyboard.press('Escape')
+          assert.ok(
+            alpha !== null && alpha >= 0.9,
+            `${scheme} menu background alpha ${alpha} over the native material`
+          )
+        }
+        await page.emulateMedia({ colorScheme: null })
+      }
+    )
+    await check(
+      'a theme unlike the system appearance falls back from the native material (simulated)',
+      async () => {
+        await page.emulateMedia({ colorScheme: 'light' })
+        await page.goto(`${base}/?scheme=dark&window-material=liquid-glass`)
+        await page.getByTestId('board-dark').waitFor()
+        const state = await page.evaluate(() => ({
+          document: document.documentElement.dataset.windowMaterial ?? null,
+          sidebar:
+            document
+              .querySelector('[data-surface="sidebar"]')
+              ?.getAttribute('data-window-material') ?? null,
+        }))
+        await page.emulateMedia({ colorScheme: null })
+        assert.equal(state.document, null, 'the page stays opaque')
+        assert.equal(state.sidebar, 'css-fallback', 'the sidebar uses its CSS fallback')
+      }
+    )
+  }
+
+  if (skin === 'macos') {
+    await check(
+      "reduce motion stops the skin's transitions and animations (media emulated)",
+      async () => {
+        await page.emulateMedia({ reducedMotion: 'reduce' })
+        await page.goto(`${base}/?scheme=light`)
+        const board = page.getByTestId('board-light')
+        await board.waitFor()
+        await board.getByRole('button', { name: /^Tag/ }).click()
+        await page.getByRole('menu').waitFor()
+        const moving = await page.evaluate(() =>
+          Array.from(document.querySelectorAll('[class*="mac-"]'))
+            .filter(el => {
+              const style = getComputedStyle(el)
+              const durations = style.transitionDuration.split(',').map(d => parseFloat(d))
+              return durations.some(d => d > 0) || style.animationName !== 'none'
+            })
+            .map(el => el.className)
+        )
+        await page.keyboard.press('Escape')
+        await page.emulateMedia({ reducedMotion: null })
+        assert.deepEqual(moving, [], 'elements still animating with reduced motion')
+      }
+    )
+  }
+
+  for (const scheme of ['both', 'light', 'dark']) {
+    await page.goto(`${base}/?scheme=${scheme}`)
+    await page.getByTestId('ui-kit-gallery').waitFor()
+    await page.evaluate(() => document.fonts.ready)
+    await page.screenshot({
+      path: path.join(output, `${skin}-gallery-${scheme}.png`),
+      fullPage: true,
+    })
+  }
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`${base}/?scheme=light`)
+  await check('narrow viewport has no horizontal scroll', async () => {
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true
+    )
+  })
+  await page.screenshot({ path: path.join(output, `${skin}-gallery-narrow.png`), fullPage: true })
+  await check('no page errors', async () => assert.deepEqual(errors, []))
+
+  await writeFile(
+    path.join(output, `${skin}-results.json`),
+    JSON.stringify({ skin, base, results }, null, 2)
+  )
+  for (const result of results) {
+    console.log(
+      `${result.ok ? 'PASS' : 'FAIL'} ${result.name}${result.ok ? '' : `: ${result.error}`}`
+    )
+  }
+  const failed = results.filter(result => !result.ok).length
+  console.log(
+    `${skin}: ${results.length - failed}/${results.length} passed, artifacts in ${output}`
+  )
+  assert.equal(failed, 0, 'all original gallery checks must pass')
+})

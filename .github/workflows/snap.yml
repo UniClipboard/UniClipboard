@@ -1,199 +1,289 @@
-name: 'Snap'
-run-name: "snap-${{ inputs.channel || github.event.release.tag_name || 'edge' }}-${{ github.run_number }}"
+name: Snap edge artifact publish (issue-1926)
+run-name: snap-edge-artifacts-${{ github.run_number }}
 
-# The core24 GNOME platform owns GTK >= 4.14. WebKitGTK 6.0 is application-owned.
-# The application checks its helpers before packing; old-host acceptance is separate.
-#
-# 默认只构建:pull request(改了 snap 配方时)和 release.published 都只产
-# workflow artifact,不推送商店。Go 宿主在 strict 限制下的行为还没有在真实
-# snapd 上验证(docs/architecture/gui-go-distribution-channels.md),所以推送只能
-# 由人显式 workflow_dispatch 并勾选 release;snapcraft.yaml 的 grade: devel
-# 另外让商店拒绝 candidate / stable。
-#
-# 推送到 snap store 需要 SNAPCRAFT_STORE_CREDENTIALS secret(`snapcraft
-# export-login --snaps=uniclipboard --acls package_upload --expires <date>`
-# 生成,详见 README/CONTRIBUTING)。secret 缺失时 publish 步骤跳过,只产
-# workflow artifact。
+# One-time operation branch only. Never merge this workflow into main.
+# Reuse immutable artifacts; no checkout, rebuild, or payload execution.
 on:
-  pull_request:
-    paths:
-      - 'snap/**'
-      - '.github/workflows/snap.yml'
-      - 'scripts/check-snap-desktop-icons.py'
-      - 'scripts/ci/check-snap-package.sh'
-      - 'scripts/ci/remove-snap-platform-libraries.py'
-      - 'scripts/tests/test_*snap*.py'
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       channel:
-        description: 'Snap store channel'
+        description: 'Only edge is authorized'
         required: true
         type: choice
-        options:
-          - edge
-          - beta
-          - candidate
-          - stable
+        options: [edge]
         default: edge
       release:
-        description: 'Push to snap store after build (off = artifact only)'
-        required: false
+        description: 'Explicitly authorize publishing the verified artifacts'
+        required: true
         type: boolean
         default: false
       branch:
-        description: 'Branch to build'
-        required: false
+        description: 'Exact source SHA; no branch names are accepted'
+        required: true
         type: string
-        default: ''
-  workflow_call:
-    inputs:
-      channel:
-        description: 'Snap store channel'
-        required: false
-        type: string
-        default: edge
-      release:
-        description: 'Push to snap store after build (false = artifact only)'
-        required: false
-        type: boolean
-        default: false
-      branch:
-        description: 'Branch / ref to build'
-        required: false
-        type: string
-        default: ''
-    secrets:
-      SNAPCRAFT_STORE_CREDENTIALS:
-        description: 'snapcraft export-login token; missing = artifact-only'
-        required: false
+        default: 46511be189415f5ef779910d4e4f704b543be9da
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1926-snap-edge-publish
+  cancel-in-progress: false
 
 jobs:
-  build:
-    # alpha 由 release.yml 在自动发布完成后显式 dispatch,这里的
-    # release.published 入口只承接人工发布的 beta / rc / stable。
-    if: ${{ github.event_name != 'release' || !contains(github.event.release.tag_name, '-alpha') }}
-    name: Build snap (${{ matrix.arch }})
-    # Native runners match the core24 build environment on both architectures.
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-24.04
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Resolve snap metadata
-        id: snap-meta
+      - name: Guard the one-time operation
         env:
-          INPUT_BRANCH: ${{ inputs.branch }}
           INPUT_CHANNEL: ${{ inputs.channel }}
           INPUT_RELEASE: ${{ inputs.release }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_BRANCH: ${{ inputs.branch }}
         run: |
-          REF="${INPUT_BRANCH:-}"
-          if [ -z "$REF" ]; then
-            REF="${RELEASE_TAG:-${GITHUB_REF}}"
-          fi
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/snap-edge-evidence"
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REPOSITORY" = UniClipboard/UniClipboard
+          test "$GITHUB_REF" = refs/heads/ci/snap-edge-artifact-publish
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$INPUT_CHANNEL" = edge
+          test "$INPUT_RELEASE" = true
+          test "$INPUT_BRANCH" = 46511be189415f5ef779910d4e4f704b543be9da
 
-          CHANNEL="${INPUT_CHANNEL:-}"
-          if [ -z "$CHANNEL" ]; then
-            VERSION="${RELEASE_TAG#v}"
-            case "$VERSION" in
-              *-alpha*) CHANNEL="edge" ;;
-              *-beta*) CHANNEL="beta" ;;
-              *-rc*) CHANNEL="candidate" ;;
-              *) CHANNEL="stable" ;;
-            esac
-          fi
-
-          # Publishing needs an explicit input; the pull_request and release events only build.
-          RELEASE="${INPUT_RELEASE:-false}"
-
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
-          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
-          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ steps.snap-meta.outputs.ref }}
-          submodules: recursive
-
-      - name: Verify snap recipe checks
+      - name: Ensure read-only payload verification tools before credential access
         run: |
-          if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+          set -euo pipefail
+          packages=()
+          /usr/bin/python3 -c 'import yaml' >/dev/null 2>&1 || packages+=(python3-yaml)
+          command -v unsquashfs >/dev/null || packages+=(squashfs-tools)
+          if [ "${#packages[@]}" -gt 0 ]; then
             sudo apt-get update -qq
-            sudo apt-get install -y python3-yaml
+            sudo apt-get install -y --no-install-recommends "${packages[@]}"
           fi
-          python3 -m unittest discover -s scripts/tests -p 'test_*snap*.py'
+          /usr/bin/python3 -c 'import yaml'
+          command -v unsquashfs
 
-      - name: Build snap
-        id: build
-        uses: snapcore/action-build@v1
-        # action-build 默认在 LXD 容器里跑 snapcraft,产物路径输出到
-        # steps.build.outputs.snap。strict + gnome extension 自动 attach
-        # gnome-46-2404 + gtk-common-themes content snaps,无需手动挂。
-
-      - name: Upload .snap as workflow artifact
-        # 即便 publish 走 store,也保留 artifact 用于离线分发 / 调试
-        # (`snap install --dangerous file.snap`)。retention 7 天够用。
-        uses: actions/upload-artifact@v7
-        with:
-          name: uniclipboard-${{ matrix.arch }}-snap
-          path: ${{ steps.build.outputs.snap }}
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Verify desktop entry icons
-        # The store rejects snaps whose desktop Icon path is missing; fail
-        # here with the offending path instead of after upload review.
+      - name: Verify fixed run and artifact identities
         env:
-          SNAP_FILE: ${{ steps.build.outputs.snap }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          command -v unsquashfs >/dev/null || sudo apt-get install -y squashfs-tools
-          python3 scripts/check-snap-desktop-icons.py "$SNAP_FILE"
+          /usr/bin/python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import urllib.request
+          out = Path(os.environ['RUNNER_TEMP']) / 'snap-edge-evidence'
+          def get(path):
+              request = urllib.request.Request('https://api.github.com/repos/UniClipboard/UniClipboard/' + path, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          run = get('actions/runs/41306966004')
+          source = '46511be189415f5ef779910d4e4f704b543be9da'
+          assert run['id'] == 41306966004 and run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['head_branch'] == 'fix/snap-libxml-runtime'
+          assert run['head_sha'] == source and run['path'] == '.github/workflows/snap.yml'
+          evidence = {'run': {k: run[k] for k in ('id', 'status', 'conclusion', 'head_sha', 'head_branch', 'path')}, 'artifacts': []}
+          (out / 'source.json').write_text(json.dumps(evidence, indent=2))
+          for arch, artifact_id in [('amd64', 13083749604), ('arm64', 13083629359)]:
+              artifact = get('actions/artifacts/' + str(artifact_id))
+              assert artifact['id'] == artifact_id and not artifact['expired']
+              assert artifact['name'] == 'uniclipboard-' + arch + '-snap'
+              assert artifact['workflow_run']['head_branch'] == 'fix/snap-libxml-runtime'
+              assert artifact['workflow_run']['id'] == run['id'] and artifact['workflow_run']['head_sha'] == source
+              evidence['artifacts'].append({k: artifact[k] for k in ('id', 'name', 'expired')})
+              (out / 'source.json').write_text(json.dumps(evidence, indent=2))
+          PY
 
-      - name: Install and launch the confined GTK4 Snap
-        env:
-          SNAP_FILE: ${{ steps.build.outputs.snap }}
-        run: scripts/ci/check-snap-package.sh "$SNAP_FILE" "$RUNNER_TEMP/snap-acceptance"
-
-      - name: Upload Snap runtime evidence
-        if: always()
-        uses: actions/upload-artifact@v7
+      - name: Download fixed amd64 artifact
+        uses: actions/download-artifact@v6
         with:
-          name: snap-acceptance-${{ matrix.arch }}
-          path: ${{ runner.temp }}/snap-acceptance
-          include-hidden-files: true
-          retention-days: 7
-          if-no-files-found: ignore
+          github-token: ${{ github.token }}
+          run-id: 41306966004
+          artifact-ids: 13083749604
+          path: ${{ runner.temp }}/snap-amd64
+          merge-multiple: true
 
-      - name: Check snap store credentials
-        id: check-creds
-        if: ${{ steps.snap-meta.outputs.release == 'true' }}
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+      - name: Download fixed arm64 artifact
+        uses: actions/download-artifact@v6
+        with:
+          github-token: ${{ github.token }}
+          run-id: 41306966004
+          artifact-ids: 13083629359
+          path: ${{ runner.temp }}/snap-arm64
+          merge-multiple: true
+
+      - name: Verify both packages before any Store credential access
         run: |
-          if [ -z "${SNAPCRAFT_STORE_CREDENTIALS:-}" ]; then
-            echo "::warning::SNAPCRAFT_STORE_CREDENTIALS secret missing — skipping publish."
-            echo "::warning::Run \`snapcraft export-login --snaps=uniclipboard --acls package_upload\` and add it to repo secrets to enable publishing."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          fi
+          cat > "$RUNNER_TEMP/snap-edge-audit.py" <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+          import time
+          import urllib.request
+          import yaml
 
-      - name: Publish to snap store
-        if: ${{ steps.snap-meta.outputs.release == 'true' && steps.check-creds.outputs.publish == 'true' }}
+          ROOT = Path(os.environ['RUNNER_TEMP'])
+          OUT = ROOT / 'snap-edge-evidence'
+          OUT.mkdir(exist_ok=True)
+          EXPECTED = {
+              'amd64': ('e5116a5cd13574047f58c7b36ee7a96024373213455b9d56ccdf7beab433aaaf', 'dc4c3e8da37507ae2888553317fc649137044bc98ac58c083eca97215ced8ba67ccbaa34e2e1d05c4a21c70bf8c14dc0'),
+              'arm64': ('9d8f416fc354d27836b0618bfe26719cff63bad694160d10849c4a5c75731826', '1d7c7fda2101d6428fc952dc371c1f885df08b54f88802bd9c7e1f807a12220bcffb4191f6da4150a7836b1021bf5c5a'),
+          }
+
+          PRIVATE_SHA256 = {
+              'amd64': '209e941be9eb2eb9ab36caaa0b81d1c6b36c8f5d7268c24f19e81039137e6485',
+              'arm64': '7740d5c135a38eb40877605dffbb0099c667ec7fdbf1f63346957fb7336712dd',
+          }
+          LAUNCHER_SHA256 = '250f17310c636e8ee8f6abe0f76db2b049d5e51d9824e8e25990e292161877be'
+          INITIAL_EDGE = {'amd64': 1116, 'arm64': 1117}
+
+          def save(name, data):
+              (OUT / name).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
+
+          def snapshot(name):
+              request = urllib.request.Request('https://api.snapcraft.io/v2/snaps/info/uniclipboard', headers={'Snap-Device-Series': '16', 'Cache-Control': 'no-cache'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  data = json.load(response)
+              save(name + '-public.json', data)
+              assert data['snap-id'] == '6ktb04tKmtMYToJScm4rNLTYh1Wt9oP0'
+              result = {arch: {risk: None for risk in ('stable', 'candidate', 'beta', 'edge')} for arch in EXPECTED}
+              for entry in data['channel-map']:
+                  channel = entry['channel']
+                  arch, risk = channel['architecture'], channel['risk']
+                  assert channel['track'] == 'latest', 'Unexpected Store track'
+                  assert arch in result and risk in result[arch], 'Unexpected Store architecture/risk'
+                  assert result[arch][risk] is None, 'Duplicate Store mapping'
+                  digest = entry['download']['sha3-384']
+                  revision = entry['revision']
+                  assert re.fullmatch(r'[a-f0-9]{96}', digest)
+                  assert isinstance(revision, int) and not isinstance(revision, bool) and revision > 0
+                  result[arch][risk] = {'architecture': arch, 'revision': revision, 'sha3_384': digest, 'version': entry['version']}
+              save(name + '.json', result)
+              return result
+
+          mode = sys.argv[1]
+          if mode == 'verify':
+              results = {}
+              for arch, (sha256, sha3) in EXPECTED.items():
+                  folder = ROOT / ('snap-' + arch)
+                  path = folder / ('uniclipboard_1.6.0-alpha.5_' + arch + '.snap')
+                  assert sorted(p.name for p in folder.iterdir()) == [path.name], 'Unexpected artifact files'
+                  assert path.is_file() and not path.is_symlink()
+                  hashes = {'sha256': hashlib.sha256(), 'sha3_384': hashlib.sha3_384()}
+                  with path.open('rb') as stream:
+                      for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                          for digest in hashes.values():
+                              digest.update(chunk)
+                  actual = {key: digest.hexdigest() for key, digest in hashes.items()}
+                  assert actual == {'sha256': sha256, 'sha3_384': sha3}, 'Artifact hash mismatch: ' + arch
+                  meta = yaml.safe_load(subprocess.check_output(['unsquashfs', '-cat', str(path), 'meta/snap.yaml'], timeout=60))
+                  assert all(meta.get(k) == v for k, v in {'name': 'uniclipboard', 'version': '1.6.0-alpha.5', 'base': 'core24', 'architectures': [arch], 'confinement': 'strict'}.items()), 'Snap metadata mismatch'
+                  assert meta['apps']['uniclipboard']['command'] == 'usr/bin/uniclipboard-launch'
+                  def member(name):
+                      return subprocess.check_output(['unsquashfs', '-cat', str(path), name], timeout=60)
+                  library_hash = hashlib.sha256(member('usr/lib/uniclipboard-security/libxml2.so.2.9.14')).hexdigest()
+                  launcher_hash = hashlib.sha256(member('usr/bin/uniclipboard-launch')).hexdigest()
+                  assert library_hash == PRIVATE_SHA256[arch], 'Private library hash mismatch'
+                  assert launcher_hash == LAUNCHER_SHA256, 'Launcher hash mismatch'
+                  listing = subprocess.check_output(['unsquashfs', '-lln', str(path), 'usr/lib/uniclipboard-security'], text=True, timeout=60)
+                  assert 'libxml2.so.2 -> libxml2.so.2.9.14' in listing, 'Missing private SONAME link'
+                  plain = subprocess.check_output(['unsquashfs', '-l', str(path), 'usr/lib/uniclipboard-security'], text=True, timeout=60)
+                  prefix = 'squashfs-root/usr/lib/uniclipboard-security/'
+                  private_files = {line[len(prefix):] for line in plain.splitlines() if line.startswith(prefix)}
+                  assert private_files == {'libxml2.so.2', 'libxml2.so.2.9.14'}, 'Unexpected private library contents'
+                  manifest = yaml.safe_load(member('snap/manifest.yaml'))
+                  assert manifest['image-info']['build_url'].endswith('/41306966004')
+                  assert 'libxml2=2.9.14+dfsg-1.3ubuntu3.10' in manifest['parts']['uniclipboard']['stage-packages']
+                  results[arch] = dict(actual, file=path.name, private_library_sha256=library_hash, launcher_sha256=launcher_hash, command=meta['apps']['uniclipboard']['command'], meta={k: meta[k] for k in ('name', 'version', 'base', 'architectures', 'confinement')})
+                  save('packages.json', results)
+              assert set(results) == set(EXPECTED)
+          elif mode == 'before':
+              assert set(json.loads((OUT / 'packages.json').read_text())) == set(EXPECTED)
+              before = snapshot('before')
+              for arch, (_, digest) in EXPECTED.items():
+                  current = before[arch]['edge']
+                  assert current is not None and (current['revision'] == INITIAL_EDGE[arch] or current['sha3_384'] == digest), 'Unexpected concurrent edge publication: ' + arch
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                  for arch, (_, digest) in EXPECTED.items():
+                      current = before[arch]['edge']
+                      publish = current is None or current['sha3_384'] != digest
+                      output.write(f'{arch}={str(publish).lower()}\n')
+              save('publication-policy.json', {'channel': 'edge', 'retry_uploads': False, 'runtime_acceptance': 'NOT_RUN: separate authorized strict acceptance required'})
+          elif mode == 'after':
+              before = json.loads((OUT / 'before.json').read_text())
+              for attempt in range(12):
+                  after = snapshot('after')
+                  unchanged = all(before[arch][risk] == after[arch][risk] for arch in EXPECTED for risk in ('stable', 'candidate', 'beta'))
+                  matched = all(after[arch]['edge'] is not None and after[arch]['edge']['sha3_384'] == EXPECTED[arch][1] and after[arch]['edge']['version'] == '1.6.0-alpha.5' for arch in EXPECTED)
+                  save('verification.json', {'protected_channels_unchanged': unchanged, 'both_edge_hashes_match': matched, 'read_attempt': attempt + 1, 'runtime_acceptance': 'NOT_RUN'})
+                  assert unchanged, 'A protected Store channel changed; do not repair automatically'
+                  if matched:
+                      break
+                  if attempt < 11:
+                      time.sleep(10)
+              assert matched, 'Publication not confirmed; inspect Store state before any new dispatch'
+          else:
+              raise ValueError('Unknown mode')
+          PY
+          /usr/bin/python3 "$RUNNER_TEMP/snap-edge-audit.py" verify
+
+      - name: Snapshot public Store state and decide per-architecture skips
+        id: before
+        run: /usr/bin/python3 "$RUNNER_TEMP/snap-edge-audit.py" before
+
+      - name: Publish verified amd64 to edge once
+        id: publish-amd64
+        if: steps.before.outputs.amd64 == 'true'
         uses: snapcore/action-publish@v1
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         with:
-          snap: ${{ steps.build.outputs.snap }}
-          release: ${{ steps.snap-meta.outputs.channel }}
+          snap: ${{ runner.temp }}/snap-amd64/uniclipboard_1.6.0-alpha.5_amd64.snap
+          release: edge
+
+      - name: Publish verified arm64 to edge once
+        id: publish-arm64
+        if: steps.before.outputs.arm64 == 'true'
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ runner.temp }}/snap-arm64/uniclipboard_1.6.0-alpha.5_arm64.snap
+          release: edge
+
+      - name: Snapshot after publication and verify all channel mappings
+        if: always() && steps.before.outcome == 'success'
+        run: /usr/bin/python3 "$RUNNER_TEMP/snap-edge-audit.py" after
+
+      - name: Record step outcomes without credentials
+        if: always()
+        env:
+          GUARD_OUTCOME: ${{ steps.before.outcome }}
+          AMD64_OUTCOME: ${{ steps.publish-amd64.outcome }}
+          ARM64_OUTCOME: ${{ steps.publish-arm64.outcome }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          /usr/bin/python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'snap-edge-evidence'
+          out.mkdir(exist_ok=True)
+          (out / 'step-outcomes.json').write_text(json.dumps({k: os.environ[k] for k in ('GUARD_OUTCOME', 'AMD64_OUTCOME', 'ARM64_OUTCOME', 'JOB_STATUS')}, indent=2))
+          PY
+          echo 'Publication evidence is attached. Strict runtime acceptance is a separate required operation.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Always preserve sanitized publication evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: issue-1926-edge-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/snap-edge-evidence
+          retention-days: 14
+          if-no-files-found: error

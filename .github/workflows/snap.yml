@@ -44,8 +44,8 @@ jobs:
           out = Path(os.environ['RUNNER_TEMP']) / 'snap-store-inspection'
           credential = os.environ.pop('SNAPCRAFT_STORE_CREDENTIALS', '')
           commands = [
-              ('revisions-amd64', ['/snap/bin/snapcraft', 'list-revisions', 'uniclipboard', '--arch', 'amd64']),
-              ('revisions-arm64', ['/snap/bin/snapcraft', 'list-revisions', 'uniclipboard', '--arch', 'arm64']),
+              ('revisions-amd64', ['/snap/bin/snapcraft', 'revisions', 'uniclipboard', '--arch', 'amd64']),
+              ('revisions-arm64', ['/snap/bin/snapcraft', 'revisions', 'uniclipboard', '--arch', 'arm64']),
               ('status', ['/snap/bin/snapcraft', 'status', 'uniclipboard']),
           ]
           def sanitize(value):
@@ -78,11 +78,12 @@ jobs:
                       code, stdout, stderr = 124, error.stdout, error.stderr
                   except OSError:
                       code, stderr = 127, 'CLI could not be started; no retry attempted.'
+              failure_class = 'access-denied' if re.search(r'access.denied|permission|unauthorized|insufficient|not.allowed|not permitted', str(stderr), re.I) else ('command-error' if code else None)
               clean_stdout, stdout_truncated = sanitize(stdout)
               clean_stderr, stderr_truncated = sanitize(stderr)
               (out / (name + '.stdout.txt')).write_text(clean_stdout)
               (out / (name + '.stderr.txt')).write_text(clean_stderr)
-              results.append({'command': command, 'exit_code': code, 'stdout_truncated': stdout_truncated, 'stderr_truncated': stderr_truncated})
+              results.append({'command': command, 'exit_code': code, 'failure_class': failure_class, 'stdout_truncated': stdout_truncated, 'stderr_truncated': stderr_truncated})
               (out / 'results.json').write_text(json.dumps({
                   'observed_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                   'reconciliation_target_upload_run': 41310604881,

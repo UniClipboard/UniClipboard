@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { isOlderReceiveSnapshot } from '@/lib/receive-file-progress'
 import { isTerminalAttemptState } from '@/lib/receive-items'
 import type { ReceiveSnapshot } from '@/lib/receive-items'
 import type { RootState } from '../index'
@@ -330,11 +331,16 @@ const fileTransferSlice = createSlice({
      * Store a per-item snapshot read from the daemon. The snapshot is the
      * authority for which attempt is current; events only trigger the read.
      */
+    invalidateReceiveSnapshot(state, action: PayloadAction<string>) {
+      if (state.receiveSnapshotByEntry) delete state.receiveSnapshotByEntry[action.payload]
+    },
+
     applyReceiveSnapshot(state, action: PayloadAction<ReceiveSnapshot>) {
       const snapshot = action.payload
       const { entryId, attemptId } = snapshot
       if (isSuperseded(state, entryId, attemptId)) return
       const stored = state.receiveSnapshotByEntry?.[entryId]
+      if (stored && isOlderReceiveSnapshot(snapshot, stored)) return
       const settledStatus = state.entryStatusById[entryId]?.status
       const sameAttempt = state.currentAttemptByEntry?.[entryId] === attemptId
       // A reply that was produced before a settling event must not reopen the attempt.
@@ -417,6 +423,7 @@ export const {
   removeEntryTransferStatus,
   setReceiveAttemptState,
   applyReceiveSnapshot,
+  invalidateReceiveSnapshot,
   markReceiveCancellationIncomplete,
   hydrateReceiveAttempts,
 } = fileTransferSlice.actions

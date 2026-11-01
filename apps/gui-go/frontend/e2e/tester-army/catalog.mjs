@@ -36,6 +36,7 @@ export const suites = {
     reducedMotion: 'no-preference',
     viewport: { width: 1100, height: 800 },
   },
+  'receive-generation': { fixture: 'file-preview', platforms: ['macos'] },
   'file-preview': {
     fixture: 'file-preview',
     platforms: ['macos', 'linux', 'windows'],
@@ -93,6 +94,7 @@ export const verifiedPlatforms = {
   'ui-kit': ['macos', 'linux', 'windows'],
   'visual-effects': ['macos', 'linux', 'windows'],
   'file-preview': ['macos', 'linux', 'windows'],
+  'receive-generation': ['macos'],
   'device-tasks': ['macos', 'linux', 'windows'],
   'settings-scroll-memory': ['none'],
   'history-tag-menu': ['macos'],

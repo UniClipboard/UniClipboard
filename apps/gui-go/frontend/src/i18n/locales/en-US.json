@@ -1584,6 +1584,9 @@
       "syncFailedDetail": "Failed to sync file: {{reason}}"
     },
     "receive": {
+      "fileProgressAria": "Receiving {{file}}",
+      "progressUnavailable": "Per-file progress unavailable",
+      "wholeFileSet": "Entire file set",
       "cancelledCount": "{{count}} cancelled",
       "failedCount": "{{count}} failed",
       "details": "Receive details",
@@ -2595,7 +2598,17 @@
         "cancelled": "Cancelled",
         "partially_cancelled": "Partly cancelled"
       },
+      "fileTargets": "Delivered to {{completed}} of {{total}} devices",
+      "failedTargets": "{{count}} devices failed",
+      "itemProgressAria": "{{file}} to {{device}}",
+      "unknownBytes": "Unknown",
       "itemState": {
+        "waiting": "Waiting",
+        "transferring": "Sending",
+        "processing": "Processing",
+        "retrying": "Retrying",
+        "completed": "Completed",
+        "unconfirmed": "Result unconfirmed",
         "failed": "Failed",
         "cancelled": "Cancelled"
       },

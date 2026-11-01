@@ -59,6 +59,8 @@ pub mod ws_event {
     pub const FILE_TRANSFER_PROGRESS: &str = "file-transfer.progress";
     /// Outbound progress snapshots may be stale. Payload-free invalidation hint:
     /// subscribers must re-read the full snapshot from the outbound progress API.
+    pub const FILE_TRANSFER_RECEIVE_PROGRESS_CHANGED: &str =
+        "file-transfer.receive_progress_changed";
     pub const FILE_TRANSFER_OUTBOUND_PROGRESS_CHANGED: &str =
         "file-transfer.outbound_progress_changed";
     /// 某条 entry 对某个对端的投递状态发生变化(ADR-008 P3-3 GAP-WS-1)。

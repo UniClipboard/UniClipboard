@@ -59,7 +59,7 @@ def evidence_records(path):
 def run():
     if not __debug__:
         raise RuntimeError('native ownership checks require Python assertions enabled')
-    backend = host = None
+    backend = host = transfer = None
     ui_pid = ui_identity = None
     control = evidence = None
     failed = forced = False
@@ -86,12 +86,21 @@ def run():
                          [('host', binary), ('ui', ui_binary), ('daemon', ROOT / 'target/debug/uniclipd'),
                           ('cli', ROOT / 'target/gui-go/uniclip')]}
         assert binary_hashes == build['binariesSha256'], 'native binaries differ from the recorded build'
-        backend = module.Backend('empty')
-        backend.start()
-        for text in texts:
-            backend.send(text)
-        entries = backend.request('/clipboard/entries?limit=10')
-        assert len(entries) == 2
+        scenario = request.get('scenario', 'history')
+        assert scenario in ('history', 'file-transfer')
+        if scenario == 'file-transfer':
+            fixture_spec = importlib.util.spec_from_file_location('native_file_transfer', Path(__file__).with_name('macos-file-transfer.py'))
+            fixture = importlib.util.module_from_spec(fixture_spec)
+            fixture_spec.loader.exec_module(fixture)
+            transfer = fixture.FileTransfer(module.Backend, output)
+            backend = transfer.prepare()
+        else:
+            backend = module.Backend('empty')
+            backend.start()
+            for text in texts:
+                backend.send(text)
+            entries = backend.request('/clipboard/entries?limit=10')
+            assert len(entries) == 2
         control = Path(backend.home) / 'native-control'
         evidence = Path(backend.home) / 'native-evidence.jsonl'
         control.write_text('')
@@ -134,12 +143,15 @@ def run():
             'windowId': 'w-' + window.stdout.strip(), 'windowInspector': str(inspector),
             'agentHome': str(Path(backend.home) / 'agent-desktop'), 'appName': plist['CFBundleName'],
             'systemClipboardDisabled': env['UC_DISABLE_SYSTEM_CLIPBOARD'] == '1',
-            'guiIsolated': env['UC_GUI_GO_ISOLATED'] == '1', 'seededEntries': 2,
+            'guiIsolated': env['UC_GUI_GO_ISOLATED'] == '1', 'seededEntries': 0 if transfer else 2,
+            'scenario': scenario,
             'buildHead': build['head'], 'buildDirty': build['dirty'], 'binariesSha256': binary_hashes,
         }
         (output / 'native-launch.json').write_text(json.dumps(receipt, indent=2) + '\n')
         emit({'phase': 'ready', **receipt})
-        sys.stdin.buffer.read()
+        for line in sys.stdin:
+            assert transfer is not None and json.loads(line) == {'action': 'send'}
+            transfer.start()
     except (Exception, KeyboardInterrupt) as error:
         failed = True
         emit({'phase': 'failure', 'errorType': type(error).__name__})
@@ -147,6 +159,14 @@ def run():
         # A second cancellation must not interrupt the owned cleanup already in progress.
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+        transfer_cleanup = {}
+        if transfer is not None:
+            if backend is None:
+                backend = transfer.receiver
+            try:
+                transfer_cleanup = transfer.finish()
+            except Exception as error:
+                transfer_cleanup = {'transferCleanupErrorType': type(error).__name__, 'transferPassed': False}
         if host is not None and host.poll() is None:
             control.write_text('exit\n')
             try:
@@ -205,6 +225,7 @@ def run():
             cleanup = {'sandboxPreserved': True, 'homeRemoved': False,
                        'daemonExited': backend.process is not None and backend.process.poll() is not None,
                        'daemonExitCode': backend.process.returncode if backend.process else None}
+        cleanup.update(transfer_cleanup)
         cleanup.update(phase='cleanup', hostExitCode=host.returncode if host else None,
                        uiExited=ui_exited, uiIdentityKnown=ui_state is not UNKNOWN_IDENTITY,
                        controlExitAcknowledged=acknowledged,
@@ -213,7 +234,9 @@ def run():
             cleanup.update(runId=request.get('runId'), attemptId=request.get('attemptId'))
         passed = (not failed and host is not None and host.returncode == 0 and ui_exited and acknowledged
                   and cleanup.get('daemonExited') is True and cleanup.get('homeRemoved') is True
-                  and cleanup.get('daemonExitCode') == 0 and not cleanup['forced'])
+                  and cleanup.get('daemonExitCode') == 0 and not cleanup['forced']
+                  and (transfer is None or cleanup.get('transferPassed') is True
+                       and cleanup.get('senderCleanupPassed') is True and not cleanup.get('transferForced')))
         cleanup['passed'] = passed
         if 'output' in locals():
             (output / 'native-isolation.json').write_text(json.dumps(cleanup, indent=2) + '\n')

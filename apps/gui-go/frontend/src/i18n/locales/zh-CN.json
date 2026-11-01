@@ -1577,6 +1577,9 @@
       "syncFailedDetail": "文件同步失败：{{reason}}"
     },
     "receive": {
+      "fileProgressAria": "接收文件：{{file}}",
+      "progressUnavailable": "逐文件进度暂不可用",
+      "wholeFileSet": "整个文件集",
       "cancelledCount": "{{count}} 项已取消",
       "failedCount": "{{count}} 项失败",
       "details": "接收详情",
@@ -2587,7 +2590,17 @@
         "cancelled": "已取消",
         "partially_cancelled": "部分已取消"
       },
+      "fileTargets": "已送达 {{completed}} / {{total}} 个设备",
+      "failedTargets": "{{count}} 个设备失败",
+      "itemProgressAria": "发送到 {{device}}：{{file}}",
+      "unknownBytes": "未知",
       "itemState": {
+        "waiting": "等待",
+        "transferring": "传输中",
+        "processing": "处理中",
+        "retrying": "重试中",
+        "completed": "完成",
+        "unconfirmed": "结果未确认",
         "failed": "失败",
         "cancelled": "已取消"
       },

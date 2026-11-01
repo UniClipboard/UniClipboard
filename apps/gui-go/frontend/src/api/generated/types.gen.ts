@@ -1424,6 +1424,7 @@ export type EntryReceiveProgressResponse = {
      * one entry of `items`.
      */
     itemsTotal: number;
+    snapshotVersion?: ReceiveSnapshotVersionResponse | null;
     state: string;
     totalBytes: number;
 };
@@ -3165,18 +3166,33 @@ export type QuickPanelSettingsPatchDto = {
 };
 
 /**
+ * Typed original content position. File and representation indices are independent.
+ */
+export type ReceiveContentLocatorResponse = {
+    index: number;
+    kind: 'file';
+} | {
+    index: number;
+    kind: 'representation';
+} | {
+    kind: 'directory_unit';
+};
+
+/**
  * One selectable result of the current receive attempt.
  *
  * `item_id` is opaque and bound to the attempt that was queried; callers pass
  * it back to the retry route unchanged and never build it from file names.
  */
 export type ReceiveItemResponse = {
+    content?: ReceiveContentLocatorResponse | null;
     /**
      * `"network_unavailable"` | `"timed_out"` | `"access_denied"` |
      * `"storage_unavailable"` | `"integrity_check_failed"` | `"interrupted"` |
      * `"unknown"`. Fixed categories only, never raw error text.
      */
     failureReason?: string | null;
+    historyFileIndex?: number | null;
     itemId: string;
     /**
      * `"unknown"` | `"file"` | `"representation"` | `"directory_unit"`.
@@ -3187,6 +3203,28 @@ export type ReceiveItemResponse = {
      * `"completed"` means the item was saved, not only downloaded.
      */
     state: string;
+    transfer?: ReceiveItemTransferResponse | null;
+};
+
+/**
+ * Current-round network bytes, distinct from the saved-byte aggregate.
+ */
+export type ReceiveItemTransferResponse = {
+    /**
+     * Unsigned decimal bytes; unknown is never encoded as zero.
+     */
+    receivedBytes: string;
+    round: number;
+    totalBytes?: string | null;
+};
+
+/**
+ * Decimal strings preserve the Engine's 64-bit revisions in JavaScript.
+ */
+export type ReceiveSnapshotVersionResponse = {
+    attemptRevision: string;
+    producerId: string;
+    snapshotRevision: string;
 };
 
 /**

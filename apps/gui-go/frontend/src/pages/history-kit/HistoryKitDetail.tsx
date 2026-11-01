@@ -167,7 +167,7 @@ export function HistoryKitDetail({
             </div>
           )}
         {item.type === 'file' ? (
-          <HistoryKitFilePreview item={item} state={state} />
+          <HistoryKitFilePreview item={item} state={state} delivery={delivery} />
         ) : (
           <PreviewFrame
             kind={isImage ? 'image' : kind === 'code' ? 'code' : 'plain'}
@@ -211,7 +211,12 @@ export function HistoryKitDetail({
         {tagging && item.userTagIds && (
           <HistoryKitDetailTags tagIds={item.userTagIds} tagging={tagging} />
         )}
-        {delivery && <HistoryKitDelivery delivery={delivery} />}
+        {delivery && (
+          <HistoryKitDelivery
+            delivery={delivery}
+            showOutboundProgress={item.type !== 'file' || item.isDirectory === true}
+          />
+        )}
       </div>
       <ActionBar
         // The image bar (design ME1) has three commands and no hint.

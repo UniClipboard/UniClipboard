@@ -49,7 +49,7 @@ bun run e2e:gui layouts ui-kit --platform macos
 node apps/gui-go/frontend/e2e/tester-army/assertion-inventory.mjs
 ```
 
-统一入口为 `bun run e2e:gui <组>`。`list` 只列出已验证矩阵、候选范围及原生宿主要求，不启动测试。`browser`、`daemon`、`layouts` 和 `backends` 使用已有框架配置；`native-macos-history` 与 `native-windows-product` 只在对应宿主运行，不回退到浏览器。Windows 产品组要求先构建隔离 daemon 与 E2E 产品，和 CI 使用同一条命令。
+统一入口为 `bun run e2e:gui <组>`。`list` 只列出已验证矩阵、候选范围及原生宿主要求，不启动测试。`browser`、`daemon`、`layouts` 和 `backends` 使用已有框架配置；`native-macos-history`、`native-macos-file-transfer` 与 `native-windows-product` 只在对应宿主运行，不回退到浏览器。Windows 产品组要求先构建隔离 daemon 与 E2E 产品，和 CI 使用同一条命令。
 
 已删除 17 个完成迁移的薄入口、旧包命令、两套矩阵调度器及通用兼容启动器。布局与后端矩阵共用一个子进程所有者、信号转发和选择回执实现。`catalog.mjs` 只声明矩阵，不读取进程环境；配置专用模块仍负责本次选择。无效选择先失败，不启动子进程或删除工件。取消等待已拥有子进程的清理完成。每次运行只清理选中的标准工件目录，启动前重写选择回执，防止旧成功结果混入。套件内的明暗子场景归入同一个目录。回执只索引当前选择的矩阵目录；未执行的历史目录不作为本次结果。
 
@@ -241,3 +241,19 @@ bun run e2e:gui native-macos-history
 工件位于 `target/tester-army-macos-history/`。每次测试包含 SDK 报告与轨迹、`native-driver.json`、`native-launch.json`、`native-events.json`、窗口 PNG 和 `native-isolation.json`。原始 daemon 连接文件、会话令牌、口令和私有存储不进入工件。SDK 自带的脏状态字段不能单独证明源码身份；以独立 Git 回执、源码哈希和构建回执共同核对。
 
 普通 macOS CI 只执行此入口的收集检查，不启动桌面，不计为原生 GUI 验收。真实执行需要已具备驱动和权限的隔离 macOS 宿主。该最小链路不等于完整原生历史迁移；原全量入口及其失败断言继续保留。
+
+
+## 文件详情进度的统一 E2E
+
+新增文件详情用例统一使用 TesterArmy。浏览器用例复用现有 `file-preview` 套件和框架管理的页面。原生用例使用同一个公共 Engine SPI 适配器和 SDK 语义断言，不调用旧 Python GUI 断言或内部 DOM 观察器。
+
+```bash
+bun run e2e:gui layouts file-preview --out target/file-detail-export
+bun run e2e:gui native-macos-file-transfer
+```
+
+浏览器用例覆盖三种皮肤的明暗主题、多设备独立发送进度、接收文件关联、元数据重排与竞态、64 位版本、旧快照拒绝、未知大小、零字节、目录单元，以及字节完成但尚未保存的状态。HTTP 夹具不代表真实传输。
+
+原生用例使用两个隔离 daemon 和一个真实 macOS 接收窗口。夹具通过真实配对和发送接口传输同一条目的三个合成文件，大小分别为 64、128、192 MiB。SDK 从可访问性树定位每个文件的进度条，验证传输中的数值、三个最终进度值与保存状态，并保存真实窗口截图。后端夹具校验接收文件 SHA-256 与 Engine 终态。夹具先等待传输校验结束，再关闭窗口和自身 daemon。任一进程强制终止或私有目录未删除均使验收失败。
+
+报告与截图位于 `target/tester-army-macos-file-transfer/`。`native-transfer.json` 保存每项字节快照、文件哈希和传输结果；`native-isolation.json` 保存双方 daemon、窗口退出与隔离目录回收结果。普通 macOS CI 只收集此测试，不计为实际原生执行。Windows/Linux 原生传输、真实多设备扇出和 Android 真机仍需分别验收。

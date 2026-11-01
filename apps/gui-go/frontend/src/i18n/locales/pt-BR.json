@@ -1584,6 +1584,9 @@
       "syncFailedDetail": "Falha ao sincronizar o arquivo: {{reason}}"
     },
     "receive": {
+      "fileProgressAria": "Recebendo {{file}}",
+      "progressUnavailable": "Progresso por arquivo indisponível",
+      "wholeFileSet": "Conjunto completo de arquivos",
       "failedCount": "{{count}} com falha",
       "cancelledCount": "{{count}} cancelados",
       "details": "Detalhes do recebimento",
@@ -2600,7 +2603,17 @@
         "cancelled": "Cancelado",
         "partially_cancelled": "Parcialmente cancelado"
       },
+      "fileTargets": "Entregue a {{completed}} de {{total}} dispositivos",
+      "failedTargets": "Falha em {{count}} dispositivos",
+      "itemProgressAria": "{{file}} para {{device}}",
+      "unknownBytes": "Desconhecido",
       "itemState": {
+        "waiting": "Aguardando",
+        "transferring": "Enviando",
+        "processing": "Processando",
+        "retrying": "Tentando novamente",
+        "completed": "Concluído",
+        "unconfirmed": "Resultado não confirmado",
         "failed": "Falhou",
         "cancelled": "Cancelado"
       },

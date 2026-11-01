@@ -17,6 +17,7 @@ interface FilePreviewProps {
   transfer: TransferProgressInfo | undefined
   summary?: string
   children?: ReactNode
+  renderFileProgress?: (index: number, name: string) => ReactNode
 }
 
 export default function FilePreview({
@@ -26,6 +27,7 @@ export default function FilePreview({
   entryStatus,
   summary,
   children,
+  renderFileProgress,
 }: FilePreviewProps) {
   const { t } = useTranslation()
   const imageUrl = useBlobImageObjectUrl(
@@ -74,7 +76,9 @@ export default function FilePreview({
             path={files.file_missing?.[index] ? null : files.file_paths?.[index]}
             imageUrl={count === 1 ? imageUrl : null}
             layout={gallery ? 'tile' : count === 1 ? 'single' : 'row'}
-          />
+          >
+            {renderFileProgress?.(index, name)}
+          </FilePreviewItem>
         ))}
       </ul>
     </section>

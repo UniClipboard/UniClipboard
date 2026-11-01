@@ -14,14 +14,14 @@ Desktop 适配 Engine PR #230（`UniClipboard/Engine` 提交 `5cbca8fc24a278fa7b
 
 | 路由 | 变化 |
 | --- | --- |
-| `GET /clipboard/entries/{id}/receive`、`GET /clipboard/receives` | `EntryReceiveProgressResponse` 新增 `items[]`：`itemId`、`kind`、`state`、`failureReason` |
+| `GET /clipboard/entries/{id}/receive`、`GET /clipboard/receives` | `EntryReceiveProgressResponse` 包含 `snapshotVersion` 和 `items[]`；每项包含结果、内容定位、当前轮次字节及可选的历史文件索引 |
 | `POST /clipboard/entries/{id}/receive/cancel` | 新增结果 `cancellation_incomplete` |
 | `POST /clipboard/cancel-transfer/{transfer_id}` | 新增结果 `cancellation_incomplete` |
 | `POST /clipboard/entries/{id}/receive/retry` | 新增：请求体 `{ expectedAttemptId, itemIds }`，结果 `{ outcome, attemptId?, reason? }` |
 
 重试路由的 `outcome` 取值为 `accepted`、`already_receiving`、`superseded`、`cancellation_incomplete`、`unavailable`。`reason` 只随 `unavailable` 出现（`source_unavailable` 或 `access_denied`），`attemptId` 只随 `accepted` 出现。空选择或格式错误的编号返回 HTTP 400，其他 Engine 错误沿用已有的脱敏映射。`itemIds` 必须取自最近一次查询：它们不透明、绑定被查询的尝试，不得由文件名推导。早于 `items` 的旧 daemon，客户端按空列表处理。
 
-事件（`clipboard.receive_attempt_state_changed`、`file-transfer.*`）不变。事件不携带项目数组，只用来使界面持有的状态失效。
+`file-transfer.receive_progress_changed` 通知界面重新查询接收快照。事件不携带项目数组，只用来使界面持有的状态失效。快照版本和逐项字节使用十进制字符串，避免 JavaScript 丢失 64 位精度。
 
 ## 界面保持的语义
 
@@ -30,6 +30,7 @@ Desktop 适配 Engine PR #230（`UniClipboard/Engine` 提交 `5cbca8fc24a278fa7b
 | `accepted` 只表示接纳了新尝试；文件只有在之后的查询显示 `completed` 才算保存成功 | `retryOutcomeMessageKey` 的措辞；每次重试后 hook 重新读取 snapshot |
 | 整体 `failed` 或 `cancelled` 的尝试仍可含已保存文件 | `summarizeReceiveItems`；按项渲染，失败时不移除任何项 |
 | 已保存项不重试、不删除 | `retryableItemIds` 只选 `failed`/`cancelled` 尝试里的 `failed`/`cancelled` 项 |
+| 每个文件独立显示接收字节和保存状态；字节达到总量不代表保存成功 | `HistoryKitFileReceiveProgress` 按 Engine 项状态呈现 |
 | 目录是一个 `directory_unit` 项，整体重试 | 由 Engine 归并；界面不展开成员 |
 | `cancellation_incomplete` 不等于已取消 | `markReceiveCancellationIncomplete`；只在该尝试结束时清除 |
 | 旧尝试的迟到事件或迟到回复不能覆盖新尝试 | `fileTransferSlice` 的 `supersededAttemptsByEntry` 忽略已被取代的尝试；已结束的尝试不会被更旧的 snapshot 重新打开 |
@@ -62,3 +63,7 @@ Desktop 适配 Engine PR #230（`UniClipboard/Engine` 提交 `5cbca8fc24a278fa7b
 ## 未执行
 
 部分送达的接收需要两台已配对设备，单个隔离 daemon 无法产生。未执行：跨设备送达与取消、对真实失败发送方的逐文件重试、目录发布与回滚、带原始重试材料的重启、混合版本、物理设备，以及新界面行（含 kit 取消按钮）的全部视觉检查（视觉验收由任务负责人完成）。
+
+## 逐文件进度补充
+
+Engine PR #370 增加内容定位、逐项字节、历史文件索引及快照版本。Desktop 使用这些字段关联文件详情；目录单元仍按整体处理。本次 macOS 原生隔离验证传输了三个文件并校验哈希。浏览器夹具覆盖三种皮肤；Windows/Linux 原生传输与 Android 真机未验证。

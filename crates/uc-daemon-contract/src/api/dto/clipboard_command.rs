@@ -145,6 +145,38 @@ pub struct CancelEntryReceiveResponse {
     pub outcome: String,
 }
 
+/// Typed original content position. File and representation indices are independent.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum ReceiveContentLocatorResponse {
+    File { index: u32 },
+    Representation { index: u32 },
+    DirectoryUnit,
+}
+
+/// Decimal strings preserve the Engine's 64-bit revisions in JavaScript.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiveSnapshotVersionResponse {
+    pub producer_id: String,
+    pub attempt_revision: String,
+    pub snapshot_revision: String,
+}
+
+/// Current-round network bytes, distinct from the saved-byte aggregate.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiveItemTransferResponse {
+    /// Unsigned decimal bytes; unknown is never encoded as zero.
+    pub received_bytes: String,
+    pub total_bytes: Option<String>,
+    pub round: u32,
+}
+
 /// One selectable result of the current receive attempt.
 ///
 /// `item_id` is opaque and bound to the attempt that was queried; callers pass
@@ -152,6 +184,12 @@ pub struct CancelEntryReceiveResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ReceiveItemResponse {
+    #[serde(default)]
+    pub content: Option<ReceiveContentLocatorResponse>,
+    #[serde(default)]
+    pub transfer: Option<ReceiveItemTransferResponse>,
+    #[serde(default)]
+    pub history_file_index: Option<u32>,
     pub item_id: String,
     /// `"unknown"` | `"file"` | `"representation"` | `"directory_unit"`.
     pub kind: String,
@@ -168,6 +206,8 @@ pub struct ReceiveItemResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EntryReceiveProgressResponse {
+    #[serde(default)]
+    pub snapshot_version: Option<ReceiveSnapshotVersionResponse>,
     pub entry_id: String,
     pub attempt_id: String,
     pub state: String,
@@ -396,6 +436,7 @@ mod tests {
     #[test]
     fn receive_progress_items_use_camel_case_wire_keys() {
         let response = EntryReceiveProgressResponse {
+            snapshot_version: None,
             entry_id: "e".into(),
             attempt_id: "a".into(),
             state: "failed".into(),
@@ -404,6 +445,9 @@ mod tests {
             items_total: 2,
             items_completed: 1,
             items: vec![ReceiveItemResponse {
+                content: None,
+                transfer: None,
+                history_file_index: None,
                 item_id: "i".into(),
                 kind: "file".into(),
                 state: "failed".into(),

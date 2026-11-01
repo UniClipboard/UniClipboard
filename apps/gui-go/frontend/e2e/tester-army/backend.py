@@ -100,6 +100,9 @@ class Backend:
         self.command('space', 'init', '--passphrase', self.passphrase, '--device-name', 'search-node' if self.mode == 'search' else 'kit-browser')
         self.stage = 'daemon-start'
         self.command('start')
+        self.connect()
+
+    def connect(self):
         self.stage = 'connection'
         connections = list(Path(self.home).rglob('daemon.conn'))
         assert len(connections) == 1, 'expected one isolated daemon connection'

@@ -1,4 +1,4 @@
-import { macosHistory } from './apps/gui-go/e2e/tester-army-native/macos-engine.mjs'
+import { macosProduct } from './apps/gui-go/e2e/tester-army-native/macos-engine.mjs'
 
 export default {
   tests: ['apps/gui-go/e2e/tester-army-native/macos-history.e2e.mjs'],
@@ -15,7 +15,7 @@ export default {
   targets: [
     {
       name: 'macos-native-history',
-      engine: macosHistory(),
+      engine: macosProduct(),
       app: { appPath: 'target/gui-go/UniClipboardGoE2E.app' },
     },
   ],

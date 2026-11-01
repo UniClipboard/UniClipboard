@@ -28,3 +28,6 @@
 - Final Desktop 53ab967a: immutable Engine pin; native build, Rust targeted compilation, Go build, host/routing checks PASSED; pushed.
 - Final daemon-run-4, resource-load-run-4, native-run-4, backend-run-4 PASSED. Import counts 8/74/1; Grafana queries verified original timestamps; all owned fixtures and backends exited. Final native run skipped expiry; earlier native-run-2 includes full expiry.
 - Execution report records PARTIAL overall acceptance and every NOT_RUN boundary. Original research BRIEF preserved.
+
+- PR #2180 conflict resolution: rebased onto ea1bbcde; Engine integrated as 403f3a72 without losing upstream fixes.
+- Accepted and fixed all five review findings. Real content-lock, cleanup fault injection, Collector CLI lifecycle and final ZIP/backend query acceptance PASSED. See REBASE_REPORT.md for source/evidence boundaries and retained failed fixture runs.

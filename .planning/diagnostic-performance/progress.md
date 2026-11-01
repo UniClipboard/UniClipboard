@@ -31,3 +31,6 @@
 
 - PR #2180 conflict resolution: rebased onto ea1bbcde; Engine integrated as 403f3a72 without losing upstream fixes.
 - Accepted and fixed all five review findings. Real content-lock, cleanup fault injection, Collector CLI lifecycle and final ZIP/backend query acceptance PASSED. See REBASE_REPORT.md for source/evidence boundaries and retained failed fixture runs.
+
+- Two independent P2 findings accepted and implemented at Engine 3d3ecb22; Desktop immutable integration 73785cef.
+- Real paired correlation and seven encrypted-history recovery cases PASSED; original failures retained. Native screenshots unavailable; native run marked failed and interrupted. Final ZIP/Collector/Grafana query PASSED. See P2_REPORT.md for exact source/evidence identities and limitations.

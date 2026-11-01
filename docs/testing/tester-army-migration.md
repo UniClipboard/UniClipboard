@@ -1,6 +1,6 @@
 # TesterArmy GUI 测试迁移
 
-本仓使用 `e2e@0.22.0` 和 `@e2e-dev/web@0.15.4` 运行已验证的浏览器测试。原生测试和没有等价通过结果的测试继续保留旧路径。
+本仓使用 `e2e@0.22.0` 和 `@e2e-dev/web@0.15.4` 运行已验证的浏览器测试。未覆盖的原生测试和没有等价验证结果的测试继续保留原路径。支持的运行组统一由 `bun run e2e:gui` 选择。
 
 ## 来源与依赖
 
@@ -35,19 +35,31 @@
 ```bash
 bun install --frozen-lockfile
 node node_modules/@e2e-dev/web/dist/bin.js install chromium
-bun run e2e:browser
-bun run e2e:browser:layouts
+bun run e2e:gui browser
+bun run e2e:gui layouts
 ```
 
 默认布局命令只运行矩阵中已验证的组合，并打印保留原因。指定测试组时可以复跑全部候选组合，包括已知失败。失败不会改成跳过或成功。
 
 ```bash
-bun run e2e:browser:layouts device-tasks --platform macos
-bun run e2e:browser:layouts ui-kit --platform macos
+bun run e2e:gui layouts device-tasks --platform macos
+bun run e2e:gui layouts ui-kit --platform macos
 node apps/gui-go/frontend/e2e/tester-army/assertion-inventory.mjs
 ```
 
-多数已完整迁移的旧可执行文件成为薄入口，断言只保存在新测试中。`startup-first-frame-browser.mjs` 仍支持 `--platform` 和 `--out` 导出。`theme-palette-run.mjs` 直接委托新运行器，不再启动第二套服务。仍未通过的原脚本，以及侧边栏动画的自定义宽度入口继续保留。旧 `ui-kit-run.mjs --serve` 继续用于人工预览。
+统一入口为 `bun run e2e:gui <组>`。`list` 只列出已验证矩阵、候选范围及原生宿主要求，不启动测试。`browser`、`daemon`、`layouts` 和 `backends` 使用已有框架配置；`native-macos-history` 与 `native-windows-product` 只在对应宿主运行，不回退到浏览器。Windows 产品组要求先构建隔离 daemon 与 E2E 产品，和 CI 使用同一条命令。
+
+已删除 17 个完成迁移的薄入口、旧包命令、两套矩阵调度器及通用兼容启动器。布局与后端矩阵共用一个子进程所有者、信号转发和选择回执实现。`catalog.mjs` 只声明矩阵，不读取进程环境；配置专用模块仍负责本次选择。无效选择先失败，不启动子进程或删除工件。取消等待已拥有子进程的清理完成。每次运行只清理选中的标准工件目录，启动前重写选择回执，防止旧成功结果混入。套件内的明暗子场景归入同一个目录。回执只索引当前选择的矩阵目录；未执行的历史目录不作为本次结果。
+
+`--out` 仅用于一个显式布局套件，目标必须是尚不存在且不与标准工件重叠的目录。多个皮肤分别导出到对应子目录，失败或取消时不导出。
+
+```bash
+bun run e2e:gui list
+bun run e2e:gui layouts startup-first-frame --platform macos --out target/first-frame-export
+bun run preview:ui-kit --platform windows --port 1460
+```
+
+四组已知失败、侧边栏动画自定义宽度、外部 daemon 和未验证原生宿主入口继续保留。人工组件预览与自动验收分开；`ui-kit-preview.mjs` 只启动预览服务。
 
 仅在 macOS 上运行当前真实 daemon 用例：
 
@@ -55,7 +67,7 @@ node apps/gui-go/frontend/e2e/tester-army/assertion-inventory.mjs
 bash scripts/build-cache/mbx.sh --exec cargo build --locked -p uc-daemon --bin uniclipd
 mkdir -p target/gui-go
 (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
-bun run e2e:browser:daemon
+bun run e2e:gui daemon
 python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 ```
 
@@ -65,7 +77,7 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 - 初始化页面的键盘流程显式选择系统窗口框架，使标题栏控件保持在内容区之外。移动连接测试等待退出中的标签页完成转换，再执行原有单面板与页脚断言。
 - `surfaceOf()` 的底层操作不产生通用 SDK 的逐步操作事件。报告只证明框架实际观察到的内容。原断言结果、场景 JSON 和截图单独保存。多页面测试的额外上下文由测试夹具管理并关闭。
 - `assertion-inventory.mjs` 从原基线 `7ae0a059c9e2c3cf2dd753240da9ef65f4343d40` 读取 21 个原脚本，记录断言源码、位置数量和 SHA-256。数量检查不能替代语义评审或运行结果。运行它需要本地保留该 Git 对象。
-- 服务只监听 `127.0.0.1`，由框架分配端口。每个服务使用独立临时构建目录，退出时删除。测试先打开空白页，再安装路由并导航到夹具，避免夹具在拦截器安装前发出请求。
+- 服务只监听 `127.0.0.1`，由框架分配端口。每个服务使用独立临时构建目录，统一运行器为每次浏览器框架调用分配一次性构建目录。服务只写入该目录的 `site` 子目录并记录 PID。框架结束后，运行器确认服务 PID 已不存在，才回收自己创建的目录；状态不明时保留目录并使清理失败。每次回收写入 `fixture-cleanup.json`，不依赖 Windows 被终止进程的退出回调。人工预览自持目录，通过 Vite 公开的 `PreviewServer.close()` 关闭服务并解除其退出回调，再删除目录。测试先打开空白页，再安装路由并导航到夹具，避免夹具在拦截器安装前发出请求。
 - 布局报告位于 `target/tester-army-layout-report/<皮肤>/<测试组>/`。原断言截图与场景 JSON 位于 `target/tester-army-layout/<皮肤>/<测试组>/`。
 - 中继报告和真实 daemon 报告分别位于 `target/tester-army/`、`target/tester-army-daemon/`。其中包含 JSON、JUnit、Markdown 和截图。
 - `receipt.py` 记录源码 HEAD、脏状态、源码和二进制 SHA-256、运行编号及报告摘要。`target/tester-army-SHA256SUMS` 校验公开工件。不要把旧轮次工件当作新 HEAD 的通过证据。
@@ -112,10 +124,10 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 默认命令只运行已通过的 17 个套件、皮肤、数据与阶段组合，并打印保留原因。显式指定套件时运行完整候选范围，原断言失败仍返回非零退出码。
 
 ```bash
-bun run e2e:browser:backends
-bun run e2e:browser:backends devices-kit --platform macos
-bun run e2e:browser:backends history-kit --platform windows --seed history
-bun run e2e:browser:backends history-search --platform none --phase components
+bun run e2e:gui backends
+bun run e2e:gui backends devices-kit --platform macos
+bun run e2e:gui backends history-kit --platform windows --seed history
+bun run e2e:gui backends history-search --platform none --phase components
 node apps/gui-go/frontend/e2e/tester-army/backend-assertion-inventory.mjs
 ```
 
@@ -123,7 +135,7 @@ node apps/gui-go/frontend/e2e/tester-army/backend-assertion-inventory.mjs
 
 `backend.py` 是新真实后端夹具及原最小 smoke 用例的生命周期所有者。会话、文件令牌与随机 passphrase 只通过管道和内存交接。浏览器导航 URL 不含凭据。项目现有 HTTP/WS 客户端仍可能在内部请求中使用查询参数认证，因此后端用例关闭原始协议 trace，只输出去除查询参数的状态记录，并脱敏诊断中的会话与配对码。手动截图遮盖配对码和凭据 QR；不将真实凭据写入公开结果。
 
-历史和设备场景由原脚本导出一个断言入口。导入脚本不会启动旧浏览器。原 CLI 和原生 CDP 启动入口继续调用同一断言实现；TesterArmy 提供其管理的页面与上下文。无需维护两套业务断言。`backend-assertion-inventory.mjs` 保留六组原源码身份与当前断言所有者，静态数量不作为运行通过证据。
+历史和设备断言分别由 `e2e/scenarios/history-kit.mjs` 与 `devices-kit.mjs` 持有。它们不启动浏览器、原生宿主或 daemon。原 CLI 和原生 CDP 启动入口只保留未替代的启动职责，并导入同一个断言实现；TesterArmy 提供其管理的页面与上下文。无需维护两套业务断言。`backend-assertion-inventory.mjs` 保留六组原源码身份与当前断言所有者，静态数量不作为运行通过证据。
 
 修正的夹具问题包括：API 回读不再对有效的全局内容授权重复解锁；故障注入按路径匹配，避免认证查询参数使拦截失效；宿主夹具提供当前效果、主题、更新与窗口代次快照；表单错误沿输入框的可访问说明定位；动效检查等待实际退出动画结束。连接手机流程增加当前产品要求的同步方式选择和完成步骤。原授权、密码、QR 生命周期与结果断言保持。
 
@@ -215,7 +227,7 @@ macOS 与 Linux 的列表组件明确以强调色填充表示多选，不显示�
 
 ```bash
 agent-desktop status
-bun run e2e:native:macos-history
+bun run e2e:gui native-macos-history
 ```
 
 该命令先构建独立 E2E 应用，记录构建 HEAD、脏状态和宿主/UI/daemon/CLI 哈希，再执行原生 SDK 测试。夹具在私有 HOME 和唯一 profile 中启动真实 daemon，通过真实入站接口写入两条合成历史。产品以 `external` 模式启动，避免内部 E2E 驱动竞争操作。

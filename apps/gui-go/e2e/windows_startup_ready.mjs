@@ -186,9 +186,6 @@ try {
         'run',
         '--config',
         'e2e.windows-product.config.ts',
-        'apps/gui-go/e2e/tester-army-native/windows-history-seed.mjs',
-        'apps/gui-go/frontend/e2e/history-bounded-grid.mjs',
-        'apps/gui-go/frontend/e2e/history-seed-data.mjs',
       ],
       {
         cwd: root,

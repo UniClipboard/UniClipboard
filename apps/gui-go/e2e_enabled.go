@@ -205,7 +205,15 @@ func e2eServices(h *HostService) []application.Service {
 func (s *EvidenceService) Phase() string {
 	if uiChild {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		_, err := s.host.deviceID(ctx)
+		for s.host.daemon() == nil && ctx.Err() == nil {
+			time.Sleep(50 * time.Millisecond)
+		}
+		var err error
+		if ctx.Err() == nil {
+			_, err = s.host.deviceID(ctx)
+		} else {
+			err = ctx.Err()
+		}
 		cancel()
 		_ = s.write(Step{Window: "main", Step: "ui-page-ready", OK: err == nil, Detail: map[string]any{"pid": os.Getpid(), "daemonConnected": err == nil}})
 	}

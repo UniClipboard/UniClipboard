@@ -16,6 +16,19 @@ let _sessionToken: string | null = null
 let _fetchQueue: Response[] = []
 let _daemonWsConnectCalls: string[] = []
 let _daemonWsDisconnectCalls = 0
+const eventHandlers = new Map<string, Array<() => void>>()
+
+vi.mock('@/host/event', () => ({
+  listen: vi.fn(async (name: string, handler: () => void) => {
+    const handlers = eventHandlers.get(name) ?? []
+    handlers.push(handler)
+    eventHandlers.set(name, handlers)
+    return () => {
+      const index = handlers.indexOf(handler)
+      if (index >= 0) handlers.splice(index, 1)
+    }
+  }),
+}))
 
 // Now mocks the typed `commands.getDaemonConnectionInfo` proxy from
 // `@/lib/ipc` (used to be `invokeWithTrace('get_daemon_connection_info')`
@@ -122,6 +135,35 @@ describe('connectDaemonWs()', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('registers one connection-change listener and keeps the initial connection during boot', async () => {
+    let resolveInfo!: (payload: typeof TEST_PAYLOAD) => void
+    mockGetDaemonConnectionInfo
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveInfo = resolve
+          })
+      )
+      .mockResolvedValue(TEST_PAYLOAD)
+    const first = connectDaemonWs()
+    const second = connectDaemonWs()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const handlers = eventHandlers.get('app://daemon-connection-changed') ?? []
+    expect(handlers).toHaveLength(1)
+    handlers[0]?.()
+    resolveInfo(TEST_PAYLOAD)
+    await Promise.all([first, second])
+    expect(getDaemonWsConnectCount()).toBe(1)
+    expect(_daemonWsDisconnectCalls).toBe(0)
+
+    handlers[0]?.()
+    await connectDaemonWs()
+    expect(getDaemonWsConnectCount()).toBe(2)
+    expect(_daemonWsDisconnectCalls).toBe(1)
   })
 
   it('polls command until connection info is ready before refreshing session and connecting ws', async () => {

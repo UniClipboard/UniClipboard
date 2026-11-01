@@ -123,6 +123,16 @@ async function waitForSocket(client: ClientInstance): Promise<MockWebSocket> {
 // ── connect() ─────────────────────────────────────────────────
 
 describe('connect()', () => {
+  it('rejects a pending connection when it is disconnected', async () => {
+    const { client } = freshClient()
+    const pending = client.connect('ws://127.0.0.1:42715/ws')
+    await waitForSocket(client)
+
+    client.disconnect()
+
+    await expect(pending).rejects.toThrow('WebSocket connection interrupted')
+  })
+
   it('resolves when the socket opens successfully', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')

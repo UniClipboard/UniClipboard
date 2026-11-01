@@ -36,7 +36,7 @@ async function transition(label, reverse = false) {
       const originalToggle = document.querySelector('.mac-split-toggle')
       originalToggle.focus()
       document.querySelector(`button[aria-label="${label}"]`).click()
-      if (reverse) setTimeout(() => document.querySelector('.mac-split-toggle').click(), 80)
+      let reverseClicked = false
       let committedAt = null
       function sample() {
         frames.push({
@@ -59,10 +59,16 @@ async function transition(label, reverse = false) {
           toggleFocused: document.activeElement === originalToggle,
           expanded: document.querySelector('.mac-split-toggle').getAttribute('aria-expanded'),
         })
-        // Let the reverse action commit before starting its capture window.
+        const frame = frames.at(-1)
+        if (reverse && !reverseClicked && frame.width > 1 && frame.width < 235) {
+          document.querySelector('.mac-split-toggle').click()
+          reverseClicked = true
+          frame.reverseClick = true
+        }
+        // Let the intermediate-width reverse action commit before sampling its final state.
         // Keep a deadline so a missing reverse action still reaches the original assertions.
         const now = performance.now()
-        if (committedAt === null && (!reverse || frames.at(-1).expanded === 'true'))
+        if (committedAt === null && (!reverse || (reverseClicked && frame.expanded === 'true')))
           committedAt = now
         if (now - start < 2000 && (committedAt === null || now - committedAt < 400))
           requestAnimationFrame(sample)
@@ -125,6 +131,10 @@ try {
     await browser.saveScreenshot(`${out}/${key}.png`)
   }
   result.frames.reverse = await transition('Hide sidebar', true)
+  assert.ok(
+    result.frames.reverse.some(f => f.reverseClick && f.width > 1 && f.width < 235),
+    'reverse click must interrupt an intermediate width'
+  )
   assert.ok(
     result.frames.reverse.every(
       f => f.toggleCount === 1 && f.visibleToggleCount === 1 && f.sameToggle && f.toggleFocused

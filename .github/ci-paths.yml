@@ -88,7 +88,7 @@ gui_go:
 # Both integration suites execute the Go CLI against the real Rust daemon.
 daemon_runtime_inputs: &daemon_runtime_inputs
   - 'apps/daemon/**'
-  - 'crates/uc-{platform,app-paths,observability,bootstrap,daemon-contract,daemon-process,daemon-local,webserver}/**'
+  - 'crates/uc-{platform,app-paths,observability,bootstrap,daemon-contract,daemon-process,daemon-local,desktop-settings,webserver}/**'
 
 daemon_inputs: &daemon_inputs
   - *rust_shared
@@ -126,3 +126,71 @@ tooling:
   - 'package.json'
   - 'bun.lock'
   - 'vitest.config.ts'
+
+# GUI browser rendering has no Rust or native-host dependency.
+testerarmy_gui_inputs: &testerarmy_gui_inputs
+  - *ci_config
+  - 'apps/gui-go/frontend/**'
+  - 'schema/**'
+  - 'scripts/gui-e2e.mjs'
+  - 'package.json'
+  - 'bun.lock'
+
+testerarmy_browser: &testerarmy_browser
+  - *testerarmy_gui_inputs
+  - 'e2e.config.ts'
+  - 'e2e.layouts.config.ts'
+  - '.github/workflows/tester-army-e2e.yml'
+
+# macOS backend fixtures execute the real daemon and user-facing CLI.
+testerarmy_backend:
+  - *testerarmy_browser
+  - *rust_build_inputs
+  - *daemon_runtime_inputs
+  - *cli_inputs
+  - 'e2e.daemon.config.ts'
+  - 'e2e.backend.config.ts'
+
+# Capability probes do not build the product or execute its daemon.
+testerarmy_native_inputs: &testerarmy_native_inputs
+  - *ci_config
+  - 'package.json'
+  - 'bun.lock'
+  - 'apps/gui-go/e2e/tester-army-native/protocol.mjs'
+  - '.github/workflows/tester-army-native.yml'
+
+testerarmy_native_macos:
+  - *testerarmy_native_inputs
+  - 'apps/gui-go/e2e/tester-army-native/wkwebview.swift'
+  - 'apps/gui-go/e2e/tester-army-native/macos-engine.mjs'
+  - 'apps/gui-go/e2e/tester-army-native/macos-history.e2e.mjs'
+  - 'e2e.macos-history.config.ts'
+
+testerarmy_native_linux:
+  - *testerarmy_native_inputs
+  - 'apps/gui-go/e2e/tester-army-native/webkitgtk.py'
+
+testerarmy_native_windows:
+  - *testerarmy_native_inputs
+  - 'apps/gui-go/e2e/tester-army-native/{engine,webview2,webview2.e2e}.mjs'
+  - 'apps/gui-go/cmd/webview-probe/**'
+  - 'apps/gui-go/go.{mod,sum}'
+  - 'e2e.native.config.ts'
+
+testerarmy_windows_product:
+  - *testerarmy_gui_inputs
+  - *rust_build_inputs
+  - *daemon_runtime_inputs
+  - *cli_inputs
+  - 'apps/gui-go/*.{go,mod,sum,c,h,m,mm,syso,rc,ico,manifest,json}'
+  - 'apps/gui-go/internal/**'
+  - 'apps/gui-go/windows/**'
+  - 'apps/gui-go/icons/**'
+  - 'packages/desktop-host-go/**'
+  - 'apps/gui-go/packaging/windows/**'
+  - 'apps/gui-go/e2e/build_windows.py'
+  - 'apps/gui-go/e2e/windows_startup_ready.mjs'
+  - 'apps/gui-go/e2e/windows-startup-scenarios.mjs'
+  - 'apps/gui-go/e2e/tester-army-native/{engine,windows-product.e2e,windows-history-seed}.mjs'
+  - 'e2e.windows-product.config.ts'
+  - '.github/workflows/tester-army-native.yml'

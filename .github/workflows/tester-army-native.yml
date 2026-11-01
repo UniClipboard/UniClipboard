@@ -1,45 +1,36 @@
 name: TesterArmy native capability
 on:
-  pull_request:
-    paths:
-      - 'apps/gui-go/e2e/tester-army-native/**'
-      - 'apps/gui-go/cmd/webview-probe/**'
-      - 'apps/gui-go/go.mod'
-      - 'apps/gui-go/go.sum'
-      - 'e2e.native.config.ts'
-      - 'e2e.windows-product.config.ts'
-      - 'e2e.macos-history.config.ts'
-      - 'apps/gui-go/build.sh'
-      - 'apps/gui-go/e2e/windows_startup_ready.mjs'
-      - 'apps/gui-go/e2e/windows-startup-scenarios.mjs'
-      - 'apps/gui-go/e2e/build_windows.py'
-      - 'apps/cli-go/**'
-      - 'packages/desktop-host-go/**'
-      - 'apps/gui-go/frontend/**'
-      - 'apps/gui-go/*.go'
-      - 'apps/gui-go/**/*.go'
-      - 'apps/daemon/**'
-      - 'crates/**'
-      - 'Cargo.toml'
-      - 'rust-toolchain.toml'
-      - '.github/actions/engine-build-cache/**'
-      - 'scripts/build-cache/**'
-      - 'crates/uc-daemon/**'
-      - 'Cargo.lock'
-      - 'scripts/gui-e2e.mjs'
-      - 'apps/gui-go/frontend/e2e/scenarios/**'
-      - 'package.json'
-      - 'bun.lock'
-      - '.github/workflows/tester-army-native.yml'
+  workflow_call:
+    inputs:
+      run_capability:
+        type: boolean
+        default: true
+      capability_runner:
+        type: string
+        default: all
+      run_windows_product:
+        type: boolean
+        default: true
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT:
+        required: false
+      BUILD_CACHE_R2_ACCESS_KEY_ID:
+        required: false
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY:
+        required: false
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: testerarmy-native-${{ github.event.pull_request.number || github.ref }}-${{ inputs.capability_runner }}-${{ inputs.run_capability }}-${{ inputs.run_windows_product }}
+  cancel-in-progress: true
 jobs:
   capability:
+    if: ${{ github.event_name == 'workflow_dispatch' || inputs.run_capability }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: ${{ fromJSON((!inputs.capability_runner || inputs.capability_runner == 'all') && '["macos-latest","ubuntu-latest","windows-latest"]' || format('["{0}"]', inputs.capability_runner)) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
@@ -82,6 +73,32 @@ jobs:
       - name: Characterize the actual WebView2 target
         if: runner.os == 'Windows'
         run: node apps/gui-go/e2e/tester-army-native/webview2.mjs
+      - name: Record source and replay entry
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p target/tester-army-native
+          {
+            git rev-parse HEAD
+            echo "runner=$RUNNER_OS-$RUNNER_ARCH"
+            echo "run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT"
+            echo 'replay: bun install --frozen-lockfile'
+            echo 'replay: node apps/gui-go/e2e/tester-army-native/protocol.mjs'
+            case "$RUNNER_OS" in
+              macOS)
+                echo 'replay: node node_modules/e2e/dist/cli/bin.js list --config e2e.macos-history.config.ts'
+                echo 'replay: swift apps/gui-go/e2e/tester-army-native/wkwebview.swift'
+                ;;
+              Linux)
+                echo 'replay: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 xvfb'
+                echo 'replay: xvfb-run -a /usr/bin/python3 apps/gui-go/e2e/tester-army-native/webkitgtk.py target/tester-army-native/webkitgtk.json'
+                ;;
+              Windows)
+                echo 'replay: mkdir -p target; (cd apps/gui-go && go build -tags e2e -o ../../target/webview-probe.exe ./cmd/webview-probe)'
+                echo 'replay: node apps/gui-go/e2e/tester-army-native/webview2.mjs'
+                ;;
+            esac
+          } > target/tester-army-native/source.txt
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -89,6 +106,8 @@ jobs:
           path: target/tester-army-native/
           if-no-files-found: error
   windows-product:
+    if: ${{ github.event_name == 'workflow_dispatch' || inputs.run_windows_product }}
+    environment: desktop-build-cache-reader
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -132,6 +151,20 @@ jobs:
         run: python apps/gui-go/e2e/build_windows.py --mode e2e --part go
       - name: Drive the product's original WebView2
         run: bun run e2e:gui native-windows-product
+      - name: Record source and replay entry
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p target/tester-army-windows-product
+          {
+            git rev-parse HEAD
+            echo "runner=$RUNNER_OS-$RUNNER_ARCH"
+            echo "run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT"
+            echo 'replay: bun install --frozen-lockfile'
+            echo 'replay: bash scripts/build-cache/mbx.sh --exec cargo build --locked -p uc-daemon --bin uniclipd'
+            echo 'replay: python apps/gui-go/e2e/build_windows.py --mode e2e --part go'
+            echo 'replay: bun run e2e:gui native-windows-product'
+          } > target/tester-army-windows-product/source.txt
       - uses: actions/upload-artifact@v7
         if: always()
         with:

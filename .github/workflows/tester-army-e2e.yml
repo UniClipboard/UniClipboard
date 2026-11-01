@@ -1,24 +1,35 @@
 name: TesterArmy browser E2E
 on:
-  pull_request:
-    paths:
-      - 'apps/gui-go/frontend/**'
-      - 'e2e*.config.ts'
-      - 'scripts/gui-e2e.mjs'
-      - 'package.json'
-      - 'bun.lock'
-      - '.github/workflows/tester-army-e2e.yml'
+  workflow_call:
+    inputs:
+      run_browser:
+        type: boolean
+        default: true
+      run_backend:
+        type: boolean
+        default: true
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT:
+        required: false
+      BUILD_CACHE_R2_ACCESS_KEY_ID:
+        required: false
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY:
+        required: false
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: testerarmy-browser-${{ github.event.pull_request.number || github.ref }}-${{ inputs.run_browser }}-${{ inputs.run_backend }}
+  cancel-in-progress: true
 jobs:
   browser:
+    if: ${{ github.event_name == 'workflow_dispatch' || inputs.run_browser }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 90 || 30 }}
+    timeout-minutes: 30
     env:
       E2E_TELEMETRY_DISABLED: '1'
     steps:
@@ -38,24 +49,6 @@ jobs:
       - run: node node_modules/@e2e-dev/web/dist/bin.js install chromium --with-deps
       - run: bun run e2e:gui browser
       - run: bun run e2e:gui layouts
-      - uses: actions/setup-go@v6
-        if: runner.os == 'macOS'
-        with:
-          go-version-file: apps/cli-go/go.mod
-          cache: false
-      - name: Build isolated daemon and CLI
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          bash scripts/build-cache/mbx.sh --exec cargo build --locked -p uc-daemon --bin uniclipd
-          mkdir -p target/gui-go
-          (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
-      - name: Verify browser to real daemon
-        if: runner.os == 'macOS'
-        run: bun run e2e:gui daemon
-      - name: Verify isolated real-backend suites
-        if: runner.os == 'macOS'
-        run: bun run e2e:gui backends
       - name: Record source and artifact checksums
         if: always()
         run: python apps/gui-go/frontend/e2e/tester-army/receipt.py
@@ -66,10 +59,65 @@ jobs:
           path: |
             target/tester-army/
             target/tester-army-server.log
-            target/tester-army-daemon/
-            target/tester-army-daemon-server.log
             target/tester-army-layout/
             target/tester-army-layout-report/
+            target/tester-army-receipt.json
+            target/tester-army-SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+  backend:
+    if: ${{ github.event_name == 'workflow_dispatch' || inputs.run_backend }}
+    runs-on: macos-latest
+    timeout-minutes: 90
+    environment: desktop-build-cache-reader
+    env:
+      E2E_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26.13.0'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - run: bun install --frozen-lockfile
+      - run: node node_modules/@e2e-dev/web/dist/bin.js install chromium --with-deps
+      - name: Start the existing shared Engine build cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: tester-army-backend
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/cli-go/go.mod
+          cache: false
+      - name: Build isolated daemon and CLI
+        shell: bash
+        run: |
+          bash scripts/build-cache/mbx.sh --exec cargo build --locked -p uc-daemon --bin uniclipd
+          mkdir -p target/gui-go
+          (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
+      - name: Verify browser to real daemon
+        run: bun run e2e:gui daemon
+      - name: Verify isolated real-backend suites
+        run: bun run e2e:gui backends
+      - name: Record source and artifact checksums
+        if: always()
+        run: python apps/gui-go/frontend/e2e/tester-army/receipt.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tester-army-backend-macos
+          path: |
+            target/tester-army-daemon/
+            target/tester-army-daemon-server.log
             target/tester-army-backend/
             target/tester-army-backend-report/
             target/tester-army-receipt.json

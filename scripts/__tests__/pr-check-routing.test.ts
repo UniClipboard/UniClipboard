@@ -221,3 +221,91 @@ describe('PR check routing', () => {
     }
   )
 })
+
+describe('TesterArmy PR routing', () => {
+  const jobs = {
+    testerarmy_browser: ['testerarmy-browser', 'tester-army-e2e.yml'],
+    testerarmy_backend: ['testerarmy-backend', 'tester-army-e2e.yml'],
+    testerarmy_native_macos: ['testerarmy-native-macos', 'tester-army-native.yml'],
+    testerarmy_native_linux: ['testerarmy-native-linux', 'tester-army-native.yml'],
+    testerarmy_native_windows: ['testerarmy-native-windows', 'tester-army-native.yml'],
+    testerarmy_windows_product: ['testerarmy-windows-product', 'tester-army-native.yml'],
+  }
+  const routed = (file: string) => {
+    const filters = parse(read('.github/ci-paths.yml'))
+    return Object.keys(jobs).filter(name =>
+      picomatch((filters[name] ?? []).flat(Infinity), { dot: true })(file)
+    )
+  }
+
+  it.each([
+    ['docs/testing/tester-army-migration.md', []],
+    ['apps/gui-go/e2e/tester-army-native/wkwebview.swift', ['testerarmy_native_macos']],
+    ['apps/gui-go/e2e/tester-army-native/webkitgtk.py', ['testerarmy_native_linux']],
+    ['apps/gui-go/e2e/tester-army-native/webview2.mjs', ['testerarmy_native_windows']],
+    ['apps/gui-go/e2e/tester-army-native/windows-product.e2e.mjs', ['testerarmy_windows_product']],
+    ['apps/gui-go/cmd/webview-probe/main.go', ['testerarmy_native_windows']],
+    ['apps/gui-go/main.go', ['testerarmy_windows_product']],
+    [
+      'apps/gui-go/frontend/src/App.tsx',
+      ['testerarmy_browser', 'testerarmy_backend', 'testerarmy_windows_product'],
+    ],
+    ['apps/daemon/src/main.rs', ['testerarmy_backend', 'testerarmy_windows_product']],
+    ['vendor/engine', ['testerarmy_backend', 'testerarmy_windows_product']],
+    ['.cargo/config.toml', ['testerarmy_backend', 'testerarmy_windows_product']],
+    ['apps/cli-go/internal/commands/get.go', ['testerarmy_backend', 'testerarmy_windows_product']],
+    ['e2e.macos-history.config.ts', ['testerarmy_native_macos']],
+  ])('routes %s only to its consumers', (file, expected) => {
+    expect(routed(file)).toEqual(expected)
+  })
+
+  it.each(Object.entries(jobs))(
+    'connects %s through the shared detector',
+    (filter, [job, file]) => {
+      const pr = workflow('pr-check.yml')
+      expect(pr.jobs.changes.outputs[filter]).toContain(`steps.filter.outputs.${filter}`)
+      expect(pr.jobs[job].needs).toBe('changes')
+      expect(pr.jobs[job].if).toContain(`outputs.${filter} == 'true'`)
+      expect(pr.jobs[job].uses).toBe(`./.github/workflows/${file}`)
+      const target = workflow(file)
+      expect(target.on.pull_request).toBeUndefined()
+      expect(target.on.workflow_call).toBeDefined()
+      expect(target.on).toHaveProperty('workflow_dispatch')
+      expect(target.concurrency['cancel-in-progress']).toBe(true)
+    }
+  )
+
+  it('separates browser, backend, platform probes and product execution', () => {
+    const pr = workflow('pr-check.yml')
+    expect(pr.jobs['testerarmy-browser'].with).toMatchObject({
+      run_browser: true,
+      run_backend: false,
+    })
+    expect(pr.jobs['testerarmy-backend'].with).toMatchObject({
+      run_browser: false,
+      run_backend: true,
+    })
+    for (const [platform, runner] of [
+      ['macos', 'macos-latest'],
+      ['linux', 'ubuntu-latest'],
+      ['windows', 'windows-latest'],
+    ]) {
+      expect(pr.jobs[`testerarmy-native-${platform}`].with).toMatchObject({
+        run_capability: true,
+        capability_runner: runner,
+        run_windows_product: false,
+      })
+    }
+    expect(pr.jobs['testerarmy-windows-product'].with).toMatchObject({
+      run_capability: false,
+      run_windows_product: true,
+    })
+    for (const job of Object.values(workflow('tester-army-e2e.yml').jobs) as { if: string }[]) {
+      expect(job.if).toContain("github.event_name == 'workflow_dispatch'")
+      expect(job.if).toContain('inputs.run_')
+    }
+    const native = workflow('tester-army-native.yml')
+    expect(native.jobs.capability.if).toContain('inputs.run_capability')
+    expect(native.jobs['windows-product'].if).toContain('inputs.run_windows_product')
+  })
+})

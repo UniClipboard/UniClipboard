@@ -1,5 +1,7 @@
 # TesterArmy GUI 测试迁移
 
+新增或修改测试先阅读 [GUI E2E 编写规范](gui-e2e-authoring.md)。本文记录迁移状态、运行细节和已证实限制，不作为新增测试步骤的第二份来源。
+
 本仓使用 `e2e@0.22.0` 和 `@e2e-dev/web@0.15.4` 运行已验证的浏览器测试。未覆盖的原生测试和没有等价验证结果的测试继续保留原路径。支持的运行组统一由 `bun run e2e:gui` 选择。
 
 ## 来源与依赖
@@ -12,7 +14,7 @@
 
 ## 可交付范围
 
-`apps/gui-go/frontend/e2e/tester-army/suites.mjs` 是运行矩阵的唯一来源。`migration.json` 记录每个原入口的迁移状态。不要把候选测试接入完成等同于运行通过。
+`apps/gui-go/frontend/e2e/tester-army/catalog.mjs` 是布局与后端运行矩阵的唯一来源。`suites.mjs` 与 `backend-suites.mjs` 只读取本次选择。`migration.json` 记录每个原入口的迁移状态。不要把候选测试接入完成等同于运行通过。
 
 已接入 21 组原有浏览器断言。17 组按原有目标范围通过，共 35 个测试组与皮肤组合。其余四组保留原断言和旧入口。
 

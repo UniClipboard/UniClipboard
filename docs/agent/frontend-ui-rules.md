@@ -90,6 +90,8 @@ is not a dependency, and no Tauri npm package may be imported or declared
 
 ## Test Execution Note
 
+新增或修改 GUI E2E 前，先阅读 [GUI E2E 编写规范](../testing/gui-e2e-authoring.md)。使用统一入口、现有隔离夹具和工件回执，不另建测试启动器。浏览器皮肤测试不能替代产品原生验收。
+
 For frontend unit tests involving Vitest mocks, fake timers, or jsdom, prefer `npx vitest run` over `bun test`.
 
 ## React Doctor 规范（写代码时主动避免）

@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import zipfile
@@ -143,6 +144,9 @@ def run(out):
 
         # IO denial is retryable and must not touch either original ciphertext or evidence slots.
         evidence.unlink()
+        observer = history.open('rb')
+        before_io = observer.read()
+        inode = os.fstat(observer.fileno()).st_ino
         history.chmod(0)
         start()
         try:
@@ -150,14 +154,21 @@ def run(out):
                 summary, sha = export('io-denied-' + str(index))
                 assert summary['persistence'] == 'io_failure'
                 assert not evidence.exists()
+                assert history.stat().st_ino == inode
+                observer.seek(0)
+                assert observer.read() == before_io
                 time.sleep(0.5)
         finally:
+            observer.close()
             history.chmod(0o600)
         wait_encrypted('io-restored')
         stop()
-        report['cases']['io-denied'] = {'passed': True, 'recoveredAfterPermissionRestore': True}
+        report['cases']['io-denied'] = {'passed': True, 'originalSha256': digest(before_io), 'unchangedDuringDenial': True, 'recoveredAfterPermissionRestore': True}
         report['passed'] = True
     finally:
+        body_failed = sys.exc_info()[0] is not None
+        if body_failed:
+            report['scenarioErrorType'] = type(sys.exc_info()[1]).__name__
         if held:
             try:
                 held[1].rename(held[0])
@@ -174,6 +185,7 @@ def run(out):
             except Exception as error:
                 report['cleanupFailures']['daemonStop'] = type(error).__name__
         for name in ['target/debug/uniclipd', 'target/gui-go/uniclip']:
+            report.setdefault('binarySha256', {})[name] = None
             try:
                 report.setdefault('binarySha256', {})[name] = digest((ROOT / name).read_bytes())
             except Exception as error:
@@ -181,5 +193,5 @@ def run(out):
         if report['cleanupFailures']:
             report['passed'] = False
         (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
-        if report['cleanupFailures']:
+        if report['cleanupFailures'] and not body_failed:
             raise RuntimeError('history acceptance cleanup failed; inspect result.json')

@@ -58,7 +58,7 @@ def compare(path):
         result['runs'].add(record['run_id'])
         for key in TOP_LEVEL_ATTRIBUTES & record.keys():
             result['comparedValues'][key] = result['comparedValues'].get(key, 0) + 1
-            if key not in attrs or attrs[key] != record[key]:
+            if key not in attrs or attrs[key] != record[key] or type(attrs[key]) is not type(record[key]):
                 result['mismatches'].append({'key': key, 'at': record['timestamp']})
         assert set(attrs) <= set(fields) | TOP_LEVEL_ATTRIBUTES, 'unapproved top-level attribute escaped'
         for key, otlp in [('trace_id', 'traceId'), ('span_id', 'spanId')]:

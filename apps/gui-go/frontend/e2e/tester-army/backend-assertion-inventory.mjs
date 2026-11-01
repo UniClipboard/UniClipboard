@@ -21,7 +21,7 @@ for (const name of names) {
   )
   const owners = [`${root}/tester-army/${name}.e2e.mjs`]
   if (['history-kit', 'devices-kit'].includes(name))
-    owners.push(originalPath, `${root}/browser-daemon-session.mjs`)
+    owners.push(`${root}/scenarios/${name}.mjs`, `${root}/browser-daemon-session.mjs`)
   if (name === 'devices-kit')
     owners.push(`${root}/devices-kit-lifecycle.mjs`, `${root}/devices-kit-passphrase-lifecycle.mjs`)
   const sources = {}
@@ -33,7 +33,7 @@ for (const name of names) {
     original,
     sources,
     assertionOwnership: ['history-kit', 'devices-kit'].includes(name)
-      ? 'shared original scenario owner; legacy CLI retains native/bootstrap ownership'
+      ? 'driver-independent scenario owner; legacy CLI retains only unverified native/bootstrap ownership'
       : 'replacement candidate; original path retained until passing',
     limitation:
       'Inventory records complete source and assertions. Driver and lifecycle translations require semantic review; counts alone do not establish equivalence or execution.',

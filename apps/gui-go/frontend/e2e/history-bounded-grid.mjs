@@ -21,9 +21,30 @@ export async function assertBoundedGrid({ page, rows, list, api }) {
   const grid = list()
   const geometry = await grid.evaluate(root => {
     const scroll = root.querySelector('[data-history-window-scroller]') ?? root
-    return { height: scroll.clientHeight, content: scroll.scrollHeight }
+    const viewport = scroll.getBoundingClientRect()
+    const top = viewport.top + scroll.clientTop
+    const cards = [...root.querySelectorAll('[data-item-id]')].map(card =>
+      card.getBoundingClientRect()
+    )
+    return {
+      height: scroll.clientHeight,
+      content: scroll.scrollHeight,
+      residentCount: cards.length,
+      residentTop: Math.min(...cards.map(card => card.top)) - top,
+      residentBottom: Math.max(...cards.map(card => card.bottom)) - top,
+      residentHeight:
+        Math.max(...cards.map(card => card.bottom)) - Math.min(...cards.map(card => card.top)),
+    }
   })
-  assert.ok(geometry.content <= geometry.height + 1, 'all 50 resident cards fit without scrolling')
+  // Virtual spacers include unloaded history. Measure the 50 actual cards,
+  // while retaining the full scroll extent for normal history navigation.
+  assert.equal(geometry.residentCount, 50, 'the geometry covers every resident card')
+  assert.ok(
+    geometry.residentHeight <= geometry.height + 1 &&
+      geometry.residentTop >= -1 &&
+      geometry.residentBottom <= geometry.height + 1,
+    `all 50 resident cards fit without scrolling: ${JSON.stringify(geometry)}`
+  )
   const seen = new Set()
   const windows = []
   const record = async offset => {

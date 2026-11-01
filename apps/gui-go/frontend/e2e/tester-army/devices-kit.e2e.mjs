@@ -1,5 +1,5 @@
 import { openGuiSession } from '../browser-daemon-session.mjs'
-import { runScenarios } from '../devices-kit-browser.mjs'
+import { runScenarios } from '../scenarios/devices-kit.mjs'
 import { test, installSession } from './backend-page.mjs'
 import { backendOutput as output, backendPlatform as platform } from './backend-suites.mjs'
 

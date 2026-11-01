@@ -31,20 +31,10 @@ Linux 主窗口最小宽度为 640 个逻辑像素，最小高度仍为 600；ma
 
 ## 验证
 
-浏览器检查使用真实组件与合成内容，模拟资源接口，不读取真实用户资料：
+浏览器检查使用真实组件与合成内容，模拟资源接口，不读取真实用户资料。框架拥有夹具服务，无需另开终端：
 
 ```bash
-cd apps/gui-go/frontend
-UC_UI_PLATFORM=linux \
-  UI_FIXTURE_ENTRY=e2e/fixtures/history-compact.tsx \
-  UI_FIXTURE_PORT=1474 \
-  node e2e/visual-effects-server.mjs
+bun run e2e:gui layouts history-compact --platform linux
 ```
 
-另开终端执行：
-
-```bash
-node apps/gui-go/frontend/e2e/history-compact-browser.mjs target/e2e/history-compact
-```
-
-脚本支持 `PLAYWRIGHT_MODULE`、`PLAYWRIGHT_EXECUTABLE_PATH` 和 `HISTORY_COMPACT_URL`；覆盖浅深色、640–1280 像素宽度、普通选择与多选、键盘导航、返回焦点、虚拟列表滚动保持、抽屉关闭以及窗口跨断点变化。截图和结果写入指定目录。这不替代原生宿主连接真实隔离后台的完整验收。
+检查覆盖浅深色、640–1280 像素宽度、普通选择与多选、键盘导航、返回焦点、虚拟列表滚动保持、抽屉关闭以及窗口跨断点变化。标准截图与原断言结果位于 `target/tester-army-layout/linux/history-compact/`，SDK 报告位于 `target/tester-army-layout-report/linux/history-compact/`。这不替代原生宿主连接真实隔离后台的完整验收。

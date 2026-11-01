@@ -26,6 +26,8 @@ on:
       - 'scripts/build-cache/**'
       - 'crates/uc-daemon/**'
       - 'Cargo.lock'
+      - 'scripts/gui-e2e.mjs'
+      - 'apps/gui-go/frontend/e2e/scenarios/**'
       - 'package.json'
       - 'bun.lock'
       - '.github/workflows/tester-army-native.yml'
@@ -129,7 +131,7 @@ jobs:
       - name: Build the Windows product frontend and host
         run: python apps/gui-go/e2e/build_windows.py --mode e2e --part go
       - name: Drive the product's original WebView2
-        run: node apps/gui-go/e2e/windows_startup_ready.mjs --tester-army
+        run: bun run e2e:gui native-windows-product
       - uses: actions/upload-artifact@v7
         if: always()
         with:

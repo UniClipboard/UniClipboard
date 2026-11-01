@@ -4,6 +4,7 @@ on:
     paths:
       - 'apps/gui-go/frontend/**'
       - 'e2e*.config.ts'
+      - 'scripts/gui-e2e.mjs'
       - 'package.json'
       - 'bun.lock'
       - '.github/workflows/tester-army-e2e.yml'
@@ -35,8 +36,8 @@ jobs:
           bun-version: '1.4.2'
       - run: bun install --frozen-lockfile
       - run: node node_modules/@e2e-dev/web/dist/bin.js install chromium --with-deps
-      - run: bun run e2e:browser
-      - run: bun run e2e:browser:layouts
+      - run: bun run e2e:gui browser
+      - run: bun run e2e:gui layouts
       - uses: actions/setup-go@v6
         if: runner.os == 'macOS'
         with:
@@ -51,10 +52,10 @@ jobs:
           (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
       - name: Verify browser to real daemon
         if: runner.os == 'macOS'
-        run: bun run e2e:browser:daemon
+        run: bun run e2e:gui daemon
       - name: Verify isolated real-backend suites
         if: runner.os == 'macOS'
-        run: bun run e2e:browser:backends
+        run: bun run e2e:gui backends
       - name: Record source and artifact checksums
         if: always()
         run: python apps/gui-go/frontend/e2e/tester-army/receipt.py

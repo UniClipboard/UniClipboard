@@ -3,20 +3,41 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build, loadConfigFromFile, preview } from 'vite'
+import { buildLeaseEnv, claimBuildLease } from './build-lease.mjs'
 
 process.chdir(fileURLToPath(new URL('../..', import.meta.url)))
-const outDir = await mkdtemp(path.join(tmpdir(), 'uc-gui-browser-'))
+const lease = process.env[buildLeaseEnv]
+const outDir = lease
+  ? await claimBuildLease(lease)
+  : await mkdtemp(path.join(tmpdir(), 'uc-gui-browser-'))
+console.log(
+  JSON.stringify({
+    event: 'fixture-build',
+    buildId: path.basename(lease || outDir),
+    leased: Boolean(lease),
+    pid: process.pid,
+  })
+)
 let server
 let stopping = false
 async function stop() {
   if (stopping) return
   stopping = true
-  if (server) await new Promise(resolve => server.httpServer.close(resolve))
-  await rm(outDir, { recursive: true, force: true })
+  if (server) await server.close()
+  if (!lease) await rm(outDir, { recursive: true, force: true })
+  console.log(
+    JSON.stringify({
+      event: 'fixture-cleanup',
+      buildId: path.basename(lease || outDir),
+      directoryRemoved: !lease,
+      cleanupOwner: lease ? 'runner' : 'server',
+    })
+  )
   process.exit(0)
 }
 process.on('SIGTERM', stop)
 process.on('SIGINT', stop)
+if (process.env.CI !== 'true') process.stdin.on('end', stop)
 try {
   const loaded = await loadConfigFromFile({ command: 'build', mode: 'test' })
   const fixture = process.env.UC_TESTER_FIXTURE || 'settings'
@@ -69,6 +90,6 @@ try {
   })
   server.printUrls()
 } catch (error) {
-  await rm(outDir, { recursive: true, force: true })
+  if (!lease) await rm(outDir, { recursive: true, force: true })
   throw error
 }

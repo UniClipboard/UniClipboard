@@ -14,7 +14,7 @@ import { installFakeHost } from './fake-host'
 
 void i18n.changeLanguage('zh-CN')
 
-// Production detail and skins; HTTP is controlled by file-preview-browser.mjs.
+// Production detail and skins; HTTP is controlled by tester-army/file-preview.e2e.mjs.
 installFakeHost({
   GetDaemonSession: () => ({ sessionToken: 'fixture', expiresInSecs: 300, refreshAtSecs: 240 }),
 })

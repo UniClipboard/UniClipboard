@@ -11,15 +11,18 @@ import { runStartupScenarios } from './windows-startup-scenarios.mjs'
 
 assert.equal(process.platform, 'win32')
 const root = fileURLToPath(new URL('../../../', import.meta.url))
+const framework = process.argv.includes('--tester-army')
+const publicOutput = path.join(root, 'target/tester-army-windows-product')
+if (framework) {
+  fs.rmSync(publicOutput, { recursive: true, force: true })
+  fs.mkdirSync(publicOutput, { recursive: true })
+}
 const sandboxParent = process.argv.includes('--long-path')
   ? path.join(root, 'target', 'uc-gui-go-portable-long-path-'.repeat(3))
   : path.join(root, 'target')
 fs.mkdirSync(sandboxParent, { recursive: true })
 const sandbox = fs.mkdtempSync(path.join(sandboxParent, 'uc-gui-go-'))
 const profile = `gui-go-${Date.now().toString(36)}`
-const framework = process.argv.includes('--tester-army')
-const publicOutput = path.join(root, 'target/tester-army-windows-product')
-if (framework) fs.mkdirSync(publicOutput, { recursive: true })
 const children = []
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function waitFor(probe, label, timeout = 60000) {
@@ -307,7 +310,9 @@ try {
       'apps/gui-go/e2e/windows_startup_ready.mjs',
       'apps/gui-go/e2e/windows-startup-scenarios.mjs',
       'apps/gui-go/e2e/tester-army-native/windows-product.e2e.mjs',
-      'apps/gui-go/frontend/e2e/history-kit-browser.mjs',
+      'scripts/gui-e2e.mjs',
+      'apps/gui-go/frontend/e2e/tester-army/build-lease.mjs',
+      'apps/gui-go/frontend/e2e/scenarios/history-kit.mjs',
       'e2e.windows-product.config.ts',
       'apps/gui-go/e2e/tester-army-native/windows-history-seed.mjs',
       'apps/gui-go/frontend/e2e/history-bounded-grid.mjs',

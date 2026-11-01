@@ -1,5 +1,6 @@
 import { web } from '@e2e-dev/web'
 import type { E2EConfig } from 'e2e'
+import { buildLeaseEnv } from './apps/gui-go/frontend/e2e/tester-army/build-lease.mjs'
 
 export default {
   tests: [
@@ -25,6 +26,7 @@ export default {
         url: 'http://127.0.0.1:0',
         command: {
           executable: 'node',
+          inheritEnv: [buildLeaseEnv],
           args: ['apps/gui-go/frontend/e2e/tester-army/server.mjs', '{port}'],
           log: 'target/tester-army-server.log',
         },

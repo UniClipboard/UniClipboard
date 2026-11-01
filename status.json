@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-11-01 18:04 UTC",
+  "checked_at": "2026-11-01 22:20 UTC",
   "channels": {
     "aur": {
       "status": "published",
@@ -42,8 +42,9 @@
       "version": "1.1.2"
     },
     "snap-edge": {
-      "status": "published",
-      "version": "1.4.0"
+      "status": "unavailable",
+      "version": null,
+      "error": "HTTPError: HTTP Error 429: Too Many Requests"
     },
     "copr": {
       "status": "published",

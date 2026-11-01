@@ -300,6 +300,7 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 		h.fatal(err)
 	}
 	h.client.Store(client)
+	h.registerDiagnosticPID(context.Background(), uint32(os.Getpid()), "gui")
 	h.emit(daemonConnectionChanged, nil)
 	startup, _ := h.loadStartupSettings()
 	h.lightweight.Store(startup.lightweight())

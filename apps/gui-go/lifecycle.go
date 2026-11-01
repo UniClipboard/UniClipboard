@@ -297,5 +297,6 @@ func (h *HostService) resumeAfterStop(startAbsent bool) {
 		return
 	}
 	h.client.Store(client)
+	h.registerDiagnosticPID(context.Background(), uint32(os.Getpid()), "gui")
 	h.emit(daemonConnectionChanged, nil)
 }

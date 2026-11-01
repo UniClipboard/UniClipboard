@@ -90,7 +90,7 @@ def verify_export(path, pinned):
             assert hashlib.sha256(data).hexdigest() == file['sha256']
         if manifest['mode'] == 'online':
             assert otel['history']['coverage'] == 'registered_processes'
-            assert any(host['role'] == 'gui' for host in otel['history']['hostCoverage'])
+            assert sum(host['role'] == 'gui' and host['state'] == 'active' for host in otel['history']['hostCoverage']) >= 2
             metrics = z.read('otel/metrics.jsonl').decode()
             assert 'process.memory.usage' in metrics
             assert 'uc.process.cpu.time' in metrics
@@ -141,6 +141,7 @@ def main():
         results['steps'][name + ':launchedAt'] = now()
         proc = subprocess.Popen([str(binary)], env=env, stdout=(out / f'{name}-gui.log').open('w'), stderr=subprocess.STDOUT)
         seen, shot, cursor, deadline = {}, set(), 0, time.monotonic() + timeout
+        window_pid = proc.pid
         while time.monotonic() < deadline and proc.poll() is None:
             rows = read_steps(evidence, cursor)
             cursor += len(rows)
@@ -149,12 +150,14 @@ def main():
                     raise RuntimeError(f"driver error: {row.get('detail')}")
                 row['seenAt'] = now()
                 seen[row['step']] = row
+                if row['step'] == 'ui-page-ready':
+                    window_pid = int(row['detail']['pid'])
                 if row['step'] in SCREENSHOT_STEPS and row['step'] not in shot:
                     shot.add(row['step'])
                     for _ in range(8):  # the parked WebView may not have painted yet
                         time.sleep(1)
                         target = out / f"{name}-{row['step']}.png"
-                        if screenshot(proc.pid, target) and target.stat().st_size > 150_000:
+                        if screenshot(window_pid, target) and target.stat().st_size > 150_000:
                             break
                 if on_step:
                     on_step(row)
@@ -285,6 +288,7 @@ def main():
         logs = Path(home_a) / 'Library/Logs' / f'app.uniclipboard.desktop-{profile_a}'
         if logs.is_dir():  # kept for diagnosis; may hold peer addresses, so not for publishing
             shutil.copytree(logs, out / 'profile-a-logs', dirs_exist_ok=True)
+        results['screenshots'] = [{'name': p.name, 'bytes': p.stat().st_size, 'sha256': sha256(p)} for p in out.glob('*.png')]
         (out / 'assertions.json').write_text(json.dumps(results, indent=2) + '\n')
     print(json.dumps({k: v for k, v in results.items() if k != 'steps'}, indent=2))
     assert results['passed']

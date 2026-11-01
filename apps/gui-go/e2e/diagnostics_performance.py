@@ -24,6 +24,7 @@ def run(out):
     report = {'desktopHead': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), 'enginePin': next((line for line in (ROOT / 'Cargo.toml').read_text().splitlines() if line.startswith('uc-engine ='))), 'passed': False, 'fixture': 'task-owned synthetic registered host; not a product GUI claim', 'phases': {}, 'samePidReuse': 'NOT_RUN', 'actualSleep': 'NOT_RUN'}
     worker = None
     helper = None
+    helper_log = None
     fixtures = []
     stopped = False
 
@@ -162,22 +163,42 @@ def run(out):
         report['passed'] = True
         (out / 'points.json').write_text(json.dumps(points, indent=2) + '\n')
     finally:
+        body_failed = sys.exc_info()[0] is not None
+        report['stepFailures'] = {}
+
+        def attempt(name, action):
+            try:
+                return action()
+            except Exception as error:
+                report['stepFailures'][name] = type(error).__name__
+                report['passed'] = False
+                return None
+
         if stopped:
-            verified_signal(signal.SIGCONT)
+            attempt('resumeDaemon', lambda: verified_signal(signal.SIGCONT))
         if helper is not None and helper.poll() is None:
-            helper.stdin.close()
-            helper.wait(timeout=10)
+            attempt('helperClose', helper.stdin.close)
+            attempt('helperWait', lambda: helper.wait(timeout=10))
+        if helper_log is not None:
+            attempt('helperLogClose', helper_log.close)
         if worker is not None and worker.poll() is None:
-            worker.stdin.write('quit\n')
-            worker.stdin.flush()
-            worker.wait(timeout=5)
-        for fixture in fixtures:
+            attempt('workerQuit', lambda: worker.stdin.write('quit\n'))
+            attempt('workerFlush', worker.stdin.flush)
+            attempt('workerWait', lambda: worker.wait(timeout=5))
+        for index, fixture in enumerate(fixtures):
             if fixture.poll() is None:
-                fixture.terminate()
-                fixture.wait(timeout=5)
-        stop = cli(env, 'stop', check=False)
-        report['daemonStopExit'] = stop.returncode
-        report['fixtureCleanup'] = 'all exited and reaped'
-        report['binarySha256'] = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in ['target/debug/uniclipd', 'target/debug/uniclip-quick-panel', 'target/gui-go/uniclip']}
+                attempt(f'fixtureTerminate:{index}', fixture.terminate)
+                attempt(f'fixtureWait:{index}', lambda: fixture.wait(timeout=5))
+        stop = attempt('daemonStop', lambda: cli(env, 'stop', check=False))
+        report['daemonStopExit'] = stop.returncode if stop is not None else None
+        if stop is not None and stop.returncode != 0:
+            report['stepFailures']['daemonStop'] = 'NonzeroExit'
+            report['passed'] = False
+        report['fixtureCleanup'] = 'failed' if report['stepFailures'] else 'all exited and reaped'
+        report['binarySha256'] = {}
+        for name in ['target/debug/uniclipd', 'target/debug/uniclip-quick-panel', 'target/gui-go/uniclip']:
+            report['binarySha256'][name] = attempt('hash:' + name, lambda: hashlib.sha256((ROOT / name).read_bytes()).hexdigest())
         (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
         print(json.dumps(report))
+        if report['stepFailures'] and not body_failed:
+            raise RuntimeError('resource acceptance cleanup or binary hashing failed; inspect result.json')

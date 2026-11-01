@@ -52,7 +52,7 @@ use crate::security::claims::SessionTokenClaims;
 pub const CONTENT_LOCKED_CODE: &str = "content_locked";
 
 /// Declared client types that need the grant. Everything else is unchanged.
-pub const GATED_CLIENT_TYPES: &[&str] = &["gui", "helper"];
+pub const GATED_CLIENT_TYPES: &[&str] = &["gui", "helper", "quick-panel"];
 
 /// The single place that says which clients the lock applies to.
 pub fn client_is_gated(client_type: &str) -> bool {

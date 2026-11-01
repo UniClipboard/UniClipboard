@@ -42,6 +42,21 @@ def totals(text, name):
                if re.match(re.escape(name) + r'(?:_total)?(?:\{| )', line))
 
 
+def stop_collector(process, receipt):
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+            receipt['cleanup'] = 'forced'
+        else:
+            receipt['cleanup'] = 'graceful' if process.returncode == 0 else 'nonzero'
+    else:
+        receipt['cleanup'] = 'already_exited' if process.returncode == 0 else 'nonzero'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('zip', type=Path)
@@ -56,7 +71,11 @@ def main():
     if not endpoint:
         parser.error('set OTEL_IMPORT_ENDPOINT on the developer machine')
     collector = args.collector.resolve()
-    version = subprocess.check_output([str(collector), '--version'], text=True).strip()
+    try:
+        version = subprocess.check_output([str(collector), '--version'], text=True,
+                                          stderr=subprocess.PIPE, timeout=5).strip()
+    except (OSError, subprocess.SubprocessError) as error:
+        parser.error('Collector version probe failed: ' + type(error).__name__)
     if version != 'otelcol-contrib version ' + VERSION:
         parser.error('requires Collector Contrib ' + VERSION)
     digest = hashlib.sha256()
@@ -68,7 +87,6 @@ def main():
                'duplicateReason': 'backend deduplication is not observable through OTLP', 'expected': {}}
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
     args.receipt.write_text(json.dumps(receipt, indent=2) + '\n')
-    process = None
     try:
         with tempfile.TemporaryDirectory(prefix='uc-otel-import-') as temporary:
             root = Path(temporary)
@@ -114,45 +132,39 @@ def main():
             # Do not copy credentials or an authenticated endpoint into the receipt.
             with (root / 'collector.log').open('wb') as log:
                 process = subprocess.Popen([str(collector), '--config=' + str(config_path)], stdout=log, stderr=log)
-                deadline = time.monotonic() + args.timeout
-                while time.monotonic() < deadline:
-                    if process.poll() is not None:
-                        raise RuntimeError('Collector exited before verified delivery')
-                    try:
-                        with urllib.request.urlopen(f'http://127.0.0.1:{port}/metrics', timeout=1) as response:
-                            metrics = response.read().decode()
-                    except OSError:
+                try:
+                    metrics_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                    deadline = time.monotonic() + args.timeout
+                    while time.monotonic() < deadline:
+                        if process.poll() is not None:
+                            raise RuntimeError('Collector exited before verified delivery')
+                        try:
+                            with metrics_opener.open(f'http://127.0.0.1:{port}/metrics', timeout=1) as response:
+                                metrics = response.read().decode()
+                        except OSError:
+                            time.sleep(.2)
+                            continue
+                        sent = {s: totals(metrics, 'otelcol_exporter_sent_' + v[0]) for s, v in SIGNALS.items()}
+                        failed = {s: totals(metrics, 'otelcol_exporter_send_failed_' + v[0]) for s, v in SIGNALS.items()}
+                        accepted = {s: totals(metrics, 'otelcol_receiver_accepted_' + v[0]) for s, v in SIGNALS.items()}
+                        refused = {s: totals(metrics, 'otelcol_receiver_refused_' + v[0]) for s, v in SIGNALS.items()}
+                        receipt.update(sent=sent, failed=failed, accepted=accepted, refused=refused)
+                        if any(failed.values()) or any(refused.values()):
+                            raise RuntimeError('Collector reported delivery failure; do not automatically retry')
+                        if sent == expected and accepted == expected:
+                            receipt['status'] = 'delivered'
+                            receipt['backendQuery'] = 'NOT_RUN; query the target platform independently'
+                            break
                         time.sleep(.2)
-                        continue
-                    sent = {s: totals(metrics, 'otelcol_exporter_sent_' + v[0]) for s, v in SIGNALS.items()}
-                    failed = {s: totals(metrics, 'otelcol_exporter_send_failed_' + v[0]) for s, v in SIGNALS.items()}
-                    accepted = {s: totals(metrics, 'otelcol_receiver_accepted_' + v[0]) for s, v in SIGNALS.items()}
-                    refused = {s: totals(metrics, 'otelcol_receiver_refused_' + v[0]) for s, v in SIGNALS.items()}
-                    receipt.update(sent=sent, failed=failed, accepted=accepted, refused=refused)
-                    if any(failed.values()) or any(refused.values()):
-                        raise RuntimeError('Collector reported delivery failure; do not automatically retry')
-                    if sent == expected and accepted == expected:
-                        receipt['status'] = 'delivered'
-                        receipt['backendQuery'] = 'NOT_RUN; query the target platform independently'
-                        break
-                    time.sleep(.2)
-                else:
-                    raise TimeoutError('delivery counters did not match the immutable ZIP')
+                    else:
+                        raise TimeoutError('delivery counters did not match the immutable ZIP')
+                finally:
+                    stop_collector(process, receipt)
     except Exception as error:
         receipt['status'] = 'failed_or_unknown'
         receipt['errorType'] = type(error).__name__
         raise
     finally:
-        if process is not None and process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-                receipt['cleanup'] = 'forced'
-            else:
-                receipt['cleanup'] = 'graceful' if process.returncode == 0 else 'nonzero'
         args.receipt.write_text(json.dumps(receipt, indent=2) + '\n')
 
 

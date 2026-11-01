@@ -24,6 +24,8 @@ import { HistoryKitFirstLaunch } from './HistoryKitFirstLaunch'
 import { HistoryKitGrid } from './HistoryKitGrid'
 import { HistoryKitList } from './HistoryKitList'
 import { HistoryKitNoResults } from './HistoryKitNoResults'
+import { HistoryKitOutboundTransfers } from './HistoryKitOutboundTransfers'
+import { HistoryKitPendingTransfers } from './HistoryKitPendingTransfers'
 import { HistoryKitQueryFailed } from './HistoryKitQueryFailed'
 import { HistoryKitScopeBar } from './HistoryKitScopeBar'
 import { HistoryKitSearchField } from './HistoryKitSearchField'
@@ -365,6 +367,8 @@ export default function HistoryKitPage() {
                 onTimeRangeChange={c.filterActions.setTimeRange}
               />
             )}
+            <HistoryKitOutboundTransfers deviceNames={c.sourceDeviceNames} />
+            <HistoryKitPendingTransfers />
             {c.indexState === 'degraded' && (
               <div className="px-4 pb-1">
                 <Text role="caption" tone="secondary">

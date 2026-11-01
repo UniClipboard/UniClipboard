@@ -18,6 +18,20 @@ export async function assertBoundedGrid({ page, rows, list, api }) {
   assert.equal(new Set(expected).size, total, 'authoritative records are unique')
   await page.getByRole('radio', { name: 'Grid' }).click()
   await page.waitForFunction(() => document.querySelectorAll('[data-item-id]').length === 50)
+  // The first render uses one column until ResizeObserver measures the grid.
+  // Wait for the same fit invariant before reading the final geometry.
+  await page.waitForFunction(() => {
+    const cards = [...document.querySelectorAll('[data-item-id]')]
+    const root = cards[0]?.closest('[role="listbox"]')
+    if (!root || cards.length !== 50) return false
+    const scroll = root.querySelector('[data-history-window-scroller]') ?? root
+    const top = scroll.getBoundingClientRect().top + scroll.clientTop
+    const bounds = cards.map(card => card.getBoundingClientRect())
+    return (
+      Math.min(...bounds.map(card => card.top)) >= top - 1 &&
+      Math.max(...bounds.map(card => card.bottom)) <= top + scroll.clientHeight + 1
+    )
+  })
   const grid = list()
   const geometry = await grid.evaluate(root => {
     const scroll = root.querySelector('[data-history-window-scroller]') ?? root

@@ -1331,7 +1331,15 @@ fn what_the_daemon_lists_replaces_the_catalog_and_reaches_the_shell() {
         &fixture.ctx(),
     );
     assert_eq!(state.catalog.tags, ["work"]);
-    assert!(matches!(effects.as_slice(), [Effect::ApplySettings(_)]));
+    assert!(matches!(
+        effects.as_slice(),
+        [
+            Effect::ApplySettings(_),
+            Effect::Reposition,
+            Effect::ShowWindow
+        ]
+    ));
+    assert!(!state.session.opening);
     // A failed read keeps what was known.
     let effects = state.on_event(
         Event::OptionsLoaded(Err(ServiceError::TagsUnavailable)),

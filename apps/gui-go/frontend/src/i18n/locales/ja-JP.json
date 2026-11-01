@@ -967,6 +967,17 @@
           "command": "コマンド",
           "windows": "Windows",
           "super": "スーパー"
+        },
+        "accessibility": {
+          "groupTitle": "システム権限",
+          "label": "アクセシビリティ権限",
+          "description": "クイックパネルから直前のアプリに選択した内容を入力し、修飾キーのダブルタップでパネルを開けるようにします。システム設定で UniClipboard に権限を付与してください。",
+          "checking": "確認中",
+          "granted": "許可済み",
+          "denied": "未許可",
+          "error": "権限を確認できませんでした",
+          "retry": "再試行",
+          "openSettings": "システム設定を開く"
         }
       },
       "about": {

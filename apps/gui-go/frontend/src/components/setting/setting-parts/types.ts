@@ -1,5 +1,11 @@
 import type { ReactNode } from 'react'
 
+export interface SettingActionButtonProps {
+  onClick: () => void
+  disabled?: boolean
+  children: ReactNode
+}
+
 export interface SettingGroupProps {
   title?: string
   children: ReactNode

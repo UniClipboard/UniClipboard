@@ -968,6 +968,17 @@
           "command": "Command",
           "windows": "Windows",
           "super": "Super"
+        },
+        "accessibility": {
+          "groupTitle": "Permissões do sistema",
+          "label": "Permissão de acessibilidade",
+          "description": "Permita que o painel rápido insira o conteúdo selecionado no aplicativo anterior e detecte toques duplos nas teclas modificadoras. Conceda acesso ao UniClipboard nos Ajustes do Sistema.",
+          "checking": "Verificando",
+          "granted": "Permitida",
+          "denied": "Não permitida",
+          "error": "Não foi possível verificar a permissão",
+          "retry": "Tentar novamente",
+          "openSettings": "Abrir Ajustes do Sistema"
         }
       },
       "about": {

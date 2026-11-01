@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentType } from 'react'
 import {
+  getQuickPanelAccessibilityPermission,
   getQuickPanelDoubleTapAvailability,
   quickPanelUsesCompositorShortcuts,
 } from '@/api/tauri-command'
@@ -24,6 +25,8 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('@/api/tauri-command', () => ({
+  getQuickPanelAccessibilityPermission: vi.fn().mockResolvedValue(true),
+  refreshQuickPanelTriggers: vi.fn().mockResolvedValue(undefined),
   getQuickPanelDoubleTapAvailability: vi.fn(),
   quickPanelUsesCompositorShortcuts: vi.fn().mockResolvedValue(false),
 }))
@@ -56,6 +59,7 @@ const mockUseSetting = vi.mocked(useSetting)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(getQuickPanelAccessibilityPermission).mockResolvedValue(true)
   mockGetQuickPanelDoubleTapAvailability.mockResolvedValue('supported')
   vi.mocked(quickPanelUsesCompositorShortcuts).mockResolvedValue(false)
   Object.defineProperties(HTMLElement.prototype, {
@@ -162,10 +166,11 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
   it('shows an explicit macOS Accessibility action without prompting in the background', async () => {
     const user = userEvent.setup()
     mockGetQuickPanelDoubleTapAvailability.mockResolvedValue('accessibility_permission_required')
+    vi.mocked(getQuickPanelAccessibilityPermission).mockResolvedValue(false)
     setup()
 
     const button = await screen.findByRole('button', {
-      name: 'settings.sections.quickPanel.doubleTap.openSettings',
+      name: 'settings.sections.quickPanel.accessibility.openSettings',
     })
     expect(screen.getAllByRole('combobox')[1]).toBeEnabled()
 

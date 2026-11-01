@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-11-01 06:46 UTC",
+  "checked_at": "2026-11-01 10:11 UTC",
   "channels": {
     "aur": {
       "status": "published",
-      "version": "1.6.0.alpha.3.r3.g1dd30cd-1"
+      "version": "1.6.0.alpha.5.r3.g7a7de2e-1"
     },
     "brew-gui": {
       "status": "published",
@@ -22,9 +22,8 @@
       "version": "1.5.0"
     },
     "winget": {
-      "status": "unavailable",
-      "version": null,
-      "error": "HTTPError: HTTP Error 403: rate limit exceeded"
+      "status": "published",
+      "version": "1.5.0"
     },
     "chocolatey": {
       "status": "published",
@@ -36,7 +35,7 @@
     },
     "npm-alpha": {
       "status": "published",
-      "version": "1.6.0-alpha.4"
+      "version": "1.6.0-alpha.5"
     },
     "snap": {
       "status": "published",

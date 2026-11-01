@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-31 21:50 UTC",
+  "checked_at": "2026-11-01 06:46 UTC",
   "channels": {
     "aur": {
       "status": "published",
@@ -22,8 +22,9 @@
       "version": "1.5.0"
     },
     "winget": {
-      "status": "published",
-      "version": "1.5.0"
+      "status": "unavailable",
+      "version": null,
+      "error": "HTTPError: HTTP Error 403: rate limit exceeded"
     },
     "chocolatey": {
       "status": "published",
@@ -35,7 +36,7 @@
     },
     "npm-alpha": {
       "status": "published",
-      "version": "1.5.0-alpha.3"
+      "version": "1.6.0-alpha.4"
     },
     "snap": {
       "status": "published",

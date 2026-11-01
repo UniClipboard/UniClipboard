@@ -128,7 +128,7 @@ bun wails:dev:profile peerB
 
 ### 构建发行包
 
-Go/Wails 宿主的发布流水线尚未重建，release 工作流目前被有意阻塞（见 [`docs/architecture/gui-go-tauri-retirement.md`](./docs/architecture/gui-go-tauri-retirement.md)）。本地 macOS 构建与打包用 `apps/gui-go/build.sh`；Linux 与 Windows 的打包脚本是 `apps/gui-go/e2e/package_linux.py` 与 `apps/gui-go/e2e/package_windows.py`；打包脚本所需的 daemon 二进制用 `node scripts/stage-daemon.mjs` 暂存。
+Go/Wails 宿主使用当前[发布流水线](./docs/release-workflow.md)。维护者通过 [`prepare-release.yml`](./.github/workflows/prepare-release.yml) 创建发布 PR；合并后由 [`tag-on-merge.yml`](./.github/workflows/tag-on-merge.yml) 推送版本标签，再触发 [`release.yml`](./.github/workflows/release.yml)。独立构建入口为 [`build.yml`](./.github/workflows/build.yml)。本地 macOS 构建与打包用 `apps/gui-go/build.sh`；Linux 与 Windows 打包分别用 `apps/gui-go/e2e/package_linux.py` 和 `apps/gui-go/e2e/package_windows.py`。打包前用 `node scripts/stage-daemon.mjs` 暂存 daemon 二进制。
 
 ### 发布期 Telemetry Secrets
 
@@ -353,7 +353,7 @@ CI 会在每个改动到 lockfile 的 PR/push 上运行自动化依赖审计（`
 
 ## 发布流程
 
-发布由维护者通过 GitHub Actions 的 `Release` 工作流触发。版本升级规则、发布渠道（`stable` / `alpha` / `beta` / `rc`）以及打包细节详见 [`docs/release-workflow.md`](./docs/release-workflow.md)。一般情况下贡献者无需手动 bump 版本号，由发布工作流统一处理。
+维护者从 GitHub Actions 的 `Prepare Release` 工作流开始发布。该工作流更新版本并创建发布 PR。合并后，标签触发 `Release` 工作流构建并发布产物。版本规则、发布渠道（`stable` / `alpha` / `beta` / `rc`）与更新渠道提升流程见 [`docs/release-workflow.md`](./docs/release-workflow.md)。贡献者通常无需手动修改版本号。
 
 如果你的改动应当出现在用户可见的 changelog 中，请在 PR 描述中提一下，便于发布说明引用。格式参考 [`docs/CHANGELOG_TEMPLATE.md`](./docs/CHANGELOG_TEMPLATE.md)：只写用户可感知的变化，每条一行，避免内部术语。
 

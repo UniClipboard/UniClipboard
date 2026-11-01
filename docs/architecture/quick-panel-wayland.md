@@ -42,13 +42,11 @@ o.bind("SUPER + SHIFT + V", "UniClipboard", "uniclipboard --quick-panel")
 
 ## Omarchy 主题跟随
 
-在 Omarchy 会话中，外观设置的“跟随 Omarchy 主题”默认开启，由桌面统一控制主窗口、快捷面板和更新窗口的深浅模式与配色，同时禁用手动主题选择、预设配色和自定义颜色。关闭后恢复原有应用主题设置。偏好由 desktop 本地保存，不经过 Engine 或 daemon 设置接口，详见 [desktop 本地主题偏好](desktop-theme-preferences.md)。主题切换无需重启，隐藏的快捷面板也保持订阅。初始主题快照在读取本地偏好后提供，避免关闭开关后启动时短暂应用 Omarchy 配色；daemon 就绪后读取原有应用主题设置，进入历史页面时不重建主题订阅。
+外观设置的“跟随 Omarchy 主题”默认关闭。Linux 宿主发现有效调色板后显示该开关。开启后，主窗口、快捷面板和更新窗口使用 Omarchy 的深浅模式与配色，并禁用手动主题选择、预设配色和自定义颜色。关闭后使用原有应用主题设置。
 
-该适配在旧 Tauri 宿主（已退役）中由 `desktop_theme` 模块管理，Go 宿主目前未实现 Omarchy 配色跟随（相关命令返回不可用状态）：检查会话的 `OMARCHY_PATH` 与当前主题目录，从用户主目录下的 `.local/state/omarchy/current/theme/colors.toml` 读取调色板。只安装 Omarchy 包、未进入 Omarchy 会话时不开启；其他系统不提供配色覆盖。此入口针对使用上述状态目录的 Omarchy 版本。
+Go/Wails 宿主在 `apps/gui-go/desktop_theme.go` 中保存本机偏好，并每秒读取一次调色板。调色板只驻留内存，不进入 Engine 或 daemon 设置接口。读取失败时回到应用主题；有效调色板恢复后继续跟随。文件路径、保存失败语义与版本规则见 [desktop 本地主题偏好](desktop-theme-preferences.md)。
 
-Omarchy 会整体替换主题目录，因此监听其稳定父目录并合并文件事件。读取失败或主题内容无效时保留最近一次有效配色；后续文件变化会重新读取。调色板仅驻留内存，不写入业务设置，不修改系统 GTK 配置，不安装主题钩子。
-
-前端通过 `apps/gui-go/frontend/src/lib/window-theme.ts` 统一选择最终主题，窗口只消费深浅模式与语义颜色变量。初始查询和实时事件带版本号，避免旧查询覆盖新主题；GUI 退出时取消文件监听。daemon、Engine 和其他平台不承担 Omarchy 适配逻辑。
+前端通过 `apps/gui-go/frontend/src/lib/window-theme.ts` 选择最终主题。各窗口消费深浅模式与语义颜色变量。GUI 退出时停止主题轮询。
 
 ## 粘贴与能力边界
 

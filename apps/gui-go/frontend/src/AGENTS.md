@@ -35,12 +35,12 @@ src/
 | Daemon HTTP/WS client       | `src/api/daemon/` + `src/api/generated/` + `src/lib/daemon-ws.ts` | ADR-008: primary path to the `uniclipd` daemon |
 | Host (native) commands      | `src/api/` + `src/lib/ipc.ts`                  | typed `commands` over the generated Wails bindings (`@host/*`) |
 | Global state                | `src/store/`                                   | `store/api.ts` + slices + hooks              |
-| Setup flow UI               | `src/pages/SetupPage.tsx` + `src/pages/setup/` | multi-step onboarding/join flows             |
+| 设置流程界面 | `src/pages/entry-kit/`、`src/pages/setup/` | 三端共用界面与流程状态；旧 `SetupPage.tsx` 仅供无平台测试 |
 | Shared UI primitives        | `src/components/ui/`                           | Radix/shadcn-style components                |
 | Platform UI kit             | `src/ui-kit/`                                  | `@/ui-kit`; contract in `contract.ts`, skins (windows, macos, linux) chosen by `UC_UI_PLATFORM` at build time |
-| Kit entry pages             | `src/pages/entry-kit/`                         | startup, status, recovery, unlock and setup pages on `@/ui-kit`; reached only through the `@ui-*-page` / `@ui-*-screen` build-time aliases (macOS/Windows → kit, otherwise the existing pages) |
+| Kit entry pages             | `src/pages/entry-kit/`                         | startup, status, recovery, unlock and setup pages on `@/ui-kit`; reached only through the `@ui-*-page` / `@ui-*-screen` build-time aliases（macOS、Windows、Linux 使用组件库页面；无平台测试使用旧页面） |
 | Kit Manage Devices | `src/pages/devices-kit/` | macOS/Windows/Linux: the same `Sheet` as Manage Tags over the kit History window, opened from the labelled Manage Devices entry above Settings in the sidebar footer (sidebar device rows filter history by source); `/devices` resolves through `@ui-devices-page` to a redirect that opens it. State comes from `useDevicesPage` and the shared hooks in `hooks/`; browser check: `bun run e2e:gui backends devices-kit`（隔离夹具仅支持 macOS 宿主；其他宿主保留 `e2e/devices-kit-browser.mjs` 外部 daemon 流程） |
-| Kit settings | `src/pages/settings-kit/`, `src/components/setting/setting-parts/` | macOS and Windows: `@ui-settings-page` and `@ui-setting-parts` (vite.config.ts) swap the page shell and the setting group/row/switch/select/alert; sections, hooks and save/restart rules in `components/setting/` are shared, Linux keeps the existing page and parts. Popups the sections open portal into the page's `.settings-popups` host, and each skin's `settings.css` maps the shadcn tokens to its own |
+| Kit settings | `src/pages/settings-kit/`, `src/components/setting/setting-parts/` | macOS、Windows、Linux 通过 `@ui-settings-page` 和 `@ui-setting-parts` 使用组件库页面与控件。`components/setting/` 共享设置逻辑。无平台测试保留旧页面。弹层挂载到 `.settings-popups`，各皮肤通过 `settings.css` 映射主题变量 |
 | Error/trace redaction       | `src/observability/`                           | breadcrumbs, tracing, sensitive arg masking  |
 
 ## CONVENTIONS

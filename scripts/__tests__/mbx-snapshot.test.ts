@@ -88,7 +88,7 @@ describe('MBX request reduction', () => {
 
   it('cancels outdated runs independently for each PR', () => {
     expect(yaml('.github/workflows/pr-check.yml').concurrency).toEqual({
-      group: 'pr-check-${{ github.event.pull_request.number }}',
+      group: 'pr-check-${{ github.event.pull_request.number || github.run_id }}',
       'cancel-in-progress': true,
     })
   })

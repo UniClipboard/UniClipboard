@@ -21,18 +21,7 @@ rust_build_inputs: &rust_build_inputs
 rust_shared: &rust_shared
   - *rust_build_inputs
   - 'clippy.toml'
-  - '.github/actions/build-e2e-rust/**'
   - '.github/actions/build-pr-rust/**'
-
-quick_panel: &quick_panel
-  - *rust_shared
-  - 'apps/quick-panel/**'
-  - 'crates/quick-panel-core/**'
-  - 'crates/uc-app-paths/**'
-  - 'crates/uc-observability/**'
-  - 'crates/uc-daemon-client/**'
-  - 'crates/uc-daemon-process/**'
-  - 'crates/uc-daemon-contract/**'
 
 rust:
   - *rust_shared
@@ -85,37 +74,10 @@ gui_go:
   - 'docs/architecture/gui-go-host-commands.md'
   - '.github/docker/build-bookworm.Dockerfile'
 
-# Both integration suites execute the Go CLI against the real Rust daemon.
+# TesterArmy backend and Windows product checks execute the real daemon and CLI.
 daemon_runtime_inputs: &daemon_runtime_inputs
   - 'apps/daemon/**'
   - 'crates/uc-{platform,app-paths,observability,bootstrap,daemon-contract,daemon-process,daemon-local,desktop-settings,webserver}/**'
-
-daemon_inputs: &daemon_inputs
-  - *rust_shared
-  - *daemon_runtime_inputs
-  - '.github/docker/build-bookworm.Dockerfile'
-
-membership:
-  - *daemon_inputs
-  - *cli_go
-  - 'tests/e2e/**'
-  - 'scripts/e2e/**'
-  - 'apps/cli-go/e2e/**'
-  - '.github/workflows/membership-e2e.yml'
-  - 'scripts/__tests__/membership-e2e-hardening.test.ts'
-
-e2e:
-  - *rust_build_inputs
-  - *daemon_runtime_inputs
-  - *cli_inputs
-  - '.github/actions/build-e2e-rust/**'
-  - 'crates/uc-daemon-client/**'
-  - 'tools/uc-dev-cli/**'
-  - 'tests/e2e/**'
-  # Only scripts executed by the macOS CLI E2E job belong here.
-  - 'scripts/e2e/build-cli.sh'
-  - 'scripts/e2e/clipboard-startup/*.{py,m}'
-  - 'scripts/e2e/desktop-settings/prepare-history.py'
 
 tooling:
   - '.github/actions/go-host-apt/**'

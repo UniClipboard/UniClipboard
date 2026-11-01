@@ -1,0 +1,25 @@
+name: Nightly Integration
+
+on:
+  schedule:
+    - cron: '23 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+
+jobs:
+  integration:
+    name: CLI, Quick panel, and Membership
+    uses: ./.github/workflows/pr-check.yml
+    secrets: inherit
+
+  linux-gui:
+    name: Linux GUI packaging and acceptance
+    uses: ./.github/workflows/package-linux-gui.yml
+    with:
+      run_acceptance: true
+      save_cache: false
+    secrets: inherit

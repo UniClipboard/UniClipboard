@@ -14,9 +14,7 @@ function read(relativePath: string): string {
 describe('membership E2E hardening', () => {
   it('prepares historical releases only for the nightly tier, including manual PR-tier runs', () => {
     const job = parse(read('.github/workflows/membership-e2e.yml')).jobs.membership
-    expect(job.env.MEMBERSHIP_TIER).toBe(
-      "${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}"
-    )
+    expect(job.env.MEMBERSHIP_TIER).toBe("${{ inputs.tier || 'nightly' }}")
     for (const name of ['Verify fixed release preparation', 'Prepare fixed legacy release']) {
       expect(job.steps.find(step => step.name === name).if).toBe("env.MEMBERSHIP_TIER == 'nightly'")
     }
@@ -28,24 +26,25 @@ describe('membership E2E hardening', () => {
   it('passes the workflow tier through a quoted environment variable', () => {
     const workflow = read('.github/workflows/membership-e2e.yml')
 
-    expect(workflow).toContain(
-      "MEMBERSHIP_TIER: ${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}"
-    )
+    expect(workflow).toContain("MEMBERSHIP_TIER: ${{ inputs.tier || 'nightly' }}")
     expect(workflow).toContain('run: bash scripts/e2e/run-membership-matrix.sh "$MEMBERSHIP_TIER"')
     expect(workflow).not.toContain(
       'run: bash scripts/e2e/run-membership-matrix.sh "${{ inputs.tier'
     )
   })
 
-  it('runs current membership checks before merge without the deferred recovery case', () => {
+  it('runs the full membership matrix nightly without the deferred recovery case', () => {
     const workflow = read('.github/workflows/membership-e2e.yml')
     const script = read('scripts/e2e/run-membership-matrix.sh')
     const prCheck = read('.github/workflows/pr-check.yml')
+    const nightly = read('.github/workflows/nightly-integration.yml')
 
     expect(workflow).toMatch(/^\s{2}workflow_call:/m)
     expect(prCheck).toContain('uses: ./.github/workflows/membership-e2e.yml')
-    expect(workflow).toContain("github.event_name == 'pull_request'")
-    expect(workflow).toContain('if [[ "$EVENT_NAME" == "pull_request" ]]; then')
+    expect(prCheck).toContain("if: github.event_name != 'pull_request'")
+    expect(nightly).toContain('uses: ./.github/workflows/pr-check.yml')
+    expect(workflow).not.toContain("github.event_name == 'pull_request'")
+    expect(workflow).toContain('if [[ "$MEMBERSHIP_TIER" == "pr" ]]; then')
     expect(workflow).toContain('matrix=[{"name":"Linux","runner":"ubuntu-22.04"')
     expect(workflow).toContain('matrix=[{"name":"macOS","runner":"macos-latest"')
     expect(script).toContain(

@@ -94,6 +94,16 @@ Use when:
 - touching theme behavior
 - working on frontend DTO handling or frontend tests
 
+### 4a. GUI E2E 测试
+阅读：`docs/testing/gui-e2e-authoring.md`
+
+适用范围：
+- 新增、修改或运行桌面 GUI E2E 测试
+- 选择浏览器、真实后端或产品原生验收
+- 注册套件、管理隔离夹具或收集测试工件
+
+先运行 `bun run e2e:gui list`。创建测试或启动器前，先遵循编写规范。
+
 ### 5. Project memory / historical lessons / deeper references
 Read: `docs/agent/project-memory.md`
 

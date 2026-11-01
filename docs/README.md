@@ -19,6 +19,8 @@ When documentation conflicts with code, treat the code as the source of truth an
 
 **For Implementation:**
 
+- [GUI E2E 编写规范](testing/gui-e2e-authoring.md) - 新增测试的分类、注册、隔离、运行与工件要求
+
 - [自动连接的桌面宿主接入](specs/automatic-peer-connections.md) - 前台、系统唤醒与 Engine 的责任边界和验证记录
 
 - [Bootstrap System](architecture/bootstrap.md) - How dependency injection works

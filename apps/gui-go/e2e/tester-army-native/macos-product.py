@@ -173,9 +173,13 @@ def run():
                 deadline = time.monotonic() + 10
                 while cleanup_identity(ui_pid) == ui_identity and time.monotonic() < deadline:
                     time.sleep(.1)
-        ui_state = cleanup_identity(ui_pid) if ui_pid else None
-        ui_exited = not ui_pid or (ui_identity is not None and ui_state is not UNKNOWN_IDENTITY
-                                   and ui_state != ui_identity)
+        if ui_pid:
+            ui_state = cleanup_identity(ui_pid)
+            ui_exited = (ui_identity is not None and ui_state is not UNKNOWN_IDENTITY
+                         and ui_state != ui_identity)
+        else:
+            ui_state = None if host is None else UNKNOWN_IDENTITY
+            ui_exited = host is None
         acknowledged = bool(evidence and evidence.exists() and any(
             row.get('step') == 'control-exit' and row.get('ok') is True
             for row in evidence_records(evidence)))

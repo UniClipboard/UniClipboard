@@ -42,7 +42,8 @@
     "e2e:browser": "cross-env E2E_TELEMETRY_DISABLED=1 node node_modules/e2e/dist/cli/bin.js run",
     "e2e:browser:daemon": "cross-env E2E_TELEMETRY_DISABLED=1 node node_modules/e2e/dist/cli/bin.js run --config e2e.daemon.config.ts",
     "e2e:browser:layouts": "node apps/gui-go/frontend/e2e/tester-army/run-layouts.mjs",
-    "e2e:browser:backends": "node apps/gui-go/frontend/e2e/tester-army/run-backends.mjs"
+    "e2e:browser:backends": "node apps/gui-go/frontend/e2e/tester-army/run-backends.mjs",
+    "e2e:native:macos-history": "node apps/gui-go/e2e/tester-army-native/run-macos-history.mjs"
   },
   "lint-staged": {
     "Cargo.toml": [

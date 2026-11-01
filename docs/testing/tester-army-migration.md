@@ -145,7 +145,7 @@ node apps/gui-go/frontend/e2e/tester-army/backend-assertion-inventory.mjs
 - WebKitGTK：在一次性 CI 的专属 Xvfb 中使用官方临时 WebContext 回读 JavaScript。它只证明原生运行时可用。现有 Web 引擎不接收其原生 Web Inspector/WebDriver 协议。
 - WebView2：使用当前固定 Wails 版本在一次性 Windows runner 上启动独立可见原生控件，设置专属临时用户数据目录和随机 loopback CDP 端口。先读取真实原生页面的 target ID，再用 TesterArmy 的持久连接契约尝试驱动同一 target。若框架创建其他页面，不计为原生通过。上下文协议不兼容与其他执行失败分别报告。正常点击需要可见控件；隐藏控件不作为可点击验收。先关闭控件并等待宿主退出，再删除临时数据目录，避免宿主的 COM 引用仍持有文件。若此前没有探针错误，则进程退出和临时数据删除均须通过；已有错误时保留原错误并记录清理结果。
 
-原生探针工作流为 `.github/workflows/tester-army-native.yml`。探针结果不等于 UniClipboard 产品的原生 GUI 验收。所有原生窗口、托盘、全局快捷键、系统剪贴板、安装包及发布验收继续使用旧路径。
+原生探针工作流为 `.github/workflows/tester-army-native.yml`。探针结果不等于 UniClipboard 产品的原生 GUI 验收。产品原生覆盖按各自入口的实际结果单独记录。托盘、全局快捷键、系统剪贴板、安装包及发布验收继续使用旧路径。
 
 参考：[Playwright WebView2 官方说明](https://playwright.dev/docs/webview2)、[Apple 的应用内容检查接口](https://developer.apple.com/documentation/safari-developer-tools/enabling-inspecting-content-in-your-apps)、[TesterArmy Web 引擎契约](https://github.com/tester-army/e2e/blob/caf51eb9f8de765b1ecac5ce3cd511a925b2fc2f/docs/reference/web.mdx)。
 
@@ -205,3 +205,25 @@ macOS 与 Linux 的列表组件明确以强调色填充表示多选，不显示�
 
 
 夹具现在直接持有一个 `standalone` daemon 子进程，再执行真实 CLI 初始化与 `start`，并校验连接文件 PID 未变、健康回执仍为 `standalone`。并发回收线程负责回收已退出子进程，避免 CLI 等待僵尸 PID 消失。正常清理必须有退出码 0，且没有夹具强制终止。通用 CLI 的临时进程提升路径仍保留；此 fixture 变更不宣称修复该路径的竞态。
+
+
+## macOS 最小原生历史适配器
+
+`e2e.macos-history.config.ts` 使用本仓的 `uniclipboard-macos-accessibility` 引擎。它通过公共 `e2e/engine` 接口与 `agent-desktop` 的 macOS 可访问性驱动操作真实产品 WKWebView。它不启动浏览器，不使用 CDP，不运行旧的内部历史断言驱动。
+
+运行前安装项目锁定依赖，并准备 Node 24 或更新版本、Bun、Go、Rust、Xcode 命令行工具和 `agent-desktop`。当前验证的原生驱动版本为 1.0.2。宿主必须具备可访问性与屏幕录制权限。
+
+```bash
+agent-desktop status
+bun run e2e:native:macos-history
+```
+
+该命令先构建独立 E2E 应用，记录构建 HEAD、脏状态和宿主/UI/daemon/CLI 哈希，再执行原生 SDK 测试。夹具在私有 HOME 和唯一 profile 中启动真实 daemon，通过真实入站接口写入两条合成历史。产品以 `external` 模式启动，避免内部 E2E 驱动竞争操作。
+
+适配器核对宿主、UI 子进程关系、进程启动身份和原生窗口 ID。每次读取、点击与截图都限定该窗口。可访问性缓存使用私有 `AGENT_DESKTOP_HOME`，不共享其他会话的节点引用。它只声明语义点击、观察、定位与截图能力。节点失效不会变成坐标点击；无法确认动作未投递的失败不会自动重放。
+
+测试定位实际 List 控件，验证切换后的选中状态，再点击第一条合成历史。SDK 同时断言该行选中、相同文本出现在详情区，并保存真实窗口 PNG。截图遇到安全输入控件时拒绝执行。退出通过现有产品控制通道完成。产品确认退出、宿主与 UI 退出、daemon 退出及私有目录删除均须成立，强制清理不计为通过。
+
+工件位于 `target/tester-army-macos-history/`。每次测试包含 SDK 报告与轨迹、`native-driver.json`、`native-launch.json`、`native-events.json`、窗口 PNG 和 `native-isolation.json`。原始 daemon 连接文件、会话令牌、口令和私有存储不进入工件。SDK 自带的脏状态字段不能单独证明源码身份；以独立 Git 回执、源码哈希和构建回执共同核对。
+
+普通 macOS CI 只执行此入口的收集检查，不启动桌面，不计为原生 GUI 验收。真实执行需要已具备驱动和权限的隔离 macOS 宿主。该最小链路不等于完整原生历史迁移；原全量入口及其失败断言继续保留。

@@ -8,6 +8,8 @@ on:
       - 'apps/gui-go/go.sum'
       - 'e2e.native.config.ts'
       - 'e2e.windows-product.config.ts'
+      - 'e2e.macos-history.config.ts'
+      - 'apps/gui-go/build.sh'
       - 'apps/gui-go/e2e/windows_startup_ready.mjs'
       - 'apps/gui-go/e2e/windows-startup-scenarios.mjs'
       - 'apps/gui-go/e2e/build_windows.py'
@@ -52,6 +54,9 @@ jobs:
           bun-version: '1.4.2'
       - run: bun install --frozen-lockfile
       - run: node apps/gui-go/e2e/tester-army-native/protocol.mjs
+      - name: Collect macOS native history without launching the desktop
+        if: runner.os == 'macOS'
+        run: node node_modules/e2e/dist/cli/bin.js list --config e2e.macos-history.config.ts > target/tester-army-native/macos-history-collection.txt
       - name: Ephemeral WKWebView read-back, without a window
         if: runner.os == 'macOS'
         run: swift apps/gui-go/e2e/tester-army-native/wkwebview.swift > target/tester-army-native/wkwebview.json

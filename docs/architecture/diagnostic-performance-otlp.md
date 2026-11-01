@@ -82,7 +82,15 @@ CPU 首样本、进程重启和较长采样缺口不输出使用率值。
 ## 验收入口
 
 继续使用 `apps/gui-go/e2e/diagnostics_acceptance_run.py`。
-该入口核对在线与离线清单、摘要和 daemon 指标文件。
+该入口核对在线与离线清单、摘要和进程指标文件。
+使用同一入口运行隔离的受控负载验收：
+
+```bash
+python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --performance-only --out target/diagnostic-performance/load-run
+```
+
+夹具登记本任务拥有的合成宿主，不代表真实 GUI 验收。
+该场景覆盖 CPU 负载、内存分配、进程退出、重新建立基线、调度缺口和登记配额。
 Collector 导入回执与平台查询结果必须另行保留。
 Windows 继续使用 `apps/gui-go/e2e/windows_diagnostics_acceptance.ps1`。
 未执行的平台、休眠场景、受控负载与开销对比不能记为通过。

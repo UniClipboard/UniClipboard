@@ -128,6 +128,86 @@ jobs:
           UC_E2E_RUST_LOG: info
         run: bash scripts/e2e/run-membership-matrix.sh "$MEMBERSHIP_TIER"
 
+      # Case logs live under RUNNER_TEMP. Profile data and daemon logs live under
+      # the user profile, which on Windows is a different drive. upload-artifact
+      # rejects that set because the paths have no common parent (run 41244992814:
+      # rootDirectory D:\a\UniClipboard\UniClipboard is not a parent of
+      # D:\a\_temp\membership-e2e\C0.log). Copy the profile trees next to the
+      # case logs and upload that one directory on every OS.
+      - name: Stage isolated profiles next to matrix logs
+        if: always()
+        shell: bash
+        run: |
+          set -o pipefail
+          unix_path() {
+            if command -v cygpath >/dev/null 2>&1; then
+              cygpath -u -- "$1"
+            else
+              printf '%s\n' "$1"
+            fi
+          }
+
+          if [[ -z "${RUNNER_TEMP:-}" ]]; then
+            echo "RUNNER_TEMP is not set" >&2
+            exit 1
+          fi
+          runner_temp="$(unix_path "$RUNNER_TEMP")"
+          case "$runner_temp" in
+            *\\*)
+              echo "RUNNER_TEMP is not a Unix path: $RUNNER_TEMP" >&2
+              exit 1
+              ;;
+          esac
+          artifact_root="$runner_temp/membership-e2e"
+          stage="$artifact_root/profiles"
+          mkdir -p "$stage"
+          staged=0
+          copy_failures=0
+
+          stage_label() {
+            local label="$1"
+            local copied=0
+            local dir
+            shift
+            for dir in "$@"; do
+              if [[ ! -d "$dir" ]]; then
+                continue
+              fi
+              mkdir -p "$stage/$label"
+              if cp -a "$dir" "$stage/$label/"; then
+                copied=$((copied + 1))
+              else
+                echo "failed to stage $dir" | tee -a "$stage/copy-errors.txt" >&2
+                copy_failures=$((copy_failures + 1))
+              fi
+            done
+            echo "staged $copied $label"
+            staged=$((staged + copied))
+          }
+
+          shopt -s nullglob
+          stage_label macos-data "$HOME/Library/Application Support"/app.uniclipboard.desktop-e2e-membership-*
+          stage_label macos-logs "$HOME/Library/Logs"/app.uniclipboard.desktop-e2e-membership-*
+          stage_label linux-data "${XDG_DATA_HOME:-$HOME/.local/share}"/app.uniclipboard.desktop-e2e-membership-*
+          stage_label linux-state "${XDG_STATE_HOME:-$HOME/.local/state}"/app.uniclipboard.desktop-e2e-membership-*
+          if [[ -n "${LOCALAPPDATA:-}" ]]; then
+            windows_root="$(unix_path "$LOCALAPPDATA")"
+          else
+            windows_root="$HOME/AppData/Local"
+          fi
+          stage_label windows-local "$windows_root"/app.uniclipboard.desktop-e2e-membership-*
+          shopt -u nullglob
+
+          echo "staged $staged profile director(y/ies), $copy_failures copy failure(s)"
+          if [[ -f "$artifact_root/results.tsv" && "$staged" -eq 0 ]]; then
+            echo "matrix results exist but no profile directories were staged" >&2
+            exit 1
+          fi
+          if [[ "$copy_failures" -ne 0 ]]; then
+            echo "profile staging copied with errors; see profiles/copy-errors.txt" >&2
+            exit 1
+          fi
+
       - name: Upload matrix results and isolated profiles
         if: always()
         uses: actions/upload-artifact@v7
@@ -135,13 +215,7 @@ jobs:
           name: membership-e2e-${{ matrix.name }}-${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}
           if-no-files-found: warn
           retention-days: 14
-          path: |
-            ${{ runner.temp }}/membership-e2e/**
-            ~/Library/Application Support/app.uniclipboard.desktop-e2e-membership-*/**
-            ~/Library/Logs/app.uniclipboard.desktop-e2e-membership-*/**
-            ~/.local/share/app.uniclipboard.desktop-e2e-membership-*/**
-            ~/.local/state/app.uniclipboard.desktop-e2e-membership-*/**
-            ~/AppData/Local/app.uniclipboard.desktop-e2e-membership-*/**
+          path: ${{ runner.temp }}/membership-e2e
 
       - name: Summarize MBX cache requests
         if: always()

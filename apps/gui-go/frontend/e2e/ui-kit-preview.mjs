@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { allocateBuildLease, releaseBuildLease, buildLeaseEnv } from './tester-army/build-lease.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const frontend = path.resolve(here, '..')
@@ -24,10 +25,12 @@ if (!['windows', 'macos', 'linux'].includes(platform ?? '')) {
   process.exit(2)
 }
 
+const lease = await allocateBuildLease()
 const server = spawn(process.execPath, ['e2e/tester-army/server.mjs', port], {
   cwd: frontend,
   env: {
     ...process.env,
+    [buildLeaseEnv]: lease,
     UC_UI_PLATFORM: platform,
     UC_TESTER_FIXTURE: 'ui-kit-gallery',
     UC_TESTER_DAEMON: '0',
@@ -47,5 +50,13 @@ server.once('error', error => {
   failure = error
 })
 const code = await new Promise(resolve => server.once('close', resolve))
+const cleanup = await releaseBuildLease(lease)
+console.log(JSON.stringify({ event: 'preview-cleanup', ...cleanup }))
 if (failure) throw failure
-process.exitCode = interrupted === 'SIGINT' ? 130 : interrupted === 'SIGTERM' ? 143 : (code ?? 1)
+process.exitCode = !cleanup.passed
+  ? 1
+  : interrupted === 'SIGINT'
+    ? 130
+    : interrupted === 'SIGTERM'
+      ? 143
+      : (code ?? 1)

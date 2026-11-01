@@ -77,7 +77,7 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 - 初始化页面的键盘流程显式选择系统窗口框架，使标题栏控件保持在内容区之外。移动连接测试等待退出中的标签页完成转换，再执行原有单面板与页脚断言。
 - `surfaceOf()` 的底层操作不产生通用 SDK 的逐步操作事件。报告只证明框架实际观察到的内容。原断言结果、场景 JSON 和截图单独保存。多页面测试的额外上下文由测试夹具管理并关闭。
 - `assertion-inventory.mjs` 从原基线 `7ae0a059c9e2c3cf2dd753240da9ef65f4343d40` 读取 21 个原脚本，记录断言源码、位置数量和 SHA-256。数量检查不能替代语义评审或运行结果。运行它需要本地保留该 Git 对象。
-- 服务只监听 `127.0.0.1`，由框架分配端口。每个服务使用独立临时构建目录，统一运行器为每次浏览器框架调用分配一次性构建目录。服务只写入该目录的 `site` 子目录并记录 PID。框架结束后，运行器确认服务 PID 已不存在，才回收自己创建的目录；状态不明时保留目录并使清理失败。每次回收写入 `fixture-cleanup.json`，不依赖 Windows 被终止进程的退出回调。人工预览自持目录，通过 Vite 公开的 `PreviewServer.close()` 关闭服务并解除其退出回调，再删除目录。测试先打开空白页，再安装路由并导航到夹具，避免夹具在拦截器安装前发出请求。
+- 服务只监听 `127.0.0.1`，由框架分配端口。每个服务使用独立临时构建目录，统一运行器为每次浏览器框架调用分配一次性构建目录。服务只写入该目录的 `site` 子目录并记录 PID。框架结束后，运行器确认服务 PID 已不存在，才回收自己创建的目录；状态不明时保留目录并使清理失败。每次回收写入 `fixture-cleanup.json`，不依赖 Windows 被终止进程的退出回调。人工预览也由父进程分配和回收构建目录。服务通过 Vite 公开的 `PreviewServer.close()` 关闭服务并解除其退出回调；即使 Windows 直接终止服务，父进程仍在确认服务 PID 退出后回收目录，并输出 `preview-cleanup` 回执。测试先打开空白页，再安装路由并导航到夹具，避免夹具在拦截器安装前发出请求。
 - 布局报告位于 `target/tester-army-layout-report/<皮肤>/<测试组>/`。原断言截图与场景 JSON 位于 `target/tester-army-layout/<皮肤>/<测试组>/`。
 - 中继报告和真实 daemon 报告分别位于 `target/tester-army/`、`target/tester-army-daemon/`。其中包含 JSON、JUnit、Markdown 和截图。
 - `receipt.py` 记录源码 HEAD、脏状态、源码和二进制 SHA-256、运行编号及报告摘要。`target/tester-army-SHA256SUMS` 校验公开工件。不要把旧轮次工件当作新 HEAD 的通过证据。

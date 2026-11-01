@@ -1,0 +1,53 @@
+name: Build release pipeline
+on:
+  workflow_call:
+    inputs:
+      pipeline:
+        description: Desktop or Linux CLI pipeline selected by the release matrix
+        type: string
+        required: true
+      platform:
+        type: string
+        required: true
+      branch:
+        description: Source commit SHA pinned by release validation
+        type: string
+        required: true
+      channel:
+        type: string
+        required: true
+      allow_unsigned_windows:
+        type: boolean
+        default: false
+
+jobs:
+  desktop:
+    if: inputs.pipeline == 'desktop'
+    # build.yml also references updater-signatures.yml, even when that job is skipped.
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: ${{ inputs.platform }}
+      branch: ${{ inputs.branch }}
+      channel: ${{ inputs.channel }}
+      package_cli: true
+      # Publication verifies artifacts; runtime acceptance belongs to PR/manual workflows.
+      run_acceptance: false
+      allow_unsigned_windows: ${{ inputs.allow_unsigned_windows }}
+      # Main and cache-warmup own cache writes.
+      save_cache: false
+    secrets: inherit
+
+  cli:
+    if: inputs.pipeline == 'cli'
+    uses: ./.github/workflows/build-cli.yml
+    with:
+      platform: ${{ inputs.platform }}
+      branch: ${{ inputs.branch }}
+      channel: ${{ inputs.channel }}
+      # macOS and Windows x64 CLI archives reuse the desktop daemon sidecar.
+      linux_only: true
+      save_cache: false
+    secrets: inherit

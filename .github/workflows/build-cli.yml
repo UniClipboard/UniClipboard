@@ -131,7 +131,8 @@ jobs:
     runs-on: ${{ matrix.runner || matrix.platform }}
     container: ${{ matrix.container || null }}
     strategy:
-      fail-fast: false
+      # Reusable workflows retain the top-level caller's workflow name.
+      fail-fast: ${{ github.workflow == 'Release' }}
       matrix:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
@@ -349,7 +350,8 @@ jobs:
     if: inputs.build_only != true && needs.setup-matrix.outputs.matrix != '[]'
     runs-on: ${{ matrix.runner || matrix.platform }}
     strategy:
-      fail-fast: false
+      # Reusable workflows retain the top-level caller's workflow name.
+      fail-fast: ${{ github.workflow == 'Release' }}
       matrix:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 

@@ -43,7 +43,7 @@ describe('independent release platform pipelines', () => {
     )
     expect(call.with.branch).toBe('${{ needs.setup-platforms.outputs.source_sha }}')
     expect(call.with.platform).toBe('${{ matrix.platform }}')
-    expect(call.strategy['fail-fast']).toBe(false)
+    expect(call.strategy['fail-fast']).toBe("${{ github.workflow == 'Release' }}")
     expect(call.secrets).toBe('inherit')
     for (const name of Object.keys(inner.on.workflow_call.inputs)) {
       expect(call.with, name).toHaveProperty(name)
@@ -75,9 +75,15 @@ describe('independent release platform pipelines', () => {
   })
 
   it('keeps release cache writes disabled while warmup explicitly populates downloads', () => {
-    expect(read('release.yml').jobs.build.with.save_cache).toBe(false)
+    const release = read('release.yml')
+    expect(release.jobs.build.strategy['fail-fast']).toBe(true)
+    expect(release.jobs.build.strategy.matrix.pipeline).toEqual(['desktop', 'cli'])
+    expect(release.jobs.build.uses).toBe('./.github/workflows/release-build.yml')
+    expect(release.jobs['create-release'].needs).toEqual(['validate', 'build'])
+    const pipelines = read('release-build.yml').jobs
+    expect(pipelines.desktop.with.save_cache).toBe(false)
     expect(read('release.yml').jobs.build.secrets).toBe('inherit')
-    expect(read('release.yml').jobs['build-cli'].with.save_cache).toBe(false)
+    expect(pipelines.cli.with.save_cache).toBe(false)
     const linux = read('package-linux-gui.yml').jobs.package.steps
     expect(
       linux.find((step: { name?: string }) => step.name === 'Restore Cargo downloads').uses
@@ -97,4 +103,20 @@ describe('independent release platform pipelines', () => {
     expect(cache.with['cache-targets']).toBe(false)
     expect(cache.with['save-if']).toContain("github.event_name == 'push'")
   })
+})
+
+// Every nested matrix must propagate failures before its remaining targets finish.
+describe('release failure propagation', () => {
+  it.each(['build.yml', 'build-target.yml', 'build-cli.yml', 'package-linux-gui.yml'])(
+    'enables fail-fast only for Release in %s',
+    file => {
+      for (const job of Object.values(read(file).jobs) as {
+        strategy?: Record<string, unknown>
+      }[]) {
+        if (job.strategy) {
+          expect(job.strategy['fail-fast']).toBe("${{ github.workflow == 'Release' }}")
+        }
+      }
+    }
+  )
 })

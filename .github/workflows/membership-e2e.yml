@@ -1,5 +1,5 @@
 name: 'Membership E2E'
-run-name: "membership-e2e-${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}-${{ github.run_number }}"
+run-name: "membership-e2e-${{ inputs.tier || 'nightly' }}-${{ github.run_number }}"
 
 on:
   workflow_call:
@@ -11,8 +11,6 @@ on:
         type: string
         required: false
         default: ''
-  schedule:
-    - cron: '23 18 * * *'
   workflow_dispatch:
     inputs:
       tier:
@@ -39,12 +37,12 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Select Linux for pull requests and all platforms otherwise
+      - name: Select Linux for PR tier and all platforms for nightly
         id: set-matrix
         env:
-          EVENT_NAME: ${{ github.event_name }}
+          MEMBERSHIP_TIER: ${{ inputs.tier || 'nightly' }}
         run: |
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+          if [[ "$MEMBERSHIP_TIER" == "pr" ]]; then
             echo 'matrix=[{"name":"Linux","runner":"ubuntu-22.04","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           else
             echo 'matrix=[{"name":"macOS","runner":"macos-latest"},{"name":"Linux","runner":"ubuntu-22.04","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"name":"Windows","runner":"windows-latest"}]' >> "$GITHUB_OUTPUT"
@@ -52,7 +50,7 @@ jobs:
 
   membership:
     needs: setup-matrix
-    name: "${{ matrix.name }} / ${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}"
+    name: "${{ matrix.name }} / ${{ inputs.tier || 'nightly' }}"
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.container || null }}
     timeout-minutes: 45
@@ -63,7 +61,7 @@ jobs:
 
     environment: desktop-build-cache-reader
     env:
-      MEMBERSHIP_TIER: ${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}
+      MEMBERSHIP_TIER: ${{ inputs.tier || 'nightly' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -212,7 +210,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: membership-e2e-${{ matrix.name }}-${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}
+          name: membership-e2e-${{ matrix.name }}-${{ inputs.tier || 'nightly' }}
           if-no-files-found: warn
           retention-days: 14
           path: ${{ runner.temp }}/membership-e2e

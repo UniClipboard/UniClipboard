@@ -14,18 +14,7 @@ function route(files: string[]): string[] {
     .filters
   const filters = parse(source.includes('\n') ? source : read(source)) as Record<string, unknown[]>
   return Object.entries(filters)
-    .filter(([name]) =>
-      [
-        'frontend',
-        'gui_go',
-        'cli_go',
-        'rust',
-        'quick_panel',
-        'e2e',
-        'membership',
-        'tooling',
-      ].includes(name)
-    )
+    .filter(([name]) => ['frontend', 'gui_go', 'cli_go', 'rust', 'tooling'].includes(name))
     .filter(([, rules]) =>
       files.some(file => picomatch(rules.flat(Infinity) as string[], { dot: true })(file))
     )
@@ -35,42 +24,8 @@ function route(files: string[]): string[] {
 
 describe('PR check routing', () => {
   it.each([
-    ['scripts/e2e/x11-clipboard.sh', false],
-    ['scripts/e2e/linux-legacy-file-key-store.sh', false],
-    ['scripts/e2e/run-membership-matrix.sh', false],
-    ['apps/cli-go/e2e/compat.py', false],
-    ['.github/actions/build-pr-rust/action.yml', false],
-    ['.github/actions/rust-coverage/action.yml', false],
-    ['.github/docker/build-bookworm.Dockerfile', false],
-    ['clippy.toml', false],
-    ['scripts/ci/build-go-cli.sh', false],
-    ['packages/desktop-host-go/quickpanelhelper/quickpanelhelper.go', false],
-    ['packages/desktop-host-go/settings/settings.go', false],
-    ['scripts/e2e/build-cli.sh', true],
-    ['scripts/e2e/clipboard-startup/private-pasteboard.m', true],
-    ['scripts/e2e/desktop-settings/prepare-history.py', true],
-    ['.github/actions/build-e2e-rust/action.yml', true],
-    ['packages/desktop-host-go/errctx/errctx.go', true],
-    ['packages/desktop-host-go/buildinfo/gen.go', true],
-    ['packages/desktop-host-go/go.mod', true],
-    ['packages/desktop-host-go/go.sum', true],
-    ['crates/uc-daemon-client/src/lib.rs', true],
-    ['apps/daemon/src/main.rs', true],
-    ['tests/e2e/tests/clipboard_sync.rs', true],
-    ['vendor/engine', true],
-    ['Cargo.lock', true],
-    ['.github/actions/engine-build-cache/action.yml', true],
-    ['.github/actions/mbx-snapshot/action.yml', true],
-  ])('routes CLI E2E input %s with expected relevance %s', (file, relevant) => {
-    expect(route([file]).includes('e2e')).toBe(relevant)
-  })
-
-  it.each([
     ['coverage', 'rust'],
     ['rust', 'rust'],
-    ['e2e', 'e2e'],
-    ['membership', 'membership'],
-    ['quick-panel-windows', 'quick_panel'],
     ['cli-go', 'cli_go'],
     ['gui-go', 'gui_go'],
     ['tooling', 'tooling'],
@@ -79,39 +34,28 @@ describe('PR check routing', () => {
   })
 
   it.each([
-    ['Go CLI', ['apps/cli-go/internal/commands/tree.go'], ['cli_go', 'e2e', 'membership']],
+    ['Go CLI', ['apps/cli-go/internal/commands/tree.go'], ['cli_go']],
     ['frontend', ['apps/gui-go/frontend/src/App.tsx'], ['frontend']],
     ['Go host', ['apps/gui-go/main.go'], ['gui_go']],
-    ['daemon client', ['crates/uc-daemon-client/src/lib.rs'], ['e2e', 'quick_panel', 'rust']],
-    [
-      'shared Go module',
-      ['packages/desktop-host-go/daemonproc/client.go'],
-      ['cli_go', 'e2e', 'gui_go', 'membership'],
-    ],
+    ['daemon client', ['crates/uc-daemon-client/src/lib.rs'], ['rust']],
+    ['shared Go module', ['packages/desktop-host-go/daemonproc/client.go'], ['cli_go', 'gui_go']],
     ['documentation', ['apps/cli-go/README.md', 'docs-site/content/docs/zh/cli/reference.mdx'], []],
     ['release workflow', ['.github/workflows/release.yml'], ['tooling']],
     ['schema', ['schema/openapi.json'], ['frontend', 'rust']],
-    ['CLI E2E script', ['scripts/e2e/build-cli.sh'], ['e2e', 'membership', 'tooling']],
+    ['CLI E2E script', ['scripts/e2e/build-cli.sh'], ['tooling']],
   ])('routes %s changes to their consumers', (_name, files, expected) => {
     expect(route(files)).toEqual(expected)
   })
 
-  it('checks Windows quick panel consumers when a shared Rust dependency changes', () => {
-    expect(route(['crates/uc-observability/src/lib.rs'])).toEqual([
-      'e2e',
-      'membership',
-      'quick_panel',
-      'rust',
-    ])
-    expect(route(['apps/quick-panel/src/platform/win32/mod.rs'])).toEqual(['quick_panel', 'rust'])
+  it('routes quick panel changes to the Rust check', () => {
+    expect(route(['crates/uc-observability/src/lib.rs'])).toEqual(['rust'])
+    expect(route(['apps/quick-panel/src/platform/win32/mod.rs'])).toEqual(['rust'])
   })
 
   it.each(['Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml'])(
-    'expands %s changes to Rust and integration consumers',
+    'expands %s changes to Rust checks',
     file => {
-      expect(route([file])).toEqual(
-        expect.arrayContaining(['rust', 'quick_panel', 'e2e', 'membership'])
-      )
+      expect(route([file])).toContain('rust')
     }
   )
 
@@ -207,19 +151,32 @@ describe('PR check routing', () => {
     ).toBe(true)
   })
 
-  it.each(['coverage.yml', 'membership-e2e.yml'])(
-    'routes %s PR runs through the shared change detector',
-    file => {
-      const target = workflow(file)
-      expect(target.on.pull_request).toBeUndefined()
-      expect(target.on.workflow_call).toBeDefined()
-      expect(
-        Object.values(workflow('pr-check.yml').jobs).some(
-          (job: unknown) => (job as { uses?: string }).uses === `./.github/workflows/${file}`
-        )
-      ).toBe(true)
+  it('routes coverage through the PR change detector', () => {
+    const target = workflow('coverage.yml')
+    expect(target.on.pull_request).toBeUndefined()
+    expect(target.on.workflow_call).toBeDefined()
+    expect(workflow('pr-check.yml').jobs.coverage.uses).toBe('./.github/workflows/coverage.yml')
+  })
+
+  it('runs integration and Linux packaging nightly without a PR trigger', () => {
+    const pr = workflow('pr-check.yml')
+    const nightly = workflow('nightly-integration.yml')
+    expect(nightly.on.schedule).toEqual([{ cron: '23 18 * * *' }])
+    expect(nightly.on.workflow_dispatch).toBeDefined()
+    expect(pr.on.workflow_call).toBeDefined()
+    expect(nightly.jobs.integration.uses).toBe('./.github/workflows/pr-check.yml')
+    expect(nightly.jobs['linux-gui'].uses).toBe('./.github/workflows/package-linux-gui.yml')
+    expect(nightly.jobs['linux-gui'].with.run_acceptance).toBe(true)
+    expect(pr.jobs.changes.if).toBe("github.event_name == 'pull_request'")
+    for (const job of ['membership', 'quick-panel-windows', 'e2e']) {
+      expect(pr.jobs[job].if).toBe("github.event_name != 'pull_request'")
+      expect(pr.jobs[job].needs).toBeUndefined()
     }
-  )
+    expect(pr.jobs.membership.with.tier).toBe('nightly')
+    expect(pr.jobs.membership.secrets).toBe('inherit')
+    expect(workflow('membership-e2e.yml').on.schedule).toBeUndefined()
+    expect(workflow('package-linux-gui.yml').on.pull_request).toBeUndefined()
+  })
 })
 
 describe('TesterArmy PR routing', () => {

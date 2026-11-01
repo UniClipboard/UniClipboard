@@ -2,7 +2,7 @@ name: 'Package Linux GUI'
 run-name: package-linux-gui-${{ github.run_number }}
 
 # Native Linux packaging with mandatory final artifact checks. Runtime acceptance is delegated to
-# linux-gui-acceptance.yml for PR/manual builds; release.yml explicitly disables it.
+# linux-gui-acceptance.yml for nightly/manual builds; release.yml explicitly disables it.
 on:
   workflow_call:
     secrets:
@@ -41,26 +41,6 @@ on:
         required: false
         type: string
         default: '2.39'
-  pull_request:
-    paths:
-      - '.github/workflows/package-linux-gui.yml'
-      - 'scripts/build-cache/**'
-      - '.github/workflows/linux-gui-acceptance.yml'
-      - 'apps/gui-go/e2e_invoke.go'
-      - 'apps/gui-go/e2e/package_linux.py'
-      - 'apps/gui-go/e2e/appimage_processes.py'
-      - 'apps/gui-go/e2e/updatetool/**'
-      - 'apps/gui-go/ui_appimage_linux.go'
-      - 'scripts/ci/prepare-webkit-container-profile.sh'
-      - 'scripts/tests/test_linux_gtk4_packaging.py'
-      - 'scripts/install.sh'
-      - 'packaging/nix/update.py'
-      - 'packaging/uniclipboard.spec'
-      - 'apps/gui-go/e2e/linux/**'
-      - 'apps/gui-go/e2e/linux_appimage_run.py'
-      - 'apps/gui-go/packaging/linux/**'
-      - 'packaging/linux/**'
-      - 'scripts/collect-release-assets.py'
   workflow_dispatch:
     inputs:
       save_cache:
@@ -82,7 +62,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: package-linux-gui-${{ github.event.pull_request.number || github.ref }}
+  group: package-linux-gui-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -91,7 +71,7 @@ env:
 
 jobs:
   # Only a standalone manual dispatch with a `ref` needs this. Every other entry already supplies an exact SHA (build.yml passes the SHA
-  # pinned by its setup-matrix job, a PR has its head, an empty ref is the dispatched commit), so the job is skipped there and a release
+  # pinned by its setup-matrix job, an empty ref is the dispatched or scheduled commit), so the job is skipped there and a release
   # run never has it. When called from another workflow, `github.workflow` is the caller's name, not this one's.
   resolve:
     if: github.event_name == 'workflow_dispatch' && github.workflow == 'Package Linux GUI' && inputs.ref != ''
@@ -132,7 +112,7 @@ jobs:
       UC_KEYRING_IMAGE: uc-gui-go-linux-keyring:ci
       UC_MAX_GLIBC: ${{ inputs.max_glibc || '2.39' }}
       # The one source commit of this run, also verified against the package manifest.
-      UC_EXPECT_HEAD: ${{ needs.resolve.outputs.sha || inputs.ref || github.event.pull_request.head.sha || github.sha }}
+      UC_EXPECT_HEAD: ${{ needs.resolve.outputs.sha || inputs.ref || github.sha }}
     steps:
       - name: Require a pinned source SHA
         # Matrix jobs never resolve a name themselves: it could move between them. A name reaching this point means a caller bug.
@@ -299,7 +279,7 @@ jobs:
 
   acceptance:
     needs: package
-    if: ${{ !cancelled() && needs.package.result == 'success' && inputs.build_only != true && (github.event_name == 'pull_request' || inputs.run_acceptance) }}
+    if: ${{ !cancelled() && needs.package.result == 'success' && inputs.build_only != true && inputs.run_acceptance }}
     uses: ./.github/workflows/linux-gui-acceptance.yml
     with:
       ref: ${{ needs.package.outputs.sha }}

@@ -6,6 +6,7 @@ on:
     branches:
       - main
     types: [opened, synchronize, reopened]
+  workflow_call:
 
 permissions:
   contents: read
@@ -13,15 +14,16 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: pr-check-${{ github.event.pull_request.number }}
+  group: pr-check-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 # Keep job-level routing so checks have an explicit result on unrelated PRs.
-# Shared inputs live in .github/ci-paths.yml; reusable suites have no independent PR trigger.
+# Shared PR inputs live in .github/ci-paths.yml; nightly suites run through workflow_call.
 # The frontend suite owns the tested bundle consumed by the Go host compile job.
 jobs:
   changes:
     name: Detect Changed Paths
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     outputs:
@@ -29,9 +31,6 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       gui_go: ${{ steps.filter.outputs.gui_go }}
       cli_go: ${{ steps.filter.outputs.cli_go }}
-      quick_panel: ${{ steps.filter.outputs.quick_panel }}
-      e2e: ${{ steps.filter.outputs.e2e }}
-      membership: ${{ steps.filter.outputs.membership }}
       tooling: ${{ steps.filter.outputs.tooling }}
       testerarmy_browser: ${{ steps.filter.outputs.testerarmy_browser }}
       testerarmy_backend: ${{ steps.filter.outputs.testerarmy_backend }}
@@ -68,11 +67,11 @@ jobs:
 
   membership:
     name: Membership
-    needs: changes
-    if: ${{ needs.changes.outputs.membership == 'true' }}
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/membership-e2e.yml
     with:
-      tier: pr
+      tier: nightly
+    secrets: inherit
 
   testerarmy-browser:
     needs: changes
@@ -312,7 +311,7 @@ jobs:
           shared-key: pr-check
           cache-targets: false
           # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: false
 
       - name: Restore Linux PR CAS snapshot
         uses: ./.github/actions/mbx-snapshot
@@ -384,8 +383,7 @@ jobs:
 
   quick-panel-windows:
     name: Quick panel (${{ matrix.name }})
-    needs: changes
-    if: ${{ needs.changes.outputs.quick_panel == 'true' }}
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -420,14 +418,14 @@ jobs:
           workspaces: '. -> target'
           cache-targets: false
           shared-key: pr-check-quick-panel-${{ matrix.runner }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: false
 
       - name: Restore Windows quick-panel CAS snapshot
         uses: ./.github/actions/mbx-snapshot
         with:
           scene: quick-panel-windows
 
-      - name: Build Windows PR Rust checks
+      - name: Build Windows quick panel checks
         uses: ./.github/actions/build-pr-rust
         with:
           scene: quick-panel-windows
@@ -454,8 +452,7 @@ jobs:
     name: CLI E2E Tests
     env:
       MBX_CACHE_EXPORT_GROUP: e2e-macos
-    needs: changes
-    if: ${{ needs.changes.outputs.e2e == 'true' }}
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     # Cold builds and the complete real-daemon suite exceeded the previous 45-minute budget.
     timeout-minutes: 90
@@ -483,7 +480,7 @@ jobs:
           workspaces: '. -> target'
           shared-key: e2e-macos
           cache-targets: false
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: false
 
       - name: Restore E2E CAS snapshot
         uses: ./.github/actions/mbx-snapshot
@@ -570,8 +567,8 @@ jobs:
         if: always()
         env:
           UC_E2E_EVIDENCE_DIR: ${{ runner.temp }}/e2e-evidence
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ github.event.before || '' }}
         run: |
           mkdir -p "$UC_E2E_EVIDENCE_DIR"
           {

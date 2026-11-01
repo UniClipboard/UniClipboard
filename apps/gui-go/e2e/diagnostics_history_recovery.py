@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import zipfile
+import urllib.request
 from run import ROOT, isolated_env, pid_alive
 from file_preview_run import cli, PASSPHRASE
 
@@ -22,17 +23,16 @@ def run(out):
     directory = home / 'Library/Logs' / ('app.uniclipboard.desktop-' + profile) / 'otel-history'
     history = directory / 'history.enc'
     evidence = directory / 'history.quarantine.enc'
-    report = {'passed': False, 'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), 'enginePin': next(line for line in (ROOT / 'Cargo.toml').read_text().splitlines() if line.startswith('uc-engine =')), 'cases': {}, 'cleanupFailures': {}}
+    report = {'passed': False, 'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), 'enginePin': next(line for line in (ROOT / 'Cargo.toml').read_text().splitlines() if line.startswith('uc-engine =')), 'fixtureHome': str(home), 'profile': profile, 'cases': {}, 'cleanupFailures': {}}
     running = False
-    held = None
 
     def digest(content):
         return hashlib.sha256(content).hexdigest()
 
     def start():
         nonlocal running
-        cli(env, 'start')
         running = True
+        cli(env, 'start')
 
     def stop():
         nonlocal running
@@ -103,18 +103,32 @@ def run(out):
         wait_encrypted('restored-key-history')
         stop()
 
-        # Locked startup plus invalid framing must not be mistaken for authorized recovery.
-        keys = list((data / 'keyring').glob('*.bin'))
-        assert len(keys) == 1, 'unexpected isolated development key store'
-        held = (keys[0], keys[0].with_suffix('.held'))
-        held[0].rename(held[1])
+        # Lock the live Engine session; a closed content grant alone would not exercise key failure.
+        start()
+        wait_encrypted('before-session-lock')
+        connection = json.loads((data / 'daemon.conn').read_text())
+        base = 'http://' + connection['host'] + ':' + str(connection['port'])
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        # Exchange only in memory; neither bearer nor session credentials enter the report.
+        auth = urllib.request.Request(base + '/auth/connect', data=json.dumps({'pid': os.getpid(), 'clientType': 'cli'}).encode(), headers={
+            'Authorization': 'Bearer ' + connection['token'], 'Content-Type': 'application/json'})
+        with opener.open(auth, timeout=5) as response:
+            session = json.loads(response.read())['data']['sessionToken']
+        def request(route, body):
+            req = urllib.request.Request(base + route, data=json.dumps(body).encode(), headers={
+                'Authorization': 'Session ' + session, 'Content-Type': 'application/json'})
+            with opener.open(req, timeout=10) as response:
+                assert response.status == 200
+        request('/encryption/lock', {})
+        summary, _ = export('locked-barrier')
+        assert summary['persistence'] == 'key_unavailable'
         damaged = b'invalid-encrypted-history-fixture'
         history.write_bytes(damaged)
-        start()
         unchanged('locked-invalid-history', damaged, 'key_unavailable')
+        history.write_bytes(original)
+        request('/encryption/unlock-with-passphrase', {'passphrase': PASSPHRASE})
+        wait_encrypted('session-unlocked')
         stop()
-        held[1].rename(held[0])
-        held = None
 
         for name, payload in [('invalid-framing', damaged), ('invalid-authentication', original[:-1] + bytes([original[-1] ^ 1])), ('oversized', original + b'\x00' * (8 * 1024 * 1024 + 1))]:
             history.write_bytes(payload)
@@ -169,11 +183,6 @@ def run(out):
         body_failed = sys.exc_info()[0] is not None
         if body_failed:
             report['scenarioErrorType'] = type(sys.exc_info()[1]).__name__
-        if held:
-            try:
-                held[1].rename(held[0])
-            except Exception as error:
-                report['cleanupFailures']['restoreKeyStore'] = type(error).__name__
         if history.exists():
             try:
                 history.chmod(0o600)

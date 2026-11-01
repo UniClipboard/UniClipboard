@@ -69,3 +69,88 @@ def compare(path):
     result['unmatchedOtlp'] = sum(len(items) for items in index.values())
     result['passed'] = result['matched'] > 0 and not result['mismatches'] and result['unmatchedOtlp'] == 0
     return result
+
+
+def run(out):
+    """Exercise real peer traffic, export, restart, and reloaded run scopes without a GUI driver."""
+    import hashlib
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    import tempfile
+    import time
+    from run import ROOT, isolated_env
+    from file_preview_run import cli
+    from peers import pair
+
+    out = Path(out).resolve()
+    out.mkdir(parents=True, exist_ok=False)
+    homes = [tempfile.mkdtemp(prefix='uc-gui-go-correlation-') for _ in range(2)]
+    environments = [isolated_env(home, 'gui-go-' + Path(home).name, {'PATH': str(ROOT / 'target/debug') + ':' + os.environ['PATH']}) for home in homes]
+    report = {'passed': False, 'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), 'enginePin': next(line for line in (ROOT / 'Cargo.toml').read_text().splitlines() if line.startswith('uc-engine =')), 'exports': {}, 'cleanupFailures': {}}
+    marker = 'synthetic-correlation-' + os.urandom(8).hex()
+
+    def export(name):
+        value = json.loads(cli(environments[0], '--json', 'debug', 'export-logs').stdout)
+        target = out / (name + '.zip')
+        target.write_bytes(Path(value['path']).read_bytes())
+        result = compare(target)
+        result['zipSha256'] = hashlib.sha256(target.read_bytes()).hexdigest()
+        report['exports'][name] = result
+        assert result['passed'], result
+        return result
+
+    try:
+        pair(*environments, 'synthetic-correlation-a', 'synthetic-correlation-b')
+        cli(environments[0], 'debug', 'capture', 'start', '--minutes', '2')
+        cli(environments[1], 'stop')
+        cli(environments[1], 'start')
+        report['sendExit'] = cli(environments[1], 'send', marker, check=False).returncode
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            got = cli(environments[0], 'get', check=False)
+            if got.returncode == 0 and got.stdout.strip() == marker:
+                break
+            time.sleep(0.5)
+        else:
+            raise AssertionError('real paired transfer did not arrive')
+        report['receivedExact'] = True
+        deadline = time.monotonic() + 30
+        required = {'peer_ref', 'connection_id', 'path_ref', 'capture_id', 'capture_mode', 'run_id'}
+        while time.monotonic() < deadline:
+            first = export('before-restart')
+            if all(first['comparedValues'].get(key, 0) > 0 for key in required) and first['traceContexts'] > 0:
+                break
+            time.sleep(0.5)
+        else:
+            raise AssertionError('real traffic did not exercise all required correlation attributes')
+        cli(environments[0], 'stop')
+        cli(environments[0], 'start')
+        after = export('after-restart')
+        assert len(after['runs']) >= 2, 'source run scopes did not survive reload'
+        assert set(first['runs']) & set(after['runs']), 'original run scope missing after restart'
+        report['passed'] = True
+    finally:
+        body_failed = sys.exc_info()[0] is not None
+        if body_failed:
+            report['scenarioErrorType'] = type(sys.exc_info()[1]).__name__
+        for index, env in enumerate(environments):
+            try:
+                result = cli(env, 'stop', check=False, timeout=30)
+                report.setdefault('stopExits', {})[str(index)] = result.returncode
+                if result.returncode:
+                    report['cleanupFailures']['daemon:' + str(index)] = 'NonzeroExit'
+            except Exception as error:
+                report['cleanupFailures']['daemon:' + str(index)] = type(error).__name__
+        for name in ['target/debug/uniclipd', 'target/gui-go/uniclip']:
+            report.setdefault('binarySha256', {})[name] = None
+            try:
+                report['binarySha256'][name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+            except Exception as error:
+                report['cleanupFailures']['hash:' + name] = type(error).__name__
+        if report['cleanupFailures']:
+            report['passed'] = False
+        (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
+        if report['cleanupFailures'] and not body_failed:
+            raise RuntimeError('correlation acceptance cleanup failed; inspect result.json')

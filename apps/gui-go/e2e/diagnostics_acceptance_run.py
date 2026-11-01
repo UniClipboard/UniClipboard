@@ -109,11 +109,15 @@ def verify_export(path, pinned):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--correlation-only', action='store_true', help='run real paired-daemon OTLP correlation acceptance')
     parser.add_argument('--history-recovery-only', action='store_true', help='run isolated encrypted history recovery acceptance')
     parser.add_argument('--performance-only', action='store_true', help='run isolated CPU, memory, process exit and quota acceptance')
     parser.add_argument('--no-expiry-wait', action='store_true', help='offline re-run only; skips the 600 s wait')
     parser.add_argument('--skip-expiry', action='store_true', help='not used for acceptance: the 600 s expiry is the point')
     args = parser.parse_args()
+    if args.correlation_only:
+        from diagnostics_correlation import run
+        return run(args.out)
     if args.history_recovery_only:
         from diagnostics_history_recovery import run
         return run(args.out)

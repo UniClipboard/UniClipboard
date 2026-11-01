@@ -87,22 +87,18 @@ func TestTrayIconThemeRepaintKeepsStyle(t *testing.T) {
 	}
 }
 
-// The cat image per platform: the shipped template bytes on macOS, a tinted image of the platform tray size elsewhere.
+// The cat image per platform: a padded template on macOS, a tinted image of the platform tray size elsewhere.
 func TestTrayCatImage(t *testing.T) {
 	data, err := trayIconImage(trayIconCat)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if runtime.GOOS == "darwin" {
-		if !bytes.Equal(data, trayCatPNG) {
-			t.Fatal("macOS does not receive the shipped template bytes")
+		if bytes.Equal(data, trayCatPNG) {
+			t.Fatal("macOS receives the oversized shipped image without scaling")
 		}
 	}
-	tinted, err := tintedCat(trayIconSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
-	img, err := png.Decode(bytes.NewReader(tinted))
+	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,5 +121,11 @@ func TestTrayCatImage(t *testing.T) {
 	}
 	if opaque == 0 {
 		t.Fatal("tinted cat is empty")
+	}
+	if runtime.GOOS == "darwin" {
+		assertTrayMacBounds(t, "cat", img)
+		if trayIconSpec() != macTrayIconSpec() {
+			t.Fatal("macOS tray does not use the tested geometry")
+		}
 	}
 }

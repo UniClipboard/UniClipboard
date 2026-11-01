@@ -20,7 +20,7 @@
 
 - 一份渲染器：`tray_icon_raster.go` 解析设计的 SVG 路径并栅格化描边（圆头圆角；描边由许多互相重叠的小块组成，所以按 4 倍分辨率绘制再平均，单次光栅化会在重叠处把部分覆盖相加，使边缘偏重），`tray_icon_design.go` 画字形，各平台文件只决定尺寸与颜色。
 - 平台适配：
-  - macOS：模板图（只用 alpha，菜单栏深浅色自动着色），44 px 图像，网格按 44 px（22 pt）绘制，字形可见部分约 16.5 × 18.3 pt。设计写的是 18 pt 画稿，那样只有约 13.5 × 15 pt，在 Mac 上会比旁边的状态栏图标小（此前的猫方案在真机上就是这个反馈），所以放大了网格；这是对设计尺寸的有意偏离。
+  - macOS：模板图（只用 alpha，菜单栏深浅色自动着色），保留 44 × 44 px（2x、22 pt）图像，按设计的 36 px（18 pt）网格居中绘制，两侧网格留白各 4 px。字形几何约 13.5 × 15 pt；含抗锯齿的 alpha 包围盒为 28 × 30 px（14 × 15 pt）。此前把网格放大到 44 px 的实现导致图标偏大（#2135），现恢复设计尺寸。尺寸常量与生成函数位于不受平台构建标签限制的 `tray_icon_macos.go`，Linux CI 也能验证 macOS 几何。
   - Windows：按当前任务栏主题画一份（浅色 `#1B1B1B`，深色 `#FFFFFF`），尺寸取系统小图标尺寸（`SM_CXSMICON`，系统 DPI）；任务栏主题变化时（`SystemThemeChanged`）在独立 goroutine 里重画。不用 Wails 的亮/暗两份图标：读源码可知，运行期调用 `SetIcon` 或 `SetDarkModeIcon` 时，只要两个模式共用一个句柄，后设置的就会同时替换两个模式，两份图标无法保持分开。
   - Linux：22 px，StatusNotifierItem 忽略模板标志，必须给出显式颜色：默认浅色图标 `#CDD6F4`（设计的深色栏环境），桌面配色方案为 `prefer-light`（`gsettings` 读取）时用深色 `#1B1B1B`；配色在显示图标时读一次。
 - Entry points: `initTray` in `tray.go` calls `newTrayIcon(...).show()` to show the default glyph; `applySettings` in `settings_watch.go` calls `setStyle` to apply `general.trayIcon`. `show` and `setStyle` in `tray_icon.go` render and apply under one lock, and a theme repaint draws the style currently shown. The cat is in `tray_icon_cat.go` and in `catTrayImage` of each platform file.
@@ -30,7 +30,7 @@
 - Values: `glyph` (the default, the glyph above) and `cat` (the cat shipped in v1.1.2). The daemon's product settings store the preference (ADR-013). The host only reads it and never writes it back.
 - Cat image: `apps/gui-go/icons/tray-cat@2x.png`. It is byte-identical to the macOS tray image of the retired host at tag `v1.1.2` (git blob `b745edc61efe18b8895d427830919280d62693b9`): 44 x 44, black pixels only, shape in the alpha channel (a template image). The source note and the hash check script are in `apps/gui-go/icons/TRAY-CAT-SOURCE.md`. v1.1.2 used it on macOS only (`include_bytes!` references `@2x` only); Windows and Linux showed the application icon.
 - Per platform:
-  - macOS: the embedded bytes go to `SetTemplateIcon` unchanged, the same bytes v1.1.2 gave the menu bar.
+  - macOS：运行时复用猫头的 alpha 缩放路径，以 Catmull–Rom 把整张原图缩到 34 × 34 px，居中放入 44 × 44 px 透明画布（四周各 5 px），填充黑色后交给 `SetTemplateIcon`。alpha 包围盒从原图的 40 × 39 px（20 × 19.5 pt）缩到 32 × 31 px（16 × 15.5 pt）；原图略不对称，最终可见区域的上下留白相差 1 px。嵌入资源的字节与来源校验保持不变。
   - Windows and Linux: the host takes the image's alpha, scales it to the size from `trayIconSpec()` and fills it with that spec's foreground colour. This is a new rendering derived from the macOS image; v1.1.x never shipped a cat on these platforms.
 - Apply: the host calls `applySettings` at startup and after every read of the authoritative settings. The tray icon executor compares with the style it shows and makes no native call when nothing changed. A lightweight cold start has no GUI process and therefore no tray owner; that is not an apply failure.
 
@@ -42,7 +42,7 @@
 - **F4 平台差异**：macOS 模板图随菜单栏自动着色；Windows 按任务栏主题着色；Linux 忽略模板标志，必须显式着色。
 - **F5 重复来源**：字形的几何只有一份，各平台只在尺寸与颜色上不同。
 - **F6 持久化**：图标不写任何东西到磁盘或数据库，没有持久化明文的问题。
-- **F7 尺寸**：图像被边缘裁切，或在 macOS 上比旁边的状态栏图标明显小。预期：生产帧不被裁切，macOS 上可见部分的长边为 17 到 19 pt。
+- **F7 尺寸**：图像被边缘裁切，或在 macOS 上大于原生菜单栏图标。预期：两种样式的生产帧均有透明留白，macOS 上可见部分的长边为 15 到 16 pt。
 
 - **F8 Field path mismatch**: if the JSON path of `View.General.TrayIcon` differs from the daemon's, it decodes to an empty string without an error. Expected: the real-daemon Go e2e asserts the decoded value with the non-default value `cat`.
 - **F9 Unknown value**: a value other than `glyph` or `cat` (or an empty string) is read. Expected: the glyph is shown; the log says only "unknown style" and never prints the received string.
@@ -55,7 +55,7 @@
 
 ## 验收契约
 
-1. 渲染对照（e2e 构建的 `tray-icon-compare`）：形状对照，用设计的 44 px / 36 px 几何和 macOS 浅色配色渲染，与独立栅格化的设计画板 `glyph.png` 逐像素比对，30% 容差下差异像素不超过 30；以及生产帧检查，按托盘实际收到的图像（`trayIconSpec`，不是设计几何）检查模板图 alpha 采样点（透明点在前面卡片的内部，实心点在它左边描边的中心线上）、不被图像边缘裁切，并且在 macOS 上长边为 17 到 19 pt。形状对照只验证轮廓，不代表菜单栏里的实际尺寸。
+1. 渲染对照（e2e 构建的 `tray-icon-compare`）：形状对照，用设计的 44 px / 36 px 几何和 macOS 浅色配色渲染，与独立栅格化的设计画板 `glyph.png` 逐像素比对，30% 容差下差异像素不超过 30；以及生产帧检查，按托盘实际收到的图像（`trayIconSpec`）检查模板图 alpha 采样点（透明点在前面卡片的内部，实心点在它左边描边的中心线上）、不被图像边缘裁切，并且在 macOS 上长边为 15 到 16 pt。形状对照只验证轮廓，不代表菜单栏里的实际尺寸。
 2. 导出（`tray-icon-export`）：平台实际交给托盘的图像与设计几何下的参照图都能导出为 PNG。
 3. 原生状态项（真实 Go GUI、独立 profile、同一个真实 daemon）：截取这个 pid 自己状态项周围的一小块菜单栏，与设计对照。
 4. 菜单不回退：右键打开菜单（十个条目，八项加两条分隔线；标签随会话语言，所以只检查结构）；菜单里的同步开关使 daemon 的 `syncEnabled` 翻转并恢复；Quit 使这个 GUI 进程以 0 退出，对应的 daemon 进程消失。
@@ -65,10 +65,12 @@
    - Persistence and events: in the real-daemon Go watcher e2e, a write of `cat` decodes to `View.General.TrayIcon == "cat"` (F8).
    - Frontend save path: `apps/gui-go/frontend/e2e/tray-icon-settings-api.mjs` runs the real frontend settings modules against an isolated real daemon and records the request body, the HTTP result, the value read back and the hash of `desktop-settings.json` for `cat` and `glyph`.
    - Executor: an isolated test replaces the native call with a recorder and covers F9-F12. It proves the number of calls and the images passed, not what the tray displays.
-   - Image: the output of the hash check script (F15).
+   - 图像：来源哈希脚本（F15）；`TestTrayMacImageGeometry` 在各平台验证两种 macOS 样式的 44 px 画布、alpha 包围盒、纯黑像素与抗锯齿边缘。包围盒同时检查 alpha > 0 与原生 e2e 使用的 alpha > 20：字形为 `(8,7)-(36,37)`，猫头为 `(6,6)-(38,37)`，右下界不包含在内。
    - The native display is accepted by the user by hand: switching between glyph and cat, keeping the style after a restart, silent start, and light/dark theme changes.
 
 ## 结果
+
+以下 `run15` 至 `run17` 是 #2135 修复前、macOS 网格仍为 44 px 时的历史证据，不代表当前尺寸的原生验收。
 
 证据在任务库 `library/run15/`（源码 `c54361f68`）与 `library/run16/`（源码 `348415f90`，只比前者多删除未用的路径命令与参数、改了一个采样点），每次运行的 `provenance.json` 记录源码提交、产物哈希与工具。
 

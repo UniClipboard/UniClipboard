@@ -95,6 +95,9 @@ def verify_export(path, pinned):
             assert 'process.memory.usage' in metrics
             assert 'uc.process.cpu.time' in metrics
             assert 'resourceMetrics' in metrics
+            from diagnostics_correlation import compare
+            out['correlation'] = compare(path)
+            assert out['correlation']['passed'], out['correlation']
         else:
             assert otel['liveFlush'] is False
             assert otel['state'] in ('unavailable', 'encrypted_unavailable')
@@ -106,10 +109,14 @@ def verify_export(path, pinned):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--history-recovery-only', action='store_true', help='run isolated encrypted history recovery acceptance')
     parser.add_argument('--performance-only', action='store_true', help='run isolated CPU, memory, process exit and quota acceptance')
     parser.add_argument('--no-expiry-wait', action='store_true', help='offline re-run only; skips the 600 s wait')
     parser.add_argument('--skip-expiry', action='store_true', help='not used for acceptance: the 600 s expiry is the point')
     args = parser.parse_args()
+    if args.history_recovery_only:
+        from diagnostics_history_recovery import run
+        return run(args.out)
     if args.performance_only:
         from diagnostics_performance import run
         return run(args.out)

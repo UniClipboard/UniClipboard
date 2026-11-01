@@ -36,6 +36,7 @@ import/README.md
 资源包含产品版本、平台、进程角色、PID、进程创建时间和随机运行标识。
 文件不包含真实设备身份、命令行、环境变量或剪贴板内容。
 日志只使用已通过现有隐私过滤的记录。追踪只导出已完成的 span。
+OTLP 日志只补充明确白名单中的本地关联元数据。`peer_ref`、连接、路径和采集引用保留原值，并由原记录的 `run_id` 划分作用域。该运行标识不等同于 SDK Resource 的随机运行标识。不得复制任意顶层字段。
 历史裁剪可能导致追踪不完整。清单不能将存在追踪文件解释为所有追踪完整。
 
 内存历史最多保留 30 分钟、8 MiB。
@@ -44,6 +45,7 @@ import/README.md
 明文持久化输入最多 512 KiB，密文文件最多 8 MiB。
 清单分别报告内存裁剪、持久裁剪、拒绝记录和最近指标时间。
 密钥不可用时仅保留内存记录。不得生成替代文件密钥。
+确定损坏或不支持的历史格式不会永久阻断写入。采集器先成功加密新历史，再将旧密文保存到单个 `history.quarantine.enc` 证据槽，最后原子替换历史。证据最多保留 8 MiB；超限时只保留前缀，并报告原大小及裁剪状态。恢复元数据随新历史加密保存，并出现在导出摘要中。密钥不可用、锁定、未知加密错误或 IO 错误均不触发隔离和覆盖。
 
 在线导出先请求导出前快照，再冻结 OTLP 记录，最后压缩。
 快照等待在阻塞线程中执行，等待期限为 1 秒。
@@ -96,3 +98,9 @@ python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --performance-only --out t
 Collector 导入回执与平台查询结果必须另行保留。
 Windows 继续使用 `apps/gui-go/e2e/windows_diagnostics_acceptance.ps1`。
 未执行的平台、休眠场景、受控负载与开销对比不能记为通过。
+
+加密历史恢复验收仍使用现有入口：
+
+```bash
+python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --history-recovery-only --out target/diagnostic-performance/history-recovery
+```

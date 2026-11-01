@@ -3,6 +3,11 @@ export const suites = {
     fixture: 'settings-page',
     platforms: ['macos', 'windows', 'linux'],
   },
+  'delivery-status': {
+    fixture: 'delivery-status',
+    platforms: ['macos', 'windows', 'linux'],
+    viewport: { width: 686, height: 650 },
+  },
   'settings-sidebar': { fixture: 'settings-page', platforms: ['macos', 'linux', 'windows'] },
   'settings-sidebar-motion': {
     fixture: 'settings-page',
@@ -81,6 +86,7 @@ export const suites = {
 }
 // Only independently passing suite/skin combinations enter the normal CI run.
 export const verifiedPlatforms = {
+  'delivery-status': ['macos', 'windows', 'linux'],
   'quick-panel-accessibility': ['macos', 'windows', 'linux'],
   'startup-first-frame': ['macos', 'windows', 'linux', 'none'],
   'sidebar-animation': ['macos'],

@@ -3099,3 +3099,147 @@
   display: flex;
   gap: 8px;
 }
+
+/* Transfer inspector: a quiet completed list and expanded rows only for active files. */
+.adw-transfer-trigger {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--fg2);
+  cursor: default;
+}
+.adw-transfer-trigger:hover {
+  background: var(--hover);
+}
+.adw-transfer-trigger:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.adw-transfer-trigger[data-tone='info'] {
+  color: var(--accent);
+}
+.adw-transfer-trigger[data-tone='critical'] {
+  color: var(--destructive);
+  cursor: pointer;
+}
+.adw-transfer-trigger[aria-disabled='true'] {
+  cursor: default;
+}
+.adw-transfer-ring,
+.adw-transfer-ring > svg {
+  display: block;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.adw-transfer {
+  box-sizing: border-box;
+  width: min(23rem, calc(100vw - 2rem));
+  min-width: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+.adw-transfer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1rem;
+}
+.adw-transfer-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.adw-transfer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 600;
+}
+.adw-transfer-status {
+  flex-shrink: 0;
+  color: var(--fg2);
+}
+.adw-transfer-status[data-tone='critical'] {
+  color: var(--destructive);
+}
+.adw-transfer-summary {
+  color: var(--fg2);
+  font-variant-numeric: tabular-nums;
+}
+.adw-transfer-files {
+  display: block;
+  max-height: min(19rem, calc(100vh - 10rem));
+  margin: 0;
+  padding: 0 0.5rem 0.5rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  scrollbar-width: thin;
+}
+.adw-transfer-files:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.adw-transfer-item {
+  display: block;
+  padding: 0.625rem 0.5rem;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+.adw-transfer-file-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.adw-transfer-file-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--fg3);
+}
+.adw-transfer-file-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+.adw-transfer-file-status {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--fg2);
+}
+.adw-transfer-item[data-tone='positive'] .adw-transfer-file-name {
+  color: var(--fg2);
+}
+.adw-transfer-item[data-tone='critical'] .adw-transfer-file-status {
+  color: var(--destructive);
+}
+.adw-transfer-file-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: 0.5rem 0 0 1.625rem;
+}
+.adw-transfer-reason {
+  margin: 0.25rem 0 0 1.625rem;
+  color: var(--destructive);
+  overflow-wrap: anywhere;
+}

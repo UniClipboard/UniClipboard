@@ -56,3 +56,5 @@ export { ToolbarButton } from './ToolbarButton'
 export { ToolbarDivider } from './ToolbarDivider'
 export { ToolbarGroup } from './ToolbarGroup'
 export { UiRoot } from './UiRoot'
+
+export { TransferStatus } from './TransferStatus'

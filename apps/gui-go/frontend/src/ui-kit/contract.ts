@@ -891,10 +891,37 @@ export type StatusTone = 'positive' | 'info' | 'neutral' | 'warning' | 'critical
 export interface InsetListRow {
   id: string
   title: string
+  /** Custom trailing status; replaces the detail text when supplied. */
+  status?: ReactNode
   /** Trailing status text, coloured by `tone`. */
   detail?: string
   tone?: StatusTone
   action?: LabelledAction
+}
+
+/** Presentation data for one file or content unit in a transfer. */
+export interface TransferStatusItem {
+  id: string
+  label: string
+  status: string
+  tone: StatusTone
+  value?: number
+  bytes: string
+  reason?: string
+}
+
+/** Hover and keyboard-focus details for one target; retry never prevents inspecting the result. */
+export interface TransferStatusProps {
+  'data-testid'?: string
+  label: string
+  title: string
+  status: string
+  summary?: string
+  tone: StatusTone
+  value?: number
+  disabled?: boolean
+  onRetry?: () => void
+  items: TransferStatusItem[]
 }
 
 /** A grouped (inset) table of short rows with a status dot, e.g. per-device delivery. */
@@ -1175,3 +1202,5 @@ export declare function ButtonRow(props: ButtonRowProps): ReactNode
 export declare function SettingsGroup(props: SettingsGroupProps): ReactNode
 export declare function SettingsRow(props: SettingsRowProps): ReactNode
 export declare function SettingsContent(props: SettingsContentProps): ReactNode
+
+export declare function TransferStatus(props: TransferStatusProps): ReactNode

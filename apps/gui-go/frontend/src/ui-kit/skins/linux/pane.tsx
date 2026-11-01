@@ -222,9 +222,9 @@ export function InsetList({ label, rows }: InsetListProps) {
     <ul className="adw-grouped" aria-label={label}>
       {rows.map(row => (
         <li key={row.id} data-tone={row.tone ?? 'neutral'}>
-          <span className="adw-status-dot" />
+          {!row.status && <span className="adw-status-dot" />}
           <span className="adw-grouped-title">{row.title}</span>
-          {row.detail && <span className="adw-status">{row.detail}</span>}
+          {row.status ?? (row.detail && <span className="adw-status">{row.detail}</span>)}
           {row.action && (
             <button type="button" className="adw-grouped-action" onClick={row.action.onClick}>
               {row.action.label}

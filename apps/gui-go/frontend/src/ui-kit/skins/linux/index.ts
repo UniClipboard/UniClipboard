@@ -51,3 +51,5 @@ export { StepList } from './step-list'
 export { Table } from './table'
 export { TextField } from './text-field'
 export { TokenSearchField } from './token-search'
+
+export { TransferStatus } from './transfer-status'

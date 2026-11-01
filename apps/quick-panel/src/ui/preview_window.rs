@@ -308,7 +308,7 @@ impl Render for PreviewWindow {
         let surface = if self.snapshot.is_image() {
             cx.theme().muted
         } else {
-            cx.global::<crate::ui::appearance::Surfaces>().card
+            cx.global::<crate::ui::appearance::Surfaces>().background
         };
         let border = cx.theme().border.opacity(0.5);
         let panel = self.panel.clone();

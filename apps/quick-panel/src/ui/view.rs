@@ -388,7 +388,7 @@ impl PreviewSnapshot {
             .rounded(units(platform::WINDOW_CORNER_RADIUS as f32))
             .border_1()
             .border_color(border)
-            .bg(cx.global::<crate::ui::appearance::Surfaces>().card)
+            .bg(cx.global::<crate::ui::appearance::Surfaces>().background)
             .overflow_hidden();
         let Some(item) = self.item.as_ref() else {
             return card.into_any_element();

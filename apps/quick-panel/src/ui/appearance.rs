@@ -6,7 +6,6 @@ const DEFAULT_PRESET: &str = "default";
 
 pub struct Surfaces {
     pub background: Hsla,
-    pub card: Hsla,
 }
 impl gpui::Global for Surfaces {}
 
@@ -66,7 +65,6 @@ pub fn apply(
     };
     cx.set_global(Surfaces {
         background: color("background")?,
-        card: color("card")?,
     });
     let theme = Theme::global_mut(cx);
     theme.colors.background = color("background")?;

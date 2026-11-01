@@ -37,6 +37,7 @@ async function transition(label, reverse = false) {
       originalToggle.focus()
       document.querySelector(`button[aria-label="${label}"]`).click()
       if (reverse) setTimeout(() => document.querySelector('.mac-split-toggle').click(), 80)
+      let committedAt = null
       function sample() {
         frames.push({
           ms: performance.now() - start,
@@ -58,7 +59,13 @@ async function transition(label, reverse = false) {
           toggleFocused: document.activeElement === originalToggle,
           expanded: document.querySelector('.mac-split-toggle').getAttribute('aria-expanded'),
         })
-        if (performance.now() - start < 400) requestAnimationFrame(sample)
+        // Let the reverse action commit before starting its capture window.
+        // Keep a deadline so a missing reverse action still reaches the original assertions.
+        const now = performance.now()
+        if (committedAt === null && (!reverse || frames.at(-1).expanded === 'true'))
+          committedAt = now
+        if (now - start < 2000 && (committedAt === null || now - committedAt < 400))
+          requestAnimationFrame(sample)
         else done(frames)
       }
       requestAnimationFrame(sample)

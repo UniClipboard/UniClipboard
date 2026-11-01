@@ -190,40 +190,28 @@ jobs:
           rm -f "${TEMP_OUTPUT}"
 
   build:
+    name: Build release ${{ matrix.pipeline }}
     needs: validate
-    # Reusable workflow permissions are validated even when a nested job is skipped.
-    # build.yml -> updater-signatures.yml requires read access to workflow artifacts.
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/build.yml
+    # One matrix owns cancellation across desktop and Linux CLI builds.
+    strategy:
+      fail-fast: true
+      matrix:
+        pipeline: [desktop, cli]
+    uses: ./.github/workflows/release-build.yml
     with:
+      pipeline: ${{ matrix.pipeline }}
       platform: ${{ inputs.platform || 'all' }}
       branch: ${{ needs.validate.outputs.source_sha }}
       channel: ${{ needs.validate.outputs.channel }}
-      package_cli: true
-      # Publication builds and verifies artifacts; full runtime acceptance belongs to PR/manual workflows.
-      run_acceptance: false
       allow_unsigned_windows: ${{ needs.validate.outputs.allow_unsigned_windows == 'true' }}
-      # Main and cache-warmup own cache writes; publication must not wait for cache uploads.
-      save_cache: false
-    secrets: inherit
-
-  build-cli:
-    needs: validate
-    uses: ./.github/workflows/build-cli.yml
-    with:
-      platform: ${{ inputs.platform || 'all' }}
-      branch: ${{ needs.validate.outputs.source_sha }}
-      channel: ${{ needs.validate.outputs.channel }}
-      # macOS and Windows x64 CLI archives come from the build job above.
-      linux_only: true
-      save_cache: false
     secrets: inherit
 
   create-release:
     name: Create GitHub Release
-    needs: [validate, build, build-cli]
+    needs: [validate, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer } from 'react'
+import { useEffect, useMemo, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter, filterToContentTypes, filterToTags } from '@/api/clipboardItems'
 import { type TimeRangePreset } from '@/api/daemon/search'
@@ -114,7 +114,7 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
  * Redux-backed list and no mode switch; the `isSearchActive` flag only drives UI
  * affordances (empty-state copy, the result count), not a data source.
  */
-export function useHistoryData() {
+export function useHistoryData(selectedId: string | null = null) {
   const { t } = useTranslation()
   const [state, dispatch] = useReducer(searchReducer, undefined, getInitialSearchState)
 
@@ -184,38 +184,43 @@ export function useHistoryData() {
   )
 
   const live = useHistoryWindow(model, readHistorySessionSnapshot()?.live ?? null)
-  useHistoryWindowImages(live.items)
-  useEffect(() => {
-    clipboardPreviewCache.retain(new Set(live.items.map(item => item.id)))
-  }, [live.items])
   const previousSnapshot = readHistorySessionSnapshot()
 
   // Merge incoming-transfer placeholders (Redux overlay, still owned by the
   // event reducer) ahead of the real entries from the engine.
-  const baseItems = useMemo<DisplayClipboardItem[]>(() => {
-    // Pending placeholders only belong in the unfiltered browse view; a narrowed
-    // query/filter set must show exactly what the engine returned, or unrelated
-    // inbound file placeholders leak into results the backend would exclude.
-    if (isSearchActive) return live.items
+  const pendingDisplayItems = useMemo<DisplayClipboardItem[]>(() => {
+    if (isSearchActive) return []
     const realIds = new Set(live.items.map(it => it.id))
-    const pendingDisplayItems: DisplayClipboardItem[] = pendingItems.flatMap(p =>
-      realIds.has(p.entryId)
-        ? []
-        : [
-            {
-              id: p.entryId,
-              type: 'file' as const,
-              activeTime: p.createdAt,
-              content: buildPendingFileContent(p),
-              device: deviceNameByPeerId[p.fromDevice],
-              textPreview: buildPendingPreview(p, t),
-            },
-          ]
-    )
-    return live.offset === 0
-      ? [...pendingDisplayItems, ...live.items].slice(0, PAGE_SIZE)
-      : live.items
-  }, [isSearchActive, live.items, live.offset, pendingItems, deviceNameByPeerId, t])
+    return pendingItems
+      .flatMap(p =>
+        realIds.has(p.entryId)
+          ? []
+          : [
+              {
+                id: p.entryId,
+                type: 'file' as const,
+                activeTime: p.createdAt,
+                content: buildPendingFileContent(p),
+                device: deviceNameByPeerId[p.fromDevice],
+                textPreview: buildPendingPreview(p, t),
+              },
+            ]
+      )
+      .slice(0, PAGE_SIZE)
+  }, [isSearchActive, live.items, pendingItems, deviceNameByPeerId, t])
+  const pendingCount = pendingDisplayItems.length
+  const baseItems = useMemo(
+    () =>
+      live.offset === 0 && pendingCount
+        ? [...pendingDisplayItems, ...live.items].slice(0, PAGE_SIZE)
+        : live.items,
+    [live.offset, live.items, pendingDisplayItems, pendingCount]
+  )
+  useHistoryWindowImages(baseItems)
+  useEffect(() => {
+    clipboardPreviewCache.retain(new Set(baseItems.map(item => item.id)), selectedId)
+  }, [baseItems, selectedId])
+  const visibleStart = useRef(0)
 
   const actions = useMemo(
     () => ({
@@ -246,11 +251,13 @@ export function useHistoryData() {
     writeHistorySessionSnapshot({
       searchState: state,
       live: liveSnapshot,
-      selectedId: previousSnapshot?.selectedId ?? null,
+      selectedId,
+      selectedItem: previousSnapshot?.selectedItem ?? null,
+      selectedIndex: previousSnapshot?.selectedIndex ?? null,
       seenIds: previousSnapshot?.seenIds ?? [],
       scrollState: previousSnapshot?.scrollState ?? null,
     })
-  }, [live.items.length, liveSnapshot, previousSnapshot, state])
+  }, [live.items.length, liveSnapshot, previousSnapshot, state, selectedId])
 
   return {
     filter: {
@@ -275,9 +282,50 @@ export function useHistoryData() {
     searchLoading: live.isLoading,
     hasMore: live.hasMore,
     handleLoadMore: live.growWindow,
+    resultKey: live.resultKey,
+    isAtTop: () => live.isAtTop() && visibleStart.current === 0,
+    resultsReady: live.resultsReady,
+    ensureItem: async (index: number) => {
+      if (index < pendingCount) {
+        if (live.offset > 0) await live.moveToTop()
+        return pendingDisplayItems[Math.max(0, index)] ?? null
+      }
+      return live.ensureItem(index - pendingCount)
+    },
+    ensureNeighbor: async (id: string, index: number, delta: number) => {
+      const pendingIndex = pendingDisplayItems.findIndex(item => item.id === id)
+      if (pendingIndex >= 0) {
+        const target = Math.max(
+          0,
+          Math.min(
+            Math.max(0, (live.total ?? live.items.length) + pendingCount - 1),
+            pendingIndex + delta
+          )
+        )
+        const item =
+          target < pendingCount
+            ? pendingDisplayItems[target]
+            : await live.ensureItem(target - pendingCount)
+        if (target < pendingCount && live.offset > 0) await live.moveToTop()
+        return item ? { item, index: target } : null
+      }
+      const result = await live.ensureNeighbor(id, Math.max(0, index - pendingCount), delta)
+      return result ? { ...result, index: result.index + pendingCount } : null
+    },
+    moveToTop: live.moveToTop,
     viewport: {
-      offset: live.offset,
-      onVisibleRange: live.reportViewport,
+      scrollToTop: live.headRevision,
+      reveal: live.reveal,
+      total: Math.max(
+        baseItems.length + live.offset + (live.offset > 0 ? pendingCount : 0),
+        (live.total ?? live.items.length) + pendingCount
+      ),
+      offset: live.offset > 0 ? live.offset + pendingCount : 0,
+      onVisibleRange: (start: number, end: number, scrolling?: boolean) => {
+        visibleStart.current = start
+        const head = live.offset === 0 ? pendingCount : 0
+        live.reportViewport(Math.max(0, start - head), Math.max(0, end - head), scrolling)
+      },
       onNavigate: live.navigate,
     },
     /** Index availability for the current query: `degraded` while rebuilding. */

@@ -61,7 +61,7 @@ describe('historySessionSnapshot', () => {
     expect(snapshot?.scrollState?.scrollTop).toBe(120)
   })
 
-  it('drops selection and scroll when the selected entry falls outside the capped window', () => {
+  it('keeps one selected projection and scroll outside the capped window', () => {
     clearHistorySessionSnapshot()
 
     writeHistorySessionSnapshot({
@@ -83,14 +83,22 @@ describe('historySessionSnapshot', () => {
         hasMore: true,
         state: 'ready',
       },
-      // Selected an entry past the cap — it won't survive the window trim.
+      // The separate projection survives even when the record window is capped.
       selectedId: `entry-${HISTORY_SESSION_ITEM_CAP + 5}`,
       seenIds: [],
       scrollState: { ranges: [], scrollTop: 5000 },
     })
 
     const snapshot = readHistorySessionSnapshot()
-    expect(snapshot?.selectedId).toBeNull()
-    expect(snapshot?.scrollState).toBeNull()
+    expect(snapshot?.live?.items).toHaveLength(50)
+    expect(snapshot?.selectedId).toBe('entry-55')
+    expect(snapshot?.selectedItem?.id).toBe('entry-55')
+    expect(snapshot?.selectedIndex).toBe(55)
+    expect(snapshot?.scrollState?.scrollTop).toBe(5000)
+    writeHistorySessionSnapshot({
+      ...snapshot!,
+      live: { ...snapshot!.live!, items: [makeItem(0)] },
+    })
+    expect(readHistorySessionSnapshot()?.selectedItem?.id).toBe('entry-55')
   })
 })

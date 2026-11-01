@@ -629,7 +629,17 @@ export interface ListGroup {
  * checkboxes). Each row element carries `data-item-id`.
  */
 export interface HistoryWindowViewport {
+  /** Rendered result count, including head-only pending-transfer rows. */
+  total: number
+  /** A new query must not inherit the old result set's anchor. */
+  resetKey?: string
+  /** Monotonic command revision for copy promotion to the result head. */
+  scrollToTop?: number
+  /** A new command object reveals its row in the same layout pass as replacement. */
+  reveal?: { id: string }
   offset: number
+  /** Move from the inspected entry's absolute index, fetching an evicted neighbor. */
+  onMoveSelection?: (movement: number | 'first' | 'last') => Promise<string | null>
   onVisibleRange: (start: number, end: number, scrolling?: boolean) => void
   onNavigate: (direction: 'newer' | 'older') => void
 }

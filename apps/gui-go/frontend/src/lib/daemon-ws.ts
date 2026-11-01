@@ -154,6 +154,10 @@ export class DaemonWsClient {
     this._reconnectAttempt = 0
     this._isReconnecting = false
     this._hasConnectedOnce = false
+    const reject = this._connectReject
+    this._connectResolve = null
+    this._connectReject = null
+    reject?.(new Error('WebSocket connection interrupted'))
     if (this._ws) {
       this._ws.onopen = null
       this._ws.onmessage = null

@@ -116,7 +116,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     strategy:
-      fail-fast: false
+      # Reusable workflows retain the top-level caller's workflow name.
+      fail-fast: ${{ github.workflow == 'Release' }}
       matrix:
         include:
           - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64, machine: x86_64 }

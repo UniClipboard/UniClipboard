@@ -178,7 +178,7 @@ with tempfile.TemporaryDirectory(prefix='uc-gui-go-memory-') as temporary:
                 result['steps']=[x for x in rows if str(x.get('step','')).startswith(('history-window','image-memory','window-','driver-error'))]
                 if any(x.get('step')=='driver-error' for x in result['steps']): break
                 if any(x.get('step')=='image-memory-idle' for x in result['steps']):
-                    result['passed']=all(any(x.get('step')==name and x.get('ok') for x in result['steps']) for name in ['image-memory-loaded','image-memory-scroll-0','image-memory-scroll-1','image-memory-scroll-2','image-memory-all-ready','image-memory-idle'])
+                    result['passed']=all(any(x.get('step')==name and x.get('ok') for x in result['steps']) for name in ['window-fast-scroll','image-memory-loaded','image-memory-scroll-0','image-memory-scroll-1','image-memory-scroll-2','image-memory-all-ready','image-memory-idle'])
                     break
                 time.sleep(1)
             # The GUI syncs its terminal evidence before exiting between polls.

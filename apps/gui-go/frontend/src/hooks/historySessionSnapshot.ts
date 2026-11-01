@@ -30,6 +30,8 @@ export interface HistorySessionSnapshot {
   searchState: HistorySearchStateSnapshot
   live: HistoryLiveSnapshot | null
   selectedId: string | null
+  selectedItem?: DisplayClipboardItem | null
+  selectedIndex?: number | null
   seenIds: string[]
   scrollState: StateSnapshot | null
 }
@@ -42,26 +44,40 @@ export function readHistorySessionSnapshot(): HistorySessionSnapshot | null {
 
 export function writeHistorySessionSnapshot(next: HistorySessionSnapshot): void {
   const cappedItems = next.live?.items.slice(0, HISTORY_SESSION_ITEM_CAP) ?? []
-  // A selection that points past the capped window can't be restored: the
-  // restore would clear the missing selection, auto-select the first row, and
-  // the saved scroll offset would no longer anchor on the right entry. Drop the
-  // selection and scroll together in that case so restore starts consistent.
-  const selectionInWindow =
-    next.selectedId === null || cappedItems.some(it => it.id === next.selectedId)
+  const selectedLocalIndex = next.live?.items.findIndex(item => item.id === next.selectedId) ?? -1
+  const selectedItem =
+    next.selectedId === null
+      ? null
+      : selectedLocalIndex >= 0
+        ? next.live!.items[selectedLocalIndex]
+        : next.selectedItem?.id === next.selectedId
+          ? next.selectedItem
+          : null
+  const selectedIndex =
+    next.selectedId === null
+      ? null
+      : (next.selectedIndex ??
+        (selectedLocalIndex >= 0 ? (next.live?.offset ?? 0) + selectedLocalIndex : null))
   snapshot = {
     ...next,
     live: next.live ? { ...next.live, items: cappedItems } : null,
     seenIds: next.seenIds.slice(0, HISTORY_SESSION_ITEM_CAP),
-    selectedId: selectionInWindow ? next.selectedId : null,
-    scrollState: selectionInWindow ? next.scrollState : null,
+    selectedItem,
+    selectedIndex,
   }
 }
 
-export function updateHistorySessionSelection(selectedId: string | null): void {
+export function updateHistorySessionSelection(
+  selectedId: string | null,
+  selectedItem: DisplayClipboardItem | null = null,
+  selectedIndex: number | null = null
+): void {
   if (!snapshot) return
   snapshot = {
     ...snapshot,
     selectedId,
+    selectedItem,
+    selectedIndex,
   }
 }
 

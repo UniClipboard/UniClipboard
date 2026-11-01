@@ -157,6 +157,13 @@ async function navigate(
 
 async function run() {
   const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
+  if (phase === 'file-progress') {
+    return (await import('@/e2e/file-progress')).runFileProgress({
+      record,
+      waitFor,
+      reachMainLayout,
+    })
+  }
   if (phase === 'linux-package-update') return runLinuxPackageUpdateScenario()
   if (phase.startsWith('effects:'))
     return (await import('@/e2e/visual-effects')).runVisualEffects(phase)

@@ -4,6 +4,7 @@ import type {
   EntryDeliveryView,
 } from '@/api/tauri-command/clipboard_delivery'
 import { deviceLabel, getStatusLabel } from '@/components/clipboard/entry-delivery-labels'
+import HistoryDetailOutbound from '@/components/history/detail/HistoryDetailOutbound'
 import { useResendAction } from '@/hooks/useResendAction'
 import { InsetList, Text, type InsetListRow, type StatusTone } from '@/ui-kit'
 
@@ -68,6 +69,15 @@ export function HistoryKitDelivery({ delivery }: { delivery: EntryDeliveryView }
       ) : (
         <InsetList label={t('delivery.list.title')} rows={rows} />
       )}
+      <HistoryDetailOutbound
+        entryId={entryId}
+        deviceNames={Object.fromEntries(
+          deliveries.map(target => [
+            target.targetDeviceId,
+            target.targetDeviceName ?? target.targetDeviceId.slice(0, 8),
+          ])
+        )}
+      />
       <Text role="caption" tone="tertiary">
         {t('history.kit.encryptionNote')}
       </Text>

@@ -89,7 +89,7 @@ describe('shipped uniclipd builds', () => {
     // The CLI must reuse the sidecar, never rebuild the daemon in the app job.
     expect(build.match(/-p uc-daemon/g) ?? []).toHaveLength(0)
 
-    const release = read('release.yml')
+    const release = read('release-build.yml')
     expect(release).toContain('package_cli: true')
     expect(release).toContain('linux_only: true')
     expect(step(read('build-cli.yml'), 'Select CLI targets')).toContain(
@@ -290,6 +290,37 @@ describe('Go CLI build info', () => {
     expect(revision).toBeTruthy()
     expect(info).toContain(`const PackageVersion = "${version}"`)
     expect(info).toContain(`const DaemonAPIRevision = "${revision}"`)
+  })
+})
+
+describe('macOS CLI signing', () => {
+  const root = path.resolve(__dirname, '../..')
+  const source = fs.readFileSync(path.join(root, 'scripts/ci/package-cli.sh'), 'utf8')
+  const appPackaging = fs.readFileSync(
+    path.join(root, 'apps/gui-go/packaging/macos/package.py'),
+    'utf8'
+  )
+
+  it('gives the daemon the bundled daemon identifier derived from app.json', () => {
+    expect(source).toContain(
+      `DAEMON_IDENTIFIER="$(node -p "require('./apps/gui-go/app.json').identifier").uniclipd"`
+    )
+    expect(source).toContain(
+      'codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" --identifier "$DAEMON_IDENTIFIER" "$STAGE/uniclipd"'
+    )
+    expect(appPackaging).toContain('CFG = json.loads((GUI_DIR / "app.json").read_text())')
+    expect(appPackaging).toContain('(DAEMON, ".uniclipd")')
+    expect(appPackaging).toContain(
+      '["--identifier", CFG["identifier"] + suffix + VARIANTS[a.variant]["suffix"]'
+    )
+    expect(appPackaging).toMatch(/"shipping": \{[^\n]*"suffix": ""/)
+  })
+
+  it('keeps uniclip signing without an explicit identifier', () => {
+    const cliSigning = source.match(/^\s*codesign --force[^\n]*"\$STAGE\/uniclip"$/m)?.[0].trim()
+    expect(cliSigning).toBe(
+      'codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$STAGE/uniclip"'
+    )
   })
 })
 

@@ -85,6 +85,41 @@ func (h *HostService) SetQuickPanelPosition(ctx context.Context, position QuickP
 	return h.patchQuickPanel(ctx, map[string]any{"position": position})
 }
 
+// GetQuickPanelAccessibilityPermission checks the system grant without prompting or depending on panel enablement.
+//
+//uc:errors none
+//uc:os darwin=real windows=unsupported linux=unsupported
+func (h *HostService) GetQuickPanelAccessibilityPermission() bool {
+	return accessibilityTrusted()
+}
+
+// RefreshQuickPanelTriggers asks the running native executor to reapply authoritative settings.
+// A successful request is not a receipt for helper permission or listener initialization.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) RefreshQuickPanelTriggers(ctx context.Context) error {
+	if uiChild {
+		return h.ownerCall(ctx, "quick-refresh-triggers", nil, nil)
+	}
+	ctx, cancel := commandContext(ctx, "refresh_quick_panel_triggers")
+	defer cancel()
+	h.shortcutsMu.Lock()
+	defer h.shortcutsMu.Unlock()
+	if h.helper == nil || h.lightweight.Load() {
+		return nil
+	}
+	current, err := h.loadQuickPanelSettings(ctx)
+	if err != nil {
+		return hostapi.Internal(err)
+	}
+	if current.Enabled {
+		// ReloadSettings neither starts a stopped helper nor changes persisted preferences.
+		h.helper.ReloadSettings()
+	}
+	return nil
+}
+
 // GetQuickPanelDoubleTapAvailability tells whether the modifier double tap trigger can work in this session.
 //
 //uc:errors none

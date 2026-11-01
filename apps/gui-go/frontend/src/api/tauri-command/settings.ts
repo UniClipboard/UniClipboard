@@ -64,26 +64,12 @@ function shortcutKeyEquals(left: ShortcutKey | undefined, right: ShortcutKey | u
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
-/**
- * Toggle the quick panel feature live — registers/unregisters the global
- * shortcut and creates/destroys the hidden panel window in-process. Returns
- * after both the OS side effects and the on-disk patch have committed.
- *
- * Backend: `commands::quick_panel::set_quick_panel_enabled`.
- */
+/** Toggle the quick panel and its shortcut through the host's native or WebView executor. */
 export async function setQuickPanelEnabled(enabled: boolean): Promise<void> {
   await commands.setQuickPanelEnabled(enabled)
 }
 
-/**
- * Persist the quick panel placement preference (center vs. follow-cursor).
- *
- * This has no OS side effects — it only changes where the next panel `show()`
- * positions the window, and refreshes the backend's cached placement mode so
- * the synchronous, shortcut-triggered show picks it up immediately.
- *
- * Backend: `commands::quick_panel::set_quick_panel_position`.
- */
+/** Persist the placement mode read before the next panel opening. */
 export async function setQuickPanelPosition(position: QuickPanelPosition): Promise<void> {
   await commands.setQuickPanelPosition(position as HostQuickPanelPosition)
 }
@@ -116,4 +102,14 @@ export async function setQuickPanelDoubleTapModifier(
  */
 export async function updateAutostart(enabled: boolean): Promise<void> {
   await commands.updateAutostart(enabled)
+}
+
+/** Read the macOS system grant without opening a permission prompt. */
+export async function getQuickPanelAccessibilityPermission(): Promise<boolean> {
+  return commands.getQuickPanelAccessibilityPermission()
+}
+
+/** Ask the native helper to retry its configured listener; this does not confirm its permission. */
+export async function refreshQuickPanelTriggers(): Promise<void> {
+  await commands.refreshQuickPanelTriggers()
 }

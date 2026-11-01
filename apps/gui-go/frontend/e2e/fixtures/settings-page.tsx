@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
+import { Toaster } from '@/components/ui/toaster'
 import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { SettingContext } from '@/contexts/setting-context'
 import { ShortcutContext, type ShortcutContextType } from '@/contexts/shortcut-context'
@@ -56,7 +57,10 @@ export default function SettingsPageFixture() {
         | 'quickPanel',
       value: object
     ) => {
-      setSetting(previous => ({ ...previous, [section]: { ...previous[section], ...value } }))
+      setSetting(previous => ({
+        ...previous,
+        [section]: { ...previous[section], ...value },
+      }))
     }
     return {
       setting,
@@ -82,6 +86,9 @@ export default function SettingsPageFixture() {
         return { restartRequired: true }
       },
       updateQuickPanelSetting: async value => {
+        if (window.__settingsFixtureNative!.quickPanelSaveShouldFail) {
+          throw new Error('scripted quick panel save failure')
+        }
         await patch('quickPanel', value)
         return { restartRequired: false }
       },
@@ -98,6 +105,7 @@ export default function SettingsPageFixture() {
               <MemoryRouter initialEntries={['/settings']}>
                 <div className="h-screen min-h-0">
                   <SettingsPage />
+                  <Toaster />
                 </div>
               </MemoryRouter>
             </VisualEffectsProvider>

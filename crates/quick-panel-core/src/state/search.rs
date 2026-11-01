@@ -289,9 +289,19 @@ impl PanelState {
         effects
     }
 
-    pub(super) fn on_options(&mut self, result: Result<Box<Options>, ServiceError>) -> Effects {
+    pub(super) fn on_options(
+        &mut self,
+        result: Result<Box<Options>, ServiceError>,
+        ctx: &Ctx,
+    ) -> Effects {
+        let mut effects = vec![];
+        if self.session.visible && self.session.opening {
+            self.session.opening = false;
+            self.session.shown_at = ctx.now;
+            effects.extend([Effect::Reposition, Effect::ShowWindow]);
+        }
         let Ok(options) = result else {
-            return vec![];
+            return effects;
         };
         if let Some(settings) = &options.settings {
             self.catalog.cursor_anchored = matches!(
@@ -306,7 +316,8 @@ impl PanelState {
             self.catalog.tags = tags;
             self.catalog.members = members;
         }
-        vec![Effect::ApplySettings(Box::new(settings))]
+        effects.insert(0, Effect::ApplySettings(Box::new(settings)));
+        effects
     }
 
     pub(super) fn input_changed(&mut self, value: String, ctx: &Ctx) -> Effects {

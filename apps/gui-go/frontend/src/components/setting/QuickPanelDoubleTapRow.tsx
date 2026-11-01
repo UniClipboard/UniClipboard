@@ -1,25 +1,26 @@
-import { ExternalLink } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   getQuickPanelDoubleTapAvailability,
   type ModifierDoubleTapAvailability,
 } from '@/api/tauri-command'
-import { Button } from '@/components/ui'
-import { toast } from '@/components/ui/toast'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
-import { openUrl } from '@/host/opener'
 import { createLogger } from '@/lib/logger'
 import type { QuickPanelDoubleTapModifier } from '@/types/setting'
 import { SettingSelect } from './SettingControls'
 import { SettingRow } from './SettingRow'
 import { useOptimisticSetting } from './useOptimisticSetting'
+import type { AccessibilityStatus } from './useQuickPanelAccessibility'
 const log = createLogger('quick-panel-double-tap')
-const MACOS_ACCESSIBILITY_SETTINGS_URL =
-  'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
 
-export function QuickPanelDoubleTapRow({ enabled }: { enabled: boolean }) {
+export function QuickPanelDoubleTapRow({
+  enabled,
+  accessibilityStatus,
+}: {
+  enabled: boolean
+  accessibilityStatus: AccessibilityStatus
+}) {
   const { t } = useTranslation()
   const { isMac, isWindows } = usePlatform()
   const { setting, updateQuickPanelSetting } = useSetting()
@@ -70,25 +71,27 @@ export function QuickPanelDoubleTapRow({ enabled }: { enabled: boolean }) {
     : isWindows
       ? t('settings.sections.quickPanel.doubleTap.windows')
       : t('settings.sections.quickPanel.doubleTap.super')
-  const doubleTapSupported = doubleTapAvailability === 'supported'
-  // A missing Accessibility grant is something the user fixes next to the select, so the choice stays editable.
+  // System permission is shared with the row above; display-session support remains a separate capability.
+  const availability =
+    isMac && doubleTapAvailability !== 'unsupported_display_session'
+      ? ((
+          {
+            granted: 'supported',
+            denied: 'accessibility_permission_required',
+            checking: null,
+            error: null,
+          } as const
+        )[accessibilityStatus] ?? null)
+      : doubleTapAvailability
   const doubleTapSelectable =
-    doubleTapSupported || doubleTapAvailability === 'accessibility_permission_required'
-  const doubleTapDescriptionKey =
-    doubleTapAvailability === null
-      ? 'settings.sections.quickPanel.doubleTap.checking'
-      : doubleTapAvailability === 'accessibility_permission_required'
-        ? 'settings.sections.quickPanel.doubleTap.permissionRequired'
-        : doubleTapSupported
-          ? 'settings.sections.quickPanel.doubleTap.description'
-          : 'settings.sections.quickPanel.doubleTap.unsupported'
-
-  const handleOpenAccessibilitySettings = () => {
-    void openUrl(MACOS_ACCESSIBILITY_SETTINGS_URL).catch(err => {
-      log.error({ err }, 'Failed to open macOS Accessibility settings')
-      toast.error(t('settings.sections.quickPanel.doubleTap.openSettingsError'))
-    })
+    availability !== null && availability !== 'unsupported_display_session'
+  const descriptionKeys = {
+    checking: 'settings.sections.quickPanel.doubleTap.checking',
+    supported: 'settings.sections.quickPanel.doubleTap.description',
+    accessibility_permission_required: 'settings.sections.quickPanel.doubleTap.permissionRequired',
+    unsupported_display_session: 'settings.sections.quickPanel.doubleTap.unsupported',
   }
+  const doubleTapDescriptionKey = descriptionKeys[availability ?? 'checking']
 
   return (
     <SettingRow
@@ -96,21 +99,21 @@ export function QuickPanelDoubleTapRow({ enabled }: { enabled: boolean }) {
       description={t(doubleTapDescriptionKey)}
     >
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {doubleTapAvailability === 'accessibility_permission_required' && (
-          <Button variant="outline" size="sm" onClick={handleOpenAccessibilitySettings}>
-            <ExternalLink className="size-3.5" />
-            {t('settings.sections.quickPanel.doubleTap.openSettings')}
-          </Button>
-        )}
         <SettingSelect
           label={t('settings.sections.quickPanel.doubleTap.label')}
           value={doubleTapModifier}
           onValueChange={value => setDoubleTapModifier(value as QuickPanelDoubleTapModifier)}
           disabled={!enabled || !doubleTapSelectable}
           items={[
-            { value: 'disabled', label: t('settings.sections.quickPanel.doubleTap.disabled') },
+            {
+              value: 'disabled',
+              label: t('settings.sections.quickPanel.doubleTap.disabled'),
+            },
             { value: 'alt', label: altLabel },
-            { value: 'control', label: t('settings.sections.quickPanel.doubleTap.control') },
+            {
+              value: 'control',
+              label: t('settings.sections.quickPanel.doubleTap.control'),
+            },
             { value: 'meta', label: metaLabel },
           ]}
         />

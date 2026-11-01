@@ -49,6 +49,10 @@ struct MacosKeyState {
 
 impl ModifierKeyState for MacosKeyState {
     fn snapshot(&mut self, modifier: QuickPanelDoubleTapModifier) -> (bool, bool) {
+        // Revocation can happen while the worker is alive. Suppress taps until granted again.
+        if !unsafe { AXIsProcessTrusted() } {
+            return (false, true);
+        }
         let state_id = STATE_ID;
         let flags = CGEventSource::flags_state(state_id);
         let selected_mask = modifier_flag(modifier);

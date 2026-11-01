@@ -275,6 +275,8 @@ func (h *HostService) handleUIOwnerRequest(m uiPacket) (any, error) {
 			return nil, err
 		}
 		return nil, h.SetQuickPanelEnabled(ctx, v)
+	case "quick-refresh-triggers":
+		return nil, h.RefreshQuickPanelTriggers(ctx)
 	case "quick-modifier":
 		var v QuickPanelDoubleTapModifier
 		if err := json.Unmarshal(m.Data, &v); err != nil {

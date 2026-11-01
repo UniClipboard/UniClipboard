@@ -30,8 +30,18 @@ declare global {
     /** Scripted `GET /settings/relay-overview` response for browser E2E. */
     __relayOverviewFixture?: { response: unknown; calls: number }
     /** Optional harness binding returning the scripted response or a failure. */
-    __relayOverviewScript?: () => Promise<{ response?: unknown; fail?: boolean }>
+    __relayOverviewScript?: () => Promise<{
+      response?: unknown
+      fail?: boolean
+    }>
     __settingsFixtureNative?: {
+      quickPanelSaveShouldFail: boolean
+      holdAccessibilityCheck: boolean
+      releaseAccessibilityCheck?: () => void
+      accessibilityGranted: boolean
+      accessibilityShouldFail: boolean
+      openSettingsShouldFail: boolean
+      openedUrls: string[]
       restartCalls: number
       restartShouldFail: boolean
     }
@@ -41,18 +51,60 @@ declare global {
 /** Isolate visual checks from the user's daemon, credentials and external services. */
 export function installSettingsFixtureEnvironment() {
   window.__settingsFixtureNative = {
+    quickPanelSaveShouldFail: false,
+    holdAccessibilityCheck: false,
+    accessibilityGranted: false,
+    accessibilityShouldFail: false,
+    openSettingsShouldFail: false,
+    openedUrls: [],
     restartCalls: 0,
     restartShouldFail: false,
   }
   installFakeHost({
     GetDeviceMeta: () => ({ appVersion: '1.0.0' }),
-    GetDaemonSession: () => ({ sessionToken: 'visual-fixture', expiresInSecs: 3600 }),
+    GetDaemonSession: () => ({
+      sessionToken: 'visual-fixture',
+      expiresInSecs: 3600,
+    }),
     GetQuickPanelDoubleTapAvailability: () => 'supported',
+    RefreshQuickPanelTriggers: () => null,
+    RestartApp: () => {
+      window.__settingsFixtureNative!.restartCalls += 1
+      return null
+    },
+    GetQuickPanelAccessibilityPermission: async () => {
+      const native = window.__settingsFixtureNative!
+      if (native.accessibilityShouldFail)
+        throw new HostRejection({
+          code: 'InternalError',
+          message: 'fixture failure',
+        })
+      const granted = native.accessibilityGranted
+      if (native.holdAccessibilityCheck) {
+        await new Promise<void>(resolve => {
+          native.releaseAccessibilityCheck = resolve
+        })
+      }
+      return granted
+    },
+    OpenURL: url => {
+      const native = window.__settingsFixtureNative!
+      if (native.openSettingsShouldFail)
+        throw new HostRejection({
+          code: 'InternalError',
+          message: 'fixture failure',
+        })
+      native.openedUrls.push(String(url))
+      return null
+    },
     RestartDaemon: () => {
       const native = window.__settingsFixtureNative!
       native.restartCalls += 1
       if (native.restartShouldFail)
-        throw new HostRejection({ code: 'restart_failed', message: 'fixture failure' })
+        throw new HostRejection({
+          code: 'restart_failed',
+          message: 'fixture failure',
+        })
       return null
     },
   })
@@ -68,7 +120,10 @@ export function installSettingsFixtureEnvironment() {
     }
     if (url.pathname.startsWith('/fixture-daemon/')) {
       if (url.pathname === '/fixture-daemon/settings/relay-probe') {
-        return Response.json({ data: { tag: 'success', latencyMs: 12 }, ts: Date.now() })
+        return Response.json({
+          data: { tag: 'success', latencyMs: 12 },
+          ts: Date.now(),
+        })
       }
       if (url.pathname === '/fixture-daemon/settings/relay-overview') {
         const scripted = window.__relayOverviewFixture!
@@ -78,7 +133,10 @@ export function installSettingsFixtureEnvironment() {
         if (external?.fail) {
           return Response.json({ error: 'relay overview unavailable' }, { status: 500 })
         }
-        return Response.json({ data: external?.response ?? scripted.response, ts: Date.now() })
+        return Response.json({
+          data: external?.response ?? scripted.response,
+          ts: Date.now(),
+        })
       }
       const responses: Record<string, unknown> = {
         '/fixture-daemon/storage/stats': {
@@ -109,7 +167,11 @@ export function installSettingsFixtureEnvironment() {
     baseUrl: `${fixtureOrigin}/fixture-daemon`,
     wsUrl: `ws://fixture.local/fixture-daemon/ws`,
   })
-  let effects = { ...INITIAL_EFFECTS, sessionId: 'settings-fixture', persistence: 'saved' as const }
+  let effects = {
+    ...INITIAL_EFFECTS,
+    sessionId: 'settings-fixture',
+    persistence: 'saved' as const,
+  }
   visualEffectsApi.get = async () => effects
   visualEffectsApi.subscribe = async () => () => {}
   visualEffectsApi.environment = async (_, systemMotion) => {

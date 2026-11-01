@@ -239,6 +239,8 @@ pub type Effects = Vec<Effect>;
 #[derive(Debug)]
 pub struct Session {
     pub visible: bool,
+    /// The opening session is waiting for its settings before positioning and showing.
+    pub opening: bool,
     pub shown_at: Instant,
     /// While pasting with the panel kept open, the target is in front for a moment; losing focus
     /// then does not close the panel.
@@ -327,6 +329,7 @@ impl PanelState {
         Self {
             session: Session {
                 visible: false,
+                opening: false,
                 shown_at: now,
                 blur_grace_until: None,
                 busy: false,
@@ -425,7 +428,7 @@ impl PanelState {
                 self.on_counts(revision, totals);
                 vec![]
             }
-            Event::OptionsLoaded(result) => self.on_options(result),
+            Event::OptionsLoaded(result) => self.on_options(result, ctx),
             Event::Live(live) => self.on_live(live),
             Event::ReconnectDue => self.on_reconnect_due(),
             Event::PassphraseChanged => {

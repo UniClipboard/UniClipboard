@@ -967,8 +967,7 @@
           "command": "Command",
           "windows": "Windows",
           "super": "Super"
-        },
-        "restartHint": "快捷面板已停用。建議重新啟動應用程式以徹底釋放背景進程。"
+        }
       },
       "about": {
         "title": "關於",

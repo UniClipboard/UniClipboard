@@ -79,6 +79,8 @@ impl Panel {
     /// Carries out one effect. What it reports at once comes back as effects to run next.
     fn perform(&mut self, effect: Effect, window: &mut Window, cx: &mut Context<Self>) -> Effects {
         match effect {
+            // Opening effects are completed by OptionsLoaded, before the first visible frame.
+            Effect::Reposition | Effect::ShowWindow if self.state.session.opening => {}
             Effect::Reposition => self.position(window, cx),
             Effect::Layout => self.layout(window, cx),
             Effect::CaptureTarget => self.target = platform::capture_paste_target(cx),
@@ -449,6 +451,7 @@ impl Panel {
     }
 
     fn load_options(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let session = self.state.session.shown_at;
         let runtime = self.runtime.clone();
         let history = self.history.clone();
         self.tasks.options = Some(cx.spawn_in(window, async move |this, cx| {
@@ -460,8 +463,22 @@ impl Panel {
                 .await
                 .unwrap_or(Err(ServiceError::TagsUnavailable));
             let _ = this.update_in(cx, |this, window, cx| {
+                // A response from before a hide/reopen cannot complete the new opening.
+                if this.state.session.shown_at != session {
+                    return;
+                }
                 if result.is_err() {
                     tracing::warn!("Could not load quick panel filter options");
+                }
+                // Do not activate a delayed opening after the user has moved to another app.
+                if this.state.session.opening
+                    && matches!(
+                        this.target.check(),
+                        Err(quick_panel_core::ports::PlatformError::FocusMoved
+                            | quick_panel_core::ports::PlatformError::PasteTargetQuit)
+                    )
+                {
+                    this.deliver(Event::WindowHidden, window, cx);
                 }
                 this.deliver(Event::OptionsLoaded(result.map(Box::new)), window, cx);
             });

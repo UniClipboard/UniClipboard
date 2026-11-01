@@ -95,6 +95,26 @@ impl ModifierDoubleTapMonitor {
         }
 
         let mut state = self.lock_state();
+        if state.current == modifier
+            && state.worker.as_ref().is_some_and(|worker| {
+                worker
+                    .join_handle
+                    .as_ref()
+                    .is_some_and(|handle| !handle.is_finished())
+            })
+        {
+            return Ok(());
+        }
+        if state.worker.as_ref().is_some_and(|worker| {
+            worker
+                .join_handle
+                .as_ref()
+                .is_some_and(|handle| handle.is_finished())
+        }) {
+            if let Some(worker) = state.worker.take() {
+                stop_worker(worker);
+            }
+        }
         if state.worker.is_none() {
             state.worker = Some(start_worker(
                 Arc::clone(&self.inner.key_state_factory),

@@ -968,8 +968,7 @@
           "command": "Command",
           "windows": "Windows",
           "super": "Super"
-        },
-        "restartHint": "O painel rápido está desativado agora. Reinicie o app para liberar totalmente os processos em segundo plano."
+        }
       },
       "about": {
         "title": "Sobre",

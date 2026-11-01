@@ -38,6 +38,7 @@ impl PanelState {
         self.suggest.cursor = 0;
         self.suggest.focused = false;
         self.session.visible = true;
+        self.session.opening = true;
         self.session.shown_at = ctx.now;
         let mut effects = vec![
             Effect::CaptureTarget,
@@ -59,6 +60,7 @@ impl PanelState {
     /// The window is hidden now. Everything that only made sense while it was open stops.
     pub(super) fn on_hidden(&mut self) -> Effects {
         self.session.visible = false;
+        self.session.opening = false;
         self.menu = None;
         self.suggest.open = false;
         self.search.hovered = None;

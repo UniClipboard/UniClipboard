@@ -62,10 +62,6 @@ impl PasteTarget for FrontApplication {
     }
 
     fn check(&self) -> Result<(), PlatformError> {
-        // Accessibility permission is checked without opening a system prompt.
-        if !unsafe { AXIsProcessTrusted() } {
-            return Err(PlatformError::NoPastePermission);
-        }
         let app = self.0.as_ref().ok_or(PlatformError::NoPasteTarget)?;
         if app.isTerminated() {
             return Err(PlatformError::PasteTargetQuit);
@@ -81,6 +77,10 @@ impl PasteTarget for FrontApplication {
             })
         {
             return Err(PlatformError::FocusMoved);
+        }
+        // Accessibility permission is checked without opening a system prompt.
+        if !unsafe { AXIsProcessTrusted() } {
+            return Err(PlatformError::NoPastePermission);
         }
         Ok(())
     }

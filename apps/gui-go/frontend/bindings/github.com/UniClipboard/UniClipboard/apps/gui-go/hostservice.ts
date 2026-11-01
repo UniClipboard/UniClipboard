@@ -171,6 +171,13 @@ export function GetProfileRecovery(): $CancellablePromise<json$0.RawMessage> {
 }
 
 /**
+ * GetQuickPanelAccessibilityPermission checks the system grant without prompting or depending on panel enablement.
+ */
+export function GetQuickPanelAccessibilityPermission(): $CancellablePromise<boolean> {
+    return $Call.ByID(362420365);
+}
+
+/**
  * GetQuickPanelDoubleTapAvailability tells whether the modifier double tap trigger can work in this session.
  */
 export function GetQuickPanelDoubleTapAvailability(): $CancellablePromise<$models.ModifierDoubleTapAvailability> {
@@ -324,6 +331,14 @@ export function PreviewConfigImport(password: string, sourcePath: string): $Canc
  */
 export function QuickPanelUsesCompositorShortcuts(): $CancellablePromise<boolean> {
     return $Call.ByID(1334979728);
+}
+
+/**
+ * RefreshQuickPanelTriggers asks the running native executor to reapply authoritative settings.
+ * A successful request is not a receipt for helper permission or listener initialization.
+ */
+export function RefreshQuickPanelTriggers(): $CancellablePromise<void> {
+    return $Call.ByID(1787440196);
 }
 
 /**

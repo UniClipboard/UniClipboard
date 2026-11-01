@@ -938,6 +938,17 @@
         "applyUnknown": "Saved, but it is not known whether the shortcut is active. ({{error}})"
       },
       "quickPanel": {
+        "accessibility": {
+          "groupTitle": "System permissions",
+          "label": "Accessibility permission",
+          "description": "Allow Quick Panel to enter selected content into the previous app and detect modifier double taps. Grant UniClipboard access in System Settings.",
+          "checking": "Checking",
+          "granted": "Granted",
+          "denied": "Not granted",
+          "error": "Could not check permission",
+          "retry": "Retry",
+          "openSettings": "Open System Settings"
+        },
         "compositorShortcuts": "Wayland activation shortcuts are managed by your desktop. Bind the following command in your compositor settings.",
         "title": "Quick Panel",
         "featureTitle": "Feature",
@@ -956,7 +967,7 @@
           "label": "Double-tap modifier",
           "description": "Open the quick panel by tapping a modifier key twice. The recorded shortcut remains active.",
           "checking": "Checking whether this desktop session supports modifier double-tap.",
-          "permissionRequired": "macOS Accessibility permission is required. Grant access in System Settings, then return to UniClipboard.",
+          "permissionRequired": "Accessibility permission is required. Use the Accessibility permission action above to grant access.",
           "unsupported": "Modifier double-tap is unavailable in this display session, including Wayland sessions. The recorded shortcut remains active.",
           "openSettings": "Open Accessibility settings",
           "openSettingsError": "Could not open Accessibility settings. Open System Settings > Privacy & Security > Accessibility manually.",
@@ -967,8 +978,7 @@
           "command": "Command",
           "windows": "Windows",
           "super": "Super"
-        },
-        "restartHint": "Quick panel is now off. Restart the app to fully release the background processes."
+        }
       },
       "about": {
         "title": "About",

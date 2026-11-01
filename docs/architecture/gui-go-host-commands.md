@@ -48,7 +48,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 
 此区块由 `go run ./cmd/hostcontract docs` 从 Go 源码生成（命令来自 `*HostService` 的导出方法及其 `//uc:` 指令，事件来自 `apps/gui-go/host_events.go`），请勿手改。
 
-### 命令（66 个）
+### 命令（68 个）
 
 | 命令 | Go 方法 | 参数 | 结果 | 错误族 / 错误码 | macOS | Windows | Linux | 来源 / 说明 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -73,6 +73,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `get_download_progress` | `GetDownloadProgress` | - | `DownloadProgressSnapshot` | none | 真实 | 真实 | 真实 | 契约命令；GetDownloadProgress returns the pending update state, so a window that mounts mid-download can catch up before it listens to the broadcast events. |
 | `get_install_kind` | `GetInstallKind` | - | `InstallKind` | none | 真实 | 真实 | 真实 | 契约命令；GetInstallKind tells how this copy was installed, so the page can route package-managed copies to their package manager instead of the in-app updater. |
 | `get_profile_recovery` | `GetProfileRecovery` | - | `json.RawMessage` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；GetProfileRecovery returns the daemon's profile recovery state (`GET /encryption/recovery`) untouched. |
+| `get_quick_panel_accessibility_permission` | `GetQuickPanelAccessibilityPermission` | - | `bool` | none | 真实 | 不支持 | 不支持 | 契约命令；GetQuickPanelAccessibilityPermission checks the system grant without prompting or depending on panel enablement. |
 | `get_quick_panel_double_tap_availability` | `GetQuickPanelDoubleTapAvailability` | - | `ModifierDoubleTapAvailability` | none | 真实 | 真实 | 真实 | 契约命令；GetQuickPanelDoubleTapAvailability tells whether the modifier double tap trigger can work in this session. |
 | `get_quick_panel_shortcut_status` | `GetQuickPanelShortcutStatus` | - | `QuickPanelShortcutStatus` | none | 真实 | 真实 | 真实 | 契约命令；GetQuickPanelShortcutStatus reports whether the saved quick panel shortcut is the one the OS holds: active, saved but not active (with the binding still held and the OS error), unknown, or inactive (ADR-013 section 10). |
 | `get_visual_effects` | `GetVisualEffects` | - | `EffectsSnapshot` | none | 真实 | 真实 | 真实 | 契约命令；GetVisualEffects returns this GUI session's authoritative state. |
@@ -94,6 +95,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `pick_directory` | `PickDirectory` | - | `*string` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；PickDirectory shows the native folder picker. |
 | `preview_config_import` | `PreviewConfigImport` | `password string, sourcePath string` | `ConfigImportPreview` | config | 真实 | 真实 | 真实 | 契约命令；PreviewConfigImport reads the descriptive metadata of a bundle without importing it. |
 | `quick_panel_uses_compositor_shortcuts` | `QuickPanelUsesCompositorShortcuts` | - | `bool` | none | 真实 | 真实 | 真实 | 契约命令；QuickPanelUsesCompositorShortcuts reports whether the shortcut is bound by the Wayland compositor instead of the app. |
+| `refresh_quick_panel_triggers` | `RefreshQuickPanelTriggers` | - | `-` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；RefreshQuickPanelTriggers asks the running native executor to reapply authoritative settings. |
 | `report_visual_effects_environment` | `ReportVisualEffectsEnvironment` | `sessionID string, systemMotion SystemMotion` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；ReportVisualEffectsEnvironment merges live GUI windows' system preferences. |
 | `report_visual_effects_sample` | `ReportVisualEffectsSample` | `sample EffectsSample` | `EffectsSnapshot` | none | 真实 | 真实 | 有意空操作 | 契约命令；ReportVisualEffectsSample validates the permit and saves only a next-launch downgrade. |
 | `resolve_quick_panel_expand_side` | `ResolveQuickPanelExpandSide` | `scale *float64` | `QuickPanelExpandSide` | none | 有意空操作 | 有意空操作 | 有意空操作 | 契约命令；ResolveQuickPanelExpandSide tells which side the inline preview opens toward. |

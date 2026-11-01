@@ -47,7 +47,7 @@ def compare(path):
     for record in raw:
         if not any(key in record for key in TOP_LEVEL_ATTRIBUTES):
             continue
-        fields = {k: v for k, v in record.get('fields', {}).items() if isinstance(v, (str, bool, int))}
+        fields = {k: v for k, v in record.get('fields', {}).items() if v is None or isinstance(v, (str, bool, int))}
         candidates = index.get(nanos(record['timestamp']), [])
         match = next(((log, attrs) for log, attrs in candidates if all(attrs.get(k) == v for k, v in fields.items())), None)
         if match is None:
@@ -60,7 +60,7 @@ def compare(path):
             result['comparedValues'][key] = result['comparedValues'].get(key, 0) + 1
             if key not in attrs or attrs[key] != record[key] or type(attrs[key]) is not type(record[key]):
                 result['mismatches'].append({'key': key, 'at': record['timestamp']})
-        assert set(attrs) <= set(fields) | TOP_LEVEL_ATTRIBUTES, 'unapproved top-level attribute escaped'
+        assert set(attrs) <= set(record.get('fields', {})) | TOP_LEVEL_ATTRIBUTES, 'unapproved top-level attribute escaped'
         for key, otlp in [('trace_id', 'traceId'), ('span_id', 'spanId')]:
             if record.get(key):
                 assert log.get(otlp, '').lower() == record[key].lower(), 'trace/span context changed'

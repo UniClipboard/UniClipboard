@@ -1,5 +1,8 @@
 export const suites = {
-  'quick-panel-accessibility': { fixture: 'settings-page', platforms: ['macos', 'windows', 'linux'] },
+  'quick-panel-accessibility': {
+    fixture: 'settings-page',
+    platforms: ['macos', 'windows', 'linux'],
+  },
   'settings-sidebar': { fixture: 'settings-page', platforms: ['macos', 'linux', 'windows'] },
   'settings-sidebar-motion': {
     fixture: 'settings-page',

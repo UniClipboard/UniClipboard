@@ -433,8 +433,9 @@ async fn daemon_that_never_starts_ends_at_the_deadline_with_exit_5() {
 
 // ── Two-node: file progress and output separation ────────────────────
 
-/// A file to a paired peer under `--json`: stdout is exactly one JSON document
-/// with a terminal delivery, stderr carries no progress bar residue on stdout.
+/// A file to a paired peer under `--json`: stdout is exactly one JSON document.
+/// A pending dispatch may continue in the daemon (the Go CLI contract); it must
+/// still reach a terminal delivery, without progress bar residue on stdout.
 /// The interactive bar itself needs a pseudo-terminal and is checked manually
 /// (see the acceptance plan); this case pins the non-interactive contract.
 #[tokio::test]
@@ -465,12 +466,68 @@ async fn file_send_json_keeps_stdout_machine_readable() {
             output.stdout
         )
     });
-    assert_eq!(outcome["totalAccepted"], 1, "{outcome}");
-    assert_eq!(
-        outcome["deliveries"][0]["status"]["tag"], "delivered",
-        "{outcome}"
-    );
+    let accepted = outcome["totalAccepted"].as_u64().expect("accepted count");
+    let pending = outcome
+        .get("totalPending")
+        .map_or(0, |count| count.as_u64().expect("pending count"));
+    assert_eq!(accepted + pending, 1, "{outcome}");
+    for field in ["totalDuplicate", "totalOffline", "totalErrored"] {
+        assert_eq!(outcome[field], 0, "{outcome}");
+    }
+    if accepted == 1 {
+        assert_eq!(
+            outcome["deliveries"][0]["status"]["tag"], "delivered",
+            "{outcome}"
+        );
+    } else {
+        assert_eq!(outcome["deliveries"], serde_json::json!([]), "{outcome}");
+        assert_eq!(outcome["perTarget"], serde_json::json!([]), "{outcome}");
+    }
     assert!(!output.stdout.contains('\r'), "no bar redraws on stdout");
+
+    // Do not turn an asynchronous acceptance into a delivery assertion. Query
+    // the same authoritative view the CLI uses, keeping both daemons alive.
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("delivery client");
+    let token = get_session_token(&alice_daemon, &client).await;
+    let entry_id = outcome["entryId"].as_str().expect("sent entry id");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let view: Value = client
+            .get(format!(
+                "{}/clipboard/entries/{entry_id}/delivery",
+                alice_daemon.base_url()
+            ))
+            .header("Authorization", format!("Session {token}"))
+            .send()
+            .await
+            .expect("delivery request")
+            .error_for_status()
+            .expect("delivery status")
+            .json()
+            .await
+            .expect("delivery JSON");
+        let targets = view["data"]["deliveries"]
+            .as_array()
+            .expect("delivery targets");
+        if let Some(target) = targets
+            .iter()
+            .find(|target| target["targetDeviceId"] == bob_id)
+        {
+            let tag = target["status"]["tag"].as_str().expect("delivery tag");
+            if tag != "pending" {
+                assert_eq!(tag, "delivered", "{view}");
+                break;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "file delivery did not finish: {view}"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
     drop((alice_daemon, bob_daemon));
 }
 

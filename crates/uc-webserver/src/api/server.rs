@@ -469,6 +469,10 @@ pub enum DaemonDiagnosticError {
 }
 
 pub trait DaemonDiagnosticsRuntime: Send + Sync {
+    /// Optional host resource coverage; registration failures never reject authentication.
+    fn register_process(&self, _pid: u32, _role: &str) -> Result<(), DaemonDiagnosticError> {
+        Err(DaemonDiagnosticError::Unavailable)
+    }
     fn status(&self) -> Result<DiagnosticStatusDto, DaemonDiagnosticError>;
     fn start(
         &self,

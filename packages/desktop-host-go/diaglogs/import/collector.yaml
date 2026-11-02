@@ -1,0 +1,30 @@
+# OpenTelemetry Collector Contrib 0.139.0. Run from the extracted ZIP root.
+receivers:
+  otlpjsonfile/metrics:
+    start_at: beginning
+    include_file_name: false
+    include: [otel/metrics.jsonl]
+  otlpjsonfile/logs:
+    start_at: beginning
+    include_file_name: false
+    include: [otel/logs.jsonl]
+  otlpjsonfile/traces:
+    start_at: beginning
+    include_file_name: false
+    include: [otel/traces.jsonl]
+exporters:
+  otlphttp:
+    endpoint: ${env:OTEL_IMPORT_ENDPOINT}
+    retry_on_failure:
+      enabled: false
+service:
+  pipelines:
+    metrics:
+      receivers: [otlpjsonfile/metrics]
+      exporters: [otlphttp]
+    logs:
+      receivers: [otlpjsonfile/logs]
+      exporters: [otlphttp]
+    traces:
+      receivers: [otlpjsonfile/traces]
+      exporters: [otlphttp]

@@ -242,7 +242,18 @@ func (c *Client) dropSession(rejected string) {
 
 // ExchangeSession keeps the local bearer secret in the native host.
 func (c *Client) ExchangeSession(ctx context.Context, clientType string) (Session, error) {
-	body, err := json.Marshal(map[string]any{"pid": c.pid, "clientType": clientType})
+	return c.exchangeSessionForPID(ctx, c.pid, clientType)
+}
+
+// RegisterOwnedProcess binds a child process owned by the native host to the current profile.
+// The returned session is not exposed to the child or persisted.
+func (c *Client) RegisterOwnedProcess(ctx context.Context, pid uint32, role string) error {
+	_, err := c.exchangeSessionForPID(ctx, pid, role)
+	return err
+}
+
+func (c *Client) exchangeSessionForPID(ctx context.Context, pid uint32, clientType string) (Session, error) {
+	body, err := json.Marshal(map[string]any{"pid": pid, "clientType": clientType})
 	if err != nil {
 		return Session{}, err
 	}

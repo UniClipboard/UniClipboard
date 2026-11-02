@@ -109,6 +109,12 @@ UniClipboard does not put these values in diagnostics or usage analytics:
 
 Any HTTPS service provider can see the source IP at the network layer. UniClipboard does not write IP addresses into diagnostic or usage analytics event fields, and it does not use them for product analysis.
 
+## Local Process Diagnostics
+
+Local CPU and memory collection is separate from **Send diagnostics** and **Send usage analytics**. Disabling remote reporting does not stop local process sampling. Ordinary sampling uses a 5-second interval; detailed capture uses a 1-second interval. In-memory history is bounded to 30 minutes and 8 MiB. Persistent history is encrypted with the existing profile encryption adapter. If the profile key is unavailable, the collector does not create a replacement file key.
+
+A diagnostic ZIP is a user-initiated readable export. Its OTLP files preserve process roles, PIDs, random process-run identifiers, original timestamps, and explicit coverage and loss states. They exclude clipboard content, command lines, environment variables, credentials, and real device identity. Export does not trigger remote upload. Offline export does not unlock the profile; attached encrypted history remains explicitly unavailable for reading. Developers must separately import and query the package. A ZIP or OTLP transport receipt alone does not prove successful platform queries.
+
 ## How To Turn It Off
 
 Go to **Settings → General → Privacy**:

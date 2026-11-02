@@ -52,8 +52,9 @@ impl DaemonHistory {
                 return Ok(context.clone());
             }
         }
-        let context = DaemonClientContext::new(connection.clone())
-            .map_err(|_| ServiceError::CannotConnect)?;
+        let context =
+            DaemonClientContext::with_connection_info(connection.clone(), "quick-panel".to_owned())
+                .map_err(|_| ServiceError::CannotConnect)?;
         *shared = Some((connection, context.clone()));
         Ok(context)
     }

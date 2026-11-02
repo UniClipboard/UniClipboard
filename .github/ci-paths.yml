@@ -18,8 +18,13 @@ rust_build_inputs: &rust_build_inputs
   - 'scripts/ci/mbx-snapshot.sh'
   - 'vendor/**'
 
+diagnostic_exchange_inputs: &diagnostic_exchange_inputs
+  # The Rust and Go archives embed these exact exchange assets.
+  - 'packages/desktop-host-go/diaglogs/import/**'
+
 rust_shared: &rust_shared
   - *rust_build_inputs
+  - *diagnostic_exchange_inputs
   - 'clippy.toml'
   - '.github/actions/build-pr-rust/**'
 
@@ -76,6 +81,7 @@ gui_go:
 
 # TesterArmy backend and Windows product checks execute the real daemon and CLI.
 daemon_runtime_inputs: &daemon_runtime_inputs
+  - *diagnostic_exchange_inputs
   - 'apps/daemon/**'
   - 'crates/uc-{platform,app-paths,observability,bootstrap,daemon-contract,daemon-process,daemon-local,desktop-settings,webserver}/**'
 

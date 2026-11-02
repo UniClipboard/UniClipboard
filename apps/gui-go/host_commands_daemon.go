@@ -39,6 +39,7 @@ func (h *HostService) GetDaemonSession(ctx context.Context) (*DaemonSession, err
 	if err != nil {
 		return nil, hostapi.Internal(err)
 	}
+	h.registerUIDiagnostics(ctx)
 	return &DaemonSession{SessionToken: session.SessionToken, ExpiresInSecs: session.ExpiresInSecs, RefreshAtSecs: session.RefreshAtSecs}, nil
 }
 

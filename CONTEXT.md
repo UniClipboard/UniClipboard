@@ -620,3 +620,16 @@ _Avoid_: shortcut probe、revert on failure
   对 file 类内容会得到与持久 `snapshot_hash` 背离的瞬态值，使 **Active-clipboard
   pull** 的源端「按 `snapshot_hash` 反查本机 entry」必然落空。故任何写入 register 的
   `snapshot_hash` 必须取该 entry 已持久化的 `snapshot_hash`，不得重算。
+
+## Language — 本地诊断
+
+**Local diagnostic history**：
+本机保存的有界诊断历史，包含已确认进程的资源指标及经过隐私过滤的日志和追踪；
+常驻历史加密，采集与远程遥测分离，进程覆盖不代表全应用资源占用。
+
+**Diagnostic export**：
+用户主动生成的诊断 ZIP，在线时包含可读的白名单 OTLP 数据与覆盖清单；
+离线时不启动 daemon 或解锁资料，附带密文时标为 `encrypted_unavailable`。
+导出不触发自动上传，也不代表后端已成功导入；它不同于配置导出和 **Profile upgrade backup**。
+
+文件契约与覆盖边界见 [诊断性能记录与 OTLP 离线交换](docs/architecture/diagnostic-performance-otlp.md)。

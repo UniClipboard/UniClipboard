@@ -328,6 +328,7 @@ async fn run_daemon_surfaces(
         diagnostics.clone(),
         Arc::new(DesktopDiagnosticArchive::new(
             process_paths.logs_dir().to_path_buf(),
+            diagnostics.clone(),
         )),
     )
     .with_run_marker(run_marker.clone());

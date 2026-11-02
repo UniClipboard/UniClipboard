@@ -1,13 +1,18 @@
 import { isExperimentalFeature } from '@/components/setting/experimental-features'
 import { ExperimentalBadge } from '@/components/setting/ExperimentalBadge'
-import { AlertDialog, Select, SettingsGroup, SettingsRow, Switch } from '@/ui-kit'
+import { AlertDialog, Button, Select, SettingsGroup, SettingsRow, Switch } from '@/ui-kit'
 import type {
   SettingAlertProps,
+  SettingActionButtonProps,
   SettingGroupProps,
   SettingRowProps,
   SettingSelectProps,
   SettingSwitchProps,
 } from './types'
+
+export function SettingActionButton(props: SettingActionButtonProps) {
+  return <Button variant="standard" size="small" {...props} />
+}
 
 // Platform-kit view of the setting parts (macOS build, `@ui-setting-parts`). The sections keep
 // every value, save and restart rule; only the presentation comes from the skin.

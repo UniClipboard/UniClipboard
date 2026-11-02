@@ -82,6 +82,26 @@ def verify_export(path, pinned):
                         runJsonCommit=run_json.get('engine_source_commit'), runJsonState=run_json.get('engine_source_state'),
                         commitMatchesPin=run_json.get('engine_source_commit') == pinned)
             out['runs'].append(info)
+        otel = json.loads(z.read('otel/manifest.json'))
+        out['otel'] = otel
+        for file in otel['files']:
+            data = z.read(file['name'])
+            assert len(data) == file['bytes']
+            assert hashlib.sha256(data).hexdigest() == file['sha256']
+        if manifest['mode'] == 'online':
+            assert otel['history']['coverage'] == 'registered_processes'
+            assert sum(host['role'] == 'gui' and host['state'] == 'active' for host in otel['history']['hostCoverage']) >= 2
+            metrics = z.read('otel/metrics.jsonl').decode()
+            assert 'process.memory.usage' in metrics
+            assert 'uc.process.cpu.time' in metrics
+            assert 'resourceMetrics' in metrics
+            from diagnostics_correlation import compare
+            out['correlation'] = compare(path)
+            assert out['correlation']['passed'], out['correlation']
+        else:
+            assert otel['liveFlush'] is False
+            assert otel['state'] in ('unavailable', 'encrypted_unavailable')
+        assert 'import/import.py' in names
         out['entries'] = len(names)
     return out
 
@@ -89,9 +109,21 @@ def verify_export(path, pinned):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--correlation-only', action='store_true', help='run real paired-daemon OTLP correlation acceptance')
+    parser.add_argument('--history-recovery-only', action='store_true', help='run isolated encrypted history recovery acceptance')
+    parser.add_argument('--performance-only', action='store_true', help='run isolated CPU, memory, process exit and quota acceptance')
     parser.add_argument('--no-expiry-wait', action='store_true', help='offline re-run only; skips the 600 s wait')
     parser.add_argument('--skip-expiry', action='store_true', help='not used for acceptance: the 600 s expiry is the point')
     args = parser.parse_args()
+    if args.correlation_only:
+        from diagnostics_correlation import run
+        return run(args.out)
+    if args.history_recovery_only:
+        from diagnostics_history_recovery import run
+        return run(args.out)
+    if args.performance_only:
+        from diagnostics_performance import run
+        return run(args.out)
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     pinned = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -124,6 +156,7 @@ def main():
         results['steps'][name + ':launchedAt'] = now()
         proc = subprocess.Popen([str(binary)], env=env, stdout=(out / f'{name}-gui.log').open('w'), stderr=subprocess.STDOUT)
         seen, shot, cursor, deadline = {}, set(), 0, time.monotonic() + timeout
+        window_pid = proc.pid
         while time.monotonic() < deadline and proc.poll() is None:
             rows = read_steps(evidence, cursor)
             cursor += len(rows)
@@ -132,12 +165,14 @@ def main():
                     raise RuntimeError(f"driver error: {row.get('detail')}")
                 row['seenAt'] = now()
                 seen[row['step']] = row
+                if row['step'] == 'ui-page-ready':
+                    window_pid = int(row['detail']['pid'])
                 if row['step'] in SCREENSHOT_STEPS and row['step'] not in shot:
                     shot.add(row['step'])
                     for _ in range(8):  # the parked WebView may not have painted yet
                         time.sleep(1)
                         target = out / f"{name}-{row['step']}.png"
-                        if screenshot(proc.pid, target) and target.stat().st_size > 150_000:
+                        if screenshot(window_pid, target) and target.stat().st_size > 150_000:
                             break
                 if on_step:
                     on_step(row)
@@ -268,6 +303,7 @@ def main():
         logs = Path(home_a) / 'Library/Logs' / f'app.uniclipboard.desktop-{profile_a}'
         if logs.is_dir():  # kept for diagnosis; may hold peer addresses, so not for publishing
             shutil.copytree(logs, out / 'profile-a-logs', dirs_exist_ok=True)
+        results['screenshots'] = [{'name': p.name, 'bytes': p.stat().st_size, 'sha256': sha256(p)} for p in out.glob('*.png')]
         (out / 'assertions.json').write_text(json.dumps(results, indent=2) + '\n')
     print(json.dumps({k: v for k, v in results.items() if k != 'steps'}, indent=2))
     assert results['passed']

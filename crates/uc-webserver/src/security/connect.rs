@@ -160,6 +160,26 @@ async fn connect_handler(
     // 3. PID verification is defense-in-depth against local malware, not a hard security boundary
     // 4. The bearer token file has filesystem permissions (600)
     state.security.register_pid(parsed.pid).await;
+    if matches!(parsed.client_type.as_str(), "gui" | "quick-panel") {
+        if let Some(diagnostics) = state.diagnostics_runtime.clone() {
+            let pid = parsed.pid;
+            let role = parsed.client_type.clone();
+            let span = tracing::Span::current();
+            let registration = tokio::time::timeout(
+                std::time::Duration::from_millis(250),
+                tokio::task::spawn_blocking(move || {
+                    span.in_scope(|| diagnostics.register_process(pid, &role))
+                }),
+            )
+            .await;
+            if !matches!(registration, Ok(Ok(Ok(())))) {
+                tracing::warn!(
+                    error_kind = "diagnostic_process_registration_failed",
+                    "host resource coverage unavailable"
+                );
+            }
+        }
+    }
 
     // Step 4: Build claims
     //

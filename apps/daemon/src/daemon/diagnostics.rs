@@ -33,7 +33,7 @@ use uc_observability::network_archive::{
 };
 use uc_observability::startup_logs::{
     export_diagnostic_logs, DiagnosticArchiveMode, DiagnosticArchiveRequest, ExportFailureCause,
-    HostManifest, MissingReason,
+    HostManifest, MissingReason, OtelArchiveSnapshot,
 };
 use uc_webserver::api::server::{
     DaemonDiagnosticArchive, DaemonDiagnosticArchiveError, DaemonDiagnosticError,
@@ -155,6 +155,9 @@ impl EngineDaemonDiagnostics {
         handle: ProcessObservabilityHandle,
         network_budget: Option<NetworkLogBudget>,
     ) -> Self {
+        if let Err(error) = handle.start_process_performance() {
+            tracing::warn!(error_kind = "process_sampler_start_failed", io_error_kind = ?error.kind(), "process performance collection unavailable");
+        }
         let _ = handle.register_host_diagnostic_source(
             HostDiagnosticSource::Application,
             SourceCapability::Partial,
@@ -291,6 +294,13 @@ fn suspension_gap(previous: SystemTime, current: SystemTime) -> bool {
 }
 
 impl DaemonDiagnosticsRuntime for EngineDaemonDiagnostics {
+    fn register_process(&self, pid: u32, role: &str) -> Result<(), DaemonDiagnosticError> {
+        self.handle.register_host_performance(pid, role).map_err(|error| {
+            tracing::warn!(error_kind = "diagnostic_process_identity_unavailable", io_error_kind = ?error.kind(), "host resource registration failed");
+            DaemonDiagnosticError::Unavailable
+        })
+    }
+
     fn status(&self) -> Result<DiagnosticStatusDto, DaemonDiagnosticError> {
         Ok(status_dto(self.handle.query_local_diagnostic_status()))
     }
@@ -410,11 +420,15 @@ impl EngineDaemonDiagnostics {
 
 pub struct DesktopDiagnosticArchive {
     logs_dir: PathBuf,
+    diagnostics: std::sync::Arc<EngineDaemonDiagnostics>,
 }
 
 impl DesktopDiagnosticArchive {
-    pub fn new(logs_dir: PathBuf) -> Self {
-        Self { logs_dir }
+    pub fn new(logs_dir: PathBuf, diagnostics: std::sync::Arc<EngineDaemonDiagnostics>) -> Self {
+        Self {
+            logs_dir,
+            diagnostics,
+        }
     }
 }
 
@@ -441,7 +455,9 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
         let network = NetworkArchiveRequest {
             live: Some(network_live(&engine_preparation.network)),
         };
+        let diagnostics = self.diagnostics.clone();
         let report = tokio::task::spawn_blocking(move || {
+            let snapshot = diagnostics.handle.offline_diagnostic_snapshot();
             export_diagnostic_logs(
                 &logs_dir,
                 &destination_for_worker,
@@ -452,6 +468,12 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
                     startup_status: None,
                     host: Some(host_manifest()),
                     network,
+                    otel: Some(OtelArchiveSnapshot {
+                        metrics: snapshot.metrics,
+                        logs: snapshot.logs,
+                        traces: snapshot.traces,
+                        summary: snapshot.summary,
+                    }),
                 },
             )
         })

@@ -222,8 +222,8 @@ for (const scheme of ['light', 'dark']) {
         path: path.join(output, `${platform}-${scheme}-${scenario}.png`),
       })
     }
-    // Failure modes: file/target association is lost, target progress is averaged,
-    // an unknown byte count becomes zero, or a 100% processing item claims success.
+    // Failure modes: per-file send progress survives, file content disappears,
+    // or the separate delivery summary is removed along with the file annotations.
     for (const scenario of [
       'outbound-single',
       'outbound-multi',
@@ -232,64 +232,23 @@ for (const scheme of ['light', 'dark']) {
     ]) {
       await page.getByRole('button', { name: scenario, exact: true }).click()
       const panel = page.getByTestId('file-preview')
-      const files = panel.locator('[data-outbound-file]')
       const count = scenario === 'outbound-single' ? 1 : scenario === 'outbound-unknown' ? 2 : 3
-      await files.first().waitFor({ state: 'attached' })
-      assert.equal(await files.count(), count)
+      await panel.getByText(`${count} 个文件`, { exact: true }).waitFor()
+      await page.getByTestId('delivery-status-macbook').waitFor()
+      assert.equal(await panel.locator('li').count(), count)
+      assert.equal(await panel.locator('[data-outbound-file], [data-file-target-state]').count(), 0)
+      assert.equal(await panel.getByRole('progressbar').count(), 0)
+      assert.equal(await panel.locator('details').count(), 0)
+      assert.equal(await panel.getByText('MacBook Pro', { exact: true }).count(), 0)
+      assert.equal(await panel.getByText('未知 / 总大小未知', { exact: true }).count(), 0)
       assert.equal(
         await panel.locator('[title="发布素材.zip"]').count(),
         scenario === 'outbound-unknown' ? 0 : 1
       )
-      assert.equal(
-        await page.getByTestId('clipboard-detail').locator('[data-outbound-state]').count(),
-        0
-      )
-      if (scenario === 'outbound-single') {
-        assert.equal(await panel.locator('details').count(), 0)
-        const bar = files.getByRole('progressbar')
-        const value = Number(await bar.getAttribute('aria-valuenow'))
-        const max = Number((await bar.getAttribute('aria-valuemax')) ?? 100)
-        assert.equal(value / max, 0.5)
-      }
-      if (scenario === 'outbound-multi') {
-        assert.equal(await panel.locator('[data-file-target-state]').count(), 9)
-        const bars = files.nth(0).getByRole('progressbar')
-        const values = []
-        for (const bar of await bars.all())
-          values.push(
-            Number(await bar.getAttribute('aria-valuenow')) /
-              Number((await bar.getAttribute('aria-valuemax')) ?? 100)
-          )
-        assert.deepEqual(values, [0.5, 0.25, 1])
-        await files.nth(0).getByText('MacBook Pro', { exact: true }).waitFor()
-        await files.nth(0).getByText('工作电脑', { exact: true }).waitFor()
-        await files.nth(0).getByText('Pixel 9', { exact: true }).waitFor()
-        const unknown = files.nth(1).locator('[data-file-target-state="waiting"]')
-        assert.equal(await unknown.getByRole('progressbar').getAttribute('aria-valuenow'), null)
-        await unknown.getByText('未知 / 总大小未知', { exact: true }).waitFor()
-        await files.nth(1).getByText('网络不可用', { exact: true }).waitFor()
-        await files.nth(1).getByText('已由你取消', { exact: true }).waitFor()
-        assert.equal(await files.nth(2).locator('[data-file-target-state="processing"]').count(), 3)
-        assert.equal(await files.nth(2).locator('[data-file-target-state="completed"]').count(), 0)
-        const summary = panel.locator('details').first().locator('summary')
-        await summary.click()
-        assert.equal(await files.nth(0).isVisible(), false)
-        await summary.press('Enter')
-        assert.equal(await files.nth(0).isVisible(), true)
-      }
-      if (scenario === 'outbound-unknown') {
-        assert.equal(await files.nth(0).getByRole('progressbar').count(), 0)
-        assert.equal(await files.nth(1).getByRole('progressbar').count(), 0)
-        await files.nth(1).getByText('未知 / 总大小未知', { exact: true }).waitFor()
-      }
-      if (scenario === 'outbound-finished') {
-        await panel.getByText('已送达 2 / 3 个设备 · 1 个设备失败', { exact: true }).waitFor()
-        assert.equal(await files.nth(1).locator('[data-file-target-state="failed"]').count(), 1)
-      }
       const width = await panel.evaluate(el => el.scrollWidth <= el.clientWidth + 1)
       assert.equal(width, true, `${platform}/${scheme}/${scenario} overflows horizontally`)
       await page.screenshot({ path: path.join(output, `${platform}-${scheme}-${scenario}.png`) })
-      results.push({ scenario, passed: true, fileCount: count })
+      results.push({ scenario, passed: true, fileCount: count, perFileSendProgress: false })
     }
     // Exercise the production detail's file_names forwarding, not a status-only fixture.
     await page.getByRole('button', { name: 'outbound-indexed', exact: true }).click()

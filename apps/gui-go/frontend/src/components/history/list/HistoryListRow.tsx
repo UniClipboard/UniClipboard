@@ -1,9 +1,7 @@
 import { Pin } from 'lucide-react'
 import React, { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { shallowEqual } from 'react-redux'
 import InlineTextSummary from '@/components/clipboard/InlineTextSummary'
-import HistoryCardTransferProgress from '@/components/history/history-card/HistoryCardTransferProgress'
 import { useResourceImageUrl } from '@/components/history/history-card/useResourceImageUrl'
 import { useTagTints } from '@/components/history/tags/tag-colors-context'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -11,13 +9,6 @@ import { useInView } from '@/hooks/useInView'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { tagLabel } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
-import { useAppSelector } from '@/store/hooks'
-import {
-  resolveEntryTransferStatus,
-  selectEntryTransferStatus,
-  selectTransferByEntryId,
-} from '@/store/slices/fileTransferSlice'
-import { IDLE_OUTBOUND, selectOutboundActivity } from '@/store/slices/outboundProgressSlice'
 import { formatClockTime } from './history-list-format'
 import { historyKind, KIND_GLYPH, KIND_TINT, rowChips, type HistoryKind } from './history-list-kind'
 import { rowTitle } from './history-row-title'
@@ -99,32 +90,6 @@ function HistoryListRow({
   const { t, i18n } = useTranslation()
   const tintOf = useTagTints()
   const kind = historyKind(item)
-  const isFileType = item.type === 'file'
-  const transfer = useAppSelector(state =>
-    isFileType ? selectTransferByEntryId(state, item.id) : undefined
-  )
-  const entryStatus = useAppSelector(state =>
-    isFileType ? selectEntryTransferStatus(state, item.id) : undefined
-  )
-  const status = isFileType ? resolveEntryTransferStatus(entryStatus, transfer) : undefined
-  // Sender-side activity comes only from the Engine's outbound snapshot; an
-  // unconfirmed or settled snapshot is not activity, so nothing animates.
-  const outbound = useAppSelector(
-    state => (isFileType ? selectOutboundActivity(state, item.id) : IDLE_OUTBOUND),
-    shallowEqual
-  )
-  const shown =
-    transfer ??
-    (outbound.running
-      ? { bytesTransferred: outbound.bytes, totalBytes: outbound.total }
-      : undefined)
-  const percent =
-    shown && shown.totalBytes && shown.totalBytes > 0
-      ? Math.round((shown.bytesTransferred / shown.totalBytes) * 100)
-      : 0
-  // Same rule as HistoryCard: a directory send's byte percentage is meaningless.
-  const hideByteProgress = (item.isDirectory ?? false) && outbound.running && !transfer
-
   // The hovered row still drives the page's hover shortcuts (c / d).
   useEffect(() => () => onHoverChange(item.id, false), [item.id, onHoverChange])
   const handleMouseEnter = useCallback(() => onHoverChange(item.id, true), [item.id, onHoverChange])
@@ -179,8 +144,7 @@ function HistoryListRow({
             : checked
               ? 'bg-primary/5'
               : 'hover:bg-muted/40',
-        item.isUnavailable && 'opacity-55',
-        status === 'pending' && 'opacity-60'
+        item.isUnavailable && 'opacity-55'
       )}
     >
       <button
@@ -188,13 +152,6 @@ function HistoryListRow({
         aria-label={t('clipboard.item.actions.open', 'Open clipboard item')}
         onClick={handleClick}
         className="absolute inset-0 z-[1] cursor-pointer appearance-none border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
-      />
-      <HistoryCardTransferProgress
-        isFileType={isFileType}
-        isTransferring={status === 'transferring' || outbound.running}
-        transfer={shown}
-        percent={percent}
-        hideByteProgress={hideByteProgress}
       />
       {anyChecked && (
         <Checkbox

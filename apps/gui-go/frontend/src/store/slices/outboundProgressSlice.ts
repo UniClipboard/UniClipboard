@@ -51,31 +51,6 @@ export function isOutboundRunning(snapshot: OutboundProgressSnapshot): boolean {
   )
 }
 
-export interface OutboundActivity {
-  running: boolean
-  /** Bytes reported so far across running targets (unreported items count as 0). */
-  bytes: number
-  /** `null` unless every item of every running target reports a total (unknown is not 0). */
-  total: number | null
-}
-
-export const IDLE_OUTBOUND: OutboundActivity = { running: false, bytes: 0, total: null }
-
-/** Entry-level activity for the history list, derived only from the snapshot cache. */
-export function selectOutboundActivity(state: RootState, entryId: string): OutboundActivity {
-  const targets = state.outboundProgress.byEntry[entryId]
-  if (!targets) return IDLE_OUTBOUND
-  const running = Object.values(targets).filter(isOutboundRunning)
-  if (running.length === 0) return IDLE_OUTBOUND
-  const items = running.flatMap(snapshot => snapshot.items ?? [])
-  const known = items.length > 0 && items.every(item => item.totalBytes != null)
-  return {
-    running: true,
-    bytes: items.reduce((sum, item) => sum + (item.completedBytes ?? 0), 0),
-    total: known ? items.reduce((sum, item) => sum + (item.totalBytes ?? 0), 0) : null,
-  }
-}
-
 export const selectOutboundByEntry = (
   state: RootState,
   entryId: string

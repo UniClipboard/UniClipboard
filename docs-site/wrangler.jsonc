@@ -4,6 +4,12 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-02",
   "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "docs.uniclipboard.app",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

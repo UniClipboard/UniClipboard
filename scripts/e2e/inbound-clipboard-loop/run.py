@@ -232,11 +232,17 @@ def transfer(sender, receiver, fixture, cases, expect_echo=False):
     native = wait_for(received, fixture["name"] + " received native content", 120)
     if expect_echo:
         def echo():
-            return next((e for e in receiver.events() if e["message"] == "outbound: dispatch_capture entering publish phase"
-                         and event_time(e) >= since), None)
-        evidence = wait_for(echo, "old receiver must initiate erroneous return dispatch", 45)
-        local_entry = evidence["fields"]["entry_id"]
-        assert receiver.api("GET", "/clipboard/entries/" + local_entry + "/delivery")["source"]["tag"] == "local", "old receiver dispatch was not a local recapture"
+            for event in receiver.events():
+                if event["message"] != "outbound: dispatch_capture entering publish phase" or event_time(event) < since:
+                    continue
+                entry_id = event["fields"]["entry_id"]
+                # Active-state broadcasts may publish a remote entry first.
+                # Only a local-source dispatch establishes erroneous recapture.
+                source = receiver.api("GET", "/clipboard/entries/" + entry_id + "/delivery")["source"]
+                if source["tag"] == "local":
+                    return event
+            return None
+        evidence = wait_for(echo, "old receiver must initiate erroneous local return dispatch", 45)
         cases.append({"scenario": fixture["name"], "result": "EXPECTED_FAILURE_REPRODUCED", "evidence": evidence})
         return
     queued, completed = wait_for(lambda: receiver.receipt(native["changeCount"]),

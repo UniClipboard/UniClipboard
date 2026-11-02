@@ -597,6 +597,81 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
         )
       }
     )
+    await run('action menu navigation keeps the native window visible', async () => {
+      await hotkey('cmd,k')
+      await delay(700)
+      const { stdout } = await exec(peekaboo, [
+        'list', 'windows', '--pid', String(app.pid), '--no-remote', '--json',
+      ])
+      const windows = JSON.parse(stdout).data.windows
+      const preview = windows.find(w => w.title === 'UniClipboard Preview')
+      assert.ok(preview, 'The action menu must be open')
+      const history = windows.find(w => w.title === 'UniClipboard History')
+      const x = Math.floor(Math.min(preview.bounds[0][0], history.bounds[0][0]) - 16)
+      const y = Math.floor(Math.min(preview.bounds[0][1], history.bounds[0][1]) - 16)
+      const right = Math.max(...[preview, history].map(w => w.bounds[0][0] + w.bounds[1][0])) + 16
+      const bottom = Math.max(...[preview, history].map(w => w.bounds[0][1] + w.bounds[1][1])) + 16
+      const probe = join(temporary, 'menu-visibility')
+      await exec('swiftc', [join(directory, 'menu_visibility.swift'), '-o', probe])
+      const sampler = launch(probe, [String(preview.window_id), '14'])
+      const recording = launch('/usr/sbin/screencapture', [
+        '-x', '-v', '-V', '14', `-R${x},${y},${Math.ceil(right - x)},${Math.ceil(bottom - y)}`,
+        join(artifacts, 'action-menu-navigation.mov'),
+      ])
+      try {
+        await delay(600)
+        for (const direction of [...Array(8).fill('down'), ...Array(8).fill('up')]) {
+          await key(direction)
+          await delay(450)
+        }
+        await until('native visibility samples complete', () => sampler.exitCode !== null, 20_000)
+        await until('evidence recording complete', () => recording.exitCode !== null, 20_000)
+        assert.equal(sampler.exitCode, 0, sampler.errors)
+        assert.equal(recording.exitCode, 0, recording.errors)
+        const samples = JSON.parse(sampler.output)
+        await writeFile(join(artifacts, 'action-menu-visibility.json'), JSON.stringify(samples, null, 2))
+        assert.ok(samples.length > 200, 'Capture enough samples to detect a 40 ms flash')
+        const hidden = samples.filter(sample => sample.alpha !== 1 || !sample.onscreen)
+        assert.equal(hidden.length, 0, `Menu disappeared in ${hidden.length}/${samples.length} native samples`)
+        // Verify cursor navigation still executes the selected action after wrapping.
+        await key('up')
+        await key('return')
+        await until('settings selected after navigation', () => app.output.includes('open_settings'))
+      } finally {
+        await stop(sampler)
+        await stop(recording)
+      }
+    })
+    await run('action menu device submenu opens and returns to the main menu', async () => {
+      await text('GPUI quick panel paste verification')
+      await query({ query: 'GPUI quick panel paste verification' })
+      await delay(400)
+      await hotkey('cmd,k')
+      await delay(600)
+      const readMenu = async name => {
+        const { stdout } = await exec(peekaboo, [
+          'list', 'windows', '--pid', String(app.pid), '--no-remote', '--json',
+        ])
+        const menu = JSON.parse(stdout).data.windows.find(w => w.title === 'UniClipboard Preview')
+        assert.ok(menu, 'The menu must remain open')
+        await exec('/usr/sbin/screencapture', [
+          '-x', '-o', '-l', String(menu.window_id), join(artifacts, `${name}.png`),
+        ])
+        return menu.bounds
+      }
+      const main = await readMenu('actions-main')
+      for (let index = 0; index < 4; index++) await key('down')
+      await key('return')
+      await delay(600)
+      const devices = await readMenu('actions-devices')
+      assert.ok(devices[1][1] < main[1][1], 'The two-device submenu must be shorter than the action list')
+      await key('down')
+      await key('up')
+      await key('escape')
+      await delay(600)
+      assert.deepEqual((await readMenu('actions-returned'))[1], main[1], 'Back restores the main menu size')
+      await noPaste()
+    })
     await run('Escape closes the action list and keeps the panel open', async () => {
       await delay(300)
       await hotkey('cmd,k')

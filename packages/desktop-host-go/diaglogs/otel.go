@@ -70,7 +70,7 @@ func diagnosticSelection(root, signal string) ([]string, []any) {
 				continue
 			}
 			parts := strings.Split(rest, ".")
-			if len(parts) == 2 && len(parts[0]) == 8 && len(parts[1]) == 10 && digits(parts[0]) && digits(parts[1]) && entry.Type().IsRegular() {
+			if len(parts) == 2 && len(parts[0]) == 8 && len(parts[1]) >= 10 && len(parts[1]) <= 20 && digits(parts[0]) && digits(parts[1]) && entry.Type().IsRegular() {
 				paths = append(paths, filepath.Join(dir, name))
 			}
 		}

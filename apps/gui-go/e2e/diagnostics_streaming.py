@@ -19,6 +19,7 @@ import tempfile
 import time
 import zipfile
 import urllib.request
+import urllib.error
 from run import ROOT, isolated_env, pid_alive
 from file_preview_run import cli, PASSPHRASE
 
@@ -157,7 +158,26 @@ def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, col
             req = urllib.request.Request(base + path, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', 'Authorization': authorization})
             with opener.open(req, timeout=10) as response:
                 return json.load(response)['data']
-        session = request('/auth/connect', {'pid': os.getpid(), 'clientType': 'cli'}, 'Bearer ' + conn['token'])['sessionToken']
+        session, refresh_at = None, 0
+        def refresh_session():
+            nonlocal session, refresh_at
+            response = request('/auth/connect', {'pid': os.getpid(), 'clientType': 'cli'}, 'Bearer ' + conn['token'])
+            assert 0 < response['refreshAtSecs'] < response['expiresInSecs']
+            session = response['sessionToken']
+            refresh_at = time.monotonic() + response['refreshAtSecs']
+            report['authRefreshes'] = report.get('authRefreshes', 0) + 1
+        def session_request(path, body):
+            if time.monotonic() >= refresh_at:
+                refresh_session()
+            try:
+                return request(path, body, 'Session ' + session)
+            except urllib.error.HTTPError as error:
+                if error.code != 401:
+                    raise
+                # Authentication rejects before the operation. Match the native client's refresh behavior.
+                refresh_session()
+                return request(path, body, 'Session ' + session)
+        refresh_session()
         current_run = None
         def snapshot():
             paths = list(logs.glob('diagnostics/*/*/metrics.*.jsonl'))
@@ -180,8 +200,8 @@ def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, col
             load_start = time.monotonic()
             cycles = 0
             while snapshot()['writtenBytes'] < load_bytes:
-                active = request('/diagnostics/capture/start', {'durationSeconds': 2}, 'Session ' + session)
-                request('/diagnostics/capture/stop', {'captureId': active['capture']['captureId']}, 'Session ' + session)
+                active = session_request('/diagnostics/capture/start', {'durationSeconds': 2})
+                session_request('/diagnostics/capture/stop', {'captureId': active['capture']['captureId']})
                 cycles += 1
                 time.sleep(.05)
                 if cycles % 100 == 0:

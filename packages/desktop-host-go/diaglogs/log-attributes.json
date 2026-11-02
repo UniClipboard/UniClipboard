@@ -609,7 +609,6 @@
     "writeFailed",
     "queueFull",
     "closedDropped",
-    "encodingBusy",
     "encodingRejected",
     "schemaRejected",
     "queueByteBudget",
@@ -621,6 +620,7 @@
     "rotatedBytes",
     "rotatedFiles",
     "cleanupFailures",
-    "metadataWriteFailures"
+    "metadataWriteFailures",
+    "queueRecordLimit"
   ]
 }

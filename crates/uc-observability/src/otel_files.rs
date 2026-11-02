@@ -81,7 +81,7 @@ fn segment(name: &str, signal: &str) -> bool {
     };
     date.len() == 8
         && date.bytes().all(|b| b.is_ascii_digit())
-        && sequence.len() == 10
+        && (10..=20).contains(&sequence.len())
         && sequence.bytes().all(|b| b.is_ascii_digit())
 }
 pub(crate) fn has_files(root: &Path) -> bool {

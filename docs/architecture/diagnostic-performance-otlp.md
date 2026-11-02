@@ -120,3 +120,5 @@ python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --streaming-only --duratio
 长时间负载夹具按认证接口返回的 `refreshAtSecs` 更新测试会话，不修改产品的认证期限。
 
 编码槽只执行有界编码与非阻塞入队。槽内不执行磁盘 I/O。
+
+导出验收必须保留既有准入尝试的 `attempt_ref`、连接流程的 `connect_id`、固定步骤与计数。`attempt_ref` 仅允许 16 位小写十六进制。`connect_id` 仅允许 UUID。无效值必须丢弃。两条离线导出路径必须给出一致结果。

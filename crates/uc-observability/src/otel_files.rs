@@ -126,6 +126,18 @@ fn allowed(key: &str, value: &Value, policy: &Value, top: bool) -> bool {
     {
         return false;
     }
+    if !top && key == "attempt_ref" {
+        return value.as_str().is_some_and(|v| {
+            v.len() == 16
+                && v.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        });
+    }
+    if !top && key == "connect_id" {
+        return value
+            .as_str()
+            .is_some_and(|v| v.len() == 36 && uuid::Uuid::parse_str(v).is_ok());
+    }
     match value {
         Value::String(v) => {
             if top {

@@ -85,6 +85,39 @@ def verify(path):
         return {'sha256': digest(path), 'counts': counts, 'manifest': manifest, 'metricNames': sorted(metric_names), 'metricSpanSeconds': (metric_max - metric_min) / 1e9 if metric_min is not None else None}
 
 
+def correlation_fixture(root):
+    run = root / 'diagnostics/engine/11111111-1111-4111-8111-111111111111'
+    run.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for index, reference in enumerate(('0123456789abcdef', '0123456789ABCDEF', 'not-a-reference', 7, True)):
+        rows.append({'local_schema_version': 2, 'timestamp': '2026-11-02T00:00:00.123456789Z',
+                     'level': 'INFO', 'run_id': run.name, 'fields': {
+                         'event.name': 'pairing.exchange.step.started', 'attempt_ref': reference,
+                         'connect_id': '22222222-2222-4222-8222-222222222222' if index == 0 else reference,
+                         'step': 'send_request', 'attempt_count': 7}})
+    (run / 'logs.20261102.0000000000.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+
+
+def verify_correlation_fields(path):
+    records = []
+    with zipfile.ZipFile(path) as archive, archive.open('otel/logs.jsonl') as source:
+        while line := source.readline(65537):
+            assert len(line) <= 65536
+            for resource in json.loads(line)['resourceLogs']:
+                for scope in resource['scopeLogs']:
+                    records.extend(scope['logRecords'])
+    assert len(records) == 5
+    attrs = [{item['key']: item['value'] for item in record['attributes']} for record in records]
+    assert attrs[0]['attempt_ref']['stringValue'] == '0123456789abcdef'
+    assert all('attempt_ref' not in row for row in attrs[1:])
+    assert attrs[0]['connect_id']['stringValue'] == '22222222-2222-4222-8222-222222222222'
+    assert all('connect_id' not in row for row in attrs[1:])
+    assert all(row['step']['stringValue'] == 'send_request' for row in attrs)
+    assert all(row['attempt_count']['intValue'] == '7' for row in attrs)
+    assert all(record['timeUnixNano'] == '1793577600123456789' for record in records)
+    return {'records': 5, 'validReferencesPreserved': True, 'invalidReferencesRejected': True}
+
+
 def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, collector=None):
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -235,6 +268,12 @@ def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, col
         stale.parent.mkdir(parents=True)
         stale.write_bytes(b'synthetic-retired-ciphertext')
         offline('metrics-only', only)
+        correlations = out / 'correlation-fields'
+        shutil.copytree(only, correlations)
+        correlation_fixture(correlations)
+        offline('correlation-fields', correlations)
+        for kind in ('rust', 'go'):
+            report['checks']['correlation-fields-' + kind]['referenceValidation'] = verify_correlation_fields(out / ('correlation-fields-' + kind + '.zip'))
         assert stale.read_bytes() == b'synthetic-retired-ciphertext'
         damaged = out / 'damaged'
         shutil.copytree(only, damaged)

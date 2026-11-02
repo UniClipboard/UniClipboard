@@ -157,6 +157,22 @@ func approvedAttribute(k string, v any, top bool, p attributePolicy) bool {
 	if !slices.Contains(keys, k) {
 		return false
 	}
+	if !top && k == "attempt_ref" {
+		value, ok := v.(string)
+		if !ok || len(value) != 16 {
+			return false
+		}
+		for _, b := range value {
+			if !(b >= '0' && b <= '9' || b >= 'a' && b <= 'f') {
+				return false
+			}
+		}
+		return true
+	}
+	if !top && k == "connect_id" {
+		value, ok := v.(string)
+		return ok && uuidText(value)
+	}
 	switch value := v.(type) {
 	case string:
 		if top {

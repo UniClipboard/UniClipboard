@@ -63,11 +63,11 @@ describe('QuickPanelTagFilterBar', () => {
     let availableWidth = 100
     let resize = () => {}
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => availableWidth)
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
-      function (this: HTMLElement) {
-        return { width: this.hasAttribute('aria-pressed') ? 80 : 0 } as DOMRect
-      }
-    )
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      return { width: this.hasAttribute('aria-pressed') ? 80 : 0 } as DOMRect
+    })
     vi.stubGlobal(
       'ResizeObserver',
       class {

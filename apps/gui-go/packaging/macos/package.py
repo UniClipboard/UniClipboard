@@ -225,7 +225,7 @@ def cmd_sign(a):
         run(codesign_args(a.identity, a.keychain) + ["--identifier", CFG["identifier"] + suffix + VARIANTS[a.variant]["suffix"],
                                                        macos / name])
     ent = ["--entitlements", a.entitlements] if a.entitlements else []
-    ui_bundle = bundle / "Contents/Helpers/UniClipboardUI.app"
+    ui_bundle = bundle / "Contents/Helpers/UniClipboard.app"
     run(codesign_args(a.identity, a.keychain) + ["--identifier", ident + ".ui"] + ent + [ui_bundle])
     run(codesign_args(a.identity, a.keychain) + ["--identifier", ident] + ent + [bundle])
     run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", bundle])

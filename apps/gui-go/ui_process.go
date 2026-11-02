@@ -72,7 +72,7 @@ func (u *uiProcess) startLocked() (*uiPeer, error) {
 	ready := make(chan struct{}, 1)
 	helper := exe
 	if runtime.GOOS == "darwin" {
-		helper = filepath.Join(filepath.Dir(exe), "..", "Helpers", "UniClipboardUI.app", "Contents", "MacOS", "gui-go")
+		helper = filepath.Join(filepath.Dir(exe), "..", "Helpers", "UniClipboard.app", "Contents", "MacOS", "gui-go")
 	}
 	cmd := exec.Command(helper, uiChildArg)
 	// The child has a UI service but must not consume the resident host's test control file.
@@ -413,7 +413,8 @@ func uiProcessEnabled() bool { return !uiChild }
 // validateUIRole refuses direct UI launches without the inherited private pipes.
 func validateUIRole() error {
 	exe, _ := os.Executable()
-	nested := filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(exe)))) == "UniClipboardUI.app"
+	bundle := filepath.Dir(filepath.Dir(filepath.Dir(exe)))
+	nested := filepath.Base(bundle) == "UniClipboard.app" && filepath.Base(filepath.Dir(bundle)) == "Helpers"
 	uiChild = hasArg(os.Args[1:], uiChildArg) || (runtime.GOOS == "darwin" && nested)
 	if !uiChild {
 		return nil

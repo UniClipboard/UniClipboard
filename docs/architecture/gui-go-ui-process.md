@@ -18,7 +18,7 @@ Windows、Linux 与 macOS LaunchAgent 使用 `--autostart`。Wails beta.28 的 S
 
 Wails beta.28 在运行中的 `SystemTray.New` 内立即调用 `Run`，Linux 只在该次 `Run` 创建 `Menu` 属性。因此仍需在应用事件循环前配置托盘。显式启动在事件循环之前配置托盘。后台启动在单实例锁之前只读探测已有 daemon 的设置，不启动或修改 daemon；如果启动后才确定需要托盘，则先完成 daemon 恢复，再通过现有重启交接给具备托盘配置的宿主。单实例锁之后、事件循环之前不等待 daemon 启动，重复激活仍可被接收。交接提示仅用于内部重启且不覆盖成功读取的设置。
 
-macOS 子进程位于 `Contents/Helpers/UniClipboardUI.app`，使用独立 `<bundle-id>.ui` 标识；Windows 和 Linux 通过内部 `--ui-child` 参数复用同一程序。没有继承管道的直接子进程启动仍被拒绝。Linux 两个角色使用独立的 GTK 应用标识，AppImage 子进程继承挂载环境；整应用重启仍通过外层 AppImage。未更改 daemon 的配置根、密钥、内容或同步协议。
+macOS 子进程位于 `Contents/Helpers/UniClipboard.app`，使用独立 `<bundle-id>.ui` 标识；Windows 和 Linux 通过内部 `--ui-child` 参数复用同一程序。没有继承管道的直接子进程启动仍被拒绝。Linux 两个角色使用独立的 GTK 应用标识，AppImage 子进程继承挂载环境；整应用重启仍通过外层 AppImage。未更改 daemon 的配置根、密钥、内容或同步协议。
 
 正常模式无窗口时继续检查和下载更新，但计划提示不打开子进程。轻量模式仅剩 daemon 时不运行桌面更新调度、托盘通知或快捷键。所有模式的完整退出仍停止 daemon，模式交接与普通窗口关闭不会停止 daemon。
 

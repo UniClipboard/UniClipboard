@@ -49,13 +49,14 @@ export function InsetList({ label, rows }: InsetListProps) {
         const tone = row.tone ?? 'neutral'
         return (
           <li key={row.id} className={styles.row} data-tone={tone}>
-            <span className={mergeClasses(status.dot, status[dotClass[tone]])} />
+            {!row.status && <span className={mergeClasses(status.dot, status[dotClass[tone]])} />}
             <span className={styles.title}>{row.title}</span>
-            {row.detail ? (
-              <span className={mergeClasses(styles.detail, status[textClass[tone]])}>
-                {row.detail}
-              </span>
-            ) : null}
+            {row.status ??
+              (row.detail ? (
+                <span className={mergeClasses(styles.detail, status[textClass[tone]])}>
+                  {row.detail}
+                </span>
+              ) : null)}
             {row.action ? (
               <Link as="button" className={styles.action} onClick={() => row.action?.onClick()}>
                 {row.action.label}

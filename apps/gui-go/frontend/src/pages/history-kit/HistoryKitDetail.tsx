@@ -214,7 +214,9 @@ export function HistoryKitDetail({
         {delivery && (
           <HistoryKitDelivery
             delivery={delivery}
-            showOutboundProgress={item.type !== 'file' || item.isDirectory === true}
+            fileNames={
+              item.content && 'file_names' in item.content ? item.content.file_names : undefined
+            }
           />
         )}
       </div>

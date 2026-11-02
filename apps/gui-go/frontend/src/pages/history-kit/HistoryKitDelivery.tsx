@@ -1,21 +1,12 @@
 import { useTranslation } from 'react-i18next'
-import type {
-  EntryDeliveryStatusView,
-  EntryDeliveryView,
-} from '@/api/tauri-command/clipboard_delivery'
-import { deviceLabel, getStatusLabel } from '@/components/clipboard/entry-delivery-labels'
-import HistoryDetailOutbound from '@/components/history/detail/HistoryDetailOutbound'
+import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
+import { deviceLabel } from '@/components/clipboard/entry-delivery-labels'
 import { useResendAction } from '@/hooks/useResendAction'
-import { InsetList, Text, type InsetListRow, type StatusTone } from '@/ui-kit'
-
-const delivered = (status: EntryDeliveryStatusView) =>
-  status.tag === 'delivered' || status.tag === 'duplicate'
-
-function tone(status: EntryDeliveryStatusView): StatusTone {
-  if (delivered(status)) return 'positive'
-  if (status.tag === 'failed') return 'critical'
-  return 'neutral'
-}
+import { deliveryStatus } from '@/pages/history-kit/delivery-status'
+import { HistoryKitDeliveryStatus } from '@/pages/history-kit/HistoryKitDeliveryStatus'
+import { useAppSelector } from '@/store/hooks'
+import { selectOutboundByEntry } from '@/store/slices/outboundProgressSlice'
+import { InsetList, Text, type InsetListRow } from '@/ui-kit'
 
 /**
  * Delivery of the entry to each paired device (design MA2 "Delivery"), with the Engine's real
@@ -24,38 +15,44 @@ function tone(status: EntryDeliveryStatusView): StatusTone {
  */
 export function HistoryKitDelivery({
   delivery,
-  showOutboundProgress = true,
+  fileNames,
 }: {
   delivery: EntryDeliveryView
-  showOutboundProgress?: boolean
+  fileNames?: readonly string[]
 }) {
   const { t } = useTranslation()
   const action = useResendAction()
   const { source, deliveries, entryId } = delivery
   const resendable = source.tag === 'local'
-  const done = deliveries.filter(target => delivered(target.status)).length
+  const snapshots = useAppSelector(state => selectOutboundByEntry(state, entryId))
+  const targets = deliveries.map(target => {
+    const snapshot = snapshots?.[target.targetDeviceId]
+    const busy =
+      action.isEntryInFlight(entryId) || action.isPeerInFlight(entryId, target.targetDeviceId)
+    return { target, snapshot, view: deliveryStatus(target.status, snapshot, busy) }
+  })
+  const done = targets.filter(({ view }) => view.complete).length
   const note =
     source.tag === 'historical'
       ? t('delivery.list.historical')
       : deliveries.length === 0
         ? t('delivery.list.noPeers')
         : null
-  const rows: InsetListRow[] = deliveries.map(target => {
+  const rows: InsetListRow[] = targets.map(({ target, snapshot, view }) => {
     const name = deviceLabel(target.targetDeviceName, target.targetDeviceId)
-    const busy =
-      action.isEntryInFlight(entryId) || action.isPeerInFlight(entryId, target.targetDeviceId)
     return {
       id: target.targetDeviceId,
       title: name,
-      detail: getStatusLabel(target.status, t),
-      tone: tone(target.status),
-      action:
-        resendable && !delivered(target.status) && !busy
-          ? {
-              label: t('delivery.resend.button.peer'),
-              onClick: () => void action.resendToPeer(entryId, target.targetDeviceId),
-            }
-          : undefined,
+      tone: view.tone,
+      status: (
+        <HistoryKitDeliveryStatus
+          entryId={entryId}
+          target={target}
+          snapshot={snapshot}
+          resendable={resendable}
+          fileNames={fileNames}
+        />
+      ),
     }
   })
   return (
@@ -74,17 +71,6 @@ export function HistoryKitDelivery({
         </Text>
       ) : (
         <InsetList label={t('delivery.list.title')} rows={rows} />
-      )}
-      {showOutboundProgress && (
-        <HistoryDetailOutbound
-          entryId={entryId}
-          deviceNames={Object.fromEntries(
-            deliveries.map(target => [
-              target.targetDeviceId,
-              target.targetDeviceName ?? target.targetDeviceId.slice(0, 8),
-            ])
-          )}
-        />
       )}
       <Text role="caption" tone="tertiary">
         {t('history.kit.encryptionNote')}

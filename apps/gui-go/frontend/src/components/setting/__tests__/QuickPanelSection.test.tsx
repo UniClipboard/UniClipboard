@@ -4,6 +4,7 @@ import type { ComponentType } from 'react'
 import {
   getQuickPanelAccessibilityPermission,
   getQuickPanelDoubleTapAvailability,
+  refreshQuickPanelTriggers,
   quickPanelUsesCompositorShortcuts,
 } from '@/api/tauri-command'
 import QuickPanelSection from '@/components/setting/QuickPanelSection'
@@ -173,6 +174,9 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
       name: 'settings.sections.quickPanel.accessibility.openSettings',
     })
     expect(screen.getAllByRole('combobox')[1]).toBeEnabled()
+    expect(mockOpenUrl).not.toHaveBeenCalled()
+    expect(vi.mocked(getQuickPanelAccessibilityPermission)).toHaveBeenCalledWith()
+    expect(vi.mocked(refreshQuickPanelTriggers)).toHaveBeenCalledWith()
 
     await user.click(button)
     expect(mockOpenUrl).toHaveBeenCalledWith(
@@ -187,6 +191,7 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
     expect(screen.getByText('recorded-global.toggleQuickPanel')).toBeInTheDocument()
 
     const selects = screen.getAllByRole('combobox')
+    await waitFor(() => expect(selects[1]).toBeEnabled())
     await user.click(selects[1]!)
     await user.click(
       await screen.findByRole('option', {

@@ -3841,3 +3841,147 @@
   display: flex;
   gap: 8px;
 }
+
+/* Transfer inspector: a quiet completed list and expanded rows only for active files. */
+.mac-transfer-trigger {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--label-2);
+  cursor: default;
+}
+.mac-transfer-trigger:hover {
+  background: var(--fill-3);
+}
+.mac-transfer-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.mac-transfer-trigger[data-tone='info'] {
+  color: var(--accent);
+}
+.mac-transfer-trigger[data-tone='critical'] {
+  color: var(--red);
+  cursor: pointer;
+}
+.mac-transfer-trigger[aria-disabled='true'] {
+  cursor: default;
+}
+.mac-transfer-ring,
+.mac-transfer-ring > svg {
+  display: block;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.mac-transfer {
+  box-sizing: border-box;
+  width: min(23rem, calc(100vw - 2rem));
+  min-width: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 0.875rem;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+.mac-transfer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1rem;
+}
+.mac-transfer-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.mac-transfer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 600;
+}
+.mac-transfer-status {
+  flex-shrink: 0;
+  color: var(--label-2);
+}
+.mac-transfer-status[data-tone='critical'] {
+  color: var(--red);
+}
+.mac-transfer-summary {
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.mac-transfer-files {
+  display: block;
+  max-height: min(19rem, calc(100vh - 10rem));
+  margin: 0;
+  padding: 0 0.5rem 0.5rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  scrollbar-width: thin;
+}
+.mac-transfer-files:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.mac-transfer-item {
+  display: block;
+  padding: 0.625rem 0.5rem;
+  margin: 0;
+  border-top: 1px solid var(--separator);
+}
+.mac-transfer-file-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.mac-transfer-file-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--label-3);
+}
+.mac-transfer-file-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+.mac-transfer-file-status {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--label-2);
+}
+.mac-transfer-item[data-tone='positive'] .mac-transfer-file-name {
+  color: var(--label-2);
+}
+.mac-transfer-item[data-tone='critical'] .mac-transfer-file-status {
+  color: var(--red);
+}
+.mac-transfer-file-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: 0.5rem 0 0 1.625rem;
+}
+.mac-transfer-reason {
+  margin: 0.25rem 0 0 1.625rem;
+  color: var(--red);
+  overflow-wrap: anywhere;
+}

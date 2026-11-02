@@ -189,3 +189,68 @@ for (const scheme of ['light', 'dark']) {
     )
   })
 }
+
+// Boundary failures: empty tasks override receipts, waiting allows duplicate retry,
+// cancellation reasons leak enum keys, or unreported bytes become a false 0%.
+for (const scheme of ['light', 'dark']) {
+  test(`delivery boundary states ${scheme}`, async ({ app, page }) => {
+    const output = await outputFor('delivery-status')
+    const requests = []
+    page.on('request', request => {
+      if (new URL(request.url()).pathname.endsWith('/clipboard/resend'))
+        requests.push(request.postDataJSON())
+    })
+    await page.goto(`${app.baseUrl.replace(/\/$/, '')}/?scheme=${scheme}`)
+    const status = page.getByTestId('delivery-status-phone')
+    const details = page.getByTestId('delivery-transfer-details')
+    const results = []
+    for (const scenario of ['no-items', 'waiting', 'cancelled', 'unknown-bytes', 'future-state']) {
+      await page.getByRole('button', { name: scenario, exact: true }).click()
+      await status.hover()
+      await details.waitFor()
+      const bars = status.getByRole('progressbar')
+      if (scenario === 'no-items') {
+        assert.equal(await status.getAttribute('data-tone'), 'positive')
+        assert.equal(await bars.count(), 0)
+        assert.equal(await details.locator('li').count(), 0)
+        assert.match(await status.getAttribute('aria-label'), /已接收/)
+        await page.getByText('1/2 台设备', { exact: true }).waitFor()
+      } else if (scenario === 'waiting') {
+        assert.equal(await status.getAttribute('data-tone'), 'info')
+        assert.equal(await bars.getAttribute('aria-valuenow'), null)
+        assert.match(await status.getAttribute('aria-label'), /等待中/)
+        assert.equal(await details.getByText('等待', { exact: true }).count(), 12)
+        assert.equal(await details.getByText('未知 / 总大小未知', { exact: true }).count(), 12)
+        await status.click()
+        assert.equal(requests.length, 0)
+      } else if (scenario === 'cancelled') {
+        assert.equal(await status.getAttribute('data-tone'), 'neutral')
+        assert.equal(await bars.count(), 0)
+        assert.match(await status.getAttribute('aria-label'), /已取消.*重发/)
+        assert.equal(await details.getByText('已由你取消', { exact: true }).count(), 11)
+        assert.equal(await details.getByText('未知原因', { exact: true }).count(), 1)
+      } else if (scenario === 'unknown-bytes') {
+        assert.equal(await bars.getAttribute('aria-valuenow'), null)
+        assert.equal(await details.getByText('未知 / 1.00 KB', { exact: true }).count(), 12)
+        await details.getByText('已完成 0 / 12 项 · 未知 / 12.00 KB', { exact: true }).waitFor()
+        assert.equal(await details.getByRole('progressbar').count(), 12)
+        for (const bar of await details.getByRole('progressbar').all())
+          assert.equal(await bar.getAttribute('aria-valuenow'), null)
+      } else {
+        assert.equal(await status.getAttribute('data-tone'), 'neutral')
+        assert.equal(await bars.count(), 0)
+        assert.match(await status.getAttribute('aria-label'), /结果未确认/)
+        assert.equal(await details.getByText('结果未确认', { exact: true }).count(), 13)
+      }
+      await page.screenshot({ path: path.join(output, `${scheme}-${scenario}.png`) })
+      results.push({ scenario, passed: true })
+      await status.focus()
+      await page.keyboard.press('Escape')
+      await details.waitFor({ state: 'hidden' })
+    }
+    await writeFile(
+      path.join(output, `${scheme}-boundaries.json`),
+      JSON.stringify(results, null, 2) + '\n'
+    )
+  })
+}

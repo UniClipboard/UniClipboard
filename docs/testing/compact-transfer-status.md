@@ -95,3 +95,43 @@ python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
 CI 原始日志位于 `target/pr2179-backend-job.log`。下载的失败报告与同轮 Windows、Linux 通过证据位于 `target/pr2179-ci-backend/`。本地复跑日志位于 `target/pr2179-grid-after.log`。本地首次启动因缺少后端二进制而失败；构建隔离 daemon 和 CLI 后才开始场景验证。该准备失败不计为产品回归。
 
 本地验证环境为 macOS、Node 24.22.2、Chromium。三种皮肤均通过，每种皮肤访问全部 138 条记录，每个窗口保留 50 条记录，并反向返回首个窗口。macOS 驻留卡片高度为 1445.125，视口高度为 11912。三次运行均正常清理，没有强制结束后端。截图、场景 JSON、运行报告和清理回执位于标准后端工件目录；源码为 `6c3a1d01bbad14060f11996b9b697613ef01585f` 加本次测试等待条件修改。公开回执记录源码脏状态与校验和。新提交的 CI 结果须单独核对。
+
+## 按风险顺序补齐的行为验收
+
+### 1. 真实发送、目标隔离和确认重试
+
+新增 `delivery-live` 后端套件。夹具复用既有 `Backend`，在私有 HOME 中创建一个发送端和两个真实 Engine 接收端，关闭系统剪贴板接入。测试通过现有配对流程连接三个隔离 daemon，不连接日常设备。
+
+夹具向第一个目标发送 64 MiB 合成文件，并等待真实完成状态。随后只阻断第二个接收端的私有文件缓存目录，触发真实失败。浏览器运行完整历史页面，不拦截 HTTP 响应，不向 Redux 注入快照。它验证：
+
+1. 两个设备分别显示完成和失败。
+2. 悬浮详情显示实际文件名。
+3. 首次重试只核对第二个设备的旧任务。
+4. 取消确认不创建新传输，设备仍显示失败。
+5. 恢复缓存目录后，确认重试只向第二个设备创建新传输。
+6. 页面通过真实 HTTP/WebSocket 显示中间百分比，然后显示完成，无需刷新页面。
+7. 两个接收端保存的文件 SHA-256 与发送文件一致。
+8. 三个 daemon 和私有 HOME 均正常清理，无强制结束。
+
+```bash
+bun run e2e:gui backends delivery-live --seed delivery
+```
+
+本机三种皮肤已分别通过。每种皮肤均观察到大于 0%、小于 100% 的确定进度；实际采样值保存在场景 JSON 中，不是测试预设值。场景 JSON、失败/进行中/完成截图和清理回执位于 `target/tester-army-backend/<platform>/delivery-live/delivery/all/`；运行报告位于对应的 `target/tester-army-backend-report/`。套件已加入默认后端矩阵，复用现有 CI 路径条件和编译前提，不新增生产测试接口。
+
+### 2. 完整详情中的文件索引关联
+
+`file-preview` 新增 `outbound-indexed` 场景，使用真实 `HistoryKitDetail` 向设备状态组件传递文件名。快照项目顺序为文件索引 2、文件索引 0、缺失文件索引 9、内容索引 0、目录索引 0。断言名称分别为 `gamma.txt`、`alpha.txt`、文件 10、内容 1、文件夹 1。内容和目录不能错误复用文件索引 0 的名称。取消原因与未知失败原因各有独立断言。所有终态行均不显示活动进度条。
+
+### 3. 边界状态与未知字节
+
+`delivery-status` 的明暗主题测试新增 `no_items`、等待、取消、未知已发送字节和未来未知状态。测试验证回执回退、设备完成数量、等待期间不派发重试、取消原因回退、未知状态的中性文案，以及未知字节的不确定进度。
+
+新 GUI E2E 在修复前于明暗主题均复现：未报告已发送字节时，设备圆形进度错误显示 0%。`transferBytes` 现仅在所有已发送字节和总量均已知时计算百分比；汇总也显示未知字节，不再把缺失值显示为零。文件完成仍由 Engine 状态决定。失败证据保留于 `target/pr2179-unknown-bytes-failure/`，日志为 `target/pr2179-boundaries-red.log`。
+
+```bash
+bun run e2e:gui layouts delivery-status file-preview
+python3 apps/gui-go/frontend/e2e/tester-army/receipt.py
+```
+
+以上测试补齐行为验收，不等于提升 Vitest/Codecov 的行覆盖率。真实 Engine 运行于同一 macOS 宿主；Windows/Linux 皮肤通过不能计为对应系统原生或跨物理设备验收。原生窗口、物理双端和移动真机仍属于独立验收层。

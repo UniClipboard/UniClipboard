@@ -68,6 +68,49 @@ function update(scenario: string) {
     itemsWaiting: 0,
     items,
   }
+  if (scenario === 'no-items') {
+    Object.assign(snapshot, {
+      state: 'no_items',
+      freshness: 'settled',
+      items: [],
+      itemsTotal: 0,
+      itemsCompleted: 0,
+      itemsRunning: 0,
+    })
+  }
+  if (scenario === 'waiting') {
+    Object.assign(snapshot, {
+      state: 'waiting',
+      freshness: 'waiting',
+      itemsRunning: 0,
+      itemsWaiting: 12,
+    })
+    snapshot.items = snapshot.items?.map(item => ({
+      ...item,
+      state: 'waiting',
+      completedBytes: null,
+      totalBytes: null,
+    }))
+  }
+  if (scenario === 'cancelled') {
+    Object.assign(snapshot, {
+      state: 'cancelled',
+      freshness: 'settled',
+      itemsRunning: 0,
+      itemsCancelled: 12,
+    })
+    snapshot.items = snapshot.items?.map((item, index) => ({
+      ...item,
+      state: 'cancelled',
+      cancellationReason: index === 0 ? 'future_reason' : 'local_user',
+    }))
+  }
+  if (scenario === 'unknown-bytes')
+    snapshot.items = snapshot.items?.map(item => ({ ...item, completedBytes: null }))
+  if (scenario === 'future-state') {
+    Object.assign(snapshot, { state: 'future_batch_state', freshness: 'settled', itemsRunning: 0 })
+    snapshot.items = snapshot.items?.map(item => ({ ...item, state: 'future_item_state' }))
+  }
   store.dispatch(replaceOutboundSnapshots(scenario === 'no-snapshot' ? [] : [snapshot]))
 }
 update('active')
@@ -80,6 +123,11 @@ export default function Fixture() {
         <main style={{ minHeight: '100vh' }} className="mx-auto flex max-w-xl flex-col gap-8 p-6">
           <nav className="flex flex-wrap gap-2">
             {[
+              'no-items',
+              'waiting',
+              'cancelled',
+              'unknown-bytes',
+              'future-state',
               'active',
               'bytes-complete',
               'completed',

@@ -117,6 +117,7 @@ export const retainedReasons = {
 }
 
 export const backendSuites = {
+  'delivery-live': { platforms: ['macos', 'windows', 'linux'], seeds: ['delivery'] },
   'history-window-grid': { platforms: ['macos', 'windows', 'linux'], seeds: ['history'] },
   'tag-manager-layout': { platforms: ['macos', 'linux'], seeds: ['empty'] },
   'history-kit': { platforms: ['macos', 'windows', 'linux'], seeds: ['history', 'empty'] },
@@ -127,6 +128,11 @@ export const backendSuites = {
 }
 // Each entry has passed its stated functional contract; retained candidates stay explicit.
 export const verifiedBackendRuns = [
+  ...['macos', 'windows', 'linux'].map(platform => ({
+    suite: 'delivery-live',
+    platform,
+    seed: 'delivery',
+  })),
   { suite: 'history-kit', platform: 'windows', seed: 'history' },
   ...['macos', 'windows', 'linux'].map(platform => ({
     suite: 'history-window-grid',

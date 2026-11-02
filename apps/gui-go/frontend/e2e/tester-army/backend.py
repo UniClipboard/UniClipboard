@@ -246,23 +246,53 @@ class Backend:
 
 def serve(mode):
     backend = None
+    peers = None
     failed = False
     try:
         backend = Backend(mode)
         diagnostic('stage', backend.stage)
         backend.start()
-        backend.seed(mode)
+        extra = {}
+        if mode == 'delivery':
+            from delivery_peers import DeliveryPeers
+            peers = DeliveryPeers(backend)
+            backend.stage = 'seed-delivery'
+            extra['delivery'] = peers.prepare()
+            backend.seeded = 1
+        else:
+            backend.seed(mode)
         backend.stage = 'ready'
         diagnostic('stage', backend.stage)
-        print(json.dumps(backend.ready()), flush=True)
-        sys.stdin.buffer.read()
+        print(json.dumps({**backend.ready(), **extra}), flush=True)
+        for line in sys.stdin:
+            command = json.loads(line)
+            assert peers is not None
+            if command['action'] == 'restore-receiver':
+                peers.restore()
+                result = {}
+            elif command['action'] == 'verify-files':
+                result = peers.verify_files()
+            else:
+                raise ValueError('unknown delivery fixture action')
+            print(json.dumps({'phase': 'control', 'id': command['id'], 'ok': True, **result}), flush=True)
     except Exception as error:
         failed = True
         diagnostic('failure', backend.stage if backend else 'profile', error)
     finally:
+        peer_receipts = []
+        if peers is not None:
+            try:
+                peer_receipts = peers.close()
+            except Exception as error:
+                failed = True
+                diagnostic('cleanup-failed', 'cleanup', error)
         if backend is not None:
             try:
                 receipt = backend.close()
+                if peers is not None:
+                    receipt['peerCleanup'] = peer_receipts
+                    if len(peer_receipts) != 2:
+                        failed = True
                 if receipt['forced'] or not receipt['stopSucceeded'] or receipt['daemonExitCode'] not in (None, 0):
                     failed = True
             except Exception as error:

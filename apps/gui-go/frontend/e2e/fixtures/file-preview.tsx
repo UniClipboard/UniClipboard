@@ -42,6 +42,7 @@ const examples = {
   'receive-unknown': ['历史文件.zip'],
   'receive-zero': ['空文件.txt'],
   'receive-directory': ['目录 A', '目录 B'],
+  'outbound-indexed': ['alpha.txt', 'beta.txt', 'gamma.txt'],
   'outbound-single': ['发布素材.zip'],
   'outbound-multi': ['发布素材.zip', '产品演示.mov', '设计说明.pdf'],
   'outbound-unknown': ['空文件.txt', '未知大小.bin'],
@@ -64,6 +65,42 @@ const items: DisplayClipboardItem[] = Object.entries(examples).map(([id, names])
 function outboundFor(id: string): OutboundProgressSnapshot[] {
   if (!id.startsWith('outbound-')) return []
   const names = examples[id as keyof typeof examples]
+  if (id === 'outbound-indexed')
+    return [
+      {
+        entryId: id,
+        targetDeviceId: 'macbook',
+        revision: 1,
+        state: 'partially_failed',
+        freshness: 'settled',
+        freshnessAvailable: true,
+        itemsTotal: 5,
+        itemsCompleted: 1,
+        itemsFailed: 2,
+        itemsCancelled: 2,
+        itemsRunning: 0,
+        itemsWaiting: 0,
+        itemsUnconfirmed: 0,
+        // The original file index, not position or a representation index, owns the label.
+        items: [
+          { kind: 'file', index: 2, state: 'completed', completedBytes: 2048, totalBytes: 2048 },
+          { kind: 'file', index: 0, state: 'cancelled', cancellationReason: 'local_user' },
+          { kind: 'file', index: 9, state: 'failed', failureReason: 'future_failure' },
+          {
+            kind: 'representation',
+            index: 0,
+            state: 'failed',
+            failureReason: 'network_unavailable',
+          },
+          {
+            kind: 'directory_unit',
+            index: 0,
+            state: 'cancelled',
+            cancellationReason: 'remote_peer',
+          },
+        ],
+      },
+    ]
   return Array.from(
     { length: id === 'outbound-single' || id === 'outbound-unknown' ? 1 : 3 },
     (_, device) => ({

@@ -124,6 +124,7 @@ for (const scheme of ['light', 'dark']) {
         failed: 4,
         active: 2,
         local: 1,
+        'outbound-indexed': 3,
         'outbound-single': 1,
         'outbound-multi': 3,
         'outbound-unknown': 2,
@@ -290,6 +291,29 @@ for (const scheme of ['light', 'dark']) {
       await page.screenshot({ path: path.join(output, `${platform}-${scheme}-${scenario}.png`) })
       results.push({ scenario, passed: true, fileCount: count })
     }
+    // Exercise the production detail's file_names forwarding, not a status-only fixture.
+    await page.getByRole('button', { name: 'outbound-indexed', exact: true }).click()
+    const indexedStatus = page.getByTestId('delivery-status-macbook')
+    await indexedStatus.waitFor()
+    await indexedStatus.hover()
+    const indexedDetails = page.getByTestId('delivery-transfer-details')
+    await indexedDetails.getByText('gamma.txt', { exact: true }).waitFor()
+    const indexedRows = indexedDetails.locator('li')
+    assert.equal(await indexedRows.count(), 5)
+    const labels = ['gamma.txt', 'alpha.txt', '文件 10', '内容 1', '文件夹 1']
+    for (const [index, label] of labels.entries())
+      await indexedRows.nth(index).getByText(label, { exact: true }).waitFor()
+    assert.equal(await indexedDetails.getByText('beta.txt', { exact: true }).count(), 0)
+    await indexedRows.nth(1).getByText('已由你取消', { exact: true }).waitFor()
+    await indexedRows.nth(2).getByText('未知原因', { exact: true }).waitFor()
+    await indexedRows.nth(3).getByText('网络不可用', { exact: true }).waitFor()
+    await indexedRows.nth(4).getByText('对方已取消', { exact: true }).waitFor()
+    assert.equal(await indexedDetails.getByRole('progressbar').count(), 0)
+    await page.screenshot({ path: path.join(output, `${platform}-${scheme}-outbound-indexed.png`) })
+    results.push({ scenario: 'outbound-indexed', passed: true, labels })
+    await indexedStatus.focus()
+    await page.keyboard.press('Escape')
+    await indexedDetails.waitFor({ state: 'hidden' })
     for (const scenario of [
       'receive-files',
       'receive-saving',

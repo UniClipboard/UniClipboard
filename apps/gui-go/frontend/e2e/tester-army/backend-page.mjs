@@ -64,6 +64,7 @@ export const test = base.extend({
             'seed-panel',
             'seed-devices',
             'seed-history',
+            'seed-delivery',
             'seed-search',
             'seed-smoke',
           ].includes(value.stage)
@@ -106,7 +107,7 @@ export const test = base.extend({
               if (value.phase === 'cleanup') cleanup = value
               else if (typeof value.baseUrl === 'string' && typeof value.sessionToken === 'string')
                 resolve(value)
-              else rejectedDiagnostics++
+              else if (value.phase !== 'control') rejectedDiagnostics++
             } catch {
               rejectedDiagnostics++
             }
@@ -120,7 +121,28 @@ export const test = base.extend({
         }),
       ])
       clearTimeout(timer)
-      await provide(ready)
+      let controlId = 0
+      const control = async action => {
+        assert.equal(backendSeed, 'delivery')
+        const id = ++controlId
+        let listener
+        let timeout
+        try {
+          return await new Promise((resolve, reject) => {
+            listener = line => {
+              const value = JSON.parse(line)
+              if (value.phase === 'control' && value.id === id) resolve(value)
+            }
+            lines.on('line', listener)
+            timeout = setTimeout(() => reject(new Error('fixture control timed out')), 10000)
+            proc.stdin.write(JSON.stringify({ id, action }) + '\n')
+          })
+        } finally {
+          clearTimeout(timeout)
+          lines.off('line', listener)
+        }
+      }
+      await provide({ ...ready, control })
     } catch (error) {
       failed = error
       throw error

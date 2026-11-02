@@ -6,6 +6,7 @@ import type { StatusTone, TransferStatusItem } from '@/ui-kit'
 import { formatFileSize } from '@/utils'
 
 export function transferBytes(items: OutboundProgressItemDto[]) {
+  const knownDone = items.length > 0 && items.every(item => item.completedBytes != null)
   const done = items.reduce((sum, item) => sum + (item.completedBytes ?? 0), 0)
   const total =
     items.length && items.every(item => item.totalBytes != null)
@@ -13,9 +14,10 @@ export function transferBytes(items: OutboundProgressItemDto[]) {
       : null
   return {
     done,
+    knownDone,
     total,
     percent:
-      total != null && total > 0
+      knownDone && total != null && total > 0
         ? Math.min(100, Math.max(0, Math.round((done / total) * 100)))
         : null,
   }
@@ -104,11 +106,11 @@ export function transferDetails(
     completed: snapshot.itemsCompleted,
     total: snapshot.itemsTotal,
   })
-  const { done, total } = transferBytes(snapshot.items ?? [])
+  const { done, total, knownDone } = transferBytes(snapshot.items ?? [])
   return {
     items,
     summary: items.length
-      ? `${counts} · ${formatFileSize(done)} / ${total == null ? t('delivery.outbound.unknownTotal') : formatFileSize(total)}`
+      ? `${counts} · ${knownDone ? formatFileSize(done) : t('delivery.outbound.unknownBytes')} / ${total == null ? t('delivery.outbound.unknownTotal') : formatFileSize(total)}`
       : counts,
   }
 }

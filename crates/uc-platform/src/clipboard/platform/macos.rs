@@ -58,6 +58,8 @@ impl SystemClipboard for MacOSClipboard {
             debug!(
                 formats = snapshot.representations.len(),
                 total_size_bytes = snapshot.total_size_bytes(),
+                clipboard_ownership_version = before,
+                clipboard_identity_ref = %crate::clipboard::clipboard_identity_ref(Some(&before.to_le_bytes())),
                 "Captured system clipboard snapshot"
             );
             Ok((snapshot, Some(before.to_le_bytes().to_vec())))
@@ -83,6 +85,7 @@ impl SystemClipboard for MacOSClipboard {
                 write_snapshot_to_pasteboard(snapshot, &NSPasteboard::generalPasteboard())?;
             debug!(
                 identified = identity.is_some(),
+                clipboard_identity_ref = %crate::clipboard::clipboard_identity_ref(identity.as_deref()),
                 "Wrote clipboard snapshot to system"
             );
             Ok(identity)

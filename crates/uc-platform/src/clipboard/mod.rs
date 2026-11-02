@@ -27,8 +27,9 @@ pub use event_loop::{
     build_event_loop, shutdown_channel, PlatformClipboardEventLoop, ShutdownRx, ShutdownTx,
 };
 pub use model::{
-    ClipboardObservation, ClipboardPayloadSource, FormatId, ImageKind, MimeClass, MimeType,
-    ObservedClipboardRepresentation, RepresentationId, SystemClipboard, SystemClipboardSnapshot,
+    clipboard_identity_ref, ClipboardObservation, ClipboardPayloadSource, FormatId, ImageKind,
+    MimeClass, MimeType, ObservedClipboardRepresentation, RepresentationId, SystemClipboard,
+    SystemClipboardSnapshot,
 };
 pub use noop::NoopSystemClipboard;
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

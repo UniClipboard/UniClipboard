@@ -52,6 +52,8 @@ async fn watcher_host_identity_e2e() {
     let mut changes = DesktopClipboardChanges {
         system_clipboard: platform.clone(),
         pending_snapshot: pending_snapshot.clone(),
+        cycle_id: 0,
+        last_cycle: None,
         running: Some(RunningDesktopClipboardChanges {
             receiver,
             shutdown,

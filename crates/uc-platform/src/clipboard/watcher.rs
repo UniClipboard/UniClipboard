@@ -157,6 +157,8 @@ pub struct ClipboardWatcher {
     /// breaker, which engages only for images we could fingerprint (the fp=None
     /// path stays on the [`IMAGE_STORM_MAX_GAP`] size latch).
     image_burst: Option<ImageBurst>,
+    /// Identity of the last successfully queued native observation.
+    last_identity: Option<Vec<u8>>,
 }
 
 impl ClipboardWatcher {
@@ -168,6 +170,7 @@ impl ClipboardWatcher {
             last_file_emit_time: None,
             last_image_seen: None,
             image_burst: None,
+            last_identity: None,
         }
     }
 }
@@ -249,6 +252,11 @@ impl ClipboardWatcher {
     pub fn notify_change(&mut self) {
         match self.local_clipboard.read_observation() {
             Ok((snapshot, identity)) => {
+                debug!(
+                    clipboard_identity_ref = %super::clipboard_identity_ref(identity.as_deref()),
+                    identity_present = identity.is_some(),
+                    "clipboard watcher observed"
+                );
                 self.emit_observation_at(snapshot, identity, Instant::now())
             }
             Err(e) => {
@@ -290,6 +298,13 @@ impl ClipboardWatcher {
         identity: Option<Vec<u8>>,
         now: Instant,
     ) {
+        // A new reliable ownership token denotes a new OS copy, even when its
+        // bytes match. Engine owns self-write attribution; content heuristics
+        // must not swallow this observation before that attribution runs.
+        let ownership_changed = identity
+            .as_ref()
+            .is_some_and(|current| self.last_identity.as_ref() != Some(current));
+        let emitted_identity = identity.clone();
         let raw_key = dedupe_key(&snapshot);
         let is_image = raw_key.as_deref().is_some_and(|k| k.starts_with("image:"));
 
@@ -313,7 +328,7 @@ impl ClipboardWatcher {
             _ => raw_key,
         };
 
-        if let Some(key) = current_dedupe_key.as_ref() {
+        if let Some(key) = current_dedupe_key.as_ref().filter(|_| !ownership_changed) {
             if let Some((last_key, last_at)) = self.last_meaningful.as_ref() {
                 if last_key == key {
                     // Image keys are a decode-stable fingerprint, so an
@@ -355,7 +370,7 @@ impl ClipboardWatcher {
         // latch inline before returning — exactly as the storm guard does — so a
         // sustained burst stays muted regardless of send outcome.
         let mut pending_image_burst: Option<ImageBurst> = None;
-        if is_image && image_fingerprint.is_some() {
+        if !ownership_changed && is_image && image_fingerprint.is_some() {
             if let Some(size) = snapshot.primary_image_size_bytes() {
                 match self.image_burst {
                     Some(prev)
@@ -408,7 +423,7 @@ impl ClipboardWatcher {
         // it can't tell two same-size images apart and would otherwise drop a
         // genuinely different same-size image. Computed before the value moves
         // into `try_send`.
-        let image_size = if is_image && image_fingerprint.is_none() {
+        let image_size = if !ownership_changed && is_image && image_fingerprint.is_none() {
             snapshot.primary_image_size_bytes()
         } else {
             None
@@ -432,7 +447,7 @@ impl ClipboardWatcher {
         // Time-window suppression for file snapshots: macOS fires
         // multiple clipboard events when copying files (APFS→resolved
         // path transition) where content bytes may differ slightly.
-        if snapshot_has_files(&snapshot) {
+        if !ownership_changed && snapshot_has_files(&snapshot) {
             if let Some(last) = self.last_file_emit_time {
                 if now.duration_since(last) < FILE_DEDUP_WINDOW {
                     debug!(
@@ -455,6 +470,12 @@ impl ClipboardWatcher {
                 "Failed to notify clipboard change"
             );
         } else {
+            self.last_identity = emitted_identity;
+            if ownership_changed {
+                self.last_file_emit_time = None;
+                self.last_image_seen = None;
+                self.image_burst = None;
+            }
             if current_dedupe_key
                 .as_ref()
                 .is_some_and(|k| k.starts_with("files:"))

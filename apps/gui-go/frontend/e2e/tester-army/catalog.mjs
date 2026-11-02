@@ -1,4 +1,9 @@
 export const suites = {
+  'history-top-insert': {
+    fixture: 'history-top-insert',
+    platforms: ['macos', 'windows', 'linux'],
+    viewport: { width: 1000, height: 700 },
+  },
   'quick-panel-accessibility': {
     fixture: 'settings-page',
     platforms: ['macos', 'windows', 'linux'],
@@ -86,6 +91,7 @@ export const suites = {
 }
 // Only independently passing suite/skin combinations enter the normal CI run.
 export const verifiedPlatforms = {
+  'history-top-insert': ['macos', 'windows', 'linux'],
   'delivery-status': ['macos', 'windows', 'linux'],
   'quick-panel-accessibility': ['macos', 'windows', 'linux'],
   'startup-first-frame': ['macos', 'windows', 'linux', 'none'],

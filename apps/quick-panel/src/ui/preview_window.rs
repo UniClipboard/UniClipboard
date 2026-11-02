@@ -54,7 +54,9 @@ impl PreviewWindow {
                 || this.snapshot.text != next.text
                 || this.snapshot.loading != next.loading
                 || this.snapshot.scale != next.scale
-                || this.snapshot.actions != next.actions
+                // Cursor movement only changes the highlight, not the measured menu content.
+                || this.snapshot.actions.as_ref().map(|actions| (&actions.title, &actions.rows))
+                    != next.actions.as_ref().map(|actions| (&actions.title, &actions.rows))
                 || image_changed;
             this.snapshot = next;
             if this.snapshot.is_image() {

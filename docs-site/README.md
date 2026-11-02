@@ -40,7 +40,7 @@ Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
 
 站点使用 OpenNext Cloudflare 适配器运行在 Cloudflare Workers。GitHub Actions 工作流在 `main` 分支收到 `docs-site/**` 变更后构建并部署 Worker，也支持手动运行。仓库需要设置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 两个 Actions Secrets。本地预览运行 `bun run cf:preview`；本机手动部署运行 `bun run cf:deploy`。
 
-`wrangler.jsonc` 定义 Worker 名称、静态资源目录、兼容日期和 `docs.uniclipboard.app` 的站点地址。把 `docs.uniclipboard.app` 添加为 Worker Custom Domain 后，再将该域名的生产流量切换到 Cloudflare。
+`wrangler.jsonc` 定义 Worker 名称、静态资源目录、兼容日期和 `docs.uniclipboard.app` 的 Custom Domain。GitHub Actions 部署时会将该域名路由到 `uc-docs` Worker。
 
 在 Cloudflare Worker 设置中添加 Ask AI 所需的 `AI_PROVIDER`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`、`OPENAI_PROVIDER_NAME`、`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL` 和 `ANTHROPIC_PROVIDER_NAME`。密钥必须使用 Worker Secrets；其他选项可使用变量。仅配置所选服务商需要的值。
 
@@ -56,12 +56,10 @@ bun run check:docs
 
 ### Sitemap & site URL
 
-`src/app/sitemap.ts` 在构建时枚举所有页面并生成 `/sitemap.xml`，包含 hreflang 替代语言。绝对域名按以下优先级解析：
+`src/app/sitemap.ts` 在构建时枚举所有页面并生成 `/sitemap.xml`，包含 hreflang 替代语言。绝对域名按以下规则解析：
 
 1. `NEXT_PUBLIC_SITE_URL`（手动设定，最稳）
-2. `VERCEL_PROJECT_PRODUCTION_URL`（Vercel 迁移期间的回退）
-3. `VERCEL_URL`（Vercel 预览回退）
-4. `http://localhost:3000`（兜底）
+2. `http://localhost:3000`（本地兜底）
 
 Cloudflare 部署使用 `wrangler.jsonc` 中的 `NEXT_PUBLIC_SITE_URL`。本地构建可用 `NEXT_PUBLIC_SITE_URL=https://docs.uniclipboard.app` 覆盖。
 

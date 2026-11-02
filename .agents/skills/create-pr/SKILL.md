@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: Push the current branch and open a GitHub pull request against `main`. Use when the user says "create PR", "open PR", "make a PR", "提 PR", "开 PR", "打 PR", or otherwise asks to publish their committed work for review. Before pushing it gates the diff on four things — branch name accuracy, stale `docs-site/` docs, missing PostHog telemetry, and tracing-spec conformance — and surfaces each as a candidate list for the user to approve.
+description: Push the current branch and open a GitHub pull request against `main`, including available screenshot or video evidence. Use when the user says "create PR", "open PR", "make a PR", "提 PR", "开 PR", "打 PR", or asks to publish committed work for review. Checks branch naming, docs, telemetry, and tracing before publishing.
 ---
 
 # create-pr
@@ -189,13 +189,15 @@ Show the list to the user (or "tracing in this diff conforms — one use-case sp
 
 ### Step 6 — Build and open the PR
 
+When screenshots or recordings exist for this change, read [pr-evidence](../pr-evidence/SKILL.md). Include an `Evidence` section with the actual source SHA, environment, reproduction steps, observed result, and media. Pass the local files through native `gh pr create --attach` in the same creation command. Do not upload media to a release or a source branch. If evidence is absent, state any visual acceptance gap in the test plan; do not invent evidence or claim it was verified.
+
 Title:
 
 - Max 70 chars.
 - Imperative mood, follow the `<type>(<scope>): <subject>` style already used on `main` (`git log --oneline -10` if unsure).
 - Reflects the *primary* change, not all of them — secondary work goes in the body.
 
-Body, using a heredoc to preserve formatting:
+Body, saved to a temporary Markdown file to preserve formatting:
 
 ```markdown
 ## Summary
@@ -217,11 +219,10 @@ Then push and create:
 ```bash
 git push -u origin <branch>
 
-gh pr create --title "<title>" --body "$(cat <<'EOF'
-<body>
-EOF
-)"
+gh pr create --base main --head <branch> --title "<title>" --body-file <body-file>
 ```
+
+If visual evidence is available, append the `--attach <file>` arguments prepared through `pr-evidence`. After publication, read back the remote body and confirm the attachment URLs. A nonzero exit can still leave a created PR with partial attachments: inspect the returned URL or existing head PR before retrying. Recover missing files on that PR instead of creating another PR.
 
 Add `--draft` if the user signaled the PR is incomplete.
 
@@ -235,6 +236,7 @@ Print the PR URL (`gh pr create` outputs it on success). Add a one-line recap:
 - Whether docs were updated (and how many files), or the explicit "no docs changes" decision.
 - Telemetry/tracing outcome: gaps fixed, or the explicit "nothing to instrument / tracing conforms" / "deferred" decision.
 - Issue that will close on merge, if any.
+- Evidence URLs, when present, and whether inline rendering was actually checked.
 
 Stop there. Don't auto-request reviewers, add labels, or run any other workflow unless the user asks.
 

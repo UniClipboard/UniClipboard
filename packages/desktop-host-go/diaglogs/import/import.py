@@ -117,7 +117,7 @@ def main():
                     pipelines[signal] = {'receivers': [receiver], 'exporters': ['otlphttp']}
             receipt['expected'] = expected
             if not pipelines:
-                raise ValueError('ZIP has no readable OTLP records; inspect coverage and locked-history state')
+                raise ValueError('ZIP has no readable OTLP records; inspect collection coverage and daemon availability')
             with socket.socket() as sock:
                 sock.bind(('127.0.0.1', 0))
                 port = sock.getsockname()[1]

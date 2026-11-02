@@ -457,7 +457,7 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
         };
         let diagnostics = self.diagnostics.clone();
         let report = tokio::task::spawn_blocking(move || {
-            let snapshot = diagnostics.handle.offline_diagnostic_snapshot();
+            let snapshot = diagnostics.handle.diagnostic_snapshot();
             export_diagnostic_logs(
                 &logs_dir,
                 &destination_for_worker,

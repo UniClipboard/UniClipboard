@@ -186,7 +186,6 @@ pub fn export_diagnostic_logs(
     let network_selection = network_archive::select(logs_dir, request.since, &request.network);
     if candidates.is_empty()
         && network_selection.is_empty()
-        && !has_offline_history(logs_dir)
         && matches!(request.mode, DiagnosticArchiveMode::Offline)
     {
         return Err(ExportError::new(
@@ -271,7 +270,7 @@ pub fn export_diagnostic_logs(
             network_archive::collect(network_selection, &request.network, &mut archive, options)
                 .map_err(ExportError::archive_write)?;
         in_window += report.network.file_count();
-        let otel_has_files = write_otel(&mut archive, options, request.otel.as_ref(), logs_dir)
+        let otel_has_files = write_otel(&mut archive, options, request.otel.as_ref())
             .map_err(ExportError::archive_write)?;
         in_window += usize::from(otel_has_files);
         let manifest = DiagnosticArchiveManifest {
@@ -481,7 +480,6 @@ fn write_otel<W: Write + std::io::Seek>(
     archive: &mut zip::ZipWriter<W>,
     options: SimpleFileOptions,
     snapshot: Option<&OtelArchiveSnapshot>,
-    logs_dir: &Path,
 ) -> Result<bool> {
     use sha2::{Digest, Sha256};
     let mut files = Vec::new();
@@ -497,31 +495,7 @@ fn write_otel<W: Write + std::io::Seek>(
             files.push(serde_json::json!({"name": name, "bytes": content.len(), "sha256": format!("{:x}", Sha256::digest(content.as_bytes())), "requests": content.lines().count(), "state": if content.is_empty() { "missing" } else { "partial" }}));
         }
     }
-    let mut offline_state = "unavailable";
-    let mut offline_reason = "engine_offline_key_unavailable";
-    if snapshot.is_none() && has_offline_history(logs_dir) {
-        let content = File::open(logs_dir.join("otel-history/history.enc")).and_then(|input| {
-            let mut content = Vec::new();
-            input.take(8 * 1024 * 1024 + 1).read_to_end(&mut content)?;
-            if content.len() > 8 * 1024 * 1024 {
-                return Err(io::Error::other("history exceeds quota"));
-            }
-            Ok(content)
-        });
-        match content {
-            Ok(content) => {
-                archive.start_file("otel/history.enc", options)?;
-                archive.write_all(&content)?;
-                files.push(serde_json::json!({"name": "otel/history.enc", "bytes": content.len(), "sha256": format!("{:x}", Sha256::digest(&content)), "state": "encrypted_unavailable"}));
-                offline_state = "encrypted_unavailable";
-            }
-            Err(_) => {
-                offline_state = "partial";
-                offline_reason = "history_unreadable";
-            }
-        }
-    }
-    let summary = serde_json::json!({"schemaVersion": 1, "format": "OTLP JSONL", "collectorVersion": "0.139.0", "liveFlush": snapshot.is_some(), "history": snapshot.map(|s| &s.summary), "state": if snapshot.is_some() { "partial" } else { offline_state }, "reason": if snapshot.is_some() { "registered_processes_only" } else { offline_reason }, "files": files});
+    let summary = serde_json::json!({"schemaVersion": 1, "format": "OTLP JSONL", "collectorVersion": "0.139.0", "liveFlush": snapshot.is_some(), "history": snapshot.map(|s| &s.summary), "state": if snapshot.is_some() { "partial" } else { "unavailable" }, "reason": if snapshot.is_some() { "registered_processes_only" } else { "daemon_not_running" }, "files": files});
     archive.start_file("otel/manifest.json", options)?;
     serde_json::to_writer_pretty(&mut *archive, &summary)?;
     for (name, content) in [
@@ -542,9 +516,4 @@ fn write_otel<W: Write + std::io::Seek>(
         archive.write_all(content.as_bytes())?;
     }
     Ok(!files.is_empty())
-}
-
-fn has_offline_history(logs_dir: &Path) -> bool {
-    fs::symlink_metadata(logs_dir.join("otel-history/history.enc"))
-        .is_ok_and(|info| info.is_file() && info.len() > 0 && info.len() <= 8 * 1024 * 1024)
 }

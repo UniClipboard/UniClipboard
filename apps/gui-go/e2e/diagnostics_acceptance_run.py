@@ -8,7 +8,7 @@ its own HOME. Three GUI launches run the in-WebView scenario (frontend/src/e2e/d
                 a unique synthetic text synced from B, a GUI export during the capture, stop and restart,
                 then the full 600 s automatic expiry. The GUI then exits and leaves the daemon running.
   2. reopen   - the GUI closes and reopens against the same daemon, then quits fully (graceful daemon stop).
-  3. offline  - a new daemon run; export again (previous run must be in the package); then the task-owned
+  3. offline  - a new daemon run; export its current in-memory records; then the task-owned
                 daemon is stopped and the export runs through the offline path.
 
 Every export is read back from disk: run.json source identity, per-file bytes and SHA-256, the accepted tail.
@@ -100,7 +100,9 @@ def verify_export(path, pinned):
             assert out['correlation']['passed'], out['correlation']
         else:
             assert otel['liveFlush'] is False
-            assert otel['state'] in ('unavailable', 'encrypted_unavailable')
+            assert otel['state'] == 'unavailable'
+            assert otel['reason'] == 'daemon_not_running'
+            assert otel['files'] == []
         assert 'import/import.py' in names
         out['entries'] = len(names)
     return out
@@ -110,7 +112,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--correlation-only', action='store_true', help='run real paired-daemon OTLP correlation acceptance')
-    parser.add_argument('--history-recovery-only', action='store_true', help='run isolated encrypted history recovery acceptance')
+    parser.add_argument('--memory-only', action='store_true', help='run isolated memory-only collection and offline export acceptance')
     parser.add_argument('--performance-only', action='store_true', help='run isolated CPU, memory, process exit and quota acceptance')
     parser.add_argument('--no-expiry-wait', action='store_true', help='offline re-run only; skips the 600 s wait')
     parser.add_argument('--skip-expiry', action='store_true', help='not used for acceptance: the 600 s expiry is the point')
@@ -118,8 +120,8 @@ def main():
     if args.correlation_only:
         from diagnostics_correlation import run
         return run(args.out)
-    if args.history_recovery_only:
-        from diagnostics_history_recovery import run
+    if args.memory_only:
+        from diagnostics_memory_only import run
         return run(args.out)
     if args.performance_only:
         from diagnostics_performance import run

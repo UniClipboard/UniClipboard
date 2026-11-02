@@ -72,7 +72,7 @@ def compare(path):
 
 
 def run(out):
-    """Exercise real peer traffic, export, restart, and reloaded run scopes without a GUI driver."""
+    """Exercise real peer traffic, export and independent process run scopes without a GUI driver."""
     import hashlib
     import os
     from pathlib import Path
@@ -128,8 +128,8 @@ def run(out):
         cli(environments[0], 'stop')
         cli(environments[0], 'start')
         after = export('after-restart')
-        assert len(after['runs']) >= 2, 'source run scopes did not survive reload'
-        assert set(first['runs']) & set(after['runs']), 'original run scope missing after restart'
+        assert after['runs'], 'new run has no source scope'
+        assert not set(first['runs']) & set(after['runs']), 'previous process records survived restart'
         report['passed'] = True
     finally:
         body_failed = sys.exc_info()[0] is not None

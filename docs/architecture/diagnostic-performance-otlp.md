@@ -1,4 +1,4 @@
-# 诊断性能记录与 OTLP 离线交换
+# 诊断采集与 OTLP 导出
 
 ## 当前范围
 
@@ -14,7 +14,6 @@ Wails 当前公开 API 不提供可确认归属的 WebView PID。未确认进程
 清单必须报告实际进程覆盖，不能将进程采样称为全应用资源占用。
 
 Engine 的观测运行时拥有采样和有界历史。
-Engine 组装层连接现有资料加密适配器。
 Desktop 负责启动采样、用户导出和 ZIP 组装。
 
 ## 文件契约
@@ -39,22 +38,19 @@ import/README.md
 OTLP 日志只补充明确白名单中的本地关联元数据。`peer_ref`、连接、路径和采集引用保留原值，并由原记录的 `run_id` 划分作用域。该运行标识不等同于 SDK Resource 的随机运行标识。不得复制任意顶层字段。
 历史裁剪可能导致追踪不完整。清单不能将存在追踪文件解释为所有追踪完整。
 
-内存历史最多保留 30 分钟、8 MiB。
-持久化使用现有资料加密适配器和固定 AAD。
-持久文件为日志目录下的 `otel-history/history.enc`。
-明文持久化输入最多 512 KiB，密文文件最多 8 MiB。
-清单分别报告内存裁剪、持久裁剪、拒绝记录和最近指标时间。
-密钥不可用时仅保留内存记录。不得生成替代文件密钥。
-确定损坏或不支持的历史格式不会永久阻断写入。采集器先成功加密新历史，再将旧密文保存到单个 `history.quarantine.enc` 证据槽，最后原子替换历史。证据最多保留 8 MiB；超限时只保留前缀，并报告原大小及裁剪状态。恢复元数据随新历史加密保存，并出现在导出摘要中。密钥不可用、锁定、未知加密错误或 IO 错误均不触发隔离和覆盖。
+内存记录最多保留 30 分钟、8 MiB。进程退出后丢弃，重启从空记录开始。
+采集器不写诊断历史文件，不接入资料加密，不使用 AAD，也不执行历史恢复。
+清单报告内存裁剪、拒绝记录和最近指标时间。
 
 在线导出先请求导出前快照，再冻结 OTLP 记录，最后压缩。
 快照等待在阻塞线程中执行，等待期限为 1 秒。
 快照超时不阻止其余记录导出。
 
-离线导出不启动 daemon，不解锁资料，也不读取密钥。
-离线 ZIP 可以附带 `otel/history.enc`，其状态为 `encrypted_unavailable`。
-只有密文历史而没有普通日志时，也允许生成 ZIP。
-文件清单记录实际复制内容的大小和 SHA-256。
+daemon 不运行时，离线导出仍可收集已有普通日志和网络日志。
+此时没有内存 OTLP 快照，清单标记 `unavailable`，原因为 `daemon_not_running`。
+离线导出不启动 daemon、不解锁资料，也不读取、附带或删除旧诊断密文。
+只有旧诊断密文而没有可导出日志时，返回没有日志。
+用户在线导出的 OTLP 文件保持可读，文件清单记录大小和 SHA-256。
 
 ## 数值口径
 
@@ -99,8 +95,10 @@ Collector 导入回执与平台查询结果必须另行保留。
 Windows 继续使用 `apps/gui-go/e2e/windows_diagnostics_acceptance.ps1`。
 未执行的平台、休眠场景、受控负载与开销对比不能记为通过。
 
-加密历史恢复验收仍使用现有入口：
+内存生命周期与两个离线归档入口通过现有入口验收：
 
 ```bash
-python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --history-recovery-only --out target/diagnostic-performance/history-recovery
+python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --memory-only --out target/diagnostic-performance/memory-only
 ```
+
+该场景使用真实隔离 daemon，核对无自动历史文件、可读 OTLP、重启后清空，以及旧诊断密文不进入 Rust/Go 离线归档。

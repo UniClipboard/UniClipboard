@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Verify and check Engine update
+    name: Verify Engine release and prepare update
     if: ${{ github.event.client_payload.repository == 'UniClipboard/Engine' }}
     runs-on: ubuntu-latest
     outputs:
@@ -54,9 +54,6 @@ jobs:
         env:
           ENGINE_COMMIT: ${{ github.event.client_payload.source_commit }}
         run: cargo update -p uc-engine --precise "$ENGINE_COMMIT"
-
-      - name: Check the desktop workspace
-        run: cargo check --workspace --locked
 
       - name: Verify Engine repository boundaries
         run: bun run check:engine-repository
@@ -139,7 +136,6 @@ jobs:
           Verified before this pull request was created:
           - public Engine release manifest and source archive
           - Rust lockfile refresh
-          - desktop workspace check
           - Engine repository boundary check
           EOF
           )

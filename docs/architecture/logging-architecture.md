@@ -16,7 +16,8 @@
 | 文件 | 写入方 | 内容 |
 | --- | --- | --- |
 | `uniclipboard-daemon.json.<日期>` | daemon 的宿主层 | 宿主进程自己的记录：启动、HTTP、桌面平台适配、诊断导出等 |
-| `engine.<日期>.jsonl` | daemon 内的 Engine 诊断运行时 | Engine 的连接、配对、同步诊断记录；由 Engine 的采集模式控制，与宿主 Debug 模式无关 |
+| `diagnostics/engine/<运行 ID>/logs.<UTC日期>.<序号>.jsonl` | Engine 诊断运行时 | 连接、配对、同步和模块日志；旧 `engine.<日期>.jsonl` 只保留兼容读取 |
+| 同一运行目录的 `metrics.*.jsonl`、`traces.*.jsonl` | 同一个 Engine 文件线程 | 进程指标和已结束追踪；与 Logs 共用运行预算 |
 | `network/daemon/<运行 ID>/` | daemon 内的 Engine 网络日志 | 第三方网络库（iroh、noq-proto）的脱敏连接事件，与上面所有文件独立，见 [独立网络日志](#独立网络日志) |
 | `uniclipboard-quick-panel.json.<日期>` | 快捷面板进程 | 快捷面板自己的记录 |
 | `uniclipboard-gui.json.<日期>` | Go 图形界面宿主 | 宿主的生命周期事件，以及标准库 `log` 的全部输出（同时仍回显到 stderr） |
@@ -24,7 +25,7 @@
 | `daemon-startup-failure.json` | daemon | 最近一次在日志可用之前失败的启动，见下文，只保留一份 |
 | `service.stdout.log`、`service.stderr.log` | macOS launchd 用户服务 | 服务的标准输出和错误输出，见下文 |
 
-按日轮转，保留 7 天，启动时清理更早的文件。Go 进程（图形界面宿主、命令行）通过 `packages/desktop-host-go/hostlog` 写自己的文件，格式与 daemon 的宿主层一致：一行一个 JSON 对象，含 `timestamp`、`level`、`target`（`go.host`）、`message`、`run_id`、`pid`；单条消息上限 8 KiB；目录 `0700`、文件 `0600`；只清理自己角色的过期文件。日志目录无法创建或打开时只退回控制台输出，不阻止启动。
+宿主日志按日轮转，保留 7 天，启动时清理更早的文件。Engine 按大小和日期分段，预算见[诊断文件流](#诊断文件流)。Go 进程（图形界面宿主、命令行）通过 `packages/desktop-host-go/hostlog` 写自己的文件，格式与 daemon 的宿主层一致：一行一个 JSON 对象，含 `timestamp`、`level`、`target`（`go.host`）、`message`、`run_id`、`pid`；单条消息上限 8 KiB；目录 `0700`、文件 `0600`；只清理自己角色的过期文件。日志目录无法创建或打开时只退回控制台输出，不阻止启动。
 
 前端（React）日志经 `src/lib/logger.ts` 进入控制台和 Sentry（受遥测开关控制），不写入本地日志目录，因此不在本地诊断包内。
 
@@ -37,7 +38,7 @@ daemon 启动按下面的顺序进行，顺序本身是约束：
 3. 安装 tracing（宿主层 + Engine 诊断运行时；网络日志配置在同一次安装里传入，见 [独立网络日志](#独立网络日志)）。
 4. 准备宿主能力并启动 Engine，随后进入服务阶段。
 
-实例锁必须先于任何日志安装。Engine 诊断运行时会打开共享的 `engine.<日期>.jsonl`，一个仍在等待锁的 daemon 不能与正在运行的 daemon 交错写入。
+实例锁必须先于任何日志安装。每个 Engine 观测运行时创建独立运行目录；等待资料锁的 daemon 不提前启动完整观测和文件线程。
 
 第 3 步之前发生的失败无法写入日志文件，因此写入有界的 `daemon-startup-failure.json`；日志安装之后、daemon 就绪之前的失败（宿主准备、Engine 启动、服务启动）同样写入它，并另记一条 ERROR。它是固定结构，只含 `runId`、`pid`、`step`（`path_resolution`、`instance_lock`、`tracing`、`host_preparation`、`engine_start`、`service_start`）、`class`（`lock_timeout`、`io`、`internal`）和时间，不含错误文本；文件上限 4 KiB，新的失败覆盖旧的。诊断导出会收录它，即使此时没有其他日志。
 
@@ -86,7 +87,7 @@ Engine 的操作记录是否带这个 id，取决于 Engine 是否提供不透�
 
 导出由 `uc_observability::startup_logs::export_diagnostic_logs` 统一组装（daemon 在线导出），图形界面在 daemon 不可用时用 Go 的 `packages/desktop-host-go/diaglogs` 做离线导出。两处使用同一份文件名规则，由 `packages/desktop-host-go/diaglogs/testdata/log-source-patterns.json` 约束，Go 与 Rust 的测试读取同一个夹具。
 
-包内容：`logs/` 下的受管文件、`logs/daemon-startup-failure.json`（存在时）和 `manifest.json`。清单包含：
+包内容：`logs/` 下的受管文件、启动失败记录（存在时）、`manifest.json`、`otel/` 的逐行信号与清单，以及 `import/` 的固定开发者导入说明。清单包含：
 
 - `mode`（在线/离线）、`exportedAt`、时间窗口；
 - `host`：应用版本、`buildCommit`、操作系统、架构、profile、是否便携、已安装的日志 profile、遥测状态、时区偏移（离线导出只含能在图形界面侧确定的字段）。不含设备、对等端或账户标识。`buildCommit` 是构建时的 Git HEAD 提交（daemon 由 `apps/daemon/build.rs` 写入，可用环境变量 `UC_BUILD_COMMIT` 覆盖；Go 宿主取工具链记录的 `vcs.revision`），没有时为 `unknown`，不检测未提交的修改。Engine 的来源提交在 Engine 准备结果和网络日志的 `run.json` 里；
@@ -145,3 +146,8 @@ Engine 在自己的线程里排空网络队列，耗时不占用业务关闭预�
 网络日志的真实进程用例见 `tests/e2e/tests/daemon_network_log.rs`（`cargo test -p uc-e2e-tests --test daemon_network_log -- --ignored`）：格式错误的预算覆盖值导致的未配置（业务采集不受影响）、内置预算下的状态、与业务采集联动的开启/停止/自动到期、旧的独立开始/停止接口已移除、导出清单与非白名单文件排除、来源提交等于 Cargo.toml 固定值、优雅停止耗时，以及两个真实 daemon 配对时的事件文件、摘要比对和无标识符检查。
 
 仍须在对应环境单独验证的部分：Windows 的优雅停止与 `TerminateProcess` 回退、macOS launchd 服务实际的标准输出大小、图形界面的离线导出对话框与提示文案。
+
+## 诊断文件流
+
+Engine 的本地 Logs、Metrics 与已结束 Traces 共用运行目录与文件线程。Logs 不长期双写 OTLP。
+诊断目录、预算、关闭、离线归档与失败语义见[诊断采集与 OTLP 导出](diagnostic-performance-otlp.md)。旧日文件仍可导出，旧密文不会自动读取或删除。

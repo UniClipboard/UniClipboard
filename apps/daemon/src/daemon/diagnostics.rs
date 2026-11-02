@@ -33,7 +33,7 @@ use uc_observability::network_archive::{
 };
 use uc_observability::startup_logs::{
     export_diagnostic_logs, DiagnosticArchiveMode, DiagnosticArchiveRequest, ExportFailureCause,
-    HostManifest, MissingReason, OtelArchiveSnapshot,
+    HostManifest, MissingReason,
 };
 use uc_webserver::api::server::{
     DaemonDiagnosticArchive, DaemonDiagnosticArchiveError, DaemonDiagnosticError,
@@ -420,15 +420,11 @@ impl EngineDaemonDiagnostics {
 
 pub struct DesktopDiagnosticArchive {
     logs_dir: PathBuf,
-    diagnostics: std::sync::Arc<EngineDaemonDiagnostics>,
 }
 
 impl DesktopDiagnosticArchive {
-    pub fn new(logs_dir: PathBuf, diagnostics: std::sync::Arc<EngineDaemonDiagnostics>) -> Self {
-        Self {
-            logs_dir,
-            diagnostics,
-        }
+    pub fn new(logs_dir: PathBuf) -> Self {
+        Self { logs_dir }
     }
 }
 
@@ -455,9 +451,7 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
         let network = NetworkArchiveRequest {
             live: Some(network_live(&engine_preparation.network)),
         };
-        let diagnostics = self.diagnostics.clone();
         let report = tokio::task::spawn_blocking(move || {
-            let snapshot = diagnostics.handle.diagnostic_snapshot();
             export_diagnostic_logs(
                 &logs_dir,
                 &destination_for_worker,
@@ -468,12 +462,6 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
                     startup_status: None,
                     host: Some(host_manifest()),
                     network,
-                    otel: Some(OtelArchiveSnapshot {
-                        metrics: snapshot.metrics,
-                        logs: snapshot.logs,
-                        traces: snapshot.traces,
-                        summary: snapshot.summary,
-                    }),
                 },
             )
         })
@@ -656,6 +644,7 @@ fn export_preparation_dto(
     network: NetworkExportPreparationDto,
 ) -> DiagnosticExportPreparationDto {
     DiagnosticExportPreparationDto {
+        performance: report.performance,
         network,
         flush: signal_result_dto(report.flush),
         status: status_dto(report.status),

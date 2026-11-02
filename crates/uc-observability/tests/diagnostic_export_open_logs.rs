@@ -260,7 +260,6 @@ fn export_online(
             &logs_for_export,
             &output_for_export,
             DiagnosticArchiveRequest {
-                otel: None,
                 mode: DiagnosticArchiveMode::Online,
                 since: None,
                 engine_preparation: None,

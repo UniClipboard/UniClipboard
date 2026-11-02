@@ -102,16 +102,27 @@ def main():
                         expected[signal] = 0
                         continue
                     info = archive.getinfo(name)
-                    if info.file_size > 8 * 1024 * 1024 or info.file_size != declared['bytes']:
-                        raise ValueError(f'{signal} size exceeds quota or manifest')
-                    data = archive.read(name)
-                    if len(data) != declared['bytes'] or hashlib.sha256(data).hexdigest() != declared['sha256']:
+                    if info.file_size != declared['bytes']:
+                        raise ValueError(f'{signal} size differs from manifest')
+                    path = root / f'{signal}.jsonl'
+                    digest = hashlib.sha256()
+                    total = count = 0
+                    with archive.open(name) as source, path.open('wb') as target:
+                        while True:
+                            line = source.readline(64 * 1024 + 1)
+                            if not line:
+                                break
+                            if len(line) > 64 * 1024 or not line.endswith(b'\n'):
+                                raise ValueError(f'{signal} invalid or oversized JSONL line')
+                            digest.update(line)
+                            total += len(line)
+                            count += count_records(signal, line)
+                            target.write(line)
+                    if total != declared['bytes'] or digest.hexdigest() != declared['sha256']:
                         raise ValueError(f'{signal} hash or length mismatch')
-                    expected[signal] = count_records(signal, data)
+                    expected[signal] = count
                     if not expected[signal]:
                         continue
-                    path = root / f'{signal}.jsonl'
-                    path.write_bytes(data)
                     receiver = f'otlpjsonfile/{signal}'
                     receivers[receiver] = {'include': [str(path)], 'start_at': 'beginning', 'include_file_name': False}
                     pipelines[signal] = {'receivers': [receiver], 'exporters': ['otlphttp']}

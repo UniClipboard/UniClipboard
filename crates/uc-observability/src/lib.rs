@@ -67,3 +67,5 @@ pub use profile::{installed_log_profile, set_installed_log_profile, LogProfile, 
 pub use scope::{global_scope, role_log_file_stem, set_global_scope, ScopeContext};
 pub use telemetry_gate::{is_telemetry_enabled, set_telemetry_enabled};
 pub use tracing_appender::non_blocking::WorkerGuard;
+
+mod otel_files;

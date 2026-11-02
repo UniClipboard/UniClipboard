@@ -27,13 +27,13 @@ GUI 关闭或进入轻量模式不会影响后台采集。后台重启后产生�
 
 ## 诊断包
 
-桌面诊断包由 `uc-observability` 统一组装。它只识别固定命名的后台、快捷面板、Engine 文件（以及旧版本留下的 GUI、CLI 文件）和后台启动失败记录 `daemon-startup-failure.json`，每个文件按打开时长度读取，防止仍在增长的日志让导出无法结束。文件命名规则与日志目录见 [`logging-architecture.md`](./logging-architecture.md)。
+桌面诊断包由 `uc-observability` 统一组装。它只识别固定命名的后台、快捷面板、图形界面、命令行日志、Engine 运行分段、旧 Engine 日文件和后台启动失败记录 `daemon-startup-failure.json`，每个文件按打开时长度读取，防止仍在增长的日志让导出无法结束。文件命名规则与日志目录见 [`logging-architecture.md`](./logging-architecture.md)。
 
 在线导出按以下顺序执行：
 
 1. 后台请求 Engine 准备导出，取得刷新状态和来源覆盖；
 2. 桌面归档负责人读取实际存在的受管文件；
-3. ZIP 内写入日志和 `manifest.json`；
+3. 从有限前缀逐行写入 OTLP，计算实际字节、请求数与 SHA-256，再写入清单；
 4. 接口同时返回实际包含、不可读和读取中截断的文件，以及当前进程会写、但包里没有文件的来源（`missingSources`）。
 
 清单还包含 `host` 块（应用版本、操作系统、架构、profile、是否便携、已安装的日志 profile、遥测状态、时区偏移），不含设备、对等端或账户标识。导出失败时接口返回 `diagnostic_export_failed` 和 `details.cause`，不再把原因折叠成固定文案。
@@ -55,3 +55,5 @@ Engine 的详细记录不会进入桌面 Sentry。桌面远程开关与本地详
 内容级验收另外使用真实本机连接和缺失认证材料，要求诊断记录能分别说明连接用途、候选来源、每次尝试、连接终态、客户端认证拒绝、服务端失败位置以及后续恢复决定。归档测试从 ZIP 回读 Engine 记录并逐字段比较，避免只验证文件名和压缩包可打开。
 
 macOS 图形界面的实际页面点击、系统睡眠、Windows、Linux 和跨设备故障复现仍须在对应环境单独记录，不能由主机测试代替。
+
+持续写入、三个信号的共享预算、在线/离线合同与失败语义见[诊断采集与 OTLP 导出](diagnostic-performance-otlp.md)。准备结果不返回历史正文。

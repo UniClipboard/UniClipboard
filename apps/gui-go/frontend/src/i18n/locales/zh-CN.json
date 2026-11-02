@@ -418,7 +418,7 @@
           },
           "export": {
             "label": "导出日志",
-            "description": "在 Downloads 目录创建包含最近应用、Engine 诊断记录和覆盖报告的 ZIP 包。",
+            "description": "将本地持续记录的应用日志、进程指标和追踪导出到下载目录。后台服务停止后仍可导出。",
             "button": "导出日志",
             "exporting": "正在导出...",
             "success": "日志已导出",

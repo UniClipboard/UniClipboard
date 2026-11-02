@@ -21,6 +21,7 @@ rust_build_inputs: &rust_build_inputs
 diagnostic_exchange_inputs: &diagnostic_exchange_inputs
   # The Rust and Go archives embed these exact exchange assets.
   - 'packages/desktop-host-go/diaglogs/import/**'
+  - 'packages/desktop-host-go/diaglogs/log-attributes.json'
 
 rust_shared: &rust_shared
   - *rust_build_inputs

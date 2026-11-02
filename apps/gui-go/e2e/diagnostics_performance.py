@@ -104,7 +104,7 @@ def run(out):
         report['phases']['exitedAtNs'] = time.time_ns()
         time.sleep(2)
         rows, meta = records(export('exited'))
-        assert any((h['pid'] == pid and h['state'] == 'exited' for h in meta['history']['hostCoverage']))
+        assert any((h['pid'] == pid and h['state'] == 'exited' for h in meta['recording']['hostCoverage']))
         report['exitedHostMarked'] = True
         worker = spawn()
         newpid = worker.pid
@@ -145,7 +145,7 @@ def run(out):
             if helper.poll() is not None:
                 raise RuntimeError('product Quick Panel exited before registration')
             rows, meta = records(export('quick-panel'))
-            if any((h['pid'] == helper.pid and h['role'] == 'quick-panel' and (h['state'] == 'active') for h in meta['history']['hostCoverage'])):
+            if any((h['pid'] == helper.pid and h['role'] == 'quick-panel' and (h['state'] == 'active') for h in meta['recording']['hostCoverage'])):
                 break
             time.sleep(0.5)
         else:
@@ -157,16 +157,16 @@ def run(out):
         assert helper.returncode == 0
         time.sleep(2)
         rows, meta = records(export('quick-panel-exited'))
-        assert any((h['pid'] == helper.pid and h['role'] == 'quick-panel' and (h['state'] == 'exited') for h in meta['history']['hostCoverage']))
+        assert any((h['pid'] == helper.pid and h['role'] == 'quick-panel' and (h['state'] == 'exited') for h in meta['recording']['hostCoverage']))
         report['productQuickPanelExited'] = True
         for i in range(33):
             p = subprocess.Popen(['/bin/sleep', '60'])
             fixtures.append(p)
             register(p.pid)
         rows, meta = records(export('quota'))
-        assert len(meta['history']['hostCoverage']) <= 32 and meta['history']['hostRegistrationFailures'] > 0
+        assert len(meta['recording']['hostCoverage']) <= 32 and meta['recording']['hostRegistrationFailures'] > 0
         report['registrationQuotaBounded'] = True
-        report['hostRegistrationFailures'] = meta['history']['hostRegistrationFailures']
+        report['hostRegistrationFailures'] = meta['recording']['hostRegistrationFailures']
         report['passed'] = True
         (out / 'points.json').write_text(json.dumps(points, indent=2) + '\n')
     finally:

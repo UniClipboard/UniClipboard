@@ -1976,6 +1976,7 @@
           "otherProcessesFlushed": {
             "type": "boolean"
           },
+          "performance": {},
           "requestedAtUtc": {
             "type": "string"
           },
@@ -1984,6 +1985,7 @@
           }
         },
         "required": [
+          "performance",
           "flush",
           "status",
           "requestedAtUtc",

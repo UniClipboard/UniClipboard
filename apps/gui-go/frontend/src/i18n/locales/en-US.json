@@ -418,7 +418,7 @@
           },
           "export": {
             "label": "Export logs",
-            "description": "Create a ZIP with recent app and Engine diagnostics plus a coverage report in Downloads.",
+            "description": "Export continuously recorded local logs, process metrics, and traces to Downloads. Export is available after the background service stops.",
             "button": "Export logs",
             "exporting": "Exporting...",
             "success": "Logs exported",

@@ -10,7 +10,6 @@ import { receiveFileContent, receiveFileRows } from '@/lib/receive-file-progress
 import { retryableItemIds, summarizeReceiveItems } from '@/lib/receive-items'
 import type { ReceiveItem } from '@/lib/receive-items'
 import { useAppSelector } from '@/store/hooks'
-import { selectOutboundByEntry, selectOutboundList } from '@/store/slices/outboundProgressSlice'
 import {
   Button,
   InlineNotice,
@@ -20,7 +19,6 @@ import {
   type InsetListRow,
   type StatusTone,
 } from '@/ui-kit'
-import { HistoryKitFileOutbound } from './HistoryKitFileOutbound'
 import { HistoryKitFileReceiveProgress } from './HistoryKitFileReceiveProgress'
 
 const KNOWN_STATES = new Set(['pending', 'transferring', 'completed', 'failed', 'cancelled'])
@@ -53,18 +51,6 @@ export function HistoryKitFilePreview({
   delivery?: EntryDeliveryView | null
 }) {
   const { t } = useTranslation()
-  const outbound = selectOutboundList(
-    useAppSelector(store => selectOutboundByEntry(store, item.id))
-  )
-  const hasFileProgress =
-    !item.isDirectory &&
-    outbound.some(snapshot => snapshot.items?.some(item => item.kind === 'file'))
-  const deviceNames = Object.fromEntries(
-    (delivery?.deliveries ?? []).map(target => [
-      target.targetDeviceId,
-      target.targetDeviceName ?? target.targetDeviceId.slice(0, 8),
-    ])
-  )
   const { snapshot, historyFiles, cancelIncomplete, retrying, retryMessage, retry } =
     useEntryReceive(item.id)
   const { cancelling, cancel } = useCancelEntryTransfer(item.id, state.transfer)
@@ -147,16 +133,7 @@ export function HistoryKitFilePreview({
                     source={source}
                   />
                 )
-              : hasFileProgress
-                ? (index, name) => (
-                    <HistoryKitFileOutbound
-                      index={index}
-                      fileName={name}
-                      snapshots={outbound}
-                      deviceNames={deviceNames}
-                    />
-                  )
-                : undefined
+              : undefined
           }
         >
           {directory && (

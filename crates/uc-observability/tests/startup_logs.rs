@@ -413,6 +413,9 @@ fn assert_archive_files(archive: &zip::ZipArchive<fs::File>, logs: &[&str]) {
     let expected: std::collections::BTreeSet<_> = [
         "manifest.json",
         "otel/manifest.json",
+        "otel/metrics.jsonl",
+        "otel/logs.jsonl",
+        "otel/traces.jsonl",
         "import/collector.yaml",
         "import/import.py",
         "import/README.md",

@@ -120,7 +120,7 @@ const systemPrompt = [
 ].join('\n')
 
 export async function POST(req: Request) {
-  const reqJson = await req.json()
+  const reqJson = (await req.json()) as { messages?: ChatUIMessage[] }
   const messages = Array.isArray(reqJson.messages) ? reqJson.messages : []
   const searchTool = createSearchTool(getClientLocale(messages))
 

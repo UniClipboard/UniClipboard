@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <sys/syscall.h>
+#import <CommonCrypto/CommonDigest.h>
 
 static NSString *private_name(void) {
     const char *name = getenv("UC_E2E_PRIVATE_PASTEBOARD");
@@ -17,21 +18,100 @@ static NSString *private_name(void) {
 }
 
 #ifdef PRIVATE_PASTEBOARD_TOOL
+static NSString *digest(NSData *data) {
+    unsigned char bytes[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, bytes);
+    NSMutableString *result = [NSMutableString string];
+    for (NSUInteger i = 0; i < sizeof(bytes); i++) [result appendFormat:@"%02x", bytes[i]];
+    return result;
+}
+
+static NSDictionary *inspect(NSPasteboard *board) {
+    NSInteger before = board.changeCount;
+    NSMutableDictionary *result = [@{@"changeCount": @(before)} mutableCopy];
+    NSString *text = [board stringForType:NSPasteboardTypeString];
+    if (text) result[@"textSha256"] = digest([text dataUsingEncoding:NSUTF8StringEncoding]);
+    NSData *image = [board dataForType:NSPasteboardTypePNG] ?: [board dataForType:NSPasteboardTypeTIFF];
+    if (image) {
+        NSBitmapImageRep *bitmap = [NSBitmapImageRep imageRepWithData:image];
+        if (!bitmap) return nil;
+        NSMutableData *rgb = [NSMutableData data];
+        for (NSInteger y = 0; y < bitmap.pixelsHigh; y++) {
+            for (NSInteger x = 0; x < bitmap.pixelsWide; x++) {
+                NSColor *color = [[bitmap colorAtX:x y:y] colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+                if (!color) return nil;
+                unsigned char pixel[3] = {lround(color.redComponent * 255), lround(color.greenComponent * 255), lround(color.blueComponent * 255)};
+                [rgb appendBytes:pixel length:3];
+            }
+        }
+        result[@"image"] = @{@"width": @(bitmap.pixelsWide), @"height": @(bitmap.pixelsHigh), @"pixelsSha256": digest(rgb)};
+    }
+    NSArray *urls = [board readObjectsForClasses:@[NSURL.class] options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+    NSMutableArray *files = [NSMutableArray array];
+    for (NSURL *url in urls) {
+        NSData *data = [NSData dataWithContentsOfURL:url];
+        if (!data) return nil;
+        [files addObject:@{@"size": @(data.length), @"sha256": digest(data)}];
+    }
+    result[@"files"] = files;
+    if (before != board.changeCount) return nil;
+    return result;
+}
+
 int main(int argc, const char **argv) {
     @autoreleasepool {
         NSPasteboard *board = [NSPasteboard pasteboardWithName:private_name()];
-        [board clearContents];
-        if (argc == 3 && strcmp(argv[1], "file") == 0) {
-            NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:argv[2]]];
-            [board writeObjects:@[url]];
-        } else if (argc == 3 && strcmp(argv[1], "text") == 0) {
-            [board setString:[NSString stringWithUTF8String:argv[2]] forType:NSPasteboardTypeString];
-        } else if (argc == 2 && strcmp(argv[1], "release") == 0) {
+        if (argc == 2 && strcmp(argv[1], "inspect") == 0) {
+            NSDictionary *summary = inspect(board);
+            if (!summary) return 3;
+            NSData *json = [NSJSONSerialization dataWithJSONObject:summary options:0 error:nil];
+            if (!json || fwrite(json.bytes, 1, json.length, stdout) != json.length) return 3;
+            return 0;
+        }
+        if (argc == 2 && strcmp(argv[1], "release") == 0) {
             [board releaseGlobally];
+            return 0;
+        }
+        if (argc == 2 && strcmp(argv[1], "clear") == 0) {
+            [board clearContents];
+            return 0;
+        }
+        NSArray *objects = nil;
+        if (argc == 2 && strcmp(argv[1], "recopy") == 0) {
+            NSMutableArray *copies = [NSMutableArray array];
+            for (NSPasteboardItem *item in board.pasteboardItems) {
+                NSPasteboardItem *copy = [[NSPasteboardItem alloc] init];
+                for (NSString *type in item.types) {
+                    NSData *data = [item dataForType:type];
+                    if (!data || ![copy setData:data forType:type]) return 3;
+                }
+                [copies addObject:copy];
+            }
+            if (copies.count == 0) return 3;
+            objects = copies;
+        } else if (argc >= 3 && (strcmp(argv[1], "file") == 0 || strcmp(argv[1], "files") == 0)) {
+            NSMutableArray *urls = [NSMutableArray array];
+            for (int i = 2; i < argc; i++) {
+                NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:argv[i]]];
+                if (![url checkResourceIsReachableAndReturnError:nil]) return 3;
+                [urls addObject:url];
+            }
+            objects = urls;
+        } else if (argc == 3 && strcmp(argv[1], "image") == 0) {
+            NSData *data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:argv[2]]];
+            if (!data || ![NSBitmapImageRep imageRepWithData:data]) return 3;
+            NSPasteboardItem *item = [[NSPasteboardItem alloc] init];
+            if (![item setData:data forType:NSPasteboardTypePNG]) return 3;
+            objects = @[item];
+        } else if (argc == 3 && strcmp(argv[1], "text") == 0) {
+            objects = @[[NSString stringWithUTF8String:argv[2]]];
         } else return 2;
+        [board clearContents];
+        if (![board writeObjects:objects]) return 3;
     }
     return 0;
 }
+
 #else
 // Inject faults only for the source explicitly selected by this test.
 static int isolated_open(const char *path, int flags, ...) {

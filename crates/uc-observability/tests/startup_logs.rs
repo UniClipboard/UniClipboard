@@ -30,7 +30,14 @@ fn exports_managed_logs_without_a_running_service() {
     let output = root.path().join("support.zip");
     export_startup_logs(&logs, &output).unwrap();
     let mut archive = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
-    assert_eq!(archive.len(), 4);
+    assert_archive_files(
+        &archive,
+        &[
+            "logs/engine.2026-09-09.jsonl",
+            "logs/uniclipboard-daemon.json.2026-09-09",
+            "logs/uniclipboard-gui.json.2026-09-09",
+        ],
+    );
     let mut content = String::new();
     archive
         .by_name("logs/uniclipboard-daemon.json.2026-09-09")
@@ -179,7 +186,7 @@ fn online_export_keeps_a_partial_package_when_a_managed_file_is_unreadable() {
     assert!(report.included_files.is_empty());
     assert_eq!(report.unreadable_files, ["engine.2026-09-11.jsonl"]);
     let archive = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
-    assert_eq!(archive.len(), 1);
+    assert_archive_files(&archive, &[]);
 }
 
 #[test]
@@ -368,7 +375,7 @@ fn offline_export_keeps_startup_status_when_every_log_in_the_window_is_unreadabl
     export_startup_logs_with_status(&logs, &output, Some(startup_status.clone())).unwrap();
 
     let mut archive = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
-    assert_eq!(archive.len(), 1);
+    assert_archive_files(&archive, &[]);
     let mut manifest = String::new();
     archive
         .by_name("manifest.json")
@@ -405,6 +412,25 @@ fn export_failures_are_classified_by_where_they_happened() {
     let error =
         export_startup_logs(&logs, &root.path().join("missing").join("out.zip")).unwrap_err();
     assert_eq!(error.cause(), ExportFailureCause::ArchiveWrite);
+}
+
+fn assert_archive_files(archive: &zip::ZipArchive<fs::File>, logs: &[&str]) {
+    let expected: std::collections::BTreeSet<_> = [
+        "manifest.json",
+        "otel/manifest.json",
+        "import/collector.yaml",
+        "import/import.py",
+        "import/README.md",
+    ]
+    .into_iter()
+    .chain(logs.iter().copied())
+    .map(str::to_owned)
+    .collect();
+    let actual: std::collections::BTreeSet<_> = archive
+        .file_names()
+        .map(|name| name.unwrap().into_owned())
+        .collect();
+    assert_eq!(actual, expected);
 }
 
 fn read_manifest(output: &std::path::Path) -> serde_json::Value {

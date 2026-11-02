@@ -36,11 +36,15 @@ Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
 
 ## Operations
 
-### Vercel 预览部署
+### Cloudflare Workers 部署
 
-Vercel 项目的 Root Directory 为 `docs-site`。`vercel.json` 中的 `ignoreCommand` 仅在预览部署时检查该目录：没有变更则跳过构建，有变更则继续。生产部署保持原有行为。
+站点使用 OpenNext Cloudflare 适配器运行在 Cloudflare Workers。GitHub Actions 工作流在 `main` 分支收到 `docs-site/**` 变更后构建并部署 Worker，也支持手动运行。仓库需要设置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 两个 Actions Secrets。本地预览运行 `bun run cf:preview`；本机手动部署运行 `bun run cf:deploy`。
 
-比较基准优先使用当前分支上次成功部署的 `VERCEL_GIT_PREVIOUS_SHA`；首次部署没有该值时使用 `HEAD^`。若浅克隆中缺少比较基准，继续构建，避免遗漏部署。Vercel 项目需要启用 Automatically expose System Environment Variables。
+`wrangler.jsonc` 定义 Worker 名称、静态资源目录、兼容日期和 `docs.uniclipboard.app` 的站点地址。把 `docs.uniclipboard.app` 添加为 Worker Custom Domain 后，再将该域名的生产流量切换到 Cloudflare。
+
+在 Cloudflare Worker 设置中添加 Ask AI 所需的 `AI_PROVIDER`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`、`OPENAI_PROVIDER_NAME`、`ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL` 和 `ANTHROPIC_PROVIDER_NAME`。密钥必须使用 Worker Secrets；其他选项可使用变量。仅配置所选服务商需要的值。
+
+先运行 `bun run cf:preview`，并在本机检查生成的 Cloudflare Worker。该命令使用 `workerd` 运行时，可覆盖 Next.js 开发服务器未覆盖的 Worker 运行差异。
 
 ### Consistency check
 
@@ -55,11 +59,11 @@ bun run check:docs
 `src/app/sitemap.ts` 在构建时枚举所有页面并生成 `/sitemap.xml`，包含 hreflang 替代语言。绝对域名按以下优先级解析：
 
 1. `NEXT_PUBLIC_SITE_URL`（手动设定，最稳）
-2. `VERCEL_PROJECT_PRODUCTION_URL`（Vercel 生产部署自动注入）
-3. `VERCEL_URL`（Vercel 预览）
+2. `VERCEL_PROJECT_PRODUCTION_URL`（Vercel 迁移期间的回退）
+3. `VERCEL_URL`（Vercel 预览回退）
 4. `http://localhost:3000`（兜底）
 
-部署到自定义域名后请把 `NEXT_PUBLIC_SITE_URL=https://your-domain` 写到 Vercel 的项目环境变量里。
+Cloudflare 部署使用 `wrangler.jsonc` 中的 `NEXT_PUBLIC_SITE_URL`。本地构建可用 `NEXT_PUBLIC_SITE_URL=https://docs.uniclipboard.app` 覆盖。
 
 ### Ask AI
 

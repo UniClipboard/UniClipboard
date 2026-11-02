@@ -52,6 +52,9 @@ const maxUndatedFileBytes = 4096
 
 // roleOf returns the role a managed log file name belongs to, or "" for any other name.
 func roleOf(name string) string {
+	if strings.HasPrefix(filepath.ToSlash(name), "diagnostics/engine/") {
+		return "engine"
+	}
 	for _, src := range sources {
 		date, ok := strings.CutPrefix(name, src.prefix)
 		if !ok {
@@ -170,8 +173,17 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 	if err != nil {
 		return Report{}, err
 	}
+	for _, path := range diagnosticFiles(logsDir, "logs") {
+		if filepath.Dir(path) != logsDir {
+			name, err := filepath.Rel(logsDir, path)
+			if err != nil {
+				return Report{}, err
+			}
+			names = append(names, name)
+		}
+	}
 	networkRuns := selectNetwork(logsDir)
-	if len(names) == 0 && len(networkRuns.runs) == 0 && !hasOfflineHistory(logsDir) {
+	if len(names) == 0 && len(networkRuns.runs) == 0 && !hasDiagnosticFiles(logsDir) {
 		return Report{}, ErrNoLogs
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(destination), ".logs-*.zip")
@@ -179,8 +191,10 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 		return Report{}, err
 	}
 	defer os.Remove(tmp.Name())
+	defer tmp.Close()
 	report := Report{IncludedFiles: []string{}, UnreadableFiles: unreadable, TruncatedFiles: []string{}, ConcurrentWritesPossible: true}
 	archive := zip.NewWriter(tmp)
+	logLimits := map[string]int64{}
 	for _, name := range names {
 		input, err := openRegular(filepath.Join(logsDir, name))
 		if err != nil {
@@ -203,6 +217,7 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 		if slices.Contains(undatedFiles, name) {
 			limit = min(limit, maxUndatedFileBytes)
 		}
+		logLimits[filepath.Join(logsDir, name)] = limit
 		copied, err := io.Copy(out, io.LimitReader(input, limit))
 		input.Close()
 		if err != nil {
@@ -218,7 +233,7 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 		return Report{}, err
 	}
 	report.Network = network
-	otelHasFiles, err := collectOfflineOTel(archive, logsDir)
+	otelHasFiles, err := collectOfflineOTel(logsDir, archive, logLimits)
 	if err != nil {
 		return Report{}, err
 	}

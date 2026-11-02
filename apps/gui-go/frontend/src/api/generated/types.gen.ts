@@ -1001,6 +1001,7 @@ export type DiagnosticExportPreparationDto = {
     flush: DiagnosticSignalResultDto;
     network: NetworkExportPreparationDto;
     otherProcessesFlushed: boolean;
+    performance: unknown;
     requestedAtUtc: string;
     status: DiagnosticStatusDto;
 };

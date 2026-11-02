@@ -390,13 +390,13 @@ fn copy_hashing(
 
 /// Opens `path` without following a link, so an entry swapped for a symlink
 /// after the directory listing is refused instead of exported.
-fn open_regular_file(path: &Path) -> io::Result<(File, fs::Metadata)> {
+pub(crate) fn open_regular_file(path: &Path) -> io::Result<(File, fs::Metadata)> {
     let mut options = fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW);
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     }
     #[cfg(windows)]
     {

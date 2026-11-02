@@ -1,4 +1,4 @@
-# 诊断性能记录与 OTLP 离线交换
+# 诊断采集与 OTLP 导出
 
 ## 当前范围
 
@@ -13,8 +13,7 @@ macOS 使用微秒创建时间，Windows 使用 FILETIME，Linux 使用内核启
 Wails 当前公开 API 不提供可确认归属的 WebView PID。未确认进程标为 unknown。
 清单必须报告实际进程覆盖，不能将进程采样称为全应用资源占用。
 
-Engine 的观测运行时拥有采样和有界历史。
-Engine 组装层连接现有资料加密适配器。
+Engine 的观测运行时拥有采样、白名单、运行身份、有界编码队列和分段文件。
 Desktop 负责启动采样、用户导出和 ZIP 组装。
 
 ## 文件契约
@@ -36,25 +35,24 @@ import/README.md
 资源包含产品版本、平台、进程角色、PID、进程创建时间和随机运行标识。
 文件不包含真实设备身份、命令行、环境变量或剪贴板内容。
 日志只使用已通过现有隐私过滤的记录。追踪只导出已完成的 span。
-OTLP 日志只补充明确白名单中的本地关联元数据。`peer_ref`、连接、路径和采集引用保留原值，并由原记录的 `run_id` 划分作用域。该运行标识不等同于 SDK Resource 的随机运行标识。不得复制任意顶层字段。
+OTLP 日志只补充明确白名单中的本地关联元数据。`peer_ref`、连接、路径和采集引用保留原值，并由原记录的 `run_id` 划分作用域。新运行的该标识与 SDK Resource 共享同一所有者。旧记录保留原标识。不得复制任意顶层字段。
 历史裁剪可能导致追踪不完整。清单不能将存在追踪文件解释为所有追踪完整。
 
-内存历史最多保留 30 分钟、8 MiB。
-持久化使用现有资料加密适配器和固定 AAD。
-持久文件为日志目录下的 `otel-history/history.enc`。
-明文持久化输入最多 512 KiB，密文文件最多 8 MiB。
-清单分别报告内存裁剪、持久裁剪、拒绝记录和最近指标时间。
-密钥不可用时仅保留内存记录。不得生成替代文件密钥。
-确定损坏或不支持的历史格式不会永久阻断写入。采集器先成功加密新历史，再将旧密文保存到单个 `history.quarantine.enc` 证据槽，最后原子替换历史。证据最多保留 8 MiB；超限时只保留前缀，并报告原大小及裁剪状态。恢复元数据随新历史加密保存，并出现在导出摘要中。密钥不可用、锁定、未知加密错误或 IO 错误均不触发隔离和覆盖。
+诊断记录产生后持续写入 `diagnostics/engine/<run_id>/`。Logs 保留本地 JSONL，Metrics 与已结束 Traces 保存 OTLP JSONL。Logs 只在导出时转换，不长期双写。
+每个运行三类信号合计最多 16 MiB；每段最多 4 MiB，最多保留 64 段。根目录目标为 100 MB/7 天，只回收非活动运行。多活动进程及清理失败可使根目录超过目标。
+记录含换行最多 64 KiB。编码前取得单个串行编码槽。队列最多 256 条，并按实际入队副本的 512 KiB 字节上限拒绝超额；writer 和编码槽各最多 64 KiB 编码负载。这不是整个进程的堆或 RSS 上限。
+采集不接入资料密钥、AAD 或密文恢复。旧诊断密文不读取、附带或删除。
+正常关闭排空队列。突然退出会丢失排队记录与未结束 span；离线计数可能不完整。文件写入不保证断电零丢失，不逐条 fsync。
 
-在线导出先请求导出前快照，再冻结 OTLP 记录，最后压缩。
-快照等待在阻塞线程中执行，等待期限为 1 秒。
-快照超时不阻止其余记录导出。
+在线调用 `prepare_local_diagnostic_export`，完成一次必要采样、SDK 和队列刷新。准备结果只包含状态、覆盖与计数，不返回历史正文。
+在线和离线都逐文件打开，从句柄取得截止长度，只读有限前缀。完整 JSONL 行才进入 OTLP。
+清单记录截止长度、实际读取、残行、坏行、截短、不可读和缺失。SHA-256、字节和请求数对应实际 ZIP 内容。
+导出不是跨进程事务快照。其他进程未刷新必须明示。后台继续追加不延长本次导出。`liveFlush` 只表示取得在线准备回执；具体刷新结果见主清单 `enginePreparation`。它不证明刷新成功，也不证明其他进程已刷新。
 
-离线导出不启动 daemon，不解锁资料，也不读取密钥。
-离线 ZIP 可以附带 `otel/history.enc`，其状态为 `encrypted_unavailable`。
-只有密文历史而没有普通日志时，也允许生成 ZIP。
-文件清单记录实际复制内容的大小和 SHA-256。
+daemon 不运行时，同一格式的文件历史仍可由 Rust 或 Go 导出。只有 Metrics/Traces 时也可导出。
+离线导出不启动 daemon、不解锁资料。只有旧密文时仍返回没有日志。
+新日志保留源头可用的纳秒时间；旧微秒记录不能恢复已丢失的纳秒。
+Logs 的导出转换共用 `packages/desktop-host-go/diaglogs/log-attributes.json` 的字段和静态值白名单，不复制任意字段或错误正文。
 
 ## 数值口径
 
@@ -79,9 +77,7 @@ CPU 首样本、进程重启和较长采样缺口不输出使用率值。
 后端必须接受原始时间戳。导入器不平移时间。
 目标地址和凭据由开发者提供，不得写入用户诊断包。
 
-现有原始日志附件暂时保留，供旧诊断工具读取。
-所有进程的 OTLP 覆盖与诊断工具迁移通过后，移除重复的本地记录写入路径。
-产品分析事件不属于这条迁移链路。
+本地 Logs 是唯一常驻日志事实来源。OTLP Logs 是导出表示。产品分析事件不属于本地诊断流。
 
 ## 验收入口
 
@@ -99,8 +95,32 @@ Collector 导入回执与平台查询结果必须另行保留。
 Windows 继续使用 `apps/gui-go/e2e/windows_diagnostics_acceptance.ps1`。
 未执行的平台、休眠场景、受控负载与开销对比不能记为通过。
 
-加密历史恢复验收仍使用现有入口：
+持续文件流和两个离线归档入口通过现有入口验收：
 
 ```bash
-python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --history-recovery-only --out target/diagnostic-performance/history-recovery
+python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --streaming-only --out target/diagnostic-performance/streaming
+python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --streaming-only --duration-seconds 1860 --out target/diagnostic-performance/streaming-long
 ```
+
+场景使用真实隔离 daemon，检查未导出时增长、在线有限导出、正常停止与突然退出后的 Rust/Go 离线导出、只有 Metrics 的目录和旧密文不变。
+回执保存源码、二进制、RSS 时间线、ZIP 独立哈希和清理结果。长时间、超旧 8 MiB、故障、堆峰值与原生平台范围必须分别记录实际执行状态。
+
+完整的主机候选运行使用同一入口。`ENGINE_CHECKOUT` 指向已核实的 Engine checkout；它不是产品配置。
+
+```bash
+python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --streaming-only --duration-seconds 1860 --load-bytes 10485760 --engine-root "$ENGINE_CHECKOUT" --engine-probe "$ENGINE_CHECKOUT/target/debug/examples/process_owner_probe" --collector target/diagnostic-performance/collector-0.139.0/otelcol-contrib --out target/diagnostic-performance/streaming-final
+```
+
+该场景还验证损坏行、超长行、残行、读取拒绝、目标写入失败、原目标保留，以及两个真实 daemon 共享根目录时的运行身份和活动租约保护。
+为验证到期回收，场景只暂停本任务拥有的 daemon，并只修改本任务运行文件的修改时间；它不访问日常产品资料。
+`recording` 是在线准备状态；`runs` 是原始运行的来源及最后一次计数；两者均不包含历史正文。
+预留队列字节高水位包含入队候选，失败立即回退。它不是已接受记录数，也不是整个进程的堆或 RSS 上限。
+
+编码器保留单个有界缓冲。队列先预留字节，再复制为精确长度的独占记录；候选副本计入预留。因此小记录可以共用字节预算，256 个结构槽不会把编码负载扩大为 256 × 64 KiB。
+长时间负载夹具按认证接口返回的 `refreshAtSecs` 更新测试会话，不修改产品的认证期限。
+
+编码槽只执行有界编码与非阻塞入队。槽内不执行磁盘 I/O。
+
+导出验收必须保留既有准入尝试的 `attempt_ref`、连接流程的 `connect_id`、固定步骤与计数。`attempt_ref` 仅允许 16 位小写十六进制。`connect_id` 仅允许 UUID。无效值必须丢弃。两条离线导出路径必须给出一致结果。
+
+Engine 调用方迁移验收还包括其公共诊断导出入口。先构建 `just cargo build -p uc-application --example diagnostic_export_probe --locked`。现有 `--engine-probe` 验收会调用该入口，读取 Metrics 分段，校验有限前缀的字节和 SHA-256，并验证读写拒绝时保留既有目标。它使用同一验收入口，不另建调度器。

@@ -155,6 +155,7 @@ pub struct DiagnosticFileSourceCountsDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticExportPreparationDto {
+    pub performance: serde_json::Value,
     pub flush: DiagnosticSignalResultDto,
     pub status: DiagnosticStatusDto,
     pub requested_at_utc: String,

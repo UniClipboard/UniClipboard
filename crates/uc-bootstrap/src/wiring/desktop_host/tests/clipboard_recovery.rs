@@ -264,9 +264,10 @@ fn desktop_clipboard_recovery_process() {
     for name in ["matrix.json", "diagnostics.zip"] {
         std::fs::copy(profile.path().join(name), output.join(name)).unwrap();
     }
-    let logs = std::fs::read_dir(profile.path().join("logs"))
+    let logs = uc_engine::observability::managed_log_files(&profile.path().join("logs"))
         .unwrap()
-        .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+        .into_iter()
+        .map(|entry| std::fs::read_to_string(entry).unwrap())
         .collect::<String>();
     assert!(logs.contains("PermissionDenied"));
     assert!(logs.contains("NotFound"));

@@ -245,6 +245,7 @@ describe('GeneralSection debug diagnostics controls', () => {
       includedFiles: ['uniclipboard-daemon.json.2026-06-16'],
       since: '2026-06-15T00:00:00Z',
       enginePreparation: {
+        performance: {},
         flush: 'completed',
         status: captureStatus(),
         requestedAtUtc: '2026-06-16T00:00:00Z',
@@ -373,6 +374,7 @@ describe('GeneralSection debug diagnostics controls', () => {
       includedFiles: ['engine.2026-09-11.jsonl'],
       since: '2026-09-11T00:00:00Z',
       enginePreparation: {
+        performance: {},
         flush: 'timedOut',
         status: captureStatus(),
         requestedAtUtc: '2026-09-11T00:00:00Z',

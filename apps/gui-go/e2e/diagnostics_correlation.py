@@ -1,5 +1,6 @@
 """Compare approved local correlation metadata with OTLP in the same real ZIP."""
-from collections import defaultdict
+import re
+import shutil
 from datetime import datetime, timezone
 import json
 import zipfile
@@ -16,7 +17,8 @@ TOP_LEVEL_ATTRIBUTES = {
 
 def nanos(value):
     delta = datetime.fromisoformat(value.replace('Z', '+00:00')) - datetime(1970, 1, 1, tzinfo=timezone.utc)
-    return (delta.days * 86400 + delta.seconds) * 1_000_000_000 + delta.microseconds * 1000
+    fraction = re.search(r'\.(\d{1,9})(?:Z|[+-]\d\d:\d\d)$', value)
+    return (delta.days * 86400 + delta.seconds) * 1_000_000_000 + (int(fraction[1].ljust(9, '0')) if fraction else 0)
 
 
 def attributes(record):
@@ -32,47 +34,64 @@ def attributes(record):
 
 
 def compare(path):
-    index = defaultdict(list)
-    raw = []
+    """Compare ordered prefixes without retaining the history in the test process."""
+    result = {'otlpRecords': 0, 'matched': 0, 'comparedValues': {}, 'mismatches': [], 'runs': set(), 'traceContexts': 0}
     with zipfile.ZipFile(path) as archive:
-        for line in archive.read('otel/logs.jsonl').splitlines():
-            for resource in json.loads(line)['resourceLogs']:
-                for scope in resource['scopeLogs']:
-                    for record in scope['logRecords']:
-                        index[int(record['timeUnixNano'])].append((record, attributes(record)))
-        for name in archive.namelist():
-            if name.startswith('logs/engine.') and name.endswith('.jsonl'):
-                raw.extend(json.loads(line) for line in archive.read(name).splitlines() if line)
-    result = {'otlpRecords': sum(len(items) for items in index.values()), 'matched': 0, 'comparedValues': {}, 'mismatches': [], 'runs': set(), 'traceContexts': 0}
-    for record in raw:
-        if not any(key in record for key in TOP_LEVEL_ATTRIBUTES):
-            continue
-        fields = {k: v for k, v in record.get('fields', {}).items() if v is None or isinstance(v, (str, bool, int))}
-        candidates = index.get(nanos(record['timestamp']), [])
-        match = next(((log, attrs) for log, attrs in candidates if all(attrs.get(k) == v for k, v in fields.items())), None)
-        if match is None:
-            continue  # Raw files can extend beyond the bounded OTLP history.
-        log, attrs = match
-        candidates.remove(match)
-        result['matched'] += 1
-        result['runs'].add(record['run_id'])
-        for key in TOP_LEVEL_ATTRIBUTES & record.keys():
-            result['comparedValues'][key] = result['comparedValues'].get(key, 0) + 1
-            if key not in attrs or attrs[key] != record[key] or type(attrs[key]) is not type(record[key]):
-                result['mismatches'].append({'key': key, 'at': record['timestamp']})
-        assert set(attrs) <= set(record.get('fields', {})) | TOP_LEVEL_ATTRIBUTES, 'unapproved top-level attribute escaped'
-        for key, otlp in [('trace_id', 'traceId'), ('span_id', 'spanId')]:
-            if record.get(key):
-                assert log.get(otlp, '').lower() == record[key].lower(), 'trace/span context changed'
-                result['traceContexts'] += 1
+        def logs():
+            with archive.open('otel/logs.jsonl') as source:
+                while True:
+                    line = source.readline(65537)
+                    if not line:
+                        return
+                    assert len(line) <= 65536 and line.endswith(b'\n')
+                    for resource in json.loads(line)['resourceLogs']:
+                        for scope in resource.get('scopeLogs', []):
+                            for log in scope.get('logRecords', []):
+                                result['otlpRecords'] += 1
+                                yield log, attributes(log)
+        iterator = logs()
+        current = next(iterator, None)
+        for name in sorted(archive.namelist()):
+            if not (name.startswith('logs/engine.') or name.startswith('logs/diagnostics/engine/')) or not name.endswith('.jsonl'):
+                continue
+            with archive.open(name) as source:
+                while True:
+                    line = source.readline(65537)
+                    if not line:
+                        break
+                    assert len(line) <= 65536
+                    if not line.endswith(b'\n'):
+                        continue
+                    record = json.loads(line)
+                    if current is None:
+                        continue
+                    log, attrs = current
+                    fields = record.get('fields', {})
+                    if int(log['timeUnixNano']) != nanos(record['timestamp']):
+                        continue
+                    if any(attrs[k] != record.get(k, fields.get(k)) for k in attrs):
+                        continue
+                    result['matched'] += 1
+                    if record.get('run_id'):
+                        result['runs'].add(record['run_id'])
+                    for key in TOP_LEVEL_ATTRIBUTES & record.keys():
+                        result['comparedValues'][key] = result['comparedValues'].get(key, 0) + 1
+                        if key not in attrs or attrs[key] != record[key] or type(attrs[key]) is not type(record[key]):
+                            result['mismatches'].append({'key': key, 'at': record['timestamp']})
+                    assert set(attrs) <= set(fields) | TOP_LEVEL_ATTRIBUTES
+                    for key, otlp in [('trace_id', 'traceId'), ('span_id', 'spanId')]:
+                        if record.get(key):
+                            assert log.get(otlp, '').lower() == record[key].lower()
+                            result['traceContexts'] += 1
+                    current = next(iterator, None)
+        result['unmatchedOtlp'] = int(current is not None) + sum(1 for _ in iterator)
     result['runs'] = sorted(result['runs'])
-    result['unmatchedOtlp'] = sum(len(items) for items in index.values())
     result['passed'] = result['matched'] > 0 and not result['mismatches'] and result['unmatchedOtlp'] == 0
     return result
 
 
 def run(out):
-    """Exercise real peer traffic, export, restart, and reloaded run scopes without a GUI driver."""
+    """Exercise real peer traffic, export and independent process run scopes without a GUI driver."""
     import hashlib
     import os
     from pathlib import Path
@@ -94,7 +113,7 @@ def run(out):
     def export(name):
         value = json.loads(cli(environments[0], '--json', 'debug', 'export-logs').stdout)
         target = out / (name + '.zip')
-        target.write_bytes(Path(value['path']).read_bytes())
+        shutil.copyfile(value['path'], target)
         result = compare(target)
         result['zipSha256'] = hashlib.sha256(target.read_bytes()).hexdigest()
         report['exports'][name] = result
@@ -128,8 +147,8 @@ def run(out):
         cli(environments[0], 'stop')
         cli(environments[0], 'start')
         after = export('after-restart')
-        assert len(after['runs']) >= 2, 'source run scopes did not survive reload'
-        assert set(first['runs']) & set(after['runs']), 'original run scope missing after restart'
+        assert after['runs'], 'new run has no source scope'
+        assert set(first['runs']) < set(after['runs']), 'restart did not retain old scopes and add a new scope'
         report['passed'] = True
     finally:
         body_failed = sys.exc_info()[0] is not None

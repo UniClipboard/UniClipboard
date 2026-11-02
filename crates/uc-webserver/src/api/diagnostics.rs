@@ -617,6 +617,7 @@ mod tests {
 
     fn preparation() -> DiagnosticExportPreparationDto {
         DiagnosticExportPreparationDto {
+            performance: serde_json::Value::Null,
             flush: DiagnosticSignalResultDto::Completed,
             status: status(),
             requested_at_utc: "2026-09-11T00:00:00Z".to_string(),

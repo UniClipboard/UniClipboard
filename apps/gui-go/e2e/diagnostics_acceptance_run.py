@@ -8,7 +8,7 @@ its own HOME. Three GUI launches run the in-WebView scenario (frontend/src/e2e/d
                 a unique synthetic text synced from B, a GUI export during the capture, stop and restart,
                 then the full 600 s automatic expiry. The GUI then exits and leaves the daemon running.
   2. reopen   - the GUI closes and reopens against the same daemon, then quits fully (graceful daemon stop).
-  3. offline  - a new daemon run; export again (previous run must be in the package); then the task-owned
+  3. offline  - a new daemon run; export its current file records; then the task-owned
                 daemon is stopped and the export runs through the offline path.
 
 Every export is read back from disk: run.json source identity, per-file bytes and SHA-256, the accepted tail.
@@ -44,7 +44,8 @@ def now():
 
 
 def sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    with Path(path).open('rb') as source:
+        return hashlib.file_digest(source, 'sha256').hexdigest()
 
 
 def verify_export(path, pinned):
@@ -84,23 +85,20 @@ def verify_export(path, pinned):
             out['runs'].append(info)
         otel = json.loads(z.read('otel/manifest.json'))
         out['otel'] = otel
-        for file in otel['files']:
-            data = z.read(file['name'])
-            assert len(data) == file['bytes']
-            assert hashlib.sha256(data).hexdigest() == file['sha256']
+        from diagnostics_streaming import verify
+        verified = verify(path)
         if manifest['mode'] == 'online':
-            assert otel['history']['coverage'] == 'registered_processes'
-            assert sum(host['role'] == 'gui' and host['state'] == 'active' for host in otel['history']['hostCoverage']) >= 2
-            metrics = z.read('otel/metrics.jsonl').decode()
-            assert 'process.memory.usage' in metrics
-            assert 'uc.process.cpu.time' in metrics
-            assert 'resourceMetrics' in metrics
+            assert otel['recording']['coverage'] == 'registered_processes'
+            assert sum(host['role'] == 'gui' and host['state'] == 'active' for host in otel['recording']['hostCoverage']) >= 2
+            assert 'process.memory.usage' in verified['metricNames']
+            assert 'uc.process.cpu.time' in verified['metricNames']
             from diagnostics_correlation import compare
             out['correlation'] = compare(path)
             assert out['correlation']['passed'], out['correlation']
         else:
             assert otel['liveFlush'] is False
-            assert otel['state'] in ('unavailable', 'encrypted_unavailable')
+            assert otel['state'] == 'partial'
+            assert any(item['requests'] > 0 for item in otel['files'])
         assert 'import/import.py' in names
         out['entries'] = len(names)
     return out
@@ -110,7 +108,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--correlation-only', action='store_true', help='run real paired-daemon OTLP correlation acceptance')
-    parser.add_argument('--history-recovery-only', action='store_true', help='run isolated encrypted history recovery acceptance')
+    parser.add_argument('--streaming-only', action='store_true', help='run isolated continuous file recording and offline streaming export acceptance')
+    parser.add_argument('--duration-seconds', type=int, default=15, help='streaming-only recording observation duration')
+    parser.add_argument('--load-bytes', type=int, default=0, help='streaming-only minimum written payload through real capture operations')
+    parser.add_argument('--engine-probe', type=Path, help='existing process_owner_probe built with test-process-release')
+    parser.add_argument('--engine-root', type=Path, help='source identity for the supplied Engine probe')
+    parser.add_argument('--collector', type=Path, help='pinned Collector 0.139.0 for isolated import acceptance')
     parser.add_argument('--performance-only', action='store_true', help='run isolated CPU, memory, process exit and quota acceptance')
     parser.add_argument('--no-expiry-wait', action='store_true', help='offline re-run only; skips the 600 s wait')
     parser.add_argument('--skip-expiry', action='store_true', help='not used for acceptance: the 600 s expiry is the point')
@@ -118,9 +121,9 @@ def main():
     if args.correlation_only:
         from diagnostics_correlation import run
         return run(args.out)
-    if args.history_recovery_only:
-        from diagnostics_history_recovery import run
-        return run(args.out)
+    if args.streaming_only:
+        from diagnostics_streaming import run
+        return run(args.out, args.duration_seconds, args.load_bytes, args.engine_probe, args.engine_root, args.collector)
     if args.performance_only:
         from diagnostics_performance import run
         return run(args.out)

@@ -624,12 +624,12 @@ _Avoid_: shortcut probe、revert on failure
 ## Language — 本地诊断
 
 **Local diagnostic history**：
-本机保存的有界诊断历史，包含已确认进程的资源指标及经过隐私过滤的日志和追踪；
-常驻历史加密，采集与远程遥测分离，进程覆盖不代表全应用资源占用。
+当前进程在内存中保留的有界诊断记录，包含已确认进程的资源指标及经过隐私过滤的日志和追踪；
+不自动落盘，退出后丢弃，重启从空记录开始。采集与远程遥测分离，进程覆盖不代表全应用资源占用。
 
 **Diagnostic export**：
 用户主动生成的诊断 ZIP，在线时包含可读的白名单 OTLP 数据与覆盖清单；
-离线时不启动 daemon 或解锁资料，附带密文时标为 `encrypted_unavailable`。
+离线时只收集已有普通日志和网络日志，不启动 daemon 或解锁资料，不附带旧诊断密文；内存 OTLP 快照标为不可用。
 导出不触发自动上传，也不代表后端已成功导入；它不同于配置导出和 **Profile upgrade backup**。
 
-文件契约与覆盖边界见 [诊断性能记录与 OTLP 离线交换](docs/architecture/diagnostic-performance-otlp.md)。
+文件契约与覆盖边界见 [诊断采集与 OTLP 导出](docs/architecture/diagnostic-performance-otlp.md)。

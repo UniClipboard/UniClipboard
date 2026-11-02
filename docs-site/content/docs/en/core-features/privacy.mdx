@@ -111,9 +111,9 @@ Any HTTPS service provider can see the source IP at the network layer. UniClipbo
 
 ## Local Process Diagnostics
 
-Local CPU and memory collection is separate from **Send diagnostics** and **Send usage analytics**. Disabling remote reporting does not stop local process sampling. Ordinary sampling uses a 5-second interval; detailed capture uses a 1-second interval. In-memory history is bounded to 30 minutes and 8 MiB. Persistent history is encrypted with the existing profile encryption adapter. If the profile key is unavailable, the collector does not create a replacement file key.
+Local CPU and memory sampling is separate from remote reporting. Filtered diagnostics are continuously written to private local files. Logs, metrics, and completed traces share a 16 MiB budget per run. Segments are at most 4 MiB. Inactive runs are reclaimed toward a 100 MB, seven-day root target; concurrent active runs and cleanup failures can exceed that target. A short bounded write queue buffers disk I/O. There is no long-term in-memory history and no profile-key dependency.
 
-A diagnostic ZIP is a user-initiated readable export. Its OTLP files preserve process roles, PIDs, random process-run identifiers, original timestamps, and explicit coverage and loss states. They exclude clipboard content, command lines, environment variables, credentials, and real device identity. Export does not trigger remote upload. Offline export does not unlock the profile; attached encrypted history remains explicitly unavailable for reading. Developers must separately import and query the package. A ZIP or OTLP transport receipt alone does not prove successful platform queries.
+Diagnostic ZIP export reads finite file prefixes, including when the daemon is stopped. It preserves original timestamps and random run scopes. It excludes clipboard content, credentials, device names, command lines, environment variables, and original user file paths. Export does not upload the package. Incomplete lines and missing data are reported. Abrupt termination can lose queued records and unfinished spans; unsaved loss counts are unknown. Old encrypted diagnostic history is not read, exported, or deleted. Developers import and query the ZIP separately.
 
 ## How To Turn It Off
 

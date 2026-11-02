@@ -31,7 +31,7 @@ Mobile-sync configuration lives in its own dialog on the
 
 Online exports include OTLP JSONL metrics, logs, and traces for developer import. Resource history covers the daemon and registered GUI and Quick Panel processes. It does not represent total application resource usage. Unconfirmed WebView ownership is reported as unknown. CPU utilization uses a single logical core as its reference; memory is RSS on Unix and working set on Windows. CPU warm-up samples and sampling gaps have no utilization value.
 
-Offline export does not start the daemon or unlock the profile. If the package contains only encrypted resource history, its state is `encrypted_unavailable`. Export does not upload the package. Users do not need Collector; developers use the pinned importer and verify results in their diagnostic platform.
+Filtered diagnostics are continuously written to local segmented files. Online and offline exports read finite file prefixes. Stopping the daemon preserves recorded history. Export does not unlock the profile, read old encrypted history, or upload the ZIP. Check the manifest for incomplete coverage and loss. Developers import and query the package separately.
 
 The device name is purely a display alias; it doesn't enter the
 encryption identity. Renaming doesn't affect the node ID or pairing

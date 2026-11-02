@@ -85,6 +85,13 @@ daemon_runtime_inputs: &daemon_runtime_inputs
   - 'apps/daemon/**'
   - 'crates/uc-{platform,app-paths,observability,bootstrap,daemon-contract,daemon-process,daemon-local,desktop-settings,webserver}/**'
 
+clipboard_loop:
+  - *rust_build_inputs
+  - *daemon_runtime_inputs
+  - 'scripts/e2e/inbound-clipboard-loop/**'
+  - 'scripts/e2e/clipboard-startup/private-pasteboard.m'
+  - '.github/workflows/clipboard-loop-e2e.yml'
+
 tooling:
   - '.github/actions/go-host-apt/**'
   - *ci_config

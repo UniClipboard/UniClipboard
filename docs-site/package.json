@@ -4,6 +4,11 @@
   "private": true,
   "scripts": {
     "build": "next build",
+    "cf:next-build": "cross-env NEXT_PUBLIC_SITE_URL=https://docs.uniclipboard.app next build --webpack",
+    "cf:build": "cross-env NEXT_PUBLIC_SITE_URL=https://docs.uniclipboard.app opennextjs-cloudflare build",
+    "cf:preview": "bun run cf:build && opennextjs-cloudflare preview",
+    "cf:deploy": "bun run cf:build && opennextjs-cloudflare deploy",
+    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "dev": "next dev",
     "start": "next start",
     "types:check": "fumadocs-mdx && next typegen && tsc --noEmit",
@@ -33,17 +38,20 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "1.19.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/mdx": "^2.0.13",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
+    "cross-env": "^10.1.0",
     "eslint": "^10.4.0",
     "eslint-config-next": "16.3.8",
     "github-slugger": "2.0.0",
     "postcss": "^8.5.25",
     "tailwindcss": "^4.3.3",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wrangler": "^4.156.1"
   },
   "overrides": {
     "dompurify": "3.4.16",

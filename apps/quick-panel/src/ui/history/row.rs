@@ -111,18 +111,6 @@ impl Panel {
             })
             .child(
                 div()
-                    .w(units(16.))
-                    .flex_shrink_0()
-                    .text_center()
-                    .font_family(theme.mono_font_family.clone())
-                    .text_size(units(11.))
-                    .text_color(quiet)
-                    .when(ix < VISIBLE_ROWS, |digit| {
-                        digit.child(format!("{}", ix + 1))
-                    }),
-            )
-            .child(
-                div()
                     .w(units(24.))
                     .flex_shrink_0()
                     .flex()
@@ -172,6 +160,17 @@ impl Panel {
                     })
                     .child(text::relative_time(elapsed)),
             )
+            .when(ix < VISIBLE_ROWS, |row| {
+                let shortcut = if cfg!(target_os = "macos") {
+                    format!("⌘{}", ix + 1)
+                } else {
+                    format!("Ctrl+{}", ix + 1)
+                };
+                row.child(keycap(shortcut, cx).flex_shrink_0().when(selected, |key| {
+                    key.bg(theme.primary_foreground.opacity(0.15))
+                        .text_color(ink)
+                }))
+            })
             .on_click(
                 cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
                     this.select(ix, window, cx);

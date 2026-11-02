@@ -18,7 +18,10 @@ use crate::clipboard::SystemClipboardSnapshot;
 #[derive(Debug, Clone)]
 pub enum PlatformEvent {
     /// Local clipboard content changed.
-    ClipboardChanged { snapshot: SystemClipboardSnapshot },
+    ClipboardChanged {
+        snapshot: SystemClipboardSnapshot,
+        identity: Option<Vec<u8>>,
+    },
 }
 
 /// Channel sender for platform events emitted by the clipboard watcher.
@@ -244,8 +247,10 @@ impl ClipboardWatcher {
     /// Errors are logged at warn level and never propagated — a transient OS
     /// read failure must not bring down the watcher loop.
     pub fn notify_change(&mut self) {
-        match self.local_clipboard.read_snapshot() {
-            Ok(snapshot) => self.emit_with_dedup(snapshot),
+        match self.local_clipboard.read_observation() {
+            Ok((snapshot, identity)) => {
+                self.emit_observation_at(snapshot, identity, Instant::now())
+            }
             Err(e) => {
                 warn!(
                     error_kind = "platform_clipboard_read_failed",
@@ -276,6 +281,15 @@ impl ClipboardWatcher {
     /// Dedup core with an injected `now`, so the time-based guards are testable
     /// without sleeping. Production callers go through [`Self::emit_with_dedup`].
     fn emit_with_dedup_at(&mut self, snapshot: SystemClipboardSnapshot, now: Instant) {
+        self.emit_observation_at(snapshot, None, now);
+    }
+
+    fn emit_observation_at(
+        &mut self,
+        snapshot: SystemClipboardSnapshot,
+        identity: Option<Vec<u8>>,
+        now: Instant,
+    ) {
         let raw_key = dedupe_key(&snapshot);
         let is_image = raw_key.as_deref().is_some_and(|k| k.starts_with("image:"));
 
@@ -432,7 +446,7 @@ impl ClipboardWatcher {
 
         if let Err(err) = self
             .sender
-            .try_send(PlatformEvent::ClipboardChanged { snapshot })
+            .try_send(PlatformEvent::ClipboardChanged { snapshot, identity })
         {
             warn!(
                 error_kind = "notify_channel_send_failed",

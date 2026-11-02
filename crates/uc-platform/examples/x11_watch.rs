@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
             }
             event = rx.recv() => {
                 match event {
-                    Some(PlatformEvent::ClipboardChanged { snapshot }) => {
+                    Some(PlatformEvent::ClipboardChanged { snapshot, .. }) => {
                         println!(
                             "\n[{}] snapshot: {} reps",
                             chrono::Local::now().format("%H:%M:%S%.3f"),

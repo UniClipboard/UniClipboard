@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-11-02 09:57 UTC",
+  "checked_at": "2026-11-02 11:59 UTC",
   "channels": {
     "aur": {
       "status": "published",
@@ -38,9 +38,8 @@
       "version": "1.6.0-alpha.8"
     },
     "snap": {
-      "status": "unavailable",
-      "version": null,
-      "error": "URLError: <urlopen error _ssl.c:983: The handshake operation timed out>"
+      "status": "published",
+      "version": "1.1.2"
     },
     "snap-edge": {
       "status": "published",

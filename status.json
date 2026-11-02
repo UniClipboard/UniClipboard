@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-11-02 06:44 UTC",
+  "checked_at": "2026-11-02 09:57 UTC",
   "channels": {
     "aur": {
       "status": "published",
-      "version": "1.6.0.alpha.5.r3.g7a7de2e-1"
+      "version": "1.6.0.alpha.8.r0.g3801abf-1"
     },
     "brew-gui": {
       "status": "published",
@@ -35,11 +35,12 @@
     },
     "npm-alpha": {
       "status": "published",
-      "version": "1.6.0-alpha.7"
+      "version": "1.6.0-alpha.8"
     },
     "snap": {
-      "status": "published",
-      "version": "1.1.2"
+      "status": "unavailable",
+      "version": null,
+      "error": "URLError: <urlopen error _ssl.c:983: The handshake operation timed out>"
     },
     "snap-edge": {
       "status": "published",

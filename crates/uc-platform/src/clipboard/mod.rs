@@ -27,7 +27,7 @@ pub use event_loop::{
     build_event_loop, shutdown_channel, PlatformClipboardEventLoop, ShutdownRx, ShutdownTx,
 };
 pub use model::{
-    ClipboardPayloadSource, FormatId, ImageKind, MimeClass, MimeType,
+    ClipboardObservation, ClipboardPayloadSource, FormatId, ImageKind, MimeClass, MimeType,
     ObservedClipboardRepresentation, RepresentationId, SystemClipboard, SystemClipboardSnapshot,
 };
 pub use noop::NoopSystemClipboard;

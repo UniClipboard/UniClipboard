@@ -10,14 +10,14 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
 use uc_engine::{
     EngineConfig, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
-    HostClipboard, HostClipboardChange, HostClipboardChangeStream, HostClipboardRepresentation,
-    HostClipboardSnapshot, HostDirectories, HostFileAccess, HostFileHandle, HostFileMetadata,
-    HostSecureStorage,
+    HostClipboard, HostClipboardChange, HostClipboardChangeStream, HostClipboardIdentity,
+    HostClipboardRepresentation, HostClipboardSnapshot, HostClipboardWriteReceipt, HostDirectories,
+    HostFileAccess, HostFileHandle, HostFileMetadata, HostSecureStorage,
 };
 use uc_platform::clipboard::watcher::{ClipboardWatcher, PlatformEvent};
 use uc_platform::clipboard::{build_event_loop, shutdown_channel, ShutdownTx};
 use uc_platform::clipboard::{
-    ClipboardPayloadSource, ObservedClipboardRepresentation, SystemClipboard,
+    ClipboardObservation, ClipboardPayloadSource, ObservedClipboardRepresentation, SystemClipboard,
     SystemClipboardSnapshot,
 };
 use uc_platform::ports::{SecureStorageError, SecureStorageProvider};
@@ -245,16 +245,22 @@ fn map_secure_storage_error(error: SecureStorageError) -> HostCapabilityError {
 struct DesktopClipboard {
     system_clipboard: Arc<dyn SystemClipboard>,
     file_registry: Arc<DesktopFileRegistry>,
-    pending_snapshot: Arc<Mutex<Option<SystemClipboardSnapshot>>>,
+    pending_snapshot: Arc<Mutex<Option<ClipboardObservation>>>,
     change_stream_taken: bool,
     changes_enabled: bool,
 }
 
 impl HostClipboard for DesktopClipboard {
     fn read(&self) -> Result<HostClipboardSnapshot, HostCapabilityError> {
-        let snapshot = match self.pending_snapshots().take() {
+        self.read_with_identity().map(|(snapshot, _)| snapshot)
+    }
+
+    fn read_with_identity(
+        &self,
+    ) -> Result<(HostClipboardSnapshot, Option<HostClipboardIdentity>), HostCapabilityError> {
+        let (snapshot, identity) = match self.pending_snapshots().take() {
             Some(snapshot) => snapshot,
-            None => self.system_clipboard.read_snapshot().map_err(|source| {
+            None => self.system_clipboard.read_observation().map_err(|source| {
                 host_io_error(
                     "desktop clipboard read failed",
                     source.into_boxed_dyn_error(),
@@ -266,13 +272,23 @@ impl HostClipboard for DesktopClipboard {
             .into_iter()
             .map(|representation| self.to_host_representation(representation))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(HostClipboardSnapshot {
-            observed_at_ms: snapshot.ts_ms,
-            representations,
-        })
+        Ok((
+            HostClipboardSnapshot {
+                observed_at_ms: snapshot.ts_ms,
+                representations,
+            },
+            identity.map(HostClipboardIdentity),
+        ))
     }
 
     fn write(&self, snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError> {
+        self.write_with_receipt(snapshot).map(|_| ())
+    }
+
+    fn write_with_receipt(
+        &self,
+        snapshot: HostClipboardSnapshot,
+    ) -> Result<HostClipboardWriteReceipt, HostCapabilityError> {
         let representations = snapshot
             .representations
             .into_iter()
@@ -294,11 +310,14 @@ impl HostClipboard for DesktopClipboard {
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.system_clipboard
-            .write_snapshot(SystemClipboardSnapshot {
+            .write_with_receipt(SystemClipboardSnapshot {
                 ts_ms: snapshot.observed_at_ms,
                 representations,
                 file_content_digests: Vec::new(),
                 file_set_v1_component: None,
+            })
+            .map(|identity| HostClipboardWriteReceipt {
+                identity: identity.map(HostClipboardIdentity),
             })
             .map_err(|source| {
                 host_io_error(
@@ -324,7 +343,7 @@ impl HostClipboard for DesktopClipboard {
 }
 
 impl DesktopClipboard {
-    fn pending_snapshots(&self) -> MutexGuard<'_, Option<SystemClipboardSnapshot>> {
+    fn pending_snapshots(&self) -> MutexGuard<'_, Option<ClipboardObservation>> {
         match self.pending_snapshot.lock() {
             Ok(snapshot) => snapshot,
             Err(poisoned) => poisoned.into_inner(),
@@ -365,7 +384,7 @@ impl DesktopClipboard {
 
 struct DesktopClipboardChanges {
     system_clipboard: Arc<dyn SystemClipboard>,
-    pending_snapshot: Arc<Mutex<Option<SystemClipboardSnapshot>>>,
+    pending_snapshot: Arc<Mutex<Option<ClipboardObservation>>>,
     running: Option<RunningDesktopClipboardChanges>,
 }
 
@@ -398,7 +417,7 @@ impl DesktopClipboardChanges {
         Ok(())
     }
 
-    fn pending_snapshots(&self) -> MutexGuard<'_, Option<SystemClipboardSnapshot>> {
+    fn pending_snapshots(&self) -> MutexGuard<'_, Option<ClipboardObservation>> {
         match self.pending_snapshot.lock() {
             Ok(snapshot) => snapshot,
             Err(poisoned) => poisoned.into_inner(),
@@ -416,9 +435,9 @@ impl HostClipboardChangeStream for DesktopClipboardChanges {
                 None => return Ok(HostClipboardChange::Closed),
             };
             match event {
-                Some(PlatformEvent::ClipboardChanged { snapshot }) if snapshot.is_empty() => {}
-                Some(PlatformEvent::ClipboardChanged { snapshot }) => {
-                    *self.pending_snapshots() = Some(snapshot);
+                Some(PlatformEvent::ClipboardChanged { snapshot, .. }) if snapshot.is_empty() => {}
+                Some(PlatformEvent::ClipboardChanged { snapshot, identity }) => {
+                    *self.pending_snapshots() = Some((snapshot, identity));
                     return Ok(HostClipboardChange::Changed);
                 }
                 None => return Ok(HostClipboardChange::Closed),

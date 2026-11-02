@@ -337,7 +337,23 @@ impl SystemClipboardSnapshot {
     }
 }
 
+/// Snapshot and ownership identity captured in the same platform observation.
+pub type ClipboardObservation = (SystemClipboardSnapshot, Option<Vec<u8>>);
+
 pub trait SystemClipboard: Send + Sync {
+    /// Return no identity when the platform cannot prove ownership.
+    fn read_observation(&self) -> anyhow::Result<ClipboardObservation> {
+        self.read_snapshot().map(|snapshot| (snapshot, None))
+    }
+
+    /// Return an ownership identity only after a successful identified write.
+    fn write_with_receipt(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        self.write_snapshot(snapshot).map(|()| None)
+    }
+
     fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot>;
     fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()>;
 }

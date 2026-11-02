@@ -32,6 +32,7 @@ export function useWindowedScroll(
   )
   const initialized = useRef(false)
   const anchor = useRef<{ id: string; top: number } | null>(null)
+  const atTop = useRef(viewport?.offset === 0)
   const restoring = useRef(false)
   const restoredTop = useRef(0)
   const resetKey = useRef(viewport?.resetKey)
@@ -51,6 +52,7 @@ export function useWindowedScroll(
       if (!scrolling || Math.abs(scroll.scrollTop - restoredTop.current) < 0.5) return
       restoring.current = false
     }
+    atTop.current = scroll.scrollTop <= 0.5
     const bounds = scroll.getBoundingClientRect()
     const allRows = Array.from(host.querySelectorAll<HTMLElement>('[data-item-id]'))
     // Freeze a measured pitch for this layout. Re-estimating on each eviction
@@ -137,6 +139,14 @@ export function useWindowedScroll(
   }, [root, enabled])
   const restore = useEffectEvent(() => {
     const scroll = scroller()
+    // Follow the head only at the physical top, not when the first row is partially visible.
+    if (scroll && atTop.current && viewport?.offset === 0) {
+      anchor.current = null
+      restoring.current = true
+      scroll.scrollTop = 0
+      restoredTop.current = scroll.scrollTop
+      return
+    }
     const saved = anchor.current
     const row = Array.from(
       root.current?.querySelectorAll<HTMLElement>('[data-item-id]') ?? []

@@ -54,6 +54,7 @@ test('delivery-live: isolate two peers and confirm a failed file retry', async (
   assert.equal(await failed.getAttribute('data-tone'), 'critical')
   await failed.click()
   await confirm.waitFor()
+  const retryStartedAt = performance.now()
   await confirm.getByRole('button', { name: 'Send again', exact: true }).click()
   const progress = await page.waitForFunction(id => {
     const bar = document.querySelector(`[data-testid="delivery-status-${id}"] [role="progressbar"]`)
@@ -66,8 +67,11 @@ test('delivery-live: isolate two peers and confirm a failed file retry', async (
     id =>
       document.querySelector(`[data-testid="delivery-status-${id}"]`)?.getAttribute('data-tone') ===
       'positive',
-    peerIds[1]
+    peerIds[1],
+    // Match the fixture's real-transfer budget for the 64 MiB payload.
+    { timeout: 90_000 }
   )
+  const retryDurationMs = Math.round(performance.now() - retryStartedAt)
   assert.equal(await completed.getAttribute('data-tone'), 'positive')
   assert.equal(await completed.getByRole('progressbar').count(), 0)
   assert.equal(await failed.getByRole('progressbar').count(), 0)
@@ -85,6 +89,7 @@ test('delivery-live: isolate two peers and confirm a failed file retry', async (
       {
         passed: true,
         progressValue,
+        retryDurationMs,
         verified,
         entryId,
         peerIds,

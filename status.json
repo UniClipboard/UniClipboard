@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-11-01 22:20 UTC",
+  "checked_at": "2026-11-02 06:44 UTC",
   "channels": {
     "aur": {
       "status": "published",
@@ -35,16 +35,15 @@
     },
     "npm-alpha": {
       "status": "published",
-      "version": "1.6.0-alpha.5"
+      "version": "1.6.0-alpha.7"
     },
     "snap": {
       "status": "published",
       "version": "1.1.2"
     },
     "snap-edge": {
-      "status": "unavailable",
-      "version": null,
-      "error": "HTTPError: HTTP Error 429: Too Many Requests"
+      "status": "published",
+      "version": "1.4.0"
     },
     "copr": {
       "status": "published",

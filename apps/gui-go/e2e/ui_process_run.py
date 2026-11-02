@@ -32,7 +32,7 @@ def main():
     name = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())['CFBundleName']
     if subprocess.run(['pgrep', '-f', str(BINARY)], capture_output=True).returncode == 0:
         raise RuntimeError('another instance of the test bundle is running')
-    ui_bundle = bundle / 'Contents/Helpers/UniClipboardUI.app'
+    ui_bundle = bundle / 'Contents/Helpers/UniClipboard.app'
     native = Run(out, bundle=ui_bundle)
     native.build_tools()
     p = Profile(out)

@@ -8,7 +8,8 @@ from pathlib import Path
 
 def assemble_ui_bundle(bundle):
     contents = bundle / 'Contents'
-    child = contents / 'Helpers/UniClipboardUI.app/Contents'
+    # macOS uses the bundle directory name for the Dock label.
+    child = contents / 'Helpers/UniClipboard.app/Contents'
     (child / 'MacOS').mkdir(parents=True, exist_ok=True)
     (child / 'Resources').mkdir(parents=True, exist_ok=True)
     shutil.copy2(contents / 'MacOS/gui-go', child / 'MacOS/gui-go')

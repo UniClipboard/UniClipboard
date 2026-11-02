@@ -47,7 +47,7 @@ assert.equal(git('rev-parse', 'HEAD'), head, 'source HEAD changed while building
 assert.equal(git('status', '--porcelain'), status, 'working-tree state changed while building')
 const files = {
   host: 'target/gui-go/UniClipboardGoE2E.app/Contents/MacOS/gui-go',
-  ui: 'target/gui-go/UniClipboardGoE2E.app/Contents/Helpers/UniClipboardUI.app/Contents/MacOS/gui-go',
+  ui: 'target/gui-go/UniClipboardGoE2E.app/Contents/Helpers/UniClipboard.app/Contents/MacOS/gui-go',
   daemon: 'target/debug/uniclipd',
   cli: 'target/gui-go/uniclip',
 }

@@ -129,7 +129,7 @@ def main():
     extra = sorted(x.name for x in macos.iterdir()) if macos.is_dir() else []
     r.add("Contents/MacOS holds exactly the three executables", extra == sorted([GUI, DAEMON, HELPER]), str(extra))
 
-    ui_bundle = app / "Contents/Helpers/UniClipboardUI.app"
+    ui_bundle = app / "Contents/Helpers/UniClipboard.app"
     ui_exe = ui_bundle / "Contents/MacOS/gui-go"
     r.add("UI child is bundled and executable", ui_exe.is_file() and os.access(ui_exe, os.X_OK), str(ui_exe))
     ui_plist = ui_bundle / "Contents/Info.plist"

@@ -78,7 +78,7 @@ def run():
             plist = plistlib.load(file)
         assert plist['CFBundleIdentifier'].endswith('.e2e')
         binary = app / 'Contents/MacOS/gui-go'
-        ui_binary = app / 'Contents/Helpers/UniClipboardUI.app/Contents/MacOS/gui-go'
+        ui_binary = app / 'Contents/Helpers/UniClipboard.app/Contents/MacOS/gui-go'
         build = json.loads((ROOT / 'target/gui-go/macos-native-build.json').read_text())
         head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True, timeout=10).strip()
         assert build['head'] == head

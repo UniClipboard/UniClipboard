@@ -25,7 +25,7 @@ def capture_gui(owner, path):
     rows = subprocess.check_output(['ps', '-Ao', 'pid=,ppid=,comm='], text=True).splitlines()
     for row in rows:
         fields = row.strip().split(None, 2)
-        if len(fields) == 3 and int(fields[1]) == owner and 'Helpers/UniClipboardUI.app/' in fields[2]:
+        if len(fields) == 3 and int(fields[1]) == owner and 'Helpers/UniClipboard.app/' in fields[2]:
             return screenshot(int(fields[0]), path)
     return False
 

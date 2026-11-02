@@ -247,7 +247,7 @@ impl WatcherHarness {
                     )
                 })
                 .expect("watcher channel closed unexpectedly");
-            let PlatformEvent::ClipboardChanged { snapshot } = event;
+            let PlatformEvent::ClipboardChanged { snapshot, .. } = event;
             let matched = snapshot
                 .representations
                 .iter()

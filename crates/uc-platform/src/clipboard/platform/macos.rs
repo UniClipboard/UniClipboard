@@ -6,7 +6,7 @@ use crate::clipboard::{
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use clipboard_rs::ClipboardContext;
+use clipboard_rs::{common::RustImage, ClipboardContext};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_app_kit::{
@@ -38,32 +38,54 @@ impl MacOSClipboard {
 #[async_trait]
 impl SystemClipboard for MacOSClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
+        self.read_observation().map(|(snapshot, _)| snapshot)
+    }
+
+    fn read_observation(&self) -> Result<crate::clipboard::ClipboardObservation> {
         let span = debug_span!("platform.macos.read_clipboard");
         span.in_scope(|| {
-            let mut ctx = self.inner.lock().unwrap();
+            let mut ctx = self
+                .inner
+                .lock()
+                .map_err(|_| anyhow!("clipboard context lock poisoned"))?;
+            let pasteboard = NSPasteboard::generalPasteboard();
+            let before = pasteboard.changeCount();
             let snapshot = CommonClipboardImpl::read_snapshot(&mut ctx)?;
-
+            // Never attribute bytes assembled across two different owners.
+            if pasteboard.changeCount() != before {
+                anyhow::bail!("clipboard ownership changed during snapshot read");
+            }
             debug!(
                 formats = snapshot.representations.len(),
                 total_size_bytes = snapshot.total_size_bytes(),
                 "Captured system clipboard snapshot"
             );
-
-            Ok(snapshot)
+            Ok((snapshot, Some(before.to_le_bytes().to_vec())))
         })
     }
 
     fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
+        self.write_with_receipt(snapshot).map(|_| ())
+    }
+
+    fn write_with_receipt(&self, snapshot: SystemClipboardSnapshot) -> Result<Option<Vec<u8>>> {
         let span = debug_span!(
             "platform.macos.write_clipboard",
-            representations = snapshot.representations.len(),
+            representations = snapshot.representations.len()
         );
         span.in_scope(|| {
-            let mut ctx = self.inner.lock().unwrap();
-            CommonClipboardImpl::write_snapshot(&mut ctx, snapshot)?;
-
-            debug!("Wrote clipboard snapshot to system");
-            Ok(())
+            // Serialize our native writes with snapshot reads on this adapter.
+            let _ctx = self
+                .inner
+                .lock()
+                .map_err(|_| anyhow!("clipboard context lock poisoned"))?;
+            let identity =
+                write_snapshot_to_pasteboard(snapshot, &NSPasteboard::generalPasteboard())?;
+            debug!(
+                identified = identity.is_some(),
+                "Wrote clipboard snapshot to system"
+            );
+            Ok(identity)
         })
     }
 }
@@ -198,8 +220,8 @@ fn make_nsdata(bytes: &[u8]) -> Retained<NSData> {
 /// `text/rtf` → `NSPasteboardTypeRTF`（合并到 `text_item`，与 plain/html 共享同一
 ///   NSPasteboardItem，让目的应用从同一个 item 看到一致的多格式表示）
 ///
-/// `image/jpeg` / `image/webp` / `image/gif` 仍不支持：上游 `common.rs::read_snapshot`
-/// 已把图像统一标准化为 PNG（与 windows.rs 同步取舍），envelope 不会出现这些 mime。
+/// Other image formats use the existing clipboard-rs decoder and PNG encoder
+/// before committing native items. Markdown, CSV, and URL text use the native string type.
 ///
 /// ## clearContents() 副作用防御
 ///
@@ -208,6 +230,38 @@ fn make_nsdata(bytes: &[u8]) -> Retained<NSData> {
 /// **不调用 clearContents()**，避免把用户原本的 clipboard 内容抹掉却什么都写不进去
 /// （与 Windows 任务的 `empty()` 副作用防御同构）。
 pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> Result<()> {
+    write_snapshot_to_pasteboard(snapshot, &NSPasteboard::generalPasteboard()).map(|_| ())
+}
+
+fn write_snapshot_to_pasteboard(
+    mut snapshot: SystemClipboardSnapshot,
+    pasteboard: &NSPasteboard,
+) -> Result<Option<Vec<u8>>> {
+    // Preserve the legacy text/image conversion semantics before taking ownership.
+    // Every supported content family then uses the same identified native commit.
+    for rep in &mut snapshot.representations {
+        match resolve_multi_rep_mime(rep) {
+            Some(MimeClass::TextMarkdown | MimeClass::TextLink | MimeClass::TextOther) => {
+                rep.mime = Some(MimeType::text_plain());
+            }
+            Some(MimeClass::Image(ImageKind::Png | ImageKind::Tiff)) => {}
+            Some(MimeClass::Image(_)) => {
+                let bytes = rep_bytes(rep)?;
+                let image = clipboard_rs::RustImageData::from_bytes(&bytes)
+                    .map_err(|error| anyhow!("clipboard image decode failed: {error}"))?;
+                let png = image
+                    .to_png()
+                    .map_err(|error| anyhow!("clipboard image PNG conversion failed: {error}"))?;
+                *rep = ObservedClipboardRepresentation::new(
+                    rep.id.clone(),
+                    rep.format_id.clone(),
+                    Some(MimeType("image/png".into())),
+                    png.get_bytes().to_vec(),
+                );
+            }
+            _ => {}
+        }
+    }
     // 预扫描：snapshot 中至少要有一条可写 rep（text/plain、text/html、text/uri-list、
     // image/png 或 image/tiff）。否则直接 bail，不打开 / 不 clear pasteboard。
     let has_writable = snapshot
@@ -233,13 +287,6 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
             skipped
         );
     }
-
-    // 1. 拿 general pasteboard 单例（macOS NSPasteboard 无独占句柄模型，可直接获取）
-    // objc2-app-kit 0.3.2 中 generalPasteboard() 是 `pub fn`（非 unsafe），直接调用。
-    let pasteboard: Retained<NSPasteboard> = NSPasteboard::generalPasteboard();
-
-    // 2. 清空旧内容；忽略返回的 changeCount（仅标识版本号，不代表错误）
-    let _ = pasteboard.clearContents();
 
     // 3. 构造 items。
     //
@@ -486,11 +533,9 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
     }
 
     if !wrote_any {
-        // 所有候选 rep 的 setData_forType 均返回 false —— 极罕见。
-        // 此时 item 为空，writeObjects 不会提交有意义内容，但 clearContents 已执行。
+        // Build every item before clearing the pasteboard, so preparation failure preserves it.
         anyhow::bail!(
-            "macOS 多 rep 写入：所有候选 rep setData_forType 均失败；\
-             pasteboard 已被清空但无法写入；跳过的 rep = {:?}",
+            "macOS multi-rep write failed to prepare any item; clipboard preserved; skipped = {:?}",
             skipped
         );
     }
@@ -526,6 +571,9 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
 
     // 5. 原子提交；writeObjects: 返回 false 表示失败，上抛 Err
     // objc2-app-kit 0.3.2 中 writeObjects 是 `pub fn`（非 unsafe）。
+    // clearContents returns the ownership version for this write. Never adopt a
+    // version observed after another process has replaced the clipboard.
+    let ownership = pasteboard.clearContents();
     let ok = pasteboard.writeObjects(&items_array);
     if !ok {
         return Err(anyhow!(
@@ -550,7 +598,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
         "macOS 原子多 rep 写入完成"
     );
 
-    Ok(())
+    Ok((pasteboard.changeCount() == ownership).then(|| ownership.to_le_bytes().to_vec()))
 }
 
 #[cfg(test)]
@@ -558,6 +606,205 @@ mod tests {
     use super::*;
     use crate::clipboard::MimeType;
     use crate::clipboard::{FormatId, RepresentationId};
+
+    // Native boundary E2E: private AppKit pasteboard, real file URLs, and a second owner.
+    #[test]
+    fn native_file_write_identity_e2e() {
+        let pasteboard = NSPasteboard::pasteboardWithUniqueName();
+        let root = tempfile::tempdir().unwrap();
+        let paths = [
+            root.path().join("first.txt"),
+            root.path().join("second.txt"),
+        ];
+        for path in &paths {
+            std::fs::write(path, b"native identity fixture").unwrap();
+        }
+        let uris = paths
+            .iter()
+            .map(|p| url::Url::from_file_path(p).unwrap().to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![
+                ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    "files".into(),
+                    Some(MimeType("text/uri-list".into())),
+                    uris.into_bytes(),
+                ),
+                ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    "uniclipboard-file-display-metadata".into(),
+                    Some(MimeType("application/json".into())),
+                    b"{}".to_vec(),
+                ),
+            ],
+            file_content_digests: vec![],
+            file_set_v1_component: None,
+        };
+        let receipt = write_snapshot_to_pasteboard(snapshot, &pasteboard)
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt, pasteboard.changeCount().to_le_bytes());
+        let items = pasteboard.pasteboardItems().unwrap();
+        let urls = items
+            .iter()
+            .filter_map(|item| unsafe { item.stringForType(NSPasteboardTypeFileURL) })
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(urls.len(), 2);
+        for (uri, path) in urls.iter().zip(paths.iter()) {
+            assert_eq!(url::Url::parse(uri).unwrap().to_file_path().unwrap(), *path);
+        }
+        // A deliberate external copy of the same content changes ownership.
+        let next = pasteboard.clearContents();
+        assert_ne!(receipt, next.to_le_bytes());
+        let other = NSPasteboardItem::new();
+        assert!(unsafe {
+            other.setData_forType(&make_nsdata(urls[0].as_bytes()), NSPasteboardTypeFileURL)
+        });
+        let objects = NSArray::from_retained_slice(&[
+            ProtocolObject::<dyn NSPasteboardWriting>::from_retained(other),
+        ]);
+        assert!(pasteboard.writeObjects(&objects));
+        assert_ne!(receipt, pasteboard.changeCount().to_le_bytes());
+        let unsupported = SystemClipboardSnapshot {
+            ts_ms: 2,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                "unsupported".into(),
+                None,
+                vec![1],
+            )],
+            file_content_digests: vec![],
+            file_set_v1_component: None,
+        };
+        assert!(write_snapshot_to_pasteboard(unsupported, &pasteboard).is_err());
+        assert_eq!(next, pasteboard.changeCount());
+        pasteboard.clearContents();
+        let output = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/test-artifacts/inbound-file-loop");
+        std::fs::create_dir_all(&output).unwrap();
+        std::fs::write(output.join("native.txt"),
+            "PASS: private AppKit pasteboard; two real file URLs; receipt matches ownership; external identical copy changes ownership; unsupported write preserves clipboard.\nNOT RUN: general pasteboard listener, paired devices, native GUI.\n").unwrap();
+    }
+
+    // Native boundary E2E: exercise the OS write/read contract for every supported content family.
+    #[test]
+    fn native_text_image_identity_matrix_e2e() {
+        let pasteboard = NSPasteboard::pasteboardWithUniqueName();
+        let mut cases = Vec::new();
+        for mime in [
+            "text/plain",
+            "text/html",
+            "text/rtf",
+            "text/markdown",
+            "text/csv",
+            "text/x-url",
+        ] {
+            let content = match mime {
+                "text/html" => b"<p>identity fixture</p>".to_vec(),
+                "text/rtf" => br"{\rtf1 identity fixture}".to_vec(),
+                _ => b"identity fixture".to_vec(),
+            };
+            let snapshot = SystemClipboardSnapshot {
+                ts_ms: 1,
+                representations: vec![ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    "text".into(),
+                    Some(MimeType(mime.into())),
+                    content.clone(),
+                )],
+                file_content_digests: vec![],
+                file_set_v1_component: None,
+            };
+            let before = pasteboard.changeCount();
+            let receipt = write_snapshot_to_pasteboard(snapshot, &pasteboard)
+                .unwrap()
+                .unwrap();
+            assert_ne!(before, pasteboard.changeCount(), "{mime}");
+            assert_eq!(receipt, pasteboard.changeCount().to_le_bytes(), "{mime}");
+            let native_type = unsafe {
+                match mime {
+                    "text/html" => NSPasteboardTypeHTML,
+                    "text/rtf" => NSPasteboardTypeRTF,
+                    _ => NSPasteboardTypeString,
+                }
+            };
+            assert_eq!(
+                &*pasteboard.dataForType(native_type).unwrap().to_vec(),
+                &content,
+                "{mime}"
+            );
+            cases.push(mime);
+        }
+        for (mime, format) in [
+            ("image/png", image::ImageFormat::Png),
+            ("image/tiff", image::ImageFormat::Tiff),
+            ("image/jpeg", image::ImageFormat::Jpeg),
+            ("image/gif", image::ImageFormat::Gif),
+            ("image/webp", image::ImageFormat::WebP),
+            ("image/bmp", image::ImageFormat::Bmp),
+        ] {
+            let mut encoded = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+                4,
+                3,
+                image::Rgb([12, 34, 56]),
+            ))
+            .write_to(&mut encoded, format)
+            .unwrap();
+            let snapshot = SystemClipboardSnapshot {
+                ts_ms: 2,
+                representations: vec![ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    "image".into(),
+                    Some(MimeType(mime.into())),
+                    encoded.into_inner(),
+                )],
+                file_content_digests: vec![],
+                file_set_v1_component: None,
+            };
+            let before = pasteboard.changeCount();
+            let receipt = write_snapshot_to_pasteboard(snapshot, &pasteboard)
+                .unwrap()
+                .unwrap();
+            assert_ne!(before, pasteboard.changeCount(), "{mime}");
+            assert_eq!(receipt, pasteboard.changeCount().to_le_bytes(), "{mime}");
+            let native_type = unsafe {
+                if mime == "image/tiff" {
+                    NSPasteboardTypeTIFF
+                } else {
+                    NSPasteboardTypePNG
+                }
+            };
+            let bytes = pasteboard.dataForType(native_type).unwrap().to_vec();
+            let decoded = image::load_from_memory(&bytes).unwrap();
+            assert_eq!((decoded.width(), decoded.height()), (4, 3), "{mime}");
+            cases.push(mime);
+        }
+        let before = pasteboard.changeCount();
+        let invalid = SystemClipboardSnapshot {
+            ts_ms: 3,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                "image".into(),
+                Some(MimeType("image/jpeg".into())),
+                vec![1, 2, 3],
+            )],
+            file_content_digests: vec![],
+            file_set_v1_component: None,
+        };
+        assert!(write_snapshot_to_pasteboard(invalid, &pasteboard).is_err());
+        assert_eq!(before, pasteboard.changeCount());
+        pasteboard.clearContents();
+        let output = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/test-artifacts/inbound-file-loop");
+        std::fs::create_dir_all(&output).unwrap();
+        std::fs::write(output.join("text-image-matrix.txt"), format!(
+            "PASS: native private pasteboard write/read and ownership receipt: {}.\nPASS: failed image conversion preserves ownership.\nNOT RUN: paired-device transport, general pasteboard listener, native GUI.\n", cases.join(", "))).unwrap();
+    }
 
     fn rep(format: &str, mime: Option<&str>) -> ObservedClipboardRepresentation {
         ObservedClipboardRepresentation::new(

@@ -193,7 +193,7 @@ fn pending_platform_snapshot_is_consumed_before_a_fresh_clipboard_read() {
     let clipboard = DesktopClipboard {
         system_clipboard: Arc::new(StaticClipboard { snapshot: fresh }),
         file_registry: Arc::new(DesktopFileRegistry::default()),
-        pending_snapshot: Arc::new(Mutex::new(Some(pending))),
+        pending_snapshot: Arc::new(Mutex::new(Some((pending, None)))),
         change_stream_taken: false,
         changes_enabled: false,
     };
@@ -214,3 +214,6 @@ fn pending_platform_snapshot_is_consumed_before_a_fresh_clipboard_read() {
 #[cfg(unix)]
 #[path = "tests/clipboard_recovery.rs"]
 mod clipboard_recovery;
+
+#[path = "tests/clipboard_identity.rs"]
+mod clipboard_identity;

@@ -195,6 +195,9 @@ jobs:
     permissions:
       contents: read
       actions: read
+      # Hosted runners authenticate GHCR pulls with GITHUB_TOKEN, including
+      # the Linux CLI container in the nested build-cli.yml workflow.
+      packages: read
     # One matrix owns cancellation across desktop and Linux CLI builds.
     strategy:
       fail-fast: true

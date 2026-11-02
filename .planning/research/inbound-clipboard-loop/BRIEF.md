@@ -42,3 +42,5 @@ The candidate run `candidate/run-1d9d7f10ff094367a534b2b5b1bd7ba7` passed all tw
 An early harness assertion incorrectly treated the UI `isEncrypted` projection as a persistence contract. Source inspection showed that projection is not suitable for that assertion. The runner instead scans database/WAL bytes for exact synthetic text canaries. Complete AEAD validation remains NOT_RUN.
 
 Two-desktop general pasteboard acceptance, real screenshot-application behavior, Windows/Linux runtime, and adversarial concurrent writes remain NOT_RUN. No general task-drain fence or Engine API change was introduced.
+
+The final old-receiver rerun did not reproduce a local-source return dispatch within its deadline (`final-baseline/run-61818d33ab5d49f9956bf175dd0bac9a`). The preceding rerun exposed a harness race with legal remote-entry broadcasts; the runner now waits for local-source dispatch explicitly. The earlier positive reproduction remains evidence of one occurrence, not a deterministic baseline. Current-version twelve-scenario acceptance passed on clean source `642b7462d04ab7c29c309f8c37846f39a6cfcc12` before this documentation update.

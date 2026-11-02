@@ -272,6 +272,11 @@ impl HostClipboard for DesktopClipboard {
             .into_iter()
             .map(|representation| self.to_host_representation(representation))
             .collect::<Result<Vec<_>, _>>()?;
+        tracing::debug!(
+            clipboard_identity_ref = %uc_platform::clipboard::clipboard_identity_ref(identity.as_deref()),
+            identity_present = identity.is_some(),
+            "clipboard observation read"
+        );
         Ok((
             HostClipboardSnapshot {
                 observed_at_ms: snapshot.ts_ms,
@@ -338,6 +343,8 @@ impl HostClipboard for DesktopClipboard {
             system_clipboard: Arc::clone(&self.system_clipboard),
             pending_snapshot: Arc::clone(&self.pending_snapshot),
             running: None,
+            cycle_id: 0,
+            last_cycle: None,
         })))
     }
 }
@@ -382,10 +389,20 @@ impl DesktopClipboard {
     }
 }
 
+// Engine local logs have microsecond UTC timestamps; preserve that precision
+// when correlating the synchronous host cycle with capture events.
+fn clipboard_cycle_time_us() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_micros() as u64)
+}
+
 struct DesktopClipboardChanges {
     system_clipboard: Arc<dyn SystemClipboard>,
     pending_snapshot: Arc<Mutex<Option<ClipboardObservation>>>,
     running: Option<RunningDesktopClipboardChanges>,
+    cycle_id: u64,
+    last_cycle: Option<(u64, String)>,
 }
 
 struct RunningDesktopClipboardChanges {
@@ -428,6 +445,18 @@ impl DesktopClipboardChanges {
 #[async_trait]
 impl HostClipboardChangeStream for DesktopClipboardChanges {
     async fn next(&mut self) -> Result<HostClipboardChange, HostCapabilityError> {
+        if let Some((cycle_id, identity_ref)) = self.last_cycle.take() {
+            // The pinned Engine awaits process_change before polling next again.
+            // This acknowledges the synchronous observation path, not detached dispatch work.
+            let read_consumed = self.pending_snapshots().is_none();
+            tracing::debug!(
+                clipboard_cycle_id = cycle_id,
+                clipboard_cycle_time_us = clipboard_cycle_time_us(),
+                clipboard_identity_ref = %identity_ref,
+                read_consumed,
+                "clipboard change cycle completed"
+            );
+        }
         self.start_if_needed()?;
         loop {
             let event = match self.running.as_mut() {
@@ -437,7 +466,17 @@ impl HostClipboardChangeStream for DesktopClipboardChanges {
             match event {
                 Some(PlatformEvent::ClipboardChanged { snapshot, .. }) if snapshot.is_empty() => {}
                 Some(PlatformEvent::ClipboardChanged { snapshot, identity }) => {
+                    self.cycle_id = self.cycle_id.wrapping_add(1);
+                    let identity_ref =
+                        uc_platform::clipboard::clipboard_identity_ref(identity.as_deref());
+                    self.last_cycle = Some((self.cycle_id, identity_ref.clone()));
                     *self.pending_snapshots() = Some((snapshot, identity));
+                    tracing::debug!(
+                        clipboard_cycle_id = self.cycle_id,
+                        clipboard_cycle_time_us = clipboard_cycle_time_us(),
+                        clipboard_identity_ref = %identity_ref,
+                        "clipboard change cycle queued"
+                    );
                     return Ok(HostClipboardChange::Changed);
                 }
                 None => return Ok(HostClipboardChange::Closed),

@@ -24,4 +24,4 @@ python3 scripts/e2e/clipboard-startup/real-daemon-clipboard-e2e.py --daemon targ
 UC_TEST_ARTIFACTS_DIR="$CLIPBOARD_ADAPTER_ARTIFACTS" cargo test -p uc-bootstrap --locked desktop_clipboard_recovery_process -- --nocapture
 ```
 
-PR 的 macOS E2E job 执行原生验收，并通过已有 `e2e-evidence` 上传结果、诊断 ZIP 和来源记录。
+The existing CLI E2E job runs this startup-recovery scenario only on non-PR calls. Its `e2e-evidence` artifact includes results, diagnostics and source provenance. The separate path-routed `clipboard-loop` PR job runs the paired native regression described in `../inbound-clipboard-loop/README.md`; it does not run this startup-recovery scenario.

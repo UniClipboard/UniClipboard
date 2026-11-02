@@ -1,0 +1,62 @@
+name: Native clipboard loop regression
+
+on:
+  workflow_call:
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT:
+        required: false
+      BUILD_CACHE_R2_ACCESS_KEY_ID:
+        required: false
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY:
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: clipboard-loop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-process:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    environment: desktop-build-cache-reader
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26.13.0'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - name: Start the shared daemon compiler cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: tester-army-backend
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+      - name: Build the real daemon and native pasteboard tools
+        shell: bash
+        run: |
+          bash scripts/build-cache/mbx.sh --exec cargo build --locked -p uc-daemon --bin uniclipd
+          mkdir -p target/clipboard-loop-tools
+          clang -fobjc-arc -framework AppKit -DPRIVATE_PASTEBOARD_TOOL scripts/e2e/clipboard-startup/private-pasteboard.m -o target/clipboard-loop-tools/private-pasteboard
+          clang -fobjc-arc -dynamiclib -framework AppKit scripts/e2e/clipboard-startup/private-pasteboard.m -o target/clipboard-loop-tools/private-pasteboard.dylib
+      - name: Verify isolated native clipboard receive without recapture
+        run: python3 scripts/e2e/inbound-clipboard-loop/run.py --daemon target/debug/uniclipd --tools target/clipboard-loop-tools --artifacts target/clipboard-loop-evidence --recopy
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: clipboard-loop-macos-${{ github.run_attempt }}
+          path: target/clipboard-loop-evidence/
+          if-no-files-found: error
+          retention-days: 14

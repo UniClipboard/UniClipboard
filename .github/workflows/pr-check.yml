@@ -32,6 +32,7 @@ jobs:
       gui_go: ${{ steps.filter.outputs.gui_go }}
       cli_go: ${{ steps.filter.outputs.cli_go }}
       tooling: ${{ steps.filter.outputs.tooling }}
+      clipboard_loop: ${{ steps.filter.outputs.clipboard_loop }}
       testerarmy_browser: ${{ steps.filter.outputs.testerarmy_browser }}
       testerarmy_backend: ${{ steps.filter.outputs.testerarmy_backend }}
       testerarmy_native_macos: ${{ steps.filter.outputs.testerarmy_native_macos }}
@@ -64,6 +65,16 @@ jobs:
     uses: ./.github/workflows/coverage.yml
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  clipboard-loop:
+    name: Native clipboard loop regression
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.clipboard_loop == 'true') }}
+    uses: ./.github/workflows/clipboard-loop-e2e.yml
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+      BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
 
   membership:
     name: Membership

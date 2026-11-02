@@ -337,6 +337,13 @@ impl SystemClipboardSnapshot {
     }
 }
 
+/// Correlate opaque OS ownership tokens without logging their bytes or clipboard content.
+pub fn clipboard_identity_ref(identity: Option<&[u8]>) -> String {
+    identity
+        .map(|bytes| blake3::hash(bytes).to_hex().to_string())
+        .unwrap_or_default()
+}
+
 /// Snapshot and ownership identity captured in the same platform observation.
 pub type ClipboardObservation = (SystemClipboardSnapshot, Option<Vec<u8>>);
 

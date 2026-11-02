@@ -47,7 +47,7 @@ OTLP 日志只补充明确白名单中的本地关联元数据。`peer_ref`、�
 在线调用 `prepare_local_diagnostic_export`，完成一次必要采样、SDK 和队列刷新。准备结果只包含状态、覆盖与计数，不返回历史正文。
 在线和离线都逐文件打开，从句柄取得截止长度，只读有限前缀。完整 JSONL 行才进入 OTLP。
 清单记录截止长度、实际读取、残行、坏行、截短、不可读和缺失。SHA-256、字节和请求数对应实际 ZIP 内容。
-导出不是跨进程事务快照。其他进程未刷新必须明示。后台继续追加不延长本次导出。
+导出不是跨进程事务快照。其他进程未刷新必须明示。后台继续追加不延长本次导出。`liveFlush` 只表示取得在线准备回执；具体刷新结果见主清单 `enginePreparation`。它不证明刷新成功，也不证明其他进程已刷新。
 
 daemon 不运行时，同一格式的文件历史仍可由 Rust 或 Go 导出。只有 Metrics/Traces 时也可导出。
 离线导出不启动 daemon、不解锁资料。只有旧密文时仍返回没有日志。
@@ -122,3 +122,5 @@ python3 apps/gui-go/e2e/diagnostics_acceptance_run.py --streaming-only --duratio
 编码槽只执行有界编码与非阻塞入队。槽内不执行磁盘 I/O。
 
 导出验收必须保留既有准入尝试的 `attempt_ref`、连接流程的 `connect_id`、固定步骤与计数。`attempt_ref` 仅允许 16 位小写十六进制。`connect_id` 仅允许 UUID。无效值必须丢弃。两条离线导出路径必须给出一致结果。
+
+Engine 调用方迁移验收还包括其公共诊断导出入口。先构建 `just cargo build -p uc-application --example diagnostic_export_probe --locked`。现有 `--engine-probe` 验收会调用该入口，读取 Metrics 分段，校验有限前缀的字节和 SHA-256，并验证读写拒绝时保留既有目标。它使用同一验收入口，不另建调度器。

@@ -5072,55 +5072,6 @@ checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
 [[package]]
 name = "iroh"
 version = "1.3.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
-dependencies = [
- "backon",
- "blake3",
- "bytes",
- "cfg_aliases",
- "ctutils",
- "data-encoding",
- "derive_more 2.1.1",
- "ed25519-dalek 3.0.0",
- "futures-util",
- "getrandom 0.4.3",
- "http 1.4.2",
- "ipnet",
- "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-dns 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-metrics",
- "iroh-relay 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "n0-error",
- "n0-future",
- "n0-watcher",
- "netwatch",
- "noq",
- "noq-proto",
- "noq-udp",
- "papaya",
- "pin-project",
- "portable-atomic",
- "portmapper",
- "rand 0.10.2",
- "reqwest 0.13.4",
- "rustc-hash 2.1.3",
- "rustls",
- "rustls-pki-types",
- "serde",
- "smallvec",
- "strum 0.28.0",
- "time",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tracing",
- "url",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "iroh"
-version = "1.3.0"
 source = "git+https://github.com/UniClipboard/Engine.git?rev=80bda137541f1a054897f8d1474634dac9d752e8#80bda137541f1a054897f8d1474634dac9d752e8"
 dependencies = [
  "backon",
@@ -5168,21 +5119,52 @@ dependencies = [
 ]
 
 [[package]]
-name = "iroh-base"
+name = "iroh"
 version = "1.3.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
- "curve25519-dalek 5.0.0",
+ "backon",
+ "blake3",
+ "bytes",
+ "cfg_aliases",
+ "ctutils",
  "data-encoding",
- "data-encoding-macro",
  "derive_more 2.1.1",
  "ed25519-dalek 3.0.0",
+ "futures-util",
  "getrandom 0.4.3",
+ "http 1.4.2",
+ "ipnet",
+ "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-dns 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-metrics",
+ "iroh-relay 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
  "n0-error",
+ "n0-future",
+ "n0-watcher",
+ "netwatch",
+ "noq",
+ "noq-proto",
+ "noq-udp",
+ "papaya",
+ "pin-project",
+ "portable-atomic",
+ "portmapper",
  "rand 0.10.2",
+ "reqwest 0.13.4",
+ "rustc-hash 2.1.3",
+ "rustls",
+ "rustls-pki-types",
  "serde",
+ "smallvec",
+ "strum 0.28.0",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
  "url",
- "zeroize",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -5204,43 +5186,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "iroh-blobs"
-version = "0.103.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+name = "iroh-base"
+version = "1.3.0"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
- "arrayvec",
- "bao-tree",
- "bytes",
- "cfg_aliases",
- "chrono",
- "constant_time_eq",
+ "curve25519-dalek 5.0.0",
  "data-encoding",
+ "data-encoding-macro",
  "derive_more 2.1.1",
- "genawaiter",
+ "ed25519-dalek 3.0.0",
  "getrandom 0.4.3",
- "hex",
- "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-io",
- "iroh-metrics",
- "iroh-tickets 1.0.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-util 0.6.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "irpc",
  "n0-error",
- "n0-future",
- "nested_enum_utils",
- "noq",
- "postcard",
  "rand 0.10.2",
- "range-collections",
- "redb",
- "ref-cast",
- "reflink-copy",
- "self_cell",
  "serde",
- "smallvec",
- "tokio",
- "tracing",
+ "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -5284,14 +5244,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "iroh-blobs"
+version = "0.103.0"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
+dependencies = [
+ "arrayvec",
+ "bao-tree",
+ "bytes",
+ "cfg_aliases",
+ "chrono",
+ "constant_time_eq",
+ "data-encoding",
+ "derive_more 2.1.1",
+ "genawaiter",
+ "getrandom 0.4.3",
+ "hex",
+ "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-io",
+ "iroh-metrics",
+ "iroh-tickets 1.0.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-util 0.6.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "irpc",
+ "n0-error",
+ "n0-future",
+ "nested_enum_utils",
+ "noq",
+ "postcard",
+ "rand 0.10.2",
+ "range-collections",
+ "redb",
+ "ref-cast",
+ "reflink-copy",
+ "self_cell",
+ "serde",
+ "smallvec",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "iroh-dns"
 version = "1.3.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=80bda137541f1a054897f8d1474634dac9d752e8#80bda137541f1a054897f8d1474634dac9d752e8"
 dependencies = [
  "arc-swap",
  "cfg_aliases",
  "derive_more 2.1.1",
- "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
+ "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=80bda137541f1a054897f8d1474634dac9d752e8)",
  "n0-dns-resolver",
  "n0-error",
  "n0-future",
@@ -5308,12 +5308,12 @@ dependencies = [
 [[package]]
 name = "iroh-dns"
 version = "1.3.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=80bda137541f1a054897f8d1474634dac9d752e8#80bda137541f1a054897f8d1474634dac9d752e8"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "arc-swap",
  "cfg_aliases",
  "derive_more 2.1.1",
- "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=80bda137541f1a054897f8d1474634dac9d752e8)",
+ "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
  "n0-dns-resolver",
  "n0-error",
  "n0-future",
@@ -5343,13 +5343,13 @@ dependencies = [
 [[package]]
 name = "iroh-mdns-address-lookup"
 version = "0.6.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "data-encoding",
  "derive_more 2.1.1",
  "futures-util",
- "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
+ "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
  "n0-error",
  "n0-future",
  "n0-watcher",
@@ -5384,49 +5384,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "iroh-relay"
-version = "1.3.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
-dependencies = [
- "blake3",
- "bytes",
- "cfg_aliases",
- "data-encoding",
- "derive_more 2.1.1",
- "getrandom 0.4.3",
- "http 1.4.2",
- "http-body-util",
- "hyper",
- "hyper-util",
- "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-dns 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-metrics",
- "lru",
- "n0-error",
- "n0-future",
- "noq",
- "noq-proto",
- "num_enum",
- "pin-project",
- "postcard",
- "rand 0.10.2",
- "reqwest 0.13.4",
- "rustls",
- "rustls-pki-types",
- "serde",
- "serde_bytes",
- "strum 0.28.0",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tokio-websockets",
- "tracing",
- "url",
- "webpki-roots",
- "ws_stream_wasm",
 ]
 
 [[package]]
@@ -5473,16 +5430,46 @@ dependencies = [
 ]
 
 [[package]]
-name = "iroh-tickets"
-version = "1.0.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+name = "iroh-relay"
+version = "1.3.0"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
+ "blake3",
+ "bytes",
+ "cfg_aliases",
  "data-encoding",
  "derive_more 2.1.1",
- "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
+ "getrandom 0.4.3",
+ "http 1.4.2",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-dns 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-metrics",
+ "lru",
  "n0-error",
+ "n0-future",
+ "noq",
+ "noq-proto",
+ "num_enum",
+ "pin-project",
  "postcard",
+ "rand 0.10.2",
+ "reqwest 0.13.4",
+ "rustls",
+ "rustls-pki-types",
  "serde",
+ "serde_bytes",
+ "strum 0.28.0",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "tokio-websockets",
+ "tracing",
+ "url",
+ "webpki-roots",
+ "ws_stream_wasm",
 ]
 
 [[package]]
@@ -5499,16 +5486,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "iroh-util"
-version = "0.6.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+name = "iroh-tickets"
+version = "1.0.0"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
+ "data-encoding",
  "derive_more 2.1.1",
- "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
+ "iroh-base 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
  "n0-error",
- "n0-future",
- "tokio",
- "tracing",
+ "postcard",
+ "serde",
 ]
 
 [[package]]
@@ -5518,6 +5505,19 @@ source = "git+https://github.com/UniClipboard/Engine.git?rev=80bda137541f1a05489
 dependencies = [
  "derive_more 2.1.1",
  "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=80bda137541f1a054897f8d1474634dac9d752e8)",
+ "n0-error",
+ "n0-future",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "iroh-util"
+version = "0.6.0"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
+dependencies = [
+ "derive_more 2.1.1",
+ "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
  "n0-error",
  "n0-future",
  "tokio",
@@ -7658,7 +7658,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "opaque-ke"
 version = "4.0.1+uni.1"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "argon2",
  "curve25519-dalek 4.1.3",
@@ -10988,7 +10988,7 @@ dependencies = [
 [[package]]
 name = "swarm-discovery"
 version = "0.6.3"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "acto",
  "hickory-proto",
@@ -11924,7 +11924,7 @@ dependencies = [
 [[package]]
 name = "uc-application"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -11940,6 +11940,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 2.0.19",
  "tokio",
  "tokio-util",
@@ -11977,7 +11978,7 @@ dependencies = [
 [[package]]
 name = "uc-content-hash"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "blake3",
  "hex",
@@ -11986,7 +11987,7 @@ dependencies = [
 [[package]]
 name = "uc-core"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -12158,7 +12159,7 @@ dependencies = [
 [[package]]
 name = "uc-engine"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12190,7 +12191,7 @@ dependencies = [
 [[package]]
 name = "uc-infra-content"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12218,7 +12219,7 @@ dependencies = [
 [[package]]
 name = "uc-infra-crypto"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "argon2",
@@ -12248,7 +12249,7 @@ dependencies = [
 [[package]]
 name = "uc-infra-local"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12271,7 +12272,7 @@ dependencies = [
 [[package]]
 name = "uc-infra-p2p"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12283,11 +12284,11 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "if-addrs",
- "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-blobs 0.103.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
+ "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-blobs 0.103.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
  "iroh-mdns-address-lookup",
- "iroh-relay 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
- "iroh-tickets 1.0.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
+ "iroh-relay 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
+ "iroh-tickets 1.0.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
  "noq-proto",
  "opentelemetry",
  "opentelemetry_sdk",
@@ -12318,7 +12319,7 @@ dependencies = [
 [[package]]
 name = "uc-infra-profile"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "argon2",
@@ -12335,7 +12336,7 @@ dependencies = [
  "hkdf 0.12.4",
  "hmac 0.12.1",
  "indexmap 2.14.0",
- "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4)",
+ "iroh 1.3.0 (git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500)",
  "libc",
  "libsqlite3-sys",
  "opaque-ke",
@@ -12382,7 +12383,7 @@ dependencies = [
 [[package]]
 name = "uc-infra-security"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12412,7 +12413,7 @@ dependencies = [
 [[package]]
 name = "uc-infra-storage"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12449,7 +12450,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-lan"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "argon2",
@@ -12475,7 +12476,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-proto"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "base64",
  "chrono",
@@ -12512,7 +12513,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-contract"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "chrono",
@@ -12529,7 +12530,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-runtime"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "cc",
  "chrono",
@@ -12603,7 +12604,7 @@ dependencies = [
 [[package]]
 name = "uc-sync-protocol"
 version = "1.1.0-rc.23"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "anyhow",
  "base64",
@@ -13092,7 +13093,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "voprf"
 version = "0.5.0+uni.1"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=d6433f7f172fa02ae18a0ed90017cc7562c376f4#d6433f7f172fa02ae18a0ed90017cc7562c376f4"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=c12aedc7b4c6cba6bc4a3ce5146db598a7382500#c12aedc7b4c6cba6bc4a3ce5146db598a7382500"
 dependencies = [
  "curve25519-dalek 4.1.3",
  "derive-where",

@@ -94,7 +94,8 @@ def correlation_fixture(root):
                      'level': 'INFO', 'run_id': run.name, 'fields': {
                          'event.name': 'pairing.exchange.step.started', 'attempt_ref': reference,
                          'connect_id': '22222222-2222-4222-8222-222222222222' if index == 0 else reference,
-                         'step': 'send_request', 'attempt_count': 7}})
+                         'step': 'send_request', 'attempt_count': 7, 'initial_path': 'direct',
+                         'path_kind': 'relay', 'observation': 'selected'}})
     (run / 'logs.20261102.0000000000.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
 
 
@@ -114,8 +115,59 @@ def verify_correlation_fields(path):
     assert all('connect_id' not in row for row in attrs[1:])
     assert all(row['step']['stringValue'] == 'send_request' for row in attrs)
     assert all(row['attempt_count']['intValue'] == '7' for row in attrs)
+    assert all(row['initial_path']['stringValue'] == 'direct' and row['path_kind']['stringValue'] == 'relay' and row['observation']['stringValue'] == 'selected' for row in attrs)
     assert all(record['timeUnixNano'] == '1793577600123456789' for record in records)
     return {'records': 5, 'validReferencesPreserved': True, 'invalidReferencesRejected': True}
+
+
+def verify_engine_facade(out, engine_root, logs):
+    binary = engine_root / 'target/debug/examples/diagnostic_export_probe'
+    assert binary.is_file(), 'build uc-application --example diagnostic_export_probe first'
+    destination = out / 'engine-facade-output'
+    destination.mkdir()
+    retired = logs / 'otel-history/history.enc'
+    retired.parent.mkdir(exist_ok=True)
+    retired.write_bytes(b'synthetic-retired-ciphertext')
+    result = subprocess.run([str(binary), str(logs), str(destination)], capture_output=True, text=True, check=True, timeout=60)
+    path = Path(result.stdout.strip()).resolve()
+    assert path.is_relative_to(destination.resolve())
+    total = 0
+    with zipfile.ZipFile(path) as archive:
+        assert archive.getinfo('manifest.json').file_size <= 256 * 1024
+        manifest = json.loads(archive.read('manifest.json'))
+        assert not any(name.endswith('.enc') for name in archive.namelist())
+        for item in manifest['files']:
+            h = hashlib.sha256()
+            count = 0
+            with archive.open('logs/' + item['name']) as source:
+                for chunk in iter(lambda: source.read(65536), b''):
+                    h.update(chunk)
+                    count += len(chunk)
+            assert count == item['bytes'] and h.hexdigest() == item['sha256']
+            total += count
+    assert total > 8 * 1024 * 1024
+    original = digest(path)
+    existing = set(destination.iterdir())
+    source = next(logs.glob('diagnostics/engine/*/metrics.*.jsonl'))
+    try:
+        source.chmod(0)
+        failed = subprocess.run([str(binary), str(logs), str(destination)], capture_output=True, timeout=60)
+        assert failed.returncode != 0
+    finally:
+        source.chmod(0o600)
+    assert digest(path) == original and set(destination.iterdir()) == existing
+    try:
+        destination.chmod(0o500)
+        failed = subprocess.run([str(binary), str(logs), str(destination)], capture_output=True, timeout=60)
+        assert failed.returncode != 0
+    finally:
+        destination.chmod(0o700)
+    assert digest(path) == original and set(destination.iterdir()) == existing
+    assert retired.read_bytes() == b'synthetic-retired-ciphertext'
+    shutil.copyfile(path, out / 'engine-facade.zip')
+    return {'bytes': total, 'sha256': original, 'binarySha256': digest(binary),
+            'finitePrefixIntegrity': True, 'readAndWriteFailuresPreservedTarget': True,
+            'retiredCiphertextUntouched': True, 'scope': 'real public Engine facade and managed metrics-only files'}
 
 
 def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, collector=None):
@@ -468,6 +520,7 @@ def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, col
             probe_result['engineDirty'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=engine_root, text=True))
             report['checks']['engineStorage'] = probe_result
             offline('engine-storage', probe_out / 'logs')
+            report['checks']['engineFacade'] = verify_engine_facade(out, engine_root, probe_out / 'logs')
         report['passed'] = True
     finally:
         if sys.exc_info()[1] is not None:

@@ -74,7 +74,7 @@ dbg_macro = "warn"
 # opt-in at each host boundary so LAN compatibility cannot become a default.
 # Keep the process diagnostics APIs used by apps/daemon. The rc.24 release
 # branch does not include these APIs; a newer version alone is not compatible.
-uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "d6433f7f172fa02ae18a0ed90017cc7562c376f4" }
+uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "c12aedc7b4c6cba6bc4a3ce5146db598a7382500" }
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。

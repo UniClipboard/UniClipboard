@@ -97,7 +97,15 @@ def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, col
               'enginePin': next(line for line in (ROOT / 'Cargo.toml').read_text().splitlines() if line.startswith('uc-engine =')),
               'host': subprocess.check_output(['uname', '-a'], text=True).strip(),
               'checks': {}, 'timeline': [], 'cleanupFailures': {},
-              'notRun': ['heap allocation peak: allocator high-water instrumentation is not configured', 'disk full', 'slow disk', 'writer panic', 'permission denial', 'physical Windows/Linux GUI']}
+              'notRun': ['allocator heap high-water profiling: instrumentation is not configured', 'physical full-volume exhaustion and power loss', 'physical slow-storage hardware', 'deterministic concurrent truncation/removal during ZIP reads', 'native GUI matrix: macOS/Windows/Linux']}
+    if duration < 1860:
+        report['notRun'].append('31-minute daemon soak: duration below 1860 seconds')
+    if load_bytes <= 8 * 1024 * 1024:
+        report['notRun'].append('real-daemon payload beyond 8 MiB: load target below threshold')
+    if not engine_probe:
+        report['notRun'].append('Engine storage fault probe: no binary supplied')
+    if not collector:
+        report['notRun'].append('fixed Collector import: no binary supplied')
     if engine_root:
         report['engineHead'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=engine_root, text=True).strip()
         report['engineDirty'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=engine_root, text=True))
@@ -327,7 +335,10 @@ def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, col
                 signal_owned(daemon_pid, signal.SIGCONT)
                 paused = False
             if not other_running:
-                shutil.rmtree(other_home)
+                try:
+                    shutil.rmtree(other_home)
+                except OSError:
+                    report['cleanupFailures']['peerSandboxRemoval'] = 'io_error'
         if 'multiprocess' in report['checks']:
             assert not lease_held(report['checks']['multiprocess']['runB'])
             report['checks']['multiprocess']['peerLeaseReleased'] = True
@@ -355,6 +366,7 @@ def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, col
             thread.start()
             try:
                 import_env = dict(os.environ, OTEL_IMPORT_ENDPOINT='http://127.0.0.1:' + str(server.server_port))
+                import_env.pop('OTEL_IMPORT_AUTHORIZATION', None)
                 subprocess.run([sys.executable, str(ROOT / 'packages/desktop-host-go/diaglogs/import/import.py'), str(out / 'online.zip'), '--collector', str(collector.resolve()), '--receipt', str(out / 'collector-import.json')], env=import_env, check=True, timeout=90)
                 receipt = json.loads((out / 'collector-import.json').read_text())
                 assert receipt['status'] == 'delivered'
@@ -412,7 +424,13 @@ def run(out, duration=15, load_bytes=0, engine_probe=None, engine_root=None, col
         report['binarySha256']['rust-exporter'] = digest(ROOT / 'target/debug/examples/diagnostic_offline_export')
         if (out / 'offline-export-go').exists():
             report['binarySha256']['go-exporter'] = digest(out / 'offline-export-go')
-        (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
         if not running:
-            shutil.rmtree(home)
+            try:
+                shutil.rmtree(home)
+                report['sandboxRemoved'] = True
+            except OSError:
+                report['cleanupFailures']['sandboxRemoval'] = 'io_error'
+                report['passed'] = False
+        report['cleanupComplete'] = not running and not report['cleanupFailures']
+        (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
     assert report['passed'], report

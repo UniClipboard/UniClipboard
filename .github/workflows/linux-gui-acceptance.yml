@@ -20,6 +20,57 @@ env:
   BUILD_IMAGE: ${{ inputs.build_image }}
 
 jobs:
+  legacy-fixtures:
+    name: Legacy package fixtures ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64, machine: x86_64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64, machine: aarch64 }
+    env:
+      UC_DOCKER_PLATFORM: ${{ matrix.platform }}
+      UC_LINUX_IMAGE: uc-package-build:ci
+      UC_LINUX_CACHE_VOLUME: uc-linux-gui-fixtures-cache
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Assert a native runner
+        run: |
+          test "$(uname -m)" = "${{ matrix.machine }}"
+          test "$(docker version --format '{{.Server.Arch}}')" = "${{ matrix.arch }}"
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-${{ matrix.arch }}
+          path: ${{ runner.temp }}/upload
+      - name: Build the fixture packaging image
+        run: |
+          docker build --platform "${{ matrix.platform }}" --build-arg BASE_IMAGE="$BUILD_IMAGE" --build-arg TARGETARCH="${{ matrix.arch }}" \
+            -f apps/gui-go/e2e/linux/Dockerfile.package-build -t "$UC_LINUX_IMAGE" apps/gui-go/e2e/linux
+          docker volume create "$UC_LINUX_CACHE_VOLUME"
+
+      - name: Build a legacy-name Go transaction fixture
+        # Current payload, previous package identity. Historical artifacts are tested separately; this fixture keeps the transaction regression reproducible.
+        run: apps/gui-go/e2e/linux/run.sh legacy-go-fixture "$RUNNER_TEMP/legacy-go" "$RUNNER_TEMP/upload"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-gui-legacy-go-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/legacy-go/deb/legacy-go.deb
+            ${{ runner.temp }}/legacy-go/deb/fixture.json
+            ${{ runner.temp }}/legacy-go/rpm/legacy-go.rpm
+            ${{ runner.temp }}/legacy-go/rpm/fixture.json
+            ${{ runner.temp }}/legacy-go/rpm-newer/legacy-go.rpm
+            ${{ runner.temp }}/legacy-go/rpm-newer/fixture.json
+          if-no-files-found: error
+          retention-days: 14
+
   appimage:
     name: AppImage ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -83,23 +134,6 @@ jobs:
               echo "$EXPECTED_SHA  /cache/out-release/uniclipd" | sha256sum -c -'
           mkdir -p "$RUNNER_TEMP/out/packages"
           cp "$RUNNER_TEMP/evidence/package-manifest.json" "$RUNNER_TEMP/out/packages/"
-
-      - name: Build a legacy-name Go transaction fixture
-        # Current payload, previous package identity. Historical artifacts are tested separately; this fixture keeps the transaction regression reproducible.
-        run: apps/gui-go/e2e/linux/run.sh legacy-go-fixture "$RUNNER_TEMP/legacy-go" "$RUNNER_TEMP/upload"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: linux-gui-legacy-go-${{ matrix.arch }}
-          path: |
-            ${{ runner.temp }}/legacy-go/deb/legacy-go.deb
-            ${{ runner.temp }}/legacy-go/deb/fixture.json
-            ${{ runner.temp }}/legacy-go/rpm/legacy-go.rpm
-            ${{ runner.temp }}/legacy-go/rpm/fixture.json
-            ${{ runner.temp }}/legacy-go/rpm-newer/legacy-go.rpm
-            ${{ runner.temp }}/legacy-go/rpm-newer/fixture.json
-          if-no-files-found: error
-          retention-days: 14
 
       - name: Build the clean-host and Secret Service images
         run: |
@@ -172,8 +206,8 @@ jobs:
 
   install-check:
     name: ${{ matrix.kind }} on ${{ matrix.image }} (${{ matrix.arch }})
-    needs: appimage
-    # The legacy fixtures are uploaded before AppImage E2E; its failure must not hide lifecycle results.
+    needs: legacy-fixtures
+    # A failed fixture architecture must not hide lifecycle results for the other architecture.
     if: ${{ !cancelled() }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90

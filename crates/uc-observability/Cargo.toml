@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 tempfile = "3"
-sha2 = "0.10"
+sha2 = "0.11"
 zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 uuid = { version = "1", features = ["v7", "serde"] }
 # Slice 7b: PosthogSink 自写 minimal HTTP client

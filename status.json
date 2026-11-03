@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-11-02 21:54 UTC",
+  "checked_at": "2026-11-03 07:12 UTC",
   "channels": {
     "aur": {
       "status": "published",
@@ -7,23 +7,23 @@
     },
     "brew-gui": {
       "status": "published",
-      "version": "1.5.0"
+      "version": "1.6.1"
     },
     "brew-cli": {
       "status": "published",
-      "version": "1.5.0"
+      "version": "1.6.1"
     },
     "brew-official": {
       "status": "published",
-      "version": "1.5.0"
+      "version": "1.6.1"
     },
     "scoop": {
       "status": "published",
-      "version": "1.5.0"
+      "version": "1.6.1"
     },
     "winget": {
       "status": "published",
-      "version": "1.5.0"
+      "version": "1.6.1"
     },
     "chocolatey": {
       "status": "published",
@@ -31,7 +31,7 @@
     },
     "npm": {
       "status": "published",
-      "version": "1.5.0"
+      "version": "1.6.1"
     },
     "npm-alpha": {
       "status": "published",
@@ -47,7 +47,7 @@
     },
     "copr": {
       "status": "published",
-      "version": "1.5.0-1.fc44"
+      "version": "1.6.1-1.fc44"
     },
     "copr-alpha": {
       "status": "published",

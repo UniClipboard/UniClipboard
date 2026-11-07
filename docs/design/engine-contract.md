@@ -295,7 +295,9 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2a（已实现并有测试）**：内容导入与租约（`ImportContent`、`RetainContent`、`ReadContent`、`ReleaseContent`、`LocalFilePath`），含文件引用（`FileSource`）、配额预留与回滚、读取句柄持有引用、`Close` 中止读取并清理。
 
-**第二步其余（未实现）**：`SubmitContent`、接收列表、`ObserveClipboard`/`BeginApply`/`ReportApplyResult`，以及 `State` 中对应的 `Received`、`ActiveApply` 和发送类操作；随后迁移桌面 daemon。在此之前，公开 Engine 不同步剪贴板内容，收到的内容会被读完并丢弃；桌面仍使用旧入口。
+**第二步 2b（已实现并有测试）**：`SubmitContent`（仅 explicit）、发送类 `Operation`（`Targets`、`Outcome`、阶段 queued/sending/completed）、每设备一个在途加一个待发并替换为 `superseded`、挂起/断线使在途与待发失败、提交时与开始传输时的同步开关与大小限制检查、引用文件在传输前重新校验。
+
+**第二步其余（未实现）**：接收列表、`ObserveClipboard`/`BeginApply`/`ReportApplyResult`，以及 `State` 中对应的 `Received`、`ActiveApply` 和发送类操作；随后迁移桌面 daemon。在此之前，公开 Engine 不同步剪贴板内容，收到的内容会被读完并丢弃；桌面仍使用旧入口。
 
 落地时确定的细节（以此为准，必要时回改前文）：
 
@@ -313,3 +315,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 12. **PNG 校验**：只校验文件头和尺寸信息（`png.DecodeConfig`），不做整图解码，避免 64 MiB 图片导入时的内存放大；损坏的像素数据会在应用端暴露。
 13. **清理范围**：`New` 只删除 `InboxDir` 下以 `unic-content-` 开头的目录（数据目录锁保证它们属于已死的实例）。旧的 `clip-*` 由桌面适配在迁移时处理，SDK 不碰，因为 `InboxDir` 可能是用户自己的目录。
 14. **引用的校验**：`FileMeta` 全等比较（大小和 Version）；`Open` 返回不存在或无权限一律报 `source_changed`，其他错误报 `unavailable`，宿主错误文本不转发。
+15. **发送的过滤与限制**：提交时按当前 `Sync` 设置裁剪内容（文本/HTML 属于 Text，PNG 属于 Images，文件属于 Files），裁剪后为空报 `sync_disabled`；哈希按裁剪后的内容计算。大小限制在提交时检查，开始传输时用当时的设置再检查一次，超限或同步已暂停则该目标失败而不是发送。
+16. **失败不一定断线**：开始写之前的失败（文件已变化、超限、同步暂停）只让这一次发送失败，连接保持；写了一半的失败会丢弃连接，因为流已不同步。
+17. **操作持有内容**：创建发送操作时增加内容引用，所有目标终态后释放；调用者此后可立即释放租约。没有目标时不创建操作，引用立即归还。
+18. **接收侧**：2c 之前，公开 Engine 收到内容仍然读完并丢弃；发送侧的测试用基于会话层的旧式对端验证字节与哈希。

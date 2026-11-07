@@ -600,6 +600,72 @@ type outClip struct {
 	id   string
 	ts   int64
 	snap clip.Snapshot
+	job  *Job // set for clips submitted through Submit; then snap is unused
+}
+
+func (c outClip) fail(peer string, err error) {
+	if c.job != nil {
+		c.job.Report(peer, Failed, err)
+	}
+}
+
+// TargetState is how far a clip got towards one device.
+type TargetState string
+
+const (
+	Sending    TargetState = "sending"
+	Sent       TargetState = "sent"
+	Failed     TargetState = "failed"
+	Superseded TargetState = "superseded"
+)
+
+// ErrSessionClosed is the failure of a clip whose connection ended before or
+// while it was sent.
+var ErrSessionClosed = errors.New("connection closed")
+
+// Job is a clip that a host submits to every connected device. Report and Send
+// are called from the session's goroutines, never with an engine lock held.
+type Job struct {
+	// Report tells how the clip fares towards peer: Sending, then Sent or
+	// Failed; or Superseded if a newer clip replaced it before it started.
+	Report func(peer string, st TargetState, err error)
+	// Send writes the clip to w; origin is this device's id. It reports
+	// broken=true when it may have written part of a message, in which case
+	// the connection is dropped.
+	Send func(w *wire.Conn, origin string) (broken bool, err error)
+}
+
+// Submit sends a job to every connected device. prepare is called once, before
+// anything is queued, with the ids of those devices; it returns the job, or
+// false to cancel (for example when there are none). Submit reports whether
+// the job was queued.
+func (e *Engine) Submit(prepare func(peers []string) (Job, bool)) bool {
+	e.mu.Lock()
+	ss := make([]*session, 0, len(e.sessions))
+	for _, s := range e.sessions {
+		select {
+		case <-s.done:
+		default:
+			ss = append(ss, s)
+		}
+	}
+	e.mu.Unlock()
+	if len(ss) == 0 {
+		return false
+	}
+	sort.Slice(ss, func(i, j int) bool { return ss[i].peerID < ss[j].peerID })
+	ids := make([]string, len(ss))
+	for i, s := range ss {
+		ids[i] = s.peerID
+	}
+	j, ok := prepare(ids)
+	if !ok {
+		return false
+	}
+	for _, s := range ss {
+		s.enqueue(outClip{job: &j})
+	}
+	return true
 }
 
 type session struct {
@@ -610,29 +676,52 @@ type session struct {
 	peerName string
 	peerAddr string
 	outgoing bool
-	out      chan outClip
 	ctl      chan any // control messages, written by sendLoop like everything else
 	done     chan struct{}
 	once     sync.Once
+
+	omu    sync.Mutex
+	pend   *outClip      // the one clip waiting to be sent
+	closed bool          // no more clips are accepted
+	kick   chan struct{} // a clip is pending
 }
 
-func (s *session) close() { s.once.Do(func() { close(s.done); s.conn.Close() }) }
+// close ends the session. A clip still waiting for its turn fails. close must
+// not be called with Engine.mu held: it reports to the job's owner.
+func (s *session) close() {
+	s.once.Do(func() {
+		close(s.done)
+		s.conn.Close()
+		s.omu.Lock()
+		s.closed = true
+		p := s.pend
+		s.pend = nil
+		s.omu.Unlock()
+		if p != nil {
+			p.fail(s.peerID, ErrSessionClosed)
+		}
+	})
+}
 
 // enqueue keeps only the newest pending clip: a slow link should deliver the
-// latest clipboard, not a backlog of stale ones.
+// latest clipboard, not a backlog of stale ones. The clip it replaces, if it
+// came from a Job, is reported as superseded.
 func (s *session) enqueue(c outClip) {
-	for {
-		select {
-		case s.out <- c:
-			return
-		case <-s.done:
-			return
-		default:
-			select {
-			case <-s.out:
-			default:
-			}
-		}
+	s.omu.Lock()
+	if s.closed {
+		s.omu.Unlock()
+		c.fail(s.peerID, ErrSessionClosed)
+		return
+	}
+	old := s.pend
+	s.pend = &c
+	s.omu.Unlock()
+	if old != nil && old.job != nil {
+		old.job.Report(s.peerID, Superseded, nil)
+	}
+	select {
+	case s.kick <- struct{}{}:
+	default:
 	}
 }
 
@@ -705,7 +794,7 @@ func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed, pair string) (*
 	}
 
 	s := &session{e: e, conn: conn, w: w, peerID: h.ID, peerName: h.Name, peerAddr: h.Addr,
-		outgoing: outgoing, out: make(chan outClip, 1), ctl: make(chan any, 8), done: make(chan struct{})}
+		outgoing: outgoing, kick: make(chan struct{}, 1), ctl: make(chan any, 8), done: make(chan struct{})}
 	if outgoing && dialed != "" && s.peerAddr == "" {
 		s.peerAddr = dialed
 	}
@@ -770,18 +859,23 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 // connections survives: the one dialed by the device with the smaller id.
 func (e *Engine) register(s *session) bool {
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	var replaced *session
 	if old := e.sessions[s.peerID]; old != nil {
 		select {
 		case <-old.done:
 		default:
 			if dialer(e.cfg.ID, old) <= dialer(e.cfg.ID, s) {
+				e.mu.Unlock()
 				return false
 			}
-			old.close()
+			replaced = old
 		}
 	}
 	e.sessions[s.peerID] = s
+	e.mu.Unlock()
+	if replaced != nil {
+		replaced.close() // outside the lock: it reports to job owners
+	}
 	return true
 }
 
@@ -826,14 +920,40 @@ func (s *session) sendLoop() {
 				s.close()
 				return
 			}
-		case c := <-s.out:
-			if err := s.w.SendClip(c.id, s.e.cfg.ID, c.ts, c.snap); err != nil {
-				s.e.logf("send to %s: %v", s.peerName, err)
-				s.close()
+		case <-s.kick:
+			s.omu.Lock()
+			c := s.pend
+			s.pend = nil
+			s.omu.Unlock()
+			if c != nil && !s.send(c) {
 				return
 			}
 		}
 	}
+}
+
+// send writes one clip; it reports false when the session is no longer usable.
+func (s *session) send(c *outClip) bool {
+	if c.job != nil {
+		c.job.Report(s.peerID, Sending, nil)
+		broken, err := c.job.Send(s.w, s.e.cfg.ID)
+		if err != nil {
+			c.job.Report(s.peerID, Failed, err)
+			if broken {
+				s.close() // the stream may be out of step: start over
+				return false
+			}
+			return true
+		}
+		c.job.Report(s.peerID, Sent, nil)
+		return true
+	}
+	if err := s.w.SendClip(c.id, s.e.cfg.ID, c.ts, c.snap); err != nil {
+		s.e.logf("send to %s: %v", s.peerName, err)
+		s.close()
+		return false
+	}
+	return true
 }
 
 func (s *session) recvLoop() error {

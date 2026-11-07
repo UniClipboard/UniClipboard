@@ -206,7 +206,10 @@ type PendingRequest struct {
 // OperationKind is what an operation does.
 type OperationKind string
 
-const OperationPairing OperationKind = "pairing"
+const (
+	OperationPairing OperationKind = "pairing"
+	OperationSend    OperationKind = "send"
+)
 
 // Phase is how far an operation is.
 type Phase string
@@ -217,6 +220,9 @@ const (
 	PhaseHandshaking Phase = "handshaking"
 	PhaseSucceeded   Phase = "succeeded"
 	PhaseFailed      Phase = "failed"
+	PhaseQueued      Phase = "queued"
+	PhaseSending     Phase = "sending"
+	PhaseCompleted   Phase = "completed"
 )
 
 // PairingResult is the outcome of a successful pairing operation. Waiting for
@@ -239,10 +245,63 @@ type Operation struct {
 	Phase       Phase          `json:"phase"`
 	Pairing     *PairingResult `json:"pairing,omitempty"`
 	Error       *Error         `json:"error,omitempty"`
+	// Send operations only:
+	Targets []TargetStatus `json:"targets,omitempty"`
+	Outcome Outcome        `json:"outcome,omitempty"`
 }
 
 // Done reports whether the operation reached a final phase.
-func (o Operation) Done() bool { return o.Phase == PhaseSucceeded || o.Phase == PhaseFailed }
+func (o Operation) Done() bool {
+	return o.Phase == PhaseSucceeded || o.Phase == PhaseFailed || o.Phase == PhaseCompleted
+}
+
+// Origin says where submitted content came from.
+type Origin string
+
+const (
+	OriginExplicit  Origin = "explicit"  // the user asked to send it
+	OriginClipboard Origin = "clipboard" // seen by ObserveClipboard; not accepted from outside
+)
+
+// SubmitRequest asks the engine to send leased content to the devices that are
+// connected right now.
+type SubmitRequest struct {
+	RequestID RequestID
+	LeaseID   LeaseID
+	Origin    Origin
+}
+
+// TargetState is how far content got towards one device.
+type TargetState string
+
+const (
+	TargetQueued     TargetState = "queued"
+	TargetSending    TargetState = "sending"
+	TargetSent       TargetState = "sent" // every byte was written to the connection; says nothing about the other side
+	TargetFailed     TargetState = "failed"
+	TargetSuperseded TargetState = "superseded" // a newer submission replaced it before it started
+)
+
+func (t TargetState) final() bool {
+	return t == TargetSent || t == TargetFailed || t == TargetSuperseded
+}
+
+// TargetStatus is the progress towards one device.
+type TargetStatus struct {
+	PeerID DeviceID    `json:"peer_id"`
+	State  TargetState `json:"state"`
+	Error  *Error      `json:"error,omitempty"`
+}
+
+// Outcome summarizes a finished send.
+type Outcome string
+
+const (
+	OutcomeSuccess    Outcome = "success"    // every target is sent
+	OutcomePartial    Outcome = "partial"    // some sent, some not
+	OutcomeFailed     Outcome = "failed"     // none sent
+	OutcomeSuperseded Outcome = "superseded" // every target was replaced by newer content
+)
 
 // ---- state and events ----
 

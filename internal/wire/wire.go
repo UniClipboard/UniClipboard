@@ -162,6 +162,34 @@ func (c *Conn) SendClip(id, origin string, ts int64, s clip.Snapshot) error {
 	return nil
 }
 
+// OutPart is one blob of a clip sent from a stream.
+type OutPart struct {
+	Kind string // "fmt" or "file"
+	Name string // format (MIME) or file name
+	Size int64
+	R    io.Reader // yields exactly Size bytes
+}
+
+// SendStream writes a Clip message followed by the bytes of parts. hash must
+// be what the receiver computes from the received content (see clip.Snapshot
+// .Hash). A short reader is an error; the stream is then out of step and the
+// connection must be dropped.
+func (c *Conn) SendStream(id, origin string, ts int64, hash string, parts []OutPart) error {
+	m := Clip{T: "clip", ID: id, Origin: origin, TS: ts, Hash: hash}
+	for _, p := range parts {
+		m.Parts = append(m.Parts, PartMeta{Kind: p.Kind, Name: p.Name, Size: p.Size})
+	}
+	if err := c.WriteJSON(m); err != nil {
+		return err
+	}
+	for _, p := range parts {
+		if _, err := io.CopyN(c.w, p.R, p.Size); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Conn) copyFile(f clip.File) error {
 	src, err := os.Open(f.Path)
 	if err != nil {

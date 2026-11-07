@@ -31,6 +31,17 @@ func (o Operation) clone() Operation {
 		e := *o.Error
 		o.Error = &e
 	}
+	if o.Targets != nil {
+		ts := make([]TargetStatus, len(o.Targets))
+		for i, t := range o.Targets {
+			if t.Error != nil {
+				e := *t.Error
+				t.Error = &e
+			}
+			ts[i] = t
+		}
+		o.Targets = ts
+	}
 	return o
 }
 

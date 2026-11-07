@@ -24,6 +24,9 @@ The background node is a separate program, unicd; start it first.
   pair <address>   pair with another device
   peers            list paired devices
   unpair <id>      forget a paired device
+  requests         devices waiting for your approval
+  approve <id>     accept a waiting device
+  reject <id>      dismiss a waiting device
   copy [text]      put text (or stdin, or -f files) on the clipboard
   paste            print the clipboard's text
   watch            print sync events as they happen

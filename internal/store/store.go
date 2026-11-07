@@ -28,6 +28,17 @@ CREATE TABLE IF NOT EXISTS peers (
   added_at  INTEGER NOT NULL,
   last_seen INTEGER NOT NULL DEFAULT 0
 );
+-- Devices that asked to join, or were introduced by a paired device, and wait
+-- for the user. state is 'pending' or 'rejected' (remembered so that
+-- introductions do not nag again).
+CREATE TABLE IF NOT EXISTS pending (
+  id    TEXT PRIMARY KEY,
+  name  TEXT NOT NULL,
+  addr  TEXT NOT NULL,
+  via   TEXT NOT NULL DEFAULT '',
+  state TEXT NOT NULL DEFAULT 'pending',
+  seen  INTEGER NOT NULL
+);
 `
 
 func Open(path string) (*Store, error) {
@@ -104,4 +115,88 @@ func (s *Store) Peers() ([]Peer, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// Candidate is a device waiting for the user's decision.
+type Candidate struct {
+	ID, Name, Addr string
+	Via            string // name of the paired device that introduced it; empty if it connected directly
+	Rejected       bool
+	Seen           time.Time
+}
+
+// HasPeer reports whether id is a paired device.
+func (s *Store) HasPeer(id string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM peers WHERE id = ?`, id).Scan(&n)
+	return n > 0, err
+}
+
+// AddCandidate records c as pending. A candidate the user rejected stays
+// rejected when merely introduced again (revive false); a device that connects
+// by itself (revive true) asks again, so it comes back as pending.
+// It reports whether the candidate is new or was revived, i.e. whether the
+// user should be told.
+func (s *Store) AddCandidate(c Candidate, revive bool) (bool, error) {
+	var state string
+	err := s.db.QueryRow(`SELECT state FROM pending WHERE id = ?`, c.ID).Scan(&state)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		_, err = s.db.Exec(`INSERT INTO pending (id, name, addr, via, state, seen) VALUES (?, ?, ?, ?, 'pending', ?)`,
+			c.ID, c.Name, c.Addr, c.Via, time.Now().Unix())
+		return err == nil, err
+	case err != nil:
+		return false, err
+	case state == "rejected" && !revive:
+		return false, nil
+	}
+	_, err = s.db.Exec(`UPDATE pending SET name = ?, addr = ?, via = ?, state = 'pending', seen = ? WHERE id = ?`,
+		c.Name, c.Addr, c.Via, time.Now().Unix(), c.ID)
+	return state == "rejected", err
+}
+
+// Candidates returns devices waiting for a decision.
+func (s *Store) Candidates() ([]Candidate, error) {
+	rows, err := s.db.Query(`SELECT id, name, addr, via, seen FROM pending WHERE state = 'pending' ORDER BY seen`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Candidate
+	for rows.Next() {
+		var c Candidate
+		var seen int64
+		if err := rows.Scan(&c.ID, &c.Name, &c.Addr, &c.Via, &seen); err != nil {
+			return nil, err
+		}
+		c.Seen = time.Unix(seen, 0)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// Candidate returns the pending candidate id, or ok=false.
+func (s *Store) Candidate(id string) (c Candidate, ok bool, err error) {
+	var seen int64
+	err = s.db.QueryRow(`SELECT id, name, addr, via, seen FROM pending WHERE id = ? AND state = 'pending'`, id).
+		Scan(&c.ID, &c.Name, &c.Addr, &c.Via, &seen)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, false, nil
+	}
+	c.Seen = time.Unix(seen, 0)
+	return c, err == nil, err
+}
+
+func (s *Store) RejectCandidate(id string) (bool, error) {
+	r, err := s.db.Exec(`UPDATE pending SET state = 'rejected' WHERE id = ? AND state = 'pending'`, id)
+	if err != nil {
+		return false, err
+	}
+	n, _ := r.RowsAffected()
+	return n > 0, nil
+}
+
+func (s *Store) DeleteCandidate(id string) error {
+	_, err := s.db.Exec(`DELETE FROM pending WHERE id = ?`, id)
+	return err
 }

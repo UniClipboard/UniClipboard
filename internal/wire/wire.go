@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	Version      = 1
+	Version      = 2
 	MaxControl   = 1 << 20  // largest JSON control message
 	MaxPartBytes = 64 << 20 // in-memory format (text, HTML, PNG), same cap as mygo
 	MaxFileBytes = 2 << 30  // one file
@@ -37,6 +37,31 @@ type Hello struct {
 	Name    string `json:"name"` // device name
 	Addr    string `json:"addr"` // the sender's own tailcat address, so the peer can dial back
 }
+
+// Verdict follows the hellos: whether the sender accepts the other device.
+// A device accepts a peer it has paired with, or one it is pairing with right
+// now; anyone else has to be approved by the user first.
+type Verdict struct {
+	T  string `json:"t"` // "verdict"
+	OK bool   `json:"ok"`
+}
+
+// PeerInfo describes a paired device, for introducing it to another one.
+type PeerInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Addr string `json:"addr"`
+}
+
+// Peers introduces the sender's paired devices. The receiver treats them as
+// candidates that its user must approve; nothing connects by itself.
+type Peers struct {
+	T     string     `json:"t"` // "peers"
+	Peers []PeerInfo `json:"peers"`
+}
+
+// MaxIntroduced bounds the candidates one message may add.
+const MaxIntroduced = 64
 
 // PartMeta announces one blob that follows a Clip message.
 type PartMeta struct {

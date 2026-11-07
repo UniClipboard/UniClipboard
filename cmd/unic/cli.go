@@ -47,6 +47,7 @@ func runCLI(cmd string, args []string) error {
 			fmt.Printf("address %s…  (run `unic addr` for the full address)\n", trunc(st.Addr, 24))
 		}
 		printPeers(st.Peers)
+		printPending(st.Pending)
 
 	case "addr":
 		st, err := c.Status(short)
@@ -73,7 +74,39 @@ func runCLI(cmd string, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
+		if p.Awaiting {
+			me := "<this device's id>"
+			if st, err := c.Status(short); err == nil {
+				me = st.ID
+			}
+			fmt.Printf("added %s (%s); it will connect once %s approves this device\n  (on that device: `unic approve %s`)\n", p.Name, p.ID, p.Name, me)
+		} else {
+			fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
+		}
+
+	case "requests":
+		ps, err := c.Pending(short)
+		if err != nil {
+			return err
+		}
+		printPending(ps)
+
+	case "approve", "reject":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: unic %s <id>", cmd)
+		}
+		if cmd == "approve" {
+			p, err := c.Approve(short, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("approved %s (%s); connecting…\n", p.Name, p.ID)
+		} else {
+			if err := c.Reject(short, args[0]); err != nil {
+				return err
+			}
+			fmt.Println("rejected")
+		}
 
 	case "unpair":
 		if len(args) != 1 {
@@ -160,6 +193,24 @@ func printPeers(ps []engine.PeerStatus) {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, state, seen)
 	}
 	w.Flush()
+}
+
+func printPending(ps []engine.PendingPeer) {
+	if len(ps) == 0 {
+		return
+	}
+	fmt.Println("\nWaiting for your approval:")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tNAME\tFROM")
+	for _, p := range ps {
+		from := "connected directly"
+		if p.Via != "" {
+			from = "introduced by " + p.Via
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", p.ID, p.Name, from)
+	}
+	w.Flush()
+	fmt.Println("Approve with `unic approve <id>`, dismiss with `unic reject <id>`.")
 }
 
 func trunc(s string, n int) string {

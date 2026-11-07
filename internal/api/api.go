@@ -26,6 +26,15 @@ type Status struct {
 	Name  string              `json:"name"`
 	Addr  string              `json:"addr"`
 	Peers []engine.PeerStatus `json:"peers"`
+	// Pending are devices waiting for the user to approve them.
+	Pending []engine.PendingPeer `json:"pending"`
+}
+
+// PairResult is the reply of POST /v1/peers.
+type PairResult struct {
+	engine.PeerStatus
+	// Awaiting is true when the other device has not approved this one yet.
+	Awaiting bool `json:"awaiting_approval"`
 }
 
 type ClipboardView struct {
@@ -61,7 +70,14 @@ func Handler(e *engine.Engine) http.Handler {
 		if peers == nil {
 			peers = []engine.PeerStatus{}
 		}
-		return Status{ID: id, Name: name, Addr: addr, Peers: peers}, err
+		pending, perr := e.Pending()
+		if pending == nil {
+			pending = []engine.PendingPeer{}
+		}
+		if err == nil {
+			err = perr
+		}
+		return Status{ID: id, Name: name, Addr: addr, Peers: peers, Pending: pending}, err
 	}
 
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
@@ -83,12 +99,38 @@ func Handler(e *engine.Engine) http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
-		p, err := e.AddPeer(ctx, body.Addr)
+		p, awaiting, err := e.AddPeer(ctx, body.Addr)
 		if err != nil {
 			fail(w, 502, err)
 			return
 		}
-		reply(w, 200, engine.PeerStatus{ID: p.ID, Name: p.Name, Connected: true})
+		reply(w, 200, PairResult{PeerStatus: engine.PeerStatus{ID: p.ID, Name: p.Name, Connected: !awaiting}, Awaiting: awaiting})
+	})
+
+	mux.HandleFunc("GET /v1/pending", func(w http.ResponseWriter, r *http.Request) {
+		ps, err := e.Pending()
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, ps)
+	})
+
+	mux.HandleFunc("POST /v1/pending/{id}/approve", func(w http.ResponseWriter, r *http.Request) {
+		p, err := e.Approve(r.PathValue("id"))
+		if err != nil {
+			fail(w, 404, err)
+			return
+		}
+		reply(w, 200, engine.PeerStatus{ID: p.ID, Name: p.Name})
+	})
+
+	mux.HandleFunc("POST /v1/pending/{id}/reject", func(w http.ResponseWriter, r *http.Request) {
+		if err := e.Reject(r.PathValue("id")); err != nil {
+			fail(w, 404, err)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
 	})
 
 	mux.HandleFunc("DELETE /v1/peers/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -271,9 +313,23 @@ func (c *Client) Status(ctx context.Context) (st Status, err error) {
 	return
 }
 
-func (c *Client) Pair(ctx context.Context, addr string) (p engine.PeerStatus, err error) {
+func (c *Client) Pair(ctx context.Context, addr string) (p PairResult, err error) {
 	err = c.do(ctx, "POST", "/v1/peers", map[string]string{"addr": addr}, &p)
 	return
+}
+
+func (c *Client) Pending(ctx context.Context) (ps []engine.PendingPeer, err error) {
+	err = c.do(ctx, "GET", "/v1/pending", nil, &ps)
+	return
+}
+
+func (c *Client) Approve(ctx context.Context, id string) (p engine.PeerStatus, err error) {
+	err = c.do(ctx, "POST", "/v1/pending/"+id+"/approve", nil, &p)
+	return
+}
+
+func (c *Client) Reject(ctx context.Context, id string) error {
+	return c.do(ctx, "POST", "/v1/pending/"+id+"/reject", nil, nil)
 }
 
 func (c *Client) Unpair(ctx context.Context, id string) error {

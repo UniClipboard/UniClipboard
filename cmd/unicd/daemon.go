@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/egoist/mygo"
 
@@ -99,6 +100,7 @@ func runDaemon() error {
 			_ = http.Serve(l, api.Handler(eng))
 		}()
 		setupTray()
+		go notifyPending(ctx, sock)
 	})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		cancel()
@@ -129,6 +131,35 @@ func setupTray() {
 		return
 	}
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { tray.Destroy() })
+}
+
+// notifyPending raises a system notification when a device asks to join, so
+// that the request is not missed while the window is closed. It is best
+// effort: some systems refuse notifications from unsigned programs.
+func notifyPending(ctx context.Context, sock string) {
+	if !mygo.NotificationsSupported() {
+		return
+	}
+	c := api.NewClient(sock)
+	for ctx.Err() == nil {
+		_ = c.Events(ctx, func(ev engine.Event) {
+			if ev.Kind != "pending" {
+				return
+			}
+			body := ev.Peer + " asks to sync clipboards with this device. Open unic to approve or reject."
+			if ev.Info != "" {
+				body = ev.Peer + ", introduced by " + ev.Info + ", wants to join. Open unic to approve or reject."
+			}
+			n := mygo.NewNotification(mygo.NotificationOptions{Title: "New device", Body: body})
+			if err := n.Show(); err != nil {
+				log.Printf("notification: %v", err)
+			}
+		})
+		select {
+		case <-ctx.Done():
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 // openGUI starts the GUI as its own process: like the docker CLI, it is just

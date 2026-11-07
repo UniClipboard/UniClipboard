@@ -24,6 +24,7 @@ type gui struct {
 	daemonUp bool
 	log      []string
 	pairErr  string
+	note     string // informational, shown under the pair field
 	pairing  bool
 	copied   bool
 
@@ -104,6 +105,8 @@ func (g *gui) addLog(ev engine.Event) {
 		line = fmt.Sprintf("%s  %s disconnected", t, ev.Peer)
 	case "sent":
 		line = fmt.Sprintf("%s  sent %s", t, ev.Info)
+	case "pending":
+		line = fmt.Sprintf("%s  %s asks to join", t, ev.Peer)
 	case "received":
 		line = fmt.Sprintf("%s  received %s from %s", t, ev.Info, ev.Peer)
 	default:
@@ -119,22 +122,38 @@ func (g *gui) addLog(ev engine.Event) {
 
 func (g *gui) pair(addr string) {
 	g.mu.Lock()
-	g.pairing, g.pairErr = true, ""
+	g.pairing, g.pairErr, g.note = true, "", ""
 	g.mu.Unlock()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		_, err := g.c.Pair(ctx, addr)
+		r, err := g.c.Pair(ctx, addr)
 		g.mu.Lock()
 		g.pairing = false
 		if err != nil {
 			g.pairErr = err.Error()
+		} else if r.Awaiting {
+			g.pairErr = ""
+			g.note = r.Name + " must approve this device first. It will connect as soon as it does."
 		}
 		g.mu.Unlock()
 		if err == nil {
 			g.refresh(ctx)
 		}
 		g.win.Invalidate()
+	}()
+}
+
+func (g *gui) decide(id string, approve bool) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if approve {
+			_, _ = g.c.Approve(ctx, id)
+		} else {
+			_ = g.c.Reject(ctx, id)
+		}
+		g.refresh(ctx)
 	}()
 }
 
@@ -153,7 +172,7 @@ func (g *gui) view(c *ui.Context) {
 	t := c.Theme()
 
 	g.mu.Lock()
-	st, up, logs, pairErr, pairing := g.status, g.daemonUp, append([]string(nil), g.log...), g.pairErr, g.pairing
+	st, up, logs, pairErr, pairing, note := g.status, g.daemonUp, append([]string(nil), g.log...), g.pairErr, g.pairing, g.note
 	g.mu.Unlock()
 
 	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
@@ -193,6 +212,30 @@ func (g *gui) view(c *ui.Context) {
 
 		ui.Divider(c)
 
+		// Devices waiting for a decision come first: they need the user.
+		if len(st.Pending) > 0 {
+			ui.Text(c, "Waiting for your approval").FontSize(12).TextColor(t.TextMuted)
+			for _, p := range st.Pending {
+				ui.Column(c.Key("pend-" + p.ID)).Gap(6).Padding(10).Radius(8).Background(t.SurfaceHover).Children(func() {
+					ui.Text(c, p.Name).Bold()
+					from := "connected to this device directly"
+					if p.Via != "" {
+						from = "introduced by " + p.Via
+					}
+					ui.Text(c, from+" · "+trunc(p.ID, 8)).FontSize(12).TextColor(t.TextMuted)
+					ui.Row(c).Gap(8).Children(func() {
+						if ui.PrimaryButton(c.Key("ok-"+p.ID), "Approve").Clicked() {
+							g.decide(p.ID, true)
+						}
+						if ui.Button(c.Key("no-"+p.ID), "Reject").Clicked() {
+							g.decide(p.ID, false)
+						}
+					})
+				})
+			}
+			ui.Divider(c)
+		}
+
 		// Peers.
 		ui.Text(c, "Paired devices").FontSize(12).TextColor(t.TextMuted)
 		if len(st.Peers) == 0 {
@@ -223,6 +266,9 @@ func (g *gui) view(c *ui.Context) {
 		})
 		if pairing {
 			ui.Text(c, "Connecting…").FontSize(12).TextColor(t.TextMuted)
+		}
+		if note != "" {
+			ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
 		}
 		if pairErr != "" {
 			ui.Text(c, pairErr).FontSize(12).TextColor(t.Danger)

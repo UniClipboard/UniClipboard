@@ -54,6 +54,7 @@ type Engine struct {
 	lastHash string // hash of the clipboard as we last saw it
 	inboxDir string // directory holding files of the clip we last applied
 	retry    map[string]context.CancelFunc
+	pairing  map[string]int // addresses the user is pairing with right now
 	ctx      context.Context
 }
 
@@ -77,6 +78,7 @@ func New(cfg Config) *Engine {
 		sessions: map[string]*session{},
 		subs:     map[chan Event]struct{}{},
 		retry:    map[string]context.CancelFunc{},
+		pairing:  map[string]int{},
 	}
 }
 
@@ -113,39 +115,59 @@ func (e *Engine) Run(ctx context.Context) error {
 
 // AddPeer pairs with the device at addr. It connects once synchronously so
 // that a wrong address is reported to the user; the connection is then kept
-// alive in the background.
-func (e *Engine) AddPeer(ctx context.Context, addr string) (store.Peer, error) {
+// alive in the background. awaiting is true when the other device has not
+// approved this one yet: it is remembered and connects as soon as it does.
+func (e *Engine) AddPeer(ctx context.Context, addr string) (p store.Peer, awaiting bool, err error) {
 	e.mu.Lock()
 	started := e.ctx != nil
+	if started {
+		e.pairing[addr]++
+	}
 	e.mu.Unlock()
 	if !started {
-		return store.Peer{}, errors.New("daemon is still starting")
+		return p, false, errors.New("daemon is still starting")
 	}
+	defer func() {
+		e.mu.Lock()
+		if e.pairing[addr]--; e.pairing[addr] <= 0 {
+			delete(e.pairing, addr)
+		}
+		e.mu.Unlock()
+	}()
 	if addr == e.cfg.Transport.Addr() {
-		return store.Peer{}, errors.New("that is this device's own address")
+		return p, false, errors.New("that is this device's own address")
 	}
 	conn, err := e.cfg.Transport.Dial(ctx, addr)
 	if err != nil {
-		return store.Peer{}, fmt.Errorf("connect: %w", err)
+		return p, false, fmt.Errorf("connect: %w", err)
 	}
 	s, err := e.handshake(conn, true, addr)
 	if err != nil {
-		conn.Close()
-		return store.Peer{}, err
+		var aw *awaitingError
+		if !errors.As(err, &aw) {
+			conn.Close()
+			return p, false, err
+		}
+		s, awaiting = aw.s, true
 	}
-	p := store.Peer{ID: s.peerID, Name: s.peerName, Addr: addr}
+	p = store.Peer{ID: s.peerID, Name: s.peerName, Addr: addr}
 	if err := e.cfg.Store.UpsertPeer(p); err != nil {
 		conn.Close()
-		return store.Peer{}, err
+		return p, false, err
 	}
-	e.keepDialing(p) // reconnect after failures; a no-op while a session is up
+	_ = e.cfg.Store.DeleteCandidate(p.ID) // the user's own pairing outranks a pending request
+	e.keepDialing(p)                      // reconnect after failures; a no-op while a session is up
 	e.emit(Event{Kind: "peers"})
+	if awaiting {
+		conn.Close()
+		return p, true, nil
+	}
 	if e.register(s) {
 		go e.serve(s)
 	} else {
 		conn.Close() // already connected through a better session
 	}
-	return p, nil
+	return p, false, nil
 }
 
 func (e *Engine) RemovePeer(id string) (bool, error) {
@@ -365,6 +387,7 @@ type session struct {
 	peerAddr string
 	outgoing bool
 	out      chan outClip
+	ctl      chan any // control messages, written by sendLoop like everything else
 	done     chan struct{}
 	once     sync.Once
 }
@@ -391,6 +414,30 @@ func (s *session) enqueue(c outClip) {
 
 const handshakeTimeout = 15 * time.Second
 
+// awaitingError means the other device has not accepted us yet.
+type awaitingError struct{ s *session }
+
+func (a *awaitingError) Error() string {
+	return a.s.peerName + " has not approved this device yet"
+}
+
+// errNotTrusted means we did not accept the other device: it is now a
+// candidate waiting for the user.
+var errNotTrusted = errors.New("device is not paired; waiting for the user to approve it")
+
+// trusts reports whether we accept h without asking: a paired device, or one
+// whose address the user is pairing with at this very moment.
+func (e *Engine) trusts(h wire.Hello) bool {
+	if ok, err := e.cfg.Store.HasPeer(h.ID); err == nil && ok {
+		return true
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return h.Addr != "" && e.pairing[h.Addr] > 0
+}
+
+// handshake exchanges hellos, then verdicts. Dialing a device is itself the
+// decision to trust it; accepting a connection needs a paired device.
 func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed string) (*session, error) {
 	_ = conn.SetDeadline(time.Now().Add(handshakeTimeout))
 	defer conn.SetDeadline(time.Time{})
@@ -418,10 +465,34 @@ func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed string) (*sessio
 	if h.Version != wire.Version {
 		return nil, fmt.Errorf("handshake: peer speaks protocol %d, we speak %d", h.Version, wire.Version)
 	}
+
+	trust := outgoing || e.trusts(h)
+	go func() { werr <- w.WriteJSON(wire.Verdict{T: "verdict", OK: trust}) }()
+	typ, raw, err = w.ReadRaw()
+	if err != nil {
+		return nil, fmt.Errorf("handshake: %w", err)
+	}
+	if err := <-werr; err != nil {
+		return nil, fmt.Errorf("handshake: %w", err)
+	}
+	var v wire.Verdict
+	if typ != "verdict" || json.Unmarshal(raw, &v) != nil {
+		return nil, fmt.Errorf("handshake: expected a verdict, got %q", typ)
+	}
+
 	s := &session{e: e, conn: conn, w: w, peerID: h.ID, peerName: h.Name, peerAddr: h.Addr,
-		outgoing: outgoing, out: make(chan outClip, 1), done: make(chan struct{})}
+		outgoing: outgoing, out: make(chan outClip, 1), ctl: make(chan any, 8), done: make(chan struct{})}
 	if outgoing && dialed != "" && s.peerAddr == "" {
 		s.peerAddr = dialed
+	}
+	if !trust {
+		if h.Addr != "" { // without an address we could never connect back
+			e.addCandidate(store.Candidate{ID: h.ID, Name: h.Name, Addr: h.Addr}, true)
+		}
+		return nil, errNotTrusted
+	}
+	if !v.OK {
+		return nil, &awaitingError{s}
 	}
 	return s, nil
 }
@@ -438,25 +509,19 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 		go func() {
 			s, err := e.handshake(conn, false, "")
 			if err != nil {
-				e.logf("incoming connection rejected: %v", err)
+				if !errors.Is(err, errNotTrusted) {
+					e.logf("incoming connection rejected: %v", err)
+				}
 				conn.Close()
 				return
 			}
-			// Whoever holds our address (a secret) may pair with us. Remember
-			// the peer so that we can reconnect after a restart.
+			// Trusted: remember the name and the current address, so that we
+			// can reconnect after a restart.
 			if s.peerAddr != "" {
-				known := false
-				if ps, err := e.cfg.Store.Peers(); err == nil {
-					for _, p := range ps {
-						known = known || p.ID == s.peerID
-					}
-				}
 				if err := e.cfg.Store.UpsertPeer(store.Peer{ID: s.peerID, Name: s.peerName, Addr: s.peerAddr}); err != nil {
 					e.logf("remember peer: %v", err)
-				} else if !known {
-					e.logf("paired with %s (%s)", s.peerName, s.peerID)
-					e.emit(Event{Kind: "peers"})
 				}
+				_ = e.cfg.Store.DeleteCandidate(s.peerID)
 			}
 			if !e.register(s) {
 				conn.Close()
@@ -500,6 +565,7 @@ func (e *Engine) serve(s *session) {
 	_ = e.cfg.Store.TouchPeer(s.peerID)
 	e.emit(Event{Kind: "peer-up", Peer: s.peerName})
 	go s.sendLoop()
+	e.introduceTo(s)
 	err := s.recvLoop()
 	s.close()
 	e.mu.Lock()
@@ -519,6 +585,12 @@ func (s *session) sendLoop() {
 		select {
 		case <-s.done:
 			return
+		case m := <-s.ctl:
+			if err := s.w.WriteJSON(m); err != nil {
+				s.e.logf("send to %s: %v", s.peerName, err)
+				s.close()
+				return
+			}
 		case c := <-s.out:
 			if err := s.w.SendClip(c.id, s.e.cfg.ID, c.ts, c.snap); err != nil {
 				s.e.logf("send to %s: %v", s.peerName, err)
@@ -555,6 +627,12 @@ func (s *session) recvLoop() error {
 				continue
 			}
 			s.e.apply(s.peerName, snap, dir)
+		case "peers":
+			var m wire.Peers
+			if err := json.Unmarshal(raw, &m); err != nil {
+				return err
+			}
+			s.e.introduced(s, m)
 		default:
 			// Unknown control messages are ignored for forward compatibility.
 		}
@@ -600,6 +678,10 @@ func (e *Engine) keepDialing(p store.Peer) {
 				err = errors.New("address belongs to a different device")
 			}
 			if err != nil {
+				var aw *awaitingError
+				if errors.As(err, &aw) {
+					conn.Close()
+				}
 				if ctx.Err() == nil {
 					e.logf("cannot reach %s: %v (retry in %v)", p.Name, err, backoff)
 				}
@@ -629,5 +711,125 @@ func sleep(ctx context.Context, d time.Duration) bool {
 		return false
 	case <-t.C:
 		return true
+	}
+}
+
+// ---- introductions and approval ----
+
+// PendingPeer is a device waiting for the user's approval.
+type PendingPeer struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Via  string `json:"via,omitempty"` // who introduced it; empty if it connected to us directly
+	Time int64  `json:"time"`
+}
+
+func (e *Engine) addCandidate(c store.Candidate, direct bool) {
+	created, err := e.cfg.Store.AddCandidate(c, direct)
+	if err != nil {
+		e.logf("remember candidate: %v", err)
+		return
+	}
+	if created {
+		e.logf("%s wants to join; approve it with `unic approve %s`", c.Name, c.ID)
+		e.emit(Event{Kind: "pending", Peer: c.Name, Info: c.Via})
+	}
+}
+
+// Pending lists the devices waiting for approval.
+func (e *Engine) Pending() ([]PendingPeer, error) {
+	cs, err := e.cfg.Store.Candidates()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingPeer, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, PendingPeer{ID: c.ID, Name: c.Name, Via: c.Via, Time: c.Seen.Unix()})
+	}
+	return out, nil
+}
+
+// Approve pairs with a pending device and connects to it. Its own device
+// still has to approve this one, unless it paired with us first.
+func (e *Engine) Approve(id string) (store.Peer, error) {
+	c, ok, err := e.cfg.Store.Candidate(id)
+	if err != nil {
+		return store.Peer{}, err
+	}
+	if !ok {
+		return store.Peer{}, errors.New("no such pending device")
+	}
+	p := store.Peer{ID: c.ID, Name: c.Name, Addr: c.Addr}
+	if err := e.cfg.Store.UpsertPeer(p); err != nil {
+		return p, err
+	}
+	_ = e.cfg.Store.DeleteCandidate(id)
+	e.keepDialing(p)
+	e.introduceToAll() // let the others know about the new device
+	e.emit(Event{Kind: "peers"})
+	return p, nil
+}
+
+// Reject dismisses a pending device. Introductions do not bring it back; a
+// connection attempt from the device itself does.
+func (e *Engine) Reject(id string) error {
+	ok, err := e.cfg.Store.RejectCandidate(id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("no such pending device")
+	}
+	e.emit(Event{Kind: "peers"})
+	return nil
+}
+
+// introduceTo tells s's device about our other paired devices.
+func (e *Engine) introduceTo(s *session) {
+	ps, err := e.cfg.Store.Peers()
+	if err != nil {
+		return
+	}
+	msg := wire.Peers{T: "peers"}
+	for _, p := range ps {
+		if p.ID != s.peerID && p.Addr != "" {
+			msg.Peers = append(msg.Peers, wire.PeerInfo{ID: p.ID, Name: p.Name, Addr: p.Addr})
+		}
+	}
+	if len(msg.Peers) == 0 {
+		return
+	}
+	select {
+	case s.ctl <- msg:
+	default:
+	}
+}
+
+func (e *Engine) introduceToAll() {
+	e.mu.Lock()
+	ss := make([]*session, 0, len(e.sessions))
+	for _, s := range e.sessions {
+		ss = append(ss, s)
+	}
+	e.mu.Unlock()
+	for _, s := range ss {
+		e.introduceTo(s)
+	}
+}
+
+// introduced handles a peer's introductions: unknown devices become
+// candidates. Nothing connects until the user approves.
+func (e *Engine) introduced(from *session, m wire.Peers) {
+	if len(m.Peers) > wire.MaxIntroduced {
+		m.Peers = m.Peers[:wire.MaxIntroduced]
+	}
+	for _, pi := range m.Peers {
+		if pi.ID == "" || pi.ID == e.cfg.ID || pi.Addr == "" || pi.Addr == e.cfg.Transport.Addr() {
+			continue
+		}
+		if ok, err := e.cfg.Store.HasPeer(pi.ID); err != nil || ok {
+			continue
+		}
+		e.addCandidate(store.Candidate{ID: pi.ID, Name: pi.Name, Addr: pi.Addr, Via: from.peerName}, false)
 	}
 }

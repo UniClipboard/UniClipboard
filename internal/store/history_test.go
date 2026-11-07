@@ -26,13 +26,13 @@ func TestHistoryRoundTripAndPersistence(t *testing.T) {
 	s, path := openTemp(t)
 	it := item("a", 100, "x", "y")
 	it.Parts = append(it.Parts, HistoryPart{Kind: "file", Name: "f.bin", Size: 9, Blob: "b1"})
-	it.BackendStates = map[string]string{"sync.tailcat": "pending"}
+	it.BackendStates = map[string]BackendSync{"sync.tailcat": {State: "pending", Disposition: "queued"}}
 	seq, rev, err := s.InsertHistory(it)
 	if err != nil || seq == 0 || rev != 1 {
 		t.Fatal(seq, rev, err)
 	}
 	got, err := s.GetHistory("a", 0, true)
-	if err != nil || got.Revision != 1 || string(got.Parts[0].Inline) != "hello" || got.Parts[1].Blob != "b1" || len(got.Tags) != 2 || got.BackendStates["sync.tailcat"] != "pending" {
+	if err != nil || got.Revision != 1 || string(got.Parts[0].Inline) != "hello" || got.Parts[1].Blob != "b1" || len(got.Tags) != 2 || got.BackendStates["sync.tailcat"].Disposition != "queued" {
 		t.Fatalf("%+v %v", got, err)
 	}
 	if meta, _ := s.GetHistory("a", 0, false); meta.Parts[0].Inline != nil {
@@ -154,5 +154,41 @@ func TestSchemaVersionIsTrackedAndNewerRefused(t *testing.T) {
 	_ = s.Close()
 	if _, err := Open(path); err == nil {
 		t.Fatal("a database from a newer version must be refused")
+	}
+}
+
+func TestSyncSummaryAndRestartInterruption(t *testing.T) {
+	s, path := openTemp(t)
+	_, _, _ = s.InsertHistory(item("a", 100))
+	_, _, _ = s.InsertHistory(item("b", 101))
+	if _, err := s.SetSyncState("a", "pending", map[string]BackendSync{"x": {State: "pending", Disposition: "queued"}, "y": {State: "failed", Disposition: "failed", ErrorCode: "unavailable"}}, 200); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetSyncState("b", "sent", map[string]BackendSync{"x": {State: "sent", Disposition: "queued"}}, 200); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetSyncState("nope", "sent", nil, 200); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	ids, err := s.InterruptPending(300)
+	if err != nil || len(ids) != 1 || ids[0] != "a" {
+		t.Fatal(ids, err)
+	}
+	a, _ := s.GetHistory("a", 0, false)
+	if a.SyncState != "interrupted" || a.Revision != 3 || a.BackendStates["x"].State != "interrupted" || a.BackendStates["x"].Disposition != "queued" ||
+		a.BackendStates["y"].State != "failed" || a.BackendStates["y"].ErrorCode != "unavailable" {
+		t.Fatalf("%+v", a)
+	}
+	if b, _ := s.GetHistory("b", 0, false); b.SyncState != "sent" || b.Revision != 2 {
+		t.Fatalf("a finished sync must be left alone: %+v", b)
+	}
+	if ids, _ := s.InterruptPending(400); len(ids) != 0 {
+		t.Fatal("second call changed things again")
 	}
 }

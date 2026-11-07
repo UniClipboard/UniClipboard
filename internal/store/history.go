@@ -69,6 +69,9 @@ CREATE TABLE clip_item_sync (
 	// the size/version seen at commit; nothing is copied for them.
 	`ALTER TABLE clip_item_parts ADD COLUMN ref TEXT NOT NULL DEFAULT '';
 ALTER TABLE clip_item_parts ADD COLUMN version TEXT NOT NULL DEFAULT '';`,
+	// Per-backend sync summary: the first commit decision and a stable error class.
+	`ALTER TABLE clip_item_sync ADD COLUMN disposition TEXT NOT NULL DEFAULT '';
+ALTER TABLE clip_item_sync ADD COLUMN error_code TEXT NOT NULL DEFAULT '';`,
 }
 
 func migrate(db *sql.DB) error {
@@ -115,6 +118,13 @@ type HistoryPart struct {
 	Version string
 }
 
+// BackendSync is what is remembered of one backend's part in a commit.
+type BackendSync struct {
+	State       string
+	Disposition string
+	ErrorCode   string
+}
+
 // HistoryItem is a stored record. Seq is private commit order.
 type HistoryItem struct {
 	Seq           int64
@@ -133,7 +143,7 @@ type HistoryItem struct {
 	TotalBytes    int64
 	Tags          []string // sorted by UTF-8 bytes
 	Parts         []HistoryPart
-	BackendStates map[string]string
+	BackendStates map[string]BackendSync
 }
 
 // HistoryFilter: fields AND together; Kinds/OriginKinds match any of their
@@ -200,7 +210,7 @@ created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?,
 		}
 	}
 	for b, st := range it.BackendStates {
-		if _, err := tx.Exec(`INSERT INTO clip_item_sync (item_seq, backend_id, state) VALUES (?, ?, ?)`, seq, b, st); err != nil {
+		if err := insertBackendSync(tx, seq, b, st); err != nil {
 			return 0, 0, err
 		}
 	}
@@ -267,18 +277,19 @@ func fill(q queryer, it *HistoryItem, withInline bool) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	rows, err = q.Query(`SELECT backend_id, state FROM clip_item_sync WHERE item_seq = ?`, it.Seq)
+	rows, err = q.Query(`SELECT backend_id, state, disposition, error_code FROM clip_item_sync WHERE item_seq = ?`, it.Seq)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var b, st string
-		if err := rows.Scan(&b, &st); err != nil {
+		var b string
+		var st BackendSync
+		if err := rows.Scan(&b, &st.State, &st.Disposition, &st.ErrorCode); err != nil {
 			return err
 		}
 		if it.BackendStates == nil {
-			it.BackendStates = map[string]string{}
+			it.BackendStates = map[string]BackendSync{}
 		}
 		it.BackendStates[b] = st
 	}
@@ -445,7 +456,7 @@ func sameStrings(a, b []string) bool {
 }
 
 // SetSyncState records the aggregate and per-backend sync summary.
-func (s *Store) SetSyncState(id, state string, backends map[string]string, nowMs int64) (rev uint64, err error) {
+func (s *Store) SetSyncState(id, state string, backends map[string]BackendSync, nowMs int64) (rev uint64, err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -461,7 +472,7 @@ func (s *Store) SetSyncState(id, state string, backends map[string]string, nowMs
 		return 0, err
 	}
 	for b, st := range backends {
-		if _, err := tx.Exec(`INSERT INTO clip_item_sync (item_seq, backend_id, state) VALUES (?, ?, ?)`, seq, b, st); err != nil {
+		if err := insertBackendSync(tx, seq, b, st); err != nil {
 			return 0, err
 		}
 	}
@@ -614,4 +625,49 @@ func (s *Store) ReferencedBlobs() (map[string]bool, error) {
 		out[b] = true
 	}
 	return out, rows.Err()
+}
+
+func insertBackendSync(tx *sql.Tx, seq int64, backend string, st BackendSync) error {
+	_, err := tx.Exec(`INSERT INTO clip_item_sync (item_seq, backend_id, state, disposition, error_code) VALUES (?, ?, ?, ?, ?)`,
+		seq, backend, st.State, st.Disposition, st.ErrorCode)
+	return err
+}
+
+// InterruptPending marks every sync still pending as interrupted. Called once
+// at startup: nothing resumes or resends an unfinished transfer, so the
+// summary must stop claiming it is in progress. It returns the IDs changed.
+func (s *Store) InterruptPending(nowMs int64) (ids []string, err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.Query(`SELECT id FROM clip_items WHERE sync_state = 'pending'`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	if _, err := tx.Exec(`UPDATE clip_item_sync SET state = 'interrupted' WHERE state = 'pending'`); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE clip_items SET sync_state = 'interrupted', revision = revision + 1, updated_ms = ? WHERE sync_state = 'pending'`, nowMs); err != nil {
+		return nil, err
+	}
+	if _, err := bump(tx); err != nil {
+		return nil, err
+	}
+	return ids, tx.Commit()
 }

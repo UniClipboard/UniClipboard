@@ -104,21 +104,32 @@ type HistoryPart struct {
 	Size int64  `json:"size"`
 }
 
+// HistoryBackendSync is one sync backend's part in a record: what was decided,
+// how the targets fared, and a stable failure class. It never says the other
+// side received or applied the clip.
+type HistoryBackendSync struct {
+	BackendID   string `json:"backend_id"`
+	State       string `json:"state"`       // not_requested, pending, sent, partial, failed, interrupted
+	Disposition string `json:"disposition"` // the decision at commit, e.g. queued, policy_filtered
+	ErrorCode   string `json:"error_code,omitempty"`
+}
+
 // HistoryItem is the local record of a clipboard entry, without its content.
 type HistoryItem struct {
-	ID         string        `json:"id"`
-	Revision   uint64        `json:"revision"`
-	Kind       string        `json:"kind"`   // "text", "image" or "files"
-	Origin     string        `json:"origin"` // "local_system", "remote_device", "plugin" or "explicit"
-	DeviceID   string        `json:"device_id,omitempty"`
-	DeviceName string        `json:"device_name,omitempty"`
-	CreatedAt  int64         `json:"created_at_ms"`
-	UpdatedAt  int64         `json:"updated_at_ms"`
-	ExpiresAt  int64         `json:"expires_at_ms"` // 0: never
-	Tags       []string      `json:"tags"`
-	Parts      []HistoryPart `json:"parts"`
-	TotalBytes int64         `json:"total_bytes"`
-	SyncState  string        `json:"sync_state"`
+	ID         string               `json:"id"`
+	Revision   uint64               `json:"revision"`
+	Kind       string               `json:"kind"`   // "text", "image" or "files"
+	Origin     string               `json:"origin"` // "local_system", "remote_device", "plugin" or "explicit"
+	DeviceID   string               `json:"device_id,omitempty"`
+	DeviceName string               `json:"device_name,omitempty"`
+	CreatedAt  int64                `json:"created_at_ms"`
+	UpdatedAt  int64                `json:"updated_at_ms"`
+	ExpiresAt  int64                `json:"expires_at_ms"` // 0: never
+	Tags       []string             `json:"tags"`
+	Parts      []HistoryPart        `json:"parts"`
+	TotalBytes int64                `json:"total_bytes"`
+	SyncState  string               `json:"sync_state"`
+	Backends   []HistoryBackendSync `json:"backends"`
 }
 
 // HistoryQuery is GET /v1/history. Fields combine with AND.

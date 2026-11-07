@@ -184,8 +184,10 @@ func TestSubmissionResultSurvivesOperationEviction(t *testing.T) {
 	if retry, err := n.e.SubmitContent(bg, req); err != nil || retry != id {
 		t.Fatalf("operation eviction lost submission result: %s %v", retry, err)
 	}
+	eventually(t, "the clip arrives once", func() bool { return l.count() >= 1 })
+	time.Sleep(100 * time.Millisecond) // a wrongly dispatched retry would show up by now
 	if l.count() != 1 {
-		t.Fatal("retry dispatched twice")
+		t.Fatalf("retry dispatched twice: count=%d", l.count())
 	}
 }
 

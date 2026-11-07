@@ -156,8 +156,14 @@ func toHistoryItem(it store.HistoryItem) HistoryItem {
 		SourceApp: it.SourceApp, AutomationDepth: uint32(it.Depth),
 		CreatedAtMs: it.CreatedMs, UpdatedAtMs: it.UpdatedMs, ExpiresAtMs: it.ExpiresMs,
 		Tags: append([]string{}, it.Tags...), TotalBytes: it.TotalBytes, SyncState: HistorySyncState(it.SyncState),
-		Parts: make([]HistoryPartSummary, len(it.Parts)),
+		Parts:             make([]HistoryPartSummary, len(it.Parts)),
+		BackendSyncStates: []HistoryBackendSyncState{},
 	}
+	for b, st := range it.BackendStates {
+		out.BackendSyncStates = append(out.BackendSyncStates, HistoryBackendSyncState{
+			BackendID: PluginID(b), State: HistorySyncState(st.State), Disposition: BackendDisposition(st.Disposition), ErrorCode: Code(st.ErrorCode)})
+	}
+	sort.Slice(out.BackendSyncStates, func(i, j int) bool { return out.BackendSyncStates[i].BackendID < out.BackendSyncStates[j].BackendID })
 	for i, p := range it.Parts {
 		k := PartRepresentation
 		if p.Kind == "file" {

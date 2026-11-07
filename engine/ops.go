@@ -13,6 +13,11 @@ type opEntry struct {
 	hash    [sha256.Size]byte
 	content *contentObj // a send holds its content until every target is final
 	open    bool        // backends may still register targets; guarded by Engine.mu
+	// history links a send to the record it belongs to, so that the record's
+	// sync summary follows the operation. results are the commit decisions.
+	history  HistoryID
+	results  []BackendSubmissionResult
+	recorded bool // the final summary was written
 }
 
 type opTable struct {

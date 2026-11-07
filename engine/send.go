@@ -172,6 +172,7 @@ func (e *Engine) reportTarget(id OperationID, k targetKey, st TargetState, cause
 	e.mu.Unlock()
 	if done != nil {
 		e.cs.unref(done)
+		e.opFinished(id)
 	}
 }
 

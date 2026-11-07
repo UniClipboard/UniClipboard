@@ -39,6 +39,17 @@ type HistoryPartSummary struct {
 	Size int64    `json:"size"`
 }
 
+// HistoryBackendSyncState is one backend's part in a record's sync. State is
+// about the targets actually tried; Disposition is the decision taken at
+// commit; ErrorCode a stable failure class. Nothing here says the other side
+// received or applied anything.
+type HistoryBackendSyncState struct {
+	BackendID   PluginID           `json:"backend_id"`
+	State       HistorySyncState   `json:"state"`
+	Disposition BackendDisposition `json:"disposition"`
+	ErrorCode   Code               `json:"error_code,omitempty"`
+}
+
 type HistoryItem struct {
 	ID              HistoryID            `json:"id"`
 	Revision        uint64               `json:"revision,string"`
@@ -53,6 +64,8 @@ type HistoryItem struct {
 	Parts           []HistoryPartSummary `json:"parts"`
 	TotalBytes      int64                `json:"total_bytes"`
 	SyncState       HistorySyncState     `json:"sync_state"`
+	// BackendSyncStates is sorted by BackendID; empty when nothing was tried.
+	BackendSyncStates []HistoryBackendSyncState `json:"backend_sync_states"`
 }
 
 type HistoryFilter struct {

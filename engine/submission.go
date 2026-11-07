@@ -179,6 +179,9 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 		}
 		e.cs.unref(processed.c)
 	}
+	if historyID != "" && failure == nil {
+		e.linkHistory(historyID, id, results)
+	}
 	e.mu.Lock()
 	entry.history = historyID
 	entry.id, entry.disp, entry.results, entry.syncErr, entry.err, entry.finished = id, disp, results, syncErr, cloneError(failure), time.Now()

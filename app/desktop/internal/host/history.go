@@ -14,7 +14,11 @@ func apiHistory(it engine.HistoryItem, deviceName string) api.HistoryItem {
 		DeviceID: string(it.Origin.DeviceID), DeviceName: deviceName,
 		CreatedAt: it.CreatedAtMs, UpdatedAt: it.UpdatedAtMs, ExpiresAt: it.ExpiresAtMs,
 		Tags: append([]string{}, it.Tags...), TotalBytes: it.TotalBytes, SyncState: string(it.SyncState),
-		Parts: make([]api.HistoryPart, len(it.Parts)),
+		Parts:    make([]api.HistoryPart, len(it.Parts)),
+		Backends: make([]api.HistoryBackendSync, len(it.BackendSyncStates)),
+	}
+	for i, b := range it.BackendSyncStates {
+		out.Backends[i] = api.HistoryBackendSync{BackendID: string(b.BackendID), State: string(b.State), Disposition: string(b.Disposition), ErrorCode: string(b.ErrorCode)}
 	}
 	for i, p := range it.Parts {
 		out.Parts[i] = api.HistoryPart{Kind: string(p.Kind), MIME: p.MIME, Size: p.Size}

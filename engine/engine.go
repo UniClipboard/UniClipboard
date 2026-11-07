@@ -78,6 +78,7 @@ type Engine struct {
 	cs        *contentStore
 	hist      *history
 	backends  []syncBackend
+	syncMu    sync.Mutex // orders writes of a record's sync summary
 	recv      []*receipt // the received list, oldest first
 	recvTimer *time.Timer
 	histTimer *time.Timer // next expiry sweep; guarded by mu
@@ -170,7 +171,8 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if err != nil {
 		return closeAll(newErr(CodeUnavailable, "cannot prepare the history"))
 	}
-	hist.sweep(st) // expired records go before anyone can ask for them
+	hist.sweep(st)                                     // expired records go before anyone can ask for them
+	_, _ = st.InterruptPending(time.Now().UnixMilli()) // unfinished sends are not resumed
 
 	id, err := identity(st)
 	if err != nil {

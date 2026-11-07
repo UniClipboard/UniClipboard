@@ -41,7 +41,7 @@ SwiftUI app (app/macos/) ── unix socket, HTTP+JSON/SSE ──> unicd（无�
 | 路由 | 作用 |
 |---|---|
 | `GET /v1/history?limit=&cursor=&kind=&origin=&tag=&device=&from=&before=` | 列表，最新在前，keyset 游标分页；`kind`/`origin`/`tag` 可重复，字段间 AND，`tag` 要求全部匹配；响应 `{items, next_cursor, revision}`，`items` 永不为 null |
-| `GET /v1/history/{id}` | 单条元数据：kind、来源（含设备名）、时间、过期、标签、各部件的种类/MIME/大小、同步状态；不含正文、文件名、路径 |
+| `GET /v1/history/{id}` | 单条元数据：kind、来源（含设备名）、时间、过期、标签、各部件的种类/MIME/大小、`sync_state` 与按后端的 `backends[{backend_id,state,disposition,error_code}]`（pending 在 daemon 重启后变 interrupted，不代表对端已收到）；不含正文、文件名、路径 |
 | `GET /v1/history/{id}/content?part=N` | 第 N 个部件（默认 0）的原始字节；文件名只在 `Content-Disposition` |
 | `POST /v1/history/{id}/use` | 写回系统剪贴板，走与接收内容相同的观察/应用协议（不重复入历史、不同步、不当作新复制）；文件按原路径放入剪贴板，文件已不在则失败 |
 | `PATCH /v1/history/{id}` | body `{revision, tags?, expires_at_ms?}`；`revision` 必填，不符返回 409 |

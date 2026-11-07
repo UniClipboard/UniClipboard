@@ -347,3 +347,131 @@ func TestBackendPoliciesAreEffectiveValidatedAndHotUpdated(t *testing.T) {
 		t.Fatalf("saw %d reps %d files after the policy change", reps, files)
 	}
 }
+
+func syncOf(t *testing.T, e *Engine, id HistoryID) HistoryItem {
+	t.Helper()
+	it, err := e.GetItem(bg, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return it
+}
+
+func stateOfBackend(it HistoryItem, id PluginID) HistoryBackendSyncState {
+	for _, b := range it.BackendSyncStates {
+		if b.BackendID == id {
+			return b
+		}
+	}
+	return HistoryBackendSyncState{}
+}
+
+func TestHistorySyncSummaryFollowsTheOperation(t *testing.T) {
+	a := &fakeBackend{id: "test.a", pol: allTypes, targets: []string{"x"}}
+	b := &fakeBackend{id: "test.b", pol: BackendSyncPolicy{Text: true}, targets: []string{"y"}}
+	n := multiNode(t, a, b)
+	h := textAndFile(t, n.e)
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "sum", LeaseID: h.LeaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := syncOf(t, n.e, r.HistoryID)
+	if it.SyncState != HistorySyncPending || stateOfBackend(it, "test.a").State != HistorySyncPending || stateOfBackend(it, "test.a").Disposition != BackendQueued {
+		t.Fatalf("while sending: %+v", it)
+	}
+	if rev := it.Revision; rev < 2 {
+		t.Fatalf("a summary change must bump the revision, got %d", rev)
+	}
+	a.finish(TargetSent)
+	if it = syncOf(t, n.e, r.HistoryID); it.SyncState != HistorySyncPending {
+		t.Fatalf("one backend done, another still sending: %s", it.SyncState)
+	}
+	b.finish(TargetFailed)
+	eventually(t, "final summary", func() bool { return syncOf(t, n.e, r.HistoryID).SyncState == HistorySyncPartial })
+	it = syncOf(t, n.e, r.HistoryID)
+	if stateOfBackend(it, "test.a").State != HistorySyncSent || stateOfBackend(it, "test.b").State != HistorySyncFailed {
+		t.Fatalf("%+v", it.BackendSyncStates)
+	}
+	// Listing carries the same summary.
+	page, _ := n.e.ListHistory(bg, ListHistoryRequest{Limit: 5})
+	found := false
+	for _, x := range page.Items {
+		found = found || (x.ID == r.HistoryID && x.SyncState == HistorySyncPartial)
+	}
+	if !found {
+		t.Fatal("list does not show the summary")
+	}
+}
+
+func TestHistorySyncSummaryAllSentAndSkipped(t *testing.T) {
+	a := &fakeBackend{id: "test.a", pol: allTypes, targets: []string{"x"}, syncEnd: true}
+	n := multiNode(t, a)
+	r := commitText(t, n.e, "ok", "fine")
+	eventually(t, "sent", func() bool { return syncOf(t, n.e, r.HistoryID).SyncState == HistorySyncSent })
+
+	// A second backend that filters the clip out turns a success into partial.
+	files := &fakeBackend{id: "test.files", pol: BackendSyncPolicy{Files: true}, targets: []string{"z"}}
+	n2 := multiNode(t, &fakeBackend{id: "test.a", pol: allTypes, targets: []string{"x"}, syncEnd: true}, files)
+	r2 := commitText(t, n2.e, "skip", "text only")
+	eventually(t, "partial because a policy skipped one", func() bool { return syncOf(t, n2.e, r2.HistoryID).SyncState == HistorySyncPartial })
+	if st := stateOfBackend(syncOf(t, n2.e, r2.HistoryID), "test.files"); st.State != HistorySyncNotRequested || st.Disposition != BackendPolicyFiltered {
+		t.Fatalf("%+v", st)
+	}
+}
+
+func TestHistorySyncSummaryFailure(t *testing.T) {
+	bad := &fakeBackend{id: "test.bad", pol: allTypes, fail: newErr(CodeUnavailable, "boom")}
+	n := multiNode(t, bad)
+	r := commitText(t, n.e, "bad", "x")
+	it := syncOf(t, n.e, r.HistoryID)
+	if it.SyncState != HistorySyncFailed {
+		t.Fatalf("%+v", it)
+	}
+	if st := stateOfBackend(it, "test.bad"); st.State != HistorySyncFailed || st.ErrorCode != CodeUnavailable {
+		t.Fatalf("%+v", st)
+	}
+}
+
+func TestPendingSummaryBecomesInterruptedAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+	hang := &fakeBackend{id: "test.hang", pol: allTypes, targets: []string{"x"}}
+	opts, _ := newOpts(t, dir)
+	opts.extraBackends = []syncBackend{hang}
+	e, err := New(bg, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Start(bg); err != nil {
+		t.Fatal(err)
+	}
+	h := importText(t, e, "never finishes")
+	r, err := e.CommitContent(bg, CommitRequest{RequestID: "hang", LeaseID: h.LeaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if syncOf(t, e, r.HistoryID).SyncState != HistorySyncPending {
+		t.Fatal("expected pending")
+	}
+	// Closing fails whatever is unfinished only through the backend; this one never reports.
+	_ = e.Close(bg)
+	opts2, _ := newOpts(t, dir)
+	e2, err := New(bg, opts2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = e2.Close(bg) }()
+	it := syncOf(t, e2, r.HistoryID)
+	if it.SyncState != HistorySyncInterrupted || stateOfBackend(it, "test.hang").State != HistorySyncInterrupted || stateOfBackend(it, "test.hang").Disposition != BackendQueued {
+		t.Fatalf("%+v", it)
+	}
+}
+
+func TestLocalOnlyCommitLeavesTheSummaryUntouched(t *testing.T) {
+	n := newContentNode(t, nil) // tailcat only, nobody connected
+	start(t, n)
+	r := commitText(t, n.e, "local", "alone")
+	it := syncOf(t, n.e, r.HistoryID)
+	if it.SyncState != HistorySyncNotRequested || len(it.BackendSyncStates) != 0 || it.Revision != 1 {
+		t.Fatalf("%+v", it)
+	}
+}

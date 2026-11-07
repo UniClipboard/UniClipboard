@@ -403,3 +403,65 @@ func TestHistoryEvictsOldestOverCount(t *testing.T) {
 		t.Fatalf("%d items", len(page.Items))
 	}
 }
+
+func TestBeginApplyHistoryUsesTheSharedSlot(t *testing.T) {
+	n := newContentNode(t, withHost)
+	start(t, n)
+	hb := newHost(t, n.e)
+	hb.must(ObserveBaseline, "")
+	r := commitText(t, n.e, "ah1", "from history")
+	req := ApplyHistoryRequest{HistoryID: r.HistoryID, ExpectedEpoch: hb.epoch, ExpectedSequence: hb.seq}
+
+	stale := req
+	stale.ExpectedSequence--
+	if _, err := n.e.BeginApplyHistory(bg, stale); code(err) != CodeConflict {
+		t.Fatalf("stale observation: %v", err)
+	}
+	if _, err := n.e.BeginApplyHistory(bg, ApplyHistoryRequest{HistoryID: "nope", ExpectedEpoch: hb.epoch, ExpectedSequence: hb.seq}); code(err) != CodeNotFound {
+		t.Fatal(err)
+	}
+	// Pausing sync does not matter for a local record, and does not void the ticket.
+	updateSettings(t, n.e, func(s *Settings) { s.Sync.Enabled = false })
+	tk, err := n.e.BeginApplyHistory(bg, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateSettings(t, n.e, func(s *Settings) { s.Sync.Enabled = false; s.DeviceName = "renamed" })
+	if st := state(t, n.e); st.ActiveApply == nil || st.ActiveApply.Kind != ApplyKindHistory || st.ActiveApply.HistoryID != r.HistoryID {
+		t.Fatalf("%+v", st.ActiveApply)
+	}
+	if _, err := n.e.BeginApplyHistory(bg, req); code(err) != CodeInUse {
+		t.Fatalf("second apply: %v", err)
+	}
+	// Deleting the record mid-application leaves the ticket's content readable.
+	if err := n.e.DeleteItem(bg, DeleteItemRequest{ID: r.HistoryID, ExpectedRevision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readParts(t, n.e, tk); got[MimeText] != "from history" {
+		t.Fatalf("ticket content = %v", got)
+	}
+	// The write comes back marked with the token: an echo, not a new item.
+	if res, err := hb.observe(ObserveChange, "from history", tk.Token); err != nil || res.Disposition != DispEcho {
+		t.Fatalf("echo = %+v, %v", res, err)
+	}
+	back := importText(t, n.e, "from history")
+	hb.seq++
+	if err := n.e.ReportApplyResult(bg, ApplyResult{Token: tk.Token, Outcome: ApplyOutcomeApplied, BaselineLeaseID: back.LeaseID, Epoch: hb.epoch, Sequence: hb.seq}); err != nil {
+		t.Fatal(err)
+	}
+	if st := state(t, n.e); st.ActiveApply != nil {
+		t.Fatal("slot not freed")
+	}
+	if page, _ := n.e.ListHistory(bg, ListHistoryRequest{}); len(page.Items) != 0 {
+		t.Fatalf("applying created history: %d items", len(page.Items))
+	}
+}
+
+func TestBeginApplyHistoryNeedsHostAbility(t *testing.T) {
+	n := newContentNode(t, nil) // no host abilities
+	start(t, n)
+	r := commitText(t, n.e, "ah2", "x")
+	if _, err := n.e.BeginApplyHistory(bg, ApplyHistoryRequest{HistoryID: r.HistoryID}); code(err) != CodeUnsupported {
+		t.Fatal(err)
+	}
+}

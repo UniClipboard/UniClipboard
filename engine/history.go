@@ -505,21 +505,15 @@ func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (Histo
 	return page, nil
 }
 
-// RetainHistoryContent opens a record's content for reading and returns a
-// lease on it. The content keeps its blobs alive until released, even if the
-// record is deleted meanwhile.
-func (e *Engine) RetainHistoryContent(ctx context.Context, id HistoryID) (ContentHandle, error) {
-	release, gerr := e.historyGate(ctx, false, true)
-	if gerr != nil {
-		return ContentHandle{}, gerr
-	}
-	defer release()
+// loadHistoryContent materializes a record as content with one reference held
+// by the caller, who turns it into a lease or releases it.
+func (e *Engine) loadHistoryContent(id HistoryID) (*contentObj, *Error) {
 	h := e.hist
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	it, err := e.st.GetHistory(string(id), time.Now().UnixMilli(), true)
 	if err != nil {
-		return ContentHandle{}, historyStoreErr(err)
+		return nil, historyStoreErr(err)
 	}
 	c := &contentObj{id: ContentID(e.newID()), total: it.TotalBytes, refs: 1, hist: h.blob}
 	n := 0
@@ -543,7 +537,7 @@ func (e *Engine) RetainHistoryContent(ctx context.Context, id HistoryID) (Conten
 		case sp.Blob != "":
 			data, rerr := readBlob(filepath.Join(h.dir, sp.Blob, "data"), sp.Size)
 			if rerr != nil {
-				return ContentHandle{}, rerr
+				return nil, rerr
 			}
 			p.data = data
 		default:
@@ -552,14 +546,95 @@ func (e *Engine) RetainHistoryContent(ctx context.Context, id HistoryID) (Conten
 		c.parts = append(c.parts, p)
 	}
 	h.blob.hold(c.blobs)
+	e.cs.mu.Lock()
+	e.cs.contents[c.id] = c
+	e.cs.mu.Unlock()
+	return c, nil
+}
+
+// RetainHistoryContent opens a record's content for reading and returns a
+// lease on it. The content keeps its blobs alive until released, even if the
+// record is deleted meanwhile.
+func (e *Engine) RetainHistoryContent(ctx context.Context, id HistoryID) (ContentHandle, error) {
+	release, gerr := e.historyGate(ctx, false, true)
+	if gerr != nil {
+		return ContentHandle{}, gerr
+	}
+	defer release()
+	c, lerr := e.loadHistoryContent(id)
+	if lerr != nil {
+		return ContentHandle{}, lerr
+	}
 	cs := e.cs
 	cs.mu.Lock()
 	lease := LeaseID(e.newID())
-	cs.contents[c.id] = c
-	cs.leases[lease] = &leaseRec{c: c}
+	cs.leases[lease] = &leaseRec{c: c} // the lease takes over the loading reference
 	out := ContentHandle{Content: cs.descriptor(c), LeaseID: lease}
 	cs.mu.Unlock()
 	return out, nil
+}
+
+// ApplyHistoryRequest names a record to write to the system clipboard, with
+// the observation position the host last reported (as for BeginApply).
+type ApplyHistoryRequest struct {
+	HistoryID        HistoryID
+	ExpectedEpoch    string
+	ExpectedSequence uint64
+}
+
+// BeginApplyHistory starts writing a stored record to the host clipboard. It
+// shares BeginApply's single slot, host-ability and observation checks and the
+// ReportApplyResult protocol, but needs neither network nor enabled sync nor
+// trust in the original device: the record is already local. It never reruns
+// processors, creates history or syncs.
+func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest) (ApplyTicket, error) {
+	release, gerr := e.enter(ctx)
+	if gerr != nil {
+		return ApplyTicket{}, gerr
+	}
+	defer release()
+	if req.HistoryID == "" {
+		return ApplyTicket{}, newErr(CodeInvalidArgument, "HistoryID is required")
+	}
+	c, lerr := e.loadHistoryContent(req.HistoryID)
+	if lerr != nil {
+		return ApplyTicket{}, lerr
+	}
+	defer e.cs.unref(c) // the ticket's lease holds its own reference
+	e.obsMu.Lock()
+	defer e.obsMu.Unlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.life != LifecycleRunning {
+		return ApplyTicket{}, newErr(CodeInvalidState, "the engine is not running")
+	}
+	if e.runtime == RuntimeSuspended {
+		return ApplyTicket{}, newErr(CodeSuspended, "the host suspended the engine")
+	}
+	switch e.host.Apply {
+	case AbilityAvailable:
+	case AbilityPermissionRequired:
+		return ApplyTicket{}, newErr(CodePermissionDenied, "the system denies writing the clipboard")
+	case AbilityUnavailable:
+		return ApplyTicket{}, retryable(newErr(CodeUnavailable, "the host cannot write the clipboard now"))
+	default:
+		return ApplyTicket{}, newErr(CodeUnsupported, "the host cannot write the clipboard")
+	}
+	if e.ticket != nil {
+		return ApplyTicket{}, newErr(CodeInUse, "another application is under way")
+	}
+	if req.ExpectedEpoch != e.obs.epoch || (req.ExpectedEpoch != "" && req.ExpectedSequence != e.obs.seq) {
+		return ApplyTicket{}, newErr(CodeConflict, "the clipboard changed since the last observation")
+	}
+	// Local content: the sync type switches do not apply, only what the host can write.
+	if !e.appliable(c, SyncSettings{Enabled: true, Text: true, Images: true, Files: true}) {
+		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
+	}
+	t := &applyTicket{token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID}
+	t.lease = e.newLease(c)
+	e.ticket = t
+	e.commitLocked(EventApply)
+	return ApplyTicket{Token: t.token, ContentID: t.content, LeaseID: t.lease}, nil
 }
 
 func readBlob(path string, size int64) ([]byte, *Error) {

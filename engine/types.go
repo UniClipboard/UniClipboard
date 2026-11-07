@@ -331,8 +331,18 @@ type State struct {
 	ActiveApply *ActiveApply `json:"active_apply,omitempty"`
 }
 
+// ApplyKind says what an ActiveApply writes.
+type ApplyKind string
+
+const (
+	ApplyKindReceived ApplyKind = "received"
+	ApplyKindHistory  ApplyKind = "history"
+)
+
 // ActiveApply names the received content a host is writing to the system.
 type ActiveApply struct {
+	Kind      ApplyKind `json:"kind"`
+	HistoryID HistoryID `json:"history_id,omitempty"` // only for Kind history; may be deleted meanwhile
 	ReceiptID ReceiptID `json:"receipt_id"`
 	ContentID ContentID `json:"content_id"`
 }

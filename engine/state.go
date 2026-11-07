@@ -218,7 +218,10 @@ func (e *Engine) stateLocked() (State, *Error) {
 		Received:    e.receivedLocked(now),
 	}
 	if t := e.ticket; t != nil {
-		st.ActiveApply = &ActiveApply{ReceiptID: t.receipt, ContentID: t.content}
+		st.ActiveApply = &ActiveApply{Kind: ApplyKindReceived, ReceiptID: t.receipt, ContentID: t.content}
+		if t.history != "" {
+			st.ActiveApply.Kind, st.ActiveApply.HistoryID = ApplyKindHistory, t.history
+		}
 	}
 	return st.clone(), nil
 }
@@ -302,8 +305,8 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 		return e.settings, nil
 	}
 	e.settings = SettingsState{Revision: e.settings.Revision + 1, Value: req.Value}
-	if !req.Value.Sync.Enabled {
-		e.killTicketLocked()
+	if !req.Value.Sync.Enabled && (e.ticket == nil || e.ticket.history == "") {
+		e.killTicketLocked() // a stored record is local: pausing sync does not void its application
 	}
 	e.commitLocked(EventSettings, EventCapabilities)
 	return e.settings, nil

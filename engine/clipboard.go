@@ -119,6 +119,7 @@ type obsRecord struct {
 type applyTicket struct {
 	token   ApplyToken
 	receipt ReceiptID
+	history HistoryID // set instead of receipt when applying a stored record
 	content ContentID
 	lease   LeaseID
 	rc      *receipt

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/api"
@@ -372,7 +373,7 @@ func (g *gui) view(c *ui.Context) {
 	ui.Column(c).Fill().Children(func() {
 		ui.Column(c).Grow(1).Padding(16, 20, 12).Gap(14).Children(func() {
 			// This device.
-			ui.Row(c).Gap(12).Padding(14).Radius(12).Background(t.Surface).Children(func() {
+			ui.Row(c).Gap(12).Padding(14).Radius(16).Material(glass.Glass{}).Children(func() {
 				ui.Column(c).Gap(2).Grow(1).Children(func() {
 					ui.Text(c, s.st.Name).FontSize(15).Bold()
 					sub := "同步中 · 尚未配对设备"

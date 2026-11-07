@@ -397,8 +397,12 @@ func TestSuspendFailsWaitingAndRunningSends(t *testing.T) {
 	eventually(t, "A sending", func() bool { return targetState(t, n.e, a) == TargetSending })
 	b, _ := submit(n.e, importText(t, n.e, "B"))
 
+	began := time.Now()
 	if err := n.e.SetRuntimeState(bg, RuntimeSuspended); err != nil {
 		t.Fatal(err)
+	}
+	if d := time.Since(began); d > 5*time.Second {
+		t.Fatalf("suspending waited %v for a transfer stuck on the host", d) // it must cancel the transfer, not wait it out
 	}
 	ob := waitSend(t, n.e, b)
 	if ob.Outcome != OutcomeFailed || ob.Targets[0].Error.Code != CodeSuspended {

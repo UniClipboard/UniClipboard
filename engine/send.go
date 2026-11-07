@@ -140,7 +140,9 @@ func (e *Engine) submit(req SubmitRequest) (OperationID, error) {
 		clipID, ts := wire.NewID(), time.Now().UnixMilli()
 		return core.Job{
 			Report: func(peer string, st core.TargetState, err error) { e.reportTarget(opID, DeviceID(peer), st, err) },
-			Send:   func(w *wire.Conn, origin string) (bool, error) { return e.sendSet(w, origin, clipID, ts, set) },
+			Send: func(ctx context.Context, w *wire.Conn, origin string) (bool, error) {
+				return e.sendSet(ctx, w, origin, clipID, ts, set)
+			},
 		}, true
 	})
 	if !queued {
@@ -168,7 +170,7 @@ func checkLimits(set sendSet, lim Limits) *Error {
 // sendSet writes the content to w. It runs on the session's writer, once per
 // device. Everything that can fail without touching the stream (settings,
 // files that changed) is checked before the first byte is written.
-func (e *Engine) sendSet(w *wire.Conn, origin, id string, ts int64, set sendSet) (broken bool, err error) {
+func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, ts int64, set sendSet) (broken bool, err error) {
 	e.mu.Lock()
 	sy, lim := e.settings.Value.Sync, e.settings.Value.Limits
 	e.mu.Unlock()
@@ -178,7 +180,7 @@ func (e *Engine) sendSet(w *wire.Conn, origin, id string, ts int64, set sendSet)
 	if lerr := checkLimits(set, lim); lerr != nil {
 		return false, lerr
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second) // opening files only; the transfer itself is bounded by the connection
 	defer cancel()
 	var out []wire.OutPart
 	var open []io.Closer

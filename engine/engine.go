@@ -305,12 +305,15 @@ func (e *Engine) Start(ctx context.Context) error {
 	if err != nil {
 		e.beginStop()
 		e.logf(slog.LevelWarn, "start failed", "code", string(asError(err).Code))
-		// Recovery continues in the background if ctx ran out first.
-		waitCtx, c := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer c()
-		select {
-		case <-e.stopped:
-		case <-waitCtx.Done():
+		// Recovery continues in the background when ctx ran out or the start was
+		// cancelled by Stop; otherwise wait (bounded) so the caller sees stopped.
+		if asError(err).Code != CodeCancelled && asError(err).Code != CodeTimeout {
+			waitCtx, c := context.WithTimeout(ctx, 10*time.Second)
+			defer c()
+			select {
+			case <-e.stopped:
+			case <-waitCtx.Done():
+			}
 		}
 		return asError(err)
 	}

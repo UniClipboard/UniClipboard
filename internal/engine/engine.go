@@ -629,10 +629,10 @@ type Job struct {
 	// Report tells how the clip fares towards peer: Sending, then Sent or
 	// Failed; or Superseded if a newer clip replaced it before it started.
 	Report func(peer string, st TargetState, err error)
-	// Send writes the clip to w; origin is this device's id. It reports
-	// broken=true when it may have written part of a message, in which case
-	// the connection is dropped.
-	Send func(w *wire.Conn, origin string) (broken bool, err error)
+	// Send writes the clip to w; origin is this device's id. ctx ends when the
+	// connection does. It reports broken=true when it may have written part of
+	// a message, in which case the connection is dropped.
+	Send func(ctx context.Context, w *wire.Conn, origin string) (broken bool, err error)
 }
 
 // Submit sends a job to every connected device. prepare is called once, before
@@ -936,8 +936,22 @@ func (s *session) sendLoop() {
 func (s *session) send(c *outClip) bool {
 	if c.job != nil {
 		c.job.Report(s.peerID, Sending, nil)
-		broken, err := c.job.Send(s.w, s.e.cfg.ID)
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			select {
+			case <-s.done:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		broken, err := c.job.Send(ctx, s.w, s.e.cfg.ID)
+		cancel()
 		if err != nil {
+			select {
+			case <-s.done: // the connection ended, whatever the error looked like
+				err = ErrSessionClosed
+			default:
+			}
 			c.job.Report(s.peerID, Failed, err)
 			if broken {
 				s.close() // the stream may be out of step: start over

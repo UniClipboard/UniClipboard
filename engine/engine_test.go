@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -332,7 +333,7 @@ func TestSettingsCompareAndSwap(t *testing.T) {
 	if _, err := n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: got.Revision, Value: bad}); code(err) != CodeInvalidArgument {
 		t.Fatalf("invalid update: %v", err)
 	}
-	if cur := state(t, n.e).Settings; cur != got {
+	if cur := state(t, n.e).Settings; !reflect.DeepEqual(cur, got) {
 		t.Fatalf("a rejected update changed the settings: %+v", cur)
 	}
 	// Same value: no new revision.
@@ -393,7 +394,7 @@ func TestCapabilities(t *testing.T) {
 	}
 	// Turning images off removes the format, not the others.
 	s := state(t, n.e).Settings
-	s.Value.Sync.Images = false
+	policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Images = false })(&s.Value)
 	_, _ = n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value})
 	c, _ = n.e.GetCapabilities(bg)
 	if got := strings.Join(c.Effective.ReadFormats, ","); got != "text/plain" || !contains(c.Restrictions, "images_disabled") {
@@ -962,5 +963,14 @@ func TestEventsAndStateCarryNoSecrets(t *testing.T) {
 		if strings.Contains(string(js), addr.Address) || strings.Contains(string(js), c.Code) {
 			t.Fatalf("state leaks a secret: %s", js)
 		}
+	}
+}
+
+// policy edits one backend's sync policy in a Settings value.
+func policy(id PluginID, f func(*BackendSyncPolicy)) func(*Settings) {
+	return func(s *Settings) {
+		p := s.BackendPolicies[id]
+		f(&p)
+		s.BackendPolicies[id] = p
 	}
 }

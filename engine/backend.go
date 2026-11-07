@@ -53,12 +53,6 @@ type BackendSubmissionResult struct {
 	Error       *Error             `json:"error,omitempty"`
 }
 
-// backendPolicy is the standard per-backend sync policy Engine enforces.
-type backendPolicy struct {
-	Text, Images, Files bool
-	AutoFileMaxBytes    int64 // 0: no extra threshold for automatic sends
-}
-
 // targetKey names one target of one backend. id is public and opaque.
 type targetKey struct {
 	backend PluginID
@@ -87,7 +81,6 @@ type backendHost interface {
 type syncBackend interface {
 	ID() PluginID
 	Kind() TransportKind
-	Policy() backendPolicy
 	// Submit queues the view for the backend's targets without waiting for the
 	// network. queued=false with a nil error means there was nobody to send to.
 	Submit(ctx context.Context, v backendView, h backendHost) (queued bool, err *Error)
@@ -99,15 +92,6 @@ type tailcatBackend struct{ e *Engine }
 
 func (tailcatBackend) ID() PluginID        { return BackendTailcat }
 func (tailcatBackend) Kind() TransportKind { return TransportPeerSessions }
-
-// Policy still comes from the legacy global type switches until the
-// per-backend settings of 0007 §3 replace them.
-func (b tailcatBackend) Policy() backendPolicy {
-	b.e.mu.Lock()
-	defer b.e.mu.Unlock()
-	sy := b.e.settings.Value.Sync
-	return backendPolicy{Text: sy.Text, Images: sy.Images, Files: sy.Files}
-}
 
 func (b tailcatBackend) Submit(ctx context.Context, v backendView, h backendHost) (bool, *Error) {
 	e := b.e
@@ -141,7 +125,7 @@ func (b tailcatBackend) Submit(ctx context.Context, v backendView, h backendHost
 				h.Report(targetKey{BackendTailcat, TargetDevice, peer}, targetStateOf(st), cause)
 			},
 			Send: func(ctx context.Context, w *wire.Conn, origin string) (bool, error) {
-				return e.sendSet(ctx, w, origin, v.id, v.tsMs, v.set, b.Policy)
+				return e.sendSet(ctx, w, origin, v.id, v.tsMs, v.set, func() BackendSyncPolicy { return e.policyOf(BackendTailcat) })
 			},
 		}, true
 	})
@@ -321,11 +305,12 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 
 	for _, b := range backends {
 		res := BackendSubmissionResult{BackendID: b.ID()}
-		set := buildSendSet(c, b.Policy())
+		pol := e.policyOf(b.ID())
+		set := buildSendSet(c, pol)
 		switch {
 		case len(set.parts) == 0:
 			res.Disposition = BackendPolicyFiltered
-		case !manual && fileTooLarge(set, b.Policy().AutoFileMaxBytes):
+		case !manual && fileTooLarge(set, pol.AutoFileMaxBytes):
 			res.Disposition = BackendAutoFileTooLarge
 		default:
 			if lerr := checkLimits(set, lim); lerr != nil {

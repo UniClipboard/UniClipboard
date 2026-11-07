@@ -254,7 +254,10 @@ func TestReceiverHonoursItsOwnSettings(t *testing.T) {
 	if len(received(b.e)) != 0 || stored(b.e) != 0 {
 		t.Fatalf("paused receiver kept content (stored %d)", stored(b.e))
 	}
-	updateSettings(t, b.e, func(s *Settings) { s.Sync.Enabled = true; s.Sync.Text = false })
+	updateSettings(t, b.e, func(s *Settings) {
+		s.Sync.Enabled = true
+		policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Text = false })(s)
+	})
 
 	// Text off: only the file of a mixed clip is kept; a text-only clip vanishes.
 	h, _ := a.e.ImportContent(bg, ContentInput{Representations: []RepresentationInput{rep(MimeText, "words")}, Files: []FileInput{fileIn("f.bin", "file")}})
@@ -271,7 +274,10 @@ func TestReceiverHonoursItsOwnSettings(t *testing.T) {
 	}
 
 	// The receiver's own size limit applies too (the sender allows more).
-	updateSettings(t, b.e, func(s *Settings) { s.Sync.Text = true; s.Limits.MaxTotalBytes = 10 })
+	updateSettings(t, b.e, func(s *Settings) {
+		policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Text = true })(s)
+		s.Limits.MaxTotalBytes = 10
+	})
 	sendText(t, a, b, "this is longer than ten bytes")
 	sendText(t, a, b, "short")
 	eventually(t, "short one arrives", func() bool {

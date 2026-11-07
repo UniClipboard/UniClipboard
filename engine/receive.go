@@ -116,10 +116,11 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 		e.cs.mu.Unlock()
 	}
 	e.mu.Lock()
-	sy := e.settings.Value.Sync
+	enabled := e.settings.Value.Sync.Enabled
+	sy := e.policyLocked(BackendTailcat) // the only backend that receives so far
 	running := e.life == LifecycleRunning && e.runtime == RuntimeActive
 	e.mu.Unlock()
-	if !ok || !running || !sy.Enabled {
+	if !ok || !running || !enabled {
 		giveBack(reserved)
 		if dir != "" {
 			_ = os.RemoveAll(dir)
@@ -178,7 +179,7 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 	var hid HistoryID
 	if processed.policy.Persist {
 		e.mu.Lock()
-		ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync == sy && workCtx.Err() == nil
+		ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled && e.policyLocked(BackendTailcat) == sy && workCtx.Err() == nil
 		e.mu.Unlock()
 		if !ok {
 			return
@@ -201,7 +202,7 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 	// Make room in the list; if every entry is in use, the new one loses.
 	for {
 		e.mu.Lock()
-		if e.life != LifecycleRunning || e.runtime != RuntimeActive || e.settings.Value.Sync != sy || workCtx.Err() != nil {
+		if e.life != LifecycleRunning || e.runtime != RuntimeActive || !e.settings.Value.Sync.Enabled || e.policyLocked(BackendTailcat) != sy || workCtx.Err() != nil {
 			e.mu.Unlock()
 			rollback()
 			return

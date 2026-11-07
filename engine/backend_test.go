@@ -11,7 +11,7 @@ import (
 // remembers the views it was offered and lets the test drive target progress.
 type fakeBackend struct {
 	id      PluginID
-	pol     backendPolicy
+	pol     BackendSyncPolicy // applied through settings by multiNode
 	targets []string
 	fail    *Error
 	syncEnd bool // report sent from inside Submit, before later backends register
@@ -25,10 +25,6 @@ type fakeBackend struct {
 
 func (f *fakeBackend) ID() PluginID        { return f.id }
 func (f *fakeBackend) Kind() TransportKind { return TransportPeerSessions }
-func (f *fakeBackend) Policy() backendPolicy {
-	return f.pol
-}
-
 func (f *fakeBackend) Submit(_ context.Context, v backendView, h backendHost) (bool, *Error) {
 	f.calls.Add(1)
 	if f.fail != nil {
@@ -74,7 +70,7 @@ func (f *fakeBackend) lastView(t *testing.T) backendView {
 	return f.views[len(f.views)-1]
 }
 
-var allTypes = backendPolicy{Text: true, Images: true, Files: true}
+var allTypes = DefaultBackendPolicy()
 
 func multiNode(t *testing.T, backs ...*fakeBackend) node {
 	n := newContentNode(t, func(o *Options) {
@@ -83,6 +79,14 @@ func multiNode(t *testing.T, backs ...*fakeBackend) node {
 		}
 	})
 	start(t, n)
+	// A backend's policy is Engine's business: apply each fake's wish via settings.
+	s := state(t, n.e).Settings
+	for _, f := range backs {
+		s.Value.BackendPolicies[f.id] = f.pol
+	}
+	if _, err := n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value}); err != nil {
+		t.Fatal(err)
+	}
 	return n
 }
 
@@ -119,8 +123,8 @@ func kinds(v backendView) (reps, files int) {
 }
 
 func TestBackendsGetIndependentViewsAndThresholds(t *testing.T) {
-	a := &fakeBackend{id: "test.a", pol: backendPolicy{Text: true}, targets: []string{"d1"}}
-	b := &fakeBackend{id: "test.b", pol: backendPolicy{Text: true, Images: true, Files: true, AutoFileMaxBytes: 10}, targets: []string{"repo"}}
+	a := &fakeBackend{id: "test.a", pol: BackendSyncPolicy{Text: true}, targets: []string{"d1"}}
+	b := &fakeBackend{id: "test.b", pol: BackendSyncPolicy{Text: true, Images: true, Files: true, AutoFileMaxBytes: 10}, targets: []string{"repo"}}
 	n := multiNode(t, a, b)
 	var runs atomic.Int32
 	n.e.processors = []*pipelineProcessor{newPipelineProcessor("count", []pipelineEvent{pipelineCaptured}, false, func(context.Context, *processingContext) error {
@@ -206,7 +210,7 @@ func TestBackendFailuresAreIsolated(t *testing.T) {
 }
 
 func TestAggregateWithoutAnyTask(t *testing.T) {
-	filesOnly := &fakeBackend{id: "test.files", pol: backendPolicy{Files: true}, targets: []string{"x"}}
+	filesOnly := &fakeBackend{id: "test.files", pol: BackendSyncPolicy{Files: true}, targets: []string{"x"}}
 	n := multiNode(t, filesOnly)
 	h := importText(t, n.e, "text only")
 	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "pf", LeaseID: h.LeaseID})
@@ -292,4 +296,54 @@ func TestOperationWaitsForLateRegistrations(t *testing.T) {
 	// Content is released once the operation completed and the lease is gone.
 	_ = n.e.ReleaseContent(bg, h.LeaseID)
 	eventually(t, "content freed", func() bool { return stored(n.e) == 0 })
+}
+
+func TestBackendPoliciesAreEffectiveValidatedAndHotUpdated(t *testing.T) {
+	a := &fakeBackend{id: "test.a", pol: allTypes, targets: []string{"x"}}
+	n := multiNode(t, a)
+	s := state(t, n.e).Settings
+	// The read-back map is complete and is a copy.
+	if len(s.Value.BackendPolicies) != 2 || s.Value.BackendPolicies[BackendTailcat] != DefaultBackendPolicy() {
+		t.Fatalf("effective policies = %+v", s.Value.BackendPolicies)
+	}
+	s.Value.BackendPolicies["test.a"] = BackendSyncPolicy{}
+	if state(t, n.e).Settings.Value.BackendPolicies["test.a"] != DefaultBackendPolicy() {
+		t.Fatal("mutating a returned map changed the engine's settings")
+	}
+	// Validation: unknown backend, negative or oversized threshold. Nothing changes on error.
+	for name, mut := range map[string]func(*Settings){
+		"unknown":  func(v *Settings) { v.BackendPolicies["nope"] = DefaultBackendPolicy() },
+		"negative": func(v *Settings) { v.BackendPolicies["test.a"] = BackendSyncPolicy{Text: true, AutoFileMaxBytes: -1} },
+		"huge": func(v *Settings) {
+			v.BackendPolicies["test.a"] = BackendSyncPolicy{Text: true, AutoFileMaxBytes: 3 << 30}
+		},
+	} {
+		cur := state(t, n.e).Settings
+		mut(&cur.Value)
+		if _, err := n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: cur.Revision, Value: cur.Value}); code(err) != CodeInvalidArgument {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	// A missing entry means the default, and the map comes back complete.
+	cur := state(t, n.e).Settings
+	delete(cur.Value.BackendPolicies, "test.a")
+	got, err := n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: cur.Revision, Value: cur.Value})
+	if err != nil || got.Revision != cur.Revision || got.Value.BackendPolicies["test.a"] != DefaultBackendPolicy() {
+		t.Fatalf("%+v %v", got, err)
+	}
+	// Hot update: the next commit sees the new policy, without a restart.
+	h := textAndFile(t, n.e)
+	if _, err := n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: got.Revision, Value: func() Settings {
+		v := got.Value
+		v.BackendPolicies = map[PluginID]BackendSyncPolicy{"test.a": {Text: true}}
+		return v
+	}()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "hot", LeaseID: h.LeaseID}); err != nil {
+		t.Fatal(err)
+	}
+	if reps, files := kinds(a.lastView(t)); reps != 1 || files != 0 {
+		t.Fatalf("saw %d reps %d files after the policy change", reps, files)
+	}
 }

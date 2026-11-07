@@ -374,7 +374,7 @@ func TestPipelineReceiveRechecksAdmissionAfterProcessing(t *testing.T) {
 			}
 			<-entered
 			if mode == "policy" {
-				updateSettings(t, b.e, func(s *Settings) { s.Sync.Text = false })
+				updateSettings(t, b.e, policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Text = false }))
 			} else if err := b.e.Unpair(bg, a.e.self); err != nil {
 				t.Fatal(err)
 			}

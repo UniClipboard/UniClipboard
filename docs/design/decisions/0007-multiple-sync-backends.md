@@ -118,10 +118,11 @@ Engine 在接收准入时按上述去重键取得并发占位；一个副本处�
 - `CommitRequest.BackendIDs`：省略 = 全部；空列表、未知、重复 → invalid_argument；规范化排序后参与幂等比较。
 - 旧 `SubmitContent`/观察路径在只有 tailcat 时行为不变（既有全部测试通过）。
 
+**策略迁移已完成（2026-11-08，不保留兼容）**：`Settings.Sync` 只剩 `Enabled`；新增 `Settings.BackendPolicies map[PluginID]BackendSyncPolicy`（Text/Images/Files/AutoFileMaxBytes），由 Engine 持有并执行，`New`/`UpdateSettings` 校验（未知后端、阈值越界 → invalid_argument）并补全默认，读取返回完整深拷贝，CAS 热更新对之后的提交与传输前复核生效；发送、接收过滤、能力限制（`text_disabled` 等：只有所有后端都不允许某类型才受限，无后端时不限制）和 `appliable` 都读它。桌面 `config.toml` 删除了 `sync.text/images/files`，改为 `[plugins.instances."sync.tailcat".sync]`（省略的布尔项为 true，`auto_file_max_bytes` 默认 0），旧键现在是未知键错误，不做映射。后端接口不再有 `Policy()`，策略归 Engine。
+
 仍是过渡形态、未实现：
 
-- `Settings.BackendPolicies` 与热更新（`Settings` 目前保持可比较，加 map 需同批改调用点）；tailcat 的类型开关暂仍读旧 `Settings.Sync.Text/Images/Files`，`auto_file_max_bytes` 对 tailcat 恒为 0；非 tailcat 后端的策略只能由内部注册给定。
-- 配置文件的 `[plugins.instances.<id>.sync]` 与旧键迁移/混用报错。
+- 实例启用/顺序/`events` 等插件装配配置（`[plugins].order`、`.enabled` 仍未支持，桌面配置只接受 `[plugins.instances."sync.tailcat".sync]`）。
 - 跨后端接收去重（TransferID/ViewHash 占位与持久去重表）、接收侧按后端的类型开关。
 - 历史条目的各后端同步状态摘要（`SyncState` 仍恒为 not_requested）。
 - `MaxSyncBackends`、撤销屏障、对象存储（`repository` 目标）实际协议与外部进程后端。

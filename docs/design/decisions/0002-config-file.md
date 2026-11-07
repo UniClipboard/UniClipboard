@@ -11,7 +11,7 @@
 
 ## 0007 目标扩展（待实现）
 
-[0007](0007-multiple-sync-backends.md) 将目标配置改为全局 `sync.enabled` + 每同步插件的 `.sync` 策略，支持多个后端独立的 text/images/files 与 auto_file_max_bytes。下表描述现有实现：旧 `sync.text/images/files` 在迁移期只映射到 sync.tailcat，与新同名策略混用报错，不再作为其他后端的全局类型限制。全局关闭按 0007 立即取消所有后端在途内容同步；下文“不追溯在途”只继续适用于普通限额和后端策略变更。
+[0007](0007-multiple-sync-backends.md) 将目标配置改为全局 `sync.enabled` + 每同步插件的 `.sync` 策略，支持多个后端独立的 text/images/files 与 auto_file_max_bytes。**已实现（2026-11-08）**：`sync.text/images/files` 已删除（出现即“未知键”错误，不做兼容映射），类型开关与自动文件阈值改为 `[plugins.instances."sync.tailcat".sync]`；桌面目前只接受 `sync.tailcat` 这一个实例。全局关闭按 0007 立即取消所有后端在途内容同步；下文“不追溯在途”只继续适用于普通限额和后端策略变更。
 
 ## 可配置项
 
@@ -23,7 +23,8 @@
 | `limits.max_file_bytes` | 2GB | 之后的新传输;发送与接收都按它检查 |
 | `limits.max_total_bytes` | 4GB | 同上 |
 | `sync.enabled` | true | 立即(false = 不发不收,连接保留) |
-| `sync.text` / `sync.images` / `sync.files` | true | 立即 |
+| `plugins.instances."sync.tailcat".sync.text` / `.images` / `.files` | true | 立即(之后开始的传输;接收同样按它过滤) |
+| `plugins.instances."sync.tailcat".sync.auto_file_max_bytes` | 0 | 立即;只限制自动发送,任一文件超过则该次自动提交整体不发,手动发送不受限;0 = 无额外限制 |
 | `history.max_items` | 10000 | **需重启**(状态里列为 restart_required `history`);范围 1..1000000 |
 | `history.max_bytes` | 4GiB | 同上;只统计历史自己存储的字节,按路径引用的文件不计;不得超过 8GiB |
 | `history.default_ttl_days` | 0 | 同上;0 = 不自动过期,仅作没有处理器显式期限时的默认 |
@@ -42,6 +43,6 @@
 - 对已在进行的传输不追溯:缩小限制只影响之后开始的传输。
 - 接收方超限时,丢弃该剪贴板的数据并保持连接(读完并丢弃已声明的字节),而不是断开会话;
   否则两端限制不一致会造成断线重连循环。
-- `sync.text` 管 `image/*` 以外的所有内存格式(文本、HTML 等);`sync.images` 管 `image/*`;`sync.files` 管文件。
+- `text` 管 `image/*` 以外的所有内存格式(文本、HTML 等);`images` 管 `image/*`;`files` 管文件。
   过滤后为空的剪贴板不发送/不应用。
 - 自定义 `inbox` 是用户的目录:启动清理只删除其中 `clip-*` 子目录,绝不整目录删除。

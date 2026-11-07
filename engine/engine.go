@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -109,12 +110,21 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if opts.DataDir == "" {
 		return nil, newErr(CodeInvalidArgument, "DataDir is required")
 	}
-	if opts.Settings == (Settings{}) {
+	if reflect.DeepEqual(opts.Settings, Settings{}) {
 		opts.Settings = DefaultSettings()
 	}
 	if err := opts.Settings.validate(); err != nil {
 		return nil, err
 	}
+	backendIDs := []PluginID{BackendTailcat}
+	for _, b := range opts.extraBackends {
+		backendIDs = append(backendIDs, b.ID())
+	}
+	pol, perr := normalizePolicies(opts.Settings, backendIDs)
+	if perr != nil {
+		return nil, perr
+	}
+	opts.Settings = pol
 	res, rerr := opts.Resources.withDefaults()
 	if rerr != nil {
 		return nil, rerr

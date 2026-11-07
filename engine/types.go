@@ -42,13 +42,28 @@ type Limits struct {
 	MaxTotalBytes int64 `json:"max_total_bytes"`
 }
 
-// SyncSettings chooses what is synchronized. Enabled=false keeps connections
-// but neither sends nor applies content.
+// SyncSettings is the one global switch for content sync. Enabled=false keeps
+// connections but neither sends nor applies content. What each backend syncs
+// is Settings.BackendPolicies.
 type SyncSettings struct {
 	Enabled bool `json:"enabled"`
-	Text    bool `json:"text"`
-	Images  bool `json:"images"`
-	Files   bool `json:"files"`
+}
+
+// BackendSyncPolicy is the standard per-backend policy Engine enforces for
+// both sending and receiving. Text includes HTML and other non-image
+// formats. AutoFileMaxBytes limits automatically sent files only: if any file
+// is larger, that backend skips the whole automatic commit; 0 means no
+// extra threshold. Manual (explicit) sends ignore it.
+type BackendSyncPolicy struct {
+	Text             bool  `json:"text"`
+	Images           bool  `json:"images"`
+	Files            bool  `json:"files"`
+	AutoFileMaxBytes int64 `json:"auto_file_max_bytes"`
+}
+
+// DefaultBackendPolicy allows everything.
+func DefaultBackendPolicy() BackendSyncPolicy {
+	return BackendSyncPolicy{Text: true, Images: true, Files: true}
 }
 
 // Settings is the complete typed configuration. Parsing files and watching
@@ -58,6 +73,19 @@ type Settings struct {
 	RendezvousURL string       `json:"rendezvous_url"`
 	Limits        Limits       `json:"limits"`
 	Sync          SyncSettings `json:"sync"`
+	// BackendPolicies has one entry per assembled sync backend. Missing
+	// entries take DefaultBackendPolicy; an unknown ID is invalid_argument.
+	// Reads return the complete effective map.
+	BackendPolicies map[PluginID]BackendSyncPolicy `json:"backend_policies"`
+}
+
+func (s Settings) clone() Settings {
+	m := make(map[PluginID]BackendSyncPolicy, len(s.BackendPolicies))
+	for k, v := range s.BackendPolicies {
+		m[k] = v
+	}
+	s.BackendPolicies = m
+	return s
 }
 
 // SettingsState is the effective settings and their revision.

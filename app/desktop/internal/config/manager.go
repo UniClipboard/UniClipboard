@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"time"
 
@@ -103,7 +104,7 @@ func (m *Manager) Reload() error {
 	m.mu.Unlock()
 	if err != nil {
 		m.logf("config: %s not applied: %v", m.path, err)
-	} else if c != old {
+	} else if !reflect.DeepEqual(c, old) {
 		m.logf("config: reloaded")
 	}
 	if m.OnChange != nil {

@@ -21,7 +21,7 @@ type sendSet struct {
 	total int64
 }
 
-func syncAllowsPart(p *partRec, sy backendPolicy) bool {
+func syncAllowsPart(p *partRec, sy BackendSyncPolicy) bool {
 	switch {
 	case p.desc.Kind == PartFile:
 		return sy.Files
@@ -33,7 +33,7 @@ func syncAllowsPart(p *partRec, sy backendPolicy) bool {
 }
 
 // buildSendSet applies the sync filters (0002) to a content.
-func buildSendSet(c *contentObj, sy backendPolicy) sendSet {
+func buildSendSet(c *contentObj, sy BackendSyncPolicy) sendSet {
 	set := sendSet{c: c}
 	var snap clip.Snapshot
 	for _, p := range c.parts {
@@ -90,7 +90,7 @@ func checkLimits(set sendSet, lim Limits) *Error {
 // sendSet writes the content to w. It runs on the session's writer, once per
 // device. Everything that can fail without touching the stream (settings,
 // files that changed) is checked before the first byte is written.
-func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, ts int64, set sendSet, policy func() backendPolicy) (broken bool, err error) {
+func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, ts int64, set sendSet, policy func() BackendSyncPolicy) (broken bool, err error) {
 	e.mu.Lock()
 	if err := e.needNetworkLocked(); err != nil {
 		e.mu.Unlock()

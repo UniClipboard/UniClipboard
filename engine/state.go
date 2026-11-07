@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -159,15 +160,15 @@ func (e *Engine) capsLocked() Capabilities {
 	if !sy.Enabled {
 		why, blocked = append(why, "sync_disabled"), true
 	}
-	if !sy.Text {
+	if !e.typeAllowedLocked("text") {
 		why = append(why, "text_disabled")
 		eff.ReadFormats, eff.WriteFormats = without(eff.ReadFormats, MimeText, MimeHTML), without(eff.WriteFormats, MimeText, MimeHTML)
 	}
-	if !sy.Images {
+	if !e.typeAllowedLocked("images") {
 		why = append(why, "images_disabled")
 		eff.ReadFormats, eff.WriteFormats = without(eff.ReadFormats, MimePNG), without(eff.WriteFormats, MimePNG)
 	}
-	if !sy.Files {
+	if !e.typeAllowedLocked("files") {
 		why = append(why, "files_disabled")
 		eff.ReadFiles, eff.WriteFiles = false, false
 	}
@@ -210,7 +211,7 @@ func (e *Engine) stateLocked() (State, *Error) {
 	st := State{HistoryRevision: hrev,
 		InstanceID: e.instance, Revision: e.rev, Lifecycle: e.life, Runtime: e.runtime,
 		Self:         Self{ID: e.self, Name: e.selfNameLocked()},
-		Settings:     e.settings,
+		Settings:     e.settingsLocked(),
 		Capabilities: e.capsLocked(),
 		Peers:        peers, Pending: pend,
 		PairingCode: e.code.state(now),
@@ -296,20 +297,84 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	}
 	req.Value.DeviceName = strings.TrimSpace(req.Value.DeviceName)
 	req.Value.RendezvousURL = strings.TrimRight(req.Value.RendezvousURL, "/")
+	value, perr := normalizePolicies(req.Value, e.backendIDs())
+	if perr != nil {
+		return SettingsState{}, perr
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if req.ExpectedRevision != e.settings.Revision {
 		return SettingsState{}, newErr(CodeConflict, "the settings changed; read them again")
 	}
-	if req.Value == e.settings.Value {
-		return e.settings, nil
+	if reflect.DeepEqual(value, e.settings.Value) {
+		return e.settingsLocked(), nil
 	}
-	e.settings = SettingsState{Revision: e.settings.Revision + 1, Value: req.Value}
+	e.settings = SettingsState{Revision: e.settings.Revision + 1, Value: value}
 	if !req.Value.Sync.Enabled && (e.ticket == nil || e.ticket.history == "") {
 		e.killTicketLocked() // a stored record is local: pausing sync does not void its application
 	}
 	e.commitLocked(EventSettings, EventCapabilities)
-	return e.settings, nil
+	return e.settingsLocked(), nil
+}
+
+// settingsLocked returns a copy that shares nothing with the live settings.
+func (e *Engine) settingsLocked() SettingsState {
+	return SettingsState{Revision: e.settings.Revision, Value: e.settings.Value.clone()}
+}
+
+func (e *Engine) backendIDs() []PluginID {
+	ids := make([]PluginID, len(e.backends))
+	for i, b := range e.backends {
+		ids[i] = b.ID()
+	}
+	return ids
+}
+
+// normalizePolicies checks the backend policies against the assembled
+// backends and returns settings with the complete effective map.
+func normalizePolicies(s Settings, ids []PluginID) (Settings, *Error) {
+	out := make(map[PluginID]BackendSyncPolicy, len(ids))
+	for _, id := range ids {
+		out[id] = DefaultBackendPolicy()
+	}
+	for id, p := range s.BackendPolicies {
+		if _, ok := out[id]; !ok {
+			return s, newErr(CodeInvalidArgument, "backend_policies: unknown sync backend")
+		}
+		out[id] = p
+	}
+	s.BackendPolicies = out
+	return s, nil
+}
+
+// policyLocked is the effective policy of a backend. e.mu held.
+func (e *Engine) policyLocked(id PluginID) BackendSyncPolicy {
+	if p, ok := e.settings.Value.BackendPolicies[id]; ok {
+		return p
+	}
+	return DefaultBackendPolicy()
+}
+
+func (e *Engine) policyOf(id PluginID) BackendSyncPolicy {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.policyLocked(id)
+}
+
+// typeAllowedLocked reports whether some backend syncs this kind of content.
+// With no backend nothing is restricted: capture and history do not depend on
+// sync policy. kind is "text", "images" or "files". e.mu held.
+func (e *Engine) typeAllowedLocked(kind string) bool {
+	if len(e.backends) == 0 {
+		return true
+	}
+	for _, b := range e.backends {
+		p := e.policyLocked(b.ID())
+		if kind == "text" && p.Text || kind == "images" && p.Images || kind == "files" && p.Files {
+			return true
+		}
+	}
+	return false
 }
 
 func contains(s []string, x string) bool {

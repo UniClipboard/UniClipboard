@@ -627,7 +627,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 		return ApplyTicket{}, newErr(CodeConflict, "the clipboard changed since the last observation")
 	}
 	// Local content: the sync type switches do not apply, only what the host can write.
-	if !e.appliable(c, SyncSettings{Enabled: true, Text: true, Images: true, Files: true}) {
+	if !e.appliable(c, DefaultBackendPolicy()) {
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
 	t := &applyTicket{token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID}

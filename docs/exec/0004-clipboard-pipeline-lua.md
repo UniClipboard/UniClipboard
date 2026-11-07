@@ -65,7 +65,7 @@
 - [ ] ObserveClipboard、SubmitContent、接收入口统一进入流水线。（现状：观察与显式提交共用 submission 记录，请求在处理前查重，并发合并；接收入口已共用处理核心，但没有 submission 记录，也没有 `recv:` 请求键，等跨后端去重/Received 槽位预留（P2 去重表、提交屏障）一起做，避免内部接收占用宿主提交容量。）RequestID 在处理前查重，覆盖同一请求并发到达，重复请求不重复执行插件或写历史。
 - [ ] 区分历史内容与网络过滤后的发送视图；（现状：发送视图 `buildSendSet` 与提交内容已分开，过滤后内容不被改动，提交时与传输前均复核，已有测试；历史库本身属 P2，故未勾选。）保留提交时和实际传输前两次授权、配置及大小检查。
 - [ ] 将后端派发与通知分离；保留每 (BackendID, TargetKind, TargetID) 一个在途加一个待发、替换、离线不排队、部分成功语义。
-  - 进度（2026-11-08）：内部多后端抽象已落地（见 [0007 实现登记](../design/decisions/0007-multiple-sync-backends.md)）：`syncBackend`/`backendHost`、tailcat 适配器、各后端独立视图/策略/阈值、`BackendResults`、聚合 Operation 与目标三元组、`BackendIDs` 选择，并用多个假后端测试。仍未做：每 (BackendID, TargetKind, TargetID) 的“一个在途加一个待发”目前只由 tailcat 的 session 层按设备保证，通用层尚无；全局关闭时对在途内容传输的统一取消也仍依赖 tailcat 现有实现，故不勾选。
+  - 进度（2026-11-08）：内部多后端抽象已落地（见 [0007 实现登记](../design/decisions/0007-multiple-sync-backends.md)）：`syncBackend`/`backendHost`、tailcat 适配器、各后端独立视图/策略/阈值、`BackendResults`、聚合 Operation 与目标三元组、`BackendIDs` 选择，并用多个假后端测试。策略已迁到 `Settings.BackendPolicies`（热更新、校验、桌面 `[plugins.instances."sync.tailcat".sync]`，旧 `sync.text/images/files` 已删除不兼容）。仍未做：每 (BackendID, TargetKind, TargetID) 的“一个在途加一个待发”目前只由 tailcat 的 session 层按设备保证，通用层尚无；全局关闭时对在途内容传输的统一取消也仍依赖 tailcat 现有实现，故不勾选。
 - [ ] 处理调用采用快照/暂存/校验后提交；（现状：快照/暂存/回滚、锁外执行、Stop/挂起后丢弃迟到结果已有测试；统一提交协调器与提交屏障尚未实现。）不持 Engine 业务锁执行插件。取消或代次失效后禁止迟到提交。
 
 退出条件：无插件的网络行为与原来一致；新增本机 commit 路径可独立测试，事件丢失或慢观察者不影响派发。

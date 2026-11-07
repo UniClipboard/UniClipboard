@@ -376,8 +376,7 @@ func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket,
 	default:
 		return ApplyTicket{}, newErr(CodeUnsupported, "the host cannot write the clipboard")
 	}
-	sy := e.settings.Value.Sync
-	if !sy.Enabled {
+	if !e.settings.Value.Sync.Enabled {
 		return ApplyTicket{}, newErr(CodeSyncDisabled, "sync is paused")
 	}
 	if e.ticket != nil {
@@ -395,7 +394,7 @@ func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket,
 	if rc == nil {
 		return ApplyTicket{}, newErr(CodeNotFound, "no such received content (it may have expired)")
 	}
-	if !e.appliable(rc.c, sy) {
+	if !e.appliable(rc.c, e.policyLocked(BackendTailcat)) {
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
 	t := &applyTicket{token: ApplyToken(e.newID()), receipt: rc.ReceiptID, content: rc.c.id, rc: rc}
@@ -408,7 +407,7 @@ func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket,
 
 // appliable reports whether some part can be written by this host under the
 // current sync settings. e.mu held.
-func (e *Engine) appliable(c *contentObj, sy SyncSettings) bool {
+func (e *Engine) appliable(c *contentObj, sy BackendSyncPolicy) bool {
 	for _, p := range c.parts {
 		switch {
 		case p.desc.Kind == PartFile:

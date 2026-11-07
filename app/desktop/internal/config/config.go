@@ -69,6 +69,7 @@ type Config struct {
 	Inbox         string  `toml:"inbox" json:"inbox"`
 	Limits        Limits  `toml:"limits" json:"limits"`
 	Sync          Sync    `toml:"sync" json:"sync"`
+	Plugins       Plugins `toml:"plugins" json:"plugins"`
 	History       History `toml:"history" json:"history"`
 }
 
@@ -85,18 +86,40 @@ type Limits struct {
 	MaxTotalBytes Size `toml:"max_total_bytes" json:"max_total_bytes"`
 }
 
+// Sync is the one global switch for content sync.
 type Sync struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
-	Text    bool `toml:"text" json:"text"`
-	Images  bool `toml:"images" json:"images"`
-	Files   bool `toml:"files" json:"files"`
+}
+
+// Plugins holds per-plugin-instance settings. Only the standard sync policy
+// of the built-in backend is supported so far.
+type Plugins struct {
+	Instances map[string]Instance `toml:"instances" json:"instances,omitempty"`
+}
+
+type Instance struct {
+	Sync BackendSync `toml:"sync" json:"sync"`
+}
+
+// BackendSync is one backend's standard sync policy. Omitted booleans mean
+// true; AutoFileMaxBytes 0 means no extra threshold for automatic sends.
+type BackendSync struct {
+	Text             *bool `toml:"text" json:"text,omitempty"`
+	Images           *bool `toml:"images" json:"images,omitempty"`
+	Files            *bool `toml:"files" json:"files,omitempty"`
+	AutoFileMaxBytes Size  `toml:"auto_file_max_bytes" json:"auto_file_max_bytes"`
+}
+
+func (b BackendSync) policy() engine.BackendSyncPolicy {
+	on := func(p *bool) bool { return p == nil || *p }
+	return engine.BackendSyncPolicy{Text: on(b.Text), Images: on(b.Images), Files: on(b.Files), AutoFileMaxBytes: int64(b.AutoFileMaxBytes)}
 }
 
 // Default returns the configuration used for keys the file leaves out.
 func Default() Config {
 	return Config{
 		Limits:  Limits{MaxFileBytes: HardMaxFile, MaxTotalBytes: HardMaxTotal},
-		Sync:    Sync{Enabled: true, Text: true, Images: true, Files: true},
+		Sync:    Sync{Enabled: true},
 		History: History{MaxItems: 10000, MaxBytes: 4 << 30},
 	}
 }
@@ -123,9 +146,19 @@ func Parse(data []byte) (Config, error) {
 func (c Config) Settings() engine.Settings {
 	return engine.Settings{
 		DeviceName: c.DeviceName, RendezvousURL: c.RendezvousURL,
-		Limits: engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
-		Sync:   engine.SyncSettings(c.Sync),
+		Limits:          engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
+		Sync:            engine.SyncSettings(c.Sync),
+		BackendPolicies: c.backendPolicies(),
 	}
+}
+
+// backendPolicies is the complete policy of every backend this build ships.
+func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
+	out := map[engine.PluginID]engine.BackendSyncPolicy{engine.BackendTailcat: engine.DefaultBackendPolicy()}
+	for id, in := range c.Plugins.Instances {
+		out[engine.PluginID(id)] = in.Sync.policy()
+	}
+	return out
 }
 
 // Validate checks values; the engine's rules apply to everything the engine
@@ -134,6 +167,11 @@ func (c Config) Settings() engine.Settings {
 func (c Config) Validate() error {
 	if c.Inbox != "" && !filepath.IsAbs(c.Inbox) {
 		return errors.New("inbox: must be an absolute path")
+	}
+	for id := range c.Plugins.Instances {
+		if engine.PluginID(id) != engine.BackendTailcat {
+			return fmt.Errorf("plugins.instances: %q is not an installed sync plugin", id)
+		}
 	}
 	h := c.History
 	switch {
@@ -188,9 +226,16 @@ const Template = `# unic configuration. Saving this file applies it at once.
 [sync]
 # enabled = false pauses sync both ways; devices stay connected.
 # enabled = true
+
+# What the built-in device-to-device sync (sync.tailcat) sends and accepts.
+# Applies to transfers that start after the change. Uncomment the header too.
+# [plugins.instances."sync.tailcat".sync]
 # text = true     # text, HTML and other non-image formats
 # images = true
 # files = true
+# Files copied automatically above this size are not sent (and neither is the
+# rest of that copy); sending by hand ignores it. 0 = no extra limit.
+# auto_file_max_bytes = "100MB"
 `
 
 // WriteTemplate creates path with the template unless it already exists.

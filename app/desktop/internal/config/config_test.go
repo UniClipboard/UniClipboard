@@ -2,8 +2,10 @@ package config
 
 import (
 	"context"
+	"github.com/uniclipboard/unic/engine"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,7 +14,7 @@ import (
 
 func TestParseDefaultsAndValues(t *testing.T) {
 	c, err := Parse([]byte(""))
-	if err != nil || c != Default() {
+	if err != nil || !reflect.DeepEqual(c, Default()) {
 		t.Fatalf("empty file: %+v, %v", c, err)
 	}
 	c, err = Parse([]byte(`
@@ -21,14 +23,21 @@ device_name = "laptop"
 max_file_bytes = "512MB"
 max_total_bytes = 1048576
 [sync]
+enabled = false
+[plugins.instances."sync.tailcat".sync]
 images = false
+auto_file_max_bytes = "100MB"
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.DeviceName != "laptop" || c.Limits.MaxFileBytes != 512<<20 || c.Limits.MaxTotalBytes != 1<<20 ||
-		c.Sync.Images || !c.Sync.Text || !c.Sync.Enabled {
+		c.Sync.Enabled {
 		t.Errorf("unexpected: %+v", c)
+	}
+	p := c.Settings().BackendPolicies[engine.BackendTailcat]
+	if p.Images || !p.Text || !p.Files || p.AutoFileMaxBytes != 100<<20 {
+		t.Errorf("policy = %+v (omitted booleans must stay true)", p)
 	}
 }
 
@@ -42,7 +51,10 @@ func TestParseRejects(t *testing.T) {
 		"over hard cap": "[limits]\nmax_file_bytes = \"3GiB\"",
 		"zero":          "[limits]\nmax_total_bytes = 0",
 		"bad size":      "[limits]\nmax_file_bytes = \"lots\"",
-		"wrong type":    "[sync]\ntext = \"yes\"",
+		"wrong type":    "[sync]\nenabled = \"yes\"",
+		"old sync key":  "[sync]\ntext = false",
+		"other plugin":  "[plugins.instances.\"example.webdav\".sync]\ntext = false",
+		"bad threshold": "[plugins.instances.\"sync.tailcat\".sync]\nauto_file_max_bytes = \"3GiB\"",
 		"no history":    "[history]\nmax_items = 0",
 		"history size":  "[history]\nmax_bytes = \"9GiB\"",
 		"negative ttl":  "[history]\ndefault_ttl_days = -1",
@@ -59,7 +71,7 @@ func TestOpenCreatesTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Current() != Default() {
+	if !reflect.DeepEqual(m.Current(), Default()) {
 		t.Errorf("template should be a no-op, got %+v", m.Current())
 	}
 	if b, _ := os.ReadFile(p); !strings.Contains(string(b), "device_name") {

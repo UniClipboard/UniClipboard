@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -144,7 +145,7 @@ func (n *Node) pushSettings(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if st.Settings.Value == want {
+		if reflect.DeepEqual(st.Settings.Value, want) {
 			return nil
 		}
 		_, err = n.e.UpdateSettings(ctx, engine.UpdateSettingsRequest{ExpectedRevision: st.Settings.Revision, Value: want})

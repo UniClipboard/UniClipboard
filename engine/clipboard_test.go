@@ -350,7 +350,7 @@ func TestBeginApplyChecks(t *testing.T) {
 		t.Fatalf("unsupported: %v", err)
 	}
 	_ = b.e.UpdateHostCapabilities(bg, hostCaps)
-	updateSettings(t, b.e, func(s *Settings) { s.Sync.Text = false })
+	updateSettings(t, b.e, policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Text = false }))
 	if _, err := b.e.BeginApply(bg, req); code(err) != CodeUnsupported {
 		t.Fatalf("text disabled: %v", err)
 	}

@@ -83,7 +83,7 @@ type Network interface {
 func DefaultSettings() Settings {
 	return Settings{
 		Limits: Limits{MaxFileBytes: wire.MaxFileBytes, MaxTotalBytes: wire.MaxTotal},
-		Sync:   SyncSettings{Enabled: true, Text: true, Images: true, Files: true},
+		Sync:   SyncSettings{Enabled: true},
 	}
 }
 
@@ -105,6 +105,11 @@ func (s Settings) validate() *Error {
 	if u := strings.TrimRight(s.RendezvousURL, "/"); u != "" {
 		if p, err := url.Parse(u); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" {
 			return newErr(CodeInvalidArgument, "rendezvous_url: must be an http(s) URL")
+		}
+	}
+	for _, p := range s.BackendPolicies {
+		if p.AutoFileMaxBytes < 0 || p.AutoFileMaxBytes > wire.MaxFileBytes {
+			return errf(CodeInvalidArgument, "auto_file_max_bytes: must be between 0 and %d bytes (2GiB)", int64(wire.MaxFileBytes))
 		}
 	}
 	if f := s.Limits.MaxFileBytes; f <= 0 || f > wire.MaxFileBytes {

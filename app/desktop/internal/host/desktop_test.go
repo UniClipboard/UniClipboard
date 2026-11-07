@@ -322,13 +322,13 @@ func TestPausedSyncKeepsConnection(t *testing.T) {
 func TestSyncTypeSwitches(t *testing.T) {
 	a, b := newHost(t, false), newHost(t, false)
 	pair(t, a, b)
-	b.edit("[sync]\ntext = false")
+	b.edit("[plugins.instances.\"sync.tailcat\".sync]\ntext = false")
 	a.board.user(text("no text please"))
 	time.Sleep(300 * time.Millisecond)
 	if got(b) != "" {
 		t.Fatalf("text arrived though it is off: %q", got(b))
 	}
-	b.edit("[sync]\ntext = true")
+	b.edit("[plugins.instances.\"sync.tailcat\".sync]\ntext = true")
 	a.board.user(text("text is back"))
 	eventually(t, "text again", func() bool { return got(b) == "text is back" })
 }

@@ -194,7 +194,7 @@ func TestSubmitFollowsSyncSettings(t *testing.T) {
 		}
 	}
 	// Text off: only the file goes.
-	set(func(s *Settings) { s.Sync.Text = false })
+	set(policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Text = false }))
 	h, _ := n.e.ImportContent(bg, two())
 	id, err := submit(n.e, h)
 	if err != nil {
@@ -206,12 +206,12 @@ func TestSubmitFollowsSyncSettings(t *testing.T) {
 		t.Fatalf("filter ignored: %d representations, %d files", len(reps), len(files))
 	}
 	// Nothing enabled for this content, or everything paused: refused.
-	set(func(s *Settings) { s.Sync.Files = false })
+	set(policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Files = false }))
 	h, _ = n.e.ImportContent(bg, two())
 	if _, err := submit(n.e, h); code(err) != CodeSyncDisabled {
 		t.Fatalf("nothing enabled: %v", err)
 	}
-	set(func(s *Settings) { s.Sync = SyncSettings{Enabled: false, Text: true, Images: true, Files: true} })
+	set(func(s *Settings) { s.Sync = SyncSettings{Enabled: false} })
 	if _, err := submit(n.e, h); code(err) != CodeSyncDisabled {
 		t.Fatalf("paused: %v", err)
 	}
@@ -464,7 +464,7 @@ func contentOf(t *testing.T, e *Engine, r ReceivedContent) (reps, files map[stri
 func TestCommitReportsPolicyFilteredAndKeepsFullContent(t *testing.T) {
 	n, _ := senderNode(t, nil)
 	s := state(t, n.e).Settings
-	s.Value.Sync.Text, s.Value.Sync.Files = false, false
+	policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Text, p.Files = false, false })(&s.Value)
 	if _, err := n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value}); err != nil {
 		t.Fatal(err)
 	}

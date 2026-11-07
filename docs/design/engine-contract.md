@@ -18,15 +18,35 @@
 7. 普通查询和事件不含设备地址、票据、剪贴板正文、文件内容或绝对路径。内容只能显式读取，地址和配对码只能显式获取。日志和错误必须脱敏，包括第三方错误。
 8. v0.1 保留 wire v2，不新增远端 ACK、断点续传、全文检索或可靠离线投递；本机历史基础筛选见历史扩展契约。
 
+### 0007 多后端同步扩展（待实现）
+
+[0007](decisions/0007-multiple-sync-backends.md) 确定全局 sync.enabled、各实例启用、各后端独立的 text/images/files/自动文件阈值三层控制，允许多个后端并发，结果/目标/资源按后端隔离。目标 Settings.Sync 只保留 Enabled，新增 BackendPolicies 映射；下文旧 SyncSettings 类型字段及过滤/在途语义描述既有实现，接入时须同批迁移 SDK、宿主与测试。全局关闭立即取消所有后端内容工作，不能被手动发送绕过；本机历史、处理与写回保留。P2P 连接 API 仅为 peer_sessions 扩展，WebDAV 对象协议另定。
+
 ### 0004 扩展边界（待实现）
 
 [0004](decisions/0004-clipboard-pipeline-lua.md) 已确定：本机持久历史和处理流水线均由 Engine 管理，业务实现放在 `engine/`；宿主只经 SDK 访问，不另建历史或流水线。[本机历史契约](history-contract.md) 已确定历史 API、筛选分页、稳定 ID、内容租约、更新/删除、容量与过期、接收列表映射、历史应用和事件恢复。该契约为本文的目标扩展，尚未实现；其明确声明的历史语义优先于本文既有实例内接收列表约定。临时资源启动清理不得删除有效历史；标签与过期不进 wire，不承诺重启后的待应用可靠投递。
 
 ### 流水线提交扩展（待实现）
 
-[流水线提交契约](pipeline-contract.md) 确定新增 `CommitContent/GetSubmission`、提交结果与网络结果分离、独立请求幂等表、旧 SubmitContent 门面和 ObservationResult 扩展。无目标、同步关闭或无后端仍可本机 commit；旧发送错误不能用于判断历史是否保存。以下既有发送/观察章节描述原 v0.1 API，接入 0004 时按该扩展同步迁移代码、宿主和测试。自动写回票据及 RPC 细节仍待补齐。
+[流水线提交契约](pipeline-contract.md) 确定新增 `CommitContent/GetSubmission`、提交结果与网络结果分离、独立请求幂等表、旧 SubmitContent 门面和 ObservationResult 扩展。无目标、同步关闭或无后端仍可本机 commit；旧发送错误不能用于判断历史是否保存。以下既有发送/观察章节描述原 v0.1 API，接入 0004 时按该扩展同步迁移代码、宿主和测试。[自动写回契约](clipboard-writeback-contract.md) 已确定 BeginWriteback、显式 guard、有界待办、回声和深度语义；RPC 核心帧与控制载荷见[RPC 核心协议](plugin-rpc-contract.md)，[后端业务 DTO 与撤销屏障](sync-backend-contract.md) 已定义，实现及互操作测试仍待完成。
+
+三类入口的状态转换、Stop/策略与 commit 的序列化屏障、Received 槽位与成功去重记录的发布、引用/配额交接及重启边界见[流水线契约 §7](pipeline-contract.md#7-状态转换与资源交接)。公开 submission Phase 不增加内部准备状态；接收完成、应用和历史删除不能混作一个终态。
+
+### 后端装配与密钥迁移扩展（待实现）
+
+[迁移契约](backend-migration-contract.md) 已确定旧 tc.* 密钥/完整地址的分步激活、独立数据目录/运行锁和失败恢复。P5 同批移除公开 Network/Options.Network，新增 PluginProcesses/Plugins；SDK 零装配改为本机模式，桌面宿主显式装配发行版 tailcat。下文默认 tailcat、Network 注入和 DataDir 即可联网的说明只描述现有实现，不可据此保留第二条生产网络路径。运行期身份只由后端私有文件提供，后端不得打开 Engine SQLite。
+
+### Lua 运行时扩展（待实现）
+
+[Lua 运行时契约](lua-runtime-contract.md) 确定增强 VM、逐项白名单、执行/编译/原生操作/逻辑分配预算及失败状态处置。四项上游探针已通过，不代表增强预算或完整沙箱通过验收；不使用 SetMx，不宣称精确堆内存隔离。运行时细节不进入公开 SDK 类型。
+
+### SDK 类型与错误扩展（待实现）
+
+[SDK 扩展类型契约](sdk-extension-contract.md) 确定历史/提交/写回 DTO、可选值、插件装配及 Lua 源码输入、标准策略唯一存储、严格 Config 校验和错误分类。目标新增 invalid_config/plugin_panic，与已定义 RPC 对齐；既有 errors.go 尚无这两个码，不能宣称已实现。各阶段同步代码、适配和实现登记，内部类型不进入公开 SDK。
 
 ### 插件与同步后端扩展（待实现）
+
+独立后端迁移后的状态快照、审批与会话 token、传输前授权、接收准入/流和撤销生效屏障见[同步后端业务契约](sync-backend-contract.md)。该扩展要求撤销成功前取得后端确认或完成进程回收；下文既有 Unpair 的异步资源关闭说明只描述当前进程内实现。
 
 [插件契约 v0.1](plugin-contract.md) 定义 Go/Lua 统一插件与最小模板。Go 插件通过独立常驻进程/RPC 接入，安装优先平台预编译，缺失时可 --build 构建插件自身，不重建宿主；Engine 拥有注册、生命周期、配置、串行处理、commit 和操作状态；现有 tailcat 网络、会话与传输迁入默认 Go 插件 `sync.tailcat`，公共配对/发送/接收 API 保持门面，审批、信任和策略最终由 Engine 控制。通知总线不承担同步调度。默认后端保留 wire v2 和现有行为；无后端允许本机历史工作。插件 API 和同步流式 DTO 尚未实现，不计入第 14 节已完成功能。
 
@@ -315,7 +335,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2d（已实现并有测试）**：`ObserveClipboard`、`BeginApply`、`ReportApplyResult`、`State.ActiveApply`、`apply` 事件。公开 Engine 本身不读写系统剪贴板，由宿主适配调用这些方法。
 
-**0004 提交扩展（提交结果与幂等契约已确定、实现与测试待完成）**：见[流水线提交契约](pipeline-contract.md)。自动写回协议仍未定稿。
+**0004 提交扩展（提交结果与幂等契约已确定、实现与测试待完成）**：见[流水线提交契约](pipeline-contract.md)。自动写回协议见[写回契约](clipboard-writeback-contract.md)，待实现。
 
 **0004 历史扩展（契约已确定、实现与测试待完成）**：见[本机历史契约](history-contract.md)。现有代码仍采用下列临时资源/接收列表语义；历史实现时必须同步调整清理、持有关系与应用规则，不能以已有测试通过代表历史验收通过。
 

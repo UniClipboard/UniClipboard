@@ -9,6 +9,10 @@
   唯一例外是启动时:此时没有"上一份",配置有错则拒绝启动并说明原因。
 - `unic config` 显示当前生效的配置、文件路径和最近一次加载错误;`unic config path` 只打印路径。API:`GET /v1/config`。
 
+## 0007 目标扩展（待实现）
+
+[0007](0007-multiple-sync-backends.md) 将目标配置改为全局 `sync.enabled` + 每同步插件的 `.sync` 策略，支持多个后端独立的 text/images/files 与 auto_file_max_bytes。下表描述现有实现：旧 `sync.text/images/files` 在迁移期只映射到 sync.tailcat，与新同名策略混用报错，不再作为其他后端的全局类型限制。全局关闭按 0007 立即取消所有后端在途内容同步；下文“不追溯在途”只继续适用于普通限额和后端策略变更。
+
 ## 可配置项
 
 | 键 | 默认 | 生效时机 |

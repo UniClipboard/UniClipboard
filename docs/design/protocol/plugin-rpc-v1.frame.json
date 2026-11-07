@@ -1,0 +1,129 @@
+{
+  "protocol": 1,
+  "byte_order": "big-endian",
+  "header_bytes": 32,
+  "fields": [
+    {
+      "name": "magic",
+      "offset": 0,
+      "bytes": 4,
+      "hex": "554e5250"
+    },
+    {
+      "name": "version",
+      "offset": 4,
+      "bytes": 2,
+      "value": 1
+    },
+    {
+      "name": "type",
+      "offset": 6,
+      "bytes": 1
+    },
+    {
+      "name": "flags",
+      "offset": 7,
+      "bytes": 1,
+      "value": 0
+    },
+    {
+      "name": "request_id",
+      "offset": 8,
+      "bytes": 8
+    },
+    {
+      "name": "stream_id",
+      "offset": 16,
+      "bytes": 8
+    },
+    {
+      "name": "payload_bytes",
+      "offset": 24,
+      "bytes": 4
+    },
+    {
+      "name": "reserved",
+      "offset": 28,
+      "bytes": 4,
+      "value": 0
+    }
+  ],
+  "types": {
+    "request": 1,
+    "response": 2,
+    "cancel": 3,
+    "data": 4,
+    "window": 5,
+    "end": 6,
+    "hello": 7,
+    "hello_ack": 8
+  },
+  "payload_schemas": {
+    "request": "request",
+    "response": "response",
+    "window": "window",
+    "end": "end",
+    "hello": "hello",
+    "hello_ack": "hello_ack"
+  },
+  "request_params": {
+    "plugin.init": "init",
+    "plugin.start": "empty",
+    "plugin.close": "empty",
+    "plugin.process": "process",
+    "plugin.on_event": "event",
+    "host.notify": "notify",
+    "stream.open": "stream",
+    "backend.bind": "sync_bind",
+    "backend.apply_state": "sync_apply_state",
+    "backend.pairing_address": "sync_address_request",
+    "backend.connect": "sync_connect",
+    "backend.send": "sync_send",
+    "sync_host.check_peer": "sync_check_peer",
+    "sync_host.peer_event": "sync_peer_event",
+    "sync_host.introduce": "sync_introduce",
+    "sync_host.authorize_send": "sync_authorize",
+    "sync_host.open_send_part": "sync_open_send_part",
+    "sync_host.receive_open": "sync_receive_open",
+    "sync_host.receive": "sync_receive",
+    "sync_host.receive_part": "sync_receive_part"
+  },
+  "success_results": {
+    "plugin.init": "empty",
+    "plugin.start": "empty",
+    "plugin.close": "empty",
+    "plugin.process": "patch",
+    "plugin.on_event": "empty",
+    "host.notify": "empty",
+    "stream.open": "empty",
+    "backend.bind": "empty",
+    "backend.apply_state": "sync_revision",
+    "backend.pairing_address": "sync_address_result",
+    "backend.connect": "sync_connect_result",
+    "backend.send": "sync_send_result",
+    "sync_host.check_peer": "sync_peer_decision",
+    "sync_host.peer_event": "empty",
+    "sync_host.introduce": "empty",
+    "sync_host.authorize_send": "sync_send_grant",
+    "sync_host.open_send_part": "stream",
+    "sync_host.receive_open": "sync_receive_grant",
+    "sync_host.receive": "sync_receive_result",
+    "sync_host.receive_part": "empty"
+  },
+  "scope": "Core RPC plus peer_sessions profile. Multi-backend identity/policy bindings are defined; object_store profile, runtime implementation and interoperability remain pending.",
+  "sync_method_directions": {
+    "backend.bind": "engine_to_plugin",
+    "backend.apply_state": "engine_to_plugin",
+    "backend.pairing_address": "engine_to_plugin",
+    "backend.connect": "engine_to_plugin",
+    "backend.send": "engine_to_plugin",
+    "sync_host.check_peer": "plugin_to_engine",
+    "sync_host.peer_event": "plugin_to_engine",
+    "sync_host.introduce": "plugin_to_engine",
+    "sync_host.authorize_send": "plugin_to_engine",
+    "sync_host.open_send_part": "plugin_to_engine",
+    "sync_host.receive_open": "plugin_to_engine",
+    "sync_host.receive": "plugin_to_engine",
+    "sync_host.receive_part": "plugin_to_engine"
+  }
+}

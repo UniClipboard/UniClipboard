@@ -1,0 +1,1338 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "unic plugin RPC v1 core and peer_sessions profile; multi-backend bindings and policy",
+  "$defs": {
+    "uint64": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "maxLength": 20
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9_-]*)+$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "api_version": {
+          "const": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "processor",
+              "observer",
+              "sync_backend"
+            ]
+          },
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "transport_kind": {
+          "enum": [
+            "peer_sessions",
+            "object_store"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "api_version",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "control_bytes": {
+          "type": "integer",
+          "minimum": 4096,
+          "maximum": 1048576
+        },
+        "data_bytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65536
+        },
+        "stream_window_bytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "maximum": 1048576
+        },
+        "max_streams": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "max_requests": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 128
+        }
+      },
+      "required": [
+        "control_bytes",
+        "data_bytes",
+        "stream_window_bytes",
+        "max_streams",
+        "max_requests"
+      ],
+      "additionalProperties": false
+    },
+    "hello": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": 1
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expected_spec": {
+          "$ref": "#/$defs/spec"
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        }
+      },
+      "required": [
+        "protocol",
+        "nonce",
+        "expected_spec",
+        "limits"
+      ],
+      "additionalProperties": false
+    },
+    "hello_ack": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": 1
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "spec": {
+          "$ref": "#/$defs/spec"
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        }
+      },
+      "required": [
+        "protocol",
+        "nonce",
+        "spec",
+        "limits"
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_argument",
+            "invalid_config",
+            "invalid_state",
+            "unsupported",
+            "permission_denied",
+            "not_found",
+            "resource_expired",
+            "conflict",
+            "limit_exceeded",
+            "resource_exhausted",
+            "unavailable",
+            "timeout",
+            "cancelled",
+            "plugin_panic",
+            "internal",
+            "identity_mismatch",
+            "protocol_mismatch",
+            "sync_disabled",
+            "suspended",
+            "no_targets",
+            "source_changed"
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "retry_after_ms": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "code",
+        "retryable",
+        "retry_after_ms"
+      ],
+      "additionalProperties": false
+    },
+    "stream": {
+      "type": "object",
+      "properties": {
+        "stream_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "size": {
+          "$ref": "#/$defs/uint64"
+        },
+        "purpose": {
+          "enum": [
+            "process_text",
+            "patch_text",
+            "sync_part",
+            "receive_part",
+            "sync_state"
+          ]
+        }
+      },
+      "required": [
+        "stream_id",
+        "size",
+        "purpose"
+      ],
+      "additionalProperties": false
+    },
+    "origin": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "local_system",
+            "remote_device",
+            "plugin",
+            "explicit"
+          ]
+        },
+        "device_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "plugin_id": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "kind",
+        "device_id",
+        "plugin_id"
+      ],
+      "additionalProperties": false
+    },
+    "file": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "size": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "name",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "item": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "image",
+            "files"
+          ]
+        },
+        "text": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/stream"
+            }
+          ]
+        },
+        "formats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxItems": 4096
+        },
+        "origin": {
+          "$ref": "#/$defs/origin"
+        },
+        "source_app": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "automation_depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/file"
+          },
+          "maxItems": 4096
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "text",
+        "formats",
+        "origin",
+        "source_app",
+        "automation_depth",
+        "files"
+      ],
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "persist": {
+          "type": "boolean"
+        },
+        "sync": {
+          "type": "boolean"
+        },
+        "expires_at_ms": {
+          "$ref": "#/$defs/uint64"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "persist",
+        "sync",
+        "expires_at_ms",
+        "tags"
+      ],
+      "additionalProperties": false
+    },
+    "process": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "enum": [
+            "clipboard.captured",
+            "clipboard.received"
+          ]
+        },
+        "generation": {
+          "$ref": "#/$defs/uint64"
+        },
+        "item": {
+          "$ref": "#/$defs/item"
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
+        }
+      },
+      "required": [
+        "event",
+        "generation",
+        "item",
+        "policy"
+      ],
+      "additionalProperties": false
+    },
+    "patch": {
+      "type": "object",
+      "properties": {
+        "generation": {
+          "$ref": "#/$defs/uint64"
+        },
+        "text": {
+          "$ref": "#/$defs/stream"
+        },
+        "persist": {
+          "type": "boolean"
+        },
+        "sync": {
+          "type": "boolean"
+        },
+        "expire_after_ms": {
+          "$ref": "#/$defs/uint64"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "generation"
+      ],
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "item_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "at_ms": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "kind",
+        "item_id",
+        "at_ms"
+      ],
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "enum": [
+            "plugin.init",
+            "plugin.start",
+            "plugin.close",
+            "plugin.process",
+            "plugin.on_event",
+            "host.notify",
+            "stream.open",
+            "backend.bind",
+            "backend.apply_state",
+            "backend.pairing_address",
+            "backend.connect",
+            "backend.send",
+            "sync_host.check_peer",
+            "sync_host.peer_event",
+            "sync_host.introduce",
+            "sync_host.authorize_send",
+            "sync_host.open_send_part",
+            "sync_host.receive_open",
+            "sync_host.receive",
+            "sync_host.receive_part"
+          ]
+        },
+        "timeout_ms": {
+          "$ref": "#/$defs/uint64"
+        },
+        "parent_request_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "params": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "method",
+        "timeout_ms",
+        "parent_request_id",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "ok": {
+              "const": true
+            },
+            "result": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "ok",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ok": {
+              "const": false
+            },
+            "error": {
+              "$ref": "#/$defs/error"
+            }
+          },
+          "required": [
+            "ok",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "window": {
+      "type": "object",
+      "properties": {
+        "credit_bytes": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "credit_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "end": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "size": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "ok",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "init": {
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "object"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "config",
+        "events"
+      ],
+      "additionalProperties": false
+    },
+    "empty": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "notify": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "sync_bind": {
+      "type": "object",
+      "properties": {
+        "binding_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "self_id": {
+          "$ref": "#/$defs/id"
+        },
+        "self_name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "wire_version": {
+          "const": 2
+        },
+        "backend_id": {
+          "$ref": "#/$defs/id"
+        },
+        "transport_kind": {
+          "const": "peer_sessions"
+        }
+      },
+      "required": [
+        "binding_id",
+        "self_id",
+        "self_name",
+        "wire_version",
+        "backend_id",
+        "transport_kind"
+      ],
+      "additionalProperties": false
+    },
+    "sync_peer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "trust_revision": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "address",
+        "trust_revision"
+      ],
+      "additionalProperties": false
+    },
+    "sync_rejected": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "id",
+        "request_revision"
+      ],
+      "additionalProperties": false
+    },
+    "sync_state": {
+      "type": "object",
+      "properties": {
+        "binding_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "revision": {
+          "$ref": "#/$defs/uint64"
+        },
+        "runtime": {
+          "enum": [
+            "active",
+            "suspended"
+          ]
+        },
+        "device_name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "max_file_bytes": {
+              "$ref": "#/$defs/uint64"
+            },
+            "max_total_bytes": {
+              "$ref": "#/$defs/uint64"
+            }
+          },
+          "required": [
+            "max_file_bytes",
+            "max_total_bytes"
+          ],
+          "additionalProperties": false
+        },
+        "network_generation": {
+          "$ref": "#/$defs/uint64"
+        },
+        "peers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sync_peer"
+          },
+          "maxItems": 4096
+        },
+        "rejected": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sync_rejected"
+          },
+          "maxItems": 4096
+        },
+        "backend_id": {
+          "$ref": "#/$defs/id"
+        },
+        "sync_enabled": {
+          "type": "boolean"
+        },
+        "policy": {
+          "$ref": "#/$defs/backend_policy"
+        }
+      },
+      "required": [
+        "binding_id",
+        "revision",
+        "runtime",
+        "device_name",
+        "limits",
+        "network_generation",
+        "peers",
+        "rejected",
+        "backend_id",
+        "sync_enabled",
+        "policy"
+      ],
+      "additionalProperties": false
+    },
+    "sync_apply_state": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/uint64"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/stream"
+        }
+      },
+      "required": [
+        "revision",
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "sync_revision": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "sync_address_request": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "enum": [
+            "export",
+            "pairing_code"
+          ]
+        }
+      },
+      "required": [
+        "purpose"
+      ],
+      "additionalProperties": false
+    },
+    "sync_address_result": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "address"
+      ],
+      "additionalProperties": false
+    },
+    "sync_connect": {
+      "type": "object",
+      "properties": {
+        "attempt_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "pair_ticket": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "expected_peer_id": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "attempt_id",
+        "address",
+        "pair_ticket",
+        "expected_peer_id"
+      ],
+      "additionalProperties": false
+    },
+    "sync_connect_result": {
+      "type": "object",
+      "properties": {
+        "peer_id": {
+          "$ref": "#/$defs/id"
+        },
+        "awaiting_remote_approval": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "peer_id",
+        "awaiting_remote_approval"
+      ],
+      "additionalProperties": false
+    },
+    "sync_hello": {
+      "type": "object",
+      "properties": {
+        "wire_version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "peer_id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "pair_ticket": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "wire_version",
+        "peer_id",
+        "name",
+        "address",
+        "pair_ticket"
+      ],
+      "additionalProperties": false
+    },
+    "sync_check_peer": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/id"
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ]
+        },
+        "attempt_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          ]
+        },
+        "hello": {
+          "$ref": "#/$defs/sync_hello"
+        }
+      },
+      "required": [
+        "connection_id",
+        "direction",
+        "attempt_id",
+        "hello"
+      ],
+      "additionalProperties": false
+    },
+    "sync_peer_decision": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "enum": [
+            "allow",
+            "pending",
+            "reject"
+          ]
+        },
+        "session_token": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          ]
+        },
+        "trust_revision": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "decision",
+        "session_token",
+        "trust_revision"
+      ],
+      "additionalProperties": false
+    },
+    "sync_peer_event": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/id"
+        },
+        "session_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sequence": {
+          "$ref": "#/$defs/uint64"
+        },
+        "state": {
+          "enum": [
+            "connected",
+            "disconnected"
+          ]
+        },
+        "remote_accepted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "connection_id",
+        "session_token",
+        "sequence",
+        "state",
+        "remote_accepted"
+      ],
+      "additionalProperties": false
+    },
+    "sync_candidate": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "address"
+      ],
+      "additionalProperties": false
+    },
+    "sync_introduce": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/id"
+        },
+        "session_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sync_candidate"
+          },
+          "maxItems": 64
+        }
+      },
+      "required": [
+        "connection_id",
+        "session_token",
+        "candidates"
+      ],
+      "additionalProperties": false
+    },
+    "sync_part": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "kind": {
+          "enum": [
+            "representation",
+            "file"
+          ]
+        },
+        "mime": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "size": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "mime",
+        "name",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "sync_clip": {
+      "type": "object",
+      "properties": {
+        "wire_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "origin": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "at_ms": {
+          "$ref": "#/$defs/uint64"
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sync_part"
+          },
+          "maxItems": 4096,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "wire_id",
+        "origin",
+        "at_ms",
+        "hash",
+        "parts"
+      ],
+      "additionalProperties": false
+    },
+    "sync_send": {
+      "type": "object",
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/id"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/id"
+        },
+        "peer_id": {
+          "$ref": "#/$defs/id"
+        },
+        "connection_id": {
+          "$ref": "#/$defs/id"
+        },
+        "session_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "content_handle": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "clip": {
+          "$ref": "#/$defs/sync_clip"
+        },
+        "backend_id": {
+          "$ref": "#/$defs/id"
+        },
+        "mode": {
+          "enum": [
+            "automatic",
+            "explicit"
+          ]
+        }
+      },
+      "required": [
+        "dispatch_id",
+        "operation_id",
+        "peer_id",
+        "connection_id",
+        "session_token",
+        "content_handle",
+        "clip",
+        "backend_id",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "sync_authorize": {
+      "type": "object",
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/id"
+        },
+        "content_handle": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "connection_id": {
+          "$ref": "#/$defs/id"
+        },
+        "session_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "dispatch_id",
+        "content_handle",
+        "connection_id",
+        "session_token"
+      ],
+      "additionalProperties": false
+    },
+    "sync_send_grant": {
+      "type": "object",
+      "properties": {
+        "grant_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "grant_id",
+        "state_revision"
+      ],
+      "additionalProperties": false
+    },
+    "sync_open_send_part": {
+      "type": "object",
+      "properties": {
+        "grant_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        }
+      },
+      "required": [
+        "grant_id",
+        "index"
+      ],
+      "additionalProperties": false
+    },
+    "sync_send_result": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "const": "sent"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "sync_receive_open": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/id"
+        },
+        "session_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "clip": {
+          "$ref": "#/$defs/sync_clip"
+        }
+      },
+      "required": [
+        "connection_id",
+        "session_token",
+        "clip"
+      ],
+      "additionalProperties": false
+    },
+    "sync_receive_grant": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "enum": [
+            "accept",
+            "discard"
+          ]
+        },
+        "receive_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "decision",
+        "receive_id"
+      ],
+      "additionalProperties": false
+    },
+    "sync_receive": {
+      "type": "object",
+      "properties": {
+        "receive_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "receive_id"
+      ],
+      "additionalProperties": false
+    },
+    "sync_receive_part": {
+      "type": "object",
+      "properties": {
+        "receive_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "stream": {
+          "$ref": "#/$defs/stream"
+        }
+      },
+      "required": [
+        "receive_id",
+        "index",
+        "stream"
+      ],
+      "additionalProperties": false
+    },
+    "sync_receive_result": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": [
+            "committed",
+            "discarded"
+          ]
+        }
+      },
+      "required": [
+        "outcome"
+      ],
+      "additionalProperties": false
+    },
+    "backend_policy": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "boolean"
+        },
+        "images": {
+          "type": "boolean"
+        },
+        "files": {
+          "type": "boolean"
+        },
+        "auto_file_max_bytes": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "text",
+        "images",
+        "files",
+        "auto_file_max_bytes"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -25,7 +25,7 @@ Capture/Receive → Processing → Commit → Sync → Use → End
 | Capture | `clipboard.captured`（本机）、`clipboard.received`（远端） | **可干预** | 同步串行调用插件，可改内容与策略 |
 | Commit | `clipboard.committed` | 通知 | 最终内容与策略已确定；按 persist 决定是否写历史，此后只读 |
 | Sync | `clipboard.sync.requested/started/completed/failed` | 通知 | 由 Engine 根据同步插件操作状态发出 |
-| Receive | `clipboard.receive.started/completed/failed` | 通知 | 远端内容的接收与应用 |
+| Receive | `clipboard.receive.started/completed/failed` | 通知 | 远端内容接收；completed 表示本机 commit 成功，不表示应用或远端 ACK |
 | Use | `clipboard.pasted` | 通知 | 用户经 UI 使用；系统直接粘贴无法观察，不承诺 |
 | End | `clipboard.deleted`、`clipboard.expired` | 通知 | 用户删除或到期 |
 | 其他 | `clipboard.updated`、`device.connected/disconnected`、`app.started/shutdown` | 通知 | |
@@ -36,20 +36,23 @@ Capture/Receive → Processing → Commit → Sync → Use → End
 
 - 流水线是 Engine 内的有序阶段链；每条内容在阶段间传递一个 `Item` 和一个 `Policy`：
   - `Policy{ persist bool, sync bool, expires_at *time, tags []string }`
-  - 默认 `persist=true, sync=按 0002 的 sync.* 配置`。
-- **同步是默认 Go 插件 `sync.tailcat`**：Engine 在 commit 后通过专用后端接口派发，普通 committed 通知不负责可靠调度；派发读取 `Policy.sync`，0002 的 `sync.enabled/text/images/files` 仍是它的前置过滤，插件的 `set_sync(true)` 不能越过用户在配置里关掉的类型。
+  - 默认 `persist=true, sync=true`；全局授权与每后端策略在派发时分别检查，Policy 不能扩大它们。
+- **同步是默认 Go 插件 `sync.tailcat`**：Engine 在 commit 后通过专用后端接口派发，普通 committed 通知不负责可靠调度；派发读取 `Policy.sync`；按[0007 多后端策略](0007-multiple-sync-backends.md)，全局 sync.enabled、各实例启用及每后端 text/images/files/自动文件阈值共同约束发送，set_sync(true) 不能越过它们。默认 tailcat 之外允许多个同步后端并存。
 - `persist=false` 的内容不入历史，但仍可按 `sync` 同步。
 - 远端内容走 received 阶段，插件同样可以改内容、标签、过期；接收方的 `set_sync` 只影响本机是否**再转发**，首版不转发（现有语义），所以对 received 实际只用 `persist/tags/expires`。
 
 新增 `CommitContent/GetSubmission` 分开表达 commit 与发送结果；原 `SubmitContent` 保留兼容门面，观察结果增加提交信息。具体状态、失败缓存与生命周期见[流水线提交契约](../pipeline-contract.md)，待实现。
+
+三类入口的状态转换、提交屏障、Received 槽位/去重记录原子发布和资源释放见[流水线契约 §7](../pipeline-contract.md#7-状态转换与资源交接)。Sync、Apply、历史 End 各自结束，不能用历史删除或一次网络成功代替整条内容的资源回收。
 
 ### 3. 防回环
 
 插件改内容意味着需要把结果写回系统剪贴板，这会再次触发捕获。沿用 0003 的 apply token / 基线 hash 思路，并增加：
 
 - 每个 `Item` 带 `origin`（`LocalSystem | RemoteDevice(id) | Plugin(name) | …`）和 `automation_depth`。
-- 写回产生的新捕获继承 `origin=Plugin`，`automation_depth+1`；深度超过上限（默认 3）直接 commit，不再进插件。
-- 写回后的基线 hash 记为已知，不重复触发 captured。
+- 深度默认上限 3：输入深度达到上限时直接 commit，不再执行处理器；同一轮多个插件改写只增加一次深度。最终改写内容的来源记为 Plugin（最后一次成功改正文的插件），原始来源内部保留。只有可证明的自动化链继承深度，未知真实本地变化作为新的 LocalSystem/0。
+- 已知写回回声通过 token/回读基线抑制，不再次 captured、commit 或同步，不为计算深度而重跑处理器。
+- [自动写回契约](../clipboard-writeback-contract.md) 定义 BeginWriteback、显式提交 guard、单 pending 与共享应用槽、30 秒待办期限、失败不重试及资源释放。自动写回与历史使用在同步关闭时仍可工作。
 
 ### 4. 插件实现方式与 Lua 沙箱
 
@@ -61,10 +64,10 @@ Capture/Receive → Processing → Commit → Sync → Use → End
 #### Lua 运行时
 
 
-- 使用 `gopher-lua`（纯 Go，无 cgo，不妨碍后续移动端）。
-- **只加载** base（去掉 `dofile/loadfile/load`）、`string`、`table`、`math`、`utf8` 风格工具；**不加载** `os`、`io`、`debug`、`package`/`require`。
-- 每次回调有墙钟超时（默认 200ms）与指令数上限；超限终止该次调用。内存上限用 gopher-lua 的注册表/调用栈大小限制加正文大小限制近似，不承诺精确计量。
-- 每个插件独立的 Lua 状态；回调串行执行，不共享全局表。
+- 使用基于 `gopher-lua v1.1.2` 的纯 Go 增强 VM；上游没有公开指令计数 hook，SetContext 不能抢占原生 Go 函数。实现与验收见 [Lua 运行时契约](../lua-runtime-contract.md)，当前仅完成上游行为探针。
+- 基础函数及 string/table/math 逐项白名单注册，原生循环/分配须有界；utf8 由宿主提供。不开放动态加载、环境/元表修改、文件、网络或进程能力，不能只从 OpenBase 删除三个函数。
+- 所有脚本执行边界默认 200ms 与 1,000,000 条指令；编译、原生操作另有预算。调用栈/注册表、文本及累计逻辑分配分别限制，不承诺精确堆内存隔离，禁止使用会退出宿主进程的 SetMx。
+- 每个插件独立的 Lua 状态；回调串行执行，不共享全局表。执行失败销毁该状态，后续调用按错误策略处理，等待显式重载；不重放失败内容。
 - 插件错误：丢弃该插件本次对 Item/Policy 的改动，继续后面的插件，不阻断流水线。**注意**：这意味着“敏感信息检测”类插件出错时内容会照常同步。提供 `plugins.on_error = "continue" | "block_sync"`，默认 `continue`，写入配置模板注释说明风险。
 - 日志与事件**不含剪贴板正文**，只含插件名、事件名、错误码；Lua 错误信息在记录前脱敏（可能夹带正文）。
 
@@ -77,14 +80,18 @@ Capture/Receive → Processing → Commit → Sync → Use → End
 - 修改文本、标签、持久化、同步与过期通过 ProcessContext 方法暂存，回调成功后原子采纳。通知不带正文，不能修改已提交内容。
 - Lua 首版不提供网络、本地存储、Quick Panel；Go 为受信任代码。同步后端具有专用网络与接收接口，不能将这些能力授予 Lua 或普通通知插件。
 
+Go 独立进程的核心传输规则见[RPC 核心协议](../plugin-rpc-contract.md)，含机器可读帧表、Schema 和互操作向量；同步后端业务 DTO 已在[同步后端契约](../sync-backend-contract.md) 定义，运行时实现与验证仍待完成。
+
 ### 6. 插件加载与配置
 
 - 完整配置形状与顺序见插件契约：所有启用实例在 `plugins.order` 中显式排列，不能以文件名或注册时机决定顺序。
 - 支持 `unic plugin install https://github.com/owner/repo` 从仓库清单安装，版本锁定到 commit；Lua 下载加载，Go 优先匹配平台预编译，缺失时可 --build 构建插件自身，无需重建宿主，详细命令、清单、安装锁与回滚见[插件契约 §8](../plugin-contract.md#8-从-github-仓库安装)。
 - Lua 脚本由宿主从 `$UNIC_HOME/plugins/*.lua` 或安装锁指定的已安装目录发现、读取并传给 Engine；监听与防抖留在宿主，Engine 不依赖文件系统监听。
 - Lua 脚本与专属配置热替换失败保留上一有效实例，启动时错误则拒绝启动；启用列表、顺序、订阅与 Go 实现变更需重启。
-- Go 插件由 Engine 启动常驻子进程，默认附带并启用 `sync.tailcat` 独立程序，Send 复用长连接。首版允许一个同步后端，也允许无后端的本机历史模式。
+- Go 插件由 Engine 启动常驻子进程，默认附带并启用 `sync.tailcat` 独立程序，Send 复用长连接。允许多个同步后端独立派发，也允许无后端的本机历史模式；当前仍只交付 tailcat，WebDAV 等实现另定，见[0007](0007-multiple-sync-backends.md)。
 - 插件不能通过业务接口修改 `limits.*` 与设备配对状态；Go 代码必须遵守同样的契约。
+
+默认程序的显式装配、插件持久目录/锁、旧 tailcat 密钥与地址保留，以及 Options.Network 同批移除，按[后端迁移契约](../backend-migration-contract.md) 执行。SDK 零装配进入本机模式，桌面仍显式默认启用随包 tailcat；密钥迁移和地址核对失败不生成新身份或回退旧网络。
 
 ### 7. 数据模型与存储
 
@@ -127,6 +134,8 @@ clip_tags(item_id, tag)
 
 ## 验收
 
+多后端、全局开关、每后端类型/自动文件阈值与跨后端去重的补充验收以[0007](0007-multiple-sync-backends.md) 为准。
+
 - `go build ...` 与 `go test -race ./...` 通过。
 - 无用户插件、使用默认 `sync.tailcat` 时，同步行为、防回环、0002 配置语义与现在一致。
 - 插件：改文本、加标签、`set_sync(false)` 不发送、`set_expire` 到期删除；Lua 插件超时/死循环/抛错不拖垮 Engine，不影响其他插件。
@@ -138,5 +147,5 @@ clip_tags(item_id, tag)
 
 - 插件网络/存储/权限模型、`register_action` 与 Quick Panel、WASM 插件、原生动态库加载、可视化规则编辑。
 - 全文检索、收藏、集合、历史跨设备同步、标签/过期随内容同步（需改 wire）。
-- 其他同步后端（Iroh/LAN/Relay/BLE）、多后端路由；本次仅抽象接口并迁移 tailcat。
+- WebDAV/Iroh/LAN/Relay/BLE 的具体实现；本次实现多后端装配/独立策略与契约测试，默认只迁移 tailcat，不实现任意脚本路由。
 - 清空系统剪贴板的“到期清除”：先只删除历史记录，是否清空系统剪贴板另立决策。

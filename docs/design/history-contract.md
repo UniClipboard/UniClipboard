@@ -8,7 +8,7 @@
 
 历史、查询、过期、淘汰和使用流程由 Engine 管理，业务实现放在 `engine/`；SQLite 和文件操作可复用基础设施。宿主不直接读写历史数据库，不自行维护第二份历史或搜索索引。
 
-一条历史对应一次通过处理流水线的 commit，保存处理后的最终内容。`persist=true` 才入库；相同内容的不同 commit 具有不同 HistoryID，可共享内部 blob，但不能按 hash 合并用户记录。观察基线、未变化、清空、写回回声和同一请求的幂等重试不产生新记录。标签和过期仅本机生效。
+一条历史对应一次通过处理流水线的 commit，保存处理后的最终内容；多个同步后端只建立独立派发，不重复写历史。`persist=true` 才入库；相同内容的不同 commit 具有不同 HistoryID，可共享内部 blob，但不能按 hash 合并用户记录。观察基线、未变化、清空、写回回声和同一请求的幂等重试不产生新记录。标签和过期仅本机生效。
 
 历史内容不可变；提交后只能修改标签和过期时间。修改正文必须作为新的显式提交走处理流水线，不能原地修改已提交内容。删除或到期不清空系统剪贴板，不撤回已经发送的字节，不删除用户源文件。
 
@@ -17,6 +17,8 @@
 HistoryID 为不透明 string 类型，至少 128 位随机性，不含正文、hash、路径或设备地址，在同一 DataDir 内跨重启稳定、永不复用；不属于实例前缀 ID。其他 DataDir 的 HistoryID 与未知/已删除 ID 一样返回 not_found，不提供跨库探测。ContentID、LeaseID、ReceiptID、OperationID、ApplyToken 仍仅当前实例有效。
 
 目标公开签名如下，类型在 engine 定义：
+
+具体 DTO 字段类型、可选更新值及错误分类见[SDK 扩展类型契约](sdk-extension-contract.md)。
 
 ```go
 func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (HistoryPage, error)
@@ -42,11 +44,12 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 | Tags | 最多 32 个，每个最多 64 个 UTF-8 字节，去重、按 UTF-8 字节顺序返回 |
 | Parts | 只含 Kind、MIME、Size；不含文本预览、文件名、路径、PartID 或实例内 ContentID |
 | TotalBytes | 所有 part 的逻辑字节总和 |
-| SyncState | not_requested/pending/sent/partial/failed/interrupted；仅本机发送摘要，不代表远端收到或应用 |
+| SyncState | not_requested/pending/sent/partial/failed/interrupted；各后端汇总，不代表远端收到或应用 |
+| BackendSyncStates | 按 BackendID 保存本条内容的策略跳过、传输与中断摘要，不含秘密目标 URL/token；跨重启保留 |
 
 文件名与具体 PartID 在显式 RetainHistoryContent 返回的 ContentDescriptor 获取。普通 State、列表、事件和错误不携带正文。HistoryItem 只描述持久记录，不返回租约；所有返回值遵守 Engine 的快照隔离约定。
 
-同步不请求时为 not_requested（含远端首版不转发）；已建发送操作为 pending，终态按目标结果汇总为 sent/partial/failed，全部 superseded 归 failed。重启发现 pending 改为 interrupted，不恢复或重发。OperationID 不作为持久可查询凭证；历史摘要保留但操作仍按实例保留期回收。
+多后端摘要按[0007](decisions/0007-multiple-sync-backends.md) 记录，因阈值/类型跳过不得计为成功；存在失败或策略跳过而另有成功时整体为 partial；无实际任务且只有策略跳过为 not_requested。同步不请求时为 not_requested（含远端首版不转发）；已建发送操作为 pending，终态按目标结果汇总为 sent/partial/failed，全部 superseded 归 failed。重启发现 pending 改为 interrupted，不恢复或重发。OperationID 不作为持久可查询凭证；历史摘要保留但操作仍按实例保留期回收。
 
 ## 3. 基础查询与分页
 
@@ -80,7 +83,7 @@ Received 是实例内、有 TTL 的待应用视图，History 是跨重启的本�
 
 历史使用写入的是已提交最终内容，不重新运行处理器、不产生新历史、不自动同步；回读用同一 token 建立基线，已知回声不触发捕获。成功报告产生只读 clipboard.pasted 通知，语义仅为宿主成功使用，不能断言其他应用已经粘贴。若 UI 要“再次发送”，显式 RetainHistoryContent 后 SubmitContent，按新的提交运行处理器并可生成新历史，原条目保持不变。
 
-本机插件改写后的自动写回仍由流水线契约另行定义，不能冒充 BeginApplyHistory 或凭时间接近判断回声。
+本机插件改写后的自动写回由[写回契约](clipboard-writeback-contract.md) 定义，不能冒充 BeginApplyHistory 或凭时间接近判断回声。
 
 ## 6. 存储、配额与过期
 
@@ -101,6 +104,8 @@ SQLite 存元数据、小正文和 blob 引用；大正文/文件存 `DataDir/hi
 每次 commit 前按新条目计算历史条数/字节，超限按最旧 commit 淘汰；不做收藏保护。单条大于 MaxBytes 直接 resource_exhausted，不先删除旧记录。全局配额不足时只淘汰能实际释放内容的历史/接收持有项；有外部租约、读取、应用或发送持有的资源不能被当作可回收字节。仍不足则拒绝新 commit，回滚预留与暂存资源，不发送。历史容量淘汰可以移除有活动引用的元数据，但不能声称其字节已经物理释放。
 
 commit 须先完成自有 blob 暂存与持久化，再在数据库事务内发布内容引用、历史、淘汰和修订号；数据库提交成功后才发布通知与网络派发。事务失败不删除既有历史，已落盘但未被数据库引用的孤儿 blob 留待安全清理。提交成功后崩溃不会自动恢复待发送工作。不得宣称跨系统剪贴板、数据库与网络原子提交。
+
+接收 commit 还须预留 Received 槽位并在同一事务写成功去重记录；persist=false 接收也必须完成去重事务。满表无法预留则不发布历史或成功去重记录。提交屏障、实例状态发布及所有引用的交接遵循[流水线契约 §7](pipeline-contract.md#7-状态转换与资源交接)，不以历史已经落盘代替接收提交成功。
 
 到期定义为当前本机墙钟 >= ExpiresAtMs；跨重启保存绝对时间，进程内定时器只负责唤醒，唤醒后重新比较墙钟。回拨可延后尚未删除条目到期，前拨可提前触发，已删除不会复活。New 返回前清理到期元数据与仅由 Engine 拥有的孤儿资源，运行时每 30 秒扫描且查询/读取/变更时再次判定，禁止在扫描间隙返回已到期条目。物理清理失败可重试，不恢复逻辑记录；错误必须脱敏。
 

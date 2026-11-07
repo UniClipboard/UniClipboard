@@ -1,0 +1,50 @@
+package probe
+
+import (
+ "context"
+ "testing"
+ "time"
+ lua "github.com/yuin/gopher-lua"
+)
+
+func TestPureLuaLoopCancellation(t *testing.T) {
+ L := lua.NewState(lua.Options{SkipOpenLibs:true})
+ defer L.Close()
+ ctx,cancel:=context.WithTimeout(context.Background(),20*time.Millisecond)
+ defer cancel()
+ L.SetContext(ctx)
+ started:=time.Now()
+ err:=L.DoString(`while true do end`)
+ if err==nil || time.Since(started)>time.Second {t.Fatal("loop cancellation failed")}
+ t.Log("pure Lua loop cancelled")
+}
+
+func TestContextDoesNotPreemptNativeGoFunction(t *testing.T) {
+ L:=lua.NewState(lua.Options{SkipOpenLibs:true})
+ defer L.Close()
+ ctx,cancel:=context.WithTimeout(context.Background(),10*time.Millisecond)
+ defer cancel()
+ L.SetContext(ctx)
+ L.SetGlobal("native",L.NewFunction(func(L *lua.LState) int {time.Sleep(80*time.Millisecond);return 0}))
+ started:=time.Now()
+ err:=L.CallByParam(lua.P{Fn:L.GetGlobal("native"),NRet:0,Protect:true})
+ if time.Since(started)<80*time.Millisecond || ctx.Err()==nil {t.Fatal("invalid native call probe")}
+ if err!=nil {t.Log("native call returned after deadline with an error")} else {t.Log("native call completed past deadline without an error; host post-check required")}
+}
+
+func TestBaseLibraryNeedsExplicitAllowlist(t *testing.T) {
+ L:=lua.NewState(lua.Options{SkipOpenLibs:true})
+ defer L.Close()
+ lua.OpenBase(L)
+ for _,name:=range []string{"loadstring","print","collectgarbage","getfenv","setfenv","require","newproxy"} {
+  if L.GetGlobal(name)==lua.LNil {t.Fatalf("upstream baseline changed: %s",name)}
+ }
+ t.Log("OpenBase exposes more than dofile/loadfile/load; allowlist required")
+}
+
+func TestNoBuiltInUTF8Library(t *testing.T) {
+ L:=lua.NewState()
+ defer L.Close()
+ if L.GetGlobal("utf8")!=lua.LNil {t.Fatal("upstream baseline changed")}
+ t.Log("utf8 adapter must be provided by host")
+}

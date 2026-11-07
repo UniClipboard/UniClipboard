@@ -74,6 +74,7 @@ type Engine struct {
 	evCancel  func()
 	evStop    chan struct{}
 	evDone    chan struct{}
+	cs        *contentStore
 	pmu       sync.Mutex // pending request revisions
 	pendRevs  map[DeviceID]pendRev
 	pendCount uint64
@@ -117,6 +118,9 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if opts.InboxDir == "" {
 		opts.InboxDir = filepath.Join(opts.DataDir, "inbox")
 	}
+	if abs, err := filepath.Abs(opts.InboxDir); err == nil {
+		opts.InboxDir = abs
+	}
 	if err := os.MkdirAll(opts.DataDir, 0o700); err != nil {
 		return nil, newErr(CodeUnavailable, "cannot create the data directory")
 	}
@@ -127,6 +131,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		return nil, newErr(CodeUnavailable, "cannot lock the data directory")
 	}
 	fail := func(e *Error) (*Engine, error) { lock.release(); return nil, e }
+	cleanContentDirs(opts.InboxDir) // leftovers of a dead instance; we hold the lock
 
 	st, err := store.Open(filepath.Join(opts.DataDir, "unic.db"))
 	if err != nil {
@@ -164,6 +169,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		ops:      newOpTable(),
 		stopped:  make(chan struct{}), closedCh: make(chan struct{}),
 		pendRevs: map[DeviceID]pendRev{},
+		cs:       newContentStore(),
 	}
 	rv := opts.rendezvous
 	if rv == nil {
@@ -500,6 +506,7 @@ func (e *Engine) finalize() {
 	for _, s := range subs {
 		s.finish()
 	}
+	e.dropContent()
 	_ = e.st.Close()
 	e.lock.release()
 	e.use.Unlock()

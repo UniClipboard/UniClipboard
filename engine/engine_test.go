@@ -409,15 +409,6 @@ func TestCapabilities(t *testing.T) {
 	}
 }
 
-func contains(s []string, x string) bool {
-	for _, v := range s {
-		if v == x {
-			return true
-		}
-	}
-	return false
-}
-
 func TestSnapshotsAreIndependent(t *testing.T) {
 	n := newNode(t, nil)
 	n.e.UpdateHostCapabilities(bg, HostCapabilities{ReadFormats: []string{MimeText}})

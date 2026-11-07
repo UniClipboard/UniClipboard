@@ -281,6 +281,9 @@ func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, e
 	e.ops.prune(time.Now(), e.res.OperationTTL)
 	o := e.ops.byID[id]
 	if o == nil {
+		if e.foreign(string(id)) {
+			return Operation{}, newErr(CodeResourceExpired, "the operation belongs to an earlier instance")
+		}
 		return Operation{}, newErr(CodeNotFound, "no such operation (it may have expired)")
 	}
 	return o.op.clone(), nil

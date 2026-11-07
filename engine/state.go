@@ -274,3 +274,12 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	e.commitLocked(EventSettings, EventCapabilities)
 	return e.settings, nil
 }
+
+func contains(s []string, x string) bool {
+	for _, v := range s {
+		if v == x {
+			return true
+		}
+	}
+	return false
+}

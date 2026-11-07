@@ -80,7 +80,7 @@ func (e *Engine) newOpLocked(kind OperationKind, req RequestID, hash [sha256.Siz
 		e.ops.drop(oldest)
 	}
 	ms := now.UnixMilli()
-	o = &opEntry{hash: hash, op: Operation{ID: OperationID(randHex(8)), RequestID: req, Kind: kind,
+	o = &opEntry{hash: hash, op: Operation{ID: OperationID(e.newID()), RequestID: req, Kind: kind,
 		CreatedAtMs: ms, UpdatedAtMs: ms, Phase: phase}}
 	e.ops.byID[o.op.ID] = o
 	e.ops.reqs[req] = o

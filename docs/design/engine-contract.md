@@ -50,6 +50,7 @@ func (e *Engine) Unpair(ctx context.Context, id DeviceID) error
 func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHandle, error)
 func (e *Engine) RetainContent(ctx context.Context, id ContentID) (ContentHandle, error)
 func (e *Engine) ReadContent(ctx context.Context, lease LeaseID, part PartID) (*ContentReader, error)
+func (e *Engine) LocalFilePath(ctx context.Context, lease LeaseID, part PartID) (string, error)
 func (e *Engine) ReleaseContent(ctx context.Context, lease LeaseID) error
 func (e *Engine) SubmitContent(ctx context.Context, req SubmitRequest) (OperationID, error)
 func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, error)
@@ -142,12 +143,14 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 
 ### 6.1 输入与描述
 
-`ContentInput` 包含 `Representations[]` 与 `Files[]`。每个输入项提供 MIME（文件可缺省为 application/octet-stream）、声明 Size 及 io.Reader；文件还含展示 Name。Reader 由调用者关闭，Import 返回前调用者不得修改或并发读取；SDK 不保留 Reader。
+`ContentInput` 包含 `Representations[]` 与 `Files[]`。每个内存表示提供 MIME、声明 Size 及 io.Reader。每个文件提供展示 Name、MIME（可缺省为 application/octet-stream）、声明 Size，以及二选一的来源：`Reader`（流，复制进核心）或 `Source`（引用）。`Source` 是宿主实现的 `FileSource{Open(ctx) (io.ReadCloser, FileMeta, error)}`，`FileMeta{Size, Version}`，Version 是宿主给的不透明变更标记（桌面可用修改时间）。两者都给或都不给报 invalid_argument。Reader 由调用者关闭，Import 返回前调用者不得修改或并发读取；SDK 不保留 Reader。公开 API 不接收路径。
+
+引用语义：导入时只调用一次 Open 校验大小等于声明值，不读取内容，不计入 MaxStoredBytes。开始传输和 ReadContent 时再次 Open，大小或 Version 与导入时不同、文件已不存在，均以 `source_changed` 失败，不重试、不补发。宿主必须在内容被租约、操作或读取句柄引用期间保持文件可打开。
 
 - 文本和 HTML 是有效 UTF-8；PNG 须为可解码 PNG。一个内容最多包含每种 MIME 一个内存表示，重复 MIME 或空内容报 invalid_argument。不同表示被视为同一内容的替代表示。
 - 不遍历文件夹，不接受目录输入。文件名称只用作展示和安全落盘名称，不用作路径；消除目录分隔、`.`、`..` 等路径语义，重复名可存在且 PartID 不同。
 - Import 按声明大小读取并验证流恰好结束，短读、额外字节和读取错误均失败；硬上限沿用 wire（内存单表示 64 MiB、单文件 2 GiB、总计 4 GiB、part 数 4096）。用户限制在导入和开始传输时也验证。
-- Import 返回 `ContentHandle{Content: ContentDescriptor, LeaseID}`。Descriptor 包含 ID、各 part 的 PartID、Kind（representation/file）、MIME、Name、Size 和总大小；不含字节、路径和 hash。
+- Import 返回 `ContentHandle{Content: ContentDescriptor, LeaseID}`。Descriptor 包含 ID、各 part 的 PartID、Kind（representation/file）、MIME、Name、Size、是否引用（Referenced）和总大小；不含字节、路径和 hash。
 - 文件与表示可同时导入/传输；自动应用沿用桌面“文件优先”规则。宿主不支持的表示可跳过；无任何可应用表示时报告 unsupported，不假装成功。
 
 ### 6.2 提交与操作
@@ -164,7 +167,7 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 
 ## 7. 资源租约与接收列表
 
-ContentID 标识资源，LeaseID 表示一个持有者。Import 和 Retain 每次创建新的 LeaseID；ReadContent 必须使用有效租约，读取句柄另持有内部引用直至 Close。文件清理不能使已打开的读取句柄中途失效；实例 Close 会中止读取，调用者仍应 Close 读取句柄。
+实例内的 ID 都带有实例前缀，以便区分旧实例（resource_expired）与未知（not_found）。ContentID 标识资源，LeaseID 表示一个持有者。Import 和 Retain 每次创建新的 LeaseID；ReadContent 必须使用有效租约，读取句柄另持有内部引用直至 Close。文件清理不能使已打开的读取句柄中途失效；实例 Close 会中止读取，调用者仍应 Close 读取句柄。
 
 ReleaseContent 按 LeaseID 幂等，释放已知且已释放的租约成功；未知 ID 报 not_found，旧实例 ID 报 resource_expired。不能用 ContentID 模拟引用计数，避免重复释放扣减其他调用者引用。释放最后一个外部引用不影响仍在进行的传输。
 
@@ -184,7 +187,7 @@ ReleaseContent 按 LeaseID 幂等，释放已知且已释放的租约成功；�
 - `ReceivedContent{ReceiptID, Content, PeerID, ReceivedAtMs, ExpiresAtMs, ApplyState}`。完整接收且验证成功、经同步过滤后非空才入列表，列表持有内部引用；部分文件和失败接收不得暴露。
 - 接收列表满时驱逐最早条目；到期或 DismissReceived 移除列表引用。正在应用的条目不能驱逐，容量被全部占用时丢弃新接收并报告资源不足。
 - RetainContent 将仍有效的 ContentID 转为宿主持有租约；列表移除不影响该租约。若已清理返回 resource_expired。DismissReceived 对不存在条目幂等成功。
-- 桌面已写入剪贴板的文件须持有租约，直到宿主确认被替换。ReadContent 不导出路径；桌面适配可在自己拥有的目录物化文件，并负责清理，不能要求 SDK 返回私有路径。
+- 桌面已写入剪贴板的文件须持有租约，直到宿主确认被替换。ReadContent 不导出路径。需要把接收的文件交给系统剪贴板的宿主调用 `LocalFilePath(lease, part)`，它只对核心拥有的文件返回绝对路径（引用的文件宿主本来就知道路径，返回 unsupported），路径仅在租约有效期间有效，不进入任何 DTO、事件或日志。宿主据此可以不再复制一份；也可以自行物化并负责清理。
 - 资源、接收列表、操作和租约不承诺跨进程恢复。Close 使租约失效；桌面应先结束剪贴板适配。后续启动只能清理核心自己的临时资源和明确迁移的旧 clip-*，不清理用户任意文件。
 - State 和列表不保证永久保留终态记录；被移除对象的查询返回 not_found/resource_expired，消费者不得据此判断是否曾成功。
 
@@ -244,6 +247,7 @@ CLI“写入并发送”由宿主执行本地写入、回读、建立抑制回�
 | identity_mismatch / protocol_mismatch | 设备身份或 wire 版本不符 |
 | incomplete / invalid / expired / rate_limited | 0001 的配对码分类（桌面 HTTP 可映射为旧带连字符形式） |
 | resync_required | 订阅溢出，必须重新订阅 |
+| source_changed | 引用的文件已被修改或不存在 |
 | internal | 无法安全细分的内部错误 |
 
 本地已知失效与过期资源可返回 resource_expired；无法区分“从未存在”和“已清理”时允许 not_found。错误中的对象标识仅可使用公开 ID，不包含秘密或文件路径。必要内部诊断另用不含用户内容的关联 ID。
@@ -257,10 +261,10 @@ CLI“写入并发送”由宿主执行本地写入、回读、建立抑制回�
 | SetLocal 等待轮询广播 | 宿主显式写入、回读基线、SubmitContent，一次用户请求只发送一次 |
 | api.Handler 直接读 Store/engine 内部类型 | 转换公开 DTO，保留 /v1 的旧响应；地址通过显式 Export 获取 |
 | config.Manager | 保留 TOML 与热加载，映射 Settings 的完整更新与错误展示 |
-| 直接导出接收文件路径 | 桌面适配物化受控副本并持有/释放租约 |
+| 直接导出接收文件路径 | 桌面适配持有租约，经 `LocalFilePath` 取得路径写入系统剪贴板，不再复制 |
 | sent / received 人类摘要事件 | 映射操作状态及显式内容视图，事件不得携带正文摘要 |
 
-旧 /v1/status 的 addr 兼容字段只在现有显式查询中获取，禁止复制进新 State。旧事件格式可映射 kind，但不能为了兼容恢复正文或秘密日志。文件物化副本的字节开销由桌面层另行限制，不包含在 SDK 的逻辑配额内。
+旧 /v1/status 的 addr 兼容字段只在现有显式查询中获取，禁止复制进新 State。旧事件格式可映射 kind，但不能为了兼容恢复正文或秘密日志。桌面用引用导入本地文件、用 `LocalFilePath` 使用接收文件，所以不产生额外副本；只有宿主自行物化时的开销才由桌面层另行限制，不包含在 SDK 的逻辑配额内。
 
 ## 12. 契约验收清单
 
@@ -271,6 +275,7 @@ CLI“写入并发送”由宿主执行本地写入、回读、建立抑制回�
 - 信任：码仅发现、双方指纹一致、过期审批冲突、介绍不授信、Unpair 后旧会话失效、重启保留身份与拒绝记录。
 - 发送：RequestID 幂等与冲突、离线不排队、每设备替换待发、部分成功、网络挂起失败、sent 不冒充远端应用。
 - 资源：读取和传输期间释放租约、重复释放、配额预留回滚、列表过期/驱逐、应用锁定条目、重启只清理自有资源。
+- 引用的文件：导入后被修改、截断、删除，发送与读取以 source_changed 失败；引用不占存储配额；Open 的权限错误被分类。
 - 剪贴板：启动/恢复基线、远端格式补全、防重复显式发送、写入失败、新本地复制穿插、过期 token、系统来源不明时不吞变化。
 - 事件：订阅初始快照无窗口、序号连续、队列满必报 resync_required、慢消费者不阻塞、关闭结束等待。
 - 配置与隐私：沿用 0002 的热加载及过滤语义，超限读完丢弃，事件/错误/日志不泄露地址、票据和正文。
@@ -288,7 +293,9 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第一步（已实现并有测试）**：创建与目录独占锁、`Start`/`Stop`/`Close`、`SetRuntimeState`、`NotifyNetworkChanged`、`GetState`、`GetCapabilities`、`UpdateHostCapabilities`、`UpdateSettings`、全部配对与设备方法（`CreatePairingCode` … `Unpair`）、`GetOperation`、`SubscribeEvents`/`Subscription`、错误模型。
 
-**第二步（未实现）**：内容导入与租约（`ImportContent`、`RetainContent`、`ReadContent`、`ReleaseContent`）、`SubmitContent`、接收列表、`ObserveClipboard`/`BeginApply`/`ReportApplyResult`，以及 `State` 中对应的 `Received`、`ActiveApply` 和发送类操作；随后迁移桌面 daemon。在此之前，公开 Engine 不同步剪贴板内容，收到的内容会被读完并丢弃；桌面仍使用旧入口。
+**第二步 2a（已实现并有测试）**：内容导入与租约（`ImportContent`、`RetainContent`、`ReadContent`、`ReleaseContent`、`LocalFilePath`），含文件引用（`FileSource`）、配额预留与回滚、读取句柄持有引用、`Close` 中止读取并清理。
+
+**第二步其余（未实现）**：`SubmitContent`、接收列表、`ObserveClipboard`/`BeginApply`/`ReportApplyResult`，以及 `State` 中对应的 `Received`、`ActiveApply` 和发送类操作；随后迁移桌面 daemon。在此之前，公开 Engine 不同步剪贴板内容，收到的内容会被读完并丢弃；桌面仍使用旧入口。
 
 落地时确定的细节（以此为准，必要时回改前文）：
 
@@ -302,3 +309,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 8. **运行条件**：`CreatePairingCode`、`JoinByCode`、`PairByAddress`、`NotifyNetworkChanged` 要求 running 且非 suspended，分别报 `invalid_state` / `suspended`；重复的 `RequestID` 即使在 suspended 时也返回原操作。`GetPairingCode`、`CancelPairingCode`、设备列表与审批在任何未关闭状态可用。`ExportPairingAddress` 要求 running（挂起时仍可用）。
 9. **事件合并**：会话层的“设备上线/下线”只产生 `peers` 事件；“配对或批准”产生 `peers` 与 `pending` 两个事件（各占一个修订）。事件的 `Objects` 目前只用于操作。
 10. **挂起恢复**：恢复时重新监听并重连全部已配对设备；`NotifyNetworkChanged` 让未连接设备跳过退避立即重试。
+11. **ID 前缀**：实例内的 ID（内容、租约、操作）都以实例 ID 加 `-` 开头。他实例的 ID 返回 `resource_expired`，本实例未知的返回 `not_found`。已释放的租约和已回收的内容各记住最近 8192 个，超出后退化为 `not_found`。
+12. **PNG 校验**：只校验文件头和尺寸信息（`png.DecodeConfig`），不做整图解码，避免 64 MiB 图片导入时的内存放大；损坏的像素数据会在应用端暴露。
+13. **清理范围**：`New` 只删除 `InboxDir` 下以 `unic-content-` 开头的目录（数据目录锁保证它们属于已死的实例）。旧的 `clip-*` 由桌面适配在迁移时处理，SDK 不碰，因为 `InboxDir` 可能是用户自己的目录。
+14. **引用的校验**：`FileMeta` 全等比较（大小和 Version）；`Open` 返回不存在或无权限一律报 `source_changed`，其他错误报 `unavailable`，宿主错误文本不转发。

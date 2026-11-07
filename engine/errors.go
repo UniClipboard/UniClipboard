@@ -32,6 +32,7 @@ const (
 	CodeCancelled         Code = "cancelled"
 	CodeIdentityMismatch  Code = "identity_mismatch"
 	CodeProtocolMismatch  Code = "protocol_mismatch"
+	CodeSourceChanged     Code = "source_changed"
 	CodeIncomplete        Code = "incomplete"   // pairing code: not six digits
 	CodeInvalid           Code = "invalid"      // pairing code: not a unic code
 	CodeExpired           Code = "expired"      // pairing code: unknown, expired or used

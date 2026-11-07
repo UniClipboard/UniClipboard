@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/clip"
 )
 
 const (

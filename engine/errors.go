@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/rendezvous"
 )
 
 // Code is a stable, machine-readable error class. Programs branch on Code;

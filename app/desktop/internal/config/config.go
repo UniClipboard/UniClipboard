@@ -13,7 +13,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"unic/engine"
+	"github.com/uniclipboard/unic/engine"
 )
 
 // Hard caps of the wire protocol; limits in the file cannot exceed them.

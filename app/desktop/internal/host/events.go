@@ -1,11 +1,11 @@
-package desktop
+package host
 
 import (
 	"context"
 	"time"
 
-	"unic/engine"
-	"unic/internal/api"
+	"github.com/uniclipboard/unic/app/desktop/internal/api"
+	"github.com/uniclipboard/unic/engine"
 )
 
 // pumpEvents turns the engine's events into the daemon's event stream. The

@@ -3,7 +3,7 @@
 - 状态：设计稿，正在分阶段实现；实现进度见第 14 节，未列为已实现的部分当前代码尚未符合本规范。
 - 日期：2026-11-07
 - 依据：[0003 独立 Engine](decisions/0003-engine-sdk.md)、[0001 配对](decisions/0001-pairing-code.md)、[0002 配置](decisions/0002-config-file.md)。
-- 范围：公开 Go 包 `unic/engine` 的业务契约及桌面宿主接入；移动端沿用业务语义，具体语言绑定后续定义。
+- 范围：公开 Go 包 `github.com/uniclipboard/unic/engine` 的业务契约及桌面宿主接入；移动端沿用业务语义，具体语言绑定后续定义。
 
 本文中的“必须”是实现和契约测试要求。“宿主”指调用 SDK 的平台集成层，不是 GUI。SDK 不直接访问系统剪贴板，不创建 UI，不提供后台常驻保证。
 
@@ -289,7 +289,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 ## 14. 实现进度与落地时的补充约定
 
-公开包 `unic/engine` 分两步落地。每一步完成后更新本节；契约测试位于 `engine/engine_test.go`。
+公开包 `github.com/uniclipboard/unic/engine` 分两步落地。每一步完成后更新本节；契约测试位于 `engine/engine_test.go`。
 
 **第一步（已实现并有测试）**：创建与目录独占锁、`Start`/`Stop`/`Close`、`SetRuntimeState`、`NotifyNetworkChanged`、`GetState`、`GetCapabilities`、`UpdateHostCapabilities`、`UpdateSettings`、全部配对与设备方法（`CreatePairingCode` … `Unpair`）、`GetOperation`、`SubscribeEvents`/`Subscription`、错误模型。
 
@@ -299,7 +299,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2c（已实现并有测试）**：接收列表（`ListReceived`、`DismissReceived`、`State.Received`、`received` 与 `resource_warning` 事件）；接收内容存为内容对象，经 `RetainContent` 读取、`LocalFilePath` 取文件。
 
-**桌面迁移（已完成）**：`cmd/unicd` 只装配 `internal/desktop`，由它持有 SDK 引擎、系统剪贴板适配和 HTTP 后端；内部 `internal/engine` 退化为会话层，旧的剪贴板轮询、`apply`、`broadcast`、`lastHash`、`SetLocal`、`Board` 已删除，只剩一套业务状态与信任逻辑。
+**桌面迁移（已完成）**：`app/desktop/cmd/unicd` 只装配 `app/desktop/internal/host`，由它持有 SDK 引擎、系统剪贴板适配和 HTTP 后端；内部 `internal/session`（原 `internal/engine`）退化为会话层，旧的剪贴板轮询、`apply`、`broadcast`、`lastHash`、`SetLocal`、`Board` 已删除，只剩一套业务状态与信任逻辑。
 
 **第二步 2d（已实现并有测试）**：`ObserveClipboard`、`BeginApply`、`ReportApplyResult`、`State.ActiveApply`、`apply` 事件。公开 Engine 本身不读写系统剪贴板，由宿主适配调用这些方法。
 

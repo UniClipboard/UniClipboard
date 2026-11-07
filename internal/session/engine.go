@@ -3,7 +3,7 @@
 // and introductions, and moves clips to and from a Receiver. It knows nothing
 // of tailcat or of any clipboard; it talks to a Transport, so it is tested with
 // loopback TCP. Hosts use unic/engine, not this package.
-package engine
+package session
 
 import (
 	"context"
@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"unic/internal/clip"
-	"unic/internal/rendezvous"
-	"unic/internal/store"
-	"unic/internal/wire"
+	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/store"
+	"github.com/uniclipboard/unic/internal/wire"
 )
 
 // Transport carries bytes between devices.

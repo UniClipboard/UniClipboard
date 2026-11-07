@@ -1,12 +1,12 @@
-package engine
+package session
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"unic/internal/rendezvous"
-	"unic/internal/rendezvous/rvtest"
+	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/rendezvous/rvtest"
 )
 
 func codeNodes(t *testing.T, ids ...string) (*rvtest.Server, []node) {

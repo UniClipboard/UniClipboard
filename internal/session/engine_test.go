@@ -1,4 +1,4 @@
-package engine
+package session
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"unic/internal/rendezvous"
-	"unic/internal/store"
+	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/store"
 )
 
 type tcpTransport struct{ ln net.Listener }

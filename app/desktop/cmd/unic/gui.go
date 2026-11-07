@@ -11,7 +11,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"unic/internal/api"
+	"github.com/uniclipboard/unic/app/desktop/internal/api"
 )
 
 // Tabs and panes; the layout follows prototype/gui.html.

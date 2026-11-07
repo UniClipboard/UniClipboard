@@ -13,8 +13,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"unic/internal/api"
-	"unic/internal/paths"
+	"github.com/uniclipboard/unic/app/desktop/internal/api"
+	"github.com/uniclipboard/unic/app/desktop/internal/paths"
 )
 
 func client() (*api.Client, error) {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"unic/internal/clip"
-	core "unic/internal/engine"
-	"unic/internal/wire"
+	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/wire"
 )
 
 // recvDirName is where incoming files are written, inside InboxDir. The engine
@@ -34,21 +34,21 @@ type receiver struct{ e *Engine }
 // Admit reserves room for an incoming clip, making room by dropping the oldest
 // received entries that nobody is using. When there is none the clip is read
 // and discarded, which keeps the connection in step.
-func (r receiver) Admit(peer string, m wire.Clip) (core.Admission, bool) {
+func (r receiver) Admit(peer string, m wire.Clip) (session.Admission, bool) {
 	e := r.e
 	var total int64
 	for _, p := range m.Parts {
 		total += p.Size
 	}
 	if total == 0 {
-		return core.Admission{}, false
+		return session.Admission{}, false
 	}
 	e.mu.Lock()
 	ok := e.life == LifecycleRunning && e.runtime == RuntimeActive
 	max := e.res.MaxStoredBytes
 	e.mu.Unlock()
 	if !ok {
-		return core.Admission{}, false
+		return session.Admission{}, false
 	}
 	reserve := func() bool {
 		e.cs.mu.Lock()
@@ -63,10 +63,10 @@ func (r receiver) Admit(peer string, m wire.Clip) (core.Admission, bool) {
 		if !e.evictOldest(true) {
 			e.commit(EventResourceWarning)
 			e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
-			return core.Admission{}, false
+			return session.Admission{}, false
 		}
 	}
-	return core.Admission{
+	return session.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
 			e.delivered(DeviceID(peer), total, snap, dir, ok)

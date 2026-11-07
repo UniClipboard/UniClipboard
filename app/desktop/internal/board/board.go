@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
 
-	"unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/clip"
 )
 
 type MyGo struct{}

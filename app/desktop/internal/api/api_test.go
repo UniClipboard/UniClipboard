@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"unic/internal/config"
+	"github.com/uniclipboard/unic/app/desktop/internal/config"
 )
 
 // fake is a Backend that records what the handler asked of it.

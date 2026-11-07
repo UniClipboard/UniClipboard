@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"unicode/utf8"
 
-	"unic/internal/wire"
+	"github.com/uniclipboard/unic/internal/wire"
 )
 
 const (

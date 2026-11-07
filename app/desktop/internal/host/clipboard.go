@@ -1,4 +1,4 @@
-package desktop
+package host
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"unic/engine"
-	"unic/internal/api"
-	"unic/internal/clip"
+	"github.com/uniclipboard/unic/app/desktop/internal/api"
+	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/clip"
 )
 
 // clipboardHost connects the system clipboard to the engine, following the

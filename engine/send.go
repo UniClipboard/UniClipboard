@@ -8,9 +8,9 @@ import (
 	"io"
 	"time"
 
-	"unic/internal/clip"
-	core "unic/internal/engine"
-	"unic/internal/wire"
+	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/wire"
 )
 
 // sendSet is what will go out: the parts of a content that the sync settings
@@ -123,13 +123,13 @@ func (e *Engine) submit(req SubmitRequest) (OperationID, error) {
 
 	var opID OperationID
 	var failure *Error
-	queued := e.core.Submit(func(peers []string) (core.Job, bool) {
+	queued := e.core.Submit(func(peers []string) (session.Job, bool) {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		o, _, oerr := e.newOpLocked(OperationSend, req.RequestID, hash, PhaseQueued)
 		if oerr != nil {
 			failure = oerr
-			return core.Job{}, false
+			return session.Job{}, false
 		}
 		opID = o.op.ID
 		o.op.Targets = make([]TargetStatus, len(peers))
@@ -138,8 +138,8 @@ func (e *Engine) submit(req SubmitRequest) (OperationID, error) {
 		}
 		o.content = c
 		clipID, ts := wire.NewID(), time.Now().UnixMilli()
-		return core.Job{
-			Report: func(peer string, st core.TargetState, err error) { e.reportTarget(opID, DeviceID(peer), st, err) },
+		return session.Job{
+			Report: func(peer string, st session.TargetState, err error) { e.reportTarget(opID, DeviceID(peer), st, err) },
 			Send: func(ctx context.Context, w *wire.Conn, origin string) (bool, error) {
 				return e.sendSet(ctx, w, origin, clipID, ts, set)
 			},
@@ -216,7 +216,7 @@ func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, t
 
 // reportTarget records how a send fares towards one device and finishes the
 // operation when every target is final.
-func (e *Engine) reportTarget(id OperationID, peer DeviceID, st core.TargetState, cause error) {
+func (e *Engine) reportTarget(id OperationID, peer DeviceID, st session.TargetState, cause error) {
 	e.mu.Lock()
 	o := e.ops.byID[id]
 	if o == nil {
@@ -234,13 +234,13 @@ func (e *Engine) reportTarget(id OperationID, peer DeviceID, st core.TargetState
 		return
 	}
 	switch st {
-	case core.Sending:
+	case session.Sending:
 		t.State = TargetSending
-	case core.Sent:
+	case session.Sent:
 		t.State = TargetSent
-	case core.Superseded:
+	case session.Superseded:
 		t.State = TargetSuperseded
-	case core.Failed:
+	case session.Failed:
 		t.State = TargetFailed
 		t.Error = e.sendFailure(cause)
 	}
@@ -263,7 +263,7 @@ func (e *Engine) sendFailure(cause error) *Error {
 	switch {
 	case errors.As(cause, &ee):
 		return ee
-	case errors.Is(cause, core.ErrSessionClosed):
+	case errors.Is(cause, session.ErrSessionClosed):
 		if e.runtime == RuntimeSuspended {
 			return newErr(CodeSuspended, "the host suspended networking during the transfer")
 		}

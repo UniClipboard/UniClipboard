@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"unic/internal/rendezvous"
-	"unic/internal/rendezvous/rvtest"
+	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/rendezvous/rvtest"
 )
 
 // fakeNet is a loopback network. Its address stays the same across listens.

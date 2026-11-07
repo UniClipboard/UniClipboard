@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"unic/internal/config"
+	"github.com/uniclipboard/unic/app/desktop/internal/config"
 )
 
 // PeerStatus is a paired device and whether it is connected right now.

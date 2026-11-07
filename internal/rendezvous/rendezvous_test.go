@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"unic/internal/rendezvous"
-	"unic/internal/rendezvous/rvtest"
+	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/rendezvous/rvtest"
 )
 
 func TestNormalizeCode(t *testing.T) {

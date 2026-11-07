@@ -1,8 +1,8 @@
-// Package desktop is the host of the engine on a computer: it connects the
+// Package host is the desktop host of the engine on a computer: it connects the
 // system clipboard, the configuration file and the local HTTP API to the
 // public engine package. Everything unic does on a desktop goes through here;
 // the engine itself knows nothing of any of them.
-package desktop
+package host
 
 import (
 	"context"
@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"unic/engine"
-	"unic/internal/api"
-	"unic/internal/clip"
-	"unic/internal/config"
+	"github.com/uniclipboard/unic/app/desktop/internal/api"
+	"github.com/uniclipboard/unic/app/desktop/internal/config"
+	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/clip"
 )
 
 // Board is the system clipboard as the desktop host sees it. The production

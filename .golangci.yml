@@ -22,7 +22,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - unic/
+        - github.com/uniclipboard/unic/
 
 issues:
   max-issues-per-linter: 0

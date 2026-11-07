@@ -1,6 +1,6 @@
 # 0003 · 独立 Engine：统一接口与契约，先迁移桌面
 
-- 状态：已采纳；阶段一（公开 `unic/engine` 的全部契约）与阶段二（桌面迁移、删除旧逻辑）已完成；移动端接入仍是后续阶段（实现细节见契约第 14 节）
+- 状态：已采纳；阶段一（公开 `github.com/uniclipboard/unic/engine` 的全部契约）与阶段二（桌面迁移、删除旧逻辑）已完成；移动端接入仍是后续阶段（实现细节见契约第 14 节）
 - 日期：2026-11-07
 - 关联：[0001 配对](0001-pairing-code.md)、[0002 配置](0002-config-file.md)
 - 详细规范：[Engine 公共契约 v0.1](../engine-contract.md)（接口、数据模型与行为约束；部分实现，见其第 14 节）
@@ -17,7 +17,7 @@ Engine 将用于桌面、Android、iOS 和原生鸿蒙（HarmonyOS NEXT）。目
 
 ### 1. 公共 Go SDK 与平台宿主
 
-在当前仓库、当前 Go module 内提供公开的 `engine` 包（`unic/engine`），先不拆仓库和独立 module。公共包可以使用内部实现，但公开类型和签名不得引用 `unic/internal/*`、mygo、tailcat、SQLite 或配置文件 Manager 的类型。
+在当前仓库、当前 Go module 内提供公开的 `engine` 包（`github.com/uniclipboard/unic/engine`），先不拆仓库和独立 module。公共包可以使用内部实现，但公开类型和签名不得引用 `github.com/uniclipboard/unic/internal/*`、mygo、tailcat、SQLite 或配置文件 Manager 的类型。
 
 ```text
 桌面 CLI / GUI                         未来移动端 UI
@@ -141,7 +141,7 @@ Engine 内部允许使用私有目录和真实文件；禁止要求公共调用�
 
 验收标准：
 
-- `go build -o unic ./cmd/unic && go build -o unicd ./cmd/unicd` 与 `go test -race ./...` 通过。
+- `go build -o unic ./app/desktop/cmd/unic && go build -o unicd ./app/desktop/cmd/unicd`（布局调整后的路径，见 0005）与 `go test -race ./...` 通过。
 - 两个桌面节点验证文本、HTML、PNG、文件同步及防回环，启动不广播已有剪贴板。
 - 验证完整地址配对、配对码、指纹、批准/拒绝、介绍、移除设备与重启后信任保留；移除设备同时释放相关连接资源。
 - 验证暂停、类型过滤、超限、断线重连、配置热加载、坏配置保留和 inbox 重启提示。

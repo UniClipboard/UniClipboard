@@ -1,4 +1,4 @@
-package desktop
+package host
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"unic/engine"
-	"unic/internal/api"
-	"unic/internal/clip"
+	"github.com/uniclipboard/unic/app/desktop/internal/api"
+	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/clip"
 )
 
 // pathSource keeps a file where it is: the engine opens it again whenever it

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/clip"
 )
 
 // ---- DTOs ----

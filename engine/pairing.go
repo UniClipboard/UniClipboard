@@ -8,9 +8,9 @@ import (
 	"time"
 	"unicode"
 
-	core "unic/internal/engine"
-	"unic/internal/rendezvous"
-	"unic/internal/tcnet"
+	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/tcnet"
 )
 
 // pairTimeout bounds one pairing attempt (dial plus handshake).
@@ -64,15 +64,15 @@ func mapNetErr(err error) *Error {
 		return ee
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return ctxErr(err)
-	case errors.Is(err, core.ErrSelf):
+	case errors.Is(err, session.ErrSelf):
 		return newErr(CodeInvalidArgument, "that is this device itself")
 	case errors.Is(err, tcnet.ErrBadAddress):
 		return newErr(CodeInvalidArgument, "that is not a valid device address")
-	case errors.Is(err, core.ErrProtocol):
+	case errors.Is(err, session.ErrProtocol):
 		return newErr(CodeProtocolMismatch, "the other device uses an incompatible protocol version")
-	case errors.Is(err, core.ErrIdentity):
+	case errors.Is(err, session.ErrIdentity):
 		return newErr(CodeIdentityMismatch, "the address belongs to a different device")
-	case errors.Is(err, core.ErrNotRunning):
+	case errors.Is(err, session.ErrNotRunning):
 		return newErr(CodeInvalidState, "the engine is not running")
 	}
 	if ce, ok := codeFailure(err); ok {
@@ -260,7 +260,7 @@ func (e *Engine) startPairing(req RequestID, param string, phase Phase,
 			e.updateOp(id, func(o *Operation) { o.Phase, o.Error = PhaseFailed, ee })
 			return
 		}
-		fp := core.Fingerprint(string(e.self), string(peer))
+		fp := session.Fingerprint(string(e.self), string(peer))
 		e.updateOp(id, func(o *Operation) {
 			o.Phase = PhaseSucceeded
 			o.Pairing = &PairingResult{PeerID: peer, Fingerprint: fp, AwaitingRemoteApproval: awaiting}
@@ -407,7 +407,7 @@ func (e *Engine) Approve(ctx context.Context, req ApprovalRequest) (Peer, error)
 		return Peer{}, newErr(CodeConflict, "the fingerprint does not match; compare it again")
 	}
 	if _, err := e.core.Approve(string(req.DeviceID)); err != nil {
-		if errors.Is(err, core.ErrNoPending) {
+		if errors.Is(err, session.ErrNoPending) {
 			return Peer{}, newErr(CodeNotFound, "no such pending device")
 		}
 		return Peer{}, newErr(CodeUnavailable, "cannot store the decision")
@@ -436,7 +436,7 @@ func (e *Engine) Reject(ctx context.Context, req PendingRequest) error {
 		return perr
 	}
 	if err := e.core.Reject(string(req.DeviceID)); err != nil {
-		if errors.Is(err, core.ErrNoPending) {
+		if errors.Is(err, session.ErrNoPending) {
 			return newErr(CodeNotFound, "no such pending device")
 		}
 		return newErr(CodeUnavailable, "cannot store the decision")

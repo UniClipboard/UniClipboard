@@ -1,4 +1,4 @@
-package desktop
+package host
 
 import (
 	"bytes"
@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"unic/internal/api"
-	"unic/internal/clip"
-	"unic/internal/config"
+	"github.com/uniclipboard/unic/app/desktop/internal/api"
+	"github.com/uniclipboard/unic/app/desktop/internal/config"
+	"github.com/uniclipboard/unic/internal/clip"
 )
 
 // fakeBoard is an in-memory clipboard. extra mimics systems that add their own

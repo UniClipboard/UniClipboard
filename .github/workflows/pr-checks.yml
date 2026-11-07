@@ -45,5 +45,5 @@ jobs:
         run: go test -race ./...
       - name: Build
         run: |
-          go build -o unic ./cmd/unic
-          go build -o unicd ./cmd/unicd
+          go build -o unic ./app/desktop/cmd/unic
+          go build -o unicd ./app/desktop/cmd/unicd

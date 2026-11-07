@@ -18,11 +18,11 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"unic/internal/api"
-	"unic/internal/board"
-	"unic/internal/config"
-	"unic/internal/desktop"
-	"unic/internal/paths"
+	"github.com/uniclipboard/unic/app/desktop/internal/api"
+	"github.com/uniclipboard/unic/app/desktop/internal/board"
+	"github.com/uniclipboard/unic/app/desktop/internal/config"
+	"github.com/uniclipboard/unic/app/desktop/internal/host"
+	"github.com/uniclipboard/unic/app/desktop/internal/paths"
 )
 
 // runDaemon runs the node as a windowless mygo app: mygo owns the main thread
@@ -60,7 +60,7 @@ func runDaemon() error {
 		}
 	}
 
-	node, err := desktop.Open(context.Background(), desktop.Options{
+	node, err := host.Open(context.Background(), host.Options{
 		Dir: dir, Settings: settings, Board: board.MyGo{}, Logf: log.Printf,
 	})
 	if err != nil {

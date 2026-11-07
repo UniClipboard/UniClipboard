@@ -1,4 +1,4 @@
-module unic
+module github.com/uniclipboard/unic
 
 go 1.27.3
 

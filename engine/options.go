@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"unic/internal/rendezvous"
-	"unic/internal/wire"
+	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/wire"
 )
 
 var errLocked = errors.New("data directory is locked")

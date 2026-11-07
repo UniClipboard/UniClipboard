@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	core "unic/internal/engine"
-	"unic/internal/rendezvous"
-	"unic/internal/store"
-	"unic/internal/tcnet"
+	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/store"
+	"github.com/uniclipboard/unic/internal/tcnet"
 )
 
 // Engine is one running node. All methods are safe for concurrent use.
@@ -39,7 +39,7 @@ type Engine struct {
 	st      *store.Store
 	tr      Network
 	trUsed  bool // tr.Start was called, so tr.Close is due
-	core    *core.Engine
+	core    *session.Engine
 	self    DeviceID
 	defName string
 
@@ -70,7 +70,7 @@ type Engine struct {
 	closedCh chan struct{} // closed when Close is complete
 
 	trDone    chan struct{} // closed when tr.Start returned
-	events    <-chan core.Event
+	events    <-chan session.Event
 	evCancel  func()
 	evStop    chan struct{}
 	evDone    chan struct{}
@@ -181,7 +181,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if rv == nil {
 		rv = rendezvous.NewWithURL("") // the production service; settings.RendezvousURL overrides it, the environment does not
 	}
-	e.core = core.New(core.Config{
+	e.core = session.New(session.Config{
 		ID: id, Name: defName, Store: st, Transport: tr,
 		Receiver:   receiver{e},
 		Logf:       func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
@@ -194,14 +194,14 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	return e, nil
 }
 
-// settingsSource feeds the current settings to the core.
+// settingsSource feeds the current settings to the session.
 type settingsSource struct{ e *Engine }
 
-func (s settingsSource) Current() core.Settings {
+func (s settingsSource) Current() session.Settings {
 	s.e.mu.Lock()
 	defer s.e.mu.Unlock()
 	v := s.e.settings.Value
-	return core.Settings{DeviceName: strings.TrimSpace(v.DeviceName), RendezvousURL: strings.TrimRight(v.RendezvousURL, "/"),
+	return session.Settings{DeviceName: strings.TrimSpace(v.DeviceName), RendezvousURL: strings.TrimRight(v.RendezvousURL, "/"),
 		MaxFileBytes: v.Limits.MaxFileBytes, MaxTotalBytes: v.Limits.MaxTotalBytes, SyncEnabled: v.Sync.Enabled}
 }
 

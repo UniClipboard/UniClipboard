@@ -17,7 +17,7 @@ import (
 	"github.com/tailscale/tailcat"
 	"tailscale.com/types/key"
 
-	"unic/internal/store"
+	"github.com/uniclipboard/unic/internal/store"
 )
 
 // ErrBadAddress means the text is not a tailcat address.

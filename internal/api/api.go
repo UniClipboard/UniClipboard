@@ -16,8 +16,8 @@ import (
 	"os"
 	"time"
 
-	"uni/internal/clip"
-	"uni/internal/engine"
+	"unic/internal/clip"
+	"unic/internal/engine"
 )
 
 // Status is the reply of GET /v1/status.
@@ -193,7 +193,7 @@ func Handler(e *engine.Engine) http.Handler {
 func Listen(path string) (net.Listener, error) {
 	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
 		c.Close()
-		return nil, fmt.Errorf("another uni daemon is already running (%s)", path)
+		return nil, fmt.Errorf("another unic daemon is already running (%s)", path)
 	}
 	_ = os.Remove(path)
 	ln, err := net.Listen("unix", path)
@@ -215,7 +215,7 @@ type Client struct {
 }
 
 // ErrNoDaemon means nothing listens on the socket.
-var ErrNoDaemon = errors.New("the uni daemon is not running (start it with `uni daemon`)")
+var ErrNoDaemon = errors.New("the unic daemon is not running (start it with `unicd`)")
 
 func NewClient(socket string) *Client {
 	return &Client{Path: socket, hc: &http.Client{Transport: &http.Transport{
@@ -235,7 +235,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		}
 		body = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, "http://uni"+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, "http://unic"+path, body)
 	if err != nil {
 		return err
 	}
@@ -291,7 +291,7 @@ func (c *Client) SetClipboard(ctx context.Context, s SetClipboard) error {
 
 // Events calls fn for each event until ctx ends or the stream breaks.
 func (c *Client) Events(ctx context.Context, fn func(engine.Event)) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://uni/v1/events", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://unic/v1/events", nil)
 	if err != nil {
 		return err
 	}

@@ -11,9 +11,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"uni/internal/api"
-	"uni/internal/engine"
-	"uni/internal/paths"
+	"unic/internal/api"
+	"unic/internal/engine"
+	"unic/internal/paths"
 )
 
 func client() (*api.Client, error) {
@@ -44,7 +44,7 @@ func runCLI(cmd string, args []string) error {
 		if st.Addr == "" {
 			fmt.Println("address (starting…)")
 		} else {
-			fmt.Printf("address %s…  (run `uni addr` for the full address)\n", trunc(st.Addr, 24))
+			fmt.Printf("address %s…  (run `unic addr` for the full address)\n", trunc(st.Addr, 24))
 		}
 		printPeers(st.Peers)
 
@@ -67,7 +67,7 @@ func runCLI(cmd string, args []string) error {
 
 	case "pair":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: uni pair <address>")
+			return fmt.Errorf("usage: unic pair <address>")
 		}
 		p, err := c.Pair(short, strings.TrimSpace(args[0]))
 		if err != nil {
@@ -77,7 +77,7 @@ func runCLI(cmd string, args []string) error {
 
 	case "unpair":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: uni unpair <id>")
+			return fmt.Errorf("usage: unic unpair <id>")
 		}
 		if err := c.Unpair(short, args[0]); err != nil {
 			return err
@@ -109,7 +109,7 @@ func runCLI(cmd string, args []string) error {
 		return err
 
 	default:
-		return fmt.Errorf("unknown command %q (try `uni help`)", cmd)
+		return fmt.Errorf("unknown command %q (try `unic help`)", cmd)
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func runCLI(cmd string, args []string) error {
 func copyCmd(ctx context.Context, c *api.Client, args []string) error {
 	if len(args) > 0 && (args[0] == "-f" || args[0] == "--file") {
 		if len(args) == 1 {
-			return fmt.Errorf("usage: uni copy -f <file>...")
+			return fmt.Errorf("usage: unic copy -f <file>...")
 		}
 		var files []string
 		for _, a := range args[1:] {
@@ -144,7 +144,7 @@ func copyCmd(ctx context.Context, c *api.Client, args []string) error {
 
 func printPeers(ps []engine.PeerStatus) {
 	if len(ps) == 0 {
-		fmt.Println("no paired devices (run `uni pair <address>` with the other device's `uni addr`)")
+		fmt.Println("no paired devices (run `unic pair <address>` with the other device's `unic addr`)")
 		return
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)

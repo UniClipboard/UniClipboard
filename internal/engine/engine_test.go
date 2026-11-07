@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"uni/internal/clip"
-	"uni/internal/store"
+	"unic/internal/clip"
+	"unic/internal/store"
 )
 
 // fakeBoard is an in-memory clipboard. extra mimics systems that add their own
@@ -40,7 +40,7 @@ func (b *fakeBoard) Write(s clip.Snapshot) error {
 }
 
 func (b *fakeBoard) user(s clip.Snapshot) { b.mu.Lock(); b.s = s; b.mu.Unlock() }
-func (b *fakeBoard) writes() int         { b.mu.Lock(); defer b.mu.Unlock(); return b.wrote }
+func (b *fakeBoard) writes() int          { b.mu.Lock(); defer b.mu.Unlock(); return b.wrote }
 
 type tcpTransport struct{ ln net.Listener }
 

@@ -1,4 +1,4 @@
-// Package wire is the framing used between two uni daemons over a tailcat
+// Package wire is the framing used between two unic daemons over a tailcat
 // tunnel. A control message is a length-prefixed JSON document; a clipboard
 // message is followed by the raw bytes of each part, whose sizes the
 // control message announces.
@@ -17,15 +17,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"uni/internal/clip"
+	"unic/internal/clip"
 )
 
 const (
 	Version      = 1
-	MaxControl   = 1 << 20   // largest JSON control message
-	MaxPartBytes = 64 << 20  // in-memory format (text, HTML, PNG), same cap as mygo
-	MaxFileBytes = 2 << 30   // one file
-	MaxTotal     = 4 << 30   // whole clipboard message
+	MaxControl   = 1 << 20  // largest JSON control message
+	MaxPartBytes = 64 << 20 // in-memory format (text, HTML, PNG), same cap as mygo
+	MaxFileBytes = 2 << 30  // one file
+	MaxTotal     = 4 << 30  // whole clipboard message
 	MaxParts     = 4096
 )
 

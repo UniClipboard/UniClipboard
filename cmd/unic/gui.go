@@ -10,8 +10,8 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"uni/internal/api"
-	"uni/internal/engine"
+	"unic/internal/api"
+	"unic/internal/engine"
 )
 
 // gui is a client of the daemon: all state it shows comes over the socket.
@@ -37,7 +37,7 @@ func runGUI() error {
 	}
 	g := &gui{c: c}
 
-	mygo.App.SetName("uni")
+	mygo.App.SetName("unic")
 	if !mygo.App.RequestSingleInstanceLock() {
 		return nil // the running window comes forward
 	}
@@ -52,7 +52,7 @@ func runGUI() error {
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancel() })
 	mygo.App.WhenReady(func() {
 		g.win = mygo.NewWindow(mygo.WindowOptions{
-			Title: "uni", Width: 460, Height: 560, Content: ui.View(g.view),
+			Title: "unic", Width: 460, Height: 560, Content: ui.View(g.view),
 		})
 		go g.follow(ctx)
 	})
@@ -158,7 +158,7 @@ func (g *gui) view(c *ui.Context) {
 
 	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
 		ui.Row(c).Gap(10).Children(func() {
-			ui.Text(c, "uni").FontSize(24).Bold()
+			ui.Text(c, "unic").FontSize(24).Bold()
 			ui.Spacer(c)
 			if up {
 				ui.Badge(c, "daemon running")
@@ -168,7 +168,7 @@ func (g *gui) view(c *ui.Context) {
 		})
 
 		if !up {
-			ui.Text(c, "Start the background node with `uni daemon`; this window reconnects by itself.").
+			ui.Text(c, "Start the background node with `unicd`; this window reconnects by itself.").
 				TextColor(t.TextMuted)
 			return
 		}
@@ -199,7 +199,7 @@ func (g *gui) view(c *ui.Context) {
 			ui.Text(c, "None yet. Paste the address of another device below.").TextColor(t.TextMuted)
 		}
 		for _, p := range st.Peers {
-			ui.Row(c.Key("peer-"+p.ID)).Gap(8).Children(func() {
+			ui.Row(c.Key("peer-" + p.ID)).Gap(8).Children(func() {
 				ui.Text(c, p.Name).Grow(1)
 				if p.Connected {
 					ui.Badge(c, "online")

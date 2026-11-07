@@ -1,4 +1,4 @@
-module uni
+module unic
 
 go 1.27.3
 

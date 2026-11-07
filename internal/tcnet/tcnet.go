@@ -16,7 +16,7 @@ import (
 	"github.com/tailscale/tailcat"
 	"tailscale.com/types/key"
 
-	"uni/internal/store"
+	"unic/internal/store"
 )
 
 // Port is the virtual TCP port the sync protocol listens on inside the tunnel.

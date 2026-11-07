@@ -13,16 +13,17 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 
 	"github.com/egoist/mygo"
 
-	"uni/internal/api"
-	"uni/internal/board"
-	"uni/internal/engine"
-	"uni/internal/paths"
-	"uni/internal/store"
-	"uni/internal/tcnet"
+	"unic/internal/api"
+	"unic/internal/board"
+	"unic/internal/engine"
+	"unic/internal/paths"
+	"unic/internal/store"
+	"unic/internal/tcnet"
 )
 
 // runDaemon runs the node as a windowless mygo app: mygo owns the main thread
@@ -68,9 +69,9 @@ func runDaemon() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mygo.App.SetName("uni")
+	mygo.App.SetName("unicd")
 	mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory) // no Dock icon
-	mygo.App.OnWindowAllClosed(func() {})                         // the daemon has no windows to keep it alive
+	mygo.App.OnWindowAllClosed(func() {})                        // the daemon has no windows to keep it alive
 
 	var ln interface{ Close() error }
 	mygo.App.WhenReady(func() {
@@ -94,7 +95,7 @@ func runDaemon() error {
 					mygo.App.Exit(1)
 				}
 			}()
-			log.Printf("uni daemon %q up; socket %s", name, sock)
+			log.Printf("unicd %q up; socket %s", name, sock)
 			_ = http.Serve(l, api.Handler(eng))
 		}()
 		setupTray()
@@ -112,12 +113,12 @@ func runDaemon() error {
 
 func setupTray() {
 	tray, err := mygo.NewTray(mygo.TrayOptions{
-		ID:             "uni",
+		ID:             "unicd",
 		Icon:           trayIcon(),
 		IconIsTemplate: true,
-		ToolTip:        "uni — clipboard sync",
+		ToolTip:        "unic — clipboard sync",
 		Menu: mygo.NewMenu([]*mygo.MenuItem{
-			{Label: "Open uni…", Click: func(*mygo.MenuItem, *mygo.Window) { openGUI() }},
+			{Label: "Open unic…", Click: func(*mygo.MenuItem, *mygo.Window) { openGUI() }},
 			mygo.Separator(),
 			{Role: mygo.RoleQuit},
 		}),
@@ -134,17 +135,32 @@ func setupTray() {
 // another client of the daemon's socket. A second launch is a no-op because
 // the GUI holds a single-instance lock.
 func openGUI() {
-	exe, err := os.Executable()
-	if err != nil {
-		log.Printf("open gui: %v", err)
-		return
-	}
-	cmd := exec.Command(exe, "gui")
+	cmd := exec.Command(unicPath(), "gui")
 	if err := cmd.Start(); err != nil {
 		log.Printf("open gui: %v", err)
 		return
 	}
 	go cmd.Wait()
+}
+
+// unicPath finds the unic program: next to unicd if installed together, else
+// on PATH.
+func unicPath() string {
+	name := "unic"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if exe, err := os.Executable(); err == nil {
+		if p := filepath.Join(filepath.Dir(exe), name); fileExists(p) {
+			return p
+		}
+	}
+	return name
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 func deviceID(st *store.Store) (string, error) {

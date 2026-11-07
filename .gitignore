@@ -1,5 +1,6 @@
-/uni
-/uni.exe
+/unic
+/unicd
+/*.exe
 *.db
 *.db-shm
 *.db-wal

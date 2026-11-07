@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"uni/internal/clip"
-	"uni/internal/store"
-	"uni/internal/wire"
+	"unic/internal/clip"
+	"unic/internal/store"
+	"unic/internal/wire"
 )
 
 // Transport carries bytes between devices.

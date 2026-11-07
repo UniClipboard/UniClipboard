@@ -1,10 +1,10 @@
-// Command uni syncs the clipboard between your devices, peer to peer.
+// Command unic syncs the clipboard between your devices, peer to peer.
 //
-//	uni daemon          run the background node (menu bar / tray icon)
-//	uni gui             open the window
-//	uni addr            print this device's address
-//	uni pair <addr>     pair with another device
-//	uni status | peers | unpair <id> | copy | paste | watch
+//	unicd               the background node (a separate program)
+//	unic gui             open the window
+//	unic addr            print this device's address
+//	unic pair <addr>     pair with another device
+//	unic status | peers | unpair <id> | copy | paste | watch
 package main
 
 import (
@@ -12,11 +12,12 @@ import (
 	"os"
 )
 
-const usage = `uni - clipboard sync between your devices
+const usage = `unic - clipboard sync between your devices
 
-Usage: uni <command>
+Usage: unic <command>
 
-  daemon           run the background node (keeps the clipboard in sync)
+The background node is a separate program, unicd; start it first.
+
   gui              open the window
   status           show this device and its peers
   addr             print this device's address (treat it like a password)
@@ -27,7 +28,7 @@ Usage: uni <command>
   paste            print the clipboard's text
   watch            print sync events as they happen
 
-Set UNI_HOME to run a separate profile.
+Set UNIC_HOME to run a separate profile.
 `
 
 func main() {
@@ -38,7 +39,7 @@ func main() {
 	var err error
 	switch cmd, args := os.Args[1], os.Args[2:]; cmd {
 	case "daemon":
-		err = runDaemon()
+		err = fmt.Errorf("the daemon is a separate program: run `unicd`")
 	case "gui":
 		err = runGUI()
 	case "help", "-h", "--help":
@@ -47,7 +48,7 @@ func main() {
 		err = runCLI(cmd, args)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "uni:", err)
+		fmt.Fprintln(os.Stderr, "unic:", err)
 		os.Exit(1)
 	}
 }

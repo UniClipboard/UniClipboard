@@ -62,6 +62,17 @@ type FileSource interface {
 	Open(ctx context.Context) (io.ReadCloser, FileMeta, error)
 }
 
+// PersistentFileSource is implemented by a FileSource whose file can be found
+// again after a restart. History then stores only the opaque reference (the
+// desktop uses the absolute path) with the size and Version seen at commit,
+// and never copies the file. The engine gives the reference back to
+// Options.ResolveFileRef; it is a secret like a path and never leaves the
+// database, a DTO, an event or a log.
+type PersistentFileSource interface {
+	FileSource
+	PersistentRef() string
+}
+
 // RepresentationInput is an in-memory form of the content (text, HTML, PNG).
 type RepresentationInput struct {
 	MIME   string

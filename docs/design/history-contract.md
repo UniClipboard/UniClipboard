@@ -87,16 +87,16 @@ Received 是实例内、有 TTL 的待应用视图，History 是跨重启的本�
 
 ## 6. 存储、配额与过期
 
-SQLite 存元数据、小正文和 blob 引用；大正文/文件存 `DataDir/history/` 的 Engine 私有目录，不能使用会在启动/关闭时清空的临时接收目录。每个内存表示不大于 256 KiB 时可内联，超过时必须外置；文件一律作为自有 blob，不依赖宿主文件路径。目录与引用只在内部可见。
+SQLite 存元数据、小正文和 blob 引用；大正文/文件存 `DataDir/history/` 的 Engine 私有目录，不能使用会在启动/关闭时清空的临时接收目录。每个内存表示不大于 256 KiB 时可内联，超过时必须外置；引擎自有的文件（Reader 导入、远端接收）作为自有 blob。目录与引用只在内部可见。
 
-持久化引用文件时须通过 FileSource 重新打开、校验原导入的 FileMeta、按声明长度复制并校验完成后的版本；变化报 source_changed，失败回滚该 commit，不能保存一个重启后无法打开的宿主引用。成功后历史和后续发送使用同一份自有快照，文件大小变化不会污染已提交内容。源文件不变情况下仍不承诺宿主无法检测的原地同尺寸改写具有原子快照语义。
+**宿主就地保存的文件不复制进历史**（2026-11-07 决定，取代早先“一律复制为自有快照”的设计）：来源实现可选接口 `PersistentFileSource{PersistentRef() string}` 时，历史只持久化该不透明引用（桌面为绝对路径）以及 commit 时的 Size 与 Version，不拷贝字节、不占历史配额。引用与路径一样是秘密，仅存数据库，不进 DTO、事件、日志或错误。重启后 `RetainHistoryContent` 通过 `Options.ResolveFileRef(ref)` 重建来源；读取时按原规则比对 Size/Version，文件被移动、删除或修改报 source_changed，未提供 resolver 同样如此。这类条目的文件内容因此不保证长期可读，元数据仍保留。不实现 PersistentFileSource 的来源（如无法稳定寻址的移动端 URI）仍回退为复制 blob。历史条数/字节配额只统计历史自己存储的内联数据与 blob，就地引用的文件按 0 计，HistoryItem.TotalBytes 仍报告逻辑大小。
 
 新增创建选项 `Options.History HistoryOptions`：
 
 | 字段 | 零值/默认值 | 约束 |
 |---|---|---|
 | MaxItems | 10000 | >0，记录上限 |
-| MaxBytes | 4 GiB | >0 且不超过 ResourcePolicy.MaxStoredBytes；按每条历史 TotalBytes 求和，即使共享 blob 也逐条计入 |
+| MaxBytes | 4 GiB | >0 且不超过 ResourcePolicy.MaxStoredBytes；按每条历史自己存储的字节（内联与 blob，不含就地引用的文件）求和，即使共享 blob 也逐条计入 |
 | DefaultTTL | 0（不自动到期） | 非负；用于没有显式 SetExpire 的 commit，显式期限优先 |
 
 以上选项只在 New 设置，不增加 TOML 热更新承诺；桌面日后映射需同步配置模板与重启提示。ResourcePolicy.MaxStoredBytes 仍是所有自有内容的总逻辑配额，共享同一内部内容对象只计一次，不因历史、Received、租约和操作增加引用而重复计数；复制引用文件成为自有资源时必须先预留该配额。SQLite 元数据/WAL、临时文件与文件系统块开销不属于精确计费，磁盘错误仍须处理，不能把逻辑配额当硬磁盘上限。
@@ -127,7 +127,7 @@ State 新增 `HistoryRevision`，不嵌入全量历史。历史增删改在持�
 
 - 稳定 ID 重启可用，旧内容租约/游标失效；不同库和已删除 ID 返回 not_found。
 - 同毫秒/时间回拨分页不重复，新插入不进入旧遍历，筛选变更与游标篡改被拒绝，删除/更新遵循实时遍历语义。
-- List/Get 无正文、文件名/路径/实例内容句柄；显式租约读取返回准确正文、文件名与自有快照。
+- List/Get 无正文、文件名/路径/实例内容句柄；显式租约读取返回准确正文与文件名；就地引用的文件读取时校验 Size/Version。
 - 相同内容独立记录、共享计费不重复；观察/请求幂等不重复 commit，关闭同步/无目标仍入历史。
 - CAS 更新/删除竞争、过期竞争、清除期限、无变化更新；正文不可原地改写。
 - 删除/过期与读取、租约、发送、应用交错，现有持有者可完成，新请求不可取得已删除历史。

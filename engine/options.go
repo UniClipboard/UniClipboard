@@ -33,6 +33,10 @@ type Options struct {
 	HostCapabilities HostCapabilities
 	// Resources bounds memory and disk use; zero fields take the defaults.
 	Resources ResourcePolicy
+	// ResolveFileRef rebuilds the FileSource of a file history kept by
+	// reference (see PersistentFileSource). Nil: such files cannot be read
+	// after a restart and report source_changed.
+	ResolveFileRef func(ref string) FileSource
 	// History bounds the persistent local history; zero fields take defaults.
 	History HistoryOptions
 	// Logger receives structured diagnostics that never contain clipboard

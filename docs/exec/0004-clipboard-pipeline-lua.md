@@ -74,9 +74,9 @@
 ### P2 · 持久历史与资源所有权
 
 - [ ] 在 `internal/store` 增加版本化 SQLite 迁移和底层读写能力；在 `engine/` 实现历史业务及公开查询、读取、更新、删除 API。
-  - 进度：`internal/store` 已完成（`history.go`）：`PRAGMA user_version` 版本化迁移（拒绝更新版本的库）、`clip_items`/`clip_item_parts`/`clip_tags`/`clip_item_sync`/`history_state` 表、AUTOINCREMENT 提交序号（不复用）、插入/读取/keyset 分页（同一读事务返回修订号）/CAS 更新/删除/到期删除/最旧淘汰候选/blob 引用查询，均有测试。文件名并入 parts 表（`kind=file`），不单设 `clip_item_files`。`engine/` 已有首批（`history.go`、`history_types.go`）：`Options.History`、128 位随机 HistoryID、提交时写入（小于 256KiB 的表示内联，其余与文件落 `DataDir/history/<blob>/`，经 openPart 复制故源文件变化报 source_changed）、`GetItem`/`ListHistory`（HMAC 游标，绑定实例与过滤器，首页固定上界）/`RetainHistoryContent`（blob 在内容释放前不被删除）、插入后按条数/字节淘汰最旧、启动清理孤儿 blob，并有测试。`UpdateItem`/`DeleteItem`/到期扫描/history 事件与 State.HistoryRevision/同步状态摘要/与 MaxStoredBytes 的共用配额仍未做，故不勾选。
+  - 进度：`internal/store` 已完成（`history.go`）：`PRAGMA user_version` 版本化迁移（拒绝更新版本的库）、`clip_items`/`clip_item_parts`/`clip_tags`/`clip_item_sync`/`history_state` 表、AUTOINCREMENT 提交序号（不复用）、插入/读取/keyset 分页（同一读事务返回修订号）/CAS 更新/删除/到期删除/最旧淘汰候选/blob 引用查询，均有测试。文件名并入 parts 表（`kind=file`），不单设 `clip_item_files`。`engine/` 已有首批（`history.go`、`history_types.go`）：`Options.History`、128 位随机 HistoryID、提交时写入（小于 256KiB 的表示内联，其余表示与引擎自有文件落 `DataDir/history/<blob>/`；宿主就地文件只存引用，经 `Options.ResolveFileRef` 重建，读取时校验 Size/Version）、`GetItem`/`ListHistory`（HMAC 游标，绑定实例与过滤器，首页固定上界）/`RetainHistoryContent`（blob 在内容释放前不被删除）、插入后按条数/字节淘汰最旧、启动清理孤儿 blob，并有测试。`UpdateItem`/`DeleteItem`/到期扫描/history 事件与 State.HistoryRevision/同步状态摘要/与 MaxStoredBytes 的共用配额仍未做，故不勾选。
 - [ ] 建立 `clip_items/clip_item_parts/clip_item_files/clip_tags` 及必要索引；稳定 ID、时间与分页规则遵循 P0 契约。标签、过期和同步状态仅本机保存。
-- [ ] 小内容入库，大内容进入 Engine 专属持久目录。引用本机文件要成为跨重启历史时，按契约复制为自有资源；不把宿主临时 FileSource 当作永久文件。
+- [ ] 小内容入库，大内容进入 Engine 专属持久目录。宿主就地保存的文件不复制：实现 `PersistentFileSource` 的来源只持久化不透明引用（桌面为路径）与 Size/Version，读取时校验；不能稳定寻址的来源和引擎自有文件才复制为 blob（2026-11-07 决定，见历史契约 §6）。
 - [ ] 明确 blob 落盘、数据库事务、commit 发布与异常恢复顺序。启动可清理孤儿临时文件；不得先发送再发现历史写入失败。
 - [ ] `persist=true` 入库失败不派发；`persist=false` 不入历史，仍可同步，操作/租约释放后可回收。（现状：提交与接收均已接入，入库失败则 commit 失败且不派发；接收在发布前若策略/信任变化则回滚已写记录；有测试。）
 - [ ] 实现启动清理、定时过期与条数/字节容量淘汰。删除条目与实际释放 blob 分开，活动租约/读取/发送/应用持有的内容不得提前删除。

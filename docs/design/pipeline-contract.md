@@ -126,7 +126,7 @@ stateDiagram-v2
 
 Processing 内每个处理器使用独立 patch；成功才替换工作版本，失败释放其临时资源并按 continue/block_sync 继续。原输入引用始终保留到准备结束，不能让回滚依赖已释放内容。深度达到上限时跳过处理器，但仍经过 Preparing/提交屏障与同步策略。
 
-Preparing 校验最终内容、Policy、宿主可写表示，并准备 blob/文件快照、配额和有界发布对象。persist=true 必须先完成自有快照；persist=false 不新增强制复制宿主引用文件的承诺，后续发送/读取仍按原文件版本校验规则进行。请求接纳不冻结宿主源文件；只有成功取得的自有快照可供重启后历史读取。
+Preparing 校验最终内容、Policy、宿主可写表示，并准备 blob/文件快照、配额和有界发布对象。persist=true 对引擎自有内容完成自有快照；宿主就地保存的文件（PersistentFileSource）只记录引用，不复制，后续发送/读取按原文件版本校验规则进行，文件消失或变化报 source_changed（见历史契约 §6）。请求接纳不冻结宿主源文件。
 
 ### 7.2 提交屏障与取消顺序
 

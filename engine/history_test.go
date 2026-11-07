@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 var commitLeases = map[string]LeaseID{}
@@ -181,5 +183,87 @@ func TestOrphanBlobsAreRemovedAtStartup(t *testing.T) {
 	defer func() { _ = e.Close(bg) }()
 	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
 		t.Fatal("unreferenced blob survived startup")
+	}
+}
+
+type refSource struct{ pathSource }
+
+func (r refSource) PersistentRef() string { return r.path }
+
+func TestReferencedFilesAreRememberedNotCopied(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(t.TempDir(), "big.bin")
+	if err := os.WriteFile(file, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	open := func(resolve bool) *Engine {
+		opts, _ := newOpts(t, dir)
+		if resolve {
+			opts.ResolveFileRef = func(ref string) FileSource { return pathSource{ref} }
+		}
+		e, err := New(bg, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	e := open(true)
+	h, err := e.ImportContent(bg, ContentInput{Files: []FileInput{{Name: "big.bin", Size: 8, Source: refSource{pathSource{file}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Start(bg); err != nil {
+		t.Fatal(err)
+	}
+	r, err := e.CommitContent(bg, CommitRequest{RequestID: "ref", LeaseID: h.LeaseID})
+	if err != nil || r.HistoryID == "" {
+		t.Fatal(r, err)
+	}
+	if ents, _ := os.ReadDir(e.hist.dir); len(ents) != 0 {
+		t.Fatalf("a referenced file was copied into history: %d entries", len(ents))
+	}
+	_ = e.Close(bg)
+
+	read := func(e *Engine) error {
+		rh, err := e.RetainHistoryContent(bg, r.HistoryID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rd, err := e.ReadContent(bg, rh.LeaseID, rh.Content.Parts[0].ID)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rd.Close() }()
+		b, _ := io.ReadAll(rd)
+		if string(b) != "original" {
+			t.Fatalf("read %q", b)
+		}
+		return nil
+	}
+	e = open(true)
+	if err := read(e); err != nil {
+		t.Fatal(err)
+	}
+	_ = e.Close(bg)
+
+	// Without a resolver, or once the file changed, reading says source_changed.
+	e = open(false)
+	if err := read(e); code(err) != CodeSourceChanged {
+		t.Fatalf("no resolver: %v", err)
+	}
+	_ = e.Close(bg)
+	if err := os.WriteFile(file, []byte("CHANGED!"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(3 * time.Second)
+	_ = os.Chtimes(file, later, later)
+	e = open(true)
+	defer func() { _ = e.Close(bg) }()
+	rh, _ := e.RetainHistoryContent(bg, r.HistoryID)
+	if _, err := e.ReadContent(bg, rh.LeaseID, rh.Content.Parts[0].ID); code(err) != CodeSourceChanged {
+		t.Fatalf("changed file: %v", err)
+	}
+	if it, err := e.GetItem(bg, r.HistoryID); err != nil || it.TotalBytes != 8 {
+		t.Fatal(it, err)
 	}
 }

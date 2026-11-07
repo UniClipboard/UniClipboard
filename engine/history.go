@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -229,13 +230,26 @@ func (e *Engine) writeBlob(ctx context.Context, p *partRec, fname string) (strin
 	return name, nil
 }
 
+func persistentRef(p *partRec) string {
+	if ps, ok := p.src.(PersistentFileSource); ok {
+		return ps.PersistentRef()
+	}
+	return ""
+}
+
 // persistHistory commits a processed item to the history and returns its ID.
 // Blobs are written first and the record second, so a failure leaves earlier
 // history intact; eviction happens only after the new record exists.
 func (e *Engine) persistHistory(ctx context.Context, pc *processedContent) (HistoryID, *Error) {
 	h := e.hist
 	c := pc.c
-	if c.total > h.opts.MaxBytes {
+	var stored int64 // what history itself would store; referenced files are free
+	for _, p := range c.parts {
+		if p.desc.Kind != PartFile || persistentRef(p) == "" {
+			stored += p.desc.Size
+		}
+	}
+	if stored > h.opts.MaxBytes {
 		return "", newErr(CodeResourceExhausted, "the item is larger than the history allows")
 	}
 	now := time.Now()
@@ -265,6 +279,10 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent) (Hist
 	for _, p := range c.parts {
 		sp := store.HistoryPart{Kind: "rep", MIME: p.desc.MIME, Size: p.desc.Size}
 		switch {
+		case p.desc.Kind == PartFile && persistentRef(p) != "":
+			// The host keeps this file: remember where, copy nothing.
+			sp.Kind, sp.Name, sp.MIME = "file", p.desc.Name, p.desc.MIME
+			sp.Ref, sp.Version = persistentRef(p), p.meta.Version
 		case p.desc.Kind == PartFile:
 			sp.Kind, sp.Name, sp.MIME = "file", p.desc.Name, p.desc.MIME
 			b, err := e.writeBlob(ctx, p, p.desc.Name)
@@ -506,6 +524,15 @@ func (e *Engine) RetainHistoryContent(ctx context.Context, id HistoryID) (Conten
 		n++
 		p := &partRec{desc: PartDescriptor{ID: PartID("p" + strconv.Itoa(n)), Kind: PartRepresentation, MIME: sp.MIME, Size: sp.Size}}
 		switch {
+		case sp.Kind == "file" && sp.Ref != "":
+			p.desc.Kind, p.desc.Name, p.desc.Referenced = PartFile, sp.Name, true
+			p.meta = FileMeta{Size: sp.Size, Version: sp.Version}
+			if e.opts.ResolveFileRef != nil {
+				p.src = e.opts.ResolveFileRef(sp.Ref)
+			}
+			if p.src == nil {
+				p.src = missingSource{}
+			}
 		case sp.Kind == "file":
 			p.desc.Kind, p.desc.Name = PartFile, sp.Name
 			p.path = filepath.Join(h.dir, sp.Blob, sp.Name)
@@ -554,4 +581,11 @@ func (e *Engine) removeHistory(id HistoryID) {
 	if blobs, _, err := e.st.DeleteHistory(string(id), 0); err == nil {
 		h.dropUnreferenced(e.st, blobs)
 	}
+}
+
+// missingSource stands in for a referenced file that cannot be resolved.
+type missingSource struct{}
+
+func (missingSource) Open(context.Context) (io.ReadCloser, FileMeta, error) {
+	return nil, FileMeta{}, fs.ErrNotExist
 }

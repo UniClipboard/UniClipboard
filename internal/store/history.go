@@ -65,6 +65,10 @@ CREATE TABLE clip_item_sync (
   state      TEXT NOT NULL,
   PRIMARY KEY (item_seq, backend_id)
 ) WITHOUT ROWID;`,
+	// Files the host keeps in place are remembered by an opaque reference and
+	// the size/version seen at commit; nothing is copied for them.
+	`ALTER TABLE clip_item_parts ADD COLUMN ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE clip_item_parts ADD COLUMN version TEXT NOT NULL DEFAULT '';`,
 }
 
 func migrate(db *sql.DB) error {
@@ -101,12 +105,14 @@ func migrate(db *sql.DB) error {
 // HistoryPart is one stored part. Inline and Blob are exclusive; reads of
 // metadata leave Inline nil.
 type HistoryPart struct {
-	Kind   string // "rep" or "file"
-	MIME   string
-	Name   string
-	Size   int64
-	Inline []byte
-	Blob   string
+	Kind    string // "rep" or "file"
+	MIME    string
+	Name    string
+	Size    int64
+	Inline  []byte
+	Blob    string
+	Ref     string // opaque host reference of a file kept in place; no blob
+	Version string
 }
 
 // HistoryItem is a stored record. Seq is private commit order.
@@ -183,8 +189,8 @@ created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?,
 		return 0, 0, err
 	}
 	for i, p := range it.Parts {
-		if _, err := tx.Exec(`INSERT INTO clip_item_parts (item_seq, ord, kind, mime, name, size, inline, blob) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			seq, i, p.Kind, p.MIME, p.Name, p.Size, p.Inline, p.Blob); err != nil {
+		if _, err := tx.Exec(`INSERT INTO clip_item_parts (item_seq, ord, kind, mime, name, size, inline, blob, ref, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			seq, i, p.Kind, p.MIME, p.Name, p.Size, p.Inline, p.Blob, p.Ref, p.Version); err != nil {
 			return 0, 0, err
 		}
 	}
@@ -246,13 +252,13 @@ func fill(q queryer, it *HistoryItem, withInline bool) error {
 	if withInline {
 		col = "inline"
 	}
-	rows, err = q.Query(`SELECT kind, mime, name, size, `+col+`, blob FROM clip_item_parts WHERE item_seq = ? ORDER BY ord`, it.Seq)
+	rows, err = q.Query(`SELECT kind, mime, name, size, `+col+`, blob, ref, version FROM clip_item_parts WHERE item_seq = ? ORDER BY ord`, it.Seq)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
 		var p HistoryPart
-		if err := rows.Scan(&p.Kind, &p.MIME, &p.Name, &p.Size, &p.Inline, &p.Blob); err != nil {
+		if err := rows.Scan(&p.Kind, &p.MIME, &p.Name, &p.Size, &p.Inline, &p.Blob, &p.Ref, &p.Version); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -575,9 +581,13 @@ func (s *Store) OldestHistory(n int) ([]HistoryItem, error) {
 	return out, rows.Err()
 }
 
-// HistoryTotals returns the item count and the sum of total_bytes.
+// HistoryTotals returns the item count and the bytes history itself stores
+// (inline data and blobs). Files kept in place by reference cost nothing.
 func (s *Store) HistoryTotals() (items int, bytes int64, err error) {
-	err = s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(total_bytes), 0) FROM clip_items`).Scan(&items, &bytes)
+	if err = s.db.QueryRow(`SELECT COUNT(*) FROM clip_items`).Scan(&items); err != nil {
+		return
+	}
+	err = s.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM clip_item_parts WHERE ref = ''`).Scan(&bytes)
 	return
 }
 

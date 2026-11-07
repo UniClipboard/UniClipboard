@@ -19,6 +19,9 @@ import (
 // needs the bytes and compares size and modification time with what it saw.
 type pathSource struct{ path string }
 
+// PersistentRef lets history remember the file by path instead of copying it.
+func (p pathSource) PersistentRef() string { return p.path }
+
 func (p pathSource) Open(context.Context) (io.ReadCloser, engine.FileMeta, error) {
 	f, err := os.Open(p.path)
 	if err != nil {

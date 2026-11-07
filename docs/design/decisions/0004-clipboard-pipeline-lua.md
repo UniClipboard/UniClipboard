@@ -7,7 +7,7 @@
 
 ## 背景与目标
 
-现在本机复制后，`watch()` 轮询到变化就直接 `broadcast()`（`internal/engine/engine.go`），中间没有可介入的位置；接收远端内容同理（`apply()`）。
+现在本机复制后，桌面宿主轮询到变化（`app/desktop/internal/host/clipboard.go` 的 `tick`）就交给 `Engine.ObserveClipboard`（`engine/clipboard.go`）直接同步，中间没有可介入的位置；接收远端内容同理（`applyLoop` → `Engine.BeginApply`）。
 
 目标：用户复制后，内容先经过一条**处理流水线**，Lua 插件可在其中修改内容、加标签、控制是否同步、设置过期时间；同步本身只是流水线里的**内置步骤**，不再是写死的出口。
 

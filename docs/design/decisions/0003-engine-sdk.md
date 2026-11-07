@@ -9,7 +9,7 @@
 
 Engine 将用于桌面、Android、iOS 和原生鸿蒙（HarmonyOS NEXT）。目前没有搭建移动端环境，因此先定义公共接口与行为契约，再把现有桌面端迁移到该接口。移动端绑定、工具链验证和真机接入作为后续工作，不作为本次桌面迁移的前置条件。
 
-现有 `internal/engine` 已通过 `Transport` 和 `clip.Board` 隔离网络与剪贴板，但仍依赖具体 SQLite Store、配置文件 Manager、剪贴板轮询和绝对文件路径。设备身份、网络启动、资源清理与退出则由 daemon 拼装。直接移动目录无法形成完整 SDK。
+现有 `internal/engine`（现为 `internal/session`，见 [0005](0005-monorepo-layout.md)）已通过 `Transport` 和 `clip.Board` 隔离网络与剪贴板，但仍依赖具体 SQLite Store、配置文件 Manager、剪贴板轮询和绝对文件路径。设备身份、网络启动、资源清理与退出则由 daemon 拼装。直接移动目录无法形成完整 SDK。
 
 目标是复用配对与信任规则、会话管理、同步策略、内容传输和防回环逻辑，统一业务语义。各平台负责系统集成；核心可复用不代表各平台具有相同的后台运行、剪贴板权限或自动同步能力。
 

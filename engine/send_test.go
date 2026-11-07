@@ -33,7 +33,8 @@ func (b *board) Write(s clip.Snapshot) error {
 	b.s, b.n = s, b.n+1
 	return nil
 }
-func (b *board) writes() int { b.mu.Lock(); defer b.mu.Unlock(); return b.n }
+func clipPart(format, s string) clip.Part { return clip.Part{Format: format, Data: []byte(s)} }
+func (b *board) writes() int              { b.mu.Lock(); defer b.mu.Unlock(); return b.n }
 func (b *board) part(format string) string {
 	b.mu.Lock()
 	defer b.mu.Unlock()

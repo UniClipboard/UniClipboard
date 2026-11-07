@@ -574,6 +574,7 @@ func cleanContentDirs(inbox string) {
 	for _, d := range old {
 		_ = os.RemoveAll(d)
 	}
+	_ = os.RemoveAll(filepath.Join(inbox, recvDirName))
 }
 
 // dropContent ends every read and deletes everything the engine stores. Leases

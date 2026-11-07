@@ -55,6 +55,25 @@ type Config struct {
 	// Settings supplies the user's configuration, re-read on every use so
 	// edits apply at once. Nil means the defaults.
 	Settings SettingsSource
+	// Receiver, if set, takes received clips instead of Board: the engine
+	// then never touches the system clipboard.
+	Receiver Receiver
+}
+
+// Receiver stores clips that arrive from other devices.
+type Receiver interface {
+	// Admit is asked before any byte of a clip is read. It returns false to
+	// have the clip read and dropped (no room, say). Otherwise the clip is
+	// read into Inbox and handed to Done, which must be called exactly once:
+	// with ok=true and the clip (dir is the directory holding its files, owned
+	// by the receiver from then on), or with ok=false if it was not delivered.
+	Admit(peerID string, m wire.Clip) (Admission, bool)
+}
+
+// Admission is the receiver's acceptance of one clip.
+type Admission struct {
+	Inbox string
+	Done  func(snap clip.Snapshot, dir string, ok bool)
 }
 
 // SettingsSource provides the configuration in effect; *config.Manager is one.
@@ -990,7 +1009,15 @@ func (s *session) recvLoop() error {
 			// the connection survives.
 			cfg := s.e.settings()
 			lim := wire.Limits{File: int64(cfg.Limits.MaxFileBytes), Total: int64(cfg.Limits.MaxTotalBytes)}
-			if lerr := m.Fits(lim); !cfg.Sync.Enabled || lerr != nil || s.e.cfg.Board == nil {
+			var adm Admission
+			wanted := s.e.cfg.Board != nil
+			if s.e.cfg.Receiver != nil {
+				adm, wanted = s.e.cfg.Receiver.Admit(s.peerID, m)
+			}
+			if lerr := m.Fits(lim); !cfg.Sync.Enabled || lerr != nil || !wanted {
+				if wanted && adm.Done != nil {
+					adm.Done(clip.Snapshot{}, "", false) // give the reservation back
+				}
 				if lerr != nil {
 					s.e.logf("dropped clip from %s: %v", s.peerName, lerr)
 				}
@@ -999,8 +1026,15 @@ func (s *session) recvLoop() error {
 				}
 				continue
 			}
-			snap, dir, err := s.w.ReceiveClip(&m, s.e.cfg.Inbox)
+			inbox := s.e.cfg.Inbox
+			if adm.Done != nil {
+				inbox = adm.Inbox
+			}
+			snap, dir, err := s.w.ReceiveClip(&m, inbox)
 			if err != nil {
+				if adm.Done != nil {
+					adm.Done(clip.Snapshot{}, "", false)
+				}
 				return err
 			}
 			if snap.Hash() != m.Hash {
@@ -1009,7 +1043,14 @@ func (s *session) recvLoop() error {
 				if dir != "" {
 					os.RemoveAll(dir)
 				}
+				if adm.Done != nil {
+					adm.Done(clip.Snapshot{}, "", false)
+				}
 				s.e.logf("dropped clip from %s: hash mismatch", s.peerName)
+				continue
+			}
+			if adm.Done != nil {
+				adm.Done(snap, dir, true)
 				continue
 			}
 			s.e.apply(s.peerName, snap, dir)

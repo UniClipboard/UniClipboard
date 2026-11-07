@@ -15,6 +15,11 @@ func (s State) clone() State {
 	c.Capabilities = s.Capabilities.clone()
 	c.Peers = append([]Peer{}, s.Peers...)
 	c.Pending = append([]PendingPeer{}, s.Pending...)
+	c.Received = make([]ReceivedContent, len(s.Received))
+	for i, r := range s.Received {
+		r.Content.Parts = append([]PartDescriptor{}, r.Content.Parts...)
+		c.Received[i] = r
+	}
 	c.Operations = make([]Operation, len(s.Operations))
 	for i, o := range s.Operations {
 		c.Operations[i] = o.clone()
@@ -202,6 +207,7 @@ func (e *Engine) stateLocked() (State, *Error) {
 		Peers:        peers, Pending: pend,
 		PairingCode: e.code.state(now),
 		Operations:  e.ops.list(),
+		Received:    e.receivedLocked(now),
 	}
 	return st.clone(), nil
 }

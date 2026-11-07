@@ -313,17 +313,44 @@ type Self struct {
 
 // State is a consistent, secret-free snapshot.
 type State struct {
-	InstanceID   InstanceID       `json:"instance_id"`
-	Revision     uint64           `json:"revision,string"`
-	Lifecycle    Lifecycle        `json:"lifecycle"`
-	Runtime      RuntimeState     `json:"runtime"`
-	Self         Self             `json:"self"`
-	Settings     SettingsState    `json:"settings"`
-	Capabilities Capabilities     `json:"capabilities"`
-	Peers        []Peer           `json:"peers"`
-	Pending      []PendingPeer    `json:"pending"`
-	PairingCode  PairingCodeState `json:"pairing_code"`
-	Operations   []Operation      `json:"operations"`
+	InstanceID   InstanceID        `json:"instance_id"`
+	Revision     uint64            `json:"revision,string"`
+	Lifecycle    Lifecycle         `json:"lifecycle"`
+	Runtime      RuntimeState      `json:"runtime"`
+	Self         Self              `json:"self"`
+	Settings     SettingsState     `json:"settings"`
+	Capabilities Capabilities      `json:"capabilities"`
+	Peers        []Peer            `json:"peers"`
+	Pending      []PendingPeer     `json:"pending"`
+	PairingCode  PairingCodeState  `json:"pairing_code"`
+	Operations   []Operation       `json:"operations"`
+	Received     []ReceivedContent `json:"received"`
+}
+
+// ReceiptID names an entry of the received list.
+type ReceiptID string
+
+// ApplyState is whether this device has put received content to use.
+type ApplyState string
+
+const (
+	ApplyAvailable ApplyState = "available" // received and readable, not yet applied
+	ApplyApplying  ApplyState = "applying"
+	ApplyApplied   ApplyState = "applied"
+	ApplyFailed    ApplyState = "failed"
+	ApplyDeferred  ApplyState = "deferred"
+)
+
+// ReceivedContent is content that arrived from a paired device. It is listed
+// for a limited time and count; it is not a history and does not survive a
+// restart. Read it through RetainContent and ReadContent.
+type ReceivedContent struct {
+	ReceiptID    ReceiptID         `json:"receipt_id"`
+	Content      ContentDescriptor `json:"content"`
+	PeerID       DeviceID          `json:"peer_id"`
+	ReceivedAtMs int64             `json:"received_at_ms"`
+	ExpiresAtMs  int64             `json:"expires_at_ms"`
+	ApplyState   ApplyState        `json:"apply_state"`
 }
 
 // EventKind says which part of State changed.
@@ -338,6 +365,10 @@ const (
 	EventPending      EventKind = "pending"
 	EventPairingCode  EventKind = "pairing_code"
 	EventOperations   EventKind = "operations"
+	EventReceived     EventKind = "received"
+	// EventResourceWarning is a hint that something was refused for lack of
+	// room. It is not a task: losing it loses nothing.
+	EventResourceWarning EventKind = "resource_warning"
 )
 
 // ObjectRef points at something that changed; fetch details with a query.

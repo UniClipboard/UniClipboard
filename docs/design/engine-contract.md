@@ -297,7 +297,9 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2b（已实现并有测试）**：`SubmitContent`（仅 explicit）、发送类 `Operation`（`Targets`、`Outcome`、阶段 queued/sending/completed）、每设备一个在途加一个待发并替换为 `superseded`、挂起/断线使在途与待发失败、提交时与开始传输时的同步开关与大小限制检查、引用文件在传输前重新校验。
 
-**第二步其余（未实现）**：接收列表、`ObserveClipboard`/`BeginApply`/`ReportApplyResult`，以及 `State` 中对应的 `Received`、`ActiveApply` 和发送类操作；随后迁移桌面 daemon。在此之前，公开 Engine 不同步剪贴板内容，收到的内容会被读完并丢弃；桌面仍使用旧入口。
+**第二步 2c（已实现并有测试）**：接收列表（`ListReceived`、`DismissReceived`、`State.Received`、`received` 与 `resource_warning` 事件）；接收内容存为内容对象，经 `RetainContent` 读取、`LocalFilePath` 取文件。
+
+**第二步 2d（未实现）**：`ObserveClipboard`/`BeginApply`/`ReportApplyResult` 与 `State.ActiveApply`；随后迁移桌面 daemon。在此之前，公开 Engine 可收发内容，但不读写系统剪贴板，防回环也未就绪；桌面仍使用旧入口。
 
 落地时确定的细节（以此为准，必要时回改前文）：
 
@@ -318,4 +320,8 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 15. **发送的过滤与限制**：提交时按当前 `Sync` 设置裁剪内容（文本/HTML 属于 Text，PNG 属于 Images，文件属于 Files），裁剪后为空报 `sync_disabled`；哈希按裁剪后的内容计算。大小限制在提交时检查，开始传输时用当时的设置再检查一次，超限或同步已暂停则该目标失败而不是发送。
 16. **失败不一定断线**：开始写之前的失败（文件已变化、超限、同步暂停）只让这一次发送失败，连接保持；写了一半的失败会丢弃连接，因为流已不同步。
 17. **操作持有内容**：创建发送操作时增加内容引用，所有目标终态后释放；调用者此后可立即释放租约。没有目标时不创建操作，引用立即归还。
-18. **接收侧**：2c 之前，公开 Engine 收到内容仍然读完并丢弃；发送侧的测试用基于会话层的旧式对端验证字节与哈希。
+18. **旧式对端**：发送侧的测试曾用基于会话层的旧式对端验证字节与哈希，现保留它作为与旧 daemon 的线路兼容测试。
+19. **接收的准入**：会话层读取一份内容之前先问引擎。不在 running/active、无内容、或存储放不下时，该内容被读完丢弃，连接保持。存储不够时先按从旧到新淘汰接收列表中“只有列表持有”的条目；被租约、读取句柄或操作持有的条目淘汰后也不会释放空间，因此不淘汰；仍放不下则丢弃新内容并发 `resource_warning`。
+20. **接收的过滤**：交付时再按当时的同步设置过滤（图片属 Images，其他格式属 Text，文件属 Files）；过滤后为空则丢弃并归还配额，保留的部分只按保留的字节计配额。
+21. **接收列表**：最新在前，上限 `MaxReceived`，条目 `ReceivedTTL` 后过期并发 `received` 事件；条目被驱逐后，内容在无其他持有者时立即删除。接收的文件写在 `InboxDir/unic-recv/` 下，该目录整个归引擎所有，启动和 `Close` 时清空。接收文件的 MIME 固定为 `application/octet-stream`（wire 不携带文件类型）。
+22. **应用状态**：条目的 `ApplyState` 目前恒为 `available`；`applying/applied/failed/deferred` 与条目锁定（`locked`）已预留，由 2d 的应用流程使用。

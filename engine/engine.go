@@ -75,6 +75,8 @@ type Engine struct {
 	evStop    chan struct{}
 	evDone    chan struct{}
 	cs        *contentStore
+	recv      []*receipt // the received list, oldest first
+	recvTimer *time.Timer
 	pmu       sync.Mutex // pending request revisions
 	pendRevs  map[DeviceID]pendRev
 	pendCount uint64
@@ -177,6 +179,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	}
 	e.core = core.New(core.Config{
 		ID: id, Name: defName, Store: st, Transport: tr, Inbox: opts.InboxDir,
+		Receiver:   receiver{e},
 		Logf:       func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
 		Rendezvous: rv, Settings: settingsSource{e},
 	})
@@ -437,6 +440,9 @@ func (e *Engine) teardown() {
 	e.opWG.Wait()
 	e.mu.Lock()
 	e.code.stop()
+	if e.recvTimer != nil {
+		e.recvTimer.Stop()
+	}
 	used, trDone := e.trUsed, e.trDone
 	e.mu.Unlock()
 	if used {
@@ -505,11 +511,16 @@ func (e *Engine) finalize() {
 	}
 	e.subs = map[*Subscription]struct{}{}
 	e.life = LifecycleClosed
+	e.recv = nil // their content goes with dropContent
+	if e.recvTimer != nil {
+		e.recvTimer.Stop()
+	}
 	e.mu.Unlock()
 	for _, s := range subs {
 		s.finish()
 	}
 	e.dropContent()
+	_ = os.RemoveAll(e.recvDir())
 	_ = e.st.Close()
 	e.lock.release()
 	e.use.Unlock()

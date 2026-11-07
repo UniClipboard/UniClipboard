@@ -235,7 +235,7 @@ func (e *Engine) expireReceived() {
 func (e *Engine) receivedLocked(now time.Time) []ReceivedContent {
 	out := make([]ReceivedContent, 0, len(e.recv))
 	for i := len(e.recv) - 1; i >= 0; i-- {
-		if r := e.recv[i]; now.Before(r.expires) {
+		if r := e.recv[i]; r.locked || now.Before(r.expires) { // being applied keeps an entry listed
 			out = append(out, r.ReceivedContent)
 		}
 	}

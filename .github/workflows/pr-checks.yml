@@ -1,0 +1,49 @@
+name: PR checks
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version-file: .golangci-lint-version
+      - name: Check formatting
+        run: golangci-lint fmt --diff --diff-colored=false
+
+  test:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Verify dependencies
+        run: go mod verify
+      - name: Test with race detector
+        run: go test -race ./...
+      - name: Build
+        run: |
+          go build -o unic ./cmd/unic
+          go build -o unicd ./cmd/unicd

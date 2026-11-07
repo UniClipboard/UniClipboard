@@ -299,7 +299,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2c（已实现并有测试）**：接收列表（`ListReceived`、`DismissReceived`、`State.Received`、`received` 与 `resource_warning` 事件）；接收内容存为内容对象，经 `RetainContent` 读取、`LocalFilePath` 取文件。
 
-**第二步 2d（未实现）**：`ObserveClipboard`/`BeginApply`/`ReportApplyResult` 与 `State.ActiveApply`；随后迁移桌面 daemon。在此之前，公开 Engine 可收发内容，但不读写系统剪贴板，防回环也未就绪；桌面仍使用旧入口。
+**第二步 2d（已实现并有测试）**：`ObserveClipboard`、`BeginApply`、`ReportApplyResult`、`State.ActiveApply`、`apply` 事件。公开 Engine 本身不读写系统剪贴板，由宿主适配调用这些方法。
 
 落地时确定的细节（以此为准，必要时回改前文）：
 
@@ -325,3 +325,8 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 20. **接收的过滤**：交付时再按当时的同步设置过滤（图片属 Images，其他格式属 Text，文件属 Files）；过滤后为空则丢弃并归还配额，保留的部分只按保留的字节计配额。
 21. **接收列表**：最新在前，上限 `MaxReceived`，条目 `ReceivedTTL` 后过期并发 `received` 事件；条目被驱逐后，内容在无其他持有者时立即删除。接收的文件写在 `InboxDir/unic-recv/` 下，该目录整个归引擎所有，启动和 `Close` 时清空。接收文件的 MIME 固定为 `application/octet-stream`（wire 不携带文件类型）。
 22. **应用状态**：条目的 `ApplyState` 目前恒为 `available`；`applying/applied/failed/deferred` 与条目锁定（`locked`）已预留，由 2d 的应用流程使用。
+23. **观察协议**：新 epoch 必须以 `baseline`、序号 1 开头；同一 epoch 内只有第一条可以是 baseline。重复最近一条序号且参数相同返回原结果（先于租约检查），参数不同或更旧序号报 `conflict`，序号跳跃允许。挂起清空观察状态，恢复必须开新 epoch，因此挂起期间复制的内容不会被发送。
+24. **处置与基线**：除错误外的所有处置都会推进基线，包括 `no_targets`、`disabled`，以及新增的 `too_large`（导入后限制被调低时才会出现，因为导入本身已按限制检查）。内容标识是未裁剪内容的哈希，文件只计名称和大小。提交发生硬错误（如存储不足）时不推进，宿主可重报同一变化。
+25. **回声**：应用成功后基线取宿主读回的内容，因此系统补充格式不会造成回传。`AppliedToken` 只对未完成的当前 ticket 有效，否则 `conflict`。ticket 未完成期间出现不带 token 的真实本地变化，视为用户新复制：照常处理，并使该 ticket 的成功报告 `conflict`（ticket 随之以 failed 结束、接收条目回到可再次应用）。
+26. **ticket 作废**：挂起、停止、同步暂停、宿主应用能力不再 `available` 都会作废当前 ticket：条目解锁，但槽位保持占用直到宿主报告结果（成功报告会 `conflict`，failed/deferred 正常结束）。无观察能力的宿主（`Observe` 不可用）可以不带 epoch 调用 `BeginApply` 和报告 applied，不更新基线。
+27. **应用条目的生存**：被应用的接收条目不受容量淘汰、TTL 和 `DismissReceived`（`in_use`）影响，即使已过期仍在列表中；应用结束后立即按 TTL 处理。

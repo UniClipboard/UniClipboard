@@ -325,6 +325,14 @@ type State struct {
 	PairingCode  PairingCodeState  `json:"pairing_code"`
 	Operations   []Operation       `json:"operations"`
 	Received     []ReceivedContent `json:"received"`
+	// ActiveApply is the application in progress, if any. Only one at a time.
+	ActiveApply *ActiveApply `json:"active_apply,omitempty"`
+}
+
+// ActiveApply names the received content a host is writing to the system.
+type ActiveApply struct {
+	ReceiptID ReceiptID `json:"receipt_id"`
+	ContentID ContentID `json:"content_id"`
 }
 
 // ReceiptID names an entry of the received list.
@@ -366,6 +374,7 @@ const (
 	EventPairingCode  EventKind = "pairing_code"
 	EventOperations   EventKind = "operations"
 	EventReceived     EventKind = "received"
+	EventApply        EventKind = "apply"
 	// EventResourceWarning is a hint that something was refused for lack of
 	// room. It is not a task: losing it loses nothing.
 	EventResourceWarning EventKind = "resource_warning"

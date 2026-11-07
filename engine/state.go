@@ -15,6 +15,10 @@ func (s State) clone() State {
 	c.Capabilities = s.Capabilities.clone()
 	c.Peers = append([]Peer{}, s.Peers...)
 	c.Pending = append([]PendingPeer{}, s.Pending...)
+	if s.ActiveApply != nil {
+		a := *s.ActiveApply
+		c.ActiveApply = &a
+	}
 	c.Received = make([]ReceivedContent, len(s.Received))
 	for i, r := range s.Received {
 		r.Content.Parts = append([]PartDescriptor{}, r.Content.Parts...)
@@ -209,6 +213,9 @@ func (e *Engine) stateLocked() (State, *Error) {
 		Operations:  e.ops.list(),
 		Received:    e.receivedLocked(now),
 	}
+	if t := e.ticket; t != nil {
+		st.ActiveApply = &ActiveApply{ReceiptID: t.receipt, ContentID: t.content}
+	}
 	return st.clone(), nil
 }
 
@@ -257,6 +264,9 @@ func (e *Engine) UpdateHostCapabilities(ctx context.Context, caps HostCapabiliti
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.host = h
+	if h.Apply != AbilityAvailable {
+		e.killTicketLocked()
+	}
 	e.commitLocked(EventCapabilities)
 	return nil
 }
@@ -288,6 +298,9 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 		return e.settings, nil
 	}
 	e.settings = SettingsState{Revision: e.settings.Revision + 1, Value: req.Value}
+	if !req.Value.Sync.Enabled {
+		e.killTicketLocked()
+	}
 	e.commitLocked(EventSettings, EventCapabilities)
 	return e.settings, nil
 }

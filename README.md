@@ -48,6 +48,19 @@ UNIC_HOME=/tmp/unicA ./unicd        # 用 UNIC_HOME 在同一台机器上跑第�
 
 国内网络下载依赖慢时:`GOPROXY=https://goproxy.cn,direct go mod download`。
 
+### 代码检查
+
+使用 [golangci-lint](https://golangci-lint.run/docs/welcome/install/local/)，版本固定在 `.golangci-lint-version`（本地与 CI 保持一致）：
+
+```sh
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .golangci-lint-version)"
+./bin/golangci-lint run ./...
+./bin/golangci-lint fmt --diff             # 检查格式，非零退出表示需要格式化
+./bin/golangci-lint fmt                    # 自动整理 gofmt / imports
+```
+
+`.golangci.yml` 启用错误处理、vet、静态分析、无效赋值、未使用代码、拼写和 nolint 注释检查。PR checks 在 PR、主分支推送及合并队列中执行全量 lint、格式检查、`go test -race ./...` 和两个入口的构建；Go 版本读取 `go.mod`，使用 `ubuntu-latest` Linux runner。需要强制合并门禁时，在 GitHub 分支保护中将 `Lint` 和 `Test and build` 设为必需检查。
+
 ## 第一阶段范围外
 
 历史记录与搜索、文件夹同步、选择性接收/设备授权确认、原生剪贴板变化通知(目前 400ms 轮询)。

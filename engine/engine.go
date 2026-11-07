@@ -77,6 +77,10 @@ type Engine struct {
 	cs        *contentStore
 	recv      []*receipt // the received list, oldest first
 	recvTimer *time.Timer
+	obsMu     sync.Mutex // serializes observation and application
+	obs       observation
+	ticket    *applyTicket
+	lastApply applyDone
 	pmu       sync.Mutex // pending request revisions
 	pendRevs  map[DeviceID]pendRev
 	pendCount uint64
@@ -421,6 +425,7 @@ func (e *Engine) beginStop() {
 	case LifecycleStarting, LifecycleRunning:
 		e.life = LifecycleStopping
 		e.stopReq = true
+		e.killTicketLocked()
 		e.commitLocked(EventLifecycle)
 		go e.teardown()
 	}
@@ -553,6 +558,10 @@ func (e *Engine) SetRuntimeState(ctx context.Context, state RuntimeState) error 
 		return nil
 	}
 	e.runtime = state
+	if state == RuntimeSuspended {
+		e.killTicketLocked()
+		e.obs = observation{} // content copied while suspended is not sent on resume
+	}
 	e.commitLocked(EventRuntime, EventCapabilities)
 	running := e.life == LifecycleRunning
 	e.mu.Unlock()

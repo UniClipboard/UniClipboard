@@ -4,6 +4,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -41,6 +42,13 @@ CREATE TABLE IF NOT EXISTS pending (
 );
 `
 
+// migrations bring databases created by older versions up to date. Each one
+// may fail only because it already ran.
+var migrations = []string{
+	// by_code: the device found this one through the pairing code it showed.
+	`ALTER TABLE pending ADD COLUMN by_code INTEGER NOT NULL DEFAULT 0`,
+}
+
 func Open(path string) (*Store, error) {
 	// A single connection serializes access; the load is tiny.
 	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
@@ -51,6 +59,12 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, err
+	}
+	for _, m := range migrations {
+		if _, err := db.Exec(m); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			db.Close()
+			return nil, err
+		}
 	}
 	return &Store{db}, nil
 }
@@ -121,6 +135,7 @@ func (s *Store) Peers() ([]Peer, error) {
 type Candidate struct {
 	ID, Name, Addr string
 	Via            string // name of the paired device that introduced it; empty if it connected directly
+	ByCode         bool   // it connected with the pairing code this device was showing
 	Rejected       bool
 	Seen           time.Time
 }
@@ -142,22 +157,22 @@ func (s *Store) AddCandidate(c Candidate, revive bool) (bool, error) {
 	err := s.db.QueryRow(`SELECT state FROM pending WHERE id = ?`, c.ID).Scan(&state)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = s.db.Exec(`INSERT INTO pending (id, name, addr, via, state, seen) VALUES (?, ?, ?, ?, 'pending', ?)`,
-			c.ID, c.Name, c.Addr, c.Via, time.Now().Unix())
+		_, err = s.db.Exec(`INSERT INTO pending (id, name, addr, via, by_code, state, seen) VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+			c.ID, c.Name, c.Addr, c.Via, c.ByCode, time.Now().Unix())
 		return err == nil, err
 	case err != nil:
 		return false, err
 	case state == "rejected" && !revive:
 		return false, nil
 	}
-	_, err = s.db.Exec(`UPDATE pending SET name = ?, addr = ?, via = ?, state = 'pending', seen = ? WHERE id = ?`,
-		c.Name, c.Addr, c.Via, time.Now().Unix(), c.ID)
+	_, err = s.db.Exec(`UPDATE pending SET name = ?, addr = ?, via = ?, by_code = ?, state = 'pending', seen = ? WHERE id = ?`,
+		c.Name, c.Addr, c.Via, c.ByCode, time.Now().Unix(), c.ID)
 	return state == "rejected", err
 }
 
 // Candidates returns devices waiting for a decision.
 func (s *Store) Candidates() ([]Candidate, error) {
-	rows, err := s.db.Query(`SELECT id, name, addr, via, seen FROM pending WHERE state = 'pending' ORDER BY seen`)
+	rows, err := s.db.Query(`SELECT id, name, addr, via, by_code, seen FROM pending WHERE state = 'pending' ORDER BY seen`)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +181,7 @@ func (s *Store) Candidates() ([]Candidate, error) {
 	for rows.Next() {
 		var c Candidate
 		var seen int64
-		if err := rows.Scan(&c.ID, &c.Name, &c.Addr, &c.Via, &seen); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Addr, &c.Via, &c.ByCode, &seen); err != nil {
 			return nil, err
 		}
 		c.Seen = time.Unix(seen, 0)
@@ -178,8 +193,8 @@ func (s *Store) Candidates() ([]Candidate, error) {
 // Candidate returns the pending candidate id, or ok=false.
 func (s *Store) Candidate(id string) (c Candidate, ok bool, err error) {
 	var seen int64
-	err = s.db.QueryRow(`SELECT id, name, addr, via, seen FROM pending WHERE id = ? AND state = 'pending'`, id).
-		Scan(&c.ID, &c.Name, &c.Addr, &c.Via, &seen)
+	err = s.db.QueryRow(`SELECT id, name, addr, via, by_code, seen FROM pending WHERE id = ? AND state = 'pending'`, id).
+		Scan(&c.ID, &c.Name, &c.Addr, &c.Via, &c.ByCode, &seen)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, false, nil
 	}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"unic/internal/clip"
+	"unic/internal/rendezvous"
 	"unic/internal/store"
 )
 
@@ -66,6 +67,11 @@ type node struct {
 
 func newNode(t *testing.T, id string, extra bool) node {
 	t.Helper()
+	return newNodeWith(t, id, extra, nil)
+}
+
+func newNodeWith(t *testing.T, id string, extra bool, rv *rendezvous.Client) node {
+	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +79,7 @@ func newNode(t *testing.T, id string, extra bool) node {
 	t.Cleanup(func() { st.Close() })
 	b := &fakeBoard{extra: extra}
 	e := New(Config{ID: id, Name: id, Board: b, Store: st, Transport: newTCP(t),
-		Inbox: t.TempDir(), Poll: 10 * time.Millisecond, Logf: t.Logf})
+		Inbox: t.TempDir(), Poll: 10 * time.Millisecond, Logf: t.Logf, Rendezvous: rv})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go e.Run(ctx)

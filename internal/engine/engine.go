@@ -8,6 +8,9 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,10 +19,12 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"unic/internal/clip"
+	"unic/internal/rendezvous"
 	"unic/internal/store"
 	"unic/internal/wire"
 )
@@ -43,6 +48,9 @@ type Config struct {
 	Inbox     string        // where received files are placed
 	Poll      time.Duration // clipboard poll interval; default 400ms
 	Logf      func(format string, args ...any)
+	// Rendezvous stores pairing codes; nil disables them (full addresses
+	// still work).
+	Rendezvous *rendezvous.Client
 }
 
 type Engine struct {
@@ -55,12 +63,19 @@ type Engine struct {
 	inboxDir string // directory holding files of the clip we last applied
 	retry    map[string]context.CancelFunc
 	pairing  map[string]int // addresses the user is pairing with right now
+	code     *liveCode      // the pairing code this device is showing, if any
 	ctx      context.Context
+}
+
+// liveCode is a pairing code registered for this device.
+type liveCode struct {
+	rendezvous.Code
+	token string
 }
 
 // Event is pushed to API subscribers (the GUI).
 type Event struct {
-	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers"
+	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code"
 	Peer string `json:"peer,omitempty"`
 	Info string `json:"info,omitempty"`
 	Time int64  `json:"time"`
@@ -118,6 +133,11 @@ func (e *Engine) Run(ctx context.Context) error {
 // alive in the background. awaiting is true when the other device has not
 // approved this one yet: it is remembered and connects as soon as it does.
 func (e *Engine) AddPeer(ctx context.Context, addr string) (p store.Peer, awaiting bool, err error) {
+	return e.addPeer(ctx, addr, "")
+}
+
+// addPeer pairs with addr; pair is the token of the code that led there.
+func (e *Engine) addPeer(ctx context.Context, addr, pair string) (p store.Peer, awaiting bool, err error) {
 	e.mu.Lock()
 	started := e.ctx != nil
 	if started {
@@ -141,7 +161,7 @@ func (e *Engine) AddPeer(ctx context.Context, addr string) (p store.Peer, awaiti
 	if err != nil {
 		return p, false, fmt.Errorf("connect: %w", err)
 	}
-	s, err := e.handshake(conn, true, addr)
+	s, err := e.handshake(conn, true, addr, pair)
 	if err != nil {
 		var aw *awaitingError
 		if !errors.As(err, &aw) {
@@ -438,11 +458,11 @@ func (e *Engine) trusts(h wire.Hello) bool {
 
 // handshake exchanges hellos, then verdicts. Dialing a device is itself the
 // decision to trust it; accepting a connection needs a paired device.
-func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed string) (*session, error) {
+func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed, pair string) (*session, error) {
 	_ = conn.SetDeadline(time.Now().Add(handshakeTimeout))
 	defer conn.SetDeadline(time.Time{})
 	w := wire.NewConn(conn)
-	hello := wire.Hello{T: "hello", Version: wire.Version, ID: e.cfg.ID, Name: e.cfg.Name, Addr: e.cfg.Transport.Addr()}
+	hello := wire.Hello{T: "hello", Version: wire.Version, ID: e.cfg.ID, Name: e.cfg.Name, Addr: e.cfg.Transport.Addr(), Pair: pair}
 	werr := make(chan error, 1)
 	go func() { werr <- w.WriteJSON(hello) }()
 	typ, raw, err := w.ReadRaw()
@@ -487,7 +507,7 @@ func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed string) (*sessio
 	}
 	if !trust {
 		if h.Addr != "" { // without an address we could never connect back
-			e.addCandidate(store.Candidate{ID: h.ID, Name: h.Name, Addr: h.Addr}, true)
+			e.addCandidate(store.Candidate{ID: h.ID, Name: h.Name, Addr: h.Addr, ByCode: e.useCode(h.Pair)}, true)
 		}
 		return nil, errNotTrusted
 	}
@@ -507,7 +527,7 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 			return
 		}
 		go func() {
-			s, err := e.handshake(conn, false, "")
+			s, err := e.handshake(conn, false, "", "")
 			if err != nil {
 				if !errors.Is(err, errNotTrusted) {
 					e.logf("incoming connection rejected: %v", err)
@@ -668,7 +688,7 @@ func (e *Engine) keepDialing(p store.Peer) {
 			dcancel()
 			var s *session
 			if err == nil {
-				s, err = e.handshake(conn, true, p.Addr)
+				s, err = e.handshake(conn, true, p.Addr, "")
 				if err != nil {
 					conn.Close()
 				}
@@ -721,7 +741,12 @@ type PendingPeer struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Via  string `json:"via,omitempty"` // who introduced it; empty if it connected to us directly
-	Time int64  `json:"time"`
+	// ByCode is true when it connected with the pairing code this device showed.
+	ByCode bool `json:"by_code,omitempty"`
+	// Fingerprint is shown on both devices so the user can check that the
+	// request comes from the device they think it does.
+	Fingerprint string `json:"fingerprint"`
+	Time        int64  `json:"time"`
 }
 
 func (e *Engine) addCandidate(c store.Candidate, direct bool) {
@@ -732,7 +757,11 @@ func (e *Engine) addCandidate(c store.Candidate, direct bool) {
 	}
 	if created {
 		e.logf("%s wants to join; approve it with `unic approve %s`", c.Name, c.ID)
-		e.emit(Event{Kind: "pending", Peer: c.Name, Info: c.Via})
+		info := c.Via
+		if c.ByCode {
+			info = "code"
+		}
+		e.emit(Event{Kind: "pending", Peer: c.Name, Info: info})
 	}
 }
 
@@ -744,7 +773,8 @@ func (e *Engine) Pending() ([]PendingPeer, error) {
 	}
 	out := make([]PendingPeer, 0, len(cs))
 	for _, c := range cs {
-		out = append(out, PendingPeer{ID: c.ID, Name: c.Name, Via: c.Via, Time: c.Seen.Unix()})
+		out = append(out, PendingPeer{ID: c.ID, Name: c.Name, Via: c.Via, ByCode: c.ByCode,
+			Fingerprint: e.Fingerprint(c.ID), Time: c.Seen.Unix()})
 	}
 	return out, nil
 }
@@ -832,4 +862,121 @@ func (e *Engine) introduced(from *session, m wire.Peers) {
 		}
 		e.addCandidate(store.Candidate{ID: pi.ID, Name: pi.Name, Addr: pi.Addr, Via: from.peerName}, false)
 	}
+}
+
+// ---- pairing codes ----
+
+// ErrNoCodes means this daemon has no rendezvous client.
+var ErrNoCodes = &rendezvous.Error{Reason: rendezvous.Unavailable}
+
+// IssueCode registers a fresh pairing code for this device, replacing the one
+// it showed before. Another device that types it in finds this one, and
+// appears here as a pending device; the code itself grants no trust.
+func (e *Engine) IssueCode(ctx context.Context) (rendezvous.Code, error) {
+	rv := e.cfg.Rendezvous
+	addr := e.cfg.Transport.Addr()
+	if rv == nil {
+		return rendezvous.Code{}, ErrNoCodes
+	}
+	if addr == "" {
+		return rendezvous.Code{}, errors.New("daemon is still starting")
+	}
+	token := rendezvous.NewToken()
+	c, err := rv.Create(ctx, rendezvous.Ticket{Addr: addr, Token: token})
+	if err != nil {
+		return c, err
+	}
+	e.mu.Lock()
+	old := e.code
+	e.code = &liveCode{Code: c, token: token}
+	e.mu.Unlock()
+	if old != nil {
+		go e.consume(old.Code.Code)
+	}
+	return c, nil
+}
+
+// CurrentCode returns the code this device is showing, if it is still valid.
+func (e *Engine) CurrentCode() (rendezvous.Code, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.code == nil || !time.Now().Before(e.code.Expires) {
+		return rendezvous.Code{}, false
+	}
+	return e.code.Code, true
+}
+
+// CancelCode withdraws the code this device is showing.
+func (e *Engine) CancelCode() {
+	e.mu.Lock()
+	old := e.code
+	e.code = nil
+	e.mu.Unlock()
+	if old != nil {
+		go e.consume(old.Code.Code)
+	}
+}
+
+// useCode reports whether token belongs to the live code, and if so uses the
+// code up: one code, one device.
+func (e *Engine) useCode(token string) bool {
+	if token == "" {
+		return false
+	}
+	e.mu.Lock()
+	c := e.code
+	ok := c != nil && time.Now().Before(c.Expires) &&
+		subtle.ConstantTimeCompare([]byte(token), []byte(c.token)) == 1
+	if ok {
+		e.code = nil
+	}
+	e.mu.Unlock()
+	if ok {
+		go e.consume(c.Code.Code)
+		e.emit(Event{Kind: "code"})
+	}
+	return ok
+}
+
+func (e *Engine) consume(code string) {
+	if e.cfg.Rendezvous == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	e.cfg.Rendezvous.Consume(ctx, code)
+}
+
+// Join pairs with the device showing code. Like AddPeer, the other device
+// still has to approve this one.
+func (e *Engine) Join(ctx context.Context, code string) (p store.Peer, awaiting bool, err error) {
+	rv := e.cfg.Rendezvous
+	if rv == nil {
+		return p, false, ErrNoCodes
+	}
+	t, err := rv.Resolve(ctx, code)
+	if err != nil {
+		return p, false, err
+	}
+	if t.Addr == e.cfg.Transport.Addr() {
+		return p, false, errors.New("that is this device's own code")
+	}
+	p, awaiting, err = e.addPeer(ctx, t.Addr, t.Token)
+	if err == nil {
+		go e.consume(code)
+	}
+	return p, awaiting, err
+}
+
+// Fingerprint is a short value both this device and peer compute alike, for
+// the user to compare before approving: 4 groups of 4 hex digits.
+func (e *Engine) Fingerprint(peer string) string { return Fingerprint(e.cfg.ID, peer) }
+
+func Fingerprint(a, b string) string {
+	if b < a {
+		a, b = b, a
+	}
+	sum := sha256.Sum256([]byte("unic-pair-fp\x00" + a + "\x00" + b))
+	h := strings.ToUpper(hex.EncodeToString(sum[:8]))
+	return h[0:4] + " " + h[4:8] + " " + h[8:12] + " " + h[12:16]
 }

@@ -79,7 +79,29 @@ func runCLI(cmd string, args []string) error {
 			if st, err := c.Status(short); err == nil {
 				me = st.ID
 			}
-			fmt.Printf("added %s (%s); it will connect once %s approves this device\n  (on that device: `unic approve %s`)\n", p.Name, p.ID, p.Name, me)
+			fmt.Printf("added %s (%s); it will connect once %s approves this device\n  (on that device: `unic approve %s`)\nFingerprint: %s  (it must match the one shown there)\n", p.Name, p.ID, p.Name, me, p.Fingerprint)
+		} else {
+			fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
+		}
+
+	case "code":
+		code, err := c.NewCode(short)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s\n\nOn the other device: `unic join %s` (or 加入其他设备 in the window).\n", code.Display(), strings.ReplaceAll(code.Code, "-", ""))
+		fmt.Printf("Valid until %s, for one device. It then shows up in `unic requests`;\ncompare the fingerprints on both devices before you approve it.\n", code.Expires().Format("15:04:05"))
+
+	case "join":
+		if len(args) == 0 {
+			return fmt.Errorf("usage: unic join <6-digit code>")
+		}
+		p, err := c.Join(short, strings.Join(args, ""))
+		if err != nil {
+			return err
+		}
+		if p.Awaiting {
+			fmt.Printf("found %s; it connects once it approves this device.\nFingerprint: %s  (it must match the one shown there)\n", p.Name, p.Fingerprint)
 		} else {
 			fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
 		}
@@ -201,13 +223,16 @@ func printPending(ps []engine.PendingPeer) {
 	}
 	fmt.Println("\nWaiting for your approval:")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tNAME\tFROM")
+	fmt.Fprintln(w, "ID\tNAME\tFROM\tFINGERPRINT")
 	for _, p := range ps {
 		from := "connected directly"
-		if p.Via != "" {
+		switch {
+		case p.ByCode:
+			from = "used the pairing code"
+		case p.Via != "":
 			from = "introduced by " + p.Via
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", p.ID, p.Name, from)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, from, p.Fingerprint)
 	}
 	w.Flush()
 	fmt.Println("Approve with `unic approve <id>`, dismiss with `unic reject <id>`.")

@@ -3,6 +3,8 @@
 //	unicd               the background node (a separate program)
 //	unic gui             open the window
 //	unic addr            print this device's address
+//	unic code            show a 6-digit pairing code
+//	unic join <code>     pair with the device showing that code
 //	unic pair <addr>     pair with another device
 //	unic status | peers | unpair <id> | copy | paste | watch
 package main
@@ -21,7 +23,9 @@ The background node is a separate program, unicd; start it first.
   gui              open the window
   status           show this device and its peers
   addr             print this device's address (treat it like a password)
-  pair <address>   pair with another device
+  code             show a 6-digit code another device can join with
+  join <code>      pair with the device showing that code
+  pair <address>   pair with another device by its full address
   peers            list paired devices
   unpair <id>      forget a paired device
   requests         devices waiting for your approval
@@ -31,7 +35,8 @@ The background node is a separate program, unicd; start it first.
   paste            print the clipboard's text
   watch            print sync events as they happen
 
-Set UNIC_HOME to run a separate profile.
+Set UNIC_HOME to run a separate profile, UNIC_RENDEZVOUS_URL to use another
+pairing code service.
 `
 
 func main() {

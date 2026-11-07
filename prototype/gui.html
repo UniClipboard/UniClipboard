@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · GUI 原型</title>
+<style>
+  :root{
+    --bg:#e9ebef; --win:#ffffff; --surface:#f5f6f8; --surface-2:#eceef2; --border:#e1e4e9;
+    --text:#1b1d22; --muted:#6b7280; --faint:#9aa1ad;
+    --accent:#3b6cf6; --accent-soft:#e8eefe; --ok:#1f9d55; --ok-soft:#e3f5ea;
+    --warn:#c27c0e; --warn-soft:#fdf3e1; --danger:#d93f3f; --danger-soft:#fdeaea;
+    --shadow:0 20px 50px -12px rgba(20,24,40,.28),0 0 0 .5px rgba(0,0,0,.12);
+  }
+  [data-theme=dark]{
+    --bg:#121317; --win:#1d1f24; --surface:#25282e; --surface-2:#2d3037; --border:#33363d;
+    --text:#eceef2; --muted:#9aa1ad; --faint:#6b7280;
+    --accent:#6b8fff; --accent-soft:#273256; --ok:#3ecf7c; --ok-soft:#1d3a2a;
+    --warn:#f0b347; --warn-soft:#3d3220; --danger:#ff6b6b; --danger-soft:#432526;
+    --shadow:0 20px 50px -12px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.1);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;transition:background .2s}
+  button{font:inherit;color:inherit;cursor:pointer}
+  /* ---------- 控制条 ---------- */
+  .toolbar{position:sticky;top:0;z-index:10;display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+    padding:10px 24px;background:color-mix(in srgb,var(--win) 85%,transparent);backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border)}
+  .toolbar b{font-size:14px}
+  .toolbar .grp{display:flex;gap:4px;align-items:center}
+  .toolbar .lbl{color:var(--muted);font-size:12px;margin-right:4px}
+  .chip{border:1px solid var(--border);background:var(--win);padding:4px 10px;border-radius:999px;font-size:12px}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .stage{display:flex;gap:48px;justify-content:center;align-items:flex-start;padding:40px 24px 60px;flex-wrap:wrap}
+  .caption{color:var(--muted);font-size:12px;text-align:center;margin-top:12px}
+  /* ---------- 窗口 ---------- */
+  .window{width:480px;height:640px;background:var(--win);border-radius:12px;box-shadow:var(--shadow);
+    display:flex;flex-direction:column;overflow:hidden;position:relative}
+  .titlebar{height:38px;display:flex;align-items:center;padding:0 14px;gap:8px;flex:none}
+  .lights{display:flex;gap:8px}.lights i{width:12px;height:12px;border-radius:50%;display:block}
+  .lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+  .titlebar .t{flex:1;text-align:center;font-weight:600;font-size:13px;margin-right:52px}
+  .content{flex:1;overflow:auto;padding:4px 20px 20px}
+  .content::-webkit-scrollbar{width:8px}.content::-webkit-scrollbar-thumb{background:var(--surface-2);border-radius:4px}
+  /* 顶部本机卡片 */
+  .hero{display:flex;gap:12px;align-items:center;padding:14px;border-radius:12px;background:var(--surface)}
+  .devicon{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;flex:none;
+    background:var(--accent-soft);color:var(--accent)}
+  .devicon svg{width:22px;height:22px}
+  .hero .name{font-weight:600;font-size:15px}
+  .hero .sub{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);display:inline-block;flex:none}
+  .dot.ok{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+  .dot.warn{background:var(--warn)}
+  /* 分段 */
+  .seg{display:flex;background:var(--surface);border-radius:8px;padding:3px;margin:16px 0 14px}
+  .seg button{flex:1;border:0;background:transparent;padding:5px 0;border-radius:6px;font-size:12.5px;color:var(--muted);position:relative}
+  .seg button.on{background:var(--win);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .count{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:8px;
+    background:var(--danger);color:#fff;font-size:10px;font-weight:700;margin-left:4px;vertical-align:1px}
+  h4{margin:18px 0 8px;font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.02em;display:flex;align-items:center;gap:6px}
+  h4:first-child{margin-top:0}
+  h4 .r{margin-left:auto;font-weight:400}
+  /* 剪贴板卡片 */
+  .clip{border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;gap:12px}
+  .clip .kind{width:34px;height:34px;border-radius:8px;background:var(--surface);display:grid;place-items:center;flex:none;color:var(--muted)}
+  .clip .kind svg{width:18px;height:18px}
+  .clip .body{flex:1;min-width:0}
+  .clip .preview{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .clip .meta{color:var(--muted);font-size:11.5px;margin-top:3px}
+  /* 列表 */
+  .list{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .item{display:flex;align-items:center;gap:10px;padding:10px 12px;position:relative}
+  .item+.item{border-top:1px solid var(--border)}
+  .item .ic{width:30px;height:30px;border-radius:8px;background:var(--surface);display:grid;place-items:center;flex:none;color:var(--muted)}
+  .item .ic svg{width:17px;height:17px}
+  .item .main{flex:1;min-width:0}
+  .item .n{font-weight:500}
+  .item .s{color:var(--muted);font-size:11.5px;display:flex;align-items:center;gap:6px}
+  .item.off .n{color:var(--muted)}
+  .more{border:0;background:transparent;width:26px;height:26px;border-radius:6px;color:var(--muted);opacity:0}
+  .item:hover .more,.more.open{opacity:1}
+  .more:hover{background:var(--surface-2)}
+  .menu{position:absolute;right:10px;top:38px;z-index:5;background:var(--win);border:1px solid var(--border);border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,.15);padding:4px;min-width:150px}
+  .menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:5px;font-size:12.5px}
+  .menu button:hover{background:var(--surface)}
+  .menu .danger{color:var(--danger)}
+  .confirm{background:var(--danger-soft);padding:10px 12px;display:flex;gap:8px;align-items:center;font-size:12px}
+  .confirm span{flex:1}
+  .empty{border:1px dashed var(--border);border-radius:10px;padding:22px;text-align:center;color:var(--muted)}
+  /* 待确认 */
+  .pending{border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);background:var(--warn-soft);border-radius:10px;padding:12px;margin-bottom:8px}
+  .pending .top{display:flex;gap:10px;align-items:flex-start}
+  .pending .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none;background:var(--win);color:var(--warn)}
+  .pending .ic svg{width:17px;height:17px}
+  .pending .why{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .pending .fp{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted);background:var(--win);padding:1px 5px;border-radius:4px}
+  .pending .acts{display:flex;gap:8px;margin-top:10px;padding-left:40px}
+  /* 按钮/输入 */
+  .btn{border:1px solid var(--border);background:var(--win);padding:5px 12px;border-radius:7px;font-size:12.5px;white-space:nowrap}
+  .btn:hover{background:var(--surface)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+  .btn.ghost:hover{background:var(--surface-2);color:var(--text)}
+  .btn:disabled{opacity:.45;cursor:default;filter:none}
+  .btn.sm{padding:3px 9px;font-size:12px}
+  .field{display:flex;gap:8px}
+  .input{flex:1;border:1px solid var(--border);background:var(--win);color:var(--text);border-radius:7px;padding:6px 10px;font:12px ui-monospace,Menlo,monospace;outline:none;min-width:0}
+  .input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .note{font-size:11.5px;margin-top:8px;display:flex;gap:6px;align-items:flex-start;color:var(--muted)}
+  .note.err{color:var(--danger)} .note.wait{color:var(--warn)}
+  .note > svg{width:13px;height:13px;flex:none;margin-top:1px}
+  .spin{width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;flex:none;margin-top:1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  /* 地址 */
+  .addr{border:1px solid var(--border);border-radius:10px;padding:12px}
+  .addr .row{display:flex;gap:8px;align-items:center}
+  .addr code{flex:1;font:11.5px ui-monospace,Menlo,monospace;background:var(--surface);padding:6px 8px;border-radius:6px;
+    overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--muted)}
+  .addr .hint{font-size:11.5px;color:var(--warn);margin-top:8px;display:flex;gap:6px}
+  /* 动态 */
+  .log{display:flex;flex-direction:column}
+  .ev{display:flex;gap:10px;padding:8px 2px;align-items:flex-start}
+  .ev+.ev{border-top:1px solid var(--border)}
+  .ev .b{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;flex:none}
+  .ev .b svg{width:14px;height:14px}
+  .ev .b.in{background:var(--accent-soft);color:var(--accent)}
+  .ev .b.out{background:var(--surface);color:var(--muted)}
+  .ev .b.up{background:var(--ok-soft);color:var(--ok)}
+  .ev .b.down{background:var(--surface);color:var(--faint)}
+  .ev .b.ask{background:var(--warn-soft);color:var(--warn)}
+  .ev .x{flex:1}
+  .ev .tm{color:var(--faint);font-size:11px;font-variant-numeric:tabular-nums}
+  .filters{display:flex;gap:6px;margin-bottom:8px}
+  /* 守护进程离线 */
+  .down{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;gap:10px}
+  .down .big{width:56px;height:56px;border-radius:14px;background:var(--surface);display:grid;place-items:center;color:var(--faint)}
+  .down .big svg{width:28px;height:28px}
+  .down code{background:var(--surface);padding:2px 6px;border-radius:4px;font-size:12px}
+  .footer{flex:none;border-top:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+  /* 托盘 */
+  .menubar{width:300px}
+  .bar{height:26px;background:color-mix(in srgb,var(--win) 70%,transparent);border-radius:8px 8px 0 0;display:flex;justify-content:flex-end;
+    align-items:center;gap:14px;padding:0 12px;font-size:12px;box-shadow:var(--shadow)}
+  .bar .tray{display:flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;background:var(--surface-2);position:relative}
+  .bar .tray svg{width:15px;height:15px}
+  .bar .tray .pip{position:absolute;top:1px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--danger)}
+  .pop{margin-top:6px;background:color-mix(in srgb,var(--win) 92%,transparent);backdrop-filter:blur(20px);border-radius:10px;box-shadow:var(--shadow);padding:6px}
+  .pop .hd{padding:8px 10px 10px;display:flex;align-items:center;gap:8px}
+  .pop .sep{height:1px;background:var(--border);margin:4px 6px}
+  .pop .mi{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:5px;font-size:12.5px}
+  .pop .mi:hover{background:var(--accent);color:#fff}
+  .pop .mi:hover .k,.pop .mi:hover .muted{color:#fff}
+  .pop .mi .k{margin-left:auto;color:var(--faint);font-size:11.5px}
+  .pop .mini{padding:6px 10px;font-size:12px}
+  .pop .mini .muted{color:var(--muted);font-size:11.5px}
+  .muted{color:var(--muted)}
+  .notes{max-width:860px;margin:0 auto 60px;padding:0 24px;color:var(--muted);font-size:12.5px}
+  .notes h3{color:var(--text);font-size:13px;margin:18px 0 6px}
+  .notes ul{margin:0;padding-left:18px}.notes li{margin:3px 0}
+  .toast{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);background:var(--text);color:var(--win);padding:6px 12px;border-radius:7px;font-size:12px;
+    opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:.92}
+  /* ---------- 添加设备 ---------- */
+  .seg.sub{margin:0 0 14px;background:transparent;border:1px solid var(--border)}
+  .pair-card{border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;gap:16px;align-items:center}
+  .qr{width:132px;height:132px;flex:none;background:#fff;border-radius:10px;padding:8px;box-shadow:0 0 0 1px var(--border)}
+  .qr svg{width:100%;height:100%;display:block}
+  .qr.dim{opacity:.35}
+  .code-side{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  .pair-card{flex-direction:column;align-items:stretch;padding:20px 22px}
+  .pair-card .code-side{align-items:center;text-align:center;gap:10px}
+  .pair-card .bar-track{width:100%}
+  .pair-card .small[style*=space-between]{width:100%}
+  .code-big{font:600 46px/1 ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:.06em;font-variant-numeric:tabular-nums}
+  .code-big.blank{color:var(--faint)}
+  .bar-track{height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden}
+  .bar-track span{display:block;height:100%;background:var(--accent);transition:width 1s linear}
+  .bar-track.low span{background:var(--warn)}
+  .small{font-size:11.5px;color:var(--muted)}
+  .incoming{margin-top:12px;border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft);border-radius:10px;padding:12px}
+  .fpbig{white-space:nowrap;font:600 15px ui-monospace,Menlo,monospace;letter-spacing:.12em;background:var(--win);padding:2px 8px;border-radius:5px}
+  details.full{margin-top:12px;border:1px solid var(--border);border-radius:10px}
+  details.full summary{list-style:none;cursor:pointer;padding:10px 12px;display:flex;align-items:center;gap:8px;font-size:12.5px}
+  details.full summary::-webkit-details-marker{display:none}
+  details.full summary .chev{margin-left:auto;color:var(--faint);transition:transform .15s}
+  details.full[open] summary .chev{transform:rotate(90deg)}
+  details.full .in{padding:0 12px 12px}
+  .otp{display:flex;gap:8px;align-items:center}
+  .otp input{width:44px;height:52px;text-align:center;font:600 22px ui-monospace,Menlo,monospace;border:1px solid var(--border);border-radius:9px;
+    background:var(--win);color:var(--text);outline:none}
+  .otp input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .otp .dash{color:var(--faint);font-size:18px;margin:0 2px}
+  .otp.bad input{border-color:var(--danger)}
+  textarea.input{width:100%;height:76px;resize:none;line-height:1.4;word-break:break-all}
+  /* ---------- 手机 ---------- */
+  .phone{width:300px;height:620px;border-radius:44px;background:#0d0e11;padding:10px;box-shadow:var(--shadow)}
+  .screen{width:100%;height:100%;border-radius:35px;background:var(--win);overflow:hidden;position:relative;display:flex;flex-direction:column}
+  .notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:84px;height:24px;border-radius:12px;background:#0d0e11;z-index:3}
+  .sbar{height:44px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 6px;font-size:12px;font-weight:600}
+  .pnav{display:flex;align-items:center;padding:6px 14px;gap:6px;flex:none}
+  .pnav .back{border:0;background:transparent;color:var(--accent);font-size:15px;padding:4px}
+  .pnav .ttl{flex:1;text-align:center;font-weight:600;font-size:15px;margin-right:30px}
+  .pbody{flex:1;padding:8px 18px 22px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+  .pbtn{border:0;border-radius:12px;padding:13px;font-size:14.5px;font-weight:600;background:var(--accent);color:#fff;width:100%}
+  .pbtn.sec{background:var(--surface);color:var(--text);font-weight:500}
+  .pbtn:disabled{opacity:.4}
+  .opt{display:flex;gap:12px;align-items:center;border:0;background:var(--surface);border-radius:14px;padding:14px;text-align:left;width:100%}
+  .opt .oi{width:38px;height:38px;border-radius:10px;background:var(--win);display:grid;place-items:center;color:var(--accent);flex:none}
+  .opt .oi svg{width:20px;height:20px}
+  .opt b{display:block;font-size:14px}.opt span{font-size:11.5px;color:var(--muted)}
+  .opt.big{flex-direction:column;align-items:stretch;padding:0;overflow:hidden;background:var(--accent);color:#fff}
+  .opt.big .vf{height:150px;background:linear-gradient(135deg,#2a3550,#141824);position:relative}
+  .opt.big .lab{padding:12px 14px;display:flex;gap:10px;align-items:center}
+  .opt.big .lab span{color:rgba(255,255,255,.8)}
+  .vf .corner{position:absolute;width:26px;height:26px;border:3px solid #fff;opacity:.9}
+  .camera{flex:1;margin:-8px -18px 0;background:linear-gradient(160deg,#2b2f38,#0e1014);position:relative;display:grid;place-items:center}
+  .camera .frame{width:190px;height:190px;position:relative}
+  .camera .frame .corner{position:absolute;width:34px;height:34px;border:4px solid #fff}
+  .c1{top:0;left:0;border-right:0!important;border-bottom:0!important;border-radius:10px 0 0 0}
+  .c2{top:0;right:0;border-left:0!important;border-bottom:0!important;border-radius:0 10px 0 0}
+  .c3{bottom:0;left:0;border-right:0!important;border-top:0!important;border-radius:0 0 0 10px}
+  .c4{bottom:0;right:0;border-left:0!important;border-top:0!important;border-radius:0 0 10px 0}
+  .scanline{position:absolute;left:8%;right:8%;height:2px;background:linear-gradient(90deg,transparent,#6b8fff,transparent);animation:scan 2s ease-in-out infinite}
+  @keyframes scan{0%,100%{top:10%}50%{top:88%}}
+  .camera .ghostqr{position:absolute;inset:30px;opacity:.18;filter:blur(1.5px)}
+  .camtip{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:#fff;font-size:12.5px;opacity:.85}
+  .potp{display:flex;gap:6px;justify-content:center;margin:8px 0 2px}
+  .potp div{width:36px;height:46px;border-radius:9px;background:var(--surface);display:grid;place-items:center;font:600 21px ui-monospace,Menlo,monospace}
+  .potp div.cur{box-shadow:inset 0 0 0 2px var(--accent)}
+  .potp .gap{width:6px;background:transparent}
+  .potp.bad div{box-shadow:inset 0 0 0 1.5px var(--danger)}
+  .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:auto}
+  .keypad button{border:0;background:var(--surface);border-radius:10px;height:44px;font-size:19px}
+  .keypad button:active{background:var(--surface-2)}
+  .keypad .fn{background:transparent;font-size:14px;color:var(--muted)}
+  .center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:0 10px}
+  .ring{width:64px;height:64px;border-radius:50%;display:grid;place-items:center}
+  .ring svg{width:30px;height:30px}
+  .ring.ok{background:var(--ok-soft);color:var(--ok)}
+  .ring.wait{background:var(--accent-soft);color:var(--accent)}
+  .bigspin{width:40px;height:40px;border:3px solid var(--surface-2);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <b>unic GUI 原型</b>
+  <div class="grp"><span class="lbl">场景</span>
+    <button class="chip" data-scene="normal">日常</button>
+    <button class="chip" data-scene="pending">有待确认</button>
+    <button class="chip" data-scene="empty">首次使用</button>
+    <button class="chip" data-scene="down">daemon 未运行</button>
+    <button class="chip" data-scene="add">添加设备</button>
+    <button class="chip" data-scene="nocode">配对码服务不可用</button>
+  </div>
+  <div class="grp"><span class="lbl">外观</span>
+    <button class="chip" data-theme-btn="light">浅色</button>
+    <button class="chip" data-theme-btn="dark">深色</button>
+  </div>
+</div>
+
+<div class="stage">
+  <div>
+    <div class="window" id="win"></div>
+    <div class="caption">主窗口 · <code>unic gui</code> · 480×640</div>
+  </div>
+  <div>
+    <div class="window" id="phone" style="width:380px;height:440px"></div>
+    <div class="caption">另一台电脑 · 加入其他设备(与左侧窗口联动)</div>
+  </div>
+  <div>
+    <div class="menubar" id="tray"></div>
+    <div class="caption">菜单栏托盘 · <code>unicd</code></div>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>添加设备(仅桌面端)</h3>
+  <ul>
+    <li><b>两个方向</b>:「让设备加入本机」显示 6 位配对码,完整地址折叠在下方;「加入其他设备」输入 6 位数字,或切换为粘贴完整地址。</li>
+    <li><b>6 位配对码</b>复用 try.uniclipboard.app 的 rendezvous <code>/v1/web-pairings</code>(create / resolve / consume),TTL 与限速沿用:5 分钟有效、仅用一次,过期或被使用后自动换新。票据 kind 用 <code>unic-pair</code>,网页端会把它当作“不是有效的接收码”,反之亦然。</li>
+    <li><b>防猜码</b>:6 位只有 100 万种,通过配对码进来的设备<b>必须在本机核对指纹并批准</b>;服务端 resolve 限速 20 次/分钟。</li>
+    <li><b>不依赖服务的兜底</b>:配对码服务不可用时,完整地址照常可用。试试顶部「配对码服务不可用」场景。</li>
+    <li><b>演示</b>:在右侧窗口输入左侧显示的 6 位数字 → 左侧出现批准请求 → 批准后两端都完成。左侧「加入其他设备」里以 0 开头的码模拟“已过期”,以 9 开头模拟“尝试次数过多”。</li>
+  </ul>
+  <h3>其他</h3>
+  <ul>
+    <li><b>需要用户处理的事排最前</b>:待确认设备在“设备”页顶部以黄色卡片出现,标签页和托盘图标都带红点计数。</li>
+    <li><b>移除设备</b>收进行内“⋯”菜单,并在行内二次确认。</li>
+    <li><b>动态</b>沿用 daemon 的事件流,按类型着色、可筛选。</li>
+  </ul>
+</div>
+
+<script>
+const I = {
+  hash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/></svg>',
+  key:'<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>',
+  laptop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>',
+  desktop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>',
+  phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg>',
+  text:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 6h14M5 11h14M5 16h9"/></svg>',
+  image:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 9"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
+  unlink:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l1-1M14 10a4 4 0 0 0-5.7 0l-1 1M4 4l16 16"/></svg>',
+  ask:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4 3 7.5 7 9 4-1.5 7-5 7-9V6z"/></svg>',
+  plug:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></svg>',
+  tray:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9.5 12.5 12 15l2.5-2.5M12 9v6"/></svg>',
+  more:'<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M12 3 2 20h20zM12 10v4M12 17v.01"/></svg>',
+};
+const iconFor = n => /phone|iPhone|Pixel/i.test(n) ? I.phone : /Mac ?Book|ThinkPad|Laptop/i.test(n) ? I.laptop : I.desktop;
+
+const ADDR = 'unic1qv8x3m0k7d2s9wq4r6t8y0u2i4o6p8a1s3d5f7g9h2j4k6l8z0x2c4v6b8n0m2q4w6e8r0t2y4u6i8o0p';
+const base = () => ({
+  daemon:true, tab:'devices', reveal:false, filter:'all', menu:null, confirm:null,
+  self:{name:'LWP1 的 MacBook Pro', id:'8f3a91c2e7'},
+  clip:{kind:'text', preview:'go build -o unic ./cmd/unic && go build -o unicd ./cmd/unicd', meta:'文本 · 63 字 · 来自 Studio · 刚刚'},
+  peers:[
+    {id:'a1b2c3d4e5', name:'Studio', on:true,  seen:'在线 · 直连'},
+    {id:'f6e7d8c9b0', name:'ThinkPad X1', on:true, seen:'在线 · 经 DERP 中继'},
+    {id:'0a9b8c7d6e', name:'家里的 Mac mini', on:false, seen:'离线 · 3 小时前在线'},
+  ],
+  pending:[],
+  add:newAdd(true),
+  log:[
+    {k:'received', t:'13:42:08', txt:'收到 <b>文本 · 63 字</b>,来自 Studio'},
+    {k:'sent', t:'13:40:51', txt:'发送 <b>图片 · 1284×720 PNG</b>'},
+    {k:'peer-up', t:'13:31:02', txt:'<b>ThinkPad X1</b> 已连接'},
+    {k:'received', t:'13:12:44', txt:'收到 <b>文件 · 报告.pdf (2.3 MB)</b>,来自 ThinkPad X1'},
+    {k:'peer-down', t:'10:20:17', txt:'<b>家里的 Mac mini</b> 已断开'},
+    {k:'sent', t:'10:18:03', txt:'发送 <b>富文本 · 214 字</b>'},
+  ],
+});
+const scenes = {
+  normal: () => base(),
+  pending: () => { const s = base(); s.pending = [
+      {id:'7c6d5e4f3a', name:'Pixel 9', via:'Studio', t:'2 分钟前'},
+      {id:'1122aabbcc', name:'未命名设备', via:'', t:'刚刚'},
+    ];
+    s.log.unshift({k:'pending', t:'13:44:10', txt:'<b>未命名设备</b> 请求加入'},{k:'pending', t:'13:42:30', txt:'<b>Pixel 9</b> 请求加入(由 Studio 介绍)'});
+    return s; },
+  empty: () => { const s = base(); s.peers = []; s.log = []; s.clip = null; s.tab = 'devices'; return s; },
+  down: () => { const s = base(); s.daemon = false; return s; },
+  add: () => { const s = base(); s.tab = 'me'; return s; },
+  nocode: () => { const s = base(); s.tab = 'me'; s.add = newAdd(false); return s; },
+};
+let S, scene = 'normal';
+const TTL = 300_000;
+function genCode(){ return String(Math.floor(100000 + Math.random()*900000)).replace(/^[09]/,'4'); }
+function newAdd(svc){ const t = Date.now(); return {mode:'show', join:'code', svc, code: svc?genCode():null, issued:t, expires:t+TTL, refreshing:false,
+  otp:'', addr:'', state:'idle', msg:''}; }
+const newPhone = () => ({screen:'home', otp:'', addr:'', err:''});
+let P = newPhone();
+
+function setScene(n){ scene = n; S = scenes[n](); P = newPhone(); render(); }
+function toast(m){ const t = document.querySelector('.toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'),1400); }
+
+function render(){
+  document.querySelectorAll('[data-scene]').forEach(b=>b.classList.toggle('on', b.dataset.scene===scene));
+  document.querySelectorAll('[data-theme-btn]').forEach(b=>b.classList.toggle('on', b.dataset.themeBtn===(document.documentElement.dataset.theme||'light')));
+  renderWin(); renderTray(); renderPhone();
+}
+
+function renderWin(){
+  const w = document.getElementById('win');
+  const tb = `<div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><div class="t">unic</div></div>`;
+  if(!S.daemon){
+    w.innerHTML = tb + `<div class="down">
+      <div class="big">${I.plug}</div>
+      <div style="font-weight:600;font-size:15px">后台节点未运行</div>
+      <div class="muted" style="max-width:300px">unic 的同步由 <code>unicd</code> 负责。启动后此窗口会自动重新连接。</div>
+      <div style="display:flex;gap:8px;margin-top:6px"><button class="btn primary" onclick="startDaemon(this)">启动 unicd</button><button class="btn" onclick="toast('已复制:unicd')">复制命令</button></div>
+      <div class="note"><span class="spin"></span>每 2 秒重试连接 <code style="font-size:11px">~/.unic/unic.sock</code></div>
+    </div><div class="toast"></div>`;
+    return;
+  }
+  const online = S.peers.filter(p=>p.on).length;
+  const np = S.pending.length;
+  w.innerHTML = tb + `<div class="content">
+    <div class="hero">
+      <div class="devicon">${I.laptop}</div>
+      <div style="flex:1;min-width:0">
+        <div class="name">${S.self.name}</div>
+        <div class="sub"><span class="dot ok"></span>同步中 · ${S.peers.length ? `${online}/${S.peers.length} 台设备在线` : '尚未配对设备'}</div>
+      </div>
+    </div>
+    <div class="seg">
+      <button class="${S.tab==='devices'?'on':''}" onclick="tab('devices')">设备${np?`<span class="count">${np}</span>`:''}</button>
+      <button class="${S.tab==='activity'?'on':''}" onclick="tab('activity')">动态</button>
+      <button class="${S.tab==='me'?'on':''}" onclick="tab('me')">添加设备</button>
+    </div>
+    ${S.tab==='devices'?devicesTab():S.tab==='activity'?activityTab():meTab()}
+  </div>
+  <div class="footer"><span class="dot ok"></span>daemon 运行中<span style="margin-left:auto">ID ${S.self.id}</span></div>
+  <div class="toast"></div>`;
+  bindOtp();
+}
+
+function devicesTab(){
+  let h = '';
+  if(S.pending.length){
+    h += `<h4>等待你批准 <span class="r">批准后才会连接与同步</span></h4>`;
+    h += S.pending.map(p=>`<div class="pending">
+      <div class="top"><div class="ic">${iconFor(p.name)}</div>
+        <div style="flex:1"><div style="font-weight:600">${p.name}</div>
+          <div class="why">${p.code?`通过<b>${p.via}</b>`:p.via?`由 <b>${p.via}</b> 介绍`:'直接连接到本机'} · ${p.t} · 指纹 <span class="fp">${p.id.slice(0,8)}</span></div></div></div>
+      <div class="acts"><button class="btn primary sm" onclick="decide('${p.id}',true)">批准</button><button class="btn sm" onclick="decide('${p.id}',false)">拒绝</button>
+        ${p.via?'':'<span class="note wait" style="margin:0 0 0 4px;align-items:center">'+I.warn+'不认识的设备请拒绝</span>'}</div>
+    </div>`).join('');
+  }
+  h += `<h4>当前剪贴板</h4>`;
+  if(S.clip){
+    const k = S.clip.kind;
+    h += `<div class="clip"><div class="kind">${I[k]}</div><div class="body"><div class="preview">${S.clip.preview}</div><div class="meta">${S.clip.meta}</div></div></div>`;
+  } else h += `<div class="clip"><div class="kind">${I.text}</div><div class="body"><div class="preview muted" style="font-family:inherit">还没有同步过内容</div><div class="meta">复制任何文本、图片或文件,会自动发送到已配对设备</div></div></div>`;
+
+  h += `<h4>已配对设备 <span class="r">${S.peers.length?S.peers.length+' 台':''}</span></h4>`;
+  if(!S.peers.length){
+    h += `<div class="empty"><div style="font-weight:600;color:var(--text);margin-bottom:4px">还没有配对的设备</div>
+      在另一台设备上运行 unic,把它的地址粘贴到这里即可。<div style="margin-top:12px"><button class="btn primary" onclick="tab('me')">添加设备</button></div></div>`;
+  } else {
+    h += `<div class="list">` + S.peers.map(p=>{
+      let row = `<div class="item ${p.on?'':'off'}"><div class="ic">${iconFor(p.name)}</div>
+        <div class="main"><div class="n">${p.name}</div><div class="s"><span class="dot ${p.on?'ok':''}"></span>${p.seen}</div></div>
+        <button class="more ${S.menu===p.id?'open':''}" onclick="menu('${p.id}')">${I.more}</button>
+        ${S.menu===p.id?`<div class="menu"><button onclick="copyId('${p.id}')">复制设备 ID</button><button class="danger" onclick="askRemove('${p.id}')">移除设备…</button></div>`:''}
+      </div>`;
+      if(S.confirm===p.id) row += `<div class="confirm"><span>移除 <b>${p.name}</b>?之后不再同步,需重新配对。</span><button class="btn sm" onclick="S.confirm=null;renderWin()">取消</button><button class="btn danger sm" onclick="removePeer('${p.id}')">移除</button></div>`;
+      return row;
+    }).join('') + `</div>`;
+  }
+  return h;
+}
+
+function activityTab(){
+  const map = {received:['in',I.down],sent:['out',I.up],'peer-up':['up',I.link],'peer-down':['down',I.unlink],pending:['ask',I.ask]};
+  const F = [['all','全部'],['clip','收发'],['conn','连接']];
+  const keep = e => S.filter==='all' || (S.filter==='clip' ? ['sent','received'].includes(e.k) : !['sent','received'].includes(e.k));
+  const L = S.log.filter(keep);
+  return `<div class="filters">${F.map(([k,n])=>`<button class="chip ${S.filter===k?'on':''}" onclick="S.filter='${k}';renderWin()">${n}</button>`).join('')}</div>`
+    + (L.length ? `<div class="log">${L.map(e=>`<div class="ev"><div class="b ${map[e.k][0]}">${map[e.k][1]}</div><div class="x">${e.txt}</div><div class="tm">${e.t}</div></div>`).join('')}</div>`
+      : `<div class="empty">暂无动态<br><span style="font-size:11.5px">设备连接、剪贴板收发都会记录在这里(仅本次运行)</span></div>`);
+}
+
+// ---------- 添加设备 ----------
+const FP = '7C6D 5E4F 3A21 9B0E';
+function qrSVG(seed){
+  // 仅示意,不可扫描:25×25 模块 + 三个定位角
+  const n = 25; let r = 0, h = 0; for(const ch of String(seed)) h = (h*31 + ch.charCodeAt(0)) >>> 0;
+  const rnd = () => (h = (h*1103515245 + 12345) >>> 0, (h >>> 16) & 1);
+  const inF = (x,y) => (x<8&&y<8)||(x>n-9&&y<8)||(x<8&&y>n-9);
+  let d = '';
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++) if(!inF(x,y) && rnd()) d += `M${x} ${y}h1v1h-1z`;
+  const f = (x,y) => `<path d="M${x} ${y}h7v7h-7z M${x+1} ${y+1}v5h5v-5z" fill-rule="evenodd"/><path d="M${x+2} ${y+2}h3v3h-3z"/>`;
+  return `<svg viewBox="0 0 ${n} ${n}" fill="#111" shape-rendering="crispEdges"><path d="${d}"/>${f(0,0)}${f(n-7,0)}${f(0,n-7)}</svg>`;
+}
+const fmtCode = c => c ? c.slice(0,3)+' '+c.slice(3) : '––– –––';
+const fmtLeft = ms => { const s = Math.max(0, Math.ceil(ms/1000)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+
+function meTab(){
+  const A = S.add;
+  return `<div class="seg sub">
+      <button class="${A.mode==='show'?'on':''}" onclick="S.add.mode='show';renderWin()">让设备加入本机</button>
+      <button class="${A.mode==='join'?'on':''}" onclick="S.add.mode='join';renderWin()">加入其他设备</button>
+    </div>` + (A.mode==='show' ? showPane() : joinPane());
+}
+
+function showPane(){
+  const A = S.add;
+  const left = A.expires - Date.now();
+  let side;
+  if(!A.svc){
+    side = `<div class="small">在另一台电脑的 unic 里输入这个配对码</div>
+      <div class="code-big blank">––– –––</div>
+      <div class="note err" style="margin:0">${I.warn}<span>暂时无法获取配对码</span></div>
+      <div><button class="btn sm" onclick="retryCode()">重试</button></div>`;
+  } else if(A.refreshing){
+    side = `<div class="small">在另一台电脑的 unic 里输入这个配对码</div><div class="code-big blank">––– –––</div><div class="note" style="margin:0"><span class="spin"></span>正在获取新配对码…</div>`;
+  } else {
+    side = `<div class="small">在另一台电脑的 unic 里输入这个配对码</div>
+      <div class="code-big" id="cd-code">${fmtCode(A.code)}</div>
+      <div class="bar-track ${left<60000?'low':''}" id="cd-track"><span id="cd-bar" style="width:${Math.max(0,left/TTL)*100}%"></span></div>
+      <div class="small" style="display:flex;justify-content:space-between"><span><span id="cd-left" style="font-variant-numeric:tabular-nums">${fmtLeft(left)}</span> 后过期</span><span>仅可使用一次</span></div>
+      <div style="display:flex;gap:6px;margin-top:2px"><button class="btn sm" onclick="toast('配对码已复制')">复制</button><button class="btn ghost sm" onclick="refreshCode()">换一个</button></div>`;
+  }
+  const inc = S.pending.filter(p=>p.code);
+  let h = `<div class="pair-card"><div class="code-side">${side}</div></div>`;
+  h += `<div class="note">${I.shield}<span>${A.svc
+      ? '配对码过期或被使用后会自动换新。对方输入后,你需要在这里核对指纹并批准。'
+      : '使用下方的完整地址仍然可以配对,不需要配对码服务。'}</span></div>`;
+  h += inc.map(p=>`<div class="incoming">
+      <div style="display:flex;gap:10px;align-items:center"><div class="ic" style="width:30px;height:30px;border-radius:8px;background:var(--win);display:grid;place-items:center;color:var(--accent)">${iconFor(p.name)}</div>
+        <div style="flex:1"><div style="font-weight:600">${p.name} 请求加入</div><div class="small">通过${p.via} · 刚刚</div></div></div>
+      <div style="margin:10px 0 2px 40px" class="small">确认对方屏幕上显示相同的指纹:</div>
+      <div style="margin-left:40px"><span class="fpbig">${p.fp}</span></div>
+      <div style="display:flex;gap:8px;margin:12px 0 0 40px"><button class="btn primary sm" onclick="decide('${p.id}',true)">指纹一致,批准</button><button class="btn sm" onclick="decide('${p.id}',false)">拒绝</button></div>
+    </div>`).join('');
+  h += `<details class="full"><summary>${I.key}<span>完整地址</span><span class="small" style="margin-left:6px">用于命令行或无法使用配对码时</span><span class="chev">›</span></summary>
+    <div class="in addr" style="border:0;padding:0 12px 12px">
+      <div class="row"><code>${S.reveal?ADDR:ADDR.slice(0,10)+'•'.repeat(26)+ADDR.slice(-4)}</code>
+        <button class="btn ghost sm" onclick="S.reveal=!S.reveal;renderWin();document.querySelector('details.full').open=true">${S.reveal?'隐藏':'显示'}</button>
+        <button class="btn sm" onclick="toast('地址已复制到剪贴板')">复制</button></div>
+      <div class="hint">${I.warn}<span>地址等同密码,长期有效:持有者可以连接并写入你的剪贴板。只分享给你自己的设备。</span></div>
+    </div></details>`;
+  return h;
+}
+
+function joinPane(){
+  const A = S.add, busy = A.state==='busy';
+  let h = `<div class="filters">
+      <button class="chip ${A.join==='code'?'on':''}" onclick="S.add.join='code';S.add.state='idle';renderWin()">6 位数字</button>
+      <button class="chip ${A.join==='addr'?'on':''}" onclick="S.add.join='addr';S.add.state='idle';renderWin()">完整地址</button>
+    </div>`;
+  if(A.join==='code'){
+    const d = A.otp.padEnd(6,' ').split('');
+    h += `<div class="small" style="margin:6px 0 10px">输入另一台设备「添加设备」页上显示的 6 位配对码。</div>
+      <div class="otp ${A.state==='err'?'bad':''}" id="otp">${d.map((c,i)=>(i===3?'<span class="dash">–</span>':'')+`<input inputmode="numeric" maxlength="1" value="${c.trim()}" data-i="${i}" ${busy?'disabled':''}>`).join('')}
+        <button class="btn primary" style="margin-left:8px;height:40px" onclick="joinByCode()" ${A.otp.length<6||busy?'disabled':''}>配对</button></div>`;
+  } else {
+    h += `<div class="small" style="margin:6px 0 10px">粘贴另一台设备的完整地址(<code>unic addr</code> 的输出)。</div>
+      <textarea class="input" id="addrin" placeholder="unic1…" ${busy?'disabled':''} oninput="S.add.addr=this.value;document.getElementById('addrbtn').disabled=!this.value.trim()">${A.addr}</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" onclick="S.add.addr='${ADDR.replace('unic1','unic1zz')}';renderWin()">从剪贴板粘贴</button><span style="flex:1"></span>
+      <button class="btn primary" id="addrbtn" onclick="joinByAddr()" ${!A.addr.trim()||busy?'disabled':''}>配对</button></div>`;
+  }
+  if(busy) h += `<div class="note"><span class="spin"></span>${A.msg}</div>`;
+  if(A.state==='ok') h += `<div class="note" style="color:var(--ok)">✓ ${A.msg}</div>`;
+  if(A.state==='wait') h += `<div class="incoming" style="margin-top:12px"><div style="font-weight:600;margin-bottom:4px">等待 ${A.peer} 批准</div>
+      <div class="small" style="margin-bottom:8px">请在 ${A.peer} 上核对指纹,一致后批准。批准后自动开始同步。</div><span class="fpbig">${FP}</span></div>`;
+  if(A.state==='err') h += `<div class="note err">${I.warn}<span>${A.msg}</span></div>`;
+  h += `<div class="note" style="margin-top:16px"><span>演示:以 0 开头的码模拟“已过期”,以 9 开头模拟“尝试次数过多”。</span></div>`;
+  return h;
+}
+
+function bindOtp(){
+  const box = document.getElementById('otp'); if(!box) return;
+  const ins = [...box.querySelectorAll('input')];
+  const sync = () => { S.add.otp = ins.map(i=>i.value).join(''); box.querySelector('button').disabled = S.add.otp.length<6; };
+  ins.forEach((el,i)=>{
+    el.oninput = () => { el.value = el.value.normalize('NFKC').replace(/\D/g,'').slice(-1); if(S.add.state==='err'){S.add.state='idle';box.classList.remove('bad');document.querySelector('.note.err')?.remove();}
+      sync(); if(el.value && ins[i+1]) ins[i+1].focus(); };
+    el.onkeydown = e => { if(e.key==='Backspace' && !el.value && ins[i-1]) ins[i-1].focus(); if(e.key==='Enter' && S.add.otp.length===6) joinByCode(); };
+    el.onpaste = e => { e.preventDefault(); const ds = (e.clipboardData.getData('text')||'').normalize('NFKC').replace(/\D/g,'').slice(0,6);
+      ds.split('').forEach((c,j)=>ins[j]&&(ins[j].value=c)); sync(); ins[Math.min(ds.length,5)].focus(); };
+  });
+  const first = ins.find(i=>!i.value) || ins[5]; if(S.tab==='me' && S.add.mode==='join' && S.add.state!=='busy') first.focus();
+}
+
+function joinByCode(){
+  const A = S.add, c = A.otp; if(c.length<6) { A.state='err'; A.msg='请输入完整的 6 位数字。'; return renderWin(); }
+  A.state='busy'; A.msg='正在核对配对码…'; renderWin();
+  setTimeout(()=>{
+    if(c[0]==='0'){ A.state='err'; A.msg='这个配对码已过期或已被使用,请让对方刷新后重试。'; return renderWin(); }
+    if(c[0]==='9'){ A.state='err'; A.msg='尝试次数过多,请稍等一分钟再试。'; return renderWin(); }
+    A.msg='正在连接 办公室 iMac…'; renderWin();
+    setTimeout(()=>finishJoin('办公室 iMac'), 1100);
+  }, 900);
+}
+function joinByAddr(){
+  const A = S.add, v = A.addr.trim();
+  A.state='busy'; A.msg='正在连接…最长约 45 秒'; renderWin();
+  setTimeout(()=>{
+    if(!/^(unic1|https?:\/\/)/.test(v) || /bad/i.test(v)){ A.state='err'; A.msg='这不是有效的 unic 地址,请完整复制后重试。'; return renderWin(); }
+    finishJoin('ThinkPad P16');
+  }, 1300);
+}
+function finishJoin(name){
+  const A = S.add; A.state='wait'; A.peer=name; A.otp=''; A.addr='';
+  const id = 'j'+Math.random().toString(16).slice(2,10);
+  S.peers.push({id, name, on:false, seen:'等待对方批准…'}); render();
+  setTimeout(()=>{ const p=S.peers.find(x=>x.id===id); if(!p) return; p.on=true; p.seen='在线 · 直连';
+    if(S.add.peer===name){ S.add.state='ok'; S.add.msg=`${name} 已批准,开始同步`; }
+    S.log.unshift({k:'peer-up',t:now(),txt:`<b>${name}</b> 已连接`}); render(); }, 3500);
+}
+function refreshCode(){ const A=S.add; A.refreshing=true; renderWin(); setTimeout(()=>{ const t=Date.now(); Object.assign(A,{refreshing:false,code:genCode(),issued:t,expires:t+TTL}); render(); },700); }
+function retryCode(){ S.add.svc=true; refreshCode(); }
+
+setInterval(()=>{
+  if(!S || !S.add.svc || S.add.refreshing) return;
+  const left = S.add.expires - Date.now();
+  if(left <= 0) return refreshCode();
+  const l = document.getElementById('cd-left'); if(!l) return;
+  l.textContent = fmtLeft(left);
+  document.getElementById('cd-bar').style.width = (left/TTL*100)+'%';
+  document.getElementById('cd-track').classList.toggle('low', left<60000);
+}, 1000);
+
+// ---------- 另一台电脑(演示联动) ----------
+const PEER_NAME = 'Linux 工作站';
+function renderPhone(){
+  const el = document.getElementById('phone');
+  const sc = P.screen === 'home' ? 'code' : P.screen;
+  let body = '';
+  if(sc==='code'){
+    body = `<div class="small" style="margin-bottom:10px">输入另一台设备「添加设备」页上显示的 6 位配对码。</div>
+      <div class="field"><input class="input" id="pcode" inputmode="numeric" autocomplete="one-time-code" placeholder="000 000" value="${P.otp}"
+        style="font-size:24px;letter-spacing:.12em;text-align:center;padding:10px;font-weight:600"
+        oninput="P.err='';const d=this.value.normalize('NFKC').replace(/\\D/g,'').slice(0,6);P.otp=d.length>3?d.slice(0,3)+' '+d.slice(3):d;this.value=P.otp;document.getElementById('pbtn').disabled=d.length<6;document.getElementById('perr')?.remove()"
+        onkeydown="if(event.key==='Enter')phoneCode()"></div>
+      ${P.err?`<div class="note err" id="perr">${I.warn}<span>${P.err}</span></div>`:''}
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center"><button class="btn ghost sm" onclick="phone('addr')">改用完整地址</button><span style="flex:1"></span>
+        <button class="btn primary" id="pbtn" onclick="phoneCode()" ${P.otp.replace(' ','').length<6?'disabled':''}>配对</button></div>
+      <div class="note" style="margin-top:14px">提示:输入左侧窗口里的数字;输错会提示已过期或已被使用。</div>`;
+  } else if(sc==='addr'){
+    body = `<div class="small" style="margin-bottom:10px">粘贴另一台设备的完整地址(<code>unic addr</code> 输出)。</div>
+      <textarea class="input" placeholder="unic1…" oninput="P.addr=this.value;document.getElementById('pbtn').disabled=!this.value.trim()">${P.addr}</textarea>
+      ${P.err?`<div class="note err">${I.warn}<span>${P.err}</span></div>`:''}
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center"><button class="btn ghost sm" onclick="phone('code')">改用 6 位数字</button><span style="flex:1"></span>
+        <button class="btn" onclick="P.addr=ADDR;P.err='';renderPhone()">粘贴</button>
+        <button class="btn primary" id="pbtn" onclick="phoneAddr()" ${P.addr.trim()?'':'disabled'}>配对</button></div>`;
+  } else if(sc==='connecting'){
+    body = `<div class="center"><div class="bigspin"></div><div style="font-weight:600">${P.msg}</div><div class="small">正在核对配对码并建立加密隧道…</div></div>`;
+  } else if(sc==='waiting'){
+    body = `<div class="center"><div class="ring wait">${I.shield}</div><div style="font-weight:600;font-size:14px">等待 ${S.self.name} 批准</div>
+      <div class="small">在那台电脑上核对指纹,一致后点「批准」。</div>
+      <span class="fpbig" style="background:var(--surface)">${FP}</span>
+      <button class="btn sm" style="margin-top:6px" onclick="phoneCancel()">取消</button></div>`;
+  } else if(sc==='done'){
+    body = `<div class="center"><div class="ring ok">${I.check}</div><div style="font-weight:600;font-size:14px">已连接 ${S.self.name}</div>
+      <div class="small">复制的内容会自动同步。它已配对的其他设备会在各自设备上请求批准。</div>
+      <button class="btn primary sm" style="margin-top:6px" onclick="P=newPhone();renderPhone()">完成</button></div>`;
+  } else if(sc==='rejected'){
+    body = `<div class="center"><div class="ring" style="background:var(--danger-soft);color:var(--danger)">${I.ask}</div><div style="font-weight:600;font-size:14px">对方拒绝了配对</div>
+      <div class="small">如果这是你的设备,请在那台电脑上换一个配对码后再试。</div>
+      <button class="btn sm" style="margin-top:6px" onclick="P=newPhone();renderPhone()">返回</button></div>`;
+  }
+  el.innerHTML = `<div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><div class="t">unic · 加入其他设备</div></div>
+    <div class="content" style="display:flex;flex-direction:column">${body}</div>
+    <div class="footer"><span class="dot ok"></span>${PEER_NAME}</div>`;
+}
+function phone(s){ P.screen=s; P.err=''; renderPhone(); }
+function phoneCode(){
+  const c = P.otp.replace(' ','');
+  if(c.length<6){ P.err='请输入完整的 6 位数字。'; return renderPhone(); }
+  if(!S.daemon || !S.add.svc){ P.err='暂时无法核对配对码,请改用完整地址。'; return renderPhone(); }
+  if(c!==S.add.code){ P.err='这个配对码已过期或已被使用,请让对方换一个。'; return renderPhone(); }
+  phoneConnect('配对码');
+}
+function phoneAddr(){ if(!/^unic1/.test(P.addr.trim())){ P.err='这不是有效的 unic 地址,请完整复制后重试。'; return renderPhone(); } phoneConnect('完整地址'); }
+function phoneConnect(via){
+  P.screen='connecting'; P.msg=`正在连接 ${S.self.name}`; renderPhone();
+  setTimeout(()=>{
+    if(P.screen!=='connecting') return;
+    P.screen='waiting';
+    if(via==='配对码') refreshCode(); // 已 consume,立即换新
+    S.pending = S.pending.filter(p=>!p.code);
+    S.pending.unshift({id:'pc'+Date.now().toString(16), name:PEER_NAME, via, code:true, fp:FP, t:'刚刚'});
+    S.log.unshift({k:'pending',t:now(),txt:`<b>${PEER_NAME}</b> 通过${via}请求加入`});
+    if(S.daemon){ S.tab='me'; S.add.mode='show'; }
+    render();
+  }, 1300);
+}
+function phoneCancel(){ S.pending = S.pending.filter(p=>!p.code); P=newPhone(); render(); }
+
+function renderTray(){
+  const t = document.getElementById('tray');
+  const np = S.pending.length, on = S.peers.filter(p=>p.on).length;
+  const bar = `<div class="bar"><span class="muted">Wi-Fi</span><span class="tray">${I.tray}${np&&S.daemon?'<span class="pip"></span>':''}</span><span>周六 13:45</span></div>`;
+  if(!S.daemon){ t.innerHTML = bar + `<div class="pop"><div class="mini muted">托盘图标随 unicd 一同退出。<br>daemon 未运行时菜单栏不显示 unic。</div></div>`; return; }
+  t.innerHTML = bar + `<div class="pop">
+    <div class="hd"><span class="dot ok"></span><div><div style="font-weight:600">unic 同步中</div><div class="muted" style="font-size:11.5px">${S.peers.length?`${on}/${S.peers.length} 台设备在线`:'尚未配对设备'}</div></div></div>
+    ${np?`<div class="mi" onclick="tab('devices')" style="color:var(--warn)">${I.warn}<span>${np} 台设备等待批准…</span></div><div class="sep"></div>`:''}
+    ${S.clip?`<div class="mini"><div class="muted">最近</div><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,Menlo,monospace;font-size:11.5px">${S.clip.preview}</div><div class="muted">${S.clip.meta.split(' · ').slice(-2).join(' · ')}</div></div><div class="sep"></div>`:''}
+    ${S.peers.map(p=>`<div class="mi"><span class="dot ${p.on?'ok':''}"></span>${p.name}<span class="k">${p.on?'在线':'离线'}</span></div>`).join('')}
+    ${S.peers.length?'<div class="sep"></div>':''}
+    <div class="mi" onclick="tab('devices')">打开 unic…<span class="k">⌘O</span></div>
+    <div class="mi" onclick="S.add.mode='show';tab('me')">添加设备…</div>
+    <div class="mi" onclick="toast('地址已复制到剪贴板')">复制本机地址</div>
+    <div class="sep"></div>
+    <div class="mi">退出 unicd<span class="k">⌘Q</span></div>
+  </div>`;
+}
+
+// ---- 交互 ----
+function tab(n){ S.tab = n; S.menu = null; renderWin(); }
+function menu(id){ S.menu = S.menu===id?null:id; S.confirm=null; renderWin(); }
+function askRemove(id){ S.menu=null; S.confirm=id; renderWin(); }
+function copyId(id){ S.menu=null; renderWin(); toast('设备 ID 已复制'); }
+function removePeer(id){ const p=S.peers.find(x=>x.id===id); S.peers=S.peers.filter(x=>x.id!==id); S.confirm=null; render(); toast(`已移除 ${p.name}`); }
+function now(){ return new Date().toTimeString().slice(0,8); }
+function decide(id,ok){
+  const p = S.pending.find(x=>x.id===id); S.pending = S.pending.filter(x=>x.id!==id);
+  if(p.code){
+    if(ok){ S.peers.push({id, name:p.name, on:true, seen:'在线 · 直连'}); S.log.unshift({k:'peer-up',t:now(),txt:`<b>${p.name}</b> 已连接`}); P.screen='done'; }
+    else P.screen='rejected';
+    render(); return toast(ok?`已添加 ${p.name}`:`已拒绝 ${p.name}`);
+  }
+  if(ok){ S.peers.unshift({id, name:p.name, on:false, seen:'等待对方批准…'}); render(); toast(`已批准 ${p.name}`);
+    setTimeout(()=>{ const q=S.peers.find(x=>x.id===id); if(q){q.on=true;q.seen='在线 · 直连'; S.log.unshift({k:'peer-up',t:now(),txt:`<b>${p.name}</b> 已连接`}); render();}},1600);
+  } else { render(); toast(`已拒绝 ${p.name}`); }
+}
+function startDaemon(b){ b.disabled=true; b.textContent='启动中…'; setTimeout(()=>{ S.daemon=true; render(); },1200); }
+
+document.querySelectorAll('[data-scene]').forEach(b=>b.onclick=()=>setScene(b.dataset.scene));
+document.querySelectorAll('[data-theme-btn]').forEach(b=>b.onclick=()=>{ document.documentElement.dataset.theme=b.dataset.themeBtn; render(); });
+if(matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme='dark';
+document.addEventListener('click',e=>{ if(S.menu && !e.target.closest('.more,.menu')){ S.menu=null; renderWin(); } });
+setScene('normal');
+</script>
+</body>
+</html>

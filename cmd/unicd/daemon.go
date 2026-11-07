@@ -23,6 +23,7 @@ import (
 	"unic/internal/board"
 	"unic/internal/engine"
 	"unic/internal/paths"
+	"unic/internal/rendezvous"
 	"unic/internal/store"
 	"unic/internal/tcnet"
 )
@@ -62,6 +63,7 @@ func runDaemon() error {
 	}
 	eng := engine.New(engine.Config{
 		ID: id, Name: name, Board: board.MyGo{}, Store: st, Transport: tr, Inbox: inbox,
+		Rendezvous: rendezvous.New(),
 	})
 
 	// Files of clips received in an earlier run are no longer on the clipboard.
@@ -147,7 +149,9 @@ func notifyPending(ctx context.Context, sock string) {
 				return
 			}
 			body := ev.Peer + " asks to sync clipboards with this device. Open unic to approve or reject."
-			if ev.Info != "" {
+			if ev.Info == "code" {
+				body = ev.Peer + " entered this device's pairing code. Open unic, compare the fingerprints and approve."
+			} else if ev.Info != "" {
 				body = ev.Peer + ", introduced by " + ev.Info + ", wants to join. Open unic to approve or reject."
 			}
 			n := mygo.NewNotification(mygo.NotificationOptions{Title: "New device", Body: body})

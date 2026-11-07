@@ -14,10 +14,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"unic/internal/clip"
 	"unic/internal/engine"
+	"unic/internal/rendezvous"
+	"unic/internal/store"
 )
 
 // Status is the reply of GET /v1/status.
@@ -35,7 +38,22 @@ type PairResult struct {
 	engine.PeerStatus
 	// Awaiting is true when the other device has not approved this one yet.
 	Awaiting bool `json:"awaiting_approval"`
+	// Fingerprint is what the other device shows next to this one's request.
+	Fingerprint string `json:"fingerprint"`
 }
+
+// Code is the reply of GET and POST /v1/code: the pairing code this device
+// shows, "NNN-NNN", valid until ExpiresAtMs (unix milliseconds).
+type Code struct {
+	Code        string `json:"code"`
+	ExpiresAtMs int64  `json:"expires_at_ms"`
+}
+
+// Expires is ExpiresAtMs as a time.
+func (c Code) Expires() time.Time { return time.UnixMilli(c.ExpiresAtMs) }
+
+// Display renders the code as "NNN NNN".
+func (c Code) Display() string { return strings.Replace(c.Code, "-", " ", 1) }
 
 type ClipboardView struct {
 	Summary string   `json:"summary"`
@@ -52,6 +70,26 @@ type SetClipboard struct {
 
 type errBody struct {
 	Error string `json:"error"`
+	// Reason classifies pairing code failures: "incomplete", "expired",
+	// "invalid", "rate-limited" or "unavailable".
+	Reason string `json:"reason,omitempty"`
+}
+
+// Error is an error reply from the daemon.
+type Error struct {
+	Message string
+	Reason  string // see errBody.Reason
+}
+
+func (e *Error) Error() string { return e.Message }
+
+// ReasonOf returns the reason of a daemon error, or "".
+func ReasonOf(err error) string {
+	var e *Error
+	if errors.As(err, &e) {
+		return e.Reason
+	}
+	return ""
 }
 
 // Handler serves the API for e.
@@ -62,7 +100,31 @@ func Handler(e *engine.Engine) http.Handler {
 		w.WriteHeader(code)
 		_ = json.NewEncoder(w).Encode(v)
 	}
-	fail := func(w http.ResponseWriter, code int, err error) { reply(w, code, errBody{err.Error()}) }
+	fail := func(w http.ResponseWriter, code int, err error) {
+		reply(w, code, errBody{Error: err.Error(), Reason: string(rendezvous.ReasonOf(err))})
+	}
+	// codeFail maps a pairing code failure to a status.
+	codeFail := func(w http.ResponseWriter, err error) {
+		switch rendezvous.ReasonOf(err) {
+		case rendezvous.Incomplete, rendezvous.Invalid:
+			fail(w, 400, err)
+		case rendezvous.Expired:
+			fail(w, 404, err)
+		case rendezvous.RateLimited:
+			fail(w, 429, err)
+		case rendezvous.Unavailable:
+			fail(w, 503, err)
+		default:
+			fail(w, 502, err)
+		}
+	}
+	codeReply := func(w http.ResponseWriter, c rendezvous.Code) {
+		reply(w, 200, Code{Code: c.Code, ExpiresAtMs: c.Expires.UnixMilli()})
+	}
+	pairReply := func(w http.ResponseWriter, p store.Peer, awaiting bool) {
+		reply(w, 200, PairResult{PeerStatus: engine.PeerStatus{ID: p.ID, Name: p.Name, Connected: !awaiting},
+			Awaiting: awaiting, Fingerprint: e.Fingerprint(p.ID)})
+	}
 
 	status := func() (Status, error) {
 		id, name, addr := e.Self()
@@ -104,7 +166,51 @@ func Handler(e *engine.Engine) http.Handler {
 			fail(w, 502, err)
 			return
 		}
-		reply(w, 200, PairResult{PeerStatus: engine.PeerStatus{ID: p.ID, Name: p.Name, Connected: !awaiting}, Awaiting: awaiting})
+		pairReply(w, p, awaiting)
+	})
+
+	// The pairing code this device shows, if one is live.
+	mux.HandleFunc("GET /v1/code", func(w http.ResponseWriter, r *http.Request) {
+		c, ok := e.CurrentCode()
+		if !ok {
+			fail(w, 404, errors.New("no pairing code is being shown"))
+			return
+		}
+		codeReply(w, c)
+	})
+
+	// A fresh pairing code, replacing the previous one.
+	mux.HandleFunc("POST /v1/code", func(w http.ResponseWriter, r *http.Request) {
+		c, err := e.IssueCode(r.Context())
+		if err != nil {
+			codeFail(w, err)
+			return
+		}
+		codeReply(w, c)
+	})
+
+	mux.HandleFunc("DELETE /v1/code", func(w http.ResponseWriter, r *http.Request) {
+		e.CancelCode()
+		reply(w, 200, map[string]bool{"ok": true})
+	})
+
+	// Pair with the device showing a code.
+	mux.HandleFunc("POST /v1/join", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Code string `json:"code"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil {
+			fail(w, 400, errors.New(`body must be {"code": "NNN NNN"}`))
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+		defer cancel()
+		p, awaiting, err := e.Join(ctx, body.Code)
+		if err != nil {
+			codeFail(w, err)
+			return
+		}
+		pairReply(w, p, awaiting)
 	})
 
 	mux.HandleFunc("GET /v1/pending", func(w http.ResponseWriter, r *http.Request) {
@@ -295,7 +401,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		if e.Error == "" {
 			e.Error = resp.Status
 		}
-		return errors.New(e.Error)
+		return &Error{Message: e.Error, Reason: e.Reason}
 	}
 	if out != nil {
 		return json.NewDecoder(resp.Body).Decode(out)
@@ -315,6 +421,29 @@ func (c *Client) Status(ctx context.Context) (st Status, err error) {
 
 func (c *Client) Pair(ctx context.Context, addr string) (p PairResult, err error) {
 	err = c.do(ctx, "POST", "/v1/peers", map[string]string{"addr": addr}, &p)
+	return
+}
+
+// Code returns the pairing code this device shows; an error if none is live.
+func (c *Client) Code(ctx context.Context) (v Code, err error) {
+	err = c.do(ctx, "GET", "/v1/code", nil, &v)
+	return
+}
+
+// NewCode registers a fresh pairing code, replacing the previous one.
+func (c *Client) NewCode(ctx context.Context) (v Code, err error) {
+	err = c.do(ctx, "POST", "/v1/code", nil, &v)
+	return
+}
+
+// CancelCode withdraws the pairing code this device shows.
+func (c *Client) CancelCode(ctx context.Context) error {
+	return c.do(ctx, "DELETE", "/v1/code", nil, nil)
+}
+
+// Join pairs with the device showing code.
+func (c *Client) Join(ctx context.Context, code string) (p PairResult, err error) {
+	err = c.do(ctx, "POST", "/v1/join", map[string]string{"code": code}, &p)
 	return
 }
 

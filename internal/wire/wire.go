@@ -36,6 +36,10 @@ type Hello struct {
 	ID      string `json:"id"`   // stable device id
 	Name    string `json:"name"` // device name
 	Addr    string `json:"addr"` // the sender's own tailcat address, so the peer can dial back
+	// Pair is the token of the pairing code the dialer used to find this
+	// device, if any. It tells the receiver that the request came through the
+	// code it is showing; it grants no trust by itself.
+	Pair string `json:"pair,omitempty"`
 }
 
 // Verdict follows the hellos: whether the sender accepts the other device.

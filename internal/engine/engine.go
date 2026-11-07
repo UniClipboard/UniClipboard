@@ -54,8 +54,20 @@ type Config struct {
 	Rendezvous *rendezvous.Client
 	// Settings supplies the user's configuration, re-read on every use so
 	// edits apply at once. Nil means the defaults.
-	Settings *config.Manager
+	Settings SettingsSource
 }
+
+// SettingsSource provides the configuration in effect; *config.Manager is one.
+type SettingsSource interface{ Current() config.Config }
+
+// Sentinel errors, so that callers can classify failures without matching text.
+var (
+	ErrNotRunning = errors.New("engine is not running")
+	ErrSelf       = errors.New("that is this device itself")
+	ErrProtocol   = errors.New("peer speaks another protocol version")
+	ErrIdentity   = errors.New("address belongs to a different device")
+	ErrNoPending  = errors.New("no such pending device")
+)
 
 type Engine struct {
 	cfg Config
@@ -69,7 +81,9 @@ type Engine struct {
 	pairing  map[string]int // addresses the user is pairing with right now
 	code     *liveCode      // the pairing code this device is showing, if any
 	ctx      context.Context
-	rvCache  *rendezvous.Client // client for the configured rendezvous_url
+	rvCache  *rendezvous.Client    // client for the configured rendezvous_url
+	conns    map[net.Conn]struct{} // connections still handshaking, closed on shutdown
+	wg       sync.WaitGroup        // every background goroutine of a Run
 }
 
 // liveCode is a pairing code registered for this device.
@@ -99,6 +113,7 @@ func New(cfg Config) *Engine {
 		subs:     map[chan Event]struct{}{},
 		retry:    map[string]context.CancelFunc{},
 		pairing:  map[string]int{},
+		conns:    map[net.Conn]struct{}{},
 	}
 }
 
@@ -163,24 +178,41 @@ func (e *Engine) ConfigChanged(err error) {
 	e.emit(Event{Kind: "config", Info: info})
 }
 
-// Run blocks until ctx is done.
-func (e *Engine) Run(ctx context.Context) error {
+// Run blocks until ctx is done. When it returns every goroutine it started has
+// exited, all sessions are closed and Run may be called again (a host that
+// suspends networking stops Run and later restarts it).
+func (e *Engine) Run(ctx context.Context) error { return e.RunReady(ctx, nil) }
+
+// RunReady is Run that calls ready, if not nil, once the engine is listening
+// and accepting work.
+func (e *Engine) RunReady(ctx context.Context, ready func()) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	e.mu.Lock()
-	e.ctx = ctx
+	if e.ctx != nil {
+		e.mu.Unlock()
+		return errors.New("engine is already running")
+	}
 	e.mu.Unlock()
 
 	ln, err := e.cfg.Transport.Listen(ctx)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	go func() { <-ctx.Done(); ln.Close() }()
+	e.mu.Lock()
+	e.ctx = ctx
+	e.mu.Unlock()
+	defer e.shutdown(ln)
 
 	// Do not broadcast whatever is on the clipboard at startup.
-	if s, err := e.cfg.Board.Read(); err == nil {
-		e.lastHash = s.Hash()
+	if e.cfg.Board != nil {
+		if s, err := e.cfg.Board.Read(); err == nil {
+			e.lastHash = s.Hash()
+		}
 	}
 
-	go e.acceptLoop(ctx, ln)
+	e.spawn(func() { e.acceptLoop(ctx, ln) })
 	peers, err := e.cfg.Store.Peers()
 	if err != nil {
 		return err
@@ -188,8 +220,70 @@ func (e *Engine) Run(ctx context.Context) error {
 	for _, p := range peers {
 		e.keepDialing(p)
 	}
-	e.watch(ctx)
+	if ready != nil {
+		ready()
+	}
+	if e.cfg.Board == nil {
+		<-ctx.Done()
+	} else {
+		e.watch(ctx)
+	}
 	return ctx.Err()
+}
+
+// spawn runs f as a tracked goroutine; it reports false (and does not run f)
+// once the engine is shutting down, so that shutdown can wait for everything.
+func (e *Engine) spawn(f func()) bool {
+	e.mu.Lock()
+	if e.ctx == nil || e.ctx.Err() != nil {
+		e.mu.Unlock()
+		return false
+	}
+	e.wg.Add(1)
+	e.mu.Unlock()
+	go func() { defer e.wg.Done(); f() }()
+	return true
+}
+
+// track registers a connection that is still being set up so that shutdown
+// can cut it short. The returned function forgets it again.
+func (e *Engine) track(c net.Conn) (untrack func(), ok bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ctx == nil || e.ctx.Err() != nil {
+		c.Close()
+		return func() {}, false
+	}
+	e.conns[c] = struct{}{}
+	return func() { e.mu.Lock(); delete(e.conns, c); e.mu.Unlock() }, true
+}
+
+// shutdown stops accepting, drops every connection and waits for the
+// goroutines of this Run.
+func (e *Engine) shutdown(ln net.Listener) {
+	e.mu.Lock()
+	e.ctx = nil
+	for id, cancel := range e.retry {
+		cancel()
+		delete(e.retry, id)
+	}
+	sessions := make([]*session, 0, len(e.sessions))
+	for _, s := range e.sessions {
+		sessions = append(sessions, s)
+	}
+	conns := make([]net.Conn, 0, len(e.conns))
+	for c := range e.conns {
+		conns = append(conns, c)
+	}
+	e.mu.Unlock()
+	ln.Close()
+	for _, s := range sessions {
+		s.close()
+	}
+	for _, c := range conns {
+		c.Close()
+	}
+	e.wg.Wait()
 }
 
 // AddPeer pairs with the device at addr. It connects once synchronously so
@@ -209,7 +303,7 @@ func (e *Engine) addPeer(ctx context.Context, addr, pair string) (p store.Peer, 
 	}
 	e.mu.Unlock()
 	if !started {
-		return p, false, errors.New("daemon is still starting")
+		return p, false, ErrNotRunning
 	}
 	defer func() {
 		e.mu.Lock()
@@ -219,12 +313,17 @@ func (e *Engine) addPeer(ctx context.Context, addr, pair string) (p store.Peer, 
 		e.mu.Unlock()
 	}()
 	if addr == e.cfg.Transport.Addr() {
-		return p, false, errors.New("that is this device's own address")
+		return p, false, ErrSelf
 	}
 	conn, err := e.cfg.Transport.Dial(ctx, addr)
 	if err != nil {
 		return p, false, fmt.Errorf("connect: %w", err)
 	}
+	untrack, ok := e.track(conn)
+	if !ok {
+		return p, false, ErrNotRunning
+	}
+	defer untrack()
 	s, err := e.handshake(conn, true, addr, pair)
 	if err != nil {
 		var aw *awaitingError
@@ -247,7 +346,10 @@ func (e *Engine) addPeer(ctx context.Context, addr, pair string) (p store.Peer, 
 		return p, true, nil
 	}
 	if e.register(s) {
-		go e.serve(s)
+		if !e.spawn(func() { e.serve(s) }) {
+			s.close()
+			return p, false, ErrNotRunning
+		}
 	} else {
 		conn.Close() // already connected through a better session
 	}
@@ -279,6 +381,7 @@ type PeerStatus struct {
 	Name      string `json:"name"`
 	Connected bool   `json:"connected"`
 	LastSeen  int64  `json:"last_seen,omitempty"`
+	AddedAt   int64  `json:"-"` // unix seconds; not part of the HTTP API
 }
 
 func (e *Engine) Peers() ([]PeerStatus, error) {
@@ -290,7 +393,7 @@ func (e *Engine) Peers() ([]PeerStatus, error) {
 	defer e.mu.Unlock()
 	out := make([]PeerStatus, 0, len(ps))
 	for _, p := range ps {
-		st := PeerStatus{ID: p.ID, Name: p.Name, Connected: e.sessions[p.ID] != nil}
+		st := PeerStatus{ID: p.ID, Name: p.Name, Connected: e.sessions[p.ID] != nil, AddedAt: p.AddedAt.Unix()}
 		if !p.LastSeen.IsZero() {
 			st.LastSeen = p.LastSeen.Unix()
 		}
@@ -359,6 +462,9 @@ func (e *Engine) watch(ctx context.Context) {
 // SetLocal writes s to the local clipboard on behalf of the user (CLI/GUI)
 // and syncs it like any other change.
 func (e *Engine) SetLocal(s clip.Snapshot) error {
+	if e.cfg.Board == nil {
+		return errors.New("no clipboard")
+	}
 	if err := e.cfg.Board.Write(s); err != nil {
 		return err
 	}
@@ -366,7 +472,12 @@ func (e *Engine) SetLocal(s clip.Snapshot) error {
 	return nil
 }
 
-func (e *Engine) Current() (clip.Snapshot, error) { return e.cfg.Board.Read() }
+func (e *Engine) Current() (clip.Snapshot, error) {
+	if e.cfg.Board == nil {
+		return clip.Snapshot{}, errors.New("no clipboard")
+	}
+	return e.cfg.Board.Read()
+}
 
 func (e *Engine) broadcast(s clip.Snapshot) {
 	cfg := e.settings()
@@ -576,7 +687,7 @@ func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed, pair string) (*
 		return nil, errors.New("handshake: bad device id")
 	}
 	if h.Version != wire.Version {
-		return nil, fmt.Errorf("handshake: peer speaks protocol %d, we speak %d", h.Version, wire.Version)
+		return nil, fmt.Errorf("handshake: peer speaks protocol %d, we speak %d: %w", h.Version, wire.Version, ErrProtocol)
 	}
 
 	trust := outgoing || e.trusts(h)
@@ -619,7 +730,12 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 			}
 			return
 		}
-		go func() {
+		untrack, ok := e.track(conn)
+		if !ok {
+			return
+		}
+		if !e.spawn(func() {
+			defer untrack()
 			s, err := e.handshake(conn, false, "", "")
 			if err != nil {
 				if !errors.Is(err, errNotTrusted) {
@@ -641,7 +757,11 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 				return
 			}
 			e.serve(s)
-		}()
+		}) {
+			untrack()
+			conn.Close()
+			return
+		}
 	}
 }
 
@@ -677,7 +797,9 @@ func (e *Engine) serve(s *session) {
 	e.logf("connected to %s", s.peerName)
 	_ = e.cfg.Store.TouchPeer(s.peerID)
 	e.emit(Event{Kind: "peer-up", Peer: s.peerName})
-	go s.sendLoop()
+	if !e.spawn(s.sendLoop) {
+		s.close()
+	}
 	e.introduceTo(s)
 	err := s.recvLoop()
 	s.close()
@@ -734,7 +856,7 @@ func (s *session) recvLoop() error {
 			// the connection survives.
 			cfg := s.e.settings()
 			lim := wire.Limits{File: int64(cfg.Limits.MaxFileBytes), Total: int64(cfg.Limits.MaxTotalBytes)}
-			if lerr := m.Fits(lim); !cfg.Sync.Enabled || lerr != nil {
+			if lerr := m.Fits(lim); !cfg.Sync.Enabled || lerr != nil || s.e.cfg.Board == nil {
 				if lerr != nil {
 					s.e.logf("dropped clip from %s: %v", s.peerName, lerr)
 				}
@@ -780,7 +902,7 @@ func (e *Engine) keepDialing(p store.Peer) {
 	e.retry[p.ID] = cancel
 	e.mu.Unlock()
 
-	go func() {
+	if !e.spawn(func() {
 		backoff := time.Second
 		for ctx.Err() == nil {
 			e.mu.Lock()
@@ -798,14 +920,19 @@ func (e *Engine) keepDialing(p store.Peer) {
 			dcancel()
 			var s *session
 			if err == nil {
+				untrack, ok := e.track(conn)
+				if !ok {
+					return
+				}
 				s, err = e.handshake(conn, true, p.Addr, "")
+				untrack()
 				if err != nil {
 					conn.Close()
 				}
 			}
 			if err == nil && s.peerID != p.ID {
 				conn.Close()
-				err = errors.New("address belongs to a different device")
+				err = ErrIdentity
 			}
 			if err != nil {
 				var aw *awaitingError
@@ -824,13 +951,23 @@ func (e *Engine) keepDialing(p store.Peer) {
 				continue
 			}
 			backoff = time.Second
+			// The user may have removed the device while we were connecting.
+			if ok, err := e.cfg.Store.HasPeer(p.ID); err == nil && !ok {
+				conn.Close()
+				return
+			}
 			if !e.register(s) {
 				conn.Close()
 				continue
 			}
 			e.serve(s)
 		}
-	}()
+	}) {
+		cancel()
+		e.mu.Lock()
+		delete(e.retry, p.ID)
+		e.mu.Unlock()
+	}
 }
 
 func sleep(ctx context.Context, d time.Duration) bool {
@@ -897,7 +1034,7 @@ func (e *Engine) Approve(id string) (store.Peer, error) {
 		return store.Peer{}, err
 	}
 	if !ok {
-		return store.Peer{}, errors.New("no such pending device")
+		return store.Peer{}, ErrNoPending
 	}
 	p := store.Peer{ID: c.ID, Name: c.Name, Addr: c.Addr}
 	if err := e.cfg.Store.UpsertPeer(p); err != nil {
@@ -918,7 +1055,7 @@ func (e *Engine) Reject(id string) error {
 		return err
 	}
 	if !ok {
-		return errors.New("no such pending device")
+		return ErrNoPending
 	}
 	e.emit(Event{Kind: "peers"})
 	return nil
@@ -989,7 +1126,7 @@ func (e *Engine) IssueCode(ctx context.Context) (rendezvous.Code, error) {
 		return rendezvous.Code{}, ErrNoCodes
 	}
 	if addr == "" {
-		return rendezvous.Code{}, errors.New("daemon is still starting")
+		return rendezvous.Code{}, ErrNotRunning
 	}
 	token := rendezvous.NewToken()
 	c, err := rv.Create(ctx, rendezvous.Ticket{Addr: addr, Token: token})
@@ -1001,7 +1138,7 @@ func (e *Engine) IssueCode(ctx context.Context) (rendezvous.Code, error) {
 	e.code = &liveCode{Code: c, token: token}
 	e.mu.Unlock()
 	if old != nil {
-		go e.consume(old.Code.Code)
+		e.spawn(func() { e.consume(old.Code.Code) })
 	}
 	return c, nil
 }
@@ -1023,7 +1160,7 @@ func (e *Engine) CancelCode() {
 	e.code = nil
 	e.mu.Unlock()
 	if old != nil {
-		go e.consume(old.Code.Code)
+		e.spawn(func() { e.consume(old.Code.Code) })
 	}
 }
 
@@ -1042,7 +1179,7 @@ func (e *Engine) useCode(token string) bool {
 	}
 	e.mu.Unlock()
 	if ok {
-		go e.consume(c.Code.Code)
+		e.spawn(func() { e.consume(c.Code.Code) })
 		e.emit(Event{Kind: "code"})
 	}
 	return ok
@@ -1053,7 +1190,13 @@ func (e *Engine) consume(code string) {
 	if rv == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	e.mu.Lock()
+	parent := e.ctx
+	e.mu.Unlock()
+	if parent == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	rv.Consume(ctx, code)
 }
@@ -1061,6 +1204,12 @@ func (e *Engine) consume(code string) {
 // Join pairs with the device showing code. Like AddPeer, the other device
 // still has to approve this one.
 func (e *Engine) Join(ctx context.Context, code string) (p store.Peer, awaiting bool, err error) {
+	return e.JoinWith(ctx, code, nil)
+}
+
+// JoinWith is Join that calls connecting, if not nil, once the code has been
+// resolved and the connection is being made.
+func (e *Engine) JoinWith(ctx context.Context, code string, connecting func()) (p store.Peer, awaiting bool, err error) {
 	rv := e.rv()
 	if rv == nil {
 		return p, false, ErrNoCodes
@@ -1070,11 +1219,14 @@ func (e *Engine) Join(ctx context.Context, code string) (p store.Peer, awaiting 
 		return p, false, err
 	}
 	if t.Addr == e.cfg.Transport.Addr() {
-		return p, false, errors.New("that is this device's own code")
+		return p, false, ErrSelf
+	}
+	if connecting != nil {
+		connecting()
 	}
 	p, awaiting, err = e.addPeer(ctx, t.Addr, t.Token)
 	if err == nil {
-		go e.consume(code)
+		e.spawn(func() { e.consume(code) })
 	}
 	return p, awaiting, err
 }
@@ -1090,4 +1242,27 @@ func Fingerprint(a, b string) string {
 	sum := sha256.Sum256([]byte("unic-pair-fp\x00" + a + "\x00" + b))
 	h := strings.ToUpper(hex.EncodeToString(sum[:8]))
 	return h[0:4] + " " + h[4:8] + " " + h[8:12] + " " + h[12:16]
+}
+
+// NetworkChanged tells the engine the network may have changed: devices that
+// are not connected are retried at once instead of after their backoff. It
+// does not resend anything.
+func (e *Engine) NetworkChanged() {
+	ps, err := e.cfg.Store.Peers()
+	if err != nil {
+		return
+	}
+	for _, p := range ps {
+		e.mu.Lock()
+		up := e.sessions[p.ID] != nil
+		cancel := e.retry[p.ID]
+		if !up && cancel != nil {
+			delete(e.retry, p.ID)
+		}
+		e.mu.Unlock()
+		if !up && cancel != nil {
+			cancel()
+			e.keepDialing(p)
+		}
+	}
 }

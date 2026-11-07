@@ -147,7 +147,8 @@ func (s *Store) HasPeer(id string) (bool, error) {
 	return n > 0, err
 }
 
-// AddCandidate records c as pending. A candidate the user rejected stays
+// AddCandidate records c as pending. A candidate that is already pending keeps
+// its arrival time (it is the same request). A candidate the user rejected stays
 // rejected when merely introduced again (revive false); a device that connects
 // by itself (revive true) asks again, so it comes back as pending.
 // It reports whether the candidate is new or was revived, i.e. whether the
@@ -164,6 +165,14 @@ func (s *Store) AddCandidate(c Candidate, revive bool) (bool, error) {
 		return false, err
 	case state == "rejected" && !revive:
 		return false, nil
+	}
+	if state == "pending" {
+		// Asking again while still waiting (the device retries in the
+		// background) is the same request: keep when it first arrived and
+		// that it came through a code or an introducer.
+		_, err = s.db.Exec(`UPDATE pending SET name = ?, addr = ?, by_code = by_code OR ?, via = CASE WHEN via = '' THEN ? ELSE via END WHERE id = ?`,
+			c.Name, c.Addr, c.ByCode, c.Via, c.ID)
+		return false, err
 	}
 	_, err = s.db.Exec(`UPDATE pending SET name = ?, addr = ?, via = ?, by_code = ?, state = 'pending', seen = ? WHERE id = ?`,
 		c.Name, c.Addr, c.Via, c.ByCode, time.Now().Unix(), c.ID)

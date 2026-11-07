@@ -9,6 +9,7 @@ package tcnet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -18,6 +19,9 @@ import (
 
 	"unic/internal/store"
 )
+
+// ErrBadAddress means the text is not a tailcat address.
+var ErrBadAddress = errors.New("not a valid tailcat address")
 
 // Port is the virtual TCP port the sync protocol listens on inside the tunnel.
 const Port = 7777
@@ -98,7 +102,7 @@ func (t *Transport) Addr() string {
 
 func (t *Transport) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	if _, err := tailcat.ParseAddr(tailcat.Addr(addr)); err != nil {
-		return nil, fmt.Errorf("not a valid tailcat address: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrBadAddress, err)
 	}
 	t.mu.Lock()
 	c := t.clients[addr]

@@ -35,3 +35,33 @@ func TestMigratesOldPendingTable(t *testing.T) {
 		s.Close()
 	}
 }
+
+func TestPendingRequestKeepsItsOriginWhenAskedAgain(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if created, err := s.AddCandidate(Candidate{ID: "x", Name: "x", Addr: "a", ByCode: true}, true); err != nil || !created {
+		t.Fatalf("first = %v, %v", created, err)
+	}
+	if _, err := s.db.Exec(`UPDATE pending SET seen = 1000 WHERE id = 'x'`); err != nil {
+		t.Fatal(err)
+	}
+	// The device reconnects in the background, this time without the code.
+	if created, err := s.AddCandidate(Candidate{ID: "x", Name: "x2", Addr: "b"}, true); err != nil || created {
+		t.Fatalf("again = %v, %v", created, err)
+	}
+	c, ok, _ := s.Candidate("x")
+	if !ok || !c.ByCode || c.Seen.Unix() != 1000 || c.Name != "x2" || c.Addr != "b" {
+		t.Fatalf("candidate = %+v", c)
+	}
+	// After a rejection the same device asking again is a new request.
+	s.RejectCandidate("x")
+	if created, _ := s.AddCandidate(Candidate{ID: "x", Name: "x", Addr: "b"}, true); !created {
+		t.Fatal("a rejected device asking again must be new")
+	}
+	if c, _, _ := s.Candidate("x"); c.ByCode || c.Seen.Unix() == 1000 {
+		t.Fatalf("revived candidate kept old data: %+v", c)
+	}
+}

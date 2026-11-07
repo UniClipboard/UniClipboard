@@ -3,15 +3,18 @@ module unic
 go 1.27.3
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/egoist/mygo v0.8.1
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/tailscale/tailcat v0.7.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0
 	modernc.org/sqlite v1.61.1
 	tailscale.com v1.103.0-pre.0.20260916030321-a2263542f260
 )
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/coder/websocket v1.8.14 // indirect
@@ -20,7 +23,6 @@ require (
 	github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gaissmai/bart v0.26.1 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68 // indirect
@@ -59,9 +61,7 @@ require (
 	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect

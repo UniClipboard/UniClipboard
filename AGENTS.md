@@ -27,6 +27,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0003](docs/design/decisions/0003-engine-sdk.md) | 独立 Engine：统一接口与契约 | 公开 Go SDK，宿主负责剪贴板与系统集成；定义生命周期、内容所有权、事件与错误；先落地契约并迁移桌面，移动端验证后续进行 |
 | [0004](docs/design/decisions/0004-clipboard-pipeline-lua.md) | 剪贴板处理流水线 + Lua 插件 | 草案；Capture→Processing→Commit→Sync→Use→End；captured/received 可干预，其余事件只读；同步为内置步骤；gopher-lua 沙箱（无 os/io）；本地历史库，标签/过期不同步；历史是否进 Engine 待定 |
 | [0005](docs/design/decisions/0005-monorepo-layout.md) | 仓库布局：monorepo | 核心在根（`engine/`、`internal/`），应用在 `app/<平台>/`；依赖单向，桌面专属包放 `app/desktop/internal`；单一根模块 `github.com/uniclipboard/unic`，gomobile 引入时再拆 `bindings/` |
+| [0006](docs/design/decisions/0006-macos-swiftui-client.md) | macOS 端：SwiftUI 客户端 | 草案；SwiftUI 作为 `unicd` 的客户端（unix socket，HTTP+JSON/SSE），不内嵌 Engine；`unicd` 增加无托盘模式；新增本机历史 API（事件不带正文）；历史先放 `internal/`；Developer ID 分发，不上 App Store |
 
 ### 接口契约
 

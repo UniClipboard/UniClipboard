@@ -2,10 +2,13 @@ package engine
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"github.com/uniclipboard/unic/internal/store"
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -464,4 +467,219 @@ func TestBeginApplyHistoryNeedsHostAbility(t *testing.T) {
 	if _, err := n.e.BeginApplyHistory(bg, ApplyHistoryRequest{HistoryID: r.HistoryID}); code(err) != CodeUnsupported {
 		t.Fatal(err)
 	}
+}
+
+// ---- fault injection (history-contract §8) ----
+
+func entries(t *testing.T, dir string) int {
+	t.Helper()
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(ents)
+}
+
+func TestFailedDatabaseWriteFailsTheCommitAndLeavesNoDebris(t *testing.T) {
+	n := newContentNode(t, nil)
+	start(t, n)
+	good := commitText(t, n.e, "keep", "earlier history")
+
+	// Make every further insert fail from outside, as a full or broken database would.
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(n.dir, "unic.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`CREATE TRIGGER inject BEFORE INSERT ON clip_items BEGIN SELECT RAISE(ABORT, 'injected'); END`); err != nil {
+		t.Fatal(err)
+	}
+	in, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("big.bin", "payload")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "doomed", LeaseID: in.LeaseID})
+	if code(err) != CodeUnavailable || r.Phase != SubmissionFailed || r.HistoryID != "" || r.OperationID != "" {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if got := entries(t, n.e.hist.dir); got != 0 {
+		t.Fatalf("%d blobs left behind by the failed commit", got)
+	}
+	// The failure is the cached answer for this request, and earlier history is untouched.
+	if r2, err := n.e.GetSubmission(bg, "doomed"); err != nil || r2.Phase != SubmissionFailed {
+		t.Fatalf("%+v %v", r2, err)
+	}
+	if _, err := n.e.GetItem(bg, good.HistoryID); err != nil {
+		t.Fatal(err)
+	}
+	// Once the database works again a fresh request succeeds.
+	if _, err := db.Exec(`DROP TRIGGER inject`); err != nil {
+		t.Fatal(err)
+	}
+	if r3, err := n.e.CommitContent(bg, CommitRequest{RequestID: "retry", LeaseID: in.LeaseID}); err != nil || r3.HistoryID == "" {
+		t.Fatalf("%+v %v", r3, err)
+	}
+}
+
+func TestUnwritableBlobDirectoryFailsTheCommit(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not bind root")
+	}
+	n := newContentNode(t, nil)
+	start(t, n)
+	if err := os.Chmod(n.e.hist.dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(n.e.hist.dir, 0o700) }()
+	in, _ := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("f.bin", "x")}})
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "ro", LeaseID: in.LeaseID})
+	if err == nil || r.Phase != SubmissionFailed {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if page, _ := n.e.ListHistory(bg, ListHistoryRequest{}); len(page.Items) != 0 {
+		t.Fatal("a record exists although its blob could not be written")
+	}
+}
+
+func TestOversizedItemIsRefusedWithoutDeletingHistory(t *testing.T) {
+	n := newContentNode(t, func(o *Options) { o.History.MaxBytes = 16 })
+	start(t, n)
+	old := commitText(t, n.e, "small", "tiny")
+	big := importText(t, n.e, "this text is longer than sixteen bytes")
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "big", LeaseID: big.LeaseID})
+	if code(err) != CodeResourceExhausted || r.Phase != SubmissionFailed {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if _, err := n.e.GetItem(bg, old.HistoryID); err != nil {
+		t.Fatalf("an oversized commit evicted older history: %v", err)
+	}
+}
+
+func TestByteLimitEvictsOldestAndFreesTheirBlobs(t *testing.T) {
+	n := newContentNode(t, func(o *Options) { o.History.MaxBytes = 20 })
+	start(t, n)
+	file := func(id, body string) SubmissionResult {
+		in, _ := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn(id+".bin", body)}})
+		r, err := n.e.CommitContent(bg, CommitRequest{RequestID: RequestID(id), LeaseID: in.LeaseID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = n.e.ReleaseContent(bg, in.LeaseID)
+		return r
+	}
+	a := file("a", "0123456789") // 10
+	b := file("b", "0123456789") // 20: fits
+	c := file("c", "0123456789") // 30: the oldest must go
+	if _, err := n.e.GetItem(bg, a.HistoryID); code(err) != CodeNotFound {
+		t.Fatalf("oldest survived: %v", err)
+	}
+	for _, r := range []SubmissionResult{b, c} {
+		if _, err := n.e.GetItem(bg, r.HistoryID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	eventually(t, "evicted blob removed", func() bool { return entries(t, n.e.hist.dir) == 2 })
+}
+
+func TestConcurrentCommitsKeepTheLimitAndNeverDuplicate(t *testing.T) {
+	n := newContentNode(t, func(o *Options) { o.History.MaxItems = 5 })
+	start(t, n)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			h := importText(t, n.e, fmt.Sprintf("item %d", i))
+			if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: RequestID(fmt.Sprintf("c%d", i)), LeaseID: h.LeaseID}); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	page, err := n.e.ListHistory(bg, ListHistoryRequest{Limit: 200})
+	if err != nil || len(page.Items) != 5 {
+		t.Fatalf("%d items, %v", len(page.Items), err)
+	}
+	seen := map[HistoryID]bool{}
+	for _, it := range page.Items {
+		if seen[it.ID] {
+			t.Fatal("duplicate")
+		}
+		seen[it.ID] = true
+	}
+}
+
+func TestHistoryInStoppedEngine(t *testing.T) {
+	n := newContentNode(t, nil)
+	start(t, n)
+	r := commitText(t, n.e, "s1", "survives stop")
+	if err := n.e.Stop(bg); err != nil {
+		t.Fatal(err)
+	}
+	// Reads work after Stop; changes do not; nothing times out in the background.
+	if _, err := n.e.GetItem(bg, r.HistoryID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.RetainHistoryContent(bg, r.HistoryID); err != nil {
+		t.Fatal(err)
+	}
+	tags := []string{"x"}
+	if _, err := n.e.UpdateItem(bg, UpdateItemRequest{ID: r.HistoryID, ExpectedRevision: 1, Tags: &tags}); code(err) != CodeInvalidState {
+		t.Fatalf("update after stop: %v", err)
+	}
+	if err := n.e.DeleteItem(bg, DeleteItemRequest{ID: r.HistoryID, ExpectedRevision: 1}); code(err) != CodeInvalidState {
+		t.Fatalf("delete after stop: %v", err)
+	}
+	if _, err := n.e.BeginApplyHistory(bg, ApplyHistoryRequest{HistoryID: r.HistoryID}); code(err) != CodeInvalidState {
+		t.Fatalf("apply after stop: %v", err)
+	}
+	if err := n.e.Close(bg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.GetItem(bg, r.HistoryID); code(err) != CodeClosed {
+		t.Fatalf("after close: %v", err)
+	}
+}
+
+func TestCrashLeftoversAreCleanedAndValidHistoryKept(t *testing.T) {
+	dir := t.TempDir()
+	opts, _ := newOpts(t, dir)
+	e, err := New(bg, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Start(bg); err != nil {
+		t.Fatal(err)
+	}
+	in, _ := e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("keep.bin", "keep me")}})
+	r, err := e.CommitContent(bg, CommitRequest{RequestID: "k", LeaseID: in.LeaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	histDir := e.hist.dir
+	_ = e.Close(bg)
+	// A crash mid-commit leaves a half-written temporary directory and an unreferenced blob.
+	_ = os.MkdirAll(filepath.Join(histDir, "tmp-abc"), 0o700)
+	_ = os.WriteFile(filepath.Join(histDir, "tmp-abc", "data"), []byte("half"), 0o600)
+	_ = os.MkdirAll(filepath.Join(histDir, "ffff"), 0o700)
+	e, err = New(bg, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = e.Close(bg) }()
+	if got := entries(t, histDir); got != 1 {
+		t.Fatalf("%d entries after cleanup, want only the referenced blob", got)
+	}
+	h, err := e.RetainHistoryContent(bg, r.HistoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rd, err := e.ReadContent(bg, h.LeaseID, h.Content.Parts[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := io.ReadAll(rd); string(b) != "keep me" {
+		t.Fatalf("%q", b)
+	}
+	_ = rd.Close()
 }

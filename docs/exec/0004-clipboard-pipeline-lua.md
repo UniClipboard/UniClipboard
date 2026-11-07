@@ -86,7 +86,7 @@
 
 - [ ] 接收侧实现跨后端 TransferID/认证来源/ViewHash 的并发占位、有界持久去重（默认 7 天/100000 条）及失败/重启清理，persist=false 也必须记成功去重记录。
 
-**P2 现状小结（2026-11-07）**：Engine 侧历史已可用——持久化、分页查询、读取、更新、删除、容量淘汰、到期扫描、`history` 事件、`State.HistoryRevision`、`BeginApplyHistory`；复制的本机文件只存路径引用不拷贝；桌面 daemon 已暴露 `/v1/history`（列表、详情、内容、use、PATCH、DELETE）并有测试，详见 [0006 §4](../design/decisions/0006-macos-swiftui-client.md)。**P2 尚未完成**，剩余：①条目同步状态摘要（含重启后 pending→interrupted；依赖多后端抽象，现在只有 tailcat，SyncState 恒为 not_requested）；②历史与 `MaxStoredBytes` 共用配额；③接收侧跨后端去重表（默认 7 天/10 万条）；④契约 §8 的故障注入测试（磁盘满、事务回滚、崩溃后孤儿清理、时钟回拨、stopping 状态等）；⑤（已完成）历史上限映射到 `config.toml` 的 `[history]`，改动提示需重启（见 0002）；⑥固定/搜索/清空未纳入首版。
+**P2 现状小结（2026-11-07）**：Engine 侧历史已可用——持久化、分页查询、读取、更新、删除、容量淘汰、到期扫描、`history` 事件、`State.HistoryRevision`、`BeginApplyHistory`；复制的本机文件只存路径引用不拷贝；桌面 daemon 已暴露 `/v1/history`（列表、详情、内容、use、PATCH、DELETE）并有测试，详见 [0006 §4](../design/decisions/0006-macos-swiftui-client.md)。**P2 尚未完成**，剩余：①条目同步状态摘要（含重启后 pending→interrupted；依赖多后端抽象，现在只有 tailcat，SyncState 恒为 not_requested）；②历史与 `MaxStoredBytes` 共用配额；③接收侧跨后端去重表（默认 7 天/10 万条）；④契约 §8 的故障注入测试（已覆盖：数据库写入失败回滚且不留 blob、blob 目录不可写、单条超限不误删旧记录、字节淘汰释放 blob、并发提交保持上限、Stop 后只读可用且变更被拒、崩溃残留清理；仍缺：磁盘满专项、引用文件持久化前变化的发送侧组合、时钟回拨、Received/去重相关项）；⑤（已完成）历史上限映射到 `config.toml` 的 `[history]`，改动提示需重启（见 0002）；⑥固定/搜索/清空未纳入首版。
 
 ### P3 · 事件、处理语义与宿主写回
 

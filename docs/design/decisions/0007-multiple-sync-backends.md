@@ -1,6 +1,6 @@
 # 0007 · 多同步后端与分层同步策略
 
-- 状态：已采纳，待实现。
+- 状态：已采纳；Engine 内部多后端抽象与派发已实现（见文末“实现登记”），per-backend 设置、热更新、跨后端去重与外部后端装配待实现。
 - 日期：2026-11-07。
 - 关联：[0002 配置](0002-config-file.md)、[0004 流水线与插件](0004-clipboard-pipeline-lua.md)、[提交契约](../pipeline-contract.md)、[同步后端契约](../sync-backend-contract.md)。
 - 本决策替代上述目标设计中的“最多一个后端”和“全局按类型过滤”；现有代码仍保留旧模型，文档变更不表示多后端已实现。
@@ -106,3 +106,22 @@ Engine 在接收准入时按上述去重键取得并发占位；一个副本处�
 - 同一传输同一视图经两个后端并发到达只 commit 一次，不同类型视图不被错误吞掉，原始两次提交不被内容去重吞掉，重启/失败占位/去重过期边界明确。
 - 旧配置映射、混用报错、坏配置保留、策略热加载/实例重启项，以及旧 SDK/桌面兼容迁移有测试。
 - 首版实际交付 tailcat 与多假后端契约测试；WebDAV 具体实现不在本决策中冒充完成，但接口不得固化成仅一个 P2P 后端。
+
+## 实现登记（2026-11-08）
+
+已实现（`engine/backend.go`，有 `backend_test.go` 用多个假后端验收）：
+
+- 包内私有 `syncBackend` 接口（ID/Kind/Policy/Submit）与 `backendHost`（Register/Report）；tailcat 是包装现有 session 的内置适配器 `sync.tailcat`。接口在 P4 的 RPC 能承载前不公开。
+- 提交处理一次、历史 commit 一次，再按后端独立构造发送视图：类型过滤、`auto_file_max_bytes`（自动提交受限，显式提交越过）、大小硬限制；所有后端共用同一个 TransferID/时间戳（`backendView.id`）。
+- `SubmissionResult.BackendResults`（按 BackendID 排序）与聚合 `SyncDisposition`：任一 queued → queued；否则 failed > disabled > no_targets > policy_filtered；全局关闭 → disabled，Policy 禁发 → not_requested，无后端 → 新增 `no_backend`。单个后端失败/跳过不影响其他后端和 commit。
+- 单个聚合 Operation 汇总各后端目标；`TargetStatus` 新增 `BackendID/TargetKind/TargetID`（`PeerID` 仅 device，保持兼容）；注册窗口内（后端仍可能登记目标）Operation 不会提前 completed。
+- `CommitRequest.BackendIDs`：省略 = 全部；空列表、未知、重复 → invalid_argument；规范化排序后参与幂等比较。
+- 旧 `SubmitContent`/观察路径在只有 tailcat 时行为不变（既有全部测试通过）。
+
+仍是过渡形态、未实现：
+
+- `Settings.BackendPolicies` 与热更新（`Settings` 目前保持可比较，加 map 需同批改调用点）；tailcat 的类型开关暂仍读旧 `Settings.Sync.Text/Images/Files`，`auto_file_max_bytes` 对 tailcat 恒为 0；非 tailcat 后端的策略只能由内部注册给定。
+- 配置文件的 `[plugins.instances.<id>.sync]` 与旧键迁移/混用报错。
+- 跨后端接收去重（TransferID/ViewHash 占位与持久去重表）、接收侧按后端的类型开关。
+- 历史条目的各后端同步状态摘要（`SyncState` 仍恒为 not_requested）。
+- `MaxSyncBackends`、撤销屏障、对象存储（`repository` 目标）实际协议与外部进程后端。

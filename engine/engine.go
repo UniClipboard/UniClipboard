@@ -76,6 +76,7 @@ type Engine struct {
 	evDone    chan struct{}
 	cs        *contentStore
 	hist      *history
+	backends  []syncBackend
 	recv      []*receipt // the received list, oldest first
 	recvTimer *time.Timer
 	histTimer *time.Timer // next expiry sweep; guarded by mu
@@ -198,6 +199,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if rv == nil {
 		rv = rendezvous.NewWithURL("") // the production service; settings.RendezvousURL overrides it, the environment does not
 	}
+	e.backends = append([]syncBackend{tailcatBackend{e}}, opts.extraBackends...)
 	e.core = session.New(session.Config{
 		ID: id, Name: defName, Store: st, Transport: tr,
 		Receiver:   receiver{e},

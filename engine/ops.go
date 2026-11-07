@@ -12,6 +12,7 @@ type opEntry struct {
 	op      Operation
 	hash    [sha256.Size]byte
 	content *contentObj // a send holds its content until every target is final
+	open    bool        // backends may still register targets; guarded by Engine.mu
 }
 
 type opTable struct {

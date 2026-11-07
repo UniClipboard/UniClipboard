@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -260,7 +261,7 @@ func TestCommitContentSeparatesCommitFromSync(t *testing.T) {
 		t.Fatalf("facade: %v", err)
 	}
 	got, err := n.e.GetSubmission(bg, "commit-1")
-	if err != nil || got != r {
+	if err != nil || !reflect.DeepEqual(got, r) {
 		t.Fatalf("GetSubmission = %+v, %v", got, err)
 	}
 	if calls.Load() != 1 {
@@ -289,7 +290,7 @@ func TestCommitContentSyncDisabledAndReservedFields(t *testing.T) {
 	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "g", LeaseID: h.LeaseID, WritebackGuard: &WritebackGuard{Epoch: "e"}}); code(err) != CodeUnsupported {
 		t.Fatal(err)
 	}
-	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "b", LeaseID: h.LeaseID, BackendIDs: []PluginID{}}); code(err) != CodeNotFound {
+	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "b", LeaseID: h.LeaseID, BackendIDs: []PluginID{}}); code(err) != CodeInvalidArgument {
 		t.Fatal(err)
 	}
 	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "recv:1", LeaseID: h.LeaseID}); code(err) != CodeInvalidArgument {

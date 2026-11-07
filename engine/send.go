@@ -3,7 +3,6 @@ package engine
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"io"
 	"time"
@@ -22,7 +21,7 @@ type sendSet struct {
 	total int64
 }
 
-func syncAllowsPart(p *partRec, sy SyncSettings) bool {
+func syncAllowsPart(p *partRec, sy backendPolicy) bool {
 	switch {
 	case p.desc.Kind == PartFile:
 		return sy.Files
@@ -34,7 +33,7 @@ func syncAllowsPart(p *partRec, sy SyncSettings) bool {
 }
 
 // buildSendSet applies the sync filters (0002) to a content.
-func buildSendSet(c *contentObj, sy SyncSettings) sendSet {
+func buildSendSet(c *contentObj, sy backendPolicy) sendSet {
 	set := sendSet{c: c}
 	var snap clip.Snapshot
 	for _, p := range c.parts {
@@ -76,97 +75,6 @@ func (e *Engine) SubmitContent(ctx context.Context, req SubmitRequest) (Operatio
 	return e.submit(ctx, req)
 }
 
-// dispatchProcessed is the temporary legacy network adapter. It only sees the
-// final immutable content; processor callbacks never run under session locks.
-// A non-nil commitFail means nothing was committed (stopped, suspended,
-// cancelled); otherwise the sync decision is the disposition and syncErr.
-func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash [sha256.Size]byte, processed *processedContent) (id OperationID, disp SyncDisposition, syncErr, commitFail *Error) {
-	e.mu.Lock()
-	if err := ctx.Err(); err != nil {
-		e.mu.Unlock()
-		return "", "", nil, ctxErr(err)
-	}
-	if err := e.needNetworkLocked(); err != nil {
-		e.mu.Unlock()
-		return "", "", nil, err
-	}
-	sy, lim := e.settings.Value.Sync, e.settings.Value.Limits
-	e.mu.Unlock()
-	switch {
-	case !sy.Enabled:
-		return "", SyncDisabled, nil, nil
-	case !processed.policy.Sync:
-		return "", SyncNotRequested, nil, nil
-	}
-	c := processed.c
-	cs := e.cs
-	cs.mu.Lock()
-	c.refs++ // dispatch owns a reference until failure or every target ends
-	cs.mu.Unlock()
-	abandon := func() { cs.unref(c) }
-
-	set := buildSendSet(c, sy)
-	if len(set.parts) == 0 {
-		abandon()
-		return "", SyncPolicyFilter, nil, nil
-	}
-	if lerr := checkLimits(set, lim); lerr != nil {
-		abandon()
-		return "", SyncFailed, lerr, nil
-	}
-
-	var opID OperationID
-	var failure *Error
-	var precommit bool
-	queued := e.core.Submit(func(peers []string) (session.Job, bool) {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		if err := ctx.Err(); err != nil {
-			failure, precommit = ctxErr(err), true
-			return session.Job{}, false
-		}
-		if err := e.needNetworkLocked(); err != nil {
-			failure, precommit = err, true
-			return session.Job{}, false
-		}
-		if !e.settings.Value.Sync.Enabled {
-			failure = newErr(CodeSyncDisabled, "sync is paused")
-			return session.Job{}, false
-		}
-		o, _, oerr := e.newOpLocked(OperationSend, req.RequestID, hash, PhaseQueued)
-		if oerr != nil {
-			failure = oerr
-			return session.Job{}, false
-		}
-		opID = o.op.ID
-		o.op.Targets = make([]TargetStatus, len(peers))
-		for i, p := range peers {
-			o.op.Targets[i] = TargetStatus{PeerID: DeviceID(p), State: TargetQueued}
-		}
-		o.content = c
-		clipID, ts := wire.NewID(), time.Now().UnixMilli()
-		return session.Job{
-			Report: func(peer string, st session.TargetState, err error) { e.reportTarget(opID, DeviceID(peer), st, err) },
-			Send: func(ctx context.Context, w *wire.Conn, origin string) (bool, error) {
-				return e.sendSet(ctx, w, origin, clipID, ts, set)
-			},
-		}, true
-	})
-	if !queued {
-		abandon()
-		switch {
-		case precommit:
-			return "", "", nil, failure
-		case failure != nil && failure.Code == CodeSyncDisabled:
-			return "", SyncDisabled, nil, nil
-		case failure != nil:
-			return "", SyncFailed, failure, nil
-		}
-		return "", SyncNoTargets, nil, nil
-	}
-	return opID, SyncQueued, nil, nil
-}
-
 func checkLimits(set sendSet, lim Limits) *Error {
 	if set.total > lim.MaxTotalBytes {
 		return newErr(CodeLimitExceeded, "the content is over the configured size limit")
@@ -182,17 +90,18 @@ func checkLimits(set sendSet, lim Limits) *Error {
 // sendSet writes the content to w. It runs on the session's writer, once per
 // device. Everything that can fail without touching the stream (settings,
 // files that changed) is checked before the first byte is written.
-func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, ts int64, set sendSet) (broken bool, err error) {
+func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, ts int64, set sendSet, policy func() backendPolicy) (broken bool, err error) {
 	e.mu.Lock()
 	if err := e.needNetworkLocked(); err != nil {
 		e.mu.Unlock()
 		return false, err
 	}
-	sy, lim := e.settings.Value.Sync, e.settings.Value.Limits
+	enabled, lim := e.settings.Value.Sync.Enabled, e.settings.Value.Limits
 	e.mu.Unlock()
-	if !sy.Enabled {
+	if !enabled {
 		return false, newErr(CodeSyncDisabled, "sync was paused before the transfer started")
 	}
+	sy := policy()
 	// A queued view must never send a type disabled since it was prepared.
 	for _, p := range set.parts {
 		if !syncAllowsPart(p, sy) {
@@ -236,9 +145,9 @@ func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, t
 	return false, nil
 }
 
-// reportTarget records how a send fares towards one device and finishes the
-// operation when every target is final.
-func (e *Engine) reportTarget(id OperationID, peer DeviceID, st session.TargetState, cause error) {
+// reportTarget records how a send fares towards one target and finishes the
+// operation when every target is final and no backend can still register more.
+func (e *Engine) reportTarget(id OperationID, k targetKey, st TargetState, cause error) {
 	e.mu.Lock()
 	o := e.ops.byID[id]
 	if o == nil {
@@ -247,32 +156,19 @@ func (e *Engine) reportTarget(id OperationID, peer DeviceID, st session.TargetSt
 	}
 	var t *TargetStatus
 	for i := range o.op.Targets {
-		if o.op.Targets[i].PeerID == peer {
-			t = &o.op.Targets[i]
+		if x := &o.op.Targets[i]; x.BackendID == k.backend && x.TargetKind == k.kind && x.TargetID == k.id {
+			t = x
 		}
 	}
 	if t == nil || t.State.final() {
 		e.mu.Unlock()
 		return
 	}
-	switch st {
-	case session.Sending:
-		t.State = TargetSending
-	case session.Sent:
-		t.State = TargetSent
-	case session.Superseded:
-		t.State = TargetSuperseded
-	case session.Failed:
-		t.State = TargetFailed
+	t.State = st
+	if st == TargetFailed {
 		t.Error = e.sendFailure(cause)
 	}
-	o.op.Phase, o.op.Outcome = phaseOf(o.op.Targets), outcomeOf(o.op.Targets)
-	o.op.UpdatedAtMs = time.Now().UnixMilli()
-	var done *contentObj
-	if o.op.Phase == PhaseCompleted && o.content != nil {
-		done, o.content = o.content, nil
-	}
-	e.commitObjsLocked([]ObjectRef{{Type: "operation", ID: string(id)}}, EventOperations)
+	done := e.refreshOpLocked(o)
 	e.mu.Unlock()
 	if done != nil {
 		e.cs.unref(done)

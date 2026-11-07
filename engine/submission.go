@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"crypto/sha256"
+	"sort"
 	"time"
 )
 
@@ -15,9 +16,10 @@ type submissionEntry struct {
 	history  HistoryID
 	id       OperationID
 	disp     SyncDisposition // set at commit; empty while processing or failed
-	syncErr  *Error          // only disp == SyncFailed
-	err      *Error          // terminal failure before commit
-	finished time.Time       // zero while processing; guarded by Engine.mu
+	results  []BackendSubmissionResult
+	syncErr  *Error    // only disp == SyncFailed
+	err      *Error    // terminal failure before commit
+	finished time.Time // zero while processing; guarded by Engine.mu
 }
 
 // legacyErr maps the committed result back to the old SubmitContent contract:
@@ -45,8 +47,32 @@ func (s *submissionEntry) result(id RequestID) SubmissionResult {
 		r.Phase, r.Error = SubmissionFailed, cloneError(s.err)
 	default:
 		r.Phase, r.HistoryID, r.SyncDisposition, r.OperationID, r.SyncError = SubmissionCommitted, s.history, s.disp, s.id, cloneError(s.syncErr)
+		r.BackendResults = cloneResults(s.results)
 	}
 	return r
+}
+
+func backendKey(ids []PluginID) string {
+	if ids == nil {
+		return ""
+	}
+	s := "\x00backends"
+	for _, id := range ids {
+		s += "\x00" + string(id)
+	}
+	return s
+}
+
+func cloneResults(rs []BackendSubmissionResult) []BackendSubmissionResult {
+	if rs == nil {
+		return nil
+	}
+	out := make([]BackendSubmissionResult, len(rs))
+	for i, r := range rs {
+		r.Error = cloneError(r.Error)
+		out[i] = r
+	}
+	return out
 }
 
 func cloneError(err *Error) *Error {
@@ -72,7 +98,7 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 	if req.RequestID == "" {
 		return nil, newErr(CodeInvalidArgument, "RequestID is required")
 	}
-	hash := sha256.Sum256([]byte("submit\x00" + string(req.LeaseID) + "\x00" + string(req.Origin)))
+	hash := sha256.Sum256([]byte("submit\x00" + string(req.LeaseID) + "\x00" + string(req.Origin) + backendKey(req.BackendIDs)))
 	now := time.Now()
 	e.pruneSubmissionsLocked(now)
 	if old := e.submissions[req.RequestID]; old != nil {
@@ -140,6 +166,7 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	processed, failure := e.processContent(ctx, pipelineCaptured, c, origin)
 	var id OperationID
 	var disp SyncDisposition
+	var results []BackendSubmissionResult
 	var syncErr *Error
 	var historyID HistoryID
 	if failure == nil {
@@ -148,13 +175,13 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 			historyID, failure = e.persistHistory(ctx, processed)
 		}
 		if failure == nil {
-			id, disp, syncErr, failure = e.dispatchProcessed(ctx, req, entry.hash, processed)
+			id, disp, results, syncErr, failure = e.dispatchProcessed(ctx, req, entry.hash, processed)
 		}
 		e.cs.unref(processed.c)
 	}
 	e.mu.Lock()
 	entry.history = historyID
-	entry.id, entry.disp, entry.syncErr, entry.err, entry.finished = id, disp, syncErr, cloneError(failure), time.Now()
+	entry.id, entry.disp, entry.results, entry.syncErr, entry.err, entry.finished = id, disp, results, syncErr, cloneError(failure), time.Now()
 	close(entry.done)
 	e.mu.Unlock()
 }
@@ -197,11 +224,12 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 	if req.WritebackGuard != nil {
 		return SubmissionResult{}, newErr(CodeUnsupported, "automatic writeback is not implemented")
 	}
-	if req.BackendIDs != nil {
-		return SubmissionResult{}, newErr(CodeNotFound, "no such sync backend")
+	ids, ierr := e.normalizeBackendIDs(req.BackendIDs)
+	if ierr != nil {
+		return SubmissionResult{}, ierr
 	}
 	e.mu.Lock()
-	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit})
+	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids})
 	e.mu.Unlock()
 	if err != nil {
 		return SubmissionResult{}, err
@@ -238,4 +266,30 @@ func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionRes
 		return SubmissionResult{}, newErr(CodeNotFound, "no such submission (it may have expired)")
 	}
 	return entry.result(id), nil
+}
+
+// normalizeBackendIDs validates an explicit backend selection: nil means all
+// backends, an empty list is an error, unknown or repeated IDs are errors.
+func (e *Engine) normalizeBackendIDs(ids []PluginID) ([]PluginID, *Error) {
+	if ids == nil {
+		return nil, nil
+	}
+	if len(ids) == 0 {
+		return nil, newErr(CodeInvalidArgument, "BackendIDs must be omitted or non-empty")
+	}
+	out := append([]PluginID(nil), ids...)
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	for i, id := range out {
+		if i > 0 && out[i-1] == id {
+			return nil, newErr(CodeInvalidArgument, "BackendIDs has a repeated ID")
+		}
+		known := false
+		for _, b := range e.backends {
+			known = known || b.ID() == id
+		}
+		if !known {
+			return nil, newErr(CodeInvalidArgument, "unknown sync backend")
+		}
+	}
+	return out, nil
 }

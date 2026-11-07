@@ -269,6 +269,9 @@ type SubmitRequest struct {
 	RequestID RequestID
 	LeaseID   LeaseID
 	Origin    Origin
+	// BackendIDs, if non-empty, limits the send to those backends (sorted,
+	// validated by CommitContent).
+	BackendIDs []PluginID
 }
 
 // TargetState is how far content got towards one device.
@@ -288,9 +291,12 @@ func (t TargetState) final() bool {
 
 // TargetStatus is the progress towards one device.
 type TargetStatus struct {
-	PeerID DeviceID    `json:"peer_id"`
-	State  TargetState `json:"state"`
-	Error  *Error      `json:"error,omitempty"`
+	BackendID  PluginID       `json:"backend_id,omitempty"`
+	TargetKind SyncTargetKind `json:"target_kind,omitempty"`
+	TargetID   string         `json:"target_id,omitempty"` // opaque; for a device the DeviceID
+	PeerID     DeviceID       `json:"peer_id,omitempty"`   // devices only, kept for older clients
+	State      TargetState    `json:"state"`
+	Error      *Error         `json:"error,omitempty"`
 }
 
 // Outcome summarizes a finished send.
@@ -435,6 +441,7 @@ const (
 	SyncDisabled     SyncDisposition = "disabled"      // sync is off globally
 	SyncPolicyFilter SyncDisposition = "policy_filtered"
 	SyncNoTargets    SyncDisposition = "no_targets"
+	SyncNoBackend    SyncDisposition = "no_backend" // no sync backend is enabled
 	SyncQueued       SyncDisposition = "queued"
 	SyncFailed       SyncDisposition = "failed"
 )
@@ -467,6 +474,9 @@ type SubmissionResult struct {
 	HistoryID       HistoryID       `json:"history_id,omitempty"`
 	SyncDisposition SyncDisposition `json:"sync_disposition,omitempty"`
 	OperationID     OperationID     `json:"operation_id,omitempty"`
-	SyncError       *Error          `json:"sync_error,omitempty"`
-	Error           *Error          `json:"error,omitempty"`
+	// BackendResults has one entry per backend the commit was offered to,
+	// sorted by ID. A queued aggregate does not mean every backend queued.
+	BackendResults []BackendSubmissionResult `json:"backend_results,omitempty"`
+	SyncError      *Error                    `json:"sync_error,omitempty"`
+	Error          *Error                    `json:"error,omitempty"`
 }

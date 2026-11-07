@@ -48,7 +48,8 @@ type Options struct {
 	Network Network
 
 	// Test seams, reachable from this package's tests only.
-	noPersistDefault bool // processed items default to persist=false
+	extraBackends    []syncBackend // fake backends for contract tests
+	noPersistDefault bool          // processed items default to persist=false
 	rendezvous       *rendezvous.Client
 }
 

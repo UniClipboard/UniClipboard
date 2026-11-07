@@ -144,7 +144,11 @@ type Client struct {
 
 // New returns a client for UNIC_RENDEZVOUS_URL or the production service.
 func New() *Client {
-	u := os.Getenv("UNIC_RENDEZVOUS_URL")
+	return NewWithURL(os.Getenv("UNIC_RENDEZVOUS_URL"))
+}
+
+// NewWithURL returns a client for u, or for the production service if u is empty.
+func NewWithURL(u string) *Client {
 	if u == "" {
 		u = DefaultURL
 	}

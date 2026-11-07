@@ -211,6 +211,42 @@ func (m *Clip) Validate() error {
 	return nil
 }
 
+// Limits are the size limits a device applies to the clips it sends and
+// receives. They may be tighter than the protocol's hard caps above.
+type Limits struct {
+	File  int64 // one file
+	Total int64 // whole clipboard message
+}
+
+// HardLimits are the protocol's caps.
+var HardLimits = Limits{File: MaxFileBytes, Total: MaxTotal}
+
+// Fits reports whether m is within l. m must have passed Validate.
+func (m *Clip) Fits(l Limits) error {
+	var total int64
+	for _, p := range m.Parts {
+		if p.Kind == "file" && p.Size > l.File {
+			return fmt.Errorf("file %s is %d bytes, over the configured limit", p.Name, p.Size)
+		}
+		total += p.Size
+	}
+	if total > l.Total {
+		return errors.New("clipboard is over the configured size limit")
+	}
+	return nil
+}
+
+// Discard reads and drops the blobs announced by m, keeping the stream in
+// sync when the clip is not wanted. m must have passed Validate.
+func (c *Conn) Discard(m *Clip) error {
+	var total int64
+	for _, p := range m.Parts {
+		total += p.Size
+	}
+	_, err := io.CopyN(io.Discard, c.r, total)
+	return err
+}
+
 // ReceiveClip reads the blobs announced by m. Files are written into a new
 // directory below inbox, which the caller owns and removes when done.
 // On error the stream is no longer usable.

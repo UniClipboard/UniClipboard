@@ -41,3 +41,6 @@ func Socket() (string, error) {
 
 func Database() (string, error) { return sub("unic.db") }
 func Inbox() (string, error)    { return sub("inbox") }
+
+// Config is the TOML configuration file.
+func Config() (string, error) { return sub("config.toml") }

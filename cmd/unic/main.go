@@ -6,6 +6,7 @@
 //	unic code            show a 6-digit pairing code
 //	unic join <code>     pair with the device showing that code
 //	unic pair <addr>     pair with another device
+//	unic config [path]   show the settings in effect
 //	unic status | peers | unpair <id> | copy | paste | watch
 package main
 
@@ -34,7 +35,9 @@ The background node is a separate program, unicd; start it first.
   copy [text]      put text (or stdin, or -f files) on the clipboard
   paste            print the clipboard's text
   watch            print sync events as they happen
+  config [path]    show the settings in effect (or the config file's path)
 
+Settings live in config.toml in the state directory; saving it applies it at once.
 Set UNIC_HOME to run a separate profile, UNIC_RENDEZVOUS_URL to use another
 pairing code service.
 `

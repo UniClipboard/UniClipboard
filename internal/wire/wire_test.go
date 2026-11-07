@@ -25,3 +25,16 @@ func TestValidateLimits(t *testing.T) {
 		}
 	}
 }
+
+func TestFits(t *testing.T) {
+	m := Clip{Parts: []PartMeta{{Kind: "fmt", Name: "text/plain", Size: 10}, {Kind: "file", Name: "a", Size: 100}}}
+	if err := m.Fits(Limits{File: 100, Total: 110}); err != nil {
+		t.Errorf("exactly at the limits should fit: %v", err)
+	}
+	if m.Fits(Limits{File: 99, Total: 1000}) == nil {
+		t.Error("file over limit should not fit")
+	}
+	if m.Fits(Limits{File: 100, Total: 109}) == nil {
+		t.Error("total over limit should not fit")
+	}
+}

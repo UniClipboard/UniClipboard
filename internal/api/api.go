@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"unic/internal/clip"
+	"unic/internal/config"
 	"unic/internal/engine"
 	"unic/internal/rendezvous"
 	"unic/internal/store"
@@ -93,7 +94,7 @@ func ReasonOf(err error) string {
 }
 
 // Handler serves the API for e.
-func Handler(e *engine.Engine) http.Handler {
+func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 	mux := http.NewServeMux()
 	reply := func(w http.ResponseWriter, code int, v any) {
 		w.Header().Set("Content-Type", "application/json")
@@ -149,6 +150,12 @@ func Handler(e *engine.Engine) http.Handler {
 			return
 		}
 		reply(w, 200, st)
+	})
+
+	// The configuration in effect, where it lives, and why the last edit was
+	// rejected (if it was).
+	mux.HandleFunc("GET /v1/config", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, 200, cfg.State())
 	})
 
 	mux.HandleFunc("POST /v1/peers", func(w http.ResponseWriter, r *http.Request) {
@@ -416,6 +423,12 @@ func isNoDaemon(err error) bool {
 
 func (c *Client) Status(ctx context.Context) (st Status, err error) {
 	err = c.do(ctx, "GET", "/v1/status", nil, &st)
+	return
+}
+
+// Config returns the configuration in effect.
+func (c *Client) Config(ctx context.Context) (st config.State, err error) {
+	err = c.do(ctx, "GET", "/v1/config", nil, &st)
 	return
 }
 

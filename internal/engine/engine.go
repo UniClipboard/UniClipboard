@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"unic/internal/clip"
+	"unic/internal/config"
 	"unic/internal/rendezvous"
 	"unic/internal/store"
 	"unic/internal/wire"
@@ -51,6 +52,9 @@ type Config struct {
 	// Rendezvous stores pairing codes; nil disables them (full addresses
 	// still work).
 	Rendezvous *rendezvous.Client
+	// Settings supplies the user's configuration, re-read on every use so
+	// edits apply at once. Nil means the defaults.
+	Settings *config.Manager
 }
 
 type Engine struct {
@@ -65,6 +69,7 @@ type Engine struct {
 	pairing  map[string]int // addresses the user is pairing with right now
 	code     *liveCode      // the pairing code this device is showing, if any
 	ctx      context.Context
+	rvCache  *rendezvous.Client // client for the configured rendezvous_url
 }
 
 // liveCode is a pairing code registered for this device.
@@ -98,6 +103,65 @@ func New(cfg Config) *Engine {
 }
 
 func (e *Engine) logf(f string, a ...any) { e.cfg.Logf(f, a...) }
+
+// settings is the configuration in effect right now.
+func (e *Engine) settings() config.Config {
+	if e.cfg.Settings == nil {
+		return config.Default()
+	}
+	return e.cfg.Settings.Current()
+}
+
+// name is this device's name: the configured one, else the default.
+func (e *Engine) name() string {
+	if n := strings.TrimSpace(e.settings().DeviceName); n != "" {
+		return n
+	}
+	return e.cfg.Name
+}
+
+// rv is the pairing code client, following rendezvous_url. Nil when codes
+// are disabled.
+func (e *Engine) rv() *rendezvous.Client {
+	u := strings.TrimRight(e.settings().RendezvousURL, "/")
+	if u == "" || e.cfg.Rendezvous == nil {
+		return e.cfg.Rendezvous
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.rvCache == nil || e.rvCache.URL != u {
+		e.rvCache = rendezvous.NewWithURL(u)
+	}
+	return e.rvCache
+}
+
+// filterSync drops the parts of s that the user turned off.
+func filterSync(s clip.Snapshot, sy config.Sync) clip.Snapshot {
+	var out clip.Snapshot
+	for _, p := range s.Parts {
+		if strings.HasPrefix(p.Format, "image/") {
+			if sy.Images {
+				out.Parts = append(out.Parts, p)
+			}
+		} else if sy.Text {
+			out.Parts = append(out.Parts, p)
+		}
+	}
+	if sy.Files {
+		out.Files = s.Files
+	}
+	return out
+}
+
+// ConfigChanged tells subscribers that the configuration was reloaded (or
+// rejected), so a GUI can refresh.
+func (e *Engine) ConfigChanged(err error) {
+	info := ""
+	if err != nil {
+		info = err.Error()
+	}
+	e.emit(Event{Kind: "config", Info: info})
+}
 
 // Run blocks until ctx is done.
 func (e *Engine) Run(ctx context.Context) error {
@@ -237,7 +301,7 @@ func (e *Engine) Peers() ([]PeerStatus, error) {
 }
 
 func (e *Engine) Self() (id, name, addr string) {
-	return e.cfg.ID, e.cfg.Name, e.cfg.Transport.Addr()
+	return e.cfg.ID, e.name(), e.cfg.Transport.Addr()
 }
 
 // Subscribe returns a channel of events and a function that stops it.
@@ -305,7 +369,12 @@ func (e *Engine) SetLocal(s clip.Snapshot) error {
 func (e *Engine) Current() (clip.Snapshot, error) { return e.cfg.Board.Read() }
 
 func (e *Engine) broadcast(s clip.Snapshot) {
-	files, err := statFiles(s.Files)
+	cfg := e.settings()
+	if !cfg.Sync.Enabled {
+		return
+	}
+	s = filterSync(s, cfg.Sync)
+	files, err := statFiles(s.Files, int64(cfg.Limits.MaxFileBytes))
 	if err != nil {
 		// A folder (or a vanished file) is on the clipboard. Its name as text
 		// would be a misleading clip, so sync nothing.
@@ -314,6 +383,17 @@ func (e *Engine) broadcast(s clip.Snapshot) {
 	}
 	s.Files = files
 	if s.Empty() {
+		return
+	}
+	total := int64(0)
+	for _, p := range s.Parts {
+		total += int64(len(p.Data))
+	}
+	for _, f := range s.Files {
+		total += f.Size
+	}
+	if total > int64(cfg.Limits.MaxTotalBytes) {
+		e.logf("not syncing clipboard: over the configured size limit")
 		return
 	}
 	id := wire.NewID()
@@ -333,7 +413,7 @@ func (e *Engine) broadcast(s clip.Snapshot) {
 }
 
 // statFiles keeps regular files only: directories are not synced yet.
-func statFiles(in []clip.File) ([]clip.File, error) {
+func statFiles(in []clip.File, maxFile int64) ([]clip.File, error) {
 	var out []clip.File
 	for _, f := range in {
 		st, err := os.Stat(f.Path)
@@ -343,7 +423,7 @@ func statFiles(in []clip.File) ([]clip.File, error) {
 		if !st.Mode().IsRegular() {
 			return nil, fmt.Errorf("%s is not a regular file", f.Path)
 		}
-		if st.Size() > wire.MaxFileBytes {
+		if st.Size() > maxFile {
 			return nil, fmt.Errorf("%s is too large to sync", f.Path)
 		}
 		out = append(out, clip.File{Name: wire.SafeName(f.Name), Path: f.Path, Size: st.Size()})
@@ -353,6 +433,19 @@ func statFiles(in []clip.File) ([]clip.File, error) {
 
 // apply installs a remote clipboard locally.
 func (e *Engine) apply(from string, s clip.Snapshot, dir string) {
+	cfg := e.settings()
+	filtered := filterSync(s, cfg.Sync)
+	if !cfg.Sync.Enabled || filtered.Empty() || (len(filtered.Files) == 0 && dir != "") {
+		// Nothing wanted, or the files were turned off: the received copies go.
+		if dir != "" {
+			os.RemoveAll(dir)
+			dir = ""
+		}
+		if !cfg.Sync.Enabled || filtered.Empty() {
+			return
+		}
+	}
+	s = filtered
 	h := s.Hash()
 	e.mu.Lock()
 	if h == e.lastHash {
@@ -462,7 +555,7 @@ func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed, pair string) (*
 	_ = conn.SetDeadline(time.Now().Add(handshakeTimeout))
 	defer conn.SetDeadline(time.Time{})
 	w := wire.NewConn(conn)
-	hello := wire.Hello{T: "hello", Version: wire.Version, ID: e.cfg.ID, Name: e.cfg.Name, Addr: e.cfg.Transport.Addr(), Pair: pair}
+	hello := wire.Hello{T: "hello", Version: wire.Version, ID: e.cfg.ID, Name: e.name(), Addr: e.cfg.Transport.Addr(), Pair: pair}
 	werr := make(chan error, 1)
 	go func() { werr <- w.WriteJSON(hello) }()
 	typ, raw, err := w.ReadRaw()
@@ -632,6 +725,23 @@ func (s *session) recvLoop() error {
 			var m wire.Clip
 			if err := json.Unmarshal(raw, &m); err != nil {
 				return err
+			}
+			if err := m.Validate(); err != nil {
+				return err
+			}
+			// A clip this device does not want (paused, or over its own
+			// limits) is read and dropped, so the stream stays in sync and
+			// the connection survives.
+			cfg := s.e.settings()
+			lim := wire.Limits{File: int64(cfg.Limits.MaxFileBytes), Total: int64(cfg.Limits.MaxTotalBytes)}
+			if lerr := m.Fits(lim); !cfg.Sync.Enabled || lerr != nil {
+				if lerr != nil {
+					s.e.logf("dropped clip from %s: %v", s.peerName, lerr)
+				}
+				if err := s.w.Discard(&m); err != nil {
+					return err
+				}
+				continue
 			}
 			snap, dir, err := s.w.ReceiveClip(&m, s.e.cfg.Inbox)
 			if err != nil {
@@ -873,7 +983,7 @@ var ErrNoCodes = &rendezvous.Error{Reason: rendezvous.Unavailable}
 // it showed before. Another device that types it in finds this one, and
 // appears here as a pending device; the code itself grants no trust.
 func (e *Engine) IssueCode(ctx context.Context) (rendezvous.Code, error) {
-	rv := e.cfg.Rendezvous
+	rv := e.rv()
 	addr := e.cfg.Transport.Addr()
 	if rv == nil {
 		return rendezvous.Code{}, ErrNoCodes
@@ -939,18 +1049,19 @@ func (e *Engine) useCode(token string) bool {
 }
 
 func (e *Engine) consume(code string) {
-	if e.cfg.Rendezvous == nil {
+	rv := e.rv()
+	if rv == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	e.cfg.Rendezvous.Consume(ctx, code)
+	rv.Consume(ctx, code)
 }
 
 // Join pairs with the device showing code. Like AddPeer, the other device
 // still has to approve this one.
 func (e *Engine) Join(ctx context.Context, code string) (p store.Peer, awaiting bool, err error) {
-	rv := e.cfg.Rendezvous
+	rv := e.rv()
 	if rv == nil {
 		return p, false, ErrNoCodes
 	}

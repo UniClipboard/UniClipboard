@@ -11,6 +11,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"unic/internal/api"
 	"unic/internal/engine"
 	"unic/internal/paths"
@@ -58,6 +60,31 @@ func runCLI(cmd string, args []string) error {
 			return fmt.Errorf("the daemon is still starting; try again in a moment")
 		}
 		fmt.Println(st.Addr)
+
+	case "config":
+		if len(args) == 1 && args[0] == "path" {
+			p, err := paths.Config()
+			if err != nil {
+				return err
+			}
+			fmt.Println(p)
+			return nil
+		}
+		if len(args) != 0 {
+			return fmt.Errorf("usage: unic config [path]")
+		}
+		st, err := c.Config(short)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("# file: %s  (edit and save; it applies at once)\n", st.Path)
+		if st.Error != "" {
+			fmt.Printf("# ERROR, last edit not applied (the settings below are the previous ones):\n#   %s\n", st.Error)
+		}
+		if len(st.RestartRequired) > 0 {
+			fmt.Printf("# restart unicd to apply: %s\n", strings.Join(st.RestartRequired, ", "))
+		}
+		return toml.NewEncoder(os.Stdout).Encode(st.Config)
 
 	case "peers":
 		st, err := c.Status(short)

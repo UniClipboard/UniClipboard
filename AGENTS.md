@@ -19,6 +19,7 @@ unic：跨设备剪贴板同步。Go，网络层 tailcat，界面 mygo，存储 
 | 编号 | 主题 | 摘要 |
 |---|---|---|
 | [0001](docs/design/decisions/0001-pairing-code.md) | 添加设备：6 位配对码 + 完整地址 | 复用 rendezvous `/v1/web-pairings`，5 分钟一次性；票据 kind `unic-pair`；配对码只找地址不授信，需批准并核对指纹；仅桌面端 |
+| [0002](docs/design/decisions/0002-config-file.md) | 配置文件：TOML + 保存即生效 | `$UNIC_HOME/config.toml`，监听目录+防抖热加载；坏配置保留上一份有效值；`unic config` 查看；`inbox` 需重启 |
 
 ### 原型
 

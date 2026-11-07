@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -21,6 +22,7 @@ import (
 
 	"unic/internal/api"
 	"unic/internal/board"
+	"unic/internal/config"
 	"unic/internal/engine"
 	"unic/internal/paths"
 	"unic/internal/rendezvous"
@@ -39,9 +41,19 @@ func runDaemon() error {
 	if err != nil {
 		return err
 	}
-	inbox, err := paths.Inbox()
+	cfgPath, err := paths.Config()
 	if err != nil {
 		return err
+	}
+	settings, err := config.Open(cfgPath, log.Printf)
+	if err != nil {
+		return fmt.Errorf("%s: %w", cfgPath, err)
+	}
+	inbox := settings.Current().Inbox // changing it needs a restart
+	if inbox == "" {
+		if inbox, err = paths.Inbox(); err != nil {
+			return err
+		}
 	}
 	st, err := store.Open(dbPath)
 	if err != nil {
@@ -63,14 +75,26 @@ func runDaemon() error {
 	}
 	eng := engine.New(engine.Config{
 		ID: id, Name: name, Board: board.MyGo{}, Store: st, Transport: tr, Inbox: inbox,
-		Rendezvous: rendezvous.New(),
+		Rendezvous: rendezvous.New(), Settings: settings,
 	})
+	settings.OnChange = func(_, _ config.Config, err error) { eng.ConfigChanged(err) }
 
 	// Files of clips received in an earlier run are no longer on the clipboard.
-	_ = os.RemoveAll(inbox)
+	// The inbox may be a directory of the user's, so remove only what we made.
+	if old, _ := filepath.Glob(filepath.Join(inbox, "clip-*")); len(old) > 0 {
+		for _, d := range old {
+			_ = os.RemoveAll(d)
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	go func() {
+		if err := settings.Watch(ctx); err != nil {
+			log.Printf("config: not watching %s, edits need a restart: %v", cfgPath, err)
+		}
+	}()
 
 	mygo.App.SetName("unicd")
 	mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory) // no Dock icon
@@ -99,7 +123,7 @@ func runDaemon() error {
 				}
 			}()
 			log.Printf("unicd %q up; socket %s", name, sock)
-			_ = http.Serve(l, api.Handler(eng))
+			_ = http.Serve(l, api.Handler(eng, settings))
 		}()
 		setupTray()
 		go notifyPending(ctx, sock)

@@ -15,6 +15,9 @@ import (
 type fake struct {
 	Backend
 	approveID, approveFP string
+	query                HistoryQuery
+	delID                string
+	delRev               uint64
 	err                  error
 }
 
@@ -79,5 +82,36 @@ func TestBackendChoosesTheStatus(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &body)
 	if rec.Code != 404 || body.Reason != "expired" {
 		t.Fatalf("reason lost: %d %+v", rec.Code, body)
+	}
+}
+
+func (f *fake) ListHistory(_ context.Context, q HistoryQuery) (HistoryPage, error) {
+	f.query = q
+	return HistoryPage{}, f.err
+}
+func (f *fake) DeleteHistory(_ context.Context, id string, rev uint64) error {
+	f.delID, f.delRev = id, rev
+	return f.err
+}
+
+func TestHistoryRoutesPassQueryAndNeverReturnNull(t *testing.T) {
+	f := &fake{}
+	h := Handler(f, config.Static(config.Default()))
+	rec := do(t, h, "GET", "/v1/history?limit=5&kind=text&kind=image&tag=a&device=d1&from=10&before=20&cursor=c", "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"items":[]`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	q := f.query
+	if q.Limit != 5 || len(q.Kinds) != 2 || q.Tags[0] != "a" || q.DeviceID != "d1" || q.FromMs != 10 || q.BeforeMs != 20 || q.Cursor != "c" {
+		t.Fatalf("query = %+v", q)
+	}
+	if rec := do(t, h, "GET", "/v1/history?limit=x", ""); rec.Code != 400 {
+		t.Fatalf("bad limit = %d", rec.Code)
+	}
+	if rec := do(t, h, "DELETE", "/v1/history/abc", ""); rec.Code != 400 {
+		t.Fatalf("delete without revision = %d", rec.Code)
+	}
+	if rec := do(t, h, "DELETE", "/v1/history/abc?revision=3", ""); rec.Code != 200 || f.delID != "abc" || f.delRev != 3 {
+		t.Fatalf("delete = %d %q %d", rec.Code, f.delID, f.delRev)
 	}
 }

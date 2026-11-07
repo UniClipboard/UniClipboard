@@ -562,15 +562,31 @@ func (e *Engine) LocalFilePath(ctx context.Context, lease LeaseID, part PartID) 
 	}
 	defer release()
 	e.cs.mu.Lock()
-	defer e.cs.mu.Unlock()
-	_, p, perr := e.leasedLocked(lease, part)
+	c, p, perr := e.leasedLocked(lease, part)
 	if perr != nil {
+		e.cs.mu.Unlock()
 		return "", perr
 	}
-	if p.path == "" {
+	path, src := p.path, p.src
+	if src != nil && path == "" && len(c.blobs) == 0 && p.desc.Referenced {
+		// A file history kept by reference: hand the host its own reference
+		// back (a path on the desktop), after checking the file is unchanged.
+		if ps, ok := src.(PersistentFileSource); ok {
+			path = ps.PersistentRef()
+		}
+	}
+	e.cs.mu.Unlock()
+	if path == "" {
 		return "", newErr(CodeUnsupported, "this part is not a file the engine stores")
 	}
-	return p.path, nil
+	if src != nil {
+		rc, oerr := e.openPart(ctx, p)
+		if oerr != nil {
+			return "", oerr
+		}
+		_ = rc.Close()
+	}
+	return path, nil
 }
 
 // cleanContentDirs removes what an earlier instance of this data directory

@@ -36,21 +36,24 @@ SwiftUI app (app/macos/) ── unix socket, HTTP+JSON/SSE ──> unicd（无�
 
 ### 4. 历史 API（daemon 侧新增）
 
-历史是本机数据，不进 wire。接口形状，具体字段在实现时写入契约：
+历史是本机数据，不进 wire。**2026-11-07 实现状态**：下列路由已实现并有测试（`app/desktop/internal/api`、`host/history.go`），形状按 Engine 实际能力收敛；固定（pin）、正文搜索、清空历史不在 0004 首版范围，未实现，列在“未实现”。
 
 | 路由 | 作用 |
 |---|---|
-| `GET /v1/history?q=&kind=&pinned=&before=&limit=` | 列表，按时间倒序，固定项靠前；`q` 匹配正文、标签、来源设备 |
-| `GET /v1/history/{id}` | 单条元数据与文本类预览 |
-| `GET /v1/history/{id}/content` | 二进制内容（图片、文件、完整文本） |
-| `POST /v1/history/{id}/use` | 设为当前剪贴板（等价于 `PUT /v1/clipboard` 以历史项为来源；保证与现有防回环一致） |
-| `PATCH /v1/history/{id}` | 固定、标签（仅本机） |
-| `DELETE /v1/history/{id}`、`DELETE /v1/history?keep_pinned=1` | 删除、清空 |
+| `GET /v1/history?limit=&cursor=&kind=&origin=&tag=&device=&from=&before=` | 列表，最新在前，keyset 游标分页；`kind`/`origin`/`tag` 可重复，字段间 AND，`tag` 要求全部匹配；响应 `{items, next_cursor, revision}`，`items` 永不为 null |
+| `GET /v1/history/{id}` | 单条元数据：kind、来源（含设备名）、时间、过期、标签、各部件的种类/MIME/大小、同步状态；不含正文、文件名、路径 |
+| `GET /v1/history/{id}/content?part=N` | 第 N 个部件（默认 0）的原始字节；文件名只在 `Content-Disposition` |
+| `POST /v1/history/{id}/use` | 写回系统剪贴板，走与接收内容相同的观察/应用协议（不重复入历史、不同步、不当作新复制）；文件按原路径放入剪贴板，文件已不在则失败 |
+| `PATCH /v1/history/{id}` | body `{revision, tags?, expires_at_ms?}`；`revision` 必填，不符返回 409 |
+| `DELETE /v1/history/{id}?revision=N` | 删除，`revision` 必填；已取得内容的读取者可读完 |
 
-- **事件不带正文**（沿用 CLAUDE.md 约定）：新增 `history-added`、`history-updated`、`history-removed`，只带 `id`，客户端再拉取。
+- **事件不带正文**（沿用 CLAUDE.md 约定）：新增单一事件 `{"kind":"history","info":"<id>"}`，覆盖新增/更新/删除/到期/淘汰；客户端重新 `GET`，404 表示已移除。Engine 事件不区分增改删，原计划的 `history-added/updated/removed` 三种因此合并。
 - 访问边界是 socket：任何能连 socket 的本机进程都能读历史正文，目录权限（0700）是唯一边界。
-- 数据模型、保留上限、过期清理沿用 0004 §7、§8；标签与过期不同步。
-- “使用”会让条目移到最前并标为当前；该时间戳是本机的 `updated_at`，不改 `created_at`。
+- 数据模型、保留上限、过期清理沿用 0004 §7、§8；标签与过期不同步。**复制文件时历史只记路径，不拷贝**（见历史契约 §6）：文件被移动或修改后，条目元数据保留，内容读取与 `use` 返回错误。
+- 默认保留 10000 条 / 4GiB（仅统计历史自己存储的字节），尚未映射到 `config.toml`。
+- `use` 不改 `created_at`，条目也不会因此移到最前（0004 没有“最近使用”排序）。
+
+**未实现**：固定项（pin）、`q` 正文/标签/来源搜索、`DELETE /v1/history`（清空）、`keep_pinned`；若 SwiftUI 客户端需要，另议是否扩展 Engine。
 
 ### 5. 历史归 Engine 管理（承接 0004）
 

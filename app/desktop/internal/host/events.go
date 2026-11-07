@@ -46,6 +46,10 @@ func (n *Node) pumpEvents(ctx context.Context) {
 				if ps, err := n.e.ListPending(ctx); err == nil {
 					n.diffPending(ps, pending, true)
 				}
+			case engine.EventHistory:
+				for _, o := range ev.Objects { // ids only: clients fetch the record again
+					n.hub.emit(api.Event{Kind: "history", Info: o.ID})
+				}
 			case engine.EventPairingCode:
 				n.hub.emit(api.Event{Kind: "code"})
 			}

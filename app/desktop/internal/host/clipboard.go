@@ -219,6 +219,21 @@ func (c *clipboardHost) tryApply(ctx context.Context) {
 		}
 		return
 	}
+	snap, ok := c.writeTicket(ctx, tk)
+	if !ok {
+		return
+	}
+	// The list entry has done its job. Without it, only the lease on files that
+	// are on the clipboard keeps the content, as it did before the list existed.
+	_ = c.e.DismissReceived(ctx, r.ReceiptID)
+	c.hub.emit(api.Event{Kind: "received", Peer: c.name(ctx, r.PeerID), Info: describe(snap)})
+}
+
+// writeTicket writes the ticket's content to the clipboard and reports the
+// result with what was read back as baseline, so the write does not bounce
+// back. It returns false if the content could not be applied (the ticket is
+// closed either way). c.mu held.
+func (c *clipboardHost) writeTicket(ctx context.Context, tk engine.ApplyTicket) (clip.Snapshot, bool) {
 	snap, hasFiles, err := c.snapshotOf(ctx, tk)
 	if err == nil {
 		err = c.board.Write(snap)
@@ -227,7 +242,7 @@ func (c *clipboardHost) tryApply(ctx context.Context) {
 		c.logf("write clipboard: %v", asCode(err))
 		_ = c.e.ReportApplyResult(ctx, engine.ApplyResult{Token: tk.Token, Outcome: engine.ApplyOutcomeFailed, ErrorCode: "write_failed"})
 		c.release(tk.LeaseID)
-		return
+		return snap, false
 	}
 
 	// The system may add representations of its own to what was written; what
@@ -252,7 +267,7 @@ func (c *clipboardHost) tryApply(ctx context.Context) {
 		// ticket. Look at the clipboard as it really is.
 		c.release(tk.LeaseID)
 		c.epoch = ""
-		return
+		return snap, false
 	}
 	if rerr == nil {
 		c.seen = back.Hash()
@@ -266,10 +281,30 @@ func (c *clipboardHost) tryApply(ctx context.Context) {
 		c.release(tk.LeaseID)
 	}
 	c.release(old)
-	// The list entry has done its job. Without it, only the lease on files that
-	// are on the clipboard keeps the content, as it did before the list existed.
-	_ = c.e.DismissReceived(ctx, r.ReceiptID)
-	c.hub.emit(api.Event{Kind: "received", Peer: c.name(ctx, r.PeerID), Info: describe(snap)})
+	return snap, true
+}
+
+// UseHistory puts a stored record on the clipboard. Like received content it
+// is applied under the observation protocol, so the write is not taken for a
+// new copy; unlike it, nothing is synced and no record is added.
+func (c *clipboardHost) UseHistory(ctx context.Context, id engine.HistoryID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tickLocked(ctx) // pick up a newer copy first
+	if c.epoch == "" {
+		return &engine.Error{Code: engine.CodeUnavailable, Message: "the clipboard is not available"}
+	}
+	tk, err := c.e.BeginApplyHistory(ctx, engine.ApplyHistoryRequest{HistoryID: id, ExpectedEpoch: c.epoch, ExpectedSequence: c.seq})
+	if err != nil {
+		if c.lost(err) {
+			c.epoch = ""
+		}
+		return err
+	}
+	if _, ok := c.writeTicket(ctx, tk); !ok {
+		return &engine.Error{Code: engine.CodeUnavailable, Message: "could not write the clipboard"}
+	}
+	return nil
 }
 
 // snapshotOf reads the ticket's content into a snapshot for the clipboard.

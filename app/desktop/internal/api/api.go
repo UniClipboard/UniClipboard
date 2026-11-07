@@ -11,9 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,7 +46,7 @@ type PendingPeer struct {
 // Event is pushed to subscribers (the GUI). Info never carries clipboard
 // content: only the kind of thing that moved.
 type Event struct {
-	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code", "config"
+	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code", "config", "history" (Info is the record id; fetch it again, 404 means removed)
 	Peer string `json:"peer,omitempty"`
 	Info string `json:"info,omitempty"`
 	Time int64  `json:"time"`
@@ -95,6 +97,66 @@ type SetClipboard struct {
 	Files []string `json:"files,omitempty"`
 }
 
+// HistoryPart describes one stored part; names and paths are not included.
+type HistoryPart struct {
+	Kind string `json:"kind"` // "representation" or "file"
+	MIME string `json:"mime,omitempty"`
+	Size int64  `json:"size"`
+}
+
+// HistoryItem is the local record of a clipboard entry, without its content.
+type HistoryItem struct {
+	ID         string        `json:"id"`
+	Revision   uint64        `json:"revision"`
+	Kind       string        `json:"kind"`   // "text", "image" or "files"
+	Origin     string        `json:"origin"` // "local_system", "remote_device", "plugin" or "explicit"
+	DeviceID   string        `json:"device_id,omitempty"`
+	DeviceName string        `json:"device_name,omitempty"`
+	CreatedAt  int64         `json:"created_at_ms"`
+	UpdatedAt  int64         `json:"updated_at_ms"`
+	ExpiresAt  int64         `json:"expires_at_ms"` // 0: never
+	Tags       []string      `json:"tags"`
+	Parts      []HistoryPart `json:"parts"`
+	TotalBytes int64         `json:"total_bytes"`
+	SyncState  string        `json:"sync_state"`
+}
+
+// HistoryQuery is GET /v1/history. Fields combine with AND.
+type HistoryQuery struct {
+	Limit    int
+	Cursor   string
+	Kinds    []string
+	Origins  []string
+	Tags     []string
+	DeviceID string
+	FromMs   int64
+	BeforeMs int64
+}
+
+// HistoryPage is the reply of GET /v1/history. Revision changes whenever any
+// record is added, changed or removed.
+type HistoryPage struct {
+	Items      []HistoryItem `json:"items"`
+	NextCursor string        `json:"next_cursor,omitempty"`
+	Revision   uint64        `json:"revision"`
+}
+
+// HistoryUpdate is the body of PATCH /v1/history/{id}. Revision is required;
+// Tags replaces all tags, ExpiresAtMs 0 removes the expiry.
+type HistoryUpdate struct {
+	Revision    uint64    `json:"revision"`
+	Tags        *[]string `json:"tags,omitempty"`
+	ExpiresAtMs *int64    `json:"expires_at_ms,omitempty"`
+}
+
+// HistoryContent is an open part of a record. Close it.
+type HistoryContent struct {
+	MIME string
+	Name string // file name; files only
+	Size int64
+	io.ReadCloser
+}
+
 type errBody struct {
 	Error string `json:"error"`
 	// Reason classifies pairing code failures: "incomplete", "expired",
@@ -139,6 +201,15 @@ type Backend interface {
 	Unpair(ctx context.Context, id string) error
 	Clipboard(ctx context.Context) (ClipboardView, error)
 	SetClipboard(ctx context.Context, s SetClipboard) error
+	ListHistory(ctx context.Context, q HistoryQuery) (HistoryPage, error)
+	GetHistory(ctx context.Context, id string) (HistoryItem, error)
+	// HistoryContent opens part number part (0-based) of a record.
+	HistoryContent(ctx context.Context, id string, part int) (HistoryContent, error)
+	// UseHistory puts a record on the system clipboard without syncing it or
+	// creating a new record.
+	UseHistory(ctx context.Context, id string) error
+	UpdateHistory(ctx context.Context, id string, u HistoryUpdate) (HistoryItem, error)
+	DeleteHistory(ctx context.Context, id string, revision uint64) error
 	// Subscribe streams events until the returned function is called.
 	Subscribe() (<-chan Event, func())
 }
@@ -311,6 +382,108 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 			return
 		}
 		if err := b.SetClipboard(r.Context(), body); err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
+	})
+
+	// ---- history (local only; events carry ids, never content) ----
+	mux.HandleFunc("GET /v1/history", func(w http.ResponseWriter, r *http.Request) {
+		v := r.URL.Query()
+		q := HistoryQuery{Cursor: v.Get("cursor"), Kinds: v["kind"], Origins: v["origin"], Tags: v["tag"], DeviceID: v.Get("device")}
+		for name, dst := range map[string]*int64{"from": &q.FromMs, "before": &q.BeforeMs} {
+			if x := v.Get(name); x != "" {
+				n, err := strconv.ParseInt(x, 10, 64)
+				if err != nil {
+					fail(w, 400, errors.New(name+": not a number"))
+					return
+				}
+				*dst = n
+			}
+		}
+		if x := v.Get("limit"); x != "" {
+			n, err := strconv.Atoi(x)
+			if err != nil {
+				fail(w, 400, errors.New("limit: not a number"))
+				return
+			}
+			q.Limit = n
+		}
+		page, err := b.ListHistory(r.Context(), q)
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		if page.Items == nil {
+			page.Items = []HistoryItem{}
+		}
+		reply(w, 200, page)
+	})
+	mux.HandleFunc("GET /v1/history/{id}", func(w http.ResponseWriter, r *http.Request) {
+		it, err := b.GetHistory(r.Context(), r.PathValue("id"))
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, it)
+	})
+	// The bytes of one part: ?part=N (default 0). The file name, if any, is
+	// only in the Content-Disposition header.
+	mux.HandleFunc("GET /v1/history/{id}/content", func(w http.ResponseWriter, r *http.Request) {
+		part := 0
+		if x := r.URL.Query().Get("part"); x != "" {
+			n, err := strconv.Atoi(x)
+			if err != nil || n < 0 {
+				fail(w, 400, errors.New("part: not a valid index"))
+				return
+			}
+			part = n
+		}
+		c, err := b.HistoryContent(r.Context(), r.PathValue("id"), part)
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		defer c.Close()
+		ctype := c.MIME
+		if ctype == "" {
+			ctype = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", ctype)
+		w.Header().Set("Content-Length", strconv.FormatInt(c.Size, 10))
+		if c.Name != "" {
+			w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": c.Name}))
+		}
+		_, _ = io.Copy(w, c)
+	})
+	mux.HandleFunc("POST /v1/history/{id}/use", func(w http.ResponseWriter, r *http.Request) {
+		if err := b.UseHistory(r.Context(), r.PathValue("id")); err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("PATCH /v1/history/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var u HistoryUpdate
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&u); err != nil {
+			fail(w, 400, err)
+			return
+		}
+		it, err := b.UpdateHistory(r.Context(), r.PathValue("id"), u)
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, it)
+	})
+	mux.HandleFunc("DELETE /v1/history/{id}", func(w http.ResponseWriter, r *http.Request) {
+		rev, err := strconv.ParseUint(r.URL.Query().Get("revision"), 10, 64)
+		if err != nil {
+			fail(w, 400, errors.New("revision: required"))
+			return
+		}
+		if err := b.DeleteHistory(r.Context(), r.PathValue("id"), rev); err != nil {
 			fail(w, 500, err)
 			return
 		}

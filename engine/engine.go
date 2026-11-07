@@ -84,6 +84,9 @@ type Engine struct {
 	pmu       sync.Mutex // pending request revisions
 	pendRevs  map[DeviceID]pendRev
 	pendCount uint64
+
+	processors  []*pipelineProcessor // private adapters, fixed before Start
+	submissions map[RequestID]*submissionEntry
 }
 
 type pendRev struct {

@@ -52,6 +52,8 @@ type ResourcePolicy struct {
 	ReceivedTTL      time.Duration // default 30 minutes
 	MaxOperations    int           // default 1024
 	OperationTTL     time.Duration // default 30 minutes
+	MaxSubmissions   int           // default 1024; independent of retained send operations
+	SubmissionTTL    time.Duration // default 30 minutes from processing completion
 	MaxSubscriptions int           // default 16
 	EventBuffer      int           // default 128, per subscription
 }
@@ -108,7 +110,7 @@ func (s Settings) validate() *Error {
 
 func (p ResourcePolicy) withDefaults() (ResourcePolicy, *Error) {
 	if p.MaxStoredBytes < 0 || p.MaxReceived < 0 || p.ReceivedTTL < 0 || p.MaxOperations < 0 ||
-		p.OperationTTL < 0 || p.MaxSubscriptions < 0 || p.EventBuffer < 0 {
+		p.OperationTTL < 0 || p.MaxSubscriptions < 0 || p.EventBuffer < 0 || p.MaxSubmissions < 0 || p.SubmissionTTL < 0 {
 		return p, newErr(CodeInvalidArgument, "resource policy values must not be negative")
 	}
 	def := func(v *int64, d int64) {
@@ -124,6 +126,7 @@ func (p ResourcePolicy) withDefaults() (ResourcePolicy, *Error) {
 	def(&p.MaxStoredBytes, 8<<30)
 	defi(&p.MaxReceived, 32)
 	defi(&p.MaxOperations, 1024)
+	defi(&p.MaxSubmissions, 1024)
 	defi(&p.MaxSubscriptions, 16)
 	defi(&p.EventBuffer, 128)
 	if p.ReceivedTTL == 0 {
@@ -131,6 +134,9 @@ func (p ResourcePolicy) withDefaults() (ResourcePolicy, *Error) {
 	}
 	if p.OperationTTL == 0 {
 		p.OperationTTL = 30 * time.Minute
+	}
+	if p.SubmissionTTL == 0 {
+		p.SubmissionTTL = 30 * time.Minute
 	}
 	return p, nil
 }

@@ -22,26 +22,29 @@ type sendSet struct {
 	total int64
 }
 
+func syncAllowsPart(p *partRec, sy SyncSettings) bool {
+	switch {
+	case p.desc.Kind == PartFile:
+		return sy.Files
+	case p.desc.MIME == MimePNG:
+		return sy.Images
+	default:
+		return sy.Text
+	}
+}
+
 // buildSendSet applies the sync filters (0002) to a content.
 func buildSendSet(c *contentObj, sy SyncSettings) sendSet {
 	set := sendSet{c: c}
 	var snap clip.Snapshot
 	for _, p := range c.parts {
+		if !syncAllowsPart(p, sy) {
+			continue
+		}
 		switch {
 		case p.desc.Kind == PartFile:
-			if !sy.Files {
-				continue
-			}
 			snap.Files = append(snap.Files, clip.File{Name: p.desc.Name, Size: p.desc.Size})
-		case p.desc.MIME == MimePNG:
-			if !sy.Images {
-				continue
-			}
-			snap.Parts = append(snap.Parts, clip.Part{Format: p.desc.MIME, Data: p.data})
 		default:
-			if !sy.Text {
-				continue
-			}
 			snap.Parts = append(snap.Parts, clip.Part{Format: p.desc.MIME, Data: p.data})
 		}
 		set.parts = append(set.parts, p)
@@ -67,47 +70,33 @@ func (e *Engine) SubmitContent(ctx context.Context, req SubmitRequest) (Operatio
 	if req.Origin != OriginExplicit {
 		return "", newErr(CodeInvalidArgument, "only explicit submissions are accepted; the clipboard path goes through ObserveClipboard")
 	}
-	return e.submit(req)
+	if !validExternalSubmissionID(req.RequestID) {
+		return "", newErr(CodeInvalidArgument, "invalid submission RequestID")
+	}
+	return e.submit(ctx, req)
 }
 
-func (e *Engine) submit(req SubmitRequest) (OperationID, error) {
-	if req.RequestID == "" {
-		return "", newErr(CodeInvalidArgument, "RequestID is required")
-	}
-	hash := sha256.Sum256([]byte("submit\x00" + string(req.LeaseID) + "\x00" + string(req.Origin)))
-
+// dispatchProcessed is the temporary legacy network adapter. It only sees the
+// final immutable content; processor callbacks never run under session locks.
+func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash [sha256.Size]byte, processed *processedContent) (OperationID, error) {
 	e.mu.Lock()
-	// A repeated request is recognized before anything else, so it keeps its
-	// answer even if the lease has been released since.
-	if old := e.ops.reqs[req.RequestID]; old != nil {
-		defer e.mu.Unlock()
-		if old.op.Kind != OperationSend || old.hash != hash {
-			return "", newErr(CodeConflict, "this RequestID was used for a different request")
-		}
-		return old.op.ID, nil
-	}
-	if nerr := e.needNetworkLocked(); nerr != nil {
+	if err := ctx.Err(); err != nil {
 		e.mu.Unlock()
-		return "", nerr
+		return "", ctxErr(err)
+	}
+	if err := e.needNetworkLocked(); err != nil {
+		e.mu.Unlock()
+		return "", err
 	}
 	sy, lim := e.settings.Value.Sync, e.settings.Value.Limits
 	e.mu.Unlock()
-	if !sy.Enabled {
-		return "", newErr(CodeSyncDisabled, "sync is paused")
+	if !processed.policy.Sync || !sy.Enabled {
+		return "", newErr(CodeSyncDisabled, "sync is disabled for this content")
 	}
-
+	c := processed.c
 	cs := e.cs
 	cs.mu.Lock()
-	l := cs.leases[req.LeaseID]
-	if l == nil {
-		defer cs.mu.Unlock()
-		if e.foreign(string(req.LeaseID)) || cs.gone.has(string(req.LeaseID)) {
-			return "", newErr(CodeResourceExpired, "the lease is no longer valid")
-		}
-		return "", newErr(CodeNotFound, "no such lease")
-	}
-	c := l.c
-	c.refs++ // the operation's reference; dropped when it finishes or is not created
+	c.refs++ // dispatch owns a reference until failure or every target ends
 	cs.mu.Unlock()
 	abandon := func() { cs.unref(c) }
 
@@ -126,6 +115,18 @@ func (e *Engine) submit(req SubmitRequest) (OperationID, error) {
 	queued := e.core.Submit(func(peers []string) (session.Job, bool) {
 		e.mu.Lock()
 		defer e.mu.Unlock()
+		if err := ctx.Err(); err != nil {
+			failure = ctxErr(err)
+			return session.Job{}, false
+		}
+		if err := e.needNetworkLocked(); err != nil {
+			failure = err
+			return session.Job{}, false
+		}
+		if !e.settings.Value.Sync.Enabled {
+			failure = newErr(CodeSyncDisabled, "sync is paused")
+			return session.Job{}, false
+		}
 		o, _, oerr := e.newOpLocked(OperationSend, req.RequestID, hash, PhaseQueued)
 		if oerr != nil {
 			failure = oerr
@@ -172,10 +173,20 @@ func checkLimits(set sendSet, lim Limits) *Error {
 // files that changed) is checked before the first byte is written.
 func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, ts int64, set sendSet) (broken bool, err error) {
 	e.mu.Lock()
+	if err := e.needNetworkLocked(); err != nil {
+		e.mu.Unlock()
+		return false, err
+	}
 	sy, lim := e.settings.Value.Sync, e.settings.Value.Limits
 	e.mu.Unlock()
 	if !sy.Enabled {
 		return false, newErr(CodeSyncDisabled, "sync was paused before the transfer started")
+	}
+	// A queued view must never send a type disabled since it was prepared.
+	for _, p := range set.parts {
+		if !syncAllowsPart(p, sy) {
+			return false, newErr(CodeSyncDisabled, "a content type was disabled before the transfer started")
+		}
 	}
 	if lerr := checkLimits(set, lim); lerr != nil {
 		return false, lerr

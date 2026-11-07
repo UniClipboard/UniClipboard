@@ -159,6 +159,17 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 	giveBack(reserved - c.owned)
 	e.cs.mu.Lock()
 	e.cs.contents[c.id] = c
+	e.cs.mu.Unlock()
+	e.mu.Lock()
+	workCtx := e.runCtx
+	e.mu.Unlock()
+	processed, err := e.processContent(workCtx, pipelineReceived, c, pipelineOrigin{kind: "remote_device", deviceID: peer})
+	if err != nil {
+		return // processContent released the input and any prepared replacement
+	}
+	c = processed.c
+	defer e.cs.unref(c)
+	e.cs.mu.Lock()
 	desc := e.cs.descriptor(c)
 	e.cs.mu.Unlock()
 
@@ -170,7 +181,19 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 	// Make room in the list; if every entry is in use, the new one loses.
 	for {
 		e.mu.Lock()
+		if e.life != LifecycleRunning || e.runtime != RuntimeActive || e.settings.Value.Sync != sy || workCtx.Err() != nil {
+			e.mu.Unlock()
+			return
+		}
+		trusted, trustErr := e.st.HasPeer(string(peer))
+		if trustErr != nil || !trusted {
+			e.mu.Unlock()
+			return
+		}
 		if len(e.recv) < e.res.MaxReceived {
+			e.cs.mu.Lock()
+			c.refs++ // Received has its own reference before processing ends
+			e.cs.mu.Unlock()
 			e.recv = append(e.recv, rc)
 			e.commitObjsLocked([]ObjectRef{{Type: "received", ID: string(rc.ReceiptID)}}, EventReceived)
 			e.rescheduleRecvLocked()
@@ -179,7 +202,6 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 		}
 		e.mu.Unlock()
 		if !e.evictOldest(false) {
-			e.cs.unref(c)
 			e.commit(EventResourceWarning)
 			return
 		}

@@ -61,6 +61,10 @@ func (t *opTable) list() []Operation {
 func (e *Engine) newOpLocked(kind OperationKind, req RequestID, hash [sha256.Size]byte, phase Phase) (o *opEntry, existing bool, err *Error) {
 	now := time.Now()
 	e.ops.prune(now, e.res.OperationTTL)
+	e.pruneSubmissionsLocked(now)
+	if submission := e.submissions[req]; submission != nil && (kind != OperationSend || submission.hash != hash) {
+		return nil, false, newErr(CodeConflict, "this RequestID was used for a different request")
+	}
 	if old := e.ops.reqs[req]; old != nil {
 		if old.op.Kind != kind || old.hash != hash {
 			return nil, false, newErr(CodeConflict, "this RequestID was used for a different request")

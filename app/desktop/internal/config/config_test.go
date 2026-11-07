@@ -43,6 +43,9 @@ func TestParseRejects(t *testing.T) {
 		"zero":          "[limits]\nmax_total_bytes = 0",
 		"bad size":      "[limits]\nmax_file_bytes = \"lots\"",
 		"wrong type":    "[sync]\ntext = \"yes\"",
+		"no history":    "[history]\nmax_items = 0",
+		"history size":  "[history]\nmax_bytes = \"9GiB\"",
+		"negative ttl":  "[history]\ndefault_ttl_days = -1",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -140,6 +143,15 @@ func TestWatchAppliesSavesAndKeepsLastGood(t *testing.T) {
 	// Inbox changes wait for a restart.
 	save("inbox = \"" + t.TempDir() + "\"")
 	waitFor("inbox edit", func() bool { return len(m.State().RestartRequired) == 1 })
+	// So do history limits.
+	save("inbox = \"\"\n[history]\nmax_items = 5\ndefault_ttl_days = 7")
+	waitFor("history edit", func() bool {
+		rr := m.State().RestartRequired
+		return len(rr) == 1 && rr[0] == "history"
+	})
+	if o := m.Current().HistoryOptions(); o.MaxItems != 5 || o.DefaultTTL != 7*24*time.Hour || o.MaxBytes != 4<<30 {
+		t.Errorf("options = %+v", o)
+	}
 }
 
 func TestParseSize(t *testing.T) {

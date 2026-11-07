@@ -75,6 +75,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 			Observe: engine.AbilityAvailable, Apply: engine.AbilityAvailable,
 		},
 		Network: o.Network,
+		History: c.HistoryOptions(),
 		// History remembers files by path; they are never copied.
 		ResolveFileRef: func(ref string) engine.FileSource { return pathSource{ref} },
 	}

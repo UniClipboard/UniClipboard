@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -20,6 +21,9 @@ import (
 const (
 	HardMaxFile  = 2 << 30
 	HardMaxTotal = 4 << 30
+	// HardMaxHistory is the engine's default total storage budget, which
+	// history's own budget must fit in.
+	HardMaxHistory = 8 << 30
 )
 
 // Size is a byte count written as an integer or as a string like "512MB".
@@ -60,11 +64,20 @@ func ParseSize(str string) (int64, error) {
 
 // Config is the effective configuration.
 type Config struct {
-	DeviceName    string `toml:"device_name" json:"device_name"`
-	RendezvousURL string `toml:"rendezvous_url" json:"rendezvous_url"`
-	Inbox         string `toml:"inbox" json:"inbox"`
-	Limits        Limits `toml:"limits" json:"limits"`
-	Sync          Sync   `toml:"sync" json:"sync"`
+	DeviceName    string  `toml:"device_name" json:"device_name"`
+	RendezvousURL string  `toml:"rendezvous_url" json:"rendezvous_url"`
+	Inbox         string  `toml:"inbox" json:"inbox"`
+	Limits        Limits  `toml:"limits" json:"limits"`
+	Sync          Sync    `toml:"sync" json:"sync"`
+	History       History `toml:"history" json:"history"`
+}
+
+// History bounds the local clipboard history. It is read when the daemon
+// starts. Files copied from disk are remembered by path and cost nothing here.
+type History struct {
+	MaxItems       int  `toml:"max_items" json:"max_items"`
+	MaxBytes       Size `toml:"max_bytes" json:"max_bytes"`
+	DefaultTTLDays int  `toml:"default_ttl_days" json:"default_ttl_days"` // 0: keep until evicted
 }
 
 type Limits struct {
@@ -82,8 +95,9 @@ type Sync struct {
 // Default returns the configuration used for keys the file leaves out.
 func Default() Config {
 	return Config{
-		Limits: Limits{MaxFileBytes: HardMaxFile, MaxTotalBytes: HardMaxTotal},
-		Sync:   Sync{Enabled: true, Text: true, Images: true, Files: true},
+		Limits:  Limits{MaxFileBytes: HardMaxFile, MaxTotalBytes: HardMaxTotal},
+		Sync:    Sync{Enabled: true, Text: true, Images: true, Files: true},
+		History: History{MaxItems: 10000, MaxBytes: 4 << 30},
 	}
 }
 
@@ -121,7 +135,24 @@ func (c Config) Validate() error {
 	if c.Inbox != "" && !filepath.IsAbs(c.Inbox) {
 		return errors.New("inbox: must be an absolute path")
 	}
+	h := c.History
+	switch {
+	case h.MaxItems <= 0 || h.MaxItems > 1_000_000:
+		return errors.New("history.max_items: must be between 1 and 1000000")
+	case h.MaxBytes <= 0 || h.MaxBytes > HardMaxHistory:
+		return errors.New("history.max_bytes: must be between 1 byte and 8GiB")
+	case h.DefaultTTLDays < 0 || h.DefaultTTLDays > 36500:
+		return errors.New("history.default_ttl_days: must be between 0 and 36500")
+	}
 	return c.Settings().Validate()
+}
+
+// HistoryOptions is the history section as engine options.
+func (c Config) HistoryOptions() engine.HistoryOptions {
+	return engine.HistoryOptions{
+		MaxItems: c.History.MaxItems, MaxBytes: int64(c.History.MaxBytes),
+		DefaultTTL: time.Duration(c.History.DefaultTTLDays) * 24 * time.Hour,
+	}
 }
 
 // Template is written when no config file exists. Everything is commented
@@ -145,6 +176,14 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # after the change. Cannot exceed 2GiB per file / 4GiB per clipboard.
 # max_file_bytes = "2GiB"
 # max_total_bytes = "4GiB"
+
+[history]
+# Local clipboard history. Needs a restart of unicd. The oldest entries go
+# first. Files you copy from disk are remembered by path, not copied, so they
+# do not count towards max_bytes (but stop being readable if they are moved).
+# max_items = 10000
+# max_bytes = "4GiB"
+# default_ttl_days = 0   # 0 keeps entries until they are pushed out
 
 [sync]
 # enabled = false pauses sync both ways; devices stay connected.

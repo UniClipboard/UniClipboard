@@ -24,6 +24,9 @@
 | `limits.max_total_bytes` | 4GB | 同上 |
 | `sync.enabled` | true | 立即(false = 不发不收,连接保留) |
 | `sync.text` / `sync.images` / `sync.files` | true | 立即 |
+| `history.max_items` | 10000 | **需重启**(状态里列为 restart_required `history`);范围 1..1000000 |
+| `history.max_bytes` | 4GiB | 同上;只统计历史自己存储的字节,按路径引用的文件不计;不得超过 8GiB |
+| `history.default_ttl_days` | 0 | 同上;0 = 不自动过期,仅作没有处理器显式期限时的默认 |
 
 大小可写整数(字节)或带单位的字符串(`"512MB"`、`"2GiB"`);上限不得超过协议硬上限(2GB / 4GB)。
 

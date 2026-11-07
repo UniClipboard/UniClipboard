@@ -83,6 +83,9 @@ func (m *Manager) State() State {
 	if m.cur.Inbox != m.started.Inbox {
 		s.RestartRequired = append(s.RestartRequired, "inbox")
 	}
+	if m.cur.History != m.started.History {
+		s.RestartRequired = append(s.RestartRequired, "history")
+	}
 	return s
 }
 

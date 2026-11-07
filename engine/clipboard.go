@@ -291,8 +291,9 @@ func (e *Engine) finishObservation(epoch string, record *obsRecord, entry *submi
 	result := ObservationResult{}
 	var failure *Error
 	var resultCode Code
-	if entry.err != nil {
-		resultCode = entry.err.Code
+	legacy := entry.legacyErr()
+	if legacy != nil {
+		resultCode = legacy.Code
 	}
 	switch resultCode {
 	case "":
@@ -304,7 +305,7 @@ func (e *Engine) finishObservation(epoch string, record *obsRecord, entry *submi
 	case CodeLimitExceeded:
 		result.Disposition = DispTooLarge
 	default:
-		failure = cloneError(entry.err)
+		failure = legacy
 	}
 	e.mu.Lock()
 	record.result, record.err, record.finished = result, failure, true

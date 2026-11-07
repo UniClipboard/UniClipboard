@@ -5,7 +5,7 @@
 - 字段的具体 Go 类型、可选指针、目标结构与错误分类见[SDK 扩展类型契约](sdk-extension-contract.md)，仍待实现。
 - 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[历史契约](history-contract.md)、[插件契约](plugin-contract.md)。本文件是 Engine 的目标扩展，不表示已有代码支持下述 API。
 
-实现登记：P1 首批已接入私有 captured/received 处理核心、暂存/回滚、协作取消及旧网络适配，默认无处理器。legacy 提交已增加独立有界结果缓存（成功/失败、TTL/容量驱逐、processing 不淘汰），调用者取消只停止等待。观察接纳已与处理分离，最新已接纳位置与成功基线分开维护，旧结果不覆盖新观察/epoch/应用基线。以下公开提交 API、持久 commit 与提交事件仍待实现；缓存当前保存旧门面网络结果，不能视作持久提交结果。
+实现登记：P1 首批已接入私有 captured/received 处理核心、暂存/回滚、协作取消及旧网络适配，默认无处理器。legacy 提交已增加独立有界结果缓存（成功/失败、TTL/容量驱逐、processing 不淘汰），调用者取消只停止等待。观察接纳已与处理分离，最新已接纳位置与成功基线分开维护，旧结果不覆盖新观察/epoch/应用基线。公开 `CommitContent`/`GetSubmission` 已实现首版（无 HistoryID/BackendResults/Writeback，BackendIDs 与 WritebackGuard 非空会被拒绝；无目标/同步关闭仍 committed）。持久 commit 与提交事件仍待实现；缓存当前保存旧门面网络结果，不能视作持久提交结果。
 
 ## 1. 将 commit 与发送结果分开
 

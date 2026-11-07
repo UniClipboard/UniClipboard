@@ -236,3 +236,63 @@ func TestObservationReversionWhileDifferentInputPending(t *testing.T) {
 		t.Fatal("reversion processing/baseline mismatch")
 	}
 }
+
+func TestCommitContentSeparatesCommitFromSync(t *testing.T) {
+	n := newContentNode(t, nil)
+	var calls atomic.Int32
+	n.e.processors = []*pipelineProcessor{newPipelineProcessor("count", []pipelineEvent{pipelineCaptured}, false, func(context.Context, *processingContext) error {
+		calls.Add(1)
+		return nil
+	})}
+	start(t, n)
+	h := importText(t, n.e, "input")
+	req := CommitRequest{RequestID: "commit-1", LeaseID: h.LeaseID}
+	r, err := n.e.CommitContent(bg, req)
+	if err != nil {
+		t.Fatalf("a commit without targets must not fail: %v", err)
+	}
+	if r.Phase != SubmissionCommitted || r.SyncDisposition != SyncNoTargets || r.ItemID == "" || r.OperationID != "" || r.Error != nil {
+		t.Fatalf("unexpected result %+v", r)
+	}
+	// The old facade shares the record and keeps its error contract.
+	_ = n.e.ReleaseContent(bg, h.LeaseID)
+	if _, err := n.e.SubmitContent(bg, SubmitRequest{RequestID: "commit-1", LeaseID: h.LeaseID, Origin: OriginExplicit}); code(err) != CodeNoTargets {
+		t.Fatalf("facade: %v", err)
+	}
+	got, err := n.e.GetSubmission(bg, "commit-1")
+	if err != nil || got != r {
+		t.Fatalf("GetSubmission = %+v, %v", got, err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("processors ran %d times", calls.Load())
+	}
+	if _, err := n.e.GetSubmission(bg, "missing"); code(err) != CodeNotFound {
+		t.Fatal(err)
+	}
+	if _, err := n.e.GetSubmission(bg, "obs:x"); code(err) != CodeInvalidArgument {
+		t.Fatal(err)
+	}
+}
+
+func TestCommitContentSyncDisabledAndReservedFields(t *testing.T) {
+	n := newContentNode(t, nil)
+	start(t, n)
+	updateSettings(t, n.e, func(s *Settings) { s.Sync.Enabled = false })
+	h := importText(t, n.e, "input")
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "commit-off", LeaseID: h.LeaseID})
+	if err != nil || r.Phase != SubmissionCommitted || r.SyncDisposition != SyncDisabled {
+		t.Fatalf("%+v, %v", r, err)
+	}
+	if _, err := n.e.SubmitContent(bg, SubmitRequest{RequestID: "commit-off", LeaseID: h.LeaseID, Origin: OriginExplicit}); code(err) != CodeSyncDisabled {
+		t.Fatal(err)
+	}
+	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "g", LeaseID: h.LeaseID, WritebackGuard: &WritebackGuard{Epoch: "e"}}); code(err) != CodeUnsupported {
+		t.Fatal(err)
+	}
+	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "b", LeaseID: h.LeaseID, BackendIDs: []PluginID{}}); code(err) != CodeNotFound {
+		t.Fatal(err)
+	}
+	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "recv:1", LeaseID: h.LeaseID}); code(err) != CodeInvalidArgument {
+		t.Fatal(err)
+	}
+}

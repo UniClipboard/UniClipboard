@@ -11,9 +11,41 @@ import (
 type submissionEntry struct {
 	hash     [sha256.Size]byte
 	done     chan struct{}
+	item     ItemID
 	id       OperationID
-	err      *Error
-	finished time.Time // zero while processing; guarded by Engine.mu
+	disp     SyncDisposition // set at commit; empty while processing or failed
+	syncErr  *Error          // only disp == SyncFailed
+	err      *Error          // terminal failure before commit
+	finished time.Time       // zero while processing; guarded by Engine.mu
+}
+
+// legacyErr maps the committed result back to the old SubmitContent contract:
+// a commit that happened but sent nothing is still reported as an error there.
+func (s *submissionEntry) legacyErr() *Error {
+	switch {
+	case s.err != nil:
+		return cloneError(s.err)
+	case s.disp == SyncQueued || s.disp == "":
+		return nil
+	case s.disp == SyncNoTargets:
+		return newErr(CodeNoTargets, "no paired device is connected")
+	case s.disp == SyncFailed:
+		return cloneError(s.syncErr)
+	}
+	return newErr(CodeSyncDisabled, "sync is disabled for this content")
+}
+
+// result is a content-free snapshot. e.mu must be held unless entry.done is closed.
+func (s *submissionEntry) result(id RequestID) SubmissionResult {
+	r := SubmissionResult{RequestID: id, Phase: SubmissionProcessing, ItemID: s.item}
+	switch {
+	case s.finished.IsZero():
+	case s.err != nil:
+		r.Phase, r.Error = SubmissionFailed, cloneError(s.err)
+	default:
+		r.Phase, r.SyncDisposition, r.OperationID, r.SyncError = SubmissionCommitted, s.disp, s.id, cloneError(s.syncErr)
+	}
+	return r
 }
 
 func cloneError(err *Error) *Error {
@@ -53,7 +85,7 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		if old.op.Kind != OperationSend || old.hash != hash {
 			return nil, newErr(CodeConflict, "this RequestID was used for a different request")
 		}
-		entry := &submissionEntry{hash: hash, id: old.op.ID, done: make(chan struct{}), finished: now}
+		entry := &submissionEntry{hash: hash, id: old.op.ID, disp: SyncQueued, done: make(chan struct{}), finished: now}
 		close(entry.done)
 		return entry, nil
 	}
@@ -87,7 +119,7 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		}
 		delete(e.submissions, oldest)
 	}
-	entry := &submissionEntry{hash: hash, done: make(chan struct{})}
+	entry := &submissionEntry{hash: hash, item: ItemID(e.newID()), done: make(chan struct{})}
 	if e.submissions == nil {
 		e.submissions = make(map[RequestID]*submissionEntry)
 	}
@@ -106,16 +138,14 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	}
 	processed, failure := e.processContent(ctx, pipelineCaptured, c, origin)
 	var id OperationID
+	var disp SyncDisposition
+	var syncErr *Error
 	if failure == nil {
-		var err error
-		id, err = e.dispatchProcessed(ctx, req, entry.hash, processed)
-		if err != nil {
-			failure = asError(err)
-		}
+		id, disp, syncErr, failure = e.dispatchProcessed(ctx, req, entry.hash, processed)
 		e.cs.unref(processed.c)
 	}
 	e.mu.Lock()
-	entry.id, entry.err, entry.finished = id, cloneError(failure), time.Now()
+	entry.id, entry.disp, entry.syncErr, entry.err, entry.finished = id, disp, syncErr, cloneError(failure), time.Now()
 	close(entry.done)
 	e.mu.Unlock()
 }
@@ -123,8 +153,8 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 func waitSubmission(ctx context.Context, entry *submissionEntry) (OperationID, error) {
 	select {
 	case <-entry.done:
-		if entry.err != nil {
-			return entry.id, cloneError(entry.err)
+		if err := entry.legacyErr(); err != nil {
+			return entry.id, err
 		}
 		return entry.id, nil
 	case <-ctx.Done():
@@ -140,4 +170,63 @@ func (e *Engine) submit(ctx context.Context, req SubmitRequest) (OperationID, er
 		return "", err
 	}
 	return waitSubmission(ctx, entry)
+}
+
+// CommitContent processes leased content and reports the commit and the sync
+// decision separately. Without devices, backends or sync, the content is
+// still processed and committed; only SyncDisposition says nothing was sent.
+// A caller timeout says nothing about the work: retry with the same RequestID.
+func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (SubmissionResult, error) {
+	release, gerr := e.enter(ctx)
+	if gerr != nil {
+		return SubmissionResult{}, gerr
+	}
+	defer release()
+	if !validExternalSubmissionID(req.RequestID) {
+		return SubmissionResult{}, newErr(CodeInvalidArgument, "invalid submission RequestID")
+	}
+	if req.WritebackGuard != nil {
+		return SubmissionResult{}, newErr(CodeUnsupported, "automatic writeback is not implemented")
+	}
+	if req.BackendIDs != nil {
+		return SubmissionResult{}, newErr(CodeNotFound, "no such sync backend")
+	}
+	e.mu.Lock()
+	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit})
+	e.mu.Unlock()
+	if err != nil {
+		return SubmissionResult{}, err
+	}
+	select {
+	case <-entry.done:
+		r := entry.result(req.RequestID)
+		if r.Error != nil {
+			return r, cloneError(r.Error)
+		}
+		return r, nil
+	case <-ctx.Done():
+		return SubmissionResult{}, ctxErr(ctx.Err())
+	}
+}
+
+// GetSubmission returns the retained result of an accepted request. Unknown
+// or evicted requests are not_found; it never starts or retries work.
+func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubmissionResult{}, ctxErr(err)
+	}
+	if !validExternalSubmissionID(id) {
+		return SubmissionResult{}, newErr(CodeInvalidArgument, "invalid submission RequestID")
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closing {
+		return SubmissionResult{}, errClosed
+	}
+	e.pruneSubmissionsLocked(time.Now())
+	entry := e.submissions[id]
+	if entry == nil {
+		return SubmissionResult{}, newErr(CodeNotFound, "no such submission (it may have expired)")
+	}
+	return entry.result(id), nil
 }

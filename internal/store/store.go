@@ -51,7 +51,7 @@ var migrations = []string{
 
 func Open(path string) (*Store, error) {
 	// A single connection serializes access; the load is tiny.
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +65,10 @@ func Open(path string) (*Store, error) {
 			_ = db.Close()
 			return nil, err
 		}
+	}
+	if err := migrate(db); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 	return &Store{db}, nil
 }

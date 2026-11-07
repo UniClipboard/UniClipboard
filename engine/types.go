@@ -395,3 +395,62 @@ type Event struct {
 	Kind       EventKind   `json:"kind"`
 	Objects    []ObjectRef `json:"objects,omitempty"`
 }
+
+// ItemID names one processed item inside this Engine instance. It differs
+// from ContentID and from the future persistent HistoryID.
+type ItemID string
+
+// HistoryID is reserved for persistent history; it stays empty until then.
+type HistoryID string
+
+type SubmissionPhase string
+
+const (
+	SubmissionProcessing SubmissionPhase = "processing"
+	SubmissionCommitted  SubmissionPhase = "committed"
+	SubmissionFailed     SubmissionPhase = "failed" // failed before commit; nothing was stored or sent
+)
+
+// SyncDisposition is the sync decision taken at commit.
+type SyncDisposition string
+
+const (
+	SyncNotRequested SyncDisposition = "not_requested" // processing set sync=false
+	SyncDisabled     SyncDisposition = "disabled"      // sync is off globally
+	SyncPolicyFilter SyncDisposition = "policy_filtered"
+	SyncNoTargets    SyncDisposition = "no_targets"
+	SyncQueued       SyncDisposition = "queued"
+	SyncFailed       SyncDisposition = "failed"
+)
+
+// CommitRequest is an explicit submission. BackendIDs and WritebackGuard are
+// reserved: non-nil values are rejected until multiple backends and automatic
+// writeback exist.
+type CommitRequest struct {
+	RequestID      RequestID
+	LeaseID        LeaseID
+	WritebackGuard *WritebackGuard
+	BackendIDs     []PluginID
+}
+
+type PluginID string
+
+// WritebackGuard names the observation a future automatic writeback is bound to.
+type WritebackGuard struct {
+	Epoch    string
+	Sequence uint64
+}
+
+// SubmissionResult is a snapshot without content. Phase is committed only
+// when processing finished and the result was accepted; whether anything was
+// sent is SyncDisposition's business, not Error's.
+type SubmissionResult struct {
+	RequestID       RequestID       `json:"request_id"`
+	Phase           SubmissionPhase `json:"phase"`
+	ItemID          ItemID          `json:"item_id"`
+	HistoryID       HistoryID       `json:"history_id,omitempty"`
+	SyncDisposition SyncDisposition `json:"sync_disposition,omitempty"`
+	OperationID     OperationID     `json:"operation_id,omitempty"`
+	SyncError       *Error          `json:"sync_error,omitempty"`
+	Error           *Error          `json:"error,omitempty"`
+}

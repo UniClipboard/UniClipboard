@@ -455,3 +455,26 @@ func contentOf(t *testing.T, e *Engine, r ReceivedContent) (reps, files map[stri
 	}
 	return
 }
+
+func TestCommitReportsPolicyFilteredAndKeepsFullContent(t *testing.T) {
+	n, _ := senderNode(t, nil)
+	s := state(t, n.e).Settings
+	s.Value.Sync.Text, s.Value.Sync.Files = false, false
+	if _, err := n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value}); err != nil {
+		t.Fatal(err)
+	}
+	h, err := n.e.ImportContent(bg, ContentInput{Representations: []RepresentationInput{rep(MimeText, "words")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "filtered", LeaseID: h.LeaseID})
+	if err != nil || r.Phase != SubmissionCommitted || r.SyncDisposition != SyncPolicyFilter || r.OperationID != "" {
+		t.Fatalf("%+v, %v", r, err)
+	}
+	// The send view is empty, but the committed content itself is untouched.
+	rd, err := n.e.ReadContent(bg, h.LeaseID, h.Content.Parts[0].ID)
+	if err != nil {
+		t.Fatalf("content lost after a filtered commit: %v", err)
+	}
+	_ = rd.Close()
+}

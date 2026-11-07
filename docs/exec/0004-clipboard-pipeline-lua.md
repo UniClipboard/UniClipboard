@@ -61,10 +61,11 @@
 - [x] 首批内部处理核心：快照/暂存上下文、文本/策略 patch、逐处理器串行与回滚、禁发锁、深度及协作取消；captured 接入显式提交/观察，received 接入完整接收，旧网络适配只读取最终内容。新增处理用例及既有全量竞态测试通过；尚不是 P1 全部出口。
 - [x] legacy 提交独立结果缓存与异步观察接纳：接纳前查重/容量校验，成功和失败缓存，调用者取消不取消工作，processing 不淘汰；最新观察独立保留结果，旧处理不覆盖新基线。公开提交 API 和持久 commit 仍待完成。
 - [ ] 在 `engine/` 实现 Item、Policy、处理上下文、阶段链与 commit 结果；初始处理器为空，以旧网络实现适配专用派发边界。
-- [ ] ObserveClipboard、SubmitContent、接收入口统一进入流水线。RequestID 在处理前查重，覆盖同一请求并发到达，重复请求不重复执行插件或写历史。
-- [ ] 区分历史内容与网络过滤后的发送视图；保留提交时和实际传输前两次授权、配置及大小检查。
+  - 进度：已加公开 `CommitContent`/`GetSubmission`/`SubmissionResult`（Phase、ItemID、SyncDisposition、OperationID、SyncError）；无目标/同步关闭/策略不发送时仍 committed 而非错误，旧 `SubmitContent`/观察由同一记录映射回原错误码。`HistoryID`、`BackendResults`、`Writeback`、`BackendIDs`/`WritebackGuard`（非空会被拒绝）待 P2/P3/0007；`no_backend` 尚无来源。因此该项不勾选。
+- [ ] ObserveClipboard、SubmitContent、接收入口统一进入流水线。（现状：观察与显式提交共用 submission 记录，请求在处理前查重，并发合并；接收入口已共用处理核心，但没有 submission 记录，也没有 `recv:` 请求键，等跨后端去重/Received 槽位预留（P2 去重表、提交屏障）一起做，避免内部接收占用宿主提交容量。）RequestID 在处理前查重，覆盖同一请求并发到达，重复请求不重复执行插件或写历史。
+- [ ] 区分历史内容与网络过滤后的发送视图；（现状：发送视图 `buildSendSet` 与提交内容已分开，过滤后内容不被改动，提交时与传输前均复核，已有测试；历史库本身属 P2，故未勾选。）保留提交时和实际传输前两次授权、配置及大小检查。
 - [ ] 将后端派发与通知分离；保留每 (BackendID, TargetKind, TargetID) 一个在途加一个待发、替换、离线不排队、部分成功语义。
-- [ ] 处理调用采用快照/暂存/校验后提交；不持 Engine 业务锁执行插件。取消或代次失效后禁止迟到提交。
+- [ ] 处理调用采用快照/暂存/校验后提交；（现状：快照/暂存/回滚、锁外执行、Stop/挂起后丢弃迟到结果已有测试；统一提交协调器与提交屏障尚未实现。）不持 Engine 业务锁执行插件。取消或代次失效后禁止迟到提交。
 
 退出条件：无插件的网络行为与原来一致；新增本机 commit 路径可独立测试，事件丢失或慢观察者不影响派发。
 
@@ -73,6 +74,7 @@
 ### P2 · 持久历史与资源所有权
 
 - [ ] 在 `internal/store` 增加版本化 SQLite 迁移和底层读写能力；在 `engine/` 实现历史业务及公开查询、读取、更新、删除 API。
+  - 进度：`internal/store` 已完成（`history.go`）：`PRAGMA user_version` 版本化迁移（拒绝更新版本的库）、`clip_items`/`clip_item_parts`/`clip_tags`/`clip_item_sync`/`history_state` 表、AUTOINCREMENT 提交序号（不复用）、插入/读取/keyset 分页（同一读事务返回修订号）/CAS 更新/删除/到期删除/最旧淘汰候选/blob 引用查询，均有测试。文件名并入 parts 表（`kind=file`），不单设 `clip_item_files`。`engine/` 业务与公开 API 未开始，故不勾选。
 - [ ] 建立 `clip_items/clip_item_parts/clip_item_files/clip_tags` 及必要索引；稳定 ID、时间与分页规则遵循 P0 契约。标签、过期和同步状态仅本机保存。
 - [ ] 小内容入库，大内容进入 Engine 专属持久目录。引用本机文件要成为跨重启历史时，按契约复制为自有资源；不把宿主临时 FileSource 当作永久文件。
 - [ ] 明确 blob 落盘、数据库事务、commit 发布与异常恢复顺序。启动可清理孤儿临时文件；不得先发送再发现历史写入失败。

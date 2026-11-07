@@ -78,20 +78,25 @@ func (e *Engine) SubmitContent(ctx context.Context, req SubmitRequest) (Operatio
 
 // dispatchProcessed is the temporary legacy network adapter. It only sees the
 // final immutable content; processor callbacks never run under session locks.
-func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash [sha256.Size]byte, processed *processedContent) (OperationID, error) {
+// A non-nil commitFail means nothing was committed (stopped, suspended,
+// cancelled); otherwise the sync decision is the disposition and syncErr.
+func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash [sha256.Size]byte, processed *processedContent) (id OperationID, disp SyncDisposition, syncErr, commitFail *Error) {
 	e.mu.Lock()
 	if err := ctx.Err(); err != nil {
 		e.mu.Unlock()
-		return "", ctxErr(err)
+		return "", "", nil, ctxErr(err)
 	}
 	if err := e.needNetworkLocked(); err != nil {
 		e.mu.Unlock()
-		return "", err
+		return "", "", nil, err
 	}
 	sy, lim := e.settings.Value.Sync, e.settings.Value.Limits
 	e.mu.Unlock()
-	if !processed.policy.Sync || !sy.Enabled {
-		return "", newErr(CodeSyncDisabled, "sync is disabled for this content")
+	switch {
+	case !sy.Enabled:
+		return "", SyncDisabled, nil, nil
+	case !processed.policy.Sync:
+		return "", SyncNotRequested, nil, nil
 	}
 	c := processed.c
 	cs := e.cs
@@ -103,24 +108,25 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 	set := buildSendSet(c, sy)
 	if len(set.parts) == 0 {
 		abandon()
-		return "", newErr(CodeSyncDisabled, "none of this content is enabled for sync")
+		return "", SyncPolicyFilter, nil, nil
 	}
 	if lerr := checkLimits(set, lim); lerr != nil {
 		abandon()
-		return "", lerr
+		return "", SyncFailed, lerr, nil
 	}
 
 	var opID OperationID
 	var failure *Error
+	var precommit bool
 	queued := e.core.Submit(func(peers []string) (session.Job, bool) {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		if err := ctx.Err(); err != nil {
-			failure = ctxErr(err)
+			failure, precommit = ctxErr(err), true
 			return session.Job{}, false
 		}
 		if err := e.needNetworkLocked(); err != nil {
-			failure = err
+			failure, precommit = err, true
 			return session.Job{}, false
 		}
 		if !e.settings.Value.Sync.Enabled {
@@ -148,12 +154,17 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 	})
 	if !queued {
 		abandon()
-		if failure != nil {
-			return "", failure
+		switch {
+		case precommit:
+			return "", "", nil, failure
+		case failure != nil && failure.Code == CodeSyncDisabled:
+			return "", SyncDisabled, nil, nil
+		case failure != nil:
+			return "", SyncFailed, failure, nil
 		}
-		return "", newErr(CodeNoTargets, "no paired device is connected")
+		return "", SyncNoTargets, nil, nil
 	}
-	return opID, nil
+	return opID, SyncQueued, nil, nil
 }
 
 func checkLimits(set sendSet, lim Limits) *Error {

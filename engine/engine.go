@@ -37,7 +37,7 @@ type Engine struct {
 
 	lock    *dirLock
 	st      *store.Store
-	tr      netTransport
+	tr      Network
 	trUsed  bool // tr.Start was called, so tr.Close is due
 	core    *core.Engine
 	self    DeviceID
@@ -154,7 +154,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if err != nil {
 		return closeAll(newErr(CodeUnavailable, "cannot read the device identity"))
 	}
-	tr := opts.transport
+	tr := opts.Network
 	if tr == nil {
 		t, err := tcnet.New(st, func(string, ...any) {}) // tailcat's logs may name addresses
 		if err != nil {
@@ -182,7 +182,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		rv = rendezvous.NewWithURL("") // the production service; settings.RendezvousURL overrides it, the environment does not
 	}
 	e.core = core.New(core.Config{
-		ID: id, Name: defName, Store: st, Transport: tr, Inbox: opts.InboxDir,
+		ID: id, Name: defName, Store: st, Transport: tr,
 		Receiver:   receiver{e},
 		Logf:       func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
 		Rendezvous: rv, Settings: settingsSource{e},

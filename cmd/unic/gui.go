@@ -12,7 +12,6 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"unic/internal/api"
-	"unic/internal/engine"
 )
 
 // Tabs and panes; the layout follows prototype/gui.html.
@@ -105,7 +104,7 @@ func runGUI() error {
 func (g *gui) follow(ctx context.Context) {
 	for ctx.Err() == nil {
 		g.refresh(ctx)
-		_ = g.c.Events(ctx, func(ev engine.Event) {
+		_ = g.c.Events(ctx, func(ev api.Event) {
 			g.addLog(ev)
 			if ev.Kind == "code" { // our code was used: show a fresh one
 				g.mu.Lock()
@@ -180,7 +179,7 @@ func (g *gui) refresh(ctx context.Context) {
 	g.win.Invalidate()
 }
 
-func (g *gui) addLog(ev engine.Event) {
+func (g *gui) addLog(ev api.Event) {
 	t := time.Unix(ev.Time, 0).Format("15:04:05")
 	var line string
 	switch ev.Kind {
@@ -296,12 +295,12 @@ func joinError(err error) string {
 	return "无法连接:" + err.Error()
 }
 
-func (g *gui) decide(id string, approve bool) {
+func (g *gui) decide(id, fingerprint string, approve bool) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if approve {
-			_, _ = g.c.Approve(ctx, id)
+			_, _ = g.c.Approve(ctx, id, fingerprint)
 		} else {
 			_ = g.c.Reject(ctx, id)
 		}
@@ -490,7 +489,7 @@ func (g *gui) devicesTab(c *ui.Context, s snapshot) {
 	})
 }
 
-func (g *gui) pendingCard(c *ui.Context, p engine.PendingPeer) {
+func (g *gui) pendingCard(c *ui.Context, p api.PendingPeer) {
 	t := c.Theme()
 	color := t.Warning
 	if p.ByCode {
@@ -516,10 +515,10 @@ func (g *gui) pendingCard(c *ui.Context, p engine.PendingPeer) {
 				approve = "指纹一致,批准"
 			}
 			if ui.PrimaryButton(c.Key("ok-"+p.ID), approve).Clicked() {
-				g.decide(p.ID, true)
+				g.decide(p.ID, p.Fingerprint, true)
 			}
 			if ui.Button(c.Key("no-"+p.ID), "拒绝").Clicked() {
-				g.decide(p.ID, false)
+				g.decide(p.ID, p.Fingerprint, false)
 			}
 			if p.Via == "" && !p.ByCode {
 				ui.Text(c, "不认识的设备请拒绝").FontSize(11).TextColor(t.Warning)

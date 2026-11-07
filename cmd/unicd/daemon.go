@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"image"
 	"image/color"
@@ -23,17 +21,14 @@ import (
 	"unic/internal/api"
 	"unic/internal/board"
 	"unic/internal/config"
-	"unic/internal/engine"
+	"unic/internal/desktop"
 	"unic/internal/paths"
-	"unic/internal/rendezvous"
-	"unic/internal/store"
-	"unic/internal/tcnet"
 )
 
 // runDaemon runs the node as a windowless mygo app: mygo owns the main thread
 // the system clipboard must be touched from, and gives us the tray icon.
 func runDaemon() error {
-	dbPath, err := paths.Database()
+	dir, err := paths.Dir()
 	if err != nil {
 		return err
 	}
@@ -55,37 +50,23 @@ func runDaemon() error {
 			return err
 		}
 	}
-	st, err := store.Open(dbPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = st.Close() }()
 
-	id, err := deviceID(st)
-	if err != nil {
-		return err
-	}
-	name, _ := os.Hostname()
-	if name == "" {
-		name = "device-" + id[:6]
-	}
-	tr, err := tcnet.New(st, log.Printf)
-	if err != nil {
-		return err
-	}
-	eng := engine.New(engine.Config{
-		ID: id, Name: name, Board: board.MyGo{}, Store: st, Transport: tr, Inbox: inbox,
-		Rendezvous: rendezvous.New(), Settings: settings,
-	})
-	settings.OnChange = func(_, _ config.Config, err error) { eng.ConfigChanged(err) }
-
-	// Files of clips received in an earlier run are no longer on the clipboard.
-	// The inbox may be a directory of the user's, so remove only what we made.
+	// Files of clips received by versions before the engine owned its inbox are
+	// no longer on the clipboard. The inbox may be a directory of the user's,
+	// so remove only what those versions made.
 	if old, _ := filepath.Glob(filepath.Join(inbox, "clip-*")); len(old) > 0 {
 		for _, d := range old {
 			_ = os.RemoveAll(d)
 		}
 	}
+
+	node, err := desktop.Open(context.Background(), desktop.Options{
+		Dir: dir, Settings: settings, Board: board.MyGo{}, Logf: log.Printf,
+	})
+	if err != nil {
+		return err
+	}
+	settings.OnChange = func(_, _ config.Config, err error) { node.ConfigChanged(err) }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -111,19 +92,13 @@ func runDaemon() error {
 		ln = l
 		go func() {
 			// Start reaches out to a DERP relay, which can take a moment.
-			if err := tr.Start(); err != nil {
-				log.Printf("tailcat: %v", err)
+			if err := node.Start(ctx); err != nil {
+				log.Printf("start: %v", err)
 				mygo.App.Exit(1)
 				return
 			}
-			go func() {
-				if err := eng.Run(ctx); err != nil && ctx.Err() == nil {
-					log.Printf("engine: %v", err)
-					mygo.App.Exit(1)
-				}
-			}()
-			log.Printf("unicd %q up; socket %s", name, sock)
-			_ = http.Serve(l, api.Handler(eng, settings))
+			log.Printf("unicd up; socket %s", sock)
+			_ = http.Serve(l, api.Handler(node, settings))
 		}()
 		setupTray()
 		go notifyPending(ctx, sock)
@@ -134,7 +109,11 @@ func runDaemon() error {
 			_ = ln.Close()
 		}
 		_ = os.Remove(sock)
-		_ = tr.Close()
+		closeCtx, done := context.WithTimeout(context.Background(), 10*time.Second)
+		defer done()
+		if err := node.Close(closeCtx); err != nil {
+			log.Printf("close: %v", err)
+		}
 	})
 	return mygo.App.Run()
 }
@@ -168,7 +147,7 @@ func notifyPending(ctx context.Context, sock string) {
 	}
 	c := api.NewClient(sock)
 	for ctx.Err() == nil {
-		_ = c.Events(ctx, func(ev engine.Event) {
+		_ = c.Events(ctx, func(ev api.Event) {
 			if ev.Kind != "pending" {
 				return
 			}
@@ -220,18 +199,6 @@ func unicPath() string {
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
-}
-
-func deviceID(st *store.Store) (string, error) {
-	if b, err := st.Meta("device.id"); err != nil {
-		return "", err
-	} else if b != nil {
-		return string(b), nil
-	}
-	var r [8]byte
-	_, _ = rand.Read(r[:])
-	id := hex.EncodeToString(r[:])
-	return id, st.SetMeta("device.id", []byte(id))
 }
 
 // trayIcon draws two overlapping sheets, black on transparent so macOS tints

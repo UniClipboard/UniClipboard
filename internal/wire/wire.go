@@ -137,31 +137,6 @@ func NewID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// SendClip writes a Clip message followed by the bytes of its parts.
-func (c *Conn) SendClip(id, origin string, ts int64, s clip.Snapshot) error {
-	m := Clip{T: "clip", ID: id, Origin: origin, TS: ts, Hash: s.Hash()}
-	for _, p := range s.Parts {
-		m.Parts = append(m.Parts, PartMeta{Kind: "fmt", Name: p.Format, Size: int64(len(p.Data))})
-	}
-	for _, f := range s.Files {
-		m.Parts = append(m.Parts, PartMeta{Kind: "file", Name: f.Name, Size: f.Size})
-	}
-	if err := c.WriteJSON(m); err != nil {
-		return err
-	}
-	for _, p := range s.Parts {
-		if _, err := c.w.Write(p.Data); err != nil {
-			return err
-		}
-	}
-	for _, f := range s.Files {
-		if err := c.copyFile(f); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // OutPart is one blob of a clip sent from a stream.
 type OutPart struct {
 	Kind string // "fmt" or "file"
@@ -188,25 +163,6 @@ func (c *Conn) SendStream(id, origin string, ts int64, hash string, parts []OutP
 		}
 	}
 	return nil
-}
-
-func (c *Conn) copyFile(f clip.File) error {
-	src, err := os.Open(f.Path)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = src.Close() }()
-	// The announced size is a promise; a file that changed underneath us
-	// would desynchronize the stream, so refuse rather than guess.
-	st, err := src.Stat()
-	if err != nil {
-		return err
-	}
-	if st.Size() != f.Size {
-		return fmt.Errorf("wire: %s changed size while sending", f.Name)
-	}
-	_, err = io.CopyN(c.w, src, f.Size)
-	return err
 }
 
 // Validate checks a Clip message against the size limits before any blob is read.

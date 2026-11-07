@@ -8,97 +8,37 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"unic/internal/clip"
-	core "unic/internal/engine"
-	"unic/internal/store"
 )
 
-// board is an in-memory system clipboard for a legacy (pre-SDK) peer, which is
-// the receiving side while the SDK cannot receive content yet.
-type board struct {
-	mu sync.Mutex
-	s  clip.Snapshot
-	n  int
-}
+// remote is a second engine, paired with the one under test, that receives
+// what it sends.
+type remote struct{ node }
 
-func (b *board) Read() (clip.Snapshot, error) { b.mu.Lock(); defer b.mu.Unlock(); return b.s, nil }
-func (b *board) Write(s clip.Snapshot) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.s, b.n = s, b.n+1
-	return nil
-}
-func clipPart(format, s string) clip.Part { return clip.Part{Format: format, Data: []byte(s)} }
-func (b *board) writes() int              { b.mu.Lock(); defer b.mu.Unlock(); return b.n }
-func (b *board) part(format string) string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, p := range b.s.Parts {
-		if p.Format == format {
-			return string(p.Data)
-		}
-	}
-	return ""
-}
-
-type legacy struct {
-	e     *core.Engine
-	board *board
-	id    string
-}
-
-// newLegacy starts a peer built on the session layer alone and pairs it with a:
-// it dials a, and a approves it, as two users would.
-func newLegacy(t *testing.T, a node) *legacy {
+// newLegacy starts a second engine and pairs it with a, as two users would.
+func newLegacy(t *testing.T, a node) *remote {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	f := newFakeNet(t)
-	b := &board{}
-	l := &legacy{board: b, id: "legacy-" + randHex(3)}
-	l.e = core.New(core.Config{ID: l.id, Name: "legacy", Board: b, Store: st, Transport: f,
-		Inbox: t.TempDir(), Poll: 10 * time.Millisecond, Logf: t.Logf})
-	ctx, cancel := context.WithCancel(bg)
-	done := make(chan struct{})
-	ready := make(chan struct{})
-	go func() { defer close(done); _ = l.e.RunReady(ctx, func() { close(ready) }) }()
-	t.Cleanup(func() { cancel(); <-done })
-	<-ready
-
-	addr, err := a.e.ExportPairingAddress(bg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, awaiting, err := l.e.AddPeer(bg, addr.Address); err != nil || !awaiting {
-		t.Fatalf("AddPeer = %v, %v", awaiting, err)
-	}
-	var p PendingPeer
-	eventually(t, "pending", func() bool {
-		ps, _ := a.e.ListPending(bg)
-		if len(ps) == 1 {
-			p = ps[0]
-		}
-		return len(ps) == 1
-	})
-	if _, err := a.e.Approve(bg, ApprovalRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision, ExpectedFingerprint: p.Fingerprint}); err != nil {
-		t.Fatal(err)
-	}
-	eventually(t, "connected", func() bool {
-		ps, _ := a.e.ListPeers(bg)
-		return len(ps) == 1 && ps[0].Connection == Connected
-	})
-	return l
+	b := newContentNode(t, nil)
+	start(t, b)
+	pairTwo(t, a, b)
+	return &remote{b}
 }
 
-func senderNode(t *testing.T, mutate func(*Options)) (node, *legacy) {
+// count is the number of clips received so far (the list is long enough here).
+func (r *remote) count() int { return len(received(r.e)) }
+
+// text is the text of the newest clip received.
+func (r *remote) text() string {
+	rs := received(r.e)
+	if len(rs) == 0 {
+		return ""
+	}
+	return textOfE(r.e, rs[0])
+}
+
+func senderNode(t *testing.T, mutate func(*Options)) (node, *remote) {
 	t.Helper()
 	n := newContentNode(t, mutate)
 	start(t, n)
@@ -158,14 +98,10 @@ func TestSubmitDeliversEverything(t *testing.T) {
 	if o.Kind != OperationSend || o.Phase != PhaseCompleted || o.Outcome != OutcomeSuccess || len(o.Targets) != 1 || o.Targets[0].State != TargetSent {
 		t.Fatalf("operation = %+v", o)
 	}
-	eventually(t, "the peer applies it", func() bool { return l.board.writes() == 1 })
-	if l.board.part(MimeText) != "héllo" || l.board.part(MimeHTML) != "<i>x</i>" || l.board.part(MimePNG) != string(img) {
-		t.Fatalf("representations differ: %+v", l.board.s.Parts)
-	}
-	files := map[string]string{}
-	for _, f := range l.board.s.Files {
-		b, _ := os.ReadFile(f.Path)
-		files[f.Name] = string(b)
+	eventually(t, "the peer has it", func() bool { return l.count() == 1 })
+	reps, files := contentOf(t, l.e, received(l.e)[0])
+	if reps[MimeText] != "héllo" || reps[MimeHTML] != "<i>x</i>" || reps[MimePNG] != string(img) {
+		t.Fatalf("representations differ: %d", len(reps))
 	}
 	if files["copied.txt"] != "copied bytes" || files["ref.bin"] != refData || len(files) != 2 {
 		t.Fatalf("files differ: %v", len(files))
@@ -190,7 +126,7 @@ func TestSubmitNeedsAnOnlineTargetAndSendsNothingLater(t *testing.T) {
 	// A device that connects afterwards gets nothing.
 	l := newLegacy(t, n)
 	time.Sleep(200 * time.Millisecond)
-	if l.board.writes() != 0 {
+	if l.count() != 0 {
 		t.Fatal("old content was delivered after the fact")
 	}
 }
@@ -228,8 +164,8 @@ func TestSubmitValidationAndIdempotency(t *testing.T) {
 		t.Fatalf("reused RequestID: %v", err)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if l.board.writes() != 1 {
-		t.Fatalf("the peer applied %d clips, want 1", l.board.writes())
+	if l.count() != 1 {
+		t.Fatalf("the peer applied %d clips, want 1", l.count())
 	}
 	// Identical content may be sent again on request: explicit sends are not de-duplicated.
 	h3 := importText(t, n.e, "once")
@@ -260,9 +196,9 @@ func TestSubmitFollowsSyncSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitSend(t, n.e, id)
-	eventually(t, "file arrives", func() bool { return l.board.writes() == 1 })
-	if len(l.board.s.Parts) != 0 || len(l.board.s.Files) != 1 {
-		t.Fatalf("filter ignored: %+v", l.board.s)
+	eventually(t, "file arrives", func() bool { return l.count() == 1 })
+	if reps, files := contentOf(t, l.e, received(l.e)[0]); len(reps) != 0 || len(files) != 1 {
+		t.Fatalf("filter ignored: %d representations, %d files", len(reps), len(files))
 	}
 	// Nothing enabled for this content, or everything paused: refused.
 	set(func(s *Settings) { s.Sync.Files = false })
@@ -285,7 +221,7 @@ func TestLimitsAreCheckedAtSubmit(t *testing.T) {
 	if _, err := submit(n.e, h); code(err) != CodeLimitExceeded {
 		t.Fatalf("over the limit set after import: %v", err)
 	}
-	if l.board.writes() != 0 {
+	if l.count() != 0 {
 		t.Fatal("sent over the limit")
 	}
 }
@@ -315,7 +251,7 @@ func TestChangedSourceFailsOnlyThatSend(t *testing.T) {
 	if o.Outcome != OutcomeFailed || o.Targets[0].Error == nil || o.Targets[0].Error.Code != CodeSourceChanged {
 		t.Fatalf("operation = %+v", o)
 	}
-	if l.board.writes() != 0 {
+	if l.count() != 0 {
 		t.Fatal("changed bytes were sent")
 	}
 	// The connection is fine and the next send works.
@@ -392,9 +328,9 @@ func TestNewerContentSupersedesAWaitingOne(t *testing.T) {
 	if o := waitSend(t, n.e, c); o.Outcome != OutcomeSuccess {
 		t.Fatalf("C = %+v", o)
 	}
-	eventually(t, "two clips applied", func() bool { return l.board.writes() == 2 })
-	if l.board.part(MimeText) != "C" {
-		t.Fatalf("the peer ended with %q, want C", l.board.part(MimeText))
+	eventually(t, "two clips applied", func() bool { return l.count() == 2 })
+	if l.text() != "C" {
+		t.Fatalf("the peer ended with %q, want C", l.text())
 	}
 }
 
@@ -432,7 +368,7 @@ func TestSuspendFailsWaitingAndRunningSends(t *testing.T) {
 		return len(ps) == 1 && ps[0].Connection == Connected
 	})
 	time.Sleep(200 * time.Millisecond)
-	if l.board.writes() != 0 {
+	if l.count() != 0 {
 		t.Fatal("a failed send was delivered after the reconnect")
 	}
 }
@@ -498,4 +434,24 @@ func TestOutcomeMatrix(t *testing.T) {
 			t.Errorf("%v: %s/%s, want %s/%s", c.in, p, o, c.phase, c.outcome)
 		}
 	}
+}
+
+// contentOf reads a received clip: its representations by MIME type and its
+// files by name.
+func contentOf(t *testing.T, e *Engine, r ReceivedContent) (reps, files map[string]string) {
+	t.Helper()
+	l, err := e.RetainContent(bg, r.Content.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.ReleaseContent(bg, l.LeaseID)
+	reps, files = map[string]string{}, map[string]string{}
+	for _, p := range l.Content.Parts {
+		if p.Kind == PartFile {
+			files[p.Name] = readAll(t, e, l.LeaseID, p.ID)
+		} else {
+			reps[p.MIME] = readAll(t, e, l.LeaseID, p.ID)
+		}
+	}
+	return
 }

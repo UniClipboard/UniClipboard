@@ -14,7 +14,6 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"unic/internal/api"
-	"unic/internal/engine"
 	"unic/internal/paths"
 )
 
@@ -145,7 +144,7 @@ func runCLI(cmd string, args []string) error {
 			return fmt.Errorf("usage: unic %s <id>", cmd)
 		}
 		if cmd == "approve" {
-			p, err := c.Approve(short, args[0])
+			p, err := c.Approve(short, args[0], "")
 			if err != nil {
 				return err
 			}
@@ -184,7 +183,7 @@ func runCLI(cmd string, args []string) error {
 		}
 
 	case "watch":
-		err := c.Events(ctx, func(ev engine.Event) {
+		err := c.Events(ctx, func(ev api.Event) {
 			t := time.Unix(ev.Time, 0).Format("15:04:05")
 			fmt.Printf("%s %-9s %s %s\n", t, ev.Kind, ev.Peer, ev.Info)
 		})
@@ -224,7 +223,7 @@ func copyCmd(ctx context.Context, c *api.Client, args []string) error {
 	return c.SetClipboard(ctx, api.SetClipboard{Text: &text})
 }
 
-func printPeers(ps []engine.PeerStatus) {
+func printPeers(ps []api.PeerStatus) {
 	if len(ps) == 0 {
 		fmt.Println("no paired devices (run `unic pair <address>` with the other device's `unic addr`)")
 		return
@@ -244,7 +243,7 @@ func printPeers(ps []engine.PeerStatus) {
 	_ = w.Flush()
 }
 
-func printPending(ps []engine.PendingPeer) {
+func printPending(ps []api.PendingPeer) {
 	if len(ps) == 0 {
 		return
 	}

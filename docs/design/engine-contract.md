@@ -299,6 +299,8 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2c（已实现并有测试）**：接收列表（`ListReceived`、`DismissReceived`、`State.Received`、`received` 与 `resource_warning` 事件）；接收内容存为内容对象，经 `RetainContent` 读取、`LocalFilePath` 取文件。
 
+**桌面迁移（已完成）**：`cmd/unicd` 只装配 `internal/desktop`，由它持有 SDK 引擎、系统剪贴板适配和 HTTP 后端；内部 `internal/engine` 退化为会话层，旧的剪贴板轮询、`apply`、`broadcast`、`lastHash`、`SetLocal`、`Board` 已删除，只剩一套业务状态与信任逻辑。
+
 **第二步 2d（已实现并有测试）**：`ObserveClipboard`、`BeginApply`、`ReportApplyResult`、`State.ActiveApply`、`apply` 事件。公开 Engine 本身不读写系统剪贴板，由宿主适配调用这些方法。
 
 落地时确定的细节（以此为准，必要时回改前文）：
@@ -330,3 +332,6 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 25. **回声**：应用成功后基线取宿主读回的内容，因此系统补充格式不会造成回传。`AppliedToken` 只对未完成的当前 ticket 有效，否则 `conflict`。ticket 未完成期间出现不带 token 的真实本地变化，视为用户新复制：照常处理，并使该 ticket 的成功报告 `conflict`（ticket 随之以 failed 结束、接收条目回到可再次应用）。
 26. **ticket 作废**：挂起、停止、同步暂停、宿主应用能力不再 `available` 都会作废当前 ticket：条目解锁，但槽位保持占用直到宿主报告结果（成功报告会 `conflict`，failed/deferred 正常结束）。无观察能力的宿主（`Observe` 不可用）可以不带 epoch 调用 `BeginApply` 和报告 applied，不更新基线。
 27. **应用条目的生存**：被应用的接收条目不受容量淘汰、TTL 和 `DismissReceived`（`in_use`）影响，即使已过期仍在列表中；应用结束后立即按 TTL 处理。
+28. **Network 选项**：`Options.Network` 允许替换默认的 tailcat 网络（接口只用标准库类型），用于测试和特殊嵌入；`Start`/`Close` 各调用一次，挂起恢复时 `Listen` 会再次调用。
+29. **桌面适配的约定**：适配器把剪贴板快照只保留 text/html/png 与普通文件，文件以引用导入；无法表示的内容（文件夹、超限、只有厂商格式）按“剪贴板已清空”上报，因此之后复制别的内容仍是真实变化。应用成功后适配器会把条目移出接收列表（`DismissReceived`），接收文件的生命周期只由剪贴板上的租约决定，被新内容替换后立即释放。显式发送（CLI/GUI 的写入并发送）先写入、回读，再以新 epoch 的 baseline 建立基线，最后 `SubmitContent`，一次请求只发送一次。
+30. **HTTP /v1 的兼容**：响应形状不变。`POST /v1/pending/{id}/approve` 新增可选请求体 `{"fingerprint": "..."}`：给出时若设备当前指纹不同则返回 409；GUI 发送它展示的指纹，旧客户端不发则按当前指纹批准。事件的 `Info` 不再携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。

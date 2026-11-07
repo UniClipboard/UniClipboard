@@ -29,7 +29,9 @@
 
 | 路径 | 作用 |
 |---|---|
-| `internal/engine` | 同步核心:轮询剪贴板、会话管理、防回环、去重 |
+| `engine` | 公开 Go SDK:生命周期、配对与信任、内容与租约、发送与接收、剪贴板观察/应用协议(契约见 `docs/design/engine-contract.md`) |
+| `internal/engine` | SDK 之下的会话层:与每台已配对设备保持会话、配对与介绍 |
+| `internal/desktop` | 桌面宿主:系统剪贴板适配(轮询、写入、防回环)、配置热更新、HTTP API 后端 |
 | `internal/wire` | 设备间线协议与大小限制 |
 | `internal/tcnet` | tailcat 传输层(密钥与地址持久化) |
 | `internal/board` | mygo 剪贴板适配 |

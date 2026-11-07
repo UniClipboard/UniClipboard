@@ -15,7 +15,7 @@ func codeNodes(t *testing.T, ids ...string) (*rvtest.Server, []node) {
 	t.Cleanup(srv.Close)
 	var ns []node
 	for _, id := range ids {
-		ns = append(ns, newNodeWith(t, id, false, &rendezvous.Client{URL: srv.URL, HTTP: srv.Client()}))
+		ns = append(ns, newNodeWith(t, id, &rendezvous.Client{URL: srv.URL, HTTP: srv.Client()}))
 	}
 	time.Sleep(20 * time.Millisecond) // let Run install its context
 	return srv, ns
@@ -58,17 +58,14 @@ func TestJoinByCodeStillNeedsApproval(t *testing.T) {
 	}
 
 	// Nothing syncs until a approves.
-	a.board.user(text("secret"))
 	time.Sleep(200 * time.Millisecond)
-	if connected(a, b) || got(b) != "" {
+	if connected(a, b) {
 		t.Fatal("connected before approval")
 	}
 	if _, err := a.e.Approve("bbb"); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "connected", func() bool { return connected(a, b) })
-	a.board.user(text("hello b"))
-	eventually(t, "b receives", func() bool { return got(b) == "hello b" })
 }
 
 func TestStaleCodeTokenIsJustADirectRequest(t *testing.T) {

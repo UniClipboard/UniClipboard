@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,20 +113,6 @@ func TestReceiveBetweenEngines(t *testing.T) {
 			t.Fatal(err)
 		}
 		saw = ev.Kind == EventReceived && len(ev.Objects) == 1 && ev.Objects[0].ID == string(r.ReceiptID)
-	}
-}
-
-func TestReceiveFromLegacyPeer(t *testing.T) {
-	n := newContentNode(t, nil)
-	start(t, n)
-	l := newLegacy(t, n)
-	l.board.mu.Lock()
-	l.board.s.Parts = append(l.board.s.Parts, clipPart(MimeText, "from the old daemon"))
-	l.board.mu.Unlock()
-	rs := waitReceived(t, n.e, 1)
-	lease, _ := n.e.RetainContent(bg, rs[0].Content.ID)
-	if readAll(t, n.e, lease.LeaseID, lease.Content.Parts[0].ID) != "from the old daemon" {
-		t.Fatal("wrong text")
 	}
 }
 
@@ -338,4 +325,25 @@ func TestCloseAndStartupClearTheReceiveDirectory(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(b.dir, "inbox", recvDirName)); !os.IsNotExist(err) {
 		t.Fatal("startup kept stale received files")
 	}
+}
+
+// textOfE is textOf for callers without a *testing.T.
+func textOfE(e *Engine, r ReceivedContent) string {
+	l, err := e.RetainContent(bg, r.Content.ID)
+	if err != nil {
+		return ""
+	}
+	defer e.ReleaseContent(bg, l.LeaseID)
+	for _, p := range l.Content.Parts {
+		if p.MIME == MimeText {
+			rd, err := e.ReadContent(bg, l.LeaseID, p.ID)
+			if err != nil {
+				return ""
+			}
+			defer rd.Close()
+			b, _ := io.ReadAll(rd)
+			return string(b)
+		}
+	}
+	return ""
 }

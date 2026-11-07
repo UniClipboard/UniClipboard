@@ -61,7 +61,7 @@ func TestObservationProtocol(t *testing.T) {
 		t.Fatalf("baseline = %s", d)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if l.board.writes() != 0 {
+	if l.count() != 0 {
 		t.Fatal("the baseline was broadcast")
 	}
 	if d := h.must(ObserveChange, "already here"); d != DispUnchanged {
@@ -74,7 +74,7 @@ func TestObservationProtocol(t *testing.T) {
 	if o := waitSend(t, n.e, r.OperationID); o.Outcome != OutcomeSuccess {
 		t.Fatalf("send = %+v", o)
 	}
-	eventually(t, "peer applied", func() bool { return l.board.part(MimeText) == "new copy" })
+	eventually(t, "peer applied", func() bool { return l.text() == "new copy" })
 	if d := h.must(ObserveChange, ""); d != DispEmpty {
 		t.Fatalf("cleared = %s", d)
 	}
@@ -132,7 +132,7 @@ func TestUnsendableChangesStillMoveTheBaseline(t *testing.T) {
 		t.Fatalf("same content once a peer is there = %s", d)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if l.board.writes() != 0 {
+	if l.count() != 0 {
 		t.Fatal("old content was delivered after the fact")
 	}
 	updateSettings(t, n.e, func(s *Settings) { s.Sync.Enabled = false })
@@ -175,7 +175,7 @@ func TestSuspendEndsTheEpoch(t *testing.T) {
 		t.Fatalf("new epoch = %s", d)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if l.board.writes() != 0 {
+	if l.count() != 0 {
 		t.Fatal("content from the suspended period was sent")
 	}
 }

@@ -17,26 +17,52 @@ import (
 	"strings"
 	"time"
 
-	"unic/internal/clip"
 	"unic/internal/config"
-	"unic/internal/engine"
-	"unic/internal/rendezvous"
-	"unic/internal/store"
 )
+
+// PeerStatus is a paired device and whether it is connected right now.
+type PeerStatus struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Connected bool   `json:"connected"`
+	LastSeen  int64  `json:"last_seen,omitempty"`
+}
+
+// PendingPeer is a device waiting for the user's approval.
+type PendingPeer struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Via  string `json:"via,omitempty"` // who introduced it; empty if it connected to us directly
+	// ByCode is true when it connected with the pairing code this device showed.
+	ByCode bool `json:"by_code,omitempty"`
+	// Fingerprint is shown on both devices so the user can check that the
+	// request comes from the device they think it does.
+	Fingerprint string `json:"fingerprint"`
+	Time        int64  `json:"time"`
+}
+
+// Event is pushed to subscribers (the GUI). Info never carries clipboard
+// content: only the kind of thing that moved.
+type Event struct {
+	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code", "config"
+	Peer string `json:"peer,omitempty"`
+	Info string `json:"info,omitempty"`
+	Time int64  `json:"time"`
+}
 
 // Status is the reply of GET /v1/status.
 type Status struct {
-	ID    string              `json:"id"`
-	Name  string              `json:"name"`
-	Addr  string              `json:"addr"`
-	Peers []engine.PeerStatus `json:"peers"`
+	ID    string       `json:"id"`
+	Name  string       `json:"name"`
+	Addr  string       `json:"addr"`
+	Peers []PeerStatus `json:"peers"`
 	// Pending are devices waiting for the user to approve them.
-	Pending []engine.PendingPeer `json:"pending"`
+	Pending []PendingPeer `json:"pending"`
 }
 
 // PairResult is the reply of POST /v1/peers.
 type PairResult struct {
-	engine.PeerStatus
+	PeerStatus
 	// Awaiting is true when the other device has not approved this one yet.
 	Awaiting bool `json:"awaiting_approval"`
 	// Fingerprint is what the other device shows next to this one's request.
@@ -76,10 +102,12 @@ type errBody struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// Error is an error reply from the daemon.
+// Error is an error reply from the daemon. A Backend returns it to choose the
+// HTTP status; other errors are answered with 500.
 type Error struct {
 	Message string
 	Reason  string // see errBody.Reason
+	Status  int    // HTTP status when returned by a Backend
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -93,61 +121,57 @@ func ReasonOf(err error) string {
 	return ""
 }
 
-// Handler serves the API for e.
-func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
+// Backend is what the daemon does for the API. The desktop host implements it
+// on top of the engine; tests can implement it with a fake.
+type Backend interface {
+	Status(ctx context.Context) (Status, error)
+	Pair(ctx context.Context, addr string) (PairResult, error)
+	Code(ctx context.Context) (Code, bool, error)
+	NewCode(ctx context.Context) (Code, error)
+	CancelCode(ctx context.Context) error
+	Join(ctx context.Context, code string) (PairResult, error)
+	Pending(ctx context.Context) ([]PendingPeer, error)
+	// Approve trusts a pending device. A non-empty fingerprint must equal the
+	// one the device is shown with now; this is how a client that displayed a
+	// fingerprint makes sure the user approved that very request.
+	Approve(ctx context.Context, id, fingerprint string) (PeerStatus, error)
+	Reject(ctx context.Context, id string) error
+	Unpair(ctx context.Context, id string) error
+	Clipboard(ctx context.Context) (ClipboardView, error)
+	SetClipboard(ctx context.Context, s SetClipboard) error
+	// Subscribe streams events until the returned function is called.
+	Subscribe() (<-chan Event, func())
+}
+
+// Handler serves the API for b.
+func Handler(b Backend, cfg *config.Manager) http.Handler {
 	mux := http.NewServeMux()
 	reply := func(w http.ResponseWriter, code int, v any) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(code)
 		_ = json.NewEncoder(w).Encode(v)
 	}
-	fail := func(w http.ResponseWriter, code int, err error) {
-		reply(w, code, errBody{Error: err.Error(), Reason: string(rendezvous.ReasonOf(err))})
-	}
-	// codeFail maps a pairing code failure to a status.
-	codeFail := func(w http.ResponseWriter, err error) {
-		switch rendezvous.ReasonOf(err) {
-		case rendezvous.Incomplete, rendezvous.Invalid:
-			fail(w, 400, err)
-		case rendezvous.Expired:
-			fail(w, 404, err)
-		case rendezvous.RateLimited:
-			fail(w, 429, err)
-		case rendezvous.Unavailable:
-			fail(w, 503, err)
-		default:
-			fail(w, 502, err)
+	// fail answers with the Backend's chosen status, or def.
+	fail := func(w http.ResponseWriter, def int, err error) {
+		code := def
+		var ae *Error
+		if errors.As(err, &ae) && ae.Status != 0 {
+			code = ae.Status
 		}
-	}
-	codeReply := func(w http.ResponseWriter, c rendezvous.Code) {
-		reply(w, 200, Code{Code: c.Code, ExpiresAtMs: c.Expires.UnixMilli()})
-	}
-	pairReply := func(w http.ResponseWriter, p store.Peer, awaiting bool) {
-		reply(w, 200, PairResult{PeerStatus: engine.PeerStatus{ID: p.ID, Name: p.Name, Connected: !awaiting},
-			Awaiting: awaiting, Fingerprint: e.Fingerprint(p.ID)})
-	}
-
-	status := func() (Status, error) {
-		id, name, addr := e.Self()
-		peers, err := e.Peers()
-		if peers == nil {
-			peers = []engine.PeerStatus{}
-		}
-		pending, perr := e.Pending()
-		if pending == nil {
-			pending = []engine.PendingPeer{}
-		}
-		if err == nil {
-			err = perr
-		}
-		return Status{ID: id, Name: name, Addr: addr, Peers: peers, Pending: pending}, err
+		reply(w, code, errBody{Error: err.Error(), Reason: ReasonOf(err)})
 	}
 
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
-		st, err := status()
+		st, err := b.Status(r.Context())
 		if err != nil {
 			fail(w, 500, err)
 			return
+		}
+		if st.Peers == nil {
+			st.Peers = []PeerStatus{}
+		}
+		if st.Pending == nil {
+			st.Pending = []PendingPeer{}
 		}
 		reply(w, 200, st)
 	})
@@ -168,36 +192,42 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
-		p, awaiting, err := e.AddPeer(ctx, body.Addr)
+		res, err := b.Pair(ctx, body.Addr)
 		if err != nil {
 			fail(w, 502, err)
 			return
 		}
-		pairReply(w, p, awaiting)
+		reply(w, 200, res)
 	})
 
 	// The pairing code this device shows, if one is live.
 	mux.HandleFunc("GET /v1/code", func(w http.ResponseWriter, r *http.Request) {
-		c, ok := e.CurrentCode()
-		if !ok {
+		c, ok, err := b.Code(r.Context())
+		switch {
+		case err != nil:
+			fail(w, 500, err)
+		case !ok:
 			fail(w, 404, errors.New("no pairing code is being shown"))
-			return
+		default:
+			reply(w, 200, c)
 		}
-		codeReply(w, c)
 	})
 
 	// A fresh pairing code, replacing the previous one.
 	mux.HandleFunc("POST /v1/code", func(w http.ResponseWriter, r *http.Request) {
-		c, err := e.IssueCode(r.Context())
+		c, err := b.NewCode(r.Context())
 		if err != nil {
-			codeFail(w, err)
+			fail(w, 502, err)
 			return
 		}
-		codeReply(w, c)
+		reply(w, 200, c)
 	})
 
 	mux.HandleFunc("DELETE /v1/code", func(w http.ResponseWriter, r *http.Request) {
-		e.CancelCode()
+		if err := b.CancelCode(r.Context()); err != nil {
+			fail(w, 500, err)
+			return
+		}
 		reply(w, 200, map[string]bool{"ok": true})
 	})
 
@@ -212,34 +242,45 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
-		p, awaiting, err := e.Join(ctx, body.Code)
+		res, err := b.Join(ctx, body.Code)
 		if err != nil {
-			codeFail(w, err)
+			fail(w, 502, err)
 			return
 		}
-		pairReply(w, p, awaiting)
+		reply(w, 200, res)
 	})
 
 	mux.HandleFunc("GET /v1/pending", func(w http.ResponseWriter, r *http.Request) {
-		ps, err := e.Pending()
+		ps, err := b.Pending(r.Context())
 		if err != nil {
 			fail(w, 500, err)
 			return
 		}
+		if ps == nil {
+			ps = []PendingPeer{}
+		}
 		reply(w, 200, ps)
 	})
 
+	// The body is optional: {"fingerprint": "..."} makes the approval fail with
+	// 409 unless the device is still shown with that fingerprint.
 	mux.HandleFunc("POST /v1/pending/{id}/approve", func(w http.ResponseWriter, r *http.Request) {
-		p, err := e.Approve(r.PathValue("id"))
+		var body struct {
+			Fingerprint string `json:"fingerprint"`
+		}
+		if r.ContentLength != 0 {
+			_ = json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body)
+		}
+		p, err := b.Approve(r.Context(), r.PathValue("id"), body.Fingerprint)
 		if err != nil {
 			fail(w, 404, err)
 			return
 		}
-		reply(w, 200, engine.PeerStatus{ID: p.ID, Name: p.Name})
+		reply(w, 200, PeerStatus{ID: p.ID, Name: p.Name})
 	})
 
 	mux.HandleFunc("POST /v1/pending/{id}/reject", func(w http.ResponseWriter, r *http.Request) {
-		if err := e.Reject(r.PathValue("id")); err != nil {
+		if err := b.Reject(r.Context(), r.PathValue("id")); err != nil {
 			fail(w, 404, err)
 			return
 		}
@@ -247,32 +288,18 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 	})
 
 	mux.HandleFunc("DELETE /v1/peers/{id}", func(w http.ResponseWriter, r *http.Request) {
-		ok, err := e.RemovePeer(r.PathValue("id"))
-		switch {
-		case err != nil:
-			fail(w, 500, err)
-		case !ok:
-			fail(w, 404, errors.New("no such peer"))
-		default:
-			reply(w, 200, map[string]bool{"ok": true})
-		}
-	})
-
-	mux.HandleFunc("GET /v1/clipboard", func(w http.ResponseWriter, r *http.Request) {
-		s, err := e.Current()
-		if err != nil {
+		if err := b.Unpair(r.Context(), r.PathValue("id")); err != nil {
 			fail(w, 500, err)
 			return
 		}
-		v := ClipboardView{Summary: s.Summary(), Formats: []string{}}
-		for _, p := range s.Parts {
-			v.Formats = append(v.Formats, p.Format)
-			if p.Format == clip.Text {
-				v.Text = string(p.Data)
-			}
-		}
-		for _, f := range s.Files {
-			v.Files = append(v.Files, f.Path)
+		reply(w, 200, map[string]bool{"ok": true})
+	})
+
+	mux.HandleFunc("GET /v1/clipboard", func(w http.ResponseWriter, r *http.Request) {
+		v, err := b.Clipboard(r.Context())
+		if err != nil {
+			fail(w, 500, err)
+			return
 		}
 		reply(w, 200, v)
 	})
@@ -283,28 +310,7 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 			fail(w, 400, err)
 			return
 		}
-		var s clip.Snapshot
-		switch {
-		case body.Text != nil:
-			s.Parts = []clip.Part{{Format: clip.Text, Data: []byte(*body.Text)}}
-		case len(body.Files) > 0:
-			for _, p := range body.Files {
-				st, err := os.Stat(p)
-				if err != nil {
-					fail(w, 400, err)
-					return
-				}
-				if !st.Mode().IsRegular() {
-					fail(w, 400, fmt.Errorf("%s is not a regular file", p))
-					return
-				}
-				s.Files = append(s.Files, clip.File{Name: st.Name(), Path: p, Size: st.Size()})
-			}
-		default:
-			fail(w, 400, errors.New("nothing to set"))
-			return
-		}
-		if err := e.SetLocal(s); err != nil {
+		if err := b.SetClipboard(r.Context(), body); err != nil {
 			fail(w, 500, err)
 			return
 		}
@@ -318,7 +324,7 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 			fail(w, 500, errors.New("streaming unsupported"))
 			return
 		}
-		ch, stop := e.Subscribe()
+		ch, stop := b.Subscribe()
 		defer stop()
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -338,8 +344,8 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 				}
 				fl.Flush()
 			case ev := <-ch:
-				b, _ := json.Marshal(ev)
-				if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+				data, _ := json.Marshal(ev)
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 					return
 				}
 				fl.Flush()
@@ -466,13 +472,19 @@ func (c *Client) Join(ctx context.Context, code string) (p PairResult, err error
 	return
 }
 
-func (c *Client) Pending(ctx context.Context) (ps []engine.PendingPeer, err error) {
+func (c *Client) Pending(ctx context.Context) (ps []PendingPeer, err error) {
 	err = c.do(ctx, "GET", "/v1/pending", nil, &ps)
 	return
 }
 
-func (c *Client) Approve(ctx context.Context, id string) (p engine.PeerStatus, err error) {
-	err = c.do(ctx, "POST", "/v1/pending/"+id+"/approve", nil, &p)
+// Approve trusts a pending device. Pass the fingerprint the user was shown so
+// that the daemon refuses if the request has changed meanwhile; "" skips the check.
+func (c *Client) Approve(ctx context.Context, id, fingerprint string) (p PeerStatus, err error) {
+	var body any
+	if fingerprint != "" {
+		body = map[string]string{"fingerprint": fingerprint}
+	}
+	err = c.do(ctx, "POST", "/v1/pending/"+id+"/approve", body, &p)
 	return
 }
 
@@ -494,7 +506,7 @@ func (c *Client) SetClipboard(ctx context.Context, s SetClipboard) error {
 }
 
 // Events calls fn for each event until ctx ends or the stream breaks.
-func (c *Client) Events(ctx context.Context, fn func(engine.Event)) error {
+func (c *Client) Events(ctx context.Context, fn func(Event)) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", "http://unic/v1/events", nil)
 	if err != nil {
 		return err
@@ -511,7 +523,7 @@ func (c *Client) Events(ctx context.Context, fn func(engine.Event)) error {
 	for sc.Scan() {
 		line := sc.Text()
 		if len(line) > 6 && line[:6] == "data: " {
-			var ev engine.Event
+			var ev Event
 			if json.Unmarshal([]byte(line[6:]), &ev) == nil {
 				fn(ev)
 			}

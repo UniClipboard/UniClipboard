@@ -1,14 +1,15 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/url"
 	"strings"
 	"time"
 
 	"unic/internal/config"
-	core "unic/internal/engine"
 	"unic/internal/rendezvous"
 )
 
@@ -36,8 +37,11 @@ type Options struct {
 	// content, addresses, tickets or paths. It must not block. Nil: silent.
 	Logger *slog.Logger
 
-	// Test seams, reachable from this package's tests only.
-	transport  netTransport
+	// Network replaces the default tailcat network, for tests and unusual
+	// embeddings. Start and Close are called once each.
+	Network Network
+
+	// Test seam, reachable from this package's tests only.
 	rendezvous *rendezvous.Client
 }
 
@@ -52,9 +56,14 @@ type ResourcePolicy struct {
 	EventBuffer      int           // default 128, per subscription
 }
 
-// netTransport is the network the engine runs on. The default is tailcat.
-type netTransport interface {
-	core.Transport
+// Network is the network the engine runs on; the default is tailcat. Listen
+// accepts connections from paired devices, Dial reaches one, Addr is this
+// device's own address (a secret, like a password). Start brings the network
+// up and Close takes it down; Listen may be called again after a suspend.
+type Network interface {
+	Listen(ctx context.Context) (net.Listener, error)
+	Dial(ctx context.Context, addr string) (net.Conn, error)
+	Addr() string
 	Start() error
 	Close() error
 }

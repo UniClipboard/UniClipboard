@@ -1,9 +1,8 @@
-// Package engine is the heart of the daemon: it watches the local clipboard,
-// keeps a session with every paired device and applies remote changes.
-//
-// The engine knows nothing about tailcat or the system clipboard; it talks to
-// a Transport and a clip.Board, so it is tested with loopback TCP and a fake
-// clipboard.
+// Package engine is the session layer under the public engine package
+// (unic/engine): it keeps a session with every paired device, handles pairing
+// and introductions, and moves clips to and from a Receiver. It knows nothing
+// of tailcat or of any clipboard; it talks to a Transport, so it is tested with
+// loopback TCP. Hosts use unic/engine, not this package.
 package engine
 
 import (
@@ -43,11 +42,8 @@ type Transport interface {
 type Config struct {
 	ID        string // stable device id
 	Name      string
-	Board     clip.Board
 	Store     *store.Store
 	Transport Transport
-	Inbox     string        // where received files are placed
-	Poll      time.Duration // clipboard poll interval; default 400ms
 	Logf      func(format string, args ...any)
 	// Rendezvous stores pairing codes; nil disables them (full addresses
 	// still work).
@@ -55,8 +51,8 @@ type Config struct {
 	// Settings supplies the user's configuration, re-read on every use so
 	// edits apply at once. Nil means the defaults.
 	Settings SettingsSource
-	// Receiver, if set, takes received clips instead of Board: the engine
-	// then never touches the system clipboard.
+	// Receiver takes the clips that arrive. Without one they are read and
+	// dropped. The session layer never touches a clipboard.
 	Receiver Receiver
 }
 
@@ -94,8 +90,6 @@ type Engine struct {
 	mu       sync.Mutex
 	sessions map[string]*session // by peer id
 	subs     map[chan Event]struct{}
-	lastHash string // hash of the clipboard as we last saw it
-	inboxDir string // directory holding files of the clip we last applied
 	retry    map[string]context.CancelFunc
 	pairing  map[string]int // addresses the user is pairing with right now
 	code     *liveCode      // the pairing code this device is showing, if any
@@ -111,18 +105,13 @@ type liveCode struct {
 	token string
 }
 
-// Event is pushed to API subscribers (the GUI).
+// Event tells that something changed: "peer-up", "peer-down", "peers",
+// "pending" or "code". It carries nothing else; whoever listens looks.
 type Event struct {
-	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code"
-	Peer string `json:"peer,omitempty"`
-	Info string `json:"info,omitempty"`
-	Time int64  `json:"time"`
+	Kind string
 }
 
 func New(cfg Config) *Engine {
-	if cfg.Poll == 0 {
-		cfg.Poll = 400 * time.Millisecond
-	}
 	if cfg.Logf == nil {
 		cfg.Logf = log.Printf
 	}
@@ -169,34 +158,6 @@ func (e *Engine) rv() *rendezvous.Client {
 	return e.rvCache
 }
 
-// filterSync drops the parts of s that the user turned off.
-func filterSync(s clip.Snapshot, sy config.Sync) clip.Snapshot {
-	var out clip.Snapshot
-	for _, p := range s.Parts {
-		if strings.HasPrefix(p.Format, "image/") {
-			if sy.Images {
-				out.Parts = append(out.Parts, p)
-			}
-		} else if sy.Text {
-			out.Parts = append(out.Parts, p)
-		}
-	}
-	if sy.Files {
-		out.Files = s.Files
-	}
-	return out
-}
-
-// ConfigChanged tells subscribers that the configuration was reloaded (or
-// rejected), so a GUI can refresh.
-func (e *Engine) ConfigChanged(err error) {
-	info := ""
-	if err != nil {
-		info = err.Error()
-	}
-	e.emit(Event{Kind: "config", Info: info})
-}
-
 // Run blocks until ctx is done. When it returns every goroutine it started has
 // exited, all sessions are closed and Run may be called again (a host that
 // suspends networking stops Run and later restarts it).
@@ -224,13 +185,6 @@ func (e *Engine) RunReady(ctx context.Context, ready func()) error {
 	e.mu.Unlock()
 	defer e.shutdown(ln)
 
-	// Do not broadcast whatever is on the clipboard at startup.
-	if e.cfg.Board != nil {
-		if s, err := e.cfg.Board.Read(); err == nil {
-			e.lastHash = s.Hash()
-		}
-	}
-
 	e.spawn(func() { e.acceptLoop(ctx, ln) })
 	peers, err := e.cfg.Store.Peers()
 	if err != nil {
@@ -242,11 +196,7 @@ func (e *Engine) RunReady(ctx context.Context, ready func()) error {
 	if ready != nil {
 		ready()
 	}
-	if e.cfg.Board == nil {
-		<-ctx.Done()
-	} else {
-		e.watch(ctx)
-	}
+	<-ctx.Done()
 	return ctx.Err()
 }
 
@@ -440,7 +390,6 @@ func (e *Engine) Subscribe() (<-chan Event, func()) {
 }
 
 func (e *Engine) emit(ev Event) {
-	ev.Time = time.Now().Unix()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for ch := range e.subs {
@@ -453,180 +402,13 @@ func (e *Engine) emit(ev Event) {
 
 // ---- clipboard watching ----
 
-func (e *Engine) watch(ctx context.Context) {
-	t := time.NewTicker(e.cfg.Poll)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-		s, err := e.cfg.Board.Read()
-		if err != nil {
-			continue // transient: the owner changed mid-read, or the board is locked
-		}
-		h := s.Hash()
-		e.mu.Lock()
-		changed := h != e.lastHash
-		e.lastHash = h
-		e.mu.Unlock()
-		if !changed || h == "" {
-			continue
-		}
-		e.broadcast(s)
-	}
-}
-
-// SetLocal writes s to the local clipboard on behalf of the user (CLI/GUI)
-// and syncs it like any other change.
-func (e *Engine) SetLocal(s clip.Snapshot) error {
-	if e.cfg.Board == nil {
-		return errors.New("no clipboard")
-	}
-	if err := e.cfg.Board.Write(s); err != nil {
-		return err
-	}
-	// The watcher will notice the write and broadcast it.
-	return nil
-}
-
-func (e *Engine) Current() (clip.Snapshot, error) {
-	if e.cfg.Board == nil {
-		return clip.Snapshot{}, errors.New("no clipboard")
-	}
-	return e.cfg.Board.Read()
-}
-
-func (e *Engine) broadcast(s clip.Snapshot) {
-	cfg := e.settings()
-	if !cfg.Sync.Enabled {
-		return
-	}
-	s = filterSync(s, cfg.Sync)
-	files, err := statFiles(s.Files, int64(cfg.Limits.MaxFileBytes))
-	if err != nil {
-		// A folder (or a vanished file) is on the clipboard. Its name as text
-		// would be a misleading clip, so sync nothing.
-		e.logf("not syncing clipboard files: %v", err)
-		return
-	}
-	s.Files = files
-	if s.Empty() {
-		return
-	}
-	total := int64(0)
-	for _, p := range s.Parts {
-		total += int64(len(p.Data))
-	}
-	for _, f := range s.Files {
-		total += f.Size
-	}
-	if total > int64(cfg.Limits.MaxTotalBytes) {
-		e.logf("not syncing clipboard: over the configured size limit")
-		return
-	}
-	id := wire.NewID()
-	ts := time.Now().UnixMilli()
-	e.mu.Lock()
-	targets := make([]*session, 0, len(e.sessions))
-	for _, ss := range e.sessions {
-		targets = append(targets, ss)
-	}
-	e.mu.Unlock()
-	for _, ss := range targets {
-		ss.enqueue(outClip{id: id, ts: ts, snap: s})
-	}
-	if len(targets) > 0 {
-		e.emit(Event{Kind: "sent", Info: s.Summary()})
-	}
-}
-
-// statFiles keeps regular files only: directories are not synced yet.
-func statFiles(in []clip.File, maxFile int64) ([]clip.File, error) {
-	var out []clip.File
-	for _, f := range in {
-		st, err := os.Stat(f.Path)
-		if err != nil {
-			return nil, err
-		}
-		if !st.Mode().IsRegular() {
-			return nil, fmt.Errorf("%s is not a regular file", f.Path)
-		}
-		if st.Size() > maxFile {
-			return nil, fmt.Errorf("%s is too large to sync", f.Path)
-		}
-		out = append(out, clip.File{Name: wire.SafeName(f.Name), Path: f.Path, Size: st.Size()})
-	}
-	return out, nil
-}
-
-// apply installs a remote clipboard locally.
-func (e *Engine) apply(from string, s clip.Snapshot, dir string) {
-	cfg := e.settings()
-	filtered := filterSync(s, cfg.Sync)
-	if !cfg.Sync.Enabled || filtered.Empty() || (len(filtered.Files) == 0 && dir != "") {
-		// Nothing wanted, or the files were turned off: the received copies go.
-		if dir != "" {
-			_ = os.RemoveAll(dir)
-			dir = ""
-		}
-		if !cfg.Sync.Enabled || filtered.Empty() {
-			return
-		}
-	}
-	s = filtered
-	h := s.Hash()
-	e.mu.Lock()
-	if h == e.lastHash {
-		e.mu.Unlock()
-		if dir != "" {
-			_ = os.RemoveAll(dir)
-		}
-		return
-	}
-	e.lastHash = h // so the watcher does not echo it back
-	old := e.inboxDir
-	e.inboxDir = dir
-	e.mu.Unlock()
-
-	if err := e.cfg.Board.Write(s); err != nil {
-		e.logf("write clipboard from %s: %v", from, err)
-		e.mu.Lock()
-		e.lastHash = ""
-		e.mu.Unlock()
-		return
-	}
-	// The system may add representations of its own to what we wrote, which
-	// would change the hash and bounce the clip back to its sender. Take the
-	// hash of what is really on the clipboard now as the baseline.
-	if back, err := e.cfg.Board.Read(); err == nil {
-		e.mu.Lock()
-		e.lastHash = back.Hash()
-		e.mu.Unlock()
-	}
-	// Received files stay while they are on the clipboard; the previous
-	// batch can go now.
-	if old != "" && old != dir {
-		_ = os.RemoveAll(old)
-	}
-	e.emit(Event{Kind: "received", Peer: from, Info: s.Summary()})
-}
-
 // ---- sessions ----
 
 type outClip struct {
-	id   string
-	ts   int64
-	snap clip.Snapshot
-	job  *Job // set for clips submitted through Submit; then snap is unused
+	job *Job
 }
 
-func (c outClip) fail(peer string, err error) {
-	if c.job != nil {
-		c.job.Report(peer, Failed, err)
-	}
-}
+func (c outClip) fail(peer string, err error) { c.job.Report(peer, Failed, err) }
 
 // TargetState is how far a clip got towards one device.
 type TargetState string
@@ -735,7 +517,7 @@ func (s *session) enqueue(c outClip) {
 	old := s.pend
 	s.pend = &c
 	s.omu.Unlock()
-	if old != nil && old.job != nil {
+	if old != nil {
 		old.job.Report(s.peerID, Superseded, nil)
 	}
 	select {
@@ -909,7 +691,7 @@ func dialer(self string, s *session) string {
 func (e *Engine) serve(s *session) {
 	e.logf("connected to %s", s.peerName)
 	_ = e.cfg.Store.TouchPeer(s.peerID)
-	e.emit(Event{Kind: "peer-up", Peer: s.peerName})
+	e.emit(Event{Kind: "peer-up"})
 	if !e.spawn(s.sendLoop) {
 		s.close()
 	}
@@ -925,7 +707,7 @@ func (e *Engine) serve(s *session) {
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 		e.logf("session with %s ended: %v", s.peerName, err)
 	}
-	e.emit(Event{Kind: "peer-down", Peer: s.peerName})
+	e.emit(Event{Kind: "peer-down"})
 }
 
 func (s *session) sendLoop() {
@@ -953,39 +735,31 @@ func (s *session) sendLoop() {
 
 // send writes one clip; it reports false when the session is no longer usable.
 func (s *session) send(c *outClip) bool {
-	if c.job != nil {
-		c.job.Report(s.peerID, Sending, nil)
-		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			select {
-			case <-s.done:
-				cancel()
-			case <-ctx.Done():
-			}
-		}()
-		broken, err := c.job.Send(ctx, s.w, s.e.cfg.ID)
-		cancel()
-		if err != nil {
-			select {
-			case <-s.done: // the connection ended, whatever the error looked like
-				err = ErrSessionClosed
-			default:
-			}
-			c.job.Report(s.peerID, Failed, err)
-			if broken {
-				s.close() // the stream may be out of step: start over
-				return false
-			}
-			return true
+	c.job.Report(s.peerID, Sending, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-s.done:
+			cancel()
+		case <-ctx.Done():
 		}
-		c.job.Report(s.peerID, Sent, nil)
+	}()
+	broken, err := c.job.Send(ctx, s.w, s.e.cfg.ID)
+	cancel()
+	if err != nil {
+		select {
+		case <-s.done: // the connection ended, whatever the error looked like
+			err = ErrSessionClosed
+		default:
+		}
+		c.job.Report(s.peerID, Failed, err)
+		if broken {
+			s.close() // the stream may be out of step: start over
+			return false
+		}
 		return true
 	}
-	if err := s.w.SendClip(c.id, s.e.cfg.ID, c.ts, c.snap); err != nil {
-		s.e.logf("send to %s: %v", s.peerName, err)
-		s.close()
-		return false
-	}
+	c.job.Report(s.peerID, Sent, nil)
 	return true
 }
 
@@ -1010,12 +784,12 @@ func (s *session) recvLoop() error {
 			cfg := s.e.settings()
 			lim := wire.Limits{File: int64(cfg.Limits.MaxFileBytes), Total: int64(cfg.Limits.MaxTotalBytes)}
 			var adm Admission
-			wanted := s.e.cfg.Board != nil
+			wanted := false
 			if s.e.cfg.Receiver != nil {
 				adm, wanted = s.e.cfg.Receiver.Admit(s.peerID, m)
 			}
 			if lerr := m.Fits(lim); !cfg.Sync.Enabled || lerr != nil || !wanted {
-				if wanted && adm.Done != nil {
+				if wanted {
 					adm.Done(clip.Snapshot{}, "", false) // give the reservation back
 				}
 				if lerr != nil {
@@ -1026,15 +800,9 @@ func (s *session) recvLoop() error {
 				}
 				continue
 			}
-			inbox := s.e.cfg.Inbox
-			if adm.Done != nil {
-				inbox = adm.Inbox
-			}
-			snap, dir, err := s.w.ReceiveClip(&m, inbox)
+			snap, dir, err := s.w.ReceiveClip(&m, adm.Inbox)
 			if err != nil {
-				if adm.Done != nil {
-					adm.Done(clip.Snapshot{}, "", false)
-				}
+				adm.Done(clip.Snapshot{}, "", false)
 				return err
 			}
 			if snap.Hash() != m.Hash {
@@ -1043,17 +811,11 @@ func (s *session) recvLoop() error {
 				if dir != "" {
 					_ = os.RemoveAll(dir)
 				}
-				if adm.Done != nil {
-					adm.Done(clip.Snapshot{}, "", false)
-				}
+				adm.Done(clip.Snapshot{}, "", false)
 				s.e.logf("dropped clip from %s: hash mismatch", s.peerName)
 				continue
 			}
-			if adm.Done != nil {
-				adm.Done(snap, dir, true)
-				continue
-			}
-			s.e.apply(s.peerName, snap, dir)
+			adm.Done(snap, dir, true)
 		case "peers":
 			var m wire.Peers
 			if err := json.Unmarshal(raw, &m); err != nil {
@@ -1178,12 +940,7 @@ func (e *Engine) addCandidate(c store.Candidate, direct bool) {
 		return
 	}
 	if created {
-		e.logf("%s wants to join; approve it with `unic approve %s`", c.Name, c.ID)
-		info := c.Via
-		if c.ByCode {
-			info = "code"
-		}
-		e.emit(Event{Kind: "pending", Peer: c.Name, Info: info})
+		e.emit(Event{Kind: "pending"})
 	}
 }
 

@@ -93,7 +93,7 @@ type node struct {
 
 func newOpts(t *testing.T, dir string) (Options, *fakeNet) {
 	f := newFakeNet(t)
-	return Options{DataDir: dir, transport: f}, f
+	return Options{DataDir: dir, Network: f}, f
 }
 
 func newNode(t *testing.T, rv *rvtest.Server) node {
@@ -773,7 +773,7 @@ func TestTrustSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts, _ := newOpts(t, a.dir)
-	opts.transport = a.net // same address as before
+	opts.Network = a.net // same address as before
 	a2, err := New(bg, opts)
 	if err != nil {
 		t.Fatal(err)

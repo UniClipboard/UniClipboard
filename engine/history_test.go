@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"github.com/uniclipboard/unic/internal/store"
 	"io"
 	"os"
 	"path/filepath"
@@ -265,5 +266,140 @@ func TestReferencedFilesAreRememberedNotCopied(t *testing.T) {
 	}
 	if it, err := e.GetItem(bg, r.HistoryID); err != nil || it.TotalBytes != 8 {
 		t.Fatal(it, err)
+	}
+}
+
+func TestUpdateAndDeleteRules(t *testing.T) {
+	n := newContentNode(t, nil)
+	start(t, n)
+	sub, err := n.e.SubscribeEvents(bg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sub.Close() }()
+	r := commitText(t, n.e, "u1", "to update")
+	ev, _ := sub.Next(bg)
+	if ev.Kind != EventHistory || len(ev.Objects) != 1 || ev.Objects[0].ID != string(r.HistoryID) {
+		t.Fatalf("event %+v", ev)
+	}
+	if st := state(t, n.e); st.HistoryRevision != 1 {
+		t.Fatalf("HistoryRevision = %d", st.HistoryRevision)
+	}
+	tags := []string{"b", "a", "a"}
+	it, err := n.e.UpdateItem(bg, UpdateItemRequest{ID: r.HistoryID, ExpectedRevision: 1, Tags: &tags})
+	if err != nil || it.Revision != 2 || len(it.Tags) != 2 || it.Tags[0] != "a" {
+		t.Fatalf("%+v %v", it, err)
+	}
+	if _, err := n.e.UpdateItem(bg, UpdateItemRequest{ID: r.HistoryID, ExpectedRevision: 1, Tags: &tags}); code(err) != CodeConflict {
+		t.Fatalf("stale revision: %v", err)
+	}
+	same := []string{"a", "b"}
+	if it2, err := n.e.UpdateItem(bg, UpdateItemRequest{ID: r.HistoryID, ExpectedRevision: 2, Tags: &same}); err != nil || it2.Revision != 2 {
+		t.Fatalf("no-op update changed the revision: %+v %v", it2, err)
+	}
+	past := int64(1)
+	for _, bad := range []UpdateItemRequest{
+		{ID: r.HistoryID, ExpectedRevision: 2},
+		{ID: r.HistoryID, ExpectedRevision: 2, ExpiresAtMs: &past},
+		{ID: r.HistoryID, Tags: &tags},
+	} {
+		if _, err := n.e.UpdateItem(bg, bad); code(err) != CodeInvalidArgument {
+			t.Fatalf("%+v: %v", bad, err)
+		}
+	}
+	// A reader opened before the delete keeps working; new requests do not.
+	h, err := n.e.RetainHistoryContent(bg, r.HistoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := n.e.DeleteItem(bg, DeleteItemRequest{ID: r.HistoryID, ExpectedRevision: 1}); code(err) != CodeConflict {
+		t.Fatal(err)
+	}
+	if err := n.e.DeleteItem(bg, DeleteItemRequest{ID: r.HistoryID, ExpectedRevision: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.GetItem(bg, r.HistoryID); code(err) != CodeNotFound {
+		t.Fatal(err)
+	}
+	if err := n.e.DeleteItem(bg, DeleteItemRequest{ID: r.HistoryID, ExpectedRevision: 2}); code(err) != CodeNotFound {
+		t.Fatalf("delete is not idempotent: %v", err)
+	}
+	if _, err := n.e.RetainHistoryContent(bg, r.HistoryID); code(err) != CodeNotFound {
+		t.Fatal(err)
+	}
+	rd, err := n.e.ReadContent(bg, h.LeaseID, h.Content.Parts[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := io.ReadAll(rd); string(b) != "to update" {
+		t.Fatalf("%q", b)
+	}
+	_ = rd.Close()
+}
+
+func TestDeletedFileBlobSurvivesUntilReleased(t *testing.T) {
+	n := newContentNode(t, nil)
+	start(t, n)
+	in, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("keep.txt", "still here")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "blob", LeaseID: in.LeaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = n.e.ReleaseContent(bg, in.LeaseID)
+	h, _ := n.e.RetainHistoryContent(bg, r.HistoryID)
+	if err := n.e.DeleteItem(bg, DeleteItemRequest{ID: r.HistoryID, ExpectedRevision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	rd, err := n.e.ReadContent(bg, h.LeaseID, h.Content.Parts[0].ID)
+	if err != nil {
+		t.Fatalf("a held blob vanished with its record: %v", err)
+	}
+	_ = rd.Close()
+	_ = n.e.ReleaseContent(bg, h.LeaseID)
+	eventually(t, "blob removed once nothing holds it", func() bool {
+		ents, _ := os.ReadDir(n.e.hist.dir)
+		return len(ents) == 0
+	})
+}
+
+func TestExpirySweepRemovesRecords(t *testing.T) {
+	old := historySweepEvery
+	historySweepEvery = 20 * time.Millisecond
+	t.Cleanup(func() { historySweepEvery = old })
+	n := newContentNode(t, nil)
+	start(t, n)
+	r := commitText(t, n.e, "exp", "short lived")
+	at := time.Now().Add(150 * time.Millisecond).UnixMilli()
+	if _, err := n.e.UpdateItem(bg, UpdateItemRequest{ID: r.HistoryID, ExpectedRevision: 1, ExpiresAtMs: &at}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "expired and hidden", func() bool {
+		_, err := n.e.GetItem(bg, r.HistoryID)
+		return code(err) == CodeNotFound
+	})
+	eventually(t, "row physically gone", func() bool {
+		items, _, _, _ := n.e.st.ListHistory(store.HistoryQuery{Limit: 10})
+		return len(items) == 0
+	})
+}
+
+func TestHistoryEvictsOldestOverCount(t *testing.T) {
+	n := newContentNode(t, func(o *Options) { o.History.MaxItems = 2 })
+	start(t, n)
+	a := commitText(t, n.e, "e1", "one")
+	commitText(t, n.e, "e2", "two")
+	c := commitText(t, n.e, "e3", "three")
+	if _, err := n.e.GetItem(bg, a.HistoryID); code(err) != CodeNotFound {
+		t.Fatalf("oldest survived: %v", err)
+	}
+	if _, err := n.e.GetItem(bg, c.HistoryID); err != nil {
+		t.Fatal(err)
+	}
+	page, _ := n.e.ListHistory(bg, ListHistoryRequest{})
+	if len(page.Items) != 2 {
+		t.Fatalf("%d items", len(page.Items))
 	}
 }

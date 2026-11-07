@@ -78,7 +78,8 @@ type Engine struct {
 	hist      *history
 	recv      []*receipt // the received list, oldest first
 	recvTimer *time.Timer
-	obsMu     sync.Mutex // serializes observation and application
+	histTimer *time.Timer // next expiry sweep; guarded by mu
+	obsMu     sync.Mutex  // serializes observation and application
 	obs       observation
 	ticket    *applyTicket
 	lastApply applyDone
@@ -158,6 +159,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if err != nil {
 		return closeAll(newErr(CodeUnavailable, "cannot prepare the history"))
 	}
+	hist.sweep(st) // expired records go before anyone can ask for them
 
 	id, err := identity(st)
 	if err != nil {
@@ -322,6 +324,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		} else {
 			e.life = LifecycleRunning
 			e.commitLocked(EventLifecycle)
+			e.scheduleHistorySweepLocked()
 		}
 		e.mu.Unlock()
 	}
@@ -465,6 +468,9 @@ func (e *Engine) teardown() {
 	if e.recvTimer != nil {
 		e.recvTimer.Stop()
 	}
+	if e.histTimer != nil {
+		e.histTimer.Stop()
+	}
 	used, trDone := e.trUsed, e.trDone
 	e.mu.Unlock()
 	if used {
@@ -536,6 +542,9 @@ func (e *Engine) finalize() {
 	e.recv = nil // their content goes with dropContent
 	if e.recvTimer != nil {
 		e.recvTimer.Stop()
+	}
+	if e.histTimer != nil {
+		e.histTimer.Stop()
 	}
 	e.mu.Unlock()
 	for _, s := range subs {

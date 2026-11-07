@@ -305,18 +305,20 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent) (Hist
 		return fail(ctxErr(err))
 	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	seq, _, err := e.st.InsertHistory(it)
 	if err != nil {
+		h.mu.Unlock()
 		return fail(historyStoreErr(err))
 	}
-	e.evictHistoryLocked(seq)
+	evicted := e.evictHistoryLocked(seq)
+	h.mu.Unlock()
+	e.historyChanged(append([]string{it.ID}, evicted...)...)
 	return HistoryID(it.ID), nil
 }
 
 // evictHistoryLocked drops the oldest records (never keep) until the limits
 // hold. Failures are retried at the next commit. h.mu held.
-func (e *Engine) evictHistoryLocked(keep int64) {
+func (e *Engine) evictHistoryLocked(keep int64) (evicted []string) {
 	h := e.hist
 	for {
 		n, bytes, err := e.st.HistoryTotals()
@@ -332,6 +334,7 @@ func (e *Engine) evictHistoryLocked(keep int64) {
 			return
 		}
 		h.dropUnreferenced(e.st, blobs)
+		evicted = append(evicted, old[0].ID)
 	}
 }
 
@@ -577,9 +580,13 @@ func readBlob(path string, size int64) ([]byte, *Error) {
 func (e *Engine) removeHistory(id HistoryID) {
 	h := e.hist
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	if blobs, _, err := e.st.DeleteHistory(string(id), 0); err == nil {
+	blobs, _, err := e.st.DeleteHistory(string(id), 0)
+	if err == nil {
 		h.dropUnreferenced(e.st, blobs)
+	}
+	h.mu.Unlock()
+	if err == nil {
+		e.historyChanged(string(id))
 	}
 }
 
@@ -588,4 +595,126 @@ type missingSource struct{}
 
 func (missingSource) Open(context.Context) (io.ReadCloser, FileMeta, error) {
 	return nil, FileMeta{}, fs.ErrNotExist
+}
+
+// sweep deletes expired records and returns their IDs.
+func (h *history) sweep(st *store.Store) []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	ids, blobs, _, err := st.ExpiredHistory(time.Now().UnixMilli())
+	if err != nil || len(ids) == 0 {
+		return nil
+	}
+	h.dropUnreferenced(st, blobs)
+	return ids
+}
+
+var historySweepEvery = 30 * time.Second // var so tests can shorten it
+
+// scheduleHistorySweepLocked arms the next expiry scan. e.mu held.
+func (e *Engine) scheduleHistorySweepLocked() {
+	if e.histTimer != nil {
+		e.histTimer.Stop()
+	}
+	e.histTimer = time.AfterFunc(historySweepEvery, e.sweepTick)
+}
+
+func (e *Engine) sweepTick() {
+	e.mu.Lock()
+	if e.life != LifecycleRunning {
+		e.mu.Unlock()
+		return
+	}
+	e.opWG.Add(1) // admitted together with Stop, which waits for it
+	e.mu.Unlock()
+	defer e.opWG.Done()
+	ids := e.hist.sweep(e.st)
+	e.mu.Lock()
+	if len(ids) > 0 {
+		e.commitObjsLocked(historyRefs(ids), EventHistory)
+	}
+	if e.life == LifecycleRunning {
+		e.scheduleHistorySweepLocked()
+	}
+	e.mu.Unlock()
+}
+
+func historyRefs(ids []string) []ObjectRef {
+	refs := make([]ObjectRef, len(ids))
+	for i, id := range ids {
+		refs[i] = ObjectRef{Type: "history", ID: id}
+	}
+	return refs
+}
+
+// historyChanged announces changed records after their database commit.
+func (e *Engine) historyChanged(ids ...string) {
+	e.mu.Lock()
+	e.commitObjsLocked(historyRefs(ids), EventHistory)
+	e.mu.Unlock()
+}
+
+// UpdateItem changes tags and/or expiry of a record when ExpectedRevision
+// matches. Content is immutable. Setting the values it already has succeeds
+// without a new revision or event.
+func (e *Engine) UpdateItem(ctx context.Context, req UpdateItemRequest) (HistoryItem, error) {
+	release, gerr := e.historyGate(ctx, true, false)
+	if gerr != nil {
+		return HistoryItem{}, gerr
+	}
+	defer release()
+	if req.ID == "" || req.ExpectedRevision == 0 {
+		return HistoryItem{}, newErr(CodeInvalidArgument, "ID and a non-zero ExpectedRevision are required")
+	}
+	if req.Tags == nil && req.ExpiresAtMs == nil {
+		return HistoryItem{}, newErr(CodeInvalidArgument, "nothing to update")
+	}
+	now := time.Now().UnixMilli()
+	var tags *[]string
+	if req.Tags != nil {
+		n, terr := normalizeTags(*req.Tags)
+		if terr != nil {
+			return HistoryItem{}, terr
+		}
+		tags = &n
+	}
+	if x := req.ExpiresAtMs; x != nil && (*x < 0 || (*x > 0 && *x <= now)) {
+		return HistoryItem{}, newErr(CodeInvalidArgument, "ExpiresAtMs must be 0 or in the future")
+	}
+	h := e.hist
+	h.mu.Lock()
+	it, changed, _, err := e.st.UpdateHistory(string(req.ID), req.ExpectedRevision, tags, req.ExpiresAtMs, now)
+	h.mu.Unlock()
+	if err != nil {
+		return HistoryItem{}, historyStoreErr(err)
+	}
+	if changed {
+		e.historyChanged(string(req.ID))
+	}
+	return toHistoryItem(it), nil
+}
+
+// DeleteItem removes a record. Readers, leases and applications that already
+// hold its content keep it until they finish; new requests get not_found.
+func (e *Engine) DeleteItem(ctx context.Context, req DeleteItemRequest) error {
+	release, gerr := e.historyGate(ctx, true, false)
+	if gerr != nil {
+		return gerr
+	}
+	defer release()
+	if req.ID == "" || req.ExpectedRevision == 0 {
+		return newErr(CodeInvalidArgument, "ID and a non-zero ExpectedRevision are required")
+	}
+	h := e.hist
+	h.mu.Lock()
+	blobs, _, err := e.st.DeleteHistory(string(req.ID), req.ExpectedRevision)
+	if err == nil {
+		h.dropUnreferenced(e.st, blobs)
+	}
+	h.mu.Unlock()
+	if err != nil {
+		return historyStoreErr(err)
+	}
+	e.historyChanged(string(req.ID))
+	return nil
 }

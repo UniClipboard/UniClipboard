@@ -325,6 +325,8 @@ type State struct {
 	PairingCode  PairingCodeState  `json:"pairing_code"`
 	Operations   []Operation       `json:"operations"`
 	Received     []ReceivedContent `json:"received"`
+	// HistoryRevision is the persisted revision of the history collection.
+	HistoryRevision uint64 `json:"history_revision,string"`
 	// ActiveApply is the application in progress, if any. Only one at a time.
 	ActiveApply *ActiveApply `json:"active_apply,omitempty"`
 }
@@ -378,6 +380,7 @@ const (
 	EventOperations   EventKind = "operations"
 	EventReceived     EventKind = "received"
 	EventApply        EventKind = "apply"
+	EventHistory      EventKind = "history" // Objects: type "history", ID = HistoryID
 	// EventResourceWarning is a hint that something was refused for lack of
 	// room. It is not a task: losing it loses nothing.
 	EventResourceWarning EventKind = "resource_warning"

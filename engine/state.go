@@ -203,7 +203,11 @@ func (e *Engine) stateLocked() (State, *Error) {
 	}
 	now := time.Now()
 	e.ops.prune(now, e.res.OperationTTL)
-	st := State{
+	hrev, herr := e.st.HistoryRevision()
+	if herr != nil {
+		return State{}, retryable(newErr(CodeUnavailable, "the history database failed"))
+	}
+	st := State{HistoryRevision: hrev,
 		InstanceID: e.instance, Revision: e.rev, Lifecycle: e.life, Runtime: e.runtime,
 		Self:         Self{ID: e.self, Name: e.selfNameLocked()},
 		Settings:     e.settings,

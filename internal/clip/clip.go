@@ -87,11 +87,3 @@ func (s Snapshot) Summary() string {
 	}
 	return "empty"
 }
-
-// Board is the system clipboard as the desktop host sees it. The production
-// implementation is backed by mygo; tests use a fake. The engine never touches
-// it: the host reads and writes it and tells the engine.
-type Board interface {
-	Read() (Snapshot, error)
-	Write(Snapshot) error
-}

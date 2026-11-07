@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"unic/internal/config"
 	"unic/internal/rendezvous"
+	"unic/internal/wire"
 )
 
 var errLocked = errors.New("data directory is locked")
@@ -68,40 +68,40 @@ type Network interface {
 	Close() error
 }
 
-// DefaultSettings are the settings of a fresh install.
+// DefaultSettings are the settings of a fresh install: everything syncs, up to
+// the protocol's limits.
 func DefaultSettings() Settings {
-	d := config.Default()
-	return fromConfig(d)
-}
-
-func fromConfig(c config.Config) Settings {
 	return Settings{
-		DeviceName: c.DeviceName, RendezvousURL: c.RendezvousURL,
-		Limits: Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
-		Sync:   SyncSettings(c.Sync),
+		Limits: Limits{MaxFileBytes: wire.MaxFileBytes, MaxTotalBytes: wire.MaxTotal},
+		Sync:   SyncSettings{Enabled: true, Text: true, Images: true, Files: true},
 	}
 }
 
-func (s Settings) toConfig() config.Config {
-	return config.Config{
-		DeviceName: strings.TrimSpace(s.DeviceName), RendezvousURL: strings.TrimRight(s.RendezvousURL, "/"),
-		Limits: config.Limits{MaxFileBytes: config.Size(s.Limits.MaxFileBytes), MaxTotalBytes: config.Size(s.Limits.MaxTotalBytes)},
-		Sync:   config.Sync(s.Sync),
+// Validate checks s. The messages name the setting and the rule, never a value
+// that could be a secret, and use the names of the configuration file keys.
+// Hosts that read settings from a file use it to check them.
+func (s Settings) Validate() error {
+	if err := s.validate(); err != nil {
+		return err
 	}
+	return nil
 }
 
-// validate checks s with the same rules as the configuration file (0002).
 func (s Settings) validate() *Error {
-	c := s.toConfig()
-	if c.RendezvousURL != "" {
-		if u, err := url.Parse(c.RendezvousURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+	name := strings.TrimSpace(s.DeviceName)
+	if len(name) > 64 || strings.ContainsAny(name, "\r\n\x00") {
+		return newErr(CodeInvalidArgument, "device_name: at most 64 characters, one line")
+	}
+	if u := strings.TrimRight(s.RendezvousURL, "/"); u != "" {
+		if p, err := url.Parse(u); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" {
 			return newErr(CodeInvalidArgument, "rendezvous_url: must be an http(s) URL")
 		}
 	}
-	if err := c.Validate(); err != nil {
-		// Validate's messages name the field and the rule, never a value that
-		// could be a secret.
-		return newErr(CodeInvalidArgument, err.Error())
+	if f := s.Limits.MaxFileBytes; f <= 0 || f > wire.MaxFileBytes {
+		return errf(CodeInvalidArgument, "limits.max_file_bytes: must be between 1 byte and %d bytes (2GiB)", int64(wire.MaxFileBytes))
+	}
+	if t := s.Limits.MaxTotalBytes; t <= 0 || t > wire.MaxTotal {
+		return errf(CodeInvalidArgument, "limits.max_total_bytes: must be between 1 byte and %d bytes (4GiB)", int64(wire.MaxTotal))
 	}
 	return nil
 }

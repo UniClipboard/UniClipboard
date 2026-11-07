@@ -22,11 +22,19 @@ import (
 	"unic/internal/config"
 )
 
+// Board is the system clipboard as the desktop host sees it. The production
+// implementation is backed by mygo (internal/board); tests use a fake. The
+// engine never touches it: the host reads and writes it and tells the engine.
+type Board interface {
+	Read() (clip.Snapshot, error)
+	Write(clip.Snapshot) error
+}
+
 // Options configure a Node.
 type Options struct {
 	Dir      string          // the state directory (database, identity)
 	Settings *config.Manager // the configuration file; edits reach the engine at once
-	Board    clip.Board      // the system clipboard
+	Board    Board           // the system clipboard
 	Poll     time.Duration   // clipboard poll interval; default 400ms
 	Logf     func(string, ...any)
 	// Network replaces tailcat (tests).
@@ -80,14 +88,10 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 // toSettings maps the configuration file to engine settings. The environment
 // variable that picks the pairing code service is read here, not in the engine.
 func toSettings(c config.Config) engine.Settings {
-	url := c.RendezvousURL
-	if url == "" {
-		url = os.Getenv("UNIC_RENDEZVOUS_URL")
+	s := c.Settings()
+	if s.RendezvousURL == "" {
+		s.RendezvousURL = os.Getenv("UNIC_RENDEZVOUS_URL")
 	}
-	s := engine.DefaultSettings()
-	s.DeviceName, s.RendezvousURL = c.DeviceName, url
-	s.Limits = engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)}
-	s.Sync = engine.SyncSettings(c.Sync)
 	return s
 }
 

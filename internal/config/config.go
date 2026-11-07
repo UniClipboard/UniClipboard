@@ -6,13 +6,14 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"unic/engine"
 )
 
 // Hard caps of the wire protocol; limits in the file cannot exceed them.
@@ -104,29 +105,23 @@ func Parse(data []byte) (Config, error) {
 	return c, c.Validate()
 }
 
-// Validate checks values. Messages never include the offending values of
-// fields that could carry secrets.
+// Settings is the configuration as engine settings.
+func (c Config) Settings() engine.Settings {
+	return engine.Settings{
+		DeviceName: c.DeviceName, RendezvousURL: c.RendezvousURL,
+		Limits: engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
+		Sync:   engine.SyncSettings(c.Sync),
+	}
+}
+
+// Validate checks values; the engine's rules apply to everything the engine
+// uses, so the file and the SDK cannot disagree. Messages never include the
+// offending values of fields that could carry secrets.
 func (c Config) Validate() error {
-	c.DeviceName = strings.TrimSpace(c.DeviceName)
-	if len(c.DeviceName) > 64 || strings.ContainsAny(c.DeviceName, "\r\n\x00") {
-		return errors.New("device_name: at most 64 characters, one line")
-	}
-	if c.RendezvousURL != "" {
-		u, err := url.Parse(c.RendezvousURL)
-		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return errors.New("rendezvous_url: must be an http(s) URL")
-		}
-	}
 	if c.Inbox != "" && !filepath.IsAbs(c.Inbox) {
 		return errors.New("inbox: must be an absolute path")
 	}
-	if f := int64(c.Limits.MaxFileBytes); f <= 0 || f > HardMaxFile {
-		return fmt.Errorf("limits.max_file_bytes: must be between 1 byte and %d bytes (2GiB)", int64(HardMaxFile))
-	}
-	if t := int64(c.Limits.MaxTotalBytes); t <= 0 || t > HardMaxTotal {
-		return fmt.Errorf("limits.max_total_bytes: must be between 1 byte and %d bytes (4GiB)", int64(HardMaxTotal))
-	}
-	return nil
+	return c.Settings().Validate()
 }
 
 // Template is written when no config file exists. Everything is commented

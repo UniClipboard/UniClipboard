@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"unic/internal/clip"
-	"unic/internal/config"
 	"unic/internal/rendezvous"
 	"unic/internal/store"
 	"unic/internal/wire"
@@ -72,8 +71,22 @@ type Admission struct {
 	Done  func(snap clip.Snapshot, dir string, ok bool)
 }
 
-// SettingsSource provides the configuration in effect; *config.Manager is one.
-type SettingsSource interface{ Current() config.Config }
+// Settings are the parts of the user's configuration the session layer acts on.
+type Settings struct {
+	DeviceName    string
+	RendezvousURL string
+	MaxFileBytes  int64
+	MaxTotalBytes int64
+	SyncEnabled   bool
+}
+
+// DefaultSettings: sync on, the protocol's own limits.
+func DefaultSettings() Settings {
+	return Settings{MaxFileBytes: wire.MaxFileBytes, MaxTotalBytes: wire.MaxTotal, SyncEnabled: true}
+}
+
+// SettingsSource provides the settings in effect.
+type SettingsSource interface{ Current() Settings }
 
 // Sentinel errors, so that callers can classify failures without matching text.
 var (
@@ -128,9 +141,9 @@ func New(cfg Config) *Engine {
 func (e *Engine) logf(f string, a ...any) { e.cfg.Logf(f, a...) }
 
 // settings is the configuration in effect right now.
-func (e *Engine) settings() config.Config {
+func (e *Engine) settings() Settings {
 	if e.cfg.Settings == nil {
-		return config.Default()
+		return DefaultSettings()
 	}
 	return e.cfg.Settings.Current()
 }
@@ -782,13 +795,13 @@ func (s *session) recvLoop() error {
 			// limits) is read and dropped, so the stream stays in sync and
 			// the connection survives.
 			cfg := s.e.settings()
-			lim := wire.Limits{File: int64(cfg.Limits.MaxFileBytes), Total: int64(cfg.Limits.MaxTotalBytes)}
+			lim := wire.Limits{File: cfg.MaxFileBytes, Total: cfg.MaxTotalBytes}
 			var adm Admission
 			wanted := false
 			if s.e.cfg.Receiver != nil {
 				adm, wanted = s.e.cfg.Receiver.Admit(s.peerID, m)
 			}
-			if lerr := m.Fits(lim); !cfg.Sync.Enabled || lerr != nil || !wanted {
+			if lerr := m.Fits(lim); !cfg.SyncEnabled || lerr != nil || !wanted {
 				if wanted {
 					adm.Done(clip.Snapshot{}, "", false) // give the reservation back
 				}

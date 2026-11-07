@@ -18,7 +18,7 @@ import (
 // it read back after each write.
 type clipboardHost struct {
 	e     *engine.Engine
-	board clip.Board
+	board Board
 	poll  time.Duration
 	hub   *hub
 	logf  func(string, ...any)

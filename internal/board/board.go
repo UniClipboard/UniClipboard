@@ -1,4 +1,4 @@
-// Package board adapts mygo's clipboard to clip.Board.
+// Package board adapts mygo's clipboard to the desktop host's Board interface.
 package board
 
 import (

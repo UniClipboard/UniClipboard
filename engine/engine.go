@@ -18,10 +18,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
-	"unic/internal/config"
 	core "unic/internal/engine"
 	"unic/internal/rendezvous"
 	"unic/internal/store"
@@ -197,10 +197,12 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 // settingsSource feeds the current settings to the core.
 type settingsSource struct{ e *Engine }
 
-func (s settingsSource) Current() config.Config {
+func (s settingsSource) Current() core.Settings {
 	s.e.mu.Lock()
 	defer s.e.mu.Unlock()
-	return s.e.settings.Value.toConfig()
+	v := s.e.settings.Value
+	return core.Settings{DeviceName: strings.TrimSpace(v.DeviceName), RendezvousURL: strings.TrimRight(v.RendezvousURL, "/"),
+		MaxFileBytes: v.Limits.MaxFileBytes, MaxTotalBytes: v.Limits.MaxTotalBytes, SyncEnabled: v.Sync.Enabled}
 }
 
 func (e *Engine) logf(level slog.Level, msg string, args ...any) {

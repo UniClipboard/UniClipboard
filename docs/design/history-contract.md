@@ -1,0 +1,134 @@
+# 本机历史契约 v0.1
+
+- 状态：契约已确定，待实现；本文不表示历史 API 已可调用。
+- 日期：2026-11-07。
+- 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[插件契约](plugin-contract.md)。本文是 Engine 公共契约的历史扩展，公开包仍为 `github.com/uniclipboard/unic/engine`。
+
+## 1. 所有权与记录单位
+
+历史、查询、过期、淘汰和使用流程由 Engine 管理，业务实现放在 `engine/`；SQLite 和文件操作可复用基础设施。宿主不直接读写历史数据库，不自行维护第二份历史或搜索索引。
+
+一条历史对应一次通过处理流水线的 commit，保存处理后的最终内容。`persist=true` 才入库；相同内容的不同 commit 具有不同 HistoryID，可共享内部 blob，但不能按 hash 合并用户记录。观察基线、未变化、清空、写回回声和同一请求的幂等重试不产生新记录。标签和过期仅本机生效。
+
+历史内容不可变；提交后只能修改标签和过期时间。修改正文必须作为新的显式提交走处理流水线，不能原地修改已提交内容。删除或到期不清空系统剪贴板，不撤回已经发送的字节，不删除用户源文件。
+
+## 2. 标识、描述与 API
+
+HistoryID 为不透明 string 类型，至少 128 位随机性，不含正文、hash、路径或设备地址，在同一 DataDir 内跨重启稳定、永不复用；不属于实例前缀 ID。其他 DataDir 的 HistoryID 与未知/已删除 ID 一样返回 not_found，不提供跨库探测。ContentID、LeaseID、ReceiptID、OperationID、ApplyToken 仍仅当前实例有效。
+
+目标公开签名如下，类型在 engine 定义：
+
+```go
+func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (HistoryPage, error)
+func (e *Engine) GetItem(ctx context.Context, id HistoryID) (HistoryItem, error)
+func (e *Engine) RetainHistoryContent(ctx context.Context, id HistoryID) (ContentHandle, error)
+func (e *Engine) UpdateItem(ctx context.Context, req UpdateItemRequest) (HistoryItem, error)
+func (e *Engine) DeleteItem(ctx context.Context, req DeleteItemRequest) error
+func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest) (ApplyTicket, error)
+```
+
+`HistoryItem` 是无正文的元数据快照：
+
+| 字段 | 语义 |
+|---|---|
+| ID | HistoryID |
+| Revision | 持久化 uint64，创建为 1；每次有效元数据或同步摘要变更递增，CAS 使用此值 |
+| Kind | text/image/files；含文件优先 files，其次 PNG 为 image，其余为 text，与宿主应用优先级一致 |
+| Origin | Kind 为 local_system/remote_device/plugin/explicit；DeviceID、PluginID 仅对应来源有值，不含秘密地址 |
+| SourceApp | 可空的不透明应用标识，不包含窗口标题、路径或自由文本摘要 |
+| AutomationDepth | commit 时的处理深度 |
+| CreatedAtMs / UpdatedAtMs | 本机 commit 时间 / 最后一次有效变更时间；不采用远端时间 |
+| ExpiresAtMs | 0 为永不过期，否则为绝对 Unix 毫秒时间 |
+| Tags | 最多 32 个，每个最多 64 个 UTF-8 字节，去重、按 UTF-8 字节顺序返回 |
+| Parts | 只含 Kind、MIME、Size；不含文本预览、文件名、路径、PartID 或实例内 ContentID |
+| TotalBytes | 所有 part 的逻辑字节总和 |
+| SyncState | not_requested/pending/sent/partial/failed/interrupted；仅本机发送摘要，不代表远端收到或应用 |
+
+文件名与具体 PartID 在显式 RetainHistoryContent 返回的 ContentDescriptor 获取。普通 State、列表、事件和错误不携带正文。HistoryItem 只描述持久记录，不返回租约；所有返回值遵守 Engine 的快照隔离约定。
+
+同步不请求时为 not_requested（含远端首版不转发）；已建发送操作为 pending，终态按目标结果汇总为 sent/partial/failed，全部 superseded 归 failed。重启发现 pending 改为 interrupted，不恢复或重发。OperationID 不作为持久可查询凭证；历史摘要保留但操作仍按实例保留期回收。
+
+## 3. 基础查询与分页
+
+`ListHistoryRequest{Limit int, Cursor string, Filter HistoryFilter}`；Limit=0 使用 50，合法范围 1..200。`HistoryFilter{Kinds []HistoryKind, Tags []string, OriginKinds []HistoryOriginKind, DeviceID DeviceID, CreatedFromMs int64, CreatedBeforeMs int64}`：各字段之间 AND，同字段 Kinds/OriginKinds 内 OR，Tags 为全部匹配，时间为 `[from, before)`，0 表示不设该边界。DeviceID 只匹配 remote_device 来源。未知枚举、非法时间区间或超出标签限制返回 invalid_argument；重复筛选项规范化去重。
+
+首版不提供正文关键词、文件名搜索、模糊匹配、相关度排序或全文索引；不以返回全量正文让宿主自行搜索来绕过边界。
+
+`HistoryPage{Items []HistoryItem, NextCursor string, HistoryRevision uint64}`。顺序使用私有的、事务内递增且持久化的 commit 序号降序，不依赖墙钟或 HistoryID；相同毫秒和系统时间回拨不会造成重复/漏页。序号不是公开 ID。第一页面固定上界，后续页使用 keyset 游标，不使用 offset，不保留长事务。
+
+游标绑定 DataDir、当前 InstanceID、规范化 Filter、第一页上界和上页末尾序号。后续请求须带相同 Filter，Limit 可变。畸形或篡改游标报 invalid_argument，变更 Filter 报 conflict，跨实例游标报 resource_expired。游标不得携带正文、路径或秘密；必须校验来源与完整性。
+
+分页是有上界的实时遍历，不是数据库快照：新 commit 不进入当前遍历；删除/到期条目跳过；标签更新可使尚未遍历的旧记录加入或退出结果，已越过的记录不回补，元数据取每次查询时快照。同一遍历不会重复返回记录。NextCursor 为空表示该查询时没有后续匹配项，不保证未来不再变化。需要最新完整视图时从第一页重新查询。
+
+HistoryRevision 是数据库内持久化的历史集合修订号，每次历史可见变更递增；页面内条目和该修订号在同一读事务取得。它用于检测变更，不用于跨页锁定快照，不与实例 State.Revision 混用。不提供总数以免暗示多页快照一致性。
+
+## 4. 内容读取、更新与删除
+
+GetItem 不分配内容租约。RetainHistoryContent 在单一提交点检查记录存在且未到期，再返回当前实例的 ContentHandle；多个调用各自取得新租约，实例内可复用 ContentID。后续使用已有 ReadContent/LocalFilePath/ReleaseContent。历史持有引用与外部租约分开，ReleaseContent 不删除历史。
+
+`UpdateItemRequest{ID HistoryID, ExpectedRevision uint64, Tags *[]string, ExpiresAtMs *int64}`：两个可选字段至少给一个；非 nil Tags 替换全部标签（空数组清空）；ExpiresAtMs 为 0 清除期限，为正则必须晚于提交时本机当前时间，负数无效。插件的 SetExpire(duration) 仍从原 commit 起算，管理 API 使用绝对时间。全部字段校验成功且 Revision 一致才原子更新；相同值为成功无变化，不递增修订、不发事件、不改变排序。
+
+`DeleteItemRequest{ID HistoryID, ExpectedRevision uint64}`。更新和删除都要求非零 ExpectedRevision；存在但修订不符报 conflict，未知/已删除/已到期报 not_found，不保留永久墓碑。删除不是幂等成功接口；发生超时可重新 GetItem 判断，不承诺跨重启请求去重。context 取消不撤销已提交变更。
+
+删除、过期和容量淘汰在事务提交点立即使条目对 List/Get/Retain/Update/BeginApplyHistory 不可见，并释放历史引用；已取得的租约、读取、发送和应用继续持有内容直至结束，不能因删除而使其失效。活动应用允许删除其历史元数据，应用票据依赖独立内容引用；这不同于锁定的 Received 条目不能 DismissReceived。所有剩余引用释放后才删除物理 blob；Close 中止实例读取和工作，但保留仍属有效历史的资源。
+
+## 5. 历史、接收列表与使用
+
+Received 是实例内、有 TTL 的待应用视图，History 是跨重启的本机记录。接收 commit 可同时建立二者；`ReceivedContent` 新增可空 `HistoryID`，persist=false 时为空。二者独立持有内容引用：DismissReceived/ReceivedTTL/应用后移出列表不删除历史；删除历史不自动 dismiss、撤销或失效已接收内容。历史链接可能返回 not_found，宿主必须容忍。重启不重建 Received，也不自动应用历史。
+
+`ApplyHistoryRequest{HistoryID, ExpectedEpoch, ExpectedSequence}` 经 BeginApplyHistory 取得现有 ApplyTicket，共享 BeginApply 的唯一槽位、宿主能力校验、观察版本竞争和 ReportApplyResult 协议。仅 running/active 可调用；不要求联网、同步启用或仍信任原设备。历史已本地化，撤销配对不删除它。停止/挂起/应用能力撤销会使票据失效；仅同步暂停不使历史应用票据失效。
+
+历史使用写入的是已提交最终内容，不重新运行处理器、不产生新历史、不自动同步；回读用同一 token 建立基线，已知回声不触发捕获。成功报告产生只读 clipboard.pasted 通知，语义仅为宿主成功使用，不能断言其他应用已经粘贴。若 UI 要“再次发送”，显式 RetainHistoryContent 后 SubmitContent，按新的提交运行处理器并可生成新历史，原条目保持不变。
+
+本机插件改写后的自动写回仍由流水线契约另行定义，不能冒充 BeginApplyHistory 或凭时间接近判断回声。
+
+## 6. 存储、配额与过期
+
+SQLite 存元数据、小正文和 blob 引用；大正文/文件存 `DataDir/history/` 的 Engine 私有目录，不能使用会在启动/关闭时清空的临时接收目录。每个内存表示不大于 256 KiB 时可内联，超过时必须外置；文件一律作为自有 blob，不依赖宿主文件路径。目录与引用只在内部可见。
+
+持久化引用文件时须通过 FileSource 重新打开、校验原导入的 FileMeta、按声明长度复制并校验完成后的版本；变化报 source_changed，失败回滚该 commit，不能保存一个重启后无法打开的宿主引用。成功后历史和后续发送使用同一份自有快照，文件大小变化不会污染已提交内容。源文件不变情况下仍不承诺宿主无法检测的原地同尺寸改写具有原子快照语义。
+
+新增创建选项 `Options.History HistoryOptions`：
+
+| 字段 | 零值/默认值 | 约束 |
+|---|---|---|
+| MaxItems | 10000 | >0，记录上限 |
+| MaxBytes | 4 GiB | >0 且不超过 ResourcePolicy.MaxStoredBytes；按每条历史 TotalBytes 求和，即使共享 blob 也逐条计入 |
+| DefaultTTL | 0（不自动到期） | 非负；用于没有显式 SetExpire 的 commit，显式期限优先 |
+
+以上选项只在 New 设置，不增加 TOML 热更新承诺；桌面日后映射需同步配置模板与重启提示。ResourcePolicy.MaxStoredBytes 仍是所有自有内容的总逻辑配额，共享同一内部内容对象只计一次，不因历史、Received、租约和操作增加引用而重复计数；复制引用文件成为自有资源时必须先预留该配额。SQLite 元数据/WAL、临时文件与文件系统块开销不属于精确计费，磁盘错误仍须处理，不能把逻辑配额当硬磁盘上限。
+
+每次 commit 前按新条目计算历史条数/字节，超限按最旧 commit 淘汰；不做收藏保护。单条大于 MaxBytes 直接 resource_exhausted，不先删除旧记录。全局配额不足时只淘汰能实际释放内容的历史/接收持有项；有外部租约、读取、应用或发送持有的资源不能被当作可回收字节。仍不足则拒绝新 commit，回滚预留与暂存资源，不发送。历史容量淘汰可以移除有活动引用的元数据，但不能声称其字节已经物理释放。
+
+commit 须先完成自有 blob 暂存与持久化，再在数据库事务内发布内容引用、历史、淘汰和修订号；数据库提交成功后才发布通知与网络派发。事务失败不删除既有历史，已落盘但未被数据库引用的孤儿 blob 留待安全清理。提交成功后崩溃不会自动恢复待发送工作。不得宣称跨系统剪贴板、数据库与网络原子提交。
+
+到期定义为当前本机墙钟 >= ExpiresAtMs；跨重启保存绝对时间，进程内定时器只负责唤醒，唤醒后重新比较墙钟。回拨可延后尚未删除条目到期，前拨可提前触发，已删除不会复活。New 返回前清理到期元数据与仅由 Engine 拥有的孤儿资源，运行时每 30 秒扫描且查询/读取/变更时再次判定，禁止在扫描间隙返回已到期条目。物理清理失败可重试，不恢复逻辑记录；错误必须脱敏。
+
+## 7. commit、生命周期与事件恢复
+
+本机有效变化和 explicit 提交先处理/commit，再决定是否发送；同步关闭、无在线目标、插件禁发或无后端不应阻止 persist=true 写历史。baseline/empty/unchanged/echo 仍不入历史。远端先通过身份、同步过滤和资源准入，再进入 received/commit；persist=true 入库失败则不建立可应用条目。
+
+此约定扩展 Engine 契约中旧 Submit/Observe 的发送语义：[流水线提交契约](pipeline-contract.md) 已确定新增 CommitContent/GetSubmission、失败结果幂等缓存及观察结果扩展，原 SubmitContent 签名保留为兼容门面。旧 no_targets/sync_disabled/unsupported 返回值仅说明未安排发送，不能推断历史没有入库；新宿主使用结构化提交结果，避免重试重复 commit。
+
+历史 List/Get/Retain 在 created/running/stopped 可用，stopping 仅允许 List/Get 和已有内容读取/释放；closed 返回 closed。Update/Delete 在 created/running 可用，包括 running/suspended；stopped/stopping 返回 invalid_state。Stop 后不再产生定时历史变更，查询仍按当前时间隐藏到期项，物理清理留给下次 New；Close 不删除有效持久历史。BeginApplyHistory 的运行条件见第 5 节。
+
+State 新增 `HistoryRevision`，不嵌入全量历史。历史增删改在持久事务内更新 HistoryRevision，随后更新实例 State.Revision 并发 `history` 事件（Objects 类型 history，ID 为 HistoryID）。流水线另发 committed/updated/deleted/expired 通知，容量淘汰按 deleted；这些事件只含 ID 和稳定原因，不带正文、路径、文件名或原始插件错误。
+
+历史读取/变更与事件注册须统一序列化可见提交点，不允许看到新数据库记录却取得旧 State.HistoryRevision。订阅初始快照含 HistoryRevision，沿用 resync_required；消费者先订阅，再分页加载并消费变更，加载期 HistoryRevision 改变可重载。分页不是快照，持续写入时不保证有限重试可得到全量静态副本，UI 可用历史事件提示刷新。删除事件后 GetItem 返回 not_found 是正常情况。
+
+重启后持久 HistoryRevision 保留，InstanceID/State.Revision 重建，不重放旧历史事件。启动清理产生的结果包含在首个快照中；无持久事件回放或可靠投递承诺。
+
+## 8. 必须补充的契约测试（待实现）
+
+- 稳定 ID 重启可用，旧内容租约/游标失效；不同库和已删除 ID 返回 not_found。
+- 同毫秒/时间回拨分页不重复，新插入不进入旧遍历，筛选变更与游标篡改被拒绝，删除/更新遵循实时遍历语义。
+- List/Get 无正文、文件名/路径/实例内容句柄；显式租约读取返回准确正文、文件名与自有快照。
+- 相同内容独立记录、共享计费不重复；观察/请求幂等不重复 commit，关闭同步/无目标仍入历史。
+- CAS 更新/删除竞争、过期竞争、清除期限、无变化更新；正文不可原地改写。
+- 删除/过期与读取、租约、发送、应用交错，现有持有者可完成，新请求不可取得已删除历史。
+- Received dismiss 不删历史，历史删除不撤销 Received；重启不重建待应用列表。
+- 历史应用复用唯一槽位，离线/同步暂停可用，新复制导致确认冲突，回声不入历史、不转发。
+- 引用文件持久化前变化、配额预留失败、磁盘满、事务回滚、崩溃后孤儿清理，不能误删源文件或有效历史。
+- 条数/字节淘汰、单条超限无破坏、活动引用不虚报可回收空间，Stop/Close 保留持久资源。
+- 到期读时不可见、时钟变化、重启清理；history 修订与订阅快照无窗口，溢出可重新查询。
+- pending 在重启后变 interrupted，无隐式重发；日志/事件/错误不含正文、地址、票据和路径。

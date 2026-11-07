@@ -11,12 +11,24 @@
 
 1. 公开签名只能使用标准库和公开 engine 类型，不暴露 internal、SQLite、tailcat、mygo 类型。Engine 默认拥有身份、数据库、网络与内容资源；宿主负责权限、剪贴板、主线程、通知及配置文件。
 2. 每个成功返回的 DTO 都是独立快照；调用者修改切片或字节不得改变核心状态。输入在方法返回后可由调用者复用；流的例外见资源章节。
-3. ID 是区分大小写的不透明字符串，禁止从中推导地址、路径或时间。DeviceID 跨进程稳定；InstanceID 每次 New 更新；其余 ID 仅在所属实例有效。旧实例 ID 的请求返回 `resource_expired`。
+3. ID 是区分大小写的不透明字符串，禁止从中推导地址、路径或时间。DeviceID 与 0004 扩展的 HistoryID 跨进程稳定；InstanceID 每次 New 更新；其余 ID 仅在所属实例有效。旧实例 ID 的请求返回 `resource_expired`。
 4. 时间统一 Unix 毫秒，仅供显示；截止时间内部使用单调时钟。序号是实例内 uint64，0 表示尚无变化；跨语言序列化为十进制字符串，防止数值精度丢失。
 5. 方法允许并发调用。状态变更在明确提交点原子生效；核心不在持锁期间调用宿主代码。SDK 不指定 UI 线程。
 6. context 只控制本次调用和其直接 I/O，不充当实例生命周期。context 取消后，已提交操作继续存在；取消不回滚信任与成功导入的资源。
 7. 普通查询和事件不含设备地址、票据、剪贴板正文、文件内容或绝对路径。内容只能显式读取，地址和配对码只能显式获取。日志和错误必须脱敏，包括第三方错误。
-8. v0.1 保留 wire v2，不新增远端 ACK、断点续传、历史搜索或可靠离线投递。
+8. v0.1 保留 wire v2，不新增远端 ACK、断点续传、全文检索或可靠离线投递；本机历史基础筛选见历史扩展契约。
+
+### 0004 扩展边界（待实现）
+
+[0004](decisions/0004-clipboard-pipeline-lua.md) 已确定：本机持久历史和处理流水线均由 Engine 管理，业务实现放在 `engine/`；宿主只经 SDK 访问，不另建历史或流水线。[本机历史契约](history-contract.md) 已确定历史 API、筛选分页、稳定 ID、内容租约、更新/删除、容量与过期、接收列表映射、历史应用和事件恢复。该契约为本文的目标扩展，尚未实现；其明确声明的历史语义优先于本文既有实例内接收列表约定。临时资源启动清理不得删除有效历史；标签与过期不进 wire，不承诺重启后的待应用可靠投递。
+
+### 流水线提交扩展（待实现）
+
+[流水线提交契约](pipeline-contract.md) 确定新增 `CommitContent/GetSubmission`、提交结果与网络结果分离、独立请求幂等表、旧 SubmitContent 门面和 ObservationResult 扩展。无目标、同步关闭或无后端仍可本机 commit；旧发送错误不能用于判断历史是否保存。以下既有发送/观察章节描述原 v0.1 API，接入 0004 时按该扩展同步迁移代码、宿主和测试。自动写回票据及 RPC 细节仍待补齐。
+
+### 插件与同步后端扩展（待实现）
+
+[插件契约 v0.1](plugin-contract.md) 定义 Go/Lua 统一插件与最小模板。Go 插件通过独立常驻进程/RPC 接入，安装优先平台预编译，缺失时可 --build 构建插件自身，不重建宿主；Engine 拥有注册、生命周期、配置、串行处理、commit 和操作状态；现有 tailcat 网络、会话与传输迁入默认 Go 插件 `sync.tailcat`，公共配对/发送/接收 API 保持门面，审批、信任和策略最终由 Engine 控制。通知总线不承担同步调度。默认后端保留 wire v2 和现有行为；无后端允许本机历史工作。插件 API 和同步流式 DTO 尚未实现，不计入第 14 节已完成功能。
 
 ## 2. 接口总览
 
@@ -67,7 +79,7 @@ func (s *Subscription) Next(ctx context.Context) (Event, error)
 func (s *Subscription) Close() error
 ```
 
-`ContentReader` 实现 `io.ReadCloser`，只提供指定 part 的字节；与文件路径、URI 无关。以上签名属于设计稿，调整须同步更新本文及契约测试。
+`ContentReader` 实现 `io.ReadCloser`，只提供指定 part 的字节；与文件路径、URI 无关。以上签名属于设计稿，调整须同步更新本文及契约测试。历史扩展的 `ListHistory/GetItem/RetainHistoryContent/UpdateItem/DeleteItem/BeginApplyHistory` 签名与 DTO 见[本机历史契约 §2](history-contract.md#2-标识描述与-api)。
 
 ## 3. 创建、配置与运行条件
 
@@ -90,7 +102,7 @@ func (s *Subscription) Close() error
 
 `UpdateSettingsRequest{ExpectedRevision, Value}` 替换完整配置，修订不匹配报 `conflict`；验证失败无字段生效。返回 `SettingsState{Revision, Value}`。名称仅影响之后的握手；端点仅影响之后的新配对码请求；大小限制在新传输开始时取快照。在途传输不追溯。同步开关过滤规则沿用 0002。
 
-DataDir、InboxDir 和 ResourcePolicy 只在 New 设置；桌面配置中的 inbox 修改继续显示需重启。文件加载失败信息由桌面配置层持有，不能作为 SDK 配置状态的底层错误直接转发。
+DataDir、InboxDir 和 ResourcePolicy 只在 New 设置；历史扩展另有 `Options.History`，见历史契约。桌面配置中的 inbox 修改继续显示需重启。文件加载失败信息由桌面配置层持有，不能作为 SDK 配置状态的底层错误直接转发。
 
 `RuntimeState` 为 `active` 或 `suspended`，默认 active。suspended 禁止新网络操作并关闭现有监听和会话；active 后重新建立监听与重连。`Sync.Enabled=false` 仍保留连接，新的提交返回 `sync_disabled`，新接收读完丢弃。已开始传输不因同步开关变化回滚，应用前还须重新检查开关。
 
@@ -268,7 +280,7 @@ CLI“写入并发送”由宿主执行本地写入、回读、建立抑制回�
 
 ## 12. 契约验收清单
 
-每项需要测试结果支撑；文档完成不代表实现已通过。
+每项需要测试结果支撑；文档完成不代表实现已通过。历史扩展另须通过[历史契约测试清单](history-contract.md#8-必须补充的契约测试待实现)。
 
 - 生命周期：重复 Start、启动失败回收、Start/Stop 竞争、Stop 超时后继续等待、Close 唤醒订阅并释放目录锁。
 - 并发与数据隔离：DTO 修改不影响核心、流取消清理、Settings CAS 冲突、同目录重复实例失败。
@@ -303,7 +315,11 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2d（已实现并有测试）**：`ObserveClipboard`、`BeginApply`、`ReportApplyResult`、`State.ActiveApply`、`apply` 事件。公开 Engine 本身不读写系统剪贴板，由宿主适配调用这些方法。
 
-落地时确定的细节（以此为准，必要时回改前文）：
+**0004 提交扩展（提交结果与幂等契约已确定、实现与测试待完成）**：见[流水线提交契约](pipeline-contract.md)。自动写回协议仍未定稿。
+
+**0004 历史扩展（契约已确定、实现与测试待完成）**：见[本机历史契约](history-contract.md)。现有代码仍采用下列临时资源/接收列表语义；历史实现时必须同步调整清理、持有关系与应用规则，不能以已有测试通过代表历史验收通过。
+
+落地时确定的细节（既有 v0.1 实现；0004 历史扩展以历史契约为准，必要时回改前文）：
 
 1. **实例目录**：`DataDir/unic.db` 与桌面现有数据库同名同表，设备身份沿用 `device.id`；独占锁是 `DataDir/unic.lock`（flock / LockFileEx），进程退出由系统释放。默认设备名在首次创建时取主机名并保存（`device.default_name`），之后不随主机名变化。
 2. **配置输入**：`Options.Settings` 全零值等同 `DefaultSettings()`；会合服务地址只来自 `Settings.RendezvousURL`，空则用生产服务，不读环境变量（桌面宿主自行把 `UNIC_RENDEZVOUS_URL` 填入）。`Settings` 不含 inbox，它是创建选项 `InboxDir`。

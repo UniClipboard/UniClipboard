@@ -9,7 +9,7 @@
 
 桌面界面现在是 mygo 的原生 UI（自绘，不是系统控件）。macOS 上希望得到 SwiftUI 的原生外观与行为：系统控件、`MenuBarExtra`、Liquid Glass（`.glassEffect()`）、辅助功能与系统更新带来的变化。Windows、Linux 继续用 mygo。
 
-同时，Mac 端需要**剪贴板历史**，而目前后端没有历史：Engine 只有 `Received` 列表（仅收到的内容），daemon API 没有历史接口，0004 把“历史放哪”列为待定。
+同时，Mac 端需要**剪贴板历史**，而目前后端没有历史：Engine 只有 `Received` 列表（仅收到的内容），daemon API 没有历史接口，0004 已确定历史与流水线由 Engine 管理，业务实现放在 `engine/`，尚未实现。
 
 ## 决策
 
@@ -52,13 +52,9 @@ SwiftUI app (app/macos/) ── unix socket, HTTP+JSON/SSE ──> unicd（无�
 - 数据模型、保留上限、过期清理沿用 0004 §7、§8；标签与过期不同步。
 - “使用”会让条目移到最前并标为当前；该时间戳是本机的 `updated_at`，不改 `created_at`。
 
-### 5. 历史放哪（承接 0004 的待定项）
+### 5. 历史归 Engine 管理（承接 0004）
 
-按 0004 的倾向：流水线与历史先以 **`internal/`** 落地（`history.Store`、`pipeline`），不进入公开的 `engine` 签名；daemon 通过 `internal/api` 暴露第 4 节的 HTTP 接口。
-
-- 好处：Mac 界面可以先做；iOS 到来时若历史进入 Engine，只是把同一套 `internal` 接口公开，HTTP 接口形状不变。
-- 代价：在公开前，iOS/Android 无法复用；需要在评估 0003 后再决定哪些方法公开。
-- 本决策**不**替 0004 做最终决定，只要求第 4 节接口与存储不依赖桌面专属包。
+历史与流水线的业务实现都放在 `engine/`，由公开 Engine API 提供。daemon 通过桌面 HTTP 适配暴露第 4 节接口，不另建历史存储或流水线；未来 iOS/Android 绑定复用同一套 Engine 能力。具体 SDK 签名与持久资源契约在实现前补齐，不依赖桌面专属包。
 
 ### 6. 目录与工程
 

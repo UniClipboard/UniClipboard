@@ -25,13 +25,19 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0001](docs/design/decisions/0001-pairing-code.md) | 添加设备：6 位配对码 + 完整地址 | 复用 rendezvous `/v1/web-pairings`，5 分钟一次性；票据 kind `unic-pair`；配对码只找地址不授信，需批准并核对指纹；仅桌面端 |
 | [0002](docs/design/decisions/0002-config-file.md) | 配置文件：TOML + 保存即生效 | `$UNIC_HOME/config.toml`，监听目录+防抖热加载；坏配置保留上一份有效值；`unic config` 查看；`inbox` 需重启 |
 | [0003](docs/design/decisions/0003-engine-sdk.md) | 独立 Engine：统一接口与契约 | 公开 Go SDK，宿主负责剪贴板与系统集成；定义生命周期、内容所有权、事件与错误；先落地契约并迁移桌面，移动端验证后续进行 |
-| [0004](docs/design/decisions/0004-clipboard-pipeline-lua.md) | 剪贴板处理流水线 + Lua 插件 | 草案；Capture→Processing→Commit→Sync→Use→End；captured/received 可干预，其余事件只读；同步为内置步骤；gopher-lua 沙箱（无 os/io）；本地历史库，标签/过期不同步；历史是否进 Engine 待定 |
+| [0004](docs/design/decisions/0004-clipboard-pipeline-lua.md) | 剪贴板处理流水线 + Go / Lua 插件 | 草案；Capture→Processing→Commit→Sync→Use→End；captured/received 可干预，其余事件只读；同步为默认 Go 插件 sync.tailcat；Go 常驻进程/RPC（预编译优先，--build 兜底）+ gopher-lua 沙箱（无 os/io）；统一接口与模板见插件契约；本地历史库，标签/过期不同步；历史归 Engine 管理，历史与流水线业务实现放 `engine/` |
 | [0005](docs/design/decisions/0005-monorepo-layout.md) | 仓库布局：monorepo | 核心在根（`engine/`、`internal/`），应用在 `app/<平台>/`；依赖单向，桌面专属包放 `app/desktop/internal`；单一根模块 `github.com/uniclipboard/unic`，gomobile 引入时再拆 `bindings/` |
-| [0006](docs/design/decisions/0006-macos-swiftui-client.md) | macOS 端：SwiftUI 客户端 | 草案；SwiftUI 作为 `unicd` 的客户端（unix socket，HTTP+JSON/SSE），不内嵌 Engine；`unicd` 增加无托盘模式；新增本机历史 API（事件不带正文）；历史先放 `internal/`；Developer ID 分发，不上 App Store |
+| [0006](docs/design/decisions/0006-macos-swiftui-client.md) | macOS 端：SwiftUI 客户端 | 草案；SwiftUI 作为 `unicd` 的客户端（unix socket，HTTP+JSON/SSE），不内嵌 Engine；`unicd` 增加无托盘模式；新增本机历史 API（事件不带正文）；历史与流水线由 `engine/` 管理；Developer ID 分发，不上 App Store |
 
 ### 接口契约
 
 - [Engine 公共契约](docs/design/engine-contract.md)：Engine 接口、DTO、生命周期、信任、内容租约、发送与应用语义、事件恢复及错误码。修改核心、桌面适配或未来平台绑定前必须阅读，并同步维护契约与测试。
+
+- [本机历史契约](docs/design/history-contract.md)：稳定历史 ID、查询分页、内容租约、更新/删除、过期与配额、接收列表映射及历史应用；契约已确定，待实现。
+
+- [流水线提交契约](docs/design/pipeline-contract.md)：提交结果与网络结果分离、请求幂等、旧 SubmitContent 门面、观察与接收的 commit 边界；提交契约已确定，自动写回等后续协议及实现待完成。
+
+- [插件契约](docs/design/plugin-contract.md)：Go/Lua 标识、注册、生命周期、配置、顺序、上下文与最小模板、GitHub 仓库安装；sync.tailcat 后端边界（目标设计，待实现）。
 
 ### 原型
 

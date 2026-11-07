@@ -14,6 +14,8 @@
 .
 ├── go.mod                  模块 github.com/uniclipboard/unic，一个模块
 ├── engine/                 公开 Go SDK（各端共用的入口）
+├── plugin/                 规划：独立进程插件 SDK 与 RPC 类型（0004）
+├── plugins/tailcat/        规划：默认同步插件可执行程序（0004）
 ├── internal/               核心实现，只含平台无关的包
 │   ├── session/ wire/ store/ tcnet/ rendezvous/ clip/
 ├── app/

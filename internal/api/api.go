@@ -322,7 +322,9 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 		defer stop()
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		fmt.Fprint(w, ": ok\n\n")
+		if _, err := fmt.Fprint(w, ": ok\n\n"); err != nil {
+			return
+		}
 		fl.Flush()
 		ping := time.NewTicker(20 * time.Second)
 		defer ping.Stop()
@@ -331,11 +333,15 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 			case <-r.Context().Done():
 				return
 			case <-ping.C:
-				fmt.Fprint(w, ": ping\n\n")
+				if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+					return
+				}
 				fl.Flush()
 			case ev := <-ch:
 				b, _ := json.Marshal(ev)
-				fmt.Fprintf(w, "data: %s\n\n", b)
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+					return
+				}
 				fl.Flush()
 			}
 		}
@@ -347,7 +353,7 @@ func Handler(e *engine.Engine, cfg *config.Manager) http.Handler {
 // from a crashed daemon is removed, but a live daemon is never displaced.
 func Listen(path string) (net.Listener, error) {
 	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
-		c.Close()
+		_ = c.Close()
 		return nil, fmt.Errorf("another unic daemon is already running (%s)", path)
 	}
 	_ = os.Remove(path)
@@ -356,7 +362,7 @@ func Listen(path string) (net.Listener, error) {
 		return nil, err
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
-		ln.Close()
+		_ = ln.Close()
 		return nil, err
 	}
 	return ln, nil
@@ -401,7 +407,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		}
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		var e errBody
 		_ = json.NewDecoder(resp.Body).Decode(&e)
@@ -500,7 +506,7 @@ func (c *Client) Events(ctx context.Context, fn func(engine.Event)) error {
 		}
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	sc := bufio.NewScanner(resp.Body)
 	for sc.Scan() {
 		line := sc.Text()

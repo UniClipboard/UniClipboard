@@ -117,7 +117,7 @@ func (m *Manager) Watch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	if err := w.Add(filepath.Dir(m.path)); err != nil {
 		return err
 	}

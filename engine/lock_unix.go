@@ -19,7 +19,7 @@ func lockDir(path string) (*dirLock, error) {
 		return nil, err
 	}
 	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		f.Close()
+		_ = f.Close()
 		if err == unix.EWOULDBLOCK {
 			return nil, errLocked
 		}

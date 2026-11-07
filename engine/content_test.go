@@ -43,7 +43,7 @@ func (p pathSource) Open(context.Context) (io.ReadCloser, FileMeta, error) {
 	}
 	st, err := f.Stat()
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, FileMeta{}, err
 	}
 	return f, FileMeta{Size: st.Size(), Version: fmt.Sprint(st.ModTime().UnixNano())}, nil
@@ -60,7 +60,7 @@ func newContentNode(t *testing.T, mutate func(*Options)) node {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { e.Close(bg) })
+	t.Cleanup(func() { _ = e.Close(bg) })
 	return node{e, f, dir}
 }
 
@@ -70,7 +70,7 @@ func readAll(t *testing.T, e *Engine, l LeaseID, p PartID) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	b, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatal(err)
@@ -181,7 +181,7 @@ func TestUserLimitsApplyToImport(t *testing.T) {
 	if h, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("a", "1234")}}); err != nil {
 		t.Fatal(err)
 	} else {
-		n.e.ReleaseContent(bg, h.LeaseID)
+		_ = n.e.ReleaseContent(bg, h.LeaseID)
 	}
 }
 
@@ -210,7 +210,7 @@ func TestQuotaIsReservedAndRolledBack(t *testing.T) {
 		t.Fatalf("the quota was not given back: %v", err)
 	}
 	// Releasing the first content frees its share.
-	n.e.ReleaseContent(bg, h1.LeaseID)
+	_ = n.e.ReleaseContent(bg, h1.LeaseID)
 	if stored(n.e) != 40 {
 		t.Fatalf("stored after release = %d", stored(n.e))
 	}
@@ -250,15 +250,15 @@ func TestLeasesAndReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n.e.ReleaseContent(bg, h2.LeaseID)
+	_ = n.e.ReleaseContent(bg, h2.LeaseID)
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatal("the file went while a reader was open")
 	}
 	if b, _ := io.ReadAll(r); string(b) != "data" {
 		t.Fatalf("read %q", b)
 	}
-	r.Close()
-	r.Close()
+	_ = r.Close()
+	_ = r.Close()
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("content dir survived the last reference: %v", err)
 	}
@@ -290,7 +290,9 @@ func TestReferencedFilesAreNotCopied(t *testing.T) {
 	})
 	path := filepath.Join(t.TempDir(), "big.bin")
 	data := strings.Repeat("x", 1000)
-	os.WriteFile(path, []byte(data), 0o600)
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	h, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{{Name: "big.bin", Size: 1000, Source: pathSource{path}}}})
 	if err != nil {
@@ -300,7 +302,7 @@ func TestReferencedFilesAreNotCopied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a second reference needs no storage: %v", err)
 	}
-	n.e.ReleaseContent(bg, h2.LeaseID)
+	_ = n.e.ReleaseContent(bg, h2.LeaseID)
 	if !h.Content.Parts[0].Referenced || stored(n.e) != 0 || len(contentDirs(n)) != 0 {
 		t.Fatalf("a reference was copied: %+v stored=%d dirs=%v", h.Content.Parts[0], stored(n.e), contentDirs(n))
 	}
@@ -316,21 +318,29 @@ func TestReferencedFilesAreNotCopied(t *testing.T) {
 
 	// Edited, truncated, replaced or deleted: reading fails, never returns other bytes.
 	later := time.Now().Add(2 * time.Second)
-	os.WriteFile(path, []byte(data), 0o600)
-	os.Chtimes(path, later, later)
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := n.e.ReadContent(bg, h.LeaseID, h.Content.Parts[0].ID); code(err) != CodeSourceChanged {
 		t.Fatalf("touched file: %v", err)
 	}
-	os.WriteFile(path, []byte("short"), 0o600)
+	if err := os.WriteFile(path, []byte("short"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := n.e.ReadContent(bg, h.LeaseID, h.Content.Parts[0].ID); code(err) != CodeSourceChanged {
 		t.Fatalf("truncated file: %v", err)
 	}
-	os.Remove(path)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := n.e.ReadContent(bg, h.LeaseID, h.Content.Parts[0].ID); code(err) != CodeSourceChanged {
 		t.Fatalf("deleted file: %v", err)
 	}
 	// A failed read does not leak a reference.
-	n.e.ReleaseContent(bg, h.LeaseID)
+	_ = n.e.ReleaseContent(bg, h.LeaseID)
 	if len(n.e.cs.contents) != 0 {
 		t.Fatal("content survived its last release")
 	}
@@ -339,7 +349,9 @@ func TestReferencedFilesAreNotCopied(t *testing.T) {
 	if _, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{{Name: "x", Size: 1, Source: pathSource{path}}}}); code(err) != CodeSourceChanged {
 		t.Fatalf("missing file: %v", err)
 	}
-	os.WriteFile(path, []byte("12345"), 0o600)
+	if err := os.WriteFile(path, []byte("12345"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{{Name: "x", Size: 4, Source: pathSource{path}}}}); code(err) != CodeInvalidArgument {
 		t.Fatalf("wrong declared size: %v", err)
 	}
@@ -348,17 +360,17 @@ func TestReferencedFilesAreNotCopied(t *testing.T) {
 func TestImportStopsWhenContextEnds(t *testing.T) {
 	n := newContentNode(t, nil)
 	pr, pw := io.Pipe()
-	defer pw.Close()
+	defer func() { _ = pw.Close() }()
 	ctx, cancel := context.WithCancel(bg)
 	res := make(chan error, 1)
 	go func() {
 		_, err := n.e.ImportContent(ctx, ContentInput{Files: []FileInput{{Name: "slow", Size: 1 << 20, Reader: pr}}})
 		res <- err
 	}()
-	pw.Write([]byte("partial"))
+	_, _ = pw.Write([]byte("partial"))
 	time.Sleep(50 * time.Millisecond)
 	cancel()
-	pw.Write([]byte("more")) // unblocks the read that was waiting
+	_, _ = pw.Write([]byte("more")) // unblocks the read that was waiting
 	select {
 	case err := <-res:
 		if code(err) != CodeCancelled || !errors.Is(err, context.Canceled) {
@@ -385,7 +397,7 @@ func TestCloseAbortsReadsAndCleansUp(t *testing.T) {
 	if _, err := r.Read(make([]byte, 10)); code(err) != CodeClosed {
 		t.Fatalf("read after Close: %v", err)
 	}
-	r.Close()
+	_ = r.Close()
 	if len(contentDirs(n)) != 0 {
 		t.Fatal("Close left content behind")
 	}
@@ -398,14 +410,16 @@ func TestNewRemovesOnlyItsOwnLeftovers(t *testing.T) {
 	dir := t.TempDir()
 	inbox := filepath.Join(dir, "inbox")
 	for _, d := range []string{contentDirPrefix + "dead", "holiday-photos", "clip-1234"} {
-		os.MkdirAll(filepath.Join(inbox, d), 0o700)
+		if err := os.MkdirAll(filepath.Join(inbox, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	opts, _ := newOpts(t, dir)
 	e, err := New(bg, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer e.Close(bg)
+	defer func() { _ = e.Close(bg) }()
 	if _, err := os.Stat(filepath.Join(inbox, contentDirPrefix+"dead")); !os.IsNotExist(err) {
 		t.Fatal("a dead instance's content was kept")
 	}
@@ -423,7 +437,7 @@ func TestContentWorksWhileStopped(t *testing.T) {
 		t.Fatal(err)
 	}
 	start(t, n)
-	n.e.Stop(bg)
+	_ = n.e.Stop(bg)
 	if readAll(t, n.e, h.LeaseID, h.Content.Parts[0].ID) != "kept" {
 		t.Fatal("Stop must not release leases")
 	}

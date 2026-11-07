@@ -270,7 +270,7 @@ func (e *Engine) track(c net.Conn) (untrack func(), ok bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.ctx == nil || e.ctx.Err() != nil {
-		c.Close()
+		_ = c.Close()
 		return func() {}, false
 	}
 	e.conns[c] = struct{}{}
@@ -295,12 +295,12 @@ func (e *Engine) shutdown(ln net.Listener) {
 		conns = append(conns, c)
 	}
 	e.mu.Unlock()
-	ln.Close()
+	_ = ln.Close()
 	for _, s := range sessions {
 		s.close()
 	}
 	for _, c := range conns {
-		c.Close()
+		_ = c.Close()
 	}
 	e.wg.Wait()
 }
@@ -347,21 +347,21 @@ func (e *Engine) addPeer(ctx context.Context, addr, pair string) (p store.Peer, 
 	if err != nil {
 		var aw *awaitingError
 		if !errors.As(err, &aw) {
-			conn.Close()
+			_ = conn.Close()
 			return p, false, err
 		}
 		s, awaiting = aw.s, true
 	}
 	p = store.Peer{ID: s.peerID, Name: s.peerName, Addr: addr}
 	if err := e.cfg.Store.UpsertPeer(p); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return p, false, err
 	}
 	_ = e.cfg.Store.DeleteCandidate(p.ID) // the user's own pairing outranks a pending request
 	e.keepDialing(p)                      // reconnect after failures; a no-op while a session is up
 	e.emit(Event{Kind: "peers"})
 	if awaiting {
-		conn.Close()
+		_ = conn.Close()
 		return p, true, nil
 	}
 	if e.register(s) {
@@ -370,7 +370,7 @@ func (e *Engine) addPeer(ctx context.Context, addr, pair string) (p store.Peer, 
 			return p, false, ErrNotRunning
 		}
 	} else {
-		conn.Close() // already connected through a better session
+		_ = conn.Close() // already connected through a better session
 	}
 	return p, false, nil
 }
@@ -568,7 +568,7 @@ func (e *Engine) apply(from string, s clip.Snapshot, dir string) {
 	if !cfg.Sync.Enabled || filtered.Empty() || (len(filtered.Files) == 0 && dir != "") {
 		// Nothing wanted, or the files were turned off: the received copies go.
 		if dir != "" {
-			os.RemoveAll(dir)
+			_ = os.RemoveAll(dir)
 			dir = ""
 		}
 		if !cfg.Sync.Enabled || filtered.Empty() {
@@ -581,7 +581,7 @@ func (e *Engine) apply(from string, s clip.Snapshot, dir string) {
 	if h == e.lastHash {
 		e.mu.Unlock()
 		if dir != "" {
-			os.RemoveAll(dir)
+			_ = os.RemoveAll(dir)
 		}
 		return
 	}
@@ -608,7 +608,7 @@ func (e *Engine) apply(from string, s clip.Snapshot, dir string) {
 	// Received files stay while they are on the clipboard; the previous
 	// batch can go now.
 	if old != "" && old != dir {
-		os.RemoveAll(old)
+		_ = os.RemoveAll(old)
 	}
 	e.emit(Event{Kind: "received", Peer: from, Info: s.Summary()})
 }
@@ -710,7 +710,7 @@ type session struct {
 func (s *session) close() {
 	s.once.Do(func() {
 		close(s.done)
-		s.conn.Close()
+		_ = s.conn.Close()
 		s.omu.Lock()
 		s.closed = true
 		p := s.pend
@@ -772,7 +772,7 @@ func (e *Engine) trusts(h wire.Hello) bool {
 // decision to trust it; accepting a connection needs a paired device.
 func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed, pair string) (*session, error) {
 	_ = conn.SetDeadline(time.Now().Add(handshakeTimeout))
-	defer conn.SetDeadline(time.Time{})
+	defer func() { _ = conn.SetDeadline(time.Time{}) }()
 	w := wire.NewConn(conn)
 	hello := wire.Hello{T: "hello", Version: wire.Version, ID: e.cfg.ID, Name: e.name(), Addr: e.cfg.Transport.Addr(), Pair: pair}
 	werr := make(chan error, 1)
@@ -849,7 +849,7 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 				if !errors.Is(err, errNotTrusted) {
 					e.logf("incoming connection rejected: %v", err)
 				}
-				conn.Close()
+				_ = conn.Close()
 				return
 			}
 			// Trusted: remember the name and the current address, so that we
@@ -861,13 +861,13 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 				_ = e.cfg.Store.DeleteCandidate(s.peerID)
 			}
 			if !e.register(s) {
-				conn.Close()
+				_ = conn.Close()
 				return
 			}
 			e.serve(s)
 		}) {
 			untrack()
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 	}
@@ -922,7 +922,7 @@ func (e *Engine) serve(s *session) {
 	}
 	e.mu.Unlock()
 	_ = e.cfg.Store.TouchPeer(s.peerID)
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 		e.logf("session with %s ended: %v", s.peerName, err)
 	}
 	e.emit(Event{Kind: "peer-down", Peer: s.peerName})
@@ -1041,7 +1041,7 @@ func (s *session) recvLoop() error {
 				// Corrupt or tampered: the data is already consumed, so the
 				// stream is still in sync; just drop it.
 				if dir != "" {
-					os.RemoveAll(dir)
+					_ = os.RemoveAll(dir)
 				}
 				if adm.Done != nil {
 					adm.Done(clip.Snapshot{}, "", false)
@@ -1102,17 +1102,17 @@ func (e *Engine) keepDialing(p store.Peer) {
 				s, err = e.handshake(conn, true, p.Addr, "")
 				untrack()
 				if err != nil {
-					conn.Close()
+					_ = conn.Close()
 				}
 			}
 			if err == nil && s.peerID != p.ID {
-				conn.Close()
+				_ = conn.Close()
 				err = ErrIdentity
 			}
 			if err != nil {
 				var aw *awaitingError
 				if errors.As(err, &aw) {
-					conn.Close()
+					_ = conn.Close()
 				}
 				if ctx.Err() == nil {
 					e.logf("cannot reach %s: %v (retry in %v)", p.Name, err, backoff)
@@ -1128,11 +1128,11 @@ func (e *Engine) keepDialing(p store.Peer) {
 			backoff = time.Second
 			// The user may have removed the device while we were connecting.
 			if ok, err := e.cfg.Store.HasPeer(p.ID); err == nil && !ok {
-				conn.Close()
+				_ = conn.Close()
 				return
 			}
 			if !e.register(s) {
-				conn.Close()
+				_ = conn.Close()
 				continue
 			}
 			e.serve(s)

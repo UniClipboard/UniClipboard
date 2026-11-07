@@ -195,7 +195,7 @@ func (c *Conn) copyFile(f clip.File) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	// The announced size is a promise; a file that changed underneath us
 	// would desynchronize the stream, so refuse rather than guess.
 	st, err := src.Stat()
@@ -329,7 +329,7 @@ func writeN(path string, r io.Reader, n int64) error {
 		return err
 	}
 	if _, err := io.CopyN(f, r, n); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	return f.Close()

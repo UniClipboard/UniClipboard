@@ -199,7 +199,7 @@ func runCLI(cmd string, args []string) error {
 func copyCmd(ctx context.Context, c *api.Client, args []string) error {
 	if len(args) > 0 && (args[0] == "-f" || args[0] == "--file") {
 		if len(args) == 1 {
-			return fmt.Errorf("usage: unic copy -f <file>...")
+			return fmt.Errorf("usage: unic copy -f <file> [more files]")
 		}
 		var files []string
 		for _, a := range args[1:] {
@@ -230,7 +230,7 @@ func printPeers(ps []engine.PeerStatus) {
 		return
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tNAME\tSTATE\tLAST SEEN")
+	_, _ = fmt.Fprintln(w, "ID\tNAME\tSTATE\tLAST SEEN")
 	for _, p := range ps {
 		state, seen := "offline", "never"
 		if p.Connected {
@@ -239,9 +239,9 @@ func printPeers(ps []engine.PeerStatus) {
 		if p.LastSeen > 0 {
 			seen = time.Since(time.Unix(p.LastSeen, 0)).Round(time.Second).String() + " ago"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, state, seen)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, state, seen)
 	}
-	w.Flush()
+	_ = w.Flush()
 }
 
 func printPending(ps []engine.PendingPeer) {
@@ -250,7 +250,7 @@ func printPending(ps []engine.PendingPeer) {
 	}
 	fmt.Println("\nWaiting for your approval:")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tNAME\tFROM\tFINGERPRINT")
+	_, _ = fmt.Fprintln(w, "ID\tNAME\tFROM\tFINGERPRINT")
 	for _, p := range ps {
 		from := "connected directly"
 		switch {
@@ -259,9 +259,9 @@ func printPending(ps []engine.PendingPeer) {
 		case p.Via != "":
 			from = "introduced by " + p.Via
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, from, p.Fingerprint)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, from, p.Fingerprint)
 	}
-	w.Flush()
+	_ = w.Flush()
 	fmt.Println("Approve with `unic approve <id>`, dismiss with `unic reject <id>`.")
 }
 

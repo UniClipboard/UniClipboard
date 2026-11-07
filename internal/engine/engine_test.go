@@ -50,7 +50,7 @@ func newTCP(t *testing.T) *tcpTransport {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { ln.Close() })
+	t.Cleanup(func() { _ = ln.Close() })
 	return &tcpTransport{ln}
 }
 func (t *tcpTransport) Listen(context.Context) (net.Listener, error) { return t.ln, nil }
@@ -76,13 +76,13 @@ func newNodeWith(t *testing.T, id string, extra bool, rv *rendezvous.Client) nod
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	b := &fakeBoard{extra: extra}
 	e := New(Config{ID: id, Name: id, Board: b, Store: st, Transport: newTCP(t),
 		Inbox: t.TempDir(), Poll: 10 * time.Millisecond, Logf: t.Logf, Rendezvous: rv})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	go e.Run(ctx)
+	go func() { _ = e.Run(ctx) }()
 	return node{e, b}
 }
 
@@ -180,7 +180,9 @@ func TestFileSync(t *testing.T) {
 	a, b := newNode(t, "aaa", false), newNode(t, "bbb", false)
 	pair(t, a, b)
 	src := filepath.Join(t.TempDir(), "report.txt")
-	os.WriteFile(src, []byte("hello file"), 0o644)
+	if err := os.WriteFile(src, []byte("hello file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	a.board.user(clip.Snapshot{Files: []clip.File{{Name: "report.txt", Path: src, Size: 10}}})
 	eventually(t, "file arrives", func() bool {
 		s, _ := b.board.Read()
@@ -218,8 +220,8 @@ func TestSimultaneousDialYieldsOneSession(t *testing.T) {
 	_, _, ba := b.e.Self()
 	// Both users pair at once: each dial is the user's own decision, so no
 	// approval is needed on either side.
-	go a.e.AddPeer(context.Background(), ba)
-	go b.e.AddPeer(context.Background(), aa)
+	go func() { _, _, _ = a.e.AddPeer(context.Background(), ba) }()
+	go func() { _, _, _ = b.e.AddPeer(context.Background(), aa) }()
 	eventually(t, "connected", func() bool { return connected(a, b) })
 	a.board.user(text("still works"))
 	eventually(t, "sync after race", func() bool { return got(b) == "still works" })

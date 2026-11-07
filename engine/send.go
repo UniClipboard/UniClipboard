@@ -186,7 +186,7 @@ func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, t
 	var open []io.Closer
 	defer func() {
 		for _, c := range open {
-			c.Close()
+			_ = c.Close()
 		}
 	}()
 	for _, p := range set.parts {

@@ -37,7 +37,7 @@ func newFakeNet(t *testing.T) *fakeNet {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		if f.ln != nil {
-			f.ln.Close()
+			_ = f.ln.Close()
 		}
 	})
 	return f
@@ -107,7 +107,7 @@ func newNode(t *testing.T, rv *rvtest.Server) node {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { e.Close(context.Background()) })
+	t.Cleanup(func() { _ = e.Close(context.Background()) })
 	return node{e, f, dir}
 }
 
@@ -205,19 +205,19 @@ func TestDataDirIsExclusiveAndFreedByClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("after Close the directory is free: %v", err)
 	}
-	e2.Close(bg)
+	_ = e2.Close(bg)
 }
 
 func TestIdentityPersistsAndInstanceChanges(t *testing.T) {
 	n := newNode(t, nil)
 	s1 := state(t, n.e)
-	n.e.Close(bg)
+	_ = n.e.Close(bg)
 	opts, _ := newOpts(t, n.dir)
 	e2, err := New(bg, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer e2.Close(bg)
+	defer func() { _ = e2.Close(bg) }()
 	s2 := state(t, e2)
 	if s1.Self != s2.Self {
 		t.Fatalf("identity changed: %+v -> %+v", s1.Self, s2.Self)
@@ -363,7 +363,7 @@ func TestNewRejectsBadOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("directory still locked after failed New: %v", err)
 	}
-	e.Close(bg)
+	_ = e.Close(bg)
 }
 
 func TestCapabilities(t *testing.T) {
@@ -394,7 +394,7 @@ func TestCapabilities(t *testing.T) {
 	// Turning images off removes the format, not the others.
 	s := state(t, n.e).Settings
 	s.Value.Sync.Images = false
-	n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value})
+	_, _ = n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value})
 	c, _ = n.e.GetCapabilities(bg)
 	if got := strings.Join(c.Effective.ReadFormats, ","); got != "text/plain" || !contains(c.Restrictions, "images_disabled") {
 		t.Fatalf("images off: %+v", c)
@@ -402,7 +402,7 @@ func TestCapabilities(t *testing.T) {
 	// Pausing sync keeps the connections but disables everything.
 	s = state(t, n.e).Settings
 	s.Value.Sync.Enabled = false
-	n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value})
+	_, _ = n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value})
 	c, _ = n.e.GetCapabilities(bg)
 	if len(c.Effective.ReadFormats) != 0 || !contains(c.Restrictions, "sync_disabled") {
 		t.Fatalf("sync off: %+v", c)
@@ -411,7 +411,7 @@ func TestCapabilities(t *testing.T) {
 
 func TestSnapshotsAreIndependent(t *testing.T) {
 	n := newNode(t, nil)
-	n.e.UpdateHostCapabilities(bg, HostCapabilities{ReadFormats: []string{MimeText}})
+	_ = n.e.UpdateHostCapabilities(bg, HostCapabilities{ReadFormats: []string{MimeText}})
 	s := state(t, n.e)
 	s.Capabilities.Host.ReadFormats[0] = "x/y"
 	s.Capabilities.CoreFormats[0] = "x/y"
@@ -562,7 +562,7 @@ func TestRejectNeedsTheCurrentRevision(t *testing.T) {
 	start(t, a)
 	start(t, b)
 	addr, _ := a.e.ExportPairingAddress(bg)
-	b.e.PairByAddress(bg, PairRequest{RequestID: "r1", Address: addr.Address})
+	_, _ = b.e.PairByAddress(bg, PairRequest{RequestID: "r1", Address: addr.Address})
 	var p PendingPeer
 	eventually(t, "request", func() bool {
 		ps, _ := a.e.ListPending(bg)
@@ -672,7 +672,7 @@ func TestPairingCodeExpiryIsAnnounced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 	if _, err := a.e.CreatePairingCode(bg); err != nil {
 		t.Fatal(err)
 	}
@@ -778,7 +778,7 @@ func TestTrustSurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer a2.Close(bg)
+	defer func() { _ = a2.Close(bg) }()
 	if err := a2.Start(bg); err != nil {
 		t.Fatal(err)
 	}
@@ -794,7 +794,7 @@ func TestSubscriptionContinuesFromSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 	snap := sub.Snapshot()
 	if snap.Revision != state(t, n.e).Revision {
 		t.Fatal("snapshot is not the current state")
@@ -826,23 +826,23 @@ func TestSubscriptionContinuesFromSnapshot(t *testing.T) {
 
 func TestSlowSubscriberMustResync(t *testing.T) {
 	n := newNode(t, nil)
-	n.e.Close(bg)
+	_ = n.e.Close(bg)
 	opts, _ := newOpts(t, n.dir)
 	opts.Resources.EventBuffer = 2
 	e, err := New(bg, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer e.Close(bg)
+	defer func() { _ = e.Close(bg) }()
 	sub, _ := e.SubscribeEvents(bg)
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 	// The consumer does nothing while several changes happen: the core must
 	// neither block nor queue without bound.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for i := 0; i < 10; i++ {
-			e.UpdateHostCapabilities(bg, HostCapabilities{ReadFiles: i%2 == 0})
+			_ = e.UpdateHostCapabilities(bg, HostCapabilities{ReadFiles: i%2 == 0})
 		}
 	}()
 	select {
@@ -862,7 +862,7 @@ func TestSlowSubscriberMustResync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sub2.Close()
+	defer func() { _ = sub2.Close() }()
 	if sub2.Snapshot().Revision != state(t, e).Revision {
 		t.Fatal("new snapshot is stale")
 	}
@@ -878,8 +878,8 @@ func TestSubscriptionCloseAndLimits(t *testing.T) {
 	if _, err := sub.Next(bg); code(err) != CodeInUse {
 		t.Fatalf("concurrent Next: %v", err)
 	}
-	sub.Close()
-	sub.Close() // idempotent
+	_ = sub.Close()
+	_ = sub.Close() // idempotent
 	select {
 	case err := <-res:
 		if err != io.EOF {
@@ -900,7 +900,7 @@ func TestSubscriptionCloseAndLimits(t *testing.T) {
 	if _, err := n.e.SubscribeEvents(bg); code(err) != CodeResourceExhausted {
 		t.Fatalf("17th subscription: %v", err)
 	}
-	subs[0].Close()
+	_ = subs[0].Close()
 	if s, err := n.e.SubscribeEvents(bg); err != nil {
 		t.Fatalf("slot not freed: %v", err)
 	} else {
@@ -938,7 +938,7 @@ func TestEventsAndStateCarryNoSecrets(t *testing.T) {
 	start(t, a)
 	start(t, b)
 	sub, _ := a.e.SubscribeEvents(bg)
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 	addr, _ := a.e.ExportPairingAddress(bg)
 	c, _ := a.e.CreatePairingCode(bg)
 	op, _ := b.e.PairByAddress(bg, PairRequest{RequestID: "r", Address: addr.Address})

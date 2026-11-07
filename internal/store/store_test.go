@@ -18,7 +18,7 @@ func TestMigratesOldPendingTable(t *testing.T) {
 		INSERT INTO pending (id, name, addr, seen) VALUES ('x', 'old', 'addr', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	old.Close()
+	_ = old.Close()
 
 	for i := 0; i < 2; i++ { // and again: migrations must be repeatable
 		s, err := Open(path)
@@ -32,7 +32,7 @@ func TestMigratesOldPendingTable(t *testing.T) {
 		if err != nil || len(cs) != 2 || cs[0].ByCode || !cs[1].ByCode {
 			t.Fatalf("candidates = %+v, %v", cs, err)
 		}
-		s.Close()
+		_ = s.Close()
 	}
 }
 
@@ -41,7 +41,7 @@ func TestPendingRequestKeepsItsOriginWhenAskedAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	if created, err := s.AddCandidate(Candidate{ID: "x", Name: "x", Addr: "a", ByCode: true}, true); err != nil || !created {
 		t.Fatalf("first = %v, %v", created, err)
 	}
@@ -57,7 +57,7 @@ func TestPendingRequestKeepsItsOriginWhenAskedAgain(t *testing.T) {
 		t.Fatalf("candidate = %+v", c)
 	}
 	// After a rejection the same device asking again is a new request.
-	s.RejectCandidate("x")
+	_, _ = s.RejectCandidate("x")
 	if created, _ := s.AddCandidate(Candidate{ID: "x", Name: "x", Addr: "b"}, true); !created {
 		t.Fatal("a rejected device asking again must be new")
 	}

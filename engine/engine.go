@@ -143,7 +143,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if err != nil {
 		return fail(newErr(CodeUnavailable, "cannot open the database"))
 	}
-	closeAll := func(e *Error) (*Engine, error) { st.Close(); return fail(e) }
+	closeAll := func(e *Error) (*Engine, error) { _ = st.Close(); return fail(e) }
 
 	id, err := identity(st)
 	if err != nil {

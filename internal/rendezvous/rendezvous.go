@@ -169,7 +169,7 @@ func (c *Client) post(ctx context.Context, path string, in, out any) error {
 		}
 		return &Error{Unavailable}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch {
 	case resp.StatusCode == 404 || resp.StatusCode == 409:
 		return &Error{Expired}

@@ -63,12 +63,16 @@ func TestOpenCreatesTemplate(t *testing.T) {
 		t.Error("template not written")
 	}
 	// An existing file is never overwritten.
-	os.WriteFile(p, []byte(`device_name = "keep"`), 0o600)
+	if err := os.WriteFile(p, []byte(`device_name = "keep"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if m, err = Open(p, t.Logf); err != nil || m.Current().DeviceName != "keep" {
 		t.Errorf("existing file: %+v, %v", m.Current(), err)
 	}
 	// An invalid file at startup is an error: there is nothing to fall back to.
-	os.WriteFile(p, []byte(`oops`), 0o600)
+	if err := os.WriteFile(p, []byte(`oops`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = Open(p, t.Logf); err == nil {
 		t.Error("expected an error for an invalid file at startup")
 	}
@@ -84,13 +88,15 @@ func TestWatchAppliesSavesAndKeepsLastGood(t *testing.T) {
 	m.OnChange = func(_, _ Config, _ error) { calls.Add(1) }
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go m.Watch(ctx)
+	go func() { _ = m.Watch(ctx) }()
 	time.Sleep(100 * time.Millisecond)
 
 	// Save the way many editors do: write a temp file, rename it over.
 	save := func(content string) {
 		tmp := p + ".tmp"
-		os.WriteFile(tmp, []byte(content), 0o600)
+		if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.Rename(tmp, p); err != nil {
 			t.Fatal(err)
 		}
@@ -121,7 +127,9 @@ func TestWatchAppliesSavesAndKeepsLastGood(t *testing.T) {
 	// Bursts of events are coalesced.
 	before := calls.Load()
 	for i := 0; i < 5; i++ {
-		os.WriteFile(p, []byte(`device_name = "burst"`), 0o600)
+		if err := os.WriteFile(p, []byte(`device_name = "burst"`), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	waitFor("burst", func() bool { return m.Current().DeviceName == "burst" })
 	time.Sleep(300 * time.Millisecond)

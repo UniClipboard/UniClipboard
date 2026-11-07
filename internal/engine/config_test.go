@@ -24,13 +24,13 @@ func newConfigured(t *testing.T, id string) (node, func(string)) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	b := &fakeBoard{}
 	e := New(Config{ID: id, Name: id, Board: b, Store: st, Transport: newTCP(t),
 		Inbox: t.TempDir(), Poll: 10 * time.Millisecond, Logf: t.Logf, Settings: m})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	go e.Run(ctx)
+	go func() { _ = e.Run(ctx) }()
 	return node{e, b}, func(content string) {
 		t.Helper()
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

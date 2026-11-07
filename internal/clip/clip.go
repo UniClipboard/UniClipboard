@@ -50,22 +50,22 @@ func (s Snapshot) Hash() string {
 	sort.Slice(parts, func(i, j int) bool { return parts[i].Format < parts[j].Format })
 	h := sha256.New()
 	for _, p := range parts {
-		fmt.Fprintf(h, "P%d:%s:%d:", len(p.Format), p.Format, len(p.Data))
+		_, _ = fmt.Fprintf(h, "P%d:%s:%d:", len(p.Format), p.Format, len(p.Data))
 		h.Write(p.Data)
 	}
 	files := append([]File(nil), s.Files...)
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 	for _, f := range files {
-		fmt.Fprintf(h, "F%d:%s:%d:", len(f.Name), f.Name, f.Size)
+		_, _ = fmt.Fprintf(h, "F%d:%s:%d:", len(f.Name), f.Name, f.Size)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 
 // Summary is a short human-readable description for logs, CLI and GUI.
 func (s Snapshot) Summary() string {
-	for _, f := range s.Files {
+	if len(s.Files) > 0 {
 		if len(s.Files) == 1 {
-			return "file " + f.Name
+			return "file " + s.Files[0].Name
 		}
 		return fmt.Sprintf("%d files", len(s.Files))
 	}

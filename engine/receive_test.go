@@ -30,7 +30,7 @@ func pairedPair(t *testing.T, mutateB func(*Options)) (a, b node) {
 func sendText(t *testing.T, from, to node, s string) Operation {
 	t.Helper()
 	h := importText(t, from.e, s)
-	defer from.e.ReleaseContent(bg, h.LeaseID)
+	defer func() { _ = from.e.ReleaseContent(bg, h.LeaseID) }()
 	id, err := submit(from.e, h)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func waitReceived(t *testing.T, e *Engine, n int) []ReceivedContent {
 func TestReceiveBetweenEngines(t *testing.T) {
 	a, b := pairedPair(t, nil)
 	sub, _ := b.e.SubscribeEvents(bg)
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 
 	img := pngBytes(t)
 	h, err := a.e.ImportContent(bg, ContentInput{
@@ -146,7 +146,7 @@ func TestDismissAndRetain(t *testing.T) {
 	if readAll(t, b.e, lease.LeaseID, lease.Content.Parts[0].ID) != "keep me" {
 		t.Fatal("a retained lease lost its content on dismiss")
 	}
-	b.e.ReleaseContent(bg, lease.LeaseID)
+	_ = b.e.ReleaseContent(bg, lease.LeaseID)
 	if stored(b.e) != 0 || len(b.e.cs.contents) != 0 {
 		t.Fatalf("content not freed: stored=%d", stored(b.e))
 	}
@@ -173,7 +173,7 @@ func textOf(t *testing.T, e *Engine, r ReceivedContent) string {
 	if err != nil {
 		return ""
 	}
-	defer e.ReleaseContent(bg, l.LeaseID)
+	defer func() { _ = e.ReleaseContent(bg, l.LeaseID) }()
 	for _, p := range l.Content.Parts {
 		if p.MIME == MimeText {
 			return readAll(t, e, l.LeaseID, p.ID)
@@ -185,7 +185,7 @@ func textOf(t *testing.T, e *Engine, r ReceivedContent) string {
 func TestReceivedEntriesExpire(t *testing.T) {
 	a, b := pairedPair(t, func(o *Options) { o.Resources.ReceivedTTL = 400 * time.Millisecond })
 	sub, _ := b.e.SubscribeEvents(bg)
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 	sendText(t, a, b, "fleeting")
 	waitReceived(t, b.e, 1)
 	eventually(t, "expiry", func() bool { return len(received(b.e)) == 0 })
@@ -216,7 +216,7 @@ func TestStorageIsMadeByDroppingOldEntries(t *testing.T) {
 		o.Resources.MaxStoredBytes = 200
 	})
 	sub, _ := b.e.SubscribeEvents(bg)
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 	big := func(c string) string { return strings.Repeat(c, 150) }
 
 	sendText(t, a, b, big("a"))
@@ -249,7 +249,7 @@ func TestStorageIsMadeByDroppingOldEntries(t *testing.T) {
 		t.Fatalf("stored = %d: the refused clip's reservation leaked", stored(b.e))
 	}
 	// Releasing makes room again, and the link still works.
-	b.e.ReleaseContent(bg, held.LeaseID)
+	_ = b.e.ReleaseContent(bg, held.LeaseID)
 	sendText(t, a, b, "small")
 	eventually(t, "link still works", func() bool {
 		rs := received(b.e)
@@ -306,7 +306,7 @@ func TestReceivedFilesAreRemovedWithTheirContent(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("recv dir = %v", entries)
 	}
-	b.e.DismissReceived(bg, r.ReceiptID)
+	_ = b.e.DismissReceived(bg, r.ReceiptID)
 	eventually(t, "files removed", func() bool {
 		entries, _ := os.ReadDir(b.e.recvDir())
 		return len(entries) == 0
@@ -326,13 +326,15 @@ func TestCloseAndStartupClearTheReceiveDirectory(t *testing.T) {
 		t.Fatalf("Close left received files: %v", err)
 	}
 	// A crash leaves them behind; the next start removes them.
-	os.MkdirAll(filepath.Join(b.dir, "inbox", recvDirName, "clip-1"), 0o700)
+	if err := os.MkdirAll(filepath.Join(b.dir, "inbox", recvDirName, "clip-1"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	opts, _ := newOpts(t, b.dir)
 	e2, err := New(bg, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer e2.Close(bg)
+	defer func() { _ = e2.Close(bg) }()
 	if _, err := os.Stat(filepath.Join(b.dir, "inbox", recvDirName)); !os.IsNotExist(err) {
 		t.Fatal("startup kept stale received files")
 	}

@@ -32,7 +32,7 @@ func (h *clipboardHost) observe(mode ObserveMode, text string, token ApplyToken)
 	if text != "" {
 		hd := importText(h.t, h.e, text)
 		lease = hd.LeaseID
-		defer h.e.ReleaseContent(bg, lease)
+		defer func() { _ = h.e.ReleaseContent(bg, lease) }()
 	}
 	h.seq++
 	return h.e.ObserveClipboard(bg, Observation{Epoch: h.epoch, Sequence: h.seq, Mode: mode, LeaseID: lease, AppliedToken: token})
@@ -86,13 +86,13 @@ func TestObservationProtocol(t *testing.T) {
 	// Sequence rules.
 	before := h.seq
 	hd := importText(t, n.e, "x")
-	defer n.e.ReleaseContent(bg, hd.LeaseID)
+	defer func() { _ = n.e.ReleaseContent(bg, hd.LeaseID) }()
 	first, err := n.e.ObserveClipboard(bg, Observation{Epoch: h.epoch, Sequence: before + 1, Mode: ObserveChange, LeaseID: hd.LeaseID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	before++
-	n.e.ReleaseContent(bg, hd.LeaseID) // the lease is gone, the answer is not
+	_ = n.e.ReleaseContent(bg, hd.LeaseID) // the lease is gone, the answer is not
 	if again, err := n.e.ObserveClipboard(bg, Observation{Epoch: h.epoch, Sequence: before, Mode: ObserveChange, LeaseID: hd.LeaseID}); err != nil || again != first {
 		t.Fatalf("a repeat of the latest observation must be answered again: %+v, %v", again, err)
 	}
@@ -144,7 +144,7 @@ func TestUnsendableChangesStillMoveTheBaseline(t *testing.T) {
 	updateSettings(t, n.e, func(s *Settings) { s.Limits.MaxTotalBytes = 3 }) // lowered after the host imported it
 	h.seq++
 	res, err := n.e.ObserveClipboard(bg, Observation{Epoch: h.epoch, Sequence: h.seq, Mode: ObserveChange, LeaseID: big.LeaseID})
-	n.e.ReleaseContent(bg, big.LeaseID)
+	_ = n.e.ReleaseContent(bg, big.LeaseID)
 	if err != nil || res.Disposition != DispTooLarge {
 		t.Fatalf("limit = %+v, %v", res, err)
 	}
@@ -159,11 +159,11 @@ func TestSuspendEndsTheEpoch(t *testing.T) {
 	start(t, n)
 	h := newHost(t, n.e)
 	h.must(ObserveBaseline, "")
-	n.e.SetRuntimeState(bg, RuntimeSuspended)
+	_ = n.e.SetRuntimeState(bg, RuntimeSuspended)
 	if _, err := h.observe(ObserveChange, "while asleep", ""); code(err) != CodeInvalidArgument && code(err) != CodeSuspended {
 		t.Fatalf("change while suspended: %v", err)
 	}
-	n.e.SetRuntimeState(bg, RuntimeActive)
+	_ = n.e.SetRuntimeState(bg, RuntimeActive)
 	// The old epoch is gone: resuming means a new baseline, which does not send
 	// whatever was copied in the meantime.
 	if _, err := h.observe(ObserveChange, "stale epoch", ""); code(err) != CodeInvalidArgument {
@@ -203,7 +203,7 @@ func readParts(t *testing.T, e *Engine, tk ApplyTicket) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer e.ReleaseContent(bg, c.LeaseID)
+	defer func() { _ = e.ReleaseContent(bg, c.LeaseID) }()
 	for _, p := range c.Content.Parts {
 		out[p.MIME] = readAll(t, e, c.LeaseID, p.ID)
 	}
@@ -238,8 +238,8 @@ func TestApplyThenObserveIsNotAnEcho(t *testing.T) {
 	if err := b.e.ReportApplyResult(bg, ApplyResult{Token: tk.Token, Outcome: ApplyOutcomeApplied, BaselineLeaseID: back.LeaseID, Epoch: hb.epoch, Sequence: hb.seq}); err != nil {
 		t.Fatal(err)
 	}
-	b.e.ReleaseContent(bg, back.LeaseID)
-	b.e.ReleaseContent(bg, tk.LeaseID)
+	_ = b.e.ReleaseContent(bg, back.LeaseID)
+	_ = b.e.ReleaseContent(bg, tk.LeaseID)
 	if st := state(t, b.e); st.ActiveApply != nil || st.Received[0].ApplyState != ApplyApplied {
 		t.Fatalf("state after apply = %+v / %+v", st.ActiveApply, st.Received[0].ApplyState)
 	}
@@ -255,7 +255,7 @@ func TestApplyThenObserveIsNotAnEcho(t *testing.T) {
 	hd, _ := b.e.ImportContent(bg, ContentInput{Representations: []RepresentationInput{rep(MimeText, "from a"), rep(MimeHTML, "<p>from a</p>")}})
 	hb.seq++
 	res, err := b.e.ObserveClipboard(bg, Observation{Epoch: hb.epoch, Sequence: hb.seq, Mode: ObserveChange, LeaseID: hd.LeaseID})
-	b.e.ReleaseContent(bg, hd.LeaseID)
+	_ = b.e.ReleaseContent(bg, hd.LeaseID)
 	if err != nil || res.Disposition != DispUnchanged {
 		t.Fatalf("observing the written clipboard = %+v, %v", res, err)
 	}
@@ -334,22 +334,22 @@ func TestBeginApplyChecks(t *testing.T) {
 
 	caps := hostCaps
 	caps.WriteFormats = []string{MimePNG} // cannot write what was received
-	b.e.UpdateHostCapabilities(bg, caps)
+	_ = b.e.UpdateHostCapabilities(bg, caps)
 	if _, err := b.e.BeginApply(bg, req); code(err) != CodeUnsupported {
 		t.Fatalf("nothing writable: %v", err)
 	}
 	caps = hostCaps
 	caps.Apply = AbilityPermissionRequired
-	b.e.UpdateHostCapabilities(bg, caps)
+	_ = b.e.UpdateHostCapabilities(bg, caps)
 	if _, err := b.e.BeginApply(bg, req); code(err) != CodePermissionDenied {
 		t.Fatalf("no permission: %v", err)
 	}
 	caps.Apply = AbilityUnsupported
-	b.e.UpdateHostCapabilities(bg, caps)
+	_ = b.e.UpdateHostCapabilities(bg, caps)
 	if _, err := b.e.BeginApply(bg, req); code(err) != CodeUnsupported {
 		t.Fatalf("unsupported: %v", err)
 	}
-	b.e.UpdateHostCapabilities(bg, hostCaps)
+	_ = b.e.UpdateHostCapabilities(bg, hostCaps)
 	updateSettings(t, b.e, func(s *Settings) { s.Sync.Text = false })
 	if _, err := b.e.BeginApply(bg, req); code(err) != CodeUnsupported {
 		t.Fatalf("text disabled: %v", err)
@@ -371,7 +371,7 @@ func TestFailedAndDeferredKeepTheBaseline(t *testing.T) {
 		if err := b.e.ReportApplyResult(bg, ApplyResult{Token: tk.Token, Outcome: out, ErrorCode: "write_failed"}); err != nil {
 			t.Fatal(err)
 		}
-		b.e.ReleaseContent(bg, tk.LeaseID)
+		_ = b.e.ReleaseContent(bg, tk.LeaseID)
 		want := ApplyFailed
 		if out == ApplyOutcomeDeferred {
 			want = ApplyDeferred
@@ -394,8 +394,8 @@ func TestSuspendVoidsTheTicket(t *testing.T) {
 	a, b, hb := appliedPair(t)
 	r := receiveFrom(t, a, b, "x")
 	tk, _ := b.e.BeginApply(bg, ApplyRequest{ReceiptID: r.ReceiptID, ExpectedEpoch: hb.epoch, ExpectedSequence: hb.seq})
-	b.e.SetRuntimeState(bg, RuntimeSuspended)
-	b.e.SetRuntimeState(bg, RuntimeActive)
+	_ = b.e.SetRuntimeState(bg, RuntimeSuspended)
+	_ = b.e.SetRuntimeState(bg, RuntimeActive)
 	// The slot stays taken until the host says how it ended; success is refused.
 	st := state(t, b.e)
 	if st.ActiveApply == nil || len(st.Received) == 0 || st.Received[0].ApplyState == ApplyApplying {
@@ -407,7 +407,7 @@ func TestSuspendVoidsTheTicket(t *testing.T) {
 	if st := state(t, b.e); st.ActiveApply != nil {
 		t.Fatal("the slot was not freed by the host's report")
 	}
-	b.e.ReleaseContent(bg, tk.LeaseID)
+	_ = b.e.ReleaseContent(bg, tk.LeaseID)
 }
 
 func TestApplyWithoutObservation(t *testing.T) {
@@ -425,7 +425,7 @@ func TestApplyWithoutObservation(t *testing.T) {
 	if err := b.e.ReportApplyResult(bg, ApplyResult{Token: tk.Token, Outcome: ApplyOutcomeApplied}); err != nil {
 		t.Fatal(err)
 	}
-	b.e.ReleaseContent(bg, tk.LeaseID)
+	_ = b.e.ReleaseContent(bg, tk.LeaseID)
 	if received(b.e)[0].ApplyState != ApplyApplied {
 		t.Fatal("not marked applied")
 	}
@@ -451,8 +451,8 @@ func TestReceiptInUseIsNotEvictedOrExpired(t *testing.T) {
 	if len(rs) != 1 || rs[0].ReceiptID != r.ReceiptID {
 		t.Fatalf("list = %+v", rs)
 	}
-	b.e.ReportApplyResult(bg, ApplyResult{Token: tk.Token, Outcome: ApplyOutcomeFailed})
-	b.e.ReleaseContent(bg, tk.LeaseID)
+	_ = b.e.ReportApplyResult(bg, ApplyResult{Token: tk.Token, Outcome: ApplyOutcomeFailed})
+	_ = b.e.ReleaseContent(bg, tk.LeaseID)
 	// Released, it expires normally.
 	eventually(t, "expiry after the application ends", func() bool { return len(received(b.e)) == 0 })
 }

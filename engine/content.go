@@ -304,7 +304,7 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 			if err != nil {
 				return ContentHandle{}, sourceErr(ctx, err)
 			}
-			rc.Close()
+			_ = rc.Close()
 			if meta.Size != f.Size {
 				return ContentHandle{}, newErr(CodeInvalidArgument, "a file's size differs from the declared size")
 			}
@@ -531,7 +531,7 @@ func (e *Engine) openPart(ctx context.Context, p *partRec) (io.ReadCloser, *Erro
 			return nil, sourceErr(ctx, err)
 		}
 		if meta != p.meta {
-			rc.Close()
+			_ = rc.Close()
 			return nil, newErr(CodeSourceChanged, "the file changed after it was added")
 		}
 		return rc, nil

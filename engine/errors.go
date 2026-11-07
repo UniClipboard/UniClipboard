@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"unic/internal/rendezvous"
 )
@@ -60,10 +59,6 @@ func (e *Error) Error() string { return string(e.Code) + ": " + e.Message }
 func (e *Error) Unwrap() error { return e.cause }
 
 func newErr(code Code, msg string) *Error { return &Error{Code: code, Message: msg} }
-
-func errf(code Code, format string, a ...any) *Error {
-	return &Error{Code: code, Message: fmt.Sprintf(format, a...)}
-}
 
 func retryable(e *Error) *Error { e.Retryable = true; return e }
 

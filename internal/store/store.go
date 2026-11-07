@@ -57,12 +57,12 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	for _, m := range migrations {
 		if _, err := db.Exec(m); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-			db.Close()
+			_ = db.Close()
 			return nil, err
 		}
 	}
@@ -114,7 +114,7 @@ func (s *Store) Peers() ([]Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Peer
 	for rows.Next() {
 		var p Peer
@@ -185,7 +185,7 @@ func (s *Store) Candidates() ([]Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Candidate
 	for rows.Next() {
 		var c Candidate

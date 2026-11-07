@@ -121,7 +121,7 @@ func (t *Transport) Forget(addr string) {
 	delete(t.clients, addr)
 	t.mu.Unlock()
 	if c != nil {
-		c.Close()
+		_ = c.Close()
 	}
 }
 

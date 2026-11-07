@@ -59,7 +59,7 @@ func runDaemon() error {
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	id, err := deviceID(st)
 	if err != nil {
@@ -131,7 +131,7 @@ func runDaemon() error {
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		cancel()
 		if ln != nil {
-			ln.Close()
+			_ = ln.Close()
 		}
 		_ = os.Remove(sock)
 		_ = tr.Close()
@@ -199,7 +199,7 @@ func openGUI() {
 		log.Printf("open gui: %v", err)
 		return
 	}
-	go cmd.Wait()
+	go func() { _ = cmd.Wait() }()
 }
 
 // unicPath finds the unic program: next to unicd if installed together, else

@@ -60,7 +60,7 @@ func newLegacy(t *testing.T, a node) *legacy {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	f := newFakeNet(t)
 	b := &board{}
 	l := &legacy{board: b, id: "legacy-" + randHex(3)}
@@ -69,7 +69,7 @@ func newLegacy(t *testing.T, a node) *legacy {
 	ctx, cancel := context.WithCancel(bg)
 	done := make(chan struct{})
 	ready := make(chan struct{})
-	go func() { defer close(done); l.e.RunReady(ctx, func() { close(ready) }) }()
+	go func() { defer close(done); _ = l.e.RunReady(ctx, func() { close(ready) }) }()
 	t.Cleanup(func() { cancel(); <-done })
 	<-ready
 
@@ -138,7 +138,9 @@ func TestSubmitDeliversEverything(t *testing.T) {
 	img := pngBytes(t)
 	ref := filepath.Join(t.TempDir(), "ref.bin")
 	refData := strings.Repeat("r", 100_000)
-	os.WriteFile(ref, []byte(refData), 0o600)
+	if err := os.WriteFile(ref, []byte(refData), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	h, err := n.e.ImportContent(bg, ContentInput{
 		Representations: []RepresentationInput{rep(MimeText, "héllo"), rep(MimeHTML, "<i>x</i>"),
@@ -181,7 +183,7 @@ func TestSubmitNeedsAnOnlineTargetAndSendsNothingLater(t *testing.T) {
 		t.Fatalf("a refused submit left an operation: %+v", ops)
 	}
 	// The failed submit holds nothing: releasing the lease frees the content.
-	n.e.ReleaseContent(bg, h.LeaseID)
+	_ = n.e.ReleaseContent(bg, h.LeaseID)
 	if len(n.e.cs.contents) != 0 {
 		t.Fatal("a refused submit leaked a reference")
 	}
@@ -217,7 +219,7 @@ func TestSubmitValidationAndIdempotency(t *testing.T) {
 	waitSend(t, n.e, id)
 	// The same request is answered again without sending again, even after the
 	// lease is gone; a different request under the same id is a conflict.
-	n.e.ReleaseContent(bg, h.LeaseID)
+	_ = n.e.ReleaseContent(bg, h.LeaseID)
 	if again, err := n.e.SubmitContent(bg, req); err != nil || again != id {
 		t.Fatalf("repeat = %v, %v", again, err)
 	}
@@ -279,7 +281,7 @@ func TestLimitsAreCheckedAtSubmit(t *testing.T) {
 	h, _ := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("f", "0123456789")}})
 	s := state(t, n.e).Settings
 	s.Value.Limits.MaxFileBytes = 5
-	n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value})
+	_, _ = n.e.UpdateSettings(bg, UpdateSettingsRequest{ExpectedRevision: s.Revision, Value: s.Value})
 	if _, err := submit(n.e, h); code(err) != CodeLimitExceeded {
 		t.Fatalf("over the limit set after import: %v", err)
 	}
@@ -291,14 +293,20 @@ func TestLimitsAreCheckedAtSubmit(t *testing.T) {
 func TestChangedSourceFailsOnlyThatSend(t *testing.T) {
 	n, l := senderNode(t, nil)
 	path := filepath.Join(t.TempDir(), "doc")
-	os.WriteFile(path, []byte("version one"), 0o600)
+	if err := os.WriteFile(path, []byte("version one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	h, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{{Name: "doc", Size: 11, Source: pathSource{path}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(path, []byte("VERSION TWO"), 0o600)
+	if err := os.WriteFile(path, []byte("VERSION TWO"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	later := time.Now().Add(3 * time.Second)
-	os.Chtimes(path, later, later)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
 	id, err := submit(n.e, h)
 	if err != nil {
 		t.Fatal(err)
@@ -339,7 +347,9 @@ func (g *gated) Open(ctx context.Context) (io.ReadCloser, FileMeta, error) {
 
 func gatedFile(t *testing.T, n node) (*gated, ContentHandle) {
 	path := filepath.Join(t.TempDir(), "slow")
-	os.WriteFile(path, []byte("slow data"), 0o600)
+	if err := os.WriteFile(path, []byte("slow data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	g := &gated{pathSource: pathSource{path}}
 	h, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{{Name: "slow", Size: 9, Source: g}}})
 	if err != nil {
@@ -435,7 +445,7 @@ func TestOperationHoldsContentUntilFinished(t *testing.T) {
 	a, _ := submit(n.e, slow)
 	eventually(t, "A sending", func() bool { return targetState(t, n.e, a) == TargetSending })
 
-	n.e.ReleaseContent(bg, slow.LeaseID) // the caller lets go; the transfer still needs it
+	_ = n.e.ReleaseContent(bg, slow.LeaseID) // the caller lets go; the transfer still needs it
 	if len(n.e.cs.contents) != 1 {
 		t.Fatal("content freed under a running transfer")
 	}
@@ -455,7 +465,7 @@ func TestSendNeedsRunning(t *testing.T) {
 		t.Fatalf("before Start: %v", err)
 	}
 	start(t, n)
-	n.e.SetRuntimeState(bg, RuntimeSuspended)
+	_ = n.e.SetRuntimeState(bg, RuntimeSuspended)
 	if _, err := submit(n.e, h); code(err) != CodeSuspended {
 		t.Fatalf("suspended: %v", err)
 	}

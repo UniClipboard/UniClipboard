@@ -75,6 +75,7 @@ type Engine struct {
 	evStop    chan struct{}
 	evDone    chan struct{}
 	cs        *contentStore
+	hist      *history
 	recv      []*receipt // the received list, oldest first
 	recvTimer *time.Timer
 	obsMu     sync.Mutex // serializes observation and application
@@ -148,6 +149,16 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	}
 	closeAll := func(e *Error) (*Engine, error) { _ = st.Close(); return fail(e) }
 
+	hopts, herr2 := opts.History.withDefaults(res.MaxStoredBytes)
+	if herr2 != nil {
+		return closeAll(herr2)
+	}
+	opts.History = hopts
+	hist, err := openHistory(opts.DataDir, st, hopts)
+	if err != nil {
+		return closeAll(newErr(CodeUnavailable, "cannot prepare the history"))
+	}
+
 	id, err := identity(st)
 	if err != nil {
 		// Never invent a new identity because the old one could not be read.
@@ -179,6 +190,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		stopped:  make(chan struct{}), closedCh: make(chan struct{}),
 		pendRevs: map[DeviceID]pendRev{},
 		cs:       newContentStore(),
+		hist:     hist,
 	}
 	rv := opts.rendezvous
 	if rv == nil {

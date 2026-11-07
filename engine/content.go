@@ -64,6 +64,10 @@ type contentObj struct {
 	owned int64 // bytes charged to the storage quota
 	dir   string
 	refs  int
+	// blobs are history blobs this content reads in place; they stay on disk
+	// until the content is freed even if their record is deleted.
+	blobs []string
+	hist  *blobTracker
 }
 
 type leaseRec struct {
@@ -93,6 +97,9 @@ func (cs *contentStore) unrefLocked(c *contentObj) (dir string) {
 	delete(cs.contents, c.id)
 	cs.gone.add(string(c.id))
 	cs.stored -= c.owned
+	if len(c.blobs) > 0 {
+		c.hist.release(c.blobs) // leaf lock; may unlink doomed blobs
+	}
 	return c.dir
 }
 

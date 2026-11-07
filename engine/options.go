@@ -33,6 +33,8 @@ type Options struct {
 	HostCapabilities HostCapabilities
 	// Resources bounds memory and disk use; zero fields take the defaults.
 	Resources ResourcePolicy
+	// History bounds the persistent local history; zero fields take defaults.
+	History HistoryOptions
 	// Logger receives structured diagnostics that never contain clipboard
 	// content, addresses, tickets or paths. It must not block. Nil: silent.
 	Logger *slog.Logger
@@ -41,8 +43,9 @@ type Options struct {
 	// embeddings. Start and Close are called once each.
 	Network Network
 
-	// Test seam, reachable from this package's tests only.
-	rendezvous *rendezvous.Client
+	// Test seams, reachable from this package's tests only.
+	noPersistDefault bool // processed items default to persist=false
+	rendezvous       *rendezvous.Client
 }
 
 // ResourcePolicy bounds what the engine keeps. Zero fields mean the defaults.

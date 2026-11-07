@@ -12,6 +12,7 @@ type submissionEntry struct {
 	hash     [sha256.Size]byte
 	done     chan struct{}
 	item     ItemID
+	history  HistoryID
 	id       OperationID
 	disp     SyncDisposition // set at commit; empty while processing or failed
 	syncErr  *Error          // only disp == SyncFailed
@@ -43,7 +44,7 @@ func (s *submissionEntry) result(id RequestID) SubmissionResult {
 	case s.err != nil:
 		r.Phase, r.Error = SubmissionFailed, cloneError(s.err)
 	default:
-		r.Phase, r.SyncDisposition, r.OperationID, r.SyncError = SubmissionCommitted, s.disp, s.id, cloneError(s.syncErr)
+		r.Phase, r.HistoryID, r.SyncDisposition, r.OperationID, r.SyncError = SubmissionCommitted, s.history, s.disp, s.id, cloneError(s.syncErr)
 	}
 	return r
 }
@@ -140,11 +141,19 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	var id OperationID
 	var disp SyncDisposition
 	var syncErr *Error
+	var historyID HistoryID
 	if failure == nil {
-		id, disp, syncErr, failure = e.dispatchProcessed(ctx, req, entry.hash, processed)
+		if processed.policy.Persist {
+			// A record that cannot be stored means the commit failed: nothing is sent.
+			historyID, failure = e.persistHistory(ctx, processed)
+		}
+		if failure == nil {
+			id, disp, syncErr, failure = e.dispatchProcessed(ctx, req, entry.hash, processed)
+		}
 		e.cs.unref(processed.c)
 	}
 	e.mu.Lock()
+	entry.history = historyID
 	entry.id, entry.disp, entry.syncErr, entry.err, entry.finished = id, disp, syncErr, cloneError(failure), time.Now()
 	close(entry.done)
 	e.mu.Unlock()

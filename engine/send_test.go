@@ -40,7 +40,12 @@ func (r *remote) text() string {
 
 func senderNode(t *testing.T, mutate func(*Options)) (node, *remote) {
 	t.Helper()
-	n := newContentNode(t, mutate)
+	n := newContentNode(t, func(o *Options) {
+		o.noPersistDefault = true // these tests are about the transfer, not the history
+		if mutate != nil {
+			mutate(o)
+		}
+	})
 	start(t, n)
 	return n, newLegacy(t, n)
 }

@@ -210,7 +210,7 @@ func describePipelineItem(id string, c *contentObj, origin pipelineOrigin) pipel
 // success. Failure releases it. Engine.mu and the content-store mutex are never
 // held during callbacks. Observation admission does not wait for processing.
 func (e *Engine) processContent(ctx context.Context, event pipelineEvent, c *contentObj, origin pipelineOrigin) (out *processedContent, failure *Error) {
-	w := &processedContent{c: c, item: describePipelineItem(e.newID(), c, origin), policy: pipelinePolicy{Persist: true, Sync: true}}
+	w := &processedContent{c: c, item: describePipelineItem(e.newID(), c, origin), policy: pipelinePolicy{Persist: !e.opts.noPersistDefault, Sync: true}}
 	original := clonePipelineItem(w.item)
 	defer func() {
 		if failure != nil {

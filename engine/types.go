@@ -359,6 +359,9 @@ type ReceivedContent struct {
 	ReceivedAtMs int64             `json:"received_at_ms"`
 	ExpiresAtMs  int64             `json:"expires_at_ms"`
 	ApplyState   ApplyState        `json:"apply_state"`
+	// HistoryID links the persisted record; empty when persist was off. The
+	// record may be gone already, so GetItem can return not_found.
+	HistoryID HistoryID `json:"history_id,omitempty"`
 }
 
 // EventKind says which part of State changed.

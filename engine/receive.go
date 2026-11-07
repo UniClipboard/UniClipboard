@@ -173,21 +173,43 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 	desc := e.cs.descriptor(c)
 	e.cs.mu.Unlock()
 
+	// Persist after the cheap admission checks and before publishing; if the
+	// state moves on meanwhile the record is rolled back below.
+	var hid HistoryID
+	if processed.policy.Persist {
+		e.mu.Lock()
+		ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync == sy && workCtx.Err() == nil
+		e.mu.Unlock()
+		if !ok {
+			return
+		}
+		var perr *Error
+		if hid, perr = e.persistHistory(workCtx, processed); perr != nil {
+			return // no half-published entry; the receive fails without a record
+		}
+	}
+	rollback := func() {
+		if hid != "" {
+			e.removeHistory(hid)
+		}
+	}
 	now := time.Now()
 	rc := &receipt{c: c, expires: now.Add(e.res.ReceivedTTL), ReceivedContent: ReceivedContent{
 		ReceiptID: ReceiptID(e.newID()), Content: desc, PeerID: peer, ReceivedAtMs: now.UnixMilli(),
-		ExpiresAtMs: now.Add(e.res.ReceivedTTL).UnixMilli(), ApplyState: ApplyAvailable,
+		ExpiresAtMs: now.Add(e.res.ReceivedTTL).UnixMilli(), ApplyState: ApplyAvailable, HistoryID: hid,
 	}}
 	// Make room in the list; if every entry is in use, the new one loses.
 	for {
 		e.mu.Lock()
 		if e.life != LifecycleRunning || e.runtime != RuntimeActive || e.settings.Value.Sync != sy || workCtx.Err() != nil {
 			e.mu.Unlock()
+			rollback()
 			return
 		}
 		trusted, trustErr := e.st.HasPeer(string(peer))
 		if trustErr != nil || !trusted {
 			e.mu.Unlock()
+			rollback()
 			return
 		}
 		if len(e.recv) < e.res.MaxReceived {
@@ -203,6 +225,7 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 		e.mu.Unlock()
 		if !e.evictOldest(false) {
 			e.commit(EventResourceWarning)
+			rollback()
 			return
 		}
 	}

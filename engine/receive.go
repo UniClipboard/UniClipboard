@@ -99,7 +99,6 @@ func (e *Engine) admitReceive(req receiveRequest) (session.Admission, bool) {
 	e.mu.Lock()
 	ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled
 	pol := e.policyLocked(req.backend)
-	max := e.res.MaxStoredBytes
 	_, arriving := e.dedupInflight[key]
 	e.mu.Unlock()
 	if !ok || arriving || !allowsAny(req.parts, pol) {
@@ -120,22 +119,11 @@ func (e *Engine) admitReceive(req receiveRequest) (session.Admission, bool) {
 		delete(e.dedupInflight, key)
 		e.mu.Unlock()
 	}
-	reserve := func() bool {
-		e.cs.mu.Lock()
-		defer e.cs.mu.Unlock()
-		if e.cs.stored+total > max {
-			return false
-		}
-		e.cs.stored += total
-		return true
-	}
-	for !reserve() {
-		if !e.evictOldest(true) {
-			release()
-			e.commit(EventResourceWarning)
-			e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
-			return session.Admission{}, false
-		}
+	if !e.reserveStored(total, true) {
+		release()
+		e.commit(EventResourceWarning)
+		e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
+		return session.Admission{}, false
 	}
 	t := receiveTicket{backend: req.backend, source: req.source, key: key, reserved: total}
 	return session.Admission{
@@ -248,17 +236,27 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	desc := e.cs.descriptor(c)
 	e.cs.mu.Unlock()
 
-	// Persist after the cheap admission checks and before publishing; if the
-	// state moves on meanwhile the record is rolled back below.
+	// A list slot is reserved before anything is stored, so that a full list
+	// cannot be discovered after the history record and dedup entry exist.
+	live := func() bool {
+		return e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled &&
+			e.policyLocked(t.backend) == sy && workCtx.Err() == nil
+	}
+	if !e.reserveRecvSlot(live, peer) {
+		return
+	}
+	slot := true // a reserved slot is given back unless it is published
+	defer func() {
+		if slot {
+			e.mu.Lock()
+			e.recvReserved--
+			e.mu.Unlock()
+		}
+	}()
+
 	var hid HistoryID
 	dedup := e.dedupRecord(t.key)
 	if processed.policy.Persist {
-		e.mu.Lock()
-		ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled && e.policyLocked(t.backend) == sy && workCtx.Err() == nil
-		e.mu.Unlock()
-		if !ok {
-			return
-		}
 		var perr *Error
 		if hid, perr = e.persistHistory(workCtx, processed, &dedup); perr != nil {
 			return // no half-published entry; the receive fails without a record
@@ -266,46 +264,55 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	} else if err := e.st.PutDedup(dedup); err != nil {
 		return // the receive is not recorded as done, so it is not delivered either
 	}
-	rollback := func() {
-		if hid != "" {
-			e.removeHistory(hid)
-		}
-		_ = e.st.DeleteDedup(t.key)
-	}
 	now := time.Now()
 	rc := &receipt{c: c, backend: t.backend, expires: now.Add(e.res.ReceivedTTL), ReceivedContent: ReceivedContent{
 		ReceiptID: ReceiptID(e.newID()), Content: desc, PeerID: peer, ReceivedAtMs: now.UnixMilli(),
 		ExpiresAtMs: now.Add(e.res.ReceivedTTL).UnixMilli(), ApplyState: ApplyAvailable, HistoryID: hid,
 	}}
-	// Make room in the list; if every entry is in use, the new one loses.
+	// The commit point: state and trust may have moved on while the record was
+	// written, in which case the record and the dedup entry are taken back.
+	e.mu.Lock()
+	trusted, trustErr := e.st.HasPeer(string(peer))
+	if !live() || trustErr != nil || !trusted {
+		e.mu.Unlock()
+		if hid != "" {
+			e.removeHistory(hid)
+		}
+		_ = e.st.DeleteDedup(t.key)
+		return
+	}
+	e.cs.mu.Lock()
+	c.refs++ // Received has its own reference before processing ends
+	e.cs.mu.Unlock()
+	e.recvReserved--
+	slot = false
+	e.recv = append(e.recv, rc)
+	e.commitObjsLocked([]ObjectRef{{Type: "received", ID: string(rc.ReceiptID)}}, EventReceived)
+	e.rescheduleRecvLocked()
+	e.mu.Unlock()
+}
+
+// reserveRecvSlot sets one place in the received list aside, making room by
+// dropping the oldest entry nobody is applying. It fails, without side
+// effects, if the engine moved on, the sender is no longer trusted or every
+// entry is in use.
+func (e *Engine) reserveRecvSlot(live func() bool, peer DeviceID) bool {
 	for {
 		e.mu.Lock()
-		if e.life != LifecycleRunning || e.runtime != RuntimeActive || !e.settings.Value.Sync.Enabled || e.policyLocked(t.backend) != sy || workCtx.Err() != nil {
+		trusted, err := e.st.HasPeer(string(peer))
+		if !live() || err != nil || !trusted {
 			e.mu.Unlock()
-			rollback()
-			return
+			return false
 		}
-		trusted, trustErr := e.st.HasPeer(string(peer))
-		if trustErr != nil || !trusted {
+		if len(e.recv)+e.recvReserved < e.res.MaxReceived {
+			e.recvReserved++
 			e.mu.Unlock()
-			rollback()
-			return
-		}
-		if len(e.recv) < e.res.MaxReceived {
-			e.cs.mu.Lock()
-			c.refs++ // Received has its own reference before processing ends
-			e.cs.mu.Unlock()
-			e.recv = append(e.recv, rc)
-			e.commitObjsLocked([]ObjectRef{{Type: "received", ID: string(rc.ReceiptID)}}, EventReceived)
-			e.rescheduleRecvLocked()
-			e.mu.Unlock()
-			return
+			return true
 		}
 		e.mu.Unlock()
 		if !e.evictOldest(false) {
 			e.commit(EventResourceWarning)
-			rollback()
-			return
+			return false
 		}
 	}
 }

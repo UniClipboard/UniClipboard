@@ -81,6 +81,7 @@ type Engine struct {
 	dedupInflight map[store.DedupKey]struct{} // receives being read right now; guarded by mu
 	syncMu        sync.Mutex                  // orders writes of a record's sync summary
 	recv          []*receipt                  // the received list, oldest first
+	recvReserved  int                         // list slots set aside for receives being stored; guarded by mu
 	recvTimer     *time.Timer
 	histTimer     *time.Timer // next expiry sweep; guarded by mu
 	obsMu         sync.Mutex  // serializes observation and application

@@ -613,6 +613,17 @@ func (s *Store) OldestHistory(n int) ([]HistoryItem, error) {
 	return out, rows.Err()
 }
 
+// OldestOwnedHistory returns the ID of the oldest item that stores bytes of
+// its own (inline data or a blob); items holding only references free nothing.
+func (s *Store) OldestOwnedHistory() (id string, ok bool, err error) {
+	err = s.db.QueryRow(`SELECT id FROM clip_items WHERE EXISTS (
+SELECT 1 FROM clip_item_parts p WHERE p.item_seq = clip_items.seq AND p.ref = '') ORDER BY seq ASC LIMIT 1`).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return id, err == nil, err
+}
+
 // HistoryTotals returns the item count and the bytes history itself stores
 // (inline data and blobs). Files kept in place by reference cost nothing.
 func (s *Store) HistoryTotals() (items int, bytes int64, err error) {

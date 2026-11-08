@@ -310,7 +310,7 @@ func (e *Engine) replacePipelineText(text string) (*contentObj, *Error) {
 	}
 	e.cs.mu.Lock()
 	defer e.cs.mu.Unlock()
-	if size > e.res.MaxStoredBytes-e.cs.stored {
+	if size > e.res.MaxStoredBytes-e.cs.stored-e.hist.bytes.Load() {
 		return nil, newErr(CodeResourceExhausted, "not enough storage for processed content")
 	}
 	// Check quota before allocating the output bytes. SetText is text-only and

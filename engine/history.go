@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -79,11 +80,14 @@ func (b *blobTracker) drop(names []string) {
 }
 
 type history struct {
-	mu   sync.Mutex // serializes history changes with blob bookkeeping
-	opts HistoryOptions
-	dir  string
-	blob *blobTracker
-	key  []byte // cursor MAC key, persisted so cursors verify across restarts
+	// bytes is what history itself stores. It shares ResourcePolicy.MaxStoredBytes
+	// with live content: shared content counts once, referenced files not at all.
+	bytes atomic.Int64
+	mu    sync.Mutex // serializes history changes with blob bookkeeping
+	opts  HistoryOptions
+	dir   string
+	blob  *blobTracker
+	key   []byte // cursor MAC key, persisted so cursors verify across restarts
 }
 
 func (o HistoryOptions) withDefaults(maxStored int64) (HistoryOptions, *Error) {
@@ -133,8 +137,65 @@ func openHistory(dataDir string, st *store.Store, opts HistoryOptions) (*history
 			}
 		}
 	}
-	return &history{opts: opts, dir: dir, key: key,
-		blob: &blobTracker{dir: dir, holders: map[string]int{}, doomed: map[string]bool{}}}, nil
+	h := &history{opts: opts, dir: dir, key: key,
+		blob: &blobTracker{dir: dir, holders: map[string]int{}, doomed: map[string]bool{}}}
+	h.refresh(st)
+	return h, nil
+}
+
+// refresh re-reads how many bytes history stores.
+func (h *history) refresh(st *store.Store) {
+	if _, b, err := st.HistoryTotals(); err == nil {
+		h.bytes.Store(b)
+	}
+}
+
+// historyNow is the clock for expiry. Expiry is wall-clock by contract: a
+// clock set back delays it, one set forward hastens it, and a record that
+// was already deleted never comes back.
+var historyNow = time.Now
+
+// reserveStored sets n bytes of the shared storage budget aside, making room
+// by dropping what can be dropped: received entries nobody is applying (if
+// asked to) and then the oldest history items that store bytes of their own.
+func (e *Engine) reserveStored(n int64, evictReceived bool) bool {
+	for {
+		e.cs.mu.Lock()
+		if e.cs.stored+e.hist.bytes.Load()+n <= e.res.MaxStoredBytes {
+			e.cs.stored += n
+			e.cs.mu.Unlock()
+			return true
+		}
+		e.cs.mu.Unlock()
+		if evictReceived && e.evictOldest(true) {
+			continue
+		}
+		if !e.evictOwnedHistory() {
+			return false
+		}
+	}
+}
+
+// evictOwnedHistory removes the oldest record that frees storage.
+func (e *Engine) evictOwnedHistory() bool {
+	h := e.hist
+	h.mu.Lock()
+	id, ok, err := e.st.OldestOwnedHistory()
+	if err != nil || !ok {
+		h.mu.Unlock()
+		return false
+	}
+	blobs, _, err := e.st.DeleteHistory(id, 0)
+	if err == nil {
+		h.dropUnreferenced(e.st, blobs)
+		h.refresh(e.st)
+	}
+	h.mu.Unlock()
+	if err != nil {
+		return false
+	}
+	e.historyChanged(id)
+	return true
 }
 
 // ---- mapping ----
@@ -258,7 +319,20 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 	if stored > h.opts.MaxBytes {
 		return "", newErr(CodeResourceExhausted, "the item is larger than the history allows")
 	}
-	now := time.Now()
+	// The record shares the storage budget with live content; the source being
+	// committed is replaced by it, so it is not counted twice.
+	for {
+		e.cs.mu.Lock()
+		used := e.cs.stored - c.owned + h.bytes.Load()
+		e.cs.mu.Unlock()
+		if used+stored <= e.res.MaxStoredBytes {
+			break
+		}
+		if !e.evictOwnedHistory() {
+			return "", retryable(newErr(CodeResourceExhausted, "not enough storage for this history item"))
+		}
+	}
+	now := historyNow()
 	it := store.HistoryItem{
 		ID: randHex(16), Kind: string(historyKindOf(pc.item.Type)), OriginKind: pc.item.Origin.kind,
 		DeviceID: string(pc.item.Origin.deviceID), PluginID: pc.item.Origin.pluginID,
@@ -317,6 +391,7 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 		return fail(historyStoreErr(err))
 	}
 	evicted := e.evictHistoryLocked(seq)
+	h.refresh(e.st)
 	h.mu.Unlock()
 	e.historyChanged(append([]string{it.ID}, evicted...)...)
 	return HistoryID(it.ID), nil
@@ -381,7 +456,7 @@ func (e *Engine) GetItem(ctx context.Context, id HistoryID) (HistoryItem, error)
 		return HistoryItem{}, gerr
 	}
 	defer release()
-	it, err := e.st.GetHistory(string(id), time.Now().UnixMilli(), false)
+	it, err := e.st.GetHistory(string(id), historyNow().UnixMilli(), false)
 	if err != nil {
 		return HistoryItem{}, historyStoreErr(err)
 	}
@@ -480,7 +555,7 @@ func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (Histo
 		return HistoryPage{}, ferr
 	}
 	fk := filterKey(f)
-	q := store.HistoryQuery{Filter: f.toStore(), Limit: limit + 1, NowMs: time.Now().UnixMilli()}
+	q := store.HistoryQuery{Filter: f.toStore(), Limit: limit + 1, NowMs: historyNow().UnixMilli()}
 	if req.Cursor != "" {
 		cp, ok := e.hist.open(req.Cursor)
 		switch {
@@ -517,7 +592,7 @@ func (e *Engine) loadHistoryContent(id HistoryID) (*contentObj, *Error) {
 	h := e.hist
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	it, err := e.st.GetHistory(string(id), time.Now().UnixMilli(), true)
+	it, err := e.st.GetHistory(string(id), historyNow().UnixMilli(), true)
 	if err != nil {
 		return nil, historyStoreErr(err)
 	}
@@ -664,6 +739,7 @@ func (e *Engine) removeHistory(id HistoryID) {
 	blobs, _, err := e.st.DeleteHistory(string(id), 0)
 	if err == nil {
 		h.dropUnreferenced(e.st, blobs)
+		h.refresh(e.st)
 	}
 	h.mu.Unlock()
 	if err == nil {
@@ -682,11 +758,12 @@ func (missingSource) Open(context.Context) (io.ReadCloser, FileMeta, error) {
 func (h *history) sweep(st *store.Store) []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	ids, blobs, _, err := st.ExpiredHistory(time.Now().UnixMilli())
+	ids, blobs, _, err := st.ExpiredHistory(historyNow().UnixMilli())
 	if err != nil || len(ids) == 0 {
 		return nil
 	}
 	h.dropUnreferenced(st, blobs)
+	h.refresh(st)
 	return ids
 }
 
@@ -750,7 +827,7 @@ func (e *Engine) UpdateItem(ctx context.Context, req UpdateItemRequest) (History
 	if req.Tags == nil && req.ExpiresAtMs == nil {
 		return HistoryItem{}, newErr(CodeInvalidArgument, "nothing to update")
 	}
-	now := time.Now().UnixMilli()
+	now := historyNow().UnixMilli()
 	var tags *[]string
 	if req.Tags != nil {
 		n, terr := normalizeTags(*req.Tags)
@@ -791,6 +868,7 @@ func (e *Engine) DeleteItem(ctx context.Context, req DeleteItemRequest) error {
 	blobs, _, err := e.st.DeleteHistory(string(req.ID), req.ExpectedRevision)
 	if err == nil {
 		h.dropUnreferenced(e.st, blobs)
+		h.refresh(e.st)
 	}
 	h.mu.Unlock()
 	if err != nil {

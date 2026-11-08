@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"time"
-
 	"github.com/uniclipboard/unic/internal/store"
 )
 
@@ -104,7 +102,7 @@ func (e *Engine) recordSync(id HistoryID, results []BackendSubmissionResult, tar
 	e.syncMu.Lock() // the later writer must also hold the newer picture
 	defer e.syncMu.Unlock()
 	e.hist.mu.Lock()
-	_, err := e.st.SetSyncState(string(id), string(state), backends, time.Now().UnixMilli())
+	_, err := e.st.SetSyncState(string(id), string(state), backends, historyNow().UnixMilli())
 	e.hist.mu.Unlock()
 	if err == nil {
 		e.historyChanged(string(id))

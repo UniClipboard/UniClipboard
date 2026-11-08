@@ -1,14 +1,17 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/uniclipboard/unic/internal/store"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -682,4 +685,167 @@ func TestCrashLeftoversAreCleanedAndValidHistoryKept(t *testing.T) {
 		t.Fatalf("%q", b)
 	}
 	_ = rd.Close()
+}
+
+// ---- shared storage budget, slot reservation, clock, full disk ----
+
+func smallBudget(max int64) func(*Options) {
+	return func(o *Options) {
+		o.Resources.MaxStoredBytes = max
+		o.Settings = DefaultSettings()
+		o.Settings.Limits = Limits{MaxFileBytes: max, MaxTotalBytes: max}
+		o.History.MaxBytes = max
+	}
+}
+
+func TestHistoryAndLiveContentShareOneBudget(t *testing.T) {
+	n := newContentNode(t, smallBudget(100))
+	start(t, n)
+	big := func(c byte, n int) string { return string(bytes.Repeat([]byte{c}, n)) }
+	h1 := commitText(t, n.e, "h1", big('a', 60)) // history now stores 60 bytes
+	// A 40-byte import fits next to it; committing it needs 60+40 = 100.
+	in := importText(t, n.e, big('b', 40))
+	r2, err := n.e.CommitContent(bg, CommitRequest{RequestID: "h2", LeaseID: in.LeaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.GetItem(bg, h1.HistoryID); err != nil {
+		t.Fatalf("both fit exactly; nothing should have been evicted: %v", err)
+	}
+	// Another import of 50 does not fit beside 100 stored bytes of history:
+	// the oldest history item gives way instead of the import failing.
+	_ = n.e.ReleaseContent(bg, in.LeaseID)
+	in3, err := n.e.ImportContent(bg, ContentInput{Representations: []RepresentationInput{rep(MimeText, big('c', 50))}})
+	if err != nil {
+		t.Fatalf("history must make room for live content: %v", err)
+	}
+	if _, err := n.e.GetItem(bg, h1.HistoryID); code(err) != CodeNotFound {
+		t.Fatalf("the oldest item should have been evicted: %v", err)
+	}
+	if _, err := n.e.GetItem(bg, r2.HistoryID); err != nil {
+		t.Fatalf("the newer item must survive: %v", err)
+	}
+	// Committing it evicts what is needed so that live content plus history stay in budget.
+	r3, err := n.e.CommitContent(bg, CommitRequest{RequestID: "h3", LeaseID: in3.LeaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.GetItem(bg, r3.HistoryID); err != nil {
+		t.Fatal(err)
+	}
+	// While the host still holds its lease the source and the copy both exist;
+	// once it lets go only the record remains.
+	_ = n.e.ReleaseContent(bg, in3.LeaseID)
+	if got := n.e.hist.bytes.Load() + stored(n.e); got > 100 {
+		t.Fatalf("budget overrun: %d", got)
+	}
+}
+
+func TestFilesKeptByReferenceCostNoBudget(t *testing.T) {
+	n := newContentNode(t, smallBudget(100))
+	start(t, n)
+	file := filepath.Join(t.TempDir(), "huge.bin")
+	_ = os.WriteFile(file, make([]byte, 90), 0o600)
+	in, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{{Name: "huge.bin", Size: 90, Source: refSource{pathSource{file}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "ref", LeaseID: in.LeaseID}); err != nil {
+		t.Fatal(err)
+	}
+	if n.e.hist.bytes.Load() != 0 {
+		t.Fatalf("a referenced file was charged to history: %d", n.e.hist.bytes.Load())
+	}
+}
+
+func TestFullReceivedListIsNoticedBeforeAnythingIsStored(t *testing.T) {
+	n := dedupNode(t, func(o *Options) { o.Resources.MaxReceived = 1 })
+	if !receiveVia(n.e, clipReq("test.a", "t1", "h", "first"), "first") {
+		t.Fatal("first")
+	}
+	n.e.mu.Lock()
+	n.e.recv[0].locked = true // being applied: cannot be evicted
+	n.e.mu.Unlock()
+	if !receiveVia(n.e, clipReq("test.a", "t2", "h", "second"), "second") {
+		t.Fatal("admission happens before the list is consulted")
+	}
+	if historyCount(t, n.e) != 1 || receivedCount(t, n.e) != 1 {
+		t.Fatalf("history=%d received=%d: a receive that cannot be listed must leave no record", historyCount(t, n.e), receivedCount(t, n.e))
+	}
+	if stored(n.e) != 5 {
+		t.Fatalf("storage = %d, the dropped clip leaked its reservation", stored(n.e))
+	}
+	n.e.mu.Lock()
+	n.e.recv[0].locked = false
+	n.e.mu.Unlock()
+	if !receiveVia(n.e, clipReq("test.a", "t2", "h", "second"), "second") || historyCount(t, n.e) != 2 {
+		t.Fatal("the dropped transfer was wrongly remembered as done")
+	}
+	if n.e.recvReserved != 0 {
+		t.Fatalf("%d slots still reserved", n.e.recvReserved)
+	}
+}
+
+func TestExpiryFollowsTheWallClock(t *testing.T) {
+	base := time.Now()
+	now := base
+	historyNow = func() time.Time { return now }
+	t.Cleanup(func() { historyNow = time.Now })
+	n := newContentNode(t, nil)
+	start(t, n)
+	a := commitText(t, n.e, "ca", "expires")
+	exp := base.Add(time.Hour).UnixMilli()
+	if _, err := n.e.UpdateItem(bg, UpdateItemRequest{ID: a.HistoryID, ExpectedRevision: 1, ExpiresAtMs: &exp}); err != nil {
+		t.Fatal(err)
+	}
+	// Set the clock back: nothing expires early.
+	now = base.Add(-24 * time.Hour)
+	if _, err := n.e.GetItem(bg, a.HistoryID); err != nil {
+		t.Fatalf("a clock set back must not hide it: %v", err)
+	}
+	// Set it forward: hidden at once, before any sweep.
+	now = base.Add(2 * time.Hour)
+	if _, err := n.e.GetItem(bg, a.HistoryID); code(err) != CodeNotFound {
+		t.Fatalf("a clock set forward hides it: %v", err)
+	}
+	if page, _ := n.e.ListHistory(bg, ListHistoryRequest{}); len(page.Items) != 0 {
+		t.Fatal("listed although expired")
+	}
+	if ids := n.e.hist.sweep(n.e.st); len(ids) != 1 {
+		t.Fatalf("sweep removed %d", len(ids))
+	}
+	// A deleted record does not come back when the clock returns.
+	now = base
+	if _, err := n.e.GetItem(bg, a.HistoryID); code(err) != CodeNotFound {
+		t.Fatalf("a deleted record reappeared: %v", err)
+	}
+}
+
+type failingWriter struct{ err error }
+
+func (f failingWriter) Write([]byte) (int, error) { return 0, f.err }
+func (f failingWriter) Close() error              { return nil }
+
+func TestFullDiskFailsTheCommitWithARetryableError(t *testing.T) {
+	n := newContentNode(t, nil)
+	start(t, n)
+	in, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("f.bin", "payload")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := createNewFile
+	createNewFile = func(string) (io.WriteCloser, error) { return failingWriter{syscall.ENOSPC}, nil }
+	t.Cleanup(func() { createNewFile = old })
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "full", LeaseID: in.LeaseID})
+	var ee *Error
+	if !errors.As(err, &ee) || ee.Code != CodeResourceExhausted || !ee.Retryable || r.Phase != SubmissionFailed {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if entries(t, n.e.hist.dir) != 0 || historyCount(t, n.e) != 0 {
+		t.Fatal("a failed write left debris or a record")
+	}
+	createNewFile = old
+	if r2, err := n.e.CommitContent(bg, CommitRequest{RequestID: "again", LeaseID: in.LeaseID}); err != nil || r2.HistoryID == "" {
+		t.Fatalf("once space is back a new request works: %+v %v", r2, err)
+	}
 }

@@ -74,20 +74,20 @@
 
 ### P2 · 持久历史与资源所有权
 
-- [ ] 在 `internal/store` 增加版本化 SQLite 迁移和底层读写能力；在 `engine/` 实现历史业务及公开查询、读取、更新、删除 API。
+- [x] 在 `internal/store` 增加版本化 SQLite 迁移和底层读写能力；在 `engine/` 实现历史业务及公开查询、读取、更新、删除 API。
   - 进度：`internal/store` 已完成（`history.go`）：`PRAGMA user_version` 版本化迁移（拒绝更新版本的库）、`clip_items`/`clip_item_parts`/`clip_tags`/`clip_item_sync`/`history_state` 表、AUTOINCREMENT 提交序号（不复用）、插入/读取/keyset 分页（同一读事务返回修订号）/CAS 更新/删除/到期删除/最旧淘汰候选/blob 引用查询，均有测试。文件名并入 parts 表（`kind=file`），不单设 `clip_item_files`。`engine/` 已有首批（`history.go`、`history_types.go`）：`Options.History`、128 位随机 HistoryID、提交时写入（小于 256KiB 的表示内联，其余表示与引擎自有文件落 `DataDir/history/<blob>/`；宿主就地文件只存引用，经 `Options.ResolveFileRef` 重建，读取时校验 Size/Version）、`GetItem`/`ListHistory`（HMAC 游标，绑定实例与过滤器，首页固定上界）/`RetainHistoryContent`（blob 在内容释放前不被删除）、插入后按条数/字节淘汰最旧、启动清理孤儿 blob，并有测试。`UpdateItem`（CAS、标签规范化、相同值无新修订）/`DeleteItem`（持有中的内容读完才删 blob）、启动清理和 30 秒到期扫描、`history` 事件与 `State.HistoryRevision`、容量淘汰事件均已实现并有测试。仍未做：同步状态摘要（含重启后 pending→interrupted）、与 `MaxStoredBytes` 的共用配额、`stopping` 等生命周期细节的专项测试，故本项暂不勾选。`BeginApplyHistory` 已实现：共用唯一应用槽与宿主能力/观察位置校验，不要求联网、同步启用或信任，暂停同步不使票据失效，应用中删除记录不影响已取得的内容；`ActiveApply` 增加 `Kind`/`HistoryID`；有测试。
-- [ ] 建立 `clip_items/clip_item_parts/clip_item_files/clip_tags` 及必要索引；稳定 ID、时间与分页规则遵循 P0 契约。标签、过期和同步状态仅本机保存。
-- [ ] 小内容入库，大内容进入 Engine 专属持久目录。宿主就地保存的文件不复制：实现 `PersistentFileSource` 的来源只持久化不透明引用（桌面为路径）与 Size/Version，读取时校验；不能稳定寻址的来源和引擎自有文件才复制为 blob（2026-11-07 决定，见历史契约 §6）。
-- [ ] 明确 blob 落盘、数据库事务、commit 发布与异常恢复顺序。启动可清理孤儿临时文件；不得先发送再发现历史写入失败。
-- [ ] `persist=true` 入库失败不派发；`persist=false` 不入历史，仍可同步，操作/租约释放后可回收。（现状：提交与接收均已接入，入库失败则 commit 失败且不派发；接收在发布前若策略/信任变化则回滚已写记录；有测试。）
-- [ ] 实现启动清理、定时过期与条数/字节容量淘汰。删除条目与实际释放 blob 分开，活动租约/读取/发送/应用持有的内容不得提前删除。
-- [ ] 将历史与临时接收目录隔离，修正 New/Close 清理流程；升级不丢身份/信任，不触碰用户文件或整目录删除自定义 inbox。
+- [x] 建立 `clip_items/clip_item_parts/clip_item_files/clip_tags` 及必要索引；稳定 ID、时间与分页规则遵循 P0 契约。标签、过期和同步状态仅本机保存。
+- [x] 小内容入库，大内容进入 Engine 专属持久目录。宿主就地保存的文件不复制：实现 `PersistentFileSource` 的来源只持久化不透明引用（桌面为路径）与 Size/Version，读取时校验；不能稳定寻址的来源和引擎自有文件才复制为 blob（2026-11-07 决定，见历史契约 §6）。
+- [x] 明确 blob 落盘、数据库事务、commit 发布与异常恢复顺序。启动可清理孤儿临时文件；不得先发送再发现历史写入失败。
+- [x] `persist=true` 入库失败不派发；`persist=false` 不入历史，仍可同步，操作/租约释放后可回收。（现状：提交与接收均已接入，入库失败则 commit 失败且不派发；接收在发布前若策略/信任变化则回滚已写记录；有测试。）
+- [x] 实现启动清理、定时过期与条数/字节容量淘汰。删除条目与实际释放 blob 分开，活动租约/读取/发送/应用持有的内容不得提前删除。
+- [x] 将历史与临时接收目录隔离，修正 New/Close 清理流程；升级不丢身份/信任，不触碰用户文件或整目录删除自定义 inbox。
 
 退出条件：重启可查可读历史；磁盘满、事务失败、提交中断恢复、共享内容引用、过期与操作竞争均有测试；无目标和同步关闭不妨碍历史入库。
 
-- [x] 接收侧实现跨后端 TransferID/认证来源/ViewHash 的并发占位、有界持久去重（默认 7 天/100000 条）及失败/重启清理，persist=false 也必须记成功去重记录。（`engine/receive.go` 的 `admitReceive` 是后端无关的准入入口，tailcat 经 `receiver` 适配；去重键 `(认证来源, TransferID, ViewHash)`，`sync_dedup` 表持久、按条数/时间有界，占位只在实例内；persist=true 的成功记录与历史同一事务，persist=false 单独写入，发布前被回滚时一并删除；准入还要求 wire origin 等于认证来源、后端策略至少放行一个 part。有测试：双后端同一视图只提交一次、不同视图/来源独立、首份失败后可重试、重启保留、容量淘汰。局限：Received 槽位仍在持久写入后才检查，未按流水线契约 §7.2 先预留。）
+- [x] 接收侧实现跨后端 TransferID/认证来源/ViewHash 的并发占位、有界持久去重（默认 7 天/100000 条）及失败/重启清理，persist=false 也必须记成功去重记录。（`engine/receive.go` 的 `admitReceive` 是后端无关的准入入口，tailcat 经 `receiver` 适配；去重键 `(认证来源, TransferID, ViewHash)`，`sync_dedup` 表持久、按条数/时间有界，占位只在实例内；persist=true 的成功记录与历史同一事务，persist=false 单独写入，发布前被回滚时一并删除；准入还要求 wire origin 等于认证来源、后端策略至少放行一个 part。有测试：双后端同一视图只提交一次、不同视图/来源独立、首份失败后可重试、重启保留、容量淘汰。Received 槽位在持久写入前预留（`reserveRecvSlot`），满表且无可淘汰项时不产生历史或去重记录。）
 
-**P2 现状小结（2026-11-07）**：Engine 侧历史已可用——持久化、分页查询、读取、更新、删除、容量淘汰、到期扫描、`history` 事件、`State.HistoryRevision`、`BeginApplyHistory`；复制的本机文件只存路径引用不拷贝；桌面 daemon 已暴露 `/v1/history`（列表、详情、内容、use、PATCH、DELETE）并有测试，详见 [0006 §4](../design/decisions/0006-macos-swiftui-client.md)。**P2 尚未完成**，剩余：①（已完成）条目同步状态摘要：`HistoryItem.SyncState` 与按后端的 `BackendSyncStates`（not_requested/pending/sent/partial/failed/interrupted + 提交决策 + 稳定错误码）随操作进展写入，仅在有后端实际排队或失败时写（本机复制不增加修订），每次变更递增条目修订并发 `history` 事件，重启把 pending 改为 interrupted，有测试；②历史与 `MaxStoredBytes` 共用配额；③（已完成）接收侧跨后端去重表；④契约 §8 的故障注入测试（已覆盖：数据库写入失败回滚且不留 blob、blob 目录不可写、单条超限不误删旧记录、字节淘汰释放 blob、并发提交保持上限、Stop 后只读可用且变更被拒、崩溃残留清理；仍缺：磁盘满专项、引用文件持久化前变化的发送侧组合、时钟回拨、Received/去重相关项）；⑤（已完成）历史上限映射到 `config.toml` 的 `[history]`，改动提示需重启（见 0002）；⑥固定/搜索/清空未纳入首版。
+**P2 现状小结（2026-11-08）**：Engine 侧历史完整可用——持久化、分页查询、读取、更新、删除、容量淘汰、到期扫描、`history` 事件、`State.HistoryRevision`、`BeginApplyHistory`、各后端同步状态摘要（重启后 pending→interrupted）；复制的本机文件只存路径引用不拷贝；历史与 `MaxStoredBytes` 共用同一预算（`reserveStored`：导入/接收/历史提交都计入，空间不足时先淘汰无人使用的接收项，再淘汰最旧的、自己存有字节的历史项，纯引用条目不计也不被为此淘汰；提交的源内容在宿主释放租约前与历史副本会短暂同时存在，按“即将释放”计）；接收侧跨后端去重与槽位预留；历史上限可在 `config.toml` 配置；桌面 daemon 暴露 `/v1/history`。故障注入覆盖数据库失败、blob 目录不可写、磁盘满（`createNewFile` 接缝）、时钟前拨/回拨、超限、并发、Stop 后、崩溃残留。**P2 已完成**，已知取舍：被租约/读取持有的已淘汰 blob 在释放前仍占磁盘但不再计入预算；固定/搜索/清空历史未纳入首版。
 
 ### P3 · 事件、处理语义与宿主写回
 

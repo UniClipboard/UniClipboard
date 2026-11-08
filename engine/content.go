@@ -257,13 +257,9 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 	}
 
 	cs := e.cs
-	cs.mu.Lock()
-	if cs.stored+owned > e.res.MaxStoredBytes {
-		cs.mu.Unlock()
+	if !e.reserveStored(owned, false) { // history may give way, received entries are not touched
 		return ContentHandle{}, retryable(newErr(CodeResourceExhausted, "not enough storage for this content"))
 	}
-	cs.stored += owned // reserved
-	cs.mu.Unlock()
 
 	c := &contentObj{id: ContentID(e.newID()), total: total, owned: owned, refs: 1}
 	ok := false
@@ -350,9 +346,15 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 	return h, nil
 }
 
+// createNewFile makes a file that must not exist yet. It is a variable so that
+// tests can make the disk fail.
+var createNewFile = func(path string) (io.WriteCloser, error) {
+	return os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+}
+
 // copyIn writes exactly size bytes of r to a new file at path.
 func (e *Engine) copyIn(ctx context.Context, path string, r io.Reader, size int64) *Error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	f, err := createNewFile(path)
 	if err != nil {
 		return newErr(CodeUnavailable, "cannot store the file")
 	}

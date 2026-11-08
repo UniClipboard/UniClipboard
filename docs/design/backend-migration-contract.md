@@ -43,7 +43,7 @@ Options 区分 builtin 实例装配与外部程序装配；实现标识、实例
 
 核心不从 PATH、当前目录、环境、网络或 installed.lock 隐式找程序；安装、TOML、文件监听和受信任程序路径解析归宿主。外部程序摘要在启动前复核，不宣称同目录可写清单独自证明程序来源。Executable 是受控装配路径例外，不进入普通 State/Event/Error。
 
-实现注记：当前 `internal/plugins/builtintailcat/` 以 `Transport` 注入点装配 session 引擎，并通过 `engine.Options.Peer`（PeerFactory）交给 Engine；Engine 仍引用 `internal/session` 的部分类型（未达到“Engine 不引用 session”的目标），待后端业务 DTO 落地后再拆。Engine 另按实例建立私有目录并加 `runtime.lock`；进程内 sync_backend 插件已可与 builtin.tailcat 并存，进程外后端仍返回 unsupported，插件后端暂无实例目录与锁。
+实现注记：当前 `internal/plugins/builtintailcat/` 以 `Transport` 注入点装配 session 引擎，并通过 `engine.Options.Peer`（PeerFactory）交给 Engine；Engine 仍引用 `internal/session` 的部分类型（未达到“Engine 不引用 session”的目标），待后端业务 DTO 落地后再拆。Engine 另按实例建立私有目录并加 `runtime.lock`；进程内 sync_backend 插件已可与 builtin.tailcat 并存；外部渠道 profile 的进程外后端已可装载（P2P 进程外后端仍返回 unsupported）。所有 sync_backend 插件（进程内与进程外）按 `Spec.ID` 取得 `plugin-data/<ID>/` 与 `runtime.lock`，持锁到 Engine 关闭；进程外后端的目录由 Engine 指定（`UNIC_PLUGIN_DIR`、工作目录），调用方自行设置 `Dir` 会被拒绝；同一目录被他人占用返回 `in_use`。
 
 零后端是本机模式，不隐式启动 tailcat；设备离线查询和撤销仍可用，需要网络能力而无合适后端的调用返回 unsupported。sync.enabled=false 只关闭内容工作，必要控制连接与配对可保留。
 

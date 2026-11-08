@@ -81,7 +81,16 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				return newErr(CodeInvalidArgument, "set Plugin or Process, not both")
 			}
 			pp := in.Process
-			in.Plugin = pluginproc.New(pluginproc.Spec{Path: pp.Path, SHA256: pp.SHA256, Args: pp.Args, Env: pp.Env, Dir: pp.Dir,
+			dir := pp.Dir
+			if !in.Disabled && slices.Contains(pp.Spec.Capabilities, plugin.CapSyncBackend) {
+				if dir != "" {
+					return invalidPlugin(pp.Spec.ID, "the engine owns a backend's directory")
+				}
+				if dir, err = e.backendDir(pp.Spec.ID); err != nil {
+					return err
+				}
+			}
+			in.Plugin = pluginproc.New(pluginproc.Spec{Path: pp.Path, SHA256: pp.SHA256, Args: pp.Args, Env: pp.Env, Dir: dir,
 				Expected: pp.Spec, Events: in.Events}, pp.Options)
 		}
 		if in.Plugin == nil {
@@ -118,6 +127,11 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 			if slices.ContainsFunc(e.backends, func(b syncBackend) bool { return string(b.ID()) == spec.ID }) {
 				return invalidPlugin(spec.ID, "a sync backend with this ID already exists")
 			}
+			if in.Process == nil { // process backends took theirs above
+				if _, err = e.backendDir(spec.ID); err != nil {
+					return err
+				}
+			}
 			host := &pluginHost{e: e, id: PluginID(spec.ID)}
 			if ierr := in.Plugin.Init(ctx, host, in.Config); ierr != nil {
 				return invalidPlugin(spec.ID, "Init failed")
@@ -149,6 +163,24 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 	e.plugins = started
 	e.backends = append(e.backends, pending...)
 	return nil
+}
+
+// backendDir prepares the private directory of a sync backend instance and
+// holds its runtime.lock until the engine closes. A second engine on the same
+// data directory, or a second instance with the same ID, gets CodeInUse.
+func (e *Engine) backendDir(id string) (string, *Error) {
+	if len(id) > 128 || !pluginIDRe.MatchString(id) {
+		return "", invalidPlugin(id, "invalid ID")
+	}
+	dir, lock, err := openInstanceDir(e.opts.DataDir, id)
+	if err != nil {
+		if errors.Is(err, errLocked) {
+			return "", newErr(CodeInUse, "the backend instance is used by another process")
+		}
+		return "", newErr(CodeUnavailable, "cannot prepare the backend directory")
+	}
+	e.instLocks = append(e.instLocks, lock)
+	return dir, nil
 }
 
 func validateSpec(s plugin.Spec, in PluginInstance) *Error {

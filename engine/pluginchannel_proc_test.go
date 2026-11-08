@@ -137,3 +137,36 @@ func mustChannel(t *testing.T, n node, id string) Channel {
 	}
 	return c
 }
+
+func TestBackendInstanceDirAndLock(t *testing.T) {
+	dir := t.TempDir()
+	opts, _ := newOpts(t, dir)
+	opts.Plugins = []PluginInstance{chanInstance(), {Plugin: &storeBackend{id: "test.repo", kind: plugin.TransportObjectStore}}}
+	e, err := New(bg, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"example.wx", "test.repo"} {
+		if _, _, err := openInstanceDir(dir, id); !errors.Is(err, errLocked) {
+			t.Fatalf("%s: a running backend must hold its instance lock, got %v", id, err)
+		}
+	}
+	if err := e.Close(bg); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"example.wx", "test.repo"} {
+		_, l, err := openInstanceDir(dir, id)
+		if err != nil {
+			t.Fatalf("%s: lock must be released on close: %v", id, err)
+		}
+		l.release()
+	}
+
+	own := chanInstance()
+	own.Process.Dir = t.TempDir()
+	opts.Plugins = []PluginInstance{own}
+	if e, err := New(bg, opts); err == nil {
+		_ = e.Close(bg)
+		t.Fatal("a backend must not choose its own directory")
+	}
+}

@@ -28,7 +28,6 @@ import (
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/internal/store"
-	"github.com/uniclipboard/unic/internal/tcnet"
 	"github.com/uniclipboard/unic/plugin"
 )
 
@@ -42,9 +41,8 @@ type Engine struct {
 	lock    *dirLock
 	ident   *identity.Identity // unified device identity (identity protocol v1)
 	st      *store.Store
-	tr      Network
-	trUsed  bool // tr.Start was called, so tr.Close is due
-	core    *session.Engine
+	core    PeerBackend // nil: local-only, no peer backend
+	trUsed  bool        // core.Start was called, so core.Close is due
 	self    DeviceID
 	defName string
 
@@ -121,7 +119,10 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if err := opts.Settings.validate(); err != nil {
 		return nil, err
 	}
-	backendIDs := []PluginID{BackendTailcat}
+	var backendIDs []PluginID
+	if opts.Peer != nil {
+		backendIDs = append(backendIDs, BackendTailcat)
+	}
 	for _, b := range opts.extraBackends {
 		backendIDs = append(backendIDs, b.ID())
 	}
@@ -188,18 +189,9 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if err != nil {
 		return closeAll(newErr(CodeUnavailable, "cannot read the device identity"))
 	}
-	tr := opts.Network
-	if tr == nil {
-		t, err := tcnet.New(st, func(string, ...any) {}) // tailcat's logs may name addresses
-		if err != nil {
-			return closeAll(newErr(CodeUnavailable, "cannot prepare the network"))
-		}
-		tr = t
-	}
-
 	e := &Engine{
 		instance: InstanceID(randHex(8)), opts: opts, res: res, log: opts.Logger,
-		lock: lock, st: st, ident: ident, tr: tr, defName: defName,
+		lock: lock, st: st, ident: ident, defName: defName,
 		ctl:      make(chan struct{}, 1),
 		life:     LifecycleCreated,
 		runtime:  RuntimeActive,
@@ -216,15 +208,21 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if rv == nil {
 		rv = rendezvous.NewWithURL("") // the production service; settings.RendezvousURL overrides it, the environment does not
 	}
-	e.backends = append([]syncBackend{tailcatBackend{e}}, opts.extraBackends...)
 	e.rvDefault = rv
-	e.core = session.New(session.Config{
-		Identity: ident, Name: defName, Host: tailcatHost{e}, Transport: tr,
-		Receiver: receiver{e},
-		Logf:     func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
-		Settings: settingsSource{e},
-	})
-	e.events, e.evCancel = e.core.Subscribe()
+	if opts.Peer != nil {
+		core, perr := opts.Peer(PeerEnv{Store: st, Config: session.Config{
+			Identity: ident, Name: defName, Host: tailcatHost{e}, Receiver: receiver{e},
+			Logf:     func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
+			Settings: settingsSource{e},
+		}})
+		if perr != nil || core == nil {
+			return closeAll(newErr(CodeUnavailable, "cannot prepare the network"))
+		}
+		e.core = core
+		e.backends = append(e.backends, tailcatBackend{e})
+		e.events, e.evCancel = core.Subscribe()
+	}
+	e.backends = append(e.backends, opts.extraBackends...)
 	e.evStop, e.evDone = make(chan struct{}), make(chan struct{})
 	go e.pumpCoreEvents()
 	if perr := e.loadPlugins(ctx, opts.Plugins); perr != nil {
@@ -297,6 +295,18 @@ func (e *Engine) enter(ctx context.Context) (func(), *Error) {
 
 // needNetwork reports why network work cannot happen now. e.mu must be held.
 func (e *Engine) needNetworkLocked() *Error {
+	if err := e.needRunningLocked(); err != nil {
+		return err
+	}
+	if e.core == nil {
+		return newErr(CodeUnsupported, "no peer-to-peer backend is installed")
+	}
+	return nil
+}
+
+// needRunningLocked is needNetworkLocked without the backend requirement: the
+// content paths use it, because a local-only engine still commits clips.
+func (e *Engine) needRunningLocked() *Error {
 	if e.life != LifecycleRunning {
 		return newErr(CodeInvalidState, "the engine is not running")
 	}
@@ -365,12 +375,18 @@ func (e *Engine) Start(ctx context.Context) error {
 
 // startCore starts the transport and, unless suspended, the session layer.
 func (e *Engine) startCore(ctx context.Context, active bool) error {
+	if e.core == nil { // local-only: nothing to start, but submissions still need a run context
+		if !active {
+			return nil
+		}
+		return e.startRun(ctx)
+	}
 	started := make(chan error, 1)
 	trDone := make(chan struct{})
 	e.mu.Lock()
 	e.trUsed, e.trDone = true, trDone
 	e.mu.Unlock()
-	go func() { started <- e.tr.Start(); close(trDone) }()
+	go func() { started <- e.core.Start(); close(trDone) }()
 	select {
 	case err := <-started:
 		if err != nil {
@@ -407,14 +423,12 @@ func (e *Engine) startRun(ctx context.Context) error {
 	e.runCtx, e.runCancel, e.runDone = rctx, cancel, done
 	e.mu.Unlock()
 
-	go func() {
-		defer close(done)
-		var once sync.Once
-		err := e.core.RunReady(rctx, func() { once.Do(func() { close(ready) }) })
-		if err != nil && rctx.Err() == nil {
-			e.logf(slog.LevelError, "session layer stopped", "reason", "run_failed")
-		}
-	}()
+	if e.core == nil { // local-only: the run context still bounds submissions
+		close(done)
+		close(ready)
+	} else {
+		go e.runCore(rctx, done, ready)
+	}
 	select {
 	case <-ready:
 		return nil
@@ -424,6 +438,15 @@ func (e *Engine) startRun(ctx context.Context) error {
 	case <-ctx.Done():
 		cancel()
 		return ctxErr(ctx.Err())
+	}
+}
+
+func (e *Engine) runCore(rctx context.Context, done, ready chan struct{}) {
+	defer close(done)
+	var once sync.Once
+	err := e.core.RunReady(rctx, func() { once.Do(func() { close(ready) }) })
+	if err != nil && rctx.Err() == nil {
+		e.logf(slog.LevelError, "session layer stopped", "reason", "run_failed")
 	}
 }
 
@@ -490,7 +513,7 @@ func (e *Engine) teardown() {
 	e.mu.Unlock()
 	if used {
 		<-trDone
-		_ = e.tr.Close()
+		_ = e.core.Close()
 	}
 	e.mu.Lock()
 	e.life = LifecycleStopped
@@ -545,7 +568,9 @@ func (e *Engine) finalize() {
 	<-e.stopped
 	e.notifyObservers(plugin.EventAppShutdown, "") // delivered while observers are drained below
 	close(e.evStop)
-	e.evCancel()
+	if e.evCancel != nil {
+		e.evCancel()
+	}
 	<-e.evDone
 	e.use.Lock() // in-flight calls finish before the store goes away
 	e.mu.Lock()

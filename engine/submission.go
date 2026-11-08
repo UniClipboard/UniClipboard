@@ -122,7 +122,7 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		close(entry.done)
 		return entry, nil
 	}
-	if err := e.needNetworkLocked(); err != nil {
+	if err := e.needRunningLocked(); err != nil {
 		return nil, err
 	}
 	// Validate before eviction so rejected input cannot displace a cached result.

@@ -1,14 +1,13 @@
 package engine
 
 import (
-	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/wire"
 )
@@ -50,9 +49,12 @@ type Options struct {
 	// block. Nil: messages are dropped.
 	PluginNotify func(plugin PluginID, message string)
 
-	// Network replaces the default tailcat network, for tests and unusual
-	// embeddings. Start and Close are called once each.
-	Network Network
+	// Peer assembles the peer-to-peer sync backend (builtin.tailcat). The
+	// engine does not know any transport: the host builds the backend
+	// explicitly (see internal/plugins/builtintailcat). Nil means no
+	// peer-to-peer backend: the engine is local-only and the network calls
+	// (pairing, sending) report unsupported.
+	Peer PeerFactory
 
 	// Test seams, reachable from this package's tests only.
 	extraBackends    []syncBackend // fake backends for contract tests
@@ -76,19 +78,13 @@ type ResourcePolicy struct {
 	MaxSyncBackends     int           // default 8, at most 32; sync backend plugins that may be enabled together
 }
 
-// Network is the network the engine runs on; the default is tailcat. Listen
-// accepts connections from paired devices, Dial reaches one, Addr is this
-// device's own address (a secret, like a password). Start brings the network
-// up and Close takes it down; Listen may be called again after a suspend.
-type Network interface {
-	Listen(ctx context.Context) (net.Listener, error)
-	Dial(ctx context.Context, addr string) (net.Conn, error)
-	Addr() string
-	// Binding is the context both ends compute for a connection to addr.
-	Binding(addr string) ([]byte, error)
-	Start() error
-	Close() error
-}
+// PeerEnv, PeerBackend and PeerFactory are defined in internal/peerbackend so
+// that the backend package can implement them without importing the engine.
+type (
+	PeerEnv     = peerbackend.Env
+	PeerBackend = peerbackend.Backend
+	PeerFactory = peerbackend.Factory
+)
 
 // DefaultSettings are the settings of a fresh install: everything syncs, up to
 // the protocol's limits.

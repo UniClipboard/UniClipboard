@@ -157,4 +157,8 @@ func (e *Engine) allowedPeer(id string) (bool, error) {
 
 // reconcile makes the session layer follow the device store: sessions of
 // devices that lost their permission close before this returns.
-func (e *Engine) reconcile() { e.core.Reconcile() }
+func (e *Engine) reconcile() {
+	if e.core != nil {
+		e.core.Reconcile()
+	}
+}

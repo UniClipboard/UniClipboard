@@ -137,6 +137,8 @@ type SettingsSource interface{ Current() Settings }
 var (
 	ErrNotRunning = errors.New("engine is not running")
 	ErrSelf       = errors.New("that is this device itself")
+	// ErrBadAddress means a transport rejected the text as an address.
+	ErrBadAddress = errors.New("not a valid tailcat address")
 	ErrProtocol   = errors.New("peer speaks another protocol version")
 	// ErrIdentity: the device behind the address is not the one expected.
 	ErrIdentity = errors.New("address belongs to a different device")

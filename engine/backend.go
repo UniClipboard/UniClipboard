@@ -270,7 +270,7 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 		e.mu.Unlock()
 		return "", "", nil, nil, ctxErr(err)
 	}
-	if err := e.needNetworkLocked(); err != nil {
+	if err := e.needRunningLocked(); err != nil {
 		e.mu.Unlock()
 		return "", "", nil, nil, err
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/config"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/plugins/builtintailcat"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -39,8 +40,9 @@ type Options struct {
 	Board    Board           // the system clipboard
 	Poll     time.Duration   // clipboard poll interval; default 400ms
 	Logf     func(string, ...any)
-	// Network replaces tailcat (tests).
-	Network engine.Network
+	// Peer replaces the peer-to-peer backend (tests); nil assembles the
+	// built-in tailcat.
+	Peer engine.PeerFactory
 }
 
 // Node is the engine plus everything a desktop host adds to it. It implements
@@ -65,6 +67,10 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if o.Poll == 0 {
 		o.Poll = 400 * time.Millisecond
 	}
+	peer := o.Peer
+	if peer == nil {
+		peer = builtintailcat.Factory() // the host assembles the built-in backend explicitly
+	}
 	c := o.Settings.Current()
 	opts := engine.Options{
 		DataDir:  o.Dir,
@@ -76,7 +82,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 			ReadFiles:    true, WriteFiles: true,
 			Observe: engine.AbilityAvailable, Apply: engine.AbilityAvailable,
 		},
-		Network: o.Network,
+		Peer:    peer,
 		History: c.HistoryOptions(),
 		// History remembers files by path; they are never copied.
 		ResolveFileRef: func(ref string) engine.FileSource { return pathSource{ref} },

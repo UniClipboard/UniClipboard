@@ -9,7 +9,6 @@ package tcnet
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -17,11 +16,12 @@ import (
 	"github.com/tailscale/tailcat"
 	"tailscale.com/types/key"
 
+	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/internal/store"
 )
 
 // ErrBadAddress means the text is not a tailcat address.
-var ErrBadAddress = errors.New("not a valid tailcat address")
+var ErrBadAddress = session.ErrBadAddress
 
 // Port is the virtual TCP port the sync protocol listens on inside the tunnel.
 const Port = 7777

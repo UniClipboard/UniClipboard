@@ -92,7 +92,7 @@ func checkLimits(set sendSet, lim Limits) *Error {
 // files that changed) is checked before the first byte is written.
 func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, ts int64, set sendSet, policy func() BackendSyncPolicy) (broken bool, err error) {
 	e.mu.Lock()
-	if err := e.needNetworkLocked(); err != nil {
+	if err := e.needRunningLocked(); err != nil {
 		e.mu.Unlock()
 		return false, err
 	}

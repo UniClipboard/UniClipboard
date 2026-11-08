@@ -10,7 +10,6 @@ import (
 	"github.com/uniclipboard/unic/internal/identity"
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/session"
-	"github.com/uniclipboard/unic/internal/tcnet"
 )
 
 // pairTimeout bounds one pairing attempt (dial plus handshake).
@@ -65,7 +64,7 @@ func mapNetErr(err error) *Error {
 		return ctxErr(err)
 	case errors.Is(err, session.ErrSelf):
 		return newErr(CodeInvalidArgument, "that is this device itself")
-	case errors.Is(err, tcnet.ErrBadAddress):
+	case errors.Is(err, session.ErrBadAddress):
 		return newErr(CodeInvalidArgument, "that is not a valid pairing ticket")
 	case errors.Is(err, session.ErrProtocol):
 		return newErr(CodeProtocolMismatch, "the other device uses an incompatible protocol version")
@@ -135,7 +134,7 @@ func (e *Engine) consumeCode(code string) {
 // newTicketLocked makes a fresh ticket for this device and its tailcat
 // address. e.mu must be held.
 func (e *Engine) newTicketLocked(expires time.Time) (rendezvous.Ticket, *Error) {
-	addr := e.tr.Addr()
+	addr := e.core.Addr()
 	if addr == "" {
 		return rendezvous.Ticket{}, retryable(newErr(CodeUnavailable, "the address is not ready yet"))
 	}

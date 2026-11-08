@@ -246,7 +246,8 @@ jobs:
   changelog:
     name: Finalize changelog
     needs: [prepare, format]
-    runs-on: ubuntu-latest
+    # Ubuntu 26.04 test -w ignores socket ACLs (actions/runner-images#15004).
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
@@ -320,6 +321,7 @@ jobs:
         if: env.CODEX_API_KEY != ''
         uses: openai/codex-action@v1
         with:
+          safety-strategy: drop-sudo
           responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1/responses' }}
           openai-api-key: ${{ env.CODEX_API_KEY }}
           prompt: ${{ steps.render-codex-changelog-prompt.outputs.prompt }}

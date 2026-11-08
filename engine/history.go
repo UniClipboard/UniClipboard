@@ -213,8 +213,8 @@ func historyKindOf(t string) HistoryKind {
 func toHistoryItem(it store.HistoryItem) HistoryItem {
 	out := HistoryItem{
 		ID: HistoryID(it.ID), Revision: it.Revision, Kind: HistoryKind(it.Kind),
-		Origin:    HistoryOrigin{Kind: HistoryOriginKind(it.OriginKind), DeviceID: DeviceID(it.DeviceID), PluginID: PluginID(it.PluginID)},
-		SourceApp: it.SourceApp, AutomationDepth: uint32(it.Depth),
+		Origin:      HistoryOrigin{Kind: HistoryOriginKind(it.OriginKind), DeviceID: DeviceID(it.DeviceID), PluginID: PluginID(it.PluginID)},
+		SourceApp:   it.SourceApp,
 		CreatedAtMs: it.CreatedMs, UpdatedAtMs: it.UpdatedMs, ExpiresAtMs: it.ExpiresMs,
 		Tags: append([]string{}, it.Tags...), TotalBytes: it.TotalBytes, SyncState: HistorySyncState(it.SyncState),
 		Parts:             make([]HistoryPartSummary, len(it.Parts)),
@@ -336,7 +336,7 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 	it := store.HistoryItem{
 		ID: randHex(16), Kind: string(historyKindOf(pc.item.Type)), OriginKind: pc.item.Origin.kind,
 		DeviceID: string(pc.item.Origin.deviceID), PluginID: pc.item.Origin.pluginID,
-		Depth: int(pc.item.AutomationDepth), CreatedMs: now.UnixMilli(), TotalBytes: c.total,
+		CreatedMs: now.UnixMilli(), TotalBytes: c.total,
 	}
 	switch {
 	case pc.policy.ExpireAfter > 0:
@@ -506,7 +506,7 @@ func normalizeFilter(f HistoryFilter) (HistoryFilter, *Error) {
 		}
 	}
 	for _, k := range f.OriginKinds {
-		if k != OriginKindLocalSystem && k != OriginKindRemoteDevice && k != OriginKindPlugin && k != OriginKindExplicit {
+		if k != OriginKindLocalSystem && k != OriginKindRemoteDevice && k != OriginKindAction && k != OriginKindExplicit {
 			return bad("unknown origin kind")
 		}
 	}

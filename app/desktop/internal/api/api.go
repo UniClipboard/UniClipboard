@@ -119,7 +119,7 @@ type HistoryItem struct {
 	ID         string               `json:"id"`
 	Revision   uint64               `json:"revision"`
 	Kind       string               `json:"kind"`   // "text", "image" or "files"
-	Origin     string               `json:"origin"` // "local_system", "remote_device", "plugin" or "explicit"
+	Origin     string               `json:"origin"` // "local_system", "remote_device", "action" or "explicit"
 	DeviceID   string               `json:"device_id,omitempty"`
 	DeviceName string               `json:"device_name,omitempty"`
 	CreatedAt  int64                `json:"created_at_ms"`

@@ -300,6 +300,8 @@ type SubmitRequest struct {
 	// BackendIDs, if non-empty, limits the send to those backends (sorted,
 	// validated by CommitContent).
 	BackendIDs []PluginID
+
+	action *actionRun // set by RunAction only
 }
 
 // TargetState is how far content got towards one device.

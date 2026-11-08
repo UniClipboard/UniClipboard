@@ -35,10 +35,10 @@ func TestPipelineAtomicPatchesAndOwnership(t *testing.T) {
 			if err := c.AddTag("keep"); err != nil {
 				return err
 			}
-			return c.SetText("changed")
+			return c.SetExpire(time.Hour)
 		}),
 		newPipelineProcessor("example.broken", []pipelineEvent{pipelineCaptured}, true, func(_ context.Context, c *processingContext) error {
-			if err := c.SetText("must not survive"); err != nil {
+			if err := c.SetPersist(false); err != nil {
 				return err
 			}
 			if err := c.RemoveTag("keep"); err != nil {
@@ -47,7 +47,7 @@ func TestPipelineAtomicPatchesAndOwnership(t *testing.T) {
 			return errors.New("private body and path must not escape")
 		}),
 		newPipelineProcessor("example.last", []pipelineEvent{pipelineCaptured}, false, func(_ context.Context, c *processingContext) error {
-			if c.Item().Text != "changed" || len(c.Policy().Tags) != 1 {
+			if p := c.Policy(); !p.Persist || p.ExpireAfter != time.Hour || len(p.Tags) != 1 {
 				t.Error("failed patch was not rolled back")
 			}
 			snapshot := c.Policy()
@@ -62,16 +62,16 @@ func TestPipelineAtomicPatchesAndOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.item.Text != "changed" || out.policy.Sync || !out.policy.Persist || out.policy.Tags[0] != "keep" || out.policy.ExpireAfter != time.Minute {
+	if out.item.Text != "original" || out.policy.Sync || !out.policy.Persist || out.policy.Tags[0] != "keep" || out.policy.ExpireAfter != time.Minute {
 		t.Fatalf("unexpected prepared item/policy: %+v %+v", out.item, out.policy)
 	}
-	if out.item.Origin.pluginID != "example.first" || out.item.AutomationDepth != 1 {
+	if out.item.Origin.kind != "explicit" {
 		t.Fatalf("wrong provenance: %+v", out.item)
 	}
-	if code(ended.SetText("late")) != CodeResourceExpired {
+	if code(ended.AddTag("late")) != CodeResourceExpired {
 		t.Fatal("ended context accepted mutation")
 	}
-	if stored(n.e) != int64(len("changed")) {
+	if stored(n.e) != int64(len("original")) {
 		t.Fatalf("temporary content leaked: %d", stored(n.e))
 	}
 	n.e.cs.unref(out.c)
@@ -101,21 +101,17 @@ func TestPipelineIgnoredMethodFailureRollsBackPatch(t *testing.T) {
 	}
 }
 
-func TestPipelineTextClearsHTMLAndRestoresOrigin(t *testing.T) {
+func TestPipelineCannotChangeContent(t *testing.T) {
 	n := newContentNode(t, nil)
 	n.e.processors = []*pipelineProcessor{
-		newPipelineProcessor("example.change", []pipelineEvent{pipelineCaptured}, false, func(_ context.Context, c *processingContext) error { return c.SetText("new") }),
-		newPipelineProcessor("example.restore", []pipelineEvent{pipelineCaptured}, false, func(_ context.Context, c *processingContext) error { return c.SetText("old") }),
+		newPipelineProcessor("example.tagger", []pipelineEvent{pipelineCaptured}, false, func(_ context.Context, c *processingContext) error {
+			if !strings.Contains(c.Item().Text, "@") {
+				return nil
+			}
+			return c.AddTag("email")
+		}),
 	}
-	out, err := n.e.processContent(bg, pipelineCaptured, pipelineInput(t, n.e, "old"), pipelineOrigin{kind: "explicit"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.item.Origin.kind != "explicit" || out.item.AutomationDepth != 0 {
-		t.Fatal("restored content changed origin")
-	}
-	n.e.cs.unref(out.c)
-	h, importErr := n.e.ImportContent(bg, ContentInput{Representations: []RepresentationInput{rep(MimeText, "old"), rep(MimeHTML, "<b>old</b>")}})
+	h, importErr := n.e.ImportContent(bg, ContentInput{Representations: []RepresentationInput{rep(MimeText, "me@example.com"), rep(MimeHTML, "<b>me@example.com</b>")}})
 	if importErr != nil {
 		t.Fatal(importErr)
 	}
@@ -126,29 +122,13 @@ func TestPipelineTextClearsHTMLAndRestoresOrigin(t *testing.T) {
 	if err := n.e.ReleaseContent(bg, h.LeaseID); err != nil {
 		t.Fatal(err)
 	}
-	out, err = n.e.processContent(bg, pipelineCaptured, c, pipelineOrigin{kind: "explicit"})
+	out, err := n.e.processContent(bg, pipelineCaptured, c, pipelineOrigin{kind: "explicit"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer n.e.cs.unref(out.c)
-	if len(out.c.parts) != 1 || out.item.Origin.pluginID != "example.restore" || out.item.AutomationDepth != 1 {
-		t.Fatal("stale HTML survived or representation change was lost")
-	}
-}
-
-func TestPipelineDepthLimitSkipsProcessors(t *testing.T) {
-	n := newContentNode(t, nil)
-	n.e.processors = []*pipelineProcessor{newPipelineProcessor("example.never", []pipelineEvent{pipelineCaptured}, false, func(context.Context, *processingContext) error {
-		t.Error("fourth automation round ran")
-		return nil
-	})}
-	out, err := n.e.processContent(bg, pipelineCaptured, pipelineInput(t, n.e, "same"), pipelineOrigin{kind: "plugin", depth: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer n.e.cs.unref(out.c)
-	if out.item.AutomationDepth != 3 {
-		t.Fatal("depth changed while skipping")
+	if out.c != c || len(out.c.parts) != 2 || out.item.Origin.kind != "explicit" || len(out.policy.Tags) != 1 || out.policy.Tags[0] != "email" {
+		t.Fatal("annotation changed the content or lost the tag")
 	}
 }
 
@@ -157,14 +137,14 @@ func TestPipelineIngressesProcessBeforeDispatch(t *testing.T) {
 	var captured, receivedCalls atomic.Int32
 	a.e.processors = []*pipelineProcessor{newPipelineProcessor("example.capture", []pipelineEvent{pipelineCaptured}, false, func(_ context.Context, c *processingContext) error {
 		captured.Add(1)
-		return c.SetText(strings.ToUpper(c.Item().Text))
+		return c.AddTag("captured")
 	})}
 	b.e.processors = []*pipelineProcessor{newPipelineProcessor("example.receive", []pipelineEvent{pipelineReceived}, false, func(_ context.Context, c *processingContext) error {
 		receivedCalls.Add(1)
 		if c.Item().Origin.kind != "remote_device" || c.Item().Origin.deviceID != a.e.self {
 			t.Error("unauthenticated receive origin")
 		}
-		return c.SetText(c.Item().Text + "!")
+		return c.AddTag("received")
 	})}
 	start(t, a)
 	start(t, b)
@@ -176,14 +156,14 @@ func TestPipelineIngressesProcessBeforeDispatch(t *testing.T) {
 	}
 	waitSend(t, a.e, id)
 	r := waitReceived(t, b.e, 1)
-	if textOf(t, b.e, r[0]) != "EXPLICIT!" {
+	if textOf(t, b.e, r[0]) != "explicit" {
 		t.Fatal("explicit ingress bypassed processing")
 	}
 	host := newHost(t, a.e)
 	host.must(ObserveBaseline, "baseline")
 	host.must(ObserveChange, "observed")
 	r = waitReceived(t, b.e, 2)
-	if textOf(t, b.e, r[0]) != "OBSERVED!" {
+	if textOf(t, b.e, r[0]) != "observed" {
 		t.Fatal("observation ingress bypassed processing")
 	}
 	if captured.Load() != 2 || receivedCalls.Load() != 2 || len(received(a.e)) != 0 {
@@ -227,7 +207,7 @@ func TestPipelineCoalescesConcurrentSubmissions(t *testing.T) {
 		}
 		select {
 		case <-proceed:
-			return c.SetText("final")
+			return c.AddTag("final")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -272,7 +252,7 @@ func TestPipelineCoalescesConcurrentSubmissions(t *testing.T) {
 		}
 	}
 	waitSend(t, n.e, first)
-	eventually(t, "rewritten content", func() bool { return l.text() == "final" })
+	eventually(t, "sent content", func() bool { return l.text() == "original" })
 	if calls.Load() != 1 || l.count() != 1 {
 		t.Fatal("concurrent request ran twice")
 	}
@@ -293,7 +273,7 @@ func TestPipelineSuspendDiscardsLatePatch(t *testing.T) {
 	n.e.processors = []*pipelineProcessor{newPipelineProcessor("example.late", []pipelineEvent{pipelineCaptured}, false, func(ctx context.Context, c *processingContext) error {
 		close(entered)
 		<-ctx.Done()
-		return c.SetText("late success")
+		return c.AddTag("late")
 	})}
 	start(t, n)
 	h := importText(t, n.e, "original")
@@ -315,7 +295,7 @@ func TestPipelineSuspendDiscardsLatePatch(t *testing.T) {
 }
 
 func TestPipelineFaultsDiscardWholePatch(t *testing.T) {
-	for _, mode := range []string{"panic", "timeout", "quota"} {
+	for _, mode := range []string{"panic", "timeout", "invalid"} {
 		t.Run(mode, func(t *testing.T) {
 			n := newContentNode(t, func(o *Options) {
 				o.Settings = DefaultSettings()
@@ -332,7 +312,7 @@ func TestPipelineFaultsDiscardWholePatch(t *testing.T) {
 				case "timeout":
 					<-ctx.Done()
 				}
-				return c.SetText(strings.Repeat("x", 63))
+				return c.AddTag(strings.Repeat("x", 65))
 			})}
 			out, err := n.e.processContent(bg, pipelineCaptured, pipelineInput(t, n.e, "base"), pipelineOrigin{kind: "explicit"})
 			if err != nil {
@@ -359,7 +339,7 @@ func TestPipelineReceiveRechecksAdmissionAfterProcessing(t *testing.T) {
 				defer close(finished)
 				select {
 				case <-proceed:
-					return c.SetText("prepared")
+					return c.AddTag("prepared")
 				case <-ctx.Done():
 					return ctx.Err()
 				}

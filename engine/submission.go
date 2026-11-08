@@ -98,7 +98,11 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 	if req.RequestID == "" {
 		return nil, newErr(CodeInvalidArgument, "RequestID is required")
 	}
-	hash := sha256.Sum256([]byte("submit\x00" + string(req.LeaseID) + "\x00" + string(req.Origin) + backendKey(req.BackendIDs)))
+	key := "submit\x00" + string(req.LeaseID) + "\x00" + string(req.Origin) + backendKey(req.BackendIDs)
+	if req.action != nil {
+		key = "action\x00" + req.action.act.key() + "\x00" + string(req.action.source)
+	}
+	hash := sha256.Sum256([]byte(key))
 	now := time.Now()
 	e.pruneSubmissionsLocked(now)
 	if old := e.submissions[req.RequestID]; old != nil {
@@ -120,19 +124,22 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		return nil, err
 	}
 	// Validate before eviction so rejected input cannot displace a cached result.
-	e.cs.mu.Lock()
-	l := e.cs.leases[req.LeaseID]
-	if l == nil {
-		gone := e.cs.gone.has(string(req.LeaseID))
-		e.cs.mu.Unlock()
-		if e.foreign(string(req.LeaseID)) || gone {
-			return nil, newErr(CodeResourceExpired, "the lease is no longer valid")
+	var c *contentObj // an action produces its content inside the submission
+	if req.action == nil {
+		e.cs.mu.Lock()
+		l := e.cs.leases[req.LeaseID]
+		if l == nil {
+			gone := e.cs.gone.has(string(req.LeaseID))
+			e.cs.mu.Unlock()
+			if e.foreign(string(req.LeaseID)) || gone {
+				return nil, newErr(CodeResourceExpired, "the lease is no longer valid")
+			}
+			return nil, newErr(CodeNotFound, "no such lease")
 		}
-		return nil, newErr(CodeNotFound, "no such lease")
+		c = l.c
+		c.refs++
+		e.cs.mu.Unlock()
 	}
-	c := l.c
-	c.refs++
-	e.cs.mu.Unlock()
 	if len(e.submissions) >= e.res.MaxSubmissions {
 		var oldest RequestID
 		for id, entry := range e.submissions {
@@ -141,7 +148,9 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 			}
 		}
 		if oldest == "" {
-			e.cs.unref(c)
+			if c != nil {
+				e.cs.unref(c)
+			}
 			return nil, newErr(CodeResourceExhausted, "too many submissions in progress")
 		}
 		delete(e.submissions, oldest)
@@ -163,7 +172,18 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	if req.Origin == OriginClipboard {
 		origin.kind = "local_system"
 	}
-	processed, failure := e.processContent(ctx, pipelineCaptured, c, origin)
+	var failure *Error
+	if req.action != nil {
+		origin = pipelineOrigin{kind: "action", pluginID: string(req.action.act.plugin.id)}
+		c, failure = req.action.produce(ctx, e)
+	}
+	var processed *processedContent
+	if failure == nil {
+		processed, failure = e.processContent(ctx, pipelineCaptured, c, origin)
+		if failure == nil && req.action != nil {
+			processed.policy.Persist = true // the host applies the result through its history item
+		}
+	}
 	var id OperationID
 	var disp SyncDisposition
 	var results []BackendSubmissionResult

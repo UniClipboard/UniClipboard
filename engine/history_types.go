@@ -16,7 +16,7 @@ const (
 
 	OriginKindLocalSystem  HistoryOriginKind = "local_system"
 	OriginKindRemoteDevice HistoryOriginKind = "remote_device"
-	OriginKindPlugin       HistoryOriginKind = "plugin"
+	OriginKindAction       HistoryOriginKind = "action"
 	OriginKindExplicit     HistoryOriginKind = "explicit"
 
 	HistorySyncNotRequested HistorySyncState = "not_requested"
@@ -51,19 +51,18 @@ type HistoryBackendSyncState struct {
 }
 
 type HistoryItem struct {
-	ID              HistoryID            `json:"id"`
-	Revision        uint64               `json:"revision,string"`
-	Kind            HistoryKind          `json:"kind"`
-	Origin          HistoryOrigin        `json:"origin"`
-	SourceApp       string               `json:"source_app,omitempty"`
-	AutomationDepth uint32               `json:"automation_depth"`
-	CreatedAtMs     int64                `json:"created_at_ms"`
-	UpdatedAtMs     int64                `json:"updated_at_ms"`
-	ExpiresAtMs     int64                `json:"expires_at_ms"`
-	Tags            []string             `json:"tags"`
-	Parts           []HistoryPartSummary `json:"parts"`
-	TotalBytes      int64                `json:"total_bytes"`
-	SyncState       HistorySyncState     `json:"sync_state"`
+	ID          HistoryID            `json:"id"`
+	Revision    uint64               `json:"revision,string"`
+	Kind        HistoryKind          `json:"kind"`
+	Origin      HistoryOrigin        `json:"origin"`
+	SourceApp   string               `json:"source_app,omitempty"`
+	CreatedAtMs int64                `json:"created_at_ms"`
+	UpdatedAtMs int64                `json:"updated_at_ms"`
+	ExpiresAtMs int64                `json:"expires_at_ms"`
+	Tags        []string             `json:"tags"`
+	Parts       []HistoryPartSummary `json:"parts"`
+	TotalBytes  int64                `json:"total_bytes"`
+	SyncState   HistorySyncState     `json:"sync_state"`
 	// BackendSyncStates is sorted by BackendID; empty when nothing was tried.
 	BackendSyncStates []HistoryBackendSyncState `json:"backend_sync_states"`
 }

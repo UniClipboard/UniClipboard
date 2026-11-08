@@ -82,6 +82,9 @@ ALTER TABLE clip_item_sync ADD COLUMN error_code TEXT NOT NULL DEFAULT '';`,
   PRIMARY KEY (source, transfer_id, view_hash)
 ) WITHOUT ROWID;
 CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);`,
+	// Plugins no longer rewrite content, so there is no automation chain to count.
+	`ALTER TABLE clip_items DROP COLUMN depth;
+UPDATE clip_items SET origin_kind = 'action' WHERE origin_kind = 'plugin';`,
 }
 
 func migrate(db *sql.DB) error {
@@ -145,7 +148,6 @@ type HistoryItem struct {
 	DeviceID      string
 	PluginID      string
 	SourceApp     string
-	Depth         int
 	CreatedMs     int64
 	UpdatedMs     int64
 	ExpiresMs     int64
@@ -204,9 +206,9 @@ func (s *Store) InsertHistoryDedup(it HistoryItem, d *Dedup) (seq int64, rev uin
 		return 0, 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	r, err := tx.Exec(`INSERT INTO clip_items (id, revision, kind, origin_kind, device_id, plugin_id, source_app, depth,
-created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		it.ID, it.Kind, it.OriginKind, it.DeviceID, it.PluginID, it.SourceApp, it.Depth,
+	r, err := tx.Exec(`INSERT INTO clip_items (id, revision, kind, origin_kind, device_id, plugin_id, source_app,
+created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		it.ID, it.Kind, it.OriginKind, it.DeviceID, it.PluginID, it.SourceApp,
 		it.CreatedMs, it.CreatedMs, it.ExpiresMs, nonEmpty(it.SyncState, "not_requested"), it.TotalBytes)
 	if err != nil {
 		return 0, 0, err
@@ -248,7 +250,7 @@ func nonEmpty(s, d string) string {
 	return s
 }
 
-const itemCols = `seq, id, revision, kind, origin_kind, device_id, plugin_id, source_app, depth, created_ms, updated_ms, expires_ms, sync_state, total_bytes`
+const itemCols = `seq, id, revision, kind, origin_kind, device_id, plugin_id, source_app, created_ms, updated_ms, expires_ms, sync_state, total_bytes`
 
 type queryer interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -258,7 +260,7 @@ type queryer interface {
 func scanItem(sc interface{ Scan(...any) error }) (HistoryItem, error) {
 	var it HistoryItem
 	err := sc.Scan(&it.Seq, &it.ID, &it.Revision, &it.Kind, &it.OriginKind, &it.DeviceID, &it.PluginID, &it.SourceApp,
-		&it.Depth, &it.CreatedMs, &it.UpdatedMs, &it.ExpiresMs, &it.SyncState, &it.TotalBytes)
+		&it.CreatedMs, &it.UpdatedMs, &it.ExpiresMs, &it.SyncState, &it.TotalBytes)
 	return it, err
 }
 

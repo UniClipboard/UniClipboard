@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
-
-	"github.com/uniclipboard/unic/internal/wire"
 )
 
 // These are private processing types. RPC/Lua registration, durable commit and
@@ -24,8 +22,7 @@ const (
 type pipelineOrigin struct {
 	kind     string
 	deviceID DeviceID
-	pluginID string
-	depth    uint32
+	pluginID string // set when kind is "action"
 }
 
 type pipelineFile struct {
@@ -34,13 +31,12 @@ type pipelineFile struct {
 }
 
 type pipelineItem struct {
-	ID              string
-	Type            string
-	Text            string
-	Formats         []string
-	Files           []pipelineFile
-	Origin          pipelineOrigin
-	AutomationDepth uint32
+	ID      string
+	Type    string
+	Text    string
+	Formats []string
+	Files   []pipelineFile
+	Origin  pipelineOrigin
 }
 
 type pipelinePolicy struct {
@@ -79,7 +75,6 @@ type processingContext struct {
 	event  pipelineEvent
 	item   pipelineItem
 	policy pipelinePolicy
-	text   *string
 	fault  *Error // method failure invalidates the whole patch, even if ignored
 }
 
@@ -122,24 +117,6 @@ func (c *processingContext) change(fn func() *Error) error {
 		return c.fault
 	}
 	return nil
-}
-
-func (c *processingContext) SetText(text string) error {
-	return c.change(func() *Error {
-		if c.item.Type != "text" || !slices.Contains(c.item.Formats, MimeText) {
-			return newErr(CodeUnsupported, "this item cannot be changed as text")
-		}
-		if !utf8.ValidString(text) {
-			return newErr(CodeInvalidArgument, "text must be valid UTF-8")
-		}
-		if len(text) > wire.MaxPartBytes {
-			return newErr(CodeLimitExceeded, "text is over the representation limit")
-		}
-		c.text = &text
-		c.item.Text = text
-		c.item.Formats = []string{MimeText}
-		return nil
-	})
 }
 
 func (c *processingContext) AddTag(tag string) error {
@@ -187,7 +164,7 @@ func (c *processingContext) SetExpire(v time.Duration) error {
 }
 
 func describePipelineItem(id string, c *contentObj, origin pipelineOrigin) pipelineItem {
-	i := pipelineItem{ID: id, Type: "text", Origin: origin, AutomationDepth: origin.depth}
+	i := pipelineItem{ID: id, Type: "text", Origin: origin}
 	for _, p := range c.parts {
 		if p.desc.Kind == PartFile {
 			i.Files = append(i.Files, pipelineFile{Name: p.desc.Name, Size: p.desc.Size})
@@ -211,16 +188,12 @@ func describePipelineItem(id string, c *contentObj, origin pipelineOrigin) pipel
 // held during callbacks. Observation admission does not wait for processing.
 func (e *Engine) processContent(ctx context.Context, event pipelineEvent, c *contentObj, origin pipelineOrigin) (out *processedContent, failure *Error) {
 	w := &processedContent{c: c, item: describePipelineItem(e.newID(), c, origin), policy: pipelinePolicy{Persist: !e.opts.noPersistDefault, Sync: true}}
-	original := clonePipelineItem(w.item)
 	defer func() {
 		if failure != nil {
 			e.cs.unref(w.c)
 		}
 	}()
 	for _, p := range e.processors {
-		if original.AutomationDepth >= 3 {
-			break
-		}
 		if !slices.Contains(p.events, event) {
 			continue
 		}
@@ -249,19 +222,6 @@ func (e *Engine) processContent(ctx context.Context, event pipelineEvent, c *con
 				err = callCtx.Err()
 			}
 		}
-		if err == nil && pc.text != nil && !isPipelineText(w.c, *pc.text) {
-			var next *contentObj
-			next, failure = e.replacePipelineText(*pc.text)
-			if failure != nil {
-				err, failure = failure, nil // patch failure follows on_error
-			} else if err = callCtx.Err(); err != nil {
-				e.cs.unref(next) // preparation cannot extend the callback budget
-			} else {
-				e.cs.unref(w.c)
-				w.c = next
-				pc.item.Origin = pipelineOrigin{kind: "plugin", pluginID: p.id}
-			}
-		}
 		if err == nil {
 			w.item, w.policy = clonePipelineItem(pc.item), clonePipelinePolicy(pc.policy)
 		} else {
@@ -277,11 +237,6 @@ func (e *Engine) processContent(ctx context.Context, event pipelineEvent, c *con
 	if w.blocked {
 		w.policy.Sync = false
 	}
-	if w.item.Text == original.Text && slices.Equal(w.item.Formats, original.Formats) {
-		w.item.Origin, w.item.AutomationDepth = original.Origin, original.AutomationDepth
-	} else {
-		w.item.AutomationDepth = original.AutomationDepth + 1
-	}
 	return w, nil
 }
 
@@ -294,33 +249,6 @@ func invokeProcessor(ctx context.Context, p *pipelineProcessor, c *processingCon
 		}
 	}()
 	return p.process(ctx, c)
-}
-
-func isPipelineText(c *contentObj, text string) bool {
-	return len(c.parts) == 1 && c.parts[0].desc.Kind == PartRepresentation && c.parts[0].desc.MIME == MimeText && string(c.parts[0].data) == text
-}
-
-func (e *Engine) replacePipelineText(text string) (*contentObj, *Error) {
-	size := int64(len(text))
-	e.mu.Lock()
-	limit := e.settings.Value.Limits.MaxTotalBytes
-	e.mu.Unlock()
-	if size > limit {
-		return nil, newErr(CodeLimitExceeded, "processed content is over the configured size limit")
-	}
-	e.cs.mu.Lock()
-	defer e.cs.mu.Unlock()
-	if size > e.res.MaxStoredBytes-e.cs.stored-e.hist.bytes.Load() {
-		return nil, newErr(CodeResourceExhausted, "not enough storage for processed content")
-	}
-	// Check quota before allocating the output bytes. SetText is text-only and
-	// removes derived representations rather than retaining stale HTML.
-	parts := []*partRec{{desc: PartDescriptor{ID: "p1", Kind: PartRepresentation, MIME: MimeText, Size: size}, data: []byte(text)}}
-	n := &contentObj{id: ContentID(e.newID()), parts: parts, total: size, owned: size, refs: 1}
-	// No part is shared with the input: replacement needs no parent reference.
-	e.cs.stored += n.owned
-	e.cs.contents[n.id] = n
-	return n, nil
 }
 
 func validExternalSubmissionID(id RequestID) bool {

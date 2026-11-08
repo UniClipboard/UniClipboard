@@ -93,6 +93,7 @@ type Engine struct {
 	pendCount     uint64
 
 	processors  []*pipelineProcessor // private adapters, fixed before Start
+	actions     []*pipelineAction    // likewise
 	submissions map[RequestID]*submissionEntry
 }
 

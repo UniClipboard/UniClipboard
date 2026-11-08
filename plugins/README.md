@@ -4,6 +4,8 @@ Go 插件是独立程序：宿主（Engine）启动它，通过标准输入/输�
 
 ## 写一个插件
 
+需要各端自动生成设置界面时，使用独立的 [`plugin/settings`](../plugin/settings) 从配置 struct 生成静态 schema；可运行示例见 [`examples/settingsdemo`](examples/settingsdemo)，字段/控件约定见[设置契约](../docs/design/plugin-settings-contract.md)。schema 生成是开发期工具；清单与 RPC 自动发布尚未接入。
+
 1. 实现 `plugin.Plugin`（`Spec/Init/Start/Close`），再按需实现能力接口：
    - `plugin.Processor`：`Process(ctx, plugin.ProcessContext)`，在 `clipboard.captured` / `clipboard.received` 时自动**标注**（`AddTag/RemoveTag/SetPersist/SetSync/SetExpire`），不能改正文。
    - `plugin.Actor`：`Run(ctx, plugin.ActionContext)`，仅在用户触发时运行，必须恰好调用一次 `SetText`。需要在 `Spec.Actions` 静态声明。

@@ -71,6 +71,8 @@ Stop 先取消新工作与在途请求，再 Close；默认 5 秒退出窗口，
 
 ## 3. 配置与顺序
 
+插件专属 Config 的静态描述与 GUI 生成见[插件设置 Schema 契约](plugin-settings-contract.md)和[0010](decisions/0010-plugin-settings-schema.md)。独立 `plugin/settings` 工具与 macOS 固定 schema 预览已实现；Spec/清单/RPC 发布、实例配置保存和安装器读取尚未接入，不将 GUI 预览视为运行期配置能力。
+
 SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enabled、Events、Config。标准同步策略只存于 Settings.BackendPolicies（Text/Images/Files/AutoFileMaxBytes），不在实例设置重复保存；规范见[0007](decisions/0007-multiple-sync-backends.md)，具体 Go 类型、LuaPlugins 装配、严格配置和错误映射见[SDK 扩展类型契约](sdk-extension-contract.md)。宿主映射 TOML：
 
 ```toml

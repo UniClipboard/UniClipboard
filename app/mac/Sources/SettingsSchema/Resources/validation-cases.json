@@ -1,0 +1,33 @@
+[
+  {
+    "name": "defaults",
+    "input": {},
+    "output": {"prefix":"clip","max_length":500,"mode":"plain","enabled":true,"notes":"","tags":[],"retry":{"count":3,"delay":0.5}}
+  },
+  {
+    "name": "explicit false and zero",
+    "input": {"enabled":false,"retry":{"count":0,"delay":0}},
+    "output": {"prefix":"clip","max_length":500,"mode":"plain","enabled":false,"notes":"","tags":[],"retry":{"count":0,"delay":0}}
+  },
+  {
+    "name": "typed choices",
+    "input": {"mode":"markdown","tags":["a","b"],"max_length":1e3},
+    "output": {"prefix":"clip","max_length":1000,"mode":"markdown","enabled":true,"notes":"","tags":["a","b"],"retry":{"count":3,"delay":0.5}}
+  },
+  {"name":"null is explicit","input":{"prefix":null},"code":"type","path":"/prefix"},
+  {"name":"required nonempty","input":{"prefix":""},"code":"length","path":"/prefix"},
+  {"name":"number lower bound","input":{"max_length":0},"code":"range","path":"/max_length"},
+  {"name":"number upper bound","input":{"max_length":10001},"code":"range","path":"/max_length"},
+  {"name":"integer fraction","input":{"max_length":1.5},"code":"type","path":"/max_length"},
+  {"name":"number as string","input":{"max_length":"500"},"code":"type","path":"/max_length"},
+  {"name":"unknown enum","input":{"mode":"html"},"code":"enum","path":"/mode"},
+  {"name":"boolean type","input":{"enabled":0},"code":"type","path":"/enabled"},
+  {"name":"unknown private key","input":{"private-value-must-not-appear":"secret"},"code":"unknown_property","path":""},
+  {"name":"nested unknown key","input":{"retry":{"private-key":"secret"}},"code":"unknown_property","path":"/retry"},
+  {"name":"list item type","input":{"tags":[false]},"code":"type","path":"/tags/0"},
+  {"name":"list limit","input":{"tags":["1","2","3","4","5","6","7","8","9"]},"code":"items","path":"/tags"},
+  {"name":"root type","input":[],"code":"type","path":""},
+  {"name":"secret error","input":{"token":""},"code":"length","path":"/token"},
+  {"name":"unicode scalar length","input":{"prefix":"😀"},"output":{"prefix":"😀","max_length":500,"mode":"plain","enabled":true,"notes":"","tags":[],"retry":{"count":3,"delay":0.5}}},
+  {"name":"nested bounds","input":{"retry":{"delay":60.01}},"code":"range","path":"/retry/delay"}
+]

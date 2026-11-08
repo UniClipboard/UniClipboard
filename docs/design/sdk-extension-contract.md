@@ -188,6 +188,8 @@ HistoryOptions 的两个容量字段 0 使用默认值（10000、4GiB），负�
 
 ## 4. 插件装配与配置所有权
 
+专属配置的 schema 生成、校验与默认值规范化由独立公开包 `plugin/settings` 提供，见[设置契约](plugin-settings-contract.md)。该包不修改下列装配 DTO，也不自动接管 Settings、TOML 或 Init；运行时配置入口与元数据发布仍需主线接入。
+
 ```go
 type PluginCapability string
 type TransportKind string

@@ -6,6 +6,8 @@ BIN_DIR=$(swift build --package-path "$MAC_DIR" -c release --show-bin-path)
 APP_DIR="$MAC_DIR/.build/Unic.app"
 mkdir -p "$APP_DIR/Contents/MacOS"
 cp "$BIN_DIR/Unic" "$APP_DIR/Contents/MacOS/Unic"
+mkdir -p "$APP_DIR/Contents/Resources/SettingsSchema"
+cp "$BIN_DIR/Unic_SettingsSchema.bundle/settings-demo.schema.json" "$APP_DIR/Contents/Resources/SettingsSchema/"
 cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

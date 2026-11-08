@@ -31,6 +31,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0007](docs/design/decisions/0007-multiple-sync-backends.md) | 多同步后端与分层策略 | 已采纳，待实现；全局开关、实例启用、每后端类型/自动文件阈值；多后端结果/资源隔离与有界跨后端去重；默认只交付 tailcat，WebDAV 对象协议另定 |
 | [0008](docs/design/decisions/0008-device-identity-and-backend-bindings.md) | 统一设备身份与后端关联 | 已采纳，待实现；Engine 统一身份/信任/审批；设备按后端实例独立授权和状态；无旧 tailcat 兼容；身份协议与 SDK/RPC 定义待补齐 |
 | [0009](docs/design/decisions/0009-external-channels.md) | 外部渠道：无 unic 身份证明的第三方对端 | 草案；不是设备、不写 `devices` 表、无指纹；目标为组；与设备混排展示；默认自动写剪贴板并标 `external:` 来源；移除仅本地生效，后端声明 `remote_revocation`；接入形态待定（首个对象微信输入法） |
+| [0010](docs/design/decisions/0010-plugin-settings-schema.md) | 插件设置 Schema 与表单生成 | JSON Schema 子集 + UI 提示；Go 配置定义生成静态 schema，各 shell 生成原生表单；独立工具和 macOS 会话预览已实现，配置 API/清单/RPC/安装接入待完成 |
 
 ### 接口契约
 
@@ -45,6 +46,8 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 - [Action 契约](docs/design/clipboard-action-contract.md)：插件声明、用户主动触发的内容变换（ListActions/RunAction），结果为 origin=action 的新历史条目并经 BeginApplyHistory 应用；取代已取消的自动写回；契约已确定，待实现。
 
 - [插件契约](docs/design/plugin-contract.md)：Go/Lua 标识、注册、生命周期、配置、顺序、上下文与最小模板、GitHub 仓库安装；builtin.tailcat 后端边界（目标设计，待实现）。
+
+- [插件设置 Schema 契约](docs/design/plugin-settings-contract.md)：字段约束、控件映射、Go 生成、校验/默认值与秘密字段；独立工具和固定 schema 的 macOS 表单已实现，运行时集成待完成。
 
 - [插件 RPC 核心协议](docs/design/plugin-rpc-contract.md)：二进制帧、握手、核心方法、取消、patch、流控和机器可读 Schema/互操作向量；后端业务 DTO 见下项，实现与互操作仍待完成。
 

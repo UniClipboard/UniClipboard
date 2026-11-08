@@ -1,4 +1,5 @@
 import SwiftUI
+import SettingsSchema
 
 /// Settings window, laid out like System Settings: a sidebar of panes, a grouped form for each.
 enum SettingsPane: String, CaseIterable, Identifiable {
@@ -253,6 +254,8 @@ private struct AddDeviceSheet: View {
 private struct PluginsPane: View {
     @EnvironmentObject var library: Library
     @State private var installing = false
+    @State private var showingSettingsPreview = false
+    @State private var settingsPreview: JSONValue?
 
     var body: some View {
         Form {
@@ -282,12 +285,14 @@ private struct PluginsPane: View {
                 }
             }
             Section {
+                Button("Preview plugin settings…", systemImage: "slider.horizontal.3") { showingSettingsPreview = true }
                 Button("Install from GitHub…", systemImage: "plus") { installing = true }
             }
         }
         .formStyle(.grouped)
         .navigationTitle("Plugins")
         .sheet(isPresented: $installing) { InstallPluginSheet().environmentObject(library) }
+        .sheet(isPresented: $showingSettingsPreview) { PluginSettingsPreview(saved: $settingsPreview) }
     }
 
     private func row(_ plugin: Plugin, order: Int?) -> some View {

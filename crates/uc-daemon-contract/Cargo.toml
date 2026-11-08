@@ -16,7 +16,7 @@ specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 serde_with = "3.18.0"
 chrono = { version = "0.4", features = ["serde"] }
-utoipa = { version = "4", features = ["uuid", "chrono", "url"] }
+utoipa = { version = "6", features = ["uuid", "chrono", "url"] }
 # Pure semver comparison for the daemon health classifier's strictly-newer
 # downgrade guard (ADR-008 P5-L L2). semver is a leaf pure-Rust dep — it does
 # NOT pull iroh/diesel, so it keeps this contract crate client-safe.
@@ -25,8 +25,8 @@ semver = "1"
 [dev-dependencies]
 # Used by tests/consumer_dependency_firewall.rs, the workspace-wide guard that desktop consumers
 # depend on uc-engine instead of the core internals.
-cargo_metadata = "0.19.2"
-syn = { version = "2", features = ["full", "visit"] }
+cargo_metadata = "0.23.1"
+syn = { version = "3", features = ["full", "visit"] }
 
 [lints]
 workspace = true

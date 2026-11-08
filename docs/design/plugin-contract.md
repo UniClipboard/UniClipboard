@@ -176,7 +176,7 @@ type SyncBackend interface {
 
 ## 7. 最小模板
 
-以下为目标 SDK 模板，落地后需提供可编译示例。Go 构建独立 main 包，不重新构建 unicd：
+可编译示例见 [`plugins/examples/emailtag`](../../plugins/examples/emailtag)（`go build ./plugins/examples/emailtag`），以下为其摘要；入口为 `plugin.Serve`，处理回调接收 `plugin.ProcessContext` 接口。Go 构建独立 main 包，不重新构建 unicd：
 
 ```go
 package main
@@ -188,7 +188,7 @@ import (
 )
 
 type emailtag struct{ tag string }
-func main() { plugin.Main(&emailtag{}) } // SDK 服务 RPC 并管理退出
+func main() { _ = plugin.Serve(&emailtag{}) } // SDK 服务 RPC 并管理退出
 func (*emailtag) Spec() plugin.Spec {
     return plugin.Spec{ID: "example.emailtag", Version: "1.0.0",
         APIVersion: 1, Capabilities: []string{"processor"}}
@@ -210,7 +210,7 @@ func (*emailtag) Close(context.Context) error { return nil }
 
 var email = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 
-func (p *emailtag) Process(ctx context.Context, c *plugin.ProcessContext) error {
+func (p *emailtag) Process(ctx context.Context, c plugin.ProcessContext) error {
     if err := ctx.Err(); err != nil { return err }
     item := c.Item()
     if item.Type == "text" && email.MatchString(item.Text) {

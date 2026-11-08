@@ -181,7 +181,7 @@ func (r *actionRun) produce(ctx context.Context, e *Engine) (*contentObj, *Error
 	if lerr != nil {
 		return nil, lerr
 	}
-	item := describePipelineItem(e.newID(), src, pipelineOrigin{})
+	item := describePipelineItem(e.newID(), src, pipelineOrigin{kind: "explicit"}) // the user chose this item
 	e.cs.unref(src)
 	if item.Type != "text" || !slices.Contains(r.act.accepts, "text") {
 		return nil, newErr(CodeUnsupported, "this action does not accept this item")

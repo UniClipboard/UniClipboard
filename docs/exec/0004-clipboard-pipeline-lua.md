@@ -106,12 +106,14 @@
 ### P4 · plugin SDK、RPC 与常驻进程管理
 
 - [ ] 新增 `plugin/` 的公开接口、稳定错误码、机器可读协议定义与可编译 Go 模板；Engine 使用代理，SDK 不依赖 engine。
-- [ ] 实现版本化长度帧、JSON 控制载荷、有界二进制流、请求/流 ID、多路复用、取消、deadline、反向 Host 调用与窗口流控；大整数用十进制字符串。
-- [ ] 实现 PluginProcessSpec、摘要复核、Spec/能力/API 握手和会话 nonce；最小环境启动，不对外监听 TCP，不转发自由文本错误或 stderr。
-- [ ] 实现 spawn/handshake/Init/Start/Close/wait 和失败逆序清理；同实例 Process/OnEvent 串行，跨目标 Send 可并发，控制读写不被业务回调堵住。
-- [ ] 处理默认 200ms 超时，先取消、1 秒宽限后终止；Stop 默认 5 秒退出窗口，回收进程树并 wait。处理 panic、EOF、迟到响应与父进程退出。
+- [x] 实现版本化长度帧、JSON 控制载荷、有界二进制流、请求/流 ID、多路复用、取消、deadline、反向 Host 调用与窗口流控；大整数用十进制字符串。（`plugin/rpc`，向量与真实子进程测试通过）
+- [x] 实现 PluginProcessSpec、摘要复核、Spec/能力/API 握手和会话 nonce；最小环境启动，不对外监听 TCP，不转发自由文本错误或 stderr。（`internal/pluginproc`；摘要在启动前复核，未防文件替换竞态）
+- [x] 实现 spawn/handshake/Init/Start/Close/wait 和失败逆序清理；同实例 Process/OnEvent 串行，跨目标 Send 可并发，控制读写不被业务回调堵住。
+- [x] 处理默认 200ms 超时，先取消、1 秒宽限后终止；Stop 默认 5 秒退出窗口，回收进程树并 wait。处理 panic、EOF、迟到响应与父进程退出。（Unix 终止进程组；Windows 仅终止进程，未做 job object）
 - [ ] 按 1/2/4 秒退避重启，60 秒最多 3 次；超限 unavailable。新会话重传最新状态，旧句柄失效，未决同步不自动重发。
 - [ ] 统一 Order/Instances/OnError 校验：启用项恰好出现一次，拒绝未知事件/能力/配置/API，支持 0..MaxSyncBackends、TransportKind 区分 P2P/对象存储，每实例独立进程/binding；标准同步策略与全局授权由 Engine 校验。
+
+P4 未完成项：SDK 使用说明（Go 模板已提供：`plugins/examples/emailtag`）；Observer/`plugin.on_event`；重启后重传最新状态与旧句柄失效（随 P5 同步后端）；Order/Instances 统一校验、MaxSyncBackends 与 TransportKind；从 unavailable 显式重启。
 
 退出条件：用真实测试子进程覆盖错误帧、超大帧、握手冲突、取消、死锁、崩溃、重启、资源回收与流控；Go 标注结果与 Action 结果和 P3 测试处理器语义一致。
 
@@ -188,3 +190,5 @@ go build -o /tmp/unic-plugin-tailcat-0004 ./plugins/tailcat/cmd/unic-plugin-tail
 历史迁移采用可重复执行的增量方案，迁移前保留可恢复备份；不能通过降级程序直接删除新历史表或持久资源。后端迁移先校验旧密钥和新位置，成功标记后再切换装配，失败停止启动并保留恢复材料。安装升级失败保留旧锁、旧版本与用户配置，Lua 热替换失败保留旧实例。运行期后端崩溃依契约退避恢复，不回退到第二条生产网络路径，不重发结果不确定的同步。
 
 进度记录：2026-11-08，进程内 Go 插件已落地：公开包 `plugin`（Spec/Processor/Actor/ProcessContext/ActionContext），`engine.Options.Plugins` 装配，校验 ID/能力/动作声明，Init+Start 在 `New`、逆序 Close 在收尾；内置插件 `builtin.text`（`internal/plugins/builtintext`）自动标注 email/url 并提供 upper/lower/trim/plain 动作；桌面新增 `[plugins.instances."builtin.text"] enabled`（需重启）、`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}`（运行后写入剪贴板）。未做：外部 Go/Lua 插件、`on_error`、Observer 能力、`PluginNotify` 在桌面的展示。
+
+进度记录：2026-11-08，P4 主体落地（未提交）：`plugin/rpc`（帧、严格 JSON、Conn、流控、握手）、`plugin/serve.go`（插件侧 `Serve`）、`internal/pluginproc`（进程管理代理、退避重启、unavailable）、`engine.PluginInstance.Process/OnError`；Action 来源条目 origin 改为 `explicit`（此前为空，被插件进程校验拒绝）。命令：`go test -race -count=1 ./engine ./plugin/... ./internal/pluginproc` 全部通过；`go vet ./...` 通过；`go test -race ./...` 中 `internal/session` 的 `TestJoinByCodeStillNeedsApproval` 在全量运行时出现测试结束后写日志的竞态（该包未改动，单独 `-count=5` 通过），待另行处理。未运行 golangci-lint。

@@ -10,17 +10,36 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/uniclipboard/unic/internal/pluginproc"
 	"github.com/uniclipboard/unic/plugin"
 )
 
-// PluginInstance is a plugin that runs inside the host process. Order in
-// Options.Plugins is the processing order. Out-of-process Go and Lua plugins
-// arrive with the RPC runtime; this is how built-in ones are assembled.
+// PluginInstance is one plugin in the processing order of Options.Plugins.
+// Set either Plugin (runs inside the host process, e.g. built-ins) or Process
+// (a Go plugin run as a child process over the plugin RPC protocol).
 type PluginInstance struct {
-	Plugin plugin.Plugin
-	Config plugin.Config
+	Plugin  plugin.Plugin
+	Process *PluginProcess
+	Config  plugin.Config
 	// Events a processor subscribes to; empty means captured and received.
 	Events []string
+	// OnError is what a failed processor means for syncing: "continue"
+	// (default) or "block_sync".
+	OnError string
+}
+
+// PluginProcess describes a plugin executable. The engine verifies the
+// digest, starts it with a minimal environment, and requires its handshake
+// to present exactly Spec.
+type PluginProcess struct {
+	Path   string // absolute path
+	SHA256 string // hex digest the executable must match
+	Args   []string
+	Env    []string // extra KEY=VALUE; nothing else is inherited
+	Dir    string   // private data directory and working directory
+	Spec   plugin.Spec
+	// Timeouts override the defaults when non-zero; mainly for tests.
+	Options pluginproc.Options
 }
 
 var (
@@ -46,8 +65,21 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 		}
 	}()
 	for _, in := range list {
+		if in.Process != nil {
+			if in.Plugin != nil {
+				return newErr(CodeInvalidArgument, "set Plugin or Process, not both")
+			}
+			pp := in.Process
+			in.Plugin = pluginproc.New(pluginproc.Spec{Path: pp.Path, SHA256: pp.SHA256, Args: pp.Args, Env: pp.Env, Dir: pp.Dir,
+				Expected: pp.Spec, Events: in.Events}, pp.Options)
+		}
 		if in.Plugin == nil {
 			return newErr(CodeInvalidArgument, "nil plugin")
+		}
+		switch in.OnError {
+		case "", "continue", "block_sync":
+		default:
+			return newErr(CodeInvalidArgument, "unknown on_error policy")
 		}
 		spec := in.Plugin.Spec()
 		if verr := validateSpec(spec, in); verr != nil {
@@ -134,7 +166,7 @@ func (e *Engine) registerPlugin(in PluginInstance, spec plugin.Spec) {
 				events = append(events, pipelineEvent(ev))
 			}
 		}
-		e.processors = append(e.processors, newPipelineProcessor(spec.ID, events, false, func(ctx context.Context, c *processingContext) error {
+		e.processors = append(e.processors, newPipelineProcessor(spec.ID, events, in.OnError == "block_sync", func(ctx context.Context, c *processingContext) error {
 			return p.Process(ctx, processView{c})
 		}))
 	}

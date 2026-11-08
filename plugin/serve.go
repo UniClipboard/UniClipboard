@@ -107,6 +107,8 @@ func (s *server) handle(ctx context.Context, c *rpc.Call) (any, error) {
 		res, err = s.leaveChannel(ctx, c)
 	case rpc.MethodBind:
 		res, err = s.bindPeer(ctx, c)
+	case rpc.MethodSend:
+		res, err = s.send(ctx, c)
 	case rpc.MethodApplyState:
 		res, err = s.applyState(ctx, c)
 	default:

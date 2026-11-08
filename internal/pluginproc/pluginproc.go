@@ -43,6 +43,7 @@ type Options struct {
 	// Notify receives host.notify messages (already bounded and rate limited).
 	Notify         func(message string)
 	ProcessTimeout time.Duration // 200ms
+	SendTimeout    time.Duration // 10m, one backend.send
 	ActionTimeout  time.Duration // 10s
 	StopTimeout    time.Duration // 5s
 	CancelGrace    time.Duration // 1s
@@ -61,6 +62,7 @@ func (o *Options) fill() {
 		}
 	}
 	def(&o.ProcessTimeout, 200*time.Millisecond)
+	def(&o.SendTimeout, 10*time.Minute)
 	def(&o.ActionTimeout, 10*time.Second)
 	def(&o.StopTimeout, 5*time.Second)
 	def(&o.CancelGrace, time.Second)
@@ -116,6 +118,7 @@ type Proxy struct {
 	bmu       sync.Mutex // sync-backend state
 	receiver  plugin.Receiver
 	transfers map[string]*transfer
+	sends     map[uint64]*activeSend
 
 	applyGate chan struct{} // serializes ApplyState
 }

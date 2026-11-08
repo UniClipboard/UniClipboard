@@ -89,6 +89,8 @@ clip 包含 wire_id/origin/at_ms/hash 和按原 wire 顺序排列的 parts。par
 
 后端将流写入现有长连接，全部 part END 且 wire 字节完整写完后才回应 sent。传输前失败返回稳定 error；写了 header/正文后失败必须丢弃该设备连接，禁止继续读写已失步的 wire。成功仅为本地写完，不代表对端接收或应用。RPC 中断/超时可能已经写出部分甚至全部，目标失败，不自动重发。
 
+实现状态（§4 RPC 层）：DTO 在 `plugin/rpc/send.go`，SDK 接口 `plugin.PeerSender`/`SendHost`，Engine 侧 `plugin.PeerDispatcher`/`SendSource`，宿主实现在 `internal/pluginproc/send.go`。宿主按所属 `backend.send` 的 dispatch_id/connection_id/session_token/content_handle（常量时间比较）校验 `authorize_send`，每次发送只发一个 grant（再次请求 conflict，Engine 拒绝后可重试），`open_send_part` 须带该 grant、索引在范围内、每个 part 只开一次、同时打开的流 ≤ 4。空 part 不建流：返回 `stream_id=0, size=0` 的描述，后端据此得到空内容（零字节流没有信用额度，END 会抢在宣告它的响应之前）。真实子进程测试覆盖多 part 流式（含超过一个窗口）、授权被拒无任何 part 被打开、part 单次打开与越权请求。
+
 每 (BackendID, device, DeviceID) 一个在途加一个待发由 Engine 维护，后端不另建无界发送队列；Send 只有 Engine 指派可启动，不自行重放历史。多个目标可并发，但不允许同一连接的两个 wire 写交错。根调用结束后 content_handle/grant/流全部撤销，Operation 持有的内容引用按目标终态释放。
 
 ## 5. 接收准入、流与交付

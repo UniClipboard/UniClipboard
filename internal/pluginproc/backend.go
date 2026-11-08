@@ -158,6 +158,12 @@ func (p *Proxy) handleBackend(ctx context.Context, c *rpc.Call) (res any, err er
 		return nil, p.report(c), true
 	case rpc.MethodReceive:
 		return nil, p.receive(ctx, c), true
+	case rpc.MethodAuthorizeSend:
+		res, err = p.authorizeSend(ctx, c)
+		return res, err, true
+	case rpc.MethodOpenSendPart:
+		res, err = p.openSendPart(ctx, c)
+		return res, err, true
 	}
 	return nil, nil, false
 }

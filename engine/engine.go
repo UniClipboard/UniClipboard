@@ -121,6 +121,11 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if err := opts.Settings.validate(); err != nil {
 		return nil, err
 	}
+	luaIn, lerr := luaInstances(opts.LuaPlugins)
+	if lerr != nil {
+		return nil, lerr
+	}
+	opts.Plugins = append(slices.Clone(opts.Plugins), luaIn...)
 	var backendIDs []PluginID
 	if opts.Peer != nil {
 		backendIDs = append(backendIDs, BackendTailcat)

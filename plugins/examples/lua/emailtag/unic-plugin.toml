@@ -1,0 +1,6 @@
+kind = "lua"
+entry = "main.lua"
+id = "example.lua-emailtag"
+version = "1.0.0"
+api_version = 1
+capabilities = ["processor"]

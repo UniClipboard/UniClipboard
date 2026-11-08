@@ -45,6 +45,8 @@ type Options struct {
 	// Plugins run in this process, in this order, before the engine is
 	// returned: Init and Start happen in New, Close when the engine closes.
 	Plugins []PluginInstance
+	// LuaPlugins run after Plugins, in this order, under the Lua sandbox.
+	LuaPlugins []LuaPluginSpec
 	// PluginNotify shows a plugin's short message to the user. It must not
 	// block. Nil: messages are dropped.
 	PluginNotify func(plugin PluginID, message string)

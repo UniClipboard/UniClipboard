@@ -314,7 +314,8 @@
       "storage": "存储管理",
       "about": "关于",
       "shortcuts": "快捷键",
-      "quickPanel": "快捷面板"
+      "quickPanel": "快捷面板",
+      "notifications": "通知"
     },
     "sections": {
       "general": {
@@ -2959,5 +2960,21 @@
     "replaceConfirm": "不可撤销地替换",
     "keepStaging": "保留旧资料",
     "replacing": "正在验证并替换…"
+  },
+  "notifications": {
+    "entryWithCount": "通知（{{count}}）",
+    "close": "完成",
+    "title": "最新通知",
+    "description": "查看适用于当前版本的通知。",
+    "refresh": "刷新",
+    "loading": "正在加载通知…",
+    "failed": "通知加载失败。请检查网络后刷新。",
+    "empty": "暂无适用于当前版本的通知。",
+    "attention": "请仔细阅读此通知。",
+    "severity": {
+      "info": "消息",
+      "warning": "警告",
+      "critical": "紧急"
+    }
   }
 }

@@ -1,6 +1,12 @@
 // Line icons copied from the design canvas (boards T2 and C1–C5). macOS draws SF Symbols, which only ship on Apple platforms, so the
 // design substitutes same-style strokes; the paths are kept verbatim so screenshots compare like for like.
 const paths = {
+  bell: (
+    <>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+      <path d="M10 21h4" />
+    </>
+  ),
   copy: (
     <>
       <rect x="8" y="8" width="12" height="12" rx="2" />

@@ -314,7 +314,8 @@
       "storage": "Storage",
       "about": "About",
       "shortcuts": "Shortcuts",
-      "quickPanel": "Quick Panel"
+      "quickPanel": "Quick Panel",
+      "notifications": "Notifications"
     },
     "sections": {
       "general": {
@@ -2967,5 +2968,21 @@
     "replaceConfirm": "Permanently replace",
     "keepStaging": "Keep preserved data",
     "replacing": "Validating and replacing…"
+  },
+  "notifications": {
+    "entryWithCount": "Notifications ({{count}})",
+    "close": "Done",
+    "title": "Latest notifications",
+    "description": "View announcements for your installed version.",
+    "refresh": "Refresh",
+    "loading": "Loading notifications…",
+    "failed": "Could not load notifications. Check your connection and refresh.",
+    "empty": "No notifications for your installed version.",
+    "attention": "Please read this notification carefully.",
+    "severity": {
+      "info": "Information",
+      "warning": "Warning",
+      "critical": "Critical"
+    }
   }
 }

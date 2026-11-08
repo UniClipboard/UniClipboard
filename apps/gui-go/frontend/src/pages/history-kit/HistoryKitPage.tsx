@@ -6,6 +6,7 @@ import { useCompositeSearchBar } from '@/components/history/composite-search/use
 import { useZeroResultRelaxations } from '@/components/history/composite-search/useZeroResultRelaxations'
 import { LIBRARY_BUILTIN_TAG_IDS } from '@/components/history/tags/history-tag-library'
 import { NO_TAG_COLORS, TagColorsContext } from '@/components/history/tags/tag-colors-context'
+import { ReleaseNotificationCenter } from '@/components/notifications/ReleaseNotificationCenter'
 import { useLibraryChrome } from '@/contexts/library-chrome-context'
 import { useAppliedColorScheme } from '@/hooks/useAppliedColorScheme'
 import { useHistoryController } from '@/hooks/useHistoryController'
@@ -31,6 +32,8 @@ import { HistoryKitSelection } from './HistoryKitSelection'
 import { HistoryKitSidebar } from './HistoryKitSidebar'
 import { HistoryKitTagManager } from './HistoryKitTagManager'
 import { HistoryKitToolbar, HistoryKitViewSwitch } from './HistoryKitToolbar'
+import { HistoryManagementRail } from './HistoryManagementRail'
+import { useHistoryManagement } from './useHistoryManagement'
 
 const VIEW_KEY = 'uc.history.kit.view'
 const SIZE_KEY = 'uc.history.kit.gridSize'
@@ -89,6 +92,12 @@ export default function HistoryKitPage() {
   const openDevicesFromRoute =
     (routerLocation.state as Record<string, unknown> | null)?.[MANAGE_DEVICES_STATE] === true
   const devices = useDevicesKit(openDevicesFromRoute)
+  const notifications = useHistoryManagement(
+    () => devices.show(),
+    () => {
+      void navigate('/settings')
+    }
+  )
   // The `/devices` redirect's flag opens the sheet once; drop it from the history entry so a
   // reload or a later remount of this page does not open the sheet again.
   useEffect(() => {
@@ -278,8 +287,10 @@ export default function HistoryKitPage() {
     <TagColorsContext value={c.tagLayout?.colors ?? NO_TAG_COLORS}>
       <UiRoot colorScheme={colorScheme}>
         <SplitView
+          collapsedSidebar={<HistoryManagementRail management={notifications.management} />}
           sidebar={
             <HistoryKitSidebar
+              management={notifications.management}
               activeFilter={c.filter.activeFilter}
               activeTag={c.filter.tagFilter}
               onSelectLibrary={filter => {
@@ -471,6 +482,7 @@ export default function HistoryKitPage() {
             </Pane>
           )}
         </SplitView>
+        <ReleaseNotificationCenter open={notifications.open} onOpenChange={notifications.setOpen} />
         <HistoryKitTagManager
           open={c.tagManagerOpen && c.historyTags.available}
           onOpenChange={c.setTagManagerOpen}

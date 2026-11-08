@@ -7,6 +7,7 @@ import { createLogger } from '@/lib/logger'
 interface ReleaseNotesProps {
   content: string
   fallback: string
+  hideImages?: boolean
 }
 
 const log = createLogger('release-notes')
@@ -31,7 +32,9 @@ const markdownComponents = {
   ),
 }
 
-export function ReleaseNotes({ content, fallback }: ReleaseNotesProps) {
+const textOnlyComponents = { ...markdownComponents, img: () => null }
+
+export function ReleaseNotes({ content, fallback, hideImages = false }: ReleaseNotesProps) {
   const { i18n } = useTranslation()
   const body = content?.trim()
   if (!body) return <span className="text-muted-foreground">{fallback}</span>
@@ -54,7 +57,9 @@ export function ReleaseNotes({ content, fallback }: ReleaseNotesProps) {
                     [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5
                     [&_li]:my-0 [&_p]:my-1 [&_a]:underline [&_pre]:overflow-x-auto [&_code]:font-mono"
     >
-      <Markdown components={markdownComponents}>{displayContent}</Markdown>
+      <Markdown skipHtml components={hideImages ? textOnlyComponents : markdownComponents}>
+        {displayContent}
+      </Markdown>
     </div>
   )
 }

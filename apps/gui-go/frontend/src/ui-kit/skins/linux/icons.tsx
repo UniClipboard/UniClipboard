@@ -1,6 +1,12 @@
 // Line icons copied from the design canvas (GNOME boards). The design draws symbolic-icon-style
 // strokes at 16 px on a 24 unit grid; the paths are kept verbatim so screenshots compare like for like.
 const paths = {
+  bell: (
+    <>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+      <path d="M10 21h4" />
+    </>
+  ),
   copy: (
     <>
       <rect x="8" y="8" width="12" height="12" rx="2" />

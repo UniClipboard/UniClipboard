@@ -1,3 +1,4 @@
+import { CollapsedSidebar } from '@/ui-kit/collapsed-sidebar'
 import type {
   ActionBarProps,
   ColorDotProps,
@@ -26,6 +27,7 @@ import { swatchColor } from './swatch'
  */
 export function SplitView({
   sidebar,
+  collapsedSidebar,
   sidebarHidden,
   sidebarOverlay,
   sidebarToggle,
@@ -90,6 +92,9 @@ export function SplitView({
           onClick={sidebarToggle.onClick}
         />
       )}
+      <CollapsedSidebar hidden={sidebarHidden} overlay={overlay} blocked={drawerOpen}>
+        {collapsedSidebar}
+      </CollapsedSidebar>
       <div className="adw-split-content" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <Surface region="content">
           <header className="adw-split-toolbar">

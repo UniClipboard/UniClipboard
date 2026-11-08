@@ -2,6 +2,7 @@ import {
   Command,
   HardDrive,
   Info,
+  Bell,
   Palette,
   RefreshCw,
   Settings,
@@ -11,6 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
+import NotificationsSection from '@/components/setting/NotificationsSection'
 import ShortcutsSection from '@/components/setting/ShortcutsSection'
 import AboutSection from './AboutSection'
 import AppearanceSection from './AppearanceSection'
@@ -72,6 +74,11 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     id: 'about',
     icon: Info,
     Component: AboutSection,
+  },
+  {
+    id: 'notifications',
+    icon: Bell,
+    Component: NotificationsSection,
   },
 ]
 

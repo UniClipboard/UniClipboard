@@ -1,4 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit'
+import { setupListeners } from '@reduxjs/toolkit/query'
 import { createDiagnosticsEnhancer } from '@/observability/diagnostics'
 import { appApi } from './api'
 import clipboardReducer from './slices/clipboardSlice'
@@ -24,6 +25,8 @@ export const store = configureStore({
     return diagnosticsEnhancer ? enhancers.concat(diagnosticsEnhancer) : enhancers
   },
 })
+
+setupListeners(store.dispatch)
 
 // 从 store 本身推断出 RootState 和 AppDispatch 类型
 export type RootState = ReturnType<typeof store.getState>

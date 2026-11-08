@@ -48,7 +48,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 
 此区块由 `go run ./cmd/hostcontract docs` 从 Go 源码生成（命令来自 `*HostService` 的导出方法及其 `//uc:` 指令，事件来自 `apps/gui-go/host_events.go`），请勿手改。
 
-### 命令（68 个）
+### 命令（69 个）
 
 | 命令 | Go 方法 | 参数 | 结果 | 错误族 / 错误码 | macOS | Windows | Linux | 来源 / 说明 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -76,6 +76,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `get_quick_panel_accessibility_permission` | `GetQuickPanelAccessibilityPermission` | - | `bool` | none | 真实 | 不支持 | 不支持 | 契约命令；GetQuickPanelAccessibilityPermission checks the system grant without prompting or depending on panel enablement. |
 | `get_quick_panel_double_tap_availability` | `GetQuickPanelDoubleTapAvailability` | - | `ModifierDoubleTapAvailability` | none | 真实 | 真实 | 真实 | 契约命令；GetQuickPanelDoubleTapAvailability tells whether the modifier double tap trigger can work in this session. |
 | `get_quick_panel_shortcut_status` | `GetQuickPanelShortcutStatus` | - | `QuickPanelShortcutStatus` | none | 真实 | 真实 | 真实 | 契约命令；GetQuickPanelShortcutStatus reports whether the saved quick panel shortcut is the one the OS holds: active, saved but not active (with the binding still held and the OS error), unknown, or inactive (ADR-013 section 10). |
+| `get_release_announcements` | `GetReleaseAnnouncements` | `locale string` | `[]announcements.Announcement` | text | 真实 | 真实 | 真实 | 契约命令；GetReleaseAnnouncements reads public notices for the installed release, independently of update availability. |
 | `get_visual_effects` | `GetVisualEffects` | - | `EffectsSnapshot` | none | 真实 | 真实 | 真实 | 契约命令；GetVisualEffects returns this GUI session's authoritative state. |
 | `host_notification_permission` | `HostNotificationPermission` | - | `bool` | none | 真实 | 真实 | 真实 | 适配器：`@/host/notification`；HostNotificationPermission reports whether system notifications are allowed. |
 | `host_notification_request_permission` | `HostNotificationRequestPermission` | - | `NotificationPermission` | none | 真实 | 真实 | 真实 | 适配器：`@/host/notification`；HostNotificationRequestPermission asks the system for notification permission (adapter command). |

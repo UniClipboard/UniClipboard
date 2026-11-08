@@ -315,7 +315,8 @@
       "storage": "Armazenamento",
       "about": "Sobre",
       "shortcuts": "Atalhos",
-      "quickPanel": "Painel rápido"
+      "quickPanel": "Painel rápido",
+      "notifications": "Notificações"
     },
     "sections": {
       "general": {
@@ -2994,5 +2995,21 @@
     "replaceConfirm": "Substituir permanentemente",
     "keepStaging": "Manter os dados antigos",
     "replacing": "Validando e substituindo…"
+  },
+  "notifications": {
+    "entryWithCount": "Notificações ({{count}})",
+    "close": "Concluído",
+    "title": "Últimas notificações",
+    "description": "Veja os avisos para a versão instalada.",
+    "refresh": "Atualizar",
+    "loading": "Carregando notificações…",
+    "failed": "Não foi possível carregar as notificações. Verifique a conexão e atualize.",
+    "empty": "Nenhuma notificação para a versão instalada.",
+    "attention": "Leia esta notificação com atenção.",
+    "severity": {
+      "info": "Informação",
+      "warning": "Aviso",
+      "critical": "Crítico"
+    }
   }
 }

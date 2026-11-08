@@ -43,6 +43,9 @@ type Options struct {
 	// Peer replaces the peer-to-peer backend (tests); nil assembles the
 	// built-in tailcat.
 	Peer engine.PeerFactory
+	// Plugins are extra plugin instances, e.g. sync backends with external
+	// channels, assembled by the program next to the built-in ones.
+	Plugins []engine.PluginInstance
 }
 
 // Node is the engine plus everything a desktop host adds to it. It implements
@@ -90,12 +93,13 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if c.PluginEnabled(builtintext.ID) {
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New()})
 	}
+	opts.Plugins = append(opts.Plugins, o.Plugins...)
 	e, err := engine.New(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 	n := &Node{e: e, cfg: o.Settings, logf: o.Logf}
-	n.clip = &clipboardHost{e: e, board: o.Board, poll: o.Poll, hub: &n.hub, logf: o.Logf, name: n.peerName}
+	n.clip = &clipboardHost{e: e, board: o.Board, poll: o.Poll, hub: &n.hub, logf: o.Logf, name: n.peerName, channelName: n.channelName}
 	return n, nil
 }
 
@@ -249,6 +253,50 @@ func apiPeer(d engine.Device) api.PeerStatus {
 	return api.PeerStatus{ID: d.ID, Name: d.DisplayName(), Connected: deviceConnected(d), LastSeen: last / 1000}
 }
 
+func apiChannel(c engine.Channel) api.PeerStatus {
+	return api.PeerStatus{ID: c.ID, Name: c.DisplayName(), LastSeen: c.LastActiveMs / 1000, Kind: "external", BackendID: string(c.BackendID),
+		Enabled: c.Enabled, AutoApply: c.AutoApply, RemoteRevocation: c.RemoteRevocation, Revision: c.Revision}
+}
+
+func (n *Node) channelName(ctx context.Context, id string) string {
+	if c, err := n.e.GetChannel(ctx, id); err == nil {
+		return c.DisplayName()
+	}
+	return ""
+}
+
+func (n *Node) UpdateChannel(ctx context.Context, id string, u api.ChannelUpdate) (api.PeerStatus, error) {
+	rev := u.Revision
+	var c engine.Channel
+	var err error
+	// Each change bumps the revision, so chain the results.
+	if u.Name != nil {
+		if c, err = n.e.RenameChannel(ctx, engine.RenameChannelRequest{ID: id, ExpectedRevision: rev, Name: *u.Name}); err != nil {
+			return api.PeerStatus{}, apiErr(err, false)
+		}
+		rev = c.Revision
+	}
+	if u.Enabled != nil {
+		if c, err = n.e.SetChannelEnabled(ctx, engine.SetChannelEnabledRequest{ID: id, ExpectedRevision: rev, Enabled: *u.Enabled}); err != nil {
+			return api.PeerStatus{}, apiErr(err, false)
+		}
+		rev = c.Revision
+	}
+	if u.AutoApply != nil {
+		if c, err = n.e.SetChannelAutoApply(ctx, engine.SetChannelAutoApplyRequest{ID: id, ExpectedRevision: rev, AutoApply: *u.AutoApply}); err != nil {
+			return api.PeerStatus{}, apiErr(err, false)
+		}
+	}
+	if u.Name == nil && u.Enabled == nil && u.AutoApply == nil {
+		return api.PeerStatus{}, &api.Error{Message: "nothing to change", Status: 400}
+	}
+	return apiChannel(c), nil
+}
+
+func (n *Node) RemoveChannel(ctx context.Context, id string, revision int64) error {
+	return apiErr0(n.e.RemoveChannel(ctx, engine.RemoveChannelRequest{ID: id, ExpectedRevision: revision}))
+}
+
 func apiPending(d engine.Device) api.PendingPeer {
 	byTicket := false
 	for _, b := range d.Bindings {
@@ -299,12 +347,19 @@ func (n *Node) Status(ctx context.Context) (api.Status, error) {
 	if t, err := n.e.ExportPairingTicket(ctx); err == nil {
 		out.Addr = t.Ticket
 	}
-	for _, d := range st.Devices {
-		if devicePeer(d) {
-			out.Peers = append(out.Peers, apiPeer(d))
+	ps, err := n.e.ListPeers(ctx) // devices and external channels, one list
+	if err != nil {
+		return api.Status{}, apiErr(err, false)
+	}
+	for _, p := range ps {
+		switch {
+		case p.Channel != nil:
+			out.Peers = append(out.Peers, apiChannel(*p.Channel))
+		case p.Device != nil && devicePeer(*p.Device):
+			out.Peers = append(out.Peers, apiPeer(*p.Device))
 		}
-		if devicePending(d) {
-			out.Pending = append(out.Pending, apiPending(d))
+		if p.Device != nil && devicePending(*p.Device) {
+			out.Pending = append(out.Pending, apiPending(*p.Device))
 		}
 	}
 	return out, nil

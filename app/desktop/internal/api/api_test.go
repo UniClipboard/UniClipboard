@@ -20,6 +20,8 @@ type fake struct {
 	delRev               uint64
 	actID, actKey        string
 	err                  error
+	chanID               string
+	chanUpd              ChannelUpdate
 }
 
 func (f *fake) Status(context.Context) (Status, error) { return Status{ID: "me"}, f.err }
@@ -132,5 +134,32 @@ func TestActionRoutes(t *testing.T) {
 	rec := do(t, h, "POST", "/v1/history/abc/actions/builtin.text/upper", "")
 	if rec.Code != 200 || f.actID != "abc" || f.actKey != "builtin.text/upper" || !strings.Contains(rec.Body.String(), `"id":"new"`) {
 		t.Fatalf("%d %s %q %q", rec.Code, rec.Body, f.actID, f.actKey)
+	}
+}
+
+func (f *fake) UpdateChannel(_ context.Context, id string, u ChannelUpdate) (PeerStatus, error) {
+	f.chanID, f.chanUpd = id, u
+	return PeerStatus{ID: id, Kind: "external", Revision: u.Revision + 1}, f.err
+}
+func (f *fake) RemoveChannel(_ context.Context, id string, rev int64) error {
+	f.chanID, f.delRev = id, uint64(rev)
+	return f.err
+}
+
+func TestChannelEndpoints(t *testing.T) {
+	f := &fake{}
+	h := Handler(f, config.Static(config.Default()))
+	if rec := do(t, h, "PATCH", "/v1/channels/c1", `{"auto_apply":false}`); rec.Code != 400 {
+		t.Fatalf("revision is required: %d", rec.Code)
+	}
+	rec := do(t, h, "PATCH", "/v1/channels/c1", `{"revision":3,"auto_apply":false}`)
+	if rec.Code != 200 || f.chanID != "c1" || f.chanUpd.Revision != 3 || f.chanUpd.AutoApply == nil || *f.chanUpd.AutoApply {
+		t.Fatalf("%d %s %+v", rec.Code, rec.Body, f.chanUpd)
+	}
+	if rec := do(t, h, "DELETE", "/v1/channels/c1", ""); rec.Code != 400 {
+		t.Fatalf("revision is required: %d", rec.Code)
+	}
+	if rec := do(t, h, "DELETE", "/v1/channels/c1?revision=4", ""); rec.Code != 200 || f.delRev != 4 {
+		t.Fatalf("%d %d", rec.Code, f.delRev)
 	}
 }

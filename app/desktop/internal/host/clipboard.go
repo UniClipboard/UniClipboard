@@ -23,6 +23,8 @@ type clipboardHost struct {
 	hub   *hub
 	logf  func(string, ...any)
 	name  func(ctx context.Context, id engine.DeviceID) string
+	// channelName names an external channel for the event log.
+	channelName func(ctx context.Context, id string) string
 
 	mu    sync.Mutex // observation, application and explicit sends take turns
 	epoch string
@@ -202,6 +204,9 @@ func (c *clipboardHost) tryApply(ctx context.Context) {
 		return
 	}
 	c.tried[r.ReceiptID] = true
+	if r.ChannelID != "" && !r.AutoApply {
+		return // the user turned automatic writing off for this channel; it stays in the list and history
+	}
 
 	// Pick up whatever the user copied since the last poll first.
 	c.tickLocked(ctx) // starts an epoch if there is none, or reports a newer copy
@@ -226,7 +231,13 @@ func (c *clipboardHost) tryApply(ctx context.Context) {
 	// The list entry has done its job. Without it, only the lease on files that
 	// are on the clipboard keeps the content, as it did before the list existed.
 	_ = c.e.DismissReceived(ctx, r.ReceiptID)
-	c.hub.emit(api.Event{Kind: "received", Peer: c.name(ctx, r.PeerID), Info: describe(snap)})
+	who := ""
+	if r.ChannelID != "" {
+		who = c.channelName(ctx, r.ChannelID)
+	} else {
+		who = c.name(ctx, r.PeerID)
+	}
+	c.hub.emit(api.Event{Kind: "received", Peer: who, Info: describe(snap)})
 }
 
 // writeTicket writes the ticket's content to the clipboard and reports the

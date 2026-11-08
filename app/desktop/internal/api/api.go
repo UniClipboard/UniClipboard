@@ -28,6 +28,23 @@ type PeerStatus struct {
 	Name      string `json:"name"`
 	Connected bool   `json:"connected"`
 	LastSeen  int64  `json:"last_seen,omitempty"`
+	// Kind is "device" (omitted) or "external": a channel of a backend whose
+	// peers cannot prove an identity. Channels have no fingerprint; the other
+	// fields below are set for them only.
+	Kind             string `json:"kind,omitempty"`
+	BackendID        string `json:"backend_id,omitempty"`
+	Enabled          bool   `json:"enabled,omitempty"` // Connected is false for channels; Enabled says whether they sync
+	AutoApply        bool   `json:"auto_apply,omitempty"`
+	RemoteRevocation bool   `json:"remote_revocation,omitempty"` // removal also leaves the remote group; otherwise it is local only
+	Revision         int64  `json:"revision,omitempty"`
+}
+
+// ChannelUpdate is the body of PATCH /v1/channels/{id}. Revision is required.
+type ChannelUpdate struct {
+	Revision  int64   `json:"revision"`
+	Name      *string `json:"name,omitempty"`
+	Enabled   *bool   `json:"enabled,omitempty"`
+	AutoApply *bool   `json:"auto_apply,omitempty"`
 }
 
 // PendingPeer is a device waiting for the user's approval.
@@ -46,7 +63,7 @@ type PendingPeer struct {
 // Event is pushed to subscribers (the GUI). Info never carries clipboard
 // content: only the kind of thing that moved.
 type Event struct {
-	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code", "config", "history" (Info is the record id; fetch it again, 404 means removed)
+	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code", "config", "history" (Info is the record id; fetch it again, 404 means removed), "channel" (Info is the channel id; "peers" follows)
 	Peer string `json:"peer,omitempty"`
 	Info string `json:"info,omitempty"`
 	Time int64  `json:"time"`
@@ -119,10 +136,10 @@ type HistoryItem struct {
 	ID         string               `json:"id"`
 	Revision   uint64               `json:"revision"`
 	Kind       string               `json:"kind"`   // "text", "image" or "files"
-	Origin     string               `json:"origin"` // "local_system", "remote_device", "action" or "explicit"
+	Origin     string               `json:"origin"` // "local_system", "remote_device", "action", "explicit" or "external"
 	DeviceID   string               `json:"device_id,omitempty"`
 	DeviceName string               `json:"device_name,omitempty"`
-	PluginID   string               `json:"plugin_id,omitempty"` // for origin "action"
+	PluginID   string               `json:"plugin_id,omitempty"` // backend for origin "external", plugin for "action"
 	CreatedAt  int64                `json:"created_at_ms"`
 	UpdatedAt  int64                `json:"updated_at_ms"`
 	ExpiresAt  int64                `json:"expires_at_ms"` // 0: never
@@ -219,6 +236,10 @@ type Backend interface {
 	Approve(ctx context.Context, id, fingerprint string) (PeerStatus, error)
 	Reject(ctx context.Context, id string) error
 	Unpair(ctx context.Context, id string) error
+	// UpdateChannel changes an external channel; RemoveChannel removes it
+	// (locally only unless PeerStatus.RemoteRevocation).
+	UpdateChannel(ctx context.Context, id string, u ChannelUpdate) (PeerStatus, error)
+	RemoveChannel(ctx context.Context, id string, revision int64) error
 	Clipboard(ctx context.Context) (ClipboardView, error)
 	SetClipboard(ctx context.Context, s SetClipboard) error
 	ListHistory(ctx context.Context, q HistoryQuery) (HistoryPage, error)
@@ -386,6 +407,33 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 
 	mux.HandleFunc("DELETE /v1/peers/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := b.Unpair(r.Context(), r.PathValue("id")); err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
+	})
+
+	mux.HandleFunc("PATCH /v1/channels/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var u ChannelUpdate
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&u); err != nil || u.Revision == 0 {
+			fail(w, 400, errors.New("revision is required"))
+			return
+		}
+		p, err := b.UpdateChannel(r.Context(), r.PathValue("id"), u)
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, p)
+	})
+
+	mux.HandleFunc("DELETE /v1/channels/{id}", func(w http.ResponseWriter, r *http.Request) {
+		rev, err := strconv.ParseInt(r.URL.Query().Get("revision"), 10, 64)
+		if err != nil || rev == 0 {
+			fail(w, 400, errors.New("revision is required"))
+			return
+		}
+		if err := b.RemoveChannel(r.Context(), r.PathValue("id"), rev); err != nil {
 			fail(w, 500, err)
 			return
 		}
@@ -716,6 +764,15 @@ func (c *Client) Reject(ctx context.Context, id string) error {
 
 func (c *Client) Unpair(ctx context.Context, id string) error {
 	return c.do(ctx, "DELETE", "/v1/peers/"+id, nil, nil)
+}
+
+func (c *Client) UpdateChannel(ctx context.Context, id string, u ChannelUpdate) (p PeerStatus, err error) {
+	err = c.do(ctx, "PATCH", "/v1/channels/"+id, u, &p)
+	return
+}
+
+func (c *Client) RemoveChannel(ctx context.Context, id string, revision int64) error {
+	return c.do(ctx, "DELETE", "/v1/channels/"+id+"?revision="+strconv.FormatInt(revision, 10), nil, nil)
 }
 
 func (c *Client) Clipboard(ctx context.Context) (v ClipboardView, err error) {

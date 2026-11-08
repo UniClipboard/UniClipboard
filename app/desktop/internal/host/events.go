@@ -41,6 +41,11 @@ func (n *Node) pumpEvents(ctx context.Context) {
 				if ds, err := n.e.ListDevices(ctx); err == nil {
 					n.diffDevices(ds, connected, pending, true)
 				}
+				for _, o := range ev.Objects {
+					if o.Type == "channel" {
+						n.hub.emit(api.Event{Kind: "channel", Info: o.ID})
+					}
+				}
 			case engine.EventHistory:
 				for _, o := range ev.Objects { // ids only: clients fetch the record again
 					n.hub.emit(api.Event{Kind: "history", Info: o.ID})

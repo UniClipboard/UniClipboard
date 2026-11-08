@@ -15,6 +15,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/api"
 	"github.com/uniclipboard/unic/app/desktop/internal/config"
+	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/plugins/builtintailcat"
 )
@@ -99,7 +100,9 @@ type host struct {
 
 // newHost builds a desktop node over a real SDK engine, a fake clipboard and a
 // configuration file, and starts it.
-func newHost(t *testing.T, extra bool) *host {
+func newHost(t *testing.T, extra bool) *host { return newHostWith(t, extra, nil) }
+
+func newHostWith(t *testing.T, extra bool, plugins []engine.PluginInstance) *host {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
@@ -108,7 +111,7 @@ func newHost(t *testing.T, extra bool) *host {
 		t.Fatal(err)
 	}
 	b := &fakeBoard{extra: extra}
-	n, err := Open(context.Background(), Options{Dir: dir, Settings: m, Board: b, Poll: 10 * time.Millisecond, Logf: t.Logf, Peer: builtintailcat.FactoryOn(newLoopback(t))})
+	n, err := Open(context.Background(), Options{Dir: dir, Settings: m, Board: b, Poll: 10 * time.Millisecond, Logf: t.Logf, Peer: builtintailcat.FactoryOn(newLoopback(t)), Plugins: plugins})
 	if err != nil {
 		t.Fatal(err)
 	}

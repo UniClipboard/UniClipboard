@@ -90,6 +90,7 @@ func TestPairCandidateRetriesUntilTheDeviceIsThere(t *testing.T) {
 	na.e.retryCandidates()
 	eventually(t, "retry pairing", func() bool { _, err := na.e.st.Device(idA); return err == nil })
 	// A saw C as a new, unapproved device; C trusts nothing yet either.
+	eventually(t, "far side recorded", func() bool { _, err := nc.e.st.Device(na.e.ident.DeviceID()); return err == nil })
 	d, err := nc.e.st.Device(na.e.ident.DeviceID())
 	if err != nil || d.Trust == "trusted" {
 		t.Fatalf("far side: %+v %v", d, err)

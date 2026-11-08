@@ -66,6 +66,8 @@ type Conn struct {
 	cancel context.CancelFunc
 
 	wmu sync.Mutex
+	// reqMu orders request IDs on the wire: the peer requires them to rise.
+	reqMu sync.Mutex
 
 	mu         sync.Mutex
 	changed    chan struct{}
@@ -418,6 +420,17 @@ func (c *Conn) Call(ctx context.Context, o CallOptions, result any) (uint64, err
 		return 0, toError(context.DeadlineExceeded)
 	}
 
+	// An ID is allocated and its frame written under reqMu, so concurrent
+	// calls reach the wire in ID order.
+	c.reqMu.Lock()
+	reqHeld := true
+	releaseReq := func() {
+		if reqHeld {
+			reqHeld = false
+			c.reqMu.Unlock()
+		}
+	}
+	defer releaseReq()
 	c.mu.Lock()
 	if c.err != nil {
 		c.mu.Unlock()
@@ -475,6 +488,7 @@ func (c *Conn) Call(ctx context.Context, o CallOptions, result any) (uint64, err
 	if err := c.write(Frame{Type: TypeRequest, RequestID: id, Payload: payload}); err != nil {
 		return fail(NewError(CodeUnavailable))
 	}
+	releaseReq()
 	if o.Sent != nil {
 		o.Sent(id)
 	}

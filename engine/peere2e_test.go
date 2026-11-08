@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -40,6 +41,7 @@ type tcpSess struct {
 	nc    net.Conn
 	conn  string
 	token string
+	init  string // device ID of the side that dialed
 	wmu   sync.Mutex
 }
 
@@ -300,15 +302,28 @@ func (p *tcpPeer) handshake(nc net.Conn, outgoing bool, attempt *string) (peerID
 	if !local || !m.Allow {
 		return dec.PeerID, m.Allow, nil
 	}
-	s := &tcpSess{nc: nc, conn: conn, token: *dec.SessionToken}
+	s := &tcpSess{nc: nc, conn: conn, token: *dec.SessionToken, init: dec.PeerID}
 	p.mu.Lock()
+	if outgoing {
+		s.init = p.self
+	}
+	// Two connections to one peer: the one dialed by the smaller device ID
+	// wins on both sides, as the Engine expects.
 	if old := p.conns[dec.PeerID]; old != nil {
+		if old.init <= s.init {
+			p.mu.Unlock()
+			return dec.PeerID, true, nil // the new one loses; the deferred close ends it
+		}
 		_ = old.nc.Close()
 	}
 	p.conns[dec.PeerID] = s
 	p.mu.Unlock()
 	if err = p.host.PeerEvent(ctx, rpc.PeerEvent{ConnectionID: conn, SessionToken: s.token, Sequence: 1, State: "connected", RemoteAccepted: true}); err != nil {
-		_ = nc.Close()
+		p.mu.Lock()
+		if p.conns[dec.PeerID] == s {
+			delete(p.conns, dec.PeerID)
+		}
+		p.mu.Unlock()
 		return dec.PeerID, true, err
 	}
 	ok = true
@@ -363,8 +378,11 @@ func (p *tcpPeer) Send(ctx context.Context, s rpc.Send, h plugin.SendHost) error
 	p.mu.Lock()
 	sess := p.conns[s.PeerID]
 	p.mu.Unlock()
-	if sess == nil || sess.conn != s.ConnectionID {
-		return rpc.NewError(rpc.CodeUnavailable)
+	if sess == nil {
+		return rpc.NewError(rpc.CodeNotFound)
+	}
+	if sess.conn != s.ConnectionID {
+		return rpc.NewError(rpc.CodeConflict)
 	}
 	g, err := h.Authorize(ctx)
 	if err != nil {
@@ -449,21 +467,25 @@ func TestRealProcessesPairAndSync(t *testing.T) {
 
 	deliver := func(from, to node, text string) {
 		t.Helper()
-		var id OperationID
-		eventually(t, "target connected", func() bool {
+		// A send that went out on a connection the peer then dropped as the
+		// duplicate is lost, as on any transport: send again until it arrives.
+		eventually(t, "delivered", func() bool {
 			h := importText(t, from.e, text)
-			var err error
-			if id, err = submit(from.e, h); err != nil {
+			id, err := submit(from.e, h)
+			if err != nil {
 				return false
 			}
 			op := waitSend(t, from.e, id)
-			return len(op.Targets) == 1 && op.Targets[0].State == TargetSent
-		})
-		eventually(t, "received", func() bool {
-			for _, r := range received(to.e) {
-				if string(r.PeerID) == from.e.ident.DeviceID() {
-					return true
+			if len(op.Targets) != 1 || op.Targets[0].State != TargetSent {
+				return false
+			}
+			for i := 0; i < 20; i++ {
+				for _, r := range received(to.e) {
+					if string(r.PeerID) == from.e.ident.DeviceID() {
+						return true
+					}
 				}
+				time.Sleep(10 * time.Millisecond)
 			}
 			return false
 		})
@@ -531,25 +553,39 @@ func TestRealProcessesIntroduceDevice(t *testing.T) {
 	approveDevice(t, na.e, idC)
 	approveDevice(t, nc.e, idA)
 
+	var last Operation
+	n := 0
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("last operation: %+v", last)
+			ds, _ := nc.e.ListDevices(bg)
+			t.Logf("C devices: %+v", ds)
+		}
+	})
 	eventually(t, "A–C sync", func() bool {
-		id, err := submit(nc.e, importText(t, nc.e, "from c"))
+		n++
+		id, err := submit(nc.e, importText(t, nc.e, fmt.Sprint("from c ", n)))
 		if err != nil {
 			return false
 		}
 		o := waitSend(t, nc.e, id)
+		last = o
 		sent := false
 		for _, tg := range o.Targets {
 			if tg.State == TargetSent && string(tg.PeerID) == idA {
 				sent = true
 			}
 		}
-		return sent
-	})
-	eventually(t, "A received from C", func() bool {
-		for _, r := range received(na.e) {
-			if string(r.PeerID) == idC {
-				return true
+		if !sent {
+			return false
+		}
+		for i := 0; i < 20; i++ {
+			for _, r := range received(na.e) {
+				if string(r.PeerID) == idC {
+					return true
+				}
 			}
+			time.Sleep(10 * time.Millisecond)
 		}
 		return false
 	})

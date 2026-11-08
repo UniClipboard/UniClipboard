@@ -30,7 +30,7 @@ func Serve(p Plugin) error { return ServeIO(context.Background(), p, os.Stdin, o
 
 // ServeIO is Serve over explicit streams.
 func ServeIO(ctx context.Context, p Plugin, r io.Reader, w io.Writer) error {
-	s := &server{p: p, spec: p.Spec(), gate: make(chan struct{}, 1)}
+	s := &server{p: p, spec: p.Spec(), gate: make(chan struct{}, 1), ready: make(chan struct{})}
 	ws := wireSpec(s.spec)
 	rw := rpc.NewDuplex(r, w)
 	lim, err := rpc.PluginHandshake(rw, ws, rpc.DefaultLimits)
@@ -45,6 +45,7 @@ func ServeIO(ctx context.Context, p Plugin, r io.Reader, w io.Writer) error {
 		closers = append(closers, c)
 	}
 	s.conn = rpc.NewConn(rpc.NewDuplex(r, w, closers...), rpc.Options{Role: rpc.RolePlugin, Limits: lim, Handler: s.handle})
+	close(s.ready) // handlers may already be running; they read s.conn only after this
 	select {
 	case <-s.conn.Done():
 	case <-ctx.Done():
@@ -68,10 +69,11 @@ func wireSpec(s Spec) rpc.Spec {
 type callKey struct{}
 
 type server struct {
-	p    Plugin
-	spec Spec
-	conn *rpc.Conn
-	gate chan struct{} // Process/Run run one at a time
+	p     Plugin
+	spec  Spec
+	conn  *rpc.Conn
+	ready chan struct{} // closed once conn is set
+	gate  chan struct{} // Process/Run run one at a time
 
 	mu      sync.Mutex
 	state   int // 0 new, 1 initialized, 2 started, 3 closed
@@ -84,6 +86,7 @@ type server struct {
 }
 
 func (s *server) handle(ctx context.Context, c *rpc.Call) (any, error) {
+	<-s.ready
 	ctx = context.WithValue(ctx, callKey{}, c.ID)
 	var res any
 	var err error

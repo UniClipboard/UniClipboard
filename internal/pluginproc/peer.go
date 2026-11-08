@@ -235,3 +235,42 @@ func (p *Proxy) launch(ctx context.Context) (*session, error) {
 	p.mu.Lock()
 	return nil, err
 }
+
+var _ plugin.PeerPairing = peerM{}
+
+func (m peerM) PairingAddress(ctx context.Context, purpose string) (string, error) {
+	req := rpc.PairingAddressRequest{Purpose: purpose}
+	if err := req.Validate(); err != nil {
+		return "", err
+	}
+	s := m.p.current()
+	if s == nil {
+		return "", ErrUnavailable
+	}
+	var out rpc.PairingAddress
+	if _, err := s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodPairingAddress, Timeout: m.p.callTimeout(ctx, m.p.opts.ProcessTimeout), Params: req}, &out); err != nil {
+		return "", err
+	}
+	if out.Validate() != nil {
+		return "", rpc.NewError(rpc.CodeInternal)
+	}
+	return out.Address, nil
+}
+
+func (m peerM) Connect(ctx context.Context, c rpc.Connect) (rpc.ConnectResult, error) {
+	if err := c.Validate(); err != nil {
+		return rpc.ConnectResult{}, err
+	}
+	s := m.p.current()
+	if s == nil {
+		return rpc.ConnectResult{}, ErrUnavailable
+	}
+	var out rpc.ConnectResult
+	if _, err := s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodConnect, Timeout: m.p.callTimeout(ctx, m.p.opts.SendTimeout), Params: c}, &out); err != nil {
+		return rpc.ConnectResult{}, err
+	}
+	if out.Validate() != nil {
+		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeInternal)
+	}
+	return out, nil
+}

@@ -90,6 +90,9 @@ type Limits struct {
 // Sync is the one global switch for content sync.
 type Sync struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
+	// Introductions: devices tell each other which others they vouch for; the
+	// result is only a list of candidates (decision 0012).
+	Introductions bool `toml:"introductions" json:"introductions"`
 }
 
 // Plugins holds per-plugin-instance settings for the plugins this build
@@ -127,7 +130,7 @@ func (b BackendSync) policy() engine.BackendSyncPolicy {
 func Default() Config {
 	return Config{
 		Limits:  Limits{MaxFileBytes: HardMaxFile, MaxTotalBytes: HardMaxTotal},
-		Sync:    Sync{Enabled: true},
+		Sync:    Sync{Enabled: true, Introductions: true},
 		History: History{MaxItems: 10000, MaxBytes: 4 << 30},
 	}
 }

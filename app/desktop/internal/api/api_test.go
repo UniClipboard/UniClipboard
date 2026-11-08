@@ -137,6 +137,12 @@ func TestActionRoutes(t *testing.T) {
 	}
 }
 
+func (f *fake) Candidates(context.Context) ([]Candidate, error) { return nil, f.err }
+func (f *fake) PairCandidate(context.Context, string, string) (PairResult, error) {
+	return PairResult{}, f.err
+}
+func (f *fake) IgnoreCandidate(context.Context, string, bool) error { return f.err }
+
 func (f *fake) UpdateChannel(_ context.Context, id string, u ChannelUpdate) (PeerStatus, error) {
 	f.chanID, f.chanUpd = id, u
 	return PeerStatus{ID: id, Kind: "external", Revision: u.Revision + 1}, f.err

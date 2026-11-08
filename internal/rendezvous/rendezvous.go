@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -60,6 +61,7 @@ const (
 // token. It is a secret like a password and grants no trust by itself.
 type Ticket struct {
 	Transport string // TransportPeerSessions or TransportObjectStore
+	Backend   string // the sync backend instance that issued it and must handle Access
 	Device    []byte // the issuer's identity public key (32 bytes)
 	Access    []byte // opaque to the core; at most MaxAccess bytes
 	Token     []byte // 16 random bytes
@@ -69,6 +71,7 @@ type ticketJSON struct {
 	V    int    `json:"v"`
 	Kind string `json:"kind"`
 	TP   string `json:"tp"`
+	BE   string `json:"be"`
 	Dev  string `json:"dev"`
 	Acc  string `json:"acc"`
 	Tok  string `json:"tok"`
@@ -85,7 +88,7 @@ var b64 = base64.RawURLEncoding
 
 // Encode is the JSON form stored at the code service.
 func (t Ticket) Encode() string {
-	b, _ := json.Marshal(ticketJSON{V: 2, Kind: TicketKind, TP: t.Transport,
+	b, _ := json.Marshal(ticketJSON{V: 2, Kind: TicketKind, TP: t.Transport, BE: t.Backend,
 		Dev: b64.EncodeToString(t.Device), Acc: b64.EncodeToString(t.Access), Tok: b64.EncodeToString(t.Token)})
 	return string(b)
 }
@@ -102,13 +105,16 @@ func ParseTicket(raw string) (Ticket, bool) {
 	if tj.TP != TransportPeerSessions && tj.TP != TransportObjectStore {
 		return Ticket{}, false
 	}
+	if tj.BE == "" || len(tj.BE) > 128 || !utf8.ValidString(tj.BE) {
+		return Ticket{}, false
+	}
 	dev, e1 := b64.DecodeString(tj.Dev)
 	acc, e2 := b64.DecodeString(tj.Acc)
 	tok, e3 := b64.DecodeString(tj.Tok)
 	if e1 != nil || e2 != nil || e3 != nil || len(dev) != 32 || len(tok) != 16 || len(acc) == 0 || len(acc) > MaxAccess {
 		return Ticket{}, false
 	}
-	return Ticket{Transport: tj.TP, Device: dev, Access: acc, Token: tok}, true
+	return Ticket{Transport: tj.TP, Backend: tj.BE, Device: dev, Access: acc, Token: tok}, true
 }
 
 // ParseText accepts what a person pastes: the text form, with surrounding

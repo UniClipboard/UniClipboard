@@ -189,3 +189,104 @@ func (r Connect) Validate() error {
 	}
 	return nil
 }
+
+// Connection events (sync-backend-contract §3). Sequence starts at 1 for each
+// connection. Connected needs remote_accepted=true and disconnected needs
+// false: the backend may only report a connection the peer also accepted.
+const (
+	MethodPeerEvent = "sync_host.peer_event" // backend→Engine
+	MethodIntroduce = "sync_host.introduce"  // backend→Engine
+)
+
+const MaxCandidates = 64
+
+type PeerEvent struct {
+	ConnectionID   string `json:"connection_id"`
+	SessionToken   string `json:"session_token"`
+	Sequence       U64    `json:"sequence"`
+	State          string `json:"state"`
+	RemoteAccepted bool   `json:"remote_accepted"`
+}
+
+func (r PeerEvent) Validate() error {
+	if !validConn(r.ConnectionID) || !hex64Re.MatchString(r.SessionToken) || r.Sequence == 0 {
+		return NewError(CodeInvalidArgument)
+	}
+	if (r.State != "connected" || !r.RemoteAccepted) && (r.State != "disconnected" || r.RemoteAccepted) {
+		return NewError(CodeInvalidArgument)
+	}
+	return nil
+}
+
+// Candidate is a device a connected peer told us about. It is only a
+// suggestion: it never changes approval.
+type Candidate struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Address string `json:"address"`
+}
+
+type Introduce struct {
+	ConnectionID string      `json:"connection_id"`
+	SessionToken string      `json:"session_token"`
+	Candidates   []Candidate `json:"candidates"`
+}
+
+func (r Introduce) Validate() error {
+	if !validConn(r.ConnectionID) || !hex64Re.MatchString(r.SessionToken) || r.Candidates == nil || len(r.Candidates) > MaxCandidates {
+		return NewError(CodeInvalidArgument)
+	}
+	for _, c := range r.Candidates {
+		if !validConn(c.ID) || !utf8.ValidString(c.Name) || len(c.Name) > MaxPeerNameBytes || !utf8.ValidString(c.Address) || len(c.Address) > MaxPeerAddress {
+			return NewError(CodeInvalidArgument)
+		}
+	}
+	return nil
+}
+
+// Pairing methods (sync-backend-contract §3). The Engine asks the backend for
+// the address a ticket carries, and asks it to dial the address of a ticket.
+const (
+	MethodConnect        = "backend.connect"
+	MethodPairingAddress = "backend.pairing_address"
+
+	AddressExport      = "export"
+	AddressPairingCode = "pairing_code"
+)
+
+// PairingAddressRequest asks for the access description of a new ticket.
+type PairingAddressRequest struct {
+	Purpose string `json:"purpose"`
+}
+
+func (r PairingAddressRequest) Validate() error {
+	if r.Purpose != AddressExport && r.Purpose != AddressPairingCode {
+		return NewError(CodeInvalidArgument)
+	}
+	return nil
+}
+
+// PairingAddress is the secret access description. It goes only into a ticket.
+type PairingAddress struct {
+	Address string `json:"address"`
+}
+
+func (r PairingAddress) Validate() error {
+	if r.Address == "" || len(r.Address) > MaxPeerAddress || !utf8.ValidString(r.Address) {
+		return NewError(CodeInvalidArgument)
+	}
+	return nil
+}
+
+// ConnectResult reports the peer a pairing attempt reached.
+type ConnectResult struct {
+	PeerID                 string `json:"peer_id"`
+	AwaitingRemoteApproval bool   `json:"awaiting_remote_approval"`
+}
+
+func (r ConnectResult) Validate() error {
+	if !validConn(r.PeerID) {
+		return NewError(CodeInvalidArgument)
+	}
+	return nil
+}

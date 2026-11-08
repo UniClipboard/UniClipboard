@@ -805,6 +805,9 @@
         "sync_enabled": {
           "type": "boolean"
         },
+        "introduce": {
+          "type": "boolean"
+        },
         "policy": {
           "$ref": "#/$defs/backend_policy"
         }

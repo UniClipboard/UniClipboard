@@ -156,6 +156,43 @@ func runCLI(cmd string, args []string) error {
 			fmt.Println("rejected")
 		}
 
+	case "suggestions":
+		cs, err := c.Candidates(short)
+		if err != nil {
+			return err
+		}
+		if len(cs) == 0 {
+			fmt.Println("no suggested devices")
+		}
+		for _, d := range cs {
+			state := ""
+			switch {
+			case d.Ignored:
+				state = "  [ignored]"
+			case d.Requested:
+				state = "  [pairing requested]"
+			}
+			fmt.Printf("%s  %s  via %s (%s)%s\n", d.ID, d.Name, strings.Join(d.IntroducedBy, ", "), d.BackendID, state)
+		}
+
+	case "suggest-pair", "suggest-ignore", "suggest-restore":
+		if len(args) < 1 || (cmd == "suggest-pair" && len(args) != 2) {
+			return fmt.Errorf("usage: unic suggest-pair <id> <backend-id> | unic %s <id>", cmd)
+		}
+		switch cmd {
+		case "suggest-pair":
+			p, err := c.PairCandidate(short, args[0], args[1])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("requested %s; it connects once both sides approve.\nFingerprint: %s  (compare it on both devices)\n", p.Name, p.Fingerprint)
+		default:
+			if err := c.IgnoreCandidate(short, args[0], cmd == "suggest-ignore"); err != nil {
+				return err
+			}
+			fmt.Println("ok")
+		}
+
 	case "unpair":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: unic unpair <id>")

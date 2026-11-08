@@ -6,10 +6,14 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/uniclipboard/unic/internal/identity"
 	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/rendezvous"
+	"github.com/uniclipboard/unic/internal/store"
+	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 // pairTimeout bounds one pairing attempt (dial plus handshake).
@@ -85,6 +89,7 @@ func mapNetErr(err error) *Error {
 // use, on expiry, or when replaced. code is the rendezvous code standing for
 // it, "" if it was only exported as text. Guarded by Engine.mu.
 type liveTicket struct {
+	backend PluginID // the backend whose connections may redeem it
 	tok     []byte
 	expires time.Time
 	code    string
@@ -138,16 +143,22 @@ func (e *Engine) newTicketLocked(expires time.Time) (rendezvous.Ticket, *Error) 
 	if addr == "" {
 		return rendezvous.Ticket{}, retryable(newErr(CodeUnavailable, "the address is not ready yet"))
 	}
-	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Device: e.ident.Public(),
+	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Backend: string(BackendTailcat), Device: e.ident.Public(),
 		Access: []byte(addr), Token: rendezvous.NewToken()}, nil
 }
 
 // pairUsed is the session layer's question whether a peer's PairProof belongs
 // to the live ticket. A match uses the ticket up: one ticket, one device.
 func (e *Engine) pairUsed(t [32]byte, proof []byte) bool {
+	return e.pairUsedBy(BackendTailcat, t, proof)
+}
+
+// pairUsedBy is pairUsed for a connection of one backend: a ticket is only
+// good on the backend that issued it.
+func (e *Engine) pairUsedBy(backend PluginID, t [32]byte, proof []byte) bool {
 	e.mu.Lock()
 	lt := e.tix
-	if lt == nil || !time.Now().Before(lt.expires) || identity.VerifyPairProof(lt.tok, t, proof) != nil {
+	if lt == nil || lt.backend != backend || !time.Now().Before(lt.expires) || identity.VerifyPairProof(lt.tok, t, proof) != nil {
 		e.mu.Unlock()
 		return false
 	}
@@ -162,21 +173,69 @@ func (e *Engine) pairUsed(t [32]byte, proof []byte) bool {
 	return true
 }
 
+// newTicket makes a ticket for backend: tailcat from its own address, an
+// out-of-process backend from the address it reports.
+func (e *Engine) newTicket(ctx context.Context, backend PluginID, purpose string) (rendezvous.Ticket, *Error) {
+	if backend == "" || backend == BackendTailcat {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		if nerr := e.needNetworkLocked(); nerr != nil {
+			return rendezvous.Ticket{}, nerr
+		}
+		return e.newTicketLocked(time.Time{})
+	}
+	pp, pair := e.pairingBackend(backend)
+	if pp == nil {
+		return rendezvous.Ticket{}, newErr(CodeUnsupported, "that sync backend cannot pair devices")
+	}
+	e.mu.Lock()
+	rerr := e.needRunningLocked()
+	e.mu.Unlock()
+	if rerr != nil {
+		return rendezvous.Ticket{}, rerr
+	}
+	cctx, cancel := e.callCtx(ctx)
+	defer cancel()
+	addr, err := pair.PairingAddress(cctx, purpose)
+	if err != nil {
+		return rendezvous.Ticket{}, retryable(newErr(CodeUnavailable, "the backend has no address to offer yet"))
+	}
+	if len(addr) == 0 || len(addr) > rendezvous.MaxAccess {
+		return rendezvous.Ticket{}, newErr(CodeInternal, "the backend gave an unusable address")
+	}
+	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Backend: string(backend), Device: e.ident.Public(),
+		Access: []byte(addr), Token: rendezvous.NewToken()}, nil
+}
+
+// pairingBackend finds a running out-of-process backend that can pair.
+func (e *Engine) pairingBackend(id PluginID) (*peerProcBackend, plugin.PeerPairing) {
+	e.mu.Lock()
+	ps := e.peerProcs
+	e.mu.Unlock()
+	for _, p := range ps {
+		if p.id == id {
+			if pair, ok := p.pb.(plugin.PeerPairing); ok {
+				return p, pair
+			}
+		}
+	}
+	return nil, nil
+}
+
 // CreatePairingCode shows a new code (replacing the previous ticket only if
 // this succeeds). The code finds this device; it grants nobody any trust.
 func (e *Engine) CreatePairingCode(ctx context.Context) (PairingCode, error) {
+	return e.CreatePairingCodeVia(ctx, BackendTailcat)
+}
+
+// CreatePairingCodeVia is CreatePairingCode for a chosen sync backend instance.
+func (e *Engine) CreatePairingCodeVia(ctx context.Context, backend PluginID) (PairingCode, error) {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return PairingCode{}, gerr
 	}
 	defer release()
-	e.mu.Lock()
-	nerr := e.needNetworkLocked()
-	var t rendezvous.Ticket
-	if nerr == nil {
-		t, nerr = e.newTicketLocked(time.Time{})
-	}
-	e.mu.Unlock()
+	t, nerr := e.newTicket(ctx, backend, rpc.AddressPairingCode)
 	if nerr != nil {
 		return PairingCode{}, nerr
 	}
@@ -192,7 +251,7 @@ func (e *Engine) CreatePairingCode(ctx context.Context) (PairingCode, error) {
 	if e.tix != nil {
 		oldCode = e.tix.code
 	}
-	e.tix = &liveTicket{tok: t.Token, expires: c.Expires, code: c.Code, text: t.Text()}
+	e.tix = &liveTicket{backend: PluginID(t.Backend), tok: t.Token, expires: c.Expires, code: c.Code, text: t.Text()}
 	e.code.clear()
 	e.code.active, e.code.expires = true, c.Expires
 	gen := e.code.gen
@@ -255,26 +314,38 @@ func (e *Engine) CancelPairingCode(ctx context.Context) error {
 // the code service (copy, command line, QR). It makes a ticket if none is live.
 // The text is a secret equal to a password; show it only when the user asks.
 func (e *Engine) ExportPairingTicket(ctx context.Context) (SensitiveTicket, error) {
+	return e.ExportPairingTicketVia(ctx, BackendTailcat)
+}
+
+// ExportPairingTicketVia is ExportPairingTicket for a chosen sync backend instance.
+func (e *Engine) ExportPairingTicketVia(ctx context.Context, backend PluginID) (SensitiveTicket, error) {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return SensitiveTicket{}, gerr
 	}
 	defer release()
+	if backend == "" {
+		backend = BackendTailcat
+	}
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	if nerr := e.needNetworkLocked(); nerr != nil {
+	if nerr := e.needRunningLocked(); nerr != nil {
+		e.mu.Unlock()
 		return SensitiveTicket{}, nerr
 	}
 	now := time.Now()
-	if t := e.tix; t != nil && now.Before(t.expires) {
+	if t := e.tix; t != nil && t.backend == backend && now.Before(t.expires) {
+		defer e.mu.Unlock()
 		return SensitiveTicket{Ticket: t.text, ExpiresAtMs: t.expires.UnixMilli()}, nil
 	}
-	t, nerr := e.newTicketLocked(now)
+	e.mu.Unlock()
+	t, nerr := e.newTicket(ctx, backend, rpc.AddressExport)
 	if nerr != nil {
 		return SensitiveTicket{}, nerr
 	}
-	exp := now.Add(rendezvous.MaxLifetime)
-	e.tix = &liveTicket{tok: t.Token, expires: exp, text: t.Text()}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	exp := time.Now().Add(rendezvous.MaxLifetime)
+	e.tix = &liveTicket{backend: backend, tok: t.Token, expires: exp, text: t.Text()}
 	return SensitiveTicket{Ticket: t.Text(), ExpiresAtMs: exp.UnixMilli()}, nil
 }
 
@@ -336,7 +407,53 @@ func (e *Engine) joinTicket(ctx context.Context, t rendezvous.Ticket) (peerbacke
 	if string(t.Device) == string(e.ident.Public()) {
 		return peerbackend.Standing{}, false, peerbackend.ErrSelf
 	}
-	return e.core.Connect(ctx, string(t.Access), identity.DeviceID(t.Device), t.Token)
+	if PluginID(t.Backend) == BackendTailcat {
+		if e.core == nil {
+			return peerbackend.Standing{}, false, newErr(CodeUnsupported, "no installed sync backend can use this ticket")
+		}
+		return e.core.Connect(ctx, string(t.Access), identity.DeviceID(t.Device), t.Token)
+	}
+	return e.joinVia(ctx, t)
+}
+
+// joinVia dials a ticket through the out-of-process backend that issued it.
+// The Engine owns the attempt: it fixes the address, the peer that must answer
+// and the token, so the backend can only carry bytes. Trust is not granted
+// here; the handshake leaves the device pending until a person approves it.
+func (e *Engine) joinVia(ctx context.Context, t rendezvous.Ticket) (peerbackend.Standing, bool, error) {
+	pp, pair := e.pairingBackend(PluginID(t.Backend))
+	if pp == nil || !utf8.Valid(t.Access) {
+		return peerbackend.Standing{}, false, newErr(CodeUnsupported, "no installed sync backend can use this ticket")
+	}
+	return e.dialPeer(ctx, pp, pair, string(t.Access), identity.DeviceID(t.Device), t.Token)
+}
+
+// dialPeer makes one explicit attempt to reach expect at addr. tok is the
+// pairing token of a ticket, or nil when the address came from an introduction.
+func (e *Engine) dialPeer(ctx context.Context, pp *peerProcBackend, pair plugin.PeerPairing, addr, expect string, tok []byte) (peerbackend.Standing, bool, error) {
+	aid, err := pp.newAttempt(addr, expect, tok)
+	if err != nil {
+		return peerbackend.Standing{}, false, retryable(newErr(CodeUnavailable, "too many pairing attempts at once"))
+	}
+	defer pp.endAttempt(aid)
+	res, err := pair.Connect(ctx, rpc.Connect{AttemptID: aid, Address: addr, ExpectedPeerID: expect})
+	if err != nil {
+		var re *rpc.Error
+		if errors.As(err, &re) && (re.Code == "identity_mismatch" || re.Code == "bad_proof") {
+			return peerbackend.Standing{}, false, peerbackend.ErrIdentity
+		}
+		return peerbackend.Standing{}, false, err
+	}
+	if res.PeerID != expect {
+		return peerbackend.Standing{}, false, peerbackend.ErrIdentity
+	}
+	d, derr := e.st.Device(res.PeerID)
+	if derr != nil {
+		return peerbackend.Standing{}, false, peerbackend.ErrIdentity // the handshake leaves a record; without one nothing was proven
+	}
+	b, _ := e.st.InstanceBinding(res.PeerID, string(pp.id))
+	return peerbackend.Standing{DeviceID: res.PeerID, Name: d.Name,
+		Allowed: d.Trust == store.TrustTrusted && b.State == store.BindingAuthorized}, res.AwaitingRemoteApproval, nil
 }
 
 // startPairing registers the operation (or finds the one this RequestID made)
@@ -383,11 +500,11 @@ func (e *Engine) startPairing(req RequestID, param string, phase Phase,
 		e.reconcile() // the new device is known now; a ready one connects
 		peer, _ := e.st.Device(st.DeviceID)
 		fp := identity.Fingerprint(e.ident.Public(), peer.PublicKey)
+		waiting := awaiting || !e.anyConnected(st.DeviceID) // not under e.mu: updateOp holds it
 		e.updateOp(id, func(o *Operation) {
 			o.Phase = PhaseSucceeded
 			o.Pairing = &PairingResult{PeerID: DeviceID(st.DeviceID), Fingerprint: fp,
-				AwaitingLocalApproval: !st.Allowed, AwaitingRemoteApproval: !e.core.Connected(st.DeviceID)}
-			_ = awaiting
+				AwaitingLocalApproval: !st.Allowed, AwaitingRemoteApproval: waiting}
 		})
 	}()
 	return id, nil
@@ -411,4 +528,20 @@ func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, e
 		return Operation{}, newErr(CodeNotFound, "no such operation (it may have expired)")
 	}
 	return o.op.clone(), nil
+}
+
+// anyConnected: a live session with the device through any backend.
+func (e *Engine) anyConnected(id string) bool {
+	if e.core != nil && e.core.Connected(id) {
+		return true
+	}
+	e.mu.Lock()
+	ps := e.peerProcs
+	e.mu.Unlock()
+	for _, p := range ps {
+		if p.connected(id) {
+			return true
+		}
+	}
+	return false
 }

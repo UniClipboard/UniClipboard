@@ -239,3 +239,43 @@ func TestPeerRejectionKeepsProcessUnlessRevoking(t *testing.T) {
 		t.Fatal("old process still alive after a refused revocation")
 	}
 }
+
+func (h *peerHelper) PairingAddress(_ context.Context, purpose string) (string, error) {
+	h.log("addr " + purpose)
+	return "helper://host:9", nil
+}
+
+func (h *peerHelper) Connect(_ context.Context, c rpc.Connect) (rpc.ConnectResult, error) {
+	h.log("connect " + c.Address)
+	if c.Address == "bad" {
+		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	return rpc.ConnectResult{PeerID: string(c.ExpectedPeerID), AwaitingRemoteApproval: true}, nil
+}
+
+func TestPeerPairingMethods(t *testing.T) {
+	spec := peerExeSpec(t)
+	p, _ := start(t, spec, Options{}, nil)
+	pp, ok := p.(plugin.PeerPairing)
+	if !ok {
+		t.Fatal("proxy does not offer pairing")
+	}
+	ctx := context.Background()
+	addr, err := pp.PairingAddress(ctx, rpc.AddressPairingCode)
+	if err != nil || addr != "helper://host:9" {
+		t.Fatalf("address: %q %v", addr, err)
+	}
+	if _, err := pp.PairingAddress(ctx, "bogus"); err == nil {
+		t.Fatal("unknown purpose accepted")
+	}
+	peer := "abcdefghijklmnopqrstuvwxyz"
+	res, err := pp.Connect(ctx, rpc.Connect{AttemptID: strings.Repeat("a", 64), Address: "helper://x", ExpectedPeerID: peer})
+	if err != nil || res.PeerID != peer || !res.AwaitingRemoteApproval {
+		t.Fatalf("connect: %+v %v", res, err)
+	}
+	if _, err := pp.Connect(ctx, rpc.Connect{AttemptID: strings.Repeat("a", 64), Address: "bad", ExpectedPeerID: peer}); err == nil {
+		t.Fatal("backend failure not reported")
+	}
+	waitLog(t, spec.Dir, "addr "+rpc.AddressPairingCode)
+	waitLog(t, spec.Dir, "connect helper://x")
+}

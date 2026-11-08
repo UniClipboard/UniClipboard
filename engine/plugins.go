@@ -65,6 +65,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 	seen := map[string]bool{}
 	backends, unsupported := 0, false
 	var pending []syncBackend // installed only when the whole list loads
+	var peers []*peerProcBackend
 	var started []plugin.Plugin
 	defer func() {
 		if err != nil {
@@ -117,7 +118,9 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				return newErr(CodeLimitExceeded, "too many sync backends are enabled")
 			}
 			sb, ok := in.Plugin.(plugin.SyncBackend)
-			if !ok || (in.Process != nil && !spec.ExternalChannels) {
+			peerAware, isPeer := in.Plugin.(plugin.PeerBackend)
+			isPeer = isPeer && !spec.ExternalChannels && spec.TransportKind == plugin.TransportPeerSessions
+			if !ok || (in.Process != nil && !spec.ExternalChannels && !isPeer) {
 				unsupported = true // out-of-process backends need the RPC business layer
 				continue
 			}
@@ -141,8 +144,29 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				ra.SetReceiver(pb)
 			}
 			started = append(started, in.Plugin)
+			var pp *peerProcBackend
+			if isPeer {
+				pp = &peerProcBackend{e: e, id: PluginID(spec.ID), pb: peerAware, bindingID: randHex(32)}
+				if aa, ok := in.Plugin.(plugin.PeerAuthorityAware); ok {
+					aa.SetPeerAuthority(pp)
+				}
+				if ra, ok := in.Plugin.(plugin.PeerReceiverAware); ok {
+					ra.SetPeerReceiver(pp)
+				}
+				if berr := peerAware.Bind(ctx, pp.bindMsg()); berr != nil {
+					return invalidPlugin(spec.ID, "Bind failed")
+				}
+				if perr := pp.push(ctx); perr != nil {
+					return invalidPlugin(spec.ID, "the initial state was refused")
+				}
+			}
 			if serr := in.Plugin.Start(ctx); serr != nil {
 				return invalidPlugin(spec.ID, "Start failed")
+			}
+			if pp != nil {
+				pending = append(pending, pp)
+				peers = append(peers, pp)
+				continue
 			}
 			pending = append(pending, pb)
 			continue
@@ -162,6 +186,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 	}
 	e.plugins = started
 	e.backends = append(e.backends, pending...)
+	e.peerProcs = append(e.peerProcs, peers...)
 	return nil
 }
 

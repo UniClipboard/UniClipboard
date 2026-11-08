@@ -32,6 +32,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0008](docs/design/decisions/0008-device-identity-and-backend-bindings.md) | 统一设备身份与后端关联 | 已采纳，待实现；Engine 统一身份/信任/审批；设备按后端实例独立授权和状态；无旧 tailcat 兼容；身份协议与 SDK/RPC 定义待补齐 |
 | [0009](docs/design/decisions/0009-external-channels.md) | 外部渠道：无 unic 身份证明的第三方对端 | 草案；不是设备、不写 `devices` 表、无指纹；目标为组；与设备混排展示；默认自动写剪贴板并标 `external:` 来源；移除仅本地生效，后端声明 `remote_revocation`；接入形态待定（首个对象微信输入法）；数据模型与接收路径已实现（`engine/channels.go`），桌面 `/v1/channels` |
 | [0010](docs/design/decisions/0010-plugin-settings-schema.md) | 插件设置 Schema 与表单生成 | JSON Schema 子集 + UI 提示；Go 配置定义生成静态 schema，各 shell 生成原生表单；独立工具和 macOS 会话预览已实现，配置 API/清单/RPC/安装接入待完成 |
+| [0012](docs/design/decisions/0012-device-introductions.md) | 设备介绍：已配对设备推荐候选 | 介绍只是建议，不授信；C 确认后走正常配对（A 也需批准、核对指纹）；介绍方发送当前担保列表，幂等；移除不级联，担保 7 天未续期过期；上限 64/256/128；`/v1/candidates`；全局开关 `sync.introductions` |
 
 ### 接口契约
 

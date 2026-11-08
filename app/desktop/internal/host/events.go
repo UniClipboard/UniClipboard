@@ -42,8 +42,11 @@ func (n *Node) pumpEvents(ctx context.Context) {
 					n.diffDevices(ds, connected, pending, true)
 				}
 				for _, o := range ev.Objects {
-					if o.Type == "channel" {
+					switch o.Type {
+					case "channel":
 						n.hub.emit(api.Event{Kind: "channel", Info: o.ID})
+					case "candidate":
+						n.hub.emit(api.Event{Kind: "candidates", Info: o.ID})
 					}
 				}
 			case engine.EventHistory:

@@ -167,6 +167,15 @@ func (p *Proxy) handleBackend(ctx context.Context, c *rpc.Call) (res any, err er
 	case rpc.MethodPeerReceivePart:
 		res, err = p.receivePart(ctx, c)
 		return res, err, true
+	case rpc.MethodIdentityHello, rpc.MethodIdentityProve, rpc.MethodCheckPeer:
+		res, err = p.identity(ctx, c)
+		return res, err, true
+	case rpc.MethodPeerEvent:
+		res, err = p.peerEvent(ctx, c)
+		return res, err, true
+	case rpc.MethodIntroduce:
+		res, err = p.introduce(ctx, c)
+		return res, err, true
 	case rpc.MethodAuthorizeSend:
 		res, err = p.authorizeSend(ctx, c)
 		return res, err, true

@@ -478,6 +478,35 @@ func (n *Node) Approve(ctx context.Context, id, fingerprint string) (api.PeerSta
 }
 
 // Reject and Unpair both end the device: nothing is trusted and no path stays.
+func (n *Node) Candidates(ctx context.Context) ([]api.Candidate, error) {
+	cs, err := n.e.ListCandidates(ctx)
+	if err != nil {
+		return nil, apiErr(err, false)
+	}
+	out := make([]api.Candidate, len(cs))
+	for i, c := range cs {
+		by := make([]string, len(c.Introducers))
+		for j, in := range c.Introducers {
+			by[j] = in.Name
+		}
+		out[i] = api.Candidate{ID: c.DeviceID, BackendID: string(c.BackendID), Name: c.Name, IntroducedBy: by, LastSeen: c.LastSeenMs / 1000,
+			Ignored: c.Ignored, Requested: c.Requested, RequestedUntilMs: c.RequestedUntilMs}
+	}
+	return out, nil
+}
+
+func (n *Node) PairCandidate(ctx context.Context, id, backendID string) (api.PairResult, error) {
+	op, err := n.e.PairCandidate(ctx, engine.PairCandidateRequest{RequestID: engine.RequestID("cand-" + randID()), DeviceID: id, BackendID: engine.PluginID(backendID)})
+	if err != nil {
+		return api.PairResult{}, apiErr(err, false)
+	}
+	return n.await(ctx, op, false)
+}
+
+func (n *Node) IgnoreCandidate(ctx context.Context, id string, ignored bool) error {
+	return apiErr0(n.e.IgnoreCandidate(ctx, id, ignored))
+}
+
 func (n *Node) Reject(ctx context.Context, id string) error { return n.Unpair(ctx, id) }
 
 func (n *Node) Unpair(ctx context.Context, id string) error {

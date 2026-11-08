@@ -106,7 +106,7 @@ func TestLocalDeadlineIgnoresServerClock(t *testing.T) {
 }
 
 func testTicket() rendezvous.Ticket {
-	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions,
+	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Backend: "test.backend",
 		Device: bytes.Repeat([]byte{7}, 32), Access: []byte("tcEXAMPLEADDRESS0123456789"), Token: rendezvous.NewToken()}
 }
 

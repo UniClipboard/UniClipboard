@@ -57,6 +57,9 @@ type Engine struct {
 	closeBegun bool
 	stopReq    bool
 	runtime    RuntimeState
+	netGen     uint64 // bumped by NotifyNetworkChanged; guarded by mu
+	peerProcs  []*peerProcBackend
+	candRetry  map[string]*candWait // retry timing of requested candidates; guarded by mu
 	rev        uint64
 	settings   SettingsState
 	host       HostCapabilities
@@ -664,12 +667,17 @@ func (e *Engine) SetRuntimeState(ctx context.Context, state RuntimeState) error 
 	running := e.life == LifecycleRunning
 	e.mu.Unlock()
 	if !running {
-		return nil // Start applies it
+		e.syncPeerStates() // Start applies the rest
+		return nil
 	}
 	if state == RuntimeSuspended {
-		return asErrorOrNil(e.stopRun(ctx))
+		err := asErrorOrNil(e.stopRun(ctx))
+		e.syncPeerStates() // suspended backends must drop their sessions before this returns
+		return err
 	}
-	return asErrorOrNil(e.startRun(ctx))
+	err := asErrorOrNil(e.startRun(ctx))
+	e.syncPeerStates()
+	return err
 }
 
 func asErrorOrNil(err error) error {
@@ -695,6 +703,10 @@ func (e *Engine) NotifyNetworkChanged(ctx context.Context) error {
 		return err
 	}
 	e.core.NetworkChanged()
+	e.mu.Lock()
+	e.netGen++
+	e.mu.Unlock()
+	e.syncPeerStates()
 	return nil
 }
 

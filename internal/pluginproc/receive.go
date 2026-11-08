@@ -3,6 +3,7 @@ package pluginproc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -21,6 +22,76 @@ func (m peerM) SetPeerReceiver(r plugin.PeerReceiver) {
 	m.p.bmu.Lock()
 	m.p.precv = r
 	m.p.bmu.Unlock()
+}
+
+func (m peerM) SetPeerAuthority(a plugin.PeerAuthority) {
+	m.p.bmu.Lock()
+	m.p.pauth = a
+	m.p.bmu.Unlock()
+}
+
+// identity serves the three handshake methods through the Engine's authority.
+func (p *Proxy) identity(ctx context.Context, c *rpc.Call) (any, error) {
+	p.bmu.Lock()
+	a := p.pauth
+	p.bmu.Unlock()
+	if a == nil {
+		return nil, rpc.NewError(rpc.CodeUnsupported)
+	}
+	switch c.Method {
+	case rpc.MethodIdentityHello:
+		var in rpc.IdentityHello
+		if rpc.Decode(c.Params, &in) != nil || in.Validate() != nil {
+			return nil, rpc.NewError(rpc.CodeInvalidArgument)
+		}
+		return nilOnErr(a.IdentityHello(ctx, in))
+	case rpc.MethodIdentityProve:
+		var in rpc.IdentityProve
+		if rpc.Decode(c.Params, &in) != nil || in.Validate() != nil {
+			return nil, rpc.NewError(rpc.CodeInvalidArgument)
+		}
+		return nilOnErr(a.IdentityProve(ctx, in))
+	default:
+		var in rpc.CheckPeer
+		if rpc.Decode(c.Params, &in) != nil || in.Validate() != nil {
+			return nil, rpc.NewError(rpc.CodeInvalidArgument)
+		}
+		return nilOnErr(a.CheckPeer(ctx, in))
+	}
+}
+
+func (p *Proxy) peerEvent(ctx context.Context, c *rpc.Call) (any, error) {
+	p.bmu.Lock()
+	a := p.pauth
+	p.bmu.Unlock()
+	var in rpc.PeerEvent
+	if a == nil || rpc.Decode(c.Params, &in) != nil || in.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	return nilOnErr(rpc.Empty{}, a.PeerEvent(ctx, in))
+}
+
+func (p *Proxy) introduce(ctx context.Context, c *rpc.Call) (any, error) {
+	p.bmu.Lock()
+	a := p.pauth
+	p.bmu.Unlock()
+	var in rpc.Introduce
+	if a == nil || rpc.Decode(c.Params, &in) != nil || in.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	return nilOnErr(rpc.Empty{}, a.Introduce(ctx, in))
+}
+
+// nilOnErr maps any error to a stable wire code; free text never crosses.
+func nilOnErr[T any](v T, err error) (any, error) {
+	if err != nil {
+		var re *rpc.Error
+		if errors.As(err, &re) {
+			return nil, re
+		}
+		return nil, rpc.NewError(rpc.CodeInternal)
+	}
+	return v, nil
 }
 
 type recvGrant struct {

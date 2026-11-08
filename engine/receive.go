@@ -256,7 +256,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 		return e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled &&
 			e.policyLocked(t.backend) == sy && workCtx.Err() == nil
 	}
-	allowed := func() (bool, error) { return e.allowedPeer(string(peer)) }
+	allowed := func() (bool, error) { return e.allowedPeerOn(string(t.backend), string(peer)) }
 	autoApply := false
 	if t.channel != "" {
 		allowed = func() (bool, error) { return e.channelAllowed(t.backend, t.channel) }

@@ -47,6 +47,20 @@ type ChannelUpdate struct {
 	AutoApply *bool   `json:"auto_apply,omitempty"`
 }
 
+// Candidate is a device that a paired device vouched for (decision 0012). It
+// is a suggestion: Name is not verified and pairing needs approval on both
+// devices.
+type Candidate struct {
+	ID               string   `json:"id"`
+	BackendID        string   `json:"backend_id"`
+	Name             string   `json:"name"`
+	IntroducedBy     []string `json:"introduced_by"`
+	LastSeen         int64    `json:"last_seen"`
+	Ignored          bool     `json:"ignored,omitempty"`
+	Requested        bool     `json:"requested,omitempty"`
+	RequestedUntilMs int64    `json:"requested_until_ms,omitempty"`
+}
+
 // PendingPeer is a device waiting for the user's approval.
 type PendingPeer struct {
 	ID   string `json:"id"`
@@ -63,7 +77,7 @@ type PendingPeer struct {
 // Event is pushed to subscribers (the GUI). Info never carries clipboard
 // content: only the kind of thing that moved.
 type Event struct {
-	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code", "config", "history" (Info is the record id; fetch it again, 404 means removed), "channel" (Info is the channel id; "peers" follows)
+	Kind string `json:"kind"` // "peer-up", "peer-down", "sent", "received", "peers", "pending", "code", "candidates" (Info is a device id; fetch /v1/candidates), "config", "history" (Info is the record id; fetch it again, 404 means removed), "channel" (Info is the channel id; "peers" follows)
 	Peer string `json:"peer,omitempty"`
 	Info string `json:"info,omitempty"`
 	Time int64  `json:"time"`
@@ -235,6 +249,12 @@ type Backend interface {
 	// fingerprint makes sure the user approved that very request.
 	Approve(ctx context.Context, id, fingerprint string) (PeerStatus, error)
 	Reject(ctx context.Context, id string) error
+	// Candidates lists devices paired devices vouched for. PairCandidate asks
+	// to pair with one (and keeps retrying while it is away); IgnoreCandidate
+	// hides it or, with false, brings it back.
+	Candidates(ctx context.Context) ([]Candidate, error)
+	PairCandidate(ctx context.Context, id, backendID string) (PairResult, error)
+	IgnoreCandidate(ctx context.Context, id string, ignored bool) error
 	Unpair(ctx context.Context, id string) error
 	// UpdateChannel changes an external channel; RemoveChannel removes it
 	// (locally only unless PeerStatus.RemoteRevocation).
@@ -366,6 +386,51 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 			return
 		}
 		reply(w, 200, res)
+	})
+
+	mux.HandleFunc("GET /v1/candidates", func(w http.ResponseWriter, r *http.Request) {
+		cs, err := b.Candidates(r.Context())
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		if cs == nil {
+			cs = []Candidate{}
+		}
+		reply(w, 200, cs)
+	})
+
+	mux.HandleFunc("POST /v1/candidates/{id}/pair", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			BackendID string `json:"backend_id"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil || body.BackendID == "" {
+			fail(w, 400, errors.New(`body must be {"backend_id": "..."}`))
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+		defer cancel()
+		res, err := b.PairCandidate(ctx, r.PathValue("id"), body.BackendID)
+		if err != nil {
+			fail(w, 502, err)
+			return
+		}
+		reply(w, 200, res)
+	})
+
+	mux.HandleFunc("POST /v1/candidates/{id}/ignore", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Ignored bool `json:"ignored"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil {
+			fail(w, 400, errors.New(`body must be {"ignored": true|false}`))
+			return
+		}
+		if err := b.IgnoreCandidate(r.Context(), r.PathValue("id"), body.Ignored); err != nil {
+			fail(w, 400, err)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
 	})
 
 	mux.HandleFunc("GET /v1/pending", func(w http.ResponseWriter, r *http.Request) {
@@ -740,6 +805,23 @@ func (c *Client) CancelCode(ctx context.Context) error {
 func (c *Client) Join(ctx context.Context, code string) (p PairResult, err error) {
 	err = c.do(ctx, "POST", "/v1/join", map[string]string{"code": code}, &p)
 	return
+}
+
+// Candidates lists the devices that paired devices vouched for.
+func (c *Client) Candidates(ctx context.Context) (cs []Candidate, err error) {
+	err = c.do(ctx, "GET", "/v1/candidates", nil, &cs)
+	return
+}
+
+// PairCandidate asks to pair with a candidate.
+func (c *Client) PairCandidate(ctx context.Context, id, backendID string) (p PairResult, err error) {
+	err = c.do(ctx, "POST", "/v1/candidates/"+id+"/pair", map[string]string{"backend_id": backendID}, &p)
+	return
+}
+
+// IgnoreCandidate hides a candidate, or restores it with ignored=false.
+func (c *Client) IgnoreCandidate(ctx context.Context, id string, ignored bool) error {
+	return c.do(ctx, "POST", "/v1/candidates/"+id+"/ignore", map[string]bool{"ignored": ignored}, nil)
 }
 
 func (c *Client) Pending(ctx context.Context) (ps []PendingPeer, err error) {

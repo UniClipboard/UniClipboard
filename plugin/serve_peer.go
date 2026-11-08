@@ -217,6 +217,16 @@ type ReceiveBody struct {
 type PeerHost interface {
 	ReceiveOpen(ctx context.Context, o rpc.ReceiveOpen) (rpc.ReceiveGrant, error)
 	Receive(ctx context.Context, receiveID string, parts []ReceiveBody) (outcome string, err error)
+	// IdentityHello, IdentityProve and CheckPeer are the handshake of
+	// sync-backend-contract §3. The Engine verifies; the backend carries bytes.
+	IdentityHello(ctx context.Context, r rpc.IdentityHello) (rpc.IdentityHelloResult, error)
+	IdentityProve(ctx context.Context, r rpc.IdentityProve) (rpc.IdentityProveResult, error)
+	CheckPeer(ctx context.Context, r rpc.CheckPeer) (rpc.PeerDecision, error)
+	// PeerEvent reports a connection the peer also accepted going up or down.
+	PeerEvent(ctx context.Context, r rpc.PeerEvent) error
+	// Introduce passes on the devices a connected peer vouched for. They are
+	// suggestions only.
+	Introduce(ctx context.Context, r rpc.Introduce) error
 }
 
 // PeerHostAware backends get their PeerHost after Init and before Start.
@@ -244,6 +254,66 @@ func (h remotePeerHost) ReceiveOpen(ctx context.Context, o rpc.ReceiveOpen) (rpc
 		return rpc.ReceiveGrant{}, rpc.NewError(rpc.CodeInternal)
 	}
 	return g, nil
+}
+
+const identityCallTimeout = 30 * time.Second
+
+func (h remotePeerHost) IdentityHello(ctx context.Context, r rpc.IdentityHello) (rpc.IdentityHelloResult, error) {
+	var out rpc.IdentityHelloResult
+	if err := r.Validate(); err != nil {
+		return out, err
+	}
+	if _, err := h.s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodIdentityHello, Timeout: identityCallTimeout, Params: r}, &out); err != nil {
+		return out, err
+	}
+	if out.Validate() != nil {
+		return rpc.IdentityHelloResult{}, rpc.NewError(rpc.CodeInternal)
+	}
+	return out, nil
+}
+
+func (h remotePeerHost) IdentityProve(ctx context.Context, r rpc.IdentityProve) (rpc.IdentityProveResult, error) {
+	var out rpc.IdentityProveResult
+	if err := r.Validate(); err != nil {
+		return out, err
+	}
+	if _, err := h.s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodIdentityProve, Timeout: identityCallTimeout, Params: r}, &out); err != nil {
+		return out, err
+	}
+	if out.Validate() != nil {
+		return rpc.IdentityProveResult{}, rpc.NewError(rpc.CodeInternal)
+	}
+	return out, nil
+}
+
+func (h remotePeerHost) CheckPeer(ctx context.Context, r rpc.CheckPeer) (rpc.PeerDecision, error) {
+	var out rpc.PeerDecision
+	if err := r.Validate(); err != nil {
+		return out, err
+	}
+	if _, err := h.s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodCheckPeer, Timeout: identityCallTimeout, Params: r}, &out); err != nil {
+		return out, err
+	}
+	if out.Validate() != nil {
+		return rpc.PeerDecision{}, rpc.NewError(rpc.CodeInternal)
+	}
+	return out, nil
+}
+
+func (h remotePeerHost) PeerEvent(ctx context.Context, r rpc.PeerEvent) error {
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	_, err := h.s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodPeerEvent, Timeout: identityCallTimeout, Params: r}, nil)
+	return err
+}
+
+func (h remotePeerHost) Introduce(ctx context.Context, r rpc.Introduce) error {
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	_, err := h.s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodIntroduce, Timeout: identityCallTimeout, Params: r}, nil)
+	return err
 }
 
 func (h remotePeerHost) Receive(ctx context.Context, receiveID string, parts []ReceiveBody) (string, error) {
@@ -317,5 +387,72 @@ type PeerReceiver interface {
 	Receive(ctx context.Context, receiveID string, parts ReceiveParts) (outcome string, err error)
 }
 
+// PeerAuthority is the Engine side of the identity handshake.
+type PeerAuthority interface {
+	IdentityHello(ctx context.Context, r rpc.IdentityHello) (rpc.IdentityHelloResult, error)
+	IdentityProve(ctx context.Context, r rpc.IdentityProve) (rpc.IdentityProveResult, error)
+	CheckPeer(ctx context.Context, r rpc.CheckPeer) (rpc.PeerDecision, error)
+	PeerEvent(ctx context.Context, r rpc.PeerEvent) error
+	Introduce(ctx context.Context, r rpc.Introduce) error
+}
+
+// PeerAuthorityAware is implemented by the host-side proxy of a peer backend.
+type PeerAuthorityAware interface{ SetPeerAuthority(PeerAuthority) }
+
 // PeerReceiverAware is implemented by the host-side proxy of a peer backend.
 type PeerReceiverAware interface{ SetPeerReceiver(PeerReceiver) }
+
+// PeerPairing is implemented by backends that can take part in pairing: they
+// say where they can be reached, and dial an address on the Engine's behalf.
+// Connect returns after the handshake, which the Engine decided through
+// PeerAuthority; it never grants trust.
+type PeerPairing interface {
+	PairingAddress(ctx context.Context, purpose string) (string, error)
+	Connect(ctx context.Context, c rpc.Connect) (rpc.ConnectResult, error)
+}
+
+func (s *server) pairingAddress(ctx context.Context, c *rpc.Call) (any, error) {
+	pp, ok := s.p.(PeerPairing)
+	if !ok {
+		return nil, rpc.NewError(rpc.CodeUnsupported)
+	}
+	var in rpc.PairingAddressRequest
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	if err := s.initialized(); err != nil {
+		return nil, err
+	}
+	var out rpc.PairingAddress
+	err := safely(func() (e error) { out.Address, e = pp.PairingAddress(ctx, in.Purpose); return })
+	if err != nil {
+		return nil, err
+	}
+	if out.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInternal)
+	}
+	return out, nil
+}
+
+func (s *server) connectPeer(ctx context.Context, c *rpc.Call) (any, error) {
+	pp, ok := s.p.(PeerPairing)
+	if !ok {
+		return nil, rpc.NewError(rpc.CodeUnsupported)
+	}
+	var in rpc.Connect
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	if err := s.initialized(); err != nil {
+		return nil, err
+	}
+	var out rpc.ConnectResult
+	err := safely(func() (e error) { out, e = pp.Connect(ctx, in); return })
+	if err != nil {
+		return nil, err
+	}
+	if out.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInternal)
+	}
+	return out, nil
+}

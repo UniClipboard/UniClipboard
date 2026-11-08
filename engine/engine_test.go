@@ -587,7 +587,7 @@ func TestTicketIsUsedUpByTheFirstDevice(t *testing.T) {
 func TestForeignTransportTicketHasNoBackend(t *testing.T) {
 	n := newNode(t, nil)
 	start(t, n)
-	tk := rendezvous.Ticket{Transport: rendezvous.TransportObjectStore, Device: make([]byte, 32), Access: []byte("x"), Token: rendezvous.NewToken()}
+	tk := rendezvous.Ticket{Transport: rendezvous.TransportObjectStore, Backend: "test.backend", Device: make([]byte, 32), Access: []byte("x"), Token: rendezvous.NewToken()}
 	op, err := n.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "x", Ticket: tk.Text()})
 	if err != nil {
 		t.Fatal(err)
@@ -979,6 +979,6 @@ func policy(id PluginID, f func(*BackendSyncPolicy)) func(*Settings) {
 }
 
 func testTicketText() string {
-	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Device: bytes.Repeat([]byte{7}, 32),
+	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Backend: "test.backend", Device: bytes.Repeat([]byte{7}, 32),
 		Access: []byte("127.0.0.1:1"), Token: rendezvous.NewToken()}.Text()
 }

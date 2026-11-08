@@ -132,6 +132,11 @@ func (e *Engine) toBinding(b store.Binding) DeviceBinding {
 	if b.InstanceID == tailcatInstance && e.core != nil && e.core.Connected(b.DeviceID) {
 		conn = Connected
 	}
+	for _, pb := range e.peerProcs {
+		if string(pb.id) == b.InstanceID && pb.connected(b.DeviceID) {
+			conn = Connected
+		}
+	}
 	return DeviceBinding{ID: b.ID, InstanceID: b.InstanceID, State: b.State, SyncEnabled: b.SyncEnabled,
 		Revision: b.Revision, LastActiveMs: b.LastActiveMs, LastError: b.LastError, Connection: conn, Ticket: b.Ticket}
 }
@@ -329,7 +334,9 @@ func (e *Engine) UnpairDevice(ctx context.Context, req UnpairDeviceRequest) erro
 	if err := e.st.RevokeDevice(req.ID, req.ExpectedRevision); err != nil {
 		return deviceStoreErr(err)
 	}
+	_ = e.st.DropIntroducer(req.ID) // what a removed device vouched for no longer counts
 	e.reconcile()
 	e.deviceChanged(req.ID)
+	e.candidatesChanged(req.ID)
 	return nil
 }

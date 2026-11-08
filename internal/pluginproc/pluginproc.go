@@ -120,6 +120,7 @@ type Proxy struct {
 	transfers map[string]*transfer
 	sends     map[uint64]*activeSend
 	precv     plugin.PeerReceiver
+	pauth     plugin.PeerAuthority
 	rgrants   map[string]*recvGrant
 	recvs     map[uint64]*activeRecv
 

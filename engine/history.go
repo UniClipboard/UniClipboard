@@ -798,6 +798,7 @@ func (e *Engine) sweepTick() {
 	}
 	e.mu.Unlock()
 	e.notifyObservers(plugin.EventExpired, ids...)
+	e.retryCandidates()
 }
 
 func historyRefs(ids []string) []ObjectRef {

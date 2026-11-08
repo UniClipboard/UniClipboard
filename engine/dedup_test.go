@@ -211,11 +211,14 @@ func allowPeer(e *Engine, id string) {
 	if _, err := e.st.TrustDevice(id, d.Revision); err != nil {
 		panic(err)
 	}
-	b, err := e.st.AddBinding(randHex(8), id, tailcatInstance, []byte("ctx"))
-	if err != nil {
-		panic(err)
-	}
-	if _, err := e.st.AuthorizeBinding(b.ID, b.Revision); err != nil {
-		panic(err)
+	// receiving checks the binding of the backend it came through
+	for _, inst := range []string{tailcatInstance, "test.a", "test.b"} {
+		b, err := e.st.AddBinding(randHex(8), id, inst, []byte("ctx"))
+		if err != nil {
+			panic(err)
+		}
+		if _, err := e.st.AuthorizeBinding(b.ID, b.Revision); err != nil {
+			panic(err)
+		}
 	}
 }

@@ -65,12 +65,15 @@ type BackendPolicy struct {
 
 // SyncState is the complete state one backend instance may act on.
 type SyncState struct {
-	BackendID         string          `json:"backend_id"`
-	BindingID         string          `json:"binding_id"`
-	Revision          U64             `json:"revision"`
-	Runtime           string          `json:"runtime"` // active or suspended
-	DeviceName        string          `json:"device_name"`
-	SyncEnabled       bool            `json:"sync_enabled"`
+	BackendID   string `json:"backend_id"`
+	BindingID   string `json:"binding_id"`
+	Revision    U64    `json:"revision"`
+	Runtime     string `json:"runtime"` // active or suspended
+	DeviceName  string `json:"device_name"`
+	SyncEnabled bool   `json:"sync_enabled"`
+	// Introduce asks the backend to tell every connected peer which other
+	// Peers it vouches for (sync-backend-contract §3); false: say nothing.
+	Introduce         bool            `json:"introduce,omitempty"`
 	Policy            BackendPolicy   `json:"policy"`
 	Limits            StateLimits     `json:"limits"`
 	NetworkGeneration U64             `json:"network_generation"`

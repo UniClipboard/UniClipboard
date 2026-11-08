@@ -111,6 +111,10 @@ func (s *server) handle(ctx context.Context, c *rpc.Call) (any, error) {
 		res, err = s.send(ctx, c)
 	case rpc.MethodApplyState:
 		res, err = s.applyState(ctx, c)
+	case rpc.MethodPairingAddress:
+		res, err = s.pairingAddress(ctx, c)
+	case rpc.MethodConnect:
+		res, err = s.connectPeer(ctx, c)
 	default:
 		return nil, rpc.NewError(rpc.CodeUnsupported)
 	}

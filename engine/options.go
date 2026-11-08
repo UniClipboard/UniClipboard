@@ -93,7 +93,7 @@ type (
 func DefaultSettings() Settings {
 	return Settings{
 		Limits: Limits{MaxFileBytes: wire.MaxFileBytes, MaxTotalBytes: wire.MaxTotal},
-		Sync:   SyncSettings{Enabled: true},
+		Sync:   SyncSettings{Enabled: true, Introductions: true},
 	}
 }
 

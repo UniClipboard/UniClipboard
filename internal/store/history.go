@@ -80,6 +80,7 @@ CREATE TABLE sync_dedup (
 ) WITHOUT ROWID;
 CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);
 ` + "\n" + deviceSchema, // unified devices and their per-backend-instance bindings (decision 0008)
+	candidateSchema, // devices a peer vouched for (decision 0012)
 }
 
 func migrate(db *sql.DB) error {

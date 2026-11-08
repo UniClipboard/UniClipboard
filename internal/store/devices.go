@@ -167,6 +167,24 @@ func (s *Store) Device(id string) (Device, error) {
 	return d, err
 }
 
+// RevokedDevices lists the tombstones, by creation order.
+func (s *Store) RevokedDevices() ([]Device, error) {
+	rows, err := s.db.Query(`SELECT ` + deviceCols + ` FROM devices WHERE trust = 'revoked' ORDER BY created_ms, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Device
+	for rows.Next() {
+		d, err := scanDevice(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // Devices lists every device except revoked tombstones, by creation order.
 func (s *Store) Devices() ([]Device, error) {
 	rows, err := s.db.Query(`SELECT ` + deviceCols + ` FROM devices WHERE trust <> 'revoked' ORDER BY created_ms, id`)

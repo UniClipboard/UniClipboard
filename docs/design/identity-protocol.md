@@ -82,10 +82,11 @@ FP = SHA256("unic/fingerprint/v1\0" || min(pk_A,pk_B) || max(pk_A,pk_B))[:16]
 票据 kind 仍为 `unic-pair`，版本升到 2（不与 v1 互通）：
 
 ```json
-{"v":2,"kind":"unic-pair","tp":"peer_sessions","dev":"<base64url pk>","acc":"<base64url opaque>","tok":"<base64url 16B>"}
+{"v":2,"kind":"unic-pair","tp":"peer_sessions","be":"<backend instance id>","dev":"<base64url pk>","acc":"<base64url opaque>","tok":"<base64url 16B>"}
 ```
 
 - `tp`：传输种类，取 `peer_sessions` 或 `object_store`。入码方本地必须有声明相同种类且能处理该 `acc` 的兼容实例，否则返回“无兼容后端”，不回退到 tailcat。多个兼容实例时由用户选择。
+- `be`：签发票据的后端实例 ID。入码方按它找实例，找不到即“无兼容后端”（不凭 `tp` 猜测，也不回退）；出码方只接受来自同一实例的配对证明。
 - `dev`：出码方身份公钥。P2P 路径在 §4.3 中**必须**要求响应方 `pk` 与之相等；对象存储路径要求之后读到的该作者对象由此公钥签名。rendezvous 能替换整张票，所以仍须展示指纹。
 - `acc`：插件定义的接入描述（tailcat 地址、仓库定位与加入材料等），对核心不透明，≤ 1 KiB，视为秘密，不进日志/事件/错误；其内容格式由对应插件的契约定义。
 - `tok`：一次性令牌。P2P 经 §4.4 的 PairProof 证明；对象存储路径中，加入方在仓库里写入的“加入请求”对象须携带同样的 PairProof（转录换成该请求对象的 `repo_binding` 与 `seq`），出码方据此确认请求来自持票者。

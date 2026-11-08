@@ -300,6 +300,7 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	if perr != nil {
 		return SettingsState{}, perr
 	}
+	defer e.syncPeerStates() // after the unlock below: sync.enabled, limits and policies reach out-of-process backends
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if req.ExpectedRevision != e.settings.Revision {

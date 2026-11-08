@@ -33,17 +33,27 @@ func (h tailcatHost) standing(d store.Device, b store.Binding, found bool) peerb
 // Verify records a device whose proof the session layer checked. It trusts
 // nothing: a new device and its path both start pending.
 func (h tailcatHost) Verify(v peerbackend.Verified) (peerbackend.Standing, error) {
-	e := h.e
+	d, b, err := h.e.recordPeer(tailcatInstance, v)
+	if err != nil {
+		return peerbackend.Standing{}, err
+	}
+	return h.standing(d, b, true), nil
+}
+
+// recordPeer stores a device whose key a backend proved, and its path on the
+// given instance. Nothing becomes trusted: a new device and its binding start
+// pending, a revoked one goes back to pending.
+func (e *Engine) recordPeer(instance string, v peerbackend.Verified) (store.Device, store.Binding, error) {
 	id := identity.DeviceID(v.PublicKey)
 	prev, perr := e.st.Device(id)
 	known := perr == nil
 	if perr != nil && !errors.Is(perr, store.ErrDeviceNotFound) {
-		return peerbackend.Standing{}, perr
+		return store.Device{}, store.Binding{}, perr
 	}
 	if !known || prev.Trust == store.TrustRevoked {
 		ds, err := e.st.Devices()
 		if err != nil {
-			return peerbackend.Standing{}, err
+			return store.Device{}, store.Binding{}, err
 		}
 		n := 0
 		for _, d := range ds {
@@ -52,7 +62,7 @@ func (h tailcatHost) Verify(v peerbackend.Verified) (peerbackend.Standing, error
 			}
 		}
 		if n >= maxPendingDevices {
-			return peerbackend.Standing{}, errTooManyPending
+			return store.Device{}, store.Binding{}, errTooManyPending
 		}
 	}
 	name := v.Name
@@ -61,13 +71,13 @@ func (h tailcatHost) Verify(v peerbackend.Verified) (peerbackend.Standing, error
 	}
 	d, err := e.st.AddDevice(id, v.PublicKey, name)
 	if err != nil {
-		return peerbackend.Standing{}, err
+		return store.Device{}, store.Binding{}, err
 	}
 	changed := !known || d.Revision != prev.Revision
-	pb, pberr := e.st.InstanceBinding(id, tailcatInstance)
-	b, err := e.st.AddBinding(randHex(16), id, tailcatInstance, v.Context)
+	pb, pberr := e.st.InstanceBinding(id, instance)
+	b, err := e.st.AddBinding(randHex(16), id, instance, v.Context)
 	if err != nil {
-		return peerbackend.Standing{}, err
+		return store.Device{}, store.Binding{}, err
 	}
 	changed = changed || pberr != nil || pb.Revision != b.Revision
 	endpoint := b.Endpoint
@@ -77,7 +87,7 @@ func (h tailcatHost) Verify(v peerbackend.Verified) (peerbackend.Standing, error
 	ticket := b.Ticket || v.Ticket
 	if string(endpoint) != string(b.Endpoint) || ticket != b.Ticket {
 		if err := e.st.SetBindingEndpoint(b.ID, endpoint, ticket); err != nil {
-			return peerbackend.Standing{}, err
+			return store.Device{}, store.Binding{}, err
 		}
 		changed = changed || ticket != b.Ticket
 	}
@@ -85,7 +95,7 @@ func (h tailcatHost) Verify(v peerbackend.Verified) (peerbackend.Standing, error
 		e.deviceChanged(id)
 	}
 	b.Endpoint, b.Ticket = endpoint, ticket
-	return h.standing(d, b, true), nil
+	return d, b, nil
 }
 
 func (h tailcatHost) Standing(id string) (peerbackend.Standing, bool) {
@@ -139,14 +149,17 @@ func (h tailcatHost) Active(deviceID string, err error) {
 }
 
 // allowedPeer reports whether a device may send us content over tailcat.
-func (e *Engine) allowedPeer(id string) (bool, error) {
+func (e *Engine) allowedPeer(id string) (bool, error) { return e.allowedPeerOn(tailcatInstance, id) }
+
+// allowedPeerOn: trusted device with an authorized binding on that backend instance.
+func (e *Engine) allowedPeerOn(instance, id string) (bool, error) {
 	d, err := e.st.Device(id)
 	if errors.Is(err, store.ErrDeviceNotFound) {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	b, err := e.st.InstanceBinding(id, tailcatInstance)
+	b, err := e.st.InstanceBinding(id, instance)
 	if errors.Is(err, store.ErrBindingNotFound) {
 		return false, nil
 	} else if err != nil {
@@ -161,4 +174,5 @@ func (e *Engine) reconcile() {
 	if e.core != nil {
 		e.core.Reconcile()
 	}
+	e.syncPeerStates() // out-of-process backends: the same barrier
 }

@@ -47,6 +47,9 @@ type Limits struct {
 // is Settings.BackendPolicies.
 type SyncSettings struct {
 	Enabled bool `json:"enabled"`
+	// Introductions: tell connected devices which others this one vouches for,
+	// and accept theirs as candidates (decision 0012).
+	Introductions bool `json:"introductions"`
 }
 
 // BackendSyncPolicy is the standard per-backend policy Engine enforces for

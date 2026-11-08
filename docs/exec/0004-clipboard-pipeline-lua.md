@@ -43,7 +43,7 @@
 - [x] 确定提交结果与幂等契约（第 4 项）：新增 CommitContent/GetSubmission，保留旧门面，定义失败缓存、观察处置与无网络本机 commit；实现与测试待完成。
 - [x] 确定 action 契约（取代自动写回，第 3 项）：Spec 静态声明、ListActions/RunAction、结果为新历史条目并经 BeginApplyHistory 应用、失败不留条目、同一幂等命名空间；实现与测试待完成。
 - [x] 定义 RPC 核心帧、握手、生命周期/processor/observer/action 方法、patch 与内容流，提供机器可读 Schema 和互操作向量；后端业务 DTO 和运行时互操作测试仍未完成。
-- [x] 定义 SyncBackend/SyncHost 业务 DTO：完整状态流、撤销屏障、配对与会话授权、传输前授权、接收预留/内容流与完成结果；实现与真实子进程互操作待完成。
+- [x] 定义 SyncBackend/SyncHost 业务 DTO：完整状态流、撤销屏障、配对与会话授权、传输前授权、接收预留/内容流与完成结果；真实子进程互操作已有端到端测试（两节点配对与同步、三节点设备介绍，`engine/peere2e_test.go`）；其余实现待完成。
 - [x] 核实 gopher-lua v1.1.2 的取消、原生调用、基础库与 utf8 行为（四项隔离探针通过），确定增强 VM/白名单/预算方案；不是增强 VM 或完整沙箱验证。
 - [x] 补齐上文其余契约问题，更新 Engine/插件契约与实现进度登记；[SDK 类型与错误契约](../design/sdk-extension-contract.md) 定义历史/提交/Action DTO、插件/Lua 装配、可选值、严格 Config 校验及稳定错误映射，不暴露内部类型；代码与契约测试仍待各阶段实现。
 - [x] 明确捕获/接收/显式提交的处理、commit、同步和应用状态转换，以及每一步的资源取得与释放；流水线契约 §7 定义提交屏障、Received 槽位与去重发布、引用/配额账本及崩溃恢复边界，实现与故障注入仍待完成。

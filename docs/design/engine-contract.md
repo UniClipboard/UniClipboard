@@ -84,6 +84,11 @@ func (e *Engine) ListPending(ctx context.Context) ([]PendingPeer, error)
 func (e *Engine) Approve(ctx context.Context, req ApprovalRequest) (Peer, error)
 func (e *Engine) Reject(ctx context.Context, req PendingRequest) error
 func (e *Engine) Unpair(ctx context.Context, id DeviceID) error
+func (e *Engine) CreatePairingCodeVia(ctx context.Context, backend PluginID) (PairingCode, error)
+func (e *Engine) ExportPairingTicketVia(ctx context.Context, backend PluginID) (SensitiveTicket, error)
+func (e *Engine) ListCandidates(ctx context.Context) ([]Candidate, error)
+func (e *Engine) PairCandidate(ctx context.Context, req PairCandidateRequest) (OperationID, error)
+func (e *Engine) IgnoreCandidate(ctx context.Context, deviceID string, ignored bool) error
 
 func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHandle, error)
 func (e *Engine) RetainContent(ctx context.Context, id ContentID) (ContentHandle, error)
@@ -175,6 +180,8 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 - 入码方保留主动配对信任语义；出码方必须形成待批准请求。未批准和仅被介绍的设备不得接收内容。批准操作要求指纹一致；不一致报 conflict，宿主必须重新展示，而非自动重试。
 - Approve 的提交点是信任持久化成功；不会等待联网。Reject 持久化拒绝并按 0001 屏蔽重复介绍，直接再次连接可产生新请求修订。
 - Unpair 对未配对 ID 幂等成功；持久化移除信任并使旧会话/重连代次失效后返回，旧会话不得继续接收、发送新内容，网络资源随后关闭。已完整接收的本地资源保留；未来直接连接仍须重新审批。
+- `CreatePairingCodeVia` / `ExportPairingTicketVia` 针对指定 peer_sessions 后端实例签发配对码/完整票据（票据携带该实例 ID `be`，入码方只在同一实例上连接）；无 Via 的方法使用默认 tailcat。
+- 设备介绍（[0012](decisions/0012-device-introductions.md)）：`ListCandidates` 返回已配对设备推荐的候选（`Candidate{DeviceID, BackendID, Name, Introducers, LastSeenMs, Ignored, Requested, RequestedUntilMs}`，名称未经验证，不含地址与指纹）。`PairCandidate` 返回 pairing 类 OperationID，立即尝试一次并在 24 小时内退避重试，仍须对方批准、双方核对指纹；`IgnoreCandidate` 隐藏/恢复。候选变化发 `ObjectRef{Type:"candidate"}` 与 `EventDevices`。设置 `sync.introductions`（默认开）关闭时不接受介绍也不发送介绍。介绍只是建议，不授信。
 - 身份不一致、协议版本不兼容均失败，不覆盖原有 Peer 身份；失败可能已产生对方待审批项，不能声称跨设备事务回滚。
 
 ## 6. 内容模型与发送

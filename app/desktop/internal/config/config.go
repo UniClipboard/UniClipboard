@@ -15,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
 // Hard caps of the wire protocol; limits in the file cannot exceed them.
@@ -91,14 +92,21 @@ type Sync struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
 }
 
-// Plugins holds per-plugin-instance settings. Only the standard sync policy
-// of the built-in backend is supported so far.
+// Plugins holds per-plugin-instance settings for the plugins this build
+// ships: the sync policy of sync.tailcat and the on/off switch of builtin.text.
 type Plugins struct {
 	Instances map[string]Instance `toml:"instances" json:"instances,omitempty"`
 }
 
 type Instance struct {
-	Sync BackendSync `toml:"sync" json:"sync"`
+	Enabled *bool       `toml:"enabled" json:"enabled,omitempty"` // omitted: on
+	Sync    BackendSync `toml:"sync" json:"sync"`
+}
+
+// PluginEnabled reports whether a shipped plugin is switched on.
+func (c Config) PluginEnabled(id string) bool {
+	in, ok := c.Plugins.Instances[id]
+	return !ok || in.Enabled == nil || *in.Enabled
 }
 
 // BackendSync is one backend's standard sync policy. Omitted booleans mean
@@ -155,8 +163,8 @@ func (c Config) Settings() engine.Settings {
 // backendPolicies is the complete policy of every backend this build ships.
 func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 	out := map[engine.PluginID]engine.BackendSyncPolicy{engine.BackendTailcat: engine.DefaultBackendPolicy()}
-	for id, in := range c.Plugins.Instances {
-		out[engine.PluginID(id)] = in.Sync.policy()
+	if in, ok := c.Plugins.Instances[string(engine.BackendTailcat)]; ok {
+		out[engine.BackendTailcat] = in.Sync.policy()
 	}
 	return out
 }
@@ -168,9 +176,18 @@ func (c Config) Validate() error {
 	if c.Inbox != "" && !filepath.IsAbs(c.Inbox) {
 		return errors.New("inbox: must be an absolute path")
 	}
-	for id := range c.Plugins.Instances {
-		if engine.PluginID(id) != engine.BackendTailcat {
-			return fmt.Errorf("plugins.instances: %q is not an installed sync plugin", id)
+	for id, in := range c.Plugins.Instances {
+		switch id {
+		case string(engine.BackendTailcat):
+			if in.Enabled != nil {
+				return fmt.Errorf("plugins.instances.%q: this plugin cannot be switched off yet", id)
+			}
+		case builtintext.ID:
+			if in.Sync != (BackendSync{}) {
+				return fmt.Errorf("plugins.instances.%q: this plugin has no sync settings", id)
+			}
+		default:
+			return fmt.Errorf("plugins.instances: %q is not an installed plugin", id)
 		}
 	}
 	h := c.History
@@ -236,6 +253,12 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # Files copied automatically above this size are not sent (and neither is the
 # rest of that copy); sending by hand ignores it. 0 = no extra limit.
 # auto_file_max_bytes = "100MB"
+
+# builtin.text tags copied text that holds an email address ("email") or a
+# link ("url"), and offers the text actions in the history window. It only
+# adds tags; it never changes what you copied. Needs a restart of unicd.
+# [plugins.instances."builtin.text"]
+# enabled = true
 `
 
 // WriteTemplate creates path with the template unless it already exists.

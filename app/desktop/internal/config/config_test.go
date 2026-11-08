@@ -55,6 +55,8 @@ func TestParseRejects(t *testing.T) {
 		"old sync key":  "[sync]\ntext = false",
 		"other plugin":  "[plugins.instances.\"example.webdav\".sync]\ntext = false",
 		"bad threshold": "[plugins.instances.\"sync.tailcat\".sync]\nauto_file_max_bytes = \"3GiB\"",
+		"tailcat off":   "[plugins.instances.\"sync.tailcat\"]\nenabled = false",
+		"text sync":     "[plugins.instances.\"builtin.text\".sync]\ntext = false",
 		"no history":    "[history]\nmax_items = 0",
 		"history size":  "[history]\nmax_bytes = \"9GiB\"",
 		"negative ttl":  "[history]\ndefault_ttl_days = -1",
@@ -176,5 +178,15 @@ func TestParseSize(t *testing.T) {
 		if _, err := ParseSize(in); err == nil {
 			t.Errorf("ParseSize(%q): expected an error", in)
 		}
+	}
+}
+
+func TestBuiltinTextCanBeSwitchedOff(t *testing.T) {
+	c, err := Parse([]byte("[plugins.instances.\"builtin.text\"]\nenabled = false"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PluginEnabled("builtin.text") || !Default().PluginEnabled("builtin.text") {
+		t.Fatal("enabled flag not honoured")
 	}
 }

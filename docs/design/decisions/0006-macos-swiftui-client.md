@@ -45,7 +45,7 @@ SwiftUI app (app/macos/) ── unix socket, HTTP+JSON/SSE ──> unicd（无�
 | `GET /v1/history/{id}/content?part=N` | 第 N 个部件（默认 0）的原始字节；文件名只在 `Content-Disposition` |
 | `POST /v1/history/{id}/use` | 写入系统剪贴板，走与接收内容相同的观察/应用协议（不重复入历史、不同步、不当作新复制）；文件按原路径放入剪贴板，文件已不在则失败 |
 | `GET /v1/actions` | 插件声明的 Action 列表：`{actions:[{key, plugin_id, id, title, accepts}]}`，按 key 排序；**待实现**，契约见[Action 契约](../clipboard-action-contract.md) |
-| `POST /v1/history/{id}/actions/{key...}` | 用户主动对该条运行 Action：Engine 生成 origin=`action` 的新历史条目，daemon 随即经应用协议把它写入系统剪贴板（用户触发即意图，不是自动写回），返回 `{history_id}`；来源条目不变，失败不留条目；无参数；**待实现** |
+| `POST /v1/history/{id}/actions/{key...}` | 用户主动对该条运行 Action：Engine 生成 origin=`action` 的新历史条目，daemon 随即经应用协议把它写入系统剪贴板（用户触发即意图，不是自动写回），返回 `{item}`（新条目，含 `plugin_id`）；来源条目不变，失败不留条目；写剪贴板失败时条目仍在历史，返回 502 并带 `item`；无参数；已实现 |
 | `PATCH /v1/history/{id}` | body `{revision, tags?, expires_at_ms?}`；`revision` 必填，不符返回 409 |
 | `DELETE /v1/history/{id}?revision=N` | 删除，`revision` 必填；已取得内容的读取者可读完 |
 

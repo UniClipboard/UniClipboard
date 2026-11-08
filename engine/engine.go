@@ -27,6 +27,7 @@ import (
 	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/internal/tcnet"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 // Engine is one running node. All methods are safe for concurrent use.
@@ -94,6 +95,7 @@ type Engine struct {
 
 	processors  []*pipelineProcessor // private adapters, fixed before Start
 	actions     []*pipelineAction    // likewise
+	plugins     []plugin.Plugin      // started in New, closed with the engine
 	submissions map[RequestID]*submissionEntry
 }
 
@@ -225,6 +227,10 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	e.events, e.evCancel = e.core.Subscribe()
 	e.evStop, e.evDone = make(chan struct{}), make(chan struct{})
 	go e.pumpCoreEvents()
+	if perr := e.loadPlugins(ctx, opts.Plugins); perr != nil {
+		_ = e.Close(context.WithoutCancel(ctx))
+		return nil, perr
+	}
 	e.logf(slog.LevelInfo, "engine created")
 	return e, nil
 }
@@ -568,6 +574,7 @@ func (e *Engine) finalize() {
 	for _, s := range subs {
 		s.finish()
 	}
+	e.closePlugins(context.Background())
 	e.dropContent()
 	_ = os.RemoveAll(e.recvDir())
 	_ = e.st.Close()

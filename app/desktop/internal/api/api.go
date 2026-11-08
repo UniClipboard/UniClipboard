@@ -122,6 +122,7 @@ type HistoryItem struct {
 	Origin     string               `json:"origin"` // "local_system", "remote_device", "action" or "explicit"
 	DeviceID   string               `json:"device_id,omitempty"`
 	DeviceName string               `json:"device_name,omitempty"`
+	PluginID   string               `json:"plugin_id,omitempty"` // for origin "action"
 	CreatedAt  int64                `json:"created_at_ms"`
 	UpdatedAt  int64                `json:"updated_at_ms"`
 	ExpiresAt  int64                `json:"expires_at_ms"` // 0: never
@@ -130,6 +131,14 @@ type HistoryItem struct {
 	TotalBytes int64                `json:"total_bytes"`
 	SyncState  string               `json:"sync_state"`
 	Backends   []HistoryBackendSync `json:"backends"`
+}
+
+// Action is something a plugin can do to a text record when asked.
+type Action struct {
+	Key      string   `json:"key"` // e.g. "builtin.text/upper"
+	PluginID string   `json:"plugin_id"`
+	Title    string   `json:"title"`
+	Accepts  []string `json:"accepts"`
 }
 
 // HistoryQuery is GET /v1/history. Fields combine with AND.
@@ -219,6 +228,12 @@ type Backend interface {
 	// UseHistory puts a record on the system clipboard without syncing it or
 	// creating a new record.
 	UseHistory(ctx context.Context, id string) error
+	// Actions lists what plugins offer, sorted by key.
+	Actions(ctx context.Context) ([]Action, error)
+	// RunAction runs an action on a record, adds the result as a new record
+	// and puts it on the system clipboard. If only the clipboard step fails,
+	// the new record is returned along with the error.
+	RunAction(ctx context.Context, id, key string) (HistoryItem, error)
 	UpdateHistory(ctx context.Context, id string, u HistoryUpdate) (HistoryItem, error)
 	DeleteHistory(ctx context.Context, id string, revision uint64) error
 	// Subscribe streams events until the returned function is called.
@@ -474,6 +489,29 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 			return
 		}
 		reply(w, 200, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("GET /v1/actions", func(w http.ResponseWriter, r *http.Request) {
+		list, err := b.Actions(r.Context())
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		if list == nil {
+			list = []Action{}
+		}
+		reply(w, 200, map[string]any{"actions": list})
+	})
+	mux.HandleFunc("POST /v1/history/{id}/actions/{key...}", func(w http.ResponseWriter, r *http.Request) {
+		it, err := b.RunAction(r.Context(), r.PathValue("id"), r.PathValue("key"))
+		if err != nil {
+			if it.ID != "" { // the record exists, only the clipboard write failed
+				reply(w, 502, map[string]any{"error": err.Error(), "reason": ReasonOf(err), "item": it})
+				return
+			}
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, map[string]any{"item": it})
 	})
 	mux.HandleFunc("PATCH /v1/history/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var u HistoryUpdate

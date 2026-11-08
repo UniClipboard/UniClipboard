@@ -43,6 +43,13 @@ type Options struct {
 	// content, addresses, tickets or paths. It must not block. Nil: silent.
 	Logger *slog.Logger
 
+	// Plugins run in this process, in this order, before the engine is
+	// returned: Init and Start happen in New, Close when the engine closes.
+	Plugins []PluginInstance
+	// PluginNotify shows a plugin's short message to the user. It must not
+	// block. Nil: messages are dropped.
+	PluginNotify func(plugin PluginID, message string)
+
 	// Network replaces the default tailcat network, for tests and unusual
 	// embeddings. Start and Close are called once each.
 	Network Network

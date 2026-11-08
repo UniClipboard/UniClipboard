@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
 const debounce = 150 * time.Millisecond
@@ -86,6 +88,9 @@ func (m *Manager) State() State {
 	}
 	if m.cur.History != m.started.History {
 		s.RestartRequired = append(s.RestartRequired, "history")
+	}
+	if m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) {
+		s.RestartRequired = append(s.RestartRequired, "plugins")
 	}
 	return s
 }

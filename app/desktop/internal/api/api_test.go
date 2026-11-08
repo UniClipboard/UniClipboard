@@ -18,6 +18,7 @@ type fake struct {
 	query                HistoryQuery
 	delID                string
 	delRev               uint64
+	actID, actKey        string
 	err                  error
 }
 
@@ -113,5 +114,23 @@ func TestHistoryRoutesPassQueryAndNeverReturnNull(t *testing.T) {
 	}
 	if rec := do(t, h, "DELETE", "/v1/history/abc?revision=3", ""); rec.Code != 200 || f.delID != "abc" || f.delRev != 3 {
 		t.Fatalf("delete = %d %q %d", rec.Code, f.delID, f.delRev)
+	}
+}
+
+func (f *fake) Actions(context.Context) ([]Action, error) { return nil, f.err }
+func (f *fake) RunAction(_ context.Context, id, key string) (HistoryItem, error) {
+	f.actID, f.actKey = id, key
+	return HistoryItem{ID: "new"}, f.err
+}
+
+func TestActionRoutes(t *testing.T) {
+	f := &fake{}
+	h := Handler(f, config.Static(config.Default()))
+	if rec := do(t, h, "GET", "/v1/actions", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"actions":[]`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	rec := do(t, h, "POST", "/v1/history/abc/actions/builtin.text/upper", "")
+	if rec.Code != 200 || f.actID != "abc" || f.actKey != "builtin.text/upper" || !strings.Contains(rec.Body.String(), `"id":"new"`) {
+		t.Fatalf("%d %s %q %q", rec.Code, rec.Body, f.actID, f.actKey)
 	}
 }

@@ -2,6 +2,8 @@ package host
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"io"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/api"
@@ -11,7 +13,7 @@ import (
 func apiHistory(it engine.HistoryItem, deviceName string) api.HistoryItem {
 	out := api.HistoryItem{
 		ID: string(it.ID), Revision: it.Revision, Kind: string(it.Kind), Origin: string(it.Origin.Kind),
-		DeviceID: string(it.Origin.DeviceID), DeviceName: deviceName,
+		DeviceID: string(it.Origin.DeviceID), DeviceName: deviceName, PluginID: string(it.Origin.PluginID),
 		CreatedAt: it.CreatedAtMs, UpdatedAt: it.UpdatedAtMs, ExpiresAt: it.ExpiresAtMs,
 		Tags: append([]string{}, it.Tags...), TotalBytes: it.TotalBytes, SyncState: string(it.SyncState),
 		Parts:    make([]api.HistoryPart, len(it.Parts)),
@@ -106,4 +108,41 @@ func (n *Node) UpdateHistory(ctx context.Context, id string, u api.HistoryUpdate
 
 func (n *Node) DeleteHistory(ctx context.Context, id string, revision uint64) error {
 	return apiErr0(n.e.DeleteItem(ctx, engine.DeleteItemRequest{ID: engine.HistoryID(id), ExpectedRevision: revision}))
+}
+
+func (n *Node) Actions(ctx context.Context) ([]api.Action, error) {
+	list, err := n.e.ListActions(ctx)
+	if err != nil {
+		return nil, apiErr(err, false)
+	}
+	out := make([]api.Action, 0, len(list))
+	for _, a := range list {
+		out = append(out, api.Action{Key: a.Key, PluginID: string(a.PluginID), Title: a.Title, Accepts: a.Accepts})
+	}
+	return out, nil
+}
+
+// RunAction runs an action on a record and puts the result on the clipboard.
+// The result is a new record; if the clipboard cannot be written it stays in
+// history and can be used from there.
+func (n *Node) RunAction(ctx context.Context, id, key string) (api.HistoryItem, error) {
+	r, err := n.e.RunAction(ctx, engine.RunActionRequest{RequestID: engine.RequestID(randomID()), Key: key, HistoryID: engine.HistoryID(id)})
+	if err != nil {
+		return api.HistoryItem{}, apiErr(err, false)
+	}
+	it, err := n.e.GetItem(ctx, r.HistoryID)
+	if err != nil {
+		return api.HistoryItem{}, apiErr(err, false)
+	}
+	out := apiHistory(it, "")
+	if err := n.clip.UseHistory(ctx, r.HistoryID); err != nil {
+		return out, apiErr(err, false)
+	}
+	return out, nil
+}
+
+func randomID() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }

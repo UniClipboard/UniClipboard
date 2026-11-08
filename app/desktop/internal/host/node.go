@@ -21,6 +21,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/config"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
 // Board is the system clipboard as the desktop host sees it. The production
@@ -79,6 +80,9 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		History: c.HistoryOptions(),
 		// History remembers files by path; they are never copied.
 		ResolveFileRef: func(ref string) engine.FileSource { return pathSource{ref} },
+	}
+	if c.PluginEnabled(builtintext.ID) {
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New()})
 	}
 	e, err := engine.New(ctx, opts)
 	if err != nil {

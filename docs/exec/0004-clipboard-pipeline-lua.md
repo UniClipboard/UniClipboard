@@ -186,3 +186,5 @@ go build -o /tmp/unic-plugin-tailcat-0004 ./plugins/tailcat/cmd/unic-plugin-tail
 按阶段提交，避免将历史落盘、网络迁移和安装器一次合并。每个阶段的契约与实现同批更新；阶段出口未通过不宣告完成。
 
 历史迁移采用可重复执行的增量方案，迁移前保留可恢复备份；不能通过降级程序直接删除新历史表或持久资源。后端迁移先校验旧密钥和新位置，成功标记后再切换装配，失败停止启动并保留恢复材料。安装升级失败保留旧锁、旧版本与用户配置，Lua 热替换失败保留旧实例。运行期后端崩溃依契约退避恢复，不回退到第二条生产网络路径，不重发结果不确定的同步。
+
+进度记录：2026-11-08，进程内 Go 插件已落地：公开包 `plugin`（Spec/Processor/Actor/ProcessContext/ActionContext），`engine.Options.Plugins` 装配，校验 ID/能力/动作声明，Init+Start 在 `New`、逆序 Close 在收尾；内置插件 `builtin.text`（`internal/plugins/builtintext`）自动标注 email/url 并提供 upper/lower/trim/plain 动作；桌面新增 `[plugins.instances."builtin.text"] enabled`（需重启）、`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}`（运行后写入剪贴板）。未做：外部 Go/Lua 插件、`on_error`、Observer 能力、`PluginNotify` 在桌面的展示。

@@ -46,8 +46,11 @@ func FactoryOn(tr Transport) peerbackend.Factory {
 			}
 			tr = t
 		}
-		cfg := env.Config
-		cfg.Transport = tr
+		cfg := session.Config{Identity: env.Identity, Name: env.Name, Host: env.Host, Transport: tr,
+			Logf: env.Logf, Settings: env.Settings, Receiver: env.Receiver}
+		if cfg.Logf == nil {
+			cfg.Logf = func(string, ...any) {} // session logs name devices; never default to the global logger
+		}
 		return &Backend{Engine: session.New(cfg), tr: tr}, nil
 	}
 }

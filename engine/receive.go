@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/clip"
-	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/internal/wire"
 	"github.com/uniclipboard/unic/plugin"
@@ -34,7 +34,7 @@ type receipt struct {
 // receiver adapts the tailcat session layer to the engine's receive path.
 type receiver struct{ e *Engine }
 
-func (r receiver) Admit(peer string, m wire.Clip) (session.Admission, bool) {
+func (r receiver) Admit(peer string, m wire.Clip) (peerbackend.Admission, bool) {
 	req := receiveRequest{backend: BackendTailcat, source: DeviceID(peer), origin: m.Origin, transfer: m.ID, view: m.Hash}
 	for _, p := range m.Parts {
 		req.total += p.Size
@@ -93,10 +93,10 @@ func allowsAny(parts []receivePart, pol BackendSyncPolicy) bool {
 // have arrived (or be arriving) through another backend, and room must be
 // found. Declining makes the backend read and drop the clip. Making room
 // drops the oldest received entries that nobody is using.
-func (e *Engine) admitReceive(req receiveRequest) (session.Admission, bool) {
+func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) {
 	var total int64 = req.total
 	if total == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
-		return session.Admission{}, false
+		return peerbackend.Admission{}, false
 	}
 	srcKey := string(req.source)
 	if req.channel != "" {
@@ -109,15 +109,15 @@ func (e *Engine) admitReceive(req receiveRequest) (session.Admission, bool) {
 	_, arriving := e.dedupInflight[key]
 	e.mu.Unlock()
 	if !ok || arriving || !allowsAny(req.parts, pol) {
-		return session.Admission{}, false
+		return peerbackend.Admission{}, false
 	}
 	if seen, err := e.st.HasDedup(key, time.Now().UnixMilli(), e.res.SyncDedupTTL.Milliseconds()); err != nil || seen {
-		return session.Admission{}, false
+		return peerbackend.Admission{}, false
 	}
 	e.mu.Lock()
 	if _, arriving := e.dedupInflight[key]; arriving { // lost a race with another backend
 		e.mu.Unlock()
-		return session.Admission{}, false
+		return peerbackend.Admission{}, false
 	}
 	e.dedupInflight[key] = struct{}{}
 	e.mu.Unlock()
@@ -130,10 +130,10 @@ func (e *Engine) admitReceive(req receiveRequest) (session.Admission, bool) {
 		release()
 		e.commit(EventResourceWarning)
 		e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
-		return session.Admission{}, false
+		return peerbackend.Admission{}, false
 	}
 	t := receiveTicket{backend: req.backend, source: req.source, channel: req.channel, key: key, reserved: total}
-	return session.Admission{
+	return peerbackend.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
 			defer release() // the committed record, if any, replaces the placeholder

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/identity"
-	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/store"
 )
 
@@ -21,8 +21,8 @@ type tailcatHost struct{ e *Engine }
 
 const tailcatInstance = string(BackendTailcat)
 
-func (h tailcatHost) standing(d store.Device, b store.Binding, found bool) session.Standing {
-	s := session.Standing{DeviceID: d.ID, Name: Device{Name: d.Name, ReportedName: d.ReportedName}.DisplayName()}
+func (h tailcatHost) standing(d store.Device, b store.Binding, found bool) peerbackend.Standing {
+	s := peerbackend.Standing{DeviceID: d.ID, Name: Device{Name: d.Name, ReportedName: d.ReportedName}.DisplayName()}
 	if found {
 		s.Allowed = d.Trust == store.TrustTrusted && b.State == store.BindingAuthorized
 		s.SyncEnabled = b.SyncEnabled
@@ -32,18 +32,18 @@ func (h tailcatHost) standing(d store.Device, b store.Binding, found bool) sessi
 
 // Verify records a device whose proof the session layer checked. It trusts
 // nothing: a new device and its path both start pending.
-func (h tailcatHost) Verify(v session.Verified) (session.Standing, error) {
+func (h tailcatHost) Verify(v peerbackend.Verified) (peerbackend.Standing, error) {
 	e := h.e
 	id := identity.DeviceID(v.PublicKey)
 	prev, perr := e.st.Device(id)
 	known := perr == nil
 	if perr != nil && !errors.Is(perr, store.ErrDeviceNotFound) {
-		return session.Standing{}, perr
+		return peerbackend.Standing{}, perr
 	}
 	if !known || prev.Trust == store.TrustRevoked {
 		ds, err := e.st.Devices()
 		if err != nil {
-			return session.Standing{}, err
+			return peerbackend.Standing{}, err
 		}
 		n := 0
 		for _, d := range ds {
@@ -52,7 +52,7 @@ func (h tailcatHost) Verify(v session.Verified) (session.Standing, error) {
 			}
 		}
 		if n >= maxPendingDevices {
-			return session.Standing{}, errTooManyPending
+			return peerbackend.Standing{}, errTooManyPending
 		}
 	}
 	name := v.Name
@@ -61,13 +61,13 @@ func (h tailcatHost) Verify(v session.Verified) (session.Standing, error) {
 	}
 	d, err := e.st.AddDevice(id, v.PublicKey, name)
 	if err != nil {
-		return session.Standing{}, err
+		return peerbackend.Standing{}, err
 	}
 	changed := !known || d.Revision != prev.Revision
 	pb, pberr := e.st.InstanceBinding(id, tailcatInstance)
 	b, err := e.st.AddBinding(randHex(16), id, tailcatInstance, v.Context)
 	if err != nil {
-		return session.Standing{}, err
+		return peerbackend.Standing{}, err
 	}
 	changed = changed || pberr != nil || pb.Revision != b.Revision
 	endpoint := b.Endpoint
@@ -77,7 +77,7 @@ func (h tailcatHost) Verify(v session.Verified) (session.Standing, error) {
 	ticket := b.Ticket || v.Ticket
 	if string(endpoint) != string(b.Endpoint) || ticket != b.Ticket {
 		if err := e.st.SetBindingEndpoint(b.ID, endpoint, ticket); err != nil {
-			return session.Standing{}, err
+			return peerbackend.Standing{}, err
 		}
 		changed = changed || ticket != b.Ticket
 	}
@@ -88,21 +88,21 @@ func (h tailcatHost) Verify(v session.Verified) (session.Standing, error) {
 	return h.standing(d, b, true), nil
 }
 
-func (h tailcatHost) Standing(id string) (session.Standing, bool) {
+func (h tailcatHost) Standing(id string) (peerbackend.Standing, bool) {
 	d, err := h.e.st.Device(id)
 	if err != nil || d.Trust == store.TrustRevoked {
-		return session.Standing{}, false
+		return peerbackend.Standing{}, false
 	}
 	b, err := h.e.st.InstanceBinding(id, tailcatInstance)
 	return h.standing(d, b, err == nil), err == nil
 }
 
-func (h tailcatHost) Targets() []session.Target {
+func (h tailcatHost) Targets() []peerbackend.Target {
 	bs, err := h.e.st.InstanceBindings(tailcatInstance)
 	if err != nil {
 		return nil
 	}
-	var out []session.Target
+	var out []peerbackend.Target
 	for _, b := range bs {
 		if b.State != store.BindingAuthorized || len(b.Endpoint) == 0 {
 			continue
@@ -111,7 +111,7 @@ func (h tailcatHost) Targets() []session.Target {
 		if err != nil || d.Trust != store.TrustTrusted {
 			continue
 		}
-		out = append(out, session.Target{DeviceID: d.ID, Name: Device{Name: d.Name, ReportedName: d.ReportedName}.DisplayName(), Addr: string(b.Endpoint)})
+		out = append(out, peerbackend.Target{DeviceID: d.ID, Name: Device{Name: d.Name, ReportedName: d.ReportedName}.DisplayName(), Addr: string(b.Endpoint)})
 	}
 	return out
 }

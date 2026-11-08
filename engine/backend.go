@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/wire"
 )
 
@@ -97,7 +97,7 @@ func (tailcatBackend) Kind() TransportKind { return TransportPeerSessions }
 func (b tailcatBackend) Submit(ctx context.Context, v backendView, h backendHost) (bool, *Error) {
 	e := b.e
 	var failure *Error
-	queued := e.core.Submit(func(peers []string) (session.Job, bool) {
+	queued := e.core.Submit(func(peers []string) (peerbackend.Job, bool) {
 		e.mu.Lock()
 		err := e.needNetworkLocked()
 		paused := !e.settings.Value.Sync.Enabled
@@ -105,13 +105,13 @@ func (b tailcatBackend) Submit(ctx context.Context, v backendView, h backendHost
 		switch {
 		case ctx.Err() != nil:
 			failure = ctxErr(ctx.Err())
-			return session.Job{}, false
+			return peerbackend.Job{}, false
 		case err != nil:
 			failure = err
-			return session.Job{}, false
+			return peerbackend.Job{}, false
 		case paused:
 			failure = newErr(CodeSyncDisabled, "sync is paused")
-			return session.Job{}, false
+			return peerbackend.Job{}, false
 		}
 		keys := make([]targetKey, len(peers))
 		for i, p := range peers {
@@ -119,10 +119,10 @@ func (b tailcatBackend) Submit(ctx context.Context, v backendView, h backendHost
 		}
 		if rerr := h.Register(keys); rerr != nil {
 			failure = rerr
-			return session.Job{}, false
+			return peerbackend.Job{}, false
 		}
-		return session.Job{
-			Report: func(peer string, st session.TargetState, cause error) {
+		return peerbackend.Job{
+			Report: func(peer string, st peerbackend.TargetState, cause error) {
 				h.Report(targetKey{BackendTailcat, TargetDevice, peer}, targetStateOf(st), cause)
 			},
 			Send: func(ctx context.Context, w *wire.Conn, origin string) (bool, error) {
@@ -136,15 +136,15 @@ func (b tailcatBackend) Submit(ctx context.Context, v backendView, h backendHost
 	return true, nil
 }
 
-func targetStateOf(st session.TargetState) TargetState {
+func targetStateOf(st peerbackend.TargetState) TargetState {
 	switch st {
-	case session.Sending:
+	case peerbackend.Sending:
 		return TargetSending
-	case session.Sent:
+	case peerbackend.Sent:
 		return TargetSent
-	case session.Superseded:
+	case peerbackend.Superseded:
 		return TargetSuperseded
-	case session.Failed:
+	case peerbackend.Failed:
 		return TargetFailed
 	}
 	return TargetQueued

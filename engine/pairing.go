@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/identity"
+	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/rendezvous"
-	"github.com/uniclipboard/unic/internal/session"
 )
 
 // pairTimeout bounds one pairing attempt (dial plus handshake).
@@ -62,15 +62,15 @@ func mapNetErr(err error) *Error {
 		return ee
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return ctxErr(err)
-	case errors.Is(err, session.ErrSelf):
+	case errors.Is(err, peerbackend.ErrSelf):
 		return newErr(CodeInvalidArgument, "that is this device itself")
-	case errors.Is(err, session.ErrBadAddress):
+	case errors.Is(err, peerbackend.ErrBadAddress):
 		return newErr(CodeInvalidArgument, "that is not a valid pairing ticket")
-	case errors.Is(err, session.ErrProtocol):
+	case errors.Is(err, peerbackend.ErrProtocol):
 		return newErr(CodeProtocolMismatch, "the other device uses an incompatible protocol version")
-	case errors.Is(err, session.ErrIdentity), errors.Is(err, session.ErrBadProof):
+	case errors.Is(err, peerbackend.ErrIdentity), errors.Is(err, peerbackend.ErrBadProof):
 		return newErr(CodeIdentityMismatch, "the other device is not the one the ticket names")
-	case errors.Is(err, session.ErrNotRunning):
+	case errors.Is(err, peerbackend.ErrNotRunning):
 		return newErr(CodeInvalidState, "the engine is not running")
 	}
 	if ce, ok := codeFailure(err); ok {
@@ -295,10 +295,10 @@ func (e *Engine) JoinByCode(ctx context.Context, req JoinRequest) (OperationID, 
 	if !ok {
 		return "", newErr(CodeIncomplete, "enter all 6 digits of the code")
 	}
-	return e.startPairing(req.RequestID, "join\x00"+code, PhaseResolving, func(ctx context.Context, op OperationID) (session.Standing, bool, error) {
+	return e.startPairing(req.RequestID, "join\x00"+code, PhaseResolving, func(ctx context.Context, op OperationID) (peerbackend.Standing, bool, error) {
 		t, err := e.rv().Resolve(ctx, code)
 		if err != nil {
-			return session.Standing{}, false, err
+			return peerbackend.Standing{}, false, err
 		}
 		e.updateOp(op, func(o *Operation) { o.Phase = PhaseConnecting })
 		return e.joinTicket(ctx, t)
@@ -320,7 +320,7 @@ func (e *Engine) JoinByTicket(ctx context.Context, req JoinTicketRequest) (Opera
 	if !ok {
 		return "", newErr(CodeInvalidArgument, "that is not a valid pairing ticket")
 	}
-	return e.startPairing(req.RequestID, "ticket\x00"+t.Encode(), PhaseConnecting, func(ctx context.Context, _ OperationID) (session.Standing, bool, error) {
+	return e.startPairing(req.RequestID, "ticket\x00"+t.Encode(), PhaseConnecting, func(ctx context.Context, _ OperationID) (peerbackend.Standing, bool, error) {
 		return e.joinTicket(ctx, t)
 	})
 }
@@ -329,12 +329,12 @@ func (e *Engine) JoinByTicket(ctx context.Context, req JoinTicketRequest) (Opera
 // ticket names. Only the tailcat backend handles peer sessions today; a ticket
 // for another transport has no compatible backend and is refused, never
 // handed to tailcat.
-func (e *Engine) joinTicket(ctx context.Context, t rendezvous.Ticket) (session.Standing, bool, error) {
+func (e *Engine) joinTicket(ctx context.Context, t rendezvous.Ticket) (peerbackend.Standing, bool, error) {
 	if t.Transport != rendezvous.TransportPeerSessions {
-		return session.Standing{}, false, newErr(CodeUnsupported, "no installed sync backend can use this ticket")
+		return peerbackend.Standing{}, false, newErr(CodeUnsupported, "no installed sync backend can use this ticket")
 	}
 	if string(t.Device) == string(e.ident.Public()) {
-		return session.Standing{}, false, session.ErrSelf
+		return peerbackend.Standing{}, false, peerbackend.ErrSelf
 	}
 	return e.core.Connect(ctx, string(t.Access), identity.DeviceID(t.Device), t.Token)
 }
@@ -342,7 +342,7 @@ func (e *Engine) joinTicket(ctx context.Context, t rendezvous.Ticket) (session.S
 // startPairing registers the operation (or finds the one this RequestID made)
 // and runs work in the background. The sensitive parameter is only hashed.
 func (e *Engine) startPairing(req RequestID, param string, phase Phase,
-	work func(ctx context.Context, op OperationID) (session.Standing, bool, error)) (OperationID, error) {
+	work func(ctx context.Context, op OperationID) (peerbackend.Standing, bool, error)) (OperationID, error) {
 
 	hash := sha256.Sum256([]byte(param))
 	e.mu.Lock()

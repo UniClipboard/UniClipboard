@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/clip"
-	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/wire"
 )
 
@@ -182,7 +182,7 @@ func (e *Engine) sendFailure(cause error) *Error {
 	switch {
 	case errors.As(cause, &ee):
 		return ee
-	case errors.Is(cause, session.ErrSessionClosed):
+	case errors.Is(cause, peerbackend.ErrSessionClosed):
 		if e.runtime == RuntimeSuspended {
 			return newErr(CodeSuspended, "the host suspended networking during the transfer")
 		}

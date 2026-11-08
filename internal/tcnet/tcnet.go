@@ -102,7 +102,7 @@ func (t *Transport) Addr() string {
 
 func (t *Transport) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	if _, err := tailcat.ParseAddr(tailcat.Addr(addr)); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadAddress, err)
+		return nil, ErrBadAddress
 	}
 	t.mu.Lock()
 	c := t.clients[addr]
@@ -122,7 +122,7 @@ func (t *Transport) Dial(ctx context.Context, addr string) (net.Conn, error) {
 func (t *Transport) Binding(addr string) ([]byte, error) {
 	ci, err := tailcat.ParseAddr(tailcat.Addr(addr))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadAddress, err)
+		return nil, ErrBadAddress
 	}
 	raw := ci.ServerPublic.Raw32()
 	return append([]byte("unic/tailcat/1\x00"), raw[:]...), nil

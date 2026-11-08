@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/identity"
+	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/rendezvous"
-	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/plugin"
 )
@@ -78,7 +78,7 @@ type Engine struct {
 	closedCh chan struct{} // closed when Close is complete
 
 	trDone        chan struct{} // closed when tr.Start returned
-	events        <-chan session.Event
+	events        <-chan peerbackend.Event
 	evCancel      func()
 	evStop        chan struct{}
 	evDone        chan struct{}
@@ -237,11 +237,11 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 			return closeAll(newErr(CodeUnavailable, "cannot prepare the backend directory"))
 		}
 		e.instLocks = append(e.instLocks, ilock)
-		core, perr := opts.Peer(PeerEnv{Store: st, Dir: idir, Config: session.Config{
+		core, perr := opts.Peer(PeerEnv{Store: st, Dir: idir,
 			Identity: ident, Name: defName, Host: tailcatHost{e}, Receiver: receiver{e},
 			Logf:     func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
 			Settings: settingsSource{e},
-		}})
+		})
 		if perr != nil || core == nil {
 			ilock.release()
 			return closeAll(newErr(CodeUnavailable, "cannot prepare the network"))
@@ -264,11 +264,11 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 // settingsSource feeds the current settings to the session.
 type settingsSource struct{ e *Engine }
 
-func (s settingsSource) Current() session.Settings {
+func (s settingsSource) Current() peerbackend.Settings {
 	s.e.mu.Lock()
 	defer s.e.mu.Unlock()
 	v := s.e.settings.Value
-	return session.Settings{DeviceName: strings.TrimSpace(v.DeviceName), RendezvousURL: strings.TrimRight(v.RendezvousURL, "/"),
+	return peerbackend.Settings{DeviceName: strings.TrimSpace(v.DeviceName), RendezvousURL: strings.TrimRight(v.RendezvousURL, "/"),
 		MaxFileBytes: v.Limits.MaxFileBytes, MaxTotalBytes: v.Limits.MaxTotalBytes, SyncEnabled: v.Sync.Enabled}
 }
 

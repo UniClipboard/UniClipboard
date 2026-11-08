@@ -18,7 +18,7 @@ func TestPublicEngineHasNoDesktopDependencies(t *testing.T) {
 		t.Skipf("go list: %v", err)
 	}
 	for _, dep := range strings.Fields(string(out)) {
-		for _, banned := range []string{"/app/", "egoist/mygo", "fsnotify", "BurntSushi/toml"} {
+		for _, banned := range []string{"/app/", "egoist/mygo", "fsnotify", "BurntSushi/toml", "internal/session", "internal/tcnet"} {
 			if strings.Contains(dep, banned) {
 				t.Errorf("the public engine depends on %s", dep)
 			}

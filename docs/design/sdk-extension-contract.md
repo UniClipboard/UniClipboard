@@ -1,5 +1,9 @@
 # 0004 / 0007 SDK 类型与错误契约
 
+> builtin 装配修订：默认 `builtin.tailcat` 位于 `internal/plugins/builtintext/`，由宿主显式创建进程内实例，与 `builtin.text` 独立。下文 PluginProcesses/PluginProcessSpec 仅用于外部程序；builtin 同步实例装配和 SyncBackend/SyncHost 进程内接口仍须补齐，不能要求 builtin 提供可执行路径、摘要或 RPC 握手。两种装配遵守同一设备授权与后端业务契约。
+
+> 0008 扩展：[设备契约](device-contract.md)定义统一设备、候选、配对操作与设备后端关联。对应具体 DTO/枚举、实例标识和 CAS 接口尚未定义，下文代码不是其完整类型规范；新增查询、关联审批/启停/移除和设备全路径撤销时须同批补齐类型、错误和测试，无旧 tailcat/SDK 兼容要求。
+
 - 状态：目标定义完成，待实现；本文不是已有可调用 API。现有实现基线见[测试记录](../exec/baselines/0004-2026-11-07.md)。
 - 日期：2026-11-08（取消自动写回，改为 Action）。
 - 公开业务类型属于 `github.com/uniclipboard/unic/engine`；插件进程 SDK 属于 `github.com/uniclipboard/unic/plugin`，不依赖 engine。行为分别遵循[提交](pipeline-contract.md)、[历史](history-contract.md)、[Action](clipboard-action-contract.md)、[插件](plugin-contract.md)及[0007](decisions/0007-multiple-sync-backends.md)。本文补齐具体字段、可选值与错误映射，不取代它们的状态机。
@@ -8,9 +12,9 @@
 
 以下 Go 类型是目标声明，分阶段加入 engine；未重复列出的既有类型保持原定义。不得在公开签名、字段、导出泛型参数中出现 internal、SQLite、tailcat、mygo 或 VM 类型。公开 engine 与 plugin 的同义 DTO 独立定义并在 Engine 内转换，不使用类型别名形成反向依赖。
 
-新枚举使用各自的命名 string 类型，不能复用网络 Operation 的 Phase 或入参 Origin。ID 均不透明；PluginID 同时是首版插件实例 ID 和后端 ID，不再引入一个意义相同的 BackendID 类型。实例不支持同一 ID 多次装配；若未来需要同一实现多配置实例，另定标识迁移。
+新枚举使用各自的命名 string 类型，不能复用网络 Operation 的 Phase 或入参 Origin。ID 均不透明；0008 目标要求插件实现标识与配置实例标识分离，同实现可有多个实例；后端策略/结果/设备关联按实例 ID 定位。下文 PluginID 同时用作实例与后端 ID 的类型草案尚须修订，不能据此限制新架构，也不建立旧标识兼容层。
 
-nil 指针表示字段尚无值/不适用，不能用零枚举猜测状态；非空字段必须是已定义枚举，不能传空字符串。切片、映射、指针及嵌套 Config 全部深拷贝。Go SDK 不强制经过 JSON；对外新增 JSON 适配使用 snake_case，uint64 修订/序号按十进制字符串编码，时间为 Unix 毫秒 int64；RPC 仍按自身 Schema 编码字节/时间，不复用 SDK JSON 标签。旧桌面 `/v1` 形状由兼容适配保持。
+nil 指针表示字段尚无值/不适用，不能用零枚举猜测状态；非空字段必须是已定义枚举，不能传空字符串。切片、映射、指针及嵌套 Config 全部深拷贝。Go SDK 不强制经过 JSON；对外新增 JSON 适配使用 snake_case，uint64 修订/序号按十进制字符串编码，时间为 Unix 毫秒 int64；RPC 仍按自身 Schema 编码字节/时间，不复用 SDK JSON 标签。桌面 API 与公开 SDK 同批更新，不保留旧形状兼容适配。
 
 ## 2. 提交与 Action DTO
 
@@ -82,7 +86,7 @@ BackendIDs=nil 表示全部启用后端；非 nil 空切片非法，JSON 适配�
 
 既有 ActiveApply 保留 ContentID，新增 `Kind ApplyKind`（received/history）、`HistoryID HistoryID`，已有 ReceiptID 改为按 Kind 可空。只有对应源 ID 非空；历史删除后仍可保留关联 ID。ApplyTicket 的 Token/ContentID/LeaseID 不变，不在 State 中加入租约。ReportApplyResult 的 ErrorCode 沿用稳定码输入，不接收原始平台错误文本。
 
-发送 TargetStatus 的目标结构如下；ApplyKind 和 SyncTargetKind 都是独立命名 string 类型。TargetKind 为 device/repository，TargetID 是不透明 string：device 时等于 DeviceID 的字符串，repository 时为实例内稳定仓库标识，禁止用 URL/凭据作 ID。PeerID 仅 device 时非空以便兼容旧展示。没有新增 canceled 目标枚举，取消仍以 failed + cancelled/suspended 等稳定错误表达。
+发送 TargetStatus 的目标结构如下；ApplyKind 和 SyncTargetKind 都是独立命名 string 类型。TargetKind 为 device/repository，TargetID 是不透明 string：device 时等于 DeviceID 的字符串，repository 时为实例内稳定仓库标识，禁止用 URL/凭据作 ID。目标展示直接使用 TargetKind/TargetID，PeerID 冗余字段在接口修订时移除。没有新增 canceled 目标枚举，取消仍以 failed + cancelled/suspended 等稳定错误表达。
 
 ```go
 type ApplyKind string

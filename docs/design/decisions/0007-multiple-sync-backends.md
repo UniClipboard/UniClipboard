@@ -1,5 +1,7 @@
 # 0007 · 多同步后端与分层同步策略
 
+> 0008 补充：[统一设备与后端关联](0008-device-identity-and-backend-bindings.md) 要求实现标识与配置实例分离，设备级信任和关联授权分别校验；目标/策略按实例区分。无旧 tailcat 身份/地址/配对记录及配置兼容要求，原密钥导入要求取消，详见[装配契约](../backend-migration-contract.md)。本文件实现登记是阶段事实，不能视为 0008 已实现。
+
 - 状态：已采纳；Engine 内部多后端抽象与派发已实现（见文末“实现登记”），per-backend 设置、热更新、跨后端去重与外部后端装配待实现。
 - 日期：2026-11-07。
 - 关联：[0002 配置](0002-config-file.md)、[0004 流水线与插件](0004-clipboard-pipeline-lua.md)、[提交契约](../pipeline-contract.md)、[同步后端契约](../sync-backend-contract.md)。
@@ -10,7 +12,7 @@
 “同步到其他设备”是 Engine 统一提供的能力，各同步插件是该能力的实现。最终发送必须同时满足：全局允许、后端实例启用、Item/Policy 允许、该后端策略允许、目标授权和资源/协议限制。任何插件不能扩大上一层授予的权限。
 
 1. `sync.enabled` 是唯一全局内容同步开关。false 时所有后端停止自动/手动内容发送、接收和远端自动应用，不得借轮询、重试、离线队列或其他入口继续传输；本机捕获、历史、处理与本机 Action/历史使用继续工作。
-2. `plugins.instances.<id>.enabled` 控制单个插件实例。可以同时启用 P2P、WebDAV 等多个 Go sync_backend，默认发行版仍只提供 sync.tailcat；0 个后端为本机模式。启用列表变化仍需重启，全局关闭不等于卸载或必须杀掉插件进程。
+2. `plugins.instances.<id>.enabled` 控制单个插件实例。可以同时启用 P2P、WebDAV 等多个 Go sync_backend，默认发行版仍只提供 builtin.tailcat；0 个后端为本机模式。启用列表变化仍需重启，全局关闭不等于卸载或必须杀掉插件进程。
 3. 每个后端有独立的 `sync` 标准策略：`text`、`images`、`files`、`auto_file_max_bytes`。这部分由 Engine 解析、校验与执行，不由插件自行决定是否遵守；连接地址、凭据引用等实现专属选项仍在 `config`，不进入普通日志和事件。
 
 全局开关关闭是立即的授权撤销：取消尚未开始和正在进行的内容传输/接收，清理半成品和配额；已发出的字节或已写入远端存储的对象不能撤回。需要终止失步的 P2P 内容连接时允许断开后重建控制连接。配对、健康检查及连接维护可保留，WebDAV 内容上传/下载/内容轮询必须停止。切回 true 不自动补发关闭期间或已失败的提交，不重新应用旧 Received。
@@ -22,12 +24,12 @@
 enabled = true
 
 [plugins]
-order = ["sync.tailcat", "example.webdav"]
+order = ["builtin.tailcat", "example.webdav"]
 
-[plugins.instances."sync.tailcat"]
+[plugins.instances."builtin.tailcat"]
 enabled = true
 events = []
-[plugins.instances."sync.tailcat".sync]
+[plugins.instances."builtin.tailcat".sync]
 text = true
 images = true
 files = true
@@ -54,11 +56,11 @@ auto_file_max_bytes = "10MB"
 
 同 ID 后端的标准策略允许热更新，需 CAS 原子替换并按各后端传播；坏配置保留上一有效值。类型/阈值/limits 影响之后开始的传输，普通策略变化不追溯已开始传输；全局关闭、撤销信任和挂起属于立即取消。重启项仍是实例启用、顺序、Go 二进制及后端种类变更。
 
-## 3. Engine 设置与旧配置迁移
+## 3. Engine 设置与严格配置
 
 目标 `Settings.Sync` 只保留 Enabled；`Settings.BackendPolicies map[PluginID]BackendSyncPolicy` 保存 Engine 生效的各后端标准策略，BackendSyncPolicy 为 Text/Images/Files/AutoFileMaxBytes。只允许引用已装配的 sync_backend；省略时取默认值，返回 SettingsState 时给出完整有效映射，DTO 深拷贝。实例安装/启用描述仍由插件装配设置管理，不让普通处理插件改后端授权。
 
-旧 `sync.text/images/files` 不再作为第二套全局过滤器。迁移期桌面启动可读取它们，映射为 sync.tailcat 对应的标准策略；与新的 tailcat 同名策略同时存在则拒绝配置，防止默默选一份。只影响 tailcat，不复制给后来安装的后端。新模板和 config 输出只写新形状；原始文件不静默重写，旧键运行期变更仍走同样映射及错误规则。后续删除旧键兼容须另记版本，不在本次偷偷删除。
+仅接受新的实例标准策略；旧 `sync.text/images/files` 为未知键，启动和热加载均拒绝，不提供映射或兼容读取。坏配置保留上一份有效值；模板、config 输出、SDK、桌面和测试使用新形状。
 
 Engine 的旧 SyncSettings.Text/Images/Files 在迁移提交中显式弃用/替换，所有 SDK 调用者、桌面适配、测试和契约同批调整；不能宣称原 Go 结构签名无需变化。当前 v0.1 已实现行为仍见 Engine 实现登记。
 
@@ -80,13 +82,13 @@ SubmissionResult 增加按 BackendID 排序的 BackendResults，各项含 Backen
 
 SyncBackend 必须声明 TransportKind=peer_sessions 或 object_store；初始 tailcat 属于 peer_sessions。通用边界包含生命周期、标准策略快照、单目标传输、准入与流式内容；P2P 的地址/配对/hello/session_token 扩展只授予 peer_sessions，不能强迫 WebDAV 实现虚假的设备连接和 PairingAddress。
 
-[同步后端业务契约](../sync-backend-contract.md) 中现有连接 DTO 是 P2P profile 的目标定义；在该 profile 内沿用 wire v2。object_store 的远端对象格式、设备身份验证/授权、内容保护、对象命名、游标及完成语义须在 WebDAV 实现前补齐；不能让“共享一个 WebDAV 目录”自动等于信任其中所有内容。普通 HTTP 成功不代表其他设备已接收/应用。
+[同步后端业务契约](../sync-backend-contract.md) 中现有连接 DTO 是 P2P profile 的目标定义；该 profile 的身份/关联与设备协议按 0008 修订，不要求旧 wire v2 互通。object_store 的远端对象格式、设备身份验证/授权、内容保护、对象命名、游标及完成语义须在 WebDAV 实现前补齐；不能让“共享一个 WebDAV 目录”自动等于信任其中所有内容。普通 HTTP 成功不代表其他设备已接收/应用。
 
-每个后端独立进程、binding_id、状态修订、短期 token 和资源目录，SyncState 只含该后端的标准策略及必要目标信息；不同 binding 的句柄不可交叉使用。Engine 持有全局授权，撤销一个设备时需在所有相关后端取得撤销屏障或回收不响应的进程；只停掉 P2P 不能算撤销成功。全局 MaxStoredBytes 覆盖所有后端共享的内容与接收预留，不给每个插件复制一份无限预算。
+每个后端实例独立运行对象、binding_id、状态修订、短期 token 和资源目录；builtin tailcat 在宿主进程内，外部插件每实例独立进程。SyncState 只含该后端的标准策略及必要目标信息；不同 binding 的句柄不可交叉使用。Engine 持有全局授权，撤销一个设备时需在所有相关后端取得撤销屏障；外部实例可回收不响应的进程，builtin 须关闭端点并等待任务退出，不能确认则停止同步服务并报告失败；只停掉 P2P 不能算撤销成功。全局 MaxStoredBytes 覆盖所有后端共享的内容与接收预留，不给每个插件复制一份无限预算。
 
-多个启用后端按既有启动语义全部成功后 Engine 才算启动成功；其中一个启动失败逆序清理，不能静默变成另一个后端成功的降级模式。运行期单后端崩溃只使其任务失败并按自己的预算重启，其他后端与本机历史继续工作。同步后端数量按创建选项 MaxSyncBackends 限制，默认 8、合法 1..32，0 个启用后端仍允许本机模式。
+多个启用后端按既有启动语义全部成功后 Engine 才算启动成功；其中一个启动失败逆序清理，不能静默变成另一个后端成功的降级模式。运行期单实例可恢复故障只使其任务失败并按自己的预算恢复，其他后端与本机历史继续工作。外部后端进程崩溃按预算重启；builtin 的进程级崩溃会影响整个宿主。同步后端数量按创建选项 MaxSyncBackends 限制，默认 8、合法 1..32，0 个启用后端仍允许本机模式。
 
-插件目录、锁、默认装配与 Network 测试入口的具体迁移方案见[后端迁移契约](../backend-migration-contract.md)。只有 sync.tailcat 导入旧 tc.* 身份，程序版本升级复用私有数据，不把旧密钥复制给其他后端。
+插件目录、锁、身份初始化、默认装配与 Network 测试入口见[装配契约](../backend-migration-contract.md)。Engine 新建统一设备身份，各实例新建自己的传输身份，不导入旧 tc.*；程序版本升级复用实例私有数据，不把密钥复制给其他实例。
 
 ## 6. 跨后端去重与防回环
 
@@ -104,26 +106,26 @@ Engine 在接收准入时按上述去重键取得并发占位；一个副本处�
 - 两个假后端分别启用/禁用、按类型过滤、文件阈值等于/超过边界；同一 50MB 文件按 100MB/10MB 策略独立决策，手动只跳过阈值。
 - 处理与历史只执行一次；多后端结果、共享资源引用、目标替换与失败隔离正确；总配额不因多实例放大。
 - 同一传输同一视图经两个后端并发到达只 commit 一次，不同类型视图不被错误吞掉，原始两次提交不被内容去重吞掉，重启/失败占位/去重过期边界明确。
-- 旧配置映射、混用报错、坏配置保留、策略热加载/实例重启项，以及旧 SDK/桌面兼容迁移有测试。
+- 旧配置键拒绝、坏配置保留、策略热加载/实例重启项，以及 SDK/桌面新接口有测试。
 - 首版实际交付 tailcat 与多假后端契约测试；WebDAV 具体实现不在本决策中冒充完成，但接口不得固化成仅一个 P2P 后端。
 
 ## 实现登记（2026-11-08）
 
 已实现（`engine/backend.go`，有 `backend_test.go` 用多个假后端验收）：
 
-- 包内私有 `syncBackend` 接口（ID/Kind/Policy/Submit）与 `backendHost`（Register/Report）；tailcat 是包装现有 session 的内置适配器 `sync.tailcat`。接口在 P4 的 RPC 能承载前不公开。
+- 包内私有 `syncBackend` 接口（ID/Kind/Policy/Submit）与 `backendHost`（Register/Report）；tailcat 是包装现有 session 的内置适配器 `builtin.tailcat`。接口在 P4 的 RPC 能承载前不公开。
 - 提交处理一次、历史 commit 一次，再按后端独立构造发送视图：类型过滤、`auto_file_max_bytes`（自动提交受限，显式提交越过）、大小硬限制；所有后端共用同一个 TransferID/时间戳（`backendView.id`）。
 - `SubmissionResult.BackendResults`（按 BackendID 排序）与聚合 `SyncDisposition`：任一 queued → queued；否则 failed > disabled > no_targets > policy_filtered；全局关闭 → disabled，Policy 禁发 → not_requested，无后端 → 新增 `no_backend`。单个后端失败/跳过不影响其他后端和 commit。
 - 单个聚合 Operation 汇总各后端目标；`TargetStatus` 新增 `BackendID/TargetKind/TargetID`（`PeerID` 仅 device，保持兼容）；注册窗口内（后端仍可能登记目标）Operation 不会提前 completed。
 - `CommitRequest.BackendIDs`：省略 = 全部；空列表、未知、重复 → invalid_argument；规范化排序后参与幂等比较。
 - 旧 `SubmitContent`/观察路径在只有 tailcat 时行为不变（既有全部测试通过）。
 
-**策略迁移已完成（2026-11-08，不保留兼容）**：`Settings.Sync` 只剩 `Enabled`；新增 `Settings.BackendPolicies map[PluginID]BackendSyncPolicy`（Text/Images/Files/AutoFileMaxBytes），由 Engine 持有并执行，`New`/`UpdateSettings` 校验（未知后端、阈值越界 → invalid_argument）并补全默认，读取返回完整深拷贝，CAS 热更新对之后的提交与传输前复核生效；发送、接收过滤、能力限制（`text_disabled` 等：只有所有后端都不允许某类型才受限，无后端时不限制）和 `appliable` 都读它。桌面 `config.toml` 删除了 `sync.text/images/files`，改为 `[plugins.instances."sync.tailcat".sync]`（省略的布尔项为 true，`auto_file_max_bytes` 默认 0），旧键现在是未知键错误，不做映射。后端接口不再有 `Policy()`，策略归 Engine。
+**策略迁移已完成（2026-11-08，不保留兼容）**：`Settings.Sync` 只剩 `Enabled`；新增 `Settings.BackendPolicies map[PluginID]BackendSyncPolicy`（Text/Images/Files/AutoFileMaxBytes），由 Engine 持有并执行，`New`/`UpdateSettings` 校验（未知后端、阈值越界 → invalid_argument）并补全默认，读取返回完整深拷贝，CAS 热更新对之后的提交与传输前复核生效；发送、接收过滤、能力限制（`text_disabled` 等：只有所有后端都不允许某类型才受限，无后端时不限制）和 `appliable` 都读它。桌面 `config.toml` 删除了 `sync.text/images/files`，改为 `[plugins.instances."builtin.tailcat".sync]`（省略的布尔项为 true，`auto_file_max_bytes` 默认 0），旧键现在是未知键错误，不做映射。后端接口不再有 `Policy()`，策略归 Engine。
 
 **接收与去重已完成（2026-11-08）**：后端无关的 `admitReceive`（`engine/receive.go`）在读正文前检查运行状态、全局开关、wire origin 等于认证来源、本后端策略至少放行一个 part、跨后端去重键 `(认证来源, TransferID, ViewHash)`（实例内占位 + 持久 `sync_dedup`，默认 10 万条/7 天，`ResourcePolicy.MaxSyncDedupEntries/SyncDedupTTL`）和容量；成功记录与历史同事务，persist=false 也记；不同视图独立接收；Received 记录所属后端，应用时按该后端策略判断。发布前被回滚则一并删除去重记录。
 
 仍是过渡形态、未实现：
 
-- 实例启用/顺序/`events` 等插件装配配置（`[plugins].order`、`.enabled` 仍未支持，桌面配置只接受 `[plugins.instances."sync.tailcat".sync]`）。
+- 实例启用/顺序/`events` 等插件装配配置（`[plugins].order`、`.enabled` 仍未支持，桌面配置只接受 `[plugins.instances."builtin.tailcat".sync]`）。
 - 历史条目的各后端同步状态摘要（`SyncState` 仍恒为 not_requested）。
 - `MaxSyncBackends`、撤销屏障、对象存储（`repository` 目标）实际协议与外部进程后端。

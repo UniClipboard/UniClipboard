@@ -11,7 +11,7 @@
 
 ## 0007 目标扩展（待实现）
 
-[0007](0007-multiple-sync-backends.md) 将目标配置改为全局 `sync.enabled` + 每同步插件的 `.sync` 策略，支持多个后端独立的 text/images/files 与 auto_file_max_bytes。**已实现（2026-11-08）**：`sync.text/images/files` 已删除（出现即“未知键”错误，不做兼容映射），类型开关与自动文件阈值改为 `[plugins.instances."sync.tailcat".sync]`；桌面目前只接受 `sync.tailcat` 这一个实例。全局关闭按 0007 立即取消所有后端在途内容同步；下文“不追溯在途”只继续适用于普通限额和后端策略变更。
+[0007](0007-multiple-sync-backends.md) 将目标配置改为全局 `sync.enabled` + 每同步插件的 `.sync` 策略，支持多个后端独立的 text/images/files 与 auto_file_max_bytes。**已实现（2026-11-08）**：`sync.text/images/files` 已删除（出现即“未知键”错误，不做兼容映射），类型开关与自动文件阈值改为 `[plugins.instances."builtin.tailcat".sync]`；桌面目前只接受 `builtin.tailcat` 这一个实例。全局关闭按 0007 立即取消所有后端在途内容同步；下文“不追溯在途”只继续适用于普通限额和后端策略变更。
 
 ## 可配置项
 
@@ -23,8 +23,8 @@
 | `limits.max_file_bytes` | 2GB | 之后的新传输;发送与接收都按它检查 |
 | `limits.max_total_bytes` | 4GB | 同上 |
 | `sync.enabled` | true | 立即(false = 不发不收,连接保留) |
-| `plugins.instances."sync.tailcat".sync.text` / `.images` / `.files` | true | 立即(之后开始的传输;接收同样按它过滤) |
-| `plugins.instances."sync.tailcat".sync.auto_file_max_bytes` | 0 | 立即;只限制自动发送,任一文件超过则该次自动提交整体不发,手动发送不受限;0 = 无额外限制 |
+| `plugins.instances."builtin.tailcat".sync.text` / `.images` / `.files` | true | 立即(之后开始的传输;接收同样按它过滤) |
+| `plugins.instances."builtin.tailcat".sync.auto_file_max_bytes` | 0 | 立即;只限制自动发送,任一文件超过则该次自动提交整体不发,手动发送不受限;0 = 无额外限制 |
 | `history.max_items` | 10000 | **需重启**(状态里列为 restart_required `history`);范围 1..1000000 |
 | `history.max_bytes` | 4GiB | 同上;只统计历史自己存储的字节,按路径引用的文件不计;不得超过 8GiB |
 | `history.default_ttl_days` | 0 | 同上;0 = 不自动过期,仅作没有处理器显式期限时的默认 |

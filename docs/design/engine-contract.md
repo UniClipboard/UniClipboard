@@ -1,5 +1,7 @@
 # Engine 公共契约 v0.1
 
+> 2026-11-08 目标修订：[0008](decisions/0008-device-identity-and-backend-bindings.md) 与[设备契约](device-contract.md) 统一设备身份、设备级信任与按后端实例授权。下文 Peer 单 Connection、配对请求/结果、ID 指纹及旧实现登记不构成完整目标 API；须同批替换 SDK/宿主/测试，不保留兼容层。普通设备列表每设备一行并展开多个关联，秘密仍仅显式导出。
+
 - 状态：设计稿，正在分阶段实现；实现进度见第 14 节，未列为已实现的部分当前代码尚未符合本规范。
 - 日期：2026-11-07
 - 依据：[0003 独立 Engine](decisions/0003-engine-sdk.md)、[0001 配对](decisions/0001-pairing-code.md)、[0002 配置](decisions/0002-config-file.md)。
@@ -32,9 +34,9 @@
 
 三类入口的状态转换、Stop/策略与 commit 的序列化屏障、Received 槽位与成功去重记录的发布、引用/配额交接及重启边界见[流水线契约 §7](pipeline-contract.md#7-状态转换与资源交接)。公开 submission Phase 不增加内部准备状态；接收完成、应用和历史删除不能混作一个终态。
 
-### 后端装配与密钥迁移扩展（待实现）
+### 后端装配与身份初始化扩展（待实现）
 
-[迁移契约](backend-migration-contract.md) 已确定旧 tc.* 密钥/完整地址的分步激活、独立数据目录/运行锁和失败恢复。P5 同批移除公开 Network/Options.Network，新增 PluginProcesses/Plugins；SDK 零装配改为本机模式，桌面宿主显式装配发行版 tailcat。下文默认 tailcat、Network 注入和 DataDir 即可联网的说明只描述现有实现，不可据此保留第二条生产网络路径。运行期身份只由后端私有文件提供，后端不得打开 Engine SQLite。
+按[装配契约](backend-migration-contract.md) 生成并持久化 Engine 设备身份与各实例独立传输身份；不导入旧 tc.*，不保留旧地址或配对记录。Engine 持有全局设备/信任与关联；插件持有传输凭据，不能取得设备私钥。移除公开 Network 并显式装配程序，零后端为本机模式，默认 tailcat 由桌面发行清单提供。
 
 ### Lua 运行时扩展（待实现）
 
@@ -46,9 +48,9 @@
 
 ### 插件与同步后端扩展（待实现）
 
-独立后端迁移后的状态快照、审批与会话 token、传输前授权、接收准入/流和撤销生效屏障见[同步后端业务契约](sync-backend-contract.md)。该扩展要求撤销成功前取得后端确认或完成进程回收；下文既有 Unpair 的异步资源关闭说明只描述当前进程内实现。
+插件化后端的状态快照、审批与会话 token、传输前授权、接收准入/流和撤销生效屏障见[同步后端业务契约](sync-backend-contract.md)。该扩展要求撤销成功前取得后端确认；外部后端可终止回收进程，builtin 须关闭端点并确认任务退出，不能确认则停止同步服务并报告失败；下文既有 Unpair 的异步资源关闭说明只描述当前进程内实现。
 
-[插件契约 v0.1](plugin-contract.md) 定义 Go/Lua 统一插件与最小模板。Go 插件通过独立常驻进程/RPC 接入，安装优先平台预编译，缺失时可 --build 构建插件自身，不重建宿主；Engine 拥有注册、生命周期、配置、串行处理、commit 和操作状态；现有 tailcat 网络、会话与传输迁入默认 Go 插件 `sync.tailcat`，公共配对/发送/接收 API 保持门面，审批、信任和策略最终由 Engine 控制。通知总线不承担同步调度。默认后端保留 wire v2 和现有行为；无后端允许本机历史工作。插件 API 和同步流式 DTO 尚未实现，不计入第 14 节已完成功能。
+[插件契约 v0.1](plugin-contract.md) 定义 Go/Lua 统一插件与最小模板。builtin Go 插件由宿主显式传入进程内实例，外部 Go 插件通过独立常驻进程/RPC 接入，安装优先平台预编译，缺失时可 --build 构建插件自身，不重建宿主；Engine 拥有注册、生命周期、配置、串行处理、commit 和操作状态；tailcat 网络、会话与传输封装为默认 builtin Go 插件 `builtin.tailcat`（`internal/plugins/builtintext/`，与 `builtin.text` 独立），公共配对/发送/接收 API 保持门面，审批、信任和策略最终由 Engine 控制。通知总线不承担同步调度。默认后端按 0008 实现统一设备身份，不保留旧 wire v2 兼容要求；无后端允许本机历史工作。插件 API 和同步流式 DTO 尚未实现，不计入第 14 节已完成功能。
 
 ## 2. 接口总览
 

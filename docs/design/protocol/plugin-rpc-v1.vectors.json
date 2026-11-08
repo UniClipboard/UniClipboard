@@ -186,7 +186,7 @@
         "self_id": "device-a",
         "self_name": "local",
         "wire_version": 2,
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "transport_kind": "peer_sessions"
       }
     },
@@ -211,7 +211,7 @@
           }
         ],
         "rejected": [],
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "sync_enabled": true,
         "policy": {
           "text": true,
@@ -289,7 +289,7 @@
             }
           ]
         },
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "mode": "automatic"
       }
     },
@@ -383,7 +383,7 @@
           }
         ],
         "rejected": [],
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "sync_enabled": false,
         "policy": {
           "text": true,
@@ -417,7 +417,7 @@
             }
           ]
         },
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "mode": "explicit"
       }
     }
@@ -541,7 +541,7 @@
         "self_id": "device-a",
         "self_name": "local",
         "wire_version": 3,
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "transport_kind": "peer_sessions"
       },
       "reason": "wire compatibility fixed at v2"
@@ -577,7 +577,7 @@
         ],
         "rejected": [],
         "approved_all": true,
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "sync_enabled": true,
         "policy": {
           "text": true,
@@ -613,7 +613,7 @@
           ]
         },
         "path": "/must-not-cross-rpc",
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "mode": "automatic"
       },
       "reason": "filesystem path forbidden"
@@ -665,7 +665,7 @@
             }
           ]
         },
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "mode": "ignore_global"
       },
       "reason": "manual mode cannot bypass global capability"
@@ -677,7 +677,7 @@
         "self_id": "device-a",
         "self_name": "local",
         "wire_version": 2,
-        "backend_id": "sync.tailcat",
+        "backend_id": "builtin.tailcat",
         "transport_kind": "object_store"
       },
       "reason": "P2P binding schema does not invent object-store connection profile"

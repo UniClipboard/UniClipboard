@@ -1,16 +1,20 @@
 # 插件契约 v0.1
 
+> 0008 目标修订：设备身份、信任与各实例关联授权以[设备契约](device-contract.md)为准；实现标识和配置实例标识须分离，同实现可配置多个实例。后端发现/连接不授信，SyncState 仅含该实例已授权关联和必要候选。下文 P2P 接口草案须补齐身份证明/关联 DTO 后才能作为实现依据。
+
 - 状态：目标设计，待实现；本文接口与模板当前不可直接编译运行。
 - 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)。
-- 范围：Go / Lua 统一模型、独立进程 RPC、默认同步插件及 GitHub 安装。历史、流水线与插件调度在 `engine/`。
+- 范围：Go / Lua 统一模型、builtin 进程内装配与外部独立进程 RPC、默认同步插件及 GitHub 安装。历史、流水线与插件调度在 `engine/`。
 
 ## 1. 标识、能力与入口
 
-插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`sync.*` 保留给发行版插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
+插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat` 保留给发行版内置同步插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
 
 processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Accepts ⊆ {text, image, files}，首版仅 text 可用（来源与结果都是文本）。首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
 
-**Go 插件使用独立可执行程序 + RPC**。宿主传入 `Options.PluginProcesses []PluginProcessSpec`（ID、可执行路径、摘要、API 版本），Engine 启动与管理子进程。路径仅供装配，不进入普通状态与事件。每个 Engine 的每个启用插件各有一个常驻进程，跨处理/发送复用，不编译进宿主，不使用 Go 动态库或全局 init 注册。
+**Go 插件区分 builtin 与 external 两种装配方式**。builtin 由宿主显式创建进程内实例，随宿主构建和升级，不走安装器或 RPC；默认同步后端 `builtin.tailcat` 位于 `internal/plugins/builtintext/`，与同目录 `builtin.text` 保持独立 ID、配置和生命周期。两种方式执行相同的能力校验、实例授权和业务契约，builtin 不因内置而绕过设备审批。
+
+**外部 Go 插件使用独立可执行程序 + RPC**。宿主传入 `Options.PluginProcesses []PluginProcessSpec`（ID、可执行路径、摘要、API 版本），Engine 启动与管理子进程。路径仅供装配，不进入普通状态与事件。每个 Engine 的每个启用插件各有一个常驻进程，跨处理/发送复用，不编译进宿主，不使用 Go 动态库或全局 init 注册。
 
 Lua 的预算、白名单、失败状态与热替换约束见 [Lua 运行时契约](lua-runtime-contract.md)；上游行为已核实，增强 VM 尚未实现。Lua 返回插件表，由 Engine 内适配器运行。宿主负责文件读取、监听和 TOML 映射；Engine 不依赖桌面文件监听。
 
@@ -71,7 +75,7 @@ SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enab
 
 ```toml
 [plugins]
-order = ["example.emailtag", "sync.tailcat"]
+order = ["example.emailtag", "builtin.tailcat"]
 on_error = "continue" # 检测失败仍可能同步，可改 block_sync
 
 [plugins.instances."example.emailtag"]
@@ -80,10 +84,10 @@ events = ["clipboard.captured", "clipboard.received"]
 [plugins.instances."example.emailtag".config]
 tag = "email"
 
-[plugins.instances."sync.tailcat"]
+[plugins.instances."builtin.tailcat"]
 enabled = true
 events = [] # 专用同步接口，不依赖通知队列
-[plugins.instances."sync.tailcat".sync]
+[plugins.instances."builtin.tailcat".sync]
 text = true
 images = true
 files = true
@@ -92,7 +96,7 @@ auto_file_max_bytes = "100MB"
 
 所有启用实例在 Order 中恰好一次；不按文件名或注册时机排序。顺序作用于同阶段与生命周期，不能把同步提前到处理/commit 之前。未知事件、能力或 API 不兼容均拒绝；核心先验证 Config 的 JSON 结构/限额，插件 Init 严格递归拒绝未知专属配置键（invalid_config），启动失败或热替换保留旧版本，不能在安装时执行程序做校验。配置不能让普通插件取得同步能力。
 
-发行版默认提供并启用 sync.tailcat，允许 0..MaxSyncBackends 个后端独立进程并存，0 为本机历史模式。全局 sync.enabled=false 立即取消所有后端内容发送/接收/远端自动应用及重试，控制连接与配对可保留；本机历史/Action 不受影响。各后端独立类型开关和自动文件阈值由 Engine 统一执行，手动提交仅可越过自动阈值。
+发行版默认内置并启用 builtin.tailcat，允许 0..MaxSyncBackends 个后端实例并存（builtin 为独立对象，external 为独立进程），0 为本机历史模式。全局 sync.enabled=false 立即取消所有后端内容发送/接收/远端自动应用及重试，控制连接与配对可保留；本机历史/Action 不受影响。各后端独立类型开关和自动文件阈值由 Engine 统一执行，手动提交仅可越过自动阈值。
 
 首版启用列表、顺序、订阅、Go 二进制升级与后端切换在 Engine 重启时生效，不重建宿主。各后端标准同步策略允许热更新；Lua 同 ID/版本/API/能力的脚本与专属配置允许原子热替换：先验证并 Init/Start 新实例，再在回调边界切换，失败保留旧实例，最后关闭旧实例。
 
@@ -132,11 +136,11 @@ ObserveClipboard 与显式 SubmitContent 均走 captured → processing → comm
 
 处理器不能改写内容，因此没有自动写回、自动化深度或插件来源链。Action 的结果作为 origin=`action` 的新条目提交，来源条目不变，宿主之后经 BeginApplyHistory 写入系统剪贴板，见[Action 契约](clipboard-action-contract.md)。
 
-## 6. 常驻同步插件 sync.tailcat
+## 6. 常驻同步插件 builtin.tailcat
 
-sync.tailcat 是随发行版提供的独立 Go 程序，负责 tailcat 网络、session/wire 会话与传输。Engine 保留身份与信任审批、过滤、操作状态、历史、资源租约和防回环；插件不直接写系统剪贴板或 Engine 数据库。
+builtin.tailcat 是随宿主编译的 builtin Go 同步插件，源码位于 `internal/plugins/builtintext/`，由宿主显式装配进程内实例；保留 ID `builtin.tailcat`，不与现有 `builtin.text` 合并，不提供或查找 `unic-plugin-tailcat` 可执行文件。它负责 tailcat 网络、session/wire 会话与传输。Engine 保留身份与信任审批、过滤、操作状态、历史、资源租约和防回环；插件不直接写系统剪贴板或 Engine 数据库。
 
-SDK 的 SyncBackend 扩展接口规划如下（仅在插件内部实现，Engine 经 RPC 调用）：
+SDK 的 SyncBackend 扩展接口规划如下（builtin 通过进程内接口调用，external 由 RPC 适配承载；均待按 0008 补齐身份与关联 DTO）：
 
 ```go
 type SyncBackend interface {
@@ -153,10 +157,10 @@ type SyncBackend interface {
 - Engine commit 后通过专用后端 RPC 派发 SyncRequest，不依赖会丢失的通知队列。请求包含派发/操作/设备 ID 与只读内容句柄，Engine 管理排队、替换、所有权，保留每 (BackendID, TargetKind, TargetID) 一个在途加一个待发语义；提交和实际开始传输前都检查限制与授权。
 - Send 返回目标终态；成功只是字节写完，不等于远端收到或应用。RPC 中断不得自动重复发送；传输失败不回滚历史，不可靠投递离线过期内容。
 - SyncHost 通过反向 RPC 提供身份验证、信任查询、准入、流式接收、传输前授权和设备状态上报。后端不能自行批准设备，不能绕过指纹核对。配对票据/rendezvous 由 Engine 管理，PairingAddress 只在显式导出边界使用，Connect 不授信。
-- 接收正文以流进入 Engine 私有资源，由 received 阶段处理和宿主 BeginApply/ReportApplyResult 应用；wire v2、超限读完丢弃与原有隐私边界不变。
-- **Start 后子进程长期持有 tailcat 端点和设备长连接，Send 复用会话。** 不为每次同步启动进程或重新连接；断网、挂起恢复、插件崩溃才触发重连。
-- 程序入口规划为 plugins/tailcat/cmd/unic-plugin-tailcat/，复用 internal/tcnet、internal/session；Engine 不再直接装配它们。tailcat 密钥迁往 DataDir/plugin-data/sync.tailcat，按[迁移状态机](backend-migration-contract.md) 分步激活、核对完整地址并保留恢复材料；插件不打开 Engine 的 SQLite。信任以 Engine RPC 为准，不维护第二套授信逻辑。
-- Options.Network/engine.Network 在 P5 同批移除，替换为显式程序描述；Transport 注入只保留在后端内部，Engine/桌面通过真实测试插件进程回归，见[迁移契约](backend-migration-contract.md)。SDK 零装配为本机模式，桌面默认通过发行清单显式启用 tailcat，不能保留另一条进程内生产路径。
+- 接收正文以流进入 Engine 私有资源，由 received 阶段处理和宿主 BeginApply/ReportApplyResult 应用；保留超限读完丢弃与隐私边界。设备网络协议按 0008 重定，不要求与旧 wire v2 互通。
+- **Start 后 builtin 实例长期持有 tailcat 端点和设备长连接，Send 复用会话。** 不为每次同步创建实例或重新连接；断网、挂起恢复、实例故障后按契约恢复。关闭等待端点和后台任务退出，不能依赖子进程强杀。
+- 源码位于 `internal/plugins/builtintext/`，由宿主显式创建独立 `builtin.tailcat` 实例，按新身份边界重构并复用适合的 internal/tcnet、internal/session；Engine 不再直接装配它们。设备身份由 Engine 新建；tailcat 传输密钥在实例私有目录首次初始化，按[装配契约](backend-migration-contract.md) 原子持久化与持锁；不导入旧密钥或地址；插件不打开 Engine 的 SQLite。信任以 Engine RPC 为准，不维护第二套授信逻辑。
+- Options.Network/engine.Network 在 P5 同批移除，替换为 builtin 实例或外部程序的显式装配；Transport 注入只保留在后端内部。Engine/桌面以正常装配的 builtin 实例回归，外部 RPC 另用真实测试进程，见[装配契约](backend-migration-contract.md)。SDK 零装配为本机模式，桌面默认显式启用 builtin tailcat，不另保留绕过插件的网络生产路径。
 
 独立后端的授权、连接事件、状态快照、撤销屏障与发送/接收 DTO 以[同步后端业务契约](sync-backend-contract.md) 为准。Unpair 的成功返回要求后端确认旧会话终止或进程已回收，不能只依赖发送一条不等待确认的通知。
 
@@ -338,7 +342,7 @@ artifacts 可为空，同一 GOOS/GOARCH 最多一项，可声明最低系统版
 
 首次安装默认不启用；--enable 等价显式 enable，采用清单配置默认值并追加到阶段顺序末尾，不覆盖用户已有配置。启用列表变更按第 3 节在重启时生效。安装器不覆盖正在运行的版本，重启切换失败可回退旧版本；Go 无需构建宿主。
 
-list 显示 installed/ready、source、configured_enabled、running_version、restart_required，区分磁盘与实际运行状态。disable/uninstall 先标记待停用，重启时取消并回收进程，之后删除无引用文件，不碰历史。内置 sync.tailcat 以独立程序随发行版提供，不允许第三方覆盖保留 ID，可禁用进入本机模式。
+list 显示 installed/ready、source、configured_enabled、running_version、restart_required，区分磁盘与实际运行状态。disable/uninstall 先标记待停用，重启时取消并回收进程，之后删除无引用文件，不碰历史。内置 builtin.tailcat 随宿主编译和升级，不经外部安装器安装/卸载，不允许第三方覆盖保留 ID；可禁用，其关联记录保留，全部后端禁用后进入本机模式。
 
 桌面管理器负责 GitHub、文件、锁与配置；Engine 只接收已校验程序描述/脚本。锁文件不含配对或剪贴板秘密。交付必须包含资产探测、--build 兜底、原子安装/回滚、进程启动与回收，不能以下载成功代替运行成功。
 
@@ -347,7 +351,7 @@ list 显示 installed/ready、source、configured_enabled、running_version、re
 1. plugin SDK、描述/配置/顺序、进程生命周期与接口模板落地；补齐 RPC 帧、patch、流式 DTO 的机器可读 schema 与互操作测试。
 2. 握手不匹配、帧长度、并发流控、取消/超时、迟到响应、崩溃/重启、孤儿进程清理与资源回收测试。
 3. ObserveClipboard、SubmitContent、接收经统一流水线，幂等、防回环与失败回滚不变；历史 commit 写失败不发出，persist=false 仍可同步。
-4. tailcat 独立程序迁移、密钥/地址保留、信任撤销竞争与状态恢复；双节点文本/HTML/PNG/文件、长连接复用、挂起重连、故障不重发回归。
+4. tailcat builtin 装配、统一设备与传输身份独立初始化、信任撤销竞争与状态恢复；双节点文本/HTML/PNG/文件、长连接复用、挂起重连、故障不重发回归。
 5. Lua 沙箱、热替换、两语言只读/可变能力与错误策略测试。
 6. GitHub 默认分支/tag/commit、子目录、资产平台匹配/缺失、网络/限流分类、摘要失败禁止兜底、--build 只构建插件、安装回滚、启用/卸载测试；使用本地假服务。
 7. go test -race ./... 与桌面构建通过；日志/事件/错误不含正文、地址或票据。文档通过不表示功能已实现。

@@ -1,17 +1,21 @@
 # 同步后端业务 RPC 契约 v1 · P2P profile
 
+> **0008 修订边界（2026-11-08）**：统一身份与关联授权以[设备契约](device-contract.md)为准。下文 wire_version=2、自报 hello、ID 指纹、全量 peers/rejected 及对应 Schema 是待修订的 P2P 业务草案，不能直接实现为新架构的完整认证；“不增加密码学身份声明”的原约束取消。必须补齐可由 Engine 验证的持钥证明、上下文、防重放与关联修订；插件不能用自报 ID 或布尔结论授信。无旧协议兼容要求。具体业务 DTO/Schema/向量待版本化同步更新，本机 RPC 帧规则继续有效。
+
 - 状态：业务方法与 DTO 已定义，待实现和互操作验证；密钥/Options.Network 方案见[迁移契约](backend-migration-contract.md)，实现/故障验证及 Lua 预算验证仍有独立工作项。多后端公共边界以[0007](decisions/0007-multiple-sync-backends.md) 为准，本文件连接/配对/设备传输 DTO 仅描述 peer_sessions，不作为 WebDAV 的强制接口。
 - 日期：2026-11-07。
 - 依据：[插件契约](plugin-contract.md)、[RPC 核心协议](plugin-rpc-contract.md)、[流水线提交](pipeline-contract.md)、[历史契约](history-contract.md)、[0001 配对](decisions/0001-pairing-code.md)。
 - 机器可读定义：沿用并扩展[帧/方法表](protocol/plugin-rpc-v1.frame.json)、[Schema](protocol/plugin-rpc-v1.schema.json) 与[向量](protocol/plugin-rpc-v1.vectors.json)。所有方法只授予已安装、握手且获配置授权且声明 peer_sessions 的 Go sync_backend 实例；同一 Engine 可有多个独立实例；Lua 和普通 processor/observer 调用属于越权。
 
-密钥仅从该后端私有 identity.json 载入；父端在 New 离线迁移，子进程持 runtime.lock，实际地址核对成功后才完成 Start。默认程序发现、孤儿锁竞争、零装配与测试入口遵循[迁移契约](backend-migration-contract.md)。
+Engine 统一身份密钥仅由 Engine 初始化和持有；后端只加载自己实例私有传输身份/凭据，子进程持 runtime.lock。首次初始化原子持久化，坏身份拒绝，不导入旧密钥、地址或配对记录。builtin 显式装配、外部程序发现、实例锁竞争、零装配与测试入口遵循[装配契约](backend-migration-contract.md)。
+
+本文的 backend.* RPC 方法、握手、子进程锁和 EOF 规则适用于 external 适配。builtin tailcat 使用进程内接口承载相同业务语义，无本机 RPC 握手，仍须执行实例隔离、授权修订、资源预算与撤销屏障；具体 Go 接口待 SDK 契约补齐。builtin 关闭须确认端点和旧任务退出，不能用终止插件子进程作为恢复手段；无法确认停止时 Engine 停止同步服务并报告失败。
 
 ## 1. 职责与生命周期
 
-`sync.tailcat` 持有 tailcat 端点、设备连接、wire v2 编解码和传输循环；Engine 持有身份、配对审批、rendezvous 票据、同步策略、队列、内容引用、操作结果与历史。后端不打开 Engine SQLite，不调用宿主剪贴板，不存第二套批准/拒绝状态。
+builtin `builtin.tailcat`（`internal/plugins/builtintext/`，由宿主显式装配）持有 tailcat 端点、设备连接、按 0008 修订的 wire 编解码和传输循环；Engine 持有身份、配对审批、rendezvous 票据、同步策略、队列、内容引用、操作结果与历史。后端不打开 Engine SQLite，不调用宿主剪贴板，不存第二套批准/拒绝状态。
 
-启动顺序为 HELLO/ACK → plugin.init → backend.bind → 初始 backend.apply_state → plugin.start。Bind 只配置本次实例绑定，不联网；初始快照可以在 Start 前安装。Start 后持有常驻端点与长连接，不能为每个 Send 启进程或重连。后台断网/重连不依附某次 Process 或 Send 调用 context。
+外部后端启动顺序为 HELLO/ACK → plugin.init → backend.bind → 初始 backend.apply_state → plugin.start；builtin 对应 Init → Bind → 初始 ApplyState → Start。Bind 只配置本次实例绑定，不联网；初始快照可以在 Start 前安装。Start 后持有常驻端点与长连接，不能为每个 Send 启进程或重连。后台断网/重连不依附某次 Process 或 Send 调用 context。
 
 `binding_id` 为 Engine 每次后端会话生成的随机 256 位 token，区别于握手 nonce；Bind 包含 backend_id、transport_kind=peer_sessions、self_id、self_name、wire_version=2。后端 ID 与握手 Spec.ID 一致；每个实例只见自身快照与 token，不能借另一个后端的成功授权传输。所有 session/send/receive token 至少 256 位随机、只在本次 binding 内有效，不进入 State、普通事件、错误或日志。它们限制 RPC 代理的可用范围，不是对恶意本机 Go 程序的权限沙箱。
 
@@ -51,11 +55,11 @@ Engine 串行派发状态更新，不让旧 ACK 覆盖新状态；本地信任/�
 
 后端按 wire v2 读取 hello 后，在输出本机接受 verdict、注册内容会话之前调用 check_peer，传 connection_id、direction、可空 attempt_id 和对端 hello。hello 包含版本、peer_id、名称、秘密地址、可空字符串配对票据。connection_id 由后端生成、binding 内唯一，不复用到新连接。
 
-Engine 校验版本、非空非本机 ID、目标身份约束、当前批准/拒绝状态和活跃显式尝试，按既有 wire v2/配对语义决策。这里没有新增密码学身份声明或远端 ACK；后端负责如实报告传输层和 hello，不能把 nonce 或 session_token 当作对端签名证据。
+Engine 校验版本、目标统一身份的持钥证明、连接上下文、关联授权及活跃显式尝试，按设备契约决策。现有 hello/check_peer DTO 尚无完整证明字段，须先补齐协议与 Schema，不能把自报 ID、nonce 或 session_token 当作对端签名证据；不承诺远端应用确认。
 
 incoming 的有效配对票据只标记“通过配对码发现”，仍返回 pending，绝不自动 allow；过期、撤销票据不授信。介绍候选也不授信。outgoing 的显式 PairByAddress/JoinByCode 可以沿用主动配对的本机信任语义，但必须由 Engine 当前 attempt_id 授权并持久化；普通后台重连不能冒充该尝试。
 
-backend.connect 的 attempt_id 由 Engine 创建，绑定目标秘密地址、可选已知 peer_id、配对票据、原配对 Operation 和生命周期；连接取消/结束即不再允许用其授予新信任。后端不能只因 direction=outgoing 或握有地址就替 Engine 批准设备。预期身份不符返回 identity_mismatch，不覆盖旧设备记录。两端指纹仍由 Engine 按既有规范计算并展示，不采用插件提供的任意“匹配”结论。
+backend.connect 的 attempt_id 由 Engine 创建，绑定目标秘密地址、可选已知 peer_id、配对票据、原配对 Operation 和生命周期；连接取消/结束即不再允许用其授予新信任。后端不能只因 direction=outgoing 或握有地址就替 Engine 批准设备。预期身份不符返回 identity_mismatch，不覆盖旧设备记录。两端核对值由 Engine 按待定义的统一身份协议计算并展示，不采用自报 ID 哈希或插件提供的任意“匹配”结论。
 
 allow 返回 session_token 与对应 trust_revision；pending/reject 必须返回 null token。后端只有在双方 wire verdict 都接受后，才可持 token 上报 connected 并收发内容；对方未批准时 connect 返回 awaiting_remote_approval=true，不注册内容连接。已知设备信息更新、候选落库及拒绝去重均由 Engine 执行。
 

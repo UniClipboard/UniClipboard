@@ -48,7 +48,7 @@ Engine 将用于桌面、Android、iOS 和原生鸿蒙（HarmonyOS NEXT）。目
 | 结构化配置的验证与原子更新 | TOML、文件监听、环境变量、设置 UI |
 | 状态快照、结构化事件、错误码 | UI、托盘、通知、日志输出与主线程调度 |
 
-默认实现继续使用 tailcat 和 SQLite。[0004](0004-clipboard-pipeline-lua.md) 的后续扩展将 tailcat 网络、会话与传输封装为默认 Go 插件 `sync.tailcat`，Engine 保留信任审批、同步策略、资源与操作状态的控制；Go/Lua 插件接口见[插件契约](../plugin-contract.md)，尚未实现。存储、传输通过内部边界隔离，允许测试替换，但本阶段不要求平台自行实现数据库或网络栈，也不为尚未验证的移动平台设计大量公开插件接口。
+默认实现继续使用 tailcat 和 SQLite。[0004](0004-clipboard-pipeline-lua.md) 的后续扩展将 tailcat 网络、会话与传输封装为默认 Go 插件 `builtin.tailcat`，Engine 保留信任审批、同步策略、资源与操作状态的控制；Go/Lua 插件接口见[插件契约](../plugin-contract.md)，尚未实现。存储、传输通过内部边界隔离，允许测试替换，但本阶段不要求平台自行实现数据库或网络栈，也不为尚未验证的移动平台设计大量公开插件接口。
 
 Engine 内部允许使用私有目录和真实文件；禁止要求公共调用者必须提供系统绝对路径。路径和 URI 的转换发生在宿主或资源导入适配中。
 

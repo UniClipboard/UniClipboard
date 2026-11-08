@@ -125,4 +125,4 @@ sig = Ed25519(sk_author, "unic/object/v1\0" || field(repo_binding) || field(auth
 
 - 密钥轮换/备份恢复：另行立项，本版本没有隐式路径。
 - 如需更短的核对码（例如 6 位 SAS），须引入提交-揭示流程并另出版本，不在 v1 中降低指纹长度。
-- RPC 侧的最小方法（Engine 为后端签名转录、验证对端 Proof、查询关联授权）与 Go DTO 待据此补入[插件 RPC 契约](plugin-rpc-contract.md)与[SDK 扩展类型契约](sdk-extension-contract.md)。
+- RPC 侧方法已定义：`sync_host.identity_hello`/`identity_prove`/`check_peer`（[同步后端业务契约](sync-backend-contract.md) §3；Go DTO 在 `plugin/rpc/identity.go`，Schema 与向量见 `protocol/`）；Engine 一侧的实现尚未落地。对象存储路径的方法（作者签名、水位）另定。

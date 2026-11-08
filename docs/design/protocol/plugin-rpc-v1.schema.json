@@ -214,7 +214,11 @@
             "sync_disabled",
             "suspended",
             "no_targets",
-            "source_changed"
+            "source_changed",
+            "bad_proof",
+            "bad_pair_proof",
+            "replay",
+            "binding_mismatch"
           ]
         },
         "retryable": {
@@ -538,7 +542,9 @@
             "backend.leave_channel",
             "backend.register",
             "backend.report",
-            "backend.receive"
+            "backend.receive",
+            "sync_host.identity_hello",
+            "sync_host.identity_prove"
           ]
         },
         "timeout_ms": {
@@ -885,10 +891,6 @@
           "type": "string",
           "maxLength": 8192
         },
-        "pair_ticket": {
-          "type": "string",
-          "maxLength": 8192
-        },
         "expected_peer_id": {
           "type": "string",
           "maxLength": 128
@@ -897,7 +899,6 @@
       "required": [
         "attempt_id",
         "address",
-        "pair_ticket",
         "expected_peer_id"
       ],
       "additionalProperties": false
@@ -915,39 +916,6 @@
       "required": [
         "peer_id",
         "awaiting_remote_approval"
-      ],
-      "additionalProperties": false
-    },
-    "sync_hello": {
-      "type": "object",
-      "properties": {
-        "wire_version": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 2147483647
-        },
-        "peer_id": {
-          "$ref": "#/$defs/id"
-        },
-        "name": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "address": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "pair_ticket": {
-          "type": "string",
-          "maxLength": 8192
-        }
-      },
-      "required": [
-        "wire_version",
-        "peer_id",
-        "name",
-        "address",
-        "pair_ticket"
       ],
       "additionalProperties": false
     },
@@ -975,20 +943,38 @@
           ]
         },
         "hello": {
-          "$ref": "#/$defs/sync_hello"
+          "$ref": "#/$defs/sync_peer_wire"
+        },
+        "peer_proof": {
+          "$ref": "#/$defs/b64_proof"
+        },
+        "peer_pair_proof": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/b64_pair_proof"
+            }
+          ]
         }
       },
       "required": [
         "connection_id",
         "direction",
         "attempt_id",
-        "hello"
+        "hello",
+        "peer_proof",
+        "peer_pair_proof"
       ],
       "additionalProperties": false
     },
     "sync_peer_decision": {
       "type": "object",
       "properties": {
+        "peer_id": {
+          "$ref": "#/$defs/id"
+        },
         "decision": {
           "enum": [
             "allow",
@@ -1012,6 +998,7 @@
         }
       },
       "required": [
+        "peer_id",
         "decision",
         "session_token",
         "trust_revision"
@@ -1607,6 +1594,140 @@
         "transfer",
         "view",
         "parts"
+      ],
+      "additionalProperties": false
+    },
+    "b64_hello": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 88,
+      "maxLength": 171
+    },
+    "b64_context": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 2,
+      "maxLength": 342
+    },
+    "b64_proof": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 86,
+      "maxLength": 86
+    },
+    "b64_pair_proof": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 43,
+      "maxLength": 43
+    },
+    "sync_identity_hello": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/id"
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing"
+          ]
+        },
+        "attempt_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          ]
+        },
+        "context_binding": {
+          "$ref": "#/$defs/b64_context"
+        }
+      },
+      "required": [
+        "connection_id",
+        "direction",
+        "attempt_id",
+        "context_binding"
+      ],
+      "additionalProperties": false
+    },
+    "sync_identity_hello_result": {
+      "type": "object",
+      "properties": {
+        "hello": {
+          "$ref": "#/$defs/b64_hello"
+        }
+      },
+      "required": [
+        "hello"
+      ],
+      "additionalProperties": false
+    },
+    "sync_identity_prove": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/id"
+        },
+        "peer_hello": {
+          "$ref": "#/$defs/b64_hello"
+        }
+      },
+      "required": [
+        "connection_id",
+        "peer_hello"
+      ],
+      "additionalProperties": false
+    },
+    "sync_identity_prove_result": {
+      "type": "object",
+      "properties": {
+        "proof": {
+          "$ref": "#/$defs/b64_proof"
+        },
+        "pair_proof": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/b64_pair_proof"
+            }
+          ]
+        }
+      },
+      "required": [
+        "proof",
+        "pair_proof"
+      ],
+      "additionalProperties": false
+    },
+    "sync_peer_wire": {
+      "type": "object",
+      "properties": {
+        "wire_version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "wire_version",
+        "name",
+        "address"
       ],
       "additionalProperties": false
     }

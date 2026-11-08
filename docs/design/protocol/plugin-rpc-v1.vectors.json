@@ -233,29 +233,6 @@
       }
     },
     {
-      "schema": "sync_check_peer",
-      "payload": {
-        "connection_id": "conn-1",
-        "direction": "incoming",
-        "attempt_id": null,
-        "hello": {
-          "wire_version": 2,
-          "peer_id": "device-b",
-          "name": "peer",
-          "address": "fixture-private-address",
-          "pair_ticket": "fixture-ticket"
-        }
-      }
-    },
-    {
-      "schema": "sync_peer_decision",
-      "payload": {
-        "decision": "pending",
-        "session_token": null,
-        "trust_revision": "0"
-      }
-    },
-    {
       "schema": "sync_peer_event",
       "payload": {
         "connection_id": "conn-1",
@@ -502,6 +479,107 @@
           }
         ]
       }
+    },
+    {
+      "schema": "sync_identity_hello",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "incoming",
+        "attempt_id": null,
+        "context_binding": "wMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA"
+      }
+    },
+    {
+      "schema": "sync_identity_hello",
+      "payload": {
+        "connection_id": "conn-2",
+        "direction": "outgoing",
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "context_binding": "wMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA"
+      }
+    },
+    {
+      "schema": "sync_identity_hello_result",
+      "payload": {
+        "hello": "AQGBOXcOqH0XX1ajVGbDTH7My42KkbTuN6Jd9g9bj8mzlAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsL"
+      }
+    },
+    {
+      "schema": "sync_identity_prove",
+      "payload": {
+        "connection_id": "conn-1",
+        "peer_hello": "AQGKiOPddAnxlf1S2y08ul1yymcJvx2UEhvzdIgBtA9vXAoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoK"
+      }
+    },
+    {
+      "schema": "sync_identity_prove_result",
+      "payload": {
+        "proof": "wzW_dfo5ICrHD_nkwHEuLSYcaEc_QxzsDV7u5qV-ysVbBHgyp8ODjUiPsmK9Lvbb7HCbGysBZx4rq-t3-HDcBQ",
+        "pair_proof": null
+      }
+    },
+    {
+      "schema": "sync_identity_prove_result",
+      "payload": {
+        "proof": "peBnHOEwqOT9lGmBVhtu1aO8uplqSymjiAA_CqTfA50nd7kQNniYJwXEegCj3Ic2xOX9Mybmbilct9gdsF8OCg",
+        "pair_proof": "g1zIHu8NxEexE8fAW7v6OYOUTp2C-TUa5AR-UnMXVh4"
+      }
+    },
+    {
+      "schema": "sync_check_peer",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "incoming",
+        "attempt_id": null,
+        "hello": {
+          "wire_version": 2,
+          "name": "peer",
+          "address": "fixture-private-address"
+        },
+        "peer_proof": "peBnHOEwqOT9lGmBVhtu1aO8uplqSymjiAA_CqTfA50nd7kQNniYJwXEegCj3Ic2xOX9Mybmbilct9gdsF8OCg",
+        "peer_pair_proof": "g1zIHu8NxEexE8fAW7v6OYOUTp2C-TUa5AR-UnMXVh4"
+      }
+    },
+    {
+      "schema": "sync_check_peer",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "incoming",
+        "attempt_id": null,
+        "hello": {
+          "wire_version": 2,
+          "name": "peer",
+          "address": "fixture-private-address"
+        },
+        "peer_proof": "peBnHOEwqOT9lGmBVhtu1aO8uplqSymjiAA_CqTfA50nd7kQNniYJwXEegCj3Ic2xOX9Mybmbilct9gdsF8OCg",
+        "peer_pair_proof": null
+      }
+    },
+    {
+      "schema": "sync_peer_decision",
+      "payload": {
+        "peer_id": "q5opsuq3efr3sxg3vlqcgetwvu",
+        "decision": "pending",
+        "session_token": null,
+        "trust_revision": "0"
+      }
+    },
+    {
+      "schema": "sync_peer_decision",
+      "payload": {
+        "peer_id": "q5opsuq3efr3sxg3vlqcgetwvu",
+        "decision": "allow",
+        "session_token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "trust_revision": "3"
+      }
+    },
+    {
+      "schema": "sync_connect",
+      "payload": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "address": "fixture-private-address",
+        "expected_peer_id": "q5opsuq3efr3sxg3vlqcgetwvu"
+      }
     }
   ],
   "invalid_payloads": [
@@ -627,15 +705,6 @@
         "transport_kind": "peer_sessions"
       },
       "reason": "wire compatibility fixed at v2"
-    },
-    {
-      "schema": "sync_peer_decision",
-      "payload": {
-        "decision": "allow",
-        "session_token": "short-token",
-        "trust_revision": "1"
-      },
-      "reason": "invalid token length"
     },
     {
       "schema": "sync_state",
@@ -813,6 +882,114 @@
         "parts": []
       },
       "reason": "no parts"
+    },
+    {
+      "schema": "sync_peer_decision",
+      "payload": {
+        "peer_id": "q5opsuq3efr3sxg3vlqcgetwvu",
+        "decision": "allow",
+        "session_token": "short-token",
+        "trust_revision": "1"
+      },
+      "reason": "invalid token length"
+    },
+    {
+      "schema": "sync_check_peer",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "incoming",
+        "attempt_id": null,
+        "hello": {
+          "wire_version": 2,
+          "name": "peer",
+          "address": "fixture-private-address",
+          "peer_id": "q5opsuq3efr3sxg3vlqcgetwvu"
+        },
+        "peer_proof": "peBnHOEwqOT9lGmBVhtu1aO8uplqSymjiAA_CqTfA50nd7kQNniYJwXEegCj3Ic2xOX9Mybmbilct9gdsF8OCg",
+        "peer_pair_proof": null
+      },
+      "reason": "self-reported peer_id is no longer carried"
+    },
+    {
+      "schema": "sync_check_peer",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "incoming",
+        "attempt_id": null,
+        "hello": {
+          "wire_version": 2,
+          "name": "peer",
+          "address": "fixture-private-address"
+        },
+        "peer_proof": "peBnHOEwqOT9lGmBVhtu1aO8uplqSymjiAA_CqTfA50nd7kQNniYJwXEegCj3Ic2xOX9Mybmbilct9gdsF",
+        "peer_pair_proof": null
+      },
+      "reason": "proof must be 64 bytes"
+    },
+    {
+      "schema": "sync_check_peer",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "incoming",
+        "attempt_id": null,
+        "hello": {
+          "wire_version": 2,
+          "name": "peer",
+          "address": "fixture-private-address"
+        },
+        "peer_proof": "peBnHOEwqOT9lGmBVhtu1aO8uplqSymjiAA_CqTfA50nd7kQNniYJwXEegCj3Ic2xOX9Mybmbilct9gdsF8OCg",
+        "peer_pair_proof": "peBnHOEwqOT9lGmBVhtu1aO8uplqSymjiAA_CqTfA50nd7kQNniYJwXEegCj3Ic2xOX9Mybmbilct9gdsF8OCg"
+      },
+      "reason": "pair proof must be 32 bytes"
+    },
+    {
+      "schema": "sync_identity_hello",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "sideways",
+        "attempt_id": null,
+        "context_binding": "wMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA"
+      },
+      "reason": "unknown direction"
+    },
+    {
+      "schema": "sync_identity_hello",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "incoming",
+        "attempt_id": null,
+        "context_binding": "wMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA="
+      },
+      "reason": "padding is not allowed"
+    },
+    {
+      "schema": "sync_identity_hello",
+      "payload": {
+        "connection_id": "conn-1",
+        "direction": "incoming",
+        "attempt_id": null,
+        "context_binding": "eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHg"
+      },
+      "reason": "context binding over 256 bytes"
+    },
+    {
+      "schema": "sync_connect",
+      "payload": {
+        "attempt_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "address": "fixture-private-address",
+        "pair_ticket": "tok",
+        "expected_peer_id": "q5opsuq3efr3sxg3vlqcgetwvu"
+      },
+      "reason": "the pairing token never reaches the backend"
+    },
+    {
+      "schema": "sync_identity_prove_result",
+      "payload": {
+        "proof": "peBnHOEwqOT9lGmBVhtu1aO8uplqSymjiAA_CqTfA50nd7kQNniYJwXEegCj3Ic2xOX9Mybmbilct9gdsF8OCg",
+        "pair_proof": "g1zIHu8NxEexE8fAW7v6OYOUTp2C-TUa5AR-UnMXVh4",
+        "verified": true
+      },
+      "reason": "no extra assertions"
     }
   ],
   "semantic_rejections": [
@@ -839,15 +1016,6 @@
         "purpose": "sync_part"
       },
       "reason": "uint64 overflow"
-    },
-    {
-      "schema": "sync_peer_decision",
-      "payload": {
-        "decision": "pending",
-        "session_token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "trust_revision": "0"
-      },
-      "reason": "pending cannot carry a session grant"
     },
     {
       "schema": "sync_receive_grant",
@@ -950,6 +1118,26 @@
         ]
       },
       "reason": "receive parts must use purpose receive_part"
+    },
+    {
+      "schema": "sync_peer_decision",
+      "payload": {
+        "peer_id": "q5opsuq3efr3sxg3vlqcgetwvu",
+        "decision": "pending",
+        "session_token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "trust_revision": "0"
+      },
+      "reason": "pending cannot carry a session grant"
+    },
+    {
+      "schema": "sync_peer_decision",
+      "payload": {
+        "peer_id": "q5opsuq3efr3sxg3vlqcgetwvu",
+        "decision": "allow",
+        "session_token": null,
+        "trust_revision": "1"
+      },
+      "reason": "allow needs a session token"
     }
   ],
   "golden_frames": [

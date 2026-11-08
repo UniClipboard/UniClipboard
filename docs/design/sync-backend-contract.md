@@ -24,9 +24,11 @@ builtin `builtin.tailcat`（`internal/plugins/builtintailcat/`，由宿主显式
 | backend.bind | Engine→后端 | 空成功结果；一次有效绑定 |
 | backend.apply_state | Engine→后端 | 安装完整状态，返回实际 revision，形成状态生效屏障 |
 | backend.pairing_address | Engine→后端 | 仅 export/pairing_code 场景返回秘密地址 |
-| backend.connect | Engine→后端 | 显式配对尝试，返回 peer_id/awaiting_remote_approval |
+| backend.connect | Engine→后端 | 显式配对尝试（attempt_id、地址、可选 expected_peer_id；不含配对令牌），返回 peer_id/awaiting_remote_approval |
 | backend.send | Engine→后端 | 单 dispatch、单目标，sent 或稳定错误 |
-| sync_host.check_peer | 后端→Engine | 校验 hello，产生 allow/pending/reject 与会话授权 |
+| sync_host.identity_hello | 后端→Engine | 取得本机 Hello 并登记本连接转录 |
+| sync_host.identity_prove | 后端→Engine | 提交对端 Hello，取得本机 Proof（及可选 PairProof） |
+| sync_host.check_peer | 后端→Engine | 提交对端 Proof，由 Engine 验证后产生 allow/pending/reject 与会话授权 |
 | sync_host.peer_event | 后端→Engine | 上报已验证连接的 connected/disconnected |
 | sync_host.introduce | 后端→Engine | 可信会话介绍候选，仅产生待批准记录 |
 | sync_host.authorize_send | 后端→Engine | 真正传输前再次授权和校验引用文件 |
@@ -35,7 +37,7 @@ builtin `builtin.tailcat`（`internal/plugins/builtintailcat/`，由宿主显式
 | sync_host.receive | 后端→Engine | 承载一个已准入接收，等待全部流与处理完成 |
 | sync_host.receive_part | 后端→Engine | 为该接收声明一个 part 的数据流 |
 
-sync_host.check_peer/peer_event/introduce/receive_open/receive 可由 Start 后后台连接任务发起，parent_request_id="0"，不要求存在 Send/Process。authorize_send/open_send_part 必须指向有效 backend.send 根调用；receive_part 必须指向有效 sync_host.receive 根调用。它们遵守核心协议的并发/流控上限，不通过假造永不结束的父请求维持授权。
+sync_host.identity_hello/identity_prove/check_peer/peer_event/introduce/receive_open/receive 可由 Start 后后台连接任务发起，parent_request_id="0"，不要求存在 Send/Process。authorize_send/open_send_part 必须指向有效 backend.send 根调用；receive_part 必须指向有效 sync_host.receive 根调用。它们遵守核心协议的并发/流控上限，不通过假造永不结束的父请求维持授权。
 
 ## 2. 状态快照、修订与撤销
 
@@ -53,11 +55,15 @@ Engine 串行派发状态更新，不让旧 ACK 覆盖新状态；本地信任/�
 
 ## 3. hello、配对与连接授权
 
-后端按 wire v2 读取 hello 后，在输出本机接受 verdict、注册内容会话之前调用 check_peer，传 connection_id、direction、可空 attempt_id 和对端 hello。hello 包含版本、peer_id、名称、秘密地址、可空字符串配对票据。connection_id 由后端生成、binding 内唯一，不复用到新连接。
+后端的传输握手与身份证明合并为以下顺序（identity-protocol §4，Schema 为 `sync_identity_*`、`sync_check_peer`）。二进制字段一律 base64url 无填充；Engine 持有设备私钥、Hello 的 nonce 与转录，后端只搬运字节：
 
-Engine 校验版本、目标统一身份的持钥证明、连接上下文、关联授权及活跃显式尝试，按设备契约决策。现有 hello/check_peer DTO 尚无完整证明字段，须先补齐协议与 Schema，不能把自报 ID、nonce 或 session_token 当作对端签名证据；不承诺远端应用确认。
+1. 后端为本条连接生成唯一 `connection_id`，并算出双方一致、对本连接唯一的 `context_binding`（≤256 字节）。调用 `sync_host.identity_hello{connection_id, direction, attempt_id, context_binding}`；outgoing 为发起方 I，incoming 为响应方 R。Engine 返回自己的 Hello（含新鲜 nonce），并保存转录状态；同一 `connection_id` 再次调用返回 `conflict`，每实例并发未完成握手 ≤ 8（`resource_exhausted`），超过 60 秒未完成 `resource_expired`。
+2. 后端与对端交换 Hello，调用 `sync_host.identity_prove{connection_id, peer_hello}`。Engine 选定版本（无公共版本 `protocol_mismatch`），按角色计算转录 T，返回 `proof`（Ed25519，64 字节）；仅当 outgoing 且当前 attempt 带配对票据时附 `pair_proof`（HMAC，32 字节），否则为 null。Engine 只对本连接转录签名，没有任意载荷签名方法，配对令牌也不会交给后端。
+3. 后端收到对端 Proof（和可选 PairProof）后调用 `sync_host.check_peer{connection_id, direction, attempt_id, hello{wire_version,name,address}, peer_proof, peer_pair_proof}`。Engine 用对端 Hello 里的公钥验证；`peer_id` 由证明过的公钥导出，线路上不再有自报的 peer_id，也不再有 `pair_ticket`。验证失败返回稳定错误：`bad_proof`、`bad_pair_proof`、`replay`、`binding_mismatch`、`resource_expired`、`protocol_mismatch`、`identity_mismatch`（ID 与已登记公钥冲突，或不等于 attempt 的 expected_peer_id/票据 dev）；失败时丢弃握手状态，不留下可复用的东西。成功才进入下面的授权决策，结果 `{peer_id, decision, session_token, trust_revision}`。
 
-incoming 的有效配对票据只标记“通过配对码发现”，仍返回 pending，绝不自动 allow；过期、撤销票据不授信。介绍候选也不授信。outgoing 的显式 PairByAddress/JoinByCode 可以沿用主动配对的本机信任语义，但必须由 Engine 当前 attempt_id 授权并持久化；普通后台重连不能冒充该尝试。
+后端宣称的"已验证"一律不被接受；Engine 同时校验版本、目标统一身份的持钥证明、连接上下文、关联授权及活跃显式尝试，按设备契约决策。不承诺远端应用确认。
+
+incoming 带有效 `peer_pair_proof`（对本地保存的未过期配对令牌验证通过）只标记“通过配对码发现”，仍返回 pending，绝不自动 allow；过期、撤销票据不授信。介绍候选也不授信。outgoing 的显式 PairByAddress/JoinByCode 可以沿用主动配对的本机信任语义，但必须由 Engine 当前 attempt_id 授权并持久化；普通后台重连不能冒充该尝试。
 
 backend.connect 的 attempt_id 由 Engine 创建，绑定目标秘密地址、可选已知 peer_id、配对票据、原配对 Operation 和生命周期；连接取消/结束即不再允许用其授予新信任。后端不能只因 direction=outgoing 或握有地址就替 Engine 批准设备。预期身份不符返回 identity_mismatch，不覆盖旧设备记录。两端核对值由 Engine 按待定义的统一身份协议计算并展示，不采用自报 ID 哈希或插件提供的任意“匹配”结论。
 

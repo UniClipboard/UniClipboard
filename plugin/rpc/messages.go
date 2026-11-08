@@ -170,7 +170,8 @@ const (
 
 var knownCodes = []string{"invalid_argument", "invalid_config", "invalid_state", "unsupported", "permission_denied", "not_found",
 	"resource_expired", "conflict", "limit_exceeded", "resource_exhausted", "unavailable", "timeout", "cancelled", "plugin_panic",
-	"internal", "identity_mismatch", "protocol_mismatch", "sync_disabled", "suspended", "no_targets", "source_changed"}
+	"internal", "identity_mismatch", "protocol_mismatch", "sync_disabled", "suspended", "no_targets", "source_changed",
+	"bad_proof", "bad_pair_proof", "replay", "binding_mismatch"}
 
 // ErrorBody is the wire error.
 type ErrorBody struct {

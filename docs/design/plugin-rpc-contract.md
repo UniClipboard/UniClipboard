@@ -79,7 +79,11 @@ plugin.run_action 参数为 action_id、generation 和只读 Item 快照（text/
 
 generation 来自 Engine 本次回调，每次重试/热替换重新分配；请求会话、generation、插件实例代次、父提交代次全部匹配才原子采纳全部变更。某个字段无效、流未完成、过期、取消、panic 或方法失败则整份 patch 回滚，后续 continue/block_sync 按插件契约处理。
 
-### 4a. 外部渠道方法（0009）
+### 4a. 外部渠道与身份方法
+
+身份方法 `sync_host.identity_hello`、`identity_prove`、`check_peer` 的 DTO 与错误码见同步后端业务契约 §3；新增稳定错误码 `bad_proof`、`bad_pair_proof`、`replay`、`binding_mismatch`。
+
+外部渠道方法（0009）：
 
 Spec 增加布尔字段 `external_channels`、`remote_revocation`（默认 false，参与握手 Spec 相等比较）；`remote_revocation` 要求 `external_channels`。其余 DTO 见 Schema 中的 `ext_*` 定义与向量，业务语义见[同步后端业务契约](sync-backend-contract.md) §6a：
 

@@ -28,8 +28,11 @@ open .build/Unic.app
 
 Mock 状态保存在内存中，重启重置；设置选项通过 UserDefaults 保存，仅演示 UI。复制会将样例文本写入系统剪贴板。PDF 当前展示文本占位，图片为原生渐变示例；发送、同步、登录项及保留期限不执行后台操作。尚未接入 unicd，也未实现全局快捷键或自动粘贴。
 
+Plugins 设置页的 “Preview plugin settings…” 从 Go 配置定义生成的静态 schema 创建原生表单，覆盖文本、数字、选项、开关、多行、密码、分组和基础列表。支持即时校验、保存预览、取消和恢复默认值；预览配置仅在内存中，不写 UserDefaults、daemon 或 TOML。Foundation 模型在 `Sources/SettingsSchema`，通用控件在 `SchemaSettingsForm.swift`；`swift test` 与 Go 使用同一组校验向量。更新 fixture 使用仓库根的 `go generate ./plugins/examples/settingsdemo`。
+
 ```sh
 swift build
+swift test
 ```
 
 工程遵循 0006 的客户端边界，后续由独立客户端接入 daemon 的 HTTP / SSE 接口。用户指定目录为 `app/mac`，因此本原型采用该路径（0006 草案中的 `app/macos` 尚未迁移）。
@@ -43,3 +46,5 @@ macOS 26+ 使用 ToolbarSpacer 划分工具栏操作组，详情面板的圆形�
 ## 开发时截图
 
 Debug 构建支持 `UNIC_SNAPSHOT=/tmp/out.png .build/debug/Unic` 把主窗口渲染为 PNG 后退出（加 `UNIC_DARK=1` 为深色）。用 `cacheDisplay`，不需要屏幕录制权限；窗口未激活，所以侧栏和按钮会偏灰，且不含 Liquid Glass 合成效果。
+
+设置表单截图可加 `UNIC_TARGET=plugin-settings`。截图使用没有密码默认值的固定样例。

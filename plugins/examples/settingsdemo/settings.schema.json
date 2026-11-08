@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-unic-settings-version": 1,
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Add labels",
+      "default": true,
+      "x-unic-ui": {
+        "order": 4,
+        "group": "Labels"
+      }
+    },
+    "max_length": {
+      "type": "integer",
+      "title": "Maximum length",
+      "default": 500,
+      "minimum": 1,
+      "maximum": 10000,
+      "x-unic-ui": {
+        "order": 2,
+        "group": "Labels"
+      }
+    },
+    "mode": {
+      "type": "string",
+      "title": "Text mode",
+      "enum": [
+        "plain",
+        "markdown"
+      ],
+      "default": "plain",
+      "x-unic-ui": {
+        "order": 3,
+        "group": "Labels",
+        "option_labels": [
+          "Plain text",
+          "Markdown"
+        ]
+      }
+    },
+    "notes": {
+      "type": "string",
+      "title": "Notes",
+      "default": "",
+      "maxLength": 2000,
+      "x-unic-ui": {
+        "widget": "textarea",
+        "order": 5,
+        "group": "Advanced"
+      }
+    },
+    "prefix": {
+      "type": "string",
+      "title": "Label prefix",
+      "description": "Added to automatically generated labels.",
+      "default": "clip",
+      "minLength": 1,
+      "maxLength": 32,
+      "x-unic-ui": {
+        "order": 1,
+        "group": "Labels"
+      }
+    },
+    "retry": {
+      "type": "object",
+      "title": "Retry policy",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "title": "Attempts",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 10,
+          "x-unic-ui": {
+            "order": 1
+          }
+        },
+        "delay": {
+          "type": "number",
+          "title": "Delay (seconds)",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 60,
+          "x-unic-ui": {
+            "order": 2
+          }
+        }
+      },
+      "required": [
+        "count",
+        "delay"
+      ],
+      "additionalProperties": false,
+      "default": {},
+      "x-unic-ui": {
+        "order": 8
+      }
+    },
+    "tags": {
+      "type": "array",
+      "title": "Extra labels",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "maxItems": 8,
+      "x-unic-ui": {
+        "order": 7,
+        "group": "Advanced"
+      }
+    },
+    "token": {
+      "type": "string",
+      "title": "Access token",
+      "description": "Optional. Kept only for this preview session.",
+      "minLength": 1,
+      "writeOnly": true,
+      "x-unic-ui": {
+        "widget": "password",
+        "order": 6,
+        "group": "Advanced"
+      }
+    }
+  },
+  "required": [
+    "prefix",
+    "max_length",
+    "mode",
+    "enabled",
+    "tags",
+    "retry"
+  ],
+  "additionalProperties": false
+}

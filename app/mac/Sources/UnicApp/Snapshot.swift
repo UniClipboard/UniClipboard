@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 /// Dev aid: render a surface to PNG and quit, without screen-recording permission.
-///   UNIC_SNAPSHOT=/tmp/out.png  [UNIC_TARGET=main|panel|preview|menu|settings]  [UNIC_PANE=devices|plugins]  [UNIC_FILTER=...]  [UNIC_DARK=1]  [UNIC_SELECT=<clip id>]
+///   UNIC_SNAPSHOT=/tmp/out.png  [UNIC_TARGET=main|panel|preview|menu|settings|plugin-settings]  [UNIC_PANE=devices|plugins]  [UNIC_FILTER=...]  [UNIC_DARK=1]  [UNIC_SELECT=<clip id>]
 @MainActor enum Snapshot {
     private static var started = false
 
@@ -37,6 +37,13 @@ import SwiftUI
             case "panel": QuickPanel.shared.show()
             case "preview": Library.shared.previewing = Library.shared.selection
             case "settings": NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            case "plugin-settings":
+                let host = NSHostingView(rootView: PluginSettingsPreview(saved: .constant(nil)))
+                let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 620),
+                                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
+                w.contentView = host
+                w.orderFront(nil)
+                extra = w
             case "menu":
                 let host = NSHostingView(rootView: MenuPanel().environmentObject(Library.shared))
                 let w = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -52,7 +59,7 @@ import SwiftUI
                 case "panel": win = QuickPanel.shared.window
                 case "preview": win = main?.attachedSheet
                 case "settings": win = NSApp.windows.first { $0 !== main && $0.styleMask.contains(.titled) && $0.isVisible && !($0 is NSPanel) }
-                case "menu": win = extra
+                case "menu", "plugin-settings": win = extra
                 default: win = main
                 }
                 guard let win, let view = win.contentView?.superview ?? win.contentView,

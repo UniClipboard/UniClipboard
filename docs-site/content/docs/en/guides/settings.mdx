@@ -3,8 +3,8 @@ title: Settings & preferences
 description: Every section of the Settings panel — what each control does and when to touch it.
 ---
 
-The Settings panel groups options into eight sections (plus an
-"About"). They appear below in the same order as the sidebar — for
+The Settings panel groups options into eight sections (plus
+"About" and "Notifications"). They appear below in the same order as the sidebar — for
 each, what the control **does** and when you actually want to change
 it.
 
@@ -12,6 +12,14 @@ Mobile-sync configuration lives in its own dialog on the
 **Devices** page rather than under Settings — it's documented
 [further down](#mobile-sync) and in the
 [Mobile sync](../core-features/mobile-sync) guide.
+
+## Notifications
+
+The main-window sidebar places **Notifications** above **Manage Devices**. The expanded sidebar shows its label and notification count. The bell button remains available when the sidebar is collapsed. The **Notifications** category in Settings shows the same content.
+
+Announcements apply to the installed desktop version and release channel. The panel shows the title, body, severity, and publication time. Select **Refresh** at the bottom to fetch the latest list, or **Done** to close the panel. The client does not record read status; opening or closing the panel does not hide announcements. The release service controls publication, withdrawal, and expiry.
+
+While the main window is in the foreground, it checks every five minutes and rechecks on focus or network recovery. Checks stop when the main window closes. This feature does not send system notifications or change update installation.
 
 ## General
 

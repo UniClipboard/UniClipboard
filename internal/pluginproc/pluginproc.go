@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -121,66 +122,140 @@ var ErrUnavailable = rpc.NewError(rpc.CodeUnavailable)
 func New(spec Spec, opts Options) plugin.Plugin {
 	opts.fill()
 	p := &Proxy{spec: spec, opts: opts, gate: make(chan struct{}, 1), stop: make(chan struct{})}
-	proc := slices.Contains(spec.Expected.Capabilities, plugin.CapProcessor)
-	act := slices.Contains(spec.Expected.Capabilities, plugin.CapAction)
+	has := func(c string) bool { return slices.Contains(spec.Expected.Capabilities, c) }
+	proc, act, obs := has(plugin.CapProcessor), has(plugin.CapAction), has(plugin.CapObserver)
+	pm, am, om := procM{p}, actM{p}, obsM{p}
 	switch {
+	case proc && act && obs:
+		return struct {
+			*Proxy
+			procM
+			actM
+			obsM
+		}{p, pm, am, om}
 	case proc && act:
-		return both{p}
+		return struct {
+			*Proxy
+			procM
+			actM
+		}{p, pm, am}
+	case proc && obs:
+		return struct {
+			*Proxy
+			procM
+			obsM
+		}{p, pm, om}
+	case act && obs:
+		return struct {
+			*Proxy
+			actM
+			obsM
+		}{p, am, om}
 	case proc:
-		return processorOnly{p}
+		return struct {
+			*Proxy
+			procM
+		}{p, pm}
 	case act:
-		return actorOnly{p}
+		return struct {
+			*Proxy
+			actM
+		}{p, am}
+	case obs:
+		return struct {
+			*Proxy
+			obsM
+		}{p, om}
 	}
 	return p
 }
 
-type processorOnly struct{ *Proxy }
-type actorOnly struct{ *Proxy }
-type both struct{ *Proxy }
+// The capability methods live in small types so that New can compose exactly
+// the interfaces the plugin declared.
+type procM struct{ p *Proxy }
+type actM struct{ p *Proxy }
+type obsM struct{ p *Proxy }
 
-func (p processorOnly) Process(ctx context.Context, c plugin.ProcessContext) error {
-	return p.process(ctx, c)
+func (m procM) Process(ctx context.Context, c plugin.ProcessContext) error {
+	return m.p.process(ctx, c)
 }
-func (p actorOnly) Run(ctx context.Context, c plugin.ActionContext) error { return p.run(ctx, c) }
-func (p both) Process(ctx context.Context, c plugin.ProcessContext) error { return p.process(ctx, c) }
-func (p both) Run(ctx context.Context, c plugin.ActionContext) error      { return p.run(ctx, c) }
+func (m actM) Run(ctx context.Context, c plugin.ActionContext) error { return m.p.run(ctx, c) }
+func (m obsM) OnEvent(ctx context.Context, e plugin.Event) error     { return m.p.onEvent(ctx, e) }
+
+func (p *Proxy) onEvent(ctx context.Context, ev plugin.Event) error {
+	s := p.current()
+	if s == nil {
+		return ErrUnavailable
+	}
+	if err := p.enter(ctx); err != nil {
+		return err
+	}
+	defer p.leave()
+	_, err := s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodOnEvent, Timeout: p.callTimeout(ctx, p.opts.ProcessTimeout),
+		Params: rpc.Event{Kind: ev.Kind, ItemID: ev.ItemID, AtMs: rpc.U64(ev.AtMs)}}, nil)
+	return err
+}
 
 func (p *Proxy) Spec() plugin.Spec { return p.spec.Expected }
 
 func wireSpec(s plugin.Spec) rpc.Spec {
-	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities)}
+	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind}
 	for _, a := range s.Actions {
 		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts)})
 	}
 	return out
 }
 
-func verifyDigest(path, want string) error {
+// stageExecutable copies the plugin executable into a private directory while
+// hashing the very bytes copied, and returns the copy's path. Executing the
+// copy, not the original, closes the gap between verifying a file and running
+// it: replacing the original afterwards changes nothing. Files next to the
+// original are not covered; plugins find their own resources through
+// UNIC_PLUGIN_DIR. The returned cleanup removes the copy.
+func stageExecutable(path, want string) (string, func(), error) {
 	wantB, err := hex.DecodeString(want)
 	if err != nil || len(wantB) != sha256.Size {
-		return errors.New("pluginproc: SHA256 must be 64 hex digits")
+		return "", nil, errors.New("pluginproc: SHA256 must be 64 hex digits")
 	}
-	f, err := os.Open(path)
+	src, err := os.Open(path)
 	if err != nil {
-		return errors.New("pluginproc: cannot open the plugin executable")
+		return "", nil, errors.New("pluginproc: cannot open the plugin executable")
 	}
-	defer f.Close()
+	defer src.Close()
+	dir, err := os.MkdirTemp("", "unic-plugin-")
+	if err != nil {
+		return "", nil, errors.New("pluginproc: cannot stage the plugin executable")
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	dst := filepath.Join(dir, "plugin"+filepath.Ext(path))
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o700)
+	if err != nil {
+		cleanup()
+		return "", nil, errors.New("pluginproc: cannot stage the plugin executable")
+	}
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return errors.New("pluginproc: cannot read the plugin executable")
+	_, err = io.Copy(io.MultiWriter(f, h), src)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		cleanup()
+		return "", nil, errors.New("pluginproc: cannot read the plugin executable")
 	}
 	if subtle.ConstantTimeCompare(h.Sum(nil), wantB) != 1 {
-		return errors.New("pluginproc: executable digest mismatch")
+		cleanup()
+		return "", nil, errors.New("pluginproc: executable digest mismatch")
 	}
-	return nil
+	return dst, cleanup, nil
 }
 
 // spawn starts the process and completes the handshake.
 func (p *Proxy) spawn(ctx context.Context) (*session, error) {
-	if err := verifyDigest(p.spec.Path, p.spec.SHA256); err != nil {
+	exe, cleanup, err := stageExecutable(p.spec.Path, p.spec.SHA256)
+	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(p.spec.Path, p.spec.Args...)
+	cmd := exec.Command(exe, p.spec.Args...)
 	cmd.Dir = p.spec.Dir
 	cmd.Env = append([]string{"UNIC_PLUGIN_PROTOCOL=1"}, p.spec.Env...)
 	if p.spec.Dir != "" {
@@ -190,18 +265,24 @@ func (p *Proxy) spawn(ctx context.Context) (*session, error) {
 	setProcAttrs(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
+		cleanup()
 		return nil, errors.New("pluginproc: cannot start the plugin")
 	}
+	afterStart(cmd)
 	s := &session{cmd: cmd, exited: make(chan struct{})}
 	go func() {
 		_ = cmd.Wait()
+		afterExit(cmd)
+		cleanup()
 		close(s.exited)
 	}()
 	rwc := rpc.NewDuplex(stdout, stdin, stdout, stdin)
@@ -380,6 +461,55 @@ func (p *Proxy) restart(delay time.Duration) {
 		return
 	}
 	p.sess, p.state = s, stRunning
+}
+
+// Unavailable reports whether the plugin gave up after too many crashes and
+// waits for Restart.
+func (p *Proxy) Unavailable() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.state == stUnavailable
+}
+
+// Restart brings an unavailable plugin back: a fresh process, handshake, Init
+// and Start with the configuration it ran with, and a clean crash history. It
+// returns invalid_state in any other state, and stays unavailable when the new
+// process does not come up.
+func (p *Proxy) Restart(ctx context.Context) error {
+	p.mu.Lock()
+	if p.state != stUnavailable {
+		p.mu.Unlock()
+		return rpc.NewError(rpc.CodeInvalidState)
+	}
+	p.state = stRestarting
+	p.wg.Add(1)
+	p.mu.Unlock()
+	defer p.wg.Done()
+
+	s, err := p.spawn(ctx)
+	if err == nil {
+		if err = p.handshakeCalls(ctx, s, p.cfg); err == nil {
+			_, err = s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodStart, Timeout: p.opts.StartTimeout, Params: rpc.Empty{}}, nil)
+		}
+		if err != nil {
+			p.terminate(s)
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch {
+	case p.state == stClosed:
+		if err == nil {
+			go p.terminate(s)
+		}
+		return rpc.NewError(rpc.CodeInvalidState)
+	case err != nil:
+		p.state = stUnavailable
+		return err
+	}
+	p.crashes = nil
+	p.sess, p.state = s, stRunning
+	return nil
 }
 
 // handle serves requests the plugin makes of the engine.

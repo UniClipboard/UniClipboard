@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"sort"
 	"time"
+
+	"github.com/uniclipboard/unic/plugin"
 )
 
 // The private result cache precedes the public CommitContent API/durable sink.
@@ -201,6 +203,7 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	}
 	if historyID != "" && failure == nil {
 		e.linkHistory(historyID, id, results)
+		e.notifyObservers(plugin.EventCommitted, string(historyID))
 	}
 	e.mu.Lock()
 	entry.history = historyID

@@ -381,3 +381,18 @@ func (w Window) validate() error {
 	}
 	return nil
 }
+
+// Event is the payload of plugin.on_event: a read-only notification.
+type Event struct {
+	Kind   string `json:"kind"`
+	ItemID string `json:"item_id"`
+	AtMs   U64    `json:"at_ms"`
+}
+
+// Validate checks bounds only; the receiving side decides which kinds it knows.
+func (e Event) Validate() error {
+	if e.Kind == "" || len(e.Kind) > 128 || len(e.ItemID) > 128 {
+		return protoErr("bad event")
+	}
+	return nil
+}

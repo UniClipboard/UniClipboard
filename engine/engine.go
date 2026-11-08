@@ -95,6 +95,7 @@ type Engine struct {
 
 	processors  []*pipelineProcessor // private adapters, fixed before Start
 	actions     []*pipelineAction    // likewise
+	observers   []*pipelineObserver  // likewise
 	plugins     []plugin.Plugin      // started in New, closed with the engine
 	submissions map[RequestID]*submissionEntry
 }
@@ -368,6 +369,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 		return asError(err)
 	}
+	e.notifyObservers(plugin.EventAppStarted, "")
 	e.logf(slog.LevelInfo, "engine started")
 	return nil
 }
@@ -552,6 +554,7 @@ func (e *Engine) Close(ctx context.Context) error {
 
 func (e *Engine) finalize() {
 	<-e.stopped
+	e.notifyObservers(plugin.EventAppShutdown, "") // delivered while observers are drained below
 	close(e.evStop)
 	e.evCancel()
 	<-e.evDone

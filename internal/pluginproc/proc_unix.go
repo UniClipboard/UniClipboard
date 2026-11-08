@@ -17,3 +17,6 @@ func killTree(cmd *exec.Cmd) {
 	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	_ = cmd.Process.Kill()
 }
+
+func afterStart(*exec.Cmd) {}
+func afterExit(*exec.Cmd)  {}

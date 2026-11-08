@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/uniclipboard/unic/internal/pluginproc"
 	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 // PluginInstance is one plugin in the processing order of Options.Plugins.
@@ -21,7 +23,13 @@ type PluginInstance struct {
 	Plugin  plugin.Plugin
 	Process *PluginProcess
 	Config  plugin.Config
-	// Events a processor subscribes to; empty means captured and received.
+	// Disabled keeps the plugin in the list, with its description checked and
+	// its ID reserved, but does not start it or let it see anything.
+	Disabled bool
+	// Events the plugin subscribes to. Processors take clipboard.captured and
+	// clipboard.received (default: both); observers take clipboard.committed,
+	// updated, deleted and expired (default: all four). When the list is not
+	// empty, every capability the plugin has needs at least one of its events.
 	Events []string
 	// OnError is what a failed processor means for syncing: "continue"
 	// (default) or "block_sync".
@@ -55,12 +63,14 @@ func invalidPlugin(id, why string) *Error {
 // processor and actions. On failure everything already started is closed.
 func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *Error) {
 	seen := map[string]bool{}
+	backends, unsupported := 0, false
 	var started []plugin.Plugin
 	defer func() {
 		if err != nil {
 			for _, p := range slices.Backward(started) {
 				_ = p.Close(context.WithoutCancel(ctx))
 			}
+			e.stopObservers()
 			e.processors, e.actions = nil, nil
 		}
 	}()
@@ -89,6 +99,16 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 			return invalidPlugin(spec.ID, "listed twice")
 		}
 		seen[spec.ID] = true
+		if in.Disabled {
+			continue
+		}
+		if slices.Contains(spec.Capabilities, plugin.CapSyncBackend) {
+			if backends++; backends > e.res.MaxSyncBackends {
+				return newErr(CodeLimitExceeded, "too many sync backends are enabled")
+			}
+			unsupported = true // reported after the whole list is checked
+			continue
+		}
 		host := &pluginHost{e: e, id: PluginID(spec.ID)}
 		if ierr := in.Plugin.Init(ctx, host, in.Config); ierr != nil {
 			return invalidPlugin(spec.ID, "Init failed") // its message could carry anything
@@ -98,6 +118,9 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 			return invalidPlugin(spec.ID, "Start failed")
 		}
 		e.registerPlugin(in, spec)
+	}
+	if unsupported {
+		return newErr(CodeUnsupported, "sync backend plugins are not supported yet")
 	}
 	e.plugins = started
 	return nil
@@ -114,9 +137,13 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 	case s.Version == "" || len(s.Version) > 64:
 		return invalidPlugin(s.ID, "invalid version")
 	}
-	var proc, act bool
+	var proc, act, obs, backend bool
 	for _, c := range s.Capabilities {
 		switch c {
+		case plugin.CapSyncBackend:
+			backend = true
+		case plugin.CapObserver:
+			obs = true
 		case plugin.CapProcessor:
 			proc = true
 		case plugin.CapAction:
@@ -134,6 +161,15 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 	if _, ok := in.Plugin.(plugin.Actor); act != ok {
 		return invalidPlugin(s.ID, "capability action does not match the implementation")
 	}
+	switch {
+	case backend && s.TransportKind != plugin.TransportPeerSessions && s.TransportKind != plugin.TransportObjectStore:
+		return invalidPlugin(s.ID, "a sync backend declares peer_sessions or object_store")
+	case !backend && s.TransportKind != "":
+		return invalidPlugin(s.ID, "only sync backends declare a transport kind")
+	}
+	if _, ok := in.Plugin.(plugin.Observer); obs != ok {
+		return invalidPlugin(s.ID, "capability observer does not match the implementation")
+	}
 	if act != (len(s.Actions) != 0) {
 		return invalidPlugin(s.ID, "actions must be declared exactly when the plugin has the action capability")
 	}
@@ -149,10 +185,25 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 		}
 		ids[a.ID] = true
 	}
+	var procEv, obsEv int
 	for _, ev := range in.Events {
-		if ev != plugin.EventCaptured && ev != plugin.EventReceived {
+		switch {
+		case ev == plugin.EventCaptured || ev == plugin.EventReceived:
+			procEv++
+		case slices.Contains(observerEvents, ev):
+			obsEv++
+		default:
 			return invalidPlugin(s.ID, "unknown event")
 		}
+	}
+	if len(in.Events) != len(slices.Compact(slices.Sorted(slices.Values(in.Events)))) {
+		return invalidPlugin(s.ID, "an event is listed twice")
+	}
+	if len(in.Events) != 0 && ((proc && procEv == 0) || (obs && obsEv == 0)) {
+		return invalidPlugin(s.ID, "no subscribed event for one of its capabilities")
+	}
+	if (!proc && procEv != 0) || (!obs && obsEv != 0) {
+		return invalidPlugin(s.ID, "an event does not match its capabilities")
 	}
 	return nil
 }
@@ -163,12 +214,21 @@ func (e *Engine) registerPlugin(in PluginInstance, spec plugin.Spec) {
 		if len(in.Events) != 0 {
 			events = nil
 			for _, ev := range in.Events {
-				events = append(events, pipelineEvent(ev))
+				if ev == plugin.EventCaptured || ev == plugin.EventReceived {
+					events = append(events, pipelineEvent(ev))
+				}
 			}
 		}
 		e.processors = append(e.processors, newPipelineProcessor(spec.ID, events, in.OnError == "block_sync", func(ctx context.Context, c *processingContext) error {
 			return p.Process(ctx, processView{c})
 		}))
+	}
+	if o, ok := in.Plugin.(plugin.Observer); ok {
+		events := observerEvents
+		if len(in.Events) != 0 {
+			events = slices.DeleteFunc(slices.Clone(in.Events), func(ev string) bool { return !slices.Contains(observerEvents, ev) })
+		}
+		e.observers = append(e.observers, newPipelineObserver(spec.ID, events, o.OnEvent))
 	}
 	if a, ok := in.Plugin.(plugin.Actor); ok {
 		ap := newActionPlugin(PluginID(spec.ID))
@@ -180,10 +240,41 @@ func (e *Engine) registerPlugin(in PluginInstance, spec plugin.Spec) {
 }
 
 func (e *Engine) closePlugins(ctx context.Context) {
+	e.stopObservers()
 	for _, p := range slices.Backward(e.plugins) {
 		_ = p.Close(ctx)
 	}
 	e.plugins = nil
+}
+
+// RestartPlugin starts a process plugin again after it gave up (state
+// "unavailable") following repeated crashes. In-process plugins and plugins
+// that are running are not restartable.
+func (e *Engine) RestartPlugin(ctx context.Context, id PluginID) error {
+	release, gerr := e.enter(ctx)
+	if gerr != nil {
+		return gerr
+	}
+	defer release()
+	i := slices.IndexFunc(e.plugins, func(p plugin.Plugin) bool { return p.Spec().ID == string(id) })
+	if i < 0 {
+		return newErr(CodeNotFound, "no such plugin")
+	}
+	r, ok := e.plugins[i].(interface{ Restart(context.Context) error })
+	if !ok {
+		return newErr(CodeUnsupported, "this plugin runs inside the host and cannot be restarted")
+	}
+	if err := r.Restart(ctx); err != nil {
+		var re *rpc.Error
+		switch {
+		case errors.As(err, &re) && re.Code == rpc.CodeInvalidState:
+			return newErr(CodeInvalidState, "the plugin is not unavailable")
+		case ctx.Err() != nil:
+			return ctxErr(ctx.Err())
+		}
+		return newErr(CodeUnavailable, "the plugin did not start")
+	}
+	return nil
 }
 
 func publicItem(i pipelineItem) plugin.Item {

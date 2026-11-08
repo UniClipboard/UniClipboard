@@ -12,6 +12,16 @@ import (
 const (
 	CapProcessor = "processor" // annotates clipboard items automatically
 	CapAction    = "action"    // transforms content when the user asks
+	CapObserver  = "observer"  // is told, read-only, about committed history changes
+	// CapSyncBackend carries clipboard content between devices. Declaring it
+	// needs a TransportKind; the engine loads such plugins from P5 on.
+	CapSyncBackend = "sync_backend"
+)
+
+// Transport kinds of a sync backend.
+const (
+	TransportPeerSessions = "peer_sessions" // direct sessions with paired devices
+	TransportObjectStore  = "object_store"  // a shared store such as WebDAV
 )
 
 // Events a processor can subscribe to.
@@ -20,13 +30,27 @@ const (
 	EventReceived = "clipboard.received"
 )
 
+// Events an observer can subscribe to. They carry the history ID only, never
+// content, and are hints: losing one loses nothing a query would not show.
+const (
+	EventCommitted   = "clipboard.committed" // an item entered the history
+	EventUpdated     = "clipboard.updated"   // its tags or expiry changed
+	EventDeleted     = "clipboard.deleted"   // the user deleted it, or it was evicted
+	EventExpired     = "clipboard.expired"   // it reached its expiry
+	EventPasted      = "clipboard.pasted"    // the user applied it through the host's UI; direct system pastes are not observable
+	EventAppStarted  = "app.started"         // the engine is running; ItemID is empty
+	EventAppShutdown = "app.shutdown"        // the engine is stopping; ItemID is empty
+)
+
 // Spec identifies a plugin and what it offers.
 type Spec struct {
 	ID           string // e.g. "builtin.text"
 	Version      string
 	APIVersion   int // 1
 	Capabilities []string
-	Actions      []ActionSpec // only with CapAction
+	// TransportKind is for sync backends only; other plugins leave it empty.
+	TransportKind string
+	Actions       []ActionSpec // only with CapAction
 }
 
 // ActionSpec declares one user-invoked action. Its key outside the plugin is
@@ -59,6 +83,20 @@ type Plugin interface {
 type Processor interface {
 	Plugin
 	Process(context.Context, ProcessContext) error
+}
+
+// Event is one read-only notification for an observer.
+type Event struct {
+	Kind   string // one of the observer events
+	ItemID string // history ID
+	AtMs   int64
+}
+
+// Observer is told about history changes after they happened. Its errors are
+// dropped; it can neither veto nor change anything.
+type Observer interface {
+	Plugin
+	OnEvent(context.Context, Event) error
 }
 
 // Actor runs the actions it declared, only when a user asks.

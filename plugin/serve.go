@@ -58,7 +58,7 @@ func ServeIO(ctx context.Context, p Plugin, r io.Reader, w io.Writer) error {
 }
 
 func wireSpec(s Spec) rpc.Spec {
-	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities)}
+	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind}
 	for _, a := range s.Actions {
 		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts)})
 	}
@@ -98,6 +98,8 @@ func (s *server) handle(ctx context.Context, c *rpc.Call) (any, error) {
 		res, err = s.process(ctx, c)
 	case rpc.MethodRunAction:
 		res, err = s.runAction(ctx, c)
+	case rpc.MethodOnEvent:
+		res, err = s.onEvent(ctx, c)
 	default:
 		return nil, rpc.NewError(rpc.CodeUnsupported)
 	}
@@ -256,6 +258,33 @@ func (s *server) process(ctx context.Context, c *rpc.Call) (any, error) {
 		return nil, pc.fault
 	}
 	return pc.patch(in.Generation), nil
+}
+
+func (s *server) onEvent(ctx context.Context, c *rpc.Call) (any, error) {
+	obs, ok := s.p.(Observer)
+	if !ok {
+		return nil, rpc.NewError(rpc.CodeUnsupported)
+	}
+	var in rpc.Event
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	if err := s.started(); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	subscribed := len(s.events) == 0 || slices.Contains(s.events, in.Kind)
+	s.mu.Unlock()
+	if !subscribed {
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	if err := s.enter(ctx); err != nil {
+		return nil, err
+	}
+	defer s.leave()
+	return nil, safely(func() error {
+		return obs.OnEvent(ctx, Event{Kind: in.Kind, ItemID: in.ItemID, AtMs: int64(in.AtMs)})
+	})
 }
 
 func (s *server) runAction(ctx context.Context, c *rpc.Call) (any, error) {

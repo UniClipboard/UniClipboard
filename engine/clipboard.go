@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 // ---- DTOs ----
@@ -499,6 +500,9 @@ func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 			e.obs.seq, e.obs.baseline, e.obs.last = r.Sequence, key, nil
 		}
 		finish(ApplyApplied)
+		if t.history != "" {
+			e.notifyObservers(plugin.EventPasted, string(t.history)) // used through the host's UI
+		}
 	}
 	return nil
 }

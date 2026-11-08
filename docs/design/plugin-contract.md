@@ -39,7 +39,7 @@ type Plugin interface {
 }
 type Processor interface {
     Plugin
-    Process(context.Context, *ProcessContext) error
+    Process(context.Context, ProcessContext) error
 }
 type Observer interface {
     Plugin
@@ -47,7 +47,7 @@ type Observer interface {
 }
 type Actor interface {
     Plugin
-    Run(context.Context, *ActionContext) error
+    Run(context.Context, ActionContext) error
 }
 ```
 

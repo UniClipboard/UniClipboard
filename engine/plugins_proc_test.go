@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -31,6 +32,9 @@ func (procHelper) Start(context.Context) error                            { retu
 func (procHelper) Close(context.Context) error                            { return nil }
 func (procHelper) Process(_ context.Context, pc plugin.ProcessContext) error {
 	text := pc.Item().Text
+	if strings.Contains(text, "crash") {
+		os.Exit(3)
+	}
 	if strings.Contains(text, "hang") {
 		time.Sleep(time.Hour)
 	}
@@ -139,5 +143,38 @@ func TestProcessPluginRejectedAtStartup(t *testing.T) {
 	if e, err := New(bg, opts); err == nil {
 		_ = e.Close(bg)
 		t.Fatal("accepted an unknown on_error")
+	}
+}
+
+func TestRestartPluginAfterItGaveUp(t *testing.T) {
+	in := procInstance("")
+	in.Process.Options.MaxRestarts = 1
+	in.Process.Options.RestartWindow = time.Minute
+	n := newContentNode(t, func(o *Options) {
+		o.Plugins = []PluginInstance{in, {Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: "ok.inproc", Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapProcessor}}, closed: new([]string)}}}}
+	})
+	start(t, n)
+	id := PluginID("example.helper")
+	if code(n.e.RestartPlugin(bg, id)) != CodeInvalidState {
+		t.Fatal("restarted a running plugin")
+	}
+	if code(n.e.RestartPlugin(bg, "no.such")) != CodeNotFound {
+		t.Fatal("restarted an unknown plugin")
+	}
+	if code(n.e.RestartPlugin(bg, "ok.inproc")) != CodeUnsupported {
+		t.Fatal("restarted an in-process plugin")
+	}
+	tagged := func(req string) bool {
+		r := commitText(t, n.e, req, "mail "+req+"@example.com") // unique: identical content is deduplicated
+		it, _ := n.e.GetItem(bg, r.HistoryID)
+		return slices.Contains(it.Tags, "email")
+	}
+	for i := 0; i < 2; i++ { // a budget of one restart is exceeded by the second crash
+		eventually(t, "plugin working", func() bool { return tagged(fmt.Sprintf("w%d-%d", i, time.Now().UnixNano())) })
+		commitText(t, n.e, fmt.Sprintf("c%d", i), fmt.Sprintf("crash now %d", i))
+	}
+	eventually(t, "the plugin gave up and restarts on request", func() bool { return n.e.RestartPlugin(bg, id) == nil })
+	if !tagged("after") {
+		t.Fatal("not working after an explicit restart")
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/internal/wire"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 // recvDirName is where incoming files are written, inside InboxDir. The engine
@@ -290,6 +291,9 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	e.commitObjsLocked([]ObjectRef{{Type: "received", ID: string(rc.ReceiptID)}}, EventReceived)
 	e.rescheduleRecvLocked()
 	e.mu.Unlock()
+	if hid != "" {
+		e.notifyObservers(plugin.EventCommitted, string(hid))
+	}
 }
 
 // reserveRecvSlot sets one place in the received list aside, making room by

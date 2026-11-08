@@ -73,6 +73,7 @@ type ResourcePolicy struct {
 	SyncDedupTTL        time.Duration // default 7 days
 	MaxSubscriptions    int           // default 16
 	EventBuffer         int           // default 128, per subscription
+	MaxSyncBackends     int           // default 8, at most 32; sync backend plugins that may be enabled together
 }
 
 // Network is the network the engine runs on; the default is tailcat. Listen
@@ -132,7 +133,7 @@ func (s Settings) validate() *Error {
 
 func (p ResourcePolicy) withDefaults() (ResourcePolicy, *Error) {
 	if p.MaxStoredBytes < 0 || p.MaxReceived < 0 || p.ReceivedTTL < 0 || p.MaxOperations < 0 ||
-		p.OperationTTL < 0 || p.MaxSyncDedupEntries < 0 || p.SyncDedupTTL < 0 || p.MaxSubscriptions < 0 || p.EventBuffer < 0 || p.MaxSubmissions < 0 || p.SubmissionTTL < 0 {
+		p.OperationTTL < 0 || p.MaxSyncDedupEntries < 0 || p.SyncDedupTTL < 0 || p.MaxSubscriptions < 0 || p.EventBuffer < 0 || p.MaxSubmissions < 0 || p.SubmissionTTL < 0 || p.MaxSyncBackends < 0 {
 		return p, newErr(CodeInvalidArgument, "resource policy values must not be negative")
 	}
 	def := func(v *int64, d int64) {
@@ -152,6 +153,10 @@ func (p ResourcePolicy) withDefaults() (ResourcePolicy, *Error) {
 	defi(&p.MaxSyncDedupEntries, 100000)
 	defi(&p.MaxSubscriptions, 16)
 	defi(&p.EventBuffer, 128)
+	defi(&p.MaxSyncBackends, 8)
+	if p.MaxSyncBackends > 32 {
+		return p, newErr(CodeInvalidArgument, "MaxSyncBackends must be between 1 and 32")
+	}
 	if p.ReceivedTTL == 0 {
 		p.ReceivedTTL = 30 * time.Minute
 	}

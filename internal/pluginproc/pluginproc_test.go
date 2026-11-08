@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -22,7 +23,7 @@ type helperPlugin struct{ host plugin.Host }
 
 func helperSpec() plugin.Spec {
 	return plugin.Spec{ID: "example.helper", Version: "1.0.0", APIVersion: 1,
-		Capabilities: []string{plugin.CapProcessor, plugin.CapAction},
+		Capabilities: []string{plugin.CapProcessor, plugin.CapAction, plugin.CapObserver},
 		Actions: []plugin.ActionSpec{
 			{ID: "upper", Title: "Upper", Accepts: []string{"text"}},
 			{ID: "big", Title: "Big", Accepts: []string{"text"}},
@@ -79,6 +80,14 @@ func (h *helperPlugin) Run(_ context.Context, ac plugin.ActionContext) error {
 		return ac.SetText(strings.Repeat("0123456789abcdef", 3<<16))
 	}
 	return nil // "none": forgets to set a result
+}
+
+func (h *helperPlugin) OnEvent(ctx context.Context, ev plugin.Event) error {
+	if ev.ItemID == "fail" {
+		return errors.New("secret")
+	}
+	h.host.Notify(ctx, "event "+ev.Kind+" "+ev.ItemID)
+	return nil
 }
 
 func TestMain(m *testing.M) {
@@ -322,6 +331,28 @@ func TestCrashRestartsThenGivesUp(t *testing.T) {
 	if !errors.As(err, &re) || re.Code != rpc.CodeUnavailable {
 		t.Fatalf("want unavailable, got %v", err)
 	}
+
+	r := p.(interface {
+		Restart(context.Context) error
+		Unavailable() bool
+	})
+	if !r.Unavailable() {
+		t.Fatal("not reported unavailable")
+	}
+	if err := r.Restart(context.Background()); err != nil {
+		t.Fatalf("explicit restart: %v", err)
+	}
+	if err := proc.Process(context.Background(), newProc("a@b")); err != nil {
+		t.Fatalf("not working after restart: %v", err)
+	}
+	if err := r.Restart(context.Background()); !errors.As(err, &re) || re.Code != rpc.CodeInvalidState {
+		t.Fatalf("restarting a running plugin: %v", err)
+	}
+	// the crash budget starts over
+	if err := proc.Process(context.Background(), newProc("crash now")); err == nil {
+		t.Fatal("crash reported success")
+	}
+	waitUntil(t, "restarted by backoff again", func() bool { return proc.Process(context.Background(), newProc("fine")) == nil })
 }
 
 func TestStartFailures(t *testing.T) {
@@ -359,9 +390,55 @@ func TestStartFailures(t *testing.T) {
 	})
 }
 
+func TestObserverReceivesEvents(t *testing.T) {
+	p, host := start(t, exeSpec(t, "serve"), Options{}, nil)
+	obs, ok := p.(plugin.Observer)
+	if !ok {
+		t.Fatal("the proxy hides the observer capability")
+	}
+	ctx := context.Background()
+	if err := obs.OnEvent(ctx, plugin.Event{Kind: plugin.EventCommitted, ItemID: "h1", AtMs: 5}); err != nil {
+		t.Fatal(err)
+	}
+	var re *rpc.Error
+	if err := obs.OnEvent(ctx, plugin.Event{Kind: plugin.EventDeleted, ItemID: "fail"}); !errors.As(err, &re) || re.Code != rpc.CodeInternal {
+		t.Fatalf("got %v", err)
+	}
+	if err := obs.OnEvent(ctx, plugin.Event{Kind: plugin.EventUpdated, ItemID: "h2"}); err != nil {
+		t.Fatalf("the session must survive a failed event: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		host.mu.Lock()
+		got := slices.Clone(host.msgs)
+		host.mu.Unlock()
+		if slices.Equal(got, []string{"event clipboard.committed h1", "event clipboard.updated h2"}) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("got %q", got)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestSubscriptionLimitsObserverEvents(t *testing.T) {
+	s := exeSpec(t, "serve")
+	s.Events = []string{plugin.EventCaptured, plugin.EventDeleted}
+	p, _ := start(t, s, Options{}, nil)
+	var re *rpc.Error
+	err := p.(plugin.Observer).OnEvent(context.Background(), plugin.Event{Kind: plugin.EventCommitted, ItemID: "x"})
+	if !errors.As(err, &re) || re.Code != rpc.CodeInvalidArgument {
+		t.Fatalf("an unsubscribed event reached the plugin: %v", err)
+	}
+	if err := p.(plugin.Observer).OnEvent(context.Background(), plugin.Event{Kind: plugin.EventDeleted, ItemID: "x"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCloseEndsStubbornProcess(t *testing.T) {
 	p, _ := start(t, exeSpec(t, "ignore-eof"), Options{StopTimeout: 400 * time.Millisecond}, nil)
-	px := p.(both).Proxy
+	px := p.(interface{ current() *session })
 	s := px.current()
 	begin := time.Now()
 	if err := p.Close(context.Background()); err != nil {
@@ -393,4 +470,37 @@ func waitUntil(t *testing.T, what string, ok func() bool) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %s", what)
+}
+
+func TestStagedExecutableIsWhatWasHashed(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "plug")
+	if err := os.WriteFile(src, []byte("good bytes"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte("good bytes"))
+	want := hex.EncodeToString(sum[:])
+
+	staged, cleanup, err := stageExecutable(src, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Swapping the original after verification must not affect what runs.
+	if err := os.WriteFile(src, []byte("evil bytes"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(staged)
+	if err != nil || string(got) != "good bytes" {
+		t.Fatalf("staged copy = %q, %v", got, err)
+	}
+	if staged == src {
+		t.Fatal("executes the original")
+	}
+	cleanup()
+	if _, err := os.Stat(staged); !os.IsNotExist(err) {
+		t.Fatalf("copy not removed: %v", err)
+	}
+	// A mismatch leaves nothing behind.
+	if _, _, err := stageExecutable(src, want); err == nil {
+		t.Fatal("accepted modified bytes")
+	}
 }

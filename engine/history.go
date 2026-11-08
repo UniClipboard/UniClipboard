@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/uniclipboard/unic/internal/store"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 const (
@@ -394,6 +395,7 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 	h.refresh(e.st)
 	h.mu.Unlock()
 	e.historyChanged(append([]string{it.ID}, evicted...)...)
+	e.notifyObservers(plugin.EventDeleted, evicted...)
 	return HistoryID(it.ID), nil
 }
 
@@ -795,6 +797,7 @@ func (e *Engine) sweepTick() {
 		e.scheduleHistorySweepLocked()
 	}
 	e.mu.Unlock()
+	e.notifyObservers(plugin.EventExpired, ids...)
 }
 
 func historyRefs(ids []string) []ObjectRef {
@@ -848,6 +851,7 @@ func (e *Engine) UpdateItem(ctx context.Context, req UpdateItemRequest) (History
 	}
 	if changed {
 		e.historyChanged(string(req.ID))
+		e.notifyObservers(plugin.EventUpdated, string(req.ID))
 	}
 	return toHistoryItem(it), nil
 }
@@ -875,5 +879,6 @@ func (e *Engine) DeleteItem(ctx context.Context, req DeleteItemRequest) error {
 		return historyStoreErr(err)
 	}
 	e.historyChanged(string(req.ID))
+	e.notifyObservers(plugin.EventDeleted, string(req.ID))
 	return nil
 }

@@ -1,0 +1,35 @@
+{
+  "fingerprint": "3448 7496 5767 94B3 0BDE C72F 9522 0A24",
+  "keys": {
+    "A": {
+      "device_id": "q5opsuq3efr3sxg3vlqcgetwvu",
+      "public": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "seed": "0101010101010101010101010101010101010101010101010101010101010101"
+    },
+    "B": {
+      "device_id": "aujhrfzgxeanamozr3ryy3h3gq",
+      "public": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+      "seed": "0202020202020202020202020202020202020202020202020202020202020202"
+    }
+  },
+  "object": {
+    "author": "A",
+    "content_sha256": "5cd9289a69664e69c5e2c3015062796590a2d6ed5f32fe9d4ec1f3c94636e457",
+    "created_ms": "1794000000000",
+    "repo_binding": "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0",
+    "seq": "7",
+    "signature": "a22ff831ec15e4c495dbc75c881de9b784c1f5a47a1cb7c377188bd5f55ffc69af74b38e29079daee59349c6660f11a277dff730164e9df5b4877ef8357fb00b"
+  },
+  "p2p": {
+    "context_binding": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+    "hello_initiator": "01018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "hello_responder": "01018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b3940b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+    "kind": "1",
+    "pair_token": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+    "pair_token_proof": "835cc81eef0dc447b113c7c05bbbfa3983944e9d82f9351ae4047e527317561e",
+    "proof_initiator": "a5e0671ce130a8e4fd946981561b6ed5a3bcba996a4b29a388003f0aa4df039d2777b9103678982705c47a00a3dc8736c4e5fd3326e66e295cb7d81db05f0e0a",
+    "proof_responder": "c335bf75fa39202ac70ff9e4c0712e2d261c68473f431cec0d5eeee6a57ecac55b047832a7c3838d488fb262bd2ef6dbec709b1b2b01671e2babeb77f870dc05",
+    "transcript": "1228cfd739de9f5e260eca974c927af5c1202b42fbf5097939784c0a25d75b99"
+  },
+  "version": 1
+}

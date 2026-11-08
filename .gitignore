@@ -7,3 +7,4 @@
 *.db-wal
 *.sock
 .DS_Store
+/dist/

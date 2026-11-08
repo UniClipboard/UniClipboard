@@ -19,6 +19,7 @@ const (
 	OriginKindAction       HistoryOriginKind = "action"
 	OriginKindExplicit     HistoryOriginKind = "explicit"
 	OriginKindExternal     HistoryOriginKind = "external" // via an external channel; Origin.PluginID is the backend
+	OriginKindMigration    HistoryOriginKind = "migration"
 
 	HistorySyncNotRequested HistorySyncState = "not_requested"
 	HistorySyncPending      HistorySyncState = "pending"

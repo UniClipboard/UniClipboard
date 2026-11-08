@@ -65,4 +65,38 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 
 ## 第一阶段范围外
 
-历史记录与搜索、文件夹同步、选择性接收/设备授权确认、原生剪贴板变化通知(目前 400ms 轮询)。
+全文搜索、文件夹同步、选择性接收/设备授权确认、原生剪贴板变化通知(目前 400ms 轮询)。
+
+
+## 从本机 UniClipboard v1 迁移
+
+构建三个入口，并将它们放在同一个目录：
+
+```sh
+go build -o .build/unic ./app/desktop/cmd/unic
+go build -o .build/unicd ./app/desktop/cmd/unicd
+go build -o .build/unic-migrate ./app/desktop/cmd/unic-migrate
+```
+
+退出旧 UniClipboard，并停止使用目标目录的 `unicd`。先预检，再迁移：
+
+```sh
+.build/unic migrate --dry-run --json
+.build/unic migrate --json
+```
+
+默认读取本机旧桌面数据目录，写入 `$UNIC_HOME` 或当前版本的默认 `unic` 目录。可用 `--source DIR --target DIR` 指定目录；新目录与已有历史目录均支持。目标被占用会失败，不会停止其他进程。完整迁移和预检就绪退出码为 0，部分迁移为 3，失败或取消为 1。`--json` 每行输出一条阶段进度或最终报告。
+
+先尝试旧系统凭据；macOS 的钥匙串授权需用户手动允许。读不到时，在交互终端无回显输入旧明文口令。宿主可使用 `--passphrase-stdin` 通过标准输入传递口令；不要将口令放进命令行或环境变量。命名 profile 可用 `--service UniClipboard-PROFILE` 指定旧 service。
+
+成功项逐条持久化，中断后用相同命令续跑。工具会复制文件内容、保留标签与旧时间，并在关闭和重开目标后校验内容摘要。文件夹保存为 ZIP；原文件已丢失、密文损坏或超出资源限制时明确报告 `partial`，不会宣称全部完成。已迁移条目不会因重跑而重复；已主动删除的目标条目不会被复活。
+
+迁移后启动 `.build/unicd`，打开 `.build/unic gui`，默认「历史」页可浏览迁移记录、按标签筛选和使用内容。此处指 Go 桌面应用；`app/mac` 的独立 SwiftUI 客户端未接入本次功能。
+
+六平台 CLI 构建：
+
+```sh
+app/desktop/scripts/build-migration.sh
+```
+
+产物位于 `dist/migration/`，包含 macOS / Windows / Linux × arm64 / amd64 和 `SHA256SUMS`。跨平台编译不等同于全部平台的钥匙串运行验收。格式范围、幂等、容量策略和验收记录见[迁移设计](../../docs/design/decisions/0011-v1-history-migration.md)和[执行记录](../../docs/exec/0011-v1-history-migration.md)。

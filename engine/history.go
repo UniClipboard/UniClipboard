@@ -29,7 +29,7 @@ const (
 	historyInlineMax  = 256 << 10
 	historyDefaultLim = 50
 	historyMaxLim     = 200
-	historyMaxTags    = 32
+	historyMaxTags    = 1000
 	cursorKeyMeta     = "history_cursor_key"
 )
 
@@ -243,8 +243,8 @@ func normalizeTags(tags []string) ([]string, *Error) {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, t := range tags {
-		if t == "" || len(t) > 64 || !utf8.ValidString(t) {
-			return nil, newErr(CodeInvalidArgument, "a tag must be 1..64 bytes of valid UTF-8")
+		if t == "" || !utf8.ValidString(t) || utf8.RuneCountInString(t) > 64 {
+			return nil, newErr(CodeInvalidArgument, "a tag must be 1..64 Unicode characters")
 		}
 		if !seen[t] {
 			seen[t] = true
@@ -252,7 +252,7 @@ func normalizeTags(tags []string) ([]string, *Error) {
 		}
 	}
 	if len(out) > historyMaxTags {
-		return nil, newErr(CodeInvalidArgument, "at most 32 tags")
+		return nil, newErr(CodeInvalidArgument, "at most 1000 tags")
 	}
 	sort.Strings(out) // byte order
 	return out, nil
@@ -466,10 +466,11 @@ func (e *Engine) GetItem(ctx context.Context, id HistoryID) (HistoryItem, error)
 }
 
 type cursorPayload struct {
-	Inst   InstanceID `json:"i"`
-	Filter string     `json:"f"`
-	Upper  int64      `json:"u"`
-	After  int64      `json:"a"`
+	Inst      InstanceID `json:"i"`
+	Filter    string     `json:"f"`
+	Upper     int64      `json:"u"`
+	After     int64      `json:"a"`
+	AfterTime int64      `json:"t"`
 }
 
 func (h *history) seal(p cursorPayload) string {
@@ -508,7 +509,7 @@ func normalizeFilter(f HistoryFilter) (HistoryFilter, *Error) {
 		}
 	}
 	for _, k := range f.OriginKinds {
-		if k != OriginKindLocalSystem && k != OriginKindRemoteDevice && k != OriginKindAction && k != OriginKindExplicit && k != OriginKindExternal {
+		if k != OriginKindLocalSystem && k != OriginKindRemoteDevice && k != OriginKindAction && k != OriginKindExplicit && k != OriginKindExternal && k != OriginKindMigration {
 			return bad("unknown origin kind")
 		}
 	}
@@ -569,6 +570,7 @@ func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (Histo
 			return HistoryPage{}, newErr(CodeConflict, "the filter differs from the one the cursor was made with")
 		}
 		q.Upper, q.After = cp.Upper, cp.After
+		q.AfterTime = cp.AfterTime
 	}
 	items, rev, newest, err := e.st.ListHistory(q)
 	if err != nil {
@@ -580,7 +582,7 @@ func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (Histo
 	page := HistoryPage{HistoryRevision: rev, Items: []HistoryItem{}}
 	if len(items) > limit {
 		items = items[:limit]
-		page.NextCursor = e.hist.seal(cursorPayload{Inst: e.instance, Filter: fk, Upper: q.Upper, After: items[limit-1].Seq})
+		page.NextCursor = e.hist.seal(cursorPayload{Inst: e.instance, Filter: fk, Upper: q.Upper, After: items[limit-1].Seq, AfterTime: items[limit-1].OrderMs})
 	}
 	for _, it := range items {
 		page.Items = append(page.Items, toHistoryItem(it))

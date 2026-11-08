@@ -189,6 +189,20 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	}
 	closeAll := func(e *Error) (*Engine, error) { _ = st.Close(); return fail(e) }
 
+	itemsFloor, bytesFloor, storedFloor, floorErr := st.HistoryImportLimits()
+	if floorErr != nil {
+		return closeAll(newErr(CodeUnavailable, "cannot read history capacity"))
+	}
+	if storedFloor > 0 {
+		res.MaxStoredBytes = max(res.MaxStoredBytes, storedFloor)
+		opts.Resources = res
+		base, baseErr := opts.History.withDefaults(res.MaxStoredBytes)
+		if baseErr != nil {
+			return closeAll(baseErr)
+		}
+		opts.History.MaxItems = max(base.MaxItems, itemsFloor)
+		opts.History.MaxBytes = max(base.MaxBytes, bytesFloor)
+	}
 	hopts, herr2 := opts.History.withDefaults(res.MaxStoredBytes)
 	if herr2 != nil {
 		return closeAll(herr2)
@@ -357,6 +371,9 @@ func (e *Engine) Start(ctx context.Context) error {
 		return gerr
 	}
 	defer release()
+	if e.opts.MigrationMode {
+		return newErr(CodeInvalidState, "an offline migration session cannot start")
+	}
 
 	e.mu.Lock()
 	if e.life != LifecycleCreated {

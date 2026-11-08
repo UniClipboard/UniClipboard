@@ -1,6 +1,7 @@
 /unic
 /unicd
 /bin/
+/.build/
 /*.exe
 *.db
 *.db-shm

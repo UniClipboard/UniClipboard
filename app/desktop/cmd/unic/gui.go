@@ -17,7 +17,8 @@ import (
 
 // Tabs and panes; the layout follows prototype/gui.html.
 const (
-	tabDevices = iota
+	tabHistory = iota
+	tabDevices
 	tabActivity
 	tabAdd
 )
@@ -58,10 +59,15 @@ type gui struct {
 	joinDone string          // name of the device just joined
 
 	// Owned by the main thread.
-	tab, addMode, joinMode int
-	codeInput, addrInput   string
-	revealAddr, addrOpen   bool
-	confirmRemove          string
+	tab, addMode, joinMode      int
+	codeInput, addrInput        string
+	revealAddr, addrOpen        bool
+	confirmRemove               string
+	history                     []api.HistoryItem
+	historyPreviews             map[string]string
+	historyCursor, historyError string
+	historyBusy, historyLoaded  bool
+	historyTag                  string
 }
 
 func runGUI() error {
@@ -113,6 +119,9 @@ func (g *gui) follow(ctx context.Context) {
 				g.mu.Unlock()
 			}
 			g.refresh(ctx)
+			if ev.Kind == "history" {
+				g.loadHistory("", "")
+			}
 		})
 		g.mu.Lock()
 		g.daemonUp = false
@@ -178,6 +187,14 @@ func (g *gui) refresh(ctx context.Context) {
 	}
 	g.mu.Unlock()
 	g.win.Invalidate()
+	if err == nil {
+		g.mu.Lock()
+		need := !g.historyLoaded
+		g.mu.Unlock()
+		if need {
+			g.loadHistory("", "")
+		}
+	}
 }
 
 func (g *gui) addLog(ev api.Event) {
@@ -322,16 +339,20 @@ func (g *gui) unpair(id string) {
 
 // snapshot is what one frame shows, copied under the lock.
 type snapshot struct {
-	st                         api.Status
-	up                         bool
-	clip                       string
-	logs                       []string
-	code                       api.Code
-	hasCode, codeBusy          bool
-	codeErr                    string
-	joinBusy                   bool
-	joinMsg, joinErr, joinDone string
-	joinWait                   *api.PairResult
+	st                          api.Status
+	up                          bool
+	clip                        string
+	logs                        []string
+	code                        api.Code
+	hasCode, codeBusy           bool
+	codeErr                     string
+	joinBusy                    bool
+	joinMsg, joinErr, joinDone  string
+	joinWait                    *api.PairResult
+	history                     []api.HistoryItem
+	historyPreviews             map[string]string
+	historyCursor, historyError string
+	historyBusy                 bool
 }
 
 func (g *gui) view(c *ui.Context) {
@@ -344,6 +365,7 @@ func (g *gui) view(c *ui.Context) {
 		st: g.status, up: g.daemonUp, clip: g.clip, logs: append([]string(nil), g.log...),
 		code: g.code, hasCode: g.hasCode, codeBusy: g.codeBusy, codeErr: g.codeErr,
 		joinBusy: g.joinBusy, joinMsg: g.joinMsg, joinErr: g.joinErr, joinDone: g.joinDone, joinWait: g.joinWait,
+		history: g.history, historyPreviews: g.historyPreviews, historyCursor: g.historyCursor, historyError: g.historyError, historyBusy: g.historyBusy,
 	}
 	g.mu.Unlock()
 
@@ -388,11 +410,13 @@ func (g *gui) view(c *ui.Context) {
 			if n := len(s.st.Pending); n > 0 {
 				devices = fmt.Sprintf("设备 (%d)", n)
 			}
-			ui.Segmented(c.Key("tabs"), &g.tab, devices, "动态", "添加设备").FillWidth()
+			ui.Segmented(c.Key("tabs"), &g.tab, "历史", devices, "动态", "添加设备").FillWidth()
 
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).Gap(10).Children(func() {
 					switch g.tab {
+					case tabHistory:
+						g.historyTab(c, s)
 					case tabDevices:
 						g.devicesTab(c, s)
 					case tabActivity:

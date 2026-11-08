@@ -137,6 +137,7 @@ type BackendSync struct {
 // HistoryItem is a stored record. Seq is private commit order.
 type HistoryItem struct {
 	Seq           int64
+	OrderMs       int64
 	ID            string
 	Revision      uint64
 	Kind          string
@@ -152,6 +153,8 @@ type HistoryItem struct {
 	Tags          []string // sorted by UTF-8 bytes
 	Parts         []HistoryPart
 	BackendStates map[string]BackendSync
+	ImportSource  string // offline import only; not part of public metadata
+	ImportRecord  string
 }
 
 // HistoryFilter: fields AND together; Kinds/OriginKinds match any of their
@@ -166,11 +169,12 @@ type HistoryFilter struct {
 }
 
 type HistoryQuery struct {
-	Filter HistoryFilter
-	Upper  int64 // only seq <= Upper; 0 = current newest (fixed by the first page)
-	After  int64 // only seq < After; 0 = from the top
-	Limit  int
-	NowMs  int64 // rows with 0 < expires_ms <= NowMs are hidden; 0 disables
+	Filter    HistoryFilter
+	Upper     int64 // only seq <= Upper; 0 = current newest (fixed by the first page)
+	After     int64 // only seq < After; 0 = from the top
+	AfterTime int64 // stable chronological order paired with After
+	Limit     int
+	NowMs     int64 // rows with 0 < expires_ms <= NowMs are hidden; 0 disables
 }
 
 // HistoryRevision returns the persisted collection revision.
@@ -205,11 +209,23 @@ func (s *Store) InsertHistoryDedup(it HistoryItem, d *Dedup) (seq int64, rev uin
 	r, err := tx.Exec(`INSERT INTO clip_items (id, revision, kind, origin_kind, device_id, plugin_id, source_app,
 created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		it.ID, it.Kind, it.OriginKind, it.DeviceID, it.PluginID, it.SourceApp,
-		it.CreatedMs, it.CreatedMs, it.ExpiresMs, nonEmpty(it.SyncState, "not_requested"), it.TotalBytes)
+		it.CreatedMs, max(it.CreatedMs, it.UpdatedMs), it.ExpiresMs, nonEmpty(it.SyncState, "not_requested"), it.TotalBytes)
 	if err != nil {
 		return 0, 0, err
 	}
 	if seq, err = r.LastInsertId(); err != nil {
+		return 0, 0, err
+	}
+	orderMs := it.CreatedMs
+	if it.ImportSource == "" {
+		// Normal commits remain monotonic even when the wall clock goes back.
+		var last int64
+		if err := tx.QueryRow(`SELECT COALESCE(MAX(`+orderExpr+`), 0) FROM clip_items WHERE seq <> ?`, seq).Scan(&last); err != nil {
+			return 0, 0, err
+		}
+		orderMs = max(orderMs, last)
+	}
+	if _, err := tx.Exec(`INSERT INTO clip_item_order(item_seq,order_ms) VALUES(?,?)`, seq, orderMs); err != nil {
 		return 0, 0, err
 	}
 	for i, p := range it.Parts {
@@ -222,6 +238,9 @@ created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?,
 		if _, err := tx.Exec(`INSERT INTO clip_tags (item_seq, tag) VALUES (?, ?)`, seq, t); err != nil {
 			return 0, 0, err
 		}
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO history_labels(name) VALUES(?)`, t); err != nil {
+			return 0, 0, err
+		}
 	}
 	for b, st := range it.BackendStates {
 		if err := insertBackendSync(tx, seq, b, st); err != nil {
@@ -230,6 +249,19 @@ created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?,
 	}
 	if d != nil {
 		if err := putDedup(tx, *d); err != nil {
+			return 0, 0, err
+		}
+	}
+	if it.ImportSource != "" {
+		if _, err := tx.Exec(`INSERT INTO history_imports(source,record_id,history_id) VALUES(?,?,?)`,
+			it.ImportSource, it.ImportRecord, it.ID); err != nil {
+			return 0, 0, err
+		}
+		// Persistent floors leave room for normal capture after a large import.
+		if _, err := tx.Exec(`INSERT INTO history_import_limits(id,max_items,max_bytes,max_stored_bytes)
+SELECT 1,COUNT(*)+1000,COALESCE(SUM(total_bytes),0)+1073741824,COALESCE(SUM(total_bytes),0)+8589934592 FROM clip_items WHERE 1
+ON CONFLICT(id) DO UPDATE SET max_items=MAX(max_items,excluded.max_items),
+ max_bytes=MAX(max_bytes,excluded.max_bytes), max_stored_bytes=MAX(max_stored_bytes,excluded.max_stored_bytes)`); err != nil {
 			return 0, 0, err
 		}
 	}
@@ -246,7 +278,8 @@ func nonEmpty(s, d string) string {
 	return s
 }
 
-const itemCols = `seq, id, revision, kind, origin_kind, device_id, plugin_id, source_app, created_ms, updated_ms, expires_ms, sync_state, total_bytes`
+const orderExpr = `COALESCE((SELECT order_ms FROM clip_item_order WHERE item_seq=clip_items.seq),created_ms)`
+const itemCols = `seq, id, revision, kind, origin_kind, device_id, plugin_id, source_app, created_ms, updated_ms, expires_ms, sync_state, total_bytes, ` + orderExpr
 
 type queryer interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -256,7 +289,7 @@ type queryer interface {
 func scanItem(sc interface{ Scan(...any) error }) (HistoryItem, error) {
 	var it HistoryItem
 	err := sc.Scan(&it.Seq, &it.ID, &it.Revision, &it.Kind, &it.OriginKind, &it.DeviceID, &it.PluginID, &it.SourceApp,
-		&it.CreatedMs, &it.UpdatedMs, &it.ExpiresMs, &it.SyncState, &it.TotalBytes)
+		&it.CreatedMs, &it.UpdatedMs, &it.ExpiresMs, &it.SyncState, &it.TotalBytes, &it.OrderMs)
 	return it, err
 }
 
@@ -350,7 +383,10 @@ func (s *Store) ListHistory(q HistoryQuery) (items []HistoryItem, rev uint64, ne
 		add(`seq <= ?`, q.Upper)
 	}
 	if q.After > 0 {
-		add(`seq < ?`, q.After)
+		if q.AfterTime == 0 {
+			_ = tx.QueryRow(`SELECT `+orderExpr+` FROM clip_items WHERE seq=?`, q.After).Scan(&q.AfterTime)
+		}
+		add(`(`+orderExpr+` < ? OR (`+orderExpr+` = ? AND seq < ?))`, q.AfterTime, q.AfterTime, q.After)
 	}
 	if q.NowMs > 0 {
 		add(`(expires_ms = 0 OR expires_ms > ?)`, q.NowMs)
@@ -378,7 +414,7 @@ func (s *Store) ListHistory(q HistoryQuery) (items []HistoryItem, rev uint64, ne
 	if len(where) > 0 {
 		sqlText += ` WHERE ` + strings.Join(where, " AND ")
 	}
-	sqlText += ` ORDER BY seq DESC LIMIT ?`
+	sqlText += ` ORDER BY ` + orderExpr + ` DESC, seq DESC LIMIT ?`
 	args = append(args, q.Limit)
 	rows, err := tx.Query(sqlText, args...)
 	if err != nil {

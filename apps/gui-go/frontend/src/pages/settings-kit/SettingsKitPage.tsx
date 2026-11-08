@@ -31,6 +31,7 @@ const CATEGORY_ICONS: Record<string, IconName> = {
   network: 'globe',
   storage: 'package',
   about: 'info',
+  notifications: 'bell',
 }
 
 const BACK_ID = 'back'

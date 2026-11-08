@@ -4,6 +4,7 @@ import type { IconName } from './icons'
 /** Maps the public `IconName`s of `@/ui-kit/contract` to the design glyphs. */
 export const contractGlyphs = {
   add: 'plus',
+  bell: 'bell',
   back: 'chevronLeft',
   chat: 'message',
   chevronDown: 'chevronDown',

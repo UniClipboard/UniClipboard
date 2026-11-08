@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
 import { Filter } from '@/api/clipboardItems'
 import type { HistoryTagColorDto } from '@/api/daemon/history-tags'
 import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
@@ -12,17 +11,15 @@ import { useNow } from '@/hooks/useRelativeTime'
 import { useSettingSelector } from '@/hooks/useSetting'
 import { isMobileDeviceActive } from '@/lib/mobile-device-status'
 import { tagLabel, type SearchTagOption } from '@/lib/search-tags'
-import { formatShortcutHint } from '@/lib/shortcut-format'
 import { invitationSummary } from '@/pages/devices-kit/devices-kit-model'
 import type { DevicesKitController } from '@/pages/devices-kit/useDevicesKit'
 import { useAppSelector } from '@/store/hooks'
 import { SidebarNav, type SidebarNavItem, type SidebarNavSection } from '@/ui-kit'
 import { kitTagColor } from './history-kit-model'
+import type { HistoryManagement } from './useHistoryManagement'
 
 const ALL = 'library:all'
 const PINNED = 'library:pinned'
-const SETTINGS = 'settings'
-const MANAGE_DEVICES = 'devices:manage'
 const TAG = 'tag:'
 const DEVICE = 'device:'
 const MOBILE_SOURCE = 'mobile_sync:'
@@ -46,6 +43,7 @@ function writePreference(key: string, value: string) {
 }
 
 interface HistoryKitSidebarProps {
+  management: HistoryManagement
   activeFilter: Filter
   activeTag: string | null
   onSelectLibrary: (filter: Filter) => void
@@ -75,6 +73,7 @@ interface HistoryKitSidebarProps {
  * permanently.
  */
 export function HistoryKitSidebar({
+  management,
   activeFilter,
   activeTag,
   onSelectLibrary,
@@ -90,7 +89,6 @@ export function HistoryKitSidebar({
   devices,
 }: HistoryKitSidebarProps) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const chrome = useLibraryChrome()
   const counts = useLibraryCounts(countsRevision)
   const now = useNow()
@@ -213,8 +211,7 @@ export function HistoryKitSidebar({
     chrome.closeDrawer()
     if (id === ALL) onSelectLibrary(Filter.All)
     else if (id === PINNED) onSelectLibrary(Filter.Favorited)
-    else if (id === SETTINGS) navigate('/settings')
-    else if (id === MANAGE_DEVICES) devices.show()
+    else if (management.items.some(item => item.id === id)) management.onSelect(id)
     else if (id === INVITATION) devices.show({ kind: 'invitation' })
     else if (id.startsWith(DEVICE)) {
       const sourceId = id.slice(DEVICE.length)
@@ -231,19 +228,7 @@ export function HistoryKitSidebar({
     <SidebarNav
       label={t('history.sidebar.library')}
       sections={[library, tagSection, deviceSection]}
-      footer={[
-        {
-          id: MANAGE_DEVICES,
-          label: t('history.kit.manageDevices'),
-          icon: 'devices',
-        },
-        {
-          id: SETTINGS,
-          label: t('history.kit.settings'),
-          icon: 'settings',
-          shortcutHint: formatShortcutHint('mod+comma'),
-        },
-      ]}
+      footer={management.items}
       value={value}
       onValueChange={select}
     />

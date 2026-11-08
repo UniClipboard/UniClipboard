@@ -1,5 +1,6 @@
 import {
   AddRegular,
+  AlertRegular,
   ArrowCircleUpRegular,
   ArrowClockwiseRegular,
   ArrowDownloadRegular,
@@ -45,6 +46,7 @@ import type { IconName } from '@/ui-kit/contract'
 const regular: Record<IconName, FluentIcon> = {
   add: AddRegular,
   back: ChevronLeftRegular,
+  bell: AlertRegular,
   chat: ChatRegular,
   chevronDown: ChevronDownRegular,
   chevronRight: ChevronRightRegular,

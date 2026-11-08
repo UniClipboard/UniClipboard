@@ -34,6 +34,7 @@ declare global {
       response?: unknown
       fail?: boolean
     }>
+    __announcementsScript?: (locale: string) => Promise<unknown>
     __settingsFixtureNative?: {
       quickPanelSaveShouldFail: boolean
       holdAccessibilityCheck: boolean
@@ -61,6 +62,7 @@ export function installSettingsFixtureEnvironment() {
     restartShouldFail: false,
   }
   installFakeHost({
+    GetReleaseAnnouncements: locale => window.__announcementsScript?.(String(locale)) ?? [],
     GetDeviceMeta: () => ({ appVersion: '1.0.0' }),
     GetDaemonSession: () => ({
       sessionToken: 'visual-fixture',

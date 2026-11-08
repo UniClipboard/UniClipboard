@@ -633,3 +633,9 @@ _Avoid_: shortcut probe、revert on failure
 导出不触发自动上传，也不代表后端已成功导入；它不同于配置导出和 **Profile upgrade backup**。
 
 文件契约与覆盖边界见 [诊断性能记录与 OTLP 离线交换](docs/architecture/diagnostic-performance-otlp.md)。
+
+## Language — 产品发布
+
+**Release announcement**：
+适用于当前安装版本及发布渠道的公开产品通知；用户从侧边栏通知入口读取，发布、撤回和到期状态由发布服务决定，客户端不保存已读状态，也不将其作为更新安装条件。
+详见 [桌面版本通知](docs/architecture/release-announcements.md)。

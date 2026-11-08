@@ -25,6 +25,7 @@ export type ColorScheme = 'light' | 'dark'
 export type IconName =
   | 'add'
   | 'back'
+  | 'bell'
   | 'chat'
   | 'chevronDown'
   | 'chevronRight'
@@ -538,6 +539,8 @@ export interface SidebarNavProps {
  */
 export interface SplitViewProps {
   sidebar: ReactNode
+  /** Management actions while fully hidden; skins with an existing compact sidebar use its footer instead. */
+  collapsedSidebar?: ReactNode
   sidebarHidden?: boolean
   /** Show the expanded sidebar over the content, without taking column width. */
   sidebarOverlay?: boolean

@@ -8,6 +8,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as json$0 from "../../../../../encoding/json/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as announcements$0 from "./internal/announcements/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -191,6 +194,13 @@ export function GetQuickPanelDoubleTapAvailability(): $CancellablePromise<$model
  */
 export function GetQuickPanelShortcutStatus(): $CancellablePromise<$models.QuickPanelShortcutStatus> {
     return $Call.ByID(2070180582);
+}
+
+/**
+ * GetReleaseAnnouncements reads public notices for the installed release, independently of update availability.
+ */
+export function GetReleaseAnnouncements(locale: string): $CancellablePromise<announcements$0.Announcement[] | null> {
+    return $Call.ByID(853636538, locale);
 }
 
 /**

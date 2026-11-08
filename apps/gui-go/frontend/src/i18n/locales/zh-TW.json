@@ -314,7 +314,8 @@
       "storage": "存儲管理",
       "about": "關於",
       "shortcuts": "快捷鍵",
-      "quickPanel": "快捷面板"
+      "quickPanel": "快捷面板",
+      "notifications": "通知"
     },
     "sections": {
       "general": {
@@ -2970,5 +2971,21 @@
     "replaceConfirm": "永久取代",
     "keepStaging": "保留舊資料",
     "replacing": "正在驗證並取代…"
+  },
+  "notifications": {
+    "entryWithCount": "通知（{{count}}）",
+    "close": "完成",
+    "title": "最新通知",
+    "description": "查看適用於目前版本的通知。",
+    "refresh": "重新整理",
+    "loading": "正在載入通知…",
+    "failed": "通知載入失敗。請檢查網路後重新整理。",
+    "empty": "目前沒有適用於此版本的通知。",
+    "attention": "請仔細閱讀此通知。",
+    "severity": {
+      "info": "訊息",
+      "warning": "警告",
+      "critical": "緊急"
+    }
   }
 }

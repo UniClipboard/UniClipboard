@@ -309,6 +309,12 @@ func (h *HostService) handleUIOwnerRequest(m uiPacket) (any, error) {
 			return nil, err
 		}
 		return nil, h.notify(n.ID, n.Title, n.Body)
+	case "release-announcements":
+		var locale string
+		if err := json.Unmarshal(m.Data, &locale); err != nil {
+			return nil, err
+		}
+		return h.GetReleaseAnnouncements(ctx, locale)
 	case "update-check":
 		var channel *string
 		if err := json.Unmarshal(m.Data, &channel); err != nil {

@@ -1,3 +1,4 @@
+import { CollapsedSidebar } from '@/ui-kit/collapsed-sidebar'
 import type {
   ActionBarProps,
   ColorDotProps,
@@ -20,10 +21,11 @@ import { swatchColor } from './swatch'
  * NSSplitViewController window: a full-height source-list sidebar on the window material, and the
  * content with one unified toolbar band on top. The traffic lights sit at the top of the sidebar;
  * with the sidebar hidden they sit at the leading end of the toolbar, followed by the sidebar
- * button (macOS collapses the sidebar completely, there is no icon rail).
+ * button. Optional collapsed management actions remain at the window edge.
  */
 export function SplitView({
   sidebar,
+  collapsedSidebar,
   sidebarHidden,
   sidebarOverlay,
   sidebarToggle,
@@ -93,6 +95,9 @@ export function SplitView({
           onClick={sidebarToggle.onClick}
         />
       )}
+      <CollapsedSidebar hidden={sidebarHidden} overlay={overlay} blocked={drawerOpen}>
+        {collapsedSidebar}
+      </CollapsedSidebar>
       <div className="mac-split-content" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <Surface region="content">
           <div className="mac-split-panes">{children}</div>

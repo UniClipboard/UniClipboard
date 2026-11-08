@@ -314,7 +314,8 @@
       "storage": "ストレージ",
       "about": "概要",
       "shortcuts": "ショートカット",
-      "quickPanel": "クイックパネル"
+      "quickPanel": "クイックパネル",
+      "notifications": "通知"
     },
     "sections": {
       "general": {
@@ -2973,5 +2974,21 @@
     "replaceConfirm": "永久に置き換える",
     "keepStaging": "古いデータを保持",
     "replacing": "検証して置き換え中…"
+  },
+  "notifications": {
+    "entryWithCount": "通知（{{count}}）",
+    "close": "完了",
+    "title": "最新の通知",
+    "description": "現在のバージョンに関する通知を確認します。",
+    "refresh": "更新",
+    "loading": "通知を読み込み中…",
+    "failed": "通知を読み込めません。接続を確認して更新してください。",
+    "empty": "現在のバージョンに関する通知はありません。",
+    "attention": "この通知をよくお読みください。",
+    "severity": {
+      "info": "情報",
+      "warning": "警告",
+      "critical": "緊急"
+    }
   }
 }

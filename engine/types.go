@@ -358,12 +358,17 @@ const (
 // for a limited time and count; it is not a history and does not survive a
 // restart. Read it through RetainContent and ReadContent.
 type ReceivedContent struct {
-	ReceiptID    ReceiptID         `json:"receipt_id"`
-	Content      ContentDescriptor `json:"content"`
-	PeerID       DeviceID          `json:"peer_id"`
-	ReceivedAtMs int64             `json:"received_at_ms"`
-	ExpiresAtMs  int64             `json:"expires_at_ms"`
-	ApplyState   ApplyState        `json:"apply_state"`
+	ReceiptID ReceiptID         `json:"receipt_id"`
+	Content   ContentDescriptor `json:"content"`
+	PeerID    DeviceID          `json:"peer_id,omitempty"` // empty for external channels
+	// ChannelID is set instead of PeerID when the content came from an
+	// external channel; AutoApply then says the host should write it to the
+	// clipboard right away (the channel's setting when it arrived).
+	ChannelID    string     `json:"channel_id,omitempty"`
+	AutoApply    bool       `json:"auto_apply,omitempty"`
+	ReceivedAtMs int64      `json:"received_at_ms"`
+	ExpiresAtMs  int64      `json:"expires_at_ms"`
+	ApplyState   ApplyState `json:"apply_state"`
 	// HistoryID links the persisted record; empty when persist was off. The
 	// record may be gone already, so GetItem can return not_found.
 	HistoryID HistoryID `json:"history_id,omitempty"`

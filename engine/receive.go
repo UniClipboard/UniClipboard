@@ -49,6 +49,7 @@ func (r receiver) Admit(peer string, m wire.Clip) (session.Admission, bool) {
 type receiveRequest struct {
 	backend  PluginID
 	source   DeviceID
+	channel  string // set instead of a device when the clip came from an external channel
 	origin   string
 	transfer string // sender-chosen transfer identity, shared by every backend of one commit
 	view     string // hash of the exact view that is sent
@@ -65,6 +66,7 @@ type receivePart struct {
 type receiveTicket struct {
 	backend  PluginID
 	source   DeviceID
+	channel  string
 	key      store.DedupKey
 	reserved int64
 }
@@ -96,7 +98,11 @@ func (e *Engine) admitReceive(req receiveRequest) (session.Admission, bool) {
 	if total == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
 		return session.Admission{}, false
 	}
-	key := store.DedupKey{Source: string(req.source), Transfer: req.transfer, View: req.view}
+	srcKey := string(req.source)
+	if req.channel != "" {
+		srcKey = "channel:" + req.channel
+	}
+	key := store.DedupKey{Source: srcKey, Transfer: req.transfer, View: req.view}
 	e.mu.Lock()
 	ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled
 	pol := e.policyLocked(req.backend)
@@ -126,7 +132,7 @@ func (e *Engine) admitReceive(req receiveRequest) (session.Admission, bool) {
 		e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
 		return session.Admission{}, false
 	}
-	t := receiveTicket{backend: req.backend, source: req.source, key: key, reserved: total}
+	t := receiveTicket{backend: req.backend, source: req.source, channel: req.channel, key: key, reserved: total}
 	return session.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
@@ -173,6 +179,9 @@ func (e *Engine) evictOldest(needSpace bool) bool {
 // what Admit set aside.
 func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok bool) {
 	peer, reserved := t.source, t.reserved
+	if t.channel != "" {
+		peer = "" // a channel is not a device
+	}
 	giveBack := func(n int64) {
 		e.cs.mu.Lock()
 		e.cs.stored -= n
@@ -227,7 +236,11 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	e.mu.Lock()
 	workCtx := e.runCtx
 	e.mu.Unlock()
-	processed, err := e.processContent(workCtx, pipelineReceived, c, pipelineOrigin{kind: "remote_device", deviceID: peer})
+	origin := pipelineOrigin{kind: "remote_device", deviceID: peer}
+	if t.channel != "" {
+		origin = pipelineOrigin{kind: "external", pluginID: string(t.backend)}
+	}
+	processed, err := e.processContent(workCtx, pipelineReceived, c, origin)
 	if err != nil {
 		return // processContent released the input and any prepared replacement
 	}
@@ -243,7 +256,15 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 		return e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled &&
 			e.policyLocked(t.backend) == sy && workCtx.Err() == nil
 	}
-	if !e.reserveRecvSlot(live, peer) {
+	allowed := func() (bool, error) { return e.allowedPeer(string(peer)) }
+	autoApply := false
+	if t.channel != "" {
+		allowed = func() (bool, error) { return e.channelAllowed(t.backend, t.channel) }
+		if ch, cerr := e.st.Channel(t.channel); cerr == nil {
+			autoApply = ch.AutoApply
+		}
+	}
+	if !e.reserveRecvSlot(live, allowed) {
 		return
 	}
 	slot := true // a reserved slot is given back unless it is published
@@ -267,13 +288,13 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	}
 	now := time.Now()
 	rc := &receipt{c: c, backend: t.backend, expires: now.Add(e.res.ReceivedTTL), ReceivedContent: ReceivedContent{
-		ReceiptID: ReceiptID(e.newID()), Content: desc, PeerID: peer, ReceivedAtMs: now.UnixMilli(),
+		ReceiptID: ReceiptID(e.newID()), Content: desc, PeerID: peer, ChannelID: t.channel, AutoApply: autoApply, ReceivedAtMs: now.UnixMilli(),
 		ExpiresAtMs: now.Add(e.res.ReceivedTTL).UnixMilli(), ApplyState: ApplyAvailable, HistoryID: hid,
 	}}
 	// The commit point: state and trust may have moved on while the record was
 	// written, in which case the record and the dedup entry are taken back.
 	e.mu.Lock()
-	trusted, trustErr := e.allowedPeer(string(peer))
+	trusted, trustErr := allowed()
 	if !live() || trustErr != nil || !trusted {
 		e.mu.Unlock()
 		if hid != "" {
@@ -300,10 +321,10 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 // dropping the oldest entry nobody is applying. It fails, without side
 // effects, if the engine moved on, the sender is no longer trusted or every
 // entry is in use.
-func (e *Engine) reserveRecvSlot(live func() bool, peer DeviceID) bool {
+func (e *Engine) reserveRecvSlot(live func() bool, allowed func() (bool, error)) bool {
 	for {
 		e.mu.Lock()
-		trusted, err := e.allowedPeer(string(peer))
+		trusted, err := allowed()
 		if !live() || err != nil || !trusted {
 			e.mu.Unlock()
 			return false

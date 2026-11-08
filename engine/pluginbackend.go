@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"io"
+	"slices"
 
 	"github.com/uniclipboard/unic/plugin"
 )
@@ -16,6 +17,7 @@ type pluginBackend struct {
 	id   PluginID
 	kind TransportKind
 	sb   plugin.SyncBackend
+	spec plugin.Spec
 }
 
 func (b *pluginBackend) ID() PluginID        { return b.id }
@@ -37,7 +39,14 @@ func (b *pluginBackend) Submit(ctx context.Context, v backendView, h backendHost
 		})
 	}
 	tk := TargetDevice
-	if b.kind == TransportObjectStore {
+	switch {
+	case b.spec.ExternalChannels:
+		tk = TargetGroup
+		view.Targets = b.enabledChannels()
+		if len(view.Targets) == 0 {
+			return false, nil // nobody enabled: nothing to send, nothing to call
+		}
+	case b.kind == TransportObjectStore:
 		tk = TargetRepository
 	}
 	queued, err := b.sb.Submit(ctx, view, pluginSyncHost{b: b, h: h, kind: tk})
@@ -59,6 +68,14 @@ type pluginSyncHost struct {
 func (s pluginSyncHost) key(t string) targetKey { return targetKey{s.b.id, s.kind, t} }
 
 func (s pluginSyncHost) Register(targets []string) error {
+	if s.b.spec.ExternalChannels {
+		allowed := s.b.enabledChannels()
+		for _, t := range targets {
+			if !slices.Contains(allowed, t) {
+				return newErr(CodeInvalidArgument, "target is not an enabled channel of this backend")
+			}
+		}
+	}
 	if len(targets) == 0 || len(targets) > 1024 {
 		return newErr(CodeInvalidArgument, "a backend registers between 1 and 1024 targets")
 	}

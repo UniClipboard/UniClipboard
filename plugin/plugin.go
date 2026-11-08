@@ -52,6 +52,14 @@ type Spec struct {
 	// TransportKind is for sync backends only; other plugins leave it empty.
 	TransportKind string
 	Actions       []ActionSpec // only with CapAction
+	// ExternalChannels (sync backends only) says the backend's peers are
+	// external channels (decision 0009), not unic devices: no key, no
+	// fingerprint, authorized by being enabled. Its targets are channel IDs
+	// the engine gives it in SyncView.Targets.
+	ExternalChannels bool
+	// RemoteRevocation (external-channel backends only) says the backend can
+	// remove this device from the remote group when a channel is removed.
+	RemoteRevocation bool
 }
 
 // ActionSpec declares one user-invoked action. Its key outside the plugin is
@@ -184,6 +192,9 @@ type SyncView struct {
 	ID          string // transfer identity, shared by all backends of a commit
 	TimestampMs int64
 	Parts       []SyncPart
+	// Targets are the enabled channel IDs of an external-channel backend; nil
+	// for other backends.
+	Targets []string
 }
 
 // SyncHost reports the fate of a send. Targets are devices for peer_sessions
@@ -203,4 +214,39 @@ type SyncHost interface {
 type SyncBackend interface {
 	Plugin
 	Submit(ctx context.Context, v SyncView, h SyncHost) (queued bool, err error)
+}
+
+// ChannelLeaver is implemented by external-channel backends that declare
+// RemoteRevocation: LeaveChannel removes this device from the remote group.
+// The engine deletes its own channel record only after it returns nil.
+type ChannelLeaver interface {
+	LeaveChannel(ctx context.Context, channelID string) error
+}
+
+// ReceivedPart is one in-memory representation of received content.
+type ReceivedPart struct {
+	MIME string
+	Data []byte
+}
+
+// Received is content that arrived from a channel. Transfer is stable per
+// remote message and View per exact content; together they let the engine
+// drop the same message arriving twice, also through another backend.
+type Received struct {
+	Transfer string
+	View     string
+	Parts    []ReceivedPart
+}
+
+// Receiver takes content that arrived from an external channel. A non-nil
+// error means the engine declined it (disabled channel, policy, no room); the
+// backend drops the content and must not retry it.
+type Receiver interface {
+	Receive(ctx context.Context, channelID string, r Received) error
+}
+
+// ReceiverAware is implemented by external-channel backends; the engine hands
+// over the Receiver after Init and before Start.
+type ReceiverAware interface {
+	SetReceiver(Receiver)
 }

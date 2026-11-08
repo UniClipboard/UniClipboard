@@ -508,7 +508,7 @@ func normalizeFilter(f HistoryFilter) (HistoryFilter, *Error) {
 		}
 	}
 	for _, k := range f.OriginKinds {
-		if k != OriginKindLocalSystem && k != OriginKindRemoteDevice && k != OriginKindAction && k != OriginKindExplicit {
+		if k != OriginKindLocalSystem && k != OriginKindRemoteDevice && k != OriginKindAction && k != OriginKindExplicit && k != OriginKindExternal {
 			return bad("unknown origin kind")
 		}
 	}

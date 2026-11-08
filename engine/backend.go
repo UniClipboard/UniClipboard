@@ -32,6 +32,7 @@ type SyncTargetKind string
 const (
 	TargetDevice     SyncTargetKind = "device"
 	TargetRepository SyncTargetKind = "repository"
+	TargetGroup      SyncTargetKind = "group" // an external channel (0009)
 )
 
 type BackendDisposition string

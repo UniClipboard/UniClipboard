@@ -18,6 +18,7 @@ const (
 	OriginKindRemoteDevice HistoryOriginKind = "remote_device"
 	OriginKindAction       HistoryOriginKind = "action"
 	OriginKindExplicit     HistoryOriginKind = "explicit"
+	OriginKindExternal     HistoryOriginKind = "external" // via an external channel; Origin.PluginID is the backend
 
 	HistorySyncNotRequested HistorySyncState = "not_requested"
 	HistorySyncPending      HistorySyncState = "pending"

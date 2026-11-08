@@ -112,6 +112,9 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				unsupported = true // out-of-process backends need the RPC business layer
 				continue
 			}
+			if _, leaves := in.Plugin.(plugin.ChannelLeaver); spec.RemoteRevocation && !leaves {
+				return invalidPlugin(spec.ID, "remote revocation needs LeaveChannel")
+			}
 			if slices.ContainsFunc(e.backends, func(b syncBackend) bool { return string(b.ID()) == spec.ID }) {
 				return invalidPlugin(spec.ID, "a sync backend with this ID already exists")
 			}
@@ -119,11 +122,15 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 			if ierr := in.Plugin.Init(ctx, host, in.Config); ierr != nil {
 				return invalidPlugin(spec.ID, "Init failed")
 			}
+			pb := &pluginBackend{e: e, id: PluginID(spec.ID), kind: TransportKind(spec.TransportKind), sb: sb, spec: spec}
+			if ra, ok := in.Plugin.(plugin.ReceiverAware); ok && spec.ExternalChannels {
+				ra.SetReceiver(pb)
+			}
 			started = append(started, in.Plugin)
 			if serr := in.Plugin.Start(ctx); serr != nil {
 				return invalidPlugin(spec.ID, "Start failed")
 			}
-			pending = append(pending, &pluginBackend{e: e, id: PluginID(spec.ID), kind: TransportKind(spec.TransportKind), sb: sb})
+			pending = append(pending, pb)
 			continue
 		}
 		host := &pluginHost{e: e, id: PluginID(spec.ID)}
@@ -178,6 +185,12 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 	}
 	if _, ok := in.Plugin.(plugin.Actor); act != ok {
 		return invalidPlugin(s.ID, "capability action does not match the implementation")
+	}
+	if !backend && (s.ExternalChannels || s.RemoteRevocation) {
+		return invalidPlugin(s.ID, "only sync backends declare channels")
+	}
+	if s.RemoteRevocation && !s.ExternalChannels {
+		return invalidPlugin(s.ID, "remote revocation applies to external channels")
 	}
 	switch {
 	case backend && s.TransportKind != plugin.TransportPeerSessions && s.TransportKind != plugin.TransportObjectStore:

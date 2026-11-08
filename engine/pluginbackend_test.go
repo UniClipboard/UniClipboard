@@ -18,6 +18,11 @@ type storeBackend struct {
 	targets []string
 	err     error
 	failOn  string // Init or Start
+	chans   bool   // declares external channels
+	revoke  bool   // declares remote revocation
+	leave   error
+	left    []string
+	rcv     plugin.Receiver
 
 	mu     sync.Mutex
 	views  []plugin.SyncView
@@ -26,7 +31,17 @@ type storeBackend struct {
 }
 
 func (s *storeBackend) Spec() plugin.Spec {
-	return plugin.Spec{ID: s.id, Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapSyncBackend}, TransportKind: s.kind}
+	return plugin.Spec{ID: s.id, Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapSyncBackend}, TransportKind: s.kind, ExternalChannels: s.chans, RemoteRevocation: s.revoke}
+}
+func (s *storeBackend) SetReceiver(r plugin.Receiver) { s.rcv = r }
+func (s *storeBackend) LeaveChannel(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.leave != nil {
+		return s.leave
+	}
+	s.left = append(s.left, id)
+	return nil
 }
 func (s *storeBackend) Init(context.Context, plugin.Host, plugin.Config) error {
 	if s.failOn == "init" {
@@ -50,10 +65,14 @@ func (s *storeBackend) Submit(_ context.Context, v plugin.SyncView, h plugin.Syn
 	if s.err != nil {
 		return false, s.err
 	}
-	if len(s.targets) == 0 {
+	targets := s.targets
+	if s.chans {
+		targets = v.Targets
+	}
+	if len(targets) == 0 {
 		return false, nil
 	}
-	if err := h.Register(s.targets); err != nil {
+	if err := h.Register(targets); err != nil {
 		return false, err
 	}
 	s.mu.Lock()

@@ -15,6 +15,8 @@ var (
 	ErrIdentityConflict = errors.New("store: device id or key already registered with another key")
 	ErrBindingNotFound  = errors.New("store: no such binding")
 	ErrBindingConflict  = errors.New("store: binding revision mismatch")
+	ErrChannelNotFound  = errors.New("store: no such channel")
+	ErrChannelConflict  = errors.New("store: channel revision mismatch")
 )
 
 // Trust values of a device.
@@ -55,6 +57,21 @@ CREATE TABLE device_bindings (
   endpoint       BLOB NOT NULL DEFAULT x'',  -- how the backend reaches the device (a secret; routing only)
   ticket         INTEGER NOT NULL DEFAULT 0, -- the device proved it held a pairing ticket for this path
   UNIQUE (device_id, instance_id)
+) WITHOUT ROWID;
+CREATE TABLE channels (
+  id             TEXT PRIMARY KEY,
+  instance_id    TEXT NOT NULL,
+  remote_context BLOB NOT NULL,              -- the group/account the channel was enabled for (a secret)
+  name           TEXT NOT NULL DEFAULT '',   -- set by the user
+  reported_name  TEXT NOT NULL DEFAULT '',   -- what the backend calls it
+  enabled        INTEGER NOT NULL DEFAULT 1,
+  auto_apply     INTEGER NOT NULL DEFAULT 1, -- received content is written to the clipboard
+  revision       INTEGER NOT NULL,
+  created_ms     INTEGER NOT NULL,
+  updated_ms     INTEGER NOT NULL,
+  last_active_ms INTEGER NOT NULL DEFAULT 0,
+  last_error     TEXT NOT NULL DEFAULT '',
+  UNIQUE (instance_id, remote_context)
 ) WITHOUT ROWID;`
 
 // Device is a stable device record.
@@ -409,4 +426,131 @@ func (s *Store) InstanceBindings(instanceID string) ([]Binding, error) {
 		out = append(out, b)
 	}
 	return out, rows.Err()
+}
+
+// Channel is an external, non-device peer of one backend instance (decision
+// 0009): no key, no fingerprint, authorized only by being enabled.
+type Channel struct {
+	ID            string
+	InstanceID    string
+	RemoteContext []byte
+	Name          string
+	ReportedName  string
+	Enabled       bool
+	AutoApply     bool
+	Revision      int64
+	CreatedMs     int64
+	UpdatedMs     int64
+	LastActiveMs  int64
+	LastError     string
+}
+
+const channelCols = `id, instance_id, remote_context, name, reported_name, enabled, auto_apply, revision, created_ms, updated_ms, last_active_ms, last_error`
+
+func scanChannel(r interface{ Scan(...any) error }) (Channel, error) {
+	var c Channel
+	var en, ap int
+	err := r.Scan(&c.ID, &c.InstanceID, &c.RemoteContext, &c.Name, &c.ReportedName, &en, &ap, &c.Revision, &c.CreatedMs, &c.UpdatedMs, &c.LastActiveMs, &c.LastError)
+	c.Enabled, c.AutoApply = en != 0, ap != 0
+	return c, err
+}
+
+// AddChannel creates a channel, enabled and auto-applying. An existing channel
+// for the same instance and remote context is returned unchanged.
+func (s *Store) AddChannel(id, instanceID string, remoteContext []byte, reportedName string) (Channel, error) {
+	now := time.Now().UnixMilli()
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO channels (id, instance_id, remote_context, reported_name, revision, created_ms, updated_ms) VALUES (?,?,?,?,1,?,?)`,
+		id, instanceID, remoteContext, reportedName, now, now)
+	if err != nil {
+		return Channel{}, err
+	}
+	return scanChannel(s.db.QueryRow(`SELECT `+channelCols+` FROM channels WHERE instance_id=? AND remote_context=?`, instanceID, remoteContext))
+}
+
+func (s *Store) Channel(id string) (Channel, error) {
+	c, err := scanChannel(s.db.QueryRow(`SELECT `+channelCols+` FROM channels WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Channel{}, ErrChannelNotFound
+	}
+	return c, err
+}
+
+// Channels lists every channel, oldest first.
+func (s *Store) Channels() ([]Channel, error) {
+	rows, err := s.db.Query(`SELECT ` + channelCols + ` FROM channels ORDER BY created_ms, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Channel
+	for rows.Next() {
+		c, err := scanChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) bumpChannel(id string, expected int64, set string, args ...any) (Channel, error) {
+	res, err := s.db.Exec(`UPDATE channels SET `+set+`, revision = revision + 1, updated_ms = ? WHERE id = ? AND revision = ?`,
+		append(args, time.Now().UnixMilli(), id, expected)...)
+	if err != nil {
+		return Channel{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		if _, err := s.Channel(id); err != nil {
+			return Channel{}, err
+		}
+		return Channel{}, ErrChannelConflict
+	}
+	return s.Channel(id)
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func (s *Store) SetChannelName(id string, expected int64, name string) (Channel, error) {
+	return s.bumpChannel(id, expected, `name = ?`, name)
+}
+
+func (s *Store) SetChannelEnabled(id string, expected int64, enabled bool) (Channel, error) {
+	return s.bumpChannel(id, expected, `enabled = ?`, b2i(enabled))
+}
+
+func (s *Store) SetChannelAutoApply(id string, expected int64, on bool) (Channel, error) {
+	return s.bumpChannel(id, expected, `auto_apply = ?`, b2i(on))
+}
+
+// ReportChannel records activity and a stable, redacted error class; it is a
+// status update and does not bump the revision.
+func (s *Store) ReportChannel(id string, lastActiveMs int64, lastError string) error {
+	res, err := s.db.Exec(`UPDATE channels SET last_active_ms=?, last_error=? WHERE id=?`, lastActiveMs, lastError, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrChannelNotFound
+	}
+	return nil
+}
+
+// RemoveChannel deletes the channel and its authorization, by CAS.
+func (s *Store) RemoveChannel(id string, expected int64) error {
+	res, err := s.db.Exec(`DELETE FROM channels WHERE id=? AND revision=?`, id, expected)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		if _, err := s.Channel(id); err != nil {
+			return err
+		}
+		return ErrChannelConflict
+	}
+	return nil
 }

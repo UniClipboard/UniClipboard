@@ -48,7 +48,11 @@ func (procHelper) Run(_ context.Context, ac plugin.ActionContext) error {
 }
 
 func TestMain(m *testing.M) {
-	if os.Getenv("UNIC_TEST_PLUGIN") != "" {
+	if v := os.Getenv("UNIC_TEST_PLUGIN"); v != "" {
+		if v == "channel" {
+			_ = plugin.Serve(&chanHelper{})
+			os.Exit(0)
+		}
 		_ = plugin.Serve(procHelper{})
 		os.Exit(0)
 	}

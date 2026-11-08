@@ -108,7 +108,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				return newErr(CodeLimitExceeded, "too many sync backends are enabled")
 			}
 			sb, ok := in.Plugin.(plugin.SyncBackend)
-			if !ok || in.Process != nil {
+			if !ok || (in.Process != nil && !spec.ExternalChannels) {
 				unsupported = true // out-of-process backends need the RPC business layer
 				continue
 			}

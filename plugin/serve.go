@@ -58,7 +58,7 @@ func ServeIO(ctx context.Context, p Plugin, r io.Reader, w io.Writer) error {
 }
 
 func wireSpec(s Spec) rpc.Spec {
-	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind}
+	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind, ExternalChannels: s.ExternalChannels, RemoteRevocation: s.RemoteRevocation}
 	for _, a := range s.Actions {
 		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts)})
 	}
@@ -100,6 +100,10 @@ func (s *server) handle(ctx context.Context, c *rpc.Call) (any, error) {
 		res, err = s.runAction(ctx, c)
 	case rpc.MethodOnEvent:
 		res, err = s.onEvent(ctx, c)
+	case rpc.MethodSubmit:
+		res, err = s.submit(ctx, c)
+	case rpc.MethodLeaveChannel:
+		res, err = s.leaveChannel(ctx, c)
 	default:
 		return nil, rpc.NewError(rpc.CodeUnsupported)
 	}
@@ -148,6 +152,7 @@ func (s *server) init(ctx context.Context, c *rpc.Call) (any, error) {
 	s.state = 1
 	s.events = in.Events
 	s.mu.Unlock()
+	s.wireBackend()
 	return nil, safely(func() error { return s.p.Init(ctx, &remoteHost{s: s}, Config(in.Config)) })
 }
 

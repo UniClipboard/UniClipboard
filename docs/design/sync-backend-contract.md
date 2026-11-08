@@ -101,9 +101,16 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 
 接收完成只以 validated connection 的 peer_id 记录原始远端来源，首版要求 wire origin 与它一致；共用 TransferID 的跨后端接收按 0007 有界持久去重，同一来源/TransferID/ViewHash 的元数据冲突不得覆盖记录，不同发送视图独立接收、不合并历史。去重占位/成功记录分别随失败回收/commit 原子落库，不把 wire origin 当作未经认证的身份。标签/期限由本机插件决定，不从 wire 接收；首版永不再转发，即使处理后来源变为 plugin 或 SetSync(true)。
 
-## 6a. 外部渠道 profile（0009，目标设计）
+## 6a. 外部渠道 profile（0009，进程外 RPC 子集已实现）
 
-声明 `ExternalChannels` 的后端不走 §3 的 hello/连接授权：没有设备身份、指纹或关联审批，授权只来自 Engine 里渠道“已启用”。后端在其私有目录保存凭据，向 Engine 提供渠道的远端上下文（不透明、≤ 256 字节、秘密）和自报名称，目标是一个组；Submit 的 `Targets` 只含已启用渠道，一次发送每渠道一条目标状态。回执语义随后端声明（如微信输入法只表示服务端已接受，界面不得写“对方已收到”）。接收经 `Receive` 一次交付内存中的文本/图片（暂不含文件），由 Engine 做准入与去重。退出组请求（`LeaveChannel`）仅在声明 `remote_revocation` 时存在。组成员、回执等业务 DTO 与进程外承载待定。
+声明 `ExternalChannels` 的后端不走 §3 的 hello/连接授权：没有设备身份、指纹或关联审批，授权只来自 Engine 里渠道“已启用”。后端在其私有目录保存凭据，向 Engine 提供渠道的远端上下文（不透明、≤ 256 字节、秘密）和自报名称，目标是一个组；Submit 的 `Targets` 只含已启用渠道，一次发送每渠道一条目标状态。回执语义随后端声明（如微信输入法只表示服务端已接受，界面不得写“对方已收到”）。接收经 `Receive` 一次交付内存中的文本/图片（暂不含文件），由 Engine 做准入与去重。退出组请求（`LeaveChannel`）仅在声明 `remote_revocation` 时存在。组成员、回执语义字段待定。
+
+**进程外 RPC 子集**（`plugin/rpc` 的 `Spec.ExternalChannels`/`RemoteRevocation`，`internal/pluginproc/backend.go`，`plugin/serve_backend.go`）：
+
+- Engine→插件：`backend.submit`（`transfer_id`、`timestamp_ms`、已启用渠道 ID 的 `targets`、`parts`；每个 part 是以请求 ID 为根的 `sync_part` 流，仅内存，文件 part 跳过，总量 ≤ 16 MiB）、`backend.leave_channel`（仅声明 `remote_revocation` 时存在，成功后 Engine 才删除记录）。
+- 插件→Engine：`backend.register`（登记本次 transfer 的目标，必须是已启用渠道）、`backend.report`（`queued/sending/sent/superseded/failed`，未登记目标或未知 transfer 被拒绝；失败原因文本被丢弃，只保留状态）、`backend.receive`（`receive_part` 流，准入、去重与历史来源 `external` 同进程内路径）。
+- Engine 为每个 transfer 保存目标表（≤ 256），全部目标终态或进程退出后清除；进程崩溃时未终态目标按失败结束，重启后重新装载。
+- 真实子进程测试：`engine/pluginchannel_proc_test.go`。P2P 的撤销屏障、`authorize_send`、接收准入与身份方法仍未实现。
 
 ## 6. 失败恢复、权限与待实现测试
 

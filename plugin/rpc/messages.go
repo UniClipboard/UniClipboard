@@ -64,12 +64,16 @@ type Spec struct {
 	APIVersion    int          `json:"api_version"`
 	Capabilities  []string     `json:"capabilities"`
 	TransportKind string       `json:"transport_kind,omitempty"`
+	// ExternalChannels and RemoteRevocation describe an external-channel sync
+	// backend (decision 0009).
+	ExternalChannels bool         `json:"external_channels,omitempty"`
+	RemoteRevocation bool         `json:"remote_revocation,omitempty"`
 	Actions       []ActionSpec `json:"actions,omitempty"`
 }
 
 // Equal compares ID, version, API, capabilities (as a set) and actions.
 func (s Spec) Equal(o Spec) bool {
-	if s.ID != o.ID || s.Version != o.Version || s.APIVersion != o.APIVersion || s.TransportKind != o.TransportKind {
+	if s.ID != o.ID || s.Version != o.Version || s.APIVersion != o.APIVersion || s.TransportKind != o.TransportKind || s.ExternalChannels != o.ExternalChannels || s.RemoteRevocation != o.RemoteRevocation {
 		return false
 	}
 	norm := func(c []string) []string { return slices.Sorted(slices.Values(c)) }
@@ -108,6 +112,13 @@ const (
 	MethodRunAction = "plugin.run_action"
 	MethodOnEvent   = "plugin.on_event"
 	MethodNotify    = "host.notify"
+
+	// External-channel sync backend profile (sync-backend-contract §6a).
+	MethodSubmit       = "backend.submit"        // Engine→plugin
+	MethodLeaveChannel = "backend.leave_channel" // Engine→plugin
+	MethodRegister     = "backend.register"      // plugin→Engine
+	MethodReport       = "backend.report"        // plugin→Engine
+	MethodReceive      = "backend.receive"       // plugin→Engine
 	MethodStream    = "stream.open"
 )
 
@@ -197,7 +208,66 @@ func (b ErrorBody) err() *Error {
 const (
 	PurposeProcessText = "process_text"
 	PurposeActionText  = "action_text"
+	// Sync backends only.
+	PurposeSyncPart    = "sync_part"    // Engine→plugin, content to send
+	PurposeReceivePart = "receive_part" // plugin→Engine, content that arrived
 )
+
+// Limits of the external-channel profile.
+const (
+	MaxSyncParts    = 8
+	MaxSyncBytes    = 16 << 20 // total in-memory bytes per submit or receive
+	MaxSyncTargets  = 1024
+	MaxIDBytes      = 128
+	MaxReceiveParts = 8
+)
+
+type SubmitPart struct {
+	MIME   string     `json:"mime"`
+	Size   U64        `json:"size"`
+	Stream StreamDesc `json:"stream"`
+}
+
+// Submit asks the backend to send Parts to Targets (enabled channel IDs).
+type Submit struct {
+	TransferID  string       `json:"transfer_id"`
+	TimestampMs U64          `json:"timestamp_ms"`
+	Targets     []string     `json:"targets"`
+	Parts       []SubmitPart `json:"parts"`
+}
+
+type SubmitResult struct {
+	Queued bool `json:"queued"`
+}
+
+type LeaveChannel struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type Register struct {
+	TransferID string   `json:"transfer_id"`
+	Targets    []string `json:"targets"`
+}
+
+// Report states: queued, sending, sent, superseded, failed. Cause is dropped
+// by the Engine; only the state is kept.
+type Report struct {
+	TransferID string `json:"transfer_id"`
+	Target     string `json:"target"`
+	State      string `json:"state"`
+}
+
+type ReceivePart struct {
+	MIME   string     `json:"mime"`
+	Stream StreamDesc `json:"stream"`
+}
+
+type Receive struct {
+	ChannelID string        `json:"channel_id"`
+	Transfer  string        `json:"transfer"`
+	View      string        `json:"view"`
+	Parts     []ReceivePart `json:"parts"`
+}
 
 // StreamDesc describes a binary stream; it never carries a path.
 type StreamDesc struct {

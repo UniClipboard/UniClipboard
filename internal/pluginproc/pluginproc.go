@@ -111,6 +111,10 @@ type Proxy struct {
 
 	notifyMu   sync.Mutex
 	notifyTime []time.Time
+
+	bmu       sync.Mutex // sync-backend state
+	receiver  plugin.Receiver
+	transfers map[string]*transfer
 }
 
 // ErrUnavailable is returned while the process is down or has exhausted its
@@ -123,6 +127,19 @@ func New(spec Spec, opts Options) plugin.Plugin {
 	opts.fill()
 	p := &Proxy{spec: spec, opts: opts, gate: make(chan struct{}, 1), stop: make(chan struct{})}
 	has := func(c string) bool { return slices.Contains(spec.Expected.Capabilities, c) }
+	if has(plugin.CapSyncBackend) {
+		if spec.Expected.RemoteRevocation {
+			return struct {
+				*Proxy
+				backM
+				leaveM
+			}{p, backM{p}, leaveM{p}}
+		}
+		return struct {
+			*Proxy
+			backM
+		}{p, backM{p}}
+	}
 	proc, act, obs := has(plugin.CapProcessor), has(plugin.CapAction), has(plugin.CapObserver)
 	pm, am, om := procM{p}, actM{p}, obsM{p}
 	switch {
@@ -199,7 +216,7 @@ func (p *Proxy) onEvent(ctx context.Context, ev plugin.Event) error {
 func (p *Proxy) Spec() plugin.Spec { return p.spec.Expected }
 
 func wireSpec(s plugin.Spec) rpc.Spec {
-	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind}
+	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind, ExternalChannels: s.ExternalChannels, RemoteRevocation: s.RemoteRevocation}
 	for _, a := range s.Actions {
 		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts)})
 	}
@@ -407,6 +424,9 @@ func (p *Proxy) onExit(s *session) {
 	}
 	p.sess = nil
 	p.failLocked()
+	p.bmu.Lock()
+	p.transfers = nil // their hosts die with the session
+	p.bmu.Unlock()
 }
 
 // failLocked records a crash and either schedules a restart or gives up.
@@ -514,6 +534,9 @@ func (p *Proxy) Restart(ctx context.Context) error {
 
 // handle serves requests the plugin makes of the engine.
 func (p *Proxy) handle(s *session, ctx context.Context, c *rpc.Call) (any, error) {
+	if res, err, ok := p.handleBackend(ctx, c); ok {
+		return res, err
+	}
 	switch c.Method {
 	case rpc.MethodNotify:
 		var n rpc.Notify

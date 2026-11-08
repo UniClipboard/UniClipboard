@@ -26,13 +26,14 @@ type tcpPeer struct {
 	ctx  context.Context
 	stop context.CancelFunc
 
-	mu      sync.Mutex
-	self    string
-	name    string
-	ln      net.Listener
-	peers   map[string]rpc.StatePeer
-	conns   map[string]*tcpSess
-	dialing map[string]bool
+	mu        sync.Mutex
+	self      string
+	name      string
+	ln        net.Listener
+	peers     map[string]rpc.StatePeer
+	conns     map[string]*tcpSess
+	dialing   map[string]bool
+	introduce bool
 }
 
 type tcpSess struct {
@@ -43,14 +44,16 @@ type tcpSess struct {
 }
 
 type tcpMsg struct {
-	Conn  string    `json:"conn,omitempty"`
-	Hello string    `json:"hello,omitempty"`
-	Proof string    `json:"proof,omitempty"`
-	Pair  *string   `json:"pair,omitempty"`
-	Name  string    `json:"name,omitempty"`
-	Addr  string    `json:"addr,omitempty"`
-	Allow bool      `json:"allow,omitempty"`
-	Clip  *rpc.Clip `json:"clip,omitempty"`
+	Conn  string          `json:"conn,omitempty"`
+	Hello string          `json:"hello,omitempty"`
+	Proof string          `json:"proof,omitempty"`
+	Pair  *string         `json:"pair,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Addr  string          `json:"addr,omitempty"`
+	Allow bool            `json:"allow,omitempty"`
+	Clip  *rpc.Clip       `json:"clip,omitempty"`
+	Cands []rpc.Candidate `json:"cands,omitempty"`
+	Intro bool            `json:"intro,omitempty"`
 }
 
 func (p *tcpPeer) Spec() plugin.Spec {
@@ -122,6 +125,7 @@ func (p *tcpPeer) Bind(_ context.Context, b rpc.Bind) error {
 func (p *tcpPeer) ApplyState(_ context.Context, s rpc.SyncState) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.introduce = s.Introduce
 	p.peers = map[string]rpc.StatePeer{}
 	for _, pe := range s.Peers {
 		p.peers[pe.ID] = pe
@@ -131,7 +135,37 @@ func (p *tcpPeer) ApplyState(_ context.Context, s rpc.SyncState) error {
 			_ = c.nc.Close()
 		}
 	}
+	go p.introduceAll()
 	return nil
+}
+
+// introduceAll tells every connected peer about the other peers it knows.
+func (p *tcpPeer) introduceAll() {
+	p.mu.Lock()
+	if !p.introduce {
+		p.mu.Unlock()
+		return
+	}
+	type target struct {
+		s     *tcpSess
+		cands []rpc.Candidate
+	}
+	var ts []target
+	for id, s := range p.conns {
+		cs := []rpc.Candidate{}
+		for oid, o := range p.peers {
+			if oid != id && o.Address != "" {
+				cs = append(cs, rpc.Candidate{ID: oid, Name: o.Name, Address: o.Address})
+			}
+		}
+		ts = append(ts, target{s, cs})
+	}
+	p.mu.Unlock()
+	for _, t := range ts {
+		t.s.wmu.Lock()
+		_ = sendMsg(t.s.nc, tcpMsg{Intro: true, Cands: t.cands})
+		t.s.wmu.Unlock()
+	}
 }
 
 func (p *tcpPeer) PairingAddress(context.Context, string) (string, error) {
@@ -280,6 +314,7 @@ func (p *tcpPeer) handshake(nc net.Conn, outgoing bool, attempt *string) (peerID
 	ok = true
 	_ = nc.SetDeadline(time.Time{})
 	go p.serve(dec.PeerID, s)
+	go p.introduceAll()
 	return dec.PeerID, true, nil
 }
 
@@ -298,7 +333,14 @@ func (p *tcpPeer) serve(peer string, s *tcpSess) {
 	}()
 	for {
 		m, err := recvMsg(s.nc)
-		if err != nil || m.Clip == nil {
+		if err != nil {
+			return
+		}
+		if m.Intro {
+			_ = p.host.Introduce(p.ctx, rpc.Introduce{ConnectionID: s.conn, SessionToken: s.token, Candidates: m.Cands})
+			continue
+		}
+		if m.Clip == nil {
 			return
 		}
 		bodies := make([]plugin.ReceiveBody, len(m.Clip.Parts))
@@ -428,4 +470,87 @@ func TestRealProcessesPairAndSync(t *testing.T) {
 	}
 	deliver(nb, na, "from b")
 	deliver(na, nb, "from a")
+}
+
+// TestRealProcessesIntroduceDevice: B knows A and C. C learns of A from B, asks
+// to pair, both users approve, and A and C then sync directly.
+func TestRealProcessesIntroduceDevice(t *testing.T) {
+	newNode := func() node {
+		return newContentNode(t, func(o *Options) { o.Plugins = []PluginInstance{e2eInstance()} })
+	}
+	na, nb, nc := newNode(), newNode(), newNode()
+	for _, n := range []node{na, nb, nc} {
+		start(t, n)
+	}
+	idA, idB, idC := na.e.ident.DeviceID(), nb.e.ident.DeviceID(), nc.e.ident.DeviceID()
+
+	pair := func(issuer, joiner node, iid, jid string) {
+		t.Helper()
+		tk, err := issuer.e.ExportPairingTicketVia(bg, "e2e.tcp")
+		if err != nil {
+			t.Fatal(err)
+		}
+		op, err := joiner.e.JoinByTicket(bg, JoinTicketRequest{RequestID: RequestID("join-" + jid[:6]), Ticket: tk.Ticket})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitOp(t, joiner.e, op, PhaseSucceeded)
+		approveDevice(t, issuer.e, jid)
+		approveDevice(t, joiner.e, iid)
+	}
+	pair(na, nb, idA, idB) // B joins A
+	pair(nb, nc, idB, idC) // C joins B
+
+	var cand Candidate
+	eventually(t, "C is told about A", func() bool {
+		cs, err := nc.e.ListCandidates(bg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range cs {
+			if c.DeviceID == idA {
+				cand = c
+				return true
+			}
+		}
+		return false
+	})
+	if len(cand.Introducers) != 1 || cand.Introducers[0].DeviceID != idB {
+		t.Fatalf("introducers: %+v", cand.Introducers)
+	}
+	// A suggestion is not trust: C has no record of A yet.
+	if d, err := nc.e.GetDevice(bg, idA); err == nil && d.Trust == "trusted" {
+		t.Fatalf("an introduction trusted a device: %+v", d)
+	}
+
+	op, err := nc.e.PairCandidate(bg, PairCandidateRequest{RequestID: "cand", DeviceID: idA, BackendID: cand.BackendID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitOp(t, nc.e, op, PhaseSucceeded)
+	approveDevice(t, na.e, idC)
+	approveDevice(t, nc.e, idA)
+
+	eventually(t, "A–C sync", func() bool {
+		id, err := submit(nc.e, importText(t, nc.e, "from c"))
+		if err != nil {
+			return false
+		}
+		o := waitSend(t, nc.e, id)
+		sent := false
+		for _, tg := range o.Targets {
+			if tg.State == TargetSent && string(tg.PeerID) == idA {
+				sent = true
+			}
+		}
+		return sent
+	})
+	eventually(t, "A received from C", func() bool {
+		for _, r := range received(na.e) {
+			if string(r.PeerID) == idC {
+				return true
+			}
+		}
+		return false
+	})
 }

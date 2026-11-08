@@ -66,7 +66,6 @@
             "plugin_id": ""
           },
           "source_app": "",
-          "automation_depth": 0,
           "files": []
         },
         "policy": {
@@ -81,16 +80,48 @@
       "schema": "patch",
       "payload": {
         "generation": "9007199254740993",
-        "text": {
-          "stream_id": "2",
-          "size": "3",
-          "purpose": "patch_text"
-        },
         "tags": [
           "normalized"
         ],
         "sync": false,
         "expire_after_ms": "30000"
+      }
+    },
+    {
+      "schema": "action_run",
+      "payload": {
+        "action_id": "upper",
+        "generation": "9007199254740993",
+        "item": {
+          "id": "item-1",
+          "type": "text",
+          "text": {
+            "stream_id": "1",
+            "size": "3",
+            "purpose": "process_text"
+          },
+          "formats": [
+            "text/plain"
+          ],
+          "origin": {
+            "kind": "local_system",
+            "device_id": "",
+            "plugin_id": ""
+          },
+          "source_app": "",
+          "files": []
+        }
+      }
+    },
+    {
+      "schema": "action_result",
+      "payload": {
+        "generation": "9007199254740993",
+        "text": {
+          "stream_id": "5",
+          "size": "3",
+          "purpose": "action_text"
+        }
       }
     },
     {
@@ -119,7 +150,6 @@
               "plugin_id": ""
             },
             "source_app": "",
-            "automation_depth": 0,
             "files": []
           },
           "policy": {
@@ -428,9 +458,48 @@
       "payload": {
         "stream_id": 2,
         "size": "3",
-        "purpose": "patch_text"
+        "purpose": "sync_part"
       },
       "reason": "identifier must be decimal string"
+    },
+    {
+      "schema": "action_run",
+      "payload": {
+        "action_id": "Upper Case",
+        "generation": "1",
+        "item": {
+          "id": "item-1",
+          "type": "text",
+          "text": {
+            "stream_id": "1",
+            "size": "3",
+            "purpose": "process_text"
+          },
+          "formats": [
+            "text/plain"
+          ],
+          "origin": {
+            "kind": "local_system",
+            "device_id": "",
+            "plugin_id": ""
+          },
+          "source_app": "",
+          "files": []
+        }
+      },
+      "reason": "action id pattern"
+    },
+    {
+      "schema": "patch",
+      "payload": {
+        "generation": "1",
+        "text": {
+          "stream_id": "2",
+          "size": "3",
+          "purpose": "process_text"
+        }
+      },
+      "reason": "processors cannot return text"
     },
     {
       "schema": "process",
@@ -454,7 +523,6 @@
             "plugin_id": ""
           },
           "source_app": "",
-          "automation_depth": 0,
           "files": []
         },
         "policy": {
@@ -636,7 +704,7 @@
       "payload": {
         "stream_id": "18446744073709551616",
         "size": "0",
-        "purpose": "patch_text"
+        "purpose": "sync_part"
       },
       "reason": "uint64 overflow"
     },
@@ -683,7 +751,7 @@
         "snapshot": {
           "stream_id": "3",
           "size": "500",
-          "purpose": "patch_text"
+          "purpose": "sync_part"
         }
       },
       "reason": "state snapshot must have sync_state purpose"

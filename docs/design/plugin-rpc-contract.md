@@ -1,6 +1,6 @@
 # 插件 RPC 核心协议 v1
 
-- 状态：核心传输、生命周期、processor/observer 协议已定义，待实现；同步后端业务方法与 DTO 见[同步后端契约](sync-backend-contract.md)，运行时互操作、迁移和预算验证仍未完成，不能据此宣告 P0 完成。
+- 状态：核心传输、生命周期、processor/observer/action 协议已定义，待实现；同步后端业务方法与 DTO 见[同步后端契约](sync-backend-contract.md)，运行时互操作、迁移和预算验证仍未完成，不能据此宣告 P0 完成。
 - 日期：2026-11-07。
 - 依据：[插件契约](plugin-contract.md)、[提交契约](pipeline-contract.md)。本协议只用于 Engine 与本机插件子进程，不改变设备间 wire v2。
 - 机器可读定义：[帧与方法表](protocol/plugin-rpc-v1.frame.json)、[控制载荷 JSON Schema](protocol/plugin-rpc-v1.schema.json)、[互操作向量](protocol/plugin-rpc-v1.vectors.json)。二进制规则由帧表与本文共同定义，Schema 不能替代状态、授权、整型范围和字节预算验证。
@@ -57,16 +57,19 @@ Process/OnEvent 同实例串行，协议读写与 Host 反向调用使用独立�
 | plugin.init | Engine→插件 | ACK 后一次；验证专属配置与订阅，不联网 |
 | plugin.start | Engine→插件 | Init 成功后一次；后端 Bind 在 Start 前完成 |
 | plugin.process | Engine→插件 | Start 后，processor 能力、配置订阅 captured/received |
+| plugin.run_action | Engine→插件 | Start 后，action 能力且 action_id 在 Spec.actions 中；只在用户经 RunAction 触发时调用，不订阅事件 |
 | plugin.on_event | Engine→插件 | Start 后，observer 能力与对应订阅，只读 |
 | plugin.close | Engine→插件 | 幂等，可清理部分 Init 成功实例，不和新业务并发启动 |
 | host.notify | 插件→Engine | 有效父调用内；不作为日志，长度最多 1024 UTF-8 字节，每实例每秒 5 次，不积攒突发额度 |
 | stream.open | 内容发送方→接收方 | 有效父调用，purpose 与调用方向/能力匹配，配额可预留 |
 
-process 参数包含 event、generation、Item 快照和 Policy 快照；正文只有 text/plain 通过短期流提供，image/files 只有格式、名称/大小等授权元数据，普通 processor 不获得文件路径或原始图像/文件字节读取能力。没有 text/plain 时 text=null，不能凭空以 SetText 转换非文本条目。
+process 参数包含 event、generation、Item 快照和 Policy 快照；正文只有 text/plain 通过短期流提供，image/files 只有格式、名称/大小等授权元数据，普通 processor 不获得文件路径或原始图像/文件字节读取能力。没有 text/plain 时 text=null。processor 只做标注，不返回正文。
 
-成功返回 patch 包含同一个 generation，以及可选 text/persist/sync/expire_after_ms/tags，未出现字段表示保持；空 patch 只有 generation。Tags 为最终完整替换列表，SDK 将 Add/RemoveTag 暂存为该列表。expire_after_ms 必须是正的、可表示为 time.Duration 的整数毫秒，Engine 在最终 commit 起算；Policy.ExpiresAtMs 是已有绝对期限快照，不能直接冒充该 patch。SetExpire 小于 1ms 或非整毫秒返回 invalid_argument，不能跨语言悄悄四舍五入。
+成功返回 patch 包含同一个 generation，以及可选 persist/sync/expire_after_ms/tags，未出现字段表示保持；空 patch 只有 generation。Tags 为最终完整替换列表，SDK 将 Add/RemoveTag 暂存为该列表。expire_after_ms 必须是正的、可表示为 time.Duration 的整数毫秒，Engine 在最终 commit 起算；Policy.ExpiresAtMs 是已有绝对期限快照，不能直接冒充该 patch。SetExpire 小于 1ms 或非整毫秒返回 invalid_argument，不能跨语言悄悄四舍五入。
 
-text 指向本次根调用已完整收到的 patch_text 流；Engine 再校验 UTF-8、64 MiB 单表示硬上限、当前用户限制、输入是否允许改文本与回调 generation。字符串/标签限制按 UTF-8 字节校验，不仅按 Schema 的字符数。SetText 清除旧 HTML 等衍生表示，不接受任意新增格式或直接修改 ID/origin/depth 的 patch。
+patch 不含正文字段：processor 不能改写内容，出现 text 或 origin 等未知字段整份拒绝。字符串/标签限制按 UTF-8 字节校验，不仅按 Schema 的字符数。
+
+plugin.run_action 参数为 action_id、generation 和只读 Item 快照（text/plain 通过 process_text 流提供，与 process 相同）；成功结果为同一 generation 加 `text` 流描述，purpose 为 action_text，由插件经反向 stream.open 声明，parent_request_id 指向 run_action 根请求。Engine 校验 UTF-8、非空、64 MiB 硬上限及用户限制后才创建新条目，字节在根请求结束前不进入历史；未返回文本、重复返回或流未 END 视为失败。action 没有 Policy，也不能返回标签。Go 默认期限 10 秒，超时先取消再终止，规则同 process。
 
 generation 来自 Engine 本次回调，每次重试/热替换重新分配；请求会话、generation、插件实例代次、父提交代次全部匹配才原子采纳全部变更。某个字段无效、流未完成、过期、取消、panic 或方法失败则整份 patch 回滚，后续 continue/block_sync 按插件契约处理。
 
@@ -74,15 +77,15 @@ generation 来自 Engine 本次回调，每次重试/热替换重新分配；请
 
 Stream 描述包含 stream_id、size、purpose，不含本机路径。流绑定当前会话、发送方、根请求与用途，不能由其他回调或旧会话使用。流 ID 非零，size 不超过授权内容和硬上限；控制 JSON 不内联正文，文本也不因大小不同出现两套编码语义。
 
-Engine→插件的 process_text 描述随 process 参数声明；插件先校验并预留有界输入资源，再通过 WINDOW 授予信用。插件→Engine 的 patch_text 先以反向 stream.open 声明，parent_request_id 指向 process 根请求；Engine 返回接受并发 WINDOW 后才能传 DATA。stream.open 自身的请求结束不释放根 process 所属流。
+Engine→插件的 process_text 描述随 process 参数声明；插件先校验并预留有界输入资源，再通过 WINDOW 授予信用。插件→Engine 的 action_text 先以反向 stream.open 声明，parent_request_id 指向 run_action 根请求；Engine 返回接受并发 WINDOW 后才能传 DATA。stream.open 自身的请求结束不释放根 process 所属流。
 
 起始信用为 0；每个 WINDOW.credit_bytes 必须 >0，允许累计但不得超过单流协商窗口或接收方会话总预算。DATA 长度必须 >0、不超过帧上限、剩余信用和声明 size。接收方只在字节已消费或移入独立有界存储后补信用；发送方不能把 WINDOW 当作新的内容大小声明。超大内容使用文件/管道逐块处理，不整体 JSON/base64。
 
-发送方在恰好 size 字节后发 END{ok:true,size}，零字节正文只发 END；短流、超量、重复 END、END 后 DATA 都失败。接收方保留已完成流的暂存资源直到根请求提交/回滚；最终 process RESPONSE 只能在所有其使用的输入/输出流 END 后发出。成功 patch.text 必须引用该根请求的已完成 patch_text 流，不能引用未消费输入或 sync_part。
+发送方在恰好 size 字节后发 END{ok:true,size}，零字节正文只发 END；短流、超量、重复 END、END 后 DATA 都失败。接收方保留已完成流的暂存资源直到根请求提交/回滚；最终 process RESPONSE 只能在所有其使用的输入/输出流 END 后发出。成功 action_result.text 必须引用该根请求的已完成 action_text 流，不能引用未消费输入或 sync_part。
 
 取消、失败响应、根请求完成、会话断开立即撤销流授权，关闭句柄并回滚预留；只保留处理/历史/操作已经正式接管的资源。正常结束不发送额外流关闭 RPC。sender 出错通过根调用 error/cancel 结束，不发送一个“成功 END”掩盖截断。未被 patch 引用的暂存输出同样回收。
 
-process_text 仅 text/plain。sync_part/receive_part/sync_state 只授予 sync_backend，对应方法、短期授权、完整状态快照和接收准入见[同步后端业务契约](sync-backend-contract.md)，普通插件不得打开。已 END 的流释放活跃流槽；根请求可只保留完成记录及必要暂存引用，因此 4096 个 part 不必同时占用 32 个流槽。所有权保持到业务根请求结束，不能由短暂子调用响应提前撤销。
+process_text 仅 text/plain；action_text 仅在 plugin.run_action 中由插件发起，且为 UTF-8 文本。sync_part/receive_part/sync_state 只授予 sync_backend，对应方法、短期授权、完整状态快照和接收准入见[同步后端业务契约](sync-backend-contract.md)，普通插件不得打开。已 END 的流释放活跃流槽；根请求可只保留完成记录及必要暂存引用，因此 4096 个 part 不必同时占用 32 个流槽。所有权保持到业务根请求结束，不能由短暂子调用响应提前撤销。
 
 ## 6. 互操作验证与后续落地
 

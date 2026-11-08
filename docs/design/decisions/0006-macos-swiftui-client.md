@@ -43,7 +43,9 @@ SwiftUI app (app/macos/) ── unix socket, HTTP+JSON/SSE ──> unicd（无�
 | `GET /v1/history?limit=&cursor=&kind=&origin=&tag=&device=&from=&before=` | 列表，最新在前，keyset 游标分页；`kind`/`origin`/`tag` 可重复，字段间 AND，`tag` 要求全部匹配；响应 `{items, next_cursor, revision}`，`items` 永不为 null |
 | `GET /v1/history/{id}` | 单条元数据：kind、来源（含设备名）、时间、过期、标签、各部件的种类/MIME/大小、`sync_state` 与按后端的 `backends[{backend_id,state,disposition,error_code}]`（pending 在 daemon 重启后变 interrupted，不代表对端已收到）；不含正文、文件名、路径 |
 | `GET /v1/history/{id}/content?part=N` | 第 N 个部件（默认 0）的原始字节；文件名只在 `Content-Disposition` |
-| `POST /v1/history/{id}/use` | 写回系统剪贴板，走与接收内容相同的观察/应用协议（不重复入历史、不同步、不当作新复制）；文件按原路径放入剪贴板，文件已不在则失败 |
+| `POST /v1/history/{id}/use` | 写入系统剪贴板，走与接收内容相同的观察/应用协议（不重复入历史、不同步、不当作新复制）；文件按原路径放入剪贴板，文件已不在则失败 |
+| `GET /v1/actions` | 插件声明的 Action 列表：`{actions:[{key, plugin_id, id, title, accepts}]}`，按 key 排序；**待实现**，契约见[Action 契约](../clipboard-action-contract.md) |
+| `POST /v1/history/{id}/actions/{key...}` | 用户主动对该条运行 Action：Engine 生成 origin=`action` 的新历史条目，daemon 随即经应用协议把它写入系统剪贴板（用户触发即意图，不是自动写回），返回 `{history_id}`；来源条目不变，失败不留条目；无参数；**待实现** |
 | `PATCH /v1/history/{id}` | body `{revision, tags?, expires_at_ms?}`；`revision` 必填，不符返回 409 |
 | `DELETE /v1/history/{id}?revision=N` | 删除，`revision` 必填；已取得内容的读取者可读完 |
 
@@ -51,6 +53,7 @@ SwiftUI app (app/macos/) ── unix socket, HTTP+JSON/SSE ──> unicd（无�
 - 访问边界是 socket：任何能连 socket 的本机进程都能读历史正文，目录权限（0700）是唯一边界。
 - 数据模型、保留上限、过期清理沿用 0004 §7、§8；标签与过期不同步。**复制文件时历史只记路径，不拷贝**（见历史契约 §6）：文件被移动或修改后，条目元数据保留，内容读取与 `use` 返回错误。
 - 默认保留 10000 条 / 4GiB（仅统计历史自己存储的字节），尚未映射到 `config.toml`。
+- GUI 在历史条目的操作菜单里列出 `accepts` 包含该条类型的 Action（首版只有文本）。
 - `use` 不改 `created_at`，条目也不会因此移到最前（0004 没有“最近使用”排序）。
 
 **未实现**：固定项（pin）、`q` 正文/标签/来源搜索、`DELETE /v1/history`（清空）、`keep_pinned`；若 SwiftUI 客户端需要，另议是否扩展 Engine。

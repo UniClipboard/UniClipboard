@@ -1,11 +1,11 @@
 # 流水线提交契约 v0.1
 
-- 状态：提交结果、幂等、状态转换与资源所有权契约已确定，待实现；自动写回票据见[写回契约](clipboard-writeback-contract.md)，RPC 核心帧与控制载荷见[RPC 核心协议](plugin-rpc-contract.md)，后端业务 DTO 见[同步后端契约](sync-backend-contract.md)，Lua 预算方案见[运行时契约](lua-runtime-contract.md)，各项实现验证仍按执行计划补齐。
+- 状态：提交结果、幂等、状态转换与资源所有权契约已确定，待实现；插件主动变换见[Action 契约](clipboard-action-contract.md)，RPC 核心帧与控制载荷见[RPC 核心协议](plugin-rpc-contract.md)，后端业务 DTO 见[同步后端契约](sync-backend-contract.md)，Lua 预算方案见[运行时契约](lua-runtime-contract.md)，各项实现验证仍按执行计划补齐。
 - 日期：2026-11-07。
 - 字段的具体 Go 类型、可选指针、目标结构与错误分类见[SDK 扩展类型契约](sdk-extension-contract.md)，仍待实现。
 - 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[历史契约](history-contract.md)、[插件契约](plugin-contract.md)。本文件是 Engine 的目标扩展，不表示已有代码支持下述 API。
 
-实现登记：P1 首批已接入私有 captured/received 处理核心、暂存/回滚、协作取消及旧网络适配，默认无处理器。legacy 提交已增加独立有界结果缓存（成功/失败、TTL/容量驱逐、processing 不淘汰），调用者取消只停止等待。观察接纳已与处理分离，最新已接纳位置与成功基线分开维护，旧结果不覆盖新观察/epoch/应用基线。公开 `CommitContent`/`GetSubmission` 已实现首版（无 HistoryID/BackendResults/Writeback，BackendIDs 与 WritebackGuard 非空会被拒绝；无目标/同步关闭仍 committed）。持久 commit 与提交事件仍待实现；缓存当前保存旧门面网络结果，不能视作持久提交结果。
+实现登记：P1 首批已接入私有 captured/received 处理核心、暂存/回滚、协作取消及旧网络适配，默认无处理器。legacy 提交已增加独立有界结果缓存（成功/失败、TTL/容量驱逐、processing 不淘汰），调用者取消只停止等待。观察接纳已与处理分离，最新已接纳位置与成功基线分开维护，旧结果不覆盖新观察/epoch/应用基线。公开 `CommitContent`/`GetSubmission` 已实现首版（HistoryID/BackendResults 随历史与多后端另行加入；无目标/同步关闭仍 committed）。持久 commit 与提交事件仍待实现；缓存当前保存旧门面网络结果，不能视作持久提交结果。
 
 ## 1. 将 commit 与发送结果分开
 
@@ -18,7 +18,7 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionResult, error)
 ```
 
-`CommitRequest{RequestID, LeaseID, WritebackGuard, BackendIDs}`（可空 WritebackGuard 见[写回契约](clipboard-writeback-contract.md)） 仅用于宿主显式提交，Origin 固定 explicit。自动捕获和接收使用同一内部提交器，不允许宿主伪造 remote_device、plugin 或跳过观察协议。BackendIDs 可选择已启用后端子集，规则见[0007](decisions/0007-multiple-sync-backends.md)；调用者没有“跳过插件”或单独强制 persist/sync 的参数；策略由配置和处理器决定。
+`CommitRequest{RequestID, LeaseID, BackendIDs}` 仅用于宿主显式提交，Origin 固定 explicit。自动捕获和接收使用同一内部提交器，不允许宿主伪造 remote_device、action 或跳过观察协议；`action` 来源只由 RunAction 内部产生。BackendIDs 可选择已启用后端子集，规则见[0007](decisions/0007-multiple-sync-backends.md)；调用者没有“跳过插件”或单独强制 persist/sync 的参数；策略由配置和处理器决定。
 
 `SubmissionResult` 是无正文的独立快照：
 
@@ -34,7 +34,7 @@ func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionRes
 | SyncError | 仅 SyncDisposition=failed 非空，为稳定脱敏 Error |
 | Error | 仅 Phase=failed 非空，表示 commit 前的终态错误 |
 
-SubmissionResult 另含可随任务状态更新的 Writeback 字段，状态与领取 API 见[写回契约](clipboard-writeback-contract.md)；提交终态与同步决策不随写回改变。此结果不携带可直接读正文的句柄或写回票据，persist=false 也不能依靠 ItemID 重新获取已回收资源。HistoryID 可能在结果缓存保留期内已被删除/到期，再查历史返回 not_found 属于正常情况。
+此结果不携带可直接读正文的句柄或应用票据，persist=false 也不能依靠 ItemID 重新获取已回收资源。HistoryID 可能在结果缓存保留期内已被删除/到期，再查历史返回 not_found 属于正常情况。
 
 GetSubmission 的 RequestID 只用于当前实例，不是跨重启恢复凭证；未知或已回收返回 not_found。重启不恢复 processing、缓存错误或未决网络派发；历史按自身契约保留。
 
@@ -60,11 +60,11 @@ commit 成功后不再把网络调度失败作为 CommitContent 的 error 返回
 
 ## 4. 幂等、并发与保留
 
-新增独立 submission 表，不能仅依赖发送 Operation 的 RequestID 索引：没有网络任务的 commit 和失败也必须去重。显式 CommitContent 和 SubmitContent 共用同一命名空间与记录，语义参数为原始 LeaseID、explicit 来源、可空 WritebackGuard 及规范化 BackendIDs；改变参数使用同一键返回 conflict，不用已处理内容 hash 代替原始参数比较。
+新增独立 submission 表，不能仅依赖发送 Operation 的 RequestID 索引：没有网络任务的 commit 和失败也必须去重。显式 CommitContent 和 SubmitContent 共用同一命名空间与记录，语义参数为原始 LeaseID、explicit 来源及规范化 BackendIDs；改变参数使用同一键返回 conflict，不用已处理内容 hash 代替原始参数比较。
 
 同键并发只接纳一次，其他调用等待或查询同一结果；不会并发执行两遍插件。processing 返回给 GetSubmission；CommitContent 等待终态。重复识别早于租约校验，因此调用者释放原租约后仍可取得原结果。外部文件变化也不得导致已提交请求重跑。
 
-已接纳请求的终态成功和失败都缓存。相同键重试失败仍返回原错误，不再处理；成功重试只读取原提交及最新 Writeback 快照，不重建任务；修改参数或希望重新尝试必须使用新 RequestID。插件可能产生无法回滚的外部副作用，幂等只保证 Engine 在保留期内不重复调用，不能提供外部事务保证。
+已接纳请求的终态成功和失败都缓存。相同键重试失败仍返回原错误，不再处理；成功重试只读取原提交结果；修改参数或希望重新尝试必须使用新 RequestID。插件可能产生无法回滚的外部副作用，幂等只保证 Engine 在保留期内不重复调用，不能提供外部事务保证。
 
 创建选项 ResourcePolicy 新增 MaxSubmissions（默认 1024，>0）与 SubmissionTTL（默认 30 分钟，>0），独立于操作表。processing 不淘汰；终态从完成时计 TTL，容量压力可提前淘汰最旧终态记录。无可淘汰槽位则接纳前 resource_exhausted。查询和重试不延长保留期，驱逐不删除历史或中止发送。
 
@@ -76,21 +76,21 @@ RequestID 禁止宿主使用 `obs:` 与 `recv:` 前缀，它们由 Engine 保留
 
 SubmitContent 保留原 `(OperationID, error)` 签名、explicit 限制与网络返回码，通过同一提交器取得已缓存结果再映射：queued 返回 OperationID；not_requested/disabled 返回 sync_disabled；no_backend 返回 unsupported；no_targets 返回 no_targets；policy_filtered 返回 sync_disabled；failed 返回 SyncError；commit 前失败返回 Error。这些网络错误可发生在历史已保存之后，宿主展示结果应迁移到 CommitContent/GetSubmission，不能自动创建新请求重试。
 
-相同语义参数（含空 WritebackGuard 及省略 BackendIDs）的 RequestID 跨 CommitContent/SubmitContent 仍读取同一结果，门面差异不能重复 commit。原 SubmitContent 不能传 guard，因此带 guard 的 CommitContent 与它不是相同语义参数，跨门面复用此键返回 conflict。旧 HTTP `/v1` 响应形状保持；如需展示历史结果，使用新增适配接口，不能往旧响应隐式混入正文或破坏其字段含义。
+相同语义参数（含省略 BackendIDs）的 RequestID 跨 CommitContent/SubmitContent 仍读取同一结果，门面差异不能重复 commit；RunAction 使用同一幂等命名空间，但语义参数为 Key 与 HistoryID，与提交请求跨用此键返回 conflict。旧 HTTP `/v1` 响应形状保持；如需展示历史结果，使用新增适配接口，不能往旧响应隐式混入正文或破坏其字段含义。
 
 ObservationResult 增加可空 Submission 字段（SubmissionResult 快照），原 Disposition/OperationID 保留。baseline/empty/unchanged/echo 不建立 submission；有效变化即使无目标、同步关闭或无后端也完成处理/commit，并在结果中返回历史标识。
 
-commit 后的观察处置映射：queued→submitted，disabled/not_requested→disabled，no_targets→no_targets，no_backend→新增 local_only，policy_filtered→disabled，failed/limit_exceeded→too_large，其余 failed→新增 sync_failed。commit 已完成的处置均推进原始观察基线，不因网络失败重报；插件最终内容写回后的基线仍由单独 apply token 协议确认，不能直接假定已写系统剪贴板。
+commit 后的观察处置映射：queued→submitted，disabled/not_requested→disabled，no_targets→no_targets，no_backend→新增 local_only，policy_filtered→disabled，failed/limit_exceeded→too_large，其余 failed→新增 sync_failed。commit 已完成的处置均推进原始观察基线，不因网络失败重报；处理器不改正文，提交内容即观察内容；宿主应用历史或 Action 结果后的基线由 apply token 协议确认，不能假定已写系统剪贴板。
 
 commit 前失败不推进基线，但已接纳失败的同一 epoch/sequence 仍命中失败缓存。需要主动重试时宿主使用新的、更大 sequence 与有效租约；不得把旧 sequence 改参数重报。尚未接纳的失败可用同一请求重试。观察重复窗口至少覆盖当前 epoch 最近一次已接纳结果（含失败），独立于普通 submission 表 TTL；新 epoch 和 Stop/挂起使其按观察协议失效。
 
-没有 Observe 能力的显式提交仍可处理与入库；SDK 不假定宿主已写入处理后的正文。本机自动写回的票据、失败处置与来源深度已在[写回契约](clipboard-writeback-contract.md) 确定，实现仍待完成。
+没有 Observe 能力的显式提交仍可处理与入库；处理器只标注，不改正文，SDK 不需要宿主写回任何内容。需要变换正文的功能是用户主动触发的 Action，见[Action 契约](clipboard-action-contract.md)。
 
 ## 6. 接收、生命周期与资源
 
 接收必须先通过对应后端的来源认证/信任、全局及该后端同步策略、跨后端去重与配额准入，再以收到的完整资源运行 received 处理。首版不转发；commit 后才创建 Received 视图和允许 BeginApply。persist=false 仍可接收应用，Received 独立持有资源。持久化失败不返回一个假装可用的接收条目；清理半成品并以无正文的 receive.failed 通知结束，不增加 wire ACK。
 
-提交器从接纳到 commit/失败持有原始和暂存内容；成功后历史、Received、Operation、待写回任务分别取得自己的引用，再释放处理引用。任一失败、取消或崩溃恢复均遵循历史资源清理范围，不能删除用户源文件。submission 元数据缓存本身不长期持有正文；persist=false 且无操作/应用/租约持有后即可回收内容，结果缓存仍可查询。
+提交器从接纳到 commit/失败持有原始和暂存内容；成功后历史、Received、Operation 分别取得自己的引用，再释放处理引用。任一失败、取消或崩溃恢复均遵循历史资源清理范围，不能删除用户源文件。submission 元数据缓存本身不长期持有正文；persist=false 且无操作/应用/租约持有后即可回收内容，结果缓存仍可查询。
 
 GetSubmission 在 created/running/stopping/stopped 可查询；closed 返回 closed。新 CommitContent 只在 running/active 接纳，重复终态在其他未关闭生命周期也可查询返回；processing 的重试仍可等待已有工作。Stop/挂起取消未 commit 工作并写入终态失败，已 commit 的历史保持，已创建网络任务按原契约终止。Close 等工作回收后才释放数据库和目录锁。
 
@@ -104,9 +104,9 @@ State 不包含整张 submission 表。新增 `submissions` 事件，仅用 Obje
 
 | 入口 | 接纳前 | 接纳后的处理输入 | commit 后 |
 |---|---|---|---|
-| 自动捕获 | 校验观察 epoch/sequence、能力与内容；baseline/empty/unchanged/echo 直接结束，无 submission | 有效变化取得处理引用，保留内部观察位置，执行 captured | 历史可选；按后端决策同步；改写内容按 guard 建立本机写回待办；仅仍匹配的观察位置更新成功基线 |
-| 显式提交 | 先查 RequestID，再校验运行条件、原租约和容量 | 取得独立处理引用，执行 captured；Origin 不允许调用方任意指定 | 历史可选；按 explicit 决策同步；有有效 guard 才可能自动写回 |
-| 远端接收 | 认证、策略、去重占位、receive_id 与字节预留；完整流及原始 hash 校验后再过滤 | 取得完整且交付策略允许的输入，执行 received；内部标记 remote ingress 不可被插件改掉 | 同时发布 Received、可选历史和成功去重记录；不创建转发或本机改写写回任务；应用只经 BeginApply |
+| 自动捕获 | 校验观察 epoch/sequence、能力与内容；baseline/empty/unchanged/echo 直接结束，无 submission | 有效变化取得处理引用，保留内部观察位置，执行 captured | 历史可选；按后端决策同步；仅仍匹配的观察位置更新成功基线 |
+| 显式提交 | 先查 RequestID，再校验运行条件、原租约和容量 | 取得独立处理引用，执行 captured；Origin 不允许调用方任意指定 | 历史可选；按 explicit 决策同步 |
+| 远端接收 | 认证、策略、去重占位、receive_id 与字节预留；完整流及原始 hash 校验后再过滤 | 取得完整且交付策略允许的输入，执行 received（只标注）；内部标记 remote ingress 不可被插件改掉 | 同时发布 Received、可选历史和成功去重记录；不创建转发；应用只经 BeginApply |
 
 捕获/显式提交的接纳是第 2 节建立 processing 的时点；接收的 receive_open 只是资源准入，不表示已有 submission 或已执行 received。接收 submission 在完整内容校验/过滤成功、进入处理器前建立；先前失败仅结束 receive，不伪造提交记录。接收请求和观察请求使用内部命名空间，不经普通宿主提交入口。
 
@@ -136,9 +136,9 @@ Engine 用统一提交协调器排列 commit、Stop/挂起和相关配置/撤销
 2. 接收在此处再次按当前后端策略判断。Preparing 后若策略变化使最终输入选择不再相同，放弃本次提交并结束为 discarded，释放占位；不发布已不合策略的结果，也不在同一次 receive 内重跑 received。插件外部副作用不能回滚。策略变化发生在进入处理器前时可按新策略过滤一次再执行。
 3. 接收必须预留 Received 槽位或确定可淘汰且未锁定的条目，再进入持久事务；满表且无法腾位则失败，不发布历史/成功去重。预留的空槽对普通查询不可见；并发接收、TTL、Dismiss 和 BeginApply 不得抢走已预留槽位或锁定其淘汰候选。提交失败撤销预留，不能把淘汰候选先不可逆移除再假称回滚。
 4. 持久事务包含可选历史及其淘汰/修订、接收成功去重记录。persist=false 接收仍需提交去重记录；失败同样不发布 Received。本机 persist=false 且无持久变更使用内存提交点。数据库提交成功即不可逆，不因随后观察到取消改写为 failed。
-5. 在开放查询和投递事件前，发布对应 submission 终态、Received、操作/写回引用和修订。此段仅安装已准备对象，不调用插件/宿主，不执行仍可能正常失败的资源分配。查询经过同一屏障，不能穿过数据库已提交而实例状态尚未发布的窗口。进程崩溃按持久恢复边界处理，不能宣称内存对象与 SQLite 是跨重启事务。
+5. 在开放查询和投递事件前，发布对应 submission 终态、Received、操作引用和修订。此段仅安装已准备对象，不调用插件/宿主，不执行仍可能正常失败的资源分配。查询经过同一屏障，不能穿过数据库已提交而实例状态尚未发布的窗口。进程崩溃按持久恢复边界处理，不能宣称内存对象与 SQLite 是跨重启事务。
 
-commit 先行成功则后来的 Stop/挂起保持 committed，取消其后续网络/待办；取消不能回滚历史。同步任务预留失败可形成 committed + 同步失败，写回不支持/guard 冲突也只形成写回结果，不能归为准备失败。提交通知失败不改变任何已发布状态。
+commit 先行成功则后来的 Stop/挂起保持 committed，取消其后续网络任务；取消不能回滚历史。同步任务预留失败可形成 committed + 同步失败。提交通知失败不改变任何已发布状态。
 
 接收成功去重占位在所有校验、处理与提交阶段保持独占；相同键的其他后端遇到占位直接丢弃本次重复输入，不挂起等待另一次处理，也不提升为成功记录。首次失败释放占位，之后新到达的完整传输可重试，但此前被丢弃的副本不会自动恢复。commit 原子转为有界持久成功记录后，即使 persist=false 或历史后来删除，也不立即允许该键再次处理；按 0007 的容量/时间窗口淘汰后不再承诺去重。
 
@@ -157,8 +157,7 @@ commit 先行成功则后来的 Stop/挂起保持 committed，取消其后续网
 | History 引用 | 历史事务提交并发布 | 删除/到期/淘汰只释放历史引用；活动读取/发送/应用继续持有 |
 | Received 引用 | 接收 commit 发布 | Dismiss/TTL/成功应用移出视图时释放；被应用锁定时遵循原协议，不提前淘汰 |
 | Operation/目标引用 | commit 创建实际目标任务 | 各目标 sent/failed/replaced/canceled 后释放自己的引用；其他目标仍可继续 |
-| 写回 pending 引用 | commit 创建可用待办 | 超时/取代/取消释放；领取先创建 ticket 独立租约再释放 pending |
-| ApplyTicket 租约、读取引用 | BeginApply/BeginApplyHistory/BeginWriteback 或 ReadContent 成功 | 报告结果结束应用槽；租约由宿主显式释放，读取引用到 reader.Close；两者不能互相替代 |
+| ApplyTicket 租约、读取引用 | BeginApply/BeginApplyHistory 或 ReadContent 成功 | 报告结果结束应用槽；租约由宿主显式释放，读取引用到 reader.Close；两者不能互相替代 |
 | Submission 缓存 | 接纳成功 | 只保留无正文结果，TTL/容量驱逐不触碰上述独立引用 |
 
 根调用取消先封禁新句柄/流与迟到 patch，再取消子工作，待实际读写返回后归还对应流位/预留；不能先释放缓冲/文件再让尚未退出的写入继续使用。重复清理路径必须由一次性所有权交接保证只减计一次。需要因协议失步关闭连接时，关闭与 wait 遵循后端契约，不以丢弃内容引用代替网络回收。
@@ -167,9 +166,9 @@ commit 先行成功则后来的 Stop/挂起保持 committed，取消其后续网
 
 应用不重新进入 captured/received，不再 commit 或同步。应用成功、失败或 deferred 只影响对应票据/视图；既有历史与同步结果保持。系统真实粘贴不可观测，不能把网络 sent、receive completed 或写入系统剪贴板当作用户已粘贴。
 
-End 不是整个 Item 的单一终态：历史删除、Received 移除、目标结束、写回结束和租约释放各自终结。只有全部引用释放后内容才可回收；删除历史并不取消既有独立任务。receive.completed 表示本机接收 commit 成功，应用结果另循应用协议，不代表远端 ACK。
+End 不是整个 Item 的单一终态：历史删除、Received 移除、目标结束和租约释放各自终结。只有全部引用释放后内容才可回收；删除历史并不取消既有独立任务。receive.completed 表示本机接收 commit 成功，应用结果另循应用协议，不代表远端 ACK。
 
-进程重启保留有效历史与成功去重记录；清理未发布孤儿和半成品，不恢复 submission/Received/Operation/写回/票据，不自动重放发送或处理器。persist=false 接收可能只剩成功去重记录而无可恢复内容，这是有界去重语义，不能据此承诺可靠离线投递。持久提交后、事件前崩溃通过历史查询恢复，不能依赖通知补做 commit。
+进程重启保留有效历史与成功去重记录；清理未发布孤儿和半成品，不恢复 submission/Received/Operation/票据，不自动重放发送或处理器。persist=false 接收可能只剩成功去重记录而无可恢复内容，这是有界去重语义，不能据此承诺可靠离线投递。持久提交后、事件前崩溃通过历史查询恢复，不能依赖通知补做 commit。
 
 ## 8. 待实现的验收用例
 

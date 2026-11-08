@@ -6,7 +6,9 @@
 
 ## 1. 标识、能力与入口
 
-插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`sync.*` 保留给发行版插件。能力为 processor（可变处理）、observer（只读通知）、sync_backend（同步后端）。Lua 首版只有前两项；声明能力还须通过 Engine 校验和配置授权。
+插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`sync.*` 保留给发行版插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
+
+processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Accepts ⊆ {text, image, files}，首版仅 text 可用（来源与结果都是文本）。首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
 
 **Go 插件使用独立可执行程序 + RPC**。宿主传入 `Options.PluginProcesses []PluginProcessSpec`（ID、可执行路径、摘要、API 版本），Engine 启动与管理子进程。路径仅供装配，不进入普通状态与事件。每个 Engine 的每个启用插件各有一个常驻进程，跨处理/发送复用，不编译进宿主，不使用 Go 动态库或全局 init 注册。
 
@@ -20,6 +22,12 @@ type Spec struct {
     Version string
     APIVersion int
     Capabilities []string
+    Actions []ActionSpec // 仅 action 能力
+}
+type ActionSpec struct {
+    ID string
+    Title string
+    Accepts []string
 }
 type Config map[string]any // 只接受 JSON 值
 
@@ -36,6 +44,10 @@ type Processor interface {
 type Observer interface {
     Plugin
     OnEvent(context.Context, Event) error
+}
+type Actor interface {
+    Plugin
+    Run(context.Context, *ActionContext) error
 }
 ```
 
@@ -59,14 +71,14 @@ SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enab
 
 ```toml
 [plugins]
-order = ["example.normalize", "sync.tailcat"]
+order = ["example.emailtag", "sync.tailcat"]
 on_error = "continue" # 检测失败仍可能同步，可改 block_sync
 
-[plugins.instances."example.normalize"]
+[plugins.instances."example.emailtag"]
 enabled = true
 events = ["clipboard.captured", "clipboard.received"]
-[plugins.instances."example.normalize".config]
-trim = true
+[plugins.instances."example.emailtag".config]
+tag = "email"
 
 [plugins.instances."sync.tailcat"]
 enabled = true
@@ -80,7 +92,7 @@ auto_file_max_bytes = "100MB"
 
 所有启用实例在 Order 中恰好一次；不按文件名或注册时机排序。顺序作用于同阶段与生命周期，不能把同步提前到处理/commit 之前。未知事件、能力或 API 不兼容均拒绝；核心先验证 Config 的 JSON 结构/限额，插件 Init 严格递归拒绝未知专属配置键（invalid_config），启动失败或热替换保留旧版本，不能在安装时执行程序做校验。配置不能让普通插件取得同步能力。
 
-发行版默认提供并启用 sync.tailcat，允许 0..MaxSyncBackends 个后端独立进程并存，0 为本机历史模式。全局 sync.enabled=false 立即取消所有后端内容发送/接收/远端自动应用及重试，控制连接与配对可保留；本机历史/写回不受影响。各后端独立类型开关和自动文件阈值由 Engine 统一执行，手动提交仅可越过自动阈值。
+发行版默认提供并启用 sync.tailcat，允许 0..MaxSyncBackends 个后端独立进程并存，0 为本机历史模式。全局 sync.enabled=false 立即取消所有后端内容发送/接收/远端自动应用及重试，控制连接与配对可保留；本机历史/Action 不受影响。各后端独立类型开关和自动文件阈值由 Engine 统一执行，手动提交仅可越过自动阈值。
 
 首版启用列表、顺序、订阅、Go 二进制升级与后端切换在 Engine 重启时生效，不重建宿主。各后端标准同步策略允许热更新；Lua 同 ID/版本/API/能力的脚本与专属配置允许原子热替换：先验证并 Init/Start 新实例，再在回调边界切换，失败保留旧实例，最后关闭旧实例。
 
@@ -89,7 +101,6 @@ auto_file_max_bytes = "100MB"
 ProcessContext 提供 Event()、Item()、Policy() 快照及下列方法：
 
 ```go
-func (c *ProcessContext) SetText(string) error
 func (c *ProcessContext) AddTag(string) error
 func (c *ProcessContext) RemoveTag(string) error
 func (c *ProcessContext) SetPersist(bool) error
@@ -97,13 +108,15 @@ func (c *ProcessContext) SetSync(bool) error
 func (c *ProcessContext) SetExpire(time.Duration) error
 ```
 
-Item 包含 ID、Type、Text、Formats、Origin（Kind/DeviceID/PluginID）、SourceApp、AutomationDepth 和 Files（仅名称/大小）。SourceApp 可为空；不提供文件路径、票据或秘密地址。Policy 包含 Persist、Sync、ExpiresAtMs、Tags。回调内部读取反映暂存修改；Process 结束返回 patch，Engine 校验代次、权限、正文、格式与限制后原子采纳。不能跨 RPC 修改引擎内存或保留回调对象。
+Item 包含 ID、Type、Text（只读，供检测邮箱等用途）、Formats、Origin（Kind/DeviceID/PluginID）、SourceApp 和 Files（仅名称/大小）。SourceApp 可为空；不提供文件路径、票据或秘密地址。Policy 包含 Persist、Sync、ExpiresAtMs、Tags。回调内部读取反映暂存修改；Process 结束返回 patch，Engine 校验代次、权限、正文、格式与限制后原子采纳。不能跨 RPC 修改引擎内存或保留回调对象。
 
-RPC 的 SetExpire 使用正整数毫秒，小于 1ms 或非整毫秒返回 invalid_argument；不跨语言隐式舍入。SetText 仅支持文本条目，需有效 UTF-8 且符合大小限制，同时清除可能过时的 HTML 等衍生表示。标签最多 32 个，每个 64 UTF-8 字节、去重；过期需正时长，自 commit 起算。最终同步策略受全局配置过滤、信任和不可撤销禁发标记约束。
+RPC 的 SetExpire 使用正整数毫秒，小于 1ms 或非整毫秒返回 invalid_argument；不跨语言隐式舍入。processor 不提供改正文的方法。标签最多 32 个，每个 64 UTF-8 字节、去重；过期需正时长，自 commit 起算。最终同步策略受全局配置过滤、信任和不可撤销禁发标记约束。
 
 Host 只提供 Notify(ctx, message)，限流并限制长度，由宿主展示，不进入事件或日志，失败不阻断。PluginEvent 只有 Kind、ItemID、AtMs，不含正文；观察者不能修改 commit 后内容。普通 Host 不提供再入 Engine 提交或数据库访问。
 
-Lua 使用 ctx.item、ctx.policy 及 ctx:set_text/add_tag/remove_tag/set_persist/set_sync/set_expire；时长如 "30s"。方法错误回滚整次回调。订阅由配置控制，不使用全局 events.on。
+Lua 处理器使用 ctx.item、ctx.policy 及 ctx:add_tag/remove_tag/set_persist/set_sync/set_expire；时长如 "30s"。方法错误回滚整次回调。订阅由配置控制，不使用全局 events.on。
+
+**Action 上下文**：Go 的 `ActionContext` 提供 `Action() string`、只读 `Item()` 快照（同上，含 Text）和 `SetText(string) error`，没有标签/策略方法；`Host.Notify` 可用。必须恰好调用一次 SetText，规则、限制与失败语义见[Action 契约](clipboard-action-contract.md)。Lua 在插件表声明 `actions = {{id=..., title=..., accepts={"text"}}}` 并实现 `run_action(ctx)`，ctx.action 为 ID，ctx.item 只读，`ctx:set_text(s)`、`ctx:notify(msg)` 可用。Action 不订阅事件，只在用户触发时运行；Go 经 RPC `plugin.run_action`（见 [RPC 核心协议](plugin-rpc-contract.md)）。
 
 ## 5. Commit 与资源
 
@@ -117,7 +130,7 @@ Commit 表示接受最终不可变 Item/Policy；persist=true 成功入历史后
 
 ObserveClipboard 与显式 SubmitContent 均走 captured → processing → commit；显式提交不能绕过插件。RequestID 幂等检查在处理前完成，重复请求不重复运行插件。接收先校验身份与准入，再走 received、commit、宿主应用；首版不转发。
 
-本机处理结果写回、来源和深度按[写回契约](clipboard-writeback-contract.md) 执行：插件不能直接修改 origin/depth；同一轮处理只增加一次深度，已知回声不重新处理；失败回滚的 patch 不影响最终来源。自动写回失败不回滚 commit 或重跑插件。
+处理器不能改写内容，因此没有自动写回、自动化深度或插件来源链。Action 的结果作为 origin=`action` 的新条目提交，来源条目不变，宿主之后经 BeginApplyHistory 写入系统剪贴板，见[Action 契约](clipboard-action-contract.md)。
 
 ## 6. 常驻同步插件 sync.tailcat
 
@@ -170,35 +183,38 @@ package main
 
 import (
     "context"
-    "strings"
+    "regexp"
     "github.com/uniclipboard/unic/plugin"
 )
 
-type normalize struct { trim bool }
-func main() { plugin.Main(&normalize{}) } // SDK 服务 RPC 并管理退出
-func (*normalize) Spec() plugin.Spec {
-    return plugin.Spec{ID: "example.normalize", Version: "1.0.0",
+type emailtag struct{ tag string }
+func main() { plugin.Main(&emailtag{}) } // SDK 服务 RPC 并管理退出
+func (*emailtag) Spec() plugin.Spec {
+    return plugin.Spec{ID: "example.emailtag", Version: "1.0.0",
         APIVersion: 1, Capabilities: []string{"processor"}}
 }
-func (p *normalize) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
+func (p *emailtag) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
     for key := range cfg {
-        if key != "trim" { return plugin.ErrInvalidConfig }
+        if key != "tag" { return plugin.ErrInvalidConfig }
     }
-    p.trim = true
-    if v, ok := cfg["trim"]; ok {
-        flag, valid := v.(bool)
-        if !valid { return plugin.ErrInvalidConfig }
-        p.trim = flag
+    p.tag = "email"
+    if v, ok := cfg["tag"]; ok {
+        s, valid := v.(string)
+        if !valid || s == "" { return plugin.ErrInvalidConfig }
+        p.tag = s
     }
     return nil
 }
-func (*normalize) Start(context.Context) error { return nil }
-func (*normalize) Close(context.Context) error { return nil }
-func (p *normalize) Process(ctx context.Context, c *plugin.ProcessContext) error {
+func (*emailtag) Start(context.Context) error { return nil }
+func (*emailtag) Close(context.Context) error { return nil }
+
+var email = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+
+func (p *emailtag) Process(ctx context.Context, c *plugin.ProcessContext) error {
     if err := ctx.Err(); err != nil { return err }
     item := c.Item()
-    if p.trim && item.Type == "text" {
-        return c.SetText(strings.TrimSpace(item.Text))
+    if item.Type == "text" && email.MatchString(item.Text) {
+        return c.AddTag(p.tag) // 只标注，内容原样入历史与同步
     }
     return nil
 }
@@ -207,30 +223,44 @@ func (p *normalize) Process(ctx context.Context, c *plugin.ProcessContext) error
 Lua 替代实现（同 ID 不能同时安装/注册）：
 
 ```lua
-local trim = true
+local tag = "email"
 return {
-  id = "example.normalize", version = "1.0.0", api_version = 1,
+  id = "example.emailtag", version = "1.0.0", api_version = 1,
   capabilities = { "processor" },
   init = function(host, config)
     for key, _ in pairs(config) do
-      if key ~= "trim" then error("invalid_config") end
+      if key ~= "tag" then error("invalid_config") end
     end
-    if config.trim ~= nil then
-      if type(config.trim) ~= "boolean" then error("invalid_config") end
-      trim = config.trim
+    if config.tag ~= nil then
+      if type(config.tag) ~= "string" or config.tag == "" then error("invalid_config") end
+      tag = config.tag
     end
   end,
   start = function() end,
   process = function(ctx)
-    if trim and ctx.item.type == "text" then
-      ctx:set_text((ctx.item.text:gsub("^%s+", ""):gsub("%s+$", "")))
+    if ctx.item.type == "text" and ctx.item.text:find("[%w._%+-]+@[%w.-]+%.%a%a+") then
+      ctx:add_tag(tag)
     end
   end,
   close = function() end,
 }
 ```
 
-Go Unicode 空白与 Lua %s 存在算法差异，示例只展示接口对应关系。
+Action 示例（用户在界面选择“转大写”后才运行，结果成为新条目）：
+
+```lua
+return {
+  id = "example.upper", version = "1.0.0", api_version = 1,
+  capabilities = { "action" },
+  actions = { { id = "upper", title = "转成大写", accepts = { "text" } } },
+  init = function() end, start = function() end, close = function() end,
+  run_action = function(ctx)
+    ctx:set_text(ctx.item.text:upper())
+  end,
+}
+```
+
+Go 与 Lua 的正则方言不同，示例只展示接口对应关系；Go 版 Action 实现 `Run(ctx, *plugin.ActionContext)`，在其中调用一次 `SetText`。
 
 ## 8. 从 GitHub 仓库安装
 
@@ -240,11 +270,11 @@ Go Unicode 空白与 Lua %s 存在算法差异，示例只展示接口对应关�
 unic plugin install https://github.com/owner/repo
 unic plugin install https://github.com/owner/repo --ref v1.2.0
 unic plugin install https://github.com/owner/repo --build
-unic plugin install https://github.com/owner/repo --ref <commit> --path plugins/normalize --enable
+unic plugin install https://github.com/owner/repo --ref <commit> --path plugins/emailtag --enable
 unic plugin list
-unic plugin enable example.normalize
-unic plugin disable example.normalize
-unic plugin uninstall example.normalize
+unic plugin enable example.emailtag
+unic plugin disable example.emailtag
+unic plugin uninstall example.emailtag
 ```
 
 ### 清单与产物
@@ -253,7 +283,7 @@ unic plugin uninstall example.normalize
 
 ```toml
 manifest_version = 1
-id = "example.normalize"
+id = "example.emailtag"
 version = "1.0.0"
 api_version = 1
 kind = "lua"
@@ -261,19 +291,19 @@ entry = "main.lua"
 capabilities = ["processor"]
 events = ["clipboard.captured", "clipboard.received"]
 [config]
-trim = true
+tag = "email"
 ```
 
 Go 使用独立 main 包；提供匹配 module 的 go.mod/go.sum，清单示例：
 
 ```toml
 manifest_version = 1
-id = "example.normalize"
+id = "example.emailtag"
 version = "1.0.0"
 api_version = 1
 kind = "go"
-module = "example.com/normalize"
-package = "./cmd/normalize"
+module = "example.com/emailtag"
+package = "./cmd/emailtag"
 capabilities = ["processor"]
 events = ["clipboard.captured", "clipboard.received"]
 
@@ -281,12 +311,12 @@ events = ["clipboard.captured", "clipboard.received"]
 goos = "darwin"
 goarch = "arm64"
 release = "v1.0.0"
-asset = "normalize_darwin_arm64.tar.gz"
-executable = "normalize"
+asset = "emailtag_darwin_arm64.tar.gz"
+executable = "emailtag"
 sha256 = "<发布时替换为 64 位十六进制摘要>"
 
 [config]
-trim = true
+tag = "email"
 ```
 
 artifacts 可为空，同一 GOOS/GOARCH 最多一项，可声明最低系统版本与运行库要求；未满足不算匹配。Release/asset 指向同仓库发布资产，不猜文件名；摘要固定内容。清单是所选 commit 中的数据，不能用 Release 名称代替 commit 锁定。清单与启动握手 Spec 必须一致。

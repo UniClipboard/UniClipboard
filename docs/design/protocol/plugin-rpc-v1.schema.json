@@ -35,10 +35,11 @@
             "enum": [
               "processor",
               "observer",
+              "action",
               "sync_backend"
             ]
           },
-          "maxItems": 3,
+          "maxItems": 4,
           "uniqueItems": true
         },
         "transport_kind": {
@@ -46,6 +47,44 @@
             "peer_sessions",
             "object_store"
           ]
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "accepts": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "text",
+                    "image",
+                    "files"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 3,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "accepts"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -198,7 +237,7 @@
         "purpose": {
           "enum": [
             "process_text",
-            "patch_text",
+            "action_text",
             "sync_part",
             "receive_part",
             "sync_state"
@@ -219,7 +258,7 @@
           "enum": [
             "local_system",
             "remote_device",
-            "plugin",
+            "action",
             "explicit"
           ]
         },
@@ -294,11 +333,6 @@
           "type": "string",
           "maxLength": 256
         },
-        "automation_depth": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 3
-        },
         "files": {
           "type": "array",
           "items": {
@@ -314,7 +348,6 @@
         "formats",
         "origin",
         "source_app",
-        "automation_depth",
         "files"
       ],
       "additionalProperties": false
@@ -383,9 +416,6 @@
         "generation": {
           "$ref": "#/$defs/uint64"
         },
-        "text": {
-          "$ref": "#/$defs/stream"
-        },
         "persist": {
           "type": "boolean"
         },
@@ -408,6 +438,44 @@
       },
       "required": [
         "generation"
+      ],
+      "additionalProperties": false
+    },
+    "action_run": {
+      "type": "object",
+      "properties": {
+        "action_id": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "generation": {
+          "$ref": "#/$defs/uint64"
+        },
+        "item": {
+          "$ref": "#/$defs/item"
+        }
+      },
+      "required": [
+        "action_id",
+        "generation",
+        "item"
+      ],
+      "additionalProperties": false
+    },
+    "action_result": {
+      "type": "object",
+      "properties": {
+        "generation": {
+          "$ref": "#/$defs/uint64"
+        },
+        "text": {
+          "$ref": "#/$defs/stream"
+        }
+      },
+      "required": [
+        "generation",
+        "text"
       ],
       "additionalProperties": false
     },
@@ -443,6 +511,7 @@
             "plugin.start",
             "plugin.close",
             "plugin.process",
+            "plugin.run_action",
             "plugin.on_event",
             "host.notify",
             "stream.open",

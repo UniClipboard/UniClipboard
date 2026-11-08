@@ -8,7 +8,7 @@
 
 历史、查询、过期、淘汰和使用流程由 Engine 管理，业务实现放在 `engine/`；SQLite 和文件操作可复用基础设施。宿主不直接读写历史数据库，不自行维护第二份历史或搜索索引。
 
-一条历史对应一次通过处理流水线的 commit，保存处理后的最终内容；多个同步后端只建立独立派发，不重复写历史。`persist=true` 才入库；相同内容的不同 commit 具有不同 HistoryID，可共享内部 blob，但不能按 hash 合并用户记录。观察基线、未变化、清空、写回回声和同一请求的幂等重试不产生新记录。标签和过期仅本机生效。
+一条历史对应一次通过处理流水线的 commit，保存处理后的最终内容；多个同步后端只建立独立派发，不重复写历史。`persist=true` 才入库；相同内容的不同 commit 具有不同 HistoryID，可共享内部 blob，但不能按 hash 合并用户记录。观察基线、未变化、清空、应用回声和同一请求的幂等重试不产生新记录。标签和过期仅本机生效。
 
 历史内容不可变；提交后只能修改标签和过期时间。修改正文必须作为新的显式提交走处理流水线，不能原地修改已提交内容。删除或到期不清空系统剪贴板，不撤回已经发送的字节，不删除用户源文件。
 
@@ -36,9 +36,8 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 | ID | HistoryID |
 | Revision | 持久化 uint64，创建为 1；每次有效元数据或同步摘要变更递增，CAS 使用此值 |
 | Kind | text/image/files；含文件优先 files，其次 PNG 为 image，其余为 text，与宿主应用优先级一致 |
-| Origin | Kind 为 local_system/remote_device/plugin/explicit；DeviceID、PluginID 仅对应来源有值，不含秘密地址 |
+| Origin | Kind 为 local_system/remote_device/explicit/action；DeviceID、PluginID 仅对应来源有值，不含秘密地址 |
 | SourceApp | 可空的不透明应用标识，不包含窗口标题、路径或自由文本摘要 |
-| AutomationDepth | commit 时的处理深度 |
 | CreatedAtMs / UpdatedAtMs | 本机 commit 时间 / 最后一次有效变更时间；不采用远端时间 |
 | ExpiresAtMs | 0 为永不过期，否则为绝对 Unix 毫秒时间 |
 | Tags | 最多 32 个，每个最多 64 个 UTF-8 字节，去重、按 UTF-8 字节顺序返回 |
@@ -83,7 +82,7 @@ Received 是实例内、有 TTL 的待应用视图，History 是跨重启的本�
 
 历史使用写入的是已提交最终内容，不重新运行处理器、不产生新历史、不自动同步；回读用同一 token 建立基线，已知回声不触发捕获。成功报告产生只读 clipboard.pasted 通知，语义仅为宿主成功使用，不能断言其他应用已经粘贴。若 UI 要“再次发送”，显式 RetainHistoryContent 后 SubmitContent，按新的提交运行处理器并可生成新历史，原条目保持不变。
 
-本机插件改写后的自动写回由[写回契约](clipboard-writeback-contract.md) 定义，不能冒充 BeginApplyHistory 或凭时间接近判断回声。
+Action（插件主动变换）的结果是 origin=action 的新历史条目，由[Action 契约](clipboard-action-contract.md)定义；宿主随后对它调用 BeginApplyHistory，与普通历史使用一致，不凭时间接近判断回声。
 
 ## 6. 存储、配额与过期
 

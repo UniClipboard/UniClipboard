@@ -1,7 +1,7 @@
 # 0004 · 事件驱动的剪贴板处理流水线 + Go / Lua 插件
 
 - 状态：草案（历史与流水线归属已确定；未实现）
-- 日期：2026-11-07
+- 日期：2026-11-07（2026-11-08 修订：取消自动写回，增加 Action）
 - 关联：[0002 配置](0002-config-file.md)、[0003 Engine SDK](0003-engine-sdk.md)
 - 参考：架构图（Capture → Processing → Commit → Sync → Use → End，事件总线，Lua 插件 API）
 
@@ -9,7 +9,7 @@
 
 现在本机复制后，桌面宿主轮询到变化（`app/desktop/internal/host/clipboard.go` 的 `tick`）就交给 `Engine.ObserveClipboard`（`engine/clipboard.go`）直接同步，中间没有可介入的位置；接收远端内容同理（`applyLoop` → `Engine.BeginApply`）。
 
-目标：用户复制后，内容先经过一条**处理流水线**，Go 或 Lua 插件可在其中修改内容、加标签、控制是否同步、设置过期时间；同步本身由默认的 **`sync.tailcat` Go 插件**执行，不再是写死的出口。
+目标：用户复制后，内容先经过一条**处理流水线**，Go 或 Lua 插件可在其中自动打标签、控制是否同步/持久化、设置过期时间（只标注，不改写正文）；用户另可主动触发插件声明的 Action 来变换内容；同步本身由默认的 **`sync.tailcat` Go 插件**执行，不再是写死的出口。
 
 ## 决策
 
@@ -22,15 +22,16 @@ Capture/Receive → Processing → Commit → Sync → Use → End
 
 | 阶段 | 事件 | 类型 | 说明 |
 |---|---|---|---|
-| Capture | `clipboard.captured`（本机）、`clipboard.received`（远端） | **可干预** | 同步串行调用插件，可改内容与策略 |
+| Capture | `clipboard.captured`（本机）、`clipboard.received`（远端） | **可干预** | 同步串行调用插件，只能改标签与策略（过期、persist、sync），不能改正文 |
 | Commit | `clipboard.committed` | 通知 | 最终内容与策略已确定；按 persist 决定是否写历史，此后只读 |
 | Sync | `clipboard.sync.requested/started/completed/failed` | 通知 | 由 Engine 根据同步插件操作状态发出 |
 | Receive | `clipboard.receive.started/completed/failed` | 通知 | 远端内容接收；completed 表示本机 commit 成功，不表示应用或远端 ACK |
 | Use | `clipboard.pasted` | 通知 | 用户经 UI 使用；系统直接粘贴无法观察，不承诺 |
+| Action | （无事件订阅） | 用户触发 | 用户在界面对某条历史运行插件声明的 Action，结果作为新条目走显式提交；不自动运行 |
 | End | `clipboard.deleted`、`clipboard.expired` | 通知 | 用户删除或到期 |
 | 其他 | `clipboard.updated`、`device.connected/disconnected`、`app.started/shutdown` | 通知 | |
 
-“可干预”只有 captured/received 两个，其余事件只读。这样同步与存储始终基于一份确定的最终结果。
+“可干预”只有 captured/received 两个，其余事件只读；干预也仅限标注。这样同步与存储始终基于一份确定的最终结果。
 
 ### 2. 流水线与同步
 
@@ -39,20 +40,22 @@ Capture/Receive → Processing → Commit → Sync → Use → End
   - 默认 `persist=true, sync=true`；全局授权与每后端策略在派发时分别检查，Policy 不能扩大它们。
 - **同步是默认 Go 插件 `sync.tailcat`**：Engine 在 commit 后通过专用后端接口派发，普通 committed 通知不负责可靠调度；派发读取 `Policy.sync`；按[0007 多后端策略](0007-multiple-sync-backends.md)，全局 sync.enabled、各实例启用及每后端 text/images/files/自动文件阈值共同约束发送，set_sync(true) 不能越过它们。默认 tailcat 之外允许多个同步后端并存。
 - `persist=false` 的内容不入历史，但仍可按 `sync` 同步。
-- 远端内容走 received 阶段，插件同样可以改内容、标签、过期；接收方的 `set_sync` 只影响本机是否**再转发**，首版不转发（现有语义），所以对 received 实际只用 `persist/tags/expires`。
+- 远端内容走 received 阶段，插件同样只能改标签、过期；接收方的 `set_sync` 只影响本机是否**再转发**，首版不转发（现有语义），所以对 received 实际只用 `persist/tags/expires`。
 
 新增 `CommitContent/GetSubmission` 分开表达 commit 与发送结果；原 `SubmitContent` 保留兼容门面，观察结果增加提交信息。具体状态、失败缓存与生命周期见[流水线提交契约](../pipeline-contract.md)，待实现。
 
 三类入口的状态转换、提交屏障、Received 槽位/去重记录原子发布和资源释放见[流水线契约 §7](../pipeline-contract.md#7-状态转换与资源交接)。Sync、Apply、历史 End 各自结束，不能用历史删除或一次网络成功代替整条内容的资源回收。
 
-### 3. 防回环
+### 3. 防回环与 Action
 
-插件改内容意味着需要把结果写回系统剪贴板，这会再次触发捕获。沿用 0003 的 apply token / 基线 hash 思路，并增加：
+**取消自动写回（2026-11-08）**：早期设计让插件改写正文并自动写回系统剪贴板。产品上否决了它：用户复制的是 A，粘贴出来变成 B，无法预期；历史里存 B 而剪贴板是 A 同样让人困惑。因此自动阶段只做标注（标签、过期、persist、sync），内容原样入历史并同步，剪贴板始终保持用户复制的内容。随之不再需要写回 guard、待办任务、自动化深度、插件来源链。
 
-- 每个 `Item` 带 `origin`（`LocalSystem | RemoteDevice(id) | Plugin(name) | …`）和 `automation_depth`。
-- 深度默认上限 3：输入深度达到上限时直接 commit，不再执行处理器；同一轮多个插件改写只增加一次深度。最终改写内容的来源记为 Plugin（最后一次成功改正文的插件），原始来源内部保留。只有可证明的自动化链继承深度，未知真实本地变化作为新的 LocalSystem/0。
-- 已知写回回声通过 token/回读基线抑制，不再次 captured、commit 或同步，不为计算深度而重跑处理器。
-- [自动写回契约](../clipboard-writeback-contract.md) 定义 BeginWriteback、显式提交 guard、单 pending 与共享应用槽、30 秒待办期限、失败不重试及资源释放。自动写回与历史使用在同步关闭时仍可工作。
+改写内容是**用户主动**的 Action：
+
+- 插件在 Spec 中静态声明 Action（ID、Title、Accepts，首版无参数、只支持文本），用户在界面选择某条历史后触发 `RunAction`；Action 不订阅事件，不会自动运行。
+- 结果作为 origin=`action` 的新历史条目走显式提交（captured 处理器照常标注它，同步按普通策略），来源条目不变；宿主随后用 `BeginApplyHistory` 写入系统剪贴板，回声由既有应用票据 AppliedToken 抑制。
+- 因为处理器改不了正文，处理器与 Action 之间不存在循环，唯一的回声来源就是宿主自己的写入，沿用 0003 的 apply token / 基线 hash。
+- 契约见 [Action 契约](../clipboard-action-contract.md)。Action 与历史使用在同步关闭时仍可工作。
 
 ### 4. 插件实现方式与 Lua 沙箱
 
@@ -75,9 +78,9 @@ Capture/Receive → Processing → Commit → Sync → Use → End
 
 [插件契约 v0.1](../plugin-contract.md) 确定标识、能力、注册、Init/Start/Close 生命周期、配置、执行顺序、处理上下文、错误回滚和同步后端边界，并提供 Go/Lua 最小模板。接口为目标设计，尚未实现。
 
-- 统一描述：ID、Version、APIVersion、Capabilities；Go 使用独立程序与 RPC 握手，Lua 返回插件表，不再使用全局 `events.on`。
-- 普通插件分 processor（可变处理）与 observer（只读通知）；sync_backend 是仅 Go 可用的扩展能力，默认由 `sync.tailcat` 提供。
-- 修改文本、标签、持久化、同步与过期通过 ProcessContext 方法暂存，回调成功后原子采纳。通知不带正文，不能修改已提交内容。
+- 统一描述：ID、Version、APIVersion、Capabilities（processor/observer/action/sync_backend）；action 额外静态声明 Actions；Go 使用独立程序与 RPC 握手，Lua 返回插件表，不再使用全局 `events.on`。
+- 普通插件分 processor（自动标注）、observer（只读通知）与 action（用户触发的内容变换）；sync_backend 是仅 Go 可用的扩展能力，默认由 `sync.tailcat` 提供。
+- 标签、持久化、同步与过期通过 ProcessContext 方法暂存（无改正文方法），回调成功后原子采纳。通知不带正文，不能修改已提交内容。
 - Lua 首版不提供网络、本地存储、Quick Panel；Go 为受信任代码。同步后端具有专用网络与接收接口，不能将这些能力授予 Lua 或普通通知插件。
 
 Go 独立进程的核心传输规则见[RPC 核心协议](../plugin-rpc-contract.md)，含机器可读帧表、Schema 和互操作向量；同步后端业务 DTO 已在[同步后端契约](../sync-backend-contract.md) 定义，运行时实现与验证仍待完成。
@@ -128,9 +131,9 @@ clip_tags(item_id, tag)
 
 1. **流水线骨架**：在 `engine/` 内把现有观察、提交与接收应用流程重构为阶段链 + 同步插件派发，行为与现在完全一致（回归测试先行）。
 2. **历史存储**：在 `engine/` 内实现历史管理，新增 `clip_items` 等表、commit 阶段写入、过期清理；`unic history` 查看。
-3. **事件总线**：把现有 `Event` 扩为带阶段与 `origin/automation_depth` 的结构，旧 `/v1` 事件形状保留。
-4. **插件接口与运行时**：统一 Go RPC/进程管理接口与 Lua 适配，提供两种语言的最小模板；Lua 沙箱、超时、插件表与 `ctx` API、热加载；错误与脱敏。
-5. **同步插件与示例扩展**：将现有 tailcat 网络、会话和传输封装为 `sync.tailcat`，保留 Engine 的信任、策略与资源控制；URL 检测、敏感信息检测、自动过期、内容分类，用同一套 Lua/内部接口实现，作为示例与测试。
+3. **事件总线**：把现有 `Event` 扩为带阶段与 origin 的结构，旧 `/v1` 事件形状保留。
+4. **插件接口与运行时**：统一 Go RPC/进程管理接口与 Lua 适配（含 Action 注册/运行），提供两种语言的最小模板；Lua 沙箱、超时、插件表与 `ctx` API、热加载；错误与脱敏。
+5. **同步插件与示例扩展**：将现有 tailcat 网络、会话和传输封装为 `sync.tailcat`，保留 Engine 的信任、策略与资源控制；邮箱/URL 检测自动打标签、敏感信息检测、自动过期、内容分类（标注型），以及“转大写”等 Action，用同一套 Lua/内部接口实现，作为示例与测试。
 
 ## 验收
 
@@ -138,14 +141,14 @@ clip_tags(item_id, tag)
 
 - `go build ...` 与 `go test -race ./...` 通过。
 - 无用户插件、使用默认 `sync.tailcat` 时，同步行为、防回环、0002 配置语义与现在一致。
-- 插件：改文本、加标签、`set_sync(false)` 不发送、`set_expire` 到期删除；Lua 插件超时/死循环/抛错不拖垮 Engine，不影响其他插件。
+- 插件：加标签（例如含邮箱自动打 `email`）、`set_sync(false)` 不发送、`set_expire` 到期删除；Action 由用户触发，改文本只能经 Action；Lua 插件超时/死循环/抛错不拖垮 Engine，不影响其他插件。
 - 沙箱：Lua 插件拿不到 `os/io/require`，无法读写文件或联网。
-- 防回环：插件改文本写回后不无限循环；深度上限生效。
+- 防回环：宿主应用历史或 Action 结果的回声不产生第二条历史；处理器不能改正文。
 - 日志、事件、错误中无剪贴板正文。
 
 ## 本阶段不做
 
-- 插件网络/存储/权限模型、`register_action` 与 Quick Panel、WASM 插件、原生动态库加载、可视化规则编辑。
+- 插件网络/存储/权限模型、Quick Panel、带参数的 Action、非文本 Action、WASM 插件、原生动态库加载、可视化规则编辑。
 - 全文检索、收藏、集合、历史跨设备同步、标签/过期随内容同步（需改 wire）。
 - WebDAV/Iroh/LAN/Relay/BLE 的具体实现；本次实现多后端装配/独立策略与契约测试，默认只迁移 tailcat，不实现任意脚本路由。
 - 清空系统剪贴板的“到期清除”：先只删除历史记录，是否清空系统剪贴板另立决策。

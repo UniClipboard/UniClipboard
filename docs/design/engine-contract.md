@@ -20,7 +20,7 @@
 
 ### 0007 多后端同步扩展（待实现）
 
-[0007](decisions/0007-multiple-sync-backends.md) 确定全局 sync.enabled、各实例启用、各后端独立的 text/images/files/自动文件阈值三层控制，允许多个后端并发，结果/目标/资源按后端隔离。目标 Settings.Sync 只保留 Enabled，新增 BackendPolicies 映射；下文旧 SyncSettings 类型字段及过滤/在途语义描述既有实现，接入时须同批迁移 SDK、宿主与测试。全局关闭立即取消所有后端内容工作，不能被手动发送绕过；本机历史、处理与写回保留。P2P 连接 API 仅为 peer_sessions 扩展，WebDAV 对象协议另定。
+[0007](decisions/0007-multiple-sync-backends.md) 确定全局 sync.enabled、各实例启用、各后端独立的 text/images/files/自动文件阈值三层控制，允许多个后端并发，结果/目标/资源按后端隔离。目标 Settings.Sync 只保留 Enabled，新增 BackendPolicies 映射；下文旧 SyncSettings 类型字段及过滤/在途语义描述既有实现，接入时须同批迁移 SDK、宿主与测试。全局关闭立即取消所有后端内容工作，不能被手动发送绕过；本机历史、处理与 Action 保留。P2P 连接 API 仅为 peer_sessions 扩展，WebDAV 对象协议另定。
 
 ### 0004 扩展边界（待实现）
 
@@ -28,7 +28,7 @@
 
 ### 流水线提交扩展（待实现）
 
-[流水线提交契约](pipeline-contract.md) 确定新增 `CommitContent/GetSubmission`、提交结果与网络结果分离、独立请求幂等表、旧 SubmitContent 门面和 ObservationResult 扩展。无目标、同步关闭或无后端仍可本机 commit；旧发送错误不能用于判断历史是否保存。以下既有发送/观察章节描述原 v0.1 API，接入 0004 时按该扩展同步迁移代码、宿主和测试。[自动写回契约](clipboard-writeback-contract.md) 已确定 BeginWriteback、显式 guard、有界待办、回声和深度语义；RPC 核心帧与控制载荷见[RPC 核心协议](plugin-rpc-contract.md)，[后端业务 DTO 与撤销屏障](sync-backend-contract.md) 已定义，实现及互操作测试仍待完成。
+[流水线提交契约](pipeline-contract.md) 确定新增 `CommitContent/GetSubmission`、提交结果与网络结果分离、独立请求幂等表、旧 SubmitContent 门面和 ObservationResult 扩展。无目标、同步关闭或无后端仍可本机 commit；旧发送错误不能用于判断历史是否保存。以下既有发送/观察章节描述原 v0.1 API，接入 0004 时按该扩展同步迁移代码、宿主和测试。[Action 契约](clipboard-action-contract.md) 取代早期的自动写回设计：处理器只标注，ListActions/RunAction 由用户主动触发，结果成为 origin=action 的新历史条目并经 BeginApplyHistory 应用；RPC 核心帧与控制载荷见[RPC 核心协议](plugin-rpc-contract.md)，[后端业务 DTO 与撤销屏障](sync-backend-contract.md) 已定义，实现及互操作测试仍待完成。
 
 三类入口的状态转换、Stop/策略与 commit 的序列化屏障、Received 槽位与成功去重记录的发布、引用/配额交接及重启边界见[流水线契约 §7](pipeline-contract.md#7-状态转换与资源交接)。公开 submission Phase 不增加内部准备状态；接收完成、应用和历史删除不能混作一个终态。
 
@@ -42,7 +42,7 @@
 
 ### SDK 类型与错误扩展（待实现）
 
-[SDK 扩展类型契约](sdk-extension-contract.md) 确定历史/提交/写回 DTO、可选值、插件装配及 Lua 源码输入、标准策略唯一存储、严格 Config 校验和错误分类。目标新增 invalid_config/plugin_panic，与已定义 RPC 对齐；既有 errors.go 尚无这两个码，不能宣称已实现。各阶段同步代码、适配和实现登记，内部类型不进入公开 SDK。
+[SDK 扩展类型契约](sdk-extension-contract.md) 确定历史/提交/Action DTO、可选值、插件装配及 Lua 源码输入、标准策略唯一存储、严格 Config 校验和错误分类。目标新增 invalid_config/plugin_panic，与已定义 RPC 对齐；既有 errors.go 尚无这两个码，不能宣称已实现。各阶段同步代码、适配和实现登记，内部类型不进入公开 SDK。
 
 ### 插件与同步后端扩展（待实现）
 
@@ -335,9 +335,9 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2d（已实现并有测试）**：`ObserveClipboard`、`BeginApply`、`ReportApplyResult`、`State.ActiveApply`、`apply` 事件。公开 Engine 本身不读写系统剪贴板，由宿主适配调用这些方法。
 
-**0004 提交扩展（提交结果与幂等契约已确定、实现与测试待完成）**：见[流水线提交契约](pipeline-contract.md)。自动写回协议见[写回契约](clipboard-writeback-contract.md)，待实现。
+**0004 提交扩展（提交结果与幂等契约已确定、实现与测试待完成）**：见[流水线提交契约](pipeline-contract.md)。Action（插件主动变换）见[Action 契约](clipboard-action-contract.md)，待实现。
 
-**0004 P1 首批内部处理（已实现并有测试，P1 未完成）**：三类入口共用私有处理核心，提供文本/策略暂存、成功采纳/失败回滚、逐实例串行、协作超时/挂起取消、来源/深度与内容引用交接；默认处理链为空。旧网络适配读取最终内容，入站处理后再次校验运行/策略/信任；并发同键 legacy 提交合并，独立缓存成功/失败（MaxSubmissions 默认 1024、SubmissionTTL 默认完成后 30 分钟），处理中的记录不驱逐，缓存不持有正文。调用者取消只停止等待，工作随 Engine 运行 context 收敛；观察接纳已与处理分离，旧结果不覆盖新位置/基线。公开 CommitContent/GetSubmission、持久历史/commit、提交事件、写回及多后端尚未实现，不能把内部处理完成当作完整提交扩展已交付。
+**0004 P1 首批内部处理（已实现并有测试，P1 未完成）**：三类入口共用私有处理核心，提供策略暂存、成功采纳/失败回滚、逐实例串行、协作超时/挂起取消与内容引用交接（早期的文本改写 SetText、自动化深度与 plugin 来源已按取消自动写回的决定移除）；默认处理链为空。旧网络适配读取最终内容，入站处理后再次校验运行/策略/信任；并发同键 legacy 提交合并，独立缓存成功/失败（MaxSubmissions 默认 1024、SubmissionTTL 默认完成后 30 分钟），处理中的记录不驱逐，缓存不持有正文。调用者取消只停止等待，工作随 Engine 运行 context 收敛；观察接纳已与处理分离，旧结果不覆盖新位置/基线。CommitContent/GetSubmission、持久历史与多后端分发此后已实现（见执行计划 P1/P2 登记）；Action 及标注型处理的收尾尚未实现。
 
 **0004 历史扩展（契约已确定、实现与测试待完成）**：见[本机历史契约](history-contract.md)。现有代码仍采用下列临时资源/接收列表语义；历史实现时必须同步调整清理、持有关系与应用规则，不能以已有测试通过代表历史验收通过。
 

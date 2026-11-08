@@ -15,7 +15,7 @@
 
 ## 当前基线与必须先解决的问题
 
-历史部分的设计已在[本机历史契约](../design/history-contract.md) 确定（API、分页、租约、Received 映射、历史应用、容量/到期与事件）；下面第 1、2 项和第 5 项的历史配置部分已完成契约定义，第 4 项的提交结果/幂等已在[流水线提交契约](../design/pipeline-contract.md) 确定；第 3 项的[自动写回契约](../design/clipboard-writeback-contract.md) 也已确定；[RPC 核心协议](../design/plugin-rpc-contract.md) 的帧、握手、patch、流描述与互操作向量也已定义；[后端业务 DTO 与授权/撤销/接收流程](../design/sync-backend-contract.md) 已定义；[密钥/Options.Network 迁移方案](../design/backend-migration-contract.md) 已确定，[Lua 运行时契约](../design/lua-runtime-contract.md) 及四项上游隔离探针已完成，[SDK 类型与错误定义](../design/sdk-extension-contract.md) 已补齐；自动化基线通过，增强 VM/沙箱验收、真实双设备基线及新功能实现验证仍未完成。
+历史部分的设计已在[本机历史契约](../design/history-contract.md) 确定（API、分页、租约、Received 映射、历史应用、容量/到期与事件）；下面第 1、2 项和第 5 项的历史配置部分已完成契约定义，第 4 项的提交结果/幂等已在[流水线提交契约](../design/pipeline-contract.md) 确定；第 3 项原自动写回已于 2026-11-08 取消，改由[Action 契约](../design/clipboard-action-contract.md) 取代并已确定；[RPC 核心协议](../design/plugin-rpc-contract.md) 的帧、握手、patch、流描述与互操作向量也已定义；[后端业务 DTO 与授权/撤销/接收流程](../design/sync-backend-contract.md) 已定义；[密钥/Options.Network 迁移方案](../design/backend-migration-contract.md) 已确定，[Lua 运行时契约](../design/lua-runtime-contract.md) 及四项上游隔离探针已完成，[SDK 类型与错误定义](../design/sdk-extension-contract.md) 已补齐；自动化基线通过，增强 VM/沙箱验收、真实双设备基线及新功能实现验证仍未完成。
 
 当前 `engine/clipboard.go` 管理观察和应用 token，`engine/send.go` 直接提交发送，`engine/receive.go` 管理实例内接收列表；`engine/engine.go` 直接装配 session/tcnet。`internal/store/store.go` 保存身份与信任，尚无历史表；公开 `Options.Network` 是进程内接口，不能跨 RPC 原样迁移。当前接收资源会在启动/关闭时清理，不能直接作为持久历史文件。
 
@@ -23,7 +23,7 @@
 
 1. 历史 ID 跨重启稳定；区别于实例内 ContentID、ReceiptID、LeaseID。明确分页顺序、游标一致性、过滤、读取租约、更新/删除的并发语义，以及删除后活动读取/应用/发送的资源保留规则。
 2. 历史与 Received 的映射：接收列表仍是待应用视图，dismiss 不等于删除历史；历史到期不新增待应用可靠投递保证。明确历史条目如何进入已有 BeginApply/ReportApplyResult 协议。
-3. 本机插件改写后的宿主写回协议：当前 ApplyRequest 只有 ReceiptID，需明确扩展或新增票据；同时覆盖显式提交写回。确定来源、automation_depth、回读基线、新复制竞争、失败处置与最大深度的准确计数方式。
+3. ~~本机插件改写后的宿主写回协议~~（2026-11-08 取消：自动写回会让用户困惑）。改为用户主动触发的 Action：插件静态声明，`RunAction` 生成 origin=action 的新历史条目，宿主经 BeginApplyHistory 写入；自动阶段只标注。
 4. 无目标、同步关闭或无后端时仍可本机 commit。补齐原发送 API 返回值与新增处理结果之间的关系，避免为保留原 disposition 而跳过历史；基线导入、回声和重复请求仍不得重复处理。
 5. 历史容量、blob 阈值、清理周期、插件资源限制的默认值及配置归属；收藏不在首版，因此淘汰只按最旧且满足资源约束的条目进行。明确历史与临时内容共用配额，避免重复计数。
 6. RPC 帧格式、patch 与流式 DTO；插件未知配置键的校验机制。确定 `Options.Network` 弃用/移除和默认后端路径装配方式，同步公开契约与测试。
@@ -41,11 +41,11 @@
 
 - [x] 确定历史契约；文档检查完成，实现与契约测试仍待 P2/P3 验证。
 - [x] 确定提交结果与幂等契约（第 4 项）：新增 CommitContent/GetSubmission，保留旧门面，定义失败缓存、观察处置与无网络本机 commit；实现与测试待完成。
-- [x] 确定自动写回契约（第 3 项）：显式 guard、BeginWriteback、单待办/共享槽、失败处置、回声与三轮深度上限；实现与测试待完成。
-- [x] 定义 RPC 核心帧、握手、生命周期/processor/observer 方法、patch 与内容流，提供机器可读 Schema 和互操作向量；后端业务 DTO 和运行时互操作测试仍未完成。
+- [x] 确定 action 契约（取代自动写回，第 3 项）：Spec 静态声明、ListActions/RunAction、结果为新历史条目并经 BeginApplyHistory 应用、失败不留条目、同一幂等命名空间；实现与测试待完成。
+- [x] 定义 RPC 核心帧、握手、生命周期/processor/observer/action 方法、patch 与内容流，提供机器可读 Schema 和互操作向量；后端业务 DTO 和运行时互操作测试仍未完成。
 - [x] 定义 SyncBackend/SyncHost 业务 DTO：完整状态流、撤销屏障、配对与会话授权、传输前授权、接收预留/内容流与完成结果；实现与真实子进程互操作待完成。
 - [x] 核实 gopher-lua v1.1.2 的取消、原生调用、基础库与 utf8 行为（四项隔离探针通过），确定增强 VM/白名单/预算方案；不是增强 VM 或完整沙箱验证。
-- [x] 补齐上文其余契约问题，更新 Engine/插件契约与实现进度登记；[SDK 类型与错误契约](../design/sdk-extension-contract.md) 定义历史/提交/写回 DTO、插件/Lua 装配、可选值、严格 Config 校验及稳定错误映射，不暴露内部类型；代码与契约测试仍待各阶段实现。
+- [x] 补齐上文其余契约问题，更新 Engine/插件契约与实现进度登记；[SDK 类型与错误契约](../design/sdk-extension-contract.md) 定义历史/提交/Action DTO、插件/Lua 装配、可选值、严格 Config 校验及稳定错误映射，不暴露内部类型；代码与契约测试仍待各阶段实现。
 - [x] 明确捕获/接收/显式提交的处理、commit、同步和应用状态转换，以及每一步的资源取得与释放；流水线契约 §7 定义提交屏障、Received 槽位与去重发布、引用/配额账本及崩溃恢复边界，实现与故障注入仍待完成。
 - [x] 记录现有测试和自动化双节点基线：107 个测试非缓存竞态运行通过，两个桌面入口构建通过；文本、HTML、PNG、文件、过滤、幂等、防回声、挂起恢复、撤销、超限丢弃的用例映射及覆盖限制见[基线记录](baselines/0004-2026-11-07.md)。
 - [ ] 完成真实双设备 tailcat/系统剪贴板基线；自动化使用 loopback/fakeBoard，不能替代真实隧道和原生剪贴板实测，同机两个 UNIC_HOME 仍共享系统剪贴板。
@@ -58,10 +58,10 @@
 
 ### P1 · 统一流水线与提交边界
 
-- [x] 首批内部处理核心：快照/暂存上下文、文本/策略 patch、逐处理器串行与回滚、禁发锁、深度及协作取消；captured 接入显式提交/观察，received 接入完整接收，旧网络适配只读取最终内容。新增处理用例及既有全量竞态测试通过；尚不是 P1 全部出口。
+- [x] 首批内部处理核心：快照/暂存上下文、文本/策略 patch、逐处理器串行与回滚、禁发锁、深度及协作取消（其中文本 patch `SetText`、自动化深度与 plugin 来源已按 2026-11-08 取消自动写回的决定，正在代码中移除，随后的提交完成）；captured 接入显式提交/观察，received 接入完整接收，旧网络适配只读取最终内容。新增处理用例及既有全量竞态测试通过；尚不是 P1 全部出口。
 - [x] legacy 提交独立结果缓存与异步观察接纳：接纳前查重/容量校验，成功和失败缓存，调用者取消不取消工作，processing 不淘汰；最新观察独立保留结果，旧处理不覆盖新基线。公开提交 API 和持久 commit 仍待完成。
 - [ ] 在 `engine/` 实现 Item、Policy、处理上下文、阶段链与 commit 结果；初始处理器为空，以旧网络实现适配专用派发边界。
-  - 进度：已加公开 `CommitContent`/`GetSubmission`/`SubmissionResult`（Phase、ItemID、SyncDisposition、OperationID、SyncError）；无目标/同步关闭/策略不发送时仍 committed 而非错误，旧 `SubmitContent`/观察由同一记录映射回原错误码。`HistoryID`、`BackendResults`、`Writeback`、`BackendIDs`/`WritebackGuard`（非空会被拒绝）待 P2/P3/0007；`no_backend` 尚无来源。因此该项不勾选。
+  - 进度：已加公开 `CommitContent`/`GetSubmission`/`SubmissionResult`（Phase、ItemID、SyncDisposition、OperationID、SyncError）；无目标/同步关闭/策略不发送时仍 committed 而非错误，旧 `SubmitContent`/观察由同一记录映射回原错误码。`HistoryID`、`BackendResults`、`BackendIDs` 已随 P2/0007 加入；`no_backend` 尚无来源。因此该项不勾选。
 - [ ] ObserveClipboard、SubmitContent、接收入口统一进入流水线。（现状：观察与显式提交共用 submission 记录，请求在处理前查重，并发合并；接收入口已共用处理核心，但没有 submission 记录，也没有 `recv:` 请求键，等跨后端去重/Received 槽位预留（P2 去重表、提交屏障）一起做，避免内部接收占用宿主提交容量。）RequestID 在处理前查重，覆盖同一请求并发到达，重复请求不重复执行插件或写历史。
 - [ ] 区分历史内容与网络过滤后的发送视图；（现状：发送视图 `buildSendSet` 与提交内容已分开，过滤后内容不被改动，提交时与传输前均复核，已有测试；历史库本身属 P2，故未勾选。）保留提交时和实际传输前两次授权、配置及大小检查。
 - [ ] 将后端派发与通知分离；保留每 (BackendID, TargetKind, TargetID) 一个在途加一个待发、替换、离线不排队、部分成功语义。
@@ -89,16 +89,19 @@
 
 **P2 现状小结（2026-11-08）**：Engine 侧历史完整可用——持久化、分页查询、读取、更新、删除、容量淘汰、到期扫描、`history` 事件、`State.HistoryRevision`、`BeginApplyHistory`、各后端同步状态摘要（重启后 pending→interrupted）；复制的本机文件只存路径引用不拷贝；历史与 `MaxStoredBytes` 共用同一预算（`reserveStored`：导入/接收/历史提交都计入，空间不足时先淘汰无人使用的接收项，再淘汰最旧的、自己存有字节的历史项，纯引用条目不计也不被为此淘汰；提交的源内容在宿主释放租约前与历史副本会短暂同时存在，按“即将释放”计）；接收侧跨后端去重与槽位预留；历史上限可在 `config.toml` 配置；桌面 daemon 暴露 `/v1/history`。故障注入覆盖数据库失败、blob 目录不可写、磁盘满（`createNewFile` 接缝）、时钟前拨/回拨、超限、并发、Stop 后、崩溃残留。**P2 已完成**，已知取舍：被租约/读取持有的已淘汰 blob 在释放前仍占磁盘但不再计入预算；固定/搜索/清空历史未纳入首版。
 
-### P3 · 事件、处理语义与宿主写回
+### P3 · 事件、标注型处理与 Action
 
-- [ ] 增加阶段事件与 origin/automation_depth，保留订阅修订号、初始快照与溢出恢复协议；事件只给公开标识与安全元数据，正文显式读取。
-- [ ] 实现统一 ProcessContext：文本校验、清理过时 HTML、标签限制、persist/sync/expire 暂存；过期从 commit 起算。
+2026-11-08 产品决定：取消自动写回（用户复制 A 却粘贴出 B 会困惑）。自动阶段只标注（标签、过期、persist、sync），内容原样入历史与同步；改写正文是用户主动触发的 Action。
+
+- [ ] 从引擎移除文本改写（`SetText`/文本 patch）、自动化深度、`plugin` 来源链及相关历史字段；处理器只保留 AddTag/RemoveTag/SetPersist/SetSync/SetExpire，历史来源改为 local_system/remote_device/explicit/action。
+- [ ] 增加阶段事件，保留订阅修订号、初始快照与溢出恢复协议；事件只给公开标识与安全元数据，正文显式读取。
+- [ ] 实现统一 ProcessContext（标注型）：标签限制、persist/sync/expire 暂存，Item.Text 只读；过期从 commit 起算。示例：含邮箱自动打 `email` 标签。
 - [ ] 单次失败回滚全部 patch；`continue` 继续处理，`block_sync` 设置后续插件不能解除的禁发标记。普通 SetSync(false) 可被后续插件覆盖，但不能突破全局配置和信任。
-- [ ] 按 P0 协议扩展 `engine/clipboard.go` 与桌面 `host/clipboard.go`，写回改写结果并回读基线；远端不再转发，显式提交不能绕过处理。
-- [ ] 验证 Plugin 来源、深度默认上限 3、超限跳过处理直接 commit；已知写回回声不重新执行处理器，真实新复制不被吞掉或覆盖。
+- [ ] Engine 实现 Action 注册与运行：Spec 静态声明（ID/Title/Accepts）校验、`ListActions`、`RunAction`（来源校验、串行门与期限、恰好一次 SetText、新条目 origin=action 走显式提交、RequestID 幂等、失败不留条目），Go 与 Lua 适配器共用同一语义；契约测试见 [Action 契约 §6](../design/clipboard-action-contract.md)。
+- [ ] 桌面宿主与 daemon：`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}` 运行 Action 后经 BeginApplyHistory 写入系统剪贴板，回声由 AppliedToken 抑制，不产生第二条历史；SwiftUI 在历史条目菜单展示。
 - [ ] 明确 pasted 仅表示经宿主 UI 使用，不声称可观察所有系统粘贴；实现 deleted/expired/updated 等只读通知。
 
-退出条件：用测试处理器验证修改、回滚、策略和防回环；`/v1` 旧事件映射兼容且无正文，通知失败不影响已完成 commit。
+退出条件：用测试处理器验证标注、回滚、策略；用测试 Action 验证新条目、应用回声和失败不留条目；`/v1` 旧事件映射兼容且无正文，通知失败不影响已完成 commit。
 
 ### P4 · plugin SDK、RPC 与常驻进程管理
 
@@ -110,7 +113,7 @@
 - [ ] 按 1/2/4 秒退避重启，60 秒最多 3 次；超限 unavailable。新会话重传最新状态，旧句柄失效，未决同步不自动重发。
 - [ ] 统一 Order/Instances/OnError 校验：启用项恰好出现一次，拒绝未知事件/能力/配置/API，支持 0..MaxSyncBackends、TransportKind 区分 P2P/对象存储，每实例独立进程/binding；标准同步策略与全局授权由 Engine 校验。
 
-退出条件：用真实测试子进程覆盖错误帧、超大帧、握手冲突、取消、死锁、崩溃、重启、资源回收与流控；Go 修改结果与 P3 测试处理器语义一致。
+退出条件：用真实测试子进程覆盖错误帧、超大帧、握手冲突、取消、死锁、崩溃、重启、资源回收与流控；Go 标注结果与 Action 结果和 P3 测试处理器语义一致。
 
 ### P5 · sync.tailcat 独立后端迁移
 
@@ -120,7 +123,7 @@
 - [ ] 持续持有 tailcat 端点和长连接，连续 Send 不启动新进程或新会话；断线、挂起、崩溃恢复按契约执行。
 - [ ] 按迁移契约在 New 离线准备、分步激活密钥到插件私有目录，保留地址与身份；覆盖重复迁移、中途失败和重启恢复，不能悄悄生成新身份。
 - [ ] 删除 Engine 直接装配 session/tcnet 的生产路径，落实 Options.Network 的契约变更，测试注入点迁入后端。
-- [ ] 提供默认后端发现与构建/分发装配；启用后端启动失败应报启动失败，无后端为显式本机模式，配对/发送返回 unsupported。sync.enabled=false 立即取消所有内容工作，控制连接与配对可保留；本机历史/写回继续。
+- [ ] 提供默认后端发现与构建/分发装配；启用后端启动失败应报启动失败，无后端为显式本机模式，配对/发送返回 unsupported。sync.enabled=false 立即取消所有内容工作，控制连接与配对可保留；本机历史/Action 继续。
 
 退出条件：双节点及旧 v2 对端互通；确认长连接复用、超限读完丢弃、撤销竞争和中断不重发；后端运行期故障不停止本机历史。
 
@@ -172,7 +175,9 @@ go build -o /tmp/unic-plugin-tailcat-0004 ./plugins/tailcat/cmd/unic-plugin-tail
 
 后端命令在 P5 新建入口后适用；lint 使用仓库固定版本。双节点使用独立 UNIC_HOME 和插件私有目录，测试不访问真实第三方仓库。每个阶段完成时在本文件补充对应提交、运行命令、结果与未解决项；当前为契约与计划阶段，未执行实现验收。
 
-进度记录：2026-11-07，`1e00097` 提交历史/提交/插件契约与执行计划；随后补齐自动写回契约、RPC 核心协议、同步后端业务 DTO、0007 多后端、后端迁移、Lua 预算方案、流水线状态/资源账本及 SDK 类型/错误映射。文档差异、本地链接、帧/Schema 引用和固定向量检查通过；上游 Lua 四项隔离探针通过。现有实现 `go test -race -count=1 -json ./...` 非缓存运行通过（107 个测试，0 失败/测试跳过），桌面两个入口构建通过，详见[回归基线](baselines/0004-2026-11-07.md)。新功能实现、真实子进程互操作、真实双设备/原生剪贴板仍待验证；未运行 lint。
+进度记录：2026-11-08，产品决定取消自动写回（用户复制 A 却粘贴出 B 会困惑）：自动阶段只标注，改写内容改为用户主动触发的 Action，写回契约由 [Action 契约](../design/clipboard-action-contract.md) 取代，SDK/插件/RPC Schema 与向量、0004、0006 同步更新；引擎中已有的 `SetText`、自动化深度与 plugin 来源代码随后移除。
+
+进度记录：2026-11-07，`1e00097` 提交历史/提交/插件契约与执行计划；随后补齐当时的自动写回契约（现已由 Action 契约取代）、RPC 核心协议、同步后端业务 DTO、0007 多后端、后端迁移、Lua 预算方案、流水线状态/资源账本及 SDK 类型/错误映射。文档差异、本地链接、帧/Schema 引用和固定向量检查通过；上游 Lua 四项隔离探针通过。现有实现 `go test -race -count=1 -json ./...` 非缓存运行通过（107 个测试，0 失败/测试跳过），桌面两个入口构建通过，详见[回归基线](baselines/0004-2026-11-07.md)。新功能实现、真实子进程互操作、真实双设备/原生剪贴板仍待验证；未运行 lint。
 
 多后端更新：按 0007 同批调整 SDK Settings、提交 BackendResults/聚合 Operation、P2P RPC 快照与 mode 字段；对象存储 DTO 不冒充已实现。
 

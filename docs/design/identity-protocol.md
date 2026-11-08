@@ -1,6 +1,6 @@
 # 统一设备身份与配对协议 v1
 
-- 状态：草案，待评审；评审通过前不实现。本文只定义密码学协议、编码与向量，不改变插件 RPC 帧格式。
+- 状态：已批准（2026-11-08）；`internal/identity` 已按本文实现并通过向量。本文只定义密码学协议、编码与向量，不改变插件 RPC 帧格式。
 - 日期：2026-11-08。
 - 依据：[0008](decisions/0008-device-identity-and-backend-bindings.md)、[设备契约](device-contract.md) §2–3。
 - 向量：[`vectors/identity-v1.json`](vectors/identity-v1.json)，由独立脚本按本文规则生成；实现必须逐字节复现。

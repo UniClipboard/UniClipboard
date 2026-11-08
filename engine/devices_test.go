@@ -129,3 +129,23 @@ func TestDeviceIdentityConflictIsRefused(t *testing.T) {
 		t.Fatalf("%+v", ds)
 	}
 }
+
+// registerVerifiedDevice and bindDevice seed the store the way a verified
+// handshake would, without a network.
+func (e *Engine) registerVerifiedDevice(publicKey []byte, reportedName string) (Device, error) {
+	d, err := e.st.AddDevice(identity.DeviceID(publicKey), publicKey, reportedName)
+	if err != nil {
+		return Device{}, deviceStoreErr(err)
+	}
+	e.deviceChanged(d.ID)
+	return e.loadDevice(d.ID)
+}
+
+func (e *Engine) bindDevice(deviceID, instanceID string, remoteContext []byte) (DeviceBinding, error) {
+	b, err := e.st.AddBinding(randHex(16), deviceID, instanceID, remoteContext)
+	if err != nil {
+		return DeviceBinding{}, deviceStoreErr(err)
+	}
+	e.deviceChanged(deviceID)
+	return e.toBinding(b), nil
+}

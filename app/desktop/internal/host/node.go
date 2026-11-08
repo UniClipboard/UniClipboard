@@ -188,26 +188,67 @@ func readPart(ctx context.Context, e *engine.Engine, lease engine.LeaseID, part 
 }
 
 func (n *Node) peerName(ctx context.Context, id engine.DeviceID) string {
-	ps, err := n.e.ListPeers(ctx)
-	if err == nil {
-		for _, p := range ps {
-			if p.ID == id {
-				return p.Name
-			}
-		}
+	if d, err := n.e.GetDevice(ctx, string(id)); err == nil {
+		return d.DisplayName()
 	}
 	return ""
 }
 
 // ---- api.Backend ----
+//
+// The daemon API still speaks of peers and pending requests. They are views of
+// the engine's unified device list: a peer is a trusted device with an
+// authorized path, a pending request is anything still waiting for the user.
 
-func apiPeer(p engine.Peer) api.PeerStatus {
-	return api.PeerStatus{ID: string(p.ID), Name: p.Name, Connected: p.Connection == engine.Connected, LastSeen: p.LastSeenMs / 1000}
+func deviceConnected(d engine.Device) bool {
+	for _, b := range d.Bindings {
+		if b.Connection == engine.Connected {
+			return true
+		}
+	}
+	return false
 }
 
-func apiPending(p engine.PendingPeer) api.PendingPeer {
-	return api.PendingPeer{ID: string(p.ID), Name: p.Name, Via: p.IntroducedByName, ByCode: p.Source == engine.SourceCode,
-		Fingerprint: p.Fingerprint, Time: p.SeenAtMs / 1000}
+func devicePeer(d engine.Device) bool {
+	if d.Trust != engine.DeviceTrustTrusted {
+		return false
+	}
+	for _, b := range d.Bindings {
+		if b.State == engine.BindingAuthorized {
+			return true
+		}
+	}
+	return false
+}
+
+func devicePending(d engine.Device) bool {
+	if d.Trust == engine.DeviceTrustPending {
+		return true
+	}
+	for _, b := range d.Bindings {
+		if b.State == engine.BindingPending {
+			return true
+		}
+	}
+	return false
+}
+
+func apiPeer(d engine.Device) api.PeerStatus {
+	var last int64
+	for _, b := range d.Bindings {
+		if b.LastActiveMs > last {
+			last = b.LastActiveMs
+		}
+	}
+	return api.PeerStatus{ID: d.ID, Name: d.DisplayName(), Connected: deviceConnected(d), LastSeen: last / 1000}
+}
+
+func apiPending(d engine.Device) api.PendingPeer {
+	byTicket := false
+	for _, b := range d.Bindings {
+		byTicket = byTicket || b.Ticket
+	}
+	return api.PendingPeer{ID: d.ID, Name: d.DisplayName(), ByCode: byTicket, Fingerprint: d.Fingerprint, Time: d.UpdatedMs / 1000}
 }
 
 // apiErr maps an engine error to the HTTP status and reason the API has always
@@ -235,7 +276,7 @@ func apiErr(err error, viaCode bool) error {
 		e.Status = 400
 	case engine.CodeNotFound:
 		e.Status = 404
-	case engine.CodeConflict:
+	case engine.CodeConflict, engine.CodeIdentityMismatch:
 		e.Status = 409
 	case engine.CodeInvalidState, engine.CodeSuspended, engine.CodeClosed:
 		e.Status = 503
@@ -249,14 +290,16 @@ func (n *Node) Status(ctx context.Context) (api.Status, error) {
 		return api.Status{}, apiErr(err, false)
 	}
 	out := api.Status{ID: string(st.Self.ID), Name: st.Self.Name, Peers: []api.PeerStatus{}, Pending: []api.PendingPeer{}}
-	if a, err := n.e.ExportPairingAddress(ctx); err == nil {
-		out.Addr = a.Address
+	if t, err := n.e.ExportPairingTicket(ctx); err == nil {
+		out.Addr = t.Ticket
 	}
-	for _, p := range st.Peers {
-		out.Peers = append(out.Peers, apiPeer(p))
-	}
-	for _, p := range st.Pending {
-		out.Pending = append(out.Pending, apiPending(p))
+	for _, d := range st.Devices {
+		if devicePeer(d) {
+			out.Peers = append(out.Peers, apiPeer(d))
+		}
+		if devicePending(d) {
+			out.Pending = append(out.Pending, apiPending(d))
+		}
 	}
 	return out, nil
 }
@@ -289,7 +332,7 @@ func ctxError(err error) error {
 }
 
 func (n *Node) Pair(ctx context.Context, addr string) (api.PairResult, error) {
-	id, err := n.e.PairByAddress(ctx, engine.PairRequest{RequestID: engine.RequestID("pair-" + randID()), Address: addr})
+	id, err := n.e.JoinByTicket(ctx, engine.JoinTicketRequest{RequestID: engine.RequestID("pair-" + randID()), Ticket: addr})
 	if err != nil {
 		return api.PairResult{}, apiErr(err, false)
 	}
@@ -332,64 +375,56 @@ func apiErr0(err error) error {
 }
 
 func (n *Node) Pending(ctx context.Context) ([]api.PendingPeer, error) {
-	ps, err := n.e.ListPending(ctx)
+	ds, err := n.e.ListDevices(ctx)
 	if err != nil {
 		return nil, apiErr(err, false)
 	}
-	out := make([]api.PendingPeer, 0, len(ps))
-	for _, p := range ps {
-		out = append(out, apiPending(p))
+	out := make([]api.PendingPeer, 0, len(ds))
+	for _, d := range ds {
+		if devicePending(d) {
+			out = append(out, apiPending(d))
+		}
 	}
 	return out, nil
 }
 
-func (n *Node) pendingFor(ctx context.Context, id string) (engine.PendingPeer, error) {
-	ps, err := n.e.ListPending(ctx)
-	if err != nil {
-		return engine.PendingPeer{}, apiErr(err, false)
-	}
-	for _, p := range ps {
-		if string(p.ID) == id {
-			return p, nil
-		}
-	}
-	return engine.PendingPeer{}, &api.Error{Message: "no such pending device", Status: 404}
-}
-
+// Approve is the user having compared fingerprints: trust the device, then
+// allow every path it asked for.
 func (n *Node) Approve(ctx context.Context, id, fingerprint string) (api.PeerStatus, error) {
-	p, err := n.pendingFor(ctx, id)
-	if err != nil {
-		return api.PeerStatus{}, err
-	}
-	if fingerprint == "" {
-		fingerprint = p.Fingerprint
-	}
-	peer, err := n.e.Approve(ctx, engine.ApprovalRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision, ExpectedFingerprint: fingerprint})
+	d, err := n.e.GetDevice(ctx, id)
 	if err != nil {
 		return api.PeerStatus{}, apiErr(err, false)
 	}
-	return apiPeer(peer), nil
+	if fingerprint == "" {
+		fingerprint = d.Fingerprint
+	}
+	if d.Trust != engine.DeviceTrustTrusted {
+		if d, err = n.e.TrustDevice(ctx, engine.TrustDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision, ExpectedFingerprint: fingerprint}); err != nil {
+			return api.PeerStatus{}, apiErr(err, false)
+		}
+	}
+	for _, b := range d.Bindings {
+		if b.State == engine.BindingPending {
+			if _, err := n.e.AuthorizeBinding(ctx, engine.BindingRequest{ID: b.ID, ExpectedRevision: b.Revision}); err != nil {
+				return api.PeerStatus{}, apiErr(err, false)
+			}
+		}
+	}
+	if d, err = n.e.GetDevice(ctx, id); err != nil {
+		return api.PeerStatus{}, apiErr(err, false)
+	}
+	return apiPeer(d), nil
 }
 
-func (n *Node) Reject(ctx context.Context, id string) error {
-	p, err := n.pendingFor(ctx, id)
-	if err != nil {
-		return err
-	}
-	return apiErr0(n.e.Reject(ctx, engine.PendingRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision}))
-}
+// Reject and Unpair both end the device: nothing is trusted and no path stays.
+func (n *Node) Reject(ctx context.Context, id string) error { return n.Unpair(ctx, id) }
 
 func (n *Node) Unpair(ctx context.Context, id string) error {
-	ps, err := n.e.ListPeers(ctx)
+	d, err := n.e.GetDevice(ctx, id)
 	if err != nil {
 		return apiErr(err, false)
 	}
-	for _, p := range ps {
-		if string(p.ID) == id {
-			return apiErr0(n.e.Unpair(ctx, p.ID))
-		}
-	}
-	return &api.Error{Message: "no such peer", Status: 404}
+	return apiErr0(n.e.UnpairDevice(ctx, engine.UnpairDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision}))
 }
 
 func (n *Node) Clipboard(ctx context.Context) (api.ClipboardView, error) {

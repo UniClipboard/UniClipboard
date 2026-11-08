@@ -130,8 +130,8 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 	switch {
 	case len(s.ID) > 128 || !pluginIDRe.MatchString(s.ID):
 		return invalidPlugin(s.ID, "invalid ID")
-	case strings.HasPrefix(s.ID, "sync."):
-		return invalidPlugin(s.ID, "the sync. prefix is reserved")
+	case s.ID == string(BackendTailcat):
+		return invalidPlugin(s.ID, "builtin.tailcat is reserved")
 	case s.APIVersion != 1:
 		return invalidPlugin(s.ID, "unsupported API version")
 	case s.Version == "" || len(s.Version) > 64:

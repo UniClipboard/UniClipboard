@@ -114,6 +114,20 @@ func (t *Transport) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	return c.DialTCPPort(ctx, Port)
 }
 
+// Binding is the identity protocol's context_binding for connections to the
+// server at addr: a domain label and that server's node public key, which
+// the dialer reads from the address and the server knows as its own. The
+// address's pre-shared key is not part of it. Freshness per connection comes
+// from the two nonces of the handshake, not from this value.
+func (t *Transport) Binding(addr string) ([]byte, error) {
+	ci, err := tailcat.ParseAddr(tailcat.Addr(addr))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadAddress, err)
+	}
+	raw := ci.ServerPublic.Raw32()
+	return append([]byte("unic/tailcat/1\x00"), raw[:]...), nil
+}
+
 // Forget closes the client of a removed peer.
 func (t *Transport) Forget(addr string) {
 	t.mu.Lock()

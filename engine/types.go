@@ -152,39 +152,6 @@ const (
 	Connected    Connection = "connected"
 )
 
-// Peer is a paired device. Paired does not mean connected.
-type Peer struct {
-	ID            DeviceID   `json:"id"`
-	Name          string     `json:"name"`
-	TrustRevision uint64     `json:"trust_revision,string"`
-	Connection    Connection `json:"connection"`
-	LastSeenMs    int64      `json:"last_seen_ms,omitempty"`
-}
-
-// PendingSource tells how a device came to ask for approval.
-type PendingSource string
-
-const (
-	SourceDirect       PendingSource = "direct"
-	SourceCode         PendingSource = "code"
-	SourceIntroduction PendingSource = "introduction"
-)
-
-// PendingPeer is a device waiting for the user's decision.
-type PendingPeer struct {
-	ID              DeviceID      `json:"id"`
-	Name            string        `json:"name"`
-	RequestRevision uint64        `json:"request_revision,string"`
-	Source          PendingSource `json:"source"`
-	// IntroducedByName is the name of the paired device that introduced this
-	// one (SourceIntroduction only). Names are not identities.
-	IntroducedByName string `json:"introduced_by_name,omitempty"`
-	// Fingerprint is the same on both devices; the user compares it before
-	// approving.
-	Fingerprint string `json:"fingerprint"`
-	SeenAtMs    int64  `json:"seen_at_ms"`
-}
-
 // PairingCode is a code this device shows. It is sensitive: only the explicit
 // methods return it, never State or events.
 type PairingCode struct {
@@ -198,10 +165,12 @@ type PairingCodeState struct {
 	ExpiresAtMs int64 `json:"expires_at_ms,omitempty"`
 }
 
-// SensitiveAddress is this device's address. Anyone holding it can connect to
-// this device and ask for approval; treat it like a password.
-type SensitiveAddress struct {
-	Address string `json:"address"`
+// SensitiveTicket is a full pairing ticket as text. Whoever holds it can
+// start pairing with this device (which still needs the user's approval on
+// both sides); treat it like a password.
+type SensitiveTicket struct {
+	Ticket      string `json:"ticket"`
+	ExpiresAtMs int64  `json:"expires_at_ms"`
 }
 
 // JoinRequest pairs with the device showing Code.
@@ -210,23 +179,10 @@ type JoinRequest struct {
 	Code      string
 }
 
-// PairRequest pairs with the device at Address.
-type PairRequest struct {
+// JoinTicketRequest pairs with the device that issued Ticket.
+type JoinTicketRequest struct {
 	RequestID RequestID
-	Address   string
-}
-
-// ApprovalRequest approves exactly the request the user looked at.
-type ApprovalRequest struct {
-	DeviceID            DeviceID
-	RequestRevision     uint64
-	ExpectedFingerprint string
-}
-
-// PendingRequest names a pending request, for Reject.
-type PendingRequest struct {
-	DeviceID        DeviceID
-	RequestRevision uint64
+	Ticket    string
 }
 
 // ---- operations ----
@@ -253,12 +209,14 @@ const (
 	PhaseCompleted   Phase = "completed"
 )
 
-// PairingResult is the outcome of a successful pairing operation. Waiting for
-// the other device's approval is a success: the device is remembered and
-// connects as soon as it approves.
+// PairingResult is the outcome of a successful pairing operation. The device
+// is now in the device list as pending: the user compares Fingerprint with the
+// other screen, then calls TrustDevice and AuthorizeBinding. Waiting for the
+// other side's approval is a success; the path connects once both agree.
 type PairingResult struct {
 	PeerID                 DeviceID `json:"peer_id"`
 	Fingerprint            string   `json:"fingerprint"`
+	AwaitingLocalApproval  bool     `json:"awaiting_local_approval"`
 	AwaitingRemoteApproval bool     `json:"awaiting_remote_approval"`
 }
 
@@ -356,8 +314,7 @@ type State struct {
 	Self         Self              `json:"self"`
 	Settings     SettingsState     `json:"settings"`
 	Capabilities Capabilities      `json:"capabilities"`
-	Peers        []Peer            `json:"peers"`
-	Pending      []PendingPeer     `json:"pending"`
+	Devices      []Device          `json:"devices"`
 	PairingCode  PairingCodeState  `json:"pairing_code"`
 	Operations   []Operation       `json:"operations"`
 	Received     []ReceivedContent `json:"received"`
@@ -420,8 +377,6 @@ const (
 	EventRuntime      EventKind = "runtime"
 	EventSettings     EventKind = "settings"
 	EventCapabilities EventKind = "capabilities"
-	EventPeers        EventKind = "peers"
-	EventPending      EventKind = "pending"
 	EventPairingCode  EventKind = "pairing_code"
 	EventOperations   EventKind = "operations"
 	EventReceived     EventKind = "received"

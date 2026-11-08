@@ -83,9 +83,10 @@ func (l *loopback) Dial(ctx context.Context, a string) (net.Conn, error) {
 	var d net.Dialer
 	return d.DialContext(ctx, "tcp", a)
 }
-func (l *loopback) Addr() string { return l.addr }
-func (l *loopback) Start() error { return nil }
-func (l *loopback) Close() error { return nil }
+func (l *loopback) Addr() string                     { return l.addr }
+func (l *loopback) Binding(a string) ([]byte, error) { return []byte("loop\x00" + a), nil }
+func (l *loopback) Start() error                     { return nil }
+func (l *loopback) Close() error                     { return nil }
 
 type host struct {
 	n     *Node
@@ -201,6 +202,10 @@ func pair(t *testing.T, a, b *host) {
 	if _, err := a.n.Approve(bg, b.id, ""); err != nil {
 		t.Fatal(err)
 	}
+	// Pairing is mutual: the joiner approves the other device too.
+	if _, err := b.n.Approve(bg, a.id, ""); err != nil {
+		t.Fatal(err)
+	}
 	eventually(t, "both sides connected", func() bool { return connected(a, b) })
 }
 
@@ -288,7 +293,7 @@ func TestUnapprovedDeviceGetsNothing(t *testing.T) {
 		t.Fatalf("Pair = %+v, %v", res, err)
 	}
 	eventually(t, "request", func() bool { return len(pending(a)) == 1 })
-	if p := pending(a)[0]; p.ID != b.id || p.Via != "" || p.ByCode {
+	if p := pending(a)[0]; p.ID != b.id || !p.ByCode {
 		t.Fatalf("pending = %+v", p)
 	}
 	a.board.user(text("secret"))
@@ -322,13 +327,13 @@ func TestPausedSyncKeepsConnection(t *testing.T) {
 func TestSyncTypeSwitches(t *testing.T) {
 	a, b := newHost(t, false), newHost(t, false)
 	pair(t, a, b)
-	b.edit("[plugins.instances.\"sync.tailcat\".sync]\ntext = false")
+	b.edit("[plugins.instances.\"builtin.tailcat\".sync]\ntext = false")
 	a.board.user(text("no text please"))
 	time.Sleep(300 * time.Millisecond)
 	if got(b) != "" {
 		t.Fatalf("text arrived though it is off: %q", got(b))
 	}
-	b.edit("[plugins.instances.\"sync.tailcat\".sync]\ntext = true")
+	b.edit("[plugins.instances.\"builtin.tailcat\".sync]\ntext = true")
 	a.board.user(text("text is back"))
 	eventually(t, "text again", func() bool { return got(b) == "text is back" })
 }
@@ -457,6 +462,7 @@ func TestEventsKeepTheirOldShape(t *testing.T) {
 		t.Fatalf("pending event has no name: %+v", seen["pending"])
 	}
 	a.n.Approve(bg, b.id, "")
+	b.n.Approve(bg, a.id, "")
 	eventually(t, "peer-up", func() bool {
 		for {
 			select {
@@ -497,96 +503,29 @@ func pngImage(t *testing.T) []byte {
 	return b.Bytes()
 }
 
-func TestIntroductionNeedsApprovalOnEveryDevice(t *testing.T) {
-	a, b, c := newHost(t, false), newHost(t, false), newHost(t, false)
-	pair(t, a, b) // b pairs with a
-	pair(t, b, c) // c pairs with b; a and c have never met
-
-	// b introduces the two to each other. Neither connects by itself.
-	find := func(h *host, id string) (api.PendingPeer, bool) {
-		for _, p := range pending(h) {
-			if p.ID == id {
-				return p, true
-			}
-		}
-		return api.PendingPeer{}, false
-	}
-	eventually(t, "a hears about c", func() bool { _, ok := find(a, c.id); return ok })
-	eventually(t, "c hears about a", func() bool { _, ok := find(c, a.id); return ok })
-	if p, _ := find(a, c.id); p.Via == "" || p.ByCode {
-		t.Fatalf("a's pending = %+v", p)
-	}
-	a.board.user(text("only for b"))
-	time.Sleep(300 * time.Millisecond)
-	if connected(a, c) || got(c) != "" {
-		t.Fatal("introduced devices connected without approval")
-	}
-	if got(b) != "only for b" {
-		t.Fatalf("b should have it: %q", got(b))
-	}
-
-	// One side approving is not enough...
-	if _, err := a.n.Approve(bg, c.id, ""); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(300 * time.Millisecond)
-	if connected(a, c) {
-		t.Fatal("connected before c approved a")
-	}
-	// ...both are.
-	if _, err := c.n.Approve(bg, a.id, ""); err != nil {
-		t.Fatal(err)
-	}
-	eventually(t, "a and c connected", func() bool { return connected(a, c) })
-	a.board.user(text("to everyone"))
-	eventually(t, "c receives from a", func() bool { return got(c) == "to everyone" })
-	if _, ok := find(a, c.id); ok {
-		t.Fatal("pending not cleared after approval")
-	}
-}
-
-func TestRejectedDeviceStaysQuietUntilItAsksAgain(t *testing.T) {
-	a, b, c := newHost(t, false), newHost(t, false), newHost(t, false)
-	pair(t, a, b)
-	pair(t, b, c)
-	eventually(t, "a hears about c", func() bool { return len(pending(a)) == 1 })
-	if err := a.n.Reject(bg, c.id); err != nil {
-		t.Fatal(err)
-	}
-	// b introduces c to a again when its peers change; a stays quiet.
-	d := newHost(t, false)
-	pair(t, b, d)
-	time.Sleep(300 * time.Millisecond)
-	for _, p := range pending(a) {
-		if p.ID == c.id {
-			t.Fatal("a rejected device came back through an introduction")
-		}
-	}
-	// But c asking a directly is a new request.
-	res, err := c.n.Pair(bg, addr(t, a))
-	if err != nil || !res.Awaiting {
-		t.Fatalf("Pair = %+v, %v", res, err)
-	}
-	eventually(t, "the direct request shows up", func() bool {
-		for _, p := range pending(a) {
-			if p.ID == c.id {
-				return true
-			}
-		}
-		return false
-	})
-}
-
 func TestSimultaneousPairingYieldsOneSession(t *testing.T) {
 	a, b := newHost(t, false), newHost(t, false)
 	aa, ba := addr(t, a), addr(t, b)
-	// Both users pair at once: each dial is the user's own decision, so no
-	// approval is needed on either side.
+	// Both users pair at once; each device then approves the other.
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() { defer wg.Done(); a.n.Pair(bg, ba) }()
 	go func() { defer wg.Done(); b.n.Pair(bg, aa) }()
 	wg.Wait()
+	for _, x := range [][2]*host{{a, b}, {b, a}} {
+		x := x
+		eventually(t, "request", func() bool {
+			for _, p := range pending(x[0]) {
+				if p.ID == x[1].id {
+					return true
+				}
+			}
+			return false
+		})
+		if _, err := x[0].n.Approve(bg, x[1].id, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
 	eventually(t, "connected", func() bool { return connected(a, b) })
 	a.board.user(text("still works"))
 	eventually(t, "sync after the race", func() bool { return got(b) == "still works" })

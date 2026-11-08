@@ -14,8 +14,11 @@ var coreFormats = []string{MimeText, MimeHTML, MimePNG}
 func (s State) clone() State {
 	c := s
 	c.Capabilities = s.Capabilities.clone()
-	c.Peers = append([]Peer{}, s.Peers...)
-	c.Pending = append([]PendingPeer{}, s.Pending...)
+	c.Devices = make([]Device, len(s.Devices))
+	for i, d := range s.Devices {
+		d.Bindings = append([]DeviceBinding(nil), d.Bindings...)
+		c.Devices[i] = d
+	}
 	if s.ActiveApply != nil {
 		a := *s.ActiveApply
 		c.ActiveApply = &a
@@ -194,11 +197,7 @@ func (e *Engine) selfNameLocked() string {
 // stateLocked assembles the snapshot. e.mu must be held, which makes the
 // revision and the content one consistent point.
 func (e *Engine) stateLocked() (State, *Error) {
-	peers, err := e.peers()
-	if err != nil {
-		return State{}, err
-	}
-	pend, err := e.pending()
+	devices, err := e.deviceList()
 	if err != nil {
 		return State{}, err
 	}
@@ -210,13 +209,13 @@ func (e *Engine) stateLocked() (State, *Error) {
 	}
 	st := State{HistoryRevision: hrev,
 		InstanceID: e.instance, Revision: e.rev, Lifecycle: e.life, Runtime: e.runtime,
-		Self:         Self{ID: e.self, Name: e.selfNameLocked()},
+		Self:         Self{ID: DeviceID(e.ident.DeviceID()), Name: e.selfNameLocked()},
 		Settings:     e.settingsLocked(),
 		Capabilities: e.capsLocked(),
-		Peers:        peers, Pending: pend,
-		PairingCode: e.code.state(now),
-		Operations:  e.ops.list(),
-		Received:    e.receivedLocked(now),
+		Devices:      devices,
+		PairingCode:  e.code.state(now),
+		Operations:   e.ops.list(),
+		Received:     e.receivedLocked(now),
 	}
 	if t := e.ticket; t != nil {
 		st.ActiveApply = &ActiveApply{Kind: ApplyKindReceived, ReceiptID: t.receipt, ContentID: t.content}

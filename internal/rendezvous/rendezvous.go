@@ -40,42 +40,89 @@ const (
 	requestTimeout = 10 * time.Second
 )
 
-// Ticket is what a code stands for: this device's address and a fresh token
-// that proves to it that a dialer came through this very code.
+// TextPrefix starts the copyable text form of a ticket.
+const TextPrefix = "unic-pair:"
+
+// MaxTicketBytes bounds a whole ticket in either form.
+const MaxTicketBytes = 2048
+
+// MaxAccess bounds the opaque access description a backend puts in a ticket.
+const MaxAccess = 1024
+
+// Transport kinds a ticket may name.
+const (
+	TransportPeerSessions = "peer_sessions"
+	TransportObjectStore  = "object_store"
+)
+
+// Ticket is what a code stands for (identity-protocol.md §6): the issuing
+// device's public key, a backend-defined access description, and a one-time
+// token. It is a secret like a password and grants no trust by itself.
 type Ticket struct {
-	Addr  string
-	Token string
+	Transport string // TransportPeerSessions or TransportObjectStore
+	Device    []byte // the issuer's identity public key (32 bytes)
+	Access    []byte // opaque to the core; at most MaxAccess bytes
+	Token     []byte // 16 random bytes
 }
 
 type ticketJSON struct {
 	V    int    `json:"v"`
 	Kind string `json:"kind"`
-	C    string `json:"c"`
-	K    string `json:"k"`
+	TP   string `json:"tp"`
+	Dev  string `json:"dev"`
+	Acc  string `json:"acc"`
+	Tok  string `json:"tok"`
 }
 
-// NewToken returns a fresh 128-bit base64url token.
-func NewToken() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return base64.RawURLEncoding.EncodeToString(b[:])
+// NewToken returns a fresh 128-bit one-time token.
+func NewToken() []byte {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return b
 }
 
-func (t Ticket) encode() string {
-	b, _ := json.Marshal(ticketJSON{V: 1, Kind: TicketKind, C: t.Addr, K: t.Token})
+var b64 = base64.RawURLEncoding
+
+// Encode is the JSON form stored at the code service.
+func (t Ticket) Encode() string {
+	b, _ := json.Marshal(ticketJSON{V: 2, Kind: TicketKind, TP: t.Transport,
+		Dev: b64.EncodeToString(t.Device), Acc: b64.EncodeToString(t.Access), Tok: b64.EncodeToString(t.Token)})
 	return string(b)
 }
 
-// parseTicket accepts unic tickets only.
-func parseTicket(raw string) (Ticket, bool) {
+// Text is the copyable form: "unic-pair:" and the base64url of Encode.
+func (t Ticket) Text() string { return TextPrefix + b64.EncodeToString([]byte(t.Encode())) }
+
+// ParseTicket accepts the JSON form of a unic ticket and nothing else.
+func ParseTicket(raw string) (Ticket, bool) {
 	var tj ticketJSON
-	if json.Unmarshal([]byte(raw), &tj) != nil || tj.V != 1 || tj.Kind != TicketKind {
+	if len(raw) > MaxTicketBytes || json.Unmarshal([]byte(raw), &tj) != nil || tj.V != 2 || tj.Kind != TicketKind {
 		return Ticket{}, false
 	}
-	if tj.C == "" || len(tj.C) > 2048 || len(tj.K) != 22 {
+	if tj.TP != TransportPeerSessions && tj.TP != TransportObjectStore {
 		return Ticket{}, false
 	}
-	return Ticket{Addr: tj.C, Token: tj.K}, true
+	dev, e1 := b64.DecodeString(tj.Dev)
+	acc, e2 := b64.DecodeString(tj.Acc)
+	tok, e3 := b64.DecodeString(tj.Tok)
+	if e1 != nil || e2 != nil || e3 != nil || len(dev) != 32 || len(tok) != 16 || len(acc) == 0 || len(acc) > MaxAccess {
+		return Ticket{}, false
+	}
+	return Ticket{Transport: tj.TP, Device: dev, Access: acc, Token: tok}, true
+}
+
+// ParseText accepts what a person pastes: the text form, with surrounding
+// white space and line breaks tolerated.
+func ParseText(in string) (Ticket, bool) {
+	s := strings.Join(strings.Fields(in), "")
+	if !strings.HasPrefix(s, TextPrefix) || len(s) > MaxTicketBytes*2 {
+		return Ticket{}, false
+	}
+	raw, err := b64.DecodeString(strings.TrimPrefix(s, TextPrefix))
+	if err != nil {
+		return Ticket{}, false
+	}
+	return ParseTicket(string(raw))
 }
 
 // NormalizeCode accepts what people type or paste ("482913", "482 913",
@@ -205,7 +252,7 @@ func (c *Client) Create(ctx context.Context, t Ticket) (Code, error) {
 		Code        string  `json:"code"`
 		ExpiresAtMs float64 `json:"expiresAtMs"`
 	}
-	if err := c.post(ctx, "/v1/web-pairings", map[string]string{"ticket": t.encode()}, &r); err != nil {
+	if err := c.post(ctx, "/v1/web-pairings", map[string]string{"ticket": t.Encode()}, &r); err != nil {
 		return Code{}, err
 	}
 	code, ok := NormalizeCode(r.Code)
@@ -240,7 +287,7 @@ func (c *Client) Resolve(ctx context.Context, code string) (Ticket, error) {
 	if err := c.post(ctx, "/v1/web-pairings/resolve", map[string]string{"code": n}, &r); err != nil {
 		return Ticket{}, err
 	}
-	t, ok := parseTicket(r.Ticket)
+	t, ok := ParseTicket(r.Ticket)
 	if !ok {
 		return Ticket{}, &Error{Invalid}
 	}

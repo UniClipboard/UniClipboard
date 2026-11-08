@@ -60,7 +60,7 @@ func TestPluginsAreValidatedAndUnwoundOnFailure(t *testing.T) {
 	}
 	var closed []string
 	bad := map[string]PluginInstance{
-		"reserved":   good("sync.fake", &closed),
+		"reserved":   good("builtin.tailcat", &closed),
 		"bad id":     good("Fake", &closed),
 		"api":        {Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 2, Capabilities: []string{plugin.CapProcessor}}, closed: &closed}}},
 		"no impl":    {Plugin: fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapProcessor}}, closed: &closed}},

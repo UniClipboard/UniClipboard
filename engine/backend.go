@@ -18,7 +18,7 @@ import (
 // interface is private until the plugin RPC of P4 can carry it.
 
 // BackendTailcat is the ID of the built-in peer-to-peer backend.
-const BackendTailcat PluginID = "sync.tailcat"
+const BackendTailcat PluginID = "builtin.tailcat"
 
 type TransportKind string
 

@@ -273,7 +273,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	// The commit point: state and trust may have moved on while the record was
 	// written, in which case the record and the dedup entry are taken back.
 	e.mu.Lock()
-	trusted, trustErr := e.st.HasPeer(string(peer))
+	trusted, trustErr := e.allowedPeer(string(peer))
 	if !live() || trustErr != nil || !trusted {
 		e.mu.Unlock()
 		if hid != "" {
@@ -303,7 +303,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 func (e *Engine) reserveRecvSlot(live func() bool, peer DeviceID) bool {
 	for {
 		e.mu.Lock()
-		trusted, err := e.st.HasPeer(string(peer))
+		trusted, err := e.allowedPeer(string(peer))
 		if !live() || err != nil || !trusted {
 			e.mu.Unlock()
 			return false

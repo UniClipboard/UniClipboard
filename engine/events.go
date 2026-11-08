@@ -42,16 +42,7 @@ func (e *Engine) pumpCoreEvents() {
 		case ev := <-e.events:
 			switch ev.Kind {
 			case "peer-up", "peer-down":
-				e.commit(EventPeers)
-			case "peers":
-				e.commit(EventPeers, EventPending) // approving or pairing also settles a pending request
-			case "pending":
-				e.commit(EventPending)
-			case "code":
-				e.mu.Lock()
-				e.code.clear() // used up
-				e.commitLocked(EventPairingCode)
-				e.mu.Unlock()
+				e.commit(EventDevices) // connection changed; Objects name no device, consumers reload
 			}
 		}
 	}

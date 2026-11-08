@@ -63,6 +63,9 @@ type Engine struct {
 	subs       map[*Subscription]struct{}
 	ops        opTable
 	code       codeTimer
+	tix        *liveTicket // the pairing ticket on offer
+	rvDefault  *rendezvous.Client
+	rvCache    *rendezvous.Client
 
 	startCancel context.CancelFunc
 	startDone   chan struct{} // closed when Start has fully returned
@@ -92,20 +95,12 @@ type Engine struct {
 	obs           observation
 	ticket        *applyTicket
 	lastApply     applyDone
-	pmu           sync.Mutex // pending request revisions
-	pendRevs      map[DeviceID]pendRev
-	pendCount     uint64
 
 	processors  []*pipelineProcessor // private adapters, fixed before Start
 	actions     []*pipelineAction    // likewise
 	observers   []*pipelineObserver  // likewise
 	plugins     []plugin.Plugin      // started in New, closed with the engine
 	submissions map[RequestID]*submissionEntry
-}
-
-type pendRev struct {
-	seen int64
-	rev  uint64
 }
 
 // New validates opts, takes the data directory, opens the database and the
@@ -183,18 +178,13 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	hist.sweep(st)                                     // expired records go before anyone can ask for them
 	_, _ = st.InterruptPending(time.Now().UnixMilli()) // unfinished sends are not resumed
 
-	id, err := legacyDeviceID(st)
-	if err != nil {
-		// Never invent a new identity because the old one could not be read.
-		return closeAll(newErr(CodeUnavailable, "cannot read the device identity"))
-	}
 	ident, err := openDeviceIdentity(opts.DataDir, st)
 	if errors.Is(err, errIdentityMismatch) {
 		return closeAll(newErr(CodeIdentityMismatch, "the device identity does not match this data directory"))
 	} else if err != nil {
 		return closeAll(newErr(CodeUnavailable, "cannot open the device identity"))
 	}
-	defName, err := defaultName(st, id)
+	defName, err := defaultName(st, ident.DeviceID())
 	if err != nil {
 		return closeAll(newErr(CodeUnavailable, "cannot read the device identity"))
 	}
@@ -209,7 +199,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 
 	e := &Engine{
 		instance: InstanceID(randHex(8)), opts: opts, res: res, log: opts.Logger,
-		lock: lock, st: st, ident: ident, tr: tr, self: DeviceID(id), defName: defName,
+		lock: lock, st: st, ident: ident, tr: tr, defName: defName,
 		ctl:      make(chan struct{}, 1),
 		life:     LifecycleCreated,
 		runtime:  RuntimeActive,
@@ -218,7 +208,6 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		subs:     map[*Subscription]struct{}{},
 		ops:      newOpTable(),
 		stopped:  make(chan struct{}), closedCh: make(chan struct{}),
-		pendRevs:      map[DeviceID]pendRev{},
 		cs:            newContentStore(),
 		dedupInflight: map[store.DedupKey]struct{}{},
 		hist:          hist,
@@ -228,11 +217,12 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		rv = rendezvous.NewWithURL("") // the production service; settings.RendezvousURL overrides it, the environment does not
 	}
 	e.backends = append([]syncBackend{tailcatBackend{e}}, opts.extraBackends...)
+	e.rvDefault = rv
 	e.core = session.New(session.Config{
-		ID: id, Name: defName, Store: st, Transport: tr,
-		Receiver:   receiver{e},
-		Logf:       func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
-		Rendezvous: rv, Settings: settingsSource{e},
+		Identity: ident, Name: defName, Host: tailcatHost{e}, Transport: tr,
+		Receiver: receiver{e},
+		Logf:     func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
+		Settings: settingsSource{e},
 	})
 	e.events, e.evCancel = e.core.Subscribe()
 	e.evStop, e.evDone = make(chan struct{}), make(chan struct{})
@@ -266,16 +256,6 @@ func randHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
-}
-
-func legacyDeviceID(st *store.Store) (string, error) {
-	if b, err := st.Meta("device.id"); err != nil {
-		return "", err
-	} else if b != nil {
-		return string(b), nil
-	}
-	id := randHex(8)
-	return id, st.SetMeta("device.id", []byte(id))
 }
 
 // defaultName is chosen once and kept, so that the name other devices see does

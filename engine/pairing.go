@@ -6,8 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
-	"unicode"
 
+	"github.com/uniclipboard/unic/internal/identity"
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/internal/tcnet"
@@ -17,7 +17,7 @@ import (
 const pairTimeout = 45 * time.Second
 
 // codeTimer tracks the pairing code this device shows, only to announce its
-// expiry; the code itself lives in the session layer.
+// expiry; the ticket it stands for is e.tix.
 type codeTimer struct {
 	gen     uint64
 	active  bool
@@ -56,7 +56,6 @@ func (e *Engine) callCtx(ctx context.Context) (context.Context, context.CancelFu
 }
 
 // mapNetErr turns a failure of the session layer into a redacted engine error.
-// The text of err is never forwarded: it may hold addresses or tickets.
 func mapNetErr(err error) *Error {
 	var ee *Error
 	switch {
@@ -67,11 +66,11 @@ func mapNetErr(err error) *Error {
 	case errors.Is(err, session.ErrSelf):
 		return newErr(CodeInvalidArgument, "that is this device itself")
 	case errors.Is(err, tcnet.ErrBadAddress):
-		return newErr(CodeInvalidArgument, "that is not a valid device address")
+		return newErr(CodeInvalidArgument, "that is not a valid pairing ticket")
 	case errors.Is(err, session.ErrProtocol):
 		return newErr(CodeProtocolMismatch, "the other device uses an incompatible protocol version")
-	case errors.Is(err, session.ErrIdentity):
-		return newErr(CodeIdentityMismatch, "the address belongs to a different device")
+	case errors.Is(err, session.ErrIdentity), errors.Is(err, session.ErrBadProof):
+		return newErr(CodeIdentityMismatch, "the other device is not the one the ticket names")
 	case errors.Is(err, session.ErrNotRunning):
 		return newErr(CodeInvalidState, "the engine is not running")
 	}
@@ -81,10 +80,91 @@ func mapNetErr(err error) *Error {
 	return retryable(newErr(CodeUnavailable, "could not reach the device"))
 }
 
-// ---- pairing codes ----
+// ---- tickets ----
 
-// CreatePairingCode shows a new code (replacing the previous one only if this
-// succeeds). The code finds this device; it grants nobody any trust.
+// liveTicket is the one pairing ticket this device offers. It dies on first
+// use, on expiry, or when replaced. code is the rendezvous code standing for
+// it, "" if it was only exported as text. Guarded by Engine.mu.
+type liveTicket struct {
+	tok     []byte
+	expires time.Time
+	code    string
+	text    string
+}
+
+// rv is the code service client, following rendezvous_url.
+func (e *Engine) rv() *rendezvous.Client {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	u := strings.TrimRight(e.settings.Value.RendezvousURL, "/")
+	if u == "" {
+		return e.rvDefault
+	}
+	if e.rvCache == nil || e.rvCache.URL != u {
+		e.rvCache = rendezvous.NewWithURL(u)
+	}
+	return e.rvCache
+}
+
+// consumeCode tells the code service a code is used up. Best effort, in the
+// background; Close waits for it with the other operations.
+func (e *Engine) consumeCode(code string) {
+	if code == "" {
+		return
+	}
+	rv := e.rv()
+	e.mu.Lock()
+	if e.closing {
+		e.mu.Unlock()
+		return
+	}
+	parent := e.runCtx
+	e.opWG.Add(1)
+	e.mu.Unlock()
+	go func() {
+		defer e.opWG.Done()
+		if parent == nil {
+			parent = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+		defer cancel()
+		rv.Consume(ctx, code)
+	}()
+}
+
+// newTicketLocked makes a fresh ticket for this device and its tailcat
+// address. e.mu must be held.
+func (e *Engine) newTicketLocked(expires time.Time) (rendezvous.Ticket, *Error) {
+	addr := e.tr.Addr()
+	if addr == "" {
+		return rendezvous.Ticket{}, retryable(newErr(CodeUnavailable, "the address is not ready yet"))
+	}
+	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Device: e.ident.Public(),
+		Access: []byte(addr), Token: rendezvous.NewToken()}, nil
+}
+
+// pairUsed is the session layer's question whether a peer's PairProof belongs
+// to the live ticket. A match uses the ticket up: one ticket, one device.
+func (e *Engine) pairUsed(t [32]byte, proof []byte) bool {
+	e.mu.Lock()
+	lt := e.tix
+	if lt == nil || !time.Now().Before(lt.expires) || identity.VerifyPairProof(lt.tok, t, proof) != nil {
+		e.mu.Unlock()
+		return false
+	}
+	e.tix = nil
+	code := lt.code
+	if e.code.active {
+		e.code.clear()
+		e.commitLocked(EventPairingCode)
+	}
+	e.mu.Unlock()
+	e.consumeCode(code)
+	return true
+}
+
+// CreatePairingCode shows a new code (replacing the previous ticket only if
+// this succeeds). The code finds this device; it grants nobody any trust.
 func (e *Engine) CreatePairingCode(ctx context.Context) (PairingCode, error) {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
@@ -93,17 +173,27 @@ func (e *Engine) CreatePairingCode(ctx context.Context) (PairingCode, error) {
 	defer release()
 	e.mu.Lock()
 	nerr := e.needNetworkLocked()
+	var t rendezvous.Ticket
+	if nerr == nil {
+		t, nerr = e.newTicketLocked(time.Time{})
+	}
 	e.mu.Unlock()
 	if nerr != nil {
 		return PairingCode{}, nerr
 	}
+	rv := e.rv()
 	cctx, cancel := e.callCtx(ctx)
 	defer cancel()
-	c, err := e.core.IssueCode(cctx)
+	c, err := rv.Create(cctx, t)
 	if err != nil {
 		return PairingCode{}, mapNetErr(err)
 	}
 	e.mu.Lock()
+	var oldCode string
+	if e.tix != nil {
+		oldCode = e.tix.code
+	}
+	e.tix = &liveTicket{tok: t.Token, expires: c.Expires, code: c.Code, text: t.Text()}
 	e.code.clear()
 	e.code.active, e.code.expires = true, c.Expires
 	gen := e.code.gen
@@ -117,6 +207,9 @@ func (e *Engine) CreatePairingCode(ctx context.Context) (PairingCode, error) {
 	})
 	e.commitLocked(EventPairingCode)
 	e.mu.Unlock()
+	if oldCode != "" {
+		e.consumeCode(oldCode)
+	}
 	return PairingCode{Code: c.Code, ExpiresAtMs: c.Expires.UnixMilli()}, nil
 }
 
@@ -127,56 +220,69 @@ func (e *Engine) GetPairingCode(ctx context.Context) (PairingCode, bool, error) 
 		return PairingCode{}, false, gerr
 	}
 	defer release()
-	c, ok := e.core.CurrentCode()
-	if !ok {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tix
+	if t == nil || t.code == "" || !time.Now().Before(t.expires) {
 		return PairingCode{}, false, nil
 	}
-	return PairingCode{Code: c.Code, ExpiresAtMs: c.Expires.UnixMilli()}, true, nil
+	return PairingCode{Code: t.code, ExpiresAtMs: t.expires.UnixMilli()}, true, nil
 }
 
-// CancelPairingCode withdraws the code. It is invalid locally when this
-// returns; telling the code service is best effort.
+// CancelPairingCode withdraws the code and its ticket. They are invalid
+// locally when this returns; telling the code service is best effort.
 func (e *Engine) CancelPairingCode(ctx context.Context) error {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return gerr
 	}
 	defer release()
-	e.core.CancelCode()
 	e.mu.Lock()
+	var code string
+	if e.tix != nil {
+		code = e.tix.code
+		e.tix = nil
+	}
 	if e.code.active {
 		e.code.clear()
 		e.commitLocked(EventPairingCode)
 	}
 	e.mu.Unlock()
+	e.consumeCode(code)
 	return nil
 }
 
-// ExportPairingAddress returns this device's address for pairing by hand. It
-// is a secret; show it only when the user asks.
-func (e *Engine) ExportPairingAddress(ctx context.Context) (SensitiveAddress, error) {
+// ExportPairingTicket returns the live ticket as text, for pairing without
+// the code service (copy, command line, QR). It makes a ticket if none is live.
+// The text is a secret equal to a password; show it only when the user asks.
+func (e *Engine) ExportPairingTicket(ctx context.Context) (SensitiveTicket, error) {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
-		return SensitiveAddress{}, gerr
+		return SensitiveTicket{}, gerr
 	}
 	defer release()
 	e.mu.Lock()
-	life := e.life
-	e.mu.Unlock()
-	if life != LifecycleRunning {
-		return SensitiveAddress{}, newErr(CodeInvalidState, "the engine is not running")
+	defer e.mu.Unlock()
+	if nerr := e.needNetworkLocked(); nerr != nil {
+		return SensitiveTicket{}, nerr
 	}
-	_, _, addr := e.core.Self()
-	if addr == "" {
-		return SensitiveAddress{}, retryable(newErr(CodeUnavailable, "the address is not ready yet"))
+	now := time.Now()
+	if t := e.tix; t != nil && now.Before(t.expires) {
+		return SensitiveTicket{Ticket: t.text, ExpiresAtMs: t.expires.UnixMilli()}, nil
 	}
-	return SensitiveAddress{Address: addr}, nil
+	t, nerr := e.newTicketLocked(now)
+	if nerr != nil {
+		return SensitiveTicket{}, nerr
+	}
+	exp := now.Add(rendezvous.MaxLifetime)
+	e.tix = &liveTicket{tok: t.Token, expires: exp, text: t.Text()}
+	return SensitiveTicket{Ticket: t.Text(), ExpiresAtMs: exp.UnixMilli()}, nil
 }
 
-// ---- pairing operations ----
+// ---- joining ----
 
 // JoinByCode pairs with the device showing a code. The result arrives through
-// the returned operation. The other device must still approve this one.
+// the returned operation. Both users must still approve each other.
 func (e *Engine) JoinByCode(ctx context.Context, req JoinRequest) (OperationID, error) {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
@@ -190,17 +296,19 @@ func (e *Engine) JoinByCode(ctx context.Context, req JoinRequest) (OperationID, 
 	if !ok {
 		return "", newErr(CodeIncomplete, "enter all 6 digits of the code")
 	}
-	return e.startPairing(req.RequestID, "join\x00"+code, PhaseResolving, func(ctx context.Context, op OperationID) (peer DeviceID, awaiting bool, err error) {
-		p, aw, err := e.core.JoinWith(ctx, code, func() {
-			e.updateOp(op, func(o *Operation) { o.Phase = PhaseConnecting })
-		})
-		return DeviceID(p.ID), aw, err
+	return e.startPairing(req.RequestID, "join\x00"+code, PhaseResolving, func(ctx context.Context, op OperationID) (session.Standing, bool, error) {
+		t, err := e.rv().Resolve(ctx, code)
+		if err != nil {
+			return session.Standing{}, false, err
+		}
+		e.updateOp(op, func(o *Operation) { o.Phase = PhaseConnecting })
+		return e.joinTicket(ctx, t)
 	})
 }
 
-// PairByAddress pairs with the device at a full address (the way that needs no
-// code service). The other device must still approve this one.
-func (e *Engine) PairByAddress(ctx context.Context, req PairRequest) (OperationID, error) {
+// JoinByTicket pairs with the device that issued a full ticket (the way that
+// needs no code service). Both users must still approve each other.
+func (e *Engine) JoinByTicket(ctx context.Context, req JoinTicketRequest) (OperationID, error) {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return "", gerr
@@ -209,20 +317,33 @@ func (e *Engine) PairByAddress(ctx context.Context, req PairRequest) (OperationI
 	if req.RequestID == "" {
 		return "", newErr(CodeInvalidArgument, "RequestID is required")
 	}
-	addr := strings.TrimSpace(req.Address)
-	if addr == "" || len(addr) > 2048 || strings.IndexFunc(addr, unicode.IsSpace) >= 0 || strings.IndexFunc(addr, unicode.IsControl) >= 0 {
-		return "", newErr(CodeInvalidArgument, "that is not a valid device address")
+	t, ok := rendezvous.ParseText(req.Ticket)
+	if !ok {
+		return "", newErr(CodeInvalidArgument, "that is not a valid pairing ticket")
 	}
-	return e.startPairing(req.RequestID, "pair\x00"+addr, PhaseConnecting, func(ctx context.Context, _ OperationID) (DeviceID, bool, error) {
-		p, aw, err := e.core.AddPeer(ctx, addr)
-		return DeviceID(p.ID), aw, err
+	return e.startPairing(req.RequestID, "ticket\x00"+t.Encode(), PhaseConnecting, func(ctx context.Context, _ OperationID) (session.Standing, bool, error) {
+		return e.joinTicket(ctx, t)
 	})
+}
+
+// joinTicket connects to the issuer of t, which must be the very device the
+// ticket names. Only the tailcat backend handles peer sessions today; a ticket
+// for another transport has no compatible backend and is refused, never
+// handed to tailcat.
+func (e *Engine) joinTicket(ctx context.Context, t rendezvous.Ticket) (session.Standing, bool, error) {
+	if t.Transport != rendezvous.TransportPeerSessions {
+		return session.Standing{}, false, newErr(CodeUnsupported, "no installed sync backend can use this ticket")
+	}
+	if string(t.Device) == string(e.ident.Public()) {
+		return session.Standing{}, false, session.ErrSelf
+	}
+	return e.core.Connect(ctx, string(t.Access), identity.DeviceID(t.Device), t.Token)
 }
 
 // startPairing registers the operation (or finds the one this RequestID made)
 // and runs work in the background. The sensitive parameter is only hashed.
 func (e *Engine) startPairing(req RequestID, param string, phase Phase,
-	work func(ctx context.Context, op OperationID) (DeviceID, bool, error)) (OperationID, error) {
+	work func(ctx context.Context, op OperationID) (session.Standing, bool, error)) (OperationID, error) {
 
 	hash := sha256.Sum256([]byte(param))
 	e.mu.Lock()
@@ -254,16 +375,20 @@ func (e *Engine) startPairing(req RequestID, param string, phase Phase,
 		defer e.opWG.Done()
 		ctx, cancel := context.WithTimeout(rctx, pairTimeout)
 		defer cancel()
-		peer, awaiting, err := work(ctx, id)
+		st, awaiting, err := work(ctx, id)
 		if err != nil {
 			ee := mapNetErr(err)
 			e.updateOp(id, func(o *Operation) { o.Phase, o.Error = PhaseFailed, ee })
 			return
 		}
-		fp := session.Fingerprint(string(e.self), string(peer))
+		e.reconcile() // the new device is known now; a ready one connects
+		peer, _ := e.st.Device(st.DeviceID)
+		fp := identity.Fingerprint(e.ident.Public(), peer.PublicKey)
 		e.updateOp(id, func(o *Operation) {
 			o.Phase = PhaseSucceeded
-			o.Pairing = &PairingResult{PeerID: peer, Fingerprint: fp, AwaitingRemoteApproval: awaiting}
+			o.Pairing = &PairingResult{PeerID: DeviceID(st.DeviceID), Fingerprint: fp,
+				AwaitingLocalApproval: !st.Allowed, AwaitingRemoteApproval: !e.core.Connected(st.DeviceID)}
+			_ = awaiting
 		})
 	}()
 	return id, nil
@@ -287,174 +412,4 @@ func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, e
 		return Operation{}, newErr(CodeNotFound, "no such operation (it may have expired)")
 	}
 	return o.op.clone(), nil
-}
-
-// ---- devices ----
-
-func (e *Engine) peers() ([]Peer, *Error) {
-	ps, err := e.core.Peers()
-	if err != nil {
-		return nil, newErr(CodeUnavailable, "cannot read the paired devices")
-	}
-	out := make([]Peer, 0, len(ps))
-	for _, p := range ps {
-		c := Disconnected
-		if p.Connected {
-			c = Connected
-		}
-		out = append(out, Peer{ID: DeviceID(p.ID), Name: p.Name, TrustRevision: uint64(p.AddedAt), Connection: c, LastSeenMs: p.LastSeen * 1000})
-	}
-	return out, nil
-}
-
-// pending lists the requests waiting for the user. A request's revision
-// changes whenever the device asks again, so an approval of a stale view fails.
-func (e *Engine) pending() ([]PendingPeer, *Error) {
-	ps, err := e.core.Pending()
-	if err != nil {
-		return nil, newErr(CodeUnavailable, "cannot read the pending devices")
-	}
-	e.pmu.Lock()
-	defer e.pmu.Unlock()
-	out := make([]PendingPeer, 0, len(ps))
-	live := map[DeviceID]bool{}
-	for _, p := range ps {
-		id := DeviceID(p.ID)
-		live[id] = true
-		r := e.pendRevs[id]
-		if r.rev == 0 || r.seen != p.Time {
-			e.pendCount++
-			r = pendRev{seen: p.Time, rev: e.pendCount}
-			e.pendRevs[id] = r
-		}
-		src := SourceDirect
-		switch {
-		case p.ByCode:
-			src = SourceCode
-		case p.Via != "":
-			src = SourceIntroduction
-		}
-		out = append(out, PendingPeer{ID: id, Name: p.Name, RequestRevision: r.rev, Source: src,
-			IntroducedByName: p.Via, Fingerprint: p.Fingerprint, SeenAtMs: p.Time * 1000})
-	}
-	for id := range e.pendRevs {
-		if !live[id] {
-			delete(e.pendRevs, id)
-		}
-	}
-	return out, nil
-}
-
-// ListPeers returns the paired devices.
-func (e *Engine) ListPeers(ctx context.Context) ([]Peer, error) {
-	release, gerr := e.enter(ctx)
-	if gerr != nil {
-		return nil, gerr
-	}
-	defer release()
-	ps, err := e.peers()
-	if err != nil {
-		return nil, err
-	}
-	return ps, nil
-}
-
-// ListPending returns the devices waiting for approval.
-func (e *Engine) ListPending(ctx context.Context) ([]PendingPeer, error) {
-	release, gerr := e.enter(ctx)
-	if gerr != nil {
-		return nil, gerr
-	}
-	defer release()
-	ps, err := e.pending()
-	if err != nil {
-		return nil, err
-	}
-	return ps, nil
-}
-
-// findPending returns the pending request that req names, or the error to give.
-func (e *Engine) findPending(id DeviceID, rev uint64) (PendingPeer, *Error) {
-	ps, err := e.pending()
-	if err != nil {
-		return PendingPeer{}, err
-	}
-	for _, p := range ps {
-		if p.ID == id {
-			if p.RequestRevision != rev {
-				return p, newErr(CodeConflict, "the request changed; look at it again")
-			}
-			return p, nil
-		}
-	}
-	return PendingPeer{}, newErr(CodeNotFound, "no such pending device")
-}
-
-// Approve trusts a pending device. It checks that the user approved the
-// request they saw: the revision and the fingerprint must still match. The
-// decision is stored before Approve returns; connecting happens afterwards.
-func (e *Engine) Approve(ctx context.Context, req ApprovalRequest) (Peer, error) {
-	release, gerr := e.enter(ctx)
-	if gerr != nil {
-		return Peer{}, gerr
-	}
-	defer release()
-	p, perr := e.findPending(req.DeviceID, req.RequestRevision)
-	if perr != nil {
-		return Peer{}, perr
-	}
-	if req.ExpectedFingerprint == "" || req.ExpectedFingerprint != p.Fingerprint {
-		return Peer{}, newErr(CodeConflict, "the fingerprint does not match; compare it again")
-	}
-	if _, err := e.core.Approve(string(req.DeviceID)); err != nil {
-		if errors.Is(err, session.ErrNoPending) {
-			return Peer{}, newErr(CodeNotFound, "no such pending device")
-		}
-		return Peer{}, newErr(CodeUnavailable, "cannot store the decision")
-	}
-	ps, err := e.peers()
-	if err != nil {
-		return Peer{}, err
-	}
-	for _, q := range ps {
-		if q.ID == req.DeviceID {
-			return q, nil
-		}
-	}
-	return Peer{}, newErr(CodeInternal, "the approved device vanished")
-}
-
-// Reject dismisses a pending device. Introductions do not bring it back; a
-// connection attempt from the device itself does, as a new request.
-func (e *Engine) Reject(ctx context.Context, req PendingRequest) error {
-	release, gerr := e.enter(ctx)
-	if gerr != nil {
-		return gerr
-	}
-	defer release()
-	if _, perr := e.findPending(req.DeviceID, req.RequestRevision); perr != nil {
-		return perr
-	}
-	if err := e.core.Reject(string(req.DeviceID)); err != nil {
-		if errors.Is(err, session.ErrNoPending) {
-			return newErr(CodeNotFound, "no such pending device")
-		}
-		return newErr(CodeUnavailable, "cannot store the decision")
-	}
-	e.commit(EventPending)
-	return nil
-}
-
-// Unpair removes a paired device and drops its connection. Unpairing a device
-// that is not paired succeeds. Pairing again needs a new approval.
-func (e *Engine) Unpair(ctx context.Context, id DeviceID) error {
-	release, gerr := e.enter(ctx)
-	if gerr != nil {
-		return gerr
-	}
-	defer release()
-	if _, err := e.core.RemovePeer(string(id)); err != nil {
-		return newErr(CodeUnavailable, "cannot store the decision")
-	}
-	return nil
 }

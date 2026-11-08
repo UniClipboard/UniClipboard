@@ -369,8 +369,8 @@ func TestSuspendFailsWaitingAndRunningSends(t *testing.T) {
 		t.Fatal(err)
 	}
 	eventually(t, "reconnected", func() bool {
-		ps, _ := n.e.ListPeers(bg)
-		return len(ps) == 1 && ps[0].Connection == Connected
+		ds, _ := n.e.ListDevices(bg)
+		return len(ds) == 1 && len(ds[0].Bindings) == 1 && ds[0].Bindings[0].Connection == Connected
 	})
 	time.Sleep(200 * time.Millisecond)
 	if l.count() != 0 {

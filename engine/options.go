@@ -84,6 +84,8 @@ type Network interface {
 	Listen(ctx context.Context) (net.Listener, error)
 	Dial(ctx context.Context, addr string) (net.Conn, error)
 	Addr() string
+	// Binding is the context both ends compute for a connection to addr.
+	Binding(addr string) ([]byte, error)
 	Start() error
 	Close() error
 }

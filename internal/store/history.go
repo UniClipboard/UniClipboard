@@ -16,8 +16,9 @@ var (
 	ErrConflict = errors.New("store: history item revision mismatch")
 )
 
-// versioned holds schema steps tracked by PRAGMA user_version. Append only;
-// a step runs once, in a transaction, together with its version bump.
+// versioned holds schema steps tracked by PRAGMA user_version. No version has
+// been released, so there is one step: the current schema. Once a release
+// exists, append steps; never edit one that has shipped.
 var versioned = []string{
 	`CREATE TABLE history_state (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL);
 INSERT INTO history_state (id, revision) VALUES (1, 0);
@@ -31,7 +32,6 @@ CREATE TABLE clip_items (
   device_id   TEXT NOT NULL DEFAULT '',
   plugin_id   TEXT NOT NULL DEFAULT '',
   source_app  TEXT NOT NULL DEFAULT '',
-  depth       INTEGER NOT NULL DEFAULT 0,
   created_ms  INTEGER NOT NULL,
   updated_ms  INTEGER NOT NULL,
   expires_ms  INTEGER NOT NULL DEFAULT 0,
@@ -50,6 +50,8 @@ CREATE TABLE clip_item_parts (
   size     INTEGER NOT NULL,
   inline   BLOB,
   blob     TEXT NOT NULL DEFAULT '',
+  ref      TEXT NOT NULL DEFAULT '',      -- opaque host reference of a file kept in place; nothing is copied
+  version  TEXT NOT NULL DEFAULT '',      -- size/version seen at commit
   PRIMARY KEY (item_seq, ord)
 );
 CREATE INDEX clip_item_parts_blob ON clip_item_parts (blob) WHERE blob <> '';
@@ -63,30 +65,21 @@ CREATE TABLE clip_item_sync (
   item_seq   INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,
   backend_id TEXT NOT NULL,
   state      TEXT NOT NULL,
+  disposition TEXT NOT NULL DEFAULT '',   -- the first commit decision
+  error_code TEXT NOT NULL DEFAULT '',    -- a stable error class
   PRIMARY KEY (item_seq, backend_id)
-) WITHOUT ROWID;`,
-	// Files the host keeps in place are remembered by an opaque reference and
-	// the size/version seen at commit; nothing is copied for them.
-	`ALTER TABLE clip_item_parts ADD COLUMN ref TEXT NOT NULL DEFAULT '';
-ALTER TABLE clip_item_parts ADD COLUMN version TEXT NOT NULL DEFAULT '';`,
-	// Per-backend sync summary: the first commit decision and a stable error class.
-	`ALTER TABLE clip_item_sync ADD COLUMN disposition TEXT NOT NULL DEFAULT '';
-ALTER TABLE clip_item_sync ADD COLUMN error_code TEXT NOT NULL DEFAULT '';`,
-	// Received transfers already committed, so the same transfer arriving
-	// through another backend is dropped. Bounded by age and count.
-	`CREATE TABLE sync_dedup (
+) WITHOUT ROWID;
+-- Received transfers already committed, so the same transfer arriving through
+-- another backend is dropped. Bounded by age and count.
+CREATE TABLE sync_dedup (
   source      TEXT NOT NULL,
   transfer_id TEXT NOT NULL,
   view_hash   TEXT NOT NULL,
   created_ms  INTEGER NOT NULL,
   PRIMARY KEY (source, transfer_id, view_hash)
 ) WITHOUT ROWID;
-CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);`,
-	// Plugins no longer rewrite content, so there is no automation chain to count.
-	`ALTER TABLE clip_items DROP COLUMN depth;
-UPDATE clip_items SET origin_kind = 'action' WHERE origin_kind = 'plugin';`,
-	// Unified devices and their per-backend-instance bindings (decision 0008).
-	deviceSchema,
+CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);
+` + "\n" + deviceSchema, // unified devices and their per-backend-instance bindings (decision 0008)
 }
 
 func migrate(db *sql.DB) error {

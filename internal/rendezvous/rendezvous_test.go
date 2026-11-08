@@ -1,8 +1,10 @@
 package rendezvous_test
 
 import (
+	"bytes"
 	"context"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -39,7 +41,7 @@ func TestRoundTrip(t *testing.T) {
 	c := client(s)
 	ctx := context.Background()
 
-	want := rendezvous.Ticket{Addr: "tcEXAMPLEADDRESS0123456789", Token: rendezvous.NewToken()}
+	want := testTicket()
 	code, err := c.Create(ctx, want)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +50,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatalf("expires in %v", left)
 	}
 	got, err := c.Resolve(ctx, code.Display())
-	if err != nil || got != want {
+	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("Resolve = %+v, %v; want %+v", got, err, want)
 	}
 	c.Consume(ctx, code.Code)
@@ -79,7 +81,7 @@ func TestReasons(t *testing.T) {
 		http.StatusInternalServerError: rendezvous.Unavailable,
 	} {
 		s.SetFail(status)
-		if _, err := c.Create(ctx, rendezvous.Ticket{Addr: "x", Token: "y"}); rendezvous.ReasonOf(err) != want {
+		if _, err := c.Create(ctx, testTicket()); rendezvous.ReasonOf(err) != want {
 			t.Errorf("status %d: %v", status, err)
 		}
 	}
@@ -94,11 +96,39 @@ func TestLocalDeadlineIgnoresServerClock(t *testing.T) {
 	s := rvtest.New()
 	defer s.Close()
 	s.TTL = 24 * time.Hour // a server clock far ahead must not stretch the code's life
-	code, err := client(s).Create(context.Background(), rendezvous.Ticket{Addr: "a", Token: "b"})
+	code, err := client(s).Create(context.Background(), testTicket())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if left := time.Until(code.Expires); left > rendezvous.MaxLifetime {
 		t.Fatalf("expires in %v, more than the fixed TTL", left)
+	}
+}
+
+func testTicket() rendezvous.Ticket {
+	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions,
+		Device: bytes.Repeat([]byte{7}, 32), Access: []byte("tcEXAMPLEADDRESS0123456789"), Token: rendezvous.NewToken()}
+}
+
+func TestTextFormRoundTripsAndRejectsOthers(t *testing.T) {
+	want := testTicket()
+	got, ok := rendezvous.ParseText("  " + want.Text()[:20] + "\n" + want.Text()[20:] + " ")
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseText = %+v, %v", got, ok)
+	}
+	old := `{"v":1,"kind":"unic-pair","c":"addr","k":"AAAAAAAAAAAAAAAAAAAAAA"}`
+	for _, bad := range []string{"", "unic-pair:", "unic-pair:!!!", rendezvous.TextPrefix + "e30", old,
+		"tcEXAMPLEADDRESS0123456789"} {
+		if _, ok := rendezvous.ParseText(bad); ok {
+			t.Errorf("ParseText(%q) accepted", bad)
+		}
+	}
+	if _, ok := rendezvous.ParseTicket(old); ok {
+		t.Error("a v1 ticket must not parse")
+	}
+	big := want
+	big.Access = bytes.Repeat([]byte{1}, rendezvous.MaxAccess+1)
+	if _, ok := rendezvous.ParseTicket(big.Encode()); ok {
+		t.Error("an oversized access description parsed")
 	}
 }

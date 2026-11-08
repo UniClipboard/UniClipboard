@@ -1,15 +1,14 @@
-// Package engine is the session layer under the public engine package
-// (unic/engine): it keeps a session with every paired device, handles pairing
-// and introductions, and moves clips to and from a Receiver. It knows nothing
-// of tailcat or of any clipboard; it talks to a Transport, so it is tested with
-// loopback TCP. Hosts use unic/engine, not this package.
+// Package session is the tailcat peer-session layer under the public engine
+// package (unic/engine): it keeps a session with every device the user has
+// authorized for this backend, proves device identities during the handshake
+// (docs/design/identity-protocol.md), and moves clips to and from a Receiver.
+// It decides nothing about trust: the Host does. It knows nothing of tailcat
+// or of any clipboard; it talks to a Transport, so it is tested with loopback
+// TCP. Hosts use unic/engine, not this package.
 package session
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,8 +22,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/clip"
-	"github.com/uniclipboard/unic/internal/rendezvous"
-	"github.com/uniclipboard/unic/internal/store"
+	"github.com/uniclipboard/unic/internal/identity"
 	"github.com/uniclipboard/unic/internal/wire"
 )
 
@@ -36,17 +34,64 @@ type Transport interface {
 	Dial(ctx context.Context, addr string) (net.Conn, error)
 	// Addr is this device's own address, which peers dial.
 	Addr() string
+	// Binding is the identity protocol's context_binding for connections to
+	// the device at addr (and, with the device's own Addr, for connections it
+	// accepts): both ends compute the same bytes. It also serves as the
+	// remote context of the path to that device.
+	Binding(addr string) ([]byte, error)
+}
+
+// Standing is what the host says about a verified device.
+type Standing struct {
+	DeviceID string
+	Name     string // the user's name for it, else what it reports
+	// Allowed: the device is trusted and its path through this backend is
+	// authorized. Only allowed devices get a session.
+	Allowed bool
+	// SyncEnabled: the path may carry clips now (the user can pause it
+	// without dropping the session).
+	SyncEnabled bool
+}
+
+// Target is an authorized device to keep a connection to.
+type Target struct {
+	DeviceID string
+	Name     string
+	Addr     string // a secret
+}
+
+// Verified is a device that proved its identity on a connection.
+type Verified struct {
+	PublicKey []byte
+	Name      string // self-reported; never evidence of anything
+	Addr      string // its address as reported or dialed; a secret
+	Context   []byte // Transport.Binding(Addr), empty if Addr is unusable
+	Ticket    bool   // it proved it holds a live pairing ticket (grants nothing)
+}
+
+// Host owns devices, trust and pairing tickets. Calls may come from any
+// session goroutine and must not call back into the Engine.
+type Host interface {
+	// Verify records a verified device (pending unless already known) and its
+	// path through this backend, and reports where it stands.
+	Verify(v Verified) (Standing, error)
+	// Standing reports the current standing of a device, ok=false if unknown.
+	Standing(deviceID string) (Standing, bool)
+	// Targets lists the devices to keep connected.
+	Targets() []Target
+	// Pair reports whether proof is a valid PairProof of a live ticket for the
+	// transcript t, and uses that ticket up.
+	Pair(t [32]byte, proof []byte) bool
+	// Active reports a session coming up (nil) or a failed attempt.
+	Active(deviceID string, err error)
 }
 
 type Config struct {
-	ID        string // stable device id
+	Identity  *identity.Identity
 	Name      string
-	Store     *store.Store
+	Host      Host
 	Transport Transport
 	Logf      func(format string, args ...any)
-	// Rendezvous stores pairing codes; nil disables them (full addresses
-	// still work).
-	Rendezvous *rendezvous.Client
 	// Settings supplies the user's configuration, re-read on every use so
 	// edits apply at once. Nil means the defaults.
 	Settings SettingsSource
@@ -93,33 +138,29 @@ var (
 	ErrNotRunning = errors.New("engine is not running")
 	ErrSelf       = errors.New("that is this device itself")
 	ErrProtocol   = errors.New("peer speaks another protocol version")
-	ErrIdentity   = errors.New("address belongs to a different device")
-	ErrNoPending  = errors.New("no such pending device")
+	// ErrIdentity: the device behind the address is not the one expected.
+	ErrIdentity = errors.New("address belongs to a different device")
+	// ErrBadProof: the peer could not prove the identity it claimed.
+	ErrBadProof = errors.New("the device could not prove its identity")
+	// ErrNotAllowed: the device is known now but not trusted or authorized
+	// for this backend, so no session was made.
+	ErrNotAllowed = errors.New("device is not authorized; waiting for the user")
 )
 
 type Engine struct {
 	cfg Config
 
 	mu       sync.Mutex
-	sessions map[string]*session // by peer id
+	sessions map[string]*session // by peer device id
 	subs     map[chan Event]struct{}
 	retry    map[string]context.CancelFunc
-	pairing  map[string]int // addresses the user is pairing with right now
-	code     *liveCode      // the pairing code this device is showing, if any
 	ctx      context.Context
-	rvCache  *rendezvous.Client    // client for the configured rendezvous_url
 	conns    map[net.Conn]struct{} // connections still handshaking, closed on shutdown
 	wg       sync.WaitGroup        // every background goroutine of a Run
 }
 
-// liveCode is a pairing code registered for this device.
-type liveCode struct {
-	rendezvous.Code
-	token string
-}
-
-// Event tells that something changed: "peer-up", "peer-down", "peers",
-// "pending" or "code". It carries nothing else; whoever listens looks.
+// Event tells that something changed: "peer-up", "peer-down". It carries
+// nothing else; whoever listens looks.
 type Event struct {
 	Kind string
 }
@@ -133,7 +174,6 @@ func New(cfg Config) *Engine {
 		sessions: map[string]*session{},
 		subs:     map[chan Event]struct{}{},
 		retry:    map[string]context.CancelFunc{},
-		pairing:  map[string]int{},
 		conns:    map[net.Conn]struct{}{},
 	}
 }
@@ -154,21 +194,6 @@ func (e *Engine) name() string {
 		return n
 	}
 	return e.cfg.Name
-}
-
-// rv is the pairing code client, following rendezvous_url. Nil when codes
-// are disabled.
-func (e *Engine) rv() *rendezvous.Client {
-	u := strings.TrimRight(e.settings().RendezvousURL, "/")
-	if u == "" || e.cfg.Rendezvous == nil {
-		return e.cfg.Rendezvous
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.rvCache == nil || e.rvCache.URL != u {
-		e.rvCache = rendezvous.NewWithURL(u)
-	}
-	return e.rvCache
 }
 
 // Run blocks until ctx is done. When it returns every goroutine it started has
@@ -199,13 +224,7 @@ func (e *Engine) RunReady(ctx context.Context, ready func()) error {
 	defer e.shutdown(ln)
 
 	e.spawn(func() { e.acceptLoop(ctx, ln) })
-	peers, err := e.cfg.Store.Peers()
-	if err != nil {
-		return err
-	}
-	for _, p := range peers {
-		e.keepDialing(p)
-	}
+	e.Reconcile()
 	if ready != nil {
 		ready()
 	}
@@ -268,125 +287,76 @@ func (e *Engine) shutdown(ln net.Listener) {
 	e.wg.Wait()
 }
 
-// AddPeer pairs with the device at addr. It connects once synchronously so
-// that a wrong address is reported to the user; the connection is then kept
-// alive in the background. awaiting is true when the other device has not
-// approved this one yet: it is remembered and connects as soon as it does.
-func (e *Engine) AddPeer(ctx context.Context, addr string) (p store.Peer, awaiting bool, err error) {
-	return e.addPeer(ctx, addr, "")
-}
-
-// addPeer pairs with addr; pair is the token of the code that led there.
-func (e *Engine) addPeer(ctx context.Context, addr, pair string) (p store.Peer, awaiting bool, err error) {
+// Connect makes one connection to the device at addr as the user's own act
+// (a pairing ticket, or the path of a device just authorized). expect is the
+// DeviceID the address must belong to, "" when not known; tok is the ticket's
+// one-time token, nil without a ticket. The device is recorded through the
+// Host; a session is made only if the device is already allowed on both sides.
+// The returned Standing is valid whenever the identity was proven, even if err
+// is ErrNotAllowed or an awaiting error.
+func (e *Engine) Connect(ctx context.Context, addr, expect string, tok []byte) (Standing, bool, error) {
 	e.mu.Lock()
 	started := e.ctx != nil
-	if started {
-		e.pairing[addr]++
-	}
 	e.mu.Unlock()
 	if !started {
-		return p, false, ErrNotRunning
+		return Standing{}, false, ErrNotRunning
 	}
-	defer func() {
-		e.mu.Lock()
-		if e.pairing[addr]--; e.pairing[addr] <= 0 {
-			delete(e.pairing, addr)
-		}
-		e.mu.Unlock()
-	}()
 	if addr == e.cfg.Transport.Addr() {
-		return p, false, ErrSelf
+		return Standing{}, false, ErrSelf
 	}
 	conn, err := e.cfg.Transport.Dial(ctx, addr)
 	if err != nil {
-		return p, false, fmt.Errorf("connect: %w", err)
+		return Standing{}, false, fmt.Errorf("connect: %w", err)
 	}
 	untrack, ok := e.track(conn)
 	if !ok {
-		return p, false, ErrNotRunning
+		return Standing{}, false, ErrNotRunning
 	}
 	defer untrack()
-	s, err := e.handshake(conn, true, addr, pair)
-	if err != nil {
-		var aw *awaitingError
-		if !errors.As(err, &aw) {
-			_ = conn.Close()
-			return p, false, err
+	s, st, err := e.handshake(conn, true, addr, expect, tok)
+	var aw *awaitingError
+	switch {
+	case err == nil:
+	case errors.As(err, &aw):
+		_ = conn.Close()
+		return st, true, nil
+	default:
+		_ = conn.Close()
+		if errors.Is(err, ErrNotAllowed) {
+			return st, false, nil
 		}
-		s, awaiting = aw.s, true
-	}
-	p = store.Peer{ID: s.peerID, Name: s.peerName, Addr: addr}
-	if err := e.cfg.Store.UpsertPeer(p); err != nil {
-		_ = conn.Close()
-		return p, false, err
-	}
-	_ = e.cfg.Store.DeleteCandidate(p.ID) // the user's own pairing outranks a pending request
-	e.keepDialing(p)                      // reconnect after failures; a no-op while a session is up
-	e.emit(Event{Kind: "peers"})
-	if awaiting {
-		_ = conn.Close()
-		return p, true, nil
+		return st, false, err
 	}
 	if e.register(s) {
 		if !e.spawn(func() { e.serve(s) }) {
 			s.close()
-			return p, false, ErrNotRunning
+			return st, false, ErrNotRunning
 		}
 	} else {
 		_ = conn.Close() // already connected through a better session
 	}
-	return p, false, nil
+	return st, false, nil
 }
 
-func (e *Engine) RemovePeer(id string) (bool, error) {
-	ok, err := e.cfg.Store.DeletePeer(id)
-	if err != nil {
-		return false, err
-	}
-	e.mu.Lock()
-	if cancel := e.retry[id]; cancel != nil {
-		cancel()
-		delete(e.retry, id)
-	}
-	s := e.sessions[id]
-	e.mu.Unlock()
-	if s != nil {
-		s.close()
-	}
-	e.emit(Event{Kind: "peers"})
-	return ok, nil
-}
-
-// PeerStatus is a paired device and whether it is connected right now.
-type PeerStatus struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Connected bool   `json:"connected"`
-	LastSeen  int64  `json:"last_seen,omitempty"`
-	AddedAt   int64  `json:"-"` // unix seconds; not part of the HTTP API
-}
-
-func (e *Engine) Peers() ([]PeerStatus, error) {
-	ps, err := e.cfg.Store.Peers()
-	if err != nil {
-		return nil, err
-	}
+// Connected reports whether a session with the device is up.
+func (e *Engine) Connected(deviceID string) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	out := make([]PeerStatus, 0, len(ps))
-	for _, p := range ps {
-		st := PeerStatus{ID: p.ID, Name: p.Name, Connected: e.sessions[p.ID] != nil, AddedAt: p.AddedAt.Unix()}
-		if !p.LastSeen.IsZero() {
-			st.LastSeen = p.LastSeen.Unix()
-		}
-		out = append(out, st)
+	s := e.sessions[deviceID]
+	if s == nil {
+		return false
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
+	select {
+	case <-s.done:
+		return false
+	default:
+		return true
+	}
 }
 
-func (e *Engine) Self() (id, name, addr string) {
-	return e.cfg.ID, e.name(), e.cfg.Transport.Addr()
+// Self is this device's name and address.
+func (e *Engine) Self() (name, addr string) {
+	return e.name(), e.cfg.Transport.Addr()
 }
 
 // Subscribe returns a channel of events and a function that stops it.
@@ -464,6 +434,13 @@ func (e *Engine) Submit(prepare func(peers []string) (Job, bool)) bool {
 		}
 	}
 	e.mu.Unlock()
+	live := ss[:0]
+	for _, s := range ss {
+		if st, ok := e.cfg.Host.Standing(s.peerID); ok && st.Allowed && st.SyncEnabled {
+			live = append(live, s)
+		}
+	}
+	ss = live
 	if len(ss) == 0 {
 		return false
 	}
@@ -541,87 +518,137 @@ func (s *session) enqueue(c outClip) {
 
 const handshakeTimeout = 15 * time.Second
 
+func (e *Engine) self() string { return e.cfg.Identity.DeviceID() }
+
+// handshake exchanges hellos, then identity proofs, then verdicts. The
+// transcript binds both hellos to the transport context, so a proof cannot be
+// replayed on another connection or turned around (identity-protocol.md §4).
+// expect is the DeviceID the peer must prove ("" accepts any); tok is the
+// dialer's ticket token. The returned Standing is set once the proof verified,
+// even when the error says the device may not have a session.
+func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed, expect string, tok []byte) (*session, Standing, error) {
+	_ = conn.SetDeadline(time.Now().Add(handshakeTimeout))
+	defer func() { _ = conn.SetDeadline(time.Time{}) }()
+	own := e.cfg.Transport.Addr()
+	bindAddr := own
+	if outgoing {
+		bindAddr = dialed
+	}
+	binding, err := e.cfg.Transport.Binding(bindAddr)
+	if err != nil {
+		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+	}
+	mine, err := identity.NewHello(e.cfg.Identity.Public())
+	if err != nil {
+		return nil, Standing{}, err
+	}
+	w := wire.NewConn(conn)
+	werr := make(chan error, 1)
+	out := wire.Hello{T: "hello", Version: wire.Version, H: mine.Encode(), Name: e.name(), Addr: own}
+	go func() { werr <- w.WriteJSON(out) }()
+	var h wire.Hello
+	if err := readTyped(w, "hello", &h); err != nil {
+		return nil, Standing{}, err
+	}
+	if err := <-werr; err != nil {
+		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+	}
+	if h.Version != wire.Version {
+		return nil, Standing{}, fmt.Errorf("handshake: peer speaks protocol %d, we speak %d: %w", h.Version, wire.Version, ErrProtocol)
+	}
+	theirs, err := identity.ParseHello(h.H)
+	if err != nil {
+		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+	}
+	if _, err := identity.SelectVersion(mine, theirs); err != nil {
+		return nil, Standing{}, fmt.Errorf("handshake: %w: %w", err, ErrProtocol)
+	}
+	peerID := identity.DeviceID(theirs.PK)
+	if peerID == e.self() {
+		return nil, Standing{}, ErrSelf
+	}
+	if expect != "" && peerID != expect {
+		return nil, Standing{}, ErrIdentity // before proving ourselves to the wrong device
+	}
+	helloI, helloR, mineRole, theirRole := mine.Encode(), h.H, identity.RoleInitiator, identity.RoleResponder
+	if !outgoing {
+		helloI, helloR, mineRole, theirRole = h.H, mine.Encode(), identity.RoleResponder, identity.RoleInitiator
+	}
+	t, err := identity.Transcript(identity.KindPeerSessions, binding, helloI, helloR)
+	if err != nil {
+		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+	}
+	proof := wire.Proof{T: "proof", Sig: e.cfg.Identity.Prove(mineRole, t)}
+	if outgoing && tok != nil {
+		proof.Pair = identity.PairProof(tok, t)
+	}
+	go func() { werr <- w.WriteJSON(proof) }()
+	var p wire.Proof
+	if err := readTyped(w, "proof", &p); err != nil {
+		return nil, Standing{}, err
+	}
+	if err := <-werr; err != nil {
+		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+	}
+	if err := identity.VerifyProof(theirs.PK, theirRole, t, p.Sig); err != nil {
+		return nil, Standing{}, fmt.Errorf("handshake: %w", ErrBadProof)
+	}
+
+	// From here the device is who it says it is, and the host may remember it.
+	peerAddr := h.Addr
+	if outgoing {
+		peerAddr = dialed
+	}
+	v := Verified{PublicKey: theirs.PK, Name: h.Name, Addr: peerAddr, Ticket: outgoing && len(tok) > 0}
+	if !outgoing && len(p.Pair) > 0 {
+		v.Ticket = e.cfg.Host.Pair(t, p.Pair)
+	}
+	if peerAddr != "" {
+		v.Context, _ = e.cfg.Transport.Binding(peerAddr) // unusable address: no context, nothing to dial back
+	}
+	st, err := e.cfg.Host.Verify(v)
+	if err != nil {
+		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+	}
+	go func() { werr <- w.WriteJSON(wire.Verdict{T: "verdict", OK: st.Allowed}) }()
+	var vd wire.Verdict
+	if err := readTyped(w, "verdict", &vd); err != nil {
+		return nil, st, err
+	}
+	if err := <-werr; err != nil {
+		return nil, st, fmt.Errorf("handshake: %w", err)
+	}
+	s := &session{e: e, conn: conn, w: w, peerID: peerID, peerName: st.Name, peerAddr: peerAddr,
+		outgoing: outgoing, kick: make(chan struct{}, 1), ctl: make(chan any, 8), done: make(chan struct{})}
+	if !st.Allowed {
+		return nil, st, ErrNotAllowed
+	}
+	if !vd.OK {
+		return nil, st, &awaitingError{s}
+	}
+	return s, st, nil
+}
+
+// readTyped reads one control message of the given type into v.
+func readTyped(w *wire.Conn, want string, v any) error {
+	typ, raw, err := w.ReadRaw()
+	if err != nil {
+		return fmt.Errorf("handshake: %w", err)
+	}
+	if typ != want {
+		return fmt.Errorf("handshake: expected %q, got %q", want, typ)
+	}
+	if err := json.Unmarshal(raw, v); err != nil {
+		return fmt.Errorf("handshake: %w", err)
+	}
+	return nil
+}
+
 // awaitingError means the other device has not accepted us yet.
 type awaitingError struct{ s *session }
 
 func (a *awaitingError) Error() string {
 	return a.s.peerName + " has not approved this device yet"
-}
-
-// errNotTrusted means we did not accept the other device: it is now a
-// candidate waiting for the user.
-var errNotTrusted = errors.New("device is not paired; waiting for the user to approve it")
-
-// trusts reports whether we accept h without asking: a paired device, or one
-// whose address the user is pairing with at this very moment.
-func (e *Engine) trusts(h wire.Hello) bool {
-	if ok, err := e.cfg.Store.HasPeer(h.ID); err == nil && ok {
-		return true
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return h.Addr != "" && e.pairing[h.Addr] > 0
-}
-
-// handshake exchanges hellos, then verdicts. Dialing a device is itself the
-// decision to trust it; accepting a connection needs a paired device.
-func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed, pair string) (*session, error) {
-	_ = conn.SetDeadline(time.Now().Add(handshakeTimeout))
-	defer func() { _ = conn.SetDeadline(time.Time{}) }()
-	w := wire.NewConn(conn)
-	hello := wire.Hello{T: "hello", Version: wire.Version, ID: e.cfg.ID, Name: e.name(), Addr: e.cfg.Transport.Addr(), Pair: pair}
-	werr := make(chan error, 1)
-	go func() { werr <- w.WriteJSON(hello) }()
-	typ, raw, err := w.ReadRaw()
-	if err != nil {
-		return nil, fmt.Errorf("handshake: %w", err)
-	}
-	if err := <-werr; err != nil {
-		return nil, fmt.Errorf("handshake: %w", err)
-	}
-	if typ != "hello" {
-		return nil, fmt.Errorf("handshake: unexpected %q message", typ)
-	}
-	var h wire.Hello
-	if err := json.Unmarshal(raw, &h); err != nil {
-		return nil, err
-	}
-	if h.ID == "" || h.ID == e.cfg.ID {
-		return nil, errors.New("handshake: bad device id")
-	}
-	if h.Version != wire.Version {
-		return nil, fmt.Errorf("handshake: peer speaks protocol %d, we speak %d: %w", h.Version, wire.Version, ErrProtocol)
-	}
-
-	trust := outgoing || e.trusts(h)
-	go func() { werr <- w.WriteJSON(wire.Verdict{T: "verdict", OK: trust}) }()
-	typ, raw, err = w.ReadRaw()
-	if err != nil {
-		return nil, fmt.Errorf("handshake: %w", err)
-	}
-	if err := <-werr; err != nil {
-		return nil, fmt.Errorf("handshake: %w", err)
-	}
-	var v wire.Verdict
-	if typ != "verdict" || json.Unmarshal(raw, &v) != nil {
-		return nil, fmt.Errorf("handshake: expected a verdict, got %q", typ)
-	}
-
-	s := &session{e: e, conn: conn, w: w, peerID: h.ID, peerName: h.Name, peerAddr: h.Addr,
-		outgoing: outgoing, kick: make(chan struct{}, 1), ctl: make(chan any, 8), done: make(chan struct{})}
-	if outgoing && dialed != "" && s.peerAddr == "" {
-		s.peerAddr = dialed
-	}
-	if !trust {
-		if h.Addr != "" { // without an address we could never connect back
-			e.addCandidate(store.Candidate{ID: h.ID, Name: h.Name, Addr: h.Addr, ByCode: e.useCode(h.Pair)}, true)
-		}
-		return nil, errNotTrusted
-	}
-	if !v.OK {
-		return nil, &awaitingError{s}
-	}
-	return s, nil
 }
 
 func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
@@ -639,21 +666,13 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 		}
 		if !e.spawn(func() {
 			defer untrack()
-			s, err := e.handshake(conn, false, "", "")
+			s, _, err := e.handshake(conn, false, "", "", nil)
 			if err != nil {
-				if !errors.Is(err, errNotTrusted) {
+				if !errors.Is(err, ErrNotAllowed) {
 					e.logf("incoming connection rejected: %v", err)
 				}
 				_ = conn.Close()
 				return
-			}
-			// Trusted: remember the name and the current address, so that we
-			// can reconnect after a restart.
-			if s.peerAddr != "" {
-				if err := e.cfg.Store.UpsertPeer(store.Peer{ID: s.peerID, Name: s.peerName, Addr: s.peerAddr}); err != nil {
-					e.logf("remember peer: %v", err)
-				}
-				_ = e.cfg.Store.DeleteCandidate(s.peerID)
 			}
 			if !e.register(s) {
 				_ = conn.Close()
@@ -678,7 +697,7 @@ func (e *Engine) register(s *session) bool {
 		select {
 		case <-old.done:
 		default:
-			if dialer(e.cfg.ID, old) <= dialer(e.cfg.ID, s) {
+			if dialer(e.self(), old) <= dialer(e.self(), s) {
 				e.mu.Unlock()
 				return false
 			}
@@ -703,12 +722,11 @@ func dialer(self string, s *session) string {
 // serve runs a registered session until it ends.
 func (e *Engine) serve(s *session) {
 	e.logf("connected to %s", s.peerName)
-	_ = e.cfg.Store.TouchPeer(s.peerID)
+	e.cfg.Host.Active(s.peerID, nil)
 	e.emit(Event{Kind: "peer-up"})
 	if !e.spawn(s.sendLoop) {
 		s.close()
 	}
-	e.introduceTo(s)
 	err := s.recvLoop()
 	s.close()
 	e.mu.Lock()
@@ -716,7 +734,7 @@ func (e *Engine) serve(s *session) {
 		delete(e.sessions, s.peerID)
 	}
 	e.mu.Unlock()
-	_ = e.cfg.Store.TouchPeer(s.peerID)
+	e.cfg.Host.Active(s.peerID, nil)
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 		e.logf("session with %s ended: %v", s.peerName, err)
 	}
@@ -757,7 +775,7 @@ func (s *session) send(c *outClip) bool {
 		case <-ctx.Done():
 		}
 	}()
-	broken, err := c.job.Send(ctx, s.w, s.e.cfg.ID)
+	broken, err := c.job.Send(ctx, s.w, s.e.self())
 	cancel()
 	if err != nil {
 		select {
@@ -795,6 +813,9 @@ func (s *session) recvLoop() error {
 			// limits) is read and dropped, so the stream stays in sync and
 			// the connection survives.
 			cfg := s.e.settings()
+			if st, ok := s.e.cfg.Host.Standing(s.peerID); !ok || !st.Allowed || !st.SyncEnabled {
+				cfg.SyncEnabled = false // the path is paused or revoked
+			}
 			lim := wire.Limits{File: cfg.MaxFileBytes, Total: cfg.MaxTotalBytes}
 			var adm Admission
 			wanted := false
@@ -829,34 +850,28 @@ func (s *session) recvLoop() error {
 				continue
 			}
 			adm.Done(snap, dir, true)
-		case "peers":
-			var m wire.Peers
-			if err := json.Unmarshal(raw, &m); err != nil {
-				return err
-			}
-			s.e.introduced(s, m)
 		default:
 			// Unknown control messages are ignored for forward compatibility.
 		}
 	}
 }
 
-// keepDialing maintains an outgoing connection to p, with backoff.
-func (e *Engine) keepDialing(p store.Peer) {
+// keepDialing maintains an outgoing connection to t, with backoff.
+func (e *Engine) keepDialing(t Target) {
 	e.mu.Lock()
-	if e.retry[p.ID] != nil || e.ctx == nil {
+	if e.retry[t.DeviceID] != nil || e.ctx == nil {
 		e.mu.Unlock()
 		return
 	}
 	ctx, cancel := context.WithCancel(e.ctx)
-	e.retry[p.ID] = cancel
+	e.retry[t.DeviceID] = cancel
 	e.mu.Unlock()
 
 	if !e.spawn(func() {
 		backoff := time.Second
 		for ctx.Err() == nil {
 			e.mu.Lock()
-			up := e.sessions[p.ID] != nil
+			up := e.sessions[t.DeviceID] != nil
 			e.mu.Unlock()
 			if up {
 				if !sleep(ctx, 5*time.Second) {
@@ -866,7 +881,7 @@ func (e *Engine) keepDialing(p store.Peer) {
 				continue
 			}
 			dctx, dcancel := context.WithTimeout(ctx, 30*time.Second)
-			conn, err := e.cfg.Transport.Dial(dctx, p.Addr)
+			conn, err := e.cfg.Transport.Dial(dctx, t.Addr)
 			dcancel()
 			var s *session
 			if err == nil {
@@ -874,23 +889,16 @@ func (e *Engine) keepDialing(p store.Peer) {
 				if !ok {
 					return
 				}
-				s, err = e.handshake(conn, true, p.Addr, "")
+				s, _, err = e.handshake(conn, true, t.Addr, t.DeviceID, nil)
 				untrack()
 				if err != nil {
 					_ = conn.Close()
 				}
 			}
-			if err == nil && s.peerID != p.ID {
-				_ = conn.Close()
-				err = ErrIdentity
-			}
 			if err != nil {
-				var aw *awaitingError
-				if errors.As(err, &aw) {
-					_ = conn.Close()
-				}
+				e.cfg.Host.Active(t.DeviceID, err)
 				if ctx.Err() == nil {
-					e.logf("cannot reach %s: %v (retry in %v)", p.Name, err, backoff)
+					e.logf("cannot reach %s: %v (retry in %v)", t.Name, err, backoff)
 				}
 				if !sleep(ctx, backoff) {
 					return
@@ -901,8 +909,8 @@ func (e *Engine) keepDialing(p store.Peer) {
 				continue
 			}
 			backoff = time.Second
-			// The user may have removed the device while we were connecting.
-			if ok, err := e.cfg.Store.HasPeer(p.ID); err == nil && !ok {
+			// The user may have revoked the device while we were connecting.
+			if st, ok := e.cfg.Host.Standing(t.DeviceID); !ok || !st.Allowed {
 				_ = conn.Close()
 				return
 			}
@@ -915,7 +923,7 @@ func (e *Engine) keepDialing(p store.Peer) {
 	}) {
 		cancel()
 		e.mu.Lock()
-		delete(e.retry, p.ID)
+		delete(e.retry, t.DeviceID)
 		e.mu.Unlock()
 	}
 }
@@ -931,283 +939,62 @@ func sleep(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// ---- introductions and approval ----
-
-// PendingPeer is a device waiting for the user's approval.
-type PendingPeer struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Via  string `json:"via,omitempty"` // who introduced it; empty if it connected to us directly
-	// ByCode is true when it connected with the pairing code this device showed.
-	ByCode bool `json:"by_code,omitempty"`
-	// Fingerprint is shown on both devices so the user can check that the
-	// request comes from the device they think it does.
-	Fingerprint string `json:"fingerprint"`
-	Time        int64  `json:"time"`
-}
-
-func (e *Engine) addCandidate(c store.Candidate, direct bool) {
-	created, err := e.cfg.Store.AddCandidate(c, direct)
-	if err != nil {
-		e.logf("remember candidate: %v", err)
-		return
+// Reconcile makes the connections match the host's authorizations: devices
+// the user has revoked or removed lose their session and retries at once, and
+// every authorized device is dialed. The host calls it after every change of
+// trust, binding or endpoint.
+func (e *Engine) Reconcile() {
+	targets := e.cfg.Host.Targets()
+	want := make(map[string]Target, len(targets))
+	for _, t := range targets {
+		want[t.DeviceID] = t
 	}
-	if created {
-		e.emit(Event{Kind: "pending"})
-	}
-}
-
-// Pending lists the devices waiting for approval.
-func (e *Engine) Pending() ([]PendingPeer, error) {
-	cs, err := e.cfg.Store.Candidates()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]PendingPeer, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, PendingPeer{ID: c.ID, Name: c.Name, Via: c.Via, ByCode: c.ByCode,
-			Fingerprint: e.Fingerprint(c.ID), Time: c.Seen.Unix()})
-	}
-	return out, nil
-}
-
-// Approve pairs with a pending device and connects to it. Its own device
-// still has to approve this one, unless it paired with us first.
-func (e *Engine) Approve(id string) (store.Peer, error) {
-	c, ok, err := e.cfg.Store.Candidate(id)
-	if err != nil {
-		return store.Peer{}, err
-	}
-	if !ok {
-		return store.Peer{}, ErrNoPending
-	}
-	p := store.Peer{ID: c.ID, Name: c.Name, Addr: c.Addr}
-	if err := e.cfg.Store.UpsertPeer(p); err != nil {
-		return p, err
-	}
-	_ = e.cfg.Store.DeleteCandidate(id)
-	e.keepDialing(p)
-	e.introduceToAll() // let the others know about the new device
-	e.emit(Event{Kind: "peers"})
-	return p, nil
-}
-
-// Reject dismisses a pending device. Introductions do not bring it back; a
-// connection attempt from the device itself does.
-func (e *Engine) Reject(id string) error {
-	ok, err := e.cfg.Store.RejectCandidate(id)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return ErrNoPending
-	}
-	e.emit(Event{Kind: "peers"})
-	return nil
-}
-
-// introduceTo tells s's device about our other paired devices.
-func (e *Engine) introduceTo(s *session) {
-	ps, err := e.cfg.Store.Peers()
-	if err != nil {
-		return
-	}
-	msg := wire.Peers{T: "peers"}
-	for _, p := range ps {
-		if p.ID != s.peerID && p.Addr != "" {
-			msg.Peers = append(msg.Peers, wire.PeerInfo{ID: p.ID, Name: p.Name, Addr: p.Addr})
+	var drop []*session
+	e.mu.Lock()
+	running := e.ctx != nil
+	for id, cancel := range e.retry {
+		if t, ok := want[id]; !ok {
+			cancel()
+			delete(e.retry, id)
+		} else if e.sessions[id] == nil && t.Addr == "" {
+			cancel()
+			delete(e.retry, id)
 		}
 	}
-	if len(msg.Peers) == 0 {
-		return
-	}
-	select {
-	case s.ctl <- msg:
-	default:
-	}
-}
-
-func (e *Engine) introduceToAll() {
-	e.mu.Lock()
-	ss := make([]*session, 0, len(e.sessions))
-	for _, s := range e.sessions {
-		ss = append(ss, s)
-	}
-	e.mu.Unlock()
-	for _, s := range ss {
-		e.introduceTo(s)
-	}
-}
-
-// introduced handles a peer's introductions: unknown devices become
-// candidates. Nothing connects until the user approves.
-func (e *Engine) introduced(from *session, m wire.Peers) {
-	if len(m.Peers) > wire.MaxIntroduced {
-		m.Peers = m.Peers[:wire.MaxIntroduced]
-	}
-	for _, pi := range m.Peers {
-		if pi.ID == "" || pi.ID == e.cfg.ID || pi.Addr == "" || pi.Addr == e.cfg.Transport.Addr() {
-			continue
+	for id, s := range e.sessions {
+		if _, ok := want[id]; !ok {
+			drop = append(drop, s)
 		}
-		if ok, err := e.cfg.Store.HasPeer(pi.ID); err != nil || ok {
-			continue
+	}
+	e.mu.Unlock()
+	for _, s := range drop {
+		s.close() // outside the lock: it reports to job owners
+	}
+	if !running {
+		return
+	}
+	for _, t := range targets {
+		if t.Addr != "" {
+			e.keepDialing(t)
 		}
-		e.addCandidate(store.Candidate{ID: pi.ID, Name: pi.Name, Addr: pi.Addr, Via: from.peerName}, false)
 	}
-}
-
-// ---- pairing codes ----
-
-// ErrNoCodes means this daemon has no rendezvous client.
-var ErrNoCodes = &rendezvous.Error{Reason: rendezvous.Unavailable}
-
-// IssueCode registers a fresh pairing code for this device, replacing the one
-// it showed before. Another device that types it in finds this one, and
-// appears here as a pending device; the code itself grants no trust.
-func (e *Engine) IssueCode(ctx context.Context) (rendezvous.Code, error) {
-	rv := e.rv()
-	addr := e.cfg.Transport.Addr()
-	if rv == nil {
-		return rendezvous.Code{}, ErrNoCodes
-	}
-	if addr == "" {
-		return rendezvous.Code{}, ErrNotRunning
-	}
-	token := rendezvous.NewToken()
-	c, err := rv.Create(ctx, rendezvous.Ticket{Addr: addr, Token: token})
-	if err != nil {
-		return c, err
-	}
-	e.mu.Lock()
-	old := e.code
-	e.code = &liveCode{Code: c, token: token}
-	e.mu.Unlock()
-	if old != nil {
-		e.spawn(func() { e.consume(old.Code.Code) })
-	}
-	return c, nil
-}
-
-// CurrentCode returns the code this device is showing, if it is still valid.
-func (e *Engine) CurrentCode() (rendezvous.Code, bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.code == nil || !time.Now().Before(e.code.Expires) {
-		return rendezvous.Code{}, false
-	}
-	return e.code.Code, true
-}
-
-// CancelCode withdraws the code this device is showing.
-func (e *Engine) CancelCode() {
-	e.mu.Lock()
-	old := e.code
-	e.code = nil
-	e.mu.Unlock()
-	if old != nil {
-		e.spawn(func() { e.consume(old.Code.Code) })
-	}
-}
-
-// useCode reports whether token belongs to the live code, and if so uses the
-// code up: one code, one device.
-func (e *Engine) useCode(token string) bool {
-	if token == "" {
-		return false
-	}
-	e.mu.Lock()
-	c := e.code
-	ok := c != nil && time.Now().Before(c.Expires) &&
-		subtle.ConstantTimeCompare([]byte(token), []byte(c.token)) == 1
-	if ok {
-		e.code = nil
-	}
-	e.mu.Unlock()
-	if ok {
-		e.spawn(func() { e.consume(c.Code.Code) })
-		e.emit(Event{Kind: "code"})
-	}
-	return ok
-}
-
-func (e *Engine) consume(code string) {
-	rv := e.rv()
-	if rv == nil {
-		return
-	}
-	e.mu.Lock()
-	parent := e.ctx
-	e.mu.Unlock()
-	if parent == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
-	rv.Consume(ctx, code)
-}
-
-// Join pairs with the device showing code. Like AddPeer, the other device
-// still has to approve this one.
-func (e *Engine) Join(ctx context.Context, code string) (p store.Peer, awaiting bool, err error) {
-	return e.JoinWith(ctx, code, nil)
-}
-
-// JoinWith is Join that calls connecting, if not nil, once the code has been
-// resolved and the connection is being made.
-func (e *Engine) JoinWith(ctx context.Context, code string, connecting func()) (p store.Peer, awaiting bool, err error) {
-	rv := e.rv()
-	if rv == nil {
-		return p, false, ErrNoCodes
-	}
-	t, err := rv.Resolve(ctx, code)
-	if err != nil {
-		return p, false, err
-	}
-	if t.Addr == e.cfg.Transport.Addr() {
-		return p, false, ErrSelf
-	}
-	if connecting != nil {
-		connecting()
-	}
-	p, awaiting, err = e.addPeer(ctx, t.Addr, t.Token)
-	if err == nil {
-		e.spawn(func() { e.consume(code) })
-	}
-	return p, awaiting, err
-}
-
-// Fingerprint is a short value both this device and peer compute alike, for
-// the user to compare before approving: 4 groups of 4 hex digits.
-func (e *Engine) Fingerprint(peer string) string { return Fingerprint(e.cfg.ID, peer) }
-
-func Fingerprint(a, b string) string {
-	if b < a {
-		a, b = b, a
-	}
-	sum := sha256.Sum256([]byte("unic-pair-fp\x00" + a + "\x00" + b))
-	h := strings.ToUpper(hex.EncodeToString(sum[:8]))
-	return h[0:4] + " " + h[4:8] + " " + h[8:12] + " " + h[12:16]
 }
 
 // NetworkChanged tells the engine the network may have changed: devices that
 // are not connected are retried at once instead of after their backoff. It
 // does not resend anything.
 func (e *Engine) NetworkChanged() {
-	ps, err := e.cfg.Store.Peers()
-	if err != nil {
-		return
-	}
-	for _, p := range ps {
+	for _, t := range e.cfg.Host.Targets() {
 		e.mu.Lock()
-		up := e.sessions[p.ID] != nil
-		cancel := e.retry[p.ID]
+		up := e.sessions[t.DeviceID] != nil
+		cancel := e.retry[t.DeviceID]
 		if !up && cancel != nil {
-			delete(e.retry, p.ID)
+			delete(e.retry, t.DeviceID)
 		}
 		e.mu.Unlock()
 		if !up && cancel != nil {
 			cancel()
-			e.keepDialing(p)
+			e.keepDialing(t)
 		}
 	}
 }

@@ -24,7 +24,7 @@ max_file_bytes = "512MB"
 max_total_bytes = 1048576
 [sync]
 enabled = false
-[plugins.instances."sync.tailcat".sync]
+[plugins.instances."builtin.tailcat".sync]
 images = false
 auto_file_max_bytes = "100MB"
 `))
@@ -54,8 +54,8 @@ func TestParseRejects(t *testing.T) {
 		"wrong type":    "[sync]\nenabled = \"yes\"",
 		"old sync key":  "[sync]\ntext = false",
 		"other plugin":  "[plugins.instances.\"example.webdav\".sync]\ntext = false",
-		"bad threshold": "[plugins.instances.\"sync.tailcat\".sync]\nauto_file_max_bytes = \"3GiB\"",
-		"tailcat off":   "[plugins.instances.\"sync.tailcat\"]\nenabled = false",
+		"bad threshold": "[plugins.instances.\"builtin.tailcat\".sync]\nauto_file_max_bytes = \"3GiB\"",
+		"tailcat off":   "[plugins.instances.\"builtin.tailcat\"]\nenabled = false",
 		"text sync":     "[plugins.instances.\"builtin.text\".sync]\ntext = false",
 		"no history":    "[history]\nmax_items = 0",
 		"history size":  "[history]\nmax_bytes = \"9GiB\"",

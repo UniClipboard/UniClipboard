@@ -93,7 +93,7 @@ type Sync struct {
 }
 
 // Plugins holds per-plugin-instance settings for the plugins this build
-// ships: the sync policy of sync.tailcat and the on/off switch of builtin.text.
+// ships: the sync policy of builtin.tailcat and the on/off switch of builtin.text.
 type Plugins struct {
 	Instances map[string]Instance `toml:"instances" json:"instances,omitempty"`
 }
@@ -244,9 +244,9 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # enabled = false pauses sync both ways; devices stay connected.
 # enabled = true
 
-# What the built-in device-to-device sync (sync.tailcat) sends and accepts.
+# What the built-in device-to-device sync (builtin.tailcat) sends and accepts.
 # Applies to transfers that start after the change. Uncomment the header too.
-# [plugins.instances."sync.tailcat".sync]
+# [plugins.instances."builtin.tailcat".sync]
 # text = true     # text, HTML and other non-image formats
 # images = true
 # files = true

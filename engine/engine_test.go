@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -61,6 +62,8 @@ func (f *fakeNet) Dial(ctx context.Context, a string) (net.Conn, error) {
 }
 
 func (f *fakeNet) Addr() string { return f.addr }
+
+func (f *fakeNet) Binding(addr string) ([]byte, error) { return []byte("fake\x00" + addr), nil }
 
 func (f *fakeNet) Start() error {
 	f.mu.Lock()
@@ -177,7 +180,7 @@ func TestLifecycle(t *testing.T) {
 	if got := code(n.e.Start(bg)); got != CodeInvalidState {
 		t.Fatalf("Start after Stop: %q", got)
 	}
-	if _, err := n.e.ListPeers(bg); err != nil {
+	if _, err := n.e.ListDevices(bg); err != nil {
 		t.Fatalf("queries work after Stop: %v", err)
 	}
 	for i := 0; i < 2; i++ {
@@ -283,7 +286,7 @@ func TestStopTimeoutKeepsStoppingAndCanBeAwaited(t *testing.T) {
 	if s := state(t, n.e); s.Lifecycle != LifecycleStopping {
 		t.Fatalf("lifecycle = %s, want stopping", s.Lifecycle)
 	}
-	if _, err := n.e.ListPeers(bg); err != nil {
+	if _, err := n.e.ListDevices(bg); err != nil {
 		t.Fatalf("queries work while stopping: %v", err)
 	}
 	close(n.net.closeBlock)
@@ -416,7 +419,7 @@ func TestSnapshotsAreIndependent(t *testing.T) {
 	s := state(t, n.e)
 	s.Capabilities.Host.ReadFormats[0] = "x/y"
 	s.Capabilities.CoreFormats[0] = "x/y"
-	s.Peers = append(s.Peers, Peer{})
+	s.Devices = append(s.Devices, Device{})
 	if c, _ := n.e.GetCapabilities(bg); c.Host.ReadFormats[0] != MimeText || c.CoreFormats[0] != MimeText {
 		t.Fatal("a caller changed engine state through a returned DTO")
 	}
@@ -424,30 +427,53 @@ func TestSnapshotsAreIndependent(t *testing.T) {
 
 // ---- pairing ----
 
-// pairTwo makes b pair with a by address and a approve b, as two users would.
+// pairTwo makes b pair with a by ticket, then both users approve, as two
+// people comparing screens would.
 func pairTwo(t *testing.T, a, b node) {
 	t.Helper()
-	addr, err := a.e.ExportPairingAddress(bg)
+	tk, err := a.e.ExportPairingTicket(bg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	op, err := b.e.PairByAddress(bg, PairRequest{RequestID: "r1", Address: addr.Address})
+	op, err := b.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "r1", Ticket: tk.Ticket})
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitOp(t, b.e, op, PhaseSucceeded)
-	var p PendingPeer
-	eventually(t, "a sees the request", func() bool {
-		ps, _ := a.e.ListPending(bg)
-		if len(ps) == 1 {
-			p = ps[0]
+	approve(t, a, b)
+	approve(t, b, a)
+	eventually(t, "connected", func() bool { return connected(a, b) })
+}
+
+// listedDevice is y's entry in x's device list.
+func listedDevice(x, y node) (Device, bool) {
+	ds, _ := x.e.ListDevices(bg)
+	for _, d := range ds {
+		if d.ID == string(selfID(y.e)) && len(d.Bindings) > 0 {
+			return d, true
 		}
-		return len(ps) == 1
+	}
+	return Device{}, false
+}
+
+// approve is x's user trusting y after comparing fingerprints and allowing
+// the path.
+func approve(t *testing.T, x, y node) Device {
+	t.Helper()
+	var d Device
+	eventually(t, "device listed", func() bool {
+		var ok bool
+		d, ok = listedDevice(x, y)
+		return ok
 	})
-	if _, err := a.e.Approve(bg, ApprovalRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision, ExpectedFingerprint: p.Fingerprint}); err != nil {
+	d, err := x.e.TrustDevice(bg, TrustDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision, ExpectedFingerprint: d.Fingerprint})
+	if err != nil {
 		t.Fatal(err)
 	}
-	eventually(t, "connected", func() bool { return connected(a, b) })
+	if _, err := x.e.AuthorizeBinding(bg, BindingRequest{ID: d.Bindings[0].ID, ExpectedRevision: d.Bindings[0].Revision}); err != nil {
+		t.Fatal(err)
+	}
+	return d
 }
 
 func waitOp(t *testing.T, e *Engine, id OperationID, phase Phase) Operation {
@@ -466,123 +492,107 @@ func waitOp(t *testing.T, e *Engine, id OperationID, phase Phase) Operation {
 	return o
 }
 
-func connected(a, b node) bool {
-	has := func(x, y node) bool {
-		ps, _ := x.e.ListPeers(bg)
-		for _, p := range ps {
-			if p.ID == selfID(y.e) && p.Connection == Connected {
-				return true
-			}
-		}
-		return false
-	}
-	return has(a, b) && has(b, a)
-}
+func linked(x, y node) bool { return x.e.core.Connected(string(selfID(y.e))) }
+
+func connected(a, b node) bool { return linked(a, b) && linked(b, a) }
 
 func selfID(e *Engine) DeviceID {
 	s, _ := e.GetState(bg)
 	return s.Self.ID
 }
 
-func TestPairByAddressNeedsApprovalAndFingerprint(t *testing.T) {
+func TestPairByTicketNeedsApprovalOnBothSides(t *testing.T) {
 	a, b := newNode(t, nil), newNode(t, nil)
 	start(t, a)
 	start(t, b)
-	addr, _ := a.e.ExportPairingAddress(bg)
-	op, err := b.e.PairByAddress(bg, PairRequest{RequestID: "r1", Address: addr.Address})
+	tk, _ := a.e.ExportPairingTicket(bg)
+	op, err := b.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "r1", Ticket: tk.Ticket})
 	if err != nil {
 		t.Fatal(err)
 	}
 	res := waitOp(t, b.e, op, PhaseSucceeded)
-	if !res.Pairing.AwaitingRemoteApproval || res.Pairing.PeerID != state(t, a.e).Self.ID {
+	if !res.Pairing.AwaitingLocalApproval || !res.Pairing.AwaitingRemoteApproval || string(res.Pairing.PeerID) != string(selfID(a.e)) {
 		t.Fatalf("result = %+v", res.Pairing)
 	}
-	if js, _ := json.Marshal(res); strings.Contains(string(js), addr.Address) {
-		t.Fatal("the address leaked into the operation")
+	if js, _ := json.Marshal(res); strings.Contains(string(js), tk.Ticket) {
+		t.Fatal("the ticket leaked into the operation")
 	}
-
-	var p PendingPeer
-	eventually(t, "a sees the request", func() bool {
-		ps, _ := a.e.ListPending(bg)
-		if len(ps) == 1 {
-			p = ps[0]
-		}
-		return len(ps) == 1
-	})
-	if p.Source != SourceDirect || p.Fingerprint == "" {
-		t.Fatalf("pending = %+v", p)
+	// Both sides list the other as pending, with the same fingerprint.
+	var da, db Device
+	eventually(t, "a lists b", func() bool { var ok bool; da, ok = listedDevice(a, b); return ok })
+	db, _ = listedDevice(b, a)
+	if da.Trust != DeviceTrustPending || da.Bindings[0].State != BindingPending || !da.Bindings[0].Ticket {
+		t.Fatalf("a's view of b = %+v", da)
 	}
-	// Both devices compute the same fingerprint.
-	bst := state(t, b.e)
-	if bp := bst.Peers; len(bp) != 1 {
-		t.Fatalf("b's peers = %+v", bp)
+	if da.Fingerprint == "" || da.Fingerprint != db.Fingerprint {
+		t.Fatalf("fingerprints differ: %q vs %q", da.Fingerprint, db.Fingerprint)
 	}
-	// Nothing flows before approval: a has no peer.
-	if ps, _ := a.e.ListPeers(bg); len(ps) != 0 {
-		t.Fatalf("a trusts an unapproved device: %+v", ps)
+	time.Sleep(200 * time.Millisecond)
+	if linked(a, b) || linked(b, a) {
+		t.Fatal("an unapproved device was connected")
 	}
-	// A wrong fingerprint or a stale revision is a conflict and changes nothing.
-	if _, err := a.e.Approve(bg, ApprovalRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision, ExpectedFingerprint: "0000 0000 0000 0000"}); code(err) != CodeConflict {
+	// A wrong fingerprint, a stale revision or an unknown device changes nothing.
+	if _, err := a.e.TrustDevice(bg, TrustDeviceRequest{ID: da.ID, ExpectedRevision: da.Revision, ExpectedFingerprint: "0000 0000 0000 0000"}); code(err) != CodeIdentityMismatch {
 		t.Fatalf("wrong fingerprint: %v", err)
 	}
-	if _, err := a.e.Approve(bg, ApprovalRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision + 1, ExpectedFingerprint: p.Fingerprint}); code(err) != CodeConflict {
+	if _, err := a.e.TrustDevice(bg, TrustDeviceRequest{ID: da.ID, ExpectedRevision: da.Revision + 1, ExpectedFingerprint: da.Fingerprint}); code(err) != CodeConflict {
 		t.Fatalf("stale revision: %v", err)
 	}
-	if _, err := a.e.Approve(bg, ApprovalRequest{DeviceID: "nobody", RequestRevision: 1, ExpectedFingerprint: p.Fingerprint}); code(err) != CodeNotFound {
+	if _, err := a.e.TrustDevice(bg, TrustDeviceRequest{ID: "nobody", ExpectedRevision: 1, ExpectedFingerprint: da.Fingerprint}); code(err) != CodeNotFound {
 		t.Fatalf("unknown device: %v", err)
 	}
-	if ps, _ := a.e.ListPeers(bg); len(ps) != 0 {
+	if d, _ := a.e.GetDevice(bg, da.ID); d.Trust != DeviceTrustPending {
 		t.Fatal("a failed approval created trust")
 	}
-	peer, err := a.e.Approve(bg, ApprovalRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision, ExpectedFingerprint: p.Fingerprint})
-	if err != nil || peer.ID != p.ID {
-		t.Fatalf("approve = %+v, %v", peer, err)
+	// One side approving is not enough.
+	approve(t, a, b)
+	time.Sleep(200 * time.Millisecond)
+	if linked(a, b) {
+		t.Fatal("connected before b approved a")
 	}
+	approve(t, b, a)
 	eventually(t, "connected", func() bool { return connected(a, b) })
-	if ps, _ := a.e.ListPending(bg); len(ps) != 0 {
-		t.Fatalf("still pending: %+v", ps)
-	}
 
-	// Unpair drops the connection on both ends and is idempotent.
-	for i := 0; i < 2; i++ {
-		if err := a.e.Unpair(bg, p.ID); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if ps, _ := a.e.ListPeers(bg); len(ps) != 0 {
-		t.Fatalf("peers after Unpair: %+v", ps)
-	}
-	eventually(t, "b sees a leave", func() bool {
-		ps, _ := b.e.ListPeers(bg)
-		return len(ps) == 1 && ps[0].Connection == Disconnected
-	})
-}
-
-func TestRejectNeedsTheCurrentRevision(t *testing.T) {
-	a, b := newNode(t, nil), newNode(t, nil)
-	start(t, a)
-	start(t, b)
-	addr, _ := a.e.ExportPairingAddress(bg)
-	_, _ = b.e.PairByAddress(bg, PairRequest{RequestID: "r1", Address: addr.Address})
-	var p PendingPeer
-	eventually(t, "request", func() bool {
-		ps, _ := a.e.ListPending(bg)
-		if len(ps) == 1 {
-			p = ps[0]
-		}
-		return len(ps) == 1
-	})
-	if err := a.e.Reject(bg, PendingRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision + 7}); code(err) != CodeConflict {
-		t.Fatalf("stale reject: %v", err)
-	}
-	if err := a.e.Reject(bg, PendingRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision}); err != nil {
+	// Unpair drops the connection on both ends and removes the device.
+	d, _ := a.e.GetDevice(bg, da.ID)
+	if err := a.e.UnpairDevice(bg, UnpairDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision}); err != nil {
 		t.Fatal(err)
 	}
-	if ps, _ := a.e.ListPending(bg); len(ps) != 0 {
-		t.Fatalf("pending after reject: %+v", ps)
+	if ds, _ := a.e.ListDevices(bg); len(ds) != 0 {
+		t.Fatalf("devices after unpair: %+v", ds)
 	}
-	if err := a.e.Reject(bg, PendingRequest{DeviceID: p.ID, RequestRevision: p.RequestRevision}); code(err) != CodeNotFound {
-		t.Fatalf("second reject: %v", err)
+	eventually(t, "b sees a leave", func() bool { return !linked(b, a) && !linked(a, b) })
+}
+
+func TestTicketIsUsedUpByTheFirstDevice(t *testing.T) {
+	a, b, c := newNode(t, nil), newNode(t, nil), newNode(t, nil)
+	start(t, a)
+	start(t, b)
+	start(t, c)
+	tk, _ := a.e.ExportPairingTicket(bg)
+	op, _ := b.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "r1", Ticket: tk.Ticket})
+	waitOp(t, b.e, op, PhaseSucceeded)
+	op2, _ := c.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "r1", Ticket: tk.Ticket})
+	waitOp(t, c.e, op2, PhaseSucceeded)
+	eventually(t, "both listed", func() bool { _, ok := listedDevice(a, c); return ok })
+	if d, _ := listedDevice(a, c); d.Bindings[0].Ticket {
+		t.Fatal("a second device passed on a spent ticket")
+	}
+	if d, _ := listedDevice(a, b); !d.Bindings[0].Ticket {
+		t.Fatal("the first device did not pass on the ticket")
+	}
+}
+
+func TestForeignTransportTicketHasNoBackend(t *testing.T) {
+	n := newNode(t, nil)
+	start(t, n)
+	tk := rendezvous.Ticket{Transport: rendezvous.TransportObjectStore, Device: make([]byte, 32), Access: []byte("x"), Token: rendezvous.NewToken()}
+	op, err := n.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "x", Ticket: tk.Text()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o := waitOp(t, n.e, op, PhaseFailed); o.Error.Code != CodeUnsupported {
+		t.Fatalf("error = %+v", o.Error)
 	}
 }
 
@@ -621,19 +631,12 @@ func TestPairByCode(t *testing.T) {
 		t.Fatalf("reused RequestID: %v", err)
 	}
 	res := waitOp(t, b.e, op, PhaseSucceeded)
-	if !res.Pairing.AwaitingRemoteApproval {
+	if !res.Pairing.AwaitingRemoteApproval || !res.Pairing.AwaitingLocalApproval {
 		t.Fatalf("a code must not grant trust: %+v", res.Pairing)
 	}
-	var p PendingPeer
-	eventually(t, "request through the code", func() bool {
-		ps, _ := a.e.ListPending(bg)
-		if len(ps) == 1 {
-			p = ps[0]
-		}
-		return len(ps) == 1
-	})
-	if p.Source != SourceCode {
-		t.Fatalf("source = %s", p.Source)
+	eventually(t, "request through the code", func() bool { _, ok := listedDevice(a, b); return ok })
+	if d, _ := listedDevice(a, b); !d.Bindings[0].Ticket || d.Trust != DeviceTrustPending {
+		t.Fatalf("a code must mark the request and trust nothing: %+v", d)
 	}
 	if state(t, a.e).PairingCode.Active {
 		t.Fatal("the code survived its use")
@@ -701,7 +704,7 @@ func TestNetworkWorkNeedsRunningAndActive(t *testing.T) {
 	if _, err := n.e.CreatePairingCode(bg); code(err) != CodeInvalidState {
 		t.Fatalf("before Start: %v", err)
 	}
-	if _, err := n.e.PairByAddress(bg, PairRequest{RequestID: "x", Address: "127.0.0.1:1"}); code(err) != CodeInvalidState {
+	if _, err := n.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "x", Ticket: testTicketText()}); code(err) != CodeInvalidState {
 		t.Fatalf("before Start: %v", err)
 	}
 	start(t, n)
@@ -711,7 +714,7 @@ func TestNetworkWorkNeedsRunningAndActive(t *testing.T) {
 	if _, err := n.e.CreatePairingCode(bg); code(err) != CodeSuspended {
 		t.Fatalf("suspended: %v", err)
 	}
-	if _, err := n.e.PairByAddress(bg, PairRequest{RequestID: "x", Address: "127.0.0.1:1"}); code(err) != CodeSuspended {
+	if _, err := n.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "x", Ticket: testTicketText()}); code(err) != CodeSuspended {
 		t.Fatalf("suspended: %v", err)
 	}
 	if err := n.e.NotifyNetworkChanged(bg); code(err) != CodeSuspended {
@@ -726,15 +729,15 @@ func TestNetworkWorkNeedsRunningAndActive(t *testing.T) {
 	if err := n.e.NotifyNetworkChanged(bg); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := n.e.PairByAddress(bg, PairRequest{Address: "127.0.0.1:1"}); code(err) != CodeInvalidArgument {
+	if _, err := n.e.JoinByTicket(bg, JoinTicketRequest{Ticket: testTicketText()}); code(err) != CodeInvalidArgument {
 		t.Fatalf("missing RequestID: %v", err)
 	}
-	if _, err := n.e.PairByAddress(bg, PairRequest{RequestID: "z", Address: "has space"}); code(err) != CodeInvalidArgument {
-		t.Fatalf("bad address: %v", err)
+	if _, err := n.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "z", Ticket: "has space"}); code(err) != CodeInvalidArgument {
+		t.Fatalf("bad ticket: %v", err)
 	}
-	// Our own address is refused, with a classified error.
-	own, _ := n.e.ExportPairingAddress(bg)
-	op, err := n.e.PairByAddress(bg, PairRequest{RequestID: "own", Address: own.Address})
+	// Our own ticket is refused, with a classified error.
+	own, _ := n.e.ExportPairingTicket(bg)
+	op, err := n.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "own", Ticket: own.Ticket})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,11 +756,10 @@ func TestSuspendDropsConnectionsAndResumeReconnects(t *testing.T) {
 		t.Fatal(err)
 	}
 	eventually(t, "b sees a go", func() bool {
-		ps, _ := b.e.ListPeers(bg)
-		return len(ps) == 1 && ps[0].Connection == Disconnected
+		return !linked(b, a)
 	})
-	if ps, _ := a.e.ListPeers(bg); len(ps) != 1 || ps[0].Connection != Disconnected {
-		t.Fatalf("a while suspended: %+v", ps)
+	if linked(a, b) {
+		t.Fatal("a still linked while suspended")
 	}
 	if err := a.e.SetRuntimeState(bg, RuntimeActive); err != nil {
 		t.Fatal(err)
@@ -819,8 +821,8 @@ func TestSubscriptionContinuesFromSnapshot(t *testing.T) {
 	}
 	// The snapshot is a copy.
 	s1 := sub.Snapshot()
-	s1.Peers = append(s1.Peers, Peer{})
-	if len(sub.Snapshot().Peers) != 0 {
+	s1.Devices = append(s1.Devices, Device{})
+	if len(sub.Snapshot().Devices) != 0 {
 		t.Fatal("Snapshot shares memory")
 	}
 }
@@ -940,11 +942,11 @@ func TestEventsAndStateCarryNoSecrets(t *testing.T) {
 	start(t, b)
 	sub, _ := a.e.SubscribeEvents(bg)
 	defer func() { _ = sub.Close() }()
-	addr, _ := a.e.ExportPairingAddress(bg)
+	tk, _ := a.e.ExportPairingTicket(bg)
 	c, _ := a.e.CreatePairingCode(bg)
-	op, _ := b.e.PairByAddress(bg, PairRequest{RequestID: "r", Address: addr.Address})
+	op, _ := b.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "r", Ticket: tk.Ticket})
 	waitOp(t, b.e, op, PhaseSucceeded)
-	eventually(t, "request", func() bool { ps, _ := a.e.ListPending(bg); return len(ps) == 1 })
+	eventually(t, "request", func() bool { _, ok := listedDevice(a, b); return ok })
 
 	ctx, cancel := context.WithTimeout(bg, 200*time.Millisecond)
 	defer cancel()
@@ -954,13 +956,13 @@ func TestEventsAndStateCarryNoSecrets(t *testing.T) {
 			break
 		}
 		js, _ := json.Marshal(ev)
-		if strings.Contains(string(js), addr.Address) || strings.Contains(string(js), c.Code) {
+		if strings.Contains(string(js), tk.Ticket) || strings.Contains(string(js), c.Code) {
 			t.Fatalf("event leaks a secret: %s", js)
 		}
 	}
 	for _, e := range []*Engine{a.e, b.e} {
 		js, _ := json.Marshal(state(t, e))
-		if strings.Contains(string(js), addr.Address) || strings.Contains(string(js), c.Code) {
+		if strings.Contains(string(js), tk.Ticket) || strings.Contains(string(js), c.Code) {
 			t.Fatalf("state leaks a secret: %s", js)
 		}
 	}
@@ -973,4 +975,9 @@ func policy(id PluginID, f func(*BackendSyncPolicy)) func(*Settings) {
 		f(&p)
 		s.BackendPolicies[id] = p
 	}
+}
+
+func testTicketText() string {
+	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Device: bytes.Repeat([]byte{7}, 32),
+		Access: []byte("127.0.0.1:1"), Token: rendezvous.NewToken()}.Text()
 }

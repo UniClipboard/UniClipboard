@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	Version      = 2
+	Version      = 1
 	MaxControl   = 1 << 20  // largest JSON control message
 	MaxPartBytes = 64 << 20 // in-memory format (text, HTML, PNG), same cap as mygo
 	MaxFileBytes = 2 << 30  // one file
@@ -29,43 +29,32 @@ const (
 	MaxParts     = 4096
 )
 
-// Hello opens every connection, in both directions.
+// Hello opens every connection, in both directions. H is the identity
+// protocol's Hello (internal/identity); Name and Addr are what the sender
+// reports about itself and are never evidence of identity.
 type Hello struct {
 	T       string `json:"t"` // "hello"
 	Version int    `json:"v"`
-	ID      string `json:"id"`   // stable device id
-	Name    string `json:"name"` // device name
-	Addr    string `json:"addr"` // the sender's own tailcat address, so the peer can dial back
-	// Pair is the token of the pairing code the dialer used to find this
-	// device, if any. It tells the receiver that the request came through the
-	// code it is showing; it grants no trust by itself.
-	Pair string `json:"pair,omitempty"`
+	H       []byte `json:"h"`
+	Name    string `json:"name,omitempty"`
+	Addr    string `json:"addr,omitempty"` // the sender's own address, so the peer can dial back (a secret)
 }
 
-// Verdict follows the hellos: whether the sender accepts the other device.
-// A device accepts a peer it has paired with, or one it is pairing with right
-// now; anyone else has to be approved by the user first.
+// Proof follows the hellos: the sender's signature over the handshake
+// transcript. Pair, when present, proves that the dialer holds the one-time
+// token of a pairing ticket; it grants no trust by itself.
+type Proof struct {
+	T    string `json:"t"` // "proof"
+	Sig  []byte `json:"sig"`
+	Pair []byte `json:"pair,omitempty"`
+}
+
+// Verdict follows the proofs: whether the sender accepts the other device. A
+// session exists only when both devices accept.
 type Verdict struct {
 	T  string `json:"t"` // "verdict"
 	OK bool   `json:"ok"`
 }
-
-// PeerInfo describes a paired device, for introducing it to another one.
-type PeerInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Addr string `json:"addr"`
-}
-
-// Peers introduces the sender's paired devices. The receiver treats them as
-// candidates that its user must approve; nothing connects by itself.
-type Peers struct {
-	T     string     `json:"t"` // "peers"
-	Peers []PeerInfo `json:"peers"`
-}
-
-// MaxIntroduced bounds the candidates one message may add.
-const MaxIntroduced = 64
 
 // PartMeta announces one blob that follows a Clip message.
 type PartMeta struct {

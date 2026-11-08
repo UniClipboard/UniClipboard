@@ -43,9 +43,9 @@ func runCLI(cmd string, args []string) error {
 		}
 		fmt.Printf("device  %s (%s)\n", st.Name, st.ID)
 		if st.Addr == "" {
-			fmt.Println("address (starting…)")
+			fmt.Println("ticket (starting…)")
 		} else {
-			fmt.Printf("address %s…  (run `unic addr` for the full address)\n", trunc(st.Addr, 24))
+			fmt.Printf("ticket %s…  (run `unic addr` for the full ticket)\n", trunc(st.Addr, 24))
 		}
 		printPeers(st.Peers)
 		printPending(st.Pending)
@@ -94,7 +94,7 @@ func runCLI(cmd string, args []string) error {
 
 	case "pair":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: unic pair <address>")
+			return fmt.Errorf("usage: unic pair <ticket>")
 		}
 		p, err := c.Pair(short, strings.TrimSpace(args[0]))
 		if err != nil {
@@ -225,7 +225,7 @@ func copyCmd(ctx context.Context, c *api.Client, args []string) error {
 
 func printPeers(ps []api.PeerStatus) {
 	if len(ps) == 0 {
-		fmt.Println("no paired devices (run `unic pair <address>` with the other device's `unic addr`)")
+		fmt.Println("no paired devices (run `unic pair <ticket>` with the other device's `unic addr`)")
 		return
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)

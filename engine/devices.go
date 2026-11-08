@@ -42,6 +42,7 @@ type Device struct {
 	Fingerprint  string          `json:"fingerprint"`             // to check against the other device's screen
 	Trust        string          `json:"trust"`
 	Revision     int64           `json:"revision"`
+	UpdatedMs    int64           `json:"updated_ms"`
 	Bindings     []DeviceBinding `json:"bindings,omitempty"`
 }
 
@@ -63,6 +64,11 @@ type DeviceBinding struct {
 	Revision     int64  `json:"revision"`
 	LastActiveMs int64  `json:"last_active_ms,omitempty"`
 	LastError    string `json:"last_error,omitempty"` // a stable class, never raw backend text
+	// Connection is the live link on this path right now.
+	Connection Connection `json:"connection"`
+	// Ticket says the device proved it held a pairing ticket for this path.
+	// It explains how the request arose; it grants nothing.
+	Ticket bool `json:"ticket,omitempty"`
 }
 
 // RenameDeviceRequest sets the user's name for a device; "" clears it.
@@ -113,17 +119,21 @@ func deviceStoreErr(err error) *Error {
 }
 
 func (e *Engine) toDevice(d store.Device, bs []store.Binding) Device {
-	out := Device{ID: d.ID, Name: d.Name, ReportedName: d.ReportedName, Trust: d.Trust, Revision: d.Revision,
+	out := Device{ID: d.ID, Name: d.Name, ReportedName: d.ReportedName, Trust: d.Trust, Revision: d.Revision, UpdatedMs: d.UpdatedMs,
 		Fingerprint: identity.Fingerprint(e.ident.Public(), d.PublicKey)}
 	for _, b := range bs {
-		out.Bindings = append(out.Bindings, toBinding(b))
+		out.Bindings = append(out.Bindings, e.toBinding(b))
 	}
 	return out
 }
 
-func toBinding(b store.Binding) DeviceBinding {
+func (e *Engine) toBinding(b store.Binding) DeviceBinding {
+	conn := Disconnected
+	if b.InstanceID == tailcatInstance && e.core != nil && e.core.Connected(b.DeviceID) {
+		conn = Connected
+	}
 	return DeviceBinding{ID: b.ID, InstanceID: b.InstanceID, State: b.State, SyncEnabled: b.SyncEnabled,
-		Revision: b.Revision, LastActiveMs: b.LastActiveMs, LastError: b.LastError}
+		Revision: b.Revision, LastActiveMs: b.LastActiveMs, LastError: b.LastError, Connection: conn, Ticket: b.Ticket}
 }
 
 func (e *Engine) deviceChanged(id string) {
@@ -140,12 +150,24 @@ func (e *Engine) ListDevices(ctx context.Context) ([]Device, error) {
 		return nil, gerr
 	}
 	defer release()
+	out, derr := e.deviceList()
+	if derr != nil {
+		return nil, derr
+	}
+	return out, nil
+}
+
+// deviceList is every listed device with its paths, oldest first.
+func (e *Engine) deviceList() ([]Device, *Error) {
 	ds, err := e.st.Devices()
 	if err != nil {
 		return nil, deviceStoreErr(err)
 	}
 	out := make([]Device, 0, len(ds))
 	for _, d := range ds {
+		if d.Trust == store.TrustRevoked {
+			continue
+		}
 		bs, err := e.st.Bindings(d.ID)
 		if err != nil {
 			return nil, deviceStoreErr(err)
@@ -230,6 +252,7 @@ func (e *Engine) TrustDevice(ctx context.Context, req TrustDeviceRequest) (Devic
 	if _, err := e.st.TrustDevice(req.ID, req.ExpectedRevision); err != nil {
 		return Device{}, deviceStoreErr(err)
 	}
+	e.reconcile()
 	e.deviceChanged(req.ID)
 	return e.loadDevice(req.ID)
 }
@@ -265,8 +288,9 @@ func (e *Engine) bindingOp(ctx context.Context, id string, rev int64, do func() 
 	if err != nil {
 		return DeviceBinding{}, deviceStoreErr(err)
 	}
+	e.reconcile()
 	e.deviceChanged(b.DeviceID)
-	return toBinding(b), nil
+	return e.toBinding(b), nil
 }
 
 // RemoveBinding revokes one path; the device and its other paths stay.
@@ -286,6 +310,7 @@ func (e *Engine) RemoveBinding(ctx context.Context, req BindingRequest) error {
 	if err := e.st.RemoveBinding(req.ID, req.ExpectedRevision); err != nil {
 		return deviceStoreErr(err)
 	}
+	e.reconcile()
 	e.deviceChanged(b.DeviceID)
 	return nil
 }
@@ -304,33 +329,7 @@ func (e *Engine) UnpairDevice(ctx context.Context, req UnpairDeviceRequest) erro
 	if err := e.st.RevokeDevice(req.ID, req.ExpectedRevision); err != nil {
 		return deviceStoreErr(err)
 	}
+	e.reconcile()
 	e.deviceChanged(req.ID)
 	return nil
-}
-
-// ---- entry points for backends (verified identities only) ----
-
-// registerVerifiedDevice records a device whose identity proof the engine has
-// verified (identity.VerifyProof). It never trusts and never overwrites a
-// registered identity.
-func (e *Engine) registerVerifiedDevice(publicKey []byte, reportedName string) (Device, error) {
-	if len(reportedName) > 64 || !utf8.ValidString(reportedName) {
-		reportedName = ""
-	}
-	d, err := e.st.AddDevice(identity.DeviceID(publicKey), publicKey, reportedName)
-	if err != nil {
-		return Device{}, deviceStoreErr(err)
-	}
-	e.deviceChanged(d.ID)
-	return e.loadDevice(d.ID)
-}
-
-// bindDevice adds a pending path from a device to a backend instance.
-func (e *Engine) bindDevice(deviceID, instanceID string, remoteContext []byte) (DeviceBinding, error) {
-	b, err := e.st.AddBinding(randHex(16), deviceID, instanceID, remoteContext)
-	if err != nil {
-		return DeviceBinding{}, deviceStoreErr(err)
-	}
-	e.deviceChanged(deviceID)
-	return toBinding(b), nil
 }

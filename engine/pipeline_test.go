@@ -141,7 +141,7 @@ func TestPipelineIngressesProcessBeforeDispatch(t *testing.T) {
 	})}
 	b.e.processors = []*pipelineProcessor{newPipelineProcessor("example.receive", []pipelineEvent{pipelineReceived}, false, func(_ context.Context, c *processingContext) error {
 		receivedCalls.Add(1)
-		if c.Item().Origin.kind != "remote_device" || c.Item().Origin.deviceID != a.e.self {
+		if c.Item().Origin.kind != "remote_device" || c.Item().Origin.deviceID != DeviceID(a.e.ident.DeviceID()) {
 			t.Error("unauthenticated receive origin")
 		}
 		return c.AddTag("received")
@@ -355,7 +355,9 @@ func TestPipelineReceiveRechecksAdmissionAfterProcessing(t *testing.T) {
 			<-entered
 			if mode == "policy" {
 				updateSettings(t, b.e, policy(BackendTailcat, func(p *BackendSyncPolicy) { p.Text = false }))
-			} else if err := b.e.Unpair(bg, a.e.self); err != nil {
+			} else if d, ok := listedDevice(b, a); !ok {
+				t.Fatal("a is not listed")
+			} else if err := b.e.UnpairDevice(bg, UnpairDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision}); err != nil {
 				t.Fatal(err)
 			}
 			close(proceed)

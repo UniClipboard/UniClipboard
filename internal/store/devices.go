@@ -52,6 +52,8 @@ CREATE TABLE device_bindings (
   updated_ms     INTEGER NOT NULL,
   last_active_ms INTEGER NOT NULL DEFAULT 0,
   last_error     TEXT NOT NULL DEFAULT '',
+  endpoint       BLOB NOT NULL DEFAULT x'',  -- how the backend reaches the device (a secret; routing only)
+  ticket         INTEGER NOT NULL DEFAULT 0, -- the device proved it held a pairing ticket for this path
   UNIQUE (device_id, instance_id)
 ) WITHOUT ROWID;`
 
@@ -80,6 +82,13 @@ type Binding struct {
 	UpdatedMs     int64
 	LastActiveMs  int64
 	LastError     string
+	// Endpoint is how the backend reaches the device (for tailcat its address,
+	// a secret). It is routing data, not authorization: changing it does not
+	// change the revision.
+	Endpoint []byte
+	// Ticket is true once the device proved it holds a pairing ticket for this
+	// path. It explains where a request came from; it never grants trust.
+	Ticket bool
 }
 
 const deviceCols = `id, public_key, name, reported_name, trust, revision, created_ms, updated_ms`
@@ -219,13 +228,14 @@ func (s *Store) RevokeDevice(id string, expected int64) error {
 	return tx.Commit()
 }
 
-const bindingCols = `id, device_id, instance_id, remote_context, state, sync_enabled, revision, created_ms, updated_ms, last_active_ms, last_error`
+const bindingBase = `id, device_id, instance_id, remote_context, state, sync_enabled, revision, created_ms, updated_ms, last_active_ms, last_error`
+const bindingCols = bindingBase + `, endpoint, ticket`
 
 func scanBinding(r interface{ Scan(...any) error }) (Binding, error) {
 	var b Binding
-	var en int
-	err := r.Scan(&b.ID, &b.DeviceID, &b.InstanceID, &b.RemoteContext, &b.State, &en, &b.Revision, &b.CreatedMs, &b.UpdatedMs, &b.LastActiveMs, &b.LastError)
-	b.SyncEnabled = en != 0
+	var en, tk int
+	err := r.Scan(&b.ID, &b.DeviceID, &b.InstanceID, &b.RemoteContext, &b.State, &en, &b.Revision, &b.CreatedMs, &b.UpdatedMs, &b.LastActiveMs, &b.LastError, &b.Endpoint, &tk)
+	b.SyncEnabled, b.Ticket = en != 0, tk != 0
 	return b, err
 }
 
@@ -249,7 +259,7 @@ func (s *Store) AddBinding(id, deviceID, instanceID string, remoteContext []byte
 	case errors.Is(err, sql.ErrNoRows):
 		b = Binding{ID: id, DeviceID: deviceID, InstanceID: instanceID, RemoteContext: remoteContext, State: BindingPending,
 			SyncEnabled: true, Revision: 1, CreatedMs: now, UpdatedMs: now}
-		if _, err := tx.Exec(`INSERT INTO device_bindings (`+bindingCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		if _, err := tx.Exec(`INSERT INTO device_bindings (`+bindingBase+`) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 			b.ID, b.DeviceID, b.InstanceID, b.RemoteContext, b.State, 1, b.Revision, b.CreatedMs, b.UpdatedMs, 0, ""); err != nil {
 			return Binding{}, err
 		}
@@ -257,7 +267,7 @@ func (s *Store) AddBinding(id, deviceID, instanceID string, remoteContext []byte
 		return Binding{}, err
 	case !bytes.Equal(b.RemoteContext, remoteContext):
 		b.RemoteContext, b.State, b.SyncEnabled, b.Revision, b.UpdatedMs, b.LastError = remoteContext, BindingPending, true, b.Revision+1, now, ""
-		if _, err := tx.Exec(`UPDATE device_bindings SET remote_context=?, state=?, sync_enabled=1, revision=?, updated_ms=?, last_error='' WHERE id=?`,
+		if _, err := tx.Exec(`UPDATE device_bindings SET remote_context=?, state=?, sync_enabled=1, revision=?, updated_ms=?, last_error='', ticket=0 WHERE id=?`,
 			b.RemoteContext, b.State, b.Revision, b.UpdatedMs, b.ID); err != nil {
 			return Binding{}, err
 		}
@@ -355,4 +365,48 @@ func (s *Store) RemoveBinding(id string, expected int64) error {
 		return ErrBindingConflict
 	}
 	return nil
+}
+
+// SetBindingEndpoint records how the backend reaches the device, and sticks
+// the ticket mark when ticket is true. Neither is an authorization change.
+func (s *Store) SetBindingEndpoint(id string, endpoint []byte, ticket bool) error {
+	t := 0
+	if ticket {
+		t = 1
+	}
+	res, err := s.db.Exec(`UPDATE device_bindings SET endpoint=?, ticket = MAX(ticket, ?) WHERE id=?`, endpoint, t, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrBindingNotFound
+	}
+	return nil
+}
+
+// InstanceBinding returns the binding of a device to an instance.
+func (s *Store) InstanceBinding(deviceID, instanceID string) (Binding, error) {
+	b, err := scanBinding(s.db.QueryRow(`SELECT `+bindingCols+` FROM device_bindings WHERE device_id=? AND instance_id=?`, deviceID, instanceID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Binding{}, ErrBindingNotFound
+	}
+	return b, err
+}
+
+// InstanceBindings lists every binding of one instance, oldest first.
+func (s *Store) InstanceBindings(instanceID string) ([]Binding, error) {
+	rows, err := s.db.Query(`SELECT `+bindingCols+` FROM device_bindings WHERE instance_id=? ORDER BY created_ms, id`, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Binding
+	for rows.Next() {
+		b, err := scanBinding(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }

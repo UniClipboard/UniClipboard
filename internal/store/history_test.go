@@ -26,13 +26,13 @@ func TestHistoryRoundTripAndPersistence(t *testing.T) {
 	s, path := openTemp(t)
 	it := item("a", 100, "x", "y")
 	it.Parts = append(it.Parts, HistoryPart{Kind: "file", Name: "f.bin", Size: 9, Blob: "b1"})
-	it.BackendStates = map[string]BackendSync{"sync.tailcat": {State: "pending", Disposition: "queued"}}
+	it.BackendStates = map[string]BackendSync{"builtin.tailcat": {State: "pending", Disposition: "queued"}}
 	seq, rev, err := s.InsertHistory(it)
 	if err != nil || seq == 0 || rev != 1 {
 		t.Fatal(seq, rev, err)
 	}
 	got, err := s.GetHistory("a", 0, true)
-	if err != nil || got.Revision != 1 || string(got.Parts[0].Inline) != "hello" || got.Parts[1].Blob != "b1" || len(got.Tags) != 2 || got.BackendStates["sync.tailcat"].Disposition != "queued" {
+	if err != nil || got.Revision != 1 || string(got.Parts[0].Inline) != "hello" || got.Parts[1].Blob != "b1" || len(got.Tags) != 2 || got.BackendStates["builtin.tailcat"].Disposition != "queued" {
 		t.Fatalf("%+v %v", got, err)
 	}
 	if meta, _ := s.GetHistory("a", 0, false); meta.Parts[0].Inline != nil {

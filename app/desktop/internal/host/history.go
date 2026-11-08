@@ -31,9 +31,9 @@ func apiHistory(it engine.HistoryItem, deviceName string) api.HistoryItem {
 // names resolves device names once per call; unknown devices stay unnamed.
 func (n *Node) names(ctx context.Context) map[engine.DeviceID]string {
 	out := map[engine.DeviceID]string{}
-	if ps, err := n.e.ListPeers(ctx); err == nil {
-		for _, p := range ps {
-			out[p.ID] = p.Name
+	if ds, err := n.e.ListDevices(ctx); err == nil {
+		for _, d := range ds {
+			out[engine.DeviceID(d.ID)] = d.DisplayName()
 		}
 	}
 	return out

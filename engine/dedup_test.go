@@ -2,10 +2,10 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
 	"testing"
 
 	"github.com/uniclipboard/unic/internal/clip"
-	"github.com/uniclipboard/unic/internal/store"
 )
 
 // A backend hands Engine a clip it read from an authenticated sender. These
@@ -16,9 +16,7 @@ const sender = DeviceID("peer-1")
 
 func dedupNode(t *testing.T, mutate func(*Options)) node {
 	n := newContentNode(t, mutate)
-	if err := n.e.st.UpsertPeer(store.Peer{ID: string(sender), Name: "sender", Addr: "secret"}); err != nil {
-		t.Fatal(err)
-	}
+	allowPeer(n.e, string(sender))
 	start(t, n)
 	return n
 }
@@ -77,7 +75,7 @@ func TestSameTransferViaTwoBackendsIsCommittedOnce(t *testing.T) {
 	// The identity is the authenticated sender: another device's identical IDs do not collide.
 	other := clipReq("test.a", "t1", "h1", "hello")
 	other.source, other.origin = "peer-2", "peer-2"
-	_ = n.e.st.UpsertPeer(store.Peer{ID: "peer-2", Name: "two", Addr: "x"})
+	allowPeer(n.e, "peer-2")
 	if !receiveVia(n.e, other, "hello") {
 		t.Fatal("a different sender must not be deduplicated against this one")
 	}
@@ -107,7 +105,7 @@ func TestConcurrentArrivalsAndFailedFirstCopy(t *testing.T) {
 
 func TestPersistFalseStillRemembersTheTransfer(t *testing.T) {
 	n := newContentNode(t, nil)
-	_ = n.e.st.UpsertPeer(store.Peer{ID: string(sender), Name: "s", Addr: "x"})
+	allowPeer(n.e, string(sender))
 	n.e.processors = []*pipelineProcessor{newPipelineProcessor("nop", []pipelineEvent{pipelineReceived}, false, func(_ context.Context, c *processingContext) error {
 		return c.SetPersist(false)
 	})}
@@ -132,7 +130,7 @@ func TestDedupSurvivesRestartAndIsBounded(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = e.st.UpsertPeer(store.Peer{ID: string(sender), Name: "s", Addr: "x"})
+		allowPeer(e, string(sender))
 		if err := e.Start(bg); err != nil {
 			t.Fatal(err)
 		}
@@ -199,5 +197,25 @@ func TestAdmissionRefusals(t *testing.T) {
 	updateSettings(t, n2.e, func(s *Settings) { s.Sync.Enabled = false })
 	if receiveVia(n2.e, clipReq(BackendTailcat, "t9", "h", "text"), "text") {
 		t.Fatal("received while sync was off")
+	}
+}
+
+// allowPeer makes id a trusted device with an authorized tailcat path, the way
+// a finished pairing would, without a network.
+func allowPeer(e *Engine, id string) {
+	pk := sha256.Sum256([]byte(id))
+	d, err := e.st.AddDevice(id, pk[:], "peer")
+	if err != nil {
+		panic(err)
+	}
+	if _, err := e.st.TrustDevice(id, d.Revision); err != nil {
+		panic(err)
+	}
+	b, err := e.st.AddBinding(randHex(8), id, tailcatInstance, []byte("ctx"))
+	if err != nil {
+		panic(err)
+	}
+	if _, err := e.st.AuthorizeBinding(b.ID, b.Revision); err != nil {
+		panic(err)
 	}
 }

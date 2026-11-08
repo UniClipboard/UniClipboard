@@ -29,8 +29,7 @@ func (n *Node) pumpEvents(ctx context.Context) {
 		snap := sub.Snapshot()
 		// What is already there is not news, except after a resync, where
 		// differences since the last look are.
-		n.diffPeers(snap.Peers, connected, !first)
-		n.diffPending(snap.Pending, pending, !first)
+		n.diffDevices(snap.Devices, connected, pending, !first)
 		first = false
 		for {
 			ev, err := sub.Next(ctx)
@@ -38,13 +37,9 @@ func (n *Node) pumpEvents(ctx context.Context) {
 				break
 			}
 			switch ev.Kind {
-			case engine.EventPeers:
-				if ps, err := n.e.ListPeers(ctx); err == nil {
-					n.diffPeers(ps, connected, true)
-				}
-			case engine.EventPending:
-				if ps, err := n.e.ListPending(ctx); err == nil {
-					n.diffPending(ps, pending, true)
+			case engine.EventDevices:
+				if ds, err := n.e.ListDevices(ctx); err == nil {
+					n.diffDevices(ds, connected, pending, true)
 				}
 			case engine.EventHistory:
 				for _, o := range ev.Objects { // ids only: clients fetch the record again
@@ -58,51 +53,43 @@ func (n *Node) pumpEvents(ctx context.Context) {
 	}
 }
 
-func (n *Node) diffPeers(ps []engine.Peer, was map[engine.DeviceID]bool, announce bool) {
-	now := map[engine.DeviceID]bool{}
-	for _, p := range ps {
-		up := p.Connection == engine.Connected
-		now[p.ID] = up
-		if announce && up != was[p.ID] {
+// diffDevices announces what changed in the device list since the last look.
+func (n *Node) diffDevices(ds []engine.Device, connected, pending map[engine.DeviceID]bool, announce bool) {
+	nowUp, nowPend := map[engine.DeviceID]bool{}, map[engine.DeviceID]bool{}
+	for _, d := range ds {
+		id := engine.DeviceID(d.ID)
+		up, pend := devicePeer(d) && deviceConnected(d), devicePending(d)
+		nowUp[id], nowPend[id] = up, pend
+		if announce && up != connected[id] {
 			kind := "peer-down"
 			if up {
 				kind = "peer-up"
 			}
-			n.hub.emit(api.Event{Kind: kind, Peer: p.Name})
+			n.hub.emit(api.Event{Kind: kind, Peer: d.DisplayName()})
+		}
+		if announce && pend && !pending[id] {
+			info := ""
+			for _, b := range d.Bindings {
+				if b.Ticket {
+					info = "code"
+				}
+			}
+			n.hub.emit(api.Event{Kind: "pending", Peer: d.DisplayName(), Info: info})
 		}
 	}
-	for id := range was {
-		delete(was, id)
+	for id := range connected {
+		delete(connected, id)
 	}
-	for id, up := range now {
-		was[id] = up
+	for id := range pending {
+		delete(pending, id)
+	}
+	for id, v := range nowUp {
+		connected[id] = v
+	}
+	for id, v := range nowPend {
+		pending[id] = v
 	}
 	if announce {
-		n.hub.emit(api.Event{Kind: "peers"})
-	}
-}
-
-func (n *Node) diffPending(ps []engine.PendingPeer, was map[engine.DeviceID]bool, announce bool) {
-	now := map[engine.DeviceID]bool{}
-	for _, p := range ps {
-		now[p.ID] = true
-		if announce && !was[p.ID] {
-			info := p.IntroducedByName
-			if p.Source == engine.SourceCode {
-				info = "code"
-			}
-			n.hub.emit(api.Event{Kind: "pending", Peer: p.Name, Info: info})
-		}
-	}
-	removed := false
-	for id := range was {
-		removed = removed || !now[id]
-		delete(was, id)
-	}
-	for id := range now {
-		was[id] = true
-	}
-	if announce && removed {
-		n.hub.emit(api.Event{Kind: "peers"}) // approved, rejected or withdrawn: lists need a refresh
+		n.hub.emit(api.Event{Kind: "peers"}) // lists need a refresh
 	}
 }

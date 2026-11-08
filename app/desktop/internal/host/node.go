@@ -19,6 +19,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/api"
 	"github.com/uniclipboard/unic/app/desktop/internal/config"
+	"github.com/uniclipboard/unic/app/desktop/internal/luascripts"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/plugins/builtintailcat"
@@ -46,6 +47,10 @@ type Options struct {
 	// Plugins are extra plugin instances, e.g. sync backends with external
 	// channels, assembled by the program next to the built-in ones.
 	Plugins []engine.PluginInstance
+	// LuaDir holds installed Lua plugins; the ones listed in the
+	// configuration's plugins.lua run, and edits to their scripts are applied
+	// while the node runs. Empty: no Lua plugins.
+	LuaDir string
 }
 
 // Node is the engine plus everything a desktop host adds to it. It implements
@@ -56,6 +61,9 @@ type Node struct {
 	hub  hub
 	clip *clipboardHost
 	logf func(string, ...any)
+
+	luaDir string
+	lua    map[string]luascripts.Script // as running, by plugin ID
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -94,11 +102,20 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New()})
 	}
 	opts.Plugins = append(opts.Plugins, o.Plugins...)
+	var loaded map[string]luascripts.Script
+	if o.LuaDir != "" {
+		var specs []engine.LuaPluginSpec
+		var lerr error
+		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, c.Plugins.Lua); lerr != nil {
+			return nil, lerr
+		}
+		opts.LuaPlugins = specs
+	}
 	e, err := engine.New(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	n := &Node{e: e, cfg: o.Settings, logf: o.Logf}
+	n := &Node{e: e, cfg: o.Settings, logf: o.Logf, luaDir: o.LuaDir, lua: loaded}
 	n.clip = &clipboardHost{e: e, board: o.Board, poll: o.Poll, hub: &n.hub, logf: o.Logf, name: n.peerName, channelName: n.channelName}
 	return n, nil
 }
@@ -121,6 +138,10 @@ func (n *Node) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(context.Background())
 	n.cancel = cancel
 	n.wg.Add(2)
+	if n.luaDir != "" && len(n.lua) > 0 {
+		n.wg.Add(1)
+		go func() { defer n.wg.Done(); n.watchLua(runCtx) }()
+	}
 	go func() { defer n.wg.Done(); n.clip.Run(runCtx) }()
 	go func() { defer n.wg.Done(); n.pumpEvents(runCtx) }()
 	return nil

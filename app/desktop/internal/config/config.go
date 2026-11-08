@@ -99,6 +99,11 @@ type Sync struct {
 // ships: the sync policy of builtin.tailcat and the on/off switch of builtin.text.
 type Plugins struct {
 	Instances map[string]Instance `toml:"instances" json:"instances,omitempty"`
+	// Lua lists the installed Lua plugins to run, in processing order. Each
+	// is a directory under $UNIC_HOME/plugins/lua/ with a spec.toml.
+	// Changing the script text takes effect at once; changing this list
+	// waits for a restart.
+	Lua []string `toml:"lua" json:"lua,omitempty"`
 }
 
 type Instance struct {
@@ -193,6 +198,13 @@ func (c Config) Validate() error {
 			return fmt.Errorf("plugins.instances: %q is not an installed plugin", id)
 		}
 	}
+	seen := map[string]bool{}
+	for _, id := range c.Plugins.Lua {
+		if id == "" || len(id) > 128 || seen[id] {
+			return errors.New("plugins.lua: ids must be non-empty and unique")
+		}
+		seen[id] = true
+	}
 	h := c.History
 	switch {
 	case h.MaxItems <= 0 || h.MaxItems > 1_000_000:
@@ -262,6 +274,12 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # adds tags; it never changes what you copied. Needs a restart of unicd.
 # [plugins.instances."builtin.text"]
 # enabled = true
+
+# Lua plugins you installed under $UNIC_HOME/plugins/lua/<name>/ (a spec.toml
+# and its script), run in this order. Saving a script applies it at once;
+# changing this list needs a restart of unicd.
+# [plugins]
+# lua = ["example.lua-urltag"]
 `
 
 // WriteTemplate creates path with the template unless it already exists.

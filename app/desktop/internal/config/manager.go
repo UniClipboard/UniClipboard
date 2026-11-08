@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -35,6 +36,7 @@ type Manager struct {
 	cur     Config
 	started Config // as of startup, for keys that need a restart
 	err     error
+	marked  map[string]bool // keys the host found to need a restart
 
 	// OnChange, if set before Watch, is called after each reload attempt
 	// (good or bad) with the state after it.
@@ -92,7 +94,27 @@ func (m *Manager) State() State {
 	if m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) {
 		s.RestartRequired = append(s.RestartRequired, "plugins")
 	}
+	if !slices.Equal(m.cur.Plugins.Lua, m.started.Plugins.Lua) {
+		s.RestartRequired = append(s.RestartRequired, "plugins.lua")
+	}
+	for k := range m.marked {
+		if !slices.Contains(s.RestartRequired, k) {
+			s.RestartRequired = append(s.RestartRequired, k)
+		}
+	}
+	slices.Sort(s.RestartRequired)
 	return s
+}
+
+// MarkRestart records that a change the host cannot apply live is waiting
+// for a restart.
+func (m *Manager) MarkRestart(key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.marked == nil {
+		m.marked = map[string]bool{}
+	}
+	m.marked[key] = true
 }
 
 // Reload re-reads the file now. A bad file leaves the current configuration

@@ -1,3 +1,4 @@
+manifest_version = 1
 kind = "lua"
 entry = "main.lua"
 id = "example.lua-textcase"

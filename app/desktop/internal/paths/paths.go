@@ -42,5 +42,8 @@ func Socket() (string, error) {
 func Database() (string, error) { return sub("unic.db") }
 func Inbox() (string, error)    { return sub("inbox") }
 
+// LuaDir is where installed Lua plugins live, one directory each.
+func LuaDir() (string, error) { return sub(filepath.Join("plugins", "lua")) }
+
 // Config is the TOML configuration file.
 func Config() (string, error) { return sub("config.toml") }

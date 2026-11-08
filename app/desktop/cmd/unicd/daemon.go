@@ -60,8 +60,12 @@ func runDaemon() error {
 		}
 	}
 
+	luaDir, err := paths.LuaDir()
+	if err != nil {
+		return err
+	}
 	node, err := host.Open(context.Background(), host.Options{
-		Dir: dir, Settings: settings, Board: board.MyGo{}, Logf: log.Printf,
+		Dir: dir, Settings: settings, Board: board.MyGo{}, Logf: log.Printf, LuaDir: luaDir,
 	})
 	if err != nil {
 		return err

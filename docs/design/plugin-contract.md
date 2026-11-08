@@ -285,7 +285,7 @@ unic plugin uninstall example.emailtag
 
 ### 清单与产物
 
-根或 --path 子目录含 unic-plugin.toml，每次安装一个插件，不递归安装依赖插件、不执行安装脚本。Lua 清单：
+根或 --path 子目录含 spec.toml，每次安装一个插件，不递归安装依赖插件、不执行安装脚本。Lua 清单：
 
 ```toml
 manifest_version = 1

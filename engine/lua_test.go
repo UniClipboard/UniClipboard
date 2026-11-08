@@ -117,12 +117,21 @@ func TestLuaExamples(t *testing.T) {
 		o.LuaPlugins = []LuaPluginSpec{
 			loadExample(t, "emailtag", "example.lua-emailtag", []string{"processor"}, nil),
 			loadExample(t, "sensitive", "example.lua-sensitive", []string{"processor"}, nil),
+			loadExample(t, "urltag", "example.lua-urltag", []string{"processor"}, nil),
 			loadExample(t, "textcase", "example.lua-textcase", []string{"action"}, nil),
 		}
 	})
 	start(t, n)
 	r := commitText(t, n.e, "a", "me@example.com")
 	if it, _ := n.e.GetItem(bg, r.HistoryID); !slices.Equal(it.Tags, []string{"email"}) {
+		t.Fatalf("%v", it.Tags)
+	}
+	r = commitText(t, n.e, "u", "https://Example.com/a?b=1")
+	if it, _ := n.e.GetItem(bg, r.HistoryID); !slices.Equal(it.Tags, []string{"host:example.com", "url"}) {
+		t.Fatalf("%v", it.Tags)
+	}
+	r = commitText(t, n.e, "u2", "see https://example.com")
+	if it, _ := n.e.GetItem(bg, r.HistoryID); len(it.Tags) != 0 {
 		t.Fatalf("%v", it.Tags)
 	}
 	r = commitText(t, n.e, "b", "password: hunter2")

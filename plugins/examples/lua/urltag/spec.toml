@@ -1,6 +1,7 @@
+manifest_version = 1
 kind = "lua"
 entry = "main.lua"
-id = "example.lua-emailtag"
+id = "example.lua-urltag"
 version = "1.0.0"
 api_version = 1
 capabilities = ["processor"]

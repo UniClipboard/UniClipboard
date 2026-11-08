@@ -13,6 +13,7 @@ import (
 // Env is what the engine gives the peer backend factory.
 type Env struct {
 	Store  *store.Store
+	Dir    string         // private instance directory, locked for the engine's life
 	Config session.Config // everything but Transport
 }
 

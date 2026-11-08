@@ -38,13 +38,14 @@ type Engine struct {
 	res      ResourcePolicy
 	log      *slog.Logger
 
-	lock    *dirLock
-	ident   *identity.Identity // unified device identity (identity protocol v1)
-	st      *store.Store
-	core    PeerBackend // nil: local-only, no peer backend
-	trUsed  bool        // core.Start was called, so core.Close is due
-	self    DeviceID
-	defName string
+	lock      *dirLock
+	ident     *identity.Identity // unified device identity (identity protocol v1)
+	st        *store.Store
+	instLocks []*dirLock  // runtime.lock of each backend instance
+	core      PeerBackend // nil: local-only, no peer backend
+	trUsed    bool        // core.Start was called, so core.Close is due
+	self      DeviceID
+	defName   string
 
 	use sync.RWMutex  // held (read) by every call; Close takes it to free the store
 	ctl chan struct{} // serializes suspend/resume
@@ -210,12 +211,21 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	}
 	e.rvDefault = rv
 	if opts.Peer != nil {
-		core, perr := opts.Peer(PeerEnv{Store: st, Config: session.Config{
+		idir, ilock, ierr := openInstanceDir(opts.DataDir, tailcatInstance)
+		if ierr != nil {
+			if errors.Is(ierr, errLocked) {
+				return closeAll(newErr(CodeInUse, "the backend instance is used by another process"))
+			}
+			return closeAll(newErr(CodeUnavailable, "cannot prepare the backend directory"))
+		}
+		e.instLocks = append(e.instLocks, ilock)
+		core, perr := opts.Peer(PeerEnv{Store: st, Dir: idir, Config: session.Config{
 			Identity: ident, Name: defName, Host: tailcatHost{e}, Receiver: receiver{e},
 			Logf:     func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
 			Settings: settingsSource{e},
 		}})
 		if perr != nil || core == nil {
+			ilock.release()
 			return closeAll(newErr(CodeUnavailable, "cannot prepare the network"))
 		}
 		e.core = core
@@ -425,10 +435,9 @@ func (e *Engine) startRun(ctx context.Context) error {
 
 	if e.core == nil { // local-only: the run context still bounds submissions
 		close(done)
-		close(ready)
-	} else {
-		go e.runCore(rctx, done, ready)
+		return nil
 	}
+	go e.runCore(rctx, done, ready)
 	select {
 	case <-ready:
 		return nil
@@ -595,6 +604,9 @@ func (e *Engine) finalize() {
 	e.dropContent()
 	_ = os.RemoveAll(e.recvDir())
 	_ = e.st.Close()
+	for _, l := range e.instLocks {
+		l.release()
+	}
 	e.lock.release()
 	e.use.Unlock()
 	e.logf(slog.LevelInfo, "engine closed")

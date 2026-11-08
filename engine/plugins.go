@@ -120,7 +120,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 			sb, ok := in.Plugin.(plugin.SyncBackend)
 			peerAware, isPeer := in.Plugin.(plugin.PeerBackend)
 			isPeer = isPeer && !spec.ExternalChannels && spec.TransportKind == plugin.TransportPeerSessions
-			if !ok || (in.Process != nil && !spec.ExternalChannels && !isPeer) {
+			if (!ok && !isPeer) || (in.Process != nil && !spec.ExternalChannels && !isPeer) { // a peer backend sends through PeerBackend, not Submit
 				unsupported = true // out-of-process backends need the RPC business layer
 				continue
 			}

@@ -24,6 +24,10 @@
 
 [0007](decisions/0007-multiple-sync-backends.md) 确定全局 sync.enabled、各实例启用、各后端独立的 text/images/files/自动文件阈值三层控制，允许多个后端并发，结果/目标/资源按后端隔离。目标 Settings.Sync 只保留 Enabled，新增 BackendPolicies 映射；下文旧 SyncSettings 类型字段及过滤/在途语义描述既有实现，接入时须同批迁移 SDK、宿主与测试。全局关闭立即取消所有后端内容工作，不能被手动发送绕过；本机历史、处理与 Action 保留。P2P 连接 API 仅为 peer_sessions 扩展，WebDAV 对象协议另定。
 
+### 外部渠道扩展（已实现，后端接入待定）
+
+[0009](decisions/0009-external-channels.md) 的数据模型与接收路径已实现：`Channel` DTO（无地址/指纹/远端上下文）、`AddChannel / ListChannels / GetChannel / RenameChannel / SetChannelEnabled / SetChannelAutoApply / RemoveChannel`（均带 ExpectedRevision 做 CAS，变化发 `ObjectRef{Type:"channel"}` 与 `EventDevices`）和混排的 `ListPeers`（`Peer{Kind: device|channel}`）。发送目标类型 `group`，一次发送一条目标状态；提交时只把已启用渠道交给后端，后端登记未启用渠道返回 invalid_argument。接收经 `plugin.Receiver` 进入与设备相同的准入、received 流水线、历史与去重，来源为 `external`，`ReceivedContent` 带 `ChannelID`（`PeerID` 为空）与到达时的 `AutoApply`；引擎不写剪贴板，宿主据 `AutoApply` 决定。`RemoveChannel`：后端未声明 `remote_revocation` 时只删本地；声明时（须实现 `plugin.ChannelLeaver`）先停用、请求退出，成功才删除，失败保留并标记 `remove_failed`。
+
 ### 0004 扩展边界（待实现）
 
 [0004](decisions/0004-clipboard-pipeline-lua.md) 已确定：本机持久历史和处理流水线均由 Engine 管理，业务实现放在 `engine/`；宿主只经 SDK 访问，不另建历史或流水线。[本机历史契约](history-contract.md) 已确定历史 API、筛选分页、稳定 ID、内容租约、更新/删除、容量与过期、接收列表映射、历史应用和事件恢复。该契约为本文的目标扩展，尚未实现；其明确声明的历史语义优先于本文既有实例内接收列表约定。临时资源启动清理不得删除有效历史；标签与过期不进 wire，不承诺重启后的待应用可靠投递。
@@ -50,7 +54,7 @@
 
 插件化后端的状态快照、审批与会话 token、传输前授权、接收准入/流和撤销生效屏障见[同步后端业务契约](sync-backend-contract.md)。该扩展要求撤销成功前取得后端确认；外部后端可终止回收进程，builtin 须关闭端点并确认任务退出，不能确认则停止同步服务并报告失败；下文既有 Unpair 的异步资源关闭说明只描述当前进程内实现。
 
-[插件契约 v0.1](plugin-contract.md) 定义 Go/Lua 统一插件与最小模板。builtin Go 插件由宿主显式传入进程内实例，外部 Go 插件通过独立常驻进程/RPC 接入，安装优先平台预编译，缺失时可 --build 构建插件自身，不重建宿主；Engine 拥有注册、生命周期、配置、串行处理、commit 和操作状态；tailcat 网络、会话与传输封装为默认 builtin Go 插件 `builtin.tailcat`（`internal/plugins/builtintext/`，与 `builtin.text` 独立），公共配对/发送/接收 API 保持门面，审批、信任和策略最终由 Engine 控制。通知总线不承担同步调度。默认后端按 0008 实现统一设备身份，不保留旧 wire v2 兼容要求；无后端允许本机历史工作。插件 API 和同步流式 DTO 尚未实现，不计入第 14 节已完成功能。
+[插件契约 v0.1](plugin-contract.md) 定义 Go/Lua 统一插件与最小模板。builtin Go 插件由宿主显式传入进程内实例，外部 Go 插件通过独立常驻进程/RPC 接入，安装优先平台预编译，缺失时可 --build 构建插件自身，不重建宿主；Engine 拥有注册、生命周期、配置、串行处理、commit 和操作状态；tailcat 网络、会话与传输封装为默认 builtin Go 插件 `builtin.tailcat`（`internal/plugins/builtintailcat/`，与 `builtin.text` 独立），公共配对/发送/接收 API 保持门面，审批、信任和策略最终由 Engine 控制。通知总线不承担同步调度。默认后端按 0008 实现统一设备身份，不保留旧 wire v2 兼容要求；无后端允许本机历史工作。插件 API 和同步流式 DTO 尚未实现，不计入第 14 节已完成功能。
 
 ## 2. 接口总览
 

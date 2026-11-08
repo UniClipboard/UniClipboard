@@ -13,7 +13,7 @@ Engine 统一身份密钥仅由 Engine 初始化和持有；后端只加载自�
 
 ## 1. 职责与生命周期
 
-builtin `builtin.tailcat`（`internal/plugins/builtintext/`，由宿主显式装配）持有 tailcat 端点、设备连接、按 0008 修订的 wire 编解码和传输循环；Engine 持有身份、配对审批、rendezvous 票据、同步策略、队列、内容引用、操作结果与历史。后端不打开 Engine SQLite，不调用宿主剪贴板，不存第二套批准/拒绝状态。
+builtin `builtin.tailcat`（`internal/plugins/builtintailcat/`，由宿主显式装配）持有 tailcat 端点、设备连接、按 0008 修订的 wire 编解码和传输循环；Engine 持有身份、配对审批、rendezvous 票据、同步策略、队列、内容引用、操作结果与历史。后端不打开 Engine SQLite，不调用宿主剪贴板，不存第二套批准/拒绝状态。
 
 外部后端启动顺序为 HELLO/ACK → plugin.init → backend.bind → 初始 backend.apply_state → plugin.start；builtin 对应 Init → Bind → 初始 ApplyState → Start。Bind 只配置本次实例绑定，不联网；初始快照可以在 Start 前安装。Start 后持有常驻端点与长连接，不能为每个 Send 启进程或重连。后台断网/重连不依附某次 Process 或 Send 调用 context。
 
@@ -100,6 +100,10 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 网络中断、取消、重复 part、短读、hash 不符或撤销授权均清理暂存与预留，不能形成可应用条目。若后端仍可按声明精确 drain 剩余字节，策略/存储丢弃可保持网络连接；RPC 故障、超限或无法确定剩余边界时关闭对应设备连接。父进程退出或 binding 更换不恢复半成品，不承诺对端重发。
 
 接收完成只以 validated connection 的 peer_id 记录原始远端来源，首版要求 wire origin 与它一致；共用 TransferID 的跨后端接收按 0007 有界持久去重，同一来源/TransferID/ViewHash 的元数据冲突不得覆盖记录，不同发送视图独立接收、不合并历史。去重占位/成功记录分别随失败回收/commit 原子落库，不把 wire origin 当作未经认证的身份。标签/期限由本机插件决定，不从 wire 接收；首版永不再转发，即使处理后来源变为 plugin 或 SetSync(true)。
+
+## 6a. 外部渠道 profile（0009，目标设计）
+
+声明 `ExternalChannels` 的后端不走 §3 的 hello/连接授权：没有设备身份、指纹或关联审批，授权只来自 Engine 里渠道“已启用”。后端在其私有目录保存凭据，向 Engine 提供渠道的远端上下文（不透明、≤ 256 字节、秘密）和自报名称，目标是一个组；Submit 的 `Targets` 只含已启用渠道，一次发送每渠道一条目标状态。回执语义随后端声明（如微信输入法只表示服务端已接受，界面不得写“对方已收到”）。接收经 `Receive` 一次交付内存中的文本/图片（暂不含文件），由 Engine 做准入与去重。退出组请求（`LeaveChannel`）仅在声明 `remote_revocation` 时存在。组成员、回执等业务 DTO 与进程外承载待定。
 
 ## 6. 失败恢复、权限与待实现测试
 

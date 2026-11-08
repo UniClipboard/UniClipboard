@@ -9,7 +9,7 @@
 
 现在本机复制后，桌面宿主轮询到变化（`app/desktop/internal/host/clipboard.go` 的 `tick`）就交给 `Engine.ObserveClipboard`（`engine/clipboard.go`）直接同步，中间没有可介入的位置；接收远端内容同理（`applyLoop` → `Engine.BeginApply`）。
 
-目标：用户复制后，内容先经过一条**处理流水线**，Go 或 Lua 插件可在其中自动打标签、控制是否同步/持久化、设置过期时间（只标注，不改写正文）；用户另可主动触发插件声明的 Action 来变换内容；同步通过 Go 后端插件执行，默认交付进程内 builtin 插件 **`builtin.tailcat`**（源码位于 `internal/plugins/builtintext/`）；Engine 统一管理设备身份、信任、配对审批和设备后端关联，各插件提供自身接入机制。设备管理按设备归并，并展示其各插件实例的授权与同步状态。
+目标：用户复制后，内容先经过一条**处理流水线**，Go 或 Lua 插件可在其中自动打标签、控制是否同步/持久化、设置过期时间（只标注，不改写正文）；用户另可主动触发插件声明的 Action 来变换内容；同步通过 Go 后端插件执行，默认交付进程内 builtin 插件 **`builtin.tailcat`**（源码位于 `internal/plugins/builtintailcat/`）；Engine 统一管理设备身份、信任、配对审批和设备后端关联，各插件提供自身接入机制。设备管理按设备归并，并展示其各插件实例的授权与同步状态。
 
 ## 决策
 
@@ -79,7 +79,7 @@ Capture/Receive → Processing → Commit → Sync → Use → End
 [插件契约 v0.1](../plugin-contract.md) 确定标识、能力、注册、Init/Start/Close 生命周期、配置、执行顺序、处理上下文、错误回滚和同步后端边界，并提供 Go/Lua 最小模板。接口为目标设计，尚未实现。
 
 - 统一描述：ID、Version、APIVersion、Capabilities（processor/observer/action/sync_backend）；action 额外静态声明 Actions；builtin Go 插件由宿主显式装配到进程内，外部 Go 插件使用独立程序与 RPC 握手，Lua 返回插件表，不再使用全局 `events.on`。
-- 普通插件分 processor（自动标注）、observer（只读通知）与 action（用户触发的内容变换）；sync_backend 是仅 Go 可用的扩展能力，默认由 builtin `builtin.tailcat` 提供。该实现放在 `internal/plugins/builtintext/`，保留独立 ID `builtin.tailcat`，不并入现有 `builtin.text` 的处理/Action 能力；源码同目录不表示共用配置、生命周期或后端实例。builtin 随宿主构建和升级，不经 GitHub 安装，也不要求单独的 tailcat 可执行文件。
+- 普通插件分 processor（自动标注）、observer（只读通知）与 action（用户触发的内容变换）；sync_backend 是仅 Go 可用的扩展能力，默认由 builtin `builtin.tailcat` 提供。该实现放在 `internal/plugins/builtintailcat/`，保留独立 ID `builtin.tailcat`，不并入现有 `builtin.text` 的处理/Action 能力；源码同目录不表示共用配置、生命周期或后端实例。builtin 随宿主构建和升级，不经 GitHub 安装，也不要求单独的 tailcat 可执行文件。
 - 标签、持久化、同步与过期通过 ProcessContext 方法暂存（无改正文方法），回调成功后原子采纳。通知不带正文，不能修改已提交内容。
 - Lua 首版不提供网络、本地存储、Quick Panel；Go 为受信任代码。同步后端具有专用网络与接收接口，不能将这些能力授予 Lua 或普通通知插件。
 
@@ -144,7 +144,7 @@ clip_tags(item_id, tag)
 2. **历史存储**：在 `engine/` 内实现历史管理，新增 `clip_items` 等表、commit 阶段写入、过期清理；`unic history` 查看。
 3. **事件总线**：把现有 `Event` 扩为带阶段与 origin 的结构，增加设备与关联状态通知；SDK 与桌面 API 同批调整，不保留旧 `/v1` 事件兼容形状。
 4. **插件接口与运行时**：统一 Go RPC/进程管理接口与 Lua 适配（含 Action 注册/运行），提供两种语言的最小模板；Lua 沙箱、超时、插件表与 `ctx` API、热加载；错误与脱敏。
-5. **统一设备与同步后端**：先补齐统一身份/配对网络协议、实现与实例标识、设备关联 DTO、RPC Schema/向量；再实现 Engine 设备目录、信任、关联审批、设备列表与撤销屏障。在 `internal/plugins/builtintext/` 实现 builtin `builtin.tailcat`，由宿主显式创建实例并装配，只复用适合新边界的网络/传输基础设施，重构 session 对身份、信任和数据库的直接依赖，不保留旧 wire 互通要求；以多个假后端验证统一设备与独立路径。
+5. **统一设备与同步后端**：先补齐统一身份/配对网络协议、实现与实例标识、设备关联 DTO、RPC Schema/向量；再实现 Engine 设备目录、信任、关联审批、设备列表与撤销屏障。在 `internal/plugins/builtintailcat/` 实现 builtin `builtin.tailcat`，由宿主显式创建实例并装配，只复用适合新边界的网络/传输基础设施，重构 session 对身份、信任和数据库的直接依赖，不保留旧 wire 互通要求；以多个假后端验证统一设备与独立路径。
 6. **示例扩展**：邮箱/URL 检测自动打标签、敏感信息检测、自动过期、内容分类（标注型），以及“转大写”等 Action，用同一套 Lua/内部接口实现，作为示例与测试。
 
 ## 验收

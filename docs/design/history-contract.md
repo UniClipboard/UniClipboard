@@ -36,7 +36,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 | ID | HistoryID |
 | Revision | 持久化 uint64，创建为 1；每次有效元数据或同步摘要变更递增，CAS 使用此值 |
 | Kind | text/image/files；含文件优先 files，其次 PNG 为 image，其余为 text，与宿主应用优先级一致 |
-| Origin | Kind 为 local_system/remote_device/explicit/action；DeviceID、PluginID 仅对应来源有值，不含秘密地址 |
+| Origin | Kind 为 local_system/remote_device/explicit/action/external；DeviceID、PluginID 仅对应来源有值（external 来源的 PluginID 是后端实例，没有 DeviceID），不含秘密地址 |
 | SourceApp | 可空的不透明应用标识，不包含窗口标题、路径或自由文本摘要 |
 | CreatedAtMs / UpdatedAtMs | 本机 commit 时间 / 最后一次有效变更时间；不采用远端时间 |
 | ExpiresAtMs | 0 为永不过期，否则为绝对 Unix 毫秒时间 |
@@ -52,7 +52,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 
 ## 3. 基础查询与分页
 
-`ListHistoryRequest{Limit int, Cursor string, Filter HistoryFilter}`；Limit=0 使用 50，合法范围 1..200。`HistoryFilter{Kinds []HistoryKind, Tags []string, OriginKinds []HistoryOriginKind, DeviceID DeviceID, CreatedFromMs int64, CreatedBeforeMs int64}`：各字段之间 AND，同字段 Kinds/OriginKinds 内 OR，Tags 为全部匹配，时间为 `[from, before)`，0 表示不设该边界。DeviceID 只匹配 remote_device 来源。未知枚举、非法时间区间或超出标签限制返回 invalid_argument；重复筛选项规范化去重。
+`ListHistoryRequest{Limit int, Cursor string, Filter HistoryFilter}`；Limit=0 使用 50，合法范围 1..200。`HistoryFilter{Kinds []HistoryKind, Tags []string, OriginKinds []HistoryOriginKind, DeviceID DeviceID, CreatedFromMs int64, CreatedBeforeMs int64}`：各字段之间 AND，同字段 Kinds/OriginKinds 内 OR，Tags 为全部匹配，时间为 `[from, before)`，0 表示不设该边界。DeviceID 只匹配 remote_device 来源；OriginKinds 可含 external。未知枚举、非法时间区间或超出标签限制返回 invalid_argument；重复筛选项规范化去重。
 
 首版不提供正文关键词、文件名搜索、模糊匹配、相关度排序或全文索引；不以返回全量正文让宿主自行搜索来绕过边界。
 

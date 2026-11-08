@@ -25,12 +25,12 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0001](docs/design/decisions/0001-pairing-code.md) | 添加设备：6 位配对码 + 完整地址 | 复用 rendezvous `/v1/web-pairings`，5 分钟一次性；票据 kind `unic-pair`；配对码只找地址不授信，需批准并核对指纹；仅桌面端 |
 | [0002](docs/design/decisions/0002-config-file.md) | 配置文件：TOML + 保存即生效 | `$UNIC_HOME/config.toml`，监听目录+防抖热加载；坏配置保留上一份有效值；`unic config` 查看；`inbox` 需重启 |
 | [0003](docs/design/decisions/0003-engine-sdk.md) | 独立 Engine：统一接口与契约 | 公开 Go SDK，宿主负责剪贴板与系统集成；定义生命周期、内容所有权、事件与错误；先落地契约并迁移桌面，移动端验证后续进行 |
-| [0004](docs/design/decisions/0004-clipboard-pipeline-lua.md) | 剪贴板处理流水线 + Go / Lua 插件 | 草案；Capture→Processing→Commit→Sync→Use→End；captured/received 可干预（仅标注，不改正文；改写内容走用户触发的 Action），其余事件只读；同步支持 builtin/外部 Go 插件，默认 builtin.tailcat 位于 `internal/plugins/builtintext/`，随宿主编译；设备身份/信任/关联按 0008 统一管理，无旧 tailcat 兼容；Go 常驻进程/RPC（预编译优先，--build 兜底）+ 增强 gopher-lua 沙箱（预算/白名单待实现）；统一接口与模板见插件契约；本地历史库，标签/过期不同步；历史归 Engine 管理，历史与流水线业务实现放 `engine/` |
+| [0004](docs/design/decisions/0004-clipboard-pipeline-lua.md) | 剪贴板处理流水线 + Go / Lua 插件 | 草案；Capture→Processing→Commit→Sync→Use→End；captured/received 可干预（仅标注，不改正文；改写内容走用户触发的 Action），其余事件只读；同步支持 builtin/外部 Go 插件，默认 builtin.tailcat 位于 `internal/plugins/builtintailcat/`，随宿主编译；设备身份/信任/关联按 0008 统一管理，无旧 tailcat 兼容；Go 常驻进程/RPC（预编译优先，--build 兜底）+ 增强 gopher-lua 沙箱（预算/白名单待实现）；统一接口与模板见插件契约；本地历史库，标签/过期不同步；历史归 Engine 管理，历史与流水线业务实现放 `engine/` |
 | [0005](docs/design/decisions/0005-monorepo-layout.md) | 仓库布局：monorepo | 核心在根（`engine/`、`internal/`），应用在 `app/<平台>/`；依赖单向，桌面专属包放 `app/desktop/internal`；单一根模块 `github.com/uniclipboard/unic`，gomobile 引入时再拆 `bindings/` |
 | [0006](docs/design/decisions/0006-macos-swiftui-client.md) | macOS 端：SwiftUI 客户端 | 草案；SwiftUI 作为 `unicd` 的客户端（unix socket，HTTP+JSON/SSE），不内嵌 Engine；`unicd` 增加无托盘模式；新增本机历史 API（事件不带正文）；历史与流水线由 `engine/` 管理；Developer ID 分发，不上 App Store |
 | [0007](docs/design/decisions/0007-multiple-sync-backends.md) | 多同步后端与分层策略 | 已采纳，待实现；全局开关、实例启用、每后端类型/自动文件阈值；多后端结果/资源隔离与有界跨后端去重；默认只交付 tailcat，WebDAV 对象协议另定 |
 | [0008](docs/design/decisions/0008-device-identity-and-backend-bindings.md) | 统一设备身份与后端关联 | 已采纳，待实现；Engine 统一身份/信任/审批；设备按后端实例独立授权和状态；无旧 tailcat 兼容；身份协议与 SDK/RPC 定义待补齐 |
-| [0009](docs/design/decisions/0009-external-channels.md) | 外部渠道：无 unic 身份证明的第三方对端 | 草案；不是设备、不写 `devices` 表、无指纹；目标为组；与设备混排展示；默认自动写剪贴板并标 `external:` 来源；移除仅本地生效，后端声明 `remote_revocation`；接入形态待定（首个对象微信输入法） |
+| [0009](docs/design/decisions/0009-external-channels.md) | 外部渠道：无 unic 身份证明的第三方对端 | 草案；不是设备、不写 `devices` 表、无指纹；目标为组；与设备混排展示；默认自动写剪贴板并标 `external:` 来源；移除仅本地生效，后端声明 `remote_revocation`；接入形态待定（首个对象微信输入法）；数据模型与接收路径已实现（`engine/channels.go`），桌面 `/v1/channels` |
 
 ### 接口契约
 

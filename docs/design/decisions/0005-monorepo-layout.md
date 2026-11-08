@@ -18,7 +18,9 @@
 ├── plugins/                外部插件源码与开发说明（0004）
 ├── internal/               核心实现，只含平台无关的包
 │   ├── session/ wire/ store/ tcnet/ rendezvous/ clip/
-│   └── plugins/builtintext/  builtin.text；规划 builtin builtin.tailcat（0004）
+│   └── plugins/
+│       ├── builtintext/      builtin.text
+│       └── builtintailcat/   builtin.tailcat（Transport 注入；0004）
 ├── app/
 │   ├── desktop/            Go：cmd/unic、cmd/unicd，internal/{host,api,board,config,paths}
 │   ├── android/            Kotlin / Gradle 工程

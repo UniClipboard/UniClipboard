@@ -1,6 +1,6 @@
 # 0009 · 外部渠道：没有 unic 身份证明的第三方对端
 
-- 状态：草案，待实现；首个对象是微信输入法（WeType）剪贴板组，接入方式（wxc 子进程或插件 RPC）另定。
+- 状态：草案；数据模型、引擎 API、接收路径与桌面 API 已实现（`engine/channels.go`、`unicd` 的 `/v1/channels`），尚无真实后端；首个对象是微信输入法（WeType）剪贴板组，接入方式（wxc 子进程或插件 RPC）另定。
 - 日期：2026-11-08。
 - 依据：[0007 多后端](0007-multiple-sync-backends.md)、[0008 统一设备身份](0008-device-identity-and-backend-bindings.md)、[身份协议 v1](../identity-protocol.md) §7。
 - 产品尚未发布：直接调整接口与存储，不写迁移或兼容分支。
@@ -53,10 +53,16 @@
 
 ### 7. 对既有设计的影响
 
-- 设备契约：设备列表项增加种类字段（`device` / `external`）；"设备级信任 ∧ 关联授权"对外部渠道简化为"渠道已启用"。
+- 设备契约：对端列表项增加种类字段（SDK `device` / `channel`，桌面 HTTP 空 / `external`）；"设备级信任 ∧ 关联授权"对外部渠道简化为"渠道已启用"。
 - 身份协议：不改。外部渠道不使用 §4 的证明。
 - 0007：目标类型增加 `group`；`SyncTargetKind` 与 `plugin.SyncBackend` 的目标 ID 约定不变。
 - 后端声明增加：配对方式（`native`：由后端自己的流程完成，不经 rendezvous 与票据）、`remote_revocation`、回执语义。
+
+## 实现状态
+
+- 引擎：`Channel`/`Peer` DTO 与渠道 CRUD、混排 `ListPeers`、`TargetGroup`、接收 `plugin.Receiver`、历史来源 `external`；见 [Engine 契约](../engine-contract.md)。
+- 桌面：`unicd` 的 `GET /v1/status` 混排渠道；`PATCH/DELETE /v1/channels/{id}`；`channel` 事件；`AutoApply` 关闭时不写剪贴板。命令行与 SwiftUI 客户端尚未展示渠道。
+- 未实现：外部进程后端、真实渠道后端、文件传输。
 
 ## 验收
 

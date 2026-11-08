@@ -8,11 +8,11 @@
 
 ## 1. 标识、能力与入口
 
-插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat` 保留给发行版内置同步插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
+插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。sync_backend 还可声明 `ExternalChannels`（对端是没有 unic 身份的外部渠道，见 0009）与 `RemoteRevocation`（须同时声明 ExternalChannels，并实现 `ChannelLeaver`）；其他插件声明这两项被拒绝。外部渠道后端实现 `ReceiverAware`，Engine 在 Init 之后、Start 之前交给它 `Receiver`，收到的内容经 `Receive(channelID, Received)` 进入 Engine；被拒（渠道停用、策略、空间、重复）时返回错误，后端丢弃且不得重试。当前只支持进程内 Go 实例，外部进程后端待 RPC 业务层。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat` 保留给发行版内置同步插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
 
 processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Accepts ⊆ {text, image, files}，首版仅 text 可用（来源与结果都是文本）。首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
 
-**Go 插件区分 builtin 与 external 两种装配方式**。builtin 由宿主显式创建进程内实例，随宿主构建和升级，不走安装器或 RPC；默认同步后端 `builtin.tailcat` 位于 `internal/plugins/builtintext/`，与同目录 `builtin.text` 保持独立 ID、配置和生命周期。两种方式执行相同的能力校验、实例授权和业务契约，builtin 不因内置而绕过设备审批。
+**Go 插件区分 builtin 与 external 两种装配方式**。builtin 由宿主显式创建进程内实例，随宿主构建和升级，不走安装器或 RPC；默认同步后端 `builtin.tailcat` 位于 `internal/plugins/builtintailcat/`，与 `builtin.text` 保持独立 ID、配置和生命周期。两种方式执行相同的能力校验、实例授权和业务契约，builtin 不因内置而绕过设备审批。
 
 **外部 Go 插件使用独立可执行程序 + RPC**。宿主传入 `Options.PluginProcesses []PluginProcessSpec`（ID、可执行路径、摘要、API 版本），Engine 启动与管理子进程。路径仅供装配，不进入普通状态与事件。每个 Engine 的每个启用插件各有一个常驻进程，跨处理/发送复用，不编译进宿主，不使用 Go 动态库或全局 init 注册。
 
@@ -138,7 +138,7 @@ ObserveClipboard 与显式 SubmitContent 均走 captured → processing → comm
 
 ## 6. 常驻同步插件 builtin.tailcat
 
-builtin.tailcat 是随宿主编译的 builtin Go 同步插件，源码位于 `internal/plugins/builtintext/`，由宿主显式装配进程内实例；保留 ID `builtin.tailcat`，不与现有 `builtin.text` 合并，不提供或查找 `unic-plugin-tailcat` 可执行文件。它负责 tailcat 网络、session/wire 会话与传输。Engine 保留身份与信任审批、过滤、操作状态、历史、资源租约和防回环；插件不直接写系统剪贴板或 Engine 数据库。
+builtin.tailcat 是随宿主编译的 builtin Go 同步插件，源码位于 `internal/plugins/builtintailcat/`，由宿主显式装配进程内实例；保留 ID `builtin.tailcat`，不与现有 `builtin.text` 合并，不提供或查找 `unic-plugin-tailcat` 可执行文件。它负责 tailcat 网络、session/wire 会话与传输。Engine 保留身份与信任审批、过滤、操作状态、历史、资源租约和防回环；插件不直接写系统剪贴板或 Engine 数据库。
 
 SDK 的 SyncBackend 扩展接口规划如下（builtin 通过进程内接口调用，external 由 RPC 适配承载；均待按 0008 补齐身份与关联 DTO）：
 
@@ -159,7 +159,7 @@ type SyncBackend interface {
 - SyncHost 通过反向 RPC 提供身份验证、信任查询、准入、流式接收、传输前授权和设备状态上报。后端不能自行批准设备，不能绕过指纹核对。配对票据/rendezvous 由 Engine 管理，PairingAddress 只在显式导出边界使用，Connect 不授信。
 - 接收正文以流进入 Engine 私有资源，由 received 阶段处理和宿主 BeginApply/ReportApplyResult 应用；保留超限读完丢弃与隐私边界。设备网络协议按 0008 重定，不要求与旧 wire v2 互通。
 - **Start 后 builtin 实例长期持有 tailcat 端点和设备长连接，Send 复用会话。** 不为每次同步创建实例或重新连接；断网、挂起恢复、实例故障后按契约恢复。关闭等待端点和后台任务退出，不能依赖子进程强杀。
-- 源码位于 `internal/plugins/builtintext/`，由宿主显式创建独立 `builtin.tailcat` 实例，按新身份边界重构并复用适合的 internal/tcnet、internal/session；Engine 不再直接装配它们。设备身份由 Engine 新建；tailcat 传输密钥在实例私有目录首次初始化，按[装配契约](backend-migration-contract.md) 原子持久化与持锁；不导入旧密钥或地址；插件不打开 Engine 的 SQLite。信任以 Engine RPC 为准，不维护第二套授信逻辑。
+- 源码位于 `internal/plugins/builtintailcat/`，由宿主显式创建独立 `builtin.tailcat` 实例，按新身份边界重构并复用适合的 internal/tcnet、internal/session；Engine 不再直接装配它们。设备身份由 Engine 新建；tailcat 传输密钥在实例私有目录首次初始化，按[装配契约](backend-migration-contract.md) 原子持久化与持锁；不导入旧密钥或地址；插件不打开 Engine 的 SQLite。信任以 Engine RPC 为准，不维护第二套授信逻辑。
 - Options.Network/engine.Network 在 P5 同批移除，替换为 builtin 实例或外部程序的显式装配；Transport 注入只保留在后端内部。Engine/桌面以正常装配的 builtin 实例回归，外部 RPC 另用真实测试进程，见[装配契约](backend-migration-contract.md)。SDK 零装配为本机模式，桌面默认显式启用 builtin tailcat，不另保留绕过插件的网络生产路径。
 
 独立后端的授权、连接事件、状态快照、撤销屏障与发送/接收 DTO 以[同步后端业务契约](sync-backend-contract.md) 为准。Unpair 的成功返回要求后端确认旧会话终止或进程已回收，不能只依赖发送一条不等待确认的通知。

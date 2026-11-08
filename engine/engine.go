@@ -13,6 +13,7 @@ package engine
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/identity"
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/internal/store"
@@ -38,6 +40,7 @@ type Engine struct {
 	log      *slog.Logger
 
 	lock    *dirLock
+	ident   *identity.Identity // unified device identity (identity protocol v1)
 	st      *store.Store
 	tr      Network
 	trUsed  bool // tr.Start was called, so tr.Close is due
@@ -180,10 +183,16 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	hist.sweep(st)                                     // expired records go before anyone can ask for them
 	_, _ = st.InterruptPending(time.Now().UnixMilli()) // unfinished sends are not resumed
 
-	id, err := identity(st)
+	id, err := legacyDeviceID(st)
 	if err != nil {
 		// Never invent a new identity because the old one could not be read.
 		return closeAll(newErr(CodeUnavailable, "cannot read the device identity"))
+	}
+	ident, err := openDeviceIdentity(opts.DataDir, st)
+	if errors.Is(err, errIdentityMismatch) {
+		return closeAll(newErr(CodeIdentityMismatch, "the device identity does not match this data directory"))
+	} else if err != nil {
+		return closeAll(newErr(CodeUnavailable, "cannot open the device identity"))
 	}
 	defName, err := defaultName(st, id)
 	if err != nil {
@@ -200,7 +209,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 
 	e := &Engine{
 		instance: InstanceID(randHex(8)), opts: opts, res: res, log: opts.Logger,
-		lock: lock, st: st, tr: tr, self: DeviceID(id), defName: defName,
+		lock: lock, st: st, ident: ident, tr: tr, self: DeviceID(id), defName: defName,
 		ctl:      make(chan struct{}, 1),
 		life:     LifecycleCreated,
 		runtime:  RuntimeActive,
@@ -259,7 +268,7 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func identity(st *store.Store) (string, error) {
+func legacyDeviceID(st *store.Store) (string, error) {
 	if b, err := st.Meta("device.id"); err != nil {
 		return "", err
 	} else if b != nil {
@@ -652,4 +661,33 @@ func (e *Engine) NotifyNetworkChanged(ctx context.Context) error {
 	}
 	e.core.NetworkChanged()
 	return nil
+}
+
+var errIdentityMismatch = errors.New("device identity does not match the registered key")
+
+// openDeviceIdentity loads the unified device identity (DataDir/identity). The
+// public key is registered in the database on first use; afterwards the key
+// file must match it. A missing, damaged or different key file is an error:
+// a registered identity is never replaced by a freshly generated one.
+func openDeviceIdentity(dataDir string, st *store.Store) (*identity.Identity, error) {
+	dir := filepath.Join(dataDir, "identity")
+	reg, err := st.Meta("identity.public")
+	if err != nil {
+		return nil, err
+	}
+	if reg == nil {
+		id, _, err := identity.LoadOrCreate(dir)
+		if err != nil {
+			return nil, err
+		}
+		return id, st.SetMeta("identity.public", id.Public())
+	}
+	id, err := identity.Load(dir)
+	if err != nil {
+		return nil, err
+	}
+	if subtle.ConstantTimeCompare(id.Public(), reg) != 1 {
+		return nil, errIdentityMismatch
+	}
+	return id, nil
 }

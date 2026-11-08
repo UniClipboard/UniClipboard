@@ -47,6 +47,7 @@ var (
 	ErrIdentityConflict   = errors.New("identity_conflict")
 	ErrBadPairProof       = errors.New("bad_pair_proof")
 	ErrBadIdentityFile    = errors.New("bad_identity_file")
+	ErrNoIdentity         = errors.New("no_identity")
 )
 
 const (
@@ -120,11 +121,27 @@ const (
 	fileHeader = "UNIC-ID1\n"
 )
 
+// Load opens dir/device.key and never creates it. A missing file is
+// ErrNoIdentity; one that exists but cannot be trusted is ErrBadIdentityFile.
+func Load(dir string) (*Identity, error) {
+	id, _, err := open(dir, false)
+	return id, err
+}
+
 // LoadOrCreate opens dir/device.key, creating a fresh identity only when the
 // file does not exist. A file that exists but cannot be trusted is an error;
 // a new identity is never generated in its place.
 func LoadOrCreate(dir string) (id *Identity, created bool, err error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	return open(dir, true)
+}
+
+func open(dir string, create bool) (id *Identity, created bool, err error) {
+	path := filepath.Join(dir, fileName)
+	if !create {
+		if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+			return nil, false, ErrNoIdentity
+		}
+	} else if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, false, fmt.Errorf("identity: %w", err)
 	}
 	if fi, err := os.Lstat(dir); err != nil || fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
@@ -135,10 +152,12 @@ func LoadOrCreate(dir string) (id *Identity, created bool, err error) {
 			return nil, false, ErrBadIdentityFile
 		}
 	}
-	path := filepath.Join(dir, fileName)
 	fi, err := os.Lstat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
+		if !create {
+			return nil, false, ErrNoIdentity
+		}
 		seed := make([]byte, ed25519.SeedSize)
 		if _, err := rand.Read(seed); err != nil {
 			return nil, false, err

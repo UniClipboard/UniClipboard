@@ -427,6 +427,7 @@ const (
 	EventReceived     EventKind = "received"
 	EventApply        EventKind = "apply"
 	EventHistory      EventKind = "history" // Objects: type "history", ID = HistoryID
+	EventDevices      EventKind = "devices" // Objects: type "device", ID = Device.ID
 	// EventResourceWarning is a hint that something was refused for lack of
 	// room. It is not a task: losing it loses nothing.
 	EventResourceWarning EventKind = "resource_warning"

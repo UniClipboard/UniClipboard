@@ -85,6 +85,8 @@ CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);`,
 	// Plugins no longer rewrite content, so there is no automation chain to count.
 	`ALTER TABLE clip_items DROP COLUMN depth;
 UPDATE clip_items SET origin_kind = 'action' WHERE origin_kind = 'plugin';`,
+	// Unified devices and their per-backend-instance bindings (decision 0008).
+	deviceSchema,
 }
 
 func migrate(db *sql.DB) error {

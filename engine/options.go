@@ -38,6 +38,9 @@ type Options struct {
 	ResolveFileRef func(ref string) FileSource
 	// History bounds the persistent local history; zero fields take defaults.
 	History HistoryOptions
+	// MigrationMode opens an offline import session. Start is forbidden;
+	// import bypasses clipboard processing and never evicts existing history.
+	MigrationMode bool
 	// Logger receives structured diagnostics that never contain clipboard
 	// content, addresses, tickets or paths. It must not block. Nil: silent.
 	Logger *slog.Logger

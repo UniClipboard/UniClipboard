@@ -36,6 +36,7 @@ The background node is a separate program, unicd; start it first.
   paste            print the clipboard's text
   watch            print sync events as they happen
   config [path]    show the settings in effect (or the config file's path)
+  migrate [flags]  import local UniClipboard v1 history (stop unicd first)
 
 Settings live in config.toml in the state directory; saving it applies it at once.
 Set UNIC_HOME to run a separate profile, UNIC_RENDEZVOUS_URL to use another
@@ -53,6 +54,8 @@ func main() {
 		err = fmt.Errorf("the daemon is a separate program: run `unicd`")
 	case "gui":
 		err = runGUI()
+	case "migrate":
+		err = runMigration(args)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:

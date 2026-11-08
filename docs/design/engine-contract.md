@@ -379,3 +379,8 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 28. **Network 选项**：`Options.Network` 允许替换默认的 tailcat 网络（接口只用标准库类型），用于测试和特殊嵌入；`Start`/`Close` 各调用一次，挂起恢复时 `Listen` 会再次调用。
 29. **桌面适配的约定**：适配器把剪贴板快照只保留 text/html/png 与普通文件，文件以引用导入；无法表示的内容（文件夹、超限、只有厂商格式）按“剪贴板已清空”上报，因此之后复制别的内容仍是真实变化。应用成功后适配器会把条目移出接收列表（`DismissReceived`），接收文件的生命周期只由剪贴板上的租约决定，被新内容替换后立即释放。显式发送（CLI/GUI 的写入并发送）先写入、回读，再以新 epoch 的 baseline 建立基线，最后 `SubmitContent`，一次请求只发送一次。
 30. **HTTP /v1 的兼容**：响应形状不变。`POST /v1/pending/{id}/approve` 新增可选请求体 `{"fingerprint": "..."}`：给出时若设备当前指纹不同则返回 409；GUI 发送它展示的指纹，旧客户端不发则按当前指纹批准。事件的 `Info` 不再携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。
+
+
+### 本机旧历史迁移
+
+[0011](decisions/0011-v1-history-migration.md) 的独立 CLI 使用 `Options.MigrationMode` 获取目标目录锁并离线导入。`ImportHistory`、`LookupHistoryImport`、`ImportHistoryTags` 与 `ListHistoryTags` 的契约见[本机历史契约](history-contract.md)。该模式禁止 Start，不启动网络或插件，不应用剪贴板。

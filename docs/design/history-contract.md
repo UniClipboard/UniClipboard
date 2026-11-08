@@ -36,11 +36,11 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 | ID | HistoryID |
 | Revision | 持久化 uint64，创建为 1；每次有效元数据或同步摘要变更递增，CAS 使用此值 |
 | Kind | text/image/files；含文件优先 files，其次 PNG 为 image，其余为 text，与宿主应用优先级一致 |
-| Origin | Kind 为 local_system/remote_device/explicit/action/external；DeviceID、PluginID 仅对应来源有值（external 来源的 PluginID 是后端实例，没有 DeviceID），不含秘密地址 |
+| Origin | Kind 为 local_system/remote_device/explicit/action/external/migration；DeviceID、PluginID 仅对应来源有值（external 来源的 PluginID 是后端实例，没有 DeviceID）；migration 不关联设备，不含秘密地址 |
 | SourceApp | 可空的不透明应用标识，不包含窗口标题、路径或自由文本摘要 |
-| CreatedAtMs / UpdatedAtMs | 本机 commit 时间 / 最后一次有效变更时间；不采用远端时间 |
+| CreatedAtMs / UpdatedAtMs | 本机 commit 时间 / 最后一次有效变更时间；迁移例外保留旧库创建/活动时间，普通网络接收不采用远端时间 |
 | ExpiresAtMs | 0 为永不过期，否则为绝对 Unix 毫秒时间 |
-| Tags | 最多 32 个，每个最多 64 个 UTF-8 字节，去重、按 UTF-8 字节顺序返回 |
+| Tags | 最多 1000 个，每个最多 64 个 Unicode 字符，须为有效 UTF-8，去重、按 UTF-8 字节顺序返回 |
 | Parts | 只含 Kind、MIME、Size；不含文本预览、文件名、路径、PartID 或实例内 ContentID |
 | TotalBytes | 所有 part 的逻辑字节总和 |
 | SyncState | not_requested/pending/sent/partial/failed/interrupted；各后端汇总，不代表远端收到或应用 |
@@ -56,7 +56,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 
 首版不提供正文关键词、文件名搜索、模糊匹配、相关度排序或全文索引；不以返回全量正文让宿主自行搜索来绕过边界。
 
-`HistoryPage{Items []HistoryItem, NextCursor string, HistoryRevision uint64}`。顺序使用私有的、事务内递增且持久化的 commit 序号降序，不依赖墙钟或 HistoryID；相同毫秒和系统时间回拨不会造成重复/漏页。序号不是公开 ID。第一页面固定上界，后续页使用 keyset 游标，不使用 offset，不保留长事务。
+`HistoryPage{Items []HistoryItem, NextCursor string, HistoryRevision uint64}`。顺序使用私有 `(order_ms, seq)` 降序；seq 是事务内递增且持久化的提交序号。普通提交的 order_ms 为当前创建时间与已有最大排序时间的较大值，迁移为旧创建时间，以便与既有历史合并。两字段持久化后不变，相同毫秒和系统时间回拨不会造成重复/漏页。序号不是公开 ID。第一页固定 seq 上界，后续页使用复合 keyset 游标，不使用 offset，不保留长事务。
 
 游标绑定 DataDir、当前 InstanceID、规范化 Filter、第一页上界和上页末尾序号。后续请求须带相同 Filter，Limit 可变。畸形或篡改游标报 invalid_argument，变更 Filter 报 conflict，跨实例游标报 resource_expired。游标不得携带正文、路径或秘密；必须校验来源与完整性。
 
@@ -136,3 +136,14 @@ State 新增 `HistoryRevision`，不嵌入全量历史。历史增删改在持�
 - 条数/字节淘汰、单条超限无破坏、活动引用不虚报可回收空间，Stop/Close 保留持久资源。
 - 到期读时不可见、时钟变化、重启清理；history 修订与订阅快照无窗口，溢出可重新查询。
 - pending 在重启后变 interrupted，无隐式重发；日志/事件/错误不含正文、地址、票据和路径。
+
+
+## 离线归档导入（0011，已实现）
+
+`Options.MigrationMode=true` 的 Engine 可以在 `New` 后调用 `ImportHistory`，但不能 `Start`。目标目录沿用全局独占锁。普通会话调用导入返回 `invalid_state`。
+
+`HistoryImportRequest` 包含不透明 `Source`、`RecordID`、`CreatedAtMs`、`UpdatedAtMs`、`Tags` 与 `ContentInput`。来源标识和记录 ID 各为 1..256 字节，时间非负；内容要求与本机支持的标准格式一致，文件必须提供 Reader，不接受外部 Source 引用。内容写入目标自有存储，文件在发布数据库引用前同步落盘；条目、标签关联、来源映射同事务提交。失败不发布映射，可重试。导入不走普通处理、发送、系统剪贴板与容量淘汰流程。
+
+`ImportHistory` 返回 `HistoryImportResult{HistoryID, AlreadyImported}`。`LookupHistoryImport` 查询持久映射；相同来源和记录再次导入返回原 ID，不以正文去重。目标条目被主动删除后仍保留映射，重跑不会复活记录；源后续变更不覆盖已导入内容与标签。`ImportHistoryTags` 在迁移会话中保存无关联名称，`ListHistoryTags` 返回定义与条目关联的并集。
+
+容量下限、旧格式解锁、目录 ZIP 与完成校验见[0011](decisions/0011-v1-history-migration.md)。旧密码与旧源目录均不进入 SDK 请求。

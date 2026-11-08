@@ -178,7 +178,7 @@ type HistoryOptions struct {
 }
 ```
 
-HistoryKind 为 text/image/files，HistoryOriginKind 为 local_system/remote_device/explicit/action，HistorySyncState 为 not_requested/pending/sent/partial/failed/interrupted。HistoryOrigin 只在 remote_device 携带 DeviceID、只在 action 携带 PluginID；内部远端进入标记另存，不能靠公开来源重新推断是否允许转发。PartKind 沿用既有 representation/file，摘要不暴露 Name、PartID、路径或正文。
+HistoryKind 为 text/image/files，HistoryOriginKind 为 local_system/remote_device/explicit/action/migration，HistorySyncState 为 not_requested/pending/sent/partial/failed/interrupted。HistoryOrigin 只在 remote_device 携带 DeviceID、只在 action 携带 PluginID；内部远端进入标记另存，不能靠公开来源重新推断是否允许转发。PartKind 沿用既有 representation/file，摘要不暴露 Name、PartID、路径或正文。
 
 BackendSyncStates 按 BackendID 排序且不重复；State 描述实际目标汇总，Disposition 保存首次提交决策，ErrorCode 仅保存稳定失败类别。重启把 pending 改为 interrupted，不把原 queued 决策改成“已重发”。禁发/无后端/远端不转发可只有聚合 not_requested 而无后端摘要；删除插件装配不删旧历史摘要。
 

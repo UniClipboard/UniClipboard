@@ -12,6 +12,20 @@ type Store struct{ db *sql.DB }
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS history_imports (
+ source TEXT NOT NULL, record_id TEXT NOT NULL, history_id TEXT NOT NULL,
+ PRIMARY KEY(source, record_id)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS history_labels (name TEXT PRIMARY KEY) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS clip_item_order (
+ item_seq INTEGER PRIMARY KEY REFERENCES clip_items(seq) ON DELETE CASCADE,
+ order_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS clip_item_order_time ON clip_item_order(order_ms, item_seq);
+CREATE TABLE IF NOT EXISTS history_import_limits (
+ id INTEGER PRIMARY KEY CHECK(id=1), max_items INTEGER NOT NULL,
+ max_bytes INTEGER NOT NULL, max_stored_bytes INTEGER NOT NULL
+);
 `
 
 func Open(path string) (*Store, error) {

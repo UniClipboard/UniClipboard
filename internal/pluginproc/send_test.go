@@ -17,6 +17,9 @@ import (
 )
 
 func (h *peerHelper) Send(ctx context.Context, s rpc.Send, host plugin.SendHost) error {
+	if name, ok := strings.CutPrefix(s.Clip.WireID, "recv:"); ok {
+		return h.inbound(ctx, name, s)
+	}
 	g, err := host.Authorize(ctx)
 	if err != nil {
 		h.log("authorize-refused " + s.DispatchID)
@@ -196,5 +199,7 @@ func TestSendRequestsAreCheckedAgainstTheSend(t *testing.T) {
 		t.Errorf("index out of range: %v", err)
 	}
 }
+
+func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }
 
 func asRPC(err error, target **rpc.Error) bool { return errors.As(err, target) }

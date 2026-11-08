@@ -246,6 +246,12 @@ func (c *Conn) onRequest(f Frame) error {
 			depth = c.handlers[uint64(req.Parent)].depth + 1
 		case c.pending[uint64(req.Parent)] != nil && !c.pending[uint64(req.Parent)].cancelled:
 			depth = c.pending[uint64(req.Parent)].depth + 1
+		case c.resolvedLocked(uint64(req.Parent)):
+			// The parent finished while this child was in flight: not a
+			// violation, the child is simply refused.
+			c.mu.Unlock()
+			go c.respond(f.RequestID, nil, NewError(CodeCancelled), nil)
+			return nil
 		default:
 			c.mu.Unlock()
 			return protoErr("parent request is not active")
@@ -387,6 +393,11 @@ type CallOptions struct {
 	// Build, when set, produces Params once the request ID is known so
 	// streams can be rooted at it. It must not block on the peer.
 	Build func(id uint64) (any, error)
+	// Sent, when set, runs once the request frame has been written, in the
+	// calling goroutine. Child requests that name this call as Parent may be
+	// started from here: they are ordered after the request on the wire. It
+	// must not block.
+	Sent func(id uint64)
 }
 
 // Call sends a request and waits for its response, decoding the result into
@@ -464,6 +475,9 @@ func (c *Conn) Call(ctx context.Context, o CallOptions, result any) (uint64, err
 	if err := c.write(Frame{Type: TypeRequest, RequestID: id, Payload: payload}); err != nil {
 		return fail(NewError(CodeUnavailable))
 	}
+	if o.Sent != nil {
+		o.Sent(id)
+	}
 
 	select {
 	case resp := <-pc.ch:
@@ -505,4 +519,13 @@ func (c *Conn) Call(ctx context.Context, o CallOptions, result any) (uint64, err
 func deadline(ctx context.Context) time.Time {
 	dl, _ := ctx.Deadline()
 	return dl
+}
+
+// resolvedLocked reports whether id names a request that was issued by one
+// side and is no longer active. c.mu must be held.
+func (c *Conn) resolvedLocked(id uint64) bool {
+	if id&1 == c.peerParity() {
+		return id <= c.lastPeer
+	}
+	return id < c.nextReq
 }

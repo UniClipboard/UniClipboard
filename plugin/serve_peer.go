@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/uniclipboard/unic/plugin/rpc"
@@ -202,3 +203,119 @@ type SendSource interface {
 type PeerDispatcher interface {
 	Send(ctx context.Context, s rpc.Send, src SendSource) error
 }
+
+// ReceiveBody is one part's network body; Size is the declared length.
+type ReceiveBody struct {
+	Size uint64
+	R    io.Reader
+}
+
+// PeerHost is what a peer_sessions backend asks of the Engine about inbound
+// clips: ReceiveOpen before reading any body byte, then Receive with the
+// bodies in order. Discard from ReceiveOpen means drain Size bytes per part
+// and keep the connection; an error means the header is not drainable.
+type PeerHost interface {
+	ReceiveOpen(ctx context.Context, o rpc.ReceiveOpen) (rpc.ReceiveGrant, error)
+	Receive(ctx context.Context, receiveID string, parts []ReceiveBody) (outcome string, err error)
+}
+
+// PeerHostAware backends get their PeerHost after Init and before Start.
+type PeerHostAware interface{ SetPeerHost(PeerHost) }
+
+func (s *server) wirePeer() {
+	if a, ok := s.p.(PeerHostAware); ok && s.spec.TransportKind == TransportPeerSessions && !s.spec.ExternalChannels {
+		a.SetPeerHost(remotePeerHost{s})
+	}
+}
+
+type remotePeerHost struct{ s *server }
+
+const receiveCallTimeout = 10 * time.Minute
+
+func (h remotePeerHost) ReceiveOpen(ctx context.Context, o rpc.ReceiveOpen) (rpc.ReceiveGrant, error) {
+	if err := o.Validate(); err != nil {
+		return rpc.ReceiveGrant{}, err
+	}
+	var g rpc.ReceiveGrant
+	if _, err := h.s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodReceiveOpen, Timeout: 30 * time.Second, Params: o}, &g); err != nil {
+		return g, err
+	}
+	if g.Validate() != nil {
+		return rpc.ReceiveGrant{}, rpc.NewError(rpc.CodeInternal)
+	}
+	return g, nil
+}
+
+func (h remotePeerHost) Receive(ctx context.Context, receiveID string, parts []ReceiveBody) (string, error) {
+	conn := h.s.conn
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var feedErr atomic.Pointer[error]
+	// The part declarations are children of the receive call, so they start
+	// only after its request frame is on the wire.
+	feed := func(root uint64) {
+		go func() {
+			fail := func(err error) { feedErr.Store(&err); cancel() }
+			for i, p := range parts {
+				d := rpc.StreamDesc{Purpose: rpc.PurposeReceivePart}
+				var ss *rpc.SendStream
+				if p.Size > 0 {
+					var err error
+					if ss, d, err = conn.NewSend(conn.Context(), root, rpc.PurposeReceivePart, p.Size); err != nil {
+						fail(err)
+						return
+					}
+				}
+				if _, err := conn.Call(cctx, rpc.CallOptions{Method: rpc.MethodPeerReceivePart, Parent: root, Timeout: 30 * time.Second,
+					Params: rpc.PeerReceivePart{ReceiveID: receiveID, Index: i, Stream: d}}, nil); err != nil {
+					fail(err)
+					return
+				}
+				if ss == nil {
+					continue
+				}
+				if _, err := io.Copy(ss, io.LimitReader(p.R, int64(p.Size))); err != nil {
+					fail(err)
+					return
+				}
+				if err := ss.Close(); err != nil {
+					fail(err)
+					return
+				}
+			}
+		}()
+	}
+	var res rpc.PeerReceiveResult
+	id, err := conn.Call(cctx, rpc.CallOptions{Method: rpc.MethodPeerReceive, Timeout: receiveCallTimeout,
+		Params: rpc.PeerReceive{ReceiveID: receiveID}, Sent: feed}, &res)
+	cancel() // stop the feeder before its streams are released
+	conn.ReleaseRoot(id)
+	if err != nil {
+		if fe := feedErr.Load(); fe != nil {
+			return "", *fe
+		}
+		return "", err
+	}
+	if res.Validate() != nil {
+		return "", rpc.NewError(rpc.CodeInternal)
+	}
+	return res.Outcome, nil
+}
+
+// ReceiveParts hands the Engine each admitted part's body, in order.
+type ReceiveParts interface {
+	// Next blocks until the backend declares the next part, and returns
+	// io.EOF after the last. The caller reads and closes the body before Next.
+	Next(ctx context.Context) (index int, body io.ReadCloser, err error)
+}
+
+// PeerReceiver is the Engine side of inbound clips. OpenReceive decides on
+// the header alone; Receive consumes the granted id, reads every part, and
+// returns after processing and commit.
+type PeerReceiver interface {
+	OpenReceive(ctx context.Context, o rpc.ReceiveOpen) (rpc.ReceiveGrant, error)
+	Receive(ctx context.Context, receiveID string, parts ReceiveParts) (outcome string, err error)
+}
+
+// PeerReceiverAware is implemented by the host-side proxy of a peer backend.
+type PeerReceiverAware interface{ SetPeerReceiver(PeerReceiver) }

@@ -15,6 +15,7 @@ import (
 
 // serveBackendInit gives a ReceiverAware backend its Receiver. Called from init.
 func (s *server) wireBackend() {
+	s.wirePeer()
 	if ra, ok := s.p.(ReceiverAware); ok && s.spec.ExternalChannels {
 		ra.SetReceiver(remoteReceiver{s})
 	}

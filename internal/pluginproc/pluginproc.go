@@ -119,6 +119,9 @@ type Proxy struct {
 	receiver  plugin.Receiver
 	transfers map[string]*transfer
 	sends     map[uint64]*activeSend
+	precv     plugin.PeerReceiver
+	rgrants   map[string]*recvGrant
+	recvs     map[uint64]*activeRecv
 
 	applyGate chan struct{} // serializes ApplyState
 }
@@ -438,6 +441,7 @@ func (p *Proxy) onExit(s *session) {
 	p.failLocked()
 	p.bmu.Lock()
 	p.transfers = nil // their hosts die with the session
+	p.rgrants = nil   // receive ids die with the session
 	p.bmu.Unlock()
 }
 

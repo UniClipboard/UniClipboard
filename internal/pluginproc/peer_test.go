@@ -23,7 +23,10 @@ func peerSpecT() plugin.Spec {
 // peerHelper logs what it was told to files in its private directory, so the
 // parent can observe the plugin's view. A peer named "hang" makes ApplyState
 // block forever, as a stuck backend would.
-type peerHelper struct{ dir string }
+type peerHelper struct {
+	dir string
+	ph  plugin.PeerHost
+}
 
 func (h *peerHelper) Spec() plugin.Spec { return peerSpecT() }
 func (h *peerHelper) Init(context.Context, plugin.Host, plugin.Config) error {

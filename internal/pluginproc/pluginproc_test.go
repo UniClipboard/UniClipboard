@@ -100,6 +100,9 @@ func TestMain(m *testing.M) {
 	case "ignore-eof":
 		go func() { _ = plugin.Serve(&helperPlugin{}) }()
 		select {}
+	case "peer":
+		_ = plugin.Serve(&peerHelper{})
+		os.Exit(0)
 	case "garbage":
 		os.Stdout.WriteString("this is not a frame at all, just text")
 		os.Exit(0)

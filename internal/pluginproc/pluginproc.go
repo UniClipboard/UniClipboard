@@ -108,6 +108,7 @@ type Proxy struct {
 	state   int
 	sess    *session
 	crashes []time.Time
+	want    peerWant // peer_sessions binding and latest state; guarded by mu
 
 	notifyMu   sync.Mutex
 	notifyTime []time.Time
@@ -115,6 +116,8 @@ type Proxy struct {
 	bmu       sync.Mutex // sync-backend state
 	receiver  plugin.Receiver
 	transfers map[string]*transfer
+
+	applyGate chan struct{} // serializes ApplyState
 }
 
 // ErrUnavailable is returned while the process is down or has exhausted its
@@ -125,8 +128,14 @@ var ErrUnavailable = rpc.NewError(rpc.CodeUnavailable)
 // spec.Expected, so engine capability checks see the right interfaces.
 func New(spec Spec, opts Options) plugin.Plugin {
 	opts.fill()
-	p := &Proxy{spec: spec, opts: opts, gate: make(chan struct{}, 1), stop: make(chan struct{})}
+	p := &Proxy{spec: spec, opts: opts, gate: make(chan struct{}, 1), applyGate: make(chan struct{}, 1), stop: make(chan struct{})}
 	has := func(c string) bool { return slices.Contains(spec.Expected.Capabilities, c) }
+	if has(plugin.CapSyncBackend) && spec.Expected.TransportKind == plugin.TransportPeerSessions && !spec.Expected.ExternalChannels {
+		return struct {
+			*Proxy
+			peerM
+		}{p, peerM{p}}
+	}
 	if has(plugin.CapSyncBackend) {
 		if spec.Expected.RemoteRevocation {
 			return struct {
@@ -459,16 +468,7 @@ func (p *Proxy) restart(delay time.Duration) {
 		case <-ctx.Done():
 		}
 	}()
-	s, err := p.spawn(ctx)
-	if err == nil {
-		if err = p.handshakeCalls(ctx, s, p.cfg); err == nil {
-			_, err = s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodStart, Timeout: p.opts.StartTimeout, Params: rpc.Empty{}}, nil)
-		}
-		if err != nil {
-			p.terminate(s)
-		}
-	}
-	p.mu.Lock()
+	s, err := p.launch(ctx)
 	defer p.mu.Unlock()
 	if p.state == stClosed {
 		if err == nil {
@@ -506,16 +506,7 @@ func (p *Proxy) Restart(ctx context.Context) error {
 	p.mu.Unlock()
 	defer p.wg.Done()
 
-	s, err := p.spawn(ctx)
-	if err == nil {
-		if err = p.handshakeCalls(ctx, s, p.cfg); err == nil {
-			_, err = s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodStart, Timeout: p.opts.StartTimeout, Params: rpc.Empty{}}, nil)
-		}
-		if err != nil {
-			p.terminate(s)
-		}
-	}
-	p.mu.Lock()
+	s, err := p.launch(ctx)
 	defer p.mu.Unlock()
 	switch {
 	case p.state == stClosed:

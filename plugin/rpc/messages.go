@@ -159,6 +159,7 @@ const (
 	CodeUnsupported     = "unsupported"
 	CodePermission      = "permission_denied"
 	CodeNotFound        = "not_found"
+	CodeConflict        = "conflict"
 	CodeLimitExceeded   = "limit_exceeded"
 	CodeExhausted       = "resource_exhausted"
 	CodeUnavailable     = "unavailable"

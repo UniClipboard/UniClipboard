@@ -78,6 +78,7 @@ type server struct {
 	events  []string
 	closing bool
 
+	peer       peerState
 	notifyMu   sync.Mutex
 	notifyTime []time.Time
 }
@@ -104,6 +105,10 @@ func (s *server) handle(ctx context.Context, c *rpc.Call) (any, error) {
 		res, err = s.submit(ctx, c)
 	case rpc.MethodLeaveChannel:
 		res, err = s.leaveChannel(ctx, c)
+	case rpc.MethodBind:
+		res, err = s.bindPeer(ctx, c)
+	case rpc.MethodApplyState:
+		res, err = s.applyState(ctx, c)
 	default:
 		return nil, rpc.NewError(rpc.CodeUnsupported)
 	}
@@ -177,6 +182,17 @@ func (s *server) closePlugin(ctx context.Context) {
 	s.closing = true
 	s.mu.Unlock()
 	_ = safely(func() error { return s.p.Close(ctx) })
+}
+
+// initialized allows the pre-Start window in which the host installs the
+// binding and initial state.
+func (s *server) initialized() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state != 1 && s.state != 2 {
+		return rpc.NewError(rpc.CodeInvalidState)
+	}
+	return nil
 }
 
 func (s *server) started() error {

@@ -1,6 +1,6 @@
 # 0004 执行计划：剪贴板流水线、历史与 Go / Lua 插件
 
-- 状态：契约定义阶段；标注“定义/方案”的勾选仅表示该文档交付及文档检查完成。实现任务须代码、契约与对应验证均完成才可勾选，不能以文档完成代替运行验收。
+- 状态：实现中（P2、P4 完成；P5 的身份协议与 peer_sessions 外部后端、P6 的 Lua 运行时已实现，builtin tailcat 重构与 P3/P7/P8 未开始，更新于 2026-11-08）；标注“定义/方案”的勾选仅表示该文档交付及文档检查完成。实现任务须代码、契约与对应验证均完成才可勾选，不能以文档完成代替运行验收。
 - 日期：2026-11-07。
 - 依据：[0004](../design/decisions/0004-clipboard-pipeline-lua.md)、[插件契约](../design/plugin-contract.md)、[Engine 契约](../design/engine-contract.md)、[0002 配置](../design/decisions/0002-config-file.md)、[0005 布局](../design/decisions/0005-monorepo-layout.md)。
 - 范围：本计划覆盖 0004 与插件契约的桌面首版，包括 GitHub 安装及默认 builtin `builtin.tailcat`；不包含移动端子进程支持。
@@ -121,12 +121,12 @@ P4 剩余（均不阻塞 P5）：`device.*`/`sync.*` 通知（会话事件不带
 
 以[0008](../design/decisions/0008-device-identity-and-backend-bindings.md)及[设备契约](../design/device-contract.md)为准；下述新增项目为前置定义/实现任务，现有 RPC 通过不表示设备认证通过。
 
-- [ ] 定义统一设备身份、持钥证明、连接/仓库绑定、防重放、配对票据和身份核对算法，版本化更新网络协议、RPC Schema/向量及互操作测试。
-- [ ] 分离插件实现与配置实例标识，定义并实现 Device/DeviceBackendBinding、候选/配对与关联授权 DTO、CAS 和持久状态。
+- [x] 定义统一设备身份、持钥证明、连接/仓库绑定、防重放、配对票据和身份核对算法，版本化更新网络协议、RPC Schema/向量及互操作测试。（2026-11-08：`internal/identity` 与 `docs/design/identity-protocol.md`、向量 `vectors/identity-v1.json`、RPC 方法 `identity_hello/prove/check_peer`，Engine 一侧握手已实现；真实子进程互通见 `engine/peere2e_test.go`。tailcat 侧互通随 builtin 重构。）
+- [x] 分离插件实现与配置实例标识，定义并实现 Device/DeviceBackendBinding、候选/配对与关联授权 DTO、CAS 和持久状态。（2026-11-08：设备/绑定/候选/审批 DTO、CAS 与持久状态已实现，见 `engine/devices_test.go`、`engine/candidates_test.go`。）
 - [ ] 提供统一设备列表和各实例状态/控制；验收同设备多路径归并、新关联审批、无 tailcat 配对、单路径隔离与设备全路径撤销。
 
 - [ ] 在 `internal/plugins/builtintext/` 新增 builtin tailcat 实现，保留独立 ID `builtin.tailcat`、配置和生命周期，由宿主显式创建实例并装配，只复用适合新身份协议的 tcnet/传输基础设施；重构 session/wire 与身份、信任和数据库的边界，不保留旧 wire v2 互通要求，插件不打开 Engine SQLite。
-- [ ] 定义 builtin 与 external 共用的 SyncBackend/SyncHost 业务接口，并为外部后端实现 RPC 适配：按实例隔离且带修订的授权快照、Engine 可验证的身份材料、设备/关联授权检查、准入、传输前授权、流式内容与关联状态上报；只在显式导出返回秘密地址。
+- [x] 定义 builtin 与 external 共用的 SyncBackend/SyncHost 业务接口，并为外部后端实现 RPC 适配：按实例隔离且带修订的授权快照、Engine 可验证的身份材料、设备/关联授权检查、准入、传输前授权、流式内容与关联状态上报；只在显式导出返回秘密地址。（2026-11-08：peer_sessions 外部后端的 RPC 适配已实现并有真实子进程测试：授权快照、握手、准入、传输前授权、流式收发、会话上报、设备介绍；后端进程意外退出会结束其全部会话。）
 - [ ] Engine 管理统一设备身份、配对票据/操作、审批与关联授权，并保留过滤、队列和资源所有权；Unpair 撤销全部关联，单关联移除/暂停只影响该路径。配对码只发现目标，入站始终须出码方批准并核对身份；新路径绑定须验证同一身份和本次上下文，再单独确认。
 - [ ] 持续持有 tailcat 端点和长连接，连续 Send 复用 builtin 实例和会话；断线、挂起、崩溃恢复按契约执行。
 - [ ] 按装配契约在 New 初始化 Engine 统一身份，后端实例独立初始化传输凭据；覆盖原子持久化、中途失败、锁竞争、坏身份拒绝与重启恢复；不导入旧密钥、地址或配对记录。
@@ -137,9 +137,9 @@ P4 剩余（均不阻塞 P5）：`device.*`/`sync.*` 通知（会话事件不带
 
 ### P6 · Lua 适配与原子热替换
 
-- [ ] 按 Lua 运行时契约纳入固定版本及最小增强补丁、许可证和来源记录，每插件独立状态，映射统一插件表、生命周期、ctx 和只读通知；Go/Lua 混合严格按显式顺序运行。
-- [ ] 逐项开放基础函数/string/table/math 与有界 utf8 工具；禁止动态加载、环境/元表修改、文件、网络和普通 Host 再入提交，不能直接加载整库。
-- [ ] 实现 P0 方案中的粘滞指令中止、墙钟取消、原生操作/编译/逻辑分配预算及调用栈/注册表和正文限制（增强实现尚未验证）；覆盖初始化、启动、处理、通知、关闭等可执行脚本边界，防止在 process 之外死循环。
+- [x] 按 Lua 运行时契约纳入固定版本及最小增强补丁、许可证和来源记录，每插件独立状态，映射统一插件表、生命周期、ctx 和只读通知；Go/Lua 混合严格按显式顺序运行。（2026-11-08：`internal/luavm`、`internal/luaplugin` 已实现，差距见 lua-runtime-contract 状态行。）
+- [x] 逐项开放基础函数/string/table/math 与有界 utf8 工具；禁止动态加载、环境/元表修改、文件、网络和普通 Host 再入提交，不能直接加载整库。（2026-11-08：`internal/luavm` 白名单与沙箱测试；`utf8` 仅 valid/len/sub。）
+- [x] 实现 P0 方案中的粘滞指令中止、墙钟取消、原生操作/编译/逻辑分配预算及调用栈/注册表和正文限制（增强实现尚未验证）；覆盖初始化、启动、处理、通知、关闭等可执行脚本边界，防止在 process 之外死循环。（2026-11-08：预算与粘性中止已实现；分配计费只覆盖拼接/`string.rep`，非精确 RSS 保证，见契约状态行。）
 - [ ] 桌面读取和监听脚本；新实例验证/Init/Start 成功后在回调边界切换，再关闭旧实例。失败保留旧实例，启动无有效实例时拒绝启动。
 - [ ] 只允许同 ID/版本/API/能力的脚本与专属配置热替换；启用列表、顺序、订阅、Go 程序和后端切换报告需重启。
 - [ ] 提供规范化、URL 标签、敏感内容禁发、自动过期/分类示例及可运行 Go/Lua 模板；示例不得改变默认无用户插件的行为。

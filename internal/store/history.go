@@ -72,6 +72,16 @@ ALTER TABLE clip_item_parts ADD COLUMN version TEXT NOT NULL DEFAULT '';`,
 	// Per-backend sync summary: the first commit decision and a stable error class.
 	`ALTER TABLE clip_item_sync ADD COLUMN disposition TEXT NOT NULL DEFAULT '';
 ALTER TABLE clip_item_sync ADD COLUMN error_code TEXT NOT NULL DEFAULT '';`,
+	// Received transfers already committed, so the same transfer arriving
+	// through another backend is dropped. Bounded by age and count.
+	`CREATE TABLE sync_dedup (
+  source      TEXT NOT NULL,
+  transfer_id TEXT NOT NULL,
+  view_hash   TEXT NOT NULL,
+  created_ms  INTEGER NOT NULL,
+  PRIMARY KEY (source, transfer_id, view_hash)
+) WITHOUT ROWID;
+CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);`,
 }
 
 func migrate(db *sql.DB) error {
@@ -183,6 +193,12 @@ func bump(tx *sql.Tx) (uint64, error) {
 // InsertHistory stores a new item with revision 1 and returns its seq and the
 // new history revision. Tags must already be validated and unique.
 func (s *Store) InsertHistory(it HistoryItem) (seq int64, rev uint64, err error) {
+	return s.InsertHistoryDedup(it, nil)
+}
+
+// InsertHistoryDedup stores a new item and, in the same transaction, the
+// dedup record of the transfer it came from.
+func (s *Store) InsertHistoryDedup(it HistoryItem, d *Dedup) (seq int64, rev uint64, err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -211,6 +227,11 @@ created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?,
 	}
 	for b, st := range it.BackendStates {
 		if err := insertBackendSync(tx, seq, b, st); err != nil {
+			return 0, 0, err
+		}
+	}
+	if d != nil {
+		if err := putDedup(tx, *d); err != nil {
 			return 0, 0, err
 		}
 	}
@@ -670,4 +691,57 @@ func (s *Store) InterruptPending(nowMs int64) (ids []string, err error) {
 		return nil, err
 	}
 	return ids, tx.Commit()
+}
+
+// DedupKey names one received view of one transfer. Source must be the
+// authenticated sender, never a value the peer merely claims.
+type DedupKey struct{ Source, Transfer, View string }
+
+// Dedup is a success record plus the bounds that apply when it is written.
+type Dedup struct {
+	Key   DedupKey
+	NowMs int64
+	TTLMs int64
+	Max   int
+}
+
+func putDedup(tx *sql.Tx, d Dedup) error {
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO sync_dedup (source, transfer_id, view_hash, created_ms) VALUES (?, ?, ?, ?)`,
+		d.Key.Source, d.Key.Transfer, d.Key.View, d.NowMs); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sync_dedup WHERE created_ms <= ?`, d.NowMs-d.TTLMs); err != nil {
+		return err
+	}
+	// Under capacity pressure the oldest records go first.
+	_, err := tx.Exec(`DELETE FROM sync_dedup WHERE (source, transfer_id, view_hash) IN (
+SELECT source, transfer_id, view_hash FROM sync_dedup ORDER BY created_ms DESC, source, transfer_id, view_hash LIMIT -1 OFFSET ?)`, d.Max)
+	return err
+}
+
+// PutDedup records a successful receive that left no history record.
+func (s *Store) PutDedup(d Dedup) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := putDedup(tx, d); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// HasDedup reports whether a committed receive of this view is still remembered.
+func (s *Store) HasDedup(k DedupKey, nowMs, ttlMs int64) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM sync_dedup WHERE source = ? AND transfer_id = ? AND view_hash = ? AND created_ms > ?`,
+		k.Source, k.Transfer, k.View, nowMs-ttlMs).Scan(&n)
+	return n > 0, err
+}
+
+// DeleteDedup forgets a record (the receive it vouched for was rolled back).
+func (s *Store) DeleteDedup(k DedupKey) error {
+	_, err := s.db.Exec(`DELETE FROM sync_dedup WHERE source = ? AND transfer_id = ? AND view_hash = ?`, k.Source, k.Transfer, k.View)
+	return err
 }

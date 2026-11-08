@@ -246,7 +246,7 @@ func persistentRef(p *partRec) string {
 // persistHistory commits a processed item to the history and returns its ID.
 // Blobs are written first and the record second, so a failure leaves earlier
 // history intact; eviction happens only after the new record exists.
-func (e *Engine) persistHistory(ctx context.Context, pc *processedContent) (HistoryID, *Error) {
+func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup *store.Dedup) (HistoryID, *Error) {
 	h := e.hist
 	c := pc.c
 	var stored int64 // what history itself would store; referenced files are free
@@ -311,7 +311,7 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent) (Hist
 		return fail(ctxErr(err))
 	}
 	h.mu.Lock()
-	seq, _, err := e.st.InsertHistory(it)
+	seq, _, err := e.st.InsertHistoryDedup(it, dedup)
 	if err != nil {
 		h.mu.Unlock()
 		return fail(historyStoreErr(err))

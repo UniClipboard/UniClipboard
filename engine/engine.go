@@ -70,25 +70,26 @@ type Engine struct {
 	stopped  chan struct{} // closed when teardown is complete
 	closedCh chan struct{} // closed when Close is complete
 
-	trDone    chan struct{} // closed when tr.Start returned
-	events    <-chan session.Event
-	evCancel  func()
-	evStop    chan struct{}
-	evDone    chan struct{}
-	cs        *contentStore
-	hist      *history
-	backends  []syncBackend
-	syncMu    sync.Mutex // orders writes of a record's sync summary
-	recv      []*receipt // the received list, oldest first
-	recvTimer *time.Timer
-	histTimer *time.Timer // next expiry sweep; guarded by mu
-	obsMu     sync.Mutex  // serializes observation and application
-	obs       observation
-	ticket    *applyTicket
-	lastApply applyDone
-	pmu       sync.Mutex // pending request revisions
-	pendRevs  map[DeviceID]pendRev
-	pendCount uint64
+	trDone        chan struct{} // closed when tr.Start returned
+	events        <-chan session.Event
+	evCancel      func()
+	evStop        chan struct{}
+	evDone        chan struct{}
+	cs            *contentStore
+	hist          *history
+	backends      []syncBackend
+	dedupInflight map[store.DedupKey]struct{} // receives being read right now; guarded by mu
+	syncMu        sync.Mutex                  // orders writes of a record's sync summary
+	recv          []*receipt                  // the received list, oldest first
+	recvTimer     *time.Timer
+	histTimer     *time.Timer // next expiry sweep; guarded by mu
+	obsMu         sync.Mutex  // serializes observation and application
+	obs           observation
+	ticket        *applyTicket
+	lastApply     applyDone
+	pmu           sync.Mutex // pending request revisions
+	pendRevs      map[DeviceID]pendRev
+	pendCount     uint64
 
 	processors  []*pipelineProcessor // private adapters, fixed before Start
 	submissions map[RequestID]*submissionEntry
@@ -203,9 +204,10 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		subs:     map[*Subscription]struct{}{},
 		ops:      newOpTable(),
 		stopped:  make(chan struct{}), closedCh: make(chan struct{}),
-		pendRevs: map[DeviceID]pendRev{},
-		cs:       newContentStore(),
-		hist:     hist,
+		pendRevs:      map[DeviceID]pendRev{},
+		cs:            newContentStore(),
+		dedupInflight: map[store.DedupKey]struct{}{},
+		hist:          hist,
 	}
 	rv := opts.rendezvous
 	if rv == nil {

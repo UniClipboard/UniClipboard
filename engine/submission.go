@@ -172,7 +172,7 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	if failure == nil {
 		if processed.policy.Persist {
 			// A record that cannot be stored means the commit failed: nothing is sent.
-			historyID, failure = e.persistHistory(ctx, processed)
+			historyID, failure = e.persistHistory(ctx, processed, nil)
 		}
 		if failure == nil {
 			id, disp, results, syncErr, failure = e.dispatchProcessed(ctx, req, entry.hash, processed)

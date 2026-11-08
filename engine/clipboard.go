@@ -394,7 +394,7 @@ func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket,
 	if rc == nil {
 		return ApplyTicket{}, newErr(CodeNotFound, "no such received content (it may have expired)")
 	}
-	if !e.appliable(rc.c, e.policyLocked(BackendTailcat)) {
+	if !e.appliable(rc.c, e.policyLocked(rc.backend)) {
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
 	t := &applyTicket{token: ApplyToken(e.newID()), receipt: rc.ReceiptID, content: rc.c.id, rc: rc}

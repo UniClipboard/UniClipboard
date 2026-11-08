@@ -11,6 +11,7 @@ import (
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/internal/wire"
 )
 
@@ -24,31 +25,100 @@ func (e *Engine) recvDir() string { return filepath.Join(e.opts.InboxDir, recvDi
 type receipt struct {
 	ReceivedContent
 	c       *contentObj
+	backend PluginID // the backend it came through; its policy decides what can be applied
 	expires time.Time
 	locked  bool // being applied: must not be evicted (set by the apply flow)
 }
 
-// receiver adapts the engine to the session layer's Receiver.
+// receiver adapts the tailcat session layer to the engine's receive path.
 type receiver struct{ e *Engine }
 
-// Admit reserves room for an incoming clip, making room by dropping the oldest
-// received entries that nobody is using. When there is none the clip is read
-// and discarded, which keeps the connection in step.
 func (r receiver) Admit(peer string, m wire.Clip) (session.Admission, bool) {
-	e := r.e
-	var total int64
+	req := receiveRequest{backend: BackendTailcat, source: DeviceID(peer), origin: m.Origin, transfer: m.ID, view: m.Hash}
 	for _, p := range m.Parts {
-		total += p.Size
+		req.total += p.Size
+		req.parts = append(req.parts, receivePart{file: p.Kind == "file", mime: p.Name})
 	}
-	if total == 0 {
+	return r.e.admitReceive(req)
+}
+
+// receiveRequest is what a backend tells Engine about an incoming clip before
+// any content is read. source is the authenticated sender; origin is what the
+// sender claims and must equal it, since nothing is forwarded.
+type receiveRequest struct {
+	backend  PluginID
+	source   DeviceID
+	origin   string
+	transfer string // sender-chosen transfer identity, shared by every backend of one commit
+	view     string // hash of the exact view that is sent
+	total    int64
+	parts    []receivePart
+}
+
+type receivePart struct {
+	file bool
+	mime string // formats only
+}
+
+// receiveTicket follows one admitted receive until it ends.
+type receiveTicket struct {
+	backend  PluginID
+	source   DeviceID
+	key      store.DedupKey
+	reserved int64
+}
+
+func (e *Engine) dedupRecord(k store.DedupKey) store.Dedup {
+	return store.Dedup{Key: k, NowMs: time.Now().UnixMilli(), TTLMs: e.res.SyncDedupTTL.Milliseconds(), Max: e.res.MaxSyncDedupEntries}
+}
+
+// allowsAny reports whether the policy lets at least one of the parts through.
+func allowsAny(parts []receivePart, pol BackendSyncPolicy) bool {
+	for _, p := range parts {
+		switch {
+		case p.file && pol.Files, !p.file && strings.HasPrefix(p.mime, "image/") && pol.Images,
+			!p.file && !strings.HasPrefix(p.mime, "image/") && pol.Text:
+			return true
+		}
+	}
+	return false
+}
+
+// admitReceive decides whether an incoming clip is wanted before any byte of
+// it is read: the engine must be running, sync on, the sender the clip's own
+// origin, the backend's policy must allow some part, the same view must not
+// have arrived (or be arriving) through another backend, and room must be
+// found. Declining makes the backend read and drop the clip. Making room
+// drops the oldest received entries that nobody is using.
+func (e *Engine) admitReceive(req receiveRequest) (session.Admission, bool) {
+	var total int64 = req.total
+	if total == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
+		return session.Admission{}, false
+	}
+	key := store.DedupKey{Source: string(req.source), Transfer: req.transfer, View: req.view}
+	e.mu.Lock()
+	ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled
+	pol := e.policyLocked(req.backend)
+	max := e.res.MaxStoredBytes
+	_, arriving := e.dedupInflight[key]
+	e.mu.Unlock()
+	if !ok || arriving || !allowsAny(req.parts, pol) {
+		return session.Admission{}, false
+	}
+	if seen, err := e.st.HasDedup(key, time.Now().UnixMilli(), e.res.SyncDedupTTL.Milliseconds()); err != nil || seen {
 		return session.Admission{}, false
 	}
 	e.mu.Lock()
-	ok := e.life == LifecycleRunning && e.runtime == RuntimeActive
-	max := e.res.MaxStoredBytes
-	e.mu.Unlock()
-	if !ok {
+	if _, arriving := e.dedupInflight[key]; arriving { // lost a race with another backend
+		e.mu.Unlock()
 		return session.Admission{}, false
+	}
+	e.dedupInflight[key] = struct{}{}
+	e.mu.Unlock()
+	release := func() {
+		e.mu.Lock()
+		delete(e.dedupInflight, key)
+		e.mu.Unlock()
 	}
 	reserve := func() bool {
 		e.cs.mu.Lock()
@@ -61,15 +131,18 @@ func (r receiver) Admit(peer string, m wire.Clip) (session.Admission, bool) {
 	}
 	for !reserve() {
 		if !e.evictOldest(true) {
+			release()
 			e.commit(EventResourceWarning)
 			e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
 			return session.Admission{}, false
 		}
 	}
+	t := receiveTicket{backend: req.backend, source: req.source, key: key, reserved: total}
 	return session.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
-			e.delivered(DeviceID(peer), total, snap, dir, ok)
+			defer release() // the committed record, if any, replaces the placeholder
+			e.delivered(t, snap, dir, ok)
 		},
 	}, true
 }
@@ -109,7 +182,8 @@ func (e *Engine) evictOldest(needSpace bool) bool {
 
 // delivered turns a fully received clip into content and lists it. reserved is
 // what Admit set aside.
-func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, dir string, ok bool) {
+func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok bool) {
+	peer, reserved := t.source, t.reserved
 	giveBack := func(n int64) {
 		e.cs.mu.Lock()
 		e.cs.stored -= n
@@ -117,7 +191,7 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 	}
 	e.mu.Lock()
 	enabled := e.settings.Value.Sync.Enabled
-	sy := e.policyLocked(BackendTailcat) // the only backend that receives so far
+	sy := e.policyLocked(t.backend)
 	running := e.life == LifecycleRunning && e.runtime == RuntimeActive
 	e.mu.Unlock()
 	if !ok || !running || !enabled {
@@ -177,32 +251,36 @@ func (e *Engine) delivered(peer DeviceID, reserved int64, snap clip.Snapshot, di
 	// Persist after the cheap admission checks and before publishing; if the
 	// state moves on meanwhile the record is rolled back below.
 	var hid HistoryID
+	dedup := e.dedupRecord(t.key)
 	if processed.policy.Persist {
 		e.mu.Lock()
-		ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled && e.policyLocked(BackendTailcat) == sy && workCtx.Err() == nil
+		ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled && e.policyLocked(t.backend) == sy && workCtx.Err() == nil
 		e.mu.Unlock()
 		if !ok {
 			return
 		}
 		var perr *Error
-		if hid, perr = e.persistHistory(workCtx, processed); perr != nil {
+		if hid, perr = e.persistHistory(workCtx, processed, &dedup); perr != nil {
 			return // no half-published entry; the receive fails without a record
 		}
+	} else if err := e.st.PutDedup(dedup); err != nil {
+		return // the receive is not recorded as done, so it is not delivered either
 	}
 	rollback := func() {
 		if hid != "" {
 			e.removeHistory(hid)
 		}
+		_ = e.st.DeleteDedup(t.key)
 	}
 	now := time.Now()
-	rc := &receipt{c: c, expires: now.Add(e.res.ReceivedTTL), ReceivedContent: ReceivedContent{
+	rc := &receipt{c: c, backend: t.backend, expires: now.Add(e.res.ReceivedTTL), ReceivedContent: ReceivedContent{
 		ReceiptID: ReceiptID(e.newID()), Content: desc, PeerID: peer, ReceivedAtMs: now.UnixMilli(),
 		ExpiresAtMs: now.Add(e.res.ReceivedTTL).UnixMilli(), ApplyState: ApplyAvailable, HistoryID: hid,
 	}}
 	// Make room in the list; if every entry is in use, the new one loses.
 	for {
 		e.mu.Lock()
-		if e.life != LifecycleRunning || e.runtime != RuntimeActive || !e.settings.Value.Sync.Enabled || e.policyLocked(BackendTailcat) != sy || workCtx.Err() != nil {
+		if e.life != LifecycleRunning || e.runtime != RuntimeActive || !e.settings.Value.Sync.Enabled || e.policyLocked(t.backend) != sy || workCtx.Err() != nil {
 			e.mu.Unlock()
 			rollback()
 			return

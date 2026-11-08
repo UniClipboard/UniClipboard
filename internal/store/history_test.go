@@ -192,3 +192,63 @@ func TestSyncSummaryAndRestartInterruption(t *testing.T) {
 		t.Fatal("second call changed things again")
 	}
 }
+
+func TestDedupRecordsAreBoundedByAgeAndCount(t *testing.T) {
+	s, _ := openTemp(t)
+	k := func(n string) DedupKey { return DedupKey{Source: "dev", Transfer: n, View: "h"} }
+	put := func(n string, now int64) {
+		t.Helper()
+		if err := s.PutDedup(Dedup{Key: k(n), NowMs: now, TTLMs: 1000, Max: 3}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	has := func(n string, now int64) bool {
+		ok, err := s.HasDedup(k(n), now, 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	put("a", 100)
+	put("a", 150) // writing again keeps the first record
+	put("b", 200)
+	put("c", 300)
+	put("d", 400) // over capacity: the oldest goes
+	if has("a", 400) || !has("b", 400) || !has("d", 400) {
+		t.Fatal("capacity eviction wrong")
+	}
+	// A record older than the TTL no longer counts, even before it is pruned.
+	if has("b", 1250) {
+		t.Fatal("expired record still counted")
+	}
+	put("e", 5000) // pruning removes what has expired
+	if n := count(t, s); n != 1 {
+		t.Fatalf("%d records after pruning", n)
+	}
+	// Written in the same transaction as a history item.
+	it := item("x", 1)
+	if _, _, err := s.InsertHistoryDedup(it, &Dedup{Key: k("with-item"), NowMs: 5100, TTLMs: 1000, Max: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if !has("with-item", 5100) {
+		t.Fatal("dedup record missing after commit")
+	}
+	if _, _, err := s.InsertHistoryDedup(it, &Dedup{Key: k("rolled-back"), NowMs: 5100, TTLMs: 1000, Max: 3}); err == nil {
+		t.Fatal("duplicate item ID must fail")
+	}
+	if has("rolled-back", 5100) {
+		t.Fatal("a failed insert left its dedup record")
+	}
+	if err := s.DeleteDedup(k("with-item")); err != nil || has("with-item", 5100) {
+		t.Fatal("DeleteDedup")
+	}
+}
+
+func count(t *testing.T, s *Store) int {
+	t.Helper()
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sync_dedup`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}

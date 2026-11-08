@@ -5,6 +5,7 @@ package plugin
 
 import (
 	"context"
+	"io"
 	"time"
 )
 
@@ -153,4 +154,53 @@ type ActionContext interface {
 	Item() Item
 	// SetText supplies the result. Call it exactly once.
 	SetText(string) error
+}
+
+// SyncState is how a target fares during one send.
+type SyncState string
+
+const (
+	SyncQueued     SyncState = "queued"
+	SyncSending    SyncState = "sending"
+	SyncSent       SyncState = "sent"
+	SyncSuperseded SyncState = "superseded" // replaced by newer content before it went out
+	SyncFailed     SyncState = "failed"
+)
+
+// SyncPart is one part of the content to send.
+type SyncPart struct {
+	MIME string
+	File bool   // a file part; Name is its display name
+	Name string // files only
+	Size int64
+	// Open reads the part. Representations are small; files may be large and
+	// can fail with a changed-source error.
+	Open func(ctx context.Context) (io.ReadCloser, error)
+}
+
+// SyncView is the content one backend is asked to send, already filtered by
+// that backend's policy.
+type SyncView struct {
+	ID          string // transfer identity, shared by all backends of a commit
+	TimestampMs int64
+	Parts       []SyncPart
+}
+
+// SyncHost reports the fate of a send. Targets are devices for peer_sessions
+// backends and repositories for object_store ones; IDs are opaque and public.
+type SyncHost interface {
+	// Register announces the targets about to receive work, before any of them
+	// starts.
+	Register(targets []string) error
+	// Report tells how a registered target fares. cause is never shown to the
+	// user verbatim.
+	Report(target string, state SyncState, cause error)
+}
+
+// SyncBackend is implemented by plugins that declare CapSyncBackend. Submit
+// queues the view for the backend's targets without waiting for the network;
+// queued=false with a nil error means there was nobody to send to.
+type SyncBackend interface {
+	Plugin
+	Submit(ctx context.Context, v SyncView, h SyncHost) (queued bool, err error)
 }

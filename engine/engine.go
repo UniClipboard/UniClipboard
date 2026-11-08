@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -126,6 +127,18 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	}
 	for _, b := range opts.extraBackends {
 		backendIDs = append(backendIDs, b.ID())
+	}
+	for _, in := range opts.Plugins {
+		var sp plugin.Spec
+		switch {
+		case in.Plugin != nil:
+			sp = in.Plugin.Spec()
+		case in.Process != nil:
+			sp = in.Process.Spec
+		}
+		if !in.Disabled && slices.Contains(sp.Capabilities, plugin.CapSyncBackend) {
+			backendIDs = append(backendIDs, PluginID(sp.ID))
+		}
 	}
 	pol, perr := normalizePolicies(opts.Settings, backendIDs)
 	if perr != nil {

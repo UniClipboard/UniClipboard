@@ -64,6 +64,7 @@ func invalidPlugin(id, why string) *Error {
 func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *Error) {
 	seen := map[string]bool{}
 	backends, unsupported := 0, false
+	var pending []syncBackend // installed only when the whole list loads
 	var started []plugin.Plugin
 	defer func() {
 		if err != nil {
@@ -106,7 +107,23 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 			if backends++; backends > e.res.MaxSyncBackends {
 				return newErr(CodeLimitExceeded, "too many sync backends are enabled")
 			}
-			unsupported = true // reported after the whole list is checked
+			sb, ok := in.Plugin.(plugin.SyncBackend)
+			if !ok || in.Process != nil {
+				unsupported = true // out-of-process backends need the RPC business layer
+				continue
+			}
+			if slices.ContainsFunc(e.backends, func(b syncBackend) bool { return string(b.ID()) == spec.ID }) {
+				return invalidPlugin(spec.ID, "a sync backend with this ID already exists")
+			}
+			host := &pluginHost{e: e, id: PluginID(spec.ID)}
+			if ierr := in.Plugin.Init(ctx, host, in.Config); ierr != nil {
+				return invalidPlugin(spec.ID, "Init failed")
+			}
+			started = append(started, in.Plugin)
+			if serr := in.Plugin.Start(ctx); serr != nil {
+				return invalidPlugin(spec.ID, "Start failed")
+			}
+			pending = append(pending, &pluginBackend{e: e, id: PluginID(spec.ID), kind: TransportKind(spec.TransportKind), sb: sb})
 			continue
 		}
 		host := &pluginHost{e: e, id: PluginID(spec.ID)}
@@ -123,6 +140,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 		return newErr(CodeUnsupported, "sync backend plugins are not supported yet")
 	}
 	e.plugins = started
+	e.backends = append(e.backends, pending...)
 	return nil
 }
 

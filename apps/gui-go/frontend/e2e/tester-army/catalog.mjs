@@ -1,4 +1,14 @@
 export const suites = {
+  'main-notifications': {
+    fixture: 'main-notifications',
+    platforms: ['macos', 'windows', 'linux'],
+    viewport: { width: 1280, height: 800 },
+  },
+  'release-notifications': {
+    fixture: 'settings-page',
+    platforms: ['macos', 'windows', 'linux'],
+    viewport: { width: 1000, height: 800 },
+  },
   'history-top-insert': {
     fixture: 'history-top-insert',
     platforms: ['macos', 'windows', 'linux'],

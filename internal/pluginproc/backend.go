@@ -170,8 +170,8 @@ func (p *Proxy) decodeTransfer(c *rpc.Call, in *rpc.Register, _ string) *transfe
 }
 
 func (p *Proxy) register(t *transfer, in rpc.Register) error {
-	if len(in.Targets) == 0 || len(in.Targets) > rpc.MaxSyncTargets {
-		return rpc.NewError(rpc.CodeInvalidArgument)
+	if err := in.Validate(); err != nil {
+		return err
 	}
 	t.mu.Lock()
 	for _, x := range in.Targets {
@@ -199,7 +199,7 @@ var syncStates = map[string]plugin.SyncState{
 
 func (p *Proxy) report(c *rpc.Call) error {
 	var in rpc.Report
-	if err := rpc.Decode(c.Params, &in); err != nil {
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
 		return rpc.NewError(rpc.CodeInvalidArgument)
 	}
 	st, ok := syncStates[in.State]
@@ -233,16 +233,12 @@ func (p *Proxy) receive(ctx context.Context, c *rpc.Call) error {
 	if r == nil {
 		return rpc.NewError(rpc.CodeUnsupported)
 	}
-	if err := rpc.Decode(c.Params, &in); err != nil || !validID(in.ChannelID) || !validID(in.Transfer) || !validID(in.View) ||
-		len(in.Parts) == 0 || len(in.Parts) > rpc.MaxReceiveParts {
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
 		return rpc.NewError(rpc.CodeInvalidArgument)
 	}
 	rv := plugin.Received{Transfer: in.Transfer, View: in.View}
 	var total int64
 	for _, part := range in.Parts {
-		if part.Stream.Purpose != rpc.PurposeReceivePart || part.MIME == "" || len(part.MIME) > 128 {
-			return rpc.NewError(rpc.CodeInvalidArgument)
-		}
 		rs, err := c.Conn.Expect(ctx, c.ID, part.Stream, uint64(rpc.MaxSyncBytes-total))
 		if err != nil {
 			return err

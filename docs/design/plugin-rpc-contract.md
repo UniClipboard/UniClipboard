@@ -63,6 +63,10 @@ Process/OnEvent 同实例串行，协议读写与 Host 反向调用使用独立�
 | plugin.on_event | Engine→插件 | Start 后，observer 能力与对应订阅，只读 |
 | plugin.close | Engine→插件 | 幂等，可清理部分 Init 成功实例，不和新业务并发启动 |
 | host.notify | 插件→Engine | 有效父调用内；不作为日志，长度最多 1024 UTF-8 字节，每实例每秒 5 次，不积攒突发额度 |
+| backend.submit | Engine→插件 | Start 后，sync_backend 且 Spec.external_channels；父调用携带 `sync_part` 流 |
+| backend.leave_channel | Engine→插件 | 同上且 Spec.remote_revocation；成功返回后 Engine 才删除渠道记录 |
+| backend.register / backend.report | 插件→Engine | 有效的 backend.submit 期间或之后，针对该 transfer 已登记且仍未终态的目标 |
+| backend.receive | 插件→Engine | Start 后，external_channels；根请求携带 `receive_part` 流 |
 | stream.open | 内容发送方→接收方 | 有效父调用，purpose 与调用方向/能力匹配，配额可预留 |
 
 process 参数包含 event、generation、Item 快照和 Policy 快照；正文只有 text/plain 通过短期流提供，image/files 只有格式、名称/大小等授权元数据，普通 processor 不获得文件路径或原始图像/文件字节读取能力。没有 text/plain 时 text=null。processor 只做标注，不返回正文。
@@ -74,6 +78,15 @@ patch 不含正文字段：processor 不能改写内容，出现 text 或 origin
 plugin.run_action 参数为 action_id、generation 和只读 Item 快照（text/plain 通过 process_text 流提供，与 process 相同）；成功结果为同一 generation 加 `text` 流描述，purpose 为 action_text，由插件经反向 stream.open 声明，parent_request_id 指向 run_action 根请求。Engine 校验 UTF-8、非空、64 MiB 硬上限及用户限制后才创建新条目，字节在根请求结束前不进入历史；未返回文本、重复返回或流未 END 视为失败。action 没有 Policy，也不能返回标签。Go 默认期限 10 秒，超时先取消再终止，规则同 process。
 
 generation 来自 Engine 本次回调，每次重试/热替换重新分配；请求会话、generation、插件实例代次、父提交代次全部匹配才原子采纳全部变更。某个字段无效、流未完成、过期、取消、panic 或方法失败则整份 patch 回滚，后续 continue/block_sync 按插件契约处理。
+
+### 4a. 外部渠道方法（0009）
+
+Spec 增加布尔字段 `external_channels`、`remote_revocation`（默认 false，参与握手 Spec 相等比较）；`remote_revocation` 要求 `external_channels`。其余 DTO 见 Schema 中的 `ext_*` 定义与向量，业务语义见[同步后端业务契约](sync-backend-contract.md) §6a：
+
+- `backend.submit`：`transfer_id`、`timestamp_ms`、`targets`（已启用渠道 ID，去重、≤1024）、`parts`（1..8，`mime`、`size` 与流描述 size 一致，purpose 必须为 `sync_part`，总量 ≤ 16 MiB）。流以该请求 ID 为根，仅内存；文件 part 不下发。结果 `{queued}`。
+- `backend.register`：登记该 transfer 实际会发送的目标，必须是 submit 的子集。`backend.report`：状态只取 `queued/sending/sent/superseded/failed`，未登记目标或未知 transfer 拒绝；没有自由文本原因字段，未知字段整份拒绝。全部登记目标终态后 transfer 回收，进程退出时清空。
+- `backend.receive`：`channel_id`、`transfer`、`view`、`parts`（1..8，purpose 必须为 `receive_part`，总量 ≤ 16 MiB）。Engine 拒绝（渠道停用、重复、无空间）返回 `invalid_state`，插件丢弃且不重试。
+- ID 字段为 1..128 字节 UTF-8，MIME ≤ 128 字节。Go 实现的校验函数是 `plugin/rpc` 中各 DTO 的 `Validate`，Host 与 SDK 两侧共用，向量测试直接调用它们。
 
 ## 5. 流描述、信用与释放
 

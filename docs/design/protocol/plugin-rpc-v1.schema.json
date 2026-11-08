@@ -85,6 +85,12 @@
             ],
             "additionalProperties": false
           }
+        },
+        "external_channels": {
+          "type": "boolean"
+        },
+        "remote_revocation": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -527,7 +533,12 @@
             "sync_host.open_send_part",
             "sync_host.receive_open",
             "sync_host.receive",
-            "sync_host.receive_part"
+            "sync_host.receive_part",
+            "backend.submit",
+            "backend.leave_channel",
+            "backend.register",
+            "backend.report",
+            "backend.receive"
           ]
         },
         "timeout_ms": {
@@ -1400,6 +1411,202 @@
         "images",
         "files",
         "auto_file_max_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "ext_submit_part": {
+      "type": "object",
+      "properties": {
+        "mime": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "size": {
+          "$ref": "#/$defs/uint64"
+        },
+        "stream": {
+          "$ref": "#/$defs/stream"
+        }
+      },
+      "required": [
+        "mime",
+        "size",
+        "stream"
+      ],
+      "additionalProperties": false
+    },
+    "ext_submit": {
+      "type": "object",
+      "properties": {
+        "transfer_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "timestamp_ms": {
+          "$ref": "#/$defs/uint64"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ext_submit_part"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        }
+      },
+      "required": [
+        "transfer_id",
+        "timestamp_ms",
+        "targets",
+        "parts"
+      ],
+      "additionalProperties": false
+    },
+    "ext_submit_result": {
+      "type": "object",
+      "properties": {
+        "queued": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "queued"
+      ],
+      "additionalProperties": false
+    },
+    "ext_leave_channel": {
+      "type": "object",
+      "properties": {
+        "channel_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "channel_id"
+      ],
+      "additionalProperties": false
+    },
+    "ext_register": {
+      "type": "object",
+      "properties": {
+        "transfer_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "transfer_id",
+        "targets"
+      ],
+      "additionalProperties": false
+    },
+    "ext_report": {
+      "type": "object",
+      "properties": {
+        "transfer_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "sending",
+            "sent",
+            "superseded",
+            "failed"
+          ]
+        }
+      },
+      "required": [
+        "transfer_id",
+        "target",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "ext_receive_part": {
+      "type": "object",
+      "properties": {
+        "mime": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "stream": {
+          "$ref": "#/$defs/stream"
+        }
+      },
+      "required": [
+        "mime",
+        "stream"
+      ],
+      "additionalProperties": false
+    },
+    "ext_receive": {
+      "type": "object",
+      "properties": {
+        "channel_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "transfer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "view": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ext_receive_part"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        }
+      },
+      "required": [
+        "channel_id",
+        "transfer",
+        "view",
+        "parts"
       ],
       "additionalProperties": false
     }

@@ -59,16 +59,16 @@ type ActionSpec struct {
 
 // Spec is the wire form of a plugin description.
 type Spec struct {
-	ID            string       `json:"id"`
-	Version       string       `json:"version"`
-	APIVersion    int          `json:"api_version"`
-	Capabilities  []string     `json:"capabilities"`
-	TransportKind string       `json:"transport_kind,omitempty"`
+	ID            string   `json:"id"`
+	Version       string   `json:"version"`
+	APIVersion    int      `json:"api_version"`
+	Capabilities  []string `json:"capabilities"`
+	TransportKind string   `json:"transport_kind,omitempty"`
 	// ExternalChannels and RemoteRevocation describe an external-channel sync
 	// backend (decision 0009).
 	ExternalChannels bool         `json:"external_channels,omitempty"`
 	RemoteRevocation bool         `json:"remote_revocation,omitempty"`
-	Actions       []ActionSpec `json:"actions,omitempty"`
+	Actions          []ActionSpec `json:"actions,omitempty"`
 }
 
 // Equal compares ID, version, API, capabilities (as a set) and actions.
@@ -119,7 +119,7 @@ const (
 	MethodRegister     = "backend.register"      // plugin→Engine
 	MethodReport       = "backend.report"        // plugin→Engine
 	MethodReceive      = "backend.receive"       // plugin→Engine
-	MethodStream    = "stream.open"
+	MethodStream       = "stream.open"
 )
 
 const (
@@ -463,6 +463,85 @@ type Event struct {
 func (e Event) Validate() error {
 	if e.Kind == "" || len(e.Kind) > 128 || len(e.ItemID) > 128 {
 		return protoErr("bad event")
+	}
+	return nil
+}
+
+func validID(s string) bool { return s != "" && len(s) <= MaxIDBytes && utf8.ValidString(s) }
+
+func validIDs(ids []string) bool {
+	if len(ids) == 0 || len(ids) > MaxSyncTargets {
+		return false
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if !validID(id) || seen[id] {
+			return false
+		}
+		seen[id] = true
+	}
+	return true
+}
+
+func validMIME(s string) bool { return s != "" && len(s) <= 128 && utf8.ValidString(s) }
+
+// Validate checks structure, purposes and the in-memory size cap.
+func (s Submit) Validate() error {
+	if !validID(s.TransferID) || !validIDs(s.Targets) || len(s.Parts) == 0 || len(s.Parts) > MaxSyncParts {
+		return NewError(CodeInvalidArgument)
+	}
+	var total uint64
+	for _, p := range s.Parts {
+		if !validMIME(p.MIME) || p.Stream.Purpose != PurposeSyncPart || p.Size != p.Stream.Size {
+			return NewError(CodeInvalidArgument)
+		}
+		total += uint64(p.Size)
+		if uint64(p.Size) > MaxSyncBytes || total > MaxSyncBytes {
+			return NewError(CodeInvalidArgument)
+		}
+	}
+	return nil
+}
+
+func (l LeaveChannel) Validate() error {
+	if !validID(l.ChannelID) {
+		return NewError(CodeInvalidArgument)
+	}
+	return nil
+}
+
+func (r Register) Validate() error {
+	if !validID(r.TransferID) || !validIDs(r.Targets) {
+		return NewError(CodeInvalidArgument)
+	}
+	return nil
+}
+
+func (r Report) Validate() error {
+	switch r.State {
+	case "queued", "sending", "sent", "superseded", "failed":
+	default:
+		return NewError(CodeInvalidArgument)
+	}
+	if !validID(r.TransferID) || !validID(r.Target) {
+		return NewError(CodeInvalidArgument)
+	}
+	return nil
+}
+
+func (r Receive) Validate() error {
+	if !validID(r.ChannelID) || !validID(r.Transfer) || !validID(r.View) || len(r.Parts) == 0 || len(r.Parts) > MaxReceiveParts {
+		return NewError(CodeInvalidArgument)
+	}
+	var total uint64
+	for _, p := range r.Parts {
+		if !validMIME(p.MIME) || p.Stream.Purpose != PurposeReceivePart {
+			return NewError(CodeInvalidArgument)
+		}
+		total += uint64(p.Stream.Size)
+		if uint64(p.Stream.Size) > MaxSyncBytes || total > MaxSyncBytes {
+			return NewError(CodeInvalidArgument)
+		}
 	}
 	return nil
 }

@@ -26,8 +26,7 @@ func (s *server) submit(ctx context.Context, c *rpc.Call) (any, error) {
 		return nil, rpc.NewError(rpc.CodeUnsupported)
 	}
 	var in rpc.Submit
-	if err := rpc.Decode(c.Params, &in); err != nil || in.TransferID == "" || len(in.Targets) == 0 || len(in.Targets) > rpc.MaxSyncTargets ||
-		len(in.Parts) == 0 || len(in.Parts) > rpc.MaxSyncParts {
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
 		return nil, rpc.NewError(rpc.CodeInvalidArgument)
 	}
 	if err := s.started(); err != nil {
@@ -71,7 +70,7 @@ func (s *server) leaveChannel(ctx context.Context, c *rpc.Call) (any, error) {
 		return nil, rpc.NewError(rpc.CodeUnsupported)
 	}
 	var in rpc.LeaveChannel
-	if err := rpc.Decode(c.Params, &in); err != nil || in.ChannelID == "" {
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
 		return nil, rpc.NewError(rpc.CodeInvalidArgument)
 	}
 	if err := s.started(); err != nil {

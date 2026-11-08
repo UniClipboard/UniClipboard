@@ -420,6 +420,88 @@
         "backend_id": "builtin.tailcat",
         "mode": "explicit"
       }
+    },
+    {
+      "schema": "spec",
+      "payload": {
+        "id": "example.wx",
+        "version": "1.0.0",
+        "api_version": 1,
+        "capabilities": [
+          "sync_backend"
+        ],
+        "transport_kind": "object_store",
+        "external_channels": true,
+        "remote_revocation": true
+      }
+    },
+    {
+      "schema": "ext_submit",
+      "payload": {
+        "transfer_id": "t1",
+        "timestamp_ms": "1700000000000",
+        "targets": [
+          "ch1"
+        ],
+        "parts": [
+          {
+            "mime": "text/plain",
+            "size": "5",
+            "stream": {
+              "stream_id": "2",
+              "size": "5",
+              "purpose": "sync_part"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "schema": "ext_submit_result",
+      "payload": {
+        "queued": true
+      }
+    },
+    {
+      "schema": "ext_leave_channel",
+      "payload": {
+        "channel_id": "ch1"
+      }
+    },
+    {
+      "schema": "ext_register",
+      "payload": {
+        "transfer_id": "t1",
+        "targets": [
+          "ch1"
+        ]
+      }
+    },
+    {
+      "schema": "ext_report",
+      "payload": {
+        "transfer_id": "t1",
+        "target": "ch1",
+        "state": "sent"
+      }
+    },
+    {
+      "schema": "ext_receive",
+      "payload": {
+        "channel_id": "ch1",
+        "transfer": "m1",
+        "view": "v1",
+        "parts": [
+          {
+            "mime": "text/plain",
+            "stream": {
+              "stream_id": "2",
+              "size": "5",
+              "purpose": "receive_part"
+            }
+          }
+        ]
+      }
     }
   ],
   "invalid_payloads": [
@@ -681,6 +763,56 @@
         "transport_kind": "object_store"
       },
       "reason": "P2P binding schema does not invent object-store connection profile"
+    },
+    {
+      "schema": "ext_report",
+      "payload": {
+        "transfer_id": "t1",
+        "target": "ch1",
+        "state": "delivered"
+      },
+      "reason": "unknown state"
+    },
+    {
+      "schema": "ext_submit",
+      "payload": {
+        "transfer_id": "t1",
+        "timestamp_ms": "1",
+        "targets": [],
+        "parts": [
+          {
+            "mime": "text/plain",
+            "size": "5",
+            "stream": {
+              "stream_id": "2",
+              "size": "5",
+              "purpose": "sync_part"
+            }
+          }
+        ]
+      },
+      "reason": "no targets"
+    },
+    {
+      "schema": "ext_register",
+      "payload": {
+        "transfer_id": "t1",
+        "targets": [
+          "ch1"
+        ],
+        "cause": "net down"
+      },
+      "reason": "free-text cause is not carried"
+    },
+    {
+      "schema": "ext_receive",
+      "payload": {
+        "channel_id": "ch1",
+        "transfer": "m1",
+        "view": "v1",
+        "parts": []
+      },
+      "reason": "no parts"
     }
   ],
   "semantic_rejections": [
@@ -755,6 +887,69 @@
         }
       },
       "reason": "state snapshot must have sync_state purpose"
+    },
+    {
+      "schema": "ext_submit",
+      "payload": {
+        "transfer_id": "t1",
+        "timestamp_ms": "1",
+        "targets": [
+          "ch1"
+        ],
+        "parts": [
+          {
+            "mime": "text/plain",
+            "size": "5",
+            "stream": {
+              "stream_id": "2",
+              "size": "5",
+              "purpose": "receive_part"
+            }
+          }
+        ]
+      },
+      "reason": "submit parts must use purpose sync_part"
+    },
+    {
+      "schema": "ext_submit",
+      "payload": {
+        "transfer_id": "t1",
+        "timestamp_ms": "1",
+        "targets": [
+          "ch1"
+        ],
+        "parts": [
+          {
+            "mime": "text/plain",
+            "size": "16777217",
+            "stream": {
+              "stream_id": "2",
+              "size": "16777217",
+              "purpose": "sync_part"
+            }
+          }
+        ]
+      },
+      "reason": "exceeds the 16 MiB in-memory cap"
+    },
+    {
+      "schema": "ext_receive",
+      "payload": {
+        "channel_id": "ch1",
+        "transfer": "m1",
+        "view": "v1",
+        "parts": [
+          {
+            "mime": "text/plain",
+            "stream": {
+              "stream_id": "2",
+              "size": "5",
+              "purpose": "sync_part"
+            }
+          }
+        ]
+      },
+      "reason": "receive parts must use purpose receive_part"
     }
   ],
   "golden_frames": [

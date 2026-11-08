@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -140,10 +141,19 @@ func TestPeerBindAndState(t *testing.T) {
 	waitLog(t, spec.Dir, "state 2 peers=1")
 }
 
+type endAuth struct {
+	plugin.PeerAuthority
+	ended atomic.Int32
+}
+
+func (a *endAuth) ProcessEnded() { a.ended.Add(1) }
+
 func TestPeerStateReplayedAfterCrash(t *testing.T) {
 	spec := peerExeSpec(t)
 	p, _ := start(t, spec, Options{Backoff: []time.Duration{10 * time.Millisecond}}, nil)
 	pb := p.(plugin.PeerBackend)
+	ea := &endAuth{}
+	p.(plugin.PeerAuthorityAware).SetPeerAuthority(ea)
 	ctx := context.Background()
 	if err := pb.Bind(ctx, testBind()); err != nil {
 		t.Fatal(err)
@@ -163,6 +173,9 @@ func TestPeerStateReplayedAfterCrash(t *testing.T) {
 		}
 		return n == 2
 	})
+	if ea.ended.Load() != 1 {
+		t.Fatalf("ProcessEnded called %d times", ea.ended.Load())
+	}
 }
 
 func TestPeerStuckApplyKillsAndReplaysNewest(t *testing.T) {

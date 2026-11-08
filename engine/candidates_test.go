@@ -137,3 +137,23 @@ func errCode2(err error) Code {
 	}
 	return ""
 }
+
+func TestProcessEndedDropsSessions(t *testing.T) {
+	na, nb, _, fa, _, _, conn, tok := candidateSetup(t)
+	idB := nb.e.ident.DeviceID()
+	pa := na.e.peerProcs[0]
+	if !pa.connected(idB) {
+		t.Fatal("setup: not connected")
+	}
+	pa.ProcessEnded()
+	if pa.connected(idB) {
+		t.Fatal("session survived the process")
+	}
+	// The old token can never connect again; the new process must pass check_peer.
+	if err := fa.auth.PeerEvent(bg, rpc.PeerEvent{ConnectionID: conn, SessionToken: tok, Sequence: 3, State: "connected", RemoteAccepted: true}); errCode(err) != "invalid_state" {
+		t.Fatalf("revived: %q", errCode(err))
+	}
+	if pa.connected(idB) {
+		t.Fatal("revived")
+	}
+}

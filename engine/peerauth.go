@@ -475,3 +475,26 @@ func (b *peerProcBackend) pruneSessions(st rpc.SyncState) {
 		b.e.deviceChanged(id)
 	}
 }
+
+// ProcessEnded ends every session and pending handshake: the backend process
+// that held the connections is gone and can no longer report them. The
+// restarted process starts with none, and must pass check_peer again.
+func (b *peerProcBackend) ProcessEnded() {
+	var gone []string
+	b.am.Lock()
+	now := time.Now()
+	for _, s := range b.sess {
+		if s.ended.IsZero() {
+			s.ended = now
+		}
+		if s.connected {
+			s.connected = false
+			gone = append(gone, s.peerID)
+		}
+	}
+	clear(b.hs)
+	b.am.Unlock()
+	for _, id := range gone {
+		b.e.deviceChanged(id)
+	}
+}

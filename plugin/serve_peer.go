@@ -396,6 +396,11 @@ type PeerAuthority interface {
 	Introduce(ctx context.Context, r rpc.Introduce) error
 }
 
+// ProcessEndAware is optionally implemented by a PeerAuthority. The proxy
+// calls ProcessEnded when the backend process ended unexpectedly: every
+// connection it held is gone, and no event will ever report that.
+type ProcessEndAware interface{ ProcessEnded() }
+
 // PeerAuthorityAware is implemented by the host-side proxy of a peer backend.
 type PeerAuthorityAware interface{ SetPeerAuthority(PeerAuthority) }
 

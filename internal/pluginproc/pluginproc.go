@@ -434,16 +434,21 @@ func deadlineOf(ctx context.Context) time.Time {
 // onExit handles an unexpected end of the process: plan a bounded restart.
 func (p *Proxy) onExit(s *session) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.state == stClosed || p.sess != s {
+		p.mu.Unlock()
 		return
 	}
 	p.sess = nil
 	p.failLocked()
+	p.mu.Unlock()
 	p.bmu.Lock()
 	p.transfers = nil // their hosts die with the session
 	p.rgrants = nil   // receive ids die with the session
+	a := p.pauth
 	p.bmu.Unlock()
+	if pe, ok := a.(plugin.ProcessEndAware); ok {
+		pe.ProcessEnded() // its connections died with the process
+	}
 }
 
 // failLocked records a crash and either schedules a restart or gives up.

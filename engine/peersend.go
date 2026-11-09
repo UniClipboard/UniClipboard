@@ -169,23 +169,31 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 	e.mu.Unlock()
 	for i, s := range targets {
 		k, s := keys[i], s
-		src := &peerSendSource{b: b, v: v, conn: s.conn, token: s.token}
 		job := &peerJob{
 			supersede: func() { h.Report(k, TargetSuperseded, nil) },
 			run: func(ctx context.Context) {
-				defer src.close()
 				h.Report(k, TargetSending, nil)
-				msg := rpc.Send{DispatchID: randHex(16), OperationID: v.id, PeerID: s.peerID, ConnectionID: s.conn, SessionToken: s.token,
-					ContentHandle: randHex(32), Clip: clip, BackendID: string(b.id), Mode: "automatic"}
-				if err := msg.Validate(); err != nil {
-					h.Report(k, TargetFailed, err)
-					return
+				// A duplicate connection to the same peer is resolved shortly
+				// after both ends connect: the loser ends before its first byte.
+				// A send that was refused before authorization moves to the
+				// surviving session instead of failing.
+				cur := s
+				for attempt := 0; ; attempt++ {
+					src := &peerSendSource{b: b, v: v, conn: cur.conn, token: cur.token}
+					err := b.sendOver(ctx, disp, src, cur, v, clip)
+					unsent := !src.authorized()
+					src.close()
+					if err == nil {
+						h.Report(k, TargetSent, nil)
+						return
+					}
+					next, ok := b.survivor(cur)
+					if !unsent || !ok || attempt >= 2 {
+						h.Report(k, TargetFailed, err)
+						return
+					}
+					cur = next
 				}
-				if err := disp.Send(ctx, msg, src); err != nil {
-					h.Report(k, TargetFailed, err)
-					return
-				}
-				h.Report(k, TargetSent, nil)
 			},
 		}
 		if !b.enqueue(rc, s.peerID, job) {
@@ -193,6 +201,33 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 		}
 	}
 	return true, nil
+}
+
+// sendOver dispatches the clip over one session.
+func (b *peerProcBackend) sendOver(ctx context.Context, disp plugin.PeerDispatcher, src *peerSendSource, s session, v backendView, clip rpc.Clip) error {
+	msg := rpc.Send{DispatchID: randHex(16), OperationID: v.id, PeerID: s.peerID, ConnectionID: s.conn, SessionToken: s.token,
+		ContentHandle: randHex(32), Clip: clip, BackendID: string(b.id), Mode: "automatic"}
+	if err := msg.Validate(); err != nil {
+		return err
+	}
+	return disp.Send(ctx, msg, src)
+}
+
+// survivor is the live session that replaced old for the same peer, if any.
+func (b *peerProcBackend) survivor(old session) (session, bool) {
+	for _, t := range b.liveTargets() {
+		if t.peerID == old.peerID && t.conn != old.conn {
+			return t, true
+		}
+	}
+	return session{}, false
+}
+
+// authorized reports whether the backend was ever granted the right to send.
+func (s *peerSendSource) authorized() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.grant != ""
 }
 
 // peerSendSource answers the backend's authorize/open requests for one send.

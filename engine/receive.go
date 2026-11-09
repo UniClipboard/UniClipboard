@@ -81,7 +81,7 @@ func allowsAny(parts []receivePart, pol BackendSyncPolicy) bool {
 // found. Declining makes the backend read and drop the clip. Making room
 // drops the oldest received entries that nobody is using.
 func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) {
-	var total int64 = req.total
+	total := req.total
 	if total == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
 		return peerbackend.Admission{}, false
 	}

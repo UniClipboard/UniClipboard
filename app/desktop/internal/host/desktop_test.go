@@ -65,7 +65,7 @@ func newLoopback(t *testing.T) *loopback {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		if l.ln != nil {
-			l.ln.Close()
+			_ = l.ln.Close()
 		}
 	})
 	return l
@@ -118,7 +118,7 @@ func newHostWith(t *testing.T, extra bool, plugins []engine.PluginInstance) *hos
 	if err := n.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { n.Close(context.Background()) })
+	t.Cleanup(func() { _ = n.Close(context.Background()) })
 	h := &host{n: n, board: b, cfg: m}
 	h.edit = func(content string) {
 		t.Helper()
@@ -232,7 +232,7 @@ func TestFileSync(t *testing.T) {
 	a, b := newHost(t, false), newHost(t, false)
 	pair(t, a, b)
 	src := filepath.Join(t.TempDir(), "report.txt")
-	os.WriteFile(src, []byte("hello file"), 0o644)
+	_ = os.WriteFile(src, []byte("hello file"), 0o644)
 	a.board.user(clip.Snapshot{Files: []clip.File{{Name: "report.txt", Path: src, Size: 10}}})
 	eventually(t, "file arrives", func() bool {
 		s, _ := b.board.Read()
@@ -464,8 +464,8 @@ func TestEventsKeepTheirOldShape(t *testing.T) {
 	if seen["pending"].Peer == "" {
 		t.Fatalf("pending event has no name: %+v", seen["pending"])
 	}
-	a.n.Approve(bg, b.id, "")
-	b.n.Approve(bg, a.id, "")
+	_, _ = a.n.Approve(bg, b.id, "")
+	_, _ = b.n.Approve(bg, a.id, "")
 	eventually(t, "peer-up", func() bool {
 		for {
 			select {
@@ -512,8 +512,8 @@ func TestSimultaneousPairingYieldsOneSession(t *testing.T) {
 	// Both users pair at once; each device then approves the other.
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); a.n.Pair(bg, ba) }()
-	go func() { defer wg.Done(); b.n.Pair(bg, aa) }()
+	go func() { defer wg.Done(); _, _ = a.n.Pair(bg, ba) }()
+	go func() { defer wg.Done(); _, _ = b.n.Pair(bg, aa) }()
 	wg.Wait()
 	for _, x := range [][2]*host{{a, b}, {b, a}} {
 		x := x

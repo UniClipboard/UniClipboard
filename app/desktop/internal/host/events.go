@@ -57,7 +57,7 @@ func (n *Node) pumpEvents(ctx context.Context) {
 				n.hub.emit(api.Event{Kind: "code"})
 			}
 		}
-		sub.Close()
+		_ = sub.Close()
 	}
 }
 

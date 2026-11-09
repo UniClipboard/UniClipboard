@@ -29,7 +29,7 @@ func (p pathSource) Open(context.Context) (io.ReadCloser, engine.FileMeta, error
 	}
 	st, err := f.Stat()
 	if err != nil || !st.Mode().IsRegular() {
-		f.Close()
+		_ = f.Close()
 		return nil, engine.FileMeta{}, errors.New("not a regular file")
 	}
 	return f, engine.FileMeta{Size: st.Size(), Version: fmt.Sprint(st.ModTime().UnixNano())}, nil

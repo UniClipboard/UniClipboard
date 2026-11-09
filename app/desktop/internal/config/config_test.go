@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"github.com/uniclipboard/unic/engine"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/uniclipboard/unic/engine"
 )
 
 func TestParseDefaultsAndValues(t *testing.T) {

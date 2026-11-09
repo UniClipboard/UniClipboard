@@ -82,7 +82,7 @@ func TestBackendChoosesTheStatus(t *testing.T) {
 	f.err = &Error{Message: "expired", Reason: "expired", Status: 404}
 	rec = do(t, h, "POST", "/v1/pending/abc/approve", "")
 	var body errBody
-	json.Unmarshal(rec.Body.Bytes(), &body)
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if rec.Code != 404 || body.Reason != "expired" {
 		t.Fatalf("reason lost: %d %+v", rec.Code, body)
 	}

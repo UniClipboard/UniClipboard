@@ -110,7 +110,6 @@ func (b *Backend) SetPeerReceiver(r plugin.PeerReceiver)   { b.mu.Lock(); b.recv
 
 func (b *Backend) authority() plugin.PeerAuthority { b.mu.Lock(); defer b.mu.Unlock(); return b.auth }
 func (b *Backend) receiver() plugin.PeerReceiver   { b.mu.Lock(); defer b.mu.Unlock(); return b.recv }
-func (b *Backend) selfID() string                  { b.mu.Lock(); defer b.mu.Unlock(); return b.self }
 
 // Bind records the one-time configuration. It never connects.
 func (b *Backend) Bind(_ context.Context, bd rpc.Bind) error {
@@ -624,7 +623,7 @@ func (b *Backend) serve(s *session) {
 	b.mu.Unlock()
 	_ = s.event("disconnected")
 	close(s.exited)
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) { // recvLoop always returns an error
 		b.logf("session ended: %v", err)
 	}
 	b.kick(s.peerID)

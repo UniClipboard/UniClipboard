@@ -98,11 +98,11 @@ func (p *Proxy) submit(ctx context.Context, v plugin.SyncView, h plugin.SyncHost
 				}
 				ss, d, err := s.conn.NewSend(s.conn.Context(), id, rpc.PurposeSyncPart, uint64(sp.Size))
 				if err != nil {
-					rc.Close()
+					_ = rc.Close()
 					return nil, err
 				}
 				go func() {
-					defer rc.Close()
+					defer func() { _ = rc.Close() }()
 					if _, err := io.Copy(ss, rc); err == nil {
 						_ = ss.Close()
 					}
@@ -269,7 +269,7 @@ func (p *Proxy) receive(ctx context.Context, c *rpc.Call) error {
 		}
 		var buf bytes.Buffer
 		_, err = io.Copy(&buf, rs)
-		rs.Close()
+		_ = rs.Close()
 		if err != nil {
 			return err
 		}

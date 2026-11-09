@@ -45,7 +45,7 @@ func (s *server) submit(ctx context.Context, c *rpc.Call) (any, error) {
 		}
 		var buf bytes.Buffer
 		_, err = io.Copy(&buf, rs)
-		rs.Close()
+		_ = rs.Close()
 		if err != nil {
 			return nil, err
 		}

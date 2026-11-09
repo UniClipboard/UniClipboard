@@ -584,7 +584,7 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 			fail(w, 500, err)
 			return
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		ctype := c.MIME
 		if ctype == "" {
 			ctype = "application/octet-stream"

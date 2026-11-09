@@ -45,7 +45,7 @@ func SetLuaEnabled(path, id string, on bool) (changed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err = tmp.WriteString(out); err == nil {
 		err = tmp.Chmod(0o600)
 	}

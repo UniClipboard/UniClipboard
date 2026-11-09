@@ -32,7 +32,7 @@ func (h *peerHelper) Send(ctx context.Context, s rpc.Send, host plugin.SendHost)
 			return err
 		}
 		n, err := io.Copy(sum, rc)
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			return err
 		}
@@ -40,7 +40,7 @@ func (h *peerHelper) Send(ctx context.Context, s rpc.Send, host plugin.SendHost)
 	}
 	if s.Clip.WireID == "dup" {
 		if rc, err := host.OpenPart(ctx, g.GrantID, 0); err == nil {
-			rc.Close()
+			_ = rc.Close()
 			h.log("dup-accepted")
 		} else {
 			h.log("dup-refused")

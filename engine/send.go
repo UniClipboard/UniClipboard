@@ -1,10 +1,8 @@
 package engine
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/peerbackend"
@@ -39,8 +37,8 @@ func buildSendSet(c *contentObj, sy BackendSyncPolicy) sendSet {
 		if !syncAllowsPart(p, sy) {
 			continue
 		}
-		switch {
-		case p.desc.Kind == PartFile:
+		switch p.desc.Kind {
+		case PartFile:
 			snap.Files = append(snap.Files, clip.File{Name: p.desc.Name, Size: p.desc.Size})
 		default:
 			snap.Parts = append(snap.Parts, clip.Part{Format: p.desc.MIME, Data: p.data})
@@ -178,8 +176,6 @@ func outcomeOf(ts []TargetStatus) Outcome {
 	}
 	return OutcomeFailed
 }
-
-func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
 
 // isRPCCode reports whether err is a plugin RPC error with the given code.
 func isRPCCode(err error, code string) bool {

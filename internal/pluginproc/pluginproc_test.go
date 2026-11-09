@@ -104,7 +104,7 @@ func TestMain(m *testing.M) {
 		_ = plugin.Serve(&peerHelper{})
 		os.Exit(0)
 	case "garbage":
-		os.Stdout.WriteString("this is not a frame at all, just text")
+		_, _ = os.Stdout.WriteString("this is not a frame at all, just text")
 		os.Exit(0)
 	case "other-identity":
 		_ = plugin.Serve(&otherPlugin{})
@@ -137,11 +137,9 @@ func exeSpec(t *testing.T, mode string) Spec {
 }
 
 type fakeProc struct {
-	mu     sync.Mutex
 	event  string
 	item   plugin.Item
 	policy plugin.Policy
-	err    error
 }
 
 func (f *fakeProc) Event() string         { return f.event }

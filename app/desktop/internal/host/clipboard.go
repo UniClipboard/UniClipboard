@@ -176,7 +176,7 @@ func (c *clipboardHost) applyLoop(ctx context.Context) {
 				c.tryApply(ctx)
 			}
 		}
-		sub.Close()
+		_ = sub.Close()
 	}
 }
 
@@ -219,7 +219,7 @@ func (c *clipboardHost) tryApply(ctx context.Context) {
 			c.epoch = ""
 		}
 		var ee *engine.Error
-		if !(errors.As(err, &ee) && (ee.Code == engine.CodeSyncDisabled || ee.Code == engine.CodeConflict)) {
+		if !errors.As(err, &ee) || (ee.Code != engine.CodeSyncDisabled && ee.Code != engine.CodeConflict) {
 			c.logf("not applying received content: %v", asCode(err))
 		}
 		return

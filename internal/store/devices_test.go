@@ -57,7 +57,7 @@ func TestDeviceCASAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s2.Close()
+	defer func() { _ = s2.Close() }()
 	if ds, _ := s2.Devices(); len(ds) != 1 || ds[0].ID != "dev-a" {
 		t.Fatalf("%+v", ds)
 	}

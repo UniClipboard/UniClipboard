@@ -89,7 +89,7 @@ func (f *fakeRecv) Receive(ctx context.Context, id string, parts plugin.ReceiveP
 			return "", err
 		}
 		b, err := io.ReadAll(body)
-		body.Close()
+		_ = body.Close()
 		if err != nil {
 			return "", err
 		}
@@ -204,7 +204,7 @@ func TestReceiveHandlersCheckGrantsAndOrder(t *testing.T) {
 	if _, err := p.receivePart(ctx, part(0, 0)); err != nil {
 		t.Errorf("empty part: %v", err)
 	}
-	(<-a.ch).body.Close()
+	_ = (<-a.ch).body.Close()
 	if _, err := p.receivePart(ctx, part(0, 0)); code(err) != rpc.CodeConflict {
 		t.Errorf("repeated part: %v", err)
 	}

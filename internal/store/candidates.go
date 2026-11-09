@@ -50,7 +50,7 @@ func (s *Store) ReplaceVouches(introducer, instance string, cs []Candidate, now,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, c := range cs {
 		var one int
 		if err := tx.QueryRow(`SELECT 1 FROM devices WHERE id = ?`, c.DeviceID).Scan(&one); err == nil {
@@ -90,7 +90,7 @@ WHERE seen_ms >= ? AND device_id NOT IN (SELECT id FROM devices) ORDER BY device
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Candidate
 	for rows.Next() {
 		var c Candidate
@@ -118,7 +118,7 @@ func (s *Store) IgnoredCandidates() (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]bool{}
 	for rows.Next() {
 		var id string
@@ -152,7 +152,7 @@ func (s *Store) CandidateRequests(now, windowMs int64) ([]CandidateRequest, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []CandidateRequest
 	for rows.Next() {
 		var r CandidateRequest

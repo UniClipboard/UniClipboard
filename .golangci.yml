@@ -14,11 +14,19 @@ linters:
     - unused
     - misspell
     - nolintlint
+  exclusions:
+    # internal/luavm is a port of gopher-lua kept close to upstream; its style
+    # and unused code are not ours to clean up.
+    paths:
+      - internal/luavm
 
 formatters:
   enable:
     - gofmt
     - goimports
+  exclusions:
+    paths:
+      - internal/luavm
   settings:
     goimports:
       local-prefixes:

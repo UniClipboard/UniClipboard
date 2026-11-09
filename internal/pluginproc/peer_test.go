@@ -39,8 +39,8 @@ func (h *peerHelper) Close(context.Context) error { return nil }
 func (h *peerHelper) log(line string) {
 	f, err := os.OpenFile(filepath.Join(h.dir, fmt.Sprintf("log-%d", os.Getpid())), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err == nil {
-		fmt.Fprintln(f, line)
-		f.Close()
+		_, _ = fmt.Fprintln(f, line)
+		_ = f.Close()
 	}
 }
 func (h *peerHelper) Bind(_ context.Context, b rpc.Bind) error {

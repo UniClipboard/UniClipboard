@@ -49,7 +49,7 @@ func ServeIO(ctx context.Context, p Plugin, r io.Reader, w io.Writer) error {
 	select {
 	case <-s.conn.Done():
 	case <-ctx.Done():
-		s.conn.Close()
+		_ = s.conn.Close()
 	}
 	// The host went away: cancel what is running and release the plugin.
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
@@ -222,7 +222,7 @@ func (s *server) readText(ctx context.Context, c *rpc.Call, d *rpc.StreamDesc) (
 	if err != nil {
 		return "", err
 	}
-	defer rs.Close()
+	defer func() { _ = rs.Close() }()
 	b, err := io.ReadAll(rs)
 	if err != nil {
 		return "", err

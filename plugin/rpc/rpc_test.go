@@ -222,7 +222,7 @@ func pair(t *testing.T, lim Limits, engine, plug Handler, stuck func()) (*Conn, 
 	pr, ew := io.Pipe()
 	e := NewConn(NewDuplex(er, ew, er, ew), Options{Role: RoleEngine, Limits: lim, Handler: engine, OnStuck: stuck, CancelGrace: 100 * time.Millisecond})
 	p := NewConn(NewDuplex(pr, pw, pr, pw), Options{Role: RolePlugin, Limits: lim, Handler: plug})
-	t.Cleanup(func() { e.Close(); p.Close() })
+	t.Cleanup(func() { _ = e.Close(); _ = p.Close() })
 	return e, p
 }
 
@@ -422,8 +422,8 @@ func TestHandshake(t *testing.T) {
 			perr <- err
 		}()
 		lim, err := HostHandshake(context.Background(), NewDuplex(er, ew), expected, DefaultLimits, time.Second)
-		er.Close()
-		pr.Close()
+		_ = er.Close()
+		_ = pr.Close()
 		return lim, err, <-perr
 	}
 	lim, herr, perr := run(spec)

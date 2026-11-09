@@ -41,7 +41,6 @@ type Engine struct {
 	ident     *identity.Identity // unified device identity (identity protocol v1)
 	st        *store.Store
 	instLocks []*dirLock // runtime.lock of each backend instance
-	self      DeviceID
 	defName   string
 
 	use sync.RWMutex  // held (read) by every call; Close takes it to free the store
@@ -421,8 +420,8 @@ func (e *Engine) stopRun(ctx context.Context) error {
 	e.mu.Unlock()
 	if cancel != nil {
 		cancel()
-		e.commitGate.Lock() // drain commits that passed their last check
-		e.commitGate.Unlock()
+		e.commitGate.Lock()   // drain commits that passed their last check
+		e.commitGate.Unlock() //nolint:staticcheck // SA2001: taking and dropping the lock is the barrier
 	}
 	if done != nil {
 		select {

@@ -125,7 +125,7 @@ func (s *Store) AddDevice(id string, publicKey []byte, reportedName string) (Dev
 	if err != nil {
 		return Device{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now().UnixMilli()
 	d, err := scanDevice(tx.QueryRow(`SELECT `+deviceCols+` FROM devices WHERE id = ?`, id))
 	switch {
@@ -173,7 +173,7 @@ func (s *Store) RevokedDevices() ([]Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Device
 	for rows.Next() {
 		d, err := scanDevice(rows)
@@ -191,7 +191,7 @@ func (s *Store) Devices() ([]Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Device
 	for rows.Next() {
 		d, err := scanDevice(rows)
@@ -244,7 +244,7 @@ func (s *Store) RevokeDevice(id string, expected int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.Exec(`UPDATE devices SET trust='revoked', revision=revision+1, updated_ms=? WHERE id=? AND revision=?`,
 		time.Now().UnixMilli(), id, expected)
 	if err != nil {
@@ -283,7 +283,7 @@ func (s *Store) AddBinding(id, deviceID, instanceID string, remoteContext []byte
 	if err != nil {
 		return Binding{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now().UnixMilli()
 	var one int
 	if err := tx.QueryRow(`SELECT 1 FROM devices WHERE id=? AND trust <> 'revoked'`, deviceID).Scan(&one); err != nil {
@@ -324,7 +324,7 @@ func (s *Store) Bindings(deviceID string) ([]Binding, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Binding
 	for rows.Next() {
 		b, err := scanBinding(rows)
@@ -434,7 +434,7 @@ func (s *Store) InstanceBindings(instanceID string) ([]Binding, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Binding
 	for rows.Next() {
 		b, err := scanBinding(rows)
@@ -499,7 +499,7 @@ func (s *Store) Channels() ([]Channel, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Channel
 	for rows.Next() {
 		c, err := scanChannel(rows)

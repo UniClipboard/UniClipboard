@@ -23,7 +23,7 @@ func TestDeviceListShowsOneDeviceWithIndependentPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 
 	pk := remoteKey(t, 5)
 	d, err := n.e.registerVerifiedDevice(pk, "Bob's phone")

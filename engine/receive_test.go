@@ -340,14 +340,14 @@ func textOfE(e *Engine, r ReceivedContent) string {
 	if err != nil {
 		return ""
 	}
-	defer e.ReleaseContent(bg, l.LeaseID)
+	defer func() { _ = e.ReleaseContent(bg, l.LeaseID) }()
 	for _, p := range l.Content.Parts {
 		if p.MIME == MimeText {
 			rd, err := e.ReadContent(bg, l.LeaseID, p.ID)
 			if err != nil {
 				return ""
 			}
-			defer rd.Close()
+			defer func() { _ = rd.Close() }()
 			b, _ := io.ReadAll(rd)
 			return string(b)
 		}

@@ -202,15 +202,15 @@ func writeAtomic(dir, path string, data []byte) error {
 		}
 	}()
 	if err := tmp.Chmod(0o600); err != nil && runtime.GOOS != "windows" {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -222,7 +222,7 @@ func writeAtomic(dir, path string, data []byte) error {
 	ok = true
 	if d, err := os.Open(dir); err == nil { // directory fsync; not supported everywhere
 		_ = d.Sync()
-		d.Close()
+		_ = d.Close()
 	}
 	return nil
 }

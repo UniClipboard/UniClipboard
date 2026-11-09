@@ -147,18 +147,18 @@ func (p *Proxy) openSendPart(ctx context.Context, c *rpc.Call) (any, error) {
 		// An empty part carries no frames: the credit that paces a stream never
 		// comes for zero bytes, so its END could overtake the response that
 		// announces it. The descriptor (stream_id 0) just says "empty".
-		rc.Close()
+		_ = rc.Close()
 		release()
 		return rpc.StreamDesc{StreamID: 0, Size: 0, Purpose: rpc.PurposeSyncPart}, nil
 	}
 	ss, d, err := c.Conn.NewSend(c.Conn.Context(), c.Parent, rpc.PurposeSyncPart, size)
 	if err != nil {
-		rc.Close()
+		_ = rc.Close()
 		release()
 		return nil, err
 	}
 	go func() {
-		defer rc.Close()
+		defer func() { _ = rc.Close() }()
 		defer release()
 		if _, err := io.Copy(ss, rc); err == nil {
 			_ = ss.Close()

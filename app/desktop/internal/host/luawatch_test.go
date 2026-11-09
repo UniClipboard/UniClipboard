@@ -61,7 +61,7 @@ func TestLuaScriptsLoadAndHotReload(t *testing.T) {
 	if err := n.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { n.Close(context.Background()) })
+	t.Cleanup(func() { _ = n.Close(context.Background()) })
 	h := &host{n: n, board: b, cfg: m}
 	settle(h)
 

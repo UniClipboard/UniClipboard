@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/uniclipboard/unic/internal/store"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/store"
 )
 
 var commitLeases = map[string]LeaseID{}

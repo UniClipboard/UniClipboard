@@ -254,7 +254,7 @@ func stageExecutable(path, want string) (string, func(), error) {
 	if err != nil {
 		return "", nil, errors.New("pluginproc: cannot open the plugin executable")
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	dir, err := os.MkdirTemp("", "unic-plugin-")
 	if err != nil {
 		return "", nil, errors.New("pluginproc: cannot stage the plugin executable")
@@ -337,14 +337,14 @@ func (p *Proxy) spawn(ctx context.Context) (*session, error) {
 func (p *Proxy) terminate(s *session) {
 	killTree(s.cmd)
 	if s.conn != nil {
-		s.conn.Close()
+		_ = s.conn.Close()
 	}
 	<-s.exited
 }
 
 func (p *Proxy) watch(s *session) {
 	<-s.exited
-	s.conn.Close()
+	_ = s.conn.Close()
 	p.onExit(s)
 }
 
@@ -414,7 +414,7 @@ func (p *Proxy) Close(ctx context.Context) error {
 		closeCtx, cancelClose := context.WithTimeout(cctx, p.opts.StopTimeout/2)
 		_, _ = s.conn.Call(closeCtx, rpc.CallOptions{Method: rpc.MethodClose, Timeout: p.opts.StopTimeout / 2, Params: rpc.Empty{}}, nil)
 		cancelClose()
-		s.conn.Close() // EOF on the plugin's stdin asks it to exit
+		_ = s.conn.Close() // EOF on the plugin's stdin asks it to exit
 		select {
 		case <-s.exited:
 		case <-time.After(max(time.Until(deadlineOf(cctx)), 0)):

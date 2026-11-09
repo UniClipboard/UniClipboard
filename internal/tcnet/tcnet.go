@@ -135,7 +135,7 @@ func (t *Transport) Binding(addr string) ([]byte, error) {
 	if err != nil {
 		return nil, ErrBadAddress
 	}
-	raw := ci.ServerPublic.Raw32()
+	raw := ci.ServerPublic.Raw32() //nolint:staticcheck // SA1019: no non-deprecated way to get the raw key bytes
 	return append([]byte("unic/tailcat/1\x00"), raw[:]...), nil
 }
 

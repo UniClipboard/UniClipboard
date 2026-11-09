@@ -210,7 +210,7 @@ func (p *Proxy) receiveRoot(ctx context.Context, c *rpc.Call) (any, error) {
 		for { // bodies declared but never taken
 			select {
 			case x := <-a.ch:
-				x.body.Close()
+				_ = x.body.Close()
 			default:
 				return
 			}
@@ -266,7 +266,7 @@ func (p *Proxy) receivePart(ctx context.Context, c *rpc.Call) (any, error) {
 	case a.ch <- recvPart{body}:
 		return nil, nil
 	case <-ctx.Done():
-		body.Close()
+		_ = body.Close()
 		return nil, ctx.Err()
 	}
 }

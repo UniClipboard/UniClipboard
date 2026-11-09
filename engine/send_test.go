@@ -449,7 +449,7 @@ func contentOf(t *testing.T, e *Engine, r ReceivedContent) (reps, files map[stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer e.ReleaseContent(bg, l.LeaseID)
+	defer func() { _ = e.ReleaseContent(bg, l.LeaseID) }()
 	reps, files = map[string]string{}, map[string]string{}
 	for _, p := range l.Content.Parts {
 		if p.Kind == PartFile {

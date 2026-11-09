@@ -82,7 +82,7 @@ func TestNoHalfPublishedCredentials(t *testing.T) {
 		t.Skip()
 	}
 	_ = os.Chmod(dir, 0o500)
-	defer os.Chmod(dir, 0o700)
+	defer func() { _ = os.Chmod(dir, 0o700) }()
 	if _, err := loadCredentials(dir); err == nil {
 		t.Fatal("expected a write failure")
 	}

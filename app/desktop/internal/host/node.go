@@ -217,7 +217,7 @@ func readPart(ctx context.Context, e *engine.Engine, lease engine.LeaseID, part 
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	return io.ReadAll(r)
 }
 

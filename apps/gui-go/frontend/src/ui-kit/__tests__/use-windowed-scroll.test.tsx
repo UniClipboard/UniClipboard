@@ -103,21 +103,20 @@ describe('useWindowedScroll', () => {
       return nextFrame
     })
     vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id))
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
-      function (this: HTMLElement) {
-        if (this.hasAttribute('data-item-id')) {
-          const host = this.parentElement!
-          const children = [...host.querySelectorAll('[data-item-id]')]
-          const top =
-            parseFloat((host.querySelector('[data-top]') as HTMLElement).style.height) || 0
-          return rect(
-            40 + top + children.indexOf(this) * 20 + Number(host.dataset.shift) - host.scrollTop,
-            20
-          )
-        }
-        return rect(40, 100)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      if (this.hasAttribute('data-item-id')) {
+        const host = this.parentElement!
+        const children = [...host.querySelectorAll('[data-item-id]')]
+        const top = parseFloat((host.querySelector('[data-top]') as HTMLElement).style.height) || 0
+        return rect(
+          40 + top + children.indexOf(this) * 20 + Number(host.dataset.shift) - host.scrollTop,
+          20
+        )
       }
-    )
+      return rect(40, 100)
+    })
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100)
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(4000)
   })

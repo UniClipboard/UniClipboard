@@ -325,6 +325,16 @@ func cmdWait(ts *testscript.TestScript, neg bool, args []string) {
 	}
 }
 
+func pendingFingerprint(ts *testscript.TestScript, n *node) string {
+	out, _, err := n.unic("requests")
+	ts.Check(err)
+	fp := regexp.MustCompile(`[0-9A-F]{4}(?: [0-9A-F]{4}){7}`).FindString(out)
+	if fp == "" {
+		ts.Fatalf("no fingerprint in requests: %s", out)
+	}
+	return fp
+}
+
 // pair <a> <b> [request|approve]: b pairs with a's full address (request),
 // then both users approve after the fingerprints are compared equal
 // (approve), and both sides see the other online. Without a stage, both run.
@@ -375,9 +385,16 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 		waitFor(b, idA)
 	}
 	if stage == "approve" || stage == "both" {
-		_, _, err := a.unic("approve", idB)
+		fpA, fpB := pendingFingerprint(ts, a), pendingFingerprint(ts, b)
+		if _, _, err := a.unic("approve", idB); err == nil {
+			ts.Fatalf("approval without fingerprint succeeded")
+		}
+		if _, _, err := a.unic("approve", idB, "0000 0000 0000 0000 0000 0000 0000 0000"); err == nil {
+			ts.Fatalf("approval with wrong fingerprint succeeded")
+		}
+		_, _, err := a.unic("approve", idB, fpB)
 		ts.Check(err)
-		_, _, err = b.unic("approve", idA)
+		_, _, err = b.unic("approve", idA, fpA)
 		ts.Check(err)
 		for _, p := range [][2]string{{a.name, idB}, {b.name, idA}} {
 			cmdWait(ts, false, []string{p[0], p[1] + `\s+\S+\s+online`, "peers"})

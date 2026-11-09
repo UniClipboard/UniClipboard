@@ -237,6 +237,60 @@ func (s *Store) TrustDevice(id string, expected int64) (Device, error) {
 	return s.bumpDevice(id, expected, `trust = 'trusted'`)
 }
 
+// ApproveDevice trusts the device and authorizes exactly the pending paths the
+// user reviewed. Any changed, added or removed pending path aborts the transaction.
+func (s *Store) ApproveDevice(id string, expected int64, bindings map[string]int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	d, err := scanDevice(tx.QueryRow(`SELECT `+deviceCols+` FROM devices WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) || d.Trust == TrustRevoked {
+		return ErrDeviceNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if d.Revision != expected {
+		return ErrDeviceConflict
+	}
+	rows, err := tx.Query(`SELECT id, revision FROM device_bindings WHERE device_id=? AND state='pending'`, id)
+	if err != nil {
+		return err
+	}
+	count := 0
+	for rows.Next() {
+		var bid string
+		var rev int64
+		if err := rows.Scan(&bid, &rev); err != nil {
+			rows.Close()
+			return err
+		}
+		if bindings[bid] != rev {
+			rows.Close()
+			return ErrBindingConflict
+		}
+		count++
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if count != len(bindings) || count == 0 {
+		return ErrBindingConflict
+	}
+	now := time.Now().UnixMilli()
+	if _, err := tx.Exec(`UPDATE devices SET trust='trusted', revision=revision+1, updated_ms=? WHERE id=?`, now, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE device_bindings SET state='authorized', revision=revision+1, updated_ms=? WHERE device_id=? AND state='pending'`, now, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // RevokeDevice drops trust and every binding of the device in one transaction,
 // by CAS, and leaves a tombstone so the key stays bound to the id.
 func (s *Store) RevokeDevice(id string, expected int64) error {

@@ -162,11 +162,11 @@ func got(h *host) string {
 }
 
 func addr(t *testing.T, h *host) string {
-	st, err := h.n.Status(bg)
-	if err != nil || st.Addr == "" {
-		t.Fatalf("status = %+v, %v", st, err)
+	ticket, err := h.n.ExportTicket(bg)
+	if err != nil || ticket == "" {
+		t.Fatalf("ticket: %v", err)
 	}
-	return st.Addr
+	return ticket
 }
 
 func pending(h *host) []api.PendingPeer { p, _ := h.n.Pending(bg); return p }
@@ -202,11 +202,11 @@ func pair(t *testing.T, a, b *host) {
 		}
 		return false
 	})
-	if _, err := a.n.Approve(bg, b.id, ""); err != nil {
+	if _, err := a.n.Approve(bg, b.id, approvalFor(t, a, b.id)); err != nil {
 		t.Fatal(err)
 	}
 	// Pairing is mutual: the joiner approves the other device too.
-	if _, err := b.n.Approve(bg, a.id, ""); err != nil {
+	if _, err := b.n.Approve(bg, a.id, approvalFor(t, b, a.id)); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "both sides connected", func() bool { return connected(a, b) })
@@ -423,7 +423,7 @@ func TestUnpairAndApprovalErrors(t *testing.T) {
 	if err := a.n.Unpair(bg, "nobody"); err == nil || err.(*api.Error).Status != 404 {
 		t.Fatalf("unpair unknown: %v", err)
 	}
-	if _, err := a.n.Approve(bg, "nobody", ""); err == nil || err.(*api.Error).Status != 404 {
+	if _, err := a.n.Approve(bg, "nobody", api.Approval{Fingerprint: "x", Revision: 1, Bindings: []api.BindingApproval{{ID: "path", Revision: 1}}}); err == nil || err.(*api.Error).Status != 404 {
 		t.Fatalf("approve unknown: %v", err)
 	}
 	if err := a.n.Unpair(bg, b.id); err != nil {
@@ -434,13 +434,13 @@ func TestUnpairAndApprovalErrors(t *testing.T) {
 	res, _ := b.n.Pair(bg, addr(t, a))
 	_ = res
 	eventually(t, "request again", func() bool { return len(pending(a)) == 1 })
-	if _, err := a.n.Approve(bg, b.id, "0000 0000 0000 0000"); err == nil || err.(*api.Error).Status != 409 {
+	if _, err := a.n.Approve(bg, b.id, wrongFingerprint(t, a, b.id)); err == nil || err.(*api.Error).Status != 409 {
 		t.Fatalf("wrong fingerprint: %v", err)
 	}
 	if len(pending(a)) != 1 {
 		t.Fatal("a refused approval changed the request")
 	}
-	if _, err := a.n.Approve(bg, b.id, pending(a)[0].Fingerprint); err != nil {
+	if _, err := a.n.Approve(bg, b.id, approvalFor(t, a, b.id)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -464,8 +464,8 @@ func TestEventsKeepTheirOldShape(t *testing.T) {
 	if seen["pending"].Peer == "" {
 		t.Fatalf("pending event has no name: %+v", seen["pending"])
 	}
-	_, _ = a.n.Approve(bg, b.id, "")
-	_, _ = b.n.Approve(bg, a.id, "")
+	_, _ = a.n.Approve(bg, b.id, approvalFor(t, a, b.id))
+	_, _ = b.n.Approve(bg, a.id, approvalFor(t, b, a.id))
 	eventually(t, "peer-up", func() bool {
 		for {
 			select {
@@ -525,7 +525,7 @@ func TestSimultaneousPairingYieldsOneSession(t *testing.T) {
 			}
 			return false
 		})
-		if _, err := x[0].n.Approve(bg, x[1].id, ""); err != nil {
+		if _, err := x[0].n.Approve(bg, x[1].id, approvalFor(t, x[0], x[1].id)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -602,5 +602,58 @@ func TestOldSyncKeysAreRefusedAndKeepTheLastGoodConfig(t *testing.T) {
 	}
 	if a.cfg.Current().Sync.Enabled {
 		t.Fatal("a rejected file replaced the last good configuration")
+	}
+}
+
+func approvalFor(t *testing.T, h *host, id string) api.Approval {
+	t.Helper()
+	for _, p := range pending(h) {
+		if p.ID == id {
+			return api.Approval{Fingerprint: p.Fingerprint, Revision: p.Revision, Bindings: p.Bindings}
+		}
+	}
+	t.Fatalf("no request for %s", id)
+	return api.Approval{}
+}
+func wrongFingerprint(t *testing.T, h *host, id string) api.Approval {
+	req := approvalFor(t, h, id)
+	req.Fingerprint = "0000 0000 0000 0000"
+	return req
+}
+
+func TestBuiltinSessionIntroducesTrustedDevices(t *testing.T) {
+	a, b, c := newHost(t, false), newHost(t, false), newHost(t, false)
+	pair(t, a, b)
+	pair(t, b, c)
+	eventually(t, "a learns c through b", func() bool {
+		cs, _ := a.n.Candidates(bg)
+		for _, cand := range cs {
+			if cand.ID == c.id {
+				return true
+			}
+		}
+		return false
+	})
+	eventually(t, "c learns a through b", func() bool {
+		cs, _ := c.n.Candidates(bg)
+		for _, cand := range cs {
+			if cand.ID == a.id {
+				return true
+			}
+		}
+		return false
+	})
+	if connected(a, c) || len(pending(a)) != 0 || len(pending(c)) != 0 {
+		t.Fatal("introduction granted trust or paired automatically")
+	}
+}
+
+func TestStatusNeverIssuesPairingTicket(t *testing.T) {
+	a := newHost(t, false)
+	if _, err := a.n.Status(bg); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := a.n.e.GetPairingCode(bg); err != nil || ok {
+		t.Fatalf("status changed pairing: %v %v", ok, err)
 	}
 }

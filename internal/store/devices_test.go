@@ -156,3 +156,25 @@ func TestRevokeDropsEveryPathAndNeedsNewApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestApproveDeviceRollsBackAfterWriteFailure(t *testing.T) {
+	s, _ := openTemp(t)
+	d, _ := s.AddDevice("device", key(42), "")
+	b, err := s.AddBinding("path", d.ID, "instance", []byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Force failure after the device UPDATE and before paths can be authorized.
+	_, err = s.db.Exec(`CREATE TRIGGER fail_approval BEFORE UPDATE OF state ON device_bindings BEGIN SELECT RAISE(ABORT, 'test failure'); END`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ApproveDevice(d.ID, d.Revision, map[string]int64{b.ID: b.Revision}); err == nil {
+		t.Fatal("expected write failure")
+	}
+	got, _ := s.Device(d.ID)
+	path, _ := s.Binding(b.ID)
+	if got.Trust != TrustPending || got.Revision != d.Revision || path.State != BindingPending || path.Revision != b.Revision {
+		t.Fatalf("partial approval: %+v %+v", got, path)
+	}
+}

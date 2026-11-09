@@ -1,6 +1,6 @@
 // Package session is the peer-session layer of the built-in tailcat backend.
 // It keeps a connection to every device the Engine lists in its state
-// snapshot, carries the identity handshake (docs/design/identity-protocol.md)
+// snapshot, carries the identity handshake (docs/contracts/identity-protocol.md)
 // between the two ends and the Engine's authority, and moves clips to and
 // from the Engine. It decides nothing about trust: the Engine does, through
 // plugin.PeerAuthority. It knows nothing of tailcat or of any clipboard; it
@@ -141,6 +141,11 @@ func (b *Backend) ApplyState(ctx context.Context, s rpc.SyncState) error {
 		b.down()
 	}
 	b.reconcile()
+	b.mu.Lock()
+	for _, sess := range b.sessions {
+		sess.wakeIntroductions()
+	}
+	b.mu.Unlock()
 	return nil
 }
 
@@ -516,15 +521,16 @@ func (b *Backend) acceptLoop(r *runState) {
 // ---- sessions ----
 
 type session struct {
-	b        *Backend
-	r        *runState
-	conn     net.Conn
-	w        *wire.Conn
-	connID   string
-	token    string
-	peerID   string
-	outgoing bool
-	trustRev uint64
+	b         *Backend
+	r         *runState
+	conn      net.Conn
+	w         *wire.Conn
+	connID    string
+	token     string
+	peerID    string
+	outgoing  bool
+	trustRev  uint64
+	introWake chan struct{}
 
 	wmu    sync.Mutex // one writer
 	done   chan struct{}
@@ -602,6 +608,7 @@ func (b *Backend) establish(r *runState, s *session) bool {
 		return false
 	}
 	replaced := b.sessions[s.peerID]
+	s.introWake = make(chan struct{}, 1)
 	b.sessions[s.peerID] = s
 	r.wg.Add(1)
 	b.mu.Unlock()
@@ -614,8 +621,11 @@ func (b *Backend) establish(r *runState, s *session) bool {
 
 // serve runs a registered session until it ends.
 func (b *Backend) serve(s *session) {
+	introDone := make(chan struct{})
+	go func() { defer close(introDone); s.introduceLoop() }()
 	err := b.recvLoop(s)
 	s.close()
+	<-introDone
 	b.mu.Lock()
 	if b.sessions[s.peerID] == s {
 		delete(b.sessions, s.peerID)
@@ -627,6 +637,79 @@ func (b *Backend) serve(s *session) {
 		b.logf("session ended: %v", err)
 	}
 	b.kick(s.peerID)
+}
+
+// introduction is a bounded control message on an authenticated session.
+// The receiver supplies its own connection ID and token, never the sender's.
+type introduction struct {
+	T          string          `json:"t"`
+	Candidates []rpc.Candidate `json:"candidates"`
+}
+
+func (s *session) wakeIntroductions() {
+	select {
+	case s.introWake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *session) introduceLoop() {
+	// Renew long-lived sessions well before the seven-day candidate expiry.
+	tick := time.NewTicker(24 * time.Hour)
+	defer tick.Stop()
+	s.wakeIntroductions()
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-s.r.ctx.Done():
+			return
+		case <-s.introWake:
+		case <-tick.C:
+		}
+		if err := s.sendIntroductions(); err != nil {
+			s.close()
+			return
+		}
+	}
+}
+
+func (s *session) sendIntroductions() error {
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	s.b.mu.Lock()
+	enabled := s.b.st.Introduce && s.b.sessions[s.peerID] == s && !s.isDone()
+	peers := append([]rpc.StatePeer(nil), s.b.st.Peers...)
+	current := false
+	for _, p := range peers {
+		if p.ID == s.peerID && uint64(p.TrustRevision) == s.trustRev {
+			current = true
+			break
+		}
+	}
+	enabled = enabled && current
+	s.b.mu.Unlock()
+	if !enabled {
+		return nil
+	}
+	candidates := make([]rpc.Candidate, 0, len(peers))
+	for _, p := range peers {
+		if p.ID != s.peerID && p.ID != s.b.self && p.Address != "" {
+			candidates = append(candidates, rpc.Candidate{ID: p.ID, Name: p.Name, Address: p.Address})
+		}
+	}
+	// Keep the same writer lock across batches so clipboard bodies cannot interleave.
+	for len(candidates) > 0 {
+		n := min(len(candidates), rpc.MaxCandidates)
+		_ = s.conn.SetWriteDeadline(time.Now().Add(eventTimeout))
+		err := s.w.WriteJSON(introduction{T: "introduce", Candidates: candidates[:n]})
+		_ = s.conn.SetWriteDeadline(time.Time{})
+		if err != nil {
+			return rpc.NewError(rpc.CodeUnavailable)
+		}
+		candidates = candidates[n:]
+	}
+	return nil
 }
 
 // ---- sending ----
@@ -690,6 +773,25 @@ func (b *Backend) recvLoop(s *session) error {
 		typ, raw, err := s.w.ReadRaw()
 		if err != nil {
 			return err
+		}
+		if typ == "introduce" {
+			var msg introduction
+			if err := json.Unmarshal(raw, &msg); err != nil {
+				return rpc.NewError(rpc.CodeInvalidArgument)
+			}
+			b.mu.Lock()
+			enabled := b.st.Introduce
+			b.mu.Unlock()
+			req := rpc.Introduce{ConnectionID: s.connID, SessionToken: s.token, Candidates: msg.Candidates}
+			if req.Validate() != nil {
+				return rpc.NewError(rpc.CodeInvalidArgument)
+			}
+			if enabled {
+				ctx, cancel := context.WithTimeout(s.r.ctx, eventTimeout)
+				_ = b.authority().Introduce(ctx, req)
+				cancel()
+			}
+			continue
 		}
 		if typ != "clip" {
 			continue // unknown control messages are ignored for forward compatibility

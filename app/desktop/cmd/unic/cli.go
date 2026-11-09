@@ -42,23 +42,15 @@ func runCLI(cmd string, args []string) error {
 			return err
 		}
 		fmt.Printf("device  %s (%s)\n", st.Name, st.ID)
-		if st.Addr == "" {
-			fmt.Println("ticket (starting…)")
-		} else {
-			fmt.Printf("ticket %s…  (run `unic addr` for the full ticket)\n", trunc(st.Addr, 24))
-		}
 		printPeers(st.Peers)
 		printPending(st.Pending)
 
 	case "addr":
-		st, err := c.Status(short)
+		ticket, err := c.ExportTicket(short)
 		if err != nil {
 			return err
 		}
-		if st.Addr == "" {
-			return fmt.Errorf("the daemon is still starting; try again in a moment")
-		}
-		fmt.Println(st.Addr)
+		fmt.Println(ticket)
 
 	case "config":
 		if len(args) == 1 && args[0] == "path" {
@@ -105,7 +97,7 @@ func runCLI(cmd string, args []string) error {
 			if st, err := c.Status(short); err == nil {
 				me = st.ID
 			}
-			fmt.Printf("added %s (%s); it will connect once %s approves this device\n  (on that device: `unic approve %s`)\nFingerprint: %s  (it must match the one shown there)\n", p.Name, p.ID, p.Name, me, p.Fingerprint)
+			fmt.Printf("added %s (%s); it will connect once %s approves this device\n  (on that device: `unic approve %s '<fingerprint from this device>'`)\nFingerprint: %s  (it must match the one shown there)\n", p.Name, p.ID, p.Name, me, p.Fingerprint)
 		} else {
 			fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
 		}
@@ -140,11 +132,25 @@ func runCLI(cmd string, args []string) error {
 		printPending(ps)
 
 	case "approve", "reject":
-		if len(args) != 1 {
-			return fmt.Errorf("usage: unic %s <id>", cmd)
+		if (cmd == "approve" && len(args) != 2) || (cmd == "reject" && len(args) != 1) {
+			return fmt.Errorf("usage: unic approve <id> '<fingerprint from the other device>'; unic reject <id>")
 		}
 		if cmd == "approve" {
-			p, err := c.Approve(short, args[0], "")
+			ps, err := c.Pending(short)
+			if err != nil {
+				return err
+			}
+			var approval api.Approval
+			for _, p := range ps {
+				if p.ID == args[0] {
+					approval = api.Approval{Fingerprint: args[1], Revision: p.Revision, Bindings: p.Bindings}
+					break
+				}
+			}
+			if approval.Revision == 0 {
+				return fmt.Errorf("no pending request for this device")
+			}
+			p, err := c.Approve(short, args[0], approval)
 			if err != nil {
 				return err
 			}
@@ -298,7 +304,7 @@ func printPending(ps []api.PendingPeer) {
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, from, p.Fingerprint)
 	}
 	_ = w.Flush()
-	fmt.Println("Approve with `unic approve <id>`, dismiss with `unic reject <id>`.")
+	fmt.Println("Approve with `unic approve <id> '<fingerprint from the other device>'`, dismiss with `unic reject <id>`.")
 }
 
 func trunc(s string, n int) string {

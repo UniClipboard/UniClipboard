@@ -196,6 +196,7 @@ func (e *Engine) evictOwnedHistory() bool {
 		return false
 	}
 	e.historyChanged(id)
+	e.notifyObservers(plugin.EventDeleted, id)
 	return true
 }
 

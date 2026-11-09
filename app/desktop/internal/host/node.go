@@ -326,7 +326,13 @@ func apiPending(d engine.Device) api.PendingPeer {
 	for _, b := range d.Bindings {
 		byTicket = byTicket || b.Ticket
 	}
-	return api.PendingPeer{ID: d.ID, Name: d.DisplayName(), ByCode: byTicket, Fingerprint: d.Fingerprint, Time: d.UpdatedMs / 1000}
+	out := api.PendingPeer{ID: d.ID, Name: d.DisplayName(), ByCode: byTicket, Fingerprint: d.Fingerprint, Time: d.UpdatedMs / 1000, Revision: d.Revision, Bindings: []api.BindingApproval{}}
+	for _, b := range d.Bindings {
+		if b.State == engine.BindingPending {
+			out.Bindings = append(out.Bindings, api.BindingApproval{ID: b.ID, Revision: b.Revision})
+		}
+	}
+	return out
 }
 
 // apiErr maps an engine error to the HTTP status and reason the API has always
@@ -368,9 +374,6 @@ func (n *Node) Status(ctx context.Context) (api.Status, error) {
 		return api.Status{}, apiErr(err, false)
 	}
 	out := api.Status{ID: string(st.Self.ID), Name: st.Self.Name, Peers: []api.PeerStatus{}, Pending: []api.PendingPeer{}}
-	if t, err := n.e.ExportPairingTicket(ctx); err == nil {
-		out.Addr = t.Ticket
-	}
 	ps, err := n.e.ListPeers(ctx) // devices and external channels, one list
 	if err != nil {
 		return api.Status{}, apiErr(err, false)
@@ -473,29 +476,22 @@ func (n *Node) Pending(ctx context.Context) ([]api.PendingPeer, error) {
 	return out, nil
 }
 
-// Approve is the user having compared fingerprints: trust the device, then
-// allow every path it asked for.
-func (n *Node) Approve(ctx context.Context, id, fingerprint string) (api.PeerStatus, error) {
-	d, err := n.e.GetDevice(ctx, id)
+// ExportTicket is an explicit request for a secret pairing ticket.
+func (n *Node) ExportTicket(ctx context.Context) (string, error) {
+	t, err := n.e.ExportPairingTicket(ctx)
 	if err != nil {
-		return api.PeerStatus{}, apiErr(err, false)
+		return "", apiErr(err, false)
 	}
-	if fingerprint == "" {
-		fingerprint = d.Fingerprint
+	return t.Ticket, nil
+}
+
+func (n *Node) Approve(ctx context.Context, id string, approval api.Approval) (api.PeerStatus, error) {
+	req := engine.ApproveDeviceRequest{ID: id, ExpectedRevision: approval.Revision, ExpectedFingerprint: approval.Fingerprint}
+	for _, b := range approval.Bindings {
+		req.Bindings = append(req.Bindings, engine.BindingRequest{ID: b.ID, ExpectedRevision: b.Revision})
 	}
-	if d.Trust != engine.DeviceTrustTrusted {
-		if d, err = n.e.TrustDevice(ctx, engine.TrustDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision, ExpectedFingerprint: fingerprint}); err != nil {
-			return api.PeerStatus{}, apiErr(err, false)
-		}
-	}
-	for _, b := range d.Bindings {
-		if b.State == engine.BindingPending {
-			if _, err := n.e.AuthorizeBinding(ctx, engine.BindingRequest{ID: b.ID, ExpectedRevision: b.Revision}); err != nil {
-				return api.PeerStatus{}, apiErr(err, false)
-			}
-		}
-	}
-	if d, err = n.e.GetDevice(ctx, id); err != nil {
+	d, err := n.e.ApproveDevice(ctx, req)
+	if err != nil {
 		return api.PeerStatus{}, apiErr(err, false)
 	}
 	return apiPeer(d), nil

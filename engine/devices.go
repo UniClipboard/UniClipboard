@@ -11,7 +11,7 @@ import (
 	"github.com/uniclipboard/unic/internal/store"
 )
 
-// ---- unified devices (decision 0008, device contract) ----
+// ---- unified devices (docs/architecture/identity-and-trust.md, device contract) ----
 //
 // A Device is one authenticated peer, listed once however many sync backends
 // reach it. Each way in is a DeviceBinding to one backend instance with its own
@@ -252,6 +252,46 @@ func (e *Engine) TrustDevice(ctx context.Context, req TrustDeviceRequest) (Devic
 		return Device{}, newErr(CodeIdentityMismatch, "the fingerprint does not match this device")
 	}
 	if _, err := e.st.TrustDevice(req.ID, req.ExpectedRevision); err != nil {
+		return Device{}, deviceStoreErr(err)
+	}
+	e.reconcile()
+	e.deviceChanged(req.ID)
+	return e.loadDevice(req.ID)
+}
+
+// ApproveDeviceRequest binds approval to the device and every pending path shown.
+type ApproveDeviceRequest struct {
+	ID                  string
+	ExpectedRevision    int64
+	ExpectedFingerprint string
+	Bindings            []BindingRequest
+}
+
+// ApproveDevice atomically trusts a device and authorizes its reviewed paths.
+func (e *Engine) ApproveDevice(ctx context.Context, req ApproveDeviceRequest) (Device, error) {
+	release, gerr := e.historyGate(ctx, true, false)
+	if gerr != nil {
+		return Device{}, gerr
+	}
+	defer release()
+	if req.ID == "" || req.ExpectedRevision <= 0 || strings.TrimSpace(req.ExpectedFingerprint) == "" || len(req.Bindings) == 0 {
+		return Device{}, newErr(CodeInvalidArgument, "device revision, fingerprint and pending binding revisions are required")
+	}
+	bindings := make(map[string]int64, len(req.Bindings))
+	for _, b := range req.Bindings {
+		if b.ID == "" || b.ExpectedRevision <= 0 || bindings[b.ID] != 0 {
+			return Device{}, newErr(CodeInvalidArgument, "invalid binding revisions")
+		}
+		bindings[b.ID] = b.ExpectedRevision
+	}
+	d, err := e.st.Device(req.ID)
+	if err != nil {
+		return Device{}, deviceStoreErr(err)
+	}
+	if normFingerprint(req.ExpectedFingerprint) != normFingerprint(identity.Fingerprint(e.ident.Public(), d.PublicKey)) {
+		return Device{}, newErr(CodeIdentityMismatch, "the fingerprint does not match this device")
+	}
+	if err := e.st.ApproveDevice(req.ID, req.ExpectedRevision, bindings); err != nil {
 		return Device{}, deviceStoreErr(err)
 	}
 	e.reconcile()

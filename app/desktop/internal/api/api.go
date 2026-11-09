@@ -47,7 +47,7 @@ type ChannelUpdate struct {
 	AutoApply *bool   `json:"auto_apply,omitempty"`
 }
 
-// Candidate is a device that a paired device vouched for (decision 0012). It
+// Candidate is a device that a paired device vouched for (see docs/architecture/identity-and-trust.md). It
 // is a suggestion: Name is not verified and pairing needs approval on both
 // devices.
 type Candidate struct {
@@ -70,8 +70,21 @@ type PendingPeer struct {
 	ByCode bool `json:"by_code,omitempty"`
 	// Fingerprint is shown on both devices so the user can check that the
 	// request comes from the device they think it does.
-	Fingerprint string `json:"fingerprint"`
-	Time        int64  `json:"time"`
+	Fingerprint string            `json:"fingerprint"`
+	Time        int64             `json:"time"`
+	Revision    int64             `json:"revision"`
+	Bindings    []BindingApproval `json:"bindings"`
+}
+
+// Approval carries the fingerprint and revisions displayed to the user.
+type Approval struct {
+	Fingerprint string            `json:"fingerprint"`
+	Revision    int64             `json:"revision"`
+	Bindings    []BindingApproval `json:"bindings"`
+}
+type BindingApproval struct {
+	ID       string `json:"id"`
+	Revision int64  `json:"revision"`
 }
 
 // Event is pushed to subscribers (the GUI). Info never carries clipboard
@@ -87,7 +100,6 @@ type Event struct {
 type Status struct {
 	ID    string       `json:"id"`
 	Name  string       `json:"name"`
-	Addr  string       `json:"addr"`
 	Peers []PeerStatus `json:"peers"`
 	// Pending are devices waiting for the user to approve them.
 	Pending []PendingPeer `json:"pending"`
@@ -238,16 +250,15 @@ func ReasonOf(err error) string {
 // on top of the engine; tests can implement it with a fake.
 type Backend interface {
 	Status(ctx context.Context) (Status, error)
+	ExportTicket(ctx context.Context) (string, error)
 	Pair(ctx context.Context, addr string) (PairResult, error)
 	Code(ctx context.Context) (Code, bool, error)
 	NewCode(ctx context.Context) (Code, error)
 	CancelCode(ctx context.Context) error
 	Join(ctx context.Context, code string) (PairResult, error)
 	Pending(ctx context.Context) ([]PendingPeer, error)
-	// Approve trusts a pending device. A non-empty fingerprint must equal the
-	// one the device is shown with now; this is how a client that displayed a
-	// fingerprint makes sure the user approved that very request.
-	Approve(ctx context.Context, id, fingerprint string) (PeerStatus, error)
+	// Approve requires the fingerprint and the complete pending request snapshot.
+	Approve(ctx context.Context, id string, approval Approval) (PeerStatus, error)
 	Reject(ctx context.Context, id string) error
 	// Candidates lists devices paired devices vouched for. PairCandidate asks
 	// to pair with one (and keeps retrying while it is away); IgnoreCandidate
@@ -445,21 +456,35 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 		reply(w, 200, ps)
 	})
 
-	// The body is optional: {"fingerprint": "..."} makes the approval fail with
-	// 409 unless the device is still shown with that fingerprint.
 	mux.HandleFunc("POST /v1/pending/{id}/approve", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Fingerprint string `json:"fingerprint"`
+		var body Approval
+		dec := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil || strings.TrimSpace(body.Fingerprint) == "" || body.Revision <= 0 || len(body.Bindings) == 0 {
+			fail(w, 400, &Error{Status: 400, Message: "fingerprint, revision and pending bindings are required"})
+			return
 		}
-		if r.ContentLength != 0 {
-			_ = json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body)
+		var extra any
+		if err := dec.Decode(&extra); err != io.EOF {
+			fail(w, 400, &Error{Status: 400, Message: "invalid approval body"})
+			return
 		}
-		p, err := b.Approve(r.Context(), r.PathValue("id"), body.Fingerprint)
+		p, err := b.Approve(r.Context(), r.PathValue("id"), body)
 		if err != nil {
 			fail(w, 404, err)
 			return
 		}
-		reply(w, 200, PeerStatus{ID: p.ID, Name: p.Name})
+		reply(w, 200, p)
+	})
+
+	mux.HandleFunc("POST /v1/pairing-ticket", func(w http.ResponseWriter, r *http.Request) {
+		ticket, err := b.ExportTicket(r.Context())
+		if err != nil {
+			fail(w, 503, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		reply(w, 200, map[string]string{"ticket": ticket})
 	})
 
 	mux.HandleFunc("POST /v1/pending/{id}/reject", func(w http.ResponseWriter, r *http.Request) {
@@ -829,15 +854,19 @@ func (c *Client) Pending(ctx context.Context) (ps []PendingPeer, err error) {
 	return
 }
 
-// Approve trusts a pending device. Pass the fingerprint the user was shown so
-// that the daemon refuses if the request has changed meanwhile; "" skips the check.
-func (c *Client) Approve(ctx context.Context, id, fingerprint string) (p PeerStatus, err error) {
-	var body any
-	if fingerprint != "" {
-		body = map[string]string{"fingerprint": fingerprint}
-	}
-	err = c.do(ctx, "POST", "/v1/pending/"+id+"/approve", body, &p)
+// Approve submits the exact request the user reviewed.
+func (c *Client) Approve(ctx context.Context, id string, approval Approval) (p PeerStatus, err error) {
+	err = c.do(ctx, "POST", "/v1/pending/"+id+"/approve", approval, &p)
 	return
+}
+
+// ExportTicket explicitly obtains a secret, short-lived pairing ticket.
+func (c *Client) ExportTicket(ctx context.Context) (string, error) {
+	var out struct {
+		Ticket string `json:"ticket"`
+	}
+	err := c.do(ctx, "POST", "/v1/pairing-ticket", nil, &out)
+	return out.Ticket, err
 }
 
 func (c *Client) Reject(ctx context.Context, id string) error {

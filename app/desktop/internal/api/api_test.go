@@ -15,6 +15,7 @@ import (
 type fake struct {
 	Backend
 	approveID, approveFP string
+	approval             Approval
 	query                HistoryQuery
 	delID                string
 	delRev               uint64
@@ -28,8 +29,8 @@ func (f *fake) Status(context.Context) (Status, error) { return Status{ID: "me"}
 func (f *fake) Pending(context.Context) ([]PendingPeer, error) {
 	return nil, f.err
 }
-func (f *fake) Approve(_ context.Context, id, fp string) (PeerStatus, error) {
-	f.approveID, f.approveFP = id, fp
+func (f *fake) Approve(_ context.Context, id string, approval Approval) (PeerStatus, error) {
+	f.approveID, f.approveFP, f.approval = id, approval.Fingerprint, approval
 	return PeerStatus{ID: id, Name: "n"}, f.err
 }
 
@@ -59,28 +60,31 @@ func TestListsAreNeverNull(t *testing.T) {
 func TestApproveCarriesTheFingerprintTheUserSaw(t *testing.T) {
 	f := &fake{}
 	h := Handler(f, config.Static(config.Default()))
-	if rec := do(t, h, "POST", "/v1/pending/abc/approve", `{"fingerprint":"AAAA BBBB CCCC DDDD"}`); rec.Code != 200 {
+	if rec := do(t, h, "POST", "/v1/pending/abc/approve", `{"fingerprint":"AAAA BBBB CCCC DDDD","revision":3,"bindings":[{"id":"path","revision":2}]}`); rec.Code != 200 {
 		t.Fatalf("approve = %d %s", rec.Code, rec.Body)
 	}
 	if f.approveID != "abc" || f.approveFP != "AAAA BBBB CCCC DDDD" {
 		t.Fatalf("backend got %q %q", f.approveID, f.approveFP)
 	}
-	// Old clients send no body: the check is skipped, as before.
-	do(t, h, "POST", "/v1/pending/abc/approve", "")
-	if f.approveFP != "" {
-		t.Fatalf("fingerprint = %q", f.approveFP)
+	if f.approval.Revision != 3 || len(f.approval.Bindings) != 1 || f.approval.Bindings[0].Revision != 2 {
+		t.Fatalf("lost revisions: %+v", f.approval)
+	}
+	for _, body := range []string{"", "{", `{"fingerprint":"x"}`, `{"fingerprint":"x","revision":1,"bindings":[{"id":"p","revision":1}]} {}`} {
+		if rec := do(t, h, "POST", "/v1/pending/abc/approve", body); rec.Code != 400 {
+			t.Fatalf("accepted invalid approval %q: %d", body, rec.Code)
+		}
 	}
 }
 
 func TestBackendChoosesTheStatus(t *testing.T) {
 	f := &fake{err: &Error{Message: "the fingerprint does not match", Status: 409}}
 	h := Handler(f, config.Static(config.Default()))
-	rec := do(t, h, "POST", "/v1/pending/abc/approve", `{"fingerprint":"x"}`)
+	rec := do(t, h, "POST", "/v1/pending/abc/approve", `{"fingerprint":"x","revision":3,"bindings":[{"id":"path","revision":2}]}`)
 	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "does not match") {
 		t.Fatalf("approve = %d %s", rec.Code, rec.Body)
 	}
 	f.err = &Error{Message: "expired", Reason: "expired", Status: 404}
-	rec = do(t, h, "POST", "/v1/pending/abc/approve", "")
+	rec = do(t, h, "POST", "/v1/pending/abc/approve", `{"fingerprint":"x","revision":3,"bindings":[{"id":"path","revision":2}]}`)
 	var body errBody
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if rec.Code != 404 || body.Reason != "expired" {
@@ -167,5 +171,18 @@ func TestChannelEndpoints(t *testing.T) {
 	}
 	if rec := do(t, h, "DELETE", "/v1/channels/c1?revision=4", ""); rec.Code != 200 || f.delRev != 4 {
 		t.Fatalf("%d %d", rec.Code, f.delRev)
+	}
+}
+
+func (f *fake) ExportTicket(context.Context) (string, error) { return "secret-ticket", f.err }
+func TestTicketRequiresExplicitExport(t *testing.T) {
+	h := Handler(&fake{}, config.Static(config.Default()))
+	st := do(t, h, "GET", "/v1/status", "")
+	if strings.Contains(st.Body.String(), "ticket") || strings.Contains(st.Body.String(), "addr") {
+		t.Fatal(st.Body.String())
+	}
+	rec := do(t, h, "POST", "/v1/pairing-ticket", "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "secret-ticket") || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
 }

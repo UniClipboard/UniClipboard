@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -236,4 +237,25 @@ func TestObserverSeesPastedAndLifecycle(t *testing.T) {
 	if !slices.Contains(obs.kinds(), "app.shutdown ") {
 		t.Fatalf("shutdown was not delivered: %v", obs.kinds())
 	}
+}
+
+func TestObserverSeesStoragePressureEviction(t *testing.T) {
+	obs := newFakeObserver("example.eviction")
+	n := newContentNode(t, func(o *Options) {
+		smallBudget(100)(o)
+		o.Plugins = []PluginInstance{{Plugin: obs, Events: []string{plugin.EventDeleted}}}
+	})
+	start(t, n)
+	a := commitText(t, n.e, "old", strings.Repeat("a", 60))
+	in, err := n.e.ImportContent(bg, ContentInput{Representations: []RepresentationInput{rep(MimeText, strings.Repeat("b", 50))}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer n.e.ReleaseContent(bg, in.LeaseID)
+	if _, err := n.e.GetItem(bg, a.HistoryID); code(err) != CodeNotFound {
+		t.Fatalf("not evicted: %v", err)
+	}
+	eventually(t, "one deleted event after eviction", func() bool {
+		return slices.Equal(obs.kinds(), []string{plugin.EventDeleted + " " + string(a.HistoryID)})
+	})
 }

@@ -149,3 +149,73 @@ func (e *Engine) bindDevice(deviceID, instanceID string, remoteContext []byte) (
 	e.deviceChanged(deviceID)
 	return e.toBinding(b), nil
 }
+
+func TestApproveDeviceIsAtomicAndBindsTheReviewedPaths(t *testing.T) {
+	n := newNode(t, nil)
+	d, _ := n.e.registerVerifiedDevice(remoteKey(t, 31), "phone")
+	b1, _ := n.e.bindDevice(d.ID, "one", []byte("context-one"))
+	b2, _ := n.e.bindDevice(d.ID, "two", []byte("context-two"))
+	req := ApproveDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision, ExpectedFingerprint: d.Fingerprint,
+		Bindings: []BindingRequest{{ID: b1.ID, ExpectedRevision: b1.Revision}, {ID: b2.ID, ExpectedRevision: b2.Revision}}}
+	// A later context change must roll back the entire approval, including the
+	// device trust and the earlier path in the request.
+	if _, err := n.e.bindDevice(d.ID, "two", []byte("new-context")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.ApproveDevice(bg, req); code(err) != CodeConflict {
+		t.Fatalf("stale context: %v", err)
+	}
+	got, _ := n.e.GetDevice(bg, d.ID)
+	if got.Trust != DeviceTrustPending {
+		t.Fatalf("partial trust: %+v", got)
+	}
+	for _, b := range got.Bindings {
+		if b.State != BindingPending {
+			t.Fatalf("partial authorization: %+v", b)
+		}
+	}
+	req.Bindings = nil
+	for _, b := range got.Bindings {
+		req.Bindings = append(req.Bindings, BindingRequest{ID: b.ID, ExpectedRevision: b.Revision})
+	}
+	stale := req
+	stale.Bindings = append([]BindingRequest(nil), req.Bindings[:1]...)
+	if _, err := n.e.ApproveDevice(bg, stale); code(err) != CodeConflict {
+		t.Fatalf("missing path: %v", err)
+	}
+	if _, err := n.e.RenameDevice(bg, RenameDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision, Name: "renamed"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.e.ApproveDevice(bg, req); code(err) != CodeConflict {
+		t.Fatalf("stale device: %v", err)
+	}
+	got, _ = n.e.GetDevice(bg, d.ID)
+	req.ExpectedRevision = got.Revision
+	approved, err := n.e.ApproveDevice(bg, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.Trust != DeviceTrustTrusted {
+		t.Fatalf("not trusted: %+v", approved)
+	}
+	for _, b := range approved.Bindings {
+		if b.State != BindingAuthorized {
+			t.Fatalf("not authorized: %+v", b)
+		}
+	}
+	// Already trusted devices need the user's fingerprint for each new path too.
+	b3, err := n.e.bindDevice(d.ID, "three", []byte("context-three"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.ExpectedRevision = approved.Revision
+	req.Bindings = []BindingRequest{{ID: b3.ID, ExpectedRevision: b3.Revision}}
+	req.ExpectedFingerprint = "wrong"
+	if _, err := n.e.ApproveDevice(bg, req); code(err) != CodeIdentityMismatch {
+		t.Fatalf("trusted fingerprint bypass: %v", err)
+	}
+	req.ExpectedFingerprint = ""
+	if _, err := n.e.ApproveDevice(bg, req); code(err) != CodeInvalidArgument {
+		t.Fatalf("missing fingerprint: %v", err)
+	}
+}

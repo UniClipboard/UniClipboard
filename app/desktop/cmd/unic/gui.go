@@ -64,6 +64,8 @@ type gui struct {
 	tab, addMode, joinMode      int
 	codeInput, addrInput        string
 	revealAddr, addrOpen        bool
+	pairingTicket               string
+	ticketBusy                  bool
 	confirmRemove               string
 	history                     []api.HistoryItem
 	historyPreviews             map[string]string
@@ -315,14 +317,38 @@ func joinError(err error) string {
 	return "无法连接:" + err.Error()
 }
 
-func (g *gui) decide(id, fingerprint string, approve bool) {
+func (g *gui) fetchTicket() {
+	g.mu.Lock()
+	if g.ticketBusy {
+		g.mu.Unlock()
+		return
+	}
+	g.ticketBusy = true
+	g.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		ticket, err := g.c.ExportTicket(ctx)
+		g.mu.Lock()
+		g.ticketBusy = false
+		if err == nil {
+			g.pairingTicket = ticket
+		} else {
+			g.pairingTicket = ""
+		}
+		g.mu.Unlock()
+		g.win.Invalidate()
+	}()
+}
+
+func (g *gui) decide(p api.PendingPeer, approve bool) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if approve {
-			_, _ = g.c.Approve(ctx, id, fingerprint)
+			_, _ = g.c.Approve(ctx, p.ID, api.Approval{Fingerprint: p.Fingerprint, Revision: p.Revision, Bindings: p.Bindings})
 		} else {
-			_ = g.c.Reject(ctx, id)
+			_ = g.c.Reject(ctx, p.ID)
 		}
 		g.refresh(ctx)
 	}()
@@ -341,6 +367,8 @@ func (g *gui) unpair(id string) {
 
 // snapshot is what one frame shows, copied under the lock.
 type snapshot struct {
+	pairingTicket               string
+	ticketBusy                  bool
 	st                          api.Status
 	up                          bool
 	clip                        string
@@ -372,7 +400,7 @@ func (g *gui) content(c *ui.Context, k uikit.Kit) {
 
 	g.mu.Lock()
 	s := snapshot{
-		st: g.status, up: g.daemonUp, clip: g.clip, logs: append([]string(nil), g.log...),
+		pairingTicket: g.pairingTicket, ticketBusy: g.ticketBusy, st: g.status, up: g.daemonUp, clip: g.clip, logs: append([]string(nil), g.log...),
 		code: g.code, hasCode: g.hasCode, codeBusy: g.codeBusy, codeErr: g.codeErr,
 		joinBusy: g.joinBusy, joinMsg: g.joinMsg, joinErr: g.joinErr, joinDone: g.joinDone, joinWait: g.joinWait,
 		history: g.history, historyPreviews: g.historyPreviews, historyCursor: g.historyCursor, historyError: g.historyError, historyBusy: g.historyBusy,
@@ -586,10 +614,10 @@ func (g *gui) pendingCard(c *ui.Context, p api.PendingPeer) {
 				approve = "指纹一致,批准"
 			}
 			if k.Button(c.Key("ok-"+p.ID), approve, uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
-				g.decide(p.ID, p.Fingerprint, true)
+				g.decide(p, true)
 			}
 			if k.Button(c.Key("no-"+p.ID), "拒绝", uikit.ButtonProps{}).Clicked() {
-				g.decide(p.ID, p.Fingerprint, false)
+				g.decide(p, false)
 			}
 			if p.Via == "" && !p.ByCode {
 				k.Text(c, "不认识的设备请拒绝", uikit.TextProps{}).FontSize(11).TextColor(t.Warning)
@@ -680,8 +708,8 @@ func (g *gui) showPane(c *ui.Context, s snapshot) {
 
 	k.Disclosure(c.Key("full-addr"), "完整地址 · 用于命令行或无法使用配对码时", &g.addrOpen, func() {
 		ui.Column(c).Gap(8).PaddingY(6).Children(func() {
-			addr := s.st.Addr
-			shown := "正在启动…"
+			addr := s.pairingTicket
+			shown := "点击生成配对票据"
 			if addr != "" {
 				shown = trunc(addr, 10) + strings.Repeat("•", 24) + addr[max(0, len(addr)-4):]
 				if g.revealAddr {
@@ -691,6 +719,9 @@ func (g *gui) showPane(c *ui.Context, s snapshot) {
 			k.Text(c, shown, uikit.TextProps{}).Font("monospace").FontSize(11).TextColor(t.TextMuted).
 				Padding(6, 8).Radius(6).Background(t.Surface).FillWidth()
 			ui.Row(c).Gap(8).Children(func() {
+				if k.Button(c.Key("addr-generate"), "生成票据", uikit.ButtonProps{Disabled: s.ticketBusy}).Clicked() {
+					g.fetchTicket()
+				}
 				show := "显示"
 				if g.revealAddr {
 					show = "隐藏"
@@ -702,7 +733,7 @@ func (g *gui) showPane(c *ui.Context, s snapshot) {
 					mygo.Clipboard.WriteText(addr)
 				}
 			})
-			k.Text(c, "地址等同密码,长期有效:持有者可以连接并请求加入。只分享给你自己的设备。", uikit.TextProps{}).
+			k.Text(c, "票据等同密码,5 分钟有效且仅能使用一次。只分享给你自己的设备。", uikit.TextProps{}).
 				FontSize(11).TextColor(t.Warning)
 		})
 	})

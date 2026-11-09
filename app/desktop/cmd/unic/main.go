@@ -31,7 +31,7 @@ The background node is a separate program, unicd; start it first.
   peers            list paired devices
   unpair <id>      forget a paired device
   requests         devices waiting for your approval
-  approve <id>     accept a waiting device
+  approve <id> <fingerprint>  accept after checking the other device
   reject <id>      dismiss a waiting device
   history, h       list, show, delete and tag clipboard history (unic h help)
   copy [text]      put text (or stdin, or -f files) on the clipboard

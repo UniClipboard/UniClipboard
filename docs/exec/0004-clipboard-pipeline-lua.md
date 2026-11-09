@@ -93,13 +93,13 @@
 
 2026-11-08 产品决定：取消自动写回（用户复制 A 却粘贴出 B 会困惑）。自动阶段只标注（标签、过期、persist、sync），内容原样入历史与同步；改写正文是用户主动触发的 Action。
 
-- [ ] 从引擎移除文本改写（`SetText`/文本 patch）、自动化深度、`plugin` 来源链及相关历史字段；处理器只保留 AddTag/RemoveTag/SetPersist/SetSync/SetExpire，历史来源改为 local_system/remote_device/explicit/action。
-- [ ] 增加阶段事件，保留订阅修订号、初始快照与溢出恢复协议；事件只给公开标识与安全元数据，正文显式读取。
-- [ ] 实现统一 ProcessContext（标注型）：标签限制、persist/sync/expire 暂存，Item.Text 只读；过期从 commit 起算。示例：含邮箱自动打 `email` 标签。
-- [ ] 单次失败回滚全部 patch；`continue` 继续处理，`block_sync` 设置后续插件不能解除的禁发标记。普通 SetSync(false) 可被后续插件覆盖，但不能突破全局配置和信任。
-- [ ] Engine 实现 Action 注册与运行：Spec 静态声明（ID/Title/Accepts）校验、`ListActions`、`RunAction`（来源校验、串行门与期限、恰好一次 SetText、新条目 origin=action 走显式提交、RequestID 幂等、失败不留条目），Go 与 Lua 适配器共用同一语义；契约测试见 [Action 契约 §6](../design/clipboard-action-contract.md)。
-- [ ] 桌面宿主与 daemon：`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}` 运行 Action 后经 BeginApplyHistory 写入系统剪贴板，回声由 AppliedToken 抑制，不产生第二条历史；SwiftUI 在历史条目菜单展示。
-- [ ] 明确 pasted 仅表示经宿主 UI 使用，不声称可观察所有系统粘贴；实现 deleted/expired/updated 等只读通知。
+- [x] 从引擎移除文本改写（`SetText`/文本 patch）、自动化深度、`plugin` 来源链及相关历史字段；处理器只保留 AddTag/RemoveTag/SetPersist/SetSync/SetExpire，历史来源改为 local_system/remote_device/explicit/action。 （2026-11-09 核对：处理器上下文只有 AddTag/RemoveTag/SetPersist/SetSync/SetExpire，`SetText` 仅在 `actionContext`；历史来源为 local_system/remote_device/explicit/action/external/migration；无自动化深度或 plugin 来源链。）
+- [x] 增加阶段事件，保留订阅修订号、初始快照与溢出恢复协议；事件只给公开标识与安全元数据，正文显式读取。 （2026-11-09 核对：`SubscribeEvents` 带修订号、初始快照与溢出 resync，事件只含对象引用；插件侧 committed/updated/deleted/expired/pasted/app 通知见 `engine/observers.go`，慢观察者不阻塞。）
+- [x] 实现统一 ProcessContext（标注型）：标签限制、persist/sync/expire 暂存，Item.Text 只读；过期从 commit 起算。示例：含邮箱自动打 `email` 标签。 （`engine/pipeline.go`，`TestPipelineAtomicPatchesAndOwnership`；示例 `builtin.text`/`urltag` 标注 email/url。）
+- [x] 单次失败回滚全部 patch；`continue` 继续处理，`block_sync` 设置后续插件不能解除的禁发标记。普通 SetSync(false) 可被后续插件覆盖，但不能突破全局配置和信任。 （`TestPipelineFaultsDiscardWholePatch`、新增 `TestPipelineSetSyncOverridesButBlockSyncDoesNot`：后续 SetSync(true) 可覆盖普通 false，block_sync 不可解除；全局配置与信任由发送视图复核。）
+- [x] Engine 实现 Action 注册与运行：Spec 静态声明（ID/Title/Accepts）校验、`ListActions`、`RunAction`（来源校验、串行门与期限、恰好一次 SetText、新条目 origin=action 走显式提交、RequestID 幂等、失败不留条目），Go 与 Lua 适配器共用同一语义；契约测试见 [Action 契约 §6](../design/clipboard-action-contract.md)。 （`engine/action_test.go` 覆盖提交、标注、必定入历史、幂等、各类失败不留条目、来源校验，新增 Stop 取消在途 action；Lua 经 `TestLuaPluginProcessesAndActs`。）
+- [ ] 桌面宿主与 daemon：`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}` 运行 Action 后经 BeginApplyHistory 写入系统剪贴板，回声由 AppliedToken 抑制，不产生第二条历史；SwiftUI 在历史条目菜单展示。 （2026-11-09：`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}` 与写入剪贴板已实现并有测试；**SwiftUI 历史菜单未做**——app/mac 仍是内存 mock 数据，未接 unicd，接入真实服务时一并做。）
+- [x] 明确 pasted 仅表示经宿主 UI 使用，不声称可观察所有系统粘贴；实现 deleted/expired/updated 等只读通知。 （`EventPasted` 仅在宿主 UI 应用历史时发出，`TestObserverSeesPastedAndLifecycle`。）
 
 退出条件：用测试处理器验证标注、回滚、策略；用测试 Action 验证新条目、应用回声和失败不留条目；`/v1` 旧事件映射兼容且无正文，通知失败不影响已完成 commit。
 

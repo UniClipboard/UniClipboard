@@ -180,3 +180,38 @@ func TestActionRejectsBadTargets(t *testing.T) {
 		t.Fatalf("%+v %v", list, err)
 	}
 }
+
+// Stop cancels an action that is running; it leaves no item behind.
+func TestStopCancelsARunningActionAndLeavesNothing(t *testing.T) {
+	n := newContentNode(t, nil)
+	pl := newActionPlugin("example.slow")
+	started := make(chan struct{})
+	n.e.actions = []*pipelineAction{{plugin: pl, id: "hang", title: "hang", accepts: []string{"text"},
+		run: func(ctx context.Context, c *actionContext) error {
+			close(started)
+			<-ctx.Done()
+			return c.SetText("late")
+		}}}
+	start(t, n)
+	src := commitText(t, n.e, "src", "hello")
+	done := make(chan error, 1)
+	go func() {
+		_, err := n.e.RunAction(bg, RunActionRequest{RequestID: "hang", Key: "example.slow/hang", HistoryID: src.HistoryID})
+		done <- err
+	}()
+	<-started
+	if err := n.e.Stop(bg); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("the cancelled action reported success")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not cancel the running action")
+	}
+	if stored(n.e) != 0 {
+		t.Fatal("a cancelled action leaked content")
+	}
+}

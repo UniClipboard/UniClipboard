@@ -373,3 +373,33 @@ func TestPipelineReceiveRechecksAdmissionAfterProcessing(t *testing.T) {
 		})
 	}
 }
+
+// A plain SetSync(false) is a default a later processor may override;
+// block_sync from a failing processor is a lock nothing can lift.
+func TestPipelineSetSyncOverridesButBlockSyncDoesNot(t *testing.T) {
+	n := newContentNode(t, nil)
+	setSync := func(id string, v bool, block bool, fail bool) *pipelineProcessor {
+		return newPipelineProcessor(id, []pipelineEvent{pipelineCaptured}, block, func(_ context.Context, c *processingContext) error {
+			if err := c.SetSync(v); err != nil {
+				return err
+			}
+			if fail {
+				return errors.New("boom")
+			}
+			return nil
+		})
+	}
+	n.e.processors = []*pipelineProcessor{setSync("example.off", false, false, false), setSync("example.on", true, false, false)}
+	out, err := n.e.processContent(bg, pipelineCaptured, pipelineInput(t, n.e, "a"), pipelineOrigin{kind: "explicit"})
+	if err != nil || !out.policy.Sync {
+		t.Fatalf("a later SetSync(true) must win: %+v %v", out, err)
+	}
+	n.e.cs.unref(out.c)
+
+	n.e.processors = []*pipelineProcessor{setSync("example.lock", false, true, true), setSync("example.on", true, false, false)}
+	out, err = n.e.processContent(bg, pipelineCaptured, pipelineInput(t, n.e, "b"), pipelineOrigin{kind: "explicit"})
+	if err != nil || out.policy.Sync {
+		t.Fatalf("block_sync must not be lifted by a later processor: %+v %v", out, err)
+	}
+	n.e.cs.unref(out.c)
+}

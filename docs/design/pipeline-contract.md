@@ -70,7 +70,7 @@ commit 成功后不再把网络调度失败作为 CommitContent 的 error 返回
 
 GetSubmission 结果中的 OperationID 可能先于 submission 被驱逐，GetOperation 返回 not_found 不会让 committed 失效。超出保留期后不再承诺去重，宿主不得将旧键当成永久幂等凭证，需遵守原 Engine 契约使用新 RequestID。
 
-RequestID 禁止宿主使用 `obs:` 与 `recv:` 前缀，它们由 Engine 保留。观察键是实例/epoch/sequence，接收请求键是本次已完成接收的内部标识。它不同于 0007 定义的跨后端成功接收去重键；后者必须结合已认证来源、TransferID 与 ViewHash 并按有界持久记录处理，不能只信任对端 wire ID。
+RequestID 禁止宿主使用 `obs:` 与 `recv:` 前缀，它们由 Engine 保留。观察键是实例/epoch/sequence，接收请求键保留但当前不生成：接收幂等由下述跨后端去重键承担，不建 submission 记录。它不同于 0007 定义的跨后端成功接收去重键；后者必须结合已认证来源、TransferID 与 ViewHash 并按有界持久记录处理，不能只信任对端 wire ID。
 
 ## 5. 原 API 与观察协议迁移
 

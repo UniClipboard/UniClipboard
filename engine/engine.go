@@ -72,6 +72,8 @@ type Engine struct {
 	runCtx      context.Context
 	runCancel   context.CancelFunc
 	runDone     chan struct{}
+	sendCtx     context.Context // bounds transfers; cancelled while sync.enabled is off
+	sendCancel  context.CancelFunc
 	opWG        sync.WaitGroup
 	// commitGate orders commits against Stop/suspend: a commit holds it shared
 	// from its last context check to the end of persist+dispatch; stopRun
@@ -402,6 +404,7 @@ func (e *Engine) startRun(ctx context.Context) error {
 	rctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	e.runCtx, e.runCancel, e.runDone = rctx, cancel, done
+	e.resetSendCtxLocked()
 	e.netUp = true
 	e.mu.Unlock()
 	close(done) // the backends own their goroutines; the run context only bounds engine work
@@ -659,4 +662,20 @@ func openDeviceIdentity(dataDir string, st *store.Store) (*identity.Identity, er
 		return nil, errIdentityMismatch
 	}
 	return id, nil
+}
+
+// resetSendCtxLocked ends every transfer in flight and starts a new send
+// context: live while sync is enabled, already cancelled while it is not, so
+// work still queued behind a cancelled transfer fails fast. e.mu held.
+func (e *Engine) resetSendCtxLocked() {
+	if e.sendCancel != nil {
+		e.sendCancel()
+	}
+	if e.runCtx == nil {
+		return
+	}
+	e.sendCtx, e.sendCancel = context.WithCancel(e.runCtx)
+	if !e.settings.Value.Sync.Enabled {
+		e.sendCancel()
+	}
 }

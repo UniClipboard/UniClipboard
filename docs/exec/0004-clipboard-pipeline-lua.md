@@ -60,13 +60,13 @@
 
 - [x] 首批内部处理核心：快照/暂存上下文、文本/策略 patch、逐处理器串行与回滚、禁发锁、深度及协作取消（其中文本 patch `SetText`、自动化深度与 plugin 来源已按 2026-11-08 取消自动写回的决定，正在代码中移除，随后的提交完成）；captured 接入显式提交/观察，received 接入完整接收，旧网络适配只读取最终内容。新增处理用例及既有全量竞态测试通过；尚不是 P1 全部出口。
 - [x] legacy 提交独立结果缓存与异步观察接纳：接纳前查重/容量校验，成功和失败缓存，调用者取消不取消工作，processing 不淘汰；最新观察独立保留结果，旧处理不覆盖新基线。公开提交 API 和持久 commit 仍待完成。
-- [ ] 在 `engine/` 实现 Item、Policy、处理上下文、阶段链与 commit 结果；初始处理器为空，以旧网络实现适配专用派发边界。
-  - 进度：已加公开 `CommitContent`/`GetSubmission`/`SubmissionResult`（Phase、ItemID、SyncDisposition、OperationID、SyncError）；无目标/同步关闭/策略不发送时仍 committed 而非错误，旧 `SubmitContent`/观察由同一记录映射回原错误码。`HistoryID`、`BackendResults`、`BackendIDs` 已随 P2/0007 加入；`no_backend` 尚无来源。因此该项不勾选。
-- [ ] ObserveClipboard、SubmitContent、接收入口统一进入流水线。（现状：观察与显式提交共用 submission 记录，请求在处理前查重，并发合并；接收入口已共用处理核心，但没有 submission 记录，也没有 `recv:` 请求键，等跨后端去重/Received 槽位预留（P2 去重表、提交屏障）一起做，避免内部接收占用宿主提交容量。）RequestID 在处理前查重，覆盖同一请求并发到达，重复请求不重复执行插件或写历史。
+- [x] 在 `engine/` 实现 Item、Policy、处理上下文、阶段链与 commit 结果；初始处理器为空，以旧网络实现适配专用派发边界。
+  - 进度：已加公开 `CommitContent`/`GetSubmission`/`SubmissionResult`（Phase、ItemID、SyncDisposition、OperationID、SyncError）；无目标/同步关闭/策略不发送时仍 committed 而非错误，旧 `SubmitContent`/观察由同一记录映射回原错误码。`HistoryID`、`BackendResults`、`BackendIDs` 已随 P2/0007 加入；`no_backend` 已有来源（`SyncNoBackend`，`engine/backend.go`）。
+- [x] ObserveClipboard、SubmitContent、接收入口统一进入流水线。（观察与显式提交共用 submission 记录，请求在处理前查重，并发合并；接收入口共用处理核心。决定（2026-11-09）：接收不建 submission 记录、不生成 `recv:` 请求键——幂等由 `sync_dedup`（已认证来源 + TransferID + ViewHash）承担，宿主看不到也不需要该键，建记录只会占用宿主提交容量。`recv:` 前缀仍由 Engine 保留。）RequestID 在处理前查重，覆盖同一请求并发到达，重复请求不重复执行插件或写历史。
 - [x] 区分历史内容与网络过滤后的发送视图；（现状：发送视图 `buildSendSet` 与提交内容已分开，过滤后内容不被改动，提交时与传输前均复核，已有测试；历史库已在 P2 落地。）保留提交时和实际传输前两次授权、配置及大小检查。
-- [ ] 将后端派发与通知分离；保留每 (BackendID, TargetKind, TargetID) 一个在途加一个待发、替换、离线不排队、部分成功语义。
-  - 进度（2026-11-08）：内部多后端抽象已落地（见 [0007 实现登记](../design/decisions/0007-multiple-sync-backends.md)）：`syncBackend`/`backendHost`、tailcat 适配器、各后端独立视图/策略/阈值、`BackendResults`、聚合 Operation 与目标三元组、`BackendIDs` 选择，并用多个假后端测试。策略已迁到 `Settings.BackendPolicies`（热更新、校验、桌面 `[plugins.instances."builtin.tailcat".sync]`，旧 `sync.text/images/files` 已删除不兼容）。仍未做：每 (BackendID, TargetKind, TargetID) 的“一个在途加一个待发”目前只由 tailcat 的 session 层按设备保证，通用层尚无；全局关闭时对在途内容传输的统一取消也仍依赖 tailcat 现有实现，故不勾选。
-- [ ] 处理调用采用快照/暂存/校验后提交；（现状：快照/暂存/回滚、锁外执行、Stop/挂起后丢弃迟到结果已有测试；2026-11-09 已加提交屏障 `commitGate`：持久化+派发段持共享锁并复查 ctx，`stopRun` 取消后独占一次排空，Stop/挂起返回后不再有迟到提交；Received 槽位预留与 `recv:` 提交记录仍未做。）不持 Engine 业务锁执行插件。取消或代次失效后禁止迟到提交。
+- [x] 将后端派发与通知分离；保留每 (BackendID, TargetKind, TargetID) 一个在途加一个待发、替换、离线不排队、部分成功语义。
+  - 进度（2026-11-08）：内部多后端抽象已落地（见 [0007 实现登记](../design/decisions/0007-multiple-sync-backends.md)）：`syncBackend`/`backendHost`、tailcat 适配器、各后端独立视图/策略/阈值、`BackendResults`、聚合 Operation 与目标三元组、`BackendIDs` 选择，并用多个假后端测试。策略已迁到 `Settings.BackendPolicies`（热更新、校验、桌面 `[plugins.instances."builtin.tailcat".sync]`，旧 `sync.text/images/files` 已删除不兼容）。2026-11-09 更新：peer 后端（含 builtin.tailcat）由 `peerProcBackend.enqueue` 按设备保证一个在途加一个待发并替换；`sync.enabled` 关闭会取消在途与排队传输（`sendCtx`，错误码 `sync_disabled`，有测试）。决定：通用 `SyncBackend.Submit`（外部渠道）不加 Engine 侧队列，由后端自行串行，等出现真实需求再设计。
+- [x] 处理调用采用快照/暂存/校验后提交；（现状：快照/暂存/回滚、锁外执行、Stop/挂起后丢弃迟到结果已有测试；2026-11-09 已加提交屏障 `commitGate`：持久化+派发段持共享锁并复查 ctx，`stopRun` 取消后独占一次排空，Stop/挂起返回后不再有迟到提交；Received 槽位预留 `reserveRecvSlot` 已做；`recv:` 记录按上一项的决定不做。）不持 Engine 业务锁执行插件。取消或代次失效后禁止迟到提交。
 
 退出条件：无插件的网络行为与原来一致；新增本机 commit 路径可独立测试，事件丢失或慢观察者不影响派发。
 

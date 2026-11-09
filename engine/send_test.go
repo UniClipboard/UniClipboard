@@ -483,3 +483,38 @@ func TestCommitReportsPolicyFilteredAndKeepsFullContent(t *testing.T) {
 	}
 	_ = rd.Close()
 }
+
+// Turning sync off cancels the transfer in flight and the one waiting behind
+// it; turning it on again does not resend them.
+func TestSyncOffCancelsTransfersInFlight(t *testing.T) {
+	n, l := senderNode(t, nil)
+	g, slow := gatedFile(t, n)
+	gate := make(chan struct{})
+	g.gate.Store(&gate)
+
+	a, _ := submit(n.e, slow)
+	eventually(t, "A sending", func() bool { return targetState(t, n.e, a) == TargetSending })
+	b, _ := submit(n.e, importText(t, n.e, "B"))
+
+	updateSettings(t, n.e, func(s *Settings) { s.Sync.Enabled = false })
+	for name, id := range map[string]OperationID{"A": a, "B": b} {
+		o := waitSend(t, n.e, id)
+		if o.Outcome != OutcomeFailed || o.Targets[0].Error == nil || o.Targets[0].Error.Code != CodeSyncDisabled {
+			t.Fatalf("%s = %+v", name, o)
+		}
+	}
+	updateSettings(t, n.e, func(s *Settings) { s.Sync.Enabled = true })
+	close(gate)
+	time.Sleep(200 * time.Millisecond)
+	if l.count() != 0 {
+		t.Fatal("a cancelled send was delivered after sync came back")
+	}
+	// New work flows again.
+	id, err := submit(n.e, importText(t, n.e, "C"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o := waitSend(t, n.e, id); o.Outcome != OutcomeSuccess {
+		t.Fatalf("C = %+v", o)
+	}
+}

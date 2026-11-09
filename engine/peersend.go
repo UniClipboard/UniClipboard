@@ -165,7 +165,7 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 	}
 	clip := b.clipOf(v)
 	e.mu.Lock()
-	rc := e.runCtx
+	rc := e.sendCtx
 	e.mu.Unlock()
 	for i, s := range targets {
 		k, s := keys[i], s

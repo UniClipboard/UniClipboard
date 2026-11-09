@@ -123,6 +123,8 @@ func (e *Engine) sendFailure(cause error) *Error {
 	switch {
 	case errors.As(cause, &ee):
 		return ee
+	case !e.settings.Value.Sync.Enabled:
+		return newErr(CodeSyncDisabled, "sync was turned off during the transfer")
 	case isRPCCode(cause, string(CodeSourceChanged)):
 		return newErr(CodeSourceChanged, "the content changed after it was added")
 	case isRPCCode(cause, string(CodeResourceExpired)):

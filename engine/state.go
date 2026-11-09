@@ -309,7 +309,11 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	if reflect.DeepEqual(value, e.settings.Value) {
 		return e.settingsLocked(), nil
 	}
+	toggled := value.Sync.Enabled != e.settings.Value.Sync.Enabled
 	e.settings = SettingsState{Revision: e.settings.Revision + 1, Value: value}
+	if toggled {
+		e.resetSendCtxLocked() // turning sync off cancels transfers in flight
+	}
 	if !req.Value.Sync.Enabled && (e.ticket == nil || e.ticket.history == "") {
 		e.killTicketLocked() // a stored record is local: pausing sync does not void its application
 	}

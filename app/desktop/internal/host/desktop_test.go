@@ -543,3 +543,64 @@ func TestPairingIsRemembered(t *testing.T) {
 		t.Fatalf("a's peers = %+v", st.Peers)
 	}
 }
+
+// The sender's per-backend policy: files can be switched off, the automatic
+// size threshold applies to what is copied but not to what the user sends by
+// hand, and every edit takes effect without a restart.
+func TestFilePolicyAndAutoThresholdHotReload(t *testing.T) {
+	a, b := newHost(t, false), newHost(t, false)
+	pair(t, a, b)
+	src := filepath.Join(t.TempDir(), "big.txt")
+	if err := os.WriteFile(src, []byte("0123456789"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file := clip.Snapshot{Files: []clip.File{{Name: "big.txt", Path: src, Size: 10}}}
+	hasFile := func() bool { s, _ := b.board.Read(); return len(s.Files) == 1 }
+	none := func(what string) {
+		t.Helper()
+		time.Sleep(400 * time.Millisecond)
+		if hasFile() {
+			t.Fatalf("%s: the file arrived", what)
+		}
+	}
+	const sec = "[plugins.instances.\"builtin.tailcat\".sync]\n"
+
+	a.edit(sec + "files = false")
+	a.board.user(file)
+	none("files off")
+
+	a.edit(sec + "auto_file_max_bytes = 5")
+	a.board.user(text("reset")) // a new copy, so the same file counts as new below
+	eventually(t, "text still flows", func() bool { return got(b) == "reset" })
+	a.board.user(file)
+	none("over the automatic threshold")
+
+	// Sending by hand ignores the threshold.
+	if err := a.n.SetClipboard(bg, api.SetClipboard{Files: []string{src}}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "manual send", hasFile)
+
+	// Raising the threshold lets an automatic copy through.
+	a.edit(sec + "auto_file_max_bytes = 100")
+	a.board.user(text("again"))
+	eventually(t, "text", func() bool { return got(b) == "again" })
+	a.board.user(file)
+	eventually(t, "auto send under the new threshold", hasFile)
+}
+
+// A removed setting is refused, and the last good configuration stays.
+func TestOldSyncKeysAreRefusedAndKeepTheLastGoodConfig(t *testing.T) {
+	a := newHost(t, false)
+	a.edit("[sync]\nenabled = false")
+	path := a.cfg.State().Path
+	if err := os.WriteFile(path, []byte("[sync]\ntext = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.cfg.Reload(); err == nil {
+		t.Fatal("the removed sync.text key was accepted")
+	}
+	if a.cfg.Current().Sync.Enabled {
+		t.Fatal("a rejected file replaced the last good configuration")
+	}
+}

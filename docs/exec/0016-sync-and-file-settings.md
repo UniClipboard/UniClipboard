@@ -393,3 +393,14 @@ The receipt records source inventory changes since case completion.
 Artifacts: `.build/receive-storage/full-evidence/`.
 Binaries: `.build/receive-storage/bin/`.
 No feature UI was launched. No unit tests were added.
+
+## 9. Scoped commit and architecture verification
+
+Implementation commit: `85dbf35a5643f15a4a54eef062f4888e62308eec`.
+The commit contains sync settings, host-owned receive storage, contracts, and CLI E2E coverage.
+Unrelated desktop UI changes remain outside the commit.
+A clean export of the staged source built both CLI and daemon successfully before commit.
+The previous 14-case race-enabled E2E result remains the runtime acceptance evidence.
+The desktop-runtime and pipeline architecture pages now verify this implementation commit.
+Docscheck passes with two remaining warnings for the identity-and-trust and overview pages.
+Those pages cover broader paths and are not re-verified as part of this change.

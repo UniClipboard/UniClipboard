@@ -17,12 +17,12 @@ paths:
   - app/desktop/cmd/unic/diagnostics.go
   - app/desktop/cmd/unicd
   - e2e/cli/observability_e2e_test.go
-verified: 29286ce50f04d69a087b3e4d6140da8326849dfa
+verified: 0710594f0e20d22f9e2ff06bece61631eff6172d
 ---
 # Client logs and metrics
 
 The desktop host owns optional OTLP/HTTP logs and metrics. Remote telemetry is disabled by default.
-This page describes the working-tree implementation. The verification commit remains the pre-implementation baseline until the source changes are committed; a staleness warning is expected.
+The implementation is committed. The verification metadata identifies the scoped feature commit; unrelated desktop UI work is excluded. End-to-end evidence and remaining acceptance limits are recorded in the execution receipt.
 
 ## Current behavior
 

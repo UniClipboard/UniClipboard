@@ -1,10 +1,15 @@
 # 0005 · 仓库布局：monorepo，核心在根，应用在 `app/`
 
-- 状态：已采纳
+- 状态：已归档（2026-11-09）
+- 落地：[仓库布局与依赖边界](../../architecture/overview.md)
 - 日期：2026-11-07
-- 关联：[0003 独立 Engine](0003-engine-sdk.md)
+- 关联：[0003 独立 Engine](../proposed/0003-engine-sdk.md)
 
-> 2026-11-09 补充：[0015 无头服务与桌面集成](0015-headless-cli-and-desktop-integration.md) 确定将通用 CLI/daemon 移至 `app/service/`，共享本机协议放在根 `internal/localapi/`，`app/desktop/` 只保留 GUI 与系统适配。该拆分待实现；下文目录描述拆分前的布局。
+> 2026-11-09 补充：[0015 无头服务与桌面集成](../proposed/0015-headless-cli-and-desktop-integration.md) 确定将通用 CLI/daemon 移至 `app/service/`，共享本机协议放在根 `internal/localapi/`，`app/desktop/` 只保留 GUI 与系统适配。该拆分待实现；下文目录描述拆分前的布局。
+
+> 归档说明：原布局与核心/应用依赖边界已落地。移动端工程、gomobile 绑定与各端路径分流 CI 按原决策留待相应工程接入；2026-11-09 补充的无头服务拆分由 0015 单独推进，不属于本次归档的已实现范围。当前目录与缺口以落地架构页为准。
+
+> 实现变化：设置类型与校验现由公开的 `engine.Settings` 提供；后续独立迁移工具将含平台凭据读取的实现放在根 `internal/v1migration/`，是下文“internal 只含平台无关包”的例外，不进入 Engine 依赖。
 
 ## 背景
 

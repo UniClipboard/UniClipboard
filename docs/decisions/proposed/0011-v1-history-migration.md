@@ -2,7 +2,7 @@
 
 - 状态：已采纳，互操作与本机验收进度见[执行计划](../../exec/0011-v1-history-migration.md)。
 - 日期：2026-11-08。
-- 依据：[0003](0003-engine-sdk.md)、[0005](0005-monorepo-layout.md)、[历史契约](../../contracts/history-contract.md)。
+- 依据：[0003](0003-engine-sdk.md)、[0005](../archive/0005-monorepo-layout.md)、[历史契约](../../contracts/history-contract.md)。
 
 ## 范围与边界
 

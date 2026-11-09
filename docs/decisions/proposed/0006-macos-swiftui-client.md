@@ -2,7 +2,7 @@
 
 - 状态：草案（未实现）
 - 日期：2026-11-07
-- 关联：[0003 Engine SDK](0003-engine-sdk.md)、[0004 流水线与历史](0004-clipboard-pipeline-lua.md)、[0005 仓库布局](0005-monorepo-layout.md)
+- 关联：[0003 Engine SDK](0003-engine-sdk.md)、[0004 流水线与历史](0004-clipboard-pipeline-lua.md)、[0005 仓库布局](../archive/0005-monorepo-layout.md)
 - 原型：待提供（Mac 端界面设计另行给出）
 
 > 2026-11-09 边界修订：[0015 无头服务与桌面集成](0015-headless-cli-and-desktop-integration.md) 取代本文“系统剪贴板留在 unicd、Swift 侧不实现”及 daemon 无托盘模式的安排。目标 `unicd` 无图形依赖，SwiftUI 应用可承载唯一的桌面适配会话，负责系统剪贴板、菜单栏与通知；Engine、历史、配对和网络仍由 daemon 管理。该拆分及本机适配协议尚未实现，下文相关旧安排保留为原决策记录，以 0015 为准。

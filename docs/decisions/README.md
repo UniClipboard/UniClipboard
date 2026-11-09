@@ -30,7 +30,7 @@
 | 0002 | [配置文件](proposed/0002-config-file.md) | proposed | desktop-runtime |
 | 0003 | [Engine SDK](proposed/0003-engine-sdk.md) | proposed | engine |
 | 0004 | [剪贴板流水线 + 插件](proposed/0004-clipboard-pipeline-lua.md) | proposed（流水线与历史已写入 [pipeline](../architecture/pipeline.md)；插件页与 GitHub 安装未完成，完成后归档） | pipeline、plugins |
-| 0005 | [monorepo 布局](proposed/0005-monorepo-layout.md) | proposed | overview |
+| 0005 | [monorepo 布局](archive/0005-monorepo-layout.md) | archive | [overview](../architecture/overview.md) |
 | 0006 | [macOS SwiftUI 客户端](proposed/0006-macos-swiftui-client.md) | proposed（草案） | macos-client |
 | 0007 | [多同步后端](proposed/0007-multiple-sync-backends.md) | proposed | sync-backends |
 | 0008 | [设备身份与后端关联](archive/0008-device-identity-and-backend-bindings.md) | archive | [identity-and-trust](../architecture/identity-and-trust.md) |

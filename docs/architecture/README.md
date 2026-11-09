@@ -37,5 +37,6 @@ verified: <commit> # 对照代码核实时的提交；用 docscheck -bump 更新
 
 ## 索引
 
+- [overview](overview.md)：仓库布局、应用与核心的依赖边界、模块和 CI 现状。
 - [pipeline](pipeline.md)：处理流水线、提交/同步/应用、本机历史、Action。
 - [identity-and-trust](identity-and-trust.md)：设备身份、握手、配对码/票据、信任与按后端关联、设备介绍。

@@ -4,7 +4,7 @@ unic：跨设备剪贴板同步。Go 核心（网络层 tailcat，存储 SQLite�
 
 ## 仓库结构
 
-monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal/` 是实现），各端应用在 `app/<平台>/`，每个应用有自己的 `README.md` 与 `AGENTS.md`。依赖单向：应用依赖核心，核心不依赖应用。布局与理由见 [0005](docs/decisions/proposed/0005-monorepo-layout.md)。
+monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal/` 是实现），各端应用在 `app/<平台>/`，每个应用有自己的 `README.md` 与 `AGENTS.md`。依赖单向：应用依赖核心，核心不依赖应用。布局与依赖边界见[仓库总览](docs/architecture/overview.md)。
 
 ## 命令
 
@@ -21,7 +21,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 文档分三类（生命周期与台账见 [docs/decisions/README.md](docs/decisions/README.md)）：
 
 - **架构（活文档）** [`docs/architecture/`](docs/architecture/README.md)：系统现状、不变量、代码地图。动手前先读与任务相关的页面；它是唯一的叙述性事实源。
-- 已落地的页面：[流水线与本机历史](docs/architecture/pipeline.md)、[设备身份、信任与配对](docs/architecture/identity-and-trust.md)。
+- 已落地的页面：[仓库布局与依赖边界](docs/architecture/overview.md)、[流水线与本机历史](docs/architecture/pipeline.md)、[设备身份、信任与配对](docs/architecture/identity-and-trust.md)。
 - **契约** `docs/contracts/`：接口与协议的精确规格（见下）。
 - **决策** `docs/decisions/`：只回答“为什么”。`archive/` 里的已落地决策只读，**不得引用**；`proposed/` 里是进行中的决策，尚未落地的主题暂时需要读它。
 
@@ -38,7 +38,6 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0002](docs/decisions/proposed/0002-config-file.md) | 配置文件：TOML + 保存即生效 | `$UNIC_HOME/config.toml`，监听目录+防抖热加载；坏配置保留上一份有效值；`unic config` 查看；`inbox` 需重启 |
 | [0003](docs/decisions/proposed/0003-engine-sdk.md) | 独立 Engine：统一接口与契约 | 公开 Go SDK，宿主负责剪贴板与系统集成；定义生命周期、内容所有权、事件与错误；先落地契约并迁移桌面，移动端验证后续进行 |
 | [0004](docs/decisions/proposed/0004-clipboard-pipeline-lua.md) | 剪贴板处理流水线 + Go / Lua 插件 | 已采纳并实施（GitHub 安装、真机基线、SwiftUI 未完成）；Capture→Processing→Commit→Sync→Use→End；captured/received 可干预（仅标注，不改正文；改写内容走用户触发的 Action），其余事件只读；同步支持 builtin/外部 Go 插件，默认 builtin.tailcat 位于 `internal/plugins/tailcat/`，随宿主编译；设备身份/信任/关联按 0008 统一管理，无旧 tailcat 兼容；Go 常驻进程/RPC（预编译优先，--build 兜底）+ 增强 gopher-lua 沙箱（`internal/luavm`，预算/白名单已实现）；统一接口与模板见插件契约；本地历史库，标签/过期不同步；历史归 Engine 管理，历史与流水线业务实现放 `engine/` |
-| [0005](docs/decisions/proposed/0005-monorepo-layout.md) | 仓库布局：monorepo | 核心在根（`engine/`、`internal/`），应用在 `app/<平台>/`；依赖单向，桌面专属包放 `app/desktop/internal`；单一根模块 `github.com/uniclipboard/unic`，gomobile 引入时再拆 `bindings/` |
 | [0006](docs/decisions/proposed/0006-macos-swiftui-client.md) | macOS 端：SwiftUI 客户端 | 草案；SwiftUI 作为 `unicd` 的客户端（unix socket，HTTP+JSON/SSE），不内嵌 Engine；`unicd` 增加无托盘模式；新增本机历史 API（事件不带正文）；历史与流水线由 `engine/` 管理；Developer ID 分发，不上 App Store |
 | [0007](docs/decisions/proposed/0007-multiple-sync-backends.md) | 多同步后端与分层策略 | 已采纳并实现；全局开关、实例启用、每后端类型/自动文件阈值；多后端结果/资源隔离与有界跨后端去重；默认只交付 tailcat，WebDAV 对象协议另定 |
 | [0009](docs/decisions/proposed/0009-external-channels.md) | 外部渠道：无 unic 身份证明的第三方对端 | 草案；不是设备、不写 `devices` 表、无指纹；目标为组；与设备混排展示；默认自动写剪贴板并标 `external:` 来源；移除仅本地生效，后端声明 `remote_revocation`；接入形态待定（首个对象微信输入法）；数据模型与接收路径已实现（`engine/channels.go`），桌面 `/v1/channels` |
@@ -80,6 +79,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 ## 约定
 
+- 核心不得依赖 `app/*`；宿主专属代码留在对应应用，公开 Engine 的传递依赖边界由 `engine/boundary_test.go` 检查。
 - 设备地址与配对票据都是秘密：不要写进日志、事件或错误信息。
 - 通过配对码进来的设备永远需要用户批准；不要为了方便绕过。
 - 项目尚未发布任何版本：线路协议、数据库结构、配置和 API 都不需要考虑向后兼容。需要改就直接改，不写迁移、兼容分支或旧版本回退；协议版本号保持为 1。

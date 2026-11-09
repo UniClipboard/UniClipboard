@@ -2,7 +2,7 @@
 
 - 状态：已采纳，待实现；本文中的配置、CLI、HTTP API 和诊断接口均为目标设计，当前尚未提供。
 - 日期：2026-11-09。
-- 关联：[0002 配置热加载](0002-config-file.md)、[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](0005-monorepo-layout.md)、[Engine 契约](../../contracts/engine-contract.md)、[流水线契约](../../contracts/pipeline-contract.md)、[同步后端契约](../../contracts/sync-backend-contract.md)。
+- 关联：[0002 配置热加载](0002-config-file.md)、[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](../archive/0005-monorepo-layout.md)、[Engine 契约](../../contracts/engine-contract.md)、[流水线契约](../../contracts/pipeline-contract.md)、[同步后端契约](../../contracts/sync-backend-contract.md)。
 
 ## 背景
 

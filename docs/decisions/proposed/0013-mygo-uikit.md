@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-11-09
-- 关联：[0005 仓库布局](0005-monorepo-layout.md)、[执行记录](../../exec/0013-mygo-uikit.md)
+- 关联：[0005 仓库布局](../archive/0005-monorepo-layout.md)、[执行记录](../../exec/0013-mygo-uikit.md)
 
 ## 背景
 

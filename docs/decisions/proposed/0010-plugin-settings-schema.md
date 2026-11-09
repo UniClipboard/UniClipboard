@@ -2,7 +2,7 @@
 
 - 日期：2026-11-08。
 - 状态：已采纳；独立 schema 工具和 macOS 预览已实现，运行时配置 API、插件清单/RPC 与安装器集成待主线接入。
-- 关联：[0004 插件](0004-clipboard-pipeline-lua.md)、[0005 布局](0005-monorepo-layout.md)、[0006 macOS](0006-macos-swiftui-client.md)、[0008 实例与身份](../archive/0008-device-identity-and-backend-bindings.md)。
+- 关联：[0004 插件](0004-clipboard-pipeline-lua.md)、[0005 布局](../archive/0005-monorepo-layout.md)、[0006 macOS](0006-macos-swiftui-client.md)、[0008 实例与身份](../archive/0008-device-identity-and-backend-bindings.md)。
 
 ## 决策
 

@@ -2,7 +2,7 @@
 
 - 状态：实现中（2026-11-09）：P0–P6 完成，仅余 P0 真实双设备基线与 P3 的 SwiftUI 菜单；P7 的配置映射、`unic history`、本地 Lua 插件目录已完成，GitHub 安装未做；P8 的自动化验收（多后端、隐私回归、边界）已完成，lint、真机双节点实测与文档登记收尾中。标注“定义/方案”的勾选仅表示该文档交付及文档检查完成。实现任务须代码、契约与对应验证均完成才可勾选，不能以文档完成代替运行验收。
 - 日期：2026-11-07。
-- 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[插件契约](../contracts/plugin-contract.md)、[Engine 契约](../contracts/engine-contract.md)、[0002 配置](../decisions/proposed/0002-config-file.md)、[0005 布局](../decisions/proposed/0005-monorepo-layout.md)。
+- 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[插件契约](../contracts/plugin-contract.md)、[Engine 契约](../contracts/engine-contract.md)、[0002 配置](../decisions/proposed/0002-config-file.md)、[仓库布局](../architecture/overview.md)。
 - 范围：本计划覆盖 0004 与插件契约的桌面首版，包括 GitHub 安装及默认 builtin `builtin.tailcat`；不包含移动端子进程支持。
 
 ## 目标与边界

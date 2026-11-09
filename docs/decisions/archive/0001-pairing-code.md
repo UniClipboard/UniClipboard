@@ -1,8 +1,9 @@
 # 0001 · 添加设备：6 位配对码 + 完整地址
 
-> 2026-11-08：身份、指纹、票据格式与后端选择由 [0008](0008-device-identity-and-backend-bindings.md) 和[设备契约](../device-contract.md) 取代。下文具体 tailcat 票据/ID 哈希是原决策记录，不作为新协议的实现要求。保留 6 位短码、5 分钟一次性、只负责发现与入站必须批准的原则；不提供旧格式兼容。
+> 2026-11-08：身份、指纹、票据格式与后端选择由 [0008](0008-device-identity-and-backend-bindings.md) 和[设备契约](../../contracts/device-contract.md) 取代。下文具体 tailcat 票据/ID 哈希是原决策记录，不作为新协议的实现要求。保留 6 位短码、5 分钟一次性、只负责发现与入站必须批准的原则；不提供旧格式兼容。
 
-- 状态：已采纳
+- 状态：已归档（2026-11-09）；密码学与票据格式已被 0008 取代
+- 落地：[身份与信任](../../architecture/identity-and-trust.md)、[设备契约](../../contracts/device-contract.md)、[身份协议](../../contracts/identity-protocol.md)
 - 日期：2026-11-07
 - 原型：[`prototype/gui.html`](../../../prototype/gui.html)（场景「添加设备」「配对码服务不可用」）
 

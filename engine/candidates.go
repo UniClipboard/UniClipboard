@@ -12,7 +12,7 @@ import (
 	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
-// Candidates (decision 0012): devices an approved peer vouched for. They are
+// Candidates (see docs/architecture/identity-and-trust.md): devices an approved peer vouched for. They are
 // suggestions. Nothing here grants trust; pairing with one is an explicit
 // attempt like any other and the other device must approve it too.
 

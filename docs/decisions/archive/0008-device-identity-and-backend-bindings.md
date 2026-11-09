@@ -1,8 +1,9 @@
 # 0008 · 统一设备身份、信任与同步插件关联
 
-- 状态：已采纳并实现：Engine 统一身份/信任/审批，设备按后端实例独立授权，身份握手与 RPC（见[身份协议](../identity-protocol.md)）已落地；对象存储路径另定。
+- 状态：已归档（2026-11-09）；对象存储路径未做，见架构页缺口
+- 落地：[身份与信任](../../architecture/identity-and-trust.md)、[设备契约](../../contracts/device-contract.md)、[身份协议](../../contracts/identity-protocol.md)
 - 日期：2026-11-08。
-- 依据：[0001 配对码](0001-pairing-code.md)、[0007 多后端](0007-multiple-sync-backends.md)、[设备与后端关联契约](../device-contract.md)。
+- 依据：[0001 配对码](0001-pairing-code.md)、[0007 多后端](../proposed/0007-multiple-sync-backends.md)、[设备与后端关联契约](../../contracts/device-contract.md)。
 - 产品尚未上线：直接调整接口、存储与设备协议，不实现旧 tailcat 密钥、地址、配对记录、票据或 wire 对端的兼容迁移。本决策不授权删除开发者本地数据。
 
 ## 背景

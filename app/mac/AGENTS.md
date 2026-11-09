@@ -3,7 +3,7 @@
 - 原生 SwiftUI UI 原型，最低运行 macOS 14，构建需要 Xcode 26+ / macOS 26 SDK；用 `swift build --package-path app/mac` 构建。
 - 参考 UI 位于相邻 uniclipboard 仓库的 macos-design prototype 与 macos skin。
 - 使用系统控件、工具栏、材质和语义颜色，支持深色模式和键盘操作。
-- mock 数据仅在内存中；接入真实服务前先读 docs/design/decisions/0006-macos-swiftui-client.md 和 API 契约。
+- mock 数据仅在内存中；接入真实服务前先读 docs/decisions/proposed/0006-macos-swiftui-client.md 和 API 契约。
 - 不在 Swift 重写同步或读取 SQLite；设备地址、配对票据与正文不得写入日志。
 
 ## Apple 官方设计依据

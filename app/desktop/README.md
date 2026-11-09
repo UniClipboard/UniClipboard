@@ -13,14 +13,14 @@ unic 的桌面应用(macOS / Windows / Linux),是公开 Go SDK(`engine`)的宿�
 
 - `unicd`:常驻节点,是 mygo 的无窗口应用(剪贴板必须在主线程访问),带托盘/菜单栏图标。监听剪贴板、与所有已配对设备保持连接、应用远端变化。
 - `unic gui` / `unic <cmd>`:都只是 daemon 的客户端,通过 `UNIC_HOME/unic.sock` 说 HTTP+JSON(`curl --unix-socket` 也能用)。
-- 配对:在一台设备上 `unic code`(或 GUI「添加设备 → 让设备加入本机」)显示 6 位配对码,在另一台设备上 `unic join <配对码>`。配对码 5 分钟有效、仅用一次,由 rendezvous 服务转存地址;对方仍需批准并核对指纹。也可以直接用完整地址:`unic addr` 得到本机地址,在另一台设备上 `unic pair <地址>`。配对是双向的,之后重启会自动重连(mesh,每台都互连)。设计见 [docs/design/decisions/0001-pairing-code.md](docs/design/decisions/0001-pairing-code.md)。
+- 配对:在一台设备上 `unic code`(或 GUI「添加设备 → 让设备加入本机」)显示 6 位配对码,在另一台设备上 `unic join <配对码>`。配对码 5 分钟有效、仅用一次,由 rendezvous 服务转存地址;对方仍需批准并核对指纹。也可以直接用完整地址:`unic addr` 得到本机地址,在另一台设备上 `unic pair <地址>`。配对是双向的,之后重启会自动重连(mesh,每台都互连)。设计见 [docs/decisions/proposed/0001-pairing-code.md](../../docs/architecture/identity-and-trust.md)。
 - **新设备需要确认**:任何未配对的设备,无论是自己连进来还是由已配对设备介绍来的,都先进入"待确认"(`unic requests` 或 GUI),批准后才会连接和同步。
   - 第三台设备加入:让它与任意一台配对即可。已配对的设备会互相交换各自已配对设备的名称与地址,于是其他设备里会出现"由 X 介绍"的待确认项,每台各自批准后互联,不必两两手动配对。
   - 对方也得批准你:连接要双方都批准才建立。你主动 `unic pair` 的设备视为已批准。
   - 拒绝(`unic reject`)后,介绍不会再打扰;该设备自己再来连则重新询问。
 - **本机历史**:`unic history`(别名 `unic h`)——`list` 列表(`--type/--tag/--limit/--json`),`show [id|@N]` 输出内容到 stdout,`delete`(终端里确认一次,`-y` 跳过)、`tag`、`expire`、`action`。`@1` 是最新一条。
 - **本地插件**:把 Lua 插件目录(含 `spec.toml` 和脚本)放进 `$UNIC_HOME/plugins/lua/` 即会被发现,但不会运行。`unic plugin list` 查看,`unic plugin enable <id>` / `disable <id>` 改 config.toml 的 `plugins.lua`,重启 unicd 生效。
-- **配置文件**:`UNIC_HOME/config.toml`(首次启动自动生成带注释的模板),保存即生效,无需重启。可设置设备名、配对码服务地址、大小上限、同步开关(整体暂停 / 文本 / 图片 / 文件)。写错时保留上一份有效配置并记录错误,用 `unic config` 查看当前生效值和错误;`unic config path` 打印文件路径。`inbox` 目录改动需重启 unicd。设计见 [docs/design/decisions/0002-config-file.md](docs/design/decisions/0002-config-file.md)。
+- **配置文件**:`UNIC_HOME/config.toml`(首次启动自动生成带注释的模板),保存即生效,无需重启。可设置设备名、配对码服务地址、大小上限、同步开关(整体暂停 / 文本 / 图片 / 文件)。写错时保留上一份有效配置并记录错误,用 `unic config` 查看当前生效值和错误;`unic config path` 打印文件路径。`inbox` 目录改动需重启 unicd。设计见 [docs/decisions/proposed/0002-config-file.md](../../docs/decisions/proposed/0002-config-file.md)。
 - **地址等同密码**:它内含 WireGuard 预共享密钥,持有者即可连接并写入你的剪贴板。
 
 ## 同步内容
@@ -53,7 +53,7 @@ UNIC_HOME=/tmp/unicA ./unicd        # 用 UNIC_HOME 在同一台机器上跑第�
 
 国内网络下载依赖慢时:`GOPROXY=https://goproxy.cn,direct go mod download`。
 
-界面默认跟随操作系统皮肤和亮暗模式。可用 `UNIC_UI_SKIN=linux|macos|windows .build/unic gui` 在本机预览其他皮肤。组件移植与近似范围见 [0013](../../docs/design/decisions/0013-mygo-uikit.md)。
+界面默认跟随操作系统皮肤和亮暗模式。可用 `UNIC_UI_SKIN=linux|macos|windows .build/unic gui` 在本机预览其他皮肤。组件移植与近似范围见 [0013](../../docs/decisions/proposed/0013-mygo-uikit.md)。
 
 GUI 测试可以导出三皮肤、亮暗主题的截图，包含空历史聚焦态和窄窗口：
 
@@ -110,4 +110,6 @@ go build -o .build/unic-migrate ./app/desktop/cmd/unic-migrate
 app/desktop/scripts/build-migration.sh
 ```
 
-产物位于 `dist/migration/`，包含 macOS / Windows / Linux × arm64 / amd64 和 `SHA256SUMS`。跨平台编译不等同于全部平台的钥匙串运行验收。格式范围、幂等、容量策略和验收记录见[迁移设计](../../docs/design/decisions/0011-v1-history-migration.md)和[执行记录](../../docs/exec/0011-v1-history-migration.md)。
+产物位于 `dist/migration/`，包含 macOS / Windows / Linux × arm64 / amd64 和 `SHA256SUMS`。跨平台编译不等同于全部平台的钥匙串运行验收。格式范围、幂等、容量策略和验收记录见[迁移设计](../../docs/decisions/proposed/0011-v1-history-migration.md)和[执行记录](../../docs/exec/0011-v1-history-migration.md)。
+
+配对审批必须显式提供另一台设备上显示的完整指纹：`unic approve <id> '<fingerprint>'`。HTTP `POST /v1/pending/{id}/approve` 必须带 `fingerprint`、`revision` 与 `bindings:[{id,revision}]`（修订来自 `/v1/pending`）；设备或待批准关联变化时整个审批失败，刷新后重新核对。普通 `/v1/status` 不含票据；`unic addr` 与 GUI「生成票据」显式调用 `POST /v1/pairing-ticket`，返回的秘密票据 5 分钟有效且仅用一次。详见[身份与信任](../../docs/architecture/identity-and-trust.md)。

@@ -2,7 +2,7 @@
 
 - 日期：2026-11-08。
 - 工作分支：`feat/plugin-settings-schema`，基于 `main` 的 `8a1edff`。
-- 决策：[0010](../design/decisions/0010-plugin-settings-schema.md)；[详细契约](../design/plugin-settings-contract.md)。
+- 决策：[0010](../decisions/proposed/0010-plugin-settings-schema.md)；[详细契约](../contracts/plugin-settings-contract.md)。
 - 范围：完成可与 0004 P5/P6/P7 独立推进的工作；运行时发布/保存接口另接。
 
 ## 独立交付

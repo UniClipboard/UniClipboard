@@ -46,7 +46,7 @@ SwiftUI app (app/macos/) ── unix socket, HTTP+JSON/SSE ──> unicd（无�
 | `GET /v1/history/{id}` | 单条元数据：kind、来源（含设备名）、时间、过期、标签、各部件的种类/MIME/大小、`sync_state` 与按后端的 `backends[{backend_id,state,disposition,error_code}]`（pending 在 daemon 重启后变 interrupted，不代表对端已收到）；不含正文、文件名、路径 |
 | `GET /v1/history/{id}/content?part=N` | 第 N 个部件（默认 0）的原始字节；文件名只在 `Content-Disposition` |
 | `POST /v1/history/{id}/use` | 写入系统剪贴板，走与接收内容相同的观察/应用协议（不重复入历史、不同步、不当作新复制）；文件按原路径放入剪贴板，文件已不在则失败 |
-| `GET /v1/actions` | 插件声明的 Action 列表：`{actions:[{key, plugin_id, id, title, accepts}]}`，按 key 排序；**待实现**，契约见[Action 契约](../clipboard-action-contract.md) |
+| `GET /v1/actions` | 插件声明的 Action 列表：`{actions:[{key, plugin_id, id, title, accepts}]}`，按 key 排序；**待实现**，契约见[Action 契约](../../contracts/clipboard-action-contract.md) |
 | `POST /v1/history/{id}/actions/{key...}` | 用户主动对该条运行 Action：Engine 生成 origin=`action` 的新历史条目，daemon 随即经应用协议把它写入系统剪贴板（用户触发即意图，不是自动写回），返回 `{item}`（新条目，含 `plugin_id`）；来源条目不变，失败不留条目；写剪贴板失败时条目仍在历史，返回 502 并带 `item`；无参数；已实现 |
 | `PATCH /v1/history/{id}` | body `{revision, tags?, expires_at_ms?}`；`revision` 必填，不符返回 409 |
 | `DELETE /v1/history/{id}?revision=N` | 删除，`revision` 必填；已取得内容的读取者可读完 |
@@ -80,7 +80,7 @@ app/macos/
 
 - 依赖单向：`app/macos` 依赖 daemon 的 HTTP 契约，不依赖 Go 源码。CI 按路径触发，仅 `app/macos/**` 变更时在 macOS runner 上构建与测试（0005 §6）。
 - **Swift 客户端**：`URLSession` 不支持 unix socket，使用 Network.framework 的 `NWConnection` 或 swift-nio / AsyncHTTPClient（需实测选定，二者都不应引入进入 Go 侧的依赖）。SSE 自行解析。
-- **接口契约单一来源**：给 `/v1` 写一份 OpenAPI（放 `docs/design/`），Go 侧测试与 Swift 模型都对着它；Swift 模型可手写，也可用 swift-openapi-generator，实现时再定。在此之前，以 `internal/api/api.go` 为准。
+- **接口契约单一来源**：给 `/v1` 写一份 OpenAPI（放 `docs/contracts/`），Go 侧测试与 Swift 模型都对着它；Swift 模型可手写，也可用 swift-openapi-generator，实现时再定。在此之前，以 `internal/api/api.go` 为准。
 
 ### 7. Mac 端专属能力（全部在 Swift 侧）
 

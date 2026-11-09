@@ -2,7 +2,7 @@
 
 - 状态：契约已确定。Engine 侧 `ListActions`/`RunAction`（私有适配器注册、幂等、失败不留条目、结果总是入历史并被标注）已实现并有测试；进程内 Go 插件装配（公开 `plugin` 包、`Options.Plugins`、校验与逆序关闭）、内置插件 `builtin.text`（标注 email/url；动作 upper/lower/trim/plain）与桌面 `/v1/actions`、运行后写入剪贴板均已实现并有测试；外部 Go/Lua 插件加载仍待实现。插件失败目前统一返回 internal，plugin_panic 随插件运行时引入。
 - 日期：2026-11-08。
-- 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[提交契约](pipeline-contract.md)、[历史契约](history-contract.md)、[插件契约](plugin-contract.md)、[SDK 扩展类型契约](sdk-extension-contract.md)。
+- 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[提交契约](pipeline-contract.md)、[历史契约](history-contract.md)、[插件契约](plugin-contract.md)、[SDK 扩展类型契约](sdk-extension-contract.md)。
 
 ## 1. 含义与取舍
 

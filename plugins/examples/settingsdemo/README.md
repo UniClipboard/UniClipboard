@@ -17,4 +17,4 @@ go run ./plugins/examples/settingsdemo/cmd/schema
 
 处理器只给长度符合要求的文本添加标签，不改写正文。prefix/max_length/enabled/tags 参与处理；mode、notes、token、retry 用于展示其余控件，不访问外部服务。秘密字段没有默认值，不写日志或磁盘。
 
-macOS 原型：Settings → Plugins → Preview plugin settings…。支持字段即时校验、Save preview、Cancel、Restore defaults；保存仅存在当前预览会话中。详情见[契约](../../../docs/design/plugin-settings-contract.md)。
+macOS 原型：Settings → Plugins → Preview plugin settings…。支持字段即时校验、Save preview、Cancel、Restore defaults；保存仅存在当前预览会话中。详情见[契约](../../../docs/contracts/plugin-settings-contract.md)。

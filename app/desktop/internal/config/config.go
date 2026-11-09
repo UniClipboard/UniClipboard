@@ -1,6 +1,6 @@
 // Package config loads unic's TOML configuration file and keeps it current:
 // the file is watched and every valid save takes effect at once. See
-// docs/design/decisions/0002-config-file.md.
+// docs/decisions/proposed/0002-config-file.md.
 package config
 
 import (
@@ -91,7 +91,7 @@ type Limits struct {
 type Sync struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
 	// Introductions: devices tell each other which others they vouch for; the
-	// result is only a list of candidates (decision 0012).
+	// result is only a list of candidates (see docs/architecture/identity-and-trust.md).
 	Introductions bool `toml:"introductions" json:"introductions"`
 }
 

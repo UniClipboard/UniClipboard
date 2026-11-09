@@ -3,7 +3,7 @@
 - 状态：已实现并有测试（提交结果与网络结果分离、请求幂等、旧 SubmitContent 门面、提交屏障、Received/跨后端去重与资源账本；见[执行计划](../exec/0004-clipboard-pipeline-lua.md) P1–P3、P8）；插件主动变换见[Action 契约](clipboard-action-contract.md)，RPC 核心帧见[RPC 核心协议](plugin-rpc-contract.md)，后端业务 DTO 见[同步后端契约](sync-backend-contract.md)，Lua 预算见[运行时契约](lua-runtime-contract.md)。
 - 日期：2026-11-07。
 - 字段的具体 Go 类型、可选指针、目标结构与错误分类见[SDK 扩展类型契约](sdk-extension-contract.md)，仍待实现。
-- 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[历史契约](history-contract.md)、[插件契约](plugin-contract.md)。本文件是 Engine 的目标扩展，不表示已有代码支持下述 API。
+- 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[历史契约](history-contract.md)、[插件契约](plugin-contract.md)。本文件是 Engine 的目标扩展，不表示已有代码支持下述 API。
 
 实现登记：P1 首批已接入私有 captured/received 处理核心、暂存/回滚、协作取消及旧网络适配，默认无处理器。legacy 提交已增加独立有界结果缓存（成功/失败、TTL/容量驱逐、processing 不淘汰），调用者取消只停止等待。观察接纳已与处理分离，最新已接纳位置与成功基线分开维护，旧结果不覆盖新观察/epoch/应用基线。公开 `CommitContent`/`GetSubmission` 已实现首版（HistoryID/BackendResults 随历史与多后端另行加入；无目标/同步关闭仍 committed）。持久 commit 与提交事件仍待实现；缓存当前保存旧门面网络结果，不能视作持久提交结果。
 
@@ -18,7 +18,7 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionResult, error)
 ```
 
-`CommitRequest{RequestID, LeaseID, BackendIDs}` 仅用于宿主显式提交，Origin 固定 explicit。自动捕获和接收使用同一内部提交器，不允许宿主伪造 remote_device、action 或跳过观察协议；`action` 来源只由 RunAction 内部产生。BackendIDs 可选择已启用后端子集，规则见[0007](decisions/0007-multiple-sync-backends.md)；调用者没有“跳过插件”或单独强制 persist/sync 的参数；策略由配置和处理器决定。
+`CommitRequest{RequestID, LeaseID, BackendIDs}` 仅用于宿主显式提交，Origin 固定 explicit。自动捕获和接收使用同一内部提交器，不允许宿主伪造 remote_device、action 或跳过观察协议；`action` 来源只由 RunAction 内部产生。BackendIDs 可选择已启用后端子集，规则见[0007](../decisions/proposed/0007-multiple-sync-backends.md)；调用者没有“跳过插件”或单独强制 persist/sync 的参数；策略由配置和处理器决定。
 
 `SubmissionResult` 是无正文的独立快照：
 
@@ -52,7 +52,7 @@ commit 成功后不再把网络调度失败作为 CommitContent 的 error 返回
 
 ## 3. 同步决策
 
-在 commit 可见提交点，按[0007](decisions/0007-multiple-sync-backends.md) 执行：先检查全局 sync.enabled 和条目 Policy，再为选定且启用的后端独立过滤类型、判断自动文件阈值、校验授权/限额并建立目标任务。captured 自动提交受阈值约束，explicit 手动提交只跳过阈值；不能越过类型开关或全局授权。原始导入/处理限制仍在 commit 前校验。
+在 commit 可见提交点，按[0007](../decisions/proposed/0007-multiple-sync-backends.md) 执行：先检查全局 sync.enabled 和条目 Policy，再为选定且启用的后端独立过滤类型、判断自动文件阈值、校验授权/限额并建立目标任务。captured 自动提交受阈值约束，explicit 手动提交只跳过阈值；不能越过类型开关或全局授权。原始导入/处理限制仍在 commit 前校验。
 
 各后端结果保存在 BackendResults，任一有任务则聚合 queued，返回一个涵盖实际目标的 OperationID；没有任务时 disabled/not_requested/no_backend/failed/no_targets/policy_filtered 的优先级按 0007。实际目标键是 (BackendID, TargetKind, TargetID)，其他后端的失败/跳过不得冒充某目标发送成功。历史保存过滤前的最终内容，同一提交只处理和 commit 一次。
 

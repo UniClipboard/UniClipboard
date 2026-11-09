@@ -1,10 +1,10 @@
 # Engine 公共契约 v0.1
 
-> 2026-11-08 目标修订：[0008](decisions/0008-device-identity-and-backend-bindings.md) 与[设备契约](device-contract.md) 统一设备身份、设备级信任与按后端实例授权。下文 Peer 单 Connection、配对请求/结果、ID 指纹及旧实现登记不构成完整目标 API；须同批替换 SDK/宿主/测试，不保留兼容层。普通设备列表每设备一行并展开多个关联，秘密仍仅显式导出。
+> 2026-11-08 目标修订：[身份与信任](../architecture/identity-and-trust.md) 与[设备契约](device-contract.md) 统一设备身份、设备级信任与按后端实例授权。下文 Peer 单 Connection、配对请求/结果、ID 指纹及旧实现登记不构成完整目标 API；须同批替换 SDK/宿主/测试，不保留兼容层。普通设备列表每设备一行并展开多个关联，秘密仍仅显式导出。
 
 - 状态：设计稿，正在分阶段实现；实现进度见第 14 节，未列为已实现的部分当前代码尚未符合本规范。
 - 日期：2026-11-07
-- 依据：[0003 独立 Engine](decisions/0003-engine-sdk.md)、[0001 配对](decisions/0001-pairing-code.md)、[0002 配置](decisions/0002-config-file.md)。
+- 依据：[0003 独立 Engine](../decisions/proposed/0003-engine-sdk.md)、[身份与信任](../architecture/identity-and-trust.md)、[0002 配置](../decisions/proposed/0002-config-file.md)。
 - 范围：公开 Go 包 `github.com/uniclipboard/unic/engine` 的业务契约及桌面宿主接入；移动端沿用业务语义，具体语言绑定后续定义。
 
 本文中的“必须”是实现和契约测试要求。“宿主”指调用 SDK 的平台集成层，不是 GUI。SDK 不直接访问系统剪贴板，不创建 UI，不提供后台常驻保证。
@@ -22,15 +22,15 @@
 
 ### 0007 多后端同步扩展（待实现）
 
-[0007](decisions/0007-multiple-sync-backends.md) 确定全局 sync.enabled、各实例启用、各后端独立的 text/images/files/自动文件阈值三层控制，允许多个后端并发，结果/目标/资源按后端隔离。目标 Settings.Sync 只保留 Enabled，新增 BackendPolicies 映射；下文旧 SyncSettings 类型字段及过滤/在途语义描述既有实现，接入时须同批迁移 SDK、宿主与测试。全局关闭立即取消所有后端内容工作，不能被手动发送绕过；本机历史、处理与 Action 保留。P2P 连接 API 仅为 peer_sessions 扩展，WebDAV 对象协议另定。
+[0007](../decisions/proposed/0007-multiple-sync-backends.md) 确定全局 sync.enabled、各实例启用、各后端独立的 text/images/files/自动文件阈值三层控制，允许多个后端并发，结果/目标/资源按后端隔离。目标 Settings.Sync 只保留 Enabled，新增 BackendPolicies 映射；下文旧 SyncSettings 类型字段及过滤/在途语义描述既有实现，接入时须同批迁移 SDK、宿主与测试。全局关闭立即取消所有后端内容工作，不能被手动发送绕过；本机历史、处理与 Action 保留。P2P 连接 API 仅为 peer_sessions 扩展，WebDAV 对象协议另定。
 
 ### 外部渠道扩展（已实现，后端接入待定）
 
-[0009](decisions/0009-external-channels.md) 的数据模型与接收路径已实现：`Channel` DTO（无地址/指纹/远端上下文）、`AddChannel / ListChannels / GetChannel / RenameChannel / SetChannelEnabled / SetChannelAutoApply / RemoveChannel`（均带 ExpectedRevision 做 CAS，变化发 `ObjectRef{Type:"channel"}` 与 `EventDevices`）和混排的 `ListPeers`（`Peer{Kind: device|channel}`）。发送目标类型 `group`，一次发送一条目标状态；提交时只把已启用渠道交给后端，后端登记未启用渠道返回 invalid_argument。接收经 `plugin.Receiver` 进入与设备相同的准入、received 流水线、历史与去重，来源为 `external`，`ReceivedContent` 带 `ChannelID`（`PeerID` 为空）与到达时的 `AutoApply`；引擎不写剪贴板，宿主据 `AutoApply` 决定。`RemoveChannel`：后端未声明 `remote_revocation` 时只删本地；声明时（须实现 `plugin.ChannelLeaver`）先停用、请求退出，成功才删除，失败保留并标记 `remove_failed`。
+[0009](../decisions/proposed/0009-external-channels.md) 的数据模型与接收路径已实现：`Channel` DTO（无地址/指纹/远端上下文）、`AddChannel / ListChannels / GetChannel / RenameChannel / SetChannelEnabled / SetChannelAutoApply / RemoveChannel`（均带 ExpectedRevision 做 CAS，变化发 `ObjectRef{Type:"channel"}` 与 `EventDevices`）和混排的 `ListPeers`（`Peer{Kind: device|channel}`）。发送目标类型 `group`，一次发送一条目标状态；提交时只把已启用渠道交给后端，后端登记未启用渠道返回 invalid_argument。接收经 `plugin.Receiver` 进入与设备相同的准入、received 流水线、历史与去重，来源为 `external`，`ReceivedContent` 带 `ChannelID`（`PeerID` 为空）与到达时的 `AutoApply`；引擎不写剪贴板，宿主据 `AutoApply` 决定。`RemoveChannel`：后端未声明 `remote_revocation` 时只删本地；声明时（须实现 `plugin.ChannelLeaver`）先停用、请求退出，成功才删除，失败保留并标记 `remove_failed`。
 
 ### 0004 扩展边界（待实现）
 
-[0004](decisions/0004-clipboard-pipeline-lua.md) 已确定：本机持久历史和处理流水线均由 Engine 管理，业务实现放在 `engine/`；宿主只经 SDK 访问，不另建历史或流水线。[本机历史契约](history-contract.md) 已确定历史 API、筛选分页、稳定 ID、内容租约、更新/删除、容量与过期、接收列表映射、历史应用和事件恢复。该契约为本文的目标扩展，尚未实现；其明确声明的历史语义优先于本文既有实例内接收列表约定。临时资源启动清理不得删除有效历史；标签与过期不进 wire，不承诺重启后的待应用可靠投递。
+[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md) 已确定：本机持久历史和处理流水线均由 Engine 管理，业务实现放在 `engine/`；宿主只经 SDK 访问，不另建历史或流水线。[本机历史契约](history-contract.md) 已确定历史 API、筛选分页、稳定 ID、内容租约、更新/删除、容量与过期、接收列表映射、历史应用和事件恢复。该契约为本文的目标扩展，尚未实现；其明确声明的历史语义优先于本文既有实例内接收列表约定。临时资源启动清理不得删除有效历史；标签与过期不进 wire，不承诺重启后的待应用可靠投递。
 
 ### 流水线提交扩展（待实现）
 
@@ -174,14 +174,14 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 | ApprovalRequest | DeviceID、RequestRevision、ExpectedFingerprint；用于校验批准的是用户看到的请求 |
 | PendingRequest | DeviceID、RequestRevision；拒绝过期请求返回 conflict |
 
-- CreatePairingCode 成功才替换旧码；失败保留旧码。配对码修改串行化；Cancel 返回时本地已失效，远端 consume 是尽力操作，不影响本地安全。有效期、token、指纹和限速分类按 0001。
+- CreatePairingCode 成功才替换旧码；失败保留旧码。配对码修改串行化；Cancel 返回时本地已失效，远端 consume 是尽力操作，不影响本地安全。有效期、token、指纹和限速分类见[身份与信任](../architecture/identity-and-trust.md)。
 - GetState 仅显示 `PairingCodeState{Active, ExpiresAtMs}`，不包含码本身。GetPairingCode 过期时返回 exists=false。
 - Join/Pair 接受请求后返回 OperationID；operation 的 type 为 pairing，phase 为 resolving/connecting/handshaking 或终态 succeeded/failed。成功结果为 PeerID、Fingerprint、AwaitingRemoteApproval。等待批准是成功的配对结果，不意味着已经建立同步会话；此 operation 随后不变，后续状态查询 Peer。
 - 入码方保留主动配对信任语义；出码方必须形成待批准请求。未批准和仅被介绍的设备不得接收内容。批准操作要求指纹一致；不一致报 conflict，宿主必须重新展示，而非自动重试。
-- Approve 的提交点是信任持久化成功；不会等待联网。Reject 持久化拒绝并按 0001 屏蔽重复介绍，直接再次连接可产生新请求修订。
+- Approve 的提交点是信任持久化成功；不会等待联网。Reject 等价于 Unpair：留下墓碑并丢弃其担保；该设备再次连接会以新的 pending 请求出现。
 - Unpair 对未配对 ID 幂等成功；持久化移除信任并使旧会话/重连代次失效后返回，旧会话不得继续接收、发送新内容，网络资源随后关闭。已完整接收的本地资源保留；未来直接连接仍须重新审批。
 - `CreatePairingCodeVia` / `ExportPairingTicketVia` 针对指定 peer_sessions 后端实例签发配对码/完整票据（票据携带该实例 ID `be`，入码方只在同一实例上连接）；无 Via 的方法使用默认 tailcat。
-- 设备介绍（[0012](decisions/0012-device-introductions.md)）：`ListCandidates` 返回已配对设备推荐的候选（`Candidate{DeviceID, BackendID, Name, Introducers, LastSeenMs, Ignored, Requested, RequestedUntilMs}`，名称未经验证，不含地址与指纹）。`PairCandidate` 返回 pairing 类 OperationID，立即尝试一次并在 24 小时内退避重试，仍须对方批准、双方核对指纹；`IgnoreCandidate` 隐藏/恢复。候选变化发 `ObjectRef{Type:"candidate"}` 与 `EventDevices`。设置 `sync.introductions`（默认开）关闭时不接受介绍也不发送介绍。介绍只是建议，不授信。
+- 设备介绍（[身份与信任](../architecture/identity-and-trust.md)）：`ListCandidates` 返回已配对设备推荐的候选（`Candidate{DeviceID, BackendID, Name, Introducers, LastSeenMs, Ignored, Requested, RequestedUntilMs}`，名称未经验证，不含地址与指纹）。`PairCandidate` 返回 pairing 类 OperationID，立即尝试一次并在 24 小时内退避重试，仍须对方批准、双方核对指纹；`IgnoreCandidate` 隐藏/恢复。候选变化发 `ObjectRef{Type:"candidate"}` 与 `EventDevices`。设置 `sync.introductions`（默认开）关闭时不接受介绍也不发送介绍。介绍只是建议，不授信。
 - 身份不一致、协议版本不兼容均失败，不覆盖原有 Peer 身份；失败可能已产生对方待审批项，不能声称跨设备事务回滚。
 
 ## 6. 内容模型与发送
@@ -290,7 +290,7 @@ CLI“写入并发送”由宿主执行本地写入、回读、建立抑制回�
 | limit_exceeded / resource_exhausted | 协议或用户大小限制 / 磁盘及有界队列配额不足 |
 | unavailable / timeout / cancelled | 外部服务、网络或存储暂不可用 / 超时 / 取消 |
 | identity_mismatch / protocol_mismatch | 设备身份或 wire 版本不符 |
-| incomplete / invalid / expired / rate_limited | 0001 的配对码分类（桌面 HTTP 可映射为旧带连字符形式） |
+| incomplete / invalid / expired / rate_limited | 配对码分类（桌面 HTTP 可映射为旧带连字符形式） |
 | resync_required | 订阅溢出，必须重新订阅 |
 | source_changed | 引用的文件已被修改或不存在 |
 | internal | 无法安全细分的内部错误 |
@@ -385,9 +385,9 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 27. **应用条目的生存**：被应用的接收条目不受容量淘汰、TTL 和 `DismissReceived`（`in_use`）影响，即使已过期仍在列表中；应用结束后立即按 TTL 处理。
 28. **Network 选项**：`Options.Network` 允许替换默认的 tailcat 网络（接口只用标准库类型），用于测试和特殊嵌入；`Start`/`Close` 各调用一次，挂起恢复时 `Listen` 会再次调用。
 29. **桌面适配的约定**：适配器把剪贴板快照只保留 text/html/png 与普通文件，文件以引用导入；无法表示的内容（文件夹、超限、只有厂商格式）按“剪贴板已清空”上报，因此之后复制别的内容仍是真实变化。应用成功后适配器会把条目移出接收列表（`DismissReceived`），接收文件的生命周期只由剪贴板上的租约决定，被新内容替换后立即释放。显式发送（CLI/GUI 的写入并发送）先写入、回读，再以新 epoch 的 baseline 建立基线，最后 `SubmitContent`，一次请求只发送一次。
-30. **HTTP /v1 的兼容**：响应形状不变。`POST /v1/pending/{id}/approve` 新增可选请求体 `{"fingerprint": "..."}`：给出时若设备当前指纹不同则返回 409；GUI 发送它展示的指纹，旧客户端不发则按当前指纹批准。事件的 `Info` 不再携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。
+30. **桌面 HTTP /v1**：`GET /v1/status` 不含地址/票据，也不触发签发。显式 `POST /v1/pairing-ticket` 返回 `{"ticket":"unic-pair:…"}`，响应禁止缓存，CLI `unic addr` 与 GUI 生成票据使用它。`POST /v1/pending/{id}/approve` 必须提交 `{"fingerprint":"…","revision":1,"bindings":[{"id":"…","revision":1}]}`，修订均来自待批准列表；遗漏/坏 JSON 报 400，指纹不符或设备/待批准关联集合变化报 409。`ApproveDeviceRequest{ID, ExpectedRevision, ExpectedFingerprint, Bindings []BindingRequest}` 由 `Engine.ApproveDevice` 在一个事务中批准设备及完整待批准关联；已信任设备也不可跳过指纹。CLI `unic approve <id> '<另一端指纹>'`，GUI 回传所展示的完整快照。事件的 `Info` 不携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。
 
 
 ### 本机旧历史迁移
 
-[0011](decisions/0011-v1-history-migration.md) 的独立 CLI 使用 `Options.MigrationMode` 获取目标目录锁并离线导入。`ImportHistory`、`LookupHistoryImport`、`ImportHistoryTags` 与 `ListHistoryTags` 的契约见[本机历史契约](history-contract.md)。该模式禁止 Start，不启动网络或插件，不应用剪贴板。
+[0011](../decisions/proposed/0011-v1-history-migration.md) 的独立 CLI 使用 `Options.MigrationMode` 获取目标目录锁并离线导入。`ImportHistory`、`LookupHistoryImport`、`ImportHistoryTags` 与 `ListHistoryTags` 的契约见[本机历史契约](history-contract.md)。该模式禁止 Start，不启动网络或插件，不应用剪贴板。

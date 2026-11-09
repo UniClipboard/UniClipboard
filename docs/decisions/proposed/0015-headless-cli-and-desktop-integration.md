@@ -2,7 +2,7 @@
 
 - 状态：已采纳，待实现；本文中的进程拆分、命令与本机适配协议均为目标设计，不代表当前已经支持无头运行。
 - 日期：2026-11-09。
-- 关联：[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](0005-monorepo-layout.md)、[0006 macOS 客户端](0006-macos-swiftui-client.md)、[0008 设备身份](0008-device-identity-and-backend-bindings.md)、[Engine 契约](../engine-contract.md)、[历史契约](../history-contract.md)、[提交契约](../pipeline-contract.md)、[Action 契约](../clipboard-action-contract.md)。
+- 关联：[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](0005-monorepo-layout.md)、[0006 macOS 客户端](0006-macos-swiftui-client.md)、[0008 设备身份](../archive/0008-device-identity-and-backend-bindings.md)、[Engine 契约](../../contracts/engine-contract.md)、[历史契约](../../contracts/history-contract.md)、[提交契约](../../contracts/pipeline-contract.md)、[Action 契约](../../contracts/clipboard-action-contract.md)。
 
 ## 背景
 

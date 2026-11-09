@@ -1,10 +1,10 @@
 # 0007 · 多同步后端与分层同步策略
 
-> 0008 补充：[统一设备与后端关联](0008-device-identity-and-backend-bindings.md) 要求实现标识与配置实例分离，设备级信任和关联授权分别校验；目标/策略按实例区分。无旧 tailcat 身份/地址/配对记录及配置兼容要求，原密钥导入要求取消，详见[装配契约](../backend-migration-contract.md)。本文件实现登记是阶段事实，不能视为 0008 已实现。
+> 0008 补充：[统一设备与后端关联](../archive/0008-device-identity-and-backend-bindings.md) 要求实现标识与配置实例分离，设备级信任和关联授权分别校验；目标/策略按实例区分。无旧 tailcat 身份/地址/配对记录及配置兼容要求，原密钥导入要求取消，详见[装配契约](../../contracts/backend-migration-contract.md)。本文件实现登记是阶段事实，不能视为 0008 已实现。
 
 - 状态：已采纳并实现：Engine 多后端抽象与派发、全局开关、每后端类型/自动文件阈值、热更新、跨后端去重、共享配额与外部后端装配均有测试；WebDAV 对象协议另定。
 - 日期：2026-11-07。
-- 关联：[0002 配置](0002-config-file.md)、[0004 流水线与插件](0004-clipboard-pipeline-lua.md)、[提交契约](../pipeline-contract.md)、[同步后端契约](../sync-backend-contract.md)。
+- 关联：[0002 配置](0002-config-file.md)、[0004 流水线与插件](0004-clipboard-pipeline-lua.md)、[提交契约](../../contracts/pipeline-contract.md)、[同步后端契约](../../contracts/sync-backend-contract.md)。
 - 本决策替代上述目标设计中的“最多一个后端”和“全局按类型过滤”；现有代码仍保留旧模型，文档变更不表示多后端已实现。
 
 ## 1. 三层控制
@@ -82,13 +82,13 @@ SubmissionResult 增加按 BackendID 排序的 BackendResults，各项含 Backen
 
 SyncBackend 必须声明 TransportKind=peer_sessions 或 object_store；初始 tailcat 属于 peer_sessions。通用边界包含生命周期、标准策略快照、单目标传输、准入与流式内容；P2P 的地址/配对/hello/session_token 扩展只授予 peer_sessions，不能强迫 WebDAV 实现虚假的设备连接和 PairingAddress。
 
-[同步后端业务契约](../sync-backend-contract.md) 中现有连接 DTO 是 P2P profile 的目标定义；该 profile 的身份/关联与设备协议按 0008 修订，不要求旧 wire v2 互通。object_store 的远端对象格式、设备身份验证/授权、内容保护、对象命名、游标及完成语义须在 WebDAV 实现前补齐；不能让“共享一个 WebDAV 目录”自动等于信任其中所有内容。普通 HTTP 成功不代表其他设备已接收/应用。
+[同步后端业务契约](../../contracts/sync-backend-contract.md) 中现有连接 DTO 是 P2P profile 的目标定义；该 profile 的身份/关联与设备协议按 0008 修订，不要求旧 wire v2 互通。object_store 的远端对象格式、设备身份验证/授权、内容保护、对象命名、游标及完成语义须在 WebDAV 实现前补齐；不能让“共享一个 WebDAV 目录”自动等于信任其中所有内容。普通 HTTP 成功不代表其他设备已接收/应用。
 
 每个后端实例独立运行对象、binding_id、状态修订、短期 token 和资源目录；builtin tailcat 在宿主进程内，外部插件每实例独立进程。SyncState 只含该后端的标准策略及必要目标信息；不同 binding 的句柄不可交叉使用。Engine 持有全局授权，撤销一个设备时需在所有相关后端取得撤销屏障；外部实例可回收不响应的进程，builtin 须关闭端点并等待任务退出，不能确认则停止同步服务并报告失败；只停掉 P2P 不能算撤销成功。全局 MaxStoredBytes 覆盖所有后端共享的内容与接收预留，不给每个插件复制一份无限预算。
 
 多个启用后端按既有启动语义全部成功后 Engine 才算启动成功；其中一个启动失败逆序清理，不能静默变成另一个后端成功的降级模式。运行期单实例可恢复故障只使其任务失败并按自己的预算恢复，其他后端与本机历史继续工作。外部后端进程崩溃按预算重启；builtin 的进程级崩溃会影响整个宿主。同步后端数量按创建选项 MaxSyncBackends 限制，默认 8、合法 1..32，0 个启用后端仍允许本机模式。
 
-插件目录、锁、身份初始化、默认装配与 Network 测试入口见[装配契约](../backend-migration-contract.md)。Engine 新建统一设备身份，各实例新建自己的传输身份，不导入旧 tc.*；程序版本升级复用实例私有数据，不把密钥复制给其他实例。
+插件目录、锁、身份初始化、默认装配与 Network 测试入口见[装配契约](../../contracts/backend-migration-contract.md)。Engine 新建统一设备身份，各实例新建自己的传输身份，不导入旧 tc.*；程序版本升级复用实例私有数据，不把密钥复制给其他实例。
 
 ## 6. 跨后端去重与防回环
 

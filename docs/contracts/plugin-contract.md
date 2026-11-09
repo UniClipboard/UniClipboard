@@ -1,9 +1,9 @@
 # 插件契约 v0.1
 
-> 0008 目标修订：设备身份、信任与各实例关联授权以[设备契约](device-contract.md)为准；实现标识和配置实例标识须分离，同实现可配置多个实例。后端发现/连接不授信，SyncState 仅含该实例已授权关联和必要候选。下文 P2P 接口草案须补齐身份证明/关联 DTO 后才能作为实现依据。
+> 统一设备身份修订：设备身份、信任与各实例关联授权以[设备契约](device-contract.md)为准；实现标识和配置实例标识须分离，同实现可配置多个实例。后端发现/连接不授信，SyncState 仅含该实例已授权关联和必要候选。下文 P2P 接口草案须补齐身份证明/关联 DTO 后才能作为实现依据。
 
 - 状态：Go（builtin 与外部进程）和 Lua 的注册、生命周期、顺序、严格配置、`builtin.tailcat` 后端边界及桌面 `config.toml` 映射已实现并有测试；本地 Lua 插件目录可发现、`unic plugin list/enable/disable` 已实现。§8 的 GitHub 安装（install/uninstall、预编译与 `--build`、`installed.lock`）和 Go 外部插件的本地目录约定尚未实现。
-- 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)。
+- 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)。
 - 范围：Go / Lua 统一模型、builtin 进程内装配与外部独立进程 RPC、默认同步插件及 GitHub 安装。历史、流水线与插件调度在 `engine/`。
 
 ## 1. 标识、能力与入口
@@ -71,9 +71,9 @@ Stop 先取消新工作与在途请求，再 Close；默认 5 秒退出窗口，
 
 ## 3. 配置与顺序
 
-插件专属 Config 的静态描述与 GUI 生成见[插件设置 Schema 契约](plugin-settings-contract.md)和[0010](decisions/0010-plugin-settings-schema.md)。独立 `plugin/settings` 工具与 macOS 固定 schema 预览已实现；Spec/清单/RPC 发布、实例配置保存和安装器读取尚未接入，不将 GUI 预览视为运行期配置能力。
+插件专属 Config 的静态描述与 GUI 生成见[插件设置 Schema 契约](plugin-settings-contract.md)和[0010](../decisions/proposed/0010-plugin-settings-schema.md)。独立 `plugin/settings` 工具与 macOS 固定 schema 预览已实现；Spec/清单/RPC 发布、实例配置保存和安装器读取尚未接入，不将 GUI 预览视为运行期配置能力。
 
-SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enabled、Events、Config。标准同步策略只存于 Settings.BackendPolicies（Text/Images/Files/AutoFileMaxBytes），不在实例设置重复保存；规范见[0007](decisions/0007-multiple-sync-backends.md)，具体 Go 类型、LuaPlugins 装配、严格配置和错误映射见[SDK 扩展类型契约](sdk-extension-contract.md)。宿主映射 TOML。归属原则：用户的选择（启用、顺序、`on_error`、插件设置值）只存于 `config.toml`；插件目录里的清单（`spec.toml`）只放插件自己的静态声明（ID、版本、能力、事件、入口），不含 `on_error` 与 `config`，含有即被拒绝，这样安装、升级、卸载都不会改动用户设置。`[plugins] on_error` 为全局默认，实例的 `on_error` 优先；Lua 插件是否运行由 `plugins.lua` 决定，其实例表只接受 `on_error` 与 `config`；这些项的改动需重启（`restart_required` 报告 `plugins.settings`）。
+SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enabled、Events、Config。标准同步策略只存于 Settings.BackendPolicies（Text/Images/Files/AutoFileMaxBytes），不在实例设置重复保存；规范见[0007](../decisions/proposed/0007-multiple-sync-backends.md)，具体 Go 类型、LuaPlugins 装配、严格配置和错误映射见[SDK 扩展类型契约](sdk-extension-contract.md)。宿主映射 TOML。归属原则：用户的选择（启用、顺序、`on_error`、插件设置值）只存于 `config.toml`；插件目录里的清单（`spec.toml`）只放插件自己的静态声明（ID、版本、能力、事件、入口），不含 `on_error` 与 `config`，含有即被拒绝，这样安装、升级、卸载都不会改动用户设置。`[plugins] on_error` 为全局默认，实例的 `on_error` 优先；Lua 插件是否运行由 `plugins.lua` 决定，其实例表只接受 `on_error` 与 `config`；这些项的改动需重启（`restart_required` 报告 `plugins.settings`）。
 
 ```toml
 [plugins]
@@ -142,7 +142,7 @@ ObserveClipboard 与显式 SubmitContent 均走 captured → processing → comm
 
 builtin.tailcat 是随宿主编译的 builtin Go 同步插件，源码位于 `internal/plugins/tailcat/`，由宿主显式装配进程内实例；保留 ID `builtin.tailcat`，不与现有 `builtin.text` 合并，不提供或查找 `unic-plugin-tailcat` 可执行文件。它负责 tailcat 网络、session/wire 会话与传输。Engine 保留身份与信任审批、过滤、操作状态、历史、资源租约和防回环；插件不直接写系统剪贴板或 Engine 数据库。
 
-SDK 的 SyncBackend 扩展接口规划如下（builtin 通过进程内接口调用，external 由 RPC 适配承载；均待按 0008 补齐身份与关联 DTO）：
+SDK 的 SyncBackend 扩展接口规划如下（builtin 通过进程内接口调用，external 由 RPC 适配承载；均待按设备契约补齐身份与关联 DTO）：
 
 ```go
 type SyncBackend interface {
@@ -159,14 +159,14 @@ type SyncBackend interface {
 - Engine commit 后通过专用后端 RPC 派发 SyncRequest，不依赖会丢失的通知队列。请求包含派发/操作/设备 ID 与只读内容句柄，Engine 管理排队、替换、所有权，保留每 (BackendID, TargetKind, TargetID) 一个在途加一个待发语义；提交和实际开始传输前都检查限制与授权。
 - Send 返回目标终态；成功只是字节写完，不等于远端收到或应用。RPC 中断不得自动重复发送；传输失败不回滚历史，不可靠投递离线过期内容。
 - SyncHost 通过反向 RPC 提供身份验证、信任查询、准入、流式接收、传输前授权和设备状态上报。后端不能自行批准设备，不能绕过指纹核对。配对票据/rendezvous 由 Engine 管理，PairingAddress 只在显式导出边界使用，Connect 不授信。
-- 接收正文以流进入 Engine 私有资源，由 received 阶段处理和宿主 BeginApply/ReportApplyResult 应用；保留超限读完丢弃与隐私边界。设备网络协议按 0008 重定，不要求与旧 wire v2 互通。
+- 接收正文以流进入 Engine 私有资源，由 received 阶段处理和宿主 BeginApply/ReportApplyResult 应用；保留超限读完丢弃与隐私边界。设备网络协议按设备契约重定，不要求与旧 wire v2 互通。
 - **Start 后 builtin 实例长期持有 tailcat 端点和设备长连接，Send 复用会话。** 不为每次同步创建实例或重新连接；断网、挂起恢复、实例故障后按契约恢复。关闭等待端点和后台任务退出，不能依赖子进程强杀。
 - 源码位于 `internal/plugins/tailcat/`，由宿主显式创建独立 `builtin.tailcat` 实例，按新身份边界重构并复用适合的 internal/tcnet、internal/session；Engine 不再直接装配它们。设备身份由 Engine 新建；tailcat 传输密钥在实例私有目录首次初始化，按[装配契约](backend-migration-contract.md) 原子持久化与持锁；不导入旧密钥或地址；插件不打开 Engine 的 SQLite。信任以 Engine RPC 为准，不维护第二套授信逻辑。
 - Options.Network/engine.Network 在 P5 同批移除，替换为 builtin 实例或外部程序的显式装配；Transport 注入只保留在后端内部。Engine/桌面以正常装配的 builtin 实例回归，外部 RPC 另用真实测试进程，见[装配契约](backend-migration-contract.md)。SDK 零装配为本机模式，桌面默认显式启用 builtin tailcat，不另保留绕过插件的网络生产路径。
 
 独立后端的授权、连接事件、状态快照、撤销屏障与发送/接收 DTO 以[同步后端业务契约](sync-backend-contract.md) 为准。Unpair 的成功返回要求后端确认旧会话终止或进程已回收，不能只依赖发送一条不等待确认的通知。
 
-多个后端装配、独立策略、目标隔离及去重按[0007](decisions/0007-multiple-sync-backends.md) 实现；这里的 SyncBackend 地址/连接接口仅描述 peer_sessions profile，object_store 不实现假设备连接，具体对象协议另定。所有启用后端启动成功才报告 Engine 启动成功；运行期单后端失败不拖垮其他后端，启动失败不能用处理器 continue 掩盖。
+多个后端装配、独立策略、目标隔离及去重按[0007](../decisions/proposed/0007-multiple-sync-backends.md) 实现；这里的 SyncBackend 地址/连接接口仅描述 peer_sessions profile，object_store 不实现假设备连接，具体对象协议另定。所有启用后端启动成功才报告 Engine 启动成功；运行期单后端失败不拖垮其他后端，启动失败不能用处理器 continue 掩盖。
 
 ### RPC 协议
 

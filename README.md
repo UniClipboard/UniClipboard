@@ -8,7 +8,7 @@
 
 | 路径 | 内容 |
 |---|---|
-| [`engine/`](engine/) | 公开 Go SDK:生命周期、配对与信任、内容与租约、发送与接收、剪贴板观察/应用协议。各端共用的入口,契约见 [docs/design/engine-contract.md](docs/design/engine-contract.md) |
+| [`engine/`](engine/) | 公开 Go SDK:生命周期、配对与信任、内容与租约、发送与接收、剪贴板观察/应用协议。各端共用的入口,契约见 [docs/contracts/engine-contract.md](docs/contracts/engine-contract.md) |
 | `internal/` | 核心实现,只含平台无关的包:`session`(会话层)、`wire`(线协议)、`store`(SQLite)、`tcnet`(tailcat 传输)、`rendezvous`(配对码服务)、`clip`(剪贴板内容模型) |
 | [`app/desktop/`](app/desktop/) | 桌面应用(Go,mygo):`unicd` daemon、`unic` cli 与 gui |
 | [`app/android/`](app/android/) | Android 应用(尚未开始) |
@@ -17,7 +17,7 @@
 | [`docs/`](docs/) | 设计决策与接口契约 |
 | `prototype/` | GUI 交互原型 |
 
-依赖方向只有一个:`app/*` 和 `bindings/` 依赖核心,核心不依赖任何 `app/*`。公开的 `engine` 包不引入 GUI 工具包、文件监听或配置文件解析,`go test ./engine` 里有测试守住这一点。布局的理由见 [0005](docs/design/decisions/0005-monorepo-layout.md)。
+依赖方向只有一个:`app/*` 和 `bindings/` 依赖核心,核心不依赖任何 `app/*`。公开的 `engine` 包不引入 GUI 工具包、文件监听或配置文件解析,`go test ./engine` 里有测试守住这一点。布局的理由见 [0005](docs/decisions/proposed/0005-monorepo-layout.md)。
 
 ## 开发
 

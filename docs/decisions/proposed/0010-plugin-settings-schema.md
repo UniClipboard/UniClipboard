@@ -2,13 +2,13 @@
 
 - 日期：2026-11-08。
 - 状态：已采纳；独立 schema 工具和 macOS 预览已实现，运行时配置 API、插件清单/RPC 与安装器集成待主线接入。
-- 关联：[0004 插件](0004-clipboard-pipeline-lua.md)、[0005 布局](0005-monorepo-layout.md)、[0006 macOS](0006-macos-swiftui-client.md)、[0008 实例与身份](0008-device-identity-and-backend-bindings.md)。
+- 关联：[0004 插件](0004-clipboard-pipeline-lua.md)、[0005 布局](0005-monorepo-layout.md)、[0006 macOS](0006-macos-swiftui-client.md)、[0008 实例与身份](../archive/0008-device-identity-and-backend-bindings.md)。
 
 ## 决策
 
 插件提供静态的配置 schema，GUI shell 读取相同 schema 并生成平台原生表单。schema 描述配置定义，不从当前配置值推断类型、枚举或约束。一个插件实现共用一份 schema，每个配置实例保存各自的值。
 
-采用 JSON Schema 2020-12 的明确子集，并以 `x-unic-settings-version: 1` 标识本项目支持的 profile，以 `x-unic-ui` 补充控件、顺序、分组、选项标题。不支持的关键字/版本必须拒绝，不能把未实现的校验规则静默忽略。精确定义见[设置契约](../plugin-settings-contract.md)。
+采用 JSON Schema 2020-12 的明确子集，并以 `x-unic-settings-version: 1` 标识本项目支持的 profile，以 `x-unic-ui` 补充控件、顺序、分组、选项标题。不支持的关键字/版本必须拒绝，不能把未实现的校验规则静默忽略。精确定义见[设置契约](../../contracts/plugin-settings-contract.md)。
 
 Go 插件可从配置 struct 与标签生成静态 JSON；Lua 和其他实现可直接提供同样的 JSON。生成器是插件作者的开发工具，发布时附带生成产物；安装器和 GUI 不执行第三方程序来发现设置。builtin 也使用相同格式。
 

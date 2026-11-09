@@ -21,7 +21,7 @@ type vectors struct {
 
 func load(t *testing.T) vectors {
 	t.Helper()
-	b, err := os.ReadFile("../../docs/design/vectors/identity-v1.json")
+	b, err := os.ReadFile("../../docs/contracts/vectors/identity-v1.json")
 	if err != nil {
 		t.Fatal(err)
 	}

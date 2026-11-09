@@ -11,7 +11,7 @@ import (
 // Each exported field needs an explicit json name (or json:"-"). Embedding,
 // pointers, maps, interfaces, custom JSON marshalers and recursive types are
 // rejected so the generated wire shape cannot silently differ from the type.
-// See docs/design/plugin-settings-contract.md for the supported field tags.
+// See docs/contracts/plugin-settings-contract.md for the supported field tags.
 func Generate[T any]() ([]byte, error) {
 	s, err := generate(reflect.TypeFor[T](), map[reflect.Type]bool{}, 0)
 	if err != nil {

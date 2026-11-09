@@ -6,7 +6,7 @@
 // The engine never touches the system clipboard or a UI; it does not promise
 // to keep running in the background.
 //
-// The behaviour of every method is specified in docs/design/engine-contract.md;
+// The behaviour of every method is specified in docs/contracts/engine-contract.md;
 // change that document together with the code.
 package engine
 

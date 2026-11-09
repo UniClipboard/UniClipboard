@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-// Candidates are devices an approved peer vouched for (decision 0012). They are
+// Candidates are devices an approved peer vouched for (see docs/architecture/identity-and-trust.md). They are
 // suggestions: nothing here is trust, and the address is a secret.
 
 const candidateSchema = `CREATE TABLE candidates (

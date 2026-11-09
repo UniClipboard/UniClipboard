@@ -2,7 +2,7 @@
 
 - 状态：已批准（2026-11-08）；`internal/identity` 已按本文实现并通过向量。本文只定义密码学协议、编码与向量，不改变插件 RPC 帧格式。
 - 日期：2026-11-08。
-- 依据：[0008](decisions/0008-device-identity-and-backend-bindings.md)、[设备契约](device-contract.md) §2–3。
+- 依据：[身份与信任](../architecture/identity-and-trust.md)、[设备契约](device-contract.md) §2–3。
 - 向量：[`vectors/identity-v1.json`](vectors/identity-v1.json)，由独立脚本按本文规则生成；实现必须逐字节复现。
 
 ## 1. 目标与非目标
@@ -58,7 +58,7 @@ Proof_R = Ed25519(sk_R, "unic/proof/v1\0" || 0x52 || T)      // 'R'
 PairProof = HMAC-SHA256(tok, "unic/pair-token/v1\0" || T)
 ```
 
-出码方用本地保存的 `tok` 验证后立即作废该码（并通知 rendezvous consume）。这样窃听或恶意传输中继拿不到可重用的令牌，且证明绑定了本次转录。`PairProof` 只证明对方拿到过这张票，**不授信**：通过配对码进入的设备始终等待出码方用户批准（0001/0008 原则不变）。
+出码方用本地保存的 `tok` 验证后立即作废该码（并通知 rendezvous consume）。这样窃听或恶意传输中继拿不到可重用的令牌，且证明绑定了本次转录。`PairProof` 只证明对方拿到过这张票，**不授信**：通过配对码进入的设备始终等待出码方用户批准（配对码与统一身份的原则不变）。
 
 ## 5. 指纹（人工核对）
 
@@ -74,7 +74,7 @@ FP = SHA256("unic/fingerprint/v1\0" || min(pk_A,pk_B) || max(pk_A,pk_B))[:16]
 
 任何声明了配对能力的同步插件（不限 tailcat，P2P 或对象存储均可）都可以用同一套入口添加设备，由 Engine 统一处理，插件只提供自己的接入描述 `acc`：
 
-1. **6 位配对码**：Engine 把票据登记到 rendezvous（`/v1/web-pairings`，沿用 0001：`NNN-NNN`、5 分钟、一次性、限速），入码方输入后 resolve 得到票据。
+1. **6 位配对码**：Engine 把票据登记到 rendezvous（`/v1/web-pairings`，沿用既有约束：`NNN-NNN`、5 分钟、一次性、限速），入码方输入后 resolve 得到票据。
 2. **完整票据**：票据编码成一段文本（`unic-pair:` + base64url 的 JSON），可复制/粘贴、命令行传递或二维码；不经过 rendezvous，用于配对码服务不可用或不想经过第三方时。
 
 两种入口得到的票据完全相同，之后的流程也相同；短码只负责“找到票据”，不授信。是否使用 rendezvous 是 Engine 的全局设置，插件不直接访问 rendezvous，也不自带配对码机制，所以新插件无需实现码服务即可获得短码配对。
@@ -90,7 +90,7 @@ FP = SHA256("unic/fingerprint/v1\0" || min(pk_A,pk_B) || max(pk_A,pk_B))[:16]
 - `dev`：出码方身份公钥。P2P 路径在 §4.3 中**必须**要求响应方 `pk` 与之相等；对象存储路径要求之后读到的该作者对象由此公钥签名。rendezvous 能替换整张票，所以仍须展示指纹。
 - `acc`：插件定义的接入描述（tailcat 地址、仓库定位与加入材料等），对核心不透明，≤ 1 KiB，视为秘密，不进日志/事件/错误；其内容格式由对应插件的契约定义。
 - `tok`：一次性令牌。P2P 经 §4.4 的 PairProof 证明；对象存储路径中，加入方在仓库里写入的“加入请求”对象须携带同样的 PairProof（转录换成该请求对象的 `repo_binding` 与 `seq`），出码方据此确认请求来自持票者。
-- 完整票据 ≤ 2 KiB，因此二维码/短链场景可用；有效期、一次性、限速和“出码方必须批准”与 0001 一致。完整票据没有第三方服务参与，但同样等同密码，界面默认折叠打码。
+- 完整票据 ≤ 2 KiB，因此二维码/短链场景可用；有效期、一次性、限速和“出码方必须批准”与配对码一致。完整票据没有第三方服务参与，但同样等同密码，界面默认折叠打码。
 
 ## 7. 对象存储来源证明（object_store）
 

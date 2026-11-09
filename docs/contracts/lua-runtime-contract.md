@@ -2,7 +2,7 @@
 
 - 状态：增强 VM 与沙箱已在 `internal/luavm` 实现（指令/原生工作/字节/逻辑分配预算、粘性中止、白名单、有界编译、失败即销毁），经 `internal/luaplugin` 接入 Engine（`Options.LuaPlugins`、`ReloadLuaPlugin`）。已知与目标的差距：AST 深度/节点数以括号嵌套 ≤128 近似，分配计费只覆盖拼接/`string.rep`，表与闭包增长由指令预算间接限制，不是精确 RSS 保证；`utf8` 仅 valid/len/sub。
 - 日期：2026-11-07
-- 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[插件契约](plugin-contract.md)。
+- 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[插件契约](plugin-contract.md)。
 
 ## 1. 上游验证与实现选择
 

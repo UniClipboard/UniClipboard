@@ -3,7 +3,7 @@
 - 日期：2026-11-08。
 - 工作分支：`feat/v1-history-migration`。
 - 独立 worktree：`/Users/LWP1/Projects/uni-v1-migration`。
-- 设计：[0011](../design/decisions/0011-v1-history-migration.md)。
+- 设计：[0011](../decisions/proposed/0011-v1-history-migration.md)。
 - 原始需求：三平台 arm64/amd64，迁移可恢复的文本、图片、文件、标签；新目录与已有历史合并都支持。
 
 ## 已实现

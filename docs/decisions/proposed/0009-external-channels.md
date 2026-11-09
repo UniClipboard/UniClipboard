@@ -2,7 +2,7 @@
 
 - 状态：草案；数据模型、引擎 API、接收路径与桌面 API 已实现（`engine/channels.go`、`unicd` 的 `/v1/channels`），尚无真实后端；首个对象是微信输入法（WeType）剪贴板组，接入方式（wxc 子进程或插件 RPC）另定。
 - 日期：2026-11-08。
-- 依据：[0007 多后端](0007-multiple-sync-backends.md)、[0008 统一设备身份](0008-device-identity-and-backend-bindings.md)、[身份协议 v1](../identity-protocol.md) §7。
+- 依据：[0007 多后端](0007-multiple-sync-backends.md)、[0008 统一设备身份](../archive/0008-device-identity-and-backend-bindings.md)、[身份协议 v1](../../contracts/identity-protocol.md) §7。
 - 产品尚未发布：直接调整接口与存储，不写迁移或兼容分支。
 
 ## 背景
@@ -60,7 +60,7 @@
 
 ## 实现状态
 
-- 引擎：`Channel`/`Peer` DTO 与渠道 CRUD、混排 `ListPeers`、`TargetGroup`、接收 `plugin.Receiver`、历史来源 `external`；见 [Engine 契约](../engine-contract.md)。
+- 引擎：`Channel`/`Peer` DTO 与渠道 CRUD、混排 `ListPeers`、`TargetGroup`、接收 `plugin.Receiver`、历史来源 `external`；见 [Engine 契约](../../contracts/engine-contract.md)。
 - 桌面：`unicd` 的 `GET /v1/status` 混排渠道；`PATCH/DELETE /v1/channels/{id}`；`channel` 事件；`AutoApply` 关闭时不写剪贴板。命令行与 SwiftUI 客户端尚未展示渠道。
 - 进程外后端：插件 RPC 外部渠道子集已实现（见同步后端契约 §6a，真实子进程测试）。
 - 未实现：真实渠道后端（微信输入法）、文件传输。
@@ -79,4 +79,4 @@
 - 退出组：wx-ime-sdk 暂无该请求；补上前沿用 §5 的本地语义。
 - 接入形态：wxc 子进程、Rust 插件进程走插件 RPC，或直接复用 wx-ime-sdk 协议库。
 - 协议风险：wx-ime-sdk 是逆向的非官方实现，官方策略变化可能导致失效或账号限制；启用提示需据此措辞。
-- 回执、成员信息与"组"在后端业务 DTO（[同步后端业务契约](../sync-backend-contract.md)）中的表示。
+- 回执、成员信息与"组"在后端业务 DTO（[同步后端业务契约](../../contracts/sync-backend-contract.md)）中的表示。

@@ -1,6 +1,6 @@
 // Package plugin is the public contract between the engine and its plugins.
 // It does not import the engine; the engine adapts these types. See
-// docs/design/plugin-contract.md.
+// docs/contracts/plugin-contract.md.
 package plugin
 
 import (

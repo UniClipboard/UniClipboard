@@ -1,10 +1,10 @@
 # 同步后端业务 RPC 契约 v1 · P2P profile
 
-> **0008 修订边界（2026-11-08）**：统一身份与关联授权以[设备契约](device-contract.md)为准。下文 wire_version=2、自报 hello、ID 指纹、全量 peers/rejected 及对应 Schema 是待修订的 P2P 业务草案，不能直接实现为新架构的完整认证；“不增加密码学身份声明”的原约束取消。必须补齐可由 Engine 验证的持钥证明、上下文、防重放与关联修订；插件不能用自报 ID 或布尔结论授信。无旧协议兼容要求。具体业务 DTO/Schema/向量待版本化同步更新，本机 RPC 帧规则继续有效。
+> **统一设备身份修订边界（2026-11-08）**：统一身份与关联授权以[设备契约](device-contract.md)为准。下文 wire_version=2、自报 hello、ID 指纹、全量 peers/rejected 及对应 Schema 是待修订的 P2P 业务草案，不能直接实现为新架构的完整认证；“不增加密码学身份声明”的原约束取消。必须补齐可由 Engine 验证的持钥证明、上下文、防重放与关联修订；插件不能用自报 ID 或布尔结论授信。无旧协议兼容要求。具体业务 DTO/Schema/向量待版本化同步更新，本机 RPC 帧规则继续有效。
 
-- 状态：peer_sessions 的业务方法与 DTO 已实现，经真实子进程配对、发送、介绍的端到端测试验证；对象存储（WebDAV）DTO 未做，也不是本文强制接口。密钥/Network 方案见[迁移契约](backend-migration-contract.md)；多后端公共边界以[0007](decisions/0007-multiple-sync-backends.md) 为准。
+- 状态：peer_sessions 的业务方法与 DTO 已实现，经真实子进程配对、发送、介绍的端到端测试验证；对象存储（WebDAV）DTO 未做，也不是本文强制接口。密钥/Network 方案见[迁移契约](backend-migration-contract.md)；多后端公共边界以[0007](../decisions/proposed/0007-multiple-sync-backends.md) 为准。
 - 日期：2026-11-07。
-- 依据：[插件契约](plugin-contract.md)、[RPC 核心协议](plugin-rpc-contract.md)、[流水线提交](pipeline-contract.md)、[历史契约](history-contract.md)、[0001 配对](decisions/0001-pairing-code.md)。
+- 依据：[插件契约](plugin-contract.md)、[RPC 核心协议](plugin-rpc-contract.md)、[流水线提交](pipeline-contract.md)、[历史契约](history-contract.md)、[身份与信任](../architecture/identity-and-trust.md)。
 - 机器可读定义：沿用并扩展[帧/方法表](protocol/plugin-rpc-v1.frame.json)、[Schema](protocol/plugin-rpc-v1.schema.json) 与[向量](protocol/plugin-rpc-v1.vectors.json)。所有方法只授予已安装、握手且获配置授权且声明 peer_sessions 的 Go sync_backend 实例；同一 Engine 可有多个独立实例；Lua 和普通 processor/observer 调用属于越权。
 
 Engine 统一身份密钥仅由 Engine 初始化和持有；后端只加载自己实例私有传输身份/凭据，子进程持 runtime.lock。首次初始化原子持久化，坏身份拒绝，不导入旧密钥、地址或配对记录。builtin 显式装配、外部程序发现、实例锁竞争、零装配与测试入口遵循[装配契约](backend-migration-contract.md)。
@@ -13,7 +13,7 @@ Engine 统一身份密钥仅由 Engine 初始化和持有；后端只加载自�
 
 ## 1. 职责与生命周期
 
-builtin `builtin.tailcat`（`internal/plugins/tailcat/`，由宿主显式装配）持有 tailcat 端点、设备连接、按 0008 修订的 wire 编解码和传输循环；Engine 持有身份、配对审批、rendezvous 票据、同步策略、队列、内容引用、操作结果与历史。后端不打开 Engine SQLite，不调用宿主剪贴板，不存第二套批准/拒绝状态。
+builtin `builtin.tailcat`（`internal/plugins/tailcat/`，由宿主显式装配）持有 tailcat 端点、设备连接、按设备契约修订的 wire 编解码和传输循环；Engine 持有身份、配对审批、rendezvous 票据、同步策略、队列、内容引用、操作结果与历史。后端不打开 Engine SQLite，不调用宿主剪贴板，不存第二套批准/拒绝状态。
 
 外部后端启动顺序为 HELLO/ACK → plugin.init → backend.bind → 初始 backend.apply_state → plugin.start；builtin 对应 Init → Bind → 初始 ApplyState → Start。Bind 只配置本次实例绑定，不联网；初始快照可以在 Start 前安装。Start 后持有常驻端点与长连接，不能为每个 Send 启进程或重连。后台断网/重连不依附某次 Process 或 Send 调用 context。
 
@@ -73,6 +73,8 @@ allow 返回 session_token 与对应 trust_revision；pending/reject 必须返�
 
 peer_event 包含每连接从 1 起递增的 sequence；重复相同序号/状态幂等，不同内容冲突，旧序号不能把新连接改为离线。Engine 同时验证 connection_id/token 与当前代次，断开的 token 不得重新 connected；重新连接先 check_peer 获取新 token。disconnected 的 remote_accepted 为 false；connected 必须 true。确定双向同时连接的胜出规则仍沿用 session 的既有规则，被替换连接的旧通知不能改变新连接状态。
 
+builtin.tailcat 通过认证会话上的 `{"t":"introduce","candidates":[{"id":"…","name":"…","address":"…"}]}` 控制消息发送介绍，与剪贴板共用串行写锁，每条最多 64 个；会话建立、状态变化及每 24 小时重发当前列表。发送写入设 5 秒截止，失败关闭会话；接收方使用本地会话 ID/token 调用 `PeerAuthority.Introduce`。禁用 `SyncState.Introduce` 同时停止发送与接收；介绍无需全局内容同步开启。
+
 introduce 仅限已 connected、仍批准的会话，每次最多 64 个候选；名称/地址按上限校验，绝不修改已批准状态或跳过指纹核对。pairing_address 只用于显式地址导出或 Engine 创建配对码，不能放入健康状态、事件或普通初始化结果。配对票据与 rendezvous 服务仍由 Engine 管理，后端不自行创建、续期或消费配对码。
 
 ## 4. 单目标发送与最后授权
@@ -113,7 +115,7 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 
 实现状态（§5 RPC 层）：DTO 在 `plugin/rpc/receive.go`，SDK 侧 `plugin.PeerHost`（`ReceiveOpen`/`Receive`），Engine 侧 `plugin.PeerReceiver`/`ReceiveParts`，宿主实现在 `internal/pluginproc/receive.go`。`receive_open` 只凭头部决定 accept/discard；接受后的 receive_id 单次有效、10 秒过期、每个绑定最多 32 个未用（第 33 个不询问 Engine，直接 discard）。`sync_host.receive` 是根调用，`sync_host.receive_part` 是它的子调用，part 按序到达且大小必须等于头部声明；空 part 同样不建流（`stream_id=0, size=0`）。头部超出硬限制为 invalid_argument（不可 drain）。`CallOptions.Sent` 在请求帧写出后回调，part 声明由此开始。连接层：子请求的父请求已在途中结束时，对端回复 cancelled，而不是视为协议错误断开连接（拒绝根调用与 part 声明的竞态）。真实子进程测试覆盖顺序交付（含超窗口与空 part）、丢弃/discarded、id 单次使用、大小不符与处理器的授权/顺序检查。
 
-实现状态（Engine 侧装配，`engine/peer*.go`，进程外 peer_sessions 后端）：状态快照由 Engine 数据构造（`TrustRevision` = 设备修订 + 关联修订，因此改名也会结束会话），apply_state 之后 `pruneSessions` 结束失去授权的会话；握手由 Engine 持钥完成（并发 ≤ 8、TTL 60 秒、nonce 记忆 10 分钟、attempt ≤ 16 且单连接一次性），授权复用 `recordPeer`，经配对码进入的设备仍为待批准；peer_event 按序号/令牌/信任修订/网络代次检查，双向同时连接按较小设备 ID 发起的连接胜出；发送按对端各一个在途 + 一个排队（新视图取代排队者）；接收由 Engine 生成 receive_id 并在 10 秒后释放预留，按后端实例检查对端授权（`allowedPeerOn`）。配对：票据带 `be`（后端实例 ID），出码方由调用者指定实例（`CreatePairingCodeVia`/`ExportPairingTicketVia`，默认 tailcat）；进程外后端经 `backend.pairing_address` 提供 `acc`，入码方按 `be` 找实例（找不到返回 unsupported，不回退），由 Engine 创建 attempt（地址、预期 peer、令牌）后调用 `backend.connect`；出码方的配对证明只对签发它的实例有效。介绍：`SyncState.Introduce`（设置 `sync.introductions`，默认开）为真时后端把已知对端列表告诉已连接会话，接收方后端调用 `sync_host.introduce`；Engine 校验会话后经 `ReplaceVouches` 存为候选（仅建议，不授信；规则见 [0012](decisions/0012-device-introductions.md)）。进程内回环测试见 `engine/peerflow_test.go`，真实双子进程互通尚无。
+实现状态（Engine 侧装配，`engine/peer*.go`，进程外 peer_sessions 后端）：状态快照由 Engine 数据构造（`TrustRevision` = 设备修订 + 关联修订，因此改名也会结束会话），apply_state 之后 `pruneSessions` 结束失去授权的会话；握手由 Engine 持钥完成（并发 ≤ 8、TTL 60 秒、nonce 记忆 10 分钟、attempt ≤ 16 且单连接一次性），授权复用 `recordPeer`，经配对码进入的设备仍为待批准；peer_event 按序号/令牌/信任修订/网络代次检查，双向同时连接按较小设备 ID 发起的连接胜出；发送按对端各一个在途 + 一个排队（新视图取代排队者）；接收由 Engine 生成 receive_id 并在 10 秒后释放预留，按后端实例检查对端授权（`allowedPeerOn`）。配对：票据带 `be`（后端实例 ID），出码方由调用者指定实例（`CreatePairingCodeVia`/`ExportPairingTicketVia`，默认 tailcat）；进程外后端经 `backend.pairing_address` 提供 `acc`，入码方按 `be` 找实例（找不到返回 unsupported，不回退），由 Engine 创建 attempt（地址、预期 peer、令牌）后调用 `backend.connect`；出码方的配对证明只对签发它的实例有效。介绍：`SyncState.Introduce`（设置 `sync.introductions`，默认开）为真时后端把已知对端列表告诉已连接会话，接收方后端调用 `sync_host.introduce`；Engine 校验会话后经 `ReplaceVouches` 存为候选（仅建议，不授信；规则见 [身份与信任](../architecture/identity-and-trust.md)）。进程内回环测试见 `engine/peerflow_test.go`，真实双子进程互通尚无。
 
 ## 6a. 外部渠道 profile（0009，进程外 RPC 子集已实现）
 

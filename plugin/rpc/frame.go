@@ -1,5 +1,5 @@
 // Package rpc implements the local plugin RPC protocol v1 described in
-// docs/design/plugin-rpc-contract.md: a 32-byte framed transport over a pair
+// docs/contracts/plugin-rpc-contract.md: a 32-byte framed transport over a pair
 // of pipes, strict JSON control payloads, multiplexed requests with
 // cancellation and credit-based binary streams. It does not import the engine.
 package rpc

@@ -39,7 +39,7 @@ type vectors struct {
 
 func loadVectors(t *testing.T) vectors {
 	t.Helper()
-	b, err := os.ReadFile("../../docs/design/protocol/plugin-rpc-v1.vectors.json")
+	b, err := os.ReadFile("../../docs/contracts/protocol/plugin-rpc-v1.vectors.json")
 	if err != nil {
 		t.Fatal(err)
 	}

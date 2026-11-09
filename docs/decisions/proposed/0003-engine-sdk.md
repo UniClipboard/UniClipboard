@@ -2,8 +2,8 @@
 
 - 状态：已采纳；阶段一（公开 `github.com/uniclipboard/unic/engine` 的全部契约）与阶段二（桌面迁移、删除旧逻辑）已完成；移动端接入仍是后续阶段（实现细节见契约第 14 节）
 - 日期：2026-11-07
-- 关联：[0001 配对](0001-pairing-code.md)、[0002 配置](0002-config-file.md)
-- 详细规范：[Engine 公共契约 v0.1](../engine-contract.md)（接口、数据模型与行为约束；部分实现，见其第 14 节）
+- 关联：[0001 配对](../archive/0001-pairing-code.md)、[0002 配置](0002-config-file.md)
+- 详细规范：[Engine 公共契约 v0.1](../../contracts/engine-contract.md)（接口、数据模型与行为约束；部分实现，见其第 14 节）
 
 ## 背景与目标
 
@@ -48,13 +48,13 @@ Engine 将用于桌面、Android、iOS 和原生鸿蒙（HarmonyOS NEXT）。目
 | 结构化配置的验证与原子更新 | TOML、文件监听、环境变量、设置 UI |
 | 状态快照、结构化事件、错误码 | UI、托盘、通知、日志输出与主线程调度 |
 
-默认实现继续使用 tailcat 和 SQLite。[0004](0004-clipboard-pipeline-lua.md) 的后续扩展将 tailcat 网络、会话与传输封装为默认 Go 插件 `builtin.tailcat`，Engine 保留信任审批、同步策略、资源与操作状态的控制；Go/Lua 插件接口见[插件契约](../plugin-contract.md)，尚未实现。存储、传输通过内部边界隔离，允许测试替换，但本阶段不要求平台自行实现数据库或网络栈，也不为尚未验证的移动平台设计大量公开插件接口。
+默认实现继续使用 tailcat 和 SQLite。[0004](0004-clipboard-pipeline-lua.md) 的后续扩展将 tailcat 网络、会话与传输封装为默认 Go 插件 `builtin.tailcat`，Engine 保留信任审批、同步策略、资源与操作状态的控制；Go/Lua 插件接口见[插件契约](../../contracts/plugin-contract.md)，尚未实现。存储、传输通过内部边界隔离，允许测试替换，但本阶段不要求平台自行实现数据库或网络栈，也不为尚未验证的移动平台设计大量公开插件接口。
 
 Engine 内部允许使用私有目录和真实文件；禁止要求公共调用者必须提供系统绝对路径。路径和 URI 的转换发生在宿主或资源导入适配中。
 
 ### 3. 公共接口草案
 
-下表是能力摘要；具体签名、补充操作与行为以 [Engine 公共契约](../engine-contract.md) 为详细规范。实现前应同步修订文档，不能仅以代码暗中改变契约。
+下表是能力摘要；具体签名、补充操作与行为以 [Engine 公共契约](../../contracts/engine-contract.md) 为详细规范。实现前应同步修订文档，不能仅以代码暗中改变契约。
 
 | 能力 | 操作草案 | 契约 |
 |---|---|---|

@@ -5,7 +5,7 @@
 //
 // Codes, tickets, tokens and addresses are secrets: never log them.
 //
-// Decision record: docs/design/decisions/0001-pairing-code.md.
+// Design: docs/architecture/identity-and-trust.md.
 package rendezvous
 
 import (

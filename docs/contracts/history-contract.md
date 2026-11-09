@@ -2,7 +2,7 @@
 
 - 状态：已实现并有测试：Engine 历史 API（查询/分页、内容租约、更新/删除、过期与配额、接收列表映射、历史应用），桌面 `/v1/history` 与 `unic history`；macOS SwiftUI 尚未接入。
 - 日期：2026-11-07。
-- 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[插件契约](plugin-contract.md)。本文是 Engine 公共契约的历史扩展，公开包仍为 `github.com/uniclipboard/unic/engine`。
+- 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[插件契约](plugin-contract.md)。本文是 Engine 公共契约的历史扩展，公开包仍为 `github.com/uniclipboard/unic/engine`。
 
 ## 1. 所有权与记录单位
 
@@ -48,7 +48,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 
 文件名与具体 PartID 在显式 RetainHistoryContent 返回的 ContentDescriptor 获取。普通 State、列表、事件和错误不携带正文。HistoryItem 只描述持久记录，不返回租约；所有返回值遵守 Engine 的快照隔离约定。
 
-多后端摘要按[0007](decisions/0007-multiple-sync-backends.md) 记录，因阈值/类型跳过不得计为成功；存在失败或策略跳过而另有成功时整体为 partial；无实际任务且只有策略跳过为 not_requested。同步不请求时为 not_requested（含远端首版不转发）；已建发送操作为 pending，终态按目标结果汇总为 sent/partial/failed，全部 superseded 归 failed。重启发现 pending 改为 interrupted，不恢复或重发。OperationID 不作为持久可查询凭证；历史摘要保留但操作仍按实例保留期回收。
+多后端摘要按[0007](../decisions/proposed/0007-multiple-sync-backends.md) 记录，因阈值/类型跳过不得计为成功；存在失败或策略跳过而另有成功时整体为 partial；无实际任务且只有策略跳过为 not_requested。同步不请求时为 not_requested（含远端首版不转发）；已建发送操作为 pending，终态按目标结果汇总为 sent/partial/failed，全部 superseded 归 failed。重启发现 pending 改为 interrupted，不恢复或重发。OperationID 不作为持久可查询凭证；历史摘要保留但操作仍按实例保留期回收。
 
 ## 3. 基础查询与分页
 
@@ -146,4 +146,6 @@ State 新增 `HistoryRevision`，不嵌入全量历史。历史增删改在持�
 
 `ImportHistory` 返回 `HistoryImportResult{HistoryID, AlreadyImported}`。`LookupHistoryImport` 查询持久映射；相同来源和记录再次导入返回原 ID，不以正文去重。目标条目被主动删除后仍保留映射，重跑不会复活记录；源后续变更不覆盖已导入内容与标签。`ImportHistoryTags` 在迁移会话中保存无关联名称，`ListHistoryTags` 返回定义与条目关联的并集。
 
-容量下限、旧格式解锁、目录 ZIP 与完成校验见[0011](decisions/0011-v1-history-migration.md)。旧密码与旧源目录均不进入 SDK 请求。
+容量下限、旧格式解锁、目录 ZIP 与完成校验见[0011](../decisions/proposed/0011-v1-history-migration.md)。旧密码与旧源目录均不进入 SDK 请求。
+
+存储共享预算压力触发的自有历史淘汰，在删除提交成功后与配额淘汰一样发布每条 ID 的 `clipboard.deleted` 只读通知；删除失败不发。通知仍遵守 observer 有界队列与尽力交付语义。

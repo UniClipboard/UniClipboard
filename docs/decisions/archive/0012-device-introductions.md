@@ -1,8 +1,9 @@
 # 0012 · 设备介绍：已配对设备推荐候选
 
-- 状态：已采纳；Engine、存储、插件 RPC（`sync_host.introduce`）与桌面 API/CLI 已实现，macOS 界面未做。
+- 状态：已归档（2026-11-09）；macOS 界面未做，见架构页缺口
+- 落地：[身份与信任](../../architecture/identity-and-trust.md)、[设备契约](../../contracts/device-contract.md)
 - 日期：2026-11-08。
-- 依据：[0008](0008-device-identity-and-backend-bindings.md)、[同步后端契约](../sync-backend-contract.md)。
+- 依据：[0008](../archive/0008-device-identity-and-backend-bindings.md)、[同步后端契约](../../contracts/sync-backend-contract.md)。
 
 ## 场景
 

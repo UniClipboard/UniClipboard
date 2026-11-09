@@ -79,8 +79,8 @@ CREATE TABLE sync_dedup (
   PRIMARY KEY (source, transfer_id, view_hash)
 ) WITHOUT ROWID;
 CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);
-` + "\n" + deviceSchema, // unified devices and their per-backend-instance bindings (decision 0008)
-	candidateSchema, // devices a peer vouched for (decision 0012)
+` + "\n" + deviceSchema, // unified devices and their per-backend-instance bindings (docs/architecture/identity-and-trust.md)
+	candidateSchema, // devices a peer vouched for (see docs/architecture/identity-and-trust.md)
 }
 
 func migrate(db *sql.DB) error {

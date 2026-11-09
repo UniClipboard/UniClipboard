@@ -1,5 +1,5 @@
 // Package identity implements the unified device identity and pairing
-// protocol v1 (docs/design/identity-protocol.md): the device key and its
+// protocol v1 (docs/contracts/identity-protocol.md): the device key and its
 // storage, DeviceID, the fingerprint, the P2P handshake proofs, the pairing
 // token proof and object-store author signatures. It knows nothing of
 // transports; backends only carry the bytes defined here.

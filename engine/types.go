@@ -48,7 +48,7 @@ type Limits struct {
 type SyncSettings struct {
 	Enabled bool `json:"enabled"`
 	// Introductions: tell connected devices which others this one vouches for,
-	// and accept theirs as candidates (decision 0012).
+	// and accept theirs as candidates (see docs/architecture/identity-and-trust.md).
 	Introductions bool `json:"introductions"`
 }
 

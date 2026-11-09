@@ -38,6 +38,17 @@ func runCLI(cmd string, args []string) error {
 	defer cancel()
 
 	switch cmd {
+	case "logs":
+		return runLogLevels(short, c, args)
+	case "diagnostics":
+		if len(args) != 1 || args[0] != "telemetry" {
+			return fmt.Errorf("usage: unic diagnostics telemetry")
+		}
+		state, err := c.Telemetry(short)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(state)
 	case "status":
 		st, err := c.Status(short)
 		if err != nil {

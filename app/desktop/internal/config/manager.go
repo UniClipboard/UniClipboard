@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"github.com/BurntSushi/toml"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/fsnotify/fsnotify"
 
@@ -94,6 +95,9 @@ func (m *Manager) State() State {
 	s := State{CacheScope: "default_directory_only", Path: m.path, Config: m.cur, Revision: hex.EncodeToString(sum[:]), ApplyError: m.applyError}
 	if m.err != nil {
 		s.Error = m.err.Error()
+	}
+	if m.cur.Telemetry.Endpoint != m.started.Telemetry.Endpoint {
+		s.RestartRequired = append(s.RestartRequired, "telemetry.endpoint")
 	}
 	if m.cur.Inbox != m.started.Inbox {
 		s.RestartRequired = append(s.RestartRequired, "inbox")

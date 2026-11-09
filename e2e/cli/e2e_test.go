@@ -49,7 +49,7 @@ func run(m *testing.M) int {
 			return 1
 		}
 		for _, name := range []string{"unic", "unicd"} {
-			cmd := exec.Command("go", "build", "-o", filepath.Join(dir, name), "./app/desktop/cmd/"+name)
+			cmd := exec.Command("go", "build", "-tags", "unic_e2e", "-o", filepath.Join(dir, name), "./app/desktop/cmd/"+name)
 			cmd.Dir, cmd.Stdout, cmd.Stderr = root, os.Stderr, os.Stderr
 			if err := cmd.Run(); err != nil {
 				fmt.Fprintln(os.Stderr, "build", name+":", err)

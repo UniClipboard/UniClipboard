@@ -38,6 +38,8 @@ The background node is a separate program, unicd; start it first.
   paste            print the clipboard's text
   watch            print sync events as they happen
   config           show settings; set <key> <TOML-value>; apply <file>; --json; path
+  logs level       query or temporarily override local/remote log levels
+  diagnostics telemetry  show telemetry state and dropped records
   cache [--json]   show default-cache bytes, reservations, and protected files
   plugin           list local plugins; enable or disable one (unic plugin help)
   migrate [flags]  import local UniClipboard v1 history (stop unicd first)

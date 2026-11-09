@@ -12,6 +12,7 @@ import (
 // The private result cache precedes the public CommitContent API/durable sink.
 // It owns metadata only; neither completed entries nor waiters retain content.
 type submissionEntry struct {
+	started  time.Time
 	hash     [sha256.Size]byte
 	done     chan struct{}
 	item     ItemID
@@ -157,7 +158,7 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		}
 		delete(e.submissions, oldest)
 	}
-	entry := &submissionEntry{hash: hash, item: ItemID(e.newID()), done: make(chan struct{})}
+	entry := &submissionEntry{started: now, hash: hash, item: ItemID(e.newID()), done: make(chan struct{})}
 	if e.submissions == nil {
 		e.submissions = make(map[RequestID]*submissionEntry)
 	}
@@ -170,6 +171,7 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 
 func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *submissionEntry, c *contentObj) {
 	defer e.opWG.Done()
+	commitKind := diagnosticKind(c)
 	origin := pipelineOrigin{kind: "explicit"}
 	if req.Origin == OriginClipboard {
 		origin.kind = "local_system"
@@ -178,6 +180,9 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	if req.action != nil {
 		origin = pipelineOrigin{kind: "action", pluginID: string(req.action.act.plugin.id)}
 		c, failure = req.action.produce(ctx, e)
+	}
+	if c != nil {
+		commitKind = diagnosticKind(c)
 	}
 	var processed *processedContent
 	if failure == nil {
@@ -191,9 +196,10 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	var results []BackendSubmissionResult
 	var syncErr *Error
 	var historyID HistoryID
+	gateHeld := false
 	if failure == nil {
 		e.commitGate.RLock()
-		defer e.commitGate.RUnlock()
+		gateHeld = true
 		if err := ctx.Err(); err != nil {
 			failure = ctxErr(err) // stopped or suspended after processing: no late commit
 			e.cs.unref(processed.c)
@@ -218,6 +224,18 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	entry.id, entry.disp, entry.results, entry.syncErr, entry.err, entry.finished = id, disp, results, syncErr, cloneError(failure), time.Now()
 	close(entry.done)
 	e.mu.Unlock()
+	if gateHeld {
+		e.commitGate.RUnlock()
+	}
+	outcome, code := diagnosticOutcome(failure)
+	e.diagnostic(ctx, DiagnosticRecord{Stage: "commit", Result: outcome, Backend: "none", ContentKind: commitKind, Code: code, Duration: time.Since(entry.started)})
+	if e.log != nil {
+		if failure == nil {
+			e.log.DebugContext(ctx, "pipeline.completed", "stage", "commit", "result", "succeeded")
+		} else {
+			e.log.WarnContext(ctx, "pipeline.failed", "stage", "commit", "code", string(code))
+		}
+	}
 }
 
 func waitSubmission(ctx context.Context, entry *submissionEntry) (OperationID, error) {

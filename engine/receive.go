@@ -52,6 +52,8 @@ type receivePart struct {
 
 // receiveTicket follows one admitted receive until it ends.
 type receiveTicket struct {
+	started       time.Time
+	kind          DiagnosticContentKind
 	backend       PluginID
 	source        DeviceID
 	channel       string
@@ -82,7 +84,28 @@ func allowsAny(parts []receivePart, pol BackendSyncPolicy) bool {
 // have arrived (or be arriving) through another backend, and room must be
 // found. Declining makes the backend read and drop the clip. Making room
 // drops the oldest received entries that nobody is using.
-func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) {
+func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admission, accepted bool) {
+	started := time.Now()
+	kind := DiagnosticContentKind("unknown")
+	for _, p := range req.parts {
+		k := DiagnosticContentKind("text")
+		if p.file {
+			k = "files"
+		} else if strings.HasPrefix(p.mime, "image/") {
+			k = "image"
+		}
+		if kind == "unknown" {
+			kind = k
+		} else if kind != k {
+			kind = "mixed"
+		}
+	}
+	outcome, code := DiagnosticResult("rejected"), CodeInvalidArgument
+	defer func() {
+		if !accepted {
+			e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: diagnosticBackend(req.backend), ContentKind: kind, Duration: time.Since(started)})
+		}
+	}()
 	total := req.total
 	if total == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
 		return peerbackend.Admission{}, false
@@ -102,14 +125,24 @@ func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) 
 		filesBlocked = filesBlocked || (p.file && !pol.Files)
 	}
 	if !ok || arriving || filesBlocked || !allowsAny(req.parts, pol) {
+		outcome, code = "policy_filtered", ""
+		if arriving {
+			outcome = "duplicate"
+		}
 		return peerbackend.Admission{}, false
 	}
 	if seen, err := e.st.HasDedup(key, time.Now().UnixMilli(), e.res.SyncDedupTTL.Milliseconds()); err != nil || seen {
+		if seen {
+			outcome, code = "duplicate", ""
+		} else {
+			outcome, code = "failed", CodeInternal
+		}
 		return peerbackend.Admission{}, false
 	}
 	e.mu.Lock()
 	if _, arriving := e.dedupInflight[key]; arriving { // lost a race with another backend
 		e.mu.Unlock()
+		outcome, code = "duplicate", ""
 		return peerbackend.Admission{}, false
 	}
 	e.dedupInflight[key] = struct{}{}
@@ -129,6 +162,7 @@ func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) 
 	if e.opts.StoreReceivedFile == nil && fileBytes > 0 {
 		fits := e.reserveCachedFiles(fileBytes)
 		if !fits {
+			outcome, code = "rejected", CodeResourceExhausted
 			release()
 			e.commit(EventResourceWarning)
 			return peerbackend.Admission{}, false
@@ -136,6 +170,7 @@ func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) 
 		cacheBytes = fileBytes
 	}
 	if !e.reserveStored(total, true) {
+		outcome, code = "rejected", CodeResourceExhausted
 		if cacheBytes > 0 {
 			e.cache.cancel(cacheBytes)
 		}
@@ -144,7 +179,7 @@ func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) 
 		e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
 		return peerbackend.Admission{}, false
 	}
-	t := receiveTicket{backend: req.backend, source: req.source, channel: req.channel, key: key, reserved: total, cacheReserved: cacheBytes}
+	t := receiveTicket{started: started, kind: kind, backend: req.backend, source: req.source, channel: req.channel, key: key, reserved: total, cacheReserved: cacheBytes}
 	return peerbackend.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
@@ -190,6 +225,10 @@ func (e *Engine) evictOldest(needSpace bool) bool {
 // delivered turns a fully received clip into content and lists it. reserved is
 // what Admit set aside.
 func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok bool) {
+	outcome, code := DiagnosticResult("failed"), CodeInternal
+	defer func() {
+		e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: diagnosticBackend(t.backend), ContentKind: t.kind, Duration: time.Since(t.started)})
+	}()
 	peer, reserved := t.source, t.reserved
 	cacheRemaining := t.cacheReserved
 	if t.cacheReserved > 0 {
@@ -209,6 +248,13 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	running := e.life == LifecycleRunning && e.runtime == RuntimeActive
 	e.mu.Unlock()
 	if !ok || !running || !enabled {
+		if !running {
+			outcome, code = "cancelled", CodeCancelled
+		} else if !enabled {
+			outcome, code = "policy_filtered", ""
+		} else {
+			code = CodeUnavailable
+		}
 		giveBack(reserved)
 		if dir != "" {
 			_ = os.RemoveAll(dir)
@@ -239,6 +285,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	}
 	c.owned = c.total
 	if len(c.parts) == 0 {
+		outcome, code = "policy_filtered", ""
 		giveBack(reserved)
 		if c.dir != "" {
 			_ = os.RemoveAll(c.dir)
@@ -258,6 +305,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	}
 	processed, err := e.processContent(workCtx, pipelineReceived, c, origin)
 	if err != nil {
+		outcome, code = diagnosticOutcome(err)
 		return // processContent released the input and any prepared replacement
 	}
 	c = processed.c
@@ -271,6 +319,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 		}
 	}()
 	if ferr := e.finalizeReceivedFiles(workCtx, c); ferr != nil {
+		outcome, code = diagnosticOutcome(ferr)
 		giveBack(oldOwned - c.owned)
 		return
 	}
@@ -298,6 +347,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 		}
 	}
 	if !e.reserveRecvSlot(live, allowed) {
+		outcome, code = "rejected", CodeResourceExhausted
 		return
 	}
 	slot := true // a reserved slot is given back unless it is published
@@ -314,6 +364,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	if processed.policy.Persist {
 		var perr *Error
 		if hid, perr = e.persistHistory(workCtx, processed, &dedup); perr != nil {
+			outcome, code = diagnosticOutcome(perr)
 			return // no half-published entry; the receive fails without a record
 		}
 	} else if err := e.st.PutDedup(dedup); err != nil {
@@ -329,6 +380,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	e.mu.Lock()
 	trusted, trustErr := allowed()
 	if !live() || trustErr != nil || !trusted {
+		outcome, code = "rejected", CodePermissionDenied
 		e.mu.Unlock()
 		if hid != "" {
 			e.removeHistory(hid)
@@ -348,6 +400,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	if hid != "" {
 		e.notifyObservers(plugin.EventCommitted, string(hid))
 	}
+	outcome, code = "succeeded", ""
 }
 
 // reserveRecvSlot sets one place in the received list aside, making room by

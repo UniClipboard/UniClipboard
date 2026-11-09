@@ -166,3 +166,11 @@ The page provides the unified switch, retention time, count limit, excluded-tag 
 Configured values outside the preset lists remain selectable. The quota control remains enabled when cleanup is off.
 Explicit clipboard writes release a replaced file lease after importing the new snapshot; otherwise rebasing would hide that release from polling.
 Native visual acceptance remains separate from CLI acceptance.
+
+## Client diagnostics
+
+The host creates diagnostics before Engine construction and injects its logger and fixed-field callback.
+Local logs are asynchronous and bounded under the profile directory. Remote logs and metrics default to off through the telemetry master switch.
+`unic logs level` queries the independent local/remote thresholds. A temporary override uses `--for` and `--target`.
+`unic diagnostics telemetry` reports signal state, losses, and pending endpoint restart without disclosing the endpoint or credentials.
+See the [observability architecture](observability.md) and [contract](../contracts/observability-contract.md) for the execution points, strict socket DTOs, privacy, and cancellation barrier.

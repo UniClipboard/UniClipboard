@@ -726,7 +726,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 	if !e.appliable(c, DefaultBackendPolicy()) {
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
-	t := &applyTicket{token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID}
+	t := &applyTicket{started: time.Now(), kind: diagnosticKind(c), token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID}
 	t.lease = e.newLease(c)
 	e.ticket = t
 	e.commitLocked(EventApply)

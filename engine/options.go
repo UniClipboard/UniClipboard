@@ -54,6 +54,8 @@ type Options struct {
 	// Logger receives structured diagnostics that never contain clipboard
 	// content, addresses, tickets or paths. It must not block. Nil: silent.
 	Logger *slog.Logger
+	// Diagnostics receives fixed business-stage records outside engine locks.
+	Diagnostics func(context.Context, DiagnosticRecord)
 
 	// Plugins run in this process, in this order, before the engine is
 	// returned: Init and Start happen in New, Close when the engine closes.

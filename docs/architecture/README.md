@@ -42,3 +42,4 @@ verified: <commit> # 对照代码核实时的提交；用 docscheck -bump 更新
 - [identity-and-trust](identity-and-trust.md)：设备身份、握手、配对码/票据、信任与按后端关联、设备介绍。
 
 - [desktop-runtime](desktop-runtime.md): CLI configuration, restore sends, default-cache ownership, and custom received files.
+- [observability](observability.md): bounded local logs, dynamic levels, optional OTLP logs/metrics, and nonvisual acceptance limits.

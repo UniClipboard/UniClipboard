@@ -13,11 +13,11 @@
 
 [0007](0007-multiple-sync-backends.md) 将目标配置改为全局 `sync.enabled` + 每同步插件的 `.sync` 策略，支持多个后端独立的 text/images/files 与 auto_file_max_bytes。**已实现（2026-11-08）**：`sync.text/images/files` 已删除（出现即“未知键”错误，不做兼容映射），类型开关与自动文件阈值改为 `[plugins.instances."builtin.tailcat".sync]`；桌面目前只接受 `builtin.tailcat` 这一个实例。全局关闭按 0007 立即取消所有后端在途内容同步；下文“不追溯在途”只继续适用于普通限额和后端策略变更。
 
-## 0014 日志与遥测目标扩展（待实现）
+## 0014 日志与遥测扩展（已接入工作区）
 
-[0014](0014-client-observability-otlp.md) 新增 `[logging]` 与 `[telemetry]` 配置：本机和远程日志等级分别热更新，远程遥测默认关闭，总开关与各信号开关热更新，端点和 trace 采样率修改需重启。非法配置沿用上一有效值。上述键当前尚未接入解析器，不能视为已支持。
+[0014](0014-client-observability-otlp.md) 新增 `[logging]` 与 `[telemetry]` 配置：本机和远程日志等级分别热更新，远程遥测默认关闭，本次总开关与 logs/metrics 开关热更新，端点修改需重启；traces 与采样率留待后续实施。非法配置沿用上一有效值。logging、telemetry、logs 与 metrics 键已接入解析器。Traces 键仍按未知键拒绝。
 
-本机 CLI/socket API 另提供限时日志等级覆盖，不改写 TOML；覆盖到期/reset 恢复最新有效配置，重启清除。`unic config` / `GET /v1/config` 展示持久配置，当前有效等级和覆盖状态经诊断 API 查询；完整默认值、控制语义和验收见 0014。
+本机 CLI/socket API 另提供限时日志等级覆盖，不改写 TOML；覆盖到期/reset 恢复最新有效配置，重启清除。`unic config` / `GET /v1/config` 展示持久配置，当前有效等级和覆盖状态经诊断 API 查询；完整默认值和控制语义见[可观测性契约](../../contracts/observability-contract.md)，验收见[0014 执行计划](../../exec/0014-client-observability-otlp.md)。
 
 ## 可配置项
 

@@ -14,6 +14,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -64,14 +65,16 @@ func ParseSize(str string) (int64, error) {
 
 // Config is the effective configuration.
 type Config struct {
-	DeviceName    string    `toml:"device_name" json:"device_name"`
-	RendezvousURL string    `toml:"rendezvous_url" json:"rendezvous_url"`
-	Inbox         string    `toml:"inbox" json:"inbox"`
-	Limits        Limits    `toml:"limits" json:"limits"`
-	Sync          Sync      `toml:"sync" json:"sync"`
-	Plugins       Plugins   `toml:"plugins" json:"plugins"`
-	History       History   `toml:"history" json:"history"`
-	FileCache     FileCache `toml:"file_cache" json:"file_cache"`
+	Logging       observability.Logging   `toml:"logging" json:"logging"`
+	Telemetry     observability.Telemetry `toml:"telemetry" json:"telemetry"`
+	DeviceName    string                  `toml:"device_name" json:"device_name"`
+	RendezvousURL string                  `toml:"rendezvous_url" json:"rendezvous_url"`
+	Inbox         string                  `toml:"inbox" json:"inbox"`
+	Limits        Limits                  `toml:"limits" json:"limits"`
+	Sync          Sync                    `toml:"sync" json:"sync"`
+	Plugins       Plugins                 `toml:"plugins" json:"plugins"`
+	History       History                 `toml:"history" json:"history"`
+	FileCache     FileCache               `toml:"file_cache" json:"file_cache"`
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -178,6 +181,7 @@ func (b BackendSync) policy() engine.BackendSyncPolicy {
 // Default returns the configuration used for keys the file leaves out.
 func Default() Config {
 	return Config{
+		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
 		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
 		History:   History{AutoCleanup: true, RetentionDays: 180, MaxBytes: 4 << 30, ExcludedTags: []string{}},
@@ -228,6 +232,9 @@ func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 // uses, so the file and the SDK cannot disagree. Messages never include the
 // offending values of fields that could carry secrets.
 func (c Config) Validate() error {
+	if err := c.Observability().Validate(); err != nil {
+		return err
+	}
 	if c.FileCache.MaxBytes <= 0 || c.FileCache.MaxBytes > HardMaxHistory {
 		return errors.New("file_cache: max_bytes must be between 1 byte and 8GiB")
 	}
@@ -300,6 +307,18 @@ func (c Config) HistoryOptions() engine.HistoryOptions {
 const Template = `# unic configuration. Saving this file applies it at once.
 # A file with an error is ignored (the previous settings stay) until fixed;
 # run ` + "`unic config`" + ` to see the current settings and any error.
+
+# Logging and optional OTLP/HTTP upload. Remote upload is off by default.
+# [logging]
+# level = "info"
+# [telemetry]
+# enabled = false
+# endpoint = "https://collector.example.com"  # changing endpoint needs restart
+# [telemetry.logs]
+# enabled = false
+# level = "warn"
+# [telemetry.metrics]
+# enabled = true
 
 # Name shown to your other devices. Default: this computer's host name.
 # Takes effect on the next connection to each device.
@@ -395,4 +414,8 @@ func WriteTemplate(path string) error {
 		err = cerr
 	}
 	return err
+}
+
+func (c Config) Observability() observability.Config {
+	return observability.Config{Logging: c.Logging, Telemetry: c.Telemetry}
 }

@@ -93,3 +93,12 @@ History deletion and history expiry must not delete custom received files.
 See [desktop runtime](desktop-runtime.md) for storage boundaries and configuration behavior.
 
 Unified cleanup and cache admission are implemented in `engine/history_cleanup.go`. See [desktop runtime](desktop-runtime.md) and the [history contract](../contracts/history-contract.md).
+
+
+## Business diagnostics
+
+The Engine emits fixed-field diagnostics at execution points, independently of UI subscriptions.
+Commit, send queue, send, receive, and apply ticket outcomes remain separate measurements.
+Idempotent waits do not repeat commit metrics. A successful send does not prove remote receive or apply.
+Diagnostic callback failure does not change the business result. The host owns bounded async output and optional OTLP export.
+See the [observability architecture](observability.md) and [contract](../contracts/observability-contract.md).

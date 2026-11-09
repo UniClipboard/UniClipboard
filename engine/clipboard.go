@@ -118,14 +118,18 @@ type obsRecord struct {
 }
 
 type applyTicket struct {
-	token   ApplyToken
-	receipt ReceiptID
-	history HistoryID // set instead of receipt when applying a stored record
-	content ContentID
-	lease   LeaseID
-	rc      *receipt
-	dirty   bool // a local change happened since BeginApply
-	dead    bool // suspended, stopped, or the abilities went away
+	started            time.Time
+	ended              time.Time
+	kind               DiagnosticContentKind
+	diagnosticRecorded bool
+	token              ApplyToken
+	receipt            ReceiptID
+	history            HistoryID // set instead of receipt when applying a stored record
+	content            ContentID
+	lease              LeaseID
+	rc                 *receipt
+	dirty              bool // a local change happened since BeginApply
+	dead               bool // suspended, stopped, or the abilities went away
 }
 
 type applyDone struct {
@@ -192,6 +196,7 @@ func (e *Engine) newLease(c *contentObj) LeaseID {
 // Observation for the protocol. Changes are sent (or not) according to the
 // sync settings; the baseline moves in every case that is not an error.
 func (e *Engine) ObserveClipboard(ctx context.Context, o Observation) (ObservationResult, error) {
+	defer e.emitCancelledApply(ctx)
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return ObservationResult{}, gerr
@@ -203,9 +208,25 @@ func (e *Engine) ObserveClipboard(ctx context.Context, o Observation) (Observati
 	// Only admission is serialized with application; processing/waiting is not.
 	e.obsMu.Lock()
 	e.mu.Lock()
+	previous := e.obs.last
 	record, err := e.admitObservationLocked(o)
+	fresh := record != nil && record != previous
+	observationResult := DiagnosticResult("accepted")
+	if record != nil && record.finished {
+		switch record.result.Disposition {
+		case DispBaseline:
+			observationResult = "baseline"
+		case DispEcho:
+			observationResult = "loop_prevented"
+		case DispUnchanged, DispEmpty:
+			fresh = false
+		}
+	}
 	e.mu.Unlock()
 	e.obsMu.Unlock()
+	if fresh {
+		e.diagnostic(ctx, DiagnosticRecord{Stage: "observe", Result: observationResult, Backend: "none", ContentKind: "unknown"})
+	}
 	if err != nil {
 		return ObservationResult{}, err
 	}
@@ -342,6 +363,7 @@ func (e *Engine) killTicketLocked() {
 		return
 	}
 	t.dead = true
+	t.ended = time.Now()
 	if t.rc != nil {
 		t.rc.locked, t.rc.ApplyState = false, ApplyAvailable
 	}
@@ -400,7 +422,7 @@ func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket,
 	if !e.appliable(rc.c, e.policyLocked(rc.backend)) {
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
-	t := &applyTicket{token: ApplyToken(e.newID()), receipt: rc.ReceiptID, content: rc.c.id, rc: rc}
+	t := &applyTicket{started: time.Now(), kind: diagnosticKind(rc.c), token: ApplyToken(e.newID()), receipt: rc.ReceiptID, content: rc.c.id, rc: rc}
 	t.lease = e.newLease(rc.c)
 	rc.locked, rc.ApplyState = true, ApplyApplying
 	e.ticket = t
@@ -437,6 +459,15 @@ func (e *Engine) appliable(c *contentObj, sy BackendSyncPolicy) bool {
 // ticket (suspend, stop, abilities gone). Failed and deferred never move the
 // baseline. Reporting the same result again succeeds.
 func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
+	var diagnostic *DiagnosticRecord
+	defer func() {
+		if diagnostic != nil {
+			e.diagnostic(ctx, *diagnostic)
+			if e.log != nil {
+				e.log.DebugContext(ctx, "pipeline.completed", "stage", "apply", "result", string(diagnostic.Result))
+			}
+		}
+	}()
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return gerr
@@ -478,6 +509,24 @@ func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	finish := func(state ApplyState) {
+		result := DiagnosticResult("succeeded")
+		code := Code("")
+		switch state {
+		case ApplyFailed:
+			result = "failed"
+			code = Code(r.ErrorCode)
+			if code == "" {
+				code = CodeInternal
+			}
+		case ApplyDeferred:
+			result = "deferred"
+			code = Code(r.ErrorCode)
+		}
+		if t.dead {
+			result = "cancelled"
+			code = CodeCancelled
+		}
+		diagnostic = e.claimApplyDiagnosticLocked(t, result, code)
 		if t.rc != nil && !t.dead {
 			t.rc.locked, t.rc.ApplyState = false, state
 		}
@@ -498,6 +547,7 @@ func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 		// A host that does not observe the clipboard has no baseline to move.
 		observing := e.obs.epoch != ""
 		if t.dirty || t.dead || r.Epoch != e.obs.epoch || (observing && r.Sequence <= e.obs.seq) {
+			r.ErrorCode = string(CodeConflict)
 			finish(ApplyFailed)
 			return newErr(CodeConflict, "the clipboard changed while the content was being applied")
 		}

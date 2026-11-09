@@ -212,6 +212,7 @@ func (e *Engine) processContent(ctx context.Context, event pipelineEvent, c *con
 			continue
 		}
 		pc := &processingContext{active: true, event: event, item: clonePipelineItem(w.item), policy: clonePipelinePolicy(w.policy)}
+		started := time.Now()
 		err := invokeProcessor(callCtx, p, pc)
 		pc.mu.Lock()
 		pc.active = false
@@ -230,6 +231,8 @@ func (e *Engine) processContent(ctx context.Context, event pipelineEvent, c *con
 		pc.mu.Unlock()
 		<-p.gate
 		cancel()
+		outcome, code := diagnosticOutcome(err)
+		e.diagnostic(ctx, DiagnosticRecord{Stage: "process", Result: outcome, Backend: "none", ContentKind: diagnosticKind(c), Code: code, Duration: time.Since(started)})
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, ctxErr(err)

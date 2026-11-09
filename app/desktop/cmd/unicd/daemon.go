@@ -1,14 +1,16 @@
+//go:build !unic_e2e
+
 package main
 
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -40,9 +42,9 @@ func runDaemon() error {
 	if err != nil {
 		return err
 	}
-	settings, err := config.Open(cfgPath, log.Printf)
+	settings, err := config.Open(cfgPath, func(string, ...any) {})
 	if err != nil {
-		return fmt.Errorf("%s: %w", cfgPath, err)
+		return errors.New("configuration could not be loaded")
 	}
 	luaDir, err := paths.LuaDir()
 	if err != nil {
@@ -55,11 +57,12 @@ func runDaemon() error {
 		clipboard = board.Dir(d)
 	}
 	node, err := host.Open(context.Background(), host.Options{
-		Dir: dir, Settings: settings, Board: clipboard, Logf: log.Printf, LuaDir: luaDir,
+		Dir: dir, Settings: settings, Board: clipboard, LuaDir: luaDir,
 	})
 	if err != nil {
 		return err
 	}
+	daemonLogger = node.Diagnostics().Logger()
 	settings.OnChange = func(_, _ config.Config, err error) { node.ConfigChanged(err) }
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -67,7 +70,7 @@ func runDaemon() error {
 
 	go func() {
 		if err := settings.Watch(ctx); err != nil {
-			log.Printf("config: not watching %s, edits need a restart: %v", cfgPath, err)
+			logHostFailure()
 		}
 	}()
 
@@ -79,7 +82,7 @@ func runDaemon() error {
 	mygo.App.WhenReady(func() {
 		l, err := api.Listen(sock)
 		if err != nil {
-			log.Print(err)
+			logHostFailure()
 			mygo.App.Exit(1)
 			return
 		}
@@ -87,11 +90,11 @@ func runDaemon() error {
 		go func() {
 			// Start reaches out to a DERP relay, which can take a moment.
 			if err := node.Start(ctx); err != nil {
-				log.Printf("start: %v", err)
+				logHostFailure()
 				mygo.App.Exit(1)
 				return
 			}
-			log.Printf("unicd up; socket %s", sock)
+			logHostFailure()
 			_ = http.Serve(l, api.Handler(node, settings))
 		}()
 		setupTray()
@@ -106,7 +109,7 @@ func runDaemon() error {
 		closeCtx, done := context.WithTimeout(context.Background(), 10*time.Second)
 		defer done()
 		if err := node.Close(closeCtx); err != nil {
-			log.Printf("close: %v", err)
+			logHostFailure()
 		}
 	})
 	return mygo.App.Run()
@@ -126,7 +129,7 @@ func setupTray() {
 	})
 	if err != nil {
 		// A headless Linux box has no tray; the daemon works without one.
-		log.Printf("no tray icon: %v", err)
+		logHostFailure()
 		return
 	}
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { tray.Destroy() })
@@ -153,7 +156,7 @@ func notifyPending(ctx context.Context, sock string) {
 			}
 			n := mygo.NewNotification(mygo.NotificationOptions{Title: "New device", Body: body})
 			if err := n.Show(); err != nil {
-				log.Printf("notification: %v", err)
+				logHostFailure()
 			}
 		})
 		select {
@@ -169,7 +172,7 @@ func notifyPending(ctx context.Context, sock string) {
 func openGUI() {
 	cmd := exec.Command(unicPath(), "gui")
 	if err := cmd.Start(); err != nil {
-		log.Printf("open gui: %v", err)
+		logHostFailure()
 		return
 	}
 	go func() { _ = cmd.Wait() }()
@@ -216,4 +219,12 @@ func trayIcon() []byte {
 	var b bytes.Buffer
 	_ = png.Encode(&b, img)
 	return b.Bytes()
+}
+
+var daemonLogger *slog.Logger
+
+func logHostFailure() {
+	if daemonLogger != nil {
+		daemonLogger.Error("host.failed", "code", "unavailable")
+	}
 }

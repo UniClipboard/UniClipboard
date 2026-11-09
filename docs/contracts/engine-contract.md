@@ -56,6 +56,12 @@
 
 [插件契约 v0.1](plugin-contract.md) 定义 Go/Lua 统一插件与最小模板。builtin Go 插件由宿主显式传入进程内实例，外部 Go 插件通过独立常驻进程/RPC 接入，安装优先平台预编译，缺失时可 --build 构建插件自身，不重建宿主；Engine 拥有注册、生命周期、配置、串行处理、commit 和操作状态；tailcat 网络、会话与传输封装为默认 builtin Go 插件 `builtin.tailcat`（`internal/plugins/tailcat/`，与 `builtin.text` 独立），公共配对/发送/接收 API 保持门面，审批、信任和策略最终由 Engine 控制。通知总线不承担同步调度。默认后端按 0008 实现统一设备身份，不保留旧 wire v2 兼容要求；无后端允许本机历史工作。插件 API 和同步流式 DTO 尚未实现，不计入第 14 节已完成功能。
 
+### 0014 Logs 与 Metrics 诊断扩展（已接入工作区）
+
+[可观测性契约](observability-contract.md) 确定 `Options.Diagnostics func(context.Context, DiagnosticRecord)`，以及公开的 `DiagnosticStage`、`DiagnosticResult`、`DiagnosticBackend`、`DiagnosticContentKind` 和 `DiagnosticRecord` 类型。现有 `Options.Logger` 保留。类型、有限枚举、统计边界和调用约束以该契约第 2 节为准，已接入当前工作区；验收范围见该契约关联的执行计划。
+
+诊断仅传递阶段、结果、后端大类、内容大类、稳定 Code 和耗时。Engine 在业务锁外调用，宿主必须非阻塞接纳。诊断失败和回调 panic 不改变业务结果。公开签名不依赖 OTel 或 internal 类型，不暴露内容、路径或身份。本次不增加 traces、采样配置或传播协议。
+
 ## 2. 接口总览
 
 以下是目标 Go 签名。DTO 字段由后文规定；标识类型均为独立 string 类型，枚举也是独立 string 类型。所有带 context 的方法拒绝 nil context。`Subscription` 与 `ContentReader` 是 SDK 管理的句柄，不跨语言直接导出。

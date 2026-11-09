@@ -70,3 +70,29 @@ UNIC_E2E=1 UNIC_E2E_BIN=/path/to/bin go test ./e2e/cli -v
 ## Sync settings and receive ownership
 
 See the [CLI acceptance matrix](MATRIX.md) for coverage and remaining checks.
+
+## OTLP logs and metrics
+
+The Go scenarios `TestObservability`, `TestObservabilityPipeline`,
+`TestObservabilityProductionCycle`, `TestObservabilityResources`, and
+`TestObservabilityFaults` run real processes with a local HTTPS OTLP receiver.
+They are separate from the generated txtar catalog.
+
+Build the daemon with the test-only `unic_e2e` tag to avoid starting mygo.App.
+Release builds exclude this entry and its fixed fixtures. Diagnostic scenarios
+use the existing host transport seam over local TCP; they do not establish
+public DERP or native clipboard acceptance.
+
+```sh
+mkdir -p /private/tmp/unic-otlp-bin
+go build -race -tags unic_e2e -o /private/tmp/unic-otlp-bin/unicd ./app/desktop/cmd/unicd
+go build -race -o /private/tmp/unic-otlp-bin/unic ./app/desktop/cmd/unic
+TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=/private/tmp/unic-otlp-bin UNIC_E2E_ARTIFACTS=/private/tmp/unic-otlp-evidence go test -race ./e2e/cli -run '^TestObservability' -count=1 -v
+```
+
+Most scenarios explicitly use 500 ms metrics and 100 ms logs intervals in the
+nonvisual test host. The production-cycle case uses the normal 60 s / 5 s
+intervals and observes a complete disabled interval first.
+Artifacts include decoded OTLP, local JSONL, assertions, source/binary hashes,
+resource samples, and `replay.sh`. Run from an immutable source snapshot when
+other work can change the checkout during acceptance.

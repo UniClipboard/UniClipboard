@@ -303,6 +303,7 @@ type Backend interface {
 // Handler serves the API for b.
 func Handler(b Backend, cfg *config.Manager) http.Handler {
 	mux := http.NewServeMux()
+	diagnosticRoutes(mux, b)
 	reply := func(w http.ResponseWriter, code int, v any) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(code)

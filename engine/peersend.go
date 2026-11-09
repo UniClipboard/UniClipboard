@@ -169,9 +169,25 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 	e.mu.Unlock()
 	for i, s := range targets {
 		k, s := keys[i], s
+		queued := time.Now()
+		kind := diagnosticKind(v.set.c)
+		backend := diagnosticBackend(b.id)
+		emitQueue := func(result DiagnosticResult) {
+			code := Code("")
+			if result == "cancelled" {
+				code = CodeCancelled
+			}
+			e.diagnostic(context.Background(), DiagnosticRecord{Stage: "send_queue", Result: result, Code: code, Backend: backend, ContentKind: kind, Duration: time.Since(queued)})
+		}
 		job := &peerJob{
-			supersede: func() { h.Report(k, TargetSuperseded, nil) },
+			supersede: func() { h.Report(k, TargetSuperseded, nil); emitQueue("superseded") },
 			run: func(ctx context.Context) {
+				if ctx.Err() != nil {
+					h.Report(k, TargetFailed, ctx.Err())
+					emitQueue("cancelled")
+					return
+				}
+				emitQueue("started")
 				h.Report(k, TargetSending, nil)
 				// A duplicate connection to the same peer is resolved shortly
 				// after both ends connect: the loser ends before its first byte.
@@ -180,7 +196,14 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 				cur := s
 				for attempt := 0; ; attempt++ {
 					src := &peerSendSource{b: b, v: v, conn: cur.conn, token: cur.token}
+					started := time.Now()
 					err := b.sendOver(ctx, disp, src, cur, v, clip)
+					outcome, code := diagnosticOutcome(err)
+					if ctx.Err() != nil {
+						outcome = "cancelled"
+						code = CodeCancelled
+					}
+					e.diagnostic(ctx, DiagnosticRecord{Stage: "send", Result: outcome, Backend: backend, ContentKind: kind, Code: code, Duration: time.Since(started)})
 					unsent := !src.authorized()
 					src.close()
 					if err == nil {
@@ -198,6 +221,7 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 		}
 		if !b.enqueue(rc, s.peerID, job) {
 			h.Report(k, TargetFailed, errClosed)
+			emitQueue("cancelled")
 		}
 	}
 	return true, nil

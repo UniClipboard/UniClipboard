@@ -43,7 +43,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0010](docs/decisions/proposed/0010-plugin-settings-schema.md) | 插件设置 Schema 与表单生成 | JSON Schema 子集 + UI 提示；Go 配置定义生成静态 schema，各 shell 生成原生表单；独立工具和 macOS 会话预览已实现，配置 API/清单/RPC/安装接入待完成 |
 | [0011](docs/decisions/proposed/0011-v1-history-migration.md) | v1 本机历史迁移 | 独立 Go CLI，三平台 arm64/amd64；只读解锁旧数据，离线导入文本/图片/文件/标签；支持新目录与追加合并、幂等续跑和重开校验；验收见执行计划 |
 | [0013](docs/decisions/proposed/0013-mygo-uikit.md) | 桌面 UI Kit：移植到 mygo | 统一 Kit API，Adwaita / macOS glass / Fluent 三皮肤；token 从 default.json 生成；59 个公共组件与 GUI 已接入，交互和视觉分别验证；各平台原生验收边界见执行记录 |
-| [0014](docs/decisions/proposed/0014-client-observability-otlp.md) | 客户端可观测性：OTLP 与动态日志等级 | 已采纳，待实现；slog + OTel Go SDK，OTLP/HTTP 可选上报；本机/远程等级独立，配置热加载与本机 CLI/API 限时覆盖；有界非阻塞、秘密白名单、默认关闭远程遥测 |
+| [0014](docs/decisions/proposed/0014-client-observability-otlp.md) | 客户端可观测性：OTLP 与动态日志等级 | 已采纳；本次 logs + metrics 已接入工作区，traces 后续实施；验收与限制见执行计划；本机/远程等级独立，有界非阻塞、秘密白名单、默认关闭远程遥测 |
 | [0015](docs/decisions/proposed/0015-headless-cli-and-desktop-integration.md) | 纯 CLI、无头服务与独立桌面集成 | 已采纳，待实现；`unic`/`unicd` 无图形依赖，独立桌面客户端承载 GUI/剪贴板适配；显式提交与系统复制分开，单适配会话及租约协议先行；无头版与桌面整包分别分发 |
 | [0016](docs/decisions/proposed/0016-sync-and-file-settings.md) | Sync and file settings | Sync and quota CLI/TOML implemented; 100 MB default file limit; custom received files remain user-managed; separate file cleanup superseded by 0017 |
 | [0017](docs/decisions/proposed/0017-history-auto-cleanup.md) | Automatic history cleanup | Unified age/count cleanup, tag exclusions, and managed-file/history deletion implemented; per-device cache quota retained; separate file-cleanup settings removed; 16 CLI E2E cases passed; native visual acceptance pending |
@@ -73,6 +73,8 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 - [Lua 运行时契约](docs/contracts/lua-runtime-contract.md)：固定上游版本、取消实测、增强 VM 方案、白名单、资源预算与失败状态；四项上游探针通过，增强 VM、沙箱与 Engine 接入已实现（`internal/luavm`、`internal/luaplugin`），差距见契约状态行。
 
 - [SDK 扩展类型契约](docs/contracts/sdk-extension-contract.md)：历史/提交/Action DTO、插件及 Lua 装配、可选值/零值、严格配置和错误映射；已落在 `engine/` 与 `plugin/`。
+
+- [可观测性契约](docs/contracts/observability-contract.md)：本次 logs + metrics 的 Engine 诊断接口、阶段统计、指标目录、日志白名单、配置、等级覆盖、socket API、停用屏障与资源上限；已接入工作区，验收范围见 [0014 计划](docs/exec/0014-client-observability-otlp.md)。Traces 留待后续实施。
 
 ### 原型
 

@@ -259,6 +259,7 @@ func (e *Engine) GetCapabilities(ctx context.Context) (Capabilities, error) {
 // the user grants a permission. It changes no trust and starts no clipboard
 // access.
 func (e *Engine) UpdateHostCapabilities(ctx context.Context, caps HostCapabilities) error {
+	defer e.emitCancelledApply(ctx)
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return gerr
@@ -283,6 +284,7 @@ func (e *Engine) UpdateHostCapabilities(ctx context.Context, caps HostCapabiliti
 // their next connection, a limit change applies to transfers that start
 // afterwards.
 func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) (SettingsState, error) {
+	defer e.emitCancelledApply(ctx)
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return SettingsState{}, gerr

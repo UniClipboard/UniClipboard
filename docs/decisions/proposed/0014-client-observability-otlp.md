@@ -1,7 +1,8 @@
 # 0014 · 客户端可观测性：OpenTelemetry / OTLP 与动态日志等级
 
-- 状态：已采纳，待实现；本文中的配置、CLI、HTTP API 和诊断接口均为目标设计，当前尚未提供。
+- 状态：已采纳；logs + metrics 已接入工作区，验收进度见执行计划。Traces 尚未实施，本文保留其后续设计目标。
 - 日期：2026-11-09。
+- 本次实施：仅 logs + metrics；精确接口见[可观测性契约](../../contracts/observability-contract.md)，阶段和证据见[执行计划](../../exec/0014-client-observability-otlp.md)。Traces 保留为后续设计目标，不作为本次依赖或验收条件。本文后续 trace 段落均属于该后续目标。
 - 关联：[0002 配置热加载](0002-config-file.md)、[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](../archive/0005-monorepo-layout.md)、[Engine 契约](../../contracts/engine-contract.md)、[流水线契约](../../contracts/pipeline-contract.md)、[同步后端契约](../../contracts/sync-backend-contract.md)。
 
 ## 背景
@@ -16,7 +17,7 @@ Engine 已支持注入 `*slog.Logger`，要求日志不阻塞且不包含内容�
 
 ### 1. 进程内 SDK，OTLP/HTTP 上报，Collector 放在接收端
 
-使用标准库 `log/slog` 作为业务日志接口，使用官方 OpenTelemetry Go SDK 采集 traces、metrics 和经过筛选的 logs，通过 OTLP/HTTP + Protobuf 主动上报。发行客户端的远程遥测默认关闭，启用后使用 HTTPS。
+使用标准库 `log/slog` 作为业务日志接口，使用官方 OpenTelemetry Go SDK 采集 metrics 和经过筛选的 logs，通过 OTLP/HTTP + Protobuf 主动上报。Traces 在后续阶段接入。发行客户端的远程遥测默认关闭，启用后使用 HTTPS。
 
 ```text
 Engine / 插件 / 宿主
@@ -40,14 +41,14 @@ Engine / 插件 / 宿主
 | 用途 | 组件 |
 |---|---|
 | 日志接口、动态门槛 | `log/slog`、`slog.LevelVar` |
-| Trace | `go.opentelemetry.io/otel/sdk/trace` |
+| Trace（后续） | `go.opentelemetry.io/otel/sdk/trace` |
 | Metrics | `go.opentelemetry.io/otel/sdk/metric` |
-| Trace HTTP 导出 | `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` |
+| Trace HTTP 导出（后续） | `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` |
 | Metrics HTTP 导出 | `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp` |
 | slog 桥接 | `go.opentelemetry.io/contrib/bridges/otelslog` |
 | Logs SDK / HTTP 导出 | `go.opentelemetry.io/otel/sdk/log`、`go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp` |
 
-`otelhttp` 和 Go runtime instrumentation 按实际需要选择性接入，不作为首批业务埋点的前置条件。原生崩溃采集另行设计，不把 OTLP 日志视为完整崩溃报告。
+`otelhttp` 和 Go runtime instrumentation 不在本次 logs + metrics 范围内。原生崩溃采集另行设计，不把 OTLP 日志视为完整崩溃报告。
 
 ### 2. 宿主拥有遥测生命周期，Engine 保持公开边界
 
@@ -76,23 +77,19 @@ enabled = false
 enabled = false
 level = "warn"
 
-[telemetry.traces]
-enabled = true
-sample_ratio = 0.05
-
 [telemetry.metrics]
 enabled = true
 ```
 
-上例同时给出默认值。`telemetry.enabled` 是远程遥测总开关；各信号的 `enabled` 只有在总开关打开时才生效。仅启用总开关时默认上报 metrics 和采样 traces，日志仍需单独开启。
+上例同时给出默认值。`telemetry.enabled` 是远程遥测总开关；各信号的 `enabled` 只有在总开关打开时才生效。本次仅启用总开关时默认上报 metrics，日志仍需单独开启。Traces 配置暂不接入，出现时按未知键拒绝。
 
 | 设置 | 生效规则 |
 |---|---|
 | `logging.level` | 热更新，本机日志门槛 |
 | `telemetry.logs.level` | 热更新，远程日志门槛 |
-| `telemetry.enabled`、三个信号的 `enabled` | 热更新；关闭立即停止接纳相应远程记录并取消导出 |
+| `telemetry.enabled`、logs/metrics 的 `enabled` | 热更新；关闭立即停止接纳相应远程记录并取消导出 |
 | `telemetry.endpoint` | 创建 exporter 时使用，修改需重启；关闭后再开启也不能偷偷应用待重启值 |
-| `telemetry.traces.sample_ratio` | 范围 0..1，修改需重启，首版不增加运行时采样覆盖 |
+| `telemetry.traces.sample_ratio` | 后续 traces 阶段目标：范围 0..1，修改需重启；本次不接入 |
 
 等级门槛使用独立的 `slog.LevelVar`。组合 Handler 的 `Enabled` 在任一已启用输出接受该等级时返回 true，`Handle` 再分别检查各输出门槛；`WithAttrs` / `WithGroup` 派生的 Logger 必须共享动态等级控制。不能在入口统一按本机等级丢弃远程输出本来接受的记录。
 
@@ -194,11 +191,11 @@ SDK 队列只作为临时缓冲，不承诺断网、崩溃或重启后的可靠�
 
 `telemetry.endpoint` 是无用户信息、无查询串、无 fragment 的 HTTPS 基地址；启用总开关时必须有可用端点。开发测试的 HTTP loopback 例外通过显式测试/开发装配提供，不作为发行配置选项。OTel 环境变量不能绕过宿主开关、采样限制或秘密过滤，exporter 参数由宿主显式提供。
 
-凭据从平台秘密存储或受控宿主注入获得，不写入普通 TOML 或查询响应；具体存储接入在实现前确定。配置 API 和错误只返回安全分类或“已设置”状态，不回显凭据。公开发行包中的共享写入令牌不能视为可信客户端身份；接收网关必须限制写入范围、流量和请求大小。
+本次凭据通过受控宿主注入获得，不写入普通 TOML 或查询响应；默认无凭据。具体入口和认证边界见可观测性契约；平台秘密存储接入另行实施。配置 API 和错误只返回安全分类或“已设置”状态，不回显凭据。公开发行包中的共享写入令牌不能视为可信客户端身份；接收网关必须限制写入范围、流量和请求大小。
 
 ### 7. 开发环境与接收端
 
-本地开发采用 `grafana/otel-lgtm` 验证埋点与三类信号；它只作为开发/测试工具。生产客户端只绑定标准 OTLP，不绑定查询平台或厂商 SDK。
+本地开发可采用 `grafana/otel-lgtm` 人工查询 logs/metrics；它只作为开发工具，不替代真实进程与可控 OTLP 接收端的自动验收。Traces 后续接入。生产客户端只绑定标准 OTLP，不绑定查询平台或厂商 SDK。
 
 自托管接收端优先评估 SigNoz；已有 Grafana 平台时复用 Collector、Tempo/Loki 和指标存储。接收端的部署、存储保留期、成本和服务配置另行决定，不作为客户端首批实现的前置交付。
 
@@ -207,15 +204,15 @@ SDK 队列只作为临时缓冲，不承诺断网、崩溃或重启后的可靠�
 ## 实施顺序与验收
 
 1. **本机日志与动态控制。** 接通 Engine Logger，统一关键日志等级和 context，加入有界输出、配置热加载、CLI/API、临时覆盖和状态查询。补齐 Engine 诊断 hooks 与桌面 API 契约后再实现，状态变化不包含正文。
-2. **Metrics / Trace 最小闭环。** 覆盖 commit、send、receive、apply，使用开发 Collector 验证阶段结果、异步关联和错误分类；默认关闭远程遥测。
+2. **Metrics 最小闭环。** 覆盖 commit、send_queue、send、receive、apply，使用真实进程和本机 OTLP 接收端验证阶段结果、累计语义和错误分类；默认关闭远程遥测。Traces 后续单独实施。
 3. **远程 Logs。** 接入经过审核的 slog 桥接和独立等级门槛，验证 local/remote 分支分别过滤，配置/覆盖均不能绕过上传开关。
 4. **故障与资源验收。** 验证队列满、断网、DNS/TLS 失败、接收端限流、磁盘满、退出超时、反复启停和系统恢复；确认同步不等待遥测，Provider/工作线程不泄漏。
 
 动态控制至少覆盖：既有及派生 Logger 立即生效、两个输出互不误过滤、非法输入不改变状态、覆盖替换、旧定时器不清除新覆盖、覆盖期间配置更新、到期/reset 恢复最新配置、重启清除覆盖、查询一致性及挂起恢复后重新检查。
 
-隐私验收扩展现有测试，捕获本机日志、导出的 spans / metrics / logs、Resource、exporter 错误和诊断响应，搜索地址、票据、配对码、正文、路径和身份等测试秘密。所有等级和临时覆盖模式使用同一套边界。
+隐私验收先编写真实进程端到端场景，捕获本机日志、导出的 metrics / logs、Resource、exporter 错误和诊断响应，搜索地址、票据、配对码、正文、路径和身份等测试秘密。所有等级和临时覆盖模式使用同一套边界。
 
-性能记录至少比较遥测关闭、正常采样、debug 和队列满四种模式下的空闲 CPU、内存、唤醒次数、业务延迟与上传量。测试使用内存 exporter / 假时钟 / 本机接收端，不依赖真实外部服务。实现阶段按项目要求运行 `go test -race ./...`、lint 和桌面构建。
+性能记录至少比较遥测关闭、正常上传、debug 和队列满四种模式下的空闲 CPU、内存、唤醒次数、业务延迟与上传量。验收使用真实 unic/unicd 进程、目录剪贴板与本机 OTLP/HTTP 接收端，不依赖真实外部服务。内存 exporter / 假时钟仅可补充说明已列明的失败方式，不能代替端到端证据。实现阶段按项目要求运行 `go test -race ./...`、lint 和桌面构建。
 
 ## 后果与范围
 

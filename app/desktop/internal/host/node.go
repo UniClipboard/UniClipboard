@@ -23,6 +23,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/luascripts"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 	"github.com/uniclipboard/unic/internal/session"
@@ -53,11 +54,14 @@ type Options struct {
 	// configuration's plugins.lua run, and edits to their scripts are applied
 	// while the node runs. Empty: no Lua plugins.
 	LuaDir string
+	// Observability supplies host-only test intervals or controlled credentials.
+	Observability observability.Options
 }
 
 // Node is the engine plus everything a desktop host adds to it. It implements
 // api.Backend.
 type Node struct {
+	diagnostics   *observability.Controller
 	e             *engine.Engine
 	cfg           *config.Manager
 	hub           hub
@@ -75,9 +79,6 @@ type Node struct {
 // Open creates the engine for the state directory. It does not touch the
 // network; Start does.
 func Open(ctx context.Context, o Options) (*Node, error) {
-	if o.Logf == nil {
-		o.Logf = func(string, ...any) {}
-	}
 	if o.Poll == 0 {
 		o.Poll = 400 * time.Millisecond
 	}
@@ -91,7 +92,26 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	obsOpts := o.Observability
+	obsOpts.Dir = o.Dir
+	obsOpts.Config = c.Observability()
+	if o.Logf != nil {
+		obsOpts.LocalOutput = func(record []byte) { o.Logf("%s", record) }
+	}
+	// Install the notification after Node exists. Its hub is allocated before
+	// Engine.New, so diagnostics may report initialization without a GUI.
+	n := &Node{}
+	obsOpts.Changed = func() { n.hub.emit(api.Event{Kind: "diagnostics"}) }
+	diagnostics := observability.New(obsOpts)
+	n.diagnostics = diagnostics
+	opened := false
+	defer func() {
+		if !opened {
+			diagnostics.Close(context.Background())
+		}
+	}()
 	opts := engine.Options{
+		Logger: diagnostics.Logger(), Diagnostics: diagnostics.Record,
 		DataDir:           o.Dir,
 		CacheDir:          filepath.Join(o.Dir, "inbox", "file-cache"),
 		StoreReceivedFile: storeReceived,
@@ -126,8 +146,14 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	n := &Node{e: e, cfg: o.Settings, logf: o.Logf, luaDir: o.LuaDir, lua: loaded, customReceive: storeReceived != nil}
-	n.clip = &clipboardHost{e: e, board: o.Board, poll: o.Poll, hub: &n.hub, logf: o.Logf, name: n.peerName, channelName: n.channelName}
+	n.e = e
+	n.cfg = o.Settings
+	n.logf = func(string, ...any) { diagnostics.Logger().Error("host.failed", "code", "internal") }
+	n.luaDir = o.LuaDir
+	n.lua = loaded
+	n.customReceive = storeReceived != nil
+	opened = true
+	n.clip = &clipboardHost{e: e, board: o.Board, poll: o.Poll, hub: &n.hub, logf: n.logf, name: n.peerName, channelName: n.channelName}
 	return n, nil
 }
 
@@ -164,7 +190,9 @@ func (n *Node) Close(ctx context.Context) error {
 		n.cancel()
 	}
 	n.wg.Wait()
-	return n.e.Close(ctx)
+	err := n.e.Close(ctx)
+	n.diagnostics.Close(context.Background())
+	return err
 }
 
 // Engine exposes the engine, for tests.
@@ -176,8 +204,9 @@ func (n *Node) Engine() *engine.Engine { return n.e }
 func (n *Node) ConfigChanged(err error) {
 	info := ""
 	if err != nil {
-		info = err.Error()
-	} else if uerr := n.pushSettings(context.Background()); uerr != nil {
+		n.diagnostics.Logger().Warn("config.rejected")
+		info = "configuration rejected"
+	} else if uerr := n.applyConfiguration(); uerr != nil {
 		n.cfg.ApplyFailed(uerr)
 		n.logf("settings not applied: %v", asCode(uerr))
 		info = "settings could not be applied"
@@ -596,3 +625,12 @@ func (n *Node) Subscribe() (<-chan api.Event, func()) { return n.hub.subscribe()
 
 var _ api.Backend = (*Node)(nil)
 var _ = strings.TrimSpace
+
+func (n *Node) applyConfiguration() error {
+	n.diagnostics.Apply(n.cfg.Current().Observability())
+	n.diagnostics.Logger().Info("config.reloaded")
+	return n.pushSettings(context.Background())
+}
+
+// Diagnostics is the host-owned controller, also used by the nonvisual E2E entry.
+func (n *Node) Diagnostics() *observability.Controller { return n.diagnostics }

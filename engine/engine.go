@@ -270,6 +270,18 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 
 func (e *Engine) logf(level slog.Level, msg string, args ...any) {
 	if e.log != nil {
+		switch msg {
+		case "engine created":
+			msg = "engine.created"
+		case "engine started":
+			msg = "engine.started"
+		case "engine stopped":
+			msg = "engine.stopped"
+		case "engine closed":
+			msg = "engine.closed"
+		default:
+			msg = "pipeline.failed"
+		}
 		e.log.Log(context.Background(), level, msg, args...)
 	}
 }
@@ -456,6 +468,7 @@ func (e *Engine) stopRun(ctx context.Context) error {
 // beginStop commits to stopping. Teardown then runs to completion whatever the
 // callers do.
 func (e *Engine) beginStop() {
+	defer e.emitCancelledApply(context.Background())
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	switch e.life {
@@ -587,6 +600,7 @@ func (e *Engine) finalize() {
 // and reconnects again. It does not grant OS permissions and is unrelated to
 // the sync.enabled setting, which keeps connections up.
 func (e *Engine) SetRuntimeState(ctx context.Context, state RuntimeState) error {
+	defer e.emitCancelledApply(ctx)
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return gerr

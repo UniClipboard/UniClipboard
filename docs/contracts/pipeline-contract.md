@@ -194,3 +194,10 @@ The global `sync.files` restriction combines with backend file permission. A blo
 A successful restore resend dispatches leased existing content. It does not call the normal commit entry point.
 The host deduplicates restore requests for 30 minutes within one daemon instance.
 See [desktop runtime](../architecture/desktop-runtime.md).
+
+## Local headless host
+
+The [local service contract](local-service-contract.md) defines explicit submissions, transient Received reads,
+independent Action application and exclusive desktop adapter generations.
+A missing clipboard adapter does not restrict Engine import, commit, receive, history reads or export.
+Service restart invalidates local sessions and content leases.

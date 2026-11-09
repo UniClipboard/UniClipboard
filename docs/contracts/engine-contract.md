@@ -152,6 +152,11 @@ DataDir、InboxDir 和 ResourcePolicy 只在 New 设置；历史扩展另有 `Op
 
 `Capabilities` 返回宿主声明、核心支持格式和有效交集，以及因配置/挂起导致不可用的原因。初版核心支持 text/plain、text/html、image/png 和普通文件；未知格式返回 `unsupported`。能力变化不改变信任，不清空已收到的内容，也不自动触发系统读写。
 
+Host format and file declarations describe system clipboard integration. They do not restrict `ImportContent`,
+explicit commit, received-content admission, history reads or export. `CoreFormats` describes supported representations;
+the core also supports regular files. A headless host declares no clipboard formats or file abilities and sets
+Observe/Apply to `unavailable`. Import and explicit commit do not require an observation epoch.
+
 ## 4. 生命周期
 
 ```text
@@ -351,7 +356,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 
 **第二步 2c（已实现并有测试）**：接收列表（`ListReceived`、`DismissReceived`、`State.Received`、`received` 与 `resource_warning` 事件）；接收内容存为内容对象，经 `RetainContent` 读取、`LocalFilePath` 取文件。
 
-**桌面迁移（已完成）**：`app/desktop/cmd/unicd` 只装配 `app/desktop/internal/host`，由它持有 SDK 引擎、系统剪贴板适配和 HTTP 后端；内部 `internal/session`（原 `internal/engine`）退化为会话层，旧的剪贴板轮询、`apply`、`broadcast`、`lastHash`、`SetLocal`、`Board` 已删除，只剩一套业务状态与信任逻辑。
+**桌面迁移（已完成）**：`app/service/cmd/unicd` 只装配 `app/service/internal/host`，由它持有 SDK 引擎、系统剪贴板适配和 HTTP 后端；内部 `internal/session`（原 `internal/engine`）退化为会话层，旧的剪贴板轮询、`apply`、`broadcast`、`lastHash`、`SetLocal`、`Board` 已删除，只剩一套业务状态与信任逻辑。
 
 **第二步 2d（已实现并有测试）**：`ObserveClipboard`、`BeginApply`、`ReportApplyResult`、`State.ActiveApply`、`apply` 事件。公开 Engine 本身不读写系统剪贴板，由宿主适配调用这些方法。
 
@@ -436,3 +441,10 @@ See [desktop runtime](../architecture/desktop-runtime.md) for the CLI, configura
 Settings snapshots deep-copy the excluded-tag slice. UpdateSettings validates the whole policy and applies it with revision checking.
 Age/count deletion and default-cache capacity reclamation share history deletion and tag exclusion rules.
 See the [history contract](history-contract.md) and [desktop runtime](../architecture/desktop-runtime.md).
+
+## Local headless host
+
+The [local service contract](local-service-contract.md) defines explicit submissions, transient Received reads,
+independent Action application and exclusive desktop adapter generations.
+A missing clipboard adapter does not restrict Engine import, commit, receive, history reads or export.
+Service restart invalidates local sessions and content leases.

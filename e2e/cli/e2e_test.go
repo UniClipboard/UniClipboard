@@ -49,7 +49,7 @@ func run(m *testing.M) int {
 			return 1
 		}
 		for _, name := range []string{"unic", "unicd"} {
-			cmd := exec.Command("go", "build", "-tags", "unic_e2e", "-o", filepath.Join(dir, name), "./app/desktop/cmd/"+name)
+			cmd := exec.Command("go", "build", "-tags", "unic_e2e", "-o", filepath.Join(dir, name), "./app/service/cmd/"+name)
 			cmd.Dir, cmd.Stdout, cmd.Stderr = root, os.Stderr, os.Stderr
 			if err := cmd.Run(); err != nil {
 				fmt.Fprintln(os.Stderr, "build", name+":", err)
@@ -119,6 +119,13 @@ func setup(env *testscript.Env) error {
 		defer st.mu.Unlock()
 		for _, n := range st.nodes {
 			if dest := os.Getenv("UNIC_E2E_ARTIFACTS"); dest != "" {
+				for _, query := range [][]string{{"capabilities"}, {"received"}, {"h", "list", "--json"}} {
+					if out, _, e := n.unic(query...); e == nil {
+						dir := filepath.Join(dest, filepath.Base(env.WorkDir))
+						_ = os.MkdirAll(dir, 0700)
+						_ = os.WriteFile(filepath.Join(dir, n.name+"."+query[0]+".json"), []byte(out), 0600)
+					}
+				}
 				if out, _, err := n.unic("cache", "--json"); err == nil {
 					dir := filepath.Join(dest, filepath.Base(env.WorkDir))
 					_ = os.MkdirAll(dir, 0700)
@@ -252,7 +259,7 @@ func cmdNodeStart(ts *testscript.TestScript, neg bool, args []string) {
 	n.cmd, n.done = cmd, done
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, _, err := n.unic("status"); err == nil {
+		if _, stderr, err := n.unic("paste"); err == nil || strings.Contains(stderr, "the clipboard holds no text or files") {
 			if neg {
 				ts.Fatalf("node %s started but it should not have", args[0])
 			}

@@ -51,6 +51,7 @@ board-wait beta files accepted.bin
 u beta h show @1 --json
 ! stdout 'desktop-received:'
 u beta h expire @1 1s
+sleep 2s
 ! until beta '"kind":"files"' h list --json
 cmp $SAVED accepted.bin
 u beta copy release

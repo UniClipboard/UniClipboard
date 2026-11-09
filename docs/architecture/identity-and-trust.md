@@ -10,10 +10,11 @@ paths:
   - internal/rendezvous
   - internal/store/devices.go
   - internal/store/candidates.go
-  - app/desktop/internal/host/node.go
-  - app/desktop/internal/api/api.go
-  - app/desktop/cmd/unic/cli.go
-  - app/desktop/cmd/unic/gui.go
+  - app/service/internal/host/node.go
+  - internal/localapi/api.go
+  - app/service/internal/server
+  - app/service/cmd/unic/cli.go
+  - app/desktop/cmd/unic-desktop/gui.go
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
@@ -62,7 +63,7 @@ Engine 统一管理“对端是谁、是否被信任、经哪条后端路径可�
 | `internal/store/devices.go`, `candidates.go` | 设备/关联/候选表与 CAS、墓碑、上限 |
 | `internal/rendezvous` | 配对码服务客户端、票据编码 |
 | `internal/session/engine.go` | tailcat 会话层：握手搬运、介绍收发（`introduceLoop`） |
-| `app/desktop/internal/host/node.go`, `internal/api/api.go`, `cmd/unic/cli.go`, `gui.go` | 桌面适配：批准、HTTP 路由、CLI |
+| `app/service/internal/host/node.go`, `app/service/internal/server/server.go`, `app/service/cmd/unic/cli.go`, `app/desktop/cmd/unic-desktop/gui.go` | 桌面适配：批准、HTTP 路由、CLI |
 
 ## 验证
 

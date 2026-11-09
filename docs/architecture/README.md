@@ -43,3 +43,5 @@ verified: <commit> # 对照代码核实时的提交；用 docscheck -bump 更新
 
 - [desktop-runtime](desktop-runtime.md): CLI configuration, restore sends, default-cache ownership, and custom received files.
 - [observability](observability.md): bounded local logs, dynamic levels, optional OTLP logs/metrics, and nonvisual acceptance limits.
+
+- [Headless service and desktop integration](headless.md): independent distributions, process ownership and adapter sessions.

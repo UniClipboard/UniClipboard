@@ -1,11 +1,12 @@
 ---
 paths:
-  - app/desktop/internal/config
-  - app/desktop/internal/api
-  - app/desktop/internal/host
-  - app/desktop/cmd/unic/cli.go
-  - app/desktop/cmd/unic/history.go
-  - app/desktop/cmd/unicd/daemon.go
+  - internal/localconfig
+  - internal/localapi
+  - app/service/internal/server
+  - app/service/internal/host
+  - app/service/cmd/unic/cli.go
+  - app/service/cmd/unic/history.go
+  - app/service/cmd/unicd/daemon.go
   - engine/history.go
   - engine/history_cleanup.go
   - engine/file_cache.go
@@ -119,9 +120,9 @@ A partial custom destination from failed finalization remains for the user to in
 - Never unlink a custom received file on history deletion, history expiry, lease release, restart, or shutdown.
 - Never enroll an earlier custom received file in cleanup after changing the active location.
 - Keep payloads held by reads, sends, applies, or the clipboard.
-- Preserve all startup clipboard candidates until the host reads the clipboard and establishes exact default-cache pins.
-- Refuse new default-cache file admission until that first reconciliation completes.
-- Run bounded age/count cleanup after startup reconciliation, policy changes, commits, and every 30 seconds while running. Each pass deletes at most 256 eligible records.
+- Service restart invalidates prior clipboard leases; persisted history and current content holders retain their own managed files.
+- Admit headless file receives without waiting for a desktop baseline.
+- Run bounded age/count cleanup after startup, policy changes, commits, and every 30 seconds while running. Each pass deletes at most 256 eligible records.
 - Remove independent file-retention settings and payload-only eviction. One switch governs age/count cleanup and capacity-driven history deletion.
 - Keep excluded records and their managed files. Manual deletion and explicit per-item expiry remain available independently.
 - Delete logical records first. Reclaim physical payloads only after the final history reference and content/clipboard holder are gone.

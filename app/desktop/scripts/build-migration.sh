@@ -11,7 +11,7 @@ for target_os in darwin linux windows; do
         CGO_ENABLED=0 GOOS="$target_os" GOARCH="$target_arch" \
             go build -trimpath -buildvcs=false \
             -o "$output_dir/unic-migrate-$target_os-$target_arch$suffix" \
-            ./app/desktop/cmd/unic-migrate
+            ./app/service/cmd/unic-migrate
     done
 done
 python3 - "$output_dir" <<'PY'

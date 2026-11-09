@@ -9,7 +9,7 @@
 ## 运行
 
 ```sh
-# 全部用例（约 2 分钟；需要 macOS 桌面会话，会构建 unic 与 unicd）
+# 全部用例（约 2 分钟；无需图形会话，会构建 unic 与 unicd）
 UNIC_E2E=1 go test ./e2e/cli -v
 
 # 单个用例（名字见 CASES.md）
@@ -78,15 +78,15 @@ The Go scenarios `TestObservability`, `TestObservabilityPipeline`,
 `TestObservabilityFaults` run real processes with a local HTTPS OTLP receiver.
 They are separate from the generated txtar catalog.
 
-Build the daemon with the test-only `unic_e2e` tag to avoid starting mygo.App.
+The production daemon is UI-free. The test-only `unic_e2e` tag adds diagnostics fixtures and a directory-backed IPC adapter.
 Release builds exclude this entry and its fixed fixtures. Diagnostic scenarios
 use the existing host transport seam over local TCP; they do not establish
 public DERP or native clipboard acceptance.
 
 ```sh
 mkdir -p /private/tmp/unic-otlp-bin
-go build -race -tags unic_e2e -o /private/tmp/unic-otlp-bin/unicd ./app/desktop/cmd/unicd
-go build -race -o /private/tmp/unic-otlp-bin/unic ./app/desktop/cmd/unic
+go build -race -tags unic_e2e -o /private/tmp/unic-otlp-bin/unicd ./app/service/cmd/unicd
+go build -race -o /private/tmp/unic-otlp-bin/unic ./app/service/cmd/unic
 TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=/private/tmp/unic-otlp-bin UNIC_E2E_ARTIFACTS=/private/tmp/unic-otlp-evidence go test -race ./e2e/cli -run '^TestObservability' -count=1 -v
 ```
 
@@ -96,3 +96,9 @@ intervals and observes a complete disabled interval first.
 Artifacts include decoded OTLP, local JSONL, assertions, source/binary hashes,
 resource samples, and `replay.sh`. Run from an immutable source snapshot when
 other work can change the checkout during acceptance.
+
+## Production headless acceptance
+
+Run `make headless-e2e` to build production binaries without test tags and exercise two real services plus a separate directory-backed adapter process.
+The result is `.cache/0015-acceptance/manifest.json`, with source hashes, binary hashes, dependency inventory and passed checks.
+This fixture does not open a graphical application or access the system clipboard.

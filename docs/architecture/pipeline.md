@@ -64,7 +64,7 @@ verified: 0710594f0e20d22f9e2ff06bece61631eff6172d
 - `engine/observers.go`：只读通知分发。
 - `internal/store/history.go`：历史与去重表结构及查询。
 - `internal/plugins/builtintext`：内置 processor + Action 插件。
-- `app/desktop/internal/api/api.go`、`app/desktop/cmd/unic/history.go`：桌面 HTTP 与 CLI 适配。
+- `app/service/internal/server/` and `app/service/cmd/unic/history.go` implement local HTTP and CLI handling. Shared DTOs and clients live in `internal/localapi/`.
 
 ## 规格与背景
 

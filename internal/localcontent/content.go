@@ -1,0 +1,71 @@
+package localcontent
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/clip"
+)
+
+// pathSource keeps a file where it is: the engine opens it again whenever it
+// needs the bytes and compares size and modification time with what it saw.
+type PathSource struct{ Path string }
+
+// PersistentRef lets history remember the file by path instead of copying it.
+func (p PathSource) PersistentRef() string { return p.Path }
+
+func (p PathSource) Open(context.Context) (io.ReadCloser, engine.FileMeta, error) {
+	f, err := os.Open(p.Path)
+	if err != nil {
+		return nil, engine.FileMeta{}, err
+	}
+	st, err := f.Stat()
+	if err != nil || !st.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, engine.FileMeta{}, errors.New("not a regular file")
+	}
+	return f, engine.FileMeta{Size: st.Size(), Version: fmt.Sprint(st.ModTime().UnixNano())}, nil
+}
+
+// errUnrepresentable means a clipboard snapshot has nothing the engine can
+// carry (a folder, a vanished file, only vendor formats).
+var errUnrepresentable = errors.New("clipboard content cannot be synced")
+
+// contentInput converts a clipboard snapshot. Only the formats that travel
+// between devices are kept; files are referenced, not copied.
+func Input(s clip.Snapshot) (engine.ContentInput, error) {
+	var in engine.ContentInput
+	for _, p := range s.Parts {
+		switch p.Format {
+		case clip.Text, clip.HTML, clip.PNG:
+		default:
+			continue
+		}
+		if len(p.Data) == 0 {
+			continue
+		}
+		in.Representations = append(in.Representations, engine.RepresentationInput{MIME: p.Format, Size: int64(len(p.Data)), Reader: bytesReader(p.Data)})
+	}
+	for _, f := range s.Files {
+		if !filepath.IsAbs(f.Path) {
+			return in, errUnrepresentable
+		}
+		st, err := os.Stat(f.Path)
+		if err != nil || !st.Mode().IsRegular() {
+			return in, errUnrepresentable // a folder or a vanished file: syncing its name as text would mislead
+		}
+		in.Files = append(in.Files, engine.FileInput{Name: f.Name, Size: st.Size(), Source: PathSource{f.Path}})
+	}
+	if len(in.Representations)+len(in.Files) == 0 {
+		return in, errUnrepresentable
+	}
+	return in, nil
+}
+
+func bytesReader(b []byte) io.Reader { return strings.NewReader(string(b)) }

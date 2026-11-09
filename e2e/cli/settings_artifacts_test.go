@@ -104,11 +104,11 @@ func exportArtifact(env *testscript.Env, st *state) {
 	cmd := exec.Command("git", "rev-parse", "HEAD")
 	cmd.Dir = root
 	source, _ := cmd.Output()
-	cmd = exec.Command("git", "diff", "--", "engine", "internal/store", "app/desktop/internal/config", "app/desktop/internal/api", "app/desktop/internal/host", "app/desktop/cmd", "e2e/cli")
+	cmd = exec.Command("git", "diff", "--", "engine", "internal", "plugin", "app/service", "e2e/cli")
 	cmd.Dir = root
 	patch, _ := cmd.Output()
 	sourceHashes := map[string]string{}
-	for _, base := range []string{"engine", "internal/store", "app/desktop/internal/config", "app/desktop/internal/api", "app/desktop/internal/host", "app/desktop/cmd", "e2e/cli"} {
+	for _, base := range []string{"engine", "internal", "plugin", "app/service", "e2e/cli"} {
 		_ = filepath.WalkDir(filepath.Join(root, base), func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				return nil

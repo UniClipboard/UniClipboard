@@ -62,3 +62,10 @@ RequestID 与 CommitContent 同一幂等命名空间：同键同参返回原结�
 - RequestID 幂等：同键不重复调用插件，换参数 conflict。
 - 宿主 BeginApplyHistory 应用结果，AppliedToken 回声不产生第二条历史；同步关闭时本机 action 与应用可用。
 - 事件/日志/错误不含正文与路径。
+
+## Local headless host
+
+The [local service contract](local-service-contract.md) defines explicit submissions, transient Received reads,
+independent Action application and exclusive desktop adapter generations.
+A missing clipboard adapter does not restrict Engine import, commit, receive, history reads or export.
+Service restart invalidates local sessions and content leases.

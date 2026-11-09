@@ -11,11 +11,12 @@ paths:
   - engine/receive.go
   - engine/clipboard.go
   - internal/observability
-  - app/desktop/internal/config
-  - app/desktop/internal/host/node.go
-  - app/desktop/internal/api/diagnostics.go
-  - app/desktop/cmd/unic/diagnostics.go
-  - app/desktop/cmd/unicd
+  - internal/localconfig
+  - app/service/internal/host/node.go
+  - internal/localapi/diagnostics.go
+  - app/service/internal/server/diagnostics.go
+  - app/service/cmd/unic/diagnostics.go
+  - app/service/cmd/unicd
   - e2e/cli/observability_e2e_test.go
 verified: 0710594f0e20d22f9e2ff06bece61631eff6172d
 ---
@@ -61,9 +62,10 @@ The implementation is committed. The verification metadata identifies the scoped
 | `internal/observability/logs.go` | Safe slog handler, async local files, retention |
 | `internal/observability/metrics.go` | Instrument catalog, validation, histogram and health counters |
 | `internal/observability/export.go`, `privacy.go` | Official SDK/exporter assembly, bounded workers, cancellation, final Resource filtering |
-| `app/desktop/internal/api/diagnostics.go` | Socket routes, strict flat JSON validation, client methods |
-| `app/desktop/cmd/unic/diagnostics.go` | Level and telemetry CLI commands |
-| `app/desktop/cmd/unicd/*_e2e.go` | Build-tagged nonvisual test entry, fixed fixtures, local TCP transport seam |
+| `app/service/internal/server/diagnostics.go` | Socket routes and strict flat JSON validation |
+| `internal/localapi/diagnostics.go` | Shared diagnostics client methods |
+| `app/service/cmd/unic/diagnostics.go` | Level and telemetry CLI commands |
+| `app/service/cmd/unicd/*_e2e.go` | Build-tagged nonvisual test entry, fixed fixtures, local TCP transport seam |
 | `e2e/cli/observability_e2e_test.go` | Real-process HTTP/protobuf, privacy, lifecycle, fault and resource acceptance |
 
 ## Specifications

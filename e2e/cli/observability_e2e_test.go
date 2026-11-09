@@ -533,8 +533,8 @@ root=$(git rev-parse --show-toplevel)
 cd "$root"
 bin=$(mktemp -d /private/tmp/unic-otlp-replay.XXXXXX)
 trap 'rm -rf "$bin"' EXIT
-go build -race -tags unic_e2e -o "$bin/unicd" ./app/desktop/cmd/unicd
-go build -race -o "$bin/unic" ./app/desktop/cmd/unic
+go build -race -tags unic_e2e -o "$bin/unicd" ./app/service/cmd/unicd
+go build -race -o "$bin/unic" ./app/service/cmd/unic
 TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" go test -race ./e2e/cli -run TestObservability -count=1 -v
 `
 	_ = os.WriteFile(filepath.Join(d, "replay.sh"), []byte(replay), 0700)

@@ -199,3 +199,10 @@ Imported archive payloads remain under their existing history ownership rules.
 A generic history apply stays local. The desktop explicit restore can resend after successful apply through `SyncRestoredHistory`.
 Restore resend respects the stored processor sync prohibition and does not rerun processors or create a new record.
 See [desktop runtime](../architecture/desktop-runtime.md).
+
+## Local headless host
+
+The [local service contract](local-service-contract.md) defines explicit submissions, transient Received reads,
+independent Action application and exclusive desktop adapter generations.
+A missing clipboard adapter does not restrict Engine import, commit, receive, history reads or export.
+Service restart invalidates local sessions and content leases.

@@ -728,6 +728,7 @@ board-wait beta files accepted.bin
 u beta h show @1 --json
 ! stdout 'desktop-received:'
 u beta h expire @1 1s
+sleep 2s
 ! until beta '"kind":"files"' h list --json
 cmp $SAVED accepted.bin
 u beta copy release
@@ -921,8 +922,8 @@ board-wait beta text hello.txt
 until beta 'alpha\s+\d+B' h list -n 1
 u beta h list -n 1
 ! stdout 'email'
-u alpha h action @1 example.lua-textcase/title
-stdout 'new entry'
+u alpha h action @1 example.lua-textcase/title --apply
+stdout '"item"'
 board-wait alpha text title.txt
 board-wait beta text title.txt
 u alpha h list -n 5

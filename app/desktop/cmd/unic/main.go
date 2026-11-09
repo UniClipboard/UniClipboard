@@ -7,6 +7,7 @@
 //	unic join <code>     pair with the device showing that code
 //	unic pair <addr>     pair with another device
 //	unic config [path]   show the settings in effect
+//	unic history | h     browse the local clipboard history
 //	unic status | peers | unpair <id> | copy | paste | watch
 package main
 
@@ -32,6 +33,7 @@ The background node is a separate program, unicd; start it first.
   requests         devices waiting for your approval
   approve <id>     accept a waiting device
   reject <id>      dismiss a waiting device
+  history, h       list, show, delete and tag clipboard history (unic h help)
   copy [text]      put text (or stdin, or -f files) on the clipboard
   paste            print the clipboard's text
   watch            print sync events as they happen
@@ -54,6 +56,8 @@ func main() {
 		err = fmt.Errorf("the daemon is a separate program: run `unicd`")
 	case "gui":
 		err = runGUI()
+	case "history", "h":
+		err = runHistory(args)
 	case "migrate":
 		err = runMigration(args)
 	case "help", "-h", "--help":

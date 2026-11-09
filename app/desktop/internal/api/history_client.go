@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"mime"
@@ -71,4 +72,94 @@ func (c *Client) HistoryPreview(ctx context.Context, item HistoryItem) (string, 
 		return "", errors.New("cannot read history preview")
 	}
 	return strings.TrimSpace(strings.ToValidUTF8(string(b), "�")), nil
+}
+
+// QueryHistory lists records matching q, newest first.
+func (c *Client) QueryHistory(ctx context.Context, q HistoryQuery) (page HistoryPage, err error) {
+	v := url.Values{}
+	if q.Limit > 0 {
+		v.Set("limit", strconv.Itoa(q.Limit))
+	}
+	if q.Cursor != "" {
+		v.Set("cursor", q.Cursor)
+	}
+	for _, k := range q.Kinds {
+		v.Add("kind", k)
+	}
+	for _, o := range q.Origins {
+		v.Add("origin", o)
+	}
+	for _, t := range q.Tags {
+		v.Add("tag", t)
+	}
+	if q.DeviceID != "" {
+		v.Set("device", q.DeviceID)
+	}
+	if q.FromMs != 0 {
+		v.Set("from", strconv.FormatInt(q.FromMs, 10))
+	}
+	if q.BeforeMs != 0 {
+		v.Set("before", strconv.FormatInt(q.BeforeMs, 10))
+	}
+	err = c.do(ctx, http.MethodGet, "/v1/history?"+v.Encode(), nil, &page)
+	return
+}
+
+func (c *Client) GetHistory(ctx context.Context, id string) (it HistoryItem, err error) {
+	err = c.do(ctx, http.MethodGet, "/v1/history/"+url.PathEscape(id), nil, &it)
+	return
+}
+
+// CopyHistoryContent streams part number part of a record to w.
+func (c *Client) CopyHistoryContent(ctx context.Context, id string, part int, w io.Writer) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unic/v1/history/"+url.PathEscape(id)+"/content?part="+strconv.Itoa(part), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		if isNoDaemon(err) {
+			return ErrNoDaemon
+		}
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		var e errBody
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		if e.Error == "" {
+			e.Error = resp.Status
+		}
+		return &Error{Message: e.Error}
+	}
+	_, err = io.Copy(w, resp.Body)
+	return err
+}
+
+func (c *Client) UpdateHistory(ctx context.Context, id string, u HistoryUpdate) (it HistoryItem, err error) {
+	err = c.do(ctx, http.MethodPatch, "/v1/history/"+url.PathEscape(id), u, &it)
+	return
+}
+
+func (c *Client) DeleteHistory(ctx context.Context, id string, revision uint64) error {
+	return c.do(ctx, http.MethodDelete, "/v1/history/"+url.PathEscape(id)+"?revision="+strconv.FormatUint(revision, 10), nil, nil)
+}
+
+// Actions lists what plugins offer on text records.
+func (c *Client) Actions(ctx context.Context) ([]Action, error) {
+	var out struct {
+		Actions []Action `json:"actions"`
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/actions", nil, &out)
+	return out.Actions, err
+}
+
+// RunAction runs an action on a record; the result is a new record, also put
+// on the clipboard.
+func (c *Client) RunAction(ctx context.Context, id, key string) (HistoryItem, error) {
+	var out struct {
+		Item HistoryItem `json:"item"`
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/history/"+url.PathEscape(id)+"/actions/"+key, nil, &out)
+	return out.Item, err
 }

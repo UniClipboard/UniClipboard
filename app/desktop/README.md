@@ -19,6 +19,7 @@ unic 的桌面应用(macOS / Windows / Linux),是公开 Go SDK(`engine`)的宿�
   - 对方也得批准你:连接要双方都批准才建立。你主动 `unic pair` 的设备视为已批准。
   - 拒绝(`unic reject`)后,介绍不会再打扰;该设备自己再来连则重新询问。
 - **本机历史**:`unic history`(别名 `unic h`)——`list` 列表(`--type/--tag/--limit/--json`),`show [id|@N]` 输出内容到 stdout,`delete`(终端里确认一次,`-y` 跳过)、`tag`、`expire`、`action`。`@1` 是最新一条。
+- **本地插件**:把 Lua 插件目录(含 `spec.toml` 和脚本)放进 `$UNIC_HOME/plugins/lua/` 即会被发现,但不会运行。`unic plugin list` 查看,`unic plugin enable <id>` / `disable <id>` 改 config.toml 的 `plugins.lua`,重启 unicd 生效。
 - **配置文件**:`UNIC_HOME/config.toml`(首次启动自动生成带注释的模板),保存即生效,无需重启。可设置设备名、配对码服务地址、大小上限、同步开关(整体暂停 / 文本 / 图片 / 文件)。写错时保留上一份有效配置并记录错误,用 `unic config` 查看当前生效值和错误;`unic config path` 打印文件路径。`inbox` 目录改动需重启 unicd。设计见 [docs/design/decisions/0002-config-file.md](docs/design/decisions/0002-config-file.md)。
 - **地址等同密码**:它内含 WireGuard 预共享密钥,持有者即可连接并写入你的剪贴板。
 

@@ -192,6 +192,14 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	var syncErr *Error
 	var historyID HistoryID
 	if failure == nil {
+		e.commitGate.RLock()
+		defer e.commitGate.RUnlock()
+		if err := ctx.Err(); err != nil {
+			failure = ctxErr(err) // stopped or suspended after processing: no late commit
+			e.cs.unref(processed.c)
+		}
+	}
+	if failure == nil {
 		if processed.policy.Persist {
 			// A record that cannot be stored means the commit failed: nothing is sent.
 			historyID, failure = e.persistHistory(ctx, processed, nil)

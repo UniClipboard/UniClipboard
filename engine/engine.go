@@ -76,6 +76,10 @@ type Engine struct {
 	runCancel   context.CancelFunc
 	runDone     chan struct{}
 	opWG        sync.WaitGroup
+	// commitGate orders commits against Stop/suspend: a commit holds it shared
+	// from its last context check to the end of persist+dispatch; stopRun
+	// cancels, then takes it exclusively, so nothing commits after it returns.
+	commitGate sync.RWMutex
 
 	stopped  chan struct{} // closed when teardown is complete
 	closedCh chan struct{} // closed when Close is complete
@@ -505,6 +509,8 @@ func (e *Engine) stopRun(ctx context.Context) error {
 	e.mu.Unlock()
 	if cancel != nil {
 		cancel()
+		e.commitGate.Lock() // drain commits that passed their last check
+		e.commitGate.Unlock()
 	}
 	if done != nil {
 		select {

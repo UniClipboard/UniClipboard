@@ -73,6 +73,16 @@ type PersistentFileSource interface {
 	PersistentRef() string
 }
 
+// ReceivedFile supplies a host with one complete received file, not a path.
+// Reader is valid only until Options.StoreReceivedFile returns. The host must
+// consume exactly Size bytes before returning a readable PersistentFileSource.
+type ReceivedFile struct {
+	Name   string
+	MIME   string
+	Size   int64
+	Reader io.Reader
+}
+
 // RepresentationInput is an in-memory form of the content (text, HTML, PNG).
 type RepresentationInput struct {
 	MIME   string

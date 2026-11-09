@@ -118,8 +118,27 @@ func setup(env *testscript.Env) error {
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		for _, n := range st.nodes {
+			if dest := os.Getenv("UNIC_E2E_ARTIFACTS"); dest != "" {
+				if out, _, err := n.unic("cache", "--json"); err == nil {
+					dir := filepath.Join(dest, filepath.Base(env.WorkDir))
+					_ = os.MkdirAll(dir, 0700)
+					_ = os.WriteFile(filepath.Join(dir, n.name+".cache.json"), []byte(out), 0600)
+				}
+			}
 			n.kill(syscall.SIGKILL)
+			if n.done != nil {
+				select {
+				case <-n.done:
+				case <-time.After(5 * time.Second):
+				}
+			}
 		}
+		for name := range st.nodes {
+			if data, err := os.ReadFile(filepath.Join(st.work, name+".log")); err == nil && bytes.Contains(data, []byte("WARNING: DATA RACE")) {
+				env.T().Fatal("daemon race detector reported a data race")
+			}
+		}
+		exportArtifact(env, st)
 	})
 	return nil
 }
@@ -165,12 +184,18 @@ func commands() map[string]func(*testscript.TestScript, bool, []string) {
 			ts.Check(err)
 			time.Sleep(d)
 		},
-		"logs":           cmdLogs,
-		"retry-copy":     cmdRetryCopy,
-		"node-id":        cmdNodeID,
-		"board-set":      cmdBoardSet,
-		"board-wait":     cmdBoardWait,
-		"install-plugin": cmdInstallPlugin,
+		"logs":            cmdLogs,
+		"retry-copy":      cmdRetryCopy,
+		"node-id":         cmdNodeID,
+		"external-ref":    cmdExternalRef,
+		"file-path":       cmdFilePath,
+		"cache-age":       cmdCacheAge,
+		"cache-link":      cmdCacheLink,
+		"config-conflict": cmdConfigConflict,
+		"file-wait":       cmdFileWait,
+		"board-set":       cmdBoardSet,
+		"board-wait":      cmdBoardWait,
+		"install-plugin":  cmdInstallPlugin,
 	}
 }
 

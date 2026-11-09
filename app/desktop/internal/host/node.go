@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -57,11 +58,12 @@ type Options struct {
 // Node is the engine plus everything a desktop host adds to it. It implements
 // api.Backend.
 type Node struct {
-	e    *engine.Engine
-	cfg  *config.Manager
-	hub  hub
-	clip *clipboardHost
-	logf func(string, ...any)
+	e             *engine.Engine
+	cfg           *config.Manager
+	hub           hub
+	clip          *clipboardHost
+	logf          func(string, ...any)
+	customReceive bool
 
 	luaDir string
 	lua    map[string]luascripts.Script // as running, by plugin ID
@@ -85,10 +87,16 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		peer = tailcat.NewOn(o.Transport)
 	}
 	c := o.Settings.Current()
+	storeReceived, err := receivedFileWriter(c.Inbox, o.Dir)
+	if err != nil {
+		return nil, err
+	}
 	opts := engine.Options{
-		DataDir:  o.Dir,
-		InboxDir: c.Inbox, // empty: the default inside Dir
-		Settings: toSettings(c),
+		DataDir:           o.Dir,
+		CacheDir:          filepath.Join(o.Dir, "inbox", "file-cache"),
+		StoreReceivedFile: storeReceived,
+		DeferFileCleanup:  true,
+		Settings:          toSettings(c),
 		HostCapabilities: engine.HostCapabilities{
 			ReadFormats:  []string{clip.Text, clip.HTML, clip.PNG},
 			WriteFormats: []string{clip.Text, clip.HTML, clip.PNG},
@@ -97,7 +105,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		},
 		History: c.HistoryOptions(),
 		// History remembers files by path; they are never copied.
-		ResolveFileRef: func(ref string) engine.FileSource { return pathSource{ref} },
+		ResolveFileRef: resolveDesktopFile,
 	}
 	opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
 	if c.PluginEnabled(builtintext.ID) {
@@ -118,7 +126,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	n := &Node{e: e, cfg: o.Settings, logf: o.Logf, luaDir: o.LuaDir, lua: loaded}
+	n := &Node{e: e, cfg: o.Settings, logf: o.Logf, luaDir: o.LuaDir, lua: loaded, customReceive: storeReceived != nil}
 	n.clip = &clipboardHost{e: e, board: o.Board, poll: o.Poll, hub: &n.hub, logf: o.Logf, name: n.peerName, channelName: n.channelName}
 	return n, nil
 }
@@ -170,8 +178,12 @@ func (n *Node) ConfigChanged(err error) {
 	if err != nil {
 		info = err.Error()
 	} else if uerr := n.pushSettings(context.Background()); uerr != nil {
+		n.cfg.ApplyFailed(uerr)
 		n.logf("settings not applied: %v", asCode(uerr))
 		info = "settings could not be applied"
+	}
+	if info == "" {
+		n.cfg.ApplyFailed(nil)
 	}
 	n.hub.emit(api.Event{Kind: "config", Info: info})
 }

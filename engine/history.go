@@ -162,7 +162,7 @@ var historyNow = time.Now
 func (e *Engine) reserveStored(n int64, evictReceived bool) bool {
 	for {
 		e.cs.mu.Lock()
-		if e.cs.stored+e.hist.bytes.Load()+n <= e.res.MaxStoredBytes {
+		if e.cs.stored+e.hist.bytes.Load()+e.cachedBytes()+n <= e.res.MaxStoredBytes {
 			e.cs.stored += n
 			e.cs.mu.Unlock()
 			return true
@@ -300,6 +300,9 @@ func (e *Engine) writeBlob(ctx context.Context, p *partRec, fname string) (strin
 }
 
 func persistentRef(p *partRec) string {
+	if p.cache != "" {
+		return "cache:" + p.cache
+	}
 	if ps, ok := p.src.(PersistentFileSource); ok {
 		return ps.PersistentRef()
 	}
@@ -325,7 +328,7 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 	// committed is replaced by it, so it is not counted twice.
 	for {
 		e.cs.mu.Lock()
-		used := e.cs.stored - c.owned + h.bytes.Load()
+		used := e.cs.stored - c.owned + h.bytes.Load() + e.cachedBytes()
 		e.cs.mu.Unlock()
 		if used+stored <= e.res.MaxStoredBytes {
 			break
@@ -336,7 +339,8 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 	}
 	now := historyNow()
 	it := store.HistoryItem{
-		ID: randHex(16), Kind: string(historyKindOf(pc.item.Type)), OriginKind: pc.item.Origin.kind,
+		SyncBlocked: !pc.policy.Sync,
+		ID:          randHex(16), Kind: string(historyKindOf(pc.item.Type)), OriginKind: pc.item.Origin.kind,
 		DeviceID: string(pc.item.Origin.deviceID), PluginID: pc.item.Origin.pluginID,
 		CreatedMs: now.UnixMilli(), TotalBytes: c.total,
 	}
@@ -463,7 +467,7 @@ func (e *Engine) GetItem(ctx context.Context, id HistoryID) (HistoryItem, error)
 	if err != nil {
 		return HistoryItem{}, historyStoreErr(err)
 	}
-	return toHistoryItem(it), nil
+	return e.historyItem(it), nil
 }
 
 type cursorPayload struct {
@@ -586,7 +590,7 @@ func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (Histo
 		page.NextCursor = e.hist.seal(cursorPayload{Inst: e.instance, Filter: fk, Upper: q.Upper, After: items[limit-1].Seq, AfterTime: items[limit-1].OrderMs})
 	}
 	for _, it := range items {
-		page.Items = append(page.Items, toHistoryItem(it))
+		page.Items = append(page.Items, e.historyItem(it))
 	}
 	return page, nil
 }
@@ -607,6 +611,15 @@ func (e *Engine) loadHistoryContent(id HistoryID) (*contentObj, *Error) {
 		n++
 		p := &partRec{desc: PartDescriptor{ID: PartID("p" + strconv.Itoa(n)), Kind: PartRepresentation, MIME: sp.MIME, Size: sp.Size}}
 		switch {
+		case sp.Kind == "file" && strings.HasPrefix(sp.Ref, "cache:"):
+			id := strings.TrimPrefix(sp.Ref, "cache:")
+			path, ok := e.cache.hold(id)
+			if !ok {
+				e.cache.release(c.cached)
+				return nil, newErr(CodeResourceExpired, "cached file content is unavailable")
+			}
+			p.desc.Kind, p.desc.Name, p.cache, p.path = PartFile, sp.Name, id, path
+			c.cached = append(c.cached, id)
 		case sp.Kind == "file" && sp.Ref != "":
 			p.desc.Kind, p.desc.Name, p.desc.Referenced = PartFile, sp.Name, true
 			p.meta = FileMeta{Size: sp.Size, Version: sp.Version}
@@ -623,6 +636,7 @@ func (e *Engine) loadHistoryContent(id HistoryID) (*contentObj, *Error) {
 		case sp.Blob != "":
 			data, rerr := readBlob(filepath.Join(h.dir, sp.Blob, "data"), sp.Size)
 			if rerr != nil {
+				e.cache.release(c.cached)
 				return nil, rerr
 			}
 			p.data = data
@@ -885,4 +899,15 @@ func (e *Engine) DeleteItem(ctx context.Context, req DeleteItemRequest) error {
 	e.historyChanged(string(req.ID))
 	e.notifyObservers(plugin.EventDeleted, string(req.ID))
 	return nil
+}
+
+func (e *Engine) historyItem(it store.HistoryItem) HistoryItem {
+	out := toHistoryItem(it)
+	for i, p := range it.Parts {
+		out.Parts[i].Available = true
+		if strings.HasPrefix(p.Ref, "cache:") {
+			out.Parts[i].Available = e.cache != nil && e.cache.available(strings.TrimPrefix(p.Ref, "cache:"))
+		}
+	}
+	return out
 }

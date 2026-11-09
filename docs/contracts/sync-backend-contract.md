@@ -143,3 +143,12 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 - receive_open 拒绝后 drain 保持连接，硬上限/溢出关闭，预留过期/重复消费，超过 32 个 part 的顺序流回收。
 - 交付前撤销/挂起/过滤、hash 校验后处理、persist=false、历史失败不建立 Received、半成品和配额全部回收。
 - 每种错误/取消时序的原子状态与资源清理，以及地址/票据/正文/token 不进入日志事件错误。
+
+## Global file permission (0016)
+
+The effective backend file policy is `Settings.Sync.Files && BackendSyncPolicy.Files`.
+External peer backends receive this effective policy in `SyncState.Policy.Files`; protocol version remains 1.
+Engine still checks file permission and receive limits at admission.
+The 100 MB default file limit applies to manual, automatic, and restore transfers.
+Default-cache reservations do not apply to custom receive files. All receives still obey transient resource limits.
+See [desktop runtime](../architecture/desktop-runtime.md).

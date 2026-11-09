@@ -94,6 +94,7 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 func (e *Engine) RetainContent(ctx context.Context, id ContentID) (ContentHandle, error)
 func (e *Engine) ReadContent(ctx context.Context, lease LeaseID, part PartID) (*ContentReader, error)
 func (e *Engine) LocalFilePath(ctx context.Context, lease LeaseID, part PartID) (string, error)
+func (e *Engine) FileReference(ctx context.Context, lease LeaseID, part PartID) (string, error)
 func (e *Engine) ReleaseContent(ctx context.Context, lease LeaseID) error
 func (e *Engine) SubmitContent(ctx context.Context, req SubmitRequest) (OperationID, error)
 func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, error)
@@ -391,3 +392,32 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 ### 本机旧历史迁移
 
 [0011](../decisions/proposed/0011-v1-history-migration.md) 的独立 CLI 使用 `Options.MigrationMode` 获取目标目录锁并离线导入。`ImportHistory`、`LookupHistoryImport`、`ImportHistoryTags` 与 `ListHistoryTags` 的契约见[本机历史契约](history-contract.md)。该模式禁止 Start，不启动网络或插件，不应用剪贴板。
+
+## Sync settings and file ownership (0016, CLI implemented)
+
+`SyncSettings` includes Enabled, Automatic, OnRestore, Files, and Introductions.
+`FileCacheSettings` includes MaxBytes, RetentionHours, and AutoCleanup.
+The defaults are true, true, false, true, true, 500 MB, 24 hours, and true respectively.
+The default per-file transfer limit is 100 MB. Source import uses the protocol file cap instead of the transfer limit.
+`SyncRestoredHistory` requires the last successful history apply token and a retained content lease.
+The method consumes the token's resend permission once, preserves stored processor policy, and creates no duplicate history.
+Its result separates local apply from sync disposition, operation ID, and sync error.
+`Options.CacheDir` is an app-private directory selected by the host for Engine-owned payloads.
+`Options.StoreReceivedFile` is an optional host callback, separate from private-cache storage.
+When the callback is nil, Engine reserves and retains files in its private cache.
+When the callback is present, Engine passes `ReceivedFile{Name, MIME, Size, Reader}` and adopts the returned `PersistentFileSource`.
+The callback must consume exactly Size bytes synchronously, honor context cancellation, and return a readable source with the declared size.
+The reader remains Engine-owned and is valid only during the callback.
+The persistent reference must be non-empty, at most 65536 bytes, and must not use the reserved `cache:` prefix.
+Engine validates the source without holding state, history, or content locks.
+Callback errors and panics produce stable errors without forwarding host text, references, or paths.
+A failed callback cannot publish history, Received, or fallback cache content.
+Files that the host already created remain host-owned, including after a later receive commit fails.
+Engine receives no destination path or URI and no authority to delete host files.
+`FileReference` explicitly returns a persistent host reference after validating the leased source.
+Engine does not interpret that value; a host can resolve it as a URI, handle, or path.
+`LocalFilePath` returns `unsupported` for host-managed sources.
+`ReconcileClipboardFiles` establishes default-cache clipboard pins before deferred startup cleanup.
+`GetFileCacheState` exposes only IDs, byte counts, completion times, availability, and held flags.
+Cache deletion authority never follows a custom file reference.
+See [desktop runtime](../architecture/desktop-runtime.md) for the CLI, configuration revision, and complete deletion boundary.

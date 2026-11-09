@@ -212,6 +212,7 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 		return "", "", nil, nil, err
 	}
 	enabled, lim := e.settings.Value.Sync.Enabled, e.settings.Value.Limits
+	automatic := e.settings.Value.Sync.Automatic
 	e.mu.Unlock()
 
 	backends := e.selectBackends(req.BackendIDs)
@@ -225,6 +226,8 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 	switch {
 	case !enabled:
 		return "", SyncDisabled, all(BackendDisabled), nil, nil
+	case req.Origin == OriginClipboard && !automatic:
+		return "", SyncNotRequested, all(BackendNotRequested), nil, nil
 	case !processed.policy.Sync:
 		return "", SyncNotRequested, all(BackendNotRequested), nil, nil
 	case len(backends) == 0:
@@ -245,6 +248,8 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 		pol := e.policyOf(b.ID())
 		set := buildSendSet(c, pol)
 		switch {
+		case hasFiles(c) && !pol.Files:
+			res.Disposition = BackendPolicyFiltered
 		case len(set.parts) == 0:
 			res.Disposition = BackendPolicyFiltered
 		case !manual && fileTooLarge(set, pol.AutoFileMaxBytes):
@@ -302,4 +307,13 @@ func (e *Engine) aggregate(h *dispatchHost, results []BackendSubmissionResult) (
 		return "", SyncNoTargets, results, nil, nil
 	}
 	return "", SyncPolicyFilter, results, nil, nil
+}
+
+func hasFiles(c *contentObj) bool {
+	for _, p := range c.parts {
+		if p.desc.Kind == PartFile {
+			return true
+		}
+	}
+	return false
 }

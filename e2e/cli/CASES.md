@@ -8,10 +8,17 @@
 | [content-formats](#content-formats) | HTML、PNG 和文件原样同步 |
 | [crash-and-suspend-recovery](#crash-and-suspend-recovery) | 对端崩溃或挂起后自动恢复 |
 | [data-dir-single-instance](#data-dir-single-instance) | 同一数据目录只允许一个 unicd，日志不泄露秘密 |
+| [file-cache-boundary](#file-cache-boundary) | Cache cleanup cannot escape the managed directory |
+| [file-cache-retention](#file-cache-retention) | Default file cache retention |
+| [file-cache-scope](#file-cache-scope) | File cache ownership and quota |
+| [file-size-policy](#file-size-policy) | Default 100 MB file boundary |
+| [history-restore-sync](#history-restore-sync) | History restore sync policy |
+| [host-received-files](#host-received-files) | Host-owned custom receive files |
 | [pair-and-sync-text](#pair-and-sync-text) | 两台设备配对批准后，文本双向同步 |
 | [plugin-sensitive-blocks-sync](#plugin-sensitive-blocks-sync) | 敏感内容插件：打标签、禁止同步、设置过期 |
 | [plugin-tag-and-action](#plugin-tag-and-action) | 邮箱标签插件与 Action 改写 |
 | [restart-keeps-state](#restart-keeps-state) | 重启后身份、配对、历史与标签保持不变 |
+| [sync-settings](#sync-settings) | CLI settings and TOML policy |
 
 ## content-formats
 
@@ -183,6 +190,398 @@ logs alpha in_use
 
 </details>
 
+## file-cache-boundary
+
+**Cache cleanup cannot escape the managed directory**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/file-cache-boundary' -v`
+
+**目的**
+
+Exercise cleanup after a cache directory becomes a symlink.
+
+
+**流程**
+
+1. Receive a default-cache file and stop its daemon.
+2. Replace that payload directory with a symlink to unrelated files.
+3. Age the cache entry and restart cleanup.
+
+**期望**
+
+- Cleanup never deletes the symlink target or a familiar-prefix directory.
+- The real cached payload remains in its moved directory.
+
+**不应**
+
+- A stored cache ID grants deletion authority over an external symlink target.
+
+<details><summary>脚本 testdata/file-cache-boundary.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+genfile rand payload.bin 100
+board-set alpha files payload.bin
+board-wait beta files payload.bin
+file-path beta CACHED
+u beta copy release
+node-stop beta
+cache-age beta 172800
+cache-link beta $CACHED
+node-start beta
+sleep 1s
+cmp outside/keep.txt keep.txt
+cmp moved-payload/payload.bin payload.bin
+exists beta/inbox/clip-user/keep.txt
+```
+
+</details>
+
+## file-cache-retention
+
+**Default file cache retention**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/file-cache-retention' -v`
+
+**目的**
+
+Verify age cleanup affects only default managed payloads.
+
+
+**流程**
+
+1. Receive a file and replace the clipboard before shutdown.
+2. Stamp a known old completion time in the stopped test database.
+3. Restart with cleanup disabled, then enabled.
+
+**期望**
+
+- Cleanup off preserves expired file bytes.
+- Cleanup on removes expired default cache bytes and preserves metadata.
+
+**不应**
+
+- Startup deletes a default cached file still on the clipboard.
+- A filename prefix grants deletion authority outside the cache.
+
+<details><summary>脚本 testdata/file-cache-retention.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+genfile rand old.bin 100
+board-set alpha files old.bin
+board-wait beta files old.bin
+file-path beta OLD
+u beta copy release-old
+u beta config set file_cache.retention_hours 1
+u beta config set file_cache.auto_cleanup false
+node-stop beta
+cache-age beta 7200
+node-start beta
+until beta '"held":false' cache --json
+cmp $OLD old.bin
+retry-copy alpha beta pinned-ready
+genfile rand pinned.bin 110
+board-set alpha files pinned.bin
+board-wait beta files pinned.bin
+file-path beta PINNED
+u beta config set file_cache.auto_cleanup true
+node-stop beta
+cache-age beta 7200
+node-start beta
+! file-wait $OLD
+cmp $PINNED pinned.bin
+u beta copy release
+node-stop beta
+node-start beta
+! file-wait $PINNED
+u beta h list --json
+stdout '"available":false'
+```
+
+</details>
+
+## file-cache-scope
+
+**File cache ownership and quota**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/file-cache-scope' -v`
+
+**目的**
+
+Bound default cache without deleting custom received files.
+
+
+**流程**
+
+1. Receive files with a small quota and release the clipboard pin.
+2. Change to a custom receive directory and delete its history.
+3. Restart with cleanup enabled and compare the custom files.
+
+**期望**
+
+- Default quota rejects files when protected payloads fill the cache.
+- Releasing pins permits eviction while retaining history metadata.
+- Custom receives ignore the default quota and survive history deletion and restart.
+
+**不应**
+
+- Cleanup follows a symlink or deletes files outside the default directory.
+- A custom receive becomes an owned history copy.
+
+<details><summary>脚本 testdata/file-cache-scope.txtar</summary>
+
+```
+exec printf reset
+cp stdout reset.txt
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config set file_cache.max_bytes 150
+genfile rand one.bin 100
+board-set alpha files one.bin
+board-wait beta files one.bin
+file-path beta ONE
+genfile rand two.bin 110
+board-set alpha files two.bin
+! board-wait beta files two.bin
+u beta copy clear
+u alpha copy reset
+board-wait beta text reset.txt
+board-set alpha files two.bin
+board-wait beta files two.bin
+! exists $ONE
+file-path beta TWO
+node-stop beta KILL
+node-start beta
+cmp $TWO two.bin
+u beta h list --json
+stdout '"available":false'
+mkdir custom
+u beta config set inbox '"'$WORK'/custom"'
+node-stop beta
+node-start beta
+until alpha 'online' peers
+retry-copy alpha beta custom-ready
+genfile rand custom.bin 200
+board-set alpha files custom.bin
+board-wait beta files custom.bin
+file-path beta CUSTOM
+cmp $CUSTOM custom.bin
+u beta h delete @1 -y
+cmp $CUSTOM custom.bin
+u beta copy clear
+node-stop beta
+node-start beta
+cmp $CUSTOM custom.bin
+u beta config set inbox '""'
+node-stop beta
+node-start beta
+cmp $CUSTOM custom.bin
+u beta config --json
+stdout '"scope":"default_directory_only"'
+```
+
+</details>
+
+## file-size-policy
+
+**Default 100 MB file boundary**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/file-size-policy' -v`
+
+**目的**
+
+Exercise the real default file-size limit on both devices.
+
+
+**流程**
+
+1. Receive a file of exactly 100 MB.
+2. Try a file one byte larger and retain its local history.
+3. Lower the receive limit and reject a smaller sender-accepted file.
+
+**期望**
+
+- The default is 104857600 bytes and an exact-size file transfers in full.
+- An oversized copy remains in local history without reaching the peer.
+
+**不应**
+
+- A sender can override the receiver limit.
+
+<details><summary>脚本 testdata/file-size-policy.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+u alpha config --json
+stdout '"max_file_bytes":104857600'
+genfile rand exact.bin 104857600
+board-set alpha files exact.bin
+board-wait beta files exact.bin
+genfile rand over.bin 104857601
+board-set alpha files over.bin
+until alpha '"total_bytes":104857601' h list --json
+! board-wait beta files over.bin
+u beta config set limits.max_file_bytes '"1MB"'
+genfile rand rejected.bin 1048577
+board-set alpha files rejected.bin
+! board-wait beta files rejected.bin
+```
+
+</details>
+
+## history-restore-sync
+
+**History restore sync policy**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/history-restore-sync' -v`
+
+**目的**
+
+Restore stored content without duplicate local history.
+
+
+**流程**
+
+1. Create stored text, change the clipboard, and restore it.
+2. Enable restore sync and repeat with automatic sending off.
+
+**期望**
+
+- Default restore affects only the local clipboard.
+- Enabled restore updates the peer while automatic sending is off.
+
+**不应**
+
+- Restoring history creates a duplicate local record.
+- Restore bypasses the global pause.
+
+<details><summary>脚本 testdata/history-restore-sync.txtar</summary>
+
+```
+exec printf first
+cp stdout first.txt
+exec printf second
+cp stdout second.txt
+node-start alpha
+node-start beta
+pair alpha beta
+u alpha copy first
+board-wait beta text first.txt
+u alpha copy second
+board-wait beta text second.txt
+u alpha h use @2
+board-wait alpha text first.txt
+! board-wait beta text first.txt
+u alpha h list -n 10 --json
+! stdout '"id".*"id".*"id"'
+u alpha config set sync.on_restore true
+u alpha config set sync.automatic false
+u alpha h use @2 --request-id repeated --json
+stdout '"local_applied":true'
+board-wait beta text first.txt
+u beta config set sync.automatic false
+board-set beta text changed.txt
+u alpha h use @2 --request-id repeated --json
+! board-wait beta text first.txt
+u alpha h list --json
+! stdout '"id".*"id".*"id"'
+u alpha config set sync.enabled false
+u alpha h use @1
+board-wait alpha text second.txt
+! board-wait beta text second.txt
+```
+
+</details>
+
+## host-received-files
+
+**Host-owned custom receive files**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/host-received-files' -v`
+
+**目的**
+
+Verify stream storage and opaque host references through real daemons.
+
+
+**流程**
+
+1. Start a custom receiver with a cache quota smaller than each incoming file.
+2. Remove its destination and verify failure does not fall back to default storage.
+3. Restore the directory, receive a file, and read and apply it after restart.
+4. Expire its history and compare the user-owned file bytes.
+
+**期望**
+
+- Failed host storage publishes no file history or clipboard content.
+- Custom files use opaque persistent references without owned history blobs.
+- File bytes survive restart, history expiry, and clipboard lease release.
+
+**不应**
+
+- Engine treats the host reference as a local filesystem path.
+- Default cache quota rejects a host-managed file or cleanup deletes it.
+
+<details><summary>脚本 testdata/host-received-files.txtar</summary>
+
+```
+mkdir custom
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config set file_cache.max_bytes 1
+u beta config set inbox '"'$WORK'/custom"'
+node-stop beta
+node-start beta
+retry-copy alpha beta store-ready
+mv custom unavailable
+retry-copy alpha beta unavailable-ready
+genfile rand rejected.bin 100
+board-set alpha files rejected.bin
+! board-wait beta files rejected.bin
+! until beta '"kind":"files"' h list --json
+u beta cache --json
+stdout '"stored_bytes":0'
+stdout '"files":\[\]'
+mv unavailable custom
+genfile rand accepted.bin 110
+board-set alpha files accepted.bin
+board-wait beta files accepted.bin
+file-path beta SAVED
+external-ref beta
+u beta h show @1 --part 0
+cp stdout read-before.bin
+cmp read-before.bin accepted.bin
+node-stop beta
+node-start beta
+u beta h show @1 --part 0
+cp stdout read-after.bin
+cmp read-after.bin accepted.bin
+u beta h use @1 --json
+stdout '"local_applied":true'
+board-wait beta files accepted.bin
+u beta h show @1 --json
+! stdout 'desktop-received:'
+u beta h expire @1 1s
+! until beta '"kind":"files"' h list --json
+cmp $SAVED accepted.bin
+u beta copy release
+cmp $SAVED accepted.bin
+u beta cache --json
+stdout '"stored_bytes":0'
+stdout '"custom_destination":true'
+```
+
+</details>
+
 ## pair-and-sync-text
 
 **两台设备配对批准后，文本双向同步**
@@ -298,6 +697,10 @@ sleep 4s
 ! board-wait beta text secret.txt
 ! until beta '\s21B' h list
 
+u alpha config set sync.on_restore true
+u alpha h use @1 --json
+stdout '"sync_disposition":"not_requested"'
+! board-wait beta text secret.txt
 u alpha h expire @1 3s
 sleep 6s
 u alpha h list --tag sensitive
@@ -431,6 +834,90 @@ stdout 'alpha'
 
 board-set alpha text two.txt
 board-wait beta text two.txt
+```
+
+</details>
+
+## sync-settings
+
+**CLI settings and TOML policy**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/sync-settings' -v`
+
+**目的**
+
+Verify persisted settings govern real paired daemons.
+
+
+**流程**
+
+1. Save settings through CLI and edit TOML on disk.
+2. Exercise automatic, manual, receive, pause, and file-limit paths.
+
+**期望**
+
+- Local history persists while automatic sending is off.
+- Manual and received copies work independently of automatic sending.
+- Invalid configuration preserves the last valid value.
+
+**不应**
+
+- Enabling automatic sync replays an old copy.
+- A file above the configured transfer limit reaches the other clipboard.
+
+<details><summary>脚本 testdata/sync-settings.txtar</summary>
+
+```
+exec printf manual
+cp stdout manual.txt
+exec printf incoming
+cp stdout incoming.txt
+node-start alpha
+node-start beta
+pair alpha beta
+config-conflict alpha
+u alpha config set sync.automatic false
+u alpha config --json
+stdout '"automatic":false'
+board-set alpha text local.txt
+until alpha 'local_system' h list --json
+! board-wait beta text local.txt
+u alpha copy manual
+board-wait beta text manual.txt
+u beta copy incoming
+board-wait alpha text incoming.txt
+u alpha config set sync.automatic true
+! board-wait beta text local.txt
+u alpha config set sync.enabled false
+board-set alpha text paused.txt
+until alpha '"total_bytes":7' h list --json
+! board-wait beta text paused.txt
+u alpha config set sync.enabled true
+! board-wait beta text paused.txt
+u alpha config set limits.max_file_bytes '"100B"'
+genfile rand too-big.bin 101
+board-set alpha files too-big.bin
+until alpha '"total_bytes":101' h list --json
+! board-wait beta files too-big.bin
+genfile rand exact.bin 100
+board-set alpha files exact.bin
+board-wait beta files exact.bin
+u alpha config set sync.files false
+genfile rand disabled.bin 80
+board-set alpha files disabled.bin
+! board-wait beta files disabled.bin
+cp alpha/config.toml saved.toml
+! u alpha config set limits.max_file_bytes 0
+cmp alpha/config.toml saved.toml
+cp invalid.toml alpha/config.toml
+until alpha 'unknown key' config
+u alpha config apply $WORK/saved.toml
+until alpha '"files":false' config --json
+node-stop alpha
+node-start alpha
+u alpha config --json
+stdout '"files":false'
+stdout '"max_file_bytes":100'
 ```
 
 </details>

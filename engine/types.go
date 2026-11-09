@@ -46,7 +46,10 @@ type Limits struct {
 // connections but neither sends nor applies content. What each backend syncs
 // is Settings.BackendPolicies.
 type SyncSettings struct {
-	Enabled bool `json:"enabled"`
+	Enabled   bool `json:"enabled"`
+	Automatic bool `json:"automatic"`
+	OnRestore bool `json:"on_restore"`
+	Files     bool `json:"files"`
 	// Introductions: tell connected devices which others this one vouches for,
 	// and accept theirs as candidates (see docs/architecture/identity-and-trust.md).
 	Introductions bool `json:"introductions"`
@@ -71,11 +74,18 @@ func DefaultBackendPolicy() BackendSyncPolicy {
 
 // Settings is the complete typed configuration. Parsing files and watching
 // them is the host's job.
+type FileCacheSettings struct {
+	MaxBytes       int64 `json:"max_bytes"`
+	RetentionHours int64 `json:"retention_hours"`
+	AutoCleanup    bool  `json:"auto_cleanup"`
+}
+
 type Settings struct {
-	DeviceName    string       `json:"device_name"` // empty: the default name chosen at first start
-	RendezvousURL string       `json:"rendezvous_url"`
-	Limits        Limits       `json:"limits"`
-	Sync          SyncSettings `json:"sync"`
+	FileCache     FileCacheSettings `json:"file_cache"`
+	DeviceName    string            `json:"device_name"` // empty: the default name chosen at first start
+	RendezvousURL string            `json:"rendezvous_url"`
+	Limits        Limits            `json:"limits"`
+	Sync          SyncSettings      `json:"sync"`
 	// BackendPolicies has one entry per assembled sync backend. Missing
 	// entries take DefaultBackendPolicy; an unknown ID is invalid_argument.
 	// Reads return the complete effective map.

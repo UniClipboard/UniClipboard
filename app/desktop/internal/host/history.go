@@ -23,7 +23,7 @@ func apiHistory(it engine.HistoryItem, deviceName string) api.HistoryItem {
 		out.Backends[i] = api.HistoryBackendSync{BackendID: string(b.BackendID), State: string(b.State), Disposition: string(b.Disposition), ErrorCode: string(b.ErrorCode)}
 	}
 	for i, p := range it.Parts {
-		out.Parts[i] = api.HistoryPart{Kind: string(p.Kind), MIME: p.MIME, Size: p.Size}
+		out.Parts[i] = api.HistoryPart{Kind: string(p.Kind), MIME: p.MIME, Size: p.Size, Available: p.Available}
 	}
 	return out
 }
@@ -95,7 +95,8 @@ func (n *Node) HistoryContent(ctx context.Context, id string, part int) (api.His
 }
 
 func (n *Node) UseHistory(ctx context.Context, id string) error {
-	return apiErr0(n.clip.UseHistory(ctx, engine.HistoryID(id)))
+	_, err := n.RestoreHistory(ctx, id, randomID())
+	return err
 }
 
 func (n *Node) UpdateHistory(ctx context.Context, id string, u api.HistoryUpdate) (api.HistoryItem, error) {
@@ -145,4 +146,13 @@ func randomID() string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func (n *Node) RestoreHistory(ctx context.Context, id, request string) (engine.RestoreSyncResult, error) {
+	out, err := n.clip.RestoreHistory(ctx, engine.HistoryID(id), request)
+	return out, apiErr0(err)
+}
+func (n *Node) FileCacheState(ctx context.Context) (api.FileCacheState, error) {
+	out, err := n.e.GetFileCacheState(ctx)
+	return api.FileCacheState{FileCacheState: out, CustomDestination: n.customReceive}, apiErr0(err)
 }

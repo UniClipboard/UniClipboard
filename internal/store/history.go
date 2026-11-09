@@ -35,6 +35,7 @@ CREATE TABLE clip_items (
   created_ms  INTEGER NOT NULL,
   updated_ms  INTEGER NOT NULL,
   expires_ms  INTEGER NOT NULL DEFAULT 0,
+  sync_allowed INTEGER NOT NULL DEFAULT 1,
   sync_state  TEXT NOT NULL DEFAULT 'not_requested',
   total_bytes INTEGER NOT NULL
 );
@@ -136,6 +137,7 @@ type BackendSync struct {
 
 // HistoryItem is a stored record. Seq is private commit order.
 type HistoryItem struct {
+	SyncBlocked   bool
 	Seq           int64
 	OrderMs       int64
 	ID            string
@@ -207,9 +209,9 @@ func (s *Store) InsertHistoryDedup(it HistoryItem, d *Dedup) (seq int64, rev uin
 	}
 	defer func() { _ = tx.Rollback() }()
 	r, err := tx.Exec(`INSERT INTO clip_items (id, revision, kind, origin_kind, device_id, plugin_id, source_app,
-created_ms, updated_ms, expires_ms, sync_state, total_bytes) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+created_ms, updated_ms, expires_ms, sync_state, total_bytes, sync_allowed) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		it.ID, it.Kind, it.OriginKind, it.DeviceID, it.PluginID, it.SourceApp,
-		it.CreatedMs, max(it.CreatedMs, it.UpdatedMs), it.ExpiresMs, nonEmpty(it.SyncState, "not_requested"), it.TotalBytes)
+		it.CreatedMs, max(it.CreatedMs, it.UpdatedMs), it.ExpiresMs, nonEmpty(it.SyncState, "not_requested"), it.TotalBytes, !it.SyncBlocked)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -279,7 +281,7 @@ func nonEmpty(s, d string) string {
 }
 
 const orderExpr = `COALESCE((SELECT order_ms FROM clip_item_order WHERE item_seq=clip_items.seq),created_ms)`
-const itemCols = `seq, id, revision, kind, origin_kind, device_id, plugin_id, source_app, created_ms, updated_ms, expires_ms, sync_state, total_bytes, ` + orderExpr
+const itemCols = `seq, id, revision, kind, origin_kind, device_id, plugin_id, source_app, created_ms, updated_ms, expires_ms, sync_state, total_bytes, ` + orderExpr + `, NOT sync_allowed`
 
 type queryer interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -289,7 +291,7 @@ type queryer interface {
 func scanItem(sc interface{ Scan(...any) error }) (HistoryItem, error) {
 	var it HistoryItem
 	err := sc.Scan(&it.Seq, &it.ID, &it.Revision, &it.Kind, &it.OriginKind, &it.DeviceID, &it.PluginID, &it.SourceApp,
-		&it.CreatedMs, &it.UpdatedMs, &it.ExpiresMs, &it.SyncState, &it.TotalBytes, &it.OrderMs)
+		&it.CreatedMs, &it.UpdatedMs, &it.ExpiresMs, &it.SyncState, &it.TotalBytes, &it.OrderMs, &it.SyncBlocked)
 	return it, err
 }
 

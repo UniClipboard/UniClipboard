@@ -113,3 +113,34 @@ app/desktop/scripts/build-migration.sh
 产物位于 `dist/migration/`，包含 macOS / Windows / Linux × arm64 / amd64 和 `SHA256SUMS`。跨平台编译不等同于全部平台的钥匙串运行验收。格式范围、幂等、容量策略和验收记录见[迁移设计](../../docs/decisions/proposed/0011-v1-history-migration.md)和[执行记录](../../docs/exec/0011-v1-history-migration.md)。
 
 配对审批必须显式提供另一台设备上显示的完整指纹：`unic approve <id> '<fingerprint>'`。HTTP `POST /v1/pending/{id}/approve` 必须带 `fingerprint`、`revision` 与 `bindings:[{id,revision}]`（修订来自 `/v1/pending`）；设备或待批准关联变化时整个审批失败，刷新后重新核对。普通 `/v1/status` 不含票据；`unic addr` 与 GUI「生成票据」显式调用 `POST /v1/pairing-ticket`，返回的秘密票据 5 分钟有效且仅用一次。详见[身份与信任](../../docs/architecture/identity-and-trust.md)。
+
+## CLI sync and file settings
+
+Read the saved settings, change one TOML value, or apply a complete file:
+
+```sh
+unic config --json
+unic config set sync.automatic false
+unic config set sync.on_restore true
+unic config set sync.files true
+unic config set limits.max_file_bytes '"100MB"'
+unic config set file_cache.max_bytes '"500MB"'
+unic config set file_cache.retention_hours 24
+unic config set file_cache.auto_cleanup true
+unic config apply /absolute/path/config.toml
+unic history use @1 --request-id restore-001 --json
+unic cache --json
+```
+
+Saving `config.toml` also reloads valid settings. Invalid edits keep the last valid values.
+Change `inbox` to an existing absolute custom directory and restart the daemon to use that location.
+Use `unic config set inbox '"/absolute/path/received"'` to save the custom directory.
+Use `unic config set inbox '""'` to return to the default cache after restart.
+
+Quota, retention, and cleanup cover only the default managed cache.
+Custom received files are user-managed. History deletion, lease release, expiry, and restart never delete these files.
+See [desktop runtime](../../docs/architecture/desktop-runtime.md) for limits, save conflicts, and file ownership.
+
+Custom receive directories and file creation belong to the desktop host.
+Engine receives a file stream callback and persists an opaque host reference.
+The desktop host supplies a separate private cache directory for Engine quota and cleanup.

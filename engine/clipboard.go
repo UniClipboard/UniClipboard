@@ -129,8 +129,10 @@ type applyTicket struct {
 }
 
 type applyDone struct {
-	token  ApplyToken
-	params [sha256.Size]byte
+	token   ApplyToken
+	params  [sha256.Size]byte
+	history HistoryID
+	resent  bool
 }
 
 // contentKey identifies content for de-duplication: equal content gives an
@@ -481,6 +483,9 @@ func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 		}
 		e.ticket = nil
 		e.lastApply = applyDone{token: t.token, params: params}
+		if state == ApplyApplied {
+			e.lastApply.history = t.history
+		}
 		e.commitLocked(EventApply, EventReceived)
 		e.rescheduleRecvLocked()
 	}

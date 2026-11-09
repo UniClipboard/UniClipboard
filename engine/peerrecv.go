@@ -65,7 +65,7 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 	parts := make([]receivePart, len(o.Clip.Parts))
 	for i, p := range o.Clip.Parts {
 		total += int64(p.Size)
-		parts[i] = receivePart{file: p.Kind == "file", mime: p.MIME}
+		parts[i] = receivePart{file: p.Kind == "file", mime: p.MIME, size: int64(p.Size)}
 	}
 	adm, ok := b.e.admitReceive(receiveRequest{
 		backend: b.id, source: DeviceID(peer), origin: o.Clip.Origin,

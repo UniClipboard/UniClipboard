@@ -1,11 +1,18 @@
 package config
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+
+	"github.com/BurntSushi/toml"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,8 +25,11 @@ const debounce = 150 * time.Millisecond
 
 // State is a snapshot of the manager, for `unic config` and the API.
 type State struct {
-	Path   string `json:"path"`
-	Config Config `json:"config"`
+	CacheScope string `json:"scope"`
+	Revision   string `json:"revision"`
+	ApplyError string `json:"apply_error,omitempty"`
+	Path       string `json:"path"`
+	Config     Config `json:"config"`
 	// Error is why the last reload was rejected; Config is then the last
 	// good one. Empty when the file on disk is what is in effect.
 	Error string `json:"error,omitempty"`
@@ -32,11 +42,14 @@ type Manager struct {
 	path string
 	logf func(string, ...any)
 
-	mu      sync.RWMutex
-	cur     Config
-	started Config // as of startup, for keys that need a restart
-	err     error
-	marked  map[string]bool // keys the host found to need a restart
+	ioMu       sync.Mutex
+	raw        []byte
+	applyError string
+	mu         sync.RWMutex
+	cur        Config
+	started    Config // as of startup, for keys that need a restart
+	err        error
+	marked     map[string]bool // keys the host found to need a restart
 
 	// OnChange, if set before Watch, is called after each reload attempt
 	// (good or bad) with the state after it.
@@ -51,24 +64,20 @@ func Open(path string, logf func(string, ...any)) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{path: path, logf: logf}
-	c, err := m.read()
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	m.cur, m.started = c, c
+	c, err := Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	m.cur, m.started, m.raw = c, c, raw
 	return m, nil
 }
 
 // Static returns a manager that holds c and never changes (tests).
 func Static(c Config) *Manager { return &Manager{cur: c, started: c} }
-
-func (m *Manager) read() (Config, error) {
-	b, err := os.ReadFile(m.path)
-	if err != nil {
-		return Config{}, err
-	}
-	return Parse(b)
-}
 
 // Current is the configuration in effect now.
 func (m *Manager) Current() Config {
@@ -81,7 +90,8 @@ func (m *Manager) Current() Config {
 func (m *Manager) State() State {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := State{Path: m.path, Config: m.cur}
+	sum := sha256.Sum256(m.raw)
+	s := State{CacheScope: "default_directory_only", Path: m.path, Config: m.cur, Revision: hex.EncodeToString(sum[:]), ApplyError: m.applyError}
 	if m.err != nil {
 		s.Error = m.err.Error()
 	}
@@ -122,25 +132,127 @@ func (m *Manager) MarkRestart(key string) {
 
 // Reload re-reads the file now. A bad file leaves the current configuration
 // in place and returns the error.
+// ErrConflict means that the caller must read the configuration again.
+var ErrConflict = errors.New("configuration changed; read it again")
+
+func (m *Manager) ApplyFailed(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.applyError = ""
+	if err != nil {
+		m.applyError = "saved settings could not be applied"
+	}
+}
+
 func (m *Manager) Reload() error {
-	c, err := m.read()
+	m.ioMu.Lock()
+	defer m.ioMu.Unlock()
+	raw, err := os.ReadFile(m.path)
+	var c Config
+	if err == nil {
+		c, err = Parse(raw)
+	}
+	m.publish(raw, c, err)
+	return err
+}
+
+// publish calls OnChange without holding the state lock. ioMu serializes writes.
+func (m *Manager) publish(raw []byte, c Config, err error) {
 	m.mu.Lock()
 	old := m.cur
 	m.err = err
+	if raw != nil {
+		m.raw = bytes.Clone(raw)
+	}
 	if err == nil {
 		m.cur = c
 	}
 	cur := m.cur
 	m.mu.Unlock()
-	if err != nil {
-		m.logf("config: %s not applied: %v", m.path, err)
-	} else if !reflect.DeepEqual(c, old) {
-		m.logf("config: reloaded")
-	}
 	if m.OnChange != nil {
 		m.OnChange(old, cur, err)
 	}
-	return err
+}
+
+// Replace validates a complete TOML document and atomically replaces the file.
+// External editors do not honor ioMu; the watcher imports later external saves.
+func (m *Manager) Replace(revision string, raw []byte) (State, error) {
+	c, err := Parse(raw)
+	if err != nil {
+		return State{}, err
+	}
+	m.ioMu.Lock()
+	defer m.ioMu.Unlock()
+	if revision != m.State().Revision {
+		return State{}, ErrConflict
+	}
+	disk, err := os.ReadFile(m.path)
+	if err != nil {
+		return State{}, errors.New("cannot read configuration file")
+	}
+	m.mu.RLock()
+	same := bytes.Equal(disk, m.raw)
+	m.mu.RUnlock()
+	if !same {
+		return State{}, ErrConflict
+	}
+	f, err := os.CreateTemp(filepath.Dir(m.path), ".unic-config-*")
+	if err != nil {
+		return State{}, errors.New("cannot stage configuration file")
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	if _, err = f.Write(raw); err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), m.path)
+	}
+	if err != nil {
+		return State{}, errors.New("cannot save configuration file")
+	}
+	m.publish(raw, c, nil)
+	return m.State(), nil
+}
+
+// Set updates one dotted key using TOML value syntax and preserves other values.
+func Set(c Config, key, value string) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(c); err != nil {
+		return nil, err
+	}
+	var fields map[string]any
+	if _, err := toml.Decode(buf.String(), &fields); err != nil {
+		return nil, err
+	}
+	var input struct{ Value any }
+	if _, err := toml.Decode("value = "+value, &input); err != nil {
+		return nil, errors.New("value must use TOML syntax; quote strings")
+	}
+	parts := strings.Split(key, ".")
+	m := fields
+	for _, k := range parts[:len(parts)-1] {
+		next, ok := m[k].(map[string]any)
+		if !ok {
+			return nil, errors.New("unknown configuration key")
+		}
+		m = next
+	}
+	k := parts[len(parts)-1]
+	if _, ok := m[k]; !ok {
+		return nil, errors.New("unknown configuration key")
+	}
+	m[k] = input.Value
+	buf.Reset()
+	if err := toml.NewEncoder(&buf).Encode(fields); err != nil {
+		return nil, err
+	}
+	if _, err := Parse(buf.Bytes()); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // Watch reloads the file whenever it changes, until ctx is done. It watches

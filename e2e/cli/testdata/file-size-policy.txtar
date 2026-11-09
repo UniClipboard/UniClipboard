@@ -1,0 +1,28 @@
+# 用例: Default 100 MB file boundary
+# 目的: Exercise the real default file-size limit on both devices.
+# 流程:
+#   1. Receive a file of exactly 100 MB.
+#   2. Try a file one byte larger and retain its local history.
+#   3. Lower the receive limit and reject a smaller sender-accepted file.
+# 期望:
+#   - The default is 104857600 bytes and an exact-size file transfers in full.
+#   - An oversized copy remains in local history without reaching the peer.
+# 不应:
+#   - A sender can override the receiver limit.
+
+node-start alpha
+node-start beta
+pair alpha beta
+u alpha config --json
+stdout '"max_file_bytes":104857600'
+genfile rand exact.bin 104857600
+board-set alpha files exact.bin
+board-wait beta files exact.bin
+genfile rand over.bin 104857601
+board-set alpha files over.bin
+until alpha '"total_bytes":104857601' h list --json
+! board-wait beta files over.bin
+u beta config set limits.max_file_bytes '"1MB"'
+genfile rand rejected.bin 1048577
+board-set alpha files rejected.bin
+! board-wait beta files rejected.bin

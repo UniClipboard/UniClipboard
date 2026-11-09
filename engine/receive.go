@@ -46,16 +46,18 @@ type receiveRequest struct {
 
 type receivePart struct {
 	file bool
+	size int64
 	mime string // formats only
 }
 
 // receiveTicket follows one admitted receive until it ends.
 type receiveTicket struct {
-	backend  PluginID
-	source   DeviceID
-	channel  string
-	key      store.DedupKey
-	reserved int64
+	backend       PluginID
+	source        DeviceID
+	channel       string
+	key           store.DedupKey
+	reserved      int64
+	cacheReserved int64
 }
 
 func (e *Engine) dedupRecord(k store.DedupKey) store.Dedup {
@@ -95,7 +97,11 @@ func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) 
 	pol := e.policyLocked(req.backend)
 	_, arriving := e.dedupInflight[key]
 	e.mu.Unlock()
-	if !ok || arriving || !allowsAny(req.parts, pol) {
+	filesBlocked := false
+	for _, p := range req.parts {
+		filesBlocked = filesBlocked || (p.file && !pol.Files)
+	}
+	if !ok || arriving || filesBlocked || !allowsAny(req.parts, pol) {
 		return peerbackend.Admission{}, false
 	}
 	if seen, err := e.st.HasDedup(key, time.Now().UnixMilli(), e.res.SyncDedupTTL.Milliseconds()); err != nil || seen {
@@ -113,13 +119,38 @@ func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) 
 		delete(e.dedupInflight, key)
 		e.mu.Unlock()
 	}
+	var fileBytes int64
+	for _, p := range req.parts {
+		if p.file {
+			fileBytes += p.size
+		}
+	}
+	cacheBytes := int64(0)
+	if e.opts.StoreReceivedFile == nil && fileBytes > 0 {
+		e.mu.Lock()
+		policy := e.settings.Value.FileCache
+		e.mu.Unlock()
+		fits, ids := e.cache.reserve(fileBytes, policy, false)
+		if len(ids) > 0 {
+			e.historyChanged(ids...)
+		}
+		if !fits {
+			release()
+			e.commit(EventResourceWarning)
+			return peerbackend.Admission{}, false
+		}
+		cacheBytes = fileBytes
+	}
 	if !e.reserveStored(total, true) {
+		if cacheBytes > 0 {
+			e.cache.cancel(cacheBytes)
+		}
 		release()
 		e.commit(EventResourceWarning)
 		e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
 		return peerbackend.Admission{}, false
 	}
-	t := receiveTicket{backend: req.backend, source: req.source, channel: req.channel, key: key, reserved: total}
+	t := receiveTicket{backend: req.backend, source: req.source, channel: req.channel, key: key, reserved: total, cacheReserved: cacheBytes}
 	return peerbackend.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
@@ -166,6 +197,10 @@ func (e *Engine) evictOldest(needSpace bool) bool {
 // what Admit set aside.
 func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok bool) {
 	peer, reserved := t.source, t.reserved
+	cacheRemaining := t.cacheReserved
+	if t.cacheReserved > 0 {
+		defer func() { e.cache.cancel(cacheRemaining) }()
+	}
 	if t.channel != "" {
 		peer = "" // a channel is not a device
 	}
@@ -233,6 +268,23 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	}
 	c = processed.c
 	defer e.cs.unref(c)
+	oldOwned := c.owned
+	defer func() {
+		for _, p := range c.parts {
+			if p.cache != "" {
+				cacheRemaining -= p.desc.Size
+			}
+		}
+	}()
+	if ferr := e.finalizeReceivedFiles(workCtx, c); ferr != nil {
+		giveBack(oldOwned - c.owned)
+		return
+	}
+	giveBack(oldOwned - c.owned)
+	if c.dir != "" {
+		_ = os.RemoveAll(c.dir)
+		c.dir = ""
+	}
 	e.cs.mu.Lock()
 	desc := e.cs.descriptor(c)
 	e.cs.mu.Unlock()

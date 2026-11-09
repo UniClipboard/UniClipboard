@@ -92,6 +92,7 @@ func (b *peerProcBackend) snapshot() (rpc.SyncState, error) {
 	if !ok {
 		pol = DefaultBackendPolicy()
 	}
+	pol.Files = pol.Files && set.Sync.Files
 	st := rpc.SyncState{
 		BackendID: string(b.id), BindingID: b.bindingID, Runtime: "active", DeviceName: clipName(name, maxStateName),
 		SyncEnabled:       set.Sync.Enabled,

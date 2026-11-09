@@ -1,0 +1,50 @@
+# 用例: History restore sync policy
+# 目的: Restore stored content without duplicate local history.
+# 流程:
+#   1. Create stored text, change the clipboard, and restore it.
+#   2. Enable restore sync and repeat with automatic sending off.
+# 期望:
+#   - Default restore affects only the local clipboard.
+#   - Enabled restore updates the peer while automatic sending is off.
+# 不应:
+#   - Restoring history creates a duplicate local record.
+#   - Restore bypasses the global pause.
+
+exec printf first
+cp stdout first.txt
+exec printf second
+cp stdout second.txt
+node-start alpha
+node-start beta
+pair alpha beta
+u alpha copy first
+board-wait beta text first.txt
+u alpha copy second
+board-wait beta text second.txt
+u alpha h use @2
+board-wait alpha text first.txt
+! board-wait beta text first.txt
+u alpha h list -n 10 --json
+! stdout '"id".*"id".*"id"'
+u alpha config set sync.on_restore true
+u alpha config set sync.automatic false
+u alpha h use @2 --request-id repeated --json
+stdout '"local_applied":true'
+board-wait beta text first.txt
+u beta config set sync.automatic false
+board-set beta text changed.txt
+u alpha h use @2 --request-id repeated --json
+! board-wait beta text first.txt
+u alpha h list --json
+! stdout '"id".*"id".*"id"'
+u alpha config set sync.enabled false
+u alpha h use @1
+board-wait alpha text second.txt
+! board-wait beta text second.txt
+
+-- first.txt --
+first
+-- changed.txt --
+changed
+-- second.txt --
+second

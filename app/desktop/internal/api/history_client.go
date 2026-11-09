@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/uniclipboard/unic/engine"
 	"io"
 	"mime"
 	"net/http"
@@ -162,4 +163,12 @@ func (c *Client) RunAction(ctx context.Context, id, key string) (HistoryItem, er
 	}
 	err := c.do(ctx, http.MethodPost, "/v1/history/"+url.PathEscape(id)+"/actions/"+key, nil, &out)
 	return out.Item, err
+}
+
+func (c *Client) RestoreHistory(ctx context.Context, id, request string) (out engine.RestoreSyncResult, err error) {
+	body := struct {
+		RequestID string `json:"request_id"`
+	}{request}
+	err = c.do(ctx, http.MethodPost, "/v1/history/"+url.PathEscape(id)+"/use", body, &out)
+	return
 }

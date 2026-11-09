@@ -1,0 +1,74 @@
+# 用例: CLI settings and TOML policy
+# 目的: Verify persisted settings govern real paired daemons.
+# 流程:
+#   1. Save settings through CLI and edit TOML on disk.
+#   2. Exercise automatic, manual, receive, pause, and file-limit paths.
+# 期望:
+#   - Local history persists while automatic sending is off.
+#   - Manual and received copies work independently of automatic sending.
+#   - Invalid configuration preserves the last valid value.
+# 不应:
+#   - Enabling automatic sync replays an old copy.
+#   - A file above the configured transfer limit reaches the other clipboard.
+
+exec printf manual
+cp stdout manual.txt
+exec printf incoming
+cp stdout incoming.txt
+node-start alpha
+node-start beta
+pair alpha beta
+config-conflict alpha
+u alpha config set sync.automatic false
+u alpha config --json
+stdout '"automatic":false'
+board-set alpha text local.txt
+until alpha 'local_system' h list --json
+! board-wait beta text local.txt
+u alpha copy manual
+board-wait beta text manual.txt
+u beta copy incoming
+board-wait alpha text incoming.txt
+u alpha config set sync.automatic true
+! board-wait beta text local.txt
+u alpha config set sync.enabled false
+board-set alpha text paused.txt
+until alpha '"total_bytes":7' h list --json
+! board-wait beta text paused.txt
+u alpha config set sync.enabled true
+! board-wait beta text paused.txt
+u alpha config set limits.max_file_bytes '"100B"'
+genfile rand too-big.bin 101
+board-set alpha files too-big.bin
+until alpha '"total_bytes":101' h list --json
+! board-wait beta files too-big.bin
+genfile rand exact.bin 100
+board-set alpha files exact.bin
+board-wait beta files exact.bin
+u alpha config set sync.files false
+genfile rand disabled.bin 80
+board-set alpha files disabled.bin
+! board-wait beta files disabled.bin
+cp alpha/config.toml saved.toml
+! u alpha config set limits.max_file_bytes 0
+cmp alpha/config.toml saved.toml
+cp invalid.toml alpha/config.toml
+until alpha 'unknown key' config
+u alpha config apply $WORK/saved.toml
+until alpha '"files":false' config --json
+node-stop alpha
+node-start alpha
+u alpha config --json
+stdout '"files":false'
+stdout '"max_file_bytes":100'
+
+-- local.txt --
+local-only
+-- manual.txt --
+manual
+-- incoming.txt --
+incoming
+-- paused.txt --
+paused
+-- invalid.toml --
+unknown_setting = true

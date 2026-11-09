@@ -1,0 +1,60 @@
+# 用例: Host-owned custom receive files
+# 目的: Verify stream storage and opaque host references through real daemons.
+# 流程:
+#   1. Start a custom receiver with a cache quota smaller than each incoming file.
+#   2. Remove its destination and verify failure does not fall back to default storage.
+#   3. Restore the directory, receive a file, and read and apply it after restart.
+#   4. Expire its history and compare the user-owned file bytes.
+# 期望:
+#   - Failed host storage publishes no file history or clipboard content.
+#   - Custom files use opaque persistent references without owned history blobs.
+#   - File bytes survive restart, history expiry, and clipboard lease release.
+# 不应:
+#   - Engine treats the host reference as a local filesystem path.
+#   - Default cache quota rejects a host-managed file or cleanup deletes it.
+
+mkdir custom
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config set file_cache.max_bytes 1
+u beta config set inbox '"'$WORK'/custom"'
+node-stop beta
+node-start beta
+retry-copy alpha beta store-ready
+mv custom unavailable
+retry-copy alpha beta unavailable-ready
+genfile rand rejected.bin 100
+board-set alpha files rejected.bin
+! board-wait beta files rejected.bin
+! until beta '"kind":"files"' h list --json
+u beta cache --json
+stdout '"stored_bytes":0'
+stdout '"files":\[\]'
+mv unavailable custom
+genfile rand accepted.bin 110
+board-set alpha files accepted.bin
+board-wait beta files accepted.bin
+file-path beta SAVED
+external-ref beta
+u beta h show @1 --part 0
+cp stdout read-before.bin
+cmp read-before.bin accepted.bin
+node-stop beta
+node-start beta
+u beta h show @1 --part 0
+cp stdout read-after.bin
+cmp read-after.bin accepted.bin
+u beta h use @1 --json
+stdout '"local_applied":true'
+board-wait beta files accepted.bin
+u beta h show @1 --json
+! stdout 'desktop-received:'
+u beta h expire @1 1s
+! until beta '"kind":"files"' h list --json
+cmp $SAVED accepted.bin
+u beta copy release
+cmp $SAVED accepted.bin
+u beta cache --json
+stdout '"stored_bytes":0'
+stdout '"custom_destination":true'

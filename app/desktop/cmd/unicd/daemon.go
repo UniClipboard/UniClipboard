@@ -44,22 +44,6 @@ func runDaemon() error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", cfgPath, err)
 	}
-	inbox := settings.Current().Inbox // changing it needs a restart
-	if inbox == "" {
-		if inbox, err = paths.Inbox(); err != nil {
-			return err
-		}
-	}
-
-	// Files of clips received by versions before the engine owned its inbox are
-	// no longer on the clipboard. The inbox may be a directory of the user's,
-	// so remove only what those versions made.
-	if old, _ := filepath.Glob(filepath.Join(inbox, "clip-*")); len(old) > 0 {
-		for _, d := range old {
-			_ = os.RemoveAll(d)
-		}
-	}
-
 	luaDir, err := paths.LuaDir()
 	if err != nil {
 		return err

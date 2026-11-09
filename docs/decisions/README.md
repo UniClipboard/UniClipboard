@@ -41,3 +41,4 @@
 | 0013 | [桌面 UI Kit](proposed/0013-mygo-uikit.md) | proposed | desktop-ui |
 | 0014 | [OTLP 可观测性](proposed/0014-client-observability-otlp.md) | proposed（待实现） | observability |
 | 0015 | [纯 CLI 与桌面集成](proposed/0015-headless-cli-and-desktop-integration.md) | proposed（待实现） | headless |
+| 0016 | [Sync and file settings](proposed/0016-sync-and-file-settings.md) | proposed (CLI and TOML implemented; GUI deferred) | [desktop-runtime](../architecture/desktop-runtime.md), pipeline |

@@ -11,6 +11,11 @@ import (
 type Store struct{ db *sql.DB }
 
 const schema = `
+CREATE TABLE IF NOT EXISTS file_cache (
+ id TEXT PRIMARY KEY, name TEXT NOT NULL, size INTEGER NOT NULL,
+ completed_ms INTEGER NOT NULL, available INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS history_imports (
  source TEXT NOT NULL, record_id TEXT NOT NULL, history_id TEXT NOT NULL,

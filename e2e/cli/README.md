@@ -66,3 +66,7 @@ UNIC_E2E=1 UNIC_E2E_BIN=/path/to/bin go test ./e2e/cli -v
 - 节点之间走真实的 tailcat 连接（本机直连），不依赖外部服务；配对码服务不用，只测完整地址配对。
 - 不覆盖：真实系统剪贴板、真实休眠/唤醒、切换网络、跨机器。这些仍属真机基线（执行计划 0004 P0）。
 - 目录剪贴板由 `app/desktop/internal/board/dir.go` 实现，只在设置了 `UNIC_MOCK_CLIPBOARD_DIR` 时启用，平时的 `unicd` 不受影响。
+
+## Sync settings and receive ownership
+
+See the [CLI acceptance matrix](MATRIX.md) for coverage and remaining checks.

@@ -37,7 +37,8 @@ The background node is a separate program, unicd; start it first.
   copy [text]      put text (or stdin, or -f files) on the clipboard
   paste            print the clipboard's text
   watch            print sync events as they happen
-  config [path]    show the settings in effect (or the config file's path)
+  config           show settings; set <key> <TOML-value>; apply <file>; --json; path
+  cache [--json]   show default-cache bytes, reservations, and protected files
   plugin           list local plugins; enable or disable one (unic plugin help)
   migrate [flags]  import local UniClipboard v1 history (stop unicd first)
 

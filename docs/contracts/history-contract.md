@@ -149,3 +149,19 @@ State 新增 `HistoryRevision`，不嵌入全量历史。历史增删改在持�
 容量下限、旧格式解锁、目录 ZIP 与完成校验见[0011](../decisions/proposed/0011-v1-history-migration.md)。旧密码与旧源目录均不进入 SDK 请求。
 
 存储共享预算压力触发的自有历史淘汰，在删除提交成功后与配额淘汰一样发布每条 ID 的 `clipboard.deleted` 只读通知；删除失败不发。通知仍遵守 observer 有界队列与尽力交付语义。
+
+## Received-file storage classes and restore sends (0016)
+
+Default-cache files use internal `cache:` references in storage. The references never appear in ordinary history responses.
+`HistoryPartSummary.Available` and desktop `parts[].available` expose default-cache content availability.
+Default-cache eviction preserves history metadata, increments its revision, and makes new reads fail with `resource_expired`.
+Active holders keep payloads alive. The file cache counts a payload once even when history and Received share it.
+Custom received files use persistent external references supplied by `Options.StoreReceivedFile`.
+`Options.ResolveFileRef` rebuilds their `FileSource` after restart.
+Engine stores and returns the reference unchanged and never treats the reference as a filesystem path.
+Hosts obtain a checked reference with `FileReference`; `LocalFilePath` does not expose host references as paths.
+History deletion, expiry, and content release must not unlink host-managed files.
+Imported archive payloads remain under their existing history ownership rules.
+A generic history apply stays local. The desktop explicit restore can resend after successful apply through `SyncRestoredHistory`.
+Restore resend respects the stored processor sync prohibition and does not rerun processors or create a new record.
+See [desktop runtime](../architecture/desktop-runtime.md).

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -25,6 +26,7 @@ const historyUsage = `usage: unic history <command>   (alias: unic h)
   show [ref] [flags]         print an entry's content (default: the newest)
       --part N               which part (default: the first text part)
       --json                 print the entry's details instead
+  use <ref>                 restore locally; sync follows sync.on_restore
   delete <ref>... [-y]       delete entries; asks first when run in a terminal
   tag <ref> [--add a,b] [--remove c] [--set a,b]
   expire <ref> <duration|never>   e.g. 24h, 7d, never
@@ -62,6 +64,33 @@ func historyCmd(ctx context.Context, c *api.Client, args []string, io historyIO)
 		return h.list(ctx, rest)
 	case "show":
 		return h.show(ctx, rest)
+	case "use":
+		fs := flags("use", io)
+		request := fs.String("request-id", "", "idempotency key (30 minute window)")
+		asJSON := fs.Bool("json", false, "print local and network results separately")
+		pos, err := parse(fs, rest)
+		if err != nil {
+			return err
+		}
+		if len(pos) != 1 {
+			return fmt.Errorf("usage: unic history use <ref> [--request-id KEY] [--json]")
+		}
+		it, err := h.resolve(ctx, pos[0])
+		if err != nil {
+			return err
+		}
+		if *request == "" {
+			*request = rand.Text()
+		}
+		result, err := h.c.RestoreHistory(ctx, it.ID, *request)
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			return json.NewEncoder(io.out).Encode(result)
+		}
+		_, err = fmt.Fprintf(io.out, "local_applied=%t sync=%s operation=%s\n", result.LocalApplied, result.SyncDisposition, result.OperationID)
+		return err
 	case "delete", "rm":
 		return h.delete(ctx, rest)
 	case "tag":

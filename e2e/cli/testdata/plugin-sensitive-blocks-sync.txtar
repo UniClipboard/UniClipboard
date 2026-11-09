@@ -38,6 +38,10 @@ sleep 4s
 ! board-wait beta text secret.txt
 ! until beta '\s21B' h list
 
+u alpha config set sync.on_restore true
+u alpha h use @1 --json
+stdout '"sync_disposition":"not_requested"'
+! board-wait beta text secret.txt
 u alpha h expire @1 3s
 sleep 6s
 u alpha h list --tag sensitive

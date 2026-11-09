@@ -300,6 +300,12 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	if perr != nil {
 		return SettingsState{}, perr
 	}
+	changed := false
+	defer func() {
+		if changed && e.cache != nil {
+			e.cleanupFileCache(false)
+		}
+	}()
 	defer e.syncPeerStates() // after the unlock below: sync.enabled, limits and policies reach out-of-process backends
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -311,6 +317,7 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	}
 	toggled := value.Sync.Enabled != e.settings.Value.Sync.Enabled
 	e.settings = SettingsState{Revision: e.settings.Revision + 1, Value: value}
+	changed = true
 	if toggled {
 		e.resetSendCtxLocked() // turning sync off cancels transfers in flight
 	}
@@ -353,10 +360,12 @@ func normalizePolicies(s Settings, ids []PluginID) (Settings, *Error) {
 
 // policyLocked is the effective policy of a backend. e.mu held.
 func (e *Engine) policyLocked(id PluginID) BackendSyncPolicy {
-	if p, ok := e.settings.Value.BackendPolicies[id]; ok {
-		return p
+	p, ok := e.settings.Value.BackendPolicies[id]
+	if !ok {
+		p = DefaultBackendPolicy()
 	}
-	return DefaultBackendPolicy()
+	p.Files = p.Files && e.settings.Value.Sync.Files
+	return p
 }
 
 func (e *Engine) policyOf(id PluginID) BackendSyncPolicy {

@@ -83,6 +83,7 @@ type Engine struct {
 	closedCh chan struct{} // closed when Close is complete
 
 	cs            *contentStore
+	cache         *fileCache
 	hist          *history
 	syncBackends  []syncBackend
 	dedupInflight map[store.DedupKey]struct{} // receives being read right now; guarded by mu
@@ -175,7 +176,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		return nil, newErr(CodeUnavailable, "cannot lock the data directory")
 	}
 	fail := func(e *Error) (*Engine, error) { lock.release(); return nil, e }
-	cleanContentDirs(opts.InboxDir) // leftovers of a dead instance; we hold the lock
+	// Retained cache cleanup uses its ledger; never scan user receive paths.
 
 	st, err := store.Open(filepath.Join(opts.DataDir, "unic.db"))
 	if err != nil {
@@ -243,6 +244,24 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if perr := e.loadPlugins(ctx, opts.Plugins); perr != nil {
 		_ = e.Close(context.WithoutCancel(ctx))
 		return nil, perr
+	}
+	cacheDir := opts.CacheDir
+	if cacheDir == "" {
+		cacheDir = filepath.Join(opts.DataDir, "inbox", "file-cache")
+	}
+	cache, cacheErr := openFileCache(cacheDir, st)
+	if cacheErr != nil {
+		_ = e.Close(context.WithoutCancel(ctx))
+		return nil, newErr(CodeUnavailable, "cannot open default file cache")
+	}
+	e.cache, e.cs.cache = cache, cache
+	if opts.DeferFileCleanup || opts.MigrationMode {
+		cache.deferStartup = true
+		for id := range cache.files {
+			cache.startupHeld[id] = true
+		}
+	} else {
+		_, _ = cache.reserve(0, opts.Settings.FileCache, true)
 	}
 	e.logf(slog.LevelInfo, "engine created")
 	return e, nil
@@ -548,6 +567,9 @@ func (e *Engine) finalize() {
 	}
 	e.closePlugins(context.Background())
 	e.dropContent()
+	if e.cache != nil {
+		_ = e.cache.root.Close()
+	}
 	_ = os.RemoveAll(e.recvDir())
 	_ = e.st.Close()
 	for _, l := range e.instLocks {

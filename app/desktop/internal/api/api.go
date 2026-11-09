@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/config"
+	"github.com/uniclipboard/unic/engine"
 )
 
 // PeerStatus is a paired device and whether it is connected right now.
@@ -142,9 +143,10 @@ type SetClipboard struct {
 
 // HistoryPart describes one stored part; names and paths are not included.
 type HistoryPart struct {
-	Kind string `json:"kind"` // "representation" or "file"
-	MIME string `json:"mime,omitempty"`
-	Size int64  `json:"size"`
+	Available bool   `json:"available"`
+	Kind      string `json:"kind"` // "representation" or "file"
+	MIME      string `json:"mime,omitempty"`
+	Size      int64  `json:"size"`
 }
 
 // HistoryBackendSync is one sync backend's part in a record: what was decided,
@@ -248,6 +250,12 @@ func ReasonOf(err error) string {
 
 // Backend is what the daemon does for the API. The desktop host implements it
 // on top of the engine; tests can implement it with a fake.
+// FileCacheState adds desktop configuration to Engine's private-cache inventory.
+type FileCacheState struct {
+	engine.FileCacheState
+	CustomDestination bool `json:"custom_destination"`
+}
+
 type Backend interface {
 	Status(ctx context.Context) (Status, error)
 	ExportTicket(ctx context.Context) (string, error)
@@ -327,6 +335,42 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 
 	// The configuration in effect, where it lives, and why the last edit was
 	// rejected (if it was).
+	mux.HandleFunc("PUT /v1/config", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Revision string `json:"revision"`
+			TOML     string `json:"toml"`
+		}
+		dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			fail(w, 400, errors.New("invalid configuration request"))
+			return
+		}
+		state, err := cfg.Replace(req.Revision, []byte(req.TOML))
+		if err != nil {
+			code := 400
+			if errors.Is(err, config.ErrConflict) {
+				code = 409
+			}
+			fail(w, code, err)
+			return
+		}
+		reply(w, 200, state)
+	})
+	mux.HandleFunc("GET /v1/file-cache", func(w http.ResponseWriter, r *http.Request) {
+		if source, ok := b.(interface {
+			FileCacheState(context.Context) (FileCacheState, error)
+		}); ok {
+			state, err := source.FileCacheState(r.Context())
+			if err != nil {
+				fail(w, 500, err)
+				return
+			}
+			reply(w, 200, state)
+			return
+		}
+		fail(w, 501, errors.New("file cache unavailable"))
+	})
 	mux.HandleFunc("GET /v1/config", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, cfg.State())
 	})
@@ -622,6 +666,34 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 		_, _ = io.Copy(w, c)
 	})
 	mux.HandleFunc("POST /v1/history/{id}/use", func(w http.ResponseWriter, r *http.Request) {
+		request := r.Header.Get("Idempotency-Key")
+		if r.ContentLength != 0 {
+			var body struct {
+				RequestID string `json:"request_id"`
+			}
+			dec := json.NewDecoder(io.LimitReader(r.Body, 4096))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&body); err != nil {
+				fail(w, 400, errors.New("invalid restore request"))
+				return
+			}
+			if body.RequestID != "" {
+				request = body.RequestID
+			}
+		}
+		if request != "" {
+			if restorer, ok := b.(interface {
+				RestoreHistory(context.Context, string, string) (engine.RestoreSyncResult, error)
+			}); ok {
+				result, err := restorer.RestoreHistory(r.Context(), r.PathValue("id"), request)
+				if err != nil {
+					fail(w, 500, err)
+					return
+				}
+				reply(w, 200, result)
+				return
+			}
+		}
 		if err := b.UseHistory(r.Context(), r.PathValue("id")); err != nil {
 			fail(w, 500, err)
 			return
@@ -923,4 +995,19 @@ func (c *Client) Events(ctx context.Context, fn func(Event)) error {
 		return nil
 	}
 	return sc.Err()
+}
+
+// SaveConfig replaces a complete TOML document using the revision of the last read.
+func (c *Client) SaveConfig(ctx context.Context, revision string, raw []byte) (st config.State, err error) {
+	req := struct {
+		Revision string `json:"revision"`
+		TOML     string `json:"toml"`
+	}{revision, string(raw)}
+	err = c.do(ctx, "PUT", "/v1/config", req, &st)
+	return
+}
+
+func (c *Client) FileCache(ctx context.Context) (state FileCacheState, err error) {
+	err = c.do(ctx, "GET", "/v1/file-cache", nil, &state)
+	return
 }

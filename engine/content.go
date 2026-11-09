@@ -48,22 +48,24 @@ func (t *tomb) add(id string) {
 func (t *tomb) has(id string) bool { _, ok := t.set[id]; return ok }
 
 type partRec struct {
-	desc PartDescriptor
-	data []byte     // representation
-	path string     // file the engine owns
-	src  FileSource // file the host keeps
-	meta FileMeta   // what src reported at import
+	cache string
+	desc  PartDescriptor
+	data  []byte     // representation
+	path  string     // file the engine owns
+	src   FileSource // file the host keeps
+	meta  FileMeta   // what src reported at import
 }
 
 // contentObj is stored content. It lives while anything references it: a
 // lease, an open reader (and, later, operations and received items).
 type contentObj struct {
-	id    ContentID
-	parts []*partRec
-	total int64
-	owned int64 // bytes charged to the storage quota
-	dir   string
-	refs  int
+	cached []string
+	id     ContentID
+	parts  []*partRec
+	total  int64
+	owned  int64 // bytes charged to the storage quota
+	dir    string
+	refs   int
 	// blobs are history blobs this content reads in place; they stay on disk
 	// until the content is freed even if their record is deleted.
 	blobs []string
@@ -75,6 +77,7 @@ type leaseRec struct {
 }
 
 type contentStore struct {
+	cache    *fileCache
 	mu       sync.Mutex
 	contents map[ContentID]*contentObj
 	leases   map[LeaseID]*leaseRec
@@ -97,6 +100,9 @@ func (cs *contentStore) unrefLocked(c *contentObj) (dir string) {
 	delete(cs.contents, c.id)
 	cs.gone.add(string(c.id))
 	cs.stored -= c.owned
+	if len(c.cached) > 0 && cs.cache != nil {
+		cs.cache.release(c.cached)
+	}
 	if len(c.blobs) > 0 {
 		c.hist.release(c.blobs) // leaf lock; may unlink doomed blobs
 	}
@@ -243,7 +249,7 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 			return ContentHandle{}, newErr(CodeInvalidArgument, "give a file either a Reader or a Source")
 		case f.Size < 0:
 			return ContentHandle{}, newErr(CodeInvalidArgument, "negative file size")
-		case f.Size > wire.MaxFileBytes || f.Size > lim.MaxFileBytes:
+		case f.Size > wire.MaxFileBytes:
 			return ContentHandle{}, newErr(CodeLimitExceeded, "a file is over the size limit")
 		}
 		names[i] = wire.SafeName(f.Name)
@@ -265,6 +271,9 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 	ok := false
 	defer func() {
 		if !ok {
+			if len(c.cached) > 0 {
+				e.cache.release(c.cached)
+			}
 			cs.mu.Lock()
 			cs.stored -= owned
 			cs.mu.Unlock()
@@ -312,6 +321,12 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 				return ContentHandle{}, newErr(CodeInvalidArgument, "a file's size differs from the declared size")
 			}
 			p.src, p.meta, p.desc.Referenced = f.Source, meta, true
+			if source, ok := f.Source.(PersistentFileSource); ok && e.cache != nil {
+				if id, found := e.cache.pinPath(source.PersistentRef()); found {
+					p.cache = id
+					c.cached = append(c.cached, id)
+				}
+			}
 		} else {
 			if c.dir == "" {
 				if err := os.MkdirAll(e.opts.InboxDir, 0o700); err != nil {
@@ -564,42 +579,48 @@ func (e *Engine) LocalFilePath(ctx context.Context, lease LeaseID, part PartID) 
 	}
 	defer release()
 	e.cs.mu.Lock()
+	_, p, perr := e.leasedLocked(lease, part)
+	if perr != nil {
+		e.cs.mu.Unlock()
+		return "", perr
+	}
+	path := p.path
+	e.cs.mu.Unlock()
+	if path == "" || p.src != nil {
+		return "", newErr(CodeUnsupported, "this file is managed by the host; use FileReference")
+	}
+
+	return path, nil
+}
+
+// FileReference returns the opaque host reference after checking the source.
+// Only the host may interpret this explicit, lease-protected value as a URI or path.
+func (e *Engine) FileReference(ctx context.Context, lease LeaseID, part PartID) (string, error) {
+	release, err := e.enter(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	e.cs.mu.Lock()
 	c, p, perr := e.leasedLocked(lease, part)
 	if perr != nil {
 		e.cs.mu.Unlock()
 		return "", perr
 	}
-	path, src := p.path, p.src
-	if src != nil && path == "" && len(c.blobs) == 0 && p.desc.Referenced {
-		// A file history kept by reference: hand the host its own reference
-		// back (a path on the desktop), after checking the file is unchanged.
-		if ps, ok := src.(PersistentFileSource); ok {
-			path = ps.PersistentRef()
-		}
+	source, ok := p.src.(PersistentFileSource)
+	if !ok || p.desc.Kind != PartFile {
+		e.cs.mu.Unlock()
+		return "", newErr(CodeUnsupported, "this file has no host reference")
 	}
+	c.refs++
 	e.cs.mu.Unlock()
-	if path == "" {
-		return "", newErr(CodeUnsupported, "this part is not a file the engine stores")
+	defer e.cs.unref(c)
+	reader, oerr := e.openPart(ctx, p)
+	if oerr != nil {
+		return "", oerr
 	}
-	if src != nil {
-		rc, oerr := e.openPart(ctx, p)
-		if oerr != nil {
-			return "", oerr
-		}
-		_ = rc.Close()
-	}
-	return path, nil
-}
-
-// cleanContentDirs removes what an earlier instance of this data directory
-// left in the inbox. Only directories the engine names itself are touched, and
-// the directory lock proves nobody is using them.
-func cleanContentDirs(inbox string) {
-	old, _ := filepath.Glob(filepath.Join(inbox, contentDirPrefix+"*"))
-	for _, d := range old {
-		_ = os.RemoveAll(d)
-	}
-	_ = os.RemoveAll(filepath.Join(inbox, recvDirName))
+	_ = reader.Close()
+	return source.PersistentRef(), nil
 }
 
 // dropContent ends every read and deletes everything the engine stores. Leases

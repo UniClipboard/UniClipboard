@@ -185,3 +185,12 @@ End 不是整个 Item 的单一终态：历史删除、Received 移除、目标�
 - 双后端同键占位竞争、首份失败与后续新传输、persist=false 重启去重；过滤视图不同仍独立处理。
 - 各阶段故障注入后核对引用、逻辑字节预留、槽位、流位及句柄账本，重复取消不双重释放，迟到写入不使用已回收资源。
 - 数据库提交后/实例发布前/事件投递前崩溃恢复，仅历史和成功去重记录恢复，未决工作不重放。
+
+## Automatic and restore dispatch (0016)
+
+Clipboard-origin commits still persist when `sync.automatic=false`; dispatch returns `not_requested`.
+Explicit commits, Actions, and explicit restore sends do not depend on this automatic-send switch.
+The global `sync.files` restriction combines with backend file permission. A blocked file batch does not fall back to its text representation.
+A successful restore resend dispatches leased existing content. It does not call the normal commit entry point.
+The host deduplicates restore requests for 30 minutes within one daemon instance.
+See [desktop runtime](../architecture/desktop-runtime.md).

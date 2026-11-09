@@ -26,12 +26,13 @@ type clipboardHost struct {
 	// channelName names an external channel for the event log.
 	channelName func(ctx context.Context, id string) string
 
-	mu    sync.Mutex // observation, application and explicit sends take turns
-	epoch string
-	seq   uint64
-	seen  string         // hash of the clipboard as last read
-	held  engine.LeaseID // lease on the received files now on the clipboard
-	tried map[engine.ReceiptID]bool
+	mu       sync.Mutex // observation, application and explicit sends take turns
+	epoch    string
+	seq      uint64
+	seen     string         // hash of the clipboard as last read
+	held     engine.LeaseID // lease on the received files now on the clipboard
+	tried    map[engine.ReceiptID]bool
+	restores map[string]*restoreRecord
 }
 
 func (c *clipboardHost) lost(err error) bool {
@@ -106,6 +107,15 @@ func (c *clipboardHost) tickLocked(ctx context.Context) {
 	s, err := c.board.Read()
 	if err != nil {
 		return // transient: the owner changed mid-read, or the board is locked
+	}
+	var paths []string
+	for _, f := range s.Files {
+		paths = append(paths, f.Path)
+	}
+	_ = c.e.ReconcileClipboardFiles(ctx, paths)
+	if c.seen != "" && s.Hash() != c.seen {
+		c.release(c.held)
+		c.held = ""
 	}
 	if c.epoch == "" {
 		if err := c.rebase(ctx, s, "", false); err != nil {
@@ -298,24 +308,92 @@ func (c *clipboardHost) writeTicket(ctx context.Context, tk engine.ApplyTicket) 
 // UseHistory puts a stored record on the clipboard. Like received content it
 // is applied under the observation protocol, so the write is not taken for a
 // new copy; unlike it, nothing is synced and no record is added.
+type restoreRecord struct {
+	history engine.HistoryID
+	at      time.Time
+	result  engine.RestoreSyncResult
+	err     error
+}
+
+// UseHistory applies an Action result locally. It never triggers restore sync.
 func (c *clipboardHost) UseHistory(ctx context.Context, id engine.HistoryID) error {
+	_, err := c.useHistory(ctx, id, "", false)
+	return err
+}
+
+func (c *clipboardHost) RestoreHistory(ctx context.Context, id engine.HistoryID, request string) (engine.RestoreSyncResult, error) {
+	return c.useHistory(ctx, id, request, true)
+}
+
+func (c *clipboardHost) useHistory(ctx context.Context, id engine.HistoryID, request string, syncRestore bool) (engine.RestoreSyncResult, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.tickLocked(ctx) // pick up a newer copy first
+	var out engine.RestoreSyncResult
+	if syncRestore {
+		if request == "" || len(request) > 128 {
+			return out, &engine.Error{Code: engine.CodeInvalidArgument, Message: "restore request_id is required (at most 128 bytes)"}
+		}
+		if c.restores == nil {
+			c.restores = map[string]*restoreRecord{}
+		}
+		now := time.Now()
+		for key, r := range c.restores {
+			if now.Sub(r.at) >= 30*time.Minute {
+				delete(c.restores, key)
+			}
+		}
+		if old := c.restores[request]; old != nil {
+			if old.history != id {
+				return out, &engine.Error{Code: engine.CodeConflict, Message: "restore request_id already names another item"}
+			}
+			return old.result, old.err
+		}
+		if len(c.restores) >= 1024 {
+			return out, &engine.Error{Code: engine.CodeResourceExhausted, Message: "restore request cache is full"}
+		}
+	}
+	out, err := c.applyHistory(ctx, id, syncRestore)
+	if syncRestore {
+		c.restores[request] = &restoreRecord{history: id, at: time.Now(), result: out, err: err}
+	}
+	return out, err
+}
+
+func (c *clipboardHost) applyHistory(ctx context.Context, id engine.HistoryID, syncRestore bool) (engine.RestoreSyncResult, error) {
+	var out engine.RestoreSyncResult
+	c.tickLocked(ctx)
 	if c.epoch == "" {
-		return &engine.Error{Code: engine.CodeUnavailable, Message: "the clipboard is not available"}
+		return out, &engine.Error{Code: engine.CodeUnavailable, Message: "the clipboard is not available"}
 	}
 	tk, err := c.e.BeginApplyHistory(ctx, engine.ApplyHistoryRequest{HistoryID: id, ExpectedEpoch: c.epoch, ExpectedSequence: c.seq})
 	if err != nil {
 		if c.lost(err) {
 			c.epoch = ""
 		}
-		return err
+		return out, err
 	}
+	// Hold an independent lease because writeTicket releases text-only tickets.
+	held, err := c.e.RetainContent(ctx, tk.ContentID)
+	if err != nil {
+		_ = c.e.ReportApplyResult(ctx, engine.ApplyResult{Token: tk.Token, Outcome: engine.ApplyOutcomeFailed})
+		c.release(tk.LeaseID)
+		return out, err
+	}
+	defer c.release(held.LeaseID)
 	if _, ok := c.writeTicket(ctx, tk); !ok {
-		return &engine.Error{Code: engine.CodeUnavailable, Message: "could not write the clipboard"}
+		return out, &engine.Error{Code: engine.CodeUnavailable, Message: "could not write the clipboard"}
 	}
-	return nil
+	out.LocalApplied, out.SyncDisposition = true, engine.SyncNotRequested
+	if syncRestore {
+		result, serr := c.e.SyncRestoredHistory(ctx, tk.Token, held.LeaseID)
+		if serr != nil {
+			out.SyncDisposition = engine.SyncFailed
+			out.SyncError = &engine.Error{Code: engine.CodeUnavailable, Message: "local restore succeeded; sync could not start"}
+			return out, nil
+		}
+		out = result
+	}
+	return out, nil
 }
 
 // snapshotOf reads the ticket's content into a snapshot for the clipboard.
@@ -330,7 +408,17 @@ func (c *clipboardHost) snapshotOf(ctx context.Context, tk engine.ApplyTicket) (
 		if p.Kind != engine.PartFile {
 			continue
 		}
-		path, err := c.e.LocalFilePath(ctx, tk.LeaseID, p.ID)
+		var path string
+		var err error
+		if p.Referenced {
+			var ref string
+			ref, err = c.e.FileReference(ctx, tk.LeaseID, p.ID)
+			if err == nil {
+				path, err = desktopFilePath(ref)
+			}
+		} else {
+			path, err = c.e.LocalFilePath(ctx, tk.LeaseID, p.ID)
+		}
 		if err != nil {
 			return s, false, err
 		}

@@ -1,0 +1,35 @@
+# 用例: Cache cleanup cannot escape the managed directory
+# 目的: Exercise cleanup after a cache directory becomes a symlink.
+# 流程:
+#   1. Receive a default-cache file and stop its daemon.
+#   2. Replace that payload directory with a symlink to unrelated files.
+#   3. Age the cache entry and restart cleanup.
+# 期望:
+#   - Cleanup never deletes the symlink target or a familiar-prefix directory.
+#   - The real cached payload remains in its moved directory.
+# 不应:
+#   - A stored cache ID grants deletion authority over an external symlink target.
+
+node-start alpha
+node-start beta
+pair alpha beta
+genfile rand payload.bin 100
+board-set alpha files payload.bin
+board-wait beta files payload.bin
+file-path beta CACHED
+u beta copy release
+node-stop beta
+cache-age beta 172800
+cache-link beta $CACHED
+node-start beta
+sleep 1s
+cmp outside/keep.txt keep.txt
+cmp moved-payload/payload.bin payload.bin
+exists beta/inbox/clip-user/keep.txt
+
+-- keep.txt --
+user-owned
+-- outside/keep.txt --
+user-owned
+-- beta/inbox/clip-user/keep.txt --
+user-owned

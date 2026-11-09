@@ -36,9 +36,10 @@ type HistoryOrigin struct {
 }
 
 type HistoryPartSummary struct {
-	Kind PartKind `json:"kind"`
-	MIME string   `json:"mime,omitempty"`
-	Size int64    `json:"size"`
+	Available bool     `json:"available"`
+	Kind      PartKind `json:"kind"`
+	MIME      string   `json:"mime,omitempty"`
+	Size      int64    `json:"size"`
 }
 
 // HistoryBackendSyncState is one backend's part in a record's sync. State is

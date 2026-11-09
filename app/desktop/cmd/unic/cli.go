@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/api"
+	"github.com/uniclipboard/unic/app/desktop/internal/config"
 	"github.com/uniclipboard/unic/app/desktop/internal/paths"
 )
 
@@ -52,6 +54,15 @@ func runCLI(cmd string, args []string) error {
 		}
 		fmt.Println(ticket)
 
+	case "cache":
+		if len(args) > 1 || (len(args) == 1 && args[0] != "--json") {
+			return fmt.Errorf("usage: unic cache [--json]")
+		}
+		state, err := c.FileCache(short)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(state)
 	case "config":
 		if len(args) == 1 && args[0] == "path" {
 			p, err := paths.Config()
@@ -61,12 +72,33 @@ func runCLI(cmd string, args []string) error {
 			fmt.Println(p)
 			return nil
 		}
-		if len(args) != 0 {
-			return fmt.Errorf("usage: unic config [path]")
+		if len(args) != 0 && !(len(args) == 1 && args[0] == "--json") && !(len(args) == 3 && args[0] == "set") && !(len(args) == 2 && args[0] == "apply") {
+			return fmt.Errorf("usage: unic config [path|--json|set <key> <TOML-value>|apply <file>]")
 		}
 		st, err := c.Config(short)
 		if err != nil {
 			return err
+		}
+		if len(args) > 1 {
+			var raw []byte
+			if args[0] == "set" {
+				raw, err = config.Set(st.Config, args[1], args[2])
+			} else {
+				raw, err = os.ReadFile(args[1])
+			}
+			if err != nil {
+				return err
+			}
+			st, err = c.SaveConfig(short, st.Revision, raw)
+			if err != nil {
+				return err
+			}
+		}
+		if len(args) == 1 && args[0] == "--json" {
+			return json.NewEncoder(os.Stdout).Encode(st)
+		}
+		if st.ApplyError != "" {
+			return fmt.Errorf("%s", st.ApplyError)
 		}
 		fmt.Printf("# file: %s  (edit and save; it applies at once)\n", st.Path)
 		if st.Error != "" {

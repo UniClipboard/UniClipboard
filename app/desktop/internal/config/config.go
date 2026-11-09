@@ -65,13 +65,14 @@ func ParseSize(str string) (int64, error) {
 
 // Config is the effective configuration.
 type Config struct {
-	DeviceName    string  `toml:"device_name" json:"device_name"`
-	RendezvousURL string  `toml:"rendezvous_url" json:"rendezvous_url"`
-	Inbox         string  `toml:"inbox" json:"inbox"`
-	Limits        Limits  `toml:"limits" json:"limits"`
-	Sync          Sync    `toml:"sync" json:"sync"`
-	Plugins       Plugins `toml:"plugins" json:"plugins"`
-	History       History `toml:"history" json:"history"`
+	DeviceName    string    `toml:"device_name" json:"device_name"`
+	RendezvousURL string    `toml:"rendezvous_url" json:"rendezvous_url"`
+	Inbox         string    `toml:"inbox" json:"inbox"`
+	Limits        Limits    `toml:"limits" json:"limits"`
+	Sync          Sync      `toml:"sync" json:"sync"`
+	Plugins       Plugins   `toml:"plugins" json:"plugins"`
+	History       History   `toml:"history" json:"history"`
+	FileCache     FileCache `toml:"file_cache" json:"file_cache"`
 }
 
 // History bounds the local clipboard history. It is read when the daemon
@@ -88,8 +89,17 @@ type Limits struct {
 }
 
 // Sync is the one global switch for content sync.
+type FileCache struct {
+	MaxBytes       Size  `toml:"max_bytes" json:"max_bytes"`
+	RetentionHours int64 `toml:"retention_hours" json:"retention_hours"`
+	AutoCleanup    bool  `toml:"auto_cleanup" json:"auto_cleanup"`
+}
+
 type Sync struct {
-	Enabled bool `toml:"enabled" json:"enabled"`
+	Automatic bool `toml:"automatic" json:"automatic"`
+	OnRestore bool `toml:"on_restore" json:"on_restore"`
+	Files     bool `toml:"files" json:"files"`
+	Enabled   bool `toml:"enabled" json:"enabled"`
 	// Introductions: devices tell each other which others they vouch for; the
 	// result is only a list of candidates (see docs/architecture/identity-and-trust.md).
 	Introductions bool `toml:"introductions" json:"introductions"`
@@ -170,9 +180,10 @@ func (b BackendSync) policy() engine.BackendSyncPolicy {
 // Default returns the configuration used for keys the file leaves out.
 func Default() Config {
 	return Config{
-		Limits:  Limits{MaxFileBytes: HardMaxFile, MaxTotalBytes: HardMaxTotal},
-		Sync:    Sync{Enabled: true, Introductions: true},
-		History: History{MaxItems: 10000, MaxBytes: 4 << 30},
+		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
+		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
+		History:   History{MaxItems: 10000, MaxBytes: 4 << 30},
+		FileCache: FileCache{MaxBytes: 500 << 20, RetentionHours: 24, AutoCleanup: true},
 	}
 }
 
@@ -198,8 +209,9 @@ func Parse(data []byte) (Config, error) {
 func (c Config) Settings() engine.Settings {
 	return engine.Settings{
 		DeviceName: c.DeviceName, RendezvousURL: c.RendezvousURL,
+		FileCache:       engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes), RetentionHours: c.FileCache.RetentionHours, AutoCleanup: c.FileCache.AutoCleanup},
 		Limits:          engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
-		Sync:            engine.SyncSettings(c.Sync),
+		Sync:            engine.SyncSettings{Enabled: c.Sync.Enabled, Automatic: c.Sync.Automatic, OnRestore: c.Sync.OnRestore, Files: c.Sync.Files, Introductions: c.Sync.Introductions},
 		BackendPolicies: c.backendPolicies(),
 	}
 }
@@ -217,6 +229,9 @@ func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 // uses, so the file and the SDK cannot disagree. Messages never include the
 // offending values of fields that could carry secrets.
 func (c Config) Validate() error {
+	if c.FileCache.MaxBytes <= 0 || c.FileCache.MaxBytes > HardMaxHistory || c.FileCache.RetentionHours <= 0 || c.FileCache.RetentionHours > 876000 {
+		return errors.New("file_cache: max_bytes must be between 1 byte and 8GiB; retention_hours must be between 1 and 876000")
+	}
 	if c.Inbox != "" && !filepath.IsAbs(c.Inbox) {
 		return errors.New("inbox: must be an absolute path")
 	}
@@ -303,7 +318,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 [limits]
 # Sizes are bytes, or strings like "512MB". Applies to transfers that start
 # after the change. Cannot exceed 2GiB per file / 4GiB per clipboard.
-# max_file_bytes = "2GiB"
+# max_file_bytes = "100MB"
 # max_total_bytes = "4GiB"
 
 [history]
@@ -314,7 +329,17 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # max_bytes = "4GiB"
 # default_ttl_days = 0   # 0 keeps entries until they are pushed out
 
+[file_cache]
+# Applies ONLY to the default managed receive directory.
+# Custom received files are user-managed and are never deleted by cleanup.
+# max_bytes = "500MB"
+# retention_hours = 24
+# auto_cleanup = true  # age-based cleanup at startup only
+
 [sync]
+# automatic = true    # new clipboard copies; local history remains enabled
+# on_restore = false  # send only after successful history restore
+# files = true        # global file send/receive permission
 # enabled = false pauses sync both ways; devices stay connected.
 # enabled = true
 

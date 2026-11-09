@@ -1,0 +1,65 @@
+# 用例: File cache ownership and quota
+# 目的: Bound default cache without deleting custom received files.
+# 流程:
+#   1. Receive files with a small quota and release the clipboard pin.
+#   2. Change to a custom receive directory and delete its history.
+#   3. Restart with cleanup enabled and compare the custom files.
+# 期望:
+#   - Default quota rejects files when protected payloads fill the cache.
+#   - Releasing pins permits eviction while retaining history metadata.
+#   - Custom receives ignore the default quota and survive history deletion and restart.
+# 不应:
+#   - Cleanup follows a symlink or deletes files outside the default directory.
+#   - A custom receive becomes an owned history copy.
+
+exec printf reset
+cp stdout reset.txt
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config set file_cache.max_bytes 150
+genfile rand one.bin 100
+board-set alpha files one.bin
+board-wait beta files one.bin
+file-path beta ONE
+genfile rand two.bin 110
+board-set alpha files two.bin
+! board-wait beta files two.bin
+u beta copy clear
+u alpha copy reset
+board-wait beta text reset.txt
+board-set alpha files two.bin
+board-wait beta files two.bin
+! exists $ONE
+file-path beta TWO
+node-stop beta KILL
+node-start beta
+cmp $TWO two.bin
+u beta h list --json
+stdout '"available":false'
+mkdir custom
+u beta config set inbox '"'$WORK'/custom"'
+node-stop beta
+node-start beta
+until alpha 'online' peers
+retry-copy alpha beta custom-ready
+genfile rand custom.bin 200
+board-set alpha files custom.bin
+board-wait beta files custom.bin
+file-path beta CUSTOM
+cmp $CUSTOM custom.bin
+u beta h delete @1 -y
+cmp $CUSTOM custom.bin
+u beta copy clear
+node-stop beta
+node-start beta
+cmp $CUSTOM custom.bin
+u beta config set inbox '""'
+node-stop beta
+node-start beta
+cmp $CUSTOM custom.bin
+u beta config --json
+stdout '"scope":"default_directory_only"'
+
+-- reset.txt --
+reset

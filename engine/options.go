@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/url"
@@ -23,6 +24,16 @@ type Options struct {
 	// InboxDir holds resources the engine owns; default DataDir/inbox. The
 	// engine never deletes anything in it that it did not create.
 	InboxDir string
+	// CacheDir is private storage owned by Engine. Empty: DataDir/inbox/file-cache.
+	// The host selects an app-private directory, never a user-selected destination.
+	CacheDir string
+	// StoreReceivedFile, when set, saves incoming files through the host.
+	// Engine supplies a reader valid only during the call. The returned source
+	// must have a non-empty persistent reference and must remain readable.
+	// Engine never deletes host-managed files, including after a failed commit.
+	StoreReceivedFile func(context.Context, ReceivedFile) (PersistentFileSource, error)
+	// DeferFileCleanup lets a clipboard host establish startup pins before age cleanup.
+	DeferFileCleanup bool
 	// Settings is the complete configuration. The zero value means
 	// DefaultSettings. Nothing is read from environment variables or files.
 	Settings Settings
@@ -79,8 +90,9 @@ type ResourcePolicy struct {
 // the protocol's limits.
 func DefaultSettings() Settings {
 	return Settings{
-		Limits: Limits{MaxFileBytes: wire.MaxFileBytes, MaxTotalBytes: wire.MaxTotal},
-		Sync:   SyncSettings{Enabled: true, Introductions: true},
+		FileCache: FileCacheSettings{MaxBytes: 500 << 20, RetentionHours: 24, AutoCleanup: true},
+		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: wire.MaxTotal},
+		Sync:      SyncSettings{Enabled: true, Automatic: true, Files: true, Introductions: true},
 	}
 }
 
@@ -95,6 +107,9 @@ func (s Settings) Validate() error {
 }
 
 func (s Settings) validate() *Error {
+	if s.FileCache.MaxBytes < 0 || s.FileCache.MaxBytes > 8<<30 || s.FileCache.RetentionHours < 0 || s.FileCache.RetentionHours > 876000 {
+		return newErr(CodeInvalidArgument, "file_cache: invalid quota or retention")
+	}
 	name := strings.TrimSpace(s.DeviceName)
 	if len(name) > 64 || strings.ContainsAny(name, "\r\n\x00") {
 		return newErr(CodeInvalidArgument, "device_name: at most 64 characters, one line")

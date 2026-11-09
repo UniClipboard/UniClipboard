@@ -37,13 +37,13 @@ New 只做离线初始化，取得 unic.lock 后读取或首次生成 Engine 身
 
 ## 3. 显式插件装配
 
-移除公开 Options.Network/engine.Network 与 Engine 直接装配 tcnet/session 的生产路径；网络只能通过同步后端插件提供。builtin `builtin.tailcat` 在 `internal/plugins/builtintailcat/` 实现，由宿主显式创建并传入 Engine；与 `builtin.text` 保持独立插件 ID、配置、生命周期与实例。Engine 不隐式构造 tailcat，也不提供绕过插件的备用网络。插件内部可保留 Transport 注入用于 loopback 和故障测试。
+移除公开 Options.Network/engine.Network 与 Engine 直接装配 tcnet/session 的生产路径；网络只能通过同步后端插件提供。builtin `builtin.tailcat` 在 `internal/plugins/tailcat/` 实现，由宿主显式创建并传入 Engine；与 `builtin.text` 保持独立插件 ID、配置、生命周期与实例。Engine 不隐式构造 tailcat，也不提供绕过插件的备用网络。插件内部可保留 Transport 注入用于 loopback 和故障测试。
 
 Options 区分 builtin 实例装配与外部程序装配；实现标识、实例 ID、版本、API/能力、TransportKind 以及配置、授权校验一致。builtin 使用显式传入的 Go 实例，不需要 Executable、SHA256 或 RPC 握手；外部程序描述另包含 Executable 绝对路径和精确 SHA256。具体公开类型见 SDK 契约，builtin 同步能力和实例拆分待同步补齐。启用实例恰有一个装配来源，未知、重复、缺描述或能力冲突在 New 拒绝；不使用全局 init 注册。
 
 核心不从 PATH、当前目录、环境、网络或 installed.lock 隐式找程序；安装、TOML、文件监听和受信任程序路径解析归宿主。外部程序摘要在启动前复核，不宣称同目录可写清单独自证明程序来源。Executable 是受控装配路径例外，不进入普通 State/Event/Error。
 
-实现注记：当前 `internal/plugins/builtintailcat/` 以 `Transport` 注入点装配 session 引擎，并通过 `engine.Options.Peer`（PeerFactory）交给 Engine；Engine 已不再导入 `internal/session` 与 `internal/tcnet`（`engine/boundary_test.go` 守护）：双方交换的类型（Standing、Verified、Host、Receiver、Job、哨兵错误、`Env`）定义在 `internal/peerbackend`，session 以类型别名复用，builtintailcat 用 `Env` 组装 `session.Config`，且 Logf 缺省为静默而不是全局 logger。Engine 另按实例建立私有目录并加 `runtime.lock`；进程内 sync_backend 插件已可与 builtin.tailcat 并存；外部渠道 profile 的进程外后端已可装载（P2P 进程外后端仍返回 unsupported）。所有 sync_backend 插件（进程内与进程外）按 `Spec.ID` 取得 `plugin-data/<ID>/` 与 `runtime.lock`，持锁到 Engine 关闭；进程外后端的目录由 Engine 指定（`UNIC_PLUGIN_DIR`、工作目录），调用方自行设置 `Dir` 会被拒绝；同一目录被他人占用返回 `in_use`。
+实现注记：当前 `internal/plugins/tailcat/` 以 `Transport` 注入点装配 session 引擎，并通过 `engine.Options.Peer`（PeerFactory）交给 Engine；Engine 已不再导入 `internal/session` 与 `internal/tcnet`（`engine/boundary_test.go` 守护）：双方交换的类型（Standing、Verified、Host、Receiver、Job、哨兵错误、`Env`）定义在 `internal/peerbackend`，session 以类型别名复用，tailcat 用 `Env` 组装 `session.Config`，且 Logf 缺省为静默而不是全局 logger。Engine 另按实例建立私有目录并加 `runtime.lock`；进程内 sync_backend 插件已可与 builtin.tailcat 并存；外部渠道 profile 的进程外后端已可装载（P2P 进程外后端仍返回 unsupported）。所有 sync_backend 插件（进程内与进程外）按 `Spec.ID` 取得 `plugin-data/<ID>/` 与 `runtime.lock`，持锁到 Engine 关闭；进程外后端的目录由 Engine 指定（`UNIC_PLUGIN_DIR`、工作目录），调用方自行设置 `Dir` 会被拒绝；同一目录被他人占用返回 `in_use`。
 
 零后端是本机模式，不隐式启动 tailcat；设备离线查询和撤销仍可用，需要网络能力而无合适后端的调用返回 unsupported。sync.enabled=false 只关闭内容工作，必要控制连接与配对可保留。
 

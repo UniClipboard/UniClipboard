@@ -1,6 +1,6 @@
 # 0004 / 0007 SDK 类型与错误契约
 
-> builtin 装配修订：默认 `builtin.tailcat` 位于 `internal/plugins/builtintailcat/`，由宿主显式创建进程内实例，与 `builtin.text` 独立。下文 PluginProcesses/PluginProcessSpec 仅用于外部程序；builtin 同步实例装配和 SyncBackend/SyncHost 进程内接口仍须补齐，不能要求 builtin 提供可执行路径、摘要或 RPC 握手。两种装配遵守同一设备授权与后端业务契约。
+> builtin 装配修订：默认 `builtin.tailcat` 位于 `internal/plugins/tailcat/`，由宿主显式创建进程内实例，与 `builtin.text` 独立。下文 PluginProcesses/PluginProcessSpec 仅用于外部程序；builtin 同步实例装配和 SyncBackend/SyncHost 进程内接口仍须补齐，不能要求 builtin 提供可执行路径、摘要或 RPC 握手。两种装配遵守同一设备授权与后端业务契约。
 
 > 0008 扩展：[设备契约](device-contract.md)定义统一设备、候选、配对操作与设备后端关联。对应具体 DTO/枚举、实例标识和 CAS 接口尚未定义，下文代码不是其完整类型规范；新增查询、关联审批/启停/移除和设备全路径撤销时须同批补齐类型、错误和测试，无旧 tailcat/SDK 兼容要求。
 

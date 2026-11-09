@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uniclipboard/unic/internal/plugins/builtintailcat"
+	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/rendezvous/rvtest"
 )
@@ -98,7 +98,7 @@ type node struct {
 
 func newOpts(t *testing.T, dir string) (Options, *fakeNet) {
 	f := newFakeNet(t)
-	return Options{DataDir: dir, Peer: builtintailcat.FactoryOn(f)}, f
+	return Options{DataDir: dir, Peer: tailcat.FactoryOn(f)}, f
 }
 
 func newNode(t *testing.T, rv *rvtest.Server) node {
@@ -777,7 +777,7 @@ func TestTrustSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts, _ := newOpts(t, a.dir)
-	opts.Peer = builtintailcat.FactoryOn(a.net) // same address as before
+	opts.Peer = tailcat.FactoryOn(a.net) // same address as before
 	a2, err := New(bg, opts)
 	if err != nil {
 		t.Fatal(err)

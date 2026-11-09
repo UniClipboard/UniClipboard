@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/config"
-	"github.com/uniclipboard/unic/internal/plugins/builtintailcat"
+	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 )
 
 const manifest = `manifest_version = 1
@@ -55,7 +55,7 @@ func TestLuaScriptsLoadAndHotReload(t *testing.T) {
 	}
 	b := &fakeBoard{}
 	n, err := Open(context.Background(), Options{Dir: dir, Settings: m, Board: b, Poll: 10 * time.Millisecond, Logf: t.Logf,
-		Peer: builtintailcat.FactoryOn(newLoopback(t)), LuaDir: filepath.Join(dir, "plugins", "lua")})
+		Peer: tailcat.FactoryOn(newLoopback(t)), LuaDir: filepath.Join(dir, "plugins", "lua")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestLuaEnabledButMissingFailsOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = Open(context.Background(), Options{Dir: dir, Settings: m, Board: &fakeBoard{}, Logf: t.Logf,
-		Peer: builtintailcat.FactoryOn(newLoopback(t)), LuaDir: filepath.Join(dir, "plugins", "lua")})
+		Peer: tailcat.FactoryOn(newLoopback(t)), LuaDir: filepath.Join(dir, "plugins", "lua")})
 	if err == nil {
 		t.Fatal("a missing enabled plugin must stop startup")
 	}

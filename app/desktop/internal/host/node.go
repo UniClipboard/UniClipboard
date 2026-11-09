@@ -22,8 +22,8 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/luascripts"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
-	"github.com/uniclipboard/unic/internal/plugins/builtintailcat"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
+	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 )
 
 // Board is the system clipboard as the desktop host sees it. The production
@@ -80,7 +80,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	peer := o.Peer
 	if peer == nil {
-		peer = builtintailcat.Factory() // the host assembles the built-in backend explicitly
+		peer = tailcat.Factory() // the host assembles the built-in backend explicitly
 	}
 	c := o.Settings.Current()
 	opts := engine.Options{

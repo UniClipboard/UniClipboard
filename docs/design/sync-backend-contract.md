@@ -13,7 +13,7 @@ Engine 统一身份密钥仅由 Engine 初始化和持有；后端只加载自�
 
 ## 1. 职责与生命周期
 
-builtin `builtin.tailcat`（`internal/plugins/builtintailcat/`，由宿主显式装配）持有 tailcat 端点、设备连接、按 0008 修订的 wire 编解码和传输循环；Engine 持有身份、配对审批、rendezvous 票据、同步策略、队列、内容引用、操作结果与历史。后端不打开 Engine SQLite，不调用宿主剪贴板，不存第二套批准/拒绝状态。
+builtin `builtin.tailcat`（`internal/plugins/tailcat/`，由宿主显式装配）持有 tailcat 端点、设备连接、按 0008 修订的 wire 编解码和传输循环；Engine 持有身份、配对审批、rendezvous 票据、同步策略、队列、内容引用、操作结果与历史。后端不打开 Engine SQLite，不调用宿主剪贴板，不存第二套批准/拒绝状态。
 
 外部后端启动顺序为 HELLO/ACK → plugin.init → backend.bind → 初始 backend.apply_state → plugin.start；builtin 对应 Init → Bind → 初始 ApplyState → Start。Bind 只配置本次实例绑定，不联网；初始快照可以在 Start 前安装。Start 后持有常驻端点与长连接，不能为每个 Send 启进程或重连。后台断网/重连不依附某次 Process 或 Send 调用 context。
 

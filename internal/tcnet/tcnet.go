@@ -17,7 +17,6 @@ import (
 	"tailscale.com/types/key"
 
 	"github.com/uniclipboard/unic/internal/session"
-	"github.com/uniclipboard/unic/internal/store"
 )
 
 // ErrBadAddress means the text is not a tailcat address.
@@ -27,7 +26,7 @@ var ErrBadAddress = session.ErrBadAddress
 const Port = 7777
 
 type Transport struct {
-	st   *store.Store
+	dir  string
 	logf func(string, ...any)
 
 	srv       *tailcat.Server
@@ -36,39 +35,40 @@ type Transport struct {
 	mu      sync.Mutex
 	clients map[string]*tailcat.Client
 	addr    string
+	creds   credentials
 }
 
-const (
-	metaServerKey = "tc.server.key"
-	metaPSK       = "tc.server.psk"
-	metaAddr      = "tc.server.addr"
-	metaClientKey = "tc.client.key"
-)
-
-func New(st *store.Store, logf func(string, ...any)) (*Transport, error) {
-	t := &Transport{st: st, logf: logf, clients: map[string]*tailcat.Client{}}
-
-	var err error
-	if t.clientKey, err = loadNodeKey(st, metaClientKey); err != nil {
-		return nil, err
-	}
-	srvKey, err := loadNodeKey(st, metaServerKey)
+// New prepares the transport with credentials kept in dir, the backend's own
+// private instance directory. The three keys are made together and published
+// in one atomic write, so a failure leaves either all of them or none. A
+// credentials file that exists but cannot be trusted is an error: new keys are
+// never generated in its place, since that would silently change the address
+// every paired device has stored.
+func New(dir string, logf func(string, ...any)) (*Transport, error) {
+	t := &Transport{dir: dir, logf: logf, clients: map[string]*tailcat.Client{}}
+	c, err := loadCredentials(dir)
 	if err != nil {
 		return nil, err
 	}
-	psk, err := loadPSK(st)
+	t.creds = c
+	if t.clientKey, err = parseNodeKey(c.ClientKey); err != nil {
+		return nil, ErrBadCredentials
+	}
+	srvKey, err := parseNodeKey(c.ServerKey)
 	if err != nil {
-		return nil, err
+		return nil, ErrBadCredentials
+	}
+	var psk tailcat.PresharedKey
+	if psk.UnmarshalText([]byte(c.PSK)) != nil {
+		return nil, ErrBadCredentials
 	}
 	t.srv = &tailcat.Server{Key: srvKey, PresharedKey: psk, Logf: logf}
 
 	// Pin the DERP region the address was first issued with. Without this a
 	// laptop that wakes up on another network would pick another nearest
 	// relay and silently change the address its peers have stored.
-	if b, err := st.Meta(metaAddr); err != nil {
-		return nil, err
-	} else if b != nil {
-		if ci, err := tailcat.ParseAddr(tailcat.Addr(b)); err == nil && len(ci.Region) == 1 {
+	if c.Addr != "" {
+		if ci, err := tailcat.ParseAddr(tailcat.Addr(c.Addr)); err == nil && len(ci.Region) == 1 {
 			t.srv.Region = ci.Region[0]
 		}
 	}
@@ -84,7 +84,18 @@ func (t *Transport) Start() error {
 	t.mu.Lock()
 	t.addr = addr
 	t.mu.Unlock()
-	return t.st.SetMeta(metaAddr, []byte(addr))
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.creds.Addr == addr {
+		return nil
+	}
+	c := t.creds
+	c.Addr = addr
+	if err := saveCredentials(t.dir, c); err != nil {
+		return err
+	}
+	t.creds = c
+	return nil
 }
 
 func (t *Transport) Close() error { return t.srv.Close() }
@@ -139,36 +150,7 @@ func (t *Transport) Forget(addr string) {
 	}
 }
 
-func loadNodeKey(st *store.Store, name string) (key.NodePrivate, error) {
+func parseNodeKey(text string) (key.NodePrivate, error) {
 	var k key.NodePrivate
-	b, err := st.Meta(name)
-	if err != nil {
-		return k, err
-	}
-	if b != nil {
-		return k, k.UnmarshalText(b)
-	}
-	k = key.NewNode()
-	b, err = k.MarshalText()
-	if err != nil {
-		return k, err
-	}
-	return k, st.SetMeta(name, b)
-}
-
-func loadPSK(st *store.Store) (tailcat.PresharedKey, error) {
-	var p tailcat.PresharedKey
-	b, err := st.Meta(metaPSK)
-	if err != nil {
-		return p, err
-	}
-	if b != nil {
-		return p, p.UnmarshalText(b)
-	}
-	p = tailcat.NewPresharedKey()
-	b, err = p.MarshalText()
-	if err != nil {
-		return p, err
-	}
-	return p, st.SetMeta(metaPSK, b)
+	return k, k.UnmarshalText([]byte(text))
 }

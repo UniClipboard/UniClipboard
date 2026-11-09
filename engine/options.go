@@ -56,7 +56,7 @@ type Options struct {
 
 	// Peer assembles the peer-to-peer sync backend (builtin.tailcat). The
 	// engine does not know any transport: the host builds the backend
-	// explicitly (see internal/plugins/builtintailcat). Nil means no
+	// explicitly (see internal/plugins/tailcat). Nil means no
 	// peer-to-peer backend: the engine is local-only and the network calls
 	// (pairing, sending) report unsupported.
 	Peer PeerFactory

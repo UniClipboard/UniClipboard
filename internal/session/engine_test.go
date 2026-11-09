@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/identity"
+	"github.com/uniclipboard/unic/internal/wire"
 )
 
 type tcpTransport struct{ ln net.Listener }
@@ -289,5 +290,78 @@ func TestPausedPathGetsNoClips(t *testing.T) {
 	a.h.mu.Unlock()
 	if a.e.Submit(func([]string) (Job, bool) { t.Fatal("prepare ran for a paused path"); return Job{}, false }) {
 		t.Fatal("a paused path was queued")
+	}
+}
+
+// Consecutive sends to one device travel over the same session: no new
+// handshake, no new connection.
+func TestConsecutiveSendsReuseTheSession(t *testing.T) {
+	a, b := newNode(t), newNode(t)
+	pair(t, a, b)
+	var mu sync.Mutex
+	var used []*wire.Conn
+	done := make(chan string, 4)
+	send := func() {
+		ok := a.e.Submit(func(peers []string) (Job, bool) {
+			return Job{
+				Report: func(peer string, st TargetState, err error) {
+					if st == Sent || st == Failed {
+						done <- string(st)
+					}
+				},
+				Send: func(_ context.Context, w *wire.Conn, _ string) (bool, error) {
+					mu.Lock()
+					used = append(used, w)
+					mu.Unlock()
+					return false, nil
+				},
+			}, true
+		})
+		if !ok {
+			t.Fatal("not queued")
+		}
+		select {
+		case st := <-done:
+			if st != string(Sent) {
+				t.Fatalf("state %s", st)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("send did not finish")
+		}
+	}
+	send()
+	send()
+	send()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(used) != 3 || used[0] != used[1] || used[1] != used[2] {
+		t.Fatalf("sessions used: %v", used)
+	}
+}
+
+// A connection that breaks is replaced by a new one without anyone asking.
+func TestBrokenConnectionIsReestablished(t *testing.T) {
+	a, b := newNode(t), newNode(t)
+	pair(t, a, b)
+	a.e.mu.Lock()
+	s := a.e.sessions[b.id]
+	a.e.mu.Unlock()
+	if s == nil {
+		t.Fatal("no session")
+	}
+	s.close()
+	eventually(t, "session gone", func() bool {
+		a.e.mu.Lock()
+		defer a.e.mu.Unlock()
+		return a.e.sessions[b.id] != s
+	})
+	a.e.Reconcile()
+	b.e.Reconcile()
+	eventually(t, "reconnected", func() bool { return connected(a, b) })
+	a.e.mu.Lock()
+	n := a.e.sessions[b.id]
+	a.e.mu.Unlock()
+	if n == s {
+		t.Fatal("the old session came back")
 	}
 }

@@ -254,7 +254,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 			return closeAll(newErr(CodeUnavailable, "cannot prepare the backend directory"))
 		}
 		e.instLocks = append(e.instLocks, ilock)
-		core, perr := opts.Peer(PeerEnv{Store: st, Dir: idir,
+		core, perr := opts.Peer(PeerEnv{Dir: idir,
 			Identity: ident, Name: defName, Host: tailcatHost{e}, Receiver: receiver{e},
 			Logf:     func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
 			Settings: settingsSource{e},

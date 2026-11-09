@@ -20,7 +20,7 @@
 │   ├── session/ wire/ store/ tcnet/ rendezvous/ clip/
 │   └── plugins/
 │       ├── builtintext/      builtin.text
-│       └── builtintailcat/   builtin.tailcat（Transport 注入；0004）
+│       └── tailcat/   builtin.tailcat（Transport 注入；0004）
 ├── app/
 │   ├── desktop/            Go：cmd/unic、cmd/unicd，internal/{host,api,board,config,paths}
 │   ├── android/            Kotlin / Gradle 工程

@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/uniclipboard/unic/internal/rendezvous/rvtest"
+)
 
 // Without a peer backend the engine is local-only: clips are committed, the
 // sync result says there is no backend, and the network calls are unsupported.
@@ -27,4 +31,24 @@ func TestLocalOnlyWithoutPeerBackend(t *testing.T) {
 	if err := e.NotifyNetworkChanged(bg); code(err) != CodeUnsupported {
 		t.Fatalf("network changed: %v", err)
 	}
+}
+
+// sync.enabled=false stops content from moving but leaves pairing available,
+// so a device can still be added while sync is off.
+func TestPairingStaysAvailableWhileSyncIsOff(t *testing.T) {
+	rv := rvtest.New()
+	t.Cleanup(rv.Close)
+	a, b := newNode(t, rv), newNode(t, rv)
+	start(t, a)
+	start(t, b)
+	updateSettings(t, a.e, func(s *Settings) { s.Sync.Enabled = false })
+	c, err := a.e.CreatePairingCode(bg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := b.e.JoinByCode(bg, JoinRequest{RequestID: "j", Code: c.Code})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitOp(t, b.e, op, PhaseSucceeded)
 }

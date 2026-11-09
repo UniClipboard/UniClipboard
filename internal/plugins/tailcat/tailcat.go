@@ -1,8 +1,8 @@
-// Package builtintailcat is the built-in peer-to-peer sync backend
+// Package tailcat is the built-in peer-to-peer sync backend
 // (builtin.tailcat). It owns the tailcat transport and the session layer; the
 // engine knows neither. The host assembles it explicitly and hands the
 // factory to the engine (engine.Options.Peer): nothing registers itself.
-package builtintailcat
+package tailcat
 
 import (
 	"errors"
@@ -40,8 +40,11 @@ func Factory() peerbackend.Factory { return FactoryOn(nil) }
 func FactoryOn(tr Transport) peerbackend.Factory {
 	return func(env peerbackend.Env) (peerbackend.Backend, error) {
 		if tr == nil {
-			t, err := tcnet.New(env.Store, func(string, ...any) {}) // tailcat's logs may name addresses
+			t, err := tcnet.New(env.Dir, func(string, ...any) {}) // tailcat's logs may name addresses
 			if err != nil {
+				if errors.Is(err, tcnet.ErrBadCredentials) {
+					return nil, err // a damaged file is reported, never replaced
+				}
 				return nil, errors.New("cannot prepare the network")
 			}
 			tr = t

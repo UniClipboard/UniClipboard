@@ -10,7 +10,6 @@ import (
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/identity"
-	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/internal/wire"
 )
 
@@ -141,7 +140,6 @@ var (
 
 // Env is what the engine gives the peer backend factory.
 type Env struct {
-	Store    *store.Store
 	Dir      string // private instance directory, locked for the engine's life
 	Identity *identity.Identity
 	Name     string

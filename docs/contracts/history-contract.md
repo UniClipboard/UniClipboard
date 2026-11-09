@@ -1,6 +1,6 @@
 # 本机历史契约 v0.1
 
-- 状态：已实现并有测试：Engine 历史 API（查询/分页、内容租约、更新/删除、过期与配额、接收列表映射、历史应用），桌面 `/v1/history` 与 `unic history`；macOS SwiftUI 尚未接入。
+- 状态：已实现并有测试：Engine 历史 API（查询/分页、内容租约、更新/删除、过期与配额、接收列表映射、历史应用），桌面 `/v1/history` 与 `unic history`；SwiftUI 客户端路线已取消，桌面界面采用 mygo + 自定义 UI Kit，原型待定。
 - 日期：2026-11-07。
 - 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[插件契约](plugin-contract.md)。本文是 Engine 公共契约的历史扩展，公开包仍为 `github.com/uniclipboard/unic/engine`。
 

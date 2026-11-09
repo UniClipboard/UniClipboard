@@ -17,7 +17,7 @@ paths:
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: cc12a9fcf6bc8c4520dc2a0e25f9e58d27454cf9
+verified: 9953351b7559b03fe110d91e5c86a36a1a9f0c38
 ---
 # 设备身份、信任与配对
 
@@ -75,7 +75,7 @@ Engine 统一管理“对端是谁、是否被信任、经哪条后端路径可�
 
 ## 缺口
 
-- macOS 客户端的添加设备/待批准界面仅为原型（随机码、示例数据），未接 Engine；无设备介绍（候选）界面。
+- `app/mac` 保留的设备界面为 mock 实验原型，该 SwiftUI 客户端路线已取消；桌面统一使用 mygo + 自定义 UI Kit，最终界面原型待定。
 - 对象存储路径（仓库成员身份、`object_store` 票据兑现、成员排除）未实现；`object_store` 票据当前只被解析，不能使用。
 - 密钥轮换、备份恢复、多设备共享身份未定义。
 - 待批准设备数达上限时新握手直接被拒绝（`reject`），尚无面向用户的清理提示。

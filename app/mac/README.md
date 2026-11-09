@@ -1,4 +1,6 @@
-# Unic for macOS · SwiftUI UI preview
+# Unic for macOS · SwiftUI 实验原型（停止推进）
+
+2026-11-09：SwiftUI 客户端路线已取消，桌面界面（含 macOS）采用 mygo + 自定义 UI Kit，界面原型待定。此目录保留已有实验代码与插件设置 Schema 样例，不再计划接入 daemon；以下构建和交互说明仅描述实验原型。当前方向见[仓库总览](../../docs/architecture/overview.md)。
 
 运行最低 macOS 14；构建需要 Xcode 26+（macOS 26 SDK）。无第三方依赖，不需要启动 Go daemon。
 
@@ -26,7 +28,7 @@ open .build/Unic.app
 - 键盘：方向键移动、↩ 复制、空格 Quick Look、⌫ 删除（最近删除中为恢复）。可恢复的删除不弹确认。
 - 菜单栏弹窗为最近 5 条 + 打开、暂停同步、设置；设置为标准 TabView；⌥⌘V 浮动面板保留。
 
-Mock 状态保存在内存中，重启重置；设置选项通过 UserDefaults 保存，仅演示 UI。复制会将样例文本写入系统剪贴板。PDF 当前展示文本占位，图片为原生渐变示例；发送、同步、登录项及保留期限不执行后台操作。尚未接入 unicd，也未实现全局快捷键或自动粘贴。
+Mock 状态保存在内存中，重启重置；设置选项通过 UserDefaults 保存，仅演示 UI。复制会将样例文本写入系统剪贴板。PDF 当前展示文本占位，图片为原生渐变示例；发送、同步、登录项及保留期限不执行后台操作。尚未接入 unicd；代码已注册 ⌥⌘V 全局快捷键，未实现自动粘贴。
 
 Plugins 设置页的 “Preview plugin settings…” 从 Go 配置定义生成的静态 schema 创建原生表单，覆盖文本、数字、选项、开关、多行、密码、分组和基础列表。支持即时校验、保存预览、取消和恢复默认值；预览配置仅在内存中，不写 UserDefaults、daemon 或 TOML。Foundation 模型在 `Sources/SettingsSchema`，通用控件在 `SchemaSettingsForm.swift`；`swift test` 与 Go 使用同一组校验向量。更新 fixture 使用仓库根的 `go generate ./plugins/examples/settingsdemo`。
 
@@ -35,7 +37,7 @@ swift build
 swift test
 ```
 
-工程遵循 0006 的客户端边界，后续由独立客户端接入 daemon 的 HTTP / SSE 接口。用户指定目录为 `app/mac`，因此本原型采用该路径（0006 草案中的 `app/macos` 尚未迁移）。
+本实验原型使用 `app/mac` 路径，不再按已取消的 SwiftUI 客户端路线接入 daemon。
 
 ## 新版 macOS 适配与验证
 

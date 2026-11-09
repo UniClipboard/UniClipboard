@@ -1,6 +1,6 @@
 # Agent Instructions
 
-unic：跨设备剪贴板同步。Go 核心（网络层 tailcat，存储 SQLite），桌面界面 mygo，后续纳入 Android、iOS。项目概览见 [README.md](README.md)。
+unic：跨设备剪贴板同步。Go 核心（网络层 tailcat，存储 SQLite），桌面界面统一采用 mygo + 自定义 UI Kit，界面原型待定；后续纳入 Android、iOS。项目概览见 [README.md](README.md)。
 
 ## 仓库结构
 
@@ -37,8 +37,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 |---|---|---|
 | [0002](docs/decisions/proposed/0002-config-file.md) | 配置文件：TOML + 保存即生效 | `$UNIC_HOME/config.toml`，监听目录+防抖热加载；坏配置保留上一份有效值；`unic config` 查看；`inbox` 需重启 |
 | [0003](docs/decisions/proposed/0003-engine-sdk.md) | 独立 Engine：统一接口与契约 | 公开 Go SDK，宿主负责剪贴板与系统集成；定义生命周期、内容所有权、事件与错误；先落地契约并迁移桌面，移动端验证后续进行 |
-| [0004](docs/decisions/proposed/0004-clipboard-pipeline-lua.md) | 剪贴板处理流水线 + Go / Lua 插件 | 已采纳并实施（GitHub 安装、真机基线、SwiftUI 未完成）；Capture→Processing→Commit→Sync→Use→End；captured/received 可干预（仅标注，不改正文；改写内容走用户触发的 Action），其余事件只读；同步支持 builtin/外部 Go 插件，默认 builtin.tailcat 位于 `internal/plugins/tailcat/`，随宿主编译；设备身份/信任/关联按 0008 统一管理，无旧 tailcat 兼容；Go 常驻进程/RPC（预编译优先，--build 兜底）+ 增强 gopher-lua 沙箱（`internal/luavm`，预算/白名单已实现）；统一接口与模板见插件契约；本地历史库，标签/过期不同步；历史归 Engine 管理，历史与流水线业务实现放 `engine/` |
-| [0006](docs/decisions/proposed/0006-macos-swiftui-client.md) | macOS 端：SwiftUI 客户端 | 草案；SwiftUI 作为 `unicd` 的客户端（unix socket，HTTP+JSON/SSE），不内嵌 Engine；`unicd` 增加无托盘模式；新增本机历史 API（事件不带正文）；历史与流水线由 `engine/` 管理；Developer ID 分发，不上 App Store |
+| [0004](docs/decisions/proposed/0004-clipboard-pipeline-lua.md) | 剪贴板处理流水线 + Go / Lua 插件 | 已采纳并实施（GitHub 安装、真机基线未完成）；Capture→Processing→Commit→Sync→Use→End；captured/received 可干预（仅标注，不改正文；改写内容走用户触发的 Action），其余事件只读；同步支持 builtin/外部 Go 插件，默认 builtin.tailcat 位于 `internal/plugins/tailcat/`，随宿主编译；设备身份/信任/关联按 0008 统一管理，无旧 tailcat 兼容；Go 常驻进程/RPC（预编译优先，--build 兜底）+ 增强 gopher-lua 沙箱（`internal/luavm`，预算/白名单已实现）；统一接口与模板见插件契约；本地历史库，标签/过期不同步；历史归 Engine 管理，历史与流水线业务实现放 `engine/` |
 | [0007](docs/decisions/proposed/0007-multiple-sync-backends.md) | 多同步后端与分层策略 | 已采纳并实现；全局开关、实例启用、每后端类型/自动文件阈值；多后端结果/资源隔离与有界跨后端去重；默认只交付 tailcat，WebDAV 对象协议另定 |
 | [0009](docs/decisions/proposed/0009-external-channels.md) | 外部渠道：无 unic 身份证明的第三方对端 | 草案；不是设备、不写 `devices` 表、无指纹；目标为组；与设备混排展示；默认自动写剪贴板并标 `external:` 来源；移除仅本地生效，后端声明 `remote_revocation`；接入形态待定（首个对象微信输入法）；数据模型与接收路径已实现（`engine/channels.go`），桌面 `/v1/channels` |
 | [0010](docs/decisions/proposed/0010-plugin-settings-schema.md) | 插件设置 Schema 与表单生成 | JSON Schema 子集 + UI 提示；Go 配置定义生成静态 schema，各 shell 生成原生表单；独立工具和 macOS 会话预览已实现，配置 API/清单/RPC/安装接入待完成 |
@@ -57,7 +56,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 - [流水线提交契约](docs/contracts/pipeline-contract.md)：提交结果与网络结果分离、请求幂等、旧 SubmitContent 门面、三类入口状态转换、提交屏障、Received/去重发布与资源账本；已实现并有测试。
 
-- [Action 契约](docs/contracts/clipboard-action-contract.md)：插件声明、用户主动触发的内容变换（ListActions/RunAction），结果为 origin=action 的新历史条目并经 BeginApplyHistory 应用；取代已取消的自动写回；Engine 侧、`builtin.text` 与桌面 `/v1/actions` 已实现；外部插件的 Action 随插件加载；SwiftUI 菜单未做。
+- [Action 契约](docs/contracts/clipboard-action-contract.md)：插件声明、用户主动触发的内容变换（ListActions/RunAction），结果为 origin=action 的新历史条目并经 BeginApplyHistory 应用；取代已取消的自动写回；Engine 侧、`builtin.text` 与桌面 `/v1/actions` 已实现；外部插件的 Action 随插件加载；GUI Action 菜单随待定界面原型规划。
 
 - [插件契约](docs/contracts/plugin-contract.md)：Go/Lua 标识、注册、生命周期、配置、顺序、上下文与最小模板、GitHub 仓库安装；builtin.tailcat 后端边界。Go/Lua 注册、外部进程、builtin.tailcat、桌面配置与本地 Lua 目录（`unic plugin list/enable/disable`）已实现；§8 GitHub 安装未实现。
 
@@ -79,6 +78,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 ## 约定
 
+- 桌面界面（含 macOS）采用 mygo + 自定义 UI Kit；界面原型待定，现有实验原型不作为最终界面规格。
 - 核心不得依赖 `app/*`；宿主专属代码留在对应应用，公开 Engine 的传递依赖边界由 `engine/boundary_test.go` 检查。
 - 设备地址与配对票据都是秘密：不要写进日志、事件或错误信息。
 - 通过配对码进来的设备永远需要用户批准；不要为了方便绕过。

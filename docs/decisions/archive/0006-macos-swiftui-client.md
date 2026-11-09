@@ -1,11 +1,14 @@
 # 0006 · macOS 端：SwiftUI 原生界面，作为 daemon 的客户端
 
-- 状态：草案（未实现）
+- 状态：已归档（2026-11-09），已取消；界面选型由 0013 承接
+- 落地：[仓库布局与依赖边界](../../architecture/overview.md)
 - 日期：2026-11-07
-- 关联：[0003 Engine SDK](0003-engine-sdk.md)、[0004 流水线与历史](0004-clipboard-pipeline-lua.md)、[0005 仓库布局](../archive/0005-monorepo-layout.md)
+- 关联：[0003 Engine SDK](../proposed/0003-engine-sdk.md)、[0004 流水线与历史](../proposed/0004-clipboard-pipeline-lua.md)、[0005 仓库布局](0005-monorepo-layout.md)
 - 原型：待提供（Mac 端界面设计另行给出）
 
-> 2026-11-09 边界修订：[0015 无头服务与桌面集成](0015-headless-cli-and-desktop-integration.md) 取代本文“系统剪贴板留在 unicd、Swift 侧不实现”及 daemon 无托盘模式的安排。目标 `unicd` 无图形依赖，SwiftUI 应用可承载唯一的桌面适配会话，负责系统剪贴板、菜单栏与通知；Engine、历史、配对和网络仍由 daemon 管理。该拆分及本机适配协议尚未实现，下文相关旧安排保留为原决策记录，以 0015 为准。
+> 2026-11-09 边界修订：[0015 无头服务与桌面集成](../proposed/0015-headless-cli-and-desktop-integration.md) 取代本文“系统剪贴板留在 unicd、Swift 侧不实现”及 daemon 无托盘模式的安排。目标 `unicd` 无图形依赖，SwiftUI 应用可承载唯一的桌面适配会话，负责系统剪贴板、菜单栏与通知；Engine、历史、配对和网络仍由 daemon 管理。该拆分及本机适配协议尚未实现，下文相关旧安排保留为原决策记录，以 0015 为准。
+
+> 2026-11-09 取消：用户决定放弃本 SwiftUI 客户端方案，桌面界面（含 macOS）采用 mygo + 自定义 UI Kit，由 [0013](../proposed/0013-mygo-uikit.md) 承接，界面原型待定。已有 `app/mac` 仅保留为实验代码，不继续服务接入；下文为已取消的历史方案，不作为后续实施或验收要求。已实现的 Engine 历史、Action 与本机 API 继续按各自契约维护；无头服务拆分按 [0015](../proposed/0015-headless-cli-and-desktop-integration.md) 推进。
 
 ## 背景
 

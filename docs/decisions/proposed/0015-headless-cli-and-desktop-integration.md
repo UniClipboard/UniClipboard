@@ -2,7 +2,9 @@
 
 - 状态：已采纳，待实现；本文中的进程拆分、命令与本机适配协议均为目标设计，不代表当前已经支持无头运行。
 - 日期：2026-11-09。
-- 关联：[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](../archive/0005-monorepo-layout.md)、[0006 macOS 客户端](0006-macos-swiftui-client.md)、[0008 设备身份](../archive/0008-device-identity-and-backend-bindings.md)、[Engine 契约](../../contracts/engine-contract.md)、[历史契约](../../contracts/history-contract.md)、[提交契约](../../contracts/pipeline-contract.md)、[Action 契约](../../contracts/clipboard-action-contract.md)。
+- 关联：[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](../archive/0005-monorepo-layout.md)、[0013 mygo UI Kit](0013-mygo-uikit.md)、[0008 设备身份](../archive/0008-device-identity-and-backend-bindings.md)、[Engine 契约](../../contracts/engine-contract.md)、[历史契约](../../contracts/history-contract.md)、[提交契约](../../contracts/pipeline-contract.md)、[Action 契约](../../contracts/clipboard-action-contract.md)。
+
+> 2026-11-09 界面选型更新：含 macOS 在内的桌面界面采用 mygo + 自定义 UI Kit，界面原型待定；取消 SwiftUI 接入安排，无头服务与独立适配会话的目标不变。
 
 ## 背景
 
@@ -18,7 +20,7 @@
 
 ```text
 unic CLI ───────────────────────┐
-GUI（mygo / SwiftUI）───────────┼── 本机 IPC ── unicd ── Engine / 插件 / 网络 / 历史
+GUI（mygo + 自定义 UI Kit）───────────┼── 本机 IPC ── unicd ── Engine / 插件 / 网络 / 历史
 桌面适配器（剪贴板、通知、托盘）─┘
 ```
 
@@ -35,11 +37,11 @@ GUI（mygo / SwiftUI）───────────┼── 本机 IPC ─
 
 ### 2. 桌面集成是独立客户端，GUI 与适配器可共用进程
 
-首版 Go 桌面程序命名为 `unic-desktop`，承载 mygo GUI 与桌面适配器；GUI 窗口关闭后，适配器可留在用户会话中继续运行。macOS SwiftUI 应用接入时可承载相同职责，以平台原生 API 实现剪贴板适配。它们都是 `unicd` 的客户端。
+桌面程序命名为 `unic-desktop`，承载 mygo + 自定义 UI Kit GUI 与桌面适配器，包含 macOS；界面原型待定。GUI 窗口关闭后，适配器可留在用户会话中继续运行。桌面程序是 `unicd` 的客户端。
 
-一个状态目录同时只允许一个活动剪贴板适配会话；Go 桌面程序与 SwiftUI 应用不能同时观察和写入同一个服务的系统剪贴板。主窗口、快速面板等可以有多个客户端，但必须经过唯一适配会话执行系统应用。
+一个状态目录同时只允许一个活动剪贴板适配会话；多个桌面进程不能同时观察和写入同一个服务的系统剪贴板。主窗口、快速面板等可以有多个客户端，但必须经过唯一适配会话执行系统应用。
 
-这取代 0006 中“系统剪贴板留在 unicd、Swift 侧不实现”的边界，以及只给 daemon 增加无托盘模式的安排。Swift 侧只增加系统适配，不重复实现处理流水线、历史、配对或网络。托盘与通知归桌面程序，不再归 daemon。
+0006 的 SwiftUI 客户端路线已取消。本决策继续拆出系统适配；桌面程序不重复实现处理流水线、历史、配对或网络。托盘与通知归桌面程序，不再归 daemon。
 
 退出主窗口不停止同步；明确退出桌面程序后，系统剪贴板自动捕获和应用停止，`unicd` 的接收、存储和显式提交继续运行。停止 `unicd` 则所有客户端失去服务。登录启动与服务管理分别管理 daemon 和桌面程序；具体平台安装器后续落地，不由 CLI 命令隐式拉起 GUI。
 
@@ -115,10 +117,10 @@ app/service/
 app/desktop/
   cmd/unic-desktop/         mygo GUI + 系统适配
   internal/                桌面剪贴板、托盘、通知、UI
-app/mac/                    SwiftUI 客户端及后续原生系统适配
+app/mac/                    已停止推进的 SwiftUI 实验原型，不纳入目标桌面分发
 ```
 
-Go CLI/桌面共用的本机协议 DTO 与客户端放在根 `internal/localapi/`，不能让桌面端 import `app/service/internal`。服务端处理器留在 service；系统剪贴板适配不进入 service 或 Engine。Swift 客户端依赖协议文档/Schema，不依赖 Go internal 包。这补充 0005 的布局，仍使用单一根 Go 模块和单向核心依赖；各应用有自己的 README/AGENTS。
+Go CLI/桌面共用的本机协议 DTO 与客户端放在根 `internal/localapi/`，不能让桌面端 import `app/service/internal`。服务端处理器留在 service；系统剪贴板适配不进入 service 或 Engine。桌面客户端通过本机协议访问服务，不直接导入 service 的 internal 包。这补充 0005 的布局，仍使用单一根 Go 模块和单向核心依赖；各应用有自己的 README/AGENTS。
 
 提供两类分发：
 
@@ -132,16 +134,16 @@ Go CLI/桌面共用的本机协议 DTO 与客户端放在根 `internal/localapi/
 - CLI 内嵌 GUI 省一个入口，但把图形依赖带给所有命令行用户，不能作为无头版的默认产物。
 - 仅关闭托盘、使用虚拟显示或目录剪贴板绕过图形环境，不解决实际桌面依赖和命令语义。
 - 为无头版与桌面版各维护一套 daemon 或 Engine 装配，会增加生命周期、插件和 API 的分叉；本方案共享唯一服务实现。
-- 独立适配器引入会话、IPC 和资源交接成本，但将图形会话故障与同步服务隔离，也让 SwiftUI 能使用系统原生剪贴板 API。此成本必须通过协议与断线测试承担，不能以增加进程本身作为完成标准。
+- 独立适配器引入会话、IPC 和资源交接成本，但将图形会话故障与同步服务隔离，也让桌面程序独立承载各平台的剪贴板适配。此成本必须通过协议与断线测试承担，不能以增加进程本身作为完成标准。
 
 项目未发布，拆分时直接更新命令、目录、API 与安装入口，不保留旧 GUI 子命令、旧桌面 daemon 或自动回退路径；协议版本号保持为 1。
 
 ## 实施顺序与验收
 
-1. **补齐契约**：本机服务/适配会话协议、能力模型、提交/Action 与系统应用分离、Received 读取、文件租约和导出规则。同步修订 Engine、历史、提交、Action 契约及 0006；记录目标与已实现状态，不能只改状态行。
+1. **补齐契约**：本机服务/适配会话协议、能力模型、提交/Action 与系统应用分离、Received 读取、文件租约和导出规则。同步修订 Engine、历史、提交、Action 契约；记录目标与已实现状态，不能只改状态行。
 2. **拆入口与目录**：移动公共服务代码和本机协议，纯 CLI 移除 GUI，`unicd` 移除 mygo 初始化和 Board 必选条件。系统适配实现迁到 `unic-desktop`。
 3. **实现无头路径**：显式提交、历史/Received 读取和导出、无适配器状态、Action 独立结果；先通过双无头节点测试。
-4. **接回桌面**：mygo 适配会话、系统 copy/paste/use、自动捕获/应用与防回环；再接 SwiftUI，避免同时保留旧 daemon 内的轮询。
+4. **接回桌面**：mygo 适配会话、系统 copy/paste/use、自动捕获/应用与防回环；避免同时保留旧 daemon 内的轮询。
 5. **更新分发和文档**：构建入口、CI、README/AGENTS、安装与服务管理。测试目录 Board 保留为测试设施，与生产无头路径分别验证。
 
 交付必须满足：

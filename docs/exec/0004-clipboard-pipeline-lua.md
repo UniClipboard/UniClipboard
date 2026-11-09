@@ -1,6 +1,6 @@
 # 0004 执行计划：剪贴板流水线、历史与 Go / Lua 插件
 
-- 状态：实现中（2026-11-09）：P0–P6 完成，仅余 P0 真实双设备基线与 P3 的 SwiftUI 菜单；P7 的配置映射、`unic history`、本地 Lua 插件目录已完成，GitHub 安装未做；P8 的自动化验收（多后端、隐私回归、边界）已完成，lint、真机双节点实测与文档登记收尾中。标注“定义/方案”的勾选仅表示该文档交付及文档检查完成。实现任务须代码、契约与对应验证均完成才可勾选，不能以文档完成代替运行验收。
+- 状态：实现中（2026-11-09）：P1–P6 核心实现完成，P0 真实双设备基线待完成；P3 的 SwiftUI 菜单任务已取消，桌面 GUI Action 菜单随待定的 mygo + 自定义 UI Kit 界面原型规划；P7 的配置映射、`unic history`、本地 Lua 插件目录已完成，GitHub 安装未做；P8 的自动化验收（多后端、隐私回归、边界）已完成，lint、真机双节点实测与文档登记收尾中。标注“定义/方案”的勾选仅表示该文档交付及文档检查完成。实现任务须代码、契约与对应验证均完成才可勾选，不能以文档完成代替运行验收。
 - 日期：2026-11-07。
 - 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[插件契约](../contracts/plugin-contract.md)、[Engine 契约](../contracts/engine-contract.md)、[0002 配置](../decisions/proposed/0002-config-file.md)、[仓库布局](../architecture/overview.md)。
 - 范围：本计划覆盖 0004 与插件契约的桌面首版，包括 GitHub 安装及默认 builtin `builtin.tailcat`；不包含移动端子进程支持。
@@ -98,7 +98,8 @@
 - [x] 实现统一 ProcessContext（标注型）：标签限制、persist/sync/expire 暂存，Item.Text 只读；过期从 commit 起算。示例：含邮箱自动打 `email` 标签。 （`engine/pipeline.go`，`TestPipelineAtomicPatchesAndOwnership`；示例 `builtin.text`/`urltag` 标注 email/url。）
 - [x] 单次失败回滚全部 patch；`continue` 继续处理，`block_sync` 设置后续插件不能解除的禁发标记。普通 SetSync(false) 可被后续插件覆盖，但不能突破全局配置和信任。 （`TestPipelineFaultsDiscardWholePatch`、新增 `TestPipelineSetSyncOverridesButBlockSyncDoesNot`：后续 SetSync(true) 可覆盖普通 false，block_sync 不可解除；全局配置与信任由发送视图复核。）
 - [x] Engine 实现 Action 注册与运行：Spec 静态声明（ID/Title/Accepts）校验、`ListActions`、`RunAction`（来源校验、串行门与期限、恰好一次 SetText、新条目 origin=action 走显式提交、RequestID 幂等、失败不留条目），Go 与 Lua 适配器共用同一语义；契约测试见 [Action 契约 §6](../contracts/clipboard-action-contract.md)。 （`engine/action_test.go` 覆盖提交、标注、必定入历史、幂等、各类失败不留条目、来源校验，新增 Stop 取消在途 action；Lua 经 `TestLuaPluginProcessesAndActs`。）
-- [ ] 桌面宿主与 daemon：`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}` 运行 Action 后经 BeginApplyHistory 写入系统剪贴板，回声由 AppliedToken 抑制，不产生第二条历史；SwiftUI 在历史条目菜单展示。 （2026-11-09：`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}` 与写入剪贴板已实现并有测试；**SwiftUI 历史菜单未做**——app/mac 仍是内存 mock 数据，未接 unicd，接入真实服务时一并做。）
+- [x] 桌面宿主与 daemon：`GET /v1/actions`、`POST /v1/history/{id}/actions/{key...}` 运行 Action 后经 BeginApplyHistory 写入系统剪贴板，回声由 AppliedToken 抑制，不产生第二条历史；已实现并有测试。
+- 已取消：SwiftUI 历史 Action 菜单及 `app/mac` 服务接入。桌面界面改用 mygo + 自定义 UI Kit，GUI Action 菜单随待定界面原型规划；不以取消任务表示 GUI 菜单已实现。
 - [x] 明确 pasted 仅表示经宿主 UI 使用，不声称可观察所有系统粘贴；实现 deleted/expired/updated 等只读通知。 （`EventPasted` 仅在宿主 UI 应用历史时发出，`TestObserverSeesPastedAndLifecycle`。）
 
 退出条件：用测试处理器验证标注、回滚、策略；用测试 Action 验证新条目、应用回声和失败不留条目；`/v1` 旧事件映射兼容且无正文，通知失败不影响已完成 commit。
@@ -152,7 +153,7 @@ P4 剩余（均不阻塞 P5）：`device.*`/`sync.*` 通知（会话事件不带
 
 - [x] 桌面 TOML 映射插件设置，保留目录监听、防抖、坏配置保留上一有效值；模板解释 continue 风险、block_sync 和需重启项。（2026-11-09：`[plugins] on_error` 全局默认、`[plugins.instances."id"] on_error`/`.config` 覆盖，模板已解释风险；用户设置只在 config.toml，清单不再接受 `on_error`/`config`；改动经 `restart_required: plugins.settings` 提示重启。Go 插件除 builtin.text 外的设置映射随 0010 运行时集成。）
 - [x] 映射全局 sync.enabled 和每后端 .sync 类型/阈值，拒绝旧类型键，不做兼容映射；自动/手动策略与热加载测试覆盖。（2026-11-09 核对：`[sync] enabled` 与 `[plugins.instances."builtin.tailcat".sync]` 的 text/images/files/auto_file_max_bytes 已映射到 `Settings.BackendPolicies`；旧 `sync.text` 等键被拒绝并保留上一份有效配置；热加载测试 `TestPausedSyncKeepsConnection`、`TestSyncTypeSwitches`、`TestFilePolicyAndAutoThresholdHotReload`（文件开关、自动阈值生效、手动发送豁免、调高阈值后放行）、`TestOldSyncKeysAreRefusedAndKeepTheLastGoodConfig`。）
-- [x] 增加 `unic history`（别名 `unic h`；list/show/delete/tag/expire/action，`@N` 指第 N 新；终端内 delete 确认一次，`-y` 跳过）和 Engine 历史 API 的薄 HTTP 适配；查询/读取/删除不另建历史存储，桌面 API 与 SDK 同批更新，不保留旧响应兼容层。原生 macOS UI 不在此阶段实现。
+- [x] 增加 `unic history`（别名 `unic h`；list/show/delete/tag/expire/action，`@N` 指第 N 新；终端内 delete 确认一次，`-y` 跳过）和 Engine 历史 API 的薄 HTTP 适配；查询/读取/删除不另建历史存储，桌面 API 与 SDK 同批更新，不保留旧响应兼容层。桌面 GUI 由 mygo + 自定义 UI Kit 承载，最终界面原型待定。
 - [x] 本地 Lua 插件目录（先于 GitHub 安装）：手动放入 `$UNIC_HOME/plugins/lua/<name>/` 即被发现但不初始化、不启用；`unic plugin list` 显示发现/启用/损坏/缺失，`enable`/`disable` 保留注释地改写 config.toml 的 `plugins.lua`（改后复解析校验、原子替换），重启生效。仅 Lua；Go 外部插件随 GitHub 安装的产物格式另定。
 - [ ] 实现 install/list/enable/disable/uninstall，公共 GitHub HTTPS URL、ref→完整 commit、子目录和清单校验；不递归安装依赖、不执行安装脚本。
 - [ ] Go 优先平台匹配预编译，核对摘要/架构/归档边界；仅无匹配项或确认资产不存在时允许显式 --build。网络/限流/摘要失败不得触发源码兜底。

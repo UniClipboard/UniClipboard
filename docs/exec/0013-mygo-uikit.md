@@ -2,6 +2,8 @@
 
 状态：实现与自动化验收已完成；Windows/Linux 原生宿主验收待补充。分支 `v2`，**不要 commit**，除非用户要求。
 
+2026-11-09 方向确认：桌面界面（含 macOS）统一使用 mygo + 自定义 UI Kit，SwiftUI 客户端路线已取消。界面原型待定；已完成的组件迁移与现有 GUI 验证不代表最终页面设计已确认。
+
 ## 目标
 
 把 uniclipboard 仓库 `main` 分支的 React UI Kit(`/Users/LWP1/Projects/uniclipboard/apps/gui-go/frontend/src/ui-kit`,Linux Adwaita / macOS glass / Windows Fluent 三套皮肤；早期估算约 90 个，核对 contract.ts 实际为 59 个公共组件)移植为 mygo 原生 Go 组件,放在 `app/desktop/internal/uikit`;再把桌面 GUI(`app/desktop/cmd/unic/gui.go`、`history_gui.go`)从直接用 `ui.Button` 等改为走 `uikit.Kit`。用户已确认:控件全部移植、近似还原可接受、同意升级 mygo。

@@ -83,7 +83,7 @@ UNIC_V1_TEST_TARGET="目标目录" go test -v ./app/desktop/internal/host -run '
 
 - 主验收格式是本机 V3。早期 JSON inline/UCBL V1/UCFS 分支未逐个历史发布版本验收。
 - Windows/Linux 系统凭据路径已实现并跨编译，尚无真实机器授权运行证据。CLI 未交付平台安装包或生产签名。
-- 集成入口是 Go 桌面 CLI；尚无图形化目录选择、口令与迁移进度向导。独立 `app/mac` SwiftUI 客户端未接入。
+- 集成入口是 Go 桌面 CLI；尚无图形化目录选择、口令与迁移进度向导。SwiftUI 客户端路线已取消，后续 GUI 由 mygo + 自定义 UI Kit 承载，界面原型待定。
 - 丢失文件、损坏密文、超限记录显示部分完成，不生成虚假的可用占位内容。当前报告为数量级，未提供逐条修复界面。
 - 不迁移收藏、设备身份与信任、设置和宿主专用非标准 representation。文件夹以 ZIP 表达。
 - 标签保存名称与关联，不保留旧不透明 tag ID 或标签创建时间；已有目标标签关联不会被覆盖。

@@ -2,7 +2,7 @@
 
 - 状态：独立工具与固定 schema 的 macOS 表单已实现；Engine/daemon 配置接口、清单与 RPC 发布、安装器读取、Lua 热替换均未接入。
 - 依据：[0010](../decisions/proposed/0010-plugin-settings-schema.md)、[插件契约](plugin-contract.md)、[SDK 配置所有权](sdk-extension-contract.md#4-插件装配与配置所有权)。
-- 实现：`plugin/settings`；原生 shell 模型 `app/mac/Sources/SettingsSchema`；控件 `SchemaSettingsForm.swift`。
+- 实现：`plugin/settings`；保留的实验 shell 模型 `app/mac/Sources/SettingsSchema`，控件 `SchemaSettingsForm.swift`。SwiftUI 客户端路线已取消；桌面表单后续由 mygo + 自定义 UI Kit 承载，界面原型待定，现有实验表单不表示桌面运行时集成已完成。
 
 ## 1. 格式与支持范围
 

@@ -15,7 +15,7 @@ paths:
   - plugin/plugin.go
   - internal/store/history.go
   - internal/plugins/builtintext
-verified: cc12a9fcf6bc8c4520dc2a0e25f9e58d27454cf9
+verified: 9953351b7559b03fe110d91e5c86a36a1a9f0c38
 ---
 # 剪贴板处理流水线与本机历史
 
@@ -72,5 +72,5 @@ verified: cc12a9fcf6bc8c4520dc2a0e25f9e58d27454cf9
 
 - 插件 GitHub 安装（`unic plugin install`）未实现。
 - 真机双设备基线实测未做。
-- macOS SwiftUI 未接入历史与 Action 菜单。
+- 桌面 GUI Action 菜单随待定的 mygo + 自定义 UI Kit 界面原型规划；SwiftUI 客户端路线已取消。
 - `CommitRequest.WritebackGuard` 非空返回 `unsupported`（自动写回已取消，无计划）。

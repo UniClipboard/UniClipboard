@@ -61,7 +61,7 @@
 ## 实现状态
 
 - 引擎：`Channel`/`Peer` DTO 与渠道 CRUD、混排 `ListPeers`、`TargetGroup`、接收 `plugin.Receiver`、历史来源 `external`；见 [Engine 契约](../../contracts/engine-contract.md)。
-- 桌面：`unicd` 的 `GET /v1/status` 混排渠道；`PATCH/DELETE /v1/channels/{id}`；`channel` 事件；`AutoApply` 关闭时不写剪贴板。命令行与 SwiftUI 客户端尚未展示渠道。
+- 桌面：`unicd` 的 `GET /v1/status` 混排渠道；`PATCH/DELETE /v1/channels/{id}`；`channel` 事件；`AutoApply` 关闭时不写剪贴板。命令行与 mygo 桌面界面尚未展示渠道；SwiftUI 客户端路线已取消，桌面界面原型待定。
 - 进程外后端：插件 RPC 外部渠道子集已实现（见同步后端契约 §6a，真实子进程测试）。
 - 未实现：真实渠道后端（微信输入法）、文件传输。
 

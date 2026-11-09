@@ -4,6 +4,8 @@
 - 日期：2026-11-09
 - 关联：[0005 仓库布局](../archive/0005-monorepo-layout.md)、[执行记录](../../exec/0013-mygo-uikit.md)
 
+> 2026-11-09 选型确认：桌面界面（含 macOS）统一采用 mygo + 自定义 UI Kit；[0006 SwiftUI 客户端](../archive/0006-macos-swiftui-client.md) 已取消。界面原型待定，本决策的组件契约和皮肤不代表最终页面布局，现有 SwiftUI/HTML 实验原型也不作为最终界面规格。
+
 ## 背景
 
 uniclipboard 的 React UI Kit 已有统一组件契约和 Linux Adwaita、macOS glass、Windows Fluent 三套皮肤。Go 桌面客户端使用 mygo，需要沿用这些组件的语义和视觉层次，同时保留原生输入、焦点和键盘交互。

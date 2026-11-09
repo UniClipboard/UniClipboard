@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/servicelifecycle"
+
 	"github.com/uniclipboard/unic/engine"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
@@ -357,6 +359,17 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 func isNoDaemon(err error) bool {
 	var oe *net.OpError
 	return errors.As(err, &oe) && oe.Op == "dial"
+}
+
+// Service identifies the service generation before a controlled replacement.
+func (c *Client) Service(ctx context.Context) (v servicelifecycle.Instance, err error) {
+	err = c.do(ctx, "GET", "/v1/service", nil, &v)
+	return
+}
+
+// StopService requests shutdown of exactly the observed generation.
+func (c *Client) StopService(ctx context.Context, id string) error {
+	return c.do(ctx, "POST", "/v1/service/stop", map[string]string{"id": id}, nil)
 }
 
 func (c *Client) Status(ctx context.Context) (st Status, err error) {

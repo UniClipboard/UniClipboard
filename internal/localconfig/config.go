@@ -65,6 +65,7 @@ func ParseSize(str string) (int64, error) {
 
 // Config is the effective configuration.
 type Config struct {
+	Desktop       Desktop                 `toml:"desktop" json:"desktop"`
 	Logging       observability.Logging   `toml:"logging" json:"logging"`
 	Telemetry     observability.Telemetry `toml:"telemetry" json:"telemetry"`
 	DeviceName    string                  `toml:"device_name" json:"device_name"`
@@ -75,6 +76,13 @@ type Config struct {
 	Plugins       Plugins                 `toml:"plugins" json:"plugins"`
 	History       History                 `toml:"history" json:"history"`
 	FileCache     FileCache               `toml:"file_cache" json:"file_cache"`
+}
+
+// Desktop configures the graphical launcher. The service only stores these values.
+type Desktop struct {
+	Mode              string `toml:"mode" json:"mode"`
+	LaunchAtLogin     bool   `toml:"launch_at_login" json:"launch_at_login"`
+	StartInBackground bool   `toml:"start_in_background" json:"start_in_background"`
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -181,6 +189,7 @@ func (b BackendSync) policy() engine.BackendSyncPolicy {
 // Default returns the configuration used for keys the file leaves out.
 func Default() Config {
 	return Config{
+		Desktop: Desktop{Mode: "normal"},
 		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
 		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
@@ -232,6 +241,9 @@ func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 // uses, so the file and the SDK cannot disagree. Messages never include the
 // offending values of fields that could carry secrets.
 func (c Config) Validate() error {
+	if c.Desktop.Mode != "normal" && c.Desktop.Mode != "lightweight" {
+		return errors.New(`desktop.mode: must be "normal" or "lightweight"`)
+	}
 	if err := c.Observability().Validate(); err != nil {
 		return err
 	}
@@ -307,6 +319,13 @@ func (c Config) HistoryOptions() engine.HistoryOptions {
 const Template = `# unic configuration. Saving this file applies it at once.
 # A file with an error is ignored (the previous settings stay) until fixed;
 # run ` + "`unic config`" + ` to see the current settings and any error.
+
+# Desktop launcher settings. Mode and background visibility apply on next launch.
+# Login registration is applied by a running normal desktop session.
+# [desktop]
+# mode = "normal"  # "normal" or "lightweight"
+# launch_at_login = false
+# start_in_background = false
 
 # Logging and optional OTLP/HTTP upload. Remote upload is off by default.
 # [logging]

@@ -4,16 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
+	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
+	config "github.com/uniclipboard/unic/internal/localconfig"
+	paths "github.com/uniclipboard/unic/internal/localpaths"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 
@@ -77,9 +84,12 @@ type gui struct {
 	historyBusy, historyLoaded  bool
 	historyTag                  string
 	cleanupUI                   cleanupUIState
+	login                       lifecycle.LoginRegistration
+	loginEnabled                bool
+	loginError                  string
 }
 
-func runGUI() error {
+func runGUI(settings *config.Manager) error {
 	c, err := client()
 	if err != nil {
 		return err
@@ -96,7 +106,34 @@ func runGUI() error {
 			g.win.Focus()
 		}
 	})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	dir, err := paths.Dir()
+	if err != nil {
+		cancel()
+		return err
+	}
+	executable, err := lifecycle.Sibling()
+	if err != nil {
+		cancel()
+		return err
+	}
+	service, err := lifecycle.Start(ctx, dir, c.Path, executable, true)
+	if err != nil {
+		cancel()
+		return err
+	}
+	defer func() { _ = service.Stop() }()
+	g.login = lifecycle.LoginRegistration{
+		Path:    filepath.Join(dir, "desktop-login.json"),
+		Enabled: mygo.App.OpenAtLogin,
+		SetEnabled: func(enabled bool) error {
+			// Native login items do not preserve custom shell profile overrides.
+			if enabled && (os.Getenv("UNIC_HOME") != "" || os.Getenv("UNIC_SOCK") != "") {
+				return errors.New("login startup requires the default profile")
+			}
+			return mygo.App.SetOpenAtLogin(enabled)
+		},
+	}
 	defer cancel()
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		// A code nobody is looking at should not stay usable.
@@ -115,11 +152,26 @@ func runGUI() error {
 		}
 	}
 	mygo.App.WhenReady(func() {
+		go func() {
+			select {
+			case <-ctx.Done():
+			case <-service.Done():
+			}
+			mygo.App.Quit()
+		}()
+		g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, false)
+		settings.OnChange = func(_, current config.Config, err error) {
+			if err == nil {
+				g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
+			}
+		}
+		go func() { _ = settings.Watch(ctx) }()
 		setupTray()
 		go notifyPending(ctx, g.c.Path)
 		go func() { _ = clipboardintegration.RunRemote(ctx, g.c, board.MyGo{}, nil) }()
 		g.win = mygo.NewWindow(mygo.WindowOptions{
 			Title: "unic", Width: 480, Height: 640, Content: ui.View(g.view),
+			Hidden: settings.Current().Desktop.StartInBackground,
 		})
 		g.win.OnClose(func(e *mygo.CloseEvent) {
 			if !quitting {

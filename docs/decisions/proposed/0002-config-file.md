@@ -54,3 +54,11 @@
 - `text` 管 `image/*` 以外的所有内存格式(文本、HTML 等);`images` 管 `image/*`;`files` 管文件。
   过滤后为空的剪贴板不发送/不应用。
 - 自定义 `inbox` 是用户的目录:启动清理只删除其中 `clip-*` 子目录,绝不整目录删除。
+
+## Desktop startup settings
+
+`[desktop]` stores launcher-only intent in the same strict TOML document.
+`mode = "normal"`, `launch_at_login = false`, and `start_in_background = false` are the defaults.
+Normal mode owns a fresh service generation. Lightweight mode leaves only a standalone service.
+The service validates and stores these fields without executing desktop operations.
+See [startup architecture](../../architecture/headless.md#desktop-startup-settings) for lifetime, change application and platform boundaries.

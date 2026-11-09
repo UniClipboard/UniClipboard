@@ -99,6 +99,12 @@ func (m *Manager) State() State {
 	if m.cur.Telemetry.Endpoint != m.started.Telemetry.Endpoint {
 		s.RestartRequired = append(s.RestartRequired, "telemetry.endpoint")
 	}
+	if m.cur.Desktop.Mode != m.started.Desktop.Mode {
+		s.RestartRequired = append(s.RestartRequired, "desktop.mode")
+	}
+	if m.cur.Desktop.StartInBackground != m.started.Desktop.StartInBackground {
+		s.RestartRequired = append(s.RestartRequired, "desktop.start_in_background")
+	}
 	if m.cur.Inbox != m.started.Inbox {
 		s.RestartRequired = append(s.RestartRequired, "inbox")
 	}

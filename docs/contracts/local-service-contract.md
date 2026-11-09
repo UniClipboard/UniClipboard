@@ -88,7 +88,8 @@ A service restart invalidates all sessions, handles and application tokens.
 The service does not retain a system clipboard lease across restart.
 On reconnect the adapter reads a fresh baseline, does not broadcast that content, and ignores the receipt IDs returned by the service readiness snapshot. A failed receipt snapshot cannot establish readiness.
 The adapter never replays disconnected backlog into the system clipboard.
-A desktop exit stops capture/application. Network reception and explicit headless submissions continue.
+A normal desktop exit stops capture/application and its owned service.
+A standalone lightweight service continues network reception and explicit headless submissions without a desktop.
 
 ## Export and CLI behavior
 
@@ -106,3 +107,25 @@ File parts retain their declared names; representations use `part-N.txt`, `.html
 Duplicate names, existing files, symlinks at output file names, and path escape fail instead of overwriting.
 A failed export removes only files created by that export.
 Exported copies belong to the user and are independent of Engine cleanup.
+
+## Service lifecycle
+
+`GET /v1/service` returns `{id,pid,directory,desktop_owned}` on the owner-only local socket.
+`id` is a random 128-bit generation identifier. `directory` is the service state-directory identity.
+`POST /v1/service/stop` accepts `{id}` and rejects a mismatched generation with HTTP 409.
+A successful response flushes `{ok:true}` before requesting service cancellation.
+It acknowledges shutdown admission, not completion. Socket removal follows Engine closure and lock release.
+The caller waits for socket removal before starting a replacement.
+No lifecycle endpoint is exposed over TCP. Socket permission remains the same-user authority boundary.
+A launcher does not stop a service whose reported directory differs from its selected profile.
+
+`unicd --desktop-owned` reserves stdin for an anonymous parent-lifetime pipe.
+EOF or a read failure cancels the service, including after abrupt parent death.
+Plain `unicd` remains independent of stdin and ignores desktop startup settings.
+Normal launch restarts the existing service and creates an owned generation.
+Lightweight launch starts or reuses a standalone generation and exits its launcher.
+It refuses to reuse an owned generation. Mode and initial visibility changes require a new desktop launch.
+
+A directory-in-use startup failure exits `unicd` with code 75.
+The desktop may retry only that code within its bounded startup deadline while an earlier service retires.
+Other daemon startup failures exit 1. Invalid daemon arguments exit 2.

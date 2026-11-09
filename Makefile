@@ -20,3 +20,7 @@ package-desktop:
 	go run ./tools/package -desktop
 headless-e2e:
 	UNIC_HEADLESS_E2E=1 UNIC_HEADLESS_ARTIFACTS=$(CURDIR)/.cache/0015-acceptance go test -race ./e2e/headless -v -count=1
+
+.PHONY: desktop-startup-e2e
+desktop-startup-e2e:
+	UNIC_DESKTOP_STARTUP_E2E=1 UNIC_DESKTOP_STARTUP_ARTIFACTS=$(CURDIR)/.cache/desktop-startup-e2e go test -race ./app/desktop/e2e -run '^TestStartupProcesses$$' -v -count=1

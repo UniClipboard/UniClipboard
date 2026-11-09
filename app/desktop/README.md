@@ -19,7 +19,7 @@ unic-desktop --+
 | `internal/desktopdemo` | In-memory layout fixture |
 
 Closing the window hides it and keeps the adapter active. The tray or a second launch shows it again.
-Explicit Quit stops the desktop process. The service continues receiving and storing content.
+Explicit Quit stops the desktop process and its owned service. Lightweight mode runs only the standalone service.
 Pairing requires explicit mutual approval with verified fingerprints. See [identity and trust](../../docs/architecture/identity-and-trust.md).
 
 ## 开发
@@ -147,7 +147,46 @@ See [desktop runtime](../../docs/architecture/desktop-runtime.md).
 ## Independent desktop program
 
 Build `go build -o dist/unic-desktop ./app/desktop/cmd/unic-desktop`.
-Start `unicd` separately, then run `unic-desktop`. Use `unic-desktop --demo` for the existing isolated UI fixture.
+Run `unic-desktop` to restart the profile service and attach the GUI. Use `unic-desktop --demo` for the existing isolated UI fixture.
 The desktop program contains the GUI, system clipboard adapter, tray and notifications.
-Closing its window keeps the adapter running. Explicit quit stops desktop integration.
+Closing its window keeps the adapter running. Explicit quit stops desktop integration and the owned service.
 See [headless architecture](../../docs/architecture/headless.md).
+
+## Startup and runtime modes
+
+Normal mode starts a fresh sibling `unicd` and owns its lifetime.
+If the profile already has a service, the launcher stops that generation before starting its own.
+Desktop process exit also stops its service. Window close only hides the window.
+Lightweight mode starts or reuses a standalone service, then exits the launcher without loading the GUI runtime.
+
+```toml
+[desktop]
+mode = "normal" # "normal" or "lightweight"
+launch_at_login = false
+start_in_background = false
+```
+
+The Settings tab edits these values through the shared configuration API.
+`start_in_background` applies to every normal launch, including manual launches.
+The initial window stays hidden; tray Open or a second normal launch shows it.
+Mode and background changes apply on the next launch.
+Use `unic-desktop --mode normal` to reopen settings when the saved mode is lightweight.
+Use `unic-desktop --mode lightweight` for an explicit service-only launch.
+Neither override changes the saved mode.
+
+Login registration uses the existing mygo native API.
+A running normal desktop applies changed intent and shows actual OS status and failures.
+External system disable remains effective until the user retries or changes the requested value.
+macOS requires a packaged `.app`; flat binaries cannot register a login item.
+The native API does not preserve custom profile environment overrides, so enabling login startup with `UNIC_HOME` or `UNIC_SOCK` set fails visibly.
+A setting changed while only the service is running waits for the next normal desktop session.
+See [startup architecture](../../docs/architecture/headless.md#desktop-startup-settings).
+
+Repeatable process acceptance without opening a GUI:
+
+```sh
+make desktop-startup-e2e
+```
+
+The manifest records source and executable SHA-256 values, process checks and native acceptance gaps.
+See the [acceptance receipt](../../docs/exec/desktop-startup-lifecycle.md).

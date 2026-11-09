@@ -37,6 +37,9 @@ func (g *gui) loadCleanupSettings() {
 		state, err := g.c.Config(ctx)
 		var tags []string
 		if err == nil {
+			g.applyLoginSettings(state.Config.Desktop.LaunchAtLogin, false)
+		}
+		if err == nil {
 			tags, err = g.c.HistoryTags(ctx)
 		}
 		g.mu.Lock()
@@ -81,7 +84,7 @@ func (g *gui) saveCleanupSettings(state config.State) {
 			g.cleanupUI.message = "设置已保存，但未能生效。"
 		default:
 			g.cleanupUI.state = state
-			g.cleanupUI.message = "已保存并生效。"
+			g.cleanupUI.message = "已保存。运行模式和后台启动在下次启动时生效。"
 		}
 		g.mu.Unlock()
 		g.win.Invalidate()
@@ -115,7 +118,7 @@ func (g *gui) cleanupSettingsTab(c *ui.Context, k uikit.Kit) {
 		}
 		k.Text(c, "正在读取设置", uikit.TextProps{})
 	}
-	k.SettingsContent(c, uikit.SettingsContentProps{Label: "自动清理设置"}, func() {
+	k.SettingsContent(c, uikit.SettingsContentProps{Label: "应用设置"}, func() {
 		if view.message != "" {
 			k.Text(c.Key("message"), view.message, uikit.TextProps{})
 		}
@@ -127,7 +130,7 @@ func (g *gui) cleanupSettingsTab(c *ui.Context, k uikit.Kit) {
 		}
 		h := &state.Config.History
 		disabled := view.busy || !h.AutoCleanup
-		changed := false
+		changed := g.startupSettings(c, k, &state, view.busy)
 		k.SettingsGroup(c.Key("history"), uikit.SettingsGroupProps{Title: "历史保留"}, func() {
 			k.SettingsRow(c.Key("enabled"), uikit.SettingsRowProps{Label: "自动清理历史", Description: "按保留规则清理历史记录及应用管理的文件"}, nil, func() {
 				if k.Switch(c.Key("switch"), &h.AutoCleanup, uikit.SwitchProps{Label: "自动清理历史", LabelHidden: true, Disabled: view.busy}).Changed() {

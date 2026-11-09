@@ -1,5 +1,7 @@
 ---
 paths:
+  - app/desktop/internal/lifecycle
+  - app/desktop/cmd/unic-desktop
   - internal/localconfig
   - internal/localapi
   - app/service/internal/server
@@ -30,6 +32,9 @@ CLI changes and file edits use the same validation and Engine settings.
 
 | Key | Default | Effect |
 |---|---|---|
+| `desktop.mode` | `"normal"` | Next launch: normal desktop owns/restarts its service; lightweight leaves only a standalone service. |
+| `desktop.launch_at_login` | `false` | Running normal desktop applies login registration; actual OS status is displayed separately. |
+| `desktop.start_in_background` | `false` | Next normal launch: create the main window hidden while tray and clipboard integration run. |
 | `sync.enabled` | `true` | Pause content sends and receives. Keep connections and local history. |
 | `sync.automatic` | `true` | Send new observed copies. Local history, manual sends, receives, and Actions remain independent. |
 | `sync.on_restore` | `false` | After a successful explicit history restore, dispatch the restored content once. |
@@ -59,7 +64,10 @@ The revision tracks the latest observed disk document, including an invalid docu
 
 The saved file and runtime Engine state do not share a transaction.
 `apply_error` reports a saved configuration that the host could not apply.
-`restart_required` reports fields that need a daemon restart, including `inbox`.
+`restart_required` reports fields that need a restart, including `inbox` for the service
+and `desktop.mode` / `desktop.start_in_background` for the next desktop launch.
+The service only validates and stores desktop settings. It never registers a login item or opens a window.
+See [headless architecture](headless.md#desktop-startup-settings) for desktop ownership, actual login status and platform limits.
 An external editor does not share the daemon write mutex; a later external save remains authoritative through the file watcher.
 
 ## Restore
@@ -152,7 +160,7 @@ See the [execution receipt](../exec/0016-sync-and-file-settings.md) for exact ve
 
 ## Gaps
 
-The settings GUI does not expose these controls yet.
+The production Settings tab exposes startup and history-cleanup controls. Other controls remain available through CLI/TOML.
 Native clipboard and folder-picker interaction acceptance remains with the user.
 Crash injection at every filesystem/database instruction and forced disk-full/unlink-failure acceptance are not complete.
 Unknown temporary leftovers are not deleted through filename scans.
@@ -175,3 +183,9 @@ Local logs are asynchronous and bounded under the profile directory. Remote logs
 `unic logs level` queries the independent local/remote thresholds. A temporary override uses `--for` and `--target`.
 `unic diagnostics telemetry` reports signal state, losses, and pending endpoint restart without disclosing the endpoint or credentials.
 See the [observability architecture](observability.md) and [contract](../contracts/observability-contract.md) for the execution points, strict socket DTOs, privacy, and cancellation barrier.
+
+## Workspace verification identity
+
+The `verified` front matter remains the committed baseline while the workspace has uncommitted changes.
+The startup acceptance manifest binds the current source and executable hashes.
+`docscheck -bump` requires committed source and does not accept unrelated dirty paths in this page's scope.

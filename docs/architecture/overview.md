@@ -62,6 +62,32 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 - 业务地图：[流水线与本机历史](pipeline.md)、[设备身份、信任与配对](identity-and-trust.md)。
 - 应用说明：[桌面](../../app/desktop/README.md)、[macOS 预览](../../app/mac/README.md)、[Android](../../app/android/README.md)、[iOS](../../app/ios/README.md)。
 
+## Desktop layout demo
+
+`unic-desktop --demo` opens the native desktop layouts with in-memory fixtures.
+The composition follows local `main` commit `8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7`.
+`app/desktop/internal/desktopdemo` owns demo state and page composition.
+The existing UI Kit owns Adwaita, macOS glass, and Fluent styling.
+The macOS demo uses a unified native title bar, a 1100 x 720 default window, toolbar glass capsules, and an inset floating detail action bar.
+The Kit exposes a toolbar mode for segmented controls and a secondary Glass button variant; other skins retain their native styling.
+MacOS capsule surfaces share mygo plugins/glass.Glass (Regular, Interactive). The renderer supplies refraction, reactive rim lighting and press growth. The shader samples this native Go UI frame; direct NSGlassEffectView composition is not used for these controls.
+MacOS buttons and segments share physical press feedback: an 80 ms compression and a 350 ms spring return. Glass buttons retain the material's press expansion. The toolbar selection thumb moves continuously with retargetable spring motion. Reduce Motion suppresses these spatial effects; pointer selection does not paint the keyboard-only segment focus ring.
+MacOS Select, uncontrolled Menu, and uncontrolled ContextMenu use mygo's system menu API. Kit.Apply installs SystemMenus. On macOS, mygo builds NSMenu and lets the OS own material, layout, highlighting, tracking, and presentation animation. These menus open on pointer-down and do not use the Kit's popup animation. Explicit Open pointers retain the caller-controlled in-window overlay contract. Menu entries share the existing list-menu adapter and cached glyph/swatch images. Select shows its focus ring only for keyboard focus.
+System-menu triggers align to the center of their parent row, matching adjacent toolbar command buttons without a MenuBase wrapper. The history toolbar and detail action bar share a send-target menu projected from the current remote-device registry, with All Devices and individual peers, excluding the local device. The detail trigger retains its large Glass button style. Selection records a simulated send result; opening and cancellation do not send.
+The history demo composes Kit.TokenSearchField with its toolbar disclosure variant and a separate demo-owned search model (desktopdemo/search_model.go). The model handles @ devices, # tags, / types, on: time and ext: extensions; candidates, counts, chips, keyboard completion, literal fallback, and caret-preserving edits share the existing filter state. MacOS search expands from a 32-point icon to a 460-point field over 280 ms. Escape closes candidates, clears search, then collapses an empty field. The title bar, traffic lights, sidebar and command capsule keep their existing implementation; no AppKit toolbar replacement is installed. Other skins use their normal token field. Reduce Motion follows the renderer preference.
+Search badge removal resets the whole filter dimension. Backspace in an empty input deletes the entire last badge, including all tags grouped in it; it does not reopen the badge text for editing. Other conditions remain active.
+The history demo tag registry is shared by sidebar visibility, search candidates, list badges, and detail badges. Its management sheet disables column resizing and reordering through TableProps.FixedColumns, which uses mygo TableColumn.Fixed. Other tables keep their existing drag behavior. The sheet provides a table, sorting, filtering, inline creation/renaming, colors, merging, and deletion. Builtin tags allow Show Entries but reject destructive edits. Table context menus use the existing platform menu adapter (NSMenu on macOS). Deletion and merging preserve history entries. The detail assignment picker remains separate. Tag metadata and associations stay in memory. Kit tables with a filling column retain a flexible trailing column after resizing would otherwise make all columns fixed, preventing uncovered trailing space while keeping the dragged divider responsive. These tables bound column growth to the viewport and reserve space for the remaining columns, so dragging cannot push trailing controls outside the table.
+The animated sidebar viewport has no padding. A fixed-width inner body owns the padding, so the viewport can reach zero without a final width jump.
+The shared macOS Sheet uses a 300 ms downward entry and a 220 ms upward exit with a separately fading scrim. DialogBase continues to own input scoping and focus restoration. Sheet retains the original live dialog and modal scope until exit completes, then restores opener focus. The panel keeps its opacity and rendering path while the scrim fades separately. Callers keep invoking Sheet while closed and clear transient content state in OnClosed after exit. Virtual tables are not copied or relaid out through an exit snapshot. Reduce Motion suppresses panel translation. Other skins retain their existing dialog behavior.
+The demo includes history list/grid/detail, a device management sheet, nine settings categories, entry flows, and a quick panel composition.
+Below 1100 px, the sidebar opens as an overlay. Below 760 px, history list and detail share one pane.
+Desktop pages and Kit components construct standard vertical scroll containers through `Kit.Scroll`; direct `ui.Scroll` construction is confined to that factory. Lists and grids reuse its indicator policy.
+Detail, nested previews, settings, sheets, and navigation follow the same rule: show after position changes and hide after 600 ms without movement; hover alone does not show an indicator. Each container keeps independent state. History list and grid content also reserve a scrollbar gutter.
+The demo does not create an API client, write the clipboard, register global shortcuts, or persist settings.
+`unic-desktop` continues to use the daemon-backed interface.
+Build checks do not establish native layout or interaction acceptance.
+See the [demo acceptance guide](../../app/desktop/UI-DEMO.md) for source mappings and manual checks.
+
 ## 缺口
 
 - 桌面界面原型待定；mygo + 自定义 UI Kit 已接入的现有页面不代表最终布局与交互规格。

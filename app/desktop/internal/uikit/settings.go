@@ -19,7 +19,7 @@ func (k Kit) SettingsContent(c *ui.Context, p SettingsContentProps, body func())
 	case Windows:
 		maxW, gap, pad = 1000, 20, []float32{20, 24}
 	}
-	scroll := ui.Scroll(c).Role(ui.RoleRegion).Label(p.Label).Grow(1).MinHeight(0)
+	scroll := k.Scroll(c).Role(ui.RoleRegion).Label(p.Label).Grow(1).MinHeight(0)
 	if k.Skin == Linux {
 		scroll.Background(t.Window)
 	}

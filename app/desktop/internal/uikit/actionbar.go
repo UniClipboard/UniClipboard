@@ -17,15 +17,13 @@ func (k Kit) ActionBar(c *ui.Context, p ActionBarProps, body func()) ui.Element 
 	hint := func(size float32) {
 		if p.Hint != "" {
 			ui.Spacer(c)
-			ui.Text(c, p.Hint).FontSize(size).TextColor(sec).Label(p.Hint)
+			ui.Text(c, p.Hint).FontSize(size).TextColor(sec).Label(p.Hint).SingleLine().MinWidth(0).Shrink(100)
 		}
 	}
 	switch k.Skin {
 	case MacOS:
-		bar := ui.Row(c).Height(64).Padding(0, 14).Radius(20).Gap(10).AlignItems(ui.Center).
-			Background(k.Color("glass"))
-		k.shadowed(bar, "glass-shadow")
-		bar.InsetShadow(0, 0, 0, .5, k.Color("glass-rim"))
+		bar := ui.Row(c).Height(60).Padding(0, 12).Radius(30).Gap(8).AlignItems(ui.Center).Clip()
+		k.glassSurface(bar)
 		return bar.Children(func() { body(); hint(11) })
 	case Windows:
 		return ui.Column(c).Children(func() {

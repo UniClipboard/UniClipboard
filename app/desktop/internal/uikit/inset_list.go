@@ -39,10 +39,16 @@ func (k Kit) InsetList(c *ui.Context, p InsetListProps) InsetListResult {
 	}
 	box := ui.Column(c).Label(p.Label).Role(ui.RoleList).Radius(rad).Clip().Background(k.surfaceSolid()).
 		Border(1, k.Sem("border"))
+	if k.Skin == MacOS {
+		box.Background(k.Color("fill-4")).Border(.5, k.Color("separator")).Radius(12)
+	}
 	box.Children(func() {
 		for i, r := range p.Rows {
 			row := ui.Row(c.Key(r.ID)).AlignItems(ui.Center).Gap(10).Padding(0, 12).MinHeight(40).Role(ui.RoleListItem).
 				Label(r.Title)
+			if k.Skin == MacOS {
+				row.MinHeight(34)
+			}
 			first := i == 0
 			row.DrawOver(func(pt *ui.Painter, rc ui.Rect) {
 				if !first {

@@ -90,7 +90,7 @@ func (k Kit) SourceList(c *ui.Context, st *SourceState, p SourceListProps) ui.El
 		if p.Header != nil {
 			p.Header()
 		}
-		list := ui.Scroll(c).Grow(1).MinHeight(0).Gap(10).Label(p.Label).Role(ui.RoleList).Focusable()
+		list := k.Scroll(c).Grow(1).MinHeight(0).Gap(10).Label(p.Label).Role(ui.RoleList).Focusable()
 		list.Children(func() {
 			for _, s := range p.Sections {
 				k.sourceSection(c, st, s, lk)

@@ -109,6 +109,14 @@ func (k Kit) dressButton(c *ui.Context, e ui.Element, label string, p ButtonProp
 		weight = 600
 	}
 	e.TextColor(fg)
+	// Glass already deforms its material on press; preserve that expansion.
+	if p.Variant != Glass && p.Variant != Link {
+		depth := float32(.97)
+		if iconOnly || p.Variant == Subtle {
+			depth = .92
+		}
+		k.pressFeedback(c, e, depth)
+	}
 
 	e.Children(func() {
 		switch {
@@ -184,6 +192,8 @@ func (k Kit) styleMacButton(e ui.Element, v ButtonVariant, st ctrlVisual, disabl
 		return k.Color("label-3")
 	}
 	switch v {
+	case Glass:
+		k.glassSurface(e)
 	case Primary:
 		e.Background(pick(k.Color("accent"), k.Color("accent"), k.Color("accent-pressed")))
 		e.InsetShadow(0, 0.5, 0, 0, ui.RGBA(255, 255, 255, .25)).Shadow(0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, .2))

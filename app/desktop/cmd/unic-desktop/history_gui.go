@@ -79,7 +79,7 @@ func (g *gui) historyTab(c *ui.Context, s snapshot) {
 	if len(s.history) == 0 {
 		return
 	}
-	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+	k.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).Gap(10).Padding(4).Children(func() {
 			for _, item := range s.history {
 				k.SettingsGroup(c.Key(item.ID), uikit.SettingsGroupProps{}, func() {

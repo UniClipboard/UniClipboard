@@ -3,6 +3,7 @@ package uikit
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -166,6 +167,11 @@ func (k Kit) popupSurface(panel ui.Element) ui.Element {
 		panel.Padding(5).Radius(13).Background(k.Color("popup-opaque")).MinWidth(250)
 		k.shadowed(panel, "menu-shadow")
 		panel.InsetShadow(0, 0, 0, .5, k.Color("glass-rim"))
+		panel.AttachedOrigin().Transition(ui.ElementTransition{
+			Duration: 150 * time.Millisecond, Ease: ui.EaseOut,
+			Colors: true,
+			Enter:  &ui.Motion{Scale: .94, Opacity: 0},
+		})
 	case Windows:
 		panel.Padding(4).Radius(k.Px("borderRadiusXLarge")).MinWidth(208).
 			Background(k.Color("colorNeutralBackground1")).Border(1, k.Color("w11-stroke-elevation"))

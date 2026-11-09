@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopdemo"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 )
@@ -18,8 +19,10 @@ func client() (*api.Client, error) {
 }
 func main() {
 	var err error
-	if len(os.Args) > 1 {
-		err = fmt.Errorf("usage: unic-desktop")
+	if len(os.Args) > 1 && os.Args[1] == "--demo" {
+		err = desktopdemo.Run(os.Args[2:])
+	} else if len(os.Args) > 1 {
+		err = fmt.Errorf("usage: unic-desktop [--demo ...]")
 	} else {
 		err = runGUI()
 	}

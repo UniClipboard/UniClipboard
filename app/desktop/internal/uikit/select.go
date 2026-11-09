@@ -18,6 +18,8 @@ type SelectProps struct {
 	// Filter narrows the list in view (a filter pill in the list's filter row); Placeholder is
 	// the filter's name while nothing is chosen, and a chosen value turns the pill accent-tinted.
 	Filter bool
+	// Glass matches adjacent macOS search capsules while retaining the system menu.
+	Glass bool
 }
 
 // SelectResult is what Select reports.
@@ -42,15 +44,30 @@ func (k Kit) Select(c *ui.Context, p SelectProps) SelectResult {
 	if p.Value == nil {
 		p.Value = &local
 	}
+	before := *p.Value
+	var sel ui.SelectParts[string]
+	var tr ui.Element
+	open := false
+	if k.Skin == MacOS {
+		tr = ui.ButtonBase(c).Role(ui.RolePopUpButton).Label(p.Label).Disabled(p.Disabled)
+		tr.Menu(func(m *ui.Menu) {
+			for _, it := range p.Items {
+				if m.Item(it.Label).ID(it.Value).Radio(it.Value == *p.Value).Chosen() {
+					*p.Value = it.Value
+				}
+			}
+		})
+	} else {
+		sel = ui.SelectBase(c, p.Value)
+		tr, open = sel.Trigger, sel.Open()
+	}
 	chosen := -1
 	for i, it := range p.Items {
 		if it.Value == *p.Value {
 			chosen = i
 		}
 	}
-	sel := ui.SelectBase(c, p.Value)
-	tr := sel.Trigger.Label(p.Label).Disabled(p.Disabled).FontSize(pal.size).AlignItems(ui.Center).Gap(8).TextColor(pal.fg)
-	open := sel.Open()
+	tr.Label(p.Label).Disabled(p.Disabled).FontSize(pal.size).AlignItems(ui.Center).Gap(8).TextColor(pal.fg)
 	h, padL, padR := pal.h, pal.padX+2, pal.padX
 	bg := pal.bg
 	switch k.Skin {
@@ -67,7 +84,7 @@ func (k Kit) Select(c *ui.Context, p SelectProps) SelectResult {
 	case MacOS:
 		h, padL, padR = 24, 10, 6
 		tr.Background(k.Color("ctrl")).Radius(7).Shadow(0, .5, 1, 0, ui.RGBA(0, 0, 0, .25)).Shadow(0, 0, 0, .5, pal.edge)
-		if tr.Focused() {
+		if tr.FocusVisible() {
 			tr.Shadow(0, 0, 0, 3.5, pal.focus)
 		}
 	default:
@@ -109,11 +126,22 @@ func (k Kit) Select(c *ui.Context, p SelectProps) SelectResult {
 			}
 		}
 	}
+	if k.Skin == MacOS && p.Glass && !p.Filter {
+		h, padL, padR = 32, 12, 12
+		tr.Background(ui.Transparent).Border(0, ui.Transparent).Radius(16).NoShadow()
+		if tr.FocusVisible() {
+			tr.Shadow(0, 0, 0, 3.5, pal.focus)
+		}
+		k.glassSurface(tr)
+	}
 	tr.Height(h).PaddingStart(padL).PaddingEnd(padR).Opacity(map[bool]float32{true: .5, false: 1}[p.Disabled])
 	tr.Children(func() {
 		ui.Text(c.Key("value"), text).TextColor(textCol).SingleLine().Grow(1)
 		fldChevron(c.Key("chevron"), 12, pal.fg2)
 	})
+	if k.Skin == MacOS {
+		return SelectResult{Element: tr, Changed: *p.Value != before}
+	}
 	w := tr.Bounds().W
 	sel.Popup(func(panel ui.Element) {
 		k.fldPopup(panel, pal, max(w, 120)).Padding(4)

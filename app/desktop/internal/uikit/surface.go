@@ -67,6 +67,15 @@ type sidebarGlass struct {
 	blur float32
 }
 
+// glassSurface applies the shared toolbar/search/action capsule material.
+func (k Kit) glassSurface(e ui.Element) ui.Element {
+	// Sample the native UI already painted in this frame. Native: true puts
+	// NSGlassEffectView under the window's render surface and cannot sample
+	// these controls; the maintained renderer plugin provides their lens,
+	// refraction, reactive rim, press growth and accessibility fallbacks.
+	return e.Material(glass.Glass{Style: glass.Regular, Interactive: true})
+}
+
 func (m sidebarGlass) PaintMaterial(p *ui.Painter, r ui.Rect, radii [4]float32) {
 	fill := m.fill
 	if p.Preferences().ReduceTransparency {

@@ -102,7 +102,7 @@ type navLook struct {
 func (k Kit) navLook() navLook {
 	switch k.Skin {
 	case MacOS:
-		return navLook{h: 28, radius: 8, padX: 8, gap: 8, icon: 16, heading: 11}
+		return navLook{h: 28, radius: 8, padX: 10, gap: 8, icon: 18, heading: 11}
 	case Windows:
 		return navLook{h: 36, radius: k.Px("borderRadiusMedium"), padX: 12, gap: 12, icon: 16, heading: 12}
 	}
@@ -148,6 +148,9 @@ func (k Kit) navStatusColor(t StatusTone) ui.Color {
 	case StatusCritical:
 		return k.Color("red")
 	}
+	if k.Skin == MacOS {
+		return k.Color("label-3")
+	}
 	return k.Color("fg3")
 }
 
@@ -182,7 +185,10 @@ func (k Kit) SidebarNavEntry(c *ui.Context, st *NavState, item SidebarNavItem) u
 		case item.Swatch != "":
 			box := ui.Row(c).Size(lk.icon, lk.icon).Justify(ui.Center).AlignItems(ui.Center).Shrink(0)
 			box.Children(func() {
-				ui.Box(c).Size(10, 10).Radius(3).Background(k.SwatchColor(item.Swatch))
+				dot := ui.Box(c).Size(10, 10).Radius(3).Background(k.SwatchColor(item.Swatch))
+				if k.Skin == MacOS {
+					dot.Size(8, 8).Radius(4)
+				}
 			})
 		case item.Icon != "":
 			ic := k.Icon(c, item.Icon, lk.icon)
@@ -239,8 +245,11 @@ func (k Kit) SidebarNav(c *ui.Context, st *NavState, p SidebarNavProps) ui.Eleme
 	}
 	lk := k.navLook()
 	nav := ui.Column(c).Label(p.Label).Role(ui.RoleList).Focusable().Gap(2).Padding(8, 8)
+	if k.Skin == MacOS {
+		nav.Padding(0).Gap(1)
+	}
 	nav.Children(func() {
-		body := ui.Scroll(c).Grow(1).MinHeight(0).Gap(2)
+		body := k.Scroll(c).Grow(1).MinHeight(0).Gap(2)
 		body.Children(func() {
 			for _, s := range p.Sections {
 				k.navSection(c, st, s, lk)
@@ -283,10 +292,19 @@ func (k Kit) navKeys(nav ui.Element, st *NavState, order []string) {
 
 func (k Kit) navSection(c *ui.Context, st *NavState, s SidebarNavSection, lk navLook) {
 	sec := ui.Column(c.Key(s.ID)).Gap(2).Shrink(0)
+	if k.Skin == MacOS {
+		sec.Gap(1)
+		if s.Title != "" {
+			sec.Margin(10, 0, 0)
+		}
+	}
 	sec.Children(func() {
 		collapsed := s.Collapse != nil && s.Collapse.Collapsed
 		if s.Title != "" || s.Action != nil || s.Collapse != nil {
 			head := ui.Row(c).AlignItems(ui.Center).Height(lk.h-6).Padding(0, lk.padX).Gap(4)
+			if k.Skin == MacOS {
+				head.Height(28).Padding(0, 6, 0, 10).AlignItems(ui.Center)
+			}
 			if k.Skin == Windows {
 				head.Height(lk.h)
 			}
@@ -333,6 +351,17 @@ func (k Kit) navSection(c *ui.Context, st *NavState, s SidebarNavSection, lk nav
 			})
 		}
 		if s.More != nil {
+			if k.Skin == MacOS {
+				b := ui.ButtonBase(c.Key("more")).Label(s.More.Label).Height(24).Padding(0, 0, 0, 36).Radius(6).Justify(ui.Start).AlignItems(ui.Center)
+				if b.Focused() {
+					b.Shadow(0, 0, 0, 3.5, k.Color("focus"))
+				}
+				b.Children(func() { k.Text(c, s.More.Label, TextProps{Role: RoleCallout, Tone: ToneSecondary}) })
+				if b.Clicked() {
+					st.cmd, st.cmdSec = NavMore, s.ID
+				}
+				return
+			}
 			if k.Button(c.Key("more"), s.More.Label, ButtonProps{Variant: Link, Size: SizeSmall}).Clicked() {
 				st.cmd, st.cmdSec = NavMore, s.ID
 			}

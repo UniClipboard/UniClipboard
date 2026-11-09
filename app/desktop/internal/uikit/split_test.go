@@ -58,8 +58,9 @@ func TestSplitView(t *testing.T) {
 		if !hidden || toggled == 0 {
 			t.Fatalf("toggle: hidden=%v toggled=%d", hidden, toggled)
 		}
-		if tt.HasText("SidebarBody") {
-			t.Fatal("sidebar still built after hiding")
+		// The zero-width body stays mounted to preserve animation identity.
+		if _, ok := tt.Access("SidebarBody"); ok {
+			t.Fatal("hidden sidebar is still exposed to accessibility")
 		}
 
 		// Narrow window: one pane at a time, Back returns to the list.

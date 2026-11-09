@@ -25,7 +25,13 @@ func TestSelect(t *testing.T) {
 			if err := tt.Click("Kind"); err != nil {
 				t.Fatal(err)
 			}
-			if err := tt.Click("Gamma"); err != nil {
+			var err error
+			if k.Skin == MacOS {
+				err = tt.ChooseMenuItem("Gamma")
+			} else {
+				err = tt.Click("Gamma")
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 			if v != "c" {
@@ -36,6 +42,9 @@ func TestSelect(t *testing.T) {
 			}
 			tt.Key(0, ui.KeyDown) // trigger keeps focus; arrows open/move
 			tt.Key(0, ui.KeyEnter)
+			if k.Skin == MacOS {
+				tt.CloseMenu()
+			}
 			_ = tt.Click("Locked")
 			if off != "b" {
 				t.Fatal("disabled select changed")

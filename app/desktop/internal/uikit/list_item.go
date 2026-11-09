@@ -88,7 +88,7 @@ func (k Kit) runList(c *ui.Context, st *ListState, r listRun) ui.Element {
 		}
 	}
 	restore := k.withListTheme(c)
-	e := ui.List(c, &st.list, len(r.ids)).Rows(func(lr ui.ListRow) { r.row(lr, lr.Index) })
+	e := scrollingIndicator(c, ui.List(c, &st.list, len(r.ids))).Rows(func(lr ui.ListRow) { r.row(lr, lr.Index) })
 	restore()
 	e.Label(r.label)
 	if !r.multi {

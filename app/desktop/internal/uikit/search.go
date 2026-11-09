@@ -41,6 +41,13 @@ func (k Kit) SearchField(c *ui.Context, p SearchFieldProps) FieldResult {
 		}
 	})
 	k.fldStyle(row, pal, in.Focused(), false, p.Disabled)
+	if k.Skin == MacOS {
+		row.Background(ui.Transparent).Border(0, ui.Transparent).NoShadow()
+		if in.Focused() {
+			row.Shadow(0, 0, 0, 3.5, pal.focus)
+		}
+		k.glassSurface(row)
+	}
 	return FieldResult{Element: row, Input: in, Edited: in.Changed(), Submitted: in.Submitted(),
 		Escaped: in.Focused() && in.Shortcut(0, ui.KeyEscape)}
 }

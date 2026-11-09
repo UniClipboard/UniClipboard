@@ -54,7 +54,7 @@ func (k Kit) EntryPage(c *ui.Context, p EntryPageProps, body func(), actions fun
 		maxW, iconSize, pad = 480, 40, []float32{0, 40}
 	}
 	root.Children(func() {
-		ui.Scroll(c.Key("scroll")).Grow(1).MinHeight(0).Children(func() {
+		k.Scroll(c.Key("scroll")).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c.Key("align")).Padding(pad...).AlignItems(ui.Center).Justify(ui.Center).MinHeight(0).Children(func() {
 				ui.Column(c.Key("column")).Width(maxW).MaxWidthPercent(100).Padding(24, 0, 28).Children(func() {
 					align := ui.Center

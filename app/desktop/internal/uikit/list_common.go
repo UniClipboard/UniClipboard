@@ -16,10 +16,12 @@ import (
 // ListState 是一个列表实例的持久状态（放在应用/视图状态里，每个列表一个，不要共用）。
 // 选中集合按条目 id 保存；每帧的交互结果通过访问器读取（immediate-mode，无回调）。
 type ListState struct {
-	list ui.ListState
-	grid gridSel
-	sel  ui.Selection[string]
-	cur  int // 键盘移动的起点行（ui.ListState.Selected）
+	tableWidth        float32
+	tableColumnWidths map[string]float32
+	list              ui.ListState
+	grid              gridSel
+	sel               ui.Selection[string]
+	cur               int // 键盘移动的起点行（ui.ListState.Selected）
 
 	ids   []string       // 当前帧 行号 -> 条目 id（分组头/占位行为 ""）
 	rowOf map[string]int // id -> 行号
@@ -435,10 +437,10 @@ func menuFromEntries(m *ui.Menu, items []MenuEntry, chosen *string) {
 			continue
 		}
 		if len(e.Children) > 0 {
-			m.Submenu(e.Label, func(sub *ui.Menu) { menuFromEntries(sub, e.Children, chosen) }).Disabled(e.Disabled)
+			m.Submenu(e.Label, func(sub *ui.Menu) { menuFromEntries(sub, e.Children, chosen) }).Disabled(e.Disabled).Icon(menuEntryImage(e))
 			continue
 		}
-		it := m.Item(e.Label).ID(e.ID).Disabled(e.Disabled)
+		it := m.Item(e.Label).ID(e.ID).Disabled(e.Disabled).Icon(menuEntryImage(e))
 		if e.Destructive {
 			it.Danger()
 		}

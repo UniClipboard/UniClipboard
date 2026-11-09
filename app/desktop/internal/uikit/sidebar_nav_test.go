@@ -102,7 +102,13 @@ func TestSidebarNavCompact(t *testing.T) {
 		if err := tt.Click("Tags"); err != nil {
 			t.Fatal(err)
 		}
-		if err := tt.Click("Work"); err != nil {
+		var err error
+		if k.Skin == MacOS {
+			err = tt.ChooseMenuItem("Work")
+		} else {
+			err = tt.Click("Work")
+		}
+		if err != nil {
 			t.Fatal(err)
 		}
 		if st.Value != "t1" {

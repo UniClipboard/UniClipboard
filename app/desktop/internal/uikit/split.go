@@ -1,6 +1,10 @@
 package uikit
 
-import "github.com/egoist/mygo/ui"
+import (
+	"time"
+
+	"github.com/egoist/mygo/ui"
+)
 
 // layTokens are the skin colours shared by the layout components (split view, panes,
 // master-detail, headers, preview, settings, transfer ...), resolved once per call so the
@@ -158,7 +162,19 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 	}
 
 	root := ui.Column(c).Grow(1).MinHeight(0).AlignSelf(ui.Stretch).Clip().Background(t.Window).AlignItems(ui.Stretch)
-	curW := root.AnimateTo("sidebar", target, ui.Smooth)
+	motion := ui.Smooth
+	if k.Skin == MacOS {
+		motion = ui.Animation{Duration: 280 * time.Millisecond, Ease: ui.CubicBezier(.2, 0, 0, 1)}
+	}
+	curW := root.AnimateTo("sidebar", target, motion)
+	// Derive all macOS chrome positions from the same animated width.
+	// Reading hidden directly would jump the controls to their final positions.
+	reveal := float32(1)
+	if !overlay && sidebarW > 0 {
+		reveal = min(1, max(0, curW/sidebarW))
+	} else if hidden {
+		reveal = 0
+	}
 	var res SplitViewResult
 	res.Element = root
 
@@ -189,15 +205,12 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			s.Role(ui.RoleDialog).Label("Sidebar")
 		}
 		switch k.Skin {
-		case MacOS:
-			s.Padding(layMacToolbar, 10, 12)
 		case Windows:
-			s.Padding(4, 6, 10)
 			if overlayPanel {
 				s.Shadow(0, 8, 28, 0, ui.RGBA(0, 0, 0, .28)).Radius(0, k.Px("borderRadiusXLarge"), 0, 0)
 			}
-		default:
-			s.InsetShadow(-1, 0, 0, 0, t.Border).Padding(8)
+		case Linux:
+			s.InsetShadow(-1, 0, 0, 0, t.Border)
 		}
 		if overlayPanel {
 			s.Absolute().Left(0).Bottom(0).ZIndex(3)
@@ -209,8 +222,22 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			s.Background(k.Sem("sidebar"))
 		}
 		s.Children(func() {
-			// The body keeps its natural width while the column animates, so it never squashes.
-			ui.Column(c.Key("split-sidebar-body")).MinWidth(width).Grow(1).MinHeight(0).Children(p.Sidebar)
+			// Only the outer viewport changes width. Padding belongs to this
+			// fixed-width inner body: padding on the viewport would impose a
+			// 20 px minimum on macOS, followed by a jump when it unmounts.
+			body := ui.Column(c.Key("split-sidebar-body")).Width(sidebarW).MinWidth(sidebarW).Grow(1).MinHeight(0).AccessHidden(hidden)
+			switch k.Skin {
+			case MacOS:
+				body.Padding(layMacToolbar, 10, 12)
+			case Windows:
+				body.Padding(4, 6, 10)
+			default:
+				body.Padding(8)
+			}
+			if k.Skin == MacOS && !overlay {
+				body.Transform(ui.Translation((reveal-1)*sidebarW, 0))
+			}
+			body.Children(p.Sidebar)
 		})
 	}
 
@@ -226,12 +253,17 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			Label(p.Title)
 		switch k.Skin {
 		case MacOS:
-			bar.Padding(8, 12, 0, 16).Gap(10)
+			inset := float32(16)
+			if p.Sidebar != nil {
+				inset += 108 * (1 - reveal)
+			}
+			bar.Padding(8, 12, 0, inset).Gap(10)
 		case Windows:
 			bar.Padding(0, 8, 0, 4)
 		default:
 			bar.Padding(0, 8).Background(t.Header).InsetShadow(0, -1, 0, 0, t.Border)
 		}
+		bar.DragWindow()
 		bar.Children(func() {
 			if detail {
 				back := k.Button(c.Key("split-back"), p.BackLabel, ButtonProps{Variant: Subtle, Icon: IconBack})
@@ -239,10 +271,15 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 					*p.DetailOpen = false
 				}
 			}
-			toggle()
+			if k.Skin != MacOS {
+				toggle()
+			}
 			heading := func() {
 				ui.Row(c.Key("split-heading")).Gap(8).AlignItems(ui.Baseline).MinWidth(0).Children(func() {
-					k.Text(c.Key("t"), p.Title, TextProps{Role: RoleHeadline, Emphasized: true, Truncate: true})
+					title := k.Text(c.Key("t"), p.Title, TextProps{Role: RoleHeadline, Emphasized: true, Truncate: true})
+					if k.Skin == MacOS {
+						title.FontSize(15)
+					}
 					if p.Subtitle != "" {
 						k.Text(c.Key("s"), p.Subtitle, TextProps{Role: RoleCaption, Tone: ToneSecondary, Truncate: true})
 					}
@@ -273,7 +310,12 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				}
 			}
 			if k.Skin != Windows && p.Search != nil {
-				ui.Row(c.Key("split-search")).Width(260).MinWidth(120).Shrink(1).Children(p.Search)
+				width := float32(260)
+				search := ui.Row(c.Key("split-search")).Shrink(1)
+				if k.Skin != MacOS {
+					search.Width(width).MinWidth(120)
+				}
+				search.Children(p.Search)
 			}
 			if p.Toolbar != nil {
 				ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
@@ -303,11 +345,17 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			toolbar()
 		}
 		ui.Row(c.Key("split-body")).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-			if curW > 0.5 {
-				sidebar(curW, false)
+			if !overlay && p.Sidebar != nil {
+				// Keep the viewport mounted at zero width, preserving navigation
+				// state and avoiding a structural jump at the end of the motion.
+				sidebar(max(0, curW), false)
 			}
 			panes()
 		})
+		if k.Skin == MacOS && p.SidebarHidden != nil && p.SidebarToggleLabel != "" {
+			x := 92 + (sidebarW-40-92)*reveal
+			ui.Row(c.Key("sidebar-chrome")).Absolute().Left(x).Top(12).Size(32, 32).ZIndex(4).AlignItems(ui.Center).Justify(ui.Center).Children(toggle)
+		}
 		if overlay && !hidden {
 			// Light dismiss: the scrim and Escape ask the sidebar to hide again.
 			scrim := ui.ButtonBase(c.Key("split-scrim")).Absolute().Left(0).Top(0).Right(0).Bottom(0).

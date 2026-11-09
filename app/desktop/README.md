@@ -16,12 +16,23 @@ unic-desktop --+
 | `cmd/unic-desktop` | GUI and graphical session lifecycle |
 | `internal/board` | Native clipboard access |
 | `internal/uikit` | Adwaita, macOS glass and Fluent component skins |
+| `internal/desktopdemo` | In-memory layout fixture |
 
 Closing the window hides it and keeps the adapter active. The tray or a second launch shows it again.
 Explicit Quit stops the desktop process. The service continues receiving and storing content.
 Pairing requires explicit mutual approval with verified fingerprints. See [identity and trust](../../docs/architecture/identity-and-trust.md).
 
 ## 开发
+
+### Native layout demo
+
+Build `unic-desktop`, then run `unic-desktop --demo` to open the restored layouts with local fixtures.
+Use `UNIC_UI_SKIN=linux|macos|windows` to select a skin.
+Use `--theme light|dark|system` to select a color mode.
+Use `--page history|devices|settings|setup|unlock|startup|recovery|quick-panel` to choose the initial page.
+The demo does not require `unicd`. All changes remain in memory.
+The daemon-backed `unic-desktop` entry remains available.
+See [UI-DEMO.md](UI-DEMO.md) for the reference commit, scope, and repeatable acceptance steps.
 
 ```sh
 go build -o unic-desktop ./app/desktop/cmd/unic-desktop
@@ -136,7 +147,7 @@ See [desktop runtime](../../docs/architecture/desktop-runtime.md).
 ## Independent desktop program
 
 Build `go build -o dist/unic-desktop ./app/desktop/cmd/unic-desktop`.
-Start `unicd` separately, then run `unic-desktop`.
+Start `unicd` separately, then run `unic-desktop`. Use `unic-desktop --demo` for the existing isolated UI fixture.
 The desktop program contains the GUI, system clipboard adapter, tray and notifications.
 Closing its window keeps the adapter running. Explicit quit stops desktop integration.
 See [headless architecture](../../docs/architecture/headless.md).

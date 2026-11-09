@@ -33,6 +33,7 @@ type MenuProps struct {
 	Icon     IconName
 	IconOnly bool
 	Variant  ButtonVariant
+	Size     ControlSize
 	// Count is a badge on the trigger, e.g. active filter values; 0 hides it.
 	Count int
 	// Open is the optional open state; nil lets the menu keep its own.
@@ -51,13 +52,21 @@ type ContextMenuProps struct {
 // pointer, Enter/Space; Up/Down/Home/End/type-ahead move, Right/Left open/close submenus,
 // Esc closes and focus returns to the trigger (MenuBase).
 func (k Kit) Menu(c *ui.Context, p MenuProps) (trigger ui.Element, chosen string) {
+	if k.Skin == MacOS && p.Open == nil {
+		trigger = ui.ButtonBase(c)
+		k.menuTrigger(c, trigger, p)
+		// Native triggers sit directly beside commands, without a MenuBase host.
+		trigger.AlignSelf(ui.Center)
+		trigger.Menu(func(m *ui.Menu) { menuFromEntries(m, p.Items, &chosen) })
+		return trigger, chosen
+	}
 	if p.Open == nil {
 		host := ui.Row(c)
 		open := ui.Local(host, "uikit.menu.open", func() bool { return false })
 		host.Children(func() {
 			trigger, chosen = k.Menu(c, MenuProps{
 				Items: p.Items, Label: p.Label, Icon: p.Icon, IconOnly: p.IconOnly,
-				Variant: p.Variant, Count: p.Count, Open: open,
+				Variant: p.Variant, Size: p.Size, Count: p.Count, Open: open,
 			})
 		})
 		return trigger, chosen
@@ -77,6 +86,10 @@ func (k Kit) Menu(c *ui.Context, p MenuProps) (trigger ui.Element, chosen string
 func (k Kit) ContextMenu(c *ui.Context, p ContextMenuProps, body func()) (chosen string) {
 	area := ui.Column(c)
 	area.Children(body)
+	if k.Skin == MacOS && p.Open == nil {
+		area.ContextMenu(func(m *ui.Menu) { menuFromEntries(m, p.Items, &chosen) })
+		return chosen
+	}
 	open := p.Open
 	if open == nil {
 		open = ui.Local(area, "uikit.ctxmenu.open", func() bool { return false })
@@ -205,6 +218,14 @@ func (k Kit) menuRowStyle(item ui.Element) {
 
 // menuTrigger gives the MenuBase trigger the look of a button of the requested variant.
 func (k Kit) menuTrigger(c *ui.Context, t ui.Element, p MenuProps) {
+	if p.Variant == Glass {
+		label := p.Label
+		if p.IconOnly {
+			label = ""
+		}
+		k.dressButton(c, t, label, ButtonProps{Variant: Glass, Size: p.Size, Icon: p.Icon, Label: p.Label}, false)
+		return
+	}
 	h := map[SkinID]float32{Linux: 34, MacOS: 22, Windows: 32}[k.Skin]
 	prim, _, _ := k.fgTone()
 	t.AlignSelf(ui.Start).Height(h).Radius(k.ControlRadius()).Gap(6).AlignItems(ui.Center).Justify(ui.Center).
@@ -236,6 +257,10 @@ func (k Kit) menuTrigger(c *ui.Context, t ui.Element, p MenuProps) {
 				t.Background(k.Color("btn-hover"))
 			}
 		}
+	}
+	// System menu tracking owns the pointer and presentation animation.
+	if k.Skin != MacOS || p.Open != nil {
+		k.pressFeedback(c, t, .92)
 	}
 	t.Children(func() {
 		if p.Icon != "" {

@@ -46,6 +46,21 @@ func TestMenuChoose(t *testing.T) {
 		if err := tt.Click("Actions"); err != nil {
 			t.Fatal(err)
 		}
+		if k.Skin == MacOS {
+			if len(tt.Menu()) == 0 {
+				t.Fatal("system menu missing")
+			}
+			if err := tt.ChooseMenuItem("Disabled"); err == nil || got != "" {
+				t.Fatal("disabled native item was chosen")
+			}
+			if err := tt.ChooseMenuItem("Delete"); err != nil {
+				t.Fatal(err)
+			}
+			if got != "del" || tt.Menu() != nil {
+				t.Fatalf("native choice/close: %q", got)
+			}
+			return
+		}
 		for _, s := range []string{"Copy", "Disabled", "Merge into", "Delete"} {
 			if !tt.HasText(s) {
 				t.Fatalf("menu item %q not shown: %v", s, tt.Texts())
@@ -81,6 +96,21 @@ func TestMenuKeyboardAndEscape(t *testing.T) {
 		if err := tt.Click("More"); err != nil {
 			t.Fatal(err)
 		}
+		if k.Skin == MacOS {
+			// Native key tracking belongs to the OS, not the fake host.
+			tt.CloseMenu()
+			tt.Key(0, ui.KeyEnter)
+			if len(tt.Menu()) == 0 {
+				t.Fatal("Enter did not request a system menu")
+			}
+			if err := tt.ChooseMenuItem("Copy"); err != nil {
+				t.Fatal(err)
+			}
+			if got != "copy" {
+				t.Fatalf("native choice: %q", got)
+			}
+			return
+		}
 		tt.Key(0, ui.KeyEscape)
 		if tt.HasText("Copy") {
 			t.Fatal("Escape did not close the menu")
@@ -111,6 +141,15 @@ func TestContextMenu(t *testing.T) {
 		tt := ui.NewTester(view, 600, 500)
 		if err := tt.RightClick("Row"); err != nil {
 			t.Fatal(err)
+		}
+		if k.Skin == MacOS {
+			if err := tt.ChooseMenuItem("Copy"); err != nil {
+				t.Fatal(err)
+			}
+			if got != "copy" {
+				t.Fatalf("native context choice: %q", got)
+			}
+			return
 		}
 		if !tt.HasText("Copy") {
 			t.Fatal("context menu not shown")

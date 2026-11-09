@@ -48,7 +48,7 @@ func (k Kit) TaskPanel(c *ui.Context, p TaskPanelProps, body, actions func()) (b
 			}
 		})
 
-		content := ui.Scroll(c).Grow(1).Padding(4)
+		content := k.Scroll(c).Grow(1).Padding(4)
 		if centered {
 			content.MaxWidth(k.taskWidth()).AlignSelf(ui.Center).WidthPercent(100)
 		} else {

@@ -1,0 +1,262 @@
+// Package desktopdemo restores the main branch desktop composition with local fixtures.
+// It has no daemon client and never writes the system clipboard or application settings.
+package desktopdemo
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+)
+
+const Reference = "8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7"
+
+type entry struct {
+	id, title, text, source, date, size string
+	kind                                uikit.ContentKind
+	tags                                []string
+	pinned                              bool
+}
+
+type device struct {
+	id, name, platform, status string
+	icon                       uikit.IconName
+	online                     bool
+	send, receive              bool
+}
+
+type demo struct {
+	tags                                                                   []demoTag
+	tagManager                                                             tagManagerState
+	assignTagsOpen                                                         bool
+	search                                                                 demoSearch
+	page, theme, query, kind, source, tag, timeRange, layout               string
+	nav, settings                                                          uikit.NavState
+	list                                                                   uikit.ListState
+	deviceList                                                             uikit.SourceState
+	entries                                                                []entry
+	devices                                                                []device
+	selected                                                               string
+	confirmEntries                                                         []string
+	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook bool
+	compact                                                                bool
+	gridSize                                                               float64
+	deviceTask, fieldError, notice, confirm, confirmID                     string
+	deviceName, passphrase, confirmation, invitation                       string
+	options                                                                map[string]bool
+	choices                                                                map[string]string
+}
+
+func newDemo(page, theme string) *demo {
+	d := &demo{
+		page: page, theme: theme, layout: "list", selected: "note",
+		nav: uikit.NavState{Value: "all"}, settings: uikit.NavState{Value: "general"},
+		deviceList: uikit.SourceState{Value: "local"}, gridSize: .4,
+		deviceName: "MacBook Pro",
+		options:    map[string]bool{"startup": true, "tray": true, "sound": true, "sync": true, "autoSync": true, "text": true, "image": true, "file": true, "relay": true, "quickPanel": true, "encryption": true},
+		choices:    map[string]string{"language": "简体中文", "appearance": theme, "font": "标准", "fileLimit": "50 MB", "retention": "30 天", "proxy": "系统代理", "shortcut": "⌘⇧V"},
+	}
+	d.entries = []entry{
+		{id: "note", title: "周一产品讨论", text: "周一产品讨论\n\n1. 确认桌面端布局与导航。\n2. 核对设备连接状态。\n3. 整理本周设计评审记录。\n\n下次评审：周三 14:00。", source: "local", date: "今天 10:42", size: "96 个字符", kind: uikit.KindText, tags: []string{"工作"}, pinned: true},
+		{id: "code", title: "HTTP 服务示例", text: "func main() {\n    http.HandleFunc(\"/health\", handler)\n    http.ListenAndServe(\":8080\", nil)\n}", source: "linux", date: "今天 10:35", size: "Go · 4 行", kind: uikit.KindCode, tags: []string{"开发"}},
+		{id: "link", title: "UniClipboard", text: "https://github.com/UniClipboard/UniClipboard", source: "windows", date: "今天 10:28", size: "链接", kind: uikit.KindLink, tags: []string{"工作"}},
+		{id: "image", title: "桌面布局.png", text: "桌面布局", source: "phone", date: "今天 10:16", size: "1600 × 1000 · PNG · 286 KB", kind: uikit.KindImage, tags: []string{"设计"}},
+		{id: "files", title: "设计交付 · 3 个文件", text: "界面规范.pdf\n组件清单.csv\n桌面布局.png", source: "windows", date: "今天 09:50", size: "3 个文件 · 12.8 MB", kind: uikit.KindFile, tags: []string{"设计", "工作"}},
+		{id: "text", title: "会议室预订", text: "已预订 3 楼会议室。\n时间：14:00—15:00。\n参会人数：6 人。", source: "local", date: "昨天 17:20", size: "42 个字符", kind: uikit.KindText},
+		{id: "offline", title: "发布检查清单", text: "确认版本号\n确认安装包\n核对更新说明", source: "linux", date: "昨天 16:05", size: "21 个字符", kind: uikit.KindText, tags: []string{"开发"}},
+	}
+	// Match the reference's eight current-day rows and fourteen older rows.
+	// Use fabricated content rather than the user's clipboard data.
+	d.entries = slices.Insert(d.entries, 5,
+		entry{id: "schedule", title: "下午设计评审：确认三栏布局、字体和控件间距", text: "下午 14:00 开始设计评审。请准备界面规范与组件清单。", source: "local", date: "今天 09:30", kind: uikit.KindText},
+		entry{id: "notes", title: "本周迭代安排", text: "完成历史窗口、设备管理和设置页面的布局核对。", source: "local", date: "今天 09:15", kind: uikit.KindText},
+		entry{id: "thanks", title: "收到，评审记录已经整理完成。", text: "收到，评审记录已经整理完成。", source: "windows", date: "今天 08:50", kind: uikit.KindText},
+	)
+	older := []string{"确认设备名称与连接状态的显示方式", "整理桌面端快捷键说明", "历史内容预览与图片缩放", "组件清单与界面规范", "发送文件后的进度显示", "调整列表选中状态与悬停状态", "检查窄窗口中的返回操作", "核对深色模式下的文本对比度", "新增设备的指纹核对步骤", "统一设置页面中的分组间距", "更新设计评审结论", "明天继续核对安装包"}
+	for i, title := range older {
+		d.entries = append(d.entries, entry{id: fmt.Sprintf("older-%d", i), title: title, text: title, source: "local", date: fmt.Sprintf("昨天 %02d:20", 15-i), kind: uikit.KindText})
+	}
+	d.devices = []device{
+		{id: "local", name: "MacBook Pro", platform: "macOS 15.6", status: "本机 · 同步中", icon: uikit.IconDesktop, online: true, send: true, receive: true},
+		{id: "windows", name: "工作电脑", platform: "Windows 11", status: "已连接 · 局域网", icon: uikit.IconDesktop, online: true, send: true, receive: true},
+		{id: "linux", name: "Linux 工作站", platform: "Fedora 43", status: "离线 · 昨天在线", icon: uikit.IconDesktop, send: true, receive: true},
+		{id: "phone", name: "我的手机", platform: "Android 16", status: "已连接 · 移动同步", icon: uikit.IconPhone, online: true, send: true, receive: true},
+	}
+	d.initTags()
+	d.list.Select(d.selected)
+	return d
+}
+
+// Run opens an isolated fixture window. Parse all options before starting mygo.
+func Run(args []string) error {
+	flags := flag.NewFlagSet("gui --demo", flag.ContinueOnError)
+	page := flags.String("page", "history", "history, devices, settings, setup, unlock, startup, recovery, quick-panel")
+	theme := flags.String("theme", "system", "system, light, dark")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("unexpected demo argument: %s", flags.Arg(0))
+	}
+	if !slices.Contains([]string{"history", "devices", "settings", "setup", "unlock", "startup", "recovery", "quick-panel"}, *page) {
+		return fmt.Errorf("unknown demo page: %s", *page)
+	}
+	if !slices.Contains([]string{"system", "light", "dark"}, *theme) {
+		return fmt.Errorf("unknown demo theme: %s", *theme)
+	}
+	d := newDemo(*page, *theme)
+	if *page == "devices" {
+		d.page, d.devicesOpen = "history", true
+	}
+	mygo.App.SetName("unic UI Demo")
+	mygo.App.WhenReady(func() {
+		width, height := 1100, 720
+		if *page == "quick-panel" {
+			width, height = 780, 520
+		}
+		opts := mygo.WindowOptions{Title: "unic · 界面演示", Width: width, Height: height, MinWidth: 600, MinHeight: 480, Content: ui.View(d.view)}
+		if uikit.DefaultSkin() == uikit.MacOS {
+			opts.TitleBarStyle = mygo.TitleBarHidden
+			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
+			opts.Vibrancy = mygo.VibrancySidebar
+		}
+		mygo.NewWindow(opts)
+	})
+	return mygo.App.Run()
+}
+
+func (d *demo) view(c *ui.Context) {
+	dark := c.Theme().Dark
+	if d.theme != "system" {
+		dark = d.theme == "dark"
+	}
+	k := uikit.For(dark)
+	k.Apply(c)
+	k.UiRoot(c, func() {
+		w, _ := c.Size()
+		// main's library collapses its sidebar below 1100 px. The Kit separately
+		// switches list/detail navigation below SinglePaneWidth.
+		compact := w < 1100
+		if compact != d.compact {
+			d.sidebarHidden, d.compact = compact, compact
+		}
+		c.OnShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
+		if !d.devicesOpen && !d.tagsOpen && !d.assignTagsOpen && d.confirm == "" {
+			if d.page == "history" {
+				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
+				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
+			}
+			if d.page == "settings" {
+				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
+			}
+		}
+		switch d.page {
+		case "history":
+			d.history(c, k)
+		case "settings":
+			d.settingsPage(c, k)
+		case "quick-panel":
+			d.quickPanel(c, k)
+		default:
+			d.entryPage(c, k)
+		}
+		d.deviceSheet(c.Key("devices"), k)
+		d.tagSheet(c.Key("tags"), k)
+		d.assignTagSheet(c.Key("assign-tags"), k)
+		d.confirmDialog(c.Key("confirm"), k)
+	})
+}
+
+func (d *demo) sourceName(id string) string {
+	for _, v := range d.devices {
+		if v.id == id {
+			if id == "local" {
+				return "本机"
+			}
+			return v.name
+		}
+	}
+	return "已移除设备"
+}
+
+func kindName(kind uikit.ContentKind) string {
+	return []string{"文本", "代码", "链接", "图片", "文件"}[kind]
+}
+func kindIcon(kind uikit.ContentKind) uikit.IconName {
+	return []uikit.IconName{uikit.IconCopy, uikit.IconEdit, uikit.IconGlobe, uikit.IconGrid, uikit.IconFile}[kind]
+}
+
+func (d *demo) filtered() []entry {
+	var out []entry
+	for _, v := range d.entries {
+		if d.nav.Value == "pinned" && !v.pinned {
+			continue
+		}
+		if !d.matchesSearch(v) {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func (d *demo) current() *entry {
+	for i := range d.entries {
+		if d.entries[i].id == d.selected {
+			return &d.entries[i]
+		}
+	}
+	return nil
+}
+
+func (d *demo) selectEntry(id string) { d.selected = id; d.list.Select(id); d.notice = "" }
+
+func (d *demo) togglePin() {
+	if v := d.current(); v != nil {
+		on := !v.pinned
+		ids := d.list.Selection()
+		for i := range d.entries {
+			if slices.Contains(ids, d.entries[i].id) {
+				d.entries[i].pinned = on
+			}
+		}
+	}
+}
+
+func (d *demo) requestDelete(ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	d.confirm, d.confirmID = fmt.Sprintf("删除 %d 条历史？", len(ids)), ""
+	d.confirmEntries = slices.Clone(ids)
+}
+
+func (d *demo) confirmDialog(c *ui.Context, k uikit.Kit) {
+	if d.confirm == "" {
+		return
+	}
+	open := true
+	r := k.AlertDialog(c, uikit.AlertDialogProps{Open: &open, Title: d.confirm, Description: "此操作只修改本次演示中的假数据。", ConfirmLabel: "移除", CancelLabel: "取消", Destructive: true}, nil)
+	if r.Confirmed {
+		if strings.HasPrefix(d.confirmID, "device:") {
+			id := strings.TrimPrefix(d.confirmID, "device:")
+			d.devices = slices.DeleteFunc(d.devices, func(v device) bool { return v.id == id })
+			d.deviceList.Value = "local"
+		} else {
+			d.entries = slices.DeleteFunc(d.entries, func(v entry) bool { return slices.Contains(d.confirmEntries, v.id) })
+			d.selected = ""
+		}
+	}
+	if !open {
+		d.confirm, d.confirmID = "", ""
+		d.confirmEntries = nil
+	}
+}

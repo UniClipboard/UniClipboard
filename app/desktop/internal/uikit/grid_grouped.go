@@ -164,7 +164,7 @@ func (k Kit) GroupedGrid(c *ui.Context, st *ListState, p GroupedGridProps) ui.El
 	shell := ui.Column(c)
 	shell.Children(func() {
 		restore := k.withListTheme(c)
-		e := ui.List(c, &st.list, len(rows)).Rows(func(r ui.ListRow) {
+		e := scrollingIndicator(c, ui.List(c, &st.list, len(rows))).Rows(func(r ui.ListRow) {
 			row := rows[r.Index]
 			rc := r.Context
 			switch {
@@ -175,9 +175,9 @@ func (k Kit) GroupedGrid(c *ui.Context, st *ListState, p GroupedGridProps) ui.El
 			}
 		})
 		restore()
-		e.Label(p.Label).Grow(1).Padding(0, lk.cellPadX).Focusable()
+		e.Label(p.Label).Grow(1).Padding(0, lk.cellPadX+12, 0, lk.cellPadX).Focusable()
 		e.Multiselectable(true)
-		g.width = max(e.Bounds().W-2*lk.cellPadX, 0)
+		g.width = max(e.Bounds().W-2*lk.cellPadX-12, 0)
 		k.gridKeys(e, st, p, cols)
 		st.gridSettle(e)
 		st.visibleGrid(len(rows), [2]int{loLoaded, hiLoaded}, rows, off)

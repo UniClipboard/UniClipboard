@@ -192,7 +192,7 @@ func (k Kit) TransferStatus(c *ui.Context, p TransferStatusProps) TransferStatus
 			}
 		})
 		if len(p.Items) > 0 {
-			ui.Scroll(c.Key("files")).Role(ui.RoleList).Label(p.Title).MaxHeight(304).Padding(0, 8, 8).Children(func() {
+			k.Scroll(c.Key("files")).Role(ui.RoleList).Label(p.Title).MaxHeight(304).Padding(0, 8, 8).Children(func() {
 				for _, it := range p.Items {
 					k.TransferItem(c.Key(it.ID), it)
 				}

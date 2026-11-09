@@ -487,7 +487,7 @@ func (g *gui) content(c *ui.Context, k uikit.Kit) {
 			case tabSettings:
 				g.cleanupSettingsTab(c, k)
 			default:
-				ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+				k.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 					// Keep focus rings inside the scroll viewport's clip, and let short
 					// pages retain a gutter on every side.
 					ui.Column(c).Padding(4, 20, 8).Gap(10).Children(func() {

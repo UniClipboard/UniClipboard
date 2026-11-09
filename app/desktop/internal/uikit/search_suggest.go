@@ -20,6 +20,9 @@ type SearchSuggestion struct {
 type SearchFieldKey struct {
 	Key  ui.Key
 	Mods ui.Modifiers
+	// Text and selection are read from the live editor before the key acts.
+	Text       string
+	Start, End int
 }
 
 // Shift reports whether Shift was held.
@@ -55,14 +58,18 @@ func (k Kit) fldSuggestions(c *ui.Context, list []SearchSuggestion, cfg suggestC
 	pal := k.fldPal()
 	picked := -1
 	if cfg.feedback != "" {
+		if k.Skin == MacOS {
+			ui.Box(c.Key("feedback-rule")).Height(.5).Background(k.dividerColor()).Margin(2, 0, 4)
+		}
 		ui.Text(c.Key("feedback"), cfg.feedback).FontSize(pal.size-1).TextColor(pal.fg2).Padding(4, 10).Role(ui.RoleStatus)
 	}
 	list0 := ui.Column(c.Key("list")).Role(ui.RoleListBox).Label(cfg.label)
+	lastHighlight := ui.Local(list0, "highlight", func() int { return -1 })
 	list0.Children(func() {
 		for i, s := range list {
 			c := c.Key(i)
 			if s.Group != "" {
-				ui.Text(c.Key("group"), s.Group).FontSize(pal.size-2).FontWeight(600).TextColor(pal.fg2).Padding(6, 10, 2)
+				ui.Text(c.Key("group:"+itoa(i)), s.Group).FontSize(pal.size-2).FontWeight(600).TextColor(pal.fg2).Padding(6, 10, 2)
 			}
 			label := s.Label
 			if s.Create && cfg.typed != "" {
@@ -71,8 +78,21 @@ func (k Kit) fldSuggestions(c *ui.Context, list []SearchSuggestion, cfg suggestC
 			}
 			row := ui.ButtonBase(c).Label(label).AccessSelected(i == *cfg.hi).Role(ui.RoleOption).KeepFocus().
 				Radius(6).Padding(5, 10).Gap(8).AlignItems(ui.Center).TextColor(pal.fg).FontSize(pal.size)
+			if k.Skin == MacOS {
+				row.MinHeight(34).Radius(8).Padding(4, 10).Gap(10)
+			}
 			if row.Hovered() {
-				*cfg.hi = i
+				hovered := ui.Local(row, "hover", func() bool { return false })
+				if !*hovered {
+					*cfg.hi = i
+				}
+				*hovered = true
+			} else {
+				hovered := ui.Local(row, "hover", func() bool { return false })
+				*hovered = false
+			}
+			if i == *cfg.hi && *lastHighlight != *cfg.hi {
+				row.ScrollIntoView()
 			}
 			if i == *cfg.hi {
 				if k.Skin == MacOS {
@@ -81,7 +101,7 @@ func (k Kit) fldSuggestions(c *ui.Context, list []SearchSuggestion, cfg suggestC
 					row.Background(pal.hover)
 				}
 			}
-			if s.Muted {
+			if s.Muted && k.Skin != MacOS {
 				row.Opacity(.5)
 			}
 			row.Children(func() {
@@ -97,13 +117,34 @@ func (k Kit) fldSuggestions(c *ui.Context, list []SearchSuggestion, cfg suggestC
 					ui.Text(c, s.Label).SingleLine()
 				default:
 					bg, ink := k.fldKindColors(s.Kind)
+					if k.Skin == MacOS && i == *cfg.hi {
+						bg = ui.RGBA(255, 255, 255, .22)
+						ink = k.Color("on-accent")
+					}
 					h, r, size := k.fldChipMetrics()
-					ui.Row(c.Key("chip")).Height(h).PaddingX(9).Radius(r).AlignItems(ui.Center).Background(bg).
+					chip := ui.Row(c.Key("chip")).Height(h).PaddingX(9).Radius(r).AlignItems(ui.Center).Background(bg).
 						TextColor(ink).FontSize(size).FontWeight(600).Children(func() { ui.Text(c, s.Label).SingleLine() })
+					if k.Skin == MacOS {
+						chip.FontWeight(400)
+						if s.Muted {
+							chip.Opacity(.5)
+						}
+					}
 				}
-				ui.Spacer(c)
+				if k.Skin != MacOS {
+					ui.Spacer(c)
+				}
 				if s.Detail != "" {
-					ui.Text(c.Key("detail"), s.Detail).FontSize(pal.size - 2).Opacity(.65).SingleLine()
+					detail := ui.Text(c.Key("detail"), s.Detail).FontSize(pal.size - 2).Opacity(.65).SingleLine()
+					if k.Skin == MacOS {
+						detail.FontSize(13).Grow(1)
+						if i == *cfg.hi {
+							detail.Opacity(1)
+						}
+						if s.Muted {
+							detail.Opacity(.5)
+						}
+					}
 				}
 				if s.Selected {
 					ui.Box(c.Key("check")).Size(14, 14).Shrink(0).Draw(func(p *ui.Painter, r ui.Rect) {
@@ -120,7 +161,11 @@ func (k Kit) fldSuggestions(c *ui.Context, list []SearchSuggestion, cfg suggestC
 			}
 		}
 	})
+	*lastHighlight = *cfg.hi
 	if cfg.footer != "" {
+		if k.Skin == MacOS {
+			ui.Box(c.Key("footer-rule")).Height(.5).Background(k.dividerColor()).Margin(6, 0, 0)
+		}
 		ui.Text(c.Key("footer"), cfg.footer).FontSize(pal.size-2).TextColor(pal.fg2).Padding(6, 10, 2)
 	}
 	return picked

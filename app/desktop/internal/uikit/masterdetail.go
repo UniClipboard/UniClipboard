@@ -40,7 +40,7 @@ func (k Kit) MasterDetail(c *ui.Context, p MasterDetailProps, list func(), detai
 		if k.Skin == Linux {
 			pad = []float32{20, 28, 28}
 		}
-		ui.Scroll(dc).Role(ui.RoleRegion).Label(p.DetailLabel).Grow(1).MinWidth(0).Children(func() {
+		k.Scroll(dc).Role(ui.RoleRegion).Label(p.DetailLabel).Grow(1).MinWidth(0).Children(func() {
 			ui.Column(dc.Key("body")).MaxWidth(760).Padding(pad...).Gap(gap).Children(func() {
 				if detail != nil {
 					detail()

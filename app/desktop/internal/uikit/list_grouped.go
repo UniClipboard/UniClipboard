@@ -148,7 +148,8 @@ func (k Kit) GroupedList(c *ui.Context, st *ListState, p GroupedListProps) ui.El
 				}
 			},
 		})
-		list.Grow(1).Padding(0, lk.cellPadX)
+		// Reserve a separate right gutter for the overlay scrollbar.
+		list.Grow(1).Padding(0, lk.cellPadX+12, 0, lk.cellPadX)
 		if lk.rowGap > 0 {
 			list.Gap(lk.rowGap)
 		}

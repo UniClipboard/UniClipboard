@@ -2,6 +2,7 @@ package uikit
 
 import (
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -37,6 +38,7 @@ func TestSheetDoneEscapeFocus(t *testing.T) {
 			if err := tt.Click("Open"); err != nil {
 				t.Fatal(err)
 			}
+			tt.Advance(350 * time.Millisecond)
 			for _, s := range []string{"Devices", "filter", "body row", "3 devices", "Done"} {
 				if !tt.HasText(s) {
 					t.Fatalf("missing %q: %v", s, tt.Texts())
@@ -53,7 +55,11 @@ func TestSheetDoneEscapeFocus(t *testing.T) {
 				t.Fatalf("done: %v %v", err, done)
 			}
 			tt.Key(0, ui.KeyEscape)
-			if open || tt.HasText("body row") {
+			if open {
+				t.Fatal("Escape did not request closure")
+			}
+			tt.Advance(250 * time.Millisecond)
+			if tt.HasText("body row") {
 				t.Fatal("Escape did not close the sheet")
 			}
 			if !tt.Focused("Open") {

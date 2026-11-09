@@ -97,7 +97,12 @@ func (k Kit) Theme() *ui.Theme {
 }
 
 // Apply installs the theme on the view context; call it first thing in every view.
-func (k Kit) Apply(c *ui.Context) { c.SetTheme(k.Theme()) }
+func (k Kit) Apply(c *ui.Context) {
+	c.SetTheme(k.Theme())
+	if k.Skin == MacOS {
+		c.SetMenuPresentation(ui.SystemMenus)
+	}
+}
 
 // ControlRadius is the corner radius of buttons and fields.
 func (k Kit) ControlRadius() float32 {

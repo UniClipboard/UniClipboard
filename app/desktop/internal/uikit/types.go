@@ -69,6 +69,8 @@ const (
 	Subtle
 	Destructive
 	Link
+	// Glass is a secondary command capsule; other skins use Standard styling.
+	Glass
 )
 
 // TagColor is a palette name ("orange","blue","green","purple","gray") or a custom "#rrggbb";

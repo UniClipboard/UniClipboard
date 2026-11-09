@@ -91,7 +91,7 @@ func (k Kit) PreviewFrame(c *ui.Context, p PreviewFrameProps, body func()) ui.El
 		if p.Kind == PreviewFile {
 			ui.Column(c.Key("body")).Children(inner)
 		} else {
-			ui.Scroll(c.Key("body")).Grow(1).MinHeight(0).Children(inner)
+			k.Scroll(c.Key("body")).Grow(1).MinHeight(0).Children(inner)
 		}
 		if p.TopEnd != nil {
 			ui.Row(c.Key("top-end")).Absolute().Top(10).Right(10).Gap(6).ZIndex(2).Children(p.TopEnd)

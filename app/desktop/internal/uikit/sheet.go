@@ -1,6 +1,10 @@
 package uikit
 
-import "github.com/egoist/mygo/ui"
+import (
+	"time"
+
+	"github.com/egoist/mygo/ui"
+)
 
 // SheetVariant selects the sheet width.
 type SheetVariant int
@@ -12,8 +16,8 @@ const (
 	SheetTask
 )
 
-// SheetProps mirrors contract.ts SheetProps. The exit animation (and so onClosed) is not
-// reproduced: the sheet disappears when Open turns false, so a caller can unmount at once.
+// SheetProps mirrors contract.ts SheetProps. Keep calling Sheet while closed
+// so the macOS overlay can finish its exit transition.
 type SheetProps struct {
 	Variant SheetVariant
 	// Open shows the sheet; Esc and a click on the scrim set it false.
@@ -25,6 +29,8 @@ type SheetProps struct {
 	Footer func()
 	// Done is the label of the default button that closes the sheet ("Done"); "" hides it.
 	Done string
+	// OnClosed runs after the panel leaves. Clear transient content state here.
+	OnClosed func()
 }
 
 // Sheet is a modal pane for a focused task: macOS sheet dropping from the title bar, Adwaita
@@ -36,9 +42,43 @@ func (k Kit) Sheet(c *ui.Context, p SheetProps, body func()) (done bool) {
 	if open == nil {
 		open = new(bool)
 	}
+	owner := ui.Box(c).Absolute().Size(0, 0)
+	present := ui.Local(owner, "sheet-present", func() bool { return false })
+	initialized := ui.Local(owner, "sheet-initialized", func() bool { return false })
+	if !*initialized {
+		owner.Jump("sheet-visibility", 0)
+		*initialized = true
+	}
+	progress := float32(0)
+	if *open {
+		*present = true
+		progress = 1
+	}
+	if k.Skin == MacOS {
+		motion := ui.Animation{Duration: 300 * time.Millisecond, Ease: ui.CubicBezier(.2, 0, 0, 1)}
+		if !*open {
+			motion = ui.Animation{Duration: 220 * time.Millisecond, Ease: ui.EaseIn}
+		}
+		progress = owner.AnimateTo("sheet-visibility", progress, motion)
+	}
+	if *present && !*open && progress == 0 {
+		*present = false
+		if p.OnClosed != nil {
+			p.OnClosed()
+		}
+	}
+	if !*present {
+		return false
+	}
+	// Keep the original tree and its rendering path until motion completes.
+	// DialogBase owns modal input and restores focus when the live tree leaves.
+	visible := true
 	prim, sec, _ := k.fgTone()
 	task := p.Variant == SheetTask
-	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
+	ui.DialogBase(c, &visible, func(backdrop, panel ui.Element) {
+		if !visible {
+			*open = false
+		}
 		backdrop.Background(k.scrim())
 		panel.Label(p.Title).Column().TextColor(prim)
 		width := float32(760)
@@ -55,7 +95,10 @@ func (k Kit) Sheet(c *ui.Context, p SheetProps, body func()) (done bool) {
 		titleSize := float32(20)
 		switch k.Skin {
 		case MacOS:
-			backdrop.Justify(ui.Start)
+			scrim := k.scrim()
+			scrim.A = uint8(float32(scrim.A) * progress)
+			backdrop.Justify(ui.Start).Background(scrim)
+			panel.TranslatePercent(0, -100*(1-progress))
 			panel.Background(k.Color("window")).Padding(16, 20).Gap(14)
 			panel.Radius(0, 0, 16, 16)
 			k.shadowed(panel, "menu-shadow")
@@ -80,7 +123,7 @@ func (k Kit) Sheet(c *ui.Context, p SheetProps, body func()) (done bool) {
 			}
 		})
 
-		content := ui.Scroll(c).Grow(1)
+		content := k.Scroll(c).Grow(1)
 		switch k.Skin {
 		case MacOS:
 			if !task {

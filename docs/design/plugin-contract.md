@@ -73,7 +73,7 @@ Stop 先取消新工作与在途请求，再 Close；默认 5 秒退出窗口，
 
 插件专属 Config 的静态描述与 GUI 生成见[插件设置 Schema 契约](plugin-settings-contract.md)和[0010](decisions/0010-plugin-settings-schema.md)。独立 `plugin/settings` 工具与 macOS 固定 schema 预览已实现；Spec/清单/RPC 发布、实例配置保存和安装器读取尚未接入，不将 GUI 预览视为运行期配置能力。
 
-SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enabled、Events、Config。标准同步策略只存于 Settings.BackendPolicies（Text/Images/Files/AutoFileMaxBytes），不在实例设置重复保存；规范见[0007](decisions/0007-multiple-sync-backends.md)，具体 Go 类型、LuaPlugins 装配、严格配置和错误映射见[SDK 扩展类型契约](sdk-extension-contract.md)。宿主映射 TOML：
+SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enabled、Events、Config。标准同步策略只存于 Settings.BackendPolicies（Text/Images/Files/AutoFileMaxBytes），不在实例设置重复保存；规范见[0007](decisions/0007-multiple-sync-backends.md)，具体 Go 类型、LuaPlugins 装配、严格配置和错误映射见[SDK 扩展类型契约](sdk-extension-contract.md)。宿主映射 TOML。归属原则：用户的选择（启用、顺序、`on_error`、插件设置值）只存于 `config.toml`；插件目录里的清单（`spec.toml`）只放插件自己的静态声明（ID、版本、能力、事件、入口），不含 `on_error` 与 `config`，含有即被拒绝，这样安装、升级、卸载都不会改动用户设置。`[plugins] on_error` 为全局默认，实例的 `on_error` 优先；Lua 插件是否运行由 `plugins.lua` 决定，其实例表只接受 `on_error` 与 `config`；这些项的改动需重启（`restart_required` 报告 `plugins.settings`）。
 
 ```toml
 [plugins]

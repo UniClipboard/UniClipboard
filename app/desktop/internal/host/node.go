@@ -101,14 +101,15 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
 	if c.PluginEnabled(builtintext.ID) {
-		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New()})
+		onError, _ := c.ProcessorSettings(builtintext.ID)
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New(), OnError: onError})
 	}
 	opts.Plugins = append(opts.Plugins, o.Plugins...)
 	var loaded map[string]luascripts.Script
 	if o.LuaDir != "" {
 		var specs []engine.LuaPluginSpec
 		var lerr error
-		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, c.Plugins.Lua); lerr != nil {
+		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, c.Plugins.Lua, c.ProcessorSettings); lerr != nil {
 			return nil, lerr
 		}
 		opts.LuaPlugins = specs

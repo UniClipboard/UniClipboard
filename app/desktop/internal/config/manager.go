@@ -94,6 +94,9 @@ func (m *Manager) State() State {
 	if m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) {
 		s.RestartRequired = append(s.RestartRequired, "plugins")
 	}
+	if !reflect.DeepEqual(m.cur.processorSettingsKey(), m.started.processorSettingsKey()) {
+		s.RestartRequired = append(s.RestartRequired, "plugins.settings")
+	}
 	if !slices.Equal(m.cur.Plugins.Lua, m.started.Plugins.Lua) {
 		s.RestartRequired = append(s.RestartRequired, "plugins.lua")
 	}

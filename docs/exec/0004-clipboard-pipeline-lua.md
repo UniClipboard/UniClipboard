@@ -150,7 +150,7 @@ P4 剩余（均不阻塞 P5）：`device.*`/`sync.*` 通知（会话事件不带
 
 ### P7 · 桌面配置、历史 CLI 与 GitHub 安装
 
-- [ ] 桌面 TOML 映射插件设置，保留目录监听、防抖、坏配置保留上一有效值；模板解释 continue 风险、block_sync 和需重启项。
+- [x] 桌面 TOML 映射插件设置，保留目录监听、防抖、坏配置保留上一有效值；模板解释 continue 风险、block_sync 和需重启项。（2026-11-09：`[plugins] on_error` 全局默认、`[plugins.instances."id"] on_error`/`.config` 覆盖，模板已解释风险；用户设置只在 config.toml，清单不再接受 `on_error`/`config`；改动经 `restart_required: plugins.settings` 提示重启。Go 插件除 builtin.text 外的设置映射随 0010 运行时集成。）
 - [ ] 映射全局 sync.enabled 和每后端 .sync 类型/阈值，拒绝旧类型键，不做兼容映射；自动/手动策略与热加载测试覆盖。
 - [ ] 增加 `unic history` 和 Engine 历史 API 的薄 HTTP 适配；查询/读取/删除不另建历史存储，桌面 API 与 SDK 同批更新，不保留旧响应兼容层。原生 macOS UI 不在此阶段实现。
 - [ ] 实现 install/list/enable/disable/uninstall，公共 GitHub HTTPS URL、ref→完整 commit、子目录和清单校验；不递归安装依赖、不执行安装脚本。

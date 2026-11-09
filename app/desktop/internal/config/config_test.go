@@ -43,23 +43,29 @@ auto_file_max_bytes = "100MB"
 
 func TestParseRejects(t *testing.T) {
 	for name, in := range map[string]string{
-		"unknown key":   `devce_name = "x"`,
-		"unknown table": "[nope]\na = 1",
-		"syntax":        `device_name = `,
-		"bad url":       `rendezvous_url = "ftp://x"`,
-		"relative":      `inbox = "rel/dir"`,
-		"over hard cap": "[limits]\nmax_file_bytes = \"3GiB\"",
-		"zero":          "[limits]\nmax_total_bytes = 0",
-		"bad size":      "[limits]\nmax_file_bytes = \"lots\"",
-		"wrong type":    "[sync]\nenabled = \"yes\"",
-		"old sync key":  "[sync]\ntext = false",
-		"other plugin":  "[plugins.instances.\"example.webdav\".sync]\ntext = false",
-		"bad threshold": "[plugins.instances.\"builtin.tailcat\".sync]\nauto_file_max_bytes = \"3GiB\"",
-		"tailcat off":   "[plugins.instances.\"builtin.tailcat\"]\nenabled = false",
-		"text sync":     "[plugins.instances.\"builtin.text\".sync]\ntext = false",
-		"no history":    "[history]\nmax_items = 0",
-		"history size":  "[history]\nmax_bytes = \"9GiB\"",
-		"negative ttl":  "[history]\ndefault_ttl_days = -1",
+		"unknown key":         `devce_name = "x"`,
+		"unknown table":       "[nope]\na = 1",
+		"syntax":              `device_name = `,
+		"bad url":             `rendezvous_url = "ftp://x"`,
+		"relative":            `inbox = "rel/dir"`,
+		"over hard cap":       "[limits]\nmax_file_bytes = \"3GiB\"",
+		"zero":                "[limits]\nmax_total_bytes = 0",
+		"bad size":            "[limits]\nmax_file_bytes = \"lots\"",
+		"wrong type":          "[sync]\nenabled = \"yes\"",
+		"old sync key":        "[sync]\ntext = false",
+		"other plugin":        "[plugins.instances.\"example.webdav\".sync]\ntext = false",
+		"bad threshold":       "[plugins.instances.\"builtin.tailcat\".sync]\nauto_file_max_bytes = \"3GiB\"",
+		"tailcat off":         "[plugins.instances.\"builtin.tailcat\"]\nenabled = false",
+		"text sync":           "[plugins.instances.\"builtin.text\".sync]\ntext = false",
+		"no history":          "[history]\nmax_items = 0",
+		"history size":        "[history]\nmax_bytes = \"9GiB\"",
+		"negative ttl":        "[history]\ndefault_ttl_days = -1",
+		"bad on_error":        "[plugins]\non_error = \"ignore\"",
+		"bad inst err":        "[plugins]\nlua = [\"a.b\"]\n[plugins.instances.\"a.b\"]\non_error = \"x\"",
+		"config for unlisted": "[plugins.instances.\"a.b\".config]\nk = 1",
+		"config on builtin":   "[plugins.instances.\"builtin.text\".config]\nk = 1",
+		"lua enabled key":     "[plugins]\nlua = [\"a.b\"]\n[plugins.instances.\"a.b\"]\nenabled = false",
+		"backend on_error":    "[plugins.instances.\"builtin.tailcat\"]\non_error = \"block_sync\"",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -188,5 +194,32 @@ func TestBuiltinTextCanBeSwitchedOff(t *testing.T) {
 	}
 	if c.PluginEnabled("builtin.text") || !Default().PluginEnabled("builtin.text") {
 		t.Fatal("enabled flag not honoured")
+	}
+}
+
+func TestProcessorSettingsPrecedenceAndRestart(t *testing.T) {
+	c, err := Parse([]byte(`
+[plugins]
+lua = ["a.b", "c.d"]
+on_error = "block_sync"
+[plugins.instances."c.d"]
+on_error = "continue"
+[plugins.instances."c.d".config]
+tag = "x"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if oe, cfg := c.ProcessorSettings("a.b"); oe != "block_sync" || cfg != nil {
+		t.Fatalf("global default: %q %v", oe, cfg)
+	}
+	if oe, cfg := c.ProcessorSettings("c.d"); oe != "continue" || cfg["tag"] != "x" {
+		t.Fatalf("instance wins: %q %v", oe, cfg)
+	}
+	if oe, _ := Default().ProcessorSettings("builtin.text"); oe != "continue" {
+		t.Fatalf("default is %q", oe)
+	}
+	if reflect.DeepEqual(c.processorSettingsKey(), Default().processorSettingsKey()) {
+		t.Fatal("a changed policy must be seen as needing a restart")
 	}
 }

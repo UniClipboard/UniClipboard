@@ -104,11 +104,47 @@ type Plugins struct {
 	// Changing the script text takes effect at once; changing this list
 	// waits for a restart.
 	Lua []string `toml:"lua" json:"lua,omitempty"`
+	// OnError is what a failed processor means for syncing, for every plugin
+	// that does not set its own: "continue" (default) or "block_sync".
+	OnError string `toml:"on_error" json:"on_error,omitempty"`
 }
 
 type Instance struct {
 	Enabled *bool       `toml:"enabled" json:"enabled,omitempty"` // omitted: on
 	Sync    BackendSync `toml:"sync" json:"sync"`
+	// OnError overrides [plugins] on_error for this plugin.
+	OnError string `toml:"on_error" json:"on_error,omitempty"`
+	// Config is the plugin's own settings (Lua plugins). They live here, not
+	// in the plugin directory, so installing or upgrading a plugin never
+	// replaces what the user chose.
+	Config map[string]any `toml:"config" json:"config,omitempty"`
+}
+
+// ProcessorSettings is what the host passes a processor plugin: the effective
+// on_error policy and its own config.
+func (c Config) ProcessorSettings(id string) (onError string, cfg map[string]any) {
+	in := c.Plugins.Instances[id]
+	switch {
+	case in.OnError != "":
+		onError = in.OnError
+	case c.Plugins.OnError != "":
+		onError = c.Plugins.OnError
+	default:
+		onError = "continue"
+	}
+	return onError, in.Config
+}
+
+// processorSettingsKey is everything of ProcessorSettings that the engine
+// fixes at startup, for the plugins that run.
+func (c Config) processorSettingsKey() map[string]Instance {
+	out := map[string]Instance{}
+	ids := append([]string{builtintext.ID}, c.Plugins.Lua...)
+	for _, id := range ids {
+		oe, cfg := c.ProcessorSettings(id)
+		out[id] = Instance{OnError: oe, Config: cfg}
+	}
+	return out
 }
 
 // PluginEnabled reports whether a shipped plugin is switched on.
@@ -184,9 +220,32 @@ func (c Config) Validate() error {
 	if c.Inbox != "" && !filepath.IsAbs(c.Inbox) {
 		return errors.New("inbox: must be an absolute path")
 	}
+	if !validOnError(c.Plugins.OnError) {
+		return errors.New(`plugins.on_error: must be "continue" or "block_sync"`)
+	}
+	lua := map[string]bool{}
+	for _, id := range c.Plugins.Lua {
+		lua[id] = true
+	}
 	for id, in := range c.Plugins.Instances {
+		if !validOnError(in.OnError) {
+			return fmt.Errorf(`plugins.instances.%q.on_error: must be "continue" or "block_sync"`, id)
+		}
+		if in.Config != nil && !lua[id] {
+			return fmt.Errorf("plugins.instances.%q: this plugin takes no config", id)
+		}
+		switch {
+		case lua[id]:
+			if in.Enabled != nil || in.Sync != (BackendSync{}) {
+				return fmt.Errorf("plugins.instances.%q: a Lua plugin runs when it is listed in plugins.lua; only on_error and config apply", id)
+			}
+			continue
+		}
 		switch id {
 		case string(engine.BackendTailcat):
+			if in.OnError != "" {
+				return fmt.Errorf("plugins.instances.%q: a sync backend is not a processor", id)
+			}
 			if in.Enabled != nil {
 				return fmt.Errorf("plugins.instances.%q: this plugin cannot be switched off yet", id)
 			}
@@ -280,7 +339,24 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # changing this list needs a restart of unicd.
 # [plugins]
 # lua = ["example.lua-urltag"]
+#
+# What happens to a copy when a plugin fails (error, timeout, crash):
+#   "continue"   (default) the failed plugin's tags and settings for this copy
+#                are dropped and the copy is synced as usual. A plugin that is
+#                meant to keep secrets off other devices then lets them through
+#                whenever it fails.
+#   "block_sync" the copy stays on this device. No later plugin can lift that.
+# Set it for every plugin, or for one plugin, which wins. Needs a restart.
+# on_error = "continue"
+# [plugins.instances."example.lua-urltag"]
+# on_error = "block_sync"
+# The plugin's own settings are kept here, not in its directory, so installing
+# or upgrading the plugin never replaces them. Needs a restart.
+# [plugins.instances."example.lua-urltag".config]
+# tag = "link"
 `
+
+func validOnError(v string) bool { return v == "" || v == "continue" || v == "block_sync" }
 
 // WriteTemplate creates path with the template unless it already exists.
 func WriteTemplate(path string) error {

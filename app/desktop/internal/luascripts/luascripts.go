@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 
 	"github.com/BurntSushi/toml"
@@ -26,16 +25,14 @@ const maxSource = 1 << 20
 
 // Manifest is spec.toml of a Lua plugin.
 type Manifest struct {
-	ManifestVersion int            `toml:"manifest_version"`
-	ID              string         `toml:"id"`
-	Version         string         `toml:"version"`
-	APIVersion      int            `toml:"api_version"`
-	Kind            string         `toml:"kind"`
-	Entry           string         `toml:"entry"`
-	Capabilities    []string       `toml:"capabilities"`
-	Events          []string       `toml:"events"`
-	OnError         string         `toml:"on_error"`
-	Config          map[string]any `toml:"config"`
+	ManifestVersion int      `toml:"manifest_version"`
+	ID              string   `toml:"id"`
+	Version         string   `toml:"version"`
+	APIVersion      int      `toml:"api_version"`
+	Kind            string   `toml:"kind"`
+	Entry           string   `toml:"entry"`
+	Capabilities    []string `toml:"capabilities"`
+	Events          []string `toml:"events"`
 }
 
 // Script is one installed plugin: manifest plus entry source.
@@ -46,13 +43,14 @@ type Script struct {
 }
 
 // Same reports whether two versions of a script may replace each other
-// without a restart: everything but the source and the code-level config must
-// be identical, because those are what the engine fixed at startup.
+// without a restart: everything but the source must be identical, because
+// that is what the engine fixed at startup. on_error and the plugin's config
+// are the user's, kept in config.toml, not in the manifest.
 func (s Script) Same(o Script) bool {
 	a, b := s.Manifest, o.Manifest
-	return a.ID == b.ID && a.OnError == b.OnError && a.Version == b.Version && a.APIVersion == b.APIVersion &&
+	return a.ID == b.ID && a.Version == b.Version && a.APIVersion == b.APIVersion &&
 		slices.Equal(sorted(a.Capabilities), sorted(b.Capabilities)) &&
-		slices.Equal(a.Events, b.Events) && reflect.DeepEqual(a.Config, b.Config)
+		slices.Equal(a.Events, b.Events)
 }
 
 func sorted(s []string) []string { return slices.Sorted(slices.Values(s)) }
@@ -127,7 +125,7 @@ func Scan(root string) (found map[string]Script, errs map[string]error) {
 // Specs returns engine specs for the enabled IDs, in that order, plus the
 // scripts they came from. Any enabled plugin that is missing or unreadable is
 // an error: the daemon must not start with less than the user asked for.
-func Specs(root string, enabled []string) ([]engine.LuaPluginSpec, map[string]Script, error) {
+func Specs(root string, enabled []string, settings func(id string) (onError string, cfg map[string]any)) ([]engine.LuaPluginSpec, map[string]Script, error) {
 	if len(enabled) == 0 {
 		return nil, nil, nil
 	}
@@ -143,9 +141,10 @@ func Specs(root string, enabled []string) ([]engine.LuaPluginSpec, map[string]Sc
 			return nil, nil, fmt.Errorf("plugins.lua: %q is not installed in %s", id, root)
 		}
 		m := s.Manifest
-		cfg := plugin.Config(m.Config)
+		onError, c := settings(id)
+		cfg := plugin.Config(c)
 		specs = append(specs, engine.LuaPluginSpec{ID: m.ID, Version: m.Version, APIVersion: m.APIVersion,
-			Capabilities: m.Capabilities, Source: s.Source, Config: cfg, Events: m.Events, OnError: m.OnError})
+			Capabilities: m.Capabilities, Source: s.Source, Config: cfg, Events: m.Events, OnError: onError})
 		loaded[id] = s
 	}
 	return specs, loaded, nil

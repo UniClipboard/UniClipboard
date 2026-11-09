@@ -49,6 +49,9 @@ func (procHelper) Run(_ context.Context, ac plugin.ActionContext) error {
 
 func TestMain(m *testing.M) {
 	if v := os.Getenv("UNIC_TEST_PLUGIN"); v != "" {
+		if s := os.Getenv("UNIC_TEST_STDERR"); s != "" {
+			fmt.Fprintln(os.Stderr, s) // a plugin that chatters: the host must not forward it
+		}
 		if v == "tcppeer" {
 			_ = plugin.Serve(&tcpPeer{})
 			os.Exit(0)

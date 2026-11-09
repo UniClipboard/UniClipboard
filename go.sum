@@ -76,6 +76,8 @@ github.com/ebitengine/purego v0.11.1 h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6Xe
 github.com/ebitengine/purego v0.11.1/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
 github.com/egoist/mygo v0.8.1 h1:88fxq0OvlxToKNoyN/99xRKFX7PhMquC83nK54stS4g=
 github.com/egoist/mygo v0.8.1/go.mod h1:dVav53PwF2xEotjf4oA5lTY2Jp2exgzyjLhbSXhbMwE=
+github.com/egoist/mygo v0.8.4-0.20261108082913-9233663736ca h1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=
+github.com/egoist/mygo v0.8.4-0.20261108082913-9233663736ca/go.mod h1:M9l8H3dNtckOTlEpDp8JrLNL5mXOYMpYqv3tLuyPylI=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=
 github.com/frankban/quicktest v1.14.6/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7zb5vbUoiM6w0=
 github.com/fsnotify/fsnotify v1.9.0 h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=

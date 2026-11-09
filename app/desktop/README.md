@@ -38,6 +38,7 @@ unic 的桌面应用(macOS / Windows / Linux),是公开 Go SDK(`engine`)的宿�
 | `internal/board` | mygo 剪贴板适配 |
 | `internal/config` | TOML 配置文件的解析与热加载 |
 | `internal/paths` | 状态目录、socket、配置文件的位置 |
+| `internal/uikit` | mygo 原生组件：Adwaita / macOS glass / Fluent 三套皮肤，亮暗主题与生成的设计 token |
 | `packaging/` | 安装包资源(图标、plist 等,按需添加) |
 
 ## 开发
@@ -49,6 +50,14 @@ UNIC_HOME=/tmp/unicA ./unicd        # 用 UNIC_HOME 在同一台机器上跑第�
 ```
 
 国内网络下载依赖慢时:`GOPROXY=https://goproxy.cn,direct go mod download`。
+
+界面默认跟随操作系统皮肤和亮暗模式。可用 `UNIC_UI_SKIN=linux|macos|windows .build/unic gui` 在本机预览其他皮肤。组件移植与近似范围见 [0013](../../docs/design/decisions/0013-mygo-uikit.md)。
+
+GUI 测试可以导出三皮肤、亮暗主题的截图，包含空历史聚焦态和窄窗口：
+
+```sh
+UNIC_UI_TEST_ARTIFACTS="$PWD/.build/uikit-review" go test ./app/desktop/cmd/unic -run TestGUI -count=1
+```
 
 ### 代码检查
 

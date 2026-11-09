@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/egoist/mygo v0.8.1
+	github.com/egoist/mygo v0.8.4-0.20261108082913-9233663736ca
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/tailscale/tailcat v0.7.0
 	golang.org/x/sys v0.49.0

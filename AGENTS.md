@@ -34,6 +34,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0010](docs/design/decisions/0010-plugin-settings-schema.md) | 插件设置 Schema 与表单生成 | JSON Schema 子集 + UI 提示；Go 配置定义生成静态 schema，各 shell 生成原生表单；独立工具和 macOS 会话预览已实现，配置 API/清单/RPC/安装接入待完成 |
 | [0011](docs/design/decisions/0011-v1-history-migration.md) | v1 本机历史迁移 | 独立 Go CLI，三平台 arm64/amd64；只读解锁旧数据，离线导入文本/图片/文件/标签；支持新目录与追加合并、幂等续跑和重开校验；验收见执行计划 |
 | [0012](docs/design/decisions/0012-device-introductions.md) | 设备介绍：已配对设备推荐候选 | 介绍只是建议，不授信；C 确认后走正常配对（A 也需批准、核对指纹）；介绍方发送当前担保列表，幂等；移除不级联，担保 7 天未续期过期；上限 64/256/128；`/v1/candidates`；全局开关 `sync.introductions` |
+| [0013](docs/design/decisions/0013-mygo-uikit.md) | 桌面 UI Kit：移植到 mygo | 统一 Kit API，Adwaita / macOS glass / Fluent 三皮肤；token 从 default.json 生成；59 个公共组件与 GUI 已接入，交互和视觉分别验证；各平台原生验收边界见执行记录 |
 
 ### 接口契约
 

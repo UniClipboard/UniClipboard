@@ -1,0 +1,49 @@
+# 用例: 对端崩溃或挂起后自动恢复
+# 目的: 验证一端被强杀（SIGKILL）、或被挂起再恢复（SIGSTOP/SIGCONT）后，不需要人工干预就能重新同步。
+# 流程:
+#   1. 启动并配对 alpha 和 beta，确认能同步。
+#   2. 强杀 beta；alpha 在 beta 离线时复制一段文本。
+#   3. 重新启动 beta，等双方重新 online。
+#   4. alpha 每 5 秒复制一次带编号的文本，直到 beta 收到（对端刚恢复时旧连接上发出的内容会丢，所以允许重试；日志里记录第几次送达）。
+#   5. 挂起 beta 几秒后恢复，同样重试复制直到 beta 收到。
+# 期望:
+#   - beta 被强杀后重启，身份不变，仍是已配对设备，无需再批准。
+#   - 重连后 90 秒内新内容能到达 beta。
+#   - 挂起恢复后 90 秒内新内容能到达 beta。
+# 不应:
+#   - beta 离线期间的内容在重连后被补发（本版本不排队）。
+#   - 重启后出现需要重新批准的请求。
+
+node-start alpha
+node-start beta
+pair alpha beta
+board-set alpha text a1.txt
+board-wait beta text a1.txt
+
+node-id beta BETA
+node-stop beta KILL
+board-set alpha text offline.txt
+sleep 2s
+node-start beta
+until alpha 'online' peers
+until beta 'online' peers
+u beta status
+stdout $BETA
+! board-wait beta text offline.txt
+u beta requests
+! stdout 'Waiting for your approval'
+
+retry-copy alpha beta after-crash
+
+node-stop beta STOP
+sleep 5s
+node-stop beta CONT
+retry-copy alpha beta after-suspend
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- a1.txt --
+first
+-- offline.txt --
+sent while beta was down

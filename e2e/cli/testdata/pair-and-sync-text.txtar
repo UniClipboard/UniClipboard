@@ -1,0 +1,48 @@
+# 用例: 两台设备配对批准后，文本双向同步
+# 目的: 验证最基本的交付路径：全新的两个 unicd 经完整地址配对、双方批准后互通，且批准前不通。
+# 流程:
+#   1. 启动 alpha 和 beta 两个全新节点，各自使用独立的状态目录和目录剪贴板。
+#   2. beta 用 alpha 的完整地址发起配对；两边都出现待批准请求。
+#   3. 批准前，在 alpha 复制一段文本，等待一会儿，beta 的剪贴板不应出现它。
+#   4. 两边各自批准，互相显示 online。
+#   5. 在 alpha 复制文本，等 beta 剪贴板收到；再在 beta 复制文本，等 alpha 收到。
+#   6. 查看接收方历史里这两条的来源。
+# 期望:
+#   - 两端的待批准请求里指纹完全一致（pair 命令逐字核对）。
+#   - 批准后 peers 显示对方 online。
+#   - beta 的剪贴板内容等于 alpha 复制的文本，反向同理。
+#   - 接收方历史里该条目的来源是发送方的设备名（alpha 或 beta）。
+# 不应:
+#   - 批准之前 beta 收到 alpha 的任何内容。
+
+node-start alpha
+node-start beta
+
+pair alpha beta request
+
+# 请求已发出但没有批准：内容不能流动。
+board-set alpha text before.txt
+sleep 3s
+! board-wait beta text before.txt
+! until beta 'before' h list
+
+pair alpha beta approve
+
+board-set alpha text from-alpha.txt
+board-wait beta text from-alpha.txt
+until beta 'alpha\s+\d+B' h list
+
+board-set beta text from-beta.txt
+board-wait alpha text from-beta.txt
+until alpha 'beta\s+\d+B' h list
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- before.txt --
+sent before approval
+-- from-alpha.txt --
+hello from alpha
+-- from-beta.txt --
+hello from beta

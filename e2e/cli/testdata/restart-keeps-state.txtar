@@ -1,0 +1,51 @@
+# 用例: 重启后身份、配对、历史与标签保持不变
+# 目的: 验证 unicd 正常退出（SIGTERM）再启动，不会重新生成身份、不丢配对和历史，并自动重连。
+# 流程:
+#   1. 启动并配对 alpha 和 beta，beta 同步收到一条文本，并给它加标签 keep。
+#   2. 记录两个节点的设备 ID。
+#   3. 两个节点都用 SIGTERM 退出再启动。
+#   4. 对比设备 ID，检查 peers、历史和标签，再同步一条新文本。
+# 期望:
+#   - 重启前后设备 ID 完全相同。
+#   - 重启后无需重新配对，peers 自动恢复 online。
+#   - 历史里的旧条目和 keep 标签仍在。
+#   - 重启后新复制的文本仍能同步。
+# 不应:
+#   - 重启后出现新的待批准请求。
+#   - 退出时进程被强杀或超时。
+
+node-start alpha
+node-start beta
+pair alpha beta
+board-set alpha text one.txt
+board-wait beta text one.txt
+u beta h tag @1 --add keep
+node-id alpha ALPHA
+node-id beta BETA
+
+node-stop alpha TERM
+node-stop beta TERM
+node-start alpha
+node-start beta
+
+u alpha status
+stdout $ALPHA
+u beta status
+stdout $BETA
+until alpha $BETA'\s+\S+\s+online' peers
+until beta $ALPHA'\s+\S+\s+online' peers
+u beta requests
+! stdout $ALPHA
+u beta h list --tag keep
+stdout 'alpha'
+
+board-set alpha text two.txt
+board-wait beta text two.txt
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- one.txt --
+before restart
+-- two.txt --
+after restart

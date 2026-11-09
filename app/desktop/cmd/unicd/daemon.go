@@ -64,8 +64,14 @@ func runDaemon() error {
 	if err != nil {
 		return err
 	}
+	var clipboard host.Board = board.MyGo{}
+	if d := os.Getenv("UNIC_MOCK_CLIPBOARD_DIR"); d != "" {
+		// A clipboard kept in a directory, for end-to-end tests (e2e/cli):
+		// several daemons on one machine must not share the system clipboard.
+		clipboard = board.Dir(d)
+	}
 	node, err := host.Open(context.Background(), host.Options{
-		Dir: dir, Settings: settings, Board: board.MyGo{}, Logf: log.Printf, LuaDir: luaDir,
+		Dir: dir, Settings: settings, Board: clipboard, Logf: log.Printf, LuaDir: luaDir,
 	})
 	if err != nil {
 		return err

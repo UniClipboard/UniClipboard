@@ -166,8 +166,13 @@ P4 剩余（均不阻塞 P5）：`device.*`/`sync.*` 通知（会话事件不带
 
 - [x] 两个假后端验证全局关闭、独立类型/自动文件阈值、手动阈值豁免、部分失败、目标键隔离、并发/重启去重和统一资源配额。（2026-11-09：既有 `backend_test.go`/`dedup_test.go` 已覆盖全局关闭、独立阈值、部分失败、去重；新增 `multibackend_accept_test.go`：同设备跨后端目标隔离与 partial、32 路并发跨后端去重只提交一次、两后端共享一份存储配额。）
 - [x] 核心、插件 SDK、后端与桌面测试通过，边界测试确认 engine 不引入 GUI、TOML 或监听依赖。（2026-11-09：`go test -race ./...` 全绿；`engine/boundary_test.go` 检查 `go list -deps` 不含 app/、mygo、fsnotify、BurntSushi/toml、internal/session、internal/tcnet。）
-- [ ] 运行下方检查并记录结果；将 builtin tailcat 纳入宿主构建与 CI，验证干净安装可显式装配默认后端；外部测试程序另验 RPC 装配。
-- [ ] 双节点实测文本/HTML/PNG/文件；插件改写、禁发、标签、过期；挂起恢复、断线、进程崩溃、重启历史和身份持久化。
+- [x] 运行下方检查并记录结果；将 builtin tailcat 纳入宿主构建与 CI，验证干净安装可显式装配默认后端；外部测试程序另验 RPC 装配。（2026-11-09：`go test -race ./...`、`go vet ./...`、`golangci-lint run ./...`（0 issues，`internal/luavm` 为移植代码已排除）、`golangci-lint fmt --diff` 均通过；`unic`/`unicd` 构建通过，builtin.tailcat 随二进制编译；两个全新 `UNIC_HOME` 启动即装配默认后端并完成配对与同步；外部 RPC 装配由 `engine/peere2e_test.go` 的真实子进程（`TestRealProcessesPairAndSync`/`TestRealProcessesIntroduceDevice`）验证。`.github/workflows/pr-checks.yml` 已含 lint/测试/构建，但**尚未在远端实际运行**。）
+- [x] 双节点实测文本/HTML/PNG/文件；插件改写、禁发、标签、过期；挂起恢复、断线、进程崩溃、重启历史和身份持久化。（2026-11-09，本机两个真实 `unicd` 进程（独立 `UNIC_HOME`，`unic pair <ticket>` + 双向 `approve`，指纹一致）+ 真实 `unic` CLI，二进制 `go build` 产出：
+  - 同步：文本、HTML（text/plain + text/html 两个表示）、PNG（字节哈希一致）、300000 字节文件（哈希一致）均到达对端。
+  - 插件：`example.lua-sensitive` 对含 `password:` 的文本打 `sensitive` 标签、不同步（对端无远端条目）并设置 10 分钟过期；`expire 3s` 到期后条目被删除；`example.lua-emailtag` 在接收/捕获时打 `email` 标签；`example.lua-textcase/title` Action 产生 `action:` 来源的新条目并写入剪贴板、同步到对端；`unic plugin enable` 后重启生效。标签与过期仅本地，不同步。
+  - 恢复：SIGTERM 重启后设备身份、配对、历史、标签不变并自动重连；SIGKILL 一端后另一端数十秒内重新上线，恢复后同步正常；SIGSTOP 25 秒再 SIGCONT 后无需干预即同步；第二个实例对同一数据目录报 `in_use`；日志中无秘密正文与票据。
+  - 已固化为可重复运行的 `e2e/cli`（testscript，7 个用例，清单见 `e2e/cli/CASES.md`；`UNIC_E2E=1 go test ./e2e/cli -v`）。自动化用 `UNIC_MOCK_CLIPBOARD_DIR` 目录剪贴板隔离每个节点，不再共用系统剪贴板；自动化中发现：对端被强杀重启后，旧连接上发出的内容可能丢失（不排队），用例以重试到送达来验证恢复。
+  - 限制（不算通过的部分）：两个进程共用一个系统剪贴板，所以每次复制两端都会各捕获一次（出现 `local_system` 与 `macbook.local` 的成对条目），含密钥文本也会经对端的共享剪贴板进入对端的本地历史——这是同机测试的产物，不是同步泄漏（禁发条目在对端没有远端来源条目）；对端离线时产生的内容不排队补发；对端被 SIGKILL 后另一端约有数秒仍显示 online；没有测试真实休眠/唤醒和切换网络，也没有跨机器；这些仍属 P0 真机基线。）
 - [x] 隐私回归在正文/地址/票据中放置哨兵，检查日志、事件、公开错误及 stderr 处理；允许正文仅出现在显式内容读取和授权处理输入。（2026-11-09：新增 `privacy_sentinel_test.go`：正文哨兵不进日志/事件/操作/历史列表/状态/后端错误；真实子进程配对+发送后票据、地址、令牌不进日志/事件/操作/状态/设备列表；插件 stderr 不转发（引入 `cmd.Stderr=os.Stderr` 时测试失败，已验证）。）
 - [x] 更新 README、桌面说明、示例、两份契约的实现登记和 0004 状态，区分已验证能力与后续平台工作。（2026-11-09：桌面 README 已含 `unic history`/`unic plugin`；history、pipeline、plugin、plugin-rpc、sync-backend、backend-migration、device、sdk-extension 契约及 0004/0007/0008 的状态行改为已实现范围，并写明未做项；CLAUDE.md/AGENTS.md 的文档目录摘要仍沿用旧措辞，随用户的未提交改动另行更新。）
 

@@ -1,0 +1,52 @@
+# 用例: 邮箱标签插件与 Action 改写
+# 目的: 验证接收侧的插件标注，以及"用户主动触发的内容变换"（Action）产生新条目并同步，原条目不被改动。
+# 流程:
+#   1. 在 beta 安装并启用 example.lua-emailtag，在 alpha 安装并启用 example.lua-textcase，重启后配对。
+#   2. alpha 复制含邮箱地址的文本，beta 收到。
+#   3. alpha 复制 "hello e2e world"，对该条目运行 Action example.lua-textcase/title。
+#   4. 检查 alpha 的新条目来源与剪贴板，并等 beta 收到改写后的文本。
+# 期望:
+#   - beta 收到含邮箱的文本时带 email 标签。
+#   - Action 产生一个来源为 action:example.lua-textcase 的新条目，剪贴板变成 "Hello E2e World"。
+#   - beta 随后收到 "Hello E2e World"。
+# 不应:
+#   - 自动阶段改写任何正文（插件只能标注，改写必须由用户触发）。
+#   - 不含邮箱的文本被打上 email 标签。
+
+node-start alpha
+node-start beta
+install-plugin beta emailtag
+install-plugin alpha textcase
+u beta plugin enable example.lua-emailtag
+u alpha plugin enable example.lua-textcase
+node-stop alpha
+node-stop beta
+node-start alpha
+node-start beta
+pair alpha beta
+
+board-set alpha text mail.txt
+board-wait beta text mail.txt
+until beta 'alpha\s+\d+B\s+email' h list
+
+board-set alpha text hello.txt
+board-wait beta text hello.txt
+until beta 'alpha\s+\d+B' h list -n 1
+u beta h list -n 1
+! stdout 'email'
+u alpha h action @1 example.lua-textcase/title
+stdout 'new entry'
+board-wait alpha text title.txt
+board-wait beta text title.txt
+u alpha h list -n 5
+stdout 'action:example.lua-textcase'
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- mail.txt --
+contact bob@example.com
+-- hello.txt --
+hello e2e world
+-- title.txt --
+Hello E2e World

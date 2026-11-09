@@ -1,0 +1,54 @@
+# 用例: 敏感内容插件：打标签、禁止同步、设置过期
+# 目的: 验证本地 Lua 插件的目录发现、启用、重启生效，以及它对内容的三种干预（标签、禁发、过期）真的生效。
+# 流程:
+#   1. 在 alpha 的插件目录放入 example.lua-sensitive（用户 git 拉取后复制的方式），未启用前 plugin list 显示 disabled。
+#   2. 用 unic plugin enable 启用，重启 alpha 让它生效，再与 beta 配对。
+#   3. alpha 复制一段普通文本，beta 应收到。
+#   4. alpha 复制含 "password:" 的文本。
+#   5. 查看 alpha 历史条目的标签和过期时间，并等待足够久确认 beta 没有收到。
+#   6. 把该条目手动设为 3 秒后过期，等它被清理。
+# 期望:
+#   - 启用前 plugin list 为 disabled，启用后为 enabled。
+#   - 普通文本照常同步到 beta。
+#   - 含密码的条目带 sensitive 标签和过期时间，仅存在于 alpha 本机。
+#   - 过期后条目从 alpha 历史中消失。
+# 不应:
+#   - 含密码的文本出现在 beta 的剪贴板或历史里。
+#   - 含密码的文本出现在任何一个节点的日志里。
+
+node-start alpha
+node-start beta
+install-plugin alpha sensitive
+u alpha plugin list
+stdout 'example.lua-sensitive\s+1.0.0\s+disabled'
+u alpha plugin enable example.lua-sensitive
+u alpha plugin list
+stdout 'enabled'
+node-stop alpha
+node-start alpha
+pair alpha beta
+
+board-set alpha text plain.txt
+board-wait beta text plain.txt
+
+board-set alpha text secret.txt
+until alpha 'sensitive' h list
+until alpha '"expires_at_ms":[1-9]' h show @1 --json
+sleep 4s
+! board-wait beta text secret.txt
+! until beta '\s21B' h list
+
+u alpha h expire @1 3s
+sleep 6s
+u alpha h list --tag sensitive
+! stdout 'sensitive'
+! logs alpha hunter2-e2e
+! logs beta hunter2-e2e
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- plain.txt --
+nothing secret here
+-- secret.txt --
+password: hunter2-e2e

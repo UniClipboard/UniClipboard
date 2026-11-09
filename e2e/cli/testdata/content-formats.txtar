@@ -1,0 +1,43 @@
+# 用例: HTML、PNG 和文件原样同步
+# 目的: 验证除纯文本外的内容类型跨设备后字节不变，且富文本的多个表示都保留。
+# 流程:
+#   1. 启动并配对 alpha 和 beta。
+#   2. alpha 复制一份同时带纯文本和 HTML 两个表示的内容，等 beta 收到。
+#   3. alpha 复制一张 PNG 图片，等 beta 收到。
+#   4. alpha 复制一个 300000 字节的随机文件，等 beta 收到。
+#   5. 查看 beta 历史里图片、文件条目的类型和来源。
+# 期望:
+#   - beta 的纯文本、HTML、PNG 字节与 alpha 发出的完全一致。
+#   - beta 剪贴板里的文件内容与原文件逐字节相同。
+#   - beta 的历史里图片是 image 类型、文件是 files 类型，来源都是 alpha。
+#   - 带两个表示的内容到达 beta 后，纯文本和 HTML 两个表示都在 beta 的剪贴板里。
+# 不应:
+#   - 富文本被压成纯文本，丢掉 HTML 表示。
+#   - 图片或文件在传输中被截断、转码。
+
+node-start alpha
+node-start beta
+pair alpha beta
+
+board-set alpha text rich.txt html rich.html
+board-wait beta text rich.txt
+board-wait beta html rich.html
+until beta 'alpha\s+\d+B' h list
+
+genfile png pic.png
+board-set alpha png pic.png
+board-wait beta png pic.png
+until beta 'image\s+alpha' h list
+
+genfile rand big.bin 300000
+board-set alpha files big.bin
+board-wait beta files big.bin
+until beta 'files\s+alpha' h list
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- rich.txt --
+rich plain text
+-- rich.html --
+<b>rich</b> <i>html</i>

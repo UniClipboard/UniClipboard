@@ -13,6 +13,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | 测试（核心 + 桌面） | `go test -race ./...` |
 | 构建桌面端 | `go build -o unic ./app/desktop/cmd/unic && go build -o unicd ./app/desktop/cmd/unicd` |
 | 第二个本地节点 | `UNIC_HOME=/tmp/unicA ./unicd` |
+| CLI 端到端（真实 unic/unicd 多进程） | `UNIC_E2E=1 go test ./e2e/cli -v`；用例清单见 [e2e/cli/CASES.md](e2e/cli/CASES.md) |
 
 ## 文档目录
 
@@ -36,6 +37,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0012](docs/design/decisions/0012-device-introductions.md) | 设备介绍：已配对设备推荐候选 | 介绍只是建议，不授信；C 确认后走正常配对（A 也需批准、核对指纹）；介绍方发送当前担保列表，幂等；移除不级联，担保 7 天未续期过期；上限 64/256/128；`/v1/candidates`；全局开关 `sync.introductions` |
 | [0013](docs/design/decisions/0013-mygo-uikit.md) | 桌面 UI Kit：移植到 mygo | 统一 Kit API，Adwaita / macOS glass / Fluent 三皮肤；token 从 default.json 生成；59 个公共组件与 GUI 已接入，交互和视觉分别验证；各平台原生验收边界见执行记录 |
 | [0014](docs/design/decisions/0014-client-observability-otlp.md) | 客户端可观测性：OTLP 与动态日志等级 | 已采纳，待实现；slog + OTel Go SDK，OTLP/HTTP 可选上报；本机/远程等级独立，配置热加载与本机 CLI/API 限时覆盖；有界非阻塞、秘密白名单、默认关闭远程遥测 |
+| [0015](docs/design/decisions/0015-headless-cli-and-desktop-integration.md) | 纯 CLI、无头服务与独立桌面集成 | 已采纳，待实现；`unic`/`unicd` 无图形依赖，独立桌面客户端承载 GUI/剪贴板适配；显式提交与系统复制分开，单适配会话及租约协议先行；无头版与桌面整包分别分发 |
 
 ### 接口契约
 

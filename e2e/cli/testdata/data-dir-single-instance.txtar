@@ -1,0 +1,39 @@
+# 用例: 同一数据目录只允许一个 unicd，日志不泄露秘密
+# 目的: 验证第二个实例不会破坏已运行实例的数据，并且配对地址、票据与剪贴板正文不会写进日志。
+# 流程:
+#   1. 启动并配对 alpha 和 beta，同步一段带哨兵字符串的文本。
+#   2. 对 alpha 的同一数据目录再启动一个 unicd。
+#   3. 检查两个节点的日志。
+# 期望:
+#   - 第二个实例启动失败并报 in_use。
+#   - 原实例继续正常工作。
+# 不应:
+#   - 日志里出现剪贴板正文哨兵。
+#   - 日志里出现 unic-pair: 票据前缀。
+#   - 第二个实例影响已运行实例的连接。
+
+node-start alpha
+node-start beta
+pair alpha beta
+board-set alpha text sentinel.txt
+board-wait beta text sentinel.txt
+
+! node-start alpha
+u alpha status
+until alpha 'online' peers
+board-set alpha text again.txt
+board-wait beta text again.txt
+
+! logs alpha SENTINEL-4f9c1e
+! logs beta SENTINEL-4f9c1e
+! logs alpha unic-pair:
+! logs beta unic-pair:
+logs alpha in_use
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- sentinel.txt --
+SENTINEL-4f9c1e
+-- again.txt --
+still working

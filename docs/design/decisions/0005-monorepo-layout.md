@@ -4,6 +4,8 @@
 - 日期：2026-11-07
 - 关联：[0003 独立 Engine](0003-engine-sdk.md)
 
+> 2026-11-09 补充：[0015 无头服务与桌面集成](0015-headless-cli-and-desktop-integration.md) 确定将通用 CLI/daemon 移至 `app/service/`，共享本机协议放在根 `internal/localapi/`，`app/desktop/` 只保留 GUI 与系统适配。该拆分待实现；下文目录描述拆分前的布局。
+
 ## 背景
 
 仓库起初就是一个桌面应用，根目录的 `cmd/`、`internal/`、README、CI 都以桌面为前提。0003 引入公开的 `engine` 并计划接入 Android、iOS（以及后续的原生鸿蒙），需要一个能容纳多端、又不让各端互相污染的布局。

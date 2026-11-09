@@ -5,6 +5,8 @@
 - 关联：[0003 Engine SDK](0003-engine-sdk.md)、[0004 流水线与历史](0004-clipboard-pipeline-lua.md)、[0005 仓库布局](0005-monorepo-layout.md)
 - 原型：待提供（Mac 端界面设计另行给出）
 
+> 2026-11-09 边界修订：[0015 无头服务与桌面集成](0015-headless-cli-and-desktop-integration.md) 取代本文“系统剪贴板留在 unicd、Swift 侧不实现”及 daemon 无托盘模式的安排。目标 `unicd` 无图形依赖，SwiftUI 应用可承载唯一的桌面适配会话，负责系统剪贴板、菜单栏与通知；Engine、历史、配对和网络仍由 daemon 管理。该拆分及本机适配协议尚未实现，下文相关旧安排保留为原决策记录，以 0015 为准。
+
 ## 背景
 
 桌面界面现在是 mygo 的原生 UI（自绘，不是系统控件）。macOS 上希望得到 SwiftUI 的原生外观与行为：系统控件、`MenuBarExtra`、Liquid Glass（`.glassEffect()`）、辅助功能与系统更新带来的变化。Windows、Linux 继续用 mygo。

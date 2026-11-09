@@ -1,6 +1,6 @@
 # 后端装配、身份初始化与运行隔离契约
 
-- 状态：目标方案已确定，待实现及故障验证。
+- 状态：已实现：全新设备与传输身份初始化、实例私有目录与锁、`builtin.tailcat` 运行在通用 peer 后端路径上、Options.Network 移除（不兼容旧身份/地址）。真机双设备实测未做。
 - 日期：2026-11-08。
 - 依据：[0008 统一设备](decisions/0008-device-identity-and-backend-bindings.md)、[设备契约](device-contract.md)、[0007 多后端](decisions/0007-multiple-sync-backends.md)、[插件契约](plugin-contract.md)。
 - 文件名保留以维持文档链接；原旧 tailcat 数据迁移方案已取消。产品未上线，不读取/导入旧 tc.* 密钥、地址、配对记录，不要求地址不变或与旧 wire 对端互通；不提供旧 Network/SDK 兼容层。本文不执行本地数据删除或重置。

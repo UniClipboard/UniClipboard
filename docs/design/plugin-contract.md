@@ -2,7 +2,7 @@
 
 > 0008 目标修订：设备身份、信任与各实例关联授权以[设备契约](device-contract.md)为准；实现标识和配置实例标识须分离，同实现可配置多个实例。后端发现/连接不授信，SyncState 仅含该实例已授权关联和必要候选。下文 P2P 接口草案须补齐身份证明/关联 DTO 后才能作为实现依据。
 
-- 状态：目标设计，待实现；本文接口与模板当前不可直接编译运行。
+- 状态：Go（builtin 与外部进程）和 Lua 的注册、生命周期、顺序、严格配置、`builtin.tailcat` 后端边界及桌面 `config.toml` 映射已实现并有测试；本地 Lua 插件目录可发现、`unic plugin list/enable/disable` 已实现。§8 的 GitHub 安装（install/uninstall、预编译与 `--build`、`installed.lock`）和 Go 外部插件的本地目录约定尚未实现。
 - 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)。
 - 范围：Go / Lua 统一模型、builtin 进程内装配与外部独立进程 RPC、默认同步插件及 GitHub 安装。历史、流水线与插件调度在 `engine/`。
 

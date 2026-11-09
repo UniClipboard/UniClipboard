@@ -1,6 +1,6 @@
 # 0004 · 事件驱动的剪贴板处理流水线 + Go / Lua 插件
 
-- 状态：草案（历史与流水线归属已确定；未实现）
+- 状态：已采纳并实施：流水线、历史、Action、Go/Lua 插件、builtin.tailcat 与桌面配置已实现；GitHub 安装、真机双设备基线、SwiftUI 接入未完成（见[执行计划](../../exec/0004-clipboard-pipeline-lua.md)）。
 - 日期：2026-11-07（2026-11-08 修订：取消自动写回，增加 Action；同步后端按 0007/0008 调整为统一设备身份与实例关联）
 - 关联：[0002 配置](0002-config-file.md)、[0003 Engine SDK](0003-engine-sdk.md)、[0007 多后端](0007-multiple-sync-backends.md)、[0008 设备身份与后端关联](0008-device-identity-and-backend-bindings.md)
 - 参考：架构图（Capture → Processing → Commit → Sync → Use → End，事件总线，Lua 插件 API）

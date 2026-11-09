@@ -1,6 +1,6 @@
 # 流水线提交契约 v0.1
 
-- 状态：提交结果、幂等、状态转换与资源所有权契约已确定，待实现；插件主动变换见[Action 契约](clipboard-action-contract.md)，RPC 核心帧与控制载荷见[RPC 核心协议](plugin-rpc-contract.md)，后端业务 DTO 见[同步后端契约](sync-backend-contract.md)，Lua 预算方案见[运行时契约](lua-runtime-contract.md)，各项实现验证仍按执行计划补齐。
+- 状态：已实现并有测试（提交结果与网络结果分离、请求幂等、旧 SubmitContent 门面、提交屏障、Received/跨后端去重与资源账本；见[执行计划](../exec/0004-clipboard-pipeline-lua.md) P1–P3、P8）；插件主动变换见[Action 契约](clipboard-action-contract.md)，RPC 核心帧见[RPC 核心协议](plugin-rpc-contract.md)，后端业务 DTO 见[同步后端契约](sync-backend-contract.md)，Lua 预算见[运行时契约](lua-runtime-contract.md)。
 - 日期：2026-11-07。
 - 字段的具体 Go 类型、可选指针、目标结构与错误分类见[SDK 扩展类型契约](sdk-extension-contract.md)，仍待实现。
 - 依据：[0004](decisions/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[历史契约](history-contract.md)、[插件契约](plugin-contract.md)。本文件是 Engine 的目标扩展，不表示已有代码支持下述 API。

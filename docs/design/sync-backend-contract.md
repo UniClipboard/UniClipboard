@@ -2,7 +2,7 @@
 
 > **0008 修订边界（2026-11-08）**：统一身份与关联授权以[设备契约](device-contract.md)为准。下文 wire_version=2、自报 hello、ID 指纹、全量 peers/rejected 及对应 Schema 是待修订的 P2P 业务草案，不能直接实现为新架构的完整认证；“不增加密码学身份声明”的原约束取消。必须补齐可由 Engine 验证的持钥证明、上下文、防重放与关联修订；插件不能用自报 ID 或布尔结论授信。无旧协议兼容要求。具体业务 DTO/Schema/向量待版本化同步更新，本机 RPC 帧规则继续有效。
 
-- 状态：业务方法与 DTO 已定义，待实现和互操作验证；密钥/Options.Network 方案见[迁移契约](backend-migration-contract.md)，实现/故障验证及 Lua 预算验证仍有独立工作项。多后端公共边界以[0007](decisions/0007-multiple-sync-backends.md) 为准，本文件连接/配对/设备传输 DTO 仅描述 peer_sessions，不作为 WebDAV 的强制接口。
+- 状态：peer_sessions 的业务方法与 DTO 已实现，经真实子进程配对、发送、介绍的端到端测试验证；对象存储（WebDAV）DTO 未做，也不是本文强制接口。密钥/Network 方案见[迁移契约](backend-migration-contract.md)；多后端公共边界以[0007](decisions/0007-multiple-sync-backends.md) 为准。
 - 日期：2026-11-07。
 - 依据：[插件契约](plugin-contract.md)、[RPC 核心协议](plugin-rpc-contract.md)、[流水线提交](pipeline-contract.md)、[历史契约](history-contract.md)、[0001 配对](decisions/0001-pairing-code.md)。
 - 机器可读定义：沿用并扩展[帧/方法表](protocol/plugin-rpc-v1.frame.json)、[Schema](protocol/plugin-rpc-v1.schema.json) 与[向量](protocol/plugin-rpc-v1.vectors.json)。所有方法只授予已安装、握手且获配置授权且声明 peer_sessions 的 Go sync_backend 实例；同一 Engine 可有多个独立实例；Lua 和普通 processor/observer 调用属于越权。

@@ -1,6 +1,6 @@
 # 0004 执行计划：剪贴板流水线、历史与 Go / Lua 插件
 
-- 状态：实现中（P2、P4 完成；P5 的身份协议与 peer_sessions 外部后端、P6 的 Lua 运行时已实现，builtin tailcat 重构与 P3/P7/P8 未开始，更新于 2026-11-08）；标注“定义/方案”的勾选仅表示该文档交付及文档检查完成。实现任务须代码、契约与对应验证均完成才可勾选，不能以文档完成代替运行验收。
+- 状态：实现中（2026-11-09）：P0–P6 完成，仅余 P0 真实双设备基线与 P3 的 SwiftUI 菜单；P7 的配置映射、`unic history`、本地 Lua 插件目录已完成，GitHub 安装未做；P8 的自动化验收（多后端、隐私回归、边界）已完成，lint、真机双节点实测与文档登记收尾中。标注“定义/方案”的勾选仅表示该文档交付及文档检查完成。实现任务须代码、契约与对应验证均完成才可勾选，不能以文档完成代替运行验收。
 - 日期：2026-11-07。
 - 依据：[0004](../design/decisions/0004-clipboard-pipeline-lua.md)、[插件契约](../design/plugin-contract.md)、[Engine 契约](../design/engine-contract.md)、[0002 配置](../design/decisions/0002-config-file.md)、[0005 布局](../design/decisions/0005-monorepo-layout.md)。
 - 范围：本计划覆盖 0004 与插件契约的桌面首版，包括 GitHub 安装及默认 builtin `builtin.tailcat`；不包含移动端子进程支持。
@@ -169,7 +169,7 @@ P4 剩余（均不阻塞 P5）：`device.*`/`sync.*` 通知（会话事件不带
 - [ ] 运行下方检查并记录结果；将 builtin tailcat 纳入宿主构建与 CI，验证干净安装可显式装配默认后端；外部测试程序另验 RPC 装配。
 - [ ] 双节点实测文本/HTML/PNG/文件；插件改写、禁发、标签、过期；挂起恢复、断线、进程崩溃、重启历史和身份持久化。
 - [x] 隐私回归在正文/地址/票据中放置哨兵，检查日志、事件、公开错误及 stderr 处理；允许正文仅出现在显式内容读取和授权处理输入。（2026-11-09：新增 `privacy_sentinel_test.go`：正文哨兵不进日志/事件/操作/历史列表/状态/后端错误；真实子进程配对+发送后票据、地址、令牌不进日志/事件/操作/状态/设备列表；插件 stderr 不转发（引入 `cmd.Stderr=os.Stderr` 时测试失败，已验证）。）
-- [ ] 更新 README、桌面说明、示例、两份契约的实现登记和 0004 状态，区分已验证能力与后续平台工作。
+- [x] 更新 README、桌面说明、示例、两份契约的实现登记和 0004 状态，区分已验证能力与后续平台工作。（2026-11-09：桌面 README 已含 `unic history`/`unic plugin`；history、pipeline、plugin、plugin-rpc、sync-backend、backend-migration、device、sdk-extension 契约及 0004/0007/0008 的状态行改为已实现范围，并写明未做项；CLAUDE.md/AGENTS.md 的文档目录摘要仍沿用旧措辞，随用户的未提交改动另行更新。）
 
 ## 验证命令与记录
 

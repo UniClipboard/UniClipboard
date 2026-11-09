@@ -4,7 +4,7 @@
 
 > 0008 扩展：[设备契约](device-contract.md)定义统一设备、候选、配对操作与设备后端关联。对应具体 DTO/枚举、实例标识和 CAS 接口尚未定义，下文代码不是其完整类型规范；新增查询、关联审批/启停/移除和设备全路径撤销时须同批补齐类型、错误和测试，无旧 tailcat/SDK 兼容要求。
 
-- 状态：目标定义完成，待实现；本文不是已有可调用 API。现有实现基线见[测试记录](../exec/baselines/0004-2026-11-07.md)。
+- 状态：历史/提交/Action DTO、插件及 Lua 装配与严格配置已落在 `engine/` 与 `plugin/`；现有基线见[测试记录](../exec/baselines/0004-2026-11-07.md)。
 - 日期：2026-11-08（取消自动写回，改为 Action）。
 - 公开业务类型属于 `github.com/uniclipboard/unic/engine`；插件进程 SDK 属于 `github.com/uniclipboard/unic/plugin`，不依赖 engine。行为分别遵循[提交](pipeline-contract.md)、[历史](history-contract.md)、[Action](clipboard-action-contract.md)、[插件](plugin-contract.md)及[0007](decisions/0007-multiple-sync-backends.md)。本文补齐具体字段、可选值与错误映射，不取代它们的状态机。
 

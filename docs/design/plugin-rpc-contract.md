@@ -2,7 +2,7 @@
 
 > 0008 状态说明：[设备契约](device-contract.md)新增的统一身份证明、实例关联与审批字段/方法尚未纳入现有业务 Schema/向量。本文本机帧与控制协议不因此失效，但现有互操作用例不能证明统一设备认证完成；具体业务协议须版本化更新并校验后再实现。
 
-- 状态：核心传输、生命周期、processor/observer/action 协议已定义，待实现；同步后端业务方法与 DTO 见[同步后端契约](sync-backend-contract.md)，运行时互操作、迁移和预算验证仍未完成，不能据此宣告 P0 完成。
+- 状态：核心传输、生命周期、processor/observer/action 协议以及 peer_sessions 同步后端方法已实现，真实子进程端到端测试通过（`engine/peere2e_test.go`）；同步后端业务方法与 DTO 见[同步后端契约](sync-backend-contract.md)。非 Go 语言的互操作实现尚无。
 - 日期：2026-11-07。
 - 依据：[插件契约](plugin-contract.md)、[提交契约](pipeline-contract.md)。本协议只用于 Engine 与本机插件子进程。设备网络协议由 0008 重定，不要求保持 wire v2。
 - 机器可读定义：[帧与方法表](protocol/plugin-rpc-v1.frame.json)、[控制载荷 JSON Schema](protocol/plugin-rpc-v1.schema.json)、[互操作向量](protocol/plugin-rpc-v1.vectors.json)。二进制规则由帧表与本文共同定义，Schema 不能替代状态、授权、整型范围和字节预算验证。

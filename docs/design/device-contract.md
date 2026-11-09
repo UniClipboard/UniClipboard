@@ -1,6 +1,6 @@
 # 统一设备、身份与同步后端关联契约
 
-- 状态：架构与行为约束已确定，待实现；下述为概念模型，不是已有 SDK/RPC API。密码学协议、具体 DTO/枚举、资源上限和机器可读向量仍待定义。
+- 状态：已实现并有测试：统一设备身份与信任、按后端实例的关联授权、候选/配对、设备介绍、撤销；密码学协议见[身份协议](identity-protocol.md)。对象存储路径与 macOS 界面未做。
 - 日期：2026-11-08。
 - 依据：[0008](decisions/0008-device-identity-and-backend-bindings.md)、[0007](decisions/0007-multiple-sync-backends.md)、[Engine 契约](engine-contract.md)、[同步后端契约](sync-backend-contract.md)。
 - 范围：全新设计，无旧身份、地址、配对记录、票据、SDK 或设备协议的兼容要求。本文在设备身份、关联和审批方面优先于既有 P2P 草案；不据此更改本机插件 RPC 帧格式。

@@ -172,3 +172,8 @@ func (c *Client) RestoreHistory(ctx context.Context, id, request string) (out en
 	err = c.do(ctx, http.MethodPost, "/v1/history/"+url.PathEscape(id)+"/use", body, &out)
 	return
 }
+
+func (c *Client) HistoryTags(ctx context.Context) (tags []string, err error) {
+	err = c.do(ctx, http.MethodGet, "/v1/history/tags", nil, &tags)
+	return
+}

@@ -1,7 +1,5 @@
 package engine
 
-import "time"
-
 // Public history DTOs (history-contract.md, sdk-extension-contract.md §3).
 // They describe persisted records and never carry content, file names or paths.
 
@@ -103,9 +101,7 @@ type DeleteItemRequest struct {
 	ExpectedRevision uint64
 }
 
-// HistoryOptions is fixed at New. Zero fields take the defaults.
+// HistoryOptions sets the storage budget at New. Cleanup rules are live Settings.
 type HistoryOptions struct {
-	MaxItems   int           // default 10000
-	MaxBytes   int64         // default 4 GiB; at most ResourcePolicy.MaxStoredBytes
-	DefaultTTL time.Duration // 0: items do not expire unless a processor says so
+	MaxBytes int64 // default 4 GiB; at most ResourcePolicy.MaxStoredBytes
 }

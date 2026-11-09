@@ -172,9 +172,7 @@ type ApplyHistoryRequest struct {
     ExpectedSequence uint64
 }
 type HistoryOptions struct {
-    MaxItems int
     MaxBytes int64
-    DefaultTTL time.Duration
 }
 ```
 
@@ -184,7 +182,11 @@ BackendSyncStates 按 BackendID 排序且不重复；State 描述实际目标汇
 
 UpdateItem 的 nil Tags 表示不变，非 nil 且空切片表示清空；nil ExpiresAtMs 表示不变，指向 0 表示移除期限。Created 时间边界不得为负，两个非零边界须 from < before；0 是无边界。其余上限、排序、游标与 CAS 错误按历史契约。
 
-HistoryOptions 的两个容量字段 0 使用默认值（10000、4GiB），负数非法；DefaultTTL=0 表示无限期。Resources 新增 MaxSubmissions int/SubmissionTTL time.Duration、MaxSyncDedupEntries int/SyncDedupTTL time.Duration，零值分别取 1024/30分钟、100000/7天，负数非法。默认化后历史 MaxBytes 不得大于总 MaxStoredBytes。
+HistoryOptions.MaxBytes uses a default of 4 GiB (capped by ResourcePolicy.MaxStoredBytes); negative values are invalid.
+Live cleanup fields belong to Settings.History: AutoCleanup, RetentionDays, MaxItems, and ExcludedTags.
+MaxItems=0 is unlimited. FileCacheSettings contains only MaxBytes (default 500 MB).
+See the [history contract](history-contract.md) for tag matching, storage pressure, and deletion ownership.
+Resources retain MaxSubmissions/SubmissionTTL and MaxSyncDedupEntries/SyncDedupTTL with defaults of 1024/30 minutes and 100000/7 days.
 
 ## 4. 插件装配与配置所有权
 

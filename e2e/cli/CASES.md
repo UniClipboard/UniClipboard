@@ -9,9 +9,11 @@
 | [crash-and-suspend-recovery](#crash-and-suspend-recovery) | 对端崩溃或挂起后自动恢复 |
 | [data-dir-single-instance](#data-dir-single-instance) | 同一数据目录只允许一个 unicd，日志不泄露秘密 |
 | [file-cache-boundary](#file-cache-boundary) | Cache cleanup cannot escape the managed directory |
-| [file-cache-retention](#file-cache-retention) | Default file cache retention |
+| [file-cache-retention](#file-cache-retention) | Unified cleanup deletes managed files with history |
 | [file-cache-scope](#file-cache-scope) | File cache ownership and quota |
 | [file-size-policy](#file-size-policy) | Default 100 MB file boundary |
+| [history-auto-cleanup](#history-auto-cleanup) | Unified history cleanup and tag exclusions |
+| [history-cache-quota](#history-cache-quota) | Unified cleanup preserves the per-device cache quota |
 | [history-restore-sync](#history-restore-sync) | History restore sync policy |
 | [host-received-files](#host-received-files) | Host-owned custom receive files |
 | [pair-and-sync-text](#pair-and-sync-text) | 两台设备配对批准后，文本双向同步 |
@@ -227,8 +229,9 @@ board-set alpha files payload.bin
 board-wait beta files payload.bin
 file-path beta CACHED
 u beta copy release
+u beta config set history.retention_days 1
 node-stop beta
-cache-age beta 172800
+history-age beta 172800
 cache-link beta $CACHED
 node-start beta
 sleep 1s
@@ -241,30 +244,29 @@ exists beta/inbox/clip-user/keep.txt
 
 ## file-cache-retention
 
-**Default file cache retention**
+**Unified cleanup deletes managed files with history**
 
 运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/file-cache-retention' -v`
 
 **目的**
 
-Verify age cleanup affects only default managed payloads.
+Verify history count cleanup releases managed payloads and honors tags.
 
 
 **流程**
 
-1. Receive a file and replace the clipboard before shutdown.
-2. Stamp a known old completion time in the stopped test database.
-3. Restart with cleanup disabled, then enabled.
+1. Receive files with cleanup disabled and protect a tagged file.
+2. Release clipboard holders and enable a count limit.
+3. Remove the excluded tag and verify physical deletion.
 
 **期望**
 
-- Cleanup off preserves expired file bytes.
-- Cleanup on removes expired default cache bytes and preserves metadata.
+- Both file content and its history survive while excluded.
+- Cleanup deletes eligible file history and its unheld payload.
 
 **不应**
 
-- Startup deletes a default cached file still on the clipboard.
-- A filename prefix grants deletion authority outside the cache.
+- File-only cleanup leaves unavailable history records.
 
 <details><summary>脚本 testdata/file-cache-retention.txtar</summary>
 
@@ -272,35 +274,35 @@ Verify age cleanup affects only default managed payloads.
 node-start alpha
 node-start beta
 pair alpha beta
-genfile rand old.bin 100
+u beta config set history.auto_cleanup false
+genfile rand protected.bin 100
+board-set alpha files protected.bin
+board-wait beta files protected.bin
+file-path beta PROTECTED
+u beta h tag @1 --add keep
+u beta copy release-protected
+retry-copy alpha beta ready-for-second
+genfile rand old.bin 110
 board-set alpha files old.bin
 board-wait beta files old.bin
 file-path beta OLD
 u beta copy release-old
-u beta config set file_cache.retention_hours 1
-u beta config set file_cache.auto_cleanup false
-node-stop beta
-cache-age beta 7200
-node-start beta
-until beta '"held":false' cache --json
-cmp $OLD old.bin
-retry-copy alpha beta pinned-ready
-genfile rand pinned.bin 110
-board-set alpha files pinned.bin
-board-wait beta files pinned.bin
-file-path beta PINNED
-u beta config set file_cache.auto_cleanup true
-node-stop beta
-cache-age beta 7200
-node-start beta
+until beta '"size":110,[^}]*"held":false' cache --json
+u beta config set history.excluded_tags '["keep"]'
+u beta config set history.max_items 1
+u beta config set history.auto_cleanup true
 ! file-wait $OLD
-cmp $PINNED pinned.bin
-u beta copy release
+cmp $PROTECTED protected.bin
+u beta h list --json
+! stdout '"available":false'
+stdout keep
 node-stop beta
 node-start beta
-! file-wait $PINNED
+cmp $PROTECTED protected.bin
+u beta config set history.excluded_tags '[]'
+! file-wait $PROTECTED
 u beta h list --json
-stdout '"available":false'
+! stdout '"kind":"files"'
 ```
 
 </details>
@@ -325,7 +327,7 @@ Bound default cache without deleting custom received files.
 **期望**
 
 - Default quota rejects files when protected payloads fill the cache.
-- Releasing pins permits eviction while retaining history metadata.
+- Releasing pins permits unified deletion of files and bound history.
 - Custom receives ignore the default quota and survive history deletion and restart.
 
 **不应**
@@ -360,7 +362,7 @@ node-stop beta KILL
 node-start beta
 cmp $TWO two.bin
 u beta h list --json
-stdout '"available":false'
+! stdout '"available":false'
 mkdir custom
 u beta config set inbox '"'$WORK'/custom"'
 node-stop beta
@@ -433,6 +435,161 @@ u beta config set limits.max_file_bytes '"1MB"'
 genfile rand rejected.bin 1048577
 board-set alpha files rejected.bin
 ! board-wait beta files rejected.bin
+```
+
+</details>
+
+## history-auto-cleanup
+
+**Unified history cleanup and tag exclusions**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/history-auto-cleanup' -v`
+
+**目的**
+
+Verify live count cleanup, tag matching, restart, and removed file settings.
+
+
+**流程**
+
+1. Disable cleanup and create tagged and untagged local history.
+2. Enable a count limit and protect one tag.
+3. Restart and remove tag protection.
+
+**期望**
+
+- Excluded history survives; oldest eligible records disappear.
+- Zero count means unlimited; removed file keys are rejected.
+
+**不应**
+
+- Cleanup resumes while disabled or an excluded record is counted.
+
+<details><summary>脚本 testdata/history-auto-cleanup.txtar</summary>
+
+```
+node-start alpha
+u alpha config set history.auto_cleanup false
+u alpha config set history.max_items 1
+u alpha copy protected-one
+u alpha h tag @1 --add keep
+exec curl -sf --unix-socket $WORK/.alpha.sock http://unic/v1/history/tags
+stdout keep
+u alpha copy ordinary-two
+u alpha copy ordinary-three
+u alpha h show @3
+stdout protected-one
+u alpha h show @2
+stdout ordinary-two
+u alpha h show @1
+stdout ordinary-three
+u alpha config set history.excluded_tags '["keep", "other"]'
+u alpha config set history.auto_cleanup true
+u alpha h show @2
+stdout protected-one
+u alpha h show @1
+stdout ordinary-three
+! u alpha h show @3
+node-stop alpha
+node-start alpha
+u alpha h show @2
+stdout protected-one
+u alpha h show @1
+stdout ordinary-three
+u alpha config set history.excluded_tags '[]'
+u alpha h show @1
+stdout ordinary-three
+! u alpha h show @2
+u alpha config set history.max_items 0
+u alpha copy unlimited-four
+u alpha h show @2
+stdout ordinary-three
+u alpha h show @1
+stdout unlimited-four
+! u alpha config set file_cache.retention_hours 1
+! u alpha config set file_cache.auto_cleanup true
+u alpha config --json
+! stdout retention_hours
+! stdout default_ttl_days
+u alpha config set history.auto_cleanup false
+u alpha config set history.retention_days 1
+node-stop alpha
+history-age alpha 172800
+node-start alpha
+u alpha h show @1
+stdout unlimited-four
+u alpha config set history.auto_cleanup true
+! u alpha h show @1
+```
+
+</details>
+
+## history-cache-quota
+
+**Unified cleanup preserves the per-device cache quota**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/history-cache-quota' -v`
+
+**目的**
+
+Verify disabled cleanup and excluded tags block capacity reclamation.
+
+
+**流程**
+
+1. Fill a small cache, release its clipboard holder, and disable cleanup.
+2. Enable cleanup while excluding the retained record's tag.
+3. Remove the exclusion and resend the rejected batch.
+
+**期望**
+
+- Disabled cleanup and tag exclusions each preserve the first file and record.
+- Removing the exclusion permits coupled record/file deletion and new admission.
+
+**不应**
+
+- Quota reclamation bypasses the unified switch or tag exclusions.
+
+<details><summary>脚本 testdata/history-cache-quota.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config set file_cache.max_bytes 150
+u beta config set history.auto_cleanup false
+genfile rand first.bin 100
+board-set alpha files first.bin
+board-wait beta files first.bin
+file-path beta FIRST
+u beta h tag @1 --add keep
+u beta copy -f $FIRST
+u beta cache --json
+stdout '"stored_bytes":100'
+u beta copy release
+until beta '"size":100,[^}]*"held":false' cache --json
+retry-copy alpha beta reset-off
+genfile rand next.bin 110
+board-set alpha files next.bin
+! board-wait beta files next.bin
+cmp $FIRST first.bin
+u beta h list --tag keep --json
+stdout keep
+u beta config set history.excluded_tags '["keep"]'
+u beta config set history.auto_cleanup true
+retry-copy alpha beta reset-protected
+board-set alpha files next.bin
+! board-wait beta files next.bin
+cmp $FIRST first.bin
+u beta h list --tag keep --json
+stdout keep
+u beta config set history.excluded_tags '[]'
+retry-copy alpha beta reset-eligible
+board-set alpha files next.bin
+board-wait beta files next.bin
+! file-wait $FIRST
+u beta h list --tag keep --json
+! stdout keep
 ```
 
 </details>

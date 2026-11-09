@@ -97,6 +97,7 @@ func (c *fileCache) hold(id string) (string, bool) {
 }
 func (c *fileCache) release(ids []string) {
 	c.mu.Lock()
+	defer c.reap()
 	defer c.mu.Unlock()
 	for _, id := range ids {
 		c.held[id]--
@@ -117,59 +118,54 @@ func (c *fileCache) available(id string) bool {
 }
 
 // reserve counts each retained byte and each pending byte once. Unlink failures stay charged.
-func (c *fileCache) reserve(n int64, policy FileCacheSettings, expiry bool) (bool, []string) {
+func (c *fileCache) reserve(n int64, policy FileCacheSettings) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if policy.MaxBytes == 0 {
-		policy = DefaultSettings().FileCache
-	}
-	if n > policy.MaxBytes || !c.safe() || (n > 0 && c.deferStartup) {
-		return false, nil
-	}
-	rows, err := c.st.CachedFiles()
-	if err != nil {
-		return false, nil
-	}
-	used := c.reserved
-	for _, f := range rows {
-		used += f.Size
-	}
-	var changed []string
-	now := time.Now().UnixMilli()
-	for _, f := range rows {
-		old := expiry && policy.AutoCleanup && now-f.CompletedMs >= policy.RetentionHours*int64(time.Hour/time.Millisecond)
-		if !old && f.Available && used+n <= policy.MaxBytes {
-			continue
-		}
-		if c.held[f.ID] > 0 || c.startupHeld[f.ID] {
-			continue
-		}
-		ids, err := c.st.MarkCachedFileUnavailable(f.ID)
-		if err != nil {
-			continue
-		}
-		changed = append(changed, ids...)
-		f.Available = false
-		c.files[f.ID] = f
-		// Root.RemoveAll confines symlink resolution to the already-open default root.
-		if !c.safe() {
-			continue
-		}
-		if err = c.root.RemoveAll(f.ID); err != nil {
-			continue
-		}
-		if err = c.st.ForgetCachedFile(f.ID); err != nil {
-			continue
-		}
-		delete(c.files, f.ID)
-		c.bytes.Add(-f.Size)
-		used -= f.Size
-	}
-	if used+n > policy.MaxBytes {
-		return false, changed
+	if !c.safe() || (n > 0 && c.deferStartup) || c.bytes.Load()+c.reserved+n > policy.MaxBytes {
+		return false
 	}
 	c.reserved += n
-	return true, changed
+	return true
+}
+
+// reap releases only unreferenced, unheld cache payloads. The ledger remains
+// charged until physical removal succeeds, making interrupted removal retryable.
+func (c *fileCache) reap() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.safe() {
+		return
+	}
+	count := 0
+	for id, f := range c.files {
+		if c.held[id] > 0 || c.startupHeld[id] {
+			continue
+		}
+		referenced, err := c.st.CachedFileReferenced(id)
+		if err != nil || referenced {
+			continue
+		}
+		if retired, err := c.st.RetireUnreferencedCachedFile(id); err != nil || !retired {
+			continue
+		}
+		f.Available = false
+		c.files[id] = f
+		if !c.safe() {
+			return
+		}
+		if err = c.root.RemoveAll(id); err != nil {
+			continue
+		}
+		if err = c.st.ForgetCachedFile(id); err != nil {
+			continue
+		}
+		delete(c.files, id)
+		c.bytes.Add(-f.Size)
+		count++
+		if count >= 256 {
+			return
+		}
+	}
 }
 func (c *fileCache) cancel(n int64) { c.mu.Lock(); c.reserved -= n; c.mu.Unlock() }
 
@@ -303,16 +299,6 @@ func (e *Engine) storeReceivedFile(ctx context.Context, p *partRec) (source Pers
 	return stored, meta, nil
 }
 
-func (e *Engine) cleanupFileCache(expiry bool) {
-	e.mu.Lock()
-	policy := e.settings.Value.FileCache
-	e.mu.Unlock()
-	_, ids := e.cache.reserve(0, policy, expiry)
-	if len(ids) > 0 {
-		e.historyChanged(ids...)
-	}
-}
-
 // FileCacheState contains no paths or filenames. Custom received files are outside this ledger.
 type FileCacheState struct {
 	Scope         string           `json:"scope"`
@@ -370,14 +356,9 @@ func (e *Engine) ReconcileClipboardFiles(ctx context.Context, paths []string) er
 	c.deferStartup = false
 	c.mu.Unlock()
 	if startup {
-		e.mu.Lock()
-		policy := e.settings.Value.FileCache
-		e.mu.Unlock()
-		_, ids := c.reserve(0, policy, true)
-		if len(ids) > 0 {
-			e.historyChanged(ids...)
-		}
+		e.cleanupHistory()
 	}
+	e.reapCachedFiles()
 	return nil
 }
 
@@ -401,4 +382,16 @@ func (c *fileCache) pinPath(path string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// reclaimable permits deleting eligible references to an unheld payload.
+// A protected reference prevents capacity reclamation of the shared payload.
+func (c *fileCache) reclaimable(id string, excluded []string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.files[id]; !ok || !c.safe() || c.held[id] > 0 || c.startupHeld[id] {
+		return false
+	}
+	protected, err := c.st.CachedFileProtected(id, excluded)
+	return err == nil && !protected
 }

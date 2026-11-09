@@ -1,6 +1,6 @@
 # 0016: Sync and file settings
 
-- Status: CLI and TOML implemented. Settings GUI deferred by the current implementation scope.
+- Status: Sync and quota CLI/TOML implemented. Separate file retention and cleanup are superseded by [0017](0017-history-auto-cleanup.md).
 - Current behavior: [desktop runtime](../../architecture/desktop-runtime.md).
 - Date: 2026-11-09
 - Input: The settings screenshot and the subsequent scope review.
@@ -21,10 +21,10 @@ Files that pass admission transfer in full. This proposal adds no metadata-only 
 | S5 | File storage location | Application-managed directory |
 | S6 | Maximum file size | 100 MB |
 | S7 | Per-device cache quota | 500 MB |
-| S8 | File retention | 24 hours |
-| S9 | Automatic cleanup | On |
+| S8 | Separate file retention | Removed; unified in 0017 |
+| S9 | Separate file cleanup switch | Removed; unified in 0017 |
 
-The defaults and the nine settings are the reviewed scope.
+The original nine-setting scope is revised by 0017. S7 remains; S8 and S9 are removed.
 The user confirmed the storage boundary: quota and cleanup cover only the default managed file directory.
 A custom receive directory is user-managed. The application must not delete files there through cache or history lifecycle operations.
 This draft proposes the remaining acceptance rules below for review.
@@ -111,42 +111,27 @@ As a user, I want a 500 MB quota for the default managed file directory so that 
 1. The quota is local to this device. The quota does not give each sender a separate allowance.
 2. The quota counts only default-cache file payloads and their transfer reservations. History references to these payloads do not expand the directory boundary.
 3. Shared payloads count once. Custom received files, local source references, text, images, and exported copies do not count.
-4. Before a default-cache receive, the application reserves the whole batch and evicts the oldest eligible default-cache payloads if necessary.
+4. Before a default-cache receive, the application reserves the whole batch and uses unified history deletion to reclaim eligible managed files when automatic cleanup permits it.
 5. The application does not evict payloads held by an active read, send, apply, or clipboard lease.
 6. If the quota cannot fit a default-cache batch, the application rejects that receive without publishing partial history or clipboard content.
-7. Eviction preserves history metadata and marks the file content unavailable. The application does not promise a later download.
-8. Quota enforcement remains active for default-cache files when S9 is off.
+7. Reclamation deletes eligible history and releases its managed files. Tag exclusions apply to both.
+8. The quota remains an admission bound when unified automatic cleanup is off. Reject the new batch instead of deleting history.
 9. The application accepts custom-directory receives independently of the default-cache quota. File-size and transfer resource limits still apply.
 10. The application must not copy custom received files into the default cache merely to apply quota or cleanup.
 
-### S8: Set a file retention period
+### S8 and S9: Superseded
 
-As a user, I want cached files to become eligible for cleanup after 24 hours.
-
-1. The application measures retention from completion of the received batch. Reading or restoring the file does not reset that time.
-2. The completion time survives restart. The application uses the local wall clock.
-3. The retention period applies only to default-cache file payloads. It does not expire custom received files or the entire history item.
-4. Cleanup preserves history metadata and marks removed content unavailable.
-5. The application defers deletion while an active holder uses the payload.
-6. Retention defines eligibility. S9 determines whether startup deletes payloads by age.
-
-### S9: Control startup cleanup
-
-As a user, I want to choose whether startup deletes expired cached files.
-
-1. When automatic cleanup is on, startup removes only expired, unheld, owned payloads inside the default managed file directory.
-2. When automatic cleanup is off, startup preserves expired payloads and keeps them readable.
-3. This setting does not disable default-cache quota eviction or cleanup of proven owned temporary files inside the default managed directory.
-4. Deleting history removes metadata and eligible default-cache content. Deleting history must not delete custom received files.
-5. This proposal adds no periodic age-based cleanup. The interface says that cleanup runs at startup.
-6. The application keeps failed deletions in cache accounting and can retry them. The application does not report reclaimed bytes before deletion succeeds.
+Separate file retention and startup cleanup are removed.
+[0017](0017-history-auto-cleanup.md) owns one cleanup policy for all history types and their managed files.
+No file-retention setting, independent file-cleanup switch, or payload-only eviction remains.
+Ownership checks, active holders, quota reservations, and interrupted-deletion recovery remain necessary.
 
 ### S10: Save settings reliably
 
 As a user, I want the settings page to show saved values and failures accurately.
 This is a cross-cutting story, not a tenth configuration item.
 
-1. The page contains the nine settings in Sync behavior and File sync groups.
+1. The page contains the remaining sync/file settings. Unified history cleanup controls belong to 0017.
 2. The page contains no sync-frequency or immediate-transfer-threshold row.
 3. A successful save survives daemon and GUI restart.
 4. An invalid value leaves the last valid configuration active.
@@ -163,7 +148,7 @@ This is a cross-cutting story, not a tenth configuration item.
 - Keep host references opaque. An Android host can supply document references and streams without requiring a filesystem receive directory.
 - Separate `FileReference` from `LocalFilePath`. Only the host interprets a platform reference.
 - Reuse SQLite, the existing content leases, the blob holder pattern, and the UI Kit. Add no settings framework.
-- Separate file payload lifetime from history metadata lifetime. History expiry currently removes the entire item and cannot represent S8.
+- Use the unified history/file lifecycle from 0017. Retain physical files only while a valid reference or active holder requires them.
 - Use one cache identity for a received payload. History and the clipboard share that payload instead of keeping separately charged copies.
 - Limit deletion authority to proven owned content inside the default managed file directory.
 - Record default-cache and custom-received storage classes separately. A path change must not change a file's storage class.

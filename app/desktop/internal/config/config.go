@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -75,12 +74,13 @@ type Config struct {
 	FileCache     FileCache `toml:"file_cache" json:"file_cache"`
 }
 
-// History bounds the local clipboard history. It is read when the daemon
-// starts. Files copied from disk are remembered by path and cost nothing here.
+// History configures live cleanup and the startup storage budget.
 type History struct {
-	MaxItems       int  `toml:"max_items" json:"max_items"`
-	MaxBytes       Size `toml:"max_bytes" json:"max_bytes"`
-	DefaultTTLDays int  `toml:"default_ttl_days" json:"default_ttl_days"` // 0: keep until evicted
+	AutoCleanup   bool     `toml:"auto_cleanup" json:"auto_cleanup"`
+	RetentionDays int      `toml:"retention_days" json:"retention_days"`
+	MaxItems      int      `toml:"max_items" json:"max_items"`
+	ExcludedTags  []string `toml:"excluded_tags" json:"excluded_tags"`
+	MaxBytes      Size     `toml:"max_bytes" json:"max_bytes"`
 }
 
 type Limits struct {
@@ -90,9 +90,7 @@ type Limits struct {
 
 // Sync is the one global switch for content sync.
 type FileCache struct {
-	MaxBytes       Size  `toml:"max_bytes" json:"max_bytes"`
-	RetentionHours int64 `toml:"retention_hours" json:"retention_hours"`
-	AutoCleanup    bool  `toml:"auto_cleanup" json:"auto_cleanup"`
+	MaxBytes Size `toml:"max_bytes" json:"max_bytes"`
 }
 
 type Sync struct {
@@ -182,8 +180,8 @@ func Default() Config {
 	return Config{
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
 		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
-		History:   History{MaxItems: 10000, MaxBytes: 4 << 30},
-		FileCache: FileCache{MaxBytes: 500 << 20, RetentionHours: 24, AutoCleanup: true},
+		History:   History{AutoCleanup: true, RetentionDays: 180, MaxBytes: 4 << 30, ExcludedTags: []string{}},
+		FileCache: FileCache{MaxBytes: 500 << 20},
 	}
 }
 
@@ -209,7 +207,8 @@ func Parse(data []byte) (Config, error) {
 func (c Config) Settings() engine.Settings {
 	return engine.Settings{
 		DeviceName: c.DeviceName, RendezvousURL: c.RendezvousURL,
-		FileCache:       engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes), RetentionHours: c.FileCache.RetentionHours, AutoCleanup: c.FileCache.AutoCleanup},
+		History:         engine.HistoryCleanupSettings{AutoCleanup: c.History.AutoCleanup, RetentionDays: c.History.RetentionDays, MaxItems: c.History.MaxItems, ExcludedTags: append([]string{}, c.History.ExcludedTags...)},
+		FileCache:       engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes)},
 		Limits:          engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
 		Sync:            engine.SyncSettings{Enabled: c.Sync.Enabled, Automatic: c.Sync.Automatic, OnRestore: c.Sync.OnRestore, Files: c.Sync.Files, Introductions: c.Sync.Introductions},
 		BackendPolicies: c.backendPolicies(),
@@ -229,8 +228,8 @@ func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 // uses, so the file and the SDK cannot disagree. Messages never include the
 // offending values of fields that could carry secrets.
 func (c Config) Validate() error {
-	if c.FileCache.MaxBytes <= 0 || c.FileCache.MaxBytes > HardMaxHistory || c.FileCache.RetentionHours <= 0 || c.FileCache.RetentionHours > 876000 {
-		return errors.New("file_cache: max_bytes must be between 1 byte and 8GiB; retention_hours must be between 1 and 876000")
+	if c.FileCache.MaxBytes <= 0 || c.FileCache.MaxBytes > HardMaxHistory {
+		return errors.New("file_cache: max_bytes must be between 1 byte and 8GiB")
 	}
 	if c.Inbox != "" && !filepath.IsAbs(c.Inbox) {
 		return errors.New("inbox: must be an absolute path")
@@ -281,22 +280,19 @@ func (c Config) Validate() error {
 	}
 	h := c.History
 	switch {
-	case h.MaxItems <= 0 || h.MaxItems > 1_000_000:
-		return errors.New("history.max_items: must be between 1 and 1000000")
+	case h.MaxItems < 0 || h.MaxItems > 1_000_000:
+		return errors.New("history.max_items: must be between 0 and 1000000")
 	case h.MaxBytes <= 0 || h.MaxBytes > HardMaxHistory:
 		return errors.New("history.max_bytes: must be between 1 byte and 8GiB")
-	case h.DefaultTTLDays < 0 || h.DefaultTTLDays > 36500:
-		return errors.New("history.default_ttl_days: must be between 0 and 36500")
+	case h.RetentionDays < 0 || h.RetentionDays > 36500:
+		return errors.New("history.retention_days: must be between 0 and 36500")
 	}
 	return c.Settings().Validate()
 }
 
 // HistoryOptions is the history section as engine options.
 func (c Config) HistoryOptions() engine.HistoryOptions {
-	return engine.HistoryOptions{
-		MaxItems: c.History.MaxItems, MaxBytes: int64(c.History.MaxBytes),
-		DefaultTTL: time.Duration(c.History.DefaultTTLDays) * 24 * time.Hour,
-	}
+	return engine.HistoryOptions{MaxBytes: int64(c.History.MaxBytes)}
 }
 
 // Template is written when no config file exists. Everything is commented
@@ -322,19 +318,21 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # max_total_bytes = "4GiB"
 
 [history]
-# Local clipboard history. Needs a restart of unicd. The oldest entries go
-# first. Files you copy from disk are remembered by path, not copied, so they
+# Unified automatic cleanup. Rules apply without restart. The oldest entries go
+# first. Only max_bytes needs a restart. Files you copy from disk are remembered by path, not copied, so they
 # do not count towards max_bytes (but stop being readable if they are moved).
-# max_items = 10000
+# auto_cleanup = true
+# retention_days = 180  # 0: no age limit
+# max_items = 0         # 0: no count limit
+# excluded_tags = []    # any exact matching tag prevents automatic deletion
 # max_bytes = "4GiB"
-# default_ttl_days = 0   # 0 keeps entries until they are pushed out
 
 [file_cache]
 # Applies ONLY to the default managed receive directory.
 # Custom received files are user-managed and are never deleted by cleanup.
 # max_bytes = "500MB"
-# retention_hours = 24
-# auto_cleanup = true  # age-based cleanup at startup only
+# Capacity pressure uses unified history cleanup; excluded tags remain protected.
+# When cleanup is off or cannot reclaim enough space, new files are rejected.
 
 [sync]
 # automatic = true    # new clipboard copies; local history remains enabled

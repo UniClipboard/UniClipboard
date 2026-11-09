@@ -597,6 +597,24 @@ func Handler(b Backend, cfg *config.Manager) http.Handler {
 	})
 
 	// ---- history (local only; events carry ids, never content) ----
+	mux.HandleFunc("GET /v1/history/tags", func(w http.ResponseWriter, r *http.Request) {
+		source, ok := b.(interface {
+			ListHistoryTags(context.Context) ([]string, error)
+		})
+		if !ok {
+			reply(w, http.StatusNotImplemented, map[string]string{"reason": "unsupported"})
+			return
+		}
+		tags, err := source.ListHistoryTags(r.Context())
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		if tags == nil {
+			tags = []string{}
+		}
+		reply(w, 200, tags)
+	})
 	mux.HandleFunc("GET /v1/history", func(w http.ResponseWriter, r *http.Request) {
 		v := r.URL.Query()
 		q := HistoryQuery{Cursor: v.Get("cursor"), Kinds: v["kind"], Origins: v["origin"], Tags: v["tag"], DeviceID: v.Get("device")}

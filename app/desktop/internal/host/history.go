@@ -156,3 +156,8 @@ func (n *Node) FileCacheState(ctx context.Context) (api.FileCacheState, error) {
 	out, err := n.e.GetFileCacheState(ctx)
 	return api.FileCacheState{FileCacheState: out, CustomDestination: n.customReceive}, apiErr0(err)
 }
+
+func (n *Node) ListHistoryTags(ctx context.Context) ([]string, error) {
+	tags, err := n.e.ListHistoryTags(ctx)
+	return tags, apiErr0(err)
+}

@@ -98,7 +98,7 @@ func (m *Manager) State() State {
 	if m.cur.Inbox != m.started.Inbox {
 		s.RestartRequired = append(s.RestartRequired, "inbox")
 	}
-	if m.cur.History != m.started.History {
+	if m.cur.History.MaxBytes != m.started.History.MaxBytes {
 		s.RestartRequired = append(s.RestartRequired, "history")
 	}
 	if m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) {

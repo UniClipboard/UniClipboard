@@ -189,7 +189,7 @@ func commands() map[string]func(*testscript.TestScript, bool, []string) {
 		"node-id":         cmdNodeID,
 		"external-ref":    cmdExternalRef,
 		"file-path":       cmdFilePath,
-		"cache-age":       cmdCacheAge,
+		"history-age":     cmdHistoryAge,
 		"cache-link":      cmdCacheLink,
 		"config-conflict": cmdConfigConflict,
 		"file-wait":       cmdFileWait,

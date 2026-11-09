@@ -12,9 +12,8 @@ The latest run receipt is in [execution plan 0016](../../docs/exec/0016-sync-and
 | S4: File sync | `sync-settings` | Global file-send restriction blocks automatic delivery. |
 | S5: Host-owned destination | `host-received-files`, `file-cache-scope` | Custom path selection and restart, host write failure without cache fallback, custom file larger than cache quota, return to default. |
 | S6: Transfer limit | `file-size-policy`, `sync-settings` | Exactly 100 MB accepted; one byte over rejected; sender and receiver limits apply; rejected local files remain in history. |
-| S7: Private cache quota | `file-cache-scope` | Clipboard pin blocks eviction; release permits oldest-payload eviction; history remains unavailable; SIGKILL preserves retained bytes. |
-| S8: File retention | `file-cache-retention` | Known old completion times survive restart; eligible unheld bytes are removed; metadata remains. |
-| S9: Startup cleanup | `file-cache-retention` | Cleanup off preserves unheld expired bytes; cleanup on preserves a different clipboard-held file until release. |
+| S7: Private cache quota | `file-cache-scope` | Clipboard pin blocks reclamation; release permits unified record/file deletion; SIGKILL preserves retained bytes. |
+| Unified cleanup | `history-auto-cleanup`, `file-cache-retention` | Live count/age rules, exact OR tag exclusions, unlimited count, restart, coupled record/file deletion, and removed legacy configuration keys. |
 | Configuration persistence | `sync-settings` | CLI set/apply, stale revision conflict, invalid value leaves the file unchanged, invalid external TOML preserves typed state, CLI repairs the file, restart persistence. |
 | Host reference opacity | `host-received-files` | SQL ownership assertion finds an opaque desktop reference and no owned blob; CLI reads and restores the reference after restart. |
 | Host-file deletion authority | `host-received-files`, `file-cache-scope` | Custom bytes survive history expiry/deletion, lease release, restart, and location changes. |

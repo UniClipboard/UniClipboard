@@ -37,22 +37,22 @@ func cmdFilePath(ts *testscript.TestScript, _ bool, args []string) {
 	}
 	ts.Setenv(args[1], path)
 }
-func cmdCacheAge(ts *testscript.TestScript, _ bool, args []string) {
+func cmdHistoryAge(ts *testscript.TestScript, _ bool, args []string) {
 	if len(args) != 2 {
-		ts.Fatalf("usage: cache-age stopped-node seconds")
+		ts.Fatalf("usage: history-age stopped-node seconds")
 	}
 	n := stateOf(ts).node(ts, args[0])
 	select {
 	case <-n.done:
 	default:
-		ts.Fatalf("cache-age requires a stopped disposable node")
+		ts.Fatalf("history-age requires a stopped disposable node")
 	}
 	seconds, err := strconv.ParseInt(args[1], 10, 64)
 	ts.Check(err)
 	db, err := sql.Open("sqlite", filepath.Join(n.home, "unic.db"))
 	ts.Check(err)
 	defer func() { _ = db.Close() }()
-	_, err = db.Exec(`UPDATE file_cache SET completed_ms=?`, time.Now().Add(-time.Duration(seconds)*time.Second).UnixMilli())
+	_, err = db.Exec(`UPDATE clip_items SET created_ms=?`, time.Now().Add(-time.Duration(seconds)*time.Second).UnixMilli())
 	ts.Check(err)
 }
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }

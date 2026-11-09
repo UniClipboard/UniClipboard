@@ -75,17 +75,25 @@ func DefaultBackendPolicy() BackendSyncPolicy {
 // Settings is the complete typed configuration. Parsing files and watching
 // them is the host's job.
 type FileCacheSettings struct {
-	MaxBytes       int64 `json:"max_bytes"`
-	RetentionHours int64 `json:"retention_hours"`
-	AutoCleanup    bool  `json:"auto_cleanup"`
+	MaxBytes int64 `json:"max_bytes"`
+}
+
+// HistoryCleanupSettings governs automatic record and managed-payload deletion.
+// Zero retention/count mean unlimited. ExcludedTags use exact, case-sensitive matching.
+type HistoryCleanupSettings struct {
+	AutoCleanup   bool     `json:"auto_cleanup"`
+	RetentionDays int      `json:"retention_days"`
+	MaxItems      int      `json:"max_items"`
+	ExcludedTags  []string `json:"excluded_tags"`
 }
 
 type Settings struct {
-	FileCache     FileCacheSettings `json:"file_cache"`
-	DeviceName    string            `json:"device_name"` // empty: the default name chosen at first start
-	RendezvousURL string            `json:"rendezvous_url"`
-	Limits        Limits            `json:"limits"`
-	Sync          SyncSettings      `json:"sync"`
+	History       HistoryCleanupSettings `json:"history"`
+	FileCache     FileCacheSettings      `json:"file_cache"`
+	DeviceName    string                 `json:"device_name"` // empty: the default name chosen at first start
+	RendezvousURL string                 `json:"rendezvous_url"`
+	Limits        Limits                 `json:"limits"`
+	Sync          SyncSettings           `json:"sync"`
 	// BackendPolicies has one entry per assembled sync backend. Missing
 	// entries take DefaultBackendPolicy; an unknown ID is invalid_argument.
 	// Reads return the complete effective map.
@@ -98,6 +106,7 @@ func (s Settings) clone() Settings {
 		m[k] = v
 	}
 	s.BackendPolicies = m
+	s.History.ExcludedTags = append([]string{}, s.History.ExcludedTags...)
 	return s
 }
 

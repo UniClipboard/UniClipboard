@@ -1,45 +1,44 @@
-# 用例: Default file cache retention
-# 目的: Verify age cleanup affects only default managed payloads.
+# 用例: Unified cleanup deletes managed files with history
+# 目的: Verify history count cleanup releases managed payloads and honors tags.
 # 流程:
-#   1. Receive a file and replace the clipboard before shutdown.
-#   2. Stamp a known old completion time in the stopped test database.
-#   3. Restart with cleanup disabled, then enabled.
+#   1. Receive files with cleanup disabled and protect a tagged file.
+#   2. Release clipboard holders and enable a count limit.
+#   3. Remove the excluded tag and verify physical deletion.
 # 期望:
-#   - Cleanup off preserves expired file bytes.
-#   - Cleanup on removes expired default cache bytes and preserves metadata.
+#   - Both file content and its history survive while excluded.
+#   - Cleanup deletes eligible file history and its unheld payload.
 # 不应:
-#   - Startup deletes a default cached file still on the clipboard.
-#   - A filename prefix grants deletion authority outside the cache.
+#   - File-only cleanup leaves unavailable history records.
 
 node-start alpha
 node-start beta
 pair alpha beta
-genfile rand old.bin 100
+u beta config set history.auto_cleanup false
+genfile rand protected.bin 100
+board-set alpha files protected.bin
+board-wait beta files protected.bin
+file-path beta PROTECTED
+u beta h tag @1 --add keep
+u beta copy release-protected
+retry-copy alpha beta ready-for-second
+genfile rand old.bin 110
 board-set alpha files old.bin
 board-wait beta files old.bin
 file-path beta OLD
 u beta copy release-old
-u beta config set file_cache.retention_hours 1
-u beta config set file_cache.auto_cleanup false
-node-stop beta
-cache-age beta 7200
-node-start beta
-until beta '"held":false' cache --json
-cmp $OLD old.bin
-retry-copy alpha beta pinned-ready
-genfile rand pinned.bin 110
-board-set alpha files pinned.bin
-board-wait beta files pinned.bin
-file-path beta PINNED
-u beta config set file_cache.auto_cleanup true
-node-stop beta
-cache-age beta 7200
-node-start beta
+until beta '"size":110,[^}]*"held":false' cache --json
+u beta config set history.excluded_tags '["keep"]'
+u beta config set history.max_items 1
+u beta config set history.auto_cleanup true
 ! file-wait $OLD
-cmp $PINNED pinned.bin
-u beta copy release
+cmp $PROTECTED protected.bin
+u beta h list --json
+! stdout '"available":false'
+stdout keep
 node-stop beta
 node-start beta
-! file-wait $PINNED
+cmp $PROTECTED protected.bin
+u beta config set history.excluded_tags '[]'
+! file-wait $PROTECTED
 u beta h list --json
-stdout '"available":false'
+! stdout '"kind":"files"'

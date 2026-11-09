@@ -184,7 +184,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	}
 	closeAll := func(e *Error) (*Engine, error) { _ = st.Close(); return fail(e) }
 
-	itemsFloor, bytesFloor, storedFloor, floorErr := st.HistoryImportLimits()
+	_, bytesFloor, storedFloor, floorErr := st.HistoryImportLimits()
 	if floorErr != nil {
 		return closeAll(newErr(CodeUnavailable, "cannot read history capacity"))
 	}
@@ -195,7 +195,6 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		if baseErr != nil {
 			return closeAll(baseErr)
 		}
-		opts.History.MaxItems = max(base.MaxItems, itemsFloor)
 		opts.History.MaxBytes = max(base.MaxBytes, bytesFloor)
 	}
 	hopts, herr2 := opts.History.withDefaults(res.MaxStoredBytes)
@@ -207,6 +206,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	if err != nil {
 		return closeAll(newErr(CodeUnavailable, "cannot prepare the history"))
 	}
+	hist.cleanup = opts.Settings.History
 	hist.sweep(st)                                     // expired records go before anyone can ask for them
 	_, _ = st.InterruptPending(time.Now().UnixMilli()) // unfinished sends are not resumed
 
@@ -261,7 +261,8 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 			cache.startupHeld[id] = true
 		}
 	} else {
-		_, _ = cache.reserve(0, opts.Settings.FileCache, true)
+		e.cleanupHistory()
+		e.reapCachedFiles()
 	}
 	e.logf(slog.LevelInfo, "engine created")
 	return e, nil

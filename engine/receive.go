@@ -127,13 +127,7 @@ func (e *Engine) admitReceive(req receiveRequest) (peerbackend.Admission, bool) 
 	}
 	cacheBytes := int64(0)
 	if e.opts.StoreReceivedFile == nil && fileBytes > 0 {
-		e.mu.Lock()
-		policy := e.settings.Value.FileCache
-		e.mu.Unlock()
-		fits, ids := e.cache.reserve(fileBytes, policy, false)
-		if len(ids) > 0 {
-			e.historyChanged(ids...)
-		}
+		fits := e.reserveCachedFiles(fileBytes)
 		if !fits {
 			release()
 			e.commit(EventResourceWarning)

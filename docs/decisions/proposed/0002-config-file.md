@@ -31,9 +31,11 @@
 | `sync.enabled` | true | 立即(false = 不发不收,连接保留) |
 | `plugins.instances."builtin.tailcat".sync.text` / `.images` / `.files` | true | 立即(之后开始的传输;接收同样按它过滤) |
 | `plugins.instances."builtin.tailcat".sync.auto_file_max_bytes` | 0 | 立即;只限制自动发送,任一文件超过则该次自动提交整体不发,手动发送不受限;0 = 无额外限制 |
-| `history.max_items` | 10000 | **需重启**(状态里列为 restart_required `history`);范围 1..1000000 |
-| `history.max_bytes` | 4GiB | 同上;只统计历史自己存储的字节,按路径引用的文件不计;不得超过 8GiB |
-| `history.default_ttl_days` | 0 | 同上;0 = 不自动过期,仅作没有处理器显式期限时的默认 |
+| `history.max_items` | 0 | Live; 0 means unlimited eligible records; maximum 1000000 |
+| `history.max_bytes` | 4GiB | Restart required; counts history-owned bytes; host references do not count; maximum 8GiB |
+| `history.retention_days` | 180 | Live; 0 disables age cleanup |
+| `history.auto_cleanup` | true | Live; unified history and managed-file cleanup |
+| `history.excluded_tags` | [] | Live; any exact matching tag excludes the record and its managed files |
 
 大小可写整数(字节)或带单位的字符串(`"512MB"`、`"2GiB"`);上限不得超过协议硬上限(2GB / 4GB)。
 

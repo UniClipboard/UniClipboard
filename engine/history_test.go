@@ -394,7 +394,7 @@ func TestExpirySweepRemovesRecords(t *testing.T) {
 }
 
 func TestHistoryEvictsOldestOverCount(t *testing.T) {
-	n := newContentNode(t, func(o *Options) { o.History.MaxItems = 2 })
+	n := newContentNode(t, func(o *Options) { o.Settings = DefaultSettings(); o.Settings.History.MaxItems = 2 })
 	start(t, n)
 	a := commitText(t, n.e, "e1", "one")
 	commitText(t, n.e, "e2", "two")
@@ -586,7 +586,7 @@ func TestByteLimitEvictsOldestAndFreesTheirBlobs(t *testing.T) {
 }
 
 func TestConcurrentCommitsKeepTheLimitAndNeverDuplicate(t *testing.T) {
-	n := newContentNode(t, func(o *Options) { o.History.MaxItems = 5 })
+	n := newContentNode(t, func(o *Options) { o.Settings = DefaultSettings(); o.Settings.History.MaxItems = 5 })
 	start(t, n)
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {

@@ -421,3 +421,12 @@ Engine does not interpret that value; a host can resolve it as a URI, handle, or
 `GetFileCacheState` exposes only IDs, byte counts, completion times, availability, and held flags.
 Cache deletion authority never follows a custom file reference.
 See [desktop runtime](../architecture/desktop-runtime.md) for the CLI, configuration revision, and complete deletion boundary.
+
+## Unified automatic cleanup
+
+`Settings.History` exposes live `HistoryCleanupSettings{AutoCleanup, RetentionDays, MaxItems, ExcludedTags}`.
+`Settings.FileCache` retains only `MaxBytes`. Independent file-age cleanup and its settings are removed.
+`Options.History` retains only the startup `MaxBytes` budget.
+Settings snapshots deep-copy the excluded-tag slice. UpdateSettings validates the whole policy and applies it with revision checking.
+Age/count deletion and default-cache capacity reclamation share history deletion and tag exclusion rules.
+See the [history contract](history-contract.md) and [desktop runtime](../architecture/desktop-runtime.md).

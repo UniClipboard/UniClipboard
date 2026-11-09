@@ -456,6 +456,18 @@ func (c *clipboardHost) Send(ctx context.Context, s clip.Snapshot) error {
 		return err
 	}
 	defer c.release(lease)
+	// Import the new snapshot before releasing the old clipboard lease: both
+	// snapshots may refer to the same managed file. Rebase hides this write
+	// from polling, so polling cannot release the replaced lease for us.
+	paths := make([]string, 0, len(back.Files))
+	for _, f := range back.Files {
+		paths = append(paths, f.Path)
+	}
+	_ = c.e.ReconcileClipboardFiles(ctx, paths)
+	if back.Hash() != c.seen {
+		c.release(c.held)
+		c.held = ""
+	}
 	if err := c.rebase(ctx, back, lease, true); err != nil {
 		return err
 	}

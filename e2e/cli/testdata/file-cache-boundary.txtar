@@ -18,8 +18,9 @@ board-set alpha files payload.bin
 board-wait beta files payload.bin
 file-path beta CACHED
 u beta copy release
+u beta config set history.retention_days 1
 node-stop beta
-cache-age beta 172800
+history-age beta 172800
 cache-link beta $CACHED
 node-start beta
 sleep 1s

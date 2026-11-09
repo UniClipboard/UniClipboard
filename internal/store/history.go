@@ -56,6 +56,7 @@ CREATE TABLE clip_item_parts (
   PRIMARY KEY (item_seq, ord)
 );
 CREATE INDEX clip_item_parts_blob ON clip_item_parts (blob) WHERE blob <> '';
+CREATE INDEX clip_item_parts_ref ON clip_item_parts (ref) WHERE ref <> '';
 CREATE TABLE clip_tags (
   item_seq INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,
   tag      TEXT NOT NULL,
@@ -631,35 +632,6 @@ func deleteSeqs(tx *sql.Tx, seqs []int64) (blobs []string, err error) {
 	return blobs, nil
 }
 
-// OldestHistory returns up to n items, oldest commit first, for eviction.
-func (s *Store) OldestHistory(n int) ([]HistoryItem, error) {
-	rows, err := s.db.Query(`SELECT `+itemCols+` FROM clip_items ORDER BY seq ASC LIMIT ?`, n)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var out []HistoryItem
-	for rows.Next() {
-		it, err := scanItem(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, it)
-	}
-	return out, rows.Err()
-}
-
-// OldestOwnedHistory returns the ID of the oldest item that stores bytes of
-// its own (inline data or a blob); items holding only references free nothing.
-func (s *Store) OldestOwnedHistory() (id string, ok bool, err error) {
-	err = s.db.QueryRow(`SELECT id FROM clip_items WHERE EXISTS (
-SELECT 1 FROM clip_item_parts p WHERE p.item_seq = clip_items.seq AND p.ref = '') ORDER BY seq ASC LIMIT 1`).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
-	return id, err == nil, err
-}
-
 // HistoryTotals returns the item count and the bytes history itself stores
 // (inline data and blobs). Files kept in place by reference cost nothing.
 func (s *Store) HistoryTotals() (items int, bytes int64, err error) {
@@ -791,4 +763,74 @@ func (s *Store) HasDedup(k DedupKey, nowMs, ttlMs int64) (bool, error) {
 func (s *Store) DeleteDedup(k DedupKey) error {
 	_, err := s.db.Exec(`DELETE FROM sync_dedup WHERE source = ? AND transfer_id = ? AND view_hash = ?`, k.Source, k.Transfer, k.View)
 	return err
+}
+
+// HistoryCleanupCandidates returns a bounded oldest-first batch. The Engine
+// serializes policy and tag mutations with selection/deletion under hist.mu.
+func (s *Store) HistoryCleanupCandidates(excluded []string, keep int64, limit int, storage string) ([]HistoryItem, error) {
+	where, args := cleanupWhere(excluded)
+	where += " AND seq <> ?"
+	args = append(args, keep)
+	switch storage {
+	case "owned":
+		where += " AND EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND p.ref='')"
+	case "cache":
+		where += " AND EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND p.ref LIKE 'cache:%')"
+	}
+	args = append(args, limit)
+	rows, err := s.db.Query(`SELECT `+itemCols+` FROM clip_items WHERE `+where+` ORDER BY created_ms,seq LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []HistoryItem
+	for rows.Next() {
+		it, err := scanItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+func cleanupWhere(excluded []string) (string, []any) {
+	if len(excluded) == 0 {
+		return "1=1", nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(excluded)), ",")
+	args := make([]any, len(excluded))
+	for i, t := range excluded {
+		args[i] = t
+	}
+	return `NOT EXISTS (SELECT 1 FROM clip_tags t WHERE t.item_seq=clip_items.seq AND t.tag IN (` + marks + `))`, args
+}
+
+func (s *Store) CleanupHistoryCount(excluded []string) (int, error) {
+	where, args := cleanupWhere(excluded)
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM clip_items WHERE `+where, args...).Scan(&n)
+	return n, err
+}
+
+func (s *Store) CachedFileReferenced(id string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM clip_item_parts WHERE ref=?`, "cache:"+id).Scan(&n)
+	return n > 0, err
+}
+
+// CachedFileProtected reports whether any history reference excludes this
+// payload from automatic reclamation. The caller holds the history mutex.
+func (s *Store) CachedFileProtected(id string, excluded []string) (bool, error) {
+	if len(excluded) == 0 {
+		return false, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(excluded)), ",")
+	args := []any{"cache:" + id}
+	for _, tag := range excluded {
+		args = append(args, tag)
+	}
+	var protected bool
+	err := s.db.QueryRow(`SELECT EXISTS (SELECT 1 FROM clip_item_parts p JOIN clip_tags t ON t.item_seq=p.item_seq WHERE p.ref=? AND t.tag IN (`+marks+`))`, args...).Scan(&protected)
+	return protected, err
 }

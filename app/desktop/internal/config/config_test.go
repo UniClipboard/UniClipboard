@@ -58,9 +58,9 @@ func TestParseRejects(t *testing.T) {
 		"bad threshold":       "[plugins.instances.\"builtin.tailcat\".sync]\nauto_file_max_bytes = \"3GiB\"",
 		"tailcat off":         "[plugins.instances.\"builtin.tailcat\"]\nenabled = false",
 		"text sync":           "[plugins.instances.\"builtin.text\".sync]\ntext = false",
-		"no history":          "[history]\nmax_items = 0",
+		"negative history":    "[history]\nmax_items = -1",
 		"history size":        "[history]\nmax_bytes = \"9GiB\"",
-		"negative ttl":        "[history]\ndefault_ttl_days = -1",
+		"negative ttl":        "[history]\nretention_days = -1",
 		"bad on_error":        "[plugins]\non_error = \"ignore\"",
 		"bad inst err":        "[plugins]\nlua = [\"a.b\"]\n[plugins.instances.\"a.b\"]\non_error = \"x\"",
 		"config for unlisted": "[plugins.instances.\"a.b\".config]\nk = 1",
@@ -164,13 +164,13 @@ func TestWatchAppliesSavesAndKeepsLastGood(t *testing.T) {
 	// Inbox changes wait for a restart.
 	save("inbox = \"" + t.TempDir() + "\"")
 	waitFor("inbox edit", func() bool { return len(m.State().RestartRequired) == 1 })
-	// So do history limits.
-	save("inbox = \"\"\n[history]\nmax_items = 5\ndefault_ttl_days = 7")
+	// Cleanup rules apply live.
+	save("inbox = \"\"\n[history]\nmax_items = 5\nretention_days = 7")
 	waitFor("history edit", func() bool {
 		rr := m.State().RestartRequired
-		return len(rr) == 1 && rr[0] == "history"
+		return len(rr) == 0 && m.Current().History.MaxItems == 5
 	})
-	if o := m.Current().HistoryOptions(); o.MaxItems != 5 || o.DefaultTTL != 7*24*time.Hour || o.MaxBytes != 4<<30 {
+	if o := m.Current().HistoryOptions(); o.MaxBytes != 4<<30 || m.Current().Settings().History.MaxItems != 5 || m.Current().Settings().History.RetentionDays != 7 {
 		t.Errorf("options = %+v", o)
 	}
 }

@@ -6,6 +6,8 @@ paths:
   - app/desktop/cmd/unic/cli.go
   - app/desktop/cmd/unic/history.go
   - app/desktop/cmd/unicd/daemon.go
+  - engine/history.go
+  - engine/history_cleanup.go
   - engine/file_cache.go
   - engine/restore.go
   - engine/content.go
@@ -34,8 +36,11 @@ CLI changes and file edits use the same validation and Engine settings.
 | `inbox` | Empty | Empty selects the default file cache. An absolute custom directory selects user-managed receives after restart. |
 | `limits.max_file_bytes` | `"100MB"` | Bound each file transfer in both directions. The boundary is inclusive. |
 | `file_cache.max_bytes` | `"500MB"` | Bound default-cache file bytes and pending file reservations. |
-| `file_cache.retention_hours` | `24` | Make default-cache files eligible for startup cleanup after the received completion time. |
-| `file_cache.auto_cleanup` | `true` | Enable age-based cleanup at startup. Quota enforcement stays active when this setting is off. |
+| `history.auto_cleanup` | `true` | Enable unified history and managed-file cleanup. |
+| `history.retention_days` | `180` | Age from record creation; 0 disables the age limit. Applies to existing records. |
+| `history.max_items` | `0` | Limit eligible records; 0 means unlimited. Excluded records do not count. |
+| `history.excluded_tags` | `[]` | Skip any record with an exact matching tag, including its managed files. |
+| `history.max_bytes` | `"4GiB"` | Startup history storage budget; a change requires restart. |
 
 The existing size parser uses powers of 1024: 100 MB is 104857600 bytes.
 A file-size limit governs transfer, not local reference import or local history.
@@ -80,7 +85,9 @@ Other hosts can supply a different app-private directory without exposing a user
 Its SQLite ledger records payload identity, size, completion time, and availability.
 Engine journals ownership before creating each payload directory.
 Default-cache history, Received, and content leases share the retained payload.
-Quota eviction can remove an eligible payload while preserving history metadata.
+Unified cleanup removes eligible history records and releases their managed payloads.
+Capacity reclamation uses the same deletion path and tag exclusions.
+If automatic cleanup is off or eligible records cannot free enough bytes, default-cache admission fails.
 `parts[].available=false` reports unavailable default-cache content.
 Reading or restoring unavailable content returns `resource_expired`.
 
@@ -114,7 +121,10 @@ A partial custom destination from failed finalization remains for the user to in
 - Keep payloads held by reads, sends, applies, or the clipboard.
 - Preserve all startup clipboard candidates until the host reads the clipboard and establishes exact default-cache pins.
 - Refuse new default-cache file admission until that first reconciliation completes.
-- Run age cleanup only during startup reconciliation. A deadline alone does not invalidate still-present content when cleanup is off.
+- Run bounded age/count cleanup after startup reconciliation, policy changes, commits, and every 30 seconds while running. Each pass deletes at most 256 eligible records.
+- Remove independent file-retention settings and payload-only eviction. One switch governs age/count cleanup and capacity-driven history deletion.
+- Keep excluded records and their managed files. Manual deletion and explicit per-item expiry remain available independently.
+- Delete logical records first. Reclaim physical payloads only after the final history reference and content/clipboard holder are gone.
 - Keep failed-deletion bytes charged until physical deletion and ledger removal succeed.
 - Do not run cache cleanup in offline migration mode.
 
@@ -128,7 +138,8 @@ Cleanup does not enumerate unknown default-cache directories merely because thei
 - `cmd/unic/cli.go`: configuration commands and cache inventory.
 - `cmd/unic/history.go`: explicit history restore and retry key.
 - `engine/restore.go`: token-authorized resend without a new commit.
-- `engine/file_cache.go`: private-cache ownership, quota, pins, startup cleanup, and host callback validation.
+- `engine/file_cache.go`: private-cache ownership, quota reservation, pins, orphan reclamation, and host callback validation.
+- `engine/history_cleanup.go`: unified age/count cleanup, tag exclusions, and capacity-driven record deletion.
 - `host/received_files.go`: desktop destination validation, custom file writing, and reference encoding/resolution.
 - `engine/content.go`: separate access to Engine-owned file paths and opaque host references.
 - `engine/history_import.go`: the existing directory-sync helper used by cache finalization.
@@ -144,3 +155,14 @@ The settings GUI does not expose these controls yet.
 Native clipboard and folder-picker interaction acceptance remains with the user.
 Crash injection at every filesystem/database instruction and forced disk-full/unlink-failure acceptance are not complete.
 Unknown temporary leftovers are not deleted through filename scans.
+
+## Cleanup settings interface
+
+The desktop Settings tab reads `GET /v1/config` and `GET /v1/history/tags`.
+The tag endpoint returns the persisted tag-name list, including unassociated imported tags.
+It contains no content or file references.
+Settings save through the existing revision-checked `PUT /v1/config` path.
+The page provides the unified switch, retention time, count limit, excluded-tag checkboxes, and per-device cache quota.
+Configured values outside the preset lists remain selectable. The quota control remains enabled when cleanup is off.
+Explicit clipboard writes release a replaced file lease after importing the new snapshot; otherwise rebasing would hide that release from polling.
+Native visual acceptance remains separate from CLI acceptance.

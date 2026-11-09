@@ -41,4 +41,5 @@
 | 0013 | [桌面 UI Kit](proposed/0013-mygo-uikit.md) | proposed | desktop-ui |
 | 0014 | [OTLP 可观测性](proposed/0014-client-observability-otlp.md) | proposed（待实现） | observability |
 | 0015 | [纯 CLI 与桌面集成](proposed/0015-headless-cli-and-desktop-integration.md) | proposed（待实现） | headless |
-| 0016 | [Sync and file settings](proposed/0016-sync-and-file-settings.md) | proposed (CLI and TOML implemented; GUI deferred) | [desktop-runtime](../architecture/desktop-runtime.md), pipeline |
+| 0016 | [Sync and file settings](proposed/0016-sync-and-file-settings.md) | proposed (sync/quota implemented; separate file cleanup superseded by 0017) | [desktop-runtime](../architecture/desktop-runtime.md), pipeline |
+| 0017 | [Automatic history cleanup](proposed/0017-history-auto-cleanup.md) | proposed (implemented; CLI accepted; native visual acceptance pending) | [pipeline](../architecture/pipeline.md), [history contract](../contracts/history-contract.md), [desktop-runtime](../architecture/desktop-runtime.md) |

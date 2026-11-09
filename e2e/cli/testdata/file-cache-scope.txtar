@@ -6,7 +6,7 @@
 #   3. Restart with cleanup enabled and compare the custom files.
 # 期望:
 #   - Default quota rejects files when protected payloads fill the cache.
-#   - Releasing pins permits eviction while retaining history metadata.
+#   - Releasing pins permits unified deletion of files and bound history.
 #   - Custom receives ignore the default quota and survive history deletion and restart.
 # 不应:
 #   - Cleanup follows a symlink or deletes files outside the default directory.
@@ -36,7 +36,7 @@ node-stop beta KILL
 node-start beta
 cmp $TWO two.bin
 u beta h list --json
-stdout '"available":false'
+! stdout '"available":false'
 mkdir custom
 u beta config set inbox '"'$WORK'/custom"'
 node-stop beta

@@ -90,17 +90,49 @@ SQLite 存元数据、小正文和 blob 引用；大正文/文件存 `DataDir/hi
 
 **宿主就地保存的文件不复制进历史**（2026-11-07 决定，取代早先“一律复制为自有快照”的设计）：来源实现可选接口 `PersistentFileSource{PersistentRef() string}` 时，历史只持久化该不透明引用（桌面为绝对路径）以及 commit 时的 Size 与 Version，不拷贝字节、不占历史配额。引用与路径一样是秘密，仅存数据库，不进 DTO、事件、日志或错误。重启后 `RetainHistoryContent` 通过 `Options.ResolveFileRef(ref)` 重建来源；读取时按原规则比对 Size/Version，文件被移动、删除或修改报 source_changed，未提供 resolver 同样如此。这类条目的文件内容因此不保证长期可读，元数据仍保留。不实现 PersistentFileSource 的来源（如无法稳定寻址的移动端 URI）仍回退为复制 blob。历史条数/字节配额只统计历史自己存储的内联数据与 blob，就地引用的文件按 0 计，HistoryItem.TotalBytes 仍报告逻辑大小。
 
-新增创建选项 `Options.History HistoryOptions`：
+### Unified cleanup and storage budgets
 
-| 字段 | 零值/默认值 | 约束 |
+`Options.History.MaxBytes` is a startup storage budget. Zero selects 4 GiB, capped by
+`ResourcePolicy.MaxStoredBytes`; negative values are invalid.
+`HistoryOptions.MaxItems` and `DefaultTTL` are removed. Count and age are live policy,
+not per-record expiry defaults.
+
+`Settings.History` contains `HistoryCleanupSettings`:
+
+| Field | Default | Rule |
 |---|---|---|
-| MaxItems | 10000 | >0，记录上限 |
-| MaxBytes | 4 GiB | >0 且不超过 ResourcePolicy.MaxStoredBytes；按每条历史自己存储的字节（内联与 blob，不含就地引用的文件）求和，即使共享 blob 也逐条计入 |
-| DefaultTTL | 0（不自动到期） | 非负；用于没有显式 SetExpire 的 commit，显式期限优先 |
+| AutoCleanup | true | One switch for age/count cleanup and capacity-driven history deletion. |
+| RetentionDays | 180 | 0..36500; 0 disables age cleanup. Age uses stored CreatedAtMs. |
+| MaxItems | 0 | 0..1000000; 0 means unlimited eligible records. |
+| ExcludedTags | [] | Existing tag validation; exact case-sensitive OR matching. |
 
-以上选项只在 New 设置，不增加 TOML 热更新承诺；桌面日后映射需同步配置模板与重启提示。ResourcePolicy.MaxStoredBytes 仍是所有自有内容的总逻辑配额，共享同一内部内容对象只计一次，不因历史、Received、租约和操作增加引用而重复计数；复制引用文件成为自有资源时必须先预留该配额。SQLite 元数据/WAL、临时文件与文件系统块开销不属于精确计费，磁盘错误仍须处理，不能把逻辑配额当硬磁盘上限。
+Excluded records do not count toward MaxItems. Empty ExcludedTags excludes nothing.
+Tag updates, policy updates, candidate selection, and deletion serialize under the history mutex.
+Cleanup processes oldest creation time first, then commit sequence. Age and count share this order.
+It runs at startup (after the host reconciles clipboard files), on policy changes, after commits,
+and every 30 seconds while running. Each pass deletes at most 256 records; large backlogs drain in later passes.
+A new record is not evicted by its own commit's count pass.
+Reading and restoring do not reset record age. Policy changes apply to existing records.
 
-每次 commit 前按新条目计算历史条数/字节，超限按最旧 commit 淘汰；不做收藏保护。单条大于 MaxBytes 直接 resource_exhausted，不先删除旧记录。全局配额不足时只淘汰能实际释放内容的历史/接收持有项；有外部租约、读取、应用或发送持有的资源不能被当作可回收字节。仍不足则拒绝新 commit，回滚预留与暂存资源，不发送。历史容量淘汰可以移除有活动引用的元数据，但不能声称其字节已经物理释放。
+Manual deletion and explicit user/processor deadlines remain independent of AutoCleanup and ExcludedTags.
+The existing read-time expiry check still applies only to those explicit deadlines.
+Automatic age is a maintenance policy, not an ExpiresAtMs value.
+
+All automatic storage reclamation respects AutoCleanup and ExcludedTags.
+History byte budgets count inline/blob data; persistent host references remain zero-cost.
+The default file-cache quota counts each retained payload and pending reservation once.
+If cleanup is off, protected history fills storage, or active holders prevent enough reclamation,
+reject admission with resource exhaustion. Do not bypass protection or claim held bytes are freed.
+A single item larger than the history byte budget is rejected without deleting old history.
+
+Deleting managed-file history releases every managed-file reference in that record.
+There is no independent file-age worker, file-cleanup switch, or payload-only quota eviction.
+Cache capacity reclamation selects eligible history with an unheld payload whose other history references are also eligible, and deletes the record.
+Shared files survive while any history reference or content/clipboard holder remains.
+Records containing multiple managed files are deleted as a whole.
+Logical deletion and history revision commit before physical reclamation.
+Owned orphan payloads remain charged in the cache ledger until physical deletion succeeds;
+release, maintenance, and restart retry reclamation. Never unlink host-managed source/custom files.
 
 commit 须先完成自有 blob 暂存与持久化，再在数据库事务内发布内容引用、历史、淘汰和修订号；数据库提交成功后才发布通知与网络派发。事务失败不删除既有历史，已落盘但未被数据库引用的孤儿 blob 留待安全清理。提交成功后崩溃不会自动恢复待发送工作。不得宣称跨系统剪贴板、数据库与网络原子提交。
 
@@ -154,7 +186,9 @@ State 新增 `HistoryRevision`，不嵌入全量历史。历史增删改在持�
 
 Default-cache files use internal `cache:` references in storage. The references never appear in ordinary history responses.
 `HistoryPartSummary.Available` and desktop `parts[].available` expose default-cache content availability.
-Default-cache eviction preserves history metadata, increments its revision, and makes new reads fail with `resource_expired`.
+Unified cleanup deletes eligible history metadata and releases its default-cache payloads.
+No independent cache policy removes a payload from a retained history record.
+Missing or externally altered payloads can still make reads fail with `resource_expired`.
 Active holders keep payloads alive. The file cache counts a payload once even when history and Received share it.
 Custom received files use persistent external references supplied by `Options.StoreReceivedFile`.
 `Options.ResolveFileRef` rebuilds their `FileSource` after restart.

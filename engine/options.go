@@ -32,7 +32,7 @@ type Options struct {
 	// must have a non-empty persistent reference and must remain readable.
 	// Engine never deletes host-managed files, including after a failed commit.
 	StoreReceivedFile func(context.Context, ReceivedFile) (PersistentFileSource, error)
-	// DeferFileCleanup lets a clipboard host establish startup pins before age cleanup.
+	// DeferFileCleanup lets a clipboard host establish startup pins before physical reclamation.
 	DeferFileCleanup bool
 	// Settings is the complete configuration. The zero value means
 	// DefaultSettings. Nothing is read from environment variables or files.
@@ -90,7 +90,8 @@ type ResourcePolicy struct {
 // the protocol's limits.
 func DefaultSettings() Settings {
 	return Settings{
-		FileCache: FileCacheSettings{MaxBytes: 500 << 20, RetentionHours: 24, AutoCleanup: true},
+		FileCache: FileCacheSettings{MaxBytes: 500 << 20},
+		History:   HistoryCleanupSettings{AutoCleanup: true, RetentionDays: 180, ExcludedTags: []string{}},
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: wire.MaxTotal},
 		Sync:      SyncSettings{Enabled: true, Automatic: true, Files: true, Introductions: true},
 	}
@@ -107,8 +108,15 @@ func (s Settings) Validate() error {
 }
 
 func (s Settings) validate() *Error {
-	if s.FileCache.MaxBytes < 0 || s.FileCache.MaxBytes > 8<<30 || s.FileCache.RetentionHours < 0 || s.FileCache.RetentionHours > 876000 {
-		return newErr(CodeInvalidArgument, "file_cache: invalid quota or retention")
+	if s.History.MaxItems < 0 || s.History.MaxItems > 1_000_000 || s.History.RetentionDays < 0 || s.History.RetentionDays > 36500 {
+		return newErr(CodeInvalidArgument, "history: invalid count or retention")
+	}
+	if _, err := normalizeTags(s.History.ExcludedTags); err != nil {
+		return err
+	}
+
+	if s.FileCache.MaxBytes < 0 || s.FileCache.MaxBytes > 8<<30 {
+		return newErr(CodeInvalidArgument, "file_cache: invalid quota")
 	}
 	name := strings.TrimSpace(s.DeviceName)
 	if len(name) > 64 || strings.ContainsAny(name, "\r\n\x00") {

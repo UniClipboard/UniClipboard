@@ -23,6 +23,7 @@ const (
 	tabDevices
 	tabActivity
 	tabAdd
+	tabSettings
 )
 
 const (
@@ -72,6 +73,7 @@ type gui struct {
 	historyCursor, historyError string
 	historyBusy, historyLoaded  bool
 	historyTag                  string
+	cleanupUI                   cleanupUIState
 }
 
 func runGUI() error {
@@ -460,6 +462,8 @@ func (g *gui) content(c *ui.Context, k uikit.Kit) {
 				ui.Column(c).Grow(1).MinHeight(0).Padding(4, 20, 8).Gap(10).Children(func() {
 					g.historyTab(c, s)
 				})
+			} else if g.tab == tabSettings {
+				g.cleanupSettingsTab(c, k)
 			} else {
 				ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 					// Keep focus rings inside the scroll viewport's clip, and let short
@@ -489,6 +493,10 @@ func (g *gui) content(c *ui.Context, k uikit.Kit) {
 		ui.Row(c).Padding(8, 16).Gap(8).Children(func() {
 			k.Text(c, "daemon 运行中", uikit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
 			ui.Spacer(c)
+			if k.Button(c.Key("settings"), "设置", uikit.ButtonProps{}).Clicked() {
+				g.tab = tabSettings
+				g.loadCleanupSettings()
+			}
 			k.Text(c, "ID "+s.st.ID, uikit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
 		})
 	})

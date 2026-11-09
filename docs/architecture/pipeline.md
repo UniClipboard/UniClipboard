@@ -7,6 +7,7 @@ paths:
   - engine/clipboard.go
   - engine/action.go
   - engine/history.go
+  - engine/history_cleanup.go
   - engine/file_cache.go
   - engine/restore.go
   - engine/history_sync.go
@@ -29,12 +30,12 @@ verified: 85dbf35a5643f15a4a54eef062f4888e62308eec
 
 - **入口**：自动捕获（`ObserveClipboard`，请求键 `obs:<实例>:<epoch>:<序号>`，origin=`local_system`；基线、回声、未变化、空内容的观察只返回处置，不进流水线）、显式提交（`CommitContent`/旧门面 `SubmitContent`，origin=`explicit`）、Action（`RunAction`，origin=`action`）共用一个提交器（`startSubmissionLocked` → `runSubmission`）；远端接收（`delivered`，origin=`remote_device` 或 `external`）走自己的路径，不建 submission 记录。
 - **Processing**：已注册的 processor 串行执行，顺序为内置/Go 插件按装配顺序（`Options.Plugins`），之后是 `[plugins].lua` 列表顺序的 Lua 插件。本机/显式/Action 结果触发 `clipboard.captured`，接收触发 `clipboard.received`。processor 只能通过 `processingContext` 暂存标签（≤32 个、每个 ≤64 字节）、`persist`、`sync`、过期时长，**不能改正文**。每次调用的 200ms 预算含等待实例闸；成功才整体采纳，出错、超时、等闸超时、panic 都丢弃该次改动并继续；任一方法调用返回错误（非法标签/超限）即使被插件忽略也使整次改动作废。`on_error=block_sync` 的 processor 失败（含等闸超时）则强制 `sync=false`，后续 processor 不能解除。每个 processor 实例有独立串行闸，跨入口共用。默认 `persist=true, sync=true`。
-- **Commit**：`persist=true` 时 `persistHistory` 先检查单条大小与共享存储预算（必要时淘汰最旧的自有历史），再在一个 SQLite 事务内写记录（及接收去重记录），事务后另行按条数/字节淘汰最旧（不淘汰刚写入者）；失败则整次提交 failed，不发送。`persist=false` 不入历史但仍可同步（接收则仍写去重记录并建立 Received）。提交结果为无正文的 `SubmissionResult`（Phase processing/committed/failed，HistoryID，同步处置，各后端结果），按 RequestID 幂等缓存，`GetSubmission` 查询。提交成功后才派发同步，并发 `clipboard.committed` 通知。
+- **Commit**: With persist=true, validate item size and reserve storage, reclaiming eligible history only when unified cleanup permits it. Persist blobs before publishing the history/dedup transaction. Run bounded age/count cleanup after commit while preserving the newly committed record. Publish notifications and dispatch sync only after commit succeeds. A commit failure prevents sending; a send failure does not undo committed history.
 - **Sync**：`dispatchProcessed` 先查全局 `sync.enabled` 与条目 `sync`，再对每个选定后端独立做类型过滤、自动文件阈值（仅 origin=explicit 不受阈值约束）与限额检查，调用后端 `Submit`（后端按 ID 排序）；所有有任务的后端合并为一个 Operation。仅当有后端 queued/failed 时才按后端记录同步摘要（`clip_item_sync`）；重启后 pending 变为 interrupted，不续发。后端本身见各后端页面/契约。
 - **接收**：认证、策略、去重占位与配额准入通过后，对经后端接收策略过滤后剩余的内容跑 `received` processor（过滤后为空则静默丢弃，不写去重）；`sync` 对接收无效（不转发）。先预留 Received 槽位，再写历史与成功去重记录，最后在提交点复查生命周期/同步开关/信任，失败则撤回历史与去重记录。
 - **Use**: `BeginApply` and `BeginApplyHistory` apply existing content without a new commit. The desktop explicit history-restore path can call `SyncRestoredHistory` after a successful apply when `sync.on_restore` is on. Action-result application remains local. See [desktop runtime](desktop-runtime.md).
 - **Action**：插件静态声明（ID/Title/Accepts，当前仅文本、无参数）；动作键为 `pluginID/actionID`，结果必须是非空 UTF-8 且恰好一次 `SetText`。`ListActions`/`RunAction` 由用户触发，对一条文本历史产生**新的** origin=`action` 条目（强制 persist，仍经 captured processor 标注和正常同步决策），来源条目不变，10s 超时只覆盖等闸与动作本身，同一 RequestID 命名空间幂等（与 `CommitContent` 共用，参数不同返回 conflict）；插件动作失败对外只报不透明的 `internal`。宿主随后对新条目调用 `BeginApplyHistory`。`builtin.text` 提供 upper/lower/trim/plain，并在 processor 阶段给文本打 `email`/`url` 标签。桌面 API：`GET /v1/actions`、`POST /v1/history/{id}/actions/{key}`。
-- **历史**：由 Engine 持有，SQLite 表 `clip_items`/`clip_item_parts`/`clip_tags`/`clip_item_sync`，≤256KiB 的内容内联，其余存 `DataDir/history/` 私有 blob；宿主就地保存的文件（`PersistentFileSource`）只存引用与版本，不复制。HistoryID 为随机不透明串，跨重启稳定。API：`ListHistory`（keyset 游标，Limit 默认 50、1..200）、`GetItem`、`RetainHistoryContent`、`UpdateItem`（仅标签/过期，`ExpectedRevision` CAS；用户标签 ≤1000 个、每个 1..64 字符，过期须为 0 或未来时间）、`DeleteItem`、`BeginApplyHistory`；`HistoryRevision` 持久化；列表游标为 HMAC 密封，绑定过滤条件与引擎实例。迁移模式下 `engine/history_import.go` 离线导入（origin=`migration`），不跑 processor、不同步。默认上限 10000 条、4GiB，超限淘汰最旧；`DefaultTTL` 默认不过期，processor 设置的过期优先；过期按绝对时间，启动清理加每 30s 扫描并在读时再判定。标签与过期不同步。桌面 `/v1/history*`，CLI `unic history`（list/show/delete/tag/expire/action）。
+- **History**: Engine owns persistent records in SQLite and private blobs. Host-managed files remain external references. Stable IDs, cursor pagination, CAS tag/expiry edits, leases, explicit expiry, and local apply follow the [history contract](../contracts/history-contract.md). Unified cleanup defaults to enabled, 180 days, unlimited eligible records, and no excluded tags. The startup history byte budget remains 4 GiB. Live Settings.History changes apply to existing records. Tag exclusions protect records and their managed files. Explicit per-item expiry remains independent. Desktop exposes `/v1/history*` and `unic history`.
 - **通知**：observer 只收无正文事件（committed/updated/deleted/expired/pasted/app.*，仅含 Kind/ItemID/时间），不能改内容。每个 observer 独立队列（容量 64，满则丢最新），回调 200ms 超时，不保证送达。存储压力淘汰自有历史与条数/字节配额淘汰一致，在成功删除后发 `clipboard.deleted`，每个被淘汰 ID 一次。
 
 ## 不变量
@@ -84,6 +85,11 @@ verified: 85dbf35a5643f15a4a54eef062f4888e62308eec
 `limits.max_file_bytes` defaults to 100 MB and bounds transfer, while source references can still enter local history.
 History records preserve the processor sync prohibition for later restore sends.
 Received files use either the default-cache ledger or a user-managed external reference.
-Quota and startup retention apply only to default-cache payloads.
+The per-device file quota applies only to default-cache payloads.
+Unified age/count cleanup deletes eligible history records and releases their managed files.
+Capacity reclamation uses the same record deletion and tag exclusions.
+No standalone file-retention or payload-only eviction path remains.
 History deletion and history expiry must not delete custom received files.
 See [desktop runtime](desktop-runtime.md) for storage boundaries and configuration behavior.
+
+Unified cleanup and cache admission are implemented in `engine/history_cleanup.go`. See [desktop runtime](desktop-runtime.md) and the [history contract](../contracts/history-contract.md).

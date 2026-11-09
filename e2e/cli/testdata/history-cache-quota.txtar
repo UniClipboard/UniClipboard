@@ -1,0 +1,49 @@
+# 用例: Unified cleanup preserves the per-device cache quota
+# 目的: Verify disabled cleanup and excluded tags block capacity reclamation.
+# 流程:
+#   1. Fill a small cache, release its clipboard holder, and disable cleanup.
+#   2. Enable cleanup while excluding the retained record's tag.
+#   3. Remove the exclusion and resend the rejected batch.
+# 期望:
+#   - Disabled cleanup and tag exclusions each preserve the first file and record.
+#   - Removing the exclusion permits coupled record/file deletion and new admission.
+# 不应:
+#   - Quota reclamation bypasses the unified switch or tag exclusions.
+
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config set file_cache.max_bytes 150
+u beta config set history.auto_cleanup false
+genfile rand first.bin 100
+board-set alpha files first.bin
+board-wait beta files first.bin
+file-path beta FIRST
+u beta h tag @1 --add keep
+u beta copy -f $FIRST
+u beta cache --json
+stdout '"stored_bytes":100'
+u beta copy release
+until beta '"size":100,[^}]*"held":false' cache --json
+retry-copy alpha beta reset-off
+genfile rand next.bin 110
+board-set alpha files next.bin
+! board-wait beta files next.bin
+cmp $FIRST first.bin
+u beta h list --tag keep --json
+stdout keep
+u beta config set history.excluded_tags '["keep"]'
+u beta config set history.auto_cleanup true
+retry-copy alpha beta reset-protected
+board-set alpha files next.bin
+! board-wait beta files next.bin
+cmp $FIRST first.bin
+u beta h list --tag keep --json
+stdout keep
+u beta config set history.excluded_tags '[]'
+retry-copy alpha beta reset-eligible
+board-set alpha files next.bin
+board-wait beta files next.bin
+! file-wait $FIRST
+u beta h list --tag keep --json
+! stdout keep

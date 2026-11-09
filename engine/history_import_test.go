@@ -116,7 +116,7 @@ func TestHistoryMigrationMergeResumeAndReopen(t *testing.T) {
 func TestHistoryMigrationFailureDoesNotPublishOrEvict(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	e, err := New(ctx, Options{DataDir: dir, MigrationMode: true, History: HistoryOptions{MaxItems: 1}})
+	e, err := New(ctx, Options{DataDir: dir, MigrationMode: true, Settings: func() Settings { s := DefaultSettings(); s.History.MaxItems = 1; return s }()})
 	if err != nil {
 		t.Fatal(err)
 	}

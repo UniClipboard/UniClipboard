@@ -27,40 +27,16 @@ func (s *Store) PutCachedFile(f CachedFile) error {
 	_, err := s.db.Exec(`INSERT INTO file_cache(id,name,size,completed_ms,available) VALUES(?,?,?,?,?)`, f.ID, f.Name, f.Size, f.CompletedMs, f.Available)
 	return err
 }
-func (s *Store) MarkCachedFileUnavailable(id string) ([]string, error) {
-	tx, err := s.db.Begin()
+
+// RetireUnreferencedCachedFile records pending physical deletion only when
+// no retained history references the payload. It never invalidates history.
+func (s *Store) RetireUnreferencedCachedFile(id string) (bool, error) {
+	result, err := s.db.Exec(`UPDATE file_cache SET available=0 WHERE id=? AND NOT EXISTS (SELECT 1 FROM clip_item_parts WHERE ref=?)`, id, "cache:"+id)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.Query(`SELECT DISTINCT i.id FROM clip_items i JOIN clip_item_parts p ON p.item_seq=i.seq WHERE p.ref=?`, "cache:"+id)
-	if err != nil {
-		return nil, err
-	}
-	var ids []string
-	for rows.Next() {
-		var value string
-		if err = rows.Scan(&value); err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
-		ids = append(ids, value)
-	}
-	if err = rows.Close(); err != nil {
-		return nil, err
-	}
-	if _, err = tx.Exec(`UPDATE file_cache SET available=0 WHERE id=?`, id); err != nil {
-		return nil, err
-	}
-	if len(ids) > 0 {
-		if _, err = tx.Exec(`UPDATE clip_items SET revision=revision+1 WHERE seq IN (SELECT item_seq FROM clip_item_parts WHERE ref=?)`, "cache:"+id); err != nil {
-			return nil, err
-		}
-		if _, err = bump(tx); err != nil {
-			return nil, err
-		}
-	}
-	return ids, tx.Commit()
+	n, err := result.RowsAffected()
+	return n > 0, err
 }
 func (s *Store) ForgetCachedFile(id string) error {
 	_, err := s.db.Exec(`DELETE FROM file_cache WHERE id=?`, id)

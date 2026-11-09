@@ -125,8 +125,10 @@ unic config set sync.on_restore true
 unic config set sync.files true
 unic config set limits.max_file_bytes '"100MB"'
 unic config set file_cache.max_bytes '"500MB"'
-unic config set file_cache.retention_hours 24
-unic config set file_cache.auto_cleanup true
+unic config set history.auto_cleanup true
+unic config set history.retention_days 180
+unic config set history.max_items 0
+unic config set history.excluded_tags '["keep", "work"]'
 unic config apply /absolute/path/config.toml
 unic history use @1 --request-id restore-001 --json
 unic cache --json
@@ -144,3 +146,9 @@ See [desktop runtime](../../docs/architecture/desktop-runtime.md) for limits, sa
 Custom receive directories and file creation belong to the desktop host.
 Engine receives a file stream callback and persists an opaque host reference.
 The desktop host supplies a separate private cache directory for Engine quota and cleanup.
+
+Unified automatic cleanup removes eligible history and its managed files together.
+The Settings tab offers age, count, excluded tags, and the per-device cache quota.
+A matching excluded tag preserves both history and managed files. Custom received files remain user-managed.
+When cleanup is off or cannot free sufficient cache space, new file reception fails rather than bypassing the policy.
+See [desktop runtime](../../docs/architecture/desktop-runtime.md).

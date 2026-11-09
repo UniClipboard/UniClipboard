@@ -300,13 +300,22 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	if perr != nil {
 		return SettingsState{}, perr
 	}
+	tags, tagErr := normalizeTags(value.History.ExcludedTags)
+	if tagErr != nil {
+		return SettingsState{}, tagErr
+	}
+	value.History.ExcludedTags = tags
 	changed := false
 	defer func() {
 		if changed && e.cache != nil {
-			e.cleanupFileCache(false)
+			e.cleanupHistory()
+			e.reserveCachedFiles(0)
+			e.reapCachedFiles()
 		}
 	}()
-	defer e.syncPeerStates() // after the unlock below: sync.enabled, limits and policies reach out-of-process backends
+	defer e.syncPeerStates() // after unlocking: publish peer policies
+	e.hist.mu.Lock()
+	defer e.hist.mu.Unlock()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if req.ExpectedRevision != e.settings.Revision {
@@ -317,6 +326,7 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	}
 	toggled := value.Sync.Enabled != e.settings.Value.Sync.Enabled
 	e.settings = SettingsState{Revision: e.settings.Revision + 1, Value: value}
+	e.hist.cleanup = value.History
 	changed = true
 	if toggled {
 		e.resetSendCtxLocked() // turning sync off cancels transfers in flight

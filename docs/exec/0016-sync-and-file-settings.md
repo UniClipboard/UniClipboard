@@ -1,5 +1,7 @@
 # Execution plan: Sync and file settings
 
+> Scope update: [0017](0017-history-auto-cleanup.md) removes the separate file-retention and cleanup settings and replaces payload-only eviction with unified history/file deletion. The per-device cache quota remains. Earlier implementation and acceptance notes below describe the previous behavior.
+
 - Status: CLI and TOML implemented; final acceptance in progress. Settings GUI deferred.
 - Date: 2026-11-09
 - Requirements: [User stories and decision draft](../decisions/proposed/0016-sync-and-file-settings.md).

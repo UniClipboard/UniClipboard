@@ -1,0 +1,64 @@
+# 用例: Unified history cleanup and tag exclusions
+# 目的: Verify live count cleanup, tag matching, restart, and removed file settings.
+# 流程:
+#   1. Disable cleanup and create tagged and untagged local history.
+#   2. Enable a count limit and protect one tag.
+#   3. Restart and remove tag protection.
+# 期望:
+#   - Excluded history survives; oldest eligible records disappear.
+#   - Zero count means unlimited; removed file keys are rejected.
+# 不应:
+#   - Cleanup resumes while disabled or an excluded record is counted.
+
+node-start alpha
+u alpha config set history.auto_cleanup false
+u alpha config set history.max_items 1
+u alpha copy protected-one
+u alpha h tag @1 --add keep
+exec curl -sf --unix-socket $WORK/.alpha.sock http://unic/v1/history/tags
+stdout keep
+u alpha copy ordinary-two
+u alpha copy ordinary-three
+u alpha h show @3
+stdout protected-one
+u alpha h show @2
+stdout ordinary-two
+u alpha h show @1
+stdout ordinary-three
+u alpha config set history.excluded_tags '["keep", "other"]'
+u alpha config set history.auto_cleanup true
+u alpha h show @2
+stdout protected-one
+u alpha h show @1
+stdout ordinary-three
+! u alpha h show @3
+node-stop alpha
+node-start alpha
+u alpha h show @2
+stdout protected-one
+u alpha h show @1
+stdout ordinary-three
+u alpha config set history.excluded_tags '[]'
+u alpha h show @1
+stdout ordinary-three
+! u alpha h show @2
+u alpha config set history.max_items 0
+u alpha copy unlimited-four
+u alpha h show @2
+stdout ordinary-three
+u alpha h show @1
+stdout unlimited-four
+! u alpha config set file_cache.retention_hours 1
+! u alpha config set file_cache.auto_cleanup true
+u alpha config --json
+! stdout retention_hours
+! stdout default_ttl_days
+u alpha config set history.auto_cleanup false
+u alpha config set history.retention_days 1
+node-stop alpha
+history-age alpha 172800
+node-start alpha
+u alpha h show @1
+stdout unlimited-four
+u alpha config set history.auto_cleanup true
+! u alpha h show @1

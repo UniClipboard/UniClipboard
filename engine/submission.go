@@ -318,7 +318,7 @@ func (e *Engine) normalizeBackendIDs(ids []PluginID) ([]PluginID, *Error) {
 			return nil, newErr(CodeInvalidArgument, "BackendIDs has a repeated ID")
 		}
 		known := false
-		for _, b := range e.backends {
+		for _, b := range e.syncBackends {
 			known = known || b.ID() == id
 		}
 		if !known {

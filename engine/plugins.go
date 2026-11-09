@@ -127,7 +127,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 			if _, leaves := in.Plugin.(plugin.ChannelLeaver); spec.RemoteRevocation && !leaves {
 				return invalidPlugin(spec.ID, "remote revocation needs LeaveChannel")
 			}
-			if slices.ContainsFunc(e.backends, func(b syncBackend) bool { return string(b.ID()) == spec.ID }) {
+			if slices.ContainsFunc(e.syncBackends, func(b syncBackend) bool { return string(b.ID()) == spec.ID }) {
 				return invalidPlugin(spec.ID, "a sync backend with this ID already exists")
 			}
 			if in.Process == nil { // process backends took theirs above
@@ -185,7 +185,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 		return newErr(CodeUnsupported, "sync backend plugins are not supported yet")
 	}
 	e.plugins = started
-	e.backends = append(e.backends, pending...)
+	e.syncBackends = append(e.syncBackends, pending...)
 	e.peerProcs = append(e.peerProcs, peers...)
 	return nil
 }

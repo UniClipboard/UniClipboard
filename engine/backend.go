@@ -230,7 +230,7 @@ func (e *Engine) refreshOpLocked(o *opEntry) (done *contentObj) {
 
 func (e *Engine) selectBackends(ids []PluginID) []syncBackend {
 	var out []syncBackend
-	for _, b := range e.backends {
+	for _, b := range e.syncBackends {
 		if len(ids) == 0 || containsID(ids, b.ID()) {
 			out = append(out, b)
 		}

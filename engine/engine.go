@@ -91,7 +91,7 @@ type Engine struct {
 	evDone        chan struct{}
 	cs            *contentStore
 	hist          *history
-	backends      []syncBackend
+	syncBackends  []syncBackend
 	dedupInflight map[store.DedupKey]struct{} // receives being read right now; guarded by mu
 	syncMu        sync.Mutex                  // orders writes of a record's sync summary
 	recv          []*receipt                  // the received list, oldest first
@@ -268,10 +268,10 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 			return closeAll(newErr(CodeUnavailable, "cannot prepare the network"))
 		}
 		e.core = core
-		e.backends = append(e.backends, tailcatBackend{e})
+		e.syncBackends = append(e.syncBackends, tailcatBackend{e})
 		e.events, e.evCancel = core.Subscribe()
 	}
-	e.backends = append(e.backends, opts.extraBackends...)
+	e.syncBackends = append(e.syncBackends, opts.extraBackends...)
 	e.evStop, e.evDone = make(chan struct{}), make(chan struct{})
 	go e.pumpCoreEvents()
 	if perr := e.loadPlugins(ctx, opts.Plugins); perr != nil {

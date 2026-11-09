@@ -98,7 +98,7 @@ func channelStoreErr(err error) *Error {
 
 // channelBackend finds an installed external-channel backend.
 func (e *Engine) channelBackend(id PluginID) *pluginBackend {
-	for _, b := range e.backends {
+	for _, b := range e.syncBackends {
 		if pb, ok := b.(*pluginBackend); ok && pb.id == id && pb.spec.ExternalChannels {
 			return pb
 		}

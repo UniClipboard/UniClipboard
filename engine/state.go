@@ -323,8 +323,8 @@ func (e *Engine) settingsLocked() SettingsState {
 }
 
 func (e *Engine) backendIDs() []PluginID {
-	ids := make([]PluginID, len(e.backends))
-	for i, b := range e.backends {
+	ids := make([]PluginID, len(e.syncBackends))
+	for i, b := range e.syncBackends {
 		ids[i] = b.ID()
 	}
 	return ids
@@ -365,10 +365,10 @@ func (e *Engine) policyOf(id PluginID) BackendSyncPolicy {
 // With no backend nothing is restricted: capture and history do not depend on
 // sync policy. kind is "text", "images" or "files". e.mu held.
 func (e *Engine) typeAllowedLocked(kind string) bool {
-	if len(e.backends) == 0 {
+	if len(e.syncBackends) == 0 {
 		return true
 	}
-	for _, b := range e.backends {
+	for _, b := range e.syncBackends {
 		p := e.policyLocked(b.ID())
 		if kind == "text" && p.Text || kind == "images" && p.Images || kind == "files" && p.Files {
 			return true

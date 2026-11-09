@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/wire"
 )
@@ -54,13 +53,6 @@ type Options struct {
 	// block. Nil: messages are dropped.
 	PluginNotify func(plugin PluginID, message string)
 
-	// Peer assembles the peer-to-peer sync backend (builtin.tailcat). The
-	// engine does not know any transport: the host builds the backend
-	// explicitly (see internal/plugins/tailcat). Nil means no
-	// peer-to-peer backend: the engine is local-only and the network calls
-	// (pairing, sending) report unsupported.
-	Peer PeerFactory
-
 	// Test seams, reachable from this package's tests only.
 	extraBackends    []syncBackend // fake backends for contract tests
 	noPersistDefault bool          // processed items default to persist=false
@@ -82,14 +74,6 @@ type ResourcePolicy struct {
 	EventBuffer         int           // default 128, per subscription
 	MaxSyncBackends     int           // default 8, at most 32; sync backend plugins that may be enabled together
 }
-
-// PeerEnv, PeerBackend and PeerFactory are defined in internal/peerbackend so
-// that the backend package can implement them without importing the engine.
-type (
-	PeerEnv     = peerbackend.Env
-	PeerBackend = peerbackend.Backend
-	PeerFactory = peerbackend.Factory
-)
 
 // DefaultSettings are the settings of a fresh install: everything syncs, up to
 // the protocol's limits.

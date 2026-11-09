@@ -250,3 +250,11 @@ type Receiver interface {
 type ReceiverAware interface {
 	SetReceiver(Receiver)
 }
+
+// DirAware is implemented by in-process sync backends that keep state. The
+// engine hands over the backend's private instance directory after Init and
+// before Start; out-of-process backends are given theirs as the working
+// directory instead.
+type DirAware interface {
+	SetDir(dir string)
+}

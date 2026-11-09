@@ -76,12 +76,13 @@ func TestPeerStateSnapshotAndBarrier(t *testing.T) {
 		t.Fatalf("bind: %+v", fp.binds)
 	}
 	s, cnt := fp.last()
-	if cnt != 1 || s.Revision != 1 || len(s.Peers) != 0 || !s.SyncEnabled {
+	// One push when the plugin loads (suspended), one when the network comes up.
+	if cnt != 2 || s.Revision != 2 || s.Runtime != "active" || len(s.Peers) != 0 || !s.SyncEnabled {
 		t.Fatalf("initial state: %+v (%d)", s, cnt)
 	}
 	// An unchanged snapshot is not pushed again.
 	n.e.syncPeerStates()
-	if _, c := fp.last(); c != 1 {
+	if _, c := fp.last(); c != 2 {
 		t.Fatalf("redundant push: %d", c)
 	}
 
@@ -104,7 +105,7 @@ func TestPeerStateSnapshotAndBarrier(t *testing.T) {
 	}
 	n.e.syncPeerStates()
 	s, cnt = fp.last()
-	if cnt != 2 || s.Revision != 2 || len(s.Peers) != 1 || s.Peers[0].ID != "dev1" || s.Peers[0].Address != "addr-1" {
+	if cnt != 3 || s.Revision != 3 || len(s.Peers) != 1 || s.Peers[0].ID != "dev1" || s.Peers[0].Address != "addr-1" {
 		t.Fatalf("after authorize: %+v (%d)", s, cnt)
 	}
 
@@ -114,7 +115,7 @@ func TestPeerStateSnapshotAndBarrier(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, cnt = fp.last()
-	if cnt != 3 || len(s.Peers) != 0 || len(s.Rejected) != 1 || s.Rejected[0].ID != "dev1" {
+	if cnt != 4 || len(s.Peers) != 0 || len(s.Rejected) != 1 || s.Rejected[0].ID != "dev1" {
 		t.Fatalf("after unpair: %+v (%d)", s, cnt)
 	}
 

@@ -1,59 +1,84 @@
 // Package tailcat is the built-in peer-to-peer sync backend
 // (builtin.tailcat). It owns the tailcat transport and the session layer; the
-// engine knows neither. The host assembles it explicitly and hands the
-// factory to the engine (engine.Options.Peer): nothing registers itself.
+// engine knows neither. The host assembles it explicitly and lists it in
+// engine.Options.Plugins as a Builtin instance: nothing registers itself.
+//
+// It is an ordinary in-process peer_sessions plugin: the Engine drives it
+// through the same plugin.PeerBackend path as an out-of-process backend.
 package tailcat
 
 import (
+	"context"
 	"errors"
 
-	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/internal/tcnet"
+	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
-// Transport is what the backend runs on: the session transport plus its
-// lifecycle. tcnet.Transport is the production one; tests inject their own.
-type Transport interface {
-	session.Transport
-	// Start brings the network up, Close takes it down. Listen may be called
-	// again after a suspend.
-	Start() error
-	Close() error
+// ID is the plugin ID of the built-in backend.
+const ID = "builtin.tailcat"
+
+// Plugin is the built-in backend.
+type Plugin struct {
+	tr  session.Transport // nil: the tailcat transport, created in Init
+	dir string
+	b   *session.Backend
 }
 
-// Backend is the session layer on a transport.
-type Backend struct {
-	*session.Engine
-	tr Transport
+// New builds the production backend (tailcat transport).
+func New() *Plugin { return &Plugin{} }
+
+// NewOn builds the backend on tr. It is how tests supply loopback or
+// fault-injecting networks.
+func NewOn(tr session.Transport) *Plugin { return &Plugin{tr: tr} }
+
+func (p *Plugin) Spec() plugin.Spec {
+	return plugin.Spec{ID: ID, Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapSyncBackend}, TransportKind: plugin.TransportPeerSessions}
 }
 
-func (b *Backend) Start() error { return b.tr.Start() }
-func (b *Backend) Close() error { return b.tr.Close() }
-func (b *Backend) Addr() string { return b.tr.Addr() }
+// SetDir gives the backend its private directory (plugin.DirAware).
+func (p *Plugin) SetDir(dir string) { p.dir = dir }
 
-// Factory builds the production backend (tailcat transport).
-func Factory() peerbackend.Factory { return FactoryOn(nil) }
-
-// FactoryOn builds the backend on tr; nil means the tailcat transport. It is
-// how tests supply loopback or fault-injecting networks.
-func FactoryOn(tr Transport) peerbackend.Factory {
-	return func(env peerbackend.Env) (peerbackend.Backend, error) {
-		if tr == nil {
-			t, err := tcnet.New(env.Dir, func(string, ...any) {}) // tailcat's logs may name addresses
-			if err != nil {
-				if errors.Is(err, tcnet.ErrBadCredentials) {
-					return nil, err // a damaged file is reported, never replaced
-				}
-				return nil, errors.New("cannot prepare the network")
+func (p *Plugin) Init(context.Context, plugin.Host, plugin.Config) error {
+	if p.tr == nil {
+		t, err := tcnet.New(p.dir, func(string, ...any) {}) // tailcat's logs may name addresses
+		if err != nil {
+			if errors.Is(err, tcnet.ErrBadCredentials) {
+				return rpc.NewError("bad_credentials") // a damaged file is reported, never replaced
 			}
-			tr = t
+			return errors.New("cannot prepare the network")
 		}
-		cfg := session.Config{Identity: env.Identity, Name: env.Name, Host: env.Host, Transport: tr,
-			Logf: env.Logf, Settings: env.Settings, Receiver: env.Receiver}
-		if cfg.Logf == nil {
-			cfg.Logf = func(string, ...any) {} // session logs name devices; never default to the global logger
-		}
-		return &Backend{Engine: session.New(cfg), tr: tr}, nil
+		p.tr = t
 	}
+	p.b = session.New(session.Config{Transport: p.tr})
+	return nil
+}
+
+// Start does nothing: the network comes up with the first active state.
+func (p *Plugin) Start(context.Context) error { return nil }
+
+func (p *Plugin) Close(ctx context.Context) error {
+	if p.b == nil {
+		return nil
+	}
+	return p.b.Close(ctx)
+}
+
+func (p *Plugin) SetPeerAuthority(a plugin.PeerAuthority) { p.b.SetPeerAuthority(a) }
+func (p *Plugin) SetPeerReceiver(r plugin.PeerReceiver)   { p.b.SetPeerReceiver(r) }
+
+func (p *Plugin) Bind(ctx context.Context, b rpc.Bind) error { return p.b.Bind(ctx, b) }
+func (p *Plugin) ApplyState(ctx context.Context, s rpc.SyncState) error {
+	return p.b.ApplyState(ctx, s)
+}
+func (p *Plugin) PairingAddress(ctx context.Context, purpose string) (string, error) {
+	return p.b.PairingAddress(ctx, purpose)
+}
+func (p *Plugin) Connect(ctx context.Context, c rpc.Connect) (rpc.ConnectResult, error) {
+	return p.b.Connect(ctx, c)
+}
+func (p *Plugin) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) error {
+	return p.b.Send(ctx, s, src)
 }

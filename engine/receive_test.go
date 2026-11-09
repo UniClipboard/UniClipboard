@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -352,4 +353,32 @@ func textOfE(e *Engine, r ReceivedContent) string {
 		}
 	}
 	return ""
+}
+
+// Several sends reuse the one connection, and a path the user paused carries
+// nothing in either direction.
+func TestConsecutiveSendsAndPausedPath(t *testing.T) {
+	a, b := pairedPair(t, nil)
+	for i := 0; i < 3; i++ {
+		if o := sendText(t, a, b, fmt.Sprint("clip ", i)); o.Outcome != OutcomeSuccess {
+			t.Fatalf("send %d = %+v", i, o)
+		}
+	}
+	waitReceived(t, b.e, 3)
+
+	d, err := a.e.GetDevice(bg, string(selfID(b.e)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.e.SetBindingSync(bg, SetBindingSyncRequest{ID: d.Bindings[0].ID, ExpectedRevision: d.Bindings[0].Revision, Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	if id, err := submit(a.e, importText(t, a.e, "paused")); err == nil {
+		if o := waitSend(t, a.e, id); o.Outcome == OutcomeSuccess {
+			t.Fatalf("a paused path was sent to: %+v", o)
+		}
+	}
+	if n := len(received(b.e)); n != 3 {
+		t.Fatalf("received %d clips, want 3", n)
+	}
 }

@@ -21,12 +21,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/uniclipboard/unic/internal/identity"
-	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/plugin"
@@ -42,9 +40,7 @@ type Engine struct {
 	lock      *dirLock
 	ident     *identity.Identity // unified device identity (identity protocol v1)
 	st        *store.Store
-	instLocks []*dirLock  // runtime.lock of each backend instance
-	core      PeerBackend // nil: local-only, no peer backend
-	trUsed    bool        // core.Start was called, so core.Close is due
+	instLocks []*dirLock // runtime.lock of each backend instance
 	self      DeviceID
 	defName   string
 
@@ -58,6 +54,7 @@ type Engine struct {
 	stopReq    bool
 	runtime    RuntimeState
 	netGen     uint64 // bumped by NotifyNetworkChanged; guarded by mu
+	netUp      bool   // the engine runs and the host allows the network; backends see "active" only then
 	peerProcs  []*peerProcBackend
 	candRetry  map[string]*candWait // retry timing of requested candidates; guarded by mu
 	rev        uint64
@@ -84,11 +81,6 @@ type Engine struct {
 	stopped  chan struct{} // closed when teardown is complete
 	closedCh chan struct{} // closed when Close is complete
 
-	trDone        chan struct{} // closed when tr.Start returned
-	events        <-chan peerbackend.Event
-	evCancel      func()
-	evStop        chan struct{}
-	evDone        chan struct{}
 	cs            *contentStore
 	hist          *history
 	syncBackends  []syncBackend
@@ -134,9 +126,6 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	}
 	opts.Plugins = append(slices.Clone(opts.Plugins), luaIn...)
 	var backendIDs []PluginID
-	if opts.Peer != nil {
-		backendIDs = append(backendIDs, BackendTailcat)
-	}
 	for _, b := range opts.extraBackends {
 		backendIDs = append(backendIDs, b.ID())
 	}
@@ -249,48 +238,13 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		rv = rendezvous.NewWithURL("") // the production service; settings.RendezvousURL overrides it, the environment does not
 	}
 	e.rvDefault = rv
-	if opts.Peer != nil {
-		idir, ilock, ierr := openInstanceDir(opts.DataDir, tailcatInstance)
-		if ierr != nil {
-			if errors.Is(ierr, errLocked) {
-				return closeAll(newErr(CodeInUse, "the backend instance is used by another process"))
-			}
-			return closeAll(newErr(CodeUnavailable, "cannot prepare the backend directory"))
-		}
-		e.instLocks = append(e.instLocks, ilock)
-		core, perr := opts.Peer(PeerEnv{Dir: idir,
-			Identity: ident, Name: defName, Host: tailcatHost{e}, Receiver: receiver{e},
-			Logf:     func(string, ...any) {}, // lower layers log addresses and names; the engine logs its own redacted lines
-			Settings: settingsSource{e},
-		})
-		if perr != nil || core == nil {
-			ilock.release()
-			return closeAll(newErr(CodeUnavailable, "cannot prepare the network"))
-		}
-		e.core = core
-		e.syncBackends = append(e.syncBackends, tailcatBackend{e})
-		e.events, e.evCancel = core.Subscribe()
-	}
 	e.syncBackends = append(e.syncBackends, opts.extraBackends...)
-	e.evStop, e.evDone = make(chan struct{}), make(chan struct{})
-	go e.pumpCoreEvents()
 	if perr := e.loadPlugins(ctx, opts.Plugins); perr != nil {
 		_ = e.Close(context.WithoutCancel(ctx))
 		return nil, perr
 	}
 	e.logf(slog.LevelInfo, "engine created")
 	return e, nil
-}
-
-// settingsSource feeds the current settings to the session.
-type settingsSource struct{ e *Engine }
-
-func (s settingsSource) Current() peerbackend.Settings {
-	s.e.mu.Lock()
-	defer s.e.mu.Unlock()
-	v := s.e.settings.Value
-	return peerbackend.Settings{DeviceName: strings.TrimSpace(v.DeviceName), RendezvousURL: strings.TrimRight(v.RendezvousURL, "/"),
-		MaxFileBytes: v.Limits.MaxFileBytes, MaxTotalBytes: v.Limits.MaxTotalBytes, SyncEnabled: v.Sync.Enabled}
 }
 
 func (e *Engine) logf(level slog.Level, msg string, args ...any) {
@@ -347,7 +301,7 @@ func (e *Engine) needNetworkLocked() *Error {
 	if err := e.needRunningLocked(); err != nil {
 		return err
 	}
-	if e.core == nil {
+	if len(e.peerProcs) == 0 {
 		return newErr(CodeUnsupported, "no peer-to-peer backend is installed")
 	}
 	return nil
@@ -392,7 +346,10 @@ func (e *Engine) Start(ctx context.Context) error {
 	e.mu.Unlock()
 	defer scancel()
 
-	err := e.startCore(sctx, active)
+	var err error
+	if active {
+		err = e.startRun(sctx)
+	}
 	if err == nil {
 		e.mu.Lock()
 		if e.stopReq {
@@ -425,35 +382,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	return nil
 }
 
-// startCore starts the transport and, unless suspended, the session layer.
-func (e *Engine) startCore(ctx context.Context, active bool) error {
-	if e.core == nil { // local-only: nothing to start, but submissions still need a run context
-		if !active {
-			return nil
-		}
-		return e.startRun(ctx)
-	}
-	started := make(chan error, 1)
-	trDone := make(chan struct{})
-	e.mu.Lock()
-	e.trUsed, e.trDone = true, trDone
-	e.mu.Unlock()
-	go func() { started <- e.core.Start(); close(trDone) }()
-	select {
-	case err := <-started:
-		if err != nil {
-			return newErr(CodeUnavailable, "cannot start the network")
-		}
-	case <-ctx.Done():
-		return ctxErr(ctx.Err()) // teardown closes the transport once Start returns
-	}
-	if !active {
-		return nil
-	}
-	return e.startRun(ctx)
-}
-
-// startRun starts the session layer and waits until it is accepting work.
+// startRun opens the run context and lets the backends bring the network up.
 func (e *Engine) startRun(ctx context.Context) error {
 	e.mu.Lock()
 	prev := e.runDone
@@ -471,34 +400,13 @@ func (e *Engine) startRun(ctx context.Context) error {
 		return newErr(CodeInvalidState, "the engine cannot run now")
 	}
 	rctx, cancel := context.WithCancel(context.Background())
-	done, ready := make(chan struct{}), make(chan struct{})
+	done := make(chan struct{})
 	e.runCtx, e.runCancel, e.runDone = rctx, cancel, done
+	e.netUp = true
 	e.mu.Unlock()
-
-	if e.core == nil { // local-only: the run context still bounds submissions
-		close(done)
-		return nil
-	}
-	go e.runCore(rctx, done, ready)
-	select {
-	case <-ready:
-		return nil
-	case <-done:
-		cancel()
-		return newErr(CodeUnavailable, "cannot start the session layer")
-	case <-ctx.Done():
-		cancel()
-		return ctxErr(ctx.Err())
-	}
-}
-
-func (e *Engine) runCore(rctx context.Context, done, ready chan struct{}) {
-	defer close(done)
-	var once sync.Once
-	err := e.core.RunReady(rctx, func() { once.Do(func() { close(ready) }) })
-	if err != nil && rctx.Err() == nil {
-		e.logf(slog.LevelError, "session layer stopped", "reason", "run_failed")
-	}
+	close(done) // the backends own their goroutines; the run context only bounds engine work
+	e.syncPeerStates()
+	return nil
 }
 
 // stopRun stops the session layer and waits for it.
@@ -506,6 +414,7 @@ func (e *Engine) stopRun(ctx context.Context) error {
 	e.mu.Lock()
 	cancel, done := e.runCancel, e.runDone
 	e.runCancel = nil
+	e.netUp = false
 	e.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -562,12 +471,8 @@ func (e *Engine) teardown() {
 	if e.histTimer != nil {
 		e.histTimer.Stop()
 	}
-	used, trDone := e.trUsed, e.trDone
 	e.mu.Unlock()
-	if used {
-		<-trDone
-		_ = e.core.Close()
-	}
+	e.syncPeerStates() // backends drop their sessions; the plugins close with the engine
 	e.mu.Lock()
 	e.life = LifecycleStopped
 	e.commitLocked(EventLifecycle)
@@ -620,12 +525,7 @@ func (e *Engine) Close(ctx context.Context) error {
 func (e *Engine) finalize() {
 	<-e.stopped
 	e.notifyObservers(plugin.EventAppShutdown, "") // delivered while observers are drained below
-	close(e.evStop)
-	if e.evCancel != nil {
-		e.evCancel()
-	}
-	<-e.evDone
-	e.use.Lock() // in-flight calls finish before the store goes away
+	e.use.Lock()                                   // in-flight calls finish before the store goes away
 	e.mu.Lock()
 	subs := make([]*Subscription, 0, len(e.subs))
 	for s := range e.subs {
@@ -725,7 +625,6 @@ func (e *Engine) NotifyNetworkChanged(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	e.core.NetworkChanged()
 	e.mu.Lock()
 	e.netGen++
 	e.mu.Unlock()

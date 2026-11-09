@@ -17,7 +17,6 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/config"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
-	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 )
 
 // fakeBoard is an in-memory clipboard. extra mimics systems that add their own
@@ -111,7 +110,7 @@ func newHostWith(t *testing.T, extra bool, plugins []engine.PluginInstance) *hos
 		t.Fatal(err)
 	}
 	b := &fakeBoard{extra: extra}
-	n, err := Open(context.Background(), Options{Dir: dir, Settings: m, Board: b, Poll: 10 * time.Millisecond, Logf: t.Logf, Peer: tailcat.FactoryOn(newLoopback(t)), Plugins: plugins})
+	n, err := Open(context.Background(), Options{Dir: dir, Settings: m, Board: b, Poll: 10 * time.Millisecond, Logf: t.Logf, Transport: newLoopback(t), Plugins: plugins})
 	if err != nil {
 		t.Fatal(err)
 	}

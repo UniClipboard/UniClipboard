@@ -24,6 +24,7 @@ import (
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
+	"github.com/uniclipboard/unic/internal/session"
 )
 
 // Board is the system clipboard as the desktop host sees it. The production
@@ -41,9 +42,9 @@ type Options struct {
 	Board    Board           // the system clipboard
 	Poll     time.Duration   // clipboard poll interval; default 400ms
 	Logf     func(string, ...any)
-	// Peer replaces the peer-to-peer backend (tests); nil assembles the
-	// built-in tailcat.
-	Peer engine.PeerFactory
+	// Transport replaces the network of the built-in tailcat backend (tests);
+	// nil uses the tailcat transport.
+	Transport session.Transport
 	// Plugins are extra plugin instances, e.g. sync backends with external
 	// channels, assembled by the program next to the built-in ones.
 	Plugins []engine.PluginInstance
@@ -78,9 +79,10 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if o.Poll == 0 {
 		o.Poll = 400 * time.Millisecond
 	}
-	peer := o.Peer
-	if peer == nil {
-		peer = tailcat.Factory() // the host assembles the built-in backend explicitly
+	// The host assembles the built-in backend explicitly.
+	peer := tailcat.New()
+	if o.Transport != nil {
+		peer = tailcat.NewOn(o.Transport)
 	}
 	c := o.Settings.Current()
 	opts := engine.Options{
@@ -93,11 +95,11 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 			ReadFiles:    true, WriteFiles: true,
 			Observe: engine.AbilityAvailable, Apply: engine.AbilityAvailable,
 		},
-		Peer:    peer,
 		History: c.HistoryOptions(),
 		// History remembers files by path; they are never copied.
 		ResolveFileRef: func(ref string) engine.FileSource { return pathSource{ref} },
 	}
+	opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
 	if c.PluginEnabled(builtintext.ID) {
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New()})
 	}

@@ -31,6 +31,9 @@ type PluginInstance struct {
 	// updated, deleted and expired (default: all four). When the list is not
 	// empty, every capability the plugin has needs at least one of its events.
 	Events []string
+	// Builtin marks a plugin the host assembled itself (builtin.tailcat). Only
+	// a Builtin instance may carry the reserved built-in ID.
+	Builtin bool
 	// OnError is what a failed processor means for syncing: "continue"
 	// (default) or "block_sync".
 	OnError string
@@ -131,12 +134,20 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				return invalidPlugin(spec.ID, "a sync backend with this ID already exists")
 			}
 			if in.Process == nil { // process backends took theirs above
-				if _, err = e.backendDir(spec.ID); err != nil {
-					return err
+				dir, derr := e.backendDir(spec.ID)
+				if derr != nil {
+					return derr
+				}
+				if da, ok := in.Plugin.(plugin.DirAware); ok {
+					da.SetDir(dir)
 				}
 			}
 			host := &pluginHost{e: e, id: PluginID(spec.ID)}
 			if ierr := in.Plugin.Init(ctx, host, in.Config); ierr != nil {
+				var re *rpc.Error // a stable code is safe to show; free text is not
+				if in.Builtin && errors.As(ierr, &re) {
+					return invalidPlugin(spec.ID, "Init failed: "+re.Code)
+				}
 				return invalidPlugin(spec.ID, "Init failed")
 			}
 			pb := &pluginBackend{e: e, id: PluginID(spec.ID), kind: TransportKind(spec.TransportKind), sb: sb, spec: spec}
@@ -212,7 +223,7 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 	switch {
 	case len(s.ID) > 128 || !pluginIDRe.MatchString(s.ID):
 		return invalidPlugin(s.ID, "invalid ID")
-	case s.ID == string(BackendTailcat):
+	case s.ID == string(BackendTailcat) && !in.Builtin:
 		return invalidPlugin(s.ID, "builtin.tailcat is reserved")
 	case s.APIVersion != 1:
 		return invalidPlugin(s.ID, "unsupported API version")

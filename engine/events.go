@@ -31,23 +31,6 @@ func (e *Engine) commit(kinds ...EventKind) {
 	e.mu.Unlock()
 }
 
-// pumpCoreEvents turns the session layer's notifications into engine events.
-// They are hints only (no names, no content); consumers read State.
-func (e *Engine) pumpCoreEvents() {
-	defer close(e.evDone)
-	for {
-		select {
-		case <-e.evStop:
-			return
-		case ev := <-e.events:
-			switch ev.Kind {
-			case "peer-up", "peer-down":
-				e.commit(EventDevices) // connection changed; Objects name no device, consumers reload
-			}
-		}
-	}
-}
-
 // Subscription delivers events after an initial snapshot. Close it when done.
 type Subscription struct {
 	e        *Engine

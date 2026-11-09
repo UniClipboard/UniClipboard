@@ -43,7 +43,7 @@ Options 区分 builtin 实例装配与外部程序装配；实现标识、实例
 
 核心不从 PATH、当前目录、环境、网络或 installed.lock 隐式找程序；安装、TOML、文件监听和受信任程序路径解析归宿主。外部程序摘要在启动前复核，不宣称同目录可写清单独自证明程序来源。Executable 是受控装配路径例外，不进入普通 State/Event/Error。
 
-实现注记：当前 `internal/plugins/tailcat/` 以 `Transport` 注入点装配 session 引擎，并通过 `engine.Options.Peer`（PeerFactory）交给 Engine；Engine 已不再导入 `internal/session` 与 `internal/tcnet`（`engine/boundary_test.go` 守护）：双方交换的类型（Standing、Verified、Host、Receiver、Job、哨兵错误、`Env`）定义在 `internal/peerbackend`，session 以类型别名复用，tailcat 用 `Env` 组装 `session.Config`，且 Logf 缺省为静默而不是全局 logger。Engine 另按实例建立私有目录并加 `runtime.lock`；进程内 sync_backend 插件已可与 builtin.tailcat 并存；外部渠道 profile 的进程外后端已可装载（P2P 进程外后端仍返回 unsupported）。所有 sync_backend 插件（进程内与进程外）按 `Spec.ID` 取得 `plugin-data/<ID>/` 与 `runtime.lock`，持锁到 Engine 关闭；进程外后端的目录由 Engine 指定（`UNIC_PLUGIN_DIR`、工作目录），调用方自行设置 `Dir` 会被拒绝；同一目录被他人占用返回 `in_use`。
+实现注记（2026-11-09 合并后）：`builtin.tailcat`（`internal/plugins/tailcat/`）是进程内的通用 `plugin.PeerBackend` 插件，经与进程外后端相同的 `engine.peerProcBackend` 路径接入；旧的进程内专用路径（`Options.Peer`/PeerFactory、`peerbackend.Host` 等）已删除，`internal/peerbackend` 只保留 Standing/Verified/Admission 与哨兵错误。Engine 不导入 `internal/session` 与 `internal/tcnet`（`engine/boundary_test.go` 守护）；`session.Backend` 只搬运握手字节，转录、证明与授信全部由 Engine 完成。隧道（Transport.Start）只启动一次，仅在插件 Close 时关闭，Stop/挂起只关监听与连接；Start 不再因网络起不来而失败，后端自行重试。Engine 另按实例建立私有目录并加 `runtime.lock`，所有 sync_backend 插件按 `Spec.ID` 取得 `plugin-data/<ID>/`，持锁到 Engine 关闭；进程外后端的目录由 Engine 指定，同一目录被占用返回 `in_use`。
 
 零后端是本机模式，不隐式启动 tailcat；设备离线查询和撤销仍可用，需要网络能力而无合适后端的调用返回 unsupported。sync.enabled=false 只关闭内容工作，必要控制连接与配对可保留。
 

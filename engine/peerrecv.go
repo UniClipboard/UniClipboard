@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -24,6 +25,7 @@ import (
 type pendingRecv struct {
 	adm   peerbackend.Admission
 	parts []rpc.ClipPart
+	hash  string
 	timer *time.Timer
 }
 
@@ -53,6 +55,12 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 	if cur, ok := b.trustRevision(peer); !live || !ok || cur != rev {
 		return discard, nil
 	}
+	if !b.syncEnabled(peer) {
+		return discard, nil
+	}
+	if err := checkClipLimits(o.Clip.Parts, b.e); err != nil {
+		return discard, nil
+	}
 	var total int64
 	parts := make([]receivePart, len(o.Clip.Parts))
 	for i, p := range o.Clip.Parts {
@@ -72,7 +80,7 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 		return discard, rpcErr(rpc.CodeInternal)
 	}
 	id := hex.EncodeToString(raw[:])
-	pr := &pendingRecv{adm: adm, parts: o.Clip.Parts}
+	pr := &pendingRecv{adm: adm, parts: o.Clip.Parts, hash: o.Clip.Hash}
 	pr.timer = time.AfterFunc(rpc.ReceiveOpenTTLMs*time.Millisecond, func() {
 		if b.takeRecv(id) != nil {
 			adm.Done(clip.Snapshot{}, "", false)
@@ -103,6 +111,10 @@ func (b *peerProcBackend) Receive(ctx context.Context, receiveID string, parts p
 	}
 	pr.timer.Stop()
 	snap, dir, err := b.readClip(ctx, pr, parts)
+	if err == nil && snap.Hash() != pr.hash {
+		err = rpcErr(rpc.CodeInvalidState) // the content is not what its header promised
+		b.e.logf(slog.LevelWarn, "dropped incoming content", "reason", "hash_mismatch")
+	}
 	if err != nil {
 		pr.adm.Done(clip.Snapshot{}, "", false)
 		if dir != "" {
@@ -182,4 +194,24 @@ func writeBody(path string, r io.Reader, n int64) error {
 		err = rpcErr(rpc.CodeInvalidState)
 	}
 	return err
+}
+
+// checkClipLimits rejects a clip over the protocol caps or the configured
+// limits, judged on the header alone.
+func checkClipLimits(parts []rpc.ClipPart, e *Engine) error {
+	e.mu.Lock()
+	lim := e.settings.Value.Limits
+	e.mu.Unlock()
+	var total int64
+	for _, p := range parts {
+		n := int64(p.Size)
+		if n < 0 || (p.Kind == "file" && (n > wire.MaxFileBytes || n > lim.MaxFileBytes)) {
+			return rpcErr(rpc.CodeLimitExceeded)
+		}
+		total += n
+	}
+	if total > wire.MaxTotal || total > lim.MaxTotalBytes {
+		return rpcErr(rpc.CodeLimitExceeded)
+	}
+	return nil
 }

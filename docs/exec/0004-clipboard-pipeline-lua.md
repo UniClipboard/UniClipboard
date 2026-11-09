@@ -128,10 +128,12 @@ P4 剩余（均不阻塞 P5）：`device.*`/`sync.*` 通知（会话事件不带
 - [x] 在 `internal/plugins/tailcat/` 新增 builtin tailcat 实现，保留独立 ID `builtin.tailcat`、配置和生命周期，由宿主显式创建实例并装配，只复用适合新身份协议的 tcnet/传输基础设施；重构 session/wire 与身份、信任和数据库的边界，不保留旧 wire v2 互通要求，插件不打开 Engine SQLite。（2026-11-09：目录更名为 `internal/plugins/tailcat/`；传输密钥不再写 Engine 的 SQLite，移到后端实例目录 `tailcat.json`，`peerbackend.Env` 不再含 `Store`；身份/信任由 Engine 的 Host 接口判定。）
 - [x] 定义 builtin 与 external 共用的 SyncBackend/SyncHost 业务接口，并为外部后端实现 RPC 适配：按实例隔离且带修订的授权快照、Engine 可验证的身份材料、设备/关联授权检查、准入、传输前授权、流式内容与关联状态上报；只在显式导出返回秘密地址。（2026-11-08：peer_sessions 外部后端的 RPC 适配已实现并有真实子进程测试：授权快照、握手、准入、传输前授权、流式收发、会话上报、设备介绍；后端进程意外退出会结束其全部会话。）
 - [x] Engine 管理统一设备身份、配对票据/操作、审批与关联授权，并保留过滤、队列和资源所有权；Unpair 撤销全部关联，单关联移除/暂停只影响该路径。配对码只发现目标，入站始终须出码方批准并核对身份；新路径绑定须验证同一身份和本次上下文，再单独确认。（2026-11-08：身份、票据/配对操作、审批与路径授权、Unpair 全路径撤销均在 Engine 且有测试；过滤、队列、资源所有权沿用既有实现。）
-- [x] 持续持有 tailcat 端点和长连接，连续 Send 复用 builtin 实例和会话；断线、挂起、崩溃恢复按契约执行。（2026-11-09：`internal/session` 的 `TestConsecutiveSendsReuseTheSession`、`TestBrokenConnectionIsReestablished`，挂起恢复见 `TestSuspendDropsConnectionsAndResumeReconnects`。）
+- [x] 持续持有 tailcat 端点和长连接，连续 Send 复用 builtin 实例和会话；断线、挂起、崩溃恢复按契约执行。（2026-11-09：`engine/receive_test.go` 的 `TestConsecutiveSendsAndPausedPath`，挂起恢复见 `TestSuspendDropsConnectionsAndResumeReconnects`，重启后重连见 `TestTrustSurvivesRestart`。）
 - [x] 按装配契约在 New 初始化 Engine 统一身份，后端实例独立初始化传输凭据；覆盖原子持久化、中途失败、锁竞争、坏身份拒绝与重启恢复；不导入旧密钥、地址或配对记录。（2026-11-09：Engine 身份见 `internal/identity`/`engine/identity_test.go`；tailcat 凭据 `internal/tcnet/credentials.go` 整体原子发布，坏/越权/符号链接文件拒绝且不覆盖，见 `credentials_test.go`；实例目录锁见 `TestDataDirIsExclusiveAndFreedByClose`。）
 - [x] 删除 Engine 直接装配 session/tcnet 的生产路径，落实 Options.Network 的契约变更，测试注入点迁入后端。（2026-11-08：Engine 不再导入 session/tcnet，共享类型在 `internal/peerbackend`，边界测试守护。）
-- [x] 提供 builtin tailcat 的显式装配和随宿主构建/分发，不查找独立 tailcat 程序；启用后端启动失败应报启动失败，无后端为显式本机模式，配对/发送返回 unsupported。sync.enabled=false 立即取消所有内容工作，控制连接与配对可保留；本机历史/Action 继续。（2026-11-09：宿主显式调用 `tailcat.Factory()`；`TestStartFailureRecovers`、`TestLocalOnlyWithoutPeerBackend`、`TestPairingStaysAvailableWhileSyncIsOff` 覆盖。）
+- [x] 提供 builtin tailcat 的显式装配和随宿主构建/分发，不查找独立 tailcat 程序；启用后端启动失败应报启动失败，无后端为显式本机模式，配对/发送返回 unsupported。sync.enabled=false 立即取消所有内容工作，控制连接与配对可保留；本机历史/Action 继续。（2026-11-09：宿主显式装配 `tailcat.New()` 实例；`TestStartSurvivesTransportFailure`、`TestLocalOnlyWithoutPeerBackend`、`TestPairingStaysAvailableWhileSyncIsOff` 覆盖。）
+
+- [x] 合并进程内与进程外 peer 后端路径：`builtin.tailcat` 作为进程内 `plugin.PeerBackend` 走 `engine.peerProcBackend`，删除 `Options.Peer`/PeerFactory 与旧进程内专用路径。（2026-11-09：握手字节由 `internal/session` 搬运、Engine 验证；隧道仅在插件 Close 时关闭，Start 不因网络失败；接收端补回哈希、大小上限与逐路径暂停检查。已知缺口：本机"连不上"的最后错误不再上报（需 PeerHost 增加上报方法）；tailcat 设备介绍未实现。）
 
 退出条件：双节点按新身份协议互通，设备关联授权及身份攻击用例通过；确认长连接复用、超限读完丢弃、撤销竞争和中断不重发；后端运行期故障不停止本机历史。
 

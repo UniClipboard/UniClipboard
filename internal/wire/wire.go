@@ -209,6 +209,11 @@ func (m *Clip) Fits(l Limits) error {
 	return nil
 }
 
+// Body returns a reader for the next n bytes of the stream, the body of one
+// part announced by a Clip. The caller must consume all n bytes (or drop the
+// connection) before reading the next control message.
+func (c *Conn) Body(n int64) io.Reader { return io.LimitReader(c.r, n) }
+
 // Discard reads and drops the blobs announced by m, keeping the stream in
 // sync when the clip is not wanted. m must have passed Validate.
 func (c *Conn) Discard(m *Clip) error {

@@ -80,7 +80,7 @@ func (b *peerProcBackend) snapshot() (rpc.SyncState, error) {
 	e := b.e
 	e.mu.Lock()
 	set := e.settings.Value.clone()
-	runtime := e.runtime
+	up := e.netUp
 	gen := e.netGen
 	name := strings.TrimSpace(set.DeviceName)
 	if name == "" {
@@ -101,7 +101,7 @@ func (b *peerProcBackend) snapshot() (rpc.SyncState, error) {
 		NetworkGeneration: rpc.U64(gen),
 		Peers:             []rpc.StatePeer{}, Rejected: []rpc.StateRejected{},
 	}
-	if runtime != RuntimeActive {
+	if !up {
 		st.Runtime = "suspended"
 	}
 	ds, err := e.st.Devices()

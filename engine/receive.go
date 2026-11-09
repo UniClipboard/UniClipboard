@@ -12,7 +12,6 @@ import (
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/store"
-	"github.com/uniclipboard/unic/internal/wire"
 	"github.com/uniclipboard/unic/plugin"
 )
 
@@ -29,18 +28,6 @@ type receipt struct {
 	backend PluginID // the backend it came through; its policy decides what can be applied
 	expires time.Time
 	locked  bool // being applied: must not be evicted (set by the apply flow)
-}
-
-// receiver adapts the tailcat session layer to the engine's receive path.
-type receiver struct{ e *Engine }
-
-func (r receiver) Admit(peer string, m wire.Clip) (peerbackend.Admission, bool) {
-	req := receiveRequest{backend: BackendTailcat, source: DeviceID(peer), origin: m.Origin, transfer: m.ID, view: m.Hash}
-	for _, p := range m.Parts {
-		req.total += p.Size
-		req.parts = append(req.parts, receivePart{file: p.Kind == "file", mime: p.Name})
-	}
-	return r.e.admitReceive(req)
 }
 
 // receiveRequest is what a backend tells Engine about an incoming clip before

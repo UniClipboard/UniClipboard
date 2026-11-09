@@ -129,9 +129,6 @@ func (e *Engine) toDevice(d store.Device, bs []store.Binding) Device {
 
 func (e *Engine) toBinding(b store.Binding) DeviceBinding {
 	conn := Disconnected
-	if b.InstanceID == tailcatInstance && e.core != nil && e.core.Connected(b.DeviceID) {
-		conn = Connected
-	}
 	for _, pb := range e.peerProcs {
 		if string(pb.id) == b.InstanceID && pb.connected(b.DeviceID) {
 			conn = Connected

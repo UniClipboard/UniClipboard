@@ -6,7 +6,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/wire"
 )
 
@@ -85,69 +84,6 @@ type syncBackend interface {
 	// Submit queues the view for the backend's targets without waiting for the
 	// network. queued=false with a nil error means there was nobody to send to.
 	Submit(ctx context.Context, v backendView, h backendHost) (queued bool, err *Error)
-}
-
-// ---- tailcat ----
-
-type tailcatBackend struct{ e *Engine }
-
-func (tailcatBackend) ID() PluginID        { return BackendTailcat }
-func (tailcatBackend) Kind() TransportKind { return TransportPeerSessions }
-
-func (b tailcatBackend) Submit(ctx context.Context, v backendView, h backendHost) (bool, *Error) {
-	e := b.e
-	var failure *Error
-	queued := e.core.Submit(func(peers []string) (peerbackend.Job, bool) {
-		e.mu.Lock()
-		err := e.needNetworkLocked()
-		paused := !e.settings.Value.Sync.Enabled
-		e.mu.Unlock()
-		switch {
-		case ctx.Err() != nil:
-			failure = ctxErr(ctx.Err())
-			return peerbackend.Job{}, false
-		case err != nil:
-			failure = err
-			return peerbackend.Job{}, false
-		case paused:
-			failure = newErr(CodeSyncDisabled, "sync is paused")
-			return peerbackend.Job{}, false
-		}
-		keys := make([]targetKey, len(peers))
-		for i, p := range peers {
-			keys[i] = targetKey{BackendTailcat, TargetDevice, p}
-		}
-		if rerr := h.Register(keys); rerr != nil {
-			failure = rerr
-			return peerbackend.Job{}, false
-		}
-		return peerbackend.Job{
-			Report: func(peer string, st peerbackend.TargetState, cause error) {
-				h.Report(targetKey{BackendTailcat, TargetDevice, peer}, targetStateOf(st), cause)
-			},
-			Send: func(ctx context.Context, w *wire.Conn, origin string) (bool, error) {
-				return e.sendSet(ctx, w, origin, v.id, v.tsMs, v.set, func() BackendSyncPolicy { return e.policyOf(BackendTailcat) })
-			},
-		}, true
-	})
-	if !queued {
-		return false, failure
-	}
-	return true, nil
-}
-
-func targetStateOf(st peerbackend.TargetState) TargetState {
-	switch st {
-	case peerbackend.Sending:
-		return TargetSending
-	case peerbackend.Sent:
-		return TargetSent
-	case peerbackend.Superseded:
-		return TargetSuperseded
-	case peerbackend.Failed:
-		return TargetFailed
-	}
-	return TargetQueued
 }
 
 // ---- dispatch ----

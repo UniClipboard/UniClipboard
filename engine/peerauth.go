@@ -124,12 +124,6 @@ func rpcErr(code string) error { return rpc.NewError(code) }
 // IdentityHello starts the handshake of one connection.
 func (b *peerProcBackend) IdentityHello(_ context.Context, r rpc.IdentityHello) (rpc.IdentityHelloResult, error) {
 	e := b.e
-	e.mu.Lock()
-	suspended := e.runtime != RuntimeActive
-	e.mu.Unlock()
-	if suspended {
-		return rpc.IdentityHelloResult{}, rpcErr("suspended")
-	}
 	binding, derr := b64.DecodeString(r.ContextBinding)
 	if derr != nil {
 		return rpc.IdentityHelloResult{}, rpcErr(rpc.CodeInvalidArgument)
@@ -318,6 +312,9 @@ func (b *peerProcBackend) CheckPeer(_ context.Context, r rpc.CheckPeer) (rpc.Pee
 		return rpc.PeerDecision{PeerID: id, Decision: "pending", TrustRevision: rpc.U64(rev)}, nil
 	}
 	tok := randHex(32)
+	e.mu.Lock() // never take Engine.mu while holding am: state queries do the reverse
+	gen := e.netGen
+	e.mu.Unlock()
 	b.am.Lock()
 	defer b.am.Unlock()
 	if len(b.sess) >= maxSessions {
@@ -326,9 +323,6 @@ func (b *peerProcBackend) CheckPeer(_ context.Context, r rpc.CheckPeer) (rpc.Pee
 	if b.sess == nil {
 		b.sess = map[string]*session{}
 	}
-	e.mu.Lock()
-	gen := e.netGen
-	e.mu.Unlock()
 	b.sess[h.conn] = &session{conn: h.conn, peerID: id, token: tok, outgoing: h.dir == "outgoing", trustRev: rev, gen: gen}
 	return rpc.PeerDecision{PeerID: id, Decision: "allow", SessionToken: &tok, TrustRevision: rpc.U64(rev)}, nil
 }
@@ -347,6 +341,12 @@ func (b *peerProcBackend) trustRevision(peerID string) (uint64, bool) {
 	return uint64(d.Revision + bd.Revision), true
 }
 
+// syncEnabled reports whether the user has not paused sync on this path.
+func (b *peerProcBackend) syncEnabled(peerID string) bool {
+	bd, err := b.e.st.InstanceBinding(peerID, string(b.id))
+	return err == nil && bd.SyncEnabled
+}
+
 // dialer is the device that opened the connection; of two simultaneous
 // connections to one peer the one dialed by the smaller device ID survives,
 // the rule the tailcat session layer uses (both ends agree without talking).
@@ -361,6 +361,9 @@ func (b *peerProcBackend) dialer(s *session) string {
 // issued for exactly this connection; a stale sequence is ignored, a repeated
 // one is idempotent, and a different report for the same sequence conflicts.
 func (b *peerProcBackend) PeerEvent(_ context.Context, r rpc.PeerEvent) error {
+	b.e.mu.Lock() // before am: state queries take Engine.mu and then am
+	gen := b.e.netGen
+	b.e.mu.Unlock()
 	b.am.Lock()
 	b.sweepLocked(time.Now())
 	s := b.sess[r.ConnectionID]
@@ -396,10 +399,6 @@ func (b *peerProcBackend) PeerEvent(_ context.Context, r rpc.PeerEvent) error {
 		// A token that ended can never connect again; a new connection must
 		// pass check_peer first. Revoked authority or a newer network
 		// generation end it too.
-		e := b.e
-		e.mu.Lock()
-		gen := e.netGen
-		e.mu.Unlock()
 		rev, ok := b.trustRevision(s.peerID)
 		switch {
 		case !s.ended.IsZero():

@@ -136,25 +136,9 @@ func (e *Engine) consumeCode(code string) {
 	}()
 }
 
-// newTicketLocked makes a fresh ticket for this device and its tailcat
-// address. e.mu must be held.
-func (e *Engine) newTicketLocked(expires time.Time) (rendezvous.Ticket, *Error) {
-	addr := e.core.Addr()
-	if addr == "" {
-		return rendezvous.Ticket{}, retryable(newErr(CodeUnavailable, "the address is not ready yet"))
-	}
-	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Backend: string(BackendTailcat), Device: e.ident.Public(),
-		Access: []byte(addr), Token: rendezvous.NewToken()}, nil
-}
-
-// pairUsed is the session layer's question whether a peer's PairProof belongs
-// to the live ticket. A match uses the ticket up: one ticket, one device.
-func (e *Engine) pairUsed(t [32]byte, proof []byte) bool {
-	return e.pairUsedBy(BackendTailcat, t, proof)
-}
-
-// pairUsedBy is pairUsed for a connection of one backend: a ticket is only
-// good on the backend that issued it.
+// pairUsedBy is the session layer's question whether a peer's PairProof
+// belongs to the live ticket. A match uses the ticket up: one ticket, one
+// device. A ticket is only good on the backend that issued it.
 func (e *Engine) pairUsedBy(backend PluginID, t [32]byte, proof []byte) bool {
 	e.mu.Lock()
 	lt := e.tix
@@ -173,16 +157,10 @@ func (e *Engine) pairUsedBy(backend PluginID, t [32]byte, proof []byte) bool {
 	return true
 }
 
-// newTicket makes a ticket for backend: tailcat from its own address, an
-// out-of-process backend from the address it reports.
+// newTicket makes a ticket for backend from the address it reports.
 func (e *Engine) newTicket(ctx context.Context, backend PluginID, purpose string) (rendezvous.Ticket, *Error) {
-	if backend == "" || backend == BackendTailcat {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		if nerr := e.needNetworkLocked(); nerr != nil {
-			return rendezvous.Ticket{}, nerr
-		}
-		return e.newTicketLocked(time.Time{})
+	if backend == "" {
+		backend = BackendTailcat
 	}
 	pp, pair := e.pairingBackend(backend)
 	if pp == nil {
@@ -407,12 +385,6 @@ func (e *Engine) joinTicket(ctx context.Context, t rendezvous.Ticket) (peerbacke
 	if string(t.Device) == string(e.ident.Public()) {
 		return peerbackend.Standing{}, false, peerbackend.ErrSelf
 	}
-	if PluginID(t.Backend) == BackendTailcat {
-		if e.core == nil {
-			return peerbackend.Standing{}, false, newErr(CodeUnsupported, "no installed sync backend can use this ticket")
-		}
-		return e.core.Connect(ctx, string(t.Access), identity.DeviceID(t.Device), t.Token)
-	}
 	return e.joinVia(ctx, t)
 }
 
@@ -439,8 +411,15 @@ func (e *Engine) dialPeer(ctx context.Context, pp *peerProcBackend, pair plugin.
 	res, err := pair.Connect(ctx, rpc.Connect{AttemptID: aid, Address: addr, ExpectedPeerID: expect})
 	if err != nil {
 		var re *rpc.Error
-		if errors.As(err, &re) && (re.Code == "identity_mismatch" || re.Code == "bad_proof") {
-			return peerbackend.Standing{}, false, peerbackend.ErrIdentity
+		if errors.As(err, &re) {
+			switch re.Code {
+			case "identity_mismatch", "bad_proof":
+				return peerbackend.Standing{}, false, peerbackend.ErrIdentity
+			case "protocol_mismatch":
+				return peerbackend.Standing{}, false, peerbackend.ErrProtocol
+			case rpc.CodeInvalidArgument:
+				return peerbackend.Standing{}, false, peerbackend.ErrBadAddress
+			}
 		}
 		return peerbackend.Standing{}, false, err
 	}
@@ -532,9 +511,6 @@ func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, e
 
 // anyConnected: a live session with the device through any backend.
 func (e *Engine) anyConnected(id string) bool {
-	if e.core != nil && e.core.Connected(id) {
-		return true
-	}
 	e.mu.Lock()
 	ps := e.peerProcs
 	e.mu.Unlock()

@@ -240,6 +240,9 @@ func (s *peerSendSource) Authorize(ctx context.Context, a rpc.Authorize) (rpc.Se
 	if tr, ok := b.trustRevision(peer); !live || !ok || tr != rev {
 		return rpc.SendGrant{}, rpc.NewError(rpc.CodePermission)
 	}
+	if !b.syncEnabled(peer) {
+		return rpc.SendGrant{}, rpc.NewError("sync_disabled")
+	}
 	e.mu.Lock()
 	rerr := e.needRunningLocked()
 	enabled, lim := e.settings.Value.Sync.Enabled, e.settings.Value.Limits

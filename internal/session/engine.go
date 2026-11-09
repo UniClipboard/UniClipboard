@@ -1,543 +1,467 @@
-// Package session is the tailcat peer-session layer under the public engine
-// package (unic/engine): it keeps a session with every device the user has
-// authorized for this backend, proves device identities during the handshake
-// (docs/design/identity-protocol.md), and moves clips to and from a Receiver.
-// It decides nothing about trust: the Host does. It knows nothing of tailcat
-// or of any clipboard; it talks to a Transport, so it is tested with loopback
-// TCP. Hosts use unic/engine, not this package.
+// Package session is the peer-session layer of the built-in tailcat backend.
+// It keeps a connection to every device the Engine lists in its state
+// snapshot, carries the identity handshake (docs/design/identity-protocol.md)
+// between the two ends and the Engine's authority, and moves clips to and
+// from the Engine. It decides nothing about trust: the Engine does, through
+// plugin.PeerAuthority. It knows nothing of tailcat or of any clipboard; it
+// talks to a Transport, so it is tested with loopback TCP.
+//
+// Backend implements plugin.PeerBackend, PeerPairing and PeerDispatcher, the
+// same interfaces an out-of-process peer_sessions backend serves over RPC.
 package session
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
-	"os"
-	"sort"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/uniclipboard/unic/internal/clip"
-	"github.com/uniclipboard/unic/internal/identity"
-	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/wire"
+	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 // Transport carries bytes between devices.
 type Transport interface {
-	// Listen accepts connections from peers.
+	// Start brings the network up (once); Close takes it down for good.
+	Start() error
+	Close() error
+	// Listen accepts connections from peers. It may be called again after the
+	// previous listener was closed.
 	Listen(ctx context.Context) (net.Listener, error)
 	// Dial connects to the peer with the given address.
 	Dial(ctx context.Context, addr string) (net.Conn, error)
-	// Addr is this device's own address, which peers dial.
+	// Addr is this device's own address, which peers dial (a secret).
 	Addr() string
 	// Binding is the identity protocol's context_binding for connections to
 	// the device at addr (and, with the device's own Addr, for connections it
-	// accepts): both ends compute the same bytes. It also serves as the
-	// remote context of the path to that device.
+	// accepts): both ends compute the same bytes.
 	Binding(addr string) ([]byte, error)
 }
 
 type Config struct {
-	Identity  *identity.Identity
-	Name      string
-	Host      Host
 	Transport Transport
 	Logf      func(format string, args ...any)
-	// Settings supplies the user's configuration, re-read on every use so
-	// edits apply at once. Nil means the defaults.
-	Settings SettingsSource
-	// Receiver takes the clips that arrive. Without one they are read and
-	// dropped. The session layer never touches a clipboard.
-	Receiver Receiver
 }
 
-// The types shared with the engine live in peerbackend.
-type (
-	Standing       = peerbackend.Standing
-	Target         = peerbackend.Target
-	Verified       = peerbackend.Verified
-	Host           = peerbackend.Host
-	Receiver       = peerbackend.Receiver
-	Admission      = peerbackend.Admission
-	Settings       = peerbackend.Settings
-	SettingsSource = peerbackend.SettingsSource
-	Event          = peerbackend.Event
-	TargetState    = peerbackend.TargetState
-	Job            = peerbackend.Job
+var (
+	// ErrProtocol: the peer speaks another wire version.
+	ErrProtocol = errors.New("peer speaks another protocol version")
+	// ErrBadAddress: a peer address the transport cannot use.
+	ErrBadAddress = errors.New("invalid peer address")
+	b64           = base64.RawURLEncoding
 )
 
 const (
-	Sending    = peerbackend.Sending
-	Sent       = peerbackend.Sent
-	Failed     = peerbackend.Failed
-	Superseded = peerbackend.Superseded
+	handshakeTimeout = 15 * time.Second
+	eventTimeout     = 5 * time.Second
 )
 
-var (
-	DefaultSettings  = peerbackend.DefaultSettings
-	ErrNotRunning    = peerbackend.ErrNotRunning
-	ErrSelf          = peerbackend.ErrSelf
-	ErrBadAddress    = peerbackend.ErrBadAddress
-	ErrProtocol      = peerbackend.ErrProtocol
-	ErrIdentity      = peerbackend.ErrIdentity
-	ErrBadProof      = peerbackend.ErrBadProof
-	ErrNotAllowed    = peerbackend.ErrNotAllowed
-	ErrSessionClosed = peerbackend.ErrSessionClosed
-)
+// Backend is the session layer. The Engine binds it, then drives it with
+// state snapshots: the network is up exactly while the latest state is active.
+type Backend struct {
+	cfg  Config
+	auth plugin.PeerAuthority
+	recv plugin.PeerReceiver
 
-type Engine struct {
-	cfg Config
+	life sync.Mutex // serializes bringing the network up and down
 
 	mu       sync.Mutex
-	sessions map[string]*session // by peer device id
-	subs     map[chan Event]struct{}
-	retry    map[string]context.CancelFunc
-	ctx      context.Context
-	conns    map[net.Conn]struct{} // connections still handshaking, closed on shutdown
-	wg       sync.WaitGroup        // every background goroutine of a Run
+	bound    bool
+	self     string
+	st       rpc.SyncState
+	trTried  bool          // Transport.Start was ever called; Close must release it
+	trUsed   bool          // Transport.Start was called
+	trDone   chan struct{} // closed when that call returned
+	run      *runState     // non-nil while the network is up
+	sessions map[string]*session
+	dialers  map[string]*dialer
+	gen      uint64
 }
 
-func New(cfg Config) *Engine {
+// runState is one up period of the network.
+type runState struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	ln     net.Listener
+	conns  map[net.Conn]struct{} // connections still handshaking
+	wg     sync.WaitGroup
+}
+
+func New(cfg Config) *Backend {
 	if cfg.Logf == nil {
-		cfg.Logf = log.Printf
+		cfg.Logf = func(string, ...any) {} // session logs name devices; never default to the global logger
 	}
-	return &Engine{
-		cfg:      cfg,
-		sessions: map[string]*session{},
-		subs:     map[chan Event]struct{}{},
-		retry:    map[string]context.CancelFunc{},
-		conns:    map[net.Conn]struct{}{},
-	}
+	return &Backend{cfg: cfg, sessions: map[string]*session{}, dialers: map[string]*dialer{}}
 }
 
-func (e *Engine) logf(f string, a ...any) { e.cfg.Logf(f, a...) }
+func (b *Backend) logf(f string, a ...any) { b.cfg.Logf(f, a...) }
 
-// settings is the configuration in effect right now.
-func (e *Engine) settings() Settings {
-	if e.cfg.Settings == nil {
-		return DefaultSettings()
+func (b *Backend) SetPeerAuthority(a plugin.PeerAuthority) { b.mu.Lock(); b.auth = a; b.mu.Unlock() }
+func (b *Backend) SetPeerReceiver(r plugin.PeerReceiver)   { b.mu.Lock(); b.recv = r; b.mu.Unlock() }
+
+func (b *Backend) authority() plugin.PeerAuthority { b.mu.Lock(); defer b.mu.Unlock(); return b.auth }
+func (b *Backend) receiver() plugin.PeerReceiver   { b.mu.Lock(); defer b.mu.Unlock(); return b.recv }
+func (b *Backend) selfID() string                  { b.mu.Lock(); defer b.mu.Unlock(); return b.self }
+
+// Bind records the one-time configuration. It never connects.
+func (b *Backend) Bind(_ context.Context, bd rpc.Bind) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.bound {
+		return rpc.NewError(rpc.CodeConflict)
 	}
-	return e.cfg.Settings.Current()
+	b.bound, b.self = true, bd.SelfID
+	return nil
 }
 
-// name is this device's name: the configured one, else the default.
-func (e *Engine) name() string {
-	if n := strings.TrimSpace(e.settings().DeviceName); n != "" {
-		return n
+// ApplyState makes the backend follow the snapshot. It returns only after
+// sessions the snapshot no longer allows are closed: it is the revocation
+// barrier.
+func (b *Backend) ApplyState(ctx context.Context, s rpc.SyncState) error {
+	b.mu.Lock()
+	if !b.bound {
+		b.mu.Unlock()
+		return rpc.NewError(rpc.CodeInvalidState)
 	}
-	return e.cfg.Name
+	b.st = s
+	b.mu.Unlock()
+	if s.Runtime == "active" {
+		if err := b.up(ctx); err != nil {
+			return err
+		}
+	} else {
+		b.down()
+	}
+	b.reconcile()
+	return nil
 }
 
-// Run blocks until ctx is done. When it returns every goroutine it started has
-// exited, all sessions are closed and Run may be called again (a host that
-// suspends networking stops Run and later restarts it).
-func (e *Engine) Run(ctx context.Context) error { return e.RunReady(ctx, nil) }
-
-// RunReady is Run that calls ready, if not nil, once the engine is listening
-// and accepting work.
-func (e *Engine) RunReady(ctx context.Context, ready func()) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	e.mu.Lock()
-	if e.ctx != nil {
-		e.mu.Unlock()
-		return errors.New("engine is already running")
+// up starts the transport (first time only) and the listener.
+func (b *Backend) up(ctx context.Context) error {
+	b.life.Lock()
+	defer b.life.Unlock()
+	b.mu.Lock()
+	if b.run != nil {
+		b.mu.Unlock()
+		return nil
 	}
-	e.mu.Unlock()
-
-	ln, err := e.cfg.Transport.Listen(ctx)
+	if !b.trUsed {
+		b.trUsed, b.trTried = true, true
+		b.trDone = make(chan struct{})
+		done := b.trDone
+		res := make(chan error, 1)
+		go func() { res <- b.cfg.Transport.Start(); close(done) }()
+		b.mu.Unlock()
+		select {
+		case err := <-res:
+			if err != nil {
+				b.mu.Lock()
+				b.trUsed = false // a later state tries again
+				b.mu.Unlock()
+				return rpc.NewError(rpc.CodeUnavailable)
+			}
+		case <-ctx.Done():
+			return rpc.NewError(rpc.CodeCancelled)
+		}
+		b.mu.Lock()
+	}
+	b.mu.Unlock()
+	rctx, cancel := context.WithCancel(context.Background())
+	ln, err := b.cfg.Transport.Listen(rctx)
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
-	}
-	e.mu.Lock()
-	e.ctx = ctx
-	e.mu.Unlock()
-	defer e.shutdown(ln)
-
-	e.spawn(func() { e.acceptLoop(ctx, ln) })
-	e.Reconcile()
-	if ready != nil {
-		ready()
-	}
-	<-ctx.Done()
-	return ctx.Err()
-}
-
-// spawn runs f as a tracked goroutine; it reports false (and does not run f)
-// once the engine is shutting down, so that shutdown can wait for everything.
-func (e *Engine) spawn(f func()) bool {
-	e.mu.Lock()
-	if e.ctx == nil || e.ctx.Err() != nil {
-		e.mu.Unlock()
-		return false
-	}
-	e.wg.Add(1)
-	e.mu.Unlock()
-	go func() { defer e.wg.Done(); f() }()
-	return true
-}
-
-// track registers a connection that is still being set up so that shutdown
-// can cut it short. The returned function forgets it again.
-func (e *Engine) track(c net.Conn) (untrack func(), ok bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.ctx == nil || e.ctx.Err() != nil {
-		_ = c.Close()
-		return func() {}, false
-	}
-	e.conns[c] = struct{}{}
-	return func() { e.mu.Lock(); delete(e.conns, c); e.mu.Unlock() }, true
-}
-
-// shutdown stops accepting, drops every connection and waits for the
-// goroutines of this Run.
-func (e *Engine) shutdown(ln net.Listener) {
-	e.mu.Lock()
-	e.ctx = nil
-	for id, cancel := range e.retry {
 		cancel()
-		delete(e.retry, id)
+		return rpc.NewError(rpc.CodeUnavailable)
 	}
-	sessions := make([]*session, 0, len(e.sessions))
-	for _, s := range e.sessions {
-		sessions = append(sessions, s)
+	r := &runState{ctx: rctx, cancel: cancel, ln: ln, conns: map[net.Conn]struct{}{}}
+	b.mu.Lock()
+	b.run = r
+	b.mu.Unlock()
+	b.spawn(r, func() { b.acceptLoop(r) })
+	return nil
+}
+
+// down closes the listener, every connection and every goroutine of the run.
+// The transport stays up: the tunnel is restarted only by a new process.
+func (b *Backend) down() {
+	b.life.Lock()
+	defer b.life.Unlock()
+	b.mu.Lock()
+	r := b.run
+	b.run = nil
+	ss := make([]*session, 0, len(b.sessions))
+	for _, s := range b.sessions {
+		ss = append(ss, s)
 	}
-	conns := make([]net.Conn, 0, len(e.conns))
-	for c := range e.conns {
-		conns = append(conns, c)
+	for id, d := range b.dialers {
+		d.cancel()
+		delete(b.dialers, id)
 	}
-	e.mu.Unlock()
-	_ = ln.Close()
-	for _, s := range sessions {
+	var conns []net.Conn
+	if r != nil {
+		for c := range r.conns {
+			conns = append(conns, c)
+		}
+	}
+	b.mu.Unlock()
+	if r == nil {
+		return
+	}
+	r.cancel()
+	_ = r.ln.Close()
+	for _, s := range ss {
 		s.close()
 	}
 	for _, c := range conns {
 		_ = c.Close()
 	}
-	e.wg.Wait()
+	r.wg.Wait()
 }
 
-// Connect makes one connection to the device at addr as the user's own act
-// (a pairing ticket, or the path of a device just authorized). expect is the
-// DeviceID the address must belong to, "" when not known; tok is the ticket's
-// one-time token, nil without a ticket. The device is recorded through the
-// Host; a session is made only if the device is already allowed on both sides.
-// The returned Standing is valid whenever the identity was proven, even if err
-// is ErrNotAllowed or an awaiting error.
-func (e *Engine) Connect(ctx context.Context, addr, expect string, tok []byte) (Standing, bool, error) {
-	e.mu.Lock()
-	started := e.ctx != nil
-	e.mu.Unlock()
-	if !started {
-		return Standing{}, false, ErrNotRunning
+// Close takes everything down, including the transport.
+func (b *Backend) Close(context.Context) error {
+	b.down()
+	b.mu.Lock()
+	used, done := b.trTried, b.trDone
+	b.mu.Unlock()
+	if !used {
+		return nil
 	}
-	if addr == e.cfg.Transport.Addr() {
-		return Standing{}, false, ErrSelf
-	}
-	conn, err := e.cfg.Transport.Dial(ctx, addr)
-	if err != nil {
-		return Standing{}, false, fmt.Errorf("connect: %w", err)
-	}
-	untrack, ok := e.track(conn)
-	if !ok {
-		return Standing{}, false, ErrNotRunning
-	}
-	defer untrack()
-	s, st, err := e.handshake(conn, true, addr, expect, tok)
-	var aw *awaitingError
-	switch {
-	case err == nil:
-	case errors.As(err, &aw):
-		_ = conn.Close()
-		return st, true, nil
-	default:
-		_ = conn.Close()
-		if errors.Is(err, ErrNotAllowed) {
-			return st, false, nil
-		}
-		return st, false, err
-	}
-	if e.register(s) {
-		if !e.spawn(func() { e.serve(s) }) {
-			s.close()
-			return st, false, ErrNotRunning
-		}
-	} else {
-		_ = conn.Close() // already connected through a better session
-	}
-	return st, false, nil
+	// Close first: a Start still waiting for the network is cut short by it.
+	err := b.cfg.Transport.Close()
+	<-done
+	return err
 }
 
-// Connected reports whether a session with the device is up.
-func (e *Engine) Connected(deviceID string) bool {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	s := e.sessions[deviceID]
-	if s == nil {
+// spawn runs f as a goroutine of run r; it reports false once r is over.
+func (b *Backend) spawn(r *runState, f func()) bool {
+	b.mu.Lock()
+	if b.run != r || r.ctx.Err() != nil {
+		b.mu.Unlock()
 		return false
 	}
-	select {
-	case <-s.done:
-		return false
-	default:
-		return true
-	}
-}
-
-// Self is this device's name and address.
-func (e *Engine) Self() (name, addr string) {
-	return e.name(), e.cfg.Transport.Addr()
-}
-
-// Subscribe returns a channel of events and a function that stops it.
-func (e *Engine) Subscribe() (<-chan Event, func()) {
-	ch := make(chan Event, 32)
-	e.mu.Lock()
-	e.subs[ch] = struct{}{}
-	e.mu.Unlock()
-	return ch, func() {
-		e.mu.Lock()
-		delete(e.subs, ch)
-		e.mu.Unlock()
-	}
-}
-
-func (e *Engine) emit(ev Event) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	for ch := range e.subs {
-		select {
-		case ch <- ev:
-		default: // a slow subscriber misses events instead of stalling the engine
-		}
-	}
-}
-
-// ---- clipboard watching ----
-
-// ---- sessions ----
-
-type outClip struct {
-	job *Job
-}
-
-func (c outClip) fail(peer string, err error) { c.job.Report(peer, Failed, err) }
-
-// Submit sends a job to every connected device. prepare is called once, before
-// anything is queued, with the ids of those devices; it returns the job, or
-// false to cancel (for example when there are none). Submit reports whether
-// the job was queued.
-func (e *Engine) Submit(prepare func(peers []string) (Job, bool)) bool {
-	e.mu.Lock()
-	ss := make([]*session, 0, len(e.sessions))
-	for _, s := range e.sessions {
-		select {
-		case <-s.done:
-		default:
-			ss = append(ss, s)
-		}
-	}
-	e.mu.Unlock()
-	live := ss[:0]
-	for _, s := range ss {
-		if st, ok := e.cfg.Host.Standing(s.peerID); ok && st.Allowed && st.SyncEnabled {
-			live = append(live, s)
-		}
-	}
-	ss = live
-	if len(ss) == 0 {
-		return false
-	}
-	sort.Slice(ss, func(i, j int) bool { return ss[i].peerID < ss[j].peerID })
-	ids := make([]string, len(ss))
-	for i, s := range ss {
-		ids[i] = s.peerID
-	}
-	j, ok := prepare(ids)
-	if !ok {
-		return false
-	}
-	for _, s := range ss {
-		s.enqueue(outClip{job: &j})
-	}
+	r.wg.Add(1)
+	b.mu.Unlock()
+	go func() { defer r.wg.Done(); f() }()
 	return true
 }
 
-type session struct {
-	e        *Engine
-	conn     net.Conn
-	w        *wire.Conn
-	peerID   string
-	peerName string
-	peerAddr string
-	outgoing bool
-	ctl      chan any // control messages, written by sendLoop like everything else
-	done     chan struct{}
-	once     sync.Once
-
-	omu    sync.Mutex
-	pend   *outClip      // the one clip waiting to be sent
-	closed bool          // no more clips are accepted
-	kick   chan struct{} // a clip is pending
+// track registers a connection that is still being set up so that down can
+// cut it short.
+func (b *Backend) track(r *runState, c net.Conn) (untrack func(), ok bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.run != r || r.ctx.Err() != nil {
+		_ = c.Close()
+		return func() {}, false
+	}
+	r.conns[c] = struct{}{}
+	return func() { b.mu.Lock(); delete(r.conns, c); b.mu.Unlock() }, true
 }
 
-// close ends the session. A clip still waiting for its turn fails. close must
-// not be called with Engine.mu held: it reports to the job's owner.
-func (s *session) close() {
-	s.once.Do(func() {
-		close(s.done)
-		_ = s.conn.Close()
-		s.omu.Lock()
-		s.closed = true
-		p := s.pend
-		s.pend = nil
-		s.omu.Unlock()
-		if p != nil {
-			p.fail(s.peerID, ErrSessionClosed)
+func (b *Backend) running() *runState { b.mu.Lock(); defer b.mu.Unlock(); return b.run }
+
+// ---- pairing ----
+
+// PairingAddress is the address a ticket carries: this device's own.
+func (b *Backend) PairingAddress(context.Context, string) (string, error) {
+	if b.running() == nil {
+		return "", rpc.NewError(rpc.CodeUnavailable)
+	}
+	addr := b.cfg.Transport.Addr()
+	if addr == "" {
+		return "", rpc.NewError(rpc.CodeUnavailable)
+	}
+	return addr, nil
+}
+
+// Connect makes one connection to c.Address as the Engine's explicit attempt.
+// A session is made only if the device is allowed on both sides.
+func (b *Backend) Connect(ctx context.Context, c rpc.Connect) (rpc.ConnectResult, error) {
+	r := b.running()
+	if r == nil {
+		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	if c.Address == b.cfg.Transport.Addr() {
+		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	conn, err := b.cfg.Transport.Dial(ctx, c.Address)
+	if err != nil {
+		if errors.Is(err, ErrBadAddress) {
+			return rpc.ConnectResult{}, rpc.NewError(rpc.CodeInvalidArgument)
 		}
-	})
+		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	untrack, ok := b.track(r, conn)
+	if !ok {
+		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	res, err := b.handshake(ctx, r, conn, true, c.Address, c.ExpectedPeerID, &c.AttemptID)
+	untrack()
+	if err != nil {
+		_ = conn.Close()
+		return rpc.ConnectResult{}, asRPC(err)
+	}
+	if res.sess != nil {
+		if !b.establish(r, res.sess) {
+			res.remote = true // a better session to this peer exists already
+		}
+	} else {
+		_ = conn.Close()
+	}
+	return rpc.ConnectResult{PeerID: res.peerID, AwaitingRemoteApproval: !res.remote}, nil
 }
 
-// enqueue keeps only the newest pending clip: a slow link should deliver the
-// latest clipboard, not a backlog of stale ones. The clip it replaces, if it
-// came from a Job, is reported as superseded.
-func (s *session) enqueue(c outClip) {
-	s.omu.Lock()
-	if s.closed {
-		s.omu.Unlock()
-		c.fail(s.peerID, ErrSessionClosed)
-		return
+// asRPC maps a handshake failure to an RPC error without forwarding text.
+func asRPC(err error) error {
+	var re *rpc.Error
+	switch {
+	case errors.As(err, &re):
+		return re
+	case errors.Is(err, ErrProtocol):
+		return rpc.NewError("protocol_mismatch")
 	}
-	old := s.pend
-	s.pend = &c
-	s.omu.Unlock()
-	if old != nil {
-		old.job.Report(s.peerID, Superseded, nil)
-	}
-	select {
-	case s.kick <- struct{}{}:
-	default:
-	}
+	return rpc.NewError(rpc.CodeUnavailable)
 }
 
-const handshakeTimeout = 15 * time.Second
+// ---- handshake ----
 
-func (e *Engine) self() string { return e.cfg.Identity.DeviceID() }
+type hsResult struct {
+	peerID string
+	remote bool     // the device allows us
+	sess   *session // set when both allow
+}
 
-// handshake exchanges hellos, then identity proofs, then verdicts. The
-// transcript binds both hellos to the transport context, so a proof cannot be
-// replayed on another connection or turned around (identity-protocol.md §4).
-// expect is the DeviceID the peer must prove ("" accepts any); tok is the
-// dialer's ticket token. The returned Standing is set once the proof verified,
-// even when the error says the device may not have a session.
-func (e *Engine) handshake(conn net.Conn, outgoing bool, dialed, expect string, tok []byte) (*session, Standing, error) {
+// handshake exchanges hellos, then identity proofs, then verdicts, with the
+// Engine's authority doing every check. expect is the DeviceID the peer must
+// prove ("" accepts any); attempt is the Engine's explicit attempt, if any.
+func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, outgoing bool, dialed, expect string, attempt *string) (*hsResult, error) {
+	auth := b.authority()
+	if auth == nil {
+		return nil, rpc.NewError(rpc.CodeUnavailable)
+	}
 	_ = conn.SetDeadline(time.Now().Add(handshakeTimeout))
 	defer func() { _ = conn.SetDeadline(time.Time{}) }()
-	own := e.cfg.Transport.Addr()
-	bindAddr := own
+	ctx, cancel := context.WithTimeout(r.ctx, handshakeTimeout)
+	defer cancel()
+	stop := context.AfterFunc(parent, cancel)
+	defer stop()
+
+	own := b.cfg.Transport.Addr()
+	bindAddr, dir := own, "incoming"
 	if outgoing {
-		bindAddr = dialed
+		bindAddr, dir = dialed, "outgoing"
 	}
-	binding, err := e.cfg.Transport.Binding(bindAddr)
+	binding, err := b.cfg.Transport.Binding(bindAddr)
 	if err != nil {
-		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+		return nil, fmt.Errorf("handshake: %w", err)
 	}
-	mine, err := identity.NewHello(e.cfg.Identity.Public())
+	connID := randHex(16)
+	hr, err := auth.IdentityHello(ctx, rpc.IdentityHello{ConnectionID: connID, Direction: dir, AttemptID: attempt, ContextBinding: b64.EncodeToString(binding)})
 	if err != nil {
-		return nil, Standing{}, err
+		return nil, err
+	}
+	mine, err := b64.DecodeString(hr.Hello)
+	if err != nil {
+		return nil, rpc.NewError(rpc.CodeInternal)
 	}
 	w := wire.NewConn(conn)
 	werr := make(chan error, 1)
-	out := wire.Hello{T: "hello", Version: wire.Version, H: mine.Encode(), Name: e.name(), Addr: own}
-	go func() { werr <- w.WriteJSON(out) }()
+	go func() {
+		werr <- w.WriteJSON(wire.Hello{T: "hello", Version: wire.Version, H: mine, Name: b.selfName(), Addr: own})
+	}()
 	var h wire.Hello
 	if err := readTyped(w, "hello", &h); err != nil {
-		return nil, Standing{}, err
+		return nil, err
 	}
 	if err := <-werr; err != nil {
-		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+		return nil, fmt.Errorf("handshake: %w", err)
 	}
 	if h.Version != wire.Version {
-		return nil, Standing{}, fmt.Errorf("handshake: peer speaks protocol %d, we speak %d: %w", h.Version, wire.Version, ErrProtocol)
+		return nil, ErrProtocol
 	}
-	theirs, err := identity.ParseHello(h.H)
+	pr, err := auth.IdentityProve(ctx, rpc.IdentityProve{ConnectionID: connID, PeerHello: b64.EncodeToString(h.H)})
 	if err != nil {
-		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+		return nil, err
 	}
-	if _, err := identity.SelectVersion(mine, theirs); err != nil {
-		return nil, Standing{}, fmt.Errorf("handshake: %w: %w", err, ErrProtocol)
-	}
-	peerID := identity.DeviceID(theirs.PK)
-	if peerID == e.self() {
-		return nil, Standing{}, ErrSelf
-	}
-	if expect != "" && peerID != expect {
-		return nil, Standing{}, ErrIdentity // before proving ourselves to the wrong device
-	}
-	helloI, helloR, mineRole, theirRole := mine.Encode(), h.H, identity.RoleInitiator, identity.RoleResponder
-	if !outgoing {
-		helloI, helloR, mineRole, theirRole = h.H, mine.Encode(), identity.RoleResponder, identity.RoleInitiator
-	}
-	t, err := identity.Transcript(identity.KindPeerSessions, binding, helloI, helloR)
+	sig, err := b64.DecodeString(pr.Proof)
 	if err != nil {
-		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+		return nil, rpc.NewError(rpc.CodeInternal)
 	}
-	proof := wire.Proof{T: "proof", Sig: e.cfg.Identity.Prove(mineRole, t)}
-	if outgoing && tok != nil {
-		proof.Pair = identity.PairProof(tok, t)
+	proof := wire.Proof{T: "proof", Sig: sig}
+	if pr.PairProof != nil {
+		if proof.Pair, err = b64.DecodeString(*pr.PairProof); err != nil {
+			return nil, rpc.NewError(rpc.CodeInternal)
+		}
 	}
 	go func() { werr <- w.WriteJSON(proof) }()
 	var p wire.Proof
 	if err := readTyped(w, "proof", &p); err != nil {
-		return nil, Standing{}, err
+		return nil, err
 	}
 	if err := <-werr; err != nil {
-		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+		return nil, fmt.Errorf("handshake: %w", err)
 	}
-	if err := identity.VerifyProof(theirs.PK, theirRole, t, p.Sig); err != nil {
-		return nil, Standing{}, fmt.Errorf("handshake: %w", ErrBadProof)
-	}
-
-	// From here the device is who it says it is, and the host may remember it.
 	peerAddr := h.Addr
 	if outgoing {
-		peerAddr = dialed
+		peerAddr = dialed // what worked is more reliable than what the peer reports
 	}
-	v := Verified{PublicKey: theirs.PK, Name: h.Name, Addr: peerAddr, Ticket: outgoing && len(tok) > 0}
-	if !outgoing && len(p.Pair) > 0 {
-		v.Ticket = e.cfg.Host.Pair(t, p.Pair)
+	if len(peerAddr) > rpc.MaxPeerAddress {
+		peerAddr = ""
 	}
-	if peerAddr != "" {
-		v.Context, _ = e.cfg.Transport.Binding(peerAddr) // unusable address: no context, nothing to dial back
+	cp := rpc.CheckPeer{ConnectionID: connID, Direction: dir, AttemptID: attempt,
+		Hello:     rpc.PeerWire{WireVersion: rpc.WireVersion, Name: h.Name, Address: peerAddr},
+		PeerProof: b64.EncodeToString(p.Sig)}
+	if len(p.Pair) > 0 {
+		pp := b64.EncodeToString(p.Pair)
+		cp.PeerPairProof = &pp
 	}
-	st, err := e.cfg.Host.Verify(v)
+	dec, err := auth.CheckPeer(ctx, cp)
 	if err != nil {
-		return nil, Standing{}, fmt.Errorf("handshake: %w", err)
+		return nil, err
 	}
-	go func() { werr <- w.WriteJSON(wire.Verdict{T: "verdict", OK: st.Allowed}) }()
+	local := dec.Decision == "allow"
+	res := &hsResult{peerID: dec.PeerID}
+	go func() { werr <- w.WriteJSON(wire.Verdict{T: "verdict", OK: local}) }()
 	var vd wire.Verdict
-	if err := readTyped(w, "verdict", &vd); err != nil {
-		return nil, st, err
+	rerr := readTyped(w, "verdict", &vd)
+	if err := <-werr; err != nil && rerr == nil {
+		rerr = fmt.Errorf("handshake: %w", err)
 	}
-	if err := <-werr; err != nil {
-		return nil, st, fmt.Errorf("handshake: %w", err)
+	var s *session
+	if local && dec.SessionToken != nil {
+		s = &session{b: b, r: r, conn: conn, w: w, connID: connID, token: *dec.SessionToken, peerID: dec.PeerID, outgoing: outgoing,
+			trustRev: uint64(dec.TrustRevision), done: make(chan struct{}), exited: make(chan struct{})}
 	}
-	s := &session{e: e, conn: conn, w: w, peerID: peerID, peerName: st.Name, peerAddr: peerAddr,
-		outgoing: outgoing, kick: make(chan struct{}, 1), ctl: make(chan any, 8), done: make(chan struct{})}
-	if !st.Allowed {
-		return nil, st, ErrNotAllowed
+	if rerr != nil {
+		s.abort()
+		return nil, rerr
 	}
-	if !vd.OK {
-		return nil, st, &awaitingError{s}
+	res.remote = vd.OK
+	if expect != "" && dec.PeerID != expect {
+		s.abort()
+		return nil, rpc.NewError("identity_mismatch")
 	}
-	return s, st, nil
+	if s != nil && !vd.OK {
+		s.abort()
+		s = nil
+	}
+	res.sess = s
+	return res, nil
+}
+
+func (b *Backend) selfName() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.st.DeviceName
 }
 
 // readTyped reads one control message of the given type into v.
@@ -555,41 +479,33 @@ func readTyped(w *wire.Conn, want string, v any) error {
 	return nil
 }
 
-// awaitingError means the other device has not accepted us yet.
-type awaitingError struct{ s *session }
-
-func (a *awaitingError) Error() string {
-	return a.s.peerName + " has not approved this device yet"
+func randHex(n int) string {
+	buf := make([]byte, n)
+	_, _ = rand.Read(buf)
+	return hex.EncodeToString(buf)
 }
 
-func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
+func (b *Backend) acceptLoop(r *runState) {
 	for {
-		conn, err := ln.Accept()
+		conn, err := r.ln.Accept()
 		if err != nil {
-			if ctx.Err() == nil {
-				e.logf("accept: %v", err)
+			if r.ctx.Err() == nil {
+				b.logf("accept: %v", err)
 			}
 			return
 		}
-		untrack, ok := e.track(conn)
+		untrack, ok := b.track(r, conn)
 		if !ok {
 			return
 		}
-		if !e.spawn(func() {
-			defer untrack()
-			s, _, err := e.handshake(conn, false, "", "", nil)
-			if err != nil {
-				if !errors.Is(err, ErrNotAllowed) {
-					e.logf("incoming connection rejected: %v", err)
-				}
-				_ = conn.Close()
+		if !b.spawn(r, func() {
+			res, err := b.handshake(r.ctx, r, conn, false, "", "", nil)
+			untrack()
+			if err != nil || res.sess == nil {
+				_ = conn.Close() // failed, pending, rejected or not accepted by the peer
 				return
 			}
-			if !e.register(s) {
-				_ = conn.Close()
-				return
-			}
-			e.serve(s)
+			b.establish(r, res.sess)
 		}) {
 			untrack()
 			_ = conn.Close()
@@ -598,87 +514,223 @@ func (e *Engine) acceptLoop(ctx context.Context, ln net.Listener) {
 	}
 }
 
-// register adds s unless a better session to the same peer exists. Both
-// devices apply the same rule, so they agree on which of two simultaneous
-// connections survives: the one dialed by the device with the smaller id.
-func (e *Engine) register(s *session) bool {
-	e.mu.Lock()
-	var replaced *session
-	if old := e.sessions[s.peerID]; old != nil {
-		select {
-		case <-old.done:
-		default:
-			if dialer(e.self(), old) <= dialer(e.self(), s) {
-				e.mu.Unlock()
-				return false
-			}
-			replaced = old
-		}
-	}
-	e.sessions[s.peerID] = s
-	e.mu.Unlock()
-	if replaced != nil {
-		replaced.close() // outside the lock: it reports to job owners
-	}
-	return true
+// ---- sessions ----
+
+type session struct {
+	b        *Backend
+	r        *runState
+	conn     net.Conn
+	w        *wire.Conn
+	connID   string
+	token    string
+	peerID   string
+	outgoing bool
+	trustRev uint64
+
+	wmu    sync.Mutex // one writer
+	done   chan struct{}
+	exited chan struct{} // closed when serving ended and the Engine was told
+	once   sync.Once
+	seq    uint64 // last event sequence sent
 }
 
-func dialer(self string, s *session) string {
+func (s *session) isDone() bool {
+	select {
+	case <-s.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *session) close() {
+	s.once.Do(func() {
+		close(s.done)
+		_ = s.conn.Close()
+	})
+}
+
+// event reports a connection state to the Engine.
+func (s *session) event(state string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), eventTimeout)
+	defer cancel()
+	s.seq++
+	return s.b.authority().PeerEvent(ctx, rpc.PeerEvent{ConnectionID: s.connID, SessionToken: s.token, Sequence: rpc.U64(s.seq), State: state, RemoteAccepted: state == "connected"})
+}
+
+// abort ends a session that never connected, so the Engine drops its token.
+func (s *session) abort() {
+	if s == nil {
+		return
+	}
+	s.close()
+	_ = s.event("disconnected")
+	close(s.exited)
+}
+
+// dialerOf is the device that opened the connection; of two simultaneous
+// connections to one peer the one dialed by the smaller device ID survives,
+// the rule the Engine applies too (both ends agree without talking).
+func (b *Backend) dialerOf(s *session) string {
 	if s.outgoing {
-		return self
+		return b.self
 	}
 	return s.peerID
 }
 
-// serve runs a registered session until it ends.
-func (e *Engine) serve(s *session) {
-	e.logf("connected to %s", s.peerName)
-	e.cfg.Host.Active(s.peerID, nil)
-	e.emit(Event{Kind: "peer-up"})
-	if !e.spawn(s.sendLoop) {
+// establish makes s the session of its peer, unless a better one exists, and
+// reports the connection to the Engine. It reports false when s was dropped.
+func (b *Backend) establish(r *runState, s *session) bool {
+	b.mu.Lock()
+	old := b.sessions[s.peerID]
+	if old != nil && !old.isDone() && b.dialerOf(old) <= b.dialerOf(s) {
+		b.mu.Unlock()
+		s.abort()
+		return false
+	}
+	b.mu.Unlock()
+	if err := s.event("connected"); err != nil {
 		s.close()
+		close(s.exited)
+		return false
 	}
-	err := s.recvLoop()
-	s.close()
-	e.mu.Lock()
-	if e.sessions[s.peerID] == s {
-		delete(e.sessions, s.peerID)
+	b.mu.Lock()
+	if b.run != r || r.ctx.Err() != nil {
+		b.mu.Unlock()
+		s.close()
+		_ = s.event("disconnected")
+		close(s.exited)
+		return false
 	}
-	e.mu.Unlock()
-	e.cfg.Host.Active(s.peerID, nil)
-	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-		e.logf("session with %s ended: %v", s.peerName, err)
+	replaced := b.sessions[s.peerID]
+	b.sessions[s.peerID] = s
+	r.wg.Add(1)
+	b.mu.Unlock()
+	if replaced != nil {
+		replaced.close() // its serve goroutine reports the end
 	}
-	e.emit(Event{Kind: "peer-down"})
+	go func() { defer r.wg.Done(); b.serve(s) }()
+	return true
 }
 
-func (s *session) sendLoop() {
+// serve runs a registered session until it ends.
+func (b *Backend) serve(s *session) {
+	err := b.recvLoop(s)
+	s.close()
+	b.mu.Lock()
+	if b.sessions[s.peerID] == s {
+		delete(b.sessions, s.peerID)
+	}
+	b.mu.Unlock()
+	_ = s.event("disconnected")
+	close(s.exited)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+		b.logf("session ended: %v", err)
+	}
+	b.kick(s.peerID)
+}
+
+// ---- sending ----
+
+// Send writes one clip to the connection s names. The Engine authorizes it
+// last, immediately before the first byte, and hands out each part once.
+func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) error {
+	b.mu.Lock()
+	sess := b.sessions[m.PeerID]
+	b.mu.Unlock()
+	if sess == nil || sess.isDone() {
+		return rpc.NewError(rpc.CodeNotFound)
+	}
+	if sess.connID != m.ConnectionID || subtle.ConstantTimeCompare([]byte(sess.token), []byte(m.SessionToken)) != 1 {
+		return rpc.NewError(rpc.CodeConflict)
+	}
+	g, err := src.Authorize(ctx, rpc.Authorize{DispatchID: m.DispatchID, ContentHandle: m.ContentHandle, ConnectionID: m.ConnectionID, SessionToken: m.SessionToken})
+	if err != nil {
+		return err
+	}
+	var open []io.Closer
+	defer func() {
+		for _, c := range open {
+			_ = c.Close()
+		}
+	}()
+	out := make([]wire.OutPart, len(m.Clip.Parts))
+	var srcErr error
+	for i, p := range m.Clip.Parts {
+		rc, err := src.OpenPart(ctx, g.GrantID, i)
+		if err != nil {
+			return err
+		}
+		open = append(open, rc)
+		op := wire.OutPart{Size: int64(p.Size), R: &srcReader{r: rc, fail: &srcErr}}
+		if p.Kind == "file" {
+			op.Kind, op.Name = "file", p.Name
+		} else {
+			op.Kind, op.Name = "fmt", p.MIME
+		}
+		out[i] = op
+	}
+	sess.wmu.Lock()
+	defer sess.wmu.Unlock()
+	stop := context.AfterFunc(ctx, sess.close) // a cancelled send leaves the stream out of step
+	defer stop()
+	if err := sess.w.SendStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out); err != nil {
+		sess.close() // the stream may be out of step: start over
+		if srcErr != nil {
+			return srcErr // the content failed, not the network
+		}
+		return rpc.NewError(rpc.CodeUnavailable)
+	}
+	return nil
+}
+
+// ---- receiving ----
+
+func (b *Backend) recvLoop(s *session) error {
 	for {
-		select {
-		case <-s.done:
-			return
-		case m := <-s.ctl:
-			if err := s.w.WriteJSON(m); err != nil {
-				s.e.logf("send to %s: %v", s.peerName, err)
-				s.close()
-				return
-			}
-		case <-s.kick:
-			s.omu.Lock()
-			c := s.pend
-			s.pend = nil
-			s.omu.Unlock()
-			if c != nil && !s.send(c) {
-				return
-			}
+		typ, raw, err := s.w.ReadRaw()
+		if err != nil {
+			return err
+		}
+		if typ != "clip" {
+			continue // unknown control messages are ignored for forward compatibility
+		}
+		var m wire.Clip
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return err
+		}
+		if err := m.Validate(); err != nil {
+			return err
+		}
+		if err := b.receive(s, &m); err != nil {
+			return err
 		}
 	}
 }
 
-// send writes one clip; it reports false when the session is no longer usable.
-func (s *session) send(c *outClip) bool {
-	c.job.Report(s.peerID, Sending, nil)
+// receive hands the clip header to the Engine and, if admitted, the bodies.
+// A clip nobody wants is read and dropped so the stream stays in sync.
+func (b *Backend) receive(s *session, m *wire.Clip) error {
+	rcv := b.receiver()
+	if rcv == nil {
+		return s.w.Discard(m)
+	}
+	o := rpc.ReceiveOpen{ConnectionID: s.connID, SessionToken: s.token,
+		Clip: rpc.Clip{WireID: m.ID, Origin: m.Origin, AtMs: rpc.U64(max(m.TS, 0)), Hash: m.Hash}}
+	for i, p := range m.Parts {
+		cp := rpc.ClipPart{Index: i, Size: rpc.U64(p.Size)}
+		if p.Kind == "file" {
+			cp.Kind, cp.Name = "file", p.Name
+		} else {
+			cp.Kind, cp.MIME = "representation", p.Name
+		}
+		o.Clip.Parts = append(o.Clip.Parts, cp)
+	}
+	if o.Validate() != nil {
+		return s.w.Discard(m) // malformed for the Engine: read and drop
+	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		select {
 		case <-s.done:
@@ -686,226 +738,252 @@ func (s *session) send(c *outClip) bool {
 		case <-ctx.Done():
 		}
 	}()
-	broken, err := c.job.Send(ctx, s.w, s.e.self())
-	cancel()
-	if err != nil {
-		select {
-		case <-s.done: // the connection ended, whatever the error looked like
-			err = ErrSessionClosed
-		default:
-		}
-		c.job.Report(s.peerID, Failed, err)
-		if broken {
-			s.close() // the stream may be out of step: start over
-			return false
-		}
-		return true
+	g, err := rcv.OpenReceive(ctx, o)
+	if err != nil || g.Decision != rpc.DecisionAccept || g.ReceiveID == nil {
+		return s.w.Discard(m)
 	}
-	c.job.Report(s.peerID, Sent, nil)
-	return true
+	parts := &recvParts{w: s.w, m: m}
+	_, _ = rcv.Receive(ctx, *g.ReceiveID, parts) // a clip the Engine refused is dropped; the connection stays
+	return parts.drain()
 }
 
-func (s *session) recvLoop() error {
-	for {
-		typ, raw, err := s.w.ReadRaw()
-		if err != nil {
+// recvParts serves the bodies of an admitted clip to the Engine in order.
+type recvParts struct {
+	w    *wire.Conn
+	m    *wire.Clip
+	next int
+	cur  *recvBody
+}
+
+type recvBody struct {
+	r      io.Reader
+	left   int64
+	closed bool
+}
+
+func (b *recvBody) Read(p []byte) (int, error) {
+	if b.closed {
+		return 0, io.ErrClosedPipe
+	}
+	n, err := b.r.Read(p)
+	b.left -= int64(n)
+	if err == io.EOF && b.left > 0 {
+		err = io.ErrUnexpectedEOF
+	}
+	return n, err
+}
+
+func (b *recvBody) Close() error { b.closed = true; return nil }
+
+func (p *recvParts) Next(ctx context.Context) (int, io.ReadCloser, error) {
+	if err := p.finishCur(); err != nil {
+		return 0, nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, nil, err
+	}
+	if p.next >= len(p.m.Parts) {
+		return 0, nil, io.EOF
+	}
+	i := p.next
+	p.next++
+	size := p.m.Parts[i].Size
+	p.cur = &recvBody{r: p.w.Body(size), left: size}
+	return i, p.cur, nil
+}
+
+// finishCur discards what the Engine left unread of the current body.
+func (p *recvParts) finishCur() error {
+	if p.cur == nil {
+		return nil
+	}
+	c := p.cur
+	p.cur = nil
+	if c.left > 0 {
+		n, err := io.CopyN(io.Discard, c.r, c.left)
+		c.left -= n
+		return err
+	}
+	return nil
+}
+
+// drain reads and drops every part the Engine did not take.
+func (p *recvParts) drain() error {
+	if err := p.finishCur(); err != nil {
+		return err
+	}
+	for ; p.next < len(p.m.Parts); p.next++ {
+		n := p.m.Parts[p.next].Size
+		if _, err := io.CopyN(io.Discard, p.w.Body(n), n); err != nil {
 			return err
 		}
-		switch typ {
-		case "clip":
-			var m wire.Clip
-			if err := json.Unmarshal(raw, &m); err != nil {
-				return err
-			}
-			if err := m.Validate(); err != nil {
-				return err
-			}
-			// A clip this device does not want (paused, or over its own
-			// limits) is read and dropped, so the stream stays in sync and
-			// the connection survives.
-			cfg := s.e.settings()
-			if st, ok := s.e.cfg.Host.Standing(s.peerID); !ok || !st.Allowed || !st.SyncEnabled {
-				cfg.SyncEnabled = false // the path is paused or revoked
-			}
-			lim := wire.Limits{File: cfg.MaxFileBytes, Total: cfg.MaxTotalBytes}
-			var adm Admission
-			wanted := false
-			if s.e.cfg.Receiver != nil {
-				adm, wanted = s.e.cfg.Receiver.Admit(s.peerID, m)
-			}
-			if lerr := m.Fits(lim); !cfg.SyncEnabled || lerr != nil || !wanted {
-				if wanted {
-					adm.Done(clip.Snapshot{}, "", false) // give the reservation back
-				}
-				if lerr != nil {
-					s.e.logf("dropped clip from %s: %v", s.peerName, lerr)
-				}
-				if err := s.w.Discard(&m); err != nil {
-					return err
-				}
-				continue
-			}
-			snap, dir, err := s.w.ReceiveClip(&m, adm.Inbox)
-			if err != nil {
-				adm.Done(clip.Snapshot{}, "", false)
-				return err
-			}
-			if snap.Hash() != m.Hash {
-				// Corrupt or tampered: the data is already consumed, so the
-				// stream is still in sync; just drop it.
-				if dir != "" {
-					_ = os.RemoveAll(dir)
-				}
-				adm.Done(clip.Snapshot{}, "", false)
-				s.e.logf("dropped clip from %s: hash mismatch", s.peerName)
-				continue
-			}
-			adm.Done(snap, dir, true)
+	}
+	return nil
+}
+
+// ---- following the state ----
+
+// dialer keeps one outgoing connection to a peer, with backoff.
+type dialer struct {
+	addr   string
+	cancel context.CancelFunc
+	wake   chan struct{}
+}
+
+// connectedLocked: a live session with the peer exists. b.mu must be held.
+func (b *Backend) connectedLocked(id string) bool {
+	s := b.sessions[id]
+	return s != nil && !s.isDone()
+}
+
+// kick makes the peer's dialer look again at once.
+func (b *Backend) kick(id string) {
+	b.mu.Lock()
+	d := b.dialers[id]
+	b.mu.Unlock()
+	if d != nil {
+		select {
+		case d.wake <- struct{}{}:
 		default:
-			// Unknown control messages are ignored for forward compatibility.
 		}
 	}
 }
 
-// keepDialing maintains an outgoing connection to t, with backoff.
-func (e *Engine) keepDialing(t Target) {
-	e.mu.Lock()
-	if e.retry[t.DeviceID] != nil || e.ctx == nil {
-		e.mu.Unlock()
+// reconcile makes the connections match the latest state: devices it no longer
+// lists (or lists under a changed authority) lose their session before this
+// returns, and every listed device with an address is dialed.
+func (b *Backend) reconcile() {
+	b.mu.Lock()
+	r, st := b.run, b.st
+	if r == nil {
+		b.mu.Unlock()
 		return
 	}
-	ctx, cancel := context.WithCancel(e.ctx)
-	e.retry[t.DeviceID] = cancel
-	e.mu.Unlock()
+	want := make(map[string]rpc.StatePeer, len(st.Peers))
+	for _, p := range st.Peers {
+		want[p.ID] = p
+	}
+	genChanged := uint64(st.NetworkGeneration) != b.gen
+	b.gen = uint64(st.NetworkGeneration)
+	var drop []*session
+	for id, s := range b.sessions {
+		if p, ok := want[id]; !ok || uint64(p.TrustRevision) != s.trustRev {
+			drop = append(drop, s)
+		}
+	}
+	for id, d := range b.dialers {
+		if p, ok := want[id]; !ok || p.Address != d.addr || (genChanged && !b.connectedLocked(id)) {
+			d.cancel()
+			delete(b.dialers, id)
+		}
+	}
+	var start []rpc.StatePeer
+	for _, p := range st.Peers {
+		if p.Address != "" && b.dialers[p.ID] == nil {
+			start = append(start, p)
+		}
+	}
+	b.mu.Unlock()
+	for _, s := range drop {
+		s.close()
+		<-s.exited // the Engine has been told; nothing of it runs on
+	}
+	for _, p := range start {
+		b.keepDialing(r, p)
+	}
+}
 
-	if !e.spawn(func() {
+// keepDialing maintains an outgoing connection to p, with backoff.
+func (b *Backend) keepDialing(r *runState, p rpc.StatePeer) {
+	ctx, cancel := context.WithCancel(r.ctx)
+	d := &dialer{addr: p.Address, cancel: cancel, wake: make(chan struct{}, 1)}
+	b.mu.Lock()
+	if b.run != r || b.dialers[p.ID] != nil {
+		b.mu.Unlock()
+		cancel()
+		return
+	}
+	b.dialers[p.ID] = d
+	b.mu.Unlock()
+	if !b.spawn(r, func() {
 		backoff := time.Second
 		for ctx.Err() == nil {
-			e.mu.Lock()
-			up := e.sessions[t.DeviceID] != nil
-			e.mu.Unlock()
+			b.mu.Lock()
+			up := b.connectedLocked(p.ID)
+			b.mu.Unlock()
 			if up {
-				if !sleep(ctx, 5*time.Second) {
+				if !wait(ctx, d.wake, 5*time.Second) {
 					return
 				}
 				backoff = time.Second
 				continue
 			}
-			dctx, dcancel := context.WithTimeout(ctx, 30*time.Second)
-			conn, err := e.cfg.Transport.Dial(dctx, t.Addr)
-			dcancel()
-			var s *session
-			if err == nil {
-				untrack, ok := e.track(conn)
-				if !ok {
-					return
-				}
-				s, _, err = e.handshake(conn, true, t.Addr, t.DeviceID, nil)
-				untrack()
-				if err != nil {
-					_ = conn.Close()
-				}
-			}
-			if err != nil {
-				e.cfg.Host.Active(t.DeviceID, err)
-				if ctx.Err() == nil {
-					e.logf("cannot reach %s: %v (retry in %v)", t.Name, err, backoff)
-				}
-				if !sleep(ctx, backoff) {
-					return
-				}
-				if backoff < time.Minute {
-					backoff *= 2
-				}
+			if b.dialOnce(ctx, r, p) {
+				backoff = time.Second
 				continue
 			}
-			backoff = time.Second
-			// The user may have revoked the device while we were connecting.
-			if st, ok := e.cfg.Host.Standing(t.DeviceID); !ok || !st.Allowed {
-				_ = conn.Close()
+			if !wait(ctx, d.wake, backoff) {
 				return
 			}
-			if !e.register(s) {
-				_ = conn.Close()
-				continue
+			if backoff < time.Minute {
+				backoff *= 2
 			}
-			e.serve(s)
 		}
 	}) {
 		cancel()
-		e.mu.Lock()
-		delete(e.retry, t.DeviceID)
-		e.mu.Unlock()
+		b.mu.Lock()
+		if b.dialers[p.ID] == d {
+			delete(b.dialers, p.ID)
+		}
+		b.mu.Unlock()
 	}
 }
 
-func sleep(ctx context.Context, d time.Duration) bool {
+// dialOnce makes one attempt and reports whether a session came up.
+func (b *Backend) dialOnce(ctx context.Context, r *runState, p rpc.StatePeer) bool {
+	dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	conn, err := b.cfg.Transport.Dial(dctx, p.Address)
+	cancel()
+	if err != nil {
+		return false
+	}
+	untrack, ok := b.track(r, conn)
+	if !ok {
+		return false
+	}
+	res, err := b.handshake(ctx, r, conn, true, p.Address, p.ID, nil)
+	untrack()
+	if err != nil || res.sess == nil {
+		_ = conn.Close()
+		return false
+	}
+	return b.establish(r, res.sess)
+}
+
+func wait(ctx context.Context, wake <-chan struct{}, d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
 	case <-ctx.Done():
 		return false
+	case <-wake:
+		return true
 	case <-t.C:
 		return true
 	}
 }
 
-// Reconcile makes the connections match the host's authorizations: devices
-// the user has revoked or removed lose their session and retries at once, and
-// every authorized device is dialed. The host calls it after every change of
-// trust, binding or endpoint.
-func (e *Engine) Reconcile() {
-	targets := e.cfg.Host.Targets()
-	want := make(map[string]Target, len(targets))
-	for _, t := range targets {
-		want[t.DeviceID] = t
-	}
-	var drop []*session
-	e.mu.Lock()
-	running := e.ctx != nil
-	for id, cancel := range e.retry {
-		if t, ok := want[id]; !ok {
-			cancel()
-			delete(e.retry, id)
-		} else if e.sessions[id] == nil && t.Addr == "" {
-			cancel()
-			delete(e.retry, id)
-		}
-	}
-	for id, s := range e.sessions {
-		if _, ok := want[id]; !ok {
-			drop = append(drop, s)
-		}
-	}
-	e.mu.Unlock()
-	for _, s := range drop {
-		s.close() // outside the lock: it reports to job owners
-	}
-	if !running {
-		return
-	}
-	for _, t := range targets {
-		if t.Addr != "" {
-			e.keepDialing(t)
-		}
-	}
+// srcReader remembers the first error of a content source, so a failure of the
+// content can be told from a failure of the connection.
+type srcReader struct {
+	r    io.Reader
+	fail *error
 }
 
-// NetworkChanged tells the engine the network may have changed: devices that
-// are not connected are retried at once instead of after their backoff. It
-// does not resend anything.
-func (e *Engine) NetworkChanged() {
-	for _, t := range e.cfg.Host.Targets() {
-		e.mu.Lock()
-		up := e.sessions[t.DeviceID] != nil
-		cancel := e.retry[t.DeviceID]
-		if !up && cancel != nil {
-			delete(e.retry, t.DeviceID)
-		}
-		e.mu.Unlock()
-		if !up && cancel != nil {
-			cancel()
-			e.keepDialing(t)
-		}
+func (s *srcReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if err != nil && err != io.EOF && *s.fail == nil {
+		*s.fail = err
 	}
+	return n, err
 }

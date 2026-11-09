@@ -5,11 +5,10 @@ import (
 	"context"
 	"errors"
 	"io"
-	"time"
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/peerbackend"
-	"github.com/uniclipboard/unic/internal/wire"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 // sendSet is what will go out: the parts of a content that the sync settings
@@ -87,64 +86,6 @@ func checkLimits(set sendSet, lim Limits) *Error {
 	return nil
 }
 
-// sendSet writes the content to w. It runs on the session's writer, once per
-// device. Everything that can fail without touching the stream (settings,
-// files that changed) is checked before the first byte is written.
-func (e *Engine) sendSet(ctx context.Context, w *wire.Conn, origin, id string, ts int64, set sendSet, policy func() BackendSyncPolicy) (broken bool, err error) {
-	e.mu.Lock()
-	if err := e.needRunningLocked(); err != nil {
-		e.mu.Unlock()
-		return false, err
-	}
-	enabled, lim := e.settings.Value.Sync.Enabled, e.settings.Value.Limits
-	e.mu.Unlock()
-	if !enabled {
-		return false, newErr(CodeSyncDisabled, "sync was paused before the transfer started")
-	}
-	sy := policy()
-	// A queued view must never send a type disabled since it was prepared.
-	for _, p := range set.parts {
-		if !syncAllowsPart(p, sy) {
-			return false, newErr(CodeSyncDisabled, "a content type was disabled before the transfer started")
-		}
-	}
-	if lerr := checkLimits(set, lim); lerr != nil {
-		return false, lerr
-	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second) // opening files only; the transfer itself is bounded by the connection
-	defer cancel()
-	var out []wire.OutPart
-	var open []io.Closer
-	defer func() {
-		for _, c := range open {
-			_ = c.Close()
-		}
-	}()
-	for _, p := range set.parts {
-		op := wire.OutPart{Size: p.desc.Size}
-		if p.desc.Kind == PartFile {
-			op.Kind, op.Name = "file", p.desc.Name
-		} else {
-			op.Kind, op.Name = "fmt", p.desc.MIME
-		}
-		if p.data != nil {
-			op.R = bytesReader(p.data)
-		} else {
-			rc, oerr := e.openPart(ctx, p)
-			if oerr != nil {
-				return false, oerr
-			}
-			open = append(open, rc)
-			op.R = rc
-		}
-		out = append(out, op)
-	}
-	if err := w.SendStream(id, origin, ts, set.hash, out); err != nil {
-		return true, err
-	}
-	return false, nil
-}
-
 // reportTarget records how a send fares towards one target and finishes the
 // operation when every target is final and no backend can still register more.
 func (e *Engine) reportTarget(id OperationID, k targetKey, st TargetState, cause error) {
@@ -182,6 +123,12 @@ func (e *Engine) sendFailure(cause error) *Error {
 	switch {
 	case errors.As(cause, &ee):
 		return ee
+	case isRPCCode(cause, string(CodeSourceChanged)):
+		return newErr(CodeSourceChanged, "the content changed after it was added")
+	case isRPCCode(cause, string(CodeResourceExpired)):
+		return newErr(CodeResourceExpired, "the content is no longer available")
+	case e.runtime == RuntimeSuspended:
+		return newErr(CodeSuspended, "the host suspended networking during the transfer")
 	case errors.Is(cause, peerbackend.ErrSessionClosed):
 		if e.runtime == RuntimeSuspended {
 			return newErr(CodeSuspended, "the host suspended networking during the transfer")
@@ -231,3 +178,9 @@ func outcomeOf(ts []TargetStatus) Outcome {
 }
 
 func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
+
+// isRPCCode reports whether err is a plugin RPC error with the given code.
+func isRPCCode(err error, code string) bool {
+	var re *rpc.Error
+	return errors.As(err, &re) && re.Code == code
+}

@@ -98,7 +98,7 @@ type node struct {
 
 func newOpts(t *testing.T, dir string) (Options, *fakeNet) {
 	f := newFakeNet(t)
-	return Options{DataDir: dir, Peer: tailcat.FactoryOn(f)}, f
+	return Options{DataDir: dir, Plugins: []PluginInstance{{Plugin: tailcat.NewOn(f), Builtin: true}}}, f
 }
 
 func newNode(t *testing.T, rv *rvtest.Server) node {
@@ -175,8 +175,9 @@ func TestLifecycle(t *testing.T) {
 	if s := state(t, n.e); s.Lifecycle != LifecycleStopped {
 		t.Fatalf("lifecycle = %s", s.Lifecycle)
 	}
-	if n.net.closed != 1 {
-		t.Fatalf("transport closed %d times", n.net.closed)
+	// Stop only suspends the listener; the tunnel goes down with the plugin.
+	if n.net.closed != 0 {
+		t.Fatalf("transport closed %d times by Stop", n.net.closed)
 	}
 	if got := code(n.e.Start(bg)); got != CodeInvalidState {
 		t.Fatalf("Start after Stop: %q", got)
@@ -188,6 +189,9 @@ func TestLifecycle(t *testing.T) {
 		if err := n.e.Close(bg); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if n.net.closed != 1 {
+		t.Fatalf("transport closed %d times by Close", n.net.closed)
 	}
 	if got := code(func() error { _, err := n.e.GetState(bg); return err }()); got != CodeClosed {
 		t.Fatalf("after Close: %q", got)
@@ -232,70 +236,22 @@ func TestIdentityPersistsAndInstanceChanges(t *testing.T) {
 	}
 }
 
-func TestStartFailureRecovers(t *testing.T) {
+// A network that cannot come up does not fail Start: the backend retries and
+// the engine keeps running; nothing of the transport's error text escapes.
+func TestStartSurvivesTransportFailure(t *testing.T) {
 	n := newNode(t, nil)
 	n.net.startErr = errors.New("dial 10.0.0.1: secret-address-text")
-	err := n.e.Start(bg)
-	if code(err) != CodeUnavailable {
+	if err := n.e.Start(bg); err != nil {
 		t.Fatalf("Start = %v", err)
 	}
-	if strings.Contains(err.Error(), "secret") {
-		t.Fatalf("lower-level error text leaked: %v", err)
-	}
-	if s := state(t, n.e); s.Lifecycle != LifecycleStopped {
-		t.Fatalf("lifecycle = %s, want stopped", s.Lifecycle)
-	}
-	if n.net.closed != 1 {
-		t.Fatal("the half-started transport was not released")
+	if s := state(t, n.e); s.Lifecycle != LifecycleRunning {
+		t.Fatalf("lifecycle = %s", s.Lifecycle)
 	}
 	if err := n.e.Close(bg); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func TestStopCancelsStarting(t *testing.T) {
-	n := newNode(t, nil)
-	n.net.startBlock = make(chan struct{})
-	res := make(chan error, 1)
-	go func() { res <- n.e.Start(bg) }()
-	eventually(t, "starting", func() bool { return state(t, n.e).Lifecycle == LifecycleStarting })
-
-	stopped := make(chan error, 1)
-	go func() { stopped <- n.e.Stop(bg) }()
-	if err := <-res; err == nil {
-		t.Fatal("Start succeeded though it was stopped")
-	}
-	close(n.net.startBlock) // the transport finally returns; teardown may close it
-	if err := <-stopped; err != nil {
-		t.Fatal(err)
-	}
-	if s := state(t, n.e); s.Lifecycle != LifecycleStopped {
-		t.Fatalf("lifecycle = %s", s.Lifecycle)
-	}
-}
-
-func TestStopTimeoutKeepsStoppingAndCanBeAwaited(t *testing.T) {
-	n := newNode(t, nil)
-	start(t, n)
-	n.net.closeBlock = make(chan struct{})
-	ctx, cancel := context.WithTimeout(bg, 50*time.Millisecond)
-	defer cancel()
-	err := n.e.Stop(ctx)
-	if code(err) != CodeTimeout || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Stop = %v", err)
-	}
-	if s := state(t, n.e); s.Lifecycle != LifecycleStopping {
-		t.Fatalf("lifecycle = %s, want stopping", s.Lifecycle)
-	}
-	if _, err := n.e.ListDevices(bg); err != nil {
-		t.Fatalf("queries work while stopping: %v", err)
-	}
-	close(n.net.closeBlock)
-	if err := n.e.Stop(bg); err != nil {
-		t.Fatal(err)
-	}
-	if s := state(t, n.e); s.Lifecycle != LifecycleStopped {
-		t.Fatalf("lifecycle = %s", s.Lifecycle)
+	if n.net.closed != 1 {
+		t.Fatal("the transport was not released")
 	}
 }
 
@@ -493,7 +449,7 @@ func waitOp(t *testing.T, e *Engine, id OperationID, phase Phase) Operation {
 	return o
 }
 
-func linked(x, y node) bool { return x.e.core.Connected(string(selfID(y.e))) }
+func linked(x, y node) bool { return x.e.anyConnected(string(selfID(y.e))) }
 
 func connected(a, b node) bool { return linked(a, b) && linked(b, a) }
 
@@ -574,10 +530,10 @@ func TestTicketIsUsedUpByTheFirstDevice(t *testing.T) {
 	op, _ := b.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "r1", Ticket: tk.Ticket})
 	waitOp(t, b.e, op, PhaseSucceeded)
 	op2, _ := c.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "r1", Ticket: tk.Ticket})
-	waitOp(t, c.e, op2, PhaseSucceeded)
-	eventually(t, "both listed", func() bool { _, ok := listedDevice(a, c); return ok })
-	if d, _ := listedDevice(a, c); d.Bindings[0].Ticket {
-		t.Fatal("a second device passed on a spent ticket")
+	// A spent ticket is refused outright, not downgraded to a plain request.
+	waitOp(t, c.e, op2, PhaseFailed)
+	if _, ok := listedDevice(a, c); ok {
+		t.Fatal("a second device got in on a spent ticket")
 	}
 	if d, _ := listedDevice(a, b); !d.Bindings[0].Ticket {
 		t.Fatal("the first device did not pass on the ticket")
@@ -777,7 +733,7 @@ func TestTrustSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts, _ := newOpts(t, a.dir)
-	opts.Peer = tailcat.FactoryOn(a.net) // same address as before
+	opts.Plugins = []PluginInstance{{Plugin: tailcat.NewOn(a.net), Builtin: true}} // same address as before
 	a2, err := New(bg, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -944,9 +900,9 @@ func TestEventsAndStateCarryNoSecrets(t *testing.T) {
 	sub, _ := a.e.SubscribeEvents(bg)
 	defer func() { _ = sub.Close() }()
 	tk, _ := a.e.ExportPairingTicket(bg)
-	c, _ := a.e.CreatePairingCode(bg)
 	op, _ := b.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "r", Ticket: tk.Ticket})
 	waitOp(t, b.e, op, PhaseSucceeded)
+	c, _ := a.e.CreatePairingCode(bg) // a new code replaces the spent ticket
 	eventually(t, "request", func() bool { _, ok := listedDevice(a, b); return ok })
 
 	ctx, cancel := context.WithTimeout(bg, 200*time.Millisecond)

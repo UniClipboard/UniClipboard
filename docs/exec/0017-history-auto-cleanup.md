@@ -101,7 +101,7 @@ Record native visual acceptance separately from CLI E2E results.
 - [x] CLI and Engine path accepted with a replayable artifact.
 - [x] GUI controls connected to the daemon save path.
 - [ ] User visual acceptance recorded.
-- [ ] Architecture verified and documentation checks passed.
+- [x] Architecture verified and documentation checks passed.
 
 Implementation and acceptance results are recorded below. Native visual acceptance remains pending.
 
@@ -135,9 +135,10 @@ An isolated archive of the baseline HEAD reproduces each of these failures:
 These failures are not presented as passing acceptance. They remain outside this task's implementation scope.
 On macOS, checks use canonical `TMPDIR=/private/tmp`; the default symlinked temporary path fails existing managed-root validation.
 
-`go run ./tools/docscheck` passes with four staleness warnings.
-The attempted `-bump` for pipeline and desktop-runtime was rejected because their source paths contain uncommitted changes.
-Their `verified` fields remain unchanged. Updating them requires a committed source identity; this task does not commit unrelated work.
+`go run ./tools/docscheck` passes with two pre-existing staleness warnings outside this task.
+The first `-bump` attempt was rejected while source paths were uncommitted.
+After the user requested a commit, the task was committed as `5f4e8a3ab28a5867eea2f43880bbe0aba5bb0a6c`.
+The pipeline and desktop-runtime `verified` fields now point to that commit. Unrelated UI changes remain outside the commit.
 `git diff --check` passes.
 
 Not run: native interaction/visual acceptance, Windows/Linux native execution, forced disk-full/unlink failures,
@@ -172,3 +173,17 @@ UNIC_E2E=1 UNIC_E2E_BIN=/private/tmp/unic-cleanup-final-bin UNIC_E2E_ARTIFACTS=/
 
 All 24 existing checks in `engine/history_test.go` also pass with the race detector.
 The native checklist in section 8 remains for user acceptance.
+
+## 10. Scoped commit verification
+
+The feature commit is `5f4e8a3ab28a5867eea2f43880bbe0aba5bb0a6c`.
+Only the task's 44 files/hunks were staged. Shared README and GUI files were staged partially;
+the native-layout demo and unrelated scroll/UI Kit changes remain unstaged.
+
+A full index snapshot built both race-enabled binaries independently of the unstaged changes.
+Three real-process cases passed against those binaries: `history-auto-cleanup`, `history-cache-quota`,
+and `file-cache-retention` (50.846 seconds total). Every staged task file matched that tested snapshot before commit.
+The previously recorded 16-case run covered the shared working tree; this additional check verifies the isolated commit.
+
+Architecture verification metadata and this receipt are recorded in a follow-up documentation commit.
+No push or application deployment was requested or performed.

@@ -22,12 +22,12 @@ Demo forms accept local example input. They do not authenticate or import real f
 | `pages/settings-kit/SettingsKitPage.tsx`, `components/setting/settings-config.ts` | `settings.go`: category sidebar and nine setting pages |
 | `pages/entry-kit/SetupKitEntry.tsx`, `SetupKitInitialize.tsx` | `entry.go`: welcome, create, join, import, pending, ready |
 | `pages/entry-kit/UnlockKitPage.tsx`, `StartupKitScreen.tsx`, `ProfileRecoveryKitPage.tsx` | `entry.go`: unlock, startup, recovery |
-| `quick-panel/ClipboardHistoryPanel.tsx` | `entry.go`: search, filters, history list, optional preview |
+| `apps/quick-panel` and `crates/quick-panel-core` at cached `origin/main` `885546c7` | `quick_panel_*.go`: isolated GPUI quick panel fixture; see [acceptance guide](QUICK-PANEL-DEMO.md) |
 | `updater/app-icon.png` | `app-icon.png`: original embedded app icon |
 
 The Kit selects Adwaita, macOS glass, or Fluent and applies the matching tokens.
 The demo reuses the Kit's existing native approximations for window chrome, controls, materials, and animations.
-The quick panel uses a normal native window. It does not reproduce global activation, focus restoration, automatic paste, or platform-specific popup placement.
+The dedicated `--page quick-panel` entry uses a compact frameless window and a nonfocusable satellite. It simulates host effects and retains a separate GPUI source reference. See the [quick panel guide](QUICK-PANEL-DEMO.md) for interaction coverage and native acceptance limits.
 The demo supports fixture search operators and in-memory tag-library editing. It omits daemon integration, network recovery, and real file operations.
 It does not claim pixel parity with the reference or native acceptance on any platform.
 
@@ -320,7 +320,7 @@ UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/token-search-regression" \
 ```
 
 The replay writes token-search.json and a build receipt records source/artifact hashes. Full view and Kit checks passed (544 reported results). This is event/layout/software-renderer evidence; native Metal appearance and input-method acceptance remain separate.
-Restart the demo and try @Linux, #设计, /image, on:yesterday and ext:png. Try several exact words with trailing spaces, then remove or edit a chip. The daemon-backed GUI and quick-panel search are outside this history-demo integration.
+Restart the demo and try @Linux, #设计, /image, on:yesterday and ext:png. Try several exact words with trailing spaces, then remove or edit a chip. The daemon-backed GUI and the separate GPUI quick-panel fixture are outside this history-demo search integration.
 
 
 ### Tag management sheet

@@ -1,0 +1,98 @@
+name: Build CLI
+on:
+  pull_request:
+  push:
+    branches: [main, v2]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: true
+      distribution:
+        type: boolean
+        default: false
+    secrets:
+      POSTHOG_PROJECT_KEY:
+        required: false
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: targets
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          test -z "$EXPECTED_SHA" || test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
+          echo "matrix=$(python3 tools/release/release.py matrix)" >> "$GITHUB_OUTPUT"
+  targets:
+    needs: prepare
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build exact CLI pair
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+          UNIC_POSTHOG_HOST: ${{ inputs.distribution && vars.POSTHOG_HOST || '' }}
+          UNIC_POSTHOG_PROJECT_TOKEN: ${{ inputs.distribution && secrets.POSTHOG_PROJECT_KEY || '' }}
+        run: go run ./tools/package -product cli -output dist/cli
+      - name: Native executable identity acceptance
+        run: python tools/release/release.py smoke --directory dist/cli
+      - name: Production headless E2E
+        if: matrix.target == 'linux-amd64'
+        shell: bash
+        run: make headless-e2e
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: dist/cli/
+          if-no-files-found: error
+  assemble:
+    needs: targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.4'
+      - name: Select npm with dist-tag OIDC support
+        run: npm install --global npm@11.21.2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          path: dist/targets
+      - name: Assemble exact npm package set
+        run: python3 tools/release/release.py assemble --input dist/targets --output dist/npm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-npm-candidate
+          path: dist/npm/
+          if-no-files-found: error

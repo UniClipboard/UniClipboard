@@ -15,6 +15,8 @@ verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
 ---
 # Headless service and desktop integration
 
+All programs expose `--version --json` before configuration and host initialization. Versioned CLI packaging and npm channels follow the [release architecture](releases.md).
+
 ## Current implementation
 
 The product has three programs and two distributions.
@@ -22,6 +24,10 @@ The product has three programs and two distributions.
 `unic-desktop` owns mygo, the UI Kit, system clipboard, tray and notifications.
 The headless distribution includes `unic` and `unicd`.
 The desktop distribution includes the same two binary files plus `unic-desktop`.
+Both archives expose `uniclip` as an alias of `unic`.
+On macOS/Linux, `uniclip` is a relative symbolic link to the sibling `unic` file; tar preserves the link.
+On Windows, `uniclip.cmd` invokes the sibling `unic.exe` and preserves arguments and its exit code without requiring symbolic-link privileges.
+The packaging manifest records the alias separately from executable hashes. Moving an extracted installation keeps the alias valid.
 Neither headless program imports the desktop application or a UI toolkit, directly or transitively.
 
 ```text

@@ -1,6 +1,8 @@
 # Service application
 
 `unic` is the CLI. `unicd` is the headless Engine owner. Neither program imports a UI toolkit.
+Packaged archives also expose the `uniclip` alias for `unic`: a relative symlink on macOS/Linux, or a `uniclip.cmd` launcher on Windows.
+Both command names use the same implementation. Direct `go build` commands below produce the canonical binaries only.
 
 ```sh
 go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
@@ -24,3 +26,8 @@ enabled = false
 Use `[telemetry.logs]`, `[telemetry.metrics]`, or `[telemetry.analytics]` with `enabled = false` to disable one signal.
 Switch changes hot reload and remain effective across restart. Check `unic diagnostics telemetry` for actual signal state.
 See the [observability contract](../../docs/contracts/observability-contract.md).
+
+## Release identity
+
+Use `unic --version --json` or `unicd --version --json` to read the embedded product version, build number and source SHA without starting the service.
+Versioned archives and npm publication follow the [release architecture](../../docs/architecture/releases.md).

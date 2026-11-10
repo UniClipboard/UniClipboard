@@ -1,0 +1,86 @@
+name: Release CLI
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        type: choice
+        options: [alpha, stable]
+        required: true
+permissions:
+  contents: write
+  id-token: write
+concurrency:
+  group: release-cli
+  cancel-in-progress: false
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      staged: ${{ steps.resume.outputs.staged }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Recover an already staged immutable candidate
+        id: resume
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.resume.outputs.staged == 'true'
+        with:
+          name: cli-npm-resumed
+          path: dist/npm/
+          if-no-files-found: error
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.staged != 'true'
+    uses: ./.github/workflows/build-cli.yml
+    with:
+      source_sha: ${{ github.sha }}
+      distribution: true
+    secrets:
+      POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+  publish:
+    needs: [resolve, build]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.4'
+      - run: npm install --global npm@11.21.2
+      - name: Isolate npm configuration for OIDC
+        run: |
+          echo "registry=https://registry.npmjs.org/" > "$RUNNER_TEMP/unic-npmrc"
+          echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/unic-npmrc" >> "$GITHUB_ENV"
+          echo "NODE_AUTH_TOKEN=" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.resolve.outputs.staged == 'true' && 'cli-npm-resumed' || 'cli-npm-candidate' }}
+          path: dist/npm
+      - name: Stage durable immutable build record
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/release/release.py record --manifest dist/npm/release-manifest.json
+      - name: Publish and read back exact npm packages
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: python3 tools/release/release.py publish --manifest dist/npm/release-manifest.json --channel "$CHANNEL" --receipt dist/publication.json
+      - name: Finalize build record
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/release/release.py record --manifest dist/npm/release-manifest.json --finish --receipt dist/publication.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cli-publication-receipt
+          path: dist/publication.json
+          if-no-files-found: warn

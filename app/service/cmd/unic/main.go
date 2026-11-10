@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/uniclipboard/unic/internal/releaseinfo"
+
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -55,6 +57,9 @@ pairing code service.
 `
 
 func main() {
+	if releaseinfo.Print(os.Stdout, "unic", "cli", os.Args[1:]) {
+		return
+	}
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)

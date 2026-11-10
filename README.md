@@ -53,4 +53,9 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 `make package-desktop` produces both archives and adds `unic-desktop` to the desktop archive.
 Both archives reuse the same CLI and service binaries. Output includes a SHA-256 manifest.
 Archives are unsigned; platform installers and service registration remain separate.
+
+Versioned CLI candidates use `go run ./tools/package -product cli`.
+The CLI workflows assemble exact npm platform packages and expose `unic` and `uniclip` through the same launcher.
+Alpha and stable use external npm dist-tags. Promotion reuses the accepted packages.
+See [product builds and CLI releases](docs/architecture/releases.md) for commands, acceptance and publication prerequisites.
 See [headless architecture](docs/architecture/headless.md).

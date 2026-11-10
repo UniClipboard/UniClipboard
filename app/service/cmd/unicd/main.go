@@ -9,10 +9,14 @@ import (
 	"os"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/releaseinfo"
 	"github.com/uniclipboard/unic/internal/servicelifecycle"
 )
 
 func main() {
+	if releaseinfo.Print(os.Stdout, "unicd", "cli", os.Args[1:]) {
+		return
+	}
 	if len(os.Args) > 2 || (len(os.Args) == 2 && os.Args[1] != "--desktop-owned") {
 		fmt.Fprintln(os.Stderr, "usage: unicd [--desktop-owned]")
 		os.Exit(2)

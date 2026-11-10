@@ -1,11 +1,11 @@
 # 0018: Independent product builds and releases
 
-- Status: Accepted design; implementation pending.
+- Status: Accepted design; CLI vertical slice implemented locally; Desktop/mobile implementation pending.
 - Date: 2026-11-10
-- Requirement: Android, iOS, CLI and Desktop each have a dedicated build workflow and a dedicated release workflow.
+- Requirement: Android, iOS, CLI and Desktop each have dedicated build and release workflows, with a shared promotion workflow for exact builds.
 - Execution plan: [0018 implementation plan](../../exec/0018-independent-product-build-and-release.md).
 - Existing boundaries: [repository overview](../../architecture/overview.md), [headless architecture](../../architecture/headless.md), and [local service contract](../../contracts/local-service-contract.md).
-- Intended landing pages after implementation: `docs/architecture/releases.md` and `docs/contracts/release-contract.md`.
+- Implemented CLI behavior: [release architecture](../../architecture/releases.md) and [release contract](../../contracts/release-contract.md).
 
 ## 1. Context and scope
 
@@ -13,7 +13,7 @@ The monorepo shares Engine and protocol code, but its products have different us
 A shared repository does not require a shared product version.
 CLI and Desktop already have separate entry points. Desktop packages currently reuse CLI/service binaries built in the same invocation.
 Android and iOS currently have documentation placeholders, not native application projects.
-The repository has PR checks and a local archive builder. It does not yet implement this release system.
+The repository has PR checks, CLI build/release workflows and the CLI promotion path. Desktop/mobile release paths remain open.
 
 This decision defines product identity, version ownership, build/release responsibilities and artifact provenance.
 It does not implement native clients or change the desktop integration behavior.
@@ -23,19 +23,27 @@ Implementation progress and acceptance receipts belong in the execution plan.
 
 | Product ID | Payload | Example version | Example release tag |
 |---|---|---|---|
-| `android` | Android application, embedded Engine binding, APK/AAB | `0.8.0` | `android/v0.8.0` |
-| `ios` | iOS application, embedded Engine binding, device archive/export | `0.6.0` | `ios/v0.6.0` |
-| `cli` | `unic` and `unicd` | `1.2.0` | `cli/v1.2.0` |
-| `desktop` | `unic-desktop`, bundled CLI and service, platform packaging | `1.5.0` | `desktop/v1.5.0` |
+| `android` | Android application, embedded Engine binding, APK/AAB | `0.8.0` | `android/v0.8.0-build.42` |
+| `ios` | iOS application, embedded Engine binding, device archive/export | `0.6.0` | `ios/v0.6.0-build.17` |
+| `cli` | `unic` and `unicd` | `1.2.0` | `cli/v1.2.0-build.41` |
+| `desktop` | `unic-desktop`, bundled CLI and service, platform packaging | `1.5.0` | `desktop/v1.5.0-build.23` |
 
 Versions above are examples, not initial release assignments.
-Each product owns its version, changelog, release tags, publication state and stable/beta channel pointers.
+Each product owns its version, build number, changelog, release tags, publication state and alpha/stable channel pointers.
+CLI packages and their channel pointers are managed by npm, not FlareRelease.
+The immutable build identity is `(product, version, build_number)`.
+One version can have multiple builds, such as `1.2.0 (41)` and `1.2.0 (42)`.
+Channel names never appear in the product version or immutable build identity.
+Tags distinguish builds without including a channel; the table shows the proposed tag format.
 A product release does not automatically bump or release another product.
-`unic` and `unicd` share the CLI product version and ship as one tested pair.
+`unic` and `unicd` share the CLI product version and build number and ship as one tested pair.
+Preserve the old `uniclip` command as an alias of `unic`. On macOS/Linux, package a relative `uniclip -> unic` symbolic link.
+On Windows, provide the equivalent command launcher without requiring privileged symbolic-link creation.
+This is a command-name alias only; it does not introduce a second CLI implementation or legacy protocol/configuration behavior.
 
 Windows, macOS and Linux are target variants of CLI and Desktop.
 Their OS, architecture and package format do not create additional product version sequences.
-A platform-only desktop patch uses the next Desktop version with an explicitly selected target set.
+A platform-only desktop patch reserves a new Desktop build identity with an explicitly selected target set.
 Other targets may keep their previously available version until a later release.
 A failed target is not silently removed from the selected release target set.
 
@@ -50,15 +58,15 @@ Before supporting independently installed public versions, implementation must d
 ## 3. Version metadata and native build identities
 
 Use one checked-in metadata source, `release/products.toml`, with four product records.
-Each record owns its product version. Android and iOS also own separate positive build counters.
-Desktop records an immutable CLI dependency lock by release version and manifest digest.
+Each record owns its product version and positive build number, including CLI and Desktop.
+Desktop records an immutable CLI dependency lock by version, build number, npm package/version, registry integrity and manifest digest.
 Native project files and Go version variables consume or generate values from this source; they are not independently edited version authorities.
 Generated output manifests describe a build and never become a second editable source of product versions.
 
-A release-preparation change selects the product version and reserves any native build counter before choosing the immutable source commit.
+A release-preparation change selects the product version and reserves its build number before choosing the immutable source commit.
 Counters may contain gaps. A reserved build identity is never reassigned to different bytes.
-Counters advance independently for Android and iOS, across their respective channels.
-GitHub workflow `run_number` and rerun attempt numbers are provenance fields, not native version authorities.
+Promotion preserves the reserved identity and does not allocate a build number.
+GitHub workflow `run_number` and rerun attempt numbers are provenance fields, not product build-number authorities.
 A preflight checks existing tags, manifests and store build identities before creating a new candidate.
 
 Android maps the product version to `versionName` and its reserved counter to `versionCode`.
@@ -66,10 +74,10 @@ Android requires a higher `versionCode` for successive updates; its user-facing 
 See [Android versioning](https://developer.android.com/studio/publish/versioning).
 
 iOS records the product release version, native marketing version and native build number separately.
-A prerelease suffix belongs in the release identity; native marketing/build fields must satisfy Apple's formats.
+Alpha and stable use the same product version and native marketing/build mapping; no channel suffix is added.
+Native marketing/build fields must satisfy Apple's formats.
 The mapping must be deterministic and validated before archive creation.
-A stable candidate and a beta release with different product identities are not interchangeable uploads.
-A new upload gets a new reserved build identity. Reusing an already uploaded build for review/promotion selects that exact build rather than uploading replacement bytes.
+A newly constructed candidate gets a new reserved build identity. Reusing an already uploaded build for review/promotion selects that exact build rather than uploading replacement bytes.
 See [Apple build selection](https://developer.apple.com/help/app-store-connect/manage-builds/choose-a-build-to-submit/).
 
 Tags have product prefixes. A published tag never moves to another source commit.
@@ -77,7 +85,7 @@ The release workflow is the only tag-creation owner; tag pushes do not trigger a
 GitHub Releases remain in this repository, each associated with its product tag and product-scoped notes.
 See [GitHub releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases).
 
-## 4. Eight first-class workflow entry points
+## 4. Eight product workflow entry points and one promotion entry point
 
 All names below are target files under `.github/workflows/`; they do not currently exist.
 
@@ -91,6 +99,7 @@ All names below are target files under `.github/workflows/`; they do not current
 Do not replace these entry points with one generic workflow selected by a product flag.
 Shared scripts or reusable jobs may remove proven duplication while preserving these independent entries.
 Existing PR checks remain shared quality checks; they do not replace any product build or release workflow.
+Add `promote.yml` as a separate manual workflow shared by all four products.
 
 ### Build workflows
 
@@ -107,7 +116,9 @@ Development builds may record dirty source identity, but cannot be promoted to p
 
 ### Release workflows
 
-Each release workflow supports `workflow_dispatch` with source ref, product version, channel and selected targets/destinations.
+Each release workflow supports `workflow_dispatch` with source ref, product version, build number, channel and selected targets/destinations.
+Channel must be `alpha` or `stable`. Direct stable publication is allowed without prior alpha publication.
+Both paths enforce the required stable gates when publishing to stable.
 Version and build identity must match the checked-in metadata at the resolved source SHA.
 A release calls its own build workflow through `workflow_call` at the same immutable revision.
 It consumes the returned exact run/artifact identities, rather than searching for the latest successful build.
@@ -126,13 +137,42 @@ Different products may release concurrently.
 Resuming the same product/version/build identity reuses matching artifacts and receipts.
 A conflicting source SHA or payload digest stops publication rather than overwriting it.
 
+### CLI npm distribution
+
+Reuse the established `@uniclipboard/cli` main-package and platform-package pattern from main, adapting its old `uniclip`/`uniclipd` payloads to the new `unic`/`unicd` pair.
+Expose both `unic` and `uniclip` through the same npm launcher. npm creates platform-appropriate command links/shims; do not publish a second executable implementation for the alias.
+The main package pins every selected platform package to an exact registry version. Publish and verify platform packages before exposing the main package.
+CLI release identity remains product version plus build number. Define a collision-free npm `package.json.version` mapping before implementing publication; npm has one immutable record per package name/version, not an independent build-number field.
+Do not assume `+build.N` provides distinct registry identities or update ordering. The exact registry encoding remains unresolved and must not include channel names.
+Map product alpha to npm's `alpha` dist-tag. Map stable to npm's conventional `latest` dist-tag so a default install selects stable; this is a destination mapping, not a third product channel.
+CLI promotion verifies existing exact registry versions, tarball integrity and the pinned dependency set, then updates dist-tags without rebuilding or republishing packages.
+Direct stable publication publishes the same package shape and sets the stable destination tag after required checks.
+Reuse OIDC trusted publishing. A new release/promote workflow identity requires corresponding per-package npm Trusted Publisher configuration, including permission to manage dist-tags where required.
+No CLI release, registration type, channel or R2 publication is required in FlareRelease.
+
+### Promotion workflow
+
+`promote.yml` accepts product, version, build number and explicit targets/destinations.
+Its source is the exact alpha build identified by those inputs and its immutable manifest digest.
+For file distribution, download the recorded final assets from durable storage, verify their hashes and distribution signatures, and upload the identical bytes to the stable destination.
+For CLI, use the npm dist-tag operation above against already published packages; no FlareRelease call or tarball re-upload is needed.
+Do not compile, re-sign, repackage, edit embedded configuration or substitute dependencies during promotion.
+An alpha build eligible for promotion must already meet the required distribution signing/export conditions.
+Ordinary debug or dirty-source builds do not become eligible merely because they are labelled alpha.
+For managed stores, reuse the existing store build/release identity and submit or promote it through that store's supported operation.
+Do not download and blindly re-upload an already registered store build.
+Read back availability separately from submission, review and processing.
+Preserve the alpha publication record and original manifest; append a stable publication receipt.
+An identical retry resumes matching publication state. A missing artifact or conflicting digest fails before advancing a stable pointer.
+Release and promotion share the product publication serialization and expected-prior-pointer checks.
+
 ## 5. Artifact and target ownership
 
 | Product | Candidate/verification outputs | Distribution outputs |
 |---|---|---|
 | Android | Native build outputs, binding identity, device/allowed automated acceptance receipt | Signed APK for direct distribution; signed AAB for Play distribution |
 | iOS | Simulator verification output plus separately identified device archive/export | Distribution-signed device payload and App Store Connect/TestFlight receipts; IPA only where the distribution method allows it |
-| CLI | UI-free `unic`/`unicd` pair and production headless E2E receipt | Versioned OS/architecture archives and checksums |
+| CLI | UI-free `unic`/`unicd` pair and production headless E2E receipt | npm main package and exact-version platform packages with registry integrity and build provenance |
 | Desktop | Native GUI, bundled CLI identity, packaging/integration acceptance receipt | Signed Windows installer, signed/notarized macOS package, and declared Linux package/archive formats |
 
 The implementation selects and checks in required target matrices before enabling public releases.
@@ -142,12 +182,12 @@ Mobile ABI, deployment-target and native SDK settings belong to their real appli
 A target declaration is not a claim of existing native support.
 An unimplemented application or unsupported declared target fails clearly, rather than uploading a placeholder artifact or reporting a successful release.
 
-Names include product, product version, OS and architecture where applicable, for example:
+Names include product, product version, build number, OS and architecture where applicable, for example:
 
 ```text
-unic-cli-1.2.0-linux-arm64.tar.gz
-unic-cli-1.2.0-windows-amd64.zip
-unic-desktop-1.5.0-macos-arm64.dmg
+unic-cli-1.2.0-41-linux-arm64.tar.gz
+unic-cli-1.2.0-41-windows-amd64.zip
+unic-desktop-1.5.0-23-macos-arm64.dmg
 unic-android-0.8.0-42.apk
 unic-android-0.8.0-42.aab
 unic-ios-0.6.0-17-device.xcarchive.zip
@@ -161,15 +201,19 @@ A cache is never a release authority. A repository-wide "latest release" is neve
 ## 6. Desktop bundles lock an existing CLI release
 
 Desktop and CLI versions may differ, for example Desktop `1.5.0` with CLI `1.2.0`.
-The Desktop release locks a published CLI release and its manifest digest.
-For each selected target it fetches the exact CLI archive, verifies its digest and reuses the `unic`/`unicd` bytes.
+The Desktop release locks a published CLI version, build number, exact npm identities, registry integrity and manifest digest.
+For each selected target it fetches the exact npm platform package, verifies its integrity and component digests, and reuses the `unic`/`unicd` bytes.
 It must not rebuild current CLI source and label it as the locked CLI version.
 If the required CLI version is not published, release CLI first; Desktop fails preflight until that dependency is available.
 This is an explicit dependency, not a cross-product auto-release chain.
+Before either direct stable publication or promotion of Desktop, the exact locked CLI build must be available in stable for every selected target.
+Verify this through npm's stable destination tag and its exact main/platform package set, not a CLI channel in FlareRelease.
+An alpha-only CLI dependency blocks Desktop stable publication even if another build of that CLI version is stable.
+Publish or promote that CLI build first. Do not replace the bundled pair during Desktop promotion.
 
 Desktop acceptance verifies the actual installer layout, service ownership and installed GUI-to-daemon IPC behavior with the locked pair.
-`unic-desktop` has its own product version. Bundled `unic`/`unicd` report their CLI version.
-The final bundle manifest records every component's version, source commit and payload hash.
+`unic-desktop` has its own product version and build number. Bundled `unic`/`unicd` report their CLI version and build number.
+The final bundle manifest records every component's version, build number, source commit and payload hash.
 Installers prevent duplicate daemon ownership when standalone CLI and Desktop installations coexist.
 Replacing a user-installed service requires an explicit ownership/version policy; uninstall must not remove another installation's service or user data.
 The packaging implementation must define that policy before distribution acceptance.
@@ -178,7 +222,7 @@ The packaging implementation must define that policy before distribution accepta
 
 Each immutable candidate manifest includes:
 
-- Product ID, product version, channel intent, and Android/iOS native version/build mapping where applicable.
+- Product ID, product version, build number, and Android/iOS native version/build mapping where applicable.
 - Source SHA, complete build-input identity, clean-source assertion, workflow revision, run ID and attempt.
 - OS, architecture/ABI, toolchain/SDK versions, selected required targets and destinations.
 - Final asset names, sizes, SHA-256 hashes, durable artifact identity and signature/notarization result.
@@ -186,11 +230,24 @@ Each immutable candidate manifest includes:
 - Local IPC/network protocol identifiers and the compatibility/integration acceptance receipt.
 - Applicable automated/native acceptance evidence; unrun checks are explicit and cannot satisfy a required gate.
 
-A separate publication receipt references that immutable manifest and records external destination IDs and observed states.
+A separate publication receipt references that immutable manifest and records channel, external destination IDs and observed states.
 Uploading or promoting a release does not rewrite the immutable build manifest.
 Native/store identities, signed installer identity and installed-file identity may differ; record the relevant stage rather than assuming one hash covers them all.
 
 ## 8. Channels and partial publication
+
+There are exactly two product channels: `alpha` for internal development testing and `stable` for formal releases.
+All four products, including CLI, use this model.
+Supported publication paths are build → alpha → promote → stable, and build → stable.
+A build can remain available in both channels. Promotion does not create a different build.
+
+Within each product, alpha and stable share application/package identity, installation location, service identity and default data directory.
+Switching channels replaces the existing installation and preserves its data; it does not install a second application or daemon.
+Existing explicit profile overrides remain separate profiles; channels do not create implicit profiles.
+Channel selection belongs to installation/update configuration and publication metadata, not channel-specific payload bytes.
+CLI and Desktop remain distinct products; their existing installation/service ownership policy still applies.
+Switching to stable does not authorize an implicit downgrade when an installed alpha build is newer.
+Data compatibility and native update restrictions must be checked before allowing a channel switch to install another build.
 
 Resolve updates by `(product, channel, OS, architecture/ABI, destination)`.
 Only relevant selectors are used for a product; iOS store delivery is not exposed as a generic raw-binary download.
@@ -221,3 +278,42 @@ Native build-number rules still apply; repair installed clients through a valid 
 
 This is a target design. It does not claim that workflow files, native applications, version injection, store delivery or channel infrastructure exist.
 After implementation, move current behavior and exact schemas into the intended architecture/contract pages before archiving this decision.
+
+## 11. Remaining design choices
+
+The confirmed requirements are two channels, version plus build number for every product, optional alpha before stable, exact-build promotion, stable CLI dependencies for stable Desktop, and shared application identity/data across channels.
+The following recommendations still require a decision before implementation:
+
+- Allocate build numbers independently per product and increase them across versions and channels; allow gaps.
+- Order update candidates by product version and then build number; prevent ordinary publication from moving a channel backward.
+- Use one canonical immutable asset set per build and separate channel records, retaining alpha history after promotion. Select the durable storage and GitHub Release metadata mapping.
+- Define channel-switch persistence and the user-visible result when the selected channel has no installable newer build.
+- Finalize the build tag format shown in section 2 and destination-specific native version/build mappings.
+- Define the channel-free npm registry version encoding for product version plus build number, stable-to-`latest` mapping and per-package OIDC publish/dist-tag trust. The `latest` mapping is recommended; registry identity encoding remains open.
+- Decide the public download-page layout. Product release records remain independent; one landing page can aggregate all four products without coupling their versions.
+
+These recommendations do not establish an implemented updater, storage service or confirmed store capability.
+
+## 12. Existing distribution infrastructure
+
+Reuse the existing R2 bucket and FlareRelease registration/channel authority for Desktop and mobile distribution. Reuse npm for CLI distribution.
+The [infrastructure audit](../../exec/0018-release-infrastructure-audit.md) records the inspected main revisions, available configuration names and required integration changes.
+Source inspection and configuration-name visibility do not prove deployed capability or credential validity.
+
+The existing FlareRelease API is not yet sufficient for Desktop/mobile: it identifies releases by product/version, binds promotion to a prerelease flag, and exposes Android beta rather than the required alpha channel.
+Implement its build-number identity, Desktop/mobile alpha/stable channels, artifact integrity and shared-build rollback behavior before enabling those publication paths.
+Do not add a CLI registration variant; npm owns CLI publication and channel state.
+Do not encode a build number into a product version to bypass those constraints.
+
+For Desktop/mobile file distribution, R2 remains the canonical artifact store and FlareRelease owns channel state. npm owns CLI packages and dist-tags.
+If stable uses the same R2 object as alpha, promotion reuses that immutable object and publishes stable metadata.
+If a destination requires a separate upload, promotion downloads and verifies the original bytes before uploading them unchanged.
+Finalize that destination mapping before implementing promotion; do not assume two channels require two physical R2 copies.
+Release receipts distinguish npm publication/dist-tags, R2 upload, FlareRelease Ready registration and public channel availability as applicable.
+GitCode mirroring and source-repository synchronization are outside the current implementation scope. Preserve existing mirror behavior without extending or activating it.
+
+GitHub release records use product/build tags in this monorepo. Android, iOS, Desktop and CLI each own separate notes, assets and availability.
+A single GitHub Releases index can contain those independent records. No combined mobile/desktop version is required.
+The FlareRelease administration UI can remain unified with product filters.
+A public download landing page can present Desktop, Android, iOS and CLI together while resolving each product/channel independently.
+The exact landing-page layout remains a design recommendation, not an implemented or separately confirmed UI requirement.

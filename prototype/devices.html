@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>unic · 管理设备（原型）</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#e9e9ee;--sheet:#fff;--side:#f4f4f7;--line:#e2e2e8;--text:#1d1d22;--sub:#6b6b76;--acc:#2f6bff;--acc-t:#eaf0ff;--ok:#1fa35c;--warn:#d9a400;--slow:#e8761a;--bad:#d93b3b;--r:10px}
+@media(prefers-color-scheme:dark){:root{--bg:#141418;--sheet:#1e1e24;--side:#25252c;--line:#34343d;--text:#f0f0f4;--sub:#9a9aa6;--acc-t:#222f52}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,"PingFang SC",system-ui,sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}
+button{font:inherit;color:inherit;cursor:pointer}
+.note{position:fixed;top:8px;left:12px;font-size:12px;color:var(--sub)}
+.note label{margin-left:10px}
+.sheet{width:min(920px,100%);height:600px;background:var(--sheet);border-radius:14px;box-shadow:0 20px 60px #0004;display:flex;flex-direction:column;overflow:hidden}
+.top{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600}
+.btn{border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:6px 12px}
+.btn:hover{background:var(--side)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.pri:disabled{opacity:.4;cursor:not-allowed}
+.btn.danger{color:var(--bad)}
+.banner{background:#fff4d6;color:#7a5b00;padding:8px 16px;font-size:13px;border-bottom:1px solid var(--line)}
+.body{flex:1;display:flex;min-height:0}
+.side{width:290px;background:var(--side);border-right:1px solid var(--line);overflow:auto;padding:8px}
+.sec{font-size:11px;color:var(--sub);padding:10px 8px 4px;text-transform:uppercase;letter-spacing:.04em;display:flex;justify-content:space-between}
+.badge{background:var(--bad);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}
+.row{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;cursor:pointer}
+.row:hover{background:#0000000a}
+.row.sel{background:var(--acc-t)}
+.row.dim{opacity:.55}
+.ic{width:32px;height:32px;border-radius:8px;background:var(--line);display:grid;place-items:center;font-size:17px;flex:none}
+.row .t{flex:1;min-width:0}
+.row .t b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .t span{font-size:12px;color:var(--sub)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:#aaa}
+.ok{background:var(--ok)}.warn{background:var(--warn)}.slow{background:var(--slow)}.bad{background:var(--bad)}.pend{background:var(--acc)}
+.detail{flex:1;overflow:auto;padding:18px 22px}
+.head{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.head .ic{width:52px;height:52px;font-size:28px;border-radius:12px}
+.head h2{margin:0;font-size:18px;display:flex;align-items:center;gap:8px}
+.tag{font-size:11px;background:var(--line);border-radius:5px;padding:1px 6px;color:var(--sub);font-weight:400}
+.sub{color:var(--sub);font-size:12px}
+.card{border:1px solid var(--line);border-radius:var(--r);margin-bottom:14px}
+.card h3{margin:0;padding:10px 14px 0;font-size:12px;color:var(--sub);font-weight:600}
+.item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line)}
+.card h3+.item{border-top:0}
+.item small{display:block;color:var(--sub);font-size:12px}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:12px 14px}
+.stat div b{display:block;font-size:20px;font-weight:600}
+.stat div span{font-size:12px;color:var(--sub)}
+.spark{display:flex;align-items:flex-end;gap:3px;height:30px}
+.spark i{width:6px;background:var(--acc);border-radius:2px;opacity:.7}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:none;padding:6px 12px;border-right:1px solid var(--line)}
+.seg button:last-child{border:0}
+.seg button.on{background:var(--acc);color:#fff}
+.sw{width:38px;height:22px;border-radius:11px;background:var(--line);position:relative;border:0;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s}
+.sw.on{background:var(--ok)}.sw.on::after{left:18px}
+.sw:disabled{opacity:.4}
+.summary{background:var(--acc-t);border-radius:8px;padding:8px 12px;margin:0 14px 12px;font-size:13px}
+.fp{font:600 15px ui-monospace,Menlo,monospace;letter-spacing:.04em;word-break:break-all}
+.foot{display:flex;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--line);position:relative}
+.menu{position:absolute;bottom:50px;left:16px;background:var(--sheet);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px #0003;min-width:220px;padding:4px;z-index:5}
+.menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px}
+.menu button:hover{background:var(--side)}
+.task{max-width:480px;margin:0 auto;padding:30px 10px;text-align:center}
+.task .ic{margin:0 auto 10px;width:56px;height:56px;font-size:30px}
+.code{font:700 40px ui-monospace,Menlo,monospace;letter-spacing:.12em;margin:14px 0 4px}
+input[type=text]{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--sheet);color:var(--text);font:inherit}
+.err{color:var(--bad);font-size:13px;min-height:20px;margin:6px 0;text-align:left}
+.hint{color:var(--sub);font-size:12px;text-align:left;margin:6px 0}
+.actions{display:flex;gap:8px;justify-content:center;margin-top:14px}
+.empty{text-align:center;color:var(--sub);padding:80px 20px}
+.modal{position:fixed;inset:0;background:#0006;display:grid;place-items:center;z-index:9}
+.modal>div{background:var(--sheet);border-radius:12px;padding:20px;width:400px}
+.modal ul{padding-left:18px;color:var(--sub);font-size:13px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="note">原型 · 全部假数据 ·
+  <label><input type="checkbox" id="gs" checked> 全局同步开启</label>
+  <label><input type="checkbox" id="emp"> 清空设备（空状态）</label>
+</div>
+<div class="sheet" id="app"></div>
+<div id="modal"></div>
+
+<script>
+const ICON={desktop:"🖥️",laptop:"💻",phone:"📱"};
+const mk=()=>({
+  devices:[
+    {id:"local",name:"MacBook Pro",plat:"macOS 15",icon:"laptop",local:true,online:true,fp:"—",paths:[]},
+    {id:"d1",name:"办公室台式机",plat:"Windows 11",icon:"desktop",online:true,ms:15,link:"局域网",dir:"both",t:1,i:1,f:1,seen:"刚刚",fp:"8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
+      paths:[{n:"tailcat · 默认",s:"已连接",sync:"1 分钟前"}],hist:[14,15,13,16,15,18,14,15,15,15]},
+    {id:"d2",name:"家里 iMac",plat:"macOS 14",icon:"desktop",online:true,ms:180,link:"中继",dir:"send",t:1,i:1,f:0,seen:"刚刚",fp:"1C77 90AE 5B24 E6F1 03D9 A78B 4C52 8E10",
+      paths:[{n:"tailcat · 默认",s:"已连接（经中继）",sync:"12 分钟前"},{n:"tailcat · 工作仓库",s:"对方未批准",err:true,sync:"—"}],hist:[160,175,190,170,185,200,180,175,182,180]},
+    {id:"d3",name:"旧笔记本",plat:"Ubuntu 24.04",icon:"laptop",online:false,dir:"both",t:1,i:0,f:0,seen:"3 小时前",fp:"E310 4B6A 92CF 7D05 18A3 CC42 6F9B 20D7",
+      paths:[{n:"tailcat · 默认",s:"不可达",err:true,sync:"3 小时前"}],hist:[]},
+    {id:"d4",name:"iPhone 15",plat:"iOS 19",icon:"phone",online:true,ms:62,link:"直连打洞",dir:"recv",t:1,i:1,f:0,seen:"刚刚",fp:"5D08 AA13 7E42 9B6C F1D4 30E7 82A5 C619",
+      paths:[{n:"tailcat · 默认",s:"已连接",sync:"5 分钟前"}],hist:[60,65,58,70,62,61,64,60,63,62]}
+  ],
+  pending:[{id:"p1",name:"新电脑",plat:"Windows 11",icon:"desktop",via:"配对码 482-913",fp:"4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D"}],
+  cands:[{id:"c1",name:"Alice 的平板",by:"办公室台式机 介绍",icon:"phone"}],
+  sel:"d1",task:null,menu:false,gs:true
+});
+let S=mk();
+const $=s=>document.querySelector(s);
+const dev=id=>S.devices.find(d=>d.id===id);
+const tone=d=>!d.online?"":d.ms<50?"ok":d.ms<200?"warn":"slow";
+const stText=d=>d.local?"本机":d.online?`在线 · ${d.ms} ms`:`离线 · ${d.seen}`;
+
+function summary(d){
+  if(d.dir==="pause")return "同步已暂停。信任和路径保留，不传输任何内容。";
+  const k=[d.t&&"文字",d.i&&"图片",d.f&&"文件"].filter(Boolean);
+  if(!k.length)return "未选择任何内容类型，不会同步。";
+  const w={both:"双向同步",send:"仅发送到此设备",recv:"仅从此设备接收"}[d.dir];
+  return `${k.join("、")}：${w}。`;
+}
+const sw=(on,k,dis)=>`<button class="sw ${on?"on":""}" data-act="tog" data-k="${k}" ${dis?"disabled":""}></button>`;
+
+function row(d,extra=""){
+  return `<div class="row ${S.sel===d.id&&!S.task?"sel":""} ${!d.online&&!d.local?"dim":""}" data-act="sel" data-id="${d.id}">
+   <div class="ic">${ICON[d.icon]}</div><div class="t"><b>${d.name}</b><span>${stText(d)}</span></div>
+   <span class="dot ${tone(d)}"></span></div>`;
+}
+function side(){
+  let h="";
+  if(S.pending.length)h+=`<div class="sec">待批准 <span class="badge">${S.pending.length}</span></div>`+S.pending.map(p=>`
+   <div class="row" data-act="approve" data-id="${p.id}"><div class="ic">${ICON[p.icon]}</div>
+   <div class="t"><b>${p.name}</b><span>请求加入 · ${p.via}</span></div><span class="dot pend"></span></div>`).join("");
+  const loc=S.devices.filter(d=>d.local),peers=S.devices.filter(d=>!d.local).sort((a,b)=>b.online-a.online);
+  h+=`<div class="sec">本机</div>`+loc.map(row).join("");
+  h+=`<div class="sec">已关联设备</div>`+(peers.map(row).join("")||`<div class="sub" style="padding:8px">暂无</div>`);
+  if(S.cands.length)h+=`<div class="sec">可能认识的设备</div>`+S.cands.map(c=>`
+   <div class="row"><div class="ic">${ICON[c.icon]}</div><div class="t"><b>${c.name}</b><span>${c.by}</span></div>
+   <button class="btn" data-act="cand" data-id="${c.id}" data-v="join">连接</button>
+   <button class="btn" data-act="cand" data-id="${c.id}" data-v="ign">忽略</button></div>`).join("");
+  return h;
+}
+function detail(){
+  const d=dev(S.sel);
+  if(!d)return `<div class="empty"><div style="font-size:44px">🔗</div><h3>还没有关联设备</h3><p>邀请或连接另一台设备，开始同步剪贴板。</p><button class="btn pri" data-act="task" data-v="invite">邀请设备</button></div>`;
+  const head=`<div class="head"><div class="ic">${ICON[d.icon]}</div><div><h2>${d.name} ${d.local?'<span class="tag">本机</span>':""}
+   ${d.local?"":'<button class="btn" data-act="rename" style="font-size:12px;padding:2px 8px">重命名</button>'}</h2>
+   <div class="sub">${d.plat} · ${d.local?"这台设备":d.online?"在线":"离线"}</div></div></div>`;
+  if(d.local)return head+`<div class="card"><h3>说明</h3><div class="item"><div>本机无需配置同步策略。<small>可在其他设备上控制它与本机之间的同步。</small></div></div></div>`;
+  const spark=d.hist.length?`<div class="spark">${d.hist.map(v=>`<i style="height:${Math.min(30,6+v/8)}px"></i>`).join("")}</div>`:"";
+  const conn=`<div class="card"><h3>连接状态</h3><div class="stat">
+   <div><b>${d.online?d.ms+" ms":"—"}</b><span>延迟 ${d.online?"":"（离线）"}</span></div>
+   <div><b>${d.online?d.link:"—"}</b><span>连接方式</span></div>
+   <div><b>${d.seen}</b><span>最近活动</span></div></div>
+   ${d.online?`<div class="item"><span class="sub">最近 10 次延迟</span>${spark}</div>`:`<div class="item"><span class="sub">设备离线，恢复后自动重连并补发。</span></div>`}</div>`;
+  const off=d.dir==="pause";
+  const pol=`<div class="card"><h3>同步策略</h3>
+   <div class="item"><div>同步方向<small>控制内容在本机与此设备间的流向</small></div>
+    <div class="seg">${[["both","双向"],["send","仅发送"],["recv","仅接收"],["pause","暂停"]].map(([k,l])=>`<button class="${d.dir===k?"on":""}" data-act="dir" data-k="${k}">${l}</button>`).join("")}</div></div>
+   <div class="item"><div>文字</div>${sw(d.t,"t",off)}</div>
+   <div class="item"><div>图片</div>${sw(d.i,"i",off)}</div>
+   <div class="item"><div>文件<small>受全局 100 MB 上限限制（只读）</small></div>${sw(d.f,"f",off)}</div>
+   <div class="item" style="padding:0;border:0"></div><div class="summary">${summary(d)}</div></div>`;
+  const paths=`<div class="card"><h3>路径</h3>${d.paths.map(p=>`<div class="item"><div>${p.n}<small>${p.s} · 最近同步 ${p.sync}</small></div>
+   <span class="dot ${p.err?"bad":"ok"}"></span></div>`).join("")}</div>`;
+  const sec=`<div class="card"><h3>安全</h3><div class="item"><div><div class="fp">${d.fp}</div><small>与对方屏幕上的指纹比对</small></div>
+   <button class="btn" data-act="copy">复制</button></div></div>`;
+  const danger=`<div class="card"><h3>危险操作</h3><div class="item"><div>移除此设备<small>撤销全部路径，需重新配对</small></div>
+   <button class="btn danger" data-act="rm">移除…</button></div></div>`;
+  return head+conn+pol+paths+sec+danger;
+}
+function taskView(){
+  const t=S.task;
+  const back=`<button class="btn" data-act="task" data-v="">返回设备列表</button>`;
+  if(t.k==="invite"){
+    return `<div class="task"><div class="ic">➕</div><h2>邀请设备</h2>
+    ${t.mode==="ticket"?`<div class="sub">在另一台设备上粘贴完整票据</div><div class="fp" style="margin:14px 0;text-align:left;background:var(--side);padding:12px;border-radius:8px">unic-pair:AQ7xK2…（已隐藏，点复制）</div>
+      <div class="sub">${fmt(t.left)} 后失效 · 仅可使用一次</div>`
+     :`<div class="sub">在另一台设备上输入配对码</div><div class="code">${t.code}</div><div class="sub">${fmt(t.left)} 后失效 · 仅可使用一次</div>`}
+    <p class="hint">对方加入后，你仍需核对指纹并批准。重新生成会让旧码立即失效。</p>
+    <div class="actions"><button class="btn" data-act="regen">重新生成</button>
+    <button class="btn" data-act="mode">${t.mode==="ticket"?"改用配对码":"改用完整票据"}</button>
+    ${t.mode==="ticket"?'<button class="btn" data-act="copy">复制票据</button>':""}
+    <button class="btn pri" data-act="simreq">模拟对方加入</button></div>
+    <div class="actions">${back}</div></div>`;
+  }
+  if(t.k==="connect"){
+    const kind=/^\d{3}-?\d{3}$/.test(t.v.trim())?"配对码":/^unic-pair:/.test(t.v.trim())?"完整票据":"";
+    return `<div class="task"><div class="ic">🔗</div><h2>连接设备</h2><div class="sub">输入对方提供的配对码或完整票据</div>
+    <div style="margin-top:14px"><input type="text" id="cin" placeholder="482-913 或 unic-pair:…" value="${t.v}"></div>
+    <div class="hint">${kind?`识别为：${kind}`:"支持 6 位配对码（NNN-NNN）或 unic-pair: 开头的完整票据"}</div>
+    <div class="err">${t.err||""}</div>
+    <div class="actions"><button class="btn pri" data-act="go" ${kind?"":"disabled"}>连接</button>${back}</div></div>`;
+  }
+  if(t.k==="wait")return `<div class="task"><div class="ic">⏳</div><h2>等待对方批准</h2><div class="sub">请在对方设备上核对下方指纹并批准。</div>
+    <div class="fp" style="margin:16px 0">4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D</div>
+    <div class="actions"><button class="btn pri" data-act="simok">模拟对方批准</button><button class="btn" data-act="simfail">模拟失败</button>${back}</div></div>`;
+  if(t.k==="phone")return `<div class="task"><div class="ic">📱</div><h2>连接手机</h2>
+    <div style="text-align:left" class="card"><div class="item"><div>1. 安装 UniClipboard<small>打开手机端应用</small></div>✓</div>
+    <div class="item"><div>2. 连接同一局域网<small>手机与电脑使用同一网络</small></div>✓</div>
+    <div class="item"><div>3. 在手机上输入配对码<small>点「邀请设备」获取</small></div><button class="btn pri" data-act="task" data-v="invite">获取配对码</button></div></div>
+    <div class="actions">${back}</div></div>`;
+  if(t.k==="approve"){
+    const p=S.pending.find(x=>x.id===t.id);
+    return `<div class="task"><div class="ic">${ICON[p.icon]}</div><h2>${p.name} 请求加入</h2>
+    <div class="sub">名称由对方自报，未经验证 · ${p.plat} · 来路：${p.via}</div>
+    <div class="fp" style="margin:16px 0;background:var(--side);padding:14px;border-radius:8px">${p.fp}</div>
+    <label style="display:flex;gap:8px;justify-content:center"><input type="checkbox" id="ck" ${t.ck?"checked":""}> 我已在对方设备上核对，指纹完全一致</label>
+    <p class="hint" style="text-align:center">拒绝等同于移除：对方再次拨入会重新出现在待批准里。</p>
+    <div class="actions"><button class="btn pri" data-act="ok" ${t.ck?"":"disabled"}>批准</button><button class="btn danger" data-act="deny">拒绝</button>${back}</div></div>`;
+  }
+}
+const fmt=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+const newCode=()=>String(Math.floor(Math.random()*900+100))+"-"+String(Math.floor(Math.random()*900+100));
+
+function render(){
+  const empty=!S.devices.some(d=>!d.local)&&!S.pending.length;
+  $("#app").innerHTML=`<div class="top"><span>管理设备</span><button class="btn pri" data-act="done">完成</button></div>
+  ${S.gs?"":'<div class="banner">全局同步已关闭，设备策略暂不生效。设备管理与配对仍可使用。</div>'}
+  <div class="body"><div class="side">${side()}</div><div class="detail">${S.task?taskView():detail()}</div></div>
+  <div class="foot"><div>
+    ${S.task?"":`<button class="btn" data-act="menu">＋ 添加设备</button>`}
+    ${S.menu?`<div class="menu"><button data-act="task" data-v="invite">邀请设备（配对码）</button>
+      <button data-act="task" data-v="connect">连接设备（配对码或地址）</button>
+      <button data-act="task" data-v="phone">连接手机</button></div>`:""}</div>
+    <button class="btn danger" data-act="rm" ${S.task||!S.sel||S.sel==="local"||!dev(S.sel)?"disabled":""}>移除设备…</button></div>`;
+  const ci=$("#cin");if(ci){ci.focus();ci.setSelectionRange(ci.value.length,ci.value.length);
+    ci.oninput=e=>{S.task.v=e.target.value;S.task.err="";render()}}
+  const ck=$("#ck");if(ck)ck.onchange=e=>{S.task.ck=e.target.checked;render()};
+}
+function modal(html){$("#modal").innerHTML=html?`<div class="modal"><div>${html}</div></div>`:""}
+
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");
+  if(!b){if(S.menu){S.menu=false;render()}return}
+  const a=b.dataset.act,id=b.dataset.id,v=b.dataset.v,k=b.dataset.k;
+  if(a!=="menu")S.menu=false;
+  const d=dev(S.sel);
+  switch(a){
+    case"sel":S.sel=id;S.task=null;break;
+    case"menu":S.menu=!S.menu;break;
+    case"dir":d.dir=k;break;
+    case"tog":d[k]=d[k]?0:1;break;
+    case"task":S.task=v?(v==="invite"?{k:"invite",code:newCode(),left:300,mode:"code"}:v==="connect"?{k:"connect",v:"",err:""}:{k:v}):null;break;
+    case"regen":S.task.code=newCode();S.task.left=300;break;
+    case"mode":S.task.mode=S.task.mode==="ticket"?"code":"ticket";S.task.left=300;break;
+    case"copy":b.textContent="已复制";return;
+    case"simreq":S.pending.push({id:"p"+Date.now(),name:"新电脑",plat:"Windows 11",icon:"desktop",via:"配对码 "+S.task.code,fp:"4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D"});S.task=null;break;
+    case"approve":S.task={k:"approve",id,ck:false};break;
+    case"ok":{const p=S.pending.find(x=>x.id===S.task.id);S.pending=S.pending.filter(x=>x!==p);
+      S.devices.push({id:p.id,name:p.name,plat:p.plat,icon:p.icon,online:true,ms:22,link:"局域网",dir:"both",t:1,i:1,f:1,seen:"刚刚",fp:p.fp,paths:[{n:"tailcat · 默认",s:"已连接",sync:"—"}],hist:[22,21,23,22,22,24,21,22,23,22]});
+      S.sel=p.id;S.task=null;break}
+    case"deny":S.pending=S.pending.filter(x=>x.id!==S.task.id);S.task=null;break;
+    case"go":if(/^\d{3}-?\d{3}$/.test(S.task.v.trim())&&S.task.v.replace(/\D/g,"")==="000000"){S.task.err="配对码无效或已过期。";break}S.task={k:"wait"};break;
+    case"simok":S.devices.push({id:"j"+Date.now(),name:"对方设备",plat:"macOS 15",icon:"laptop",online:true,ms:35,link:"直连打洞",dir:"both",t:1,i:1,f:1,seen:"刚刚",fp:"4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D",paths:[{n:"tailcat · 默认",s:"已连接",sync:"—"}],hist:[35,36,34,35,37,35,36,35,34,35]});S.sel=S.devices[S.devices.length-1].id;S.task=null;break;
+    case"simfail":S.task={k:"connect",v:"",err:"对方拒绝了请求，或网络不通。请检查后重试。"};break;
+    case"cand":S.cands=S.cands.filter(c=>c.id!==id);if(v==="join")S.task={k:"wait"};break;
+    case"rename":{const n=prompt("设备名称",d.name);if(n)d.name=n;break}
+    case"rm":modal(`<h3 style="margin-top:0">移除「${d.name}」？</h3><ul><li>撤销此设备的全部同步路径</li><li>对方需要重新配对并重新批准</li><li>已同步到对方的内容无法撤回</li></ul>
+      <div class="actions" style="justify-content:flex-end"><button class="btn" id="mc">取消</button><button class="btn pri" style="background:var(--bad);border-color:var(--bad)" id="mo">移除</button></div>`);
+      $("#mc").onclick=()=>modal("");
+      $("#mo").onclick=()=>{S.devices=S.devices.filter(x=>x!==d);S.sel=(S.devices.find(x=>!x.local)||S.devices[0]||{}).id;modal("");render()};return;
+    case"done":b.textContent="（原型：关闭 sheet）";return;
+  }
+  render();
+});
+$("#gs").onchange=e=>{S.gs=e.target.checked;render()};
+$("#emp").onchange=e=>{if(e.target.checked){S.devices=S.devices.filter(d=>d.local);S.pending=[];S.cands=[];S.sel="local"}else{const g=S.gs;S=mk();S.gs=g}render()};
+setInterval(()=>{if(S.task&&S.task.k==="invite"){S.task.left=Math.max(0,S.task.left-1);const el=document.querySelector(".task .sub:nth-of-type(2)");render()}},1000);
+render();
+</script>
+</body>
+</html>

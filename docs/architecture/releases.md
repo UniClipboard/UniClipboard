@@ -76,7 +76,7 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-The initial `0.1.0 (1)` entries are local candidate seeds. Public version allocation and the npm legacy-tag transition require review before publication. Public OIDC/provenance, remote native runners and real GitHub publication have not been accepted locally.
+The selected next CLI version is `2.0.0 (1)`, encoded as `2.0.0-build.1` on npm. Alpha selects the `alpha` dist-tag. Other products retain their independent local candidate seeds. The npm legacy-tag transition and workflow authorization remain publication prerequisites. Public OIDC/provenance, remote native runners and real GitHub publication have not been accepted locally.
 
 Desktop does not yet consume the immutable CLI lock or provide signed installers, R2 uploads or FlareRelease registration. Its stable CLI gate remains a required future implementation. Android and iOS lack native application projects. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
 

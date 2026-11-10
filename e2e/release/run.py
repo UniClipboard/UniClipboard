@@ -124,7 +124,7 @@ class Registry(BaseHTTPRequestHandler):
             packages[name]["dist-tags"][tag] = body
             tag_writes.append((name, tag, body))
             return self.send({"ok": True})
-        if fail_tag == "publish":
+        if fail_tag == "publish" and key == "@uniclipboard/cli":
             fail_tag = None
             return self.send({"error": "injected package upload failure"}, 503)
         name = body["name"]
@@ -355,12 +355,23 @@ try:
             distribute("publish", second, "stable", 1)["status"] == "failed",
         )
         check(
+            "platform publication completed before main upload failure",
+            packages[name]["dist-tags"]["latest"] == "9.7.0-build.42"
+            and "9.7.0-build.42" in packages[name]["versions"],
+        )
+        check(
             "main stable stays on previous build after platform failure",
             packages["@uniclipboard/cli"]["dist-tags"]["latest"] == "9.7.0-build.41",
         )
+        completed_uploads = len(uploads)
         check(
             "retry completes direct stable publication",
             distribute("publish", second, "stable")["status"] == "available",
+        )
+        check(
+            "retry uploads only the previously missing main package",
+            len(uploads) == completed_uploads + 1
+            and uploads[-1][0] == "@uniclipboard/cli",
         )
         before_tags = len(tag_writes)
         check(

@@ -2,7 +2,7 @@
 
 ## Delivery
 
-Rebased the session onto `origin/v2` at `edad4381b8a080d583c7a558c517b2d671c8fdf3`. Preserved the original design and alias changes. The working branch is `cli-release-channels`. The implementation commit is `771ebfa399f7551b615c3583efc053e0e1615cf9`. The final process replay used this clean committed source.
+Rebased the session onto `origin/v2` at `edad4381b8a080d583c7a558c517b2d671c8fdf3`. Preserved the original design and alias changes. The working branch is `cli-release-channels`. The initial implementation commit is `771ebfa399f7551b615c3583efc053e0e1615cf9`. The final process replay used clean commit `84decc42acae489bb4c4a608c71f2346d4a76148`, including the npm daemon command fix and partial-publication acceptance.
 
 Implemented the CLI vertical slice:
 
@@ -20,10 +20,10 @@ The [release architecture](../architecture/releases.md) describes implemented be
 
 The [small check receipt](baselines/0018-cli-local-checks.json) records source hashes and results. The local replay report is `.cache/release-e2e/report.json`; its companion `SHA256SUMS` verifies the report bytes. No binaries or package archives are retained in this delivery.
 
-- CLI process E2E: 22 checks passed using actual Go builds, npm pack/install and a disposable npm registry.
+- CLI process E2E: 25 checks passed using actual Go builds, npm pack/install and a disposable npm registry.
 - Native archive smoke: canonical programs and the relative alias reported the exact build identity.
-- npm installation: `unic` and `uniclip` forwarded arguments and failing exit codes.
-- Publication: alpha, direct stable, promotion without uploads, alpha retention, retries, incomplete target rejection, integrity conflicts and downgrade rejection passed.
+- npm installation: `unic` and `uniclip` forwarded arguments and failing exit codes. The installed `unicd` command executed the exact service build.
+- Publication: alpha, direct stable, promotion without uploads, alpha retention, retries after a platform package succeeded and the main upload failed, incomplete target rejection, integrity conflicts and downgrade rejection passed.
 - Durable-record command fixture: source-tag creation, immutable staging retries, exact-byte resume and conflict rejection passed. This is not real GitHub API acceptance.
 - Production headless E2E: passed in 49.24 seconds.
 - Changed Go package lint: passed with the pinned, checksum-verified golangci-lint v2.15.0.

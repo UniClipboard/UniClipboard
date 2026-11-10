@@ -8,7 +8,7 @@ paths:
   - .github/workflows/build-cli.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 771ebfa399f7551b615c3583efc053e0e1615cf9
+verified: 84decc42acae489bb4c4a608c71f2346d4a76148
 ---
 # Product builds and CLI releases
 
@@ -20,7 +20,7 @@ verified: 771ebfa399f7551b615c3583efc053e0e1615cf9
 
 All three program entrypoints handle `--version` and `--version --json` before initialization. Release builds embed version, build number and source SHA. Development builds report `dev` unless packaging supplies metadata.
 
-CLI assembly uses the existing npm main/platform-package model. `@uniclipboard/cli` pins every optional platform package to the exact `<version>-build.<number>` registry version. Both npm command names use one launcher. The launcher executes the real CLI beside its sibling service. Alpha selects the npm `alpha` dist-tag. Stable selects `latest`. Channel names do not enter package versions.
+CLI assembly uses the existing npm main/platform-package model. `@uniclipboard/cli` pins every optional platform package to the exact `<version>-build.<number>` registry version. Both npm CLI command names use one launcher. The package also exposes `unicd` through a dedicated service entrypoint. The launcher executes the real CLI beside its sibling service. Alpha selects the npm `alpha` dist-tag. Stable selects `latest`. Channel names do not enter package versions.
 
 The declared CLI matrix covers macOS arm64/amd64, Linux arm64/amd64 and Windows amd64. Each target runs its own executable identity acceptance. Linux amd64 also runs production headless process acceptance. Local acceptance covers only the current host; workflow definitions do not establish remote runner success.
 

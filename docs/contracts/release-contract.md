@@ -12,7 +12,7 @@ GitCode is outside this implementation.
 The npm destination version is `<version>-build.<build_number>`; neither channel name is encoded.
 Alpha uses npm `alpha`; stable uses npm `latest`. Promotion changes tags on existing versions without rebuilding, repacking or re-uploading.
 The main package is `@uniclipboard/cli`. Platform packages use `@uniclipboard/cli-<node-os>-<node-arch>`.
-Every platform dependency is pinned exactly. Both `unic` and `uniclip` invoke the same launcher; `unicd` remains beside the real CLI executable.
+Every platform dependency is pinned exactly. Both `unic` and `uniclip` invoke the same launcher; `unicd` remains beside the real CLI executable and has its own npm command entrypoint.
 
 Candidate manifests record product/build/source identity, target set, executable hashes, package SHA-512 integrity, source cleanliness and acceptance results.
 A candidate set is complete only when all declared targets are present and agree on identity.

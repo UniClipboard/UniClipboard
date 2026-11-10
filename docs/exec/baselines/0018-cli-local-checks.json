@@ -28,6 +28,10 @@
         "passed": true
       },
       {
+        "name": "unicd executes installed exact build",
+        "passed": true
+      },
+      {
         "name": "stable promotion available",
         "passed": true
       },
@@ -60,11 +64,19 @@
         "passed": true
       },
       {
+        "name": "platform publication completed before main upload failure",
+        "passed": true
+      },
+      {
         "name": "main stable stays on previous build after platform failure",
         "passed": true
       },
       {
         "name": "retry completes direct stable publication",
+        "passed": true
+      },
+      {
+        "name": "retry uploads only the previously missing main package",
         "passed": true
       },
       {
@@ -93,7 +105,7 @@
       }
     ],
     "replay": "python3 e2e/release/run.py",
-    "report_sha256": "20717672d4b69aa8fac930efc4ed14bdba5b37799c54d86dbcc81f5d65f3a78e",
+    "report_sha256": "28e9155039a55e6dbb7199fb7d323096cecc120524ba76d298efbd09a9a4b16a",
     "status": "passed"
   },
   "go_race": {
@@ -139,15 +151,15 @@
     "app/desktop/cmd/unic-desktop/main.go": "7475beeb4d4859cc2ad2128553a43e322475851796f6bcd799b1a56e7c71ac78",
     "app/service/cmd/unic/main.go": "8e0d112f23e688cc427cb2164a0c60d82e5ec36eb4d3de9cf0e883179a38740e",
     "app/service/cmd/unicd/main.go": "e74c058361e07f0cdf060e2f67b1e57c6287e19f90e73b1bf78134a261c5b962",
-    "e2e/release/README.md": "fdc71958a3725566ffa1f8c97135676f94c5e7407868aefe17e98545a35233ef",
+    "e2e/release/README.md": "ae8eeef0c8810d93adad43af93f27e0a7d5960d36ea56f23ef204937c5282f5b",
     "e2e/release/github_fixture.py": "833f694763102490a3b9273c3423a4e62b7046895fa93786b2d16bd590285e74",
-    "e2e/release/run.py": "1ce9085333a21c078115973a2d110b966474442dc33551d7921ab11ff7d9e06e",
+    "e2e/release/run.py": "56ca0eb7ebd2101047c61501ccd42a67ab63acf4694d8e88b602df33bd92b7c9",
     "go.mod": "53974dfc0dfc430b1b09dfb9f986eacc20f598496680fc85ca56f958338410a1",
     "go.sum": "710e83511de6d2cd33126b726c73684b353f499c0ce48f3eed0441daa3a44574",
     "internal/releaseinfo/releaseinfo.go": "015c13368cd2fd6de071456abbb6039d252d86bf82240def71b47f49ee5fa14f",
     "release/products.toml": "2eda6d85693d731a6196fc55636098f83aa5a5bee92a871ab6f834a7fdec96ce",
     "tools/package/main.go": "6ce8c84276e696ca92fb44cc845aa6cc3be8349655a375b5ba05ca3553b398cf",
-    "tools/release/release.py": "e13f44adc26738603231e171651c97ee6f1850141942a768dcb3ffb093a088a3"
+    "tools/release/release.py": "9b5172619acf05195a02099453e2e232fb241fdea59ad02da7096cc1bf86bc9d"
   },
-  "verified_code_commit": "771ebfa399f7551b615c3583efc053e0e1615cf9"
+  "verified_code_commit": "84decc42acae489bb4c4a608c71f2346d4a76148"
 }

@@ -54,3 +54,10 @@ sync-path-e2e:
 	go build -race -tags ts_omit_captiveportal,ts_omit_portmapper -o .cache/0020/real-bin/unicd ./app/service/cmd/unicd
 	UNIC_SYNC_PATH_E2E=1 UNIC_SYNC_PATH_BIN=$(CURDIR)/.cache/0020/real-bin UNIC_SYNC_PATH_ARTIFACTS=$(CURDIR)/.cache/0020/real-path go test -race ./e2e/syncpath -run '^TestPassivePaths$$' -count=1 -v | tee .cache/0020/real-path.run.log
 	rg -q '^--- PASS: TestPassivePaths ' .cache/0020/real-path.run.log
+
+.PHONY: logs-export-e2e
+logs-export-e2e:
+	mkdir -p .cache/logs-export/bin
+	go build -race -o .cache/logs-export/bin/unic ./app/service/cmd/unic
+	TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=$(CURDIR)/.cache/logs-export/bin UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/logs-export/acceptance go test -race ./e2e/cli -run '^TestLogsExport$$' -count=1 -v | tee .cache/logs-export/run.log
+	rg -q '^--- PASS: TestLogsExport ' .cache/logs-export/run.log

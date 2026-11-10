@@ -46,6 +46,16 @@ Closing the main window leaves the adapter running. Explicit desktop quit stops 
 In normal mode the desktop owns the service lifetime. Desktop exit also stops that service.
 In lightweight mode only the standalone service remains; it receives and stores content without a desktop.
 
+## Offline CLI operations
+
+`unic logs export [--output FILE]` reads only retained local log segments and writes
+a private tar.gz with a checksum manifest. It does not use the service socket,
+create an Engine, or require a desktop adapter. It works while unicd is stopped.
+Existing destinations and log symlinks are rejected. Live export is an on-disk
+snapshot and does not flush service queues. The archive never includes configuration,
+credentials, databases or history. See section 12 of the
+[observability contract](../contracts/observability-contract.md#12-offline-local-log-export).
+
 ## Invariants
 
 - One state directory has one service, one Engine identity and one history database.

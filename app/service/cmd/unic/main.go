@@ -22,7 +22,7 @@ const usage = `unic - clipboard sync between your devices
 
 Usage: unic <command>
 
-The background node is a separate program, unicd; start it first.
+The background node is a separate program, unicd. Local log export also works while it is stopped.
 
   submit [flags] [text]  submit text, stdin, -f files, or --png PATH without a clipboard
   submission ID    query a submission by request_id
@@ -44,6 +44,7 @@ The background node is a separate program, unicd; start it first.
   watch            print sync events as they happen
   config           show settings; set <key> <TOML-value>; apply <file>; --json; path
   logs level       query or temporarily override local/remote log levels
+  logs export [--output FILE]  archive retained local logs without a running service
   diagnostics telemetry  show telemetry state and dropped records
   cache [--json]   show default-cache bytes, reservations, and protected files
   plugin           list local plugins; enable or disable one (unic plugin help)

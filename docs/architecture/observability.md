@@ -29,6 +29,10 @@ paths:
   - app/service/internal/host/node.go
   - internal/localapi/diagnostics.go
   - app/service/internal/server/diagnostics.go
+  - app/service/cmd/unic/cli.go
+  - app/service/cmd/unic/main.go
+  - app/service/cmd/unic/logs_export.go
+  - e2e/cli/logs_export_e2e_test.go
   - app/service/cmd/unic/diagnostics.go
   - app/service/cmd/unicd
   - e2e/cli/observability_e2e_test.go
@@ -57,6 +61,17 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 - All log fields pass an enum allowlist before encoding. Unapproved LogValuer values are never resolved. The log bridge receives a clean background context.
 - OTel v1.47 merges environment Resource attributes even with `WithResource`. Metrics replace Resource before export. The private logs HTTP transport replaces Resource using the standard OTLP protobuf before sending. Both keep only service name/version, OS type, and architecture.
 - Export failures update local counters and finite error categories. Exporter degradation messages only enter the bounded local path and respect the local level. They are rate-limited and never feed the failing exporter.
+
+## Offline log archive
+
+`unic logs export [--output FILE]` streams retained local JSONL segments into a
+private tar.gz with a per-entry SHA-256 manifest. It executes in the CLI and needs
+no service connection or system clipboard. It never includes profile configuration,
+credentials, databases or history. Rooted source/output handles and exclusive
+creation reject symlinks and existing destinations. Fixed per-file lengths bound
+concurrent appends; vanished unopened segments can be skipped during retention.
+This is an on-disk snapshot, not a queue flush or an atomic cross-file snapshot.
+See section 12 of the [observability contract](../contracts/observability-contract.md#12-offline-local-log-export).
 
 ## Product analytics
 

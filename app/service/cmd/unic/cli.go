@@ -58,7 +58,7 @@ func runCLI(cmd string, args []string) error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(out)
 	case "logs":
-		return runLogLevels(short, c, args)
+		return runLogs(short, c, args)
 	case "diagnostics":
 		if len(args) != 1 || args[0] != "telemetry" {
 			return fmt.Errorf("usage: unic diagnostics telemetry")

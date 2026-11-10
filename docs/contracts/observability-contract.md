@@ -644,3 +644,33 @@ status read per session. Session terminals carry their close-time collection epo
 delayed cleanup after re-enable cannot create recovery from a disabled-period close.
 The daily marker uses one reserved temporary filename. Startup and disable remove
 that temporary, bounding crash residue and clearing old identity state.
+
+## 12. Offline local log export
+
+`unic logs export [--output FILE]` runs entirely in the CLI. It needs no running
+service, clipboard access or network. The default is a unique UTC-timestamped
+`unic-logs-*.tar.gz` file in the current directory. Success prints its absolute path.
+`--output` selects a file, not a directory. An existing file or symlink is never
+replaced. The destination parent must exist and must not be the managed logs directory.
+
+The archive contains only regular `logs/segment-<positive UnixNano>.jsonl` entries
+and `manifest.json`. The manifest has format_version=1, UTC creation time and each
+entry's relative name, byte count and SHA-256. It contains no profile path, config,
+credentials, database, analytics identifier or clipboard data. It copies existing
+sanitized log bytes without adding a second logging policy or exporting remote metrics.
+
+The CLI rejects symlinked logs directories, matching symlinks/nonregular entries,
+segments larger than 4 MiB and retained input larger than 20 MiB. Source and output
+operations use rooted handles; opened source identity must match its selected regular
+file. Missing/empty logs fail without creating an archive. Unrelated files are ignored.
+Archive and member permissions are private (0600 on POSIX).
+
+Export streams one segment at a time with bounded copy buffers. Each selected file
+has a fixed length: appends after selection are excluded. Rotation may remove an
+unopened segment, which is skipped; an opened unlinked file remains readable. A
+replaced/truncated/unreadable segment fails the export. On error/cancellation, remove
+only the archive created by this command. Propagate archive/gzip/output close failures.
+
+This is a best-effort snapshot of already-written bytes. It does not flush service
+queues or claim an atomic cross-file view; the last JSONL record can be incomplete
+if export overlaps its write. No new service endpoint or configuration key is added.

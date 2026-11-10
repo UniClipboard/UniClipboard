@@ -139,3 +139,13 @@ The adapter never receives the analytics identifier or ingestion token.
 Action, send, pairing and explicit history-application events come from authoritative Engine completions, not activity notifications.
 `GET /v1/diagnostics/telemetry` includes analytics health and pending/loss counters, with no identity or credential values.
 See the [observability contract](observability-contract.md#10-posthog-product-events).
+
+## Offline log archive
+
+`unic logs export [--output FILE]` reads the selected profile's retained local logs
+without IPC. It works when unicd is stopped. Default output is a UTC-timestamped
+`unic-logs-*.tar.gz` in the current directory. Success prints the absolute path.
+The command never replaces an existing output, follows a log symlink, or includes
+profile configuration, credentials, database or clipboard history. Archive membership,
+size limits, checksums and live-snapshot semantics follow section 12 of the
+[observability contract](observability-contract.md#12-offline-local-log-export).

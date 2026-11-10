@@ -13,6 +13,21 @@ import (
 	"github.com/uniclipboard/unic/internal/observability"
 )
 
+func runLogs(ctx context.Context, c *api.Client, args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "level":
+			return runLogLevels(ctx, c, args)
+		case "export":
+			return runLogExport(ctx, args[1:])
+		case "help", "--help", "-h":
+			fmt.Println("usage: unic logs level [debug|info|warn|error|reset] [--target local|remote] [--for 15m]\n" + logExportUsage)
+			return nil
+		}
+	}
+	return fmt.Errorf("usage: unic logs level ... | unic logs export [--output FILE]")
+}
+
 func runLogLevels(ctx context.Context, c *api.Client, args []string) error {
 	if len(args) == 0 || args[0] != "level" {
 		return fmt.Errorf("usage: unic logs level [debug|info|warn|error|reset] [--target local|remote] [--for 15m]")

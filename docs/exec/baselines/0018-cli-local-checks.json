@@ -1,6 +1,7 @@
 {
   "baseline_sha": "edad4381b8a080d583c7a558c517b2d671c8fdf3",
   "cli_process_e2e": {
+    "candidate_source_clean": true,
     "checks": [
       {
         "name": "alpha publication available",
@@ -92,7 +93,7 @@
       }
     ],
     "replay": "python3 e2e/release/run.py",
-    "report_sha256": "eee9e0ab9cf7ca6cc066081b4abe822fad82493c9995a9a0ca0b6423ad96d0eb",
+    "report_sha256": "20717672d4b69aa8fac930efc4ed14bdba5b37799c54d86dbcc81f5d65f3a78e",
     "status": "passed"
   },
   "go_race": {
@@ -147,5 +148,6 @@
     "release/products.toml": "2eda6d85693d731a6196fc55636098f83aa5a5bee92a871ab6f834a7fdec96ce",
     "tools/package/main.go": "6ce8c84276e696ca92fb44cc845aa6cc3be8349655a375b5ba05ca3553b398cf",
     "tools/release/release.py": "e13f44adc26738603231e171651c97ee6f1850141942a768dcb3ffb093a088a3"
-  }
+  },
+  "verified_code_commit": "771ebfa399f7551b615c3583efc053e0e1615cf9"
 }

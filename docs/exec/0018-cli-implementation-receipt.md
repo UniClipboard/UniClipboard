@@ -2,7 +2,7 @@
 
 ## Delivery
 
-Rebased the session onto `origin/v2` at `edad4381b8a080d583c7a558c517b2d671c8fdf3`. Preserved the original design and alias changes. The working branch is `cli-release-channels`.
+Rebased the session onto `origin/v2` at `edad4381b8a080d583c7a558c517b2d671c8fdf3`. Preserved the original design and alias changes. The working branch is `cli-release-channels`. The implementation commit is `771ebfa399f7551b615c3583efc053e0e1615cf9`. The final process replay used this clean committed source.
 
 Implemented the CLI vertical slice:
 

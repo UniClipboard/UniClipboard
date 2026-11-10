@@ -15,6 +15,7 @@ Failure inventory recorded before implementation:
 - A required platform package is missing but the main package is exposed.
 - Promotion repacks/reuploads or selects mutable latest artifacts.
 - Stable advances to an older build or changes alpha's pointer.
+- An existing v1 alpha tag blocks a strictly newer v2 release, or an unknown/same-base legacy tag is silently replaced.
 - An external partial failure is incorrectly reported as complete success.
 - Dirty source reaches real publication or loopback fixture acceptance authorizes a public release.
 - A checksum or source changes after candidate acceptance.

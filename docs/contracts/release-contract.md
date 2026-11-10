@@ -18,7 +18,7 @@ Candidate manifests record product/build/source identity, target set, executable
 A candidate set is complete only when all declared targets are present and agree on identity.
 Retries compare immutable package integrity; package existence alone is insufficient.
 Publish platform packages first and the main package last. Read back each version and integrity before advancing its channel.
-Promotion verifies the complete existing package set before changing any tag. Do not overwrite a newer channel selection.
+Promotion verifies the complete existing package set before changing any tag. Do not overwrite a newer channel selection. Known v1 alpha/beta/rc tags can advance to a strictly higher product version. Unknown or same-base legacy tags fail before mutation.
 Partial external failures are recorded per package and may be retried with the same manifest. npm tag updates across packages are not an atomic transaction.
 
 ## Publication authority

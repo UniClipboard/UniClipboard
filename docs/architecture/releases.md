@@ -50,7 +50,7 @@ Publication validates every local archive and every existing registry version be
 
 `promote.yml` currently offers CLI only. It downloads the requested durable manifest, verifies all existing npm package integrity values and moves the exact package set to `latest`. It does not rebuild, pack or upload. It retains alpha. Both mutating workflows share one CLI concurrency group.
 
-Retries preserve exact identity and reject integrity conflicts. An older build cannot replace a newer selected build. An unrecognized legacy npm channel version requires review. npm changes across packages are not atomic; a partial failure has a failed receipt and can be retried with the same candidate. External writers outside the workflow concurrency group remain an operational constraint because npm does not expose a compare-and-swap tag API.
+Retries preserve exact identity and reject integrity conflicts. An older build cannot replace a newer selected build. Known v1 alpha/beta/rc tags may advance only to a strictly higher product version. Unknown or same-base legacy tags require review. npm changes across packages are not atomic; a partial failure has a failed receipt and can be retried with the same candidate. External writers outside the workflow concurrency group remain an operational constraint because npm does not expose a compare-and-swap tag API.
 
 ## Invariants
 
@@ -93,7 +93,7 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-The selected next CLI version is `2.0.0 (1)`, encoded as `2.0.0-build.1` on npm. Alpha selects the `alpha` dist-tag. Other products retain their independent local candidate seeds. The npm legacy-tag transition and workflow authorization remain publication prerequisites. Public OIDC/provenance, remote native runners and real GitHub publication have not been accepted locally.
+The selected next CLI version is `2.0.0 (1)`, encoded as `2.0.0-build.1` on npm. Alpha selects the `alpha` dist-tag. Other products retain their independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Remote build acceptance and workflow authorization remain publication prerequisites. Public OIDC/provenance, remote native runners and real GitHub publication have not been accepted locally.
 
 Desktop does not yet consume the immutable CLI lock or provide signed installers, R2 uploads or FlareRelease registration. Its stable CLI gate remains a required future implementation. Android and iOS lack native application projects. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
 

@@ -20,6 +20,9 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 SEMVER = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 NPM_BUILD = re.compile(r"(\d+)\.(\d+)\.(\d+)-build\.([1-9][0-9]*)\Z")
+LEGACY_V1 = re.compile(
+    r"1\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(?:alpha|beta|rc)\.(0|[1-9][0-9]*)\Z"
+)
 SHA256 = re.compile(r"[a-f0-9]{64}\Z")
 MAX_FILE = 512 * 1024 * 1024
 NODE_OS = {"darwin": "darwin", "linux": "linux", "windows": "win32"}
@@ -380,6 +383,17 @@ def version_order(version):
     raise ValueError("unrecognized existing channel version; requires explicit review")
 
 
+def channel_downgrade(current, candidate):
+    selected = version_order(candidate)
+    try:
+        return version_order(current) > selected
+    except ValueError:
+        legacy = LEGACY_V1.fullmatch(current)
+        if legacy and (1, int(legacy[1]), int(legacy[2])) < selected[:3]:
+            return False
+        raise
+
+
 def distribute(args):
     registry, fixture = registry_url(args.registry)
     manifest = validate_manifest(args.manifest)
@@ -414,7 +428,7 @@ def distribute(args):
         for package in manifest["packages"]:
             data = registry_get(registry, package["name"])
             current = data.get("dist-tags", {}).get(tag)
-            if current and version_order(current) > version_order(package["version"]):
+            if current and channel_downgrade(current, package["version"]):
                 raise ValueError("refusing channel downgrade: " + package["name"])
             remote = data.get("versions", {}).get(package["version"])
             if (

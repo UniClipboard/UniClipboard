@@ -47,3 +47,11 @@ Use Node 22.23.4 or a supported newer version. Public dist-tag operations use th
 No workflow was dispatched. No production package, GitHub release, R2 object or FlareRelease record was published. Public OIDC/provenance, remote target runners and real GitHub record APIs remain unverified. The initial product metadata is a local candidate seed. Public version allocation, existing npm channel transition and exact workflow authorization still need release preparation.
 
 Desktop immutable CLI consumption, stable CLI gate, signing/installers and R2/FlareRelease publication remain open. Android/iOS native projects and release paths remain open. No GUI, native device, Store or GitCode operations ran.
+
+## V1 alpha channel transition follow-up
+
+The next CLI release is 2.0.0 build 1. The npm main package currently selects 1.6.2-alpha.1 for alpha and 1.6.1 for latest. The five platform package channels were checked separately. The release comparator now accepts known v1 alpha/beta/rc versions only when the candidate product version is strictly higher. Unknown or same-base legacy tags still fail before mutation. This changes registry selection only; it does not add runtime v1 compatibility.
+
+The expanded process E2E passed 44 checks using actual 2.0.0 packages and a local registry. It verified the old-alpha transition, preserved v1 stable, ambiguous-tag rejection and all previous release/migration cases. The [snapshot receipt](baselines/0018-v1-alpha-transition.json) records the exact tested working-source hashes; this local candidate was dirty and is not a publicly releasable candidate. Ruff and actionlint passed.
+
+Public release is still pending: the release branch has not been pushed, remote five-target builds have not run, and the new workflow OIDC permissions are unverified. No package was published or channel changed on npm.

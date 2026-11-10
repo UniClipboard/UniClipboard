@@ -226,7 +226,7 @@ try:
         def build(number):
             metadata = temp / f"products-{number}.toml"
             metadata.write_text(
-                f'schema = 1\n[products.cli]\nversion = "9.7.0"\nbuild_number = {number}\ntargets = ["{target}"]\n'
+                f'schema = 1\n[products.cli]\nversion = "2.0.0"\nbuild_number = {number}\ntargets = ["{target}"]\n'
             )
             native = temp / f"native-{number}"
             execute(
@@ -273,6 +273,23 @@ try:
             )
             return json.loads(receipt.read_text())
 
+        for package in manifest["packages"]:
+            packages[package["name"]] = {
+                "name": package["name"],
+                "versions": {},
+                "dist-tags": {"alpha": "1.6.2-alpha.1", "latest": "1.6.1"},
+            }
+        untouched = copy.deepcopy(packages)
+        blocked_name = manifest["packages"][0]["name"]
+        for legacy in ["2.0.0-alpha.1", "99.0.0-alpha.1", "unexpected"]:
+            packages[blocked_name]["dist-tags"]["alpha"] = legacy
+            result = distribute("publish", first, "alpha", 1)
+            check(
+                "ambiguous legacy tag rejects before publication: " + legacy,
+                result["status"] == "failed" and not uploads and not tag_writes,
+            )
+        packages.clear()
+        packages.update(untouched)
         check(
             "alpha publication available",
             distribute("publish", first, "alpha")["status"] == "available",
@@ -280,6 +297,10 @@ try:
         check(
             "platform package publishes before main",
             [name for name, v in uploads] == [x["name"] for x in manifest["packages"]],
+        )
+        check(
+            "v2 alpha transition preserves v1 stable",
+            all(p["dist-tags"]["latest"] == "1.6.1" for p in packages.values()),
         )
         installed = temp / "installed with spaces"
         execute(
@@ -301,7 +322,7 @@ try:
             value = json.loads(execute([executable, "--version", "--json"]).stdout)
             check(
                 command + " executes installed exact build",
-                value["version"] == "9.7.0"
+                value["version"] == "2.0.0"
                 and value["build_number"] == "41"
                 and value["program"] == ("unic" if command == "uniclip" else command),
             )
@@ -366,12 +387,12 @@ try:
         )
         check(
             "platform publication completed before main upload failure",
-            packages[name]["dist-tags"]["latest"] == "9.7.0-build.42"
-            and "9.7.0-build.42" in packages[name]["versions"],
+            packages[name]["dist-tags"]["latest"] == "2.0.0-build.42"
+            and "2.0.0-build.42" in packages[name]["versions"],
         )
         check(
             "main stable stays on previous build after platform failure",
-            packages["@uniclipboard/cli"]["dist-tags"]["latest"] == "9.7.0-build.41",
+            packages["@uniclipboard/cli"]["dist-tags"]["latest"] == "2.0.0-build.41",
         )
         completed_uploads = len(uploads)
         check(

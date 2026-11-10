@@ -58,13 +58,17 @@ const (
 type SourceState struct {
 	Value string
 
-	changed bool
-	cmd     SourceCommandKind
-	cmdSec  string
+	changed   bool
+	activated bool
+	cmd       SourceCommandKind
+	cmdSec    string
 }
 
 // Changed 报告本帧 Value 被点击或键盘改变。
 func (s *SourceState) Changed() bool { return s.changed }
+
+// Activated 报告本帧有一行被点击，包括已选中的行（单栏布局用它打开详情）。
+func (s *SourceState) Activated() bool { return s.activated }
 
 // Command 返回本帧触发的命令与分区 id。
 func (s *SourceState) Command() (SourceCommandKind, string) { return s.cmd, s.cmdSec }
@@ -77,7 +81,7 @@ func (s *SourceState) pick(id string) {
 
 // SourceList 是单选对象列表：一个 Tab 停靠点，Up/Down 跨分区移动选中，Home/End 跳转。
 func (k Kit) SourceList(c *ui.Context, st *SourceState, p SourceListProps) ui.Element {
-	st.changed, st.cmd, st.cmdSec = false, SourceNoCommand, ""
+	st.changed, st.activated, st.cmd, st.cmdSec = false, false, SourceNoCommand, ""
 	var order []string
 	for _, s := range p.Sections {
 		for _, it := range s.Items {
@@ -206,5 +210,6 @@ func (k Kit) sourceRow(c *ui.Context, st *SourceState, it SourceListItem) {
 	})
 	if row.Clicked() {
 		st.pick(it.ID)
+		st.activated = true
 	}
 }

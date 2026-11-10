@@ -53,29 +53,29 @@ type deviceCandidate struct {
 }
 
 type demo struct {
-	tags                                                                     []demoTag
-	tagManager                                                               tagManagerState
-	assignTagsOpen                                                           bool
-	search                                                                   demoSearch
-	page, theme, query, kind, source, tag, timeRange, layout                 string
-	nav, settings                                                            uikit.NavState
-	list                                                                     uikit.ListState
-	deviceList                                                               uikit.SourceState
-	entries                                                                  []entry
-	devices                                                                  []device
-	selected                                                                 string
-	confirmEntries                                                           []string
-	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook   bool
-	compact                                                                  bool
-	gridSize                                                                 float64
-	deviceTask, fieldError, notice, confirm, confirmID                       string
-	deviceName, passphrase, confirmation, invitation                         string
-	pending                                                                  []pendingDevice
-	candidates                                                               []deviceCandidate
-	inviteCode, inviteMode, connectInput, renameValue, approveID, deviceNote string
-	renaming, approveChecked                                                 bool
-	options                                                                  map[string]bool
-	choices                                                                  map[string]string
+	tags                                                                   []demoTag
+	tagManager                                                             tagManagerState
+	assignTagsOpen                                                         bool
+	search                                                                 demoSearch
+	page, theme, query, kind, source, tag, timeRange, layout               string
+	nav, settings                                                          uikit.NavState
+	list                                                                   uikit.ListState
+	deviceList                                                             uikit.SourceState
+	entries                                                                []entry
+	devices                                                                []device
+	selected                                                               string
+	confirmEntries                                                         []string
+	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook bool
+	compact                                                                bool
+	gridSize                                                               float64
+	deviceTask, fieldError, notice, confirm, confirmID                     string
+	deviceName, passphrase, confirmation, invitation                       string
+	pending                                                                []pendingDevice
+	candidates                                                             []deviceCandidate
+	inviteCode, inviteMode, connectInput, renameValue, deviceNote          string
+	renaming, deviceDetailOpen                                             bool
+	options                                                                map[string]bool
+	choices                                                                map[string]string
 }
 
 func newDemo(page, theme string) *demo {
@@ -285,7 +285,7 @@ func (d *demo) confirmDialog(c *ui.Context, k uikit.Kit) {
 		if strings.HasPrefix(d.confirmID, "device:") {
 			id := strings.TrimPrefix(d.confirmID, "device:")
 			d.devices = slices.DeleteFunc(d.devices, func(v device) bool { return v.id == id })
-			d.deviceList.Value = "local"
+			d.deviceList.Value, d.deviceDetailOpen = "local", false
 		} else {
 			d.entries = slices.DeleteFunc(d.entries, func(v entry) bool { return slices.Contains(d.confirmEntries, v.id) })
 			d.selected = ""

@@ -1,6 +1,8 @@
 # 0019: PostHog Cloud integration
 
-- Status: Implemented and verified locally and in US Cloud; awaiting documentation metadata/archival closure.
+- 状态：已归档（2026-11-10）
+- 落地：[Observability](../../architecture/observability.md)、[Observability contract](../../contracts/observability-contract.md)
+- Status: Archived after local and US Cloud verification.
 - Date: 2026-11-10.
 - Scope: Integration design for logs, application metrics and product events.
 - Deployment: US Cloud / UniClipboard (722858), selected by the user during implementation.

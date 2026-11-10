@@ -27,7 +27,7 @@ paths:
   - app/service/cmd/unic/diagnostics.go
   - app/service/cmd/unicd
   - e2e/cli/observability_e2e_test.go
-verified: 0710594f0e20d22f9e2ff06bece61631eff6172d
+verified: b8e27b0e437fdbd113c8b8edf17174183e278731
 ---
 # Client logs, metrics and product analytics
 

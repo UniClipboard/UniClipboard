@@ -273,7 +273,7 @@ Do not create remote dashboards or alerts during this design task.
 | P4 Operation events/Desktop ownership | Complete (nonvisual) | Real IPC operation counts |
 | P5 Local fault/production acceptance | Accepted with baseline failures | Checksummed local artifact and production manifest |
 | P6 Cloud read-back | Complete | Per-signal hosted query receipt |
-| P7 Documentation/packaging handoff | Closing | Verified live docs and final scoped diff |
+| P7 Documentation/packaging handoff | Complete | Independently checked live docs, archived decision, verified metadata and local packages |
 
 
 | Layer | Status |
@@ -361,3 +361,5 @@ Packages are under `.cache/0019/packages/`; they were not installed, signed or p
 Only the ingestion token may be extractable from those binaries, as explicitly accepted by the user.
 
 Remaining independent work: native OS/clipboard interaction, Windows/Linux runtime acceptance, signed publication, dashboard/alert publication, and the repository's unchanged baseline test failures.
+
+Closure: implementation commit `b8e27b0e4`; living architecture metadata was verified against that commit. The decision is archived. Local manifests retain their original build HEAD and exact source hashes; their final runtime source matches the committed implementation. No package was published.

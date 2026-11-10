@@ -30,3 +30,11 @@ real-e2e:
 	go run ./e2e/real run --lab "$(LAB)" --suite sync
 real-e2e-doctor:
 	go run ./e2e/real doctor --lab "$(LAB)"
+
+# Nonvisual local TLS acceptance, including production release assembly.
+.PHONY: posthog-e2e
+posthog-e2e:
+	mkdir -p .cache/0019/bin
+	go build -race -tags unic_e2e -o .cache/0019/bin/unicd ./app/service/cmd/unicd
+	go build -race -o .cache/0019/bin/unic ./app/service/cmd/unic
+	TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=$(CURDIR)/.cache/0019/bin UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/0019/acceptance go test -race ./e2e/cli -run '^TestPostHog' -count=1 -v

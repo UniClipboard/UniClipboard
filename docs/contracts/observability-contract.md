@@ -1,28 +1,27 @@
-# 客户端可观测性契约：Logs 与 Metrics
+# Client observability contract: logs, metrics and product events
 
-- 状态：logs + metrics 实现已接入当前工作区。端到端验收、回归失败及尚未覆盖的边界见执行计划收据；traces 未实现。
-- 日期：2026-11-09。
-- 范围：本机结构化日志、动态日志等级、可选远程 logs、业务 metrics、运行状态与资源边界。
+- Status: Logs, metrics and PostHog product events are implemented in the workspace. Local process acceptance and hosted limitations are recorded in the [0019 receipt](../exec/0019-posthog-integration.md). Traces are not implemented.
+- Date: 2026-11-10.
+- Scope: Local structured logs, independent log levels, configurable OTLP logs/metrics, PostHog product events, lifecycle and resource bounds.
 - 依据：[Engine 契约](engine-contract.md)、[流水线契约](pipeline-contract.md)、[历史契约](history-contract.md)、[同步后端契约](sync-backend-contract.md)。
 - 执行与证据：[0014 执行计划](../exec/0014-client-observability-otlp.md)。
 
 ## 1. 范围与不变量
 
-本次交付 logs + metrics。Traces、跨设备传播、远程控制、崩溃采集、诊断包、磁盘补传和生产 Collector 部署不在本次范围。
+This implementation provides logs, metrics and product events. Traces、跨设备传播、远程控制、崩溃采集、诊断包、磁盘补传和生产 Collector 部署不在本次范围。
 本次不解析 `telemetry.traces` 配置。该配置按未知键拒绝，不提供无效开关。
 
-1. 遥测默认不上传。开启 debug 不开启上传。
+1. Uploads default enabled. The TOML master and each signal switch can disable upload. Log level changes never change these switches.
 2. 遥测失败不改变业务结果，不阻止 Engine 启动。
 3. 配置非法仍按现有配置规则处理：启动时报错；热加载时保留上一有效配置。
 4. 诊断公开签名只依赖标准库和公开 Engine 类型。公开 Options 不出现 OTel 类型。
 5. 宿主持有 Provider、exporter、输出队列和控制器。不得修改全局 Provider 或全局默认 Logger。
 6. 业务线程不执行遥测网络或磁盘 I/O，不等待遥测队列空间。
 7. 诊断在业务执行点生成，不从 GUI/SSE 事件反推业务结果。
-8. 远程标签没有身份、内容、路径或用户可扩展字符串。
+8. Logs and metrics contain no identity, content, path or user-extensible text. Product events may contain only the independent random analytics identifier specified in section 10.
 9. Metrics 是允许丢失的诊断统计，不是计费账本或可靠业务审计。
 
-平台无关适配放在 `internal/observability/`。桌面配置、私有目录、socket API 和程序装配放在 `app/desktop/`。
-0015 将来改变宿主目录时，保留本文的核心与宿主边界；本次不提前搬迁服务代码。
+The UI-free service in `app/service/` owns configuration, private state, socket routes and diagnostics assembly. The platform-independent adapter remains in `internal/observability/`.
 
 ## 2. Engine 诊断接口
 
@@ -56,7 +55,7 @@ Diagnostics func(context.Context, DiagnosticRecord)
 适配层将未知 Code 映射为 `internal`；不得把未知值导出。
 
 回调必须快速返回。回调只校验固定字段并尝试放入有界队列。
-Engine 在释放业务锁后调用回调。回调不得调用 Engine 或等待业务完成。
+Engine releases its state mutex before invoking the callback. Lifecycle/commit guards may remain held. The callback must not call Engine methods or wait for business/lifecycle completion.
 宿主不得保存回调 context。回调 panic 必须在诊断调用边界隔离，不改变已经确定的业务结果。
 本次不使用 context 生成 trace、标签或后台任务取消关系。
 
@@ -129,7 +128,7 @@ Histogram 边界固定为 `0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2
 
 `code` 仅允许现有公开 Engine Code。Exporter 错误单独映射为 `dns`、`tls`、`timeout`、`rate_limited`、`unauthorized`、`unavailable`、`internal`。
 遥测禁用引起的主动取消不计 export_failures。
-`signal` 仅为 `local_logs`、`remote_logs`、`metrics`。
+`signal` accepts `local_logs`, `remote_logs`, `metrics`, and `analytics`.
 `reason` 仅为 `queue_full`、`oversize`、`invalid_record`、`sink_failed`、`disabled_discard`。
 等级过滤、正常关闭时未采集的业务、停用期间的新记录都不计丢弃。
 
@@ -140,8 +139,7 @@ Histogram 边界固定为 `0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2
 如 SDK 使用 overflow，只允许额外属性 `otel.metric.overflow=true`。必须在接入固定 SDK 版本时验证该行为。
 不接入自动 Resource 探测或其他自动 instrumentation。
 
-Metrics 采用 cumulative temporality，每 60 秒导出一次。导出失败不清零当前累计值。
-Collector 需要按累计流语义计算差值，不能把每次导出的累计值相加。
+PostHog `/i` endpoints use delta counters and histograms, collected every 60 seconds. Failed exports lose that interval; there are no exporter retries. Pathless Collector endpoints retain cumulative temporality and must compute per-stream differences instead of summing repeated totals.
 进程重启或 metrics 重新开启时使用新的聚合起始时间，不继承旧累计值。
 本机状态中的丢弃数和导出失败数始终按进程累计，停用或重开不能清零。
 
@@ -200,26 +198,27 @@ Handle 对两个输出分别判断。派生 Logger 共享控制器，不复制�
 level = "info"
 
 [telemetry]
-enabled = false
+enabled = true
 # endpoint = "https://collector.example.com"
 
 [telemetry.logs]
-enabled = false
+enabled = true
 level = "warn"
 
 [telemetry.metrics]
+enabled = true
+
+[telemetry.analytics]
 enabled = true
 ```
 
 以上是本次默认值。`telemetry.enabled && telemetry.logs.enabled` 决定远程 logs 的请求开启状态。
 `telemetry.enabled && telemetry.metrics.enabled` 决定 metrics 的请求开启状态。
-实际能否导出还取决于初始化状态。初始化失败不能伪装为有效开启。
+`telemetry.enabled && telemetry.analytics.enabled` controls product events. Actual export also requires successful initialization; requested enabled does not prove delivery.
 
 等级、总开关和信号开关热更新。endpoint 修改需重启。
 endpoint 是不含用户信息、查询串和 fragment 的 HTTPS 基地址，不接受信号路径。
-路径只允许空或 `/`；分别追加 `/v1/logs`、`/v1/metrics`。
-启用总开关时必须提供合法 endpoint，即使两个信号都关闭也须校验。
-关闭总开关时可以省略 endpoint；如果填写仍须校验。
+The base path accepts empty, `/`, `/i`, or `/i/`; exporters append `/v1/logs` and `/v1/metrics`. An absent deployment endpoint is allowed so developer builds remain usable; signals report `not_configured`. An explicitly malformed endpoint is invalid even when upload is disabled.
 本机测试使用显式开发装配允许 HTTP loopback，发行 TOML 没有不安全传输选项。
 HTTPS loopback 可用于与发行配置完全相同的验收路径。
 
@@ -228,10 +227,10 @@ HTTPS loopback 可用于与发行配置完全相同的验收路径。
 在此之前信号状态保持 degraded，安全错误码为 `restart_required`。
 配置查询展示已接纳的持久配置，不表示待重启 endpoint 已经运行。
 
-第一阶段凭据入口固定为宿主受控注入。平台无关适配的构造参数可接受宿主提供的令牌读取函数，结果只用于该 exporter 的 `Authorization: Bearer` 请求头。
-默认不注入凭据；无凭据端点仍须遵守 HTTPS 和上传授权开关。
+Host-controlled injection supplies exporter credentials. OTLP uses `Authorization: Bearer`; the pinned PostHog Go SDK uses its standard `/batch/` API with the ingestion token in the JSON `api_key` field. Tokens never enter query strings or diagnostics.
+Release assembly may embed the approved ingestion-only `phc_` project token. Developer builds without deployment metadata do not guess a region or destination. Unauthenticated pathless Collectors remain supported; PostHog paths and product events require an ingestion token.
 本次不新增凭据 CLI、普通环境变量、TOML token 键或系统凭据存储界面。
-需认证的部署必须先在宿主提供注入实现，再做对应部署验收；不得把共享令牌编入公开包。
+Only the ingestion-only project token may be distributed. Personal, secret and query/admin API credentials remain prohibited. The release token is bound to the exact release endpoint; an endpoint override never forwards it to another destination.
 令牌按每次信号初始化读取，运行时轮换通过停用再启用生效。读取失败使该信号降级，不回显令牌或底层错误。
 查询只返回 `credential_configured` 布尔值。不得输出请求头。
 
@@ -319,6 +318,14 @@ TelemetryState 的固定结构：
     "last_error_code": null,
     "dropped_records": 0,
     "export_failures": 0
+  },
+  "analytics": {
+    "requested_enabled": false,
+    "state": "disabled",
+    "last_error_code": null,
+    "dropped_records": 0,
+    "export_failures": 0,
+    "pending_records": 0
   }
 }
 ```
@@ -329,7 +336,7 @@ active 表示本机组件就绪，不表示 Collector 已收到记录。
 初始化失败的 degraded 没有接纳入口。日志 API 的 remote_logs_enabled 以入口实际状态为准。
 effective_enabled 表示总开关已应用，不表示所有信号健康。
 restart_required 是待重启键名数组，当前只允许 `telemetry.endpoint`。
-last_error_code 只允许第 3 节的 exporter 错误码及 `initialization_failed`、`restart_required`，正常状态为 null。
+`last_error_code` accepts the exporter categories in section 3 plus `initialization_failed`, `restart_required`, `not_configured`, and `identity_unavailable`. Healthy state uses null. The `analytics` object includes the same signal state fields plus `pending_records`, bounded to 0..1024. It exposes no installation identifier.
 查询不返回 endpoint、凭据、请求头、原始错误或日志正文。
 本机计数独立于 metrics 是否上传，不能从可能丢失的远程 metrics 反推。
 
@@ -365,7 +372,7 @@ unic diagnostics telemetry
 | 远程日志单批/批处理等待 | 128 条 / 5 秒 |
 | Metrics 导出周期 | 60 秒 |
 | 单次导出超时 | 3 秒，首版关闭 exporter 内部重试 |
-| 正常退出总关闭预算 | 2 秒，logs 与 metrics 共用预算，不分别叠加 |
+| 正常退出总关闭预算 | 2 seconds shared by logs, metrics and analytics，不分别叠加 |
 | 本机文件 | `$UNIC_HOME/logs/`，目录 0700、文件 0600；受系统权限能力约束 |
 | 本机日志保留 | 轮转文件及当前文件合计不超过 20 MiB；最长 7 天 |
 | 单个轮转分段 | 最多 4 MiB；写入前回收旧段；旧文件按创建时间回收 |
@@ -388,7 +395,7 @@ unic diagnostics telemetry
 已经发出的请求和接收端收到的数据无法撤回。
 停用成功后不得再发起对应信号的请求，包括重试与后台初始化请求。
 仅修改日志门槛不执行停用屏障，也不丢弃旧队列。
-关闭总开关同时停用两个信号；本机日志继续按本机等级工作。
+Disabling the master switch stops all three remote signals. Local logging continues at its independent threshold.
 
 正常退出允许在独立的 2 秒总预算内尝试 flush，再取消并释放资源。
 遥测不能延长业务资源的关闭预算。强杀不承诺 flush。
@@ -427,3 +434,83 @@ OTLP 使用标准协议版本；本次不修改 wire、插件 RPC 或数据库�
 验收必须保存来源身份、二进制摘要、构建参数、配置摘要、准确命令、退出码、脱敏请求时间线、解码后的 OTLP 数据、断言报告和重放入口。
 场景、通过标准和验收工件结构以[执行计划](../exec/0014-client-observability-otlp.md)为准。
 未实现、未运行、未通过和原生验收未授权必须分别登记。文档检查通过不代表本契约已实现。
+
+
+## 10. PostHog product events
+
+The service owns the sole SDK instance and analytics identity for a profile. Desktop registration may include a 16-character alphanumeric `launch_id`, generated once per adapter process and omitted after the first ready acknowledgement. The service retains only the last ready launch key in memory; no launch key enters an event, log, metric or ordinary diagnostics output.
+`engine.Options.ProductEvents func(context.Context, ProductEvent)` is an optional nonblocking callback.
+It uses public Engine/std-library types only. Panic is isolated; no caller context or business object is retained. Callbacks run outside `e.mu`, but lifecycle/commit guards may remain held; callbacks must not call Engine methods or wait for lifecycle work.
+The adapter validates finite names and properties before SDK enqueue and filters serialized properties again after SDK enrichment. The SDK system-context cache is warmed on the lifecycle/control path, so the first business enqueue performs no OS detection I/O.
+It does not install SDK request-context middleware, identify users, alias identities, poll feature flags or capture exceptions.
+
+| Event | Authoritative emission boundary |
+|---|---|
+| `app_started` | Successful service startup (`product=cli`), or first ready for a pending Desktop process launch (`product=desktop`). A local launch key suppresses repeated ready calls and same-process reconnects; the client clears its pending key after acknowledgement. |
+| `pairing_completed` | Successful atomic approval changes an untrusted device to trusted. Approval failure, pending requests and reconnects do not emit it. |
+| `history_applied` | A successful, non-dead application ticket with `ApplyHistoryRequest.UserRestore=true`. Duplicate apply reports do not emit again. Action application sets UserRestore false. |
+| `manual_send_completed` | One explicit send operation reaches a terminal outcome across all targets. A submission with no operation emits `skipped`, its commit failure, or `failed` with the sync error code when commit succeeded but sync admission failed. Automatic observations, Action dispatch and restore-triggered synchronization are excluded. |
+| `action_completed` | The unique idempotent Action submission finishes execution/commit. An apply failure after that commit does not change its execution result. |
+
+The public ProductEvent has only `Name`, `Product`, `Result`, `Code`, `ContentKind` and `ActionCategory`.
+Allowed names are the five entries above. Product is `cli` or `desktop` (empty maps to cli).
+Result accepts empty, `succeeded`, `failed`, `cancelled`, `superseded`, `partial`, or `skipped`.
+Code uses the existing safe Engine code vocabulary; content category uses the existing diagnostic content vocabulary.
+Action category is empty, `builtin`, or `external`. No plugin/action key is exported.
+Common properties are schema version 1, published component version (or dev), OS and architecture. `product` identifies the emitting component: service completions use `cli`; only adapter startup uses `desktop`. It does not assert which UI originated a service action.
+The SDK processing flags are always `$process_person_profile=false` and `$geoip_disable=true`.
+No device identity, content, search term, path, target list or business request/operation identifier enters an event.
+An event UUID is SDK-generated delivery metadata, not the business request identity.
+
+### 10.1 Identity and disable lifecycle
+
+After Engine acquires the profile lock, effectively enabled analytics may create `$UNIC_HOME/analytics-id`.
+The identifier is a random 128-bit value written atomically with mode 0600.
+No identifier is created when deployment credentials are absent or analytics is disabled.
+The identifier persists across enabled restarts. Desktop does not receive it through IPC.
+
+Master disable or analytics disable closes admission, cancels delivery, discards SDK work and waits for SDK cleanup.
+The service invalidates and removes the identifier. Startup with a false setting performs the same cleanup before any analytics initialization.
+A failed unlink leaves an invalidation marker where possible; re-enable never treats that marker as an identifier.
+Identity errors degrade analytics with `identity_unavailable`; they do not select device identity or a shared fallback.
+Read operations reject nonregular identity files and use `os.Root` to prevent profile escape.
+Deletion removes a symlink itself and does not change its target.
+Re-enable generates a new identifier and never replays disabled-period activity.
+Previously transmitted data cannot be retracted by changing local settings.
+
+### 10.2 SDK resource and transport bounds
+
+The pinned SDK is `github.com/posthog/posthog-go v1.42.0`.
+A single admission counter caps all retained events across SDK queues, partial batches and in-flight batches at 1024.
+SDK settings use a message queue of 896, a prepared-batch queue of 1, batches of at most 64 and a five-second interval.
+An encoded transmitted event is at most 2 KiB. Requests time out after three seconds and do not retry.
+Response reads are capped at 4 KiB. The transport only accepts the configured origin and `/batch/` without a query, so redirects and ancillary SDK destinations cannot receive credentials.
+SDK debug/error output is suppressed because it may contain arbitrary HTTP details.
+Delivery failures and queue refusal update safe loss counters; pending records are exposed in diagnostics.
+A cancelled transport precedes the SDK's flushing Close path during disable. All three signals share one two-second normal exit budget.
+
+### 10.3 Release metadata
+
+`tools/package` reads `UNIC_POSTHOG_HOST`, `UNIC_POSTHOG_PROJECT_TOKEN`, and optional `UNIC_PRODUCT_VERSION` at build time.
+Host and token must be supplied together. Host selects the exact US or EU Cloud ingestion origin.
+The tool rejects non-ingestion tokens and records only the host, version and credential-presence boolean in its manifest.
+These are build inputs, not runtime environment overrides. Tokens are extractable from distributed binaries and provide no client authentication guarantee.
+The daemon binds the compiled token to the compiled OTLP base, ending in `/i`.
+A custom endpoint needs separately controlled host credential injection; no TOML token key or token CLI is added.
+
+Disable all uploads with:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+Disable only events with:
+
+```toml
+[telemetry.analytics]
+enabled = false
+```
+
+Both changes hot reload. Invalid edits retain the previous valid settings.
+Local process acceptance does not prove Cloud ingestion, project Metrics availability or native UI acceptance.

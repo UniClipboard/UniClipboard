@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,18 +17,20 @@ import (
 const adapterTTL = 10 * time.Second
 
 type adapterState struct {
-	mu       sync.Mutex
-	n        *Node
-	session  string
-	until    time.Time
-	leases   map[engine.LeaseID]bool
-	ticket   engine.ApplyToken
-	commands chan api.DesktopCommand
-	waiting  map[string]chan api.DesktopResult
-	ready    bool
-	baseline bool
-	readers  map[*engine.ContentReader]context.CancelFunc
-	gate     chan struct{}
+	mu          sync.Mutex
+	n           *Node
+	session     string
+	launchID    string
+	lastStartup string
+	until       time.Time
+	leases      map[engine.LeaseID]bool
+	ticket      engine.ApplyToken
+	commands    chan api.DesktopCommand
+	waiting     map[string]chan api.DesktopResult
+	ready       bool
+	baseline    bool
+	readers     map[*engine.ContentReader]context.CancelFunc
+	gate        chan struct{}
 }
 
 func (a *adapterState) init(n *Node) {
@@ -61,6 +64,7 @@ func (a *adapterState) resetLocked() {
 		ch <- api.DesktopResult{ID: id, Error: adapterError(engine.CodeUnavailable)}
 	}
 	a.session = ""
+	a.launchID = ""
 	a.ready = false
 	a.baseline = false
 	a.ticket = ""
@@ -150,6 +154,14 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 		return true
 	}
 	if in.Method == "register" {
+		var registration api.AdapterRegistration
+		if len(in.Value) > 0 && !decode(&registration) {
+			return api.AdapterReply{Error: adapterError(engine.CodeInvalidArgument)}
+		}
+		key := registration.LaunchID
+		if key != "" && (len(key) != 16 || strings.Trim(key, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") != "") {
+			return api.AdapterReply{Error: adapterError(engine.CodeInvalidArgument)}
+		}
 		if a.session != "" && time.Now().After(a.until) {
 			a.resetLocked()
 		}
@@ -157,6 +169,7 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 			err = adapterError(engine.CodeInUse)
 		} else {
 			a.session = randomID()
+			a.launchID = key
 			a.until = time.Now().Add(adapterTTL)
 			out = a.session
 		}
@@ -195,6 +208,10 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 						ids = append(ids, r.ReceiptID)
 					}
 					out = ids
+					if a.launchID != "" && a.launchID != a.lastStartup {
+						a.lastStartup = a.launchID
+						n.diagnostics.ProductEvent(ctx, engine.ProductEvent{Name: "app_started", Product: "desktop"})
+					}
 					a.ready = true
 				}
 			}

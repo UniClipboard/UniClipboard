@@ -14,17 +14,18 @@ import (
 // production TOML switches. The production zero values enforce the contract.
 type Options struct {
 	// LocalOutput mirrors already-sanitized JSON on the local worker only.
-	LocalOutput     func([]byte)
-	Dir             string
-	Config          Config
-	Version         string
-	Changed         func()
-	Token           func(context.Context) (string, error)
-	MetricsInterval time.Duration
-	LogInterval     time.Duration
+	LocalOutput       func([]byte)
+	Dir               string
+	Config            Config
+	Version           string
+	Changed           func()
+	Token             func(context.Context) (string, error)
+	MetricsInterval   time.Duration
+	LogInterval       time.Duration
+	AnalyticsInterval time.Duration
 }
 type Controller struct {
-	failures       [3][7]uint64
+	failures       [4][7]uint64
 	effective      bool
 	lastLocalError time.Time
 	control        sync.Mutex
@@ -39,9 +40,12 @@ type Controller struct {
 	localDone      chan struct{}
 	logs           *generation
 	metrics        *generation
-	states         [3]SignalState
-	drops          [3][5]uint64
+	states         [4]SignalState
+	drops          [4][5]uint64
 	logger         *slog.Logger
+	analytics      *analyticsGeneration
+	analyticsReady bool
+	identityReset  bool
 }
 
 func New(o Options) *Controller {
@@ -151,7 +155,11 @@ func (c *Controller) Telemetry() TelemetryState {
 	if c.cfg.Telemetry.Endpoint != c.endpoint {
 		restart = append(restart, "telemetry.endpoint")
 	}
-	return TelemetryState{Configured: c.cfg.Telemetry.Enabled, Effective: c.effective && !c.closed, Restart: restart, Credential: c.states[1].Requested && c.logs != nil && c.logs.credential || c.states[2].Requested && c.metrics != nil && c.metrics.credential, Logs: copySignalState(c.states[1]), Metrics: copySignalState(c.states[2])}
+	pending := int64(0)
+	if c.analytics != nil {
+		pending = c.analytics.pending.Load()
+	}
+	return TelemetryState{Configured: c.cfg.Telemetry.Enabled, Effective: c.effective && !c.closed, Restart: restart, Credential: c.states[1].Requested && c.logs != nil && c.logs.credential || c.states[2].Requested && c.metrics != nil && c.metrics.credential || c.analytics != nil, Logs: copySignalState(c.states[1]), Metrics: copySignalState(c.states[2]), Analytics: AnalyticsState{SignalState: copySignalState(c.states[3]), Pending: pending}}
 }
 
 // Apply serializes reconfiguration. Detaching a generation closes admission;
@@ -208,14 +216,17 @@ func (c *Controller) Apply(cfg Config) {
 		c.mu.Unlock()
 		var err error
 		if c.endpoint == "" {
-			err = errors.New("restart_required")
+			err = errors.New("not_configured")
 		} else {
 			g, err = c.newGeneration(i)
 		}
 		c.mu.Lock()
 		if err != nil {
 			code := "initialization_failed"
-			if c.endpoint == "" {
+			if err.Error() == "not_configured" {
+				code = "not_configured"
+			}
+			if c.endpoint == "" && cfg.Telemetry.Endpoint != "" {
 				code = "restart_required"
 			}
 			c.states[i].State = "degraded"
@@ -231,6 +242,7 @@ func (c *Controller) Apply(cfg Config) {
 		}
 		c.mu.Unlock()
 	}
+	c.applyAnalytics(cfg)
 	c.mu.Lock()
 	c.effective = cfg.Telemetry.Enabled
 	c.mu.Unlock()
@@ -294,7 +306,8 @@ func (c *Controller) Close(ctx context.Context) {
 		return
 	}
 	c.closed = true
-	logs, metrics := c.logs, c.metrics
+	logs, metrics, analytics := c.logs, c.metrics, c.analytics
+	c.analytics = nil
 	c.logs = nil
 	c.metrics = nil
 	for i := range c.overrides {
@@ -303,7 +316,7 @@ func (c *Controller) Close(ctx context.Context) {
 		}
 	}
 	c.mu.Unlock()
-	// Both signals share one budget and flush concurrently.
+	// All remote signals share one budget and flush concurrently.
 	closeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	var wg sync.WaitGroup
@@ -312,6 +325,10 @@ func (c *Controller) Close(ctx context.Context) {
 			wg.Add(1)
 			go func() { defer wg.Done(); g.stop(true, closeCtx) }()
 		}
+	}
+	if analytics != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); analytics.stop(true, closeCtx) }()
 	}
 	close(c.localStop)
 	wg.Wait()

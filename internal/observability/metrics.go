@@ -65,8 +65,8 @@ type instruments struct {
 	errors       metric.Int64Counter
 	dropped      metric.Int64Counter
 	failures     metric.Int64Counter
-	lastDrops    [3][5]uint64
-	lastFailures [3][7]uint64
+	lastDrops    [4][5]uint64
+	lastFailures [4][7]uint64
 }
 
 func (g *generation) initMetrics() error {
@@ -76,7 +76,7 @@ func (g *generation) initMetrics() error {
 	g.inst.lastDrops = g.c.drops
 	g.inst.lastFailures = g.c.failures
 	g.c.mu.Unlock()
-	g.reader = sdkmetric.NewManualReader(sdkmetric.WithTemporalitySelector(func(sdkmetric.InstrumentKind) metricdata.Temporality { return metricdata.CumulativeTemporality }))
+	g.reader = sdkmetric.NewManualReader(sdkmetric.WithTemporalitySelector(func(sdkmetric.InstrumentKind) metricdata.Temporality { return g.temporality() }))
 	g.meter = sdkmetric.NewMeterProvider(sdkmetric.WithResource(g.resource), sdkmetric.WithReader(g.reader), sdkmetric.WithCardinalityLimit(1024), sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
 	m := g.meter.Meter("unic.observability", metric.WithInstrumentationVersion("1"))
 	var err error
@@ -117,7 +117,7 @@ func (g *generation) collectHealth() {
 	drops := g.c.drops
 	failures := g.c.failures
 	g.c.mu.Unlock()
-	signals := []string{"local_logs", "remote_logs", "metrics"}
+	signals := []string{"local_logs", "remote_logs", "metrics", "analytics"}
 	reasons := []string{"queue_full", "oversize", "invalid_record", "sink_failed", "disabled_discard"}
 	for i := range signals {
 		for j := range reasons {
@@ -136,4 +136,11 @@ func (g *generation) collectHealth() {
 		}
 
 	}
+}
+
+func (g *generation) temporality() metricdata.Temporality {
+	if postHogEndpoint(g.c.endpoint) {
+		return metricdata.DeltaTemporality
+	}
+	return metricdata.CumulativeTemporality
 }

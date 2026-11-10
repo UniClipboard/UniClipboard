@@ -673,6 +673,8 @@ func (e *Engine) RetainHistoryContent(ctx context.Context, id HistoryID) (Conten
 // ApplyHistoryRequest names a record to write to the system clipboard, with
 // the observation position the host last reported (as for BeginApply).
 type ApplyHistoryRequest struct {
+	// UserRestore distinguishes explicit history restoration from Action application.
+	UserRestore      bool
 	HistoryID        HistoryID
 	ExpectedEpoch    string
 	ExpectedSequence uint64
@@ -726,7 +728,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 	if !e.appliable(c, DefaultBackendPolicy()) {
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
-	t := &applyTicket{started: time.Now(), kind: diagnosticKind(c), token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID}
+	t := &applyTicket{started: time.Now(), kind: diagnosticKind(c), token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID, userRestore: req.UserRestore}
 	t.lease = e.newLease(c)
 	e.ticket = t
 	e.commitLocked(EventApply)

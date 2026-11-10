@@ -129,3 +129,13 @@ It refuses to reuse an owned generation. Mode and initial visibility changes req
 A directory-in-use startup failure exits `unicd` with code 75.
 The desktop may retry only that code within its bounded startup deadline while an earlier service retires.
 Other daemon startup failures exit 1. Invalid daemon arguments exit 2.
+
+
+## Product analytics ownership
+
+The service owns one PostHog analytics generation and random identifier per profile.
+Registration may carry a 16-character alphanumeric `launch_id` for a pending Desktop process startup. The client omits it after the first successful ready acknowledgement, including later reconnects. The service keeps only the last ready launch key to suppress duplicate ready calls and retries after an uncertain acknowledgement. Registration without a launch key is valid and does not announce a new Desktop startup. The launch key is local-only and never enters telemetry.
+The adapter never receives the analytics identifier or ingestion token.
+Action, send, pairing and explicit history-application events come from authoritative Engine completions, not activity notifications.
+`GET /v1/diagnostics/telemetry` includes analytics health and pending/loss counters, with no identity or credential values.
+See the [observability contract](observability-contract.md#10-posthog-product-events).

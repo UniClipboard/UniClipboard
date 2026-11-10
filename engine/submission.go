@@ -228,6 +228,25 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 		e.commitGate.RUnlock()
 	}
 	outcome, code := diagnosticOutcome(failure)
+	if req.action != nil {
+		category := "external"
+		if req.action.act.plugin.id == "builtin.text" {
+			category = "builtin"
+		}
+		e.productEvent(ctx, ProductEvent{Name: "action_completed", Result: string(outcome), Code: code, ContentKind: commitKind, ActionCategory: category})
+	} else if req.Origin == OriginExplicit && id == "" {
+		result := string(outcome)
+		if failure == nil {
+			result = "skipped"
+			if disp == SyncFailed {
+				result = "failed"
+				if syncErr != nil {
+					code = syncErr.Code
+				}
+			}
+		}
+		e.productEvent(ctx, ProductEvent{Name: "manual_send_completed", Result: result, Code: code, ContentKind: commitKind})
+	}
 	e.diagnostic(ctx, DiagnosticRecord{Stage: "commit", Result: outcome, Backend: "none", ContentKind: commitKind, Code: code, Duration: time.Since(entry.started)})
 	if e.log != nil {
 		if failure == nil {

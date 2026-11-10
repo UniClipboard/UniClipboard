@@ -327,16 +327,19 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # launch_at_login = false
 # start_in_background = false
 
-# Logging and optional OTLP/HTTP upload. Remote upload is off by default.
+# Logging and PostHog/OTLP upload. All remote signals are on by default.
+# Set telemetry.enabled = false to stop all uploads. Signal switches also hot reload.
 # [logging]
 # level = "info"
 # [telemetry]
-# enabled = false
+# enabled = true
 # endpoint = "https://collector.example.com"  # changing endpoint needs restart
 # [telemetry.logs]
-# enabled = false
+# enabled = true
 # level = "warn"
 # [telemetry.metrics]
+# enabled = true
+# [telemetry.analytics]
 # enabled = true
 
 # Name shown to your other devices. Default: this computer's host name.

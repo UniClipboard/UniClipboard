@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -30,6 +31,30 @@ func run() error {
 	desktop := flag.Bool("desktop", false, "also build the desktop package")
 	output := flag.String("output", "dist/releases", "output directory")
 	flag.Parse()
+	// Build-time metadata only. No runtime environment variable enables upload
+	// or overrides the selected project. Never print the ingestion token.
+	phHost := os.Getenv("UNIC_POSTHOG_HOST")
+	phToken := os.Getenv("UNIC_POSTHOG_PROJECT_TOKEN")
+	version := os.Getenv("UNIC_PRODUCT_VERSION")
+	if (phHost == "") != (phToken == "") {
+		return fmt.Errorf("PostHog release host and project token must be supplied together")
+	}
+	if phHost != "" && phHost != "https://us.i.posthog.com" && phHost != "https://eu.i.posthog.com" {
+		return fmt.Errorf("PostHog release host must select US or EU Cloud")
+	}
+	if phToken != "" && !regexp.MustCompile(`^phc_[A-Za-z0-9_-]+$`).MatchString(phToken) {
+		return fmt.Errorf("PostHog release credential must be an ingestion-only project token")
+	}
+	if version == "" {
+		version = "dev"
+	}
+	if !regexp.MustCompile(`^[A-Za-z0-9._+-]{1,64}$`).MatchString(version) {
+		return fmt.Errorf("invalid product version")
+	}
+	linker := "-X github.com/uniclipboard/unic/internal/observability.ProductVersion=" + version
+	if phHost != "" {
+		linker += " -X github.com/uniclipboard/unic/internal/observability.PostHogHost=" + phHost + " -X github.com/uniclipboard/unic/internal/observability.PostHogToken=" + phToken
+	}
 	targetOS := os.Getenv("GOOS")
 	if targetOS == "" {
 		targetOS = runtime.GOOS
@@ -66,7 +91,7 @@ func run() error {
 			app = "desktop"
 		}
 		path := filepath.Join(work, name+suffix)
-		cmd := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-o", path, "./app/"+app+"/cmd/"+name)
+		cmd := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-ldflags", linker, "-o", path, "./app/"+app+"/cmd/"+name)
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if e = cmd.Run(); e != nil {
 			return e
@@ -117,7 +142,7 @@ func run() error {
 	if !reflect.DeepEqual(source, after) {
 		return fmt.Errorf("source changed during packaging")
 	}
-	manifest := map[string]any{"source_sha256": source, "source_unchanged": true, "archives_sha256": archives, "os": targetOS, "arch": arch, "go": runtime.Version(), "source_head": strings.TrimSpace(string(head)), "source_dirty": len(dirty) > 0, "binaries_sha256": hashes, "desktop": *desktop, "signed": false}
+	manifest := map[string]any{"source_sha256": source, "source_unchanged": true, "archives_sha256": archives, "os": targetOS, "arch": arch, "go": runtime.Version(), "source_head": strings.TrimSpace(string(head)), "source_dirty": len(dirty) > 0, "binaries_sha256": hashes, "desktop": *desktop, "signed": false, "telemetry_host": phHost, "ingestion_token_configured": phToken != "", "product_version": version}
 	data, e := json.MarshalIndent(manifest, "", "  ")
 	if e != nil {
 		return e

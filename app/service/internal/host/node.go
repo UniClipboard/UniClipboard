@@ -104,7 +104,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		}
 	}()
 	opts := engine.Options{
-		Logger: diagnostics.Logger(), Diagnostics: diagnostics.Record,
+		Logger: diagnostics.Logger(), Diagnostics: diagnostics.Record, ProductEvents: diagnostics.ProductEvent,
 		DataDir:           o.Dir,
 		CacheDir:          filepath.Join(o.Dir, "inbox", "file-cache"),
 		StoreReceivedFile: storeReceived,
@@ -166,6 +166,7 @@ func (n *Node) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(context.Background())
 	n.cancel = cancel
 	n.runCtx = runCtx
+	n.diagnostics.StartProduct("cli")
 	n.wg.Add(2)
 	if n.luaDir != "" && len(n.lua) > 0 {
 		n.wg.Add(1)

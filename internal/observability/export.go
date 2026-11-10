@@ -58,7 +58,7 @@ type generation struct {
 func (c *Controller) newGeneration(i int) (*generation, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	g := &generation{c: c, index: i, ctx: ctx, cancel: cancel, active: true, done: make(chan struct{}), flush: make(chan flushRequest), records: make(chan sdklog.Record, 1024), diagnostics: make(chan engine.DiagnosticRecord, 1024)}
-	version := c.opts.Version
+	version := safeVersion(c.opts.Version)
 	if version == "" {
 		version = "dev"
 	}
@@ -88,6 +88,11 @@ func (c *Controller) newGeneration(i int) (*generation, error) {
 			g.credential = true
 		}
 	}
+	if postHogEndpoint(c.endpoint) && (!g.credential || !strings.HasPrefix(strings.TrimPrefix(headers["Authorization"], "Bearer "), "phc_")) {
+		cancel()
+		g.transport.CloseIdleConnections()
+		return nil, errors.New("not_configured")
+	}
 	endpoint := strings.TrimSuffix(c.endpoint, "/")
 	var err error
 	if i == 1 {
@@ -97,7 +102,7 @@ func (c *Controller) newGeneration(i int) (*generation, error) {
 			g.handler = otelslog.NewHandler("unic.observability", otelslog.WithVersion("1"), otelslog.WithLoggerProvider(g.provider), otelslog.WithSource(false))
 		}
 	} else {
-		g.metricExporter, err = otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(endpoint+"/v1/metrics"), otlpmetrichttp.WithHTTPClient(client), otlpmetrichttp.WithTLSClientConfig(g.transport.TLSClientConfig), otlpmetrichttp.WithHeaders(headers), otlpmetrichttp.WithTimeout(3*time.Second), otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}), otlpmetrichttp.WithCompression(otlpmetrichttp.NoCompression), otlpmetrichttp.WithTemporalitySelector(func(sdkmetric.InstrumentKind) metricdata.Temporality { return metricdata.CumulativeTemporality }))
+		g.metricExporter, err = otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(endpoint+"/v1/metrics"), otlpmetrichttp.WithHTTPClient(client), otlpmetrichttp.WithTLSClientConfig(g.transport.TLSClientConfig), otlpmetrichttp.WithHeaders(headers), otlpmetrichttp.WithTimeout(3*time.Second), otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}), otlpmetrichttp.WithCompression(otlpmetrichttp.NoCompression), otlpmetrichttp.WithTemporalitySelector(func(sdkmetric.InstrumentKind) metricdata.Temporality { return g.temporality() }))
 		if err == nil {
 			err = g.initMetrics()
 		}

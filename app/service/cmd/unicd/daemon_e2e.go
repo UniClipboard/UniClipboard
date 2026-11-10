@@ -15,6 +15,10 @@ import (
 )
 
 func configureDaemon(o *host.Options) error {
+	if os.Getenv("UNIC_E2E_POSTHOG") == "true" {
+		o.Observability.Token = func(context.Context) (string, error) { return "phc_unic_e2e_only", nil }
+		o.Observability.AnalyticsInterval = 100 * time.Millisecond
+	}
 	if os.Getenv("UNIC_E2E_FAST_DIAGNOSTICS") == "1" {
 		o.Observability.MetricsInterval = 500 * time.Millisecond
 		o.Observability.LogInterval = 100 * time.Millisecond

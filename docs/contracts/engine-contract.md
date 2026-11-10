@@ -62,6 +62,16 @@
 
 诊断仅传递阶段、结果、后端大类、内容大类、稳定 Code 和耗时。Engine 在业务锁外调用，宿主必须非阻塞接纳。诊断失败和回调 panic 不改变业务结果。公开签名不依赖 OTel 或 internal 类型，不暴露内容、路径或身份。本次不增加 traces、采样配置或传播协议。
 
+### 1.5 Product event observation
+
+`Options.ProductEvents func(context.Context, ProductEvent)` is an optional finite-field product-action hook.
+`ProductEvent` contains `Name`, `Product`, `Result`, `Code`, `ContentKind` and `ActionCategory`; it has no identity, business IDs, content or arbitrary properties.
+Engine emits authoritative Action/send/trust/apply completions once at their existing idempotency boundaries.
+The host owns enablement, analytics identity, SDK queues and delivery.
+The callback runs outside the Engine state mutex (`e.mu`); lifecycle/commit guards may remain held. It must return immediately, must not call Engine methods or wait for lifecycle work, and must not retain the caller context. Panic does not change business results.
+`ApplyHistoryRequest.UserRestore` distinguishes explicit history restoration from Action application; the host sets it from the operation purpose, independently of sync settings.
+Names, finite values and exact emission semantics are defined in [the observability contract](observability-contract.md#10-posthog-product-events).
+
 ## 2. 接口总览
 
 以下是目标 Go 签名。DTO 字段由后文规定；标识类型均为独立 string 类型，枚举也是独立 string 类型。所有带 context 的方法拒绝 nil context。`Subscription` 与 `ContentReader` 是 SDK 管理的句柄，不跨语言直接导出。

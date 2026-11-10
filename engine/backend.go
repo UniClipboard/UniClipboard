@@ -107,6 +107,8 @@ func (h *dispatchHost) Register(keys []targetKey) *Error {
 		if err != nil {
 			return err
 		}
+		o.manual = h.req.Origin == OriginExplicit && h.req.action == nil && !h.req.restored
+		o.kind = diagnosticKind(h.c)
 		o.content, o.open = h.c, true // the operation takes over the dispatch reference
 		h.op = o
 	}
@@ -142,6 +144,7 @@ func (h *dispatchHost) finish() {
 	e.mu.Unlock()
 	if done != nil {
 		e.cs.unref(done)
+		e.opFinished(o.op.ID)
 	}
 }
 

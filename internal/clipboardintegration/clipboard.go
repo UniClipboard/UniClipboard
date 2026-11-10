@@ -361,7 +361,7 @@ func (c *Clipboard) applyHistory(ctx context.Context, id engine.HistoryID, syncR
 	if c.epoch == "" {
 		return out, &engine.Error{Code: engine.CodeUnavailable, Message: "the clipboard is not available"}
 	}
-	tk, err := c.e.BeginApplyHistory(ctx, engine.ApplyHistoryRequest{HistoryID: id, ExpectedEpoch: c.epoch, ExpectedSequence: c.seq})
+	tk, err := c.e.BeginApplyHistory(ctx, engine.ApplyHistoryRequest{HistoryID: id, UserRestore: syncRestore, ExpectedEpoch: c.epoch, ExpectedSequence: c.seq})
 	if err != nil {
 		if c.lost(err) {
 			c.epoch = ""

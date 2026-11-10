@@ -179,7 +179,7 @@ Native visual acceptance remains separate from CLI acceptance.
 ## Client diagnostics
 
 The host creates diagnostics before Engine construction and injects its logger and fixed-field callback.
-Local logs are asynchronous and bounded under the profile directory. Remote logs and metrics default to off through the telemetry master switch.
+Local logs are asynchronous and bounded under the profile directory. Remote logs, metrics and PostHog events default enabled. The `telemetry.enabled` master switch and independent `telemetry.logs.enabled`, `telemetry.metrics.enabled`, and `telemetry.analytics.enabled` switches can disable them through config.toml. Switch changes hot reload; endpoint changes require restart. A build without release deployment metadata reports degraded uploads and keeps the service usable.
 `unic logs level` queries the independent local/remote thresholds. A temporary override uses `--for` and `--target`.
 `unic diagnostics telemetry` reports signal state, losses, and pending endpoint restart without disclosing the endpoint or credentials.
 See the [observability architecture](observability.md) and [contract](../contracts/observability-contract.md) for the execution points, strict socket DTOs, privacy, and cancellation barrier.

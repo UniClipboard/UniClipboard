@@ -21,6 +21,18 @@ func (forbiddenLogValue) LogValue() slog.Value { panic("an unapproved LogValuer 
 
 // Release builds have neither these routes nor the shortened export timers.
 func testDiagnosticRoutes(mux *http.ServeMux, n *host.Node) {
+	mux.HandleFunc("POST /test/metric-samples", func(w http.ResponseWriter, _ *http.Request) {
+		for _, d := range []time.Duration{10 * time.Millisecond, 100 * time.Millisecond, 500 * time.Millisecond} {
+			n.Diagnostics().Record(context.Background(), engine.DiagnosticRecord{Stage: "receive", Result: "succeeded", Backend: "none", ContentKind: "text", Duration: d})
+		}
+		w.WriteHeader(200)
+	})
+	mux.HandleFunc("POST /test/analytics-pressure", func(w http.ResponseWriter, _ *http.Request) {
+		for i := 0; i < 10000; i++ {
+			n.Diagnostics().ProductEvent(context.Background(), engine.ProductEvent{Name: "action_completed", Result: "succeeded", ActionCategory: "builtin"})
+		}
+		w.WriteHeader(200)
+	})
 	logger := n.Diagnostics().Logger()
 	derived := logger.With("stage", "commit", "secret", "fixture-private-attribute")
 	mux.HandleFunc("POST /test/logs", func(w http.ResponseWriter, _ *http.Request) {

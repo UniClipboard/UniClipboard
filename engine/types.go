@@ -274,6 +274,7 @@ const (
 // SubmitRequest asks the engine to send leased content to the devices that are
 // connected right now.
 type SubmitRequest struct {
+	restored  bool
 	RequestID RequestID
 	LeaseID   LeaseID
 	Origin    Origin

@@ -47,7 +47,7 @@ func (e *Engine) SyncRestoredHistory(ctx context.Context, token ApplyToken, leas
 		return out, nil
 	}
 	defer e.cs.unref(c)
-	req := SubmitRequest{RequestID: RequestID("restore-" + string(token)), Origin: OriginExplicit}
+	req := SubmitRequest{RequestID: RequestID("restore-" + string(token)), Origin: OriginExplicit, restored: true}
 	pc := &processedContent{c: c, policy: pipelinePolicy{Sync: !it.SyncBlocked}}
 	id, disp, results, syncErr, fail := e.dispatchProcessed(ctx, req, sha256.Sum256([]byte(req.RequestID)), pc)
 	out.OperationID, out.SyncDisposition, out.SyncError = id, disp, syncErr

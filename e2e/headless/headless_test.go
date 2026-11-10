@@ -180,12 +180,13 @@ func TestProductionHeadless(t *testing.T) {
 		home := filepath.Join(base, fmt.Sprint(i))
 		need(t, os.MkdirAll(home, 0700))
 		homes = append(homes, home)
+		need(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte("[telemetry]\nenabled=false\n"), 0600))
 		if i == 1 {
 			pluginDir := filepath.Join(home, "plugins", "lua", "transient")
 			need(t, os.MkdirAll(pluginDir, 0700))
 			need(t, os.WriteFile(filepath.Join(pluginDir, "spec.toml"), []byte("manifest_version = 1\nkind = \"lua\"\nentry = \"main.lua\"\nid = \"test.transient\"\nversion = \"1.0.0\"\napi_version = 1\ncapabilities = [\"processor\"]\n"), 0600))
 			need(t, os.WriteFile(filepath.Join(pluginDir, "main.lua"), []byte(`return {id="test.transient",version="1.0.0",api_version=1,capabilities={"processor"},process=function(ctx) if ctx.item.text=="transient receive" then ctx:set_persist(false) end end}`), 0600))
-			need(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte("[plugins]\nlua = [\"test.transient\"]\n"), 0600))
+			need(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte("[telemetry]\nenabled=false\n[plugins]\nlua = [\"test.transient\"]\n"), 0600))
 		}
 		socket := filepath.Join(home, "unic.sock")
 		c := api.NewClient(socket)

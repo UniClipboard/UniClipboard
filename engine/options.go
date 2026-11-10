@@ -56,6 +56,9 @@ type Options struct {
 	Logger *slog.Logger
 	// Diagnostics receives fixed business-stage records outside engine locks.
 	Diagnostics func(context.Context, DiagnosticRecord)
+	// ProductEvents receives finite completed-action records outside the state mutex.
+	// It must return immediately. Nil disables product event collection.
+	ProductEvents func(context.Context, ProductEvent)
 
 	// Plugins run in this process, in this order, before the engine is
 	// returned: Init and Start happen in New, Close when the engine closes.

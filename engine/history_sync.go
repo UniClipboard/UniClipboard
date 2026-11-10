@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"context"
+
 	"github.com/uniclipboard/unic/internal/store"
 )
 
@@ -128,12 +130,40 @@ func (e *Engine) linkHistory(hid HistoryID, opID OperationID, results []BackendS
 func (e *Engine) opFinished(id OperationID) {
 	e.mu.Lock()
 	o := e.ops.byID[id]
-	if o == nil || o.history == "" || o.recorded || o.op.Phase != PhaseCompleted {
+	if o == nil || o.op.Phase != PhaseCompleted {
 		e.mu.Unlock()
 		return
 	}
-	o.recorded = true
+	var event *ProductEvent
+	if o.manual && !o.productRecorded {
+		o.productRecorded = true
+		result := "failed"
+		switch o.op.Outcome {
+		case OutcomeSuccess:
+			result = "succeeded"
+		case OutcomePartial:
+			result = "partial"
+		case OutcomeSuperseded:
+			result = "superseded"
+		}
+		event = &ProductEvent{Name: "manual_send_completed", Result: result, ContentKind: o.kind}
+		for _, t := range o.op.Targets {
+			if t.Error != nil {
+				event.Code = t.Error.Code
+				break
+			}
+		}
+	}
+	record := o.history != "" && !o.recorded
+	if record {
+		o.recorded = true
+	}
 	hid, results, targets := o.history, o.results, append([]TargetStatus(nil), o.op.Targets...)
 	e.mu.Unlock()
-	e.recordSync(hid, results, targets)
+	if record {
+		e.recordSync(hid, results, targets)
+	}
+	if event != nil {
+		e.productEvent(context.Background(), *event)
+	}
 }

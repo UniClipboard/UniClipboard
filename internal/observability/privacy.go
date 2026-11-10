@@ -23,7 +23,7 @@ type privateTransport struct {
 }
 
 func (t *privateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Path != "/v1/logs" {
+	if req.URL.Path != "/v1/logs" && req.URL.Path != "/i/v1/logs" {
 		return t.roundTrip(req)
 	}
 	b, err := io.ReadAll(io.LimitReader(req.Body, 2<<20))

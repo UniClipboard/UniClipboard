@@ -234,20 +234,25 @@ func TestObservability(t *testing.T) {
 }
 
 type otlpRequest struct {
-	Path string
-	At   time.Time
-	Body []byte
+	Path       string
+	At         time.Time
+	Body       []byte
+	Authorized bool
 }
 type observabilityRun struct {
-	responseDelay   time.Duration
-	untrusted       bool
-	sourceHashes    map[string]string
-	scenarioResults map[string]string
-	assertions      []map[string]any
-	resourceSamples []map[string]any
+	responseDelay    time.Duration
+	responseLocation string
+	untrusted        bool
+	sourceHashes     map[string]string
+	scenarioResults  map[string]string
+	assertions       []map[string]any
+	resourceSamples  []map[string]any
 
 	artifactName          string
 	production            bool
+	executable            string
+	posthog               bool
+	manualAdapter         bool
 	t                     *testing.T
 	dir, home, sock, cert string
 	server                *httptest.Server
@@ -269,11 +274,24 @@ func newObservabilityRun(t *testing.T) *observabilityRun {
 	}
 	h.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(io.LimitReader(r.Body, 8<<20))
+		authorized := r.Header.Get("Authorization") == "Bearer phc_unic_e2e_only"
+		if r.URL.Path == "/batch/" {
+			var batch map[string]any
+			if json.Unmarshal(b, &batch) == nil {
+				authorized = batch["api_key"] == "phc_unic_e2e_only"
+				delete(batch, "api_key")
+				b, _ = json.Marshal(batch)
+			}
+		}
 		h.mu.Lock()
-		h.requests = append(h.requests, otlpRequest{r.URL.Path, time.Now(), b})
+		h.requests = append(h.requests, otlpRequest{Path: r.URL.Path, At: time.Now(), Body: b, Authorized: authorized})
 		status := h.status
 		delay := h.responseDelay
+		location := h.responseLocation
 		h.mu.Unlock()
+		if location != "" {
+			w.Header().Set("Location", location)
+		}
 		if delay > 0 {
 			select {
 			case <-r.Context().Done():
@@ -305,14 +323,25 @@ func (h *observabilityRun) env() []string {
 	if h.production {
 		fast = ""
 	}
-	return append(os.Environ(), "UNIC_HOME="+h.home, "UNIC_SOCK="+h.sock, "UNIC_MOCK_CLIPBOARD_DIR="+filepath.Join(h.home, "board"), "SSL_CERT_FILE="+cert, "UNIC_E2E_DIAGNOSTICS=1", "UNIC_E2E_FAST_DIAGNOSTICS="+fast, "GORACE=atexit_sleep_ms=0", "OTEL_RESOURCE_ATTRIBUTES=secret=otlp-env-secret", "OTEL_EXPORTER_OTLP_ENDPOINT=https://127.0.0.1:1")
+	board := filepath.Join(h.home, "board")
+	if h.manualAdapter {
+		board = ""
+	}
+	return append(os.Environ(), "UNIC_HOME="+h.home, "UNIC_SOCK="+h.sock, "UNIC_MOCK_CLIPBOARD_DIR="+board, "SSL_CERT_FILE="+cert, "UNIC_E2E_DIAGNOSTICS=1", "UNIC_E2E_POSTHOG="+fmt.Sprint(h.posthog), "UNIC_E2E_FAST_DIAGNOSTICS="+fast, "GORACE=atexit_sleep_ms=0", "OTEL_RESOURCE_ATTRIBUTES=secret=otlp-env-secret", "OTEL_EXPORTER_OTLP_ENDPOINT=https://127.0.0.1:1")
 }
 func (h *observabilityRun) start(t *testing.T, endpoint string) {
-	cfg := "[logging]\nlevel=\"info\"\n[telemetry]\nenabled=false\nendpoint=" + fmt.Sprintf("%q", endpoint) + "\n"
+	cfg := "[logging]\nlevel=\"info\"\n[telemetry]\nenabled=false\nendpoint=" + fmt.Sprintf("%q", endpoint) + "\n[telemetry.logs]\nenabled=false\n[telemetry.analytics]\nenabled=false\n"
+	h.startConfig(t, cfg)
+}
+func (h *observabilityRun) startConfig(t *testing.T, cfg string) {
 	if err := os.WriteFile(filepath.Join(h.home, "config.toml"), []byte(cfg), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(filepath.Join(binDir, "unicd"))
+	exe := h.executable
+	if exe == "" {
+		exe = filepath.Join(binDir, "unicd")
+	}
+	cmd := exec.Command(exe)
 	cmd.Env = h.env()
 	f, err := os.Create(filepath.Join(h.dir, "daemon.log"))
 	if err != nil {
@@ -445,7 +474,11 @@ func (h *observabilityRun) artifacts() {
 	d := filepath.Join(dest, h.artifactName)
 	_ = os.MkdirAll(d, 0700)
 	for _, n := range []string{"unic", "unicd"} {
-		b, err := os.ReadFile(filepath.Join(binDir, n))
+		binaryPath := filepath.Join(binDir, n)
+		if n == "unicd" && h.executable != "" {
+			binaryPath = h.executable
+		}
+		b, err := os.ReadFile(binaryPath)
 		if err == nil {
 			sum := sha256.Sum256(b)
 			_ = os.WriteFile(filepath.Join(d, n+".sha256"), []byte(hex.EncodeToString(sum[:])), 0600)
@@ -455,8 +488,14 @@ func (h *observabilityRun) artifacts() {
 	defer h.mu.Unlock()
 	var decoded []map[string]any
 	for _, r := range h.requests {
+		if r.Path == "/batch/" {
+			var data any
+			_ = json.Unmarshal(r.Body, &data)
+			decoded = append(decoded, map[string]any{"path": r.Path, "at": r.At, "data": data})
+			continue
+		}
 		var msg proto.Message
-		if r.Path == "/v1/logs" {
+		if r.Path == "/v1/logs" || r.Path == "/i/v1/logs" {
 			msg = &collectlogs.ExportLogsServiceRequest{}
 		} else {
 			msg = &collectmetrics.ExportMetricsServiceRequest{}
@@ -487,6 +526,10 @@ func (h *observabilityRun) artifacts() {
 	manifest := map[string]any{"source_files_sha256": h.sourceHashes, "source_unchanged": sameHashes(h.sourceHashes, observabilitySourceHashes(h.t)), "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "test_daemon_build_tag": "unic_e2e", "metrics_interval_ms": 500, "log_interval_ms": 100, "race": true}
 	root, _ := repoRoot()
 	head, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	if h.executable != "" {
+		manifest["test_daemon_build_tag"] = ""
+		manifest["production_release_assembly"] = true
+	}
 	if h.production {
 		manifest["metrics_interval_ms"] = 60000
 		manifest["log_interval_ms"] = 5000
@@ -537,9 +580,52 @@ go build -race -tags unic_e2e -o "$bin/unicd" ./app/service/cmd/unicd
 go build -race -o "$bin/unic" ./app/service/cmd/unic
 TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" go test -race ./e2e/cli -run TestObservability -count=1 -v
 `
+	if h.posthog {
+		replay = strings.ReplaceAll(replay, "-run TestObservability", "-run TestPostHog")
+	}
 	_ = os.WriteFile(filepath.Join(d, "replay.sh"), []byte(replay), 0700)
 	b, _ = json.Marshal(map[string]any{"failed": h.t.Failed(), "requests": len(h.requests), "scenarios": h.scenarioResults})
 	_ = os.WriteFile(filepath.Join(d, "summary.json"), b, 0600)
+	if h.posthog {
+		timeline := make([]map[string]any, 0, len(h.requests))
+		var analytics []any
+		for _, r := range h.requests {
+			timeline = append(timeline, map[string]any{"path": r.Path, "at": r.At, "authorized": r.Authorized})
+			if r.Path == "/batch/" {
+				var batch struct {
+					Batch []any `json:"batch"`
+				}
+				_ = json.Unmarshal(r.Body, &batch)
+				analytics = append(analytics, batch.Batch...)
+			}
+		}
+		b, _ = json.MarshalIndent(timeline, "", "  ")
+		_ = os.WriteFile(filepath.Join(d, "requests.redacted.json"), b, 0600)
+		b, _ = json.MarshalIndent(analytics, "", "  ")
+		_ = os.WriteFile(filepath.Join(d, "analytics.decoded.json"), b, 0600)
+		b, _ = json.MarshalIndent(map[string]any{"hosted": "NOT_RUN", "reason": "Cloud project and region not selected", "local_failed": h.t.Failed()}, "", "  ")
+		_ = os.WriteFile(filepath.Join(d, "hosted-receipt.json"), b, 0600)
+		exit := 0
+		if h.t.Failed() {
+			exit = 1
+		}
+		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": "unic_e2e", "test_selector": "^TestPostHog", "exit_code": exit}, "", "  ")
+		_ = os.WriteFile(filepath.Join(d, "commands.json"), b, 0600)
+		entries, _ := os.ReadDir(d)
+		var sums strings.Builder
+		for _, entry := range entries {
+			if entry.IsDir() || entry.Name() == "SHA256SUMS" {
+				continue
+			}
+			data, e := os.ReadFile(filepath.Join(d, entry.Name()))
+			if e != nil {
+				continue
+			}
+			sum := sha256.Sum256(data)
+			fmt.Fprintf(&sums, "%x  %s\n", sum, entry.Name())
+		}
+		_ = os.WriteFile(filepath.Join(d, "SHA256SUMS"), []byte(sums.String()), 0600)
+	}
 }
 
 func (h *observabilityRun) hasLogSince(event string, since time.Time) bool {
@@ -722,7 +808,10 @@ func TestObservabilityPipeline(t *testing.T) {
 		})
 	}
 	a.cli(t, "copy", "pipeline-private-synthetic-content")
-	b.eventually(t, func() bool { return strings.TrimSpace(b.cli(t, "paste")) == "pipeline-private-synthetic-content" })
+	b.eventually(t, func() bool {
+		code, body := b.request(t, "GET", "/v1/clipboard", "")
+		return code == 200 && strings.Contains(string(body), "pipeline-private-synthetic-content")
+	})
 	a.eventually(t, func() bool {
 		return a.metricCount("commit", "succeeded") == 1 && a.metricCount("send", "succeeded") >= 1
 	})
@@ -737,12 +826,16 @@ func TestObservabilityPipeline(t *testing.T) {
 }
 
 func (h *observabilityRun) run(t *testing.T, name string, fn func(*testing.T)) {
+	if t.Failed() {
+		return
+	}
 	passed := t.Run(name, fn)
 	status := "passed"
 	if !passed {
 		status = "failed"
 	}
 	h.scenarioResults[name] = status
+	h.assertions = append(h.assertions, map[string]any{"scenario": name, "expected": "passed", "actual": status})
 }
 func observabilitySourceHashes(t *testing.T) map[string]string {
 	t.Helper()
@@ -750,7 +843,7 @@ func observabilitySourceHashes(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "engine", "internal", "app/desktop", "e2e/cli")
+	cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "engine", "internal", "app/service", "app/desktop", "e2e/cli")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)

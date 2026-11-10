@@ -18,6 +18,7 @@ import (
 	"github.com/uniclipboard/unic/app/service/internal/host"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
+	"github.com/uniclipboard/unic/internal/observability"
 )
 
 // Production service entry. No graphical runtime is loaded.
@@ -48,7 +49,7 @@ func runDaemon() error {
 	if owned {
 		go servicelifecycle.WatchOwner(os.Stdin, cancel)
 	}
-	options := host.Options{Dir: dir, Settings: settings, LuaDir: luaDir}
+	options := host.Options{Dir: dir, Settings: settings, LuaDir: luaDir, Observability: observability.ReleaseOptions(settings.Current().Telemetry.Endpoint)}
 	if err := configureDaemon(&options); err != nil {
 		return err
 	}

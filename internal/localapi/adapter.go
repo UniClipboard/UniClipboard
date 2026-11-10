@@ -9,6 +9,12 @@ import (
 	"github.com/uniclipboard/unic/internal/clip"
 )
 
+// AdapterRegistration identifies one local adapter process across reconnects.
+// LaunchID is local-only metadata; it is never an analytics distinct_id.
+type AdapterRegistration struct {
+	LaunchID string `json:"launch_id,omitempty"`
+}
+
 // AdapterRequest is restricted to a single owner-only local socket session.
 type AdapterRequest struct {
 	Session string          `json:"session,omitempty"`

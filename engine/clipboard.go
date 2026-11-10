@@ -122,6 +122,7 @@ type applyTicket struct {
 	ended              time.Time
 	kind               DiagnosticContentKind
 	diagnosticRecorded bool
+	userRestore        bool
 	token              ApplyToken
 	receipt            ReceiptID
 	history            HistoryID // set instead of receipt when applying a stored record
@@ -460,7 +461,11 @@ func (e *Engine) appliable(c *contentObj, sy BackendSyncPolicy) bool {
 // baseline. Reporting the same result again succeeds.
 func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 	var diagnostic *DiagnosticRecord
+	var restored bool
 	defer func() {
+		if restored {
+			e.productEvent(ctx, ProductEvent{Name: "history_applied", Result: "succeeded"})
+		}
 		if diagnostic != nil {
 			e.diagnostic(ctx, *diagnostic)
 			if e.log != nil {
@@ -527,6 +532,7 @@ func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 			code = CodeCancelled
 		}
 		diagnostic = e.claimApplyDiagnosticLocked(t, result, code)
+		restored = t.userRestore && !t.dead && state == ApplyApplied
 		if t.rc != nil && !t.dead {
 			t.rc.locked, t.rc.ApplyState = false, state
 		}

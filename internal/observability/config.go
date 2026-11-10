@@ -1,4 +1,4 @@
-// Package observability owns bounded, optional client diagnostics. Business
+// Package observability owns bounded, configurable client diagnostics. Business
 // callers only enqueue fixed data; workers own all file and network I/O.
 package observability
 
@@ -21,11 +21,15 @@ type Logs struct {
 type Metrics struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
 }
+type Analytics struct {
+	Enabled bool `toml:"enabled" json:"enabled"`
+}
 type Telemetry struct {
-	Enabled  bool    `toml:"enabled" json:"enabled"`
-	Endpoint string  `toml:"endpoint" json:"endpoint"`
-	Logs     Logs    `toml:"logs" json:"logs"`
-	Metrics  Metrics `toml:"metrics" json:"metrics"`
+	Enabled   bool      `toml:"enabled" json:"enabled"`
+	Endpoint  string    `toml:"endpoint" json:"endpoint"`
+	Logs      Logs      `toml:"logs" json:"logs"`
+	Metrics   Metrics   `toml:"metrics" json:"metrics"`
+	Analytics Analytics `toml:"analytics" json:"analytics"`
 }
 type Config struct {
 	Logging   Logging
@@ -33,7 +37,7 @@ type Config struct {
 }
 
 func Default() Config {
-	return Config{Logging: Logging{"info"}, Telemetry: Telemetry{Logs: Logs{Level: "warn"}, Metrics: Metrics{Enabled: true}}}
+	return Config{Logging: Logging{"info"}, Telemetry: Telemetry{Enabled: true, Endpoint: releaseEndpoint(), Logs: Logs{Enabled: true, Level: "warn"}, Metrics: Metrics{Enabled: true}, Analytics: Analytics{Enabled: true}}}
 }
 func Level(s string) (slog.Level, bool) {
 	switch s {
@@ -56,14 +60,11 @@ func (c Config) Validate() error {
 		return errors.New("telemetry.logs.level: expected debug, info, warn or error")
 	}
 	if c.Telemetry.Endpoint == "" {
-		if c.Telemetry.Enabled {
-			return errors.New("telemetry.endpoint: required when enabled")
-		}
 		return nil
 	}
 	u, err := url.Parse(c.Telemetry.Endpoint)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.RawPath != "" || strings.ContainsAny(c.Telemetry.Endpoint, "\r\n#?") {
-		return errors.New("telemetry.endpoint: expected an HTTPS base URL without credentials, path, query or fragment")
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/" && u.Path != "/i" && u.Path != "/i/") || u.RawPath != "" || strings.ContainsAny(c.Telemetry.Endpoint, "\r\n#?") {
+		return errors.New("telemetry.endpoint: expected an HTTPS base URL with optional /i base path and without credentials, query or fragment")
 	}
 	if port := u.Port(); port != "" {
 		n, err := strconv.Atoi(port)
@@ -94,13 +95,18 @@ type SignalState struct {
 	Dropped   uint64  `json:"dropped_records"`
 	Failures  uint64  `json:"export_failures"`
 }
+type AnalyticsState struct {
+	SignalState
+	Pending int64 `json:"pending_records"`
+}
 type TelemetryState struct {
-	Configured bool        `json:"configured_enabled"`
-	Effective  bool        `json:"effective_enabled"`
-	Restart    []string    `json:"restart_required"`
-	Credential bool        `json:"credential_configured"`
-	Logs       SignalState `json:"logs"`
-	Metrics    SignalState `json:"metrics"`
+	Configured bool           `json:"configured_enabled"`
+	Effective  bool           `json:"effective_enabled"`
+	Restart    []string       `json:"restart_required"`
+	Credential bool           `json:"credential_configured"`
+	Logs       SignalState    `json:"logs"`
+	Metrics    SignalState    `json:"metrics"`
+	Analytics  AnalyticsState `json:"analytics"`
 }
 type override struct {
 	level    string

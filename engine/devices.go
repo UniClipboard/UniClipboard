@@ -296,6 +296,9 @@ func (e *Engine) ApproveDevice(ctx context.Context, req ApproveDeviceRequest) (D
 	}
 	e.reconcile()
 	e.deviceChanged(req.ID)
+	if d.Trust != store.TrustTrusted {
+		e.productEvent(ctx, ProductEvent{Name: "pairing_completed", Result: "succeeded"})
+	}
 	return e.loadDevice(req.ID)
 }
 

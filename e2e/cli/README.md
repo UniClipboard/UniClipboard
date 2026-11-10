@@ -102,3 +102,14 @@ other work can change the checkout during acceptance.
 Run `make headless-e2e` to build production binaries without test tags and exercise two real services plus a separate directory-backed adapter process.
 The result is `.cache/0015-acceptance/manifest.json`, with source hashes, binary hashes, dependency inventory and passed checks.
 This fixture does not open a graphical application or access the system clipboard.
+
+
+## PostHog integration
+
+Run `make posthog-e2e` on macOS for nonvisual local TLS acceptance.
+It uses real `unic`/`unicd` processes, synthetic ingestion credentials and isolated profiles.
+The release-assembly scenario builds a production daemon without test tags and verifies default-on logs, delta metrics and product events at the normal export intervals.
+It also verifies pre-start false, endpoint-bound credentials, all five event types, idempotency, identity rotation, privacy, queue bounds and transport faults.
+Evidence is written under `.cache/0019/acceptance/`, including per-run source/binary hashes, sanitized decoded data, assertions, checksums and `replay.sh`.
+Cloud read-back and native GUI/system clipboard acceptance are separate and are not performed by this command.
+Use `TMPDIR=/private/tmp` for the broader suite on macOS; the existing file cache rejects symlinked temporary paths.

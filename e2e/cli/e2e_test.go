@@ -249,6 +249,15 @@ func cmdNodeStart(ts *testscript.TestScript, neg bool, args []string) {
 		}
 	}
 	ts.Check(os.MkdirAll(filepath.Join(n.home, "board"), 0o700))
+	cfgPath := filepath.Join(n.home, "config.toml")
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil && !os.IsNotExist(err) {
+		ts.Check(err)
+	}
+	if !strings.Contains(string(raw), "[telemetry]") {
+		raw = append(raw, []byte("\n[telemetry]\nenabled=false\n")...)
+		ts.Check(os.WriteFile(cfgPath, raw, 0600))
+	}
 	logf, err := os.OpenFile(filepath.Join(st.work, args[0]+".log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	ts.Check(err)
 	cmd := exec.Command(filepath.Join(binDir, "unicd"))

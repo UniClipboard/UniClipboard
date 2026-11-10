@@ -44,12 +44,11 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0010](docs/decisions/proposed/0010-plugin-settings-schema.md) | 插件设置 Schema 与表单生成 | JSON Schema 子集 + UI 提示；Go 配置定义生成静态 schema，各 shell 生成原生表单；独立工具和 macOS 会话预览已实现，配置 API/清单/RPC/安装接入待完成 |
 | [0011](docs/decisions/proposed/0011-v1-history-migration.md) | v1 本机历史迁移 | 独立 Go CLI，三平台 arm64/amd64；只读解锁旧数据，离线导入文本/图片/文件/标签；支持新目录与追加合并、幂等续跑和重开校验；验收见执行计划 |
 | [0013](docs/decisions/proposed/0013-mygo-uikit.md) | 桌面 UI Kit：移植到 mygo | 统一 Kit API，Adwaita / macOS glass / Fluent 三皮肤；token 从 default.json 生成；59 个公共组件与 GUI 已接入，交互和视觉分别验证；各平台原生验收边界见执行记录 |
-| [0014](docs/decisions/proposed/0014-client-observability-otlp.md) | 客户端可观测性：OTLP 与动态日志等级 | 已采纳；本次 logs + metrics 已接入工作区，traces 后续实施；验收与限制见执行计划；本机/远程等级独立，有界非阻塞、秘密白名单、默认关闭远程遥测 |
+| [0014](docs/decisions/proposed/0014-client-observability-otlp.md) | 客户端可观测性：OTLP 与动态日志等级 | 已采纳；本次 logs + metrics 已接入工作区，traces 后续实施；验收与限制见执行计划；本机/远程等级独立，有界非阻塞、秘密白名单；current upload defaults are defined in the [observability architecture](docs/architecture/observability.md) |
 | [0015](docs/decisions/proposed/0015-headless-cli-and-desktop-integration.md) | 纯 CLI、无头服务与独立桌面集成 | Runtime implemented; UI-free CLI/service, exclusive desktop adapter and separate distributions; native acceptance pending. See [execution receipt](docs/exec/0015-headless-cli-and-desktop-integration.md) |
 | [0016](docs/decisions/proposed/0016-sync-and-file-settings.md) | Sync and file settings | Sync and quota CLI/TOML implemented; 100 MB default file limit; custom received files remain user-managed; separate file cleanup superseded by 0017 |
 | [0017](docs/decisions/proposed/0017-history-auto-cleanup.md) | Automatic history cleanup | Unified age/count cleanup, tag exclusions, and managed-file/history deletion implemented; per-device cache quota retained; separate file-cleanup settings removed; 16 CLI E2E cases passed; native visual acceptance pending |
 | [0018](docs/decisions/proposed/0018-independent-product-build-and-release.md) | Independent product builds and releases | Android, iOS, CLI and Desktop own independent versions and separate build/release workflows; immutable artifacts and per-target channels. Implementation pending; see [execution plan](docs/exec/0018-independent-product-build-and-release.md). |
-| [0019](docs/decisions/proposed/0019-posthog-integration.md) | PostHog Cloud integration | Reuse OTLP logs/metrics and add product events. User accepted default-on uploads with config.toml controls, ingestion-only project token distribution and an independent random analytics identifier. Cloud project/region and remaining integration choices are pending. Design only; see [acceptance plan](docs/exec/0019-posthog-integration.md). |
 
 ### 接口契约（`docs/contracts/`）
 
@@ -92,3 +91,5 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 - 项目尚未发布任何版本：线路协议、数据库结构、配置和 API 都不需要考虑向后兼容。需要改就直接改，不写迁移、兼容分支或旧版本回退；协议版本号保持为 1。
 
 - Release programs: `unic` and `unicd` must have no transitive UI dependency. `unic-desktop` owns graphical integration. See [headless architecture](docs/architecture/headless.md).
+
+- Client telemetry defaults enabled. The config.toml master and per-signal switches can disable it. Ship only the ingestion-only project token; analytics uses an independent random profile identifier. See the [observability contract](docs/contracts/observability-contract.md).

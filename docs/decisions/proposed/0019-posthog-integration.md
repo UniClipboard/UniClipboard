@@ -1,9 +1,9 @@
 # 0019: PostHog Cloud integration
 
-- Status: Upload defaults, ingestion-token distribution and analytics identity accepted; remaining integration choices under review. Runtime implementation is not authorized by this design task.
+- Status: Implemented and verified locally and in US Cloud; awaiting documentation metadata/archival closure.
 - Date: 2026-11-10.
 - Scope: Integration design for logs, application metrics and product events.
-- Deployment: PostHog Cloud; project and region remain undecided.
+- Deployment: US Cloud / UniClipboard (722858), selected by the user during implementation.
 - Current implementation: [observability architecture](../../architecture/observability.md) and [observability contract](../../contracts/observability-contract.md).
 - Execution plan: [0019 acceptance plan](../../exec/0019-posthog-integration.md).
 
@@ -14,7 +14,7 @@ PostHog should become a destination without duplicating this instrumentation.
 Product analytics answers a separate question: which product capabilities people use and whether they return.
 Pipeline stage counts alone cannot establish product activation or user retention.
 
-This document proposes changes. It does not supersede the current contract until approved and implemented.
+The implementation lands runtime behavior in the observability architecture and contract. This decision records rationale; acceptance status belongs in the execution receipt.
 Native crash reporting, session replay, traces, feature flags and experiments require separate decisions.
 
 ## 2. Verified capability and source baseline
@@ -135,7 +135,7 @@ Valid changes take effect through the existing config watcher without restarting
 Disabling waits for the cancellation/discard barrier; restarting must preserve the explicit false setting.
 Invalid edits retain the last valid configuration and must never restore enabled defaults.
 A missing release endpoint or ingestion token produces a safe unavailable/degraded state, never an inferred destination.
-No first-run opt-in is required by this design.
+No first-run opt-in is required.
 The implementation must amend the current default-off contract and generated configuration template together.
 
 Accepted user decision (2026-11-10): use one independent random analytics identifier per local profile, created only when analytics is effectively enabled.
@@ -214,4 +214,4 @@ No automatic Resource detectors or `OTEL_*` overrides may broaden collection or 
 The user has accepted default-on uploads, the ingestion-token exception and the independent random analytics identifier.
 Cloud region/project and the remaining integration choices are still under review.
 Implementation must update the live contract and architecture in the same change.
-This decision remains in proposed status while integration review and implementation are pending.
+This decision remains in proposed status until the recorded implementation and hosted acceptance scope are closed.

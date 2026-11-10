@@ -84,7 +84,7 @@ func (d *demo) deviceByID(id string) *device {
 }
 
 func (d *demo) setDeviceTask(task string) {
-	d.deviceTask, d.fieldError, d.deviceNote, d.approveChecked = task, "", "", false
+	d.deviceTask, d.fieldError, d.deviceNote = task, "", ""
 	switch task {
 	case "invite":
 		d.inviteCode, d.inviteMode = newPairCode(), "code"
@@ -101,7 +101,7 @@ func (d *demo) deviceSheet(c *ui.Context, k uikit.Kit) {
 	selected := d.deviceList.Value
 	props := uikit.SheetProps{Open: &d.devicesOpen, Variant: variant, Title: "管理设备", Done: "完成", OnClosed: func() {
 		d.setDeviceTask("")
-		d.renaming = false
+		d.renaming, d.deviceDetailOpen = false, false
 	}}
 	if d.deviceTask == "" {
 		props.Footer = func() {
@@ -124,7 +124,7 @@ func (d *demo) deviceSheet(c *ui.Context, k uikit.Kit) {
 			d.deviceTaskView(c, k)
 			return
 		}
-		k.MasterDetail(c, uikit.MasterDetailProps{DetailKey: selected, DetailLabel: "设备详情"}, func() { d.deviceSidebar(c, k) }, func() { d.deviceDetail(c, k) })
+		k.MasterDetail(c, uikit.MasterDetailProps{DetailKey: selected, DetailLabel: "设备详情", DetailOpen: &d.deviceDetailOpen, BackLabel: "设备"}, func() { d.deviceSidebar(c, k) }, func() { d.deviceDetail(c, k) })
 	})
 	if done {
 		d.devicesOpen = false
@@ -164,6 +164,9 @@ func (d *demo) deviceSidebar(c *ui.Context, k uikit.Kit) {
 		sections = append(sections, uikit.SourceListSection{ID: "candidates", Title: "可能认识", Items: items})
 	}
 	k.SourceList(c, &d.deviceList, uikit.SourceListProps{Label: "设备", Sections: sections, Footer: "演示空间 · 端到端加密"}).Grow(1)
+	if d.deviceList.Activated() {
+		d.deviceDetailOpen = true
+	}
 	if kind, _ := d.deviceList.Command(); kind == uikit.SourcePlaceholder {
 		d.setDeviceTask("invite")
 	}
@@ -301,17 +304,30 @@ func (d *demo) pendingDetail(c *ui.Context, k uikit.Kit, id string) {
 	}
 	p := d.pending[i]
 	ui.Column(c).Gap(20).Children(func() {
-		k.EntityHeader(c, uikit.EntityHeaderProps{Icon: p.icon, Pending: true, Centered: true, Title: p.name, Status: uikit.EntityStatus{Text: "等待你批准", Tone: uikit.StatusInfo}}, func() {
-			if k.Button(c, "核对指纹…", uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
-				d.setDeviceTask("approve")
-				d.approveID = p.id
+		k.EntityHeader(c, uikit.EntityHeaderProps{Icon: p.icon, Pending: true, Centered: true, Title: p.name, Status: uikit.EntityStatus{Text: "请求加入", Tone: uikit.StatusInfo}}, nil)
+		ui.Column(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			k.Text(c, "设备指纹", secondary)
+			for _, line := range fingerprintLines(p.fingerprint) {
+				k.Text(c, line, uikit.TextProps{Monospace: true, Emphasized: true})
+			}
+			k.Text(c, "对方屏幕上显示相同的指纹时，才接受。", footnote)
+		})
+		ui.Row(c).Gap(12).Justify(ui.Center).Children(func() {
+			if k.Button(c.Key("deny"), "拒绝", uikit.ButtonProps{Variant: uikit.Destructive}).Clicked() {
+				d.pending = slices.Delete(d.pending, i, i+1)
+				d.deviceList.Value, d.deviceDetailOpen = "local", false
+				return
+			}
+			if k.Button(c.Key("accept"), "接受", uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
+				d.pending = slices.Delete(d.pending, i, i+1)
+				d.addPeer("a"+p.id, p.name, p.platform, p.icon, p.fingerprint)
 			}
 		})
 		k.SettingsGroup(c, uikit.SettingsGroupProps{}, func() {
 			k.SettingsRow(c.Key("os"), uikit.SettingsRowProps{Label: "系统"}, nil, func() { k.Text(c, p.platform, secondary) })
 			k.SettingsRow(c.Key("via"), uikit.SettingsRowProps{Label: "来路"}, nil, func() { k.Text(c, p.via, secondary) })
 		})
-		k.Text(c, "名称由对方自报，未经验证。批准前必须核对指纹。", footnote)
+		k.Text(c, "名称由对方自报，未经验证。拒绝后，对方再次请求会重新出现在这里。", footnote)
 	})
 }
 
@@ -325,12 +341,12 @@ func (d *demo) candidateDetail(c *ui.Context, k uikit.Kit, id string) {
 		k.EntityHeader(c, uikit.EntityHeaderProps{Icon: cd.icon, Pending: true, Centered: true, Title: cd.name, Description: cd.introducer}, func() {
 			if k.Button(c.Key("join"), "连接", uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
 				d.candidates = slices.Delete(d.candidates, i, i+1)
-				d.deviceList.Value = "local"
+				d.deviceList.Value, d.deviceDetailOpen = "local", false
 				d.setDeviceTask("wait")
 			}
 			if k.Button(c.Key("ignore"), "忽略", uikit.ButtonProps{}).Clicked() {
 				d.candidates = slices.Delete(d.candidates, i, i+1)
-				d.deviceList.Value = "local"
+				d.deviceList.Value, d.deviceDetailOpen = "local", false
 			}
 		})
 		k.Text(c, "名称未经验证。连接后仍需双方各自批准。", footnote)
@@ -341,7 +357,16 @@ func (d *demo) addPeer(id, name, platform string, icon uikit.IconName, fingerpri
 	d.devices = append(d.devices, device{id: id, name: name, platform: platform, icon: icon, online: true, latency: 22, link: "局域网", lastSeen: "刚刚",
 		direction: "both", text: true, image: true, file: true, fingerprint: fingerprint,
 		paths: []devicePath{{name: "tailcat · 默认", state: "已连接", lastSync: "—"}}})
-	d.deviceList.Value = id
+	d.deviceList.Value, d.deviceDetailOpen = id, true
+}
+
+// fingerprintLines splits the 8 groups of a fingerprint into two lines of 4.
+func fingerprintLines(fp string) []string {
+	g := strings.Fields(fp)
+	if len(g) <= 4 {
+		return []string{fp}
+	}
+	return []string{strings.Join(g[:4], " "), strings.Join(g[4:], " ")}
 }
 
 func (d *demo) deviceTaskView(c *ui.Context, k uikit.Kit) {
@@ -349,7 +374,7 @@ func (d *demo) deviceTaskView(c *ui.Context, k uikit.Kit) {
 	switch d.deviceTask {
 	case "invite":
 		ticket := d.inviteMode == "ticket"
-		if k.TaskPanel(c, uikit.TaskPanelProps{Title: "邀请设备", Description: "在另一台设备上输入配对码。对方加入后，你仍需核对指纹并批准。", BackLabel: back}, func() {
+		if k.TaskPanel(c, uikit.TaskPanelProps{Title: "邀请设备", Description: "在另一台设备上输入配对码。对方加入后，你仍需核对指纹并接受。", BackLabel: back}, func() {
 			mode := d.inviteMode
 			if k.SegmentedControl(c, uikit.SegmentedControlProps{Label: "邀请方式", Value: &mode, Items: []uikit.SegmentedItem{{Value: "code", Label: "配对码"}, {Value: "ticket", Label: "完整票据"}}}).Changed {
 				d.inviteMode = mode
@@ -373,7 +398,7 @@ func (d *demo) deviceTaskView(c *ui.Context, k uikit.Kit) {
 			if k.Button(c.Key("sim"), "模拟对方加入", uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
 				id := fmt.Sprintf("p%d", len(d.pending)+len(d.devices)+1)
 				d.pending = append(d.pending, pendingDevice{id: id, name: "新电脑", platform: "Windows 11", via: "配对码 " + d.inviteCode, icon: uikit.IconDesktop, fingerprint: "4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D"})
-				d.deviceList.Value = "pending:" + id
+				d.deviceList.Value, d.deviceDetailOpen = "pending:"+id, true
 				d.setDeviceTask("")
 			}
 		}) {
@@ -411,32 +436,6 @@ func (d *demo) deviceTaskView(c *ui.Context, k uikit.Kit) {
 			}
 			if k.Button(c.Key("ok"), "模拟对方批准", uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
 				d.addPeer(fmt.Sprintf("joined%d", len(d.devices)), "对方设备", "macOS 15", uikit.IconDesktop, "4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D")
-				d.setDeviceTask("")
-			}
-		}) {
-			d.setDeviceTask("")
-		}
-	case "approve":
-		i := slices.IndexFunc(d.pending, func(p pendingDevice) bool { return p.id == d.approveID })
-		if i < 0 {
-			d.setDeviceTask("")
-			return
-		}
-		p := d.pending[i]
-		if k.TaskPanel(c, uikit.TaskPanelProps{Title: p.name + " 请求加入", Description: p.platform + " · 名称由对方自报，未经验证 · " + p.via, BackLabel: back}, func() {
-			k.Text(c, p.fingerprint, uikit.TextProps{Monospace: true, Emphasized: true})
-			k.Checkbox(c, &d.approveChecked, uikit.CheckboxProps{Label: "我已在对方设备上核对，指纹完全一致"})
-			k.Text(c, "拒绝等同于移除：对方再次拨入会重新出现在待批准里。", uikit.TextProps{Role: uikit.RoleCaption, Tone: uikit.ToneSecondary})
-		}, func() {
-			if k.Button(c.Key("deny"), "拒绝", uikit.ButtonProps{Variant: uikit.Destructive}).Clicked() {
-				d.pending = slices.Delete(d.pending, i, i+1)
-				d.deviceList.Value = "local"
-				d.setDeviceTask("")
-				return
-			}
-			if k.Button(c.Key("approve"), "批准", uikit.ButtonProps{Variant: uikit.Primary, Disabled: !d.approveChecked}).Clicked() {
-				d.pending = slices.Delete(d.pending, i, i+1)
-				d.addPeer("a"+p.id, p.name, p.platform, p.icon, p.fingerprint)
 				d.setDeviceTask("")
 			}
 		}) {

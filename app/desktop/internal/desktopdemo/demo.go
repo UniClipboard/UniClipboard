@@ -23,33 +23,59 @@ type entry struct {
 	pinned                              bool
 }
 
+type devicePath struct {
+	name, state, lastSync string
+	failed                bool
+}
+
+// device is a fixture. Latency, link, direction and content-type policy have no Engine
+// field yet; the demo keeps them locally.
 type device struct {
-	id, name, platform, status string
-	icon                       uikit.IconName
-	online                     bool
-	send, receive              bool
+	id, name, platform string
+	icon               uikit.IconName
+	online             bool
+	latency            int
+	link, lastSeen     string
+	fingerprint        string
+	direction          string // both, send, recv, pause
+	text, image, file  bool
+	paths              []devicePath
+}
+
+type pendingDevice struct {
+	id, name, platform, via, fingerprint string
+	icon                                 uikit.IconName
+}
+
+type deviceCandidate struct {
+	id, name, introducer string
+	icon                 uikit.IconName
 }
 
 type demo struct {
-	tags                                                                   []demoTag
-	tagManager                                                             tagManagerState
-	assignTagsOpen                                                         bool
-	search                                                                 demoSearch
-	page, theme, query, kind, source, tag, timeRange, layout               string
-	nav, settings                                                          uikit.NavState
-	list                                                                   uikit.ListState
-	deviceList                                                             uikit.SourceState
-	entries                                                                []entry
-	devices                                                                []device
-	selected                                                               string
-	confirmEntries                                                         []string
-	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook bool
-	compact                                                                bool
-	gridSize                                                               float64
-	deviceTask, fieldError, notice, confirm, confirmID                     string
-	deviceName, passphrase, confirmation, invitation                       string
-	options                                                                map[string]bool
-	choices                                                                map[string]string
+	tags                                                                     []demoTag
+	tagManager                                                               tagManagerState
+	assignTagsOpen                                                           bool
+	search                                                                   demoSearch
+	page, theme, query, kind, source, tag, timeRange, layout                 string
+	nav, settings                                                            uikit.NavState
+	list                                                                     uikit.ListState
+	deviceList                                                               uikit.SourceState
+	entries                                                                  []entry
+	devices                                                                  []device
+	selected                                                                 string
+	confirmEntries                                                           []string
+	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook   bool
+	compact                                                                  bool
+	gridSize                                                                 float64
+	deviceTask, fieldError, notice, confirm, confirmID                       string
+	deviceName, passphrase, confirmation, invitation                         string
+	pending                                                                  []pendingDevice
+	candidates                                                               []deviceCandidate
+	inviteCode, inviteMode, connectInput, renameValue, approveID, deviceNote string
+	renaming, approveChecked                                                 bool
+	options                                                                  map[string]bool
+	choices                                                                  map[string]string
 }
 
 func newDemo(page, theme string) *demo {
@@ -82,11 +108,17 @@ func newDemo(page, theme string) *demo {
 		d.entries = append(d.entries, entry{id: fmt.Sprintf("older-%d", i), title: title, text: title, source: "local", date: fmt.Sprintf("昨天 %02d:20", 15-i), kind: uikit.KindText})
 	}
 	d.devices = []device{
-		{id: "local", name: "MacBook Pro", platform: "macOS 15.6", status: "本机 · 同步中", icon: uikit.IconDesktop, online: true, send: true, receive: true},
-		{id: "windows", name: "工作电脑", platform: "Windows 11", status: "已连接 · 局域网", icon: uikit.IconDesktop, online: true, send: true, receive: true},
-		{id: "linux", name: "Linux 工作站", platform: "Fedora 43", status: "离线 · 昨天在线", icon: uikit.IconDesktop, send: true, receive: true},
-		{id: "phone", name: "我的手机", platform: "Android 16", status: "已连接 · 移动同步", icon: uikit.IconPhone, online: true, send: true, receive: true},
+		{id: "local", name: "MacBook Pro", platform: "macOS 15.6", icon: uikit.IconDesktop, online: true},
+		{id: "windows", name: "工作电脑", platform: "Windows 11", icon: uikit.IconDesktop, online: true, latency: 15, link: "局域网", lastSeen: "刚刚", direction: "both", text: true, image: true, file: true,
+			fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E", paths: []devicePath{{name: "tailcat · 默认", state: "已连接", lastSync: "1 分钟前"}}},
+		{id: "linux", name: "Linux 工作站", platform: "Fedora 43", icon: uikit.IconDesktop, lastSeen: "昨天 18:02", direction: "both", text: true,
+			fingerprint: "E310 4B6A 92CF 7D05 18A3 CC42 6F9B 20D7", paths: []devicePath{{name: "tailcat · 默认", state: "不可达", lastSync: "昨天 18:02", failed: true}}},
+		{id: "phone", name: "我的手机", platform: "Android 16", icon: uikit.IconPhone, online: true, latency: 180, link: "加密中继", lastSeen: "刚刚", direction: "recv", text: true, image: true,
+			fingerprint: "5D08 AA13 7E42 9B6C F1D4 30E7 82A5 C619", paths: []devicePath{{name: "tailcat · 默认", state: "已连接（经中继）", lastSync: "12 分钟前"}, {name: "tailcat · 工作仓库", state: "对方未批准", lastSync: "—", failed: true}}},
 	}
+	d.pending = []pendingDevice{{id: "p1", name: "新电脑", platform: "Windows 11", via: "配对码 482-913", icon: uikit.IconDesktop, fingerprint: "4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D"}}
+	d.candidates = []deviceCandidate{{id: "c1", name: "Alice 的平板", introducer: "工作电脑 介绍", icon: uikit.IconPhone}}
+	d.inviteCode, d.inviteMode = "482-913", "code"
 	d.initTags()
 	d.list.Select(d.selected)
 	return d
@@ -244,7 +276,11 @@ func (d *demo) confirmDialog(c *ui.Context, k uikit.Kit) {
 		return
 	}
 	open := true
-	r := k.AlertDialog(c, uikit.AlertDialogProps{Open: &open, Title: d.confirm, Description: "此操作只修改本次演示中的假数据。", ConfirmLabel: "移除", CancelLabel: "取消", Destructive: true}, nil)
+	desc := "此操作只修改本次演示中的假数据。"
+	if strings.HasPrefix(d.confirmID, "device:") {
+		desc = "撤销此设备的全部同步路径。对方需要重新配对并重新批准。已同步到对方的内容无法撤回。"
+	}
+	r := k.AlertDialog(c, uikit.AlertDialogProps{Open: &open, Title: d.confirm, Description: desc, ConfirmLabel: "移除", CancelLabel: "取消", Destructive: true}, nil)
 	if r.Confirmed {
 		if strings.HasPrefix(d.confirmID, "device:") {
 			id := strings.TrimPrefix(d.confirmID, "device:")

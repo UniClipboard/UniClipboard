@@ -15,20 +15,24 @@ type MasterDetailProps struct {
 func (k Kit) MasterDetail(c *ui.Context, p MasterDetailProps, list func(), detail func()) ui.Element {
 	t := k.layTok()
 	root := ui.Row(c).Height(480).MinHeight(0).AlignItems(ui.Stretch)
-	listCol := ui.Column(c.Key("master")).Width(240).Shrink(0).MinHeight(0)
 	switch k.Skin {
 	case MacOS:
 		root.Clip()
-		listCol.InsetShadow(-0.5, 0, 0, 0, t.Border)
 	case Windows:
-		h := float32(480)
-		root.Height(h).Clip().Radius(k.Px("borderRadiusMedium")).Border(1, t.CardStroke)
-		listCol.Background(k.Color("w11-base")).InsetShadow(-1, 0, 0, 0, t.Border)
+		root.Height(480).Clip().Radius(k.Px("borderRadiusMedium")).Border(1, t.CardStroke)
 	default:
 		root.Clip()
-		listCol.Background(k.Sem("sidebar")).InsetShadow(-1, 0, 0, 0, t.Border)
 	}
 	return root.Children(func() {
+		listCol := ui.Column(c.Key("master")).Width(240).Shrink(0).MinHeight(0)
+		switch k.Skin {
+		case MacOS:
+			listCol.InsetShadow(-0.5, 0, 0, 0, t.Border)
+		case Windows:
+			listCol.Background(k.Color("w11-base")).InsetShadow(-1, 0, 0, 0, t.Border)
+		default:
+			listCol.Background(k.Sem("sidebar")).InsetShadow(-1, 0, 0, 0, t.Border)
+		}
 		listCol.Children(func() {
 			if list != nil {
 				list()

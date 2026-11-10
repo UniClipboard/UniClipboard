@@ -85,7 +85,7 @@ func (k Kit) SourceList(c *ui.Context, st *SourceState, p SourceListProps) ui.El
 		}
 	}
 	lk := k.navLook()
-	shell := ui.Column(c).Gap(8)
+	shell := ui.Column(c).Gap(8).Padding(8, 8, 10)
 	shell.Children(func() {
 		if p.Header != nil {
 			p.Header()
@@ -98,7 +98,7 @@ func (k Kit) SourceList(c *ui.Context, st *SourceState, p SourceListProps) ui.El
 		})
 		k.sourceKeys(list, st, order)
 		if p.Footer != "" {
-			k.Text(c, p.Footer, TextProps{Tone: ToneSecondary, Role: RoleCaption})
+			k.Text(c, p.Footer, TextProps{Tone: ToneSecondary, Role: RoleCaption}).Padding(0, lk.padX)
 		}
 	})
 	return shell

@@ -60,11 +60,17 @@ type EntityHeaderProps struct {
 	Status EntityStatus
 	// Description is a longer explanation under the status line.
 	Description string
+	// Centered stacks icon, title, status and actions in the middle (a hero, as in System
+	// Settings), instead of the leading row.
+	Centered bool
 }
 
 // EntityHeader is the heading of an object's detail, e.g. a device: a large icon, the name, a
 // status line and the object's commands (actions) on the trailing side.
 func (k Kit) EntityHeader(c *ui.Context, p EntityHeaderProps, actions func()) ui.Element {
+	if p.Centered {
+		return k.entityHeaderCentered(c, p, actions)
+	}
 	t := k.layTok()
 	tile := float32(56)
 	if k.Skin == MacOS {
@@ -107,6 +113,34 @@ func (k Kit) EntityHeader(c *ui.Context, p EntityHeaderProps, actions func()) ui
 		})
 		if actions != nil {
 			ui.Row(c.Key("actions")).Gap(8).Shrink(0).AlignItems(ui.Center).Children(actions)
+		}
+	})
+}
+
+func (k Kit) entityHeaderCentered(c *ui.Context, p EntityHeaderProps, actions func()) ui.Element {
+	t := k.layTok()
+	return ui.Column(c).Gap(6).AlignItems(ui.Center).Padding(4, 0, 8).Children(func() {
+		box := ui.Box(c.Key("tile")).Size(64, 64).Shrink(0).Radius(16).Center().
+			Justify(ui.Center).AlignItems(ui.Center).AccessHidden(true)
+		if p.Pending {
+			box.InsetShadow(0, 0, 0, 1.5, t.Border).TextColor(t.Accent)
+		} else {
+			box.Background(t.Shade).TextColor(t.Fg)
+		}
+		box.Children(func() { k.Icon(c, p.Icon, 34) })
+		ui.Box(c.Key("gap")).Size(1, 4)
+		k.Text(c.Key("title"), p.Title, TextProps{Role: RoleTitle, Emphasized: true, Truncate: true}).Level(2)
+		if p.Status.Text != "" {
+			ui.Row(c.Key("status")).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Box(c.Key("dot")).Size(7, 7).Radius(4).Background(k.layStatusColor(p.Status.Tone)).AccessHidden(true)
+				k.Text(c.Key("st"), p.Status.Text, TextProps{Role: RoleCallout, Tone: ToneSecondary})
+			})
+		}
+		if p.Description != "" {
+			k.Text(c.Key("desc"), p.Description, TextProps{Role: RoleCaption, Tone: ToneSecondary})
+		}
+		if actions != nil {
+			ui.Row(c.Key("actions")).Gap(8).Padding(8, 0, 0).AlignItems(ui.Center).Children(actions)
 		}
 	})
 }

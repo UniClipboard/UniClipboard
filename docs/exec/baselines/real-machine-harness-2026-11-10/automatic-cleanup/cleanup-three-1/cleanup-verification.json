@@ -1,0 +1,19 @@
+{
+  "run_id": "f844d4a6235cabdab2dca26c21ff6abc",
+  "status": "failed",
+  "controller_private_absent": true,
+  "nodes": {
+    "mac": {
+      "observed_owned_directories": 1,
+      "all_absent": true
+    },
+    "vps": {
+      "observed_owned_directories": 2,
+      "all_absent": true
+    },
+    "windows": {
+      "observed_owned_directories": 2,
+      "all_absent": true
+    }
+  }
+}

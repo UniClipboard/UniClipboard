@@ -1,0 +1,22 @@
+version = 1
+
+[nodes.mac]
+transport = "local"
+
+[nodes.windows]
+transport = "ssh"
+host = "test-win"
+
+[nodes.linux]
+transport = "ssh"
+host = "test-linux"
+
+[suite]
+topology = "mesh"
+repetitions = 3
+receive_timeout_seconds = 180
+scenarios = ["contract", "pairwise", "mesh", "isolation"]
+text_bytes = [1, 1024, 65536, 1048576]
+png_pixels = [16, 256, 1024]
+file_bytes = [0, 1024, 1048576, 16777216, 104857600]
+html_bytes = [1024, 65536, 1048576]

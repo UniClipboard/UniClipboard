@@ -47,6 +47,7 @@ verified: 0710594f0e20d22f9e2ff06bece61631eff6172d
 - Stop/挂起与 commit 通过 `commitGate` 排序：先生效则不得迟到 commit。
 - 历史内容不可变，提交后只能改标签与过期；删除/到期立即对 List/Get/Retain/Update/Apply 不可见，已持有的租约/读取/发送/应用继续有效。
 - 接收不得留下半条目：历史、去重记录、Received 槽位同成同败；persist=false 接收也必须写去重记录。
+- Receive admission distinguishes an absent part from a zero-byte file. A nonempty set of zero-byte files remains valid content; empty representations remain invalid.
 - 历史与 Received 各自持有内容引用，互不删除；历史存储配额与 `MaxStoredBytes` 共享，就地引用的文件按 0 计。
 - 事件、日志、错误、SubmissionResult 不含正文、路径、文件名或原始插件错误。
 - 就地引用文件被移动/改动后读取报 `source_changed`，不得复制替代或删除用户源文件。
@@ -74,7 +75,7 @@ verified: 0710594f0e20d22f9e2ff06bece61631eff6172d
 ## 缺口
 
 - 插件 GitHub 安装（`unic plugin install`）未实现。
-- 真机双设备基线实测未做。
+- Two-host CLI acceptance is complete for the recorded source snapshot. Native clipboard acceptance remains pending. See the [physical-host receipt](../exec/baselines/0004-2026-11-10-cli-twohost.md).
 - 桌面 GUI Action 菜单随待定的 mygo + 自定义 UI Kit 界面原型规划；SwiftUI 客户端路线已取消。
 - `CommitRequest.WritebackGuard` 非空返回 `unsupported`（自动写回已取消，无计划）。
 

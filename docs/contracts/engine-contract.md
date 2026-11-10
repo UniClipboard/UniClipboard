@@ -206,6 +206,7 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 
 - 文本和 HTML 是有效 UTF-8；PNG 须为可解码 PNG。一个内容最多包含每种 MIME 一个内存表示，重复 MIME 或空内容报 invalid_argument。不同表示被视为同一内容的替代表示。
 - 不遍历文件夹，不接受目录输入。文件名称只用作展示和安全落盘名称，不用作路径；消除目录分隔、`.`、`..` 等路径语义，重复名可存在且 PartID 不同。
+- A regular file may contain zero bytes. A nonempty set of zero-byte files is content and must follow the same receive, history and export path as other files. Empty representations and a snapshot without parts remain invalid.
 - Import 按声明大小读取并验证流恰好结束，短读、额外字节和读取错误均失败；硬上限沿用 wire（内存单表示 64 MiB、单文件 2 GiB、总计 4 GiB、part 数 4096）。用户限制在导入和开始传输时也验证。
 - Import 返回 `ContentHandle{Content: ContentDescriptor, LeaseID}`。Descriptor 包含 ID、各 part 的 PartID、Kind（representation/file）、MIME、Name、Size、是否引用（Referenced）和总大小；不含字节、路径和 hash。
 - 文件与表示可同时导入/传输；自动应用沿用桌面“文件优先”规则。宿主不支持的表示可跳过；无任何可应用表示时报告 unsupported，不假装成功。

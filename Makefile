@@ -24,3 +24,9 @@ headless-e2e:
 .PHONY: desktop-startup-e2e
 desktop-startup-e2e:
 	UNIC_DESKTOP_STARTUP_E2E=1 UNIC_DESKTOP_STARTUP_ARTIFACTS=$(CURDIR)/.cache/desktop-startup-e2e go test -race ./app/desktop/e2e -run '^TestStartupProcesses$$' -v -count=1
+
+.PHONY: real-e2e real-e2e-doctor
+real-e2e:
+	go run ./e2e/real run --lab "$(LAB)" --suite sync
+real-e2e-doctor:
+	go run ./e2e/real doctor --lab "$(LAB)"

@@ -54,6 +54,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 | `app/mac/` | 停止推进的 SwiftUI 实验原型与设置表单样例 |
 | `app/android/`、`app/ios/` | 移动端接入约束与说明 |
 | `e2e/cli/`、`tools/docscheck/` | CLI 多进程端到端验证与文档检查 |
+| `e2e/real/` | Node-configured real-machine CLI testing over local processes and SSH; see [architecture](real-machine-testing.md) |
 
 ## 规格与背景
 

@@ -9,3 +9,7 @@
 *.sock
 .DS_Store
 /dist/
+
+# Real-machine harness: contains private source, programs and host inventory.
+/.cache/real/
+/.cache/real-harness/

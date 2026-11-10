@@ -107,8 +107,13 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 		}
 	}()
 	total := req.total
-	if total == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
+	if total < 0 || len(req.parts) == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
 		return peerbackend.Admission{}, false
+	}
+	for _, p := range req.parts {
+		if p.size < 0 || (!p.file && p.size == 0) {
+			return peerbackend.Admission{}, false
+		}
 	}
 	srcKey := string(req.source)
 	if req.channel != "" {

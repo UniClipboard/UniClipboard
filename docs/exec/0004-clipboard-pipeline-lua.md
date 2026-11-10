@@ -70,6 +70,8 @@
 
 退出条件：无插件的网络行为与原来一致；新增本机 commit 路径可独立测试，事件丢失或慢观察者不影响派发。
 
+Physical-host CLI acceptance (2026-11-10): 72 production CLI transfers and 18 HTML + text local-API supplement transfers passed between macOS and Windows. The matrix covers both directions, multiple sizes through 100 MiB, exported SHA256 checks and calibrated receive latency. It found and fixed zero-byte file rejection in receive admission. Restart, trust/history persistence, policy and revocation checks passed. The receipt binds an exact source snapshot; concurrent service lifecycle changes and native clipboard acceptance are excluded. See the [receipt and measurements](baselines/0004-2026-11-10-cli-twohost.md). The reusable local/SSH harness now covers three independent macOS/Windows/Linux nodes; see its [acceptance receipt](real-machine-harness.md) for the passed 336-row matrix, exact snapshots and retained WAN failures.
+
 首批实现说明：处理核心与适配器在 `engine/pipeline.go`、`send.go`、`receive.go`；处理器注册仅为包内适配入口，生产默认空列表，不提供进程内第三方执行 API。并发同键 legacy 提交合并，成功/失败由独立有界 submission 缓存保留，不持有正文，并与 Operation 独立驱逐。观察只在接纳阶段持 obsMu，处理/等待在锁外运行；新复制和新 epoch 可在旧处理期间接纳，旧完成结果不回退观察位置或覆盖新基线。同步关闭/无目标仍经过内部处理，但没有历史持久化和可查询的本机 commit；Persist/标签/期限目前只在内部暂存。公开 CommitContent/GetSubmission、提交事件、原子 commit/持久引用和多后端派发仍待后续步骤。接收发布前复查运行状态、当前同步策略和信任；处理期间策略发生变化时保守丢弃本次接收，不重跑处理器。
 
 ### P2 · 持久历史与资源所有权

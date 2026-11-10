@@ -83,7 +83,7 @@ func gitOut(args ...string) (string, error) {
 }
 
 func walk(fn func(path string)) {
-	skipDirs := map[string]bool{".git": true, "dist": true, "bin": true, "node_modules": true, ".build": true}
+	skipDirs := map[string]bool{".git": true, "dist": true, "bin": true, "node_modules": true, ".build": true, ".cache": true}
 	filepath.WalkDir(".", func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil

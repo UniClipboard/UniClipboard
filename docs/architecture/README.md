@@ -45,3 +45,4 @@ verified: <commit> # 对照代码核实时的提交；用 docscheck -bump 更新
 - [observability](observability.md): bounded local logs, dynamic levels, optional OTLP logs/metrics, and nonvisual acceptance limits.
 
 - [Headless service and desktop integration](headless.md): independent distributions, process ownership and adapter sessions.
+- [Real-machine CLI testing](real-machine-testing.md): node inventories, native workers, multi-host synchronization, timing and evidence.

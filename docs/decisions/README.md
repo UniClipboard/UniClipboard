@@ -43,3 +43,5 @@
 | 0015 | [纯 CLI 与桌面集成](proposed/0015-headless-cli-and-desktop-integration.md) | proposed (runtime implemented; native acceptance pending) | [headless](../architecture/headless.md) |
 | 0016 | [Sync and file settings](proposed/0016-sync-and-file-settings.md) | proposed (sync/quota implemented; separate file cleanup superseded by 0017) | [desktop-runtime](../architecture/desktop-runtime.md), pipeline |
 | 0017 | [Automatic history cleanup](proposed/0017-history-auto-cleanup.md) | proposed (implemented; CLI accepted; native visual acceptance pending) | [pipeline](../architecture/pipeline.md), [history contract](../contracts/history-contract.md), [desktop-runtime](../architecture/desktop-runtime.md) |
+| 0018 | [Independent product builds and releases](proposed/0018-independent-product-build-and-release.md) | proposed (accepted design; implementation pending) | releases, release-contract |
+| 0019 | [PostHog Cloud integration](proposed/0019-posthog-integration.md) | proposed (design only; default-on uploads, ingestion-token distribution and random analytics identity accepted; remaining integration choices pending) | observability, observability-contract |

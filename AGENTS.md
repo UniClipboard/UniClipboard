@@ -48,6 +48,8 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0015](docs/decisions/proposed/0015-headless-cli-and-desktop-integration.md) | 纯 CLI、无头服务与独立桌面集成 | Runtime implemented; UI-free CLI/service, exclusive desktop adapter and separate distributions; native acceptance pending. See [execution receipt](docs/exec/0015-headless-cli-and-desktop-integration.md) |
 | [0016](docs/decisions/proposed/0016-sync-and-file-settings.md) | Sync and file settings | Sync and quota CLI/TOML implemented; 100 MB default file limit; custom received files remain user-managed; separate file cleanup superseded by 0017 |
 | [0017](docs/decisions/proposed/0017-history-auto-cleanup.md) | Automatic history cleanup | Unified age/count cleanup, tag exclusions, and managed-file/history deletion implemented; per-device cache quota retained; separate file-cleanup settings removed; 16 CLI E2E cases passed; native visual acceptance pending |
+| [0018](docs/decisions/proposed/0018-independent-product-build-and-release.md) | Independent product builds and releases | Android, iOS, CLI and Desktop own independent versions and separate build/release workflows; immutable artifacts and per-target channels. Implementation pending; see [execution plan](docs/exec/0018-independent-product-build-and-release.md). |
+| [0019](docs/decisions/proposed/0019-posthog-integration.md) | PostHog Cloud integration | Reuse OTLP logs/metrics and add product events. User accepted default-on uploads with config.toml controls, ingestion-only project token distribution and an independent random analytics identifier. Cloud project/region and remaining integration choices are pending. Design only; see [acceptance plan](docs/exec/0019-posthog-integration.md). |
 
 ### 接口契约（`docs/contracts/`）
 

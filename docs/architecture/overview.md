@@ -14,7 +14,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 9953351b7559b03fe110d91e5c86a36a1a9f0c38
+verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
 ---
 # 仓库布局与依赖边界
 
@@ -26,7 +26,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 - `engine/` 是公开 Go SDK，管理生命周期、设备信任、历史、处理流水线与同步调度；根 `internal/` 放核心实现及内置插件。`plugin/` 提供独立进程插件 SDK、RPC 和设置 Schema 工具，`plugins/` 放插件示例及开发说明。
 - 根 `internal/` 另有独立迁移工具包 `v1migration/`，包含旧桌面数据目录识别和各系统凭据读取（例如 macOS Security.framework），不属于平台无关核心，也不由 Engine 引入。
 - `app/service/` contains the UI-free CLI and service. `app/desktop/` contains `unic-desktop`, mygo, UI Kit and native integration. Shared local protocol, configuration, paths and content conversion live in root `internal/local*` packages.
-- 配置业务校验由公开的 `engine.Settings.Validate` 提供；桌面 `config.Config.Validate` 校验宿主专属字段后调用它。Engine 不解析 TOML，也不监听配置文件。
+- `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
 - `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/android/`、`app/ios/` 目前仅有各端 README 与 AGENTS.md，没有移动端工程。每个现有应用目录都有独立的 README 与 AGENTS.md。
 - CI runs lint, formatting, race checks, all three entry-point builds, and production headless process acceptance. It does not build Swift or mobile applications.
 
@@ -48,6 +48,9 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 | `internal/store/`、`identity/`、`wire/`、`clip/` | SQLite、设备身份、线协议与内容模型 |
 | `internal/session/`、`tcnet/`、`rendezvous/`、`plugins/tailcat/` | 内置 tailcat 后端的会话、传输、配对码与装配 |
 | `internal/plugins/builtintext/`、`luavm/`、`luaplugin/`、`pluginproc/`、`peerbackend/` | 内置文本处理、Lua 运行时与插件适配 |
+| `internal/localapi/`, `localconfig/`, `localpaths/`, `localcontent/` | Shared local protocol, configuration, paths and content conversion |
+| `internal/clipboardintegration/`, `servicelifecycle/` | UI-independent clipboard state machine and service generation control |
+| `internal/observability/` | Service-owned logs, metrics, analytics and deployment binding |
 | `internal/v1migration/` | 独立旧数据迁移工具实现，包含平台专属凭据读取 |
 | `plugin/`、`plugins/` | 插件 SDK、RPC、设置 Schema 与示例 |
 | `app/desktop/cmd/`、`app/desktop/internal/` | Go 桌面命令入口与宿主实现 |
@@ -101,4 +104,8 @@ The current service application is `app/service/`. Its `unic` and `unicd` progra
 The desktop application is `app/desktop/`, with the `unic-desktop` program and native clipboard integration.
 Shared local protocol, configuration, paths and snapshot conversion live in root `internal/local*` packages.
 `internal/clipboardintegration` contains a UI-independent host state machine; Engine does not import it.
+The normal desktop owns a profile-scoped service through a parent pipe. Lightweight mode leaves a standalone service.
+`app/desktop/internal/lifecycle` owns replacement and login intent; `internal/servicelifecycle` owns generation-scoped stop and owner EOF handling.
+`internal/observability` exports service telemetry; the desktop adapter forwards no analytics identifier.
+The archive builder reuses identical headless binaries in the optional desktop archive. Independent product version/release workflows remain planned in decision 0018.
 See [headless service and desktop integration](headless.md) for the process and distribution contract.

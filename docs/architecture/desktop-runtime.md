@@ -21,7 +21,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: b8e27b0e437fdbd113c8b8edf17174183e278731
+verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
 ---
 # Desktop configuration and received files
 
@@ -89,7 +89,8 @@ A network failure cannot undo the local clipboard write.
 ## File ownership
 
 The desktop host supplies `DataDir/inbox/file-cache` through `Options.CacheDir`.
-Engine manages only the private cache that the host provides.
+Engine retains received payloads in the private cache that the host provides.
+Temporary import and receive staging remains separate from retained cache ownership.
 Other hosts can supply a different app-private directory without exposing a user-selected destination to Engine.
 Its SQLite ledger records payload identity, size, completion time, and availability.
 Engine journals ownership before creating each payload directory.
@@ -139,17 +140,19 @@ A partial custom destination from failed finalization remains for the user to in
 
 The daemon no longer scans `clip-*` paths in the configured receive directory.
 Temporary receive staging stays under the daemon's application storage.
+After acquiring the profile lock, Engine removes plain `unic-content-*` and `unic-recv` directories from its InboxDir through `os.Root`.
+This startup scan does not follow symbolic links, inspect the custom receive destination, or reclaim retained cache payloads.
 Cleanup does not enumerate unknown default-cache directories merely because their names resemble generated IDs.
 
 ## Code map and validation
 
-- `config/manager.go`: serialized saves, raw-file revision, watcher, and restart status.
-- `cmd/unic/cli.go`: configuration commands and cache inventory.
-- `cmd/unic/history.go`: explicit history restore and retry key.
+- `internal/localconfig/manager.go`: serialized saves, raw-file revision, watcher, and restart status.
+- `app/service/cmd/unic/cli.go`: configuration commands and cache inventory.
+- `app/service/cmd/unic/history.go`: explicit history restore and retry key.
 - `engine/restore.go`: token-authorized resend without a new commit.
 - `engine/file_cache.go`: private-cache ownership, quota reservation, pins, orphan reclamation, and host callback validation.
 - `engine/history_cleanup.go`: unified age/count cleanup, tag exclusions, and capacity-driven record deletion.
-- `host/received_files.go`: desktop destination validation, custom file writing, and reference encoding/resolution.
+- `app/service/internal/host/received_files.go`: service destination validation, custom file writing, and reference encoding/resolution.
 - `engine/content.go`: separate access to Engine-owned file paths and opaque host references.
 - `engine/history_import.go`: the existing directory-sync helper used by cache finalization.
 - `internal/store/file_cache.go`: durable ownership and availability transitions.
@@ -163,7 +166,7 @@ See the [execution receipt](../exec/0016-sync-and-file-settings.md) for exact ve
 The production Settings tab exposes startup and history-cleanup controls. Other controls remain available through CLI/TOML.
 Native clipboard and folder-picker interaction acceptance remains with the user.
 Crash injection at every filesystem/database instruction and forced disk-full/unlink-failure acceptance are not complete.
-Unknown temporary leftovers are not deleted through filename scans.
+Unknown retained-cache entries are not deleted through filename scans; only the ledger grants retained-payload deletion authority.
 
 ## Cleanup settings interface
 
@@ -186,6 +189,7 @@ See the [observability architecture](observability.md) and [contract](../contrac
 
 ## Workspace verification identity
 
-The `verified` front matter remains the committed baseline while the workspace has uncommitted changes.
+The `verified` front matter names the committed source checked against this page.
+It does not establish native interaction acceptance.
 The startup acceptance manifest binds the current source and executable hashes.
 `docscheck -bump` requires committed source and does not accept unrelated dirty paths in this page's scope.

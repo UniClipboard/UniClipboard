@@ -27,7 +27,7 @@ paths:
   - app/service/cmd/unic/diagnostics.go
   - app/service/cmd/unicd
   - e2e/cli/observability_e2e_test.go
-verified: b8e27b0e437fdbd113c8b8edf17174183e278731
+verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
 ---
 # Client logs, metrics and product analytics
 
@@ -38,6 +38,7 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 
 - `host.Open` constructs diagnostics before `engine.New`. It injects a structured logger and a callback using public Engine types.
 - Engine produces bounded categorical records at observation admission, processor completion, unique submission completion, send queue departure, send completion, receive completion, and apply ticket completion or invalidation.
+- Receive admission records malformed part sizes or mismatched totals as categorical `rejected` / `invalid_argument` outcomes before reserving resources. External channels supply their actual part byte lengths. No rejected bytes, source identity or raw error text enters the record.
 - Idempotent submission waits do not create another commit metric. A send result does not prove receive or apply success.
 - Local logs use an asynchronous 1024-record queue, JSON Lines, private files, 4 MiB segments, a 20 MiB combined bound, and seven-day retention. Filesystem operations use `os.Root` under the profile directory.
 - Local and remote log levels are independent. The socket API and CLI support a per-target override lasting 1..3600 whole seconds. Overrides do not survive restart and do not enable uploads.

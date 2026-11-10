@@ -11,7 +11,7 @@ paths:
   - internal/clipboardintegration
   - e2e/headless
   - tools/package
-verified: eeda052c613e53a49909d19d8ad22bfa88ec42fc
+verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
 ---
 # Headless service and desktop integration
 
@@ -40,6 +40,8 @@ One exclusive adapter generation connects the desktop to the service.
 The desktop establishes a fresh baseline and runs the observation/application state machine through IPC.
 A missing adapter is normal. Observe and Apply are `unavailable` until an adapter declares its abilities.
 Generation expiry releases owned leases and disables clipboard command dispatch.
+The adapter session expires after ten seconds without renewal; the client sends heartbeats every two seconds.
+A local launch key suppresses duplicate startup analytics across ready retries and reconnects. It is not an adapter credential and never enters telemetry.
 Closing the main window leaves the adapter running. Explicit desktop quit stops the adapter.
 In normal mode the desktop owns the service lifetime. Desktop exit also stops that service.
 In lightweight mode only the standalone service remains; it receives and stores content without a desktop.
@@ -90,7 +92,7 @@ The normal desktop registers login startup through mygo. macOS requires an appli
 The flat binary archives are not macOS application bundles.
 Closing a desktop login session does not promise service survival; that depends on its service manager.
 
-The front-matter `verified` marker remains the baseline until these workspace changes are committed.
+The front-matter `verified` marker names committed source checked against this page; it does not extend platform acceptance.
 Current process checks are bound to complete source-hash manifests, as recorded in the execution receipt.
 
 ## Desktop startup settings

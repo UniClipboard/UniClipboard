@@ -18,7 +18,7 @@ paths:
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: 9953351b7559b03fe110d91e5c86a36a1a9f0c38
+verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
 ---
 # 设备身份、信任与配对
 
@@ -29,10 +29,10 @@ Engine 统一管理“对端是谁、是否被信任、经哪条后端路径可�
 - **身份**：每台设备一把 Ed25519 密钥，首次启动由 Engine 生成，存 `<DataDir>/identity/device.key`（0600，目录 0700）；公钥登记在库的 `meta.identity.public`。DeviceID 由公钥导出（26 字符 base32）。密钥缺失、损坏或与登记不符时启动失败，不会重新生成。与任何传输密钥（如 tailcat 节点密钥）无关。
 - **握手**：插件后端只搬运字节，Hello/转录/签名/验证都在 Engine（`engine/peerauth.go`：`IdentityHello`→`IdentityProve`→`CheckPeer`）。证明绑定后端提供的连接上下文与双方新鲜 nonce；nonce 记忆防重放，握手 60 秒过期、单次使用。同一 ID 配不同公钥、或同一公钥配不同 ID 为 `ErrIdentityConflict`，不覆盖记录。
 - **设备与关联**：`devices` 一行一台设备（`pending`/`trusted`/`revoked` 墓碑）；`device_bindings` 一行一条“设备×后端实例”路径（`pending`/`authorized` + 独立 `sync_enabled`）。握手通过（`recordPeer`）只会建立 `pending` 设备与 `pending` 关联；待批准设备上限 64（`tailcat_host.go`，仅限新设备与回流的墓碑；超限 `CheckPeer` 返回 reject，此时配对码/票据已被消耗）。有效权限 = 设备 `trusted` ∧ 关联 `authorized`（`allowedPeerOn`、`trustRevision`）。
-- **批准**：`TrustDevice` 必须带用户看到的指纹，不符即 `identity_mismatch`；它不授权任何路径，每条关联另需 `AuthorizeBinding`。桌面 `Node.Approve` 使用 Engine `ApproveDevice`，必须带用户核对的指纹、设备修订和完整待批准关联的 ID/修订；一个 SQLite 事务内检查整个集合后信任设备并授权这些关联。任一关联新增、消失、修订或上下文变化、设备修订变化，整个审批均失败，不留下部分批准；已信任设备新增关联也检查指纹。
+- **Approval**: `TrustDevice` requires the user-checked fingerprint and returns `identity_mismatch` on mismatch. It does not authorize a binding. The service host's `Node.Approve` calls `ApproveDevice` with the fingerprint, device revision and complete pending binding ID/revision set. One SQLite transaction checks that set before trusting the device and authorizing all bindings. Added, removed, revised or changed bindings invalidate the whole approval. An already trusted device still requires a fingerprint check for new bindings.
 - **撤销**：`RemoveBinding` 只撤一条路径；`UnpairDevice` 一个事务内置 `revoked` 并删除全部关联，事务提交后另行丢弃该设备的担保（`DropIntroducer`，非原子，错误被忽略）。桌面 reject 等价于 unpair（留墓碑），被拒设备再拨入会以 `pending` 回来并占用名额。已有会话在 `PeerEvent`/状态屏障（`pruneSessions`）里按信任修订失效。被撤销设备再次出现只回到 `pending`，需重新批准。`store.AddBinding` 在 `remote_context` 变化时会把关联重置为 `pending`，但当前唯一调用路径（`recordPeer`）总是传空上下文，此路径不会触发。
 - **指纹**：`identity.Fingerprint(a, b)`，两端公钥按字节排序，对 `"unic/fingerprint/v1\x00"‖a‖b` 做 SHA-256 取前 16 字节，显示为 8 组 4 位大写十六进制，双方各自计算；比对时忽略空白与大小写。DeviceID 为 `SHA-256("unic/device-id/v1\x00"‖公钥)` 前 16 字节的小写 base32（26 字符）。
-- **配对码**：`CreatePairingCode` 向 rendezvous（`/v1/web-pairings`，地址由配置 `rendezvous_url` 或环境变量 `UNIC_RENDEZVOUS_URL` 覆盖（后者在桌面 `node.go` 应用））登记票据，得到 `NNN-NNN` 码，最长 300 秒、一次性；同一时刻只有一张活动票据，新建会替换并 consume 旧码。入码方 `JoinByCode` 解析码得到票据（kind `unic-pair`，含出码设备公钥、后端描述、128 位 token），经出票的后端实例拨号，并要求对端 DeviceID 等于票据所指。token 不上线路，入码方发送 `HMAC(token, 转录)`（PairProof）；出码方 `pairUsedBy` 验证后立即作废票据并 consume 码，把该关联标记 `ticket`（仅说明来历）。无兼容后端的票据返回 `unsupported`，不回退 tailcat。
+- **Pairing code**: `CreatePairingCode` registers a ticket through rendezvous `/v1/web-pairings` and returns a one-use `NNN-NNN` code valid for at most 300 seconds. `rendezvous_url` selects the endpoint; `app/service/internal/host/node.go` applies `UNIC_RENDEZVOUS_URL` only when the saved setting is empty. Only one ticket is active; a new ticket replaces and consumes the previous code. `JoinByCode` resolves a `unic-pair` ticket containing the issuer public key, backend descriptor and 128-bit token. It connects through the issuing backend instance and requires the expected DeviceID. The token is not sent; PairProof uses `HMAC(token, transcript)`. Successful `pairUsedBy` verification consumes the ticket and records its `ticket` provenance without granting trust. An unsupported backend returns `unsupported` without a tailcat fallback.
 - **完整票据**：`ExportPairingTicket` / `JoinByTicket`，文本形式 `unic-pair:…`，不经 rendezvous。桌面入口：`unic code|join|pair|requests|approve|reject|unpair|suggestions|suggest-*`；HTTP `/v1/code`、`/v1/join`、`/v1/pairing-ticket`、`/v1/peers`、`/v1/pending[/{id}/approve|reject]`、`/v1/candidates[/{id}/pair|ignore]`。
 - **介绍**：全局 `sync.introductions`（默认开）经同步状态下发给后端；Engine 只把设备 `trusted`、关联 `authorized` 且有地址（≤8192 字节）的设备作为 peers 交给后端；`builtin.tailcat` 的 `internal/session` 读取 `SyncState.Introduce`，在认证会话建立、状态变化及每 24 小时把当前担保列表分批发送（每批 ≤64）；接收方使用本机会话 ID/token 调用 `PeerAuthority.Introduce`（外部后端对应 `sync_host.introduce`）。消息与内容共用串行写锁，发送失败关闭会话；关闭介绍开关后停止发送与接收。收到的 `Introduce` 须来自已连接、令牌与信任修订都匹配的会话；ID 须合法、非自身、非介绍方、有地址，名称非法则丢弃名称（仅格式校验）；每次 `introduce` 调用最多 64 个候选；已有设备记录的 ID 跳过。候选保留 7 天（未被重复担保即过期），每介绍方最多 128、总计最多 256。`PairCandidate` 发起一次普通拨号（无 token），之后对方不在线则在 24 小时内按 1→15 分钟退避重试；`IgnoreCandidate` 可忽略/恢复。介绍方被 Unpair 时丢它的担保（`RemoveBinding` 不丢），已建立的设备不受影响。
 
@@ -63,7 +63,16 @@ Engine 统一管理“对端是谁、是否被信任、经哪条后端路径可�
 | `internal/store/devices.go`, `candidates.go` | 设备/关联/候选表与 CAS、墓碑、上限 |
 | `internal/rendezvous` | 配对码服务客户端、票据编码 |
 | `internal/session/engine.go` | tailcat 会话层：握手搬运、介绍收发（`introduceLoop`） |
-| `app/service/internal/host/node.go`, `app/service/internal/server/server.go`, `app/service/cmd/unic/cli.go`, `app/desktop/cmd/unic-desktop/gui.go` | 桌面适配：批准、HTTP 路由、CLI |
+| `app/service/internal/host/node.go`, `app/service/internal/server/server.go`, `app/service/cmd/unic/cli.go`, `app/desktop/cmd/unic-desktop/gui.go` | Service approval policy and routes; CLI and desktop clients |
+
+## Service and desktop boundary
+
+The service owns Engine identity, trust transactions and the local pairing API.
+CLI and desktop clients submit approval snapshots through the same service route.
+The desktop process owns no second Engine or identity store.
+The host applies the global file-sync switch when projecting backend policy; this restriction does not grant or revoke device trust.
+A newly trusted device emits the categorical `pairing_completed` product event after the trust transaction succeeds.
+The event contains no device identity, fingerprint, binding context or pairing material. See [observability](observability.md).
 
 ## 验证
 

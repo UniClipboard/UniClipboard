@@ -3,6 +3,7 @@
 Failure inventory recorded before implementation:
 
 - Version, build number, source or required target identities disagree.
+- A clean Windows-style Git checkout changes release metadata bytes and causes cross-platform assembly to reject the candidate.
 - Package assembly selects a different executable or loses the uniclip alias.
 - npm installs the CLI but leaves its required sibling daemon unavailable as a command.
 - An interactive v2 command omits the warning when the v1 directory exists, or warns on a fresh installation or a non-directory path.

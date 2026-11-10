@@ -1,0 +1,2 @@
+# Release identity hashes require identical checkout bytes on every platform.
+release/*.toml text eol=lf

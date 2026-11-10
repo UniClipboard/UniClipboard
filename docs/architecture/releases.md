@@ -1,5 +1,6 @@
 ---
 paths:
+  - .gitattributes
   - release
   - tools/package
   - tools/release
@@ -39,6 +40,8 @@ CLI archives and npm platform packages ship the existing `unic-migrate` helper b
 The packaged-process E2E uses a temporary home, pseudoterminals and fixed encrypted Rust fixtures. It checks fresh-install silence, directory detection, JSON output, offline help, read-only preflight, partial results, source hashes and idempotent repair/retry. It never reads a personal v1 profile or system credential.
 
 ## Build, publication and promotion
+
+Git attributes require LF checkout bytes for release TOML metadata on every platform. Metadata digests cover the original file bytes. The real Git checkout regression enables `core.autocrlf=true` and verifies that checkout preserves the canonical metadata bytes before building candidates.
 
 `build-cli.yml` runs for PRs, main/v2 pushes, manual requests and reusable calls. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
 

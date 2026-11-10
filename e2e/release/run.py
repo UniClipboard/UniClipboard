@@ -58,6 +58,8 @@ def source_identity():
         if p.is_file() and "__pycache__" not in str(p)
     ]
     paths.extend((ROOT / "internal/v1migration").glob("*.go"))
+    if (ROOT / ".gitattributes").exists():
+        paths.append(ROOT / ".gitattributes")
     paths.extend(
         ROOT / name
         for name in [
@@ -209,6 +211,44 @@ try:
             f"registry={base}\n//127.0.0.1:{server.server_port}/:_authToken=local-fixture-only\nfetch-retries=0\naudit=false\nfund=false\ncache={temp}/npm-cache\n"
         )
         env["NPM_CONFIG_USERCONFIG"] = str(config)
+        checkout = temp / "windows-style-checkout"
+        (checkout / "release").mkdir(parents=True)
+        canonical = (ROOT / "release/products.toml").read_bytes()
+        metadata_file = checkout / "release/products.toml"
+        metadata_file.write_bytes(canonical)
+        if (ROOT / ".gitattributes").exists():
+            shutil.copyfile(ROOT / ".gitattributes", checkout / ".gitattributes")
+        git = [
+            "git",
+            "-C",
+            checkout,
+            "-c",
+            "core.autocrlf=true",
+            "-c",
+            "core.hooksPath=" + str(temp / "no-hooks"),
+        ]
+        execute([*git, "init"])
+        execute([*git, "add", "."])
+        execute(
+            [
+                *git,
+                "-c",
+                "user.name=Release acceptance",
+                "-c",
+                "user.email=release-acceptance@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "release checkout fixture",
+            ]
+        )
+        metadata_file.unlink()
+        execute([*git, "checkout", "--", "release/products.toml"])
+        check(
+            "Windows-style checkout preserves canonical release metadata bytes",
+            metadata_file.read_bytes() == canonical,
+        )
         tool = ROOT / "tools/release/release.py"
         builder = temp / "packager"
         execute(["go", "build", "-o", builder, "./tools/package"])

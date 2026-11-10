@@ -34,7 +34,7 @@ The workflows pin npm 11.21.2 because dist-tag OIDC requires npm 11.21+ or 12.2+
 
 ## CLI manifest and receipt fields
 
-The checked-in product table has `schema = 1`. Product versions are canonical numeric `major.minor.patch` values. Build numbers are integers from 1 to 999999999. Product target arrays must not contain duplicates. CLI target names are `darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64` and `windows-amd64`.
+The checked-in product table has `schema = 1`. Release TOML files must use LF checkout bytes on every platform, enforced by `.gitattributes`. Metadata SHA-256 covers those exact bytes. Product versions are canonical numeric `major.minor.patch` values. Build numbers are integers from 1 to 999999999. Product target arrays must not contain duplicates. CLI target names are `darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64` and `windows-amd64`.
 
 Each native `manifest-<os>-<arch>.json` contains `product`, `product_version`, `build_number`, `metadata_sha256`, `source_head`, `source_dirty`, `source_sha256`, `source_unchanged`, `os`, `arch`, `go`, `binaries_sha256`, `archives_sha256` and `aliases`. Native smoke adds `acceptance.version_smoke`, `acceptance.alias_smoke` and `acceptance.native`, all true on success. Assembly requires these observations for every declared target.
 

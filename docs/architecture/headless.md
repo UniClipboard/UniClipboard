@@ -47,6 +47,16 @@ Closing the main window leaves the adapter running. Explicit desktop quit stops 
 In normal mode the desktop owns the service lifetime. Desktop exit also stops that service.
 In lightweight mode only the standalone service remains; it receives and stores content without a desktop.
 
+## Command surface and temporary transfer (0022)
+
+The CLI is organized by user intent. `unic send` (`s`) and `unic recv` (`r`) move content. `unic history` (`h`) browses it. `unic device` holds pairing and trust. `unic dev` holds development and diagnosis commands. `unic status`, `config`, `plugin` and `migrate` are unchanged. Old command names are removed without aliases.
+
+`send --to all|DEVICE` goes through the normal sync path. `CommitRequest.DeviceIDs` limits the send to named paired devices; unknown, repeated or empty selections are `invalid_argument`. Only peer-session backends honor it.
+
+`send` without `--to` and `recv CODE|LINK` run a temporary transfer with a peer that has no unic device identity, such as the page at `try.uniclipboard.app`. It speaks the page's pull protocol (`internal/webtransfer`: frames, offer, SHA-256 verification, 20 MiB and 50 items per transfer). The sender listens on a fresh random-key tailcat endpoint (`internal/tcnet/ephemeral.go`) that accepts every virtual port and serves one receiver. A 6-digit code is an alias in rendezvous with ticket kind `uc-web-try`; `recv` refuses a `unic-pair` code and `device add` refuses a transfer code.
+
+The receiver admits the offer through `Engine.AdmitTransfer` before reading data, writes files into a private inbox directory and completes into the ordinary received pipeline. History origin is `external` with plugin ID `unic.transfer`. The transfer never creates a device or trust. The sender keeps content in memory only. Addresses, tokens, codes and links are never logged.
+
 ## On-demand service for CLI commands
 
 Each `unic` leaf command declares one requirement: `local`, `service`, `service+clipboard` or `offline`
@@ -111,7 +121,11 @@ credentials, databases or history. See section 12 of the
 | `internal/servicelifecycle` | Generation, lifetime mode, usage leases and owner EOF detection |
 | `internal/servicelaunch` | Sibling resolution, transition lock, detached process setup and readiness wait shared by launchers |
 | `app/service/cmd/unic/session.go` | CLI service acquisition, launch, release and lazy request transport |
-| `app/service/cmd/unic/requirements.go` | Leaf command requirement catalog and help |
+| `app/service/cmd/unic/requirements.go` | Leaf command requirement catalog, word aliases and help |
+| `app/service/internal/host/transfer.go` | Temporary transfer: offer, pull, ticket resolution, placement into the received pipeline |
+| `internal/webtransfer` | The page's transfer protocol, tickets and links; no unic or tailcat dependency |
+| `internal/tcnet/ephemeral.go` | One-shot tailcat listener and dialer with random keys |
+| `e2e/webinterop` | unic against the real page code under bun |
 | `internal/localcontent` | Local snapshot import and file-reference conversion |
 | `internal/clipboardintegration` | UI-independent observation/application state machine and IPC client |
 | `e2e/headless` | Production-binary, multi-process acceptance and manifest |
@@ -129,6 +143,7 @@ Signed platform installers, standalone service-manager registration and store pu
 The normal desktop registers login startup through mygo. macOS requires an application bundle.
 The flat binary archives are not macOS application bundles.
 A temporary service gives no continuous reception between CLI invocations; run `unicd` or the desktop for that.
+Temporary transfer has no GUI entry yet, and the page's reply (`push`) is not supported. The production code service for `uc-web-try` tickets is not verified; links work without it.
 Closing a desktop login session does not promise service survival; that depends on its service manager.
 
 The front-matter `verified` marker names committed source checked against this page; it does not extend platform acceptance.

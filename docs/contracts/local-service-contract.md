@@ -197,6 +197,17 @@ The same rule applies to every service, so completion does not depend on who sta
 An older command's exit never withdraws a newer invitation or override: a command compares the code or the expiry it created.
 The held duration is announced on stderr. Stdout stays the command result.
 
+### Temporary transfer routes (0022)
+
+| Route | Meaning |
+|---|---|
+| `POST /v1/transfers` `{snapshot}` | Start an offer. Returns `{id, state:"waiting", link, code?, expires_at_ms, items, bytes}`. Only this response carries the link and code. Limits: 20 MiB, 50 items; larger content is 413 `limit_exceeded`. |
+| `GET /v1/transfers/{id}` | `state` is `waiting`, `sending`, `delivered`, `failed` (with `reason`), `expired` or `cancelled`. A finished transfer stays queryable for 5 minutes. |
+| `DELETE /v1/transfers/{id}` | Cancel. |
+| `POST /v1/receive` `{source}` | Pull from a 6-digit code or a link. One request, up to 90 s; the CLI exempts it from the 60 s request deadline. Returns `{items:[{kind,name,mime,size,text?}]}`. Failures carry reasons `invalid`, `expired`, `rate-limited`, `unavailable`, `pairing_code`, `busy`, `too-large`, `integrity`, `peer-cancelled`, `timeout`, `connection-lost`. |
+
+`POST /v1/submissions` accepts `device_ids` to limit a send to paired devices. `send` without `--to` holds its command (and a temporary service) until the offer is delivered, fails, expires or the user interrupts; an offer that did not deliver exits 4.
+
 ### Exit codes
 
 0 done; 1 failed; 2 usage or missing command; 3 migration partial; 4 committed but not fully completed; 5 command done but stopping its temporary service failed.

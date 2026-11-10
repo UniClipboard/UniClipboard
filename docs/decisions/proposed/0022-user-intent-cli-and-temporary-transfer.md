@@ -1,6 +1,7 @@
 # 0022: User-intent CLI and temporary transfer
 
-- Status: Proposed. Design agreed with the maintainer on 2026-11-10. Not implemented.
+- Status: Implemented on 2026-11-10 and accepted by process-level end-to-end tests (section 9). Kept in `proposed/` until the native GUI follow-up and the open points in section 8 close.
+- Execution receipt: [0022 execution record](../../exec/0022-user-intent-cli-and-temporary-transfer.md).
 - Date: 2026-11-10
 - Requirement: Organize the `unic` command surface around what a user wants to do (send content, receive content). Support a temporary transfer to or from a peer that has no unic device identity, such as the browser page at `try.uniclipboard.app` or a plain tailcat peer.
 - Related decisions: [0009 external channels](0009-external-channels.md), [0021 on-demand CLI service lifecycle](0021-cli-on-demand-service-lifecycle.md).
@@ -43,8 +44,9 @@ Content comes from the argument, standard input, `-f FILE` (repeatable) or `--pn
 |---|---|
 | `send --to DEVICE` | Send to one paired device through the normal sync path. `DEVICE` is a device ID or name. |
 | `send --to all` | Send to every paired device. This replaces today's implicit broadcast. |
-| `send --to ADDRESS` | Send to a full tailcat address as a temporary transfer. |
-| `send` (no `--to`) | Start a temporary transfer. Print a 6-digit code and a link. Wait for one peer to take the content, then exit. |
+| `send` (no `--to`) | Start a temporary transfer. Print a 6-digit code (when the code service answers) and a link. Wait for one receiver to take the content, then exit. |
+
+There is no `send --to ADDRESS`. A bare tailcat address carries no token and no protocol: nothing on the other side would answer, because the browser protocol only lets the receiver pull. The browser's reply (`HELLO push`) needs an earlier pull, so it cannot start a transfer either. A transfer therefore always starts on the side that has the content, and the other side takes it with a code or a link.
 
 Without `--to`, `send` no longer broadcasts to paired devices. Automatic sync of clipboard changes is unchanged. It is a different path from `send`.
 
@@ -58,10 +60,9 @@ A temporary transfer has these rules:
 
 ### 3.2 `unic recv [SOURCE]`
 
-`SOURCE` is one of:
+`SOURCE` is one of (spaces and dashes inside a code are ignored):
 
 - a 6-digit code (`482913`, `482 913`, `482-913`);
-- a full tailcat address (`tc…`);
 - a link (`https://…#c=…&k=…`).
 
 The command reads the ticket and chooses the flow. The user does not state the kind.
@@ -70,11 +71,11 @@ The command reads the ticket and chooses the flow. The user does not state the k
 |---|---|
 | `uc-web-try` (code or link) | Dial the sender, pull the offered items, verify every SHA-256, acknowledge. Temporary transfer. |
 | `unic-pair` (code) | Not a transfer. Print `this code pairs a device; use "unic device add"`. Exit with the usage code. |
-| bare tailcat address | Dial the address and pull as a temporary transfer. |
+| bare tailcat address (`tc…`) or another text | Refused with a usage error. An address alone cannot start a pull. |
 
 Received items enter local history with origin `external:` and the source kind, as 0009 defines. They never create a device and they never gain trust.
 
-`recv` with no argument lists transient received content. Whether `show` and `dismiss` stay as `recv` subcommands or move to `history` is settled during implementation, with the rule that no new top-level command is added.
+`recv` with no argument lists transient received content. `recv list|show ID [PART]|dismiss ID` stay under `recv`. A first word that is not one of these three is a source.
 
 ## 4. `device` group
 
@@ -103,7 +104,9 @@ Facts verified from that code on 2026-11-10 (no live dial was done):
 - Network: both sides use tailcat and the default DERP map `https://tailcat.dev/derpmap.json`. The browser build pins tailcat `83921d71`. unic uses v0.7.0.
 - The browser's short-code feature is behind `NEXT_PUBLIC_TRY_SHORT_CODE` and is off by default. Whether production enables it is not verified. Links work without it.
 
-The protocol code lives in the Engine as an external channel (0009), not in the CLI. Hosts that have no CLI, such as the desktop GUI, can then offer the same capability. The CLI only prints the code and the link.
+The protocol code lives in `internal/webtransfer`, below the host, not in the CLI. The public Engine cannot depend on the tailcat transport (`engine/boundary_test.go`), so the Engine offers only the receiving seam: `AdmitTransfer` admits an offer, hands out a private inbox directory and completes into the normal received pipeline. The host (`app/service/internal/host/transfer.go`) joins the protocol, an ephemeral tailcat endpoint (`internal/tcnet/ephemeral.go`) and that seam. The CLI only prints the code and the link, so any other host can offer the same capability.
+
+Received content uses origin kind `external` with plugin ID `unic.transfer`. It passes the received processors, dedup, quota, history and the received list like content from a device. It never creates a device and never gains trust.
 
 Constraints:
 
@@ -132,6 +135,14 @@ Each step keeps the previous end-to-end result working.
 
 ## 8. Open points
 
-- Whether production `try.uniclipboard.app` enables the 6-digit code. If not, `send` prints only the link until it does.
-- Where `recv show` and `recv dismiss` live (section 3.2).
-- Whether the browser's reply (`HELLO push` after a delivered pull) is supported in the first version. This decision does not require it.
+- Whether production `try.uniclipboard.app` enables the 6-digit code. `send` prints the code only when the code service accepts the ticket; otherwise it prints the link alone. Not verified against production.
+- The browser's reply (`HELLO push` after a delivered pull) is not supported. A push gets `BUSY`.
+- A GUI entry for temporary transfer. The host API (`/v1/transfers`, `/v1/receive`) and the Engine method are ready for it; the desktop interface prototype is still undecided.
+
+## 9. Verification
+
+All results are in the [execution record](../../exec/0022-user-intent-cli-and-temporary-transfer.md). Summary:
+
+- `make transfer-e2e`: unic against unic by link and by 6-digit code, device selection with `--to`, and refusal of a pairing code by `recv` and of a transfer code by `device add`.
+- `make web-interop-e2e UC_WEBSITE=…`: unic against the real page code (the website's own protocol modules on the pinned tailcat wasm build `83921d71`), in both directions, with a multi-frame file.
+- The existing CLI, lifecycle, headless and desktop startup suites run with the new command names.

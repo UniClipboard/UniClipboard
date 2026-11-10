@@ -233,6 +233,11 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 - Submit、Join、Pair 的 RequestID 必填，实例内幂等：保留期内相同类型和语义参数返回相同 OperationID，不重复执行；参数不同报 conflict。重复识别先于租约有效性验证；内部仅保留敏感参数的不可逆校验值，不存储到公共 DTO。超出保留期后调用者须用新 RequestID，不承诺去重。
 - 其他方法除明确声明幂等外，不提供隐式重试；context 超时不能被解释为“操作一定未提交”。
 
+### 6.3 设备选择与临时传输（0022，已实现）
+
+- `CommitRequest.DeviceIDs` 限定发送到指定的已配对设备：`nil` 表示全部；空列表、未知（或已撤销）设备、重复 ID 报 `invalid_argument`。选择计入请求幂等键，同一 RequestID 换设备选择报 `conflict`。仅 peer-session 后端响应此选择，其他后端类型不发送。目标设备不在线时无目标，沿用 `no_targets`。
+- `AdmitTransfer(ctx, TransferOffer) (*TransferInbox, error)` 接收没有 unic 设备身份的对端（浏览器传输页）的内容。准入先于读取任何字节：引擎须运行、sync 开启、后端策略允许、非重复、有空间。返回的 `TransferInbox.Dir` 是本次传输专用的私有目录；文件写入其中后调用 `Complete(TransferContent)`，进入与设备来源内容相同的接收流水线（processor、去重、配额、历史、接收列表）；放弃则调用 `Abort`。历史来源为 `external`，PluginID 为 `unic.transfer`，PeerID 为空，ChannelID 为 `transfer`。该对端不写入 `devices`，不获得信任，也无需授权。公开签名不暴露 tailcat 或 internal 类型；传输协议在宿主层。
+
 ## 7. 资源租约与接收列表
 
 实例内的 ID 都带有实例前缀，以便区分旧实例（resource_expired）与未知（not_found）。ContentID 标识资源，LeaseID 表示一个持有者。Import 和 Retain 每次创建新的 LeaseID；ReadContent 必须使用有效租约，读取句柄另持有内部引用直至 Close。文件清理不能使已打开的读取句柄中途失效；实例 Close 会中止读取，调用者仍应 Close 读取句柄。

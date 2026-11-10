@@ -244,26 +244,37 @@ def assemble(args):
         launcher = """#!/usr/bin/env node
 const {spawnSync} = require('node:child_process');
 const path = require('node:path');
+module.exports = function(program) {
 const name = `@uniclipboard/cli-${process.platform}-${process.arch}`;
 let directory;
 try { directory = path.dirname(require.resolve(name + '/package.json')); }
 catch { console.error('unic: platform package missing: ' + name); process.exit(1); }
-const executable = path.join(directory, 'bin', process.platform === 'win32' ? 'unic.exe' : 'unic');
+const executable = path.join(directory, 'bin', program + (process.platform === 'win32' ? '.exe' : ''));
 const result = spawnSync(executable, process.argv.slice(2), {stdio:'inherit'});
 if (result.error) { console.error('unic: ' + result.error.message); process.exit(1); }
 if (result.signal) process.kill(process.pid, result.signal);
 else process.exit(result.status === null ? 1 : result.status);
+};
+if (require.main === module) module.exports('unic');
 """
         (main / "launcher.cjs").write_text(launcher)
         (main / "launcher.cjs").chmod(0o755)
+        (main / "daemon.cjs").write_text(
+            "#!/usr/bin/env node\nrequire('./launcher.cjs')('unicd');\n"
+        )
+        (main / "daemon.cjs").chmod(0o755)
         save(
             main / "package.json",
             {
                 "name": "@uniclipboard/cli",
                 "version": version,
                 "license": "AGPL-3.0-only",
-                "bin": {"unic": "launcher.cjs", "uniclip": "launcher.cjs"},
-                "files": ["launcher.cjs"],
+                "bin": {
+                    "unic": "launcher.cjs",
+                    "uniclip": "launcher.cjs",
+                    "unicd": "daemon.cjs",
+                },
+                "files": ["launcher.cjs", "daemon.cjs"],
                 "engines": {"node": ">=22.22.2"},
                 "optionalDependencies": {p["name"]: version for p in packages},
                 "repository": {

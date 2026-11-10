@@ -287,15 +287,18 @@ try:
                 "--no-fund",
             ]
         )
-        for command in ["unic", "uniclip"]:
+        for command in ["unic", "uniclip", "unicd"]:
             executable = installed / "node_modules" / ".bin" / command
             value = json.loads(execute([executable, "--version", "--json"]).stdout)
             check(
                 command + " executes installed exact build",
-                value["version"] == "9.7.0" and value["build_number"] == "41",
+                value["version"] == "9.7.0"
+                and value["build_number"] == "41"
+                and value["program"] == ("unic" if command == "uniclip" else command),
             )
-            failure = execute([executable, "daemon"], 1)
-            check(command + " preserves failing exit code", failure.returncode == 1)
+            if command != "unicd":
+                failure = execute([executable, "daemon"], 1)
+                check(command + " preserves failing exit code", failure.returncode == 1)
         before = len(uploads)
         alpha = copy.deepcopy(
             {name: p["dist-tags"]["alpha"] for name, p in packages.items()}

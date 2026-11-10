@@ -4,6 +4,7 @@ Failure inventory recorded before implementation:
 
 - Version, build number, source or required target identities disagree.
 - Package assembly selects a different executable or loses the uniclip alias.
+- npm installs the CLI but leaves its required sibling daemon unavailable as a command.
 - An archive escapes its extraction directory or omits the sibling daemon.
 - An already published package version has conflicting bytes.
 - A required platform package is missing but the main package is exposed.

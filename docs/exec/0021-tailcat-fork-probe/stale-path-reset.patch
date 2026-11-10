@@ -1,0 +1,150 @@
+diff --color -ruN /Users/mark/go/pkg/mod/github.com/tailscale/tailcat@v0.7.0/disco.go tailcat-fork/disco.go
+--- /Users/mark/go/pkg/mod/github.com/tailscale/tailcat@v0.7.0/disco.go	2026-11-09 03:31:00
++++ tailcat-fork/disco.go	2026-11-10 05:50:48
+@@ -38,6 +38,26 @@
+ 	return b
+ }
+ 
++// MeowBootLen is the length of the boot ID that follows the disco key in a ping.
++const MeowBootLen = 16
++
++// EncodeMeowPingBoot is EncodeMeowPing plus a boot ID. A client picks the ID once per
++// engine start and repeats it in every resend, so the server can tell a resend from a
++// restart. Older servers ignore the trailing bytes.
++func EncodeMeowPingBoot(nodeKey key.NodePublic, discoKey key.DiscoPublic, boot [MeowBootLen]byte) []byte {
++	return append(EncodeMeowPing(nodeKey, discoKey), boot[:]...)
++}
++
++// ParseMeowBoot returns the boot ID of a ping that carries one.
++func ParseMeowBoot(pkt []byte) (boot [MeowBootLen]byte, ok bool) {
++	const base = 4 + 1 + key.NodePublicRawLen + key.DiscoPublicRawLen
++	if len(pkt) < base+MeowBootLen {
++		return boot, false
++	}
++	copy(boot[:], pkt[base:base+MeowBootLen])
++	return boot, true
++}
++
+ // EncodeMeowed encodes a meowed (acknowledgment) packet.
+ func EncodeMeowed() []byte {
+ 	b := make([]byte, 0, 4+1)
+diff --color -ruN /Users/mark/go/pkg/mod/github.com/tailscale/tailcat@v0.7.0/tailcat.go tailcat-fork/tailcat.go
+--- /Users/mark/go/pkg/mod/github.com/tailscale/tailcat@v0.7.0/tailcat.go	2026-11-09 03:31:00
++++ tailcat-fork/tailcat.go	2026-11-10 05:51:02
+@@ -356,8 +356,9 @@
+ 	mu             sync.Mutex
+ 	clients        map[key.NodePublic]*tailcfg.Node // for the server
+ 	nm             *netmap.NetworkMap
+-	allowedClients map[key.NodePublic]bool // or nil map for all
+-	eps            []netip.AddrPort        // our current local UDP endpoints, sorted
++	allowedClients map[key.NodePublic]bool              // or nil map for all
++	clientBoot     map[key.NodePublic][MeowBootLen]byte // boot ID of the latest meow per client
++	eps            []netip.AddrPort                     // our current local UDP endpoints, sorted
+ 	closeOnce      sync.Once
+ }
+ 
+@@ -650,12 +651,13 @@
+ 			return true // server ignores meowed
+ 		}
+ 		if _, discoPub, ok := ParseMeowPing(pkt); ok {
++			boot, hasBoot := ParseMeowBoot(pkt)
+ 			mc := lb.sys.MagicSock.Get()
+ 			go func() {
+ 				// Only reply once the client is fully added as a peer:
+ 				// "meowed" is the ack that tells the client it can
+ 				// start dialing. Disallowed clients get no reply.
+-				if lb.onMeow(src, discoPub) {
++				if lb.onMeow(src, discoPub, boot, hasBoot) {
+ 					mc.SendDERPPacketTo(src, regionID, EncodeMeowed())
+ 				}
+ 			}()
+@@ -1667,7 +1669,7 @@
+ // disco key discoPub, adding it as a WireGuard peer. It reports
+ // whether the client is allowed and configured, meaning a "meowed"
+ // acknowledgment may be sent.
+-func (b *locoBackend) onMeow(src key.NodePublic, discoPub key.DiscoPublic) bool {
++func (b *locoBackend) onMeow(src key.NodePublic, discoPub key.DiscoPublic, boot [MeowBootLen]byte, hasBoot bool) bool {
+ 	b.mu.Lock()
+ 	defer b.mu.Unlock()
+ 	b.logf("got meow from %v", src.String())
+@@ -1677,8 +1679,21 @@
+ 	}
+ 
+ 	if _, ok := b.clients[src]; ok {
++		// A client that restarted keeps its node key but not its UDP sockets. magicsock still
++		// trusts the direct address of the previous run for several seconds and sends the
++		// WireGuard handshake reply to a port nobody listens on. A new boot ID marks a restart;
++		// a resend from the same run carries the same ID and must not disturb the live path.
++		if hasBoot && b.clientBoot[src] != boot {
++			b.resetStalePathLocked(src)
++		}
++		if hasBoot {
++			mak.Set(&b.clientBoot, src, boot)
++		}
+ 		return true
+ 	}
++	if hasBoot {
++		mak.Set(&b.clientBoot, src, boot)
++	}
+ 	id := len(b.clients) + 2 // server is ID 1, clients are IDs 2, 3, ...
+ 	derpRegion := b.derpRegionID()
+ 	mak.Set(&b.clients, src, &tailcfg.Node{
+@@ -1729,6 +1744,30 @@
+ 	return true
+ }
+ 
++// resetStalePathLocked drops magicsock's path state for client src when it holds a
++// direct path, so a restarted client is reached through DERP until a new direct path
++// is found. b.mu must be held.
++func (b *locoBackend) resetStalePathLocked(src key.NodePublic) {
++	if b.nm == nil {
++		return
++	}
++	mc := b.sys.MagicSock.Get()
++	sb := ipnstate.StatusBuilder{WantPeers: true}
++	mc.UpdateStatus(&sb)
++	if ps := sb.Status().Peer[src]; ps == nil || ps.CurAddr == "" {
++		return
++	}
++	rest := make([]tailcfg.NodeView, 0, len(b.nm.Peers))
++	for _, p := range b.nm.Peers {
++		if p.Key() != src {
++			rest = append(rest, p)
++		}
++	}
++	mc.SetNetworkMap(b.nm.SelfNode, rest)
++	mc.SetNetworkMap(b.nm.SelfNode, b.nm.Peers)
++	go b.advertiseEndpoints()
++}
++
+ func (b *locoBackend) Status() *ipnstate.Status {
+ 	mc := b.sys.MagicSock.Get()
+ 	eng := b.sys.Engine.Get()
+@@ -1856,6 +1895,8 @@
+ 	started bool
+ 
+ 	upDone atomic.Bool // whether the server has meowed us at least once
++
++	bootID [MeowBootLen]byte // random per started engine; sent in every meow ping
+ }
+ 
+ // nodeKeyLocked returns the client's effective node private key,
+@@ -2050,6 +2091,9 @@
+ 	if err := c.lb.Start(); err != nil {
+ 		return err
+ 	}
++	if _, err := cryptorand.Read(c.bootID[:]); err != nil {
++		return err
++	}
+ 	c.started = true
+ 	return nil
+ }
+@@ -2099,7 +2143,7 @@
+ 
+ 	dstNode := c.ci.ServerPublic.NodePublic
+ 	derpRegion := c.lb.derpRegionID()
+-	pkt := EncodeMeowPing(c.lb.pub, mc.DiscoPublicKey())
++	pkt := EncodeMeowPingBoot(c.lb.pub, mc.DiscoPublicKey(), c.bootID)
+ 
+ 	// DERP delivery is best effort: the relay drops packets sent to a
+ 	// key that isn't connected yet, so the ping (or its ack) is lost

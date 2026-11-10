@@ -4,7 +4,7 @@ paths:
   - e2e/twohost/README.md
   - Makefile
   - tools/docscheck
-verified: b12cc742bc309d7563b04587c0b827b48aa7052e
+verified: bec97adeabe58ce87af7207929d6f4f4b9da2044
 ---
 # Real-machine CLI testing
 
@@ -56,7 +56,7 @@ Native clock exchanges bracket each payload cell. A remote-to-remote sample comb
 
 See the [inventory and commands](../../e2e/real/README.md), [local service contract](../contracts/local-service-contract.md), [headless architecture](headless.md), and [pipeline architecture](pipeline.md).
 
-The front-matter marker remains a commit baseline until the uncommitted harness is committed. Physical-host receipts bind exact source hashes instead.
+The front-matter marker names the committed implementation baseline. Physical-host receipts bind the exact source hashes and programs tested by each historical run.
 
 The documentation checker excludes generated `.cache` trees, as it excludes other build-output directories. Frozen source copies and test artifacts there are not living repository documentation.
 

@@ -79,7 +79,7 @@ No unit tests were added. The new automated harness test crosses compiled proces
 
 Native clipboard, desktop UI/rendering, mobile hosts, concurrent senders, other pairing graphs, abrupt power loss, sleep/wake and network switching were not exercised. No GUI was launched. The unresolved small-message timeout prevents a claim of stable WAN synchronization across repeated runs.
 
-`go vet ./e2e/real` and `git diff --check` passed. `go run ./tools/docscheck` passed with seven stale-page warnings. The documentation checker excludes generated `.cache` directories, matching its other build-directory exclusions. The requested `-bump` refused uncommitted harness inputs; the architecture page retains its HEAD baseline and explicitly relies on exact receipt hashes until a normal commit exists.
+`go vet ./e2e/real` and `git diff --check` passed. `go run ./tools/docscheck` passed with seven stale-page warnings. The documentation checker excludes generated `.cache` directories, matching its other build-directory exclusions. The requested `-bump` initially refused uncommitted harness inputs. After implementation commit `bec97adea`, the pipeline and real-machine architecture markers were updated to that commit. Historical receipts continue to identify their original source snapshots.
 
 ## Automatic cleanup update
 
@@ -91,4 +91,4 @@ Validation: the gated process E2E passed under `-race` with seven checks. It cov
 
 A [three-machine failure run](baselines/real-machine-harness-2026-11-10/automatic-cleanup/cleanup-three-1/report.md) paired macOS, Windows and Linux, then intentionally used a five-second receive deadline for a 16 MiB WAN transfer. The VPS timed out. The harness retained the failed public receipt, stopped all services without force, removed all three profiles and both SSH bootstrap directories, and removed the controller private directory. An independent [post-run filesystem check](baselines/real-machine-harness-2026-11-10/automatic-cleanup/cleanup-three-1/cleanup-verification.json) verified all five observed node directories were absent. No cleanup errors occurred. This validates cleanup after failure, not successful WAN transfer.
 
-`go vet ./e2e/real`, `git diff --check` and the documentation check passed. Documentation still reports seven stale-page warnings. The `verified` bump remains blocked by uncommitted inputs; no commit was created to bypass that check.
+`go vet ./e2e/real`, `git diff --check` and the documentation check passed. Documentation still reports seven stale-page warnings. The `verified` bump initially rejected uncommitted inputs and succeeded after the implementation was committed normally.

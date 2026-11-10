@@ -1,7 +1,6 @@
 package desktopdemo
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -141,35 +140,9 @@ func (d *demo) passwordField(c *ui.Context, k uikit.Kit, label string, value *st
 	k.FormField(c, uikit.FormFieldProps{Label: label, Value: value, Password: true, RevealShow: "显示口令", RevealHide: "隐藏口令", Hint: "此处只演示界面。请勿输入真实口令。"})
 }
 
-func (d *demo) quickPanel(c *ui.Context, k uikit.Kit) {
-	ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			k.SearchField(c, uikit.SearchFieldProps{Label: "搜索快捷面板", Value: &d.query, Placeholder: "搜索剪贴板历史"}).Element.Grow(1)
-			if k.Button(c, "返回历史", uikit.ButtonProps{Variant: uikit.Subtle, Icon: uikit.IconBack}).Clicked() {
-				d.page = "history"
-			}
-		})
-		d.filters(c, k)
-		ui.Row(c).Grow(1).MinHeight(0).Gap(8).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-				items := d.filtered()
-				if !slices.ContainsFunc(items, func(v entry) bool { return v.id == d.selected }) {
-					d.selectEntry("")
-					if len(items) > 0 {
-						d.selectEntry(items[0].id)
-					}
-				}
-				if len(items) == 0 {
-					k.ContentUnavailable(c, uikit.ContentUnavailableProps{Title: "没有匹配的历史"}, nil)
-				} else {
-					d.historyList(c, k, items)
-				}
-			})
-			w, _ := c.Size()
-			if w >= uikit.SinglePaneWidth {
-				ui.Column(c).Width(300).MinHeight(0).Children(func() { d.detail(c, k) })
-			}
-		})
-		k.Text(c, "↑↓ 选择 · Enter 复制 · 界面演示", uikit.TextProps{Role: uikit.RoleCaption, Tone: uikit.ToneSecondary})
-	})
+func (d *demo) quickPanel(c *ui.Context, _ uikit.Kit) {
+	if d.quick == nil {
+		d.quick = newQuickDemo(d.theme, "history")
+	}
+	d.quick.panel(c)
 }

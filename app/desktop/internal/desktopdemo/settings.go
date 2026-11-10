@@ -112,7 +112,11 @@ func (d *demo) settingsContent(c *ui.Context, k uikit.Kit) {
 			d.switchRow(c, k, "hover", "显示快捷键提示", "悬停时显示数字键提示")
 			k.SettingsRow(c, uikit.SettingsRowProps{Label: "预览快捷面板"}, nil, func() {
 				if k.Button(c, "打开预览", uikit.ButtonProps{}).Clicked() {
-					d.page = "quick-panel"
+					if d.openQuickPanel != nil {
+						d.openQuickPanel()
+					} else {
+						d.page = "quick-panel"
+					}
 				}
 			})
 		})

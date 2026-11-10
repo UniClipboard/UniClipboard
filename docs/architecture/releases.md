@@ -13,7 +13,7 @@ paths:
   - .github/workflows/build-cli.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 8b1f67556e0af2dda24d3d98b68adab924788008
+verified: be4353ba672a0fc41d57dc8e22bf1e67feef087e
 ---
 # Product builds and CLI releases
 
@@ -27,7 +27,7 @@ All runtime programs and the migration helper handle `--version` and `--version 
 
 CLI assembly uses the existing npm main/platform-package model. `@uniclipboard/cli` pins every optional platform package to the exact `<version>-build.<number>` registry version. Both npm CLI command names use one launcher. The package also exposes `unicd` through a dedicated service entrypoint. The launcher executes the real CLI beside its sibling service. Alpha selects the npm `alpha` dist-tag. Stable selects `latest`. Channel names do not enter package versions.
 
-The declared CLI matrix covers macOS arm64/amd64, Linux arm64/amd64 and Windows amd64. Each target runs its own executable identity acceptance. Linux amd64 also runs production headless and packaged release/upgrade process acceptance. Local acceptance covers only the current host; workflow definitions do not establish remote runner success.
+The declared CLI matrix covers macOS arm64/amd64, Linux arm64/amd64 and Windows amd64. Each target runs its own executable identity acceptance. Linux amd64 also runs production headless and packaged release/upgrade process acceptance. Remote native acceptance passed for all five targets in run 42777109814. The [remote verification receipt](../exec/0018-cli-remote-verification.md) records exact source, artifacts and the observed headless retry.
 
 ## v1 upgrade notice and migration
 
@@ -96,7 +96,7 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-The selected next CLI version is `2.0.0 (1)`, encoded as `2.0.0-build.1` on npm. Alpha selects the `alpha` dist-tag. Other products retain their independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Remote build acceptance and workflow authorization remain publication prerequisites. Public OIDC/provenance, remote native runners and real GitHub publication have not been accepted locally.
+The selected next CLI version is `2.0.0 (1)`, encoded as `2.0.0-build.1` on npm. Alpha selects the `alpha` dist-tag. Other products retain their independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Remote five-target build and package assembly acceptance passed. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
 
 Desktop does not yet consume the immutable CLI lock or provide signed installers, R2 uploads or FlareRelease registration. Its stable CLI gate remains a required future implementation. Android and iOS lack native application projects. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
 

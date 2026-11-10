@@ -1,6 +1,6 @@
 # Implementation plan: Independent product builds and releases
 
-- Status: CLI vertical slice implemented locally; Desktop and mobile phases remain open.
+- Status: CLI native builds and package acceptance verified remotely; npm publication authorization pending. Desktop and mobile phases remain open.
 - Date: 2026-11-10
 - Decision: [0018 independent product releases](../decisions/proposed/0018-independent-product-build-and-release.md).
 - Source baseline after rebase: `edad4381b8a080d583c7a558c517b2d671c8fdf3`, branch `cli-release-channels`.
@@ -9,7 +9,7 @@
 
 ## Current delivery
 
-The CLI vertical slice is implemented. It includes channel-free npm build versions, native executable identity and alias checks, package-set integrity checks, direct stable publication, exact-build promotion and durable candidate recovery. Local process acceptance is separate from public OIDC/provenance and remote native runner acceptance. The initial metadata remains a local seed, not a public release assignment.
+The CLI vertical slice is implemented. Five native target builds and npm candidate assembly passed [remote verification](0018-cli-remote-verification.md). It includes channel-free npm build versions, native executable identity and alias checks, package-set integrity checks, direct stable publication, exact-build promotion and durable candidate recovery. Local process acceptance is separate from public OIDC/provenance and remote native runner acceptance. The initial metadata remains a local seed, not a public release assignment.
 
 See the [implemented release architecture](../architecture/releases.md), [release contract](../contracts/release-contract.md) and [local delivery receipt](0018-cli-implementation-receipt.md). Desktop signing, immutable CLI consumption and R2/FlareRelease publication are still open. Android/iOS native applications are still prerequisites. This delivery does not close decision 0018.
 

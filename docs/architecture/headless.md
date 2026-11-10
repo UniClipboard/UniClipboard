@@ -71,7 +71,7 @@ Exact DTOs, budgets and exit codes are in the [local service contract](../contra
 
 ## Offline CLI operations
 
-`unic logs export [--output FILE]` reads only retained local log segments and writes
+`unic dev logs export [--output FILE]` reads only retained local log segments and writes
 a private tar.gz with a checksum manifest. It does not use the service socket,
 create an Engine, or require a desktop adapter. It works while unicd is stopped.
 Existing destinations and log symlinks are rejected. Live export is an on-disk

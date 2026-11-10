@@ -42,7 +42,7 @@ func TestSyncObservability(t *testing.T) {
 	a.run(t, "payload-and-remote-daily", func(t *testing.T) {
 		for i := 0; i < 2; i++ {
 			text := fmt.Sprintf("0020-private-content-%d", i)
-			a.cli(t, "copy", text)
+			a.cli(t, "dev", "copy", text)
 			b.eventually(t, func() bool {
 				code, body := b.request(t, "GET", "/v1/clipboard", "")
 				return code == 200 && strings.Contains(string(body), text)
@@ -86,7 +86,7 @@ func TestSyncObservability(t *testing.T) {
 				return h.syncMetric("unic.sync.recovery.ends", map[string]string{"result": "recovered"}) >= 1
 			})
 		}
-		a.cli(t, "copy", "0020-after-recovery")
+		a.cli(t, "dev", "copy", "0020-after-recovery")
 		b.eventually(t, func() bool {
 			c, v := b.request(t, "GET", "/v1/clipboard", "")
 			return c == 200 && strings.Contains(string(v), "0020-after-recovery")
@@ -96,7 +96,7 @@ func TestSyncObservability(t *testing.T) {
 		for _, h := range []*observabilityRun{a, b} {
 			h.cli(t, "config", "set", "telemetry.metrics.enabled", "false")
 		}
-		a.cli(t, "copy", "0020-disabled-payload")
+		a.cli(t, "dev", "copy", "0020-disabled-payload")
 		b.eventually(t, func() bool {
 			c, v := b.request(t, "GET", "/v1/clipboard", "")
 			return c == 200 && strings.Contains(string(v), "0020-disabled-payload")
@@ -123,7 +123,7 @@ func TestSyncObservability(t *testing.T) {
 		}
 
 		a.eventually(t, func() bool { return strings.Contains(string(a.get(t, "/v1/status")), `"connected":true`) })
-		a.cli(t, "copy", "0020-restart-same-day")
+		a.cli(t, "dev", "copy", "0020-restart-same-day")
 		b.eventually(t, func() bool {
 			c, v := b.request(t, "GET", "/v1/clipboard", "")
 			return c == 200 && strings.Contains(string(v), "0020-restart-same-day")
@@ -133,7 +133,7 @@ func TestSyncObservability(t *testing.T) {
 			t.Fatal("same UTC day admitted after restart")
 		}
 		syncControl(t, b, "next-day")
-		a.cli(t, "copy", "0020-next-utc-day")
+		a.cli(t, "dev", "copy", "0020-next-utc-day")
 		b.eventually(t, func() bool { return b.eventCount("remote_content_applied") == 2 })
 	})
 
@@ -145,7 +145,7 @@ func TestSyncObservability(t *testing.T) {
 				t.Fatal("analytics private state retained on disable")
 			}
 		}
-		a.cli(t, "copy", "0020-analytics-disabled")
+		a.cli(t, "dev", "copy", "0020-analytics-disabled")
 		b.eventually(t, func() bool {
 			code, body := b.request(t, "GET", "/v1/clipboard", "")
 			return code == 200 && strings.Contains(string(body), "0020-analytics-disabled")
@@ -156,7 +156,7 @@ func TestSyncObservability(t *testing.T) {
 		if b.eventCount("remote_content_applied") != 2 {
 			t.Fatal("disabled-period application replayed")
 		}
-		a.cli(t, "copy", "0020-analytics-new-identity")
+		a.cli(t, "dev", "copy", "0020-analytics-new-identity")
 		b.eventually(t, func() bool { return b.eventCount("remote_content_applied") == 3 })
 		events := b.analytics()
 		if events[len(events)-1]["distinct_id"] == previous {
@@ -190,14 +190,14 @@ func pairSyncServices(t *testing.T, a, b *observabilityRun) {
 	if json.Unmarshal(body, &ticket) != nil {
 		t.Fatal("ticket decode")
 	}
-	b.cli(t, "pair", ticket.Ticket)
+	b.cli(t, "device", "add", ticket.Ticket)
 	for _, h := range []*observabilityRun{a, b} {
 		var pending []struct {
 			ID          string `json:"id"`
 			Fingerprint string `json:"fingerprint"`
 		}
 		h.eventually(t, func() bool { _ = json.Unmarshal(h.get(t, "/v1/pending"), &pending); return len(pending) > 0 })
-		h.cli(t, "approve", pending[0].ID, pending[0].Fingerprint)
+		h.cli(t, "device", "approve", pending[0].ID, pending[0].Fingerprint)
 	}
 	for _, h := range []*observabilityRun{a, b} {
 		h.eventually(t, func() bool { return strings.Contains(string(h.get(t, "/v1/status")), `"connected":true`) })
@@ -316,7 +316,7 @@ func TestSyncObservabilityFaults(t *testing.T) {
 	pairSyncServices(t, a, b)
 	a.run(t, "partial-body", func(t *testing.T) {
 		syncControl(t, a, "partial-body")
-		a.cli(t, "copy", strings.Repeat("0020-partial-canary", 1024))
+		a.cli(t, "dev", "copy", strings.Repeat("0020-partial-canary", 1024))
 		a.eventually(t, func() bool {
 			return a.syncMetric("unic.sync.transfer.bytes", map[string]string{"direction": "outgoing", "result": "failed"}) == 17
 		})
@@ -361,7 +361,7 @@ func TestSyncObservabilityFaults(t *testing.T) {
 		}
 		b.startConfig(t, fmt.Sprintf("[telemetry]\nendpoint=%q\n", b.server.URL))
 		a.eventually(t, func() bool { return strings.Contains(string(a.get(t, "/v1/status")), `"connected":true`) })
-		a.cli(t, "copy", "0020-marker-failure")
+		a.cli(t, "dev", "copy", "0020-marker-failure")
 		b.eventually(t, func() bool {
 			code, body := b.request(t, "GET", "/v1/clipboard", "")
 			return code == 200 && strings.Contains(string(body), "0020-marker-failure")

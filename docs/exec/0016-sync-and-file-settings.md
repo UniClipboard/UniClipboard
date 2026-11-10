@@ -325,7 +325,7 @@ The current behavior is documented in [desktop runtime](../architecture/desktop-
 - Configuration writes: `unic config set`, `unic config apply`, and `PUT /v1/config` with raw-file revision.
 - Configuration status: `unic config --json` includes pending restart and runtime apply failure.
 - Restore: `unic history use <ref> [--request-id KEY] [--json]` returns separate local and network results.
-- Inventory: `unic cache --json` lists only default-cache IDs, bytes, reservations, availability, and held state.
+- Inventory: `unic dev cache --json` lists only default-cache IDs, bytes, reservations, availability, and held state.
 - Default quota and retention: ledger-backed ownership, active pins, deferred startup clipboard reconciliation, and physical deletion accounting.
 - Custom receives: exclusive creation, persistent external history references, and no lifecycle deletion authority.
 - Crash recovery: ownership enters the SQLite ledger before payload creation. Incomplete entries remain charged until safe cleanup succeeds.

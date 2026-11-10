@@ -140,14 +140,14 @@ func setup(env *testscript.Env) error {
 				}
 			}
 			if dest := os.Getenv("UNIC_E2E_ARTIFACTS"); dest != "" && !stopped {
-				for _, query := range [][]string{{"capabilities"}, {"received"}, {"h", "list", "--json"}} {
+				for _, query := range [][]string{{"dev", "capabilities"}, {"recv"}, {"h", "list", "--json"}} {
 					if out, _, e := n.unic(query...); e == nil {
 						dir := filepath.Join(dest, filepath.Base(env.WorkDir))
 						_ = os.MkdirAll(dir, 0700)
-						_ = os.WriteFile(filepath.Join(dir, n.name+"."+query[0]+".json"), []byte(out), 0600)
+						_ = os.WriteFile(filepath.Join(dir, n.name+"."+query[len(query)-1]+".json"), []byte(out), 0600)
 					}
 				}
-				if out, _, err := n.unic("cache", "--json"); err == nil {
+				if out, _, err := n.unic("dev", "cache", "--json"); err == nil {
 					dir := filepath.Join(dest, filepath.Base(env.WorkDir))
 					_ = os.MkdirAll(dir, 0700)
 					_ = os.WriteFile(filepath.Join(dir, n.name+".cache.json"), []byte(out), 0600)
@@ -401,7 +401,7 @@ func cmdWait(ts *testscript.TestScript, neg bool, args []string) {
 }
 
 func pendingFingerprint(ts *testscript.TestScript, n *node) string {
-	out, _, err := n.unic("requests")
+	out, _, err := n.unic("device", "list")
 	ts.Check(err)
 	fp := regexp.MustCompile(`[0-9A-F]{4}(?: [0-9A-F]{4}){7}`).FindString(out)
 	if fp == "" {
@@ -434,9 +434,9 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 	}
 	idA, idB := idOf(a), idOf(b)
 	if stage == "request" || stage == "both" {
-		addr, _, err := a.unic("addr")
+		addr, _, err := a.unic("device", "addr")
 		ts.Check(err)
-		out, _, err := b.unic("pair", strings.TrimSpace(addr))
+		out, _, err := b.unic("device", "add", strings.TrimSpace(addr))
 		ts.Check(err)
 		fp := regexp.MustCompile(`(?m)^Fingerprint: ([0-9A-F ]+?)\s{2}`).FindStringSubmatch(out)
 		if fp == nil {
@@ -445,7 +445,7 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 		waitFor := func(n *node, id string) {
 			deadline := time.Now().Add(30 * time.Second)
 			for time.Now().Before(deadline) {
-				o, _, _ := n.unic("requests")
+				o, _, _ := n.unic("device", "list")
 				if strings.Contains(o, id) {
 					if !strings.Contains(o, fp[1]) {
 						ts.Fatalf("fingerprint on %s differs from %q:\n%s", n.name, fp[1], o)
@@ -461,21 +461,21 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 	}
 	if stage == "approve" || stage == "both" || stage == "decide" {
 		fpA, fpB := pendingFingerprint(ts, a), pendingFingerprint(ts, b)
-		if _, _, err := a.unic("approve", idB); err == nil {
+		if _, _, err := a.unic("device", "approve", idB); err == nil {
 			ts.Fatalf("approval without fingerprint succeeded")
 		}
-		if _, _, err := a.unic("approve", idB, "0000 0000 0000 0000 0000 0000 0000 0000"); err == nil {
+		if _, _, err := a.unic("device", "approve", idB, "0000 0000 0000 0000 0000 0000 0000 0000"); err == nil {
 			ts.Fatalf("approval with wrong fingerprint succeeded")
 		}
-		_, _, err := a.unic("approve", idB, fpB)
+		_, _, err := a.unic("device", "approve", idB, fpB)
 		ts.Check(err)
-		_, _, err = b.unic("approve", idA, fpA)
+		_, _, err = b.unic("device", "approve", idA, fpA)
 		ts.Check(err)
 		if stage == "decide" {
 			return // approvals only: a temporary service may end as soon as its own command does
 		}
 		for _, p := range [][2]string{{a.name, idB}, {b.name, idA}} {
-			cmdWait(ts, false, []string{p[0], p[1] + `\s+\S+\s+online`, "peers"})
+			cmdWait(ts, false, []string{p[0], p[1] + `\s+\S+\s+online`, "device", "list"})
 		}
 	}
 }
@@ -674,7 +674,7 @@ func cmdRetryCopy(ts *testscript.TestScript, _ bool, args []string) {
 	from, to := st.node(ts, args[0]), st.node(ts, args[1])
 	deadline := time.Now().Add(90 * time.Second)
 	for try := 1; time.Now().Before(deadline); try++ {
-		_, _, err := from.unic("copy", fmt.Sprintf("%s %d", args[2], try))
+		_, _, err := from.unic("dev", "copy", fmt.Sprintf("%s %d", args[2], try))
 		ts.Check(err)
 		until := time.Now().Add(5 * time.Second)
 		for time.Now().Before(until) {

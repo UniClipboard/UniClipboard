@@ -93,10 +93,10 @@ A standalone lightweight service continues network reception and explicit headle
 
 ## Export and CLI behavior
 
-`unic submit [text]` reads stdin when text is omitted. `-f` submits local file references; `--png PATH` imports PNG.
-`unic submission REQUEST_ID` queries a result. `unic received list|show|dismiss` exposes transient receives.
+`unic send [text]` reads stdin when text is omitted. `-f` submits local file references; `--png PATH` imports PNG.
+`unic dev submission REQUEST_ID` queries a result. `unic recv list|show|dismiss` exposes transient receives.
 `unic history action ID KEY [--apply] [--request-id KEY]` separates execution from application.
-`unic copy`, `paste`, `history use`, and Action `--apply` require desktop abilities.
+`unic dev copy`, `paste`, `history use`, and Action `--apply` require desktop abilities.
 No adapter yields `unavailable`; unsupported capabilities yield `unsupported`; denied access yields `permission_denied`.
 CLI success exits 0. Operation failures exit 1. Missing top-level commands exit 2.
 Submission and Action JSON expose stable codes and independent commit/network/application results.
@@ -166,7 +166,7 @@ After `retiring` or `generation_changed` a client retries acquisition only. It n
 
 Frozen budgets (client side): probe 1 s; acquisition including retirement wait 45 s; one launched `unicd` becoming ready 30 s;
 last-user graceful stop 12 s plus 5 s after a forced kill of the launcher's own child; one non-streaming request 60 s, starting after acquisition.
-The event stream, `watch`, invitation and override sessions are not subject to the 60 s request deadline.
+The event stream, `dev watch`, invitation and override sessions are not subject to the 60 s request deadline.
 Cleanup uses its own context even when the command context is cancelled.
 
 ### Operation observation
@@ -175,10 +175,10 @@ Cleanup uses its own context even when the command context is cancelled.
 A command that initiates a send waits only for the operation it created. `SubmissionResult.SyncDisposition=queued` is not completion.
 The client polls every 200 ms until the operation is done, 60 s pass, or the command is cancelled. It never resubmits.
 Result values are `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted`, `unknown` and `none` (no operation: disabled, no backend, no target).
-Local commit and network outcome stay separate. `submit --json` prints `{submission, send:{outcome, operation?}}`.
+Local commit and network outcome stay separate. `send --json` prints `{submission, send:{outcome, operation?}}`.
 Exit code 4 means committed but not fully completed: `partial`, `failed`, `timeout`, `interrupted` or `unknown`.
 `success`, `superseded` and `none` exit 0. After a timeout under a temporary service the message states that the service is stopping and that referenced files stay in use until the command exits.
-Under a persistent service it names `unic submission REQUEST_ID`.
+Under a persistent service it names `unic dev submission REQUEST_ID`.
 
 Before a command sends, the client gives paired devices a connection opportunity:
 while any paired device is offline and fewer than 10 s have passed since the service generation started, it polls status every 200 ms.
@@ -188,11 +188,11 @@ The same rule applies to every service, so completion does not depend on who sta
 
 | Command | Under a temporary service | Under a persistent service |
 |---|---|---|
-| `watch` | Holds a lease for the stream. A stream that ends without cancellation exits 4 (`stopped or was replaced`). | Same. |
-| `pair`, `join` with approval pending | Waits up to 2 minutes for the peer to connect. Connected exits 0. Pending, removed, interrupted or stopped exits 4. | Returns after the pending request is recorded. |
-| `code` | Holds the lease until the invitation expires, is used, is cancelled or is replaced by a different code. | Returns after printing. |
-| `addr` | Prints the address and notes on stderr that it works only while a service runs. | Returns after printing. |
-| `logs level LEVEL --for D` | Holds the lease until that override expires or is reset or replaced (its `expires_at_ms` changes). | Returns after acceptance. |
+| `dev watch` | Holds a lease for the stream. A stream that ends without cancellation exits 4 (`stopped or was replaced`). | Same. |
+| `device add ADDRESS`, `device add CODE` with approval pending | Waits up to 2 minutes for the peer to connect. Connected exits 0. Pending, removed, interrupted or stopped exits 4. | Returns after the pending request is recorded. |
+| `device add` (no argument) | Holds the lease until the invitation expires, is used, is cancelled or is replaced by a different code. | Returns after printing. |
+| `device addr` | Prints the address and notes on stderr that it works only while a service runs. | Returns after printing. |
+| `dev logs level LEVEL --for D` | Holds the lease until that override expires or is reset or replaced (its `expires_at_ms` changes). | Returns after acceptance. |
 
 An older command's exit never withdraws a newer invitation or override: a command compares the code or the expiry it created.
 The held duration is announced on stderr. Stdout stays the command result.
@@ -225,7 +225,7 @@ See the [observability contract](observability-contract.md#10-posthog-product-ev
 
 ## Offline log archive
 
-`unic logs export [--output FILE]` reads the selected profile's retained local logs
+`unic dev logs export [--output FILE]` reads the selected profile's retained local logs
 without IPC. It works when unicd is stopped. Default output is a UTC-timestamped
 `unic-logs-*.tar.gz` in the current directory. Success prints the absolute path.
 The command never replaces an existing output, follows a log symlink, or includes

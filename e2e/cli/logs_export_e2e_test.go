@@ -63,7 +63,7 @@ func TestLogsExport(t *testing.T) {
 			write(t, filepath.Join(home, path), []byte("must-not-export-private-canary"))
 		}
 		out := filepath.Join(dir, "support logs.tar.gz")
-		stdout, err := logsExportCLI(t, executable, dir, home, "logs", "export", "--output", out)
+		stdout, err := logsExportCLI(t, executable, dir, home, "dev", "logs", "export", "--output", out)
 		if err != nil {
 			t.Fatalf("offline export failed: %s", stdout)
 		}
@@ -92,11 +92,11 @@ func TestLogsExport(t *testing.T) {
 	})
 	run("default-output", func(t *testing.T, dir, home string) {
 		write(t, filepath.Join(home, "logs", "segment-1.jsonl"), line)
-		a, err := logsExportCLI(t, executable, dir, home, "logs", "export")
+		a, err := logsExportCLI(t, executable, dir, home, "dev", "logs", "export")
 		if err != nil {
 			t.Fatal("default export failed")
 		}
-		b, err := logsExportCLI(t, executable, dir, home, "logs", "export")
+		b, err := logsExportCLI(t, executable, dir, home, "dev", "logs", "export")
 		if err != nil {
 			t.Fatal("second default export failed")
 		}
@@ -160,7 +160,7 @@ func TestLogsExport(t *testing.T) {
 				write(t, filepath.Join(logdir, "segment-1.jsonl"), line)
 				out = filepath.Join(dir, "absent", "export.tar.gz")
 			}
-			_, err := logsExportCLI(t, executable, dir, home, "logs", "export", "--output", out)
+			_, err := logsExportCLI(t, executable, dir, home, "dev", "logs", "export", "--output", out)
 			if err == nil {
 				t.Fatal("invalid export succeeded")
 			}
@@ -179,7 +179,7 @@ func TestLogsExport(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if _, err := logsExportCLI(t, executable, dir, home, "logs", "export", "--output", out); err == nil {
+			if _, err := logsExportCLI(t, executable, dir, home, "dev", "logs", "export", "--output", out); err == nil {
 				t.Fatal("existing destination accepted")
 			}
 			data, _ := os.ReadFile(target)
@@ -189,7 +189,7 @@ func TestLogsExport(t *testing.T) {
 		}
 	})
 	run("invalid-arguments", func(t *testing.T, dir, home string) {
-		for _, args := range [][]string{{"logs", "export", "extra"}, {"logs", "export", "--unknown"}, {"logs", "export", "--output"}, {"logs", "export", "--output", ""}} {
+		for _, args := range [][]string{{"dev", "logs", "export", "extra"}, {"dev", "logs", "export", "--unknown"}, {"dev", "logs", "export", "--output"}, {"dev", "logs", "export", "--output", ""}} {
 			if _, err := logsExportCLI(t, executable, dir, home, args...); err == nil {
 				t.Fatal("invalid arguments accepted")
 			}
@@ -222,7 +222,7 @@ func TestLogsExport(t *testing.T) {
 			}
 		}()
 		out := filepath.Join(dir, "live.tar.gz")
-		_, exportErr := logsExportCLI(t, executable, dir, home, "logs", "export", "--output", out)
+		_, exportErr := logsExportCLI(t, executable, dir, home, "dev", "logs", "export", "--output", out)
 		close(stop)
 		wg.Wait()
 		if exportErr != nil {
@@ -262,7 +262,7 @@ func TestLogsExport(t *testing.T) {
 				time.Sleep(100 * time.Microsecond)
 			}
 		}()
-		_, err := logsExportCLI(t, executable, dir, home, "logs", "export", "--output", out)
+		_, err := logsExportCLI(t, executable, dir, home, "dev", "logs", "export", "--output", out)
 		close(stop)
 		if err == nil {
 			t.Fatal("truncated source export succeeded")

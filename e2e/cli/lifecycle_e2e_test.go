@@ -298,8 +298,8 @@ func TestServiceLifecycle(t *testing.T) {
 	scenario("C01", func(t *testing.T) {
 		l := newLab(t, rec, root, "c01")
 		for _, args := range [][]string{
-			{"help"}, {"help", "--json"}, {"config", "path"}, {"plugin", "list"}, {"logs", "help"}, {"history", "help"},
-			{"nosuch"}, {"diagnostics", "bad"}, {"history"}, {"history", "bogus"}, {"logs"}, {"unpair"}, {"submit", "-f"}, {"approve", "x"}, {"submission"},
+			{"help"}, {"help", "--json"}, {"config", "path"}, {"plugin", "list"}, {"dev", "logs", "help"}, {"history", "help"},
+			{"nosuch"}, {"dev", "diagnostics", "bad"}, {"history"}, {"history", "bogus"}, {"dev", "logs"}, {"device", "remove"}, {"send", "-f"}, {"device", "approve", "x"}, {"dev", "submission"}, {"device"}, {"dev"}, {"logs"}, {"copy"},
 		} {
 			l.run(args...)
 			l.assertNoService()
@@ -382,7 +382,7 @@ func TestServiceLifecycle(t *testing.T) {
 			t.Fatalf("%d unicd processes remain", n)
 		}
 		// The override window holds the temporary generation; observe it.
-		p := l.unic("logs", "level", "debug", "--for", "3s")
+		p := l.unic("dev", "logs", "level", "debug", "--for", "3s")
 		inst := l.waitInstance(20*time.Second, func(v servicelifecycle.Instance) bool {
 			return v.Mode == servicelifecycle.ModeCLITemporary && v.Leases == 1
 		})
@@ -404,7 +404,7 @@ func TestServiceLifecycle(t *testing.T) {
 		if _, _, code := l.run("history", "show", "missing"); code == 0 {
 			t.Fatal("expected a history error")
 		}
-		w := l.unic("watch")
+		w := l.unic("dev", "watch")
 		l.waitInstance(10*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		l.signal(w, syscall.SIGINT)
 		w.wait(t, 10*time.Second)
@@ -430,7 +430,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C05", func(t *testing.T) {
 		l := newLab(t, rec, root, "c05")
-		a, b := l.unic("watch"), l.unic("watch")
+		a, b := l.unic("dev", "watch"), l.unic("dev", "watch")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 2 })
 		if inst.Mode != servicelifecycle.ModeCLITemporary || unicdCount() != 1 {
 			t.Fatalf("expected one temporary generation, got %+v with %d processes", inst, unicdCount())
@@ -449,9 +449,9 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C06", func(t *testing.T) {
 		l := newLab(t, rec, root, "c06")
-		starter := l.unic("watch")
+		starter := l.unic("dev", "watch")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
-		borrower := l.unic("watch")
+		borrower := l.unic("dev", "watch")
 		l.waitInstance(10*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 2 })
 		// C09: the starter dies without cleanup while the borrower is active.
 		l.signal(starter, syscall.SIGKILL)
@@ -470,7 +470,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C09", func(t *testing.T) {
 		l := newLab(t, rec, root, "c09")
-		only := l.unic("watch")
+		only := l.unic("dev", "watch")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		l.signal(only, syscall.SIGKILL)
 		only.wait(t, 5*time.Second)
@@ -478,7 +478,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 		// A command that holds a bounded session dies the same way: its lease is reclaimed.
 		held := newLab(t, rec, root, "c09s")
-		session := held.unic("logs", "level", "debug", "--for", "60s")
+		session := held.unic("dev", "logs", "level", "debug", "--for", "60s")
 		sessionInst := held.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		held.signal(session, syscall.SIGKILL)
 		session.wait(t, 5*time.Second)
@@ -500,7 +500,7 @@ func TestServiceLifecycle(t *testing.T) {
 	scenario("C07", func(t *testing.T) {
 		// The retiring generation answers for three seconds, so a new command meets it deterministically.
 		l := newLab(t, rec, root, "c07", "UNIC_E2E_RETIRE_HOLD_MS=3000")
-		holder := l.unic("watch")
+		holder := l.unic("dev", "watch")
 		first := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		l.signal(holder, syscall.SIGINT)
 		l.waitInstance(10*time.Second, func(v servicelifecycle.Instance) bool { return v.Retiring })
@@ -644,7 +644,7 @@ func TestServiceLifecycle(t *testing.T) {
 	scenario("C16", func(t *testing.T) {
 		// A normal desktop replaces the temporary generation by stopping the observed generation first.
 		l := newLab(t, rec, root, "c16")
-		watcher := l.unic("watch")
+		watcher := l.unic("dev", "watch")
 		old := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -676,7 +676,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C18", func(t *testing.T) {
 		l := newLab(t, rec, root, "c18")
-		holder := l.unic("watch")
+		holder := l.unic("dev", "watch")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		direct := l.spawn("unicd", nil)
 		direct.wait(t, 15*time.Second)
@@ -740,7 +740,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C20", func(t *testing.T) {
 		l := newLab(t, rec, root, "c20")
-		for _, args := range [][]string{{"paste"}, {"copy", "hello"}} {
+		for _, args := range [][]string{{"dev", "paste"}, {"dev", "copy", "hello"}} {
 			_, stderr, code := l.run(args...)
 			if code != 1 || stderr == "" {
 				t.Fatalf("%v without an adapter: %d %q", args, code, stderr)
@@ -754,7 +754,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C25", func(t *testing.T) {
 		l := newLab(t, rec, root, "c25")
-		stream := l.unic("watch")
+		stream := l.unic("dev", "watch")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		// The stream holds a lease but not the transition lock: a new command is not delayed.
 		began := time.Now()
@@ -768,7 +768,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C27", func(t *testing.T) {
 		l := newLab(t, rec, root, "c27", "UNIC_RENDEZVOUS_URL="+rv.URL)
-		code := l.unic("code")
+		code := l.unic("device", "add")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		// The invitation is printed, yet the temporary service must stay up.
 		deadline := time.Now().Add(10 * time.Second)
@@ -787,14 +787,14 @@ func TestServiceLifecycle(t *testing.T) {
 		// A persistent owner returns after publication.
 		_, _ = l.standalone()
 		began := time.Now()
-		if _, _, c := l.run("code"); c != 0 || time.Since(began) > 10*time.Second {
+		if _, _, c := l.run("device", "add"); c != 0 || time.Since(began) > 10*time.Second {
 			t.Fatal("code did not return under a persistent owner")
 		}
 	})
 
 	scenario("C28", func(t *testing.T) {
 		l := newLab(t, rec, root, "c28", "UNIC_RENDEZVOUS_URL="+rv.URL)
-		a := l.unic("code")
+		a := l.unic("device", "add")
 		l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		deadline := time.Now().Add(10 * time.Second)
 		for !strings.Contains(a.out.String(), "Valid until") && time.Now().Before(deadline) {
@@ -809,7 +809,7 @@ func TestServiceLifecycle(t *testing.T) {
 		if err != nil || second.Code == first.Code {
 			t.Fatalf("no replacement invitation: %v", err)
 		}
-		b := l.unic("code") // yet another replacement, held by B
+		b := l.unic("device", "add") // yet another replacement, held by B
 		a.wait(t, 15*time.Second)
 		if still, err := api.NewClient(l.sock).Code(context.Background()); err != nil || still.Code == "" {
 			t.Fatalf("an older command's exit withdrew the newer invitation: %v", err)
@@ -820,7 +820,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C29", func(t *testing.T) {
 		l := newLab(t, rec, root, "c29")
-		a := l.unic("logs", "level", "debug", "--for", "30s")
+		a := l.unic("dev", "logs", "level", "debug", "--for", "30s")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		// A newer override replaces A's; A ends without resetting it.
 		if _, err := api.NewClient(l.sock).SetLogLevel(context.Background(), "local", "warn", 20); err != nil {
@@ -839,7 +839,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C30", func(t *testing.T) {
 		l := newLab(t, rec, root, "c30")
-		cmd := exec.Command(filepath.Join(binDir, "unic"), "submit", "--json")
+		cmd := exec.Command(filepath.Join(binDir, "unic"), "send", "--json")
 		cmd.Env = l.env
 		cmd.Stdin = strings.NewReader("pipeline text")
 		var stdout, stderr bytes.Buffer
@@ -865,7 +865,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C31", func(t *testing.T) {
 		l := newLab(t, rec, root, "c31")
-		p := l.unic("watch")
+		p := l.unic("dev", "watch")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		l.signal(p, syscall.SIGINT)
 		p.wait(t, 15*time.Second)
@@ -880,9 +880,9 @@ func TestServiceLifecycle(t *testing.T) {
 		// A borrowed or replacement generation is never force-stopped: a stuck retiring generation
 		// without a launcher handle is only reported.
 		l := newLab(t, rec, root, "c32", "UNIC_E2E_RETIRE_HOLD_MS=20000")
-		starter := l.unic("watch")
+		starter := l.unic("dev", "watch")
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
-		borrower := l.unic("watch")
+		borrower := l.unic("dev", "watch")
 		l.waitInstance(10*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 2 })
 		l.signal(starter, syscall.SIGKILL)
 		starter.wait(t, 5*time.Second)
@@ -900,11 +900,11 @@ func TestServiceLifecycle(t *testing.T) {
 	scenario("C33", func(t *testing.T) {
 		l := newLab(t, rec, root, "c33")
 		var watchers []*proc
-		first := l.unic("watch")
+		first := l.unic("dev", "watch")
 		watchers = append(watchers, first)
 		l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		for range servicelifecycle.MaxLeases + 4 {
-			watchers = append(watchers, l.unic("watch"))
+			watchers = append(watchers, l.unic("dev", "watch"))
 		}
 		l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == servicelifecycle.MaxLeases })
 		rejected := 0

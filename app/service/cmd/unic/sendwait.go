@@ -121,7 +121,7 @@ func sendIncomplete(outcome, request string) error {
 		if current.temporary() {
 			note = "; the temporary service is stopping, so queued work and referenced files stay in use until this command exits"
 		} else {
-			note = "; the running service keeps sending (query: unic submission " + request + ")"
+			note = "; the running service keeps sending (query: unic dev submission " + request + ")"
 		}
 	}
 	return &incompleteError{fmt.Sprintf("committed locally; send %s%s", outcome, note)}

@@ -2,7 +2,7 @@
 # 目的: 验证大文件发送途中命令被杀后，已提交的历史条目仍然只有一份，临时服务随之退出，且重启后没有自动重发。
 # 流程:
 #   1. 启动 alpha 和 beta 并配对批准，停止 alpha，beta 保持在线。
-#   2. 在后台执行 `unic submit -f` 发送一个大文件，等历史里出现该条目后用 KILL 杀掉命令。
+#   2. 在后台执行 `unic send -f` 发送一个大文件，等历史里出现该条目后用 KILL 杀掉命令。
 #   3. 确认 alpha 的临时服务已退出，再读取 alpha 的历史。
 # 期望:
 #   - alpha 没有服务进程或 socket。
@@ -21,14 +21,14 @@ node-stop alpha TERM
 service-gone alpha
 
 genfile rand big.bin 94371840
-u-async send alpha submit --json --request-id lost-1 -f $WORK/big.bin
+u-async send alpha send --json --request-id lost-1 -f $WORK/big.bin
 until alpha 'files' history list
 u-kill send KILL
 service-gone alpha
 
 u alpha history list
 stdout -count=1 'files'
-! u alpha submission lost-1
+! u alpha dev submission lost-1
 stderr 'no such submission'
 ! stdout '@2'
 service-gone alpha

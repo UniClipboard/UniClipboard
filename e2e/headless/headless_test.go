@@ -404,10 +404,10 @@ func TestProductionHeadless(t *testing.T) {
 		}
 		return false
 	})
-	if string(cli(1, "received", "show", string(transient.ReceiptID))) != "transient receive" {
+	if string(cli(1, "recv", "show", string(transient.ReceiptID))) != "transient receive" {
 		t.Fatal("CLI transient content differs")
 	}
-	cli(1, "received", "dismiss", string(transient.ReceiptID))
+	cli(1, "recv", "dismiss", string(transient.ReceiptID))
 	checks = append(checks, "persist=false remains readable through Received without forced history")
 	// Start the real IPC adapter state machine with a directory board in a separate process.
 	board := filepath.Join(base, "board")

@@ -20,11 +20,11 @@ board-set alpha files first.bin
 board-wait beta files first.bin
 file-path beta FIRST
 u beta h tag @1 --add keep
-u beta copy -f $FIRST
-u beta cache --json
+u beta dev copy -f $FIRST
+u beta dev cache --json
 stdout '"stored_bytes":100'
-u beta copy release
-until beta '"size":100,[^}]*"held":false' cache --json
+u beta dev copy release
+until beta '"size":100,[^}]*"held":false' dev cache --json
 retry-copy alpha beta reset-off
 genfile rand next.bin 110
 board-set alpha files next.bin

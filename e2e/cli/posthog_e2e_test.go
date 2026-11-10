@@ -29,9 +29,9 @@ func TestPostHog(t *testing.T) {
 	cfg := fmt.Sprintf("[telemetry]\nendpoint=%q\n", h.server.URL+"/i")
 	h.run(t, "default-on", func(t *testing.T) {
 		h.startConfig(t, cfg)
-		h.cli(t, "copy", "posthog-private-clipboard-canary")
+		h.cli(t, "dev", "copy", "posthog-private-clipboard-canary")
 		h.eventually(t, func() bool { return h.hasPath("/i/v1/metrics") && len(h.analytics()) > 0 })
-		h.cli(t, "logs", "level", "debug", "--target", "remote", "--for", "15m")
+		h.cli(t, "dev", "logs", "level", "debug", "--target", "remote", "--for", "15m")
 		h.request(t, "POST", "/test/logs", "")
 		h.eventually(t, func() bool { return h.hasPath("/i/v1/logs") })
 		h.contains(t, "/v1/diagnostics/telemetry", `"credential_configured":true`)
@@ -84,10 +84,10 @@ func TestPostHog(t *testing.T) {
 		b.cli(t, "config", "set", "sync.enabled", "false")
 		mark := time.Now()
 		for i := 0; i < 3; i++ {
-			h.cli(t, "copy", fmt.Sprintf("delta-A-%d", i))
+			h.cli(t, "dev", "copy", fmt.Sprintf("delta-A-%d", i))
 		}
 		for i := 0; i < 7; i++ {
-			b.cli(t, "copy", fmt.Sprintf("delta-B-%d", i))
+			b.cli(t, "dev", "copy", fmt.Sprintf("delta-B-%d", i))
 		}
 		h.eventually(t, func() bool { return h.deltaCount(t, mark)+b.deltaCount(t, mark) == 10 })
 		h.request(t, "POST", "/test/metric-samples", "")
@@ -330,14 +330,14 @@ func TestPostHogPairingAndSend(t *testing.T) {
 		if json.Unmarshal(body, &ticket) != nil {
 			t.Fatal("invalid ticket")
 		}
-		b.cli(t, "pair", ticket.Ticket)
+		b.cli(t, "device", "add", ticket.Ticket)
 		for _, h := range []*observabilityRun{a, b} {
 			var pending []struct {
 				ID          string `json:"id"`
 				Fingerprint string `json:"fingerprint"`
 			}
 			h.eventually(t, func() bool { _ = json.Unmarshal(h.get(t, "/v1/pending"), &pending); return len(pending) > 0 })
-			h.cli(t, "approve", pending[0].ID, pending[0].Fingerprint)
+			h.cli(t, "device", "approve", pending[0].ID, pending[0].Fingerprint)
 			h.eventually(t, func() bool { return h.eventCount("pairing_completed") == 1 })
 		}
 	})
@@ -345,7 +345,7 @@ func TestPostHogPairingAndSend(t *testing.T) {
 		for _, h := range []*observabilityRun{a, b} {
 			h.eventually(t, func() bool { return strings.Contains(string(h.get(t, "/v1/status")), `"connected":true`) })
 		}
-		a.cli(t, "copy", "posthog-private-clipboard-canary")
+		a.cli(t, "dev", "copy", "posthog-private-clipboard-canary")
 		b.eventually(t, func() bool {
 			code, body := b.request(t, "GET", "/v1/clipboard", "")
 			return code == 200 && strings.Contains(string(body), "posthog-private-clipboard-canary")
@@ -497,7 +497,7 @@ func TestPostHogReleaseAssembly(t *testing.T) {
 	h.run(t, "release-defaults-and-production-intervals", func(t *testing.T) {
 		started := time.Now()
 		h.startConfig(t, "")
-		h.cli(t, "submit", "posthog-private-clipboard-canary", "--request-id", "posthog-release-submission")
+		h.cli(t, "send", "posthog-private-clipboard-canary", "--request-id", "posthog-release-submission")
 		time.Sleep(200 * time.Millisecond)
 		if err := os.WriteFile(filepath.Join(h.home, "config.toml"), []byte("[telemetry]\nenabled=\"invalid\"\n"), 0600); err != nil {
 			t.Fatal(err)
@@ -540,7 +540,7 @@ func TestPostHogEnableFromDisabled(t *testing.T) {
 			t.Fatal("disabled first startup created identity")
 		}
 		h.cli(t, "config", "set", "telemetry.enabled", "true")
-		h.cli(t, "submit", "posthog-private-clipboard-canary", "--request-id", "posthog-after-enable")
+		h.cli(t, "send", "posthog-private-clipboard-canary", "--request-id", "posthog-after-enable")
 		h.eventually(t, func() bool { return h.eventCount("manual_send_completed") == 1 })
 		for _, ev := range h.analytics() {
 			if ev["event"] == "app_started" && ev["properties"].(map[string]any)["product"] == "cli" {

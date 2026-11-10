@@ -347,12 +347,12 @@ restart_required 是待重启键名数组，当前只允许 `telemetry.endpoint`
 ### 6.3 CLI
 
 ```sh
-unic logs level
-unic logs level debug --for 15m
-unic logs level debug --target remote --for 15m
-unic logs level reset
-unic logs level reset --target remote
-unic diagnostics telemetry
+unic dev logs level
+unic dev logs level debug --for 15m
+unic dev logs level debug --target remote --for 15m
+unic dev logs level reset
+unic dev logs level reset --target remote
+unic dev diagnostics telemetry
 ```
 
 `--target` 默认为 local。level 无位置参数时查询两个目标。
@@ -649,7 +649,7 @@ that temporary, bounding crash residue and clearing old identity state.
 
 ## 12. Offline local log export
 
-`unic logs export [--output FILE]` runs entirely in the CLI. It needs no running
+`unic dev logs export [--output FILE]` runs entirely in the CLI. It needs no running
 service, clipboard access or network. The default is a unique UTC-timestamped
 `unic-logs-*.tar.gz` file in the current directory. Success prints its absolute path.
 `--output` selects a file, not a directory. An existing file or symlink is never

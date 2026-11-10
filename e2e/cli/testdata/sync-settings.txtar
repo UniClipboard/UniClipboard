@@ -25,9 +25,9 @@ stdout '"automatic":false'
 board-set alpha text local.txt
 until alpha 'local_system' h list --json
 ! board-wait beta text local.txt
-u alpha copy manual
+u alpha dev copy manual
 board-wait beta text manual.txt
-u beta copy incoming
+u beta dev copy incoming
 board-wait alpha text incoming.txt
 u alpha config set sync.automatic true
 ! board-wait beta text local.txt

@@ -64,7 +64,7 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 
 ## Offline log archive
 
-`unic logs export [--output FILE]` streams retained local JSONL segments into a
+`unic dev logs export [--output FILE]` streams retained local JSONL segments into a
 private tar.gz with a per-entry SHA-256 manifest. It executes in the CLI and needs
 no service connection or system clipboard. It never includes profile configuration,
 credentials, databases or history. Rooted source/output handles and exclusive

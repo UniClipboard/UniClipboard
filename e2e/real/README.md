@@ -83,7 +83,7 @@ Scenario selection is a set. Execution order is contract, pairwise, mesh, then i
 
 Pairing always compares the two independently returned fingerprints before either approval. Introductions do not substitute for approval and do not forward content.
 
-Fixture generation and SSH deployment finish before timing starts. Text/PNG/files use production CLI submission. HTML uses a worker-side test injector through the production local API because `unic submit` has no HTML flag. Every receiver exports through the production CLI. All expected representations, MIME types, sizes and SHA256 values must match. A `queued` or `sent` result alone never passes a transfer. Receive count audits use bounded observation windows.
+Fixture generation and SSH deployment finish before timing starts. Text/PNG/files use production CLI submission. HTML uses a worker-side test injector through the production local API because `unic send` has no HTML flag. Every receiver exports through the production CLI. All expected representations, MIME types, sizes and SHA256 values must match. A `queued` or `sent` result alone never passes a transfer. Receive count audits use bounded observation windows.
 
 ## Timing
 

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
@@ -31,7 +32,7 @@ func run(args []string) int {
 		return 2
 	}
 	cmd, rest := args[0], args[1:]
-	l, err := classify(cmd, rest)
+	l, left, err := classify(cmd, rest)
 	if err != nil {
 		return report(args, err)
 	}
@@ -56,7 +57,7 @@ func run(args []string) int {
 		current = newSession(dir, socket)
 		c = current.client
 	}
-	err = dispatch(ctx, c, cmd, rest)
+	err = dispatch(ctx, c, l, rest, left)
 	code := 0
 	if err != nil {
 		code = report(args, err)
@@ -71,20 +72,24 @@ func run(args []string) int {
 	return code
 }
 
-func dispatch(ctx context.Context, c *api.Client, cmd string, args []string) error {
-	switch cmd {
-	case "history", "h":
-		return runHistory(ctx, c, args)
-	case "plugin":
-		return runPlugin(args)
-	case "help", "-h", "--help":
-		if len(args) == 1 && args[0] == "--json" {
+// dispatch runs a classified leaf. args is everything after the first word; left is what follows the leaf's own words.
+func dispatch(ctx context.Context, c *api.Client, l leaf, args, left []string) error {
+	switch {
+	case l.Name == "help":
+		if len(left) == 1 && left[0] == "--json" {
 			return writeCatalog(os.Stdout)
 		}
 		fmt.Print(usageText())
 		return nil
+	case l.Name == "dev help":
+		fmt.Println(groupUsage["dev"])
+		return nil
+	case l.Name == "plugin":
+		return runPlugin(args)
+	case strings.HasPrefix(l.Name, "history "):
+		return runHistory(ctx, c, args)
 	}
-	return runCLI(ctx, c, cmd, args)
+	return runCLI(ctx, c, l, left)
 }
 
 func report(args []string, err error) int {

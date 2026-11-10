@@ -408,7 +408,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 27. **应用条目的生存**：被应用的接收条目不受容量淘汰、TTL 和 `DismissReceived`（`in_use`）影响，即使已过期仍在列表中；应用结束后立即按 TTL 处理。
 28. **Network 选项**：`Options.Network` 允许替换默认的 tailcat 网络（接口只用标准库类型），用于测试和特殊嵌入；`Start`/`Close` 各调用一次，挂起恢复时 `Listen` 会再次调用。
 29. **桌面适配的约定**：适配器把剪贴板快照只保留 text/html/png 与普通文件，文件以引用导入；无法表示的内容（文件夹、超限、只有厂商格式）按“剪贴板已清空”上报，因此之后复制别的内容仍是真实变化。应用成功后适配器会把条目移出接收列表（`DismissReceived`），接收文件的生命周期只由剪贴板上的租约决定，被新内容替换后立即释放。显式发送（CLI/GUI 的写入并发送）先写入、回读，再以新 epoch 的 baseline 建立基线，最后 `SubmitContent`，一次请求只发送一次。
-30. **桌面 HTTP /v1**：`GET /v1/status` 不含地址/票据，也不触发签发。显式 `POST /v1/pairing-ticket` 返回 `{"ticket":"unic-pair:…"}`，响应禁止缓存，CLI `unic addr` 与 GUI 生成票据使用它。`POST /v1/pending/{id}/approve` 必须提交 `{"fingerprint":"…","revision":1,"bindings":[{"id":"…","revision":1}]}`，修订均来自待批准列表；遗漏/坏 JSON 报 400，指纹不符或设备/待批准关联集合变化报 409。`ApproveDeviceRequest{ID, ExpectedRevision, ExpectedFingerprint, Bindings []BindingRequest}` 由 `Engine.ApproveDevice` 在一个事务中批准设备及完整待批准关联；已信任设备也不可跳过指纹。CLI `unic approve <id> '<另一端指纹>'`，GUI 回传所展示的完整快照。事件的 `Info` 不携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。
+30. **桌面 HTTP /v1**：`GET /v1/status` 不含地址/票据，也不触发签发。显式 `POST /v1/pairing-ticket` 返回 `{"ticket":"unic-pair:…"}`，响应禁止缓存，CLI `unic device addr` 与 GUI 生成票据使用它。`POST /v1/pending/{id}/approve` 必须提交 `{"fingerprint":"…","revision":1,"bindings":[{"id":"…","revision":1}]}`，修订均来自待批准列表；遗漏/坏 JSON 报 400，指纹不符或设备/待批准关联集合变化报 409。`ApproveDeviceRequest{ID, ExpectedRevision, ExpectedFingerprint, Bindings []BindingRequest}` 由 `Engine.ApproveDevice` 在一个事务中批准设备及完整待批准关联；已信任设备也不可跳过指纹。CLI `unic device approve <id> '<另一端指纹>'`，GUI 回传所展示的完整快照。事件的 `Info` 不携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。
 
 
 ### 本机旧历史迁移

@@ -22,7 +22,7 @@ import (
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 )
 
-const logExportUsage = "usage: unic logs export [--output FILE]"
+const logExportUsage = "usage: unic dev logs export [--output FILE]"
 const maxLogSegmentBytes int64 = 4 << 20
 const maxLogExportBytes int64 = 20 << 20
 

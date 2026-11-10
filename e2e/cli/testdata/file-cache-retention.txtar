@@ -19,14 +19,14 @@ board-set alpha files protected.bin
 board-wait beta files protected.bin
 file-path beta PROTECTED
 u beta h tag @1 --add keep
-u beta copy release-protected
+u beta dev copy release-protected
 retry-copy alpha beta ready-for-second
 genfile rand old.bin 110
 board-set alpha files old.bin
 board-wait beta files old.bin
 file-path beta OLD
-u beta copy release-old
-until beta '"size":110,[^}]*"held":false' cache --json
+u beta dev copy release-old
+until beta '"size":110,[^}]*"held":false' dev cache --json
 u beta config set history.excluded_tags '["keep"]'
 u beta config set history.max_items 1
 u beta config set history.auto_cleanup true

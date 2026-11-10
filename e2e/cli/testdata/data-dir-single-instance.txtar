@@ -20,7 +20,7 @@ board-wait beta text sentinel.txt
 
 ! node-start alpha
 u alpha status
-until alpha 'online' peers
+until alpha 'online' device list
 board-set alpha text again.txt
 board-wait beta text again.txt
 

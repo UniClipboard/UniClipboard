@@ -37,13 +37,13 @@
 
 **目的**
 
-验证对端离线时 `unic submit` 不会无限等待，本地提交保持成功，并且不报告发送成功。
+验证对端离线时 `unic send` 不会无限等待，本地提交保持成功，并且不报告发送成功。
 
 
 **流程**
 
 1. 启动 alpha 和 beta 并配对批准，然后停止两者。
-2. 在 alpha 上执行 `unic submit --json`；beta 保持离线。
+2. 在 alpha 上执行 `unic send --json`；beta 保持离线。
 3. 确认命令结束后 alpha 的临时服务已退出。
 
 **期望**
@@ -68,7 +68,7 @@ node-stop alpha TERM
 node-stop beta TERM
 service-gone alpha
 
-u alpha submit --json nobody home
+u alpha send --json nobody home
 stdout '"phase":"committed"'
 ! stdout '"outcome":"success"'
 service-gone alpha
@@ -89,7 +89,7 @@ service-gone alpha
 
 **流程**
 
-1. beta 保持运行。alpha 在后台执行 `unic pair <beta 地址>`，等 beta 看到请求。
+1. beta 保持运行。alpha 在后台执行 `unic device add <beta 地址>`，等 beta 看到请求。
 2. 向 alpha 的配对命令发送 INT；确认结果为中断，alpha 服务退出。
 3. gamma 再次配对 beta；在 gamma 自己的服务上撤销该请求；确认结果为请求被撤销，gamma 服务退出。
 
@@ -110,11 +110,11 @@ service-gone alpha
 node-start beta
 node-id beta BETA
 node-define alpha
-u beta addr
+u beta device addr
 cp stdout beta.addr
 
-u-async p alpha pair @beta.addr
-until beta '[0-9A-F]{4} [0-9A-F]{4}' requests
+u-async p alpha device add @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' device list
 u-kill p INT
 ! u-wait p
 stderr 'interrupted; approval is still pending'
@@ -122,11 +122,11 @@ stderr 'exit status 4'
 service-gone alpha
 
 node-define gamma
-u beta addr
+u beta device addr
 cp stdout beta2.addr
-u-async q gamma pair @beta2.addr
-until gamma '[0-9A-F]{4} [0-9A-F]{4}' requests
-u gamma reject $BETA
+u-async q gamma device add @beta2.addr
+until gamma '[0-9A-F]{4} [0-9A-F]{4}' device list
+u gamma device reject $BETA
 ! u-wait q
 stderr 'removed or replaced'
 stderr 'exit status 4'
@@ -148,7 +148,7 @@ service-gone gamma
 
 **流程**
 
-1. beta 保持运行；alpha 没有服务。alpha 在后台执行 `unic pair <beta 地址>`。
+1. beta 保持运行；alpha 没有服务。alpha 在后台执行 `unic device add <beta 地址>`。
 2. 双方核对指纹并批准；等待后台命令结束。
 3. 第三台全新设备 gamma 用很短的窗口配对 beta，且无人批准。
 
@@ -168,21 +168,21 @@ service-gone gamma
 ```
 node-start beta
 node-define alpha
-u beta addr
+u beta device addr
 cp stdout beta.addr
 
-u-async p alpha pair @beta.addr
-until beta '[0-9A-F]{4} [0-9A-F]{4}' requests
-until alpha '[0-9A-F]{4} [0-9A-F]{4}' requests
+u-async p alpha device add @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' device list
+until alpha '[0-9A-F]{4} [0-9A-F]{4}' device list
 pair beta alpha decide
 u-wait p
 stdout 'approved: connected'
 service-gone alpha
 
 node-define gamma
-u beta addr
+u beta device addr
 cp stdout beta2.addr
-u-async q gamma ENV:UNIC_E2E_PAIRING_WINDOW_MS=3000 pair @beta2.addr
+u-async q gamma ENV:UNIC_E2E_PAIRING_WINDOW_MS=3000 device add @beta2.addr
 ! u-wait q
 stderr 'approval still pending'
 stderr 'exit status 4'
@@ -205,7 +205,7 @@ service-gone gamma
 **流程**
 
 1. 启动 alpha 和 beta 并配对批准，然后停止两者，beta 保持离线。
-2. 在后台执行 `unic submit`，等它进入等待对端的窗口后用 KILL 杀掉。
+2. 在后台执行 `unic send`，等它进入等待对端的窗口后用 KILL 杀掉。
 3. 确认 alpha 的临时服务已退出，再重新读取 alpha 的历史。
 
 **期望**
@@ -229,7 +229,7 @@ node-stop alpha TERM
 node-stop beta TERM
 service-gone alpha
 
-u-async send alpha submit --json killed send text
+u-async send alpha send --json killed send text
 sleep 3s
 u-kill send KILL
 service-gone alpha
@@ -256,7 +256,7 @@ service-gone alpha
 **流程**
 
 1. 启动 alpha 和 beta 并配对批准，停止 alpha，beta 保持在线。
-2. 在后台执行 `unic submit -f` 发送一个大文件，等历史里出现该条目后用 KILL 杀掉命令。
+2. 在后台执行 `unic send -f` 发送一个大文件，等历史里出现该条目后用 KILL 杀掉命令。
 3. 确认 alpha 的临时服务已退出，再读取 alpha 的历史。
 
 **期望**
@@ -282,14 +282,14 @@ node-stop alpha TERM
 service-gone alpha
 
 genfile rand big.bin 94371840
-u-async send alpha submit --json --request-id lost-1 -f $WORK/big.bin
+u-async send alpha send --json --request-id lost-1 -f $WORK/big.bin
 until alpha 'files' history list
 u-kill send KILL
 service-gone alpha
 
 u alpha history list
 stdout -count=1 'files'
-! u alpha submission lost-1
+! u alpha dev submission lost-1
 stderr 'no such submission'
 ! stdout '@2'
 service-gone alpha
@@ -305,13 +305,13 @@ service-gone alpha
 
 **目的**
 
-验证 unicd 未运行时 `unic submit` 自动启动临时服务，等待已配对设备连接，观察本次发送的终态，然后才退出。
+验证 unicd 未运行时 `unic send` 自动启动临时服务，等待已配对设备连接，观察本次发送的终态，然后才退出。
 
 
 **流程**
 
 1. 启动 alpha 和 beta 并配对批准，然后完全停止 alpha。
-2. 在 alpha 上执行 `unic submit --json`，此时没有任何 alpha 服务在运行。
+2. 在 alpha 上执行 `unic send --json`，此时没有任何 alpha 服务在运行。
 3. 等 beta 的最新历史出现该文本。
 4. 确认 alpha 的临时服务已经退出。
 
@@ -335,7 +335,7 @@ pair alpha beta
 node-stop alpha TERM
 service-gone alpha
 
-u alpha submit --json cold start text
+u alpha send --json cold start text
 stdout '"submission":'
 stdout '"outcome":"success"'
 until beta 'cold start text' h show
@@ -444,12 +444,12 @@ node-stop beta KILL
 board-set alpha text offline.txt
 sleep 2s
 node-start beta
-until alpha 'online' peers
-until beta 'online' peers
+until alpha 'online' device list
+until beta 'online' device list
 u beta status
 stdout $BETA
 ! board-wait beta text offline.txt
-u beta requests
+u beta device list
 ! stdout 'Waiting for your approval'
 
 retry-copy alpha beta after-crash
@@ -501,7 +501,7 @@ board-wait beta text sentinel.txt
 
 ! node-start alpha
 u alpha status
-until alpha 'online' peers
+until alpha 'online' device list
 board-set alpha text again.txt
 board-wait beta text again.txt
 
@@ -550,7 +550,7 @@ genfile rand payload.bin 100
 board-set alpha files payload.bin
 board-wait beta files payload.bin
 file-path beta CACHED
-u beta copy release
+u beta dev copy release
 u beta config set history.retention_days 1
 node-stop beta
 history-age beta 172800
@@ -602,14 +602,14 @@ board-set alpha files protected.bin
 board-wait beta files protected.bin
 file-path beta PROTECTED
 u beta h tag @1 --add keep
-u beta copy release-protected
+u beta dev copy release-protected
 retry-copy alpha beta ready-for-second
 genfile rand old.bin 110
 board-set alpha files old.bin
 board-wait beta files old.bin
 file-path beta OLD
-u beta copy release-old
-until beta '"size":110,[^}]*"held":false' cache --json
+u beta dev copy release-old
+until beta '"size":110,[^}]*"held":false' dev cache --json
 u beta config set history.excluded_tags '["keep"]'
 u beta config set history.max_items 1
 u beta config set history.auto_cleanup true
@@ -694,8 +694,8 @@ file-path beta ONE
 genfile rand two.bin 110
 board-set alpha files two.bin
 ! board-wait beta files two.bin
-u beta copy clear
-u alpha copy reset
+u beta dev copy clear
+u alpha dev copy reset
 board-wait beta text reset.txt
 board-set alpha files two.bin
 board-wait beta files two.bin
@@ -710,7 +710,7 @@ mkdir custom
 u beta config set inbox '"'$WORK'/custom"'
 node-stop beta
 node-start beta
-until alpha 'online' peers
+until alpha 'online' device list
 retry-copy alpha beta custom-ready
 genfile rand custom.bin 200
 board-set alpha files custom.bin
@@ -719,7 +719,7 @@ file-path beta CUSTOM
 cmp $CUSTOM custom.bin
 u beta h delete @1 -y
 cmp $CUSTOM custom.bin
-u beta copy clear
+u beta dev copy clear
 node-stop beta
 node-start beta
 cmp $CUSTOM custom.bin
@@ -814,12 +814,12 @@ Verify live count cleanup, tag matching, restart, and removed file settings.
 node-start alpha
 u alpha config set history.auto_cleanup false
 u alpha config set history.max_items 1
-u alpha copy protected-one
+u alpha dev copy protected-one
 u alpha h tag @1 --add keep
 exec curl -sf --unix-socket $WORK/.alpha.sock http://unic/v1/history/tags
 stdout keep
-u alpha copy ordinary-two
-u alpha copy ordinary-three
+u alpha dev copy ordinary-two
+u alpha dev copy ordinary-three
 u alpha h show @3
 stdout protected-one
 u alpha h show @2
@@ -844,7 +844,7 @@ u alpha h show @1
 stdout ordinary-three
 ! u alpha h show @2
 u alpha config set history.max_items 0
-u alpha copy unlimited-four
+u alpha dev copy unlimited-four
 u alpha h show @2
 stdout ordinary-three
 u alpha h show @1
@@ -906,11 +906,11 @@ board-set alpha files first.bin
 board-wait beta files first.bin
 file-path beta FIRST
 u beta h tag @1 --add keep
-u beta copy -f $FIRST
-u beta cache --json
+u beta dev copy -f $FIRST
+u beta dev cache --json
 stdout '"stored_bytes":100'
-u beta copy release
-until beta '"size":100,[^}]*"held":false' cache --json
+u beta dev copy release
+until beta '"size":100,[^}]*"held":false' dev cache --json
 retry-copy alpha beta reset-off
 genfile rand next.bin 110
 board-set alpha files next.bin
@@ -973,9 +973,9 @@ cp stdout second.txt
 node-start alpha
 node-start beta
 pair alpha beta
-u alpha copy first
+u alpha dev copy first
 board-wait beta text first.txt
-u alpha copy second
+u alpha dev copy second
 board-wait beta text second.txt
 u alpha h use @2
 board-wait alpha text first.txt
@@ -1048,7 +1048,7 @@ genfile rand rejected.bin 100
 board-set alpha files rejected.bin
 ! board-wait beta files rejected.bin
 ! until beta '"kind":"files"' h list --json
-u beta cache --json
+u beta dev cache --json
 stdout '"stored_bytes":0'
 stdout '"files":\[\]'
 mv unavailable custom
@@ -1074,9 +1074,9 @@ u beta h expire @1 1s
 sleep 2s
 ! until beta '"kind":"files"' h list --json
 cmp $SAVED accepted.bin
-u beta copy release
+u beta dev copy release
 cmp $SAVED accepted.bin
-u beta cache --json
+u beta dev cache --json
 stdout '"stored_bytes":0'
 stdout '"custom_destination":true'
 ```
@@ -1326,10 +1326,10 @@ u alpha status
 stdout $ALPHA
 u beta status
 stdout $BETA
-until alpha $BETA'\s+\S+\s+online' peers
-until beta $ALPHA'\s+\S+\s+online' peers
-u beta requests
-! stdout $ALPHA
+until alpha $BETA'\s+\S+\s+online' device list
+until beta $ALPHA'\s+\S+\s+online' device list
+u beta device list
+! stdout 'Waiting for your approval'
 u beta h list --tag keep
 stdout 'alpha'
 
@@ -1383,9 +1383,9 @@ stdout '"automatic":false'
 board-set alpha text local.txt
 until alpha 'local_system' h list --json
 ! board-wait beta text local.txt
-u alpha copy manual
+u alpha dev copy manual
 board-wait beta text manual.txt
-u beta copy incoming
+u beta dev copy incoming
 board-wait alpha text incoming.txt
 u alpha config set sync.automatic true
 ! board-wait beta text local.txt
@@ -1437,7 +1437,7 @@ stdout '"max_file_bytes":100'
 **流程**
 
 1. 启动 alpha 和 beta 并配对批准，两者都保持运行。
-2. 在 alpha 上执行 `unic submit --json`，对端在线。
+2. 在 alpha 上执行 `unic send --json`，对端在线。
 3. 停止 beta 后再次提交，对端离线。
 
 **期望**
@@ -1458,7 +1458,7 @@ node-start alpha
 node-start beta
 pair alpha beta
 
-u alpha submit --json warm text
+u alpha send --json warm text
 stdout '"submission":'
 stdout '"outcome":"success"'
 until beta 'warm text' h show
@@ -1466,7 +1466,7 @@ until beta 'warm text' h show
 
 node-stop beta TERM
 sleep 11s
-u alpha submit --json warm offline text
+u alpha send --json warm offline text
 stdout '"phase":"committed"'
 ! stdout '"outcome":"success"'
 ! service-gone alpha

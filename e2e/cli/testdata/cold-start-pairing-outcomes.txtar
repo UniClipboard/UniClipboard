@@ -1,7 +1,7 @@
 # 用例: 冷启动 CLI 配对被中断或请求被撤销时给出各自明确的结果
 # 目的: 验证 `unic pair` 在临时服务下，用户中断和请求被撤销是两种不同的结果，且都释放临时服务。
 # 流程:
-#   1. beta 保持运行。alpha 在后台执行 `unic pair <beta 地址>`，等 beta 看到请求。
+#   1. beta 保持运行。alpha 在后台执行 `unic device add <beta 地址>`，等 beta 看到请求。
 #   2. 向 alpha 的配对命令发送 INT；确认结果为中断，alpha 服务退出。
 #   3. gamma 再次配对 beta；在 gamma 自己的服务上撤销该请求；确认结果为请求被撤销，gamma 服务退出。
 # 期望:
@@ -15,11 +15,11 @@
 node-start beta
 node-id beta BETA
 node-define alpha
-u beta addr
+u beta device addr
 cp stdout beta.addr
 
-u-async p alpha pair @beta.addr
-until beta '[0-9A-F]{4} [0-9A-F]{4}' requests
+u-async p alpha device add @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' device list
 u-kill p INT
 ! u-wait p
 stderr 'interrupted; approval is still pending'
@@ -27,11 +27,11 @@ stderr 'exit status 4'
 service-gone alpha
 
 node-define gamma
-u beta addr
+u beta device addr
 cp stdout beta2.addr
-u-async q gamma pair @beta2.addr
-until gamma '[0-9A-F]{4} [0-9A-F]{4}' requests
-u gamma reject $BETA
+u-async q gamma device add @beta2.addr
+until gamma '[0-9A-F]{4} [0-9A-F]{4}' device list
+u gamma device reject $BETA
 ! u-wait q
 stderr 'removed or replaced'
 stderr 'exit status 4'

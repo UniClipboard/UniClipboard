@@ -17,7 +17,7 @@ genfile rand payload.bin 100
 board-set alpha files payload.bin
 board-wait beta files payload.bin
 file-path beta CACHED
-u beta copy release
+u beta dev copy release
 u beta config set history.retention_days 1
 node-stop beta
 history-age beta 172800

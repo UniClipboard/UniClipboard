@@ -19,11 +19,11 @@ All programs expose `--version --json` before configuration and host initializat
 
 ## Current implementation
 
-The product has three programs and two distributions.
+The product has three runtime programs, an offline migration helper and two development distributions.
 `unic` is a command-line client. `unicd` is the Engine owner and local service.
 `unic-desktop` owns mygo, the UI Kit, system clipboard, tray and notifications.
-The headless distribution includes `unic` and `unicd`.
-The desktop distribution includes the same two binary files plus `unic-desktop`.
+The headless distribution includes `unic`, `unicd` and the offline `unic-migrate` helper.
+The desktop distribution includes those same binary files plus `unic-desktop`.
 Both archives expose `uniclip` as an alias of `unic`.
 On macOS/Linux, `uniclip` is a relative symbolic link to the sibling `unic` file; tar preserves the link.
 On Windows, `uniclip.cmd` invokes the sibling `unic.exe` and preserves arguments and its exit code without requiring symbolic-link privileges.

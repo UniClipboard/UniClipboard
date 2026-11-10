@@ -127,7 +127,7 @@ func run() error {
 		return e
 	}
 	defer func() { _ = os.RemoveAll(work) }()
-	names := []string{"unic", "unicd"}
+	names := []string{"unic", "unicd", "unic-migrate"}
 	if *desktop {
 		names = append(names, "unic-desktop")
 	}
@@ -174,7 +174,7 @@ func run() error {
 		if kind == "desktop" && !*desktop {
 			continue
 		}
-		files := []string{"unic" + suffix, "unicd" + suffix, alias}
+		files := []string{"unic" + suffix, "unicd" + suffix, "unic-migrate" + suffix, alias}
 		if kind == "desktop" {
 			files = append(files, "unic-desktop"+suffix)
 		}

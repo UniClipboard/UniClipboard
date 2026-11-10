@@ -17,10 +17,16 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/uniclipboard/unic/internal/releaseinfo"
 	"github.com/uniclipboard/unic/internal/v1migration"
 )
 
-func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
+func main() {
+	if releaseinfo.Print(os.Stdout, "unic-migrate", "cli", os.Args[1:]) {
+		return
+	}
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
 func run(args []string, in *os.File, out, errOut io.Writer) int {
 	fs := flag.NewFlagSet("unic-migrate", flag.ContinueOnError)
 	fs.SetOutput(errOut)

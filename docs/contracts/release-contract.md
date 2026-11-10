@@ -55,6 +55,14 @@ A publication receipt records `product`, `version`, `build_number`, `manifest_sh
 
 Durable record staging creates or verifies the exact Git tag, then uploads immutable assets without replacement. A complete record can resume release without rebuilding. A source/metadata mismatch fails. A partially staged record fails before npm mutation and requires recovery from the original candidate artifacts. Promotion needs the accepted manifest and existing npm versions; it does not need to reconstruct the package files.
 
+## CLI v1 upgrade notice and migration
+
+Interactive CLI invocations display a v1 incompatibility warning on stderr only if the known v1 data directory exists. Detection checks the default directory and the active UC_PROFILE directory without reading their contents, credentials or database. Missing directories, non-directory paths and fresh installations remain silent. Noninteractive stderr and commands with `--json` omit the warning. Custom/portable sources outside these known locations are selected explicitly with `--source`. The warning does not require acknowledgement and does not start migration. Normal stdout and command exit codes remain unchanged.
+
+`unic migrate` and `unic migrate --help` show an offline migration guide without opening a profile, credentials or the service. The guide instructs users to back up v1 data, quit v1 and stop the target service, run `unic migrate --dry-run --json`, then run `unic migrate --json`. Users may specify `--source` and `--target`. All devices must use v2 and establish new pairings. Settings, identities and trust do not migrate.
+
+Every CLI archive and npm platform package includes `unic-migrate` beside `unic`. The `unic migrate` command invokes this exact sibling helper and preserves its exit status, including 3 for partial migration. The importer keeps its existing read-only source, exclusive target, resumable import and reopened-content verification rules. Explicit passphrases travel through stdin, never command arguments or environment variables.
+
 ## Desktop and mobile gates
 
 Desktop locks an existing exact CLI build and manifest. A stable Desktop requires that build to be stable in npm.

@@ -1,5 +1,6 @@
 /unic
 /unicd
+/unic-migrate
 /bin/
 /.build/
 /*.exe

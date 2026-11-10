@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "status": "awaiting_clean_commit_replay",
+  "process_checks_passed": 39,
+  "headless_process_e2e": "passed",
+  "go_race": "passed_on_final_full_run",
+  "scoped_lint": "0 issues",
+  "not_run": [
+    "production publication",
+    "remote CI",
+    "GUI",
+    "native Windows/Linux machines",
+    "real system credentials"
+  ]
+}

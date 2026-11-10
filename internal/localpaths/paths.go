@@ -3,9 +3,35 @@
 package paths
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 )
+
+// V1DataDir locates the original default profile without creating directories.
+func V1DataDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	var base string
+	switch runtime.GOOS {
+	case "darwin":
+		base = filepath.Join(home, "Library", "Application Support")
+	case "windows":
+		base = os.Getenv("LOCALAPPDATA")
+	default:
+		base = os.Getenv("XDG_DATA_HOME")
+		if base == "" {
+			base = filepath.Join(home, ".local", "share")
+		}
+	}
+	if base == "" {
+		return "", errors.New("cannot locate v1 data directory")
+	}
+	return filepath.Join(base, "app.uniclipboard.desktop"), nil
+}
 
 // Dir is the state directory: database, socket, received files.
 func Dir() (string, error) {

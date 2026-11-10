@@ -17,6 +17,9 @@ import tempfile
 import threading
 from urllib.parse import unquote, urlparse
 
+sys.dont_write_bytecode = True
+from migration_acceptance import accept_migration  # noqa: E402 - prevent bytecode in the checkout
+
 ROOT = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser()
 p.add_argument("--output", default=str(ROOT / ".cache/release-e2e"))
@@ -47,16 +50,21 @@ def source_identity():
             "internal/releaseinfo",
             "e2e/release",
             "release",
+            "app/service/cmd/unic",
+            "app/service/cmd/unic-migrate",
+            "internal/localpaths",
         ]
         for p in (ROOT / directory).rglob("*")
         if p.is_file() and "__pycache__" not in str(p)
     ]
+    paths.extend((ROOT / "internal/v1migration").glob("*.go"))
     paths.extend(
         ROOT / name
         for name in [
             "go.mod",
             "go.sum",
             "LICENSE",
+            "internal/v1migration/testdata/v3.json",
             "app/service/cmd/unic/main.go",
             "app/service/cmd/unicd/main.go",
             "app/desktop/cmd/unic-desktop/main.go",
@@ -163,7 +171,7 @@ def check(label, condition):
     print("PASS " + label, flush=True)
 
 
-def execute(argv, expected=0):
+def execute(argv, expected=0, input_text=None):
     r = subprocess.run(
         [str(x) for x in argv],
         cwd=ROOT,
@@ -171,6 +179,7 @@ def execute(argv, expected=0):
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        input=input_text,
     )
     report["commands"].append(
         {
@@ -180,7 +189,7 @@ def execute(argv, expected=0):
             "stderr": r.stderr[-2000:],
         }
     )
-    if (r.returncode == 0) != (expected == 0):
+    if r.returncode != expected:
         raise AssertionError(f"command exit {r.returncode}: {argv}\n{r.stderr}")
     return r
 
@@ -299,6 +308,7 @@ try:
             if command != "unicd":
                 failure = execute([executable, "daemon"], 1)
                 check(command + " preserves failing exit code", failure.returncode == 1)
+        accept_migration(ROOT, installed, temp, env, execute, check, report)
         before = len(uploads)
         alpha = copy.deepcopy(
             {name: p["dist-tags"]["alpha"] for name, p in packages.items()}

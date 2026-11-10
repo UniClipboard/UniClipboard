@@ -12,8 +12,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/uniclipboard/unic/internal/releaseinfo"
 
@@ -57,6 +59,7 @@ pairing code service.
 `
 
 func main() {
+	showUpgradeNotice(os.Args[1:])
 	if releaseinfo.Print(os.Stdout, "unic", "cli", os.Args[1:]) {
 		return
 	}
@@ -90,6 +93,10 @@ func main() {
 			_ = json.NewEncoder(os.Stderr).Encode(map[string]string{"error": err.Error(), "reason": api.ReasonOf(err)})
 		} else {
 			fmt.Fprintln(os.Stderr, "unic:", err)
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() > 0 {
+			os.Exit(exitErr.ExitCode())
 		}
 		os.Exit(1)
 	}

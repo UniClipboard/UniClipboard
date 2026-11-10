@@ -192,7 +192,11 @@ def assemble(args):
                     return entry.isfile()
 
             with container:
-                for name in ["unic" + suffix, "unicd" + suffix]:
+                for name in [
+                    "unic" + suffix,
+                    "unicd" + suffix,
+                    "unic-migrate" + suffix,
+                ]:
                     entry = entries.get(name)
                     if (
                         entry is None
@@ -527,7 +531,7 @@ def smoke(args):
         dest = Path(temporary)
         if suffix:
             with zipfile.ZipFile(archive) as z:
-                for name in ["unic.exe", "unicd.exe"]:
+                for name in ["unic.exe", "unicd.exe", "unic-migrate.exe"]:
                     (dest / name).write_bytes(z.read(name))
                 shim = z.read("uniclip.cmd")
                 if (
@@ -538,7 +542,7 @@ def smoke(args):
                 (dest / "uniclip.cmd").write_bytes(shim)
         else:
             with tarfile.open(archive) as t:
-                for name in ["unic", "unicd"]:
+                for name in ["unic", "unicd", "unic-migrate"]:
                     entry = t.getmember(name)
                     if not entry.isfile():
                         raise ValueError("invalid smoke member")
@@ -548,7 +552,7 @@ def smoke(args):
                 if not alias.issym() or alias.linkname != "unic":
                     raise ValueError("invalid Unix alias")
                 (dest / "uniclip").symlink_to("unic")
-        for name in ["unic", "unicd", "uniclip"]:
+        for name in ["unic", "unicd", "unic-migrate", "uniclip"]:
             executable = dest / (name + suffix if name != "uniclip" else name)
             if (
                 name != "uniclip"

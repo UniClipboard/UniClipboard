@@ -5,13 +5,20 @@ Packaged archives also expose the `uniclip` alias for `unic`: a relative symlink
 Both command names use the same implementation. Direct `go build` commands below produce the canonical binaries only.
 
 ```sh
-go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
+go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd ./app/service/cmd/unic-migrate
 UNIC_HOME=/absolute/private/state dist/unicd
 echo hello | UNIC_HOME=/absolute/private/state dist/unic submit --json
 ```
 
 See [headless architecture](../../docs/architecture/headless.md) and the [local service contract](../../docs/contracts/local-service-contract.md).
-The optional `unic-migrate` program performs offline history import and is not included in the standard release archives.
+Release archives and npm platform packages include `unic-migrate` beside `unic` for offline v1 history import.
+When a known v1 data directory exists, interactive CLI commands show a compatibility warning on stderr.
+Fresh installations, noninteractive commands and `--json` output remain silent.
+The check covers the default v1 directory and the active `UC_PROFILE` directory. It does not read credentials or change data.
+Run `unic migrate --help` for backup, preflight, import and verification steps.
+Custom and portable v1 profiles require `--source DIR`; named profiles also require the matching `--service`.
+Stop v1 and the target `unicd` before importing. Migration preserves source data and resumes successful records without duplication.
+Settings, device identities and trust do not migrate. Upgrade all peers to v2 and pair them again.
 
 
 Remote logs, metrics and product events default enabled. Release assembly supplies the selected PostHog project endpoint and ingestion-only token.

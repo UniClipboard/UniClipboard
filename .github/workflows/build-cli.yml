@@ -66,6 +66,23 @@ jobs:
         if: matrix.target == 'linux-amd64'
         shell: bash
         run: make headless-e2e
+      - uses: actions/setup-node@v6
+        if: matrix.target == 'linux-amd64'
+        with:
+          node-version: '22.23.4'
+          package-manager-cache: false
+      - name: CLI release and v1 upgrade process E2E
+        if: matrix.target == 'linux-amd64'
+        run: python3 e2e/release/run.py
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && matrix.target == 'linux-amd64' }}
+        with:
+          name: cli-release-upgrade-acceptance
+          path: |
+            .cache/release-e2e/report.json
+            .cache/release-e2e/SHA256SUMS
+          include-hidden-files: true
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: cli-${{ matrix.target }}

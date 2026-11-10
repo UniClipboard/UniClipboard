@@ -28,6 +28,7 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/internal/rendezvous/rvtest"
 )
 
 var binDir string
@@ -101,15 +102,34 @@ type state struct {
 	work  string
 	nodes map[string]*node
 	async map[string]*asyncRun
+	rv    string // URL of the script's local code service, if started
 }
 
 // asyncRun is a unic command running in the background of a script.
 type asyncRun struct {
 	cmd      *exec.Cmd
-	out, err bytes.Buffer
+	out, err lockedBuffer
 	done     chan struct{}
 	failed   error
 }
+
+// lockedBuffer lets a script read the output of a command that is still running.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+func (l *lockedBuffer) Bytes() []byte {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return bytes.Clone(l.b.Bytes())
+}
+func (l *lockedBuffer) String() string { return string(l.Bytes()) }
 
 type node struct {
 	name string
@@ -117,11 +137,16 @@ type node struct {
 	sock string
 	cmd  *exec.Cmd
 	done chan struct{}
+	rv   string
 }
 
 func (n *node) env() []string {
+	rv := n.rv
+	if rv == "" {
+		rv = "http://127.0.0.1:1" // unreachable: codes are unavailable unless a script starts a service
+	}
 	return append(os.Environ(), "UNIC_HOME="+n.home, "UNIC_SOCK="+n.sock,
-		"UNIC_MOCK_CLIPBOARD_DIR="+filepath.Join(n.home, "board"), "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+		"UNIC_MOCK_CLIPBOARD_DIR="+filepath.Join(n.home, "board"), "UNIC_RENDEZVOUS_URL="+rv)
 }
 
 func setup(env *testscript.Env) error {
@@ -220,23 +245,25 @@ func commands() map[string]func(*testscript.TestScript, bool, []string) {
 			ts.Check(err)
 			time.Sleep(d)
 		},
-		"logs":            cmdLogs,
-		"retry-copy":      cmdRetryCopy,
-		"node-id":         cmdNodeID,
-		"external-ref":    cmdExternalRef,
-		"file-path":       cmdFilePath,
-		"history-age":     cmdHistoryAge,
-		"cache-link":      cmdCacheLink,
-		"config-conflict": cmdConfigConflict,
-		"file-wait":       cmdFileWait,
-		"board-set":       cmdBoardSet,
-		"board-wait":      cmdBoardWait,
-		"install-plugin":  cmdInstallPlugin,
-		"node-define":     cmdNodeDefine,
-		"u-async":         cmdUAsync,
-		"u-wait":          cmdUWait,
-		"u-kill":          cmdUKill,
-		"service-gone":    cmdServiceGone,
+		"logs":             cmdLogs,
+		"retry-copy":       cmdRetryCopy,
+		"node-id":          cmdNodeID,
+		"external-ref":     cmdExternalRef,
+		"file-path":        cmdFilePath,
+		"history-age":      cmdHistoryAge,
+		"cache-link":       cmdCacheLink,
+		"config-conflict":  cmdConfigConflict,
+		"file-wait":        cmdFileWait,
+		"board-set":        cmdBoardSet,
+		"board-wait":       cmdBoardWait,
+		"install-plugin":   cmdInstallPlugin,
+		"node-define":      cmdNodeDefine,
+		"u-async":          cmdUAsync,
+		"u-wait":           cmdUWait,
+		"u-kill":           cmdUKill,
+		"u-grab":           cmdUGrab,
+		"rendezvous-start": cmdRendezvousStart,
+		"service-gone":     cmdServiceGone,
 	}
 }
 
@@ -252,7 +279,7 @@ func cmdNodeStart(ts *testscript.TestScript, neg bool, args []string) {
 	st.mu.Lock()
 	n := st.nodes[args[0]]
 	if n == nil {
-		n = &node{name: args[0], home: filepath.Join(st.work, args[0])}
+		n = &node{name: args[0], home: filepath.Join(st.work, args[0]), rv: st.rv}
 		n.sock = filepath.Join(st.work, "."+args[0]+".sock")
 		st.nodes[args[0]] = n
 	}
@@ -784,6 +811,64 @@ func cmdUWait(ts *testscript.TestScript, neg bool, args []string) {
 	if !neg && run.failed != nil {
 		ts.Fatalf("background command %s: %v\n%s", args[0], run.failed, run.err.String())
 	}
+}
+
+// rendezvous-start: run a local 6-digit code service for the nodes started after this command.
+func cmdRendezvousStart(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) != 0 {
+		ts.Fatalf("usage: rendezvous-start")
+	}
+	st := stateOf(ts)
+	rv := rvtest.New()
+	ts.Defer(rv.Close)
+	st.mu.Lock()
+	st.rv = rv.URL
+	st.mu.Unlock()
+}
+
+// u-grab <id> <regexp> <file>: wait until the background command printed a match on stdout,
+// then write the first capture group (or the whole match) to a file in the case's workdir.
+// A script can then pass it as an "@file" argument. The value is never echoed.
+func cmdUGrab(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) != 3 {
+		ts.Fatalf("usage: u-grab id regexp file")
+	}
+	st := stateOf(ts)
+	st.mu.Lock()
+	run := st.async[args[0]]
+	st.mu.Unlock()
+	if run == nil {
+		ts.Fatalf("unknown background command %q", args[0])
+	}
+	re, err := regexp.Compile(args[1])
+	ts.Check(err)
+	grab := func() bool {
+		m := re.FindStringSubmatch(run.out.String())
+		if m == nil {
+			return false
+		}
+		v := m[0]
+		if len(m) > 1 {
+			v = m[1]
+		}
+		ts.Check(os.WriteFile(ts.MkAbs(args[2]), []byte(v), 0o600))
+		return true
+	}
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		if grab() {
+			return
+		}
+		select {
+		case <-run.done:
+			if grab() { // the output was written before the process ended
+				return
+			}
+			ts.Fatalf("background command %s ended before printing a match\nstderr: %s", args[0], run.err.String())
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	ts.Fatalf("background command %s printed no match in time", args[0])
 }
 
 // service-gone <node>: no service answers on the node's socket and its socket file is removed.

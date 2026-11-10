@@ -839,7 +839,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C30", func(t *testing.T) {
 		l := newLab(t, rec, root, "c30")
-		cmd := exec.Command(filepath.Join(binDir, "unic"), "send", "--json")
+		cmd := exec.Command(filepath.Join(binDir, "unic"), "send", "--to", "all", "--json")
 		cmd.Env = l.env
 		cmd.Stdin = strings.NewReader("pipeline text")
 		var stdout, stderr bytes.Buffer

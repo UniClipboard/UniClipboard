@@ -1,0 +1,61 @@
+# 用例: 两个没有配对的 unic 之间做临时传输
+# 目的: 验证 `unic send`（不带 --to）生成链接并等待一个接收方，`unic recv <链接>` 取走内容，内容进入接收方的历史。
+# 流程:
+#   1. 启动 alpha 和 beta，不配对。
+#   2. alpha 在后台执行 `unic send` 发送一段文字，并打印链接。
+#   3. beta 执行 `unic recv <链接>`。
+#   4. alpha 再发送一个文件，beta 用同样方式接收。
+#   5. 用无效的码、无效的链接和带配对票据前缀的文本接收。
+# 期望:
+#   - 第 3 步 beta 打印收到的文字，alpha 报告 delivered 并以 0 退出。
+#   - beta 的历史里有这段文字；alpha 的历史里没有来自 beta 的内容。
+#   - 第 4 步 beta 的历史里出现该文件。
+#   - 第 5 步每一种都失败并给出原因，不挂起。
+#   - 两个设备之间没有建立任何配对关系。
+# 不应:
+#   - 临时传输让 alpha 和 beta 成为已配对设备。
+#   - 在日志之外的位置以明文以外的方式暴露链接。
+
+node-start alpha
+node-start beta
+
+u-async s alpha send temp hello from alpha
+u-grab s 'Link: (\S+)' link.txt
+u-async r beta recv @link.txt
+u-wait r
+stdout 'temp hello from alpha'
+u-wait s
+stderr 'delivered'
+until beta 'temp hello from alpha' h show
+u beta h list
+stdout 'external:unic.transfer'
+
+u beta device list
+! stdout alpha
+u alpha device list
+! stdout beta
+
+u-async s2 alpha send -f $WORK/note.txt
+u-grab s2 'Link: (\S+)' link2.txt
+u-async r2 beta recv @link2.txt
+u-wait r2
+stderr 'received file note.txt'
+u-wait s2
+u beta h list
+stdout 'files'
+
+! u beta recv 12345
+stderr 'expected a 6-digit code or a transfer link'
+! u beta recv not-a-link
+stderr 'expected a 6-digit code or a transfer link'
+! u beta recv unic-pair:abc
+stderr 'pairing ticket'
+! u beta recv 482913
+stderr 'code service is unavailable'
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- note.txt --
+a small file for the temporary transfer

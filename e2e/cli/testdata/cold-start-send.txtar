@@ -2,7 +2,7 @@
 # 目的: 验证 unicd 未运行时 `unic send` 自动启动临时服务，等待已配对设备连接，观察本次发送的终态，然后才退出。
 # 流程:
 #   1. 启动 alpha 和 beta 并配对批准，然后完全停止 alpha。
-#   2. 在 alpha 上执行 `unic send --json`，此时没有任何 alpha 服务在运行。
+#   2. 在 alpha 上执行 `unic send --to all --json`，此时没有任何 alpha 服务在运行。
 #   3. 等 beta 的最新历史出现该文本。
 #   4. 确认 alpha 的临时服务已经退出。
 # 期望:
@@ -19,7 +19,7 @@ pair alpha beta
 node-stop alpha TERM
 service-gone alpha
 
-u alpha send --json cold start text
+u alpha send --to all --json cold start text
 stdout '"submission":'
 stdout '"outcome":"success"'
 until beta 'cold start text' h show

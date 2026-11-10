@@ -19,7 +19,7 @@ node-stop alpha TERM
 node-stop beta TERM
 service-gone alpha
 
-u-async send alpha send --json killed send text
+u-async send alpha send --to all --json killed send text
 sleep 3s
 u-kill send KILL
 service-gone alpha

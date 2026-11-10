@@ -80,3 +80,18 @@ service-lifecycle-bench:
 	go build -o .cache/0021/bench/cand/ ./app/service/cmd/unic ./app/service/cmd/unicd
 	TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=$(CURDIR)/.cache/0021/bin UNIC_BENCH_BASE=$(CURDIR)/.cache/0021/bench/base UNIC_BENCH_CAND=$(CURDIR)/.cache/0021/bench/cand UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/0021/acceptance go test ./e2e/cli -run '^TestServiceLifecycleResources$$' -count=1 -v | tee .cache/0021/bench.log
 	rg -q '^--- PASS: TestServiceLifecycleResources ' .cache/0021/bench.log
+
+# Temporary transfer (0022) against the real browser transfer page code. Needs bun and the
+# uc-website checkout (UC_WEBSITE). The page runs the pinned tailcat wasm build under bun.
+.PHONY: web-interop-e2e
+web-interop-e2e:
+	test -n "$(UC_WEBSITE)"
+	TMPDIR=/private/tmp UNIC_WEB_INTEROP=1 UC_WEBSITE=$(UC_WEBSITE) UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/0022/acceptance go test ./e2e/webinterop -run '^TestBrowserInterop$$' -count=1 -v | tee .cache/0022/web-interop.run.log
+	rg -q '^--- PASS: TestBrowserInterop ' .cache/0022/web-interop.run.log
+
+# Process-level acceptance of the user-intent CLI and temporary transfer (0022), unic against unic.
+.PHONY: transfer-e2e
+transfer-e2e:
+	mkdir -p .cache/0022
+	TMPDIR=/private/tmp UNIC_E2E=1 go test ./e2e/cli -run '^TestCLI$$/^(temporary-transfer|transfer-code|send-to-device)$$' -count=1 -v | tee .cache/0022/transfer.run.log
+	rg -q '^--- PASS: TestCLI ' .cache/0022/transfer.run.log

@@ -58,6 +58,8 @@ UNIC_E2E=1 UNIC_E2E_BIN=/path/to/bin go test ./e2e/cli -v
 | `install-plugin <名> <插件>` | 把 `plugins/examples/lua/<插件>` 复制到节点的本地插件目录 |
 | `genfile png\|rand <路径> [字节数]` | 生成 PNG 或确定性随机文件 |
 | `u-async <id> <名> [ENV:K=V…] <参数…>` / `u-wait <id>` / `u-kill <id> [KILL\|INT]` | 后台运行 `unic`；等待它结束；发信号并等它退出（命令已结束时失败） |
+| `u-grab <id> <正则> <文件>` | 等后台命令的标准输出出现匹配，把第一个捕获组（无则整段匹配）写入工作目录文件，之后可用 `@文件` 传给 `u-async`；不回显内容（链接和码是秘密） |
+| `rendezvous-start` | 为之后启动的节点运行本地 6 位码服务；不调用时码服务不可用 |
 | `logs <名> <子串>` | 节点日志必须包含该子串；`!` 表示不得包含 |
 | `sleep <时长>` | 等待 |
 

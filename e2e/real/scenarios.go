@@ -440,7 +440,7 @@ func (c *controller) contracts(ctx context.Context) error {
 		return fmt.Errorf("submission_query_mismatch")
 	}
 	var conflict cliResult
-	if err = a.call(ctx, "cli", cliRequest{Args: []string{"send", "--json", "--request-id", key, "conflicting-input"}, AllowFailure: true}, &conflict); err != nil {
+	if err = a.call(ctx, "cli", cliRequest{Args: []string{"send", "--to", "all", "--json", "--request-id", key, "conflicting-input"}, AllowFailure: true}, &conflict); err != nil {
 		return err
 	}
 	if conflict.Code == 0 || !bytes.Contains(conflict.Err, []byte(`"reason":"conflict"`)) {

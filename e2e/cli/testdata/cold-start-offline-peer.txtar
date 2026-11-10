@@ -2,7 +2,7 @@
 # 目的: 验证对端离线时 `unic send` 不会无限等待，本地提交保持成功，并且不报告发送成功。
 # 流程:
 #   1. 启动 alpha 和 beta 并配对批准，然后停止两者。
-#   2. 在 alpha 上执行 `unic send --json`；beta 保持离线。
+#   2. 在 alpha 上执行 `unic send --to all --json`；beta 保持离线。
 #   3. 确认命令结束后 alpha 的临时服务已退出。
 # 期望:
 #   - 命令成功退出，提交结果为 committed。
@@ -20,7 +20,7 @@ node-stop alpha TERM
 node-stop beta TERM
 service-gone alpha
 
-u alpha send --json nobody home
+u alpha send --to all --json nobody home
 stdout '"phase":"committed"'
 ! stdout '"outcome":"success"'
 service-gone alpha

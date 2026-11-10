@@ -2,7 +2,7 @@
 # 目的: 验证同一条发送规则同时适用于借用的服务和新启动的临时服务。
 # 流程:
 #   1. 启动 alpha 和 beta 并配对批准，两者都保持运行。
-#   2. 在 alpha 上执行 `unic send --json`，对端在线。
+#   2. 在 alpha 上执行 `unic send --to all --json`，对端在线。
 #   3. 停止 beta 后再次提交，对端离线。
 # 期望:
 #   - 第一次提交报告 outcome 为 success，beta 收到内容。
@@ -16,7 +16,7 @@ node-start alpha
 node-start beta
 pair alpha beta
 
-u alpha send --json warm text
+u alpha send --to all --json warm text
 stdout '"submission":'
 stdout '"outcome":"success"'
 until beta 'warm text' h show
@@ -24,7 +24,7 @@ until beta 'warm text' h show
 
 node-stop beta TERM
 sleep 11s
-u alpha send --json warm offline text
+u alpha send --to all --json warm offline text
 stdout '"phase":"committed"'
 ! stdout '"outcome":"success"'
 ! service-gone alpha

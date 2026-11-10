@@ -394,7 +394,7 @@ func (w *worker) submit(ctx context.Context, v submitRequest) (submitResult, err
 		out.Result = result
 		return out, err
 	default:
-		args := []string{"submit", "--json", "--request-id", v.Key}
+		args := []string{"send", "--to", "all", "--json", "--request-id", v.Key}
 		var input *os.File
 		switch f.Meta.Kind {
 		case "text":

@@ -497,7 +497,7 @@ func TestPostHogReleaseAssembly(t *testing.T) {
 	h.run(t, "release-defaults-and-production-intervals", func(t *testing.T) {
 		started := time.Now()
 		h.startConfig(t, "")
-		h.cli(t, "send", "posthog-private-clipboard-canary", "--request-id", "posthog-release-submission")
+		h.cli(t, "send", "--to", "all", "posthog-private-clipboard-canary", "--request-id", "posthog-release-submission")
 		time.Sleep(200 * time.Millisecond)
 		if err := os.WriteFile(filepath.Join(h.home, "config.toml"), []byte("[telemetry]\nenabled=\"invalid\"\n"), 0600); err != nil {
 			t.Fatal(err)
@@ -540,7 +540,7 @@ func TestPostHogEnableFromDisabled(t *testing.T) {
 			t.Fatal("disabled first startup created identity")
 		}
 		h.cli(t, "config", "set", "telemetry.enabled", "true")
-		h.cli(t, "send", "posthog-private-clipboard-canary", "--request-id", "posthog-after-enable")
+		h.cli(t, "send", "--to", "all", "posthog-private-clipboard-canary", "--request-id", "posthog-after-enable")
 		h.eventually(t, func() bool { return h.eventCount("manual_send_completed") == 1 })
 		for _, ev := range h.analytics() {
 			if ev["event"] == "app_started" && ev["properties"].(map[string]any)["product"] == "cli" {

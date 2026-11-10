@@ -21,7 +21,7 @@ node-stop alpha TERM
 service-gone alpha
 
 genfile rand big.bin 94371840
-u-async send alpha send --json --request-id lost-1 -f $WORK/big.bin
+u-async send alpha send --to all --json --request-id lost-1 -f $WORK/big.bin
 until alpha 'files' history list
 u-kill send KILL
 service-gone alpha

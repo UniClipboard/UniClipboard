@@ -123,7 +123,7 @@ func kinds(v backendView) (reps, files int) {
 }
 
 func TestBackendsGetIndependentViewsAndThresholds(t *testing.T) {
-	a := &fakeBackend{id: "test.a", pol: BackendSyncPolicy{Text: true}, targets: []string{"d1"}}
+	a := &fakeBackend{id: "test.a", pol: BackendSyncPolicy{Files: true}, targets: []string{"d1"}}
 	b := &fakeBackend{id: "test.b", pol: BackendSyncPolicy{Text: true, Images: true, Files: true, AutoFileMaxBytes: 10}, targets: []string{"repo"}}
 	n := multiNode(t, a, b)
 	var runs atomic.Int32
@@ -144,7 +144,7 @@ func TestBackendsGetIndependentViewsAndThresholds(t *testing.T) {
 	if resultOf(r, "test.a").Disposition != BackendQueued || resultOf(r, "test.b").Disposition != BackendQueued {
 		t.Fatalf("results = %+v", r.BackendResults)
 	}
-	if reps, files := kinds(a.lastView(t)); reps != 1 || files != 0 {
+	if reps, files := kinds(a.lastView(t)); reps != 0 || files != 1 {
 		t.Fatalf("a saw %d reps %d files", reps, files)
 	}
 	if reps, files := kinds(b.lastView(t)); reps != 1 || files != 1 {
@@ -340,7 +340,15 @@ func TestBackendPoliciesAreEffectiveValidatedAndHotUpdated(t *testing.T) {
 	}()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "hot", LeaseID: h.LeaseID}); err != nil {
+	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "hot", LeaseID: h.LeaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resultOf(r, "test.a").Disposition != BackendPolicyFiltered || a.calls.Load() != 0 {
+		t.Fatalf("a blocked file batch must not fall back to text: %+v", r.BackendResults)
+	}
+	text := importText(t, n.e, "text after policy change")
+	if _, err := n.e.CommitContent(bg, CommitRequest{RequestID: "hot-text", LeaseID: text.LeaseID}); err != nil {
 		t.Fatal(err)
 	}
 	if reps, files := kinds(a.lastView(t)); reps != 1 || files != 0 {
@@ -368,7 +376,7 @@ func stateOfBackend(it HistoryItem, id PluginID) HistoryBackendSyncState {
 
 func TestHistorySyncSummaryFollowsTheOperation(t *testing.T) {
 	a := &fakeBackend{id: "test.a", pol: allTypes, targets: []string{"x"}}
-	b := &fakeBackend{id: "test.b", pol: BackendSyncPolicy{Text: true}, targets: []string{"y"}}
+	b := &fakeBackend{id: "test.b", pol: BackendSyncPolicy{Text: true, Files: true}, targets: []string{"y"}}
 	n := multiNode(t, a, b)
 	h := textAndFile(t, n.e)
 	r, err := n.e.CommitContent(bg, CommitRequest{RequestID: "sum", LeaseID: h.LeaseID})

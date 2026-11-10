@@ -103,3 +103,13 @@ Commit, send queue, send, receive, and apply ticket outcomes remain separate mea
 Idempotent waits do not repeat commit metrics. A successful send does not prove remote receive or apply.
 Diagnostic callback failure does not change the business result. The host owns bounded async output and optional OTLP export.
 See the [observability architecture](observability.md) and [contract](../contracts/observability-contract.md).
+
+## Receive regression boundaries
+
+Every receive adapter supplies a size for each part before shared admission. External channels use the actual supplied byte length.
+Admission requires the total to equal the sum of all part sizes without overflowing the byte counter.
+Zero-byte representations remain invalid; zero-byte regular files remain valid.
+At startup, Engine holds the profile lock before removing its temporary `unic-content-*` and `unic-recv` directories from InboxDir.
+Cleanup uses an opened directory root and does not follow symbolic links during deletion. Other entries and retained cache payloads are preserved.
+Cache-backed received files survive dismissal while history or a content lease still owns them.
+Import uses the protocol per-file cap; the configured per-file cap applies to transfer. A backend that disables files rejects a file-bearing batch without falling back to text.

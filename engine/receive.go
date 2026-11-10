@@ -110,10 +110,15 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 	if total < 0 || len(req.parts) == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
 		return peerbackend.Admission{}, false
 	}
+	remaining := total
 	for _, p := range req.parts {
-		if p.size < 0 || (!p.file && p.size == 0) {
+		if p.size < 0 || (!p.file && p.size == 0) || p.size > remaining {
 			return peerbackend.Admission{}, false
 		}
+		remaining -= p.size
+	}
+	if remaining != 0 {
+		return peerbackend.Admission{}, false
 	}
 	srcKey := string(req.source)
 	if req.channel != "" {

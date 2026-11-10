@@ -168,7 +168,10 @@ func TestRustFixtureMigrationResumeAndSourceIndependence(t *testing.T) {
 	if err = os.RemoveAll(moved); err != nil {
 		t.Fatal(err)
 	}
-	e, err := engine.New(ctx, engine.Options{DataDir: target})
+	// This fixture dates from 1970. Test source independence without age cleanup.
+	settings := engine.DefaultSettings()
+	settings.History.RetentionDays = 0
+	e, err := engine.New(ctx, engine.Options{DataDir: target, Settings: settings})
 	if err != nil {
 		t.Fatal(err)
 	}

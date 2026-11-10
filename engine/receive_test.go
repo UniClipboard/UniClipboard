@@ -99,7 +99,7 @@ func TestReceiveBetweenEngines(t *testing.T) {
 		t.Fatalf("file = %+v", file)
 	}
 	path, err := b.e.LocalFilePath(bg, lease.LeaseID, file.ID)
-	if err != nil || !strings.HasPrefix(path, b.e.recvDir()+string(filepath.Separator)) {
+	if err != nil || !strings.HasPrefix(path, b.e.cache.dir+string(filepath.Separator)) {
 		t.Fatalf("LocalFilePath = %q, %v", path, err)
 	}
 	if got, _ := os.ReadFile(path); string(got) != "file body" {
@@ -265,12 +265,12 @@ func TestReceiverHonoursItsOwnSettings(t *testing.T) {
 	id, _ := submit(a.e, h)
 	waitSend(t, a.e, id)
 	r := waitReceived(t, b.e, 1)[0]
-	if len(r.Content.Parts) != 1 || r.Content.Parts[0].Kind != PartFile || stored(b.e) != 4 {
+	if len(r.Content.Parts) != 1 || r.Content.Parts[0].Kind != PartFile || stored(b.e) != 0 || b.e.cache.bytes.Load() != 4 {
 		t.Fatalf("received = %+v stored=%d", r.Content.Parts, stored(b.e))
 	}
 	sendText(t, a, b, "only text")
 	time.Sleep(200 * time.Millisecond)
-	if len(received(b.e)) != 1 || stored(b.e) != 4 {
+	if len(received(b.e)) != 1 || stored(b.e) != 0 || b.e.cache.bytes.Load() != 4 {
 		t.Fatalf("filtered-out clip was kept or leaked quota: stored=%d", stored(b.e))
 	}
 
@@ -296,14 +296,33 @@ func TestReceivedFilesAreRemovedWithTheirContent(t *testing.T) {
 	id, _ := submit(a.e, h)
 	waitSend(t, a.e, id)
 	r := waitReceived(t, b.e, 1)[0]
-	entries, _ := os.ReadDir(b.e.recvDir())
-	if len(entries) != 1 {
-		t.Fatalf("recv dir = %v", entries)
+	lease, err := b.e.RetainContent(bg, r.Content.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	_ = b.e.DismissReceived(bg, r.ReceiptID)
-	eventually(t, "files removed", func() bool {
-		entries, _ := os.ReadDir(b.e.recvDir())
-		return len(entries) == 0
+	path, err := b.e.LocalFilePath(bg, lease.LeaseID, lease.Content.Parts[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.e.DismissReceived(bg, r.ReceiptID); err != nil {
+		t.Fatal(err)
+	}
+	item, err := b.e.GetItem(bg, r.HistoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.e.DeleteItem(bg, DeleteItemRequest{ID: item.ID, ExpectedRevision: item.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "bytes" {
+		t.Fatalf("active lease lost its file: %v", err)
+	}
+	if err := b.e.ReleaseContent(bg, lease.LeaseID); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "files removed after the last owner releases them", func() bool {
+		_, err := os.Stat(path)
+		return os.IsNotExist(err) && b.e.cache.bytes.Load() == 0
 	})
 }
 

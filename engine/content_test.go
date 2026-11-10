@@ -167,13 +167,15 @@ type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("disk on fire at /secret/path") }
 
-func TestUserLimitsApplyToImport(t *testing.T) {
+func TestImportUsesProtocolFileCapAndConfiguredTotalLimit(t *testing.T) {
 	n := newContentNode(t, func(o *Options) {
 		o.Settings = DefaultSettings()
 		o.Settings.Limits = Limits{MaxFileBytes: 4, MaxTotalBytes: 6}
 	})
-	if _, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("a", "12345")}}); code(err) != CodeLimitExceeded {
-		t.Fatalf("file over limit: %v", err)
+	if h, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("a", "12345")}}); err != nil {
+		t.Fatalf("transfer limit must not prevent source import: %v", err)
+	} else {
+		_ = n.e.ReleaseContent(bg, h.LeaseID)
 	}
 	if _, err := n.e.ImportContent(bg, ContentInput{Files: []FileInput{fileIn("a", "1234"), fileIn("b", "123")}}); code(err) != CodeLimitExceeded {
 		t.Fatalf("total over limit: %v", err)

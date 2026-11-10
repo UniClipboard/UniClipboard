@@ -340,7 +340,28 @@ Bound default cache without deleting custom received files.
 ```
 exec printf reset
 cp stdout reset.txt
+# Simulate interrupted Engine-owned temporary writes before startup.
+mkdir alpha/inbox/unic-content-dead
+mkdir alpha/inbox/unic-recv/clip-dead
+mkdir alpha/inbox/holiday-photos
+cp reset.txt alpha/inbox/holiday-photos/keep.txt
+mkdir outside
+cp reset.txt outside/keep.txt
+symlink alpha/inbox/unic-content-link -> $WORK/outside
+symlink alpha/inbox/unic-content-dead/link -> $WORK/outside
 node-start alpha
+! exists alpha/inbox/unic-content-dead
+! exists alpha/inbox/unic-recv/clip-dead
+cmp alpha/inbox/holiday-photos/keep.txt reset.txt
+cmp outside/keep.txt reset.txt
+node-stop alpha KILL
+mkdir alpha/inbox/unic-content-interrupted
+mkdir alpha/inbox/unic-recv/clip-interrupted
+node-start alpha
+! exists alpha/inbox/unic-content-interrupted
+! exists alpha/inbox/unic-recv/clip-interrupted
+cmp alpha/inbox/holiday-photos/keep.txt reset.txt
+cmp outside/keep.txt reset.txt
 node-start beta
 pair alpha beta
 u beta config set file_cache.max_bytes 150

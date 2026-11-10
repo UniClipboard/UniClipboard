@@ -176,7 +176,9 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		return nil, newErr(CodeUnavailable, "cannot lock the data directory")
 	}
 	fail := func(e *Error) (*Engine, error) { lock.release(); return nil, e }
-	// Retained cache cleanup uses its ledger; never scan user receive paths.
+	if err := clearTransientInbox(opts.InboxDir); err != nil {
+		return fail(newErr(CodeUnavailable, "cannot clear temporary content"))
+	}
 
 	st, err := store.Open(filepath.Join(opts.DataDir, "unic.db"))
 	if err != nil {

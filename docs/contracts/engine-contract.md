@@ -217,7 +217,7 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 - 文本和 HTML 是有效 UTF-8；PNG 须为可解码 PNG。一个内容最多包含每种 MIME 一个内存表示，重复 MIME 或空内容报 invalid_argument。不同表示被视为同一内容的替代表示。
 - 不遍历文件夹，不接受目录输入。文件名称只用作展示和安全落盘名称，不用作路径；消除目录分隔、`.`、`..` 等路径语义，重复名可存在且 PartID 不同。
 - A regular file may contain zero bytes. A nonempty set of zero-byte files is content and must follow the same receive, history and export path as other files. Empty representations and a snapshot without parts remain invalid.
-- Import 按声明大小读取并验证流恰好结束，短读、额外字节和读取错误均失败；硬上限沿用 wire（内存单表示 64 MiB、单文件 2 GiB、总计 4 GiB、part 数 4096）。用户限制在导入和开始传输时也验证。
+- Import reads exactly the declared size and requires end of stream. Short reads, extra bytes and read errors fail. Protocol caps are 64 MiB per representation, 2 GiB per file, 4 GiB total and 4096 parts. Import enforces the configured total limit. The configured per-file limit applies when transfer starts, so a larger local source can still be imported.
 - Import 返回 `ContentHandle{Content: ContentDescriptor, LeaseID}`。Descriptor 包含 ID、各 part 的 PartID、Kind（representation/file）、MIME、Name、Size、是否引用（Referenced）和总大小；不含字节、路径和 hash。
 - 文件与表示可同时导入/传输；自动应用沿用桌面“文件优先”规则。宿主不支持的表示可跳过；无任何可应用表示时报告 unsupported，不假装成功。
 
@@ -418,8 +418,8 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 ## Sync settings and file ownership (0016, CLI implemented)
 
 `SyncSettings` includes Enabled, Automatic, OnRestore, Files, and Introductions.
-`FileCacheSettings` includes MaxBytes, RetentionHours, and AutoCleanup.
-The defaults are true, true, false, true, true, 500 MB, 24 hours, and true respectively.
+`FileCacheSettings` includes MaxBytes. Unified history cleanup controls retention.
+The sync defaults are true, true, false, true and true respectively. The default file-cache quota is 500 MB.
 The default per-file transfer limit is 100 MB. Source import uses the protocol file cap instead of the transfer limit.
 `SyncRestoredHistory` requires the last successful history apply token and a retained content lease.
 The method consumes the token's resend permission once, preserves stored processor policy, and creates no duplicate history.
@@ -459,3 +459,15 @@ The [local service contract](local-service-contract.md) defines explicit submiss
 independent Action application and exclusive desktop adapter generations.
 A missing clipboard adapter does not restrict Engine import, commit, receive, history reads or export.
 Service restart invalidates local sessions and content leases.
+
+## Receive admission and temporary startup cleanup
+
+All receive adapters provide the exact byte size of every part before admission.
+Admission rejects a total that differs from the sum of the part sizes.
+Representations must contain at least one byte. Regular files may contain zero bytes.
+External-channel adapters derive part sizes from the supplied data before entering the shared admission path.
+
+After acquiring the profile lock, New removes plain directories named `unic-recv` or prefixed `unic-content-` inside InboxDir.
+The scan preserves other entries and does not follow symbolic links during recursive deletion.
+Cleanup failure prevents startup. Retained file-cache payloads remain governed by their ledger and history holders.
+Dismissing Received or closing Engine does not delete a payload still referenced by history.

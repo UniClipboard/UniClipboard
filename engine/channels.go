@@ -327,7 +327,7 @@ func (b *pluginBackend) Receive(ctx context.Context, channelID string, r plugin.
 			return declined
 		}
 		req.total += int64(len(p.Data))
-		req.parts = append(req.parts, receivePart{mime: p.MIME})
+		req.parts = append(req.parts, receivePart{mime: p.MIME, size: int64(len(p.Data))})
 		snap.Parts = append(snap.Parts, clip.Part{Format: p.MIME, Data: p.Data})
 	}
 	adm, ok := b.e.admitReceive(req)

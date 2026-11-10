@@ -23,7 +23,7 @@ func dedupNode(t *testing.T, mutate func(*Options)) node {
 
 func clipReq(backend PluginID, transfer, view, text string) receiveRequest {
 	return receiveRequest{backend: backend, source: sender, origin: string(sender), transfer: transfer, view: view,
-		total: int64(len(text)), parts: []receivePart{{mime: MimeText}}}
+		total: int64(len(text)), parts: []receivePart{{mime: MimeText, size: int64(len(text))}}}
 }
 
 // receiveVia runs one whole receive and reports whether it was admitted.

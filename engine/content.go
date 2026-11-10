@@ -23,6 +23,43 @@ const (
 	tombCap          = 8192
 )
 
+// clearTransientInbox removes interrupted temporary writes after the profile
+// lock is acquired. Retained files belong to the cache ledger, not this scan.
+func clearTransientInbox(dir string) error {
+	info, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("temporary inbox is not a plain directory")
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	entries, err := f.ReadDir(-1)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && (entry.Name() == recvDirName || strings.HasPrefix(entry.Name(), contentDirPrefix)) {
+			if err := root.RemoveAll(entry.Name()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // tomb remembers the most recent IDs that were released or freed, so that a
 // repeated release is a success and a late use says "expired", not "unknown".
 type tomb struct {

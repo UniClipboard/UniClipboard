@@ -54,3 +54,7 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 Both archives reuse the same CLI and service binaries. Output includes a SHA-256 manifest.
 Archives are unsigned; platform installers and service registration remain separate.
 See [headless architecture](docs/architecture/headless.md).
+
+## License
+
+unic is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).

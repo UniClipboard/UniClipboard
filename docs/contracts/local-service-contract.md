@@ -110,8 +110,9 @@ Exported copies belong to the user and are independent of Engine cleanup.
 
 ## Service lifecycle
 
-`GET /v1/service` returns `{id,pid,directory,desktop_owned}` on the owner-only local socket.
+`GET /v1/service` returns `{id,pid,directory,mode,started_at_ms,leases,retiring}` on the owner-only local socket.
 `id` is a random 128-bit generation identifier. `directory` is the service state-directory identity.
+`mode` is `standalone`, `desktop` or `cli-temporary`. `leases` counts live CLI usages. `retiring` is true once admission is closed.
 `POST /v1/service/stop` accepts `{id}` and rejects a mismatched generation with HTTP 409.
 A successful response flushes `{ok:true}` before requesting service cancellation.
 It acknowledges shutdown admission, not completion. Socket removal follows Engine closure and lock release.
@@ -119,16 +120,98 @@ The caller waits for socket removal before starting a replacement.
 No lifecycle endpoint is exposed over TCP. Socket permission remains the same-user authority boundary.
 A launcher does not stop a service whose reported directory differs from its selected profile.
 
-`unicd --desktop-owned` reserves stdin for an anonymous parent-lifetime pipe.
-EOF or a read failure cancels the service, including after abrupt parent death.
-Plain `unicd` remains independent of stdin and ignores desktop startup settings.
-Normal launch restarts the existing service and creates an owned generation.
-Lightweight launch starts or reuses a standalone generation and exits its launcher.
-It refuses to reuse an owned generation. Mode and initial visibility changes require a new desktop launch.
+### Lifetime modes
+
+- `unicd` (standalone) ignores stdin. CLI commands borrow it and never stop it.
+- `unicd --desktop-owned` reserves stdin for an anonymous parent-lifetime pipe. EOF or a read failure cancels the service, including after abrupt parent death. CLI commands borrow it and never stop it.
+- `unicd --cli-temporary` reserves stdin for the launcher's initial ownership pipe and lives while at least one lease exists.
+  Any other argument list exits with code 2.
+
+Normal desktop launch restarts any existing service, including a temporary one, and creates a desktop generation.
+Lightweight launch starts or reuses a standalone generation. It refuses a desktop-owned generation and refuses a temporary generation with a clear error. It never adopts a temporary generation.
+A direct `unicd` start meets the exclusive profile lock. It does not take over active temporary clients.
+
+### Usage leases
+
+A lease admits one CLI invocation to exactly one generation. The open HTTP response is the lease.
+
+| Method and path | Request | Result |
+|---|---|---|
+| `POST /v1/service/leases` | `{id}` (generation) | 200, then a held stream whose first line is `{"lease":"<local id>"}` |
+| `DELETE /v1/service/leases/{lease}` | `{id}` (generation) | `{"last":bool}`; `last` is true when this release retired a temporary generation |
+
+Closing the stream releases the lease, including when the client process is killed.
+There is no durable counter, lease file or idle timer. A lease identifier is local control material and never enters logs, telemetry or status output.
+A mismatched generation returns 409 with reason `generation_changed`. A generation that closed admission returns 409 with reason `retiring`.
+The service admits at most 64 leases (`servicelifecycle.MaxLeases`). More requests return 429 with reason `resource_exhausted`. Capacity returns after release.
+Leases exist in every mode. Only a `cli-temporary` generation retires.
+
+A temporary generation starts owned by its launcher. The service does not exit while that claim exists.
+The claim ends when the launcher closes its pipe after the first lease is admitted, or when the pipe reaches EOF.
+EOF before any lease retires the service. This covers a launcher that dies before readiness.
+The last release of a temporary generation closes admission and answers `last:true` before the service cancels itself. Admission and last release are decided under one lock:
+a client either obtains a lease in the live generation or receives `retiring` before it submits business work.
+After `retiring` or `generation_changed` a client retries acquisition only. It never repeats a business request.
+
+### Launcher rules
+
+1. A launcher validates command syntax first. A service is acquired by the first service request, not earlier.
+2. It takes the profile transition lock (`service-transition.lock`, shared with desktop startup), probes `GET /v1/service`, and holds the lock only for probe, optional launch and lease admission.
+3. An authoritative absence (no listener) permits launch. A timeout, a permission error, an unrecognized listener and a different `directory` are errors. The launcher never unlinks a socket or kills a process in those cases.
+4. It resolves `unicd` beside its own executable. It never searches PATH. The child receives `UNIC_HOME` and `UNIC_SOCK` explicitly, its own detached session, and the initial ownership pipe as stdin. Child output goes to `cli-daemon.log` in the state directory (truncated at each launch).
+5. Readiness requires the launched PID, the profile `directory` and `mode: cli-temporary`. Socket existence is not readiness. Exit code 75 is retried every 100 ms inside the startup budget.
+6. After the first lease, the launcher closes the ownership pipe. The generation then lives by leases only.
+7. On release the client sends `DELETE` and waits for the generation to stop only when the answer is `last:true`.
+   A launcher that created the generation, and only that launcher, may kill that process after the graceful budget. A borrower reports the failure instead.
+
+Frozen budgets (client side): probe 1 s; acquisition including retirement wait 45 s; one launched `unicd` becoming ready 30 s;
+last-user graceful stop 12 s plus 5 s after a forced kill of the launcher's own child; one non-streaming request 60 s, starting after acquisition.
+The event stream, `watch`, invitation and override sessions are not subject to the 60 s request deadline.
+Cleanup uses its own context even when the command context is cancelled.
+
+### Operation observation
+
+`GET /v1/operations/{id}` returns the Engine `Operation` for an operation created by this generation. Operations are in memory and do not survive restart.
+A command that initiates a send waits only for the operation it created. `SubmissionResult.SyncDisposition=queued` is not completion.
+The client polls every 200 ms until the operation is done, 60 s pass, or the command is cancelled. It never resubmits.
+Result values are `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted`, `unknown` and `none` (no operation: disabled, no backend, no target).
+Local commit and network outcome stay separate. `submit --json` prints `{submission, send:{outcome, operation?}}`.
+Exit code 4 means committed but not fully completed: `partial`, `failed`, `timeout`, `interrupted` or `unknown`.
+`success`, `superseded` and `none` exit 0. After a timeout under a temporary service the message states that the service is stopping and that referenced files stay in use until the command exits.
+Under a persistent service it names `unic submission REQUEST_ID`.
+
+Before a command sends, the client gives paired devices a connection opportunity:
+while any paired device is offline and fewer than 10 s have passed since the service generation started, it polls status every 200 ms.
+The same rule applies to every service, so completion does not depend on who started it. Offline and pending devices cannot hold a command beyond the window.
+
+### Session commands
+
+| Command | Under a temporary service | Under a persistent service |
+|---|---|---|
+| `watch` | Holds a lease for the stream. A stream that ends without cancellation exits 4 (`stopped or was replaced`). | Same. |
+| `pair`, `join` with approval pending | Waits up to 2 minutes for the peer to connect. Connected exits 0. Pending, removed, interrupted or stopped exits 4. | Returns after the pending request is recorded. |
+| `code` | Holds the lease until the invitation expires, is used, is cancelled or is replaced by a different code. | Returns after printing. |
+| `addr` | Prints the address and notes on stderr that it works only while a service runs. | Returns after printing. |
+| `logs level LEVEL --for D` | Holds the lease until that override expires or is reset or replaced (its `expires_at_ms` changes). | Returns after acceptance. |
+
+An older command's exit never withdraws a newer invitation or override: a command compares the code or the expiry it created.
+The held duration is announced on stderr. Stdout stays the command result.
+
+### Exit codes
+
+0 done; 1 failed; 2 usage or missing command; 3 migration partial; 4 committed but not fully completed; 5 command done but stopping its temporary service failed.
 
 A directory-in-use startup failure exits `unicd` with code 75.
-The desktop may retry only that code within its bounded startup deadline while an earlier service retires.
 Other daemon startup failures exit 1. Invalid daemon arguments exit 2.
+
+### Command requirements
+
+Every leaf command declares one requirement in `app/service/cmd/unic/requirements.go`: `local`, `service`, `service+clipboard` or `offline`.
+Aliases resolve to the same leaf. `history action` becomes `service+clipboard` with `--apply`.
+`unic help` prints badges from these declarations and `unic help --json` prints the catalog.
+A `local` command receives a client that fails on any request. `offline` (`migrate`) never starts or stops a service; its target-profile lock decides.
+`service+clipboard` commands acquire the service, then the existing adapter errors apply (`unavailable`, `unsupported`, `permission_denied`). The CLI never starts a GUI.
+Syntax, arity and flag errors are reported before any service starts. Values that need service state, such as a configuration key, are checked after acquisition.
 
 
 ## Product analytics ownership

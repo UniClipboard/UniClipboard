@@ -1,4 +1,4 @@
-# 0011 · 本机 v1 历史迁移：独立 Go CLI 与离线导入
+# 0011 · 本机 v1 历史迁移：`unic migrate` 子命令与离线导入
 
 - 状态：已采纳，互操作与本机验收进度见[执行计划](../../exec/0011-v1-history-migration.md)。
 - 日期：2026-11-08。
@@ -6,7 +6,7 @@
 
 ## 范围与边界
 
-交付 macOS、Windows、Linux 各 arm64/amd64 的 `unic-migrate`。读取本机旧数据目录，迁移可恢复的文本、HTML、图片、文件、标签定义和关联；支持新目录与已有历史目录。旧身份、设备信任、网络设置不导入。
+作为 `unic migrate` 子命令交付（不是独立程序），随 `unic` 覆盖 macOS、Windows、Linux 各 arm64/amd64。读取本机旧数据目录，迁移可恢复的文本、HTML、图片、文件、标签定义和关联；支持新目录与已有历史目录。旧身份、设备信任、网络设置不导入。
 
 工具不依赖旧 Rust Engine。旧 crate 的依赖与启动副作用超出只读迁移需求；在 `internal/v1migration` 实现固定旧格式的只读适配，以旧 Rust 同款算法与序列化库生成的固定样本检验互操作。目标写入通过当前 `engine` 的公开导入接口，CLI 不直接写目标 SQL。
 
@@ -20,7 +20,7 @@
 
 ## 离线导入与恢复
 
-宿主运行相邻的 `unic-migrate`，由 CLI 独占目标 `unic.lock`。用户需先停止使用该目录的 daemon。迁移界面可存活，但 daemon 不与 CLI 并发写入。`Options.MigrationMode` 禁止 Start，导入不触发捕获、处理器、同步或系统剪贴板。
+`unic migrate` 在进程内运行，独占目标 `unic.lock`。用户需先停止使用该目录的 daemon。迁移界面可存活，但 daemon 不与 CLI 并发写入。`Options.MigrationMode` 禁止 Start，导入不触发捕获、处理器、同步或系统剪贴板。
 
 按条提交，内容落盘并同步后，在一个 SQLite 事务发布条目、标签关联和持久映射。源标识由旧 profile scope 和 MasterKey 的域分离摘要产生，移动或复制源目录不改变标识。幂等键为源标识与旧 entry id，不以正文 hash 合并记录。源删除项不导入；同内容多记录保留。
 

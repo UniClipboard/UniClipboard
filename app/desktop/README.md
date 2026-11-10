@@ -72,12 +72,11 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 
 ## 从本机 UniClipboard v1 迁移
 
-构建三个入口，并将它们放在同一个目录：
+构建两个入口（迁移是 `unic migrate` 子命令，没有独立程序）：
 
 ```sh
 go build -o .build/unic ./app/service/cmd/unic
 go build -o .build/unicd ./app/service/cmd/unicd
-go build -o .build/unic-migrate ./app/service/cmd/unic-migrate
 ```
 
 退出旧 UniClipboard，并停止使用目标目录的 `unicd`。先预检，再迁移：
@@ -95,13 +94,7 @@ go build -o .build/unic-migrate ./app/service/cmd/unic-migrate
 
 迁移后启动 `.build/unicd`，打开 `.build/unic-desktop`，默认「历史」页可浏览迁移记录、按标签筛选和使用内容。此处指 Go 桌面应用；`app/mac` 的独立 SwiftUI 客户端未接入本次功能。
 
-六平台 CLI 构建：
-
-```sh
-app/desktop/scripts/build-migration.sh
-```
-
-产物位于 `dist/migration/`，包含 macOS / Windows / Linux × arm64 / amd64 和 `SHA256SUMS`。跨平台编译不等同于全部平台的钥匙串运行验收。格式范围、幂等、容量策略和验收记录见[迁移设计](../../docs/decisions/proposed/0011-v1-history-migration.md)和[执行记录](../../docs/exec/0011-v1-history-migration.md)。
+`unic` 随常规发布流程构建，迁移不另行打包。跨平台编译不等同于全部平台的钥匙串运行验收。格式范围、幂等、容量策略和验收记录见[迁移设计](../../docs/decisions/proposed/0011-v1-history-migration.md)和[执行记录](../../docs/exec/0011-v1-history-migration.md)。
 
 配对审批必须显式提供另一台设备上显示的完整指纹：`unic approve <id> '<fingerprint>'`。HTTP `POST /v1/pending/{id}/approve` 必须带 `fingerprint`、`revision` 与 `bindings:[{id,revision}]`（修订来自 `/v1/pending`）；设备或待批准关联变化时整个审批失败，刷新后重新核对。普通 `/v1/status` 不含票据；`unic addr` 与 GUI「生成票据」显式调用 `POST /v1/pairing-ticket`，返回的秘密票据 5 分钟有效且仅用一次。详见[身份与信任](../../docs/architecture/identity-and-trust.md)。
 

@@ -8,7 +8,7 @@
 
 ## 已实现
 
-- [x] 独立 Go `unic-migrate`，参照相邻旧 Rust 仓库 `1.1.0-rc.23` 读取，不链接旧 Engine。
+- [x] Go `unic migrate` 子命令（进程内，无独立程序），参照相邻旧 Rust 仓库 `1.1.0-rc.23` 读取，不链接旧 Engine。
 - [x] 原始二进制系统凭据读取；终端无回显旧口令、宿主 stdin 口令；不写回旧凭据。
 - [x] KeySlot、Argon2id、MasterKey、profile-secrets、内容密钥目录与 V3 manifest/generation。
 - [x] 有界 postcard 解码、XChaCha20-Poly1305、HKDF、规范 AAD、UCP3、UCBL/zstd。
@@ -20,9 +20,9 @@
 - [x] 保留旧时间，并与已有历史按创建时间合并；复合分页游标固定提交上界。
 - [x] 导入容量下限持久化，下一次普通启动继续生效。
 - [x] 关闭并重开目标，通过公开 API 校验内容摘要。
-- [x] `unic migrate` 启动相邻 helper；结构化阶段与数量报告、部分完成退出码、SIGINT 取消。
+- [x] `unic migrate` 在进程内运行；结构化阶段与数量报告、部分完成退出码、SIGINT 取消。
 - [x] Go 桌面默认历史页：预览、标签筛选、分页和使用内容。
-- [x] 六平台 CLI 构建脚本与 SHA256SUMS。
+- [x] 独立迁移程序与六平台打包脚本已移除；迁移随 `unic` 构建与发布。
 
 ## 验证证据
 
@@ -36,7 +36,7 @@ Rust 测试生成器仅使用固定非个人数据，独立调用 serde/postcard
 - 截断 reader 不发布记录或映射；极小配置容量不导致迁移淘汰；持久容量下限重开可读。
 - 本地文件字节变化被摘要检查拒绝；ZIP 保留相对目录与空目录；拒绝源目标包含关系及符号链接重叠。
 
-最终 `go test -race ./...` 通过 317 个测试（34 个包），`go vet ./...`、三个本机入口构建、六平台 CLI 构建和 `git diff --check` 均通过。产物在 `dist/migration/`，开发入口在 `.build/`。全仓 lint 仍有 124 个原有问题；本次新增文件与修改行无新增问题。
+最终 `go test -race ./...` 通过 317 个测试（34 个包），`go vet ./...`、三个本机入口构建、六平台 CLI 构建和 `git diff --check` 均通过（均为移除独立程序之前的结果）。开发入口在 `.build/`。全仓 lint 仍有 124 个原有问题；本次新增文件与修改行无新增问题。
 
 ## 本机验收状态
 

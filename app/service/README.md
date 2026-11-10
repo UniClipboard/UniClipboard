@@ -4,7 +4,15 @@
 
 ```sh
 go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
-echo hello | UNIC_HOME=/absolute/private/state dist/unic submit --json
+echo hello | UNIC_HOME=/absolute/private/state dist/unic send --to all --json
+```
+
+Send and receive without pairing (for example with the page at `try.uniclipboard.app`):
+
+```sh
+unic send "hello"                 # prints a 6-digit code and a link, then waits for one receiver
+unic recv 482913                  # on the other side; a link works too
+unic send --to laptop "hello"     # to one paired device; --to all reaches every paired device
 ```
 
 `unic` starts a temporary `unicd` from the same directory when a command needs one and none runs.

@@ -34,14 +34,16 @@ type receipt struct {
 // any content is read. source is the authenticated sender; origin is what the
 // sender claims and must equal it, since nothing is forwarded.
 type receiveRequest struct {
-	backend  PluginID
-	source   DeviceID
-	channel  string // set instead of a device when the clip came from an external channel
-	origin   string
-	transfer string // sender-chosen transfer identity, shared by every backend of one commit
-	view     string // hash of the exact view that is sent
-	total    int64
-	parts    []receivePart
+	backend PluginID
+	source  DeviceID
+	channel string // set instead of a device when the clip came from an external channel
+	// ephemeral marks a temporary transfer: its channel is not stored and needs no authorization.
+	ephemeral bool
+	origin    string
+	transfer  string // sender-chosen transfer identity, shared by every backend of one commit
+	view      string // hash of the exact view that is sent
+	total     int64
+	parts     []receivePart
 }
 
 type receivePart struct {
@@ -57,6 +59,7 @@ type receiveTicket struct {
 	backend       PluginID
 	source        DeviceID
 	channel       string
+	ephemeral     bool
 	key           store.DedupKey
 	reserved      int64
 	cacheReserved int64
@@ -189,7 +192,7 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 		e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
 		return peerbackend.Admission{}, false
 	}
-	t := receiveTicket{started: started, kind: kind, backend: req.backend, source: req.source, channel: req.channel, key: key, reserved: total, cacheReserved: cacheBytes}
+	t := receiveTicket{started: started, kind: kind, backend: req.backend, source: req.source, channel: req.channel, ephemeral: req.ephemeral, key: key, reserved: total, cacheReserved: cacheBytes}
 	return peerbackend.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
@@ -350,7 +353,10 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	}
 	allowed := func() (bool, error) { return e.allowedPeerOn(string(t.backend), string(peer)) }
 	autoApply := false
-	if t.channel != "" {
+	switch {
+	case t.ephemeral:
+		allowed = func() (bool, error) { return true, nil }
+	case t.channel != "":
 		allowed = func() (bool, error) { return e.channelAllowed(t.backend, t.channel) }
 		if ch, cerr := e.st.Channel(t.channel); cerr == nil {
 			autoApply = ch.AutoApply

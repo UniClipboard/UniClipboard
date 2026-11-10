@@ -9,8 +9,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
@@ -47,11 +49,14 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 	files := fs.Bool("f", false, "submit files")
 	png := fs.String("png", "", "submit a PNG representation")
 	asJSON := fs.Bool("json", false, "print commit and network result")
-	to := fs.String("to", "all", "all, or a paired device ID or name")
+	to := fs.String("to", "", "all, or a paired device ID or name; omit to start a temporary transfer")
 	// Reuse the existing CLI flag parser for interspersed flags.
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
+	}
+	if *to == "" && *request != "" {
+		return fmt.Errorf("--request-id applies only with --to")
 	}
 	if *request == "" {
 		*request = rand.Text()
@@ -99,6 +104,9 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 		}
 		s.Parts = []clip.Part{{Format: clip.Text, Data: []byte(text)}}
 	}
+	if *to == "" {
+		return runTemporaryTransfer(ctx, c, s, *asJSON)
+	}
 	// Print the key before the request so a caller can query an interrupted submission.
 	fmt.Fprintln(os.Stderr, "request_id="+*request)
 	var devices []string
@@ -137,6 +145,94 @@ type submitReport struct {
 type sendReport struct {
 	Outcome   string            `json:"outcome"`
 	Operation *engine.Operation `json:"operation,omitempty"`
+}
+
+// runReceive is `unic recv`. A first word that is not a list command is a source:
+// a 6-digit code (spaces and dashes allowed) or a transfer link.
+func runReceive(ctx context.Context, c *api.Client, args []string) error {
+	if len(args) == 0 {
+		return runReceived(ctx, c, args)
+	}
+	switch args[0] {
+	case "list", "show", "dismiss":
+		return runReceived(ctx, c, args)
+	}
+	asJSON := false
+	if i := slices.Index(args, "--json"); i >= 0 {
+		asJSON = true
+		args = slices.Delete(slices.Clone(args), i, i+1)
+	}
+	out, err := c.Receive(ctx, api.ReceiveInput{Source: strings.Join(args, "")})
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return json.NewEncoder(os.Stdout).Encode(out)
+	}
+	for _, it := range out.Items {
+		if it.Kind == "text" {
+			fmt.Println(it.Text)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "received %s %s (%d bytes)\n", it.Kind, it.Name, it.Size)
+	}
+	fmt.Fprintln(os.Stderr, "stored in history; see `unic history list` and `unic recv list`")
+	return nil
+}
+
+// runTemporaryTransfer offers the content to one receiver that has the code or the
+// link, and waits until it is delivered, fails or expires.
+func runTemporaryTransfer(ctx context.Context, c *api.Client, s clip.Snapshot, asJSON bool) error {
+	t, err := c.StartTransfer(ctx, api.StartTransferInput{Snapshot: s})
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		if err := json.NewEncoder(os.Stdout).Encode(t); err != nil { // the first line carries the link and the code
+			return err
+		}
+	} else {
+		if t.Code != "" {
+			fmt.Printf("Code: %s\n", strings.Replace(t.Code, "-", " ", 1))
+		}
+		fmt.Printf("Link: %s\n", t.Link)
+		fmt.Fprintf(os.Stderr, "Waiting for one receiver until %s. On the other side run `unic recv <code or link>` or open the link. Ctrl+C cancels.\n", time.UnixMilli(t.ExpiresAtMs).Format("15:04:05"))
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = c.CancelTransfer(cctx, t.ID)
+			cancel()
+			return &incompleteError{"cancelled; nothing was delivered"}
+		case <-time.After(500 * time.Millisecond):
+		}
+		cur, err := c.Transfer(ctx, t.ID)
+		if err != nil {
+			if ctx.Err() != nil {
+				continue
+			}
+			return err
+		}
+		switch cur.State {
+		case api.TransferWaiting, api.TransferSending:
+			continue
+		case api.TransferDelivered:
+			if asJSON {
+				return json.NewEncoder(os.Stdout).Encode(cur)
+			}
+			fmt.Fprintln(os.Stderr, "delivered")
+			return nil
+		}
+		if asJSON {
+			_ = json.NewEncoder(os.Stdout).Encode(cur)
+		}
+		reason := cur.State
+		if cur.Reason != "" {
+			reason += ": " + cur.Reason
+		}
+		return &incompleteError{"not delivered (" + reason + ")"}
+	}
 }
 
 func runReceived(ctx context.Context, c *api.Client, args []string) error {

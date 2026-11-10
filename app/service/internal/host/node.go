@@ -62,6 +62,7 @@ type Node struct {
 	clip          desktop
 	adapter       adapterState
 	submissions   submissionState
+	transfers     transferState
 	runCtx        context.Context
 	logf          func(string, ...any)
 	customReceive bool

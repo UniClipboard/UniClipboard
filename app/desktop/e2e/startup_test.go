@@ -190,8 +190,8 @@ func TestStartupProcesses(t *testing.T) {
 	manifest["normal_service_pid"] = owned.PID
 	// Readiness must include working Engine operations, not only a process or socket.
 	var submission engine.SubmissionResult
-	success(home, "unic", "submit", "--request-id", "startup-e2e", "persist through mode switch")
-	must(t, json.Unmarshal(success(home, "unic", "submission", "startup-e2e"), &submission))
+	success(home, "unic", "send", "--to", "all", "--request-id", "startup-e2e", "persist through mode switch")
+	must(t, json.Unmarshal(success(home, "unic", "dev", "submission", "startup-e2e"), &submission))
 	if submission.HistoryID == "" {
 		t.Fatal("submission has no durable history identity")
 	}
@@ -293,7 +293,7 @@ func TestStartupProcesses(t *testing.T) {
 	cancel()
 	stopped(c)
 	exited(t, light.PID)
-	watcher := launch(home, "unic", "watch")
+	watcher := launch(home, "unic", "dev", "watch")
 	temporary := instance(c, func(v servicelifecycle.Instance) bool {
 		return v.Mode == servicelifecycle.ModeCLITemporary && v.Leases == 1
 	})

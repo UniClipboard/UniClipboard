@@ -180,8 +180,8 @@ type helpLine struct {
 }
 
 var helpLines = []helpLine{
-	{"send, s [flags] [text]", "send text, stdin, -f files, or --png PATH to your devices", []string{"send"}},
-	{"recv, r", "list, show or dismiss received content", []string{"recv"}},
+	{"send, s [flags] [text]", "send text, stdin, -f files, or --png PATH: --to all|DEVICE sends to paired devices; without --to it shows a code and a link for one receiver", []string{"send"}},
+	{"recv, r [code|link]", "take content from a code or link; without one: list, show or dismiss received content", []string{"recv"}},
 	{"history, h", "list, show, delete and tag clipboard history (unic h help)", []string{"history list", "history use"}},
 	{"device add [code|address]", "pair a device: without an argument, show a 6-digit code for the other device", []string{"device add"}},
 	{"device addr", "print this device's address (treat it like a password)", []string{"device addr"}},

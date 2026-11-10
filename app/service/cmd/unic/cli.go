@@ -36,7 +36,7 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(out)
 	case "recv":
-		return runReceived(short, c, args)
+		return runReceive(ctx, c, args)
 	case "dev capabilities":
 		out, e := c.Capabilities(short)
 		if e != nil {

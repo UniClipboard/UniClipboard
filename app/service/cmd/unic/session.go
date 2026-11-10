@@ -89,7 +89,7 @@ func (t acquiring) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := t.ensure(req.Context()); err != nil {
 		return nil, err
 	}
-	if req.URL.Path == "/v1/events" || req.URL.Path == "/v1/service/leases" {
+	if req.URL.Path == "/v1/events" || req.URL.Path == "/v1/service/leases" || req.URL.Path == "/v1/receive" {
 		return t.base.RoundTrip(req)
 	}
 	ctx, cancel := context.WithTimeout(req.Context(), requestTimeout)

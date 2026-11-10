@@ -307,3 +307,36 @@ func (c *Client) Consume(ctx context.Context, code string) {
 		_ = c.post(ctx, "/v1/web-pairings/consume", map[string]string{"code": n}, nil)
 	}
 }
+
+// CreateRaw registers an opaque ticket text and returns its code. The browser
+// transfer page uses this for its own ticket kind.
+func (c *Client) CreateRaw(ctx context.Context, ticket string) (Code, error) {
+	sent := time.Now()
+	var r struct {
+		Code        string  `json:"code"`
+		ExpiresAtMs float64 `json:"expiresAtMs"`
+	}
+	if err := c.post(ctx, "/v1/web-pairings", map[string]string{"ticket": ticket}, &r); err != nil {
+		return Code{}, err
+	}
+	code, ok := NormalizeCode(r.Code)
+	if !ok || r.ExpiresAtMs <= 0 {
+		return Code{}, &Error{Unavailable}
+	}
+	return Code{Code: code, Expires: localDeadline(sent, time.Now(), time.UnixMilli(int64(r.ExpiresAtMs)))}, nil
+}
+
+// ResolveRaw looks a code up and returns the stored ticket text unparsed.
+func (c *Client) ResolveRaw(ctx context.Context, code string) (string, error) {
+	n, ok := NormalizeCode(code)
+	if !ok {
+		return "", &Error{Incomplete}
+	}
+	var r struct {
+		Ticket string `json:"ticket"`
+	}
+	if err := c.post(ctx, "/v1/web-pairings/resolve", map[string]string{"code": n}, &r); err != nil {
+		return "", err
+	}
+	return r.Ticket, nil
+}

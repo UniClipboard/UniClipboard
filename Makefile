@@ -61,3 +61,22 @@ logs-export-e2e:
 	go build -race -o .cache/logs-export/bin/unic ./app/service/cmd/unic
 	TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=$(CURDIR)/.cache/logs-export/bin UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/logs-export/acceptance go test -race ./e2e/cli -run '^TestLogsExport$$' -count=1 -v | tee .cache/logs-export/run.log
 	rg -q '^--- PASS: TestLogsExport ' .cache/logs-export/run.log
+
+# Real-process acceptance for on-demand CLI service lifecycle (0021). Fixture controls are build-tagged.
+.PHONY: service-lifecycle-e2e
+service-lifecycle-e2e:
+	mkdir -p .cache/0021/bin
+	go build -race -tags unic_e2e -o .cache/0021/bin/unicd ./app/service/cmd/unicd
+	go build -race -tags unic_e2e -o .cache/0021/bin/unic ./app/service/cmd/unic
+	TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=$(CURDIR)/.cache/0021/bin UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/0021/acceptance go test -race ./e2e/cli -run '^TestServiceLifecycle$$' -count=1 -v | tee .cache/0021/run.log
+	rg -q '^--- PASS: TestServiceLifecycle ' .cache/0021/run.log
+
+# Cost and residue comparison. BASELINE_SRC is a clean checkout of the baseline commit (git worktree add --detach DIR COMMIT).
+.PHONY: service-lifecycle-bench
+service-lifecycle-bench:
+	test -n "$(BASELINE_SRC)"
+	mkdir -p .cache/0021/bench/base .cache/0021/bench/cand
+	cd $(BASELINE_SRC) && go build -o $(CURDIR)/.cache/0021/bench/base/ ./app/service/cmd/unic ./app/service/cmd/unicd
+	go build -o .cache/0021/bench/cand/ ./app/service/cmd/unic ./app/service/cmd/unicd
+	TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=$(CURDIR)/.cache/0021/bin UNIC_BENCH_BASE=$(CURDIR)/.cache/0021/bench/base UNIC_BENCH_CAND=$(CURDIR)/.cache/0021/bench/cand UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/0021/acceptance go test ./e2e/cli -run '^TestServiceLifecycleResources$$' -count=1 -v | tee .cache/0021/bench.log
+	rg -q '^--- PASS: TestServiceLifecycleResources ' .cache/0021/bench.log

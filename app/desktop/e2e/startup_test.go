@@ -179,11 +179,13 @@ func TestStartupProcesses(t *testing.T) {
 		}
 	}
 	launch(home, "unicd")
-	old := instance(c, func(v servicelifecycle.Instance) bool { return !v.DesktopOwned })
+	old := instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	launch(other, "unicd")
-	unrelated := instance(b, func(v servicelifecycle.Instance) bool { return !v.DesktopOwned })
+	unrelated := instance(b, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	normal := launch(home, "owner")
-	owned := instance(c, func(v servicelifecycle.Instance) bool { return v.DesktopOwned && v.ID != old.ID })
+	owned := instance(c, func(v servicelifecycle.Instance) bool {
+		return v.Mode == servicelifecycle.ModeDesktop && v.ID != old.ID
+	})
 	manifest["normal_owner_pid"] = normal.cmd.Process.Pid
 	manifest["normal_service_pid"] = owned.PID
 	// Readiness must include working Engine operations, not only a process or socket.
@@ -220,7 +222,7 @@ func TestStartupProcesses(t *testing.T) {
 	checks = append(checks, "normal owner signal stops owned service without touching another profile")
 
 	success(home, "unic-desktop") // Persisted lightweight mode; no GUI is started.
-	light := instance(c, func(v servicelifecycle.Instance) bool { return !v.DesktopOwned })
+	light := instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	success(home, "unic-desktop")
 	instance(c, func(v servicelifecycle.Instance) bool { return v.ID == light.ID })
 	history := success(home, "unic", "history", "show", string(submission.HistoryID))
@@ -230,7 +232,9 @@ func TestStartupProcesses(t *testing.T) {
 	checks = append(checks, "production desktop lightweight launcher exits and leaves one usable standalone service")
 
 	normal = launch(home, "owner")
-	owned = instance(c, func(v servicelifecycle.Instance) bool { return v.DesktopOwned && v.ID != light.ID })
+	owned = instance(c, func(v servicelifecycle.Instance) bool {
+		return v.Mode == servicelifecycle.ModeDesktop && v.ID != light.ID
+	})
 	manifest["crash_service_pid"] = owned.PID
 	must(t, normal.cmd.Process.Kill())
 	<-normal.done
@@ -238,17 +242,19 @@ func TestStartupProcesses(t *testing.T) {
 	exited(t, owned.PID)
 	checks = append(checks, "abrupt normal owner death closes the parent pipe and stops unicd")
 	normal = launch(home, "owner")
-	owned = instance(c, func(v servicelifecycle.Instance) bool { return v.DesktopOwned })
+	owned = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeDesktop })
 	must(t, normal.cmd.Process.Kill())
 	<-normal.done
 	success(home, "unic-desktop", "--mode", "lightweight")
-	instance(c, func(v servicelifecycle.Instance) bool { return !v.DesktopOwned && v.ID != owned.ID })
+	instance(c, func(v servicelifecycle.Instance) bool {
+		return v.Mode == servicelifecycle.ModeStandalone && v.ID != owned.ID
+	})
 	exited(t, owned.PID)
 	checks = append(checks, "immediate lightweight restart after owner death waits for service retirement")
 
 	// Standalone operation and configuration validation must not require a desktop.
 	success(home, "unic-desktop", "--mode", "lightweight")
-	light = instance(c, func(v servicelifecycle.Instance) bool { return !v.DesktopOwned })
+	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	raw, err := os.ReadFile(filepath.Join(home, "config.toml"))
 	must(t, err)
 	must(t, os.WriteFile(filepath.Join(home, "config.toml"), append(raw, []byte("\n[unexpected]\nkey = true\n")...), 0600))
@@ -260,7 +266,9 @@ func TestStartupProcesses(t *testing.T) {
 	checks = append(checks, "invalid startup config leaves an existing service untouched")
 	// A service failure ends its normal owner; the owner does not reconnect to a new generation.
 	normal = launch(home, "owner")
-	owned = instance(c, func(v servicelifecycle.Instance) bool { return v.DesktopOwned && v.ID != light.ID })
+	owned = instance(c, func(v servicelifecycle.Instance) bool {
+		return v.Mode == servicelifecycle.ModeDesktop && v.ID != light.ID
+	})
 	eventually(t, func() bool {
 		raw, err := os.ReadFile(normal.log)
 		return err == nil && bytes.Contains(raw, []byte("ready"))
@@ -277,8 +285,34 @@ func TestStartupProcesses(t *testing.T) {
 	stopped(c)
 	exited(t, owned.PID)
 	success(home, "unic-desktop", "--mode", "lightweight")
-	light = instance(c, func(v servicelifecycle.Instance) bool { return !v.DesktopOwned })
+	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	checks = append(checks, "normal owner exits when its service terminates")
+	// A lightweight launcher must not adopt or replace a CLI-temporary generation (0021 C18b).
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	must(t, c.StopService(ctx, light.ID))
+	cancel()
+	stopped(c)
+	exited(t, light.PID)
+	watcher := launch(home, "unic", "watch")
+	temporary := instance(c, func(v servicelifecycle.Instance) bool {
+		return v.Mode == servicelifecycle.ModeCLITemporary && v.Leases == 1
+	})
+	refused, err := run(home, "unic-desktop", "--mode", "lightweight")
+	if err == nil || !bytes.Contains(refused, []byte("temporary service")) {
+		t.Fatalf("lightweight did not refuse a temporary generation: %v %s", err, refused)
+	}
+	instance(c, func(v servicelifecycle.Instance) bool { return v.ID == temporary.ID && v.Leases == 1 })
+	must(t, watcher.cmd.Process.Signal(os.Interrupt))
+	select {
+	case <-watcher.done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("watch outlived its interrupt")
+	}
+	stopped(c)
+	exited(t, temporary.PID)
+	success(home, "unic-desktop", "--mode", "lightweight")
+	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
+	checks = append(checks, "lightweight launcher refuses a CLI-temporary generation and leaves it with its user")
 	// Missing sibling must be detected before stopping an existing service.
 	must(t, os.Rename(filepath.Join(bin, "unicd"), filepath.Join(bin, "unicd.saved")))
 	if out, err := run(home, "owner"); err == nil {

@@ -1,0 +1,35 @@
+# 用例: 借用已运行服务发送时，完成规则与冷启动相同，且不停止该服务
+# 目的: 验证同一条发送规则同时适用于借用的服务和新启动的临时服务。
+# 流程:
+#   1. 启动 alpha 和 beta 并配对批准，两者都保持运行。
+#   2. 在 alpha 上执行 `unic submit --json`，对端在线。
+#   3. 停止 beta 后再次提交，对端离线。
+# 期望:
+#   - 第一次提交报告 outcome 为 success，beta 收到内容。
+#   - 第二次提交的本地提交为 committed，发送结果不是 success。
+#   - 两次命令结束后 alpha 的服务仍在运行。
+# 不应:
+#   - 命令结束后停止借用的服务。
+#   - 对端离线时报告发送成功。
+
+node-start alpha
+node-start beta
+pair alpha beta
+
+u alpha submit --json warm text
+stdout '"submission":'
+stdout '"outcome":"success"'
+until beta 'warm text' h show
+! service-gone alpha
+
+node-stop beta TERM
+sleep 11s
+u alpha submit --json warm offline text
+stdout '"phase":"committed"'
+! stdout '"outcome":"success"'
+! service-gone alpha
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

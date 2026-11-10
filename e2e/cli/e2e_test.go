@@ -8,7 +8,9 @@ package e2e
 import (
 	"bytes"
 	"compress/zlib"
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"math/rand"
@@ -24,6 +26,8 @@ import (
 	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
+
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 var binDir string
@@ -96,6 +100,15 @@ type state struct {
 	mu    sync.Mutex
 	work  string
 	nodes map[string]*node
+	async map[string]*asyncRun
+}
+
+// asyncRun is a unic command running in the background of a script.
+type asyncRun struct {
+	cmd      *exec.Cmd
+	out, err bytes.Buffer
+	done     chan struct{}
+	failed   error
 }
 
 type node struct {
@@ -112,13 +125,21 @@ func (n *node) env() []string {
 }
 
 func setup(env *testscript.Env) error {
-	st := &state{work: env.WorkDir, nodes: map[string]*node{}}
+	st := &state{work: env.WorkDir, nodes: map[string]*node{}, async: map[string]*asyncRun{}}
 	env.Values["state"] = st
 	env.Defer(func() {
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		for _, n := range st.nodes {
-			if dest := os.Getenv("UNIC_E2E_ARTIFACTS"); dest != "" {
+			stopped := false
+			if n.done != nil {
+				select {
+				case <-n.done:
+					stopped = true
+				default:
+				}
+			}
+			if dest := os.Getenv("UNIC_E2E_ARTIFACTS"); dest != "" && !stopped {
 				for _, query := range [][]string{{"capabilities"}, {"received"}, {"h", "list", "--json"}} {
 					if out, _, e := n.unic(query...); e == nil {
 						dir := filepath.Join(dest, filepath.Base(env.WorkDir))
@@ -148,6 +169,14 @@ func setup(env *testscript.Env) error {
 		exportArtifact(env, st)
 	})
 	return nil
+}
+
+// listening probes the socket directly. The CLI would start a temporary service instead.
+func (n *node) listening() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := api.NewClient(n.sock).Service(ctx)
+	return err == nil
 }
 
 func (n *node) kill(sig syscall.Signal) {
@@ -203,6 +232,11 @@ func commands() map[string]func(*testscript.TestScript, bool, []string) {
 		"board-set":       cmdBoardSet,
 		"board-wait":      cmdBoardWait,
 		"install-plugin":  cmdInstallPlugin,
+		"node-define":     cmdNodeDefine,
+		"u-async":         cmdUAsync,
+		"u-wait":          cmdUWait,
+		"u-kill":          cmdUKill,
+		"service-gone":    cmdServiceGone,
 	}
 }
 
@@ -268,7 +302,7 @@ func cmdNodeStart(ts *testscript.TestScript, neg bool, args []string) {
 	n.cmd, n.done = cmd, done
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, stderr, err := n.unic("paste"); err == nil || strings.Contains(stderr, "the clipboard holds no text or files") {
+		if n.listening() {
 			if neg {
 				ts.Fatalf("node %s started but it should not have", args[0])
 			}
@@ -376,7 +410,7 @@ func pendingFingerprint(ts *testscript.TestScript, n *node) string {
 	return fp
 }
 
-// pair <a> <b> [request|approve]: b pairs with a's full address (request),
+// pair <a> <b> [request|approve|decide]: b pairs with a's full address (request),
 // then both users approve after the fingerprints are compared equal
 // (approve), and both sides see the other online. Without a stage, both run.
 func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
@@ -425,7 +459,7 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 		waitFor(a, idB)
 		waitFor(b, idA)
 	}
-	if stage == "approve" || stage == "both" {
+	if stage == "approve" || stage == "both" || stage == "decide" {
 		fpA, fpB := pendingFingerprint(ts, a), pendingFingerprint(ts, b)
 		if _, _, err := a.unic("approve", idB); err == nil {
 			ts.Fatalf("approval without fingerprint succeeded")
@@ -437,6 +471,9 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 		ts.Check(err)
 		_, _, err = b.unic("approve", idA, fpA)
 		ts.Check(err)
+		if stage == "decide" {
+			return // approvals only: a temporary service may end as soon as its own command does
+		}
 		for _, p := range [][2]string{{a.name, idB}, {b.name, idA}} {
 			cmdWait(ts, false, []string{p[0], p[1] + `\s+\S+\s+online`, "peers"})
 		}
@@ -650,4 +687,147 @@ func cmdRetryCopy(ts *testscript.TestScript, _ bool, args []string) {
 		}
 	}
 	ts.Fatalf("%s never reached %s", args[0], args[1])
+}
+
+// u-async <id> <node> [ENV:K=V...] args...: start unic as that node in the background. An argument
+// "@file" is replaced by the trimmed content of a file from the case's workdir.
+func cmdUAsync(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) < 3 {
+		ts.Fatalf("usage: u-async id node [ENV:K=V...] args...")
+	}
+	st := stateOf(ts)
+	n := st.node(ts, args[1])
+	cmd := exec.Command(filepath.Join(binDir, "unic"))
+	cmd.Env = n.env()
+	for _, a := range args[2:] {
+		switch {
+		case strings.HasPrefix(a, "ENV:"):
+			cmd.Env = append(cmd.Env, strings.TrimPrefix(a, "ENV:"))
+		case strings.HasPrefix(a, "@"):
+			cmd.Args = append(cmd.Args, strings.TrimSpace(ts.ReadFile(a[1:])))
+		default:
+			cmd.Args = append(cmd.Args, a)
+		}
+	}
+	run := &asyncRun{cmd: cmd, done: make(chan struct{})}
+	cmd.Stdout, cmd.Stderr = &run.out, &run.err
+	ts.Check(cmd.Start())
+	go func() { run.failed = cmd.Wait(); close(run.done) }()
+	st.mu.Lock()
+	st.async[args[0]] = run
+	st.mu.Unlock()
+	ts.Defer(func() { _ = cmd.Process.Kill() })
+}
+
+// u-kill <id> [KILL|INT]: signal a background command and wait until it has exited.
+func cmdUKill(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) < 1 || len(args) > 2 {
+		ts.Fatalf("usage: u-kill id [KILL|INT]")
+	}
+	sig := syscall.SIGKILL
+	if len(args) == 2 {
+		switch args[1] {
+		case "KILL":
+		case "INT":
+			sig = syscall.SIGINT
+		default:
+			ts.Fatalf("unsupported signal %q", args[1])
+		}
+	}
+	st := stateOf(ts)
+	st.mu.Lock()
+	run := st.async[args[0]]
+	st.mu.Unlock()
+	if run == nil {
+		ts.Fatalf("unknown background command %q", args[0])
+	}
+	select {
+	case <-run.done:
+		ts.Fatalf("background command %s had already exited", args[0])
+	default:
+	}
+	_ = run.cmd.Process.Signal(sig)
+	select {
+	case <-run.done:
+	case <-time.After(20 * time.Second):
+		ts.Fatalf("background command %s did not exit after %s", args[0], args[1:])
+	}
+}
+
+// u-wait <id>: wait for a background command; its output feeds stdout/stderr. `!` expects a failure.
+func cmdUWait(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: u-wait id")
+	}
+	st := stateOf(ts)
+	st.mu.Lock()
+	run := st.async[args[0]]
+	st.mu.Unlock()
+	if run == nil {
+		ts.Fatalf("unknown background command %q", args[0])
+	}
+	select {
+	case <-run.done:
+	case <-time.After(150 * time.Second):
+		_ = run.cmd.Process.Kill()
+		ts.Fatalf("background command %s did not finish", args[0])
+	}
+	_, _ = ts.Stdout().Write(run.out.Bytes())
+	_, _ = ts.Stderr().Write(run.err.Bytes())
+	var exit *exec.ExitError
+	if errors.As(run.failed, &exit) {
+		_, _ = fmt.Fprintf(ts.Stderr(), "exit status %d\n", exit.ExitCode())
+	}
+	if neg && run.failed == nil {
+		ts.Fatalf("background command %s unexpectedly succeeded", args[0])
+	}
+	if !neg && run.failed != nil {
+		ts.Fatalf("background command %s: %v\n%s", args[0], run.failed, run.err.String())
+	}
+}
+
+// service-gone <node>: no service answers on the node's socket and its socket file is removed.
+func cmdServiceGone(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: service-gone node")
+	}
+	n := stateOf(ts).node(ts, args[0])
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		_, err := os.Stat(n.sock)
+		if err != nil && !n.listening() {
+			if neg {
+				ts.Fatalf("node %s has no service, but one was expected", args[0])
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !neg {
+		ts.Fatalf("a service still runs for node %s", args[0])
+	}
+}
+
+// node-define <name>: register a node (state directory, board, config) without starting unicd,
+// so the CLI itself must start a temporary service for it.
+func cmdNodeDefine(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: node-define name")
+	}
+	st := stateOf(ts)
+	st.mu.Lock()
+	n := &node{name: args[0], home: filepath.Join(st.work, args[0])}
+	n.sock = filepath.Join(st.work, "."+args[0]+".sock")
+	st.nodes[args[0]] = n
+	st.mu.Unlock()
+	ts.Check(os.MkdirAll(filepath.Join(n.home, "board"), 0o700))
+	cfgPath := filepath.Join(n.home, "config.toml")
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil && !os.IsNotExist(err) {
+		ts.Check(err)
+	}
+	if !strings.Contains(string(raw), "[telemetry]") {
+		raw = append(raw, []byte("\n[telemetry]\nenabled=false\n")...)
+		ts.Check(os.WriteFile(cfgPath, raw, 0600))
+	}
 }

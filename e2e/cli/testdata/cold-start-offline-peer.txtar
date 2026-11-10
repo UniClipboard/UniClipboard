@@ -1,0 +1,31 @@
+# 用例: 冷启动发送时对端离线，在有限窗口后完成且不伪造成功
+# 目的: 验证对端离线时 `unic submit` 不会无限等待，本地提交保持成功，并且不报告发送成功。
+# 流程:
+#   1. 启动 alpha 和 beta 并配对批准，然后停止两者。
+#   2. 在 alpha 上执行 `unic submit --json`；beta 保持离线。
+#   3. 确认命令结束后 alpha 的临时服务已退出。
+# 期望:
+#   - 命令成功退出，提交结果为 committed。
+#   - 发送结果不是 success。
+#   - 命令结束后 alpha 没有服务进程或 socket。
+# 不应:
+#   - 无限等待离线设备。
+#   - 把没有目标的提交报告成网络发送成功。
+
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+node-stop beta TERM
+service-gone alpha
+
+u alpha submit --json nobody home
+stdout '"phase":"committed"'
+! stdout '"outcome":"success"'
+service-gone alpha
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

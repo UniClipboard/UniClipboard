@@ -5,6 +5,12 @@
 
 | 用例 | 标题 |
 |---|---|
+| [cold-start-offline-peer](#cold-start-offline-peer) | 冷启动发送时对端离线，在有限窗口后完成且不伪造成功 |
+| [cold-start-pairing-outcomes](#cold-start-pairing-outcomes) | 冷启动 CLI 配对被中断或请求被撤销时给出各自明确的结果 |
+| [cold-start-pairing](#cold-start-pairing) | 冷启动 CLI 配对时保持临时服务直到对端批准，批准窗口到期时给出明确结果 |
+| [cold-start-send-killed](#cold-start-send-killed) | 冷启动发送在等待对端窗口内被杀，用量被回收且不重放 |
+| [cold-start-send-response-lost](#cold-start-send-response-lost) | 提交已成功但响应丢失，不重放也不回滚 |
+| [cold-start-send](#cold-start-send) | 冷启动 CLI 发送文本，等待本次发送完成后才停止临时服务 |
 | [content-formats](#content-formats) | HTML、PNG 和文件原样同步 |
 | [crash-and-suspend-recovery](#crash-and-suspend-recovery) | 对端崩溃或挂起后自动恢复 |
 | [data-dir-single-instance](#data-dir-single-instance) | 同一数据目录只允许一个 unicd，日志不泄露秘密 |
@@ -21,6 +27,322 @@
 | [plugin-tag-and-action](#plugin-tag-and-action) | 邮箱标签插件与 Action 改写 |
 | [restart-keeps-state](#restart-keeps-state) | 重启后身份、配对、历史与标签保持不变 |
 | [sync-settings](#sync-settings) | CLI settings and TOML policy |
+| [warm-send](#warm-send) | 借用已运行服务发送时，完成规则与冷启动相同，且不停止该服务 |
+
+## cold-start-offline-peer
+
+**冷启动发送时对端离线，在有限窗口后完成且不伪造成功**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-offline-peer' -v`
+
+**目的**
+
+验证对端离线时 `unic submit` 不会无限等待，本地提交保持成功，并且不报告发送成功。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，然后停止两者。
+2. 在 alpha 上执行 `unic submit --json`；beta 保持离线。
+3. 确认命令结束后 alpha 的临时服务已退出。
+
+**期望**
+
+- 命令成功退出，提交结果为 committed。
+- 发送结果不是 success。
+- 命令结束后 alpha 没有服务进程或 socket。
+
+**不应**
+
+- 无限等待离线设备。
+- 把没有目标的提交报告成网络发送成功。
+
+<details><summary>脚本 testdata/cold-start-offline-peer.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+node-stop beta TERM
+service-gone alpha
+
+u alpha submit --json nobody home
+stdout '"phase":"committed"'
+! stdout '"outcome":"success"'
+service-gone alpha
+```
+
+</details>
+
+## cold-start-pairing-outcomes
+
+**冷启动 CLI 配对被中断或请求被撤销时给出各自明确的结果**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-pairing-outcomes' -v`
+
+**目的**
+
+验证 `unic pair` 在临时服务下，用户中断和请求被撤销是两种不同的结果，且都释放临时服务。
+
+
+**流程**
+
+1. beta 保持运行。alpha 在后台执行 `unic pair <beta 地址>`，等 beta 看到请求。
+2. 向 alpha 的配对命令发送 INT；确认结果为中断，alpha 服务退出。
+3. gamma 再次配对 beta；在 gamma 自己的服务上撤销该请求；确认结果为请求被撤销，gamma 服务退出。
+
+**期望**
+
+- 中断的命令以退出码 4 结束，并说明批准仍在等待。
+- 被撤销的命令以退出码 4 结束，并说明请求被移除或替换。
+- 两个临时服务都已退出。
+
+**不应**
+
+- 把中断或撤销报告成成功。
+- 把两种结果报成同一条消息。
+
+<details><summary>脚本 testdata/cold-start-pairing-outcomes.txtar</summary>
+
+```
+node-start beta
+node-id beta BETA
+node-define alpha
+u beta addr
+cp stdout beta.addr
+
+u-async p alpha pair @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' requests
+u-kill p INT
+! u-wait p
+stderr 'interrupted; approval is still pending'
+stderr 'exit status 4'
+service-gone alpha
+
+node-define gamma
+u beta addr
+cp stdout beta2.addr
+u-async q gamma pair @beta2.addr
+until gamma '[0-9A-F]{4} [0-9A-F]{4}' requests
+u gamma reject $BETA
+! u-wait q
+stderr 'removed or replaced'
+stderr 'exit status 4'
+service-gone gamma
+```
+
+</details>
+
+## cold-start-pairing
+
+**冷启动 CLI 配对时保持临时服务直到对端批准，批准窗口到期时给出明确结果**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-pairing' -v`
+
+**目的**
+
+验证 `unic pair` 在临时服务下是有界会话：批准后报告 connected，到期则报告仍在等待，两者都不让服务提前退出。
+
+
+**流程**
+
+1. beta 保持运行；alpha 没有服务。alpha 在后台执行 `unic pair <beta 地址>`。
+2. 双方核对指纹并批准；等待后台命令结束。
+3. 第三台全新设备 gamma 用很短的窗口配对 beta，且无人批准。
+
+**期望**
+
+- 批准后 alpha 的配对命令成功并报告 connected。
+- gamma 的命令以退出码 4 结束，并报告批准仍在等待。
+- 两个临时服务在各自命令结束后都已退出。
+
+**不应**
+
+- 用无关设备的事件当作配对完成。
+- 把仍在等待的批准报告成成功。
+
+<details><summary>脚本 testdata/cold-start-pairing.txtar</summary>
+
+```
+node-start beta
+node-define alpha
+u beta addr
+cp stdout beta.addr
+
+u-async p alpha pair @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' requests
+until alpha '[0-9A-F]{4} [0-9A-F]{4}' requests
+pair beta alpha decide
+u-wait p
+stdout 'approved: connected'
+service-gone alpha
+
+node-define gamma
+u beta addr
+cp stdout beta2.addr
+u-async q gamma ENV:UNIC_E2E_PAIRING_WINDOW_MS=3000 pair @beta2.addr
+! u-wait q
+stderr 'approval still pending'
+stderr 'exit status 4'
+service-gone gamma
+```
+
+</details>
+
+## cold-start-send-killed
+
+**冷启动发送在等待对端窗口内被杀，用量被回收且不重放**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-send-killed' -v`
+
+**目的**
+
+验证发送命令在连接窗口内死亡后，临时服务随最后一个用户消失，且之后没有任何自动提交。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，然后停止两者，beta 保持离线。
+2. 在后台执行 `unic submit`，等它进入等待对端的窗口后用 KILL 杀掉。
+3. 确认 alpha 的临时服务已退出，再重新读取 alpha 的历史。
+
+**期望**
+
+- alpha 没有服务进程或 socket。
+- 历史为空：窗口内死亡的命令没有留下提交。
+
+**不应**
+
+- 服务在发送命令死亡后继续运行。
+- 服务重启后自动重放该提交。
+
+<details><summary>脚本 testdata/cold-start-send-killed.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+node-stop beta TERM
+service-gone alpha
+
+u-async send alpha submit --json killed send text
+sleep 3s
+u-kill send KILL
+service-gone alpha
+
+u alpha history list
+! stdout 'killed send text'
+stderr 'no entries'
+service-gone alpha
+```
+
+</details>
+
+## cold-start-send-response-lost
+
+**提交已成功但响应丢失，不重放也不回滚**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-send-response-lost' -v`
+
+**目的**
+
+验证大文件发送途中命令被杀后，已提交的历史条目仍然只有一份，临时服务随之退出，且重启后没有自动重发。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，停止 alpha，beta 保持在线。
+2. 在后台执行 `unic submit -f` 发送一个大文件，等历史里出现该条目后用 KILL 杀掉命令。
+3. 确认 alpha 的临时服务已退出，再读取 alpha 的历史。
+
+**期望**
+
+- alpha 没有服务进程或 socket。
+- alpha 历史里该文件恰好一条。
+- 重启后按原 request-id 查询得到 no such submission，不承诺持久查询。
+
+**不应**
+
+- 提交被回滚。
+- 重启服务后出现第二条同一文件的历史。
+- 把已丢失的请求记录当作可持久查询的结果。
+
+<details><summary>脚本 testdata/cold-start-send-response-lost.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+service-gone alpha
+
+genfile rand big.bin 94371840
+u-async send alpha submit --json --request-id lost-1 -f $WORK/big.bin
+until alpha 'files' history list
+u-kill send KILL
+service-gone alpha
+
+u alpha history list
+stdout -count=1 'files'
+! u alpha submission lost-1
+stderr 'no such submission'
+! stdout '@2'
+service-gone alpha
+```
+
+</details>
+
+## cold-start-send
+
+**冷启动 CLI 发送文本，等待本次发送完成后才停止临时服务**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-send' -v`
+
+**目的**
+
+验证 unicd 未运行时 `unic submit` 自动启动临时服务，等待已配对设备连接，观察本次发送的终态，然后才退出。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，然后完全停止 alpha。
+2. 在 alpha 上执行 `unic submit --json`，此时没有任何 alpha 服务在运行。
+3. 等 beta 的最新历史出现该文本。
+4. 确认 alpha 的临时服务已经退出。
+
+**期望**
+
+- JSON 输出里提交结果与发送结果是分开的两个字段，发送结果为 success。
+- beta 的最新历史内容等于发送的文本。
+- 命令结束后 alpha 没有任何服务进程或 socket。
+
+**不应**
+
+- 在服务就绪或排队时就停止临时服务，导致 beta 收不到内容。
+
+<details><summary>脚本 testdata/cold-start-send.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+service-gone alpha
+
+u alpha submit --json cold start text
+stdout '"submission":'
+stdout '"outcome":"success"'
+until beta 'cold start text' h show
+service-gone alpha
+```
+
+</details>
 
 ## content-formats
 
@@ -1097,6 +1419,57 @@ node-start alpha
 u alpha config --json
 stdout '"files":false'
 stdout '"max_file_bytes":100'
+```
+
+</details>
+
+## warm-send
+
+**借用已运行服务发送时，完成规则与冷启动相同，且不停止该服务**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/warm-send' -v`
+
+**目的**
+
+验证同一条发送规则同时适用于借用的服务和新启动的临时服务。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，两者都保持运行。
+2. 在 alpha 上执行 `unic submit --json`，对端在线。
+3. 停止 beta 后再次提交，对端离线。
+
+**期望**
+
+- 第一次提交报告 outcome 为 success，beta 收到内容。
+- 第二次提交的本地提交为 committed，发送结果不是 success。
+- 两次命令结束后 alpha 的服务仍在运行。
+
+**不应**
+
+- 命令结束后停止借用的服务。
+- 对端离线时报告发送成功。
+
+<details><summary>脚本 testdata/warm-send.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+u alpha submit --json warm text
+stdout '"submission":'
+stdout '"outcome":"success"'
+until beta 'warm text' h show
+! service-gone alpha
+
+node-stop beta TERM
+sleep 11s
+u alpha submit --json warm offline text
+stdout '"phase":"committed"'
+! stdout '"outcome":"success"'
+! service-gone alpha
 ```
 
 </details>

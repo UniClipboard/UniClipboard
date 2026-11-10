@@ -1,0 +1,31 @@
+# 用例: 冷启动 CLI 发送文本，等待本次发送完成后才停止临时服务
+# 目的: 验证 unicd 未运行时 `unic submit` 自动启动临时服务，等待已配对设备连接，观察本次发送的终态，然后才退出。
+# 流程:
+#   1. 启动 alpha 和 beta 并配对批准，然后完全停止 alpha。
+#   2. 在 alpha 上执行 `unic submit --json`，此时没有任何 alpha 服务在运行。
+#   3. 等 beta 的最新历史出现该文本。
+#   4. 确认 alpha 的临时服务已经退出。
+# 期望:
+#   - JSON 输出里提交结果与发送结果是分开的两个字段，发送结果为 success。
+#   - beta 的最新历史内容等于发送的文本。
+#   - 命令结束后 alpha 没有任何服务进程或 socket。
+# 不应:
+#   - 在服务就绪或排队时就停止临时服务，导致 beta 收不到内容。
+
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+service-gone alpha
+
+u alpha submit --json cold start text
+stdout '"submission":'
+stdout '"outcome":"success"'
+until beta 'cold start text' h show
+service-gone alpha
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

@@ -57,6 +57,7 @@ UNIC_E2E=1 UNIC_E2E_BIN=/path/to/bin go test ./e2e/cli -v
 | `node-id <名> <变量>` | 把设备 ID 放进环境变量 |
 | `install-plugin <名> <插件>` | 把 `plugins/examples/lua/<插件>` 复制到节点的本地插件目录 |
 | `genfile png\|rand <路径> [字节数]` | 生成 PNG 或确定性随机文件 |
+| `u-async <id> <名> [ENV:K=V…] <参数…>` / `u-wait <id>` / `u-kill <id> [KILL\|INT]` | 后台运行 `unic`；等待它结束；发信号并等它退出（命令已结束时失败） |
 | `logs <名> <子串>` | 节点日志必须包含该子串；`!` 表示不得包含 |
 | `sleep <时长>` | 等待 |
 

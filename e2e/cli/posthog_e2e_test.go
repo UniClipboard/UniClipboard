@@ -618,3 +618,54 @@ func TestPostHogDesktopReconnect(t *testing.T) {
 		}
 	})
 }
+
+// TestPostHogTemporaryRestarts covers 0021 C34: a CLI-temporary service is a process start, not an installation.
+// The analytics identity persists across temporary restarts, and a disabled profile stays silent.
+func TestPostHogTemporaryRestarts(t *testing.T) {
+	if os.Getenv("UNIC_E2E") == "" {
+		t.Skip("set UNIC_E2E=1")
+	}
+	h := newObservabilityRun(t)
+	h.posthog = true
+	h.artifactName = "posthog-temporary-restarts"
+	h.manualAdapter = true // no mock clipboard adapter: it would add a desktop-product start of its own
+	write := func(enabled bool) {
+		cfg := fmt.Sprintf("[telemetry]\nenabled=%t\nendpoint=%q\n", enabled, h.server.URL+"/i")
+		if err := os.WriteFile(filepath.Join(h.home, "config.toml"), []byte(cfg), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run(t, "disabled-temporary-service-is-silent", func(t *testing.T) {
+		write(false)
+		h.cli(t, "status")
+		h.requireNoRequests(t, 500*time.Millisecond)
+		if _, err := os.Stat(filepath.Join(h.home, "analytics-id")); !os.IsNotExist(err) {
+			t.Fatal("a disabled temporary service created an analytics identity")
+		}
+	})
+	h.run(t, "identity-persists-across-temporary-restarts", func(t *testing.T) {
+		write(true)
+		for i := 1; i <= 3; i++ {
+			h.cli(t, "status")
+			h.eventually(t, func() bool { return h.eventCount("app_started") >= i })
+		}
+		ids := map[string]bool{}
+		starts := 0
+		for _, ev := range h.analytics() {
+			ids[ev["distinct_id"].(string)] = true
+			if ev["event"] == "app_started" {
+				starts++
+			}
+		}
+		if len(ids) != 1 {
+			t.Fatalf("temporary restarts produced %d analytics identities", len(ids))
+		}
+		if starts != 3 {
+			t.Fatalf("expected one process start per temporary service, got %d", starts)
+		}
+		if _, err := os.Stat(filepath.Join(h.home, "analytics-id")); err != nil {
+			t.Fatalf("identity file missing: %v", err)
+		}
+		h.assertPostHogPrivacy(t)
+	})
+}

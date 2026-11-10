@@ -19,13 +19,13 @@ Custom or portable v1 directories outside the known paths require `--source`. Na
 
 ## Verification
 
-The release process E2E passed 39 checks. It runs actual Go programs, npm pack/install and the shipped migration helper. A temporary home and pseudoterminals establish directory detection and clean JSON behavior. The migration source uses the existing fixed encrypted Rust fixture. No personal profile or system credential is accessed.
+The release process E2E passed 40 checks. It runs actual Go programs, npm pack/install and the shipped migration helper. A temporary home and pseudoterminals establish directory detection and clean JSON behavior. The migration source uses the existing fixed encrypted Rust fixture. No personal profile or system credential is accessed.
 
-Migration acceptance covers offline help, preflight without a target, partial import with exit 3, source hash preservation, repaired-record resume and duplicate-free retries. The final replay and source hashes are recorded in the [small check receipt](baselines/0018-cli-upgrade-checks.json).
+Migration acceptance covers offline help, preflight without a target, partial import with exit 3, source hash preservation, repaired-record resume and duplicate-free retries. The final replay used clean commit `4f4f846449aa58fe239a91d0413b0ac6220db660`. Its 41 source hashes match the worktree. The final replay and source hashes are recorded in the [small check receipt](baselines/0018-cli-upgrade-checks.json).
 
 Production headless E2E passed in 47.31 seconds. Full Go race tests passed with `TMPDIR=/private/tmp`. The initial broad run had one subprocess receive timeout; the focused replay and subsequent full run passed. The canonical temp directory avoids the previously observed macOS symlinked-temp cache failures.
 
-Changed-package lint, formatting, Ruff and actionlint passed. Full repository lint still has the previously documented unrelated findings; see the check receipt for the current result. No unit tests were added or changed.
+Changed-package lint, formatting, Ruff and actionlint passed. Full repository lint still has 39 previously documented unrelated findings; the output is identical to the independent original-source result. No unit tests were added or changed.
 
 Replay:
 

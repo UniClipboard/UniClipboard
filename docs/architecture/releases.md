@@ -12,7 +12,7 @@ paths:
   - .github/workflows/build-cli.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 53edbbcac0c259abcb02afeeecbb2f2ee1a14b60
+verified: 4f4f846449aa58fe239a91d0413b0ac6220db660
 ---
 # Product builds and CLI releases
 
@@ -22,7 +22,7 @@ verified: 53edbbcac0c259abcb02afeeecbb2f2ee1a14b60
 
 `go run ./tools/package -product cli` builds `unic`, `unicd` and `unic-migrate` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 
-All three program entrypoints handle `--version` and `--version --json` before initialization. Release builds embed version, build number and source SHA. Development builds report `dev` unless packaging supplies metadata.
+All runtime programs and the migration helper handle `--version` and `--version --json` before initialization. Release builds embed version, build number and source SHA. Development builds report `dev` unless packaging supplies metadata.
 
 CLI assembly uses the existing npm main/platform-package model. `@uniclipboard/cli` pins every optional platform package to the exact `<version>-build.<number>` registry version. Both npm CLI command names use one launcher. The package also exposes `unicd` through a dedicated service entrypoint. The launcher executes the real CLI beside its sibling service. Alpha selects the npm `alpha` dist-tag. Stable selects `latest`. Channel names do not enter package versions.
 

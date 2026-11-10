@@ -34,7 +34,7 @@ paths:
   - e2e/cli/observability_e2e_test.go
   - e2e/cli/sync_observability_e2e_test.go
   - e2e/syncpath
-verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
+verified: 49004a6ab7cb9265a568e12c5af0bc5c4bd6207b
 ---
 # Client logs, metrics and product analytics
 

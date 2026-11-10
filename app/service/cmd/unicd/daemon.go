@@ -22,7 +22,7 @@ import (
 )
 
 // Production service entry. No graphical runtime is loaded.
-func runDaemon() error {
+func runDaemon(mode servicelifecycle.Mode) error {
 	dir, err := paths.Dir()
 	if err != nil {
 		return err
@@ -45,9 +45,18 @@ func runDaemon() error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	owned := len(os.Args) == 2 && os.Args[1] == "--desktop-owned"
-	if owned {
+	var generation [16]byte
+	if _, err := rand.Read(generation[:]); err != nil {
+		return err
+	}
+	lifecycle := servicelifecycle.New(servicelifecycle.Instance{
+		ID: hex.EncodeToString(generation[:]), PID: os.Getpid(), Directory: dir, Mode: mode,
+	}, cancel)
+	switch mode {
+	case servicelifecycle.ModeDesktop:
 		go servicelifecycle.WatchOwner(os.Stdin, cancel)
+	case servicelifecycle.ModeCLITemporary:
+		go lifecycle.WatchInitialOwner(os.Stdin)
 	}
 	options := host.Options{Dir: dir, Settings: settings, LuaDir: luaDir, Observability: observability.ReleaseOptions(settings.Current().Telemetry.Endpoint)}
 	if err := configureDaemon(&options); err != nil {
@@ -83,17 +92,11 @@ func runDaemon() error {
 	}
 	go func() { _ = settings.Watch(ctx) }()
 	mux := http.NewServeMux()
-	var generation [16]byte
-	if _, err := rand.Read(generation[:]); err != nil {
-		return err
-	}
-	servicelifecycle.Register(mux, servicelifecycle.Instance{
-		ID: hex.EncodeToString(generation[:]), PID: os.Getpid(), Directory: dir, DesktopOwned: owned,
-	}, cancel)
+	lifecycle.Register(mux)
 	mux.Handle("/", server.Handler(n, settings))
 	daemonTestRoutes(ctx, mux, n, sock)
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second}
-	go func() { <-ctx.Done(); _ = server.Close() }()
+	go func() { <-ctx.Done(); retireHold(); _ = server.Close() }()
 	err = server.Serve(ln)
 	if err == http.ErrServerClosed {
 		return nil

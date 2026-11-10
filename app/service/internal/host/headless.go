@@ -26,6 +26,10 @@ func (n *Node) Submission(ctx context.Context, id string) (engine.SubmissionResu
 	v, e := n.e.GetSubmission(ctx, engine.RequestID(id))
 	return v, apiErr0(e)
 }
+func (n *Node) Operation(ctx context.Context, id string) (engine.Operation, error) {
+	v, e := n.e.GetOperation(ctx, engine.OperationID(id))
+	return v, apiErr0(e)
+}
 func (n *Node) Capabilities(ctx context.Context) (engine.Capabilities, error) {
 	v, e := n.e.GetCapabilities(ctx)
 	return v, apiErr0(e)

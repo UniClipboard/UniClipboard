@@ -69,5 +69,11 @@ func runLogLevels(ctx context.Context, c *api.Client, args []string) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(state)
+	if err := json.NewEncoder(os.Stdout).Encode(state); err != nil {
+		return err
+	}
+	if level != "reset" {
+		return holdOverride(ctx, c, *target, state)
+	}
+	return nil
 }

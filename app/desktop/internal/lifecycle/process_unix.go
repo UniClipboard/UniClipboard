@@ -4,10 +4,9 @@ package lifecycle
 
 import (
 	"os/exec"
-	"syscall"
+
+	"github.com/uniclipboard/unic/internal/servicelaunch"
 )
 
-func configureProcess(cmd *exec.Cmd) {
-	// Logging out of the launching terminal must not terminate a lightweight service.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-}
+// configureProcess detaches the service so logging out of the launching terminal does not stop it.
+func configureProcess(cmd *exec.Cmd) { servicelaunch.ConfigureProcess(cmd) }

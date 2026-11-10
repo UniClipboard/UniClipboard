@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
@@ -19,23 +19,9 @@ import (
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 )
 
-func client() (*api.Client, error) {
-	sock, err := paths.Socket()
-	if err != nil {
-		return nil, err
-	}
-	return api.NewClient(sock), nil
-}
-
-func runCLI(cmd string, args []string) error {
-	c, err := client()
-	if err != nil {
-		return err
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	short, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+func runCLI(ctx context.Context, c *api.Client, cmd string, args []string) error {
+	// Request deadlines come from the client transport and start after service acquisition.
+	short := ctx
 
 	switch cmd {
 	case "submit":
@@ -83,6 +69,9 @@ func runCLI(cmd string, args []string) error {
 			return err
 		}
 		fmt.Println(ticket)
+		if current.temporary() {
+			fmt.Fprintln(os.Stderr, "this address works only while a unic service runs; start unicd to keep it reachable.")
+		}
 
 	case "cache":
 		if len(args) > 1 || (len(args) == 1 && args[0] != "--json") {
@@ -163,6 +152,7 @@ func runCLI(cmd string, args []string) error {
 		} else {
 			fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
 		}
+		return awaitPairing(ctx, c, p)
 
 	case "code":
 		code, err := c.NewCode(short)
@@ -171,6 +161,7 @@ func runCLI(cmd string, args []string) error {
 		}
 		fmt.Printf("%s\n\nOn the other device: `unic join %s` (or 加入其他设备 in the window).\n", code.Display(), strings.ReplaceAll(code.Code, "-", ""))
 		fmt.Printf("Valid until %s, for one device. It then shows up in `unic requests`;\ncompare the fingerprints on both devices before you approve it.\n", code.Expires().Format("15:04:05"))
+		return holdInvitation(ctx, c, code)
 
 	case "join":
 		if len(args) == 0 {
@@ -185,6 +176,7 @@ func runCLI(cmd string, args []string) error {
 		} else {
 			fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
 		}
+		return awaitPairing(ctx, c, p)
 
 	case "requests":
 		ps, err := c.Pending(short)
@@ -292,6 +284,11 @@ func runCLI(cmd string, args []string) error {
 			t := time.Unix(ev.Time, 0).Format("15:04:05")
 			fmt.Printf("%s %-9s %s %s\n", t, ev.Kind, ev.Peer, ev.Info)
 		})
+		var acquire *acquireError
+		if ctx.Err() == nil && !errors.As(err, &acquire) && !errors.Is(err, api.ErrNoDaemon) {
+			// The stream ended without a cancel: the service stopped or was replaced.
+			return &incompleteError{"the service stopped or was replaced; the event stream ended"}
+		}
 		return err
 
 	default:

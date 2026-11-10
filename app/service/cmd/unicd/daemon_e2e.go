@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/uniclipboard/unic/app/service/internal/host"
@@ -14,7 +15,18 @@ import (
 	"github.com/uniclipboard/unic/internal/testboard"
 )
 
+// retireHold keeps the listener open after shutdown starts so a test can meet a retiring generation.
+func retireHold() {
+	if ms, err := strconv.Atoi(os.Getenv("UNIC_E2E_RETIRE_HOLD_MS")); err == nil && ms > 0 {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
+}
+
 func configureDaemon(o *host.Options) error {
+	// A slow startup lets a test kill the launching CLI before readiness.
+	if ms, err := strconv.Atoi(os.Getenv("UNIC_E2E_START_DELAY_MS")); err == nil && ms > 0 {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
 	if os.Getenv("UNIC_E2E_POSTHOG") == "true" {
 		o.Observability.Token = func(context.Context) (string, error) { return "phc_unic_e2e_only", nil }
 		o.Observability.AnalyticsInterval = 100 * time.Millisecond

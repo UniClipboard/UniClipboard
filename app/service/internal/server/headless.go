@@ -45,6 +45,14 @@ func headlessRoutes(mux *http.ServeMux, b api.Backend) {
 		}
 		reply(w, 200, v)
 	})
+	mux.HandleFunc("GET /v1/operations/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := h.Operation(r.Context(), r.PathValue("id"))
+		if e != nil {
+			fail(w, 500, e)
+			return
+		}
+		reply(w, 200, v)
+	})
 	mux.HandleFunc("GET /v1/received", func(w http.ResponseWriter, r *http.Request) {
 		v, e := h.Received(r.Context())
 		if e != nil {

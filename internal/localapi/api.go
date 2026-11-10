@@ -310,7 +310,7 @@ type Client struct {
 }
 
 // ErrNoDaemon means nothing listens on the socket.
-var ErrNoDaemon = errors.New("the unic daemon is not running (start it with `unicd`)")
+var ErrNoDaemon = errors.New("the unic service is not running")
 
 func NewClient(socket string) *Client {
 	return &Client{Path: socket, hc: &http.Client{Transport: &http.Transport{
@@ -319,6 +319,11 @@ func NewClient(socket string) *Client {
 			return d.DialContext(ctx, "unix", socket)
 		},
 	}}}
+}
+
+// WrapTransport lets a caller run work before or around every request.
+func (c *Client) WrapTransport(wrap func(http.RoundTripper) http.RoundTripper) {
+	c.hc.Transport = wrap(c.hc.Transport)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
@@ -75,16 +76,36 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 	}
 	// Print the key before the request so a caller can query an interrupted submission.
 	fmt.Fprintln(os.Stderr, "request_id="+*request)
+	connectOpportunity(ctx, c)
 	out, err := c.Submit(ctx, api.SubmitInput{RequestID: *request, Snapshot: s})
 	if err != nil {
 		return err
 	}
-	if *asJSON {
-		return json.NewEncoder(os.Stdout).Encode(out)
+	// The submission is committed once. Only this command's own operation is observed.
+	outcome, op, err := awaitSend(ctx, c, out.OperationID)
+	if err != nil {
+		return err
 	}
-	fmt.Printf("request_id=%s history_id=%s phase=%s sync=%s\n", out.RequestID, out.HistoryID, out.Phase, out.SyncDisposition)
-	return nil
+	if *asJSON {
+		if err := json.NewEncoder(os.Stdout).Encode(submitReport{Submission: out, Send: sendReport{Outcome: outcome, Operation: op}}); err != nil {
+			return err
+		}
+	} else {
+		fmt.Printf("request_id=%s history_id=%s phase=%s sync=%s send=%s\n", out.RequestID, out.HistoryID, out.Phase, out.SyncDisposition, outcome)
+	}
+	return sendIncomplete(outcome, *request)
 }
+
+// submitReport keeps local commit and network outcome as separate fields.
+type submitReport struct {
+	Submission engine.SubmissionResult `json:"submission"`
+	Send       sendReport              `json:"send"`
+}
+type sendReport struct {
+	Outcome   string            `json:"outcome"`
+	Operation *engine.Operation `json:"operation,omitempty"`
+}
+
 func runReceived(ctx context.Context, c *api.Client, args []string) error {
 	if len(args) == 0 || args[0] == "list" {
 		v, e := c.Received(ctx)

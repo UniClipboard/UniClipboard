@@ -123,6 +123,7 @@ type applyTicket struct {
 	kind               DiagnosticContentKind
 	diagnosticRecorded bool
 	userRestore        bool
+	sourceKind         string
 	token              ApplyToken
 	receipt            ReceiptID
 	history            HistoryID // set instead of receipt when applying a stored record
@@ -462,9 +463,14 @@ func (e *Engine) appliable(c *contentObj, sy BackendSyncPolicy) bool {
 func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 	var diagnostic *DiagnosticRecord
 	var restored bool
+	var remote bool
+	var sourceKind string
 	defer func() {
 		if restored {
-			e.productEvent(ctx, ProductEvent{Name: "history_applied", Result: "succeeded"})
+			e.productEvent(ctx, ProductEvent{Name: "history_applied", Result: "succeeded", SourceKind: sourceKind})
+		}
+		if remote {
+			e.productEvent(ctx, ProductEvent{Name: "remote_content_applied", Result: "succeeded"})
 		}
 		if diagnostic != nil {
 			e.diagnostic(ctx, *diagnostic)
@@ -533,6 +539,8 @@ func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 		}
 		diagnostic = e.claimApplyDiagnosticLocked(t, result, code)
 		restored = t.userRestore && !t.dead && state == ApplyApplied
+		sourceKind = t.sourceKind
+		remote = t.rc != nil && t.rc.PeerID != "" && t.rc.ChannelID == "" && !t.dead && state == ApplyApplied
 		if t.rc != nil && !t.dead {
 			t.rc.locked, t.rc.ApplyState = false, state
 		}

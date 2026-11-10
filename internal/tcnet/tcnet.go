@@ -26,8 +26,11 @@ var ErrBadAddress = session.ErrBadAddress
 const Port = 7777
 
 type Transport struct {
-	dir  string
-	logf func(string, ...any)
+	statusMu     sync.Mutex
+	statusReady  bool
+	statusClosed bool
+	dir          string
+	logf         func(string, ...any)
 
 	srv       *tailcat.Server
 	clientKey key.NodePrivate
@@ -80,6 +83,9 @@ func (t *Transport) Start() error {
 	if err := t.srv.Start(); err != nil {
 		return fmt.Errorf("start tailcat: %w", err)
 	}
+	t.statusMu.Lock()
+	t.statusReady = !t.statusClosed
+	t.statusMu.Unlock()
 	addr := string(t.srv.TailcatAddr())
 	t.mu.Lock()
 	t.addr = addr
@@ -98,7 +104,12 @@ func (t *Transport) Start() error {
 	return nil
 }
 
-func (t *Transport) Close() error { return t.srv.Close() }
+func (t *Transport) Close() error {
+	t.statusMu.Lock()
+	defer t.statusMu.Unlock()
+	t.statusClosed = true
+	return t.srv.Close()
+}
 
 func (t *Transport) Listen(ctx context.Context) (net.Listener, error) {
 	return t.srv.Listen(ctx, "tcp", fmt.Sprintf(":%d", Port))

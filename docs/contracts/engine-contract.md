@@ -471,3 +471,16 @@ After acquiring the profile lock, New removes plain directories named `unic-recv
 The scan preserves other entries and does not follow symbolic links during recursive deletion.
 Cleanup failure prevents startup. Retained file-cache payloads remain governed by their ledger and history holders.
 Dismissing Received or closing Engine does not delete a payload still referenced by history.
+
+
+## Product result classification (0020)
+
+`ProductEvent.SourceKind` is a finite category: `local`, `remote`, `external`,
+`action`, `migration`, or `unknown`. Explicit history application freezes this
+category from the selected stored origin in its application ticket. It emits one
+`history_applied` event only after an accepted successful application result.
+Successful remote-device receipt application emits `remote_content_applied` instead.
+History application never emits that receipt event. Duplicate reports emit neither
+again. These callbacks preserve the existing outside-state-lock and panic-isolation
+rules. The service owns daily admission, persistence and operational volume.
+See the [observability contract](observability-contract.md#11-tailcat-sync-diagnostics-0020).

@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/syncdiag"
 	"github.com/uniclipboard/unic/internal/wire"
 	"github.com/uniclipboard/unic/plugin"
 	"github.com/uniclipboard/unic/plugin/rpc"
@@ -48,6 +49,7 @@ type Transport interface {
 }
 
 type Config struct {
+	Observer  syncdiag.Observer
 	Transport Transport
 	Logf      func(format string, args ...any)
 }
@@ -68,23 +70,25 @@ const (
 // Backend is the session layer. The Engine binds it, then drives it with
 // state snapshots: the network is up exactly while the latest state is active.
 type Backend struct {
-	cfg  Config
-	auth plugin.PeerAuthority
-	recv plugin.PeerReceiver
+	closing bool
+	cfg     Config
+	auth    plugin.PeerAuthority
+	recv    plugin.PeerReceiver
 
 	life sync.Mutex // serializes bringing the network up and down
 
-	mu       sync.Mutex
-	bound    bool
-	self     string
-	st       rpc.SyncState
-	trTried  bool          // Transport.Start was ever called; Close must release it
-	trUsed   bool          // Transport.Start was called
-	trDone   chan struct{} // closed when that call returned
-	run      *runState     // non-nil while the network is up
-	sessions map[string]*session
-	dialers  map[string]*dialer
-	gen      uint64
+	mu         sync.Mutex
+	bound      bool
+	self       string
+	st         rpc.SyncState
+	trTried    bool          // Transport.Start was ever called; Close must release it
+	trUsed     bool          // Transport.Start was called
+	trDone     chan struct{} // closed when that call returned
+	run        *runState     // non-nil while the network is up
+	recoveries map[string]recoveryObservation
+	sessions   map[string]*session
+	dialers    map[string]*dialer
+	gen        uint64
 }
 
 // runState is one up period of the network.
@@ -100,7 +104,7 @@ func New(cfg Config) *Backend {
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {} // session logs name devices; never default to the global logger
 	}
-	return &Backend{cfg: cfg, sessions: map[string]*session{}, dialers: map[string]*dialer{}}
+	return &Backend{cfg: cfg, recoveries: map[string]recoveryObservation{}, sessions: map[string]*session{}, dialers: map[string]*dialer{}}
 }
 
 func (b *Backend) logf(f string, a ...any) { b.cfg.Logf(f, a...) }
@@ -163,7 +167,13 @@ func (b *Backend) up(ctx context.Context) error {
 		b.trDone = make(chan struct{})
 		done := b.trDone
 		res := make(chan error, 1)
-		go func() { res <- b.cfg.Transport.Start(); close(done) }()
+		go func() {
+			epoch, start := b.epoch(), time.Now()
+			err := b.cfg.Transport.Start()
+			b.attempt(epoch, "network_start", "none", start, err, "")
+			res <- err
+			close(done)
+		}()
 		b.mu.Unlock()
 		select {
 		case err := <-res:
@@ -196,6 +206,7 @@ func (b *Backend) up(ctx context.Context) error {
 // down closes the listener, every connection and every goroutine of the run.
 // The transport stays up: the tunnel is restarted only by a new process.
 func (b *Backend) down() {
+	epoch := b.epoch()
 	b.life.Lock()
 	defer b.life.Unlock()
 	b.mu.Lock()
@@ -219,19 +230,39 @@ func (b *Backend) down() {
 	if r == nil {
 		return
 	}
+	for _, s := range ss {
+		why := "suspension"
+		b.mu.Lock()
+		if b.closing {
+			why = "local_stop"
+		}
+		b.mu.Unlock()
+		s.closeWith(why)
+	}
 	r.cancel()
 	_ = r.ln.Close()
-	for _, s := range ss {
-		s.close()
-	}
 	for _, c := range conns {
 		_ = c.Close()
 	}
 	r.wg.Wait()
+	b.mu.Lock()
+	recoveries := b.recoveries
+	b.recoveries = map[string]recoveryObservation{}
+	b.mu.Unlock()
+	for _, rec := range recoveries {
+		if epoch != 0 && rec.epoch == epoch {
+			b.emit(syncdiag.Record{Epoch: epoch, Kind: "recovery", Result: "interrupted"})
+		}
+	}
 }
+
+// ExpectStop marks the host's authoritative local shutdown before Engine
+// withdraws active state. It changes only diagnostic classification.
+func (b *Backend) ExpectStop() { b.mu.Lock(); b.closing = true; b.mu.Unlock() }
 
 // Close takes everything down, including the transport.
 func (b *Backend) Close(context.Context) error {
+	b.ExpectStop()
 	b.down()
 	b.mu.Lock()
 	used, done := b.trTried, b.trDone
@@ -297,7 +328,7 @@ func (b *Backend) Connect(ctx context.Context, c rpc.Connect) (rpc.ConnectResult
 	if c.Address == b.cfg.Transport.Addr() {
 		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeInvalidArgument)
 	}
-	conn, err := b.cfg.Transport.Dial(ctx, c.Address)
+	conn, err := b.dial(ctx, c.Address)
 	if err != nil {
 		if errors.Is(err, ErrBadAddress) {
 			return rpc.ConnectResult{}, rpc.NewError(rpc.CodeInvalidArgument)
@@ -339,15 +370,32 @@ func asRPC(err error) error {
 // ---- handshake ----
 
 type hsResult struct {
-	peerID string
-	remote bool     // the device allows us
-	sess   *session // set when both allow
+	peerID   string
+	decision string
+	remote   bool     // the device allows us
+	sess     *session // set when both allow
 }
 
 // handshake exchanges hellos, then identity proofs, then verdicts, with the
 // Engine's authority doing every check. expect is the DeviceID the peer must
 // prove ("" accepts any); attempt is the Engine's explicit attempt, if any.
-func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, outgoing bool, dialed, expect string, attempt *string) (*hsResult, error) {
+func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, outgoing bool, dialed, expect string, attempt *string) (result *hsResult, failure error) {
+	epoch, start := b.epoch(), time.Now()
+	defer func() {
+		dir := "incoming"
+		if outgoing {
+			dir = "outgoing"
+		}
+		status := ""
+		if failure == nil && result != nil && result.sess == nil {
+			status = "pending"
+			if result.decision == "reject" {
+				status = "rejected"
+			}
+		}
+		b.attempt(epoch, "identity_handshake", dir, start, failure, status)
+	}()
+
 	auth := b.authority()
 	if auth == nil {
 		return nil, rpc.NewError(rpc.CodeUnavailable)
@@ -433,7 +481,7 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 		return nil, err
 	}
 	local := dec.Decision == "allow"
-	res := &hsResult{peerID: dec.PeerID}
+	res := &hsResult{peerID: dec.PeerID, decision: dec.Decision}
 	go func() { werr <- w.WriteJSON(wire.Verdict{T: "verdict", OK: local}) }()
 	var vd wire.Verdict
 	rerr := readTyped(w, "verdict", &vd)
@@ -521,16 +569,21 @@ func (b *Backend) acceptLoop(r *runState) {
 // ---- sessions ----
 
 type session struct {
-	b         *Backend
-	r         *runState
-	conn      net.Conn
-	w         *wire.Conn
-	connID    string
-	token     string
-	peerID    string
-	outgoing  bool
-	trustRev  uint64
-	introWake chan struct{}
+	observation sessionObservation // protected by b.mu
+	endMu       sync.Mutex
+	endReason   string
+	endEpoch    uint64
+	ended       time.Time
+	b           *Backend
+	r           *runState
+	conn        net.Conn
+	w           *wire.Conn
+	connID      string
+	token       string
+	peerID      string
+	outgoing    bool
+	trustRev    uint64
+	introWake   chan struct{}
 
 	wmu    sync.Mutex // one writer
 	done   chan struct{}
@@ -548,12 +601,7 @@ func (s *session) isDone() bool {
 	}
 }
 
-func (s *session) close() {
-	s.once.Do(func() {
-		close(s.done)
-		_ = s.conn.Close()
-	})
-}
+func (s *session) close() { s.closeWith("io_failure") }
 
 // event reports a connection state to the Engine.
 func (s *session) event(state string) error {
@@ -586,6 +634,7 @@ func (b *Backend) dialerOf(s *session) string {
 // establish makes s the session of its peer, unless a better one exists, and
 // reports the connection to the Engine. It reports false when s was dropped.
 func (b *Backend) establish(r *runState, s *session) bool {
+	epoch, now := b.epoch(), time.Now()
 	b.mu.Lock()
 	old := b.sessions[s.peerID]
 	if old != nil && !old.isDone() && b.dialerOf(old) <= b.dialerOf(s) {
@@ -607,13 +656,27 @@ func (b *Backend) establish(r *runState, s *session) bool {
 		close(s.exited)
 		return false
 	}
+	now = time.Now()
 	replaced := b.sessions[s.peerID]
 	s.introWake = make(chan struct{}, 1)
 	b.sessions[s.peerID] = s
+	s.observation = sessionObservation{epoch: epoch, started: now, observed: now}
+	recovery, recovered := b.recoveries[s.peerID]
+	delete(b.recoveries, s.peerID)
 	r.wg.Add(1)
 	b.mu.Unlock()
+	if recovered && epoch != 0 {
+		result := "recovered"
+		duration := now.Sub(recovery.started)
+		if recovery.epoch != epoch {
+			result = "interrupted"
+			duration = 0
+		}
+		b.emit(syncdiag.Record{Epoch: epoch, Kind: "recovery", Result: result, Duration: duration})
+	}
+	b.wakeObservation()
 	if replaced != nil {
-		replaced.close() // its serve goroutine reports the end
+		replaced.closeWith("state_replacement") // its serve goroutine reports the end
 	}
 	go func() { defer r.wg.Done(); b.serve(s) }()
 	return true
@@ -624,13 +687,9 @@ func (b *Backend) serve(s *session) {
 	introDone := make(chan struct{})
 	go func() { defer close(introDone); s.introduceLoop() }()
 	err := b.recvLoop(s)
-	s.close()
+	s.closeWith(reason(err))
 	<-introDone
-	b.mu.Lock()
-	if b.sessions[s.peerID] == s {
-		delete(b.sessions, s.peerID)
-	}
-	b.mu.Unlock()
+	b.endObservation(s)
 	_ = s.event("disconnected")
 	close(s.exited)
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) { // recvLoop always returns an error
@@ -716,7 +775,7 @@ func (s *session) sendIntroductions() error {
 
 // Send writes one clip to the connection s names. The Engine authorizes it
 // last, immediately before the first byte, and hands out each part once.
-func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) error {
+func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (failure error) {
 	b.mu.Lock()
 	sess := b.sessions[m.PeerID]
 	b.mu.Unlock()
@@ -730,6 +789,21 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) e
 	if err != nil {
 		return err
 	}
+	epoch := b.epoch()
+	size, kind := clipMeasurement(m.Clip.Parts)
+	b.emit(syncdiag.Record{Epoch: epoch, Kind: "transfer_size", Direction: "outgoing", Declared: size, ContentKind: kind})
+	startPath := sess.startPath(epoch)
+	var body wire.BodyObservation
+	defer func() {
+		result := "succeeded"
+		if failure != nil {
+			result = "failed"
+			if ctx.Err() != nil {
+				result = "cancelled"
+			}
+		}
+		b.emit(syncdiag.Record{Epoch: epoch, Kind: "transfer", Direction: "outgoing", Result: result, Declared: size, Bytes: body.Bytes, Duration: body.Duration(), Path: startPath})
+	}()
 	var open []io.Closer
 	defer func() {
 		for _, c := range open {
@@ -756,7 +830,7 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) e
 	defer sess.wmu.Unlock()
 	stop := context.AfterFunc(ctx, sess.close) // a cancelled send leaves the stream out of step
 	defer stop()
-	if err := sess.w.SendStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out); err != nil {
+	if err := sess.w.SendStreamObserved(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, &body); err != nil {
 		sess.close() // the stream may be out of step: start over
 		if srcErr != nil {
 			return srcErr // the content failed, not the network
@@ -843,17 +917,32 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 	if err != nil || g.Decision != rpc.DecisionAccept || g.ReceiveID == nil {
 		return s.w.Discard(m)
 	}
-	parts := &recvParts{w: s.w, m: m}
-	_, _ = rcv.Receive(ctx, *g.ReceiveID, parts) // a clip the Engine refused is dropped; the connection stays
-	return parts.drain()
+	epoch := b.epoch()
+	size, kind := clipMeasurement(o.Clip.Parts)
+	path := s.startPath(epoch)
+	b.emit(syncdiag.Record{Epoch: epoch, Kind: "transfer_size", Direction: "incoming", Declared: size, ContentKind: kind})
+	body := &bodyObservation{}
+	parts := &recvParts{w: s.w, m: m, observation: body}
+	result, recvErr := rcv.Receive(ctx, *g.ReceiveID, parts)
+	drainErr := parts.drain()
+	status := "succeeded"
+	if recvErr != nil || result != rpc.OutcomeCommit || drainErr != nil {
+		status = "failed"
+		if ctx.Err() != nil {
+			status = "cancelled"
+		}
+	}
+	b.emit(syncdiag.Record{Epoch: epoch, Kind: "transfer", Direction: "incoming", Result: status, Declared: size, Bytes: body.bytes, Duration: body.duration(), Path: path})
+	return drainErr
 }
 
 // recvParts serves the bodies of an admitted clip to the Engine in order.
 type recvParts struct {
-	w    *wire.Conn
-	m    *wire.Clip
-	next int
-	cur  *recvBody
+	observation *bodyObservation
+	w           *wire.Conn
+	m           *wire.Clip
+	next        int
+	cur         *recvBody
 }
 
 type recvBody struct {
@@ -889,7 +978,11 @@ func (p *recvParts) Next(ctx context.Context) (int, io.ReadCloser, error) {
 	i := p.next
 	p.next++
 	size := p.m.Parts[i].Size
-	p.cur = &recvBody{r: p.w.Body(size), left: size}
+	var reader io.Reader = p.w.Body(size)
+	if p.observation != nil {
+		reader = measuredReader{r: reader, o: p.observation}
+	}
+	p.cur = &recvBody{r: reader, left: size}
 	return i, p.cur, nil
 }
 
@@ -915,7 +1008,7 @@ func (p *recvParts) drain() error {
 	}
 	for ; p.next < len(p.m.Parts); p.next++ {
 		n := p.m.Parts[p.next].Size
-		if _, err := io.CopyN(io.Discard, p.w.Body(n), n); err != nil {
+		if _, err := io.CopyN(io.Discard, measuredReader{r: p.w.Body(n), o: p.observation}, n); err != nil {
 			return err
 		}
 	}
@@ -954,6 +1047,8 @@ func (b *Backend) kick(id string) {
 // lists (or lists under a changed authority) lose their session before this
 // returns, and every listed device with an address is dialed.
 func (b *Backend) reconcile() {
+	epoch := b.epoch()
+	var abandoned []recoveryObservation
 	b.mu.Lock()
 	r, st := b.run, b.st
 	if r == nil {
@@ -963,6 +1058,12 @@ func (b *Backend) reconcile() {
 	want := make(map[string]rpc.StatePeer, len(st.Peers))
 	for _, p := range st.Peers {
 		want[p.ID] = p
+	}
+	for id, rec := range b.recoveries {
+		if p, ok := want[id]; !ok || uint64(p.TrustRevision) != rec.trustRev {
+			abandoned = append(abandoned, rec)
+			delete(b.recoveries, id)
+		}
 	}
 	genChanged := uint64(st.NetworkGeneration) != b.gen
 	b.gen = uint64(st.NetworkGeneration)
@@ -985,8 +1086,13 @@ func (b *Backend) reconcile() {
 		}
 	}
 	b.mu.Unlock()
+	for _, rec := range abandoned {
+		if epoch != 0 && rec.epoch == epoch {
+			b.emit(syncdiag.Record{Epoch: epoch, Kind: "recovery", Result: "abandoned"})
+		}
+	}
 	for _, s := range drop {
-		s.close()
+		s.closeWith("revocation")
 		<-s.exited // the Engine has been told; nothing of it runs on
 	}
 	for _, p := range start {
@@ -1043,7 +1149,7 @@ func (b *Backend) keepDialing(r *runState, p rpc.StatePeer) {
 // dialOnce makes one attempt and reports whether a session came up.
 func (b *Backend) dialOnce(ctx context.Context, r *runState, p rpc.StatePeer) bool {
 	dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	conn, err := b.cfg.Transport.Dial(dctx, p.Address)
+	conn, err := b.dial(dctx, p.Address)
 	cancel()
 	if err != nil {
 		return false

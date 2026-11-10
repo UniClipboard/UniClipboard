@@ -29,12 +29,15 @@ func configureDaemon(o *host.Options) error {
 			return e
 		}
 		o.Transport = tr
+		syncFixtureTransport = tr
+		o.Observability.Now = syncFixtureNow
 	}
 	return nil
 }
 func daemonTestRoutes(ctx context.Context, mux *http.ServeMux, n *host.Node, sock string) {
 	if os.Getenv("UNIC_E2E_DIAGNOSTICS") == "1" {
 		testDiagnosticRoutes(mux, n)
+		syncFixtureRoutes(mux)
 	}
 	if d := os.Getenv("UNIC_MOCK_CLIPBOARD_DIR"); d != "" {
 		go func() { _ = clipboardintegration.RunRemote(ctx, api.NewClient(sock), testboard.Dir(d), nil) }()

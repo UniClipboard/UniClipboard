@@ -34,16 +34,22 @@ func safeVersion(v string) string {
 // analyticsGeneration retains no business object or caller context. A single
 // admission counter bounds all SDK queues, its batch and in-flight events.
 type analyticsGeneration struct {
-	c         *Controller
-	client    posthog.Client
-	ctx       context.Context
-	cancel    context.CancelFunc
-	mu        sync.Mutex
-	active    bool
-	pending   atomic.Int64
-	identity  string
-	transport *http.Transport
-	host      string
+	c            *Controller
+	client       posthog.Client
+	ctx          context.Context
+	cancel       context.CancelFunc
+	mu           sync.Mutex
+	active       bool
+	pending      atomic.Int64
+	identity     string
+	transport    *http.Transport
+	host         string
+	dailyWake    chan struct{}
+	dailyStop    chan struct{}
+	dailyDone    chan struct{}
+	dailyMarked  string
+	dailyPending string
+	dailyFailed  bool
 }
 
 func (c *Controller) newAnalytics() (*analyticsGeneration, error) {
@@ -83,6 +89,8 @@ func (c *Controller) newAnalytics() (*analyticsGeneration, error) {
 		return nil, errors.New("initialization_failed")
 	}
 	g.client = client
+	g.loadDaily()
+	go g.dailyWorker()
 	return g, nil
 }
 func (g *analyticsGeneration) Success(posthog.APIMessage) { g.pending.Add(-1) }
@@ -96,7 +104,7 @@ func (g *analyticsGeneration) Failure(_ posthog.APIMessage, _ error) {
 }
 func validProductEvent(e engine.ProductEvent) bool {
 	switch e.Name {
-	case "app_started", "pairing_completed", "history_applied", "manual_send_completed", "action_completed":
+	case "app_started", "pairing_completed", "history_applied", "manual_send_completed", "action_completed", "remote_content_applied":
 	default:
 		return false
 	}
@@ -120,6 +128,11 @@ func validProductEvent(e engine.ProductEvent) bool {
 	default:
 		return false
 	}
+	switch e.SourceKind {
+	case "", "local", "remote", "external", "action", "migration", "unknown":
+	default:
+		return false
+	}
 	return e.Code == "" || validCode(string(e.Code))
 }
 
@@ -127,7 +140,19 @@ func validProductEvent(e engine.ProductEvent) bool {
 func (c *Controller) ProductEvent(_ context.Context, e engine.ProductEvent) {
 	c.mu.Lock()
 	g := c.analytics
+	metrics := c.metrics
 	c.mu.Unlock()
+	if e.Name == "remote_content_applied" && e.Result == "succeeded" && validProductEvent(e) && metrics != nil {
+		metrics.mu.Lock()
+		if metrics.active {
+			select {
+			case metrics.diagnostics <- metricRecord{remoteApplication: true}:
+			default:
+				c.drop(2, 0, 1)
+			}
+		}
+		metrics.mu.Unlock()
+	}
 	if g == nil {
 		return
 	}
@@ -135,6 +160,14 @@ func (c *Controller) ProductEvent(_ context.Context, e engine.ProductEvent) {
 		c.drop(3, 2, 1)
 		return
 	}
+	if e.Name == "remote_content_applied" {
+		g.notifyDaily()
+		return
+	}
+	g.enqueue(e)
+}
+func (g *analyticsGeneration) enqueue(e engine.ProductEvent) {
+	c := g.c
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !g.active {
@@ -163,6 +196,9 @@ func (c *Controller) ProductEvent(_ context.Context, e engine.ProductEvent) {
 	}
 	if e.ContentKind != "" {
 		props["content_kind"] = string(e.ContentKind)
+	}
+	if e.SourceKind != "" {
+		props["source_kind"] = e.SourceKind
 	}
 	if e.ActionCategory != "" {
 		props["action_category"] = e.ActionCategory
@@ -206,7 +242,7 @@ func (g *analyticsGeneration) RoundTrip(req *http.Request) (*http.Response, erro
 	for i := range batch.Events {
 		ev := &batch.Events[i]
 		p := posthog.Properties{}
-		for _, key := range []string{"schema_version", "product", "product_version", "os", "arch", "result", "code", "content_kind", "backend", "action_category"} {
+		for _, key := range []string{"schema_version", "product", "product_version", "os", "arch", "result", "code", "content_kind", "backend", "action_category", "source_kind"} {
 			if v, ok := ev.Properties[key]; ok {
 				p[key] = v
 			}
@@ -248,6 +284,8 @@ func (g *analyticsGeneration) stop(flush bool, ctx context.Context) {
 	g.mu.Lock()
 	g.active = false
 	g.mu.Unlock()
+	close(g.dailyStop)
+	<-g.dailyDone
 	if !flush {
 		g.cancel()
 	}
@@ -416,6 +454,9 @@ func (c *Controller) applyAnalytics(cfg Config) {
 			g.stop(false, context.Background())
 		}
 		err := clearAnalyticsIdentity(c.opts.Dir)
+		if dailyErr := clearDailyMarker(c.opts.Dir); err == nil {
+			err = dailyErr
+		}
 		c.mu.Lock()
 		c.identityReset = err != nil
 		c.states[3].State = "disabled"

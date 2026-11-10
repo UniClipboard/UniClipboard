@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/syncdiag"
 )
 
 // Options is host-only. Test hosts can shorten intervals without adding
 // production TOML switches. The production zero values enforce the contract.
 type Options struct {
+	Now func() time.Time
 	// LocalOutput mirrors already-sanitized JSON on the local worker only.
 	LocalOutput       func([]byte)
 	Dir               string
@@ -25,6 +27,9 @@ type Options struct {
 	AnalyticsInterval time.Duration
 }
 type Controller struct {
+	syncEpoch      uint64
+	syncWake       chan struct{}
+	syncCollector  func(uint64) ([]syncdiag.Record, bool)
 	failures       [4][7]uint64
 	effective      bool
 	lastLocalError time.Time
@@ -49,7 +54,7 @@ type Controller struct {
 }
 
 func New(o Options) *Controller {
-	c := &Controller{cfg: o.Config, endpoint: o.Config.Telemetry.Endpoint, opts: o, local: make(chan []byte, 1024), localStop: make(chan struct{}), localDone: make(chan struct{})}
+	c := &Controller{syncWake: make(chan struct{}, 1), cfg: o.Config, endpoint: o.Config.Telemetry.Endpoint, opts: o, local: make(chan []byte, 1024), localStop: make(chan struct{}), localDone: make(chan struct{})}
 	for i := range c.states {
 		c.states[i].State = "disabled"
 	}
@@ -201,6 +206,14 @@ func (c *Controller) Apply(cfg Config) {
 		if !want {
 			if g != nil {
 				g.stop(false, context.Background())
+				if i == 2 {
+					c.mu.Lock()
+					f := c.syncCollector
+					c.mu.Unlock()
+					if f != nil {
+						safeSyncCollect(f, 0)
+					}
+				}
 			}
 			c.mu.Lock()
 			c.states[i].State = "disabled"
@@ -242,6 +255,7 @@ func (c *Controller) Apply(cfg Config) {
 		}
 		c.mu.Unlock()
 	}
+	c.WakeSync()
 	c.applyAnalytics(cfg)
 	c.mu.Lock()
 	c.effective = cfg.Telemetry.Enabled

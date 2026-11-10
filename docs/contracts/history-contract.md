@@ -206,3 +206,15 @@ The [local service contract](local-service-contract.md) defines explicit submiss
 independent Action application and exclusive desktop adapter generations.
 A missing clipboard adapter does not restrict Engine import, commit, receive, history reads or export.
 Service restart invalidates local sessions and content leases.
+
+
+## History source analytics (0020)
+
+Successful explicit application uses the selected record's stored origin for the
+finite `history_applied.source_kind` property. Local system and explicit origins map
+to `local`; remote_device maps to `remote`; external, action and migration retain their
+categories. Unknown origins map to `unknown`. The application ticket retains this
+classification, so deleting the record after ticket creation does not change it.
+No source-device identity or history identifier enters analytics. This does not
+observe another application's paste or create an automatic-application event.
+See the [observability contract](observability-contract.md#111-product-value-and-daily-admission).

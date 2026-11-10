@@ -699,6 +699,12 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 		return ApplyTicket{}, lerr
 	}
 	defer e.cs.unref(c) // the ticket's lease holds its own reference
+	// Freeze source classification from the selected stored record before taking
+	// the application ticket; deletion later does not change the event source.
+	item, sourceErr := e.st.GetHistory(string(req.HistoryID), historyNow().UnixMilli(), false)
+	if sourceErr != nil {
+		return ApplyTicket{}, historyStoreErr(sourceErr)
+	}
 	e.obsMu.Lock()
 	defer e.obsMu.Unlock()
 	e.mu.Lock()
@@ -728,7 +734,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 	if !e.appliable(c, DefaultBackendPolicy()) {
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
-	t := &applyTicket{started: time.Now(), kind: diagnosticKind(c), token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID, userRestore: req.UserRestore}
+	t := &applyTicket{started: time.Now(), kind: diagnosticKind(c), token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID, userRestore: req.UserRestore, sourceKind: productSource(item.OriginKind)}
 	t.lease = e.newLease(c)
 	e.ticket = t
 	e.commitLocked(EventApply)

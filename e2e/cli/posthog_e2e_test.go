@@ -194,7 +194,7 @@ func (h *observabilityRun) assertPostHogPrivacy(t *testing.T) {
 		}
 		for k := range p {
 			switch k {
-			case "schema_version", "product", "product_version", "os", "arch", "result", "code", "content_kind", "backend", "action_category", "$process_person_profile", "$geoip_disable":
+			case "schema_version", "product", "product_version", "os", "arch", "result", "code", "content_kind", "backend", "action_category", "source_kind", "$process_person_profile", "$geoip_disable":
 			default:
 				t.Fatalf("unexpected SDK property %q", k)
 			}

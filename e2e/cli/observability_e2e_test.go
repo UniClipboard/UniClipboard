@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -240,6 +241,7 @@ type otlpRequest struct {
 	Authorized bool
 }
 type observabilityRun struct {
+	syncMetricStart  time.Time
 	responseDelay    time.Duration
 	responseLocation string
 	untrusted        bool
@@ -365,6 +367,9 @@ func (h *observabilityRun) stop(t *testing.T) {
 	select {
 	case err := <-h.done:
 		if err != nil {
+			if log, _ := os.ReadFile(filepath.Join(h.dir, "daemon.log")); strings.Contains(string(log), "WARNING: DATA RACE") {
+				t.Logf("race report: %s", log)
+			}
 			t.Errorf("daemon exit: %v", err)
 		}
 	case <-time.After(5 * time.Second):
@@ -542,6 +547,25 @@ func (h *observabilityRun) artifacts() {
 		binaryHashes[name] = string(v)
 	}
 	manifest["binaries_sha256"] = binaryHashes
+	daemonPath := filepath.Join(binDir, "unicd")
+	if h.executable != "" {
+		daemonPath = h.executable
+	}
+	if info, err := buildinfo.ReadFile(daemonPath); err == nil {
+		settings := map[string]string{}
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "-race", "-tags", "vcs.revision", "vcs.modified", "GOOS", "GOARCH":
+				settings[setting.Key] = setting.Value
+			}
+		}
+		manifest["daemon_build_settings"] = settings
+		manifest["daemon_race"] = settings["-race"] == "true"
+		if strings.Contains(settings["-tags"], "unic_e2e") {
+			manifest["test_daemon_build_tag"] = "unic_e2e"
+			manifest["production_release_assembly"] = false
+		}
+	}
 	if !manifest["source_unchanged"].(bool) {
 		h.t.Error("source files changed during the acceptance run")
 	}
@@ -580,7 +604,9 @@ go build -race -tags unic_e2e -o "$bin/unicd" ./app/service/cmd/unicd
 go build -race -o "$bin/unic" ./app/service/cmd/unic
 TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" go test -race ./e2e/cli -run TestObservability -count=1 -v
 `
-	if h.posthog {
+	if strings.HasPrefix(h.artifactName, "sync-") {
+		replay = strings.ReplaceAll(replay, "-run TestObservability", "-run '^TestSyncObservability($|Faults$)'")
+	} else if h.posthog {
 		replay = strings.ReplaceAll(replay, "-run TestObservability", "-run TestPostHog")
 	}
 	_ = os.WriteFile(filepath.Join(d, "replay.sh"), []byte(replay), 0700)
@@ -603,13 +629,18 @@ TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" go test -race ./e2e/cli -run 
 		_ = os.WriteFile(filepath.Join(d, "requests.redacted.json"), b, 0600)
 		b, _ = json.MarshalIndent(analytics, "", "  ")
 		_ = os.WriteFile(filepath.Join(d, "analytics.decoded.json"), b, 0600)
-		b, _ = json.MarshalIndent(map[string]any{"hosted": "NOT_RUN", "reason": "Cloud project and region not selected", "local_failed": h.t.Failed()}, "", "  ")
+		b, _ = json.MarshalIndent(map[string]any{"hosted": "NOT_RUN", "reason": "Hosted upload/read-back is separately authorized", "local_failed": h.t.Failed()}, "", "  ")
 		_ = os.WriteFile(filepath.Join(d, "hosted-receipt.json"), b, 0600)
 		exit := 0
 		if h.t.Failed() {
 			exit = 1
 		}
-		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": "unic_e2e", "test_selector": "^TestPostHog", "exit_code": exit}, "", "  ")
+		selector := "^TestPostHog"
+		if strings.HasPrefix(h.artifactName, "sync-") {
+			selector = "^TestSyncObservability$"
+			h.syncArtifacts(d, decoded)
+		}
+		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": "unic_e2e", "test_selector": selector, "exit_code": exit}, "", "  ")
 		_ = os.WriteFile(filepath.Join(d, "commands.json"), b, 0600)
 		entries, _ := os.ReadDir(d)
 		var sums strings.Builder
@@ -843,7 +874,7 @@ func observabilitySourceHashes(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "engine", "internal", "app/service", "app/desktop", "e2e/cli")
+	cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "Makefile", "engine", "internal", "app/service", "app/desktop", "e2e/cli", "e2e/syncpath")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)

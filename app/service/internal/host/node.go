@@ -54,6 +54,7 @@ type Options struct {
 // Node owns Engine, local sessions and configuration. It implements
 // api.Backend.
 type Node struct {
+	peer          *tailcat.Plugin
 	diagnostics   *observability.Controller
 	e             *engine.Engine
 	cfg           *config.Manager
@@ -93,10 +94,11 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	// Install the notification after Node exists. Its hub is allocated before
 	// Engine.New, so diagnostics may report initialization without a GUI.
-	n := &Node{}
+	n := &Node{peer: peer}
 	obsOpts.Changed = func() { n.hub.emit(api.Event{Kind: "diagnostics"}) }
 	diagnostics := observability.New(obsOpts)
 	n.diagnostics = diagnostics
+	peer.Observe(diagnostics)
 	opened := false
 	defer func() {
 		if !opened {
@@ -136,6 +138,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	diagnostics.SetSyncCollector(peer.Collect)
 	n.e = e
 	n.cfg = o.Settings
 	n.logf = func(string, ...any) { diagnostics.Logger().Error("host.failed", "code", "internal") }
@@ -184,6 +187,7 @@ func (n *Node) Start(ctx context.Context) error {
 
 // Close stops everything and releases the state directory.
 func (n *Node) Close(ctx context.Context) error {
+	n.peer.ExpectStop()
 	if n.cancel != nil {
 		n.cancel()
 	}

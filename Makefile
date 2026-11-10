@@ -38,3 +38,19 @@ posthog-e2e:
 	go build -race -tags unic_e2e -o .cache/0019/bin/unicd ./app/service/cmd/unicd
 	go build -race -o .cache/0019/bin/unic ./app/service/cmd/unic
 	TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=$(CURDIR)/.cache/0019/bin UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/0019/acceptance go test -race ./e2e/cli -run '^TestPostHog' -count=1 -v
+
+.PHONY: sync-observability-e2e
+sync-observability-e2e:
+	mkdir -p .cache/0020/bin
+	go build -race -tags unic_e2e -o .cache/0020/bin/unicd ./app/service/cmd/unicd
+	go build -race -o .cache/0020/bin/unic ./app/service/cmd/unic
+	TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN=$(CURDIR)/.cache/0020/bin UNIC_E2E_ARTIFACTS=$(CURDIR)/.cache/0020/acceptance go test -race ./e2e/cli -run '^TestSyncObservability($$|Faults$$)' -count=1 -v | tee .cache/0020/acceptance.run.log
+	rg -q '^--- PASS: TestSyncObservability ' .cache/0020/acceptance.run.log
+	rg -q '^--- PASS: TestSyncObservabilityFaults ' .cache/0020/acceptance.run.log
+
+.PHONY: sync-path-e2e
+sync-path-e2e:
+	mkdir -p .cache/0020/real-bin
+	go build -race -tags ts_omit_captiveportal,ts_omit_portmapper -o .cache/0020/real-bin/unicd ./app/service/cmd/unicd
+	UNIC_SYNC_PATH_E2E=1 UNIC_SYNC_PATH_BIN=$(CURDIR)/.cache/0020/real-bin UNIC_SYNC_PATH_ARTIFACTS=$(CURDIR)/.cache/0020/real-path go test -race ./e2e/syncpath -run '^TestPassivePaths$$' -count=1 -v | tee .cache/0020/real-path.run.log
+	rg -q '^--- PASS: TestPassivePaths ' .cache/0020/real-path.run.log

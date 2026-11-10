@@ -45,3 +45,4 @@
 | 0017 | [Automatic history cleanup](proposed/0017-history-auto-cleanup.md) | proposed (implemented; CLI accepted; native visual acceptance pending) | [pipeline](../architecture/pipeline.md), [history contract](../contracts/history-contract.md), [desktop-runtime](../architecture/desktop-runtime.md) |
 | 0018 | [Independent product builds and releases](proposed/0018-independent-product-build-and-release.md) | proposed (accepted design; implementation pending) | releases, release-contract |
 | 0019 | [PostHog Cloud integration](archive/0019-posthog-integration.md) | archive | observability, observability-contract |
+| 0020 | [Tailcat sync observability](proposed/0020-tailcat-sync-observability.md) | proposed (core implemented; local process/incoming real-stack accepted; Client status blocked upstream; acceptance gaps recorded) | [observability](../architecture/observability.md), [observability contract](../contracts/observability-contract.md) |

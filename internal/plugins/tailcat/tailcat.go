@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/internal/syncdiag"
 	"github.com/uniclipboard/unic/internal/tcnet"
 	"github.com/uniclipboard/unic/plugin"
 	"github.com/uniclipboard/unic/plugin/rpc"
@@ -22,9 +23,10 @@ const ID = "builtin.tailcat"
 
 // Plugin is the built-in backend.
 type Plugin struct {
-	tr  session.Transport // nil: the tailcat transport, created in Init
-	dir string
-	b   *session.Backend
+	observer syncdiag.Observer
+	tr       session.Transport // nil: the tailcat transport, created in Init
+	dir      string
+	b        *session.Backend
 }
 
 // New builds the production backend (tailcat transport).
@@ -45,6 +47,16 @@ func (p *Plugin) Init(context.Context, plugin.Host, plugin.Config) error {
 	if p.tr == nil {
 		t, err := tcnet.New(p.dir, func(string, ...any) {}) // tailcat's logs may name addresses
 		if err != nil {
+			if p.observer != nil {
+				func() {
+					defer func() { _ = recover() }()
+					reason := "unavailable"
+					if errors.Is(err, tcnet.ErrBadCredentials) {
+						reason = "unusable_credentials"
+					}
+					p.observer.RecordSync(syncdiag.Record{Epoch: p.observer.SyncEpoch(), Kind: "connection", Phase: "network_start", Direction: "none", Result: "failed", Reason: reason})
+				}()
+			}
 			if errors.Is(err, tcnet.ErrBadCredentials) {
 				return rpc.NewError("bad_credentials") // a damaged file is reported, never replaced
 			}
@@ -52,8 +64,23 @@ func (p *Plugin) Init(context.Context, plugin.Host, plugin.Config) error {
 		}
 		p.tr = t
 	}
-	p.b = session.New(session.Config{Transport: p.tr})
+	p.b = session.New(session.Config{Transport: p.tr, Observer: p.observer})
 	return nil
+}
+
+// Observe installs the host-owned finite observer before Init.
+func (p *Plugin) Observe(o syncdiag.Observer) { p.observer = o }
+func (p *Plugin) Collect(epoch uint64) ([]syncdiag.Record, bool) {
+	if p.b == nil {
+		return nil, false
+	}
+	return p.b.Collect(epoch)
+}
+
+func (p *Plugin) ExpectStop() {
+	if p.b != nil {
+		p.b.ExpectStop()
+	}
 }
 
 // Start does nothing: the network comes up with the first active state.

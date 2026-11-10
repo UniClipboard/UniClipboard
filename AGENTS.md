@@ -49,6 +49,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0016](docs/decisions/proposed/0016-sync-and-file-settings.md) | Sync and file settings | Sync and quota CLI/TOML implemented; 100 MB default file limit; custom received files remain user-managed; separate file cleanup superseded by 0017 |
 | [0017](docs/decisions/proposed/0017-history-auto-cleanup.md) | Automatic history cleanup | Unified age/count cleanup, tag exclusions, and managed-file/history deletion implemented; per-device cache quota retained; separate file-cleanup settings removed; 16 CLI E2E cases passed; native visual acceptance pending |
 | [0018](docs/decisions/proposed/0018-independent-product-build-and-release.md) | Independent product builds and releases | Android, iOS, CLI and Desktop own independent versions and separate build/release workflows; immutable artifacts and per-target channels. Implementation pending; see [execution plan](docs/exec/0018-independent-product-build-and-release.md). |
+| [0020](docs/decisions/proposed/0020-tailcat-sync-observability.md) | Tailcat sync observability | Connection/session/recovery metrics, payload measurements and remote-content value are implemented; incoming real-stack direct/DERP accepted. Public Client status is blocked upstream; remaining acceptance is recorded. Actual paste tracking is excluded; see [execution plan](docs/exec/0020-tailcat-sync-observability.md). |
 
 ### 接口契约（`docs/contracts/`）
 

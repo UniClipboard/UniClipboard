@@ -64,9 +64,10 @@ type targetKey struct {
 // filtered by that backend's policy. id and tsMs are shared by all backends
 // of a commit (the transfer identity of 0007 §6).
 type backendView struct {
-	set  sendSet
-	id   string
-	tsMs int64
+	set     sendSet
+	id      string
+	tsMs    int64
+	devices []DeviceID // non-empty: only these devices receive it
 }
 
 // backendHost is handed to a backend for one submission.
@@ -262,7 +263,7 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 				res.Disposition, res.Error = BackendFailed, lerr
 				break
 			}
-			queued, err := b.Submit(ctx, backendView{set: set, id: transfer, tsMs: tsMs}, host)
+			queued, err := b.Submit(ctx, backendView{set: set, id: transfer, tsMs: tsMs, devices: req.DeviceIDs}, host)
 			switch {
 			case queued:
 				res.Disposition = BackendQueued

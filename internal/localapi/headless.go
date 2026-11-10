@@ -15,6 +15,8 @@ import (
 type SubmitInput struct {
 	RequestID string        `json:"request_id"`
 	Snapshot  clip.Snapshot `json:"snapshot"`
+	// DeviceIDs limits the send to these paired devices; nil sends to all.
+	DeviceIDs []string `json:"device_ids,omitempty"`
 }
 type ActionInput struct {
 	RequestID string `json:"request_id"`

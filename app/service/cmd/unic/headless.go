@@ -17,12 +17,37 @@ import (
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
+// resolveDevice maps a device ID or exact name to a paired device ID.
+func resolveDevice(ctx context.Context, c *api.Client, ref string) (string, error) {
+	st, err := c.Status(ctx)
+	if err != nil {
+		return "", err
+	}
+	var hit []string
+	for _, p := range st.Peers {
+		if p.ID == ref {
+			return p.ID, nil
+		}
+		if p.Name == ref {
+			hit = append(hit, p.ID)
+		}
+	}
+	switch len(hit) {
+	case 1:
+		return hit[0], nil
+	case 0:
+		return "", fmt.Errorf("no paired device %q (see `unic device list`)", ref)
+	}
+	return "", fmt.Errorf("%d paired devices are named %q; use the ID from `unic device list`", len(hit), ref)
+}
+
 func runSubmit(ctx context.Context, c *api.Client, args []string) error {
-	fs := flag.NewFlagSet("submit", flag.ContinueOnError)
+	fs := flag.NewFlagSet("send", flag.ContinueOnError)
 	request := fs.String("request-id", "", "idempotency key")
 	files := fs.Bool("f", false, "submit files")
 	png := fs.String("png", "", "submit a PNG representation")
 	asJSON := fs.Bool("json", false, "print commit and network result")
+	to := fs.String("to", "all", "all, or a paired device ID or name")
 	// Reuse the existing CLI flag parser for interspersed flags.
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -44,7 +69,7 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 		s.Parts = []clip.Part{{Format: clip.PNG, Data: data}}
 	case *files:
 		if len(pos) == 0 {
-			return fmt.Errorf("submit -f requires files")
+			return fmt.Errorf("send -f requires files")
 		}
 		for _, p := range pos {
 			abs, e := filepath.Abs(p)
@@ -56,7 +81,7 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 				return e
 			}
 			if !st.Mode().IsRegular() {
-				return fmt.Errorf("submit requires regular files")
+				return fmt.Errorf("send requires regular files")
 			}
 			s.Files = append(s.Files, clip.File{Name: st.Name(), Path: abs, Size: st.Size()})
 		}
@@ -76,8 +101,16 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 	}
 	// Print the key before the request so a caller can query an interrupted submission.
 	fmt.Fprintln(os.Stderr, "request_id="+*request)
+	var devices []string
+	if *to != "all" {
+		id, e := resolveDevice(ctx, c, *to)
+		if e != nil {
+			return e
+		}
+		devices = []string{id}
+	}
 	connectOpportunity(ctx, c)
-	out, err := c.Submit(ctx, api.SubmitInput{RequestID: *request, Snapshot: s})
+	out, err := c.Submit(ctx, api.SubmitInput{RequestID: *request, Snapshot: s, DeviceIDs: devices})
 	if err != nil {
 		return err
 	}
@@ -117,7 +150,7 @@ func runReceived(ctx context.Context, c *api.Client, args []string) error {
 	switch args[0] {
 	case "show":
 		if len(args) < 2 || len(args) > 3 {
-			return fmt.Errorf("usage: unic received show ID [PART]")
+			return fmt.Errorf("usage: unic recv show ID [PART]")
 		}
 		part := 0
 		if len(args) == 3 {
@@ -130,9 +163,9 @@ func runReceived(ctx context.Context, c *api.Client, args []string) error {
 		return c.CopyReceivedContent(ctx, args[1], part, os.Stdout)
 	case "dismiss":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: unic received dismiss ID")
+			return fmt.Errorf("usage: unic recv dismiss ID")
 		}
 		return c.DismissReceived(ctx, args[1])
 	}
-	return fmt.Errorf("usage: unic received list|show|dismiss")
+	return fmt.Errorf("usage: unic recv list|show|dismiss")
 }

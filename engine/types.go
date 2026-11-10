@@ -281,6 +281,9 @@ type SubmitRequest struct {
 	// BackendIDs, if non-empty, limits the send to those backends (sorted,
 	// validated by CommitContent).
 	BackendIDs []PluginID
+	// DeviceIDs, if non-empty, limits a peer-session send to those paired
+	// devices (sorted, validated by CommitContent). Other backend kinds send nothing.
+	DeviceIDs []DeviceID
 
 	action *actionRun // set by RunAction only
 }
@@ -468,6 +471,9 @@ type CommitRequest struct {
 	LeaseID        LeaseID
 	WritebackGuard *WritebackGuard
 	BackendIDs     []PluginID
+	// DeviceIDs limits the send to these paired devices. nil means every device;
+	// an empty list, an unknown device or a repeated ID is invalid_argument.
+	DeviceIDs []DeviceID
 }
 
 type PluginID string

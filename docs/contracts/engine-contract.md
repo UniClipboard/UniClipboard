@@ -18,7 +18,7 @@
 5. 方法允许并发调用。状态变更在明确提交点原子生效；核心不在持锁期间调用宿主代码。SDK 不指定 UI 线程。
 6. context 只控制本次调用和其直接 I/O，不充当实例生命周期。context 取消后，已提交操作继续存在；取消不回滚信任与成功导入的资源。
 7. 普通查询和事件不含设备地址、票据、剪贴板正文、文件内容或绝对路径。内容只能显式读取，地址和配对码只能显式获取。日志和错误必须脱敏，包括第三方错误。
-8. v0.1 保留 wire v2，不新增远端 ACK、断点续传、全文检索或可靠离线投递；本机历史基础筛选见历史扩展契约。
+8. v0.1 保留 wire v2，不新增远端 ACK、断点续传或可靠离线投递；本机历史基础筛选见历史扩展契约。
 
 ### 0007 多后端同步扩展（待实现）
 
@@ -489,3 +489,11 @@ History application never emits that receipt event. Duplicate reports emit neith
 again. These callbacks preserve the existing outside-state-lock and panic-isolation
 rules. The service owns daily admission, persistence and operational volume.
 See the [observability contract](observability-contract.md#11-tailcat-sync-diagnostics-0020).
+
+## Explicit history search
+
+Engine owns `SearchHistory`, `ListHistorySearchCandidates` and `CountHistorySearches`.
+They use typed queries and a derived projection in the same history database.
+SearchHistory is an explicit bounded content read; ordinary metadata lists and events remain content-free.
+Matching, source selectors, tag all/any mode, cursor rules, read isolation, limits and incomplete-index behavior are defined in the [history search contract](history-search-contract.md).
+The implementation is in `engine/history_search.go` and `engine/history_search_types.go`.

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/richtext"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
@@ -187,7 +188,7 @@ func (d *demo) historyCommands(c *ui.Context, k uikit.Kit) {
 	if fit(k.Button(c.Key("pin"), "", uikit.ButtonProps{Icon: uikit.IconPin, Label: "切换置顶", Variant: uikit.Subtle, Disabled: v == nil || d.live != nil})).Clicked() {
 		d.togglePin()
 	}
-	b, command = k.Menu(c.Key("more"), uikit.MenuProps{Label: "更多操作", Icon: uikit.IconMore, IconOnly: true, Variant: uikit.Subtle, Items: []uikit.MenuEntry{{ID: "tags", Label: "管理标签", Icon: uikit.IconTag, Disabled: d.live != nil}, {ID: "delete", Label: "删除", Icon: uikit.IconDelete, Destructive: true, Disabled: v == nil}, uikit.MenuSeparator("sep"), {ID: "quick-panel", Label: "查看快捷面板", Disabled: d.live != nil}}})
+	b, command = k.Menu(c.Key("more"), uikit.MenuProps{Label: "更多操作", Icon: uikit.IconMore, IconOnly: true, Variant: uikit.Subtle, Items: []uikit.MenuEntry{{ID: "tags", Label: "管理标签", Icon: uikit.IconTag, Disabled: d.live != nil}, {ID: "delete", Label: "删除", Icon: uikit.IconDelete, Destructive: true, Disabled: v == nil}, uikit.MenuSeparator("sep"), {ID: "quick-panel", Label: "查看快捷面板"}}})
 	fit(b)
 	switch command {
 	case "tags":
@@ -197,7 +198,11 @@ func (d *demo) historyCommands(c *ui.Context, k uikit.Kit) {
 			d.requestDelete(d.list.Selection())
 		}
 	case "quick-panel":
-		d.page = command
+		if d.openQuickPanel != nil {
+			d.openQuickPanel()
+		} else {
+			d.page = command
+		}
 	}
 }
 
@@ -235,7 +240,7 @@ func (d *demo) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 	} else {
 		rows := make([]uikit.ItemListItem, 0, len(items))
 		for _, v := range items {
-			rows = append(rows, uikit.ItemListItem{ID: v.id, Title: v.title, Subtitle: d.sourceName(v.source) + " · " + strings.TrimPrefix(strings.TrimPrefix(v.date, "今天 "), "昨天 "), Leading: func() {
+			rows = append(rows, uikit.ItemListItem{ID: v.id, Title: v.title, Highlight: d.historyHighlightTerms(v), Subtitle: d.sourceName(v.source) + " · " + strings.TrimPrefix(strings.TrimPrefix(v.date, "今天 "), "昨天 "), Leading: func() {
 				labels := []string{"TXT", "CODE", "URL", "图片", "FILE"}
 				p := uikit.KindBadgeProps{Kind: v.kind, Label: labels[v.kind]}
 				if v.kind == uikit.KindImage {
@@ -322,6 +327,10 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 					return
 				}
 
+				if v.rich != nil {
+					richtext.EditorBase(c, v.rich, richtext.EditorOptions{Label: "富文本预览", ReadOnly: true}).FillWidth().Height(240)
+					return
+				}
 				if v.kind == uikit.KindImage {
 					ui.Image(c, d.entryImage(*v)).FillWidth().Height(220)
 					return
@@ -489,4 +498,19 @@ func (d *demo) historyCountLabel() string {
 		return fmt.Sprintf("%d+", len(d.entries))
 	}
 	return fmt.Sprint(len(d.entries))
+}
+
+func (d *demo) historyHighlightTerms(v entry) []string {
+	if d.live == nil {
+		return nil
+	}
+	r := []rune(v.title)
+	out := []string{}
+	for _, span := range v.highlights {
+		start, end := max(0, span.Start), min(len(r), span.End)
+		if start < end {
+			out = append(out, string(r[start:end]))
+		}
+	}
+	return out
 }

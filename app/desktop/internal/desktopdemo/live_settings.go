@@ -132,6 +132,10 @@ func (d *demo) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 			}
 			k.SettingsRow(c, uikit.SettingsRowProps{Label: "接收目录", Description: inbox}, nil, nil)
 		})
+	case "quickPanel":
+		if k.Button(c, "打开快捷面板", uikit.ButtonProps{}).Clicked() && d.openQuickPanel != nil {
+			d.openQuickPanel()
+		}
 	case "about":
 		ui.Image(c, appIcon()).Size(64, 64)
 		k.EntityHeader(c, uikit.EntityHeaderProps{Icon: uikit.IconCopy, Title: "UniClipboard", Description: "跨设备剪贴板同步"}, nil)

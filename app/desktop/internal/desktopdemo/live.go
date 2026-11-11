@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"image"
 	"io"
@@ -16,8 +15,10 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/richtext"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
@@ -45,6 +46,15 @@ func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
 }
 
 type liveState struct {
+	queryOverride                                            func() engine.HistorySearchQuery
+	appliedSerial, contentSerial                             uint64
+	searchCancel, catalogueCancel, countCancel, detailCancel context.CancelFunc
+	detailGeneration                                         uint64
+	loadGeneration                                           uint64
+	catalogueKey, countKey                                   string
+	catalogue                                                map[string][]engine.HistorySearchCandidate
+	counts                                                   map[string]uint64
+
 	ctx                                          context.Context
 	cancel                                       context.CancelFunc
 	client                                       *api.Client
@@ -133,11 +143,15 @@ drained:
 	if dirty {
 		l.nextRefresh = time.Time{}
 	}
+	l.loadCatalogue(d)
 	key := d.liveQueryKey()
+	if l.loading && key != l.key {
+		l.invalidateSearch()
+	}
 	if !l.loading && !l.busy && (key != l.key || time.Now().After(l.nextRefresh)) {
 		l.loadHistory(d, false)
 	}
-	if d.selected != "" && !l.detailBusy && d.selected != l.detailKey {
+	if d.selected != "" && d.selected != l.detailKey {
 		l.loadDetail(d)
 	}
 	// Pairing codes are created only while the invitation page is visible.
@@ -145,10 +159,8 @@ drained:
 		d.newLiveCode()
 	}
 }
-func (d *demo) liveQueryKey() string {
-	b, _ := json.Marshal([]string{d.kind, d.source, d.tag, d.timeRange})
-	return string(b)
-}
+func (d *demo) liveQueryKey() string { return searchQueryKey(d.historySearchQuery()) }
+
 func (d *demo) liveQuery() api.HistoryQuery {
 	q := api.HistoryQuery{Limit: 50, Tags: selectedSearchTags(d.tag)}
 	switch d.kind {
@@ -172,6 +184,18 @@ func (d *demo) liveQuery() api.HistoryQuery {
 	case "yesterday":
 		q.FromMs = start.AddDate(0, 0, -1).UnixMilli()
 		q.BeforeMs = start.UnixMilli()
+	case "day_before_yesterday":
+		q.FromMs = start.AddDate(0, 0, -2).UnixMilli()
+		q.BeforeMs = start.AddDate(0, 0, -1).UnixMilli()
+	case "last_week":
+		days := (int(start.Weekday()) + 6) % 7
+		end := start.AddDate(0, 0, -days)
+		q.FromMs = end.AddDate(0, 0, -7).UnixMilli()
+		q.BeforeMs = end.UnixMilli()
+	case "last_month":
+		end := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		q.FromMs = end.AddDate(0, -1, 0).UnixMilli()
+		q.BeforeMs = end.UnixMilli()
 	case "last_7d":
 		q.FromMs = start.AddDate(0, 0, -6).UnixMilli()
 	case "last_30d":
@@ -185,15 +209,23 @@ func (d *demo) liveQuery() api.HistoryQuery {
 	return q
 }
 func (d *demo) unsupportedSearch() bool {
-	return d.query != "" || d.search.extension != "" || d.kind == "代码" || d.kind == "链接" || d.kind == "富文本" || d.nav.Value == "pinned"
+	return d.kind == "代码" || d.kind == "链接" || d.nav.Value == "pinned"
 }
 func (l *liveState) loadHistory(d *demo, more bool) {
 	if l.loading {
 		return
 	}
-	q := d.liveQuery()
+	q := engine.HistorySearchRequest{Query: d.historySearchQuery(), Limit: 50}
 	target := max(50, len(d.entries))
 	key := d.liveQueryKey()
+	if key != l.key {
+		target = 50
+		d.entries = nil
+		l.items = map[string]api.HistoryItem{}
+		d.selected = ""
+		l.detailKey = ""
+		d.quickLook = false
+	}
 	if more {
 		if l.cursor == "" || key != l.key {
 			return
@@ -201,136 +233,164 @@ func (l *liveState) loadHistory(d *demo, more bool) {
 		q.Cursor = l.cursor
 	}
 	l.loading = true
+	l.loadGeneration++
+	generation := l.loadGeneration
+	ctx, cancel := context.WithTimeout(l.ctx, 10*time.Second)
+	if l.searchCancel != nil {
+		l.searchCancel()
+	}
+	l.searchCancel = cancel
 	l.key = key
 	l.nextRefresh = time.Now().Add(5 * time.Second)
-	if !l.enqueue(func(ctx context.Context) func() {
-		status, err := l.client.Status(ctx)
-		var page api.HistoryPage
-		var entries []entry
-		var saved config.State
-		var tags []string
-		var candidates []api.Candidate
-		if err == nil {
-			page, err = l.client.QueryHistory(ctx, q)
-			if !more && err == nil {
-				for len(page.Items) < target && page.NextCursor != "" {
-					nextQuery := q
-					nextQuery.Cursor = page.NextCursor
-					next, e := l.client.QueryHistory(ctx, nextQuery)
-					if e != nil {
-						err = e
-						break
+	go func() {
+		defer cancel()
+		apply := func() func() {
+			status, err := l.client.Status(ctx)
+			var page api.HistorySearchPage
+			var entries []entry
+			var saved config.State
+			var tags []string
+			var candidates []api.Candidate
+			if err == nil {
+				page, err = l.client.SearchHistory(ctx, q)
+				if !more && err == nil {
+					for len(page.Hits) < target && page.NextCursor != "" {
+						nextQuery := q
+						nextQuery.Cursor = page.NextCursor
+						next, e := l.client.SearchHistory(ctx, nextQuery)
+						if e != nil {
+							err = e
+							break
+						}
+						page.Hits = append(page.Hits, next.Hits...)
+						page.NextCursor = next.NextCursor
 					}
-					page.Items = append(page.Items, next.Items...)
-					page.NextCursor = next.NextCursor
 				}
 			}
+			if err == nil {
+				for _, hit := range page.Hits {
+					v := projectHistory(hit.Item)
+					if hit.Preview.Text != "" {
+						v.title = shortText(hit.Preview.Text, 90)
+					}
+					v.highlights = hit.Preview.Highlights
+					v.preview = hit.Preview.Text
+					entries = append(entries, v)
+				}
+				saved, err = l.client.Config(ctx)
+			}
+			if err == nil {
+				tags, err = l.client.HistoryTags(ctx)
+			}
+			if err == nil {
+				candidates, err = l.client.Candidates(ctx)
+			}
+			return func() {
+				if generation != l.loadGeneration {
+					return
+				}
+				l.loading = false
+				if key != d.liveQueryKey() {
+					l.nextRefresh = time.Time{}
+					return
+				}
+				if err != nil {
+					l.connected = status.ID != ""
+					l.readError = "无法完成搜索。请稍后重试。"
+					if api.ReasonOf(err) == "invalid_argument" {
+						l.readError = "搜索条件无效或超过限制。"
+					}
+					l.detailKey = ""
+					return
+				}
+				l.appliedSerial++
+				l.connected = true
+				l.loaded = true
+				l.readError = ""
+				if page.IndexIncomplete {
+					l.readError = "部分内容的搜索索引不可用。元数据仍可浏览。"
+				}
+				if !more {
+					d.entries = nil
+					l.items = map[string]api.HistoryItem{}
+				}
+				l.countKey = ""
+				l.counts = nil
+				for i, hit := range page.Hits {
+					it := hit.Item
+					l.items[it.ID] = it
+					if cached, ok := l.details[it.ID]; ok {
+						entries[i].text = cached.text
+						entries[i].image = cached.image
+						entries[i].rich = cached.rich
+						entries[i].contentError = cached.contentError
+					}
+					at := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == it.ID })
+					if at < 0 {
+						d.entries = append(d.entries, entries[i])
+					} else {
+						d.entries[at] = entries[i]
+					}
+				}
+				// Keep detail memory bounded by the visible page set.
+				for id := range l.details {
+					if _, ok := l.items[id]; !ok {
+						delete(l.details, id)
+					}
+				}
+				l.cursor = page.NextCursor
+				l.config = saved
+				d.projectLiveConfig()
+				d.tags = nil
+				for _, t := range tags {
+					d.tags = append(d.tags, demoTag{id: t, name: t, color: "gray", sidebar: true})
+				}
+				previousName := ""
+				if len(d.devices) > 0 {
+					previousName = d.devices[0].name
+				}
+				d.devices = []device{{id: "local", name: status.Name, platform: "本机", icon: uikit.IconDesktop, online: true}}
+				if d.deviceName == "" || d.deviceName == previousName {
+					d.deviceName = status.Name
+				}
+				for _, p := range status.Peers {
+					if p.Kind == "external" {
+						continue
+					}
+					d.devices = append(d.devices, device{id: p.ID, name: p.Name, online: p.Connected, latency: -1, lastSeen: formatSeen(p.LastSeen), platform: "未提供", link: "在线", icon: uikit.IconDesktop})
+				}
+				d.pending = nil
+				l.pending = map[string]api.PendingPeer{}
+				for _, p := range status.Pending {
+					l.pending[p.ID] = p
+					d.pending = append(d.pending, pendingDevice{id: p.ID, name: p.Name, fingerprint: p.Fingerprint, via: p.Via, platform: "未提供", icon: uikit.IconDesktop})
+				}
+				d.candidates = nil
+				for _, c := range candidates {
+					if !c.Ignored {
+						d.candidates = append(d.candidates, deviceCandidate{id: c.ID, name: c.Name, introducer: strings.Join(c.IntroducedBy, "、"), backendID: c.BackendID, icon: uikit.IconDesktop})
+					}
+				}
+				if l.join != nil && slices.ContainsFunc(status.Peers, func(p api.PeerStatus) bool { return p.ID == l.join.ID }) {
+					d.deviceTask = ""
+					d.deviceList.Value = l.join.ID
+					l.join = nil
+				}
+				if d.selected == "" && len(d.entries) > 0 {
+					d.selectEntry(d.entries[0].id)
+				}
+				if !slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == d.selected }) {
+					d.selected = ""
+					l.detailKey = ""
+				}
+			}
+		}()
+		select {
+		case l.results <- apply:
+		case <-l.ctx.Done():
 		}
-		if err == nil {
-			for _, it := range page.Items {
-				v := projectHistory(it)
-				preview, e := l.client.HistoryPreview(ctx, it)
-				if e == nil && preview != "" {
-					v.title = shortText(preview, 90)
-				}
-				entries = append(entries, v)
-			}
-			saved, err = l.client.Config(ctx)
-		}
-		if err == nil {
-			tags, err = l.client.HistoryTags(ctx)
-		}
-		if err == nil {
-			candidates, err = l.client.Candidates(ctx)
-		}
-		return func() {
-			l.loading = false
-			if key != d.liveQueryKey() {
-				l.nextRefresh = time.Time{}
-				return
-			}
-			if err != nil {
-				l.connected = false
-				l.readError = "无法读取本机服务。请检查服务后重试。"
-				l.detailKey = ""
-				return
-			}
-			l.connected = true
-			l.loaded = true
-			l.readError = ""
-			if !more {
-				d.entries = nil
-				l.items = map[string]api.HistoryItem{}
-			}
-			for i, it := range page.Items {
-				l.items[it.ID] = it
-				if cached, ok := l.details[it.ID]; ok {
-					entries[i].text = cached.text
-					entries[i].image = cached.image
-					entries[i].contentError = cached.contentError
-				}
-				at := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == it.ID })
-				if at < 0 {
-					d.entries = append(d.entries, entries[i])
-				} else {
-					d.entries[at] = entries[i]
-				}
-			}
-			// Keep detail memory bounded by the visible page set.
-			for id := range l.details {
-				if _, ok := l.items[id]; !ok {
-					delete(l.details, id)
-				}
-			}
-			l.cursor = page.NextCursor
-			l.config = saved
-			d.projectLiveConfig()
-			d.tags = nil
-			for _, t := range tags {
-				d.tags = append(d.tags, demoTag{id: t, name: t, color: "gray", sidebar: true})
-			}
-			previousName := ""
-			if len(d.devices) > 0 {
-				previousName = d.devices[0].name
-			}
-			d.devices = []device{{id: "local", name: status.Name, platform: "本机", icon: uikit.IconDesktop, online: true}}
-			if d.deviceName == "" || d.deviceName == previousName {
-				d.deviceName = status.Name
-			}
-			for _, p := range status.Peers {
-				if p.Kind == "external" {
-					continue
-				}
-				d.devices = append(d.devices, device{id: p.ID, name: p.Name, online: p.Connected, latency: -1, lastSeen: formatSeen(p.LastSeen), platform: "未提供", link: "在线", icon: uikit.IconDesktop})
-			}
-			d.pending = nil
-			l.pending = map[string]api.PendingPeer{}
-			for _, p := range status.Pending {
-				l.pending[p.ID] = p
-				d.pending = append(d.pending, pendingDevice{id: p.ID, name: p.Name, fingerprint: p.Fingerprint, via: p.Via, platform: "未提供", icon: uikit.IconDesktop})
-			}
-			d.candidates = nil
-			for _, c := range candidates {
-				if !c.Ignored {
-					d.candidates = append(d.candidates, deviceCandidate{id: c.ID, name: c.Name, introducer: strings.Join(c.IntroducedBy, "、"), backendID: c.BackendID, icon: uikit.IconDesktop})
-				}
-			}
-			if l.join != nil && slices.ContainsFunc(status.Peers, func(p api.PeerStatus) bool { return p.ID == l.join.ID }) {
-				d.deviceTask = ""
-				d.deviceList.Value = l.join.ID
-				l.join = nil
-			}
-			if d.selected == "" && len(d.entries) > 0 {
-				d.selectEntry(d.entries[0].id)
-			}
-			if !slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == d.selected }) {
-				d.selected = ""
-				l.detailKey = ""
-			}
-		}
-	}) {
-		l.loading = false
-	}
+	}()
+
 }
 func projectHistory(it api.HistoryItem) entry {
 	kind := uikit.KindText
@@ -384,74 +444,21 @@ func (l *liveState) loadDetail(d *demo) {
 	}
 	l.detailBusy = true
 	l.detailKey = id
-	if !l.enqueue(func(ctx context.Context) func() {
-		v := projectHistory(it)
-		switch it.Kind {
-		case "files":
-			var names []string
-			for i, p := range it.Parts {
-				if p.Kind != "file" {
-					continue
-				}
-				r, e := l.client.HistoryContent(ctx, id, i)
-				if e != nil {
-					v.contentError = "文件内容不可用。"
-					continue
-				}
-				names = append(names, r.Name)
-				_ = r.Close()
+	l.detailGeneration++
+	generation := l.detailGeneration
+	if l.detailCancel != nil {
+		l.detailCancel()
+	}
+	ctx, cancel := context.WithTimeout(l.ctx, 8*time.Second)
+	l.detailCancel = cancel
+	go func() {
+		defer cancel()
+
+		v := loadSearchEntry(ctx, l.client, it)
+		apply := func() {
+			if generation != l.detailGeneration {
+				return
 			}
-			v.text = strings.Join(names, "\n")
-			if len(names) > 0 {
-				v.title = shortText(names[0], 90)
-			}
-		default:
-			part := -1
-			for i, p := range it.Parts {
-				if (it.Kind == "image" && p.MIME == "image/png") || (it.Kind != "image" && p.MIME == "text/plain") {
-					part = i
-					break
-				}
-			}
-			if part < 0 {
-				v.contentError = "此内容没有可显示的预览。"
-				break
-			}
-			r, e := l.client.HistoryContent(ctx, id, part)
-			if e != nil {
-				v.contentError = "内容已不可用。"
-				break
-			}
-			limit := int64(1 << 20)
-			if it.Kind == "image" {
-				limit = 32 << 20
-			}
-			raw, e := io.ReadAll(io.LimitReader(r, limit+1))
-			_ = r.Close()
-			if e != nil {
-				v.contentError = "读取内容失败。"
-				break
-			}
-			if int64(len(raw)) > limit {
-				v.contentError = "内容超过预览大小限制。"
-				break
-			}
-			if it.Kind == "image" {
-				cfg, _, e := image.DecodeConfig(bytes.NewReader(raw))
-				if e != nil || int64(cfg.Width)*int64(cfg.Height) > 16_000_000 {
-					v.contentError = "图片无法预览。"
-					break
-				}
-				v.image, e = ui.DecodeImage(raw)
-				if e != nil {
-					v.contentError = "图片无法预览。"
-				}
-			} else {
-				v.text = strings.ToValidUTF8(string(raw), "�")
-				v.title = shortText(strings.TrimSpace(v.text), 90)
-			}
-		}
-		return func() {
 			l.detailBusy = false
 			if d.selected != id {
 				return
@@ -459,12 +466,14 @@ func (l *liveState) loadDetail(d *demo) {
 			if _, ok := l.items[id]; !ok {
 				return
 			}
+			l.contentSerial++
 			// Keep only one full payload, regardless of how many pages are loaded.
 			l.details = map[string]entry{id: v}
 			for i := range d.entries {
 				if d.entries[i].id != id {
 					d.entries[i].text = ""
 					d.entries[i].image = nil
+					d.entries[i].rich = nil
 					d.entries[i].contentError = ""
 				}
 			}
@@ -472,15 +481,17 @@ func (l *liveState) loadDetail(d *demo) {
 				if d.entries[i].id == id {
 					d.entries[i].text = v.text
 					d.entries[i].image = v.image
+					d.entries[i].rich = v.rich
 					d.entries[i].contentError = v.contentError
-					d.entries[i].title = v.title
 				}
 			}
 		}
-	}) {
-		l.detailBusy = false
-		l.detailKey = ""
-	}
+		select {
+		case l.results <- apply:
+		case <-l.ctx.Done():
+		}
+	}()
+
 }
 
 // mutate queues one user intent. Writes are never automatically replayed.
@@ -490,6 +501,7 @@ func (d *demo) mutate(work func(context.Context) error, success string) {
 		return
 	}
 	selected := d.selected
+	l.invalidateSearch()
 	l.busy = true
 	l.message = ""
 	d.notice = "正在处理…"
@@ -623,4 +635,90 @@ func newRequestID() string {
 		panic(err)
 	}
 	return hex.EncodeToString(b[:])
+}
+
+func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem) entry {
+	id := it.ID
+	v := projectHistory(it)
+	switch it.Kind {
+	case "files":
+		var names []string
+		for i, p := range it.Parts {
+			if p.Kind != "file" {
+				continue
+			}
+			r, e := client.HistoryContent(ctx, id, i)
+			if e != nil {
+				v.contentError = "文件内容不可用。"
+				continue
+			}
+			names = append(names, r.Name)
+			_ = r.Close()
+		}
+		v.text = strings.Join(names, "\n")
+		if len(names) > 0 {
+			v.title = shortText(names[0], 90)
+		}
+	default:
+		part := -1
+		isHTML := false
+		for i, p := range it.Parts {
+			if (it.Kind == "image" && p.MIME == "image/png") || (it.Kind != "image" && p.MIME == "text/plain") {
+				part = i
+				break
+			}
+		}
+		if part < 0 && it.Kind == "text" {
+			for i, p := range it.Parts {
+				if p.MIME == "text/html" {
+					part = i
+					isHTML = true
+					break
+				}
+			}
+		}
+		if part < 0 {
+			v.contentError = "此内容没有可显示的预览。"
+			break
+		}
+		r, e := client.HistoryContent(ctx, id, part)
+		if e != nil {
+			v.contentError = "内容已不可用。"
+			break
+		}
+		limit := int64(1 << 20)
+		if it.Kind == "image" {
+			limit = 32 << 20
+		}
+		raw, e := io.ReadAll(io.LimitReader(r, limit+1))
+		_ = r.Close()
+		if e != nil {
+			v.contentError = "读取内容失败。"
+			break
+		}
+		if int64(len(raw)) > limit {
+			v.contentError = "内容超过预览大小限制。"
+			break
+		}
+		if it.Kind == "image" {
+			cfg, _, e := image.DecodeConfig(bytes.NewReader(raw))
+			if e != nil || int64(cfg.Width)*int64(cfg.Height) > 16_000_000 {
+				v.contentError = "图片无法预览。"
+				break
+			}
+			v.image, e = ui.DecodeImage(raw)
+			if e != nil {
+				v.contentError = "图片无法预览。"
+			}
+		} else {
+			v.text = strings.ToValidUTF8(string(raw), "�")
+			if isHTML {
+				parsed := richtext.ParseHTML(v.text)
+				v.rich = richtext.NewDocument(parsed)
+				v.text = parsed.PlainText()
+			}
+			v.title = shortText(strings.TrimSpace(v.text), 90)
+		}
+	}
+	return v
 }

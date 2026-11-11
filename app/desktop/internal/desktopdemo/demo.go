@@ -13,13 +13,18 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/richtext"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/engine"
 )
 
 const Reference = "8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7"
 
 type entry struct {
+	rich                                *richtext.Document
+	preview                             string
+	highlights                          []engine.HistorySearchRange
 	image                               ui.ImageSource
 	contentError, syncState             string
 	createdAt                           int64
@@ -243,6 +248,13 @@ func (d *demo) view(c *ui.Context) {
 }
 
 func (d *demo) sourceName(id string) string {
+	if d.live != nil {
+		for _, v := range d.live.catalogue["source"] {
+			if v.Value == id {
+				return v.Label
+			}
+		}
+	}
 	if id == "migration" {
 		return "从旧版导入"
 	}

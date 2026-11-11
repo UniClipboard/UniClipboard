@@ -245,3 +245,20 @@ The command never replaces an existing output, follows a log symlink, or include
 profile configuration, credentials, database or clipboard history. Archive membership,
 size limits, checksums and live-snapshot semantics follow section 12 of the
 [observability contract](observability-contract.md#12-offline-local-log-export).
+
+## Explicit history search reads
+
+The shared client exposes three POST routes through the service-owned Engine:
+
+| Route | Request | Response |
+| --- | --- | --- |
+| `/v1/history/search` | `HistorySearchRequest` | Service history metadata plus bounded preview text/highlights, next cursor, collection revision and evaluation time |
+| `/v1/history/search/candidates` | `HistorySearchCandidatesRequest` | A bounded tag/source/extension catalogue page and next cursor |
+| `/v1/history/search/counts` | `HistorySearchCountsRequest` | Exact counts for at most 32 complete queries, one collection revision and one evaluation time |
+
+Bodies are limited to 1 MiB and reject unknown fields or trailing JSON.
+Each route admits at most four concurrent requests. The Store owns one separate read-only connection to the same WAL database; Engine deadlines include waiting for that connection.
+Request text is never put in URLs, errors, logs, events or telemetry.
+Search pages contain only explicit bounded previews, not image bytes, host references or absolute paths.
+New search revisions serialize as decimal strings. Counts are JSON numbers in request order.
+Exact semantics and errors are in the [history search contract](history-search-contract.md).

@@ -164,6 +164,7 @@ func (e *Engine) ImportHistory(ctx context.Context, req HistoryImportRequest) (H
 	if ctx.Err() != nil {
 		return HistoryImportResult{}, ctxErr(ctx.Err())
 	}
+	prepareSearch(&it, h.dir, min(h.opts.MaxBytes, 2<<30))
 	if _, _, serr := e.st.InsertHistory(it); serr != nil {
 		return HistoryImportResult{}, historyStoreErr(serr)
 	}

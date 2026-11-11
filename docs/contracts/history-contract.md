@@ -46,7 +46,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 | SyncState | not_requested/pending/sent/partial/failed/interrupted；各后端汇总，不代表远端收到或应用 |
 | BackendSyncStates | 按 BackendID 保存本条内容的策略跳过、传输与中断摘要，不含秘密目标 URL/token；跨重启保留 |
 
-文件名与具体 PartID 在显式 RetainHistoryContent 返回的 ContentDescriptor 获取。普通 State、列表、事件和错误不携带正文。HistoryItem 只描述持久记录，不返回租约；所有返回值遵守 Engine 的快照隔离约定。
+文件名与具体 PartID 在显式 RetainHistoryContent 返回的 ContentDescriptor 获取。Ordinary State, metadata lists, events and errors contain no body. Explicit SearchHistory hits may contain only the bounded previews defined by the [search contract](history-search-contract.md).HistoryItem 只描述持久记录，不返回租约；所有返回值遵守 Engine 的快照隔离约定。
 
 多后端摘要按[0007](../decisions/proposed/0007-multiple-sync-backends.md) 记录，因阈值/类型跳过不得计为成功；存在失败或策略跳过而另有成功时整体为 partial；无实际任务且只有策略跳过为 not_requested。同步不请求时为 not_requested（含远端首版不转发）；已建发送操作为 pending，终态按目标结果汇总为 sent/partial/failed，全部 superseded 归 failed。重启发现 pending 改为 interrupted，不恢复或重发。OperationID 不作为持久可查询凭证；历史摘要保留但操作仍按实例保留期回收。
 
@@ -54,7 +54,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 
 `ListHistoryRequest{Limit int, Cursor string, Filter HistoryFilter}`；Limit=0 使用 50，合法范围 1..200。`HistoryFilter{Kinds []HistoryKind, Tags []string, OriginKinds []HistoryOriginKind, DeviceID DeviceID, CreatedFromMs int64, CreatedBeforeMs int64}`：各字段之间 AND，同字段 Kinds/OriginKinds 内 OR，Tags 为全部匹配，时间为 `[from, before)`，0 表示不设该边界。DeviceID 只匹配 remote_device 来源；OriginKinds 可含 external。未知枚举、非法时间区间或超出标签限制返回 invalid_argument；重复筛选项规范化去重。
 
-首版不提供正文关键词、文件名搜索、模糊匹配、相关度排序或全文索引；不以返回全量正文让宿主自行搜索来绕过边界。
+The metadata-list API does not search content or return total counts. Explicit content search, file-name matching, bounded previews, candidate catalogues and batch counts use the separate [history search contract](history-search-contract.md). Hosts must not download all content to implement search.
 
 `HistoryPage{Items []HistoryItem, NextCursor string, HistoryRevision uint64}`。顺序使用私有 `(order_ms, seq)` 降序；seq 是事务内递增且持久化的提交序号。普通提交的 order_ms 为当前创建时间与已有最大排序时间的较大值，迁移为旧创建时间，以便与既有历史合并。两字段持久化后不变，相同毫秒和系统时间回拨不会造成重复/漏页。序号不是公开 ID。第一页固定 seq 上界，后续页使用复合 keyset 游标，不使用 offset，不保留长事务。
 

@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/engine"
 )
 
 // The model follows main's composite-search model and token-range controller.
@@ -123,6 +124,9 @@ func selectedSearchTags(value string) []string {
 	return strings.Split(value, "\x1f")
 }
 func (d *demo) searchValues() []searchCandidate {
+	if d.live != nil {
+		return d.liveSearchValues()
+	}
 	var out []searchCandidate
 	add := func(dim, value, label string) {
 		out = append(out, searchCandidate{dim, value, label, searchKinds[dim]})
@@ -413,6 +417,7 @@ func (d *demo) historySearch(c *ui.Context, k uikit.Kit) {
 	restore := s.restore
 	s.restore = false
 	var suggestions []uikit.SearchSuggestion
+	var prospective []engine.HistorySearchQuery
 	previous := ""
 	for _, candidate := range s.options {
 		trial := *d
@@ -440,8 +445,17 @@ func (d *demo) historySearch(c *ui.Context, k uikit.Kit) {
 		detail := fmt.Sprintf("%d 项", n)
 		if d.live != nil {
 			detail = ""
+			q := trial.historySearchQuery()
+			prospective = append(prospective, q)
+			if count, ok := d.live.counts[searchQueryKey(q)]; ok {
+				detail = fmt.Sprintf("%d 项", count)
+				n = int(count)
+			}
 		}
-		suggestions = append(suggestions, uikit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: candidate.label, Kind: candidate.kind, Group: group, Detail: detail, Selected: selected, Muted: n == 0 && d.live == nil})
+		suggestions = append(suggestions, uikit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: candidate.label, Kind: candidate.kind, Group: group, Detail: detail, Selected: selected, Muted: n == 0 && (d.live == nil || detail != "")})
+	}
+	if d.live != nil {
+		d.live.requestCounts(prospective)
 	}
 	feedback := ""
 	if w, ok := s.active(); ok {

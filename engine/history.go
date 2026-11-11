@@ -138,6 +138,9 @@ func openHistory(dataDir string, st *store.Store, opts HistoryOptions) (*history
 	}
 	h := &history{opts: opts, dir: dir, key: key,
 		blob: &blobTracker{dir: dir, holders: map[string]int{}, doomed: map[string]bool{}}}
+	if err := repairSearch(st, dir, min(opts.MaxBytes, 2<<30)); err != nil {
+		return nil, err
+	}
 	h.refresh(st)
 	return h, nil
 }
@@ -393,6 +396,7 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 		}
 		it.Parts = append(it.Parts, sp)
 	}
+	prepareSearch(&it, h.dir, min(h.opts.MaxBytes, 2<<30))
 	if err := ctx.Err(); err != nil {
 		return fail(ctxErr(err))
 	}
@@ -467,11 +471,12 @@ func (e *Engine) GetItem(ctx context.Context, id HistoryID) (HistoryItem, error)
 }
 
 type cursorPayload struct {
-	Inst      InstanceID `json:"i"`
-	Filter    string     `json:"f"`
-	Upper     int64      `json:"u"`
-	After     int64      `json:"a"`
-	AfterTime int64      `json:"t"`
+	SearchAfter string     `json:"search_after,omitempty"`
+	Inst        InstanceID `json:"i"`
+	Filter      string     `json:"f"`
+	Upper       int64      `json:"u"`
+	After       int64      `json:"a"`
+	AfterTime   int64      `json:"t"`
 }
 
 func (h *history) seal(p cursorPayload) string {

@@ -9,11 +9,14 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
+
+	"github.com/uniclipboard/unic/engine"
 )
 
 const quickPanelReference = "885546c7cf6f6f0d2076104efd1d90d9f73d9744"
 
 type qpEntry struct {
+	highlights                         []engine.HistorySearchRange
 	id, title, text, kind, source, age string
 	tags                               []string
 	favorite, lost                     bool
@@ -36,6 +39,7 @@ type qpEffect struct {
 	KeepOpen bool   `json:",omitempty"`
 }
 type quickDemo struct {
+	live        *quickLive
 	richPreview *richtext.Document
 
 	revealSelection bool
@@ -115,6 +119,10 @@ func (p *quickDemo) queryChanged() {
 	p.update()
 }
 func (p *quickDemo) tick(c *ui.Context) {
+	if p.live != nil {
+		p.live.poll(p)
+		c.After(200 * time.Millisecond)
+	}
 	p.now = c.Now()
 	if !p.blurDue.IsZero() {
 		if p.now.Before(p.blurDue) {
@@ -206,6 +214,20 @@ func (p *quickDemo) normalizeFilters() {
 	}
 }
 func (p *quickDemo) applySearch() {
+	if p.live != nil {
+		p.rows = nil
+		p.entries = nil
+		p.previewID = ""
+		p.pendingPreview = ""
+		p.selected = 0
+		p.hovered = -1
+		p.update()
+		p.normalizeFilters()
+		l := p.live.d.live
+		l.invalidateSearch()
+		l.loadHistory(p.live.d, false)
+		return
+	}
 	p.normalizeFilters()
 	p.relaxCursor = 0
 	p.rows = nil
@@ -294,8 +316,17 @@ func (p *quickDemo) suggestions() []qpFilter {
 		}
 	}
 	add("type", "/", types)
-	add("tag", "#", tags)
-	add("source", "@", sources)
+	if p.live == nil {
+		add("tag", "#", tags)
+		add("source", "@", sources)
+	} else {
+		for _, v := range p.live.d.live.catalogue["tag"] {
+			all = append(all, qpFilter{dimension: "tag", value: v.Value, label: "#" + v.Label})
+		}
+		for _, v := range p.live.d.live.catalogue["source"] {
+			all = append(all, qpFilter{dimension: "source", value: v.Value, label: "@" + v.Label})
+		}
+	}
 	add("time", "", times)
 	initials := map[string]string{"wb": "文本", "fwb": "富文本", "tp": "图片", "wj": "文件", "lj": "链接", "dm": "代码", "sc": "收藏", "wjj": "文件夹", "jt": "今天", "zt": "昨天", "bz": "本周", "sz": "上周", "by": "本月", "sy": "上月"}
 	words := strings.Fields(p.query)
@@ -335,7 +366,7 @@ func (p *quickDemo) suggestions() []qpFilter {
 				continue
 			}
 			aliasMatch := aliases[f.value] != "" && strings.Contains(aliases[f.value], strings.ToLower(partial))
-			if partial == "" || strings.Contains(strings.ToLower(f.value), strings.ToLower(partial)) || aliasMatch || f.value == initials[partial] || sourceMatch {
+			if partial == "" || (strings.Contains(strings.ToLower(f.value), strings.ToLower(partial)) || (p.live != nil && strings.Contains(strings.ToLower(f.label), strings.ToLower(partial)))) || aliasMatch || f.value == initials[partial] || sourceMatch {
 				f.matched = token
 				f.replace = f.value == initials[partial] || sourceMatch || f.dimension == "time"
 				result = append(result, f)
@@ -403,6 +434,27 @@ func (p *quickDemo) tab(reverse bool) {
 	p.suggestOpen = false
 }
 func (p *quickDemo) restore(paste, plain, keep bool) {
+	if p.live != nil {
+		if paste || plain {
+			p.message = "自动粘贴暂不可用。请使用复制。"
+			p.update()
+			return
+		}
+		e := p.active()
+		if e == nil {
+			return
+		}
+		d := p.live.d
+		if d.live.busy {
+			return
+		}
+		d.selected = e.id
+		d.useEntry()
+		p.live.copyPending = true
+		p.live.keepOpen = keep
+		return
+	}
+
 	if !p.queryDue.IsZero() {
 		return
 	}
@@ -427,6 +479,9 @@ func (p *quickDemo) restore(paste, plain, keep bool) {
 	p.update()
 }
 func (p *quickDemo) actions() []qpAction {
+	if p.live != nil {
+		return []qpAction{{"copy", "复制到剪贴板", p.commandLabel() + "C", p.active() != nil && !p.live.d.live.busy}, {"delete", "删除", "", p.active() != nil && !p.live.d.live.busy}, {"main", "打开主窗口", "", true}, {"settings", "设置…", "", true}}
+	}
 	e := p.active()
 	if e == nil {
 		return nil
@@ -479,6 +534,10 @@ func (p *quickDemo) openActions() {
 	p.update()
 }
 func (p *quickDemo) runAction(id string) {
+	if p.live != nil {
+		p.liveAction(id)
+		return
+	}
 	e := p.active()
 	if e == nil {
 		return
@@ -616,6 +675,9 @@ type qpRelaxation struct {
 }
 
 func (p *quickDemo) relaxations() []qpRelaxation {
+	if p.live != nil {
+		return p.liveRelaxations()
+	}
 	result := []qpRelaxation{}
 	for _, dim := range []string{"type", "tag", "time", "source"} {
 		values := []string{}
@@ -685,6 +747,14 @@ func (p *quickDemo) relax(dim string) {
 }
 
 func (p *quickDemo) host(action string) {
+	if p.live != nil {
+		if p.live.root != nil {
+			p.live.root(action)
+		}
+		p.visible = false
+		p.update()
+		return
+	}
 	effect := qpEffect{Action: action}
 	if e := p.active(); e != nil {
 		effect.Entry = e.id

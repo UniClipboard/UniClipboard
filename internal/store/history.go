@@ -138,6 +138,9 @@ type BackendSync struct {
 
 // HistoryItem is a stored record. Seq is private commit order.
 type HistoryItem struct {
+	SearchDocs    []SearchDocument
+	SearchReady   bool
+	SearchBudget  int64
 	SyncBlocked   bool
 	Seq           int64
 	OrderMs       int64
@@ -245,6 +248,10 @@ created_ms, updated_ms, expires_ms, sync_state, total_bytes, sync_allowed) VALUE
 			return 0, 0, err
 		}
 	}
+	if err := insertSearch(tx, seq, it.SearchDocs, it.SearchReady, it.SearchBudget); err != nil {
+		return 0, 0, err
+	}
+
 	for b, st := range it.BackendStates {
 		if err := insertBackendSync(tx, seq, b, st); err != nil {
 			return 0, 0, err
@@ -378,41 +385,11 @@ func (s *Store) ListHistory(q HistoryQuery) (items []HistoryItem, rev uint64, ne
 	if err := tx.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM clip_items`).Scan(&newest); err != nil {
 		return nil, 0, 0, err
 	}
-	var where []string
-	var args []any
-	add := func(cond string, a ...any) { where = append(where, cond); args = append(args, a...) }
-	f := q.Filter
-	if q.Upper > 0 {
-		add(`seq <= ?`, q.Upper)
+	if q.After > 0 && q.AfterTime == 0 {
+		_ = tx.QueryRow(`SELECT `+orderExpr+` FROM clip_items WHERE seq=?`, q.After).Scan(&q.AfterTime)
 	}
-	if q.After > 0 {
-		if q.AfterTime == 0 {
-			_ = tx.QueryRow(`SELECT `+orderExpr+` FROM clip_items WHERE seq=?`, q.After).Scan(&q.AfterTime)
-		}
-		add(`(`+orderExpr+` < ? OR (`+orderExpr+` = ? AND seq < ?))`, q.AfterTime, q.AfterTime, q.After)
-	}
-	if q.NowMs > 0 {
-		add(`(expires_ms = 0 OR expires_ms > ?)`, q.NowMs)
-	}
-	in := func(col string, vs []string) {
-		if len(vs) > 0 {
-			add(col+` IN (`+strings.TrimSuffix(strings.Repeat("?,", len(vs)), ",")+`)`, anys(vs)...)
-		}
-	}
-	in("kind", f.Kinds)
-	in("origin_kind", f.OriginKinds)
-	if f.DeviceID != "" {
-		add(`origin_kind = 'remote_device' AND device_id = ?`, f.DeviceID)
-	}
-	if f.FromMs > 0 {
-		add(`created_ms >= ?`, f.FromMs)
-	}
-	if f.BeforeMs > 0 {
-		add(`created_ms < ?`, f.BeforeMs)
-	}
-	for _, t := range f.Tags {
-		add(`EXISTS (SELECT 1 FROM clip_tags WHERE item_seq = clip_items.seq AND tag = ?)`, t)
-	}
+	where, args := historyPredicate(q)
+
 	sqlText := `SELECT ` + itemCols + ` FROM clip_items`
 	if len(where) > 0 {
 		sqlText += ` WHERE ` + strings.Join(where, " AND ")

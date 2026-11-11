@@ -59,6 +59,8 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 - [Engine 公共契约](docs/contracts/engine-contract.md)：Engine 接口、DTO、生命周期、信任、内容租约、发送与应用语义、事件恢复及错误码。修改核心、桌面适配或未来平台绑定前必须阅读，并同步维护契约与测试。
 
+- [History search contract](docs/contracts/history-search-contract.md): Engine-owned text/file search, typed filters, explicit previews, catalogue paging, exact counts and resource bounds.
+
 - [本机历史契约](docs/contracts/history-contract.md)：稳定历史 ID、查询分页、内容租约、更新/删除、过期与配额、接收列表映射及历史应用；已实现（Engine 历史 API、桌面 `/v1/history`、`unic history`）。
 
 - [流水线提交契约](docs/contracts/pipeline-contract.md)：提交结果与网络结果分离、请求幂等、旧 SubmitContent 门面、三类入口状态转换、提交屏障、Received/去重发布与资源账本；已实现并有测试。

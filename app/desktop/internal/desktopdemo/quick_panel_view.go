@@ -3,6 +3,7 @@ package desktopdemo
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -85,7 +86,7 @@ func (p *quickDemo) panel(c *ui.Context) {
 					p.suggestionList(c, a, options)
 				}
 				switch {
-				case !p.queryDue.IsZero():
+				case !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.loading):
 					ui.Text(c, "正在搜索…").FontSize(13).TextColor(a.quiet).Padding(24)
 				case len(p.rows) == 0:
 					p.emptyView(c, a)
@@ -103,8 +104,12 @@ func (p *quickDemo) panel(c *ui.Context) {
 		}
 		ui.Row(c).Height(34).Shrink(0).Padding(0, 10, 0, 12).BorderWidth(1, 0, 0, 0).BorderColor(a.border).AlignItems(ui.Center).Gap(7).Children(func() {
 			ui.Row(c).Size(16, 16).Radius(4).Background(a.foreground).AlignItems(ui.Center).Justify(ui.Center).Children(func() { ui.Text(c, "T").FontSize(9).TextColor(a.background) })
-			ui.Text(c, "粘贴到 TextEdit").FontSize(12)
-			qpKeycap(c, "⏎", a)
+			ui.Text(c, p.pasteTargetLabel()).FontSize(12)
+			shortcut := "⏎"
+			if p.live != nil {
+				shortcut = p.commandLabel() + "C"
+			}
+			qpKeycap(c, shortcut, a)
 			ui.Spacer(c)
 			b := ui.ButtonBase(c.Key("actions")).Label("操作").Row().Gap(6).AlignItems(ui.Center)
 			b.Children(func() { ui.Text(c, "操作").FontSize(12).TextColor(a.quiet); qpKeycap(c, p.commandLabel()+"K", a) })
@@ -332,23 +337,31 @@ func (p *quickDemo) suggestionList(c *ui.Context, a qpPalette, options []qpFilte
 func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) []ui.Span {
 	text := strings.NewReplacer("\n", " ", "\r", " ").Replace(e.title)
 	q := strings.ToLower(strings.TrimSpace(query))
-	lower := strings.ToLower(text)
+	lower := []rune(strings.ToLower(text))
+	queryRunes := []rune(q)
 	tint := ui.RGBA(53, 132, 228, .22)
 	if selected {
 		tint = ui.RGBA(255, 255, 255, .3)
 	}
-	end, at := 0, 0
+	end := 0
 	spans := []ui.Span{}
-	for _, r := range text {
-		if q != "" && strings.HasPrefix(lower[at:], q) {
-			end = at + len(q)
+	for at, r := range []rune(text) {
+		if q != "" && strings.HasPrefix(string(lower[at:]), q) {
+			end = at + len(queryRunes)
 		}
 		span := ui.Span{Text: string(r), Color: ink, Strikethrough: e.lost}
-		if at < end {
+		matched := at < end
+		if len(e.highlights) > 0 {
+			matched = false
+			for _, range_ := range e.highlights {
+				matched = matched || (at >= range_.Start && at < range_.End)
+			}
+		}
+		if matched {
 			span.Background = tint
 		}
 		if e.kind == "链接" {
-			slash := strings.IndexByte(text, '/')
+			slash := slices.Index([]rune(text), '/')
 			if slash < 0 || at < slash {
 				span.Weight = 500
 			} else {
@@ -356,7 +369,6 @@ func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) 
 			}
 		}
 		spans = append(spans, span)
-		at += len(string(r))
 	}
 	return spans
 }
@@ -376,7 +388,7 @@ func (p *quickDemo) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry) {
 	b.Children(func() {
 		ui.Row(c).Width(24).Shrink(0).Justify(ui.Center).Children(func() {
 			if e.kind == "图片" {
-				ui.Image(c, fixtureImage()).Size(24, 16).Radius(3).Fit(ui.Cover)
+				ui.Image(c, p.quickImage(e)).Size(24, 16).Radius(3).Fit(ui.Cover)
 			} else {
 				icons := map[string]uikit.IconName{"文本": uikit.IconList, "代码": uikit.IconPackage, "链接": uikit.IconGlobe, "文件": uikit.IconFile, "富文本": uikit.IconList}
 				uikit.For(false).Icon(c, icons[e.kind], 14).TextColor(quiet)
@@ -454,7 +466,7 @@ func (p *quickDemo) imageGrid(c *ui.Context, a qpPalette) {
 						b.BorderColor(a.primary)
 					}
 					b.Children(func() {
-						ui.Image(c, fixtureImage()).Fill().Fit(ui.Cover).Radius(5)
+						ui.Image(c, p.quickImage(e)).Fill().Fit(ui.Cover).Radius(5)
 						ui.Row(c).Absolute().Right(4).Bottom(4).Children(func() { qpKeycap(c, p.commandLabel()+fmt.Sprint(row*3+col+1), a) })
 					})
 					if b.Hovered() && !p.keyboard && p.menu == "" && p.hovered != at {
@@ -574,8 +586,12 @@ func (p *quickDemo) satellite(c *ui.Context) {
 			ui.Column(c).FillWidth().Padding(16).Gap(8).Children(func() {
 				switch e.kind {
 				case "图片":
-					ui.Image(c, fixtureImage()).FillWidth().Height(230).Fit(ui.Contain).Label(e.title)
+					ui.Image(c, p.quickImage(*e)).FillWidth().Height(230).Fit(ui.Contain).Label(e.title)
 				case "富文本":
+					if p.live != nil {
+						ui.Text(c, e.text).FontSize(14).FillWidth().Selectable()
+						break
+					}
 					if p.richPreview == nil {
 						p.richPreview = richtext.NewDocument(richtext.ParseHTML("<h2>设计评审记录</h2><p>确认列表高度与<strong>键盘操作</strong>。</p><ul><li>保留清晰的选中状态。</li><li>核对浅色和深色主题。</li></ul>"))
 					}
@@ -599,4 +615,11 @@ func (p *quickDemo) satellite(c *ui.Context) {
 			ui.Text(c, "↑↓ 选择 · ⏎ 执行 · esc 返回").FontSize(11).TextColor(a.quiet).Padding(10, 12).Shrink(0)
 		}
 	})
+}
+
+func (p *quickDemo) pasteTargetLabel() string {
+	if p.live != nil {
+		return "复制到剪贴板"
+	}
+	return "粘贴到 TextEdit"
 }

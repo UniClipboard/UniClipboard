@@ -1,0 +1,207 @@
+package desktopdemo
+
+import (
+	"context"
+	"slices"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+
+	"github.com/uniclipboard/unic/engine"
+	api "github.com/uniclipboard/unic/internal/localapi"
+)
+
+type quickLive struct {
+	d                     *demo
+	seen, contentSeen     uint64
+	root                  func(string)
+	copyPending, keepOpen bool
+}
+
+func newLiveQuick(ctx context.Context, client *api.Client, theme string, root func(string)) *quickDemo {
+	p := &quickDemo{theme: theme, mode: "history", visible: true, hovered: -1, keyboard: true}
+	desktop := NewDesktop(ctx, client)
+	p.live = &quickLive{d: desktop.d, root: root}
+	p.live.d.live.queryOverride = func() engine.HistorySearchQuery { return p.searchQuery() }
+	return p
+}
+func (p *quickDemo) searchQuery() engine.HistorySearchQuery {
+	q := engine.HistorySearchQuery{TextTerms: queryLiteral(p.query), TagMatch: "any"}
+	add := func(dim, value string) {
+		switch dim {
+		case "type":
+			m := map[string]engine.HistorySearchType{"文本": "text", "富文本": "richtext", "图片": "image", "文件": "files"}
+			if t := m[value]; t != "" {
+				q.Types = append(q.Types, t)
+			}
+		case "tag":
+			q.Tags = append(q.Tags, value)
+		case "source":
+			q.Sources = append(q.Sources, searchSource(value))
+		case "time":
+			d := demo{timeRange: map[string]string{"今天": "today", "昨天": "yesterday", "前天": "day_before_yesterday", "本周": "this_week", "上周": "last_week", "本月": "this_month", "上月": "last_month"}[value]}
+			t := d.liveQuery()
+			q.CreatedFromMs, q.CreatedBeforeMs = t.FromMs, t.BeforeMs
+		}
+	}
+	if p.kind != "" {
+		add("type", p.kind)
+	}
+	for _, f := range p.chips {
+		add(f.dimension, f.value)
+	}
+	return q
+}
+func (q *quickLive) poll(p *quickDemo) {
+	d := q.d
+	l := d.live
+	// The existing 300 ms editor debounce remains authoritative.
+	if p.queryDue.IsZero() {
+		d.search.buffer = p.query
+		d.search.start = len([]rune(p.query))
+		d.search.end = d.search.start
+		if p.previewID != "" {
+			d.selected = p.previewID
+		}
+		l.poll(d)
+	}
+	if q.seen != l.appliedSerial || q.contentSeen != l.contentSerial {
+		q.seen, q.contentSeen = l.appliedSerial, l.contentSerial
+		old := ""
+		if a := p.active(); a != nil {
+			old = a.id
+		}
+		p.entries = nil
+		for _, v := range d.entries {
+			kind := kindName(v.kind)
+			for _, part := range l.items[v.id].Parts {
+				if v.kind == 0 && part.MIME == "text/html" {
+					kind = "富文本"
+				}
+			}
+			text := v.text
+			if text == "" {
+				text = v.preview
+			}
+			p.entries = append(p.entries, qpEntry{highlights: v.highlights, id: v.id, title: v.title, text: text, kind: kind, source: d.sourceName(v.source), age: v.date, tags: slices.Clone(v.tags), lost: v.contentError != ""})
+		}
+		p.rows = slices.Clone(p.entries)
+		p.selected = 0
+		for i, v := range p.rows {
+			if v.id == old {
+				p.selected = i
+				break
+			}
+		}
+		p.hovered = -1
+		p.schedulePreview()
+		p.update()
+	}
+	if l.readError != "" {
+		p.message = l.readError
+	}
+	if q.copyPending && !l.busy {
+		q.copyPending = false
+		p.message = l.message
+		if l.message == "" {
+			p.message = "已复制"
+			if !q.keepOpen {
+				p.visible = false
+			}
+		}
+		p.update()
+	}
+	if p.queryDue.IsZero() && !l.loading && l.cursor != "" && (p.selected >= len(p.rows)-8 || p.hovered >= len(p.rows)-8) {
+		l.loadHistory(d, true)
+	}
+}
+func (p *quickDemo) quickImage(e qpEntry) ui.ImageSource {
+	if p.live == nil {
+		return fixtureImage()
+	}
+	for _, v := range p.live.d.entries {
+		if v.id == e.id {
+			return v.image
+		}
+	}
+	return nil
+}
+func (p *quickDemo) liveRelaxations() []qpRelaxation {
+	q := p.searchQuery()
+	queries := []engine.HistorySearchQuery{}
+	dims := []string{}
+	add := func(dim string, on bool, edit func(*engine.HistorySearchQuery)) {
+		if !on {
+			return
+		}
+		trial := copySearchQuery(q)
+		edit(&trial)
+		dims = append(dims, dim)
+		queries = append(queries, trial)
+	}
+	add("type", len(q.Types) > 0, func(q *engine.HistorySearchQuery) { q.Types = nil })
+	add("tag", len(q.Tags) > 0, func(q *engine.HistorySearchQuery) { q.Tags = nil })
+	add("time", q.CreatedFromMs > 0 || q.CreatedBeforeMs > 0, func(q *engine.HistorySearchQuery) { q.CreatedFromMs = 0; q.CreatedBeforeMs = 0 })
+	add("source", len(q.Sources) > 0, func(q *engine.HistorySearchQuery) { q.Sources = nil })
+	l := p.live.d.live
+	l.requestCounts(queries)
+	out := []qpRelaxation{}
+	labels := map[string]string{"type": "去掉所有类型", "tag": "去掉所有标签", "time": "时间范围扩大到全部", "source": "包含所有设备"}
+	for i, q := range queries {
+		if n, ok := l.counts[searchQueryKey(q)]; ok && n > 0 {
+			out = append(out, qpRelaxation{dimension: dims[i], label: labels[dims[i]], count: int(n)})
+		}
+	}
+	if len(out) > 3 {
+		out = out[:3]
+	}
+	return out
+}
+func (p *quickDemo) liveAction(id string) {
+	if id == "main" || id == "settings" {
+		p.host(id)
+		return
+	}
+	e := p.active()
+	if e == nil {
+		return
+	}
+	d := p.live.d
+	switch id {
+	case "copy":
+		p.restore(false, false, false)
+	case "delete":
+		d.deleteLiveEntries([]string{e.id})
+	default:
+		p.message = "此操作暂不可用。"
+	}
+	p.menu = ""
+	p.update()
+}
+func (s *Desktop) AttachWindow(window *mygo.Window) {
+	d := s.d
+	var quickWindow *mygo.Window
+	var quick *quickDemo
+	root := func(action string) {
+		d.page = "history"
+		if action == "settings" {
+			d.page = "settings"
+		}
+		window.Show()
+		window.Focus()
+		window.Invalidate()
+	}
+	d.openQuickPanel = func() {
+		if quickWindow == nil {
+			quick = newLiveQuick(d.live.ctx, d.live.client, d.theme, root)
+			quickWindow = openQuickDemoWindow(quick, func() { quick.live.d.live.cancel(); quickWindow = nil })
+		} else {
+			quick.visible = true
+			quick.menu = ""
+			quick.applySearch()
+			quickWindow.Show()
+			quickWindow.Focus()
+			quickWindow.Invalidate()
+		}
+	}
+}

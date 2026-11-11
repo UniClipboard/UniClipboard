@@ -75,16 +75,20 @@ func openQuickDemoWindow(p *quickDemo, closed func()) *mygo.Window {
 		}
 		history.Invalidate()
 	})
-	offActivate := mygo.App.OnActivate(func(hasVisibleWindows bool) {
-		if !hasVisibleWindows {
-			p.visible = true
-			p.expanded = false
-			p.menu = ""
-			p.applySearch()
-			history.Show()
-			history.Invalidate()
-		}
-	})
+	offActivate := func() {}
+	if p.live == nil {
+		offActivate = mygo.App.OnActivate(func(hasVisibleWindows bool) {
+			if !hasVisibleWindows {
+				p.visible = true
+				p.expanded = false
+				p.menu = ""
+				p.applySearch()
+				history.Show()
+				history.Invalidate()
+			}
+		})
+	}
+
 	history.OnClosed(func() {
 		offActivate()
 		p.onUpdate = nil

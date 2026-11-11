@@ -1,8 +1,10 @@
 package desktopdemo
 
 import (
-	"github.com/egoist/mygo/ui"
+	"fmt"
 	"time"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func (p *quickDemo) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
@@ -14,9 +16,13 @@ func (p *quickDemo) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 	}
 	stage := ui.Column(c).Fill().Clip().Background(a.muted).Label(e.title)
 	bounds := stage.Bounds()
+	width, height := float32(800), float32(500)
+	if p.live != nil {
+		width, height = ui.ImageSize(p.quickImage(e))
+	}
 	clamp := func() {
-		maxX := max(float32(0), (800-bounds.W)/2)
-		maxY := max(float32(0), (500-bounds.H)/2)
+		maxX := max(float32(0), (width-bounds.W)/2)
+		maxY := max(float32(0), (height-bounds.H)/2)
 		p.imagePan.X = max(-maxX, min(maxX, p.imagePan.X))
 		p.imagePan.Y = max(-maxY, min(maxY, p.imagePan.Y))
 	}
@@ -54,9 +60,9 @@ func (p *quickDemo) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 	})
 	stage.Children(func() {
 		if p.actualSize {
-			ui.Image(c, fixtureImage()).Size(800, 500).Absolute().LeftPercent(50).TopPercent(50).Margin(-250+p.imagePan.Y, 0, 0, -400+p.imagePan.X)
+			ui.Image(c, p.quickImage(e)).Size(width, height).Absolute().LeftPercent(50).TopPercent(50).Margin(-height/2+p.imagePan.Y, 0, 0, -width/2+p.imagePan.X)
 		} else {
-			ui.Image(c, fixtureImage()).Fill().Fit(ui.Contain).Label(e.title)
+			ui.Image(c, p.quickImage(e)).Fill().Fit(ui.Contain).Label(e.title)
 		}
 		target := float32(0)
 		if stage.Hovered() {
@@ -64,7 +70,9 @@ func (p *quickDemo) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 		}
 		opacity := stage.Animate("image-overlay", target, 140*time.Millisecond)
 		{
-			ui.Row(c).Absolute().Top(12).Left(12).Padding(5, 8).Radius(6).Background(a.background).Opacity(opacity).Children(func() { ui.Text(c, "800 × 500 · PNG · 来自 "+e.source).FontSize(11).TextColor(a.quiet) })
+			ui.Row(c).Absolute().Top(12).Left(12).Padding(5, 8).Radius(6).Background(a.background).Opacity(opacity).Children(func() {
+				ui.Text(c, fmt.Sprintf("%.0f × %.0f · PNG · 来自 %s", width, height, e.source)).FontSize(11).TextColor(a.quiet)
+			})
 			label := "原始尺寸"
 			if p.actualSize {
 				label = "完整显示"

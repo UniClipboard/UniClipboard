@@ -106,7 +106,9 @@ Refresh preserves loaded page depth. Query changes discard results for obsolete 
 `live_devices.go` binds existing pairing, approval, candidate and removal operations.
 `live_settings.go` binds the existing General, Sync and Storage settings; the launcher owns native login registration.
 The service lifecycle, exclusive clipboard adapter, tray and normal/lightweight modes remain defined by the [headless architecture](headless.md).
-Full search, pin/favorite persistence, tag-library management, richer device policies/status, direct history sending and quick-panel OS integration remain explicit gaps.
+Global literal text/file-name search, rich-text classification, extension/source/tag/time filters, paged candidates and exact prospective counts use the Engine-owned [search interface](../contracts/history-search-contract.md).
+The main editor keeps word/all-tag semantics; the quick panel keeps phrase/any-tag semantics. Both reject obsolete read generations and use separately cancellable search/count/content reads.
+The normal desktop opens a real-data quick-panel window from Settings or the history menu. Copy/delete call the existing service; automatic OS paste, semantic classifiers, favorites, full tag management, richer device policies/status and direct history sending remain gaps.
 The normal UI never falls back to fixture data or simulated effects.
 See the [execution receipt](../exec/desktop-live-data.md) for nonvisual process acceptance and native limits.
 
@@ -125,7 +127,7 @@ Keyboard selection clamps at list boundaries. Hover changes the active preview w
 The history input handles panel commands through mygo OnTextKey, preserving input-method composition and normal copying of selected query text.
 Actions replace preview content and retain keyboard handling in the history window. Their cursor wraps over enabled rows.
 The fixture accepts filters explicitly, combines values with OR within a dimension and AND across dimensions, and offers independent relaxation proposals after empty searches.
-The fixture never creates an Engine client. Entry restore, paste, send, open and reveal remain recorded simulated effects.
+The standalone fixture never creates an Engine client. The normal desktop uses the same composition through a separate real-data binding. Entry restore, paste, send, open and reveal remain recorded simulated effects.
 The standalone entry can start in history, disconnected or empty state with `--quick-state`.
 The regular daemon-backed desktop shares the main composition through `NewDesktop`; the quick panel remains an isolated fixture.
 The [quick panel acceptance guide](../../app/desktop/QUICK-PANEL-DEMO.md) records the source map, reproduction steps, artifact format and differences.

@@ -297,41 +297,36 @@ func (k Kit) withListTheme(c *ui.Context) (restore func()) {
 
 // highlightRuns 把 title 按 terms（不区分大小写）切成 [文本, 是否命中] 片段。
 func highlightRuns(title string, terms []string) (runs []string, hit []bool) {
-	low := strings.ToLower(title)
-	mark := make([]bool, len(title))
-	if len(low) != len(title) { // 大小写映射改变字节长度时放弃高亮
-		return []string{title}, []bool{false}
-	}
+	raw := []rune(title)
+	low := []rune(strings.ToLower(title))
+	mark := make([]bool, len(raw))
 	found := false
-	for _, t := range terms {
-		t = strings.ToLower(t)
-		if t == "" {
+	for _, term := range terms {
+		needle := []rune(strings.ToLower(term))
+		if len(needle) == 0 {
 			continue
 		}
-		for from := 0; ; {
-			i := strings.Index(low[from:], t)
-			if i < 0 {
-				break
+		for at := 0; at+len(needle) <= len(low); at++ {
+			if string(low[at:at+len(needle)]) == string(needle) {
+				for j := at; j < at+len(needle); j++ {
+					mark[j] = true
+				}
+				found = true
 			}
-			for j := from + i; j < from+i+len(t); j++ {
-				mark[j] = true
-			}
-			found = true
-			from += i + len(t)
 		}
 	}
 	if !found {
 		return []string{title}, []bool{false}
 	}
 	start := 0
-	for i := 1; i <= len(title); i++ {
-		if i == len(title) || mark[i] != mark[start] {
-			runs = append(runs, title[start:i])
+	for i := 1; i <= len(raw); i++ {
+		if i == len(raw) || mark[i] != mark[start] {
+			runs = append(runs, string(raw[start:i]))
 			hit = append(hit, mark[start])
 			start = i
 		}
 	}
-	return runs, hit
+	return
 }
 
 // rowTitle 画标题（可高亮命中词，可等宽），一行省略。

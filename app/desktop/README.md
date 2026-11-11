@@ -198,3 +198,19 @@ It exercises the desktop binding without starting mygo, a renderer or the system
 The receipt records source hashes, the service binary hash and scenario results.
 Temporary profiles and binaries are removed on success and failure.
 Native visual and interaction acceptance remains separate.
+
+## Search
+
+The main history window and quick panel search all persisted history through the service.
+Text, HTML fallback, file basenames, extensions, tags, source and calendar filters use the [Engine search contract](../../docs/contracts/history-search-contract.md).
+The main editor matches all parsed words and all selected tags. The quick panel matches the literal phrase and any selected tag.
+Open the real-data quick panel from Settings or the history menu. Its Copy/Delete actions use the service. OS paste and global activation preferences remain separate.
+
+```sh
+UNIC_SEARCH_E2E=1 \
+UNIC_SEARCH_RECEIPT="$PWD/.build/history-search/receipt.json" \
+TMPDIR=/private/tmp go test -race ./app/desktop/internal/desktopdemo -run '^TestHistorySearchProcessE2E$' -count=1 -v
+```
+
+On other platforms, use an existing canonical temporary directory instead of `/private/tmp`.
+This process acceptance does not start a native app, offscreen renderer or system clipboard. See the [receipt](../../docs/exec/desktop-search-implementation.md).

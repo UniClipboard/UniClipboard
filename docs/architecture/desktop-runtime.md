@@ -218,3 +218,10 @@ The `verified` front matter names the committed source checked against this page
 It does not establish native interaction acceptance.
 The startup acceptance manifest binds the current source and executable hashes.
 `docscheck -bump` requires committed source and rejects uncommitted changes under this page's code paths.
+
+## Search reads
+
+The normal history window uses explicit service search, not filtering its loaded page.
+Selected full content remains a separate bounded read. Search counts and content reads have independent cancellation and never share the desktop mutation queue.
+The real-data quick panel uses the same service query and catalogue with its existing phrase and tag-union semantics.
+Unsupported OS paste and semantic classifications remain separate from retrieval. See the [search contract](../contracts/history-search-contract.md) and [execution receipt](../exec/desktop-search-implementation.md).

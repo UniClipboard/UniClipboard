@@ -12,6 +12,8 @@ paths:
   - engine/clipboard.go
   - engine/action.go
   - engine/history.go
+  - engine/history_search.go
+  - engine/history_search_types.go
   - engine/history_cleanup.go
   - engine/file_cache.go
   - engine/restore.go
@@ -22,6 +24,8 @@ paths:
   - engine/observers.go
   - plugin/plugin.go
   - internal/store/history.go
+  - internal/store/search.go
+  - internal/store/store.go
   - internal/plugins/builtintext
 verified: e1ccd8c2fb474cfb7fa110248b87bca847a6c59c
 ---
@@ -117,3 +121,14 @@ Service routes live in `app/service/internal/server/`; CLI handling lives in `ap
 - Two-host CLI acceptance covers the recorded source snapshot. Native clipboard acceptance remains pending. See the [physical-host receipt](../exec/baselines/0004-2026-11-10-cli-twohost.md).
 - The desktop GUI Action menu awaits the mygo/UI Kit interface design.
 - Nonempty `CommitRequest.WritebackGuard` returns `unsupported`; automatic writeback is cancelled.
+
+## Explicit history search
+
+Engine persists derived search documents and readiness state with each history record in the same transaction.
+Both normal pipeline commits and offline imports use this path. Missing derived state is repaired from persisted representations and basenames on open.
+Documents contain committed text or an HTML-text fallback and individual file basenames. Search does not open file bodies, walk directories, fetch URLs or perform OCR.
+A case-sensitive FTS5 trigram index accelerates normalized substring matching; canonical `instr` checks decide membership. One- and two-rune terms use exact substring scans.
+Delete cascades remove search documents and their FTS postings. Query-time expiry prevents stale hits before physical cleanup.
+A separate bounded SQLite reader serves search/count/catalogue work without holding the existing writer connection.
+Index quota or extraction failure preserves history and reports an incomplete index for content-dependent queries. Ordinary metadata browsing remains available.
+The [search contract](../contracts/history-search-contract.md) defines the public methods and resource limits. The [execution receipt](../exec/desktop-search-implementation.md) separates process evidence from native UI acceptance.

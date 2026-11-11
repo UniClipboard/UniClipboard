@@ -8,7 +8,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ db *sql.DB }
+type Store struct{ db, search *sql.DB }
 
 const schema = `
 CREATE TABLE IF NOT EXISTS file_cache (
@@ -48,10 +48,15 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Store{db}, nil
+	reader, err := openSearch(db, path)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return &Store{db: db, search: reader}, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error { return errors.Join(s.search.Close(), s.db.Close()) }
 
 // Meta returns the stored value, or nil if the key is absent.
 func (s *Store) Meta(k string) ([]byte, error) {

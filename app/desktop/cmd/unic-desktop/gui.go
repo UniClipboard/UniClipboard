@@ -179,6 +179,7 @@ func runGUI(settings *config.Manager) error {
 			opts.Vibrancy = mygo.VibrancySidebar
 		}
 		g.win = mygo.NewWindow(opts)
+		screen.AttachWindow(g.win)
 		g.win.OnClose(func(e *mygo.CloseEvent) {
 			if !quitting {
 				e.PreventDefault()

@@ -69,11 +69,11 @@ Temporary profiles and service binaries are deleted on success and failure.
 
 ## Remaining capability gaps
 
-- Full-text and extension search, rich-text-only previews, code/link classification and exact global candidate counts.
+- Search, rich-text previews, extension filters and exact candidate counts are now implemented; see the [search execution receipt](desktop-search-implementation.md). Virtual code/link classifiers remain unavailable.
 - Persistent pins/favorites and full tag-library entities, colors, merging and bulk management.
 - Full device details, device rename/binding routes, fine-grained policy and latency/direct/relay status.
 - Sending an existing history ID directly to selected devices.
-- Quick-panel production data/commands, global shortcut preferences, target capture and OS paste.
+- Quick-panel production search/Copy/Delete are now connected. Global shortcut preferences, target capture and OS paste remain unavailable.
 - Appearance, font, shortcut, proxy, relay and security configuration not supported by the current service contract.
 - Native visual, focus, menu and clipboard acceptance. No application, renderer or browser was launched.
 

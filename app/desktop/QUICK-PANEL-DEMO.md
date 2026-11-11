@@ -99,3 +99,15 @@ Each PNG places the independently rendered history and satellite views on a neut
 `screenshots.json` records base HEAD, dirty-source file hashes, PNG hashes, view rectangles, scale and export method.
 This export uses the existing `ui.Tester.Image` and PNG encoding path. It never calls `App.Run` or creates native windows.
 It demonstrates the current view rendering. It does not establish native window shadows, OS focus or display-edge placement.
+
+## Normal desktop binding
+
+The standalone `--demo --page quick-panel` remains a fixture.
+The normal desktop opens this composition with real history from Settings or the history menu.
+`live_quick.go` projects literal phrases, type/source alternatives and any-match tags into the shared service query.
+Candidates come from persisted catalogues; empty-state relaxation counts come from exact prospective queries.
+Punctuation-only input remains literal in the production binding.
+Full selected content is separately cancellable. Real images replace fixture images and use their actual dimensions.
+Copy and Delete call the service. OS paste, real target-app capture, favorites and semantic classifications remain unavailable; the production binding never records a simulated success.
+The production window does not install the standalone fixture's Dock-reactivation behavior.
+See the [search contract](../../docs/contracts/history-search-contract.md) and [process receipt](../../docs/exec/desktop-search-implementation.md).

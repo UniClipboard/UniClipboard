@@ -1156,15 +1156,16 @@ fn a_pixpin_image_file_loads_an_image_preview_and_remains_a_file() {
 }
 
 #[test]
-fn a_preview_follows_the_selection_after_a_pause_that_depends_on_the_window() {
+fn a_preview_opens_at_once_and_then_follows_the_selection_after_a_pause() {
     let (mut state, fixture) = open_panel(&["a", "b"]);
     let delay_of = |effects: &[Effect]| match effects {
         [Effect::SchedulePreview { delay, .. }] => *delay,
         other => panic!("{other:?}"),
     };
+    // Nothing is open yet: the first preview does not wait, so it appears with the history window.
     assert_eq!(
         delay_of(&state.schedule_preview()),
-        timing::PREVIEW_DELAY_CLOSED
+        std::time::Duration::ZERO
     );
     let effects = state.on_event(
         Event::PreviewDue {

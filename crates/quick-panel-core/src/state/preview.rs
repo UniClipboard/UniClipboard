@@ -5,7 +5,8 @@ use crate::ports::{PreviewData, ServiceError};
 use super::{timing, Effect, Effects, PanelState};
 
 impl PanelState {
-    /// Follows the selection with the preview, after a short pause.
+    /// Follows the selection with the preview. The first preview of a session opens at once, so it
+    /// appears together with the history window; once it is open, a change of selection is debounced.
     pub fn schedule_preview(&mut self) -> Effects {
         let Some(item) = self.active_item() else {
             return vec![];
@@ -16,7 +17,7 @@ impl PanelState {
         let delay = if self.preview.expanded {
             timing::PREVIEW_DELAY_OPEN
         } else {
-            timing::PREVIEW_DELAY_CLOSED
+            std::time::Duration::ZERO
         };
         vec![Effect::SchedulePreview {
             id: item.entry_id.clone(),

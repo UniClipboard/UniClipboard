@@ -12,3 +12,5 @@ Merge the current `v2` branch into `cli-release-channels`. Preserve the upstream
 - The five-platform native acceptance from the earlier receipt predates this merge. Native cross-platform acceptance must run again in CI. Public npm publication, GUI and device acceptance were not run.
 
 Existing whitespace warnings inside the upstream stored probe patch are preserved. They are patch content, outside this conflict resolution.
+
+Documentation validation passed with two existing upstream stale-page warnings in `pipeline.md` and `real-machine-testing.md`. Their files are unchanged from `v2`. Related release/headless architecture verification markers reference the merge commit. The release report SHA-256 is `7875390a6c9958aebcafb2a5ec4f383fc1ed42653a926e27042a73540ba23b3d`; `shasum -a 256 -c SHA256SUMS` passed.

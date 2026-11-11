@@ -46,25 +46,27 @@ type Engine struct {
 	use sync.RWMutex  // held (read) by every call; Close takes it to free the store
 	ctl chan struct{} // serializes suspend/resume
 
-	mu         sync.Mutex // guards everything below
-	life       Lifecycle
-	closing    bool
-	closeBegun bool
-	stopReq    bool
-	runtime    RuntimeState
-	netGen     uint64 // bumped by NotifyNetworkChanged; guarded by mu
-	netUp      bool   // the engine runs and the host allows the network; backends see "active" only then
-	peerProcs  []*peerProcBackend
-	candRetry  map[string]*candWait // retry timing of requested candidates; guarded by mu
-	rev        uint64
-	settings   SettingsState
-	host       HostCapabilities
-	subs       map[*Subscription]struct{}
-	ops        opTable
-	code       codeTimer
-	tix        *liveTicket // the pairing ticket on offer
-	rvDefault  *rendezvous.Client
-	rvCache    *rendezvous.Client
+	mu                  sync.Mutex // guards everything below
+	life                Lifecycle
+	closing             bool
+	closeBegun          bool
+	stopReq             bool
+	runtime             RuntimeState
+	netGen              uint64 // bumped by NotifyNetworkChanged; guarded by mu
+	netUp               bool   // the engine runs and the host allows the network; backends see "active" only then
+	peerProcs           []*peerProcBackend
+	peerStateDirty      bool                 // callback-triggered state refresh is pending; guarded by mu
+	peerStateRefreshing bool                 // at most one refresh worker; guarded by mu
+	candRetry           map[string]*candWait // retry timing of requested candidates; guarded by mu
+	rev                 uint64
+	settings            SettingsState
+	host                HostCapabilities
+	subs                map[*Subscription]struct{}
+	ops                 opTable
+	code                codeTimer
+	tix                 *liveTicket // the pairing ticket on offer
+	rvDefault           *rendezvous.Client
+	rvCache             *rendezvous.Client
 
 	startCancel context.CancelFunc
 	startDone   chan struct{} // closed when Start has fully returned

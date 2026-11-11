@@ -90,3 +90,7 @@ The event contains no device identity, fingerprint, binding context or pairing m
 - 对象存储路径（仓库成员身份、`object_store` 票据兑现、成员排除）未实现；`object_store` 票据当前只被解析，不能使用。
 - 密钥轮换、备份恢复、多设备共享身份未定义。
 - 待批准设备数达上限时新握手直接被拒绝（`reject`），尚无面向用户的清理提示。
+
+## Backend callback state refresh
+
+A handshake that revives a revoked device records it as pending and queues a coalesced state refresh. It never waits for `ApplyState` from a backend callback. A single Engine-owned refresh worker drains these requests; Engine stop prevents new work and drains the worker before closing the store. Explicit unpairing, rejection and other revocations retain the synchronous state barrier. The pending handshake grants no session token or trust.

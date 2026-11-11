@@ -305,7 +305,7 @@ func (b *peerProcBackend) CheckPeer(_ context.Context, r rpc.CheckPeer) (rpc.Pee
 		return rpc.PeerDecision{}, rpcErr(rpc.CodeInternal)
 	}
 	if wasRevoked {
-		e.syncPeerStates() // the tombstone is gone from the snapshot
+		e.refreshPeerStates() // never wait for ApplyState from its backend callback
 	}
 	rev := uint64(d.Revision + bd.Revision)
 	if d.Trust != store.TrustTrusted || bd.State != store.BindingAuthorized {

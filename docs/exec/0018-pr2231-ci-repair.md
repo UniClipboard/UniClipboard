@@ -36,3 +36,13 @@ GIT_TEST_ASSUME_DIFFERENT_OWNER=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=
 The first command must fail with `error obtaining VCS status`; the second must succeed. The private temporary executable can be deleted after verification.
 
 Production headless E2E passed all 13 process checks with race detection. Its manifest is `.cache/0015-acceptance/manifest.json`. Full race-suite and remote CI validation are pending at this documentation commit. No native GUI or browser was launched.
+
+## Concurrent handshake and stop failure modes
+
+Run 42965739173 removed the original failures but exposed a stop/handshake deadlock in Engine. The teardown holds the peer-state publication lock while the backend waits for its handshake goroutines. A handshake that revives a revoked device synchronously requests the same state lock. Repeating the original pairing test 30 times did not reproduce this scheduling window locally.
+
+The deterministic isolated integration regression must cover: a callback waiting on an in-flight state push; a state push waiting on its own callback during shutdown; lost/coalesced refresh requests; and background refresh surviving Engine stop/store closure. Preserve synchronous revocation barriers and pending-device approval rules. This isolated callback/state-lock boundary is necessary to control the scheduling order; ordinary process tests retain end-to-end closure coverage.
+
+The controlled regression failed in 1.13 seconds before the fix. Afterward it and the original pairing test passed 30 repetitions with race detection (21.857 seconds). Engine's complete race suite passed (55.391 seconds); production headless acceptance passed again (53.47 seconds), with all 13 process checks. The pinned linter still reports zero issues. Callback refreshes now coalesce into one Engine-owned worker; Stop prevents new work and waits for that worker. Explicit revocations retain their synchronous barrier. No test timeout was increased and no test was skipped to obtain these results.
+
+The initial full local run passed the entire desktop interaction suite. Its three failing packages were `engine`, `app/service/internal/host` and `internal/v1migration`, caused by macOS temporary-directory aliases; all passed with `TMPDIR=/private/tmp`. Remote run 42965739173 also passed the desktop suite, lint and production headless acceptance before exposing the callback deadlock. Five-platform candidate build 42965739183 passed. Final remote CI is pending at this commit.

@@ -12,7 +12,7 @@ paths:
   - .github/workflows/build-cli.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 5e6d74552d5f5197d6f6435ba4a4d4e8a728043e
+verified: e4762f2f301984913b7da84aa54d18bddba6b579
 ---
 # Product builds and CLI releases
 

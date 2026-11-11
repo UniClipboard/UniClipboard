@@ -180,57 +180,34 @@ type helpLine struct {
 }
 
 var helpLines = []helpLine{
-	{"send, s [flags] [text]", "send text, stdin, -f files, or --png PATH: --to all|DEVICE sends to paired devices; without --to it shows a code and a link for one receiver", []string{"send"}},
-	{"recv, r [code|link]", "take content from a code or link; without one: list, show or dismiss received content", []string{"recv"}},
-	{"history, h", "list, show, delete and tag clipboard history (unic h help)", []string{"history list", "history use"}},
-	{"device add [code|address]", "pair a device: without an argument, show a 6-digit code for the other device", []string{"device add"}},
-	{"device addr", "print this device's address (treat it like a password)", []string{"device addr"}},
-	{"device list", "list paired devices and devices waiting for your approval", []string{"device list"}},
-	{"device remove <id>", "forget a paired device", []string{"device remove"}},
-	{"device approve <id> <fingerprint>", "accept after checking the other device", []string{"device approve"}},
+	{"send, s [text]", "send text, stdin, -f files or --png PATH; --to all|DEVICE, or omit it for a code", []string{"send"}},
+	{"recv, r [code|link]", "receive from a code or link; no argument lists received items", []string{"recv"}},
+	{"history, h", "list, show, delete and tag history", []string{"history list", "history use"}},
+	{"device add [code|addr]", "pair a device; no argument shows a code", []string{"device add"}},
+	{"device list", "list paired and waiting devices", []string{"device list"}},
+	{"device addr", "print this device's address (a secret)", []string{"device addr"}},
+	{"device remove <id>", "forget a device", []string{"device remove"}},
+	{"device approve <id> <fp>", "accept a waiting device", []string{"device approve"}},
 	{"device reject <id>", "dismiss a waiting device", []string{"device reject"}},
-	{"device suggestions", "devices your paired devices vouched for (suggest-pair|suggest-ignore|suggest-restore)", []string{"device suggestions", "device suggest-pair", "device suggest-ignore", "device suggest-restore"}},
+	{"device suggestions", "devices vouched for by your devices (suggest-pair|suggest-ignore|suggest-restore)", []string{"device suggestions", "device suggest-pair", "device suggest-ignore", "device suggest-restore"}},
 	{"status", "show this device and its peers", []string{"status"}},
-	{"config", "show settings; set <key> <TOML-value>; apply <file>; --json", []string{"config"}},
-	{"config path", "print the settings file path", []string{"config path"}},
-	{"plugin", "list local plugins; enable or disable one (unic plugin help)", []string{"plugin"}},
-	{"migrate [flags]", "import local UniClipboard v1 history", []string{"migrate"}},
+	{"config [path]", "show settings; set <key> <value>; apply <file>", []string{"config"}},
+	{"plugin", "list, enable or disable plugins", []string{"plugin"}},
+	{"migrate", "import UniClipboard v1 history", []string{"migrate"}},
 	{"dev", "development and diagnosis (unic dev help)", []string{"dev watch", "dev copy", "dev logs export"}},
-}
-
-func badge(names []string) string {
-	seen := map[requirement]bool{}
-	var out []string
-	for _, n := range names {
-		r := lookup(n).Requirement
-		if !seen[r] {
-			seen[r] = true
-			out = append(out, string(r))
-		}
-	}
-	return "[" + strings.Join(out, "/") + "]"
 }
 
 func usageText() string {
 	var b strings.Builder
-	b.WriteString("unic - clipboard sync between your devices\n\nUsage: unic <command>\n\n")
-	b.WriteString("Commands marked [service] use the running unicd. When none runs, unic starts a temporary\n")
-	b.WriteString("one and stops it after the last command finishes. A running unicd or desktop is never stopped.\n")
-	b.WriteString("[local] commands never contact unicd. [offline] commands need exclusive access to their profile.\n")
-	b.WriteString("[service+clipboard] commands also need the desktop clipboard adapter; unic never starts a GUI.\n\n")
+	b.WriteString(style(outTTY, sBold, "unic") + " - clipboard sync between your devices\n\n")
+	b.WriteString(style(outTTY, sBold, "Usage:") + " unic <command> [flags]\n\n")
+	b.WriteString(style(outTTY, sBold, "Commands:") + "\n")
 	for _, l := range helpLines {
-		fmt.Fprintf(&b, "  %-28s %s %s\n", l.Usage, badge(l.Leaves), l.Text)
+		pad := strings.Repeat(" ", max(1, 28-len(l.Usage)))
+		fmt.Fprintf(&b, "  %s%s%s\n", style(outTTY, sCmd, l.Usage), pad, l.Text)
 	}
-	b.WriteString(`
-A temporary unicd lives only while commands use it. Commands that wait for another device
-(device add, dev logs level --for) keep it running for a bounded window and say so on stderr.
-To keep receiving content or to keep a code usable after the command ends, run unicd yourself.
-Exit codes: 0 done, 1 failed, 2 usage, 3 migration partial, 4 committed but not fully completed
-(send, approval or window incomplete), 5 done but temporary unicd cleanup failed.
-
-Settings live in config.toml in the state directory; saving it applies it at once.
-Set UNIC_HOME to run a separate profile, UNIC_RENDEZVOUS_URL to use another
-pairing code service.
+	b.WriteString("\n" + style(outTTY, sBold, "Exit codes:") + ` 0 done, 1 failed, 2 usage, 3 migration partial,
+4 committed but incomplete, 5 done but temporary unicd cleanup failed.
 `)
 	return b.String()
 }

@@ -187,17 +187,20 @@ func runTemporaryTransfer(ctx context.Context, c *api.Client, s clip.Snapshot, a
 	if err != nil {
 		return err
 	}
+	wait := &spinner{stop: make(chan struct{})}
 	if asJSON {
 		if err := json.NewEncoder(os.Stdout).Encode(t); err != nil { // the first line carries the link and the code
 			return err
 		}
 	} else {
 		if t.Code != "" {
-			fmt.Printf("Code: %s\n", strings.Replace(t.Code, "-", " ", 1))
+			fmt.Printf("Code: %s\n", style(outTTY, sBold, strings.Replace(t.Code, "-", " ", 1)))
 		}
 		fmt.Printf("Link: %s\n", t.Link)
-		fmt.Fprintf(os.Stderr, "Waiting for one receiver until %s. On the other side run `unic recv <code or link>` or open the link. Ctrl+C cancels.\n", time.UnixMilli(t.ExpiresAtMs).Format("15:04:05"))
+		note("On the other device run: unic recv <code or link>")
+		wait = startSpinner(fmt.Sprintf("Waiting for a receiver until %s (Ctrl+C cancels)", time.UnixMilli(t.ExpiresAtMs).Format("15:04:05")))
 	}
+	defer wait.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -221,7 +224,8 @@ func runTemporaryTransfer(ctx context.Context, c *api.Client, s clip.Snapshot, a
 			if asJSON {
 				return json.NewEncoder(os.Stdout).Encode(cur)
 			}
-			fmt.Fprintln(os.Stderr, "delivered")
+			wait.Stop()
+			fmt.Fprintln(os.Stderr, style(errTTY, sOK, "✓")+" delivered")
 			return nil
 		}
 		if asJSON {

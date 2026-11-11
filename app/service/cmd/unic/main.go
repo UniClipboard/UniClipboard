@@ -64,7 +64,7 @@ func run(args []string) int {
 	}
 	// Cleanup has its own context and runs after command output is complete.
 	if cleanup := current.Release(); cleanup != nil {
-		fmt.Fprintln(os.Stderr, "unic: cleanup:", cleanup)
+		fmt.Fprintln(os.Stderr, errorLine("cleanup: "+cleanup.Error()))
 		if code == 0 {
 			code = exitCleanup
 		}
@@ -111,7 +111,7 @@ func report(args []string, err error) int {
 	if asJSON {
 		_ = json.NewEncoder(os.Stderr).Encode(map[string]string{"error": err.Error(), "reason": api.ReasonOf(err)})
 	} else {
-		fmt.Fprintln(os.Stderr, "unic:", err)
+		fmt.Fprintln(os.Stderr, errorLine(err.Error()))
 	}
 	var incomplete *incompleteError
 	if errors.As(err, &incomplete) {

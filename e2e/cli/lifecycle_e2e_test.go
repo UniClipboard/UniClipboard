@@ -360,8 +360,10 @@ func TestServiceLifecycle(t *testing.T) {
 				t.Fatalf("leaf %q is declared but help does not print %q", n, word)
 			}
 		}
-		if !strings.Contains(help, "[service]") || !strings.Contains(help, "[local]") || !strings.Contains(help, "[service+clipboard]") || !strings.Contains(help, "[offline]") {
-			t.Fatal("help lacks dependency badges")
+		for _, req := range []string{`"service"`, `"local"`, `"service+clipboard"`, `"offline"`} {
+			if !strings.Contains(out, req) {
+				t.Fatalf("catalog lacks requirement %s", req)
+			}
 		}
 		_ = os.WriteFile(filepath.Join(artifacts, "command-catalog.json"), []byte(out), 0o600)
 		l.assertNoService()
@@ -562,7 +564,7 @@ func TestServiceLifecycle(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(l.home, "config.toml"), []byte("not = [valid"), 0o600)
 		before := dirNames(l.home)
 		_, stderr, code := l.run("status")
-		if code != 1 || !strings.Contains(stderr, "unic:") {
+		if code != 1 || !strings.Contains(stderr, "error:") {
 			t.Fatalf("expected a startup failure, got %d %q", code, stderr)
 		}
 		l.assertNoServiceSocket()

@@ -1,0 +1,11 @@
+# Case: Quick-panel system ordering
+# Mode: process
+# Purpose: Target session, clipboard application, cancellation and paste-request ordering with OS fixtures.
+# Steps:
+#   Execute the registered production-process suite and validate its receipt.
+# Expected:
+#   The suite runs, passes its assertions and emits a successful receipt.
+# Forbidden:
+#   A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
+
+acceptance quickpanel quick-panel-contract

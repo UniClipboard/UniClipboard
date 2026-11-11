@@ -11,3 +11,5 @@
 - Build the graphical program with `go build -o dist/unic-desktop ./app/desktop/cmd/unic-desktop`. The service and CLI belong to `app/service/`.
 
 - Quick-panel system interaction follows the [Desktop contract](../../docs/contracts/desktop-quick-panel-contract.md). Keep OS target identity and synthetic input in the Desktop host; service and Engine must not own them.
+
+- Use `make desktop-e2e` as the canonical Desktop acceptance entry. Add declarative cases and regenerate the [catalogue](e2e/CASES.md); follow the [evidence contract](../../docs/contracts/desktop-e2e-contract.md). Native-window recordings do not establish OS focus or cross-application paste.

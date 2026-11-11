@@ -57,9 +57,7 @@ Implemented in the working tree:
 ## Repeatable process command
 
 ```sh
-UNIC_DESKTOP_DATA_E2E=1 \
-UNIC_DESKTOP_DATA_RECEIPT="$PWD/.build/desktop-live-data/receipt.json" \
-go test -race ./app/desktop/internal/desktopdemo -run '^TestDesktopLiveDataE2E$' -count=1 -v
+make desktop-e2e CASE=data-binding
 ```
 
 The test builds a race-enabled production service, starts two private service processes and uses the desktop binding against real sockets.

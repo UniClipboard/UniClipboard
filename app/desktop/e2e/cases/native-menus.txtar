@@ -1,0 +1,8 @@
+# Case: Native menus
+# Mode: view
+# Purpose: System-menu requests, cancellation and selected-value dispatch in the software view.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Menu requests and returned commands match each exercised filter and action.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo native-menus

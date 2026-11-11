@@ -50,7 +50,9 @@ UNIC_HOME=/tmp/unicA ./unicd        # 用 UNIC_HOME 在同一台机器上跑第�
 GUI 测试可以导出三皮肤、亮暗主题的截图，包含空历史聚焦态和窄窗口：
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/uikit-review" go test ./app/desktop/cmd/unic-desktop -run TestGUI -count=1
+make desktop-e2e CASE=gui-navigation
+make desktop-e2e CASE=gui-approval-reconnect
+make desktop-e2e CASE=gui-empty-layout
 ```
 
 ### 代码检查
@@ -179,25 +181,21 @@ See [startup architecture](../../docs/architecture/headless.md#desktop-startup-s
 Repeatable process acceptance without opening a GUI:
 
 ```sh
-make desktop-startup-e2e
+make desktop-e2e CASE=startup-lifecycle
 ```
 
 The manifest records source and executable SHA-256 values, process checks and native acceptance gaps.
 See the [acceptance receipt](../../docs/exec/desktop-startup-lifecycle.md).
 
-## Live desktop process acceptance
+## Desktop end-to-end acceptance
 
 ```sh
-UNIC_DESKTOP_DATA_E2E=1 \
-UNIC_DESKTOP_DATA_RECEIPT="$PWD/.build/desktop-live-data/receipt.json" \
-go test -race ./app/desktop/internal/desktopdemo -run '^TestDesktopLiveDataE2E$' -count=1 -v
+make desktop-e2e
 ```
 
-This starts private production services and the real IPC clipboard adapter with a directory clipboard.
-It exercises the desktop binding without starting mygo, a renderer or the system clipboard.
-The receipt records source hashes, the service binary hash and scenario results.
-Temporary profiles and binaries are removed on success and failure.
-Native visual and interaction acceptance remains separate.
+This is the canonical entry for Desktop acceptance. It owns the environment, source snapshot, binaries, isolated profiles and result paths. The command prints one HTML report containing case results, assertions, native-window screenshots and continuous recordings. Use `make desktop-e2e-list` to list cases or `make desktop-e2e CASE=history-search-copy` to select one.
+
+See the [test guide](e2e/README.md) for requirements, evidence boundaries and adding a case. The [generated catalogue](e2e/CASES.md) lists what actually runs. Native-window content evidence does not establish system clipboard, OS focus or cross-application paste.
 
 ## Search
 
@@ -206,11 +204,7 @@ Text, HTML fallback, file basenames, extensions, tags, source and calendar filte
 The main editor matches all parsed words and all selected tags. The quick panel matches the literal phrase and any selected tag.
 Open the real-data quick panel from Settings or the history menu. Its Copy/Delete actions use the service. OS paste and global activation preferences remain separate.
 
-```sh
-UNIC_SEARCH_E2E=1 \
-UNIC_SEARCH_RECEIPT="$PWD/.build/history-search/receipt.json" \
-TMPDIR=/private/tmp go test -race ./app/desktop/internal/desktopdemo -run '^TestHistorySearchProcessE2E$' -count=1 -v
-```
+Search process acceptance runs as `search-contract` under `make desktop-e2e`. See the [test guide](e2e/README.md).
 
 On other platforms, use an existing canonical temporary directory instead of `/private/tmp`.
 This process acceptance does not start a native app, offscreen renderer or system clipboard. See the [receipt](../../docs/exec/desktop-search-implementation.md).

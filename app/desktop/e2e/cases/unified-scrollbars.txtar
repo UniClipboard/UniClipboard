@@ -1,0 +1,8 @@
+# Case: Unified scrollbars
+# Mode: view
+# Purpose: Scrollbar visibility during hover, scroll, idle and nested preview interaction.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Three skins and both themes preserve edge indicators and independent nested scroll ownership.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo unified-scrollbars

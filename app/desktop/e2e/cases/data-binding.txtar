@@ -1,0 +1,11 @@
+# Case: Desktop data binding
+# Mode: process
+# Purpose: History, tags, restore, pairing and reconnect through real services.
+# Steps:
+#   Execute the registered production-process suite and validate its receipt.
+# Expected:
+#   The suite runs, passes its assertions and emits a successful receipt.
+# Forbidden:
+#   A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
+
+acceptance desktopdemo data-binding

@@ -1,0 +1,8 @@
+# Case: Tag manager platforms
+# Mode: view
+# Purpose: Tag management and separate entry assignment across all three skins.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Built-in operations remain protected and assignment updates the shared registry in both themes.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo tag-manager-platforms

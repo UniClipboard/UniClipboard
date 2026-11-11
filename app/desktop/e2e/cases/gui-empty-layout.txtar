@@ -1,0 +1,8 @@
+# Case: Gui empty layout
+# Mode: view
+# Purpose: Legacy GUI empty-history layout and narrow-window bounds.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Empty state fills the body and focused controls remain visible across skins and themes.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance gui gui-empty-layout

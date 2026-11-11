@@ -11,7 +11,7 @@ and the [local service contract](../contracts/local-service-contract.md#service-
 ## Repeatable process acceptance
 
 ```sh
-make desktop-startup-e2e
+make desktop-e2e CASE=startup-lifecycle
 ```
 
 The command builds race-instrumented production `unic`, `unicd`, and `unic-desktop`,
@@ -20,7 +20,7 @@ It opens no GUI and changes no real login item.
 The file-backed login fixture validates persisted intent, external disable, explicit retry and native failure handling.
 It does not prove macOS, Linux or Windows native registration.
 
-Artifacts are written to `.cache/desktop-startup-e2e/manifest.json` and adjacent process logs.
+The unified report retains `cases/startup-lifecycle/scenario-receipt.json`. Private binaries, profiles and raw process logs are removed after execution.
 The manifest binds source SHA-256 values, executable SHA-256 values, platform, process identifiers,
 checks, race instrumentation and explicit native acceptance gaps.
 The source files must remain unchanged throughout the process checks.

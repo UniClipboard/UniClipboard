@@ -150,13 +150,12 @@ Mygo clamps an element width to at least its padding. The sidebar therefore stay
 The corrected hierarchy is a padding-free animated viewport around a fixed 236 px inner body. The inner body owns all sidebar padding.
 The viewport remains mounted at zero width. Navigation state survives closing and reopening.
 
-`TestSidebarCollapseE2E` drives the complete demo view through the existing UI event/layout engine without opening a native window.
+`sidebar-collapse` drives the complete demo view through the existing UI event/layout engine without opening a native window.
 It checks the closing tail, reopening, and reversing an in-progress transition.
 It writes repeatable geometry data, not visual acceptance screenshots:
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/sidebar-after" \
-  go test ./app/desktop/internal/desktopdemo -run '^TestSidebarCollapseE2E$' -count=1 -v
+make desktop-e2e CASE=sidebar-collapse
 ```
 
 Before correction, the content x coordinate at 200/240/260/280 ms was 20/20/20/0 px.
@@ -180,8 +179,7 @@ The baseline failed all 12 detail/preview cases. The migrated implementation pas
 The output contains measurements, not screenshots or native acceptance claims:
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/scroll-policy-after" \
-  go test ./app/desktop/internal/desktopdemo -run '^TestUnifiedScrollbarsE2E$' -count=1 -v
+make desktop-e2e CASE=unified-scrollbars
 ```
 
 ### Liquid Glass material
@@ -197,15 +195,14 @@ The native Go UI is painted into one render surface. The plugin's shader samples
 Its optional Native mode puts NSGlassEffectView below that surface and samples a WebView or window material, not the Go UI painted above it.
 The demo therefore uses the maintained shader path for these native Go controls. It does not claim direct NSGlassEffectView composition.
 
-`TestLiquidGlassE2E` drives the complete demo in light and dark mode at 2x scale.
+`liquid-glass` drives the complete demo in light and dark mode at 2x scale.
 It samples the rounded upper rim on hover and after exit, including the corners where light-mode highlights remain measurable.
 For the secondary Glass action, it also checks native menu tracking on press. The OS owns the pointer while that menu is open.
 A read-only Go source overlay replaying the legacy blur helper fails all six scenarios with no reactive rim or press growth.
 The current material retains reactive hover lighting and resets after pointer exit. The send action now verifies platform menu tracking rather than requiring button press growth while the OS owns the pointer.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/glass-regression" \
-  go test ./app/desktop/internal/desktopdemo -run '^TestLiquidGlassE2E$' -count=1 -v
+make desktop-e2e CASE=liquid-glass
 ```
 
 The software-renderer result is recorded in liquid-glass-feedback.json. Native Metal appearance and frame-time behavior have not been accepted.
@@ -221,14 +218,15 @@ System menus own their presentation and pointer tracking; they do not use Kit sc
 Pointer selection no longer paints a segment's keyboard focus ring. Text-input focus remains visible.
 Reduce Motion suppresses the spatial effects through the existing renderer preference.
 
-`TestInteractionMotionE2E` checks press/release geometry, press cancellation, rapid selection reversal, and Reduce Motion.
+`interaction-motion` checks press/release geometry, press cancellation, rapid selection reversal, and Reduce Motion.
 Its menu check asserts delegation to the system, rather than an application-painted popup transition.
 It records actual view geometry and rendered selection pixels in `interaction-motion.json`.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/interaction-regression" \
-  go test ./app/desktop/internal/desktopdemo \
-  -run '^(TestInteractionMotionE2E|TestLiquidGlassE2E|TestUnifiedScrollbarsE2E|TestSidebarCollapseE2E)$' -count=1 -v
+make desktop-e2e CASE=liquid-glass
+make desktop-e2e CASE=interaction-motion
+make desktop-e2e CASE=unified-scrollbars
+make desktop-e2e CASE=sidebar-collapse
 ```
 
 Manual acceptance: alternate list/grid quickly, hold and release a toolbar button, drag outside to cancel, and open the overflow menu.
@@ -244,17 +242,16 @@ This applies to all four history filters, send menus, overflow menus, settings s
 An explicit Open pointer retains the existing caller-controlled in-window overlay contract.
 Menu entries reuse the list-menu adapter. Template glyph images follow the system highlight; tag swatches retain their color.
 Select preserves its value and Changed result. Pointer focus no longer leaves a blue keyboard ring around the filter pill.
-Native menu triggers align to the center of their parent row. TestToolbarAlignmentE2E checks both toolbar menu triggers against the adjacent pin button in light and dark mode. The former top alignment placed both triggers 3 DIP above the pin button. Geometry is recorded in toolbar-alignment.json.
+Native menu triggers align to the center of their parent row. toolbar-alignment checks both toolbar menu triggers against the adjacent pin button in light and dark mode. The former top alignment placed both triggers 3 DIP above the pin button. Geometry is recorded in toolbar-alignment.json.
 
-`TestNativeMenusE2E` drives the complete history view in two color modes.
+`native-menus` drives the complete history view in two color modes.
 The baseline failed all 12 cases because it never requested a system menu on pointer-down.
 The current checks cover opening on press, cancelling without changing state, selecting an item, closing, and returning the selected value or command.
 The tester captures the platform menu request. It does not draw NSMenu or establish native animation acceptance.
 Measurements are written to native-menus.json:
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/native-menus-regression" \
-  go test ./app/desktop/internal/desktopdemo -run '^TestNativeMenusE2E$' -count=1 -v
+make desktop-e2e CASE=native-menus
 ```
 
 Manual acceptance: restart the demo; open each filter, send menu, and overflow menu; move across rows while holding the pointer; release on a row; cancel with Escape or an outside click.
@@ -275,14 +272,13 @@ A nonempty query remains visible after focus leaves. The clear button clears the
 The expanded empty field retains the original placeholder and shortcut hint: "搜索，或输入 # @ / on:" and "⌘F".
 Reduce Motion follows the existing renderer preference. Other skins use their regular token search field.
 
-TestSearchDisclosureE2E drives the complete history view with actual pointer, keyboard, typing, and layout events.
+search-disclosure drives the complete history view with actual pointer, keyboard, typing, and layout events.
 The baseline failed because search was always 300 points wide and had no icon trigger.
 The check records intermediate widths during expansion and collapse, verifies unchanged command geometry, types a query, verifies actual filtered results, and checks Escape, Cmd+F, and outside-click collapse.
 It writes search-disclosure.json. The event/layout checks do not establish native Metal visual acceptance.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/search-disclosure-regression" \
-  go test ./app/desktop/internal/desktopdemo -run '^TestSearchDisclosureE2E$' -count=1 -v
+make desktop-e2e CASE=search-disclosure
 ```
 
 Manual acceptance: restart the demo; activate the search icon; inspect expansion and collapse; type and clear; move focus outside an empty field; verify the original title bar and right command capsule.
@@ -309,11 +305,10 @@ Escape dismisses candidates, then clears text and filters, then releases/collaps
 The source reference is main 8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7: HistoryKitSearchField, useCompositeSearchBar, composite-search-model, search-token-ranges, and the macOS token-search skin.
 The former plain ToolbarSearchField helper was removed; the history demo uses the existing token component with a toolbar variant.
 
-TestTokenSearchE2E drives fourteen scenarios in three skins and two color modes (84 cases). It covers all prefixes, counts under other conditions, tag intersection, pointer/keyboard completion, clear, filter/chip synchronization, literal and quoted input, pasted conditions, Unicode caret preservation, Backspace, and layered Escape. The first baseline failed all 42 token scenarios; the six literal cases already passed.
+token-search drives fourteen scenarios in three skins and two color modes (84 cases). It covers all prefixes, counts under other conditions, tag intersection, pointer/keyboard completion, clear, filter/chip synchronization, literal and quoted input, pasted conditions, Unicode caret preservation, Backspace, and layered Escape. The first baseline failed all 42 token scenarios; the six literal cases already passed.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/token-search-regression" \
-  go test ./app/desktop/internal/desktopdemo ./app/desktop/internal/uikit -count=1
+make desktop-e2e CASE=token-search
 ```
 
 The replay writes token-search.json and a build receipt records source/artifact hashes. Full view and Kit checks passed (544 reported results). This is event/layout/software-renderer evidence; native Metal appearance and input-method acceptance remain separate.
@@ -343,12 +338,12 @@ The macOS table uses a 26-point header, approximately 32-point rows, alternating
 Other skins retain their platform table density.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/tag-manager-regression" \
-  go test ./app/desktop/internal/desktopdemo ./app/desktop/internal/uikit -count=1
+make desktop-e2e CASE=tag-manager
+make desktop-e2e CASE=tag-manager-platforms
 ```
 
-TestTagManagerE2E covers fifteen scenarios in light and dark modes and writes tag-manager.json.
-TestTagManagerPlatformsE2E covers the three skins in both modes and checks the separate assignment picker.
+tag-manager covers fifteen scenarios in light and dark modes and writes tag-manager.json.
+tag-manager-platforms covers the three skins in both modes and checks the separate assignment picker.
 The initial management scenarios failed because the former sheet had no table.
 A subsequent geometry check detected the oversized header and rows before the Kit table spacing correction.
 These are complete-view event, accessibility, layout, and platform-menu-request checks.
@@ -374,15 +369,14 @@ This delegates to mygo's TableColumn.Fixed and disables both resizing and reorde
 Row selection, sidebar switches, and native context menus remain interactive.
 Other tables retain their existing draggable-column behavior and width allocation.
 
-TestTagFixedColumnsE2E drives the complete sheet across three skins and both color modes.
+tag-fixed-columns drives the complete sheet across three skins and both color modes.
 It attempts to shrink, grow, and reorder each column and checks that its geometry stays unchanged.
 It also toggles a sidebar switch and invokes Show Entries from the row context menu.
 The initial check failed on all six configurations because the name column still resized.
 The replay writes fifty-four column measurements to tag-fixed-columns.json.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/tag-fixed-after" \
-  go test ./app/desktop/internal/desktopdemo -run '^TestTagFixedColumnsE2E$' -count=1
+make desktop-e2e CASE=tag-fixed-columns
 ```
 
 
@@ -401,15 +395,14 @@ The demo now follows this lifecycle for tag management, device management, and t
 Reduce Motion removes the panel's translation; the scrim may still fade.
 Adwaita and Fluent retain their existing DialogBase behavior.
 
-TestSheetMotionE2E checks three sheets, two color modes, three dismissal paths, and both motion preferences (36 scenarios).
+sheet-motion checks three sheets, two color modes, three dismissal paths, and both motion preferences (36 scenarios).
 It records an intermediate entry position, the resting position, and sampled software-renderer pixel differences during exit in sheet-motion.json.
 The initial checks found immediate placement at Y=0 with no entry animation.
 The regression also checks that completed exits release input and that the existing Kit focus test returns focus to the opener after exit.
 Existing tag-management interaction tests now advance the deterministic test clock until entry completes before interacting.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/sheet-motion-regression" \
-  go test ./app/desktop/internal/desktopdemo ./app/desktop/internal/uikit -count=1
+make desktop-e2e CASE=sheet-motion
 ```
 
 Manual acceptance: restart the macOS demo; open and close each sheet using Done, Escape, and the backdrop; check smooth motion, a stationary fading scrim, opener focus, and right-click menus. Repeat with Reduce Motion enabled.
@@ -424,15 +417,14 @@ The current lifecycle keeps rendering the original dialog at a translated positi
 The scrim fades separately through its background alpha. The panel keeps its opacity and rendering path.
 Tag selection and editing state, and device-task state, are cleared by OnClosed after the panel leaves.
 
-TestSheetExitStabilityE2E selects a tag and closes the full management sheet through Done, Escape, and the backdrop in both color modes.
+sheet-exit-stability selects a tag and closes the full management sheet through Done, Escape, and the backdrop in both color modes.
 At 16, 32, and 48 ms it checks identical column widths, unchanged selection, and identical opaque-gutter RGB values.
 It also checks that the panel and selection are removed after exit completes.
 The former lifecycle failed all six scenarios because the live table had already been removed.
 The replay writes sheet-exit-stability.json alongside the complete regression artifacts.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/sheet-exit-stability-regression" \
-  go test ./app/desktop/internal/desktopdemo ./app/desktop/internal/uikit -count=1
+make desktop-e2e CASE=sheet-exit-stability
 ```
 
 The recording was inspected as contact sheets and a 60 fps exit sequence without launching the application.
@@ -450,14 +442,13 @@ Renamed or removed fixture devices appear immediately in both menus.
 Opening or cancelling the menu does not send. Selecting a target shows a simulated result naming that target.
 This demo does not perform real network transfers.
 
-TestSendDeviceMenuE2E covers six cases in each color mode: all devices, each of the three peers, cancellation, and changed device names/membership.
+send-device-menu covers six cases in each color mode: all devices, each of the three peers, cancellation, and changed device names/membership.
 It verifies a platform menu request, exclusion of the local device, and the returned target.
 The initial checks failed because the detail action was an immediate-send button with no menu.
 The replay writes send-device-menu.json. Actual NSMenu appearance and placement require native acceptance.
 
 ```sh
-UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/send-menu-regression" \
-  go test ./app/desktop/internal/desktopdemo ./app/desktop/internal/uikit -count=1
+make desktop-e2e CASE=send-device-menu
 ```
 
 ## Live service binding

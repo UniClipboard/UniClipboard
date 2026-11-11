@@ -91,6 +91,9 @@ type gui struct {
 	loginError                  string
 }
 
+var desktopAppName = "unic"
+var newDesktopBoard = func() clipboardintegration.Board { return board.MyGo{} }
+
 func runGUI(settings *config.Manager) error {
 	c, err := client()
 	if err != nil {
@@ -98,7 +101,7 @@ func runGUI(settings *config.Manager) error {
 	}
 	g := &gui{c: c}
 
-	mygo.App.SetName("unic")
+	mygo.App.SetName(desktopAppName)
 	if !mygo.App.RequestSingleInstanceLock() {
 		return nil // the running window comes forward
 	}
@@ -165,7 +168,7 @@ func runGUI(settings *config.Manager) error {
 
 		setupTray()
 		go notifyPending(ctx, g.c.Path)
-		clipboard := quickpanel.NewClipboard(board.MyGo{})
+		clipboard := quickpanel.NewClipboard(newDesktopBoard())
 		go func() { _ = clipboardintegration.RunRemote(ctx, g.c, clipboard, nil) }()
 		screen := desktopdemo.NewDesktop(ctx, g.c)
 		screen.SetLoginStatus(func() (bool, string) { g.mu.Lock(); defer g.mu.Unlock(); return g.loginEnabled, g.loginError }, func() { g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, true) })

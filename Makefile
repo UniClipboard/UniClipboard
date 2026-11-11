@@ -21,10 +21,6 @@ package-desktop:
 headless-e2e:
 	UNIC_HEADLESS_E2E=1 UNIC_HEADLESS_ARTIFACTS=$(CURDIR)/.cache/0015-acceptance go test -race ./e2e/headless -v -count=1
 
-.PHONY: desktop-startup-e2e
-desktop-startup-e2e:
-	UNIC_DESKTOP_STARTUP_E2E=1 UNIC_DESKTOP_STARTUP_ARTIFACTS=$(CURDIR)/.cache/desktop-startup-e2e go test -race ./app/desktop/e2e -run '^TestStartupProcesses$$' -v -count=1
-
 .PHONY: real-e2e real-e2e-doctor
 real-e2e:
 	go run ./e2e/real run --lab "$(LAB)" --suite sync
@@ -95,3 +91,12 @@ transfer-e2e:
 	mkdir -p .cache/0022
 	TMPDIR=/private/tmp UNIC_E2E=1 go test ./e2e/cli -run '^TestCLI$$/^(temporary-transfer|transfer-code|send-to-device)$$' -count=1 -v | tee .cache/0022/transfer.run.log
 	rg -q '^--- PASS: TestCLI ' .cache/0022/transfer.run.log
+
+# Canonical Desktop acceptance: catalogue, real processes, native window evidence.
+.PHONY: desktop-e2e desktop-e2e-list desktop-e2e-doctor
+desktop-e2e:
+	python3 app/desktop/e2e/run.py run --case "$(CASE)"
+desktop-e2e-list:
+	python3 app/desktop/e2e/run.py list
+desktop-e2e-doctor:
+	python3 app/desktop/e2e/run.py doctor --case "$(CASE)"

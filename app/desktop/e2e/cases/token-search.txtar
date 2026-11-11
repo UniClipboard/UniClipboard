@@ -1,0 +1,8 @@
+# Case: Token search
+# Mode: view
+# Purpose: Composite search prefixes, counts, completion, literal input, caret handling and Escape.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Fourteen scenarios across three skins and both themes preserve the complete search contract.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo token-search

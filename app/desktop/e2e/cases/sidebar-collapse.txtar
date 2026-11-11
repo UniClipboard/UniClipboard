@@ -1,0 +1,8 @@
+# Case: Sidebar collapse
+# Mode: view
+# Purpose: Sidebar closing tail, reopening and interrupted-transition reversal.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Animated content geometry remains continuous and preserves sidebar state.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo sidebar-collapse

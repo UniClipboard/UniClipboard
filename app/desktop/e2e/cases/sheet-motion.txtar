@@ -1,0 +1,8 @@
+# Case: Sheet motion
+# Mode: view
+# Purpose: Sheet entry and dismissal by Done, Escape and backdrop, including Reduce Motion.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: All sheet/theme/dismissal combinations preserve entry geometry and completed exit behavior.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo sheet-motion

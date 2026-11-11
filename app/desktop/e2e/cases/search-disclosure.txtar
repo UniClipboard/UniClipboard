@@ -1,0 +1,8 @@
+# Case: Search disclosure
+# Mode: view
+# Purpose: Animated toolbar search expansion, collapse, filtering and keyboard dismissal.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Search width changes without moving the command capsule or losing input behavior.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo search-disclosure

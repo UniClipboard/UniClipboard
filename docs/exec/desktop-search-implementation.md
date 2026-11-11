@@ -49,12 +49,8 @@ Synthetic-corpus sample: 291 ms for a concurrent 32-query count batch, 13 ms for
 Run from the repository root on macOS. Use a canonical temporary directory for existing Engine fixture path checks.
 
 ```sh
-TMPDIR=/private/tmp go test -race ./internal/store ./engine ./internal/localapi ./app/service/internal/server ./app/service/internal/host
-UNIC_SEARCH_E2E=1 UNIC_SEARCH_RECEIPT="$PWD/.build/history-search/receipt.json" go test -race ./app/desktop/internal/desktopdemo -run '^TestHistorySearchProcessE2E$' -count=1 -v
-UNIC_DESKTOP_DATA_E2E=1 UNIC_DESKTOP_DATA_RECEIPT="$PWD/.build/history-search/desktop-regression-receipt.json" go test -race ./app/desktop/internal/desktopdemo -run '^TestDesktopLiveDataE2E$' -count=1 -v
-TMPDIR=/private/tmp UNIC_HEADLESS_E2E=1 go test -race ./e2e/headless -run '^TestProductionHeadless$' -count=1 -v
-GOTOOLCHAIN=go1.27.3 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --new-from-rev=65d47985af5efbd33110f4057abf7359cd8f4399 ./engine/... ./internal/store/... ./internal/localapi/... ./app/service/... ./app/desktop/...
-go run ./tools/docscheck
+make desktop-e2e CASE=data-binding
+make desktop-e2e CASE=search-contract
 ```
 
 ## Remaining acceptance and limits

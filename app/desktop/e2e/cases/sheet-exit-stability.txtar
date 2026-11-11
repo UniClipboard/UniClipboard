@@ -1,0 +1,8 @@
+# Case: Sheet exit stability
+# Mode: view
+# Purpose: Sheet exit frames and input stability after dismissal.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Light and dark exit rasters preserve stable content and release dismissed input.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo sheet-exit-stability

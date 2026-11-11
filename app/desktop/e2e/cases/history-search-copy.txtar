@@ -1,0 +1,29 @@
+# Case: Search and copy real history through the native desktop
+# Mode: native
+# Purpose: Connect visible user actions to production history and clipboard application.
+# Steps:
+#   Start an isolated desktop, submit two text entries, search for one, copy it, then clear the search.
+# Expected:
+#   Only the matching entry remains; copying writes exact directory-clipboard bytes; clearing restores both entries.
+# Forbidden:
+#   Fixture rows, system clipboard writes, missing screenshots or missing continuous recording.
+
+start
+submit selected 'Desktop evidence selected needle'
+submit other 'Desktop evidence other entry'
+ui-wait listItem 'Desktop evidence selected needle'
+ui-wait listItem 'Desktop evidence other entry'
+screenshot history
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-set comboBox '搜索历史' needle
+ui-wait listItem '~.*selected needle$'
+ui-absent listItem 'Desktop evidence other entry'
+screenshot filtered
+ui-click listItem '~.*selected needle$'
+ui-key Enter
+board-equals 'Desktop evidence selected needle'
+screenshot copied
+ui-set comboBox '搜索历史' ''
+ui-wait listItem 'Desktop evidence other entry'
+screenshot restored

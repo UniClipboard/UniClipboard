@@ -41,12 +41,10 @@ macOS uses existing purego/objc bindings. Windows uses x/sys. Linux X11 adds pin
 Run from the repository root. Fixtures never launch native GUI, renderer, global keys or the system clipboard. Their private profiles and binaries are removed.
 
 ```sh
-UNIC_QUICK_SYSTEM_E2E=1 UNIC_QUICK_SYSTEM_RECEIPT="$PWD/.build/quick-panel-system/receipt.json" go test -race ./app/desktop/internal/quickpanel -run '^TestQuickPanelProcessE2E$' -count=1 -v
-UNIC_DESKTOP_DATA_E2E=1 UNIC_SEARCH_E2E=1 UNIC_DESKTOP_DATA_RECEIPT="$PWD/.build/quick-panel-system/desktop-regression.json" UNIC_SEARCH_RECEIPT="$PWD/.build/quick-panel-system/search-regression.json" go test -race ./app/desktop/internal/desktopdemo -run '^(TestDesktopLiveDataE2E|TestHistorySearchProcessE2E)$' -count=1 -v
-TMPDIR=/private/tmp UNIC_DESKTOP_STARTUP_E2E=1 go test -race ./app/desktop/e2e -run '^TestStartupProcesses$' -count=1 -v
-TMPDIR=/private/tmp go test -race ./internal/localconfig ./internal/clipboardintegration ./app/service/internal/host ./internal/localapi ./engine
-GOTOOLCHAIN=go1.27.3 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --new-from-rev=c386b286e4 ./app/desktop/... ./internal/localconfig/...
-go run ./tools/docscheck
+make desktop-e2e CASE=startup-lifecycle
+make desktop-e2e CASE=data-binding
+make desktop-e2e CASE=search-contract
+make desktop-e2e CASE=quick-panel-contract
 ```
 
 ## Native acceptance checklist (not run)

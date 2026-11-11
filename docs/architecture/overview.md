@@ -131,7 +131,7 @@ The standalone fixture never creates an Engine client. The normal desktop uses t
 The standalone entry can start in history, disconnected or empty state with `--quick-state`.
 The regular daemon-backed desktop shares the main composition through `NewDesktop`; the quick panel remains an isolated fixture.
 The [quick panel acceptance guide](../../app/desktop/QUICK-PANEL-DEMO.md) records the source map, reproduction steps, artifact format and differences.
-The explicit `TestQuickPanelScreenshotsE2E` export composes separately rendered history and satellite rasters at 2x scale and records source and image hashes.
+The explicit `quick-panel-screenshots` export composes separately rendered history and satellite rasters at 2x scale and records source and image hashes.
 View-level E2E verifies mygo input and layout without opening a native app. Native focus, multi-monitor placement, icon/font rendering and one-to-one visual acceptance remain unverified.
 
 ## 缺口
@@ -155,3 +155,7 @@ CLI command requirements live in `app/service/cmd/unic/requirements.go`. The CLI
 `internal/observability` exports service telemetry, including tailcat session diagnostics through `internal/syncdiag`; the desktop adapter forwards no analytics identifier.
 The archive builder reuses identical headless binaries in the optional desktop archive. Independent product version/release workflows remain planned in decision 0018.
 See [headless service and desktop integration](headless.md) for the process and distribution contract.
+
+## Desktop acceptance
+
+The canonical Desktop acceptance entry is `make desktop-e2e`. It runs the declarative catalogue under `app/desktop/e2e`, including native-window evidence, production-process contracts and all migrated software-view scenarios. Original Desktop test entries and standalone scripts are removed. CI uses the same command under Xvfb and retains its report. The running-window captures establish content rendering and app-scoped interaction; OS focus and cross-application paste remain separate. See the [Desktop E2E contract](../contracts/desktop-e2e-contract.md).

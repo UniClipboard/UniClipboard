@@ -1,0 +1,11 @@
+# Case: History search contract
+# Mode: process
+# Purpose: Literal matching, paging, counts, candidates, repair and cancellation.
+# Steps:
+#   Execute the registered production-process suite and validate its receipt.
+# Expected:
+#   The suite runs, passes its assertions and emits a successful receipt.
+# Forbidden:
+#   A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
+
+acceptance desktopdemo search-contract

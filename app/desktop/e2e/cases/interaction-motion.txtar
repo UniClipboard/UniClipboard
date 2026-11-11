@@ -1,0 +1,8 @@
+# Case: Interaction motion
+# Mode: view
+# Purpose: Button press/release, cancellation, selection reversal and Reduce Motion.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Geometry and rendered selection feedback follow the complete interaction sequence.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo interaction-motion

@@ -1,0 +1,8 @@
+# Case: Gui navigation
+# Mode: view
+# Purpose: Legacy GUI navigation, pairing input and destructive-confirmation barriers.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: All three skins and both themes retain navigation, normalized pairing input and safe dismissal.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance gui gui-navigation

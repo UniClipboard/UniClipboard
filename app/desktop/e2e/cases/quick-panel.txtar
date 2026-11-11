@@ -1,0 +1,8 @@
+# Case: Quick panel
+# Mode: view
+# Purpose: Quick-panel keyboard, search, actions, previews, scrolling and simulated effects.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: All original panel scenarios retain their selected entries and expected simulated effects.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo quick-panel

@@ -57,18 +57,17 @@ Closing the panel hides both windows. On macOS, reactivate the demo from the Doc
 On Windows and Linux, use Ctrl where macOS uses Command.
 The sample has no global activation shortcut. Launch it explicitly for each session.
 
-## Repeatable non-native acceptance
+## Isolated fixture maintenance
+
+Use `make desktop-e2e` for production Desktop acceptance and its unified report. See the [test guide](e2e/README.md).
+
+Run the registered software-view scenario without opening a native window:
 
 ```sh
-app/desktop/scripts/quick-panel-e2e.sh
+make desktop-e2e CASE=quick-panel
 ```
 
-The script does not launch an application or browser.
-It writes `.build/quick-panel-e2e/quick-panel-e2e.json`, `test.log`, `manifest.json`, and a build of `unic-desktop`.
-The JSON receipt contains scenario results, accessibility geometry and simulated effects.
-The manifest records the reference, base HEAD, individual source hashes, executable hash, toolchain and command.
-Use the source hashes to identify uncommitted changes; HEAD alone does not identify this implementation.
-Set `UNIC_UI_TEST_ARTIFACTS` to choose another output directory.
+The unified report retains JSON measurements and software-view PNG checkpoints. The central manifest owns frozen-source identity and toolchain metadata. The old standalone script and environment switches have been removed.
 
 These view-level scenarios exercise the real mygo layout, focus, input, timers, scrolling and rendering with a test clipboard.
 They are not native window-manager, OS focus, screenshot-comparison or automatic-paste acceptance.
@@ -90,8 +89,7 @@ Do not claim complete one-to-one visual parity from the view-level test result.
 When the user requests images without opening the desktop, export the real mygo view rasters:
 
 ```sh
-UNIC_QUICK_PANEL_SCREENSHOTS=1 UNIC_UI_TEST_ARTIFACTS="$PWD/.build/quick-panel-screenshots" \
-  go test ./app/desktop/internal/desktopdemo -run '^TestQuickPanelScreenshotsE2E$' -count=1 -v
+make desktop-e2e CASE=quick-panel-screenshots
 ```
 
 The six PNGs cover history with text preview, actions, and the image grid with image preview in both themes.

@@ -34,9 +34,9 @@ Use the existing SQLite dependency. Do not add an external search engine or a se
 
 Primary evidence:
 
-- [Main search model](../../app/desktop/internal/desktopdemo/search_model.go) and [token-search acceptance cases](../../app/desktop/internal/desktopdemo/token_search_e2e_test.go).
-- [Badge-removal acceptance](../../app/desktop/internal/desktopdemo/search_badge_delete_e2e_test.go).
-- [Quick-panel model](../../app/desktop/internal/desktopdemo/quick_panel_model.go), [view](../../app/desktop/internal/desktopdemo/quick_panel_view.go) and [acceptance cases](../../app/desktop/internal/desktopdemo/quick_panel_e2e_test.go).
+- [Main search model](../../app/desktop/internal/desktopdemo/search_model.go) and [token-search acceptance cases](../../app/desktop/internal/desktopdemo/acceptance_token_search_test.go).
+- [Badge-removal acceptance](../../app/desktop/internal/desktopdemo/acceptance_search_badge_delete_test.go).
+- [Quick-panel model](../../app/desktop/internal/desktopdemo/quick_panel_model.go), [view](../../app/desktop/internal/desktopdemo/quick_panel_view.go) and [acceptance cases](../../app/desktop/internal/desktopdemo/acceptance_quick_panel_test.go).
 
 Important fixture limits:
 

@@ -1,0 +1,8 @@
+# Case: Send device menu
+# Mode: view
+# Purpose: Send-menu device projection, disabled targets and selected-device dispatch.
+# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Expected: Only valid device choices produce the expected send command.
+# Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
+
+acceptance desktopdemo send-device-menu

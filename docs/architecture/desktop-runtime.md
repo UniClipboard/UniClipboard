@@ -1,6 +1,7 @@
 ---
 paths:
   - app/desktop/internal/lifecycle
+  - app/desktop/e2e
   - app/desktop/internal/desktopdemo
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
@@ -239,3 +240,11 @@ Enter applies history through the existing IPC clipboard adapter, hides both win
 Generation cancellation prevents stale clipboard completions from sending input. Focus checks, held-key waits and input dispatch are bounded; errors never automatically replay input. External blur does not restore focus. Explicit Escape dismissal restores the original target only while unic still owns the foreground. Target names, IDs and clipboard fingerprints remain transient host state and never enter logs or analytics.
 
 macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication identity. Windows uses process/window identity and SendInput. Linux X11 uses checked XGB/XTest requests and EWMH activation. Wayland retains the mygo portal shortcut and Copy; automatic target capture/paste is explicitly unavailable. Native focus/input, permission flows, display-server policy and keyboard-layout acceptance remain unverified. See the [system contract](../contracts/desktop-quick-panel-contract.md) and [execution receipt](../exec/desktop-quick-panel-system.md).
+
+## Desktop acceptance entry
+
+`make desktop-e2e` is the canonical local and CI acceptance entry. Declarative testscript cases live under `app/desktop/e2e/cases`; the generated catalogue is checked during ordinary Go tests. The runner owns source snapshots, binary assembly, private profiles, per-case results and one HTML report. It retains screenshots and continuously sampled window-content recordings for native cases, with source/program/evidence hashes. All 25 former Desktop acceptance entries are migrated into package-local scenario registries. The 26-case catalogue includes 21 software-view cases, four process cases and one native-window case. View cases retain decodable software-rendered checkpoints. The runner verifies Go JSON events and rejects skipped subcases. Registry/catalogue mismatches fail preflight. Original test entries and standalone scripts are removed.
+
+The `desktop_e2e` build tag imports mygo's opt-in automation plugin, assigns a unique application name and supplies the existing directory clipboard through the host Board seam. Untagged builds use the original system board and do not import automation. The native case executes real desktop view actions against a production service and checks actual directory-clipboard bytes. It does not establish global key delivery, OS focus policy, system clipboard or cross-application paste.
+
+The runner builds from a private frozen snapshot, so edits in the developer checkout do not change an active run. It rejects missing evidence, failed/skipped selected cases and source-snapshot mutation. It publishes the final verdict only after report/checksum generation succeeds. Native windows and services are stopped before private artifacts are removed. See the [E2E contract](../contracts/desktop-e2e-contract.md), [developer guide](../../app/desktop/e2e/README.md), and [execution receipt](../exec/desktop-e2e.md).

@@ -21,7 +21,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [search-disclosure](#search-disclosure) | view | Animated toolbar search expansion, collapse, filtering and keyboard dismissal. |
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |
 | [sheet-exit-stability](#sheet-exit-stability) | view | Sheet exit frames and input stability after dismissal. |
-| [sheet-motion](#sheet-motion) | view | Sheet entry and dismissal by Done, Escape and backdrop, including Reduce Motion. |
+| [sheet-motion](#sheet-motion) | view | Sheet entry and dismissal by Done, Escape and backdrop, plus live size changes, reversal and dismissal during resize, including Reduce Motion. |
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
 | [startup-lifecycle](#startup-lifecycle) | process | Ownership, background intent, lightweight launch and process cleanup. |
 | [tag-fixed-columns](#tag-fixed-columns) | view | Tag-table fixed-column geometry across skins and themes. |
@@ -293,7 +293,7 @@ Sheet motion
 
 Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
 
-Expected: All sheet/theme/dismissal combinations preserve entry geometry and completed exit behavior.
+Expected: All sheet/theme/dismissal combinations preserve entry geometry, intermediate centered size changes and completed exit behavior.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 

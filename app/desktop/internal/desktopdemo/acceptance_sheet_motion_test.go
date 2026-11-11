@@ -15,6 +15,7 @@ import (
 // Failure cases: no intermediate entry position, instant removal on close,
 // a retained invisible modal after exit, or motion under Reduce Motion.
 func scenarioSheetMotion(t *testing.T) {
+	t.Run("resize", scenarioSheetResizeMotion)
 	type receipt struct {
 		Theme, Sheet, Close string
 		EnterY, RestY       float32

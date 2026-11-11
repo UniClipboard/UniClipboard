@@ -95,6 +95,13 @@ func (k Kit) Sheet(c *ui.Context, p SheetProps, body func()) (done bool) {
 		titleSize := float32(20)
 		switch k.Skin {
 		case MacOS:
+			// Animate the centered frame together with its size. Keep live content
+			// laid out at each intermediate size instead of scaling its text.
+			panel.Transition(ui.ElementTransition{
+				Position: true, Size: true,
+				Duration: 280 * time.Millisecond,
+				Ease:     ui.CubicBezier(.2, 0, 0, 1),
+			})
 			scrim := k.scrim()
 			scrim.A = uint8(float32(scrim.A) * progress)
 			backdrop.Justify(ui.Start).Background(scrim)

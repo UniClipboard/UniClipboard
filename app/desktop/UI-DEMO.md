@@ -392,11 +392,13 @@ The implementation uses existing mygo animation and transition APIs. It does not
 Keep calling Sheet while Open is false so the live dialog can finish its exit motion.
 Open records the requested state. OnClosed runs once after exit completes; clear transient selection, editing, and device-task state in that callback.
 The demo now follows this lifecycle for tag management, device management, and tag assignment.
-Reduce Motion removes the panel's translation; the scrim may still fade.
+Width and content-driven height changes use the existing mygo frame transition over 280 ms with cubic-bezier(0.2, 0, 0, 1). Position and size move together to keep the top edge fixed and the panel horizontally centered. Live content is laid out at each intermediate size; text is not scaled. Changes during motion retarget from the displayed frame. Window resizing follows mygo's immediate layout behavior.
+Reduce Motion removes the panel's translation and size motion; the scrim may still fade.
 Adwaita and Fluent retain their existing DialogBase behavior.
 
 sheet-motion checks three sheets, two color modes, three dismissal paths, and both motion preferences (36 scenarios).
 It records an intermediate entry position, the resting position, and sampled software-renderer pixel differences during exit in sheet-motion.json.
+The resize subcases also exercise the real device menu, management/task size changes, invitation content height changes, reversal during growth, and Escape during resize in both color modes and motion preferences. They retain geometry in sheet-resize-motion.json and software-rendered resize-*.png checkpoints. The pre-change resize check failed with width samples [760, 576, 576], proving that no intermediate size was shown.
 The initial checks found immediate placement at Y=0 with no entry animation.
 The regression also checks that completed exits release input and that the existing Kit focus test returns focus to the opener after exit.
 Existing tag-management interaction tests now advance the deterministic test clock until entry completes before interacting.

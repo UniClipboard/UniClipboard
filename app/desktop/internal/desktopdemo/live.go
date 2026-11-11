@@ -76,7 +76,7 @@ type liveState struct {
 	config                                     config.State
 	pending                                    map[string]api.PendingPeer
 	join                                       *api.PairResult
-	codeAttempted                              bool
+	codeAttempted, ticketAttempted             bool
 	code                                       api.Code
 	ticket                                     string
 	loginStatus                                func() (bool, string)
@@ -164,6 +164,9 @@ drained:
 	// Pairing codes are created only while the invitation page is visible.
 	if d.devicesOpen && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && ((l.code.Code == "" && !l.codeAttempted) || (l.code.Code != "" && time.Now().UnixMilli() >= l.code.ExpiresAtMs)) {
 		d.newLiveCode()
+	}
+	if d.devicesOpen && d.deviceTask == "invite" && d.inviteMode == "ticket" && !l.busy && l.ticket == "" && !l.ticketAttempted {
+		d.newLiveTicket()
 	}
 }
 func (d *demo) liveQueryKey() string { return searchQueryKey(d.historySearchQuery()) }
@@ -636,6 +639,25 @@ func (d *demo) newLiveCode() {
 		}
 		return err
 	}, "配对码已生成")
+}
+
+func (d *demo) newLiveTicket() {
+	if d.live.busy {
+		return
+	}
+	d.live.ticketAttempted = true
+	client := d.live.client
+	d.mutate(func(ctx context.Context) error {
+		ticket, err := client.ExportTicket(ctx)
+		if err == nil {
+			select {
+			case d.live.results <- func() { d.live.ticket = ticket }:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		return err
+	}, "票据已生成")
 }
 
 func newRequestID() string {

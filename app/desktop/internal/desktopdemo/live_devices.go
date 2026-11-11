@@ -91,30 +91,17 @@ func (d *demo) liveDeviceTaskView(c *ui.Context, k uikit.Kit) {
 				if l.ticket != "" {
 					k.Text(c, l.ticket, uikit.TextProps{Monospace: true, Truncate: true})
 				}
-				if k.Button(c.Key("ticket"), "生成票据", uikit.ButtonProps{Disabled: l.busy}).Clicked() {
-					client := l.client
-					d.mutate(func(ctx context.Context) error {
-						ticket, err := client.ExportTicket(ctx)
-						if err == nil {
-							select {
-							case l.results <- func() { l.ticket = ticket }:
-							case <-ctx.Done():
-								return ctx.Err()
-							}
-						}
-						return err
-					}, "票据已生成")
-				}
-				if k.Button(c.Key("copy-ticket"), "复制票据", uikit.ButtonProps{Disabled: l.ticket == ""}).Clicked() {
-					mygo.Clipboard.WriteText(l.ticket)
-				}
 			} else {
 				k.Text(c, d.inviteCode, uikit.TextProps{Large: true, Monospace: true, Emphasized: true})
 				remaining := max(int(time.Until(time.UnixMilli(l.code.ExpiresAtMs)).Seconds()), 0)
 				k.Text(c, fmt.Sprintf("%d 秒内有效，仅可使用一次。", remaining), footnote)
 			}
 		}, func() {
-			if k.Button(c.Key("regen"), "重新生成", uikit.ButtonProps{Disabled: l.busy}).Clicked() {
+			if d.inviteMode == "ticket" {
+				if k.Button(c.Key("copy-ticket"), "复制票据", uikit.ButtonProps{Icon: uikit.IconCopy, Disabled: l.ticket == ""}).Clicked() {
+					mygo.Clipboard.WriteText(l.ticket)
+				}
+			} else if k.Button(c.Key("regen"), "重新生成", uikit.ButtonProps{Disabled: l.busy}).Clicked() {
 				d.newLiveCode()
 			}
 		}) {

@@ -19,11 +19,18 @@ type TaskPanelProps struct {
 // It reports whether Back was used this frame.
 func (k Kit) TaskPanel(c *ui.Context, p TaskPanelProps, body, actions func()) (back bool) {
 	panel := ui.Column(c).Gap(24).Padding(12, 4, 4).Grow(1).Label(p.Title)
+	if k.Skin == MacOS {
+		// The sheet is already task-width: content and footer fill it.
+		panel.Gap(16).Padding(4, 0, 0)
+	}
 	panel.Children(func() {
 		centered := k.Skin != Windows
 		head := ui.Column(c).Gap(8)
 		if centered {
 			head.AlignItems(ui.Center).MaxWidth(k.taskWidth()).AlignSelf(ui.Center)
+			if k.Skin == MacOS {
+				head.MaxWidth(10000).Gap(4)
+			}
 		} else {
 			head.MaxWidth(544)
 		}
@@ -51,6 +58,9 @@ func (k Kit) TaskPanel(c *ui.Context, p TaskPanelProps, body, actions func()) (b
 		content := k.Scroll(c).Grow(1).Padding(4)
 		if centered {
 			content.MaxWidth(k.taskWidth()).AlignSelf(ui.Center).WidthPercent(100)
+			if k.Skin == MacOS {
+				content.MaxWidth(10000)
+			}
 		} else {
 			content.MaxWidth(544)
 		}
@@ -66,6 +76,9 @@ func (k Kit) TaskPanel(c *ui.Context, p TaskPanelProps, body, actions func()) (b
 			ui.Box(c).Height(1).Background(k.Color("w11-card-stroke"))
 		}
 		foot := ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(16, 0, 0)
+		if k.Skin == MacOS {
+			foot.Padding(4, 0, 0)
+		}
 		foot.Children(func() {
 			if p.BackLabel != "" {
 				if k.Button(c.Key("back"), p.BackLabel, ButtonProps{Disabled: p.BackDisabled}).Clicked() && !p.BackDisabled {

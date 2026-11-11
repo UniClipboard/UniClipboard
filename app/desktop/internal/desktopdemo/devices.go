@@ -95,7 +95,7 @@ func (d *demo) setDeviceTask(task string) {
 		d.deviceTask, d.fieldError, d.deviceNote = task, "", ""
 		if task == "invite" {
 			d.inviteMode = "code"
-			d.live.codeAttempted = false
+			d.live.codeAttempted, d.live.ticketAttempted = false, false
 		}
 		if task == "connect" {
 			d.connectInput = ""
@@ -121,7 +121,10 @@ func (d *demo) deviceSheet(c *ui.Context, k uikit.Kit) {
 		d.setDeviceTask("")
 		d.renaming, d.deviceDetailOpen = false, false
 	}}
-	if d.deviceTask == "" {
+	if d.deviceTask != "" {
+		// The task panel carries its own title, Back and primary action.
+		props.Title, props.Done = "", ""
+	} else {
 		props.Footer = func() {
 			_, action := k.Menu(c.Key("add"), uikit.MenuProps{Label: "添加设备", Icon: uikit.IconAdd, IconOnly: true, Items: []uikit.MenuEntry{
 				{ID: "invite", Label: "邀请设备（配对码）", Icon: uikit.IconAdd},

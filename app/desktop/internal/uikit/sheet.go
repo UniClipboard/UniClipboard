@@ -87,6 +87,9 @@ func (k Kit) Sheet(c *ui.Context, p SheetProps, body func()) (done bool) {
 		}
 		if task {
 			width = 576
+			if k.Skin == MacOS {
+				width = 460
+			}
 			if k.Skin == Windows {
 				width = 608
 			}
@@ -119,16 +122,19 @@ func (k Kit) Sheet(c *ui.Context, p SheetProps, body func()) (done bool) {
 			panel.Padding(16, 20, 20).Gap(14)
 		}
 
-		head := ui.Row(c).Gap(14).AlignItems(ui.Center)
-		if k.Skin == Windows {
-			head.Padding(24, 24, 12)
-		}
-		head.Children(func() {
-			ui.Text(c, p.Title).FontSize(titleSize).Bold()
-			if p.Header != nil {
-				p.Header()
+		// An empty Title and Header omit the title row; a TaskPanel owns its own title.
+		if p.Title != "" || p.Header != nil {
+			head := ui.Row(c).Gap(14).AlignItems(ui.Center)
+			if k.Skin == Windows {
+				head.Padding(24, 24, 12)
 			}
-		})
+			head.Children(func() {
+				ui.Text(c, p.Title).FontSize(titleSize).Bold()
+				if p.Header != nil {
+					p.Header()
+				}
+			})
+		}
 
 		content := k.Scroll(c).Grow(1)
 		switch k.Skin {

@@ -12,7 +12,7 @@ paths:
   - internal/clipboardintegration
   - e2e/headless
   - tools/package
-verified: 5e6d74552d5f5197d6f6435ba4a4d4e8a728043e
+verified: 219e2b257d502a9de88d1443b1f108694904e82b
 ---
 # Headless service and desktop integration
 

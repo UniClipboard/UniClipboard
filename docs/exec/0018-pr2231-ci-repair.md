@@ -35,4 +35,4 @@ GIT_TEST_ASSUME_DIFFERENT_OWNER=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=
 
 The first command must fail with `error obtaining VCS status`; the second must succeed. The private temporary executable can be deleted after verification.
 
-Full race-suite, production headless and remote CI results are recorded below when complete. No native GUI or browser was launched.
+Production headless E2E passed all 13 process checks with race detection. Its manifest is `.cache/0015-acceptance/manifest.json`. Full race-suite and remote CI validation are pending at this documentation commit. No native GUI or browser was launched.

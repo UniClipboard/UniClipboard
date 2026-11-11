@@ -20,7 +20,7 @@ paths:
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: 854df5e68966b8ef3db1cf73c33785355fc54cb0
+verified: 364fdb7f20197bb9d44aa6990769faee8587da75
 ---
 # 设备身份、信任与配对
 

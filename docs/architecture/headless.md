@@ -17,7 +17,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: 66a3d9b5b036007cfee548cc37838908d7156f95
+verified: 20851f3fb3f863f3ce31604dc95d9f8a78197443
 ---
 # Headless service and desktop integration
 

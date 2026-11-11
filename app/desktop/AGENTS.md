@@ -9,3 +9,5 @@
 - 剪贴板适配（`../../internal/clipboardintegration/clipboard.go`）遵循契约第 8 节的观察/应用协议，改动前先读它。
 
 - Build the graphical program with `go build -o dist/unic-desktop ./app/desktop/cmd/unic-desktop`. The service and CLI belong to `app/service/`.
+
+- Quick-panel system interaction follows the [Desktop contract](../../docs/contracts/desktop-quick-panel-contract.md). Keep OS target identity and synthetic input in the Desktop host; service and Engine must not own them.

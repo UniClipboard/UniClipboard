@@ -7,6 +7,7 @@ require (
 	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.8.4-0.20261108082913-9233663736ca
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/jezek/xgb v1.3.1
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/klauspost/compress v1.19.1
 	github.com/posthog/posthog-go v1.42.0

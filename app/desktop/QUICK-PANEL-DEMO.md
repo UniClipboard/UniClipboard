@@ -108,6 +108,6 @@ The normal desktop opens this composition with real history from Settings or the
 Candidates come from persisted catalogues; empty-state relaxation counts come from exact prospective queries.
 Punctuation-only input remains literal in the production binding.
 Full selected content is separately cancellable. Real images replace fixture images and use their actual dimensions.
-Copy and Delete call the service. OS paste, real target-app capture, favorites and semantic classifications remain unavailable; the production binding never records a simulated success.
+Copy and Delete call the service. Production global activation, target capture and native paste dispatch now use the [Desktop system contract](../../docs/contracts/desktop-quick-panel-contract.md). Native acceptance remains separate; Wayland paste, favorites and semantic classifications remain unavailable. The isolated fixture still simulates host effects.
 The production window does not install the standalone fixture's Dock-reactivation behavior.
 See the [search contract](../../docs/contracts/history-search-contract.md) and [process receipt](../../docs/exec/desktop-search-implementation.md).

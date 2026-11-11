@@ -130,8 +130,13 @@ func (p *quickDemo) tick(c *ui.Context) {
 		} else {
 			p.blurDue = time.Time{}
 			if p.nativeFocused != nil && !p.nativeFocused() {
-				p.visible = false
-				p.update()
+				if p.visible {
+					if p.live != nil && p.live.system != nil {
+						p.live.system.Dismiss(false)
+					}
+					p.visible = false
+					p.update()
+				}
 			}
 		}
 	}
@@ -435,23 +440,28 @@ func (p *quickDemo) tab(reverse bool) {
 }
 func (p *quickDemo) restore(paste, plain, keep bool) {
 	if p.live != nil {
-		if paste || plain {
-			p.message = "自动粘贴暂不可用。请使用复制。"
-			p.update()
+		if p.live.d.live.busy {
 			return
 		}
 		e := p.active()
-		if e == nil {
+		if e == nil || !p.queryDue.IsZero() {
 			return
 		}
-		d := p.live.d
-		if d.live.busy {
+		if plain && e.kind != "文本" && e.kind != "富文本" {
+			p.message = "此内容不支持纯文本粘贴。"
+			p.update()
 			return
 		}
-		d.selected = e.id
-		d.useEntry()
-		p.live.copyPending = true
-		p.live.keepOpen = keep
+		if p.live.system == nil {
+			p.message = "系统交互尚未连接。"
+			p.update()
+			return
+		}
+		if err := p.live.system.Start(e.id, plain, paste, keep); err != nil {
+			p.message = p.live.system.Message
+		}
+		p.menu = ""
+		p.update()
 		return
 	}
 
@@ -480,7 +490,9 @@ func (p *quickDemo) restore(paste, plain, keep bool) {
 }
 func (p *quickDemo) actions() []qpAction {
 	if p.live != nil {
-		return []qpAction{{"copy", "复制到剪贴板", p.commandLabel() + "C", p.active() != nil && !p.live.d.live.busy}, {"delete", "删除", "", p.active() != nil && !p.live.d.live.busy}, {"main", "打开主窗口", "", true}, {"settings", "设置…", "", true}}
+		available := p.active() != nil && !p.live.d.live.busy && (p.live.system == nil || !p.live.system.Busy)
+		canPaste := available && p.live.system != nil && p.live.system.CanPaste
+		return []qpAction{{"paste", "粘贴到原应用", "Enter", canPaste}, {"plain", "纯文本粘贴", "Shift+Enter", canPaste && p.active() != nil && (p.active().kind == "文本" || p.active().kind == "富文本")}, {"copy", "复制到剪贴板", p.commandLabel() + "C", available}, {"delete", "删除", "", available}, {"main", "打开主窗口", "", true}, {"settings", "设置…", "", true}}
 	}
 	e := p.active()
 	if e == nil {
@@ -663,6 +675,9 @@ func (p *quickDemo) escape() {
 	case p.query != "" || p.kind != "" || len(p.chips) > 0:
 		p.clear()
 	default:
+		if p.live != nil && p.live.system != nil {
+			p.live.system.Dismiss(true)
+		}
 		p.visible = false
 	}
 	p.update()
@@ -748,6 +763,9 @@ func (p *quickDemo) relax(dim string) {
 
 func (p *quickDemo) host(action string) {
 	if p.live != nil {
+		if p.live.system != nil {
+			p.live.system.Dismiss(false)
+		}
 		if p.live.root != nil {
 			p.live.root(action)
 		}

@@ -214,3 +214,11 @@ TMPDIR=/private/tmp go test -race ./app/desktop/internal/desktopdemo -run '^Test
 
 On other platforms, use an existing canonical temporary directory instead of `/private/tmp`.
 This process acceptance does not start a native app, offscreen renderer or system clipboard. See the [receipt](../../docs/exec/desktop-search-implementation.md).
+
+### Quick-panel system commands
+
+The production host registers Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux by default. Change or disable it in Settings > Quick Panel. A conflicting replacement preserves the previous working registration and offers retry. The tray also opens the panel. Lightweight mode has no graphical shortcut host.
+
+Open the panel from another application to capture its target. Enter applies history and sends paste to that target. Shift+Enter applies the existing plain-text Action first. Command/Ctrl+Enter sends paste and reopens the panel. Command/Ctrl+C copies without input injection. macOS requires Accessibility permission. Wayland keeps Copy but cannot automatically restore arbitrary target focus or inject paste.
+
+The [system contract](../../docs/contracts/desktop-quick-panel-contract.md) defines cancellation, clipboard ownership and platform limits. The [execution receipt](../../docs/exec/desktop-quick-panel-system.md) distinguishes process evidence from native acceptance.

@@ -73,8 +73,8 @@ Temporary profiles and service binaries are deleted on success and failure.
 - Persistent pins/favorites and full tag-library entities, colors, merging and bulk management.
 - Full device details, device rename/binding routes, fine-grained policy and latency/direct/relay status.
 - Sending an existing history ID directly to selected devices.
-- Quick-panel production search/Copy/Delete are now connected. Global shortcut preferences, target capture and OS paste remain unavailable.
-- Appearance, font, shortcut, proxy, relay and security configuration not supported by the current service contract.
+- Quick-panel production search/Copy/Delete are connected. Global shortcut preferences, target capture and OS paste dispatch are implemented in the [system execution receipt](desktop-quick-panel-system.md). Native acceptance and Wayland automatic paste remain open.
+- Appearance, font, arbitrary shortcut editing, proxy, relay and security configuration not supported by the current service contract. Fixed quick-panel shortcut choices are now supported.
 - Native visual, focus, menu and clipboard acceptance. No application, renderer or browser was launched.
 
 ## Verification notes

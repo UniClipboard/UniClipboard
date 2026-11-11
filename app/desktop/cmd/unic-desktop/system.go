@@ -17,6 +17,7 @@ import (
 )
 
 var showDesktop = func() {}
+var showQuickPanel = func() {}
 
 func setupTray() {
 	tray, err := mygo.NewTray(mygo.TrayOptions{
@@ -26,6 +27,7 @@ func setupTray() {
 		ToolTip:        "unic — clipboard sync",
 		Menu: mygo.NewMenu([]*mygo.MenuItem{
 			{Label: "Open unic…", Click: func(*mygo.MenuItem, *mygo.Window) { showDesktop() }},
+			{Label: "快捷面板…", Click: func(*mygo.MenuItem, *mygo.Window) { showQuickPanel() }},
 			mygo.Separator(),
 			{Role: mygo.RoleQuit},
 		}),

@@ -133,6 +133,26 @@ func (d *demo) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 			k.SettingsRow(c, uikit.SettingsRowProps{Label: "接收目录", Description: inbox}, nil, nil)
 		})
 	case "quickPanel":
+		group("shortcut", "全局快捷键", func() {
+			k.SettingsRow(c, uikit.SettingsRowProps{Label: "打开快捷面板", Description: "在常规模式运行时生效。"}, nil, func() {
+				if k.Select(c, uikit.SelectProps{Label: "全局快捷键", Value: &cfg.Desktop.QuickPanelShortcut, Disabled: l.busy, Items: []uikit.SelectItem{{Value: "Ctrl+Alt+V", Label: "Ctrl+Alt+V"}, {Value: "Cmd+Ctrl+V", Label: "Command+Ctrl+V"}, {Value: "Ctrl+`", Label: "Ctrl+`"}, {Value: "CmdOrCtrl+Shift+Space", Label: "Command/Ctrl+Shift+Space"}, {Value: "", Label: "关闭"}}}).Changed {
+					changed = true
+				}
+			})
+			if d.quickShortcutStatus != nil {
+				effective, message := d.quickShortcutStatus()
+				if effective == "" {
+					effective = "关闭"
+				}
+				k.Text(c, "当前注册："+effective, footnote)
+				if message != "" {
+					k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: message})
+					if k.Button(c, "重试注册快捷键", uikit.ButtonProps{Disabled: l.busy}).Clicked() && d.retryQuickShortcut != nil {
+						d.retryQuickShortcut()
+					}
+				}
+			}
+		})
 		if k.Button(c, "打开快捷面板", uikit.ButtonProps{}).Clicked() && d.openQuickPanel != nil {
 			d.openQuickPanel()
 		}

@@ -65,6 +65,8 @@ type deviceCandidate struct {
 }
 
 type demo struct {
+	quickShortcutStatus                                                    func() (string, string)
+	retryQuickShortcut                                                     func()
 	live                                                                   *liveState
 	tagInput                                                               string
 	openQuickPanel                                                         func()

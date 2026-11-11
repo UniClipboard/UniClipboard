@@ -262,3 +262,7 @@ Request text is never put in URLs, errors, logs, events or telemetry.
 Search pages contain only explicit bounded previews, not image bytes, host references or absolute paths.
 New search revisions serialize as decimal strings. Counts are JSON numbers in request order.
 Exact semantics and errors are in the [history search contract](history-search-contract.md).
+
+### Quick-panel host preference
+
+The shared configuration adds `desktop.quick_panel_shortcut`. It defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Accepted values are `Ctrl+` followed by a backtick, `CmdOrCtrl+Shift+Space`, `Ctrl+Alt+V`, `Cmd+Ctrl+V`, and the empty string (disabled). The existing configuration revision check and TOML hot reload apply. The service persists the preference; only the graphical host registers it. Registration failure does not revert the saved configuration and is shown separately from the effective host registration. No target identity, paste status or OS input command enters service DTOs. See the [Desktop quick-panel contract](desktop-quick-panel-contract.md).

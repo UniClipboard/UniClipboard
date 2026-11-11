@@ -25,7 +25,10 @@ import (
 
 // Desktop uses the approved composition with service-owned data. Run View on
 // the mygo thread; all completions are applied there, never by I/O workers.
-type Desktop struct{ d *demo }
+type Desktop struct {
+	d         *demo
+	quickHost *quickHost
+}
 
 func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
 	d := &demo{page: "history", theme: "system", layout: "list", nav: uikit.NavState{Value: "all"}, settings: uikit.NavState{Value: "general"}, deviceList: uikit.SourceState{Value: "local"}, gridSize: .4, options: map[string]bool{}, choices: map[string]string{}}

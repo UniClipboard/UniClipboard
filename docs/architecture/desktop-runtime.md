@@ -1,6 +1,8 @@
 ---
 paths:
   - app/desktop/internal/lifecycle
+  - app/desktop/internal/desktopdemo
+  - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
   - internal/localconfig
   - internal/localapi
@@ -188,7 +190,7 @@ See the [execution receipt](../exec/0016-sync-and-file-settings.md) for exact ve
 
 ## Gaps
 
-The production Settings tab exposes startup and history-cleanup controls. Other controls remain available through CLI/TOML.
+The production Settings tab exposes startup, sync, history-cleanup and quick-panel shortcut controls. Other controls remain available through CLI/TOML.
 Native clipboard and folder-picker interaction acceptance remains with the user.
 Crash injection at every filesystem/database instruction and forced disk-full/unlink-failure acceptance are not complete.
 Unknown retained-cache entries are not deleted through filename scans; only the ledger grants retained-payload deletion authority.
@@ -225,3 +227,15 @@ The normal history window uses explicit service search, not filtering its loaded
 Selected full content remains a separate bounded read. Search counts and content reads have independent cancellation and never share the desktop mutation queue.
 The real-data quick panel uses the same service query and catalogue with its existing phrase and tag-union semantics.
 Unsupported OS paste and semantic classifications remain separate from retrieval. See the [search contract](../contracts/history-search-contract.md) and [execution receipt](../exec/desktop-search-implementation.md).
+
+## Quick-panel system interaction
+
+Desktop owns a target session in `app/desktop/internal/quickpanel`. The host captures the external foreground target before showing the existing history window and nonfocusable preview. Global shortcuts, tray activation and the Settings button use the same opening path. Repeated activation while visible dismisses the panel without replacing the target.
+
+`desktop.quick_panel_shortcut` defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Settings offers both platform bindings, Ctrl plus backtick, Command/Ctrl+Shift+Space and disabled. The existing revision-checked configuration persists the choice. The host registers a replacement before removing the working registration and exposes requested/effective disagreement with an explicit retry. Lightweight mode has no graphical shortcut host.
+
+Enter applies history through the existing IPC clipboard adapter, hides both windows, restores the captured target and sends one paste chord. Shift+Enter uses the existing plain-text Action and applies its resulting history item. Command/Ctrl+Enter waits 150 ms after input dispatch and reopens the panel only if the target still owns focus. Copy does not inject keyboard input. A tracked clipboard wrapper verifies exactly one adapter write and compares content plus file paths before paste.
+
+Generation cancellation prevents stale clipboard completions from sending input. Focus checks, held-key waits and input dispatch are bounded; errors never automatically replay input. External blur does not restore focus. Explicit Escape dismissal restores the original target only while unic still owns the foreground. Target names, IDs and clipboard fingerprints remain transient host state and never enter logs or analytics.
+
+macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication identity. Windows uses process/window identity and SendInput. Linux X11 uses checked XGB/XTest requests and EWMH activation. Wayland retains the mygo portal shortcut and Copy; automatic target capture/paste is explicitly unavailable. Native focus/input, permission flows, display-server policy and keyboard-layout acceptance remain unverified. See the [system contract](../contracts/desktop-quick-panel-contract.md) and [execution receipt](../exec/desktop-quick-panel-system.md).

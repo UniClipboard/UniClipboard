@@ -19,6 +19,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopdemo"
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
+	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
@@ -161,15 +162,11 @@ func runGUI(settings *config.Manager) error {
 			mygo.App.Quit()
 		}()
 		g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, false)
-		settings.OnChange = func(_, current config.Config, err error) {
-			if err == nil {
-				g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
-			}
-		}
-		go func() { _ = settings.Watch(ctx) }()
+
 		setupTray()
 		go notifyPending(ctx, g.c.Path)
-		go func() { _ = clipboardintegration.RunRemote(ctx, g.c, board.MyGo{}, nil) }()
+		clipboard := quickpanel.NewClipboard(board.MyGo{})
+		go func() { _ = clipboardintegration.RunRemote(ctx, g.c, clipboard, nil) }()
 		screen := desktopdemo.NewDesktop(ctx, g.c)
 		screen.SetLoginStatus(func() (bool, string) { g.mu.Lock(); defer g.mu.Unlock(); return g.loginEnabled, g.loginError }, func() { g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, true) })
 		opts := mygo.WindowOptions{Title: "unic", Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View), Hidden: settings.Current().Desktop.StartInBackground}
@@ -179,7 +176,16 @@ func runGUI(settings *config.Manager) error {
 			opts.Vibrancy = mygo.VibrancySidebar
 		}
 		g.win = mygo.NewWindow(opts)
-		screen.AttachWindow(g.win)
+		screen.AttachWindow(g.win, clipboard)
+		showQuickPanel = screen.OpenQuickPanel
+		screen.SetQuickPanelShortcut(settings.Current().Desktop.QuickPanelShortcut)
+		settings.OnChange = func(_, current config.Config, err error) {
+			if err == nil {
+				g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
+				mygo.RunOnMain(func() { screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut) })
+			}
+		}
+		go func() { _ = settings.Watch(ctx) }()
 		g.win.OnClose(func(e *mygo.CloseEvent) {
 			if !quitting {
 				e.PreventDefault()

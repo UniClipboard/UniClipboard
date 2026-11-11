@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -80,9 +81,10 @@ type Config struct {
 
 // Desktop configures the graphical launcher. The service only stores these values.
 type Desktop struct {
-	Mode              string `toml:"mode" json:"mode"`
-	LaunchAtLogin     bool   `toml:"launch_at_login" json:"launch_at_login"`
-	StartInBackground bool   `toml:"start_in_background" json:"start_in_background"`
+	QuickPanelShortcut string `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
+	Mode               string `toml:"mode" json:"mode"`
+	LaunchAtLogin      bool   `toml:"launch_at_login" json:"launch_at_login"`
+	StartInBackground  bool   `toml:"start_in_background" json:"start_in_background"`
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -188,8 +190,12 @@ func (b BackendSync) policy() engine.BackendSyncPolicy {
 
 // Default returns the configuration used for keys the file leaves out.
 func Default() Config {
+	shortcut := "Ctrl+Alt+V"
+	if runtime.GOOS == "darwin" {
+		shortcut = "Cmd+Ctrl+V"
+	}
 	return Config{
-		Desktop: Desktop{Mode: "normal"},
+		Desktop: Desktop{Mode: "normal", QuickPanelShortcut: shortcut},
 		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
 		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
@@ -241,6 +247,11 @@ func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 // uses, so the file and the SDK cannot disagree. Messages never include the
 // offending values of fields that could carry secrets.
 func (c Config) Validate() error {
+	switch c.Desktop.QuickPanelShortcut {
+	case "", "Ctrl+`", "CmdOrCtrl+Shift+Space", "Ctrl+Alt+V", "Cmd+Ctrl+V":
+	default:
+		return errors.New("desktop.quick_panel_shortcut: unsupported shortcut")
+	}
 	if c.Desktop.Mode != "normal" && c.Desktop.Mode != "lightweight" {
 		return errors.New(`desktop.mode: must be "normal" or "lightweight"`)
 	}
@@ -326,6 +337,8 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # mode = "normal"  # "normal" or "lightweight"
 # launch_at_login = false
 # start_in_background = false
+# quick_panel_shortcut = "Ctrl+Alt+V"
+# macOS default: "Cmd+Ctrl+V"
 
 # Logging and PostHog/OTLP upload. All remote signals are on by default.
 # Set telemetry.enabled = false to stop all uploads. Signal switches also hot reload.

@@ -100,13 +100,17 @@ func (p *quickDemo) panel(c *ui.Context) {
 			})
 		})
 		if p.message != "" {
-			ui.Text(c, p.message).Role(ui.RoleAlert).FontSize(11).TextColor(ui.RGB(224, 27, 36)).Padding(8, 12)
+			tone := ui.RGB(224, 27, 36)
+			if p.message == "已复制" || p.message == "已发送粘贴指令" {
+				tone = a.quiet
+			}
+			ui.Text(c, p.message).Role(ui.RoleAlert).FontSize(11).TextColor(tone).Padding(8, 12)
 		}
 		ui.Row(c).Height(34).Shrink(0).Padding(0, 10, 0, 12).BorderWidth(1, 0, 0, 0).BorderColor(a.border).AlignItems(ui.Center).Gap(7).Children(func() {
 			ui.Row(c).Size(16, 16).Radius(4).Background(a.foreground).AlignItems(ui.Center).Justify(ui.Center).Children(func() { ui.Text(c, "T").FontSize(9).TextColor(a.background) })
 			ui.Text(c, p.pasteTargetLabel()).FontSize(12)
 			shortcut := "⏎"
-			if p.live != nil {
+			if p.live != nil && (p.live.system == nil || !p.live.system.CanPaste) {
 				shortcut = p.commandLabel() + "C"
 			}
 			qpKeycap(c, shortcut, a)
@@ -296,7 +300,13 @@ func (p *quickDemo) bindKeys(c *ui.Context, in ui.Element) {
 			})
 		}
 	}
-	c.OnWindowShortcut(command, ui.KeyQ, func() { p.visible = false; p.update() })
+	c.OnWindowShortcut(command, ui.KeyQ, func() {
+		if p.live != nil && p.live.system != nil {
+			p.live.system.Dismiss(true)
+		}
+		p.visible = false
+		p.update()
+	})
 }
 func (p *quickDemo) suggestionList(c *ui.Context, a qpPalette, options []qpFilter) {
 	heading := func(title, note string) {
@@ -619,6 +629,9 @@ func (p *quickDemo) satellite(c *ui.Context) {
 
 func (p *quickDemo) pasteTargetLabel() string {
 	if p.live != nil {
+		if p.live.system != nil && p.live.system.CanPaste {
+			return "粘贴到 " + p.live.system.TargetName
+		}
 		return "复制到剪贴板"
 	}
 	return "粘贴到 TextEdit"

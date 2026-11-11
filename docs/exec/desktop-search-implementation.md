@@ -62,3 +62,5 @@ go run ./tools/docscheck
 Native windows, keyboard/focus behavior, visual rendering, system clipboard and OS paste were not exercised. No browser or offscreen renderer was launched. Production quick-panel Copy/Delete use the real service; automatic OS paste remains unavailable. Large-scale latency and Windows/Linux runtime acceptance remain unverified.
 
 Code/link/directory classifiers, persistent favorites, general pinyin and global-hotkey preferences remain outside this search implementation. The implementation commit is recorded in Git history. No push or publication was performed.
+
+Subsequent work implements global-shortcut preferences, target capture and native paste dispatch. Its current acceptance and platform limits are recorded in the [quick-panel system receipt](desktop-quick-panel-system.md); the search acceptance above remains historical.

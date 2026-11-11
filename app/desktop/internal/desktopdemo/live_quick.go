@@ -3,19 +3,21 @@ package desktopdemo
 import (
 	"context"
 	"slices"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 type quickLive struct {
-	d                     *demo
-	seen, contentSeen     uint64
-	root                  func(string)
-	copyPending, keepOpen bool
+	system            *quickpanel.Controller
+	d                 *demo
+	seen, contentSeen uint64
+	root              func(string)
 }
 
 func newLiveQuick(ctx context.Context, client *api.Client, theme string, root func(string)) *quickDemo {
@@ -100,17 +102,7 @@ func (q *quickLive) poll(p *quickDemo) {
 	if l.readError != "" {
 		p.message = l.readError
 	}
-	if q.copyPending && !l.busy {
-		q.copyPending = false
-		p.message = l.message
-		if l.message == "" {
-			p.message = "已复制"
-			if !q.keepOpen {
-				p.visible = false
-			}
-		}
-		p.update()
-	}
+
 	if p.queryDue.IsZero() && !l.loading && l.cursor != "" && (p.selected >= len(p.rows)-8 || p.hovered >= len(p.rows)-8) {
 		l.loadHistory(d, true)
 	}
@@ -167,7 +159,14 @@ func (p *quickDemo) liveAction(id string) {
 		return
 	}
 	d := p.live.d
+	if p.live.system != nil && p.live.system.Busy {
+		return
+	}
 	switch id {
+	case "paste":
+		p.restore(true, false, false)
+	case "plain":
+		p.restore(true, true, false)
 	case "copy":
 		p.restore(false, false, false)
 	case "delete":
@@ -178,30 +177,105 @@ func (p *quickDemo) liveAction(id string) {
 	p.menu = ""
 	p.update()
 }
-func (s *Desktop) AttachWindow(window *mygo.Window) {
+
+// quickHost keeps native session state out of the editor and search modules.
+type quickHost struct {
+	shortcut                     *quickpanel.Shortcut
+	requested, registrationError string
+}
+
+func (s *Desktop) AttachWindow(window *mygo.Window, clipboard *quickpanel.Clipboard) {
 	d := s.d
+	native := quickpanel.NewNative()
 	var quickWindow *mygo.Window
 	var quick *quickDemo
 	root := func(action string) {
 		d.page = "history"
 		if action == "settings" {
 			d.page = "settings"
+			d.settings.Value = "quickPanel"
 		}
 		window.Show()
 		window.Focus()
 		window.Invalidate()
 	}
-	d.openQuickPanel = func() {
+	show := func(visible bool) {
+		if quick == nil {
+			return
+		}
+		quick.visible = visible
+		quick.blurDue = time.Time{}
+		if quickWindow != nil && visible {
+			quickWindow.Show()
+			quickWindow.Focus()
+		}
+		quick.update()
+	}
+	open := func() {
+		if quick != nil && quick.visible {
+			quick.live.system.Dismiss(true)
+			return
+		}
 		if quickWindow == nil {
 			quick = newLiveQuick(d.live.ctx, d.live.client, d.theme, root)
-			quickWindow = openQuickDemoWindow(quick, func() { quick.live.d.live.cancel(); quickWindow = nil })
+			quick.live.system = quickpanel.New(quickpanel.Options{
+				Context: d.live.ctx, Client: d.live.client, Clipboard: clipboard, Platform: native,
+				Dispatch: mygo.RunOnMain, Visible: show,
+				Changed: func() {
+					quick.message = quick.live.system.Message
+					if quick.live.system.Message != "" {
+						d.notice = quick.live.system.Message
+					}
+					quick.update()
+				},
+			})
+			// Capture before NewWindow can activate unic.
+			quick.live.system.Open()
+			quickWindow = openQuickDemoWindow(quick, func() { quick.live.system.Dismiss(false); quick.live.d.live.cancel(); quickWindow = nil; quick = nil })
 		} else {
+			quick.live.system.Open()
 			quick.visible = true
 			quick.menu = ""
+			quick.blurDue = time.Time{}
 			quick.applySearch()
 			quickWindow.Show()
 			quickWindow.Focus()
 			quickWindow.Invalidate()
 		}
+	}
+	s.quickHost = &quickHost{}
+	s.quickHost.shortcut = quickpanel.NewShortcut(mygo.GlobalShortcut.Register, mygo.GlobalShortcut.Unregister, open)
+	d.openQuickPanel = open
+	d.quickShortcutStatus = func() (string, string) { return s.quickHost.shortcut.Effective, s.quickHost.registrationError }
+	d.retryQuickShortcut = func() { s.SetQuickPanelShortcut(s.quickHost.requested) }
+	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+		s.quickHost.shortcut.Close()
+		if quick != nil {
+			quick.live.system.Dismiss(false)
+			quick.live.d.live.cancel()
+		}
+		if closer, ok := native.(interface{ Close() }); ok {
+			closer.Close()
+		}
+	})
+}
+
+// SetQuickPanelShortcut applies the persisted preference on the host event thread.
+func (s *Desktop) SetQuickPanelShortcut(key string) {
+	if s.quickHost == nil {
+		return
+	}
+	h := s.quickHost
+	h.requested = key
+	h.registrationError = ""
+	if err := h.shortcut.Set(key); err != nil {
+		h.registrationError = "快捷键注册失败。原快捷键保持有效。请检查冲突后重试。"
+	}
+}
+
+// OpenQuickPanel uses the same target capture path for tray and global activation.
+func (s *Desktop) OpenQuickPanel() {
+	if s.d.openQuickPanel != nil {
+		s.d.openQuickPanel()
 	}
 }

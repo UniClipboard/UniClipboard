@@ -471,7 +471,7 @@ Restore, tag replacement and deletion use the shared local service client.
 Mutations never retry automatically after uncertain responses.
 The device sheet binds ticket/code pairing, candidate requests, fingerprint/revision approval, rejection and removal.
 General, Sync and Storage settings bind existing configuration. Native login status comes from the launcher.
-Global literal text/file-name search, extension filters, rich-text classification, real candidate catalogues and accurate prospective counts are implemented through the [search contract](../../docs/contracts/history-search-contract.md). Favorites, virtual code/link/directory classifications, full tag management, device policies, history-to-device send and quick-panel OS paste remain gaps.
+Global literal text/file-name search, extension filters, rich-text classification, real candidate catalogues and accurate prospective counts are implemented through the [search contract](../../docs/contracts/history-search-contract.md). Favorites, virtual code/link/directory classifications, full tag management, device policies and history-to-device send remain gaps. Production quick-panel system interaction is implemented under the [system contract](../../docs/contracts/desktop-quick-panel-contract.md); native acceptance remains separate.
 Unavailable operations do not produce simulated success in the normal entry.
 See the [execution receipt](../../docs/exec/desktop-live-data.md) for process checks and native limits.
 

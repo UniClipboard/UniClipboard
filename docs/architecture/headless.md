@@ -8,6 +8,7 @@ paths:
   - internal/servicelifecycle
   - internal/servicelaunch
   - app/desktop/internal/lifecycle
+  - app/desktop/internal/quickpanel
   - internal/localcontent
   - internal/clipboardintegration
   - internal/webtransfer
@@ -119,6 +120,7 @@ credentials, databases or history. See section 12 of the
 | `app/service/internal/host` | Engine assembly, session ownership, local request handling |
 | `app/desktop/cmd/unic-desktop` | GUI, tray, notifications and adapter startup |
 | `app/desktop/internal/board` | Native mygo clipboard access |
+| `app/desktop/internal/quickpanel` | Desktop-only target sessions, adapter-write receipts, native paste and global-shortcut ownership |
 | `app/service/internal/server` | Service-owned HTTP routes and socket listener |
 | `internal/localapi` | Shared protocol DTOs and clients |
 | `internal/localconfig`, `internal/localpaths` | Shared local configuration and state paths |

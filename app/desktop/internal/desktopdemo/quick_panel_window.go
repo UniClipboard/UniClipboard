@@ -22,8 +22,12 @@ func runQuickDemo(theme, mode string) error {
 func openQuickDemoWindow(p *quickDemo, closed func()) *mygo.Window {
 	p.quit = mygo.App.Quit
 
+	title := "unic · 快捷面板演示"
+	if p.live != nil {
+		title = "unic · 快捷面板"
+	}
 	history := mygo.NewWindow(mygo.WindowOptions{
-		Title: "unic · 快捷面板演示", Width: 380, Height: 366, UseContentSize: true,
+		Title: title, Width: 380, Height: 366, UseContentSize: true,
 		Frameless: true, DisableResize: true, AlwaysOnTop: true,
 		Content: ui.View(p.panel),
 	})

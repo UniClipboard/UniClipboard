@@ -43,7 +43,7 @@ var notRun = map[string]string{
 	"C18b": "not run by this suite; asserted by TestStartupProcesses (make desktop-startup-e2e): a lightweight launcher refuses a CLI-temporary generation",
 	"C21":  "not run by this suite; asserted by TestCLI/cold-start-send",
 	"C22":  "not run by this suite; asserted by TestCLI/cold-start-offline-peer",
-	"C23":  "partly covered elsewhere: TestCLI/send-skips-offline-target asserts an offline device is not a target and the online target completes; a target failing mid-send (partial) and a slow-file timeout need a transport fault fixture and are not exercised",
+	"C23":  "not run by this suite; asserted by TestCLI/send-skips-offline-target, TestSendFaults (target fails mid-body: exit 4, outcome failed) and TestCLI/send-slow-peer-timeout (frozen peer: outcome timeout, one commit, no replay)",
 	"C24":  "not run by this suite; TestCLI/cold-start-send-response-lost asserts a killed CLI leaves one commit and no replay; TestCLI/service-replaced-mid-submit asserts a killed and restarted service leaves one commit, exit 1 with resource_expired, and no replay",
 	"C26":  "not run by this suite; asserted by TestCLI/cold-start-pairing and TestCLI/cold-start-pairing-outcomes",
 	"C34":  "not run by this suite; asserted by TestPostHogTemporaryRestarts (make posthog-e2e)",

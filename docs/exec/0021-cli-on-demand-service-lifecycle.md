@@ -30,7 +30,7 @@ Concurrent migration-related changes appeared after the initial documentation sn
 - [x] Select the maintained live lease mechanism. Specify acquisition, initial owner handoff, disconnect detection, release, admission closure and process-loss behavior. A deferred CLI cleanup or durable reference counter alone is insufficient.
 - [x] Specify standalone, desktop-owned and CLI-temporary metadata; generation/profile validation; finite lease/pending-acquisition limits; lifecycle states; and exact local API DTOs. Keep protocol version 1 and change the unreleased contract directly.
 - [x] Define the atomic last-release/new-acquire boundary. Specify how a client recognizes a retiring generation before business execution and how old cleanup is prevented from touching a replacement.
-- [ ] Specify command-originated operation observation and final outcomes. Re-reading cached submission admission is not a network terminal query. Define no-target, timeout, cancellation, partial-send and uncertain-write behavior without replaying a mutation. Open: C23 (partial send, slow file) is NOT_RUN. A cold-start send with one offline and one online paired device delivers nothing (see receipt, defect 4).
+- [ ] Specify command-originated operation observation and final outcomes. Re-reading cached submission admission is not a network terminal query. Define no-target, timeout, cancellation, partial-send and uncertain-write behavior without replaying a mutation. Open: partial-send and slow-file outcomes are now process-tested (see C23 closure). A cold-start send with one offline and one online paired device delivers nothing (see receipt, defect 4).
 - [x] Freeze startup, probe, acquisition, operation and cleanup budgets. Exempt intentional sessions from a blanket one-shot deadline; use authoritative invitation/override expiry.
 - [x] Implement fixture drivers and failure scenarios from section 4. Add a repository-standard entry point only when its suite exists. Require it to fail on zero selected cases, skipped prerequisites, missing binaries or failed child processes.
 - [ ] Build an immutable baseline and record existing results and resource measurements. Set numeric performance/resource thresholds before candidate runtime work. Do not change pass thresholds after seeing candidate results. Open: thresholds were fixed after the implementation existed.
@@ -78,7 +78,7 @@ Exit evidence: a machine-readable catalog-to-process matrix covers every support
 - [x] Add the adopted finite connection opportunity for eligible peers before the single dispatch decision. Startup readiness is not peer reachability; offline/pending peers cannot cause an indefinite wait.
 - [x] Submit content exactly once and observe only the command's operation through the contracted local interface. Keep local commit, network terminal state and clipboard application separate.
 - [x] Apply the adopted send-completion rule consistently to borrowed and newly started services. Stop a temporary service only after this command's operation has terminated or its timeout/cancellation contract has resolved. `warm-send` shows the same rule on a borrowed service, which stays running.
-- [ ] Retain file/content resources until terminal handling. On deadline, do not imply that a referenced file is no longer in use until the contracted cancellation/resource-release barrier has completed. Open: C23 is NOT_RUN.
+- [ ] Retain file/content resources until terminal handling. On deadline, do not imply that a referenced file is no longer in use until the contracted cancellation/resource-release barrier has completed. Open: the outcome side is process-tested (C23 closure); the file resource-release barrier after a deadline is not asserted.
 - [x] Preserve valid no-target, disabled-sync, no-backend and policy-filter outcomes. Do not convert a committed item into an uncommitted failure or fabricate network success.
 - [x] Retain watch usage for the event stream. A disconnected or cancelled watch releases its own usage without stopping another client.
 - [x] Implement bounded pairing approval sessions and distinguish confirmed, pending, expired, replaced and interrupted outcomes. Process-tested: approved, pending after the window, interrupted, and request removed. Removed and replaced share one outcome in the code.
@@ -219,7 +219,7 @@ Receipt for the working-tree implementation, based on HEAD `1f0e6c815f` plus unc
 | Resource comparison (`make service-lifecycle-bench`, HEAD baseline) | PASS. Warm status median 5 ms (baseline) vs 6 ms; cold status median 64 ms; 16 concurrent cold commands 4.9 s with one `unicd` at most; no process or socket left after 30 repeats. Thresholds were fixed after the implementation existed |
 | Regression | PASS after the last runtime change: `headless-e2e`, `posthog-e2e`, `desktop-startup-e2e`, `logs-export-e2e`, `TestCLI` (23 scripts) with `TestCatalog`, and `go test ./...` |
 | `go test ./...` | PASS with `TMPDIR=/private/tmp`. With the default macOS `TMPDIR` it fails in `host`, `engine` and `v1migration` with `cannot open default file cache`, also on a clean HEAD worktree. The cause is the long temporary path, not this change. The Makefile targets set `TMPDIR` |
-| NOT_RUN | C23 (partial and slow-file sends) and C36 (other platforms are compile-checked only) |
+| NOT_RUN | C36 (other platforms are compile-checked only) |
 | Native GUI/clipboard/login and hosted/publication actions | NOT_RUN; separate authorization required |
 
 Defects found while closing the plan:
@@ -294,8 +294,12 @@ Rerun of `make service-lifecycle-e2e` after these changes: `ok`, 209.1 s, 30 PAS
 
 Still open, so 0021 stays in `proposed/`:
 
-1. C23, second half: a target that fails mid-send (`partial`) and a slow-file timeout with resource release. The current fixture transport only injects a partial write on `clip` frames. A fault fixture for the transfer path does not exist.
-2. One frozen binary set: commit the source, rebuild, and run the matrix and the other suites against the same binaries.
-3. Resource thresholds were set after the implementation existed. Another passing run cannot remove this limitation.
-4. CLI help no longer shows requirement badges or lifecycle-window text. Commit `e1ccd8c2f` removed them on purpose. Decide whether to restore them or change the plan.
-5. C36: only the host platform runs process tests.
+1. One frozen binary set: commit the source, rebuild, and run the matrix and the other suites against the same binaries.
+2. Resource thresholds were set after the implementation existed. Another passing run cannot remove this limitation.
+3. CLI help no longer shows requirement badges or lifecycle-window text. Commit `e1ccd8c2f` removed them on purpose. Decision (2026-11-11): do not restore them; the plan item is dropped.
+4. C36: only the host platform runs process tests.
+
+### C23 closure (2026-11-11)
+
+- `TestSendFaults/target-fails-mid-body` (`e2e/cli/send_faults_e2e_test.go`): the build-tagged transport cuts the body after 17 bytes. `send --to all` exits 4 with phase `committed` and outcome `failed`. The peer does not apply the partial body. At most one local entry exists.
+- `TestCLI/send-slow-peer-timeout`: the peer process is frozen (SIGSTOP) and `UNIC_E2E_SEND_DEADLINE_MS=4000` shortens the deadline. `send -f` of a 90 MiB file exits non-zero with phase `committed` and outcome `timeout`. The error text says the running service keeps sending and names `unic dev submission`. After the peer resumes, history holds exactly one entry and the service is still running. This does not assert the resource-release barrier on the file; that part stays unproven.

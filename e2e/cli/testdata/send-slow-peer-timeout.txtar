@@ -1,0 +1,34 @@
+# 用例: 对端冻结时大文件发送在截止时间内以 timeout 结束，不重放
+# 目的: 验证 C23 的慢文件超时一半：命令得到准确终态，本地提交保留，恢复对端后没有自动重发。
+# 流程:
+#   1. 启动 alpha 和 beta 并配对批准，两者保持运行。
+#   2. 冻结 beta（STOP），把发送截止时间缩短为 4 秒。
+#   3. 在 alpha 上发送大文件，命令在截止时间后结束。
+#   4. 恢复 beta（CONT），等待后读取 alpha 的历史。
+# 期望:
+#   - 命令非零退出，本地提交为 committed，发送结果不是 success。
+#   - alpha 历史里该文件恰好一条，alpha 的服务仍在运行。
+# 不应:
+#   - 把超时报告为 success。
+#   - 恢复对端后自动重发出第二次提交。
+
+node-start alpha
+node-start beta
+pair alpha beta
+
+genfile rand slow.bin 94371840
+node-stop beta STOP
+env UNIC_E2E_SEND_DEADLINE_MS=4000
+! u alpha send --to all --json --request-id slow-1 -f $WORK/slow.bin
+stdout '"phase":"committed"'
+! stdout '"outcome":"success"'
+node-stop beta CONT
+sleep 5s
+u alpha history list
+stdout -count=1 'files'
+! service-gone alpha
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

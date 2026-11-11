@@ -27,6 +27,7 @@
 | [plugin-tag-and-action](#plugin-tag-and-action) | 邮箱标签插件与 Action 改写 |
 | [restart-keeps-state](#restart-keeps-state) | 重启后身份、配对、历史与标签保持不变 |
 | [send-skips-offline-target](#send-skips-offline-target) | 多目标发送时离线设备不是目标，在线目标正常完成 |
+| [send-slow-peer-timeout](#send-slow-peer-timeout) | 对端冻结时大文件发送在截止时间内以 timeout 结束，不重放 |
 | [send-to-device](#send-to-device) | send --to 只发给指定的已配对设备 |
 | [service-replaced-mid-submit](#service-replaced-mid-submit) | 提交途中服务被杀并重启，命令报告中断，不重放也不回滚 |
 | [sync-settings](#sync-settings) | CLI settings and TOML policy |
@@ -1387,6 +1388,56 @@ stdout '"phase":"committed"'
 stdout '"outcome":"success"'
 stdout -count=1 '"target_id":'
 until beta 'offline skipped text' h show
+! service-gone alpha
+```
+
+</details>
+
+## send-slow-peer-timeout
+
+**对端冻结时大文件发送在截止时间内以 timeout 结束，不重放**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/send-slow-peer-timeout' -v`
+
+**目的**
+
+验证 C23 的慢文件超时一半：命令得到准确终态，本地提交保留，恢复对端后没有自动重发。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，两者保持运行。
+2. 冻结 beta（STOP），把发送截止时间缩短为 4 秒。
+3. 在 alpha 上发送大文件，命令在截止时间后结束。
+4. 恢复 beta（CONT），等待后读取 alpha 的历史。
+
+**期望**
+
+- 命令非零退出，本地提交为 committed，发送结果不是 success。
+- alpha 历史里该文件恰好一条，alpha 的服务仍在运行。
+
+**不应**
+
+- 把超时报告为 success。
+- 恢复对端后自动重发出第二次提交。
+
+<details><summary>脚本 testdata/send-slow-peer-timeout.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+genfile rand slow.bin 94371840
+node-stop beta STOP
+env UNIC_E2E_SEND_DEADLINE_MS=4000
+! u alpha send --to all --json --request-id slow-1 -f $WORK/slow.bin
+stdout '"phase":"committed"'
+! stdout '"outcome":"success"'
+node-stop beta CONT
+sleep 5s
+u alpha history list
+stdout -count=1 'files'
 ! service-gone alpha
 ```
 

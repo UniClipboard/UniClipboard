@@ -102,6 +102,9 @@ The normal desktop opens the shared history composition directly. It has no setu
 `live.go` serializes local socket work and applies completions on the view thread.
 It owns query pagination, reconciliation, bounded content previews and revision-checked history mutations.
 The event stream requests fresh snapshots; a five-second reconciliation also covers lost events.
+Initial reads and changed queries show loading. Timer/event reconciliation and pagination keep existing history visible without adding a loading row. The quick panel uses the same foreground-loading state. Cancellation and completion clear only the matching read generation.
+The history list has no manual refresh button; event updates and periodic reconciliation refresh it automatically.
+Selected single-image files use the same image frame and Quick Look as image records, with their filename and actual dimensions. Their stored file kind, type filters and file-copy semantics stay unchanged. Preview reads are limited to 32 MiB and 16 million decoded pixels; unsupported, corrupt, oversized and multi-file payloads retain the file list.
 Refresh preserves loaded page depth. Query changes discard results for obsolete filters.
 `live_devices.go` binds existing pairing, approval, candidate and removal operations.
 `live_settings.go` binds the existing General, Sync and Storage settings; the launcher owns native login registration.

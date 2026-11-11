@@ -25,6 +25,8 @@ Content readers are bounded and closed. Switching records must never show anothe
 
 ## Failure scenarios before implementation
 
+- Silent reconciliation follow-up: initial loads and changed queries must expose loading; timer/event refreshes and pagination must not insert a loading row above existing history. Empty and populated history, selected previews, query cancellation, failed reads and retry must retain correct loading ownership. Observe at least two real timer intervals. Keep event-triggered updates and five-second recovery after missed notifications. Audit SSE replay before removing reconciliation.
+- Image-file preview follow-up: a single PNG/JPEG file must render its real pixels without changing the stored file kind or copy semantics. Non-image files and multi-file records must retain their file list. Corrupt images, payloads above 32 MiB, images above 16 million pixels, unavailable files, selection changes and reconciliation must never expose fixture pixels, stale content or unbounded reads.
 - No service, service restart, event loss and stale asynchronous responses.
 - Empty history, multiple pages, deletion during selection and expired/unavailable content.
 - Different content representations, large payloads and damaged image data.
@@ -49,7 +51,10 @@ Implemented in the working tree:
 - Normal desktop reuses the approved composition and starts on history.
 - Setup, space creation, unlock and recovery-preview code/routes are removed, including the quick-panel unlock fixture.
 - History supports server-side type/device/tag/time filtering, cursor pagination, text/PNG/file-name previews, restore, revision-checked tag assignment and deletion.
+- Single-image files now decode through the same bounded image reader as image records. The detail pane uses the shared image frame and Quick Look, shows the filename and real dimensions, and preserves file copy/type semantics. Corrupt, unsupported, oversized and multi-file content retains its file list. The process scenario checks PNG/JPEG dimensions, reconciliation, exact restored file bytes and the fallback cases; native appearance remains unverified.
 - Refresh preserves loaded depth. Obsolete filter responses are discarded. Only the selected full payload is cached.
+- Background reconciliation is silent in both the history window and quick panel. Only initial reads and changed queries expose foreground loading; the in-flight flag still serializes reads and disables duplicate pagination. The process scenarios cover two idle timer intervals with empty and selected history, event updates, rapid query replacement, pagination, quick-panel reconciliation and a real service restart.
+- Event recovery audit: the host hub uses a 32-event lossy queue, SSE emits no replay ID, and the local client has no replay cursor. Keep five-second reconciliation and event-triggered reads. Replacing periodic reconciliation with event-only updates requires a reliable recovery contract first; see the [local service contract](../contracts/local-service-contract.md#local-event-delivery).
 - The device sheet calls existing pairing, fingerprint/revision approval, rejection, candidate and removal APIs.
 - General, Sync and Storage settings use the existing revision-checked configuration API. Launcher-owned native login status is displayed separately.
 - Unavailable operations never report fixture success in the normal desktop.

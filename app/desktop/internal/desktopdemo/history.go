@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
@@ -114,14 +113,11 @@ func (d *demo) history(c *ui.Context, k uikit.Kit) {
 				if d.live.message != "" {
 					k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.live.message})
 				}
-				if d.live.loading {
+				if d.live.foregroundLoading {
 					k.Text(c, "正在读取历史…", secondary)
 				}
 				if d.unsupportedSearch() {
 					k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: "此搜索条件暂不可用", Text: "请选择类型、设备、标签或时间筛选。"})
-				}
-				if k.Button(c.Key("refresh-history"), "刷新", uikit.ButtonProps{Disabled: d.live.loading}).Clicked() {
-					d.live.nextRefresh = time.Time{}
 				}
 			}
 			if len(items) == 0 {
@@ -144,7 +140,11 @@ func (d *demo) history(c *ui.Context, k uikit.Kit) {
 		}
 	})
 	if d.quickLook && d.current() != nil {
-		r := k.QuickLook(c.Key("quick-look"), uikit.QuickLookProps{Open: &d.quickLook, Title: d.current().title, CloseLabel: "关闭预览", Src: d.entryImage(*d.current()), Alt: d.current().title, PrimaryLabel: "复制图片"}, nil)
+		copyLabel := "复制图片"
+		if d.current().kind == uikit.KindFile {
+			copyLabel = "复制文件"
+		}
+		r := k.QuickLook(c.Key("quick-look"), uikit.QuickLookProps{Open: &d.quickLook, Title: d.current().title, CloseLabel: "关闭预览", Src: d.entryImage(*d.current()), Alt: d.current().title, PrimaryLabel: copyLabel}, nil)
 		if r.Primary {
 			d.useEntry()
 		}
@@ -309,8 +309,14 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 			if v.kind == uikit.KindFile {
 				kind = uikit.PreviewFile
 			}
+			if v.image != nil {
+				kind = uikit.PreviewImage
+			}
 			p := uikit.PreviewFrameProps{Kind: kind}
-			if v.kind == uikit.KindImage {
+			if kind == uikit.PreviewImage {
+				if v.kind == uikit.KindFile {
+					p.Caption = v.text
+				}
 				p.BottomStart = func() {
 					if k.Button(c, "快速查看", uikit.ButtonProps{Size: uikit.SizeSmall}).Clicked() {
 						d.quickLook = true
@@ -331,7 +337,7 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 					richtext.EditorBase(c, v.rich, richtext.EditorOptions{Label: "富文本预览", ReadOnly: true}).FillWidth().Height(240)
 					return
 				}
-				if v.kind == uikit.KindImage {
+				if kind == uikit.PreviewImage {
 					ui.Image(c, d.entryImage(*v)).FillWidth().Height(220)
 					return
 				}
@@ -346,8 +352,18 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 					e.Font("monospace").TextColor(ui.RGBA(235, 235, 240, 1))
 				}
 			})
-			if v.kind == uikit.KindImage && d.live == nil {
-				k.FactList(c, uikit.FactListProps{Label: "图片信息", Facts: []uikit.Fact{{ID: "size", Label: "尺寸", Value: "1600 × 1000"}, {ID: "format", Label: "格式", Value: "PNG · 286 KB"}}})
+			if kind == uikit.PreviewImage {
+				facts := []uikit.Fact{{ID: "size", Label: "尺寸", Value: "1600 × 1000"}, {ID: "format", Label: "格式", Value: "PNG · 286 KB"}}
+				if d.live != nil {
+					facts = nil
+					if v.image != nil {
+						w, h := ui.ImageSize(v.image)
+						facts = []uikit.Fact{{ID: "size", Label: "尺寸", Value: fmt.Sprintf("%.0f × %.0f", w, h)}, {ID: "bytes", Label: "大小", Value: v.size}}
+					}
+				}
+				if len(facts) > 0 {
+					k.FactList(c, uikit.FactListProps{Label: "图片信息", Facts: facts})
+				}
 			}
 			ui.Row(c).Gap(6).Wrap().Children(func() {
 				for _, tag := range v.tags {

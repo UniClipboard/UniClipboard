@@ -333,6 +333,17 @@ func scenarioHistorySearchProcess(t *testing.T) {
 		return !quick.live.d.live.loading && len(quick.rows) == 1 && quick.rows[0].id == phrase
 	})
 	checks = append(checks, "quick-panel phrase/union queries use real global search and discard obsolete generations")
+	serial := quick.live.d.live.appliedSerial
+	quick.live.d.live.nextRefresh = time.Time{}
+	quick.live.poll(quick)
+	if quick.live.d.live.foregroundLoading || len(quick.rows) != 1 || quick.rows[0].id != phrase {
+		t.Fatal("quick-panel background reconciliation replaced existing search results")
+	}
+	wait("quick silent reconciliation", func() bool {
+		quick.live.poll(quick)
+		return quick.live.d.live.appliedSerial > serial && !quick.live.d.live.loading
+	})
+	checks = append(checks, "quick-panel background reconciliation preserves results without foreground loading")
 	// Fresh candidate pages, limit validation, expiry and Action commits use the same read surface.
 	catalogueFirst, e := client.ListHistorySearchCandidates(ctx, engine.HistorySearchCandidatesRequest{Field: "tag", Limit: 1})
 	if e != nil || catalogueFirst.NextCursor == "" {

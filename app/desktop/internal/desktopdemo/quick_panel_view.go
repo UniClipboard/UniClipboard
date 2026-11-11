@@ -86,7 +86,7 @@ func (p *quickDemo) panel(c *ui.Context) {
 					p.suggestionList(c, a, options)
 				}
 				switch {
-				case !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.loading):
+				case !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.foregroundLoading):
 					ui.Text(c, "正在搜索…").FontSize(13).TextColor(a.quiet).Padding(24)
 				case len(p.rows) == 0:
 					p.emptyView(c, a)

@@ -24,6 +24,17 @@ Pairing requires explicit mutual approval with verified fingerprints. See [ident
 
 ## 开发
 
+Run the development desktop from the repository root:
+
+```sh
+make run-desktop
+```
+
+The command rebuilds `unic`, `unicd` and `unic-desktop` in `dist/`, then starts normal desktop mode.
+It stores development data in `.cache/desktop-dev` and clears any inherited `UNIC_SOCK` override.
+The development profile persists across runs and stays separate from the default profile.
+Run the command again after changing code.
+
 ### Native layout demo
 
 Build `unic-desktop`, then run `unic-desktop --demo` to open the restored layouts with local fixtures.

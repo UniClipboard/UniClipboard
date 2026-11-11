@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"mime"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -65,18 +67,20 @@ type liveState struct {
 	results                                      chan func()
 	changed                                      chan struct{}
 	connected, loaded, loading, busy, detailBusy bool
-	message, readError, cursor, key, detailKey   string
-	nextRefresh                                  time.Time
-	items                                        map[string]api.HistoryItem
-	details                                      map[string]entry
-	config                                       config.State
-	pending                                      map[string]api.PendingPeer
-	join                                         *api.PairResult
-	codeAttempted                                bool
-	code                                         api.Code
-	ticket                                       string
-	loginStatus                                  func() (bool, string)
-	retryLogin                                   func()
+	// loading serializes all history reads; foregroundLoading controls visible loading.
+	foregroundLoading                          bool
+	message, readError, cursor, key, detailKey string
+	nextRefresh                                time.Time
+	items                                      map[string]api.HistoryItem
+	details                                    map[string]entry
+	config                                     config.State
+	pending                                    map[string]api.PendingPeer
+	join                                       *api.PairResult
+	codeAttempted                              bool
+	code                                       api.Code
+	ticket                                     string
+	loginStatus                                func() (bool, string)
+	retryLogin                                 func()
 }
 
 func (l *liveState) work() {
@@ -235,6 +239,7 @@ func (l *liveState) loadHistory(d *demo, more bool) {
 		}
 		q.Cursor = l.cursor
 	}
+	l.foregroundLoading = !l.loaded || key != l.key
 	l.loading = true
 	l.loadGeneration++
 	generation := l.loadGeneration
@@ -293,6 +298,7 @@ func (l *liveState) loadHistory(d *demo, more bool) {
 					return
 				}
 				l.loading = false
+				l.foregroundLoading = false
 				if key != d.liveQueryKey() {
 					l.nextRefresh = time.Time{}
 					return
@@ -646,6 +652,12 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 	switch it.Kind {
 	case "files":
 		var names []string
+		fileCount := 0
+		for _, p := range it.Parts {
+			if p.Kind == "file" {
+				fileCount++
+			}
+		}
 		for i, p := range it.Parts {
 			if p.Kind != "file" {
 				continue
@@ -656,6 +668,12 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 				continue
 			}
 			names = append(names, r.Name)
+			// Preview a single image file without changing its file/copy semantics.
+			// Damaged or oversized images retain the ordinary file preview.
+			imageFile := strings.HasPrefix(r.MIME, "image/") || strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(r.Name))), "image/")
+			if fileCount == 1 && imageFile && p.Size <= 32<<20 && r.Size <= 32<<20 {
+				v.image, _ = readPreviewImage(r)
+			}
 			_ = r.Close()
 		}
 		v.text = strings.Join(names, "\n")
@@ -689,10 +707,12 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			v.contentError = "内容已不可用。"
 			break
 		}
-		limit := int64(1 << 20)
 		if it.Kind == "image" {
-			limit = 32 << 20
+			v.image, v.contentError = readPreviewImage(r)
+			_ = r.Close()
+			break
 		}
+		limit := int64(1 << 20)
 		raw, e := io.ReadAll(io.LimitReader(r, limit+1))
 		_ = r.Close()
 		if e != nil {
@@ -703,25 +723,34 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			v.contentError = "内容超过预览大小限制。"
 			break
 		}
-		if it.Kind == "image" {
-			cfg, _, e := image.DecodeConfig(bytes.NewReader(raw))
-			if e != nil || int64(cfg.Width)*int64(cfg.Height) > 16_000_000 {
-				v.contentError = "图片无法预览。"
-				break
-			}
-			v.image, e = ui.DecodeImage(raw)
-			if e != nil {
-				v.contentError = "图片无法预览。"
-			}
-		} else {
-			v.text = strings.ToValidUTF8(string(raw), "�")
-			if isHTML {
-				parsed := richtext.ParseHTML(v.text)
-				v.rich = richtext.NewDocument(parsed)
-				v.text = parsed.PlainText()
-			}
-			v.title = shortText(strings.TrimSpace(v.text), 90)
+		v.text = strings.ToValidUTF8(string(raw), "�")
+		if isHTML {
+			parsed := richtext.ParseHTML(v.text)
+			v.rich = richtext.NewDocument(parsed)
+			v.text = parsed.PlainText()
 		}
+		v.title = shortText(strings.TrimSpace(v.text), 90)
 	}
 	return v
+}
+
+// readPreviewImage bounds encoded bytes and decoded pixels before allocating a bitmap.
+func readPreviewImage(r io.Reader) (ui.ImageSource, string) {
+	const limit = 32 << 20
+	raw, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, "读取内容失败。"
+	}
+	if len(raw) > limit {
+		return nil, "内容超过预览大小限制。"
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
+		return nil, "图片无法预览。"
+	}
+	src, err := ui.DecodeImage(raw)
+	if err != nil {
+		return nil, "图片无法预览。"
+	}
+	return src, ""
 }

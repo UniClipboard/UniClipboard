@@ -2,6 +2,13 @@
 .PHONY: build test clean docs-check
 build:
 	go build -o dist/ ./app/service/cmd/... ./app/desktop/cmd/... ./plugins/examples/...
+
+# Build and run Desktop with a persistent, isolated development profile.
+.PHONY: run-desktop
+run-desktop:
+	go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd ./app/desktop/cmd/unic-desktop
+	UNIC_HOME="$(CURDIR)/.cache/desktop-dev" UNIC_SOCK= ./dist/unic-desktop --mode normal
+
 test:
 	go test -race ./...
 clean:

@@ -8,15 +8,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
@@ -107,7 +111,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 	}
 	var logs bytes.Buffer
 	cmd := exec.CommandContext(ctx, exe)
-	cmd.Env = append(env, "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+	cmd.Env = append(slices.Clone(env), "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
 	cmd.Stdout = &logs
 	cmd.Stderr = &logs
 	if e = cmd.Start(); e != nil {
@@ -142,11 +146,37 @@ func scenarioDesktopLiveData(t *testing.T) {
 	d := desktop.d
 	defer desktop.Close()
 	spin := func(label string, f func() bool) { t.Helper(); wait(label, func() bool { d.live.poll(d); return f() }) }
+	d.live.poll(d)
+	if !d.live.loading || !d.live.foregroundLoading {
+		t.Fatal("initial history read must expose foreground loading")
+	}
 	spin("empty history", func() bool { return d.live.loaded && !d.live.loading })
 	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != 0 {
 		t.Fatal("fixture or entry flow leaked")
 	}
 	checks = append(checks, "opens empty history directly without fixtures")
+	idle := func(label string) {
+		t.Helper()
+		spin("settle before idle", func() bool { return !d.live.loading && !d.live.detailBusy })
+		serial := d.live.appliedSerial
+		selected := d.selected
+		rows := len(d.entries)
+		contentSerial := d.live.contentSerial
+		deadline := time.Now().Add(11 * time.Second)
+		for time.Now().Before(deadline) {
+			d.live.poll(d)
+			if d.live.foregroundLoading || d.selected != selected || len(d.entries) != rows || d.live.contentSerial != contentSerial {
+				t.Fatalf("%s: idle reconciliation changed foreground loading, selection, rows or selected payload", label)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		refreshes := d.live.appliedSerial - serial
+		if refreshes < 2 {
+			t.Fatalf("%s: periodic reconciliation did not run twice: %d", label, refreshes)
+		}
+		checks = append(checks, fmt.Sprintf("%s: 11 idle seconds, %d background refreshes, no foreground loading or selection/payload changes", label, refreshes))
+	}
+	idle("empty history")
 	submit := func(id string, s clip.Snapshot) string {
 		t.Helper()
 		r, e := client.Submit(ctx, api.SubmitInput{RequestID: id, Snapshot: s})
@@ -156,12 +186,36 @@ func scenarioDesktopLiveData(t *testing.T) {
 		return string(r.HistoryID)
 	}
 	id := submit("text", clip.Snapshot{Parts: []clip.Part{{Format: "text/plain", Data: []byte("Desktop live acceptance")}}})
-	spin("event refresh", func() bool { return len(d.entries) == 1 && d.entries[0].id == id })
+	spin("event refresh", func() bool {
+		if d.live.foregroundLoading {
+			t.Fatal("event refresh exposed foreground loading")
+		}
+		return len(d.entries) == 1 && d.entries[0].id == id
+	})
 	d.selectEntry(id)
 	spin("text detail", func() bool {
 		return d.current() != nil && d.current().text == "Desktop live acceptance" && !d.live.detailBusy
 	})
 	checks = append(checks, "real submission appears through event/reconciliation and content read")
+	idle("selected text history")
+	d.query = "no-idle-match"
+	d.live.poll(d)
+	if !d.live.loading || !d.live.foregroundLoading {
+		t.Fatal("changed query must expose foreground loading")
+	}
+	d.query = "Desktop"
+	d.live.poll(d)
+	if !d.live.foregroundLoading {
+		t.Fatal("replacement query lost foreground loading")
+	}
+	spin("replacement query", func() bool { return !d.live.loading && len(d.entries) == 1 && !d.live.foregroundLoading })
+	d.query = ""
+	spin("clear idle query", func() bool { return !d.live.loading && len(d.entries) == 1 })
+	d.selectEntry(id)
+	spin("restore selected text", func() bool {
+		return !d.live.detailBusy && d.current() != nil && d.current().text == "Desktop live acceptance"
+	})
+	checks = append(checks, "query changes expose loading; obsolete query completions cannot hide active loading")
 	d.setEntryTags(id, []string{"acceptance"})
 	spin("tag update", func() bool { return !d.live.busy && d.current() != nil && len(d.current().tags) == 1 })
 	current, e := client.GetHistory(ctx, id)
@@ -242,6 +296,92 @@ func scenarioDesktopLiveData(t *testing.T) {
 	d.selectEntry(fileID)
 	spin("file detail", func() bool { return d.current() != nil && d.current().text == "acceptance.txt" && !d.live.detailBusy })
 	checks = append(checks, "file preview uses real content-disposition name")
+	var jpegBytes bytes.Buffer
+	if e = jpeg.Encode(&jpegBytes, image.NewRGBA(image.Rect(0, 0, 3, 2)), nil); e != nil {
+		t.Fatal(e)
+	}
+	var largePixels bytes.Buffer
+	if e = png.Encode(&largePixels, image.NewGray(image.Rect(0, 0, 4001, 4000))); e != nil {
+		t.Fatal(e)
+	}
+	for _, sample := range []struct {
+		name    string
+		data    []byte
+		preview bool
+	}{
+		{"preview.png", pngBytes.Bytes(), true},
+		{"preview.jpg", jpegBytes.Bytes(), true},
+		{"corrupt.png", []byte("invalid image"), false},
+		{"ordinary.txt", []byte("ordinary file"), false},
+		{"large-bytes.png", append(pngBytes.Bytes()[:len(pngBytes.Bytes()):len(pngBytes.Bytes())], make([]byte, 32<<20)...), false},
+		{"large-pixels.png", largePixels.Bytes(), false},
+	} {
+		path := filepath.Join(private, sample.name)
+		if e = os.WriteFile(path, sample.data, 0600); e != nil {
+			t.Fatal(e)
+		}
+		previewID := submit(sample.name, clip.Snapshot{Files: []clip.File{{Name: sample.name, Path: path, Size: int64(len(sample.data))}}})
+		spin("preview file metadata", func() bool { _, ok := d.live.items[previewID]; return ok })
+		d.selectEntry(previewID)
+		spin("preview file detail", func() bool {
+			return d.live.detailKey == previewID && !d.live.detailBusy && d.current() != nil && d.current().text == sample.name
+		})
+		v := d.current()
+		if (v.image != nil) != sample.preview || v.kind != uikit.KindFile {
+			t.Fatalf("%s: image preview=%v, want %v; kind=%v", sample.name, v.image != nil, sample.preview, v.kind)
+		}
+		if sample.preview {
+			w, h := ui.ImageSize(v.image)
+			if w != 3 || h != 2 {
+				t.Fatalf("preview uses wrong pixels: %v x %v", w, h)
+			}
+			d.useEntry()
+			spin("image file restore", func() bool { return !d.live.busy })
+			wait("file clipboard semantics", func() bool {
+				s, err := board.Read()
+				if err != nil || len(s.Files) != 1 || s.Files[0].Name != sample.name {
+					return false
+				}
+				raw, err := os.ReadFile(s.Files[0].Path)
+				return err == nil && bytes.Equal(raw, sample.data)
+			})
+			d.live.nextRefresh = time.Time{}
+			serial := d.live.appliedSerial
+			spin("preview reconciliation", func() bool { return d.live.appliedSerial > serial && !d.live.loading })
+			if d.current().image == nil || d.current().kind != uikit.KindFile {
+				t.Fatal("reconciliation discarded file image or changed file kind")
+			}
+		}
+		item, err := client.GetHistory(ctx, previewID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := client.DeleteHistory(ctx, previewID, item.Revision); err != nil {
+			t.Fatal(err)
+		}
+		spin("preview file cleanup", func() bool { _, ok := d.live.items[previewID]; return !ok })
+	}
+	multiID := submit("multi-preview", clip.Snapshot{Files: []clip.File{
+		{Name: "preview.png", Path: filepath.Join(private, "preview.png"), Size: int64(pngBytes.Len())},
+		{Name: "acceptance.txt", Path: filePath, Size: 10},
+	}})
+	spin("multi-file metadata", func() bool { _, ok := d.live.items[multiID]; return ok })
+	d.selectEntry(multiID)
+	spin("multi-file detail", func() bool {
+		return d.live.detailKey == multiID && !d.live.detailBusy && d.current() != nil && strings.Contains(d.current().text, "acceptance.txt")
+	})
+	if d.current().image != nil || !strings.Contains(d.current().text, "preview.png") {
+		t.Fatal("multi-file record lost its file list")
+	}
+	multi, err := client.GetHistory(ctx, multiID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.DeleteHistory(ctx, multiID, multi.Revision); err != nil {
+		t.Fatal(err)
+	}
+	spin("multi-file cleanup", func() bool { _, ok := d.live.items[multiID]; return !ok })
+	checks = append(checks, "single PNG/JPEG files decode real pixels and survive reconciliation; restore preserves exact file bytes; corrupt/non-image/oversized/multiple files retain file lists")
 	d.kind = "图片"
 	spin("server filter", func() bool { return !d.live.loading && len(d.entries) == 1 && d.entries[0].id == imageID })
 	d.kind = ""
@@ -253,6 +393,9 @@ func scenarioDesktopLiveData(t *testing.T) {
 	}
 	spin("first page", func() bool { return len(d.entries) == 50 && d.live.cursor != "" && !d.live.loading })
 	d.live.loadHistory(d, true)
+	if d.live.foregroundLoading {
+		t.Fatal("pagination exposed foreground loading above existing rows")
+	}
 	spin("next page", func() bool { return len(d.entries) == 56 && !d.live.loading })
 	checks = append(checks, "cursor pagination keeps earlier loaded records")
 	cfg := d.live.config.Config
@@ -273,7 +416,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 		t.Fatal(e)
 	}
 	peer := exec.CommandContext(ctx, exe)
-	peer.Env = append(env, "UNIC_HOME="+peerHome, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+	peer.Env = append(slices.Clone(env), "UNIC_HOME="+peerHome, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
 	if e = peer.Start(); e != nil {
 		t.Fatal(e)
 	}
@@ -338,4 +481,28 @@ func scenarioDesktopLiveData(t *testing.T) {
 	_ = cmd.Wait()
 	spin("disconnect", func() bool { return !d.live.connected })
 	checks = append(checks, "service disconnect is visible without setup or unlock")
+	if d.live.foregroundLoading {
+		t.Fatal("background disconnect changed foreground loading")
+	}
+	restarted := exec.CommandContext(ctx, exe)
+	restarted.Env = cmd.Env
+	restarted.Stdout = &logs
+	restarted.Stderr = &logs
+	if err := restarted.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = restarted.Process.Kill(); _ = restarted.Wait() }()
+	defer func() {
+		if t.Failed() {
+			_, statusErr := client.Status(ctx)
+			t.Logf("reconnect state: connected=%v loading=%v rows=%d query=%q readError=%q statusError=%v", d.live.connected, d.live.loading, len(d.entries), d.query, d.live.readError, statusErr)
+		}
+	}()
+	spin("service reconnect", func() bool {
+		if d.live.foregroundLoading {
+			t.Fatal("reconnect exposed foreground loading")
+		}
+		return d.live.connected && !d.live.loading && d.live.readError == "" && len(d.entries) == 55
+	})
+	checks = append(checks, "real service restart recovers authoritative history without foreground loading")
 }

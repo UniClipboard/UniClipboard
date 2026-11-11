@@ -174,6 +174,7 @@ func (l *liveState) invalidateSearch() {
 		l.searchCancel()
 	}
 	l.loading = false
+	l.foregroundLoading = false
 	l.countKey = ""
 	l.counts = nil
 	if l.countCancel != nil {

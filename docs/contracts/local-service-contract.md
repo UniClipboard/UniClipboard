@@ -46,6 +46,12 @@ The service never reports that committed Action as an execution failure.
 An explicit Action RequestID deduplicates execution; an explicit apply retry may issue a new local application request.
 History restore retains the existing `sync.on_restore` contract. Action application does not trigger restore sync.
 
+## Local event delivery
+
+`GET /v1/events` is a best-effort SSE notification stream. Each subscriber has a 32-event queue; overflow drops notifications without blocking the service. Events contain no replay cursor or monotonically increasing sequence. The stream provides no replay or `Last-Event-ID` recovery; its 20-second comment heartbeat only keeps the connection active.
+
+Clients must reconcile authoritative state after interrupted subscriptions and must tolerate missed notifications while a connection remains open. Desktop uses event-triggered reads plus five-second background reconciliation. These background reads do not show foreground loading or replace existing content with a loading placeholder. Pure event-only refresh requires a separate reliable recovery contract before periodic reconciliation can be removed.
+
 ## Adapter session
 
 `POST /v1/adapter` accepts `{session?,method,value?}` and returns `{value?,error?}`.

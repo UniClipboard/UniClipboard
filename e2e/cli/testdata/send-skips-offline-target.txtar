@@ -1,0 +1,34 @@
+# 用例: 多目标发送时离线设备不是目标，在线目标正常完成
+# 目的: 验证 C23 的多目标一半：离线设备不拖住命令，也不进入目标列表，无关工作被排除。
+# 流程:
+#   1. 启动 alpha、beta、gamma，alpha 分别与 beta、gamma 配对批准。
+#   2. 停止 gamma，等待超过连接窗口。
+#   3. 在 alpha 上执行 `unic send --to all --json`。
+# 期望:
+#   - 本地提交为 committed，发送结果为 success，目标列表只有一个设备。
+#   - beta 收到内容，alpha 的服务仍在运行。
+# 不应:
+#   - 因 gamma 离线而报告失败或延迟 beta。
+#   - 把离线设备列为发送目标。
+
+node-start alpha
+node-start beta
+node-start gamma
+pair alpha beta
+pair alpha gamma
+
+node-stop gamma TERM
+sleep 11s
+u alpha send --to all --json offline skipped text
+stdout '"phase":"committed"'
+stdout '"outcome":"success"'
+stdout -count=1 '"target_id":'
+until beta 'offline skipped text' h show
+! service-gone alpha
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- gamma/config.toml --
+device_name = "gamma"

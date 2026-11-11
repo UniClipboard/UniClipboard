@@ -43,8 +43,8 @@ var notRun = map[string]string{
 	"C18b": "not run by this suite; asserted by TestStartupProcesses (make desktop-startup-e2e): a lightweight launcher refuses a CLI-temporary generation",
 	"C21":  "not run by this suite; asserted by TestCLI/cold-start-send",
 	"C22":  "not run by this suite; asserted by TestCLI/cold-start-offline-peer",
-	"C23":  "not exercised: a cold-start send with one offline and one online paired device delivers nothing, see the receipt; slow-file timeout needs a transport fixture",
-	"C24":  "not run by this suite; TestCLI/cold-start-send-response-lost asserts a killed CLI leaves one commit and no replay; a service replaced mid-submit is not exercised",
+	"C23":  "partly covered elsewhere: TestCLI/send-skips-offline-target asserts an offline device is not a target and the online target completes; a target failing mid-send (partial) and a slow-file timeout need a transport fault fixture and are not exercised",
+	"C24":  "not run by this suite; TestCLI/cold-start-send-response-lost asserts a killed CLI leaves one commit and no replay; TestCLI/service-replaced-mid-submit asserts a killed and restarted service leaves one commit, exit 1 with resource_expired, and no replay",
 	"C26":  "not run by this suite; asserted by TestCLI/cold-start-pairing and TestCLI/cold-start-pairing-outcomes",
 	"C34":  "not run by this suite; asserted by TestPostHogTemporaryRestarts (make posthog-e2e)",
 	"C36":  "only the host platform runs; other platforms are compile-checked, not process-tested",
@@ -300,6 +300,8 @@ func TestServiceLifecycle(t *testing.T) {
 		for _, args := range [][]string{
 			{"help"}, {"help", "--json"}, {"config", "path"}, {"plugin", "list"}, {"dev", "logs", "help"}, {"history", "help"},
 			{"nosuch"}, {"dev", "diagnostics", "bad"}, {"history"}, {"history", "bogus"}, {"dev", "logs"}, {"device", "remove"}, {"send", "-f"}, {"device", "approve", "x"}, {"dev", "submission"}, {"device"}, {"dev"}, {"logs"}, {"copy"},
+			// A source that is neither a 6-digit code nor a link never reaches the service.
+			{"recv", "hello"}, {"recv", "12345"}, {"recv", "tcabcdef"}, {"recv", "unic-pair:abc"},
 		} {
 			l.run(args...)
 			l.assertNoService()

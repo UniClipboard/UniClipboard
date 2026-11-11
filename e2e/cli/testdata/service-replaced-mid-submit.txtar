@@ -1,0 +1,31 @@
+# 用例: 提交途中服务被杀并重启，命令报告中断，不重放也不回滚
+# 目的: 验证 C24 的服务被替换一半：已提交的条目保留，重启后没有第二次提交。
+# 流程:
+#   1. 启动 alpha 和 beta 并配对批准，两者保持运行。
+#   2. 在后台发送大文件，等历史里出现该条目后 KILL alpha 的服务，再重启 alpha。
+#   3. 等发送命令结束，读取 alpha 的历史。
+# 期望:
+#   - 发送命令非零退出。
+#   - alpha 历史里该文件恰好一条。
+# 不应:
+#   - 重启后自动重放出第二条同一文件的历史。
+#   - 回滚已提交的条目。
+
+node-start alpha
+node-start beta
+pair alpha beta
+
+genfile rand big.bin 94371840
+u-async send alpha send --to all --json --request-id replaced-1 -f $WORK/big.bin
+until alpha 'files' history list
+node-stop alpha KILL
+node-start alpha
+! u-wait send
+
+u alpha history list
+stdout -count=1 'files'
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/uniclipboard/unic/internal/rendezvous"
 )
 
 // TicketKind marks a browser transfer ticket in rendezvous. unic's own pairing
@@ -74,4 +76,24 @@ func ParseLink(s string) (Ticket, bool) {
 	}
 	t := Ticket{q.Get("c"), q.Get("k")}
 	return t, t.Valid()
+}
+
+// SourceProblem checks the shape of what a receiver typed, without any network
+// access. It returns the reason code and a message when the text is neither a
+// 6-digit code nor a transfer link, and ("", "") when the text may be resolved.
+func SourceProblem(source string) (reason, message string) {
+	source = strings.TrimSpace(source)
+	if _, ok := rendezvous.NormalizeCode(source); ok {
+		return "", ""
+	}
+	if _, ok := ParseLink(source); ok {
+		return "", ""
+	}
+	if strings.HasPrefix(source, rendezvous.TextPrefix) {
+		return "pairing_code", "this is a pairing ticket; use `unic device add`"
+	}
+	if strings.HasPrefix(source, "tc") {
+		return "invalid", "an address alone cannot start a transfer; use the link or the 6-digit code"
+	}
+	return "invalid", "expected a 6-digit code or a transfer link"
 }

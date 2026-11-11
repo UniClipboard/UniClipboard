@@ -26,7 +26,9 @@
 | [plugin-sensitive-blocks-sync](#plugin-sensitive-blocks-sync) | 敏感内容插件：打标签、禁止同步、设置过期 |
 | [plugin-tag-and-action](#plugin-tag-and-action) | 邮箱标签插件与 Action 改写 |
 | [restart-keeps-state](#restart-keeps-state) | 重启后身份、配对、历史与标签保持不变 |
+| [send-skips-offline-target](#send-skips-offline-target) | 多目标发送时离线设备不是目标，在线目标正常完成 |
 | [send-to-device](#send-to-device) | send --to 只发给指定的已配对设备 |
+| [service-replaced-mid-submit](#service-replaced-mid-submit) | 提交途中服务被杀并重启，命令报告中断，不重放也不回滚 |
 | [sync-settings](#sync-settings) | CLI settings and TOML policy |
 | [temporary-transfer](#temporary-transfer) | 两个没有配对的 unic 之间做临时传输 |
 | [transfer-code](#transfer-code) | 用 6 位码完成临时传输，并拒绝配对码 |
@@ -1342,6 +1344,54 @@ board-wait beta text two.txt
 
 </details>
 
+## send-skips-offline-target
+
+**多目标发送时离线设备不是目标，在线目标正常完成**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/send-skips-offline-target' -v`
+
+**目的**
+
+验证 C23 的多目标一半：离线设备不拖住命令，也不进入目标列表，无关工作被排除。
+
+
+**流程**
+
+1. 启动 alpha、beta、gamma，alpha 分别与 beta、gamma 配对批准。
+2. 停止 gamma，等待超过连接窗口。
+3. 在 alpha 上执行 `unic send --to all --json`。
+
+**期望**
+
+- 本地提交为 committed，发送结果为 success，目标列表只有一个设备。
+- beta 收到内容，alpha 的服务仍在运行。
+
+**不应**
+
+- 因 gamma 离线而报告失败或延迟 beta。
+- 把离线设备列为发送目标。
+
+<details><summary>脚本 testdata/send-skips-offline-target.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+node-start gamma
+pair alpha beta
+pair alpha gamma
+
+node-stop gamma TERM
+sleep 11s
+u alpha send --to all --json offline skipped text
+stdout '"phase":"committed"'
+stdout '"outcome":"success"'
+stdout -count=1 '"target_id":'
+until beta 'offline skipped text' h show
+! service-gone alpha
+```
+
+</details>
+
 ## send-to-device
 
 **send --to 只发给指定的已配对设备**
@@ -1394,6 +1444,53 @@ until gamma 'for everyone' h show
 
 ! u alpha send --to nobody not sent
 stderr 'no paired device'
+```
+
+</details>
+
+## service-replaced-mid-submit
+
+**提交途中服务被杀并重启，命令报告中断，不重放也不回滚**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/service-replaced-mid-submit' -v`
+
+**目的**
+
+验证 C24 的服务被替换一半：已提交的条目保留，重启后没有第二次提交。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，两者保持运行。
+2. 在后台发送大文件，等历史里出现该条目后 KILL alpha 的服务，再重启 alpha。
+3. 等发送命令结束，读取 alpha 的历史。
+
+**期望**
+
+- 发送命令非零退出。
+- alpha 历史里该文件恰好一条。
+
+**不应**
+
+- 重启后自动重放出第二条同一文件的历史。
+- 回滚已提交的条目。
+
+<details><summary>脚本 testdata/service-replaced-mid-submit.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+genfile rand big.bin 94371840
+u-async send alpha send --to all --json --request-id replaced-1 -f $WORK/big.bin
+until alpha 'files' history list
+node-stop alpha KILL
+node-start alpha
+! u-wait send
+
+u alpha history list
+stdout -count=1 'files'
 ```
 
 </details>

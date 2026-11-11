@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/internal/webtransfer"
 )
 
 // resolveDevice maps a device ID or exact name to a paired device ID.
@@ -162,7 +164,12 @@ func runReceive(ctx context.Context, c *api.Client, args []string) error {
 		asJSON = true
 		args = slices.Delete(slices.Clone(args), i, i+1)
 	}
-	out, err := c.Receive(ctx, api.ReceiveInput{Source: strings.Join(args, "")})
+	source := strings.Join(args, "")
+	// Reject a source that cannot be a code or link before any request acquires a service.
+	if _, msg := webtransfer.SourceProblem(source); msg != "" {
+		return errors.New(msg)
+	}
+	out, err := c.Receive(ctx, api.ReceiveInput{Source: source})
 	if err != nil {
 		return err
 	}

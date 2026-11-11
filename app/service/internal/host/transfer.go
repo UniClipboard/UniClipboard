@@ -263,13 +263,8 @@ func (n *Node) resolveTicket(ctx context.Context, source string) (webtransfer.Ti
 	if t, ok := webtransfer.ParseLink(source); ok {
 		return t, nil
 	}
-	if strings.HasPrefix(source, rendezvous.TextPrefix) {
-		return webtransfer.Ticket{}, transferErr(400, "pairing_code", "this is a pairing ticket; use `unic device add`")
-	}
-	if strings.HasPrefix(source, "tc") {
-		return webtransfer.Ticket{}, transferErr(400, "invalid", "an address alone cannot start a transfer; use the link or the 6-digit code")
-	}
-	return webtransfer.Ticket{}, transferErr(400, "invalid", "expected a 6-digit code or a transfer link")
+	reason, msg := webtransfer.SourceProblem(source)
+	return webtransfer.Ticket{}, transferErr(400, reason, msg)
 }
 
 // Receive pulls content from a temporary sender and stores it as received content

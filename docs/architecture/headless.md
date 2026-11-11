@@ -151,14 +151,16 @@ A temporary service gives no continuous reception between CLI invocations; run `
 Temporary transfer has no GUI entry. This follow-up remains separate from the archived command-surface and host implementation. The page's reply (`push`) is not supported. The production code service for `uc-web-try` tickets is not verified; links work without it.
 Closing a desktop login session does not promise service survival; that depends on its service manager.
 
-CLI lifecycle acceptance remains incomplete:
+CLI lifecycle acceptance gaps:
 
-- Partial/multi-target and slow-file timeout/resource-release scenarios (C23), service replacement during submission (part of C24), and process runs on other supported platforms (C36) remain open.
-- The full matrix has not run against one frozen binary set. Resource thresholds were chosen after implementation.
+- Process tests run on the host platform only. Other platforms are compile-checked (C36).
+- The file resource-release barrier after a send deadline is not asserted.
+- Resource thresholds were fixed after the implementation existed. The recorded numbers are measurements, not a pre-set gate.
+- A single full-suite run once failed C03 ("temporary service outlived its last user"). Six isolated reruns and a clean-checkout run passed. The cause is unknown; treat a repeat as a lifecycle race.
 - A cold paired-device send can miss a restarted peer because tailcat stale paths can outlast the ten-second connection window.
-- Text help no longer explains command requirements or held session windows. General syntax and ticket-kind errors currently exit 1, despite the advertised usage exit code 2.
+- Text help does not explain command requirements or held session windows. General syntax and ticket-kind errors exit 1, despite the advertised usage exit code 2.
 
-These gaps keep the lifecycle decision in proposed status; see the [lifecycle execution receipt](../exec/0021-cli-on-demand-service-lifecycle.md).
+See the [lifecycle execution receipt](../exec/0021-cli-on-demand-service-lifecycle.md).
 The local submission cache also hashes only the snapshot, so changing `device_ids` under the same request ID returns the original result instead of a conflict.
 
 The front-matter `verified` marker names committed source checked against this page; it does not extend platform acceptance.

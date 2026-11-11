@@ -2,7 +2,7 @@
 
 - Status: Planning complete; design adoption and implementation pending. Runtime acceptance NOT_RUN.
 - Date: 2026-11-10
-- Decision: [0021 on-demand CLI service lifecycle](../decisions/proposed/0021-cli-on-demand-service-lifecycle.md).
+- Decision: 0021 on-demand CLI service lifecycle (archived). Current behavior: [headless architecture](../architecture/headless.md).
 - Living references: [headless architecture](../architecture/headless.md), [local service contract](../contracts/local-service-contract.md), [Engine contract](../contracts/engine-contract.md), [pipeline contract](../contracts/pipeline-contract.md) and [observability contract](../contracts/observability-contract.md).
 - Planning checkout: branch `v2`, HEAD `516c9f951cf45b2d1203748f27b0e887d2a2f215`. The 0021 decision and its registration changes already existed in the working tree and must be preserved.
 

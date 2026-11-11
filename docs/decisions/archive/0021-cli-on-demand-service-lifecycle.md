@@ -1,6 +1,8 @@
 # 0021: On-demand service lifecycle for CLI commands
 
-- Status: Adopted and implemented. Process acceptance passed on macOS; the gaps in section 11 remain NOT_RUN. Kept in `proposed/` until those gaps close.
+- 状态：已归档（2026-11-11）
+- 落地：[headless architecture](../../architecture/headless.md), [local service contract](../../contracts/local-service-contract.md)
+- Note: The remaining gaps (cross-platform process runs, file release barrier, C03 race) are listed in the headless architecture gaps. Resource thresholds were fixed after implementation and cannot be repaired. Gaps in section 11 are historical.
 - Date: 2026-11-10
 - Requirement: Declare whether each CLI command needs unicd. Start it when needed and absent. Stop a CLI-created temporary service after its users finish.
 - Execution plan: [0021 implementation plan](../../exec/0021-cli-on-demand-service-lifecycle.md).

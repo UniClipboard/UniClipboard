@@ -1,11 +1,14 @@
 # 0022: User-intent CLI and temporary transfer
 
-- Status: Implemented on 2026-11-10 and accepted by process-level end-to-end tests (section 9). Kept in `proposed/` until the native GUI follow-up and the open points in section 8 close.
+- 状态：已归档（2026-11-10）
+- 落地：[Headless service and desktop integration](../../architecture/headless.md)、[Local service contract](../../contracts/local-service-contract.md)、[Engine contract](../../contracts/engine-contract.md#63-device-selection-and-temporary-transfer)
 - Execution receipt: [0022 execution record](../../exec/0022-user-intent-cli-and-temporary-transfer.md).
 - Date: 2026-11-10
 - Requirement: Organize the `unic` command surface around what a user wants to do (send content, receive content). Support a temporary transfer to or from a peer that has no unic device identity, such as the browser page at `try.uniclipboard.app` or a plain tailcat peer.
-- Related decisions: [0009 external channels](0009-external-channels.md), [0021 on-demand CLI service lifecycle](0021-cli-on-demand-service-lifecycle.md).
+- Related decisions: [0009 external channels](../proposed/0009-external-channels.md), [0021 on-demand CLI service lifecycle](../proposed/0021-cli-on-demand-service-lifecycle.md).
 - Intended landing: [headless architecture](../../architecture/headless.md), [local service contract](../../contracts/local-service-contract.md), [Engine contract](../../contracts/engine-contract.md) (temporary transfer), [identity and trust](../../architecture/identity-and-trust.md) (ticket kinds).
+
+The user approved archiving the CLI and host behavior on 2026-11-10. The GUI entry remains a separate follow-up in the headless architecture gaps. Production short-code verification and the browser push reply remain outside the accepted scope. Historical sections below retain the original reasoning and acceptance record.
 
 ## 1. Problem
 

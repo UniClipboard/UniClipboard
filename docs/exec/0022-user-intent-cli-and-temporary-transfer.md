@@ -1,6 +1,6 @@
 # 0022 execution record: user-intent CLI and temporary transfer
 
-- Decision: [0022](../decisions/proposed/0022-user-intent-cli-and-temporary-transfer.md)
+- Current behavior: [headless architecture](../architecture/headless.md#command-surface-and-temporary-transfer), [local service contract](../contracts/local-service-contract.md#temporary-transfer-routes) and [Engine contract](../contracts/engine-contract.md#63-device-selection-and-temporary-transfer).
 - Date: 2026-11-10
 - Scope: CLI command surface, `send --to`, temporary transfer (host and CLI), interoperability with the browser transfer page.
 - Not in scope: a GUI entry, the page's reply (`push`), production verification of the `uc-web-try` code service.

@@ -233,10 +233,10 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 - Submit、Join、Pair 的 RequestID 必填，实例内幂等：保留期内相同类型和语义参数返回相同 OperationID，不重复执行；参数不同报 conflict。重复识别先于租约有效性验证；内部仅保留敏感参数的不可逆校验值，不存储到公共 DTO。超出保留期后调用者须用新 RequestID，不承诺去重。
 - 其他方法除明确声明幂等外，不提供隐式重试；context 超时不能被解释为“操作一定未提交”。
 
-### 6.3 设备选择与临时传输（0022，已实现）
+### 6.3 Device selection and temporary transfer
 
-- `CommitRequest.DeviceIDs` 限定发送到指定的已配对设备：`nil` 表示全部；空列表、未知（或已撤销）设备、重复 ID 报 `invalid_argument`。选择计入请求幂等键，同一 RequestID 换设备选择报 `conflict`。仅 peer-session 后端响应此选择，其他后端类型不发送。目标设备不在线时无目标，沿用 `no_targets`。
-- `AdmitTransfer(ctx, TransferOffer) (*TransferInbox, error)` 接收没有 unic 设备身份的对端（浏览器传输页）的内容。准入先于读取任何字节：引擎须运行、sync 开启、后端策略允许、非重复、有空间。返回的 `TransferInbox.Dir` 是本次传输专用的私有目录；文件写入其中后调用 `Complete(TransferContent)`，进入与设备来源内容相同的接收流水线（processor、去重、配额、历史、接收列表）；放弃则调用 `Abort`。历史来源为 `external`，PluginID 为 `unic.transfer`，PeerID 为空，ChannelID 为 `transfer`。该对端不写入 `devices`，不获得信任，也无需授权。公开签名不暴露 tailcat 或 internal 类型；传输协议在宿主层。
+- `CommitRequest.DeviceIDs` limits a send to named paired devices. `nil` selects all devices. Empty, unknown, revoked or repeated selections return `invalid_argument`. Selection is part of request idempotency; changing it under the same RequestID returns `conflict`. Only peer-session backends dispatch selected sends. Offline targets retain the `no_targets` disposition.
+- `AdmitTransfer(ctx, TransferOffer) (*TransferInbox, error)` admits content from a peer without a unic device identity. Admission precedes payload reads. Engine must be running; sync, backend policy, duplicate detection and storage admission apply. The caller writes received files beneath the private `TransferInbox.Dir`, then calls exactly one of `Complete(TransferContent)` or `Abort()`. Completion enters the received pipeline, including processors, deduplication, quota, history and the received list. Origin is `external`, PluginID is `unic.transfer`, PeerID is empty and ChannelID is `transfer`. This peer creates no device, stored channel or trust relationship. Public signatures expose neither tailcat nor internal types. The host owns the transfer protocol. See the [headless architecture](../architecture/headless.md#command-surface-and-temporary-transfer).
 
 ## 7. 资源租约与接收列表
 

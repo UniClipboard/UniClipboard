@@ -10,9 +10,14 @@ paths:
   - app/desktop/internal/lifecycle
   - internal/localcontent
   - internal/clipboardintegration
+  - internal/webtransfer
+  - internal/tcnet/ephemeral.go
+  - engine/transfer.go
   - e2e/headless
+  - e2e/cli
+  - e2e/webinterop
   - tools/package
-verified: 2384690d2d11189c93c8104d0aacef8b11b0f5c1
+verified: 4a37923b058124ffd5304747e1a5cdab7fc0fe7c
 ---
 # Headless service and desktop integration
 
@@ -47,21 +52,21 @@ Closing the main window leaves the adapter running. Explicit desktop quit stops 
 In normal mode the desktop owns the service lifetime. Desktop exit also stops that service.
 In lightweight mode only the standalone service remains; it receives and stores content without a desktop.
 
-## Command surface and temporary transfer (0022)
+## Command surface and temporary transfer
 
-The CLI is organized by user intent. `unic send` (`s`) and `unic recv` (`r`) move content. `unic history` (`h`) browses it. `unic device` holds pairing and trust. `unic dev` holds development and diagnosis commands. `unic status`, `config`, `plugin` and `migrate` are unchanged. Old command names are removed without aliases.
+The CLI is organized by user intent. `unic send` (`s`) and `unic recv` (`r`) move content. `unic history` (`h`) browses it. `unic device` holds pairing and trust. `unic dev` holds development and diagnosis commands. `unic status`, `config`, `plugin` and `migrate` provide management operations. Old command names are removed without aliases.
 
 `send --to all|DEVICE` goes through the normal sync path. `CommitRequest.DeviceIDs` limits the send to named paired devices; unknown, repeated or empty selections are `invalid_argument`. Only peer-session backends honor it.
 
-`send` without `--to` and `recv CODE|LINK` run a temporary transfer with a peer that has no unic device identity, such as the page at `try.uniclipboard.app`. It speaks the page's pull protocol (`internal/webtransfer`: frames, offer, SHA-256 verification, 20 MiB and 50 items per transfer). The sender listens on a fresh random-key tailcat endpoint (`internal/tcnet/ephemeral.go`) that accepts every virtual port and serves one receiver. A 6-digit code is an alias in rendezvous with ticket kind `uc-web-try`; `recv` refuses a `unic-pair` code and `device add` refuses a transfer code.
+`send` without `--to` and `recv CODE|LINK` run a temporary transfer with a peer that has no unic device identity, such as the page at `try.uniclipboard.app`. It speaks the page's pull protocol (`internal/webtransfer`: frames, offer, SHA-256 verification, 20 MiB and 50 items per transfer). The sender listens on a fresh random-key tailcat endpoint (`internal/tcnet/ephemeral.go`) that accepts every virtual port and serves one receiver. When rendezvous accepts the ticket, a 6-digit code aliases it for at most five minutes with ticket kind `uc-web-try`; otherwise the sender prints only a link. Bare tailcat addresses cannot initiate a pull. `recv` accepts links or ticket fragments (`#c=…&k=…`); `recv` refuses a `unic-pair` code and `device add` refuses a transfer code.
 
-The receiver admits the offer through `Engine.AdmitTransfer` before reading data, writes files into a private inbox directory and completes into the ordinary received pipeline. History origin is `external` with plugin ID `unic.transfer`. The transfer never creates a device or trust. The sender keeps content in memory only. Addresses, tokens, codes and links are never logged.
+The receiver admits the offer through `Engine.AdmitTransfer` before reading data, writes files into a private inbox directory and completes into the ordinary received pipeline. History origin is `external` with plugin ID `unic.transfer`. The transfer never creates a device or trust. The sender keeps its prepared transfer payload in memory. Delivery means that the receiver verified payload hashes and sent a protocol ACK. The ACK precedes receiver file placement and pipeline completion; it does not prove history persistence or system clipboard application. Addresses, tokens, codes and links are never logged.
 
 ## On-demand service for CLI commands
 
 Each `unic` leaf command declares one requirement: `local`, `service`, `service+clipboard` or `offline`
-(`app/service/cmd/unic/requirements.go`). Help prints badges from the declarations.
-A service command acquires a service on its first service request. Syntax errors never start a service.
+(`app/service/cmd/unic/requirements.go`). `unic help --json` exports the declarations. Text help lists commands without dependency badges. Terminal output uses styling and progress on stderr; redirected streams, `NO_COLOR` and `TERM=dumb` use plain text.
+A service command acquires a service on its first service request. Local argument parsing precedes acquisition; validation that requires service state occurs afterwards. `recv` checks the source shape locally (`webtransfer.SourceProblem`), so a source that is neither a 6-digit code nor a transfer link never starts a service. Resolving a well-formed code or link, and rejecting a pairing code or pairing ticket, still happens in the service.
 
 `unicd` has three lifetime modes. `standalone` and `desktop` generations are borrowed and never stopped by a CLI command.
 A `cli-temporary` generation, started by `unic` as `unicd --cli-temporary`, lives while at least one CLI usage lease exists.
@@ -71,12 +76,12 @@ A command that meets a retiring generation retries acquisition before it sends a
 A launcher holds initial ownership through an anonymous stdin pipe until its first lease is admitted, so a ready service never exits before its starter can use it.
 There is no idle timeout, durable counter or configuration setting.
 
-Creation and retirement share one profile lock (`service-transition.lock`) with desktop startup. Commands never hold it while they run.
+Acquisition shares one profile transition lock (`service-transition.lock`) with desktop startup. It covers probing, launch and lease admission. The service serializes last release and new admission with its own internal lock. Commands do not hold the transition lock while business work runs.
 The normal desktop may replace a temporary generation. The affected command reports the interruption and never repeats a write.
 Lightweight desktop startup refuses a temporary generation; it is not promoted.
 
-Commands that start a send observe only their own Engine operation and report `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted` or `none`.
-Pairing approval, `code`, and `logs level --for` hold a temporary generation for a bounded, announced window.
+Commands that start a paired-device send observe only their own Engine operation and report `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted` or `none`. An operation-query error returns a command error without a send report; it does not prove that the local commit failed.
+Pairing approval, `device add` without an argument, and `dev logs level --for` hold a temporary generation for a bounded, announced window.
 Exact DTOs, budgets and exit codes are in the [local service contract](../contracts/local-service-contract.md#service-lifecycle).
 
 ## Offline CLI operations
@@ -123,7 +128,7 @@ credentials, databases or history. See section 12 of the
 | `app/service/cmd/unic/session.go` | CLI service acquisition, launch, release and lazy request transport |
 | `app/service/cmd/unic/requirements.go` | Leaf command requirement catalog, word aliases and help |
 | `app/service/internal/host/transfer.go` | Temporary transfer: offer, pull, ticket resolution, placement into the received pipeline |
-| `internal/webtransfer` | The page's transfer protocol, tickets and links; no unic or tailcat dependency |
+| `internal/webtransfer` | The page's transfer protocol, tickets and links; depends only on `internal/rendezvous` for the code shape; no tailcat dependency |
 | `internal/tcnet/ephemeral.go` | One-shot tailcat listener and dialer with random keys |
 | `e2e/webinterop` | unic against the real page code under bun |
 | `internal/localcontent` | Local snapshot import and file-reference conversion |
@@ -143,11 +148,21 @@ Signed platform installers, standalone service-manager registration and store pu
 The normal desktop registers login startup through mygo. macOS requires an application bundle.
 The flat binary archives are not macOS application bundles.
 A temporary service gives no continuous reception between CLI invocations; run `unicd` or the desktop for that.
-Temporary transfer has no GUI entry yet, and the page's reply (`push`) is not supported. The production code service for `uc-web-try` tickets is not verified; links work without it.
+Temporary transfer has no GUI entry. This follow-up remains separate from the archived command-surface and host implementation. The page's reply (`push`) is not supported. The production code service for `uc-web-try` tickets is not verified; links work without it.
 Closing a desktop login session does not promise service survival; that depends on its service manager.
 
+CLI lifecycle acceptance remains incomplete:
+
+- Partial/multi-target and slow-file timeout/resource-release scenarios (C23), service replacement during submission (part of C24), and process runs on other supported platforms (C36) remain open.
+- The full matrix has not run against one frozen binary set. Resource thresholds were chosen after implementation.
+- A cold paired-device send can miss a restarted peer because tailcat stale paths can outlast the ten-second connection window.
+- Text help no longer explains command requirements or held session windows. General syntax and ticket-kind errors currently exit 1, despite the advertised usage exit code 2.
+
+These gaps keep the lifecycle decision in proposed status; see the [lifecycle execution receipt](../exec/0021-cli-on-demand-service-lifecycle.md).
+The local submission cache also hashes only the snapshot, so changing `device_ids` under the same request ID returns the original result instead of a conflict.
+
 The front-matter `verified` marker names committed source checked against this page; it does not extend platform acceptance.
-Current process checks are bound to complete source-hash manifests, as recorded in the execution receipt.
+Historical process evidence retains its original source/binary identity. The latest documentation audit does not establish a new process acceptance result.
 
 ## Desktop startup settings
 

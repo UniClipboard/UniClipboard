@@ -11,7 +11,7 @@ Protocol version remains 1.
 
 | Method and path | Request | Result |
 |---|---|---|
-| `POST /v1/submissions` | `{request_id,snapshot}` | Engine `SubmissionResult` |
+| `POST /v1/submissions` | `{request_id,snapshot,device_ids?}` | Engine `SubmissionResult` |
 | `GET /v1/submissions/{request_id}` | None | Current Engine submission result |
 | `GET /v1/capabilities` | None | Engine `Capabilities` |
 | `GET /v1/received` | None | Engine `ReceivedContent[]` |
@@ -27,7 +27,7 @@ No operation interprets newest history as the current system clipboard.
 The caller supplies a nonempty submission `request_id` of at most 128 bytes.
 The service admits at most 1024 explicit request records and expires completed records after 30 minutes.
 The service compares the submitted snapshot digest before importing it again.
-A retry with identical parameters returns the first result. Different parameters conflict.
+A retry with an identical snapshot returns the first result. A different snapshot conflicts. The host cache does not hash `device_ids`; changing only that field returns the original result without reaching Engine selection validation. This is a known gap relative to Engine request idempotency.
 Client disconnection does not cancel admitted processing. Service shutdown cancels the waiting host operation.
 The CLI prints a generated key to stderr before sending. Scripts that require retry control supply `--request-id`.
 The request cache and Engine operation handles do not survive a service restart.
@@ -98,7 +98,7 @@ A standalone lightweight service continues network reception and explicit headle
 `unic history action ID KEY [--apply] [--request-id KEY]` separates execution from application.
 `unic dev copy`, `paste`, `history use`, and Action `--apply` require desktop abilities.
 No adapter yields `unavailable`; unsupported capabilities yield `unsupported`; denied access yields `permission_denied`.
-CLI success exits 0. Operation failures exit 1. Missing top-level commands exit 2.
+CLI success exits 0. Operation failures and general syntax errors exit 1. Invoking `unic` with no command exits 2.
 Submission and Action JSON expose stable codes and independent commit/network/application results.
 
 `unic history export ID --output DIR` executes in the CLI process.
@@ -147,17 +147,17 @@ The service admits at most 64 leases (`servicelifecycle.MaxLeases`). More reques
 Leases exist in every mode. Only a `cli-temporary` generation retires.
 
 A temporary generation starts owned by its launcher. The service does not exit while that claim exists.
-The claim ends when the launcher closes its pipe after the first lease is admitted, or when the pipe reaches EOF.
-EOF before any lease retires the service. This covers a launcher that dies before readiness.
+The first admitted lease replaces the initial claim. The launcher then closes its ownership pipe.
+If the pipe reaches EOF before any lease is admitted, the initial claim ends and the service retires. This covers a launcher that dies before readiness.
 The last release of a temporary generation closes admission and answers `last:true` before the service cancels itself. Admission and last release are decided under one lock:
 a client either obtains a lease in the live generation or receives `retiring` before it submits business work.
 After `retiring` or `generation_changed` a client retries acquisition only. It never repeats a business request.
 
 ### Launcher rules
 
-1. A launcher validates command syntax first. A service is acquired by the first service request, not earlier.
+1. A launcher performs local argument parsing first. The `recv` source shape (6-digit code or transfer link) is also checked locally. State-dependent validation, and resolving a code, occur in the service and can fail after acquisition. A service is acquired by the first service request, not earlier.
 2. It takes the profile transition lock (`service-transition.lock`, shared with desktop startup), probes `GET /v1/service`, and holds the lock only for probe, optional launch and lease admission.
-3. An authoritative absence (no listener) permits launch. A timeout, a permission error, an unrecognized listener and a different `directory` are errors. The launcher never unlinks a socket or kills a process in those cases.
+3. An authoritative absence (no listener) permits launch. EOF, unexpected EOF, connection reset and broken pipe during control-plane probing or lease admission are retried within the acquisition budget before any business request. This does not authorize replay of business requests. A timeout, a permission error, an unrecognized listener and a different `directory` are errors. The launcher never unlinks a socket or kills a process in those cases.
 4. It resolves `unicd` beside its own executable. It never searches PATH. The child receives `UNIC_HOME` and `UNIC_SOCK` explicitly, its own detached session, and the initial ownership pipe as stdin. Child output goes to `cli-daemon.log` in the state directory (truncated at each launch).
 5. Readiness requires the launched PID, the profile `directory` and `mode: cli-temporary`. Socket existence is not readiness. Exit code 75 is retried every 100 ms inside the startup budget.
 6. After the first lease, the launcher closes the ownership pipe. The generation then lives by leases only.
@@ -174,9 +174,9 @@ Cleanup uses its own context even when the command context is cancelled.
 `GET /v1/operations/{id}` returns the Engine `Operation` for an operation created by this generation. Operations are in memory and do not survive restart.
 A command that initiates a send waits only for the operation it created. `SubmissionResult.SyncDisposition=queued` is not completion.
 The client polls every 200 ms until the operation is done, 60 s pass, or the command is cancelled. It never resubmits.
-Result values are `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted`, `unknown` and `none` (no operation: disabled, no backend, no target).
+Reported result values are `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted` and `none` (no operation: disabled, no backend, no target). An operation-query error produces an internal `unknown` result, but the handlers return the error before emitting the send report; the CLI exits 1. The local commit may already exist.
 Local commit and network outcome stay separate. `send --json` prints `{submission, send:{outcome, operation?}}`.
-Exit code 4 means committed but not fully completed: `partial`, `failed`, `timeout`, `interrupted` or `unknown`.
+Exit code 4 means committed but not fully completed: `partial`, `failed`, `timeout` or `interrupted`.
 `success`, `superseded` and `none` exit 0. After a timeout under a temporary service the message states that the service is stopping and that referenced files stay in use until the command exits.
 Under a persistent service it names `unic dev submission REQUEST_ID`.
 
@@ -197,20 +197,22 @@ The same rule applies to every service, so completion does not depend on who sta
 An older command's exit never withdraws a newer invitation or override: a command compares the code or the expiry it created.
 The held duration is announced on stderr. Stdout stays the command result.
 
-### Temporary transfer routes (0022)
+### Temporary transfer routes
 
 | Route | Meaning |
 |---|---|
 | `POST /v1/transfers` `{snapshot}` | Start an offer. Returns `{id, state:"waiting", link, code?, expires_at_ms, items, bytes}`. Only this response carries the link and code. Limits: 20 MiB, 50 items; larger content is 413 `limit_exceeded`. |
 | `GET /v1/transfers/{id}` | `state` is `waiting`, `sending`, `delivered`, `failed` (with `reason`), `expired` or `cancelled`. A finished transfer stays queryable for 5 minutes. |
 | `DELETE /v1/transfers/{id}` | Cancel. |
-| `POST /v1/receive` `{source}` | Pull from a 6-digit code or a link. One request, up to 90 s; the CLI exempts it from the 60 s request deadline. Returns `{items:[{kind,name,mime,size,text?}]}`. Failures carry reasons `invalid`, `expired`, `rate-limited`, `unavailable`, `pairing_code`, `busy`, `too-large`, `integrity`, `peer-cancelled`, `timeout`, `connection-lost`. |
+| `POST /v1/receive` `{source}` | Pull from a 6-digit code or a link. A 90 s budget covers dial/pull after ticket resolution; subsequent file placement is outside that context; the CLI exempts it from the 60 s request deadline. Returns `{items:[{kind,name,mime,size,text?}]}`. Failures carry reasons `invalid`, `expired`, `rate-limited`, `unavailable`, `pairing_code`, `busy`, `too-large`, `integrity`, `peer-cancelled`, `timeout`, `connection-lost`. |
+
+The sender reports `delivered` only after a successful hash-verification ACK. The receiver sends that ACK before host file placement and `TransferInbox.Complete`; delivery does not prove history persistence or clipboard application. Receive completion remains subject to pipeline policy.
 
 `POST /v1/submissions` accepts `device_ids` to limit a send to paired devices. `send` without `--to` holds its command (and a temporary service) until the offer is delivered, fails, expires or the user interrupts; an offer that did not deliver exits 4.
 
 ### Exit codes
 
-0 done; 1 failed; 2 usage or missing command; 3 migration partial; 4 committed but not fully completed; 5 command done but stopping its temporary service failed.
+0 done; 1 failed (also general syntax and wrong-ticket-kind errors); 2 no command (migration has its own usage handling); 3 migration partial; 4 committed but not fully completed; 5 command done but stopping its temporary service failed.
 
 A directory-in-use startup failure exits `unicd` with code 75.
 Other daemon startup failures exit 1. Invalid daemon arguments exit 2.
@@ -219,10 +221,10 @@ Other daemon startup failures exit 1. Invalid daemon arguments exit 2.
 
 Every leaf command declares one requirement in `app/service/cmd/unic/requirements.go`: `local`, `service`, `service+clipboard` or `offline`.
 Aliases resolve to the same leaf. `history action` becomes `service+clipboard` with `--apply`.
-`unic help` prints badges from these declarations and `unic help --json` prints the catalog.
+`unic help --json` prints the catalog. Text help lists commands without requirement badges or lifecycle-window descriptions. This is a known help gap; the declarations still control dispatch.
 A `local` command receives a client that fails on any request. `offline` (`migrate`) never starts or stops a service; its target-profile lock decides.
 `service+clipboard` commands acquire the service, then the existing adapter errors apply (`unavailable`, `unsupported`, `permission_denied`). The CLI never starts a GUI.
-Syntax, arity and flag errors are reported before any service starts. Values that need service state, such as a configuration key, are checked after acquisition.
+Locally detected syntax, arity and flag errors are reported before any service starts. Values that need service state, such as a configuration key, are checked after acquisition. `recv` source shape is validated locally; resolving a code and rejecting a pairing code happen after acquisition.
 
 
 ## Product analytics ownership

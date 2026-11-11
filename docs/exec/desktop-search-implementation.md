@@ -31,7 +31,7 @@ HTML fallback uses the existing HTML tree parser. Process regression covers an o
 
 ## Acceptance receipt
 
-Working-tree source was verified against HEAD `7f1dbec010bb9a326cc4127c2e891bc567dc87a9`. Two unrelated documentation-only commits advanced the baseline during execution; their changes were preserved. Source hashes, rather than HEAD alone, identify this uncommitted implementation.
+Working-tree source was verified against HEAD `7f1dbec010bb9a326cc4127c2e891bc567dc87a9`. Two unrelated documentation-only commits advanced the baseline during execution; their changes were preserved. The verified implementation was committed as `e697ae2bb`. The process receipts identify the exact source used for acceptance.
 
 - Search production-process E2E: 14 scenario groups passed under the race detector. Receipt: `.build/history-search/receipt.json` (292 source hashes).
 - Existing desktop production-process E2E: 16 checks passed. Receipt: `.build/history-search/desktop-regression-receipt.json` (286 source hashes).
@@ -40,7 +40,7 @@ Working-tree source was verified against HEAD `7f1dbec010bb9a326cc4127c2e891bc56
 - Core/store/local API/server/host: 242 existing checks passed across five packages after the final HTML change. The earlier nonvisual sweep also passed all 56 selected packages. No renderer test was executed.
 - Pinned golangci-lint v2.15.0 reports zero new issues against the initial baseline.
 - Production Desktop and CLI builds passed. Binary hashes are recorded in `.build/history-search/build-receipt.json`. Temporary binaries and private process profiles were removed.
-- `git diff --check` passed. `go run ./tools/docscheck` passed with six stale architecture warnings. Architecture `-bump` rejected dirty source as designed. Update those markers after committing the verified source; no marker was fabricated.
+- `git diff --check` passed. After the implementation commit, all six affected architecture pages were reviewed and their verified markers were updated to `e697ae2bb`. `go run ./tools/docscheck -strict` passed without warnings.
 
 Synthetic-corpus sample: 291 ms for a concurrent 32-query count batch, 13 ms for an ordinary submission, and 5701400 bytes for database plus WAL. These values are not a production-scale performance guarantee.
 

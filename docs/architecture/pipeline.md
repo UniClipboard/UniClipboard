@@ -27,7 +27,7 @@ paths:
   - internal/store/search.go
   - internal/store/store.go
   - internal/plugins/builtintext
-verified: e1ccd8c2fb474cfb7fa110248b87bca847a6c59c
+verified: e697ae2bb212684e36d079877fccc79833dcd75c
 ---
 # Clipboard pipeline and local history
 

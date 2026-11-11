@@ -3,7 +3,7 @@ import React from 'react'
 import { Filter } from '@/api/clipboardItems'
 import type { ClipboardEntryType } from '@/lib/clipboard-entry'
 
-export const PREVIEW_OPEN_DELAY_MS = 500
+// Switching entries while a preview is showing is debounced; the first preview opens at once.
 export const PREVIEW_SWITCH_DELAY_MS = 120
 
 export const QUICK_PANEL_GUTTER_CLASS_NAME = 'px-2'

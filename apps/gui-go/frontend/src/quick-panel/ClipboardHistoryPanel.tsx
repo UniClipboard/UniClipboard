@@ -28,7 +28,6 @@ import ClipboardPreviewPane from './ClipboardPreviewPane'
 import HistoryPane from './components/HistoryPane'
 import {
   getQuickPanelLayoutClassNames,
-  PREVIEW_OPEN_DELAY_MS,
   PREVIEW_SWITCH_DELAY_MS,
   QUICK_FILTER_ORDER,
 } from './constants'
@@ -321,42 +320,47 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     }
     if (previewEntryId === targetPreviewItem.id) return
 
-    previewTimerRef.current = setTimeout(
-      () => {
-        const nextEntryId = targetPreviewItem.id
-        dispatchPreview({ type: 'set-entry', entryId: nextEntryId })
-        if (previewExpanded) return
-        const token = previewLayoutTokenRef.current + 1
-        const nextHistoryWidth = historyPaneRef.current?.getBoundingClientRect().width ?? 0
-        previewLayoutTokenRef.current = token
-        void (async () => {
-          // Resolve the open side and reverse the layout BEFORE moving the
-          // window, so the pinned history pane never jumps when opening left.
-          //
-          // The await stays ABOVE the token guard on purpose. `token` equals
-          // the ref here (set just above), so the guard can only diverge WHILE
-          // we're awaiting — it's a post-await staleness/cancellation check,
-          // not a skippable early return. react-doctor's async-defer-await
-          // wants the await moved below the guard, but that would drop the
-          // cancellation window and apply a stale side. Keep this order.
-          const side = await resolveExpandSide(uiScale)
-          if (previewLayoutTokenRef.current !== token) return
-          dispatchPreview({ type: 'set-side', side })
-          dispatchPreview({
-            type: 'reserve-space',
-            entryId: nextEntryId,
-            historyLockedWidth: nextHistoryWidth > 0 ? nextHistoryWidth : null,
-          })
-          try {
-            await setQuickPanelLayout(uiScale, true)
-            if (previewLayoutTokenRef.current === token) dispatchPreview({ type: 'expand' })
-          } catch {
-            if (previewLayoutTokenRef.current === token) dispatchPreview({ type: 'reset' })
-          }
-        })()
-      },
-      previewEntryId ? PREVIEW_SWITCH_DELAY_MS : PREVIEW_OPEN_DELAY_MS
-    )
+    const showTargetPreview = () => {
+      const nextEntryId = targetPreviewItem.id
+      dispatchPreview({ type: 'set-entry', entryId: nextEntryId })
+      if (previewExpanded) return
+      const token = previewLayoutTokenRef.current + 1
+      const nextHistoryWidth = historyPaneRef.current?.getBoundingClientRect().width ?? 0
+      previewLayoutTokenRef.current = token
+      void (async () => {
+        // Resolve the open side and reverse the layout BEFORE moving the
+        // window, so the pinned history pane never jumps when opening left.
+        //
+        // The await stays ABOVE the token guard on purpose. `token` equals
+        // the ref here (set just above), so the guard can only diverge WHILE
+        // we're awaiting — it's a post-await staleness/cancellation check,
+        // not a skippable early return. react-doctor's async-defer-await
+        // wants the await moved below the guard, but that would drop the
+        // cancellation window and apply a stale side. Keep this order.
+        const side = await resolveExpandSide(uiScale)
+        if (previewLayoutTokenRef.current !== token) return
+        dispatchPreview({ type: 'set-side', side })
+        dispatchPreview({
+          type: 'reserve-space',
+          entryId: nextEntryId,
+          historyLockedWidth: nextHistoryWidth > 0 ? nextHistoryWidth : null,
+        })
+        try {
+          await setQuickPanelLayout(uiScale, true)
+          if (previewLayoutTokenRef.current === token) dispatchPreview({ type: 'expand' })
+        } catch {
+          if (previewLayoutTokenRef.current === token) dispatchPreview({ type: 'reset' })
+        }
+      })()
+    }
+
+    // The first preview of a session opens together with the history pane; only a
+    // change of entry while a preview is showing is debounced.
+    if (!previewEntryId) {
+      showTargetPreview()
+      return
+    }
+    previewTimerRef.current = setTimeout(showTargetPreview, PREVIEW_SWITCH_DELAY_MS)
     return () => {
       if (previewTimerRef.current) {
         clearTimeout(previewTimerRef.current)

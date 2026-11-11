@@ -24,7 +24,7 @@ Concurrent migration-related changes appeared after the initial documentation sn
 
 ### P0. Adopt semantics, freeze contracts and prepare process scenarios
 
-- [ ] Read the decision and living contracts against the implementation checkout. Audit current command dispatch, desktop startup and existing E2E entry points. Open: no record of this review.
+- [x] Read the decision and living contracts against the implementation checkout. Audit current command dispatch, desktop startup and existing E2E entry points. Re-audited on 2026-11-10 at `e1ccd8c2fb474cfb7fa110248b87bca847a6c59c`; see the documentation audit below.
 - [x] Record adoption of the decision's send-completion, invitation-window and temporary log-level behavior. These change current CLI completion; writing this plan does not mark them accepted.
 - [x] Produce an exhaustive leaf/alias/flag inventory. For each valid invocation, specify service requirement, adapter capability, completion condition, stdout/stderr format and exit mapping. Include help, invalid syntax and migration's actual target directory.
 - [x] Select the maintained live lease mechanism. Specify acquisition, initial owner handoff, disconnect detection, release, admission closure and process-loss behavior. A deferred CLI cleanup or durable reference counter alone is insufficient.
@@ -64,8 +64,8 @@ Exit evidence: real CLI/unicd processes prove cold status, both persistent reuse
 ### P2. Integrate the complete command requirement catalog
 
 - [x] Route every top-level dispatch path through requirement resolution, including history, plugin and migration entry points. Resolve aliases to the same leaf declaration.
-- [x] Validate arguments before service acquisition. Verify help and invalid syntax cannot start a daemon or alter an existing owner's lifetime.
-- [x] Generate dependency badges/help descriptions from the authoritative declaration. Fail coverage when a leaf or conditional flag lacks an explicit requirement. Badges come from the declaration; C02 checks both directions between help and the declared top-level commands.
+- [x] Validate arguments before service acquisition. Locally detected syntax errors and help avoid service acquisition. `recv` checks the source shape locally (`webtransfer.SourceProblem`, shared with the service), so a source that is neither a 6-digit code nor a link never starts a temporary service. C01 asserts this for `hello`, `12345`, `tcabcdef` and `unic-pair:abc`. A well-formed code or link still resolves in the service.
+- [ ] Generate dependency badges/help descriptions from the authoritative declaration. The current source still exports `help --json`, but text help removed requirement badges and lifecycle-window descriptions. The declaration drives dispatch; restoring user-facing requirement guidance remains open.
 - [x] Keep local operations local: log export, config path, plugin file operations and help. Do not add service probes to them merely to discover ownership.
 - [x] Add finite service queries, history/received streams and local-state mutations, retaining leases until responses/streams and command-owned outputs are complete.
 - [x] Preserve migration locking for the actual target profile. A running target owner produces an in-use result; no service is started or stopped. C19b uses a generated v1 source: a running owner blocks migration with `in_use` and is untouched; the same command then succeeds on a free profile.
@@ -103,14 +103,14 @@ Exit evidence: reproducible barrier-driven race/fault scenarios prove exactly wh
 
 ### P5. Resource, regression and documentation closure
 
-- [ ] Run the complete section 4 matrix against one frozen source/binary set. Record every required scenario as PASS, FAIL or NOT_RUN. Open: every case has a recorded result, but the source is uncommitted and six cases are asserted by other suites with other binaries.
+- [ ] Run the complete section 4 matrix against one frozen source/binary set. Record every required scenario as PASS, FAIL or NOT_RUN. Open: the historical matrix used uncommitted source and cases asserted by other suites with other binaries. The source is now committed, but the complete matrix has not been rerun against one frozen binary set.
 - [ ] Compare cold acquisition, warm reuse, last-user exit and repeated invocation cost against P0's baseline and preset limits. Measure concurrent client counts, retained workers/FDs and post-exit residue. Match build flags on both sides. Open: thresholds were set after the implementation existed.
 - [x] Verify bounded lease/admission capacity and recovery after capacity rejection. No durable counter/file grows per invocation; no idle timer preserves a zero-user service.
 - [x] Verify existing analytics identity persists across enabled temporary restarts and startup events remain process starts. Do not introduce lease identifiers into telemetry or reinterpret starts as installations. `TestPostHogTemporaryRestarts`: three temporary services give three process starts with one identity; a disabled profile sends nothing and creates no identity.
 - [x] Audit then run existing relevant process regressions once after final runtime changes. Rerun only failures or checks affected by later changes.
 - [x] Run production headless build/dependency acceptance, CLI/service builds, applicable target compile checks, and Desktop build. Native startup/clipboard/login acceptance remains separate and requires explicit authorization. Headless build, cross-compile for linux/amd64, linux/arm64, windows/amd64 and darwin/arm64, no UI dependency in `unic` or `unicd`, and the Desktop build. No native acceptance was run.
-- [ ] Update living architecture, local service/operation contracts, CLI help and application README/AGENTS only for implemented behavior. Run docscheck and bump reviewed architecture metadata against committed source. Open: the source is not committed, so docscheck metadata is not bumped.
-- [ ] Record remaining platform/native gaps. Archive 0021 only after adopted behavior is implemented, landed in living documentation and its required process gates pass. Open: waits for the items above and a committed source state.
+- [ ] Update living architecture, local service/operation contracts, CLI help and application README/AGENTS only for implemented behavior. Architecture and contracts were re-audited against committed source on 2026-11-10. CLI help still omits requirement and lifecycle-window guidance; this item remains open.
+- [ ] Record remaining platform/native gaps. Archive 0021 only after adopted behavior is implemented, landed in living documentation and its required process gates pass. Open: waits for the acceptance and help/validation items above. Source is now committed; documentation audit is recorded below.
 
 Exit evidence: checksummed local receipt, committed-source match, expected resource bounds and regression/build results. A test fixture, compile check or documentation pass cannot substitute for a later acceptance layer.
 
@@ -235,3 +235,67 @@ Defects found while closing the plan:
    No test pins the current behavior.
 
 Section 2 boxes are checked only where a passing scenario or the code supports the item. Each open item states its reason. Do not archive 0021 before every item is closed and the source is committed.
+
+## 7. Documentation audit (2026-11-10)
+
+Source: `e1ccd8c2fb474cfb7fa110248b87bca847a6c59c` on branch `v2`. Relevant implementation paths are committed; unrelated documentation edits remain in the shared working tree. No commit was requested or created. This audit supersedes the earlier receipt's uncommitted-source limitation for the reviewed behavior; it does not rebind historical runtime evidence to this source.
+
+Reviewed `requirements.go`, `session.go`, `sendwait.go`, `headless.go`, service lifecycle/launcher code, desktop startup, transfer host/protocol and the E2E scenario inventory. An independent read-only agent checked the architecture and contract claims against code. Implemented behavior now lives in the headless architecture and local service contract.
+
+Remaining gates: C23 partial/multi-target and slow-file timeout/resource release; C24 service replacement during submission; C36 process acceptance on other platforms; one frozen binary set for the complete matrix; performance thresholds chosen before candidate work (the earlier comparison used thresholds selected afterwards). The historical threshold-timing limitation cannot be removed by another passing run. Cold paired-device reconnects can exceed the ten-second connection window. Text help no longer exposes requirements or held windows. General syntax and wrong-ticket-kind errors exit 1; an operation-query error exits 1 without a send report even after a local commit. These are documented facts, not newly passing acceptance.
+
+0021 remains in `proposed/`. The existing process suite cannot close the scenarios it explicitly marks NOT_RUN.
+
+### Process rerun in the restricted workspace
+
+`make service-lifecycle-e2e` rebuilt the tagged race binaries and entered `TestServiceLifecycle`. C03 failed to start cold status; C04, C05, C06, C09 and C07 failed readiness waits. The run was interrupted after repeated startup failures (`make` exit 130), so it is not a completed acceptance run. The current attempt log is `.cache/0021/run.log`; existing `.cache/0021/acceptance` files are not evidence from this interrupted run.
+
+An isolated reproduction used the rebuilt `unic status` with a fresh private directory under `/private/tmp`, telemetry disabled, a private socket, and `UNIC_RENDEZVOUS_URL=http://127.0.0.1:1`. The CLI exited 1. The child log reported `listen unix <private socket>: bind: operation not permitted`. The isolated profile was removed. The restricted workspace cannot perform this process acceptance. No runtime failure was attributed to source changes, and no prior PASS was refreshed.
+
+Reproduce the acceptance in an environment that permits local socket binding:
+
+```sh
+make service-lifecycle-e2e
+```
+
+The suite writes scenario results, binary hashes, the source HEAD, cleanup assertions, replay instructions and checksums under `.cache/0021/acceptance`. Inspect NOT_RUN entries separately. The suite's generated `replay.sh` was not executed in this audit.
+
+## 8. Process acceptance run (2026-11-11)
+
+`make service-lifecycle-e2e` ran to completion on the host with socket binding allowed. Result: `ok`, 204.7 s, `go test -race`, tag `unic_e2e`.
+
+- Source HEAD: `e1ccd8c2fb474cfb7fa110248b87bca847a6c59c`. The worktree was dirty (documentation edits only; no Go source changed).
+- Binaries: `unic` sha256 `59c66338…0d2d`, `unicd` sha256 `0cace872…d8de`. Full values are in `.cache/0021/acceptance/manifest.json`.
+- `scenarios.json`: 30 PASS, 8 NOT_RUN, 0 FAIL.
+- PASS: C01–C20 (C17 is asserted inside the C16 scenario), C19b, C25, C27–C33, C35.
+- NOT_RUN in this suite, asserted by other suites with other binaries: C18b (`TestStartupProcesses`), C21 (`TestCLI/cold-start-send`), C22 (`TestCLI/cold-start-offline-peer`), C24 (`TestCLI/cold-start-send-response-lost`; the service-replaced-mid-submit half is not covered), C26 (`TestCLI/cold-start-pairing*`), C34 (`TestPostHogTemporaryRestarts`).
+- NOT_RUN with a real gap: C23 (partial/multi-target send and slow-file timeout need a transport fixture that does not exist), C36 (only the host platform runs; other platforms are compile-checked).
+- Resource summary (`resource-summary.json`): cold status 6251 ms, warm status 1042 ms, last-user kill to stop 1034 ms. These numbers are not compared with P0 thresholds, because the thresholds were set after the implementation existed.
+- `replay.sh` was not executed.
+
+Open items after this run (the P5 checkboxes stay unchecked):
+
+1. The matrix is not one frozen binary set: eight scenarios run in other suites.
+2. C23 and the service-replaced half of C24 have no process test.
+3. Resource thresholds have no pre-implementation baseline.
+4. CLI help omits requirement badges and lifecycle-window text; `recv` source validation can start a temporary service.
+
+Decision 0021 stays in `proposed/`.
+
+## 9. Rerun and closure work (2026-11-11)
+
+Changes made after section 8:
+
+- `recv` validates the source shape before any request (`internal/webtransfer/ticket.go`, `app/service/cmd/unic/headless.go`). The service uses the same function. C01 covers it.
+- New process case `service-replaced-mid-submit` (C24, second half): the service is killed during a large send and restarted. The command exits 1 with `resource_expired`. History keeps exactly one entry. No replay happens.
+- New process case `send-skips-offline-target` (C23, first half): an offline paired device is not a target. The online target completes with `success`.
+
+Rerun of `make service-lifecycle-e2e` after these changes: `ok`, 209.1 s, 30 PASS, 8 NOT_RUN, 0 FAIL. Resource summary: cold status 7844 ms, warm status 1026 ms, last-user kill to stop 1036 ms. Source HEAD is still `e1ccd8c2f`; the worktree holds the uncommitted changes listed above, so this run is not a frozen committed binary set.
+
+Still open, so 0021 stays in `proposed/`:
+
+1. C23, second half: a target that fails mid-send (`partial`) and a slow-file timeout with resource release. The current fixture transport only injects a partial write on `clip` frames. A fault fixture for the transfer path does not exist.
+2. One frozen binary set: commit the source, rebuild, and run the matrix and the other suites against the same binaries.
+3. Resource thresholds were set after the implementation existed. Another passing run cannot remove this limitation.
+4. CLI help no longer shows requirement badges or lifecycle-window text. Commit `e1ccd8c2f` removed them on purpose. Decide whether to restore them or change the plan.
+5. C36: only the host platform runs process tests.

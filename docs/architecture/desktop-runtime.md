@@ -8,6 +8,11 @@ paths:
   - app/service/internal/host
   - app/service/cmd/unic/cli.go
   - app/service/cmd/unic/history.go
+  - app/service/cmd/unic/requirements.go
+  - app/service/cmd/unic/session.go
+  - app/service/cmd/unic/sendwait.go
+  - internal/servicelaunch
+  - internal/servicelifecycle
   - app/service/cmd/unicd/daemon.go
   - engine/history.go
   - engine/history_cleanup.go
@@ -21,11 +26,11 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
+verified: 4a37923b058124ffd5304747e1a5cdab7fc0fe7c
 ---
 # Desktop configuration and received files
 
-The desktop daemon loads `config.toml` and exposes the effective saved configuration over its local socket.
+The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
 ## Settings
@@ -70,10 +75,22 @@ The service only validates and stores desktop settings. It never registers a log
 See [headless architecture](headless.md#desktop-startup-settings) for desktop ownership, actual login status and platform limits.
 An external editor does not share the daemon write mutex; a later external save remains authoritative through the file watcher.
 
+## CLI service usage
+
+Service commands acquire a generation-bound usage lease on their first request.
+They reuse a running service or launch the sibling `unicd --cli-temporary` under the shared profile transition lock.
+The final usage release retires a CLI-temporary service. CLI commands do not stop a borrowed standalone or desktop-owned service.
+`unic config path` and `unic dev logs export` run without a service.
+`unic history use` requires an available desktop clipboard adapter; starting a temporary service does not supply that adapter.
+See [headless architecture](headless.md) for acquisition, ownership and adapter requirements.
+
 ## Restore
 
 `unic history use` accepts a history ID or `@N`.
-The command returns the local result separately from the network disposition and operation ID.
+The command waits up to 60 seconds for its own send operation, when one exists.
+JSON output contains separate `restore` and `send` objects. Text output includes the local result, network disposition, operation ID and send outcome.
+An incomplete send reports exit code 4 after printing the result. A local clipboard write remains applied.
+`unic history action` also waits for its own send operation; `--apply` adds the desktop clipboard adapter requirement.
 The CLI can supply `--request-id` for retry deduplication and `--json` for machine-readable output.
 The host keeps up to 1024 restore results for 30 minutes per daemon instance.
 A full result cache rejects new requests instead of forgetting a result early.
@@ -148,7 +165,9 @@ Cleanup does not enumerate unknown default-cache directories merely because thei
 
 - `internal/localconfig/manager.go`: serialized saves, raw-file revision, watcher, and restart status.
 - `app/service/cmd/unic/cli.go`: configuration commands and cache inventory.
-- `app/service/cmd/unic/history.go`: explicit history restore and retry key.
+- `app/desktop/internal/lifecycle/service.go`: desktop launch policy (normal replaces a service, lightweight reuses a standalone one and refuses a desktop-owned or CLI-temporary service); process primitives are in `internal/servicelaunch`.
+- `app/service/cmd/unic/history.go`: explicit history restore, Action execution and retry key.
+- `app/service/cmd/unic/requirements.go`, `session.go`, `sendwait.go`: command requirements, generation-bound service usage and own-operation completion.
 - `engine/restore.go`: token-authorized resend without a new commit.
 - `engine/file_cache.go`: private-cache ownership, quota reservation, pins, orphan reclamation, and host callback validation.
 - `engine/history_cleanup.go`: unified age/count cleanup, tag exclusions, and capacity-driven record deletion.
@@ -192,4 +211,4 @@ See the [observability architecture](observability.md) and [contract](../contrac
 The `verified` front matter names the committed source checked against this page.
 It does not establish native interaction acceptance.
 The startup acceptance manifest binds the current source and executable hashes.
-`docscheck -bump` requires committed source and does not accept unrelated dirty paths in this page's scope.
+`docscheck -bump` requires committed source and rejects uncommitted changes under this page's code paths.

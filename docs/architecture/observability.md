@@ -17,6 +17,7 @@ paths:
   - engine/submission.go
   - engine/pipeline.go
   - engine/peersend.go
+  - engine/transfer.go
   - engine/receive.go
   - engine/clipboard.go
   - internal/observability
@@ -33,12 +34,15 @@ paths:
   - app/service/cmd/unic/main.go
   - app/service/cmd/unic/logs_export.go
   - e2e/cli/logs_export_e2e_test.go
+  - app/service/cmd/unic/requirements.go
+  - app/service/cmd/unic/session.go
+  - app/service/cmd/unic/sendwait.go
   - app/service/cmd/unic/diagnostics.go
   - app/service/cmd/unicd
   - e2e/cli/observability_e2e_test.go
   - e2e/cli/sync_observability_e2e_test.go
   - e2e/syncpath
-verified: dceb702ad0930a396ee01466f3dd1da49631dba9
+verified: e1ccd8c2fb474cfb7fa110248b87bca847a6c59c
 ---
 # Client logs, metrics and product analytics
 
@@ -52,7 +56,7 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 - Receive admission records malformed part sizes or mismatched totals as categorical `rejected` / `invalid_argument` outcomes before reserving resources. External channels supply their actual part byte lengths. No rejected bytes, source identity or raw error text enters the record.
 - Idempotent submission waits do not create another commit metric. A send result does not prove receive or apply success.
 - Local logs use an asynchronous 1024-record queue, JSON Lines, private files, 4 MiB segments, a 20 MiB combined bound, and seven-day retention. Filesystem operations use `os.Root` under the profile directory.
-- Local and remote log levels are independent. The socket API and CLI support a per-target override lasting 1..3600 whole seconds. Overrides do not survive restart and do not enable uploads.
+- Local and remote log levels are independent. The socket API and CLI support a per-target override lasting 1..3600 whole seconds. Overrides do not survive restart and do not enable uploads. The CLI command is `unic dev logs level`. When the service is a CLI-temporary `unicd` (`--cli-temporary`), setting an override holds the CLI usage lease until expiry, cancellation, reset, replacement or a failed level query. Query and reset return after their response. `unic dev diagnostics telemetry` reads signal state and dropped-record counters.
 - Configuration reloads update levels and signal switches. The endpoint remains fixed for the process. Changes appear as `telemetry.endpoint` in restart-required state.
 - Each remote signal has an independently cancelled generation. Disabling a signal closes admission, cancels the current export, discards queued data, and waits for cleanup. Re-enabling creates fresh aggregation and queues.
 - The remote log queue is the only asynchronous log SDK queue. A custom processor uses public `sdk/log.Processor` methods, clones accepted records, and batches at most 128 records for the official HTTP exporter.
@@ -78,14 +82,14 @@ See section 12 of the [observability contract](../contracts/observability-contra
 The host injects `Options.ProductEvents` alongside Logger and Diagnostics.
 Engine emits pairing trust commits, unique Action completions, manual send terminal results and successful explicit history application.
 Events are emitted outside the Engine state mutex (`e.mu`); lifecycle and commit guards may still be held. Callbacks must not call Engine methods or wait for lifecycle work. Events do not rely on lossy GUI notifications.
-Engine also emits accepted remote receipt application and stored-origin history classification. The service coalesces remote receipt notifications into a persisted identity/UTC-day availability event. Per-operation automatic volume remains in metrics. See section 11 of the observability contract.
+Engine also emits successful device-receipt application and stored-origin history classification. The remote-application event requires a nonempty peer ID and no channel ID; temporary-transfer and external-channel receipts do not qualify. The service coalesces remote receipt notifications into a persisted identity/UTC-day availability event. Per-operation automatic volume remains in metrics. See section 11 of the observability contract.
 The service emits startup events. Desktop registration carries a bounded local launch key until the first ready acknowledgement; later reconnects omit it. The service remembers the last ready launch key to suppress duplicate ready calls and uncertain-result retries. The key never enters telemetry.
 The service is the sole exporter; Desktop does not receive the analytics identifier.
 
 `analytics.go` uses the official PostHog Go SDK with one aggregate 1024-event admission bound, 64-event batches, five-second batching, no retries and a three-second HTTP timeout.
 A final transport filter removes SDK-added system properties. The transport bounds response reads and rejects destinations other than the selected origin and `/batch/`.
 Person processing and GeoIP are disabled. A separate random profile identifier supports installation retention without using device identity.
-The identifier persists while enabled, rotates after disable, and is never attached to logs or metrics.
+The identifier persists while enabled, rotates after disable, and is never attached to logs or metrics. A CLI-temporary service start counts as a process start (`app_started`), not an installation; the identifier persists across temporary restarts. Disabling the telemetry master or analytics switch suppresses product events and analytics-identifier creation.
 An invalidation marker prevents reuse after an interrupted identity cleanup where it can be persisted.
 
 The master and three signal switches hot reload. Explicit false takes effect before startup initialization.
@@ -112,7 +116,7 @@ The exact settings and public hook are defined in the [observability contract](.
 | `internal/observability/analytics_daily.go` | Worker-owned private daily admission marker |
 | `internal/syncdiag`, `internal/session/observability.go`, `internal/tcnet/path.go`, `internal/observability/sync.go` | Finite built-in records, session/recovery ownership, passive reduction and OTLP instruments |
 | `internal/observability/analytics.go`, `deployment.go` | SDK lifecycle, private identity, final event filtering and release endpoint/token binding |
-| `e2e/cli/posthog_e2e_test.go` | Local TLS, delta aggregation, all five events, privacy, faults and queue/generation acceptance |
+| `e2e/cli/posthog_e2e_test.go` | Local TLS, delta aggregation, product events, privacy, faults and queue/generation acceptance |
 | `engine/diagnostics.go` | Public record types, categorical content/backend mapping, callback isolation, apply termination |
 | `engine/submission.go`, `pipeline.go`, `peersend.go`, `receive.go`, `clipboard.go` | Business execution points and measurements |
 | `internal/observability/config.go`, `controller.go` | Validated settings, snapshots, level overrides, lifecycle generations |
@@ -121,7 +125,8 @@ The exact settings and public hook are defined in the [observability contract](.
 | `internal/observability/export.go`, `privacy.go` | Official SDK/exporter assembly, bounded workers, cancellation, final Resource filtering |
 | `app/service/internal/server/diagnostics.go` | Socket routes and strict flat JSON validation |
 | `internal/localapi/diagnostics.go` | Shared diagnostics client methods |
-| `app/service/cmd/unic/diagnostics.go` | Level and telemetry CLI commands |
+| `app/service/cmd/unic/diagnostics.go`, `requirements.go`, `session.go`, `sendwait.go` | Level/telemetry commands, service acquisition and temporary override lifetime |
+| `app/service/cmd/unic/logs_export.go` | Offline rooted archive and SHA-256 manifest |
 | `app/service/cmd/unicd/*_e2e.go` | Build-tagged nonvisual test entry, fixed fixtures, local TCP transport seam |
 | `e2e/cli/observability_e2e_test.go` | Real-process HTTP/protobuf, privacy, lifecycle, fault and resource acceptance |
 

@@ -14,7 +14,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
+verified: 4a37923b058124ffd5304747e1a5cdab7fc0fe7c
 ---
 # 仓库布局与依赖边界
 
@@ -24,7 +24,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 
 - 根 `go.mod` 的模块路径为 `github.com/uniclipboard/unic`。当前只有一个 Go 模块，没有 `go.work` 或 `bindings/`；`go test -race ./...` 覆盖核心、插件和桌面端的 Go 测试。
 - `engine/` 是公开 Go SDK，管理生命周期、设备信任、历史、处理流水线与同步调度；根 `internal/` 放核心实现及内置插件。`plugin/` 提供独立进程插件 SDK、RPC 和设置 Schema 工具，`plugins/` 放插件示例及开发说明。
-- 根 `internal/` 另有独立迁移工具包 `v1migration/`，包含旧桌面数据目录识别和各系统凭据读取（例如 macOS Security.framework），不属于平台无关核心，也不由 Engine 引入。
+- Root `internal/v1migration/` provides old-history migration through the in-process `unic migrate` command. It includes desktop profile discovery and platform credential reads, such as macOS Security.framework. Engine does not import it. There is no separate migration program.
 - `app/service/` contains the UI-free CLI and service. `app/desktop/` contains `unic-desktop`, mygo, UI Kit and native integration. Shared local protocol, configuration, paths and content conversion live in root `internal/local*` packages.
 - `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
 - `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/android/`、`app/ios/` 目前仅有各端 README 与 AGENTS.md，没有移动端工程。每个现有应用目录都有独立的 README 与 AGENTS.md。
@@ -33,7 +33,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 ## 不变量
 
 - 应用依赖核心，根 `engine/`、`internal/`、`plugin/` 不得依赖任何 `app/*`。
-- 桌面宿主专属 Go 包放在 `app/desktop/internal/`，利用 Go 的 `internal` 可见性阻止其他应用或未来绑定层直接导入；跨端能力通过公开 SDK 或协议暴露。独立旧数据迁移工具的现有例外是根 `internal/v1migration/`。
+- Desktop-specific Go packages live in `app/desktop/internal/`. Go internal visibility prevents direct imports by other applications or future bindings. Cross-platform capabilities use the public SDK or protocol. The existing migration exception is root `internal/v1migration/`.
 - `engine` 的传递依赖不得包含应用包、mygo、fsnotify、TOML 解析器、tailcat 会话层 `internal/session` 或传输层 `internal/tcnet`。`engine/boundary_test.go` 检查这条边界；内置后端由宿主显式装配。
 - 系统剪贴板、托盘、GUI、本机 HTTP/socket 服务和配置文件管理属于宿主；核心只接收类型化设置和宿主通过 SDK 提交的观察、应用结果。
 - 当前保持单一根 Go 模块。等移动端实际引入 gomobile 时，再将 `bindings/` 建为嵌套模块并添加本地开发用 `go.work`；不提前创建空绑定层。
@@ -51,8 +51,10 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 | `internal/localapi/`, `localconfig/`, `localpaths/`, `localcontent/` | Shared local protocol, configuration, paths and content conversion |
 | `internal/clipboardintegration/`, `servicelifecycle/` | UI-independent clipboard state machine and service generation control |
 | `internal/observability/` | Service-owned logs, metrics, analytics and deployment binding |
-| `internal/v1migration/` | 独立旧数据迁移工具实现，包含平台专属凭据读取 |
+| `internal/v1migration/` | Old-history migration for `unic migrate`, including platform credential reads |
+| `internal/servicelaunch/`, `webtransfer/`, `syncdiag/` | Shared unicd launch primitives; temporary-transfer web protocol; sync diagnostics records |
 | `plugin/`、`plugins/` | 插件 SDK、RPC、设置 Schema 与示例 |
+| `app/service/cmd/`, `app/service/internal/` | UI-free CLI, service entry point and host assembly |
 | `app/desktop/cmd/`、`app/desktop/internal/` | Go 桌面命令入口与宿主实现 |
 | `app/mac/` | 停止推进的 SwiftUI 实验原型与设置表单样例 |
 | `app/android/`、`app/ios/` | 移动端接入约束与说明 |
@@ -83,7 +85,8 @@ Search badge removal resets the whole filter dimension. Backspace in an empty in
 The history demo tag registry is shared by sidebar visibility, search candidates, list badges, and detail badges. Its management sheet disables column resizing and reordering through TableProps.FixedColumns, which uses mygo TableColumn.Fixed. Other tables keep their existing drag behavior. The sheet provides a table, sorting, filtering, inline creation/renaming, colors, merging, and deletion. Builtin tags allow Show Entries but reject destructive edits. Table context menus use the existing platform menu adapter (NSMenu on macOS). Deletion and merging preserve history entries. The detail assignment picker remains separate. Tag metadata and associations stay in memory. Kit tables with a filling column retain a flexible trailing column after resizing would otherwise make all columns fixed, preventing uncovered trailing space while keeping the dragged divider responsive. These tables bound column growth to the viewport and reserve space for the remaining columns, so dragging cannot push trailing controls outside the table.
 The animated sidebar viewport has no padding. A fixed-width inner body owns the padding, so the viewport can reach zero without a final width jump.
 The shared macOS Sheet uses a 300 ms downward entry and a 220 ms upward exit with a separately fading scrim. DialogBase continues to own input scoping and focus restoration. Sheet retains the original live dialog and modal scope until exit completes, then restores opener focus. The panel keeps its opacity and rendering path while the scrim fades separately. Callers keep invoking Sheet while closed and clear transient content state in OnClosed after exit. Virtual tables are not copied or relaid out through an exit snapshot. Reduce Motion suppresses panel translation. Other skins retain their existing dialog behavior.
-The demo includes history list/grid/detail, a device management sheet, nine settings categories, entry flows, and a quick panel composition.
+The demo includes history list/grid/detail, a device management sheet, nine settings categories and entry flows. Settings opens the dedicated quick panel window.
+The device sheet uses a single pane below the Kit breakpoint, with explicit list/detail navigation. Pending-device details show the fingerprint and direct accept/reject actions. These actions change fixtures only.
 Below 1100 px, the sidebar opens as an overlay. Below 760 px, history list and detail share one pane.
 Desktop pages and Kit components construct standard vertical scroll containers through `Kit.Scroll`; direct `ui.Scroll` construction is confined to that factory. Lists and grids reuse its indicator policy.
 Detail, nested previews, settings, sheets, and navigation follow the same rule: show after position changes and hide after 600 ms without movement; hover alone does not show an indicator. Each container keeps independent state. History list and grid content also reserve a scrollbar gutter.
@@ -128,6 +131,10 @@ Shared local protocol, configuration, paths and snapshot conversion live in root
 `internal/clipboardintegration` contains a UI-independent host state machine; Engine does not import it.
 The normal desktop owns a profile-scoped service through a parent pipe. Lightweight mode leaves a standalone service.
 `app/desktop/internal/lifecycle` owns replacement and login intent; `internal/servicelifecycle` owns generation-scoped stop and owner EOF handling.
-`internal/observability` exports service telemetry; the desktop adapter forwards no analytics identifier.
+CLI command requirements live in `app/service/cmd/unic/requirements.go`. The CLI acquires a generation-bound usage lease lazily, reuses a running service, or launches the sibling `unicd --cli-temporary`. The last usage release retires a CLI-temporary service.
+`internal/servicelaunch` provides shared launch primitives and the profile transition lock. Desktop and CLI launch policy remain in their respective applications.
+`unic send --to all` or `--to DEVICE` commits and sends to paired devices. Without `--to`, `unic send` creates a temporary code/link transfer. `unic recv` accepts a code, address or link. Device management lives under `unic device`; development commands live under `unic dev`.
+`app/service/internal/host/transfer.go` owns temporary sessions through `internal/tcnet` and `internal/webtransfer`. Engine admits received transfers through `engine/transfer.go`, then uses the receive pipeline without storing a device or channel.
+`internal/observability` exports service telemetry, including tailcat session diagnostics through `internal/syncdiag`; the desktop adapter forwards no analytics identifier.
 The archive builder reuses identical headless binaries in the optional desktop archive. Independent product version/release workflows remain planned in decision 0018.
 See [headless service and desktop integration](headless.md) for the process and distribution contract.

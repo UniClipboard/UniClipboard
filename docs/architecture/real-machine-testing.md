@@ -4,7 +4,7 @@ paths:
   - e2e/twohost/README.md
   - Makefile
   - tools/docscheck
-verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
+verified: e1ccd8c2fb474cfb7fa110248b87bca847a6c59c
 ---
 # Real-machine CLI testing
 
@@ -16,11 +16,15 @@ The repository provides a node-configured harness for production CLI/service tes
 
 The controller snapshots tracked repository files and untracked production/harness inputs before building anything. Repository-internal file symlinks are materialized; external links are rejected. Workers and production programs are compiled from the private snapshot with CGO and VCS stamping explicitly disabled. The public manifest binds source hashes and actual artifact hashes. Later edits to the original checkout do not enter an active run.
 
-The worker owns a temporary profile, private local socket and child service. It exposes a closed JSON-over-stdio control interface over the local process pipes or persistent SSH. The measured content path stays inside production unic/tailcat. Fixtures are prepared before submission timing begins. The production CLI submits text/PNG/files and exports received history. HTML plus its plain-text representation uses a test-only production-local-API injector. Every expected receiver must export matching part counts, MIME types, sizes and SHA256 values; dispatch admission alone is insufficient.
+The worker owns a temporary profile, private local socket and child service. It exposes a closed JSON-over-stdio control interface over the local process pipes or persistent SSH. The measured content path stays inside production unic/tailcat. Fixtures are prepared before submission timing begins. The production CLI submits text/PNG/files with `unic send --to all`, lists receives with `unic recv list`, and exports received history with `unic history export`. HTML plus its plain-text representation uses a test-only production-local-API injector. Every expected receiver must export matching part counts, MIME types, sizes and SHA256 values; dispatch admission alone is insufficient.
 
 `doctor` checks connectivity, platform, run-salted machine identity, temporary storage and worker hashes. Aliases pointing at the same machine fail unless the operator explicitly selects the shared-host control mode, which is marked in the manifest. OS machine identities do not attest physical hardware or exclude virtualization.
 
 `pairwise` runs each selected pair with other services stopped. `mesh` pairs all nodes and measures each sender against every other receiver. A two-node mesh also supplies its isolated pair baseline. `contract` covers commit/idempotency, explicit mutual approval, processor annotations and sync policy. `isolation` seeds history, restarts services, checks existing identity/trust/history without reapproving missing trust, checks offline recovery without backlog replay and checks revocation while surviving nodes continue syncing.
+
+Pairing uses `unic device addr`, `device add` and `device approve`. Revocation uses `unic device remove`.
+Commit lookup uses `unic dev submission`. Explicit `--to all` selects paired-device synchronization; omitting `--to` starts a temporary transfer outside this harness catalog.
+The worker starts a standalone `unicd`, so CLI commands borrow its service rather than own a CLI-temporary generation.
 
 Native clock exchanges bracket each payload cell. A remote-to-remote sample combines both node clock bounds, timestamp quantization and observed drift. Raw point estimates and bounds remain distinct from controller-monotonic export-verification time. Network route remains unknown unless independently observed.
 

@@ -83,6 +83,6 @@ Temporary profiles and service binaries are deleted on success and failure.
 - Pinned golangci-lint v2.15.0 reports zero new issues against HEAD for the affected desktop/localapi packages.
 - The installed default lint executable is v1 and cannot read the repository's v2 configuration. Use the pinned version with the installed project toolchain.
 - Additional shared/service checks exposed 25 host failures with `unavailable: cannot open default file cache`. All 25 reproduce in an independent archive of baseline `d305a77e2d243e6db79b77f56dc259f8d5fa646e`. The other selected packages passed.
-- docscheck passes link/rule checks with stale architecture-marker warnings. Requested `-bump` calls refuse uncommitted source. Markers remain unchanged until the reviewed code is committed.
+- Implementation commit: `66a3d9b5b036007cfee548cc37838908d7156f95`. The acceptance source hashes match this committed source.
+- After the code commit, architecture verification markers were updated for overview, headless integration, desktop runtime and identity/trust. docscheck passes without warnings.
 - Existing view-renderer tests were compiled but not executed because native/offscreen visual work requires explicit authorization.
-

@@ -47,7 +47,7 @@ python3 e2e/twohost/html.py --ssh win \
 
 The runner rebuilds the production programs and requires their hashes to match the prior manifest. `--binaries DIR` can reuse those exact binaries. It creates fresh isolated nodes and checks both pairing fingerprints before approval. Each direction has three trials at plain-text sizes of 1 KiB, 64 KiB and 1 MiB. HTML adds a valid UTF-8 document wrapper to the same text. The manifest records the combined size. Both MIME types and both exported byte streams must match.
 
-This supplement provides HTML pipeline evidence. It does not establish a production `unic submit` HTML interface or native rich-text rendering.
+This supplement provides HTML pipeline evidence. It does not establish a production `unic send` HTML interface or native rich-text rendering.
 
 If the workspace changes during a run, keep its failed manifest and preserve the exact measured binaries. Use a separate checkout whose production-source hashes match that manifest. `finish.py` can resume only the lifecycle/privacy closure after a complete 72-sample matrix; it verifies source and binary hashes before starting the same isolated profiles. Its final manifest records the prior failure and the recovery. It does not turn unverified transfers into successful samples. A fresh full run is the normal reproduction path.
 

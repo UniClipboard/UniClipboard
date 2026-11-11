@@ -1,12 +1,21 @@
 package main
 
 import (
+	"bufio"
+	"context"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
+	"os/signal"
 	"path/filepath"
-	"runtime"
+	"strings"
+
+	"golang.org/x/term"
+
+	"github.com/uniclipboard/unic/internal/v1migration"
 )
 
 const migrationGuide = `UniClipboard v1 to v2 history migration
@@ -38,29 +47,111 @@ For automation use --passphrase-stdin. Never put a passphrase in arguments or
 environment variables. Custom or portable v1 profiles require --source DIR.
 `
 
-// Run the shipped helper directly, without shell interpolation or exposing
-// the passphrase in arguments. The helper owns locking and import recovery.
-func runMigration(args []string) error {
+// runMigration imports local UniClipboard v1 history in-process, without
+// starting networking or clipboard integration. It returns the exit code:
+// 0 complete, 3 partial, 1 failed, 2 usage.
+func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
-		_, err := fmt.Fprint(os.Stdout, migrationGuide)
-		return err
+		if _, err := fmt.Fprint(out, migrationGuide); err != nil {
+			return 1
+		}
+		return 0
 	}
-	executable, err := os.Executable()
+	fs := flag.NewFlagSet("unic migrate", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	source := fs.String("source", "", "v1 data directory (default: local desktop profile)")
+	target := fs.String("target", "", "unic data directory (default: UNIC_HOME or normal unic directory)")
+	service := fs.String("service", "UniClipboard", "old credential service; named profiles use UniClipboard-PROFILE")
+	dry := fs.Bool("dry-run", false, "read and authenticate content without changing the target")
+	jsonMode := fs.Bool("json", false, "emit JSON progress and final report")
+	stdinPassword := fs.Bool("passphrase-stdin", false, "read old passphrase as one line from stdin; never pass it as an argument")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if fs.NArg() != 0 {
+		_, _ = fmt.Fprintln(errOut, "unexpected positional arguments")
+		return 2
+	}
+	if *source == "" {
+		var err error
+		*source, err = v1migration.DefaultSource()
+		if err != nil {
+			_, _ = fmt.Fprintln(errOut, err)
+			return 1
+		}
+	}
+	if *target == "" {
+		*target = os.Getenv("UNIC_HOME")
+		if *target == "" {
+			base, err := os.UserConfigDir()
+			if err != nil {
+				_, _ = fmt.Fprintln(errOut, "cannot locate unic data directory")
+				return 1
+			}
+			*target = filepath.Join(base, "unic")
+		}
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	var password []byte
+	if *stdinPassword {
+		line, err := bufio.NewReader(io.LimitReader(in, 4097)).ReadString('\n')
+		if err != nil && err != io.EOF || len(line) > 4096 {
+			_, _ = fmt.Fprintln(errOut, "cannot read old passphrase")
+			return 1
+		}
+		password = []byte(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"))
+	}
+	defer func() { clear(password) }()
+	if *jsonMode {
+		_ = json.NewEncoder(out).Encode(map[string]string{"stage": "unlock"})
+	} else {
+		_, _ = fmt.Fprintln(errOut, "Unlocking old history; allow the system credential prompt or enter the old passphrase if requested.")
+	}
+	s, err := v1migration.Open(ctx, *source, *service, password, v1migration.ReadSecret)
+	if errors.Is(err, v1migration.ErrUnlock) && !*stdinPassword && term.IsTerminal(int(in.Fd())) {
+		if *jsonMode {
+			_ = json.NewEncoder(out).Encode(map[string]string{"stage": "needs_passphrase"})
+		}
+		_, _ = fmt.Fprint(errOut, "Old UniClipboard passphrase: ")
+		password, err = term.ReadPassword(int(in.Fd()))
+		_, _ = fmt.Fprintln(errOut)
+		if err == nil {
+			s, err = v1migration.Open(ctx, *source, *service, password, nil)
+		}
+	}
+	clear(password)
 	if err != nil {
-		return errors.New("cannot locate migration helper")
+		_, _ = fmt.Fprintln(errOut, err)
+		return 1
 	}
-	name := "unic-migrate"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
+	defer func() { _ = s.Close() }()
+	var lastStage string
+	report, err := s.Run(ctx, v1migration.RunOptions{Target: *target, DryRun: *dry, Progress: func(p v1migration.Progress) {
+		if p.Stage != lastStage || p.Processed == 1 || p.Processed%25 == 0 || p.Processed == p.Total {
+			if *jsonMode {
+				_ = json.NewEncoder(out).Encode(p)
+			} else {
+				_, _ = fmt.Fprintf(errOut, "%s %d/%d\n", p.Stage, p.Processed, p.Total)
+			}
+			lastStage = p.Stage
+		}
+	}})
+	if *jsonMode {
+		_ = json.NewEncoder(out).Encode(report)
+	} else {
+		_, _ = fmt.Fprintf(out, "%s: total=%d recoverable=%d imported=%d skipped=%d failed=%d missing_parts=%d verified=%d verification_failed=%d tags=%d\n",
+			report.Status, report.Total, report.Recoverable, report.Imported, report.Skipped, report.Failed, report.MissingParts, report.Verified, report.VerificationFailed, report.Tags)
 	}
-	helper := filepath.Join(filepath.Dir(executable), name)
-	if st, err := os.Stat(helper); err != nil || !st.Mode().IsRegular() {
-		return errors.New("unic-migrate must be installed beside unic")
+	if err != nil {
+		_, _ = fmt.Fprintln(errOut, err)
+		return 1
 	}
-	cmd := exec.Command(helper, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("migration did not complete; see its report and rerun to resume: %w", err)
+	if report.Status == "partial" {
+		return 3
 	}
-	return nil
+	return 0
 }

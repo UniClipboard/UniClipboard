@@ -55,13 +55,15 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		}
 	}
 	var target *engine.Engine
+	var dst string // the resolved target; every reopen must use it, never the caller's spelling
 	if !opts.DryRun {
 		if opts.Target == "" {
 			return report, errors.New("v1 migration: target directory is required")
 		}
 		// Opening the wrong directory must not create a target within the source.
 		src, e1 := canonicalDirectory(s.root)
-		dst, e2 := canonicalDirectory(opts.Target)
+		var e2 error
+		dst, e2 = canonicalDirectory(opts.Target)
 		if e1 != nil || e2 != nil {
 			return report, ErrFormat
 		}
@@ -155,7 +157,7 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		if runErr != nil {
 			return
 		}
-		target, runErr = engine.New(ctx, engine.Options{DataDir: opts.Target, MigrationMode: true})
+		target, runErr = engine.New(ctx, engine.Options{DataDir: dst, MigrationMode: true})
 		if runErr != nil {
 			return
 		}

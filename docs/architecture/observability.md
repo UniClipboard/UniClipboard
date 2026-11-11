@@ -20,14 +20,25 @@ paths:
   - engine/receive.go
   - engine/clipboard.go
   - internal/observability
+  - internal/syncdiag
+  - internal/session
+  - internal/tcnet
+  - internal/plugins/tailcat
+  - internal/wire
   - internal/localconfig
   - app/service/internal/host/node.go
   - internal/localapi/diagnostics.go
   - app/service/internal/server/diagnostics.go
+  - app/service/cmd/unic/cli.go
+  - app/service/cmd/unic/main.go
+  - app/service/cmd/unic/logs_export.go
+  - e2e/cli/logs_export_e2e_test.go
   - app/service/cmd/unic/diagnostics.go
   - app/service/cmd/unicd
   - e2e/cli/observability_e2e_test.go
-verified: 4f4f846449aa58fe239a91d0413b0ac6220db660
+  - e2e/cli/sync_observability_e2e_test.go
+  - e2e/syncpath
+verified: dceb702ad0930a396ee01466f3dd1da49631dba9
 ---
 # Client logs, metrics and product analytics
 
@@ -51,11 +62,23 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 - OTel v1.47 merges environment Resource attributes even with `WithResource`. Metrics replace Resource before export. The private logs HTTP transport replaces Resource using the standard OTLP protobuf before sending. Both keep only service name/version, OS type, and architecture.
 - Export failures update local counters and finite error categories. Exporter degradation messages only enter the bounded local path and respect the local level. They are rate-limited and never feed the failing exporter.
 
+## Offline log archive
+
+`unic dev logs export [--output FILE]` streams retained local JSONL segments into a
+private tar.gz with a per-entry SHA-256 manifest. It executes in the CLI and needs
+no service connection or system clipboard. It never includes profile configuration,
+credentials, databases or history. Rooted source/output handles and exclusive
+creation reject symlinks and existing destinations. Fixed per-file lengths bound
+concurrent appends; vanished unopened segments can be skipped during retention.
+This is an on-disk snapshot, not a queue flush or an atomic cross-file snapshot.
+See section 12 of the [observability contract](../contracts/observability-contract.md#12-offline-local-log-export).
+
 ## Product analytics
 
 The host injects `Options.ProductEvents` alongside Logger and Diagnostics.
 Engine emits pairing trust commits, unique Action completions, manual send terminal results and successful explicit history application.
 Events are emitted outside the Engine state mutex (`e.mu`); lifecycle and commit guards may still be held. Callbacks must not call Engine methods or wait for lifecycle work. Events do not rely on lossy GUI notifications.
+Engine also emits accepted remote receipt application and stored-origin history classification. The service coalesces remote receipt notifications into a persisted identity/UTC-day availability event. Per-operation automatic volume remains in metrics. See section 11 of the observability contract.
 The service emits startup events. Desktop registration carries a bounded local launch key until the first ready acknowledgement; later reconnects omit it. The service remembers the last ready launch key to suppress duplicate ready calls and uncertain-result retries. The key never enters telemetry.
 The service is the sole exporter; Desktop does not receive the analytics identifier.
 
@@ -87,6 +110,8 @@ The exact settings and public hook are defined in the [observability contract](.
 | Path | Responsibility |
 |---|---|
 | `engine/product_events.go` | Finite public product-event hook and callback panic isolation |
+| `internal/observability/analytics_daily.go` | Worker-owned private daily admission marker |
+| `internal/syncdiag`, `internal/session/observability.go`, `internal/tcnet/path.go`, `internal/observability/sync.go` | Finite built-in records, session/recovery ownership, passive reduction and OTLP instruments |
 | `internal/observability/analytics.go`, `deployment.go` | SDK lifecycle, private identity, final event filtering and release endpoint/token binding |
 | `e2e/cli/posthog_e2e_test.go` | Local TLS, delta aggregation, all five events, privacy, faults and queue/generation acceptance |
 | `engine/diagnostics.go` | Public record types, categorical content/backend mapping, callback isolation, apply termination |
@@ -100,6 +125,38 @@ The exact settings and public hook are defined in the [observability contract](.
 | `app/service/cmd/unic/diagnostics.go` | Level and telemetry CLI commands |
 | `app/service/cmd/unicd/*_e2e.go` | Build-tagged nonvisual test entry, fixed fixtures, local TCP transport seam |
 | `e2e/cli/observability_e2e_test.go` | Real-process HTTP/protobuf, privacy, lifecycle, fault and resource acceptance |
+
+## Tailcat sync observations
+
+The built-in plugin receives a finite `syncdiag.Observer` at service assembly.
+Connection attempts are recorded before RPC error reduction. Admitted sessions share
+one close claim for business cleanup and diagnostic termination. The session layer
+tracks observed connected exposure and one recovery episode per eligible disconnected
+peer. Pending ages accompany recovered, abandoned and interrupted terminal counts.
+Bookkeeping uses existing peer/session ownership and does not survive process restart.
+
+The existing metrics worker samples active sessions and pending recovery every 10
+seconds. It stops its sampling timer when no work remains. Disable tears down that
+worker and clears baselines. The collector does not dial or call Ping/DiscoPing.
+The transport reads status once per collection and returns only a private reduced lookup that yields finite path categories.
+Incoming mapping uses the pinned tailcat ULA/node-key representation and rejects
+ambiguous matches. Active status must have a LastWrite within 30 seconds. A valid
+selected direct endpoint wins over a configured relay. Raw status never enters queues.
+The public Client status API is unavailable in tailcat v0.7.0, so outgoing paths remain
+unknown. Real-stack path and shutdown acceptance must be reported separately from
+loopback/fake-path export acceptance in the [0020 receipt](../exec/0020-tailcat-sync-observability.md).
+
+Authorized/admitted declared size and actual partial body bytes are separate measures.
+Body timing excludes queue, control headers and storage work after the last body I/O.
+The start-path label uses a cached sample no older than 10 seconds. It cannot prove
+the complete route or exact per-path traffic. Sender completion is not receiver ACK.
+Successful receipt application proves host-reported clipboard availability, not paste.
+
+The analytics worker persists a private identity/day high-water marker before daily
+SDK enqueue. One reserved temporary filename bounds crash residue; startup and disable clear it. Marker I/O occurs outside business callbacks. A failed marker suppresses
+the daily event while sync and operational volume continue. Persist-before-enqueue
+can lose an event; it never backfills failed export. Clock rollback suppresses dates
+through the stored high-water date. Disable removes the marker with the identity.
 
 ## Cloud verification
 

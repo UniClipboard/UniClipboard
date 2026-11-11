@@ -1,24 +1,32 @@
 # Service application
 
 `unic` is the CLI. `unicd` is the headless Engine owner. Neither program imports a UI toolkit.
-Packaged archives also expose the `uniclip` alias for `unic`: a relative symlink on macOS/Linux, or a `uniclip.cmd` launcher on Windows.
-Both command names use the same implementation. Direct `go build` commands below produce the canonical binaries only.
+Packaged archives expose the `uniclip` alias for `unic`: a relative symlink on macOS/Linux or a `uniclip.cmd` launcher on Windows.
 
 ```sh
-go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd ./app/service/cmd/unic-migrate
-UNIC_HOME=/absolute/private/state dist/unicd
-echo hello | UNIC_HOME=/absolute/private/state dist/unic submit --json
+go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
+echo hello | UNIC_HOME=/absolute/private/state dist/unic send --to all --json
 ```
 
+Send and receive without pairing (for example with the page at `try.uniclipboard.app`):
+
+```sh
+unic send "hello"                 # prints a 6-digit code and a link, then waits for one receiver
+unic recv 482913                  # on the other side; a link works too
+unic send --to laptop "hello"     # to one paired device; --to all reaches every paired device
+```
+
+`unic` starts a temporary `unicd` from the same directory when a command needs one and none runs.
+It stops that service after the last command using it finishes. A `unicd` you start yourself, and the desktop's service, are never stopped by `unic`.
+Run `UNIC_HOME=/absolute/private/state dist/unicd` to keep receiving content between commands.
+`unic help` marks each command `[local]`, `[service]`, `[service+clipboard]` or `[offline]`.
+Commands that wait for another device (`device add`, `dev logs level --for`) keep a temporary service running for a bounded window and say so on stderr.
+`send` waits for its own send to finish and exits 4 when the content was committed but the send was not fully completed.
+
 See [headless architecture](../../docs/architecture/headless.md) and the [local service contract](../../docs/contracts/local-service-contract.md).
-Release archives and npm platform packages include `unic-migrate` beside `unic` for offline v1 history import.
-When a known v1 data directory exists, interactive CLI commands show a compatibility warning on stderr.
-Fresh installations, noninteractive commands and `--json` output remain silent.
-The check covers the default v1 directory and the active `UC_PROFILE` directory. It does not read credentials or change data.
+The `unic migrate` command performs offline history import in-process.
 Run `unic migrate --help` for backup, preflight, import and verification steps.
-Custom and portable v1 profiles require `--source DIR`; named profiles also require the matching `--service`.
-Stop v1 and the target `unicd` before importing. Migration preserves source data and resumes successful records without duplication.
-Settings, device identities and trust do not migrate. Upgrade all peers to v2 and pair them again.
+Interactive commands warn when a known v1 data directory exists. JSON and noninteractive output remain silent.
 
 
 Remote logs, metrics and product events default enabled. Release assembly supplies the selected PostHog project endpoint and ingestion-only token.
@@ -31,8 +39,19 @@ enabled = false
 ```
 
 Use `[telemetry.logs]`, `[telemetry.metrics]`, or `[telemetry.analytics]` with `enabled = false` to disable one signal.
-Switch changes hot reload and remain effective across restart. Check `unic diagnostics telemetry` for actual signal state.
+Switch changes hot reload and remain effective across restart. Check `unic dev diagnostics telemetry` for actual signal state.
 See the [observability contract](../../docs/contracts/observability-contract.md).
+
+Export retained local logs without a running service:
+
+```sh
+unic dev logs export
+unic dev logs export --output ./unic-logs.tar.gz
+```
+
+The private tar.gz contains local JSONL segments and a SHA-256 manifest. Existing
+outputs are not replaced. Live export copies already-written bytes and does not
+flush service queues. See the [observability contract](../../docs/contracts/observability-contract.md#12-offline-local-log-export).
 
 ## Release identity
 

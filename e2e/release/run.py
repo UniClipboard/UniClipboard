@@ -51,7 +51,6 @@ def source_identity():
             "e2e/release",
             "release",
             "app/service/cmd/unic",
-            "app/service/cmd/unic-migrate",
             "internal/localpaths",
         ]
         for p in (ROOT / directory).rglob("*")

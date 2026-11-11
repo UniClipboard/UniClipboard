@@ -1,0 +1,45 @@
+# 用例: 冷启动 CLI 配对被中断或请求被撤销时给出各自明确的结果
+# 目的: 验证 `unic device add` 在临时服务下，用户中断和请求被撤销是两种不同的结果，且都释放临时服务。
+# 流程:
+#   1. beta 保持运行。alpha 在后台执行 `unic device add <beta 地址>`，等 beta 看到请求。
+#   2. 向 alpha 的配对命令发送 INT；确认结果为中断，alpha 服务退出。
+#   3. gamma 再次配对 beta；在 gamma 自己的服务上撤销该请求；确认结果为请求被撤销，gamma 服务退出。
+# 期望:
+#   - 中断的命令以退出码 4 结束，并说明批准仍在等待。
+#   - 被撤销的命令以退出码 4 结束，并说明请求被移除或替换。
+#   - 两个临时服务都已退出。
+# 不应:
+#   - 把中断或撤销报告成成功。
+#   - 把两种结果报成同一条消息。
+
+node-start beta
+node-id beta BETA
+node-define alpha
+u beta device addr
+cp stdout beta.addr
+
+u-async p alpha device add @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' device list
+u-kill p INT
+! u-wait p
+stderr 'interrupted; approval is still pending'
+stderr 'exit status 4'
+service-gone alpha
+
+node-define gamma
+u beta device addr
+cp stdout beta2.addr
+u-async q gamma device add @beta2.addr
+until gamma '[0-9A-F]{4} [0-9A-F]{4}' device list
+u gamma device reject $BETA
+! u-wait q
+stderr 'removed or replaced'
+stderr 'exit status 4'
+service-gone gamma
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- gamma/config.toml --
+device_name = "gamma"

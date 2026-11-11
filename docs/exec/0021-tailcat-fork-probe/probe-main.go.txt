@@ -1,0 +1,77 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/uniclipboard/unic/internal/tcnet"
+)
+
+// node <dir> <addrfile-self> <addrfile-peer> <seconds>: a server that also dials the peer once a second,
+// like the product's per-peer dialer. It prints when its own dial and the peer's inbound dial first succeed.
+func main() {
+	dir, selfFile, peerFile := os.Args[2], os.Args[3], os.Args[4]
+	secs := 25
+	fmt.Sscan(os.Args[5], &secs)
+	t, err := tcnet.New(dir, func(string, ...any) {})
+	if err != nil {
+		panic(err)
+	}
+	if err := t.Start(); err != nil {
+		panic(err)
+	}
+	l, _ := t.Listen(context.Background())
+	_ = os.WriteFile(selfFile, []byte(t.Addr()), 0o600)
+	start := time.Now()
+	inbound := make(chan time.Duration, 1)
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			select {
+			case inbound <- time.Since(start):
+			default:
+			}
+			_ = c.Close()
+		}
+	}()
+	outbound := make(chan time.Duration, 1)
+	go func() {
+		for {
+			addr, _ := os.ReadFile(peerFile)
+			if len(addr) > 0 {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				c, err := t.Dial(ctx, string(addr))
+				cancel()
+				if err == nil {
+					_ = c.Close()
+					select {
+					case outbound <- time.Since(start):
+					default:
+					}
+					return
+				}
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+	deadline := time.After(time.Duration(secs) * time.Second)
+	in, out := "none", "none"
+	for {
+		select {
+		case d := <-inbound:
+			if in == "none" {
+				in = d.Round(100 * time.Millisecond).String()
+			}
+		case d := <-outbound:
+			out = d.Round(100 * time.Millisecond).String()
+		case <-deadline:
+			fmt.Printf("my-dial=%s peer-dial-in=%s\n", out, in)
+			return
+		}
+	}
+}

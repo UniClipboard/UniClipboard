@@ -6,12 +6,13 @@ paths:
   - internal/localconfig
   - internal/localpaths
   - internal/servicelifecycle
+  - internal/servicelaunch
   - app/desktop/internal/lifecycle
   - internal/localcontent
   - internal/clipboardintegration
   - e2e/headless
   - tools/package
-verified: 4f4f846449aa58fe239a91d0413b0ac6220db660
+verified: 2384690d2d11189c93c8104d0aacef8b11b0f5c1
 ---
 # Headless service and desktop integration
 
@@ -19,10 +20,10 @@ All programs expose `--version --json` before configuration and host initializat
 
 ## Current implementation
 
-The product has three runtime programs, an offline migration helper and two development distributions.
+The product has three runtime programs and two development distributions.
 `unic` is a command-line client. `unicd` is the Engine owner and local service.
 `unic-desktop` owns mygo, the UI Kit, system clipboard, tray and notifications.
-The headless distribution includes `unic`, `unicd` and the offline `unic-migrate` helper.
+The headless distribution includes `unic` and `unicd`.
 The desktop distribution includes those same binary files plus `unic-desktop`.
 Both archives expose `uniclip` as an alias of `unic`.
 On macOS/Linux, `uniclip` is a relative symbolic link to the sibling `unic` file; tar preserves the link.
@@ -52,6 +53,48 @@ Closing the main window leaves the adapter running. Explicit desktop quit stops 
 In normal mode the desktop owns the service lifetime. Desktop exit also stops that service.
 In lightweight mode only the standalone service remains; it receives and stores content without a desktop.
 
+## Command surface and temporary transfer (0022)
+
+The CLI is organized by user intent. `unic send` (`s`) and `unic recv` (`r`) move content. `unic history` (`h`) browses it. `unic device` holds pairing and trust. `unic dev` holds development and diagnosis commands. `unic status`, `config`, `plugin` and `migrate` are unchanged. Old command names are removed without aliases.
+
+`send --to all|DEVICE` goes through the normal sync path. `CommitRequest.DeviceIDs` limits the send to named paired devices; unknown, repeated or empty selections are `invalid_argument`. Only peer-session backends honor it.
+
+`send` without `--to` and `recv CODE|LINK` run a temporary transfer with a peer that has no unic device identity, such as the page at `try.uniclipboard.app`. It speaks the page's pull protocol (`internal/webtransfer`: frames, offer, SHA-256 verification, 20 MiB and 50 items per transfer). The sender listens on a fresh random-key tailcat endpoint (`internal/tcnet/ephemeral.go`) that accepts every virtual port and serves one receiver. A 6-digit code is an alias in rendezvous with ticket kind `uc-web-try`; `recv` refuses a `unic-pair` code and `device add` refuses a transfer code.
+
+The receiver admits the offer through `Engine.AdmitTransfer` before reading data, writes files into a private inbox directory and completes into the ordinary received pipeline. History origin is `external` with plugin ID `unic.transfer`. The transfer never creates a device or trust. The sender keeps content in memory only. Addresses, tokens, codes and links are never logged.
+
+## On-demand service for CLI commands
+
+Each `unic` leaf command declares one requirement: `local`, `service`, `service+clipboard` or `offline`
+(`app/service/cmd/unic/requirements.go`). Help prints badges from the declarations.
+A service command acquires a service on its first service request. Syntax errors never start a service.
+
+`unicd` has three lifetime modes. `standalone` and `desktop` generations are borrowed and never stopped by a CLI command.
+A `cli-temporary` generation, started by `unic` as `unicd --cli-temporary`, lives while at least one CLI usage lease exists.
+A lease is an open HTTP response on the private socket, bound to one generation. Process death closes it.
+The last release closes admission and retires the generation in one step, and the releasing command waits for the generation to stop.
+A command that meets a retiring generation retries acquisition before it sends any business request.
+A launcher holds initial ownership through an anonymous stdin pipe until its first lease is admitted, so a ready service never exits before its starter can use it.
+There is no idle timeout, durable counter or configuration setting.
+
+Creation and retirement share one profile lock (`service-transition.lock`) with desktop startup. Commands never hold it while they run.
+The normal desktop may replace a temporary generation. The affected command reports the interruption and never repeats a write.
+Lightweight desktop startup refuses a temporary generation; it is not promoted.
+
+Commands that start a send observe only their own Engine operation and report `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted` or `none`.
+Pairing approval, `code`, and `logs level --for` hold a temporary generation for a bounded, announced window.
+Exact DTOs, budgets and exit codes are in the [local service contract](../contracts/local-service-contract.md#service-lifecycle).
+
+## Offline CLI operations
+
+`unic dev logs export [--output FILE]` reads only retained local log segments and writes
+a private tar.gz with a checksum manifest. It does not use the service socket,
+create an Engine, or require a desktop adapter. It works while unicd is stopped.
+Existing destinations and log symlinks are rejected. Live export is an on-disk
+snapshot and does not flush service queues. The archive never includes configuration,
+credentials, databases or history. See section 12 of the
+[observability contract](../contracts/observability-contract.md#12-offline-local-log-export).
+
 ## Invariants
 
 - One state directory has one service, one Engine identity and one history database.
@@ -60,6 +103,8 @@ In lightweight mode only the standalone service remains; it receives and stores 
 - A lightweight launch leaves only a standalone service and reuses an existing standalone generation.
 - CLI and desktop access the service through shared local DTOs and clients.
 - The CLI does not launch a GUI or silently replace system clipboard reads with history reads.
+- A CLI command stops only a temporary generation whose last lease it released. It never stops a standalone or desktop-owned service.
+- The launcher never unlinks a socket or kills a process it did not create and verify.
 - The desktop owns system clipboard access. The service owns submission, sync and history policy.
 - Reconnect establishes a baseline and does not apply disconnected backlog.
 - A lost write result is uncertain and is never automatically retried.
@@ -79,7 +124,14 @@ In lightweight mode only the standalone service remains; it receives and stores 
 | `internal/localapi` | Shared protocol DTOs and clients |
 | `internal/localconfig`, `internal/localpaths` | Shared local configuration and state paths |
 | `app/desktop/internal/lifecycle` | Serialized service replacement, parent pipe and saved login intent |
-| `internal/servicelifecycle` | Generation-scoped local service control and owner EOF detection |
+| `internal/servicelifecycle` | Generation, lifetime mode, usage leases and owner EOF detection |
+| `internal/servicelaunch` | Sibling resolution, transition lock, detached process setup and readiness wait shared by launchers |
+| `app/service/cmd/unic/session.go` | CLI service acquisition, launch, release and lazy request transport |
+| `app/service/cmd/unic/requirements.go` | Leaf command requirement catalog, word aliases and help |
+| `app/service/internal/host/transfer.go` | Temporary transfer: offer, pull, ticket resolution, placement into the received pipeline |
+| `internal/webtransfer` | The page's transfer protocol, tickets and links; no unic or tailcat dependency |
+| `internal/tcnet/ephemeral.go` | One-shot tailcat listener and dialer with random keys |
+| `e2e/webinterop` | unic against the real page code under bun |
 | `internal/localcontent` | Local snapshot import and file-reference conversion |
 | `internal/clipboardintegration` | UI-independent observation/application state machine and IPC client |
 | `e2e/headless` | Production-binary, multi-process acceptance and manifest |
@@ -96,6 +148,8 @@ Native macOS, Windows and Linux clipboard acceptance remains separate from proce
 Signed platform installers, standalone service-manager registration and store publication are not supplied by the archive builder.
 The normal desktop registers login startup through mygo. macOS requires an application bundle.
 The flat binary archives are not macOS application bundles.
+A temporary service gives no continuous reception between CLI invocations; run `unicd` or the desktop for that.
+Temporary transfer has no GUI entry yet, and the page's reply (`push`) is not supported. The production code service for `uc-web-try` tickets is not verified; links work without it.
 Closing a desktop login session does not promise service survival; that depends on its service manager.
 
 The front-matter `verified` marker names committed source checked against this page; it does not extend platform acceptance.

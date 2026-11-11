@@ -24,6 +24,9 @@ func (b *pluginBackend) ID() PluginID        { return b.id }
 func (b *pluginBackend) Kind() TransportKind { return b.kind }
 
 func (b *pluginBackend) Submit(ctx context.Context, v backendView, h backendHost) (bool, *Error) {
+	if len(v.devices) > 0 {
+		return false, nil // a device selection addresses peer sessions only
+	}
 	view := plugin.SyncView{ID: v.id, TimestampMs: v.tsMs}
 	for _, p := range v.set.parts {
 		p := p

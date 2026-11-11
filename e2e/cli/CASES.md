@@ -5,6 +5,12 @@
 
 | 用例 | 标题 |
 |---|---|
+| [cold-start-offline-peer](#cold-start-offline-peer) | 冷启动发送时对端离线，在有限窗口后完成且不伪造成功 |
+| [cold-start-pairing-outcomes](#cold-start-pairing-outcomes) | 冷启动 CLI 配对被中断或请求被撤销时给出各自明确的结果 |
+| [cold-start-pairing](#cold-start-pairing) | 冷启动 CLI 配对时保持临时服务直到对端批准，批准窗口到期时给出明确结果 |
+| [cold-start-send-killed](#cold-start-send-killed) | 冷启动发送在等待对端窗口内被杀，用量被回收且不重放 |
+| [cold-start-send-response-lost](#cold-start-send-response-lost) | 提交已成功但响应丢失，不重放也不回滚 |
+| [cold-start-send](#cold-start-send) | 冷启动 CLI 发送文本，等待本次发送完成后才停止临时服务 |
 | [content-formats](#content-formats) | HTML、PNG 和文件原样同步 |
 | [crash-and-suspend-recovery](#crash-and-suspend-recovery) | 对端崩溃或挂起后自动恢复 |
 | [data-dir-single-instance](#data-dir-single-instance) | 同一数据目录只允许一个 unicd，日志不泄露秘密 |
@@ -20,7 +26,326 @@
 | [plugin-sensitive-blocks-sync](#plugin-sensitive-blocks-sync) | 敏感内容插件：打标签、禁止同步、设置过期 |
 | [plugin-tag-and-action](#plugin-tag-and-action) | 邮箱标签插件与 Action 改写 |
 | [restart-keeps-state](#restart-keeps-state) | 重启后身份、配对、历史与标签保持不变 |
+| [send-to-device](#send-to-device) | send --to 只发给指定的已配对设备 |
 | [sync-settings](#sync-settings) | CLI settings and TOML policy |
+| [temporary-transfer](#temporary-transfer) | 两个没有配对的 unic 之间做临时传输 |
+| [transfer-code](#transfer-code) | 用 6 位码完成临时传输，并拒绝配对码 |
+| [warm-send](#warm-send) | 借用已运行服务发送时，完成规则与冷启动相同，且不停止该服务 |
+
+## cold-start-offline-peer
+
+**冷启动发送时对端离线，在有限窗口后完成且不伪造成功**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-offline-peer' -v`
+
+**目的**
+
+验证对端离线时 `unic send` 不会无限等待，本地提交保持成功，并且不报告发送成功。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，然后停止两者。
+2. 在 alpha 上执行 `unic send --to all --json`；beta 保持离线。
+3. 确认命令结束后 alpha 的临时服务已退出。
+
+**期望**
+
+- 命令成功退出，提交结果为 committed。
+- 发送结果不是 success。
+- 命令结束后 alpha 没有服务进程或 socket。
+
+**不应**
+
+- 无限等待离线设备。
+- 把没有目标的提交报告成网络发送成功。
+
+<details><summary>脚本 testdata/cold-start-offline-peer.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+node-stop beta TERM
+service-gone alpha
+
+u alpha send --to all --json nobody home
+stdout '"phase":"committed"'
+! stdout '"outcome":"success"'
+service-gone alpha
+```
+
+</details>
+
+## cold-start-pairing-outcomes
+
+**冷启动 CLI 配对被中断或请求被撤销时给出各自明确的结果**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-pairing-outcomes' -v`
+
+**目的**
+
+验证 `unic device add` 在临时服务下，用户中断和请求被撤销是两种不同的结果，且都释放临时服务。
+
+
+**流程**
+
+1. beta 保持运行。alpha 在后台执行 `unic device add <beta 地址>`，等 beta 看到请求。
+2. 向 alpha 的配对命令发送 INT；确认结果为中断，alpha 服务退出。
+3. gamma 再次配对 beta；在 gamma 自己的服务上撤销该请求；确认结果为请求被撤销，gamma 服务退出。
+
+**期望**
+
+- 中断的命令以退出码 4 结束，并说明批准仍在等待。
+- 被撤销的命令以退出码 4 结束，并说明请求被移除或替换。
+- 两个临时服务都已退出。
+
+**不应**
+
+- 把中断或撤销报告成成功。
+- 把两种结果报成同一条消息。
+
+<details><summary>脚本 testdata/cold-start-pairing-outcomes.txtar</summary>
+
+```
+node-start beta
+node-id beta BETA
+node-define alpha
+u beta device addr
+cp stdout beta.addr
+
+u-async p alpha device add @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' device list
+u-kill p INT
+! u-wait p
+stderr 'interrupted; approval is still pending'
+stderr 'exit status 4'
+service-gone alpha
+
+node-define gamma
+u beta device addr
+cp stdout beta2.addr
+u-async q gamma device add @beta2.addr
+until gamma '[0-9A-F]{4} [0-9A-F]{4}' device list
+u gamma device reject $BETA
+! u-wait q
+stderr 'removed or replaced'
+stderr 'exit status 4'
+service-gone gamma
+```
+
+</details>
+
+## cold-start-pairing
+
+**冷启动 CLI 配对时保持临时服务直到对端批准，批准窗口到期时给出明确结果**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-pairing' -v`
+
+**目的**
+
+验证 `unic device add` 在临时服务下是有界会话：批准后报告 connected，到期则报告仍在等待，两者都不让服务提前退出。
+
+
+**流程**
+
+1. beta 保持运行；alpha 没有服务。alpha 在后台执行 `unic device add <beta 地址>`。
+2. 双方核对指纹并批准；等待后台命令结束。
+3. 第三台全新设备 gamma 用很短的窗口配对 beta，且无人批准。
+
+**期望**
+
+- 批准后 alpha 的配对命令成功并报告 connected。
+- gamma 的命令以退出码 4 结束，并报告批准仍在等待。
+- 两个临时服务在各自命令结束后都已退出。
+
+**不应**
+
+- 用无关设备的事件当作配对完成。
+- 把仍在等待的批准报告成成功。
+
+<details><summary>脚本 testdata/cold-start-pairing.txtar</summary>
+
+```
+node-start beta
+node-define alpha
+u beta device addr
+cp stdout beta.addr
+
+u-async p alpha device add @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' device list
+until alpha '[0-9A-F]{4} [0-9A-F]{4}' device list
+pair beta alpha decide
+u-wait p
+stdout 'approved: connected'
+service-gone alpha
+
+node-define gamma
+u beta device addr
+cp stdout beta2.addr
+u-async q gamma ENV:UNIC_E2E_PAIRING_WINDOW_MS=3000 device add @beta2.addr
+! u-wait q
+stderr 'approval still pending'
+stderr 'exit status 4'
+service-gone gamma
+```
+
+</details>
+
+## cold-start-send-killed
+
+**冷启动发送在等待对端窗口内被杀，用量被回收且不重放**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-send-killed' -v`
+
+**目的**
+
+验证发送命令在连接窗口内死亡后，临时服务随最后一个用户消失，且之后没有任何自动提交。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，然后停止两者，beta 保持离线。
+2. 在后台执行 `unic send`，等它进入等待对端的窗口后用 KILL 杀掉。
+3. 确认 alpha 的临时服务已退出，再重新读取 alpha 的历史。
+
+**期望**
+
+- alpha 没有服务进程或 socket。
+- 历史为空：窗口内死亡的命令没有留下提交。
+
+**不应**
+
+- 服务在发送命令死亡后继续运行。
+- 服务重启后自动重放该提交。
+
+<details><summary>脚本 testdata/cold-start-send-killed.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+node-stop beta TERM
+service-gone alpha
+
+u-async send alpha send --to all --json killed send text
+sleep 3s
+u-kill send KILL
+service-gone alpha
+
+u alpha history list
+! stdout 'killed send text'
+stderr 'no entries'
+service-gone alpha
+```
+
+</details>
+
+## cold-start-send-response-lost
+
+**提交已成功但响应丢失，不重放也不回滚**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-send-response-lost' -v`
+
+**目的**
+
+验证大文件发送途中命令被杀后，已提交的历史条目仍然只有一份，临时服务随之退出，且重启后没有自动重发。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，停止 alpha，beta 保持在线。
+2. 在后台执行 `unic send -f` 发送一个大文件，等历史里出现该条目后用 KILL 杀掉命令。
+3. 确认 alpha 的临时服务已退出，再读取 alpha 的历史。
+
+**期望**
+
+- alpha 没有服务进程或 socket。
+- alpha 历史里该文件恰好一条。
+- 重启后按原 request-id 查询得到 no such submission，不承诺持久查询。
+
+**不应**
+
+- 提交被回滚。
+- 重启服务后出现第二条同一文件的历史。
+- 把已丢失的请求记录当作可持久查询的结果。
+
+<details><summary>脚本 testdata/cold-start-send-response-lost.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+service-gone alpha
+
+genfile rand big.bin 94371840
+u-async send alpha send --to all --json --request-id lost-1 -f $WORK/big.bin
+until alpha 'files' history list
+u-kill send KILL
+service-gone alpha
+
+u alpha history list
+stdout -count=1 'files'
+! u alpha dev submission lost-1
+stderr 'no such submission'
+! stdout '@2'
+service-gone alpha
+```
+
+</details>
+
+## cold-start-send
+
+**冷启动 CLI 发送文本，等待本次发送完成后才停止临时服务**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/cold-start-send' -v`
+
+**目的**
+
+验证 unicd 未运行时 `unic send` 自动启动临时服务，等待已配对设备连接，观察本次发送的终态，然后才退出。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，然后完全停止 alpha。
+2. 在 alpha 上执行 `unic send --to all --json`，此时没有任何 alpha 服务在运行。
+3. 等 beta 的最新历史出现该文本。
+4. 确认 alpha 的临时服务已经退出。
+
+**期望**
+
+- JSON 输出里提交结果与发送结果是分开的两个字段，发送结果为 success。
+- beta 的最新历史内容等于发送的文本。
+- 命令结束后 alpha 没有任何服务进程或 socket。
+
+**不应**
+
+- 在服务就绪或排队时就停止临时服务，导致 beta 收不到内容。
+
+<details><summary>脚本 testdata/cold-start-send.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+service-gone alpha
+
+u alpha send --to all --json cold start text
+stdout '"submission":'
+stdout '"outcome":"success"'
+until beta 'cold start text' h show
+service-gone alpha
+```
+
+</details>
 
 ## content-formats
 
@@ -122,12 +447,12 @@ node-stop beta KILL
 board-set alpha text offline.txt
 sleep 2s
 node-start beta
-until alpha 'online' peers
-until beta 'online' peers
+until alpha 'online' device list
+until beta 'online' device list
 u beta status
 stdout $BETA
 ! board-wait beta text offline.txt
-u beta requests
+u beta device list
 ! stdout 'Waiting for your approval'
 
 retry-copy alpha beta after-crash
@@ -179,7 +504,7 @@ board-wait beta text sentinel.txt
 
 ! node-start alpha
 u alpha status
-until alpha 'online' peers
+until alpha 'online' device list
 board-set alpha text again.txt
 board-wait beta text again.txt
 
@@ -228,7 +553,7 @@ genfile rand payload.bin 100
 board-set alpha files payload.bin
 board-wait beta files payload.bin
 file-path beta CACHED
-u beta copy release
+u beta dev copy release
 u beta config set history.retention_days 1
 node-stop beta
 history-age beta 172800
@@ -280,14 +605,14 @@ board-set alpha files protected.bin
 board-wait beta files protected.bin
 file-path beta PROTECTED
 u beta h tag @1 --add keep
-u beta copy release-protected
+u beta dev copy release-protected
 retry-copy alpha beta ready-for-second
 genfile rand old.bin 110
 board-set alpha files old.bin
 board-wait beta files old.bin
 file-path beta OLD
-u beta copy release-old
-until beta '"size":110,[^}]*"held":false' cache --json
+u beta dev copy release-old
+until beta '"size":110,[^}]*"held":false' dev cache --json
 u beta config set history.excluded_tags '["keep"]'
 u beta config set history.max_items 1
 u beta config set history.auto_cleanup true
@@ -372,8 +697,8 @@ file-path beta ONE
 genfile rand two.bin 110
 board-set alpha files two.bin
 ! board-wait beta files two.bin
-u beta copy clear
-u alpha copy reset
+u beta dev copy clear
+u alpha dev copy reset
 board-wait beta text reset.txt
 board-set alpha files two.bin
 board-wait beta files two.bin
@@ -388,7 +713,7 @@ mkdir custom
 u beta config set inbox '"'$WORK'/custom"'
 node-stop beta
 node-start beta
-until alpha 'online' peers
+until alpha 'online' device list
 retry-copy alpha beta custom-ready
 genfile rand custom.bin 200
 board-set alpha files custom.bin
@@ -397,7 +722,7 @@ file-path beta CUSTOM
 cmp $CUSTOM custom.bin
 u beta h delete @1 -y
 cmp $CUSTOM custom.bin
-u beta copy clear
+u beta dev copy clear
 node-stop beta
 node-start beta
 cmp $CUSTOM custom.bin
@@ -492,12 +817,12 @@ Verify live count cleanup, tag matching, restart, and removed file settings.
 node-start alpha
 u alpha config set history.auto_cleanup false
 u alpha config set history.max_items 1
-u alpha copy protected-one
+u alpha dev copy protected-one
 u alpha h tag @1 --add keep
 exec curl -sf --unix-socket $WORK/.alpha.sock http://unic/v1/history/tags
 stdout keep
-u alpha copy ordinary-two
-u alpha copy ordinary-three
+u alpha dev copy ordinary-two
+u alpha dev copy ordinary-three
 u alpha h show @3
 stdout protected-one
 u alpha h show @2
@@ -522,7 +847,7 @@ u alpha h show @1
 stdout ordinary-three
 ! u alpha h show @2
 u alpha config set history.max_items 0
-u alpha copy unlimited-four
+u alpha dev copy unlimited-four
 u alpha h show @2
 stdout ordinary-three
 u alpha h show @1
@@ -584,11 +909,11 @@ board-set alpha files first.bin
 board-wait beta files first.bin
 file-path beta FIRST
 u beta h tag @1 --add keep
-u beta copy -f $FIRST
-u beta cache --json
+u beta dev copy -f $FIRST
+u beta dev cache --json
 stdout '"stored_bytes":100'
-u beta copy release
-until beta '"size":100,[^}]*"held":false' cache --json
+u beta dev copy release
+until beta '"size":100,[^}]*"held":false' dev cache --json
 retry-copy alpha beta reset-off
 genfile rand next.bin 110
 board-set alpha files next.bin
@@ -651,9 +976,9 @@ cp stdout second.txt
 node-start alpha
 node-start beta
 pair alpha beta
-u alpha copy first
+u alpha dev copy first
 board-wait beta text first.txt
-u alpha copy second
+u alpha dev copy second
 board-wait beta text second.txt
 u alpha h use @2
 board-wait alpha text first.txt
@@ -726,7 +1051,7 @@ genfile rand rejected.bin 100
 board-set alpha files rejected.bin
 ! board-wait beta files rejected.bin
 ! until beta '"kind":"files"' h list --json
-u beta cache --json
+u beta dev cache --json
 stdout '"stored_bytes":0'
 stdout '"files":\[\]'
 mv unavailable custom
@@ -752,9 +1077,9 @@ u beta h expire @1 1s
 sleep 2s
 ! until beta '"kind":"files"' h list --json
 cmp $SAVED accepted.bin
-u beta copy release
+u beta dev copy release
 cmp $SAVED accepted.bin
-u beta cache --json
+u beta dev cache --json
 stdout '"stored_bytes":0'
 stdout '"custom_destination":true'
 ```
@@ -1004,15 +1329,71 @@ u alpha status
 stdout $ALPHA
 u beta status
 stdout $BETA
-until alpha $BETA'\s+\S+\s+online' peers
-until beta $ALPHA'\s+\S+\s+online' peers
-u beta requests
-! stdout $ALPHA
+until alpha $BETA'\s+\S+\s+online' device list
+until beta $ALPHA'\s+\S+\s+online' device list
+u beta device list
+! stdout 'Waiting for your approval'
 u beta h list --tag keep
 stdout 'alpha'
 
 board-set alpha text two.txt
 board-wait beta text two.txt
+```
+
+</details>
+
+## send-to-device
+
+**send --to 只发给指定的已配对设备**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/send-to-device' -v`
+
+**目的**
+
+验证 `unic send --to` 的目标选择，以及 `--to all` 与按名称、按 ID 选择。
+
+
+**流程**
+
+1. 启动 alpha、beta、gamma。alpha 分别与 beta 和 gamma 配对批准，并确认两条连接都已稳定（配对后连接会重建）。
+2. 在 alpha 上执行 `unic send --to beta`。
+3. 在 alpha 上执行 `unic send --to all`。
+4. 在 alpha 上执行 `unic send --to` 一个不存在的设备。
+
+**期望**
+
+- 第 2 步只有 beta 收到内容，gamma 没有收到。
+- 第 3 步 beta 和 gamma 都收到内容。
+- 第 4 步失败，并提示没有这个已配对设备。
+
+**不应**
+
+- 指定设备时把内容发给其他设备。
+- 目标不存在时仍然提交或发送。
+
+<details><summary>脚本 testdata/send-to-device.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+node-start gamma
+pair alpha beta
+pair alpha gamma
+retry-copy alpha beta warm-up-beta
+retry-copy alpha gamma warm-up-gamma
+
+u alpha send --to beta --json only for beta
+stdout '"outcome":"success"'
+until beta 'only for beta' h show
+! until gamma 'only for beta' h show
+
+u alpha send --to all --json for everyone
+stdout '"outcome":"success"'
+until beta 'for everyone' h show
+until gamma 'for everyone' h show
+
+! u alpha send --to nobody not sent
+stderr 'no paired device'
 ```
 
 </details>
@@ -1061,9 +1442,9 @@ stdout '"automatic":false'
 board-set alpha text local.txt
 until alpha 'local_system' h list --json
 ! board-wait beta text local.txt
-u alpha copy manual
+u alpha dev copy manual
 board-wait beta text manual.txt
-u beta copy incoming
+u beta dev copy incoming
 board-wait alpha text incoming.txt
 u alpha config set sync.automatic true
 ! board-wait beta text local.txt
@@ -1097,6 +1478,202 @@ node-start alpha
 u alpha config --json
 stdout '"files":false'
 stdout '"max_file_bytes":100'
+```
+
+</details>
+
+## temporary-transfer
+
+**两个没有配对的 unic 之间做临时传输**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/temporary-transfer' -v`
+
+**目的**
+
+验证 `unic send`（不带 --to）生成链接并等待一个接收方，`unic recv <链接>` 取走内容，内容进入接收方的历史。
+
+
+**流程**
+
+1. 启动 alpha 和 beta，不配对。
+2. alpha 在后台执行 `unic send` 发送一段文字，并打印链接。
+3. beta 执行 `unic recv <链接>`。
+4. alpha 再发送一个文件，beta 用同样方式接收。
+5. 用无效的码、无效的链接和带配对票据前缀的文本接收。
+
+**期望**
+
+- 第 3 步 beta 打印收到的文字，alpha 报告 delivered 并以 0 退出。
+- beta 的历史里有这段文字；alpha 的历史里没有来自 beta 的内容。
+- 第 4 步 beta 的历史里出现该文件。
+- 第 5 步每一种都失败并给出原因，不挂起。
+- 两个设备之间没有建立任何配对关系。
+
+**不应**
+
+- 临时传输让 alpha 和 beta 成为已配对设备。
+- 在日志之外的位置以明文以外的方式暴露链接。
+
+<details><summary>脚本 testdata/temporary-transfer.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+
+u-async s alpha send temp hello from alpha
+u-grab s 'Link: (\S+)' link.txt
+u-async r beta recv @link.txt
+u-wait r
+stdout 'temp hello from alpha'
+u-wait s
+stderr 'delivered'
+until beta 'temp hello from alpha' h show
+u beta h list
+stdout 'external:unic.transfer'
+
+u beta device list
+! stdout alpha
+u alpha device list
+! stdout beta
+
+u-async s2 alpha send -f $WORK/note.txt
+u-grab s2 'Link: (\S+)' link2.txt
+u-async r2 beta recv @link2.txt
+u-wait r2
+stderr 'received file note.txt'
+u-wait s2
+u beta h list
+stdout 'files'
+
+! u beta recv 12345
+stderr 'expected a 6-digit code or a transfer link'
+! u beta recv not-a-link
+stderr 'expected a 6-digit code or a transfer link'
+! u beta recv unic-pair:abc
+stderr 'pairing ticket'
+! u beta recv 482913
+stderr 'code service is unavailable'
+```
+
+</details>
+
+## transfer-code
+
+**用 6 位码完成临时传输，并拒绝配对码**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/transfer-code' -v`
+
+**目的**
+
+验证 `unic send` 在码服务可用时同时显示 6 位码，`unic recv <码>` 通过码取走内容；
+
+配对码不能当作传输码使用，传输码也不能当作配对码使用。
+
+
+**流程**
+
+1. 启动本地码服务，再启动 alpha 和 beta（不配对）。
+2. alpha 在后台执行 `unic send`，打印 6 位码。beta 执行 `unic recv <码>`。
+3. 同一个码再接收一次。
+4. alpha 执行 `unic device add` 生成配对码，beta 用 `unic recv <配对码>` 接收。
+5. alpha 再发送一次，beta 用 `unic device add <传输码>` 加入。
+
+**期望**
+
+- 第 2 步 beta 打印收到的文字，alpha 报告 delivered。
+- 第 3 步失败，提示码已过期或已用过。
+- 第 5 步失败，且 alpha 与 beta 没有成为已配对设备。
+
+**不应**
+
+- 一个码被两次取走。
+- 配对码触发临时传输，或传输码触发配对。
+
+<details><summary>脚本 testdata/transfer-code.txtar</summary>
+
+```
+rendezvous-start
+node-start alpha
+node-start beta
+
+u-async s alpha send via six digits
+u-grab s 'Code: (\d{3} \d{3})' code.txt
+u-async r beta recv @code.txt
+u-wait r
+stdout 'via six digits'
+u-wait s
+stderr 'delivered'
+
+u-async r1 beta recv @code.txt
+! u-wait r1
+stderr 'expired or was already used'
+
+u-async c alpha device add
+u-grab c '(\d{3} \d{3})' pair.txt
+u-async r2 beta recv @pair.txt
+! u-wait r2
+stderr 'this code pairs a device'
+u-wait c
+
+u-async s3 alpha send second one
+u-grab s3 'Code: (\d{3} \d{3})' code3.txt
+u-async j beta device add @code3.txt
+! u-wait j
+stderr 'not a unic pairing code|not valid|invalid'
+u beta device list
+! stdout alpha
+u-kill s3 INT
+```
+
+</details>
+
+## warm-send
+
+**借用已运行服务发送时，完成规则与冷启动相同，且不停止该服务**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/warm-send' -v`
+
+**目的**
+
+验证同一条发送规则同时适用于借用的服务和新启动的临时服务。
+
+
+**流程**
+
+1. 启动 alpha 和 beta 并配对批准，两者都保持运行。
+2. 在 alpha 上执行 `unic send --to all --json`，对端在线。
+3. 停止 beta 后再次提交，对端离线。
+
+**期望**
+
+- 第一次提交报告 outcome 为 success，beta 收到内容。
+- 第二次提交的本地提交为 committed，发送结果不是 success。
+- 两次命令结束后 alpha 的服务仍在运行。
+
+**不应**
+
+- 命令结束后停止借用的服务。
+- 对端离线时报告发送成功。
+
+<details><summary>脚本 testdata/warm-send.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+
+u alpha send --to all --json warm text
+stdout '"submission":'
+stdout '"outcome":"success"'
+until beta 'warm text' h show
+! service-gone alpha
+
+node-stop beta TERM
+sleep 11s
+u alpha send --to all --json warm offline text
+stdout '"phase":"committed"'
+! stdout '"outcome":"success"'
+! service-gone alpha
 ```
 
 </details>

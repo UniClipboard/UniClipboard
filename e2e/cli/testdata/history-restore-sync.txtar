@@ -17,9 +17,9 @@ cp stdout second.txt
 node-start alpha
 node-start beta
 pair alpha beta
-u alpha copy first
+u alpha dev copy first
 board-wait beta text first.txt
-u alpha copy second
+u alpha dev copy second
 board-wait beta text second.txt
 u alpha h use @2
 board-wait alpha text first.txt

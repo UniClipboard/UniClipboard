@@ -100,11 +100,11 @@ enabled = true
 CLI 经现有本机 socket 调用诊断 API，不直接改写配置文件：
 
 ```sh
-unic logs level                                  # 查询本机与远程日志等级
-unic logs level debug --for 15m                   # 临时覆盖本机等级
-unic logs level debug --target remote --for 15m   # 临时覆盖远程等级，不开启上传
-unic logs level reset                            # 清除本机临时覆盖
-unic logs level reset --target remote             # 清除远程临时覆盖
+unic dev logs level                                  # 查询本机与远程日志等级
+unic dev logs level debug --for 15m                   # 临时覆盖本机等级
+unic dev logs level debug --target remote --for 15m   # 临时覆盖远程等级，不开启上传
+unic dev logs level reset                            # 清除本机临时覆盖
+unic dev logs level reset --target remote             # 清除远程临时覆盖
 ```
 
 `--target` 默认 `local`，仅接受 `local` / `remote`；`--for` 默认 15 分钟，解析后必须为 1..3600 整秒。每个目标最多一个覆盖，新设置替换旧设置，操作按宿主控制器接纳顺序生效。持久修改通过配置文件完成。

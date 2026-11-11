@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"io"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -153,6 +154,15 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 		return false, newErr(CodeSyncDisabled, "sync is paused")
 	}
 	targets := b.liveTargets()
+	if len(v.devices) > 0 {
+		kept := targets[:0]
+		for _, s := range targets {
+			if slices.Contains(v.devices, DeviceID(s.peerID)) {
+				kept = append(kept, s)
+			}
+		}
+		targets = kept
+	}
 	if len(targets) == 0 {
 		return false, nil
 	}

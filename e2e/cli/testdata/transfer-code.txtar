@@ -1,0 +1,53 @@
+# 用例: 用 6 位码完成临时传输，并拒绝配对码
+# 目的: 验证 `unic send` 在码服务可用时同时显示 6 位码，`unic recv <码>` 通过码取走内容；
+#       配对码不能当作传输码使用，传输码也不能当作配对码使用。
+# 流程:
+#   1. 启动本地码服务，再启动 alpha 和 beta（不配对）。
+#   2. alpha 在后台执行 `unic send`，打印 6 位码。beta 执行 `unic recv <码>`。
+#   3. 同一个码再接收一次。
+#   4. alpha 执行 `unic device add` 生成配对码，beta 用 `unic recv <配对码>` 接收。
+#   5. alpha 再发送一次，beta 用 `unic device add <传输码>` 加入。
+# 期望:
+#   - 第 2 步 beta 打印收到的文字，alpha 报告 delivered。
+#   - 第 3 步失败，提示码已过期或已用过。
+#   - 第 5 步失败，且 alpha 与 beta 没有成为已配对设备。
+# 不应:
+#   - 一个码被两次取走。
+#   - 配对码触发临时传输，或传输码触发配对。
+
+rendezvous-start
+node-start alpha
+node-start beta
+
+u-async s alpha send via six digits
+u-grab s 'Code: (\d{3} \d{3})' code.txt
+u-async r beta recv @code.txt
+u-wait r
+stdout 'via six digits'
+u-wait s
+stderr 'delivered'
+
+u-async r1 beta recv @code.txt
+! u-wait r1
+stderr 'expired or was already used'
+
+u-async c alpha device add
+u-grab c '(\d{3} \d{3})' pair.txt
+u-async r2 beta recv @pair.txt
+! u-wait r2
+stderr 'this code pairs a device'
+u-wait c
+
+u-async s3 alpha send second one
+u-grab s3 'Code: (\d{3} \d{3})' code3.txt
+u-async j beta device add @code3.txt
+! u-wait j
+stderr 'not a unic pairing code|not valid|invalid'
+u beta device list
+! stdout alpha
+u-kill s3 INT
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

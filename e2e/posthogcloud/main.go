@@ -157,7 +157,7 @@ func run() error {
 			return errors.New("production daemon did not become ready")
 		}
 		for j := 0; j < count; j++ {
-			cmd := exec.CommandContext(ctx, filepath.Join(dir, "unic"), "submit", fmt.Sprintf("Synthetic Cloud acceptance %d %d", i, j), "--request-id", fmt.Sprintf("acceptance-%d-%d", i, j))
+			cmd := exec.CommandContext(ctx, filepath.Join(dir, "unic"), "send", "--to", "all", fmt.Sprintf("Synthetic Cloud acceptance %d %d", i, j), "--request-id", fmt.Sprintf("acceptance-%d-%d", i, j))
 			cmd.Env = n.cmd.Env
 			cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 			if err = cmd.Run(); err != nil {

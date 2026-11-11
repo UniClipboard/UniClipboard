@@ -527,7 +527,7 @@ function joinPane(){
       <div class="otp ${A.state==='err'?'bad':''}" id="otp">${d.map((c,i)=>(i===3?'<span class="dash">–</span>':'')+`<input inputmode="numeric" maxlength="1" value="${c.trim()}" data-i="${i}" ${busy?'disabled':''}>`).join('')}
         <button class="btn primary" style="margin-left:8px;height:40px" onclick="joinByCode()" ${A.otp.length<6||busy?'disabled':''}>配对</button></div>`;
   } else {
-    h += `<div class="small" style="margin:6px 0 10px">粘贴另一台设备的完整地址(<code>unic addr</code> 的输出)。</div>
+    h += `<div class="small" style="margin:6px 0 10px">粘贴另一台设备的完整地址(<code>unic device addr</code> 的输出)。</div>
       <textarea class="input" id="addrin" placeholder="unic1…" ${busy?'disabled':''} oninput="S.add.addr=this.value;document.getElementById('addrbtn').disabled=!this.value.trim()">${A.addr}</textarea>
       <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" onclick="S.add.addr='${ADDR.replace('unic1','unic1zz')}';renderWin()">从剪贴板粘贴</button><span style="flex:1"></span>
       <button class="btn primary" id="addrbtn" onclick="joinByAddr()" ${!A.addr.trim()||busy?'disabled':''}>配对</button></div>`;
@@ -611,7 +611,7 @@ function renderPhone(){
         <button class="btn primary" id="pbtn" onclick="phoneCode()" ${P.otp.replace(' ','').length<6?'disabled':''}>配对</button></div>
       <div class="note" style="margin-top:14px">提示:输入左侧窗口里的数字;输错会提示已过期或已被使用。</div>`;
   } else if(sc==='addr'){
-    body = `<div class="small" style="margin-bottom:10px">粘贴另一台设备的完整地址(<code>unic addr</code> 输出)。</div>
+    body = `<div class="small" style="margin-bottom:10px">粘贴另一台设备的完整地址(<code>unic device addr</code> 输出)。</div>
       <textarea class="input" placeholder="unic1…" oninput="P.addr=this.value;document.getElementById('pbtn').disabled=!this.value.trim()">${P.addr}</textarea>
       ${P.err?`<div class="note err">${I.warn}<span>${P.err}</span></div>`:''}
       <div style="display:flex;gap:8px;margin-top:10px;align-items:center"><button class="btn ghost sm" onclick="phone('code')">改用 6 位数字</button><span style="flex:1"></span>

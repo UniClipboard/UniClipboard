@@ -55,6 +55,17 @@ func (s *submissionEntry) result(id RequestID) SubmissionResult {
 	return r
 }
 
+func deviceKey(ids []DeviceID) string {
+	if ids == nil {
+		return ""
+	}
+	s := "\x00devices"
+	for _, id := range ids {
+		s += "\x00" + string(id)
+	}
+	return s
+}
+
 func backendKey(ids []PluginID) string {
 	if ids == nil {
 		return ""
@@ -101,7 +112,7 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 	if req.RequestID == "" {
 		return nil, newErr(CodeInvalidArgument, "RequestID is required")
 	}
-	key := "submit\x00" + string(req.LeaseID) + "\x00" + string(req.Origin) + backendKey(req.BackendIDs)
+	key := "submit\x00" + string(req.LeaseID) + "\x00" + string(req.Origin) + backendKey(req.BackendIDs) + deviceKey(req.DeviceIDs)
 	if req.action != nil {
 		key = "action\x00" + req.action.act.key() + "\x00" + string(req.action.source)
 	}
@@ -299,8 +310,12 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 	if ierr != nil {
 		return SubmissionResult{}, ierr
 	}
+	devs, derr := e.normalizeDeviceIDs(req.DeviceIDs)
+	if derr != nil {
+		return SubmissionResult{}, derr
+	}
 	e.mu.Lock()
-	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids})
+	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids, DeviceIDs: devs})
 	e.mu.Unlock()
 	if err != nil {
 		return SubmissionResult{}, err
@@ -337,6 +352,28 @@ func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionRes
 		return SubmissionResult{}, newErr(CodeNotFound, "no such submission (it may have expired)")
 	}
 	return entry.result(id), nil
+}
+
+// normalizeDeviceIDs validates an explicit device selection: nil means every
+// device, an empty list is an error, unknown, revoked or repeated IDs are errors.
+func (e *Engine) normalizeDeviceIDs(ids []DeviceID) ([]DeviceID, *Error) {
+	if ids == nil {
+		return nil, nil
+	}
+	if len(ids) == 0 {
+		return nil, newErr(CodeInvalidArgument, "DeviceIDs must be omitted or non-empty")
+	}
+	out := append([]DeviceID(nil), ids...)
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	for i, id := range out {
+		if i > 0 && out[i-1] == id {
+			return nil, newErr(CodeInvalidArgument, "DeviceIDs has a repeated ID")
+		}
+		if _, err := e.loadDevice(string(id)); err != nil {
+			return nil, newErr(CodeInvalidArgument, "unknown device")
+		}
+	}
+	return out, nil
 }
 
 // normalizeBackendIDs validates an explicit backend selection: nil means all

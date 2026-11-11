@@ -9,12 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"time"
 
-	"github.com/rogpeppe/go-internal/lockedfile"
-
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/internal/servicelaunch"
 	"github.com/uniclipboard/unic/internal/servicelifecycle"
 )
 
@@ -28,34 +26,16 @@ type Process struct {
 }
 
 // Sibling resolves the daemon from the same installation as the desktop.
-func Sibling() (string, error) {
-	executable, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	executable, err = filepath.EvalSymlinks(executable)
-	if err != nil {
-		return "", err
-	}
-	name := "unicd"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	return filepath.Join(filepath.Dir(executable), name), nil
-}
+func Sibling() (string, error) { return servicelaunch.Sibling() }
 
 // Start serializes launcher transitions for one state directory.
 // Normal mode replaces an existing service. Lightweight mode reuses a standalone service.
 // A nil process means that only the standalone service remains.
 func Start(ctx context.Context, dir, socket, executable string, normal bool) (*Process, error) {
-	info, err := os.Stat(executable)
-	if err != nil {
-		return nil, fmt.Errorf("locate unicd beside unic-desktop: %w", err)
+	if err := servicelaunch.CheckExecutable(executable); err != nil {
+		return nil, err
 	}
-	if info.IsDir() || (runtime.GOOS != "windows" && info.Mode()&0111 == 0) {
-		return nil, errors.New("unicd is not an executable file")
-	}
-	unlock, err := lockedfile.MutexAt(filepath.Join(dir, "desktop-startup.lock")).Lock()
+	unlock, err := servicelaunch.Lock(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +49,11 @@ func Start(ctx context.Context, dir, socket, executable string, normal bool) (*P
 			return nil, errors.New("socket belongs to a different state directory")
 		}
 		if !normal {
-			if existing.DesktopOwned {
+			switch existing.Mode {
+			case servicelifecycle.ModeDesktop:
 				return nil, errors.New("quit the normal desktop before starting lightweight mode")
+			case servicelifecycle.ModeCLITemporary:
+				return nil, errors.New("a unic command is using a temporary service; retry after it finishes")
 			}
 			return nil, nil
 		}
@@ -80,7 +63,7 @@ func Start(ctx context.Context, dir, socket, executable string, normal bool) (*P
 			return nil, err
 		}
 		// The daemon removes its socket after releasing the Engine lock.
-		if err := wait(stopCtx, func() (bool, error) {
+		if err := servicelaunch.Wait(stopCtx, func() (bool, error) {
 			_, err := os.Stat(socket)
 			return errors.Is(err, os.ErrNotExist), nil
 		}); err != nil {
@@ -143,9 +126,13 @@ func startProcess(ctx context.Context, dir, socket, executable string, normal bo
 		return nil, err
 	}
 	go func() { p.err = cmd.Wait(); close(p.done) }()
+	mode := servicelifecycle.ModeStandalone
+	if normal {
+		mode = servicelifecycle.ModeDesktop
+	}
 	readyCtx, readyCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer readyCancel()
-	err = wait(readyCtx, func() (bool, error) {
+	err = servicelaunch.Wait(readyCtx, func() (bool, error) {
 		select {
 		case <-p.done:
 			if p.err != nil {
@@ -157,7 +144,7 @@ func startProcess(ctx context.Context, dir, socket, executable string, normal bo
 		probeCtx, probeCancel := context.WithTimeout(readyCtx, time.Second)
 		defer probeCancel()
 		instance, err := c.Service(probeCtx)
-		return err == nil && instance.PID == cmd.Process.Pid && instance.Directory == dir && instance.DesktopOwned == normal, nil
+		return err == nil && instance.PID == cmd.Process.Pid && instance.Directory == dir && instance.Mode == mode, nil
 	})
 	if err != nil {
 		_ = p.Stop()
@@ -190,20 +177,5 @@ func (p *Process) Stop() error {
 		return errors.New("unicd required forced shutdown")
 	case <-time.After(5 * time.Second):
 		return errors.New("unicd did not terminate")
-	}
-}
-
-func wait(ctx context.Context, check func() (bool, error)) error {
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if done, err := check(); done || err != nil {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
 	}
 }

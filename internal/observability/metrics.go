@@ -60,6 +60,9 @@ func validRecord(r *engine.DiagnosticRecord) bool {
 }
 
 type instruments struct {
+	syncCounts   map[string]metric.Int64Counter
+	syncTimes    map[string]metric.Float64Histogram
+	exposure     metric.Float64Counter
 	operations   metric.Int64Counter
 	duration     metric.Float64Histogram
 	errors       metric.Int64Counter
@@ -97,7 +100,10 @@ func (g *generation) initMetrics() error {
 		return err
 	}
 	g.inst.failures, err = m.Int64Counter("unic.observability.export_failures", metric.WithUnit("{export}"))
-	return err
+	if err != nil {
+		return err
+	}
+	return g.initSyncMetrics()
 }
 func (g *generation) recordMetric(r engine.DiagnosticRecord) {
 	ctx := context.Background()

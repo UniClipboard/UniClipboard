@@ -15,7 +15,7 @@ import (
 
 func runLogLevels(ctx context.Context, c *api.Client, args []string) error {
 	if len(args) == 0 || args[0] != "level" {
-		return fmt.Errorf("usage: unic logs level [debug|info|warn|error|reset] [--target local|remote] [--for 15m]")
+		return fmt.Errorf("usage: unic dev logs level [debug|info|warn|error|reset] [--target local|remote] [--for 15m]")
 	}
 	args = args[1:]
 	if len(args) == 0 {
@@ -54,5 +54,11 @@ func runLogLevels(ctx context.Context, c *api.Client, args []string) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(state)
+	if err := json.NewEncoder(os.Stdout).Encode(state); err != nil {
+		return err
+	}
+	if level != "reset" {
+		return holdOverride(ctx, c, *target, state)
+	}
+	return nil
 }

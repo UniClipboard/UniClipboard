@@ -13,12 +13,12 @@
 node-start alpha
 u alpha config set history.auto_cleanup false
 u alpha config set history.max_items 1
-u alpha copy protected-one
+u alpha dev copy protected-one
 u alpha h tag @1 --add keep
 exec curl -sf --unix-socket $WORK/.alpha.sock http://unic/v1/history/tags
 stdout keep
-u alpha copy ordinary-two
-u alpha copy ordinary-three
+u alpha dev copy ordinary-two
+u alpha dev copy ordinary-three
 u alpha h show @3
 stdout protected-one
 u alpha h show @2
@@ -43,7 +43,7 @@ u alpha h show @1
 stdout ordinary-three
 ! u alpha h show @2
 u alpha config set history.max_items 0
-u alpha copy unlimited-four
+u alpha dev copy unlimited-four
 u alpha h show @2
 stdout ordinary-three
 u alpha h show @1

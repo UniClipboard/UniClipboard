@@ -10,7 +10,7 @@
 
 当前 Go 桌面端把 CLI 与 mygo GUI 编入同一个 `unic`；`unicd` 虽然不创建主窗口，仍无条件运行 `mygo.App.Run()`，并通过 mygo 读写系统剪贴板、创建托盘和通知。Linux 的 mygo 初始化需要可用的图形显示环境，托盘创建失败后继续运行并不等于支持无头环境。
 
-此外，当前 `unic copy` 先写系统剪贴板再提交，`unic paste` 读取系统剪贴板。只增加“隐藏窗口”或“无托盘”参数，不能满足服务器、容器和无桌面登录会话的使用需求。工作区已有的目录剪贴板适配用于多节点端到端测试；替换 Board 不会消除 daemon 对图形运行时的依赖，也不定义正式的无头产品语义。
+此外，当前 `unic dev copy` 先写系统剪贴板再提交，`unic dev paste` 读取系统剪贴板。只增加“隐藏窗口”或“无托盘”参数，不能满足服务器、容器和无桌面登录会话的使用需求。工作区已有的目录剪贴板适配用于多节点端到端测试；替换 Board 不会消除 daemon 对图形运行时的依赖，也不定义正式的无头产品语义。
 
 无头用户需要通过 CLI/API 配对、审批、提交文本和文件、查看接收记录、读取或导出内容、调用插件 Action。桌面用户仍需要系统剪贴板自动同步和 GUI，安装过程应尽量简单。
 
@@ -59,12 +59,12 @@ GUI（mygo + 自定义 UI Kit）───────────┼── 本�
 
 | 命令 | 语义 |
 |---|---|
-| `unic submit [text]`，省略 text 时读 stdin | 直接导入并经 captured 流水线提交，来源为 explicit；不读写系统剪贴板 |
-| `unic submit -f <file> [more files]` | 显式提交文件；源文件引用和变化检查遵循历史契约 |
+| `unic send [text]`，省略 text 时读 stdin | 直接导入并经 captured 流水线提交，来源为 explicit；不读写系统剪贴板 |
+| `unic send -f <file> [more files]` | 显式提交文件；源文件引用和变化检查遵循历史契约 |
 | `unic history list/show/...` | 沿用历史查询和管理；列表只含元数据，show 是显式内容读取 |
 | `unic history export <id> --output <dir>` | 将内容物化到用户指定目录，不写系统剪贴板；导出覆盖、路径与多部件规则在 CLI/API 契约中补齐 |
-| `unic copy [text]` / `unic copy -f ...` | 请求桌面适配器写系统剪贴板并显式提交一次，保留当前桌面意图 |
-| `unic paste` | 经适配器读取当前系统剪贴板；不以最新历史代替 |
+| `unic dev copy [text]` / `unic dev copy -f ...` | 请求桌面适配器写系统剪贴板并显式提交一次，保留当前桌面意图 |
+| `unic dev paste` | 经适配器读取当前系统剪贴板；不以最新历史代替 |
 | `unic history use <id>` | 经适配器应用历史，不重新提交或同步 |
 | `unic history action <id> <key>` | 执行 Action 并返回新历史标识与提交/同步结果；默认不写系统剪贴板 |
 | `unic history action <id> <key> --apply` | Action 成功后再请求适配器应用结果 |

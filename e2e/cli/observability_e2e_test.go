@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -37,8 +38,8 @@ func TestObservability(t *testing.T) {
 	h := newObservabilityRun(t)
 	h.run(t, "default-off", func(t *testing.T) {
 		h.start(t, "")
-		h.cli(t, "logs", "level")
-		h.cli(t, "diagnostics", "telemetry")
+		h.cli(t, "dev", "logs", "level")
+		h.cli(t, "dev", "diagnostics", "telemetry")
 		h.requireNoRequests(t, 200*time.Millisecond)
 	})
 	h.run(t, "invalid-input", func(t *testing.T) {
@@ -54,37 +55,37 @@ func TestObservability(t *testing.T) {
 		}
 	})
 	h.run(t, "level-override", func(t *testing.T) {
-		h.cli(t, "logs", "level", "debug", "--for", "1s")
+		h.cli(t, "dev", "logs", "level", "debug", "--for", "1s")
 		h.contains(t, "/v1/diagnostics/log-level", `"source":"override"`)
 		h.cli(t, "config", "set", "logging.level", `"error"`)
 		time.Sleep(1100 * time.Millisecond)
 		h.contains(t, "/v1/diagnostics/log-level", `"effective_level":"error"`)
-		h.cli(t, "logs", "level", "debug", "--for", "1s")
-		h.cli(t, "logs", "level", "warn", "--for", "3s")
+		h.cli(t, "dev", "logs", "level", "debug", "--for", "1s")
+		h.cli(t, "dev", "logs", "level", "warn", "--for", "3s")
 		time.Sleep(1100 * time.Millisecond)
 		h.contains(t, "/v1/diagnostics/log-level", `"effective_level":"warn"`)
-		h.cli(t, "logs", "level", "reset")
+		h.cli(t, "dev", "logs", "level", "reset")
 	})
 	h.run(t, "remote-logs-metrics", func(t *testing.T) {
 		h.stop(t)
 		h.start(t, h.server.URL)
-		h.cli(t, "logs", "level", "debug", "--target", "remote", "--for", "15m")
+		h.cli(t, "dev", "logs", "level", "debug", "--target", "remote", "--for", "15m")
 		h.cli(t, "config", "set", "telemetry.logs.enabled", "true")
 		h.cli(t, "config", "set", "telemetry.enabled", "true")
-		h.cli(t, "copy", "otlp-synthetic-content-secret")
+		h.cli(t, "dev", "copy", "otlp-synthetic-content-secret")
 		h.eventually(t, func() bool { return h.hasPath("/v1/logs") && h.hasPath("/v1/metrics") })
 		h.assertOTLP(t)
 	})
 	h.run(t, "log-level-branches", func(t *testing.T) {
-		h.cli(t, "logs", "level", "error", "--for", "1h")
-		h.cli(t, "logs", "level", "debug", "--target", "remote", "--for", "1h")
+		h.cli(t, "dev", "logs", "level", "error", "--for", "1h")
+		h.cli(t, "dev", "logs", "level", "debug", "--target", "remote", "--for", "1h")
 		mark := time.Now()
 		code, _ := h.request(t, "POST", "/test/logs", "")
 		if code != 200 {
 			t.Fatal("fixture failed")
 		}
 		h.eventually(t, func() bool { return h.hasLogSince("pipeline.completed", mark) })
-		h.cli(t, "logs", "level", "reset")
+		h.cli(t, "dev", "logs", "level", "reset")
 	})
 	h.run(t, "metrics-idempotency", func(t *testing.T) {
 		before := h.metricCount("commit", "succeeded")
@@ -118,13 +119,13 @@ func TestObservability(t *testing.T) {
 			t.Fatal("pressure fixture failed")
 		}
 		h.eventually(t, func() bool { return h.signalDrops(t, "logs") > before })
-		h.cli(t, "copy", "pressure-synthetic-copy")
+		h.cli(t, "dev", "copy", "pressure-synthetic-copy")
 		h.mu.Lock()
 		h.status = 200
 		h.mu.Unlock()
 	})
 	h.run(t, "resume", func(t *testing.T) {
-		h.cli(t, "logs", "level", "debug", "--for", "1s")
+		h.cli(t, "dev", "logs", "level", "debug", "--for", "1s")
 		_ = h.cmd.Process.Signal(syscall.SIGSTOP)
 		time.Sleep(1100 * time.Millisecond)
 		_ = h.cmd.Process.Signal(syscall.SIGCONT)
@@ -149,7 +150,7 @@ func TestObservability(t *testing.T) {
 		h.cli(t, "config", "set", "telemetry.endpoint", `"https://127.0.0.1:1"`)
 		h.contains(t, "/v1/diagnostics/telemetry", `"telemetry.endpoint"`)
 		h.cli(t, "config", "set", "telemetry.enabled", "true")
-		h.cli(t, "copy", "endpoint-synthetic-copy")
+		h.cli(t, "dev", "copy", "endpoint-synthetic-copy")
 		h.eventually(t, func() bool { return h.hasRecentPath("/v1/metrics") })
 	})
 	h.run(t, "export-failures", func(t *testing.T) {
@@ -157,7 +158,7 @@ func TestObservability(t *testing.T) {
 		h.status = 429
 		h.mu.Unlock()
 		h.eventually(t, func() bool { return strings.Contains(string(h.get(t, "/v1/diagnostics/telemetry")), `"degraded"`) })
-		h.cli(t, "copy", "otlp-second-synthetic-secret")
+		h.cli(t, "dev", "copy", "otlp-second-synthetic-secret")
 		h.mu.Lock()
 		h.status = 200
 		h.mu.Unlock()
@@ -208,7 +209,7 @@ func TestObservability(t *testing.T) {
 			t.Fatal(err)
 		}
 		h.start(t, "")
-		h.cli(t, "logs", "level", "debug", "--for", "15m")
+		h.cli(t, "dev", "logs", "level", "debug", "--for", "15m")
 		code, _ := h.request(t, "POST", "/test/logs", "")
 		if code != 200 {
 			t.Fatal("fixture failed")
@@ -240,6 +241,7 @@ type otlpRequest struct {
 	Authorized bool
 }
 type observabilityRun struct {
+	syncMetricStart  time.Time
 	responseDelay    time.Duration
 	responseLocation string
 	untrusted        bool
@@ -365,6 +367,9 @@ func (h *observabilityRun) stop(t *testing.T) {
 	select {
 	case err := <-h.done:
 		if err != nil {
+			if log, _ := os.ReadFile(filepath.Join(h.dir, "daemon.log")); strings.Contains(string(log), "WARNING: DATA RACE") {
+				t.Logf("race report: %s", log)
+			}
 			t.Errorf("daemon exit: %v", err)
 		}
 	case <-time.After(5 * time.Second):
@@ -542,6 +547,25 @@ func (h *observabilityRun) artifacts() {
 		binaryHashes[name] = string(v)
 	}
 	manifest["binaries_sha256"] = binaryHashes
+	daemonPath := filepath.Join(binDir, "unicd")
+	if h.executable != "" {
+		daemonPath = h.executable
+	}
+	if info, err := buildinfo.ReadFile(daemonPath); err == nil {
+		settings := map[string]string{}
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "-race", "-tags", "vcs.revision", "vcs.modified", "GOOS", "GOARCH":
+				settings[setting.Key] = setting.Value
+			}
+		}
+		manifest["daemon_build_settings"] = settings
+		manifest["daemon_race"] = settings["-race"] == "true"
+		if strings.Contains(settings["-tags"], "unic_e2e") {
+			manifest["test_daemon_build_tag"] = "unic_e2e"
+			manifest["production_release_assembly"] = false
+		}
+	}
 	if !manifest["source_unchanged"].(bool) {
 		h.t.Error("source files changed during the acceptance run")
 	}
@@ -580,7 +604,9 @@ go build -race -tags unic_e2e -o "$bin/unicd" ./app/service/cmd/unicd
 go build -race -o "$bin/unic" ./app/service/cmd/unic
 TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" go test -race ./e2e/cli -run TestObservability -count=1 -v
 `
-	if h.posthog {
+	if strings.HasPrefix(h.artifactName, "sync-") {
+		replay = strings.ReplaceAll(replay, "-run TestObservability", "-run '^TestSyncObservability($|Faults$)'")
+	} else if h.posthog {
 		replay = strings.ReplaceAll(replay, "-run TestObservability", "-run TestPostHog")
 	}
 	_ = os.WriteFile(filepath.Join(d, "replay.sh"), []byte(replay), 0700)
@@ -603,13 +629,18 @@ TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" go test -race ./e2e/cli -run 
 		_ = os.WriteFile(filepath.Join(d, "requests.redacted.json"), b, 0600)
 		b, _ = json.MarshalIndent(analytics, "", "  ")
 		_ = os.WriteFile(filepath.Join(d, "analytics.decoded.json"), b, 0600)
-		b, _ = json.MarshalIndent(map[string]any{"hosted": "NOT_RUN", "reason": "Cloud project and region not selected", "local_failed": h.t.Failed()}, "", "  ")
+		b, _ = json.MarshalIndent(map[string]any{"hosted": "NOT_RUN", "reason": "Hosted upload/read-back is separately authorized", "local_failed": h.t.Failed()}, "", "  ")
 		_ = os.WriteFile(filepath.Join(d, "hosted-receipt.json"), b, 0600)
 		exit := 0
 		if h.t.Failed() {
 			exit = 1
 		}
-		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": "unic_e2e", "test_selector": "^TestPostHog", "exit_code": exit}, "", "  ")
+		selector := "^TestPostHog"
+		if strings.HasPrefix(h.artifactName, "sync-") {
+			selector = "^TestSyncObservability$"
+			h.syncArtifacts(d, decoded)
+		}
+		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": "unic_e2e", "test_selector": selector, "exit_code": exit}, "", "  ")
 		_ = os.WriteFile(filepath.Join(d, "commands.json"), b, 0600)
 		entries, _ := os.ReadDir(d)
 		var sums strings.Builder
@@ -784,7 +815,7 @@ func TestObservabilityPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	ticket := ticketResult.Ticket
-	b.cli(t, "pair", ticket)
+	b.cli(t, "device", "add", ticket)
 	for _, h := range []*observabilityRun{a, b} {
 		var pending []struct {
 			ID          string `json:"id"`
@@ -794,7 +825,7 @@ func TestObservabilityPipeline(t *testing.T) {
 		if pending[0].Fingerprint == "" {
 			t.Fatal("pairing has no fingerprint")
 		}
-		h.cli(t, "approve", pending[0].ID, pending[0].Fingerprint)
+		h.cli(t, "device", "approve", pending[0].ID, pending[0].Fingerprint)
 	}
 	for _, h := range []*observabilityRun{a, b} {
 		h.eventually(t, func() bool {
@@ -807,7 +838,7 @@ func TestObservabilityPipeline(t *testing.T) {
 			return len(st.Peers) > 0 && st.Peers[0].Connected
 		})
 	}
-	a.cli(t, "copy", "pipeline-private-synthetic-content")
+	a.cli(t, "dev", "copy", "pipeline-private-synthetic-content")
 	b.eventually(t, func() bool {
 		code, body := b.request(t, "GET", "/v1/clipboard", "")
 		return code == 200 && strings.Contains(string(body), "pipeline-private-synthetic-content")
@@ -843,7 +874,7 @@ func observabilitySourceHashes(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "engine", "internal", "app/service", "app/desktop", "e2e/cli")
+	cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "Makefile", "engine", "internal", "app/service", "app/desktop", "e2e/cli", "e2e/syncpath")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
@@ -904,7 +935,7 @@ func TestObservabilityProductionCycle(t *testing.T) {
 	h.requireNoRequests(t, 64*time.Second)
 	enabled := time.Now()
 	h.cli(t, "config", "set", "telemetry.enabled", "true")
-	h.cli(t, "copy", "production-cycle-private-fixture")
+	h.cli(t, "dev", "copy", "production-cycle-private-fixture")
 	h.eventually(t, func() bool { return h.hasPath("/v1/metrics") })
 	h.mu.Lock()
 	var first time.Time
@@ -935,9 +966,9 @@ func TestObservabilityResources(t *testing.T) {
 					h.cli(t, "config", "set", "telemetry.enabled", "true")
 				}
 				if mode == "debug" || mode == "pressure" {
-					h.cli(t, "logs", "level", "debug", "--for", "15m")
+					h.cli(t, "dev", "logs", "level", "debug", "--for", "15m")
 					h.cli(t, "config", "set", "telemetry.logs.enabled", "true")
-					h.cli(t, "logs", "level", "debug", "--target", "remote", "--for", "15m")
+					h.cli(t, "dev", "logs", "level", "debug", "--target", "remote", "--for", "15m")
 				}
 				if mode == "pressure" {
 					h.mu.Lock()
@@ -1000,7 +1031,7 @@ func TestObservabilityFaults(t *testing.T) {
 			}
 			h.start(t, endpoint)
 			h.cli(t, "config", "set", "telemetry.enabled", "true")
-			h.cli(t, "copy", "fault-private-fixture")
+			h.cli(t, "dev", "copy", "fault-private-fixture")
 			h.eventually(t, func() bool { return strings.Contains(string(h.get(t, "/v1/diagnostics/telemetry")), `"degraded"`) })
 			expected := scenario.name
 			switch expected {

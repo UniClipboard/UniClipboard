@@ -1,0 +1,42 @@
+# 用例: 冷启动 CLI 配对时保持临时服务直到对端批准，批准窗口到期时给出明确结果
+# 目的: 验证 `unic device add` 在临时服务下是有界会话：批准后报告 connected，到期则报告仍在等待，两者都不让服务提前退出。
+# 流程:
+#   1. beta 保持运行；alpha 没有服务。alpha 在后台执行 `unic device add <beta 地址>`。
+#   2. 双方核对指纹并批准；等待后台命令结束。
+#   3. 第三台全新设备 gamma 用很短的窗口配对 beta，且无人批准。
+# 期望:
+#   - 批准后 alpha 的配对命令成功并报告 connected。
+#   - gamma 的命令以退出码 4 结束，并报告批准仍在等待。
+#   - 两个临时服务在各自命令结束后都已退出。
+# 不应:
+#   - 用无关设备的事件当作配对完成。
+#   - 把仍在等待的批准报告成成功。
+
+node-start beta
+node-define alpha
+u beta device addr
+cp stdout beta.addr
+
+u-async p alpha device add @beta.addr
+until beta '[0-9A-F]{4} [0-9A-F]{4}' device list
+until alpha '[0-9A-F]{4} [0-9A-F]{4}' device list
+pair beta alpha decide
+u-wait p
+stdout 'approved: connected'
+service-gone alpha
+
+node-define gamma
+u beta device addr
+cp stdout beta2.addr
+u-async q gamma ENV:UNIC_E2E_PAIRING_WINDOW_MS=3000 device add @beta2.addr
+! u-wait q
+stderr 'approval still pending'
+stderr 'exit status 4'
+service-gone gamma
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- gamma/config.toml --
+device_name = "gamma"

@@ -53,29 +53,31 @@ type deviceCandidate struct {
 }
 
 type demo struct {
-	tags                                                                     []demoTag
-	tagManager                                                               tagManagerState
-	assignTagsOpen                                                           bool
-	search                                                                   demoSearch
-	page, theme, query, kind, source, tag, timeRange, layout                 string
-	nav, settings                                                            uikit.NavState
-	list                                                                     uikit.ListState
-	deviceList                                                               uikit.SourceState
-	entries                                                                  []entry
-	devices                                                                  []device
-	selected                                                                 string
-	confirmEntries                                                           []string
-	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook   bool
-	compact                                                                  bool
-	gridSize                                                                 float64
-	deviceTask, fieldError, notice, confirm, confirmID                       string
-	deviceName, passphrase, confirmation, invitation                         string
-	pending                                                                  []pendingDevice
-	candidates                                                               []deviceCandidate
-	inviteCode, inviteMode, connectInput, renameValue, approveID, deviceNote string
-	renaming, approveChecked                                                 bool
-	options                                                                  map[string]bool
-	choices                                                                  map[string]string
+	openQuickPanel                                                         func()
+	quick                                                                  *quickDemo
+	tags                                                                   []demoTag
+	tagManager                                                             tagManagerState
+	assignTagsOpen                                                         bool
+	search                                                                 demoSearch
+	page, theme, query, kind, source, tag, timeRange, layout               string
+	nav, settings                                                          uikit.NavState
+	list                                                                   uikit.ListState
+	deviceList                                                             uikit.SourceState
+	entries                                                                []entry
+	devices                                                                []device
+	selected                                                               string
+	confirmEntries                                                         []string
+	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook bool
+	compact                                                                bool
+	gridSize                                                               float64
+	deviceTask, fieldError, notice, confirm, confirmID                     string
+	deviceName, passphrase, confirmation, invitation                       string
+	pending                                                                []pendingDevice
+	candidates                                                             []deviceCandidate
+	inviteCode, inviteMode, connectInput, renameValue, deviceNote          string
+	renaming, deviceDetailOpen                                             bool
+	options                                                                map[string]bool
+	choices                                                                map[string]string
 }
 
 func newDemo(page, theme string) *demo {
@@ -129,6 +131,7 @@ func Run(args []string) error {
 	flags := flag.NewFlagSet("gui --demo", flag.ContinueOnError)
 	page := flags.String("page", "history", "history, devices, settings, setup, unlock, startup, recovery, quick-panel")
 	theme := flags.String("theme", "system", "system, light, dark")
+	quickState := flags.String("quick-state", "history", "history, locked, disconnected, empty")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -144,6 +147,12 @@ func Run(args []string) error {
 	if !slices.Contains([]string{"system", "light", "dark"}, *theme) {
 		return fmt.Errorf("unknown demo theme: %s", *theme)
 	}
+	if !slices.Contains([]string{"history", "locked", "disconnected", "empty"}, *quickState) {
+		return fmt.Errorf("unknown quick panel state: %s", *quickState)
+	}
+	if *page == "quick-panel" {
+		return runQuickDemo(*theme, *quickState)
+	}
 	d := newDemo(*page, *theme)
 	if *page == "devices" {
 		d.page, d.devicesOpen = "history", true
@@ -151,9 +160,6 @@ func Run(args []string) error {
 	mygo.App.SetName("unic UI Demo")
 	mygo.App.WhenReady(func() {
 		width, height := 1100, 720
-		if *page == "quick-panel" {
-			width, height = 780, 520
-		}
 		opts := mygo.WindowOptions{Title: "unic · 界面演示", Width: width, Height: height, MinWidth: 600, MinHeight: 480, Content: ui.View(d.view)}
 		if uikit.DefaultSkin() == uikit.MacOS {
 			opts.TitleBarStyle = mygo.TitleBarHidden
@@ -161,6 +167,21 @@ func Run(args []string) error {
 			opts.Vibrancy = mygo.VibrancySidebar
 		}
 		mygo.NewWindow(opts)
+		var quickWindow *mygo.Window
+		var quick *quickDemo
+		d.openQuickPanel = func() {
+			if quickWindow == nil {
+				quick = newQuickDemo(d.theme, "history")
+				quickWindow = openQuickDemoWindow(quick, func() { quickWindow = nil })
+			} else {
+				quick.visible = true
+				quick.expanded = false
+				quick.menu = ""
+				quick.applySearch()
+				quickWindow.Show()
+				quickWindow.Invalidate()
+			}
+		}
 	})
 	return mygo.App.Run()
 }
@@ -285,7 +306,7 @@ func (d *demo) confirmDialog(c *ui.Context, k uikit.Kit) {
 		if strings.HasPrefix(d.confirmID, "device:") {
 			id := strings.TrimPrefix(d.confirmID, "device:")
 			d.devices = slices.DeleteFunc(d.devices, func(v device) bool { return v.id == id })
-			d.deviceList.Value = "local"
+			d.deviceList.Value, d.deviceDetailOpen = "local", false
 		} else {
 			d.entries = slices.DeleteFunc(d.entries, func(v entry) bool { return slices.Contains(d.confirmEntries, v.id) })
 			d.selected = ""

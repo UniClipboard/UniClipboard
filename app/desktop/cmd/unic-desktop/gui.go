@@ -851,7 +851,7 @@ func (g *gui) joinPane(c *ui.Context, s snapshot) {
 			}
 		})
 	} else {
-		k.Text(c, "粘贴另一台设备的完整地址(unic addr 的输出)。", uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+		k.Text(c, "粘贴另一台设备的完整地址(unic device addr 的输出)。", uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
 		field := k.TextField(c.Key("addr-input"), uikit.TextFieldProps{
 			Label: "完整地址", Value: &g.addrInput, Placeholder: "tc…", Disabled: s.joinBusy,
 		})

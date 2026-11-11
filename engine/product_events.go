@@ -12,6 +12,7 @@ type ProductEvent struct {
 	Code           Code
 	ContentKind    DiagnosticContentKind
 	ActionCategory string
+	SourceKind     string
 }
 
 func (e *Engine) productEvent(ctx context.Context, event ProductEvent) {
@@ -20,4 +21,18 @@ func (e *Engine) productEvent(ctx context.Context, event ProductEvent) {
 	}
 	defer func() { _ = recover() }()
 	e.opts.ProductEvents(ctx, event)
+}
+
+// productSource reduces stored origin without retaining the originating device.
+func productSource(origin string) string {
+	switch origin {
+	case "local_system", "explicit":
+		return "local"
+	case "remote_device":
+		return "remote"
+	case "external", "action", "migration":
+		return origin
+	default:
+		return "unknown"
+	}
 }

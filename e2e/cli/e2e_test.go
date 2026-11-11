@@ -8,7 +8,9 @@ package e2e
 import (
 	"bytes"
 	"compress/zlib"
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"math/rand"
@@ -24,6 +26,9 @@ import (
 	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
+
+	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/internal/rendezvous/rvtest"
 )
 
 var binDir string
@@ -96,7 +101,35 @@ type state struct {
 	mu    sync.Mutex
 	work  string
 	nodes map[string]*node
+	async map[string]*asyncRun
+	rv    string // URL of the script's local code service, if started
 }
+
+// asyncRun is a unic command running in the background of a script.
+type asyncRun struct {
+	cmd      *exec.Cmd
+	out, err lockedBuffer
+	done     chan struct{}
+	failed   error
+}
+
+// lockedBuffer lets a script read the output of a command that is still running.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+func (l *lockedBuffer) Bytes() []byte {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return bytes.Clone(l.b.Bytes())
+}
+func (l *lockedBuffer) String() string { return string(l.Bytes()) }
 
 type node struct {
 	name string
@@ -104,29 +137,42 @@ type node struct {
 	sock string
 	cmd  *exec.Cmd
 	done chan struct{}
+	rv   string
 }
 
 func (n *node) env() []string {
+	rv := n.rv
+	if rv == "" {
+		rv = "http://127.0.0.1:1" // unreachable: codes are unavailable unless a script starts a service
+	}
 	return append(os.Environ(), "UNIC_HOME="+n.home, "UNIC_SOCK="+n.sock,
-		"UNIC_MOCK_CLIPBOARD_DIR="+filepath.Join(n.home, "board"), "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+		"UNIC_MOCK_CLIPBOARD_DIR="+filepath.Join(n.home, "board"), "UNIC_RENDEZVOUS_URL="+rv)
 }
 
 func setup(env *testscript.Env) error {
-	st := &state{work: env.WorkDir, nodes: map[string]*node{}}
+	st := &state{work: env.WorkDir, nodes: map[string]*node{}, async: map[string]*asyncRun{}}
 	env.Values["state"] = st
 	env.Defer(func() {
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		for _, n := range st.nodes {
-			if dest := os.Getenv("UNIC_E2E_ARTIFACTS"); dest != "" {
-				for _, query := range [][]string{{"capabilities"}, {"received"}, {"h", "list", "--json"}} {
+			stopped := false
+			if n.done != nil {
+				select {
+				case <-n.done:
+					stopped = true
+				default:
+				}
+			}
+			if dest := os.Getenv("UNIC_E2E_ARTIFACTS"); dest != "" && !stopped {
+				for _, query := range [][]string{{"dev", "capabilities"}, {"recv"}, {"h", "list", "--json"}} {
 					if out, _, e := n.unic(query...); e == nil {
 						dir := filepath.Join(dest, filepath.Base(env.WorkDir))
 						_ = os.MkdirAll(dir, 0700)
-						_ = os.WriteFile(filepath.Join(dir, n.name+"."+query[0]+".json"), []byte(out), 0600)
+						_ = os.WriteFile(filepath.Join(dir, n.name+"."+query[len(query)-1]+".json"), []byte(out), 0600)
 					}
 				}
-				if out, _, err := n.unic("cache", "--json"); err == nil {
+				if out, _, err := n.unic("dev", "cache", "--json"); err == nil {
 					dir := filepath.Join(dest, filepath.Base(env.WorkDir))
 					_ = os.MkdirAll(dir, 0700)
 					_ = os.WriteFile(filepath.Join(dir, n.name+".cache.json"), []byte(out), 0600)
@@ -148,6 +194,14 @@ func setup(env *testscript.Env) error {
 		exportArtifact(env, st)
 	})
 	return nil
+}
+
+// listening probes the socket directly. The CLI would start a temporary service instead.
+func (n *node) listening() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := api.NewClient(n.sock).Service(ctx)
+	return err == nil
 }
 
 func (n *node) kill(sig syscall.Signal) {
@@ -191,18 +245,25 @@ func commands() map[string]func(*testscript.TestScript, bool, []string) {
 			ts.Check(err)
 			time.Sleep(d)
 		},
-		"logs":            cmdLogs,
-		"retry-copy":      cmdRetryCopy,
-		"node-id":         cmdNodeID,
-		"external-ref":    cmdExternalRef,
-		"file-path":       cmdFilePath,
-		"history-age":     cmdHistoryAge,
-		"cache-link":      cmdCacheLink,
-		"config-conflict": cmdConfigConflict,
-		"file-wait":       cmdFileWait,
-		"board-set":       cmdBoardSet,
-		"board-wait":      cmdBoardWait,
-		"install-plugin":  cmdInstallPlugin,
+		"logs":             cmdLogs,
+		"retry-copy":       cmdRetryCopy,
+		"node-id":          cmdNodeID,
+		"external-ref":     cmdExternalRef,
+		"file-path":        cmdFilePath,
+		"history-age":      cmdHistoryAge,
+		"cache-link":       cmdCacheLink,
+		"config-conflict":  cmdConfigConflict,
+		"file-wait":        cmdFileWait,
+		"board-set":        cmdBoardSet,
+		"board-wait":       cmdBoardWait,
+		"install-plugin":   cmdInstallPlugin,
+		"node-define":      cmdNodeDefine,
+		"u-async":          cmdUAsync,
+		"u-wait":           cmdUWait,
+		"u-kill":           cmdUKill,
+		"u-grab":           cmdUGrab,
+		"rendezvous-start": cmdRendezvousStart,
+		"service-gone":     cmdServiceGone,
 	}
 }
 
@@ -218,7 +279,7 @@ func cmdNodeStart(ts *testscript.TestScript, neg bool, args []string) {
 	st.mu.Lock()
 	n := st.nodes[args[0]]
 	if n == nil {
-		n = &node{name: args[0], home: filepath.Join(st.work, args[0])}
+		n = &node{name: args[0], home: filepath.Join(st.work, args[0]), rv: st.rv}
 		n.sock = filepath.Join(st.work, "."+args[0]+".sock")
 		st.nodes[args[0]] = n
 	}
@@ -268,7 +329,7 @@ func cmdNodeStart(ts *testscript.TestScript, neg bool, args []string) {
 	n.cmd, n.done = cmd, done
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, stderr, err := n.unic("paste"); err == nil || strings.Contains(stderr, "the clipboard holds no text or files") {
+		if n.listening() {
 			if neg {
 				ts.Fatalf("node %s started but it should not have", args[0])
 			}
@@ -367,7 +428,7 @@ func cmdWait(ts *testscript.TestScript, neg bool, args []string) {
 }
 
 func pendingFingerprint(ts *testscript.TestScript, n *node) string {
-	out, _, err := n.unic("requests")
+	out, _, err := n.unic("device", "list")
 	ts.Check(err)
 	fp := regexp.MustCompile(`[0-9A-F]{4}(?: [0-9A-F]{4}){7}`).FindString(out)
 	if fp == "" {
@@ -376,7 +437,7 @@ func pendingFingerprint(ts *testscript.TestScript, n *node) string {
 	return fp
 }
 
-// pair <a> <b> [request|approve]: b pairs with a's full address (request),
+// pair <a> <b> [request|approve|decide]: b pairs with a's full address (request),
 // then both users approve after the fingerprints are compared equal
 // (approve), and both sides see the other online. Without a stage, both run.
 func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
@@ -400,9 +461,9 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 	}
 	idA, idB := idOf(a), idOf(b)
 	if stage == "request" || stage == "both" {
-		addr, _, err := a.unic("addr")
+		addr, _, err := a.unic("device", "addr")
 		ts.Check(err)
-		out, _, err := b.unic("pair", strings.TrimSpace(addr))
+		out, _, err := b.unic("device", "add", strings.TrimSpace(addr))
 		ts.Check(err)
 		fp := regexp.MustCompile(`(?m)^Fingerprint: ([0-9A-F ]+?)\s{2}`).FindStringSubmatch(out)
 		if fp == nil {
@@ -411,7 +472,7 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 		waitFor := func(n *node, id string) {
 			deadline := time.Now().Add(30 * time.Second)
 			for time.Now().Before(deadline) {
-				o, _, _ := n.unic("requests")
+				o, _, _ := n.unic("device", "list")
 				if strings.Contains(o, id) {
 					if !strings.Contains(o, fp[1]) {
 						ts.Fatalf("fingerprint on %s differs from %q:\n%s", n.name, fp[1], o)
@@ -425,20 +486,23 @@ func cmdPair(ts *testscript.TestScript, _ bool, args []string) {
 		waitFor(a, idB)
 		waitFor(b, idA)
 	}
-	if stage == "approve" || stage == "both" {
+	if stage == "approve" || stage == "both" || stage == "decide" {
 		fpA, fpB := pendingFingerprint(ts, a), pendingFingerprint(ts, b)
-		if _, _, err := a.unic("approve", idB); err == nil {
+		if _, _, err := a.unic("device", "approve", idB); err == nil {
 			ts.Fatalf("approval without fingerprint succeeded")
 		}
-		if _, _, err := a.unic("approve", idB, "0000 0000 0000 0000 0000 0000 0000 0000"); err == nil {
+		if _, _, err := a.unic("device", "approve", idB, "0000 0000 0000 0000 0000 0000 0000 0000"); err == nil {
 			ts.Fatalf("approval with wrong fingerprint succeeded")
 		}
-		_, _, err := a.unic("approve", idB, fpB)
+		_, _, err := a.unic("device", "approve", idB, fpB)
 		ts.Check(err)
-		_, _, err = b.unic("approve", idA, fpA)
+		_, _, err = b.unic("device", "approve", idA, fpA)
 		ts.Check(err)
+		if stage == "decide" {
+			return // approvals only: a temporary service may end as soon as its own command does
+		}
 		for _, p := range [][2]string{{a.name, idB}, {b.name, idA}} {
-			cmdWait(ts, false, []string{p[0], p[1] + `\s+\S+\s+online`, "peers"})
+			cmdWait(ts, false, []string{p[0], p[1] + `\s+\S+\s+online`, "device", "list"})
 		}
 	}
 }
@@ -637,7 +701,7 @@ func cmdRetryCopy(ts *testscript.TestScript, _ bool, args []string) {
 	from, to := st.node(ts, args[0]), st.node(ts, args[1])
 	deadline := time.Now().Add(90 * time.Second)
 	for try := 1; time.Now().Before(deadline); try++ {
-		_, _, err := from.unic("copy", fmt.Sprintf("%s %d", args[2], try))
+		_, _, err := from.unic("dev", "copy", fmt.Sprintf("%s %d", args[2], try))
 		ts.Check(err)
 		until := time.Now().Add(5 * time.Second)
 		for time.Now().Before(until) {
@@ -650,4 +714,205 @@ func cmdRetryCopy(ts *testscript.TestScript, _ bool, args []string) {
 		}
 	}
 	ts.Fatalf("%s never reached %s", args[0], args[1])
+}
+
+// u-async <id> <node> [ENV:K=V...] args...: start unic as that node in the background. An argument
+// "@file" is replaced by the trimmed content of a file from the case's workdir.
+func cmdUAsync(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) < 3 {
+		ts.Fatalf("usage: u-async id node [ENV:K=V...] args...")
+	}
+	st := stateOf(ts)
+	n := st.node(ts, args[1])
+	cmd := exec.Command(filepath.Join(binDir, "unic"))
+	cmd.Env = n.env()
+	for _, a := range args[2:] {
+		switch {
+		case strings.HasPrefix(a, "ENV:"):
+			cmd.Env = append(cmd.Env, strings.TrimPrefix(a, "ENV:"))
+		case strings.HasPrefix(a, "@"):
+			cmd.Args = append(cmd.Args, strings.TrimSpace(ts.ReadFile(a[1:])))
+		default:
+			cmd.Args = append(cmd.Args, a)
+		}
+	}
+	run := &asyncRun{cmd: cmd, done: make(chan struct{})}
+	cmd.Stdout, cmd.Stderr = &run.out, &run.err
+	ts.Check(cmd.Start())
+	go func() { run.failed = cmd.Wait(); close(run.done) }()
+	st.mu.Lock()
+	st.async[args[0]] = run
+	st.mu.Unlock()
+	ts.Defer(func() { _ = cmd.Process.Kill() })
+}
+
+// u-kill <id> [KILL|INT]: signal a background command and wait until it has exited.
+func cmdUKill(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) < 1 || len(args) > 2 {
+		ts.Fatalf("usage: u-kill id [KILL|INT]")
+	}
+	sig := syscall.SIGKILL
+	if len(args) == 2 {
+		switch args[1] {
+		case "KILL":
+		case "INT":
+			sig = syscall.SIGINT
+		default:
+			ts.Fatalf("unsupported signal %q", args[1])
+		}
+	}
+	st := stateOf(ts)
+	st.mu.Lock()
+	run := st.async[args[0]]
+	st.mu.Unlock()
+	if run == nil {
+		ts.Fatalf("unknown background command %q", args[0])
+	}
+	select {
+	case <-run.done:
+		ts.Fatalf("background command %s had already exited", args[0])
+	default:
+	}
+	_ = run.cmd.Process.Signal(sig)
+	select {
+	case <-run.done:
+	case <-time.After(20 * time.Second):
+		ts.Fatalf("background command %s did not exit after %s", args[0], args[1:])
+	}
+}
+
+// u-wait <id>: wait for a background command; its output feeds stdout/stderr. `!` expects a failure.
+func cmdUWait(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: u-wait id")
+	}
+	st := stateOf(ts)
+	st.mu.Lock()
+	run := st.async[args[0]]
+	st.mu.Unlock()
+	if run == nil {
+		ts.Fatalf("unknown background command %q", args[0])
+	}
+	select {
+	case <-run.done:
+	case <-time.After(150 * time.Second):
+		_ = run.cmd.Process.Kill()
+		ts.Fatalf("background command %s did not finish", args[0])
+	}
+	_, _ = ts.Stdout().Write(run.out.Bytes())
+	_, _ = ts.Stderr().Write(run.err.Bytes())
+	var exit *exec.ExitError
+	if errors.As(run.failed, &exit) {
+		_, _ = fmt.Fprintf(ts.Stderr(), "exit status %d\n", exit.ExitCode())
+	}
+	if neg && run.failed == nil {
+		ts.Fatalf("background command %s unexpectedly succeeded", args[0])
+	}
+	if !neg && run.failed != nil {
+		ts.Fatalf("background command %s: %v\n%s", args[0], run.failed, run.err.String())
+	}
+}
+
+// rendezvous-start: run a local 6-digit code service for the nodes started after this command.
+func cmdRendezvousStart(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) != 0 {
+		ts.Fatalf("usage: rendezvous-start")
+	}
+	st := stateOf(ts)
+	rv := rvtest.New()
+	ts.Defer(rv.Close)
+	st.mu.Lock()
+	st.rv = rv.URL
+	st.mu.Unlock()
+}
+
+// u-grab <id> <regexp> <file>: wait until the background command printed a match on stdout,
+// then write the first capture group (or the whole match) to a file in the case's workdir.
+// A script can then pass it as an "@file" argument. The value is never echoed.
+func cmdUGrab(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) != 3 {
+		ts.Fatalf("usage: u-grab id regexp file")
+	}
+	st := stateOf(ts)
+	st.mu.Lock()
+	run := st.async[args[0]]
+	st.mu.Unlock()
+	if run == nil {
+		ts.Fatalf("unknown background command %q", args[0])
+	}
+	re, err := regexp.Compile(args[1])
+	ts.Check(err)
+	grab := func() bool {
+		m := re.FindStringSubmatch(run.out.String())
+		if m == nil {
+			return false
+		}
+		v := m[0]
+		if len(m) > 1 {
+			v = m[1]
+		}
+		ts.Check(os.WriteFile(ts.MkAbs(args[2]), []byte(v), 0o600))
+		return true
+	}
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		if grab() {
+			return
+		}
+		select {
+		case <-run.done:
+			if grab() { // the output was written before the process ended
+				return
+			}
+			ts.Fatalf("background command %s ended before printing a match\nstderr: %s", args[0], run.err.String())
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	ts.Fatalf("background command %s printed no match in time", args[0])
+}
+
+// service-gone <node>: no service answers on the node's socket and its socket file is removed.
+func cmdServiceGone(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: service-gone node")
+	}
+	n := stateOf(ts).node(ts, args[0])
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		_, err := os.Stat(n.sock)
+		if err != nil && !n.listening() {
+			if neg {
+				ts.Fatalf("node %s has no service, but one was expected", args[0])
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !neg {
+		ts.Fatalf("a service still runs for node %s", args[0])
+	}
+}
+
+// node-define <name>: register a node (state directory, board, config) without starting unicd,
+// so the CLI itself must start a temporary service for it.
+func cmdNodeDefine(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: node-define name")
+	}
+	st := stateOf(ts)
+	st.mu.Lock()
+	n := &node{name: args[0], home: filepath.Join(st.work, args[0])}
+	n.sock = filepath.Join(st.work, "."+args[0]+".sock")
+	st.nodes[args[0]] = n
+	st.mu.Unlock()
+	ts.Check(os.MkdirAll(filepath.Join(n.home, "board"), 0o700))
+	cfgPath := filepath.Join(n.home, "config.toml")
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil && !os.IsNotExist(err) {
+		ts.Check(err)
+	}
+	if !strings.Contains(string(raw), "[telemetry]") {
+		raw = append(raw, []byte("\n[telemetry]\nenabled=false\n")...)
+		ts.Check(os.WriteFile(cfgPath, raw, 0600))
+	}
 }

@@ -139,6 +139,12 @@ type OutPart struct {
 // .Hash). A short reader is an error; the stream is then out of step and the
 // connection must be dropped.
 func (c *Conn) SendStream(id, origin string, ts int64, hash string, parts []OutPart) error {
+	return c.SendStreamObserved(id, origin, ts, hash, parts, nil)
+}
+
+// SendStreamObserved uses the same framing and records body writes, including
+// partial writes on failure. Observation never changes stream behavior.
+func (c *Conn) SendStreamObserved(id, origin string, ts int64, hash string, parts []OutPart, obs *BodyObservation) error {
 	m := Clip{T: "clip", ID: id, Origin: origin, TS: ts, Hash: hash}
 	for _, p := range parts {
 		m.Parts = append(m.Parts, PartMeta{Kind: p.Kind, Name: p.Name, Size: p.Size})
@@ -146,8 +152,12 @@ func (c *Conn) SendStream(id, origin string, ts int64, hash string, parts []OutP
 	if err := c.WriteJSON(m); err != nil {
 		return err
 	}
+	var dst io.Writer = c.w
+	if obs != nil {
+		dst = payloadWriter{w: c.w, o: obs}
+	}
 	for _, p := range parts {
-		if _, err := io.CopyN(c.w, p.R, p.Size); err != nil {
+		if _, err := io.CopyN(dst, p.R, p.Size); err != nil {
 			return err
 		}
 	}

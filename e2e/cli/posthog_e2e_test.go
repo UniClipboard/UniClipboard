@@ -29,9 +29,9 @@ func TestPostHog(t *testing.T) {
 	cfg := fmt.Sprintf("[telemetry]\nendpoint=%q\n", h.server.URL+"/i")
 	h.run(t, "default-on", func(t *testing.T) {
 		h.startConfig(t, cfg)
-		h.cli(t, "copy", "posthog-private-clipboard-canary")
+		h.cli(t, "dev", "copy", "posthog-private-clipboard-canary")
 		h.eventually(t, func() bool { return h.hasPath("/i/v1/metrics") && len(h.analytics()) > 0 })
-		h.cli(t, "logs", "level", "debug", "--target", "remote", "--for", "15m")
+		h.cli(t, "dev", "logs", "level", "debug", "--target", "remote", "--for", "15m")
 		h.request(t, "POST", "/test/logs", "")
 		h.eventually(t, func() bool { return h.hasPath("/i/v1/logs") })
 		h.contains(t, "/v1/diagnostics/telemetry", `"credential_configured":true`)
@@ -84,10 +84,10 @@ func TestPostHog(t *testing.T) {
 		b.cli(t, "config", "set", "sync.enabled", "false")
 		mark := time.Now()
 		for i := 0; i < 3; i++ {
-			h.cli(t, "copy", fmt.Sprintf("delta-A-%d", i))
+			h.cli(t, "dev", "copy", fmt.Sprintf("delta-A-%d", i))
 		}
 		for i := 0; i < 7; i++ {
-			b.cli(t, "copy", fmt.Sprintf("delta-B-%d", i))
+			b.cli(t, "dev", "copy", fmt.Sprintf("delta-B-%d", i))
 		}
 		h.eventually(t, func() bool { return h.deltaCount(t, mark)+b.deltaCount(t, mark) == 10 })
 		h.request(t, "POST", "/test/metric-samples", "")
@@ -194,7 +194,7 @@ func (h *observabilityRun) assertPostHogPrivacy(t *testing.T) {
 		}
 		for k := range p {
 			switch k {
-			case "schema_version", "product", "product_version", "os", "arch", "result", "code", "content_kind", "backend", "action_category", "$process_person_profile", "$geoip_disable":
+			case "schema_version", "product", "product_version", "os", "arch", "result", "code", "content_kind", "backend", "action_category", "source_kind", "$process_person_profile", "$geoip_disable":
 			default:
 				t.Fatalf("unexpected SDK property %q", k)
 			}
@@ -330,14 +330,14 @@ func TestPostHogPairingAndSend(t *testing.T) {
 		if json.Unmarshal(body, &ticket) != nil {
 			t.Fatal("invalid ticket")
 		}
-		b.cli(t, "pair", ticket.Ticket)
+		b.cli(t, "device", "add", ticket.Ticket)
 		for _, h := range []*observabilityRun{a, b} {
 			var pending []struct {
 				ID          string `json:"id"`
 				Fingerprint string `json:"fingerprint"`
 			}
 			h.eventually(t, func() bool { _ = json.Unmarshal(h.get(t, "/v1/pending"), &pending); return len(pending) > 0 })
-			h.cli(t, "approve", pending[0].ID, pending[0].Fingerprint)
+			h.cli(t, "device", "approve", pending[0].ID, pending[0].Fingerprint)
 			h.eventually(t, func() bool { return h.eventCount("pairing_completed") == 1 })
 		}
 	})
@@ -345,7 +345,7 @@ func TestPostHogPairingAndSend(t *testing.T) {
 		for _, h := range []*observabilityRun{a, b} {
 			h.eventually(t, func() bool { return strings.Contains(string(h.get(t, "/v1/status")), `"connected":true`) })
 		}
-		a.cli(t, "copy", "posthog-private-clipboard-canary")
+		a.cli(t, "dev", "copy", "posthog-private-clipboard-canary")
 		b.eventually(t, func() bool {
 			code, body := b.request(t, "GET", "/v1/clipboard", "")
 			return code == 200 && strings.Contains(string(body), "posthog-private-clipboard-canary")
@@ -497,7 +497,7 @@ func TestPostHogReleaseAssembly(t *testing.T) {
 	h.run(t, "release-defaults-and-production-intervals", func(t *testing.T) {
 		started := time.Now()
 		h.startConfig(t, "")
-		h.cli(t, "submit", "posthog-private-clipboard-canary", "--request-id", "posthog-release-submission")
+		h.cli(t, "send", "--to", "all", "posthog-private-clipboard-canary", "--request-id", "posthog-release-submission")
 		time.Sleep(200 * time.Millisecond)
 		if err := os.WriteFile(filepath.Join(h.home, "config.toml"), []byte("[telemetry]\nenabled=\"invalid\"\n"), 0600); err != nil {
 			t.Fatal(err)
@@ -540,7 +540,7 @@ func TestPostHogEnableFromDisabled(t *testing.T) {
 			t.Fatal("disabled first startup created identity")
 		}
 		h.cli(t, "config", "set", "telemetry.enabled", "true")
-		h.cli(t, "submit", "posthog-private-clipboard-canary", "--request-id", "posthog-after-enable")
+		h.cli(t, "send", "--to", "all", "posthog-private-clipboard-canary", "--request-id", "posthog-after-enable")
 		h.eventually(t, func() bool { return h.eventCount("manual_send_completed") == 1 })
 		for _, ev := range h.analytics() {
 			if ev["event"] == "app_started" && ev["properties"].(map[string]any)["product"] == "cli" {
@@ -616,5 +616,56 @@ func TestPostHogDesktopReconnect(t *testing.T) {
 				t.Fatal("local launch ID was uploaded")
 			}
 		}
+	})
+}
+
+// TestPostHogTemporaryRestarts covers 0021 C34: a CLI-temporary service is a process start, not an installation.
+// The analytics identity persists across temporary restarts, and a disabled profile stays silent.
+func TestPostHogTemporaryRestarts(t *testing.T) {
+	if os.Getenv("UNIC_E2E") == "" {
+		t.Skip("set UNIC_E2E=1")
+	}
+	h := newObservabilityRun(t)
+	h.posthog = true
+	h.artifactName = "posthog-temporary-restarts"
+	h.manualAdapter = true // no mock clipboard adapter: it would add a desktop-product start of its own
+	write := func(enabled bool) {
+		cfg := fmt.Sprintf("[telemetry]\nenabled=%t\nendpoint=%q\n", enabled, h.server.URL+"/i")
+		if err := os.WriteFile(filepath.Join(h.home, "config.toml"), []byte(cfg), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run(t, "disabled-temporary-service-is-silent", func(t *testing.T) {
+		write(false)
+		h.cli(t, "status")
+		h.requireNoRequests(t, 500*time.Millisecond)
+		if _, err := os.Stat(filepath.Join(h.home, "analytics-id")); !os.IsNotExist(err) {
+			t.Fatal("a disabled temporary service created an analytics identity")
+		}
+	})
+	h.run(t, "identity-persists-across-temporary-restarts", func(t *testing.T) {
+		write(true)
+		for i := 1; i <= 3; i++ {
+			h.cli(t, "status")
+			h.eventually(t, func() bool { return h.eventCount("app_started") >= i })
+		}
+		ids := map[string]bool{}
+		starts := 0
+		for _, ev := range h.analytics() {
+			ids[ev["distinct_id"].(string)] = true
+			if ev["event"] == "app_started" {
+				starts++
+			}
+		}
+		if len(ids) != 1 {
+			t.Fatalf("temporary restarts produced %d analytics identities", len(ids))
+		}
+		if starts != 3 {
+			t.Fatalf("expected one process start per temporary service, got %d", starts)
+		}
+		if _, err := os.Stat(filepath.Join(h.home, "analytics-id")); err != nil {
+			t.Fatalf("identity file missing: %v", err)
+		}
+		h.assertPostHogPrivacy(t)
 	})
 }

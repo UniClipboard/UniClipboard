@@ -233,6 +233,11 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 - Submit、Join、Pair 的 RequestID 必填，实例内幂等：保留期内相同类型和语义参数返回相同 OperationID，不重复执行；参数不同报 conflict。重复识别先于租约有效性验证；内部仅保留敏感参数的不可逆校验值，不存储到公共 DTO。超出保留期后调用者须用新 RequestID，不承诺去重。
 - 其他方法除明确声明幂等外，不提供隐式重试；context 超时不能被解释为“操作一定未提交”。
 
+### 6.3 设备选择与临时传输（0022，已实现）
+
+- `CommitRequest.DeviceIDs` 限定发送到指定的已配对设备：`nil` 表示全部；空列表、未知（或已撤销）设备、重复 ID 报 `invalid_argument`。选择计入请求幂等键，同一 RequestID 换设备选择报 `conflict`。仅 peer-session 后端响应此选择，其他后端类型不发送。目标设备不在线时无目标，沿用 `no_targets`。
+- `AdmitTransfer(ctx, TransferOffer) (*TransferInbox, error)` 接收没有 unic 设备身份的对端（浏览器传输页）的内容。准入先于读取任何字节：引擎须运行、sync 开启、后端策略允许、非重复、有空间。返回的 `TransferInbox.Dir` 是本次传输专用的私有目录；文件写入其中后调用 `Complete(TransferContent)`，进入与设备来源内容相同的接收流水线（processor、去重、配额、历史、接收列表）；放弃则调用 `Abort`。历史来源为 `external`，PluginID 为 `unic.transfer`，PeerID 为空，ChannelID 为 `transfer`。该对端不写入 `devices`，不获得信任，也无需授权。公开签名不暴露 tailcat 或 internal 类型；传输协议在宿主层。
+
 ## 7. 资源租约与接收列表
 
 实例内的 ID 都带有实例前缀，以便区分旧实例（resource_expired）与未知（not_found）。ContentID 标识资源，LeaseID 表示一个持有者。Import 和 Retain 每次创建新的 LeaseID；ReadContent 必须使用有效租约，读取句柄另持有内部引用直至 Close。文件清理不能使已打开的读取句柄中途失效；实例 Close 会中止读取，调用者仍应 Close 读取句柄。
@@ -408,7 +413,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 27. **应用条目的生存**：被应用的接收条目不受容量淘汰、TTL 和 `DismissReceived`（`in_use`）影响，即使已过期仍在列表中；应用结束后立即按 TTL 处理。
 28. **Network 选项**：`Options.Network` 允许替换默认的 tailcat 网络（接口只用标准库类型），用于测试和特殊嵌入；`Start`/`Close` 各调用一次，挂起恢复时 `Listen` 会再次调用。
 29. **桌面适配的约定**：适配器把剪贴板快照只保留 text/html/png 与普通文件，文件以引用导入；无法表示的内容（文件夹、超限、只有厂商格式）按“剪贴板已清空”上报，因此之后复制别的内容仍是真实变化。应用成功后适配器会把条目移出接收列表（`DismissReceived`），接收文件的生命周期只由剪贴板上的租约决定，被新内容替换后立即释放。显式发送（CLI/GUI 的写入并发送）先写入、回读，再以新 epoch 的 baseline 建立基线，最后 `SubmitContent`，一次请求只发送一次。
-30. **桌面 HTTP /v1**：`GET /v1/status` 不含地址/票据，也不触发签发。显式 `POST /v1/pairing-ticket` 返回 `{"ticket":"unic-pair:…"}`，响应禁止缓存，CLI `unic addr` 与 GUI 生成票据使用它。`POST /v1/pending/{id}/approve` 必须提交 `{"fingerprint":"…","revision":1,"bindings":[{"id":"…","revision":1}]}`，修订均来自待批准列表；遗漏/坏 JSON 报 400，指纹不符或设备/待批准关联集合变化报 409。`ApproveDeviceRequest{ID, ExpectedRevision, ExpectedFingerprint, Bindings []BindingRequest}` 由 `Engine.ApproveDevice` 在一个事务中批准设备及完整待批准关联；已信任设备也不可跳过指纹。CLI `unic approve <id> '<另一端指纹>'`，GUI 回传所展示的完整快照。事件的 `Info` 不携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。
+30. **桌面 HTTP /v1**：`GET /v1/status` 不含地址/票据，也不触发签发。显式 `POST /v1/pairing-ticket` 返回 `{"ticket":"unic-pair:…"}`，响应禁止缓存，CLI `unic device addr` 与 GUI 生成票据使用它。`POST /v1/pending/{id}/approve` 必须提交 `{"fingerprint":"…","revision":1,"bindings":[{"id":"…","revision":1}]}`，修订均来自待批准列表；遗漏/坏 JSON 报 400，指纹不符或设备/待批准关联集合变化报 409。`ApproveDeviceRequest{ID, ExpectedRevision, ExpectedFingerprint, Bindings []BindingRequest}` 由 `Engine.ApproveDevice` 在一个事务中批准设备及完整待批准关联；已信任设备也不可跳过指纹。CLI `unic device approve <id> '<另一端指纹>'`，GUI 回传所展示的完整快照。事件的 `Info` 不携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。
 
 
 ### 本机旧历史迁移
@@ -471,3 +476,16 @@ After acquiring the profile lock, New removes plain directories named `unic-recv
 The scan preserves other entries and does not follow symbolic links during recursive deletion.
 Cleanup failure prevents startup. Retained file-cache payloads remain governed by their ledger and history holders.
 Dismissing Received or closing Engine does not delete a payload still referenced by history.
+
+
+## Product result classification (0020)
+
+`ProductEvent.SourceKind` is a finite category: `local`, `remote`, `external`,
+`action`, `migration`, or `unknown`. Explicit history application freezes this
+category from the selected stored origin in its application ticket. It emits one
+`history_applied` event only after an accepted successful application result.
+Successful remote-device receipt application emits `remote_content_applied` instead.
+History application never emits that receipt event. Duplicate reports emit neither
+again. These callbacks preserve the existing outside-state-lock and panic-isolation
+rules. The service owns daily admission, persistence and operational volume.
+See the [observability contract](observability-contract.md#11-tailcat-sync-diagnostics-0020).

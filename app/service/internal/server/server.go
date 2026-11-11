@@ -26,6 +26,7 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 	mux.HandleFunc("GET /v1/adapter/content", adapterContentHandler(b))
 	diagnosticRoutes(mux, b)
 	headlessRoutes(mux, b)
+	transferRoutes(mux, b)
 
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		st, err := b.Status(r.Context())

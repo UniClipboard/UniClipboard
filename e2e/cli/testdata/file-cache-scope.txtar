@@ -46,8 +46,8 @@ file-path beta ONE
 genfile rand two.bin 110
 board-set alpha files two.bin
 ! board-wait beta files two.bin
-u beta copy clear
-u alpha copy reset
+u beta dev copy clear
+u alpha dev copy reset
 board-wait beta text reset.txt
 board-set alpha files two.bin
 board-wait beta files two.bin
@@ -62,7 +62,7 @@ mkdir custom
 u beta config set inbox '"'$WORK'/custom"'
 node-stop beta
 node-start beta
-until alpha 'online' peers
+until alpha 'online' device list
 retry-copy alpha beta custom-ready
 genfile rand custom.bin 200
 board-set alpha files custom.bin
@@ -71,7 +71,7 @@ file-path beta CUSTOM
 cmp $CUSTOM custom.bin
 u beta h delete @1 -y
 cmp $CUSTOM custom.bin
-u beta copy clear
+u beta dev copy clear
 node-stop beta
 node-start beta
 cmp $CUSTOM custom.bin

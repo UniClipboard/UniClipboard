@@ -92,6 +92,28 @@ The demo does not create an API client, write the clipboard, register global sho
 Build checks do not establish native layout or interaction acceptance.
 See the [demo acceptance guide](../../app/desktop/UI-DEMO.md) for source mappings and manual checks.
 
+## GPUI quick panel fixture
+
+The dedicated `unic-desktop --demo --page quick-panel` entry follows cached `origin/main` commit `885546c7cf6f6f0d2076104efd1d90d9f73d9744`.
+It replaces the earlier generic history/detail quick-panel composition.
+`desktopdemo/quick_panel_model.go` owns fixture state and simulated effects.
+`quick_panel_view.go` owns the 380 × 366 history composition, filter suggestions, nine result shortcuts, 3 × 3 image grid, empty states and action list.
+`quick_panel_image.go` owns image fit, actual-size and bounded pan.
+`quick_panel_window.go` creates the frameless history window and a parent-owned nonfocusable mygo Flyout.
+The preview is 400 points wide; actions use the same satellite at 380 points wide.
+The satellite follows the active result with an 8-point gap and delegates edge flipping to mygo.
+Search waits 300 ms. The first preview waits 500 ms; subsequent previews wait 120 ms.
+Keyboard selection clamps at list boundaries. Hover changes the active preview without changing the keyboard selection.
+The history input handles panel commands through mygo OnTextKey, preserving input-method composition and normal copying of selected query text.
+Actions replace preview content and retain keyboard handling in the history window. Their cursor wraps over enabled rows.
+The fixture accepts filters explicitly, combines values with OR within a dimension and AND across dimensions, and offers independent relaxation proposals after empty searches.
+The fixture never creates an Engine client. Entry restore, paste, send, open and reveal remain recorded simulated effects.
+The standalone entry can start in history, locked, disconnected or empty state with `--quick-state`.
+The regular daemon-backed desktop is unchanged.
+The [quick panel acceptance guide](../../app/desktop/QUICK-PANEL-DEMO.md) records the source map, reproduction steps, artifact format and differences.
+The explicit `TestQuickPanelScreenshotsE2E` export composes separately rendered history and satellite rasters at 2x scale and records source and image hashes.
+View-level E2E verifies mygo input and layout without opening a native app. Native focus, multi-monitor placement, icon/font rendering and one-to-one visual acceptance remain unverified.
+
 ## 缺口
 
 - 桌面界面原型待定；mygo + 自定义 UI Kit 已接入的现有页面不代表最终布局与交互规格。

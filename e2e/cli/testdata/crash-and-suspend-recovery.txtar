@@ -25,12 +25,12 @@ node-stop beta KILL
 board-set alpha text offline.txt
 sleep 2s
 node-start beta
-until alpha 'online' peers
-until beta 'online' peers
+until alpha 'online' device list
+until beta 'online' device list
 u beta status
 stdout $BETA
 ! board-wait beta text offline.txt
-u beta requests
+u beta device list
 ! stdout 'Waiting for your approval'
 
 retry-copy alpha beta after-crash

@@ -46,7 +46,7 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 `.golangci.yml` 启用错误处理、vet、静态分析、无效赋值、未使用代码、拼写和 nolint 注释检查。PR checks 在 PR、主分支推送及合并队列中执行全量 lint、格式检查、`go test -race ./...` 和桌面入口的构建；Go 版本读取 `go.mod`，使用 `ubuntu-latest` Linux runner。需要强制合并门禁时，在 GitHub 分支保护中将 `Lint` 和 `Test and build` 设为必需检查。
 
 
-本机 UniClipboard v1 的历史、图片、文件与标签可通过独立 `unic-migrate` 导入。支持新数据目录和已有历史合并，操作与六平台构建见[桌面迁移说明](app/desktop/README.md#从本机-uniclipboard-v1-迁移)。
+本机 UniClipboard v1 的历史、图片、文件与标签可通过 `unic migrate` 导入。支持新数据目录和已有历史合并，操作见[桌面迁移说明](app/desktop/README.md#从本机-uniclipboard-v1-迁移)。
 
 ## Independent distributions
 
@@ -60,3 +60,7 @@ The CLI workflows assemble exact npm platform packages and expose `unic` and `un
 Alpha and stable use external npm dist-tags. Promotion reuses the accepted packages.
 See [product builds and CLI releases](docs/architecture/releases.md) for commands, acceptance and publication prerequisites.
 See [headless architecture](docs/architecture/headless.md).
+
+## License
+
+unic is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).

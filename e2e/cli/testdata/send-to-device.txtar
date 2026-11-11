@@ -1,0 +1,42 @@
+# 用例: send --to 只发给指定的已配对设备
+# 目的: 验证 `unic send --to` 的目标选择，以及 `--to all` 与按名称、按 ID 选择。
+# 流程:
+#   1. 启动 alpha、beta、gamma。alpha 分别与 beta 和 gamma 配对批准，并确认两条连接都已稳定（配对后连接会重建）。
+#   2. 在 alpha 上执行 `unic send --to beta`。
+#   3. 在 alpha 上执行 `unic send --to all`。
+#   4. 在 alpha 上执行 `unic send --to` 一个不存在的设备。
+# 期望:
+#   - 第 2 步只有 beta 收到内容，gamma 没有收到。
+#   - 第 3 步 beta 和 gamma 都收到内容。
+#   - 第 4 步失败，并提示没有这个已配对设备。
+# 不应:
+#   - 指定设备时把内容发给其他设备。
+#   - 目标不存在时仍然提交或发送。
+
+node-start alpha
+node-start beta
+node-start gamma
+pair alpha beta
+pair alpha gamma
+retry-copy alpha beta warm-up-beta
+retry-copy alpha gamma warm-up-gamma
+
+u alpha send --to beta --json only for beta
+stdout '"outcome":"success"'
+until beta 'only for beta' h show
+! until gamma 'only for beta' h show
+
+u alpha send --to all --json for everyone
+stdout '"outcome":"success"'
+until beta 'for everyone' h show
+until gamma 'for everyone' h show
+
+! u alpha send --to nobody not sent
+stderr 'no paired device'
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+-- gamma/config.toml --
+device_name = "gamma"

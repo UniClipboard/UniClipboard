@@ -43,22 +43,16 @@ type historyIO struct {
 	tty      bool // stdin is a terminal: ask before deleting
 }
 
-func runHistory(args []string) error {
-	c, err := client()
-	if err != nil {
-		return err
-	}
+func runHistory(ctx context.Context, c *api.Client, args []string) error {
 	stat, _ := os.Stdin.Stat()
 	tty := stat != nil && stat.Mode()&os.ModeCharDevice != 0
-	return historyCmd(context.Background(), c, args, historyIO{in: os.Stdin, out: os.Stdout, err: os.Stderr, tty: tty})
+	return historyCmd(ctx, c, args, historyIO{in: os.Stdin, out: os.Stdout, err: os.Stderr, tty: tty})
 }
 
 func historyCmd(ctx context.Context, c *api.Client, args []string, io historyIO) error {
 	if len(args) == 0 {
 		return errors.New(strings.TrimRight(historyUsage, "\n"))
 	}
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
 	h := &hist{c: c, io: io}
 	switch cmd, rest := args[0], args[1:]; cmd {
 	case "list", "ls":
@@ -102,15 +96,23 @@ func historyCmd(ctx context.Context, c *api.Client, args []string, io historyIO)
 		if *request == "" {
 			*request = rand.Text()
 		}
+		connectOpportunity(ctx, h.c)
 		result, err := h.c.RestoreHistory(ctx, it.ID, *request)
 		if err != nil {
 			return err
 		}
-		if *asJSON {
-			return json.NewEncoder(io.out).Encode(result)
+		outcome, op, err := awaitSend(ctx, h.c, result.OperationID)
+		if err != nil {
+			return err
 		}
-		_, err = fmt.Fprintf(io.out, "local_applied=%t sync=%s operation=%s\n", result.LocalApplied, result.SyncDisposition, result.OperationID)
-		return err
+		if *asJSON {
+			if err := json.NewEncoder(io.out).Encode(map[string]any{"restore": result, "send": sendReport{Outcome: outcome, Operation: op}}); err != nil {
+				return err
+			}
+		} else if _, err = fmt.Fprintf(io.out, "local_applied=%t sync=%s operation=%s send=%s\n", result.LocalApplied, result.SyncDisposition, result.OperationID, outcome); err != nil {
+			return err
+		}
+		return sendIncomplete(outcome, *request)
 	case "delete", "rm":
 		return h.delete(ctx, rest)
 	case "tag":
@@ -473,15 +475,23 @@ func (h *hist) action(ctx context.Context, args []string) error {
 		*request = rand.Text()
 	}
 	_, _ = fmt.Fprintf(h.io.err, "request_id=%s\n", *request)
+	connectOpportunity(ctx, h.c)
 	out, err := h.c.ExecuteAction(ctx, it.ID, pos[1], api.ActionInput{RequestID: *request, Apply: *apply})
 	if err != nil {
 		return err
 	}
-	if err := json.NewEncoder(h.io.out).Encode(out); err != nil {
+	outcome, op, err := awaitSend(ctx, h.c, out.Submission.OperationID)
+	if err != nil {
+		return err
+	}
+	if err := json.NewEncoder(h.io.out).Encode(struct {
+		api.ActionOutput
+		Send sendReport `json:"send"`
+	}{out, sendReport{Outcome: outcome, Operation: op}}); err != nil {
 		return err
 	}
 	if out.ApplyError != nil {
 		return out.ApplyError
 	}
-	return nil
+	return sendIncomplete(outcome, *request)
 }

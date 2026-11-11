@@ -1,0 +1,35 @@
+# 用例: 冷启动发送在等待对端窗口内被杀，用量被回收且不重放
+# 目的: 验证发送命令在连接窗口内死亡后，临时服务随最后一个用户消失，且之后没有任何自动提交。
+# 流程:
+#   1. 启动 alpha 和 beta 并配对批准，然后停止两者，beta 保持离线。
+#   2. 在后台执行 `unic send`，等它进入等待对端的窗口后用 KILL 杀掉。
+#   3. 确认 alpha 的临时服务已退出，再重新读取 alpha 的历史。
+# 期望:
+#   - alpha 没有服务进程或 socket。
+#   - 历史为空：窗口内死亡的命令没有留下提交。
+# 不应:
+#   - 服务在发送命令死亡后继续运行。
+#   - 服务重启后自动重放该提交。
+
+node-start alpha
+node-start beta
+pair alpha beta
+
+node-stop alpha TERM
+node-stop beta TERM
+service-gone alpha
+
+u-async send alpha send --to all --json killed send text
+sleep 3s
+u-kill send KILL
+service-gone alpha
+
+u alpha history list
+! stdout 'killed send text'
+stderr 'no entries'
+service-gone alpha
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

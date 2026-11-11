@@ -113,11 +113,11 @@ func ensurePair(ctx context.Context, a, b *node, beforeApproval func() error) er
 		}
 		return waitEdge(ctx, a, b, true)
 	}
-	ticket, err := a.cli(ctx, "addr")
+	ticket, err := a.cli(ctx, "device", "addr")
 	if err != nil {
 		return err
 	}
-	if _, err = b.cli(ctx, "pair", string(bytes.TrimSpace(ticket.Out))); err != nil {
+	if _, err = b.cli(ctx, "device", "add", string(bytes.TrimSpace(ticket.Out))); err != nil {
 		return err
 	}
 	var fa, fb string
@@ -143,10 +143,10 @@ func ensurePair(ctx context.Context, a, b *node, beforeApproval func() error) er
 			return err
 		}
 	}
-	if _, err = a.cli(ctx, "approve", b.deviceID, fb); err != nil {
+	if _, err = a.cli(ctx, "device", "approve", b.deviceID, fb); err != nil {
 		return err
 	}
-	if _, err = b.cli(ctx, "approve", a.deviceID, fa); err != nil {
+	if _, err = b.cli(ctx, "device", "approve", a.deviceID, fa); err != nil {
 		return err
 	}
 	return waitEdge(ctx, a, b, true)
@@ -432,7 +432,7 @@ func (c *controller) contracts(ctx context.Context) error {
 		return fmt.Errorf("same_key_result_changed")
 	}
 	var queried cliResult
-	if err = a.call(ctx, "cli", cliRequest{Args: []string{"submission", key}}, &queried); err != nil {
+	if err = a.call(ctx, "cli", cliRequest{Args: []string{"dev", "submission", key}}, &queried); err != nil {
 		return err
 	}
 	var original engine.SubmissionResult
@@ -440,7 +440,7 @@ func (c *controller) contracts(ctx context.Context) error {
 		return fmt.Errorf("submission_query_mismatch")
 	}
 	var conflict cliResult
-	if err = a.call(ctx, "cli", cliRequest{Args: []string{"submit", "--json", "--request-id", key, "conflicting-input"}, AllowFailure: true}, &conflict); err != nil {
+	if err = a.call(ctx, "cli", cliRequest{Args: []string{"send", "--to", "all", "--json", "--request-id", key, "conflicting-input"}, AllowFailure: true}, &conflict); err != nil {
 		return err
 	}
 	if conflict.Code == 0 || !bytes.Contains(conflict.Err, []byte(`"reason":"conflict"`)) {
@@ -723,7 +723,7 @@ func (c *controller) isolation(ctx context.Context) error {
 	if err = c.check("isolation: stopping one node preserves surviving-node sync; reconnect does not replay offline content and accepts new content"); err != nil {
 		return err
 	}
-	if _, err = victim.cli(ctx, "unpair", source.deviceID); err != nil {
+	if _, err = victim.cli(ctx, "device", "remove", source.deviceID); err != nil {
 		return err
 	}
 	if err = waitEdge(ctx, source, victim, false); err != nil {

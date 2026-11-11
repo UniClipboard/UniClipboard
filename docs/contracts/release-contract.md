@@ -61,7 +61,7 @@ Interactive CLI invocations display a v1 incompatibility warning on stderr only 
 
 `unic migrate` and `unic migrate --help` show an offline migration guide without opening a profile, credentials or the service. The guide instructs users to back up v1 data, quit v1 and stop the target service, run `unic migrate --dry-run --json`, then run `unic migrate --json`. Users may specify `--source` and `--target`. All devices must use v2 and establish new pairings. Settings, identities and trust do not migrate.
 
-Every CLI archive and npm platform package includes `unic-migrate` beside `unic`. The `unic migrate` command invokes this exact sibling helper and preserves its exit status, including 3 for partial migration. The importer keeps its existing read-only source, exclusive target, resumable import and reopened-content verification rules. Explicit passphrases travel through stdin, never command arguments or environment variables.
+Every CLI archive and npm platform package includes the migration importer within `unic`. The `unic migrate` command runs offline in-process and returns 3 for partial migration. The importer keeps its existing read-only source, exclusive target, resumable import and reopened-content verification rules. Explicit passphrases travel through stdin, never command arguments or environment variables.
 
 ## Desktop and mobile gates
 

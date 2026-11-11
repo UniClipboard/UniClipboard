@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
@@ -19,49 +19,40 @@ import (
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 )
 
-func client() (*api.Client, error) {
-	sock, err := paths.Socket()
-	if err != nil {
-		return nil, err
-	}
-	return api.NewClient(sock), nil
-}
+func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
+	// Request deadlines come from the client transport and start after service acquisition.
+	short := ctx
 
-func runCLI(cmd string, args []string) error {
-	c, err := client()
-	if err != nil {
-		return err
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	short, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	switch cmd {
-	case "submit":
+	switch l.Name {
+	case "send":
 		return runSubmit(short, c, args)
-	case "submission":
+	case "dev submission":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: unic submission REQUEST_ID")
+			return fmt.Errorf("usage: unic dev submission REQUEST_ID")
 		}
 		out, e := c.Submission(short, args[0])
 		if e != nil {
 			return e
 		}
 		return json.NewEncoder(os.Stdout).Encode(out)
-	case "received":
-		return runReceived(short, c, args)
-	case "capabilities":
+	case "recv":
+		return runReceive(ctx, c, args)
+	case "dev capabilities":
 		out, e := c.Capabilities(short)
 		if e != nil {
 			return e
 		}
 		return json.NewEncoder(os.Stdout).Encode(out)
-	case "logs":
-		return runLogLevels(short, c, args)
-	case "diagnostics":
-		if len(args) != 1 || args[0] != "telemetry" {
-			return fmt.Errorf("usage: unic diagnostics telemetry")
+	case "dev logs level":
+		return runLogLevels(short, c, append([]string{"level"}, args...))
+	case "dev logs export":
+		return runLogExport(short, args)
+	case "dev logs help":
+		fmt.Println("usage: unic dev logs level [debug|info|warn|error|reset] [--target local|remote] [--for 15m]\n" + logExportUsage)
+		return nil
+	case "dev diagnostics telemetry":
+		if len(args) != 0 {
+			return fmt.Errorf("usage: unic dev diagnostics telemetry")
 		}
 		state, err := c.Telemetry(short)
 		if err != nil {
@@ -77,33 +68,35 @@ func runCLI(cmd string, args []string) error {
 		printPeers(st.Peers)
 		printPending(st.Pending)
 
-	case "addr":
+	case "device addr":
 		ticket, err := c.ExportTicket(short)
 		if err != nil {
 			return err
 		}
 		fmt.Println(ticket)
+		if current.temporary() {
+			fmt.Fprintln(os.Stderr, "this address works only while a unic service runs; start unicd to keep it reachable.")
+		}
 
-	case "cache":
+	case "dev cache":
 		if len(args) > 1 || (len(args) == 1 && args[0] != "--json") {
-			return fmt.Errorf("usage: unic cache [--json]")
+			return fmt.Errorf("usage: unic dev cache [--json]")
 		}
 		state, err := c.FileCache(short)
 		if err != nil {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(state)
-	case "config":
-		if len(args) == 1 && args[0] == "path" {
-			p, err := paths.Config()
-			if err != nil {
-				return err
-			}
-			fmt.Println(p)
-			return nil
+	case "config path":
+		p, err := paths.Config()
+		if err != nil {
+			return err
 		}
+		fmt.Println(p)
+		return nil
+	case "config":
 		if len(args) != 0 && (len(args) != 1 || args[0] != "--json") && (len(args) != 3 || args[0] != "set") && (len(args) != 2 || args[0] != "apply") {
-			return fmt.Errorf("usage: unic config [path|--json|set <key> <TOML-value>|apply <file>]")
+			return fmt.Errorf("usage: unic config [--json|set <key> <TOML-value>|apply <file>] | unic config path")
 		}
 		st, err := c.Config(short)
 		if err != nil {
@@ -139,65 +132,63 @@ func runCLI(cmd string, args []string) error {
 		}
 		return toml.NewEncoder(os.Stdout).Encode(st.Config)
 
-	case "peers":
+	case "device list":
 		st, err := c.Status(short)
 		if err != nil {
 			return err
 		}
 		printPeers(st.Peers)
+		printPending(st.Pending)
 
-	case "pair":
-		if len(args) != 1 {
-			return fmt.Errorf("usage: unic pair <ticket>")
-		}
-		p, err := c.Pair(short, strings.TrimSpace(args[0]))
-		if err != nil {
-			return err
-		}
-		if p.Awaiting {
-			me := "<this device's id>"
-			if st, err := c.Status(short); err == nil {
-				me = st.ID
+	case "device add":
+		switch digits := strings.ReplaceAll(strings.ReplaceAll(strings.Join(args, ""), "-", ""), " ", ""); {
+		case len(args) == 0:
+			code, err := c.NewCode(short)
+			if err != nil {
+				return err
 			}
-			fmt.Printf("added %s (%s); it will connect once %s approves this device\n  (on that device: `unic approve %s '<fingerprint from this device>'`)\nFingerprint: %s  (it must match the one shown there)\n", p.Name, p.ID, p.Name, me, p.Fingerprint)
-		} else {
-			fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
+			fmt.Printf("%s\n\nOn the other device: `unic device add %s` (or 加入其他设备 in the window).\n", code.Display(), strings.ReplaceAll(code.Code, "-", ""))
+			fmt.Printf("Valid until %s, for one device. It then shows up in `unic device list`;\ncompare the fingerprints on both devices before you approve it.\n", code.Expires().Format("15:04:05"))
+			return holdInvitation(ctx, c, code)
+
+		case isSixDigits(digits):
+			p, err := c.Join(short, digits)
+			if err != nil {
+				return err
+			}
+			if p.Awaiting {
+				fmt.Printf("found %s; it connects once it approves this device.\nFingerprint: %s  (it must match the one shown there)\n", p.Name, p.Fingerprint)
+			} else {
+				fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
+			}
+			return awaitPairing(ctx, c, p)
+
+		case len(args) == 1:
+			p, err := c.Pair(short, strings.TrimSpace(args[0]))
+			if err != nil {
+				return err
+			}
+			if p.Awaiting {
+				me := "<this device's id>"
+				if st, err := c.Status(short); err == nil {
+					me = st.ID
+				}
+				fmt.Printf("added %s (%s); it will connect once %s approves this device\n  (on that device: `unic device approve %s '<fingerprint from this device>'`)\nFingerprint: %s  (it must match the one shown there)\n", p.Name, p.ID, p.Name, me, p.Fingerprint)
+			} else {
+				fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
+			}
+			return awaitPairing(ctx, c, p)
+
+		default:
+			return fmt.Errorf("usage: unic device add [6-digit code | address]")
 		}
 
-	case "code":
-		code, err := c.NewCode(short)
-		if err != nil {
-			return err
+	case "device approve", "device reject":
+		approve := l.Name == "device approve"
+		if (approve && len(args) != 2) || (!approve && len(args) != 1) {
+			return fmt.Errorf("usage: unic device approve <id> '<fingerprint from the other device>'; unic device reject <id>")
 		}
-		fmt.Printf("%s\n\nOn the other device: `unic join %s` (or 加入其他设备 in the window).\n", code.Display(), strings.ReplaceAll(code.Code, "-", ""))
-		fmt.Printf("Valid until %s, for one device. It then shows up in `unic requests`;\ncompare the fingerprints on both devices before you approve it.\n", code.Expires().Format("15:04:05"))
-
-	case "join":
-		if len(args) == 0 {
-			return fmt.Errorf("usage: unic join <6-digit code>")
-		}
-		p, err := c.Join(short, strings.Join(args, ""))
-		if err != nil {
-			return err
-		}
-		if p.Awaiting {
-			fmt.Printf("found %s; it connects once it approves this device.\nFingerprint: %s  (it must match the one shown there)\n", p.Name, p.Fingerprint)
-		} else {
-			fmt.Printf("paired with %s (%s)\n", p.Name, p.ID)
-		}
-
-	case "requests":
-		ps, err := c.Pending(short)
-		if err != nil {
-			return err
-		}
-		printPending(ps)
-
-	case "approve", "reject":
-		if (cmd == "approve" && len(args) != 2) || (cmd == "reject" && len(args) != 1) {
-			return fmt.Errorf("usage: unic approve <id> '<fingerprint from the other device>'; unic reject <id>")
-		}
-		if cmd == "approve" {
+		if approve {
 			ps, err := c.Pending(short)
 			if err != nil {
 				return err
@@ -224,7 +215,7 @@ func runCLI(cmd string, args []string) error {
 			fmt.Println("rejected")
 		}
 
-	case "suggestions":
+	case "device suggestions":
 		cs, err := c.Candidates(short)
 		if err != nil {
 			return err
@@ -243,37 +234,37 @@ func runCLI(cmd string, args []string) error {
 			fmt.Printf("%s  %s  via %s (%s)%s\n", d.ID, d.Name, strings.Join(d.IntroducedBy, ", "), d.BackendID, state)
 		}
 
-	case "suggest-pair", "suggest-ignore", "suggest-restore":
-		if len(args) < 1 || (cmd == "suggest-pair" && len(args) != 2) {
-			return fmt.Errorf("usage: unic suggest-pair <id> <backend-id> | unic %s <id>", cmd)
+	case "device suggest-pair", "device suggest-ignore", "device suggest-restore":
+		if len(args) < 1 || (l.Name == "device suggest-pair" && len(args) != 2) {
+			return fmt.Errorf("usage: unic device suggest-pair <id> <backend-id> | unic %s <id>", l.Name)
 		}
-		switch cmd {
-		case "suggest-pair":
+		switch l.Name {
+		case "device suggest-pair":
 			p, err := c.PairCandidate(short, args[0], args[1])
 			if err != nil {
 				return err
 			}
 			fmt.Printf("requested %s; it connects once both sides approve.\nFingerprint: %s  (compare it on both devices)\n", p.Name, p.Fingerprint)
 		default:
-			if err := c.IgnoreCandidate(short, args[0], cmd == "suggest-ignore"); err != nil {
+			if err := c.IgnoreCandidate(short, args[0], l.Name == "device suggest-ignore"); err != nil {
 				return err
 			}
 			fmt.Println("ok")
 		}
 
-	case "unpair":
+	case "device remove":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: unic unpair <id>")
+			return fmt.Errorf("usage: unic device remove <id>")
 		}
 		if err := c.Unpair(short, args[0]); err != nil {
 			return err
 		}
 		fmt.Println("removed")
 
-	case "copy":
+	case "dev copy":
 		return copyCmd(short, c, args)
 
-	case "paste":
+	case "dev paste":
 		v, err := c.Clipboard(short)
 		if err != nil {
 			return err
@@ -287,15 +278,20 @@ func runCLI(cmd string, args []string) error {
 			return fmt.Errorf("the clipboard holds no text or files (%s)", v.Summary)
 		}
 
-	case "watch":
+	case "dev watch":
 		err := c.Events(ctx, func(ev api.Event) {
 			t := time.Unix(ev.Time, 0).Format("15:04:05")
 			fmt.Printf("%s %-9s %s %s\n", t, ev.Kind, ev.Peer, ev.Info)
 		})
+		var acquire *acquireError
+		if ctx.Err() == nil && !errors.As(err, &acquire) && !errors.Is(err, api.ErrNoDaemon) {
+			// The stream ended without a cancel: the service stopped or was replaced.
+			return &incompleteError{"the service stopped or was replaced; the event stream ended"}
+		}
 		return err
 
 	default:
-		return fmt.Errorf("unknown command %q (try `unic help`)", cmd)
+		return fmt.Errorf("unknown command %q (try `unic help`)", l.Name)
 	}
 	return nil
 }
@@ -303,7 +299,7 @@ func runCLI(cmd string, args []string) error {
 func copyCmd(ctx context.Context, c *api.Client, args []string) error {
 	if len(args) > 0 && (args[0] == "-f" || args[0] == "--file") {
 		if len(args) == 1 {
-			return fmt.Errorf("usage: unic copy -f <file> [more files]")
+			return fmt.Errorf("usage: unic dev copy -f <file> [more files]")
 		}
 		var files []string
 		for _, a := range args[1:] {
@@ -330,7 +326,7 @@ func copyCmd(ctx context.Context, c *api.Client, args []string) error {
 
 func printPeers(ps []api.PeerStatus) {
 	if len(ps) == 0 {
-		fmt.Println("no paired devices (run `unic pair <ticket>` with the other device's `unic addr`)")
+		fmt.Println("no paired devices (run `unic device add <address>` with the other device's `unic device addr`)")
 		return
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -366,5 +362,17 @@ func printPending(ps []api.PendingPeer) {
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, from, p.Fingerprint)
 	}
 	_ = w.Flush()
-	fmt.Println("Approve with `unic approve <id> '<fingerprint from the other device>'`, dismiss with `unic reject <id>`.")
+	fmt.Println("Approve with `unic device approve <id> '<fingerprint from the other device>'`, dismiss with `unic device reject <id>`.")
+}
+
+func isSixDigits(s string) bool {
+	if len(s) != 6 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

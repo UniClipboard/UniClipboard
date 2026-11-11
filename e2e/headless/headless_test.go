@@ -231,20 +231,32 @@ func TestProductionHeadless(t *testing.T) {
 		t.Fatalf("idempotency conflict: %v", e)
 	}
 	checks = append(checks, "headless commit, no targets and same-key retry")
-	var fromCLI engine.SubmissionResult
-	need(t, json.Unmarshal(cli(0, "submit", "--request-id", "cli-commit", "--json", "CLI content"), &fromCLI))
+	// submit --json keeps the local commit and the network outcome in separate fields.
+	type submitJSON struct {
+		Submission engine.SubmissionResult `json:"submission"`
+		Send       struct {
+			Outcome string `json:"outcome"`
+		} `json:"send"`
+	}
+	var cliReport submitJSON
+	need(t, json.Unmarshal(cli(0, "send", "--to", "all", "--request-id", "cli-commit", "--json", "CLI content"), &cliReport))
+	fromCLI := cliReport.Submission
+	if cliReport.Send.Outcome != "none" {
+		t.Fatalf("no peer is paired, so no send operation exists: %+v", cliReport.Send)
+	}
 	if fromCLI.HistoryID == "" {
 		t.Fatal("CLI did not commit")
 	}
 	var queried engine.SubmissionResult
-	need(t, json.Unmarshal(cli(0, "submission", "cli-commit"), &queried))
+	need(t, json.Unmarshal(cli(0, "dev", "submission", "cli-commit"), &queried))
 	if queried.HistoryID != fromCLI.HistoryID {
 		t.Fatal("CLI submission query differs")
 	}
 	cli(0, "history", "export", string(fromCLI.HistoryID), "--output", filepath.Join(base, "cli-export"))
 	cli(0, "config", "set", "sync.enabled", "false")
-	var paused engine.SubmissionResult
-	need(t, json.Unmarshal(cli(0, "submit", "--json", "--request-id", "disabled", "paused"), &paused))
+	var pausedReport submitJSON
+	need(t, json.Unmarshal(cli(0, "send", "--to", "all", "--json", "--request-id", "disabled", "paused"), &pausedReport))
+	paused := pausedReport.Submission
 	if paused.HistoryID == "" || paused.SyncDisposition == engine.SyncQueued {
 		t.Fatalf("disabled commit: %+v", paused)
 	}
@@ -392,10 +404,10 @@ func TestProductionHeadless(t *testing.T) {
 		}
 		return false
 	})
-	if string(cli(1, "received", "show", string(transient.ReceiptID))) != "transient receive" {
+	if string(cli(1, "recv", "show", string(transient.ReceiptID))) != "transient receive" {
 		t.Fatal("CLI transient content differs")
 	}
-	cli(1, "received", "dismiss", string(transient.ReceiptID))
+	cli(1, "recv", "dismiss", string(transient.ReceiptID))
 	checks = append(checks, "persist=false remains readable through Received without forced history")
 	// Start the real IPC adapter state machine with a directory board in a separate process.
 	board := filepath.Join(base, "board")

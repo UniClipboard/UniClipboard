@@ -9,8 +9,8 @@ Failure inventory recorded before implementation:
 - An interactive v2 command omits the warning when the v1 directory exists, or warns on a fresh installation or a non-directory path.
 - A compatibility warning contaminates JSON output or noninteractive command output.
 - Migration help accesses credentials, creates a target or starts a daemon.
-- A published package advertises migration but omits the sibling migration helper.
-- Migration loses the helper's partial-result exit code, modifies v1 data, or duplicates imported records on retry.
+- A published CLI package omits the in-process migration importer.
+- Migration loses its partial-result exit code, modifies v1 data, or duplicates imported records on retry.
 - An archive escapes its extraction directory or omits the sibling daemon.
 - An already published package version has conflicting bytes.
 - A required platform package is missing but the main package is exposed.

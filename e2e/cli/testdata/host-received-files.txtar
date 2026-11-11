@@ -28,7 +28,7 @@ genfile rand rejected.bin 100
 board-set alpha files rejected.bin
 ! board-wait beta files rejected.bin
 ! until beta '"kind":"files"' h list --json
-u beta cache --json
+u beta dev cache --json
 stdout '"stored_bytes":0'
 stdout '"files":\[\]'
 mv unavailable custom
@@ -54,8 +54,8 @@ u beta h expire @1 1s
 sleep 2s
 ! until beta '"kind":"files"' h list --json
 cmp $SAVED accepted.bin
-u beta copy release
+u beta dev copy release
 cmp $SAVED accepted.bin
-u beta cache --json
+u beta dev cache --json
 stdout '"stored_bytes":0'
 stdout '"custom_destination":true'

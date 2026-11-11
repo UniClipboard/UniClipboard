@@ -1,0 +1,14 @@
+# PR 2231 merge acceptance
+
+## Resolution
+
+Merge the current `v2` branch into `cli-release-channels`. Preserve the upstream user-intent CLI, temporary service lifecycle, in-process migration importer and license text. Keep early release identity output and the v1 upgrade notice. Package only `unic` and `unicd`, plus the `uniclip` alias; migration runs inside `unic` and retains partial-result exit code 3. Update the release architecture and contract to match.
+
+## Verification
+
+- `go build ./app/service/cmd/unic ./app/service/cmd/unicd` passed.
+- `python3 e2e/release/run.py --output .cache/pr2231-merge-release` passed all 45 process checks. This includes real local npm installation, migration preflight/import/retry, publication failure recovery, promotion and immutable record recovery. The report and SHA256SUMS allow replay verification.
+- `make headless-e2e` passed `TestProductionHeadless` with race detection. The subprocess fixture is intentionally skipped as a standalone test. The manifest is `.cache/0015-acceptance/manifest.json`; all 13 production checks passed and source hashes were preserved.
+- The five-platform native acceptance from the earlier receipt predates this merge. Native cross-platform acceptance must run again in CI. Public npm publication, GUI and device acceptance were not run.
+
+Existing whitespace warnings inside the upstream stored probe patch are preserved. They are patch content, outside this conflict resolution.

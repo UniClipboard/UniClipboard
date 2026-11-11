@@ -188,11 +188,11 @@ func (w *worker) cli(ctx context.Context, args []string, stdin io.Reader) (cliRe
 			return result, fmt.Errorf("cli_execution_failed")
 		}
 	}
-	if len(args) > 0 && args[0] == "addr" && result.Code == 0 {
+	if len(args) > 1 && args[0] == "device" && args[1] == "addr" && result.Code == 0 {
 		w.secrets = append(w.secrets, bytes.TrimSpace(result.Out))
 	}
-	if len(args) > 1 && args[0] == "pair" {
-		w.secrets = append(w.secrets, []byte(args[1]))
+	if len(args) > 2 && args[0] == "device" && args[1] == "add" {
+		w.secrets = append(w.secrets, []byte(args[2]))
 	}
 	return result, nil
 }
@@ -394,7 +394,7 @@ func (w *worker) submit(ctx context.Context, v submitRequest) (submitResult, err
 		out.Result = result
 		return out, err
 	default:
-		args := []string{"submit", "--json", "--request-id", v.Key}
+		args := []string{"send", "--to", "all", "--json", "--request-id", v.Key}
 		var input *os.File
 		switch f.Meta.Kind {
 		case "text":
@@ -432,7 +432,7 @@ func (w *worker) submit(ctx context.Context, v submitRequest) (submitResult, err
 	}
 }
 func (w *worker) received(ctx context.Context) ([]engine.ReceivedContent, error) {
-	b, err := w.checkedCLI(ctx, "received", "list")
+	b, err := w.checkedCLI(ctx, "recv", "list")
 	if err != nil {
 		return nil, err
 	}

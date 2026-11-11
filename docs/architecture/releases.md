@@ -6,7 +6,6 @@ paths:
   - tools/release
   - internal/releaseinfo
   - app/service/cmd/unic
-  - app/service/cmd/unic-migrate
   - internal/localpaths
   - internal/v1migration
   - e2e/release
@@ -21,9 +20,9 @@ verified: be4353ba672a0fc41d57dc8e22bf1e67feef087e
 
 `release/products.toml` owns product versions and build numbers. The implemented release product is CLI. Desktop, Android and iOS records reserve independent metadata; they do not establish release support.
 
-`go run ./tools/package -product cli` builds `unic`, `unicd` and `unic-migrate` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
+`go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 
-All runtime programs and the migration helper handle `--version` and `--version --json` before initialization. Release builds embed version, build number and source SHA. Development builds report `dev` unless packaging supplies metadata.
+All runtime programs handle `--version` and `--version --json` before initialization. Release builds embed version, build number and source SHA. Development builds report `dev` unless packaging supplies metadata.
 
 CLI assembly uses the existing npm main/platform-package model. `@uniclipboard/cli` pins every optional platform package to the exact `<version>-build.<number>` registry version. Both npm CLI command names use one launcher. The package also exposes `unicd` through a dedicated service entrypoint. The launcher executes the real CLI beside its sibling service. Alpha selects the npm `alpha` dist-tag. Stable selects `latest`. Channel names do not enter package versions.
 
@@ -33,9 +32,9 @@ The declared CLI matrix covers macOS arm64/amd64, Linux arm64/amd64 and Windows 
 
 The CLI checks known v1 paths only when stderr is a terminal and `--json` is absent. It performs directory stat calls; it does not open credentials or a database. A default v1 directory or the active `UC_PROFILE` directory triggers the warning. Missing paths and regular files remain silent. Custom and portable profiles outside these locations require explicit `--source` selection.
 
-The warning explains v1 incompatibility and points to migration help, preflight and import commands. It does not request acknowledgement or migrate automatically. `unic migrate` and `unic migrate --help` print a read-only guide before locating a helper or opening any profile.
+The warning explains v1 incompatibility and points to migration help, preflight and import commands. It does not request acknowledgement or migrate automatically. `unic migrate` and `unic migrate --help` print a read-only guide before opening any profile.
 
-CLI archives and npm platform packages ship the existing `unic-migrate` helper beside the real CLI. Native smoke checks the helper's embedded identity. Explicit migration runs the sibling helper with inherited streams and preserves its exit code. The importer keeps source data unchanged, verifies reopened target content and resumes by record identity. Partial migration returns 3. All peers must use v2 and pair again; settings, identities and trust are not imported.
+CLI archives and npm platform packages include the migration importer within `unic`. Explicit migration runs in-process without starting the service. The importer keeps source data unchanged, verifies reopened target content and resumes by record identity. Partial migration returns 3. All peers must use v2 and pair again; settings, identities and trust are not imported.
 
 The packaged-process E2E uses a temporary home, pseudoterminals and fixed encrypted Rust fixtures. It checks fresh-install silence, directory detection, JSON output, offline help, read-only preflight, partial results, source hashes and idempotent repair/retry. It never reads a personal v1 profile or system credential.
 
@@ -73,7 +72,7 @@ Retries preserve exact identity and reject integrity conflicts. An older build c
 | `release/products.toml` | Product metadata and CLI target matrix. |
 | `internal/releaseinfo` | Early executable build identity output. |
 | `app/service/cmd/unic/upgrade.go` | Known v1 directory checks and terminal notice. |
-| `app/service/cmd/unic/migrate.go`, `unic-migrate` | Offline help and shipped importer dispatch. |
+| `app/service/cmd/unic/migrate.go` | Offline help and in-process history import. |
 | `internal/localpaths` | Shared v1 source location without directory creation. |
 | `tools/package` | Go build, archive aliases and source/binary manifests. |
 | `tools/release/release.py` | Assembly, native smoke, npm publish/promote and durable build records. |

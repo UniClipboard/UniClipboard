@@ -45,6 +45,14 @@ func headlessRoutes(mux *http.ServeMux, b api.Backend) {
 		}
 		reply(w, 200, v)
 	})
+	mux.HandleFunc("GET /v1/operations/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, e := h.Operation(r.Context(), r.PathValue("id"))
+		if e != nil {
+			fail(w, 500, e)
+			return
+		}
+		reply(w, 200, v)
+	})
 	mux.HandleFunc("GET /v1/received", func(w http.ResponseWriter, r *http.Request) {
 		v, e := h.Received(r.Context())
 		if e != nil {
@@ -79,6 +87,58 @@ func headlessRoutes(mux *http.ServeMux, b api.Backend) {
 		w.Header().Set("Content-Type", v.MIME)
 		_, _ = io.Copy(w, v)
 	})
+}
+
+func transferRoutes(mux *http.ServeMux, b api.Backend) {
+	t, ok := b.(api.TransferBackend)
+	if !ok {
+		return
+	}
+	mux.Handle("POST /v1/transfers", boundedRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var v api.StartTransferInput
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 96<<20))
+		d.DisallowUnknownFields()
+		if e := d.Decode(&v); e != nil {
+			fail(w, 400, &api.Error{Message: "invalid transfer", Reason: "invalid_argument"})
+			return
+		}
+		out, e := t.StartTransfer(r.Context(), v)
+		if e != nil {
+			fail(w, 500, e)
+			return
+		}
+		reply(w, 200, out)
+	}), 4))
+	mux.HandleFunc("GET /v1/transfers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		out, e := t.Transfer(r.Context(), r.PathValue("id"))
+		if e != nil {
+			fail(w, 500, e)
+			return
+		}
+		reply(w, 200, out)
+	})
+	mux.HandleFunc("DELETE /v1/transfers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if e := t.CancelTransfer(r.Context(), r.PathValue("id")); e != nil {
+			fail(w, 500, e)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
+	})
+	mux.Handle("POST /v1/receive", boundedRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var v api.ReceiveInput
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
+		d.DisallowUnknownFields()
+		if e := d.Decode(&v); e != nil {
+			fail(w, 400, &api.Error{Message: "invalid receive request", Reason: "invalid_argument"})
+			return
+		}
+		out, e := t.Receive(r.Context(), v)
+		if e != nil {
+			fail(w, 500, e)
+			return
+		}
+		reply(w, 200, out)
+	}), 4))
 }
 
 func boundedRequests(next http.Handler, max int) http.Handler {

@@ -1,0 +1,16 @@
+#!/bin/sh
+# usage: two.sh BIN LABEL
+BIN=$1; LABEL=$2
+W=$(mktemp -d /private/tmp/zzt.XXXX); mkdir -p $W/a $W/b
+# B stays up for the whole run and keeps dialing A (like beta in the product).
+$BIN node $W/b $W/b.addr $W/a.addr 400 > $W/b.out 2>&1 &
+BP=$!
+sleep 6
+res=""
+for i in 1 2 3 4 5 6; do
+  r=$($BIN node $W/a $W/a.addr $W/b.addr 20)
+  res="$res | $r"
+  sleep 1
+done
+kill $BP 2>/dev/null
+echo "$LABEL:$res"

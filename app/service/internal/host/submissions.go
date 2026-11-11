@@ -80,6 +80,17 @@ func (n *Node) Submit(ctx context.Context, v api.SubmitInput) (engine.Submission
 		return engine.SubmissionResult{}, apiErr(adapterError(engine.CodeTimeout), false)
 	}
 }
+func deviceIDs(ids []string) []engine.DeviceID {
+	if ids == nil {
+		return nil
+	}
+	out := make([]engine.DeviceID, len(ids))
+	for i, id := range ids {
+		out[i] = engine.DeviceID(id)
+	}
+	return out
+}
+
 func (n *Node) commitExplicit(ctx context.Context, v api.SubmitInput) (engine.SubmissionResult, error) {
 	input, e := contentInput(v.Snapshot)
 	if e != nil {
@@ -90,7 +101,7 @@ func (n *Node) commitExplicit(ctx context.Context, v api.SubmitInput) (engine.Su
 		return engine.SubmissionResult{}, apiErr(e, false)
 	}
 	defer func() { _ = n.e.ReleaseContent(context.Background(), h.LeaseID) }()
-	out, e := n.e.CommitContent(ctx, engine.CommitRequest{RequestID: engine.RequestID(v.RequestID), LeaseID: h.LeaseID})
+	out, e := n.e.CommitContent(ctx, engine.CommitRequest{RequestID: engine.RequestID(v.RequestID), LeaseID: h.LeaseID, DeviceIDs: deviceIDs(v.DeviceIDs)})
 	if e == nil && out.SyncDisposition == engine.SyncQueued {
 		info := "text"
 		for _, p := range v.Snapshot.Parts {

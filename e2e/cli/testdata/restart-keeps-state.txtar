@@ -32,10 +32,10 @@ u alpha status
 stdout $ALPHA
 u beta status
 stdout $BETA
-until alpha $BETA'\s+\S+\s+online' peers
-until beta $ALPHA'\s+\S+\s+online' peers
-u beta requests
-! stdout $ALPHA
+until alpha $BETA'\s+\S+\s+online' device list
+until beta $ALPHA'\s+\S+\s+online' device list
+u beta device list
+! stdout 'Waiting for your approval'
 u beta h list --tag keep
 stdout 'alpha'
 

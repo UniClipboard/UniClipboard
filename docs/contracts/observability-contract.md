@@ -104,7 +104,7 @@ Engine 取消只能沿既有生命周期传播；诊断不得额外取消已接�
 
 发送 succeeded 只表示现有发送契约证明的成功。它不证明远端接收、远端应用或用户粘贴。
 接收 succeeded 只表示本机接收发布完成。应用 succeeded 只表示宿主报告系统写入成功。
-本次不统计配对、连接、CPU、RSS 或轮询唤醒；性能验收从进程外采集资源数据。
+Connection and session observations follow section 11. CPU, RSS and scheduler wakeups remain external acceptance measurements.
 
 ## 3. Metrics 规格
 
@@ -347,16 +347,18 @@ restart_required 是待重启键名数组，当前只允许 `telemetry.endpoint`
 ### 6.3 CLI
 
 ```sh
-unic logs level
-unic logs level debug --for 15m
-unic logs level debug --target remote --for 15m
-unic logs level reset
-unic logs level reset --target remote
-unic diagnostics telemetry
+unic dev logs level
+unic dev logs level debug --for 15m
+unic dev logs level debug --target remote --for 15m
+unic dev logs level reset
+unic dev logs level reset --target remote
+unic dev diagnostics telemetry
 ```
 
 `--target` 默认为 local。level 无位置参数时查询两个目标。
-查询命令不得隐式启动 daemon。daemon 不可用时沿用现有 CLI 错误行为。
+没有服务运行时，CLI 按[本地服务契约](local-service-contract.md#service-lifecycle)启动临时服务并在命令结束后停止；独立服务和桌面服务只被借用，不会被停止。
+临时服务下，带 `--for` 的设置命令持有该服务直到自己创建的覆盖到期、被 reset 或被更新的覆盖替换（比较 `expires_at_ms`），并在 stderr 提示持有时长；覆盖不会比临时服务活得更久。持久服务下命令在接受后立即返回。
+较早命令的退出不得撤销较新命令创建的覆盖。
 设置和 reset 返回与查询相同的状态信息。CLI 不直接写 TOML，不读取日志目录来推断状态。
 本次不增加日志正文读取或远程开关修改命令。持久配置仍通过既有配置入口修改。
 
@@ -452,8 +454,8 @@ It does not install SDK request-context middleware, identify users, alias identi
 | `manual_send_completed` | One explicit send operation reaches a terminal outcome across all targets. A submission with no operation emits `skipped`, its commit failure, or `failed` with the sync error code when commit succeeded but sync admission failed. Automatic observations, Action dispatch and restore-triggered synchronization are excluded. |
 | `action_completed` | The unique idempotent Action submission finishes execution/commit. An apply failure after that commit does not change its execution result. |
 
-The public ProductEvent has only `Name`, `Product`, `Result`, `Code`, `ContentKind` and `ActionCategory`.
-Allowed names are the five entries above. Product is `cli` or `desktop` (empty maps to cli).
+The public ProductEvent has `Name`, `Product`, `Result`, `Code`, `ContentKind`, `ActionCategory` and `SourceKind`.
+Allowed names are the five entries above plus `remote_content_applied` from section 11. Product is `cli` or `desktop` (empty maps to cli).
 Result accepts empty, `succeeded`, `failed`, `cancelled`, `superseded`, `partial`, or `skipped`.
 Code uses the existing safe Engine code vocabulary; content category uses the existing diagnostic content vocabulary.
 Action category is empty, `builtin`, or `external`. No plugin/action key is exported.
@@ -514,3 +516,163 @@ enabled = false
 
 Both changes hot reload. Invalid edits retain the previous valid settings.
 Local process acceptance does not prove Cloud ingestion, project Metrics availability or native UI acceptance.
+
+## 11. Tailcat sync diagnostics (0020)
+
+The built-in assembly uses `internal/syncdiag.Observer`. Records contain an internal
+collection epoch, finite categories, durations and nonnegative byte counts only.
+The epoch is local admission metadata and never a metric attribute. External plugin
+RPC and Engine transport options do not change. Observer panic is isolated.
+
+Connection phases are `network_start` / direction `none`, `dial` / `outgoing`, and
+`identity_handshake` / `incoming|outgoing`. Results are `succeeded|failed|cancelled|pending|rejected`.
+A completed pending/rejected handshake is not an admitted session. Error reasons are
+`timeout|cancellation|unavailable|invalid_address|unusable_credentials|identity_mismatch|protocol_mismatch|permission_rejection|remote_close|io_failure|local_stop|suspension|revocation|state_replacement|unknown`.
+Only typed errors and local lifecycle decisions select a reason. No string matching.
+
+| Instrument | Unit | Labels | Maximum reachable series |
+|---|---|---|---|
+| `unic.sync.connection.attempts` | `{attempt}` | phase,direction,result | 20 |
+| `unic.sync.connection.duration` | `s` | phase,direction,result | 20 |
+| `unic.sync.connection.errors` | `{error}` | phase,reason | 45 |
+| `unic.sync.session.ends` | `{session}` | reason,expected | 15 |
+| `unic.sync.session.duration` | `s` | expected | 2 |
+| `unic.sync.session.observed_time` | `s` | none | 1 |
+| `unic.sync.recovery.ends` | `{episode}` | result | 3 |
+| `unic.sync.recovery.duration` | `s` | none | 1 |
+| `unic.sync.recovery.pending` | `s` | none | 1 |
+| `unic.sync.path.samples` | `{sample}` | direction,path | 8 |
+| `unic.sync.path.transitions` | `{transition}` | from,to | 6 |
+| `unic.sync.path.upgrade_duration` | `s` | none | 1 |
+| `unic.sync.transfer.bytes` | `By` | direction,result | 6 |
+| `unic.sync.transfer.size` | `By` | direction,content_kind | 10 |
+| `unic.sync.transfer.duration` | `s` | direction,result,start_path,size_class | 144 |
+| `unic.sync.remote_applications` | `{application}` | none | 1 |
+
+Time histograms use `.001,.005,.01,.025,.05,.1,.25,.5,1,2.5,5,10,30,60,120,300,900,3600` seconds.
+Size histograms use `0,1024,65536,1048576,16777216,67108864,1073741824,4294967296` bytes.
+Size classes use binary boundaries: `empty|le_64k|le_1m|le_16m|gt_16m|unknown`.
+Transfer results are `succeeded|failed|cancelled`. Direction is `incoming|outgoing`.
+All new instruments retain the existing 1024-series cap. Invalid records increment
+`invalid_record` and create no label. Unknown errors become `unknown` before export.
+
+An admitted session has one terminal claim. Local stop, suspension, revocation and
+duplicate replacement are expected. EOF alone means remote_close. Connected exposure
+is monotonic session time inside the current metrics epoch. Re-enable resets baselines.
+An unexpected terminal starts one recovery episode only for a still eligible peer.
+Repeated dial failures share that episode. Admission in either direction recovers it.
+Loss of eligibility abandons it; stop or collection epoch replacement interrupts it.
+No disabled-period time or cross-process duration is replayed. A crash can lose a final
+observation. Pending ages are interval samples, not successful recovery durations.
+
+A service-owned collector samples every 10 seconds while sessions or recoveries exist.
+Its worker is the existing metrics generation worker; it performs no active probes.
+Transfer-start paths use only its cached sample, at most 10 seconds old. Unsupported
+outgoing status is unknown. Incoming tcnet status maps the connection's virtual
+remote IP using v0.7.0's ULA /48 plus the first 80 node-key bits. Status lacks
+TailscaleIPs in this revision. Ambiguous key-prefix matches remain unknown. Active status requires LastWrite within 30
+seconds and a nonfuture timestamp. A valid CurAddr wins over Relay, then PeerRelay,
+then a configured relay with fresh active status. Missing or ambiguous mapping is unknown.
+Unknown breaks transition continuity. Upgrade timing starts at the first DERP sample
+in a continuous known sequence, has up to 10 seconds sampling uncertainty, and excludes
+sessions first seen direct. Start-path labels do not describe every payload packet.
+
+Declared authorized/admitted size is recorded once before body I/O. Bytes count actual
+successful payload writes/reads, including partial failure and admitted-body draining.
+Control headers, rejected-body draining and network overhead are excluded. Body duration
+runs from the first payload I/O start to the last payload I/O completion; storage after
+that completion is excluded. An empty body records zero bytes and zero duration. Receive
+success requires the Engine's accepted completion, not just a complete body read.
+A multi-target submission produces one transfer per target. No receiver ACK is added.
+
+### 11.1 Product value and daily admission
+
+`ProductEvent.SourceKind` adds `local|remote|external|action|migration|unknown`.
+`history_applied` classifies the selected stored origin when creating its application
+ticket: local_system/explicit map to local; remote_device maps to remote. A retained
+ticket preserves classification even if the history row is deleted later.
+Successful explicit history application retains its existing per-operation frequency.
+
+`remote_content_applied` is emitted only after successful accepted BeginApply receipt
+completion for a remote device. BeginApplyHistory never emits it. Duplicate reports,
+failed/dead tickets and external-channel receipts do not emit it. Each valid automatic
+completion also increments `unic.sync.remote_applications` independent of analytics.
+These signals describe clipboard availability and deliberate history retrieval; neither
+proves paste, people, time saved or monetary ROI.
+
+The analytics worker loads a private identity/day high-water marker before admission. Clock rollback does not admit a date at or before the marker. It coalesces
+automatic-completion notifications in bounded memory. It writes and syncs a 0600 temporary
+marker, then atomically renames it before SDK enqueue. The marker contains only analytics
+identity epoch and UTC day. A failed marker read/write suppresses daily delivery and
+increments sink_failed. It never blocks the business callback. Persist-before-enqueue
+can lose the event if enqueue/delivery/crash fails. It is not replayed. A restart normally
+suppresses same-day delivery. Disable waits for the worker and clears the marker before
+identity rotation; stale markers cannot suppress a new identity. No history or peer
+identifier, hash or content is persisted. Exactly-once hosted delivery is not promised.
+
+Operational queries and value-cohort coverage limits are specified in the
+[0020 decision](../decisions/proposed/0020-tailcat-sync-observability.md).
+
+### 11.2 Query definitions, version 1
+
+These are aggregation specifications. Hosted execution/publication remains a
+separate acceptance layer. All numerator and denominator streams use the same
+release, enabled-collection window and backend population. Export loss is visible
+beside every result. Never join metrics with installation identifiers.
+
+| Query ID | Definition | Required accompanying data |
+|---|---|---|
+| `sync-v1-dial-failure` | failed dial attempts / all completed dial attempts | cancelled dials shown separately; phase=dial only |
+| `sync-v1-handshake-failure` | failed handshakes / all completed handshakes | pending/rejected/cancelled shown separately; never divide by dials |
+| `sync-v1-disconnect-frequency` | unexpected session ends / (observed_time / 3600) | session exposure, not installation uptime; expected replacements excluded |
+| `sync-v1-recovery` | p50/p95/p99 of recovered duration | pending-age distribution and abandoned/interrupted counts; no success-only outage claim |
+| `sync-v1-passive-direct` | direct samples / (direct + derp + peer_relay samples) | unknown / all samples, direction coverage and 10-second cadence; not bandwidth share |
+| `sync-v1-payload` | body duration percentiles by direction, result, start_path and size_class | declared size histogram and partial bytes; empty bodies excluded from throughput |
+| `sync-v1-availability-dau` | distinct analytics identifiers with remote_content_applied per UTC day | telemetry coverage and daily persistence/export losses |
+| `sync-v1-history-dau` | distinct analytics identifiers with history_applied and source_kind=remote per UTC day | explicit retrieval only; missing source_kind is unknown, not remote |
+| `sync-v1-availability-D1-D7` | fixed day-D availability cohort active on D+1 or D+7 through the same availability event / day-D cohort | require complete UTC days through D+1 or D+7; exclude incomplete windows |
+| `sync-v1-history-D1-D7` | same fixed cohort definition using successful remote history retrieval | do not mix event families or rotating identities |
+| `sync-v1-history-reach` | distinct identifiers with remote history retrieval / distinct identifiers with remote availability in the same window | history-only recipients and telemetry loss make this coverage-limited, not a complete conversion funnel |
+
+Availability/retrieval repeat use is installation retention, not people retention.
+No query estimates pasted items, time saved or monetary ROI. Engineering ROI remains
+an ordered cost/benefit assessment: failure stages first, passive-path coverage next,
+payload attribution next, and independent availability/retrieval reach next. Reassess
+resource and series cost before rollout. No per-retry product event is added.
+
+The passive collector reads one transport snapshot per collection, then classifies
+all incoming sockets against its private reduced map. It does not perform one full
+status read per session. Session terminals carry their close-time collection epoch;
+delayed cleanup after re-enable cannot create recovery from a disabled-period close.
+The daily marker uses one reserved temporary filename. Startup and disable remove
+that temporary, bounding crash residue and clearing old identity state.
+
+## 12. Offline local log export
+
+`unic dev logs export [--output FILE]` runs entirely in the CLI. It needs no running
+service, clipboard access or network. The default is a unique UTC-timestamped
+`unic-logs-*.tar.gz` file in the current directory. Success prints its absolute path.
+`--output` selects a file, not a directory. An existing file or symlink is never
+replaced. The destination parent must exist and must not be the managed logs directory.
+
+The archive contains only regular `logs/segment-<positive UnixNano>.jsonl` entries
+and `manifest.json`. The manifest has format_version=1, UTC creation time and each
+entry's relative name, byte count and SHA-256. It contains no profile path, config,
+credentials, database, analytics identifier or clipboard data. It copies existing
+sanitized log bytes without adding a second logging policy or exporting remote metrics.
+
+The CLI rejects symlinked logs directories, matching symlinks/nonregular entries,
+segments larger than 4 MiB and retained input larger than 20 MiB. Source and output
+operations use rooted handles; opened source identity must match its selected regular
+file. Missing/empty logs fail without creating an archive. Unrelated files are ignored.
+Archive and member permissions are private (0600 on POSIX).
+
+Export streams one segment at a time with bounded copy buffers. Each selected file
+has a fixed length: appends after selection are excluded. Rotation may remove an
+unopened segment, which is skipped; an opened unlinked file remains readable. A
+replaced/truncated/unreadable segment fails the export. On error/cancellation, remove
+only the archive created by this command. Propagate archive/gzip/output close failures.
+
+This is a best-effort snapshot of already-written bytes. It does not flush service
+queues or claim an atomic cross-file view; the last JSONL record can be incomplete
+if export overlaps its write. No new service endpoint or configuration key is added.

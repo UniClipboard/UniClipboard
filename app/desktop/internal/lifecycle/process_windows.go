@@ -2,9 +2,8 @@ package lifecycle
 
 import (
 	"os/exec"
-	"syscall"
+
+	"github.com/uniclipboard/unic/internal/servicelaunch"
 )
 
-func configureProcess(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP}
-}
+func configureProcess(cmd *exec.Cmd) { servicelaunch.ConfigureProcess(cmd) }

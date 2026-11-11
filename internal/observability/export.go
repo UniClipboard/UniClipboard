@@ -25,13 +25,33 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/syncdiag"
 )
 
 type flushRequest struct {
 	ctx  context.Context
 	done chan struct{}
 }
+type metricRecord struct {
+	remoteApplication bool
+	pipeline          *engine.DiagnosticRecord
+	sync              *syncdiag.Record
+}
+
+func (g *generation) record(r metricRecord) {
+	if r.remoteApplication {
+		g.inst.syncCounts["remote_applications"].Add(context.Background(), 1)
+	}
+	if r.pipeline != nil {
+		g.recordMetric(*r.pipeline)
+	}
+	if r.sync != nil {
+		g.recordSync(*r.sync)
+	}
+}
+
 type generation struct {
+	epoch          uint64
 	wire           *privateTransport
 	c              *Controller
 	index          int
@@ -42,7 +62,7 @@ type generation struct {
 	done           chan struct{}
 	flush          chan flushRequest
 	records        chan sdklog.Record
-	diagnostics    chan engine.DiagnosticRecord
+	diagnostics    chan metricRecord
 	handler        slog.Handler
 	provider       *sdklog.LoggerProvider
 	logExporter    *otlploghttp.Exporter
@@ -57,7 +77,7 @@ type generation struct {
 
 func (c *Controller) newGeneration(i int) (*generation, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	g := &generation{c: c, index: i, ctx: ctx, cancel: cancel, active: true, done: make(chan struct{}), flush: make(chan flushRequest), records: make(chan sdklog.Record, 1024), diagnostics: make(chan engine.DiagnosticRecord, 1024)}
+	g := &generation{c: c, index: i, ctx: ctx, cancel: cancel, active: true, done: make(chan struct{}), flush: make(chan flushRequest), records: make(chan sdklog.Record, 1024), diagnostics: make(chan metricRecord, 1024)}
 	version := safeVersion(c.opts.Version)
 	if version == "" {
 		version = "dev"
@@ -112,6 +132,12 @@ func (c *Controller) newGeneration(i int) (*generation, error) {
 		g.cleanup()
 		return nil, errors.New("initialization_failed")
 	}
+	if i == 2 {
+		c.mu.Lock()
+		c.syncEpoch++
+		g.epoch = c.syncEpoch
+		c.mu.Unlock()
+	}
 	go g.run()
 	return g, nil
 }
@@ -145,7 +171,7 @@ func (g *generation) enqueueMetric(r engine.DiagnosticRecord) {
 		return
 	}
 	select {
-	case g.diagnostics <- r:
+	case g.diagnostics <- metricRecord{pipeline: &r}:
 	default:
 		g.c.drop(2, 0, 1)
 	}
@@ -183,6 +209,23 @@ func (g *generation) stop(flush bool, ctx context.Context) {
 	<-g.done
 }
 func (g *generation) run() {
+	syncTimer := time.NewTimer(time.Hour)
+	syncTimer.Stop()
+	defer syncTimer.Stop()
+	var syncTick <-chan time.Time
+	var syncWake <-chan struct{}
+	if g.index == 2 {
+		syncWake = g.c.syncWake
+	}
+	sample := func() {
+		if g.collectSync() {
+			syncTimer.Reset(10 * time.Second)
+			syncTick = syncTimer.C
+		} else {
+			syncTimer.Stop()
+			syncTick = nil
+		}
+	}
 	// Cancelled generations make Processor.Shutdown a no-op, then publish done
 	// after releasing every SDK and transport resource.
 	defer func() { g.cleanup(); close(g.done) }()
@@ -238,7 +281,7 @@ func (g *generation) run() {
 					export(g.ctx)
 				}
 			case r := <-g.diagnostics:
-				g.recordMetric(r)
+				g.record(r)
 			default:
 				return
 			}
@@ -261,7 +304,14 @@ func (g *generation) run() {
 				export(g.ctx)
 			}
 		case r := <-g.diagnostics:
-			g.recordMetric(r)
+			g.record(r)
+		case <-syncWake:
+			if syncTick == nil {
+				sample()
+			}
+		case <-syncTick:
+			syncTick = nil
+			sample()
 		case <-ticker.C:
 			drain()
 			export(g.ctx)

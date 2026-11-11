@@ -18,16 +18,16 @@ Demo forms accept local example input. They do not authenticate or import real f
 | `pages/history-kit/HistoryKitList.tsx`, `HistoryKitGrid.tsx` | `history.go`: day groups, type icons, pins, tags, selection |
 | `pages/history-kit/HistoryKitDetail.tsx` | `history.go`: text, code, link, image, files, metadata, action bar |
 | `pages/history-kit/HistoryKitTagManager.tsx`, `HistoryKitTagNameCell.tsx` | `tag_manager.go`: tag table, editing, sidebar visibility, native context menus |
-| `pages/devices-kit/DevicesKitSheet.tsx` | `devices.go`: management sheet, master/detail, invite/connect/approve/phone tasks, sync policy, latency |
+| `pages/devices-kit/DevicesKitSheet.tsx` | `devices.go`: management sheet, master/detail, invite/connect/phone tasks, pending fingerprint review, sync policy, latency |
 | `pages/settings-kit/SettingsKitPage.tsx`, `components/setting/settings-config.ts` | `settings.go`: category sidebar and nine setting pages |
 | `pages/entry-kit/SetupKitEntry.tsx`, `SetupKitInitialize.tsx` | `entry.go`: welcome, create, join, import, pending, ready |
 | `pages/entry-kit/UnlockKitPage.tsx`, `StartupKitScreen.tsx`, `ProfileRecoveryKitPage.tsx` | `entry.go`: unlock, startup, recovery |
-| `quick-panel/ClipboardHistoryPanel.tsx` | `entry.go`: search, filters, history list, optional preview |
+| `apps/quick-panel` and `crates/quick-panel-core` at cached `origin/main` `885546c7` | `quick_panel_*.go`: isolated GPUI quick panel fixture; see [acceptance guide](QUICK-PANEL-DEMO.md) |
 | `updater/app-icon.png` | `app-icon.png`: original embedded app icon |
 
 The Kit selects Adwaita, macOS glass, or Fluent and applies the matching tokens.
 The demo reuses the Kit's existing native approximations for window chrome, controls, materials, and animations.
-The quick panel uses a normal native window. It does not reproduce global activation, focus restoration, automatic paste, or platform-specific popup placement.
+The dedicated `--page quick-panel` entry uses a compact frameless window and a nonfocusable satellite. It simulates host effects and retains a separate GPUI source reference. See the [quick panel guide](QUICK-PANEL-DEMO.md) for interaction coverage and native acceptance limits.
 The demo supports fixture search operators and in-memory tag-library editing. It omits daemon integration, network recovery, and real file operations.
 It does not claim pixel parity with the reference or native acceptance on any platform.
 
@@ -66,11 +66,11 @@ Use the same binary and reset the fixtures by restarting the process.
 5. Switch to grid. Change card size. Select a card. Confirm the inspector opens.
 6. Select multiple items. Confirm the selection summary. Pin the selection. Request deletion. Cancel it. Request deletion again and confirm it.
 7. Open Manage Devices. Confirm the sidebar shows pending requests, the local device, linked devices (online first, with latency) and suggested devices. Select each device. Confirm the latency, link and last activity. Set the direction to Pause. Confirm the content switches are disabled and the summary changes. Turn off global sync in Settings. Confirm the notice appears.
-8. Open Add > Invite Device. Confirm the 6-digit code, the regenerate action and the ticket mode. Simulate a join. Confirm a pending request appears. Open Verify Fingerprint. Confirm Approve stays disabled until the check box is set. Approve it. Confirm the device appears. Repeat and choose Reject.
+8. Open Add > Invite Device. Confirm the 6-digit code, the regenerate action and the ticket mode. Simulate a join. Confirm a pending request appears and its detail shows the fingerprint with Reject and Accept. Accept it. Confirm the device appears. Repeat and choose Reject.
 9. Open Add > Connect Device. Confirm Connect stays disabled for unknown input and the hint names a code or a ticket. Enter `000-000`. Confirm the error. Enter `482-913`. Simulate approval and rejection. Open Add > Connect Phone and confirm the code step.
 9a. Request device removal. Confirm the dialog states three consequences. Cancel it. Confirm it. Confirm the local device cannot be removed. Rename a device and confirm the sidebar updates.
 10. Open all nine settings categories. Change color mode. Confirm it updates the view. Return to History.
-11. Resize to 1000 px. Open the sidebar as an overlay. Close it. Resize to 700 px. Select history. Use Back to return to the list.
+11. Resize to 1000 px. Open the sidebar as an overlay. Close it. Resize to 700 px. Select history. Use Back to return to the list. Open Manage Devices at 600 px. Confirm only the device list shows. Select a device. Confirm its detail fills the sheet. Use Back to return to the list.
 12. Open `--page setup`. Create a space with matching example passphrases. Complete setup. Repeat with mismatched passphrases and confirm the error.
 13. Open `--page unlock`. Submit an empty example passphrase. Confirm the error. Enter a nonempty example value and unlock.
 14. Open the startup, recovery, and quick-panel pages. Complete their simulated transitions. Confirm the quick panel supports selection and preview.
@@ -320,7 +320,7 @@ UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/token-search-regression" \
 ```
 
 The replay writes token-search.json and a build receipt records source/artifact hashes. Full view and Kit checks passed (544 reported results). This is event/layout/software-renderer evidence; native Metal appearance and input-method acceptance remain separate.
-Restart the demo and try @Linux, #设计, /image, on:yesterday and ext:png. Try several exact words with trailing spaces, then remove or edit a chip. The daemon-backed GUI and quick-panel search are outside this history-demo integration.
+Restart the demo and try @Linux, #设计, /image, on:yesterday and ext:png. Try several exact words with trailing spaces, then remove or edit a chip. The daemon-backed GUI and the separate GPUI quick-panel fixture are outside this history-demo search integration.
 
 
 ### Tag management sheet

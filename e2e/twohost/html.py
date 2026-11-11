@@ -36,7 +36,7 @@ def main():
          "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
          "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
          "latency_definition": prior["latency_definition"],
-         "limits": ["HTML submission uses a test injector because unic submit has no HTML input", "native clipboard capture and application are not exercised"]}
+         "limits": ["HTML submission uses a test injector because unic send has no HTML input", "native clipboard capture and application are not exercised"]}
     def save():
         (opt.output / "manifest.json").write_text(json.dumps(m, indent=2) + "\n")
     try:

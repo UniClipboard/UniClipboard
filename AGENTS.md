@@ -15,6 +15,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | 构建无头版 | `make build-headless` |
 | 第二个本地节点 | `UNIC_HOME=/tmp/unicA ./unicd` |
 | 文档检查（链接、归档引用、架构页校验与过期） | `go run ./tools/docscheck`（`make docs-check`） |
+| CLI 服务生命周期（临时 unicd 自动启停，真实多进程） | `make service-lifecycle-e2e`；回执见 [0021 计划](docs/exec/0021-cli-on-demand-service-lifecycle.md) |
 | CLI 端到端（真实 unic/unicd 多进程） | `UNIC_E2E=1 go test ./e2e/cli -v`；用例清单见 [e2e/cli/CASES.md](e2e/cli/CASES.md) |
 
 ## 文档目录
@@ -42,13 +43,16 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0007](docs/decisions/proposed/0007-multiple-sync-backends.md) | 多同步后端与分层策略 | 已采纳并实现；全局开关、实例启用、每后端类型/自动文件阈值；多后端结果/资源隔离与有界跨后端去重；默认只交付 tailcat，WebDAV 对象协议另定 |
 | [0009](docs/decisions/proposed/0009-external-channels.md) | 外部渠道：无 unic 身份证明的第三方对端 | 草案；不是设备、不写 `devices` 表、无指纹；目标为组；与设备混排展示；默认自动写剪贴板并标 `external:` 来源；移除仅本地生效，后端声明 `remote_revocation`；接入形态待定（首个对象微信输入法）；数据模型与接收路径已实现（`engine/channels.go`），桌面 `/v1/channels` |
 | [0010](docs/decisions/proposed/0010-plugin-settings-schema.md) | 插件设置 Schema 与表单生成 | JSON Schema 子集 + UI 提示；Go 配置定义生成静态 schema，各 shell 生成原生表单；独立工具和 macOS 会话预览已实现，配置 API/清单/RPC/安装接入待完成 |
-| [0011](docs/decisions/proposed/0011-v1-history-migration.md) | v1 本机历史迁移 | 独立 Go CLI，三平台 arm64/amd64；只读解锁旧数据，离线导入文本/图片/文件/标签；支持新目录与追加合并、幂等续跑和重开校验；验收见执行计划 |
+| [0011](docs/decisions/proposed/0011-v1-history-migration.md) | v1 本机历史迁移 | `unic migrate` 子命令（无独立程序），随 `unic` 覆盖三平台；只读解锁旧数据，离线导入文本/图片/文件/标签；支持新目录与追加合并、幂等续跑和重开校验；验收见执行计划 |
 | [0013](docs/decisions/proposed/0013-mygo-uikit.md) | 桌面 UI Kit：移植到 mygo | 统一 Kit API，Adwaita / macOS glass / Fluent 三皮肤；token 从 default.json 生成；59 个公共组件与 GUI 已接入，交互和视觉分别验证；各平台原生验收边界见执行记录 |
 | [0014](docs/decisions/proposed/0014-client-observability-otlp.md) | 客户端可观测性：OTLP 与动态日志等级 | 已采纳；本次 logs + metrics 已接入工作区，traces 后续实施；验收与限制见执行计划；本机/远程等级独立，有界非阻塞、秘密白名单；current upload defaults are defined in the [observability architecture](docs/architecture/observability.md) |
 | [0015](docs/decisions/proposed/0015-headless-cli-and-desktop-integration.md) | 纯 CLI、无头服务与独立桌面集成 | Runtime implemented; UI-free CLI/service, exclusive desktop adapter and separate distributions; native acceptance pending. See [execution receipt](docs/exec/0015-headless-cli-and-desktop-integration.md) |
 | [0016](docs/decisions/proposed/0016-sync-and-file-settings.md) | Sync and file settings | Sync and quota CLI/TOML implemented; 100 MB default file limit; custom received files remain user-managed; separate file cleanup superseded by 0017 |
 | [0017](docs/decisions/proposed/0017-history-auto-cleanup.md) | Automatic history cleanup | Unified age/count cleanup, tag exclusions, and managed-file/history deletion implemented; per-device cache quota retained; separate file-cleanup settings removed; 16 CLI E2E cases passed; native visual acceptance pending |
 | [0018](docs/decisions/proposed/0018-independent-product-build-and-release.md) | Independent product builds and releases | Android, iOS, CLI and Desktop own independent versions and separate build/release workflows; immutable artifacts and per-target channels. CLI vertical slice implemented locally; Desktop/mobile pending. See [release architecture](docs/architecture/releases.md) and [execution plan](docs/exec/0018-independent-product-build-and-release.md). |
+| [0020](docs/decisions/proposed/0020-tailcat-sync-observability.md) | Tailcat sync observability | Connection/session/recovery metrics, payload measurements and remote-content value are implemented; incoming real-stack direct/DERP accepted. Public Client status is blocked upstream; remaining acceptance is recorded. Actual paste tracking is excluded; see [execution plan](docs/exec/0020-tailcat-sync-observability.md). |
+| [0021](docs/decisions/proposed/0021-cli-on-demand-service-lifecycle.md) | On-demand CLI service lifecycle | Implemented: leaf-command requirement catalog, automatic temporary `unicd` (`--cli-temporary`), generation-bound usage leases, last-user shutdown, own-operation send completion and bounded pairing/invitation/override sessions. Process acceptance recorded in the [execution receipt](docs/exec/0021-cli-on-demand-service-lifecycle.md); landing into living docs is described there. |
+| [0022](docs/decisions/proposed/0022-user-intent-cli-and-temporary-transfer.md) | User-intent CLI and temporary transfer | Implemented (CLI and host; no GUI entry). Top-level verbs `send`/`s` and `recv`/`r`; `device` group for pairing; development commands under `dev`. `send` without `--to` starts a temporary transfer with a 6-digit code; `recv` accepts a code, address or link, including the browser page's `/try` protocol (ticket kind `uc-web-try`). |
 
 ### 接口契约（`docs/contracts/`）
 

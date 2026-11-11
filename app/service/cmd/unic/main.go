@@ -1,103 +1,127 @@
 // Command unic syncs the clipboard between your devices, peer to peer.
 //
 //	unicd               the background node (a separate program)
-//	unic addr            print this device's address
-//	unic code            show a 6-digit pairing code
-//	unic join <code>     pair with the device showing that code
-//	unic pair <addr>     pair with another device
-//	unic config [path]   show the settings in effect
-//	unic history | h     browse the local clipboard history
-//	unic status | peers | unpair <id> | copy | paste | watch
+//	unic <command>      see `unic help`; every command declares whether it needs unicd
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
-	"os/exec"
 
 	"github.com/uniclipboard/unic/internal/releaseinfo"
+	"os/signal"
+	"strings"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
+	paths "github.com/uniclipboard/unic/internal/localpaths"
 )
 
-const usage = `unic - clipboard sync between your devices
+// Exit codes beyond 0, 1 (failed) and 2 (usage).
+const (
+	exitIncomplete = 4 // committed, but the send, approval or window did not complete
+	exitCleanup    = 5 // the command finished, but stopping its temporary service failed
+)
 
-Usage: unic <command>
+func main() { os.Exit(run(os.Args[1:])) }
 
-The background node is a separate program, unicd; start it first.
-
-  submit [flags] [text]  submit text, stdin, -f files, or --png PATH without a clipboard
-  submission ID    query a submission by request_id
-  received         list, show or dismiss transient received content
-  capabilities     show system clipboard capabilities
-  status           show this device and its peers
-  addr             print this device's address (treat it like a password)
-  code             show a 6-digit code another device can join with
-  join <code>      pair with the device showing that code
-  pair <address>   pair with another device by its full address
-  peers            list paired devices
-  unpair <id>      forget a paired device
-  requests         devices waiting for your approval
-  approve <id> <fingerprint>  accept after checking the other device
-  reject <id>      dismiss a waiting device
-  history, h       list, show, delete and tag clipboard history (unic h help)
-  copy [text]      put text (or stdin, or -f files) on the clipboard
-  paste            print the clipboard's text
-  watch            print sync events as they happen
-  config           show settings; set <key> <TOML-value>; apply <file>; --json; path
-  logs level       query or temporarily override local/remote log levels
-  diagnostics telemetry  show telemetry state and dropped records
-  cache [--json]   show default-cache bytes, reservations, and protected files
-  plugin           list local plugins; enable or disable one (unic plugin help)
-  migrate [flags]  import local UniClipboard v1 history (stop unicd first)
-
-Settings live in config.toml in the state directory; saving it applies it at once.
-Set UNIC_HOME to run a separate profile, UNIC_RENDEZVOUS_URL to use another
-pairing code service.
-`
-
-func main() {
-	showUpgradeNotice(os.Args[1:])
-	if releaseinfo.Print(os.Stdout, "unic", "cli", os.Args[1:]) {
-		return
+func run(args []string) int {
+	showUpgradeNotice(args)
+	if releaseinfo.Print(os.Stdout, "unic", "cli", args) {
+		return 0
 	}
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+	if len(args) < 1 {
+		fmt.Fprint(os.Stderr, usageText())
+		return 2
 	}
-	var err error
-	switch cmd, args := os.Args[1], os.Args[2:]; cmd {
-	case "daemon":
-		err = fmt.Errorf("the daemon is a separate program: run `unicd`")
-	case "history", "h":
-		err = runHistory(args)
-	case "plugin":
-		err = runPlugin(args)
-	case "migrate":
-		err = runMigration(args)
-	case "help", "-h", "--help":
-		fmt.Print(usage)
-	default:
-		err = runCLI(cmd, args)
-	}
+	cmd, rest := args[0], args[1:]
+	l, left, err := classify(cmd, rest)
 	if err != nil {
-		asJSON := false
-		for _, arg := range os.Args[1:] {
-			if arg == "--json" {
-				asJSON = true
-			}
-		}
-		if asJSON {
-			_ = json.NewEncoder(os.Stderr).Encode(map[string]string{"error": err.Error(), "reason": api.ReasonOf(err)})
-		} else {
-			fmt.Fprintln(os.Stderr, "unic:", err)
-		}
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() > 0 {
-			os.Exit(exitErr.ExitCode())
-		}
-		os.Exit(1)
+		return report(args, err)
 	}
+	if l.Requirement == reqOffline {
+		return runMigration(rest, os.Stdin, os.Stdout, os.Stderr)
+	}
+	socket, err := paths.Socket()
+	if err != nil {
+		return report(args, err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	var c *api.Client
+	if l.Requirement == reqLocal {
+		c = deniedClient(socket)
+	} else {
+		dir, err := paths.Dir()
+		if err != nil {
+			return report(args, err)
+		}
+		current = newSession(dir, socket)
+		c = current.client
+	}
+	err = dispatch(ctx, c, l, rest, left)
+	code := 0
+	if err != nil {
+		code = report(args, err)
+	}
+	// Cleanup has its own context and runs after command output is complete.
+	if cleanup := current.Release(); cleanup != nil {
+		fmt.Fprintln(os.Stderr, errorLine("cleanup: "+cleanup.Error()))
+		if code == 0 {
+			code = exitCleanup
+		}
+	}
+	return code
+}
+
+// dispatch runs a classified leaf. args is everything after the first word; left is what follows the leaf's own words.
+func dispatch(ctx context.Context, c *api.Client, l leaf, args, left []string) error {
+	switch {
+	case l.Name == "help":
+		if len(left) == 1 && left[0] == "--json" {
+			return writeCatalog(os.Stdout)
+		}
+		fmt.Print(usageText())
+		return nil
+	case l.Name == "dev help":
+		fmt.Println(groupUsage["dev"])
+		return nil
+	case l.Name == "plugin":
+		return runPlugin(args)
+	case strings.HasPrefix(l.Name, "history "):
+		return runHistory(ctx, c, args)
+	}
+	return runCLI(ctx, c, l, left)
+}
+
+func report(args []string, err error) int {
+	asJSON := false
+	for _, arg := range args {
+		if arg == "--json" {
+			asJSON = true
+		}
+	}
+	// Acquisition failures are not HTTP failures; print the cause alone.
+	var acquire *acquireError
+	if errors.As(err, &acquire) {
+		err = acquire
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && acquire == nil {
+		err = urlErr.Err
+	}
+	if asJSON {
+		_ = json.NewEncoder(os.Stderr).Encode(map[string]string{"error": err.Error(), "reason": api.ReasonOf(err)})
+	} else {
+		fmt.Fprintln(os.Stderr, errorLine(err.Error()))
+	}
+	var incomplete *incompleteError
+	if errors.As(err, &incomplete) {
+		return exitIncomplete
+	}
+	return 1
 }

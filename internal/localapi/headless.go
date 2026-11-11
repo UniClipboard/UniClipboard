@@ -15,6 +15,8 @@ import (
 type SubmitInput struct {
 	RequestID string        `json:"request_id"`
 	Snapshot  clip.Snapshot `json:"snapshot"`
+	// DeviceIDs limits the send to these paired devices; nil sends to all.
+	DeviceIDs []string `json:"device_ids,omitempty"`
 }
 type ActionInput struct {
 	RequestID string `json:"request_id"`
@@ -29,6 +31,7 @@ type ActionOutput struct {
 type HeadlessBackend interface {
 	Submit(context.Context, SubmitInput) (engine.SubmissionResult, error)
 	Submission(context.Context, string) (engine.SubmissionResult, error)
+	Operation(context.Context, string) (engine.Operation, error)
 	Received(context.Context) ([]engine.ReceivedContent, error)
 	ReceivedContent(context.Context, string, int) (HistoryContent, error)
 	DismissReceived(context.Context, string) error

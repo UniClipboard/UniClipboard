@@ -26,6 +26,7 @@
 go test -race ./...                                              # 核心与桌面端的全部 Go 测试
 go build -o unic ./app/service/cmd/unic
 go build -o unicd ./app/service/cmd/unicd
+go build -o unic-migrate ./app/service/cmd/unic-migrate
 go build -o unic-desktop ./app/desktop/cmd/unic-desktop
 ```
 
@@ -49,10 +50,15 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 
 ## Independent distributions
 
-`make package-headless` produces an archive with `unic` and `unicd`.
+`make package-headless` produces an archive with `unic`, `unicd` and the offline `unic-migrate` helper.
 `make package-desktop` produces both archives and adds `unic-desktop` to the desktop archive.
 Both archives reuse the same CLI and service binaries. Output includes a SHA-256 manifest.
 Archives are unsigned; platform installers and service registration remain separate.
+
+Versioned CLI candidates use `go run ./tools/package -product cli`.
+The CLI workflows assemble exact npm platform packages and expose `unic` and `uniclip` through the same launcher.
+Alpha and stable use external npm dist-tags. Promotion reuses the accepted packages.
+See [product builds and CLI releases](docs/architecture/releases.md) for commands, acceptance and publication prerequisites.
 See [headless architecture](docs/architecture/headless.md).
 
 ## License

@@ -148,7 +148,7 @@ func TestHarnessProcesses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer errLog.Close()
+	defer func() { _ = errLog.Close() }()
 	worker.Stderr = errLog
 	if err = worker.Start(); err != nil {
 		t.Fatal(err)
@@ -195,7 +195,8 @@ func TestHarnessProcesses(t *testing.T) {
 		_ = input.Close()
 		if !exited {
 			select {
-			case <-done:
+			case err := <-done:
+				_ = err // Cleanup waits for termination, not a successful command.
 				exited = true
 			case <-time.After(10 * time.Second):
 				_ = worker.Process.Kill()

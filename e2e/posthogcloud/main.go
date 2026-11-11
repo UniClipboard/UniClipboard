@@ -37,10 +37,12 @@ func (n *node) close() {
 	}
 	_ = n.cmd.Process.Signal(syscall.SIGTERM)
 	select {
-	case <-n.done:
+	case err := <-n.done:
+		_ = err // Shutdown may terminate the child with a signal.
 	case <-time.After(5 * time.Second):
 		_ = n.cmd.Process.Kill()
-		<-n.done
+		err := <-n.done
+		_ = err // The forced child termination is expected.
 	}
 	n.cmd = nil
 }
@@ -68,7 +70,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	dir, err = filepath.EvalSymlinks(dir)
 	if err != nil {
 		return err

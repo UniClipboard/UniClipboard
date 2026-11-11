@@ -23,8 +23,6 @@ import (
 	"time"
 
 	"github.com/tailscale/tailcat"
-	"github.com/uniclipboard/unic/internal/clip"
-	api "github.com/uniclipboard/unic/internal/localapi"
 	collectmetrics "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -32,6 +30,9 @@ import (
 	"tailscale.com/net/stun/stuntest"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+
+	"github.com/uniclipboard/unic/internal/clip"
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 func TestPassivePaths(t *testing.T) {
@@ -65,7 +66,7 @@ func runPath(t *testing.T, bin, mode string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 	var mu sync.Mutex
 	var decoded [][]byte
 	var paths []map[string]string
@@ -108,7 +109,7 @@ func runPath(t *testing.T, bin, mode string) {
 	derp := derpserver.New(key.NewNode(), func(string, ...any) {})
 	relay := httptest.NewTLSServer(derpserver.Handler(derp))
 	defer relay.Close()
-	defer derp.Close()
+	defer func() { _ = derp.Close() }()
 	stun, closeSTUN := stuntest.Serve(t)
 	defer closeSTUN()
 	port := relay.Listener.Addr().(*net.TCPAddr).Port
@@ -128,7 +129,8 @@ func runPath(t *testing.T, bin, mode string) {
 				}
 			case <-time.After(5 * time.Second):
 				_ = c.Process.Kill()
-				<-dones[i]
+				err := <-dones[i]
+				_ = err // The child was forcibly stopped above.
 				t.Error("service shutdown timeout")
 			}
 		}

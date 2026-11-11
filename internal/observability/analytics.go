@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/posthog/posthog-go"
+
 	"github.com/uniclipboard/unic/engine"
 )
 
@@ -303,7 +304,7 @@ func analyticsIdentity(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	info, err := root.Lstat("analytics-id")
 	if err == nil {
 		if !info.Mode().IsRegular() {
@@ -313,7 +314,7 @@ func analyticsIdentity(dir string) (string, error) {
 		if e != nil {
 			return "", e
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		actual, e := f.Stat()
 		if e != nil || !os.SameFile(info, actual) {
 			return "", errors.New("invalid identity file")
@@ -349,7 +350,7 @@ func analyticsIdentity(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer root.Remove(temp)
+	defer func() { _ = root.Remove(temp) }()
 	_, err = f.WriteString(id)
 	if err == nil {
 		err = f.Sync()
@@ -371,7 +372,7 @@ func clearAnalyticsIdentity(dir string) error {
 		}
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	info, err := root.Lstat("analytics-id")
 	if os.IsNotExist(err) {
 		return nil

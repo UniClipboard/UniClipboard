@@ -60,8 +60,8 @@ func TestIntroductionsBatchAndExcludeSelfAndRecipient(t *testing.T) {
 		b.st.Peers = append(b.st.Peers, rpc.StatePeer{ID: fmt.Sprintf("device-%d", i), Name: "phone", Address: "secret-address"})
 	}
 	left, right := net.Pipe()
-	defer left.Close()
-	defer right.Close()
+	defer func() { _ = left.Close() }()
+	defer func() { _ = right.Close() }()
 	s := &session{b: b, peerID: "recipient", trustRev: 1, conn: left, w: wire.NewConn(left), done: make(chan struct{})}
 	b.sessions[s.peerID] = s
 	done := make(chan error, 1)
@@ -106,16 +106,17 @@ func TestReceiveIntroductionsUsesLocalSessionAndHonorsSwitch(t *testing.T) {
 			got := make(chan rpc.Introduce, 1)
 			b.SetPeerAuthority(introAuthority{got: got})
 			left, right := net.Pipe()
-			defer left.Close()
-			defer right.Close()
+			defer func() { _ = left.Close() }()
+			defer func() { _ = right.Close() }()
 			s := &session{b: b, r: &runState{ctx: context.Background()}, conn: left, w: wire.NewConn(left), connID: "local-connection", token: strings.Repeat("a", 64)}
 			done := make(chan error, 1)
 			go func() { done <- b.recvLoop(s) }()
 			if err := wire.NewConn(right).WriteJSON(introduction{T: "introduce", Candidates: []rpc.Candidate{{ID: "candidate", Name: "phone", Address: "secret"}}}); err != nil {
 				t.Fatal(err)
 			}
-			right.Close()
-			<-done
+			_ = right.Close()
+			err := <-done
+			_ = err // This scenario intentionally closes the peer connection.
 			select {
 			case req := <-got:
 				if !enabled || req.ConnectionID != s.connID || req.SessionToken != s.token || len(req.Candidates) != 1 {

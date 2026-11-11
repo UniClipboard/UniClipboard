@@ -84,15 +84,6 @@ var catalog = []leaf{
 	{Name: "dev paste", Requirement: reqServiceClipboard, Completion: doneResponse},
 }
 
-func lookup(name string) leaf {
-	for _, l := range catalog {
-		if l.Name == name {
-			return l
-		}
-	}
-	panic("uncatalogued command leaf: " + name)
-}
-
 // firstWord maps a typed first word to its command. These are the only aliases of command words.
 var firstWord = map[string]string{"s": "send", "r": "recv", "h": "history", "-h": "help", "--help": "help"}
 

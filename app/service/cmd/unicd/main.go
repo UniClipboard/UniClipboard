@@ -8,11 +8,16 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/uniclipboard/unic/internal/releaseinfo"
+
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/servicelifecycle"
 )
 
 func main() {
+	if releaseinfo.Print(os.Stdout, "unicd", "cli", os.Args[1:]) {
+		return
+	}
 	mode, ok := parseMode(os.Args[1:])
 	if !ok {
 		fmt.Fprintln(os.Stderr, "usage: unicd [--desktop-owned|--cli-temporary]")

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/plugin"
@@ -483,4 +484,56 @@ func TestPeerPairingRouting(t *testing.T) {
 	}
 	_ = nb
 	_ = fb
+}
+
+// Failure modes are recorded in the CI repair receipt before implementation.
+// Model ApplyState holding pm while it waits for an in-flight handshake to exit.
+func TestRevokedPeerHandshakeDoesNotWaitForStatePush(t *testing.T) {
+	na, fa := peerNode(t)
+	_, fb := peerNode(t)
+	bind := []byte("revived-peer")
+	da, ea, _, eb := runHandshake(t, fa, fb, "initial", nil, bind, bind)
+	if ea != nil || eb != nil {
+		t.Fatalf("initial handshake: %v / %v", ea, eb)
+	}
+	d, err := na.e.st.Device(da.PeerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := na.e.st.RevokeDevice(d.ID, d.Revision); err != nil {
+		t.Fatal(err)
+	}
+	backend := na.e.peerProcs[0]
+	backend.pm.Lock()
+	done := make(chan error, 1)
+	defer func() {
+		backend.pm.Unlock()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("handshake did not exit after releasing state push")
+		}
+	}()
+	returned := make(chan struct{})
+	go func() {
+		dec, ea, _, eb := runHandshake(t, fa, fb, "revived", nil, bind, bind)
+		if ea != nil {
+			done <- ea
+		} else if eb != nil {
+			done <- eb
+		} else if dec.Decision != "pending" || dec.SessionToken != nil {
+			done <- errors.New("revived peer gained authority")
+		} else {
+			done <- nil
+		}
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("handshake waits for in-flight state push")
+	}
 }

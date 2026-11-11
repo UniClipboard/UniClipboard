@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/uniclipboard/unic/internal/syncdiag"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/uniclipboard/unic/internal/syncdiag"
 )
 
 // SetSyncCollector installs the built-in collector at host assembly. It never

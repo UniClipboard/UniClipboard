@@ -1,0 +1,305 @@
+{
+  "candidate": {
+    "artifact_zip_sha256": "052b7a3207e6e92f1be76d85f9de223438cdfd7ee9da7fbf8ca73469711be27d",
+    "metadata_sha256": "06f8405f8fdf83c322187b805abbf4315e7e4e29be56e57fe132935a4e907b6d",
+    "native_install": [
+      {
+        "command": "unic",
+        "identity": {
+          "build_number": "1",
+          "product": "cli",
+          "program": "unic",
+          "source_sha": "be4353ba672a0fc41d57dc8e22bf1e67feef087e",
+          "version": "2.0.0"
+        }
+      },
+      {
+        "command": "uniclip",
+        "identity": {
+          "build_number": "1",
+          "product": "cli",
+          "program": "unic",
+          "source_sha": "be4353ba672a0fc41d57dc8e22bf1e67feef087e",
+          "version": "2.0.0"
+        }
+      },
+      {
+        "command": "unicd",
+        "identity": {
+          "build_number": "1",
+          "product": "cli",
+          "program": "unicd",
+          "source_sha": "be4353ba672a0fc41d57dc8e22bf1e67feef087e",
+          "version": "2.0.0"
+        }
+      }
+    ],
+    "npx_explicit_package": "passed offline against installed candidate",
+    "packages": [
+      {
+        "binary_hashes_verified": {
+          "unic": "56bb496692bc01bc26cd7ca5daefeb7f0b1d87f1c519fb394f4b1049ba72ab3c",
+          "unic-migrate": "d0625f9cb87f17f930064e92b1da6842453e89e3f1768262659bb51a47ef9f71",
+          "unicd": "e1ab2c7cfff547465da863a56b239d232926de5421b281c500ccd419edc07986"
+        },
+        "integrity_verified": true,
+        "name": "@uniclipboard/cli-darwin-x64",
+        "sha256": "84da6eb45a7148f47f4b9ecfa21ebd6df78a1336479049fd3835c5a2182e7c2c"
+      },
+      {
+        "binary_hashes_verified": {
+          "unic": "8f208bdaaf4cb79c41b55cf31066035fe443477f253301dc30447e8dd86d50ce",
+          "unic-migrate": "dab99eab4a2d380c670c98e1b41284b1c550654b7d1d6b2718b19d6a309583a8",
+          "unicd": "b593fa1efcf693078f921fc43c3327d143d1dd429b76db0729cfba4b1483c5d6"
+        },
+        "integrity_verified": true,
+        "name": "@uniclipboard/cli-darwin-arm64",
+        "sha256": "ce19fff2ffb9dc1813618a34588730b61d8a0fba657d62a20daeca70a73cd4d1"
+      },
+      {
+        "binary_hashes_verified": {
+          "unic": "ab2619c49dfbe86966a23bcdf5e72719d466632cfa6020374aca5e59588ee352",
+          "unic-migrate": "fbd3cc7b74a0b668016252f871a84c8b0044f40a8b6e1e873987b7995c5e4f8b",
+          "unicd": "86593c717af61585a875ee75053c36dc44058174e12e696df233caa2cefe45d9"
+        },
+        "integrity_verified": true,
+        "name": "@uniclipboard/cli-linux-x64",
+        "sha256": "286a11a54f62d874e98cdbed6d7d8274a563b40e3bddccab5a4bec7acc3a5136"
+      },
+      {
+        "binary_hashes_verified": {
+          "unic": "2ada79d4537054361ada1c0f1f57b04adad077bf1166adf3d5b5164dd7afc8ba",
+          "unic-migrate": "70a03a3d84145d2d036c0f6e221572daab7b323bd458eec7c169dafe7f8a31db",
+          "unicd": "3309045035f19dbf16a1dc00ca86ed5a6b9e59c31f456597a6802dd94f3bb52a"
+        },
+        "integrity_verified": true,
+        "name": "@uniclipboard/cli-linux-arm64",
+        "sha256": "2fec6897602e61468394a8b8c3e602e88f55a170c9313d42ce81841e143654d8"
+      },
+      {
+        "binary_hashes_verified": {
+          "unic-migrate.exe": "8b3f1b301373c836453d76428d3a409f1f544dfab8d65f0222dd0005f74ef509",
+          "unic.exe": "f5191950213d845419aac5a3884f81746d46d578988b22006cfaeaad9135bf09",
+          "unicd.exe": "d96273e8eeaa8ad7914e3cb8b61c37e248ee72ebf95d172ef8360c2a2d89c7bb"
+        },
+        "integrity_verified": true,
+        "name": "@uniclipboard/cli-win32-x64",
+        "sha256": "55d220b97744a2b92997b476de33a1aad9b7b0c6125b78b2f9ba27f45db95bca"
+      },
+      {
+        "binary_hashes_verified": {},
+        "integrity_verified": true,
+        "name": "@uniclipboard/cli",
+        "sha256": "65a0943f830988ed536ca099af01323c3f3b3d094a2dd3b5a263dde8057d651a"
+      }
+    ],
+    "status": "passed",
+    "windows_metadata_sha256": "06f8405f8fdf83c322187b805abbf4315e7e4e29be56e57fe132935a4e907b6d"
+  },
+  "candidate_identity": {
+    "build_number": 1,
+    "npm_version": "2.0.0-build.1",
+    "product": "cli",
+    "source_clean": true,
+    "source_sha": "be4353ba672a0fc41d57dc8e22bf1e67feef087e",
+    "targets": [
+      "darwin-amd64",
+      "darwin-arm64",
+      "linux-amd64",
+      "linux-arm64",
+      "windows-amd64"
+    ],
+    "version": "2.0.0"
+  },
+  "not_performed": [
+    "npm publish",
+    "npm dist-tag mutation",
+    "GitHub public release creation",
+    "R2/FlareRelease writes",
+    "GitCode sync"
+  ],
+  "npm_permissions": {
+    "oidc_failure_inferred_from_whoami": false,
+    "reason": "local npm identity and trusted-publisher configuration reads returned HTTP 401",
+    "required_workflows": [
+      "release-cli.yml",
+      "promote.yml"
+    ],
+    "requires_authenticated_owner_read": true,
+    "status": "not_verified"
+  },
+  "prior_failures": [
+    {
+      "canonical_metadata_sha256": "06f8405f8fdf83c322187b805abbf4315e7e4e29be56e57fe132935a4e907b6d",
+      "cause": "Windows CRLF checkout changed raw metadata SHA-256",
+      "fix": "Git attributes enforce LF for release TOML; real checkout regression failed before the fix and passed afterward",
+      "run_id": 42775669691,
+      "stage": "assemble",
+      "windows_metadata_sha256": "cf753b793631bd0df4bf593587fb221675c069cc1efad10590b267ff4b49ef75"
+    },
+    {
+      "attempt": 1,
+      "failure": "timeout: headless receipt text",
+      "resolution": "same source retry passed; no timeout or assertion was changed",
+      "run_id": 42777109814,
+      "stage": "Production headless E2E"
+    }
+  ],
+  "process_acceptance": {
+    "checks": 45,
+    "report_sha256": "e2ae0396d1d06528ab0f852d16657a656c5f69322a2f511e2b464a0bfbe0d239",
+    "source_files": {
+      ".gitattributes": "c07f72ddcc8549e04ba4345314bc269e16c63ed367ac70509e944a7df85f89ee",
+      ".github/workflows/build-cli.yml": "b4f9feee29700395e0203918caae409818d945bec757cd717e32d13c27ee4460",
+      ".github/workflows/promote.yml": "7f19b609857e6506a818117036025fcd250b3ea2d1e3a3b61fcaef28931aa5e4",
+      ".github/workflows/release-cli.yml": "ac8c8bd9c9c8da9f0bfb09cc26010e0b689f013bdefddee428a82204024fffe3",
+      "LICENSE": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+      "app/desktop/cmd/unic-desktop/main.go": "7475beeb4d4859cc2ad2128553a43e322475851796f6bcd799b1a56e7c71ac78",
+      "app/service/cmd/unic-migrate/main.go": "d93fd7886b1523a55f5ae12ddfce21f0ed9e81ebf419605127980a0b5f434700",
+      "app/service/cmd/unic/cli.go": "18315e54242ea291f21b96ce98d8be05af1faf0473f4fbcec9387acc8c69f2d0",
+      "app/service/cmd/unic/diagnostics.go": "b55515cea1e2fb085bc52f8c22dd66cc15ad5276ad2bfc0e6906da582701cc6b",
+      "app/service/cmd/unic/headless.go": "036aabf7e98fc90ae681dbf597e3b7100e24f4a3b908e8a8bc7f608695cf6ac1",
+      "app/service/cmd/unic/history.go": "6c007b46e2a7ff98588872b337ebc2c181e3e430fd4afe602d45f818606d6bdf",
+      "app/service/cmd/unic/history_test.go": "609920a2525d9ef7b4347b43ff336da6301d5cfedb5a0d9666f40284abccc656",
+      "app/service/cmd/unic/main.go": "098d799df23b4562060001aed4089f6ed822456de42cba928320bf45f0c65f68",
+      "app/service/cmd/unic/migrate.go": "85bde1503afa182b530247c2bf94b1fbb0be65ffea43d45c419cf7202a3d369f",
+      "app/service/cmd/unic/plugin.go": "4bd628a59762bdce4cbc66e5b69cecb873906fcac59140fa48896a36b8fafbfe",
+      "app/service/cmd/unic/plugin_test.go": "f792aacc883fb878950a072f9f96fd9c0c941020f1526d870814ea36e7566552",
+      "app/service/cmd/unic/upgrade.go": "36bb6e75b98500ec747bba1727378923ec99d39d126562d8df007fc22d284657",
+      "app/service/cmd/unicd/main.go": "e74c058361e07f0cdf060e2f67b1e57c6287e19f90e73b1bf78134a261c5b962",
+      "e2e/release/README.md": "299580f9e592be9d039a09c9d09f69e72bb017e9924ce45545ffb96045946122",
+      "e2e/release/github_fixture.py": "833f694763102490a3b9273c3423a4e62b7046895fa93786b2d16bd590285e74",
+      "e2e/release/migration_acceptance.py": "2c44497e16d69431a982cb500f9f0695a2fa8a0de191a1c8204ab9c0e479fe5f",
+      "e2e/release/run.py": "3f7262c100d6829fc2e4b43d075cae6f62927efb7702e0fd7494446ea9affae9",
+      "go.mod": "53974dfc0dfc430b1b09dfb9f986eacc20f598496680fc85ca56f958338410a1",
+      "go.sum": "710e83511de6d2cd33126b726c73684b353f499c0ce48f3eed0441daa3a44574",
+      "internal/localpaths/paths.go": "b37e7537d135f7f6eed11cdcc3ff3095ae45ec086a8d5c3b43fed80dd07830e7",
+      "internal/releaseinfo/releaseinfo.go": "015c13368cd2fd6de071456abbb6039d252d86bf82240def71b47f49ee5fa14f",
+      "internal/v1migration/credentials_darwin.go": "10842ac7f5593203a023342ebf924a9f9a5fe80ac2170d5cfea1971d12d3d470",
+      "internal/v1migration/credentials_linux.go": "1669e1a8081c5ba3da4962b82479d9820c2b40db86754e1dbd6b1d373cb00ab0",
+      "internal/v1migration/credentials_windows.go": "261f315e9aa3b329020570de9640a3e82dfa22a7a55ff73f9bbd77b625c6a23a",
+      "internal/v1migration/crypto.go": "c09aa9da9380fa63c015f52bff471a41c782d0011b42cec0d3a87479c86e2b73",
+      "internal/v1migration/files_test.go": "7ccd2426ce142276d04c96dc3536aaadba142152fac1cbfffe07878600de6839",
+      "internal/v1migration/hash.go": "d45ae38dd2bae8357343e573f63131665f491662345e14932166879894344e7b",
+      "internal/v1migration/hash_test.go": "3cca54e8b50ccd313d78e971dab4d9b11839172e48a1eadd3b27353b55e38aa0",
+      "internal/v1migration/layout.go": "d7697badf384a72b57a034184614b5657194bac28b3e4c2142b1b03d8c0c4404",
+      "internal/v1migration/local_test.go": "6be1aa909238e7f56132f6cdfb9aa48371647b8219a120b087f26765ec052103",
+      "internal/v1migration/migrate.go": "f497302a09ec92b35e9c582c92d289e30365504ec232c488b63116dd8a355a9c",
+      "internal/v1migration/migrate_test.go": "c0260c8dade0646e043ec725ee5177ccbc9aec3d11c58496ab9aeafcbe8f19ab",
+      "internal/v1migration/source.go": "b436d0def8f845267165e8f7064b8dbb6260312d594a7a310fb5c9f67640d5ce",
+      "internal/v1migration/testdata/v3.json": "dd52f785b386f43c414f8bc809554fc581be7bb3532c3878748e37b57c3a051a",
+      "release/products.toml": "06f8405f8fdf83c322187b805abbf4315e7e4e29be56e57fe132935a4e907b6d",
+      "tools/package/main.go": "b3f02ec6cfeaabba0c639e01dd70ea0a7dffaa7b3bceae480fe3a5f6e4cb39b1",
+      "tools/release/release.py": "6b5294623a3936ca42f7a50bb3e9a39a8cb45447c6cdb95493f768ba15c414af"
+    },
+    "source_unchanged": true
+  },
+  "public_registry": {
+    "alpha": "1.6.2-alpha.1",
+    "latest": "1.6.1",
+    "v2_build_1_published": false
+  },
+  "release_deployment_metadata_included": false,
+  "remote": {
+    "artifacts": [
+      {
+        "id": 13745470461,
+        "name": "cli-npm-candidate",
+        "sha256": "052b7a3207e6e92f1be76d85f9de223438cdfd7ee9da7fbf8ca73469711be27d",
+        "size_bytes": 300506730
+      },
+      {
+        "id": 13744800750,
+        "name": "cli-darwin-arm64",
+        "sha256": "c3793f4443242260b4d2a29e0b965791268dff4d9df9ee318031b86e67e5a525",
+        "size_bytes": 59444490
+      },
+      {
+        "id": 13744781651,
+        "name": "cli-linux-amd64",
+        "sha256": "44b3f52205ae4d7fde28f63653a092107234e10fac9339e7e55428117dde9ad3",
+        "size_bytes": 62375686
+      },
+      {
+        "id": 13744472770,
+        "name": "cli-release-upgrade-acceptance",
+        "sha256": "f10198ebc982fe639c02dc9b3d438def8608a2a9723e82c4129e90518fedceef",
+        "size_bytes": 15221
+      },
+      {
+        "id": 13744009563,
+        "name": "cli-darwin-amd64",
+        "sha256": "256defb38241a1ebf3cdceafb731b6ffa16806bc628bc006f286088205b35e0f",
+        "size_bytes": 62433698
+      },
+      {
+        "id": 13743659564,
+        "name": "cli-windows-amd64",
+        "sha256": "4399554f8bf0119a869bf4a8a42a388e7b191a4932860c0e9be3ea0cc37464c1",
+        "size_bytes": 61366970
+      },
+      {
+        "id": 13743474962,
+        "name": "cli-linux-arm64",
+        "sha256": "67be5647ea9e6f44270bdbd172356cd115fc51393abb625b925d3f2f867ab1d8",
+        "size_bytes": 58010449
+      }
+    ],
+    "branch": "cli-release-channels",
+    "jobs": [
+      {
+        "conclusion": "success",
+        "id": 129699409336,
+        "name": "targets (linux-amd64, ubuntu-24.04, linux, amd64)",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 129699410783,
+        "name": "targets (darwin-arm64, macos-15, darwin, arm64)",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 129699411054,
+        "name": "prepare",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 129699411528,
+        "name": "targets (windows-amd64, windows-2025, windows, amd64)",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 129699454331,
+        "name": "targets (darwin-amd64, macos-15-intel, darwin, amd64)",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 129699472338,
+        "name": "targets (linux-arm64, ubuntu-24.04-arm, linux, arm64)",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 129700267720,
+        "name": "assemble",
+        "status": "completed"
+      }
+    ],
+    "run_attempt": 2,
+    "run_id": 42777109814,
+    "run_url": "https://github.com/UniClipboard/UniClipboard/actions/runs/42777109814",
+    "verified_commit": "be4353ba672a0fc41d57dc8e22bf1e67feef087e"
+  },
+  "repository_variable": {
+    "basis": "previously accepted US Cloud selection in 0019",
+    "name": "POSTHOG_HOST",
+    "value": "https://us.i.posthog.com"
+  },
+  "schema": 1,
+  "status": "remote_build_and_candidate_verified"
+}

@@ -21,12 +21,14 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
+verified: 0f09ebbec8bdaf388d41fae069bc80a23d744e21
 ---
 # Desktop configuration and received files
 
 The desktop daemon loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
+
+`unic-desktop --version --json` reports build identity before configuration, service ownership or UI initialization. See the [release architecture](releases.md).
 
 ## Settings
 

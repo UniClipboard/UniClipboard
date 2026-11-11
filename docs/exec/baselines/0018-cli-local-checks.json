@@ -1,0 +1,165 @@
+{
+  "baseline_sha": "edad4381b8a080d583c7a558c517b2d671c8fdf3",
+  "cli_process_e2e": {
+    "candidate_source_clean": true,
+    "checks": [
+      {
+        "name": "alpha publication available",
+        "passed": true
+      },
+      {
+        "name": "platform package publishes before main",
+        "passed": true
+      },
+      {
+        "name": "unic executes installed exact build",
+        "passed": true
+      },
+      {
+        "name": "unic preserves failing exit code",
+        "passed": true
+      },
+      {
+        "name": "uniclip executes installed exact build",
+        "passed": true
+      },
+      {
+        "name": "uniclip preserves failing exit code",
+        "passed": true
+      },
+      {
+        "name": "unicd executes installed exact build",
+        "passed": true
+      },
+      {
+        "name": "stable promotion available",
+        "passed": true
+      },
+      {
+        "name": "promotion does not upload packages",
+        "passed": true
+      },
+      {
+        "name": "promotion preserves alpha",
+        "passed": true
+      },
+      {
+        "name": "idempotent promotion reuses packages",
+        "passed": true
+      },
+      {
+        "name": "integrity conflict rejects before tag mutation",
+        "passed": true
+      },
+      {
+        "name": "missing target rejects complete promotion",
+        "passed": true
+      },
+      {
+        "name": "invalid local integrity rejects before any upload",
+        "passed": true
+      },
+      {
+        "name": "partial destination failure is failed",
+        "passed": true
+      },
+      {
+        "name": "platform publication completed before main upload failure",
+        "passed": true
+      },
+      {
+        "name": "main stable stays on previous build after platform failure",
+        "passed": true
+      },
+      {
+        "name": "retry completes direct stable publication",
+        "passed": true
+      },
+      {
+        "name": "retry uploads only the previously missing main package",
+        "passed": true
+      },
+      {
+        "name": "older build cannot replace stable",
+        "passed": true
+      },
+      {
+        "name": "missing durable record selects a new build",
+        "passed": true
+      },
+      {
+        "name": "durable staging creates the verified source tag first",
+        "passed": true
+      },
+      {
+        "name": "durable staging retry accepts identical existing assets",
+        "passed": true
+      },
+      {
+        "name": "release retry restores exact staged package bytes",
+        "passed": true
+      },
+      {
+        "name": "durable record rejects changed existing bytes",
+        "passed": true
+      }
+    ],
+    "replay": "python3 e2e/release/run.py",
+    "report_sha256": "28e9155039a55e6dbb7199fb7d323096cecc120524ba76d298efbd09a9a4b16a",
+    "status": "passed"
+  },
+  "go_race": {
+    "error": "cannot open default file cache",
+    "failed_tests": 207,
+    "identical_failed_test_names": true,
+    "original_head_failed_tests": 207,
+    "packages": [
+      "engine",
+      "app/service/internal/host",
+      "internal/v1migration"
+    ],
+    "status": "failed"
+  },
+  "headless_process_e2e": {
+    "duration_seconds": 49.24,
+    "replay": "make headless-e2e",
+    "status": "passed"
+  },
+  "lint": {
+    "identical_original_head_output": true,
+    "issues": 39,
+    "scoped_changed_packages": "0 issues",
+    "status": "failed",
+    "version": "v2.15.0"
+  },
+  "not_run": [
+    "production npm/OIDC/provenance",
+    "native Windows/Linux hosts",
+    "GUI",
+    "Store",
+    "GitCode",
+    "real GitHub release APIs (command fixture only)",
+    "Desktop installers and R2/FlareRelease publication",
+    "Android/iOS native applications"
+  ],
+  "schema": 1,
+  "source_files": {
+    ".github/workflows/build-cli.yml": "ed88a3047b937a98e59e2ee6e82c134d3002fe415c7983ec9ce5c8080b1a60ce",
+    ".github/workflows/promote.yml": "7f19b609857e6506a818117036025fcd250b3ea2d1e3a3b61fcaef28931aa5e4",
+    ".github/workflows/release-cli.yml": "ac8c8bd9c9c8da9f0bfb09cc26010e0b689f013bdefddee428a82204024fffe3",
+    "LICENSE": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+    "app/desktop/cmd/unic-desktop/main.go": "7475beeb4d4859cc2ad2128553a43e322475851796f6bcd799b1a56e7c71ac78",
+    "app/service/cmd/unic/main.go": "8e0d112f23e688cc427cb2164a0c60d82e5ec36eb4d3de9cf0e883179a38740e",
+    "app/service/cmd/unicd/main.go": "e74c058361e07f0cdf060e2f67b1e57c6287e19f90e73b1bf78134a261c5b962",
+    "e2e/release/README.md": "ae8eeef0c8810d93adad43af93f27e0a7d5960d36ea56f23ef204937c5282f5b",
+    "e2e/release/github_fixture.py": "833f694763102490a3b9273c3423a4e62b7046895fa93786b2d16bd590285e74",
+    "e2e/release/run.py": "56ca0eb7ebd2101047c61501ccd42a67ab63acf4694d8e88b602df33bd92b7c9",
+    "go.mod": "53974dfc0dfc430b1b09dfb9f986eacc20f598496680fc85ca56f958338410a1",
+    "go.sum": "710e83511de6d2cd33126b726c73684b353f499c0ce48f3eed0441daa3a44574",
+    "internal/releaseinfo/releaseinfo.go": "015c13368cd2fd6de071456abbb6039d252d86bf82240def71b47f49ee5fa14f",
+    "release/products.toml": "2eda6d85693d731a6196fc55636098f83aa5a5bee92a871ab6f834a7fdec96ce",
+    "tools/package/main.go": "6ce8c84276e696ca92fb44cc845aa6cc3be8349655a375b5ba05ca3553b398cf",
+    "tools/release/release.py": "9b5172619acf05195a02099453e2e232fb241fdea59ad02da7096cc1bf86bc9d"
+  },
+  "verified_code_commit": "84decc42acae489bb4c4a608c71f2346d4a76148"
+}

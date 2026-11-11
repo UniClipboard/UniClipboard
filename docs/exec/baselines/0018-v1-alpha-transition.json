@@ -1,0 +1,234 @@
+{
+  "candidate_source_clean": false,
+  "checks": [
+    {
+      "name": "ambiguous legacy tag rejects before publication: 2.0.0-alpha.1",
+      "passed": true
+    },
+    {
+      "name": "ambiguous legacy tag rejects before publication: 99.0.0-alpha.1",
+      "passed": true
+    },
+    {
+      "name": "ambiguous legacy tag rejects before publication: unexpected",
+      "passed": true
+    },
+    {
+      "name": "alpha publication available",
+      "passed": true
+    },
+    {
+      "name": "platform package publishes before main",
+      "passed": true
+    },
+    {
+      "name": "v2 alpha transition preserves v1 stable",
+      "passed": true
+    },
+    {
+      "name": "unic executes installed exact build",
+      "passed": true
+    },
+    {
+      "name": "unic preserves failing exit code",
+      "passed": true
+    },
+    {
+      "name": "uniclip executes installed exact build",
+      "passed": true
+    },
+    {
+      "name": "uniclip preserves failing exit code",
+      "passed": true
+    },
+    {
+      "name": "unicd executes installed exact build",
+      "passed": true
+    },
+    {
+      "name": "fresh installation has no v1 warning",
+      "passed": true
+    },
+    {
+      "name": "a non-directory v1 path has no warning",
+      "passed": true
+    },
+    {
+      "name": "existing v1 directory displays incompatibility and migration steps",
+      "passed": true
+    },
+    {
+      "name": "terminal JSON remains clean when v1 exists",
+      "passed": true
+    },
+    {
+      "name": "JSON flag assignment suppresses the v1 warning",
+      "passed": true
+    },
+    {
+      "name": "noninteractive output omits migration warning",
+      "passed": true
+    },
+    {
+      "name": "active named v1 profile displays migration warning",
+      "passed": true
+    },
+    {
+      "name": "offline migration guide default",
+      "passed": true
+    },
+    {
+      "name": "offline migration guide help",
+      "passed": true
+    },
+    {
+      "name": "installed migration preflight reports partial without creating target",
+      "passed": true
+    },
+    {
+      "name": "installed migration preserves partial exit code and verifies imported content",
+      "passed": true
+    },
+    {
+      "name": "migration does not modify v1 source",
+      "passed": true
+    },
+    {
+      "name": "installed migration resumes only the repaired record",
+      "passed": true
+    },
+    {
+      "name": "installed migration retry does not duplicate history",
+      "passed": true
+    },
+    {
+      "name": "migration retries leave repaired source unchanged",
+      "passed": true
+    },
+    {
+      "name": "stable promotion available",
+      "passed": true
+    },
+    {
+      "name": "promotion does not upload packages",
+      "passed": true
+    },
+    {
+      "name": "promotion preserves alpha",
+      "passed": true
+    },
+    {
+      "name": "idempotent promotion reuses packages",
+      "passed": true
+    },
+    {
+      "name": "integrity conflict rejects before tag mutation",
+      "passed": true
+    },
+    {
+      "name": "missing target rejects complete promotion",
+      "passed": true
+    },
+    {
+      "name": "invalid local integrity rejects before any upload",
+      "passed": true
+    },
+    {
+      "name": "partial destination failure is failed",
+      "passed": true
+    },
+    {
+      "name": "platform publication completed before main upload failure",
+      "passed": true
+    },
+    {
+      "name": "main stable stays on previous build after platform failure",
+      "passed": true
+    },
+    {
+      "name": "retry completes direct stable publication",
+      "passed": true
+    },
+    {
+      "name": "retry uploads only the previously missing main package",
+      "passed": true
+    },
+    {
+      "name": "older build cannot replace stable",
+      "passed": true
+    },
+    {
+      "name": "missing durable record selects a new build",
+      "passed": true
+    },
+    {
+      "name": "durable staging creates the verified source tag first",
+      "passed": true
+    },
+    {
+      "name": "durable staging retry accepts identical existing assets",
+      "passed": true
+    },
+    {
+      "name": "release retry restores exact staged package bytes",
+      "passed": true
+    },
+    {
+      "name": "durable record rejects changed existing bytes",
+      "passed": true
+    }
+  ],
+  "publication_status": "not_published",
+  "remaining": [
+    "push release branch",
+    "remote five-target build acceptance",
+    "npm OIDC authorization for release-cli.yml and promote.yml"
+  ],
+  "report_sha256": "c6ede897d71e2dc65ebf06a735a2045d2d632ab6b10249929f4e6d4fbe116522",
+  "schema": 1,
+  "source_files": {
+    ".github/workflows/build-cli.yml": "b4f9feee29700395e0203918caae409818d945bec757cd717e32d13c27ee4460",
+    ".github/workflows/promote.yml": "7f19b609857e6506a818117036025fcd250b3ea2d1e3a3b61fcaef28931aa5e4",
+    ".github/workflows/release-cli.yml": "ac8c8bd9c9c8da9f0bfb09cc26010e0b689f013bdefddee428a82204024fffe3",
+    "LICENSE": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+    "app/desktop/cmd/unic-desktop/main.go": "7475beeb4d4859cc2ad2128553a43e322475851796f6bcd799b1a56e7c71ac78",
+    "app/service/cmd/unic-migrate/main.go": "d93fd7886b1523a55f5ae12ddfce21f0ed9e81ebf419605127980a0b5f434700",
+    "app/service/cmd/unic/cli.go": "18315e54242ea291f21b96ce98d8be05af1faf0473f4fbcec9387acc8c69f2d0",
+    "app/service/cmd/unic/diagnostics.go": "b55515cea1e2fb085bc52f8c22dd66cc15ad5276ad2bfc0e6906da582701cc6b",
+    "app/service/cmd/unic/headless.go": "036aabf7e98fc90ae681dbf597e3b7100e24f4a3b908e8a8bc7f608695cf6ac1",
+    "app/service/cmd/unic/history.go": "6c007b46e2a7ff98588872b337ebc2c181e3e430fd4afe602d45f818606d6bdf",
+    "app/service/cmd/unic/history_test.go": "609920a2525d9ef7b4347b43ff336da6301d5cfedb5a0d9666f40284abccc656",
+    "app/service/cmd/unic/main.go": "098d799df23b4562060001aed4089f6ed822456de42cba928320bf45f0c65f68",
+    "app/service/cmd/unic/migrate.go": "85bde1503afa182b530247c2bf94b1fbb0be65ffea43d45c419cf7202a3d369f",
+    "app/service/cmd/unic/plugin.go": "4bd628a59762bdce4cbc66e5b69cecb873906fcac59140fa48896a36b8fafbfe",
+    "app/service/cmd/unic/plugin_test.go": "f792aacc883fb878950a072f9f96fd9c0c941020f1526d870814ea36e7566552",
+    "app/service/cmd/unic/upgrade.go": "36bb6e75b98500ec747bba1727378923ec99d39d126562d8df007fc22d284657",
+    "app/service/cmd/unicd/main.go": "e74c058361e07f0cdf060e2f67b1e57c6287e19f90e73b1bf78134a261c5b962",
+    "e2e/release/README.md": "2666e9e856b0930655b737d1a44e1b1ae77316b6eb9ed2ef549efe7a73c8f240",
+    "e2e/release/github_fixture.py": "833f694763102490a3b9273c3423a4e62b7046895fa93786b2d16bd590285e74",
+    "e2e/release/migration_acceptance.py": "2c44497e16d69431a982cb500f9f0695a2fa8a0de191a1c8204ab9c0e479fe5f",
+    "e2e/release/run.py": "337656546a3214399a07eb16b5f2c36e011213439f825ad6fa6fab14e7591695",
+    "go.mod": "53974dfc0dfc430b1b09dfb9f986eacc20f598496680fc85ca56f958338410a1",
+    "go.sum": "710e83511de6d2cd33126b726c73684b353f499c0ce48f3eed0441daa3a44574",
+    "internal/localpaths/paths.go": "b37e7537d135f7f6eed11cdcc3ff3095ae45ec086a8d5c3b43fed80dd07830e7",
+    "internal/releaseinfo/releaseinfo.go": "015c13368cd2fd6de071456abbb6039d252d86bf82240def71b47f49ee5fa14f",
+    "internal/v1migration/credentials_darwin.go": "10842ac7f5593203a023342ebf924a9f9a5fe80ac2170d5cfea1971d12d3d470",
+    "internal/v1migration/credentials_linux.go": "1669e1a8081c5ba3da4962b82479d9820c2b40db86754e1dbd6b1d373cb00ab0",
+    "internal/v1migration/credentials_windows.go": "261f315e9aa3b329020570de9640a3e82dfa22a7a55ff73f9bbd77b625c6a23a",
+    "internal/v1migration/crypto.go": "c09aa9da9380fa63c015f52bff471a41c782d0011b42cec0d3a87479c86e2b73",
+    "internal/v1migration/files_test.go": "7ccd2426ce142276d04c96dc3536aaadba142152fac1cbfffe07878600de6839",
+    "internal/v1migration/hash.go": "d45ae38dd2bae8357343e573f63131665f491662345e14932166879894344e7b",
+    "internal/v1migration/hash_test.go": "3cca54e8b50ccd313d78e971dab4d9b11839172e48a1eadd3b27353b55e38aa0",
+    "internal/v1migration/layout.go": "d7697badf384a72b57a034184614b5657194bac28b3e4c2142b1b03d8c0c4404",
+    "internal/v1migration/local_test.go": "6be1aa909238e7f56132f6cdfb9aa48371647b8219a120b087f26765ec052103",
+    "internal/v1migration/migrate.go": "f497302a09ec92b35e9c582c92d289e30365504ec232c488b63116dd8a355a9c",
+    "internal/v1migration/migrate_test.go": "c0260c8dade0646e043ec725ee5177ccbc9aec3d11c58496ab9aeafcbe8f19ab",
+    "internal/v1migration/source.go": "b436d0def8f845267165e8f7064b8dbb6260312d594a7a310fb5c9f67640d5ce",
+    "internal/v1migration/testdata/v3.json": "dd52f785b386f43c414f8bc809554fc581be7bb3532c3878748e37b57c3a051a",
+    "release/products.toml": "06f8405f8fdf83c322187b805abbf4315e7e4e29be56e57fe132935a4e907b6d",
+    "tools/package/main.go": "b3f02ec6cfeaabba0c639e01dd70ea0a7dffaa7b3bceae480fe3a5f6e4cb39b1",
+    "tools/release/release.py": "6b5294623a3936ca42f7a50bb3e9a39a8cb45447c6cdb95493f768ba15c414af"
+  },
+  "status": "local_process_acceptance_passed",
+  "tested_baseline": "85455d04d91005d0e6ba20dd597adb95e29272b5"
+}

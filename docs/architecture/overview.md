@@ -14,7 +14,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 1da0804bcb3775f2fceaef98b0d95b3f43db3c3f
+verified: 0f09ebbec8bdaf388d41fae069bc80a23d744e21
 ---
 # 仓库布局与依赖边界
 
@@ -129,5 +129,7 @@ Shared local protocol, configuration, paths and snapshot conversion live in root
 The normal desktop owns a profile-scoped service through a parent pipe. Lightweight mode leaves a standalone service.
 `app/desktop/internal/lifecycle` owns replacement and login intent; `internal/servicelifecycle` owns generation-scoped stop and owner EOF handling.
 `internal/observability` exports service telemetry; the desktop adapter forwards no analytics identifier.
-The archive builder reuses identical headless binaries in the optional desktop archive. Independent product version/release workflows remain planned in decision 0018.
+The development archive builder reuses identical headless binaries in the optional desktop archive. CLI product metadata, native build/release workflows and npm promotion are implemented. Desktop/mobile release paths remain open. See the [release architecture](releases.md).
 See [headless service and desktop integration](headless.md) for the process and distribution contract.
+
+Search condition chips can shrink within the available field width. Their values stay on one line and expose the full value in a tooltip. Their remove buttons retain a fixed hit target, including with long tag names.

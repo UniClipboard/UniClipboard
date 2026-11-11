@@ -14,7 +14,8 @@ import (
 
 func machineInfo(root string) (string, uint64, error) {
 	var id string
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		b, err := exec.Command("ioreg", "-rd1", "-c", "IOPlatformExpertDevice").Output()
 		if err != nil {
 			return "", 0, err
@@ -24,13 +25,13 @@ func machineInfo(root string) (string, uint64, error) {
 			return "", 0, fmt.Errorf("no machine identity")
 		}
 		id = string(m[1])
-	} else if runtime.GOOS == "linux" {
+	case "linux":
 		b, err := os.ReadFile("/etc/machine-id")
 		if err != nil {
 			return "", 0, err
 		}
 		id = strings.TrimSpace(string(b))
-	} else {
+	default:
 		return "", 0, fmt.Errorf("unsupported operating system")
 	}
 	if id == "" {

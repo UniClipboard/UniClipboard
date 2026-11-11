@@ -152,3 +152,7 @@ Engine still checks file permission and receive limits at admission.
 The 100 MB default file limit applies to manual, automatic, and restore transfers.
 Default-cache reservations do not apply to custom receive files. All receives still obey transient resource limits.
 See [desktop runtime](../architecture/desktop-runtime.md).
+
+## Callback and state-publication ordering
+
+Backend authority callbacks must not synchronously invoke `ApplyState`. A backend may wait for those callbacks to return while applying a suspended state. Reviving a revoked device remains a pending identity operation; it queues a coalesced Engine-owned state refresh. Stop rejects new refresh work and drains the refresh worker before releasing storage. User-requested revocations retain the synchronous state-application barrier.

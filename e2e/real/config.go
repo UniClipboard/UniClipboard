@@ -145,7 +145,7 @@ func plannedMeasurements(c lab) int {
 		enabled[v] = true
 	}
 	phases := 0
-	if enabled["pairwise"] && !(n == 2 && enabled["mesh"]) {
+	if enabled["pairwise"] && (n != 2 || !enabled["mesh"]) {
 		phases++
 	}
 	if enabled["mesh"] {

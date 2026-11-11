@@ -11,6 +11,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
@@ -242,9 +243,6 @@ func (d *demo) sourceName(id string) string {
 
 func kindName(kind uikit.ContentKind) string {
 	return []string{"文本", "代码", "链接", "图片", "文件"}[kind]
-}
-func kindIcon(kind uikit.ContentKind) uikit.IconName {
-	return []uikit.IconName{uikit.IconCopy, uikit.IconEdit, uikit.IconGlobe, uikit.IconGrid, uikit.IconFile}[kind]
 }
 
 func (d *demo) filtered() []entry {

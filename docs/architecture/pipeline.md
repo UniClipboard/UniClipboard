@@ -18,7 +18,7 @@ paths:
   - plugin/plugin.go
   - internal/store/history.go
   - internal/plugins/builtintext
-verified: 83c33e24788f979b0d7cb004ea9990b8cea29861
+verified: 219e2b257d502a9de88d1443b1f108694904e82b
 ---
 # 剪贴板处理流水线与本机历史
 

@@ -251,7 +251,7 @@ func TestObserverSeesStoragePressureEviction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer n.e.ReleaseContent(bg, in.LeaseID)
+	defer func() { _ = n.e.ReleaseContent(bg, in.LeaseID) }()
 	if _, err := n.e.GetItem(bg, a.HistoryID); code(err) != CodeNotFound {
 		t.Fatalf("not evicted: %v", err)
 	}

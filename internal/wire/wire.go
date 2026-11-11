@@ -152,7 +152,7 @@ func (c *Conn) SendStreamObserved(id, origin string, ts int64, hash string, part
 	if err := c.WriteJSON(m); err != nil {
 		return err
 	}
-	var dst io.Writer = c.w
+	var dst = c.w
 	if obs != nil {
 		dst = payloadWriter{w: c.w, o: obs}
 	}

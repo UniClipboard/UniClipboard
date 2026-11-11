@@ -634,7 +634,7 @@ func (b *Backend) dialerOf(s *session) string {
 // establish makes s the session of its peer, unless a better one exists, and
 // reports the connection to the Engine. It reports false when s was dropped.
 func (b *Backend) establish(r *runState, s *session) bool {
-	epoch, now := b.epoch(), time.Now()
+	epoch := b.epoch()
 	b.mu.Lock()
 	old := b.sessions[s.peerID]
 	if old != nil && !old.isDone() && b.dialerOf(old) <= b.dialerOf(s) {
@@ -656,7 +656,7 @@ func (b *Backend) establish(r *runState, s *session) bool {
 		close(s.exited)
 		return false
 	}
-	now = time.Now()
+	now := time.Now()
 	replaced := b.sessions[s.peerID]
 	s.introWake = make(chan struct{}, 1)
 	b.sessions[s.peerID] = s
@@ -978,7 +978,7 @@ func (p *recvParts) Next(ctx context.Context) (int, io.ReadCloser, error) {
 	i := p.next
 	p.next++
 	size := p.m.Parts[i].Size
-	var reader io.Reader = p.w.Body(size)
+	var reader = p.w.Body(size)
 	if p.observation != nil {
 		reader = measuredReader{r: reader, o: p.observation}
 	}

@@ -11,8 +11,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+
 	"os/signal"
 	"strings"
+
+	"github.com/uniclipboard/unic/internal/releaseinfo"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
@@ -27,6 +30,10 @@ const (
 func main() { os.Exit(run(os.Args[1:])) }
 
 func run(args []string) int {
+	showUpgradeNotice(args)
+	if releaseinfo.Print(os.Stdout, "unic", "cli", args) {
+		return 0
+	}
 	if len(args) < 1 {
 		fmt.Fprint(os.Stderr, usageText())
 		return 2

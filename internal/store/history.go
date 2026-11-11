@@ -782,7 +782,7 @@ func (s *Store) HistoryCleanupCandidates(excluded []string, keep int64, limit in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []HistoryItem
 	for rows.Next() {
 		it, err := scanItem(rows)

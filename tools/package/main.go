@@ -19,6 +19,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
 
 func main() {
@@ -30,12 +32,53 @@ func main() {
 func run() error {
 	desktop := flag.Bool("desktop", false, "also build the desktop package")
 	output := flag.String("output", "dist/releases", "output directory")
+	product := flag.String("product", "", "versioned product candidate: cli (empty keeps development archive layout)")
+	metadata := flag.String("metadata", "release/products.toml", "product metadata file")
 	flag.Parse()
+	if *product != "" && *product != "cli" {
+		return fmt.Errorf("only the CLI candidate is implemented; Desktop requires an immutable CLI lock and signed packaging")
+	}
+	if *product != "" && *desktop {
+		return fmt.Errorf("a CLI candidate cannot include a desktop build")
+	}
+	buildNumber := 0
+	productVersion := ""
+	metadataDigest := ""
+	if *product != "" {
+		var config struct {
+			Schema   int
+			Products map[string]struct {
+				Version     string
+				BuildNumber int `toml:"build_number"`
+				Targets     []string
+			}
+		}
+		data, err := os.ReadFile(*metadata)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(data)
+		metadataDigest = hex.EncodeToString(sum[:])
+		if _, err := toml.Decode(string(data), &config); err != nil {
+			return err
+		}
+		p, ok := config.Products[*product]
+		if !ok || config.Schema != 1 || !regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`).MatchString(p.Version) || p.BuildNumber < 1 || p.BuildNumber > 999999999 {
+			return fmt.Errorf("invalid product build metadata")
+		}
+		buildNumber, productVersion = p.BuildNumber, p.Version
+	}
 	// Build-time metadata only. No runtime environment variable enables upload
 	// or overrides the selected project. Never print the ingestion token.
 	phHost := os.Getenv("UNIC_POSTHOG_HOST")
 	phToken := os.Getenv("UNIC_POSTHOG_PROJECT_TOKEN")
 	version := os.Getenv("UNIC_PRODUCT_VERSION")
+	if productVersion != "" {
+		if version != "" && version != productVersion {
+			return fmt.Errorf("UNIC_PRODUCT_VERSION conflicts with product metadata")
+		}
+		version = productVersion
+	}
 	if (phHost == "") != (phToken == "") {
 		return fmt.Errorf("PostHog release host and project token must be supplied together")
 	}
@@ -52,6 +95,15 @@ func run() error {
 		return fmt.Errorf("invalid product version")
 	}
 	linker := "-X github.com/uniclipboard/unic/internal/observability.ProductVersion=" + version
+	head, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	if err != nil {
+		return err
+	}
+	initialDirty, err := exec.Command("git", "status", "--porcelain").Output()
+	if err != nil {
+		return err
+	}
+	linker += fmt.Sprintf(" -X github.com/uniclipboard/unic/internal/releaseinfo.Version=%s -X github.com/uniclipboard/unic/internal/releaseinfo.BuildNumber=%d -X github.com/uniclipboard/unic/internal/releaseinfo.Source=%s", version, buildNumber, strings.TrimSpace(string(head)))
 	if phHost != "" {
 		linker += " -X github.com/uniclipboard/unic/internal/observability.PostHogHost=" + phHost + " -X github.com/uniclipboard/unic/internal/observability.PostHogToken=" + phToken
 	}
@@ -108,15 +160,28 @@ func run() error {
 		}
 		hashes[name+suffix] = hex.EncodeToString(h.Sum(nil))
 	}
+	alias, aliasTarget := "uniclip", "unic"
+	if targetOS == "windows" {
+		alias, aliasTarget = "uniclip.cmd", "unic.exe"
+		e = os.WriteFile(filepath.Join(work, alias), []byte("@echo off\r\n\"%~dp0unic.exe\" %*\r\nexit /b %errorlevel%\r\n"), 0644)
+	} else {
+		e = os.Symlink(aliasTarget, filepath.Join(work, alias))
+	}
+	if e != nil {
+		return e
+	}
 	for _, kind := range []string{"headless", "desktop"} {
 		if kind == "desktop" && !*desktop {
 			continue
 		}
-		files := []string{"unic" + suffix, "unicd" + suffix}
+		files := []string{"unic" + suffix, "unicd" + suffix, alias}
 		if kind == "desktop" {
 			files = append(files, "unic-desktop"+suffix)
 		}
 		base := "unic-" + kind + "-" + targetOS + "-" + arch
+		if *product != "" {
+			base = fmt.Sprintf("unic-%s-%s-build.%d-%s-%s", *product, version, buildNumber, targetOS, arch)
+		}
 		ext := ".tar.gz"
 		if targetOS == "windows" {
 			ext = ".zip"
@@ -133,8 +198,17 @@ func run() error {
 		archives[filepath.Base(path)] = hex.EncodeToString(sum[:])
 		fmt.Println(path)
 	}
-	head, _ := exec.Command("git", "rev-parse", "HEAD").Output()
-	dirty, _ := exec.Command("git", "status", "--porcelain").Output()
+	dirty, err := exec.Command("git", "status", "--porcelain").Output()
+	if err != nil {
+		return err
+	}
+	finalHead, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	if err != nil {
+		return err
+	}
+	if string(head) != string(finalHead) {
+		return fmt.Errorf("source revision changed during packaging")
+	}
 	after, e := sourceHashes(names)
 	if e != nil {
 		return e
@@ -142,7 +216,19 @@ func run() error {
 	if !reflect.DeepEqual(source, after) {
 		return fmt.Errorf("source changed during packaging")
 	}
-	manifest := map[string]any{"source_sha256": source, "source_unchanged": true, "archives_sha256": archives, "os": targetOS, "arch": arch, "go": runtime.Version(), "source_head": strings.TrimSpace(string(head)), "source_dirty": len(dirty) > 0, "binaries_sha256": hashes, "desktop": *desktop, "signed": false, "telemetry_host": phHost, "ingestion_token_configured": phToken != "", "product_version": version}
+	manifest := map[string]any{"source_sha256": source, "source_unchanged": true, "archives_sha256": archives, "os": targetOS, "arch": arch, "go": runtime.Version(), "source_head": strings.TrimSpace(string(head)), "source_dirty": len(initialDirty) > 0 || len(dirty) > 0, "binaries_sha256": hashes, "aliases": map[string]string{alias: aliasTarget}, "desktop": *desktop, "signed": false, "telemetry_host": phHost, "ingestion_token_configured": phToken != "", "product_version": version}
+	if *product != "" {
+		manifest["product"], manifest["build_number"] = *product, buildNumber
+		data, e := os.ReadFile(*metadata)
+		if e != nil {
+			return e
+		}
+		sum := sha256.Sum256(data)
+		if hex.EncodeToString(sum[:]) != metadataDigest {
+			return fmt.Errorf("product metadata changed during packaging")
+		}
+		manifest["metadata_sha256"] = metadataDigest
+	}
 	data, e := json.MarshalIndent(manifest, "", "  ")
 	if e != nil {
 		return e
@@ -195,18 +281,20 @@ func archive(dest, dir string, names []string, asZip bool) (err error) {
 	gz := gzip.NewWriter(f)
 	tw := tar.NewWriter(gz)
 	for _, name := range names {
-		in, e := os.Open(filepath.Join(dir, name))
+		path := filepath.Join(dir, name)
+		info, e := os.Lstat(path)
 		if e != nil {
 			return e
 		}
-		info, e := in.Stat()
-		if e != nil {
-			_ = in.Close()
-			return e
+		link := ""
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, e = os.Readlink(path)
+			if e != nil {
+				return e
+			}
 		}
-		h, e := tar.FileInfoHeader(info, "")
+		h, e := tar.FileInfoHeader(info, link)
 		if e != nil {
-			_ = in.Close()
 			return e
 		}
 		h.Name = name
@@ -215,9 +303,17 @@ func archive(dest, dir string, names []string, asZip bool) (err error) {
 		h.Gid = 0
 		h.Uname = ""
 		h.Gname = ""
-		if e = tw.WriteHeader(h); e == nil {
-			_, e = io.Copy(tw, in)
+		if e = tw.WriteHeader(h); e != nil {
+			return e
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		in, e := os.Open(path)
+		if e != nil {
+			return e
+		}
+		_, e = io.Copy(tw, in)
 		_ = in.Close()
 		if e != nil {
 			return e
@@ -248,7 +344,7 @@ func sourceHashes(names []string) (map[string]string, error) {
 		return nil, err
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	paths := []string{"go.mod", "go.sum"}
+	paths := []string{"go.mod", "go.sum", "tools/package/main.go"}
 	for {
 		var pkg struct {
 			Dir                                                                        string

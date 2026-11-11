@@ -403,7 +403,7 @@ func (w *worker) submit(ctx context.Context, v submitRequest) (submitResult, err
 			if err != nil {
 				return out, fmt.Errorf("fixture_read_failed")
 			}
-			defer input.Close()
+			defer func() { _ = input.Close() }()
 		case "png":
 			args = append(args, "--png", f.Paths[0])
 		case "file":
@@ -494,7 +494,7 @@ func (w *worker) wait(ctx context.Context) (delivery, error) {
 			if err != nil {
 				return delivery{}, fmt.Errorf("export_directory_failed")
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			if _, err = w.checkedCLI(ctx, "history", "export", string(r.HistoryID), "--output", dir); err != nil {
 				if ctx.Err() != nil {
 					return delivery{}, fmt.Errorf("verification_timeout")

@@ -762,7 +762,7 @@ func (c *controller) runScenarios(ctx context.Context) error {
 			return err
 		}
 	}
-	if enabled["pairwise"] && !(len(c.nodes) == 2 && enabled["mesh"]) {
+	if enabled["pairwise"] && (len(c.nodes) != 2 || !enabled["mesh"]) {
 		for i, a := range c.nodes {
 			for _, b := range c.nodes[i+1:] {
 				active := []*node{a, b}

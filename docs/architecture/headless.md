@@ -164,6 +164,13 @@ The local submission cache also hashes only the snapshot, so changing `device_id
 The front-matter `verified` marker names committed source checked against this page; it does not extend platform acceptance.
 Historical process evidence retains its original source/binary identity. The latest documentation audit does not establish a new process acceptance result.
 
+## Desktop view
+
+The normal desktop uses the approved mygo composition and opens history directly.
+Setup and passphrase-unlock flows are removed.
+The service remains the Engine owner; the view uses the shared local socket client.
+The live binding and acceptance boundary are described in [repository overview](overview.md#live-desktop-composition) and the [execution receipt](../exec/desktop-live-data.md).
+
 ## Desktop startup settings
 
 The shared `config.toml` has a `[desktop]` section. Engine does not consume it.

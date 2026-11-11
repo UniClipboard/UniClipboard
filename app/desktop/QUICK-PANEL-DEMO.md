@@ -28,8 +28,8 @@ UNIC_UI_SKIN=macos .build/unic-desktop --demo --page quick-panel --theme dark
 ```
 
 Use `--theme light` for the light preset.
-Use `--quick-state locked|disconnected|empty` for the other initial states.
-The locked fixture accepts only `demo`. Reconnect replaces the disconnected state with local fixtures.
+Use `--quick-state disconnected|empty` for the other initial states.
+The unlock fixture was removed. Reconnect replaces the disconnected state with local fixtures.
 The demo contains 24 fabricated entries, including 15 images, rich text, code, links, multiple files, a favorite and a lost payload.
 The footer's `TextEdit` target is fabricated.
 Paste, copy-entry, send, open, reveal and host commands append simulated effects. They do not invoke the OS or Engine.
@@ -50,7 +50,7 @@ Closing the panel hides both windows. On macOS, reactivate the demo from the Doc
 10. Exercise Enter, Shift+Enter, Command/Ctrl+Enter, Command/Ctrl+C and Command/Ctrl+1–9. Confirm simulated hide, plain-text, and keep-open behavior. Select search text before copying. Confirm that this copies search text.
 11. Favorite and delete entries. Confirm immediate in-memory updates. Select the lost file. Confirm that restore shows an error and does not produce a paste effect.
 12. Hover an image preview. Toggle actual size and fit. Double-click to toggle zoom. Drag while at actual size. Confirm bounded pan and reset when the image changes.
-13. Press Escape with suggestions, with filters, and with an empty search. Confirm suggestion dismissal, filter reset, then panel hide. In the locked state, Escape clears the passphrase before hiding.
+13. Press Escape with suggestions, with filters, and with an empty search. Confirm suggestion dismissal, filter reset, then panel hide.
 14. Move the parent near each display edge. Confirm satellite flipping and clamping. Click satellite actions. Confirm that the history input retains keyboard focus. Activate another application. Confirm that both windows hide.
 15. Repeat with light and dark themes. Record native evidence against the manifest and source hashes.
 

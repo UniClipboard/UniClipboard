@@ -85,7 +85,7 @@ Search badge removal resets the whole filter dimension. Backspace in an empty in
 The history demo tag registry is shared by sidebar visibility, search candidates, list badges, and detail badges. Its management sheet disables column resizing and reordering through TableProps.FixedColumns, which uses mygo TableColumn.Fixed. Other tables keep their existing drag behavior. The sheet provides a table, sorting, filtering, inline creation/renaming, colors, merging, and deletion. Builtin tags allow Show Entries but reject destructive edits. Table context menus use the existing platform menu adapter (NSMenu on macOS). Deletion and merging preserve history entries. The detail assignment picker remains separate. Tag metadata and associations stay in memory. Kit tables with a filling column retain a flexible trailing column after resizing would otherwise make all columns fixed, preventing uncovered trailing space while keeping the dragged divider responsive. These tables bound column growth to the viewport and reserve space for the remaining columns, so dragging cannot push trailing controls outside the table.
 The animated sidebar viewport has no padding. A fixed-width inner body owns the padding, so the viewport can reach zero without a final width jump.
 The shared macOS Sheet uses a 300 ms downward entry and a 220 ms upward exit with a separately fading scrim. DialogBase continues to own input scoping and focus restoration. Sheet retains the original live dialog and modal scope until exit completes, then restores opener focus. The panel keeps its opacity and rendering path while the scrim fades separately. Callers keep invoking Sheet while closed and clear transient content state in OnClosed after exit. Virtual tables are not copied or relaid out through an exit snapshot. Reduce Motion suppresses panel translation. Other skins retain their existing dialog behavior.
-The demo includes history list/grid/detail, a device management sheet, nine settings categories and entry flows. Settings opens the dedicated quick panel window.
+The demo includes history list/grid/detail, a device management sheet and nine settings categories. Setup, space creation, unlock and recovery-preview flows are removed. Settings opens the dedicated quick panel window.
 The device sheet uses a single pane below the Kit breakpoint, with explicit list/detail navigation. Pending-device details show the fingerprint and direct accept/reject actions. These actions change fixtures only.
 Below 1100 px, the sidebar opens as an overlay. Below 760 px, history list and detail share one pane.
 Desktop pages and Kit components construct standard vertical scroll containers through `Kit.Scroll`; direct `ui.Scroll` construction is confined to that factory. Lists and grids reuse its indicator policy.
@@ -94,6 +94,21 @@ The demo does not create an API client, write the clipboard, register global sho
 `unic-desktop` continues to use the daemon-backed interface.
 Build checks do not establish native layout or interaction acceptance.
 See the [demo acceptance guide](../../app/desktop/UI-DEMO.md) for source mappings and manual checks.
+
+## Live desktop composition
+
+The normal desktop opens the shared history composition directly. It has no setup or unlock gate.
+`desktopdemo.NewDesktop` initializes empty service-backed state, without fixture data.
+`live.go` serializes local socket work and applies completions on the view thread.
+It owns query pagination, reconciliation, bounded content previews and revision-checked history mutations.
+The event stream requests fresh snapshots; a five-second reconciliation also covers lost events.
+Refresh preserves loaded page depth. Query changes discard results for obsolete filters.
+`live_devices.go` binds existing pairing, approval, candidate and removal operations.
+`live_settings.go` binds the existing General, Sync and Storage settings; the launcher owns native login registration.
+The service lifecycle, exclusive clipboard adapter, tray and normal/lightweight modes remain defined by the [headless architecture](headless.md).
+Full search, pin/favorite persistence, tag-library management, richer device policies/status, direct history sending and quick-panel OS integration remain explicit gaps.
+The normal UI never falls back to fixture data or simulated effects.
+See the [execution receipt](../exec/desktop-live-data.md) for nonvisual process acceptance and native limits.
 
 ## GPUI quick panel fixture
 
@@ -111,15 +126,15 @@ The history input handles panel commands through mygo OnTextKey, preserving inpu
 Actions replace preview content and retain keyboard handling in the history window. Their cursor wraps over enabled rows.
 The fixture accepts filters explicitly, combines values with OR within a dimension and AND across dimensions, and offers independent relaxation proposals after empty searches.
 The fixture never creates an Engine client. Entry restore, paste, send, open and reveal remain recorded simulated effects.
-The standalone entry can start in history, locked, disconnected or empty state with `--quick-state`.
-The regular daemon-backed desktop is unchanged.
+The standalone entry can start in history, disconnected or empty state with `--quick-state`.
+The regular daemon-backed desktop shares the main composition through `NewDesktop`; the quick panel remains an isolated fixture.
 The [quick panel acceptance guide](../../app/desktop/QUICK-PANEL-DEMO.md) records the source map, reproduction steps, artifact format and differences.
 The explicit `TestQuickPanelScreenshotsE2E` export composes separately rendered history and satellite rasters at 2x scale and records source and image hashes.
 View-level E2E verifies mygo input and layout without opening a native app. Native focus, multi-monitor placement, icon/font rendering and one-to-one visual acceptance remain unverified.
 
 ## 缺口
 
-- 桌面界面原型待定；mygo + 自定义 UI Kit 已接入的现有页面不代表最终布局与交互规格。
+- The adopted demo supplies desktop composition and interaction. Native visual acceptance and the remaining live capabilities are recorded in the [execution receipt](../exec/desktop-live-data.md).
 - Android、iOS 工程及移动绑定尚未建立；gomobile 接入时需补嵌套模块、工作区和版本标签约定（`bindings/vX.Y.Z`）。
 - 各端原生 CI 尚未建立。随应用工程接入，再实现核心变更验证所有端、应用变更验证对应端的路径分流。
 

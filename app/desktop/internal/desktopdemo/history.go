@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
@@ -39,12 +41,16 @@ func (d *demo) sidebar(c *ui.Context, k uikit.Kit) {
 		devices = append(devices, uikit.SidebarNavItem{ID: "device:" + v.id, Label: v.name, Status: &tone, Count: state})
 	}
 	k.SidebarNav(c, &d.nav, uikit.SidebarNavProps{Label: "资料库", Sections: []uikit.SidebarNavSection{
-		{ID: "library", Items: []uikit.SidebarNavItem{{ID: "all", Label: "全部项目", Icon: uikit.IconHistory, Count: fmt.Sprint(len(d.entries))}, {ID: "pinned", Label: "已置顶", Icon: uikit.IconPin, Count: fmt.Sprint(pinned)}}},
+		{ID: "library", Items: []uikit.SidebarNavItem{{ID: "all", Label: "全部项目", Icon: uikit.IconHistory, Count: d.historyCountLabel()}, {ID: "pinned", Label: "已置顶", Icon: uikit.IconPin, Count: fmt.Sprint(pinned)}}},
 		{ID: "tags", Title: "标签", Items: tags, Action: &uikit.NavAction{Label: "管理标签", Icon: uikit.IconAdd}, More: &uikit.NavAction{Label: fmt.Sprintf("全部标签 · %d", len(d.tags))}},
 		{ID: "devices", Title: "设备", Items: devices},
 	}, Footer: []uikit.SidebarNavItem{{ID: "manage", Label: "管理设备…", Icon: uikit.IconDevices}, {ID: "settings", Label: "设置…", Icon: uikit.IconSettings, ShortcutHint: "⌘,"}}}).Grow(1)
 	if cmd, _ := d.nav.Command(); cmd == uikit.NavSectionAction || cmd == uikit.NavMore {
-		d.tagsOpen = true
+		if d.live == nil {
+			d.tagsOpen = true
+		} else {
+			d.live.message = "标签管理暂不可用。请在历史详情中分配标签。"
+		}
 	}
 	if d.nav.Changed() {
 		d.notice = ""
@@ -100,6 +106,23 @@ func (d *demo) history(c *ui.Context, k uikit.Kit) {
 		}
 		k.Pane(c.Key("browse"), uikit.PaneProps{Kind: pane, Label: "历史列表", DetailOpen: &d.detailOpen}, func() {
 			d.filters(c, k)
+			if d.live != nil {
+				if d.live.readError != "" {
+					k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.live.readError})
+				}
+				if d.live.message != "" {
+					k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.live.message})
+				}
+				if d.live.loading {
+					k.Text(c, "正在读取历史…", secondary)
+				}
+				if d.unsupportedSearch() {
+					k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: "此搜索条件暂不可用", Text: "请选择类型、设备、标签或时间筛选。"})
+				}
+				if k.Button(c.Key("refresh-history"), "刷新", uikit.ButtonProps{Disabled: d.live.loading}).Clicked() {
+					d.live.nextRefresh = time.Time{}
+				}
+			}
 			if len(items) == 0 {
 				k.ContentUnavailable(c, uikit.ContentUnavailableProps{Icon: uikit.IconSearch, Title: "没有匹配的历史", Description: "修改搜索词或清除筛选。"}, func() {
 					if k.Button(c, "清除筛选", uikit.ButtonProps{}).Clicked() {
@@ -108,14 +131,22 @@ func (d *demo) history(c *ui.Context, k uikit.Kit) {
 				})
 			} else {
 				d.historyList(c, k, items)
+				if d.live != nil && d.live.cursor != "" {
+					if k.Button(c.Key("more-history"), "加载更早的历史", uikit.ButtonProps{Disabled: d.live.loading}).Clicked() {
+						d.live.loadHistory(d, true)
+					}
+				}
 			}
 		})
 		if d.layout == "list" || d.inspector || (d.compact && d.detailOpen) {
 			k.Pane(c.Key("detail"), uikit.PaneProps{Kind: uikit.PaneDetail, Label: "历史详情", DetailOpen: &d.detailOpen}, func() { d.detail(c, k) })
 		}
 	})
-	if d.quickLook {
-		k.QuickLook(c.Key("quick-look"), uikit.QuickLookProps{Open: &d.quickLook, Title: "桌面布局.png", CloseLabel: "关闭预览", Src: fixtureImage(), Alt: "桌面布局示例", PrimaryLabel: "复制图片"}, nil)
+	if d.quickLook && d.current() != nil {
+		r := k.QuickLook(c.Key("quick-look"), uikit.QuickLookProps{Open: &d.quickLook, Title: d.current().title, CloseLabel: "关闭预览", Src: d.entryImage(*d.current()), Alt: d.current().title, PrimaryLabel: "复制图片"}, nil)
+		if r.Primary {
+			d.useEntry()
+		}
 	}
 }
 
@@ -153,10 +184,10 @@ func (d *demo) historyCommands(c *ui.Context, k uikit.Kit) {
 	if command != "" {
 		d.sendTo(command)
 	}
-	if fit(k.Button(c.Key("pin"), "", uikit.ButtonProps{Icon: uikit.IconPin, Label: "切换置顶", Variant: uikit.Subtle, Disabled: v == nil})).Clicked() {
+	if fit(k.Button(c.Key("pin"), "", uikit.ButtonProps{Icon: uikit.IconPin, Label: "切换置顶", Variant: uikit.Subtle, Disabled: v == nil || d.live != nil})).Clicked() {
 		d.togglePin()
 	}
-	b, command = k.Menu(c.Key("more"), uikit.MenuProps{Label: "更多操作", Icon: uikit.IconMore, IconOnly: true, Variant: uikit.Subtle, Items: []uikit.MenuEntry{{ID: "tags", Label: "管理标签", Icon: uikit.IconTag}, {ID: "delete", Label: "删除", Icon: uikit.IconDelete, Destructive: true, Disabled: v == nil}, uikit.MenuSeparator("sep"), {ID: "setup", Label: "查看首次引导"}, {ID: "unlock", Label: "查看解锁界面"}, {ID: "quick-panel", Label: "查看快捷面板"}}})
+	b, command = k.Menu(c.Key("more"), uikit.MenuProps{Label: "更多操作", Icon: uikit.IconMore, IconOnly: true, Variant: uikit.Subtle, Items: []uikit.MenuEntry{{ID: "tags", Label: "管理标签", Icon: uikit.IconTag, Disabled: d.live != nil}, {ID: "delete", Label: "删除", Icon: uikit.IconDelete, Destructive: true, Disabled: v == nil}, uikit.MenuSeparator("sep"), {ID: "quick-panel", Label: "查看快捷面板", Disabled: d.live != nil}}})
 	fit(b)
 	switch command {
 	case "tags":
@@ -165,7 +196,7 @@ func (d *demo) historyCommands(c *ui.Context, k uikit.Kit) {
 		if v != nil {
 			d.requestDelete(d.list.Selection())
 		}
-	case "setup", "unlock", "quick-panel":
+	case "quick-panel":
 		d.page = command
 	}
 }
@@ -180,6 +211,10 @@ func (d *demo) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 		groups[len(groups)-1].Count++
 	}
 	for i := range groups {
+		if d.live != nil {
+			groups[i].Trailing = fmt.Sprintf("%d 项", groups[i].Count)
+			continue
+		}
 		groups[i].Trailing = fmt.Sprintf("%d 项", groups[i].Count)
 		if groups[i].Title == "今天" {
 			groups[i].Detail = "11月9日 周一"
@@ -192,7 +227,7 @@ func (d *demo) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 		for _, v := range items {
 			card := uikit.GridItem{ID: v.id, Title: v.title, Subtitle: d.sourceName(v.source) + " · " + v.date, Kind: v.kind, Text: v.text}
 			if v.kind == uikit.KindImage {
-				card.Media = func() { ui.Image(c, fixtureImage()).FillWidth().Height(110) }
+				card.Media = func() { ui.Image(c, d.entryImage(v)).FillWidth().Height(110) }
 			}
 			cards = append(cards, card)
 		}
@@ -204,7 +239,7 @@ func (d *demo) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 				labels := []string{"TXT", "CODE", "URL", "图片", "FILE"}
 				p := uikit.KindBadgeProps{Kind: v.kind, Label: labels[v.kind]}
 				if v.kind == uikit.KindImage {
-					p.Image = fixtureImage()
+					p.Image = d.entryImage(v)
 				}
 				k.KindBadge(c.Key(v.id+"-icon"), p)
 			}, Trailing: func() {
@@ -225,7 +260,7 @@ func (d *demo) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 	}
 	if id, ok := d.list.Activated(); ok {
 		d.selected = id
-		d.notice = "演示：已复制"
+		d.useEntry()
 		d.detailOpen, d.inspector = true, true
 	}
 	if ids, ok := d.list.DeleteRequested(); ok && len(ids) > 0 {
@@ -245,12 +280,16 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 	}
 	k.Scroll(c.Key(v.id)).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).Padding(1, 24, 112).Gap(16).Children(func() {
-			r := k.DetailHeader(c, uikit.DetailHeaderProps{PinLabel: "切换置顶", DeleteLabel: "删除"}, func() {
+			pinLabel := "切换置顶"
+			if d.live != nil {
+				pinLabel = ""
+			}
+			r := k.DetailHeader(c, uikit.DetailHeaderProps{PinLabel: pinLabel, DeleteLabel: "删除"}, func() {
 				k.KindBadge(c, uikit.KindBadgeProps{Kind: v.kind, Label: kindName(v.kind), Variant: uikit.KindPill})
-				k.Text(c, d.sourceName(v.source)+" · 11月9日 · "+strings.TrimPrefix(v.date, "今天 "), uikit.TextProps{Role: uikit.RoleCallout, Tone: uikit.ToneSecondary, Truncate: true}).Grow(1)
+				k.Text(c, d.sourceName(v.source)+" · "+v.date, uikit.TextProps{Role: uikit.RoleCallout, Tone: uikit.ToneSecondary, Truncate: true}).Grow(1)
 			})
 			if r.PinClicked {
-				v.pinned = !v.pinned
+				d.togglePin()
 			}
 			if r.DeleteClicked {
 				d.requestDelete([]string{v.id})
@@ -274,8 +313,17 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 				}
 			}
 			k.PreviewFrame(c, p, func() {
+				if d.live != nil && (d.live.detailBusy || v.contentError != "") {
+					label := v.contentError
+					if d.live.detailBusy {
+						label = "正在读取内容…"
+					}
+					k.Text(c, label, secondary)
+					return
+				}
+
 				if v.kind == uikit.KindImage {
-					ui.Image(c, fixtureImage()).FillWidth().Height(220)
+					ui.Image(c, d.entryImage(*v)).FillWidth().Height(220)
 					return
 				}
 				if v.kind == uikit.KindFile {
@@ -289,7 +337,7 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 					e.Font("monospace").TextColor(ui.RGBA(235, 235, 240, 1))
 				}
 			})
-			if v.kind == uikit.KindImage {
+			if v.kind == uikit.KindImage && d.live == nil {
 				k.FactList(c, uikit.FactListProps{Label: "图片信息", Facts: []uikit.Fact{{ID: "size", Label: "尺寸", Value: "1600 × 1000"}, {ID: "format", Label: "格式", Value: "PNG · 286 KB"}}})
 			}
 			ui.Row(c).Gap(6).Wrap().Children(func() {
@@ -301,6 +349,10 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 				}
 			})
 			ui.Column(c).Gap(6).Children(func() {
+				if d.live != nil {
+					k.Text(c, "同步状态："+syncStateLabel(v.syncState), secondary)
+					return
+				}
 				rows := []uikit.InsetListRow{}
 				for _, peer := range d.devices {
 					if peer.id == "local" {
@@ -324,7 +376,7 @@ func (d *demo) detail(c *ui.Context, k uikit.Kit) {
 				copy = d.notice
 			}
 			if k.Button(c, copy, uikit.ButtonProps{Variant: uikit.Primary, Icon: uikit.IconCopy, Size: uikit.SizeXLarge}).Clicked() {
-				d.notice = "演示：已复制"
+				d.useEntry()
 			}
 			_, target := k.Menu(c.Key("send-target"), uikit.MenuProps{Label: "发送到…", Variant: uikit.Glass, Icon: uikit.IconSend, Size: uikit.SizeLarge, Items: d.sendMenuItems()})
 			if target != "" {
@@ -343,6 +395,14 @@ func (d *demo) assignTagSheet(c *ui.Context, k uikit.Kit) {
 	if k.Sheet(c, uikit.SheetProps{Open: &d.assignTagsOpen, Title: "添加标签", Variant: uikit.SheetTask, Done: "完成"}, func() {
 		ui.Column(c).Gap(8).Padding(12).Children(func() {
 			v := d.current()
+			if d.live != nil {
+				field := k.TextField(c.Key("new-tag"), uikit.TextFieldProps{Label: "新标签", Value: &d.tagInput, Placeholder: "输入标签后按回车"})
+				if field.Submitted && v != nil && !d.live.busy && strings.TrimSpace(d.tagInput) != "" {
+					tags := append(slices.Clone(v.tags), strings.TrimSpace(d.tagInput))
+					d.setEntryTags(v.id, tags)
+					d.tagInput = ""
+				}
+			}
 			for _, tag := range d.tags {
 				if tag.builtin {
 					continue
@@ -350,8 +410,16 @@ func (d *demo) assignTagSheet(c *ui.Context, k uikit.Kit) {
 				id := tag.id
 				on := v != nil && slices.Contains(v.tags, id)
 				before := on
-				k.Checkbox(c.Key(id), &on, uikit.CheckboxProps{Label: "#" + tag.name, Disabled: v == nil})
-				if on != before {
+				k.Checkbox(c.Key(id), &on, uikit.CheckboxProps{Label: "#" + tag.name, Disabled: v == nil || (d.live != nil && d.live.busy)})
+				if on != before && d.live != nil {
+					tags := slices.Clone(v.tags)
+					if on {
+						tags = append(tags, id)
+					} else {
+						tags = slices.DeleteFunc(tags, func(t string) bool { return t == id })
+					}
+					d.setEntryTags(v.id, tags)
+				} else if on != before {
 					if on {
 						v.tags = append(v.tags, id)
 					} else {
@@ -367,7 +435,7 @@ func (d *demo) assignTagSheet(c *ui.Context, k uikit.Kit) {
 
 // Send menus share the current remote-device registry, including offline peers.
 func (d *demo) sendMenuItems() []uikit.MenuEntry {
-	items := []uikit.MenuEntry{{ID: "all", Label: "所有设备", Icon: uikit.IconDevices}}
+	items := []uikit.MenuEntry{{ID: "all", Label: "所有设备", Icon: uikit.IconDevices, Disabled: d.live != nil}}
 	for _, peer := range d.devices {
 		if peer.id == "local" {
 			continue
@@ -375,16 +443,50 @@ func (d *demo) sendMenuItems() []uikit.MenuEntry {
 		if len(items) == 1 {
 			items = append(items, uikit.MenuSeparator("devices"))
 		}
-		items = append(items, uikit.MenuEntry{ID: peer.id, Label: peer.name})
+		items = append(items, uikit.MenuEntry{ID: peer.id, Label: peer.name, Disabled: d.live != nil})
 	}
-	items[0].Disabled = len(items) == 1
+	items[0].Disabled = len(items) == 1 || d.live != nil
 	return items
 }
 
 func (d *demo) sendTo(target string) {
+	if d.live != nil {
+		d.live.message = "发送历史到设备暂不可用。"
+		return
+	}
 	name := d.sourceName(target)
 	if target == "all" {
 		name = "所有设备"
 	}
 	d.notice = "演示：已发送到" + name
+}
+
+func (d *demo) entryImage(v entry) ui.ImageSource {
+	if d.live != nil {
+		return v.image
+	}
+	return fixtureImage()
+}
+func syncStateLabel(s string) string {
+	switch s {
+	case "sent":
+		return "已发送"
+	case "partial":
+		return "部分发送"
+	case "failed":
+		return "发送失败"
+	case "pending":
+		return "正在发送"
+	case "interrupted":
+		return "已中断"
+	default:
+		return "未请求同步"
+	}
+}
+
+func (d *demo) historyCountLabel() string {
+	if d.live != nil && d.live.cursor != "" {
+		return fmt.Sprintf("%d+", len(d.entries))
+	}
+	return fmt.Sprint(len(d.entries))
 }

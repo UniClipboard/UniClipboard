@@ -16,7 +16,7 @@ unic-desktop --+
 | `cmd/unic-desktop` | GUI and graphical session lifecycle |
 | `internal/board` | Native clipboard access |
 | `internal/uikit` | Adwaita, macOS glass and Fluent component skins |
-| `internal/desktopdemo` | In-memory layout fixture |
+| `internal/desktopdemo` | Shared desktop composition, live service binding and isolated fixture |
 
 Closing the window hides it and keeps the adapter active. The tray or a second launch shows it again.
 Explicit Quit stops the desktop process and its owned service. Lightweight mode runs only the standalone service.
@@ -29,9 +29,10 @@ Pairing requires explicit mutual approval with verified fingerprints. See [ident
 Build `unic-desktop`, then run `unic-desktop --demo` to open the restored layouts with local fixtures.
 Use `UNIC_UI_SKIN=linux|macos|windows` to select a skin.
 Use `--theme light|dark|system` to select a color mode.
-Use `--page history|devices|settings|setup|unlock|startup|recovery|quick-panel` to choose the initial page.
+Use `--page history|devices|settings|quick-panel` to choose the initial page.
 The demo does not require `unicd`. All changes remain in memory.
-The daemon-backed `unic-desktop` entry remains available.
+The normal `unic-desktop` entry uses the same history, device sheet and settings composition with real service data. It opens history directly. Setup and unlock flows are removed.
+See the [live-data execution receipt](../../docs/exec/desktop-live-data.md) for supported operations, remaining gaps and nonvisual process acceptance.
 See [UI-DEMO.md](UI-DEMO.md) for the reference commit, scope, and repeatable acceptance steps.
 
 ```sh
@@ -67,7 +68,7 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 
 ## 第一阶段范围外
 
-全文搜索、文件夹同步、选择性接收/设备授权确认、原生剪贴板变化通知(目前 400ms 轮询)。
+Full-text search, folder synchronization, fine-grained device policies and native clipboard change notifications remain outside the live desktop binding. Device pairing already requires explicit approval.
 
 
 ## 从本机 UniClipboard v1 迁移
@@ -183,3 +184,17 @@ make desktop-startup-e2e
 
 The manifest records source and executable SHA-256 values, process checks and native acceptance gaps.
 See the [acceptance receipt](../../docs/exec/desktop-startup-lifecycle.md).
+
+## Live desktop process acceptance
+
+```sh
+UNIC_DESKTOP_DATA_E2E=1 \
+UNIC_DESKTOP_DATA_RECEIPT="$PWD/.build/desktop-live-data/receipt.json" \
+go test -race ./app/desktop/internal/desktopdemo -run '^TestDesktopLiveDataE2E$' -count=1 -v
+```
+
+This starts private production services and the real IPC clipboard adapter with a directory clipboard.
+It exercises the desktop binding without starting mygo, a renderer or the system clipboard.
+The receipt records source hashes, the service binary hash and scenario results.
+Temporary profiles and binaries are removed on success and failure.
+Native visual and interaction acceptance remains separate.

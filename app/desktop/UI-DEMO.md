@@ -3,14 +3,14 @@
 ## Reference and scope
 
 Reference: local `main` commit `8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7`.
-This is a page composition port to the migrated UI Kit. It is not a backend port.
+The fixture is a page composition port to the migrated UI Kit. The normal desktop now reuses the composition with live service data.
 The normal desktop entry still reads the daemon.
 The separate `unic-desktop --demo` interface uses 22 history entries and four devices.
 All demo operations use memory. Restart the process to restore the fixtures.
 Copy and send commands show simulated results. They do not write the system clipboard or send data.
 Settings controls retain their values during the session. They do not configure the application or system.
 Only the appearance mode changes the rendered theme. Other appearance and behavior settings are fixtures.
-Demo forms accept local example input. They do not authenticate or import real files.
+Setup, space creation, unlock, startup-preview and recovery-preview pages have been removed. Both entries open history directly by default.
 
 | Reference under `apps/gui-go/frontend/src/` at `main` | Native composition under `internal/desktopdemo/` |
 | --- | --- |
@@ -20,8 +20,6 @@ Demo forms accept local example input. They do not authenticate or import real f
 | `pages/history-kit/HistoryKitTagManager.tsx`, `HistoryKitTagNameCell.tsx` | `tag_manager.go`: tag table, editing, sidebar visibility, native context menus |
 | `pages/devices-kit/DevicesKitSheet.tsx` | `devices.go`: management sheet, master/detail, invite/connect/phone tasks, pending fingerprint review, sync policy, latency |
 | `pages/settings-kit/SettingsKitPage.tsx`, `components/setting/settings-config.ts` | `settings.go`: category sidebar and nine setting pages |
-| `pages/entry-kit/SetupKitEntry.tsx`, `SetupKitInitialize.tsx` | `entry.go`: welcome, create, join, import, pending, ready |
-| `pages/entry-kit/UnlockKitPage.tsx`, `StartupKitScreen.tsx`, `ProfileRecoveryKitPage.tsx` | `entry.go`: unlock, startup, recovery |
 | `apps/quick-panel` and `crates/quick-panel-core` at cached `origin/main` `885546c7` | `quick_panel_*.go`: isolated GPUI quick panel fixture; see [acceptance guide](QUICK-PANEL-DEMO.md) |
 | `updater/app-icon.png` | `app-icon.png`: original embedded app icon |
 
@@ -48,9 +46,9 @@ UNIC_UI_SKIN=windows .build/unic-desktop --demo --theme light --page devices
 UNIC_UI_SKIN=macos .build/unic-desktop --demo --theme dark --page settings
 ```
 
-Initial pages: `history`, `devices`, `settings`, `setup`, `unlock`, `startup`, `recovery`, `quick-panel`.
+Initial pages: `history`, `devices`, `settings`, `quick-panel`.
 Color modes: `system`, `light`, `dark`.
-The History toolbar's More menu and Settings > About expose entry-flow previews.
+The History toolbar's More menu exposes the quick-panel fixture. Setup and unlock routes are rejected.
 Settings > Quick Panel opens the quick panel composition.
 
 ## Manual end-to-end acceptance
@@ -71,15 +69,14 @@ Use the same binary and reset the fixtures by restarting the process.
 9a. Request device removal. Confirm the dialog states three consequences. Cancel it. Confirm it. Confirm the local device cannot be removed. Rename a device and confirm the sidebar updates.
 10. Open all nine settings categories. Change color mode. Confirm it updates the view. Return to History.
 11. Resize to 1000 px. Open the sidebar as an overlay. Close it. Resize to 700 px. Select history. Use Back to return to the list. Open Manage Devices at 600 px. Confirm only the device list shows. Select a device. Confirm its detail fills the sheet. Use Back to return to the list.
-12. Open `--page setup`. Create a space with matching example passphrases. Complete setup. Repeat with mismatched passphrases and confirm the error.
-13. Open `--page unlock`. Submit an empty example passphrase. Confirm the error. Enter a nonempty example value and unlock.
-14. Open the startup, recovery, and quick-panel pages. Complete their simulated transitions. Confirm the quick panel supports selection and preview.
+12. Open the quick-panel fixture. Confirm selection and preview.
+13. Confirm `--page setup` and `--page unlock` fail before mygo starts.
 
 ## Acceptance artifact
 
 At the end of a manual run, retain a receipt and screenshots in a chosen artifact directory.
 Record the host OS, binary SHA-256, source HEAD, dirty source diff, skin, color mode, viewport, scenario, observed result, and screenshot filename.
-Include wide history, grid, image detail, device sheet, settings, entry form, quick panel, and narrow navigation screenshots.
+Include wide history, grid, image detail, device sheet, settings, quick panel, and narrow navigation screenshots.
 Record PASS or FAIL for each step. Mark untouched scenarios NOT RUN.
 Repeat the same commands and sequence to reproduce a result.
 Cross-compilation and static analysis are build evidence only. They cannot replace this artifact.
@@ -172,7 +169,7 @@ These measurements establish layout continuity in the UI engine. Native appearan
 `Kit.Scroll` is the entry point for standard vertical scrolling in desktop pages and Kit components.
 Its visibility behavior lives only in `internal/uikit/scroll_indicator.go`. Virtual lists and grids use the same policy function.
 Desktop code must not construct `ui.Scroll` directly outside that factory.
-Detail, nested content preview, settings, sheets, entry flows, device master/detail, transfer details, sidebar navigation, and the daemon-backed GUI now use the shared constructor.
+Detail, nested content preview, settings, sheets, device master/detail, transfer details, sidebar navigation, and the daemon-backed GUI now use the shared constructor.
 Each scroll container keeps its own position and idle timer. Scrolling a nested preview must not display the idle parent's indicator.
 No page-specific timer, hover flag, or scrollbar option is required.
 
@@ -462,3 +459,18 @@ The replay writes send-device-menu.json. Actual NSMenu appearance and placement 
 UNIC_UI_TEST_ARTIFACTS="$PWD/.build/ui-demo/send-menu-regression" \
   go test ./app/desktop/internal/desktopdemo ./app/desktop/internal/uikit -count=1
 ```
+
+## Live service binding
+
+The normal entry uses `NewDesktop` in `live.go` and the existing composition.
+It does not initialize fixture history, devices, tags, latency or clipboard effects.
+History uses service pagination and server-side type/device/tag/time filters.
+Refreshing preserves the loaded page depth. Counts describe loaded results; a trailing `+` indicates more pages.
+Selected text, PNG and file-name previews use bounded content readers. PNG previews accept at most 32 MiB and 16 million pixels; text previews accept at most 1 MiB.
+Restore, tag replacement and deletion use the shared local service client.
+Mutations never retry automatically after uncertain responses.
+The device sheet binds ticket/code pairing, candidate requests, fingerprint/revision approval, rejection and removal.
+General, Sync and Storage settings bind existing configuration. Native login status comes from the launcher.
+Full-text/extension search, favorites, full tag management, device policies, history-to-device send and quick-panel OS integration remain capability gaps.
+Unavailable operations do not produce simulated success in the normal entry.
+See the [execution receipt](../../docs/exec/desktop-live-data.md) for process checks and native limits.

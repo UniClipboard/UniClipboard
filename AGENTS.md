@@ -87,7 +87,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 ## 约定
 
-- 桌面界面（含 macOS）采用 mygo + 自定义 UI Kit；界面原型待定，现有实验原型不作为最终界面规格。
+- Desktop uses mygo and the existing UI Kit demo composition. The normal entry opens history directly; setup and passphrase-unlock flows are removed. See [live desktop composition](docs/architecture/overview.md#live-desktop-composition).
 - 核心不得依赖 `app/*`；宿主专属代码留在对应应用，公开 Engine 的传递依赖边界由 `engine/boundary_test.go` 检查。
 - 设备地址与配对票据都是秘密：不要写进日志、事件或错误信息。
 - 通过配对码进来的设备永远需要用户批准；不要为了方便绕过。

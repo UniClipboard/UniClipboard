@@ -51,7 +51,7 @@ type quickDemo struct {
 	imageID     string
 	imagePan    ui.Point
 
-	theme, mode, query, kind, passphrase, message  string
+	theme, mode, query, kind, message              string
 	entries, rows                                  []qpEntry
 	chips                                          []qpFilter
 	selected, hovered, gridTop                     int
@@ -592,12 +592,6 @@ func (p *quickDemo) navigate(down bool) {
 }
 func (p *quickDemo) escape() {
 	switch {
-	case p.mode == "locked":
-		if p.passphrase != "" {
-			p.passphrase = ""
-		} else {
-			p.visible = false
-		}
 	case p.menu == "devices":
 		p.menu = "main"
 		p.cursor = 0

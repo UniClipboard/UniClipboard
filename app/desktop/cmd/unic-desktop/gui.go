@@ -17,6 +17,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopdemo"
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -169,67 +170,23 @@ func runGUI(settings *config.Manager) error {
 		setupTray()
 		go notifyPending(ctx, g.c.Path)
 		go func() { _ = clipboardintegration.RunRemote(ctx, g.c, board.MyGo{}, nil) }()
-		g.win = mygo.NewWindow(mygo.WindowOptions{
-			Title: "unic", Width: 480, Height: 640, Content: ui.View(g.view),
-			Hidden: settings.Current().Desktop.StartInBackground,
-		})
+		screen := desktopdemo.NewDesktop(ctx, g.c)
+		screen.SetLoginStatus(func() (bool, string) { g.mu.Lock(); defer g.mu.Unlock(); return g.loginEnabled, g.loginError }, func() { g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, true) })
+		opts := mygo.WindowOptions{Title: "unic", Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View), Hidden: settings.Current().Desktop.StartInBackground}
+		if uikit.DefaultSkin() == uikit.MacOS {
+			opts.TitleBarStyle = mygo.TitleBarHidden
+			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
+			opts.Vibrancy = mygo.VibrancySidebar
+		}
+		g.win = mygo.NewWindow(opts)
 		g.win.OnClose(func(e *mygo.CloseEvent) {
 			if !quitting {
 				e.PreventDefault()
 				g.win.Hide()
 			}
 		})
-		go g.follow(ctx)
-		go g.tick(ctx)
 	})
 	return mygo.App.Run()
-}
-
-// follow keeps the status fresh: it refreshes on every daemon event and
-// reconnects when the daemon restarts.
-func (g *gui) follow(ctx context.Context) {
-	for ctx.Err() == nil {
-		g.refresh(ctx)
-		_ = g.c.Events(ctx, func(ev api.Event) {
-			g.addLog(ev)
-			if ev.Kind == "code" { // our code was used: show a fresh one
-				g.mu.Lock()
-				g.hasCode = false
-				g.mu.Unlock()
-			}
-			g.refresh(ctx)
-			if ev.Kind == "history" {
-				g.loadHistory("", "")
-			}
-		})
-		g.mu.Lock()
-		g.daemonUp = false
-		g.mu.Unlock()
-		g.win.Invalidate()
-		select {
-		case <-ctx.Done():
-		case <-time.After(2 * time.Second):
-		}
-	}
-}
-
-// tick redraws the countdown and keeps a valid code on screen while the
-// pane that shows it is open. Codes are only made while someone looks.
-func (g *gui) tick(ctx context.Context) {
-	t := time.NewTicker(time.Second)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-		if showing, need := g.codeState(); need {
-			g.fetchCode(false)
-		} else if showing {
-			g.win.Invalidate() // the countdown
-		}
-	}
 }
 
 // codeState reports whether the code pane is on screen, and whether it needs
@@ -274,38 +231,6 @@ func (g *gui) refresh(ctx context.Context) {
 			g.loadHistory("", "")
 		}
 	}
-}
-
-func (g *gui) addLog(ev api.Event) {
-	t := time.Unix(ev.Time, 0).Format("15:04:05")
-	var line string
-	switch ev.Kind {
-	case "peer-up":
-		line = fmt.Sprintf("%s  %s 已连接", t, ev.Peer)
-	case "peer-down":
-		line = fmt.Sprintf("%s  %s 已断开", t, ev.Peer)
-	case "sent":
-		line = fmt.Sprintf("%s  发送 %s", t, ev.Info)
-	case "received":
-		line = fmt.Sprintf("%s  收到 %s,来自 %s", t, ev.Info, ev.Peer)
-	case "pending":
-		switch ev.Info {
-		case "":
-			line = fmt.Sprintf("%s  %s 请求加入", t, ev.Peer)
-		case "code":
-			line = fmt.Sprintf("%s  %s 通过配对码请求加入", t, ev.Peer)
-		default:
-			line = fmt.Sprintf("%s  %s 请求加入(由 %s 介绍)", t, ev.Peer, ev.Info)
-		}
-	default:
-		return
-	}
-	g.mu.Lock()
-	g.log = append([]string{line}, g.log...)
-	if len(g.log) > 100 {
-		g.log = g.log[:100]
-	}
-	g.mu.Unlock()
 }
 
 // ---- actions ----

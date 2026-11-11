@@ -2,6 +2,7 @@ package desktopdemo
 
 import (
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
@@ -64,6 +65,10 @@ func (d *demo) selectRow(c *ui.Context, k uikit.Kit, id, label, description stri
 }
 
 func (d *demo) settingsContent(c *ui.Context, k uikit.Kit) {
+	if d.live != nil {
+		d.liveSettingsContent(c, k)
+		return
+	}
 	group := func(id, title string, body func()) {
 		k.SettingsGroup(c.Key(id), uikit.SettingsGroupProps{Title: title}, body)
 	}
@@ -131,17 +136,8 @@ func (d *demo) settingsContent(c *ui.Context, k uikit.Kit) {
 			d.switchRow(c, k, "saveFiles", "自动保存接收的文件", "将收到的文件保存到下载目录")
 		})
 	case "security":
-		group("security", "空间安全", func() {
-			d.switchRow(c, k, "encryption", "端到端加密", "演示空间使用本地假数据")
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: "空间口令", Description: "使用口令解锁本机数据"}, nil, func() {
-				if k.Button(c, "查看解锁界面", uikit.ButtonProps{}).Clicked() {
-					d.page = "unlock"
-				}
-			})
-		})
-		group("lock", "自动锁定", func() {
-			d.switchRow(c, k, "autoLock", "系统锁定时锁定", "下次打开时需要输入空间口令")
-		})
+		k.Text(c, "设备配对需要双方核对指纹。", secondary)
+
 	case "network":
 		group("network", "连接", func() {
 			d.switchRow(c, k, "relay", "允许中继回退", "无法直连时通过中继连接")
@@ -161,15 +157,6 @@ func (d *demo) settingsContent(c *ui.Context, k uikit.Kit) {
 		group("version", "版本", func() {
 			k.SettingsRow(c, uikit.SettingsRowProps{Label: "界面参考", Description: "main · " + Reference[:9]}, nil, nil)
 			k.SettingsRow(c, uikit.SettingsRowProps{Label: "界面组件", Description: "mygo + UI Kit · Adwaita / macOS glass / Fluent"}, nil, nil)
-		})
-		group("preview", "演示入口", func() {
-			for _, v := range []struct{ id, name string }{{"setup", "首次引导"}, {"startup", "启动状态"}, {"recovery", "数据恢复"}} {
-				k.SettingsRow(c.Key(v.id), uikit.SettingsRowProps{Label: v.name}, nil, func() {
-					if k.Button(c, "查看", uikit.ButtonProps{}).Clicked() {
-						d.page = v.id
-					}
-				})
-			}
 		})
 	}
 }

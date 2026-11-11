@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
@@ -436,7 +437,11 @@ func (d *demo) historySearch(c *ui.Context, k uikit.Kit) {
 		case "extension":
 			selected = s.extension == candidate.value
 		}
-		suggestions = append(suggestions, uikit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: candidate.label, Kind: candidate.kind, Group: group, Detail: fmt.Sprintf("%d 项", n), Selected: selected, Muted: n == 0})
+		detail := fmt.Sprintf("%d 项", n)
+		if d.live != nil {
+			detail = ""
+		}
+		suggestions = append(suggestions, uikit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: candidate.label, Kind: candidate.kind, Group: group, Detail: detail, Selected: selected, Muted: n == 0 && d.live == nil})
 	}
 	feedback := ""
 	if w, ok := s.active(); ok {

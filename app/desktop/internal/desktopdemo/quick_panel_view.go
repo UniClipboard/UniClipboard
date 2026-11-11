@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
@@ -64,10 +65,6 @@ func (p *quickDemo) panel(c *ui.Context) {
 					p.update()
 				}
 			})
-			return
-		}
-		if p.mode == "locked" {
-			p.locked(c, a)
 			return
 		}
 		p.searchRow(c, a)
@@ -517,62 +514,6 @@ func (p *quickDemo) emptyView(c *ui.Context, a qpPalette) {
 			ui.Button(c, "清空筛选").OnClick(func() { p.clear(); p.input.Focus() })
 		} else {
 			ui.Text(c, "随时唤起  "+p.commandLabel()+"Ctrl+V").FontSize(12).TextColor(a.quiet)
-		}
-	})
-}
-func (p *quickDemo) locked(c *ui.Context, a qpPalette) {
-	ui.Column(c).Fill().Padding(24).Gap(12).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		ui.Text(c, "应用界面已锁定").FontSize(17).Role(ui.RoleHeading)
-		ui.Text(c, "输入口令并按回车解锁。").FontSize(12).TextColor(a.quiet)
-		in := ui.TextInputBase(c, &p.passphrase).Label("口令").Placeholder("口令").Password().Height(32).FillWidth().AutoFocus()
-
-		unlock := func() {
-
-			if p.passphrase == "demo" {
-				p.mode = "history"
-				p.passphrase = ""
-				p.applySearch()
-			} else {
-				p.message = "口令不正确。演示口令为 demo。"
-			}
-			p.update()
-		}
-		in.OnTextKey(func(key ui.TextKey) bool {
-			command := ui.Cmd
-			if uikit.DefaultSkin() != uikit.MacOS {
-				command = ui.Ctrl
-			}
-			if key.Mods == command|ui.Shift && key.Key == ui.KeyO {
-				p.host("main")
-				return true
-			}
-			if key.Mods == command && key.Key == ui.KeyComma {
-				p.host("settings")
-				return true
-			}
-			if key.Mods == command && key.Key == ui.KeyQ && p.quit != nil {
-				p.quit()
-				return true
-			}
-			if key.Mods != 0 {
-				return false
-			}
-			p.passphrase = key.Text()
-			switch key.Key {
-			case ui.KeyEscape:
-				p.escape()
-				key.SetText(p.passphrase)
-			case ui.KeyEnter:
-				unlock()
-				key.SetText(p.passphrase)
-			default:
-				return false
-			}
-			return true
-		})
-		ui.Button(c, "解锁").OnClick(unlock)
-		if p.message != "" {
-			ui.Text(c, p.message).Role(ui.RoleAlert).FontSize(12)
 		}
 	})
 }

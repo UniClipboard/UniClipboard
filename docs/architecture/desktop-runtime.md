@@ -33,6 +33,12 @@ verified: 4a37923b058124ffd5304747e1a5cdab7fc0fe7c
 The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
+The normal desktop uses the shared mygo demo composition with live service data.
+It opens history directly, with no setup or unlock flow.
+General, Sync and Storage controls save through the revision-checked local configuration API.
+Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
+See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
+
 ## Settings
 
 | Key | Default | Effect |

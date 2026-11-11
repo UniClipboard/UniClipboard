@@ -1,0 +1,626 @@
+package desktopdemo
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"image"
+	"io"
+	"slices"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/BurntSushi/toml"
+	"github.com/egoist/mygo/ui"
+
+	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	api "github.com/uniclipboard/unic/internal/localapi"
+	config "github.com/uniclipboard/unic/internal/localconfig"
+)
+
+// Desktop uses the approved composition with service-owned data. Run View on
+// the mygo thread; all completions are applied there, never by I/O workers.
+type Desktop struct{ d *demo }
+
+func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
+	d := &demo{page: "history", theme: "system", layout: "list", nav: uikit.NavState{Value: "all"}, settings: uikit.NavState{Value: "general"}, deviceList: uikit.SourceState{Value: "local"}, gridSize: .4, options: map[string]bool{}, choices: map[string]string{}}
+	ctx, cancel := context.WithCancel(ctx)
+	d.live = &liveState{ctx: ctx, cancel: cancel, client: client, jobs: make(chan func(context.Context) func(), 16), results: make(chan func(), 32), changed: make(chan struct{}, 1), items: map[string]api.HistoryItem{}, details: map[string]entry{}, pending: map[string]api.PendingPeer{}}
+	go d.live.work()
+	go d.live.follow()
+	return &Desktop{d: d}
+}
+func (s *Desktop) View(c *ui.Context) { s.d.view(c) }
+func (s *Desktop) Close()             { s.d.live.cancel() }
+
+// SetLoginStatus connects the existing launcher-owned native login receipt.
+// The callback is read only on the view thread.
+func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
+	s.d.live.loginStatus = read
+	s.d.live.retryLogin = retry
+}
+
+type liveState struct {
+	ctx                                          context.Context
+	cancel                                       context.CancelFunc
+	client                                       *api.Client
+	jobs                                         chan func(context.Context) func()
+	results                                      chan func()
+	changed                                      chan struct{}
+	connected, loaded, loading, busy, detailBusy bool
+	message, readError, cursor, key, detailKey   string
+	nextRefresh                                  time.Time
+	items                                        map[string]api.HistoryItem
+	details                                      map[string]entry
+	config                                       config.State
+	pending                                      map[string]api.PendingPeer
+	join                                         *api.PairResult
+	codeAttempted                                bool
+	code                                         api.Code
+	ticket                                       string
+	loginStatus                                  func() (bool, string)
+	retryLogin                                   func()
+}
+
+func (l *liveState) work() {
+	for {
+		select {
+		case <-l.ctx.Done():
+			return
+		case job := <-l.jobs:
+			ctx, cancel := context.WithTimeout(l.ctx, 15*time.Second)
+			apply := job(ctx)
+			cancel()
+			select {
+			case <-l.ctx.Done():
+				return
+			case l.results <- apply:
+			}
+		}
+	}
+}
+func (l *liveState) follow() {
+	for l.ctx.Err() == nil {
+		_ = l.client.Events(l.ctx, func(api.Event) {
+			select {
+			case l.changed <- struct{}{}:
+			default:
+			}
+		})
+		select {
+		case l.changed <- struct{}{}:
+		default:
+		}
+		select {
+		case <-l.ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
+}
+func (l *liveState) enqueue(job func(context.Context) func()) bool {
+	if l.ctx.Err() != nil {
+		return false
+	}
+	select {
+	case l.jobs <- job:
+		return true
+	default:
+		l.message = "操作正在处理中，请稍后重试。"
+		return false
+	}
+}
+func (l *liveState) poll(d *demo) {
+	for {
+		select {
+		case f := <-l.results:
+			f()
+		default:
+			goto drained
+		}
+	}
+drained:
+	dirty := false
+	select {
+	case <-l.changed:
+		dirty = true
+	default:
+	}
+	if dirty {
+		l.nextRefresh = time.Time{}
+	}
+	key := d.liveQueryKey()
+	if !l.loading && !l.busy && (key != l.key || time.Now().After(l.nextRefresh)) {
+		l.loadHistory(d, false)
+	}
+	if d.selected != "" && !l.detailBusy && d.selected != l.detailKey {
+		l.loadDetail(d)
+	}
+	// Pairing codes are created only while the invitation page is visible.
+	if d.devicesOpen && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && ((l.code.Code == "" && !l.codeAttempted) || (l.code.Code != "" && time.Now().UnixMilli() >= l.code.ExpiresAtMs)) {
+		d.newLiveCode()
+	}
+}
+func (d *demo) liveQueryKey() string {
+	b, _ := json.Marshal([]string{d.kind, d.source, d.tag, d.timeRange})
+	return string(b)
+}
+func (d *demo) liveQuery() api.HistoryQuery {
+	q := api.HistoryQuery{Limit: 50, Tags: selectedSearchTags(d.tag)}
+	switch d.kind {
+	case "文本":
+		q.Kinds = []string{"text"}
+	case "图片":
+		q.Kinds = []string{"image"}
+	case "文件":
+		q.Kinds = []string{"files"}
+	}
+	if d.source == "local" {
+		q.Origins = []string{"local_system", "explicit", "action"}
+	} else if d.source != "all" {
+		q.DeviceID = d.source
+	}
+	now := time.Now()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	switch d.timeRange {
+	case "today":
+		q.FromMs = start.UnixMilli()
+	case "yesterday":
+		q.FromMs = start.AddDate(0, 0, -1).UnixMilli()
+		q.BeforeMs = start.UnixMilli()
+	case "last_7d":
+		q.FromMs = start.AddDate(0, 0, -6).UnixMilli()
+	case "last_30d":
+		q.FromMs = start.AddDate(0, 0, -29).UnixMilli()
+	case "this_week":
+		days := (int(start.Weekday()) + 6) % 7
+		q.FromMs = start.AddDate(0, 0, -days).UnixMilli()
+	case "this_month":
+		q.FromMs = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).UnixMilli()
+	}
+	return q
+}
+func (d *demo) unsupportedSearch() bool {
+	return d.query != "" || d.search.extension != "" || d.kind == "代码" || d.kind == "链接" || d.kind == "富文本" || d.nav.Value == "pinned"
+}
+func (l *liveState) loadHistory(d *demo, more bool) {
+	if l.loading {
+		return
+	}
+	q := d.liveQuery()
+	target := max(50, len(d.entries))
+	key := d.liveQueryKey()
+	if more {
+		if l.cursor == "" || key != l.key {
+			return
+		}
+		q.Cursor = l.cursor
+	}
+	l.loading = true
+	l.key = key
+	l.nextRefresh = time.Now().Add(5 * time.Second)
+	if !l.enqueue(func(ctx context.Context) func() {
+		status, err := l.client.Status(ctx)
+		var page api.HistoryPage
+		var entries []entry
+		var saved config.State
+		var tags []string
+		var candidates []api.Candidate
+		if err == nil {
+			page, err = l.client.QueryHistory(ctx, q)
+			if !more && err == nil {
+				for len(page.Items) < target && page.NextCursor != "" {
+					nextQuery := q
+					nextQuery.Cursor = page.NextCursor
+					next, e := l.client.QueryHistory(ctx, nextQuery)
+					if e != nil {
+						err = e
+						break
+					}
+					page.Items = append(page.Items, next.Items...)
+					page.NextCursor = next.NextCursor
+				}
+			}
+		}
+		if err == nil {
+			for _, it := range page.Items {
+				v := projectHistory(it)
+				preview, e := l.client.HistoryPreview(ctx, it)
+				if e == nil && preview != "" {
+					v.title = shortText(preview, 90)
+				}
+				entries = append(entries, v)
+			}
+			saved, err = l.client.Config(ctx)
+		}
+		if err == nil {
+			tags, err = l.client.HistoryTags(ctx)
+		}
+		if err == nil {
+			candidates, err = l.client.Candidates(ctx)
+		}
+		return func() {
+			l.loading = false
+			if key != d.liveQueryKey() {
+				l.nextRefresh = time.Time{}
+				return
+			}
+			if err != nil {
+				l.connected = false
+				l.readError = "无法读取本机服务。请检查服务后重试。"
+				l.detailKey = ""
+				return
+			}
+			l.connected = true
+			l.loaded = true
+			l.readError = ""
+			if !more {
+				d.entries = nil
+				l.items = map[string]api.HistoryItem{}
+			}
+			for i, it := range page.Items {
+				l.items[it.ID] = it
+				if cached, ok := l.details[it.ID]; ok {
+					entries[i].text = cached.text
+					entries[i].image = cached.image
+					entries[i].contentError = cached.contentError
+				}
+				at := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == it.ID })
+				if at < 0 {
+					d.entries = append(d.entries, entries[i])
+				} else {
+					d.entries[at] = entries[i]
+				}
+			}
+			// Keep detail memory bounded by the visible page set.
+			for id := range l.details {
+				if _, ok := l.items[id]; !ok {
+					delete(l.details, id)
+				}
+			}
+			l.cursor = page.NextCursor
+			l.config = saved
+			d.projectLiveConfig()
+			d.tags = nil
+			for _, t := range tags {
+				d.tags = append(d.tags, demoTag{id: t, name: t, color: "gray", sidebar: true})
+			}
+			previousName := ""
+			if len(d.devices) > 0 {
+				previousName = d.devices[0].name
+			}
+			d.devices = []device{{id: "local", name: status.Name, platform: "本机", icon: uikit.IconDesktop, online: true}}
+			if d.deviceName == "" || d.deviceName == previousName {
+				d.deviceName = status.Name
+			}
+			for _, p := range status.Peers {
+				if p.Kind == "external" {
+					continue
+				}
+				d.devices = append(d.devices, device{id: p.ID, name: p.Name, online: p.Connected, latency: -1, lastSeen: formatSeen(p.LastSeen), platform: "未提供", link: "在线", icon: uikit.IconDesktop})
+			}
+			d.pending = nil
+			l.pending = map[string]api.PendingPeer{}
+			for _, p := range status.Pending {
+				l.pending[p.ID] = p
+				d.pending = append(d.pending, pendingDevice{id: p.ID, name: p.Name, fingerprint: p.Fingerprint, via: p.Via, platform: "未提供", icon: uikit.IconDesktop})
+			}
+			d.candidates = nil
+			for _, c := range candidates {
+				if !c.Ignored {
+					d.candidates = append(d.candidates, deviceCandidate{id: c.ID, name: c.Name, introducer: strings.Join(c.IntroducedBy, "、"), backendID: c.BackendID, icon: uikit.IconDesktop})
+				}
+			}
+			if l.join != nil && slices.ContainsFunc(status.Peers, func(p api.PeerStatus) bool { return p.ID == l.join.ID }) {
+				d.deviceTask = ""
+				d.deviceList.Value = l.join.ID
+				l.join = nil
+			}
+			if d.selected == "" && len(d.entries) > 0 {
+				d.selectEntry(d.entries[0].id)
+			}
+			if !slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == d.selected }) {
+				d.selected = ""
+				l.detailKey = ""
+			}
+		}
+	}) {
+		l.loading = false
+	}
+}
+func projectHistory(it api.HistoryItem) entry {
+	kind := uikit.KindText
+	title := "文本"
+	switch it.Kind {
+	case "image":
+		kind = uikit.KindImage
+		title = "图片"
+	case "files":
+		kind = uikit.KindFile
+		title = "文件"
+	}
+	source := it.DeviceID
+	if source == "" {
+		source = "local"
+	}
+	if it.Origin == "external" || it.Origin == "migration" {
+		source = it.Origin
+	}
+	return entry{id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: fmt.Sprintf("%d B", it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState}
+}
+func formatDate(ms int64) string {
+	t := time.UnixMilli(ms)
+	now := time.Now()
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if !t.Before(day) {
+		return "今天 " + t.Format("15:04")
+	}
+	if !t.Before(day.AddDate(0, 0, -1)) {
+		return "昨天 " + t.Format("15:04")
+	}
+	return t.Format("2006-01-02 15:04")
+}
+func formatSeen(ms int64) string {
+	if ms == 0 {
+		return "未提供"
+	}
+	return time.UnixMilli(ms).Format("2006-01-02 15:04")
+}
+func shortText(s string, n int) string {
+	if utf8.RuneCountInString(s) > n {
+		return string([]rune(s)[:n]) + "…"
+	}
+	return s
+}
+func (l *liveState) loadDetail(d *demo) {
+	id := d.selected
+	it, ok := l.items[id]
+	if !ok {
+		return
+	}
+	l.detailBusy = true
+	l.detailKey = id
+	if !l.enqueue(func(ctx context.Context) func() {
+		v := projectHistory(it)
+		switch it.Kind {
+		case "files":
+			var names []string
+			for i, p := range it.Parts {
+				if p.Kind != "file" {
+					continue
+				}
+				r, e := l.client.HistoryContent(ctx, id, i)
+				if e != nil {
+					v.contentError = "文件内容不可用。"
+					continue
+				}
+				names = append(names, r.Name)
+				_ = r.Close()
+			}
+			v.text = strings.Join(names, "\n")
+			if len(names) > 0 {
+				v.title = shortText(names[0], 90)
+			}
+		default:
+			part := -1
+			for i, p := range it.Parts {
+				if (it.Kind == "image" && p.MIME == "image/png") || (it.Kind != "image" && p.MIME == "text/plain") {
+					part = i
+					break
+				}
+			}
+			if part < 0 {
+				v.contentError = "此内容没有可显示的预览。"
+				break
+			}
+			r, e := l.client.HistoryContent(ctx, id, part)
+			if e != nil {
+				v.contentError = "内容已不可用。"
+				break
+			}
+			limit := int64(1 << 20)
+			if it.Kind == "image" {
+				limit = 32 << 20
+			}
+			raw, e := io.ReadAll(io.LimitReader(r, limit+1))
+			_ = r.Close()
+			if e != nil {
+				v.contentError = "读取内容失败。"
+				break
+			}
+			if int64(len(raw)) > limit {
+				v.contentError = "内容超过预览大小限制。"
+				break
+			}
+			if it.Kind == "image" {
+				cfg, _, e := image.DecodeConfig(bytes.NewReader(raw))
+				if e != nil || int64(cfg.Width)*int64(cfg.Height) > 16_000_000 {
+					v.contentError = "图片无法预览。"
+					break
+				}
+				v.image, e = ui.DecodeImage(raw)
+				if e != nil {
+					v.contentError = "图片无法预览。"
+				}
+			} else {
+				v.text = strings.ToValidUTF8(string(raw), "�")
+				v.title = shortText(strings.TrimSpace(v.text), 90)
+			}
+		}
+		return func() {
+			l.detailBusy = false
+			if d.selected != id {
+				return
+			}
+			if _, ok := l.items[id]; !ok {
+				return
+			}
+			// Keep only one full payload, regardless of how many pages are loaded.
+			l.details = map[string]entry{id: v}
+			for i := range d.entries {
+				if d.entries[i].id != id {
+					d.entries[i].text = ""
+					d.entries[i].image = nil
+					d.entries[i].contentError = ""
+				}
+			}
+			for i := range d.entries {
+				if d.entries[i].id == id {
+					d.entries[i].text = v.text
+					d.entries[i].image = v.image
+					d.entries[i].contentError = v.contentError
+					d.entries[i].title = v.title
+				}
+			}
+		}
+	}) {
+		l.detailBusy = false
+		l.detailKey = ""
+	}
+}
+
+// mutate queues one user intent. Writes are never automatically replayed.
+func (d *demo) mutate(work func(context.Context) error, success string) {
+	l := d.live
+	if l.busy {
+		return
+	}
+	selected := d.selected
+	l.busy = true
+	l.message = ""
+	d.notice = "正在处理…"
+	if !l.enqueue(func(ctx context.Context) func() {
+		err := work(ctx)
+		return func() {
+			l.busy = false
+			l.nextRefresh = time.Time{}
+			if err != nil {
+				l.message = "操作未能确认完成。请刷新数据后检查结果。"
+				if api.ReasonOf(err) == "config_apply_failed" {
+					l.message = "设置已保存，但未能生效。请检查设置后重试。"
+				}
+				if api.ReasonOf(err) == "conflict" {
+					l.message = "数据已变化。请刷新后重试。"
+				}
+				d.notice = "操作失败"
+			} else {
+				l.message = ""
+				d.notice = success
+			}
+			if d.selected != selected {
+				d.notice = ""
+			}
+		}
+	}) {
+		l.busy = false
+	}
+}
+func (d *demo) useEntry() {
+	if d.current() == nil {
+		return
+	}
+	if d.live == nil {
+		d.notice = "演示：已复制"
+		return
+	}
+	id := d.selected
+	request := "desktop-" + newRequestID()
+	client := d.live.client
+	d.mutate(func(ctx context.Context) error { _, err := client.RestoreHistory(ctx, id, request); return err }, "已复制")
+}
+func (d *demo) setEntryTags(id string, tags []string) {
+	if d.live == nil {
+		for i := range d.entries {
+			if d.entries[i].id == id {
+				d.entries[i].tags = slices.Clone(tags)
+			}
+		}
+		return
+	}
+	it, ok := d.live.items[id]
+	if !ok {
+		return
+	}
+	tags = slices.Clone(tags)
+	client := d.live.client
+	d.mutate(func(ctx context.Context) error {
+		_, err := client.UpdateHistory(ctx, id, api.HistoryUpdate{Revision: it.Revision, Tags: &tags})
+		return err
+	}, "标签已保存")
+}
+func (d *demo) deleteLiveEntries(ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	records := []api.HistoryItem{}
+	for _, id := range ids {
+		if it, ok := d.live.items[id]; ok {
+			records = append(records, it)
+		} else {
+			d.live.message = "历史已变化。请刷新后重试。"
+			return
+		}
+	}
+	client := d.live.client
+	d.mutate(func(ctx context.Context) error {
+		for _, it := range records {
+			if err := client.DeleteHistory(ctx, it.ID, it.Revision); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, "已删除")
+}
+func (d *demo) saveLiveConfig(cfg config.Config) {
+	revision := d.live.config.Revision
+	client := d.live.client
+	d.mutate(func(ctx context.Context) error {
+		var buf bytes.Buffer
+		if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+			return err
+		}
+		state, err := client.SaveConfig(ctx, revision, buf.Bytes())
+		if err == nil && state.ApplyError != "" {
+			return &api.Error{Message: "saved but not applied", Reason: "config_apply_failed"}
+		}
+		return err
+	}, "设置已保存")
+}
+func (d *demo) projectLiveConfig() {
+	c := d.live.config.Config
+	d.options["startup"] = c.Desktop.LaunchAtLogin
+	d.options["sync"] = c.Sync.Enabled
+	d.options["autoSync"] = c.Sync.Automatic
+	d.options["restore"] = c.Sync.OnRestore
+	d.options["telemetry"] = c.Telemetry.Enabled
+}
+func (d *demo) newLiveCode() {
+	if d.live.busy {
+		return
+	}
+	d.live.codeAttempted = true
+	client := d.live.client
+	d.mutate(func(ctx context.Context) error {
+		code, err := client.NewCode(ctx)
+		if err == nil {
+			select {
+			case d.live.results <- func() { d.live.code = code; d.inviteCode = code.Code }:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		return err
+	}, "配对码已生成")
+}
+
+func newRequestID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(b[:])
+}

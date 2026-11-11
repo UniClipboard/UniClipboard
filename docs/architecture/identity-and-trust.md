@@ -15,6 +15,8 @@ paths:
   - app/service/internal/server
   - app/service/cmd/unic/cli.go
   - app/desktop/cmd/unic-desktop/gui.go
+  - app/desktop/internal/desktopdemo/live.go
+  - app/desktop/internal/desktopdemo/live_devices.go
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
@@ -71,6 +73,8 @@ Engine 统一管理“对端是谁、是否被信任、经哪条后端路径可�
 The service owns Engine identity, trust transactions and the local pairing API.
 CLI and desktop clients submit approval snapshots through the same service route.
 The desktop process owns no second Engine or identity store.
+The normal desktop uses the approved mygo composition and opens history directly.
+`desktopdemo/live_devices.go` submits the displayed fingerprint, device revision and complete binding revision set through the shared client.
 The host applies the global file-sync switch when projecting backend policy; this restriction does not grant or revoke device trust.
 A newly trusted device emits the categorical `pairing_completed` product event after the trust transaction succeeds.
 The event contains no device identity, fingerprint, binding context or pairing material. See [observability](observability.md).
@@ -86,7 +90,7 @@ The event contains no device identity, fingerprint, binding context or pairing m
 
 ## 缺口
 
-- `app/mac` 保留的设备界面为 mock 实验原型，该 SwiftUI 客户端路线已取消；桌面统一使用 mygo + 自定义 UI Kit，最终界面原型待定。
+- The SwiftUI client under `app/mac` is retired. The desktop uses the existing mygo and UI Kit demo composition with live service data. Native visual acceptance remains separate.
 - 对象存储路径（仓库成员身份、`object_store` 票据兑现、成员排除）未实现；`object_store` 票据当前只被解析，不能使用。
 - 密钥轮换、备份恢复、多设备共享身份未定义。
 - 待批准设备数达上限时新握手直接被拒绝（`reject`），尚无面向用户的清理提示。

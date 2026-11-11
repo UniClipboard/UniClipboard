@@ -1,22 +1,28 @@
-// Package desktopdemo restores the main branch desktop composition with local fixtures.
-// It has no daemon client and never writes the system clipboard or application settings.
+// Package desktopdemo shares the approved mygo desktop composition between
+// an isolated fixture and the daemon-backed Desktop. Only the fixture uses fake data.
 package desktopdemo
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
 const Reference = "8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7"
 
 type entry struct {
+	image                               ui.ImageSource
+	contentError, syncState             string
+	createdAt                           int64
 	id, title, text, source, date, size string
 	kind                                uikit.ContentKind
 	tags                                []string
@@ -49,10 +55,13 @@ type pendingDevice struct {
 
 type deviceCandidate struct {
 	id, name, introducer string
+	backendID            string
 	icon                 uikit.IconName
 }
 
 type demo struct {
+	live                                                                   *liveState
+	tagInput                                                               string
 	openQuickPanel                                                         func()
 	quick                                                                  *quickDemo
 	tags                                                                   []demoTag
@@ -71,7 +80,7 @@ type demo struct {
 	compact                                                                bool
 	gridSize                                                               float64
 	deviceTask, fieldError, notice, confirm, confirmID                     string
-	deviceName, passphrase, confirmation, invitation                       string
+	deviceName                                                             string
 	pending                                                                []pendingDevice
 	candidates                                                             []deviceCandidate
 	inviteCode, inviteMode, connectInput, renameValue, deviceNote          string
@@ -129,9 +138,9 @@ func newDemo(page, theme string) *demo {
 // Run opens an isolated fixture window. Parse all options before starting mygo.
 func Run(args []string) error {
 	flags := flag.NewFlagSet("gui --demo", flag.ContinueOnError)
-	page := flags.String("page", "history", "history, devices, settings, setup, unlock, startup, recovery, quick-panel")
+	page := flags.String("page", "history", "history, devices, settings, quick-panel")
 	theme := flags.String("theme", "system", "system, light, dark")
-	quickState := flags.String("quick-state", "history", "history, locked, disconnected, empty")
+	quickState := flags.String("quick-state", "history", "history, disconnected, empty")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -141,13 +150,13 @@ func Run(args []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected demo argument: %s", flags.Arg(0))
 	}
-	if !slices.Contains([]string{"history", "devices", "settings", "setup", "unlock", "startup", "recovery", "quick-panel"}, *page) {
+	if !slices.Contains([]string{"history", "devices", "settings", "quick-panel"}, *page) {
 		return fmt.Errorf("unknown demo page: %s", *page)
 	}
 	if !slices.Contains([]string{"system", "light", "dark"}, *theme) {
 		return fmt.Errorf("unknown demo theme: %s", *theme)
 	}
-	if !slices.Contains([]string{"history", "locked", "disconnected", "empty"}, *quickState) {
+	if !slices.Contains([]string{"history", "disconnected", "empty"}, *quickState) {
 		return fmt.Errorf("unknown quick panel state: %s", *quickState)
 	}
 	if *page == "quick-panel" {
@@ -187,6 +196,10 @@ func Run(args []string) error {
 }
 
 func (d *demo) view(c *ui.Context) {
+	if d.live != nil {
+		d.live.poll(d)
+		c.After(200 * time.Millisecond)
+	}
 	dark := c.Theme().Dark
 	if d.theme != "system" {
 		dark = d.theme == "dark"
@@ -219,7 +232,8 @@ func (d *demo) view(c *ui.Context) {
 		case "quick-panel":
 			d.quickPanel(c, k)
 		default:
-			d.entryPage(c, k)
+			d.page = "history"
+			d.history(c, k)
 		}
 		d.deviceSheet(c.Key("devices"), k)
 		d.tagSheet(c.Key("tags"), k)
@@ -229,6 +243,12 @@ func (d *demo) view(c *ui.Context) {
 }
 
 func (d *demo) sourceName(id string) string {
+	if id == "migration" {
+		return "从旧版导入"
+	}
+	if id == "external" {
+		return "外部来源"
+	}
 	for _, v := range d.devices {
 		if v.id == id {
 			if id == "local" {
@@ -243,11 +263,14 @@ func (d *demo) sourceName(id string) string {
 func kindName(kind uikit.ContentKind) string {
 	return []string{"文本", "代码", "链接", "图片", "文件"}[kind]
 }
-func kindIcon(kind uikit.ContentKind) uikit.IconName {
-	return []uikit.IconName{uikit.IconCopy, uikit.IconEdit, uikit.IconGlobe, uikit.IconGrid, uikit.IconFile}[kind]
-}
 
 func (d *demo) filtered() []entry {
+	if d.live != nil {
+		if d.unsupportedSearch() {
+			return nil
+		}
+		return d.entries
+	}
 	var out []entry
 	for _, v := range d.entries {
 		if d.nav.Value == "pinned" && !v.pinned {
@@ -273,6 +296,10 @@ func (d *demo) current() *entry {
 func (d *demo) selectEntry(id string) { d.selected = id; d.list.Select(id); d.notice = "" }
 
 func (d *demo) togglePin() {
+	if d.live != nil {
+		d.live.message = "置顶功能尚不可用。"
+		return
+	}
 	if v := d.current(); v != nil {
 		on := !v.pinned
 		ids := d.list.Selection()
@@ -298,11 +325,22 @@ func (d *demo) confirmDialog(c *ui.Context, k uikit.Kit) {
 	}
 	open := true
 	desc := "此操作只修改本次演示中的假数据。"
+	if d.live != nil {
+		desc = "删除历史记录及应用管理的内容。此操作无法撤销。"
+	}
 	if strings.HasPrefix(d.confirmID, "device:") {
 		desc = "撤销此设备的全部同步路径。对方需要重新配对并重新批准。已同步到对方的内容无法撤回。"
 	}
 	r := k.AlertDialog(c, uikit.AlertDialogProps{Open: &open, Title: d.confirm, Description: desc, ConfirmLabel: "移除", CancelLabel: "取消", Destructive: true}, nil)
-	if r.Confirmed {
+	if r.Confirmed && d.live != nil {
+		if strings.HasPrefix(d.confirmID, "device:") {
+			id := strings.TrimPrefix(d.confirmID, "device:")
+			client := d.live.client
+			d.mutate(func(ctx context.Context) error { return client.Unpair(ctx, id) }, "设备已移除")
+		} else {
+			d.deleteLiveEntries(d.confirmEntries)
+		}
+	} else if r.Confirmed {
 		if strings.HasPrefix(d.confirmID, "device:") {
 			id := strings.TrimPrefix(d.confirmID, "device:")
 			d.devices = slices.DeleteFunc(d.devices, func(v device) bool { return v.id == id })
@@ -316,4 +354,11 @@ func (d *demo) confirmDialog(c *ui.Context, k uikit.Kit) {
 		d.confirm, d.confirmID = "", ""
 		d.confirmEntries = nil
 	}
+}
+
+func (d *demo) quickPanel(c *ui.Context, _ uikit.Kit) {
+	if d.quick == nil {
+		d.quick = newQuickDemo(d.theme, "history")
+	}
+	d.quick.panel(c)
 }

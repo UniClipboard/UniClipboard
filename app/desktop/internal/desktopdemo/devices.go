@@ -1,6 +1,7 @@
 package desktopdemo
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
@@ -44,6 +46,8 @@ func deviceStatus(v device) (string, uikit.StatusTone) {
 		return "本机", uikit.StatusPositive
 	case v.direction == "pause":
 		return "已暂停", uikit.StatusNeutral
+	case v.online && v.latency < 0:
+		return "在线", uikit.StatusPositive
 	case v.online:
 		return fmt.Sprintf("%d ms · %s", v.latency, v.link), latencyTone(v.latency)
 	}
@@ -84,6 +88,20 @@ func (d *demo) deviceByID(id string) *device {
 }
 
 func (d *demo) setDeviceTask(task string) {
+	if d.live != nil {
+		if d.deviceTask == "invite" && task != "invite" {
+			d.cancelLiveInvitation()
+		}
+		d.deviceTask, d.fieldError, d.deviceNote = task, "", ""
+		if task == "invite" {
+			d.inviteMode = "code"
+			d.live.codeAttempted = false
+		}
+		if task == "connect" {
+			d.connectInput = ""
+		}
+		return
+	}
 	d.deviceTask, d.fieldError, d.deviceNote = task, "", ""
 	switch task {
 	case "invite":
@@ -163,7 +181,11 @@ func (d *demo) deviceSidebar(c *ui.Context, k uikit.Kit) {
 		}
 		sections = append(sections, uikit.SourceListSection{ID: "candidates", Title: "可能认识", Items: items})
 	}
-	k.SourceList(c, &d.deviceList, uikit.SourceListProps{Label: "设备", Sections: sections, Footer: "演示空间 · 端到端加密"}).Grow(1)
+	footer := "演示空间 · 端到端加密"
+	if d.live != nil {
+		footer = "设备配对需要双方批准"
+	}
+	k.SourceList(c, &d.deviceList, uikit.SourceListProps{Label: "设备", Sections: sections, Footer: footer}).Grow(1)
 	if d.deviceList.Activated() {
 		d.deviceDetailOpen = true
 	}
@@ -196,6 +218,10 @@ func (d *demo) deviceDetail(c *ui.Context, k uikit.Kit) {
 				d.setDeviceTask("invite")
 			}
 		})
+		return
+	}
+	if d.live != nil {
+		d.liveDeviceDetail(c, k, v)
 		return
 	}
 	ui.Column(c).Gap(20).Children(func() {
@@ -313,12 +339,20 @@ func (d *demo) pendingDetail(c *ui.Context, k uikit.Kit, id string) {
 			k.Text(c, "对方屏幕上显示相同的指纹时，才接受。", footnote)
 		})
 		ui.Row(c).Gap(12).Justify(ui.Center).Children(func() {
-			if k.Button(c.Key("deny"), "拒绝", uikit.ButtonProps{Variant: uikit.Destructive}).Clicked() {
+			if k.Button(c.Key("deny"), "拒绝", uikit.ButtonProps{Variant: uikit.Destructive, Disabled: d.live != nil && d.live.busy}).Clicked() {
+				if d.live != nil {
+					d.approveLive(id, false)
+					return
+				}
 				d.pending = slices.Delete(d.pending, i, i+1)
 				d.deviceList.Value, d.deviceDetailOpen = "local", false
 				return
 			}
-			if k.Button(c.Key("accept"), "接受", uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
+			if k.Button(c.Key("accept"), "接受", uikit.ButtonProps{Variant: uikit.Primary, Disabled: d.live != nil && d.live.busy}).Clicked() {
+				if d.live != nil {
+					d.approveLive(id, true)
+					return
+				}
 				d.pending = slices.Delete(d.pending, i, i+1)
 				d.addPeer("a"+p.id, p.name, p.platform, p.icon, p.fingerprint)
 			}
@@ -339,12 +373,21 @@ func (d *demo) candidateDetail(c *ui.Context, k uikit.Kit, id string) {
 	cd := d.candidates[i]
 	ui.Column(c).Gap(20).Children(func() {
 		k.EntityHeader(c, uikit.EntityHeaderProps{Icon: cd.icon, Pending: true, Centered: true, Title: cd.name, Description: cd.introducer}, func() {
-			if k.Button(c.Key("join"), "连接", uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
+			if k.Button(c.Key("join"), "连接", uikit.ButtonProps{Variant: uikit.Primary, Disabled: d.live != nil && d.live.busy}).Clicked() {
+				if d.live != nil {
+					d.pairLive(cd.id, cd.backendID)
+					return
+				}
 				d.candidates = slices.Delete(d.candidates, i, i+1)
 				d.deviceList.Value, d.deviceDetailOpen = "local", false
 				d.setDeviceTask("wait")
 			}
-			if k.Button(c.Key("ignore"), "忽略", uikit.ButtonProps{}).Clicked() {
+			if k.Button(c.Key("ignore"), "忽略", uikit.ButtonProps{Disabled: d.live != nil && d.live.busy}).Clicked() {
+				if d.live != nil {
+					client := d.live.client
+					d.mutate(func(ctx context.Context) error { return client.IgnoreCandidate(ctx, cd.id, true) }, "已忽略")
+					return
+				}
 				d.candidates = slices.Delete(d.candidates, i, i+1)
 				d.deviceList.Value, d.deviceDetailOpen = "local", false
 			}
@@ -370,6 +413,10 @@ func fingerprintLines(fp string) []string {
 }
 
 func (d *demo) deviceTaskView(c *ui.Context, k uikit.Kit) {
+	if d.live != nil {
+		d.liveDeviceTaskView(c, k)
+		return
+	}
 	const back = "返回设备列表"
 	switch d.deviceTask {
 	case "invite":

@@ -112,6 +112,30 @@ func (c *Client) GetHistory(ctx context.Context, id string) (it HistoryItem, err
 	return
 }
 
+// HistoryContent opens one history part without buffering its body.
+// Close the result to release the service-owned content lease.
+func (c *Client) HistoryContent(ctx context.Context, id string, part int) (HistoryContent, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://unic/v1/history/"+url.PathEscape(id)+"/content?part="+strconv.Itoa(part), nil)
+	if err != nil {
+		return HistoryContent{}, err
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		if isNoDaemon(err) {
+			return HistoryContent{}, ErrNoDaemon
+		}
+		return HistoryContent{}, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer func() { _ = resp.Body.Close() }()
+		var e errBody
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		return HistoryContent{}, &Error{Message: e.Error, Reason: e.Reason, Status: resp.StatusCode}
+	}
+	_, params, _ := mime.ParseMediaType(resp.Header.Get("Content-Disposition"))
+	return HistoryContent{MIME: resp.Header.Get("Content-Type"), Name: params["filename"], Size: resp.ContentLength, ReadCloser: resp.Body}, nil
+}
+
 // CopyHistoryContent streams part number part of a record to w.
 func (c *Client) CopyHistoryContent(ctx context.Context, id string, part int, w io.Writer) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unic/v1/history/"+url.PathEscape(id)+"/content?part="+strconv.Itoa(part), nil)

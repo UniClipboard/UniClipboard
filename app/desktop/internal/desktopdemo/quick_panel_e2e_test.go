@@ -331,20 +331,13 @@ func TestQuickPanelE2E(t *testing.T) {
 		}
 		record("themes-and-platform-modifiers")
 	})
-	t.Run("locked-disconnected-empty", func(t *testing.T) {
-		for _, mode := range []string{"locked", "disconnected", "empty"} {
+	t.Run("disconnected-empty", func(t *testing.T) {
+		for _, mode := range []string{"disconnected", "empty"} {
 			p := newQuickDemo("light", mode)
 			tt := ui.NewTester(p.panel, 380, 366)
 			tt.Key(ui.Cmd, ui.KeyK)
 			if p.menu != "" {
 				t.Fatal("unavailable menu opened")
-			}
-			if mode == "locked" {
-				tt.Type("demo")
-				tt.Key(0, ui.KeyEscape)
-				if p.passphrase != "" || !p.visible {
-					t.Fatal("locked Escape mismatch")
-				}
 			}
 			if mode == "disconnected" {
 				tt.Key(0, ui.KeyEnter)
@@ -361,6 +354,6 @@ func TestQuickPanelE2E(t *testing.T) {
 			}
 
 		}
-		record("locked-disconnected-empty")
+		record("disconnected-empty")
 	})
 }

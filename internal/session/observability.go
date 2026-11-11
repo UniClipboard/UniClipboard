@@ -209,7 +209,10 @@ type pathFunction func(net.Conn, bool) string
 func (f pathFunction) Path(c net.Conn, out bool) string { return f(c, out) }
 func safePathSnapshot(tr interface {
 	PathSnapshot() func(net.Conn, bool) string
-}) (snapshot func(net.Conn, bool) string) { defer func() { _ = recover() }(); return tr.PathSnapshot() }
+}) (snapshot func(net.Conn, bool) string) {
+	defer func() { _ = recover() }()
+	return tr.PathSnapshot()
+}
 
 func safePath(tr interface{ Path(net.Conn, bool) string }, c net.Conn, out bool) (path string) {
 	path = "unknown"

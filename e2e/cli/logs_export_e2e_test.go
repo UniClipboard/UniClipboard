@@ -208,7 +208,7 @@ func TestLogsExport(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			for i := 0; i < 1024; i++ {
 				select {
 				case <-stop:
@@ -319,12 +319,12 @@ func readLogArchive(t *testing.T, path string) map[string][]byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(gz)
 	entries := map[string][]byte{}
 	for {

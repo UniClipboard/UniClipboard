@@ -131,3 +131,5 @@ The normal desktop owns a profile-scoped service through a parent pipe. Lightwei
 `internal/observability` exports service telemetry; the desktop adapter forwards no analytics identifier.
 The development archive builder reuses identical headless binaries in the optional desktop archive. CLI product metadata, native build/release workflows and npm promotion are implemented. Desktop/mobile release paths remain open. See the [release architecture](releases.md).
 See [headless service and desktop integration](headless.md) for the process and distribution contract.
+
+Search condition chips can shrink within the available field width. Their values stay on one line and expose the full value in a tooltip. Their remove buttons retain a fixed hit target, including with long tag names.

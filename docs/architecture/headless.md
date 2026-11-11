@@ -190,3 +190,5 @@ When no normal desktop is running, a login-setting change waits for the next nor
 The built-in native login API cannot preserve custom `UNIC_HOME` or `UNIC_SOCK` overrides, so enabling registration with either override is rejected.
 The login entry starts the same desktop executable, which reads the saved mode and leaves only `unicd` in lightweight mode.
 See the [startup acceptance receipt](../exec/desktop-startup-lifecycle.md).
+
+The container-based production acceptance job trusts only its checked-out repository path before building. Go VCS stamping remains enabled. The acceptance manifest continues to record source and executable hashes.

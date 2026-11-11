@@ -36,12 +36,17 @@ func TestSearchBadgeDeleteE2E(t *testing.T) {
 			t.Run(skin+"/"+action, func(t *testing.T) {
 				t.Setenv("UNIC_UI_SKIN", skin)
 				d := newDemo("history", "dark")
-				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: true})
+				for i := range d.tags {
+					if d.tags[i].name == "设计" {
+						d.tags[i].name = "DesignReviewAndInterfaceSpecification"
+					}
+				}
+				tt := ui.NewTesterWith(d.view, 1000, 720, ui.TesterOptions{Dark: true})
 				if err := tt.Click("搜索历史"); err != nil {
 					t.Fatal(err)
 				}
 				tt.Advance(400 * time.Millisecond)
-				for _, word := range []string{"/file", "#设计", "#工作"} {
+				for _, word := range []string{"/file", "#DesignReviewAndInterfaceSpecification", "#工作"} {
 					tt.Type(word)
 					tt.Key(0, ui.KeyEnter)
 				}

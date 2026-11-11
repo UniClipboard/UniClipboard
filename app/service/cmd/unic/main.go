@@ -12,9 +12,10 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/uniclipboard/unic/internal/releaseinfo"
 	"os/signal"
 	"strings"
+
+	"github.com/uniclipboard/unic/internal/releaseinfo"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 	paths "github.com/uniclipboard/unic/internal/localpaths"

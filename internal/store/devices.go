@@ -264,17 +264,17 @@ func (s *Store) ApproveDevice(id string, expected int64, bindings map[string]int
 		var bid string
 		var rev int64
 		if err := rows.Scan(&bid, &rev); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		if bindings[bid] != rev {
-			rows.Close()
+			_ = rows.Close()
 			return ErrBindingConflict
 		}
 		count++
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}

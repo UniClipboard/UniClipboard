@@ -171,7 +171,7 @@ func (s *sender) finish(err error) {
 }
 
 func (s *sender) serve(ctx context.Context, c net.Conn) {
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_ = c.SetReadDeadline(time.Now().Add(helloTimeout))
 	f, err := readFrame(c)
 	if err != nil || f.typ != frameHello {

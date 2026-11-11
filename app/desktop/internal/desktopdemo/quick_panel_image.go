@@ -1,8 +1,9 @@
 package desktopdemo
 
 import (
-	"github.com/egoist/mygo/ui"
 	"time"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func (p *quickDemo) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {

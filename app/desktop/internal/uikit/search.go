@@ -74,10 +74,10 @@ func (k Kit) SearchToken(c *ui.Context, p SearchTokenProps) SearchTokenResult {
 	bg, ink := k.fldKindColors(p.Kind)
 	removed := false
 	chip := ui.Row(c).Height(h).AlignItems(ui.Center).Gap(4).PaddingX(9).Radius(radius).
-		Background(bg).TextColor(ink).FontSize(size).Shrink(0)
+		Background(bg).TextColor(ink).FontSize(size).Shrink(1).MinWidth(0)
 	chip.Children(func() {
 		ui.Text(c, p.Field).Opacity(.75).SingleLine()
-		ui.Text(c, p.Value).FontWeight(600).SingleLine()
+		ui.Text(c, p.Value).FontWeight(600).SingleLine().MinWidth(0).Tooltip(p.Value)
 		if p.RemoveLabel != "" {
 			removed = k.fldRemoveButton(c, p.RemoveLabel, ink)
 		}

@@ -33,7 +33,7 @@ func (g *analyticsGeneration) loadDaily() {
 		g.c.drop(3, 3, 1)
 		return
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	// The fixed reserved temporary name bounds crash residue to one file. The
 	// exclusive profile owner removes a stale temporary before daily admission.
 	if err := root.Remove(dailyTemporaryFile); err != nil && !os.IsNotExist(err) {
@@ -56,7 +56,7 @@ func (g *analyticsGeneration) loadDaily() {
 		g.c.drop(3, 3, 1)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	actual, err := f.Stat()
 	if err != nil || !os.SameFile(info, actual) {
 		g.dailyFailed = true
@@ -123,13 +123,13 @@ func (g *analyticsGeneration) persistDaily(day string) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	temp := dailyTemporaryFile
 	f, err := root.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return err
 	}
-	defer root.Remove(temp)
+	defer func() { _ = root.Remove(temp) }()
 	err = json.NewEncoder(f).Encode(dailyMarker{Identity: g.identity, Day: day})
 	if err == nil {
 		err = f.Sync()
@@ -151,7 +151,7 @@ func clearDailyMarker(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	var failure error
 	for _, name := range []string{dailyTemporaryFile, dailyMarkerFile} {
 		if err := root.Remove(name); err != nil && !os.IsNotExist(err) && failure == nil {

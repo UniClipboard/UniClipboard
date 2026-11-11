@@ -28,7 +28,7 @@ func (e *Engine) cleanupHistoryLocked(keep int64) (ids []string) {
 		cutoff = historyNow().Add(-time.Duration(p.RetentionDays) * 24 * time.Hour).UnixMilli()
 	}
 	for _, it := range candidates {
-		if !(cutoff > 0 && it.CreatedMs <= cutoff) && !(p.MaxItems > 0 && n > p.MaxItems) {
+		if (cutoff <= 0 || it.CreatedMs > cutoff) && (p.MaxItems <= 0 || n <= p.MaxItems) {
 			break
 		}
 		blobs, _, err := e.st.DeleteHistory(it.ID, 0)

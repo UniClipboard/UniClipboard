@@ -103,13 +103,13 @@ Exit evidence: reproducible barrier-driven race/fault scenarios prove exactly wh
 
 ### P5. Resource, regression and documentation closure
 
-- [ ] Run the complete section 4 matrix against one frozen source/binary set. Record every required scenario as PASS, FAIL or NOT_RUN. Open: the historical matrix used uncommitted source and cases asserted by other suites with other binaries. The source is now committed, but the complete matrix has not been rerun against one frozen binary set.
+- [x] Run the complete section 4 matrix against one frozen source/binary set. Done at `d305a77e2d` in a clean worktree (section 10). The lifecycle suite lists 8 scenarios as NOT_RUN because other suites assert them; those suites ran against the same commit and passed.
 - [ ] Compare cold acquisition, warm reuse, last-user exit and repeated invocation cost against P0's baseline and preset limits. Measure concurrent client counts, retained workers/FDs and post-exit residue. Match build flags on both sides. Open: thresholds were set after the implementation existed.
 - [x] Verify bounded lease/admission capacity and recovery after capacity rejection. No durable counter/file grows per invocation; no idle timer preserves a zero-user service.
 - [x] Verify existing analytics identity persists across enabled temporary restarts and startup events remain process starts. Do not introduce lease identifiers into telemetry or reinterpret starts as installations. `TestPostHogTemporaryRestarts`: three temporary services give three process starts with one identity; a disabled profile sends nothing and creates no identity.
 - [x] Audit then run existing relevant process regressions once after final runtime changes. Rerun only failures or checks affected by later changes.
 - [x] Run production headless build/dependency acceptance, CLI/service builds, applicable target compile checks, and Desktop build. Native startup/clipboard/login acceptance remains separate and requires explicit authorization. Headless build, cross-compile for linux/amd64, linux/arm64, windows/amd64 and darwin/arm64, no UI dependency in `unic` or `unicd`, and the Desktop build. No native acceptance was run.
-- [ ] Update living architecture, local service/operation contracts, CLI help and application README/AGENTS only for implemented behavior. Architecture and contracts were re-audited against committed source on 2026-11-10. CLI help still omits requirement and lifecycle-window guidance; this item remains open.
+- [x] Update living architecture, local service/operation contracts, CLI help and application README/AGENTS only for implemented behavior. Architecture and contracts were re-audited and updated. Decision 2026-11-11: CLI help keeps its short form without requirement badges; this item is closed without restoring them.
 - [ ] Record remaining platform/native gaps. Archive 0021 only after adopted behavior is implemented, landed in living documentation and its required process gates pass. Open: waits for the acceptance and help/validation items above. Source is now committed; documentation audit is recorded below.
 
 Exit evidence: checksummed local receipt, committed-source match, expected resource bounds and regression/build results. A test fixture, compile check or documentation pass cannot substitute for a later acceptance layer.
@@ -303,3 +303,29 @@ Still open, so 0021 stays in `proposed/`:
 
 - `TestSendFaults/target-fails-mid-body` (`e2e/cli/send_faults_e2e_test.go`): the build-tagged transport cuts the body after 17 bytes. `send --to all` exits 4 with phase `committed` and outcome `failed`. The peer does not apply the partial body. At most one local entry exists.
 - `TestCLI/send-slow-peer-timeout`: the peer process is frozen (SIGSTOP) and `UNIC_E2E_SEND_DEADLINE_MS=4000` shortens the deadline. `send -f` of a 90 MiB file exits non-zero with phase `committed` and outcome `timeout`. The error text says the running service keeps sending and names `unic dev submission`. After the peer resumes, history holds exactly one entry and the service is still running. This does not assert the resource-release barrier on the file; that part stays unproven.
+
+## 10. Frozen-source acceptance (2026-11-11)
+
+Source: `d305a77e2d`, checked out detached in a clean worktree (0 changed files). `manifest.json` reports `worktree_dirty: false`. Every suite below built its own binaries from that tree.
+
+| Suite | Result |
+|---|---|
+| `make service-lifecycle-e2e` | PASS: 30 PASS, 8 NOT_RUN, 0 FAIL |
+| `make headless-e2e` | PASS |
+| `make posthog-e2e` (C34) | PASS |
+| `make desktop-startup-e2e` (C18b) | PASS |
+| `make logs-export-e2e` | PASS |
+| `make sync-observability-e2e` | PASS |
+| `TestCLI` (all scripts, including C21, C22, C23, C24, C26) and `TestCatalog` | PASS |
+| `TestSendFaults` (C23) | PASS |
+
+Resource summary: cold status 6419 ms, warm status 1027 ms, last-user kill to stop 1034 ms.
+
+Flaky observation: one earlier full `go test ./e2e/cli` run in the shared workspace failed C03 once ("temporary service outlived its last user"). Six isolated reruns passed, and the clean-worktree run passed. The cause is not identified. The same run also failed for unrelated reasons: uncommitted files from another task, and `UNIC_SYNC_BASELINE_DAEMON` unset. Treat C03 as a suspected race until it is explained.
+
+Still open:
+
+1. Resource thresholds were set after the implementation existed. Another run cannot remove this.
+2. C36: process tests run on the host platform only. Other platforms are compile-checked.
+3. The file resource-release barrier after a send deadline is not asserted.
+4. Suspected C03 race above.

@@ -21,9 +21,9 @@ Final frozen-source checks passed. No native App, browser, renderer, system hotk
 - Existing config/clipboard/host/local API/Engine checks: 231 passed across five packages under the race detector.
 - Native macOS build and Windows/Linux amd64 cross-builds passed. `.build/quick-panel-system/builds.json` records final executable hashes; temporary binaries and private profiles were removed.
 - Pinned golangci-lint v2.15.0 reports zero new issues for affected Desktop/config packages, including separate Windows/Linux analysis of native adapters.
-- Documentation links/checks pass. Five architecture verified markers remain stale until the implementation is committed. `docscheck -bump` correctly refuses dirty source. No marker was fabricated.
+- Implementation commit: `854df5e68966b8ef3db1cf73c33785355fc54cb0`. The five affected architecture pages were reviewed against this source and their verified markers were updated. `go run ./tools/docscheck -strict` passes without warnings.
 
-All four process receipts were checked against final working-tree source. Their aggregated identities are recorded in `.build/quick-panel-system/acceptance.json`.
+All four process receipts were checked against the committed implementation source. Their aggregated identities are recorded in `.build/quick-panel-system/acceptance.json`.
 An earlier startup run rejected a source change while acceptance was active; its result was not accepted. Later frozen-source runs replace that receipt. Regressions also caught HTML-only plain-mode handling, immediate keep-open focus recovery and an ignored error in its delayed focus check before their fixes.
 
 ## Implemented behavior

@@ -14,3 +14,7 @@ Merge the current `v2` branch into `cli-release-channels`. Preserve the upstream
 Existing whitespace warnings inside the upstream stored probe patch are preserved. They are patch content, outside this conflict resolution.
 
 Documentation validation passed with two existing upstream stale-page warnings in `pipeline.md` and `real-machine-testing.md`. Their files are unchanged from `v2`. Related release/headless architecture verification markers reference the merge commit. The release report SHA-256 is `7875390a6c9958aebcafb2a5ec4f383fc1ed42653a926e27042a73540ba23b3d`; `shasum -a 256 -c SHA256SUMS` passed.
+
+## Concurrent base update
+
+The target branch merged repository configuration in `cc94dc14b`. Merge that update too. Preserve its text/binary attributes and the explicit LF release-TOML rule. Repeated the full release E2E: all 45 checks passed, including Windows-style checkout. Final report: `.cache/pr2231-merge-release-final/report.json`, SHA-256 `477945a91fcc698988af2c2fed5d93e208abe417c174d5608091eb2c301037ab`. Runtime sources are unchanged since the accepted production headless run.

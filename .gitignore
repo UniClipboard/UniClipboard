@@ -16,3 +16,37 @@
 /.cache/real-harness/
 /.cache
 /.planning
+
+# Desktop binary produced by the documented local build command.
+/unic-desktop
+
+# Local diagnostics and environment secrets.
+*.log
+.env
+.env.*
+!.env.example
+.seq-api-key
+
+# Editor and operating-system scratch files.
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.code-workspace
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Local worktrees and tool scratch data.
+/.worktrees/
+/worktrees/
+/tmp/
+__pycache__/
+*.pyc
+.venv/
+
+# Local planning notes are not project documentation.
+/task_plan.md
+/progress.md
+/findings.md

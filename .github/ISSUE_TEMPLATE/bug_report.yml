@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a problem with UniClipboard
+title: "[Bug] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Current version
+      description: Include the branch (v1 or v2), release version or commit, application (CLI or Desktop), and operating system version.
+      placeholder: "For example: v2, commit b25562d9, CLI, macOS 15.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        If possible, export logs after the problem occurs and drag the ZIP file here.
+
+        - v2: Run `unic logs export`. The command prints the path to the exported file and also works when the service is stopped.
+        - v1: Run `uniclip debug export-logs`.
+
+        Before uploading, check the logs for personal information, clipboard content, device details, or credentials. Do not post sensitive information publicly. If you cannot export logs or do not want to share them publicly, explain why instead.
+      placeholder: Drag the log ZIP here, or explain why you cannot provide logs.
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem description
+      description: Describe what happened, how to reproduce it, and what you expected. Include any error message or approximate time if available.
+      placeholder: |
+        Steps to reproduce:
+        Actual result:
+        Expected result:
+    validations:
+      required: true

@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # Keep updates on the active code line while v1 remains the default branch.
+  # Remove target-branch when v2 is renamed to main and becomes the default.
+  - package-ecosystem: gomod
+    directory: /
+    target-branch: v2
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: v2
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]

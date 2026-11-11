@@ -1,8 +1,9 @@
 package uikit
 
 import (
-	"github.com/egoist/mygo/ui"
 	"time"
+
+	"github.com/egoist/mygo/ui"
 )
 
 type searchDisclosureState struct{ Open, Request, WasFocused, ReturnFocus bool }

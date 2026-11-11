@@ -61,7 +61,7 @@ var spinFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"
 func startSpinner(msg string) *spinner {
 	s := &spinner{w: os.Stderr, stop: make(chan struct{})}
 	if !errTTY {
-		fmt.Fprintln(s.w, msg)
+		_, _ = fmt.Fprintln(s.w, msg)
 		return s
 	}
 	s.done.Add(1)
@@ -70,10 +70,10 @@ func startSpinner(msg string) *spinner {
 		t := time.NewTicker(90 * time.Millisecond)
 		defer t.Stop()
 		for i := 0; ; i++ {
-			fmt.Fprintf(s.w, "\r\x1b[2K%s %s", style(true, sCmd, spinFrames[i%len(spinFrames)]), msg)
+			_, _ = fmt.Fprintf(s.w, "\r\x1b[2K%s %s", style(true, sCmd, spinFrames[i%len(spinFrames)]), msg)
 			select {
 			case <-s.stop:
-				fmt.Fprint(s.w, "\r\x1b[2K")
+				_, _ = fmt.Fprint(s.w, "\r\x1b[2K")
 				return
 			case <-t.C:
 			}
@@ -93,5 +93,5 @@ func (s *spinner) Stop() {
 // Done clears the animation and prints a final line.
 func (s *spinner) Done(msg string) {
 	s.Stop()
-	fmt.Fprintln(s.w, style(errTTY, sOK, "✓")+" "+msg)
+	_, _ = fmt.Fprintln(s.w, style(errTTY, sOK, "✓")+" "+msg)
 }

@@ -101,12 +101,6 @@ func newLab(t *testing.T, rec *recorder, root, name string, extra ...string) *la
 	return l
 }
 
-func (l *lab) with(extra ...string) *lab {
-	c := *l
-	c.env = append(slices.Clone(l.env), extra...)
-	return &c
-}
-
 // proc is a background process with captured output.
 type proc struct {
 	cmd  *exec.Cmd
@@ -612,7 +606,7 @@ func TestServiceLifecycle(t *testing.T) {
 			srv := &http.Server{Handler: handler}
 			go func() { _ = srv.Serve(ln) }()
 			_, stderr, code := l.run("status")
-			if code != 1 || !(strings.Contains(stderr, "inspect existing unicd") || strings.Contains(stderr, "different state directory")) {
+			if code != 1 || (!strings.Contains(stderr, "inspect existing unicd") && !strings.Contains(stderr, "different state directory")) {
 				t.Fatalf("%s: unexpected result %d %q", name, code, stderr)
 			}
 			if _, err := os.Stat(l.sock); err != nil {

@@ -41,6 +41,7 @@ It opens history directly, with no setup or unlock flow.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
+`unic-desktop --version --json` reports build identity before configuration, service ownership or UI initialization. See the [release architecture](releases.md).
 
 ## Settings
 

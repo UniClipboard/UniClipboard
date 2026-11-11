@@ -175,3 +175,34 @@ func (e *Engine) syncPeerStates() {
 		cancel()
 	}
 }
+
+// refreshPeerStates coalesces callback-triggered updates. ApplyState may wait for
+// the calling backend's handshake to exit, so callbacks cannot push inline.
+// Explicit revocations continue to use the synchronous syncPeerStates barrier.
+func (e *Engine) refreshPeerStates() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.stopReq || e.closing {
+		return
+	}
+	e.peerStateDirty = true
+	if e.peerStateRefreshing {
+		return
+	}
+	e.peerStateRefreshing = true
+	e.opWG.Add(1)
+	go func() {
+		defer e.opWG.Done()
+		for {
+			e.mu.Lock()
+			if e.stopReq || !e.peerStateDirty {
+				e.peerStateDirty, e.peerStateRefreshing = false, false
+				e.mu.Unlock()
+				return
+			}
+			e.peerStateDirty = false
+			e.mu.Unlock()
+			e.syncPeerStates()
+		}
+	}()
+}

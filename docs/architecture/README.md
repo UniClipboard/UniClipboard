@@ -46,3 +46,4 @@ verified: <commit> # 对照代码核实时的提交；用 docscheck -bump 更新
 
 - [Headless service and desktop integration](headless.md): independent distributions, CLI command requirements and temporary service leases, temporary transfer, process ownership and adapter sessions.
 - [Real-machine CLI testing](real-machine-testing.md): node inventories, native workers, multi-host synchronization, timing and evidence.
+- [Product builds and CLI releases](releases.md): product identities, immutable npm packages, alpha/stable channels and exact-build promotion.

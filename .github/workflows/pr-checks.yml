@@ -59,6 +59,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Trust the checked-out repository for container builds
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Verify production binaries without a display
         run: env -u DISPLAY -u WAYLAND_DISPLAY make headless-e2e
       - uses: actions/upload-artifact@v4

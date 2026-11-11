@@ -1,0 +1,26 @@
+# Normalize text files across development platforms.
+* text=auto eol=lf
+
+# Windows command scripts use CRLF. PowerShell scripts retain LF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Keep assets and packaged artifacts byte-for-byte intact.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.xz binary
+
+# Release identity hashes require identical checkout bytes on every platform.
+release/*.toml text eol=lf

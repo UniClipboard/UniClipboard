@@ -18,10 +18,45 @@ import (
 	"github.com/uniclipboard/unic/internal/v1migration"
 )
 
+const migrationGuide = `UniClipboard v1 to v2 history migration
+
+v2 cannot sync with v1 or directly use its database, settings or device identity.
+Upgrade all devices to v2 and pair them again. Configure v2 settings separately.
+
+1. Back up your v1 data. Keep the backup until you have checked the v2 history.
+2. Quit v1 and stop unicd for the target profile. Migration does not stop them.
+3. Check recoverable history without writing the target:
+     unic migrate --dry-run --json
+4. Import history and verify the copied content:
+     unic migrate --json
+5. Check the report and v2 history before starting unicd.
+
+Default source: the local v1 desktop data directory.
+Default target: UNIC_HOME or the normal unic data directory.
+Custom directories: add --source DIR --target DIR to both commands.
+Named profiles: add --source DIR --service UniClipboard-PROFILE for that profile.
+
+Migration imports supported text, HTML, images, files and tags. It does not
+import settings, device identities, trust or favorites. Missing or damaged
+content is reported as partial. Exit codes: 0 ready/complete, 3 partial, 1 failed.
+The source remains unchanged. Rerun the same command after an interruption;
+successful records are not duplicated. A dry run is not a completed import.
+
+Allow the system credential prompt or enter the old passphrase when requested.
+For automation use --passphrase-stdin. Never put a passphrase in arguments or
+environment variables. Custom or portable v1 profiles require --source DIR.
+`
+
 // runMigration imports local UniClipboard v1 history in-process, without
 // starting networking or clipboard integration. It returns the exit code:
 // 0 complete, 3 partial, 1 failed, 2 usage.
 func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
+	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		if _, err := fmt.Fprint(out, migrationGuide); err != nil {
+			return 1
+		}
+		return 0
+	}
 	fs := flag.NewFlagSet("unic migrate", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	source := fs.String("source", "", "v1 data directory (default: local desktop profile)")

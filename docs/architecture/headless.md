@@ -22,13 +22,19 @@ verified: 364fdb7f20197bb9d44aa6990769faee8587da75
 ---
 # Headless service and desktop integration
 
+All programs expose `--version --json` before configuration and host initialization. Versioned CLI packaging and npm channels follow the [release architecture](releases.md).
+
 ## Current implementation
 
-The product has three programs and two distributions.
+The product has three runtime programs and two development distributions.
 `unic` is a command-line client. `unicd` is the Engine owner and local service.
 `unic-desktop` owns mygo, the UI Kit, system clipboard, tray and notifications.
 The headless distribution includes `unic` and `unicd`.
-The desktop distribution includes the same two binary files plus `unic-desktop`.
+The desktop distribution includes those same binary files plus `unic-desktop`.
+Both archives expose `uniclip` as an alias of `unic`.
+On macOS/Linux, `uniclip` is a relative symbolic link to the sibling `unic` file; tar preserves the link.
+On Windows, `uniclip.cmd` invokes the sibling `unic.exe` and preserves arguments and its exit code without requiring symbolic-link privileges.
+The packaging manifest records the alias separately from executable hashes. Moving an extracted installation keeps the alias valid.
 Neither headless program imports the desktop application or a UI toolkit, directly or transitively.
 
 ```text
@@ -210,3 +216,5 @@ When no normal desktop is running, a login-setting change waits for the next nor
 The built-in native login API cannot preserve custom `UNIC_HOME` or `UNIC_SOCK` overrides, so enabling registration with either override is rejected.
 The login entry starts the same desktop executable, which reads the saved mode and leaves only `unicd` in lightweight mode.
 See the [startup acceptance receipt](../exec/desktop-startup-lifecycle.md).
+
+The container-based production acceptance job trusts only its checked-out repository path before building. Go VCS stamping remains enabled. The acceptance manifest continues to record source and executable hashes.

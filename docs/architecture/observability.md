@@ -94,6 +94,7 @@ An invalidation marker prevents reuse after an interrupted identity cleanup wher
 
 The master and three signal switches hot reload. Explicit false takes effect before startup initialization.
 Endpoint changes require restart; changing the endpoint never forwards the compiled project token to the new destination.
+Versioned CLI packaging reads the product version from `release/products.toml` and preserves the validated deployment metadata. `--version` exits before telemetry initialization.
 `tools/package` accepts validated build-time deployment metadata. No runtime `POSTHOG_*` or `OTEL_*` override grants upload or changes the project.
 The exact settings and public hook are defined in the [observability contract](../contracts/observability-contract.md).
 

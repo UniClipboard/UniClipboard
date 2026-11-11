@@ -2,9 +2,8 @@ package v1migration
 
 import (
 	"encoding/hex"
-	"os"
-	"path/filepath"
-	"runtime"
+
+	paths "github.com/uniclipboard/unic/internal/localpaths"
 
 	"github.com/zeebo/blake3"
 )
@@ -16,24 +15,9 @@ func generationToken(generation []byte) string {
 }
 
 func DefaultSource() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := paths.V1DataDir()
 	if err != nil {
 		return "", ErrFormat
 	}
-	var base string
-	switch runtime.GOOS {
-	case "darwin":
-		base = filepath.Join(home, "Library", "Application Support")
-	case "windows":
-		base = os.Getenv("LOCALAPPDATA")
-	default:
-		base = os.Getenv("XDG_DATA_HOME")
-		if base == "" {
-			base = filepath.Join(home, ".local", "share")
-		}
-	}
-	if base == "" {
-		return "", ErrFormat
-	}
-	return filepath.Join(base, "app.uniclipboard.desktop"), nil
+	return dir, nil
 }

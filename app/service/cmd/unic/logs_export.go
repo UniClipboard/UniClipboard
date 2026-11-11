@@ -74,7 +74,7 @@ func exportLocalLogs(ctx context.Context, profile, output string) (string, error
 	if err != nil {
 		return "", errors.New("cannot open the local profile")
 	}
-	defer base.Close()
+	defer func() { _ = base.Close() }()
 	info, err := base.Lstat("logs")
 	if err != nil {
 		return "", errors.New("local logs are unavailable")
@@ -86,7 +86,7 @@ func exportLocalLogs(ctx context.Context, profile, output string) (string, error
 	if err != nil {
 		return "", errors.New("cannot open local logs")
 	}
-	defer logs.Close()
+	defer func() { _ = logs.Close() }()
 	actual, err := logs.Stat(".")
 	if err != nil || !os.SameFile(info, actual) {
 		return "", errors.New("local logs directory changed; retry export")
@@ -103,7 +103,7 @@ func exportLocalLogs(ctx context.Context, profile, output string) (string, error
 	if err != nil {
 		return "", errors.New("archive destination directory is unavailable")
 	}
-	defer destination.Close()
+	defer func() { _ = destination.Close() }()
 	parent, err := destination.Stat(".")
 	if err != nil {
 		return "", errors.New("cannot inspect archive destination")
@@ -194,9 +194,9 @@ func selectLocalLogs(root *os.Root) ([]selectedLog, error) {
 
 func writeLogArchive(ctx context.Context, out io.Writer, root *os.Root, selected []selectedLog) error {
 	gz := gzip.NewWriter(out)
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	archive := tar.NewWriter(gz)
-	defer archive.Close()
+	defer func() { _ = archive.Close() }()
 	manifest := logArchiveManifest{FormatVersion: 1, CreatedAt: time.Now().UTC()}
 	for _, segment := range selected {
 		if err := ctx.Err(); err != nil {
@@ -241,7 +241,7 @@ func copyLogSegment(ctx context.Context, archive *tar.Writer, root *os.Root, seg
 	if err != nil {
 		return nil, errors.New("cannot open local log segment")
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || !os.SameFile(segment.info, info) {
 		return nil, errors.New("local log segment changed; retry export")

@@ -1,0 +1,66 @@
+name: Promote accepted build
+on:
+  workflow_dispatch:
+    inputs:
+      product:
+        type: choice
+        options: [cli]
+        required: true
+      version:
+        type: string
+        required: true
+      build_number:
+        type: string
+        required: true
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: release-${{ inputs.product }}
+  cancel-in-progress: false
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.4'
+      - run: npm install --global npm@11.21.2
+      - name: Download the specified immutable build manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRODUCT: ${{ inputs.product }}
+          VERSION: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re
+          assert os.environ['PRODUCT'] == 'cli'
+          assert re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', os.environ['VERSION'])
+          assert re.fullmatch(r'[1-9][0-9]{0,8}', os.environ['BUILD_NUMBER'])
+          PY
+          gh release download "cli/v${VERSION}-build.${BUILD_NUMBER}" --repo "$GITHUB_REPOSITORY" --pattern release-manifest.json --dir candidate
+          python3 - <<'PY'
+          import json, os
+          m=json.load(open('candidate/release-manifest.json'))
+          assert m['product']==os.environ['PRODUCT'] and m['version']==os.environ['VERSION'] and str(m['build_number'])==os.environ['BUILD_NUMBER']
+          PY
+      - name: Isolate npm configuration for OIDC
+        run: |
+          echo "registry=https://registry.npmjs.org/" > "$RUNNER_TEMP/unic-npmrc"
+          echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/unic-npmrc" >> "$GITHUB_ENV"
+          echo "NODE_AUTH_TOKEN=" >> "$GITHUB_ENV"
+      - name: Promote existing npm packages without re-upload
+        run: python3 tools/release/release.py promote --manifest candidate/release-manifest.json --channel stable --receipt promotion.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cli-promotion-receipt
+          path: promotion.json
+          if-no-files-found: warn

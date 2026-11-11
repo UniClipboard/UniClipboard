@@ -1,6 +1,7 @@
 # Service application
 
 `unic` is the CLI. `unicd` is the headless Engine owner. Neither program imports a UI toolkit.
+Packaged archives expose the `uniclip` alias for `unic`: a relative symlink on macOS/Linux or a `uniclip.cmd` launcher on Windows.
 
 ```sh
 go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
@@ -23,7 +24,9 @@ Commands that wait for another device (`device add`, `dev logs level --for`) kee
 `send` waits for its own send to finish and exits 4 when the content was committed but the send was not fully completed.
 
 See [headless architecture](../../docs/architecture/headless.md) and the [local service contract](../../docs/contracts/local-service-contract.md).
-The `unic migrate` command performs offline history import in-process; there is no separate migration program.
+The `unic migrate` command performs offline history import in-process.
+Run `unic migrate --help` for backup, preflight, import and verification steps.
+Interactive commands warn when a known v1 data directory exists. JSON and noninteractive output remain silent.
 
 
 Remote logs, metrics and product events default enabled. Release assembly supplies the selected PostHog project endpoint and ingestion-only token.
@@ -49,3 +52,8 @@ unic dev logs export --output ./unic-logs.tar.gz
 The private tar.gz contains local JSONL segments and a SHA-256 manifest. Existing
 outputs are not replaced. Live export copies already-written bytes and does not
 flush service queues. See the [observability contract](../../docs/contracts/observability-contract.md#12-offline-local-log-export).
+
+## Release identity
+
+Use `unic --version --json` or `unicd --version --json` to read the embedded product version, build number and source SHA without starting the service.
+Versioned archives and npm publication follow the [release architecture](../../docs/architecture/releases.md).

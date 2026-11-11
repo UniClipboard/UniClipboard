@@ -8,6 +8,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/releaseinfo"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 
@@ -24,6 +26,9 @@ func client() (*api.Client, error) {
 	return api.NewClient(s), nil
 }
 func main() {
+	if releaseinfo.Print(os.Stdout, "unic-desktop", "desktop", os.Args[1:]) {
+		return
+	}
 	var err error
 	if len(os.Args) > 1 && os.Args[1] == "--demo" {
 		err = desktopdemo.Run(os.Args[2:])

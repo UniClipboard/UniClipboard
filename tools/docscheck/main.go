@@ -84,7 +84,7 @@ func gitOut(args ...string) (string, error) {
 
 func walk(fn func(path string)) {
 	skipDirs := map[string]bool{".git": true, "dist": true, "bin": true, "node_modules": true, ".build": true, ".cache": true}
-	filepath.WalkDir(".", func(p string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(".", func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -106,7 +106,7 @@ func readLines(p string) []string {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var lines []string
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)

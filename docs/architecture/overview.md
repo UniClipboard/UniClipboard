@@ -156,8 +156,10 @@ CLI command requirements live in `app/service/cmd/unic/requirements.go`. The CLI
 `unic send --to all` or `--to DEVICE` commits and sends to paired devices. Without `--to`, `unic send` creates a temporary code/link transfer. `unic recv` accepts a code, address or link. Device management lives under `unic device`; development commands live under `unic dev`.
 `app/service/internal/host/transfer.go` owns temporary sessions through `internal/tcnet` and `internal/webtransfer`. Engine admits received transfers through `engine/transfer.go`, then uses the receive pipeline without storing a device or channel.
 `internal/observability` exports service telemetry, including tailcat session diagnostics through `internal/syncdiag`; the desktop adapter forwards no analytics identifier.
-The archive builder reuses identical headless binaries in the optional desktop archive. Independent product version/release workflows remain planned in decision 0018.
+The development archive builder reuses identical headless binaries in the optional desktop archive. CLI product metadata, native build/release workflows and npm promotion are implemented. Desktop/mobile release paths remain open. See the [release architecture](releases.md).
 See [headless service and desktop integration](headless.md) for the process and distribution contract.
+
+Search condition chips can shrink within the available field width. Their values stay on one line and expose the full value in a tooltip. Their remove buttons retain a fixed hit target, including with long tag names.
 
 ## Desktop acceptance
 

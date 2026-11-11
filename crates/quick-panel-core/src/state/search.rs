@@ -66,7 +66,11 @@ impl PanelState {
                 self.search.grid_top = 0;
                 self.search.selection.reset(self.search.items.len());
                 effects.push(Effect::ScrollListToTop);
-                effects.extend(self.schedule_preview());
+                // While the panel is opening it has not been placed yet, and a preview laid out now
+                // would use the previous session's display. `on_options` schedules it once placed.
+                if !self.session.opening {
+                    effects.extend(self.schedule_preview());
+                }
                 effects.push(Effect::LoadThumbnails);
             }
             Err(error) => {
@@ -299,6 +303,9 @@ impl PanelState {
             self.session.opening = false;
             self.session.shown_at = ctx.now;
             effects.extend([Effect::Reposition, Effect::ShowWindow]);
+            // After `Reposition`, so the first preview is laid out against this session's display.
+            // If the results are not in yet, `on_search_done` schedules it (opening is over by then).
+            effects.extend(self.schedule_preview());
         }
         let Ok(options) = result else {
             return effects;

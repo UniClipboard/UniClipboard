@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+reviews:
+  path_filters:
+    - '!.planning/**'
+    - '!.agents/**'
+    - '!.codex/**'
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    base_branches:
+      - v2
+      - main
+  path_instructions:
+    - path: '**/*.md'
+      instructions: |
+        Focus on accuracy, clarity, structure and technical correctness.
+        Do not flag pure Markdown formatting issues or translate existing text.
+        New documentation is written in English. Preserve existing Chinese text.
+    - path: '**/*.{go,swift,sh,py}'
+      instructions: |
+        Focus on correctness, safety, module boundaries and resource ownership.
+        Preserve existing comment language. Do not request cosmetic translations.
+  tools:
+    markdownlint:
+      enabled: false

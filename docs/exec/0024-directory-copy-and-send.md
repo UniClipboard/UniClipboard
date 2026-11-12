@@ -246,3 +246,11 @@ Do not archive 0024 or mark native/real-device acceptance complete before these 
 PR integration merges v2 commit `b4fff3b8f57d512274322de0ed0317e52a912c72`. Directory history, settings and send state now live in `desktopui`, following the upstream separation of production rendering, demo fixtures and shared translations. The upstream built-in classifier treats directory references and snapshots as `builtin:files`. The directory process scenario checks this tag on both capture and receive.
 
 The complete race check passes after integration. The production-boundary, data-binding and send-device-menu cases pass without native windows. Their source identities and JSON assertions are retained in [Desktop integration receipts](baselines/directory-copy-send-0024/pr-desktop-integration/README.md). Frozen directory process results are recorded separately in [the integration process report](baselines/directory-copy-send-0024/pr-integration/report.md). Earlier receipts remain evidence for their original source revisions. Native clipboard, cross-application paste and real-device acceptance remain NOT_RUN.
+
+## 15. PR 2240 lint correction
+
+The complete failed Lint job log for run `43214064110`, job `131168698571`, reports 14 unchecked error returns and eight import-group violations. Local reproduction with the pinned `golangci-lint v2.15.0` reports the same 22 issues. The separate formatting check also covers the Windows clipboard marker and tagged daemon fixture.
+
+The correction propagates history-send output errors, explicitly discards errors from read-only handle cleanup and failed-start rollback, and applies the configured import formatter. It preserves existing write, sync and close error handling for output files. No lint exclusions or workflow changes are added.
+
+Local `golangci-lint run` reports `0 issues`. `golangci-lint fmt --diff --diff-colored=false` produces no output. Directory-send and history-restore process regressions pass. Production headless acceptance also passes; its manifest is retained with the receipt. Process regression evidence is recorded in [the lint-fix report](baselines/directory-copy-send-0024/ci-lint-fix/report.md). Native clipboard and real-device acceptance remain NOT_RUN.

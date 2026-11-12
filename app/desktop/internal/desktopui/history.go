@@ -3,11 +3,12 @@ package desktopui
 import (
 	"context"
 	"fmt"
-	"github.com/uniclipboard/unic/engine"
-	api "github.com/uniclipboard/unic/internal/localapi"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/uniclipboard/unic/engine"
+	api "github.com/uniclipboard/unic/internal/localapi"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"

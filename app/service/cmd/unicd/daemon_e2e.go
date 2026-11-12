@@ -7,13 +7,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/uniclipboard/unic/engine"
-	"github.com/uniclipboard/unic/internal/directory"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/directory"
 
 	"github.com/uniclipboard/unic/app/service/internal/host"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"

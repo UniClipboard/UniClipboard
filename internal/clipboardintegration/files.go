@@ -3,9 +3,10 @@ package clipboardintegration
 import (
 	"encoding/base64"
 	"errors"
-	"github.com/uniclipboard/unic/internal/localcontent"
 	"path/filepath"
 	"strings"
+
+	"github.com/uniclipboard/unic/internal/localcontent"
 )
 
 const receivedFilePrefix = "desktop-received:"

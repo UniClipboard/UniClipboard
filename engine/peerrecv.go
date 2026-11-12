@@ -6,13 +6,14 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
-	"github.com/uniclipboard/unic/internal/directory"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/directory"
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/peerbackend"

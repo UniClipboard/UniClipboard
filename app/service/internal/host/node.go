@@ -148,7 +148,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	diagnostics.SetSyncCollector(peer.Collect)
 	n.e = e
 	if err := recoverDirectoryStages(o.Dir); err != nil {
-		e.Close(context.Background())
+		_ = e.Close(context.Background())
 		return nil, err
 	}
 	n.cfg = o.Settings

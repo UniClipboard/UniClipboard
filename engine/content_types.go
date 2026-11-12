@@ -2,8 +2,9 @@ package engine
 
 import (
 	"context"
-	"github.com/uniclipboard/unic/internal/directory"
 	"io"
+
+	"github.com/uniclipboard/unic/internal/directory"
 )
 
 // ContentID names stored content; LeaseID is one holder's claim on it; PartID

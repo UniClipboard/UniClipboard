@@ -3,9 +3,10 @@ package engine
 import (
 	"context"
 	"crypto/sha256"
-	"github.com/uniclipboard/unic/internal/directory"
 	"strconv"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/directory"
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/plugin"

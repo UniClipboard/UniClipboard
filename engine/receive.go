@@ -2,13 +2,14 @@ package engine
 
 import (
 	"context"
-	"github.com/uniclipboard/unic/internal/directory"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/directory"
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/peerbackend"

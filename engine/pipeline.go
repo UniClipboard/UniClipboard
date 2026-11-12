@@ -3,12 +3,13 @@ package engine
 import (
 	"context"
 	"errors"
-	"github.com/uniclipboard/unic/internal/directory"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/uniclipboard/unic/internal/directory"
 )
 
 // These are private processing types. RPC/Lua registration, durable commit and

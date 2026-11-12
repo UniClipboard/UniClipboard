@@ -109,7 +109,7 @@ func directoryRequest(ts *testscript.TestScript, node, method, path, body string
 	ts.Check(err)
 	resp, err := client.Do(req)
 	ts.Check(err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	ts.Check(err)
 	if resp.StatusCode != 200 {

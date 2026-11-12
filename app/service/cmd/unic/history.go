@@ -8,13 +8,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/uniclipboard/unic/engine"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
+
+	"github.com/uniclipboard/unic/engine"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
@@ -106,7 +107,9 @@ func historyCmd(ctx context.Context, c *api.Client, args []string, io historyIO)
 				return err
 			}
 		} else {
-			fmt.Fprintln(io.out, "send="+outcome)
+			if _, err := fmt.Fprintln(io.out, "send="+outcome); err != nil {
+				return err
+			}
 		}
 		return sendIncomplete(outcome, *request)
 	case "export":

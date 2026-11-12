@@ -1,8 +1,9 @@
 package board
 
 import (
-	"golang.org/x/sys/windows"
 	"strconv"
+
+	"golang.org/x/sys/windows"
 )
 
 var clipboardSequence = windows.NewLazySystemDLL("user32.dll").NewProc("GetClipboardSequenceNumber")

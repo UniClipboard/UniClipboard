@@ -75,7 +75,7 @@ func (s *snapshotReader) Read(b []byte) (int, error) {
 			return 0, err
 		}
 		if meta != s.expected {
-			r.Close()
+			_ = r.Close()
 			return 0, newErr(CodeSourceChanged, "source changed during preparation")
 		}
 		s.reader = r
@@ -322,12 +322,12 @@ func (e *Engine) DirectoryPaths(ctx context.Context, lease LeaseID) ([]string, e
 	if err != nil {
 		return nil, newErr(CodeUnavailable, "cannot materialize directory")
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	ownedRoot, openErr := os.OpenRoot(e.opts.DataDir)
 	if openErr != nil {
 		return nil, newErr(CodeUnavailable, "directory storage unavailable")
 	}
-	defer ownedRoot.Close()
+	defer func() { _ = ownedRoot.Close() }()
 	paths := make([]string, len(m.Roots))
 	for i, r := range m.Roots {
 		sub := fmtRoot(i)

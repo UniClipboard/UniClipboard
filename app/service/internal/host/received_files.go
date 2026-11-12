@@ -142,7 +142,7 @@ func receivedDirectoryWriter(directory string, dataDir string) func(context.Cont
 		if err != nil {
 			return out, err
 		}
-		defer root.Close()
+		defer func() { _ = root.Close() }()
 		stage := ".unic-directory-stage-" + randomID()
 		final := "unic-directory-" + randomID()
 		journal, err := recordDirectoryStage(dataDir, dir, stage, identity)
@@ -190,7 +190,7 @@ func receivedDirectoryWriter(directory string, dataDir string) func(context.Cont
 			}
 			w, err := root.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 			if err != nil {
-				r.Close()
+				_ = r.Close()
 				return out, err
 			}
 			n, err := io.Copy(w, contextFileReader{ctx: ctx, reader: r})

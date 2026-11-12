@@ -93,7 +93,7 @@ func (d *DirectorySource) entries(ctx context.Context) ([]engine.DirectoryEntry,
 	if err != nil {
 		return nil, sourceFailure(engine.CodePermissionDenied)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	d.seen = map[string]os.FileInfo{}
 	var out []engine.DirectoryEntry
 	var walk func(string) error
@@ -130,7 +130,7 @@ func (d *DirectorySource) entries(ctx context.Context) ([]engine.DirectoryEntry,
 		if err != nil {
 			return sourceFailure(engine.CodePermissionDenied)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		for {
 			entries, err := f.ReadDir(64)
 			for _, e := range entries {
@@ -157,7 +157,7 @@ func (d *DirectorySource) verify(ctx context.Context) error {
 	if err != nil {
 		return sourceFailure(engine.CodeSourceChanged)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	for path, old := range d.seen {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -185,17 +185,17 @@ func (s *treeFileSource) Open(ctx context.Context) (io.ReadCloser, engine.FileMe
 	}
 	st, err := root.Lstat(s.rel)
 	if err != nil || !st.Mode().IsRegular() || !os.SameFile(s.expected, st) || st.Size() != s.expected.Size() || !st.ModTime().Equal(s.expected.ModTime()) {
-		root.Close()
+		_ = root.Close()
 		return nil, engine.FileMeta{}, sourceFailure(engine.CodeSourceChanged)
 	}
 	f, err := root.Open(s.rel)
-	root.Close()
+	_ = root.Close()
 	if err != nil {
 		return nil, engine.FileMeta{}, sourceFailure(engine.CodePermissionDenied)
 	}
 	opened, err := f.Stat()
 	if err != nil || !os.SameFile(st, opened) || opened.Size() != st.Size() || !opened.ModTime().Equal(st.ModTime()) {
-		f.Close()
+		_ = f.Close()
 		return nil, engine.FileMeta{}, sourceFailure(engine.CodeSourceChanged)
 	}
 	return f, engine.FileMeta{Size: st.Size(), Version: identity(st) + fmt.Sprint(st.ModTime().UnixNano())}, nil

@@ -2871,6 +2871,7 @@
         "reasons": {
           "invitation_unavailable": "邀請碼已失效。",
           "authentication_rejected": "口令或身分驗證未通過。",
+          "sponsor_unresponsive": "對端裝置未及時回應。請確認它在線後重新加入。",
           "identity_conflict": "裝置身分存在衝突。",
           "base_history_changed": "對方空間已發生變化，請重新取得邀請碼。",
           "joiner_history_ahead": "本機歷史無法加入該空間。",

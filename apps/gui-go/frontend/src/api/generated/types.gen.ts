@@ -2091,7 +2091,7 @@ export type JoinSpaceAttentionReason = 'outcome_cannot_be_proven';
 
 export type JoinSpaceAttentionRecovery = 'preserve_data_and_contact_support';
 
-export type JoinSpaceRejectionReason = 'invitation_unavailable' | 'authentication_rejected' | 'identity_conflict' | 'base_history_changed' | 'joiner_history_ahead' | 'history_conflict' | 'completion_invalid' | 'membership_history_invalid' | 'security_material_invalid' | 'relationship_conflict' | 'activation_state_invalid' | 'peer_upgrade_required' | 'cancelled' | 'removed_before_activation';
+export type JoinSpaceRejectionReason = 'invitation_unavailable' | 'authentication_rejected' | 'sponsor_unresponsive' | 'identity_conflict' | 'base_history_changed' | 'joiner_history_ahead' | 'history_conflict' | 'completion_invalid' | 'membership_history_invalid' | 'security_material_invalid' | 'relationship_conflict' | 'activation_state_invalid' | 'peer_upgrade_required' | 'cancelled' | 'removed_before_activation';
 
 /**
  * Stable outcome of a durable space admission.

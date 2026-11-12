@@ -536,6 +536,35 @@ mod tests {
     use uc_engine::{DeviceGroupChoiceIssueSummary, DeviceGroupChoiceOptionSummary};
 
     #[test]
+    fn device_group_choices_preserve_a_sponsor_timeout_join() {
+        let mut trust = DeviceTrustSnapshotSummary::empty_unavailable("device-local".to_owned());
+        trust.current_join = Some(uc_engine::JoinSpaceStatusSummary::Rejected {
+            join_id: "join-timeout".to_owned(),
+            reason: uc_engine::JoinSpaceRejectionReasonSummary::SponsorUnresponsive,
+        });
+        let summary = DeviceGroupChoicesSummary {
+            revision: 1,
+            device_trust: trust,
+            issues: Vec::new(),
+        };
+
+        let mapped: DeviceGroupChoicesDto = summary.into_api_dto();
+        let serialized = serde_json::to_value(mapped).unwrap();
+        assert_eq!(
+            serialized["deviceTrust"]["currentJoin"]["status"],
+            "rejected"
+        );
+        assert_eq!(
+            serialized["deviceTrust"]["currentJoin"]["joinId"],
+            "join-timeout"
+        );
+        assert_eq!(
+            serialized["deviceTrust"]["currentJoin"]["reason"],
+            "sponsor_unresponsive"
+        );
+    }
+
+    #[test]
     fn patch_mapping_preserves_omitted_fields_as_none() {
         let patch = MemberSyncPreferencesPatchDto {
             send_enabled: Some(false),

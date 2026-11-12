@@ -2860,6 +2860,7 @@
         "reasons": {
           "invitation_unavailable": "邀请码已失效。",
           "authentication_rejected": "口令或身份验证未通过。",
+          "sponsor_unresponsive": "对端设备未及时响应。请确认它在线后重新加入。",
           "identity_conflict": "设备身份存在冲突。",
           "base_history_changed": "对方空间已发生变化，请重新获取邀请码。",
           "joiner_history_ahead": "本机历史无法加入该空间。",

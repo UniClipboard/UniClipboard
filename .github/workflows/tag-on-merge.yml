@@ -4,10 +4,8 @@ run-name: tag-${{ github.event.pull_request.head.ref }}
 on:
   pull_request:
     types: [closed]
-    # 同时监听 main 和 release/v* 作为 PR base —— prepare-release.yml 支持
-    # 在已存在的 release branch(commits 尚未合回 main)上继续 bump 出下一个
-    # prerelease,这种 PR 的 base 是 release/vX.Y.Z 而不是 main。
-    branches: [main, 'release/v*']
+    # Release PRs target v1 or an existing release branch.
+    branches: [v1, 'release/v*']
 
 jobs:
   tag-release:
@@ -32,7 +30,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Extracted version: $VERSION"
 
-      - name: Checkout main at merge commit
+      - name: Checkout release base at merge commit
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}

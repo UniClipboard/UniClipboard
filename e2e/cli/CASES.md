@@ -91,12 +91,19 @@ board-set alpha png pic.png
 board-wait beta png pic.png
 until alpha 'builtin:image' h list --json
 until beta 'builtin:image' h list --json
+u beta h list -n 1 --json
+! stdout 'builtin:text'
+! stdout 'builtin:link'
 
 genfile rand sample.bin 128
 board-set alpha files sample.bin
 board-wait beta files sample.bin
 until alpha 'builtin:files' h list --json
 until beta 'builtin:files' h list --json
+u beta h list -n 1 --json
+! stdout 'builtin:text'
+! stdout 'builtin:image'
+! stdout 'builtin:link'
 node-stop beta
 node-start beta
 u beta h list --json

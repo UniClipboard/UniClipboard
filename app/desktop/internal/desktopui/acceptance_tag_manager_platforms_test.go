@@ -22,9 +22,13 @@ func scenarioTagManagerPlatforms(t *testing.T) {
 					t.Fatal(err)
 				}
 				tt.Advance(350 * time.Millisecond)
-				if _, ok := tt.AccessByRole(ui.RoleTable, "标签"); !ok {
+				table, ok := tt.AccessByRole(ui.RoleTable, "标签")
+				if !ok {
 					t.Fatal("management table missing")
 				}
+				// Links is the last row. Taller skins clip it until the table scrolls.
+				r := table.Bounds
+				tt.Scroll(r.X+r.W/2, r.Y+r.H/2, 0, r.H)
 				if err := tt.RightClick("#链接"); err != nil {
 					t.Fatal(err)
 				}

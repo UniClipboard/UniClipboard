@@ -16,6 +16,7 @@ import (
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/observability"
+	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -123,7 +124,7 @@ type Sync struct {
 }
 
 // Plugins holds per-plugin-instance settings for the plugins this build
-// ships: the sync policy of builtin.tailcat and the on/off switch of builtin.text.
+// ships: builtin.tailcat sync policy and built-in processor switches.
 type Plugins struct {
 	Instances map[string]Instance `toml:"instances" json:"instances,omitempty"`
 	// Lua lists the installed Lua plugins to run, in processing order. Each
@@ -166,7 +167,7 @@ func (c Config) ProcessorSettings(id string) (onError string, cfg map[string]any
 // fixes at startup, for the plugins that run.
 func (c Config) processorSettingsKey() map[string]Instance {
 	out := map[string]Instance{}
-	ids := append([]string{builtintext.ID}, c.Plugins.Lua...)
+	ids := append([]string{builtinclassify.ID, builtintext.ID}, c.Plugins.Lua...)
 	for _, id := range ids {
 		oe, cfg := c.ProcessorSettings(id)
 		out[id] = Instance{OnError: oe, Config: cfg}
@@ -304,7 +305,7 @@ func (c Config) Validate() error {
 			if in.Enabled != nil {
 				return fmt.Errorf("plugins.instances.%q: this plugin cannot be switched off yet", id)
 			}
-		case builtintext.ID:
+		case builtintext.ID, builtinclassify.ID:
 			if in.Sync != (BackendSync{}) {
 				return fmt.Errorf("plugins.instances.%q: this plugin has no sync settings", id)
 			}
@@ -419,6 +420,11 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # Files copied automatically above this size are not sent (and neither is the
 # rest of that copy); sending by hand ignores it. 0 = no extra limit.
 # auto_file_max_bytes = "100MB"
+
+# builtin.classify adds stable builtin:text/image/files/link tags to new content.
+# Link text also receives builtin:text. It never changes content.
+# [plugins.instances."builtin.classify"]
+# enabled = true
 
 # builtin.text tags copied text that holds an email address ("email") or a
 # link ("url"), and offers the text actions in the history window. It only

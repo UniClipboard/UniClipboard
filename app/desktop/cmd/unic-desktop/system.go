@@ -14,7 +14,7 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/desktopdemo"
+	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -23,7 +23,7 @@ var showQuickPanel = func() {}
 
 func setupTray(language string) func(string) {
 	menu := func(language string) *mygo.Menu {
-		tr := func(text string) string { return desktopdemo.Translate(language, text) }
+		tr := func(text string) string { return i18n.Translate(language, text) }
 		return mygo.NewMenu([]*mygo.MenuItem{
 			{Label: tr("打开主窗口"), Click: func(*mygo.MenuItem, *mygo.Window) { showDesktop() }},
 			{Label: tr("快捷面板"), Click: func(*mygo.MenuItem, *mygo.Window) { showQuickPanel() }},
@@ -35,7 +35,7 @@ func setupTray(language string) func(string) {
 		ID:             "unic-desktop",
 		Icon:           trayIcon(),
 		IconIsTemplate: true,
-		ToolTip:        desktopdemo.Translate(language, "跨设备剪贴板同步"),
+		ToolTip:        i18n.Translate(language, "跨设备剪贴板同步"),
 		Menu:           menu(language),
 	})
 	if err != nil {
@@ -46,7 +46,7 @@ func setupTray(language string) func(string) {
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { tray.Destroy() })
 	return func(language string) {
 		tray.SetMenu(menu(language))
-		tray.SetToolTip(desktopdemo.Translate(language, "跨设备剪贴板同步"))
+		tray.SetToolTip(i18n.Translate(language, "跨设备剪贴板同步"))
 	}
 }
 
@@ -63,7 +63,7 @@ func notifyPending(ctx context.Context, sock string, language func() string) {
 			if ev.Kind != "pending" {
 				return
 			}
-			tr := func(text string) string { return desktopdemo.Translate(language(), text) }
+			tr := func(text string) string { return i18n.Translate(language(), text) }
 			body := fmt.Sprintf(tr("%s 请求同步剪贴板。打开 unic 批准或拒绝。"), ev.Peer)
 			if ev.Info == "code" {
 				body = fmt.Sprintf(tr("%s 输入了本机配对码。打开 unic，核对指纹后批准。"), ev.Peer)

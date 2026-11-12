@@ -5,4 +5,4 @@
 # Expected: Built-in operations remain protected and assignment updates the shared registry in both themes.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo tag-manager-platforms
+acceptance desktopui tag-manager-platforms

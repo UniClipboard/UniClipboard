@@ -1,8 +1,12 @@
 ---
 paths:
+  - engine/directory.go
+  - internal/directory
+  - internal/localcontent/directory.go
   - app/desktop/internal/lifecycle
   - app/desktop/e2e
-  - app/desktop/internal/desktopdemo
+  - app/desktop/internal/desktopui
+  - app/desktop/internal/i18n
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
   - internal/localconfig
@@ -29,14 +33,14 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: be9b3d81a4d9033dd26b55f08305cb7982aa8429
+verified: 1262fbd01c0ab26a1f206bb19addabdd86e6aeb5
 ---
 # Desktop configuration and received files
 
 The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
-The normal desktop uses the shared mygo demo composition with live service data.
+The normal desktop uses the production `desktopui` renderer with live service data.
 It opens history directly, with no setup or unlock flow.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.

@@ -5,4 +5,4 @@
 # Expected: Both themes align menu triggers with the pin button at the expected geometry.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo toolbar-alignment
+acceptance desktopui toolbar-alignment

@@ -240,3 +240,9 @@ Initial sandbox socket denials were resolved with isolated-process execution per
 6. Check source-reference versus snapshot wording, progress labels, cancellation, keyboard access and the directory setting in supported skins.
 
 Do not archive 0024 or mark native/real-device acceptance complete before these results exist. No release, deployment or publication was performed.
+
+## 14. PR integration with the updated production UI
+
+PR integration merges v2 commit `b4fff3b8f57d512274322de0ed0317e52a912c72`. Directory history, settings and send state now live in `desktopui`, following the upstream separation of production rendering, demo fixtures and shared translations. The upstream built-in classifier treats directory references and snapshots as `builtin:files`. The directory process scenario checks this tag on both capture and receive.
+
+The complete race check passes after integration. The production-boundary, data-binding and send-device-menu cases pass without native windows. Their source identities and JSON assertions are retained in [Desktop integration receipts](baselines/directory-copy-send-0024/pr-desktop-integration/README.md). Frozen directory process results are recorded separately in [the integration process report](baselines/directory-copy-send-0024/pr-integration/report.md). Earlier receipts remain evidence for their original source revisions. Native clipboard, cross-application paste and real-device acceptance remain NOT_RUN.

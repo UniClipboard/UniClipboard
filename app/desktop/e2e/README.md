@@ -79,7 +79,7 @@ The runner opens only test-owned windows with synthetic content and a unique pro
 | `board-equals <text>` | Require exact text at the test directory clipboard. |
 | `screenshot <name>` | Save a validated window-content PNG checkpoint. |
 
-The `acceptance <package> <case-id>` command dispatches a package-local scenario through `TestDesktopAcceptance`. Allowed package keys are `desktopdemo`, `quickpanel`, `gui` and `startup`. Scenario functions preserve private view access without exposing test APIs in the product. Register a function in that package's `acceptance_test.go` and a matching txtar case. Preflight rejects any registry/catalogue mismatch. The runner validates Go JSON events; skipped, missing or failing subcases fail acceptance. View cases must emit decodable screenshots.
+The `acceptance <package> <case-id>` command dispatches a package-local scenario through `TestDesktopAcceptance`. Allowed package keys are `desktopui`, `quickpanel`, `gui` and `startup`. Scenario functions preserve private view access without exposing test APIs in the product. Register a function in that package's `acceptance_test.go` and a matching txtar case. Preflight rejects any registry/catalogue mismatch. The runner validates Go JSON events; skipped, missing or failing subcases fail acceptance. View cases must emit decodable screenshots.
 
 Existing assertions were migrated into scenario functions, rather than duplicated behind a second test entry. Ordinary `go test` checks catalogue freshness and skips the explicit acceptance registries. Detailed measurements and subcase results appear in the unified report.
 

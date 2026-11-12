@@ -1,0 +1,16 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D .",
+    "D empty",
+    "F member 25 85f22c6b4566c9eef7524c4afe8729af9c2797eeec3057d09889548a1e46f919"
+  ],
+  "received": [
+    "D .",
+    "D empty",
+    "F member 25 85f22c6b4566c9eef7524c4afe8729af9c2797eeec3057d09889548a1e46f919"
+  ],
+  "result": "PASS",
+  "scenario": "directory-history-cancel",
+  "time": "2026-11-12T11:58:03.000621Z"
+}

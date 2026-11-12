@@ -5,6 +5,7 @@
 
 | 用例 | 标题 |
 |---|---|
+| [builtin-content-tags](#builtin-content-tags) | 内置内容标签自动分类 |
 | [cold-start-offline-peer](#cold-start-offline-peer) | 冷启动发送时对端离线，在有限窗口后完成且不伪造成功 |
 | [cold-start-pairing-outcomes](#cold-start-pairing-outcomes) | 冷启动 CLI 配对被中断或请求被撤销时给出各自明确的结果 |
 | [cold-start-pairing](#cold-start-pairing) | 冷启动 CLI 配对时保持临时服务直到对端批准，批准窗口到期时给出明确结果 |
@@ -42,6 +43,85 @@
 | [temporary-transfer](#temporary-transfer) | 两个没有配对的 unic 之间做临时传输 |
 | [transfer-code](#transfer-code) | 用 6 位码完成临时传输，并拒绝配对码 |
 | [warm-send](#warm-send) | 借用已运行服务发送时，完成规则与冷启动相同，且不停止该服务 |
+
+## builtin-content-tags
+
+**内置内容标签自动分类**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/builtin-content-tags' -v`
+
+**目的**
+
+验证真实服务进程在本机提交和远端接收时自动分类。
+
+
+**流程**
+
+1. 启动并配对两个节点。
+2. 复制普通文本、链接、图片和文件。
+3. 检查发送端和接收端的历史标签。
+4. 对链接运行文本 Action，重启并检查持久化标签。
+
+**期望**
+
+- 文本、图片、文件使用稳定的内置标签标识。
+- 链接同时带文本和链接标签，正文保持不变。
+- Action 和接收路径执行相同分类，标签在重启后保留。
+
+**不应**
+
+- 图片和文件获得文本或链接标签。
+- 使用翻译后的名称保存标签。
+
+<details><summary>脚本 testdata/builtin-content-tags.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+board-set alpha text plain.txt
+board-wait beta text plain.txt
+until alpha 'builtin:text' h list --json
+until beta 'builtin:text' h list --json
+u beta h list --json
+! stdout 'builtin:link'
+
+board-set alpha text link.txt
+board-wait beta text link.txt
+until alpha 'builtin:link' h list --json
+until beta 'builtin:link' h list --json
+u alpha h action @1 builtin.text/trim
+stdout 'builtin:link'
+stdout 'builtin:text'
+
+genfile png pic.png
+board-set alpha png pic.png
+board-wait beta png pic.png
+until alpha 'builtin:image' h list --json
+until beta 'builtin:image' h list --json
+u beta h list -n 1 --json
+! stdout 'builtin:text'
+! stdout 'builtin:link'
+
+genfile rand sample.bin 128
+board-set alpha files sample.bin
+board-wait beta files sample.bin
+until alpha 'builtin:files' h list --json
+until beta 'builtin:files' h list --json
+u beta h list -n 1 --json
+! stdout 'builtin:text'
+! stdout 'builtin:image'
+! stdout 'builtin:link'
+node-stop beta
+node-start beta
+u beta h list --json
+stdout 'builtin:text'
+stdout 'builtin:link'
+stdout 'builtin:image'
+stdout 'builtin:files'
+```
+
+</details>
 
 ## cold-start-offline-peer
 
@@ -617,11 +697,15 @@ board-set alpha files source/tree
 ! tree-wait beta source/tree
 until alpha '"kind":"directory_reference"' history list --json
 directory-probe alpha 0 0
+u alpha history list --tag builtin:files --json
+stdout '"kind":"directory_reference"'
 u alpha config --json
 stdout '"directories":\{"automatic":false\}'
 u alpha send --to all -f $WORK/source/tree --json
 stdout '"outcome":"success"'
 tree-wait beta source/tree
+u beta history list --tag builtin:files --json
+stdout '"kind":"directory"'
 cp changed.txt source/tree/nested/file.txt
 ! tree-wait beta source/tree
 u alpha send --to all -f $WORK/source/tree --json

@@ -5,4 +5,4 @@
 # Expected: Disclosure reaches its expected geometry without spatial transition.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo search-disclosure-reduced-motion
+acceptance desktopui search-disclosure-reduced-motion

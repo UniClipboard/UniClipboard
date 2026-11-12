@@ -1,5 +1,8 @@
 ---
 paths:
+  - engine/directory.go
+  - internal/directory
+  - internal/localcontent/directory.go
   - engine/pipeline.go
   - engine/types.go
   - engine/peersend.go
@@ -27,7 +30,9 @@ paths:
   - internal/store/search.go
   - internal/store/store.go
   - internal/plugins/builtintext
-verified: be9b3d81a4d9033dd26b55f08305cb7982aa8429
+  - internal/plugins/builtinclassify
+  - plugin/tags.go
+verified: e3ff9f4792d16e7499e8266568edf6a9ec873b30
 ---
 # Clipboard pipeline and local history
 
@@ -48,6 +53,16 @@ The stage chain is Capture/Receive → Processing → Commit → Sync → Use �
 - **Actions**: User-triggered `ListActions`/`RunAction` operate on text history. A plugin action must produce one nonempty UTF-8 text result. The new `action` record forces persistence and passes captured processors and normal sync decisions. The source remains unchanged. Action execution shares the processor instance gate and has a 10-second budget. Request IDs share the submission namespace. Plugin failures return opaque errors. The host applies the new history item. `builtin.text` provides upper/lower/trim/plain and email/URL tagging. Service routes are `GET /v1/actions` and `POST /v1/history/{id}/actions/{key}`.
 - **History**: SQLite records and private blobs belong to Engine. Host-managed files remain external references. Stable IDs, pagination, edits, leases, expiry and apply follow the [history contract](../contracts/history-contract.md). Cleanup defaults to enabled, 180 days, unlimited eligible records and no excluded tags. The startup history byte budget is 4 GiB. Live history settings affect existing records. Tag exclusions protect records and managed files. Explicit item expiry is independent. The service exposes `/v1/history*` and `unic history`.
 - **Notifications**: Observers receive content-free events and cannot mutate content. Each observer has a 64-entry queue that drops the newest event when full and a 200 ms callback budget. Delivery is lossy. Successful capacity eviction emits `clipboard.deleted` once per deleted history ID.
+
+## Built-in content tags
+
+The service assembles `builtin.classify` before `builtin.text` by default.
+The ordinary processor adds `builtin:text`, `builtin:image` or `builtin:files` from the Engine item type on capture, explicit commit, Action results and receipt.
+Text containing an HTTP(S) URL also receives `builtin:link`; inspection is limited to the first 64 KiB.
+It changes no content and performs no network or file-body reads.
+Existing history is not backfilled. Disabling `plugins.instances."builtin.classify".enabled` takes effect after service restart and stops classification of new items; existing tags remain.
+The existing `builtin.text` email/URL hints and text Actions remain independent.
+Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes only the four built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
 
 ## Invariants
 
@@ -144,3 +159,5 @@ The tree is a bounded manifest representation plus ordinary file streams. Empty 
 Directory snapshots use ordinary history, content leases and cache accounting. Default-cache clipboard views reuse payload bytes through root-confined hard links where supported; additional copies require a storage reservation. The final holder releases each temporary view. Published custom trees belong to the user. Explicit history send preserves an existing processor sync prohibition, prepares references anew, and resends snapshots without reading the original source.
 
 A newer local copy cancels unfinished automatic directory preparation so that an old slow tree cannot arrive after the newer copy. Explicit source sends continue independently of clipboard changes. Background transmission uses the submission-owned lifetime when present; history-restore RPC completion does not cancel its queued transmission.
+
+Directory references and snapshots receive the existing `builtin:files` classification. They do not introduce a separate built-in tag.

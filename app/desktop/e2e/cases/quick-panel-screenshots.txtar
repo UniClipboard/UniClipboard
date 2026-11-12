@@ -5,4 +5,4 @@
 # Expected: Six composite PNGs retain source identity, image hashes and view rectangles.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo quick-panel-screenshots
+acceptance desktopui quick-panel-screenshots

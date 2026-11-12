@@ -5,4 +5,4 @@
 # Expected: All sheet/theme/dismissal combinations preserve entry geometry, intermediate centered size changes and completed exit behavior.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo sheet-motion
+acceptance desktopui sheet-motion

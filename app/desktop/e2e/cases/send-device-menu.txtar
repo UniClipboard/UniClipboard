@@ -5,4 +5,4 @@
 # Expected: Only valid device choices produce the expected send command.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo send-device-menu
+acceptance desktopui send-device-menu

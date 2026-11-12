@@ -5,4 +5,4 @@
 # Expected: Search width changes without moving the command capsule or losing input behavior.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo search-disclosure
+acceptance desktopui search-disclosure

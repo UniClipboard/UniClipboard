@@ -520,7 +520,7 @@ func (s *desktopScenario) acceptance(group, id string) error {
 	if s.result.Mode == "native" || id != s.name {
 		return errors.New("invalid acceptance scenario identity")
 	}
-	packages := map[string]string{"desktopdemo": "./app/desktop/internal/desktopdemo", "quickpanel": "./app/desktop/internal/quickpanel", "gui": "./app/desktop/cmd/unic-desktop", "startup": "./app/desktop/e2e"}
+	packages := map[string]string{"desktopui": "./app/desktop/internal/desktopui", "quickpanel": "./app/desktop/internal/quickpanel", "gui": "./app/desktop/cmd/unic-desktop", "startup": "./app/desktop/e2e"}
 	pkg, ok := packages[group]
 	if !ok {
 		return errors.New("unknown acceptance package")

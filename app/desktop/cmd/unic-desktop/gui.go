@@ -17,7 +17,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
-	"github.com/uniclipboard/unic/app/desktop/internal/desktopdemo"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
@@ -170,7 +170,7 @@ func runGUI(settings *config.Manager) error {
 		go notifyPending(ctx, g.c.Path, func() string { return settings.Current().Desktop.Language })
 		clipboard := quickpanel.NewClipboard(newDesktopBoard())
 		go func() { _ = clipboardintegration.RunRemote(ctx, g.c, clipboard, nil) }()
-		screen := desktopdemo.NewDesktop(ctx, g.c)
+		screen := desktopui.NewDesktop(ctx, g.c)
 		screen.SetLoginStatus(func() (bool, string) { g.mu.Lock(); defer g.mu.Unlock(); return g.loginEnabled, g.loginError }, func() { g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, true) })
 		opts := mygo.WindowOptions{Title: "unic", Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View), Hidden: settings.Current().Desktop.StartInBackground}
 		if uikit.DefaultSkin() == uikit.MacOS {

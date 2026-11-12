@@ -5,4 +5,4 @@
 # Expected: Backspace and remove actions reset only the selected condition dimension.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo search-badge-delete
+acceptance desktopui search-badge-delete

@@ -1,0 +1,16 @@
+{
+  "binary_sha256": {
+    "unic-desktop": "15811348096af18850be5d50ce2d3f0d70e8cce5161add096c272b9e0d7b14ac",
+    "unic-desktop-demo": "813e21bd6394f72367b6e2b51261c2e8fe2cd3f76cf47e6e5128fa3726aff4f6"
+  },
+  "checks": [
+    "production uses desktopui and i18n without desktopdemo",
+    "shared renderer has no fixture dependency",
+    "i18n embeds locales.json and depends only on the standard library",
+    "production and demo commands build independently",
+    "demo help exits without opening a native window",
+    "removed entry pages remain rejected by the independent demo command"
+  ],
+  "native_window_opened": false,
+  "status": "passed"
+}

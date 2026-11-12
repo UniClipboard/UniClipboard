@@ -1,0 +1,16 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D .",
+    "D empty",
+    "F member 19 f7c36d77c1862daf8d1b7171859b7535698e987bb90e3d7c89100ee6d04f5b39"
+  ],
+  "received": [
+    "D .",
+    "D empty",
+    "F member 19 f7c36d77c1862daf8d1b7171859b7535698e987bb90e3d7c89100ee6d04f5b39"
+  ],
+  "result": "PASS",
+  "scenario": "directory-roots-and-bounds",
+  "time": "2026-11-12T11:59:41.425931Z"
+}

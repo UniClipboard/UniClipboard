@@ -5,4 +5,4 @@
 # Expected: Navigation and actions use the selected language; content and filter identities remain unchanged; catalogues and format arguments are complete.
 # Forbidden: Missing translations or translated user content.
 
-acceptance desktopdemo i18n
+acceptance desktopui i18n

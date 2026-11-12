@@ -361,3 +361,16 @@ list 显示 installed/ready、source、configured_enabled、running_version、re
 ## Directory processor items
 
 Processor `Item.Type` additionally accepts `directory_reference` and `directory`. A reference exposes top-level display names and zero directory sizes, without scanning descendants. A snapshot exposes file names/sizes and the manifest format, without host paths. Policy mutation permissions stay unchanged. Directory Actions are not introduced. See the [directory contract](directory-contract.md).
+
+## Built-in content classification
+
+`builtin.classify` is an ordinary processor assembled by the service before `builtin.text`. It supports the existing enabled and on_error settings and accepts no plugin configuration. Capture, explicit commit, Action results and received content use the same processor path.
+
+| Item type | Stable tag ID |
+|---|---|
+| `text` | `builtin:text` |
+| `image` | `builtin:image` |
+| `files`, `directory`, `directory_reference` | `builtin:files` |
+| Text containing an HTTP(S) URL in the first 64 KiB | `builtin:link`, in addition to `builtin:text` |
+
+The processor performs no network access and does not change content. It does not backfill existing history. Hosts translate the four built-in labels at display time and retain these IDs in persisted tags, filters and settings. User-defined tag labels remain literal. Existing `builtin.text` email/url hints and Actions remain independent.

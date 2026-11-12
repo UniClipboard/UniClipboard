@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "mode": "process",
+  "assertions": [
+    "TestDesktopAcceptance/data-binding"
+  ],
+  "steps": [
+    {
+      "args": [
+        "desktopui",
+        "data-binding"
+      ],
+      "at_ms": 63328,
+      "command": "acceptance",
+      "status": "PASS"
+    }
+  ],
+  "screenshots": null,
+  "cleanup": "PASS"
+}

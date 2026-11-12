@@ -20,6 +20,7 @@ import (
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/observability"
+	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 	"github.com/uniclipboard/unic/internal/session"
@@ -122,6 +123,10 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		ResolveFileRef: resolveDesktopFile,
 	}
 	opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
+	if c.PluginEnabled(builtinclassify.ID) {
+		onError, _ := c.ProcessorSettings(builtinclassify.ID)
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtinclassify.New(), OnError: onError})
+	}
 	if c.PluginEnabled(builtintext.ID) {
 		onError, _ := c.ProcessorSettings(builtintext.ID)
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New(), OnError: onError})

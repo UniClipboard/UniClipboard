@@ -1,0 +1,46 @@
+# 用例: Directory preparation detects source changes and recovers owned staging
+# 目的: Exercise source mutation and process death at deterministic production seams.
+# 流程:
+#   1. Pause after scanning, mutate a member, resume and reject the changed source.
+#   2. Pause at a file read with owned staging allocated, kill and restart the service.
+# 期望:
+#   - Source mutation returns source_changed and publishes no partial directory.
+#   - Restart removes only owned transient staging and does not replay the old send.
+# 不应:
+#   - Delete the source tree or leave a cancelled preparation holding staging.
+
+mkdir source/tree/empty
+cp first.txt source/tree/member
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+directory-hold alpha snapshot
+u-async mutate alpha send --to all -f $WORK/source/tree --request-id mutate-directory --json
+directory-probe alpha 1 1
+cp second.txt source/tree/member
+directory-hold alpha false
+! u-wait mutate
+u alpha dev submission mutate-directory
+stdout 'source_changed'
+! directory-staging alpha
+directory-hold alpha file
+u-async crash alpha send --to all -f $WORK/source/tree --request-id crash-directory --json
+directory-probe alpha 2 2
+sleep 200ms
+directory-staging alpha
+node-stop alpha KILL
+! u-wait crash
+node-start alpha
+! directory-staging alpha
+! until beta '"kind":"directory"' history list --json
+cmp source/tree/member second.txt
+
+-- first.txt --
+source-before-canary
+-- second.txt --
+source-after-canary
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

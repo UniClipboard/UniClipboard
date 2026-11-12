@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/uniclipboard/unic/internal/directory"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/plugin"
 )
@@ -215,6 +216,10 @@ func (e *Engine) evictOwnedHistory() bool {
 
 func historyKindOf(t string) HistoryKind {
 	switch t {
+	case "directory":
+		return HistoryDirectory
+	case "directory_reference":
+		return HistoryDirectoryReference
 	case "files":
 		return HistoryFiles
 	case "image":
@@ -396,6 +401,12 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 		}
 		it.Parts = append(it.Parts, sp)
 	}
+	for i, p := range c.parts {
+		if len(p.treeRoots) > 0 {
+			refs, _ := json.Marshal(p.treeRoots)
+			it.Parts[i].Ref = string(refs)
+		}
+	}
 	prepareSearch(&it, h.dir, min(h.opts.MaxBytes, 2<<30))
 	if err := ctx.Err(); err != nil {
 		return fail(ctxErr(err))
@@ -510,7 +521,7 @@ func normalizeFilter(f HistoryFilter) (HistoryFilter, *Error) {
 		return bad("invalid created time range")
 	}
 	for _, k := range f.Kinds {
-		if k != HistoryText && k != HistoryImage && k != HistoryFiles {
+		if k != HistoryText && k != HistoryImage && k != HistoryFiles && k != HistoryDirectory && k != HistoryDirectoryReference {
 			return bad("unknown history kind")
 		}
 	}
@@ -643,6 +654,12 @@ func (e *Engine) loadHistoryContent(id HistoryID) (*contentObj, *Error) {
 			p.data = data
 		default:
 			p.data = sp.Inline
+		}
+		if sp.MIME == directory.MIME && sp.Ref != "" {
+			if json.Unmarshal([]byte(sp.Ref), &p.treeRoots) != nil {
+				e.cache.release(c.cached)
+				return nil, newErr(CodeInvalidArgument, "invalid stored directory roots")
+			}
 		}
 		c.parts = append(c.parts, p)
 	}

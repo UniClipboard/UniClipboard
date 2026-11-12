@@ -3,11 +3,13 @@ package clipboardintegration
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/directory"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -29,7 +31,8 @@ type Clipboard struct {
 	mu          sync.Mutex // observation, application and explicit sends take turns
 	epoch       string
 	seq         uint64
-	seen        string         // hash of the clipboard as last read
+	seen        string // hash of the clipboard as last read
+	heldPaths   []string
 	held        engine.LeaseID // lease on the received files now on the clipboard
 	tried       map[engine.ReceiptID]bool
 	initialized bool
@@ -93,7 +96,7 @@ func (c *Clipboard) rebase(ctx context.Context, snap clip.Snapshot, lease engine
 	if err != nil {
 		return err
 	}
-	c.seen = snap.Hash()
+	c.seen = snap.ObservationHash()
 	return nil
 }
 
@@ -114,7 +117,7 @@ func (c *Clipboard) tickLocked(ctx context.Context) {
 		paths = append(paths, f.Path)
 	}
 	_ = c.e.ReconcileClipboardFiles(ctx, paths)
-	if c.seen != "" && s.Hash() != c.seen {
+	if c.seen != "" && s.ObservationHash() != c.seen && !sameHeldPaths(s, c.heldPaths) {
 		c.release(c.held)
 		c.held = ""
 	}
@@ -124,7 +127,7 @@ func (c *Clipboard) tickLocked(ctx context.Context) {
 		}
 		return
 	}
-	h := s.Hash()
+	h := s.ObservationHash()
 	if h == c.seen {
 		return
 	}
@@ -243,6 +246,15 @@ func (c *Clipboard) tryApply(ctx context.Context) {
 func (c *Clipboard) writeTicket(ctx context.Context, tk engine.ApplyTicket) (clip.Snapshot, bool) {
 	snap, hasFiles, err := c.snapshotOf(ctx, tk)
 	if err == nil {
+		current, readErr := c.board.Read()
+		if readErr != nil || current.ObservationHash() != c.seen {
+			_ = c.e.ReportApplyResult(ctx, engine.ApplyResult{Token: tk.Token, Outcome: engine.ApplyOutcomeDeferred, ErrorCode: "conflict"})
+			c.release(tk.LeaseID)
+			if readErr == nil {
+				c.tickLocked(ctx)
+			}
+			return snap, false
+		}
 		err = c.board.Write(snap)
 	}
 	if err != nil {
@@ -287,12 +299,16 @@ func (c *Clipboard) writeTicket(ctx context.Context, tk engine.ApplyTicket) (cli
 		return snap, false
 	}
 	if rerr == nil {
-		c.seen = back.Hash()
+		c.seen = back.ObservationHash()
 	}
 	// Files stay on the clipboard, so their lease is kept until replaced.
 	old := c.held
 	if hasFiles {
 		c.held = tk.LeaseID
+		c.heldPaths = nil
+		for _, f := range snap.Files {
+			c.heldPaths = append(c.heldPaths, f.Path)
+		}
 	} else {
 		c.held = ""
 		c.release(tk.LeaseID)
@@ -401,6 +417,42 @@ func (c *Clipboard) snapshotOf(ctx context.Context, tk engine.ApplyTicket) (s cl
 	}
 	defer c.release(h.LeaseID)
 	for _, p := range h.Content.Parts {
+		if p.MIME == directory.MIME {
+			provider, ok := c.e.(interface {
+				DirectoryPaths(context.Context, engine.LeaseID) ([]string, error)
+			})
+			if !ok {
+				return s, false, &engine.Error{Code: engine.CodeUnsupported, Message: "directory apply unavailable"}
+			}
+			var paths []string
+			if host, ok := c.e.(interface {
+				DirectoryReferences(context.Context, engine.LeaseID) ([]string, error)
+			}); ok {
+				refs, err := host.DirectoryReferences(ctx, tk.LeaseID)
+				if err != nil {
+					return s, false, err
+				}
+				for _, ref := range refs {
+					path, err := desktopFilePath(ref)
+					if err != nil {
+						return s, false, err
+					}
+					paths = append(paths, path)
+				}
+			}
+			if len(paths) == 0 {
+				paths, err = provider.DirectoryPaths(ctx, tk.LeaseID)
+			}
+			if err != nil {
+				return s, false, err
+			}
+			for _, path := range paths {
+				s.Files = append(s.Files, clip.File{Name: filepath.Base(path), Path: path})
+			}
+			return s, true, nil
+		}
+	}
+	for _, p := range h.Content.Parts {
 		if p.Kind != engine.PartFile {
 			continue
 		}
@@ -465,7 +517,7 @@ func (c *Clipboard) Send(ctx context.Context, s clip.Snapshot) error {
 		paths = append(paths, f.Path)
 	}
 	_ = c.e.ReconcileClipboardFiles(ctx, paths)
-	if back.Hash() != c.seen {
+	if back.ObservationHash() != c.seen {
 		c.release(c.held)
 		c.held = ""
 	}
@@ -540,4 +592,16 @@ func (c *Clipboard) IgnoreReceipts(ids []engine.ReceiptID) {
 	for _, id := range ids {
 		c.tried[id] = true
 	}
+}
+
+func sameHeldPaths(s clip.Snapshot, paths []string) bool {
+	if len(paths) == 0 || len(paths) != len(s.Files) {
+		return false
+	}
+	for i, f := range s.Files {
+		if f.Path != paths[i] {
+			return false
+		}
+	}
+	return true
 }

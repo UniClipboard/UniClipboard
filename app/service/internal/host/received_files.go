@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/localcontent"
 )
 
 const receivedFilePrefix = "desktop-received:"
@@ -37,6 +39,9 @@ func desktopFilePath(ref string) (string, error) {
 	return ref, nil
 }
 func resolveDesktopFile(ref string) engine.FileSource {
+	if localcontent.IsDirectoryRef(ref) {
+		return localcontent.ResolveDirectory(ref)
+	}
 	path, err := desktopFilePath(ref)
 	if err != nil {
 		return nil
@@ -116,4 +121,117 @@ func (r contextFileReader) Read(p []byte) (int, error) {
 		return 0, err
 	}
 	return r.reader.Read(p)
+}
+
+// receivedDirectoryWriter publishes a complete tree into one exclusive batch.
+// The ordinary writer has already validated this destination outside DataDir.
+func receivedDirectoryWriter(directory string, dataDir string) func(context.Context, engine.ReceivedDirectory) (engine.StoredDirectory, error) {
+	if directory == "" {
+		return nil
+	}
+	resolved, resolveErr := filepath.EvalSymlinks(directory)
+	identity, statErr := os.Stat(resolved)
+	return func(ctx context.Context, in engine.ReceivedDirectory) (engine.StoredDirectory, error) {
+		var out engine.StoredDirectory
+		dir := resolved
+		current, err := os.Lstat(dir)
+		if resolveErr != nil || statErr != nil || err != nil || !current.IsDir() || !os.SameFile(identity, current) {
+			return out, errors.New("custom directory unavailable")
+		}
+		root, err := os.OpenRoot(dir)
+		if err != nil {
+			return out, err
+		}
+		defer root.Close()
+		stage := ".unic-directory-stage-" + randomID()
+		final := "unic-directory-" + randomID()
+		journal, err := recordDirectoryStage(dataDir, dir, stage, identity)
+		if err != nil {
+			return out, err
+		}
+		if err := root.Mkdir(stage, 0700); err != nil {
+			_ = os.Remove(journal)
+			return out, err
+		}
+		ok := false
+		defer func() {
+			if ok || root.RemoveAll(stage) == nil {
+				_ = os.Remove(journal)
+			}
+		}()
+		files := 0
+		for _, e := range in.Manifest.Entries {
+			if !e.Directory {
+				files++
+			}
+		}
+		paths := make([]string, files)
+		for i := range in.Manifest.Roots {
+			sub := fmt.Sprintf("r%d", i)
+			if err := root.Mkdir(filepath.Join(stage, sub), 0700); err != nil {
+				return out, err
+			}
+		}
+		for _, entry := range in.Manifest.Entries {
+			if err := ctx.Err(); err != nil {
+				return out, err
+			}
+			relative := filepath.Join(fmt.Sprintf("r%d", entry.Root), in.Manifest.Roots[entry.Root].Name, filepath.FromSlash(entry.Path))
+			target := filepath.Join(stage, relative)
+			if entry.Directory {
+				if err := root.Mkdir(target, 0700); err != nil {
+					return out, err
+				}
+				continue
+			}
+			r, err := in.OpenFile(entry.File)
+			if err != nil {
+				return out, err
+			}
+			w, err := root.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			if err != nil {
+				r.Close()
+				return out, err
+			}
+			n, err := io.Copy(w, contextFileReader{ctx: ctx, reader: r})
+			_ = r.Close()
+			if err == nil {
+				err = w.Sync()
+			}
+			closeErr := w.Close()
+			if err != nil {
+				return out, err
+			}
+			if closeErr != nil {
+				return out, closeErr
+			}
+			if n != entry.Size {
+				return out, errors.New("directory member changed")
+			}
+			paths[entry.File] = relative
+		}
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		if err := root.Rename(stage, final); err != nil {
+			return out, err
+		}
+		ok = true
+		for _, p := range paths {
+			out.Files = append(out.Files, receivedPathSource{pathSource{Path: filepath.Join(dir, final, p)}})
+		}
+		for i, r := range in.Manifest.Roots {
+			path := filepath.Join(dir, final, fmt.Sprintf("r%d", i), r.Name)
+			if r.Directory {
+				st, err := os.Stat(path)
+				if err != nil {
+					return out, err
+				}
+				out.Roots = append(out.Roots, localcontent.NewDirectorySource(path, st).PersistentRef())
+			} else {
+				out.Roots = append(out.Roots, receivedPathSource{pathSource{Path: path}}.PersistentRef())
+			}
+		}
+		return out, nil
+	}
 }

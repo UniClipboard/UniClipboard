@@ -18,7 +18,7 @@ type MyGo struct{}
 var syncFormats = []transfer.Format{transfer.Text, transfer.HTML, transfer.PNG}
 
 func (MyGo) Read() (clip.Snapshot, error) {
-	var s clip.Snapshot
+	s := clip.Snapshot{CopyID: clipboardCopyID()}
 	offered := mygo.Clipboard.Formats()
 	has := func(f transfer.Format) bool {
 		for _, o := range offered {
@@ -38,10 +38,11 @@ func (MyGo) Read() (clip.Snapshot, error) {
 				// by the engine, which then syncs nothing.
 				if st, err := os.Stat(p); err == nil {
 					f.Size = st.Size()
+					f.Directory = st.IsDir()
 				}
 				s.Files = append(s.Files, f)
 			}
-			return s, nil
+			return finishClipboardRead(s)
 		}
 	}
 
@@ -52,7 +53,7 @@ func (MyGo) Read() (clip.Snapshot, error) {
 		}
 	}
 	if len(want) == 0 {
-		return s, nil
+		return finishClipboardRead(s)
 	}
 	d, err := mygo.Clipboard.Read(want...)
 	if err != nil {
@@ -65,7 +66,7 @@ func (MyGo) Read() (clip.Snapshot, error) {
 		}
 		s.Parts = append(s.Parts, clip.Part{Format: string(f), Data: b})
 	}
-	return s, nil
+	return finishClipboardRead(s)
 }
 
 func (MyGo) Write(s clip.Snapshot) error {
@@ -92,4 +93,13 @@ func baseName(p string) string {
 		}
 	}
 	return p
+}
+
+// Bind paths and the copy marker to the same native observation. A copy
+// during the read is retried on the next poll instead of mixing generations.
+func finishClipboardRead(s clip.Snapshot) (clip.Snapshot, error) {
+	if s.CopyID != "" && clipboardCopyID() != s.CopyID {
+		return clip.Snapshot{}, mygo.ErrClipboardChanged
+	}
+	return s, nil
 }

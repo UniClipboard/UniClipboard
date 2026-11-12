@@ -35,7 +35,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 |---|---|
 | ID | HistoryID |
 | Revision | 持久化 uint64，创建为 1；每次有效元数据或同步摘要变更递增，CAS 使用此值 |
-| Kind | text/image/files；含文件优先 files，其次 PNG 为 image，其余为 text，与宿主应用优先级一致 |
+| Kind | `directory_reference` for deferred selections; `directory` for immutable trees; otherwise files take priority over PNG/image and text. |
 | Origin | Kind 为 local_system/remote_device/explicit/action/external/migration；DeviceID、PluginID 仅对应来源有值（external 来源的 PluginID 是后端实例，没有 DeviceID）；migration 不关联设备，不含秘密地址 |
 | SourceApp | 可空的不透明应用标识，不包含窗口标题、路径或自由文本摘要 |
 | CreatedAtMs / UpdatedAtMs | 本机 commit 时间 / 最后一次有效变更时间；迁移例外保留旧库创建/活动时间，普通网络接收不采用远端时间 |
@@ -218,3 +218,7 @@ classification, so deleting the record after ticket creation does not change it.
 No source-device identity or history identifier enters analytics. This does not
 observe another application's paste or create an automatic-application event.
 See the [observability contract](observability-contract.md#111-product-value-and-daily-admission).
+
+## Directory extension
+
+Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.

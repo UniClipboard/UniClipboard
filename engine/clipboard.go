@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"crypto/sha256"
+	"github.com/uniclipboard/unic/internal/directory"
 	"strconv"
 	"time"
 
@@ -43,14 +44,15 @@ const (
 	DispEmpty     Disposition = "empty"     // the clipboard was cleared
 	DispEcho      Disposition = "echo"      // the write of a remote content
 	DispSubmitted Disposition = "submitted"
+	DispPreparing Disposition = "preparing"
 	DispDisabled  Disposition = "disabled" // sync is paused or this content is not enabled
 	DispNoTargets Disposition = "no_targets"
 	DispTooLarge  Disposition = "too_large" // over the configured limits
 )
 
 // ObservationResult is the answer to an observation. Every disposition other
-// than an error advances the baseline: content that could not be sent is not
-// sent later either.
+// than an error advances the observation. Preparing admits asynchronous
+// directory work; its baseline completes with that work. No reconnect replay occurs.
 type ObservationResult struct {
 	Disposition Disposition
 	OperationID OperationID // set for DispSubmitted
@@ -108,13 +110,14 @@ type observation struct {
 }
 
 type obsRecord struct {
-	seq      uint64
-	params   [sha256.Size]byte
-	result   ObservationResult
-	err      *Error
-	done     chan struct{}
-	key      string
-	finished bool // guarded by Engine.mu
+	directoryCancel func() // supersede pending automatic directory preparation
+	seq             uint64
+	params          [sha256.Size]byte
+	result          ObservationResult
+	err             *Error
+	done            chan struct{}
+	key             string
+	finished        bool // guarded by Engine.mu
 }
 
 type applyTicket struct {
@@ -154,6 +157,9 @@ func contentKey(c *contentObj) string {
 		} else {
 			snap.Parts = append(snap.Parts, clip.Part{Format: p.desc.MIME, Data: p.data})
 		}
+	}
+	if directoryReference(c) {
+		return snap.Hash() + "/copy/" + c.copyID
 	}
 	return snap.Hash()
 }
@@ -224,6 +230,11 @@ func (e *Engine) ObserveClipboard(ctx context.Context, o Observation) (Observati
 			fresh = false
 		}
 	}
+	isDirectory := false
+	if c, err := e.contentOf(o.LeaseID); err == nil && c != nil {
+		isDirectory = directoryReference(c)
+	}
+	pending := record != nil && !record.finished
 	e.mu.Unlock()
 	e.obsMu.Unlock()
 	if fresh {
@@ -231,6 +242,9 @@ func (e *Engine) ObserveClipboard(ctx context.Context, o Observation) (Observati
 	}
 	if err != nil {
 		return ObservationResult{}, err
+	}
+	if pending && isDirectory {
+		return ObservationResult{Disposition: DispPreparing}, nil
 	}
 	return waitObservation(ctx, record)
 }
@@ -267,6 +281,9 @@ func (e *Engine) admitObservationLocked(o Observation) (*obsRecord, *Error) {
 		defer e.cs.unref(c)
 	}
 	key := contentKey(c)
+	if ob.last != nil && !ob.last.finished && ob.last.directoryCancel != nil && key != ob.last.key {
+		ob.last.directoryCancel()
+	}
 	record := &obsRecord{seq: o.Sequence, params: params, done: make(chan struct{}), key: key}
 	finish := func(d Disposition) (*obsRecord, *Error) {
 		record.result = ObservationResult{Disposition: d}
@@ -303,6 +320,10 @@ func (e *Engine) admitObservationLocked(o Observation) (*obsRecord, *Error) {
 	if err != nil {
 		return nil, err
 	} // no admission, so this sequence remains retryable
+	sy := e.settings.Value.Sync
+	if directoryReference(c) && sy.Enabled && sy.Files && sy.Automatic && sy.Directories.Automatic {
+		record.directoryCancel = entry.cancel
+	}
 	if e.ticket != nil {
 		e.ticket.dirty = true
 	}
@@ -437,7 +458,7 @@ func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket,
 func (e *Engine) appliable(c *contentObj, sy BackendSyncPolicy) bool {
 	for _, p := range c.parts {
 		switch {
-		case p.desc.Kind == PartFile:
+		case p.desc.Kind == PartFile || p.desc.MIME == directory.MIME:
 			if sy.Files && e.host.WriteFiles {
 				return true
 			}

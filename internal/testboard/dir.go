@@ -2,6 +2,7 @@ package testboard
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,9 @@ const dirFiles = "files"
 func (d Dir) Read() (clip.Snapshot, error) {
 	var s clip.Snapshot
 	if b, err := os.ReadFile(filepath.Join(string(d), dirFiles)); err == nil {
+		if st, err := os.Stat(filepath.Join(string(d), dirFiles)); err == nil {
+			s.CopyID = fmt.Sprint(st.ModTime().UnixNano())
+		}
 		for _, p := range strings.Split(string(b), "\n") {
 			if p = strings.TrimSpace(p); p == "" {
 				continue
@@ -35,6 +39,7 @@ func (d Dir) Read() (clip.Snapshot, error) {
 			f := clip.File{Name: filepath.Base(p), Path: p}
 			if st, err := os.Stat(p); err == nil {
 				f.Size = st.Size()
+				f.Directory = st.IsDir()
 			}
 			s.Files = append(s.Files, f)
 		}

@@ -22,7 +22,7 @@ func (r *Remote) call(ctx context.Context, m string, in, out any) error {
 	return r.Client.AdapterCall(request, r.Session, m, in, out)
 }
 func (r *Remote) ImportContent(ctx context.Context, in engine.ContentInput) (out engine.ContentHandle, err error) {
-	var s clip.Snapshot
+	s := clip.Snapshot{CopyID: in.ObservationKey}
 	for _, p := range in.Representations {
 		if p.Size > 64<<20 {
 			return out, &engine.Error{Code: engine.CodeLimitExceeded, Message: "representation too large"}
@@ -225,5 +225,15 @@ func (r *Remote) FileReference(ctx context.Context, lease engine.LeaseID, part e
 		Lease engine.LeaseID
 		Part  engine.PartID
 	}{lease, part}, &out)
+	return
+}
+
+func (r *Remote) DirectoryPaths(ctx context.Context, l engine.LeaseID) (out []string, err error) {
+	err = r.call(ctx, "tree-paths", l, &out)
+	return
+}
+
+func (r *Remote) DirectoryReferences(ctx context.Context, l engine.LeaseID) (out []string, err error) {
+	err = r.call(ctx, "tree-references", l, &out)
 	return
 }

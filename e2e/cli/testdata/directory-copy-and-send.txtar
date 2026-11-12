@@ -1,0 +1,58 @@
+# 用例: Directory copy defers work and explicit send preserves a tree
+# 目的: Accept one-shot directory transfer through real paired services.
+# 流程:
+#   1. Create nested, empty, hidden and zero-byte entries. Copy with directory automatic sync disabled.
+#   2. Explicitly send the directory, then change a member and send again.
+#   3. Reject special entries and hard limits. Restart and retain received history.
+# 期望:
+#   - Copy alone sends nothing. Explicit send preserves the complete tree and current bytes.
+#   - Unsupported members and limits fail without delivering a partial tree.
+# 不应:
+#   - Watch source changes or overwrite existing user files.
+
+mkdir source/tree/empty
+mkdir source/tree/nested
+cp content.txt source/tree/nested/file.txt
+cp content.txt source/tree/.hidden
+cp empty.txt source/tree/zero
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-set alpha files source/tree
+! tree-wait beta source/tree
+until alpha '"kind":"directory_reference"' history list --json
+directory-probe alpha 0 0
+u alpha config --json
+stdout '"directories":\{"automatic":false\}'
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+cp changed.txt source/tree/nested/file.txt
+! tree-wait beta source/tree
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+u alpha config set limits.max_file_bytes '1'
+! u alpha send --to all -f $WORK/source/tree --json
+u alpha config set limits.max_file_bytes '"100MB"'
+symlink source/tree/link -> ../content.txt
+! u alpha send --to all -f $WORK/source/tree --json
+rm source/tree/link
+u alpha config set sync.files false
+! u alpha send --to all -f $WORK/source/tree --json
+u alpha config set sync.files true
+node-stop beta
+node-start beta
+u beta history list --json
+stdout '"kind":"directory"'
+
+-- content.txt --
+directory-byte-canary
+-- changed.txt --
+new-directory-byte-canary
+-- empty.txt --
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

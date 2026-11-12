@@ -81,7 +81,7 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 
 ## 第一阶段范围外
 
-Full-text search, folder synchronization, fine-grained device policies and native clipboard change notifications remain outside the live desktop binding. Device pairing already requires explicit approval.
+Full-text search, fine-grained device policies and native clipboard change notifications remain outside the live desktop binding. One-shot directory transfer is implemented under the [directory contract](../../docs/contracts/directory-contract.md); automatic directory sync defaults off. Device pairing already requires explicit approval.
 
 
 ## 从本机 UniClipboard v1 迁移

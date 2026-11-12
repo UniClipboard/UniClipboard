@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "command": "go test -race ./app/desktop/...",
+  "native_ui": "NOT_RUN",
+  "passing_packages": [
+    "github.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+    "github.com/uniclipboard/unic/app/desktop/e2e",
+    "github.com/uniclipboard/unic/app/desktop/internal/desktopdemo",
+    "github.com/uniclipboard/unic/app/desktop/internal/quickpanel",
+    "github.com/uniclipboard/unic/app/desktop/internal/uikit"
+  ],
+  "scope": "existing checks; process acceptance is recorded separately"
+}

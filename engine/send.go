@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/directory"
 	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/plugin/rpc"
 )
@@ -20,7 +21,7 @@ type sendSet struct {
 
 func syncAllowsPart(p *partRec, sy BackendSyncPolicy) bool {
 	switch {
-	case p.desc.Kind == PartFile:
+	case p.desc.Kind == PartFile || p.desc.MIME == directory.MIME:
 		return sy.Files
 	case p.desc.MIME == MimePNG:
 		return sy.Images

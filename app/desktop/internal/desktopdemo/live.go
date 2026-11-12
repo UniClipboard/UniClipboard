@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"image"
 	"io"
@@ -51,6 +52,8 @@ func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
 }
 
 type liveState struct {
+	sendCancel                                               context.CancelFunc
+	sendStage                                                string
 	queryOverride                                            func() engine.HistorySearchQuery
 	appliedSerial, contentSerial                             uint64
 	searchCancel, catalogueCancel, countCancel, detailCancel context.CancelFunc
@@ -411,6 +414,12 @@ func projectHistory(it api.HistoryItem) entry {
 	case "image":
 		kind = uikit.KindImage
 		title = "图片"
+	case "directory", "directory_reference":
+		kind = uikit.KindFile
+		title = "目录快照"
+		if it.Kind == "directory_reference" {
+			title = "源目录引用"
+		}
 	case "files":
 		kind = uikit.KindFile
 		title = "文件"
@@ -672,6 +681,44 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 	id := it.ID
 	v := projectHistory(it)
 	switch it.Kind {
+	case "directory", "directory_reference":
+		var names []string
+		for i, p := range it.Parts {
+			if it.Kind == "directory" && p.MIME != engine.MimeDirectory {
+				continue
+			}
+			if it.Kind == "directory_reference" && p.Kind != "file" {
+				continue
+			}
+			r, err := client.HistoryContent(ctx, id, i)
+			if err != nil {
+				v.contentError = "目录内容不可用。"
+				continue
+			}
+			if it.Kind == "directory_reference" {
+				names = append(names, r.Name)
+				_ = r.Close()
+				continue
+			}
+			data, err := io.ReadAll(io.LimitReader(r, (512<<10)+1))
+			_ = r.Close()
+			var manifest engine.DirectoryManifest
+			if err != nil || len(data) > 512<<10 || json.Unmarshal(data, &manifest) != nil {
+				v.contentError = "目录内容不可用。"
+				continue
+			}
+			for _, root := range manifest.Roots {
+				names = append(names, root.Name)
+			}
+		}
+		if len(names) > 0 {
+			v.title = shortText(strings.Join(names, ", "), 90)
+		}
+		v.text = strings.Join(names, "\n") + "\n目录快照。发送时使用已保存的内容。"
+		if it.Kind == "directory_reference" {
+			v.text = strings.Join(names, "\n") + "\n源目录引用。主动发送时读取当前目录内容。"
+		}
+		return v
 	case "files":
 		var names []string
 		fileCount := 0

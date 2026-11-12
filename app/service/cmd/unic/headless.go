@@ -63,6 +63,7 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 	if *request == "" {
 		*request = rand.Text()
 	}
+	hasDirectory := false
 	var s clip.Snapshot
 	switch {
 	case *png != "":
@@ -87,10 +88,15 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 			if e != nil {
 				return e
 			}
-			if !st.Mode().IsRegular() {
-				return fmt.Errorf("send requires regular files")
+			if !st.Mode().IsRegular() && !st.IsDir() {
+				return fmt.Errorf("send requires regular files or directories")
 			}
-			s.Files = append(s.Files, clip.File{Name: st.Name(), Path: abs, Size: st.Size()})
+			hasDirectory = hasDirectory || st.IsDir()
+			size := st.Size()
+			if st.IsDir() {
+				size = 0
+			}
+			s.Files = append(s.Files, clip.File{Name: st.Name(), Path: abs, Size: size, Directory: st.IsDir()})
 		}
 	default:
 		text := strings.Join(pos, " ")
@@ -106,6 +112,9 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 		}
 		s.Parts = []clip.Part{{Format: clip.Text, Data: []byte(text)}}
 	}
+	if *to == "" && hasDirectory {
+		return fmt.Errorf("directory send requires --to all or a paired device")
+	}
 	if *to == "" {
 		return runTemporaryTransfer(ctx, c, s, *asJSON)
 	}
@@ -120,9 +129,19 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 		devices = []string{id}
 	}
 	connectOpportunity(ctx, c)
-	out, err := c.Submit(ctx, api.SubmitInput{RequestID: *request, Snapshot: s, DeviceIDs: devices})
+	out, err := c.Submit(ctx, api.SubmitInput{Async: hasDirectory, RequestID: *request, Snapshot: s, DeviceIDs: devices})
 	if err != nil {
 		return err
+	}
+	if out.Phase == engine.SubmissionProcessing {
+		out, err = c.WaitSubmission(ctx, *request, func(stage string) {
+			if stage != "" {
+				fmt.Fprintln(os.Stderr, stage)
+			}
+		})
+		if err != nil {
+			return err
+		}
 	}
 	// The submission is committed once. Only this command's own operation is observed.
 	outcome, op, err := awaitSend(ctx, c, out.OperationID)

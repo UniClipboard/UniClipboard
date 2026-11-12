@@ -176,3 +176,7 @@ Search condition chips can shrink within the available field width. Their values
 ## Desktop acceptance
 
 The canonical Desktop acceptance entry is `make desktop-e2e`. It runs the declarative catalogue under `app/desktop/e2e`, including native-window evidence, production-process contracts and all migrated software-view scenarios. Original Desktop test entries and standalone scripts are removed. CI uses the same command under Xvfb and retains its report. The running-window captures establish content rendering and app-scoped interaction; OS focus and cross-application paste remain separate. See the [Desktop E2E contract](../contracts/desktop-e2e-contract.md).
+
+## Directory content
+
+Desktop and CLI share the Engine-owned [directory content model](../contracts/directory-contract.md). Directory automatic sync defaults off. Desktop exposes explicit history-to-device send with progress and cancellation. Directory references, snapshots, storage ownership and native acceptance limits are described in [pipeline](pipeline.md) and [desktop runtime](desktop-runtime.md).

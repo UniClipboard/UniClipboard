@@ -32,10 +32,11 @@ import (
 
 // Engine is one running node. All methods are safe for concurrent use.
 type Engine struct {
-	instance InstanceID
-	opts     Options
-	res      ResourcePolicy
-	log      *slog.Logger
+	directoryProbe directoryProbe
+	instance       InstanceID
+	opts           Options
+	res            ResourcePolicy
+	log            *slog.Logger
 
 	lock      *dirLock
 	ident     *identity.Identity // unified device identity (identity protocol v1)

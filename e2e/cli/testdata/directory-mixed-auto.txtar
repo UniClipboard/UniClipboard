@@ -1,0 +1,37 @@
+# 用例: Mixed directory selections follow directory automatic policy
+# 目的: Verify default whole-batch suppression and opt-in one-shot automatic send.
+# 流程:
+#   1. Copy one file and one directory under the default policy.
+#   2. Enable directory automatic sync and copy another directory.
+# 期望:
+#   - No regular-file-only partial send occurs. Enabled automatic sync transfers a complete tree.
+# 不应:
+#   - Replay a previously copied selection merely because a setting changes.
+
+mkdir first/empty
+mkdir second/empty
+cp content.txt first/member
+cp content.txt second/member
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-select alpha first content.txt
+! tree-wait beta first
+! board-wait beta files content.txt
+until alpha '"kind":"directory_reference"' history list --json
+directory-probe alpha 0 0
+u alpha config set sync.directories.automatic true
+! tree-wait beta first
+board-set alpha files second
+tree-wait beta second
+directory-probe alpha 1 1
+board-set alpha files second
+directory-probe alpha 2 2
+
+-- content.txt --
+automatic-directory-canary
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

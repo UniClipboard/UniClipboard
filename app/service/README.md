@@ -57,3 +57,15 @@ flush service queues. See the [observability contract](../../docs/contracts/obse
 
 Use `unic --version --json` or `unicd --version --json` to read the embedded product version, build number and source SHA without starting the service.
 Versioned archives and npm publication follow the [release architecture](../../docs/architecture/releases.md).
+
+## Directory selections
+
+Directory automatic sync defaults off. Copying a directory records a source reference without scanning it. Explicit paired-device send prepares a snapshot of its current contents:
+
+```sh
+unic send --to all -f /absolute/path/to/directory
+unic history send @1 --to laptop --json
+unic config set sync.directories.automatic true
+```
+
+A selection can mix regular files and directories. Empty directories are preserved. Links and unsupported entries fail the selection. Directory transfer does not watch later filesystem changes and requires `--to`. See the [directory contract](../../docs/contracts/directory-contract.md) for resource limits, history semantics, and platform acceptance limits.

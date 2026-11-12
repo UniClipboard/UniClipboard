@@ -235,6 +235,13 @@ func (c *fileCache) promote(source, name string, size int64) (string, string, er
 // finalizeReceivedFiles retains Engine-owned bytes or adopts a host-owned source.
 // Host callbacks run without Engine state, history, or content locks.
 func (e *Engine) finalizeReceivedFiles(ctx context.Context, c *contentObj) *Error {
+	m, err := directoryManifest(c)
+	if err != nil {
+		return err
+	}
+	if m != nil && e.opts.StoreReceivedFile != nil {
+		return e.storeReceivedDirectory(ctx, c, m)
+	}
 	for _, p := range c.parts {
 		if p.desc.Kind != PartFile {
 			continue

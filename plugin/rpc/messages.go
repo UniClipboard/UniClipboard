@@ -398,7 +398,7 @@ func (i Item) Validate() error {
 		return protoErr("bad item id")
 	}
 	switch i.Type {
-	case "text", "image", "files":
+	case "text", "image", "files", "directory", "directory_reference":
 	default:
 		return protoErr("bad item type")
 	}

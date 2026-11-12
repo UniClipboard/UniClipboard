@@ -52,8 +52,11 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0018](docs/decisions/proposed/0018-independent-product-build-and-release.md) | Independent product builds and releases | Android, iOS, CLI and Desktop own independent versions and separate build/release workflows; immutable artifacts and per-target channels. CLI vertical slice implemented locally; Desktop/mobile pending. See [release architecture](docs/architecture/releases.md) and [execution plan](docs/exec/0018-independent-product-build-and-release.md). |
 | [0020](docs/decisions/proposed/0020-tailcat-sync-observability.md) | Tailcat sync observability | Connection/session/recovery metrics, payload measurements and remote-content value are implemented; incoming real-stack direct/DERP accepted. Public Client status is blocked upstream; remaining acceptance is recorded. Actual paste tracking is excluded; see [execution plan](docs/exec/0020-tailcat-sync-observability.md). |
 | [0023](docs/decisions/proposed/0023-cli-lifecycle-acceptance-followup.md) | CLI lifecycle acceptance follow-up | Draft: other-platform process runs (C36), file release barrier after send deadline, C03 race investigation |
+| [0024](docs/decisions/proposed/0024-directory-copy-and-send.md) | Directory copy and explicit send | Implemented; local process acceptance passed; native/real-device acceptance pending. One-shot directory transfer; automatic sync defaults off; explicit send prepares snapshots; mixed selections follow directory policy. |
 
 ### 接口契约（`docs/contracts/`）
+
+- [Directory content contract](docs/contracts/directory-contract.md): deferred directory references, explicit snapshots, portable manifests, file-policy grouping, resource bounds, receive ownership and platform acceptance limits.
 
 - [设备与后端关联契约](docs/contracts/device-contract.md)：统一设备、身份验证、候选/配对、实例关联审批、设备列表与全路径撤销；已实现并有测试；对象存储路径与 macOS 界面未做，密码学协议见 [identity-protocol](docs/contracts/identity-protocol.md)。
 

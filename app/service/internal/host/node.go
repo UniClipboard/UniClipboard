@@ -108,11 +108,12 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}()
 	opts := engine.Options{
 		Logger: diagnostics.Logger(), Diagnostics: diagnostics.Record, ProductEvents: diagnostics.ProductEvent,
-		DataDir:           o.Dir,
-		CacheDir:          filepath.Join(o.Dir, "inbox", "file-cache"),
-		StoreReceivedFile: storeReceived,
-		DeferFileCleanup:  false,
-		Settings:          toSettings(c),
+		DataDir:                o.Dir,
+		CacheDir:               filepath.Join(o.Dir, "inbox", "file-cache"),
+		StoreReceivedFile:      storeReceived,
+		StoreReceivedDirectory: receivedDirectoryWriter(c.Inbox, o.Dir),
+		DeferFileCleanup:       false,
+		Settings:               toSettings(c),
 		HostCapabilities: engine.HostCapabilities{
 			Observe: engine.AbilityUnavailable, Apply: engine.AbilityUnavailable,
 		},
@@ -141,6 +142,10 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	diagnostics.SetSyncCollector(peer.Collect)
 	n.e = e
+	if err := recoverDirectoryStages(o.Dir); err != nil {
+		e.Close(context.Background())
+		return nil, err
+	}
 	n.cfg = o.Settings
 	n.logf = func(string, ...any) { diagnostics.Logger().Error("host.failed", "code", "internal") }
 	n.luaDir = o.LuaDir

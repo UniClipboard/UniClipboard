@@ -497,3 +497,7 @@ They use typed queries and a derived projection in the same history database.
 SearchHistory is an explicit bounded content read; ordinary metadata lists and events remain content-free.
 Matching, source selectors, tag all/any mode, cursor rules, read isolation, limits and incomplete-index behavior are defined in the [history search contract](history-search-contract.md).
 The implementation is in `engine/history_search.go` and `engine/history_search_types.go`.
+
+## Directory extension
+
+Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.

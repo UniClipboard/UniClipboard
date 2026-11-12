@@ -67,6 +67,7 @@ var catalog = []leaf{
 
 	{Name: "history list", Aliases: []string{"ls"}, Requirement: reqService, Completion: doneResponse},
 	{Name: "history show", Requirement: reqService, Completion: doneResponse},
+	{Name: "history send", Requirement: reqService, Completion: doneSend},
 	{Name: "history export", Requirement: reqService, Completion: doneResponse},
 	{Name: "history delete", Aliases: []string{"rm"}, Requirement: reqService, Completion: doneResponse},
 	{Name: "history tag", Requirement: reqService, Completion: doneResponse},

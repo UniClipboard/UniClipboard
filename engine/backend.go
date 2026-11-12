@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/directory"
 	"github.com/uniclipboard/unic/internal/wire"
 )
 
@@ -64,10 +65,11 @@ type targetKey struct {
 // filtered by that backend's policy. id and tsMs are shared by all backends
 // of a commit (the transfer identity of 0007 §6).
 type backendView struct {
-	set     sendSet
-	id      string
-	tsMs    int64
-	devices []DeviceID // non-empty: only these devices receive it
+	workContext context.Context // owned submission lifetime; nil for short-lived callers
+	set         sendSet
+	id          string
+	tsMs        int64
+	devices     []DeviceID // non-empty: only these devices receive it
 }
 
 // backendHost is handed to a backend for one submission.
@@ -110,6 +112,9 @@ func (h *dispatchHost) Register(keys []targetKey) *Error {
 		}
 		o.manual = h.req.Origin == OriginExplicit && h.req.action == nil && !h.req.restored
 		o.kind = diagnosticKind(h.c)
+		if entry := e.submissions[h.req.RequestID]; entry != nil {
+			o.cancel = entry.cancel
+		}
 		o.content, o.open = h.c, true // the operation takes over the dispatch reference
 		h.op = o
 	}
@@ -192,10 +197,17 @@ func fileTooLarge(set sendSet, max int64) bool {
 	if max <= 0 {
 		return false
 	}
+	var total int64
 	for _, p := range set.parts {
-		if p.desc.Kind == PartFile && p.desc.Size > max {
-			return true
+		if p.desc.Kind == PartFile {
+			total += p.desc.Size
+			if p.desc.Size > max {
+				return true
+			}
 		}
+	}
+	if m, _ := directoryManifest(set.c); m != nil {
+		return total > max
 	}
 	return false
 }
@@ -217,6 +229,10 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 	}
 	enabled, lim := e.settings.Value.Sync.Enabled, e.settings.Value.Limits
 	automatic := e.settings.Value.Sync.Automatic
+	var workContext context.Context
+	if entry := e.submissions[req.RequestID]; entry != nil && entry.cancel != nil {
+		workContext = ctx
+	}
 	e.mu.Unlock()
 
 	backends := e.selectBackends(req.BackendIDs)
@@ -228,6 +244,8 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 		return out
 	}
 	switch {
+	case directoryReference(processed.c):
+		return "", SyncNotRequested, all(BackendNotRequested), nil, nil
 	case !enabled:
 		return "", SyncDisabled, all(BackendDisabled), nil, nil
 	case req.Origin == OriginClipboard && !automatic:
@@ -263,7 +281,7 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 				res.Disposition, res.Error = BackendFailed, lerr
 				break
 			}
-			queued, err := b.Submit(ctx, backendView{set: set, id: transfer, tsMs: tsMs, devices: req.DeviceIDs}, host)
+			queued, err := b.Submit(ctx, backendView{workContext: workContext, set: set, id: transfer, tsMs: tsMs, devices: req.DeviceIDs}, host)
 			switch {
 			case queued:
 				res.Disposition = BackendQueued
@@ -315,7 +333,7 @@ func (e *Engine) aggregate(h *dispatchHost, results []BackendSubmissionResult) (
 
 func hasFiles(c *contentObj) bool {
 	for _, p := range c.parts {
-		if p.desc.Kind == PartFile {
+		if p.desc.Kind == PartFile || p.desc.MIME == directory.MIME {
 			return true
 		}
 	}

@@ -1,0 +1,44 @@
+{
+  "status": "PASS",
+  "native_ui": "NOT_RUN",
+  "checks": [
+    {
+      "target": "macos-desktop",
+      "exit_code": 0,
+      "flags": [
+        "-buildvcs=false",
+        "-trimpath"
+      ]
+    },
+    {
+      "target": "windows-service",
+      "exit_code": 0,
+      "flags": [
+        "-buildvcs=false",
+        "-trimpath"
+      ]
+    },
+    {
+      "target": "linux-service",
+      "exit_code": 0,
+      "flags": [
+        "-buildvcs=false",
+        "-trimpath"
+      ]
+    },
+    {
+      "target": "windows-clipboard-adapter",
+      "exit_code": 0
+    }
+  ],
+  "binary_sha256": {
+    "macos-desktop": "865e72bcda1f9a1b36fe24badea54a7ee8eec39b7e9eead575af04df32a4f485",
+    "windows-service": "0ca4fda3c2607f273b5386d755c5131dc49576744255b49c8065d147099919a2",
+    "linux-service": "28abafcc50091620c8bb8c6111510cabf298bf467ff59ed6048d27dec55e82db"
+  },
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "source_unchanged": true,
+  "private_cleanup": "PASS",
+  "go": "go version go1.27.3 darwin/arm64",
+  "source_sha256": "e3938d86ba8fe3769c89101350b139d419bd30283aadc0904e8c9c8db2eb5cb2"
+}

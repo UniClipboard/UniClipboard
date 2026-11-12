@@ -31,7 +31,8 @@ type Options struct {
 	// Engine supplies a reader valid only during the call. The returned source
 	// must have a non-empty persistent reference and must remain readable.
 	// Engine never deletes host-managed files, including after a failed commit.
-	StoreReceivedFile func(context.Context, ReceivedFile) (PersistentFileSource, error)
+	StoreReceivedFile      func(context.Context, ReceivedFile) (PersistentFileSource, error)
+	StoreReceivedDirectory func(context.Context, ReceivedDirectory) (StoredDirectory, error)
 	// DeferFileCleanup lets a clipboard host establish startup pins before physical reclamation.
 	DeferFileCleanup bool
 	// Settings is the complete configuration. The zero value means

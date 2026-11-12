@@ -1,0 +1,16 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D .",
+    "D empty",
+    "F member 24 1c07f9bb87ed26b4823296cb7ecd210aee210c014d8492d52434b0249d4df5dc"
+  ],
+  "received": [
+    "D .",
+    "D empty",
+    "F member 24 1c07f9bb87ed26b4823296cb7ecd210aee210c014d8492d52434b0249d4df5dc"
+  ],
+  "result": "PASS",
+  "scenario": "directory-custom-receive",
+  "time": "2026-11-12T10:37:35.703863Z"
+}

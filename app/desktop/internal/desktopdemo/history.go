@@ -1,9 +1,13 @@
 package desktopdemo
 
 import (
+	"context"
 	"fmt"
+	"github.com/uniclipboard/unic/engine"
+	api "github.com/uniclipboard/unic/internal/localapi"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
@@ -75,6 +79,18 @@ func (d *demo) sidebar(c *ui.Context, k uikit.Kit) {
 }
 
 func (d *demo) history(c *ui.Context, k uikit.Kit) {
+	if d.live != nil && d.live.sendCancel != nil {
+		labels := map[string]string{"scanning": "正在扫描目录…", "preparing": "正在准备目录…", "processing": "正在提交…", "sending": "正在发送…"}
+		label := labels[d.live.sendStage]
+		if label == "" {
+			label = "正在准备发送…"
+		}
+		k.Text(c, d.tr(label), uikit.TextProps{})
+		if k.Button(c.Key("cancel-send"), d.tr("取消发送"), uikit.ButtonProps{}).Clicked() {
+			d.live.sendCancel()
+		}
+	}
+
 	items := d.filtered()
 	if !slices.ContainsFunc(items, func(v entry) bool { return v.id == d.selected }) {
 		d.selectEntry("")
@@ -463,7 +479,7 @@ func (d *demo) assignTagSheet(c *ui.Context, k uikit.Kit) {
 
 // Send menus share the current remote-device registry, including offline peers.
 func (d *demo) sendMenuItems() []uikit.MenuEntry {
-	items := []uikit.MenuEntry{{ID: "all", Label: d.tr("所有设备"), Icon: uikit.IconDevices, Disabled: d.live != nil}}
+	items := []uikit.MenuEntry{{ID: "all", Label: d.tr("所有设备"), Icon: uikit.IconDevices, Disabled: d.live != nil && d.live.sendCancel != nil}}
 	for _, peer := range d.devices {
 		if peer.id == "local" {
 			continue
@@ -471,15 +487,15 @@ func (d *demo) sendMenuItems() []uikit.MenuEntry {
 		if len(items) == 1 {
 			items = append(items, uikit.MenuSeparator("devices"))
 		}
-		items = append(items, uikit.MenuEntry{ID: peer.id, Label: peer.name, Disabled: d.live != nil})
+		items = append(items, uikit.MenuEntry{ID: peer.id, Label: peer.name, Disabled: d.live != nil && d.live.sendCancel != nil})
 	}
-	items[0].Disabled = len(items) == 1 || d.live != nil
+	items[0].Disabled = len(items) == 1 || (d.live != nil && d.live.sendCancel != nil)
 	return items
 }
 
 func (d *demo) sendTo(target string) {
 	if d.live != nil {
-		d.live.message = "发送历史到设备暂不可用。"
+		d.startHistorySend(target)
 		return
 	}
 	name := d.sourceName(target)
@@ -532,4 +548,79 @@ func (d *demo) historyHighlightTerms(v entry) []string {
 		}
 	}
 	return out
+}
+
+func (d *demo) startHistorySend(target string) {
+	l := d.live
+	v := d.current()
+	if v == nil || l.sendCancel != nil {
+		return
+	}
+	id := v.id
+	request := newRequestID()
+	ctx, cancel := context.WithCancel(l.ctx)
+	l.sendCancel = cancel
+	l.sendStage = "scanning"
+	var devices []string
+	if target != "all" {
+		devices = []string{target}
+	}
+	go func() {
+		defer cancel()
+		progress := func(stage string) {
+			select {
+			case l.results <- func() { l.sendStage = stage }:
+			case <-l.ctx.Done():
+			}
+		}
+		out, err := l.client.Submit(ctx, api.SubmitInput{RequestID: request, HistoryID: id, DeviceIDs: devices, Async: true})
+		if err == nil && out.Phase == engine.SubmissionProcessing {
+			out, err = l.client.WaitSubmission(ctx, request, progress)
+		}
+		if err == nil && out.OperationID != "" {
+			progress("sending")
+			for {
+				op, e := l.client.Operation(ctx, string(out.OperationID))
+				if e != nil {
+					err = e
+					break
+				}
+				if op.Done() {
+					if op.Outcome != engine.OutcomeSuccess {
+						err = fmt.Errorf("send incomplete")
+					}
+					break
+				}
+				select {
+				case <-ctx.Done():
+					err = ctx.Err()
+				case <-time.After(150 * time.Millisecond):
+				}
+				if err != nil {
+					break
+				}
+			}
+		}
+		if ctx.Err() != nil {
+			stop, end := context.WithTimeout(context.Background(), 3*time.Second)
+			_ = l.client.CancelSubmission(stop, request)
+			end()
+		}
+		resultErr := err
+		select {
+		case l.results <- func() {
+			l.sendCancel = nil
+			l.sendStage = ""
+			l.nextRefresh = time.Time{}
+			if resultErr != nil {
+				l.message = "发送未完成。请检查设备连接和源目录。"
+			} else if out.SyncDisposition != engine.SyncQueued {
+				l.message = "内容已保存，但未发送。请检查同步设置和设备连接。"
+			} else {
+				d.notice = "发送完成"
+			}
+		}:
+		case <-l.ctx.Done():
+		}
+	}()
 }

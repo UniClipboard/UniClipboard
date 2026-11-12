@@ -12,6 +12,8 @@ import (
 // The private result cache precedes the public CommitContent API/durable sink.
 // It owns metadata only; neither completed entries nor waiters retain content.
 type submissionEntry struct {
+	stage    string
+	cancel   context.CancelFunc
 	started  time.Time
 	hash     [sha256.Size]byte
 	done     chan struct{}
@@ -43,7 +45,7 @@ func (s *submissionEntry) legacyErr() *Error {
 
 // result is a content-free snapshot. e.mu must be held unless entry.done is closed.
 func (s *submissionEntry) result(id RequestID) SubmissionResult {
-	r := SubmissionResult{RequestID: id, Phase: SubmissionProcessing, ItemID: s.item}
+	r := SubmissionResult{Stage: s.stage, RequestID: id, Phase: SubmissionProcessing, ItemID: s.item}
 	switch {
 	case s.finished.IsZero():
 	case s.err != nil:
@@ -100,6 +102,9 @@ func cloneError(err *Error) *Error {
 func (e *Engine) pruneSubmissionsLocked(now time.Time) {
 	for id, entry := range e.submissions {
 		if !entry.finished.IsZero() && now.Sub(entry.finished) >= e.res.SubmissionTTL {
+			if entry.cancel != nil {
+				entry.cancel()
+			}
 			delete(e.submissions, id)
 		}
 	}
@@ -174,7 +179,8 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		e.submissions = make(map[RequestID]*submissionEntry)
 	}
 	e.submissions[req.RequestID] = entry
-	workCtx := e.runCtx
+	workCtx, cancel := context.WithCancel(e.runCtx)
+	entry.cancel = cancel
 	e.opWG.Add(1)
 	go e.runSubmission(workCtx, req, entry, c)
 	return entry, nil
@@ -182,6 +188,11 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 
 func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *submissionEntry, c *contentObj) {
 	defer e.opWG.Done()
+	defer func() {
+		if entry.id == "" && entry.cancel != nil {
+			entry.cancel()
+		}
+	}()
 	commitKind := diagnosticKind(c)
 	origin := pipelineOrigin{kind: "explicit"}
 	if req.Origin == OriginClipboard {
@@ -195,6 +206,18 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	if c != nil {
 		commitKind = diagnosticKind(c)
 	}
+	if failure == nil && directoryReference(c) {
+		e.mu.Lock()
+		sy := e.settings.Value.Sync
+		e.mu.Unlock()
+		if req.Origin == OriginExplicit || (sy.Enabled && sy.Files && sy.Automatic && sy.Directories.Automatic) {
+			prepared, err := e.prepareDirectory(ctx, c, entry)
+			e.cs.unref(c)
+			c = prepared
+			failure = err
+		}
+	}
+	e.setSubmissionStage(entry, "processing")
 	var processed *processedContent
 	if failure == nil {
 		processed, failure = e.processContent(ctx, pipelineCaptured, c, origin)
@@ -231,6 +254,13 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 		e.notifyObservers(plugin.EventCommitted, string(historyID))
 	}
 	e.mu.Lock()
+	if id != "" {
+		entry.stage = "sending"
+	} else if failure != nil {
+		entry.stage = "failed"
+	} else {
+		entry.stage = "complete"
+	}
 	entry.history = historyID
 	entry.id, entry.disp, entry.results, entry.syncErr, entry.err, entry.finished = id, disp, results, syncErr, cloneError(failure), time.Now()
 	close(entry.done)
@@ -320,6 +350,9 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 	if err != nil {
 		return SubmissionResult{}, err
 	}
+	if req.CancelOnContext && entry.cancel != nil {
+		context.AfterFunc(ctx, entry.cancel)
+	}
 	select {
 	case <-entry.done:
 		r := entry.result(req.RequestID)
@@ -400,4 +433,25 @@ func (e *Engine) normalizeBackendIDs(ids []PluginID) ([]PluginID, *Error) {
 		}
 	}
 	return out, nil
+}
+
+func (e *Engine) setSubmissionStage(entry *submissionEntry, stage string) {
+	e.mu.Lock()
+	entry.stage = stage
+	e.mu.Unlock()
+}
+func (e *Engine) CancelSubmission(ctx context.Context, id RequestID) error {
+	if err := ctx.Err(); err != nil {
+		return ctxErr(err)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	entry := e.submissions[id]
+	if entry == nil {
+		return newErr(CodeNotFound, "submission not found")
+	}
+	if entry.cancel != nil {
+		entry.cancel()
+	}
+	return nil
 }

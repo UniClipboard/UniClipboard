@@ -111,3 +111,9 @@ process_text 仅 text/plain；action_text 仅在 plugin.run_action 中由插件�
 向量文件给出固定 magic/头字节、合法 payload、非法 patch 和跨帧分块样例；后续 `plugin/` 编解码器及真实子进程必须共享这些向量。本文文档检查只验证定义与向量一致，不代表运行时测试已通过。
 
 实现必须覆盖：任意拆读/粘帧、大端序、超长分配前拒绝、未知位、重复 JSON 键、大整数范围；握手 nonce/Spec/API 不一致；同实例串行但反向 Host 无死锁；不同流公平调度、零信用禁止发送、总预算背压；取消同时收到迟到 DATA/patch、旧会话串用、根请求资源回收；UTF-8/标签字节/过期单位；畸形、超限与模糊输入不泄密。完整发送/接收互操作测试须按同步后端业务契约实现，当前尚未执行。
+
+## Directory extension
+
+Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.
+
+Processor `Item.Type` accepts `directory` and `directory_reference` in addition to existing content types. Directory manifests travel as file-policy-governed representations with existing member streams; no new transport method or protocol version is required.

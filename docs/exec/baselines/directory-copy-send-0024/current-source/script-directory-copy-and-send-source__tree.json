@@ -1,0 +1,22 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D .",
+    "D empty",
+    "D nested",
+    "F .hidden 22 08af3df071c7df23906d9fc966fc497866dcb52d28905bd3810b1f22abfeb673",
+    "F nested/file.txt 26 a5976237ae12cde8f6a7cc23c4e8842eb3071a0a925b1347fe6db9f1746299fa",
+    "F zero 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  ],
+  "received": [
+    "D .",
+    "D empty",
+    "D nested",
+    "F .hidden 22 08af3df071c7df23906d9fc966fc497866dcb52d28905bd3810b1f22abfeb673",
+    "F nested/file.txt 26 a5976237ae12cde8f6a7cc23c4e8842eb3071a0a925b1347fe6db9f1746299fa",
+    "F zero 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  ],
+  "result": "PASS",
+  "scenario": "directory-copy-and-send",
+  "time": "2026-11-12T10:38:25.983323Z"
+}

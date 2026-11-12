@@ -45,11 +45,16 @@ type Limits struct {
 // SyncSettings is the one global switch for content sync. Enabled=false keeps
 // connections but neither sends nor applies content. What each backend syncs
 // is Settings.BackendPolicies.
-type SyncSettings struct {
-	Enabled   bool `json:"enabled"`
+type DirectorySyncSettings struct {
 	Automatic bool `json:"automatic"`
-	OnRestore bool `json:"on_restore"`
-	Files     bool `json:"files"`
+}
+
+type SyncSettings struct {
+	Directories DirectorySyncSettings `json:"directories"`
+	Enabled     bool                  `json:"enabled"`
+	Automatic   bool                  `json:"automatic"`
+	OnRestore   bool                  `json:"on_restore"`
+	Files       bool                  `json:"files"`
 	// Introductions: tell connected devices which others this one vouches for,
 	// and accept theirs as candidates (see docs/architecture/identity-and-trust.md).
 	Introductions bool `json:"introductions"`
@@ -467,10 +472,11 @@ const (
 // reserved: non-nil values are rejected until multiple backends and automatic
 // writeback exist.
 type CommitRequest struct {
-	RequestID      RequestID
-	LeaseID        LeaseID
-	WritebackGuard *WritebackGuard
-	BackendIDs     []PluginID
+	CancelOnContext bool // opt in to cancel work when the supplied context ends
+	RequestID       RequestID
+	LeaseID         LeaseID
+	WritebackGuard  *WritebackGuard
+	BackendIDs      []PluginID
 	// DeviceIDs limits the send to these paired devices. nil means every device;
 	// an empty list, an unknown device or a repeated ID is invalid_argument.
 	DeviceIDs []DeviceID
@@ -488,6 +494,7 @@ type WritebackGuard struct {
 // when processing finished and the result was accepted; whether anything was
 // sent is SyncDisposition's business, not Error's.
 type SubmissionResult struct {
+	Stage           string          `json:"stage,omitempty"`
 	RequestID       RequestID       `json:"request_id"`
 	Phase           SubmissionPhase `json:"phase"`
 	ItemID          ItemID          `json:"item_id"`

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"github.com/uniclipboard/unic/internal/directory"
 	"slices"
 	"strings"
 	"sync"
@@ -179,6 +180,15 @@ func describePipelineItem(id string, c *contentObj, origin pipelineOrigin) pipel
 		i.Type = "files"
 	} else if slices.Contains(i.Formats, MimePNG) {
 		i.Type = "image"
+	}
+	if directoryReference(c) {
+		i.Type = "directory_reference"
+	} else {
+		for _, p := range c.parts {
+			if p.desc.MIME == directory.MIME {
+				i.Type = "directory"
+			}
+		}
 	}
 	return i
 }

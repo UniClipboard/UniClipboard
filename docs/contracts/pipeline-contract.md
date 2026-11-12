@@ -201,3 +201,7 @@ The [local service contract](local-service-contract.md) defines explicit submiss
 independent Action application and exclusive desktop adapter generations.
 A missing clipboard adapter does not restrict Engine import, commit, receive, history reads or export.
 Service restart invalidates local sessions and content leases.
+
+## Directory extension
+
+Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.

@@ -36,6 +36,12 @@ func (c *Client) HistoryPreview(ctx context.Context, item HistoryItem) (string, 
 			break
 		}
 	}
+	if item.Kind == "directory" {
+		return "目录快照", nil
+	}
+	if item.Kind == "directory_reference" {
+		return "源目录引用；发送时读取当前内容", nil
+	}
 	if part < 0 {
 		if item.Kind == "files" {
 			for i, p := range item.Parts {

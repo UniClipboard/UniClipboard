@@ -357,3 +357,7 @@ list 显示 installed/ready、source、configured_enabled、running_version、re
 5. Lua 沙箱、热替换、两语言只读/可变能力与错误策略测试。
 6. GitHub 默认分支/tag/commit、子目录、资产平台匹配/缺失、网络/限流分类、摘要失败禁止兜底、--build 只构建插件、安装回滚、启用/卸载测试；使用本地假服务。
 7. go test -race ./... 与桌面构建通过；日志/事件/错误不含正文、地址或票据。文档通过不表示功能已实现。
+
+## Directory processor items
+
+Processor `Item.Type` additionally accepts `directory_reference` and `directory`. A reference exposes top-level display names and zero directory sizes, without scanning descendants. A snapshot exposes file names/sizes and the manifest format, without host paths. Policy mutation permissions stay unchanged. Directory Actions are not introduced. See the [directory contract](directory-contract.md).

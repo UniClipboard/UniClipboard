@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -37,6 +38,20 @@ func headlessRoutes(mux *http.ServeMux, b api.Backend) {
 		}
 		reply(w, 200, out)
 	}), 8))
+	mux.HandleFunc("DELETE /v1/submissions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		source, ok := b.(interface {
+			CancelSubmission(context.Context, string) error
+		})
+		if !ok {
+			fail(w, 400, &api.Error{Reason: "unsupported", Message: "cancellation unavailable"})
+			return
+		}
+		if err := source.CancelSubmission(r.Context(), r.PathValue("id")); err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("GET /v1/submissions/{id}", func(w http.ResponseWriter, r *http.Request) {
 		v, e := h.Submission(r.Context(), r.PathValue("id"))
 		if e != nil {

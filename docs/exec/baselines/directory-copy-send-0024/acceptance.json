@@ -1,0 +1,19 @@
+{
+  "status": "LOCAL_ACCEPTANCE_PASSED",
+  "directory_scenarios": 8,
+  "frozen_regression_scenarios": 17,
+  "cli_binary_identity_matches": true,
+  "cli_binary_sha256": {
+    "unic": "6a15d0d968ecf6d4a47865767c105548c25116ec7366a75f0d3f1478225587de",
+    "unicd": "a4ef800d2b92e644a1d8e113550a99d7bd0a06ed6b25d7dc0a8d5805a7f8eb9b"
+  },
+  "production_headless": "passed",
+  "repository_race_checks": "PASS",
+  "desktop_nonvisual_checks": "PASS",
+  "platform_compilation": "PASS",
+  "native_clipboard": "NOT_RUN",
+  "real_devices": "NOT_RUN",
+  "windows_linux_process_runs": "NOT_RUN",
+  "linux_identical_copy_marker": "UNSUPPORTED; use explicit send",
+  "source_scope": "CLI source freezes and final Desktop compilation have separate inventories; see execution receipt"
+}

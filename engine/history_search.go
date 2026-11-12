@@ -42,7 +42,7 @@ func normalizeSearch(q HistorySearchQuery) (HistorySearchQuery, *Error) {
 	q.TextTerms = slices.Compact(slices.Sorted(slices.Values(q.TextTerms)))
 	q.Types = slices.Compact(slices.Sorted(slices.Values(q.Types)))
 	for _, t := range q.Types {
-		if t != "text" && t != "richtext" && t != "image" && t != "files" {
+		if t != "text" && t != "richtext" && t != "image" && t != "files" && t != "directory" && t != "directory_reference" {
 			return bad()
 		}
 	}

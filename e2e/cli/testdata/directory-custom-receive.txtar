@@ -1,0 +1,43 @@
+# 用例: Directory custom receives remain user-managed
+# 目的: Verify complete custom trees, empty directory transfer, and history restore.
+# 流程:
+#   1. Configure an existing custom receive directory and restart the receiver.
+#   2. Send a nested tree and an empty tree. Restore received history after restart.
+# 期望:
+#   - Received roots are in separate custom batches. Empty trees remain usable.
+#   - Restoring durable directory history recovers top-level roots.
+# 不应:
+#   - Require a nonempty file payload for a directory transfer.
+
+mkdir source/tree/empty
+cp content.txt source/tree/member
+mkdir empty-only
+mkdir custom
+node-start alpha
+node-start beta
+u beta config set inbox '"'$WORK'/custom"'
+node-stop beta
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+u alpha send --to all -f $WORK/empty-only --json
+stdout '"outcome":"success"'
+tree-wait beta empty-only
+node-stop beta
+node-start beta
+u beta history use @1 --json
+tree-wait beta empty-only
+file-path beta CUSTOM_ROOT
+u beta history delete @1 -y
+board-set beta text content.txt
+exists $CUSTOM_ROOT
+
+-- content.txt --
+custom-directory-canary
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

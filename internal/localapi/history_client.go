@@ -142,6 +142,12 @@ func (c *Client) HistoryContent(ctx context.Context, id string, part int) (Histo
 	return HistoryContent{MIME: resp.Header.Get("Content-Type"), Name: params["filename"], Size: resp.ContentLength, ReadCloser: resp.Body}, nil
 }
 
+// HistoryFolder lists the direct children of a folder-reference record.
+func (c *Client) HistoryFolder(ctx context.Context, id string) (l FolderListing, err error) {
+	err = c.do(ctx, http.MethodGet, "/v1/history/"+url.PathEscape(id)+"/folder", nil, &l)
+	return
+}
+
 // CopyHistoryContent streams part number part of a record to w.
 func (c *Client) CopyHistoryContent(ctx context.Context, id string, part int, w io.Writer) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unic/v1/history/"+url.PathEscape(id)+"/content?part="+strconv.Itoa(part), nil)

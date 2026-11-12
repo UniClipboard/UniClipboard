@@ -3,6 +3,7 @@ package board
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
@@ -33,6 +34,9 @@ func (MyGo) Read() (clip.Snapshot, error) {
 	if has(transfer.FileList) || has(transfer.URIList) {
 		if paths, err := mygo.Clipboard.ReadFiles(); err == nil && len(paths) > 0 {
 			for _, p := range paths {
+				// A directory URL ends with a separator ("file:///a/b/"); without
+				// cleaning, the base name is empty and the engine rejects the file.
+				p = filepath.Clean(p)
 				f := clip.File{Name: baseName(p), Path: p}
 				// A path that cannot be stat'ed keeps Size 0 and is rejected
 				// by the engine, which then syncs nothing.

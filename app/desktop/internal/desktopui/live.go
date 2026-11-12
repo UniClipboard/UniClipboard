@@ -187,6 +187,8 @@ func (d *viewState) liveQuery() api.HistoryQuery {
 		q.Kinds = []string{"image"}
 	case "文件":
 		q.Kinds = []string{"files"}
+	case "文件夹":
+		q.Kinds = []string{"directory", "directory_reference"}
 	}
 	if d.source == "local" {
 		q.Origins = []string{"local_system", "explicit", "action"}
@@ -343,6 +345,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						entries[i].image = cached.image
 						entries[i].rich = cached.rich
 						entries[i].contentError = cached.contentError
+						entries[i].folder = cached.folder
 					}
 					at := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == it.ID })
 					if at < 0 {
@@ -416,7 +419,7 @@ func projectHistory(it api.HistoryItem) entry {
 		kind = uikit.KindImage
 		title = "图片"
 	case "directory", "directory_reference":
-		kind = uikit.KindFile
+		kind = uikit.KindFolder
 		title = "目录快照"
 		if it.Kind == "directory_reference" {
 			title = "源目录引用"
@@ -497,6 +500,7 @@ func (l *liveState) loadDetail(d *viewState) {
 					d.entries[i].image = nil
 					d.entries[i].rich = nil
 					d.entries[i].contentError = ""
+					d.entries[i].folder = nil
 				}
 			}
 			for i := range d.entries {
@@ -505,6 +509,7 @@ func (l *liveState) loadDetail(d *viewState) {
 					d.entries[i].image = v.image
 					d.entries[i].rich = v.rich
 					d.entries[i].contentError = v.contentError
+					d.entries[i].folder = v.folder
 				}
 			}
 		}
@@ -684,6 +689,8 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 	switch it.Kind {
 	case "directory", "directory_reference":
 		var names []string
+		info := &folderInfo{reference: it.Kind == "directory_reference"}
+		v.folder = info
 		for i, p := range it.Parts {
 			if it.Kind == "directory" && p.MIME != engine.MimeDirectory {
 				continue
@@ -710,6 +717,42 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			}
 			for _, root := range manifest.Roots {
 				names = append(names, root.Name)
+			}
+			const maxRows = 200
+			for _, e := range manifest.Entries {
+				if e.Path == "" {
+					continue // a root itself
+				}
+				if e.Directory {
+					info.dirs++
+				} else {
+					info.files++
+					info.bytes += e.Size
+				}
+				if len(info.rows) >= maxRows {
+					info.truncated = true
+					continue
+				}
+				parts := strings.Split(e.Path, "/")
+				info.rows = append(info.rows, folderRow{depth: len(parts) - 1, name: parts[len(parts)-1], dir: e.Directory, size: e.Size})
+			}
+		}
+		info.names = names
+		if info.reference {
+			// Look at the live folder once per preview: direct children only.
+			if l, err := client.HistoryFolder(ctx, id); err != nil {
+				info.listError = true
+			} else {
+				for _, e := range l.Entries {
+					if e.Directory {
+						info.dirs++
+					} else {
+						info.files++
+						info.bytes += e.Size
+					}
+					info.rows = append(info.rows, folderRow{name: e.Name, dir: e.Directory, size: e.Size})
+				}
+				info.truncated = l.Truncated
 			}
 		}
 		if len(names) > 0 {

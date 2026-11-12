@@ -370,7 +370,8 @@ Processor `Item.Type` additionally accepts `directory_reference` and `directory`
 |---|---|
 | `text` | `builtin:text` |
 | `image` | `builtin:image` |
-| `files`, `directory`, `directory_reference` | `builtin:files` |
+| `files` | `builtin:files` |
+| `directory`, `directory_reference` | `builtin:folder` |
 | Text containing an HTTP(S) URL in the first 64 KiB | `builtin:link`, in addition to `builtin:text` |
 
-The processor performs no network access and does not change content. It does not backfill existing history. Hosts translate the four built-in labels at display time and retain these IDs in persisted tags, filters and settings. User-defined tag labels remain literal. Existing `builtin.text` email/url hints and Actions remain independent.
+The processor performs no network access and does not change content. It does not backfill existing history. Hosts translate the five built-in labels at display time and retain these IDs in persisted tags, filters and settings. User-defined tag labels remain literal. Existing `builtin.text` email/url hints and Actions remain independent.

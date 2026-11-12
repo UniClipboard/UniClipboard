@@ -213,6 +213,19 @@ type HistoryUpdate struct {
 	ExpiresAtMs *int64    `json:"expires_at_ms,omitempty"`
 }
 
+// FolderEntry is a direct child of a folder.
+type FolderEntry struct {
+	Name      string `json:"name"`
+	Directory bool   `json:"directory"`
+	Size      int64  `json:"size"`
+}
+
+// FolderListing is one level of a folder, bounded; Truncated means more exist.
+type FolderListing struct {
+	Entries   []FolderEntry `json:"entries"`
+	Truncated bool          `json:"truncated,omitempty"`
+}
+
 // HistoryContent is an open part of a record. Close it.
 type HistoryContent struct {
 	MIME string
@@ -288,6 +301,8 @@ type Backend interface {
 	GetHistory(ctx context.Context, id string) (HistoryItem, error)
 	// HistoryContent opens part number part (0-based) of a record.
 	HistoryContent(ctx context.Context, id string, part int) (HistoryContent, error)
+	// HistoryFolder lists one level of a folder-reference record as it is now.
+	HistoryFolder(ctx context.Context, id string) (FolderListing, error)
 	// UseHistory puts a record on the system clipboard without syncing it or
 	// creating a new record.
 	UseHistory(ctx context.Context, id string) error

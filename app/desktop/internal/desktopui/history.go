@@ -170,7 +170,7 @@ func (d *viewState) history(c *ui.Context, k uikit.Kit) {
 
 func (d *viewState) filters(c *ui.Context, k uikit.Kit) {
 	ui.Row(c.Key("filters")).Padding(5, 16, 5).Gap(6).Wrap().Shrink(0).Children(func() {
-		k.Select(c.Key("kind"), uikit.SelectProps{Label: d.tr("内容类型"), Placeholder: d.tr("类型"), Filter: true, Value: &d.kind, Items: []uikit.SelectItem{{Value: "all", Label: d.tr("所有类型")}, {Value: "文本", Label: d.tr("文本")}, {Value: "代码", Label: d.tr("代码")}, {Value: "链接", Label: d.tr("链接")}, {Value: "图片", Label: d.tr("图片")}, {Value: "文件", Label: d.tr("文件")}}})
+		k.Select(c.Key("kind"), uikit.SelectProps{Label: d.tr("内容类型"), Placeholder: d.tr("类型"), Filter: true, Value: &d.kind, Items: []uikit.SelectItem{{Value: "all", Label: d.tr("所有类型")}, {Value: "文本", Label: d.tr("文本")}, {Value: "代码", Label: d.tr("代码")}, {Value: "链接", Label: d.tr("链接")}, {Value: "图片", Label: d.tr("图片")}, {Value: "文件", Label: d.tr("文件")}, {Value: "文件夹", Label: d.tr("文件夹")}}})
 		sources := []uikit.SelectItem{{Value: "all", Label: d.tr("所有设备")}}
 		for _, v := range d.devices {
 			sources = append(sources, uikit.SelectItem{Value: v.id, Label: v.name})
@@ -261,7 +261,7 @@ func (d *viewState) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 		rows := make([]uikit.ItemListItem, 0, len(items))
 		for _, v := range items {
 			rows = append(rows, uikit.ItemListItem{ID: v.id, Title: d.entryTitle(v), Highlight: d.historyHighlightTerms(v), Subtitle: d.sourceName(v.source) + " · " + strings.TrimPrefix(strings.TrimPrefix(v.date, "今天 "), "昨天 "), Leading: func() {
-				labels := []string{"TXT", "CODE", "URL", "图片", "FILE"}
+				labels := []string{"TXT", "CODE", "URL", "图片", "FILE", "DIR"}
 				p := uikit.KindBadgeProps{Kind: v.kind, Label: d.tr(labels[v.kind])}
 				if v.kind == uikit.KindImage {
 					p.Image = d.entryImage(v)
@@ -326,7 +326,7 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 			if v.kind == uikit.KindImage {
 				kind = uikit.PreviewImage
 			}
-			if v.kind == uikit.KindFile {
+			if v.kind == uikit.KindFile || v.kind == uikit.KindFolder {
 				kind = uikit.PreviewFile
 			}
 			if v.image != nil {
@@ -359,6 +359,10 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 				}
 				if kind == uikit.PreviewImage {
 					ui.Image(c, d.entryImage(*v)).FillWidth().Height(220)
+					return
+				}
+				if v.kind == uikit.KindFolder {
+					d.folderPreview(c, k, v, secondary)
 					return
 				}
 				if v.kind == uikit.KindFile {

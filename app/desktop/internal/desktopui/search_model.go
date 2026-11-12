@@ -131,7 +131,7 @@ func (d *viewState) searchValues() []searchCandidate {
 	add := func(dim, value, label string) {
 		out = append(out, searchCandidate{dim, value, label, searchKinds[dim]})
 	}
-	for _, v := range [][2]string{{"text", "文本"}, {"richtext", "富文本"}, {"image", "图片"}, {"file", "文件"}} {
+	for _, v := range [][2]string{{"text", "文本"}, {"richtext", "富文本"}, {"image", "图片"}, {"file", "文件"}, {"folder", "文件夹"}} {
 		add("type", v[0], v[1])
 	}
 	for _, tag := range d.tags {

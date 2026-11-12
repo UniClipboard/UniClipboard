@@ -160,4 +160,4 @@ Directory snapshots use ordinary history, content leases and cache accounting. D
 
 A newer local copy cancels unfinished automatic directory preparation so that an old slow tree cannot arrive after the newer copy. Explicit source sends continue independently of clipboard changes. Background transmission uses the submission-owned lifetime when present; history-restore RPC completion does not cancel its queued transmission.
 
-Directory references and snapshots receive the existing `builtin:files` classification. They do not introduce a separate built-in tag.
+Directory references and snapshots receive the `builtin:folder` classification, separate from `builtin:files`. The desktop shows them with a folder badge, a folder type filter and a folder preview.

@@ -22,6 +22,11 @@ const (
 	IconDownload     IconName = "download"
 	IconEdit         IconName = "edit"
 	IconFile         IconName = "file"
+	IconFolder       IconName = "folder"
+	IconText         IconName = "text"
+	IconCode         IconName = "code"
+	IconLink         IconName = "link"
+	IconImage        IconName = "image"
 	IconFilter       IconName = "filter"
 	IconGlobe        IconName = "globe"
 	IconGrid         IconName = "grid"
@@ -128,6 +133,7 @@ const (
 	KindLink
 	KindImage
 	KindFile
+	KindFolder
 )
 
 // SurfaceRegion: Sidebar shows the platform material where available, Content is opaque.

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/uniclipboard/unic/engine"
@@ -208,4 +209,49 @@ func (d *DirectorySource) ReadDirectory(ctx context.Context) (engine.DirectoryLi
 		return engine.DirectoryListing{}, err
 	}
 	return engine.DirectoryListing{Entries: entries, Verify: scan.verify}, nil
+}
+
+// ListFolder lists the direct children of the folder: no recursion, no links
+// followed. Directories come first, then names in order.
+func (d *DirectorySource) ListFolder(ctx context.Context, limit int) ([]engine.FolderEntry, bool, error) {
+	rc, _, err := d.Open(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	_ = rc.Close()
+	root, err := os.OpenRoot(d.ref.Path)
+	if err != nil {
+		return nil, false, sourceFailure(engine.CodePermissionDenied)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(".")
+	if err != nil {
+		return nil, false, sourceFailure(engine.CodePermissionDenied)
+	}
+	defer func() { _ = f.Close() }()
+	infos, err := f.ReadDir(-1)
+	if err != nil {
+		return nil, false, sourceFailure(engine.CodePermissionDenied)
+	}
+	out := make([]engine.FolderEntry, 0, len(infos))
+	for _, e := range infos {
+		fe := engine.FolderEntry{Name: e.Name(), Directory: e.IsDir()}
+		if !fe.Directory {
+			if st, err := e.Info(); err == nil {
+				fe.Size = st.Size()
+			}
+		}
+		out = append(out, fe)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Directory != out[j].Directory {
+			return out[i].Directory
+		}
+		return out[i].Name < out[j].Name
+	})
+	truncated := false
+	if limit > 0 && len(out) > limit {
+		out, truncated = out[:limit], true
+	}
+	return out, truncated, nil
 }

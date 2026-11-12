@@ -36,8 +36,10 @@ func (*Plugin) Process(_ context.Context, c plugin.ProcessContext) error {
 		tag = plugin.TagText
 	case "image":
 		tag = plugin.TagImage
-	case "files", "directory", "directory_reference":
+	case "files":
 		tag = plugin.TagFiles
+	case "directory", "directory_reference":
+		tag = plugin.TagFolder
 	default:
 		return nil
 	}

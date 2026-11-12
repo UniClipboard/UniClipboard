@@ -526,3 +526,42 @@ func copyDirectoryView(ctx context.Context, root *os.Root, name string, r io.Rea
 	}
 	return expectEOF(ctx, r)
 }
+
+// FolderEntry is one direct child of a listed folder.
+type FolderEntry struct {
+	Name      string
+	Directory bool
+	Size      int64
+}
+
+// FolderLister is implemented by a host directory source that can list one
+// level of the live folder. It never recurses.
+type FolderLister interface {
+	ListFolder(ctx context.Context, limit int) (entries []FolderEntry, truncated bool, err error)
+}
+
+// ListHistoryFolder lists the direct children of a directory-reference record
+// as they are now. The read is bounded by limit and never follows links.
+func (e *Engine) ListHistoryFolder(ctx context.Context, id HistoryID, limit int) ([]FolderEntry, bool, error) {
+	release, gerr := e.historyGate(ctx, false, true)
+	if gerr != nil {
+		return nil, false, gerr
+	}
+	defer release()
+	c, lerr := e.loadHistoryContent(id)
+	if lerr != nil {
+		return nil, false, lerr
+	}
+	defer e.cs.unref(c)
+	for _, p := range c.parts {
+		if p.desc.MIME != directory.ReferenceMIME {
+			continue
+		}
+		l, ok := p.src.(FolderLister)
+		if !ok {
+			return nil, false, newErr(CodeSourceChanged, "the folder is unavailable")
+		}
+		return l.ListFolder(ctx, limit)
+	}
+	return nil, false, newErr(CodeInvalidArgument, "the record is not a folder reference")
+}

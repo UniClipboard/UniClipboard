@@ -28,6 +28,38 @@ type entry struct {
 	kind                                uikit.ContentKind
 	tags                                []string
 	pinned                              bool
+	folder                              *folderInfo
+}
+
+// folderInfo is the display model of a folder entry. Rows exist only for snapshots.
+type folderInfo struct {
+	names     []string
+	reference bool
+	files     int
+	dirs      int
+	bytes     int64
+	rows      []folderRow
+	truncated bool
+	listError bool // the live folder could not be read
+}
+type folderRow struct {
+	depth int
+	name  string
+	dir   bool
+	size  int64
+}
+
+func humanBytes(n int64) string {
+	const u = "KMGT"
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	f, i := float64(n)/1024, 0
+	for f >= 1024 && i < len(u)-1 {
+		f /= 1024
+		i++
+	}
+	return fmt.Sprintf("%.1f %cB", f, u[i])
 }
 
 type devicePath struct {
@@ -168,7 +200,7 @@ func (d *viewState) sourceName(id string) string {
 }
 
 func kindName(kind uikit.ContentKind) string {
-	return []string{"文本", "代码", "链接", "图片", "文件"}[kind]
+	return []string{"文本", "代码", "链接", "图片", "文件", "文件夹"}[kind]
 }
 
 func (d *viewState) filtered() []entry {

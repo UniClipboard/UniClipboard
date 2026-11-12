@@ -521,6 +521,48 @@
     "pt-BR": "Arquivos",
     "ru": "Файлы"
   },
+  "文件夹": {
+    "en": "Folders",
+    "ja": "フォルダ",
+    "pt-BR": "Pastas",
+    "ru": "Папки"
+  },
+  "源目录引用。主动发送时读取当前目录内容。": {
+    "en": "Source folder reference. Sending reads the current folder contents.",
+    "ja": "元フォルダへの参照。送信時に現在のフォルダ内容を読み取ります。",
+    "pt-BR": "Referência à pasta de origem. O envio lê o conteúdo atual da pasta.",
+    "ru": "Ссылка на исходную папку. При отправке читается текущее содержимое папки."
+  },
+  "目录快照。发送时使用已保存的内容。": {
+    "en": "Folder snapshot. Sending uses the saved content.",
+    "ja": "フォルダのスナップショット。送信時は保存済みの内容を使います。",
+    "pt-BR": "Instantâneo da pasta. O envio usa o conteúdo salvo.",
+    "ru": "Снимок папки. При отправке используется сохранённое содержимое."
+  },
+  "个文件": {
+    "en": "files",
+    "ja": "ファイル",
+    "pt-BR": "arquivos",
+    "ru": "файлов"
+  },
+  "个文件夹": {
+    "en": "folders",
+    "ja": "フォルダ",
+    "pt-BR": "pastas",
+    "ru": "папок"
+  },
+  "仅显示前 200 项": {
+    "en": "Showing the first 200 items",
+    "ja": "最初の200件のみ表示",
+    "pt-BR": "Mostrando os primeiros 200 itens",
+    "ru": "Показаны первые 200 элементов"
+  },
+  "无法读取文件夹，可能已移动或删除。": {
+    "en": "Cannot read the folder. It may have been moved or deleted.",
+    "ja": "フォルダを読み取れません。移動または削除された可能性があります。",
+    "pt-BR": "Não foi possível ler a pasta. Ela pode ter sido movida ou excluída.",
+    "ru": "Не удалось прочитать папку. Возможно, она перемещена или удалена."
+  },
   "链接": {
     "en": "Links",
     "ja": "リンク",

@@ -29,6 +29,8 @@ func (d *viewState) historySearchQuery() engine.HistorySearchQuery {
 		q.Types = []engine.HistorySearchType{"image"}
 	case "文件", "file":
 		q.Types = []engine.HistorySearchType{"files"}
+	case "文件夹", "folder":
+		q.Types = []engine.HistorySearchType{"directory", "directory_reference"}
 	}
 	if d.source != "" && d.source != "all" {
 		q.Sources = []engine.HistorySearchSource{searchSource(d.source)}
@@ -146,7 +148,7 @@ func (d *viewState) liveSearchValues() []searchCandidate {
 	add := func(dim, value, label string) {
 		out = append(out, searchCandidate{dimension: dim, value: value, label: label, kind: searchKinds[dim]})
 	}
-	for _, v := range [][2]string{{"text", "文本"}, {"richtext", "富文本"}, {"image", "图片"}, {"file", "文件"}} {
+	for _, v := range [][2]string{{"text", "文本"}, {"richtext", "富文本"}, {"image", "图片"}, {"file", "文件"}, {"folder", "文件夹"}} {
 		add("type", v[0], v[1])
 	}
 	for _, f := range []struct{ field, dim string }{{"tag", "tag"}, {"source", "source"}, {"extension", "extension"}} {

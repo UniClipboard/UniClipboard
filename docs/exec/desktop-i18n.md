@@ -36,7 +36,7 @@ Base source: `3f9a8c2dc986572ece590dafb4b17c03d28c8046`, with this task's uncomm
 
 The isolated process case required permission to bind its temporary Unix socket. Sync and telemetry were disabled. Test cleanup passed. No real profile or clipboard was used.
 
-The `-bump` commands for overview and headless rejected the uncommitted source, as designed. Their `verified` markers must be bumped after a scoped source commit. No commit or push was requested or performed.
+The initial `-bump` commands for overview and headless deferred verification until the source commit. PR preparation completed that refresh as recorded below.
 
 ## Settings screenshot supplement (2026-11-12)
 
@@ -47,3 +47,7 @@ The `-bump` commands for overview and headless rejected the uncommitted source, 
 Scanned all nine production Kit.Switch call sites and the single SwitchBase implementation. SwitchProps now retains only an accessible Label and Disabled flag. The shared renderer never draws a caption. Removed obsolete LabelHidden arguments from all callers; checkbox behavior is unchanged.
 
 Extended the existing settings E2E checkpoint before implementation to reject duplicate text and verify accessible switch names, compact track width, mouse toggling and Space toggling for all four General switches across all 30 language/skin/theme combinations. The pre-change run reproduced the duplicate captions. The final run passed and retained 120 PNGs: `.build/desktop-e2e/20261112T064837Z-9d418da4/index.html`. Desktop build, desktop go vet, catalogue freshness and whitespace checks passed. Docscheck passed with the existing eight freshness warnings; verified markers still require a source commit before bumping. No native window was launched.
+
+## PR preparation
+
+Source commit: `b801141902cf765667c16cf36d6dc27d859acd6b`. All 481 Go/catalogue source files matched the final passing E2E snapshot before committing. The overview and headless architecture pages were rechecked and their `verified` markers now reference this source commit. The repository has no CONTEXT.md, so the required read-only context audit required no update. Catalogue freshness, gofmt and staged-snapshot checks passed. Local golangci-lint lacks the configured fmt flags; its CI job remains the formatter/linter gate.

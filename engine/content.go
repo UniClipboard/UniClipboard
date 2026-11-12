@@ -98,6 +98,7 @@ type partRec struct {
 // contentObj is stored content. It lives while anything references it: a
 // lease, an open reader (and, later, operations and received items).
 type contentObj struct {
+	source    *SourceApplication
 	copyID    string
 	treeMu    sync.Mutex
 	treePaths []string
@@ -161,7 +162,7 @@ func (cs *contentStore) unref(c *contentObj) {
 }
 
 func (cs *contentStore) descriptor(c *contentObj) ContentDescriptor {
-	d := ContentDescriptor{ID: c.id, TotalSize: c.total, Parts: make([]PartDescriptor, len(c.parts))}
+	d := ContentDescriptor{SourceApplication: c.source.Clone(), ID: c.id, TotalSize: c.total, Parts: make([]PartDescriptor, len(c.parts))}
 	for i, p := range c.parts {
 		d.Parts[i] = p.desc
 	}
@@ -261,6 +262,9 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 	lim := e.settings.Value.Limits
 	e.mu.Unlock()
 
+	if in.SourceApplication.Validate() != nil {
+		return ContentHandle{}, newErr(CodeInvalidArgument, "invalid source application metadata")
+	}
 	if len(in.Representations)+len(in.Files) == 0 {
 		return ContentHandle{}, newErr(CodeInvalidArgument, "the content is empty")
 	}
@@ -308,12 +312,13 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 		return ContentHandle{}, newErr(CodeLimitExceeded, "the content is over the size limit")
 	}
 
+	owned += int64(len(in.SourceApplication.Encode()))
 	cs := e.cs
 	if !e.reserveStored(owned, false) { // history may give way, received entries are not touched
 		return ContentHandle{}, retryable(newErr(CodeResourceExhausted, "not enough storage for this content"))
 	}
 
-	c := &contentObj{copyID: in.ObservationKey, id: ContentID(e.newID()), total: total, owned: owned, refs: 1}
+	c := &contentObj{copyID: in.ObservationKey, source: in.SourceApplication.Clone(), id: ContentID(e.newID()), total: total, owned: owned, refs: 1}
 	ok := false
 	defer func() {
 		if !ok {

@@ -375,3 +375,8 @@ Processor `Item.Type` additionally accepts `directory_reference` and `directory`
 | Text containing an HTTP(S) URL in the first 64 KiB | `builtin:link`, in addition to `builtin:text` |
 
 The processor performs no network access and does not change content. It does not backfill existing history. Hosts translate the five built-in labels at display time and retain these IDs in persisted tags, filters and settings. User-defined tag labels remain literal. Existing `builtin.text` email/url hints and Actions remain independent.
+
+## Source application metadata
+
+Clipboard content and history preserve optional source application identity and cached PNG icons.
+See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.

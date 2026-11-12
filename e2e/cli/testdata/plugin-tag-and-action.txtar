@@ -27,7 +27,7 @@ pair alpha beta
 
 board-set alpha text mail.txt
 board-wait beta text mail.txt
-until beta 'alpha\s+\d+B\s+email' h list
+until beta 'alpha\s+\d+B\s+([^ ]*,)?email(,|$)' h list
 
 board-set alpha text hello.txt
 board-wait beta text hello.txt

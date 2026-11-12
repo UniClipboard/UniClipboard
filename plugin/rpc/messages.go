@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"slices"
 	"unicode/utf8"
+
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 // Limits are the negotiated transport bounds.
@@ -232,10 +234,11 @@ type SubmitPart struct {
 
 // Submit asks the backend to send Parts to Targets (enabled channel IDs).
 type Submit struct {
-	TransferID  string       `json:"transfer_id"`
-	TimestampMs U64          `json:"timestamp_ms"`
-	Targets     []string     `json:"targets"`
-	Parts       []SubmitPart `json:"parts"`
+	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	TransferID        string                 `json:"transfer_id"`
+	TimestampMs       U64                    `json:"timestamp_ms"`
+	Targets           []string               `json:"targets"`
+	Parts             []SubmitPart           `json:"parts"`
 }
 
 type SubmitResult struct {
@@ -265,10 +268,11 @@ type ReceivePart struct {
 }
 
 type Receive struct {
-	ChannelID string        `json:"channel_id"`
-	Transfer  string        `json:"transfer"`
-	View      string        `json:"view"`
-	Parts     []ReceivePart `json:"parts"`
+	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	ChannelID         string                 `json:"channel_id"`
+	Transfer          string                 `json:"transfer"`
+	View              string                 `json:"view"`
+	Parts             []ReceivePart          `json:"parts"`
 }
 
 // StreamDesc describes a binary stream; it never carries a path.
@@ -310,13 +314,13 @@ type File struct {
 }
 
 type Item struct {
-	ID        string      `json:"id"`
-	Type      string      `json:"type"`
-	Text      *StreamDesc `json:"text"`
-	Formats   []string    `json:"formats"`
-	Origin    Origin      `json:"origin"`
-	SourceApp string      `json:"source_app"`
-	Files     []File      `json:"files"`
+	ID                string                 `json:"id"`
+	Type              string                 `json:"type"`
+	Text              *StreamDesc            `json:"text"`
+	Formats           []string               `json:"formats"`
+	Origin            Origin                 `json:"origin"`
+	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	Files             []File                 `json:"files"`
 }
 
 type Policy struct {
@@ -394,6 +398,9 @@ func (p Policy) validate() error {
 
 // Validate checks an item snapshot.
 func (i Item) Validate() error {
+	if i.SourceApplication.Validate() != nil {
+		return NewError(CodeInvalidArgument)
+	}
 	if i.ID == "" || len(i.ID) > 128 {
 		return protoErr("bad item id")
 	}
@@ -489,6 +496,9 @@ func validMIME(s string) bool { return s != "" && len(s) <= 128 && utf8.ValidStr
 
 // Validate checks structure, purposes and the in-memory size cap.
 func (s Submit) Validate() error {
+	if s.SourceApplication.Validate() != nil {
+		return NewError(CodeInvalidArgument)
+	}
 	if !validID(s.TransferID) || !validIDs(s.Targets) || len(s.Parts) == 0 || len(s.Parts) > MaxSyncParts {
 		return NewError(CodeInvalidArgument)
 	}
@@ -532,6 +542,9 @@ func (r Report) Validate() error {
 }
 
 func (r Receive) Validate() error {
+	if r.SourceApplication.Validate() != nil {
+		return NewError(CodeInvalidArgument)
+	}
 	if !validID(r.ChannelID) || !validID(r.Transfer) || !validID(r.View) || len(r.Parts) == 0 || len(r.Parts) > MaxReceiveParts {
 		return NewError(CodeInvalidArgument)
 	}

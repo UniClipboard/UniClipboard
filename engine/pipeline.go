@@ -33,12 +33,13 @@ type pipelineFile struct {
 }
 
 type pipelineItem struct {
-	ID      string
-	Type    string
-	Text    string
-	Formats []string
-	Files   []pipelineFile
-	Origin  pipelineOrigin
+	SourceApplication *SourceApplication
+	ID                string
+	Type              string
+	Text              string
+	Formats           []string
+	Files             []pipelineFile
+	Origin            pipelineOrigin
 }
 
 type pipelinePolicy struct {
@@ -81,6 +82,7 @@ type processingContext struct {
 }
 
 func clonePipelineItem(i pipelineItem) pipelineItem {
+	i.SourceApplication = i.SourceApplication.Clone()
 	i.Formats = slices.Clone(i.Formats)
 	i.Files = slices.Clone(i.Files)
 	return i
@@ -166,7 +168,7 @@ func (c *processingContext) SetExpire(v time.Duration) error {
 }
 
 func describePipelineItem(id string, c *contentObj, origin pipelineOrigin) pipelineItem {
-	i := pipelineItem{ID: id, Type: "text", Origin: origin}
+	i := pipelineItem{SourceApplication: c.source.Clone(), ID: id, Type: "text", Origin: origin}
 	for _, p := range c.parts {
 		if p.desc.Kind == PartFile {
 			i.Files = append(i.Files, pipelineFile{Name: p.desc.Name, Size: p.desc.Size})

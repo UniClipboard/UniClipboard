@@ -7,6 +7,8 @@ import (
 	"context"
 	"io"
 	"time"
+
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 // Capabilities a plugin may declare.
@@ -127,12 +129,13 @@ type File struct {
 
 // Item is a read-only description of the content being processed.
 type Item struct {
-	ID      string
-	Type    string // text, image, files, directory or directory_reference
-	Text    string // empty unless the item has a text representation
-	Formats []string
-	Files   []File
-	Origin  Origin
+	SourceApplication *sourceapp.Application
+	ID                string
+	Type              string // text, image, files, directory or directory_reference
+	Text              string // empty unless the item has a text representation
+	Formats           []string
+	Files             []File
+	Origin            Origin
 }
 
 // Policy is what will happen to the item after processing.
@@ -189,9 +192,10 @@ type SyncPart struct {
 // SyncView is the content one backend is asked to send, already filtered by
 // that backend's policy.
 type SyncView struct {
-	ID          string // transfer identity, shared by all backends of a commit
-	TimestampMs int64
-	Parts       []SyncPart
+	SourceApplication *sourceapp.Application
+	ID                string // transfer identity, shared by all backends of a commit
+	TimestampMs       int64
+	Parts             []SyncPart
 	// Targets are the enabled channel IDs of an external-channel backend; nil
 	// for other backends.
 	Targets []string
@@ -233,9 +237,10 @@ type ReceivedPart struct {
 // remote message and View per exact content; together they let the engine
 // drop the same message arriving twice, also through another backend.
 type Received struct {
-	Transfer string
-	View     string
-	Parts    []ReceivedPart
+	SourceApplication *sourceapp.Application
+	Transfer          string
+	View              string
+	Parts             []ReceivedPart
 }
 
 // Receiver takes content that arrived from an external channel. A non-nil

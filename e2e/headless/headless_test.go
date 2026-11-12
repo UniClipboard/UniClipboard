@@ -302,6 +302,7 @@ func TestProductionHeadless(t *testing.T) {
 		return e == nil && f == nil && len(x.Peers) == 1 && len(y.Peers) == 1 && x.Peers[0].Connected && y.Peers[0].Connected
 	})
 	checks = append(checks, "two production daemons pair with mutual explicit approval")
+	expectedSources := map[string]*engine.SourceApplication{}
 	verify := func(id string, want []byte) {
 		t.Helper()
 		var receipt engine.ReceivedContent
@@ -325,6 +326,16 @@ func TestProductionHeadless(t *testing.T) {
 		if receipt.HistoryID == "" {
 			t.Fatal("receipt missing history")
 		}
+		if source := expectedSources[id]; source != nil {
+			if !reflect.DeepEqual(receipt.Content.SourceApplication, source) {
+				t.Fatal("received descriptor lost source application")
+			}
+			item, err := b.GetHistory(ctx, string(receipt.HistoryID))
+			need(t, err)
+			if !reflect.DeepEqual(item.SourceApplication, source) {
+				t.Fatal("received history lost source application")
+			}
+		}
 		var content bytes.Buffer
 		need(t, b.CopyHistoryContent(ctx, string(receipt.HistoryID), 0, &content))
 		if !bytes.Equal(content.Bytes(), want) {
@@ -333,7 +344,7 @@ func TestProductionHeadless(t *testing.T) {
 		dest := filepath.Join(base, "export-"+id)
 		names, e := b.ExportHistory(ctx, string(receipt.HistoryID), dest)
 		need(t, e)
-		if len(names) != 1 {
+		if len(names) != len(receipt.Content.Parts) {
 			t.Fatal("export part count")
 		}
 		got, e := os.ReadFile(filepath.Join(dest, names[0]))
@@ -360,6 +371,45 @@ func TestProductionHeadless(t *testing.T) {
 	need(t, e)
 	verify("file", []byte("network file"))
 	checks = append(checks, "headless text, PNG and file receive, read, export and dismiss")
+	// These are production HTTP/Engine/session/wire/storage flows. No Engine fixture.
+	provenance := &engine.SourceApplication{Platform: "darwin", Identifier: "org.example.Source", Name: "Source Fixture", Attribution: "source_marker", IconPNG: pngbuf.Bytes()}
+	rich := snapshot("metadata rich text")
+	rich.Parts = append(rich.Parts, clip.Part{Format: clip.HTML, Data: []byte("<b>metadata rich text</b>")})
+	for i, snap := range []clip.Snapshot{rich, clipSnapshotPNG(pngbuf.Bytes()), clipSnapshotFile(src)} {
+		id := fmt.Sprintf("source-%d", i)
+		snap.SourceApplication = provenance.Clone()
+		expectedSources[id] = provenance.Clone()
+		result, err := a.Submit(ctx, api.SubmitInput{RequestID: id, Snapshot: snap})
+		need(t, err)
+		local, err := a.GetHistory(ctx, string(result.HistoryID))
+		need(t, err)
+		if !reflect.DeepEqual(local.SourceApplication, provenance) {
+			t.Fatal("local history lost source application")
+		}
+		verify(id, [][]byte{[]byte("metadata rich text"), pngbuf.Bytes(), []byte("network file")}[i])
+	}
+	beforeInvalid, err := a.ListHistory(ctx, "", "")
+	need(t, err)
+	for i, invalid := range []*engine.SourceApplication{
+		{Platform: "darwin", Identifier: "/private/source.app", Attribution: "source_marker"},
+		{Platform: "darwin", Identifier: "org.example.Source", Attribution: "source_marker", IconPNG: []byte("not a PNG")},
+		{Platform: "darwin", Identifier: "org.example.Source", Attribution: "source_marker", IconPNG: make([]byte, (16<<10)+1)},
+		{Platform: "darwin", Identifier: "org.example.Source", Attribution: "unverified"},
+	} {
+		snap := snapshot("rejected application metadata")
+		snap.SourceApplication = invalid
+		_, err := a.Submit(ctx, api.SubmitInput{RequestID: fmt.Sprintf("invalid-source-%d", i), Snapshot: snap})
+		if api.ReasonOf(err) != "invalid_argument" {
+			t.Fatalf("invalid metadata accepted: %v", err)
+		}
+	}
+	afterInvalid, err := a.ListHistory(ctx, "", "")
+	need(t, err)
+	if len(beforeInvalid.Items) != len(afterInvalid.Items) {
+		t.Fatal("invalid metadata committed history")
+	}
+	checks = append(checks, "source identity and PNG survive rich text, image and file sync; malformed and oversized metadata rejected before commit")
+
 	// Referenced files fail with source_changed after mutation, without corrupting history.
 	fileResult, e := a.Submit(ctx, api.SubmitInput{RequestID: "source-check", Snapshot: clipSnapshotFile(src)})
 	need(t, e)
@@ -607,7 +657,7 @@ func sourceHashes(root string) (map[string]string, error) {
 		hashes[filepath.ToSlash(rel)] = hex.EncodeToString(sum[:])
 		return nil
 	}
-	for _, dir := range []string{"app/service", "engine", "internal", "plugin", "e2e/headless"} {
+	for _, dir := range []string{"app/service", "engine", "internal", "plugin", "e2e/headless", "sourceapp"} {
 		if e := filepath.WalkDir(filepath.Join(root, dir), func(path string, d os.DirEntry, e error) error {
 			if e != nil {
 				return e

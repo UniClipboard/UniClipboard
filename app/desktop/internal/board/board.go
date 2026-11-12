@@ -2,6 +2,7 @@
 package board
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -19,6 +20,21 @@ type MyGo struct{}
 var syncFormats = []transfer.Format{transfer.Text, transfer.HTML, transfer.PNG}
 
 func (MyGo) Read() (clip.Snapshot, error) {
+	before := nativeSource()
+	s, err := readContent()
+	if err != nil {
+		return s, err
+	}
+	if nativeVersion() != before.token {
+		return clip.Snapshot{}, errors.New("clipboard changed during read")
+	}
+	if !s.Empty() {
+		s.SourceApplication = before.app.Clone()
+	}
+	return s, nil
+}
+
+func readContent() (clip.Snapshot, error) {
 	s := clip.Snapshot{CopyID: clipboardCopyID()}
 	offered := mygo.Clipboard.Formats()
 	has := func(f transfer.Format) bool {

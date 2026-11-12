@@ -641,7 +641,7 @@ func (p *Proxy) enter(ctx context.Context) error {
 func (p *Proxy) leave() { <-p.gate }
 
 func wireItem(it plugin.Item, textDesc *rpc.StreamDesc) rpc.Item {
-	out := rpc.Item{ID: it.ID, Type: it.Type, Text: textDesc, Formats: slices.Clone(it.Formats),
+	out := rpc.Item{SourceApplication: it.SourceApplication.Clone(), ID: it.ID, Type: it.Type, Text: textDesc, Formats: slices.Clone(it.Formats),
 		Origin: rpc.Origin{Kind: it.Origin.Kind, DeviceID: it.Origin.DeviceID, PluginID: it.Origin.PluginID}, Files: []rpc.File{}}
 	if out.Formats == nil {
 		out.Formats = []string{}

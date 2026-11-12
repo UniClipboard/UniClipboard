@@ -292,3 +292,8 @@ Exactly one of `snapshot` and `history_id` supplies content. A history source re
 `DELETE /v1/submissions/{request_id}` explicitly cancels a known admitted request, including the interval before Engine admission. Unknown IDs return not_found. Repeated cancellation is safe while the request is retained. Committed history is not rolled back. HTTP disconnection alone keeps the admitted request running. The host uses an independent per-request cancellation context; Engine `CommitRequest.CancelOnContext` opts into that lifetime without changing the default SDK caller-timeout behavior.
 
 The adapter supports explicit leased `tree-paths` and `tree-references` calls. Only the host decodes custom root references. `CopyID` in a local snapshot is an observation marker and never enters peer transport. Tree application rechecks the current clipboard after preparation and before the platform write. Exact tree DTOs and bounds follow the [directory contract](directory-contract.md).
+
+## Source application metadata
+
+Clipboard content and history preserve optional source application identity and cached PNG icons.
+See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.

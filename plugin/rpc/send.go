@@ -1,6 +1,10 @@
 package rpc
 
-import "unicode/utf8"
+import (
+	"unicode/utf8"
+
+	"github.com/uniclipboard/unic/sourceapp"
+)
 
 // Single-target send for peer_sessions backends (sync-backend-contract §4).
 const (
@@ -23,14 +27,18 @@ type ClipPart struct {
 
 // Clip is the wire clip header the backend writes after being authorized.
 type Clip struct {
-	WireID string     `json:"wire_id"`
-	Origin string     `json:"origin"`
-	AtMs   U64        `json:"at_ms"`
-	Hash   string     `json:"hash"`
-	Parts  []ClipPart `json:"parts"`
+	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	WireID            string                 `json:"wire_id"`
+	Origin            string                 `json:"origin"`
+	AtMs              U64                    `json:"at_ms"`
+	Hash              string                 `json:"hash"`
+	Parts             []ClipPart             `json:"parts"`
 }
 
 func (c Clip) Validate() error {
+	if c.SourceApplication.Validate() != nil {
+		return NewError(CodeInvalidArgument)
+	}
 	if !validID(c.WireID) || !validID(c.Origin) || !hex64Re.MatchString(c.Hash) || len(c.Parts) == 0 || len(c.Parts) > MaxClipParts {
 		return NewError(CodeInvalidArgument)
 	}

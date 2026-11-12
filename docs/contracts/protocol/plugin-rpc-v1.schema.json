@@ -341,16 +341,15 @@
         "origin": {
           "$ref": "#/$defs/origin"
         },
-        "source_app": {
-          "type": "string",
-          "maxLength": 256
-        },
         "files": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/file"
           },
           "maxItems": 4096
+        },
+        "source_application": {
+          "$ref": "#/$defs/source_application"
         }
       },
       "required": [
@@ -359,7 +358,6 @@
         "text",
         "formats",
         "origin",
-        "source_app",
         "files"
       ],
       "additionalProperties": false
@@ -1149,6 +1147,9 @@
           },
           "maxItems": 4096,
           "minItems": 1
+        },
+        "source_application": {
+          "$ref": "#/$defs/source_application"
         }
       },
       "required": [
@@ -1457,6 +1458,9 @@
           },
           "minItems": 1,
           "maxItems": 8
+        },
+        "source_application": {
+          "$ref": "#/$defs/source_application"
         }
       },
       "required": [
@@ -1592,6 +1596,9 @@
           },
           "minItems": 1,
           "maxItems": 8
+        },
+        "source_application": {
+          "$ref": "#/$defs/source_application"
         }
       },
       "required": [
@@ -1735,6 +1742,47 @@
         "address"
       ],
       "additionalProperties": false
+    },
+    "source_application": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "enum": [
+            "darwin",
+            "windows",
+            "linux",
+            "android",
+            "ios"
+          ]
+        },
+        "identifier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "attribution": {
+          "enum": [
+            "clipboard_owner",
+            "source_marker",
+            "foreground"
+          ]
+        },
+        "icon_png": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "maxLength": 21848
+        }
+      },
+      "required": [
+        "platform",
+        "identifier",
+        "attribution"
+      ]
     }
   }
 }

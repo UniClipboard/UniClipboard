@@ -33,7 +33,7 @@ func (s *server) submit(ctx context.Context, c *rpc.Call) (any, error) {
 	if err := s.started(); err != nil {
 		return nil, err
 	}
-	view := SyncView{ID: in.TransferID, TimestampMs: int64(in.TimestampMs), Targets: in.Targets}
+	view := SyncView{SourceApplication: in.SourceApplication.Clone(), ID: in.TransferID, TimestampMs: int64(in.TimestampMs), Targets: in.Targets}
 	var total uint64
 	for _, p := range in.Parts {
 		if p.Stream.Purpose != rpc.PurposeSyncPart {
@@ -109,7 +109,7 @@ func (r remoteReceiver) Receive(ctx context.Context, channelID string, rv Receiv
 	conn := r.s.conn
 	id, err := conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodReceive, Timeout: 30 * time.Second,
 		Build: func(id uint64) (any, error) {
-			out := rpc.Receive{ChannelID: channelID, Transfer: rv.Transfer, View: rv.View}
+			out := rpc.Receive{SourceApplication: rv.SourceApplication.Clone(), ChannelID: channelID, Transfer: rv.Transfer, View: rv.View}
 			for _, p := range rv.Parts {
 				ss, d, err := conn.NewSend(conn.Context(), id, rpc.PurposeReceivePart, uint64(len(p.Data)))
 				if err != nil {

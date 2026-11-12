@@ -160,3 +160,8 @@ Backend authority callbacks must not synchronously invoke `ApplyState`. A backen
 ## Directory extension
 
 Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.
+
+## Source application metadata
+
+Clipboard content and history preserve optional source application identity and cached PNG icons.
+See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.

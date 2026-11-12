@@ -22,7 +22,7 @@ func (r *Remote) call(ctx context.Context, m string, in, out any) error {
 	return r.Client.AdapterCall(request, r.Session, m, in, out)
 }
 func (r *Remote) ImportContent(ctx context.Context, in engine.ContentInput) (out engine.ContentHandle, err error) {
-	s := clip.Snapshot{CopyID: in.ObservationKey}
+	s := clip.Snapshot{CopyID: in.ObservationKey, SourceApplication: in.SourceApplication.Clone()}
 	for _, p := range in.Representations {
 		if p.Size > 64<<20 {
 			return out, &engine.Error{Code: engine.CodeLimitExceeded, Message: "representation too large"}

@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/uniclipboard/unic/internal/directory"
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 // ContentID names stored content; LeaseID is one holder's claim on it; PartID
@@ -37,9 +38,10 @@ type PartDescriptor struct {
 
 // ContentDescriptor describes stored content.
 type ContentDescriptor struct {
-	ID        ContentID        `json:"id"`
-	Parts     []PartDescriptor `json:"parts"`
-	TotalSize int64            `json:"total_size"`
+	SourceApplication *SourceApplication `json:"source_application,omitempty"`
+	ID                ContentID          `json:"id"`
+	Parts             []PartDescriptor   `json:"parts"`
+	TotalSize         int64              `json:"total_size"`
 }
 
 // ContentHandle is what an import returns: the content and the caller's lease
@@ -102,12 +104,15 @@ type FileInput struct {
 	Source FileSource
 }
 
-// ContentInput is one clipboard item: alternative representations of one
-// thing, plus files.
+// SourceApplication is portable application provenance supplied by the host.
+type SourceApplication = sourceapp.Application
+
+// ContentInput is one clipboard item: alternative representations and files.
 type ContentInput struct {
-	ObservationKey  string // local copy-action marker; never transmitted
-	Representations []RepresentationInput
-	Files           []FileInput
+	SourceApplication *SourceApplication
+	ObservationKey    string // local copy-action marker; never transmitted
+	Representations   []RepresentationInput
+	Files             []FileInput
 }
 
 // DirectorySource supplies a selected directory without exposing host paths.

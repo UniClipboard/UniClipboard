@@ -596,7 +596,7 @@ func cmdNodeID(ts *testscript.TestScript, _ bool, args []string) {
 	ts.Setenv(args[1], m[1])
 }
 
-var boardFile = map[string]string{"text": "text", "html": "html", "png": "png", "files": "files"}
+var boardFile = map[string]string{"text": "text", "html": "html", "png": "png", "files": "files", "source": "source.json"}
 
 // board-set <node> kind path [kind path ...]: change that node's clipboard
 // the way an application would; kinds are text, html, png and files and

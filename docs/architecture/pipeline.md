@@ -3,6 +3,19 @@ paths:
   - engine/directory.go
   - internal/directory
   - internal/localcontent/directory.go
+  - sourceapp/
+  - app/desktop/internal/board/
+  - internal/clip/clip.go
+  - internal/clipboardintegration/
+  - internal/localcontent/
+  - internal/localapi/api.go
+  - internal/session/engine.go
+  - internal/wire/wire.go
+  - plugin/rpc/
+  - plugin/serve.go
+  - plugin/serve_backend.go
+  - internal/pluginproc/
+  - app/service/internal/host/history.go
   - engine/pipeline.go
   - engine/types.go
   - engine/peersend.go
@@ -161,3 +174,14 @@ Directory snapshots use ordinary history, content leases and cache accounting. D
 A newer local copy cancels unfinished automatic directory preparation so that an old slow tree cannot arrive after the newer copy. Explicit source sends continue independently of clipboard changes. Background transmission uses the submission-owned lifetime when present; history-restore RPC completion does not cancel its queued transmission.
 
 Directory references and snapshots receive the `builtin:folder` classification, separate from `builtin:files`. The desktop shows them with a folder badge, a folder type filter and a folder preview.
+
+## Source application provenance
+
+Desktop captures optional application platform, identifier, display name, attribution and PNG icon.
+Engine keeps an immutable metadata snapshot with each content object and history record.
+Icons persist inside the record and count toward storage budgets; deleting history also deletes its cached icon.
+Adapter IPC, processors, backend views, RPC and peer wire headers preserve this metadata.
+Receipt retains the original application, and history restore sends the stored application.
+Content hashes exclude metadata, so a focus or icon change alone cannot create history or trigger synchronization.
+Native extraction uses the current platform APIs and returns unknown when identity is unavailable.
+The [source application contract](../contracts/source-application-contract.md) specifies inference limits, icon bounds, and acceptance.

@@ -90,7 +90,7 @@ func (p *Proxy) submit(ctx context.Context, v plugin.SyncView, h plugin.SyncHost
 	var res rpc.SubmitResult
 	id, err := s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodSubmit, Timeout: p.callTimeout(ctx, p.opts.ProcessTimeout),
 		Build: func(id uint64) (any, error) {
-			out := rpc.Submit{TransferID: v.ID, TimestampMs: rpc.U64(v.TimestampMs), Targets: slices.Clone(v.Targets)}
+			out := rpc.Submit{SourceApplication: v.SourceApplication.Clone(), TransferID: v.ID, TimestampMs: rpc.U64(v.TimestampMs), Targets: slices.Clone(v.Targets)}
 			for _, sp := range parts {
 				rc, err := sp.Open(ctx)
 				if err != nil {
@@ -260,7 +260,7 @@ func (p *Proxy) receive(ctx context.Context, c *rpc.Call) error {
 	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
 		return rpc.NewError(rpc.CodeInvalidArgument)
 	}
-	rv := plugin.Received{Transfer: in.Transfer, View: in.View}
+	rv := plugin.Received{SourceApplication: in.SourceApplication.Clone(), Transfer: in.Transfer, View: in.View}
 	var total int64
 	for _, part := range in.Parts {
 		rs, err := c.Conn.Expect(ctx, c.ID, part.Stream, uint64(rpc.MaxSyncBytes-total))

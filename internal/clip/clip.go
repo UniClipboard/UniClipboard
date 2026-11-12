@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 // Common format names. They match mygo's transfer package (MIME types).
@@ -32,9 +34,10 @@ type File struct {
 
 // Snapshot is the content of the clipboard at one moment.
 type Snapshot struct {
-	CopyID string `json:",omitempty"` // local observation marker, excluded from Hash
-	Parts  []Part
-	Files  []File
+	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	CopyID            string                 `json:",omitempty"` // local observation marker, excluded from Hash
+	Parts             []Part
+	Files             []File
 }
 
 // Empty reports whether the snapshot carries nothing.

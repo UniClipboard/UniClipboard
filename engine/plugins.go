@@ -377,7 +377,7 @@ func (e *Engine) RestartPlugin(ctx context.Context, id PluginID) error {
 }
 
 func publicItem(i pipelineItem) plugin.Item {
-	out := plugin.Item{ID: i.ID, Type: i.Type, Text: i.Text, Formats: slices.Clone(i.Formats),
+	out := plugin.Item{SourceApplication: i.SourceApplication.Clone(), ID: i.ID, Type: i.Type, Text: i.Text, Formats: slices.Clone(i.Formats),
 		Origin: plugin.Origin{Kind: i.Origin.kind, DeviceID: string(i.Origin.deviceID), PluginID: i.Origin.pluginID}}
 	for _, f := range i.Files {
 		out.Files = append(out.Files, plugin.File{Name: f.Name, Size: f.Size})

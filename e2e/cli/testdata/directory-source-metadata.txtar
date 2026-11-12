@@ -1,0 +1,51 @@
+# 用例: Directory capture and preparation retain source application metadata
+# 目的: Verify provenance when deferred directory references become transferable snapshots.
+# 流程:
+#   1. Capture a directory with an application icon and explicitly send its history record.
+#   2. Restart the receiver and verify the source metadata remains available.
+#   3. Enable automatic directory sending and recopy a changed tree with another application.
+# 期望:
+#   - Source application identity and PNG survive explicit directory preparation and receipt.
+#   - Automatic preparation preserves the new source identity without reusing a stale icon.
+# 不应:
+#   - Lose provenance during preparation or remove directory copy-action detection.
+
+mkdir source/tree/empty
+cp content.txt source/tree/member.txt
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-set alpha source app.json files source/tree
+until alpha '"kind":"directory_reference"' history list -n 1 --json
+u alpha history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+! tree-wait beta source/tree
+u alpha history send @1 --to all --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"kind":"directory"'
+stdout '"identifier":"org.example.Editor"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+node-stop beta
+node-start beta
+u beta history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+u alpha config set sync.directories.automatic true
+cp changed.txt source/tree/member.txt
+board-set alpha source no-icon.json files source/tree
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"kind":"directory"'
+stdout '"identifier":"org.example.NoIcon"'
+! stdout '"icon_png"'
+
+-- app.json --
+{"platform":"linux","identifier":"org.example.Editor","name":"Example Editor","attribution":"clipboard_owner","icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="}
+-- no-icon.json --
+{"platform":"linux","identifier":"org.example.NoIcon","name":"No Icon","attribution":"clipboard_owner"}
+-- content.txt --
+directory source metadata fixture
+-- changed.txt --
+changed tree and source metadata

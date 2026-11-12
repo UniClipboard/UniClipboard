@@ -22,6 +22,8 @@ type entry struct {
 	preview                             string
 	highlights                          []engine.HistorySearchRange
 	image                               ui.ImageSource
+	sourceAppName, sourceAppID          string
+	sourceAppIcon                       ui.ImageSource
 	contentError, syncState             string
 	createdAt                           int64
 	id, title, text, source, date, size string

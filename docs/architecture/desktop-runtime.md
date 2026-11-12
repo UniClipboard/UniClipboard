@@ -47,6 +47,18 @@ Saved-but-not-applied failures remain visible. Native login status remains a sep
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
 `unic-desktop --version --json` reports build identity before configuration, service ownership or UI initialization. See the [release architecture](releases.md).
 
+## History source application
+
+The history detail header shows the stored source application's icon and name immediately after device/time.
+It uses `HistoryItem.SourceApplication`, including metadata received from another device.
+Application identity stays separate from the clipboard preview image and source-device label.
+Desktop uses the supplied display name, or the application identifier if the name is empty.
+A missing or malformed PNG uses the existing generic package icon; unknown application metadata adds no header item.
+Long names stay on one line within a bounded area. The tooltip retains the full name and identifier.
+Application names are never translated. The accessible group label uses the desktop locale.
+The [source application contract](../contracts/source-application-contract.md) defines capture and storage semantics.
+The [Desktop source application receipt](../exec/desktop-source-application.md) records view acceptance and native evidence limits.
+
 ## Settings
 
 | Key | Default | Effect |

@@ -76,3 +76,11 @@ History list APIs include the bounded metadata object; they perform no applicati
   covers production binaries, rich text/image/file metadata, received descriptors, history, and invalid metadata rejection.
 - Set `UNIC_E2E_ARTIFACTS` and `UNIC_HEADLESS_ARTIFACTS` to retain reproducible manifests.
   Manifests record source files and binary hashes. These process runs do not prove native OS attribution or icon extraction.
+
+## Desktop detail presentation
+
+Desktop displays the original application's icon and name immediately after device/time in the history detail header.
+An empty display name falls back to the identifier. Missing or malformed icon bytes use a generic application icon.
+Unknown provenance adds no application item. Long names truncate inside the detail header, with the complete name and identifier in the tooltip.
+The source application image is independent of clipboard preview images and survives asynchronous content-detail refresh.
+Only the accessible group label is localized; application identities remain unchanged.

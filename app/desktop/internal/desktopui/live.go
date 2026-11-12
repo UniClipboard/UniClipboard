@@ -24,6 +24,7 @@ import (
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 // Desktop uses the approved composition with service-owned data. Run View on
@@ -435,7 +436,17 @@ func projectHistory(it api.HistoryItem) entry {
 	if it.Origin == "external" || it.Origin == "migration" {
 		source = it.Origin
 	}
-	return entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: fmt.Sprintf("%d B", it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState}
+	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: fmt.Sprintf("%d B", it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState}
+	if app := it.SourceApplication; app != nil {
+		v.sourceAppName, v.sourceAppID = strings.TrimSpace(app.Name), app.Identifier
+		if v.sourceAppName == "" {
+			v.sourceAppName = app.Identifier
+		}
+		if len(app.IconPNG) > 0 && sourceapp.ValidIcon(app.IconPNG) {
+			v.sourceAppIcon, _ = ui.DecodeImage(app.IconPNG)
+		}
+	}
+	return v
 }
 func formatDate(ms int64) string {
 	t := time.UnixMilli(ms)

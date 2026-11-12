@@ -31,4 +31,5 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("tag-manager-platforms", scenarioTagManagerPlatforms)
 	t.Run("token-search", scenarioTokenSearch)
 	t.Run("toolbar-alignment", scenarioToolbarAlignment)
+	t.Run("source-application", scenarioSourceApplication)
 }

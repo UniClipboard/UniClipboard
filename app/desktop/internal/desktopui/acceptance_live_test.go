@@ -184,7 +184,12 @@ func scenarioDesktopLiveData(t *testing.T) {
 		}
 		return string(r.HistoryID)
 	}
-	id := submit("text", clip.Snapshot{Parts: []clip.Part{{Format: "text/plain", Data: []byte("Desktop live acceptance")}}})
+	var sourceIcon bytes.Buffer
+	if err := png.Encode(&sourceIcon, image.NewRGBA(image.Rect(0, 0, 16, 16))); err != nil {
+		t.Fatal(err)
+	}
+	sourceApplication := &engine.SourceApplication{Platform: "darwin", Identifier: "org.example.SourceEditor", Name: "Source Editor", Attribution: "source_marker", IconPNG: sourceIcon.Bytes()}
+	id := submit("text", clip.Snapshot{SourceApplication: sourceApplication, Parts: []clip.Part{{Format: "text/plain", Data: []byte("Desktop live acceptance")}}})
 	spin("event refresh", func() bool {
 		if d.live.foregroundLoading {
 			t.Fatal("event refresh exposed foreground loading")
@@ -198,7 +203,21 @@ func scenarioDesktopLiveData(t *testing.T) {
 	checks = append(checks, "real submission appears through event/reconciliation and content read")
 	checkHistorySendCancellation(t, ctx, client.Path, id)
 	checks = append(checks, "cancel before submission admission waits for acknowledgement, then cancels the admitted request")
+	verifySource := func() {
+		t.Helper()
+		v := d.current()
+		if v == nil || v.sourceAppName != sourceApplication.Name || v.sourceAppID != sourceApplication.Identifier || v.sourceAppIcon == nil || v.image != nil {
+			t.Fatal("service application provenance lost or replaced clipboard preview")
+		}
+		width, height := ui.ImageSize(v.sourceAppIcon)
+		if width != 16 || height != 16 {
+			t.Fatal("source icon dimensions lost")
+		}
+	}
+	verifySource()
 	idle("selected text history")
+	verifySource()
+	checks = append(checks, "application name, identifier and cached PNG bind through production service and survive detail loading/background refresh")
 	d.query = "no-idle-match"
 	d.live.poll(d)
 	if !d.live.loading || !d.live.foregroundLoading {

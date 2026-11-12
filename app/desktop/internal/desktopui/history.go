@@ -574,7 +574,10 @@ func (d *viewState) startHistorySend(target string) {
 			case <-l.ctx.Done():
 			}
 		}
-		out, err := l.client.Submit(ctx, api.SubmitInput{RequestID: request, HistoryID: id, DeviceIDs: devices, Async: true})
+		// Await admission independently of user cancellation, so cancellation
+		// cannot reach the service before it has registered this request.
+		// Cancellation does not guarantee that blocking work has stopped.
+		out, err := l.client.Submit(l.ctx, api.SubmitInput{RequestID: request, HistoryID: id, DeviceIDs: devices, Async: true})
 		if err == nil && out.Phase == engine.SubmissionProcessing {
 			out, err = l.client.WaitSubmission(ctx, request, progress)
 		}

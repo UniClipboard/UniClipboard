@@ -2885,6 +2885,60 @@
     "pt-BR": "Integrada",
     "ru": "Встроенный"
   },
+  "取消发送": {
+    "en": "Cancel send",
+    "ja": "送信をキャンセル",
+    "pt-BR": "Cancelar envio",
+    "ru": "Отменить отправку"
+  },
+  "正在扫描目录…": {
+    "en": "Scanning directory…",
+    "ja": "フォルダーをスキャン中…",
+    "pt-BR": "Verificando pasta…",
+    "ru": "Сканирование папки…"
+  },
+  "正在准备目录…": {
+    "en": "Preparing directory…",
+    "ja": "フォルダーを準備中…",
+    "pt-BR": "Preparando pasta…",
+    "ru": "Подготовка папки…"
+  },
+  "正在提交…": {
+    "en": "Submitting…",
+    "ja": "送信リクエストを送信中…",
+    "pt-BR": "Enviando solicitação…",
+    "ru": "Отправка запроса…"
+  },
+  "正在发送…": {
+    "en": "Sending…",
+    "ja": "送信中…",
+    "pt-BR": "Enviando…",
+    "ru": "Отправка…"
+  },
+  "正在准备发送…": {
+    "en": "Preparing to send…",
+    "ja": "送信を準備中…",
+    "pt-BR": "Preparando envio…",
+    "ru": "Подготовка к отправке…"
+  },
+  "自动同步目录": {
+    "en": "Sync directories automatically",
+    "ja": "フォルダーを自動同期",
+    "pt-BR": "Sincronizar pastas automaticamente",
+    "ru": "Автоматически синхронизировать папки"
+  },
+  "默认关闭。开启后，每次复制目录都会扫描并发送。": {
+    "en": "Off by default. When enabled, each directory copy scans and sends its contents.",
+    "ja": "初期設定はオフです。有効にすると、フォルダーをコピーするたびに内容をスキャンして送信します。",
+    "pt-BR": "Desativado por padrão. Quando ativado, cada cópia de pasta verifica e envia seu conteúdo.",
+    "ru": "По умолчанию отключено. При включении каждое копирование папки запускает сканирование и отправку её содержимого."
+  },
+  "此平台无法识别同一路径的重复复制。请使用主动发送。": {
+    "en": "This platform cannot detect repeated copies of the same path. Use explicit send.",
+    "ja": "このプラットフォームでは同じパスの再コピーを検出できません。手動で送信してください。",
+    "pt-BR": "Esta plataforma não detecta cópias repetidas do mesmo caminho. Use o envio manual.",
+    "ru": "Эта платформа не распознаёт повторное копирование того же пути. Используйте ручную отправку."
+  },
   "未使用": {
     "en": "Unused",
     "ja": "未使用",

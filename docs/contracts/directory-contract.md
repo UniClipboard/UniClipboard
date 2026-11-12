@@ -45,3 +45,5 @@ macOS uses the pasteboard change count and Windows uses the clipboard sequence n
 Directory arguments require paired-device `--to` sending. Temporary transfer codes and links do not claim directory support. Ownership, ACLs, timestamps, extended attributes, and resource forks are not transferred.
 
 A newer local copy supersedes unfinished automatic directory preparation. Explicit sends have independent lifetimes. Submission cancellation applies only to the Engine-owned submission context; short-lived adapter RPC contexts must never cancel queued history-restore sends.
+
+Desktop history sends await asynchronous admission acknowledgement with the desktop lifetime context, independently of user cancellation. After acknowledgement, a cancelled user context triggers cancellation of the admitted request. Cancellation does not guarantee that an underlying blocking operation has stopped.

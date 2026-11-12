@@ -10,8 +10,9 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/uniclipboard/unic/sourceapp"
 	"golang.org/x/sys/windows"
+
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 var sourceUser32 = windows.NewLazySystemDLL("user32.dll")

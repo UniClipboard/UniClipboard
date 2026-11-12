@@ -13,7 +13,6 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/desktopdemo"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 )
@@ -29,14 +28,7 @@ func main() {
 	if releaseinfo.Print(os.Stdout, "unic-desktop", "desktop", os.Args[1:]) {
 		return
 	}
-	var err error
-	if len(os.Args) > 1 && os.Args[1] == "--demo" {
-		err = desktopdemo.Run(os.Args[2:])
-	} else if len(os.Args) > 1 {
-		err = runDesktop(os.Args[1:])
-	} else {
-		err = runDesktop(nil)
-	}
+	err := runDesktop(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "unic-desktop:", err)
 		os.Exit(1)
@@ -50,7 +42,7 @@ func runDesktop(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: unic-desktop [--mode normal|lightweight] [--demo ...]")
+		return fmt.Errorf("usage: unic-desktop [--mode normal|lightweight]")
 	}
 	path, err := paths.Config()
 	if err != nil {

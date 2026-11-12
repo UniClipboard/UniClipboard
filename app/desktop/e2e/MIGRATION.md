@@ -1,6 +1,6 @@
 # Desktop acceptance migration
 
-All original assertions and subcase matrices are retained in package-local scenario functions. Only `TestDesktopAcceptance` dispatches these functions. The central runner selects a catalogue case and verifies Go JSON events. Software-view scenarios remain explicitly distinct from native-window acceptance. The three GUI scenarios cover the legacy `gui.view` retained in the application; they do not establish coverage of the active `desktopdemo` composition.
+All original assertions and subcase matrices are retained in package-local scenario functions. Only `TestDesktopAcceptance` dispatches these functions. The central runner selects a catalogue case and verifies Go JSON events. Software-view scenarios remain explicitly distinct from native-window acceptance. The three GUI scenarios cover the legacy `gui.view` retained in the application; they do not establish coverage of the active `desktopui` composition.
 
 | Original entry | Canonical case | Evidence |
 |---|---|---|

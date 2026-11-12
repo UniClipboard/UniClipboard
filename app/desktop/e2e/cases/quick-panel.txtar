@@ -5,4 +5,4 @@
 # Expected: All original panel scenarios retain their selected entries and expected simulated effects.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo quick-panel
+acceptance desktopui quick-panel

@@ -5,14 +5,14 @@
 Reference: local `main` commit `8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7`.
 The fixture is a page composition port to the migrated UI Kit. The normal desktop now reuses the composition with live service data.
 The normal desktop entry still reads the daemon.
-The separate `unic-desktop --demo` interface uses 22 history entries and four devices.
+The separate `unic-desktop-demo` interface uses 22 history entries and four devices.
 All demo operations use memory. Restart the process to restore the fixtures.
 Copy and send commands show simulated results. They do not write the system clipboard or send data.
 Settings controls retain their values during the session. They do not configure the application or system.
 Only the appearance mode changes the rendered theme. Other appearance and behavior settings are fixtures.
 Setup, space creation, unlock, startup-preview and recovery-preview pages have been removed. Both entries open history directly by default.
 
-| Reference under `apps/gui-go/frontend/src/` at `main` | Native composition under `internal/desktopdemo/` |
+| Reference under `apps/gui-go/frontend/src/` at `main` | Native composition under `internal/desktopui/` |
 | --- | --- |
 | `layouts/LibraryMainLayout.tsx`, `pages/history-kit/HistoryKitPage.tsx` | `history.go`: sidebar, toolbar, list/grid, detail, filters |
 | `pages/history-kit/HistoryKitList.tsx`, `HistoryKitGrid.tsx` | `history.go`: day groups, type icons, pins, tags, selection |
@@ -34,16 +34,16 @@ It does not claim pixel parity with the reference or native acceptance on any pl
 From the repository root:
 
 ```sh
-go build -o .build/unic-desktop ./app/desktop/cmd/unic-desktop
-UNIC_UI_SKIN=macos .build/unic-desktop --demo --theme light
+go build -o .build/unic-desktop-demo ./app/desktop/cmd/unic-desktop-demo
+UNIC_UI_SKIN=macos .build/unic-desktop-demo --theme light
 ```
 
 Run one command at a time. Quit the demo before opening the next skin:
 
 ```sh
-UNIC_UI_SKIN=linux .build/unic-desktop --demo --theme dark
-UNIC_UI_SKIN=windows .build/unic-desktop --demo --theme light --page devices
-UNIC_UI_SKIN=macos .build/unic-desktop --demo --theme dark --page settings
+UNIC_UI_SKIN=linux .build/unic-desktop-demo --theme dark
+UNIC_UI_SKIN=windows .build/unic-desktop-demo --theme light --page devices
+UNIC_UI_SKIN=macos .build/unic-desktop-demo --theme dark --page settings
 ```
 
 Initial pages: `history`, `devices`, `settings`, `quick-panel`.
@@ -285,7 +285,7 @@ Manual acceptance: restart the demo; activate the search icon; inspect expansion
 
 ### Demo condition search
 
-The history demo now adapts the original main composite-search behavior to the existing Go TokenSearchField. The independent model is desktopdemo/search_model.go; the Kit only owns presentation, focus, selection plumbing, and native editor key dispatch.
+The history demo now adapts the original main composite-search behavior to the existing Go TokenSearchField. The independent model is desktopui/search_model.go; the Kit only owns presentation, focus, selection plumbing, and native editor key dispatch.
 
 | Prefix | Candidates | Example |
 | --- | --- | --- |
@@ -357,8 +357,8 @@ The workspace now exposes the desktop command at app/desktop/cmd/unic-desktop.
 Build and open this entry after the service/desktop split:
 
 ```sh
-go build -o .build/unic-desktop ./app/desktop/cmd/unic-desktop
-UNIC_UI_SKIN=macos .build/unic-desktop --demo --theme dark
+go build -o .build/unic-desktop-demo ./app/desktop/cmd/unic-desktop-demo
+UNIC_UI_SKIN=macos .build/unic-desktop-demo --theme dark
 ```
 
 

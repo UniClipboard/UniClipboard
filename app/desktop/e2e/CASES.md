@@ -13,6 +13,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
 | [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation. |
 | [native-menus](#native-menus) | view | System-menu requests, cancellation and selected-value dispatch in the software view. |
+| [production-boundary](#production-boundary) | process | Build independent production and demo commands and verify their dependency and embedded catalogue boundaries. |
 | [quick-panel-contract](#quick-panel-contract) | process | Target session, clipboard application, cancellation and paste-request ordering with OS fixtures. |
 | [quick-panel-screenshots](#quick-panel-screenshots) | view | Quick-panel history, action menu and image-grid compositions in both themes. |
 | [quick-panel](#quick-panel) | view | Quick-panel keyboard, search, actions, previews, scrolling and simulated effects. |
@@ -43,7 +44,7 @@ Expected: The suite runs, passes its assertions and emits a successful receipt.
 Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
 
 ```text
-acceptance desktopdemo data-binding
+acceptance desktopui data-binding
 ```
 
 ## gui-approval-reconnect
@@ -131,7 +132,7 @@ Expected: Navigation and actions use the selected language; content and filter i
 Forbidden: Missing translations or translated user content.
 
 ```text
-acceptance desktopdemo i18n
+acceptance desktopui i18n
 ```
 
 ## interaction-motion
@@ -145,7 +146,7 @@ Expected: Geometry and rendered selection feedback follow the complete interacti
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo interaction-motion
+acceptance desktopui interaction-motion
 ```
 
 ## liquid-glass
@@ -159,7 +160,7 @@ Expected: Light and dark view rasters show reactive rims and reset without stale
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo liquid-glass
+acceptance desktopui liquid-glass
 ```
 
 ## native-menus
@@ -173,7 +174,21 @@ Expected: Menu requests and returned commands match each exercised filter and ac
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo native-menus
+acceptance desktopui native-menus
+```
+
+## production-boundary
+
+Production and demo module boundary
+
+Steps: Inspect production, shared renderer and translation dependencies; build both commands; run demo help without opening a GUI.
+
+Expected: Production imports desktopui and i18n, excludes desktopui and its fixtures, and embeds locales from i18n; the demo command builds and prints help.
+
+Forbidden: Demo dependencies in production, translations in desktopui, skipped checks, or native window launch.
+
+```text
+acceptance startup production-boundary
 ```
 
 ## quick-panel-contract
@@ -201,7 +216,7 @@ Expected: Six composite PNGs retain source identity, image hashes and view recta
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo quick-panel-screenshots
+acceptance desktopui quick-panel-screenshots
 ```
 
 ## quick-panel
@@ -215,7 +230,7 @@ Expected: All original panel scenarios retain their selected entries and expecte
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo quick-panel
+acceptance desktopui quick-panel
 ```
 
 ## search-badge-delete
@@ -229,7 +244,7 @@ Expected: Backspace and remove actions reset only the selected condition dimensi
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo search-badge-delete
+acceptance desktopui search-badge-delete
 ```
 
 ## search-contract
@@ -243,7 +258,7 @@ Expected: The suite runs, passes its assertions and emits a successful receipt.
 Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
 
 ```text
-acceptance desktopdemo search-contract
+acceptance desktopui search-contract
 ```
 
 ## search-disclosure-reduced-motion
@@ -257,7 +272,7 @@ Expected: Disclosure reaches its expected geometry without spatial transition.
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo search-disclosure-reduced-motion
+acceptance desktopui search-disclosure-reduced-motion
 ```
 
 ## search-disclosure
@@ -271,7 +286,7 @@ Expected: Search width changes without moving the command capsule or losing inpu
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo search-disclosure
+acceptance desktopui search-disclosure
 ```
 
 ## send-device-menu
@@ -285,7 +300,7 @@ Expected: Only valid device choices produce the expected send command.
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo send-device-menu
+acceptance desktopui send-device-menu
 ```
 
 ## sheet-exit-stability
@@ -299,7 +314,7 @@ Expected: Light and dark exit rasters preserve stable content and release dismis
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo sheet-exit-stability
+acceptance desktopui sheet-exit-stability
 ```
 
 ## sheet-motion
@@ -313,7 +328,7 @@ Expected: All sheet/theme/dismissal combinations preserve entry geometry, interm
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo sheet-motion
+acceptance desktopui sheet-motion
 ```
 
 ## sidebar-collapse
@@ -327,7 +342,7 @@ Expected: Animated content geometry remains continuous and preserves sidebar sta
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo sidebar-collapse
+acceptance desktopui sidebar-collapse
 ```
 
 ## startup-lifecycle
@@ -355,7 +370,7 @@ Expected: Complete management sheets preserve column alignment and row geometry.
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo tag-fixed-columns
+acceptance desktopui tag-fixed-columns
 ```
 
 ## tag-manager-platforms
@@ -369,7 +384,7 @@ Expected: Built-in operations remain protected and assignment updates the shared
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo tag-manager-platforms
+acceptance desktopui tag-manager-platforms
 ```
 
 ## tag-manager
@@ -383,7 +398,7 @@ Expected: All original management operations preserve their history and shared t
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo tag-manager
+acceptance desktopui tag-manager
 ```
 
 ## token-search
@@ -397,7 +412,7 @@ Expected: Fourteen scenarios across three skins and both themes preserve the com
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo token-search
+acceptance desktopui token-search
 ```
 
 ## toolbar-alignment
@@ -411,7 +426,7 @@ Expected: Both themes align menu triggers with the pin button at the expected ge
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo toolbar-alignment
+acceptance desktopui toolbar-alignment
 ```
 
 ## unified-scrollbars
@@ -425,5 +440,5 @@ Expected: Three skins and both themes preserve edge indicators and independent n
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
-acceptance desktopdemo unified-scrollbars
+acceptance desktopui unified-scrollbars
 ```

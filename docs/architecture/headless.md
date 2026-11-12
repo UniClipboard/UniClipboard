@@ -18,7 +18,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: b801141902cf765667c16cf36d6dc27d859acd6b
+verified: 1262fbd01c0ab26a1f206bb19addabdd86e6aeb5
 ---
 # Headless service and desktop integration
 
@@ -191,7 +191,7 @@ Mode and background changes apply on the next launch. Normal background startup 
 The tray action and a second normal launch show the window. Closing the window hides it; explicit Quit ends the process and its owned service.
 `unic-desktop --mode normal|lightweight` overrides the mode for that launch without changing the file.
 Use `--mode normal` to reopen settings after selecting lightweight mode.
-`--demo` remains an isolated layout fixture and does not manage a service.
+`unic-desktop-demo` is the independent layout fixture command and does not manage a service. Production `unic-desktop` has no demo dependency or `--demo` mode.
 
 The launcher resolves `unicd` beside its own executable. Both programs must be installed together.
 A profile-scoped startup file lock serializes replacement and readiness checks.

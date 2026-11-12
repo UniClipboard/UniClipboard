@@ -5,4 +5,4 @@
 # Expected: Light and dark view rasters show reactive rims and reset without stale hover feedback.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo liquid-glass
+acceptance desktopui liquid-glass

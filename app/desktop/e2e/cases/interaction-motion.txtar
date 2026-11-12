@@ -5,4 +5,4 @@
 # Expected: Geometry and rendered selection feedback follow the complete interaction sequence.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo interaction-motion
+acceptance desktopui interaction-motion

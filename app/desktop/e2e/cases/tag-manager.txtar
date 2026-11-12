@@ -5,4 +5,4 @@
 # Expected: All original management operations preserve their history and shared tag-registry invariants.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo tag-manager
+acceptance desktopui tag-manager

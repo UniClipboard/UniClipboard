@@ -403,6 +403,35 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     }
   })
 
+  it('does not retry the preview in a loop when the backend layout resize fails', async () => {
+    invokeMock.mockImplementation((command: string, _scale?: number, previewExpanded?: boolean) => {
+      if (command === 'SetQuickPanelLayout' && previewExpanded) {
+        return Promise.reject(new Error('layout failed'))
+      }
+      return Promise.resolve(undefined)
+    })
+    const expandCalls = () =>
+      invokeMock.mock.calls.filter(call => call[0] === 'SetQuickPanelLayout' && call[2] === true)
+        .length
+
+    renderPanel()
+
+    await waitFor(() => expect(expandCalls()).toBeGreaterThanOrEqual(1), {
+      timeout: PREVIEW_OPEN_TIMEOUT_MS,
+    })
+    // A failure resets the preview, which must not start the same attempt again by itself.
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 300))
+    })
+    expect(expandCalls()).toBe(1)
+
+    // The next hover is a new selection target, so it may try again.
+    const secondItem = screen.getByText('Second preview title')
+    fireEvent.mouseMove(secondItem)
+    fireEvent.mouseEnter(secondItem)
+    await waitFor(() => expect(expandCalls()).toBe(2), { timeout: PREVIEW_OPEN_TIMEOUT_MS })
+  })
+
   it('dismisses the quick window immediately when escape is pressed with preview open', async () => {
     renderPanel()
 

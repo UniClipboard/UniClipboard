@@ -349,7 +349,11 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           await setQuickPanelLayout(uiScale, true)
           if (previewLayoutTokenRef.current === token) dispatchPreview({ type: 'expand' })
         } catch {
-          if (previewLayoutTokenRef.current === token) dispatchPreview({ type: 'reset' })
+          // Suppressed until the next hover or selection: a plain reset would reopen the same
+          // entry at once, so a persistent layout failure would retry in a loop.
+          if (previewLayoutTokenRef.current === token) {
+            dispatchPreview({ type: 'reset', suppressed: true })
+          }
         }
       })()
     }

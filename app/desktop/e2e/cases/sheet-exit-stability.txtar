@@ -5,4 +5,4 @@
 # Expected: Light and dark exit rasters preserve stable content and release dismissed input.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo sheet-exit-stability
+acceptance desktopui sheet-exit-stability

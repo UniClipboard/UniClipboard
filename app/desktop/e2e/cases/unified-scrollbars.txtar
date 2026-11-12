@@ -5,4 +5,4 @@
 # Expected: Three skins and both themes preserve edge indicators and independent nested scroll ownership.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo unified-scrollbars
+acceptance desktopui unified-scrollbars

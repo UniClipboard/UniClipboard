@@ -34,9 +34,9 @@ Use the existing SQLite dependency. Do not add an external search engine or a se
 
 Primary evidence:
 
-- [Main search model](../../app/desktop/internal/desktopdemo/search_model.go) and [token-search acceptance cases](../../app/desktop/internal/desktopdemo/acceptance_token_search_test.go).
-- [Badge-removal acceptance](../../app/desktop/internal/desktopdemo/acceptance_search_badge_delete_test.go).
-- [Quick-panel model](../../app/desktop/internal/desktopdemo/quick_panel_model.go), [view](../../app/desktop/internal/desktopdemo/quick_panel_view.go) and [acceptance cases](../../app/desktop/internal/desktopdemo/acceptance_quick_panel_test.go).
+- [Main search model](../../app/desktop/internal/desktopui/search_model.go) and [token-search acceptance cases](../../app/desktop/internal/desktopui/acceptance_token_search_test.go).
+- [Badge-removal acceptance](../../app/desktop/internal/desktopui/acceptance_search_badge_delete_test.go).
+- [Quick-panel model](../../app/desktop/internal/desktopui/quick_panel_model.go), [view](../../app/desktop/internal/desktopui/quick_panel_view.go) and [acceptance cases](../../app/desktop/internal/desktopui/acceptance_quick_panel_test.go).
 
 Important fixture limits:
 
@@ -53,7 +53,7 @@ The [Engine query](../../engine/history_types.go), [service DTO](../../internal/
 They do not support text, extensions, multiple source alternatives, any-match tags, content-derived previews or exact query counts.
 
 Existing pagination already provides useful semantics: signed opaque cursors, a first-page commit-sequence upper bound and stable `(order_ms, seq)` ordering. It is a live bounded traversal, not a retained database snapshot.
-The live [desktop binding](../../app/desktop/internal/desktopdemo/live.go) currently disables unsupported search. Its query key includes only kind/source/tag/time. Search integration must replace that key with the entire normalized query, including text terms, tag mode and extensions.
+The live [desktop binding](../../app/desktop/internal/desktopui/live.go) currently disables unsupported search. Its query key includes only kind/source/tag/time. Search integration must replace that key with the entire normalized query, including text terms, tag mode and extensions.
 
 The current preview client fetches parts individually and limits text previews to 1024 bytes. Searching those previews would miss long text, older pages and HTML-only records. Downloading every historical payload to the desktop would violate the ownership contract.
 

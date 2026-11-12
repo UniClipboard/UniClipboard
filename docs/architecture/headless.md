@@ -191,7 +191,7 @@ Mode and background changes apply on the next launch. Normal background startup 
 The tray action and a second normal launch show the window. Closing the window hides it; explicit Quit ends the process and its owned service.
 `unic-desktop --mode normal|lightweight` overrides the mode for that launch without changing the file.
 Use `--mode normal` to reopen settings after selecting lightweight mode.
-`--demo` remains an isolated layout fixture and does not manage a service.
+`unic-desktop-demo` is the independent layout fixture command and does not manage a service. Production `unic-desktop` has no demo dependency or `--demo` mode.
 
 The launcher resolves `unicd` beside its own executable. Both programs must be installed together.
 A profile-scoped startup file lock serializes replacement and readiness checks.

@@ -54,7 +54,7 @@ def cases(base=HERE):
         raise ValueError('no Desktop cases registered')
     # A registry entry without a declarative case (or vice versa) must fail preflight.
     registered = set()
-    packages = {'desktopdemo': 'internal/desktopdemo', 'quickpanel': 'internal/quickpanel',
+    packages = {'desktopui': 'internal/desktopui', 'quickpanel': 'internal/quickpanel',
                 'gui': 'cmd/unic-desktop', 'startup': 'e2e'}
     for group, directory in packages.items():
         source = (base.parent / directory / 'acceptance_test.go').read_text()

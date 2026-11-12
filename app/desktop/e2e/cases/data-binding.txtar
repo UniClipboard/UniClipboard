@@ -8,4 +8,4 @@
 # Forbidden:
 #   A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
 
-acceptance desktopdemo data-binding
+acceptance desktopui data-binding

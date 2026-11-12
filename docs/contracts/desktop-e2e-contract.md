@@ -27,3 +27,7 @@ One report groups results, assertions, screenshots and recording by case. Its ma
 ## Failure inventory specified before implementation
 
 Missing ffmpeg/display; stale catalogue; unknown case; duplicate IDs; escaped source symlink; active real profile accidentally reused; production single-instance handover; real clipboard mutation; missing app/socket; ambiguous or absent accessibility target; failed semantic action; result timeout; no assertions; native case without a native window; empty or corrupt screenshots/video; frame capture failure; missing process receipt; successful Go command with skipped cases; source snapshot mutation; app/service residue; interrupted runner; stale artifacts reported as current; aggregate PASS despite one failing case.
+
+## Production module boundary
+
+The `production-boundary` process case checks the production command dependency graph, the shared renderer dependency graph and the i18n embedded catalogue. It builds `unic-desktop` and the separate `unic-desktop-demo`, checks demo help and rejects removed preview pages without opening a native window. `desktopui` is the package key for shared-renderer view and service-binding scenarios. Fixture builders are imported by preview startup and acceptance only.

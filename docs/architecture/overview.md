@@ -70,9 +70,9 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 
 ## Desktop layout demo
 
-`unic-desktop --demo` opens the native desktop layouts with in-memory fixtures.
+`unic-desktop-demo` opens the native desktop layouts with in-memory fixtures.
 The composition follows local `main` commit `8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7`.
-`app/desktop/internal/desktopdemo` owns demo state and page composition.
+`app/desktop/internal/desktopdemo` owns preview startup and fixture builders. `app/desktop/internal/desktopui` owns shared page composition and production service binding. The independent `unic-desktop-demo` command supplies explicit preview records from `desktopui/preview`; `unic-desktop` imports neither the demo launcher nor fixture builders.
 The existing UI Kit owns Adwaita, macOS glass, and Fluent styling.
 All Kit switches render only the track and thumb across every skin. The enclosing row owns the visible caption; `SwitchProps.Label` supplies the accessible name. Switches have no visible-label option. Checkbox labels retain their existing behavior.
 The macOS demo uses a unified native title bar, a 1100 x 720 default window, toolbar glass capsules, and an inset floating detail action bar.
@@ -81,7 +81,7 @@ MacOS capsule surfaces share mygo plugins/glass.Glass (Regular, Interactive). Th
 MacOS buttons and segments share physical press feedback: an 80 ms compression and a 350 ms spring return. Glass buttons retain the material's press expansion. The toolbar selection thumb moves continuously with retargetable spring motion. Reduce Motion suppresses these spatial effects; pointer selection does not paint the keyboard-only segment focus ring.
 MacOS Select, uncontrolled Menu, and uncontrolled ContextMenu use mygo's system menu API. Kit.Apply installs SystemMenus. On macOS, mygo builds NSMenu and lets the OS own material, layout, highlighting, tracking, and presentation animation. These menus open on pointer-down and do not use the Kit's popup animation. Explicit Open pointers retain the caller-controlled in-window overlay contract. Menu entries share the existing list-menu adapter and cached glyph/swatch images. Select shows its focus ring only for keyboard focus.
 System-menu triggers align to the center of their parent row, matching adjacent toolbar command buttons without a MenuBase wrapper. The history toolbar and detail action bar share a send-target menu projected from the current remote-device registry, with All Devices and individual peers, excluding the local device. The detail trigger retains its large Glass button style. Selection records a simulated send result; opening and cancellation do not send.
-The history demo composes Kit.TokenSearchField with its toolbar disclosure variant and a separate demo-owned search model (desktopdemo/search_model.go). The model handles @ devices, # tags, / types, on: time and ext: extensions; candidates, counts, chips, keyboard completion, literal fallback, and caret-preserving edits share the existing filter state. MacOS search expands from a 32-point icon to a 460-point field over 280 ms. Escape closes candidates, clears search, then collapses an empty field. The title bar, traffic lights, sidebar and command capsule keep their existing implementation; no AppKit toolbar replacement is installed. Other skins use their normal token field. Reduce Motion follows the renderer preference.
+The history demo composes Kit.TokenSearchField with its toolbar disclosure variant and a separate shared search model (desktopui/search_model.go). The model handles @ devices, # tags, / types, on: time and ext: extensions; candidates, counts, chips, keyboard completion, literal fallback, and caret-preserving edits share the existing filter state. MacOS search expands from a 32-point icon to a 460-point field over 280 ms. Escape closes candidates, clears search, then collapses an empty field. The title bar, traffic lights, sidebar and command capsule keep their existing implementation; no AppKit toolbar replacement is installed. Other skins use their normal token field. Reduce Motion follows the renderer preference.
 Search badge removal resets the whole filter dimension. Backspace in an empty input deletes the entire last badge, including all tags grouped in it; it does not reopen the badge text for editing. Other conditions remain active.
 The history demo tag registry is shared by sidebar visibility, search candidates, list badges, and detail badges. Its management sheet disables column resizing and reordering through TableProps.FixedColumns, which uses mygo TableColumn.Fixed. Other tables keep their existing drag behavior. The sheet provides a table, sorting, filtering, inline creation/renaming, colors, merging, and deletion. Builtin tags allow Show Entries but reject destructive edits. Table context menus use the existing platform menu adapter (NSMenu on macOS). Deletion and merging preserve history entries. The detail assignment picker remains separate. Tag metadata and associations stay in memory. Kit tables with a filling column retain a flexible trailing column after resizing would otherwise make all columns fixed, preventing uncovered trailing space while keeping the dragged divider responsive. These tables bound column growth to the viewport and reserve space for the remaining columns, so dragging cannot push trailing controls outside the table.
 The animated sidebar viewport has no padding. A fixed-width inner body owns the padding, so the viewport can reach zero without a final width jump.
@@ -100,7 +100,7 @@ See the [demo acceptance guide](../../app/desktop/UI-DEMO.md) for source mapping
 
 The normal desktop opens the shared history composition directly. It has no setup or unlock gate.
 Quit uses a window-scoped platform command-Q shortcut, including when no view control has focus.
-`desktopdemo.NewDesktop` initializes empty service-backed state, without fixture data.
+`desktopui.NewDesktop` initializes empty service-backed state, without fixture data.
 `live.go` serializes local socket work and applies completions on the view thread.
 It owns query pagination, reconciliation, bounded content previews and revision-checked history mutations.
 The event stream requests fresh snapshots; a five-second reconciliation also covers lost events.
@@ -117,7 +117,9 @@ The shared desktop composition supports Simplified Chinese (`zh-CN`), English (`
 
 `desktop.language` persists through the existing revision-checked configuration API. A successful save updates the main window and quick panel through the normal configuration refresh, without a process restart. The launcher watches the same file to rebuild tray labels. Device notifications use the current configured language. The demo keeps its selection in memory.
 
-`desktopdemo/i18n.go` resolves application-owned source strings from embedded `locales.json`. Navigation, settings, device sheets, history controls, quick-panel controls and actions share the catalogues. Source strings are stable catalogue IDs; internal filter values and query syntax remain unchanged. Content, filenames, device names and user tags bypass translation. Service-generated history titles carry an explicit marker so they can be translated without translating user text. Missing catalogue text falls back to the Chinese source. No translation request leaves the device. Standard numeric/ISO timestamps remain unchanged; Today and Yesterday headings are translated.
+`app/desktop/internal/i18n/i18n.go` resolves application-owned source strings from embedded `locales.json`. Navigation, settings, device sheets, history controls, quick-panel controls and actions share the catalogues. Source strings are stable catalogue IDs; internal filter values and query syntax remain unchanged. Content, filenames, device names and user tags bypass translation. Service-generated history titles carry an explicit marker so they can be translated without translating user text. Missing catalogue text falls back to the Chinese source. No translation request leaves the device. Standard numeric/ISO timestamps remain unchanged; Today and Yesterday headings are translated.
+
+The translation package depends only on the standard library. Production UI, tray/notifications and isolated previews share it. The catalogue is embedded from `app/desktop/internal/i18n/locales.json` into each executable that imports it. No demo package owns production translations.
 
 Run `make desktop-e2e CASE=i18n` for five-language, three-skin, two-theme software-view acceptance. The `data-binding` case verifies persistence with a real isolated service and a newly created desktop binding. See the [i18n receipt](../exec/desktop-i18n.md). Native tray, notification delivery, OS focus and platform visual acceptance require separate native evidence.
 The service lifecycle, exclusive clipboard adapter, tray and normal/lightweight modes remain defined by the [headless architecture](headless.md).
@@ -129,9 +131,9 @@ See the [execution receipt](../exec/desktop-live-data.md) for nonvisual process 
 
 ## GPUI quick panel fixture
 
-The dedicated `unic-desktop --demo --page quick-panel` entry follows cached `origin/main` commit `885546c7cf6f6f0d2076104efd1d90d9f73d9744`.
+The dedicated `unic-desktop-demo --page quick-panel` entry follows cached `origin/main` commit `885546c7cf6f6f0d2076104efd1d90d9f73d9744`.
 It replaces the earlier generic history/detail quick-panel composition.
-`desktopdemo/quick_panel_model.go` owns fixture state and simulated effects.
+`desktopdemo/fixtures` owns synthetic quick-panel data. `desktopui/quick_panel_model.go` owns shared quick-panel state and isolated preview effects.
 `quick_panel_view.go` owns the 380 × 366 history composition, filter suggestions, nine result shortcuts, 3 × 3 image grid, empty states and action list.
 `quick_panel_image.go` owns image fit, actual-size and bounded pan.
 `quick_panel_window.go` creates the frameless history window and a parent-owned nonfocusable mygo Flyout.
@@ -180,3 +182,5 @@ The canonical Desktop acceptance entry is `make desktop-e2e`. It runs the declar
 ### Built-in tag labels
 
 Desktop lists Text, Images, Files and Links as protected built-in tags, including in an empty library. The labels use the selected interface language. Search, history, assignment and cleanup use stable `builtin:text`, `builtin:image`, `builtin:files` and `builtin:link` IDs. Custom tags retain their literal labels. The [pipeline](pipeline.md#built-in-content-tags) defines automatic classification and the no-backfill boundary.
+
+Run `make desktop-e2e CASE=production-boundary` to build both desktop commands and verify production excludes demo dependencies. See the [module separation receipt](../exec/desktop-module-separation.md).

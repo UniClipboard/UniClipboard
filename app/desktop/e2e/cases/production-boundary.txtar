@@ -1,0 +1,8 @@
+# Case: Production and demo module boundary
+# Mode: process
+# Purpose: Build independent production and demo commands and verify their dependency and embedded catalogue boundaries.
+# Steps: Inspect production, shared renderer and translation dependencies; build both commands; run demo help without opening a GUI.
+# Expected: Production imports desktopui and i18n, excludes desktopui and its fixtures, and embeds locales from i18n; the demo command builds and prints help.
+# Forbidden: Demo dependencies in production, translations in desktopui, skipped checks, or native window launch.
+
+acceptance startup production-boundary

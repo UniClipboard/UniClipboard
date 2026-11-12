@@ -5,4 +5,4 @@
 # Expected: Animated content geometry remains continuous and preserves sidebar state.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo sidebar-collapse
+acceptance desktopui sidebar-collapse

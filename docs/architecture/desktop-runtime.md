@@ -2,7 +2,8 @@
 paths:
   - app/desktop/internal/lifecycle
   - app/desktop/e2e
-  - app/desktop/internal/desktopdemo
+  - app/desktop/internal/desktopui
+  - app/desktop/internal/i18n
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
   - internal/localconfig

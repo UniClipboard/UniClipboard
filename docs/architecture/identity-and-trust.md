@@ -15,8 +15,8 @@ paths:
   - app/service/internal/server
   - app/service/cmd/unic/cli.go
   - app/desktop/cmd/unic-desktop/gui.go
-  - app/desktop/internal/desktopdemo/live.go
-  - app/desktop/internal/desktopdemo/live_devices.go
+  - app/desktop/internal/desktopui/live.go
+  - app/desktop/internal/desktopui/live_devices.go
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
@@ -74,7 +74,7 @@ The service owns Engine identity, trust transactions and the local pairing API.
 CLI and desktop clients submit approval snapshots through the same service route.
 The desktop process owns no second Engine or identity store.
 The normal desktop uses the approved mygo composition and opens history directly.
-`desktopdemo/live_devices.go` submits the displayed fingerprint, device revision and complete binding revision set through the shared client.
+`desktopui/live_devices.go` submits the displayed fingerprint, device revision and complete binding revision set through the shared client.
 The host applies the global file-sync switch when projecting backend policy; this restriction does not grant or revoke device trust.
 A newly trusted device emits the categorical `pairing_completed` product event after the trust transaction succeeds.
 The event contains no device identity, fingerprint, binding context or pairing material. See [observability](observability.md).

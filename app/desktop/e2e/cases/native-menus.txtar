@@ -5,4 +5,4 @@
 # Expected: Menu requests and returned commands match each exercised filter and action.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo native-menus
+acceptance desktopui native-menus

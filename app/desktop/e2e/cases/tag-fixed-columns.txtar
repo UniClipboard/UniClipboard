@@ -5,4 +5,4 @@
 # Expected: Complete management sheets preserve column alignment and row geometry.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
-acceptance desktopdemo tag-fixed-columns
+acceptance desktopui tag-fixed-columns

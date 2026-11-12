@@ -16,7 +16,9 @@ unic-desktop --+
 | `cmd/unic-desktop` | GUI and graphical session lifecycle |
 | `internal/board` | Native clipboard access |
 | `internal/uikit` | Adwaita, macOS glass and Fluent component skins |
-| `internal/desktopdemo` | Shared desktop composition, live service binding and isolated fixture |
+| `internal/desktopui` | Shared desktop renderer and production service binding |
+| `internal/i18n` | Embedded translation catalogue and lookup |
+| `internal/desktopdemo` | Independent preview launcher and synthetic fixtures |
 
 Closing the window hides it and keeps the adapter active. The tray or a second launch shows it again.
 Explicit Quit stops the desktop process and its owned service. Lightweight mode runs only the standalone service.
@@ -37,7 +39,7 @@ Run the command again after changing code.
 
 ### Native layout demo
 
-Build `unic-desktop`, then run `unic-desktop --demo` to open the restored layouts with local fixtures.
+Build `unic-desktop-demo` with `go build -o .build/unic-desktop-demo ./app/desktop/cmd/unic-desktop-demo`, then run it to open the restored layouts with local fixtures.
 Use `UNIC_UI_SKIN=linux|macos|windows` to select a skin.
 Use `--theme light|dark|system` to select a color mode.
 Use `--page history|devices|settings|quick-panel` to choose the initial page.
@@ -154,7 +156,7 @@ See [desktop runtime](../../docs/architecture/desktop-runtime.md).
 ## Independent desktop program
 
 Build `go build -o dist/unic-desktop ./app/desktop/cmd/unic-desktop`.
-Run `unic-desktop` to restart the profile service and attach the GUI. Use `unic-desktop --demo` for the existing isolated UI fixture.
+Run `unic-desktop` to restart the profile service and attach the GUI. Use `unic-desktop-demo` for the existing isolated UI fixture.
 The desktop program contains the GUI, system clipboard adapter, tray and notifications.
 Closing its window keeps the adapter running. Explicit quit stops desktop integration and the owned service.
 See [headless architecture](../../docs/architecture/headless.md).

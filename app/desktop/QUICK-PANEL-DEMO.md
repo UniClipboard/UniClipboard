@@ -23,8 +23,8 @@ See the [architecture](../../docs/architecture/overview.md#gpui-quick-panel-fixt
 ## Build and run manually
 
 ```sh
-go build -o .build/unic-desktop ./app/desktop/cmd/unic-desktop
-UNIC_UI_SKIN=macos .build/unic-desktop --demo --page quick-panel --theme dark
+go build -o .build/unic-desktop-demo ./app/desktop/cmd/unic-desktop-demo
+UNIC_UI_SKIN=macos .build/unic-desktop-demo --page quick-panel --theme dark
 ```
 
 Use `--theme light` for the light preset.
@@ -100,7 +100,7 @@ It demonstrates the current view rendering. It does not establish native window 
 
 ## Normal desktop binding
 
-The standalone `--demo --page quick-panel` remains a fixture.
+The standalone `unic-desktop-demo --page quick-panel` remains a fixture.
 The normal desktop opens this composition with real history from Settings or the history menu.
 `live_quick.go` projects literal phrases, type/source alternatives and any-match tags into the shared service query.
 Candidates come from persisted catalogues; empty-state relaxation counts come from exact prospective queries.

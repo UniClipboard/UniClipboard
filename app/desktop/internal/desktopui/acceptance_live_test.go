@@ -150,7 +150,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 		t.Fatal("initial history read must expose foreground loading")
 	}
 	spin("empty history", func() bool { return d.live.loaded && !d.live.loading })
-	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != 4 {
+	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != 5 {
 		t.Fatal("fixture or entry flow leaked")
 	}
 	checks = append(checks, "opens empty history directly without fixtures")

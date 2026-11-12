@@ -210,7 +210,7 @@ func scenarioTagManager(t *testing.T) {
 					}
 					tt.Type("临时标签")
 					tt.Key(0, ui.KeyEscape)
-					if !d.tagsOpen || d.tagManager.editing != "" || len(d.tags) != 8 {
+					if !d.tagsOpen || d.tagManager.editing != "" || len(d.tags) != 9 {
 						t.Fatal("Escape did not cancel inline creation")
 					}
 				case "duplicate":
@@ -219,13 +219,13 @@ func scenarioTagManager(t *testing.T) {
 					}
 					tt.Type("工作")
 					tt.Key(0, ui.KeyEnter)
-					if !tt.HasText("已存在同名标签") || len(d.tags) != 8 {
+					if !tt.HasText("已存在同名标签") || len(d.tags) != 9 {
 						t.Fatal("duplicate tag was accepted")
 					}
 					tt.Key(ui.Cmd, ui.KeyA)
 					tt.Type("外出")
 					tt.Key(0, ui.KeyEnter)
-					if !tt.HasText("#外出") || len(d.tags) != 9 {
+					if !tt.HasText("#外出") || len(d.tags) != 10 {
 						t.Fatal("duplicate error could not be corrected")
 					}
 				case "bulk":

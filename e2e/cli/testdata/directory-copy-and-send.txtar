@@ -23,14 +23,14 @@ board-set alpha files source/tree
 ! tree-wait beta source/tree
 until alpha '"kind":"directory_reference"' history list --json
 directory-probe alpha 0 0
-u alpha history list --tag builtin:files --json
+u alpha history list --tag builtin:folder --json
 stdout '"kind":"directory_reference"'
 u alpha config --json
 stdout '"directories":\{"automatic":false\}'
 u alpha send --to all -f $WORK/source/tree --json
 stdout '"outcome":"success"'
 tree-wait beta source/tree
-u beta history list --tag builtin:files --json
+u beta history list --tag builtin:folder --json
 stdout '"kind":"directory"'
 cp changed.txt source/tree/nested/file.txt
 ! tree-wait beta source/tree

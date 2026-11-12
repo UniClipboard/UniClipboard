@@ -59,6 +59,8 @@ Adapter IPC, in-process and external plugin backends, RPC, and version-1 peer wi
 Peer receive admission validates and reserves metadata storage before reading content bodies.
 Receipt uses the admitted metadata; it never substitutes the receiving application.
 History restore sends the stored metadata. Applying clipboard content does not manufacture a new capture.
+Directory source references retain their captured application when explicit or automatic preparation creates an immutable snapshot.
+Local copy-action markers remain separate from application provenance and are never transmitted.
 Action results and explicit submissions have no inferred application; a host may supply metadata on import.
 
 Application metadata is excluded from content hashes, observation comparisons, and cross-backend view hashes.

@@ -32,6 +32,7 @@ node-stop beta
 node-start beta
 u beta history list -n 1 --json
 stdout '"identifier":"org.example.Editor"'
+retry-copy alpha beta warm-up-after-restart
 u alpha config set sync.directories.automatic true
 cp changed.txt source/tree/member.txt
 board-set alpha source no-icon.json files source/tree
@@ -40,6 +41,12 @@ u beta history list -n 1 --json
 stdout '"kind":"directory"'
 stdout '"identifier":"org.example.NoIcon"'
 ! stdout '"icon_png"'
+cp content.txt source/tree/member.txt
+board-set alpha source app.json files source/tree
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
 
 -- app.json --
 {"platform":"linux","identifier":"org.example.Editor","name":"Example Editor","attribution":"clipboard_owner","icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="}

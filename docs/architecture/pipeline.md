@@ -75,7 +75,7 @@ Text containing an HTTP(S) URL also receives `builtin:link`; inspection is limit
 It changes no content and performs no network or file-body reads.
 Existing history is not backfilled. Disabling `plugins.instances."builtin.classify".enabled` takes effect after service restart and stops classification of new items; existing tags remain.
 The existing `builtin.text` email/URL hints and text Actions remain independent.
-Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes only the four built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
+Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes only the five built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
 
 ## Invariants
 

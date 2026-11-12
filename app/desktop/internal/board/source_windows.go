@@ -16,10 +16,10 @@ import (
 
 var sourceUser32 = windows.NewLazySystemDLL("user32.dll")
 var clipboardOwner = sourceUser32.NewProc("GetClipboardOwner")
-var clipboardSequence = sourceUser32.NewProc("GetClipboardSequenceNumber")
+var sourceClipboardSequence = sourceUser32.NewProc("GetClipboardSequenceNumber")
 var sourceWindowPID = sourceUser32.NewProc("GetWindowThreadProcessId")
 
-func nativeVersion() uint64 { n, _, _ := clipboardSequence.Call(); return uint64(n) }
+func nativeVersion() uint64 { n, _, _ := sourceClipboardSequence.Call(); return uint64(n) }
 func nativeSource() sourceState {
 	state := sourceState{token: nativeVersion()}
 	owner, _, _ := clipboardOwner.Call()

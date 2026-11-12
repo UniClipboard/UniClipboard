@@ -24,6 +24,7 @@
 | [directory-mixed-auto](#directory-mixed-auto) | Mixed directory selections follow directory automatic policy |
 | [directory-roots-and-bounds](#directory-roots-and-bounds) | Directory roots and resource bounds apply to the entire selection |
 | [directory-source-and-recovery](#directory-source-and-recovery) | Directory preparation detects source changes and recovers owned staging |
+| [directory-source-metadata](#directory-source-metadata) | Directory capture and preparation retain source application metadata |
 | [file-cache-boundary](#file-cache-boundary) | Cache cleanup cannot escape the managed directory |
 | [file-cache-retention](#file-cache-retention) | Unified cleanup deletes managed files with history |
 | [file-cache-scope](#file-cache-scope) | File cache ownership and quota |
@@ -791,14 +792,14 @@ board-set alpha files source/tree
 ! tree-wait beta source/tree
 until alpha '"kind":"directory_reference"' history list --json
 directory-probe alpha 0 0
-u alpha history list --tag builtin:files --json
+u alpha history list --tag builtin:folder --json
 stdout '"kind":"directory_reference"'
 u alpha config --json
 stdout '"directories":\{"automatic":false\}'
 u alpha send --to all -f $WORK/source/tree --json
 stdout '"outcome":"success"'
 tree-wait beta source/tree
-u beta history list --tag builtin:files --json
+u beta history list --tag builtin:folder --json
 stdout '"kind":"directory"'
 cp changed.txt source/tree/nested/file.txt
 ! tree-wait beta source/tree
@@ -1157,6 +1158,76 @@ node-start alpha
 ! directory-staging alpha
 ! until beta '"kind":"directory"' history list --json
 cmp source/tree/member second.txt
+```
+
+</details>
+
+## directory-source-metadata
+
+**Directory capture and preparation retain source application metadata**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-source-metadata' -v`
+
+**目的**
+
+Verify provenance when deferred directory references become transferable snapshots.
+
+
+**流程**
+
+1. Capture a directory with an application icon and explicitly send its history record.
+2. Restart the receiver and verify the source metadata remains available.
+3. Enable automatic directory sending and recopy a changed tree with another application.
+
+**期望**
+
+- Source application identity and PNG survive explicit directory preparation and receipt.
+- Automatic preparation preserves the new source identity without reusing a stale icon.
+
+**不应**
+
+- Lose provenance during preparation or remove directory copy-action detection.
+
+<details><summary>脚本 testdata/directory-source-metadata.txtar</summary>
+
+```
+mkdir source/tree/empty
+cp content.txt source/tree/member.txt
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-set alpha source app.json files source/tree
+until alpha '"kind":"directory_reference"' history list -n 1 --json
+u alpha history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+! tree-wait beta source/tree
+u alpha history send @1 --to all --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"kind":"directory"'
+stdout '"identifier":"org.example.Editor"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+node-stop beta
+node-start beta
+u beta history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+retry-copy alpha beta warm-up-after-restart
+u alpha config set sync.directories.automatic true
+cp changed.txt source/tree/member.txt
+board-set alpha source no-icon.json files source/tree
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"kind":"directory"'
+stdout '"identifier":"org.example.NoIcon"'
+! stdout '"icon_png"'
+cp content.txt source/tree/member.txt
+board-set alpha source app.json files source/tree
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
 ```
 
 </details>

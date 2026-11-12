@@ -43,10 +43,9 @@ pub mod timing {
     pub const SEARCH_DEBOUNCE: Duration = Duration::from_millis(300);
     /// Several changes announced by the daemon at once become one search.
     pub const LIVE_COALESCE: Duration = Duration::from_millis(120);
-    /// A preview follows the selection after this long once the preview is already open ...
+    /// An open preview follows the selection after this long, so holding an arrow key does not
+    /// load every entry it passes. The first preview of a session opens at once instead.
     pub const PREVIEW_DELAY_OPEN: Duration = Duration::from_millis(120);
-    /// ... and after this long when it is not.
-    pub const PREVIEW_DELAY_CLOSED: Duration = Duration::from_millis(500);
     /// The pause between hiding the panel and pasting, so the target has focus by then.
     pub const PASTE_DELAY: Duration = Duration::from_millis(80);
     /// After pasting with the panel kept open, the panel comes back to the front this much later.

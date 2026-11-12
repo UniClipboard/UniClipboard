@@ -1156,15 +1156,16 @@ fn a_pixpin_image_file_loads_an_image_preview_and_remains_a_file() {
 }
 
 #[test]
-fn a_preview_follows_the_selection_after_a_pause_that_depends_on_the_window() {
+fn a_preview_opens_at_once_and_then_follows_the_selection_after_a_pause() {
     let (mut state, fixture) = open_panel(&["a", "b"]);
     let delay_of = |effects: &[Effect]| match effects {
         [Effect::SchedulePreview { delay, .. }] => *delay,
         other => panic!("{other:?}"),
     };
+    // Nothing is open yet: the first preview does not wait, so it appears with the history window.
     assert_eq!(
         delay_of(&state.schedule_preview()),
-        timing::PREVIEW_DELAY_CLOSED
+        std::time::Duration::ZERO
     );
     let effects = state.on_event(
         Event::PreviewDue {
@@ -1331,13 +1332,16 @@ fn what_the_daemon_lists_replaces_the_catalog_and_reaches_the_shell() {
         &fixture.ctx(),
     );
     assert_eq!(state.catalog.tags, ["work"]);
+    // The results were in before the options, so the first preview is scheduled once the panel
+    // is placed and shown.
     assert!(matches!(
         effects.as_slice(),
         [
             Effect::ApplySettings(_),
             Effect::Reposition,
-            Effect::ShowWindow
-        ]
+            Effect::ShowWindow,
+            Effect::SchedulePreview { id, .. }
+        ] if id == "a"
     ));
     assert!(!state.session.opening);
     // A failed read keeps what was known.
@@ -1347,6 +1351,67 @@ fn what_the_daemon_lists_replaces_the_catalog_and_reaches_the_shell() {
     );
     assert!(effects.is_empty());
     assert_eq!(state.catalog.tags, ["work"]);
+}
+
+fn options_loaded() -> Event {
+    Event::OptionsLoaded(Ok(Box::new(Options {
+        choices: Ok(crate::ports::Choices {
+            tags: vec![],
+            members: vec![],
+        }),
+        settings: None,
+    })))
+}
+
+#[test]
+fn results_that_arrive_while_the_panel_is_opening_do_not_start_a_preview_before_it_is_placed() {
+    let fixture = Fixture::new();
+    let mut state = PanelState::new(fixture.now);
+    state.show(&fixture.ctx());
+    let revision = state.search.revision;
+    let effects = state.on_event(
+        Event::SearchDone {
+            revision,
+            result: Ok(results(&["a"])),
+        },
+        &fixture.ctx(),
+    );
+    // The panel has not been placed yet: a preview now would be laid out on the last display.
+    assert!(!has(&effects, |e| matches!(
+        e,
+        Effect::SchedulePreview { .. }
+    )));
+    let effects = state.on_event(options_loaded(), &fixture.ctx());
+    let position = |wanted: fn(&Effect) -> bool| effects.iter().position(wanted);
+    let placed = position(|e| matches!(e, Effect::Reposition)).expect("the panel is placed");
+    let preview = position(|e| matches!(e, Effect::SchedulePreview { .. }))
+        .expect("the preview is scheduled");
+    assert!(placed < preview, "{effects:?}");
+}
+
+#[test]
+fn results_that_arrive_after_the_panel_is_placed_start_the_preview_at_once() {
+    let fixture = Fixture::new();
+    let mut state = PanelState::new(fixture.now);
+    state.show(&fixture.ctx());
+    // No results yet, so there is nothing to preview when the panel is placed.
+    let effects = state.on_event(options_loaded(), &fixture.ctx());
+    assert!(!has(&effects, |e| matches!(
+        e,
+        Effect::SchedulePreview { .. }
+    )));
+    let revision = state.search.revision;
+    let effects = state.on_event(
+        Event::SearchDone {
+            revision,
+            result: Ok(results(&["a"])),
+        },
+        &fixture.ctx(),
+    );
+    assert!(has(&effects, |e| matches!(
+        e,
+        Effect::SchedulePreview { id, .. } if id == "a"
+    )));
 }
 
 #[test]

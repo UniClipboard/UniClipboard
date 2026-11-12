@@ -176,11 +176,10 @@ vi.mock('../ClipboardPreviewPane', () => ({
     item ? <div>{`Preview for ${item.id}`}</div> : <div data-testid="preview-empty" />,
 }))
 
-// The preview opens on a PREVIEW_OPEN_DELAY_MS (500ms) timer, so anything that
-// asserts post-open layout has to wait for the state to land. Sleeping just past
-// the delay is not enough: the timer is rescheduled by the renders that follow
-// mount, which pushes the flip to ~520ms and leaves a loaded CI runner far too
-// little headroom. Wait on the condition with a timeout well clear of the delay.
+// The first preview opens without a delay, but its layout lands only after the async
+// side lookup and the backend resize resolve, so anything that asserts post-open
+// layout has to wait for the state to land. Wait on the condition with a generous
+// timeout instead of sleeping, so a loaded CI runner has plenty of headroom.
 const PREVIEW_OPEN_TIMEOUT_MS = 3000
 
 function deferred() {
@@ -289,14 +288,14 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(markup).not.toContain('transition-[opacity,transform]')
   })
 
-  it('renders preview content inside the same panel and requests expanded mode', async () => {
+  it('opens the first preview without waiting, inside the same panel, and requests expanded mode', async () => {
     renderPanel()
 
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 550))
-    })
-
-    expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
+    // The first preview of a session has no open delay: it must be there well before the
+    // 120 ms switch debounce plus the old 500 ms dwell timer could have elapsed.
+    expect(
+      await screen.findByText('Preview for entry-1', undefined, { timeout: 400 })
+    ).toBeInTheDocument()
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('SetQuickPanelLayout', 1, true, expect.anything())
@@ -360,10 +359,9 @@ describe('ClipboardHistoryPanel single-window preview', () => {
       return Promise.resolve(undefined)
     })
 
-    const { container } = renderPanel()
-    const rootLayout = container.firstElementChild as HTMLDivElement | null
-    const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
-    historyWrapper!.getBoundingClientRect = vi.fn(() => ({
+    // The first preview opens during mount and measures the history pane right then, so the
+    // width has to be in place before the first render (jsdom measures every element as 0).
+    const measure = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 360,
       height: 420,
       top: 0,
@@ -373,30 +371,65 @@ describe('ClipboardHistoryPanel single-window preview', () => {
       x: 0,
       y: 0,
       toJSON: () => ({}),
-    }))
+    })
+    try {
+      const { container } = renderPanel()
+      const rootLayout = container.firstElementChild as HTMLDivElement | null
+      const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
+      const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
 
-    const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
+      // `pendingResize` never settles here, so the reserving state is stable once
+      // reached and waiting for it is safe.
+      await waitFor(() => expect(historyWrapper?.className).toContain('shrink-0'), {
+        timeout: PREVIEW_OPEN_TIMEOUT_MS,
+      })
 
-    // `pendingResize` never settles here, so the reserving state is stable once
-    // reached — waiting for it is safe, and does not race the open delay.
-    await waitFor(() => expect(historyWrapper?.className).toContain('shrink-0'), {
+      expect(previewWrapper?.getAttribute('aria-hidden')).toBe('true')
+      expect(historyWrapper?.style.width).toBe('360px')
+      expect(previewWrapper?.className).toContain('shrink-0')
+
+      await act(async () => {
+        pendingResize.resolve()
+        await Promise.resolve()
+      })
+
+      expect(previewWrapper?.getAttribute('aria-hidden')).toBe('false')
+      expect(historyWrapper?.className).toContain('flex-1')
+      expect(historyWrapper?.style.width).toBe('')
+      expect(previewWrapper?.className).toContain('flex-1')
+      expect(previewWrapper?.style.width).toBe('')
+    } finally {
+      measure.mockRestore()
+    }
+  })
+
+  it('does not retry the preview in a loop when the backend layout resize fails', async () => {
+    invokeMock.mockImplementation((command: string, _scale?: number, previewExpanded?: boolean) => {
+      if (command === 'SetQuickPanelLayout' && previewExpanded) {
+        return Promise.reject(new Error('layout failed'))
+      }
+      return Promise.resolve(undefined)
+    })
+    const expandCalls = () =>
+      invokeMock.mock.calls.filter(call => call[0] === 'SetQuickPanelLayout' && call[2] === true)
+        .length
+
+    renderPanel()
+
+    await waitFor(() => expect(expandCalls()).toBeGreaterThanOrEqual(1), {
       timeout: PREVIEW_OPEN_TIMEOUT_MS,
     })
-
-    expect(previewWrapper?.getAttribute('aria-hidden')).toBe('true')
-    expect(historyWrapper?.style.width).toBe('360px')
-    expect(previewWrapper?.className).toContain('shrink-0')
-
+    // A failure resets the preview, which must not start the same attempt again by itself.
     await act(async () => {
-      pendingResize.resolve()
-      await Promise.resolve()
+      await new Promise(resolve => setTimeout(resolve, 300))
     })
+    expect(expandCalls()).toBe(1)
 
-    expect(previewWrapper?.getAttribute('aria-hidden')).toBe('false')
-    expect(historyWrapper?.className).toContain('flex-1')
-    expect(historyWrapper?.style.width).toBe('')
-    expect(previewWrapper?.className).toContain('flex-1')
-    expect(previewWrapper?.style.width).toBe('')
+    // The next hover is a new selection target, so it may try again.
+    const secondItem = screen.getByText('Second preview title')
+    fireEvent.mouseMove(secondItem)
+    fireEvent.mouseEnter(secondItem)
+    await waitFor(() => expect(expandCalls()).toBe(2), { timeout: PREVIEW_OPEN_TIMEOUT_MS })
   })
 
   it('dismisses the quick window immediately when escape is pressed with preview open', async () => {

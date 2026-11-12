@@ -56,8 +56,8 @@ func (p *quickDemo) panel(c *ui.Context) {
 	root.Children(func() {
 		if !p.visible {
 			ui.Column(c).Fill().Gap(12).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "面板已关闭").FontSize(15)
-				if ui.Button(c, "重新唤起").Clicked() {
+				ui.Text(c, p.tr("面板已关闭")).FontSize(15)
+				if ui.Button(c, p.tr("重新唤起")).Clicked() {
 					p.visible = true
 					p.query = ""
 					p.kind = ""
@@ -87,7 +87,7 @@ func (p *quickDemo) panel(c *ui.Context) {
 				}
 				switch {
 				case !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.foregroundLoading):
-					ui.Text(c, "正在搜索…").FontSize(13).TextColor(a.quiet).Padding(24)
+					ui.Text(c, p.tr("正在搜索…")).FontSize(13).TextColor(a.quiet).Padding(24)
 				case len(p.rows) == 0:
 					p.emptyView(c, a)
 				case p.kind == "图片":
@@ -104,7 +104,7 @@ func (p *quickDemo) panel(c *ui.Context) {
 			if p.message == "已复制" || p.message == "已发送粘贴指令" {
 				tone = a.quiet
 			}
-			ui.Text(c, p.message).Role(ui.RoleAlert).FontSize(11).TextColor(tone).Padding(8, 12)
+			ui.Text(c, p.tr(p.message)).Role(ui.RoleAlert).FontSize(11).TextColor(tone).Padding(8, 12)
 		}
 		ui.Row(c).Height(34).Shrink(0).Padding(0, 10, 0, 12).BorderWidth(1, 0, 0, 0).BorderColor(a.border).AlignItems(ui.Center).Gap(7).Children(func() {
 			ui.Row(c).Size(16, 16).Radius(4).Background(a.foreground).AlignItems(ui.Center).Justify(ui.Center).Children(func() { ui.Text(c, "T").FontSize(9).TextColor(a.background) })
@@ -115,8 +115,11 @@ func (p *quickDemo) panel(c *ui.Context) {
 			}
 			qpKeycap(c, shortcut, a)
 			ui.Spacer(c)
-			b := ui.ButtonBase(c.Key("actions")).Label("操作").Row().Gap(6).AlignItems(ui.Center)
-			b.Children(func() { ui.Text(c, "操作").FontSize(12).TextColor(a.quiet); qpKeycap(c, p.commandLabel()+"K", a) })
+			b := ui.ButtonBase(c.Key("actions")).Label(p.tr("操作")).Row().Gap(6).AlignItems(ui.Center)
+			b.Children(func() {
+				ui.Text(c, p.tr("操作")).FontSize(12).TextColor(a.quiet)
+				qpKeycap(c, p.commandLabel()+"K", a)
+			})
 			b.OnClick(p.openActions)
 		})
 	})
@@ -132,8 +135,8 @@ func (p *quickDemo) searchRow(c *ui.Context, a qpPalette) {
 	ui.Row(c).Height(48).Shrink(0).PaddingX(14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(a.border).Children(func() {
 		uikit.For(false).Icon(c, uikit.IconSearch, 16).TextColor(a.foreground)
 		for i, f := range p.chips {
-			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label("移除 " + f.label).Height(24).PaddingX(8).Radius(6).Background(a.muted)
-			b.Children(func() { ui.Text(c, f.label).FontSize(12.5).TextColor(a.primary) })
+			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + f.label).Height(24).PaddingX(8).Radius(6).Background(a.muted)
+			b.Children(func() { ui.Text(c, p.filterLabel(f)).FontSize(12.5).TextColor(a.primary) })
 			b.OnClick(func() {
 				p.chips = append(p.chips[:i], p.chips[i+1:]...)
 				p.queryChanged()
@@ -141,29 +144,29 @@ func (p *quickDemo) searchRow(c *ui.Context, a qpPalette) {
 				p.input.Focus()
 			})
 		}
-		in := ui.TextInputBase(c.Key("search"), &p.query).Label("搜索快捷面板").Placeholder("搜索，或输入 # 标签  @ 设备  / 类型").PlaceholderColor(a.quiet).FontSize(15).Height(32).Grow(1).MinWidth(0).AutoFocus()
+		in := ui.TextInputBase(c.Key("search"), &p.query).Label(p.tr("搜索快捷面板")).Placeholder(p.tr("搜索，或输入 # 标签  @ 设备  / 类型")).PlaceholderColor(a.quiet).FontSize(15).Height(32).Grow(1).MinWidth(0).AutoFocus()
 		in.Bind(&p.input).OnChange(p.queryChanged)
 		p.bindKeys(c, in)
 		if p.query != "" || p.kind != "" || len(p.chips) > 0 {
 			ui.Text(c, func() string {
 				if len(p.suggestions()) > 0 {
-					return fmt.Sprintf("%d 条文字匹配", len(p.rows))
+					return fmt.Sprintf(p.tr("%d 条文字匹配"), len(p.rows))
 				}
-				return fmt.Sprintf("%d 条", len(p.rows))
+				return fmt.Sprintf(p.tr("%d 条"), len(p.rows))
 			}()).FontSize(12).TextColor(a.quiet).Shrink(0)
 		}
-		b := ui.ButtonBase(c.Key("type")).Label("切换类型").Row().Gap(6).AlignItems(ui.Center).Shrink(0)
+		b := ui.ButtonBase(c.Key("type")).Label(p.tr("切换类型")).Row().Gap(6).AlignItems(ui.Center).Shrink(0)
 		b.Children(func() {
 			label := p.kind
 			if label == "" {
-				label = "全部"
+				label = p.tr("全部")
 			}
-			ui.Text(c, label).FontSize(12).TextColor(a.quiet)
+			ui.Text(c, p.tr(label)).FontSize(12).TextColor(a.quiet)
 			qpKeycap(c, "⇥", a)
 		})
 		b.OnClick(func() { p.tab(false); p.input.Focus() })
 		if p.query != "" || p.kind != "" || len(p.chips) > 0 {
-			ui.ButtonBase(c.Key("clear")).Label("清空").Size(18, 18).Children(func() { ui.Text(c, "×").FontSize(16).TextColor(a.quiet) }).OnClick(func() { p.clear(); p.input.Focus() })
+			ui.ButtonBase(c.Key("clear")).Label(p.tr("清空")).Size(18, 18).Children(func() { ui.Text(c, "×").FontSize(16).TextColor(a.quiet) }).OnClick(func() { p.clear(); p.input.Focus() })
 		}
 	})
 }
@@ -316,7 +319,7 @@ func (p *quickDemo) suggestionList(c *ui.Context, a qpPalette, options []qpFilte
 			ui.Text(c, note).FontSize(11).TextColor(a.quiet)
 		})
 	}
-	heading("建议", "按顺序接受 ⇥")
+	heading(p.tr("建议"), p.tr("按顺序接受 ⇥"))
 	cursor := 0
 	if p.suggestFocused {
 		cursor = p.suggestCursor
@@ -324,7 +327,7 @@ func (p *quickDemo) suggestionList(c *ui.Context, a qpPalette, options []qpFilte
 	start := max(0, cursor-2)
 	for i := start; i < min(len(options), start+3); i++ {
 		f := options[i]
-		b := ui.ButtonBase(c.Key("suggest-"+f.dimension+f.value)).Label("建议："+f.label).Height(30).FillWidth().Padding(0, 8, 0, 6).Radius(7).Row().AlignItems(ui.Center).Gap(8)
+		b := ui.ButtonBase(c.Key("suggest-"+f.dimension+f.value)).Label(p.tr("建议：")+f.label).Height(30).FillWidth().Padding(0, 8, 0, 6).Radius(7).Row().AlignItems(ui.Center).Gap(8)
 		if cursor == i {
 			b.Background(a.muted)
 		}
@@ -333,16 +336,16 @@ func (p *quickDemo) suggestionList(c *ui.Context, a qpPalette, options []qpFilte
 			ui.Text(c, f.matched).Font("monospace").FontSize(11.5).PaddingX(5).Radius(4).Background(a.muted).MaxLines(1)
 			ui.Text(c, "→").FontSize(12.5).TextColor(a.quiet)
 			labels := map[string]string{"type": "类型", "tag": "标签", "source": "设备", "time": "时间"}
-			ui.Text(c, labels[f.dimension]).FontSize(12.5).TextColor(a.quiet)
-			ui.Text(c, f.label).FontSize(12.5).Bold().TextColor(a.primary).Padding(1, 7).Radius(5).Background(a.muted).Grow(1).MinWidth(0).MaxLines(1)
+			ui.Text(c, p.tr(labels[f.dimension])).FontSize(12.5).TextColor(a.quiet)
+			ui.Text(c, p.filterLabel(f)).FontSize(12.5).Bold().TextColor(a.primary).Padding(1, 7).Radius(5).Background(a.muted).Grow(1).MinWidth(0).MaxLines(1)
 			qpKeycap(c, "⇥", a)
 		})
 		b.OnClick(func() { p.accept(f); p.input.Focus() })
 	}
 	if hidden := len(options) - min(len(options), start+3); hidden > 0 {
-		ui.Text(c, fmt.Sprintf("还有 %d 条", hidden)).FontSize(11).TextColor(a.quiet).Padding(4, 8)
+		ui.Text(c, fmt.Sprintf(p.tr("还有 %d 条"), hidden)).FontSize(11).TextColor(a.quiet).Padding(4, 8)
 	}
-	heading("文字匹配", "")
+	heading(p.tr("文字匹配"), "")
 }
 func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) []ui.Span {
 	text := strings.NewReplacer("\n", " ", "\r", " ").Replace(e.title)
@@ -389,7 +392,7 @@ func (p *quickDemo) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry) {
 		ink = a.white
 		quiet = ui.RGBA(255, 255, 255, .78)
 	}
-	b := ui.ButtonBase(c).Label("历史："+e.title).FillWidth().Height(30).Shrink(0).Padding(0, 10, 0, 6).Radius(7).Row().Gap(8).AlignItems(ui.Center).TextColor(ink)
+	b := ui.ButtonBase(c).Label(p.tr("历史：")+e.title).FillWidth().Height(30).Shrink(0).Padding(0, 10, 0, 6).Radius(7).Row().Gap(8).AlignItems(ui.Center).TextColor(ink)
 	if selected {
 		b.Background(a.primary)
 	} else if b.Hovered() && !p.keyboard {
@@ -419,12 +422,12 @@ func (p *quickDemo) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry) {
 					label = "ZIP"
 				}
 			}
-			ui.Text(c, label).FontSize(10.5).TextColor(quiet).Background(a.muted).Radius(4).Padding(1, 5)
+			ui.Text(c, p.tr(label)).FontSize(10.5).TextColor(quiet).Background(a.muted).Radius(4).Padding(1, 5)
 		}
 		if e.favorite {
 			ui.Text(c, "★").FontSize(12).TextColor(ui.RGB(251, 191, 36))
 		}
-		if e.source != "本机" {
+		if e.source != "本机" && e.source != p.tr("本机") {
 			uikit.For(false).Icon(c, uikit.IconDownload, 12).TextColor(quiet)
 		}
 		ui.Text(c, e.age).FontSize(11).TextColor(quiet).Shrink(0)
@@ -471,7 +474,7 @@ func (p *quickDemo) imageGrid(c *ui.Context, a qpPalette) {
 						continue
 					}
 					e := p.rows[at]
-					b := ui.ButtonBase(c.Key(e.id)).Label("图片："+e.title).Grow(1).MinWidth(0).Height(86).Padding(2).Radius(7).Border(2, a.border).Clip()
+					b := ui.ButtonBase(c.Key(e.id)).Label(p.tr("图片：")+e.title).Grow(1).MinWidth(0).Height(86).Padding(2).Radius(7).Border(2, a.border).Clip()
 					if at == p.selected {
 						b.BorderColor(a.primary)
 					}
@@ -499,27 +502,27 @@ func (p *quickDemo) imageGrid(c *ui.Context, a qpPalette) {
 	})
 }
 func (p *quickDemo) emptyView(c *ui.Context, a qpPalette) {
-	title := "还没有剪贴板历史"
-	hint := "在任意设备上复制内容，都会出现在这里。"
+	title := p.tr("还没有剪贴板历史")
+	hint := p.tr("在任意设备上复制内容，都会出现在这里。")
 	if p.mode == "disconnected" {
-		title = "同步服务未响应"
-		hint = "本次唤起期间恢复会自动刷新列表。"
+		title = p.tr("同步服务未响应")
+		hint = p.tr("本次唤起期间恢复会自动刷新列表。")
 	} else if p.query != "" {
-		title = "没有匹配“" + p.query + "”的内容"
-		hint = "试试其他关键词或筛选条件"
+		title = p.tr("没有匹配“") + p.query + p.tr("”的内容")
+		hint = p.tr("试试其他关键词或筛选条件")
 	} else if p.kind != "" || len(p.chips) > 0 {
-		title = "没有符合条件的内容"
-		hint = "试试其他关键词或筛选条件"
+		title = p.tr("没有符合条件的内容")
+		hint = p.tr("试试其他关键词或筛选条件")
 	}
 	ui.Column(c).FillWidth().MinHeight(220).Gap(10).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, title).Role(ui.RoleHeading).FontSize(15).Bold()
 		ui.Text(c, hint).FontSize(12).TextColor(a.quiet)
 		if p.mode == "disconnected" {
-			ui.Button(c, "立即重连").OnClick(func() { p.mode = "history"; p.applySearch(); p.update() })
+			ui.Button(c, p.tr("立即重连")).OnClick(func() { p.mode = "history"; p.applySearch(); p.update() })
 		} else if p.query != "" || p.kind != "" || len(p.chips) > 0 {
 			options := p.relaxations()
 			if len(options) > 0 {
-				ui.Text(c, "试试放宽：").FontSize(12).TextColor(a.quiet)
+				ui.Text(c, p.tr("试试放宽：")).FontSize(12).TextColor(a.quiet)
 				for i, r := range options {
 					b := ui.ButtonBase(c.Key(r.dimension)).Label(r.label).FillWidth().Height(30).Radius(7).PaddingX(10).Row().Gap(8).AlignItems(ui.Center)
 					if i == p.relaxCursor {
@@ -528,14 +531,14 @@ func (p *quickDemo) emptyView(c *ui.Context, a qpPalette) {
 					b.Children(func() {
 						ui.Text(c, fmt.Sprint(i+1)).FontSize(12).TextColor(a.quiet)
 						ui.Text(c, r.label).FontSize(13).Grow(1)
-						ui.Text(c, fmt.Sprintf("%d 条", r.count)).FontSize(12).TextColor(a.quiet)
+						ui.Text(c, fmt.Sprintf(p.tr("%d 条"), r.count)).FontSize(12).TextColor(a.quiet)
 					})
 					b.OnClick(func() { p.relax(r.dimension); p.input.Focus() })
 				}
 			}
-			ui.Button(c, "清空筛选").OnClick(func() { p.clear(); p.input.Focus() })
+			ui.Button(c, p.tr("清空筛选")).OnClick(func() { p.clear(); p.input.Focus() })
 		} else {
-			ui.Text(c, "随时唤起  "+p.commandLabel()+"Ctrl+V").FontSize(12).TextColor(a.quiet)
+			ui.Text(c, p.tr("随时唤起  ")+p.commandLabel()+"Ctrl+V").FontSize(12).TextColor(a.quiet)
 		}
 	})
 }
@@ -562,11 +565,11 @@ func (p *quickDemo) satellite(c *ui.Context) {
 			p.imagePreview(c, a, *e)
 			return
 		}
-		title := e.kind + " · " + e.age + " · 来自 " + e.source
+		title := p.tr(e.kind) + " · " + e.age + p.tr(" · 来自 ") + e.source
 		if p.menu != "" {
-			title = "操作"
+			title = p.tr("操作")
 			if p.menu == "devices" {
-				title = "发送到"
+				title = p.tr("发送到")
 			}
 		}
 		ui.Text(c, title).FontSize(11).TextColor(a.quiet).Padding(12).Shrink(0)
@@ -575,7 +578,7 @@ func (p *quickDemo) satellite(c *ui.Context) {
 			if p.menu != "" {
 				ui.Column(c).FillWidth().Padding(6).Gap(2).Children(func() {
 					for i, row := range p.actions() {
-						b := ui.ButtonBase(c.Key(row.id)).Label(row.label).Disabled(!row.enabled).FillWidth().Height(30).PaddingX(10).Radius(7).Row().Gap(8).AlignItems(ui.Center)
+						b := ui.ButtonBase(c.Key(row.id)).Label(p.actionLabel(row)).Disabled(!row.enabled).FillWidth().Height(30).PaddingX(10).Radius(7).Row().Gap(8).AlignItems(ui.Center)
 						if i == p.cursor {
 							b.Background(a.primary).TextColor(a.white)
 						}
@@ -583,7 +586,7 @@ func (p *quickDemo) satellite(c *ui.Context) {
 							b.Opacity(.45)
 						}
 						b.Children(func() {
-							ui.Text(c, row.label).FontSize(13).Grow(1)
+							ui.Text(c, p.actionLabel(row)).FontSize(13).Grow(1)
 							if row.shortcut != "" {
 								qpKeycap(c, row.shortcut, a)
 							}
@@ -605,7 +608,7 @@ func (p *quickDemo) satellite(c *ui.Context) {
 					if p.richPreview == nil {
 						p.richPreview = richtext.NewDocument(richtext.ParseHTML("<h2>设计评审记录</h2><p>确认列表高度与<strong>键盘操作</strong>。</p><ul><li>保留清晰的选中状态。</li><li>核对浅色和深色主题。</li></ul>"))
 					}
-					richtext.EditorBase(c, p.richPreview, richtext.EditorOptions{Label: "富文本预览", ReadOnly: true}).FillWidth().Height(200)
+					richtext.EditorBase(c, p.richPreview, richtext.EditorOptions{Label: p.tr("富文本预览"), ReadOnly: true}).FillWidth().Height(200)
 				case "链接":
 					ui.Text(c, e.title).FontSize(14).Bold().Selectable()
 					ui.Text(c, e.text).FontSize(12).TextColor(a.quiet).Selectable()
@@ -622,7 +625,7 @@ func (p *quickDemo) satellite(c *ui.Context) {
 			})
 		})
 		if p.menu != "" {
-			ui.Text(c, "↑↓ 选择 · ⏎ 执行 · esc 返回").FontSize(11).TextColor(a.quiet).Padding(10, 12).Shrink(0)
+			ui.Text(c, p.tr("↑↓ 选择 · ⏎ 执行 · esc 返回")).FontSize(11).TextColor(a.quiet).Padding(10, 12).Shrink(0)
 		}
 	})
 }
@@ -630,9 +633,9 @@ func (p *quickDemo) satellite(c *ui.Context) {
 func (p *quickDemo) pasteTargetLabel() string {
 	if p.live != nil {
 		if p.live.system != nil && p.live.system.CanPaste {
-			return "粘贴到 " + p.live.system.TargetName
+			return p.tr("粘贴到 ") + p.live.system.TargetName
 		}
-		return "复制到剪贴板"
+		return p.tr("复制到剪贴板")
 	}
-	return "粘贴到 TextEdit"
+	return p.tr("粘贴到 TextEdit")
 }

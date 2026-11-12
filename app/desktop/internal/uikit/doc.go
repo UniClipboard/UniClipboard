@@ -11,6 +11,8 @@ package uikit
 //   - Use Kit.Scroll for vertical scrolling instead of ui.Scroll. It shares the
 //     indicator visibility policy with Kit lists and grids. Keep timing and
 //     hover rules in scroll_indicator.go, never in pages or individual components.
+//   - Switch renders only its track and thumb. Put visible captions in the
+//     enclosing row; SwitchProps.Label supplies only the accessible name.
 //   - Build on mygo's *Base widgets (ButtonBase, TextInputBase, SwitchBase, TabsBase,
 //     DialogBase, MenuBase ...) so keyboard, focus and accessibility keep working; add the
 //     look on top with Background/Border/Shadow/InsetShadow/Draw. See

@@ -227,3 +227,14 @@ The production host registers Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/
 Open the panel from another application to capture its target. Enter applies history and sends paste to that target. Shift+Enter applies the existing plain-text Action first. Command/Ctrl+Enter sends paste and reopens the panel. Command/Ctrl+C copies without input injection. macOS requires Accessibility permission. Wayland keeps Copy but cannot automatically restore arbitrary target focus or inject paste.
 
 The [system contract](../../docs/contracts/desktop-quick-panel-contract.md) defines cancellation, clipboard ownership and platform limits. The [execution receipt](../../docs/exec/desktop-quick-panel-system.md) distinguishes process evidence from native acceptance.
+
+## Interface languages
+
+Open Settings > General > Interface language to select Simplified Chinese, English, Japanese, Brazilian Portuguese or Russian. The selection saves to `desktop.language` and applies without restarting. Simplified Chinese is the default. The demo keeps language changes in memory. Clipboard content, device names, filenames and user tags remain unchanged.
+
+```toml
+[desktop]
+language = "pt-BR"
+```
+
+Use `make desktop-e2e CASE=i18n` for the repeatable software-view language matrix. See [desktop languages](../../docs/architecture/overview.md#desktop-languages) and the [acceptance receipt](../../docs/exec/desktop-i18n.md).

@@ -118,7 +118,7 @@ func (d *demo) tagMenu(ids []string) []uikit.MenuEntry {
 		single = d.tagByID(ids[0])
 	}
 	if single != nil && !single.builtin {
-		out = append(out, uikit.MenuEntry{ID: "rename", Label: "重命名…", Icon: uikit.IconEdit})
+		out = append(out, uikit.MenuEntry{ID: "rename", Label: d.tr("重命名…"), Icon: uikit.IconEdit})
 	}
 	if len(own) > 0 {
 		var targets []uikit.MenuEntry
@@ -128,22 +128,22 @@ func (d *demo) tagMenu(ids []string) []uikit.MenuEntry {
 			}
 		}
 		if len(targets) > 0 {
-			out = append(out, uikit.MenuEntry{ID: "merge", Label: "合并到", Children: targets})
+			out = append(out, uikit.MenuEntry{ID: "merge", Label: d.tr("合并到"), Children: targets})
 		}
 	}
 	if single != nil {
-		out = append(out, uikit.MenuEntry{ID: "show", Label: "显示条目", Icon: uikit.IconSearch})
+		out = append(out, uikit.MenuEntry{ID: "show", Label: d.tr("显示条目"), Icon: uikit.IconSearch})
 	}
 	if single != nil && !single.builtin {
 		out = append(out, uikit.MenuSeparator("colors"))
 		for _, v := range [][2]string{{"orange", "橙色"}, {"blue", "蓝色"}, {"green", "绿色"}, {"purple", "紫色"}, {"gray", "灰色"}} {
-			out = append(out, uikit.MenuEntry{ID: "color:" + v[0], Label: v[1], Swatch: uikit.TagColor(v[0]), Checked: single.color == uikit.TagColor(v[0])})
+			out = append(out, uikit.MenuEntry{ID: "color:" + v[0], Label: d.tr(v[1]), Swatch: uikit.TagColor(v[0]), Checked: single.color == uikit.TagColor(v[0])})
 		}
 	}
 	if len(own) > 0 {
-		label := "删除标签（保留条目）"
+		label := d.tr("删除标签（保留条目）")
 		if len(own) > 1 {
-			label = fmt.Sprintf("删除 %d 个标签（保留条目）", len(own))
+			label = fmt.Sprintf(d.tr("删除 %d 个标签（保留条目）"), len(own))
 		}
 		out = append(out, uikit.MenuSeparator("delete-separator"), uikit.MenuEntry{ID: "delete", Label: label, Icon: uikit.IconDelete, Destructive: true})
 	}
@@ -222,17 +222,17 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 		return strings.Compare(strings.ToLower(a.name), strings.ToLower(b.name))
 	})
 	header := func() {
-		k.Text(c.Key("subtitle"), fmt.Sprintf("标签 · %d", len(d.tags)), uikit.TextProps{Role: uikit.RoleCallout, Tone: uikit.ToneSecondary}).Shrink(0)
+		k.Text(c.Key("subtitle"), fmt.Sprintf(d.tr("标签 · %d"), len(d.tags)), uikit.TextProps{Role: uikit.RoleCallout, Tone: uikit.ToneSecondary}).Shrink(0)
 		ui.Spacer(c)
-		k.Select(c.Key("sort"), uikit.SelectProps{Label: "标签排序", Glass: true, Value: &m.sort, Items: []uikit.SelectItem{{Value: "mostUsed", Label: "最常用"}, {Value: "name", Label: "名称"}, {Value: "newest", Label: "最新"}}}).Element.Shrink(0)
-		k.SearchField(c.Key("filter"), uikit.SearchFieldProps{Label: "筛选标签", Value: &m.filter, Placeholder: fmt.Sprintf("在 %d 个标签中筛选", len(d.tags))}).Element.Grow(1).MinWidth(80)
+		k.Select(c.Key("sort"), uikit.SelectProps{Label: d.tr("标签排序"), Glass: true, Value: &m.sort, Items: []uikit.SelectItem{{Value: "mostUsed", Label: d.tr("最常用")}, {Value: "name", Label: d.tr("名称")}, {Value: "newest", Label: d.tr("最新")}}}).Element.Shrink(0)
+		k.SearchField(c.Key("filter"), uikit.SearchFieldProps{Label: d.tr("筛选标签"), Value: &m.filter, Placeholder: fmt.Sprintf(d.tr("在 %d 个标签中筛选"), len(d.tags))}).Element.Grow(1).MinWidth(80)
 	}
 	foot := func() {
-		if k.Button(c.Key("add"), "", uikit.ButtonProps{Icon: uikit.IconAdd, Label: "新建标签"}).Clicked() {
+		if k.Button(c.Key("add"), "", uikit.ButtonProps{Icon: uikit.IconAdd, Label: d.tr("新建标签")}).Clicked() {
 			m.editing, m.name, m.error = "new", "", ""
 			m.filter = ""
 		}
-		if k.Button(c.Key("delete"), "", uikit.ButtonProps{Icon: uikit.IconDelete, Label: "删除选中标签", Disabled: len(d.localTagIDs(m.table.Selection())) == 0}).Clicked() {
+		if k.Button(c.Key("delete"), "", uikit.ButtonProps{Icon: uikit.IconDelete, Label: d.tr("删除选中标签"), Disabled: len(d.localTagIDs(m.table.Selection())) == 0}).Clicked() {
 			d.removeTags(m.table.Selection(), "")
 		}
 		sidebar, unused := 0, 0
@@ -244,9 +244,9 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 				unused++
 			}
 		}
-		k.Text(c.Key("summary"), fmt.Sprintf("%d 个标签 · %d 个在侧边栏 · %d 个未使用", len(d.tags), sidebar, unused), uikit.TextProps{Role: uikit.RoleCaption, Tone: uikit.ToneSecondary}).MinWidth(0)
+		k.Text(c.Key("summary"), fmt.Sprintf(d.tr("%d 个标签 · %d 个在侧边栏 · %d 个未使用"), len(d.tags), sidebar, unused), uikit.TextProps{Role: uikit.RoleCaption, Tone: uikit.ToneSecondary}).MinWidth(0)
 	}
-	if k.Sheet(c, uikit.SheetProps{Open: &d.tagsOpen, Title: "管理", Header: header, Footer: foot, Done: "完成", OnClosed: func() {
+	if k.Sheet(c, uikit.SheetProps{Open: &d.tagsOpen, Title: d.tr("管理"), Header: header, Footer: foot, Done: d.tr("完成"), OnClosed: func() {
 		m.table.Select()
 		m.editing, m.error = "", ""
 	}}, func() {
@@ -254,11 +254,11 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 		nameCell := func(id string) func(*ui.Context) {
 			return func(rc *ui.Context) {
 				if m.editing == id {
-					label := "标签名称"
+					label := d.tr("标签名称")
 					if id == "new" {
-						label = "新标签名称"
+						label = d.tr("新标签名称")
 					}
-					field := k.TextField(rc.Key("editor"), uikit.TextFieldProps{Label: label, Value: &m.name, AutoFocus: true, MaxLength: 64, Error: m.error})
+					field := k.TextField(rc.Key("editor"), uikit.TextFieldProps{Label: label, Value: &m.name, AutoFocus: true, MaxLength: 64, Error: d.tr(m.error)})
 					field.Element.Grow(1).MinWidth(0)
 					if field.Edited {
 						m.error = ""
@@ -293,7 +293,7 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 			id := t.id
 			rows = append(rows, uikit.TableRow{ID: id, Cells: map[string]func(*ui.Context){"name": nameCell(id), "items": func(rc *ui.Context) { ui.Text(rc, fmt.Sprint(d.tagCount(id))) }, "sidebar": func(rc *ui.Context) {
 				if tag := d.tagByID(id); tag != nil {
-					k.Switch(rc, &tag.sidebar, uikit.SwitchProps{Label: "在侧边栏显示 #" + tag.name, LabelHidden: true})
+					k.Switch(rc, &tag.sidebar, uikit.SwitchProps{Label: d.tr("在侧边栏显示 #") + tag.name})
 				}
 			}}})
 		}
@@ -301,7 +301,7 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 		if k.Skin == uikit.MacOS {
 			height = float32(26 + len(rows)*32)
 		}
-		k.Table(c.Key("table"), &m.table, uikit.TableProps{Label: "标签", FixedColumns: true, Columns: []uikit.TableColumn{{ID: "name", Label: "名称", Fill: true}, {ID: "items", Label: "条目", Width: 80, Align: ui.End}, {ID: "sidebar", Label: "侧边栏", Width: 64, Align: ui.Center}}, Rows: rows, Menu: d.tagMenu, Empty: "没有匹配的标签"}).Height(min(360, height)).MinHeight(70)
+		k.Table(c.Key("table"), &m.table, uikit.TableProps{Label: d.tr("标签"), FixedColumns: true, Columns: []uikit.TableColumn{{ID: "name", Label: d.tr("名称"), Fill: true}, {ID: "items", Label: d.tr("条目"), Width: 80, Align: ui.End}, {ID: "sidebar", Label: d.tr("侧边栏"), Width: 64, Align: ui.Center}}, Rows: rows, Menu: d.tagMenu, Empty: d.tr("没有匹配的标签")}).Height(min(360, height)).MinHeight(70)
 		if action, ids, ok := m.table.MenuChosen(); ok {
 			d.tagAction(action, ids)
 		}

@@ -85,7 +85,7 @@ func (q *quickLive) poll(p *quickDemo) {
 			if text == "" {
 				text = v.preview
 			}
-			p.entries = append(p.entries, qpEntry{highlights: v.highlights, id: v.id, title: v.title, text: text, kind: kind, source: d.sourceName(v.source), age: v.date, tags: slices.Clone(v.tags), lost: v.contentError != ""})
+			p.entries = append(p.entries, qpEntry{highlights: v.highlights, id: v.id, title: d.entryTitle(v), text: text, kind: kind, source: d.sourceName(v.source), age: d.displayDate(v.date), tags: slices.Clone(v.tags), lost: v.contentError != ""})
 		}
 		p.rows = slices.Clone(p.entries)
 		p.selected = 0

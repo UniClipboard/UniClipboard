@@ -23,8 +23,7 @@ func (k Kit) ToggleButton(c *ui.Context, pressed *bool, label string, p ToggleBu
 		Tooltip: p.Tooltip, Disabled: p.Disabled}, *pressed)
 }
 
-// CheckedControlProps mirrors contract.ts CheckedControlProps (Switch and Checkbox); the checked
-// state is the *bool passed to the control.
+// CheckedControlProps configures a checkbox; its checked state is passed by pointer.
 type CheckedControlProps struct {
 	// Label is the accessible name; shown next to the control unless LabelHidden.
 	Label       string
@@ -32,12 +31,16 @@ type CheckedControlProps struct {
 	Disabled    bool
 }
 
-type (
-	SwitchProps   = CheckedControlProps
-	CheckboxProps = CheckedControlProps
-)
+// SwitchProps configures an unlabeled visual switch. The enclosing row owns
+// visible text. Label remains available to assistive technology.
+type SwitchProps struct {
+	Label    string
+	Disabled bool
+}
 
-// labelText draws the visible label of a switch or checkbox.
+type CheckboxProps = CheckedControlProps
+
+// labelText draws the visible label of a checkbox.
 func (k Kit) labelText(c *ui.Context, s string) {
 	size := k.baseFont()
 	if k.Skin == Windows {
@@ -46,7 +49,8 @@ func (k Kit) labelText(c *ui.Context, s string) {
 	ui.Text(c, s).FontSize(size)
 }
 
-// Switch is an on/off switch toggling *on; read changes with .Changed().
+// Switch is an on/off switch with no visible caption. Label is its accessible
+// name. Read changes with .Changed().
 func (k Kit) Switch(c *ui.Context, on *bool, p SwitchProps) ui.Element {
 	var w, h, thumb, inset, travel float32
 	switch k.Skin {
@@ -96,9 +100,6 @@ func (k Kit) Switch(c *ui.Context, on *bool, p SwitchProps) ui.Element {
 			}
 			pt.Fill(knob, thumbColor, thumb/2)
 		})
-		if !p.LabelHidden {
-			k.labelText(c, p.Label)
-		}
 	})
 	return e
 }

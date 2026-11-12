@@ -9,6 +9,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
+| [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
 | [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation. |
 | [native-menus](#native-menus) | view | System-menu requests, cancellation and selected-value dispatch in the software view. |
@@ -117,6 +118,20 @@ screenshot copied
 ui-set comboBox '搜索历史' ''
 ui-wait listItem 'Desktop evidence other entry'
 screenshot restored
+```
+
+## i18n
+
+Desktop languages
+
+Steps: Select each language through settings, navigate to history, filter files, verify switches have one visible row caption and retain accessible names and mouse/keyboard behavior, and render quick-panel actions across three skins and both themes.
+
+Expected: Navigation and actions use the selected language; content and filter identities remain unchanged; catalogues and format arguments are complete.
+
+Forbidden: Missing translations or translated user content.
+
+```text
+acceptance desktopdemo i18n
 ```
 
 ## interaction-motion

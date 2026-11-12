@@ -1,0 +1,8 @@
+# Case: Desktop languages
+# Mode: view
+# Purpose: Exercise five language catalogues through the shared desktop composition.
+# Steps: Select each language through settings, navigate to history, filter files, verify switches have one visible row caption and retain accessible names and mouse/keyboard behavior, and render quick-panel actions across three skins and both themes.
+# Expected: Navigation and actions use the selected language; content and filter identities remain unchanged; catalogues and format arguments are complete.
+# Forbidden: Missing translations or translated user content.
+
+acceptance desktopdemo i18n

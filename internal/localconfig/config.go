@@ -81,6 +81,7 @@ type Config struct {
 
 // Desktop configures the graphical launcher. The service only stores these values.
 type Desktop struct {
+	Language           string `toml:"language" json:"language"`
 	QuickPanelShortcut string `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
 	Mode               string `toml:"mode" json:"mode"`
 	LaunchAtLogin      bool   `toml:"launch_at_login" json:"launch_at_login"`
@@ -195,7 +196,7 @@ func Default() Config {
 		shortcut = "Cmd+Ctrl+V"
 	}
 	return Config{
-		Desktop: Desktop{Mode: "normal", QuickPanelShortcut: shortcut},
+		Desktop: Desktop{Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
 		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
 		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
@@ -247,6 +248,11 @@ func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 // uses, so the file and the SDK cannot disagree. Messages never include the
 // offending values of fields that could carry secrets.
 func (c Config) Validate() error {
+	switch c.Desktop.Language {
+	case "", "zh-CN", "en", "ja", "pt-BR", "ru":
+	default:
+		return errors.New("desktop.language: unsupported language")
+	}
 	switch c.Desktop.QuickPanelShortcut {
 	case "", "Ctrl+`", "CmdOrCtrl+Shift+Space", "Ctrl+Alt+V", "Cmd+Ctrl+V":
 	default:
@@ -334,6 +340,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # Desktop launcher settings. Mode and background visibility apply on next launch.
 # Login registration is applied by a running normal desktop session.
 # [desktop]
+# language = "zh-CN"  # "zh-CN", "en", "ja", "pt-BR", "ru"; applies immediately
 # mode = "normal"  # "normal" or "lightweight"
 # launch_at_login = false
 # start_in_background = false

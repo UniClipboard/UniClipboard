@@ -422,7 +422,7 @@ func projectHistory(it api.HistoryItem) entry {
 	if it.Origin == "external" || it.Origin == "migration" {
 		source = it.Origin
 	}
-	return entry{id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: fmt.Sprintf("%d B", it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState}
+	return entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: fmt.Sprintf("%d B", it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState}
 }
 func formatDate(ms int64) string {
 	t := time.UnixMilli(ms)
@@ -701,6 +701,7 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 		v.text = strings.Join(names, "\n")
 		if len(names) > 0 {
 			v.title = shortText(names[0], 90)
+			v.generatedTitle = false
 		}
 	default:
 		part := -1
@@ -752,6 +753,7 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			v.text = parsed.PlainText()
 		}
 		v.title = shortText(strings.TrimSpace(v.text), 90)
+		v.generatedTitle = false
 	}
 	return v
 }

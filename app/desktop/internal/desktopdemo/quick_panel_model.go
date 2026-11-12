@@ -39,6 +39,7 @@ type qpEffect struct {
 	KeepOpen bool   `json:",omitempty"`
 }
 type quickDemo struct {
+	language    string
 	live        *quickLive
 	richPreview *richtext.Document
 
@@ -710,21 +711,21 @@ func (p *quickDemo) relaxations() []qpRelaxation {
 		label := ""
 		switch dim {
 		case "type":
-			label = "去掉所有类型"
+			label = p.tr("去掉所有类型")
 			if len(values) == 1 {
-				label = "去掉 /" + values[0]
+				label = p.tr("去掉 /") + values[0]
 			}
 		case "tag":
-			label = "去掉所有标签"
+			label = p.tr("去掉所有标签")
 			if len(values) == 1 {
-				label = "去掉 #" + values[0]
+				label = p.tr("去掉 #") + values[0]
 			}
 		case "time":
-			label = "时间范围扩大到全部"
+			label = p.tr("时间范围扩大到全部")
 		case "source":
-			label = "包含所有设备"
+			label = p.tr("包含所有设备")
 			if len(values) == 1 {
-				label = "去掉 @" + values[0] + "，包含所有设备"
+				label = p.tr("去掉 @") + values[0] + p.tr("，包含所有设备")
 			}
 		}
 		// Copy only the fixture model used by matching. Never copy native callbacks.

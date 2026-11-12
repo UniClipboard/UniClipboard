@@ -184,6 +184,7 @@ The live binding and acceptance boundary are described in [repository overview](
 ## Desktop startup settings
 
 The shared `config.toml` has a `[desktop]` section. Engine does not consume it.
+`language = "zh-CN"` selects the default desktop language. Supported alternatives are `en`, `ja`, `pt-BR` and `ru`. Language changes apply through normal configuration refresh without a restart. See [desktop languages](overview.md#desktop-languages).
 `mode = "normal"` is the default. `mode = "lightweight"` selects service-only startup.
 `launch_at_login = false` and `start_in_background = false` are the defaults.
 Mode and background changes apply on the next launch. Normal background startup creates its window with `Hidden: true`.

@@ -19,12 +19,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/egoist/mygo/ui"
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/testboard"
 )
 
@@ -407,6 +409,49 @@ func scenarioDesktopLiveData(t *testing.T) {
 		t.Fatal("config not saved", e)
 	}
 	checks = append(checks, "configuration CAS persists existing settings")
+	for _, language := range []string{"en", "ja", "pt-BR", "ru", "zh-CN"} {
+		cfg = d.live.config.Config
+		cfg.Desktop.Language = language
+		d.saveLiveConfig(cfg)
+		spin("save language "+language, func() bool { return !d.live.busy && d.currentLanguage() == language })
+		saved, e = client.Config(ctx)
+		if e != nil || saved.Config.Desktop.Language != language {
+			t.Fatal("language not persisted", language, e)
+		}
+		data, e := os.ReadFile(filepath.Join(home, "config.toml"))
+		if e != nil {
+			t.Fatal(e)
+		}
+		disk, e := config.Parse(data)
+		if e != nil || disk.Desktop.Language != language {
+			t.Fatal("language missing from disk", e)
+		}
+		reopened := NewDesktop(ctx, client)
+		wait("reopened language", func() bool { reopened.d.live.poll(reopened.d); return reopened.d.live.loaded })
+		if reopened.d.currentLanguage() != language {
+			t.Fatal("language lost on reopen")
+		}
+		reopened.Close()
+	}
+	checks = append(checks, "five desktop languages persist through real service and survive desktop reopen")
+	activeLanguage, e := client.Config(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var invalidLanguage bytes.Buffer
+	invalidConfig := activeLanguage.Config
+	invalidConfig.Desktop.Language = "invalid-language"
+	if e = toml.NewEncoder(&invalidLanguage).Encode(invalidConfig); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = client.SaveConfig(ctx, activeLanguage.Revision, invalidLanguage.Bytes()); e == nil {
+		t.Fatal("unsupported language accepted")
+	}
+	stillActive, e := client.Config(ctx)
+	if e != nil || stillActive.Config.Desktop.Language != "zh-CN" {
+		t.Fatal("invalid language replaced valid config", e)
+	}
+	checks = append(checks, "unsupported language rejected without replacing saved settings")
 	// Pair a second production daemon through the desktop action and both explicit approvals.
 	peerHome := filepath.Join(private, "peer")
 	if e = os.MkdirAll(peerHome, 0700); e != nil {

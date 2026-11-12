@@ -55,3 +55,9 @@ X11 owners without WM_CLASS and native Wayland produce unknown provenance.
 This capture/sync acceptance did not exercise visual UI behavior. Publication is outside the scope of this acceptance receipt.
 Temporary binaries, raw logs, and the original-source archive are removed after acceptance.
 Only manifests, build hashes, this receipt, and implementation/contract files remain.
+
+## Publication preparation
+
+Implementation source commit: `7aff73d6caa87ea37c31d4e80603286bd42d4b6b`.
+The [architecture verification marker](../architecture/pipeline.md) was refreshed after implementation commits.
+Acceptance limits above remain unchanged. Native clipboard attribution and native-window acceptance remain not run.

@@ -45,3 +45,9 @@ Software rendering does not establish native window behavior or actual OS clipbo
 The full Desktop suite includes native cases and was not run. Only the four explicitly listed cases were selected.
 
 No native app or browser is launched during this task.
+
+## Publication preparation
+
+Implementation source commit: `7aff73d6caa87ea37c31d4e80603286bd42d4b6b`.
+The [architecture verification marker](../architecture/desktop-runtime.md) was refreshed after implementation commits.
+Acceptance limits above remain unchanged. Native clipboard attribution and native-window acceptance remain not run.

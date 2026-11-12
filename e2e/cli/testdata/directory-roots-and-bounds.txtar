@@ -1,0 +1,56 @@
+# 用例: Directory roots and resource bounds apply to the entire selection
+# 目的: Preserve separate equal-name roots and reject unsupported or oversized selections.
+# 流程:
+#   1. Send two distinct directories with the same display name plus a regular file.
+#   2. Reject overlapping roots, reserved names, deep trees and excessive entry counts.
+#   3. Disable automatic sync and explicitly resend within bounds.
+# 期望:
+#   - Both equal-name roots retain their distinct contents. No source tree is modified.
+#   - Invalid selections fail before remote partial publication.
+# 不应:
+#   - Skip unsupported entries or bypass hard limits for explicit send.
+
+mkdir left/project/empty
+mkdir right/project/empty
+cp first.txt left/project/member
+cp second.txt right/project/member
+node-start alpha
+node-start beta
+node-start gamma
+pair alpha beta
+pair alpha gamma
+retry-copy alpha beta warm-up
+retry-copy alpha gamma warm-up-gamma
+u alpha send --to all -f $WORK/left/project $WORK/right/project $WORK/first.txt --json
+stdout '"outcome":"success"'
+tree-wait beta left/project
+tree-wait beta right/project
+tree-wait gamma left/project
+tree-wait gamma right/project
+directory-probe alpha 1 1
+! u alpha send --to all -f $WORK/left $WORK/left/project --json
+cp first.txt left/project/CON
+! u alpha send --to all -f $WORK/left/project --json
+rm left/project/CON
+gen-tree deep 65 0
+! u alpha send --to all -f $WORK/deep --json
+gen-tree many 0 4097
+! u alpha send --to all -f $WORK/many --json
+u alpha config set sync.automatic false
+u alpha send --to all -f $WORK/left/project --json
+stdout '"outcome":"success"'
+tree-wait beta left/project
+cmp left/project/member first.txt
+cmp right/project/member second.txt
+
+-- first.txt --
+first-root-canary
+-- second.txt --
+second-root-canary
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+
+-- gamma/config.toml --
+device_name = "gamma"

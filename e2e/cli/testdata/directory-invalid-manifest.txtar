@@ -1,0 +1,29 @@
+# 用例: Directory manifests are validated through a real peer connection
+# 目的: Reject malformed manifests before receiver history or clipboard publication.
+# 流程:
+#   1. Pair two isolated services and establish a normal transfer.
+#   2. Send traversal, absolute, duplicate, orphan, hash, size, reserved-name and oversized manifests.
+# 期望:
+#   - No directory history or directory clipboard is published for malformed content.
+# 不应:
+#   - Treat a sender's completed write as proof of receiver publication.
+
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+directory-attack alpha traversal
+directory-attack alpha absolute
+directory-attack alpha duplicate
+directory-attack alpha orphan
+directory-attack alpha hash
+directory-attack alpha size
+directory-attack alpha reserved
+directory-attack alpha manifest-limit
+! until beta '"kind":"directory"' history list --json
+! exists beta/escape
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

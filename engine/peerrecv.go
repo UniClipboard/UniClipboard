@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/directory"
+
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/wire"
@@ -173,6 +175,17 @@ func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts p
 		if rerr != nil || int64(len(data)) != int64(p.Size) {
 			return snap, dir, rpcErr(rpc.CodeInvalidState)
 		}
+		if p.MIME == directory.MIME {
+			var sizes []int64
+			for _, part := range pr.parts {
+				if part.Kind == "file" {
+					sizes = append(sizes, int64(part.Size))
+				}
+			}
+			if _, err := directory.Decode(data, sizes); err != nil {
+				return snap, dir, rpcErr(rpc.CodeInvalidArgument)
+			}
+		}
 		snap.Parts = append(snap.Parts, clip.Part{Format: p.MIME, Data: data})
 	}
 	if _, _, nerr := parts.Next(ctx); !errors.Is(nerr, io.EOF) {
@@ -203,8 +216,30 @@ func checkClipLimits(parts []rpc.ClipPart, e *Engine) error {
 	lim := e.settings.Value.Limits
 	e.mu.Unlock()
 	var total int64
+	manifestCount := 0
+	for i, p := range parts {
+		if p.MIME == directory.MIME {
+			manifestCount++
+			if i != 0 || p.Kind != "representation" {
+				return rpcErr(rpc.CodeInvalidArgument)
+			}
+		}
+	}
+	if manifestCount > 1 {
+		return rpcErr(rpc.CodeInvalidArgument)
+	}
+	if manifestCount == 1 {
+		for _, p := range parts[1:] {
+			if p.Kind != "file" {
+				return rpcErr(rpc.CodeInvalidArgument)
+			}
+		}
+	}
 	for _, p := range parts {
 		n := int64(p.Size)
+		if p.MIME == directory.ReferenceMIME || (p.MIME == directory.MIME && (n <= 0 || n > directory.MaxManifest)) {
+			return rpcErr(rpc.CodeInvalidArgument)
+		}
 		if n < 0 || (p.Kind == "file" && (n > wire.MaxFileBytes || n > lim.MaxFileBytes)) {
 			return rpcErr(rpc.CodeLimitExceeded)
 		}

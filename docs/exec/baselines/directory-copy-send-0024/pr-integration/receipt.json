@@ -1,0 +1,126 @@
+{
+  "source_head": "a09a6157a32260c645d24aa0a8ebbe82b5c1a245",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "native_clipboard": "NOT_RUN",
+  "real_devices": "NOT_RUN",
+  "status": "PASS",
+  "commands": [
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unic",
+        "./app/service/cmd/unic"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unicd",
+        "./app/service/cmd/unicd"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-json",
+        "./e2e/cli",
+        "-run",
+        "^TestCLI/(directory.*|builtin-content-tags|history-restore-sync)$",
+        "-parallel",
+        "4",
+        "-count=1"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "results": [
+    {
+      "case": "TestCLI/directory-invalid-manifest",
+      "result": "PASS",
+      "seconds": 37.1
+    },
+    {
+      "case": "TestCLI/directory-custom-receive",
+      "result": "PASS",
+      "seconds": 47.05
+    },
+    {
+      "case": "TestCLI/directory-history-cancel",
+      "result": "PASS",
+      "seconds": 47.08
+    },
+    {
+      "case": "TestCLI/builtin-content-tags",
+      "result": "PASS",
+      "seconds": 49.12
+    },
+    {
+      "case": "TestCLI/directory-auto-responsive",
+      "result": "PASS",
+      "seconds": 37.22
+    },
+    {
+      "case": "TestCLI/directory-copy-and-send",
+      "result": "PASS",
+      "seconds": 49.11
+    },
+    {
+      "case": "TestCLI/directory-source-and-recovery",
+      "result": "PASS",
+      "seconds": 37.09
+    },
+    {
+      "case": "TestCLI/history-restore-sync",
+      "result": "PASS",
+      "seconds": 52.61
+    },
+    {
+      "case": "TestCLI/directory-mixed-auto",
+      "result": "PASS",
+      "seconds": 41.85
+    },
+    {
+      "case": "TestCLI/directory-roots-and-bounds",
+      "result": "PASS",
+      "seconds": 59.19
+    },
+    {
+      "case": "TestCLI",
+      "result": "PASS",
+      "seconds": 0.19
+    },
+    {
+      "case": "github.com/uniclipboard/unic/e2e/cli",
+      "result": "PASS",
+      "seconds": 145.242
+    }
+  ],
+  "source_sha256": "4abeb1c51b214b860a67c92efd80b2bc45a0904c8f464cb8f907f5b30dc04559",
+  "build_input_sha256": "a1401041601eadbe5fd31edc58ee979c4d1b253cce445348516b14038c519393",
+  "go": "go version go1.27.3 darwin/arm64",
+  "binary_sha256": {
+    "unic": "11c499c935c59320dce824c49eb3c2a277e95d574f2f05c4f959ed530380a790",
+    "unicd": "87e7ab34f8ee2b18646708c1615ee26fe54834615c4a974b18e50cfe92973a7e"
+  },
+  "frozen_source_unchanged": true,
+  "private_cleanup": "PASS",
+  "seconds": 203.743
+}

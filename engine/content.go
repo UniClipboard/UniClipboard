@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"unicode/utf8"
 
+	"github.com/uniclipboard/unic/internal/directory"
 	"github.com/uniclipboard/unic/internal/wire"
 )
 
@@ -85,24 +86,28 @@ func (t *tomb) add(id string) {
 func (t *tomb) has(id string) bool { _, ok := t.set[id]; return ok }
 
 type partRec struct {
-	cache string
-	desc  PartDescriptor
-	data  []byte     // representation
-	path  string     // file the engine owns
-	src   FileSource // file the host keeps
-	meta  FileMeta   // what src reported at import
+	treeRoots []string
+	cache     string
+	desc      PartDescriptor
+	data      []byte     // representation
+	path      string     // file the engine owns
+	src       FileSource // file the host keeps
+	meta      FileMeta   // what src reported at import
 }
 
 // contentObj is stored content. It lives while anything references it: a
 // lease, an open reader (and, later, operations and received items).
 type contentObj struct {
-	cached []string
-	id     ContentID
-	parts  []*partRec
-	total  int64
-	owned  int64 // bytes charged to the storage quota
-	dir    string
-	refs   int
+	copyID    string
+	treeMu    sync.Mutex
+	treePaths []string
+	cached    []string
+	id        ContentID
+	parts     []*partRec
+	total     int64
+	owned     int64 // bytes charged to the storage quota
+	dir       string
+	refs      int
 	// blobs are history blobs this content reads in place; they stay on disk
 	// until the content is freed even if their record is deleted.
 	blobs []string
@@ -195,6 +200,10 @@ func expectEOF(ctx context.Context, r io.Reader) *Error {
 }
 
 func inputErr(ctx context.Context, err error) *Error {
+	var ee *Error
+	if errors.As(err, &ee) {
+		return ee
+	}
 	if ctx.Err() != nil {
 		return ctxErr(ctx.Err())
 	}
@@ -264,7 +273,7 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 	for i, r := range in.Representations {
 		m := strings.ToLower(strings.TrimSpace(r.MIME))
 		switch {
-		case !contains(coreFormats, m):
+		case !contains(coreFormats, m) && m != directory.MIME:
 			return ContentHandle{}, newErr(CodeUnsupported, "unsupported format")
 		case seen[m]:
 			return ContentHandle{}, newErr(CodeInvalidArgument, "a format appears twice")
@@ -304,7 +313,7 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 		return ContentHandle{}, retryable(newErr(CodeResourceExhausted, "not enough storage for this content"))
 	}
 
-	c := &contentObj{id: ContentID(e.newID()), total: total, owned: owned, refs: 1}
+	c := &contentObj{copyID: in.ObservationKey, id: ContentID(e.newID()), total: total, owned: owned, refs: 1}
 	ok := false
 	defer func() {
 		if !ok {
@@ -344,6 +353,12 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 	}
 	for i, f := range in.Files {
 		mime := strings.ToLower(strings.TrimSpace(f.MIME))
+		if _, ok := f.Source.(DirectorySource); ok {
+			if f.Size != 0 {
+				return ContentHandle{}, newErr(CodeInvalidArgument, "directory reference size must be zero")
+			}
+			mime = directory.ReferenceMIME
+		}
 		if mime == "" {
 			mime = "application/octet-stream"
 		}

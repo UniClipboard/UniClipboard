@@ -1,0 +1,121 @@
+{
+  "source_head": "1d542f4ca7412972ae4c2cbbac46c211ae19395c",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "native_clipboard": "NOT_RUN",
+  "real_devices": "NOT_RUN",
+  "status": "PASS",
+  "commands": [
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unic",
+        "./app/service/cmd/unic"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unicd",
+        "./app/service/cmd/unicd"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-json",
+        "./e2e/cli",
+        "-run",
+        "^TestCLI/(directory.*|history-restore-sync)$",
+        "-parallel",
+        "4",
+        "-count=1"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "results": [
+    {
+      "case": "TestCLI/directory-invalid-manifest",
+      "result": "PASS",
+      "seconds": 36.5
+    },
+    {
+      "case": "TestCLI/directory-source-and-recovery",
+      "result": "PASS",
+      "seconds": 37.98
+    },
+    {
+      "case": "TestCLI/directory-custom-receive",
+      "result": "PASS",
+      "seconds": 46.04
+    },
+    {
+      "case": "TestCLI/directory-roots-and-bounds",
+      "result": "PASS",
+      "seconds": 59.21
+    },
+    {
+      "case": "TestCLI/directory-mixed-auto",
+      "result": "PASS",
+      "seconds": 41.96
+    },
+    {
+      "case": "TestCLI/directory-history-cancel",
+      "result": "PASS",
+      "seconds": 45.66
+    },
+    {
+      "case": "TestCLI/directory-copy-and-send",
+      "result": "PASS",
+      "seconds": 46.97
+    },
+    {
+      "case": "TestCLI/directory-auto-responsive",
+      "result": "PASS",
+      "seconds": 37.42
+    },
+    {
+      "case": "TestCLI/history-restore-sync",
+      "result": "PASS",
+      "seconds": 53.02
+    },
+    {
+      "case": "TestCLI",
+      "result": "PASS",
+      "seconds": 0.17
+    },
+    {
+      "case": "github.com/uniclipboard/unic/e2e/cli",
+      "result": "PASS",
+      "seconds": 133.262
+    }
+  ],
+  "source_sha256": "5d4c365fdbab93d0d4db02955d78cb7149fb94e70fd221bd0f4718c9aca2f6a8",
+  "build_input_sha256": "a1fbd37286f77c7a5c92d767178e3dcf46763ac60e7f16ace595e6295999d011",
+  "go": "go version go1.27.3 darwin/arm64",
+  "binary_sha256": {
+    "unic": "6a15d0d968ecf6d4a47865767c105548c25116ec7366a75f0d3f1478225587de",
+    "unicd": "a4ef800d2b92e644a1d8e113550a99d7bd0a06ed6b25d7dc0a8d5805a7f8eb9b"
+  },
+  "frozen_source_unchanged": true,
+  "private_cleanup": "PASS",
+  "seconds": 146.21
+}

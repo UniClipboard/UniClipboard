@@ -615,7 +615,7 @@ func (s *Store) HistoryTotals() (items int, bytes int64, err error) {
 	if err = s.db.QueryRow(`SELECT COUNT(*) FROM clip_items`).Scan(&items); err != nil {
 		return
 	}
-	err = s.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM clip_item_parts WHERE ref = ''`).Scan(&bytes)
+	err = s.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM clip_item_parts WHERE kind <> 'file' OR ref = ''`).Scan(&bytes)
 	return
 }
 
@@ -750,7 +750,7 @@ func (s *Store) HistoryCleanupCandidates(excluded []string, keep int64, limit in
 	args = append(args, keep)
 	switch storage {
 	case "owned":
-		where += " AND EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND p.ref='')"
+		where += " AND EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND (p.kind<>'file' OR p.ref=''))"
 	case "cache":
 		where += " AND EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND p.ref LIKE 'cache:%')"
 	}

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/uniclipboard/unic/internal/directory"
 )
 
 // These are private processing types. RPC/Lua registration, durable commit and
@@ -179,6 +181,15 @@ func describePipelineItem(id string, c *contentObj, origin pipelineOrigin) pipel
 		i.Type = "files"
 	} else if slices.Contains(i.Formats, MimePNG) {
 		i.Type = "image"
+	}
+	if directoryReference(c) {
+		i.Type = "directory_reference"
+	} else {
+		for _, p := range c.parts {
+			if p.desc.MIME == directory.MIME {
+				i.Type = "directory"
+			}
+		}
 	}
 	return i
 }

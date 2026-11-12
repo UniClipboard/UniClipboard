@@ -1,0 +1,45 @@
+{
+  "status": "PASS",
+  "mode": "view",
+  "assertions": [
+    "TestDesktopAcceptance/send-device-menu/dark/所有设备",
+    "TestDesktopAcceptance/send-device-menu/dark/工作电脑",
+    "TestDesktopAcceptance/send-device-menu/dark/Linux_工作站",
+    "TestDesktopAcceptance/send-device-menu/dark/我的手机",
+    "TestDesktopAcceptance/send-device-menu/dark/cancel",
+    "TestDesktopAcceptance/send-device-menu/dark/updated",
+    "TestDesktopAcceptance/send-device-menu/light/所有设备",
+    "TestDesktopAcceptance/send-device-menu/light/工作电脑",
+    "TestDesktopAcceptance/send-device-menu/light/Linux_工作站",
+    "TestDesktopAcceptance/send-device-menu/light/我的手机",
+    "TestDesktopAcceptance/send-device-menu/light/cancel",
+    "TestDesktopAcceptance/send-device-menu/light/updated",
+    "TestDesktopAcceptance/send-device-menu"
+  ],
+  "steps": [
+    {
+      "args": [
+        "desktopui",
+        "send-device-menu"
+      ],
+      "at_ms": 19750,
+      "command": "acceptance",
+      "status": "PASS"
+    }
+  ],
+  "screenshots": [
+    "view-0001-3eac6b5bdebb1de08599ebdbffb5b903e2b1df714d3d63066f0ae78e1d3b9ffd.png",
+    "view-0002-1ff23bca1345acbaf03a1a93cc3ad328ee073b3024fb41fc7b66831e20eade88.png",
+    "view-0003-74166ed907f35cdf1f48e46553a70671eb8d99f8d3fc6350d0ae5b56923cf493.png",
+    "view-0004-bf7a84efa8cd89fc739c63700fb499700cb941591a694b93f5181865d83209b8.png",
+    "view-0005-8ea982406764d670d0a192929b22c8a6197b464667fa046f0e3d4652d0e6cf28.png",
+    "view-0006-74742c545bed3cea8f5b08175fb4e13e6cee47a3ee1f9c9d381a92d9823fbac6.png",
+    "view-0007-daa07ff8bcae2695bdc7685ed3a478f92535ed0edbace709f81716c8448d8005.png",
+    "view-0008-9d9d903f52496bdfdfecd7538593cbdf0563acf3ffa0a95e313e605a489dcc8c.png",
+    "view-0009-394d41bbdc3e007642560ba712a7e5b12909cd3f8aace0bbbfc967bb464df627.png",
+    "view-0010-d55e8ee98a305d76612716f54e510573fc039650ff5ea84f1aac59b58857b56d.png",
+    "view-0011-f921a642291371c7fed16fe480f04dfdc3a400c9647e10984da330538143ed95.png",
+    "view-0012-ff9799f38dfca4e220fed352bb2f4010ab03e2c50bf2d75f77431ca6d6feebb1.png"
+  ],
+  "cleanup": "PASS"
+}

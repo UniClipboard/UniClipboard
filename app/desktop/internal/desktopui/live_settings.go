@@ -2,6 +2,7 @@ package desktopui
 
 import (
 	"fmt"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -97,6 +98,10 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 	case "sync":
 		group("sync", d.tr("同步行为"), func() {
 			toggle("enabled", d.tr("启用同步"), d.tr("控制所有同步后端。"), &cfg.Sync.Enabled)
+			toggle("directoryAutomatic", d.tr("自动同步目录"), d.tr("默认关闭。开启后，每次复制目录都会扫描并发送。"), &cfg.Sync.Directories.Automatic)
+			if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
+				k.Text(c, d.tr("此平台无法识别同一路径的重复复制。请使用主动发送。"), uikit.TextProps{Tone: uikit.ToneSecondary})
+			}
 			toggle("automatic", d.tr("自动同步"), d.tr("复制内容后自动发送。"), &cfg.Sync.Automatic)
 			toggle("restore", d.tr("使用历史时同步"), d.tr("再次使用历史后发送。"), &cfg.Sync.OnRestore)
 			toggle("files", d.tr("同步文件"), d.tr("允许发送和接收文件。"), &cfg.Sync.Files)

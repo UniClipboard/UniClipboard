@@ -1,9 +1,14 @@
 package desktopui
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/uniclipboard/unic/engine"
+	api "github.com/uniclipboard/unic/internal/localapi"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
@@ -75,6 +80,18 @@ func (d *viewState) sidebar(c *ui.Context, k uikit.Kit) {
 }
 
 func (d *viewState) history(c *ui.Context, k uikit.Kit) {
+	if d.live != nil && d.live.sendCancel != nil {
+		labels := map[string]string{"scanning": "正在扫描目录…", "preparing": "正在准备目录…", "processing": "正在提交…", "sending": "正在发送…"}
+		label := labels[d.live.sendStage]
+		if label == "" {
+			label = "正在准备发送…"
+		}
+		k.Text(c, d.tr(label), uikit.TextProps{})
+		if k.Button(c.Key("cancel-send"), d.tr("取消发送"), uikit.ButtonProps{}).Clicked() {
+			d.live.sendCancel()
+		}
+	}
+
 	items := d.filtered()
 	if !slices.ContainsFunc(items, func(v entry) bool { return v.id == d.selected }) {
 		d.selectEntry("")
@@ -153,7 +170,7 @@ func (d *viewState) history(c *ui.Context, k uikit.Kit) {
 
 func (d *viewState) filters(c *ui.Context, k uikit.Kit) {
 	ui.Row(c.Key("filters")).Padding(5, 16, 5).Gap(6).Wrap().Shrink(0).Children(func() {
-		k.Select(c.Key("kind"), uikit.SelectProps{Label: d.tr("内容类型"), Placeholder: d.tr("类型"), Filter: true, Value: &d.kind, Items: []uikit.SelectItem{{Value: "all", Label: d.tr("所有类型")}, {Value: "文本", Label: d.tr("文本")}, {Value: "代码", Label: d.tr("代码")}, {Value: "链接", Label: d.tr("链接")}, {Value: "图片", Label: d.tr("图片")}, {Value: "文件", Label: d.tr("文件")}}})
+		k.Select(c.Key("kind"), uikit.SelectProps{Label: d.tr("内容类型"), Placeholder: d.tr("类型"), Filter: true, Value: &d.kind, Items: []uikit.SelectItem{{Value: "all", Label: d.tr("所有类型")}, {Value: "文本", Label: d.tr("文本")}, {Value: "代码", Label: d.tr("代码")}, {Value: "链接", Label: d.tr("链接")}, {Value: "图片", Label: d.tr("图片")}, {Value: "文件", Label: d.tr("文件")}, {Value: "文件夹", Label: d.tr("文件夹")}}})
 		sources := []uikit.SelectItem{{Value: "all", Label: d.tr("所有设备")}}
 		for _, v := range d.devices {
 			sources = append(sources, uikit.SelectItem{Value: v.id, Label: v.name})
@@ -244,7 +261,7 @@ func (d *viewState) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 		rows := make([]uikit.ItemListItem, 0, len(items))
 		for _, v := range items {
 			rows = append(rows, uikit.ItemListItem{ID: v.id, Title: d.entryTitle(v), Highlight: d.historyHighlightTerms(v), Subtitle: d.sourceName(v.source) + " · " + strings.TrimPrefix(strings.TrimPrefix(v.date, "今天 "), "昨天 "), Leading: func() {
-				labels := []string{"TXT", "CODE", "URL", "图片", "FILE"}
+				labels := []string{"TXT", "CODE", "URL", "图片", "FILE", "DIR"}
 				p := uikit.KindBadgeProps{Kind: v.kind, Label: d.tr(labels[v.kind])}
 				if v.kind == uikit.KindImage {
 					p.Image = d.entryImage(v)
@@ -309,7 +326,7 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 			if v.kind == uikit.KindImage {
 				kind = uikit.PreviewImage
 			}
-			if v.kind == uikit.KindFile {
+			if v.kind == uikit.KindFile || v.kind == uikit.KindFolder {
 				kind = uikit.PreviewFile
 			}
 			if v.image != nil {
@@ -342,6 +359,10 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 				}
 				if kind == uikit.PreviewImage {
 					ui.Image(c, d.entryImage(*v)).FillWidth().Height(220)
+					return
+				}
+				if v.kind == uikit.KindFolder {
+					d.folderPreview(c, k, v, secondary)
 					return
 				}
 				if v.kind == uikit.KindFile {
@@ -463,7 +484,7 @@ func (d *viewState) assignTagSheet(c *ui.Context, k uikit.Kit) {
 
 // Send menus share the current remote-device registry, including offline peers.
 func (d *viewState) sendMenuItems() []uikit.MenuEntry {
-	items := []uikit.MenuEntry{{ID: "all", Label: d.tr("所有设备"), Icon: uikit.IconDevices, Disabled: d.live != nil}}
+	items := []uikit.MenuEntry{{ID: "all", Label: d.tr("所有设备"), Icon: uikit.IconDevices, Disabled: d.live != nil && d.live.sendCancel != nil}}
 	for _, peer := range d.devices {
 		if peer.id == "local" {
 			continue
@@ -471,15 +492,15 @@ func (d *viewState) sendMenuItems() []uikit.MenuEntry {
 		if len(items) == 1 {
 			items = append(items, uikit.MenuSeparator("devices"))
 		}
-		items = append(items, uikit.MenuEntry{ID: peer.id, Label: peer.name, Disabled: d.live != nil})
+		items = append(items, uikit.MenuEntry{ID: peer.id, Label: peer.name, Disabled: d.live != nil && d.live.sendCancel != nil})
 	}
-	items[0].Disabled = len(items) == 1 || d.live != nil
+	items[0].Disabled = len(items) == 1 || (d.live != nil && d.live.sendCancel != nil)
 	return items
 }
 
 func (d *viewState) sendTo(target string) {
 	if d.live != nil {
-		d.live.message = "发送历史到设备暂不可用。"
+		d.startHistorySend(target)
 		return
 	}
 	name := d.sourceName(target)
@@ -532,4 +553,82 @@ func (d *viewState) historyHighlightTerms(v entry) []string {
 		}
 	}
 	return out
+}
+
+func (d *viewState) startHistorySend(target string) {
+	l := d.live
+	v := d.current()
+	if v == nil || l.sendCancel != nil {
+		return
+	}
+	id := v.id
+	request := newRequestID()
+	ctx, cancel := context.WithCancel(l.ctx)
+	l.sendCancel = cancel
+	l.sendStage = "scanning"
+	var devices []string
+	if target != "all" {
+		devices = []string{target}
+	}
+	go func() {
+		defer cancel()
+		progress := func(stage string) {
+			select {
+			case l.results <- func() { l.sendStage = stage }:
+			case <-l.ctx.Done():
+			}
+		}
+		// Await admission independently of user cancellation, so cancellation
+		// cannot reach the service before it has registered this request.
+		// Cancellation does not guarantee that blocking work has stopped.
+		out, err := l.client.Submit(l.ctx, api.SubmitInput{RequestID: request, HistoryID: id, DeviceIDs: devices, Async: true})
+		if err == nil && out.Phase == engine.SubmissionProcessing {
+			out, err = l.client.WaitSubmission(ctx, request, progress)
+		}
+		if err == nil && out.OperationID != "" {
+			progress("sending")
+			for {
+				op, e := l.client.Operation(ctx, string(out.OperationID))
+				if e != nil {
+					err = e
+					break
+				}
+				if op.Done() {
+					if op.Outcome != engine.OutcomeSuccess {
+						err = fmt.Errorf("send incomplete")
+					}
+					break
+				}
+				select {
+				case <-ctx.Done():
+					err = ctx.Err()
+				case <-time.After(150 * time.Millisecond):
+				}
+				if err != nil {
+					break
+				}
+			}
+		}
+		if ctx.Err() != nil {
+			stop, end := context.WithTimeout(context.Background(), 3*time.Second)
+			_ = l.client.CancelSubmission(stop, request)
+			end()
+		}
+		resultErr := err
+		select {
+		case l.results <- func() {
+			l.sendCancel = nil
+			l.sendStage = ""
+			l.nextRefresh = time.Time{}
+			if resultErr != nil {
+				l.message = "发送未完成。请检查设备连接和源目录。"
+			} else if out.SyncDisposition != engine.SyncQueued {
+				l.message = "内容已保存，但未发送。请检查同步设置和设备连接。"
+			} else {
+				d.notice = "发送完成"
+			}
+		}:
+		case <-l.ctx.Done():
+		}
+	}()
 }

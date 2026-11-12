@@ -167,6 +167,7 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 		return false, nil
 	}
 	keys := make([]targetKey, len(targets))
+	ctxSubmission := v.workContext
 	for i, s := range targets {
 		keys[i] = targetKey{b.id, TargetDevice, s.peerID}
 	}
@@ -191,7 +192,13 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 		}
 		job := &peerJob{
 			supersede: func() { h.Report(k, TargetSuperseded, nil); emitQueue("superseded") },
-			run: func(ctx context.Context) {
+			run: func(sendCtx context.Context) {
+				ctx, stop := context.WithCancel(sendCtx)
+				defer stop()
+				if ctxSubmission != nil {
+					unhook := context.AfterFunc(ctxSubmission, stop)
+					defer unhook()
+				}
 				if ctx.Err() != nil {
 					h.Report(k, TargetFailed, ctx.Err())
 					emitQueue("cancelled")

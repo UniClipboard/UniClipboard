@@ -1,0 +1,16 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D .",
+    "D empty",
+    "F member 27 c2dcc62b792a7a5443d3137f50042fb2d25d32e43e88f3090a21deaa768dfb10"
+  ],
+  "received": [
+    "D .",
+    "D empty",
+    "F member 27 c2dcc62b792a7a5443d3137f50042fb2d25d32e43e88f3090a21deaa768dfb10"
+  ],
+  "result": "PASS",
+  "scenario": "directory-mixed-auto",
+  "time": "2026-11-12T10:38:17.901226Z"
+}

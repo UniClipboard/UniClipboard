@@ -14,7 +14,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 1262fbd01c0ab26a1f206bb19addabdd86e6aeb5
+verified: 5921f656fda2ddc444c5fe55e3d034fd998e5333
 ---
 # 仓库布局与依赖边界
 
@@ -184,3 +184,7 @@ The canonical Desktop acceptance entry is `make desktop-e2e`. It runs the declar
 Desktop lists Text, Images, Files and Links as protected built-in tags, including in an empty library. The labels use the selected interface language. Search, history, assignment and cleanup use stable `builtin:text`, `builtin:image`, `builtin:files` and `builtin:link` IDs. Custom tags retain their literal labels. The [pipeline](pipeline.md#built-in-content-tags) defines automatic classification and the no-backfill boundary.
 
 Run `make desktop-e2e CASE=production-boundary` to build both desktop commands and verify production excludes demo dependencies. See the [module separation receipt](../exec/desktop-module-separation.md).
+
+## Directory content
+
+Desktop and CLI share the Engine-owned [directory content model](../contracts/directory-contract.md). Directory automatic sync defaults off. Desktop exposes explicit history-to-device send with progress and cancellation. Directory references, snapshots, storage ownership and native acceptance limits are described in [pipeline](pipeline.md) and [desktop runtime](desktop-runtime.md).

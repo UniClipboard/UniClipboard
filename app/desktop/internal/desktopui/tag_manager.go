@@ -27,6 +27,7 @@ func builtinTags() []historyTag {
 		{id: plugin.TagText, name: "文本", color: "gray", builtin: true, sidebar: true},
 		{id: plugin.TagImage, name: "图片", color: "gray", builtin: true, sidebar: true},
 		{id: plugin.TagFiles, name: "文件", color: "gray", builtin: true, sidebar: true},
+		{id: plugin.TagFolder, name: "文件夹", color: "gray", builtin: true, sidebar: true},
 		{id: plugin.TagLink, name: "链接", color: "gray", builtin: true, sidebar: true},
 	}
 }

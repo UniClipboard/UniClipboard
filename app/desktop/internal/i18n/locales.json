@@ -521,6 +521,48 @@
     "pt-BR": "Arquivos",
     "ru": "Файлы"
   },
+  "文件夹": {
+    "en": "Folders",
+    "ja": "フォルダ",
+    "pt-BR": "Pastas",
+    "ru": "Папки"
+  },
+  "源目录引用。主动发送时读取当前目录内容。": {
+    "en": "Source folder reference. Sending reads the current folder contents.",
+    "ja": "元フォルダへの参照。送信時に現在のフォルダ内容を読み取ります。",
+    "pt-BR": "Referência à pasta de origem. O envio lê o conteúdo atual da pasta.",
+    "ru": "Ссылка на исходную папку. При отправке читается текущее содержимое папки."
+  },
+  "目录快照。发送时使用已保存的内容。": {
+    "en": "Folder snapshot. Sending uses the saved content.",
+    "ja": "フォルダのスナップショット。送信時は保存済みの内容を使います。",
+    "pt-BR": "Instantâneo da pasta. O envio usa o conteúdo salvo.",
+    "ru": "Снимок папки. При отправке используется сохранённое содержимое."
+  },
+  "个文件": {
+    "en": "files",
+    "ja": "ファイル",
+    "pt-BR": "arquivos",
+    "ru": "файлов"
+  },
+  "个文件夹": {
+    "en": "folders",
+    "ja": "フォルダ",
+    "pt-BR": "pastas",
+    "ru": "папок"
+  },
+  "仅显示前 200 项": {
+    "en": "Showing the first 200 items",
+    "ja": "最初の200件のみ表示",
+    "pt-BR": "Mostrando os primeiros 200 itens",
+    "ru": "Показаны первые 200 элементов"
+  },
+  "无法读取文件夹，可能已移动或删除。": {
+    "en": "Cannot read the folder. It may have been moved or deleted.",
+    "ja": "フォルダを読み取れません。移動または削除された可能性があります。",
+    "pt-BR": "Não foi possível ler a pasta. Ela pode ter sido movida ou excluída.",
+    "ru": "Не удалось прочитать папку. Возможно, она перемещена или удалена."
+  },
   "链接": {
     "en": "Links",
     "ja": "リンク",
@@ -2884,6 +2926,60 @@
     "ja": "組み込み",
     "pt-BR": "Integrada",
     "ru": "Встроенный"
+  },
+  "取消发送": {
+    "en": "Cancel send",
+    "ja": "送信をキャンセル",
+    "pt-BR": "Cancelar envio",
+    "ru": "Отменить отправку"
+  },
+  "正在扫描目录…": {
+    "en": "Scanning directory…",
+    "ja": "フォルダーをスキャン中…",
+    "pt-BR": "Verificando pasta…",
+    "ru": "Сканирование папки…"
+  },
+  "正在准备目录…": {
+    "en": "Preparing directory…",
+    "ja": "フォルダーを準備中…",
+    "pt-BR": "Preparando pasta…",
+    "ru": "Подготовка папки…"
+  },
+  "正在提交…": {
+    "en": "Submitting…",
+    "ja": "送信リクエストを送信中…",
+    "pt-BR": "Enviando solicitação…",
+    "ru": "Отправка запроса…"
+  },
+  "正在发送…": {
+    "en": "Sending…",
+    "ja": "送信中…",
+    "pt-BR": "Enviando…",
+    "ru": "Отправка…"
+  },
+  "正在准备发送…": {
+    "en": "Preparing to send…",
+    "ja": "送信を準備中…",
+    "pt-BR": "Preparando envio…",
+    "ru": "Подготовка к отправке…"
+  },
+  "自动同步目录": {
+    "en": "Sync directories automatically",
+    "ja": "フォルダーを自動同期",
+    "pt-BR": "Sincronizar pastas automaticamente",
+    "ru": "Автоматически синхронизировать папки"
+  },
+  "默认关闭。开启后，每次复制目录都会扫描并发送。": {
+    "en": "Off by default. When enabled, each directory copy scans and sends its contents.",
+    "ja": "初期設定はオフです。有効にすると、フォルダーをコピーするたびに内容をスキャンして送信します。",
+    "pt-BR": "Desativado por padrão. Quando ativado, cada cópia de pasta verifica e envia seu conteúdo.",
+    "ru": "По умолчанию отключено. При включении каждое копирование папки запускает сканирование и отправку её содержимого."
+  },
+  "此平台无法识别同一路径的重复复制。请使用主动发送。": {
+    "en": "This platform cannot detect repeated copies of the same path. Use explicit send.",
+    "ja": "このプラットフォームでは同じパスの再コピーを検出できません。手動で送信してください。",
+    "pt-BR": "Esta plataforma não detecta cópias repetidas do mesmo caminho. Use o envio manual.",
+    "ru": "Эта платформа не распознаёт повторное копирование того же пути. Используйте ручную отправку."
   },
   "未使用": {
     "en": "Unused",

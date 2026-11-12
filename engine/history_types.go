@@ -8,9 +8,11 @@ type HistoryOriginKind string
 type HistorySyncState string
 
 const (
-	HistoryText  HistoryKind = "text"
-	HistoryImage HistoryKind = "image"
-	HistoryFiles HistoryKind = "files"
+	HistoryDirectory          HistoryKind = "directory"
+	HistoryDirectoryReference HistoryKind = "directory_reference"
+	HistoryText               HistoryKind = "text"
+	HistoryImage              HistoryKind = "image"
+	HistoryFiles              HistoryKind = "files"
 
 	OriginKindLocalSystem  HistoryOriginKind = "local_system"
 	OriginKindRemoteDevice HistoryOriginKind = "remote_device"

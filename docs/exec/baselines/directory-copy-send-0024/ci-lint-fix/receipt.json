@@ -1,0 +1,86 @@
+{
+  "source_head": "96336acc5408d4e9623fc5a88e0e7bde1bd0f252",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "native_clipboard": "NOT_RUN",
+  "real_devices": "NOT_RUN",
+  "status": "PASS",
+  "commands": [
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unic",
+        "./app/service/cmd/unic"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unicd",
+        "./app/service/cmd/unicd"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-json",
+        "./e2e/cli",
+        "-run",
+        "^TestCLI/(directory-copy-and-send|history-restore-sync)$",
+        "-parallel",
+        "4",
+        "-count=1"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "results": [
+    {
+      "case": "TestCLI/directory-copy-and-send",
+      "result": "PASS",
+      "seconds": 50.27
+    },
+    {
+      "case": "TestCLI/history-restore-sync",
+      "result": "PASS",
+      "seconds": 54
+    },
+    {
+      "case": "TestCLI",
+      "result": "PASS",
+      "seconds": 0.01
+    },
+    {
+      "case": "github.com/uniclipboard/unic/e2e/cli",
+      "result": "PASS",
+      "seconds": 55.542
+    }
+  ],
+  "source_sha256": "70beedf74c918c67c6d965395b1446164bc1eaab37b680f29b9409bfaf67cdd9",
+  "build_input_sha256": "660afc483376484e52810f2bcefcb40260c04c64ccaa431e2c263cbe037fd6f8",
+  "go": "go version go1.27.3 darwin/arm64",
+  "binary_sha256": {
+    "unic": "fd7e049acb60efcd72d0c5f6012cbfb958f8b5ae32202f4647b5fabdf04a31d4",
+    "unicd": "efdd7d431cd6a50b4b4ce0d1db085030cf4ae8e68c72666239c8b551746cbaec"
+  },
+  "frozen_source_unchanged": true,
+  "private_cleanup": "PASS",
+  "seconds": 72.847
+}

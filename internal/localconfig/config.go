@@ -108,11 +108,16 @@ type FileCache struct {
 	MaxBytes Size `toml:"max_bytes" json:"max_bytes"`
 }
 
-type Sync struct {
+type DirectorySync struct {
 	Automatic bool `toml:"automatic" json:"automatic"`
-	OnRestore bool `toml:"on_restore" json:"on_restore"`
-	Files     bool `toml:"files" json:"files"`
-	Enabled   bool `toml:"enabled" json:"enabled"`
+}
+
+type Sync struct {
+	Directories DirectorySync `toml:"directories" json:"directories"`
+	Automatic   bool          `toml:"automatic" json:"automatic"`
+	OnRestore   bool          `toml:"on_restore" json:"on_restore"`
+	Files       bool          `toml:"files" json:"files"`
+	Enabled     bool          `toml:"enabled" json:"enabled"`
 	// Introductions: devices tell each other which others they vouch for; the
 	// result is only a list of candidates (see docs/architecture/identity-and-trust.md).
 	Introductions bool `toml:"introductions" json:"introductions"`
@@ -231,7 +236,7 @@ func (c Config) Settings() engine.Settings {
 		History:         engine.HistoryCleanupSettings{AutoCleanup: c.History.AutoCleanup, RetentionDays: c.History.RetentionDays, MaxItems: c.History.MaxItems, ExcludedTags: append([]string{}, c.History.ExcludedTags...)},
 		FileCache:       engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes)},
 		Limits:          engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
-		Sync:            engine.SyncSettings{Enabled: c.Sync.Enabled, Automatic: c.Sync.Automatic, OnRestore: c.Sync.OnRestore, Files: c.Sync.Files, Introductions: c.Sync.Introductions},
+		Sync:            engine.SyncSettings{Directories: engine.DirectorySyncSettings{Automatic: c.Sync.Directories.Automatic}, Enabled: c.Sync.Enabled, Automatic: c.Sync.Automatic, OnRestore: c.Sync.OnRestore, Files: c.Sync.Files, Introductions: c.Sync.Introductions},
 		BackendPolicies: c.backendPolicies(),
 	}
 }
@@ -402,6 +407,9 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # files = true        # global file send/receive permission
 # enabled = false pauses sync both ways; devices stay connected.
 # enabled = true
+
+# [sync.directories]
+# automatic = false  # copy records references; explicit send prepares the tree
 
 # What the built-in device-to-device sync (builtin.tailcat) sends and accepts.
 # Applies to transfers that start after the change. Uncomment the header too.

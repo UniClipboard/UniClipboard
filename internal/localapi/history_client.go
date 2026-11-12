@@ -36,6 +36,12 @@ func (c *Client) HistoryPreview(ctx context.Context, item HistoryItem) (string, 
 			break
 		}
 	}
+	if item.Kind == "directory" {
+		return "目录快照", nil
+	}
+	if item.Kind == "directory_reference" {
+		return "源目录引用；发送时读取当前内容", nil
+	}
 	if part < 0 {
 		if item.Kind == "files" {
 			for i, p := range item.Parts {
@@ -134,6 +140,12 @@ func (c *Client) HistoryContent(ctx context.Context, id string, part int) (Histo
 	}
 	_, params, _ := mime.ParseMediaType(resp.Header.Get("Content-Disposition"))
 	return HistoryContent{MIME: resp.Header.Get("Content-Type"), Name: params["filename"], Size: resp.ContentLength, ReadCloser: resp.Body}, nil
+}
+
+// HistoryFolder lists the direct children of a folder-reference record.
+func (c *Client) HistoryFolder(ctx context.Context, id string) (l FolderListing, err error) {
+	err = c.do(ctx, http.MethodGet, "/v1/history/"+url.PathEscape(id)+"/folder", nil, &l)
+	return
 }
 
 // CopyHistoryContent streams part number part of a record to w.

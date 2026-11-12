@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/directory"
+
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/store"
@@ -74,7 +76,8 @@ func allowsAny(parts []receivePart, pol BackendSyncPolicy) bool {
 	for _, p := range parts {
 		switch {
 		case p.file && pol.Files, !p.file && strings.HasPrefix(p.mime, "image/") && pol.Images,
-			!p.file && !strings.HasPrefix(p.mime, "image/") && pol.Text:
+			!p.file && p.mime == directory.MIME && pol.Files,
+			!p.file && p.mime != directory.MIME && !strings.HasPrefix(p.mime, "image/") && pol.Text:
 			return true
 		}
 	}
@@ -135,7 +138,7 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 	e.mu.Unlock()
 	filesBlocked := false
 	for _, p := range req.parts {
-		filesBlocked = filesBlocked || (p.file && !pol.Files)
+		filesBlocked = filesBlocked || ((p.file || p.mime == directory.MIME) && !pol.Files)
 	}
 	if !ok || arriving || filesBlocked || !allowsAny(req.parts, pol) {
 		outcome, code = "policy_filtered", ""
@@ -259,6 +262,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	enabled := e.settings.Value.Sync.Enabled
 	sy := e.policyLocked(t.backend)
 	running := e.life == LifecycleRunning && e.runtime == RuntimeActive
+	receiveCtx := e.runCtx
 	e.mu.Unlock()
 	if !ok || !running || !enabled {
 		if !running {
@@ -280,7 +284,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	n := 0
 	next := func() PartID { n++; return PartID("p" + strconv.Itoa(n)) }
 	for _, p := range snap.Parts {
-		if strings.HasPrefix(p.Format, "image/") && !sy.Images || !strings.HasPrefix(p.Format, "image/") && !sy.Text {
+		if p.Format == directory.MIME && !sy.Files || p.Format != directory.MIME && (strings.HasPrefix(p.Format, "image/") && !sy.Images || !strings.HasPrefix(p.Format, "image/") && !sy.Text) {
 			continue
 		}
 		size := int64(len(p.Data))
@@ -297,6 +301,13 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 		c.dir = ""
 	}
 	c.owned = c.total
+	if err := e.verifyDirectory(receiveCtx, c); err != nil {
+		giveBack(reserved)
+		if dir != "" {
+			_ = os.RemoveAll(dir)
+		}
+		return
+	}
 	if len(c.parts) == 0 {
 		outcome, code = "policy_filtered", ""
 		giveBack(reserved)

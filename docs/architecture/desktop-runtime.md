@@ -1,5 +1,8 @@
 ---
 paths:
+  - engine/directory.go
+  - internal/directory
+  - internal/localcontent/directory.go
   - app/desktop/internal/lifecycle
   - app/desktop/e2e
   - app/desktop/internal/desktopui
@@ -30,14 +33,14 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 1262fbd01c0ab26a1f206bb19addabdd86e6aeb5
+verified: 5921f656fda2ddc444c5fe55e3d034fd998e5333
 ---
 # Desktop configuration and received files
 
 The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
-The normal desktop uses the shared mygo demo composition with live service data.
+The normal desktop uses the production `desktopui` renderer with live service data.
 It opens history directly, with no setup or unlock flow.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
@@ -54,6 +57,7 @@ See the [live binding execution receipt](../exec/desktop-live-data.md) for suppo
 | `sync.enabled` | `true` | Pause content sends and receives. Keep connections and local history. |
 | `sync.automatic` | `true` | Send new observed copies. Local history, manual sends, receives, and Actions remain independent. |
 | `sync.on_restore` | `false` | After a successful explicit history restore, dispatch the restored content once. |
+| `sync.directories.automatic` | `false` | Prepare and send directory copies automatically; explicit send remains available. |
 | `sync.files` | `true` | Permit file sends and receives, subject to each backend's policy. |
 | `inbox` | Empty | Empty selects the default file cache. An absolute custom directory selects user-managed receives after restart. |
 | `limits.max_file_bytes` | `"100MB"` | Bound each file transfer in both directions. The boundary is inclusive. |
@@ -250,3 +254,11 @@ macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication ident
 The `desktop_e2e` build tag imports mygo's opt-in automation plugin, assigns a unique application name and supplies the existing directory clipboard through the host Board seam. Untagged builds use the original system board and do not import automation. The native case executes real desktop view actions against a production service and checks actual directory-clipboard bytes. It does not establish global key delivery, OS focus policy, system clipboard or cross-application paste.
 
 The runner builds from a private frozen snapshot, so edits in the developer checkout do not change an active run. It rejects missing evidence, failed/skipped selected cases and source-snapshot mutation. It publishes the final verdict only after report/checksum generation succeeds. Native windows and services are stopped before private artifacts are removed. See the [E2E contract](../contracts/desktop-e2e-contract.md), [developer guide](../../app/desktop/e2e/README.md), and [execution receipt](../exec/desktop-e2e.md).
+
+## Directory capture, send, and receive
+
+The directory flow follows the [directory contract](../contracts/directory-contract.md). Default capture stores a cheap source reference. Desktop history distinguishes this reference from a frozen snapshot. Its send menu submits the selected history item and selected devices through the existing service. Scanning, preparation and sending have separate progress labels and an explicit cancel action. Linux settings disclose the identical-copy marker limitation. Native clipboard and visual acceptance are recorded separately in the [execution receipt](../exec/0024-directory-copy-and-send.md).
+
+Default-cache directory application builds lease-owned views from retained members. Custom receives stage one complete batch under the configured destination, then publish it by rename. The host journals only its exact unpublished staging path in private profile storage before creation. Startup recovery uses those journals and validates destination identity; it never scans the custom destination or deletes published trees. Failed cleanup retains its journal. Existing custom destinations are never merged into or overwritten.
+
+Before writing a prepared tree, the adapter rechecks the current clipboard against its observed baseline. A newer local copy defers the old application. Copying the same held paths again keeps their application lease while the new copy action is processed.

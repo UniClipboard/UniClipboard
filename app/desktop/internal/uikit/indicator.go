@@ -179,6 +179,8 @@ func (k Kit) kindColors(kind ContentKind) (bg, ink ui.Color) {
 		return k.Color("code"), k.Color("code-ink")
 	case KindLink:
 		return k.TagTint("blue")
+	case KindFolder:
+		return k.TagTint("purple")
 	case KindFile, KindImage:
 		return k.TagTint("orange")
 	}
@@ -186,6 +188,23 @@ func (k Kit) kindColors(kind ContentKind) (bg, ink ui.Color) {
 		return k.Color("shade"), k.Color("fg2")
 	}
 	return k.TagTint("")
+}
+
+// kindIcon is the glyph that names a content kind.
+func kindIcon(kind ContentKind) IconName {
+	switch kind {
+	case KindCode:
+		return IconCode
+	case KindLink:
+		return IconLink
+	case KindImage:
+		return IconImage
+	case KindFile:
+		return IconFile
+	case KindFolder:
+		return IconFolder
+	}
+	return IconText
 }
 
 // KindBadge is the type mark of a clipboard entry: a square tile or a capsule label.
@@ -203,22 +222,23 @@ func (k Kit) KindBadge(c *ui.Context, p KindBadgeProps) ui.Element {
 		default:
 			h, padX, size, r = 22, 9, 12, 11
 		}
-		return ui.Row(c).Height(h).PaddingX(padX).Radius(min(r, h/2)).Center().Background(bg).TextColor(ink).
+		return ui.Row(c).Height(h).PaddingX(padX).Radius(min(r, h/2)).Center().Gap(4).Background(bg).TextColor(ink).
 			Label(p.Label).Children(func() {
+			k.Icon(c.Key("icon"), kindIcon(p.Kind), size+3).AccessHidden(true)
 			ui.Text(c, p.Label).FontSize(size).FontWeight(weight).AccessHidden(true)
 		})
 	}
-	var w, h, r, size float32
+	var w, h, r float32
 	switch k.Skin {
 	case MacOS:
-		w, h, r, size = 30, 30, 7, 9.5
+		w, h, r = 30, 30, 7
 		if p.Kind == KindImage {
 			w, r = 40, 6
 		}
 	case Windows:
-		w, h, r, size = 32, 30, k.Px("borderRadiusMedium"), k.Px("fontSizeBase100")
+		w, h, r = 32, 30, k.Px("borderRadiusMedium")
 	default:
-		w, h, r, size = 40, 32, 6, 10.5
+		w, h, r = 40, 32, 6
 	}
 	e := ui.Row(c).Size(w, h).Radius(r).Center().Clip().Background(bg).TextColor(ink).Label(p.Label)
 	if p.Kind == KindImage {
@@ -233,10 +253,12 @@ func (k Kit) KindBadge(c *ui.Context, p KindBadgeProps) ui.Element {
 		return e.Children(func() {
 			if p.Image != nil {
 				ui.Image(c, p.Image).Size(w, h).Fit(ui.Cover)
+				return
 			}
+			k.Icon(c.Key("icon"), IconImage, 16).AccessHidden(true)
 		})
 	}
 	return e.Children(func() {
-		ui.Text(c, p.Label).FontSize(size).FontWeight(700).Font("monospace").AccessHidden(true)
+		k.Icon(c.Key("icon"), kindIcon(p.Kind), 16).AccessHidden(true)
 	})
 }

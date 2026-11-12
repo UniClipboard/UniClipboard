@@ -18,7 +18,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: 1262fbd01c0ab26a1f206bb19addabdd86e6aeb5
+verified: f8d5a41544932c2ca2bf4a9a2c230ee5db939353
 ---
 # Headless service and desktop integration
 
@@ -219,3 +219,9 @@ The login entry starts the same desktop executable, which reads the saved mode a
 See the [startup acceptance receipt](../exec/desktop-startup-lifecycle.md).
 
 The container-based production acceptance job trusts only its checked-out repository path before building. Go VCS stamping remains enabled. The acceptance manifest continues to record source and executable hashes.
+
+## Explicit directory send
+
+`unic send --to all -f /absolute/path/to/directory` sends one directory selection through paired devices. Multiple file and directory arguments form one batch. `unic history send REF --to DEVICE|all` prepares a source reference or resends a retained immutable snapshot. It does not restore the item to the local clipboard. Directory arguments require `--to`; temporary code/link transfers continue to accept ordinary files only.
+
+Directory source preparation runs in Engine outside clipboard polling. Async local submissions expose preparation stages and explicit cancellation. Client disconnection does not cancel admitted work. A host-owned cancellation context and `DELETE /v1/submissions/{request_id}` cancel the operation without replay. A cancellation after local commit preserves the committed history and cancels remaining transmission where possible. See the [local service contract](../contracts/local-service-contract.md) and [directory contract](../contracts/directory-contract.md).

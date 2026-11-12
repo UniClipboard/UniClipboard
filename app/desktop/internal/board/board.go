@@ -3,6 +3,7 @@ package board
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
@@ -18,7 +19,7 @@ type MyGo struct{}
 var syncFormats = []transfer.Format{transfer.Text, transfer.HTML, transfer.PNG}
 
 func (MyGo) Read() (clip.Snapshot, error) {
-	var s clip.Snapshot
+	s := clip.Snapshot{CopyID: clipboardCopyID()}
 	offered := mygo.Clipboard.Formats()
 	has := func(f transfer.Format) bool {
 		for _, o := range offered {
@@ -33,15 +34,19 @@ func (MyGo) Read() (clip.Snapshot, error) {
 	if has(transfer.FileList) || has(transfer.URIList) {
 		if paths, err := mygo.Clipboard.ReadFiles(); err == nil && len(paths) > 0 {
 			for _, p := range paths {
+				// A directory URL ends with a separator ("file:///a/b/"); without
+				// cleaning, the base name is empty and the engine rejects the file.
+				p = filepath.Clean(p)
 				f := clip.File{Name: baseName(p), Path: p}
 				// A path that cannot be stat'ed keeps Size 0 and is rejected
 				// by the engine, which then syncs nothing.
 				if st, err := os.Stat(p); err == nil {
 					f.Size = st.Size()
+					f.Directory = st.IsDir()
 				}
 				s.Files = append(s.Files, f)
 			}
-			return s, nil
+			return finishClipboardRead(s)
 		}
 	}
 
@@ -52,7 +57,7 @@ func (MyGo) Read() (clip.Snapshot, error) {
 		}
 	}
 	if len(want) == 0 {
-		return s, nil
+		return finishClipboardRead(s)
 	}
 	d, err := mygo.Clipboard.Read(want...)
 	if err != nil {
@@ -65,7 +70,7 @@ func (MyGo) Read() (clip.Snapshot, error) {
 		}
 		s.Parts = append(s.Parts, clip.Part{Format: string(f), Data: b})
 	}
-	return s, nil
+	return finishClipboardRead(s)
 }
 
 func (MyGo) Write(s clip.Snapshot) error {
@@ -92,4 +97,13 @@ func baseName(p string) string {
 		}
 	}
 	return p
+}
+
+// Bind paths and the copy marker to the same native observation. A copy
+// during the read is retried on the next poll instead of mixing generations.
+func finishClipboardRead(s clip.Snapshot) (clip.Snapshot, error) {
+	if s.CopyID != "" && clipboardCopyID() != s.CopyID {
+		return clip.Snapshot{}, mygo.ErrClipboardChanged
+	}
+	return s, nil
 }

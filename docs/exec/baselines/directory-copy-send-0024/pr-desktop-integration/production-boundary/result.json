@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "mode": "process",
+  "assertions": [
+    "TestDesktopAcceptance/production-boundary"
+  ],
+  "steps": [
+    {
+      "args": [
+        "startup",
+        "production-boundary"
+      ],
+      "at_ms": 16391,
+      "command": "acceptance",
+      "status": "PASS"
+    }
+  ],
+  "screenshots": null,
+  "cleanup": "PASS"
+}

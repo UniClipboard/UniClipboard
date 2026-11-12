@@ -1,5 +1,8 @@
 ---
 paths:
+  - engine/directory.go
+  - internal/directory
+  - internal/localcontent/directory.go
   - engine/pipeline.go
   - engine/types.go
   - engine/peersend.go
@@ -29,7 +32,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: e3ff9f4792d16e7499e8266568edf6a9ec873b30
+verified: f8d5a41544932c2ca2bf4a9a2c230ee5db939353
 ---
 # Clipboard pipeline and local history
 
@@ -144,3 +147,17 @@ Delete cascades remove search documents and their FTS postings. Query-time expir
 A separate bounded SQLite reader serves search/count/catalogue work without holding the existing writer connection.
 Index quota or extraction failure preserves history and reports an incomplete index for content-dependent queries. Ordinary metadata browsing remains available.
 The [search contract](../contracts/history-search-contract.md) defines the public methods and resource limits. The [execution receipt](../exec/desktop-search-implementation.md) separates process evidence from native UI acceptance.
+
+## Directory references and one-shot transfer
+
+Copying a selection containing a directory captures only top-level private source references by default. It does not enumerate descendants, create a byte snapshot, or dispatch a regular-file subset. `sync.directories.automatic` defaults to false. Source edits never initiate a transfer. macOS and Windows adapters supply local copy markers to distinguish another copy of the same directory; Linux currently cannot distinguish identical repeated selections and requires explicit send for that case.
+
+Explicit send prepares current directory content in a bounded background operation. The captured reference and completed immutable snapshot have separate history kinds, `directory_reference` and `directory`. Every target of one operation reads the same snapshot. Directory capture returns the transitional observation disposition `preparing` while Engine completes local processing and baseline reconciliation. Ordinary capture remains unchanged.
+
+The tree is a bounded manifest representation plus ordinary file streams. Empty directories and hidden files are preserved. Links, special entries, overlapping roots, unsafe names and unsupported trees fail the batch. File policy governs the entire selection, including an empty directory. The receiver validates manifest structure before member payloads and verifies member hashes before history/Received publication. Source references never enter a backend. Exact bounds and interfaces are in the [directory contract](../contracts/directory-contract.md).
+
+Directory snapshots use ordinary history, content leases and cache accounting. Default-cache clipboard views reuse payload bytes through root-confined hard links where supported; additional copies require a storage reservation. The final holder releases each temporary view. Published custom trees belong to the user. Explicit history send preserves an existing processor sync prohibition, prepares references anew, and resends snapshots without reading the original source.
+
+A newer local copy cancels unfinished automatic directory preparation so that an old slow tree cannot arrive after the newer copy. Explicit source sends continue independently of clipboard changes. Background transmission uses the submission-owned lifetime when present; history-restore RPC completion does not cancel its queued transmission.
+
+Directory references and snapshots receive the `builtin:folder` classification, separate from `builtin:files`. The desktop shows them with a folder badge, a folder type filter and a folder preview.

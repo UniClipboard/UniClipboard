@@ -128,7 +128,7 @@ type File struct {
 // Item is a read-only description of the content being processed.
 type Item struct {
 	ID      string
-	Type    string // text, image or files
+	Type    string // text, image, files, directory or directory_reference
 	Text    string // empty unless the item has a text representation
 	Formats []string
 	Files   []File

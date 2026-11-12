@@ -1,0 +1,144 @@
+[
+  {
+    "Theme": "dark",
+    "Choice": "所有设备",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": "演示：已发送到所有设备"
+  },
+  {
+    "Theme": "dark",
+    "Choice": "工作电脑",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": "演示：已发送到工作电脑"
+  },
+  {
+    "Theme": "dark",
+    "Choice": "Linux 工作站",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": "演示：已发送到Linux 工作站"
+  },
+  {
+    "Theme": "dark",
+    "Choice": "我的手机",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": "演示：已发送到我的手机"
+  },
+  {
+    "Theme": "dark",
+    "Choice": "cancel",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": ""
+  },
+  {
+    "Theme": "dark",
+    "Choice": "updated",
+    "Items": [
+      "所有设备",
+      "-",
+      "办公室电脑",
+      "Linux 工作站"
+    ],
+    "Notice": "演示：已发送到办公室电脑"
+  },
+  {
+    "Theme": "light",
+    "Choice": "所有设备",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": "演示：已发送到所有设备"
+  },
+  {
+    "Theme": "light",
+    "Choice": "工作电脑",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": "演示：已发送到工作电脑"
+  },
+  {
+    "Theme": "light",
+    "Choice": "Linux 工作站",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": "演示：已发送到Linux 工作站"
+  },
+  {
+    "Theme": "light",
+    "Choice": "我的手机",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": "演示：已发送到我的手机"
+  },
+  {
+    "Theme": "light",
+    "Choice": "cancel",
+    "Items": [
+      "所有设备",
+      "-",
+      "工作电脑",
+      "Linux 工作站",
+      "我的手机"
+    ],
+    "Notice": ""
+  },
+  {
+    "Theme": "light",
+    "Choice": "updated",
+    "Items": [
+      "所有设备",
+      "-",
+      "办公室电脑",
+      "Linux 工作站"
+    ],
+    "Notice": "演示：已发送到办公室电脑"
+  }
+]

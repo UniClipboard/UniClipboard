@@ -9,6 +9,7 @@ import (
 // opEntry is one retained operation and the fingerprint of the request that
 // made it. Only a hash of sensitive parameters is kept, never the parameters.
 type opEntry struct {
+	cancel  func() // release the submission context after all targets finish
 	op      Operation
 	hash    [sha256.Size]byte
 	content *contentObj // a send holds its content until every target is final

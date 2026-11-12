@@ -1,0 +1,49 @@
+# 用例: Directory history references defer work and cancellation releases preparation
+# 目的: Verify source history send, frozen snapshot resend, and bounded cancellation.
+# 流程:
+#   1. Capture a directory reference and send it from history.
+#   2. Hold preparation, cancel a second send, and retry an independent send.
+#   3. Restart the source and send the durable directory reference.
+# 期望:
+#   - Capture does not scan or snapshot. Cancellation creates no snapshot or remote partial tree.
+#   - A history source reference survives restart and can be sent explicitly.
+# 不应:
+#   - A cancelled operation resumes when the hold is released.
+
+mkdir source/tree/empty
+cp content.txt source/tree/member
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-set alpha files source/tree
+until alpha '"kind":"directory_reference"' history list --json
+directory-probe alpha 0 0
+u alpha history tag @1 --add source
+u alpha history send @1 --to all --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+directory-probe alpha 1 1
+directory-hold alpha true
+u-async pending alpha send --to all -f $WORK/source/tree --request-id cancel-directory --json
+directory-probe alpha 2 1
+submission-cancel alpha cancel-directory
+! u-wait pending
+directory-probe alpha 2 1
+directory-hold alpha false
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+directory-probe alpha 3 2
+node-stop alpha
+node-start alpha
+u alpha history list --tag source --json
+stdout '"kind":"directory_reference"'
+u alpha history send @3 --to all --json
+stdout '"outcome":"success"'
+
+-- content.txt --
+history-directory-canary
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

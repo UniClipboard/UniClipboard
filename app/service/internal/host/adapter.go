@@ -260,6 +260,24 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 					}
 				}
 			}
+		case "tree-references":
+			var l engine.LeaseID
+			if decode(&l) {
+				if !a.leases[l] {
+					err = adapterError(engine.CodeResourceExpired)
+				} else {
+					out, err = n.e.DirectoryReferences(ctx, l)
+				}
+			}
+		case "tree-paths":
+			var l engine.LeaseID
+			if decode(&l) {
+				if !a.leases[l] {
+					err = adapterError(engine.CodeResourceExpired)
+				} else {
+					out, err = n.e.DirectoryPaths(ctx, l)
+				}
+			}
 		case "retain":
 			var id engine.ContentID
 			if decode(&id) {

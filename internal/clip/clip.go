@@ -24,15 +24,17 @@ type Part struct {
 
 // File is a file on the clipboard. Path is absolute and local to this device.
 type File struct {
-	Name string // base name, as the sender called it
-	Path string
-	Size int64
+	Name      string // base name, as the sender called it
+	Path      string
+	Size      int64
+	Directory bool
 }
 
 // Snapshot is the content of the clipboard at one moment.
 type Snapshot struct {
-	Parts []Part
-	Files []File
+	CopyID string `json:",omitempty"` // local observation marker, excluded from Hash
+	Parts  []Part
+	Files  []File
 }
 
 // Empty reports whether the snapshot carries nothing.
@@ -86,4 +88,15 @@ func (s Snapshot) Summary() string {
 		return s.Parts[0].Format
 	}
 	return "empty"
+}
+
+// ObservationHash tracks copy actions without walking directory contents.
+func (s Snapshot) ObservationHash() string {
+	h := s.Hash()
+	for _, f := range s.Files {
+		if f.Directory {
+			return h + "/copy/" + s.CopyID
+		}
+	}
+	return h
 }

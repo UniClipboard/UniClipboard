@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -149,7 +150,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 		t.Fatal("initial history read must expose foreground loading")
 	}
 	spin("empty history", func() bool { return d.live.loaded && !d.live.loading })
-	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != 4 {
+	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != 5 {
 		t.Fatal("fixture or entry flow leaked")
 	}
 	checks = append(checks, "opens empty history directly without fixtures")
@@ -195,6 +196,8 @@ func scenarioDesktopLiveData(t *testing.T) {
 		return d.current() != nil && d.current().text == "Desktop live acceptance" && !d.live.detailBusy
 	})
 	checks = append(checks, "real submission appears through event/reconciliation and content read")
+	checkHistorySendCancellation(t, ctx, client.Path, id)
+	checks = append(checks, "cancel before submission admission waits for acknowledgement, then cancels the admitted request")
 	idle("selected text history")
 	d.query = "no-idle-match"
 	d.live.poll(d)
@@ -546,4 +549,85 @@ func scenarioDesktopLiveData(t *testing.T) {
 		return d.live.connected && !d.live.loading && d.live.readError == "" && len(d.entries) == 55
 	})
 	checks = append(checks, "real service restart recovers authoritative history without foreground loading")
+}
+
+type historySendTransport func(*http.Request) (*http.Response, error)
+
+func (f historySendTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+// Failure inventory: user cancellation aborts admission acknowledgement; DELETE
+// overtakes admission; cancellation targets another request; the UI remains busy.
+// Delay only transport admission. All requests still reach a real unicd process.
+func checkHistorySendCancellation(t *testing.T, ctx context.Context, socket, historyID string) {
+	t.Helper()
+	client := api.NewClient(socket)
+	started, release := make(chan struct{}), make(chan struct{})
+	cancelled := make(chan string, 1)
+	admissionError := make(chan error, 1)
+	var requestID string
+	client.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
+		return historySendTransport(func(r *http.Request) (*http.Response, error) {
+			if r.Method == http.MethodPost && r.URL.Path == "/v1/submissions" {
+				body, err := r.GetBody()
+				if err != nil {
+					return nil, err
+				}
+				var in api.SubmitInput
+				err = json.NewDecoder(body).Decode(&in)
+				_ = body.Close()
+				if err != nil {
+					return nil, err
+				}
+				requestID = in.RequestID
+				close(started)
+				<-release
+				admissionError <- r.Context().Err()
+			}
+			out, err := next.RoundTrip(r)
+			if r.Method == http.MethodDelete && err == nil && out.StatusCode == http.StatusOK {
+				cancelled <- r.URL.Path
+			}
+			return out, err
+		})
+	})
+	desktop := NewDesktop(ctx, client)
+	defer desktop.Close()
+	d := desktop.d
+	deadline := time.Now().Add(20 * time.Second)
+	for d.current() == nil || d.current().id != historyID {
+		if time.Now().After(deadline) {
+			t.Fatal("send cancellation: history did not load")
+		}
+		d.live.poll(d)
+		time.Sleep(10 * time.Millisecond)
+	}
+	d.startHistorySend("all")
+	select {
+	case <-started:
+	case <-ctx.Done():
+		close(release)
+		t.Fatal("send cancellation: submission did not start")
+	}
+	d.live.sendCancel()
+	close(release)
+	if err := <-admissionError; err != nil {
+		t.Fatalf("user cancellation aborted submission admission: %v", err)
+	}
+	select {
+	case path := <-cancelled:
+		if path != "/v1/submissions/"+requestID {
+			t.Fatalf("cancelled another submission: %s", path)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("admitted submission was not cancelled")
+	}
+	for d.live.sendCancel != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("send cancellation: UI remained busy")
+		}
+		d.live.poll(d)
+		time.Sleep(10 * time.Millisecond)
+	}
 }

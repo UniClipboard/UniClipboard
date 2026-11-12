@@ -94,6 +94,21 @@ func (n *Node) HistoryContent(ctx context.Context, id string, part int) (api.His
 	return api.HistoryContent{MIME: p.MIME, Name: p.Name, Size: p.Size, ReadCloser: releasing{r, release}}, nil
 }
 
+// folderListLimit bounds one folder listing shown in a preview.
+const folderListLimit = 200
+
+func (n *Node) HistoryFolder(ctx context.Context, id string) (api.FolderListing, error) {
+	entries, truncated, err := n.e.ListHistoryFolder(ctx, engine.HistoryID(id), folderListLimit)
+	if err != nil {
+		return api.FolderListing{}, apiErr(err, false)
+	}
+	out := api.FolderListing{Entries: make([]api.FolderEntry, 0, len(entries)), Truncated: truncated}
+	for _, e := range entries {
+		out.Entries = append(out.Entries, api.FolderEntry{Name: e.Name, Directory: e.Directory, Size: e.Size})
+	}
+	return out, nil
+}
+
 func (n *Node) UseHistory(ctx context.Context, id string) error {
 	_, err := n.RestoreHistory(ctx, id, randomID())
 	return err

@@ -134,6 +134,11 @@ func (e *Engine) opFinished(id OperationID) {
 		e.mu.Unlock()
 		return
 	}
+	cancel := o.cancel
+	o.cancel = nil
+	if cancel != nil {
+		defer cancel()
+	}
 	var event *ProductEvent
 	if o.manual && !o.productRecorded {
 		o.productRecorded = true
@@ -166,4 +171,24 @@ func (e *Engine) opFinished(id OperationID) {
 	if event != nil {
 		e.productEvent(context.Background(), *event)
 	}
+}
+
+// RetainHistoryForSend preserves processor sync prohibitions across explicit
+// history sends. It returns the same leased bytes/reference model as history.
+func (e *Engine) RetainHistoryForSend(ctx context.Context, id HistoryID) (ContentHandle, error) {
+	release, err := e.historyGate(ctx, false, true)
+	if err != nil {
+		return ContentHandle{}, err
+	}
+	e.hist.mu.Lock()
+	item, storeErr := e.st.GetHistory(string(id), historyNow().UnixMilli(), true)
+	e.hist.mu.Unlock()
+	release()
+	if storeErr != nil {
+		return ContentHandle{}, historyStoreErr(storeErr)
+	}
+	if item.SyncBlocked {
+		return ContentHandle{}, newErr(CodeSyncDisabled, "history synchronization is prohibited")
+	}
+	return e.RetainHistoryContent(ctx, id)
 }

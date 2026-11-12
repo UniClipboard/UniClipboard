@@ -15,6 +15,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/uniclipboard/unic/engine"
+
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -26,6 +28,7 @@ const historyUsage = `usage: unic history <command>   (alias: unic h)
   show [ref] [flags]         print an entry's content (default: the newest)
       --part N               which part (default: the first text part)
       --json                 print the entry's details instead
+  send <ref> [--to DEVICE|all] [--json]  send current source or retained snapshot
   use <ref>                 restore locally; sync follows sync.on_restore
   delete <ref>... [-y]       delete entries; asks first when run in a terminal
   tag <ref> [--add a,b] [--remove c] [--set a,b]
@@ -57,6 +60,58 @@ func historyCmd(ctx context.Context, c *api.Client, args []string, io historyIO)
 	switch cmd, rest := args[0], args[1:]; cmd {
 	case "list", "ls":
 		return h.list(ctx, rest)
+	case "send":
+		fs := flags("send", io)
+		to := fs.String("to", "all", "target device or all")
+		request := fs.String("request-id", "", "idempotency key")
+		asJSON := fs.Bool("json", false, "print submission result")
+		pos, err := parse(fs, rest)
+		if err != nil {
+			return err
+		}
+		if len(pos) != 1 {
+			return fmt.Errorf("usage: unic history send REF --to DEVICE|all")
+		}
+		item, err := h.resolve(ctx, pos[0])
+		if err != nil {
+			return err
+		}
+		if *request == "" {
+			*request = rand.Text()
+		}
+		var devices []string
+		if *to != "all" {
+			id, err := resolveDevice(ctx, c, *to)
+			if err != nil {
+				return err
+			}
+			devices = []string{id}
+		}
+		connectOpportunity(ctx, c)
+		out, err := c.Submit(ctx, api.SubmitInput{HistoryID: item.ID, RequestID: *request, DeviceIDs: devices, Async: true})
+		if err != nil {
+			return err
+		}
+		if out.Phase == engine.SubmissionProcessing {
+			out, err = c.WaitSubmission(ctx, *request, nil)
+			if err != nil {
+				return err
+			}
+		}
+		outcome, op, err := awaitSend(ctx, c, out.OperationID)
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			if err := json.NewEncoder(io.out).Encode(submitReport{Submission: out, Send: sendReport{Outcome: outcome, Operation: op}}); err != nil {
+				return err
+			}
+		} else {
+			if _, err := fmt.Fprintln(io.out, "send="+outcome); err != nil {
+				return err
+			}
+		}
+		return sendIncomplete(outcome, *request)
 	case "export":
 		fs := flags("export", io)
 		output := fs.String("output", "", "output directory")

@@ -176,7 +176,7 @@ type HistoryOptions struct {
 }
 ```
 
-HistoryKind 为 text/image/files，HistoryOriginKind 为 local_system/remote_device/explicit/action/migration，HistorySyncState 为 not_requested/pending/sent/partial/failed/interrupted。HistoryOrigin 只在 remote_device 携带 DeviceID、只在 action 携带 PluginID；内部远端进入标记另存，不能靠公开来源重新推断是否允许转发。PartKind 沿用既有 representation/file，摘要不暴露 Name、PartID、路径或正文。
+HistoryKind accepts text/image/files/directory/directory_reference. HistoryOriginKind 为 local_system/remote_device/explicit/action/migration，HistorySyncState 为 not_requested/pending/sent/partial/failed/interrupted。HistoryOrigin 只在 remote_device 携带 DeviceID、只在 action 携带 PluginID；内部远端进入标记另存，不能靠公开来源重新推断是否允许转发。PartKind 沿用既有 representation/file，摘要不暴露 Name、PartID、路径或正文。
 
 BackendSyncStates 按 BackendID 排序且不重复；State 描述实际目标汇总，Disposition 保存首次提交决策，ErrorCode 仅保存稳定失败类别。重启把 pending 改为 interrupted，不把原 queued 决策改成“已重发”。禁发/无后端/远端不转发可只有聚合 not_requested 而无后端摘要；删除插件装配不删旧历史摘要。
 
@@ -282,3 +282,7 @@ Retryable 只表达未来条件可能改善；已接纳失败使用原键返回�
 P1 加提交/状态 DTO，P2 加历史 DTO，P3 加 Action DTO 与 ListActions/RunAction，P4 加插件 DTO/错误与严格配置辅助，P5 移除 Network 并迁移标准策略，P6 加 Lua 装配/重载实现；依赖字段可先声明，但不得把未实现方法标为可用。公开 DTO 不得为了绕过编译依赖而直接引用内部实现。
 
 各阶段须验证零值/显式空值、未知枚举、深拷贝、错误分类和事件隐私；RPC 与公开 DTO 转换须验证大整数与可选字段。新增接口前同步 SDK 契约实现登记，旧 HTTP `/v1` 适配和新接口分开验收。本文完成仅关闭 P0 类型/错误设计项，不关闭真实双设备基线或任一运行时验收。
+
+## Directory SDK extension
+
+`DirectorySource.ReadDirectory` returns an operation-local `DirectoryListing` with bounded entries and a verification callback. Import a zero-size directory source through `FileInput.Source`; Engine assigns its private reference MIME. `MimeDirectory` identifies the structured manifest. `HistoryDirectory` and `HistoryDirectoryReference` distinguish immutable snapshots and deferred sources. The [directory contract](directory-contract.md) defines these representations and their resource bounds. `CommitRequest.CancelOnContext` opts into explicit cancellation; the default preserves admitted work across caller timeouts.

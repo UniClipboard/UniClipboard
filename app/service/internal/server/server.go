@@ -394,6 +394,14 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 		}
 		_, _ = io.Copy(w, c)
 	})
+	mux.HandleFunc("GET /v1/history/{id}/folder", func(w http.ResponseWriter, r *http.Request) {
+		l, err := b.HistoryFolder(r.Context(), r.PathValue("id"))
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, l)
+	})
 	mux.HandleFunc("POST /v1/history/{id}/use", func(w http.ResponseWriter, r *http.Request) {
 		request := r.Header.Get("Idempotency-Key")
 		if r.ContentLength != 0 {

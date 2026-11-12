@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"io"
+
+	"github.com/uniclipboard/unic/internal/directory"
 )
 
 // ContentID names stored content; LeaseID is one holder's claim on it; PartID
@@ -103,6 +105,44 @@ type FileInput struct {
 // ContentInput is one clipboard item: alternative representations of one
 // thing, plus files.
 type ContentInput struct {
+	ObservationKey  string // local copy-action marker; never transmitted
 	Representations []RepresentationInput
 	Files           []FileInput
+}
+
+// DirectorySource supplies a selected directory without exposing host paths.
+// ReadDirectory returns an operation-local listing and verification callback.
+// Open returns identity metadata and an empty stream.
+type DirectorySource interface {
+	PersistentFileSource
+	ReadDirectory(context.Context) (DirectoryListing, error)
+}
+
+type DirectoryEntry struct {
+	Path      string
+	Directory bool
+	Size      int64
+	Source    FileSource
+}
+
+// ReceivedDirectory is a verified complete tree offered to a custom host store.
+// OpenFile readers are valid only during StoreReceivedDirectory.
+type ReceivedDirectory struct {
+	Manifest DirectoryManifest
+	OpenFile func(int) (io.ReadCloser, error)
+}
+type DirectoryManifest = directory.Manifest
+type DirectoryRoot = directory.Root
+type DirectoryManifestEntry = directory.Entry
+
+// StoredDirectory contains private root references interpreted only by the host.
+type StoredDirectory struct {
+	Files []PersistentFileSource
+	Roots []string
+}
+
+// DirectoryListing belongs to one preparation and is safe from other sends.
+type DirectoryListing struct {
+	Entries []DirectoryEntry
+	Verify  func(context.Context) error
 }

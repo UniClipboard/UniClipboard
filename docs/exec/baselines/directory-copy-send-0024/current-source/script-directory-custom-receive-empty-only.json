@@ -1,0 +1,12 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D ."
+  ],
+  "received": [
+    "D ."
+  ],
+  "result": "PASS",
+  "scenario": "directory-custom-receive",
+  "time": "2026-11-12T10:37:44.767628Z"
+}

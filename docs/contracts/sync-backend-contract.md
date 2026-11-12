@@ -156,3 +156,7 @@ See [desktop runtime](../architecture/desktop-runtime.md).
 ## Callback and state-publication ordering
 
 Backend authority callbacks must not synchronously invoke `ApplyState`. A backend may wait for those callbacks to return while applying a suspended state. Reviving a revoked device remains a pending identity operation; it queues a coalesced Engine-owned state refresh. Stop rejects new refresh work and drains the refresh worker before releasing storage. User-requested revocations retain the synchronous state-application barrier.
+
+## Directory extension
+
+Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.

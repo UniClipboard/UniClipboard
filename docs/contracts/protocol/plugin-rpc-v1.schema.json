@@ -315,7 +315,9 @@
           "enum": [
             "text",
             "image",
-            "files"
+            "files",
+            "directory",
+            "directory_reference"
           ]
         },
         "text": {

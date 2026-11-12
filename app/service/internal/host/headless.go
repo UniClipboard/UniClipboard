@@ -19,6 +19,9 @@ func (n *Node) Submission(ctx context.Context, id string) (engine.SubmissionResu
 			return out, nil
 		default:
 			n.submissions.mu.Unlock()
+			if out, err := n.e.GetSubmission(ctx, engine.RequestID(id)); err == nil {
+				return out, nil
+			}
 			return engine.SubmissionResult{RequestID: engine.RequestID(id), Phase: engine.SubmissionProcessing}, nil
 		}
 	}

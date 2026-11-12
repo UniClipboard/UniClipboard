@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 )
 
 type SubmitInput struct {
+	HistoryID string        `json:"history_id,omitempty"`
+	Async     bool          `json:"async,omitempty"`
 	RequestID string        `json:"request_id"`
 	Snapshot  clip.Snapshot `json:"snapshot"`
 	// DeviceIDs limits the send to these paired devices; nil sends to all.
@@ -82,4 +85,30 @@ func (c *Client) copyContent(ctx context.Context, path string, w io.Writer) erro
 	}
 	_, e = io.Copy(w, resp.Body)
 	return e
+}
+
+func (c *Client) CancelSubmission(ctx context.Context, id string) error {
+	return c.do(ctx, "DELETE", "/v1/submissions/"+url.PathEscape(id), nil, nil)
+}
+func (c *Client) WaitSubmission(ctx context.Context, id string, progress func(string)) (engine.SubmissionResult, error) {
+	for {
+		out, err := c.Submission(ctx, id)
+		if err != nil {
+			return out, err
+		}
+		if progress != nil {
+			progress(out.Stage)
+		}
+		if out.Phase == engine.SubmissionFailed {
+			return out, out.Error
+		}
+		if out.Phase == engine.SubmissionCommitted {
+			return out, nil
+		}
+		select {
+		case <-ctx.Done():
+			return out, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }

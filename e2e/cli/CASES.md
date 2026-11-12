@@ -15,6 +15,14 @@
 | [content-formats](#content-formats) | HTML、PNG 和文件原样同步 |
 | [crash-and-suspend-recovery](#crash-and-suspend-recovery) | 对端崩溃或挂起后自动恢复 |
 | [data-dir-single-instance](#data-dir-single-instance) | 同一数据目录只允许一个 unicd，日志不泄露秘密 |
+| [directory-auto-responsive](#directory-auto-responsive) | Slow automatic directory preparation does not block a newer copy |
+| [directory-copy-and-send](#directory-copy-and-send) | Directory copy defers work and explicit send preserves a tree |
+| [directory-custom-receive](#directory-custom-receive) | Directory custom receives remain user-managed |
+| [directory-history-cancel](#directory-history-cancel) | Directory history references defer work and cancellation releases preparation |
+| [directory-invalid-manifest](#directory-invalid-manifest) | Directory manifests are validated through a real peer connection |
+| [directory-mixed-auto](#directory-mixed-auto) | Mixed directory selections follow directory automatic policy |
+| [directory-roots-and-bounds](#directory-roots-and-bounds) | Directory roots and resource bounds apply to the entire selection |
+| [directory-source-and-recovery](#directory-source-and-recovery) | Directory preparation detects source changes and recovers owned staging |
 | [file-cache-boundary](#file-cache-boundary) | Cache cleanup cannot escape the managed directory |
 | [file-cache-retention](#file-cache-retention) | Unified cleanup deletes managed files with history |
 | [file-cache-scope](#file-cache-scope) | File cache ownership and quota |
@@ -596,6 +604,465 @@ board-wait beta text again.txt
 ! logs alpha unic-pair:
 ! logs beta unic-pair:
 logs alpha in_use
+```
+
+</details>
+
+## directory-auto-responsive
+
+**Slow automatic directory preparation does not block a newer copy**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-auto-responsive' -v`
+
+**目的**
+
+Keep clipboard observation responsive and supersede obsolete automatic preparation.
+
+
+**流程**
+
+1. Enable directory automatic sync and hold preparation after scanning.
+2. Copy newer text while the directory is pending, then release the hold.
+
+**期望**
+
+- The newer text reaches local history and the peer without waiting for the directory.
+- The obsolete directory preparation publishes no remote directory.
+
+**不应**
+
+- A slow old directory overwrites the newer text after preparation resumes.
+
+<details><summary>脚本 testdata/directory-auto-responsive.txtar</summary>
+
+```
+mkdir source/tree/empty
+cp content.txt source/tree/member
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+u alpha config set sync.directories.automatic true
+directory-hold alpha snapshot
+board-set alpha files source/tree
+directory-probe alpha 1 1
+board-set alpha text content.txt
+board-wait beta text content.txt
+directory-hold alpha false
+! until beta '"kind":"directory"' history list --json
+! directory-staging alpha
+```
+
+</details>
+
+## directory-copy-and-send
+
+**Directory copy defers work and explicit send preserves a tree**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-copy-and-send' -v`
+
+**目的**
+
+Accept one-shot directory transfer through real paired services.
+
+
+**流程**
+
+1. Create nested, empty, hidden and zero-byte entries. Copy with directory automatic sync disabled.
+2. Explicitly send the directory, then change a member and send again.
+3. Reject special entries and hard limits. Restart and retain received history.
+
+**期望**
+
+- Copy alone sends nothing. Explicit send preserves the complete tree and current bytes.
+- Unsupported members and limits fail without delivering a partial tree.
+
+**不应**
+
+- Watch source changes or overwrite existing user files.
+
+<details><summary>脚本 testdata/directory-copy-and-send.txtar</summary>
+
+```
+mkdir source/tree/empty
+mkdir source/tree/nested
+cp content.txt source/tree/nested/file.txt
+cp content.txt source/tree/.hidden
+cp empty.txt source/tree/zero
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-set alpha files source/tree
+! tree-wait beta source/tree
+until alpha '"kind":"directory_reference"' history list --json
+directory-probe alpha 0 0
+u alpha history list --tag builtin:files --json
+stdout '"kind":"directory_reference"'
+u alpha config --json
+stdout '"directories":\{"automatic":false\}'
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+u beta history list --tag builtin:files --json
+stdout '"kind":"directory"'
+cp changed.txt source/tree/nested/file.txt
+! tree-wait beta source/tree
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+u alpha config set limits.max_file_bytes '1'
+! u alpha send --to all -f $WORK/source/tree --json
+u alpha config set limits.max_file_bytes '"100MB"'
+symlink source/tree/link -> ../content.txt
+! u alpha send --to all -f $WORK/source/tree --json
+rm source/tree/link
+u alpha config set sync.files false
+! u alpha send --to all -f $WORK/source/tree --json
+u alpha config set sync.files true
+node-stop beta
+node-start beta
+u beta history list --json
+stdout '"kind":"directory"'
+```
+
+</details>
+
+## directory-custom-receive
+
+**Directory custom receives remain user-managed**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-custom-receive' -v`
+
+**目的**
+
+Verify complete custom trees, empty directory transfer, and history restore.
+
+
+**流程**
+
+1. Configure an existing custom receive directory and restart the receiver.
+2. Send a nested tree and an empty tree. Restore received history after restart.
+
+**期望**
+
+- Received roots are in separate custom batches. Empty trees remain usable.
+- Restoring durable directory history recovers top-level roots.
+
+**不应**
+
+- Require a nonempty file payload for a directory transfer.
+
+<details><summary>脚本 testdata/directory-custom-receive.txtar</summary>
+
+```
+mkdir source/tree/empty
+cp content.txt source/tree/member
+mkdir empty-only
+mkdir custom
+node-start alpha
+node-start beta
+u beta config set inbox '"'$WORK'/custom"'
+node-stop beta
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+u alpha send --to all -f $WORK/empty-only --json
+stdout '"outcome":"success"'
+tree-wait beta empty-only
+node-stop beta
+node-start beta
+u beta history use @1 --json
+tree-wait beta empty-only
+file-path beta CUSTOM_ROOT
+u beta history delete @1 -y
+board-set beta text content.txt
+exists $CUSTOM_ROOT
+```
+
+</details>
+
+## directory-history-cancel
+
+**Directory history references defer work and cancellation releases preparation**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-history-cancel' -v`
+
+**目的**
+
+Verify source history send, frozen snapshot resend, and bounded cancellation.
+
+
+**流程**
+
+1. Capture a directory reference and send it from history.
+2. Hold preparation, cancel a second send, and retry an independent send.
+3. Restart the source and send the durable directory reference.
+
+**期望**
+
+- Capture does not scan or snapshot. Cancellation creates no snapshot or remote partial tree.
+- A history source reference survives restart and can be sent explicitly.
+
+**不应**
+
+- A cancelled operation resumes when the hold is released.
+
+<details><summary>脚本 testdata/directory-history-cancel.txtar</summary>
+
+```
+mkdir source/tree/empty
+cp content.txt source/tree/member
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-set alpha files source/tree
+until alpha '"kind":"directory_reference"' history list --json
+directory-probe alpha 0 0
+u alpha history tag @1 --add source
+u alpha history send @1 --to all --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+directory-probe alpha 1 1
+directory-hold alpha true
+u-async pending alpha send --to all -f $WORK/source/tree --request-id cancel-directory --json
+directory-probe alpha 2 1
+submission-cancel alpha cancel-directory
+! u-wait pending
+directory-probe alpha 2 1
+directory-hold alpha false
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+directory-probe alpha 3 2
+node-stop alpha
+node-start alpha
+u alpha history list --tag source --json
+stdout '"kind":"directory_reference"'
+u alpha history send @3 --to all --json
+stdout '"outcome":"success"'
+```
+
+</details>
+
+## directory-invalid-manifest
+
+**Directory manifests are validated through a real peer connection**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-invalid-manifest' -v`
+
+**目的**
+
+Reject malformed manifests before receiver history or clipboard publication.
+
+
+**流程**
+
+1. Pair two isolated services and establish a normal transfer.
+2. Send traversal, absolute, duplicate, orphan, hash, size, reserved-name and oversized manifests.
+
+**期望**
+
+- No directory history or directory clipboard is published for malformed content.
+
+**不应**
+
+- Treat a sender's completed write as proof of receiver publication.
+
+<details><summary>脚本 testdata/directory-invalid-manifest.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+directory-attack alpha traversal
+directory-attack alpha absolute
+directory-attack alpha duplicate
+directory-attack alpha orphan
+directory-attack alpha hash
+directory-attack alpha size
+directory-attack alpha reserved
+directory-attack alpha manifest-limit
+! until beta '"kind":"directory"' history list --json
+! exists beta/escape
+```
+
+</details>
+
+## directory-mixed-auto
+
+**Mixed directory selections follow directory automatic policy**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-mixed-auto' -v`
+
+**目的**
+
+Verify default whole-batch suppression and opt-in one-shot automatic send.
+
+
+**流程**
+
+1. Copy one file and one directory under the default policy.
+2. Enable directory automatic sync and copy another directory.
+
+**期望**
+
+- No regular-file-only partial send occurs. Enabled automatic sync transfers a complete tree.
+
+**不应**
+
+- Replay a previously copied selection merely because a setting changes.
+
+<details><summary>脚本 testdata/directory-mixed-auto.txtar</summary>
+
+```
+mkdir first/empty
+mkdir second/empty
+cp content.txt first/member
+cp content.txt second/member
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-select alpha first content.txt
+! tree-wait beta first
+! board-wait beta files content.txt
+until alpha '"kind":"directory_reference"' history list --json
+directory-probe alpha 0 0
+u alpha config set sync.directories.automatic true
+! tree-wait beta first
+board-set alpha files second
+tree-wait beta second
+directory-probe alpha 1 1
+board-set alpha files second
+directory-probe alpha 2 2
+```
+
+</details>
+
+## directory-roots-and-bounds
+
+**Directory roots and resource bounds apply to the entire selection**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-roots-and-bounds' -v`
+
+**目的**
+
+Preserve separate equal-name roots and reject unsupported or oversized selections.
+
+
+**流程**
+
+1. Send two distinct directories with the same display name plus a regular file.
+2. Reject overlapping roots, reserved names, deep trees and excessive entry counts.
+3. Disable automatic sync and explicitly resend within bounds.
+
+**期望**
+
+- Both equal-name roots retain their distinct contents. No source tree is modified.
+- Invalid selections fail before remote partial publication.
+
+**不应**
+
+- Skip unsupported entries or bypass hard limits for explicit send.
+
+<details><summary>脚本 testdata/directory-roots-and-bounds.txtar</summary>
+
+```
+mkdir left/project/empty
+mkdir right/project/empty
+cp first.txt left/project/member
+cp second.txt right/project/member
+node-start alpha
+node-start beta
+node-start gamma
+pair alpha beta
+pair alpha gamma
+retry-copy alpha beta warm-up
+retry-copy alpha gamma warm-up-gamma
+u alpha send --to all -f $WORK/left/project $WORK/right/project $WORK/first.txt --json
+stdout '"outcome":"success"'
+tree-wait beta left/project
+tree-wait beta right/project
+tree-wait gamma left/project
+tree-wait gamma right/project
+directory-probe alpha 1 1
+! u alpha send --to all -f $WORK/left $WORK/left/project --json
+cp first.txt left/project/CON
+! u alpha send --to all -f $WORK/left/project --json
+rm left/project/CON
+gen-tree deep 65 0
+! u alpha send --to all -f $WORK/deep --json
+gen-tree many 0 4097
+! u alpha send --to all -f $WORK/many --json
+u alpha config set sync.automatic false
+u alpha send --to all -f $WORK/left/project --json
+stdout '"outcome":"success"'
+tree-wait beta left/project
+cmp left/project/member first.txt
+cmp right/project/member second.txt
+```
+
+</details>
+
+## directory-source-and-recovery
+
+**Directory preparation detects source changes and recovers owned staging**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-source-and-recovery' -v`
+
+**目的**
+
+Exercise source mutation and process death at deterministic production seams.
+
+
+**流程**
+
+1. Pause after scanning, mutate a member, resume and reject the changed source.
+2. Pause at a file read with owned staging allocated, kill and restart the service.
+
+**期望**
+
+- Source mutation returns source_changed and publishes no partial directory.
+- Restart removes only owned transient staging and does not replay the old send.
+
+**不应**
+
+- Delete the source tree or leave a cancelled preparation holding staging.
+
+<details><summary>脚本 testdata/directory-source-and-recovery.txtar</summary>
+
+```
+mkdir source/tree/empty
+cp first.txt source/tree/member
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+directory-hold alpha snapshot
+u-async mutate alpha send --to all -f $WORK/source/tree --request-id mutate-directory --json
+directory-probe alpha 1 1
+cp second.txt source/tree/member
+directory-hold alpha false
+! u-wait mutate
+u alpha dev submission mutate-directory
+stdout 'source_changed'
+! directory-staging alpha
+directory-hold alpha file
+u-async crash alpha send --to all -f $WORK/source/tree --request-id crash-directory --json
+directory-probe alpha 2 2
+sleep 200ms
+directory-staging alpha
+node-stop alpha KILL
+! u-wait crash
+node-start alpha
+! directory-staging alpha
+! until beta '"kind":"directory"' history list --json
+cmp source/tree/member second.txt
 ```
 
 </details>

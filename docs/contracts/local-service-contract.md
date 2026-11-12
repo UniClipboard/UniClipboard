@@ -11,7 +11,7 @@ Protocol version remains 1.
 
 | Method and path | Request | Result |
 |---|---|---|
-| `POST /v1/submissions` | `{request_id,snapshot,device_ids?}` | Engine `SubmissionResult` |
+| `POST /v1/submissions` | `{request_id,snapshot?,history_id?,device_ids?,async?}` | Engine `SubmissionResult` |
 | `GET /v1/submissions/{request_id}` | None | Current Engine submission result |
 | `GET /v1/capabilities` | None | Engine `Capabilities` |
 | `GET /v1/received` | None | Engine `ReceivedContent[]` |
@@ -27,7 +27,7 @@ No operation interprets newest history as the current system clipboard.
 The caller supplies a nonempty submission `request_id` of at most 128 bytes.
 The service admits at most 1024 explicit request records and expires completed records after 30 minutes.
 The service compares the submitted snapshot digest before importing it again.
-A retry with an identical snapshot returns the first result. A different snapshot conflicts. The host cache does not hash `device_ids`; changing only that field returns the original result without reaching Engine selection validation. This is a known gap relative to Engine request idempotency.
+A retry with an identical snapshot returns the first result. A different snapshot conflicts. The host cache hashes the snapshot, history ID and ordered device selection. Changing any of them conflicts. The async wait preference does not change the request identity.
 Client disconnection does not cancel admitted processing. Service shutdown cancels the waiting host operation.
 The CLI prints a generated key to stderr before sending. Scripts that require retry control supply `--request-id`.
 The request cache and Engine operation handles do not survive a service restart.
@@ -280,3 +280,15 @@ Accepted values are `zh-CN`, `en`, `ja`, `pt-BR`, `ru`, and the empty string (Si
 Missing configuration uses `zh-CN`. Unknown nonempty codes reject the whole configuration and preserve the previous valid state.
 The field is host-only and does not change Engine settings, protocol version, device identity or sync payloads.
 Saving uses the existing revision check. Desktop consumes the saved state through normal refresh and does not request a restart for this field.
+
+## Directory extension
+
+Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.
+
+### Directory submission and cancellation
+
+Exactly one of `snapshot` and `history_id` supplies content. A history source reference is prepared afresh; an immutable snapshot retains its stored bytes. `async=true` returns admission without waiting for preparation. Poll the existing submission endpoint for `phase` and `stage` (`scanning`, `preparing`, `processing`, `sending`, `complete`, or `failed`). Network completion still comes from the operation endpoint. Stages do not expose paths or filenames.
+
+`DELETE /v1/submissions/{request_id}` explicitly cancels a known admitted request, including the interval before Engine admission. Unknown IDs return not_found. Repeated cancellation is safe while the request is retained. Committed history is not rolled back. HTTP disconnection alone keeps the admitted request running. The host uses an independent per-request cancellation context; Engine `CommitRequest.CancelOnContext` opts into that lifetime without changing the default SDK caller-timeout behavior.
+
+The adapter supports explicit leased `tree-paths` and `tree-references` calls. Only the host decodes custom root references. `CopyID` in a local snapshot is an observation marker and never enters peer transport. Tree application rechecks the current clipboard after preparation and before the platform write. Exact tree DTOs and bounds follow the [directory contract](directory-contract.md).

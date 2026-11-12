@@ -22,7 +22,7 @@ View scenarios use the mygo software tester and retain final exercised PNG check
 
 Capture via mygo Window.CapturePage records the running window's rendered content. It does not capture OS decorations, desktop compositing or other applications. App-scoped automation input does not establish physical key delivery. A directory clipboard assertion does not establish system clipboard delivery. Global hotkeys, OS focus policy and cross-application paste remain NOT_RUN unless a separate real-OS scenario explicitly exercises them.
 
-One report groups results, assertions, screenshots and recording by case. Its manifest and SHA256SUMS bind retained evidence. A video is supporting evidence; assertions determine the tested behavior. Retain a failure screenshot/recording when capture remains available. Public output contains synthetic test content only. Private source, profiles, binaries and raw logs are deleted after owned processes exit, on success and failure. Cleanup failure fails acceptance.
+One report groups results, assertions, screenshots and recording by case. Its manifest and SHA256SUMS bind retained evidence. A video is supporting evidence; assertions determine the tested behavior. Retain a failure screenshot/recording when capture remains available. Public output contains synthetic test content only. Private source, profiles, binaries and raw logs are deleted after owned processes exit, on success and failure. Cleanup failure fails acceptance. A cleanup error is appended to an existing scenario failure rather than replacing the original assertion error.
 
 ## Failure inventory specified before implementation
 

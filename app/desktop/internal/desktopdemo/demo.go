@@ -223,7 +223,7 @@ func (d *demo) view(c *ui.Context) {
 		if compact != d.compact {
 			d.sidebarHidden, d.compact = compact, compact
 		}
-		c.OnShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
+		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
 		if !d.devicesOpen && !d.tagsOpen && !d.assignTagsOpen && d.confirm == "" {
 			if d.page == "history" {
 				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })

@@ -51,3 +51,13 @@ Extended the existing settings E2E checkpoint before implementation to reject du
 ## PR preparation
 
 Source commit: `b801141902cf765667c16cf36d6dc27d859acd6b`. All 481 Go/catalogue source files matched the final passing E2E snapshot before committing. The overview and headless architecture pages were rechecked and their `verified` markers now reference this source commit. The repository has no CONTEXT.md, so the required read-only context audit required no update. Catalogue freshness, gofmt and staged-snapshot checks passed. Local golangci-lint lacks the configured fmt flags; its CI job remains the formatter/linter gate.
+
+## CI repair for PR 2236
+
+The failed run was `43172407856` at PR head `a4f3c13e61eb4f1cb2c6b24caf6caa4293c11739`. Both complete job logs and the retained `desktop-e2e-evidence` artifact were inspected before edits. Lint reported three goimports grouping errors. The Desktop run passed i18n but failed sheet-motion and history-search-copy.
+
+The resize scenario looked up the management dialog title after the live sheet switched to task content, where the visible management title is intentionally absent. It now follows the single live dialog by role throughout resize and dismissal. The native script clicked a macOS-only search disclosure that does not exist in the Linux accessibility tree. It now uses the platform find accelerator before locating the search field. Quit is registered at window scope so an unfocused view can shut down cleanly. Cleanup errors retain the original assertion failure.
+
+The pinned golangci-lint v2.15.0 formatter reproduced all three import-group differences before the fix; the pinned linter passes after the fix. The canonical sheet-motion scenario reproduced the same missing-live-sheet error locally before the fix. No test expectation for resize geometry, animation, cleanup or copied bytes was removed. Native Linux behavior remains subject to the new CI run; local software evidence is recorded separately.
+
+Local CI-repair checks: pinned v2.15.0 `golangci-lint run` and `fmt --diff --diff-colored=false` PASS; desktop build PASS; catalogue and whitespace checks PASS. `make desktop-e2e CASE=sheet-motion` PASS with complete resize/entry/dismissal evidence in `.build/desktop-e2e/20261112T074909Z-a4062409/index.html`. The 30-combination i18n case PASS in `.build/desktop-e2e/20261112T075034Z-73758254/index.html`. No local native window was launched.

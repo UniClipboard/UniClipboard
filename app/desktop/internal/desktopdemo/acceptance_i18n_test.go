@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
 	proof "github.com/uniclipboard/unic/app/desktop/internal/e2eproof"
 )
 

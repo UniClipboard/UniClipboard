@@ -99,6 +99,7 @@ See the [demo acceptance guide](../../app/desktop/UI-DEMO.md) for source mapping
 ## Live desktop composition
 
 The normal desktop opens the shared history composition directly. It has no setup or unlock gate.
+Quit uses a window-scoped platform command-Q shortcut, including when no view control has focus.
 `desktopdemo.NewDesktop` initializes empty service-backed state, without fixture data.
 `live.go` serializes local socket work and applies completions on the view thread.
 It owns query pagination, reconciliation, bounded content previews and revision-checked history mutations.

@@ -14,7 +14,7 @@ submit other 'Desktop evidence other entry'
 ui-wait listItem 'Desktop evidence selected needle'
 ui-wait listItem 'Desktop evidence other entry'
 screenshot history
-ui-click button '搜索历史'
+ui-key CmdOrCtrl+F
 ui-wait comboBox '搜索历史'
 ui-set comboBox '搜索历史' needle
 ui-wait listItem '~.*selected needle$'

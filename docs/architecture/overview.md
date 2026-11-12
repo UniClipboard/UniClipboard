@@ -176,3 +176,7 @@ Search condition chips can shrink within the available field width. Their values
 ## Desktop acceptance
 
 The canonical Desktop acceptance entry is `make desktop-e2e`. It runs the declarative catalogue under `app/desktop/e2e`, including native-window evidence, production-process contracts and all migrated software-view scenarios. Original Desktop test entries and standalone scripts are removed. CI uses the same command under Xvfb and retains its report. The running-window captures establish content rendering and app-scoped interaction; OS focus and cross-application paste remain separate. See the [Desktop E2E contract](../contracts/desktop-e2e-contract.md).
+
+### Built-in tag labels
+
+Desktop lists Text, Images, Files and Links as protected built-in tags, including in an empty library. The labels use the selected interface language. Search, history, assignment and cleanup use stable `builtin:text`, `builtin:image`, `builtin:files` and `builtin:link` IDs. Custom tags retain their literal labels. The [pipeline](pipeline.md#built-in-content-tags) defines automatic classification and the no-backfill boundary.

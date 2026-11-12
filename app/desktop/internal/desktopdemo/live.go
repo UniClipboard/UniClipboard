@@ -353,10 +353,7 @@ func (l *liveState) loadHistory(d *demo, more bool) {
 				l.cursor = page.NextCursor
 				l.config = saved
 				d.projectLiveConfig()
-				d.tags = nil
-				for _, t := range tags {
-					d.tags = append(d.tags, demoTag{id: t, name: t, color: "gray", sidebar: true})
-				}
+				d.projectTags(tags)
 				previousName := ""
 				if len(d.devices) > 0 {
 					previousName = d.devices[0].name

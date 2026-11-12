@@ -237,7 +237,7 @@ func scenarioTagManager(t *testing.T) {
 					}
 					items = menu("#工作")
 					choose("删除 2 个标签（保留条目）")
-					if len(d.entries) != 22 || d.tagByID("工作") != nil || d.tagByID("设计") != nil || d.tagByID("link") == nil {
+					if len(d.entries) != 22 || d.tagByID("工作") != nil || d.tagByID("设计") != nil || d.tagByID("builtin:link") == nil {
 						t.Fatal("bulk deletion did not preserve builtins/history")
 					}
 				case "sort":

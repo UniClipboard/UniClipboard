@@ -327,7 +327,7 @@ func (p *quickDemo) suggestions() []qpFilter {
 		add("source", "@", sources)
 	} else {
 		for _, v := range p.live.d.live.catalogue["tag"] {
-			all = append(all, qpFilter{dimension: "tag", value: v.Value, label: "#" + v.Label})
+			all = append(all, qpFilter{dimension: "tag", value: v.Value, label: "#" + p.live.d.tagLabel(v.Value)})
 		}
 		for _, v := range p.live.d.live.catalogue["source"] {
 			all = append(all, qpFilter{dimension: "source", value: v.Value, label: "@" + v.Label})

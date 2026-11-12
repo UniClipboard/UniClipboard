@@ -72,12 +72,18 @@ func (d *demo) languageRow(c *ui.Context, k uikit.Kit) {
 }
 
 func (d *demo) searchCandidateLabel(c searchCandidate) string {
+	if c.dimension == "tag" {
+		return d.tagLabel(c.value)
+	}
 	if c.dimension == "type" || c.dimension == "time" {
 		return d.tr(c.label)
 	}
 	return c.label
 }
 func (p *quickDemo) filterLabel(f qpFilter) string {
+	if f.dimension == "tag" && p.live != nil {
+		return "#" + p.live.d.tagLabel(f.value)
+	}
 	if f.dimension == "type" {
 		return "/" + p.tr(f.value)
 	}

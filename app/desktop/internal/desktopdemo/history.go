@@ -23,7 +23,7 @@ func (d *demo) sidebar(c *ui.Context, k uikit.Kit) {
 		if !tag.sidebar {
 			continue
 		}
-		tags = append(tags, uikit.SidebarNavItem{ID: "tag:" + tag.id, Label: "#" + tag.name, Swatch: tag.color, Count: fmt.Sprint(d.tagCount(tag.id))})
+		tags = append(tags, uikit.SidebarNavItem{ID: "tag:" + tag.id, Label: "#" + d.tagLabel(tag.id), Swatch: tag.color, Count: fmt.Sprint(d.tagCount(tag.id))})
 	}
 	devices := []uikit.SidebarNavItem{}
 	for _, v := range d.devices {
@@ -165,7 +165,7 @@ func (d *demo) filters(c *ui.Context, k uikit.Kit) {
 		}
 		tagItems := []uikit.SelectItem{{Value: "all", Label: d.tr("所有标签")}}
 		for _, tag := range d.tags {
-			tagItems = append(tagItems, uikit.SelectItem{Value: tag.id, Label: "#" + tag.name})
+			tagItems = append(tagItems, uikit.SelectItem{Value: tag.id, Label: "#" + d.tagLabel(tag.id)})
 		}
 		k.Select(c.Key("tag"), uikit.SelectProps{Label: d.tr("标签筛选"), Placeholder: tagLabel, Filter: true, Value: &d.tag, Items: tagItems})
 		k.Select(c.Key("time"), uikit.SelectProps{Label: d.tr("时间范围"), Placeholder: d.tr("时间"), Filter: true, Value: &d.timeRange, Items: []uikit.SelectItem{{Value: "all", Label: d.tr("所有时间")}, {Value: "today", Label: d.tr("今天")}, {Value: "yesterday", Label: d.tr("昨天")}, {Value: "last_7d", Label: d.tr("最近 7 天")}, {Value: "last_30d", Label: d.tr("最近 30 天")}, {Value: "this_week", Label: d.tr("本周")}, {Value: "this_month", Label: d.tr("本月")}}})
@@ -438,7 +438,7 @@ func (d *demo) assignTagSheet(c *ui.Context, k uikit.Kit) {
 				id := tag.id
 				on := v != nil && slices.Contains(v.tags, id)
 				before := on
-				k.Checkbox(c.Key(id), &on, uikit.CheckboxProps{Label: "#" + tag.name, Disabled: v == nil || (d.live != nil && d.live.busy)})
+				k.Checkbox(c.Key(id), &on, uikit.CheckboxProps{Label: "#" + d.tagLabel(tag.id), Disabled: v == nil || (d.live != nil && d.live.busy)})
 				if on != before && d.live != nil {
 					tags := slices.Clone(v.tags)
 					if on {

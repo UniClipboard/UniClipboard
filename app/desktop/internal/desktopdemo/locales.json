@@ -2878,5 +2878,17 @@
     "ja": "参加要求",
     "pt-BR": "Solicitação de entrada",
     "ru": "Запрос на подключение"
+  },
+  "内置": {
+    "en": "Built-in",
+    "ja": "組み込み",
+    "pt-BR": "Integrada",
+    "ru": "Встроенный"
+  },
+  "未使用": {
+    "en": "Unused",
+    "ja": "未使用",
+    "pt-BR": "Não utilizada",
+    "ru": "Не используется"
   }
 }

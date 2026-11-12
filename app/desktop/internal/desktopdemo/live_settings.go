@@ -113,7 +113,7 @@ func (d *demo) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 			number("count", d.tr("最大历史条目数"), d.tr("排除标签命中的记录不计入上限。"), &cfg.History.MaxItems, []int{100, 500, 1000, 5000, 0}, d.tr("条"))
 			for _, tag := range d.tags {
 				selected := slices.Contains(cfg.History.ExcludedTags, tag.id)
-				if k.Checkbox(c.Key(tag.id), &selected, uikit.CheckboxProps{Label: d.tr("保留 #") + tag.name, Disabled: l.busy}).Changed() {
+				if k.Checkbox(c.Key(tag.id), &selected, uikit.CheckboxProps{Label: d.tr("保留 #") + d.tagLabel(tag.id), Disabled: l.busy}).Changed() {
 					if selected {
 						cfg.History.ExcludedTags = append(cfg.History.ExcludedTags, tag.id)
 					} else {

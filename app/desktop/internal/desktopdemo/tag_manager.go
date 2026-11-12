@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 type demoTag struct {
@@ -21,9 +22,46 @@ type tagManagerState struct {
 	table                              uikit.ListState
 }
 
+func builtinTags() []demoTag {
+	return []demoTag{
+		{id: plugin.TagText, name: "文本", color: "gray", builtin: true, sidebar: true},
+		{id: plugin.TagImage, name: "图片", color: "gray", builtin: true, sidebar: true},
+		{id: plugin.TagFiles, name: "文件", color: "gray", builtin: true, sidebar: true},
+		{id: plugin.TagLink, name: "链接", color: "gray", builtin: true, sidebar: true},
+	}
+}
 func (d *demo) initTags() {
-	d.tags = []demoTag{{"工作", "工作", "blue", false, true}, {"设计", "设计", "purple", false, true}, {"开发", "开发", "green", false, true}, {"custom:0", "自定义标签", "orange", false, false}, {"link", "链接", "gray", true, true}, {"code", "代码", "gray", true, true}, {"image", "图片", "gray", true, true}, {"directory", "文件夹", "gray", true, true}}
+	d.tags = []demoTag{{"工作", "工作", "blue", false, true}, {"设计", "设计", "purple", false, true}, {"开发", "开发", "green", false, true}, {"custom:0", "自定义标签", "orange", false, false}}
+	d.tags = append(d.tags, builtinTags()...)
+	// Fixtures model the tags persisted by the classifier in live mode.
+	for i := range d.entries {
+		e := &d.entries[i]
+		tag := plugin.TagText
+		switch e.kind {
+		case uikit.KindImage:
+			tag = plugin.TagImage
+		case uikit.KindFile:
+			tag = plugin.TagFiles
+		case uikit.KindLink:
+			e.tags = append(e.tags, plugin.TagLink)
+		}
+		e.tags = append(e.tags, tag)
+	}
 	d.tagManager.sort = "mostUsed"
+}
+func (d *demo) projectTags(ids []string) {
+	builtins := builtinTags()
+	for i := range builtins {
+		if previous := d.tagByID(builtins[i].id); previous != nil {
+			builtins[i].sidebar = previous.sidebar
+		}
+	}
+	d.tags = builtins
+	for _, id := range ids {
+		if d.tagByID(id) == nil {
+			d.tags = append(d.tags, demoTag{id: id, name: id, color: "gray", sidebar: true})
+		}
+	}
 }
 func (d *demo) tagByID(id string) *demoTag {
 	for i := range d.tags {
@@ -35,6 +73,9 @@ func (d *demo) tagByID(id string) *demoTag {
 }
 func (d *demo) tagLabel(id string) string {
 	if t := d.tagByID(id); t != nil {
+		if t.builtin {
+			return d.tr(t.name)
+		}
 		return t.name
 	}
 	return id
@@ -46,16 +87,6 @@ func (d *demo) tagColor(id string) uikit.TagColor {
 	return "gray"
 }
 func (d *demo) entryHasTag(e entry, id string) bool {
-	switch id {
-	case "link":
-		return e.kind == uikit.KindLink
-	case "code":
-		return e.kind == uikit.KindCode
-	case "image":
-		return e.kind == uikit.KindImage
-	case "directory":
-		return false
-	}
 	return slices.Contains(e.tags, id)
 }
 func (d *demo) tagCount(id string) int {
@@ -124,7 +155,7 @@ func (d *demo) tagMenu(ids []string) []uikit.MenuEntry {
 		var targets []uikit.MenuEntry
 		for _, tag := range d.tags {
 			if !tag.builtin && !slices.Contains(ids, tag.id) {
-				targets = append(targets, uikit.MenuEntry{ID: "merge:" + tag.id, Label: "#" + tag.name})
+				targets = append(targets, uikit.MenuEntry{ID: "merge:" + tag.id, Label: "#" + d.tagLabel(tag.id)})
 			}
 		}
 		if len(targets) > 0 {
@@ -179,7 +210,7 @@ func (d *demo) submitTagEdit() {
 		return
 	}
 	for _, tag := range d.tags {
-		if tag.id != m.editing && strings.EqualFold(tag.name, name) {
+		if tag.id != m.editing && strings.EqualFold(d.tagLabel(tag.id), name) {
 			m.error = "已存在同名标签"
 			return
 		}
@@ -199,7 +230,7 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 	m := &d.tagManager
 	shown := slices.Clone(d.tags)
 	shown = slices.DeleteFunc(shown, func(tag demoTag) bool {
-		return !strings.Contains(strings.ToLower(tag.name), strings.ToLower(strings.TrimSpace(m.filter)))
+		return !strings.Contains(strings.ToLower(d.tagLabel(tag.id)), strings.ToLower(strings.TrimSpace(m.filter)))
 	})
 	slices.SortStableFunc(shown, func(a, b demoTag) int {
 		if a.builtin != b.builtin {
@@ -273,7 +304,7 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 				}
 				if tag := d.tagByID(id); tag != nil {
 					ui.Box(rc.Key("swatch")).Size(8, 8).Radius(4).Shrink(0).Background(k.SwatchColor(tag.color))
-					ui.Text(rc.Key("name"), "#"+tag.name).SingleLine()
+					ui.Text(rc.Key("name"), "#"+d.tagLabel(tag.id)).SingleLine()
 					status := ""
 					if tag.builtin {
 						status = "内置"
@@ -281,7 +312,7 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 						status = "未使用"
 					}
 					if status != "" {
-						k.Text(rc.Key("status"), status, uikit.TextProps{Role: uikit.RoleCaption, Tone: uikit.ToneSecondary}).SingleLine()
+						k.Text(rc.Key("status"), d.tr(status), uikit.TextProps{Role: uikit.RoleCaption, Tone: uikit.ToneSecondary}).SingleLine()
 					}
 				}
 			}
@@ -293,7 +324,7 @@ func (d *demo) tagSheet(c *ui.Context, k uikit.Kit) {
 			id := t.id
 			rows = append(rows, uikit.TableRow{ID: id, Cells: map[string]func(*ui.Context){"name": nameCell(id), "items": func(rc *ui.Context) { ui.Text(rc, fmt.Sprint(d.tagCount(id))) }, "sidebar": func(rc *ui.Context) {
 				if tag := d.tagByID(id); tag != nil {
-					k.Switch(rc, &tag.sidebar, uikit.SwitchProps{Label: d.tr("在侧边栏显示 #") + tag.name})
+					k.Switch(rc, &tag.sidebar, uikit.SwitchProps{Label: d.tr("在侧边栏显示 #") + d.tagLabel(tag.id)})
 				}
 			}}})
 		}

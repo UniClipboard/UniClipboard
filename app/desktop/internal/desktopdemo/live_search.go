@@ -152,6 +152,9 @@ func (d *demo) liveSearchValues() []searchCandidate {
 	for _, f := range []struct{ field, dim string }{{"tag", "tag"}, {"source", "source"}, {"extension", "extension"}} {
 		for _, v := range d.live.catalogue[f.field] {
 			label := v.Label
+			if f.field == "tag" {
+				label = d.tagLabel(v.Value)
+			}
 			if f.field == "extension" {
 				label = "." + v.Value
 			}
@@ -160,7 +163,7 @@ func (d *demo) liveSearchValues() []searchCandidate {
 	}
 	for _, tag := range d.tags {
 		if !slices.ContainsFunc(out, func(v searchCandidate) bool { return v.dimension == "tag" && v.value == tag.id }) {
-			add("tag", tag.id, tag.name)
+			add("tag", tag.id, d.tagLabel(tag.id))
 		}
 	}
 	for _, v := range [][2]string{{"today", "今天"}, {"yesterday", "昨天"}, {"last_7d", "最近 7 天"}, {"last_30d", "最近 30 天"}, {"this_week", "本周"}, {"this_month", "本月"}} {

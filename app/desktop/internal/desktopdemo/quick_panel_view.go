@@ -135,7 +135,7 @@ func (p *quickDemo) searchRow(c *ui.Context, a qpPalette) {
 	ui.Row(c).Height(48).Shrink(0).PaddingX(14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(a.border).Children(func() {
 		uikit.For(false).Icon(c, uikit.IconSearch, 16).TextColor(a.foreground)
 		for i, f := range p.chips {
-			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + f.label).Height(24).PaddingX(8).Radius(6).Background(a.muted)
+			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + p.filterLabel(f)).Height(24).PaddingX(8).Radius(6).Background(a.muted)
 			b.Children(func() { ui.Text(c, p.filterLabel(f)).FontSize(12.5).TextColor(a.primary) })
 			b.OnClick(func() {
 				p.chips = append(p.chips[:i], p.chips[i+1:]...)
@@ -327,7 +327,7 @@ func (p *quickDemo) suggestionList(c *ui.Context, a qpPalette, options []qpFilte
 	start := max(0, cursor-2)
 	for i := start; i < min(len(options), start+3); i++ {
 		f := options[i]
-		b := ui.ButtonBase(c.Key("suggest-"+f.dimension+f.value)).Label(p.tr("建议：")+f.label).Height(30).FillWidth().Padding(0, 8, 0, 6).Radius(7).Row().AlignItems(ui.Center).Gap(8)
+		b := ui.ButtonBase(c.Key("suggest-"+f.dimension+f.value)).Label(p.tr("建议：")+p.filterLabel(f)).Height(30).FillWidth().Padding(0, 8, 0, 6).Radius(7).Row().AlignItems(ui.Center).Gap(8)
 		if cursor == i {
 			b.Background(a.muted)
 		}

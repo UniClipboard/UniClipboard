@@ -86,6 +86,11 @@ func scenarioI18n(t *testing.T) {
 					if d.currentLanguage() != language.code {
 						t.Fatalf("selection not applied: %s", d.currentLanguage())
 					}
+					for id, source := range map[string]string{"builtin:text": "文本", "builtin:image": "图片", "builtin:files": "文件", "builtin:link": "链接"} {
+						if tag := d.tagByID(id); tag == nil || !tag.builtin || d.tagLabel(id) != d.tr(source) {
+							t.Fatalf("builtin label/identity mismatch: %s", id)
+						}
+					}
 					if !tt.HasText(language.general) {
 						t.Fatalf("missing settings navigation: %s", language.general)
 					}

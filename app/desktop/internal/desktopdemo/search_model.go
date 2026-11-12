@@ -135,7 +135,7 @@ func (d *demo) searchValues() []searchCandidate {
 		add("type", v[0], v[1])
 	}
 	for _, tag := range d.tags {
-		add("tag", tag.id, tag.name)
+		add("tag", tag.id, d.tagLabel(tag.id))
 	}
 	for _, v := range d.devices {
 		add("source", v.id, d.sourceName(v.id))

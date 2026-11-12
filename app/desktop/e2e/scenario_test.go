@@ -444,7 +444,11 @@ func (s *desktopScenario) finish(env *testscript.Env) {
 	cleanupErr := s.stopApp()
 	if cleanupErr != nil {
 		failed = true
-		s.result.Failure = cleanupErr.Error()
+		if s.result.Failure == "" {
+			s.result.Failure = cleanupErr.Error()
+		} else {
+			s.result.Failure += "\ncleanup: " + cleanupErr.Error()
+		}
 		s.result.Cleanup = "FAIL"
 	} else {
 		s.result.Cleanup = "PASS"

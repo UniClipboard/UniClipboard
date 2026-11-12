@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -13,37 +14,46 @@ import (
 
 	"github.com/egoist/mygo"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopdemo"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 var showDesktop = func() {}
 var showQuickPanel = func() {}
 
-func setupTray() {
+func setupTray(language string) func(string) {
+	menu := func(language string) *mygo.Menu {
+		tr := func(text string) string { return desktopdemo.Translate(language, text) }
+		return mygo.NewMenu([]*mygo.MenuItem{
+			{Label: tr("打开主窗口"), Click: func(*mygo.MenuItem, *mygo.Window) { showDesktop() }},
+			{Label: tr("快捷面板"), Click: func(*mygo.MenuItem, *mygo.Window) { showQuickPanel() }},
+			mygo.Separator(), {Label: tr("退出"), Role: mygo.RoleQuit},
+		})
+	}
+
 	tray, err := mygo.NewTray(mygo.TrayOptions{
 		ID:             "unic-desktop",
 		Icon:           trayIcon(),
 		IconIsTemplate: true,
-		ToolTip:        "unic — clipboard sync",
-		Menu: mygo.NewMenu([]*mygo.MenuItem{
-			{Label: "Open unic…", Click: func(*mygo.MenuItem, *mygo.Window) { showDesktop() }},
-			{Label: "快捷面板…", Click: func(*mygo.MenuItem, *mygo.Window) { showQuickPanel() }},
-			mygo.Separator(),
-			{Role: mygo.RoleQuit},
-		}),
+		ToolTip:        desktopdemo.Translate(language, "跨设备剪贴板同步"),
+		Menu:           menu(language),
 	})
 	if err != nil {
 		// Some desktop sessions do not provide a tray host.
 		logHostFailure()
-		return
+		return func(string) {}
 	}
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { tray.Destroy() })
+	return func(language string) {
+		tray.SetMenu(menu(language))
+		tray.SetToolTip(desktopdemo.Translate(language, "跨设备剪贴板同步"))
+	}
 }
 
 // notifyPending raises a system notification when a device asks to join, so
 // that the request is not missed while the window is closed. It is best
 // effort: some systems refuse notifications from unsigned programs.
-func notifyPending(ctx context.Context, sock string) {
+func notifyPending(ctx context.Context, sock string, language func() string) {
 	if !mygo.NotificationsSupported() {
 		return
 	}
@@ -53,13 +63,14 @@ func notifyPending(ctx context.Context, sock string) {
 			if ev.Kind != "pending" {
 				return
 			}
-			body := ev.Peer + " asks to sync clipboards with this device. Open unic to approve or reject."
+			tr := func(text string) string { return desktopdemo.Translate(language(), text) }
+			body := fmt.Sprintf(tr("%s 请求同步剪贴板。打开 unic 批准或拒绝。"), ev.Peer)
 			if ev.Info == "code" {
-				body = ev.Peer + " entered this device's pairing code. Open unic, compare the fingerprints and approve."
+				body = fmt.Sprintf(tr("%s 输入了本机配对码。打开 unic，核对指纹后批准。"), ev.Peer)
 			} else if ev.Info != "" {
-				body = ev.Peer + ", introduced by " + ev.Info + ", wants to join. Open unic to approve or reject."
+				body = fmt.Sprintf(tr("%s 由 %s 介绍，请求加入。打开 unic 批准或拒绝。"), ev.Peer, ev.Info)
 			}
-			n := mygo.NewNotification(mygo.NotificationOptions{Title: "New device", Body: body})
+			n := mygo.NewNotification(mygo.NotificationOptions{Title: tr("新设备"), Body: body})
 			if err := n.Show(); err != nil {
 				logHostFailure()
 			}

@@ -22,6 +22,7 @@ import (
 const Reference = "8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7"
 
 type entry struct {
+	generatedTitle                      bool
 	rich                                *richtext.Document
 	preview                             string
 	highlights                          []engine.HistorySearchRange
@@ -65,6 +66,7 @@ type deviceCandidate struct {
 }
 
 type demo struct {
+	language                                                               string
 	quickShortcutStatus                                                    func() (string, string)
 	retryQuickShortcut                                                     func()
 	live                                                                   *liveState
@@ -103,7 +105,7 @@ func newDemo(page, theme string) *demo {
 		deviceList: uikit.SourceState{Value: "local"}, gridSize: .4,
 		deviceName: "MacBook Pro",
 		options:    map[string]bool{"startup": true, "tray": true, "sound": true, "sync": true, "autoSync": true, "text": true, "image": true, "file": true, "relay": true, "quickPanel": true, "encryption": true},
-		choices:    map[string]string{"language": "简体中文", "appearance": theme, "font": "标准", "fileLimit": "50 MB", "retention": "30 天", "proxy": "系统代理", "shortcut": "⌘⇧V"},
+		choices:    map[string]string{"appearance": theme, "font": "标准", "fileLimit": "50 MB", "retention": "30 天", "proxy": "系统代理", "shortcut": "⌘⇧V"},
 	}
 	d.entries = []entry{
 		{id: "note", title: "周一产品讨论", text: "周一产品讨论\n\n1. 确认桌面端布局与导航。\n2. 核对设备连接状态。\n3. 整理本周设计评审记录。\n\n下次评审：周三 14:00。", source: "local", date: "今天 10:42", size: "96 个字符", kind: uikit.KindText, tags: []string{"工作"}, pinned: true},
@@ -221,7 +223,7 @@ func (d *demo) view(c *ui.Context) {
 		if compact != d.compact {
 			d.sidebarHidden, d.compact = compact, compact
 		}
-		c.OnShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
+		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
 		if !d.devicesOpen && !d.tagsOpen && !d.assignTagsOpen && d.confirm == "" {
 			if d.page == "history" {
 				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
@@ -258,20 +260,20 @@ func (d *demo) sourceName(id string) string {
 		}
 	}
 	if id == "migration" {
-		return "从旧版导入"
+		return d.tr("从旧版导入")
 	}
 	if id == "external" {
-		return "外部来源"
+		return d.tr("外部来源")
 	}
 	for _, v := range d.devices {
 		if v.id == id {
 			if id == "local" {
-				return "本机"
+				return d.tr("本机")
 			}
 			return v.name
 		}
 	}
-	return "已移除设备"
+	return d.tr("已移除设备")
 }
 
 func kindName(kind uikit.ContentKind) string {
@@ -329,7 +331,7 @@ func (d *demo) requestDelete(ids []string) {
 	if len(ids) == 0 {
 		return
 	}
-	d.confirm, d.confirmID = fmt.Sprintf("删除 %d 条历史？", len(ids)), ""
+	d.confirm, d.confirmID = fmt.Sprintf(d.tr("删除 %d 条历史？"), len(ids)), ""
 	d.confirmEntries = slices.Clone(ids)
 }
 
@@ -345,7 +347,7 @@ func (d *demo) confirmDialog(c *ui.Context, k uikit.Kit) {
 	if strings.HasPrefix(d.confirmID, "device:") {
 		desc = "撤销此设备的全部同步路径。对方需要重新配对并重新批准。已同步到对方的内容无法撤回。"
 	}
-	r := k.AlertDialog(c, uikit.AlertDialogProps{Open: &open, Title: d.confirm, Description: desc, ConfirmLabel: "移除", CancelLabel: "取消", Destructive: true}, nil)
+	r := k.AlertDialog(c, uikit.AlertDialogProps{Open: &open, Title: d.confirm, Description: d.tr(desc), ConfirmLabel: d.tr("移除"), CancelLabel: d.tr("取消"), Destructive: true}, nil)
 	if r.Confirmed && d.live != nil {
 		if strings.HasPrefix(d.confirmID, "device:") {
 			id := strings.TrimPrefix(d.confirmID, "device:")

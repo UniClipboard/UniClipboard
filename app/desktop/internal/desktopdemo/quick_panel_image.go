@@ -71,11 +71,11 @@ func (p *quickDemo) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 		opacity := stage.Animate("image-overlay", target, 140*time.Millisecond)
 		{
 			ui.Row(c).Absolute().Top(12).Left(12).Padding(5, 8).Radius(6).Background(a.background).Opacity(opacity).Children(func() {
-				ui.Text(c, fmt.Sprintf("%.0f × %.0f · PNG · 来自 %s", width, height, e.source)).FontSize(11).TextColor(a.quiet)
+				ui.Text(c, fmt.Sprintf(p.tr("%.0f × %.0f · PNG · 来自 %s"), width, height, e.source)).FontSize(11).TextColor(a.quiet)
 			})
-			label := "原始尺寸"
+			label := p.tr("原始尺寸")
 			if p.actualSize {
-				label = "完整显示"
+				label = p.tr("完整显示")
 			}
 			ui.ButtonBase(c.Key("zoom")).Label(label).Disabled(opacity <= 0).Absolute().Right(12).Bottom(12).Height(28).PaddingX(10).Radius(6).Background(a.background).Opacity(opacity).Children(func() { ui.Text(c, label).FontSize(12) }).OnClick(toggle)
 		}

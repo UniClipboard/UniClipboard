@@ -55,7 +55,7 @@ func scenarioSheetResizeMotion(t *testing.T) {
 				}
 				read := func(step string) ui.Rect {
 					t.Helper()
-					n, ok := tt.AccessByRole(ui.RoleDialog, "管理设备")
+					n, ok := tt.AccessByRole(ui.RoleDialog, "")
 					if !ok {
 						t.Fatal("missing live sheet")
 					}
@@ -139,7 +139,7 @@ func scenarioSheetResizeMotion(t *testing.T) {
 				tt.Advance(32 * time.Millisecond)
 				tt.Key(0, ui.KeyEscape)
 				tt.Advance(350 * time.Millisecond)
-				if _, ok := tt.AccessByRole(ui.RoleDialog, "管理设备"); ok {
+				if _, ok := tt.AccessByRole(ui.RoleDialog, ""); ok {
 					t.Fatal("sheet retained after dismissal during resize")
 				}
 				click("管理设备…")

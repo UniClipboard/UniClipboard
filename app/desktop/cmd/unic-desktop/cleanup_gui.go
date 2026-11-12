@@ -133,7 +133,7 @@ func (g *gui) cleanupSettingsTab(c *ui.Context, k uikit.Kit) {
 		changed := g.startupSettings(c, k, &state, view.busy)
 		k.SettingsGroup(c.Key("history"), uikit.SettingsGroupProps{Title: "历史保留"}, func() {
 			k.SettingsRow(c.Key("enabled"), uikit.SettingsRowProps{Label: "自动清理历史", Description: "按保留规则清理历史记录及应用管理的文件"}, nil, func() {
-				if k.Switch(c.Key("switch"), &h.AutoCleanup, uikit.SwitchProps{Label: "自动清理历史", LabelHidden: true, Disabled: view.busy}).Changed() {
+				if k.Switch(c.Key("switch"), &h.AutoCleanup, uikit.SwitchProps{Label: "自动清理历史", Disabled: view.busy}).Changed() {
 					changed = true
 				}
 			})

@@ -324,10 +324,10 @@ func (s *demoSearch) tokens(d *demo) []uikit.SearchFieldToken {
 	var out []uikit.SearchFieldToken
 	add := func(dim, value string) {
 		if value != "" && value != "all" {
-			out = append(out, uikit.SearchFieldToken{ID: dim, Field: searchLabels[dim], Value: value, Kind: searchKinds[dim], RemoveLabel: "移除" + searchLabels[dim] + "条件"})
+			out = append(out, uikit.SearchFieldToken{ID: dim, Field: d.tr(searchLabels[dim]), Value: value, Kind: searchKinds[dim], RemoveLabel: fmt.Sprintf(d.tr("移除%s条件"), d.tr(searchLabels[dim]))})
 		}
 	}
-	add("type", d.kind)
+	add("type", d.tr(d.kind))
 	tags := selectedSearchTags(d.tag)
 	if len(tags) > 0 {
 		labels := make([]string, len(tags))
@@ -342,7 +342,7 @@ func (s *demoSearch) tokens(d *demo) []uikit.SearchFieldToken {
 	if d.timeRange != "" && d.timeRange != "all" {
 		for _, c := range d.searchValues() {
 			if c.dimension == "time" && c.value == d.timeRange {
-				add("time", c.label)
+				add("time", d.tr(c.label))
 				break
 			}
 		}
@@ -426,7 +426,7 @@ func (d *demo) historySearch(c *ui.Context, k uikit.Kit) {
 		n := len(trial.filtered())
 		group := ""
 		if candidate.dimension != previous {
-			group = searchLabels[candidate.dimension]
+			group = d.tr(searchLabels[candidate.dimension])
 			previous = candidate.dimension
 		}
 		selected := false
@@ -442,7 +442,7 @@ func (d *demo) historySearch(c *ui.Context, k uikit.Kit) {
 		case "extension":
 			selected = s.extension == candidate.value
 		}
-		detail := fmt.Sprintf("%d 项", n)
+		detail := fmt.Sprintf(d.tr("%d 项"), n)
 		if d.live != nil {
 			detail = ""
 			q := trial.historySearchQuery()
@@ -452,7 +452,7 @@ func (d *demo) historySearch(c *ui.Context, k uikit.Kit) {
 				n = int(count)
 			}
 		}
-		suggestions = append(suggestions, uikit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: candidate.label, Kind: candidate.kind, Group: group, Detail: detail, Selected: selected, Muted: n == 0 && (d.live == nil || detail != "")})
+		suggestions = append(suggestions, uikit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: d.searchCandidateLabel(candidate), Kind: candidate.kind, Group: group, Detail: detail, Selected: selected, Muted: n == 0 && (d.live == nil || detail != "")})
 	}
 	if d.live != nil {
 		d.live.requestCounts(prospective)
@@ -460,12 +460,12 @@ func (d *demo) historySearch(c *ui.Context, k uikit.Kit) {
 	feedback := ""
 	if w, ok := s.active(); ok {
 		if len(s.options) > 0 {
-			feedback = "按 Enter 或 Tab 选择" + searchLabels[w.dimension] + "条件，保留已有搜索文字。"
+			feedback = d.tr("按 Enter 或 Tab 选择") + searchLabels[w.dimension] + d.tr("条件，保留已有搜索文字。")
 		} else {
-			feedback = "没有匹配的" + searchLabels[w.dimension] + "条件，按原文字搜索。"
+			feedback = d.tr("没有匹配的") + searchLabels[w.dimension] + d.tr("条件，按原文字搜索。")
 		}
 	}
-	res := k.TokenSearchField(c, uikit.TokenSearchFieldProps{Toolbar: true, Label: "搜索历史", Value: &s.buffer, Placeholder: "搜索，或输入 # @ / on:", ShortcutHint: "⌘F", Tokens: s.tokens(d), Suggestions: suggestions, Open: &s.open, Highlighted: &s.highlight, Feedback: feedback, ClearLabel: "清除搜索", SuggestionsFooter: "↑↓ 选择 · Enter 或 Tab 转为筛选条件 · 输入框为空时退格删除最后一个条件", OnKey: func(key uikit.SearchFieldKey) bool { return s.key(d, key) }, OnSelectionChange: func(start, end int) {
+	res := k.TokenSearchField(c, uikit.TokenSearchFieldProps{Toolbar: true, Label: d.tr("搜索历史"), Value: &s.buffer, Placeholder: d.tr("搜索，或输入 # @ / on:"), ShortcutHint: "⌘F", Tokens: s.tokens(d), Suggestions: suggestions, Open: &s.open, Highlighted: &s.highlight, Feedback: feedback, ClearLabel: d.tr("清除搜索"), SuggestionsFooter: d.tr("↑↓ 选择 · Enter 或 Tab 转为筛选条件 · 输入框为空时退格删除最后一个条件"), OnKey: func(key uikit.SearchFieldKey) bool { return s.key(d, key) }, OnSelectionChange: func(start, end int) {
 		if !restore && !s.restore && (s.start != start || s.end != end) {
 			s.start, s.end = start, end
 			s.refresh(d)

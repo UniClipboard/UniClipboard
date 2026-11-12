@@ -166,8 +166,8 @@ func runGUI(settings *config.Manager) error {
 		}()
 		g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, false)
 
-		setupTray()
-		go notifyPending(ctx, g.c.Path)
+		updateTrayLanguage := setupTray(settings.Current().Desktop.Language)
+		go notifyPending(ctx, g.c.Path, func() string { return settings.Current().Desktop.Language })
 		clipboard := quickpanel.NewClipboard(newDesktopBoard())
 		go func() { _ = clipboardintegration.RunRemote(ctx, g.c, clipboard, nil) }()
 		screen := desktopdemo.NewDesktop(ctx, g.c)
@@ -185,7 +185,11 @@ func runGUI(settings *config.Manager) error {
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {
 				g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
-				mygo.RunOnMain(func() { screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut) })
+				mygo.RunOnMain(func() {
+					screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut)
+					updateTrayLanguage(current.Desktop.Language)
+					g.win.Invalidate()
+				})
 			}
 		}
 		go func() { _ = settings.Watch(ctx) }()

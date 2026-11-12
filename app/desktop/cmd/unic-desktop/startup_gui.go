@@ -40,12 +40,12 @@ func (g *gui) startupSettings(c *ui.Context, k uikit.Kit, state *config.State, b
 			}
 		})
 		k.SettingsRow(c.Key("login"), uikit.SettingsRowProps{Label: "登录时启动", Description: "登录系统后按所选运行模式启动。"}, nil, func() {
-			if k.Switch(c.Key("switch"), &desktop.LaunchAtLogin, uikit.SwitchProps{Label: "登录时启动", LabelHidden: true, Disabled: busy}).Changed() {
+			if k.Switch(c.Key("switch"), &desktop.LaunchAtLogin, uikit.SwitchProps{Label: "登录时启动", Disabled: busy}).Changed() {
 				changed = true
 			}
 		})
 		k.SettingsRow(c.Key("background"), uikit.SettingsRowProps{Label: "后台启动", Description: "下次常规启动时隐藏主窗口。通过托盘或再次启动打开窗口。"}, nil, func() {
-			if k.Switch(c.Key("switch"), &desktop.StartInBackground, uikit.SwitchProps{Label: "后台启动", LabelHidden: true, Disabled: busy}).Changed() {
+			if k.Switch(c.Key("switch"), &desktop.StartInBackground, uikit.SwitchProps{Label: "后台启动", Disabled: busy}).Changed() {
 				changed = true
 			}
 		})

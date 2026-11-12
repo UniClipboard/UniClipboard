@@ -14,7 +14,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 59972253ea527ab77cb340a50ee4f5d5be92c55b
+verified: 03c7531aae7dfb17a75d4edf2d06b5a6d15479c1
 ---
 # 仓库布局与依赖边界
 
@@ -74,6 +74,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 The composition follows local `main` commit `8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7`.
 `app/desktop/internal/desktopdemo` owns demo state and page composition.
 The existing UI Kit owns Adwaita, macOS glass, and Fluent styling.
+All Kit switches render only the track and thumb across every skin. The enclosing row owns the visible caption; `SwitchProps.Label` supplies the accessible name. Switches have no visible-label option. Checkbox labels retain their existing behavior.
 The macOS demo uses a unified native title bar, a 1100 x 720 default window, toolbar glass capsules, and an inset floating detail action bar.
 The Kit exposes a toolbar mode for segmented controls and a secondary Glass button variant; other skins retain their native styling.
 MacOS capsule surfaces share mygo plugins/glass.Glass (Regular, Interactive). The renderer supplies refraction, reactive rim lighting and press growth. The shader samples this native Go UI frame; direct NSGlassEffectView composition is not used for these controls.
@@ -98,6 +99,7 @@ See the [demo acceptance guide](../../app/desktop/UI-DEMO.md) for source mapping
 ## Live desktop composition
 
 The normal desktop opens the shared history composition directly. It has no setup or unlock gate.
+Quit uses a window-scoped platform command-Q shortcut, including when no view control has focus.
 `desktopdemo.NewDesktop` initializes empty service-backed state, without fixture data.
 `live.go` serializes local socket work and applies completions on the view thread.
 It owns query pagination, reconciliation, bounded content previews and revision-checked history mutations.
@@ -108,6 +110,16 @@ Selected single-image files use the same image frame and Quick Look as image rec
 Refresh preserves loaded page depth. Query changes discard results for obsolete filters.
 `live_devices.go` binds existing pairing, approval, candidate and removal operations.
 `live_settings.go` binds the existing General, Sync and Storage settings; the launcher owns native login registration.
+
+### Desktop languages
+
+The shared desktop composition supports Simplified Chinese (`zh-CN`), English (`en`), Japanese (`ja`), Brazilian Portuguese (`pt-BR`) and Russian (`ru`). General settings provides a language selector with native language names. The default is Simplified Chinese; an empty stored language also selects it. Unsupported nonempty language codes fail configuration validation.
+
+`desktop.language` persists through the existing revision-checked configuration API. A successful save updates the main window and quick panel through the normal configuration refresh, without a process restart. The launcher watches the same file to rebuild tray labels. Device notifications use the current configured language. The demo keeps its selection in memory.
+
+`desktopdemo/i18n.go` resolves application-owned source strings from embedded `locales.json`. Navigation, settings, device sheets, history controls, quick-panel controls and actions share the catalogues. Source strings are stable catalogue IDs; internal filter values and query syntax remain unchanged. Content, filenames, device names and user tags bypass translation. Service-generated history titles carry an explicit marker so they can be translated without translating user text. Missing catalogue text falls back to the Chinese source. No translation request leaves the device. Standard numeric/ISO timestamps remain unchanged; Today and Yesterday headings are translated.
+
+Run `make desktop-e2e CASE=i18n` for five-language, three-skin, two-theme software-view acceptance. The `data-binding` case verifies persistence with a real isolated service and a newly created desktop binding. See the [i18n receipt](../exec/desktop-i18n.md). Native tray, notification delivery, OS focus and platform visual acceptance require separate native evidence.
 The service lifecycle, exclusive clipboard adapter, tray and normal/lightweight modes remain defined by the [headless architecture](headless.md).
 Global literal text/file-name search, rich-text classification, extension/source/tag/time filters, paged candidates and exact prospective counts use the Engine-owned [search interface](../contracts/history-search-contract.md).
 The main editor keeps word/all-tag semantics; the quick panel keeps phrase/any-tag semantics. Both reject obsolete read generations and use separately cancellable search/count/content reads.

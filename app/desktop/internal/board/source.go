@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/uniclipboard/unic/sourceapp"
 	"golang.org/x/image/draw"
+
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 type sourceState struct {

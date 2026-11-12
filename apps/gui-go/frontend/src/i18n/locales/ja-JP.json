@@ -2874,6 +2874,7 @@
         "reasons": {
           "invitation_unavailable": "招待コードは利用できなくなりました。",
           "authentication_rejected": "パスフレーズまたは本人確認が拒否されました。",
+          "sponsor_unresponsive": "相手のデバイスから時間内に応答がありませんでした。オンラインであることを確認して、もう一度参加してください。",
           "identity_conflict": "このデバイスの識別情報が競合しています。",
           "base_history_changed": "相手のスペースが変更されました。新しい招待コードを取得してください。",
           "joiner_history_ahead": "このデバイスの履歴はスペースに参加できません。",

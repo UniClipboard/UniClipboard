@@ -2895,6 +2895,7 @@
         "reasons": {
           "invitation_unavailable": "O convite não está mais disponível.",
           "authentication_rejected": "A senha ou identidade não foi aceita.",
+          "sponsor_unresponsive": "O outro dispositivo não respondeu a tempo. Verifique se ele está online e tente entrar novamente.",
           "identity_conflict": "A identidade deste dispositivo está em conflito.",
           "base_history_changed": "O espaço do anfitrião mudou. Obtenha um novo convite.",
           "joiner_history_ahead": "O histórico deste dispositivo não pode entrar no espaço.",

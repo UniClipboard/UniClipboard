@@ -70,6 +70,7 @@ export interface JoinedSpaceResponse {
 export type JoinSpaceRejectionReason =
   | 'invitation_unavailable'
   | 'authentication_rejected'
+  | 'sponsor_unresponsive'
   | 'identity_conflict'
   | 'base_history_changed'
   | 'joiner_history_ahead'

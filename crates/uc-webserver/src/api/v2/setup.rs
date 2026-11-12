@@ -774,57 +774,49 @@ pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceRe
         },
         JoinSpaceStatusSummary::Rejected { join_id, reason } => JoinSpaceResponse::Rejected {
             join_id,
-            reason: match serde_json::to_value(reason)
-                .ok()
-                .and_then(|value| value.as_str().map(std::string::ToString::to_string))
-                .as_deref()
-            {
-                Some("completion_invalid") => JoinSpaceRejectionReason::CompletionInvalid,
-                Some("membership_history_invalid") => {
+            reason: match reason {
+                JoinSpaceRejectionReasonSummary::InvitationUnavailable => {
+                    JoinSpaceRejectionReason::InvitationUnavailable
+                }
+                JoinSpaceRejectionReasonSummary::AuthenticationRejected => {
+                    JoinSpaceRejectionReason::AuthenticationRejected
+                }
+                JoinSpaceRejectionReasonSummary::SponsorUnresponsive => {
+                    JoinSpaceRejectionReason::SponsorUnresponsive
+                }
+                JoinSpaceRejectionReasonSummary::IdentityConflict => {
+                    JoinSpaceRejectionReason::IdentityConflict
+                }
+                JoinSpaceRejectionReasonSummary::BaseHistoryChanged => {
+                    JoinSpaceRejectionReason::BaseHistoryChanged
+                }
+                JoinSpaceRejectionReasonSummary::JoinerHistoryAhead => {
+                    JoinSpaceRejectionReason::JoinerHistoryAhead
+                }
+                JoinSpaceRejectionReasonSummary::HistoryConflict => {
+                    JoinSpaceRejectionReason::HistoryConflict
+                }
+                JoinSpaceRejectionReasonSummary::CompletionInvalid => {
+                    JoinSpaceRejectionReason::CompletionInvalid
+                }
+                JoinSpaceRejectionReasonSummary::MembershipHistoryInvalid => {
                     JoinSpaceRejectionReason::MembershipHistoryInvalid
                 }
-                Some("security_material_invalid") => {
+                JoinSpaceRejectionReasonSummary::SecurityMaterialInvalid => {
                     JoinSpaceRejectionReason::SecurityMaterialInvalid
                 }
-                Some("relationship_conflict") => JoinSpaceRejectionReason::RelationshipConflict,
-                Some("activation_state_invalid") => {
+                JoinSpaceRejectionReasonSummary::RelationshipConflict => {
+                    JoinSpaceRejectionReason::RelationshipConflict
+                }
+                JoinSpaceRejectionReasonSummary::ActivationStateInvalid => {
                     JoinSpaceRejectionReason::ActivationStateInvalid
                 }
-                _ =>
-                {
-                    #[allow(unreachable_patterns)]
-                    match reason {
-                        JoinSpaceRejectionReasonSummary::InvitationUnavailable => {
-                            JoinSpaceRejectionReason::InvitationUnavailable
-                        }
-                        JoinSpaceRejectionReasonSummary::AuthenticationRejected => {
-                            JoinSpaceRejectionReason::AuthenticationRejected
-                        }
-                        JoinSpaceRejectionReasonSummary::IdentityConflict => {
-                            JoinSpaceRejectionReason::IdentityConflict
-                        }
-                        JoinSpaceRejectionReasonSummary::BaseHistoryChanged => {
-                            JoinSpaceRejectionReason::BaseHistoryChanged
-                        }
-                        JoinSpaceRejectionReasonSummary::JoinerHistoryAhead => {
-                            JoinSpaceRejectionReason::JoinerHistoryAhead
-                        }
-                        JoinSpaceRejectionReasonSummary::HistoryConflict => {
-                            JoinSpaceRejectionReason::HistoryConflict
-                        }
-                        JoinSpaceRejectionReasonSummary::PeerUpgradeRequired => {
-                            JoinSpaceRejectionReason::PeerUpgradeRequired
-                        }
-                        JoinSpaceRejectionReasonSummary::Cancelled => {
-                            JoinSpaceRejectionReason::Cancelled
-                        }
-                        JoinSpaceRejectionReasonSummary::RemovedBeforeActivation => {
-                            JoinSpaceRejectionReason::RemovedBeforeActivation
-                        }
-                        _ => {
-                            unreachable!("new rejection reasons are mapped from their wire value")
-                        }
-                    }
+                JoinSpaceRejectionReasonSummary::PeerUpgradeRequired => {
+                    JoinSpaceRejectionReason::PeerUpgradeRequired
+                }
+                JoinSpaceRejectionReasonSummary::Cancelled => JoinSpaceRejectionReason::Cancelled,
+                JoinSpaceRejectionReasonSummary::RemovedBeforeActivation => {
+                    JoinSpaceRejectionReason::RemovedBeforeActivation
                 }
             },
         },
@@ -865,6 +857,37 @@ mod tests {
     //! boundary ownership are covered in `uc-engine`.
 
     use super::*;
+
+    #[test]
+    fn rejected_joins_preserve_every_engine_reason_on_the_wire() {
+        let reasons = [
+            JoinSpaceRejectionReasonSummary::InvitationUnavailable,
+            JoinSpaceRejectionReasonSummary::AuthenticationRejected,
+            JoinSpaceRejectionReasonSummary::SponsorUnresponsive,
+            JoinSpaceRejectionReasonSummary::IdentityConflict,
+            JoinSpaceRejectionReasonSummary::BaseHistoryChanged,
+            JoinSpaceRejectionReasonSummary::JoinerHistoryAhead,
+            JoinSpaceRejectionReasonSummary::HistoryConflict,
+            JoinSpaceRejectionReasonSummary::CompletionInvalid,
+            JoinSpaceRejectionReasonSummary::MembershipHistoryInvalid,
+            JoinSpaceRejectionReasonSummary::SecurityMaterialInvalid,
+            JoinSpaceRejectionReasonSummary::RelationshipConflict,
+            JoinSpaceRejectionReasonSummary::ActivationStateInvalid,
+            JoinSpaceRejectionReasonSummary::PeerUpgradeRequired,
+            JoinSpaceRejectionReasonSummary::Cancelled,
+            JoinSpaceRejectionReasonSummary::RemovedBeforeActivation,
+        ];
+        for reason in reasons {
+            let response = join_space_response(JoinSpaceStatusSummary::Rejected {
+                join_id: "join-rejected".to_owned(),
+                reason,
+            });
+            let serialized = serde_json::to_value(response).unwrap();
+            assert_eq!(serialized["status"], "rejected");
+            assert_eq!(serialized["joinId"], "join-rejected");
+            assert_eq!(serialized["reason"], serde_json::to_value(reason).unwrap());
+        }
+    }
 
     #[test]
     fn invitation_failures_do_not_misreport_membership_as_network_startup() {

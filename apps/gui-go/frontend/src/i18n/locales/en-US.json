@@ -2868,6 +2868,7 @@
         "reasons": {
           "invitation_unavailable": "The invitation is no longer available.",
           "authentication_rejected": "The passphrase or identity was not accepted.",
+          "sponsor_unresponsive": "The other device did not respond in time. Make sure it is online and try joining again.",
           "identity_conflict": "This device identity conflicts with the space.",
           "base_history_changed": "The host space changed. Get a new invitation and try again.",
           "joiner_history_ahead": "This device history cannot join the space.",

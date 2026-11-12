@@ -139,6 +139,7 @@ pub struct JoinedSpaceResponse {
 pub enum JoinSpaceRejectionReason {
     InvitationUnavailable,
     AuthenticationRejected,
+    SponsorUnresponsive,
     IdentityConflict,
     BaseHistoryChanged,
     JoinerHistoryAhead,

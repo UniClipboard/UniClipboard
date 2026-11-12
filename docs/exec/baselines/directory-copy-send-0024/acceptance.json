@@ -15,5 +15,8 @@
   "real_devices": "NOT_RUN",
   "windows_linux_process_runs": "NOT_RUN",
   "linux_identical_copy_marker": "UNSUPPORTED; use explicit send",
-  "source_scope": "CLI source freezes and final Desktop compilation have separate inventories; see execution receipt"
+  "source_scope": "CLI source freezes and final Desktop compilation have separate inventories; see execution receipt",
+  "code_commit": "be9b3d81a4d9033dd26b55f08305cb7982aa8429",
+  "committed_cli_sources_match_receipt": true,
+  "committed_desktop_sources_match_compile_receipt": true
 }

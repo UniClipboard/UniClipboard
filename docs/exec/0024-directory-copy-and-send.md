@@ -4,6 +4,7 @@
 - Date: 2026-11-12
 - Decision: [0024: Directory copy and explicit send](../decisions/proposed/0024-directory-copy-and-send.md).
 - Source baseline: `1d542f4ca7412972ae4c2cbbac46c211ae19395c`, branch `session/cebfb630`, with the uncommitted 0024 documentation changes.
+- Code commit: `be9b3d81a4d9033dd26b55f08305cb7982aa8429`.
 - Scope: Deferred directory selection, explicit one-shot send, optional automatic directory send, tree receive/apply, and ownership-safe cleanup.
 - Authorization boundary: The user subsequently authorized implementation. Native application launch, deployment, and real-device execution still require separate authorization.
 
@@ -173,7 +174,8 @@ Native acceptance must separately prove copy detection, repeated copy, directory
 - [x] CLI and desktop send/settings/progress integrated.
 - [x] Local process results and ordinary-content regressions recorded with bounded coverage below.
 - [ ] Required platform/native and real-device evidence recorded, with explicit remaining limits.
-- [ ] Architecture and contracts landed; documentation verified; decision archived when eligible.
+- [x] Architecture and contracts landed; documentation verified.
+- [ ] Decision archived after the remaining required platform acceptance.
 
 The sections above preserve the planned gates. The following receipt records actual implementation and validation. Native and real-device checks are not implied by process results.
 
@@ -226,7 +228,7 @@ Intermediate frozen runs exposed a real history-restore regression: the restored
 
 A separate held-preparation scenario verifies that observing a directory does not block a newer text copy. The newer copy cancels obsolete automatic preparation, prevents late directory publication and releases owned staging. Explicit sends remain independent.
 
-Initial sandbox socket denials were resolved with isolated-process execution permission. A check run without canonical `TMPDIR` hit the existing managed-root symlink protection; the canonical rerun passed. Documentation checks pass; unrelated architecture staleness warnings are recorded separately from runtime acceptance.
+Initial sandbox socket denials were resolved with isolated-process execution permission. A check run without canonical `TMPDIR` hit the existing managed-root symlink protection; the canonical rerun passed. Documentation checks pass. The four updated architecture pages are verified against the code commit. Four unrelated architecture staleness warnings remain (identity/trust, observability, real-machine testing, and releases).
 
 ## 13. Remaining native checklist
 

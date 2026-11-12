@@ -51,3 +51,15 @@ No native app or browser is launched during this task.
 Implementation source commit: `7aff73d6caa87ea37c31d4e80603286bd42d4b6b`.
 The [architecture verification marker](../architecture/desktop-runtime.md) was refreshed after implementation commits.
 Acceptance limits above remain unchanged. Native clipboard attribution and native-window acceptance remain not run.
+
+## 2026-11-13 rebase validation
+
+Rebased onto `origin/v2` at `16d0ecefc64f7e6f778e37185a018157726dcc23`.
+Validated implementation source: `5e8a90ffaaf68393c2b35125982e7d2d1e1f39ca`.
+Upstream folder kinds, previews, built-in folder tags and history-send cancellation remain present.
+
+The `source-application` case passed 48 subcases at `.build/desktop-e2e/20261112T170510Z-d05efecf/index.html`.
+The production-service `data-binding` case passed at `.build/desktop-e2e/20261112T170618Z-5faf2d35/index.html`.
+The `i18n` case passed at `.build/desktop-e2e/20261112T170618Z-fd5babe7/index.html`.
+All three reports match the current production UI file hashes. The architecture verification marker was refreshed after the rebased implementation commit.
+Native-window and actual OS clipboard behavior remain not run.

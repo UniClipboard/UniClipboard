@@ -61,3 +61,30 @@ Only manifests, build hashes, this receipt, and implementation/contract files re
 Implementation source commit: `7aff73d6caa87ea37c31d4e80603286bd42d4b6b`.
 The [architecture verification marker](../architecture/pipeline.md) was refreshed after implementation commits.
 Acceptance limits above remain unchanged. Native clipboard attribution and native-window acceptance remain not run.
+
+## 2026-11-13 rebase integration
+
+Rebased onto `origin/v2` at `16d0ecefc64f7e6f778e37185a018157726dcc23`.
+Validated implementation source: `5e8a90ffaaf68393c2b35125982e7d2d1e1f39ca`. New manifests bind the rebased source by file hash; earlier acceptance records above are historical.
+
+The integration retains directory copy markers, deferred references, manifest verification and non-file storage accounting together with application metadata.
+Directory preparation copies the original source application into the immutable snapshot.
+Windows source probing uses a distinct clipboard-sequence symbol alongside the upstream copy marker.
+The upstream directory CLI fixture's two tag selectors now use `builtin:folder`, matching current classification.
+An independent archive of the exact upstream base reproduced the original selector failure before this correction.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Directory and source-metadata CLI process acceptance | 15 scenarios passed with race detection; frozen source unchanged | `.build/rebase-source-metadata/cli-final/receipt.json` |
+| Directory application provenance | Explicit history send, receiver restart, automatic send and repeated same-directory copy passed | `directory-source-metadata` within the CLI receipt |
+| Production headless acceptance | 14 checks passed with race detection; source unchanged during acceptance | `.build/rebase-source-metadata/headless/manifest.json` |
+| Desktop source application presentation | 48 view subcases passed | `.build/desktop-e2e/20261112T170510Z-d05efecf/index.html` |
+| Desktop production-service binding | Passed | `.build/desktop-e2e/20261112T170618Z-5faf2d35/index.html` |
+| Desktop localization | Passed | `.build/desktop-e2e/20261112T170618Z-fd5babe7/index.html` |
+| macOS Desktop build; Windows/Linux Board cross-compiles; changed-package vet | Passed | Local build and static checks |
+| All-package race compilation | Passed with no tests selected | `go test -race ./... -run '^$'` |
+
+The new directory case waits for a real transfer after receiver restart before testing automatic capture.
+This avoids treating a service-ready socket as proof that a peer session has reconnected.
+Native clipboard attribution, native icon extraction and native-window acceptance remain not run.
+Architecture verification markers were refreshed after the rebased implementation commit.

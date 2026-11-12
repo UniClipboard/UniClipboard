@@ -29,18 +29,18 @@ on:
           - rc
         default: stable
       base_branch:
-        description: 'Branch to base the release off (default: main). Use release/vX.Y.Z when iterating prereleases on a release branch whose commits have not yet been merged back to main.'
+        description: 'Branch to base the release off (default: v1). Use release/vX.Y.Z when iterating prereleases on a release branch whose commits have not yet been merged back to v1.'
         required: false
         type: string
-        default: 'main'
+        default: 'v1'
 
 # Serialize publication against the same base without cancelling an active release.
 concurrency:
-  group: prepare-release-${{ inputs.base_branch || 'main' }}
+  group: prepare-release-${{ inputs.base_branch || 'v1' }}
   cancel-in-progress: false
 
 env:
-  BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
+  BASE_BRANCH: ${{ inputs.base_branch || 'v1' }}
   HUSKY: '0'
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.base_branch || 'main' }}
+          ref: ${{ inputs.base_branch || 'v1' }}
           token: ${{ secrets.REPO_BOT_TOKEN }}
           fetch-depth: 0
           submodules: recursive

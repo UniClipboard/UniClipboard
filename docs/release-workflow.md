@@ -9,6 +9,16 @@
 `v1.2.0-alpha.3` tag。重复前缀、空白、数字前导零及不符合现有版本格式的输入会失败。
 本地 `bump-version.js --to` 仍使用不带 `v` 的版本号。
 
+`v1` 是此发布流程的默认基准分支。`base_branch` 同时控制源码检出分支和发布 PR
+的目标分支。继续在已有发布分支上准备预发布版本时，显式传入该分支。
+选择工作流运行分支不会覆盖 `base_branch`。旧运行若在检出 `main` 时失败，
+必须重新触发工作流并指定 `base_branch=v1`；重跑旧运行会保留原参数。
+
+本地分支验收命令为 `bun scripts/ci/prepare-release-branches.e2e.mjs`。
+该命令使用隔离的本地 Git 远端，验证默认基准、显式发布分支及标签推送步骤。
+它将源码 SHA、命令和结果写入临时目录的 `prepare-release-branches.json`。
+此验收不执行 GitHub Actions、版本准备、PR 创建、构建或正式发布。
+
 准备流程分为四个串行作业：`prepare`（版本与生成文件）、`format`（格式化）、
 `changelog`（完善并校验更新日志）、`publish`（推送分支并创建 PR）。前三个作业
 各自将提交保存为 Git bundle 构建产物，保留 30 天；后续作业从固定的基准提交

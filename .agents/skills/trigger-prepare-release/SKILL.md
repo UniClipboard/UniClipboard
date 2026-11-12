@@ -1,13 +1,13 @@
 ---
 name: trigger-prepare-release
-description: Trigger the prepare-release workflow on GitHub Actions. Supports optional arguments for version, bump type, channel, and base branch. Defaults to bump=patch, channel=stable, base_branch=main.
+description: Trigger the prepare-release workflow on GitHub Actions. Supports optional arguments for version, bump type, channel, and base branch. Defaults to bump=patch, channel=stable, base_branch=v1.
 ---
 
 # Trigger Prepare Release
 
 Trigger the `prepare-release.yml` workflow on GitHub Actions.
 
-The workflow produces a `release/v<version>` branch + PR. By default it bases the release off `main`, but the `base_branch` input lets you base it off (and target the PR at) any branch — see [Choosing `base_branch`](#choosing-base_branch).
+The workflow produces a `release/v<version>` branch + PR. By default it bases the release off `v1`, but the `base_branch` input lets you base it off (and target the PR at) any branch — see [Choosing `base_branch`](#choosing-base_branch).
 
 ## Arguments
 
@@ -18,7 +18,7 @@ All arguments are optional.
 | `version`     | *(empty)* | Exact semver, no `v` prefix. **Include the channel suffix if you want one** (e.g. `0.9.0-alpha.1`). Overrides `bump` AND `channel`. |
 | `bump`        | `patch`   | Version bump type: `patch`, `minor`, `major`. Only used when `version` is empty.                                     |
 | `channel`     | `stable`  | Release channel: `stable`, `alpha`, `beta`, `rc`. Only used when `version` is empty.                                 |
-| `base_branch` | `main`    | Branch the release is checked out from **and** the branch the PR targets. Use `release/vX.Y.Z` when iterating prereleases on a release branch whose commits are not yet merged back to `main`. |
+| `base_branch` | `v1`      | Branch the release is checked out from **and** the branch the PR targets. Use `release/vX.Y.Z` when iterating prereleases on a release branch whose commits are not yet merged back to `v1`. |
 
 ### Critical: how `version` interacts with `channel`
 
@@ -42,13 +42,13 @@ So:
 
 `base_branch` controls **two** things at once: the branch the release is checked out from, and the branch the resulting PR targets (`--base`).
 
-- **`main` (default)** — the normal case: cut a release off the mainline.
-- **`release/vX.Y.Z`** — iterating prereleases on a release branch whose commits are NOT yet merged back to `main`. The workflow checks out that branch (so the release includes its un-merged commits) and opens the PR back against it. Example: you committed fixes onto `release/v0.14.1` and want the next `alpha` to include them without first merging to `main`.
+- **`v1` (default)** — the normal case: cut a release off the `v1` branch.
+- **`release/vX.Y.Z`** — iterating prereleases on a release branch whose commits are NOT yet merged back to `v1`. The workflow checks out that branch (so the release includes its un-merged commits) and opens the PR back against it. Example: you committed fixes onto `release/v0.14.1` and want the next `alpha` to include them without first merging to `v1`.
 
 Two things to verify before triggering with a non-default `base_branch`:
 
 - **The branch must be pushed.** The workflow checks out the **remote** `origin/<base_branch>`, so anything still local-only won't be in the release. Confirm `git status -sb` shows the branch in sync (not `ahead`) before triggering.
-- **Version is computed from that branch.** The `Determine version` dry-run runs against `base_branch`'s `package.json`, so the resolved version reflects that branch, not `main`. The created branch is always named `release/v<resolved-version>` regardless of `base_branch`.
+- **Version is computed from that branch.** The `Determine version` dry-run runs against `base_branch`'s `package.json`, so the resolved version reflects that branch, not `v1`. The created branch is always named `release/v<resolved-version>` regardless of `base_branch`.
 
 ## Workflow
 
@@ -78,29 +78,29 @@ Will trigger prepare-release with:
   version:     0.9.0-alpha.1
   bump:        (ignored — version is set)
   channel:     (ignored — version is set)
-  base_branch: main
+  base_branch: v1
 Proceed? (y/n)
 ```
 
-If `version` is empty, show resolved `bump` and `channel` instead. Always show `base_branch` — and when it is not `main`, restate the resolved version so the user can confirm it was computed from the intended branch.
+If `version` is empty, show resolved `bump` and `channel` instead. Always show `base_branch` — and when it is not `v1`, restate the resolved version so the user can confirm it was computed from the intended branch.
 
 ### 3. Trigger the workflow
 
 ```bash
 gh workflow run prepare-release.yml \
   --repo UniClipboard/UniClipboard \
-  --ref main \
+  --ref v1 \
   -f version=<version> \
   -f bump=<bump> \
   -f channel=<channel> \
   -f base_branch=<base_branch>
 ```
 
-Omit `-f version=` when `version` is empty. Omit `-f base_branch=` to default to `main`.
+Omit `-f version=` when `version` is empty. Omit `-f base_branch=` to default to `v1`.
 
 **`--ref` vs `base_branch` — don't confuse them:**
 
-- `--ref main` selects which copy of the workflow *file* to run. Keep it `main`: it's the default branch, so GitHub validates the dispatch inputs against `main`'s workflow definition. (Both `main` and the release branches carry the `base_branch` input, so this is safe.)
+- `--ref v1` selects which copy of the workflow *file* to run. Keep it `v1`: it's the default branch, so GitHub validates the dispatch inputs against `v1`'s workflow definition. (Both `v1` and the release branches carry the `base_branch` input, so this is safe.)
 - `base_branch` is what actually controls which branch the release is based on and where the PR is targeted. `--ref` does **not** affect that.
 
 (Older versions of this skill claimed the workflow "always checks out `main` regardless" — that is no longer true; `base_branch` is honored.)

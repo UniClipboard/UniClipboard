@@ -124,7 +124,7 @@ The signed archive contains exactly one regular `release-identity.json` with the
 
 The metadata's `update_public_key` enables in-app updates. An empty key disables them. `desktop.update_channel` accepts `stable` and `alpha`, defaults to `stable`, and applies on the next check. Package-manager and portable installations do not start the direct updater. AppImage self-update is unsupported by the pinned SDK. Windows NSIS records `/MANAGED=winget` or `/MANAGED=chocolatey`; reinstall preserves existing ownership.
 
-Apple notarization derives a copied, signed stage. It submits and staples that bundle once before deriving both containers. The original signed stage and locked CLI bytes remain unchanged. Final container hashes include the stapled bundle. A payload signature is distinct from a separately signed installer/container.
+Apple notarization derives a copied, signed stage. It submits and staples that bundle once before deriving both containers. The original signed stage and locked CLI bytes remain unchanged. Final container hashes include the stapled bundle. A payload signature is distinct from a separately signed installer/container. Artifact records expose both states. A production Windows setup EXE requires its own verified Authenticode signature; signed embedded programs alone are insufficient.
 
 The immutable Desktop catalogue requires every declared target and format. Object keys use `artifacts/desktop/<version>/build.<number>/<filename>`. Uploads use conditional create-only S3 writes and full-byte read-back. Existing bytes must match. A conflict fails without overwriting the key. Publication requires verified npm availability of the exact locked CLI package set.
 

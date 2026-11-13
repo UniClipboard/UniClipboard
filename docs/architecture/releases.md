@@ -22,7 +22,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: dc779bfbd9b014979cd71d8954478cfe5dea7fa5
+verified: 3ef6e797f9b2cadbe7cdd45408d07671e9788798
 ---
 # Product builds and CLI releases
 
@@ -83,7 +83,7 @@ The controller uses the maintained boto3 SDK with create-only conditional R2 wri
 
 Promotion consumes the immutable availability receipt, requires an explicit channel revision and verifies public numbered identity/updater hashes after the API's compare-and-swap mutation. Stable additionally checks native GUI and lifecycle evidence for every artifact entry. `release-desktop.yml` defines separate manual publication and promotion operations. It has not been run for public delivery. Its configured R2 S3 credentials, Access service policy, durable update key and Windows production signing are prerequisites. `release-cli.yml` can consume an accepted canonical run without rebuilding the locked CLI bytes.
 
-`sandbox-acceptance.yml` runs actual Nix, Flatpak and strict Snap construction/execution on both Linux architectures. The harness overrides source acquisition with the exact verified pre-publication DEB; generated runtime/build steps remain unchanged. Missing runtimes, namespace failures or confinement failures fail the job. These nonvisual process checks do not establish clipboard, file/network, refresh or sandbox GUI acceptance.
+`sandbox-acceptance.yml` runs actual Nix, Flatpak and strict Snap construction/execution on both Linux architectures. The harness overrides source acquisition with the exact verified pre-publication DEB; generated runtime/build steps remain unchanged. Missing runtimes, namespace failures or confinement failures fail the job. Nix sets only the Desktop ELF interpreter and supplies GTK libraries through the existing wrapper; it does not add RUNPATH to the prebuilt Go binary. The locked private CLI pair remains unchanged. The process harness verifies real private CLI/service IPC and bounded shutdown inside each environment. These nonvisual process checks do not establish clipboard, file/network, refresh or sandbox GUI acceptance.
 
 ## v1 upgrade notice and migration
 

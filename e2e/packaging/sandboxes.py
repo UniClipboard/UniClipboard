@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
+import time
 import subprocess
 import sys
 import tempfile
@@ -73,6 +75,7 @@ try:
                         selected = desktop.cli.checked_file(
                             path.parent, item["file"], item["sha256"]
                         ).resolve()
+                        expected_cli = m["cli"]["binaries_sha256"]
                         report["input_sha256"] = item["sha256"]
                         report["package_source_sha"] = m["source_sha"]
         if selected is None:
@@ -113,7 +116,29 @@ try:
             identity = json.loads(
                 run([result / "bin/uniclipboard", "--version", "--json"])
             )
-            run([result / "lib/uniclipboard/unic", "--version", "--json"])
+            private = result / "lib/uniclipboard"
+            for name, digest in expected_cli.items():
+                if desktop.sha(private / name) != digest:
+                    raise ValueError("Nix changed the locked CLI pair")
+            report["private_cli_sha256"] = expected_cli
+            report["derived_desktop_sha256"] = desktop.sha(private / "unic-desktop")
+            profile = temp / "profile"
+            profile.mkdir()
+            (profile / "config.toml").write_text(
+                "[sync]\nenabled=false\n[telemetry]\nenabled=false\n"
+            )
+            run(
+                [private / "unic", "status", "--json"],
+                env=dict(os.environ, UNIC_HOME=str(profile)),
+            )
+            deadline = time.monotonic() + 15
+            while (profile / "unic.sock").exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            if (profile / "unic.sock").exists():
+                raise ValueError("Nix private service did not stop")
+            report["checks"].append(
+                "locked Nix CLI pair, real IPC and temporary shutdown verified"
+            )
             report["checks"].append(
                 "Nix native derivation built and executable wrapper ran"
             )
@@ -174,6 +199,35 @@ try:
                         "--json",
                     ]
                 )
+                profile = Path.home() / ".var/app" / desktop.APP_ID / "data/acceptance"
+                profile.mkdir(parents=True)
+                try:
+                    (profile / "config.toml").write_text(
+                        "[sync]\nenabled=false\n[telemetry]\nenabled=false\n"
+                    )
+                    run(
+                        [
+                            "flatpak",
+                            "run",
+                            "--env=UNIC_HOME=" + str(profile),
+                            "--command=/app/lib/uniclipboard/unic",
+                            desktop.APP_ID,
+                            "status",
+                            "--json",
+                        ]
+                    )
+                    deadline = time.monotonic() + 15
+                    while (
+                        profile / "unic.sock"
+                    ).exists() and time.monotonic() < deadline:
+                        time.sleep(0.05)
+                    if (profile / "unic.sock").exists():
+                        raise ValueError("Flatpak private service did not stop")
+                    report["checks"].append(
+                        "real private CLI/service IPC and shutdown inside Flatpak"
+                    )
+                finally:
+                    shutil.rmtree(profile)
                 report["checks"].append(
                     "Flatpak bundle built, installed and ran inside bubblewrap"
                 )
@@ -198,6 +252,20 @@ try:
                 identity = json.loads(
                     run(["snap", "run", "uniclipboard", "--version", "--json"])
                 )
+                script = """set -e
+mkdir -p "$UNIC_HOME"
+printf '[sync]\\nenabled=false\\n[telemetry]\\nenabled=false\\n' > "$UNIC_HOME/config.toml"
+"$SNAP/usr/lib/uniclipboard/unic" status --json
+for attempt in {1..150}; do
+  if [ ! -e "$UNIC_HOME/unic.sock" ]; then exit 0; fi
+  sleep 0.1
+done
+exit 1
+"""
+                run(["snap", "run", "--shell", "uniclipboard"], input=script)
+                report["checks"].append(
+                    "real private CLI/service IPC and shutdown under strict Snap"
+                )
                 report["checks"].append(
                     "strict Snap built, installed and ran under snapd confinement"
                 )
@@ -211,6 +279,10 @@ try:
             raise ValueError("sandbox executable differs from accepted source")
         report["identity"] = identity
         report["status"] = "passed"
+except BaseException as error:
+    report["status"] = "failed"
+    report["error_type"] = type(error).__name__
+    raise
 finally:
     (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     (out / "SHA256SUMS").write_text(

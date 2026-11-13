@@ -255,17 +255,16 @@ if (Test-Path $exe) {
             put("nix/sources.nix", "{\n" + "\n".join(entries) + "\n}\n")
             put(
                 "nix/package.nix",
-                f'''{{ lib, stdenv, fetchurl, dpkg, autoPatchelfHook, wrapGAppsHook3, gtk3, libayatana-appindicator, glib, cairo, gdk-pixbuf }}:
+                f'''{{ lib, stdenv, fetchurl, dpkg, patchelf, wrapGAppsHook3, gtk3, libayatana-appindicator, glib, cairo, gdk-pixbuf }}:
 let sources = import ./sources.nix; in
 stdenv.mkDerivation {{
   pname = "uniclipboard";
   version = "{version}-build.{build}";
   src = fetchurl sources.${{stdenv.hostPlatform.system}};
-  nativeBuildInputs = [ dpkg autoPatchelfHook wrapGAppsHook3 ];
+  nativeBuildInputs = [ dpkg patchelf wrapGAppsHook3 ];
   buildInputs = [ gtk3 libayatana-appindicator glib cairo gdk-pixbuf ];
-  runtimeDependencies = [ gtk3 libayatana-appindicator glib cairo gdk-pixbuf ];
   dontUnpack = true;
-  dontAutoPatchelf = true;
+  dontPatchELF = true;
   dontWrapGApps = true;
   dontStrip = true;
   installPhase = ''
@@ -276,7 +275,9 @@ stdenv.mkDerivation {{
     ln -s $out/lib/uniclipboard/unic-desktop $out/bin/uniclipboard
   '';
   postFixup = ''
-    autoPatchelf $out/lib/uniclipboard/unic-desktop
+    # Adding RUNPATH relocates Go's writable .dynamic into its executable segment.
+    # Change only the interpreter; the GTK wrapper supplies runtime library paths.
+    patchelf --set-interpreter "${{stdenv.cc.bintools.dynamicLinker}}" $out/lib/uniclipboard/unic-desktop
     wrapGApp $out/bin/uniclipboard --prefix LD_LIBRARY_PATH : "${{lib.makeLibraryPath [ gtk3 libayatana-appindicator glib cairo gdk-pixbuf ]}}"
   '';
   meta = {{ description = "Cross-device clipboard synchronization"; homepage = "https://uniclipboard.app"; license = lib.licenses.agpl3Only; platforms = [ "x86_64-linux" "aarch64-linux" ]; mainProgram = "uniclipboard"; }};

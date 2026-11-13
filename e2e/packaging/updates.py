@@ -203,8 +203,13 @@ try:
         valid = archive()
         select(valid)
         original = copy.deepcopy(state["feed"])
+        downloads = temp / "downloads"
+        downloads.mkdir()
+        probe_env = dict(
+            os.environ, TMPDIR=str(downloads), TMP=str(downloads), TEMP=str(downloads)
+        )
         command = [probe, "-base", base, "-key", key]
-        run(command)
+        run(command, env=probe_env)
         report["checks"].append("valid signed archive accepted")
         for label, mutate in [
             ("wrong product", lambda f: f.update(product="cli")),
@@ -224,10 +229,10 @@ try:
         ]:
             state["feed"] = copy.deepcopy(original)
             mutate(state["feed"])
-            run(command, passed=False)
+            run(command, env=probe_env, passed=False)
             report["checks"].append(label + " rejected")
         state["feed"] = copy.deepcopy(original)
-        run(command + ["-channel", "invalid"], passed=False)
+        run(command + ["-channel", "invalid"], env=probe_env, passed=False)
         report["checks"].append("invalid channel rejected")
         for label, blob in [
             ("signed identity mismatch", archive({**identity, "build_number": 1})),
@@ -235,10 +240,10 @@ try:
             ("missing identity", archive(missing=True)),
         ]:
             select(blob)
-            run(command, passed=False)
+            run(command, env=probe_env, passed=False)
             report["checks"].append(label + " rejected")
         select(valid)
-        run(command + ["-install"])
+        run(command + ["-install"], env=probe_env)
         deadline = time.monotonic() + 20
         while not (payload / "updated.txt").exists() and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -252,6 +257,8 @@ try:
                 "user data preserved",
             ]
         )
+        assert not list(downloads.iterdir()), "private download files remain"
+        report["checks"].append("private downloads removed after success and failure")
         report["archive_sha256"] = hashlib.sha256(valid).hexdigest()
         server.shutdown()
         server.server_close()

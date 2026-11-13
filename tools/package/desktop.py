@@ -252,6 +252,7 @@ def sign(args):
         for p in root.rglob("*")
         if p.is_file() and not p.is_symlink() and p.name != "manifest.json"
     }
+    m["signing_identity"] = args.identity
     m["acceptance"]["signing"] = True
     m["acceptance"]["native_identity"] = False
     save(root / "manifest.json", m)
@@ -765,6 +766,31 @@ def package(args):
                     image.unlink()
         if args.notarize:
             shutil.rmtree(output / "notary-input")
+        container_signed = False
+        if kind == "setup.exe" and m["acceptance"].get("signing"):
+            if platform.system() != "Windows" or not re.fullmatch(
+                r"[a-fA-F0-9]{40}", m.get("signing_identity", "")
+            ):
+                raise ValueError(
+                    "Windows installer signing requires the accepted native certificate"
+                )
+            run(
+                [
+                    "signtool",
+                    "sign",
+                    "/fd",
+                    "SHA256",
+                    "/td",
+                    "SHA256",
+                    "/tr",
+                    "http://timestamp.digicert.com",
+                    "/sha1",
+                    m["signing_identity"],
+                    file,
+                ]
+            )
+            run(["signtool", "verify", "/pa", file])
+            container_signed = True
         update_signature = ""
         if kind in ["app.tar.gz", "update.tar.gz"] and os.environ.get(
             "UNIC_UPDATE_PRIVATE_KEY"
@@ -786,7 +812,10 @@ def package(args):
                 "file": file.name,
                 "sha256": sha(file),
                 "size": file.stat().st_size,
-                "signed": bool(m["acceptance"].get("signing")),
+                "payload_signed": bool(m["acceptance"].get("signing")),
+                "container_signed": container_signed,
+                "signed": bool(m["acceptance"].get("signing"))
+                and (kind != "setup.exe" or container_signed),
                 "notarized": bool(args.notarize or m["acceptance"].get("notarization")),
             }
         )

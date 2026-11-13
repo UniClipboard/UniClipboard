@@ -7,7 +7,7 @@ Status: delivery implementation prepared; production activation blocked by the p
 - Desktop: `2.0.0 (1)`, six native targets.
 - CLI: `2.0.0 (1)`, canonical run `43408274394`.
 - Locked CLI manifest SHA-256: `086222adec4588a2b3a9ff1e134d9bae35d67b4a6df475956fa19ad58660b588`.
-- macOS signing/notarization evidence: run `43413805519`, source `1d8a5c9db1efe5d14b69455f41cd5a81156b10de`. This run is not a complete publication candidate: the later NSIS lifecycle check exposed missing Windows setup outputs. Select a subsequent complete 22-artifact candidate after the receipt records it.
+- Complete native construction candidate: run `43415678890`, source `729751d902bb11d9d70b6ede9717e90c75fa1de0`. This run includes all 22 artifacts, real Windows installer lifecycle and macOS signing/notarization. Windows production signing and raw updater-key provisioning still block public delivery.
 
 A later source change requires its own accepted candidate. Publication and promotion consume immutable files; they do not rebuild them.
 

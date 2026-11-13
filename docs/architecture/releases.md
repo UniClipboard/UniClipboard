@@ -20,7 +20,7 @@ paths:
   - .github/workflows/package-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: c0e1b63c75f3b25f616ad9444ca0f15092a6e354
+verified: dc779bfbd9b014979cd71d8954478cfe5dea7fa5
 ---
 # Product builds and CLI releases
 

@@ -115,7 +115,7 @@ def freeze(destination):
 
 def write_json(path, value):
     temporary = path.with_name(path.name + '.tmp')
-    temporary.write_text(json.dumps(value, indent=2) + '\n', encoding="utf-8")
+    temporary.write_bytes((json.dumps(value, indent=2) + '\n').encode("utf-8"))
     temporary.replace(path)
 
 
@@ -296,6 +296,8 @@ def run(specs, selected, output):
             (out / 'SHA256SUMS').write_text(sums, encoding="utf-8")
             # Publish the final verdict only after the report and evidence checksums exist.
             write_json(out / 'manifest.json', manifest)
+            if digest(out / 'manifest.json') != hashlib.sha256(final_bytes).hexdigest():
+                raise RuntimeError('final manifest checksum mismatch')
         except Exception as error:
             manifest['status'] = 'FAIL'
             manifest['failure'] = 'evidence publication failed: ' + str(error)

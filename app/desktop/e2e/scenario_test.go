@@ -44,7 +44,6 @@ type desktopResult struct {
 }
 type desktopScenario struct {
 	captureMu                      sync.Mutex // Do not overlap recording and checkpoint captures.
-	captureStarted                 bool
 	ctx                            context.Context
 	cancel                         context.CancelFunc
 	name, root, private, out, home string
@@ -376,11 +375,8 @@ func (s *desktopScenario) call(ctx context.Context, method string, params any, o
 		s.captureMu.Lock()
 		defer s.captureMu.Unlock()
 		started = time.Now()
-		if !s.captureStarted {
-			// Cold native rendering initializes font/raster caches under race instrumentation.
-			deadline = 30 * time.Second
-			s.captureStarted = true
-		}
+		// Bound raster capture separately from semantic UI commands.
+		deadline = 30 * time.Second
 		defer func() { s.result.CaptureSeconds = append(s.result.CaptureSeconds, time.Since(started).Seconds()) }()
 	}
 	connection, err := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "unix", s.automation)

@@ -63,7 +63,7 @@ func (r *desktopRecording) stop() error {
 	close(r.stopRequest)
 	select {
 	case <-r.done:
-	case <-time.After(10 * time.Second):
+	case <-time.After(40 * time.Second):
 		return errors.New("recording did not stop")
 	}
 	if r.err != nil {

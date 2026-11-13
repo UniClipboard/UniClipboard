@@ -5,6 +5,10 @@ on:
     branches: [main, v2]
   workflow_dispatch:
     inputs:
+      desktop_only:
+        type: boolean
+        default: false
+        description: Run the six-target Desktop workflow with the already locked CLI
       distribution:
         type: boolean
         default: false
@@ -25,8 +29,10 @@ on:
         required: false
 permissions:
   contents: read
+  actions: read
 jobs:
   prepare:
+    if: ${{ !inputs.desktop_only }}
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
@@ -131,3 +137,11 @@ jobs:
           name: cli-npm-candidate
           path: dist/npm/
           if-no-files-found: error
+
+  desktop:
+    if: github.event_name == 'workflow_dispatch' && inputs.desktop_only
+    uses: ./.github/workflows/build-desktop.yml
+    with:
+      source_sha: ${{ github.sha }}
+      distribution: ${{ inputs.distribution }}
+    secrets: inherit

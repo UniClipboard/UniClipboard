@@ -27,6 +27,12 @@ The real-service data-binding run `20261113T025758Z-f04a3255` passed. It exercis
 
 The shared token-search regression run `20261113T030214Z-5cbdbc15` and fixed-column run `20261113T030217Z-3f222843` passed. The repository-pinned golangci-lint v2.15.0 reports zero issues and no formatting diff for the changed scope. The production desktop build succeeds; the executable is not launched. Ordinary docscheck passes; unrelated stale-page warnings are recorded separately.
 
+## Merge menu icon follow-up
+
+The Merge Into submenu now uses shared Kit IconMerge. The glyph is the Lucide merge icon, distributed with its license in `app/desktop/internal/uikit/licenses/lucide.txt`; no package dependency was added. It follows the existing native-menu template-image path and each skin's stroke styling.
+
+The follow-up tag-manager run `20261113T032939Z-fcf43412` passed all 30 theme/scenario combinations and retained 31 report assertions. Pinned static analysis passed. A subsequent isolated macOS preview screenshot showed the real NSMenu with the merge icon and was shared through Lody. This is manual component evidence, not a new automated native acceptance case.
+
 ## Boundaries
 
-Software-rendered checkpoints do not establish native font rasterization, native-window placement or OS input delivery. The native context-menu adapter remains unchanged. No new native app/window, system clipboard or cross-application paste acceptance was run. Pixel-perfect identity between Chromium and mygo is not claimed. Global tag rename/merge/delete and standalone empty-tag creation remain existing service gaps; they are not presented as persisted operations.
+Software-rendered checkpoints do not establish native font rasterization, native-window placement or OS input delivery. The native context-menu adapter remains unchanged. The six automated cases did not establish native app/window acceptance. The later native preview screenshot establishes only the visible menu component. System clipboard and cross-application paste acceptance remain NOT_RUN. Pixel-perfect identity between Chromium and mygo is not claimed. Global tag rename/merge/delete and standalone empty-tag creation remain existing service gaps; they are not presented as persisted operations.

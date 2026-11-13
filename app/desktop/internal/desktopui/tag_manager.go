@@ -161,7 +161,7 @@ func (d *viewState) tagMenu(ids []string) []uikit.MenuEntry {
 			}
 		}
 		if len(targets) > 0 {
-			out = append(out, uikit.MenuEntry{ID: "merge", Label: d.tr("合并到"), Children: targets})
+			out = append(out, uikit.MenuEntry{ID: "merge", Label: d.tr("合并到"), Icon: uikit.IconMerge, Children: targets})
 		}
 	}
 	if single != nil {

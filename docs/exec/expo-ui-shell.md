@@ -65,9 +65,9 @@ Validation on 2026-11-13, Node 22.23.4 and npm 10.9.9:
 - Source-tree SHA-256:
   `ad71fbab3f4252c1ab6364429597fc71b161b0c7faec4b67126962277727932b`.
 - All three Maestro flow files and the CI workflow parse as YAML.
-- Documentation link/architecture checks passed. Existing stale-page warnings
-  remain outside the migrated application; verification markers are refreshed
-  separately after the scoped source commit.
+- Documentation link/architecture checks passed with six pre-existing stale-page
+  warnings. The overview marker names source commit
+  `98ceabdfe`; unrelated verification claims remain unchanged.
 
 Local logs, module counts and checksums are in
 `app/expo/dist/verification/report.json`, `ios.sha256` and `android.sha256`.

@@ -10,6 +10,8 @@ on:
       - 'internal/releaseinfo/**'
       - 'release/**'
       - 'app/desktop/cmd/unic-desktop/**'
+      - 'app/desktop/internal/appupdates/**'
+      - 'app/desktop/e2e/updateprobe/**'
       - '.github/workflows/package-acceptance.yml'
   workflow_dispatch:
 permissions:
@@ -45,6 +47,8 @@ jobs:
           node-version: '22.23.4'
       - name: Real native packaging processes without a GUI
         run: python e2e/packaging/run.py
+      - name: Signed update and native SDK installation acceptance
+        run: python e2e/packaging/updates.py
       - name: Channel renderer process acceptance
         run: python e2e/packaging/channels.py
       - uses: actions/upload-artifact@v4
@@ -54,6 +58,7 @@ jobs:
           path: |
             .cache/package-e2e/
             .cache/channel-e2e/
+            .cache/update-e2e/
           include-hidden-files: true
           if-no-files-found: warn
   linux:
@@ -83,10 +88,14 @@ jobs:
         env:
           CGO_ENABLED: '0'
         run: PATH="/tmp:$PATH" python3 e2e/packaging/run.py --format deb --format rpm --format archlinux --lifecycle
+      - name: Signed update and native SDK installation acceptance
+        run: python3 e2e/packaging/updates.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: package-process-${{ matrix.target }}
-          path: .cache/package-e2e/
+          path: |
+            .cache/package-e2e/
+            .cache/update-e2e/
           include-hidden-files: true
           if-no-files-found: warn

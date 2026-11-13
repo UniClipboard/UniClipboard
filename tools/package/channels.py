@@ -189,6 +189,7 @@ end
                 dict(
                     common,
                     InstallerType="nullsoft",
+                    InstallerSwitches={"Custom": "/MANAGED=winget"},
                     Scope="user",
                     Installers=installers,
                     ManifestType="installer",
@@ -228,7 +229,7 @@ if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 
   $url = '{arm["url"]}'
   $checksum = '{arm["sha256"]}'
 }}
-Install-ChocolateyPackage -PackageName 'uniclipboard' -FileType 'exe' -SilentArgs '/S' -Url $url -Checksum $checksum -ChecksumType 'sha256' -ValidExitCodes @(0)
+Install-ChocolateyPackage -PackageName 'uniclipboard' -FileType 'exe' -SilentArgs '/S /MANAGED=chocolatey' -Url $url -Checksum $checksum -ChecksumType 'sha256' -ValidExitCodes @(0)
 """,
             )
             put(

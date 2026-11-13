@@ -19,7 +19,17 @@ apt-get install -y "$package" >/dev/null
 /usr/lib/uniclipboard/unic-desktop --version --json > "$work/desktop.json"
 /usr/lib/uniclipboard/unic --version --json > "$work/cli.json"
 /usr/lib/uniclipboard/unic status --json > "$work/status.json"
-test ! -e "$XDG_CONFIG_HOME/unic/unic.sock"
+# The CLI waits for listener retirement. Engine cleanup removes the socket later.
+python3 - "$XDG_CONFIG_HOME/unic/unic.sock" <<'PYSTOP'
+import sys, time
+from pathlib import Path
+socket = Path(sys.argv[1])
+deadline = time.monotonic() + 15
+while socket.exists() and time.monotonic() < deadline:
+    time.sleep(0.05)
+if socket.exists():
+    raise SystemExit("temporary service did not remove its socket after retirement")
+PYSTOP
 test -L /usr/bin/uniclipboard
 test ! -e /usr/bin/unic
 dpkg-query -L uniclipboard > "$work/files.txt"

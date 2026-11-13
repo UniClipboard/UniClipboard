@@ -1,13 +1,35 @@
 name: Build Desktop
 on:
   workflow_dispatch:
-  workflow_call:
     inputs:
+      distribution:
+        type: boolean
+        default: false
+        description: Sign and notarize macOS candidates without publishing
+  workflow_call:
+    secrets:
+      APPLE_CERTIFICATE:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      APPLE_APP_SPECIFIC_PASSWORD:
+        required: false
+      APPLE_PASSWORD:
+        required: false
+    inputs:
+      distribution:
+        type: boolean
+        default: false
       source_sha:
         type: string
         required: true
 permissions:
   contents: read
+  actions: read
 jobs:
   prepare:
     runs-on: ubuntu-24.04
@@ -16,6 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
@@ -41,6 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@v6
         with:
@@ -48,14 +72,25 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+      - name: Import Apple distribution identity
+        if: matrix.goos == 'darwin' && inputs.distribution
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: python3 tools/package/signing.py keychain --path "$RUNNER_TEMP/unic-desktop.keychain-db" --env-output "$GITHUB_ENV"
       - name: Fetch exact accepted CLI files
         shell: bash
-        run: python tools/package/desktop.py fetch-cli --target '${{ matrix.target }}' --output dist/cli-input
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tools/package/desktop.py fetch-cli --allow-ci --target '${{ matrix.target }}' --output dist/cli-input
       - name: Stage and inspect native Desktop
         shell: bash
         run: |
           go run ./tools/package -product desktop -target '${{ matrix.target }}' -cli-manifest dist/cli-input/release-manifest.json -output dist/stage
           python tools/package/desktop.py smoke --stage dist/stage
+      - name: Sign Desktop payload
+        if: matrix.goos == 'darwin' && inputs.distribution
+        run: python3 tools/package/desktop.py sign --stage dist/stage --identity "$UNIC_MACOS_SIGNING_IDENTITY"
       - name: Install pinned Linux format tools
         if: matrix.goos == 'linux'
         run: |
@@ -71,11 +106,19 @@ jobs:
           for format in AppImage AppImage.tar.gz; do
             python3 tools/package/desktop.py package --stage dist/stage --format "$format" --appimagetool "$PWD/dist/tools/appimagetool" --appimage-runtime "$PWD/dist/tools/appimage-runtime" --output "dist/packages/$format"
           done
-      - name: Construct macOS packages (unsigned construction evidence)
+      - name: Construct macOS packages
         if: matrix.goos == 'darwin'
+        env:
+          DISTRIBUTION: ${{ inputs.distribution }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: |
-          python3 tools/package/desktop.py package --stage dist/stage --format dmg --output dist/packages/dmg
-          python3 tools/package/desktop.py package --stage dist/stage --format app.tar.gz --output dist/packages/app-archive
+          notary=()
+          if [ "$DISTRIBUTION" = true ]; then notary=(--notarize); fi
+          python3 tools/package/desktop.py package "${notary[@]}" --stage dist/stage --format dmg --output dist/packages/dmg
+          python3 tools/package/desktop.py package "${notary[@]}" --stage dist/stage --format app.tar.gz --output dist/packages/app-archive
       - name: Install NSIS
         if: matrix.goos == 'windows'
         shell: pwsh
@@ -88,6 +131,9 @@ jobs:
         run: |
           python tools/package/desktop.py package --stage dist/stage --format setup.exe --output dist/packages/setup
           python tools/package/desktop.py package --stage dist/stage --format portable.zip --output dist/packages/portable
+      - name: Remove temporary signing keychain
+        if: always() && matrix.goos == 'darwin' && inputs.distribution
+        run: security delete-keychain "$RUNNER_TEMP/unic-desktop.keychain-db"
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.target }}

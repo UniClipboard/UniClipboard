@@ -121,6 +121,8 @@ def notarize(args):
             os.environ["APPLE_TEAM_ID"],
             "--password",
             password,
+            "--keychain",
+            os.environ["UNIC_SIGNING_KEYCHAIN"],
         ]
     )
     result = json.loads(
@@ -132,6 +134,8 @@ def notarize(args):
                 artifact,
                 "--keychain-profile",
                 profile,
+                "--keychain",
+                os.environ["UNIC_SIGNING_KEYCHAIN"],
                 "--wait",
                 "--output-format",
                 "json",

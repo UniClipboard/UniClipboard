@@ -1,6 +1,8 @@
 Unicode true
 !include "LogicLib.nsh"
 !include "WordFunc.nsh"
+!include "FileFunc.nsh"
+Var UpdateOwner
 !insertmacro VersionCompare
 Name "UniClipboard"
 OutFile "@OUTPUT@"
@@ -12,6 +14,14 @@ VIAddVersionKey "ProductName" "UniClipboard"
 VIAddVersionKey "FileDescription" "UniClipboard installer"
 VIAddVersionKey "FileVersion" "@VERSION@.@BUILD@"
 Function .onInit
+  StrCpy $UpdateOwner "direct"
+  ${GetParameters} $R2
+  ${GetOptions} $R2 "/MANAGED=" $R3
+  ${If} $R3 == "winget"
+    StrCpy $UpdateOwner "winget"
+  ${ElseIf} $R3 == "chocolatey"
+    StrCpy $UpdateOwner "chocolatey"
+  ${EndIf}
   ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard" "InstallLocation"
   ${If} $R0 != ""
     StrCpy $R1 $R0 1
@@ -59,6 +69,19 @@ Section
   File "@PAYLOAD@/uniclip.cmd"
   File "@PAYLOAD@/installation.json"
   File "@PAYLOAD@/LICENSE"
+  File "@PAYLOAD@/release-identity.json"
+  File "@PAYLOAD@/.mygo-files"
+  ${If} $UpdateOwner == "direct"
+    ClearErrors
+    FileOpen $R4 "$INSTDIR\update-owner" r
+    IfErrors owner_write
+    FileRead $R4 $UpdateOwner
+    FileClose $R4
+  ${EndIf}
+  owner_write:
+  FileOpen $R4 "$INSTDIR\update-owner" w
+  FileWrite $R4 $UpdateOwner
+  FileClose $R4
   Delete "$INSTDIR\UniClipboard.exe"
   Delete "$INSTDIR\uniclipd.exe"
   Delete "$INSTDIR\uniclip-quick-panel.exe"
@@ -81,6 +104,9 @@ Section "Uninstall"
   Delete "$INSTDIR\uniclip.cmd"
   Delete "$INSTDIR\installation.json"
   Delete "$INSTDIR\LICENSE"
+  Delete "$INSTDIR\release-identity.json"
+  Delete "$INSTDIR\.mygo-files"
+  Delete "$INSTDIR\update-owner"
   Delete "$INSTDIR\uninstall.exe"
   Delete "$SMPROGRAMS\UniClipboard.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard"

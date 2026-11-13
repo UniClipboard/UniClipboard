@@ -18,17 +18,23 @@ import (
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
+var checkDesktopUpdates func()
+
 var showDesktop = func() {}
 var showQuickPanel = func() {}
 
 func setupTray(language string) func(string) {
 	menu := func(language string) *mygo.Menu {
 		tr := func(text string) string { return i18n.Translate(language, text) }
-		return mygo.NewMenu([]*mygo.MenuItem{
+		items := []*mygo.MenuItem{
 			{Label: tr("打开主窗口"), Click: func(*mygo.MenuItem, *mygo.Window) { showDesktop() }},
 			{Label: tr("快捷面板"), Click: func(*mygo.MenuItem, *mygo.Window) { showQuickPanel() }},
 			mygo.Separator(), {Label: tr("退出"), Role: mygo.RoleQuit},
-		})
+		}
+		if checkDesktopUpdates != nil {
+			items = append(items[:2], append([]*mygo.MenuItem{{Label: tr("检查更新"), Click: func(*mygo.MenuItem, *mygo.Window) { checkDesktopUpdates() }}}, items[2:]...)...)
+		}
+		return mygo.NewMenu(items)
 	}
 
 	tray, err := mygo.NewTray(mygo.TrayOptions{

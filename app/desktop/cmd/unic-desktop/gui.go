@@ -14,7 +14,12 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
+	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
+	"github.com/uniclipboard/unic/app/desktop/internal/appupdates"
+	"github.com/uniclipboard/unic/internal/releaseinfo"
+	"runtime"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
@@ -104,6 +109,21 @@ func runGUI(settings *config.Manager) error {
 	g := &gui{c: c}
 
 	mygo.App.SetName(desktopAppName)
+	mygo.App.SetVersion(releaseinfo.Version + "-build." + releaseinfo.BuildNumber)
+	dataDir, err := paths.Dir()
+	if err != nil {
+		return err
+	}
+	mygo.App.SetPath(mygo.PathUserData, dataDir)
+	program, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if appupdates.PublicKey != "" && appupdates.Owner(program) == "direct" {
+		mygo.Updater.SetSource(&appupdates.Source{Base: appupdates.FeedBase, Target: runtime.GOOS + "-" + runtime.GOARCH, Key: appupdates.PublicKey, Channel: func() string { return settings.Current().Desktop.UpdateChannel }})
+		mygo.Use(native.Plugin)
+		checkDesktopUpdates = updater.CheckForUpdates
+	}
 	if !mygo.App.RequestSingleInstanceLock() {
 		return nil // the running window comes forward
 	}

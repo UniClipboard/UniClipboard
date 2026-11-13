@@ -74,3 +74,13 @@ Draft PR #2247 targets v2 from the independently authorized `feat/v2-package-rel
 Initial Build CLI run 43407479757 passed native executable checks on all six targets. It is construction evidence, not the selected signed release candidate.
 Initial package process run 43407479802 exposed Windows npm.cmd launch failure and an unlocalized Linux lifecycle assertion. Windows now uses npm's JavaScript entrypoint through Node; the Linux process trace identifies the exact assertion before any behavior change.
 A separate explicit distribution build imports the repository's Apple certificate for actual signing validation. No public npm/installer publication or stable-channel mutation is performed by these checks.
+
+## Authorized CI follow-up
+
+Draft PR: [2247](https://github.com/UniClipboard/UniClipboard/pull/2247). The approved scope is the isolated branch, draft PR and acceptance CI. Public package publication, stable-channel mutation and merge are excluded.
+
+Canonical distribution CLI run [43408274394](https://github.com/UniClipboard/UniClipboard/actions/runs/43408274394) passed all six native executable jobs. Both macOS targets imported the existing Developer ID identity and signed the CLI pair before archive hashing. The validated manifest SHA-256 is `086222adec4588a2b3a9ff1e134d9bae35d67b4a6df475956fa19ad58660b588`. Desktop now locks CLI `2.0.0 (1)` and this exact run. This evidence does not establish npm publication or Windows production signing.
+
+Process run [43408815344](https://github.com/UniClipboard/UniClipboard/actions/runs/43408815344) passed Windows amd64/arm64 and macOS amd64/arm64. Both Linux jobs reached the immediate socket-removal assertion after listener retirement. The follow-up now waits at most 15 seconds for Engine shutdown cleanup. A passing rerun is required.
+
+The local signed updater process fixture passed 16 assertions on macOS arm64. It exercised the production HTTP adapter, raw Ed25519 verification, signed identity binding, actual mygo bundle replacement, owned-file removal and synthetic user-data preservation. It used a disposable key and directory. It did not launch a GUI or use the production feed.

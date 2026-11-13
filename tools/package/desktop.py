@@ -34,8 +34,15 @@ TARGETS = {
 }
 FORMATS = {
     "darwin": ["dmg", "app.tar.gz"],
-    "linux": ["deb", "rpm", "archlinux", "AppImage", "AppImage.tar.gz"],
-    "windows": ["setup.exe", "portable.zip"],
+    "linux": [
+        "deb",
+        "rpm",
+        "archlinux",
+        "AppImage",
+        "AppImage.tar.gz",
+        "update.tar.gz",
+    ],
+    "windows": ["setup.exe", "portable.zip", "update.tar.gz"],
 }
 
 
@@ -117,6 +124,18 @@ def fetch_cli(args):
     expected = record.get("cli_manifest_sha256", "")
     if not cli.SHA256.fullmatch(expected) or expected == "0" * 64:
         raise ValueError("select a real accepted CLI lock before downloading")
+    if args.allow_ci:
+        sys.path.insert(0, str(ROOT / "tools/release"))
+        import cli_candidate
+
+        output = fresh_output(args.output)
+        with tempfile.TemporaryDirectory(prefix=".unic-ci-cli-", dir=output.parent) as temporary:
+            work = Path(temporary) / "candidate"
+            cli_candidate.acquire(record.get("cli_artifact_run_id"), work, args.metadata, signed=True)
+            locked_cli(record, work / "release-manifest.json", args.target, False)
+            work.rename(output)
+        print(output / "release-manifest.json")
+        return
     tag = "cli/v" + record["cli_version"] + "-build." + str(record["cli_build_number"])
     base = (
         "https://github.com/UniClipboard/UniClipboard/releases/download/"
@@ -284,6 +303,11 @@ def stage(args):
         else:
             (payload / "uniclip").symlink_to("unic")
         linker = f"-X github.com/uniclipboard/unic/internal/releaseinfo.Version={record['version']} -X github.com/uniclipboard/unic/internal/releaseinfo.BuildNumber={record['build_number']} -X github.com/uniclipboard/unic/internal/releaseinfo.Source={source} -X main.desktopAppName=UniClipboard -X github.com/uniclipboard/unic/internal/observability.ProductVersion={record['version']}"
+        update_key = record.get("update_public_key", "")
+        if update_key:
+            if len(base64.b64decode(update_key, validate=True)) != 32:
+                raise ValueError("Desktop update_public_key must be a raw Ed25519 public key")
+            linker += f" -X github.com/egoist/mygo.production=1 -X github.com/egoist/mygo.packageUpdateFeed=https://release.uniclipboard.app/v1/desktop/stable.json -X github.com/egoist/mygo.packageUpdateKey={update_key} -X github.com/uniclipboard/unic/app/desktop/internal/appupdates.PublicKey={update_key}"
         if os_name == "windows":
             linker += " -H windowsgui"
         env = dict(os.environ, GOOS=os_name, GOARCH=arch)
@@ -303,6 +327,11 @@ def stage(args):
             ],
             env=env,
         )
+        save(payload / "release-identity.json", {
+            "product": "desktop", "version": record["version"],
+            "build_number": record["build_number"], "target": target,
+            "cli_manifest_sha256": sha(args.cli_manifest), "source_sha": source,
+        })
         (payload / "LICENSE").write_bytes((ROOT / "LICENSE").read_bytes())
         if os_name == "darwin":
             info = {
@@ -329,6 +358,8 @@ def stage(args):
                 )
                 + "\n"
             )
+        if os_name != "darwin":
+            (payload / ".mygo-files").write_text("".join(p.name + "\n" for p in sorted(payload.iterdir())))
         if (
             initial != sources()
             or source != run(["git", "rev-parse", "HEAD"])
@@ -478,7 +509,16 @@ def package(args):
     base = f"uniclipboard-{m['version']}-build.{m['build_number']}-{m['target']}"
     artifacts = []
     try:
-        if kind in ["deb", "rpm", "archlinux"]:
+        if args.notarize and (
+            os_name != "darwin" or m["acceptance"].get("signing") is not True
+        ):
+            raise ValueError("notarization requires a distribution-signed macOS stage")
+        if kind == "update.tar.gz":
+            file = output / (base + ".update.tar.gz")
+            with tarfile.open(file, "w:gz", dereference=False) as t:
+                for path in sorted(payload.iterdir()):
+                    t.add(path, arcname=path.name)
+        elif kind in ["deb", "rpm", "archlinux"]:
             contents = [
                 {
                     "src": str(p),
@@ -576,6 +616,27 @@ def package(args):
             if platform.system() != "Darwin":
                 raise ValueError("macOS package construction requires macOS")
             bundle = root / "UniClipboard.app"
+            if args.notarize:
+                # Notarization/stapling mutate a copy, never accepted stage inputs.
+                bundle_copy = output / "notary-input" / "UniClipboard.app"
+                shutil.copytree(bundle, bundle_copy, symlinks=True)
+                archive = output / "notary-input.zip"
+                run(["ditto", "-c", "-k", "--keepParent", bundle_copy, archive])
+                run(
+                    [
+                        sys.executable,
+                        ROOT / "tools/package/signing.py",
+                        "notarize",
+                        "--file",
+                        archive,
+                        "--staple",
+                        bundle_copy,
+                        "--receipt",
+                        output / "notarization.json",
+                    ]
+                )
+                archive.unlink()
+                bundle = bundle_copy
             file = output / (base + (".dmg" if kind == "dmg" else ".app.tar.gz"))
             if kind == "dmg":
                 run(
@@ -645,13 +706,16 @@ def package(args):
                     with tarfile.open(file, "w:gz") as t:
                         t.add(image, arcname=image.name)
                     image.unlink()
+        if args.notarize:
+            shutil.rmtree(output / "notary-input")
         artifacts.append(
             {
                 "format": kind,
                 "file": file.name,
                 "sha256": sha(file),
                 "size": file.stat().st_size,
-                "signed": False,
+                "signed": bool(m["acceptance"].get("signing")),
+                "notarized": bool(args.notarize),
             }
         )
         validated_stage(root)
@@ -723,6 +787,7 @@ def main():
     s.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
     s.add_argument("--target", required=True, choices=sorted(TARGETS))
     s.add_argument("--output", required=True)
+    s.add_argument("--allow-ci", action="store_true", help="Use the explicitly locked canonical CI candidate before public publication")
     s = sub.add_parser("sign")
     s.add_argument("--stage", required=True)
     s.add_argument("--identity", required=True)
@@ -743,6 +808,7 @@ def main():
     )
     s.add_argument("--output", required=True)
     s.add_argument("--nfpm", default="nfpm")
+    s.add_argument("--notarize", action="store_true")
     s.add_argument("--appimagetool", default="appimagetool")
     s.add_argument("--appimage-runtime")
     args = p.parse_args()

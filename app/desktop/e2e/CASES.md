@@ -27,6 +27,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
 | [source-application](#source-application) | view | Show the captured application's cached icon and name immediately after device and time. |
 | [startup-lifecycle](#startup-lifecycle) | process | Ownership, background intent, lightweight launch and process cleanup. |
+| [tag-editor](#tag-editor) | view | V1-style inline tag creation, five swatches, removable tinted chips and shared Sheet colors. |
 | [tag-fixed-columns](#tag-fixed-columns) | view | Tag-table fixed-column geometry across skins and themes. |
 | [tag-manager-platforms](#tag-manager-platforms) | view | Tag management and separate entry assignment across all three skins. |
 | [tag-manager](#tag-manager) | view | Tag management, assignment, rename, merge, deletion and protected built-in tags. |
@@ -372,6 +373,20 @@ Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS
 
 ```text
 acceptance startup startup-lifecycle
+```
+
+## tag-editor
+
+V1 inline tag editor and colors
+
+Steps: Open production history composition on three skins and two themes; create, recolor, attach, remove, cancel and use keyboard navigation.
+
+Expected: Inline ComboField and palette preserve focus, names, associations and shared color state; rendered checkpoints are retained.
+
+Forbidden: Checkbox assignment Sheet, duplicate creation, mutation on color choice or cancel, skipped subcases or native claims.
+
+```text
+acceptance desktopui tag-editor
 ```
 
 ## tag-fixed-columns

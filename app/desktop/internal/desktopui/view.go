@@ -101,12 +101,11 @@ type viewState struct {
 	quickShortcutStatus                                                    func() (string, string)
 	retryQuickShortcut                                                     func()
 	live                                                                   *liveState
-	tagInput                                                               string
+	tagEditor                                                              tagEditorState
 	openQuickPanel                                                         func()
 	quick                                                                  *quickPanelState
 	tags                                                                   []historyTag
 	tagManager                                                             tagManagerState
-	assignTagsOpen                                                         bool
 	search                                                                 historySearchState
 	page, theme, query, kind, source, tag, timeRange, layout               string
 	nav, settings                                                          uikit.NavState
@@ -149,10 +148,11 @@ func (d *viewState) view(c *ui.Context) {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.devicesOpen && !d.tagsOpen && !d.assignTagsOpen && d.confirm == "" {
+		if !d.devicesOpen && !d.tagsOpen && !d.tagEditor.open && d.confirm == "" {
 			if d.page == "history" {
 				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
 				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
+				c.OnShortcut(0, ui.KeyT, d.openTagEditor)
 			}
 			if d.page == "settings" {
 				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
@@ -171,7 +171,6 @@ func (d *viewState) view(c *ui.Context) {
 		}
 		d.deviceSheet(c.Key("devices"), k)
 		d.tagSheet(c.Key("tags"), k)
-		d.assignTagSheet(c.Key("assign-tags"), k)
 		d.confirmDialog(c.Key("confirm"), k)
 	})
 }
@@ -234,7 +233,14 @@ func (d *viewState) current() *entry {
 	return nil
 }
 
-func (d *viewState) selectEntry(id string) { d.selected = id; d.list.Select(id); d.notice = "" }
+func (d *viewState) selectEntry(id string) {
+	if d.selected != id {
+		d.tagEditor = tagEditorState{}
+	}
+	d.selected = id
+	d.list.Select(id)
+	d.notice = ""
+}
 
 func (d *viewState) togglePin() {
 	if d.live != nil {

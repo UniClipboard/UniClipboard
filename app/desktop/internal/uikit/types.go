@@ -34,6 +34,7 @@ const (
 	IconInfo         IconName = "info"
 	IconList         IconName = "list"
 	IconLock         IconName = "lock"
+	IconMerge        IconName = "merge"
 	IconMoon         IconName = "moon"
 	IconMore         IconName = "more"
 	IconPackage      IconName = "package"

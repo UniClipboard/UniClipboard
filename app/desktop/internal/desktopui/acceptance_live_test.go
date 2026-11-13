@@ -237,12 +237,79 @@ func scenarioDesktopLiveData(t *testing.T) {
 	})
 	checks = append(checks, "query changes expose loading; obsolete query completions cannot hide active loading")
 	d.setEntryTags(id, []string{"acceptance"})
-	spin("tag update", func() bool { return !d.live.busy && d.current() != nil && len(d.current().tags) == 1 })
+	spin("tag update", func() bool {
+		return !d.live.busy && !d.live.loading && d.current() != nil && slices.Contains(d.current().tags, "acceptance") && d.tagByID("acceptance") != nil
+	})
 	current, e := client.GetHistory(ctx, id)
 	if e != nil || len(current.Tags) != 1 {
 		t.Fatal("tags not persisted", e)
 	}
 	checks = append(checks, "revision-checked tag assignment persists")
+	d.tagAction("color:purple", []string{"acceptance"})
+	spin("tag color save", func() bool {
+		if !d.live.busy && d.live.message != "" {
+			t.Fatal("tag color save failed", d.live.message)
+		}
+		return !d.live.busy && !d.live.loading && d.tagColor("acceptance") == "purple"
+	})
+	idle("tag color refresh")
+	if d.tagColor("acceptance") != "purple" {
+		t.Fatal("refresh reset tag color")
+	}
+	colorDesktop := NewDesktop(ctx, client)
+	defer colorDesktop.Close()
+	colorReopen := colorDesktop.d
+	spin("color reopen", func() bool {
+		colorReopen.live.poll(colorReopen)
+		return colorReopen.live.loaded && !colorReopen.live.loading
+	})
+	if colorReopen.tagColor("acceptance") != "purple" {
+		t.Fatal("desktop reopen lost tag color")
+	}
+	checks = append(checks, "tag color persists through real service, refresh and desktop reopen")
+	// The same creation intent used by ComboField reaches both real APIs.
+	d.pickTag(d.current(), uikit.SearchSuggestion{ID: "palette-created", Create: true}, "blue")
+	spin("create colored tag", func() bool {
+		return !d.live.busy && d.current() != nil && slices.Contains(d.current().tags, "palette-created") && d.tagColor("palette-created") == "blue"
+	})
+	savedColors, e := client.Config(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	rawColors, e := os.ReadFile(filepath.Join(home, "config.toml"))
+	if e != nil || bytes.Contains(rawColors, []byte("palette-created")) || bytes.Contains(rawColors, []byte("acceptance")) {
+		t.Fatal("color presentation leaked tag names", e)
+	}
+	for _, overrides := range []map[string]string{{"raw-name": "blue"}, {tagColorKey("acceptance"): "red"}} {
+		invalid := savedColors.Config
+		invalid.Desktop.TagColors = overrides
+		var data bytes.Buffer
+		if e = toml.NewEncoder(&data).Encode(invalid); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = client.SaveConfig(ctx, savedColors.Revision, data.Bytes()); e == nil {
+			t.Fatal("invalid tag color config accepted")
+		}
+	}
+	checks = append(checks, "create-and-attach saves name-free color configuration and real history; invalid keys/colors are rejected")
+	// A stale color command must not overwrite another client's valid config.
+	changed := savedColors.Config
+	changed.Desktop.TagColors = map[string]string{tagColorKey("acceptance"): "green", tagColorKey("palette-created"): "blue"}
+	var colorData bytes.Buffer
+	if e = toml.NewEncoder(&colorData).Encode(changed); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = client.SaveConfig(ctx, savedColors.Revision, colorData.Bytes()); e != nil {
+		t.Fatal(e)
+	}
+	d.tagAction("color:orange", []string{"acceptance"})
+	spin("stale color error", func() bool { return !d.live.busy && d.live.message != "" })
+	spin("reconcile color conflict", func() bool { return !d.live.loading && d.tagColor("acceptance") == "green" })
+	checks = append(checks, "stale color save reports failure and preserves the concurrent color")
+	current, e = client.GetHistory(ctx, id)
+	if e != nil {
+		t.Fatal(e)
+	}
 	// A concurrent update must reject the stale UI revision without overwriting it.
 	tags := []string{"concurrent"}
 	_, e = client.UpdateHistory(ctx, id, api.HistoryUpdate{Revision: current.Revision, Tags: &tags})

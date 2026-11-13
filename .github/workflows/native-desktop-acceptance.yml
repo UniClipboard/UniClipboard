@@ -38,7 +38,7 @@ jobs:
           python-version: '3.13'
       - uses: FedericoCarboni/setup-ffmpeg@36c6454b5a2348e7794ba2d82a21506605921e3d # v3
         with:
-          ffmpeg-version: '7.1.1'
+          ffmpeg-version: '9.0.2'
           architecture: x64
       - name: Standard native-window scenario with isolated data
         run: python app/desktop/e2e/run.py run --case history-search-copy

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -29,6 +30,7 @@ import (
 
 type desktopResult struct {
 	RecordingStarted float64          `json:"recording_started_seconds,omitempty"`
+	CaptureSeconds   []float64        `json:"capture_seconds,omitempty"`
 	Status           string           `json:"status"`
 	Mode             string           `json:"mode"`
 	Failure          string           `json:"failure,omitempty"`
@@ -41,6 +43,7 @@ type desktopResult struct {
 	Cleanup          string           `json:"cleanup"`
 }
 type desktopScenario struct {
+	captureMu                      sync.Mutex // Do not overlap recording and checkpoint captures.
 	ctx                            context.Context
 	cancel                         context.CancelFunc
 	name, root, private, out, home string
@@ -363,6 +366,16 @@ func (s *desktopScenario) expect(args []string, absent bool) error {
 	return err
 }
 func (s *desktopScenario) call(ctx context.Context, method string, params any, out any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	started := time.Now()
+	if method == "capture" {
+		s.captureMu.Lock()
+		defer s.captureMu.Unlock()
+		started = time.Now()
+		defer func() { s.result.CaptureSeconds = append(s.result.CaptureSeconds, time.Since(started).Seconds()) }()
+	}
 	connection, err := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "unix", s.automation)
 	if err != nil {
 		return err

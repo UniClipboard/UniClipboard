@@ -188,6 +188,8 @@ def run(specs, selected, output):
         wanted = [s for s in specs if s['id'] in selected]
         native = any(s['mode'] == 'native' for s in wanted)
         doctor(native)
+        if native:
+            manifest['recording_tools'] = {name: {'version': subprocess.check_output([name, '-version'], text=True).splitlines()[0], 'sha256': digest(Path(shutil.which(name)).resolve())} for name in ('ffmpeg', 'ffprobe')}
         print(f'Desktop E2E: {len(wanted)} selected cases; freezing source', flush=True)
         manifest['source_head'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
         manifest['worktree_dirty'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT))

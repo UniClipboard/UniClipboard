@@ -11,7 +11,7 @@ import (
 )
 
 func apiHistory(it engine.HistoryItem, deviceName string) api.HistoryItem {
-	out := api.HistoryItem{
+	out := api.HistoryItem{SourceApplication: it.SourceApplication.Clone(),
 		ID: string(it.ID), Revision: it.Revision, Kind: string(it.Kind), Origin: string(it.Origin.Kind),
 		DeviceID: string(it.Origin.DeviceID), DeviceName: deviceName, PluginID: string(it.Origin.PluginID),
 		CreatedAt: it.CreatedAtMs, UpdatedAt: it.UpdatedAtMs, ExpiresAt: it.ExpiresAtMs,

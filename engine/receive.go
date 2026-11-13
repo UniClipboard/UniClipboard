@@ -15,6 +15,7 @@ import (
 	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 // recvDirName is where incoming files are written, inside InboxDir. The engine
@@ -36,9 +37,10 @@ type receipt struct {
 // any content is read. source is the authenticated sender; origin is what the
 // sender claims and must equal it, since nothing is forwarded.
 type receiveRequest struct {
-	backend PluginID
-	source  DeviceID
-	channel string // set instead of a device when the clip came from an external channel
+	sourceApplication *sourceapp.Application
+	backend           PluginID
+	source            DeviceID
+	channel           string // set instead of a device when the clip came from an external channel
 	// ephemeral marks a temporary transfer: its channel is not stored and needs no authorization.
 	ephemeral bool
 	origin    string
@@ -56,15 +58,16 @@ type receivePart struct {
 
 // receiveTicket follows one admitted receive until it ends.
 type receiveTicket struct {
-	started       time.Time
-	kind          DiagnosticContentKind
-	backend       PluginID
-	source        DeviceID
-	channel       string
-	ephemeral     bool
-	key           store.DedupKey
-	reserved      int64
-	cacheReserved int64
+	sourceApplication *sourceapp.Application
+	started           time.Time
+	kind              DiagnosticContentKind
+	backend           PluginID
+	source            DeviceID
+	channel           string
+	ephemeral         bool
+	key               store.DedupKey
+	reserved          int64
+	cacheReserved     int64
 }
 
 func (e *Engine) dedupRecord(k store.DedupKey) store.Dedup {
@@ -112,6 +115,9 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 			e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: diagnosticBackend(req.backend), ContentKind: kind, Duration: time.Since(started)})
 		}
 	}()
+	if req.sourceApplication.Validate() != nil {
+		return peerbackend.Admission{}, false
+	}
 	total := req.total
 	if total < 0 || len(req.parts) == 0 || req.origin != string(req.source) || req.transfer == "" || req.view == "" {
 		return peerbackend.Admission{}, false
@@ -185,7 +191,8 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 		}
 		cacheBytes = fileBytes
 	}
-	if !e.reserveStored(total, true) {
+	reservation := total + int64(len(req.sourceApplication.Encode()))
+	if !e.reserveStored(reservation, true) {
 		outcome, code = "rejected", CodeResourceExhausted
 		if cacheBytes > 0 {
 			e.cache.cancel(cacheBytes)
@@ -195,7 +202,7 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 		e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
 		return peerbackend.Admission{}, false
 	}
-	t := receiveTicket{started: started, kind: kind, backend: req.backend, source: req.source, channel: req.channel, ephemeral: req.ephemeral, key: key, reserved: total, cacheReserved: cacheBytes}
+	t := receiveTicket{sourceApplication: req.sourceApplication.Clone(), started: started, kind: kind, backend: req.backend, source: req.source, channel: req.channel, ephemeral: req.ephemeral, key: key, reserved: reservation, cacheReserved: cacheBytes}
 	return peerbackend.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
@@ -280,7 +287,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	}
 
 	// Keep what the settings allow (0002): images, other formats ("text"), files.
-	c := &contentObj{id: ContentID(e.newID()), dir: dir, refs: 1}
+	c := &contentObj{source: t.sourceApplication.Clone(), id: ContentID(e.newID()), dir: dir, refs: 1}
 	n := 0
 	next := func() PartID { n++; return PartID("p" + strconv.Itoa(n)) }
 	for _, p := range snap.Parts {
@@ -300,7 +307,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 		_ = os.RemoveAll(dir)
 		c.dir = ""
 	}
-	c.owned = c.total
+	c.owned = c.total + int64(len(c.source.Encode()))
 	if err := e.verifyDirectory(receiveCtx, c); err != nil {
 		giveBack(reserved)
 		if dir != "" {

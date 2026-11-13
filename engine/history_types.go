@@ -1,7 +1,10 @@
 package engine
 
+import "github.com/uniclipboard/unic/sourceapp"
+
 // Public history DTOs (history-contract.md, sdk-extension-contract.md §3).
-// They describe persisted records and never carry content, file names or paths.
+// They describe persisted records and optional application icons. They never
+// carry clipboard bodies, file names or paths.
 
 type HistoryKind string
 type HistoryOriginKind string
@@ -54,18 +57,18 @@ type HistoryBackendSyncState struct {
 }
 
 type HistoryItem struct {
-	ID          HistoryID            `json:"id"`
-	Revision    uint64               `json:"revision,string"`
-	Kind        HistoryKind          `json:"kind"`
-	Origin      HistoryOrigin        `json:"origin"`
-	SourceApp   string               `json:"source_app,omitempty"`
-	CreatedAtMs int64                `json:"created_at_ms"`
-	UpdatedAtMs int64                `json:"updated_at_ms"`
-	ExpiresAtMs int64                `json:"expires_at_ms"`
-	Tags        []string             `json:"tags"`
-	Parts       []HistoryPartSummary `json:"parts"`
-	TotalBytes  int64                `json:"total_bytes"`
-	SyncState   HistorySyncState     `json:"sync_state"`
+	ID                HistoryID              `json:"id"`
+	Revision          uint64                 `json:"revision,string"`
+	Kind              HistoryKind            `json:"kind"`
+	Origin            HistoryOrigin          `json:"origin"`
+	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	CreatedAtMs       int64                  `json:"created_at_ms"`
+	UpdatedAtMs       int64                  `json:"updated_at_ms"`
+	ExpiresAtMs       int64                  `json:"expires_at_ms"`
+	Tags              []string               `json:"tags"`
+	Parts             []HistoryPartSummary   `json:"parts"`
+	TotalBytes        int64                  `json:"total_bytes"`
+	SyncState         HistorySyncState       `json:"sync_state"`
 	// BackendSyncStates is sorted by BackendID; empty when nothing was tried.
 	BackendSyncStates []HistoryBackendSyncState `json:"backend_sync_states"`
 }

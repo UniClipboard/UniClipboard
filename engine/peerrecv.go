@@ -70,7 +70,7 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 		parts[i] = receivePart{file: p.Kind == "file", mime: p.MIME, size: int64(p.Size)}
 	}
 	adm, ok := b.e.admitReceive(receiveRequest{
-		backend: b.id, source: DeviceID(peer), origin: o.Clip.Origin,
+		sourceApplication: o.Clip.SourceApplication, backend: b.id, source: DeviceID(peer), origin: o.Clip.Origin,
 		transfer: o.Clip.WireID, view: o.Clip.Hash, total: total, parts: parts,
 	})
 	if !ok {

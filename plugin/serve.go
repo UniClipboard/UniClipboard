@@ -245,7 +245,7 @@ func (s *server) enter(ctx context.Context) error {
 func (s *server) leave() { <-s.gate }
 
 func publicItem(i rpc.Item, text string) Item {
-	out := Item{ID: i.ID, Type: i.Type, Text: text, Formats: slices.Clone(i.Formats),
+	out := Item{SourceApplication: i.SourceApplication.Clone(), ID: i.ID, Type: i.Type, Text: text, Formats: slices.Clone(i.Formats),
 		Origin: Origin{Kind: i.Origin.Kind, DeviceID: i.Origin.DeviceID, PluginID: i.Origin.PluginID}}
 	for _, f := range i.Files {
 		out.Files = append(out.Files, File{Name: f.Name, Size: int64(f.Size)})

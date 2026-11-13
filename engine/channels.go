@@ -320,7 +320,7 @@ func (b *pluginBackend) Receive(ctx context.Context, channelID string, r plugin.
 	if ok, err := b.e.channelAllowed(b.id, channelID); err != nil || !ok || len(r.Parts) == 0 || len(r.Parts) > 16 {
 		return declined
 	}
-	req := receiveRequest{backend: b.id, channel: channelID, source: DeviceID(channelID), origin: channelID, transfer: r.Transfer, view: r.View}
+	req := receiveRequest{sourceApplication: r.SourceApplication, backend: b.id, channel: channelID, source: DeviceID(channelID), origin: channelID, transfer: r.Transfer, view: r.View}
 	var snap clip.Snapshot
 	for _, p := range r.Parts {
 		if p.MIME == "" || len(p.Data) == 0 {

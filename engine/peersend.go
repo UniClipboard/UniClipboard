@@ -121,7 +121,7 @@ func rpcFromErr(err error) error {
 }
 
 func (b *peerProcBackend) clipOf(v backendView) rpc.Clip {
-	c := rpc.Clip{WireID: v.id, Origin: b.e.ident.DeviceID(), AtMs: rpc.U64(max(v.tsMs, 0)), Hash: v.set.hash}
+	c := rpc.Clip{SourceApplication: v.set.c.source.Clone(), WireID: v.id, Origin: b.e.ident.DeviceID(), AtMs: rpc.U64(max(v.tsMs, 0)), Hash: v.set.hash}
 	for i, p := range v.set.parts {
 		cp := rpc.ClipPart{Index: i, Size: rpc.U64(p.desc.Size)}
 		if p.desc.Kind == PartFile {

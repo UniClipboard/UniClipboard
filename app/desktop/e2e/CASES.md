@@ -25,6 +25,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [sheet-exit-stability](#sheet-exit-stability) | view | Sheet exit frames and input stability after dismissal. |
 | [sheet-motion](#sheet-motion) | view | Sheet entry and dismissal by Done, Escape and backdrop, plus live size changes, reversal and dismissal during resize, including Reduce Motion. |
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
+| [source-application](#source-application) | view | Show the captured application's cached icon and name immediately after device and time. |
 | [startup-lifecycle](#startup-lifecycle) | process | Ownership, background intent, lightweight launch and process cleanup. |
 | [tag-fixed-columns](#tag-fixed-columns) | view | Tag-table fixed-column geometry across skins and themes. |
 | [tag-manager-platforms](#tag-manager-platforms) | view | Tag management and separate entry assignment across all three skins. |
@@ -343,6 +344,20 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui sidebar-collapse
+```
+
+## source-application
+
+Source application in history detail
+
+Steps: Project service history metadata, render the complete history view across skins and themes, and switch records.
+
+Expected: Cached icons render; absent or malformed icons use a generic icon; absent names use the identifier; long names remain bounded.
+
+Forbidden: Stale source metadata after selection changes, replacement by local application identity, hidden device/time, or native-window claims from software-view evidence.
+
+```text
+acceptance desktopui source-application
 ```
 
 ## startup-lifecycle

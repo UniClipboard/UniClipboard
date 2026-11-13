@@ -37,7 +37,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 | Revision | 持久化 uint64，创建为 1；每次有效元数据或同步摘要变更递增，CAS 使用此值 |
 | Kind | `directory_reference` for deferred selections; `directory` for immutable trees; otherwise files take priority over PNG/image and text. |
 | Origin | Kind 为 local_system/remote_device/explicit/action/external/migration；DeviceID、PluginID 仅对应来源有值（external 来源的 PluginID 是后端实例，没有 DeviceID）；migration 不关联设备，不含秘密地址 |
-| SourceApp | 可空的不透明应用标识，不包含窗口标题、路径或自由文本摘要 |
+| SourceApplication | Optional application identity, attribution, and bounded cached PNG; see the [source application contract](source-application-contract.md). |
 | CreatedAtMs / UpdatedAtMs | 本机 commit 时间 / 最后一次有效变更时间；迁移例外保留旧库创建/活动时间，普通网络接收不采用远端时间 |
 | ExpiresAtMs | 0 为永不过期，否则为绝对 Unix 毫秒时间 |
 | Tags | 最多 1000 个，每个最多 64 个 Unicode 字符，须为有效 UTF-8，去重、按 UTF-8 字节顺序返回 |

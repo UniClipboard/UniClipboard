@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 // Dir is a clipboard kept in a directory instead of the system: one file per
@@ -28,6 +29,9 @@ const dirFiles = "files"
 
 func (d Dir) Read() (clip.Snapshot, error) {
 	var s clip.Snapshot
+	if data, err := os.ReadFile(filepath.Join(string(d), "source.json")); err == nil {
+		s.SourceApplication = sourceapp.Decode(data)
+	}
 	if b, err := os.ReadFile(filepath.Join(string(d), dirFiles)); err == nil {
 		if st, err := os.Stat(filepath.Join(string(d), dirFiles)); err == nil {
 			s.CopyID = fmt.Sprint(st.ModTime().UnixNano())
@@ -61,7 +65,7 @@ func (d Dir) Write(s clip.Snapshot) error {
 	if err := os.MkdirAll(string(d), 0o700); err != nil {
 		return err
 	}
-	for _, name := range []string{dirFiles, "text", "html", "png"} {
+	for _, name := range []string{dirFiles, "text", "html", "png", "source.json"} {
 		if err := os.Remove(filepath.Join(string(d), name)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}

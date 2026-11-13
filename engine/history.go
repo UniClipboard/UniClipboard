@@ -23,6 +23,7 @@ import (
 	"github.com/uniclipboard/unic/internal/directory"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 const (
@@ -231,9 +232,9 @@ func historyKindOf(t string) HistoryKind {
 func toHistoryItem(it store.HistoryItem) HistoryItem {
 	out := HistoryItem{
 		ID: HistoryID(it.ID), Revision: it.Revision, Kind: HistoryKind(it.Kind),
-		Origin:      HistoryOrigin{Kind: HistoryOriginKind(it.OriginKind), DeviceID: DeviceID(it.DeviceID), PluginID: PluginID(it.PluginID)},
-		SourceApp:   it.SourceApp,
-		CreatedAtMs: it.CreatedMs, UpdatedAtMs: it.UpdatedMs, ExpiresAtMs: it.ExpiresMs,
+		Origin:            HistoryOrigin{Kind: HistoryOriginKind(it.OriginKind), DeviceID: DeviceID(it.DeviceID), PluginID: PluginID(it.PluginID)},
+		SourceApplication: sourceapp.Decode(it.SourceApplication),
+		CreatedAtMs:       it.CreatedMs, UpdatedAtMs: it.UpdatedMs, ExpiresAtMs: it.ExpiresMs,
 		Tags: append([]string{}, it.Tags...), TotalBytes: it.TotalBytes, SyncState: HistorySyncState(it.SyncState),
 		Parts:             make([]HistoryPartSummary, len(it.Parts)),
 		BackendSyncStates: []HistoryBackendSyncState{},
@@ -331,7 +332,8 @@ func persistentRef(p *partRec) string {
 func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup *store.Dedup) (HistoryID, *Error) {
 	h := e.hist
 	c := pc.c
-	var stored int64 // what history itself would store; referenced files are free
+	metadata := c.source.Encode()
+	stored := int64(len(metadata)) // referenced files are free; metadata is owned
 	for _, p := range c.parts {
 		if p.desc.Kind != PartFile || persistentRef(p) == "" {
 			stored += p.desc.Size
@@ -355,8 +357,9 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 	}
 	now := historyNow()
 	it := store.HistoryItem{
-		SyncBlocked: !pc.policy.Sync,
-		ID:          randHex(16), Kind: string(historyKindOf(pc.item.Type)), OriginKind: pc.item.Origin.kind,
+		SourceApplication: metadata,
+		SyncBlocked:       !pc.policy.Sync,
+		ID:                randHex(16), Kind: string(historyKindOf(pc.item.Type)), OriginKind: pc.item.Origin.kind,
 		DeviceID: string(pc.item.Origin.deviceID), PluginID: pc.item.Origin.pluginID,
 		CreatedMs: now.UnixMilli(), TotalBytes: c.total,
 	}
@@ -617,7 +620,7 @@ func (e *Engine) loadHistoryContent(id HistoryID) (*contentObj, *Error) {
 	if err != nil {
 		return nil, historyStoreErr(err)
 	}
-	c := &contentObj{id: ContentID(e.newID()), total: it.TotalBytes, refs: 1, hist: h.blob}
+	c := &contentObj{source: sourceapp.Decode(it.SourceApplication), id: ContentID(e.newID()), total: it.TotalBytes, refs: 1, hist: h.blob}
 	n := 0
 	for _, sp := range it.Parts {
 		n++

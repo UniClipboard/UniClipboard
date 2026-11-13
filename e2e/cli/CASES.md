@@ -6,6 +6,7 @@
 | 用例 | 标题 |
 |---|---|
 | [builtin-content-tags](#builtin-content-tags) | 内置内容标签自动分类 |
+| [clipboard-source-metadata](#clipboard-source-metadata) | Clipboard application metadata |
 | [cold-start-offline-peer](#cold-start-offline-peer) | 冷启动发送时对端离线，在有限窗口后完成且不伪造成功 |
 | [cold-start-pairing-outcomes](#cold-start-pairing-outcomes) | 冷启动 CLI 配对被中断或请求被撤销时给出各自明确的结果 |
 | [cold-start-pairing](#cold-start-pairing) | 冷启动 CLI 配对时保持临时服务直到对端批准，批准窗口到期时给出明确结果 |
@@ -23,6 +24,7 @@
 | [directory-mixed-auto](#directory-mixed-auto) | Mixed directory selections follow directory automatic policy |
 | [directory-roots-and-bounds](#directory-roots-and-bounds) | Directory roots and resource bounds apply to the entire selection |
 | [directory-source-and-recovery](#directory-source-and-recovery) | Directory preparation detects source changes and recovers owned staging |
+| [directory-source-metadata](#directory-source-metadata) | Directory capture and preparation retain source application metadata |
 | [file-cache-boundary](#file-cache-boundary) | Cache cleanup cannot escape the managed directory |
 | [file-cache-retention](#file-cache-retention) | Unified cleanup deletes managed files with history |
 | [file-cache-scope](#file-cache-scope) | File cache ownership and quota |
@@ -119,6 +121,99 @@ stdout 'builtin:text'
 stdout 'builtin:link'
 stdout 'builtin:image'
 stdout 'builtin:files'
+```
+
+</details>
+
+## clipboard-source-metadata
+
+**Clipboard application metadata**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/clipboard-source-metadata' -v`
+
+**目的**
+
+Preserve source application identity and cached PNG through capture, synchronization and restart.
+
+
+**流程**
+
+1. Pair disposable nodes and capture text with an application and icon.
+2. Verify both histories, restart the receiver and restore the record.
+3. Capture without an icon and capture without source metadata.
+
+**期望**
+
+- Both histories retain the original application identity and exact PNG.
+- Restart and restore preserve metadata without duplicate history.
+
+**不应**
+
+- Receiver identity replaces the original source or unknown source inherits stale metadata.
+- Application metadata changes alone generate clipboard records.
+
+<details><summary>脚本 testdata/clipboard-source-metadata.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+board-set alpha source app.json text captured.txt
+board-wait beta text captured.txt
+u alpha history list --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"attribution":"clipboard_owner"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+u beta history list --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"platform":"linux"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+node-stop beta
+node-start beta
+u beta history list --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+u alpha config set sync.automatic false
+board-set alpha text between.txt
+u beta config set sync.on_restore true
+u beta history use @1
+board-wait beta text captured.txt
+board-wait alpha text captured.txt
+u alpha history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+u beta history list --json
+! stdout '"id".*"id"'
+u alpha config set sync.automatic true
+board-set alpha source no-icon.json text captured.txt
+! board-wait beta text second.txt
+u alpha history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+board-set alpha source no-icon.json text second.txt
+board-wait beta text second.txt
+u beta history list -n 1 --json
+stdout '"identifier":"org.example.NoIcon"'
+! stdout '"icon_png"'
+board-set alpha text third.txt
+board-wait beta text third.txt
+u beta history list -n 1 --json
+! stdout '"source_application"'
+u beta history list -n 10 --json
+! stdout '"id".*"id".*"id".*"id"'
+
+# Metadata must fit the history budget even when the clipboard body is tiny.
+node-start budget
+u budget config set history.max_bytes 128
+node-stop budget
+node-start budget
+board-set budget source app.json text tiny.txt
+sleep 1s
+u budget history list --json
+stdout '^\[\]$'
+board-set budget text third.txt
+sleep 1s
+u budget history list --json
+stdout '"kind":"text"'
+! stdout '"source_application"'
 ```
 
 </details>
@@ -697,14 +792,14 @@ board-set alpha files source/tree
 ! tree-wait beta source/tree
 until alpha '"kind":"directory_reference"' history list --json
 directory-probe alpha 0 0
-u alpha history list --tag builtin:files --json
+u alpha history list --tag builtin:folder --json
 stdout '"kind":"directory_reference"'
 u alpha config --json
 stdout '"directories":\{"automatic":false\}'
 u alpha send --to all -f $WORK/source/tree --json
 stdout '"outcome":"success"'
 tree-wait beta source/tree
-u beta history list --tag builtin:files --json
+u beta history list --tag builtin:folder --json
 stdout '"kind":"directory"'
 cp changed.txt source/tree/nested/file.txt
 ! tree-wait beta source/tree
@@ -1063,6 +1158,76 @@ node-start alpha
 ! directory-staging alpha
 ! until beta '"kind":"directory"' history list --json
 cmp source/tree/member second.txt
+```
+
+</details>
+
+## directory-source-metadata
+
+**Directory capture and preparation retain source application metadata**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-source-metadata' -v`
+
+**目的**
+
+Verify provenance when deferred directory references become transferable snapshots.
+
+
+**流程**
+
+1. Capture a directory with an application icon and explicitly send its history record.
+2. Restart the receiver and verify the source metadata remains available.
+3. Enable automatic directory sending and recopy a changed tree with another application.
+
+**期望**
+
+- Source application identity and PNG survive explicit directory preparation and receipt.
+- Automatic preparation preserves the new source identity without reusing a stale icon.
+
+**不应**
+
+- Lose provenance during preparation or remove directory copy-action detection.
+
+<details><summary>脚本 testdata/directory-source-metadata.txtar</summary>
+
+```
+mkdir source/tree/empty
+cp content.txt source/tree/member.txt
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-set alpha source app.json files source/tree
+until alpha '"kind":"directory_reference"' history list -n 1 --json
+u alpha history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+! tree-wait beta source/tree
+u alpha history send @1 --to all --json
+stdout '"outcome":"success"'
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"kind":"directory"'
+stdout '"identifier":"org.example.Editor"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+node-stop beta
+node-start beta
+u beta history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+retry-copy alpha beta warm-up-after-restart
+u alpha config set sync.directories.automatic true
+cp changed.txt source/tree/member.txt
+board-set alpha source no-icon.json files source/tree
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"kind":"directory"'
+stdout '"identifier":"org.example.NoIcon"'
+! stdout '"icon_png"'
+cp content.txt source/tree/member.txt
+board-set alpha source app.json files source/tree
+tree-wait beta source/tree
+u beta history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
 ```
 
 </details>
@@ -1811,7 +1976,7 @@ pair alpha beta
 
 board-set alpha text mail.txt
 board-wait beta text mail.txt
-until beta 'alpha\s+\d+B\s+email' h list
+until beta 'alpha\s+\d+B\s+([^ ]*,)?email(,|$)' h list
 
 board-set alpha text hello.txt
 board-wait beta text hello.txt

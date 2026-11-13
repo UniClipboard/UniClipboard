@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/sourceapp"
 )
 
 const (
@@ -65,12 +66,13 @@ type PartMeta struct {
 
 // Clip announces a clipboard change made on Origin.
 type Clip struct {
-	T      string     `json:"t"` // "clip"
-	ID     string     `json:"id"`
-	Origin string     `json:"origin"`
-	TS     int64      `json:"ts"` // unix milliseconds on the origin
-	Hash   string     `json:"hash"`
-	Parts  []PartMeta `json:"parts"`
+	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	T                 string                 `json:"t"` // "clip"
+	ID                string                 `json:"id"`
+	Origin            string                 `json:"origin"`
+	TS                int64                  `json:"ts"` // unix milliseconds on the origin
+	Hash              string                 `json:"hash"`
+	Parts             []PartMeta             `json:"parts"`
 }
 
 // Conn wraps a stream with message framing. Reads and writes may happen
@@ -145,9 +147,17 @@ func (c *Conn) SendStream(id, origin string, ts int64, hash string, parts []OutP
 // SendStreamObserved uses the same framing and records body writes, including
 // partial writes on failure. Observation never changes stream behavior.
 func (c *Conn) SendStreamObserved(id, origin string, ts int64, hash string, parts []OutPart, obs *BodyObservation) error {
-	m := Clip{T: "clip", ID: id, Origin: origin, TS: ts, Hash: hash}
+	return c.SendApplicationStream(id, origin, ts, hash, parts, nil, obs)
+}
+
+// SendApplicationStream preserves provenance without changing body framing or hashes.
+func (c *Conn) SendApplicationStream(id, origin string, ts int64, hash string, parts []OutPart, app *sourceapp.Application, obs *BodyObservation) error {
+	m := Clip{SourceApplication: app.Clone(), T: "clip", ID: id, Origin: origin, TS: ts, Hash: hash}
 	for _, p := range parts {
 		m.Parts = append(m.Parts, PartMeta{Kind: p.Kind, Name: p.Name, Size: p.Size})
+	}
+	if err := m.Validate(); err != nil {
+		return err
 	}
 	if err := c.WriteJSON(m); err != nil {
 		return err
@@ -166,6 +176,9 @@ func (c *Conn) SendStreamObserved(id, origin string, ts int64, hash string, part
 
 // Validate checks a Clip message against the size limits before any blob is read.
 func (m *Clip) Validate() error {
+	if m.SourceApplication.Validate() != nil {
+		return errors.New("wire: invalid source application metadata")
+	}
 	if len(m.Parts) > MaxParts {
 		return errors.New("wire: too many parts")
 	}
@@ -239,6 +252,7 @@ func (c *Conn) Discard(m *Clip) error {
 // directory below inbox, which the caller owns and removes when done.
 // On error the stream is no longer usable.
 func (c *Conn) ReceiveClip(m *Clip, inbox string) (s clip.Snapshot, dir string, err error) {
+	s.SourceApplication = m.SourceApplication.Clone()
 	if err = m.Validate(); err != nil {
 		return
 	}

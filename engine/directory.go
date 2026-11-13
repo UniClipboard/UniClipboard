@@ -132,7 +132,7 @@ func (e *Engine) prepareDirectory(ctx context.Context, c *contentObj, entry *sub
 		return nil, ctxErr(err)
 	}
 	var m directory.Manifest
-	var in ContentInput
+	in := ContentInput{SourceApplication: c.source.Clone()}
 	var dirs []DirectoryListing
 	var readers []*snapshotReader
 	var total int64

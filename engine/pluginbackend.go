@@ -27,7 +27,7 @@ func (b *pluginBackend) Submit(ctx context.Context, v backendView, h backendHost
 	if len(v.devices) > 0 {
 		return false, nil // a device selection addresses peer sessions only
 	}
-	view := plugin.SyncView{ID: v.id, TimestampMs: v.tsMs}
+	view := plugin.SyncView{SourceApplication: v.set.c.source.Clone(), ID: v.id, TimestampMs: v.tsMs}
 	for _, p := range v.set.parts {
 		p := p
 		view.Parts = append(view.Parts, plugin.SyncPart{

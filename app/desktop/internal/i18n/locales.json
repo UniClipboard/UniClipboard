@@ -611,6 +611,12 @@
     "pt-BR": "Pesquise ou digite # @ / on:",
     "ru": "Поиск или ввод # @ / on:"
   },
+  "来源应用": {
+    "en": "Source application",
+    "ja": "コピー元アプリ",
+    "pt-BR": "Aplicativo de origem",
+    "ru": "Приложение-источник"
+  },
   "来源设备": {
     "en": "Source device",
     "ja": "送信元デバイス",

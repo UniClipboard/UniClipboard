@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/internal/servicelifecycle"
+	"github.com/uniclipboard/unic/sourceapp"
 
 	"github.com/uniclipboard/unic/engine"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -160,21 +161,22 @@ type HistoryBackendSync struct {
 
 // HistoryItem is the local record of a clipboard entry, without its content.
 type HistoryItem struct {
-	ID         string               `json:"id"`
-	Revision   uint64               `json:"revision"`
-	Kind       string               `json:"kind"`   // "text", "image" or "files"
-	Origin     string               `json:"origin"` // "local_system", "remote_device", "action", "explicit" or "external"
-	DeviceID   string               `json:"device_id,omitempty"`
-	DeviceName string               `json:"device_name,omitempty"`
-	PluginID   string               `json:"plugin_id,omitempty"` // backend for origin "external", plugin for "action"
-	CreatedAt  int64                `json:"created_at_ms"`
-	UpdatedAt  int64                `json:"updated_at_ms"`
-	ExpiresAt  int64                `json:"expires_at_ms"` // 0: never
-	Tags       []string             `json:"tags"`
-	Parts      []HistoryPart        `json:"parts"`
-	TotalBytes int64                `json:"total_bytes"`
-	SyncState  string               `json:"sync_state"`
-	Backends   []HistoryBackendSync `json:"backends"`
+	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	ID                string                 `json:"id"`
+	Revision          uint64                 `json:"revision"`
+	Kind              string                 `json:"kind"`   // "text", "image" or "files"
+	Origin            string                 `json:"origin"` // "local_system", "remote_device", "action", "explicit" or "external"
+	DeviceID          string                 `json:"device_id,omitempty"`
+	DeviceName        string                 `json:"device_name,omitempty"`
+	PluginID          string                 `json:"plugin_id,omitempty"` // backend for origin "external", plugin for "action"
+	CreatedAt         int64                  `json:"created_at_ms"`
+	UpdatedAt         int64                  `json:"updated_at_ms"`
+	ExpiresAt         int64                  `json:"expires_at_ms"` // 0: never
+	Tags              []string               `json:"tags"`
+	Parts             []HistoryPart          `json:"parts"`
+	TotalBytes        int64                  `json:"total_bytes"`
+	SyncState         string                 `json:"sync_state"`
+	Backends          []HistoryBackendSync   `json:"backends"`
 }
 
 // Action is something a plugin can do to a text record when asked.

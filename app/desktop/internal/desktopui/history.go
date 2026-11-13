@@ -293,6 +293,28 @@ func (d *viewState) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 	}
 }
 
+// sourceApplication shows the stored origin application's identity, independent
+// of the source device and the clipboard content preview.
+func (d *viewState) sourceApplication(c *ui.Context, k uikit.Kit, v entry) {
+	if v.sourceAppName == "" {
+		return
+	}
+	tooltip := v.sourceAppName
+	if v.sourceAppID != "" && v.sourceAppID != v.sourceAppName {
+		tooltip += "\n" + v.sourceAppID
+	}
+	ui.Row(c).Gap(5).AlignItems(ui.Center).MinWidth(0).MaxWidth(180).Shrink(1).
+		Role(ui.RoleGroup).Label(d.tr("来源应用")).Tooltip(tooltip).Children(func() {
+		if v.sourceAppIcon != nil {
+			ui.Image(c.Key("icon"), v.sourceAppIcon).Size(16, 16).Shrink(0).Fit(ui.Contain).Role(ui.RoleImage).Label(v.sourceAppName)
+		} else {
+			ui.Box(c.Key("icon")).Size(16, 16).Shrink(0).Role(ui.RoleImage).Label(v.sourceAppName).
+				TextColor(k.Sem("mutedForeground")).Children(func() { k.Icon(c, uikit.IconPackage, 16) })
+		}
+		k.Text(c.Key("name"), v.sourceAppName, uikit.TextProps{Role: uikit.RoleCallout, Tone: uikit.ToneSecondary, Truncate: true}).MinWidth(0).Shrink(1)
+	})
+}
+
 func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 	if ids := d.list.Selection(); len(ids) > 1 {
 		k.ContentUnavailable(c, uikit.ContentUnavailableProps{Icon: uikit.IconCopy, Title: fmt.Sprintf(d.tr("已选择 %d 项"), len(ids)), Description: d.tr("通过工具栏置顶或删除所选历史。")}, nil)
@@ -311,7 +333,15 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 			}
 			r := k.DetailHeader(c, uikit.DetailHeaderProps{PinLabel: d.tr(pinLabel), DeleteLabel: d.tr("删除")}, func() {
 				k.KindBadge(c, uikit.KindBadgeProps{Kind: v.kind, Label: d.tr(kindName(v.kind)), Variant: uikit.KindPill})
-				k.Text(c, d.sourceName(v.source)+" · "+d.displayDate(v.date), uikit.TextProps{Role: uikit.RoleCallout, Tone: uikit.ToneSecondary, Truncate: true}).Grow(1)
+				ui.Row(c.Key("provenance")).Grow(1).MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+					stamp := k.Text(c.Key("device-time"), d.sourceName(v.source)+" · "+d.displayDate(v.date), uikit.TextProps{Role: uikit.RoleCallout, Tone: uikit.ToneSecondary, Truncate: true}).MinWidth(0)
+					if v.sourceAppName == "" {
+						stamp.Grow(1)
+					} else {
+						stamp.Shrink(0).MaxWidthPercent(65)
+					}
+					d.sourceApplication(c.Key("source-application"), k, *v)
+				})
 			})
 			if r.PinClicked {
 				d.togglePin()

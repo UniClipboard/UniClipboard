@@ -3,6 +3,19 @@ paths:
   - engine/directory.go
   - internal/directory
   - internal/localcontent/directory.go
+  - sourceapp/
+  - app/desktop/internal/board/
+  - internal/clip/clip.go
+  - internal/clipboardintegration/
+  - internal/localcontent/
+  - internal/localapi/api.go
+  - internal/session/engine.go
+  - internal/wire/wire.go
+  - plugin/rpc/
+  - plugin/serve.go
+  - plugin/serve_backend.go
+  - internal/pluginproc/
+  - app/service/internal/host/history.go
   - engine/pipeline.go
   - engine/types.go
   - engine/peersend.go
@@ -32,7 +45,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: f8d5a41544932c2ca2bf4a9a2c230ee5db939353
+verified: 5e8a90ffaaf68393c2b35125982e7d2d1e1f39ca
 ---
 # Clipboard pipeline and local history
 
@@ -62,7 +75,7 @@ Text containing an HTTP(S) URL also receives `builtin:link`; inspection is limit
 It changes no content and performs no network or file-body reads.
 Existing history is not backfilled. Disabling `plugins.instances."builtin.classify".enabled` takes effect after service restart and stops classification of new items; existing tags remain.
 The existing `builtin.text` email/URL hints and text Actions remain independent.
-Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes only the four built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
+Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes only the five built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
 
 ## Invariants
 
@@ -161,3 +174,14 @@ Directory snapshots use ordinary history, content leases and cache accounting. D
 A newer local copy cancels unfinished automatic directory preparation so that an old slow tree cannot arrive after the newer copy. Explicit source sends continue independently of clipboard changes. Background transmission uses the submission-owned lifetime when present; history-restore RPC completion does not cancel its queued transmission.
 
 Directory references and snapshots receive the `builtin:folder` classification, separate from `builtin:files`. The desktop shows them with a folder badge, a folder type filter and a folder preview.
+
+## Source application provenance
+
+Desktop captures optional application platform, identifier, display name, attribution and PNG icon.
+Engine keeps an immutable metadata snapshot with each content object and history record.
+Icons persist inside the record and count toward storage budgets; deleting history also deletes its cached icon.
+Adapter IPC, processors, backend views, RPC and peer wire headers preserve this metadata.
+Receipt retains the original application, and history restore sends the stored application.
+Content hashes exclude metadata, so a focus or icon change alone cannot create history or trigger synchronization.
+Native extraction uses the current platform APIs and returns unknown when identity is unavailable.
+The [source application contract](../contracts/source-application-contract.md) specifies inference limits, icon bounds, and acceptance.

@@ -31,7 +31,7 @@ CREATE TABLE clip_items (
   origin_kind TEXT NOT NULL,
   device_id   TEXT NOT NULL DEFAULT '',
   plugin_id   TEXT NOT NULL DEFAULT '',
-  source_app  TEXT NOT NULL DEFAULT '',
+  source_application BLOB,
   created_ms  INTEGER NOT NULL,
   updated_ms  INTEGER NOT NULL,
   expires_ms  INTEGER NOT NULL DEFAULT 0,
@@ -138,29 +138,29 @@ type BackendSync struct {
 
 // HistoryItem is a stored record. Seq is private commit order.
 type HistoryItem struct {
-	SearchDocs    []SearchDocument
-	SearchReady   bool
-	SearchBudget  int64
-	SyncBlocked   bool
-	Seq           int64
-	OrderMs       int64
-	ID            string
-	Revision      uint64
-	Kind          string
-	OriginKind    string
-	DeviceID      string
-	PluginID      string
-	SourceApp     string
-	CreatedMs     int64
-	UpdatedMs     int64
-	ExpiresMs     int64
-	SyncState     string
-	TotalBytes    int64
-	Tags          []string // sorted by UTF-8 bytes
-	Parts         []HistoryPart
-	BackendStates map[string]BackendSync
-	ImportSource  string // offline import only; not part of public metadata
-	ImportRecord  string
+	SearchDocs        []SearchDocument
+	SearchReady       bool
+	SearchBudget      int64
+	SyncBlocked       bool
+	Seq               int64
+	OrderMs           int64
+	ID                string
+	Revision          uint64
+	Kind              string
+	OriginKind        string
+	DeviceID          string
+	PluginID          string
+	SourceApplication []byte
+	CreatedMs         int64
+	UpdatedMs         int64
+	ExpiresMs         int64
+	SyncState         string
+	TotalBytes        int64
+	Tags              []string // sorted by UTF-8 bytes
+	Parts             []HistoryPart
+	BackendStates     map[string]BackendSync
+	ImportSource      string // offline import only; not part of public metadata
+	ImportRecord      string
 }
 
 // HistoryFilter: fields AND together; Kinds/OriginKinds match any of their
@@ -212,9 +212,9 @@ func (s *Store) InsertHistoryDedup(it HistoryItem, d *Dedup) (seq int64, rev uin
 		return 0, 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	r, err := tx.Exec(`INSERT INTO clip_items (id, revision, kind, origin_kind, device_id, plugin_id, source_app,
+	r, err := tx.Exec(`INSERT INTO clip_items (id, revision, kind, origin_kind, device_id, plugin_id, source_application,
 created_ms, updated_ms, expires_ms, sync_state, total_bytes, sync_allowed) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		it.ID, it.Kind, it.OriginKind, it.DeviceID, it.PluginID, it.SourceApp,
+		it.ID, it.Kind, it.OriginKind, it.DeviceID, it.PluginID, it.SourceApplication,
 		it.CreatedMs, max(it.CreatedMs, it.UpdatedMs), it.ExpiresMs, nonEmpty(it.SyncState, "not_requested"), it.TotalBytes, !it.SyncBlocked)
 	if err != nil {
 		return 0, 0, err
@@ -289,7 +289,7 @@ func nonEmpty(s, d string) string {
 }
 
 const orderExpr = `COALESCE((SELECT order_ms FROM clip_item_order WHERE item_seq=clip_items.seq),created_ms)`
-const itemCols = `seq, id, revision, kind, origin_kind, device_id, plugin_id, source_app, created_ms, updated_ms, expires_ms, sync_state, total_bytes, ` + orderExpr + `, NOT sync_allowed`
+const itemCols = `seq, id, revision, kind, origin_kind, device_id, plugin_id, source_application, created_ms, updated_ms, expires_ms, sync_state, total_bytes, ` + orderExpr + `, NOT sync_allowed`
 
 type queryer interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -298,7 +298,7 @@ type queryer interface {
 
 func scanItem(sc interface{ Scan(...any) error }) (HistoryItem, error) {
 	var it HistoryItem
-	err := sc.Scan(&it.Seq, &it.ID, &it.Revision, &it.Kind, &it.OriginKind, &it.DeviceID, &it.PluginID, &it.SourceApp,
+	err := sc.Scan(&it.Seq, &it.ID, &it.Revision, &it.Kind, &it.OriginKind, &it.DeviceID, &it.PluginID, &it.SourceApplication,
 		&it.CreatedMs, &it.UpdatedMs, &it.ExpiresMs, &it.SyncState, &it.TotalBytes, &it.OrderMs, &it.SyncBlocked)
 	return it, err
 }
@@ -615,7 +615,7 @@ func (s *Store) HistoryTotals() (items int, bytes int64, err error) {
 	if err = s.db.QueryRow(`SELECT COUNT(*) FROM clip_items`).Scan(&items); err != nil {
 		return
 	}
-	err = s.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM clip_item_parts WHERE kind <> 'file' OR ref = ''`).Scan(&bytes)
+	err = s.db.QueryRow(`SELECT (SELECT COALESCE(SUM(size),0) FROM clip_item_parts WHERE kind <> 'file' OR ref = '') + (SELECT COALESCE(SUM(length(source_application)),0) FROM clip_items)`).Scan(&bytes)
 	return
 }
 
@@ -750,7 +750,7 @@ func (s *Store) HistoryCleanupCandidates(excluded []string, keep int64, limit in
 	args = append(args, keep)
 	switch storage {
 	case "owned":
-		where += " AND EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND (p.kind<>'file' OR p.ref=''))"
+		where += " AND (length(source_application)>0 OR EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND (p.kind<>'file' OR p.ref='')))"
 	case "cache":
 		where += " AND EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND p.ref LIKE 'cache:%')"
 	}

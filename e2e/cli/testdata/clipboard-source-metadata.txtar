@@ -1,0 +1,87 @@
+# 用例: Clipboard application metadata
+# 目的: Preserve source application identity and cached PNG through capture, synchronization and restart.
+# 流程:
+#   1. Pair disposable nodes and capture text with an application and icon.
+#   2. Verify both histories, restart the receiver and restore the record.
+#   3. Capture without an icon and capture without source metadata.
+# 期望:
+#   - Both histories retain the original application identity and exact PNG.
+#   - Restart and restore preserve metadata without duplicate history.
+# 不应:
+#   - Receiver identity replaces the original source or unknown source inherits stale metadata.
+#   - Application metadata changes alone generate clipboard records.
+
+node-start alpha
+node-start beta
+pair alpha beta
+board-set alpha source app.json text captured.txt
+board-wait beta text captured.txt
+u alpha history list --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"attribution":"clipboard_owner"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+u beta history list --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"platform":"linux"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+node-stop beta
+node-start beta
+u beta history list --json
+stdout '"identifier":"org.example.Editor"'
+stdout '"icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="'
+u alpha config set sync.automatic false
+board-set alpha text between.txt
+u beta config set sync.on_restore true
+u beta history use @1
+board-wait beta text captured.txt
+board-wait alpha text captured.txt
+u alpha history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+u beta history list --json
+! stdout '"id".*"id"'
+u alpha config set sync.automatic true
+board-set alpha source no-icon.json text captured.txt
+! board-wait beta text second.txt
+u alpha history list -n 1 --json
+stdout '"identifier":"org.example.Editor"'
+board-set alpha source no-icon.json text second.txt
+board-wait beta text second.txt
+u beta history list -n 1 --json
+stdout '"identifier":"org.example.NoIcon"'
+! stdout '"icon_png"'
+board-set alpha text third.txt
+board-wait beta text third.txt
+u beta history list -n 1 --json
+! stdout '"source_application"'
+u beta history list -n 10 --json
+! stdout '"id".*"id".*"id".*"id"'
+
+# Metadata must fit the history budget even when the clipboard body is tiny.
+node-start budget
+u budget config set history.max_bytes 128
+node-stop budget
+node-start budget
+board-set budget source app.json text tiny.txt
+sleep 1s
+u budget history list --json
+stdout '^\[\]$'
+board-set budget text third.txt
+sleep 1s
+u budget history list --json
+stdout '"kind":"text"'
+! stdout '"source_application"'
+
+-- tiny.txt --
+x
+-- app.json --
+{"platform":"linux","identifier":"org.example.Editor","name":"Example Editor","attribution":"clipboard_owner","icon_png":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQcGj4DwADRAHgMqq/hAAAAABJRU5ErkJggg=="}
+-- no-icon.json --
+{"platform":"linux","identifier":"org.example.NoIcon","name":"No Icon","attribution":"clipboard_owner"}
+-- captured.txt --
+captured metadata fixture
+-- second.txt --
+metadata without icon
+-- between.txt --
+local replacement before remote restore
+-- third.txt --
+unknown source fixture

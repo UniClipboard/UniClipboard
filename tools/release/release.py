@@ -611,6 +611,7 @@ def matrix(args):
         "linux-arm64": "ubuntu-24.04-arm",
         "linux-amd64": "ubuntu-24.04",
         "windows-amd64": "windows-2025",
+        "windows-arm64": "windows-11-arm",
     }
     if not record["targets"]:
         raise ValueError("product has no implemented native targets")

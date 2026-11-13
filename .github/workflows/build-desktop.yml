@@ -1,0 +1,97 @@
+name: Build Desktop
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - id: matrix
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          test -z "$EXPECTED_SHA" || test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
+          echo "matrix=$(python3 tools/release/release.py matrix --product desktop)" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import tomllib, re
+          p = tomllib.load(open('release/products.toml', 'rb'))['products']['desktop']
+          assert re.fullmatch('[a-f0-9]{64}', p['cli_manifest_sha256']), 'Select an accepted immutable CLI lock before building Desktop'
+          PY
+  targets:
+    needs: prepare
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Fetch exact accepted CLI files
+        shell: bash
+        run: python tools/package/desktop.py fetch-cli --target '${{ matrix.target }}' --output dist/cli-input
+      - name: Stage and inspect native Desktop
+        shell: bash
+        run: |
+          go run ./tools/package -product desktop -target '${{ matrix.target }}' -cli-manifest dist/cli-input/release-manifest.json -output dist/stage
+          python tools/package/desktop.py smoke --stage dist/stage
+      - name: Install pinned Linux format tools
+        if: matrix.goos == 'linux'
+        run: |
+          python3 tools/package/install-tools.py --output dist/tools/nfpm
+          python3 tools/package/install-tools.py --tool appimagetool --output dist/tools/appimagetool
+          python3 tools/package/install-tools.py --tool appimage-runtime --output dist/tools/appimage-runtime
+      - name: Construct Linux packages
+        if: matrix.goos == 'linux'
+        run: |
+          for format in deb rpm archlinux; do
+            python3 tools/package/desktop.py package --stage dist/stage --format "$format" --nfpm "$PWD/dist/tools/nfpm" --output "dist/packages/$format"
+          done
+          for format in AppImage AppImage.tar.gz; do
+            python3 tools/package/desktop.py package --stage dist/stage --format "$format" --appimagetool "$PWD/dist/tools/appimagetool" --appimage-runtime "$PWD/dist/tools/appimage-runtime" --output "dist/packages/$format"
+          done
+      - name: Construct macOS packages (unsigned construction evidence)
+        if: matrix.goos == 'darwin'
+        run: |
+          python3 tools/package/desktop.py package --stage dist/stage --format dmg --output dist/packages/dmg
+          python3 tools/package/desktop.py package --stage dist/stage --format app.tar.gz --output dist/packages/app-archive
+      - name: Install NSIS
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          choco install nsis --yes --no-progress --version=3.11
+          'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Construct Windows packages (unsigned construction evidence)
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          python tools/package/desktop.py package --stage dist/stage --format setup.exe --output dist/packages/setup
+          python tools/package/desktop.py package --stage dist/stage --format portable.zip --output dist/packages/portable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          path: |
+            dist/stage/manifest.json
+            dist/packages/
+          if-no-files-found: error

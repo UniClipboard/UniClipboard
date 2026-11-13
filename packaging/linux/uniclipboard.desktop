@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=UniClipboard
+Comment=Cross-device clipboard synchronization
+Exec=uniclipboard
+Icon=uniclipboard
+Terminal=false
+Categories=Utility;
+StartupWMClass=UniClipboard

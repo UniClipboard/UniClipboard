@@ -1,0 +1,49 @@
+# Source-built Desktop snapshot; its CLI/service still use the exact source lock.
+pkgname=uniclipboard-git
+pkgver=2.0.0.r212.g1a6e8d617
+pkgrel=1
+pkgdesc='Cross-device clipboard synchronization'
+arch=('x86_64' 'aarch64')
+url='https://uniclipboard.app'
+license=('AGPL-3.0-only')
+depends=('gtk3' 'libappindicator-gtk3')
+makedepends=('git' 'go' 'python')
+provides=('uniclipboard')
+conflicts=('uniclipboard' 'uniclipboard-bin')
+source=('uniclipboard::git+https://github.com/UniClipboard/UniClipboard.git#branch=v2')
+sha256sums=('SKIP')
+options=('!strip' '!debug' '!lto')
+
+pkgver() {
+  cd "$srcdir/uniclipboard"
+  local version
+  version=$(python -c 'import tomllib; print(tomllib.load(open("release/products.toml","rb"))["products"]["desktop"]["version"])')
+  printf '%s.r%s.g%s' "$version" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "$srcdir/uniclipboard"
+  local target=linux-amd64
+  [[ $CARCH == aarch64 ]] && target=linux-arm64
+  python tools/package/desktop.py fetch-cli --target "$target" --output "$srcdir/accepted-cli"
+  go mod download
+}
+
+build() {
+  cd "$srcdir/uniclipboard"
+  local target=linux-amd64
+  [[ $CARCH == aarch64 ]] && target=linux-arm64
+  python tools/package/desktop.py stage --target "$target" \
+    --cli-manifest "$srcdir/accepted-cli/release-manifest.json" --output "$srcdir/desktop-stage"
+  python tools/package/desktop.py smoke --stage "$srcdir/desktop-stage"
+}
+
+package() {
+  cd "$srcdir/uniclipboard"
+  install -dm755 "$pkgdir/usr/lib/uniclipboard" "$pkgdir/usr/bin"
+  cp -a "$srcdir/desktop-stage/payload/." "$pkgdir/usr/lib/uniclipboard/"
+  ln -s /usr/lib/uniclipboard/unic-desktop "$pkgdir/usr/bin/uniclipboard"
+  install -Dm644 packaging/linux/uniclipboard.desktop "$pkgdir/usr/share/applications/app.uniclipboard.desktop.desktop"
+  install -Dm644 packaging/linux/uniclipboard.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/uniclipboard.svg"
+  install -Dm644 "$srcdir/desktop-stage/manifest.json" "$pkgdir/usr/share/doc/uniclipboard/source-build.json"
+}

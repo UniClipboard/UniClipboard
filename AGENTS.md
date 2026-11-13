@@ -53,6 +53,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0020](docs/decisions/proposed/0020-tailcat-sync-observability.md) | Tailcat sync observability | Connection/session/recovery metrics, payload measurements and remote-content value are implemented; incoming real-stack direct/DERP accepted. Public Client status is blocked upstream; remaining acceptance is recorded. Actual paste tracking is excluded; see [execution plan](docs/exec/0020-tailcat-sync-observability.md). |
 | [0023](docs/decisions/proposed/0023-cli-lifecycle-acceptance-followup.md) | CLI lifecycle acceptance follow-up | Draft: other-platform process runs (C36), file release barrier after send deadline, C03 race investigation |
 | [0024](docs/decisions/proposed/0024-directory-copy-and-send.md) | Directory copy and explicit send | Implemented; local process acceptance passed; native/real-device acceptance pending. One-shot directory transfer; automatic sync defaults off; explicit send prepares snapshots; mixed selections follow directory policy. |
+| [0025](docs/decisions/proposed/0025-desktop-package-identity-and-replacement.md) | Desktop package identity and replacement | Accepted; same-channel v2 replaces v1, alpha/stable share installation identity, development stays isolated, bundled CLI files are private, package managers own updates; implementation pending. |
 
 ### 接口契约（`docs/contracts/`）
 

@@ -1,0 +1,92 @@
+name: Package process acceptance
+on:
+  pull_request:
+    paths:
+      - 'tools/package/**'
+      - 'tools/release/**'
+      - 'packaging/**'
+      - 'e2e/packaging/**'
+      - 'internal/localpaths/**'
+      - 'internal/releaseinfo/**'
+      - 'release/**'
+      - 'app/desktop/cmd/unic-desktop/**'
+      - '.github/workflows/package-acceptance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: macos-15-intel
+            target: darwin-amd64
+          - runner: windows-2025
+            target: windows-amd64
+          - runner: windows-11-arm
+            target: windows-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.4'
+      - name: Real native packaging processes without a GUI
+        run: python e2e/packaging/run.py
+      - name: Channel renderer process acceptance
+        run: python e2e/packaging/channels.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-process-${{ matrix.target }}
+          path: |
+            .cache/package-e2e/
+            .cache/channel-e2e/
+          include-hidden-files: true
+          if-no-files-found: warn
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-amd64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    container: golang:1.27.3-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.4'
+      - name: Prepare build identity and pinned nFPM
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          python3 tools/package/install-tools.py --output /tmp/nfpm
+      - name: Construct formats and accept the actual DEB lifecycle
+        env:
+          CGO_ENABLED: '0'
+        run: PATH="/tmp:$PATH" python3 e2e/packaging/run.py --format deb --format rpm --format archlinux --lifecycle
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-process-${{ matrix.target }}
+          path: .cache/package-e2e/
+          include-hidden-files: true
+          if-no-files-found: warn

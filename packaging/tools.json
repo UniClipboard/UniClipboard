@@ -1,0 +1,42 @@
+{
+  "appimage-runtime": {
+    "assets": {
+      "amd64": {
+        "sha256": "617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46",
+        "url": "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"
+      },
+      "arm64": {
+        "sha256": "9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900",
+        "url": "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-aarch64"
+      }
+    },
+    "version": "continuous-2026-11-13"
+  },
+  "appimagetool": {
+    "assets": {
+      "amd64": {
+        "sha256": "e8c1169c4af66c3184d7ee110713d4be04befe671fa358e2c1591ee840553b03",
+        "url": "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+      },
+      "arm64": {
+        "sha256": "d6a061996de690434996c2a523eafedd0a23780aaf02d69ce364537e71607e94",
+        "url": "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-aarch64.AppImage"
+      }
+    },
+    "version": "continuous-2026-11-13"
+  },
+  "nfpm": {
+    "sha256": {
+      "nfpm_2.49.0_Darwin_arm64.tar.gz": "27728af45782962ab59a8ff13ae041c7d955fe51dd94ab7883d9c5966a233f5d",
+      "nfpm_2.49.0_Darwin_x86_64.tar.gz": "182ba6c5ded85c87bf276dd80c0ecfd8a2f8b25f7db6ac5fb999557c5b4258ce",
+      "nfpm_2.49.0_Linux_arm64.tar.gz": "d4eee71839e92c68cbd3b101640bad32d2856fc551acae0635be9118e48c9d9c",
+      "nfpm_2.49.0_Linux_ppc64le.tar.gz": "ba75483867fc904eb848a83f129cace993c7eaf33d5bbd79438b68eaae358e5e",
+      "nfpm_2.49.0_Linux_s390x.tar.gz": "9b41304095e152d959c70c3194dd1d5d97c85a9c52a5c73f0c9437e43326a2b4",
+      "nfpm_2.49.0_Linux_x86_64.tar.gz": "2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7",
+      "nfpm_2.49.0_Windows_arm64.zip": "f4966da7364ed5ca4c0e5ba445e80c0443e1e2d3cfd787ecc77ef8adca13a78e",
+      "nfpm_2.49.0_Windows_x86_64.zip": "e410472f50b580c05087acc9a8e62bbe617a9e17226aff274f207c3b1bd31c5f"
+    },
+    "version": "2.49.0"
+  },
+  "schema": 1
+}

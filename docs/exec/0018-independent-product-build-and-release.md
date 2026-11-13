@@ -13,6 +13,8 @@ The CLI vertical slice is implemented. Five native target builds and npm candida
 
 See the [implemented release architecture](../architecture/releases.md), [release contract](../contracts/release-contract.md) and [local delivery receipt](0018-cli-implementation-receipt.md). Desktop signing, immutable CLI consumption and R2/FlareRelease publication are still open. Android/iOS native applications are still prerequisites. This delivery does not close decision 0018.
 
+The [v2 package channel parity plan](0018-v2-package-channel-plan.md) extends the Desktop work with all twelve v1 distribution channels, direct-download formats, missing architecture targets and separate package/publication acceptance. The [package implementation receipt](0018-v2-package-channel-receipt.md) records partial construction/process acceptance and remaining native/publication gates; it is not a completed release capability.
+
 ## 1. Verified starting point
 
 | Area | Current evidence | Implementation implication |

@@ -32,11 +32,30 @@ func main() {
 func run() error {
 	desktop := flag.Bool("desktop", false, "also build the desktop package")
 	output := flag.String("output", "dist/releases", "output directory")
-	product := flag.String("product", "", "versioned product candidate: cli (empty keeps development archive layout)")
+	product := flag.String("product", "", "versioned product candidate: cli or desktop (empty keeps development archive layout)")
 	metadata := flag.String("metadata", "release/products.toml", "product metadata file")
+	cliManifest := flag.String("cli-manifest", "", "accepted immutable CLI manifest for a Desktop candidate")
+	target := flag.String("target", "", "Desktop target OS-architecture")
+	development := flag.Bool("development", false, "allow dirty source for a non-release Desktop candidate")
 	flag.Parse()
+	if *product == "desktop" {
+		if *desktop || *cliManifest == "" || *target == "" {
+			return fmt.Errorf("Desktop candidate requires -cli-manifest and -target, without -desktop")
+		}
+		python := "python3"
+		if runtime.GOOS == "windows" {
+			python = "python"
+		}
+		args := []string{"tools/package/desktop.py", "stage", "--metadata", *metadata, "--cli-manifest", *cliManifest, "--target", *target, "--output", *output}
+		if *development {
+			args = append(args, "--development")
+		}
+		cmd := exec.Command(python, args...)
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		return cmd.Run()
+	}
 	if *product != "" && *product != "cli" {
-		return fmt.Errorf("only the CLI candidate is implemented; Desktop requires an immutable CLI lock and signed packaging")
+		return fmt.Errorf("unsupported product: %s", *product)
 	}
 	if *product != "" && *desktop {
 		return fmt.Errorf("a CLI candidate cannot include a desktop build")
@@ -136,6 +155,12 @@ func run() error {
 		return err
 	}
 	archives := map[string]string{}
+	signingIdentity := os.Getenv("UNIC_MACOS_SIGNING_IDENTITY")
+	windowsCertificate := os.Getenv("UNIC_WINDOWS_CERT_SHA1")
+	signed := (targetOS == "darwin" && signingIdentity != "") || (targetOS == "windows" && windowsCertificate != "")
+	if windowsCertificate != "" && !regexp.MustCompile(`^[a-fA-F0-9]{40}$`).MatchString(windowsCertificate) {
+		return fmt.Errorf("invalid Windows signing certificate thumbprint")
+	}
 	hashes := map[string]string{}
 	for _, name := range names {
 		app := "service"
@@ -147,6 +172,19 @@ func run() error {
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if e = cmd.Run(); e != nil {
 			return e
+		}
+		var signCommands [][]string
+		if targetOS == "darwin" && signingIdentity != "" {
+			signCommands = [][]string{{"codesign", "--force", "--options", "runtime", "--timestamp", "--sign", signingIdentity, path}, {"codesign", "--verify", "--strict", path}}
+		} else if targetOS == "windows" && windowsCertificate != "" {
+			signCommands = [][]string{{"signtool", "sign", "/fd", "SHA256", "/td", "SHA256", "/tr", "http://timestamp.digicert.com", "/sha1", windowsCertificate, path}, {"signtool", "verify", "/pa", path}}
+		}
+		for _, command := range signCommands {
+			cmd := exec.Command(command[0], command[1:]...)
+			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+			if e = cmd.Run(); e != nil {
+				return fmt.Errorf("sign executable before CLI manifest acceptance: %w", e)
+			}
 		}
 		f, e := os.Open(path)
 		if e != nil {
@@ -216,7 +254,7 @@ func run() error {
 	if !reflect.DeepEqual(source, after) {
 		return fmt.Errorf("source changed during packaging")
 	}
-	manifest := map[string]any{"source_sha256": source, "source_unchanged": true, "archives_sha256": archives, "os": targetOS, "arch": arch, "go": runtime.Version(), "source_head": strings.TrimSpace(string(head)), "source_dirty": len(initialDirty) > 0 || len(dirty) > 0, "binaries_sha256": hashes, "aliases": map[string]string{alias: aliasTarget}, "desktop": *desktop, "signed": false, "telemetry_host": phHost, "ingestion_token_configured": phToken != "", "product_version": version}
+	manifest := map[string]any{"source_sha256": source, "source_unchanged": true, "archives_sha256": archives, "os": targetOS, "arch": arch, "go": runtime.Version(), "source_head": strings.TrimSpace(string(head)), "source_dirty": len(initialDirty) > 0 || len(dirty) > 0, "binaries_sha256": hashes, "aliases": map[string]string{alias: aliasTarget}, "desktop": *desktop, "signed": signed, "telemetry_host": phHost, "ingestion_token_configured": phToken != "", "product_version": version}
 	if *product != "" {
 		manifest["product"], manifest["build_number"] = *product, buildNumber
 		data, e := os.ReadFile(*metadata)

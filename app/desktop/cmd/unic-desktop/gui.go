@@ -91,7 +91,9 @@ type gui struct {
 	loginError                  string
 }
 
-var desktopAppName = "unic"
+// Production packaging sets this to UniClipboard. Development instances use a
+// distinct single-instance identity as well as their separate default data root.
+var desktopAppName = "UniClipboard Development"
 var newDesktopBoard = func() clipboardintegration.Board { return board.MyGo{} }
 
 func runGUI(settings *config.Manager) error {

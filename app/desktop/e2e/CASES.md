@@ -8,6 +8,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
+| [history-detail-prefetch](#history-detail-prefetch) | native | Record repeated visible-result selection and assert immediate detail content without loading text. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
@@ -89,6 +90,41 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance gui gui-navigation
+```
+
+## history-detail-prefetch
+
+Visible history and search details stay ready during repeated selection
+
+Steps: Start a private native desktop and seed eight visible records. Cycle forward and backward three times, then repeat through a filtered search.
+
+Expected: Every click immediately shows the selected detail body. Every observed detail sample omits loading and fetching text. Retain continuous video and timestamped observations.
+
+Forbidden: Checking row labels as detail content, waiting for a failed selection to become ready, offscreen targets, stitched checkpoint video, missing receipt or real profile/clipboard access.
+
+```text
+start
+submit entry01 'Prefetch evidence 01: Detail body 01 is ready.'
+submit entry02 'Prefetch evidence 02: Detail body 02 is ready.'
+submit entry03 'Prefetch evidence 03: Detail body 03 is ready.'
+submit entry04 'Prefetch evidence 04: Detail body 04 is ready.'
+submit entry05 'Prefetch evidence 05: Detail body 05 is ready.'
+submit entry06 'Prefetch evidence 06: Detail body 06 is ready.'
+submit entry07 'Prefetch evidence 07: Detail body 07 is ready.'
+submit entry08 'Prefetch evidence 08: Detail body 08 is ready.'
+ui-wait listItem 'Prefetch evidence 01: Detail body 01 is ready.'
+ui-wait listItem 'Prefetch evidence 08: Detail body 08 is ready.'
+screenshot history-ready
+ui-detail-cycle 3 'Prefetch evidence' history
+screenshot history-cycled
+ui-key CmdOrCtrl+F
+ui-wait comboBox '搜索历史'
+ui-set comboBox '搜索历史' 'Prefetch evidence'
+ui-wait listItem 'Prefetch evidence 01: Detail body 01 is ready.'
+ui-wait listItem 'Prefetch evidence 08: Detail body 08 is ready.'
+screenshot search-ready
+ui-detail-cycle 3 'Prefetch evidence' search
+screenshot search-cycled
 ```
 
 ## history-search-copy

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -17,16 +19,25 @@ type capturedFrame struct {
 	At   float64 `json:"at_seconds"`
 }
 type desktopRecording struct {
-	s           *desktopScenario
-	stopRequest chan struct{}
-	done        chan struct{}
-	frames      []capturedFrame
-	err         error
-	started     time.Time
+	s             *desktopScenario
+	stopRequest   chan struct{}
+	done          chan struct{}
+	frames        []capturedFrame
+	err           error
+	startupErr    error
+	started       time.Time
+	nativeCmd     *exec.Cmd
+	nativeInput   io.WriteCloser
+	nativeDone    chan error
+	nativeReceipt json.RawMessage
 }
 
 func newDesktopRecording(s *desktopScenario) *desktopRecording {
 	r := &desktopRecording{s: s, stopRequest: make(chan struct{}), done: make(chan struct{}), started: time.Now()}
+	if runtime.GOOS == "darwin" && s.name == "history-detail-prefetch" {
+		r.startNativeRecording()
+		return r
+	}
 	go r.run()
 	return r
 }
@@ -36,7 +47,11 @@ func (r *desktopRecording) run() {
 	if r.err = os.MkdirAll(dir, 0700); r.err != nil {
 		return
 	}
-	ticker := time.NewTicker(250 * time.Millisecond)
+	interval := 250 * time.Millisecond
+	if r.s.name == "history-detail-prefetch" {
+		interval = 50 * time.Millisecond
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		data, err := r.s.capture()
@@ -60,6 +75,9 @@ func (r *desktopRecording) run() {
 	}
 }
 func (r *desktopRecording) stop() error {
+	if r.nativeCmd != nil {
+		return r.stopNativeRecording()
+	}
 	close(r.stopRequest)
 	select {
 	case <-r.done:

@@ -47,6 +47,8 @@ Source, binaries, profiles, raw logs and intermediate frames live in a private t
 
 Use the repository Go toolchain, Python 3.10+, ffmpeg and ffprobe. Native cases need a logged-in desktop session. On Linux, install mygo's GTK/WebKit runtime dependencies and use a real display or `xvfb-run`. CI supplies Xvfb; that proves native window operation in a virtual display, not physical desktop policy.
 
+The macOS `history-detail-prefetch` case additionally requires the Swift compiler and permission to record its owned window. It uses ScreenCaptureKit and AVAssetWriter for a continuous window-only video stream, and retains frame presentation timestamps.
+
 The runner opens only test-owned windows with synthetic content and a unique profile. It never reads or replaces the user's system clipboard. Do not run two native Desktop acceptance commands against the same physical desktop concurrently.
 
 ## Add a case
@@ -76,6 +78,7 @@ The runner opens only test-owned windows with synthetic content and a unique pro
 | `ui-click <role> <label>` | Click the unique matching element through app-scoped window input. |
 | `ui-set <role> <label> <text>` | Set the unique matching input through its accessibility action. |
 | `ui-key <accelerator>` | Send a key to the owned window, not the global desktop. |
+| `ui-detail-cycle <rounds> <row-prefix> <phase>` | Switch eight fully visible results in both directions; require the exact detail body immediately and during each dwell, without loading text. Retain timestamped observations. |
 | `board-equals <text>` | Require exact text at the test directory clipboard. |
 | `screenshot <name>` | Save a validated window-content PNG checkpoint. |
 

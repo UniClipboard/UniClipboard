@@ -136,8 +136,9 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			_, err := s.client.Submit(s.ctx, api.SubmitInput{RequestID: a[0], Snapshot: clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte(a[1])}}}})
 			return err
 		},
-		"ui-wait":   func(s *desktopScenario, a []string) error { return s.expect(a, false) },
-		"ui-absent": func(s *desktopScenario, a []string) error { return s.expect(a, true) },
+		"ui-detail-cycle": func(s *desktopScenario, a []string) error { return s.cycleDetails(a) },
+		"ui-wait":         func(s *desktopScenario, a []string) error { return s.expect(a, false) },
+		"ui-absent":       func(s *desktopScenario, a []string) error { return s.expect(a, true) },
 		"ui-set": func(s *desktopScenario, a []string) error {
 			if len(a) != 3 {
 				return errors.New("ui-set role label text")
@@ -295,13 +296,17 @@ func (s *desktopScenario) start() error {
 		return err
 	}
 	s.media = newDesktopRecording(s)
+	if s.media.startupErr != nil {
+		return s.media.startupErr
+	}
 	s.result.Assertions = append(s.result.Assertions, "an isolated native content window and production service are running")
 	return s.screenshot("started")
 }
 
 type desktopNode struct {
-	ID                 string
+	ID, Parent         string
 	Role, Label, Value string
+	States             []string
 	Bounds             struct{ X, Y, Width, Height float64 }
 }
 

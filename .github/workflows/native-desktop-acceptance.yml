@@ -9,6 +9,8 @@ permissions:
   contents: read
 jobs:
   windows-macos:
+    env:
+      CGO_ENABLED: ${{ matrix.target == 'windows-arm64' && '0' || '1' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false

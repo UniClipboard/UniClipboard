@@ -4,6 +4,10 @@ on:
   push:
     branches: [main, v2]
   workflow_dispatch:
+    inputs:
+      distribution:
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       source_sha:
@@ -15,6 +19,10 @@ on:
     secrets:
       POSTHOG_PROJECT_KEY:
         required: false
+      APPLE_CERTIFICATE:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
 permissions:
   contents: read
 jobs:
@@ -25,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: targets
         env:
@@ -43,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@v6
         with:
@@ -51,6 +59,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+      - name: Import Apple distribution identity
+        if: inputs.distribution && matrix.goos == 'darwin'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: python3 tools/package/signing.py keychain --path "$RUNNER_TEMP/unic-cli-signing.keychain-db" --env-output "$GITHUB_ENV"
       - name: Build exact CLI pair
         shell: bash
         env:
@@ -88,6 +102,10 @@ jobs:
           name: cli-${{ matrix.target }}
           path: dist/cli/
           if-no-files-found: error
+      - name: Remove temporary signing keychain
+        if: always() && matrix.goos == 'darwin'
+        run: |
+          if [ -f "$RUNNER_TEMP/unic-cli-signing.keychain-db" ]; then security delete-keychain "$RUNNER_TEMP/unic-cli-signing.keychain-db"; fi
   assemble:
     needs: targets
     runs-on: ubuntu-24.04
@@ -95,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:

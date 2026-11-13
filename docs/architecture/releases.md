@@ -76,7 +76,7 @@ The packaged-process E2E uses a temporary home, pseudoterminals and fixed encryp
 
 Git attributes require LF checkout bytes for release TOML metadata on every platform. Metadata digests cover the original file bytes. The real Git checkout regression enables `core.autocrlf=true` and verifies that checkout preserves the canonical metadata bytes before building candidates.
 
-`build-cli.yml` runs for PRs, main/v2 pushes, manual requests and reusable calls. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
+`build-cli.yml` runs for PRs, main/v2 pushes, manual requests and reusable calls. PR candidates use the actual PR head rather than a synthetic merge SHA. Explicit distribution builds import the existing Apple certificate into a temporary keychain, sign CLI executables before hashing and remove the keychain after construction. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
 
 `release-cli.yml` supports alpha and direct stable publication. It first checks for a durable record for the selected version/build. A complete existing record restores its exact package files. Otherwise it awaits the reusable build. It stages the manifest and packages in a draft GitHub release before publishing to npm. The product tag is `cli/v<version>-build.<number>` and must reference the accepted source SHA. Existing assets are compared and never overwritten. Incomplete staging fails before npm publication; recovering that case requires the original candidate artifacts.
 
@@ -134,3 +134,8 @@ The selected next CLI version is `2.0.0 (1)`, encoded as `2.0.0-build.1` on npm.
 Desktop staging can consume an immutable CLI lock, but the checked-in lock remains unresolved. Signed-release acceptance, notarization, R2 uploads and FlareRelease registration are not complete. Its stable CLI gate remains a required future implementation. Android and iOS share an Expo UI shell under `app/expo`; it has no Engine integration and does not establish native release support. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
 
 Exact interface requirements are in the [release contract](../contracts/release-contract.md). Process ownership remains in the [headless architecture](headless.md).
+
+## Accepted CLI acquisition
+
+`tools/release/cli_candidate.py` acquires the exact `cli-npm-candidate` artifact from a successful canonical Build CLI run in this repository. It checks workflow identity, source SHA, product identity, the complete declared matrix, native receipts and package SHA-256/SHA-512 before changing a Desktop lock. `--require-macos-signing` rejects unsigned macOS component builds.
+The optional `cli_artifact_run_id` records the immutable acquisition source for pre-publication construction. It does not establish npm availability or satisfy the stable Desktop gate.

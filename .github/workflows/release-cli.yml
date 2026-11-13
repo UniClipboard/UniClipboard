@@ -43,6 +43,8 @@ jobs:
       distribution: true
     secrets:
       POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
   publish:
     needs: [resolve, build]
     if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true') }}

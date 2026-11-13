@@ -24,3 +24,14 @@ Write these expectations before implementing production packaging.
 Use `--format deb` on Linux with nFPM to build the real package and inspect/install it in a disposable container with `linux-lifecycle.sh`.
 The report and checksums are retained. Temporary binaries, profiles and npm archives are removed.
 Public destinations, native windows and system clipboard acceptance are separate requirements.
+
+## Signing, release and updater follow-up failures
+
+- Missing/invalid Apple certificate or keychain password must fail without logging private material; temporary keychains must be removed on success and failure.
+- Notary rejection/timeout must not mark a package notarized. Stapling must precede final hashing. Locked CLI files must remain byte-identical.
+- A CI CLI candidate with the wrong workflow/run/repository/SHA, missing target or altered package must fail lock selection before metadata changes.
+- Mixed Desktop sources, missing formats, absent lifecycle/signing receipts or an untrusted updater key must fail final assembly.
+- A destination object with different bytes must never be overwritten; retry of identical bytes must resume; partial upload must not move a channel.
+- A live FlareRelease contract mismatch, stale revision or missing stable CLI must prevent channel mutation.
+- The updater must reject corrupt signatures, oversized responses, wrong format/target and downgrades; package-managed/Scoop/portable installs must not replace manager-owned files.
+- Reuse mygo's native updater and authenticated extraction/swap implementation. Its raw Ed25519/SHA256 protocol must not be confused with Minisign.

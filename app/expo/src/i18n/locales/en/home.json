@@ -1,0 +1,274 @@
+{
+  "search": {
+    "recordCount_one": "{{count}} record",
+    "recordCount_other": "{{count}} records",
+    "allTypes": "All types",
+    "anyTime": "Any time",
+    "clearFilters": "Clear filters",
+    "reset": "Reset search",
+    "loading": "Searching…",
+    "resultCount_one": "{{count}} result",
+    "resultCount_other": "{{count}} results",
+    "emptyTitle": "No matching items",
+    "emptyTitleQuery": "No results for “{{query}}”",
+    "emptyDescription": "No items match the current search.",
+    "emptyDescriptionFilters": "No matches in {{filters}}.",
+    "clear": "Clear",
+    "clearFiltersKeepQuery": "Clear filters, keep search",
+    "shortcut": {
+      "kind": "By type",
+      "date": "By date",
+      "source": "By source"
+    },
+    "suggestions": "Suggestions"
+  },
+  "empty": {
+    "unconfigured": {
+      "title": "No P2P space yet",
+      "description": "Join a space with an invitation to continue syncing. Your local history stays available."
+    },
+    "connecting": {
+      "title": "Connecting…",
+      "description": "Connecting to devices in {{space}}."
+    },
+    "online": {
+      "title": "Nothing here yet",
+      "description": "Copy or add something and it will appear here."
+    },
+    "offline": {
+      "title": "Devices in {{space}} are offline",
+      "description": "Other devices are currently unreachable. Check their network connection."
+    },
+    "error": {
+      "title": "Sync needs attention",
+      "description": "Sync is paused. Check your space and network status."
+    }
+  },
+  "topBar": {
+    "selectedCount": "{{n}} selected",
+    "deselectAll": "Deselect all",
+    "searchPlaceholder": "Search clipboard"
+  },
+  "a11y": {
+    "addContent": "Add content",
+    "more": "More",
+    "closeMenu": "Close menu",
+    "closeCamera": "Close camera",
+    "switchCamera": "Switch camera",
+    "toggleFlash": "Toggle flash",
+    "takePicture": "Take picture",
+    "startRecording": "Start recording",
+    "stopRecording": "Stop recording",
+    "search": "Search history",
+    "clearSearch": "Clear search text",
+    "searchFilters": "Filter search results",
+    "toggleSelection": "Toggle selection for this item",
+    "copyItem": "Copy this item; long press for more actions",
+    "openItemDetail": "Open details; double tap to copy"
+  },
+  "fab": {
+    "takePhoto": "Take photo",
+    "pickImage": "Photo library",
+    "pickFile": "Choose file",
+    "uploadClipboard": "Upload clipboard",
+    "syncNow": "Sync now",
+    "photoMode": "Photo",
+    "videoMode": "Video"
+  },
+  "toast": {
+    "copied": "Copied to clipboard",
+    "copiedLocal": "Copied to this device",
+    "copiedAutoPushEnabled": "Copied; automatic push is on",
+    "copyFailed": "Copy failed",
+    "copiedPlainText": "Copied as plain text",
+    "savedToGallery": "Saved to gallery",
+    "saveFailed": "Save failed",
+    "savedFile": "File saved",
+    "deleted": "Deleted",
+    "deletedCount": "{{count}} items deleted",
+    "copiedSelected": "Copied selected items",
+    "syncDone": "Sync complete",
+    "syncFailed": "Sync failed",
+    "sentToPeers": "Sent to your other devices",
+    "uploadFailed": "Upload failed",
+    "savedLocally": "Saved locally",
+    "p2pDelivery": {
+      "delivered": "Delivered to your other devices",
+      "partial": "Partially delivered: {{accepted}} sent, {{duplicate}} already present, {{offline}} offline, {{errored}} failed, {{pending}} pending",
+      "offline": "Saved here; the other device is offline",
+      "failed": "Saved here; sending failed",
+      "pending": "Saved here; still sending"
+    },
+    "pickFileFailed": "Couldn't pick a file",
+    "pickImageFailed": "Couldn't pick an image",
+    "cameraPermissionNeeded": "Camera permission required",
+    "micPermissionNeeded": "Microphone permission required",
+    "takePhotoFailed": "Couldn't take photo",
+    "takeVideoFailed": "Couldn't record video",
+    "cameraUnavailable": "Camera unavailable",
+    "sendToUnavailable": "This item can't be sent right now"
+  },
+  "deleteConfirm": {
+    "singleTitle": "Delete this history item?",
+    "singleMessage": "This item will no longer appear in history.",
+    "batchTitle": "Delete selected history items?",
+    "batchMessage": "This will delete {{count}} selected items."
+  },
+  "detail": {
+    "placeholderTitle": "Select an item",
+    "placeholderDesc": "Pick any entry from the list to see its full content and actions here.",
+    "fromDevice": "From {{device}}",
+    "unknownDevice": "This device",
+    "quickActions": {
+      "select": "Select",
+      "open": "Open",
+      "save": "Save"
+    },
+    "close": "Close details",
+    "view": "View details",
+    "stats": {
+      "chars_one": "{{count}} character",
+      "chars_other": "{{count}} characters",
+      "lines_one": "{{count}} line",
+      "lines_other": "{{count}} lines"
+    },
+    "fullUrl": "Full link",
+    "imageUnavailable": "Image not downloaded yet",
+    "info": {
+      "dimensions": "Dimensions",
+      "format": "Format",
+      "size": "Size",
+      "fileName": "File name",
+      "fileType": "Type",
+      "localState": "On this device",
+      "time": "Time",
+      "localReady": "Downloaded",
+      "localMissing": "Not downloaded yet"
+    },
+    "sendTo": "Send to",
+    "star": "Favorite"
+  },
+  "rail": {
+    "filters": "Filter",
+    "all": "All"
+  },
+  "nav": {
+    "clipboard": "Clipboard",
+    "devices": "Devices",
+    "settings": "Settings"
+  },
+  "card": {
+    "copied": "Copied"
+  },
+  "receive": {
+    "title": "Transfer results",
+    "menuEntry": "Transfer results",
+    "empty": "No files are being received.",
+    "stale": "Showing the last known status. The latest status could not be read.",
+    "entryTitle": "Transfer {{index}}",
+    "bytes": "{{completed}} of {{total}} saved",
+    "members": "{{completed}} of {{total}} files in the folder saved",
+    "item": {
+      "file": "File {{index}}",
+      "content": "Content",
+      "directory": "Folder (received as one unit)",
+      "unknown": "Item"
+    },
+    "state": {
+      "pending": "Waiting",
+      "transferring": "Receiving",
+      "completed": "Saved",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "unknown": "Unknown"
+    },
+    "attempt": {
+      "receiving": "Receiving",
+      "committing": "Saving",
+      "cancelling": "Cancelling",
+      "failing": "Stopping",
+      "completed": "All saved",
+      "failed": "Some items failed",
+      "cancelled": "Cancelled",
+      "unknown": "Unknown"
+    },
+    "reason": {
+      "network_unavailable": "Network unavailable",
+      "timed_out": "Timed out",
+      "access_denied": "Access denied",
+      "storage_unavailable": "Storage unavailable",
+      "integrity_check_failed": "Integrity check failed",
+      "interrupted": "Interrupted",
+      "unknown": "Unknown reason"
+    },
+    "action": {
+      "cancel": "Cancel receiving",
+      "retrySelected": "Retry selected ({{count}})"
+    },
+    "notice": {
+      "retryAccepted": "Retry started. An item counts as saved only when it shows Saved.",
+      "alreadyReceiving": "This transfer is already receiving.",
+      "superseded": "A newer attempt replaced this one. The list was refreshed.",
+      "retryCancellationIncomplete": "The previous attempt is still ending. Try again in a moment.",
+      "sourceUnavailable": "The source is no longer available, so these items cannot be retried. Saved files are kept.",
+      "accessDenied": "Access was denied, so these items cannot be retried.",
+      "cancelled": "Receiving was cancelled.",
+      "cancellationIncomplete": "Still cancelling. Cleanup has not finished yet.",
+      "notReceiving": "This transfer is not receiving.",
+      "tooLate": "Too late to cancel. The transfer is already finishing.",
+      "alreadyTerminal": "This transfer has already finished.",
+      "requestFailed": "The request could not be completed."
+    }
+  },
+  "outbound": {
+    "title": "Sending results",
+    "target": "Target {{index}}",
+    "item": "Item {{index}}",
+    "unknown": "Unknown",
+    "bytes": "{{completed}} / {{total}} bytes",
+    "unavailable": "Current results could not be confirmed. Previous facts may be out of date.",
+    "freshness": "Evidence: {{value}}",
+    "freshnessUnavailable": "Freshness unavailable",
+    "lastPhase": "Last known phase: {{value}}",
+    "round": "Round {{round}}",
+    "reconcile": "Check existing transfer",
+    "requestNew": "Request a new transfer",
+    "confirmNew": "Confirm new transfer",
+    "cancel": "Cancel",
+    "duplicateWarning": "A new transfer may create duplicate files on this device.",
+    "newRequested": "New transfer requested; delivery is not confirmed",
+    "noNewRequest": "No new transfer requested",
+    "freshnessValue": {
+      "waiting": "Waiting",
+      "live": "Current",
+      "unconfirmed": "Unconfirmed",
+      "settled": "Settled"
+    },
+    "state": {
+      "no_items": "No file items",
+      "waiting": "Waiting",
+      "in_progress": "In progress",
+      "transferring": "Transferring",
+      "processing": "Processing",
+      "retrying": "Retrying",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "unconfirmed": "Result unconfirmed",
+      "partially_failed": "Partially failed",
+      "partially_cancelled": "Partially cancelled",
+      "partially_unconfirmed": "Partially unconfirmed"
+    },
+    "reconciliation": {
+      "running": "Existing transfer is running",
+      "settled": "Existing result adopted",
+      "superseded": "Current replacement adopted",
+      "not_retained": "Evidence not retained",
+      "unsupported": "Peer cannot check results",
+      "unreachable": "Peer unreachable",
+      "busy": "Check incomplete"
+    },
+    "unknownDevice": "Unknown device",
+    "entry": "Transfer {{index}}"
+  }
+}

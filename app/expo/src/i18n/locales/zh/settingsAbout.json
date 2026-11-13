@@ -1,0 +1,205 @@
+{
+  "title": "关于",
+  "versionLabel": "版本",
+  "update": {
+    "check": "检查更新",
+    "checking": "检查中...",
+    "updateTo": "更新 {{version}}",
+    "upToDate": "当前已是最新版本",
+    "checkFailed": "检查更新失败，请检查网络连接",
+    "available": "新版本 {{version}} 可用"
+  },
+  "autoCheck": {
+    "label": "自动检查更新"
+  },
+  "updateToBeta": {
+    "label": "更新到测试版",
+    "confirmTitle": "开启测试版更新？",
+    "description": "开启后将接收测试版更新，并立即检查一次新版本。",
+    "warning": "测试版可能存在不稳定、崩溃、同步异常以及数据损坏或丢失的风险。",
+    "backup": "请先备份重要数据，再确认开启。关闭此选项不会将已安装的测试版降级为正式版。",
+    "confirm": "了解风险并开启",
+    "cancel": "暂不开启"
+  },
+  "download": {
+    "newVersionTitle": "发现新版本",
+    "latestVersion": "最新版本：{{version}}",
+    "currentVersion": "当前版本：{{version}}",
+    "releaseNotes": "更新说明：\n{{notes}}",
+    "r2": "官方直连下载（推荐）",
+    "github": "GitHub 下载",
+    "downloading": "下载中 {{percent}}%",
+    "canceled": "已取消下载",
+    "failed": "下载失败",
+    "noSuitableApk": "找不到适合当前设备的 APK"
+  },
+  "cancelDownload": {
+    "title": "取消下载",
+    "message": "确定要取消下载吗？",
+    "confirm": "取消下载",
+    "dismiss": "继续下载"
+  },
+  "error": {
+    "saveFailed": "设置失败"
+  },
+  "log": {
+    "title": "日志",
+    "levelLabel": "日志等级",
+    "level": {
+      "debug": "调试",
+      "info": "信息",
+      "warn": "警告",
+      "error": "错误"
+    },
+    "setSuccess": "日志等级已设置为 {{level}}",
+    "setFailed": "设置日志等级失败",
+    "exportLabel": "导出日志",
+    "export": "导出",
+    "exported": "日志已保存",
+    "warning": {
+      "engineLogsMissing": "没有找到 Engine 日志，诊断包缺少 Engine 记录。请重启 UniClip 后重新导出。",
+      "engineLogsUnreadable": "找到了 Engine 日志，但部分或全部无法读取，诊断包可能不完整。请重启 UniClip 后重新导出。",
+      "engineLogsWrittenNotFound": "Engine 报告已写入日志，但磁盘上找不到文件，诊断包不完整。请重启 UniClip 后重新导出。",
+      "networkLogsIncomplete": "网络日志可能不完整：部分文件未能刷新、读取或校验。本次仅刷新了当前进程，键盘等其他进程未刷新。"
+    },
+    "exportMethodPrompt": "请选择分享日志，或将日志导出为文件。",
+    "exportFile": "导出文件",
+    "shareFailed": "分享日志失败",
+    "exportCanceled": "已取消导出",
+    "exportFailed": "导出日志失败",
+    "capture": {
+      "title": "详细诊断记录",
+      "start": "开启详细记录（10 分钟）",
+      "stop": "停止详细记录",
+      "description": "请先开启，再复现问题，最后导出日志。详细记录仅保存在本机，最长 10 分钟；不会补录之前的过程，也不会自动开启其他扩展的记录。",
+      "remaining": "正在记录，剩余约 {{count}} 分钟",
+      "failed": "操作未完成，请重试。",
+      "unavailable": "暂时无法开启，请等待服务就绪。"
+    },
+    "exportDescription": "分享,或保存为文件",
+    "storageHint": "日志文件可在「存储」中清理。"
+  },
+  "debug": {
+    "connectionPreview": "预览连接页面",
+    "connectionPreviewComputer": "示例电脑",
+    "onboardingPreview": "查看引导页",
+    "title": "调试",
+    "modeLabel": "调试模式",
+    "modeEnabled": "已启用调试模式",
+    "modeDisabled": "已禁用调试模式",
+    "overlayLabel": "显示悬浮窗",
+    "overlayDesc": "后台获取剪贴板时显示可见的悬浮窗",
+    "overlayVisibleToast": "悬浮窗将在后台时可见",
+    "overlayHiddenToast": "悬浮窗已隐藏",
+    "urlSchemeLabel": "显示 URL Scheme 调用",
+    "updateNoLimitLabel": "更新检查不限次数",
+    "updateNoLimitDesc": "开启后每次启动均检查更新，不限每天一次",
+    "deviceTrustPreview": {
+      "label": "预览设备关系决定",
+      "description": "使用安全的示例数据打开正式弹窗",
+      "pickerTitle": "选择预览场景",
+      "pickerDescription": "预览操作只保留在本机，不会改变任何真实设备关系。",
+      "unavailable": "请先完成当前设备关系操作，再打开预览",
+      "scenarios": {
+        "standard": "两个选择均可用",
+        "singleChoice": "只有一个选择",
+        "confirmKeepCurrent": "确认保留当前设备组",
+        "confirmLeaveCurrent": "确认退出当前设备组",
+        "submitting": "正在提交",
+        "failedRetry": "失败后重试",
+        "stateChanged": "状态已在其他设备变化",
+        "longScrollable": "长名称和多设备滚动",
+        "groupChoices": "新版设备列表与待确认成员"
+      }
+    },
+    "connectionSheetPreview": {
+      "label": "预览配对 Sheet",
+      "description": "选择状态并打开正式配对界面",
+      "pickerTitle": "选择配对界面状态",
+      "pickerDescription": "预览使用隔离的示例数据。关闭后可重新选择，所有按钮都不会发起真实配对或修改设备资料。",
+      "scenarios": {
+        "joinPending": "加入中",
+        "joinProcessing": "处理中，等待对方确认",
+        "joinTakingLonger": "加入耗时较长",
+        "joinCancelling": "正在取消",
+        "joinFailed": "加入失败",
+        "deviceUpdating": "正在更新空间设备状态",
+        "deviceRetrying": "稍后自动重试",
+        "deviceStateRejected": "需要处理：设备状态无法核验",
+        "deviceRelationshipConflict": "需要处理：设备关系冲突",
+        "deviceSecurityUpdateRejected": "需要处理：设备安全状态",
+        "deviceUpgradeRequired": "需要处理：相关设备需更新",
+        "localIdentityMismatch": "需要处理：本机身份不一致",
+        "deviceUpdated": "空间设备状态已更新",
+        "inviterWaiting": "邀请方：等待另一台设备",
+        "invitationExpired": "邀请方：邀请码已过期",
+        "inviterConnected": "邀请方：设备已连接"
+      }
+    },
+    "previewsTitle": "预览",
+    "previewRows": {
+      "welcomeTour": "引导页",
+      "connectionScreens": "连接页面",
+      "connectionSheet": "配对 Sheet",
+      "deviceRelationship": "设备关系决定"
+    },
+    "smsCodeTest": {
+      "label": "短信验证码识别测试",
+      "title": "短信验证码识别测试",
+      "description": "输入模拟短信正文，查看会识别出哪个验证码。不会复制、保存或同步任何内容，也不使用短信权限。",
+      "inputLabel": "模拟短信正文",
+      "run": "识别",
+      "clear": "清除",
+      "recognized": "识别到验证码：{{code}}",
+      "none": "未识别到验证码",
+      "ambiguous": "存在多个可能的验证码，未选择",
+      "copy": "复制",
+      "copied": "已复制到剪贴板",
+      "copyFailed": "复制失败"
+    }
+  },
+  "stats": {
+    "title": "统计信息",
+    "view": "查看",
+    "copied": "已复制统计信息"
+  },
+  "versionValue": "版本 {{version}}",
+  "updatesTitle": "更新",
+  "power": {
+    "title": "电量与后台活动",
+    "period": "最近 24 小时",
+    "loading": "正在统计…",
+    "unavailable": "此设备不支持。",
+    "collecting": "数据还不够。正常使用手机，稍后再来查看。",
+    "state": {
+      "foreground": "在应用内",
+      "backgroundScreenOn": "在后台，屏幕亮着",
+      "backgroundScreenOff": "在后台，屏幕熄灭"
+    },
+    "stateDetail": "{{duration}} · CPU {{cpu}} · 网络 {{network}}",
+    "unknownValue": "不可用",
+    "battery": {
+      "title": "整机电量（不代表本应用）",
+      "ready": "未充电 {{duration}}，整机下降 {{change}} %，包含所有应用和屏幕",
+      "suspect": "未充电 {{duration}}，变化 {{change}} %。此手机的电荷计数不可靠，仅显示百分比",
+      "collecting": "需要约 10 分钟的未充电时间才能显示变化",
+      "unavailable": "此手机不向应用提供电池读数"
+    },
+    "service": {
+      "title": "后台服务",
+      "detail": "运行 {{duration}} · {{events}} 次同步事件"
+    },
+    "gap": "有 {{duration}} 因应用未运行而没有记录。",
+    "reset": "重置统计",
+    "resetAction": "重置",
+    "resetDone": "统计已清除",
+    "resetFailed": "无法清除统计",
+    "footer": "Android 不会告诉应用自己用了多少电。电量数据是整机的；CPU 和网络是本应用自身的活动量，不是实测耗电。统计只保存在本机，导出日志时一并包含。",
+    "duration": {
+      "minutes": "{{minutes}} 分钟",
+      "hours": "{{hours}} 小时 {{minutes}} 分钟",
+      "none": "0 分钟",
+      "lessThanMinute": "不到 1 分钟"
+    }
+  }
+}

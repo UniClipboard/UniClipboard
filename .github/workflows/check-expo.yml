@@ -1,0 +1,40 @@
+name: Expo UI shell
+
+on:
+  pull_request:
+    paths:
+      - app/expo/**
+      - .github/workflows/check-expo.yml
+  push:
+    branches: [main, v2]
+    paths:
+      - app/expo/**
+      - .github/workflows/check-expo.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-bundles:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/expo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/expo/.nvmrc
+          cache: npm
+          cache-dependency-path: app/expo/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: expo-bundle-acceptance
+          path: |
+            app/expo/dist/verification/
+            app/expo/dist/ios/
+            app/expo/dist/android/

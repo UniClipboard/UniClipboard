@@ -1,0 +1,54 @@
+{
+  "appName": "UniClip",
+  "action": {
+    "confirm": "确定",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "remove": "移除",
+    "edit": "编辑",
+    "add": "添加",
+    "close": "关闭",
+    "done": "完成",
+    "retry": "重试",
+    "refresh": "刷新",
+    "copy": "复制",
+    "share": "分享",
+    "open": "打开",
+    "back": "返回",
+    "next": "下一步",
+    "ok": "好的",
+    "reset": "重置",
+    "clear": "清除",
+    "select": "选择",
+    "selectAll": "全选",
+    "deselect": "取消选择",
+    "more": "更多",
+    "settings": "设置",
+    "undo": "撤销"
+  },
+  "state": {
+    "loading": "加载中…",
+    "saving": "保存中…",
+    "empty": "暂无内容",
+    "success": "成功",
+    "failed": "失败",
+    "enabled": "已启用",
+    "disabled": "已禁用"
+  },
+  "language": {
+    "title": "语言",
+    "system": "跟随系统"
+  },
+  "configImport": {
+    "rejectedTitle": "导入未完成",
+    "reason": {
+      "unsupportedFormat": "待导入配置使用了不受支持的格式。",
+      "malformedMarker": "待导入配置的标记无效。",
+      "missingRuntimeMembers": "待导入配置缺少必需资料。"
+    },
+    "reexport": "待导入资料已保留。原空间仍可使用。请在源安装中使用新版本重新导出配置包。",
+    "unavailableTitle": "无法读取导入状态",
+    "unavailableMessage": "应用无法读取待导入状态。这不表示导入成功。你可继续使用原空间。请重试状态查询。"
+  }
+}

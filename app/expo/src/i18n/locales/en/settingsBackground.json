@@ -1,0 +1,239 @@
+{
+  "main": {
+    "cardTitle": "Background auto-sync",
+    "toggle": {
+      "descTempDisabled": "Temporarily stopped; will resume after restarting the app",
+      "descNormal": "Lets enabled sync directions run in the background and guides you through required permissions"
+    },
+    "footer": "Background download and upload follow the Auto-write and Auto-push direction settings"
+  },
+  "advanced": {
+    "cardTitle": "Advanced options",
+    "notification": {
+      "title": "Persistent service notification",
+      "desc": "Keeping it on improves background service stability"
+    },
+    "battery": {
+      "title": "Ignore battery optimization",
+      "desc": "Prevents battery saver from interrupting background sync"
+    },
+    "network": {
+      "title": "Continue background sync on mobile data",
+      "desc": "When off, background sync runs only on Wi-Fi"
+    },
+    "download": {
+      "title": "Download from remote",
+      "desc": "Receive new remote content in the background when Auto-write is on"
+    },
+    "upload": {
+      "title": "Upload local clipboard",
+      "desc": "Upload background clipboard changes when Auto-push is on"
+    },
+    "clipboardAccess": {
+      "title": "Background reading",
+      "method": {
+        "overlay-polling": "Polling",
+        "overlay-event": "ADB events",
+        "shizuku": "Shizuku"
+      },
+      "issue": {
+        "service-unavailable": "Shizuku is not running",
+        "permission-required": "Clipboard access still needs permission",
+        "system-restriction": "MIUI is blocking background access",
+        "monitoring-setup-required": "One-time setup needed"
+      },
+      "issueDescription": {
+        "service-unavailable": "Install and start Shizuku, then return to authorize",
+        "permission-required": "Follow the system prompt to allow UniClip to use this method",
+        "system-restriction": "Use Shizuku to turn off the MIUI smart clipboard restriction",
+        "monitoring-setup-required": "Copy one adb command and run it on your computer"
+      },
+      "action": {
+        "service-unavailable": "Open Shizuku",
+        "permission-required": "Authorize",
+        "system-restriction": "Resolve",
+        "monitoring-setup-required": "Set up",
+        "check": "Check access"
+      },
+      "setup": {
+        "completed": "Background clipboard access is ready",
+        "commandCopied": "Command copied; run it in a computer terminal",
+        "failed": "Background clipboard setup could not be completed"
+      },
+      "sheet": {
+        "title": "Background reading",
+        "subtitle": "Android blocks background clipboard reads. Pick how UniClip notices a copy.",
+        "inUse": "In use",
+        "currentButton": "Currently in use",
+        "continue": {
+          "overlay-polling": "Use timed polling",
+          "overlay-event": "Continue with ADB events",
+          "shizuku": "Continue with Shizuku"
+        },
+        "nextHint": {
+          "overlay-event": "Next: copy one adb command to run on your computer"
+        },
+        "labels": {
+          "bestFor": "Best for",
+          "tradeoff": "Keep in mind",
+          "setup": "Before you start"
+        },
+        "methods": {
+          "overlay-polling": {
+            "title": "Timed polling",
+            "summary": "Needs no setup, but it interrupts typing.",
+            "tag1": "No computer",
+            "tag2": "Interrupts typing",
+            "bestFor": "Trying UniClip out, or when nothing else is available",
+            "tradeoff": "Checks every second and briefly takes focus, which can hide the keyboard, drop keystrokes and disrupt games or full-screen apps",
+            "setup": "Allow UniClip to display over other apps"
+          },
+          "overlay-event": {
+            "title": "ADB events",
+            "summary": "Reads only after a copy. Less interference, lower power.",
+            "tag1": "Computer, once",
+            "tag2": "Event-driven",
+            "bestFor": "People who can plug into a computer and want lower power use",
+            "tradeoff": "Run the command again after reinstalling the app",
+            "setup": "Overlay permission, USB debugging, ADB on a computer"
+          },
+          "shizuku": {
+            "title": "Shizuku",
+            "summary": "Smoothest, with no overlay at all.",
+            "tag1": "Shizuku running",
+            "tag2": "Event-driven",
+            "bestFor": "People who already use Shizuku",
+            "tradeoff": "Shizuku usually needs a restart after each reboot",
+            "setup": "Install and start Shizuku, then grant access"
+          }
+        }
+      },
+      "adbGuide": {
+        "title": "Authorize ADB events",
+        "subtitle": "UniClip only uses this to detect copy events. It never reads other log content.",
+        "status": {
+          "copied": "Command copied. Paste it into your computer's terminal, then tap Check access.",
+          "notDetected": "Access not detected yet. Make sure the command finished with no error and the phone is listed as “device”."
+        },
+        "step1": {
+          "title": "Prepare your computer",
+          "text": "Install Android Platform Tools (adb). On the phone, turn on USB debugging in Developer options."
+        },
+        "step2": {
+          "title": "Connect and allow",
+          "text": "Plug in with USB and tap Allow on the phone. This command should list your phone as “device”:"
+        },
+        "step3": {
+          "title": "Grant access once",
+          "text": "Run this in the same terminal. You only need it again after reinstalling UniClip."
+        },
+        "terminalLabel": "Terminal",
+        "copy": "Copy",
+        "copied": "Copied",
+        "copyCommand": "Copy grant command",
+        "copyAgain": "Copy grant command again",
+        "check": "Check access",
+        "checkAgain": "Check again"
+      },
+      "restriction": {
+        "title": "Turn off the MIUI clipboard restriction",
+        "subtitle": "Needed so background reads and writes work.",
+        "warning": "This may also disable MIUI's smart clipboard feature.",
+        "text": "UniClip will use Shizuku to turn off MIUI's smart clipboard restriction. You can turn it back on in system settings at any time.",
+        "confirm": "Turn off restriction",
+        "dismiss": "Not now"
+      },
+      "entry": {
+        "change": "Change"
+      },
+      "status": {
+        "ready": {
+          "title": "Ready",
+          "description": {
+            "overlay-polling": "Checks the clipboard every second",
+            "overlay-event": "Reads only after a copy event",
+            "shizuku": "Reads through Shizuku"
+          }
+        }
+      },
+      "shizukuGuide": {
+        "title": "Set up Shizuku",
+        "subtitle": "UniClip uses Shizuku to read the clipboard without an overlay.",
+        "status": {
+          "notRunning": "Shizuku is not running. Start it, then return here.",
+          "authorize": "Shizuku is running. One last step: allow UniClip."
+        },
+        "step1": {
+          "title": "Install Shizuku",
+          "text": "Get the Shizuku app and open it once.",
+          "done": "Installed."
+        },
+        "step2": {
+          "title": "Start the service",
+          "text": "On Android 11+, use Wireless debugging inside Shizuku, no computer needed. Or run this on a computer:",
+          "done": "Running."
+        },
+        "step3": {
+          "title": "Allow UniClip",
+          "text": "A system prompt will ask you to allow UniClip once Shizuku is running.",
+          "authorizeText": "Tap Authorize and accept the Shizuku prompt. It only lets UniClip detect clipboard changes."
+        },
+        "open": "Open Shizuku",
+        "authorize": "Authorize UniClip",
+        "checkAgain": "Check again"
+      }
+    },
+    "groups": {
+      "clipboardAccess": "Clipboard access",
+      "sync": "Sync in background",
+      "reliability": "Reliability"
+    }
+  },
+  "dialog": {
+    "enableAutoSync": {
+      "title": "Enable background auto-sync",
+      "text": "Once enabled, the app keeps syncing the clipboard in the background. We'll guide you through battery, notification, and clipboard access for the selected method. Allowing all of them gives the best result, but declining still lets you keep using the app.",
+      "confirm": "Enable"
+    },
+    "disableNotification": {
+      "title": "Turn off persistent notification",
+      "text": "Turning off the persistent notification reduces background service stability and makes it more likely the system will terminate background tasks.",
+      "confirm": "Turn off"
+    },
+    "missingNotificationPermission": {
+      "title": "Notification permission missing",
+      "text": "Notification permission hasn't been granted, so the persistent notification may not appear. We recommend allowing notifications in system settings.",
+      "confirm": "Open settings",
+      "dismiss": "Later"
+    },
+    "enableUpload": {
+      "title": "Enable background upload of local clipboard",
+      "text": "You don't need to enable this option — UniClip also lets you upload text directly from the menu that pops up when you select text.\n\nOn Android 10 and above, apps can't directly read the local clipboard in the background. You may need to enable the overlay or use another tool to work around this limitation.",
+      "confirm": "Enable"
+    },
+    "batteryFallback": {
+      "title": "Can't open system dialog",
+      "text": "The system only allows the battery optimization request to appear once per installation. Please turn off battery optimization manually in system settings.",
+      "confirm": "Open settings"
+    }
+  },
+  "toast": {
+    "autoSyncRestored": "Background auto-sync resumed",
+    "autoSyncEnabled": "Background auto-sync enabled",
+    "autoSyncDisabled": "Background auto-sync disabled",
+    "downloadEnabled": "Background remote download enabled",
+    "downloadDisabled": "Background remote download disabled",
+    "uploadEnabled": "Background local upload enabled",
+    "uploadDisabled": "Background local upload disabled",
+    "clipboardAccessChanged": "Background clipboard access method changed",
+    "setFailed": "Failed to update setting"
+  },
+  "smsCode": {
+    "group": "Verification codes",
+    "title": "Copy codes from text messages",
+    "desc": "When a text message contains a verification code, copy it and show it in a notification. Needs permission to receive text messages. Whether it syncs follows your sync settings.",
+    "denied": "Text message permission is required to copy verification codes",
+    "enabled": "Verification codes will be copied",
+    "disabled": "Verification code copying turned off"
+  }
+}

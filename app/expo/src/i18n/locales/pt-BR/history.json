@@ -1,0 +1,114 @@
+{
+  "transferQueue": {
+    "title": "Fila de transferência",
+    "empty": "Nenhuma tarefa de transferência",
+    "status": {
+      "pending": "Aguardando",
+      "running": "Transferindo",
+      "completed": "Concluído",
+      "failed": "Falhou",
+      "cancelled": "Cancelado",
+      "waitForRetry": "Aguardando nova tentativa"
+    }
+  },
+  "filter": {
+    "title": "Filtros",
+    "section": {
+      "kind": "Tipo",
+      "date": "Data"
+    },
+    "date": {
+      "all": "Todos",
+      "today": "Hoje",
+      "yesterday": "Ontem",
+      "pastWeek": "Últimos 7 dias"
+    },
+    "chip": {
+      "all": "Todos",
+      "date": "Período",
+      "kind": "Tipo",
+      "source": "Origem"
+    },
+    "source": {
+      "all": "Todas as origens",
+      "local": "Este dispositivo",
+      "remote": "Outros dispositivos"
+    }
+  },
+  "kind": {
+    "text": "Texto",
+    "url": "Link",
+    "image": "Imagem",
+    "file": "Arquivo",
+    "group": "Arquivo compactado"
+  },
+  "time": {
+    "justNow": "Agora",
+    "secondsAgo": "Há {{n}} s",
+    "minutesAgo": "Há {{n}} min",
+    "hoursAgo": "Há {{n}} h",
+    "daysAgo": "Há {{n}} d"
+  },
+  "delivery": {
+    "delivered": "Entregue",
+    "partial": "{{accepted}} enviados, {{duplicate}} já presentes, {{offline}} offline, {{errored}} falharam, {{pending}} pendentes",
+    "offline": "Dispositivo offline",
+    "failed": "Falha no envio",
+    "pending": "Enviando"
+  },
+  "wordPicker": {
+    "truncated_one": "Texto muito longo; exibindo {{count}} caractere",
+    "truncated_other": "Texto muito longo, mostrando os primeiros {{count}} caracteres",
+    "empty": "Nenhum texto selecionável",
+    "granularity": {
+      "word": "Palavras",
+      "char": "Caracteres"
+    },
+    "deselectAll": "Desmarcar tudo",
+    "placeholder": "Toque ou deslize para selecionar o texto",
+    "copyFailed": "Falha ao copiar",
+    "copied": "Copiado para a área de transferência",
+    "hints": {
+      "tap": "Toque: selecionar palavra",
+      "swipe": "Deslize: marcar em sequência",
+      "hold": "Segure e arraste: selecionar intervalo"
+    },
+    "noneSelected": "Nada selecionado",
+    "summary": {
+      "words_one": "{{count}} palavra selecionada",
+      "words_other": "{{count}} palavras selecionadas",
+      "chars_one": "{{count}} caractere",
+      "chars_other": "{{count}} caracteres",
+      "charsOnly_one": "{{count}} caractere selecionado",
+      "charsOnly_other": "{{count}} caracteres selecionados"
+    },
+    "webSearch": "Pesquisar na web",
+    "expandPreview": "Expandir prévia",
+    "collapsePreview": "Recolher prévia",
+    "previewTitle": "Prévia antes de copiar",
+    "editable": "Editável",
+    "joinLabel": "Como juntar seleções separadas",
+    "join": {
+      "original": "Como no original",
+      "space": "Espaços",
+      "newline": "Uma por linha"
+    },
+    "handleStart": "Início da seleção",
+    "handleEnd": "Fim da seleção"
+  },
+  "menu": {
+    "copyPlain": "Copiar como texto simples",
+    "selectText": "Selecionar texto",
+    "openBrowser": "Abrir no navegador",
+    "saveImage": "Salvar imagem",
+    "saveFile": "Salvar arquivo",
+    "resend": "Enviar novamente",
+    "closeMenu": "Fechar menu"
+  },
+  "layout": {
+    "title": "Exibição",
+    "list": "Lista",
+    "compact": "Lista compacta",
+    "grid": "Grade"
+  }
+}

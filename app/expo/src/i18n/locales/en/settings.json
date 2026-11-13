@@ -1,0 +1,126 @@
+{
+  "appearance": {
+    "sectionTitle": "Appearance",
+    "mode": {
+      "label": "Appearance mode",
+      "system": "Follow system",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "hideFromRecents": {
+      "title": "Hide from recent tasks",
+      "desc": "Lock before hiding to avoid being cleared in one tap"
+    },
+    "modeChangeFailed": "Failed to change appearance mode",
+    "updateFailed": "Update failed",
+    "displayTitle": "Display"
+  },
+  "general": {
+    "sectionTitle": "General",
+    "theme": "Theme"
+  },
+  "syncChannel": {
+    "title": "Sync method",
+    "lan": "Standard sync",
+    "p2p": "Direct device sync",
+    "lanShort": "Standard",
+    "p2pShort": "Direct",
+    "default": "Default",
+    "experimental": "Experimental",
+    "experimentalBadge": "Experimental",
+    "currentConnection": "Current connection",
+    "connectionSettings": "Connection settings",
+    "notConfigured": "Not configured",
+    "confirmationTitle": "Use direct device sync?",
+    "confirmationDescription": "Devices can sync across networks without being connected to the same Wi-Fi.",
+    "confirmationCrossNetwork": "It supports syncing even when devices are not on the same Wi-Fi network.",
+    "confirmationExperimental": "This is an experimental feature and may be less stable than standard sync.",
+    "confirmationWarning": "This is experimental and may be less reliable.",
+    "confirmationReversible": "You can switch back to standard sync on the Devices tab at any time.",
+    "confirmationCancel": "Cancel",
+    "confirmationConfirm": "Use direct sync",
+    "updateFailed": "Failed to change sync method"
+  },
+  "category": {
+    "sync": "Sync",
+    "about": "About",
+    "other": "Other",
+    "storage": "Storage",
+    "history": "History",
+    "background": "Background",
+    "developer": "Developer options",
+    "extensions": "Extensions & permissions",
+    "privacy": "Privacy",
+    "diagnostics": "Diagnostic logs",
+    "support": "Support"
+  },
+  "hub": {
+    "clipboardSync": {
+      "title": "Clipboard sync",
+      "autoApply": {
+        "title": "Auto-write to clipboard",
+        "descLan": "When new content arrives from the server, write it to this device clipboard automatically",
+        "descP2p": "When new content arrives from your space, write it to this device clipboard automatically"
+      },
+      "autoPush": {
+        "title": "Auto-push clipboard",
+        "descLan": "When you copy or use a history item, send it to the current server automatically",
+        "descP2p": "When you copy or use a history item, send it to the other devices in your space automatically"
+      },
+      "footer": "These options control sync direction; Background settings control where it can run",
+      "updateFailed": "Update failed"
+    },
+    "rows": {},
+    "summary": {
+      "history": "Keep up to {{count}} items",
+      "backgroundTempDisabled": "Temporarily stopped, resumes after restart",
+      "backgroundOn": "Background tasks on",
+      "backgroundOff": "Background tasks off",
+      "storage": "Cache, logs and history usage",
+      "about": "Version {{version}}",
+      "developer": "Debugging, previews and shortcuts",
+      "privacy": "Anonymous usage data",
+      "diagnostics": "Record and export logs for bug reports",
+      "theme": "Light, dark or match the system",
+      "language": "Switch the app language instantly"
+    }
+  },
+  "ios": {
+    "sync": {
+      "footer": "When Auto-write is on, new content from your space is written to this device clipboard immediately; when off, it is only highlighted on Home. Auto-push reads every copy, so set Clipboard access to Allow first or iOS will ask each time.",
+      "autoApply": "Auto-write to clipboard",
+      "autoPush": "Auto-push clipboard",
+      "sse": "Live push (SSE)"
+    },
+    "extensions": {
+      "footer": "The keyboard and share extensions let you use UniClip directly in other apps; set clipboard access to Allow to avoid repeated prompts during sync.",
+      "keyboard": "Keyboard",
+      "share": "Share",
+      "clipboardAccess": "Clipboard access"
+    },
+    "keyboardHint": {
+      "needsFullAccess": "Needs full access",
+      "notEnabled": "Not enabled"
+    },
+    "general": {
+      "checkUpdateOnLaunch": "Check for updates on launch"
+    },
+    "about": {
+      "projectHome": "Project home",
+      "version": "Version"
+    }
+  },
+  "openSystemSettings": "Open system settings",
+  "analytics": {
+    "sectionTitle": "Privacy",
+    "consentTitle": "Share anonymous usage and diagnostics",
+    "consentDescription": "Helps improve UniClip without collecting clipboard contents or names",
+    "footer": "App version, system, region, session, device count, anonymous space grouping, and diagnostic records without contents or names may be sent. Turning this off stops collection and clears pending data.",
+    "reset": "Reset",
+    "resetTitle": "Reset statistics identity",
+    "resetMessage": "This removes pending statistics and diagnostics and creates a new anonymous identity.",
+    "resetConfirm": "Reset identity",
+    "resetDone": "Statistics identity reset",
+    "error": "Could not update statistics settings"
+  }
+}

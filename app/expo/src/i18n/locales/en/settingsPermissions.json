@@ -1,0 +1,71 @@
+{
+  "action": {
+    "openSettings": "Open settings"
+  },
+  "quickActions": {
+    "title": "Quick actions",
+    "addDownloadShortcut": "Add home screen shortcut: Download",
+    "addUploadShortcut": "Add home screen shortcut: Upload",
+    "addFailed": "Failed to add"
+  },
+  "clipboardAccess": {
+    "title": "Clipboard access",
+    "hero": {
+      "title": "Paste without being asked",
+      "description": "iOS asks every time UniClip reads something you copied in another app. Allow it once and syncing stays quiet.",
+      "trigger": "Show the prompt",
+      "triggerAgain": "Show it again",
+      "emptyClipboardHint": "Copy some text in another app first. iOS skips the prompt when the clipboard is empty.",
+      "triggered": "Prompt requested. If it appeared, tapping Allow Paste is all it takes."
+    },
+    "prompt": {
+      "title": "“UniClip” would like to paste from “Notes”",
+      "message": "Do you want to allow this?",
+      "deny": "Don’t Allow Paste",
+      "allow": "Allow Paste"
+    },
+    "fallbackSection": {
+      "header": "No prompt, or tapped Don’t Allow?",
+      "footer": "The Paste from Other Apps row only appears after UniClip has asked once. iOS doesn’t tell apps which option you chose, so there’s nothing to confirm back here.",
+      "guideRow": "Allow in iOS Settings",
+      "guideRowSubtitle": "3 steps, with pictures",
+      "openSettings": "Open iOS Settings"
+    },
+    "guide": {
+      "title": "Allow in Settings",
+      "progress": "Step {{current}} of {{total}}",
+      "back": "Previous step",
+      "close": "Close",
+      "next": "Next step",
+      "done": "Done",
+      "openSettings": "Open iOS Settings",
+      "steps": {
+        "findApp": {
+          "title": "Find UniClip in Settings",
+          "description": "Open the Settings app, go to Apps, and tap UniClip. Open iOS Settings below jumps straight there.",
+          "tip": "On iOS 17 and earlier, UniClip sits near the bottom of the main Settings list."
+        },
+        "openPaste": {
+          "title": "Tap Paste from Other Apps",
+          "description": "It’s in the Allow UniClip to Access list and usually shows Ask.",
+          "tip": "Row missing? iOS adds it only after UniClip has asked once. Close this and tap Show the prompt first."
+        },
+        "chooseAllow": {
+          "title": "Choose Allow",
+          "description": "UniClip can now read what you copy in other apps without asking. It takes effect right away.",
+          "tip": "iOS doesn’t tell UniClip which option you picked, so there’s no confirmation to wait for."
+        }
+      },
+      "illustration": {
+        "settings": "Settings",
+        "apps": "Apps",
+        "search": "Search",
+        "accessHeader": "Allow UniClip to Access",
+        "pasteFromOtherApps": "Paste from Other Apps",
+        "ask": "Ask",
+        "deny": "Deny",
+        "allow": "Allow"
+      }
+    }
+  }
+}

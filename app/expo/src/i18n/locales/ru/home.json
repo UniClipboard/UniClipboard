@@ -1,0 +1,282 @@
+{
+  "search": {
+    "recordCount_one": "{{count}} запись",
+    "recordCount_few": "{{count}} записи",
+    "recordCount_many": "{{count}} записей",
+    "recordCount_other": "{{count}} записи",
+    "allTypes": "Все типы",
+    "anyTime": "Любая дата",
+    "clearFilters": "Сбросить фильтры",
+    "reset": "Сбросить поиск",
+    "loading": "Поиск…",
+    "resultCount_one": "{{count}} результат",
+    "resultCount_few": "{{count}} результата",
+    "resultCount_many": "{{count}} результатов",
+    "resultCount_other": "{{count}} результата",
+    "emptyTitle": "Ничего не найдено",
+    "emptyTitleQuery": "Нет результатов по «{{query}}»",
+    "emptyDescription": "Нет записей по заданным условиям поиска.",
+    "emptyDescriptionFilters": "Ничего не найдено в: {{filters}}.",
+    "clear": "Сбросить",
+    "clearFiltersKeepQuery": "Сбросить фильтры, оставить запрос",
+    "shortcut": {
+      "kind": "По типу",
+      "date": "По дате",
+      "source": "По источнику"
+    },
+    "suggestions": "Предложения"
+  },
+  "empty": {
+    "unconfigured": {
+      "title": "Нет пространства P2P",
+      "description": "Присоединитесь к пространству по приглашению, чтобы продолжить синхронизацию. Локальная история останется доступна."
+    },
+    "connecting": {
+      "title": "Подключение…",
+      "description": "Подключение к устройствам в {{space}}."
+    },
+    "online": {
+      "title": "Здесь пока пусто",
+      "description": "Скопируйте или добавьте что-нибудь — оно появится здесь."
+    },
+    "offline": {
+      "title": "Устройства в {{space}} не в сети",
+      "description": "Другие устройства сейчас недоступны. Проверьте их подключение к сети."
+    },
+    "error": {
+      "title": "Синхронизация требует внимания",
+      "description": "Синхронизация приостановлена. Проверьте пространство и подключение к сети."
+    }
+  },
+  "topBar": {
+    "selectedCount": "Выбрано: {{n}}",
+    "deselectAll": "Снять выделение",
+    "searchPlaceholder": "Поиск в буфере обмена"
+  },
+  "a11y": {
+    "addContent": "Добавить содержимое",
+    "more": "Ещё",
+    "closeMenu": "Закрыть меню",
+    "closeCamera": "Закрыть камеру",
+    "switchCamera": "Переключить камеру",
+    "toggleFlash": "Переключить вспышку",
+    "takePicture": "Сделать фото",
+    "startRecording": "Начать запись",
+    "stopRecording": "Остановить запись",
+    "search": "Поиск в истории",
+    "clearSearch": "Очистить строку поиска",
+    "searchFilters": "Фильтровать результаты поиска",
+    "toggleSelection": "Изменить выбор этой записи",
+    "copyItem": "Копировать запись; удерживайте для дополнительных действий",
+    "openItemDetail": "Открыть подробности; двойное касание — копировать"
+  },
+  "fab": {
+    "takePhoto": "Сделать фото",
+    "pickImage": "Выбрать фото",
+    "pickFile": "Выбрать файл",
+    "uploadClipboard": "Отправить буфер обмена",
+    "syncNow": "Синхронизировать",
+    "photoMode": "Фото",
+    "videoMode": "Видео"
+  },
+  "toast": {
+    "copied": "Скопировано в буфер обмена",
+    "copiedLocal": "Скопировано на это устройство",
+    "copiedAutoPushEnabled": "Скопировано, автоотправка включена",
+    "copyFailed": "Не удалось скопировать",
+    "copiedPlainText": "Скопировано как обычный текст",
+    "savedToGallery": "Изображение сохранено",
+    "saveFailed": "Не удалось сохранить",
+    "savedFile": "Файл сохранён",
+    "deleted": "Удалено",
+    "deletedCount": "Удалено элементов: {{count}}",
+    "copiedSelected": "Выбранные элементы скопированы",
+    "syncDone": "Синхронизация завершена",
+    "syncFailed": "Ошибка синхронизации",
+    "sentToPeers": "Отправлено на другие устройства",
+    "uploadFailed": "Не удалось отправить",
+    "savedLocally": "Сохранено локально",
+    "p2pDelivery": {
+      "delivered": "Доставлено на другие устройства",
+      "partial": "Доставлено частично: отправлено {{accepted}}, уже есть {{duplicate}}, не в сети {{offline}}, ошибок {{errored}}, ожидают {{pending}}",
+      "offline": "Сохранено здесь; другое устройство не в сети",
+      "failed": "Сохранено здесь; отправить не удалось",
+      "pending": "Сохранено здесь; отправка продолжается"
+    },
+    "pickFileFailed": "Не удалось выбрать файл",
+    "pickImageFailed": "Не удалось выбрать изображение",
+    "cameraPermissionNeeded": "Нужен доступ к камере",
+    "micPermissionNeeded": "Нужен доступ к микрофону",
+    "takePhotoFailed": "Не удалось сделать фото",
+    "takeVideoFailed": "Не удалось записать видео",
+    "cameraUnavailable": "Камера недоступна",
+    "sendToUnavailable": "Эту запись сейчас нельзя отправить"
+  },
+  "deleteConfirm": {
+    "singleTitle": "Удалить эту запись?",
+    "singleMessage": "Эта запись больше не будет отображаться в истории.",
+    "batchTitle": "Удалить выбранные записи?",
+    "batchMessage": "Будет удалено выбранных записей: {{count}}."
+  },
+  "detail": {
+    "placeholderTitle": "Выберите элемент",
+    "placeholderDesc": "Выберите любую запись в списке слева — полное содержимое и действия появятся здесь.",
+    "fromDevice": "С устройства {{device}}",
+    "unknownDevice": "Это устройство",
+    "quickActions": {
+      "select": "Выбрать",
+      "open": "Открыть",
+      "save": "Сохранить"
+    },
+    "close": "Закрыть подробности",
+    "view": "Подробнее",
+    "stats": {
+      "chars_one": "{{count}} символ",
+      "chars_few": "{{count}} символа",
+      "chars_many": "{{count}} символов",
+      "chars_other": "{{count}} символа",
+      "lines_one": "{{count}} строка",
+      "lines_few": "{{count}} строки",
+      "lines_many": "{{count}} строк",
+      "lines_other": "{{count}} строки"
+    },
+    "fullUrl": "Полная ссылка",
+    "imageUnavailable": "Изображение ещё не загружено",
+    "info": {
+      "dimensions": "Размеры",
+      "format": "Формат",
+      "size": "Размер",
+      "fileName": "Имя файла",
+      "fileType": "Тип",
+      "localState": "На устройстве",
+      "time": "Время",
+      "localReady": "Загружено",
+      "localMissing": "Ещё не загружено"
+    },
+    "sendTo": "Отправить",
+    "star": "В избранное"
+  },
+  "rail": {
+    "filters": "Фильтры",
+    "all": "Все"
+  },
+  "nav": {
+    "clipboard": "Буфер обмена",
+    "devices": "Устройства",
+    "settings": "Настройки"
+  },
+  "card": {
+    "copied": "Скопировано"
+  },
+  "receive": {
+    "title": "Результаты передачи",
+    "menuEntry": "Полученные файлы",
+    "empty": "Сейчас файлы не принимаются.",
+    "stale": "Показано последнее известное состояние. Актуальное состояние прочитать не удалось.",
+    "entryTitle": "Передача {{index}}",
+    "bytes": "Сохранено {{completed}} из {{total}}",
+    "members": "Сохранено файлов в папке: {{completed}} из {{total}}",
+    "item": {
+      "file": "Файл {{index}}",
+      "content": "Содержимое",
+      "directory": "Папка (принимается целиком)",
+      "unknown": "Элемент"
+    },
+    "state": {
+      "pending": "Ожидание",
+      "transferring": "Приём",
+      "completed": "Сохранено",
+      "failed": "Ошибка",
+      "cancelled": "Отменено",
+      "unknown": "Неизвестно"
+    },
+    "attempt": {
+      "receiving": "Приём",
+      "committing": "Сохранение",
+      "cancelling": "Отмена",
+      "failing": "Остановка",
+      "completed": "Всё сохранено",
+      "failed": "Часть элементов не удалась",
+      "cancelled": "Отменено",
+      "unknown": "Неизвестно"
+    },
+    "reason": {
+      "network_unavailable": "Сеть недоступна",
+      "timed_out": "Истекло время ожидания",
+      "access_denied": "Доступ запрещён",
+      "storage_unavailable": "Хранилище недоступно",
+      "integrity_check_failed": "Проверка целостности не пройдена",
+      "interrupted": "Прервано",
+      "unknown": "Неизвестная причина"
+    },
+    "action": {
+      "cancel": "Отменить приём",
+      "retrySelected": "Повторить выбранное ({{count}})"
+    },
+    "notice": {
+      "retryAccepted": "Повтор запущен. Элемент считается сохранённым, только когда показано «Сохранено».",
+      "alreadyReceiving": "Эта передача уже принимается.",
+      "superseded": "Эту попытку заменила более новая. Список обновлён.",
+      "retryCancellationIncomplete": "Предыдущая попытка ещё завершается. Повторите чуть позже.",
+      "sourceUnavailable": "Источник больше недоступен, поэтому повторить эти элементы нельзя. Сохранённые файлы остаются.",
+      "accessDenied": "Доступ запрещён, поэтому повторить эти элементы нельзя.",
+      "cancelled": "Приём отменён.",
+      "cancellationIncomplete": "Отмена ещё выполняется. Очистка не завершена.",
+      "notReceiving": "Эта передача сейчас не принимается.",
+      "tooLate": "Отменить поздно: передача уже завершается.",
+      "alreadyTerminal": "Эта передача уже завершена.",
+      "requestFailed": "Не удалось выполнить запрос."
+    }
+  },
+  "outbound": {
+    "title": "Sending results",
+    "target": "Target {{index}}",
+    "item": "Item {{index}}",
+    "unknown": "Unknown",
+    "bytes": "{{completed}} / {{total}} bytes",
+    "unavailable": "Current results could not be confirmed. Previous facts may be out of date.",
+    "freshness": "Evidence: {{value}}",
+    "freshnessUnavailable": "Freshness unavailable",
+    "lastPhase": "Last known phase: {{value}}",
+    "round": "Round {{round}}",
+    "reconcile": "Check existing transfer",
+    "requestNew": "Request a new transfer",
+    "confirmNew": "Confirm new transfer",
+    "cancel": "Cancel",
+    "duplicateWarning": "A new transfer may create duplicate files on this device.",
+    "newRequested": "New transfer requested; delivery is not confirmed",
+    "noNewRequest": "No new transfer requested",
+    "freshnessValue": {
+      "waiting": "Waiting",
+      "live": "Current",
+      "unconfirmed": "Unconfirmed",
+      "settled": "Settled"
+    },
+    "state": {
+      "no_items": "No file items",
+      "waiting": "Waiting",
+      "in_progress": "In progress",
+      "transferring": "Transferring",
+      "processing": "Processing",
+      "retrying": "Retrying",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "unconfirmed": "Result unconfirmed",
+      "partially_failed": "Partially failed",
+      "partially_cancelled": "Partially cancelled",
+      "partially_unconfirmed": "Partially unconfirmed"
+    },
+    "reconciliation": {
+      "running": "Existing transfer is running",
+      "settled": "Existing result adopted",
+      "superseded": "Current replacement adopted",
+      "not_retained": "Evidence not retained",
+      "unsupported": "Peer cannot check results",
+      "unreachable": "Peer unreachable",
+      "busy": "Check incomplete"
+    },
+    "unknownDevice": "Неизвестное устройство",
+    "entry": "Transfer {{index}}"
+  }
+}

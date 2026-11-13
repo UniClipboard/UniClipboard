@@ -1,0 +1,9 @@
+{
+  "quickLoad": {
+    "uploading": "Enviando a área de transferência...",
+    "uploadSuccess": "Envio concluído!",
+    "uploadFailed": "Falha no envio",
+    "genericError": "Falha na operação. Tente novamente.",
+    "unknownFile": "Arquivo desconhecido"
+  }
+}

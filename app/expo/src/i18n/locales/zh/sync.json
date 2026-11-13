@@ -1,0 +1,9 @@
+{
+  "quickLoad": {
+    "uploading": "正在上传剪贴板...",
+    "uploadSuccess": "上传成功！",
+    "uploadFailed": "上传失败",
+    "genericError": "操作失败，请重试",
+    "unknownFile": "未知文件"
+  }
+}

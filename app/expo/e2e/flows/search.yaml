@@ -1,0 +1,36 @@
+appId: app.uniclipboard.shell
+name: Expo shell search and empty state
+---
+- launchApp:
+    clearState: true
+- assertVisible:
+    id: shell-banner
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: 搜索|Search|Поиск|Pesquisar|Buscar
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: history-search-open
+- tapOn:
+    id: history-search-input
+- inputText: Meeting
+- assertVisible:
+    id: history-card-demo-6
+- assertNotVisible:
+    id: history-card-demo-1
+- takeScreenshot: search-result
+- eraseText: 7
+- inputText: no-such-demo-record
+- assertNotVisible:
+    id: history-card-demo-6
+- takeScreenshot: search-empty
+- tapOn:
+    id: history-search-close
+- assertVisible:
+    id: history-card-demo-1
+- takeScreenshot: search-restored

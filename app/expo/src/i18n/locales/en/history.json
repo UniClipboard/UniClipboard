@@ -1,0 +1,113 @@
+{
+  "transferQueue": {
+    "title": "Transfer queue",
+    "empty": "No transfer tasks",
+    "status": {
+      "pending": "Waiting",
+      "running": "Transferring",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "waitForRetry": "Waiting to retry"
+    }
+  },
+  "filter": {
+    "title": "Filters",
+    "section": {
+      "kind": "Type",
+      "date": "Date"
+    },
+    "date": {
+      "all": "All",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "pastWeek": "Past 7 days"
+    },
+    "chip": {
+      "all": "All",
+      "date": "Date",
+      "kind": "Type",
+      "source": "Source"
+    },
+    "source": {
+      "all": "All sources",
+      "local": "This device",
+      "remote": "Other devices"
+    }
+  },
+  "kind": {
+    "text": "Text",
+    "url": "Link",
+    "image": "Image",
+    "file": "File",
+    "group": "Archive"
+  },
+  "time": {
+    "justNow": "Just now",
+    "secondsAgo": "{{n}}s ago",
+    "minutesAgo": "{{n}}m ago",
+    "hoursAgo": "{{n}}h ago",
+    "daysAgo": "{{n}}d ago"
+  },
+  "delivery": {
+    "delivered": "Delivered",
+    "partial": "{{accepted}} sent, {{duplicate}} already present, {{offline}} offline, {{errored}} failed, {{pending}} pending",
+    "offline": "Device offline",
+    "failed": "Send failed",
+    "pending": "Sending"
+  },
+  "wordPicker": {
+    "truncated": "Text too long, showing first {{count}} characters",
+    "empty": "No selectable text",
+    "granularity": {
+      "word": "Words",
+      "char": "Characters"
+    },
+    "deselectAll": "Deselect all",
+    "placeholder": "Tap or swipe to select text",
+    "copyFailed": "Copy failed",
+    "copied": "Copied to clipboard",
+    "hints": {
+      "tap": "Tap: select a word",
+      "swipe": "Swipe: paint a run",
+      "hold": "Hold and drag: select a range"
+    },
+    "noneSelected": "Nothing selected",
+    "summary": {
+      "words_one": "{{count}} word selected",
+      "words_other": "{{count}} words selected",
+      "chars_one": "{{count}} character",
+      "chars_other": "{{count}} characters",
+      "charsOnly_one": "{{count}} character selected",
+      "charsOnly_other": "{{count}} characters selected"
+    },
+    "webSearch": "Search the web",
+    "expandPreview": "Expand preview",
+    "collapsePreview": "Collapse preview",
+    "previewTitle": "Preview before copying",
+    "editable": "Editable",
+    "joinLabel": "Joining separate selections",
+    "join": {
+      "original": "As in original",
+      "space": "Spaces",
+      "newline": "Line by line"
+    },
+    "handleStart": "Selection start",
+    "handleEnd": "Selection end"
+  },
+  "menu": {
+    "copyPlain": "Copy as plain text",
+    "selectText": "Select text",
+    "openBrowser": "Open in browser",
+    "saveImage": "Save image",
+    "saveFile": "Save file",
+    "resend": "Send again",
+    "closeMenu": "Close menu"
+  },
+  "layout": {
+    "title": "Display",
+    "list": "List",
+    "compact": "Compact list",
+    "grid": "Grid"
+  }
+}

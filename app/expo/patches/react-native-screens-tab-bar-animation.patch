@@ -1,0 +1,81 @@
+--- a/ios/tabs/host/RNSTabsHostComponentView.mm
++++ b/ios/tabs/host/RNSTabsHostComponentView.mm
+@@ -48,6 +48,8 @@
+   BOOL _hasModifiedTabsScreensInCurrentTransaction;
+   BOOL _hasModifiedBottomAccessoryInCurrentTransation;
+   BOOL _needsTabBarAppearanceUpdate;
++  /// Bumped on every tab bar visibility change so a stale slide animation does not hide the bar.
++  NSUInteger _tabBarVisibilityGeneration;
+ 
+   RNSTabsNavigationStateUpdateRequest *_Nullable _navStateRequest;
+ 
+@@ -244,7 +246,7 @@
+     _tabBarHidden = newComponentProps.tabBarHidden;
+ #if RNS_IPHONE_OS_VERSION_AVAILABLE(18_0)
+     if (@available(iOS 18.0, *)) {
+-      [_controller setTabBarHidden:_tabBarHidden animated:NO];
++      [self applyTabBarHiddenSliding];
+     } else
+ #endif // RNS_IPHONE_OS_VERSION_AVAILABLE(18_0)
+     {
+@@ -404,7 +406,60 @@
+     [_reactSubviews removeObject:subview];
+   }
+ }
++
++#if RNS_IPHONE_OS_VERSION_AVAILABLE(18_0)
++/// Slides the tab bar down out of the screen before hiding it, and up from below the screen after
++/// showing it. UIKit's own `setTabBarHidden:animated:YES` only fades the bar in place on iOS 26.
++- (void)applyTabBarHiddenSliding API_AVAILABLE(ios(18.0))
++{
++  RNSTabBarController *controller = _controller;
++  UITabBar *tabBar = controller.tabBar;
++  BOOL hidden = _tabBarHidden;
++  NSUInteger generation = ++_tabBarVisibilityGeneration;
++  if (controller.viewIfLoaded.window == nil) {
++    tabBar.transform = CGAffineTransformIdentity;
++    [controller setTabBarHidden:hidden animated:NO];
++    return;
++  }
++  if (hidden && controller.isTabBarHidden) {
++    return;
++  }
+ 
++  // Showing a bar that is still visible (its slide-out has not finished) slides it back from where
++  // it is now; showing a hidden bar starts it below the screen.
++  BOOL startsOffscreen = !hidden && controller.isTabBarHidden;
++  if (startsOffscreen) {
++    [controller setTabBarHidden:NO animated:NO];
++    [controller.view layoutIfNeeded];
++  }
++  // `frame` includes the current transform; the untransformed top edge comes from center and bounds.
++  CGFloat tabBarTop = tabBar.center.y - CGRectGetHeight(tabBar.bounds) / 2;
++  CGAffineTransform offscreen =
++      CGAffineTransformMakeTranslation(0, CGRectGetHeight(controller.view.bounds) - tabBarTop);
++  if (startsOffscreen) {
++    tabBar.transform = offscreen;
++  }
++
++  __weak RNSTabsHostComponentView *weakSelf = self;
++  [UIView animateWithDuration:0.3
++      delay:0
++      options:(hidden ? UIViewAnimationOptionCurveEaseIn : UIViewAnimationOptionCurveEaseOut) |
++      UIViewAnimationOptionBeginFromCurrentState
++      animations:^{
++        tabBar.transform = hidden ? offscreen : CGAffineTransformIdentity;
++      }
++      completion:^(BOOL finished) {
++        RNSTabsHostComponentView *strongSelf = weakSelf;
++        // A newer visibility change owns the tab bar now.
++        if (!hidden || strongSelf == nil || strongSelf->_tabBarVisibilityGeneration != generation) {
++          return;
++        }
++        [controller setTabBarHidden:YES animated:NO];
++        tabBar.transform = CGAffineTransformIdentity;
++      }];
++}
++#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(18_0)
++
+ #if RNS_TABS_BOTTOM_ACCESSORY_AVAILABLE
+ - (void)applyBottomAccessoryVisibility API_AVAILABLE(ios(26.0))
+ {

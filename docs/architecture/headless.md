@@ -5,6 +5,7 @@ paths:
   - internal/localapi
   - internal/localconfig
   - internal/localpaths
+  - internal/releaseinfo
   - internal/servicelifecycle
   - internal/servicelaunch
   - app/desktop/internal/lifecycle
@@ -18,7 +19,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: f8d5a41544932c2ca2bf4a9a2c230ee5db939353
+verified: c0e1b63c75f3b25f616ad9444ca0f15092a6e354
 ---
 # Headless service and desktop integration
 

@@ -3,6 +3,9 @@ paths:
   - .gitattributes
   - release
   - tools/package
+  - packaging
+  - e2e/packaging
+  - app/desktop/cmd/unic-desktop
   - tools/release
   - internal/releaseinfo
   - app/service/cmd/unic
@@ -10,9 +13,11 @@ paths:
   - internal/v1migration
   - e2e/release
   - .github/workflows/build-cli.yml
+  - .github/workflows/build-desktop.yml
+  - .github/workflows/package-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 219e2b257d502a9de88d1443b1f108694904e82b
+verified: c0e1b63c75f3b25f616ad9444ca0f15092a6e354
 ---
 # Product builds and CLI releases
 

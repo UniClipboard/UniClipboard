@@ -4,7 +4,8 @@
 - Status: partial implementation; the full execution plan is not complete.
 - Plan: [package channel parity](0018-v2-package-channel-plan.md).
 - Accepted policy: [decision 0025](../decisions/proposed/0025-desktop-package-identity-and-replacement.md).
-- Baseline: `1a6e8d617a8719b575a0c5bf9a6eec1060d730e5`; implementation checks include the uncommitted changes described by retained source-file hashes.
+- Baseline: `1a6e8d617a8719b575a0c5bf9a6eec1060d730e5`; implementation checks include the changes described by retained source-file hashes.
+- Implementation commit: `c0e1b63c7` (local; not pushed). Architecture verification markers reference this committed source.
 
 ## Implemented behavior
 
@@ -24,7 +25,7 @@
 | Existing `go test -race ./...` | Passed: 782 tests in 70 packages | Initial sandbox execution failed on local socket binds; the elevated rerun passed. No GUI acceptance ran. Subsequent packaging-only signing changes are covered by packager compilation/process checks, not a claim of real signing. |
 | Existing CLI release/upgrade E2E | Passed: 45 checks | `.cache/release-package-regression/report.json`; real local npm/Go processes with loopback/command fixtures. No public npm or GitHub publication. |
 | macOS arm64 staging/portable/lock faults | Passed | `.cache/package-final-native/report.json`, `.cache/package-portable-after/report.json`; no GUI. |
-| Actual macOS arm64 DMG/application archive | Passed construction | `.cache/package-macos-formats-unrestricted/report.json`; sandbox hdiutil failed, elevated non-mounting construction passed. Unsigned; no notarization or installation. |
+| Actual macOS arm64 DMG/application archive | Passed construction | `.cache/package-macos-final/report.json`; sandbox hdiutil failed, elevated non-mounting construction passed. Unsigned; no notarization or installation. |
 | Actual Windows amd64/arm64 PE + EXE/ZIP | Passed cross-construction | `.cache/windows-package-e2e/report.json`; Go cross-compiler and NSIS 3.13. No Windows execution or installer lifecycle. Development fixture staging does not establish a production CLI lock. |
 | Actual Linux arm64 DEB/RPM/pacman formats | Passed construction | `.cache/package-linux/receipt-formats/report.json`; native arm64 Docker container, not a physical desktop. |
 | Linux arm64 DEB install/reinstall/upgrade/remove | Passed nonvisual lifecycle | `.cache/package-linux/receipt-formats/linux-lifecycle/report.json`; real build-1 to build-2 upgrade, private command ownership, temporary-service shutdown and preserved user data. Receipt attachment checks exact package hashes. |
@@ -61,7 +62,7 @@ No valid local code-signing identity was available. GitHub Secret **names** indi
 
 The fixed FlareRelease source `953a87d9890065260c338a78d8298c89c878eb35` now contains build-number identity and `/api/contract` (`product-version-build-v1`). This supersedes the earlier source-gap assumption, but does not verify the deployed authenticated contract.
 The legacy registration helper still uses a version-only SQL path; do not reuse it for numbered builds.
-No local R2/Cloudflare Access service credentials were configured. Desktop R2 publication, registration/promotion, updater integration, submission workflows and public destination read-back remain unfinished.
+The connected-machine inventory exposed only the current macOS host online; it did not provide a Windows/Linux native acceptance host. No local R2/Cloudflare Access service credentials were configured. Desktop R2 publication, registration/promotion, updater integration, submission workflows and public destination read-back remain unfinished.
 
 The first available real Linux lifecycle target was arm64 rather than the plan's preferred amd64. Keep amd64 acceptance pending; do not shrink the declared matrix.
 Native GUI/system clipboard, actual v1 installer replacement and sandbox acceptance remain separately required. Their authorization and environment requirements have not been satisfied by nonvisual construction.

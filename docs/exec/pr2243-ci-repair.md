@@ -77,3 +77,44 @@ Local verification artifact SHA-256 values:
 - `pr2243-budget-paused-after.log`: `a636a33c3989ca86ba8e74098352c1ce462b24619d2b67700969115ec56c5586`.
 - `pr2243-luavm-after.log`: `2662b945422b83509ecf1596318b27f28683eaa503ad766249c81906faa86610`.
 - `pr2243-race-final.log`: `01ce10c67dfc5b7560dd0429d9cc473d6871f61ecda71d0a6cb90f5cf4436795`.
+
+
+## Sheet-motion follow-up after the v2 merge
+
+[Run 43391507882](https://github.com/UniClipboard/UniClipboard/actions/runs/43391507882)
+failed only the Desktop E2E `sheet-motion` case at PR head
+`b31e1edda660f488059cf94e42193c49b11ea319`. Its frozen merge snapshot was
+`a046fa24605777ac7b13dd882c18489af5b0f679`; the scenario and tag editor hashes
+match the local PR source.
+
+The adopted tag controls use an inline ComboField. The scenario still expected
+an Add Tag Sheet in 12 theme/motion/dismissal combinations. The existing
+`tag-editor` case explicitly rejects that old Sheet and passed in the same run.
+The canonical local reproduction also failed with `missing sheet`:
+
+```sh
+TMPDIR=/private/tmp make desktop-e2e CASE=sheet-motion
+```
+
+The scenario now distinguishes real Sheets from inline tag assignment. All
+36 theme/motion/dismissal combinations remain. The 24 real Sheet combinations
+retain their entry/exit geometry, pixel-change, Reduce Motion and input-cleanup
+assertions. The 12 inline combinations require a ComboField and no dialog,
+Enter confirmation with an attached registry tag, Escape/click-away cancellation
+without tag mutation, and usable input after dismissal. The four resize
+combinations remain unchanged. Presentation kind is recorded in the JSON receipt.
+No production UI code, case, timeout or workflow is changed.
+
+The declarative purpose/expectations and generated catalogue now describe both
+presentations. Local canonical replay passed at
+`.build/desktop-e2e/20261113T090445Z-00002abe/index.html` with 42 passing
+scenario/subcase event records, 80 software-rendered PNGs and successful case
+cleanup. The JSON motion receipt contains 24 real Sheet and 12 inline entries.
+Geometry/pixel fields apply to real Sheets; inline entries record the tested
+presentation and dismissal mode. Every retained artifact checksum passed, and
+the changed executable/catalogue files match the accepted frozen source.
+
+`TestDesktopCatalog` and `TestDesktopScenarios` passed. Change-scoped lint with
+the `desktop_e2e` build tag passed with golangci-lint 2.15.0. These are
+software-view results, not native window, OS focus or system clipboard evidence.
+Remote full-suite CI is checked separately at the final PR head.

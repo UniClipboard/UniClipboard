@@ -44,6 +44,11 @@ func TestSandboxWhitelist(t *testing.T) {
 
 func budgetErr(t *testing.T, lim Limits, src string, want error) {
 	t.Helper()
+	// Keep resource-budget assertions independent of scheduler speed.
+	// Deadline coverage supplies its own explicit timeout.
+	if lim.Timeout == 0 {
+		lim.Timeout = time.Minute
+	}
 	s, _, err := run(t, lim, src)
 	var be *BudgetError
 	if !errors.As(err, &be) || !errors.Is(err, want) {

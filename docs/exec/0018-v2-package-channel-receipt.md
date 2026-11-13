@@ -98,3 +98,11 @@ The sandbox harness and two-architecture CI jobs are defined for actual Nix, Fla
 The native recording contains 8 continuously sampled frames over 9.36 seconds. Cleanup passed. The directory clipboard is synthetic; system clipboard delivery remains NOT_RUN.
 
 The complete existing Go race suite passed with `TMPDIR=/private/tmp GOCACHE=/private/tmp/unic-followup-go-cache go test -race ./...`. An earlier invocation used the macOS `/var` temporary-directory alias and failed the existing Engine no-symlink cache guard. A targeted replay with the canonical path passed before the complete rerun. No production cache guard was weakened.
+
+## Acceptance corrections from real hosts
+
+Run 43413805519 reported success for all jobs and verified macOS signing/notarization. Subsequent NSIS lifecycle run 43414455024 exposed a Windows mixed-separator `File` path error that the earlier PowerShell multi-command step did not propagate. Therefore the earlier green Windows jobs establish stage/portable/update construction only; they do **not** establish a complete NSIS package. The constructor now uses the native path separator, PowerShell propagates native exit codes, and candidate acquisition requires all 22 target/format records before accepting a successful run.
+
+First sandbox run 43414689412 failed. Nix/Flatpak could not resolve relative candidate paths from the generated project directories. Snapcraft could not install build snaps as the non-root runner. The follow-up uses canonical absolute input paths and runs Snap's disposable-host build with the required privileges. These failures do not count as sandbox acceptance.
+
+Production public-service probes returned HTTP 404 for `/contract` and `/v1/desktop/stable.json` with the application User-Agent. A default Python request was blocked with HTTP 403 before reaching the same route. The updater/release client now identifies itself explicitly. Both admin and public numbered-build contracts must pass before publication writes. Public Worker deployment remains pending under separate authorization.

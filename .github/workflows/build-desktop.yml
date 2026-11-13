@@ -132,6 +132,7 @@ jobs:
         if: matrix.goos == 'windows'
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           choco install nsis --yes --no-progress --version=3.11
           'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Construct Windows packages (unsigned construction evidence)
@@ -140,6 +141,7 @@ jobs:
         if: matrix.goos == 'windows'
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python tools/package/desktop.py package --stage dist/stage --format setup.exe --output dist/packages/setup
           python tools/package/desktop.py package --stage dist/stage --format portable.zip --output dist/packages/portable
           python tools/package/desktop.py package --stage dist/stage --format update.tar.gz --output dist/packages/update
@@ -149,6 +151,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python e2e/packaging/windows-upgrade-fixture.py --target "$env:TARGET"
           $first = (Get-ChildItem dist/packages/setup/*.exe).FullName
           $newer = (Get-ChildItem dist/windows-upgrade-fixture/packages/*.exe).FullName

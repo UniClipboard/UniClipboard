@@ -53,7 +53,12 @@ jobs:
       - name: Build and execute actual native sandbox
         env:
           SANDBOX_KIND: ${{ matrix.kind }}
-        run: python3 e2e/packaging/sandboxes.py --input dist/candidate --kind "$SANDBOX_KIND"
+        run: |
+          if [ "$SANDBOX_KIND" = snap ]; then
+            sudo --preserve-env=PATH env GITHUB_ACTIONS=true python3 e2e/packaging/sandboxes.py --input dist/candidate --kind "$SANDBOX_KIND"
+          else
+            python3 e2e/packaging/sandboxes.py --input dist/candidate --kind "$SANDBOX_KIND"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

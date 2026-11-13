@@ -19,8 +19,17 @@ func main() {
 	base := flag.String("base", "", "Fixture server")
 	key := flag.String("key", "", "Public key")
 	channel := flag.String("channel", "stable", "Channel")
+	owner := flag.Bool("owner", false, "Report production installation update ownership")
 	install := flag.Bool("install", false, "Use the actual mygo installation path")
 	flag.Parse()
+	if *owner {
+		executable, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(appupdates.Owner(executable))
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	source := &appupdates.Source{Base: *base, Target: runtime.GOOS + "-" + runtime.GOARCH, Key: *key, Channel: func() string { return *channel }}

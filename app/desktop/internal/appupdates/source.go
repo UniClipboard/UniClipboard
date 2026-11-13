@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/releaseinfo"
 )
 
 // PublicKey is supplied by the production packager. Development builds disable updates.
@@ -63,6 +65,7 @@ func get(ctx context.Context, address string) (io.ReadCloser, error) {
 	if e != nil {
 		return nil, e
 	}
+	req.Header.Set("User-Agent", "UniClipboard/"+releaseinfo.Version)
 	c := http.Client{Timeout: 2 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) > 5 || !allowedURL(req.URL.String()) {
 			return errors.New("unsafe update redirect")
@@ -293,7 +296,12 @@ func Owner(executable string) string {
 		bundle := filepath.Dir(filepath.Dir(dir))
 		if output, e := exec.CommandContext(ctx, "brew", "list", "--cask", "uniclipboard").Output(); e == nil {
 			for _, line := range strings.Split(string(output), "\n") {
-				if strings.TrimRight(line, "/") == bundle {
+				listed := strings.TrimSpace(strings.SplitN(line, " (", 2)[0])
+				if resolved, err := filepath.EvalSymlinks(listed); err == nil {
+					listed = resolved
+				}
+				relative, err := filepath.Rel(bundle, listed)
+				if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 					return "Homebrew"
 				}
 			}

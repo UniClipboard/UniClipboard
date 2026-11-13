@@ -129,9 +129,13 @@ def fetch_cli(args):
         import cli_candidate
 
         output = fresh_output(args.output)
-        with tempfile.TemporaryDirectory(prefix=".unic-ci-cli-", dir=output.parent) as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix=".unic-ci-cli-", dir=output.parent
+        ) as temporary:
             work = Path(temporary) / "candidate"
-            cli_candidate.acquire(record.get("cli_artifact_run_id"), work, args.metadata, signed=True)
+            cli_candidate.acquire(
+                record.get("cli_artifact_run_id"), work, args.metadata, signed=True
+            )
             locked_cli(record, work / "release-manifest.json", args.target, False)
             work.rename(output)
         print(output / "release-manifest.json")
@@ -265,14 +269,31 @@ def notarize_stage(args):
             archive = Path(temporary) / "notary.zip"
             bundle = output / "UniClipboard.app"
             run(["ditto", "-c", "-k", "--keepParent", bundle, archive])
-            run([sys.executable, ROOT / "tools/package/signing.py", "notarize", "--file", archive, "--staple", bundle, "--receipt", output / "notarization.json"])
+            run(
+                [
+                    sys.executable,
+                    ROOT / "tools/package/signing.py",
+                    "notarize",
+                    "--file",
+                    archive,
+                    "--staple",
+                    bundle,
+                    "--receipt",
+                    output / "notarization.json",
+                ]
+            )
         run(["codesign", "--verify", "--deep", "--strict", bundle])
-        m["files"] = {str(p.relative_to(output)): sha(p) for p in output.rglob("*") if p.is_file() and not p.is_symlink() and p != output / "manifest.json"}
+        m["files"] = {
+            str(p.relative_to(output)): sha(p)
+            for p in output.rglob("*")
+            if p.is_file() and not p.is_symlink() and p != output / "manifest.json"
+        }
         m["acceptance"]["notarization"] = True
         save(output / "manifest.json", m)
         validated_stage(output)
     except BaseException:
-        if output.exists(): shutil.rmtree(output)
+        if output.exists():
+            shutil.rmtree(output)
         raise
     print(output / "manifest.json")
 
@@ -329,7 +350,9 @@ def stage(args):
         update_key = record.get("update_public_key", "")
         if update_key:
             if len(base64.b64decode(update_key, validate=True)) != 32:
-                raise ValueError("Desktop update_public_key must be a raw Ed25519 public key")
+                raise ValueError(
+                    "Desktop update_public_key must be a raw Ed25519 public key"
+                )
             linker += f" -X github.com/egoist/mygo.production=1 -X github.com/egoist/mygo.packageUpdateFeed=https://release.uniclipboard.app/v1/desktop/stable.json -X github.com/egoist/mygo.packageUpdateKey={update_key} -X github.com/uniclipboard/unic/app/desktop/internal/appupdates.PublicKey={update_key}"
         if os_name == "windows":
             linker += " -H windowsgui"
@@ -352,11 +375,17 @@ def stage(args):
         )
         resources = payload.parent / "Resources" if os_name == "darwin" else payload
         resources.mkdir(exist_ok=True)
-        save(resources / "release-identity.json", {
-            "product": "desktop", "version": record["version"],
-            "build_number": record["build_number"], "target": target,
-            "cli_manifest_sha256": sha(args.cli_manifest), "source_sha": source,
-        })
+        save(
+            resources / "release-identity.json",
+            {
+                "product": "desktop",
+                "version": record["version"],
+                "build_number": record["build_number"],
+                "target": target,
+                "cli_manifest_sha256": sha(args.cli_manifest),
+                "source_sha": source,
+            },
+        )
         (resources / "LICENSE").write_bytes((ROOT / "LICENSE").read_bytes())
         if os_name == "darwin":
             info = {
@@ -384,7 +413,9 @@ def stage(args):
                 + "\n"
             )
         if os_name != "darwin":
-            (payload / ".mygo-files").write_text("".join(p.name + "\n" for p in sorted(payload.iterdir())))
+            (payload / ".mygo-files").write_text(
+                "".join(p.name + "\n" for p in sorted(payload.iterdir()))
+            )
         if (
             initial != sources()
             or source != run(["git", "rev-parse", "HEAD"])
@@ -629,7 +660,7 @@ def package(args):
             script = (
                 (ROOT / "packaging/windows/installer.nsi")
                 .read_text()
-                .replace("@PAYLOAD@", str(payload))
+                .replace("@PAYLOAD@/", str(payload) + os.sep)
                 .replace("@OUTPUT@", str(file))
                 .replace("@VERSION@", m["version"])
                 .replace("@BUILD@", str(m["build_number"]))
@@ -735,10 +766,18 @@ def package(args):
         if args.notarize:
             shutil.rmtree(output / "notary-input")
         update_signature = ""
-        if kind in ["app.tar.gz", "update.tar.gz"] and os.environ.get("UNIC_UPDATE_PRIVATE_KEY"):
-            signature = json.loads(run(["go", "run", "./tools/release/update-sign", "-file", file]))
-            if signature["public_key"] != m.get("update_public_key") or signature["sha256"] != sha(file):
-                raise ValueError("update signature disagrees with staged key or archive")
+        if kind in ["app.tar.gz", "update.tar.gz"] and os.environ.get(
+            "UNIC_UPDATE_PRIVATE_KEY"
+        ):
+            signature = json.loads(
+                run(["go", "run", "./tools/release/update-sign", "-file", file])
+            )
+            if signature["public_key"] != m.get("update_public_key") or signature[
+                "sha256"
+            ] != sha(file):
+                raise ValueError(
+                    "update signature disagrees with staged key or archive"
+                )
             update_signature = signature["signature"]
         artifacts.append(
             {
@@ -820,7 +859,11 @@ def main():
     s.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
     s.add_argument("--target", required=True, choices=sorted(TARGETS))
     s.add_argument("--output", required=True)
-    s.add_argument("--allow-ci", action="store_true", help="Use the explicitly locked canonical CI candidate before public publication")
+    s.add_argument(
+        "--allow-ci",
+        action="store_true",
+        help="Use the explicitly locked canonical CI candidate before public publication",
+    )
     s = sub.add_parser("sign")
     s.add_argument("--stage", required=True)
     s.add_argument("--identity", required=True)

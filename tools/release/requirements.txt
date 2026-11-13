@@ -1,0 +1,2 @@
+# Tooling only. Core and application dependency graphs are unchanged.
+boto3==1.44.1

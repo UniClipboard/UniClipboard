@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/uniclipboard/unic/internal/releaseinfo"
 )
 
 // V1DataDir locates the original default profile without creating directories.
@@ -41,11 +43,36 @@ func Dir() (string, error) {
 		}
 		return filepath.EvalSymlinks(d)
 	}
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		return "", err
+	}
+	portable := filepath.Join(filepath.Dir(executable), "portable.dat")
+	if info, statErr := os.Lstat(portable); statErr == nil {
+		if !info.Mode().IsRegular() {
+			return "", errors.New("portable.dat must be a regular file")
+		}
+		d := filepath.Join(filepath.Dir(executable), "data")
+		if err := os.MkdirAll(d, 0700); err != nil {
+			return "", err
+		}
+		return filepath.EvalSymlinks(d)
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return "", statErr
+	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	d := filepath.Join(base, "unic")
+	name := "unic"
+	if releaseinfo.Version == "dev" {
+		name = "unic-development"
+	}
+	d := filepath.Join(base, name)
 	if err := os.MkdirAll(d, 0700); err != nil {
 		return "", err
 	}

@@ -2,16 +2,20 @@ schema = 1
 
 [products.cli]
 version = "2.0.0"
-build_number = 1
-targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64"]
+build_number = 2
+targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
 
 [products.desktop]
-version = "0.1.0"
+version = "2.0.0"
 build_number = 1
-targets = ["darwin-arm64", "darwin-amd64", "linux-amd64", "windows-amd64"]
-cli_version = "0.1.0"
-cli_build_number = 1
-cli_manifest_sha256 = ""
+targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
+cli_version = "2.0.0"
+cli_build_number = 2
+cli_manifest_sha256 = "ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be"
+
+cli_artifact_run_id = 43419452491
+# Configure the durable raw Ed25519 public key before enabling in-app updates.
+update_public_key = ""
 
 [products.android]
 version = "0.1.0"

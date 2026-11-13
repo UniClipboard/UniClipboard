@@ -1,0 +1,4 @@
+{
+  "en": "UniClipboard 2.0.0 introduces the v2 Engine, independent CLI and Desktop packages, and numbered immutable builds. All paired devices must use v2. Import v1 history explicitly with unic migrate.",
+  "zh": "UniClipboard 2.0.0 引入 v2 Engine、独立的 CLI 与桌面安装包，以及不可变的构建编号。所有配对设备必须使用 v2。请使用 unic migrate 显式导入 v1 历史。"
+}

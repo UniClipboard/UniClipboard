@@ -3,6 +3,7 @@ paths:
   - engine/directory.go
   - internal/directory
   - internal/localcontent/directory.go
+  - app/desktop/internal/appupdates
   - app/desktop/internal/lifecycle
   - app/desktop/e2e
   - app/desktop/internal/desktopui
@@ -33,7 +34,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 1c06c439ac3890e816c3f540d49eba0122457501
+verified: cb1749765fb824c05babd9ad490aa8b6d929a6bb
 ---
 # Desktop configuration and received files
 
@@ -46,6 +47,10 @@ General, Sync and Storage controls save through the revision-checked local confi
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
 `unic-desktop --version --json` reports build identity before configuration, service ownership or UI initialization. See the [release architecture](releases.md).
+
+## Native application updates
+
+Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences use the same v2 user-data directory as the Desktop profile. Package-manager installations and portable archives retain external update ownership. AppImage self-update remains unsupported. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
 
 ## History source application
 

@@ -1,0 +1,86 @@
+name: Native Desktop acceptance
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  windows-macos:
+    env:
+      CGO_ENABLED: ${{ matrix.target == 'windows-arm64' && '0' || '1' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: macos-15-intel
+            target: darwin-amd64
+          - runner: windows-2025
+            target: windows-amd64
+          - runner: windows-11-arm
+            target: windows-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: FedericoCarboni/setup-ffmpeg@36c6454b5a2348e7794ba2d82a21506605921e3d # v3
+        with:
+          ffmpeg-version: '9.0.2'
+          architecture: x64
+      - name: Standard native-window scenario with isolated data
+        run: python app/desktop/e2e/run.py run --case history-search-copy
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-desktop-${{ matrix.target }}
+          path: .build/desktop-e2e/
+          include-hidden-files: true
+          if-no-files-found: warn
+  linux:
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-amd64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install native display and recording dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1
+      - name: Standard native GTK scenario with isolated data
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- python3 app/desktop/e2e/run.py run --case history-search-copy
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-desktop-${{ matrix.target }}
+          path: .build/desktop-e2e/
+          include-hidden-files: true
+          if-no-files-found: warn

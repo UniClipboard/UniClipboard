@@ -3,22 +3,35 @@ paths:
   - .gitattributes
   - release
   - tools/package
+  - packaging
+  - e2e/packaging
+  - app/desktop/internal/appupdates
+  - app/desktop/e2e/updateprobe
+  - internal/localconfig
+  - app/desktop/cmd/unic-desktop
   - tools/release
+  - .github/release-notes
   - internal/releaseinfo
   - app/service/cmd/unic
   - internal/localpaths
   - internal/v1migration
   - e2e/release
   - .github/workflows/build-cli.yml
+  - .github/workflows/build-desktop.yml
+  - .github/workflows/package-acceptance.yml
+  - .github/workflows/release-desktop.yml
+  - .github/workflows/native-desktop-acceptance.yml
+  - app/desktop/e2e/run.py
+  - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 219e2b257d502a9de88d1443b1f108694904e82b
+verified: 4eb434deeece452b584f56bc97d4b0f10226be3f
 ---
 # Product builds and CLI releases
 
 ## Current implementation
 
-`release/products.toml` owns product versions and build numbers. The implemented release product is CLI. Desktop, Android and iOS records reserve independent metadata; they do not establish release support.
+`release/products.toml` owns product versions and build numbers. CLI and Desktop have separate build and delivery controllers. Public delivery is a separate accepted operation. Desktop selects `2.0.0 (1)` for the first v2 candidate. Android and iOS records reserve independent metadata. These records do not establish release support.
 
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 
@@ -26,7 +39,66 @@ All runtime programs handle `--version` and `--version --json` before initializa
 
 CLI assembly uses the existing npm main/platform-package model. `@uniclipboard/cli` pins every optional platform package to the exact `<version>-build.<number>` registry version. Both npm CLI command names use one launcher. The package also exposes `unicd` through a dedicated service entrypoint. The launcher executes the real CLI beside its sibling service. Alpha selects the npm `alpha` dist-tag. Stable selects `latest`. Channel names do not enter package versions.
 
-The declared CLI matrix covers macOS arm64/amd64, Linux arm64/amd64 and Windows amd64. Each target runs its own executable identity acceptance. Linux amd64 also runs production headless and packaged release/upgrade process acceptance. Remote native acceptance passed for all five targets in run 42777109814. The [remote verification receipt](../exec/0018-cli-remote-verification.md) records exact source, artifacts and the observed headless retry.
+The declared CLI matrix covers macOS arm64/amd64, Linux arm64/amd64 and Windows arm64/amd64. The Windows arm64 target passed native hosted executable acceptance in distribution run 43408274394. Each target runs its own executable identity acceptance. Linux amd64 also runs production headless and packaged release/upgrade process acceptance. Remote native acceptance passed for all five targets in run 42777109814. The [remote verification receipt](../exec/0018-cli-remote-verification.md) records exact source, artifacts and the observed headless retry.
+
+## Desktop staging and package definitions
+
+`go run ./tools/package -product desktop -target <os>-<arch> -cli-manifest <file> -output <directory>` delegates production staging to `tools/package/desktop.py`.
+The metadata must lock the exact CLI manifest digest, version and build. The stager checks the selected npm package SHA-256/SHA-512, native acceptance fields and both executable hashes before building Desktop.
+It copies accepted CLI/service files unchanged. It rejects moving source, changed inputs and existing output directories.
+`--development` permits a dirty construction candidate and records that state; it does not establish a release or a separate installation identity.
+Use isolated homes for all construction candidates. Version-`dev` executables use the separate development identity and default data directory.
+
+The format constructor supplies DEB, RPM, pacman packages, NSIS setup EXE, portable ZIP, macOS DMG/application archive and AppImage/update archive entrypoints.
+Only tested construction/lifecycle states count as acceptance; see the [package delivery receipt](../exec/0018-v2-package-channel-receipt.md).
+Linux uses the pinned mygo GTK3 native-view path and a tray indicator library. These recipes do not inherit v1's GTK4/Wails/WebKitGTK dependency set.
+AppImage currently uses host GTK3 libraries; self-contained runtime delivery remains open.
+
+Desktop packages keep `unic-desktop`, `unic` and `unicd` together in a private directory. Linux exposes only `uniclipboard` as the graphical launcher, preserving independently installed CLI commands.
+macOS bundles retain `app.uniclipboard.desktop`. The Windows installer retains the v1 per-user uninstall registration, checks running owned executables before replacement, and preserves user data.
+Actual v1 installer replacement and native GUI behavior remain unverified.
+
+`tools/package/channels.py` renders twelve channel definitions from exact local artifact hashes. Mixed builds, missing inputs, unsafe filenames and modified files fail.
+The self-managed Tap retains both CLI Formula and Desktop Cask roles. AUR includes a source `-git` recipe and a generated binary recipe; their provenance remains distinct.
+The renderer writes explicit pending installation/publication states. It never submits, uploads, signs a repository or advances a channel.
+`tools/package/pacman.py` requires an exact package lifecycle receipt, clean production provenance and an explicit signing key environment before repository signing.
+The lifecycle attachment entrypoint verifies the package digest and required observations before updating acceptance metadata.
+
+`UNIC_MACOS_SIGNING_IDENTITY` and `UNIC_WINDOWS_CERT_SHA1` let the CLI builder sign executable files before archive hashing and native acceptance.
+Desktop signing first verifies distribution signatures on the locked CLI files and signs only Desktop-owned bytes. Real certificate signing is unverified on this host.
+Desktop locks CLI `2.0.0 (2)` from canonical distribution run 43419452491 by manifest SHA-256 `ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be`. Build 2 includes the current shared configuration/API. Earlier build-1 evidence remains historical. `fetch-cli --allow-ci` validates the canonical successful workflow, source, complete target matrix, hashes and macOS signing before acquiring this pre-publication candidate. The default fetch path requires public immutable release assets.
+`build-desktop.yml` constructs six native targets from that exact lock. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing. Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
+`package-acceptance.yml` runs six-target nonvisual package and signed-update process acceptance, plus disposable-container DEB lifecycle checks. Exact observed results are recorded in the package receipt. These build workflows do not publish.
+
+### Native application updates
+
+The Desktop host uses the pinned mygo native updater plugin. `appupdates.Source` converts the numbered FlareRelease feed into mygo manifests. The app version includes `-build.<number>` so later builds of one product version compare numerically. The adapter validates the target, archive format, bounded size, SHA-256, raw Ed25519 signature over the archive digest and the signed embedded `release-identity.json`. mygo owns extraction and installation.
+
+`desktop.update_channel` accepts `stable` (default) or `alpha` and takes effect on the next check. Updater preferences use the v2 data directory. `release/products.toml` selects the durable `update_public_key`; an empty key disables in-app updates. The production private key must use mygo's raw Ed25519 format, independent of existing Minisign/Tauri keys. `go run ./tools/release/update-sign` generates a private key directory or signs archives from `UNIC_UPDATE_PRIVATE_KEY` without logging the private key.
+
+The host enables automatic/native-menu updates only for direct installations. System Linux packages, Snap, Flatpak, AppImage, Homebrew-owned bundles, Scoop and portable archives remain externally managed. NSIS records winget/Chocolatey ownership from `/MANAGED=`. Manual reinstalls preserve that receipt. Windows and Linux updates use mygo's owned-file list and preserve unowned data. AppImage self-update remains unsupported by the pinned SDK. Public feed/key provisioning remains a deployment prerequisite.
+
+The registered CLI build entry can also call `native-desktop-acceptance.yml` to run the canonical history/search/copy native-window case on all six targets. Its screenshots, continuous recording, source/binary hashes and cleanup receipt remain distinct from production installer and real-system clipboard acceptance. Windows arm64 records the pinned Go toolchain's unavailable race detector explicitly.
+
+### Desktop delivery controller
+
+`tools/release/desktop_release.py` acquires six-target candidates only from a successful canonical repository build, checks package/source provenance and assembles the complete 22-artifact catalogue. Production assembly requires native executable identity, code signatures on macOS/Windows, Apple notarization and native updater signatures. The publication command also verifies npm availability of the locked CLI set.
+
+The controller uses the maintained boto3 SDK with create-only conditional R2 writes and byte-for-byte read-back. The catalogue and successful publication receipt remain immutable objects. It checks the deployed FlareRelease contract, authenticates with Cloudflare Access service credentials and registers the six updater archives through the existing API. The current 512 MiB registration limit applies to this updater set. All other formats remain downloadable immutable objects. Registration does not change a channel.
+
+Promotion consumes the immutable availability receipt, requires an explicit channel revision and verifies public numbered identity/updater hashes after the API's compare-and-swap mutation. Stable additionally checks native GUI and lifecycle evidence for every artifact entry. `release-desktop.yml` defines separate manual publication and promotion operations. It has not been run for public delivery. Its configured R2 S3 credentials, Access service policy, durable update key and Windows production signing are prerequisites. `release-cli.yml` can consume an accepted canonical run without rebuilding the locked CLI bytes.
+
+### GitHub Desktop Release pages
+
+`tools/release/github_desktop.py` adapts the v1 Release template to independent numbered Desktop builds. The template is `.github/release-notes/desktop.md.tmpl`. It renders changelog/source links, all supported native installer downloads, exact locked standalone CLI downloads, verification instructions and optional GitHub-generated new contributors. English and Chinese changelog strings remain available in `desktop-notes.json`. Mobile download claims remain outside this Desktop page.
+
+The tag is `desktop/v<version>-build.<number>` and points to the accepted candidate source, independently of the CLI tag. Draft staging attaches the 22 native files, six raw updater signatures, the immutable catalogue, bilingual notes, reproducible page context and `SHA256SUMS.txt` (32 attachments). Existing bytes and tag identity must match; missing draft assets can resume, while extra/changed assets fail. Every uploaded file is downloaded and hashed before accepting staging. Published releases cannot repair missing assets or downgrade from stable to alpha.
+
+The existing delivery workflow supports `github-draft`, `publish` and `promote`. It stages or verifies the page before origin/channel mutation. Alpha pages become public prereleases only after origin publication read-back. Stable publication leaves a draft until verified stable promotion, then marks the page as the latest Desktop release. The page context restores the original comparison tag/contributors across workflows. Local `preview --development` produces reviewable files without creating a page; remote operations retain all production signing gates.
+
+`e2e/packaging/github_release.py` drives the real GitHub CLI and release subprocess against disposable loopback HTTP endpoints. Its report and checksums establish process/transport behavior only. It does not create a real draft or public GitHub Release.
+
+`sandbox-acceptance.yml` runs actual Nix, Flatpak and strict Snap construction/execution on both Linux architectures. The harness overrides source acquisition with the exact verified pre-publication DEB; generated runtime/build steps remain unchanged. Missing runtimes, namespace failures or confinement failures fail the job. Nix sets only the Desktop ELF interpreter and supplies GTK libraries through the existing wrapper; it does not add RUNPATH to the prebuilt Go binary. The locked private CLI pair remains unchanged. The process harness verifies real private CLI/service IPC and bounded shutdown inside each environment. These nonvisual process checks do not establish clipboard, file/network, refresh or sandbox GUI acceptance.
 
 ## v1 upgrade notice and migration
 
@@ -42,7 +114,7 @@ The packaged-process E2E uses a temporary home, pseudoterminals and fixed encryp
 
 Git attributes require LF checkout bytes for release TOML metadata on every platform. Metadata digests cover the original file bytes. The real Git checkout regression enables `core.autocrlf=true` and verifies that checkout preserves the canonical metadata bytes before building candidates.
 
-`build-cli.yml` runs for PRs, main/v2 pushes, manual requests and reusable calls. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
+`build-cli.yml` runs for PRs, main/v2 pushes, manual requests and reusable calls. PR candidates use the actual PR head rather than a synthetic merge SHA. Explicit distribution builds import the existing Apple certificate into a temporary keychain, sign CLI executables before hashing and remove the keychain after construction. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
 
 `release-cli.yml` supports alpha and direct stable publication. It first checks for a durable record for the selected version/build. A complete existing record restores its exact package files. Otherwise it awaits the reusable build. It stages the manifest and packages in a draft GitHub release before publishing to npm. The product tag is `cli/v<version>-build.<number>` and must reference the accepted source SHA. Existing assets are compared and never overwritten. Incomplete staging fails before npm publication; recovering that case requires the original candidate artifacts.
 
@@ -74,7 +146,7 @@ Retries preserve exact identity and reject integrity conflicts. An older build c
 | `app/service/cmd/unic/upgrade.go` | Known v1 directory checks and terminal notice. |
 | `app/service/cmd/unic/migrate.go` | Offline help and in-process history import. |
 | `internal/localpaths` | Shared v1 source location without directory creation. |
-| `tools/package` | Go build, archive aliases and source/binary manifests. |
+| `tools/package` | Go CLI builds/aliases, exact Desktop staging, native formats, channel definitions and repository construction. |
 | `tools/release/release.py` | Assembly, native smoke, npm publish/promote and durable build records. |
 | `.github/workflows/build-cli.yml` | Native CLI target construction and acceptance. |
 | `.github/workflows/release-cli.yml` | Candidate recovery, reusable build and npm publication. |
@@ -95,8 +167,13 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-The selected next CLI version is `2.0.0 (1)`, encoded as `2.0.0-build.1` on npm. Alpha selects the `alpha` dist-tag. Other products retain their independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Remote five-target build and package assembly acceptance passed. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
+The selected next CLI version is `2.0.0 (2)`, encoded as `2.0.0-build.2` on npm. Alpha selects the `alpha` dist-tag. Desktop selects `2.0.0 (1)`; Android and iOS retain independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Historical remote five-target build and package assembly acceptance passed. The six-target CLI matrix has native hosted acceptance. CLI build 2 is selected to include the current shared configuration/API; the execution receipt records its final accepted lock. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
 
-Desktop does not yet consume the immutable CLI lock or provide signed installers, R2 uploads or FlareRelease registration. Its stable CLI gate remains a required future implementation. Android and iOS share an Expo UI shell under `app/expo`; it has no Engine integration and does not establish native release support. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
+Desktop staging checks the locked private service configuration/API in addition to executable hashes. macOS signing/notarization, native Windows installer lifecycle, and two-architecture Nix/Flatpak/strict Snap process/IPC acceptance have passed as recorded in the execution receipt. Windows production signing, the durable raw updater key and production numbered public routes remain prerequisites. R2/FlareRelease transport and the locked CLI npm availability gate are implemented but have not performed production delivery. Native sandbox GUI, package refresh and real-OS clipboard/file/network acceptance remain open. Android and iOS share an Expo UI shell under `app/expo`; it has no Engine integration and does not establish native release support. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
 
 Exact interface requirements are in the [release contract](../contracts/release-contract.md). Process ownership remains in the [headless architecture](headless.md).
+
+## Accepted CLI acquisition
+
+`tools/release/cli_candidate.py` acquires the exact `cli-npm-candidate` artifact from a successful canonical Build CLI run in this repository. It checks workflow identity, source SHA, product identity, the complete declared matrix, native receipts and package SHA-256/SHA-512 before changing a Desktop lock. `--require-macos-signing` rejects unsigned macOS component builds.
+The optional `cli_artifact_run_id` records the immutable acquisition source for pre-publication construction. It does not establish npm availability or satisfy the stable Desktop gate.

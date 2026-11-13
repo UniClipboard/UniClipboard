@@ -1,0 +1,239 @@
+{
+  "main": {
+    "cardTitle": "后台自动同步",
+    "toggle": {
+      "descTempDisabled": "已临时停止，重启 APP 后恢复开启状态",
+      "descNormal": "允许已开启的同步方向在后台运行，并自动引导授予所需的系统权限"
+    },
+    "footer": "后台下载和上传分别遵循“自动写入”和“自动推送”方向开关"
+  },
+  "advanced": {
+    "cardTitle": "高级选项",
+    "notification": {
+      "title": "后台服务常驻通知",
+      "desc": "启用后会增加后台服务的稳定性"
+    },
+    "battery": {
+      "title": "忽略电池优化",
+      "desc": "防止省电模式中断后台同步"
+    },
+    "network": {
+      "title": "移动数据下继续后台同步",
+      "desc": "关闭后，仅在连接 Wi-Fi 时进行后台同步"
+    },
+    "download": {
+      "title": "后台下载远程",
+      "desc": "自动写入开启时，在后台接收远程新内容"
+    },
+    "upload": {
+      "title": "后台上传本地",
+      "desc": "自动推送开启时，在后台上传本机剪贴板变化"
+    },
+    "clipboardAccess": {
+      "title": "后台读取方式",
+      "method": {
+        "overlay-polling": "定时轮询",
+        "overlay-event": "ADB 事件",
+        "shizuku": "Shizuku"
+      },
+      "issue": {
+        "service-unavailable": "Shizuku 尚未运行",
+        "permission-required": "还需允许剪贴板访问",
+        "system-restriction": "MIUI 正在阻止后台访问",
+        "monitoring-setup-required": "需要一次性设置"
+      },
+      "issueDescription": {
+        "service-unavailable": "先安装并启动 Shizuku，再返回授权",
+        "permission-required": "按照系统提示允许 UniClip 使用当前方式",
+        "system-restriction": "需要通过 Shizuku 关闭 MIUI 智能剪贴板限制",
+        "monitoring-setup-required": "复制一条 adb 命令，在电脑上运行"
+      },
+      "action": {
+        "service-unavailable": "打开 Shizuku",
+        "permission-required": "去授权",
+        "system-restriction": "处理限制",
+        "monitoring-setup-required": "去设置",
+        "check": "检查授权"
+      },
+      "setup": {
+        "completed": "后台剪贴板访问已就绪",
+        "commandCopied": "命令已复制；请在电脑终端执行",
+        "failed": "未能完成后台剪贴板设置"
+      },
+      "sheet": {
+        "title": "后台读取",
+        "subtitle": "Android 限制后台读取剪贴板，请选择 UniClip 感知复制的方式。",
+        "inUse": "使用中",
+        "currentButton": "当前使用中",
+        "continue": {
+          "overlay-polling": "使用定时轮询",
+          "overlay-event": "继续使用 ADB 事件",
+          "shizuku": "继续使用 Shizuku"
+        },
+        "nextHint": {
+          "overlay-event": "下一步：复制一条 adb 命令，在电脑上运行"
+        },
+        "labels": {
+          "bestFor": "适合",
+          "tradeoff": "需要注意",
+          "setup": "开始之前"
+        },
+        "methods": {
+          "overlay-polling": {
+            "title": "定时轮询",
+            "summary": "无需设置，但会打断输入。",
+            "tag1": "无需电脑",
+            "tag2": "会打断输入",
+            "bestFor": "临时试用，或没有其他方式可用时",
+            "tradeoff": "每秒检查一次并短暂抢占焦点，可能收起键盘、丢失按键，并干扰游戏或全屏应用",
+            "setup": "允许 UniClip 显示在其他应用上层"
+          },
+          "overlay-event": {
+            "title": "ADB 事件",
+            "summary": "仅在复制后读取，干扰更少、更省电。",
+            "tag1": "需电脑一次",
+            "tag2": "事件驱动",
+            "bestFor": "能连接电脑并希望降低耗电的人",
+            "tradeoff": "重新安装应用后需要再次运行命令",
+            "setup": "悬浮窗权限、USB 调试，以及电脑上的 ADB"
+          },
+          "shizuku": {
+            "title": "Shizuku",
+            "summary": "最流畅，完全不需要悬浮窗。",
+            "tag1": "需运行 Shizuku",
+            "tag2": "事件驱动",
+            "bestFor": "已经在使用 Shizuku 的人",
+            "tradeoff": "Shizuku 通常在每次重启后都需要重新启动",
+            "setup": "安装并启动 Shizuku，然后授予访问权限"
+          }
+        }
+      },
+      "adbGuide": {
+        "title": "授权 ADB 事件检测",
+        "subtitle": "UniClip 仅用它检测复制事件，不会读取其他日志内容。",
+        "status": {
+          "copied": "命令已复制。请粘贴到电脑终端运行，然后点按「检查授权」。",
+          "notDetected": "尚未检测到授权。请确认命令已无报错执行完毕，且手机显示为「device」。"
+        },
+        "step1": {
+          "title": "准备电脑",
+          "text": "安装 Android Platform Tools（adb）。在手机的开发者选项中开启 USB 调试。"
+        },
+        "step2": {
+          "title": "连接并允许",
+          "text": "用 USB 连接，并在手机上点按「允许」。下面的命令应将你的手机列为「device」："
+        },
+        "step3": {
+          "title": "一次性授权",
+          "text": "在同一个终端中运行。仅在重新安装 UniClip 后才需要再次运行。"
+        },
+        "terminalLabel": "终端",
+        "copy": "复制",
+        "copied": "已复制",
+        "copyCommand": "复制授权命令",
+        "copyAgain": "再次复制授权命令",
+        "check": "检查授权",
+        "checkAgain": "重新检查"
+      },
+      "restriction": {
+        "title": "关闭 MIUI 剪贴板限制",
+        "subtitle": "后台读写剪贴板需要先关闭它。",
+        "warning": "这也可能关闭 MIUI 的智能剪贴板功能。",
+        "text": "UniClip 将通过 Shizuku 关闭 MIUI 的智能剪贴板限制。你可以随时在系统设置中重新开启。",
+        "confirm": "关闭限制",
+        "dismiss": "暂不"
+      },
+      "entry": {
+        "change": "更改"
+      },
+      "status": {
+        "ready": {
+          "title": "已就绪",
+          "description": {
+            "overlay-polling": "每秒检查一次剪贴板",
+            "overlay-event": "仅在复制事件发生后读取",
+            "shizuku": "通过 Shizuku 读取"
+          }
+        }
+      },
+      "shizukuGuide": {
+        "title": "设置 Shizuku",
+        "subtitle": "UniClip 通过 Shizuku 读取剪贴板，无需悬浮窗。",
+        "status": {
+          "notRunning": "Shizuku 未运行。请先启动它，再回到这里。",
+          "authorize": "Shizuku 已在运行。最后一步：允许 UniClip。"
+        },
+        "step1": {
+          "title": "安装 Shizuku",
+          "text": "获取 Shizuku 应用并打开一次。",
+          "done": "已安装。"
+        },
+        "step2": {
+          "title": "启动服务",
+          "text": "Android 11 及以上可在 Shizuku 内使用「无线调试」，无需电脑。也可以在电脑上运行：",
+          "done": "运行中。"
+        },
+        "step3": {
+          "title": "允许 UniClip",
+          "text": "Shizuku 运行后，系统会弹出提示，请允许 UniClip。",
+          "authorizeText": "点按「授权」并接受 Shizuku 的提示。它只让 UniClip 检测剪贴板变化。"
+        },
+        "open": "打开 Shizuku",
+        "authorize": "授权 UniClip",
+        "checkAgain": "重新检查"
+      }
+    },
+    "groups": {
+      "clipboardAccess": "剪贴板读取",
+      "sync": "后台同步",
+      "reliability": "运行保障"
+    }
+  },
+  "dialog": {
+    "enableAutoSync": {
+      "title": "开启后台自动同步",
+      "text": "开启后应用将在后台持续同步剪贴板，我们会依次引导你完成电池、通知和当前剪贴板读取方式所需的授权。全部允许可获得最佳效果，拒绝也不影响继续使用。",
+      "confirm": "确认开启"
+    },
+    "disableNotification": {
+      "title": "关闭常驻通知",
+      "text": "关闭常驻通知会降低后台服务稳定性，系统终止后台任务的可能性增大。",
+      "confirm": "确认关闭"
+    },
+    "missingNotificationPermission": {
+      "title": "缺少通知权限",
+      "text": "未授予通知权限，常驻通知可能无法显示。建议前往系统设置允许通知权限。",
+      "confirm": "前往设置",
+      "dismiss": "稍后再说"
+    },
+    "enableUpload": {
+      "title": "开启后台上传本地剪贴板",
+      "text": "无需启用此选项，UniClip 也支持从选中文字弹出的菜单直接上传文字。\n\nAndroid 10 及以上的系统，应用在后台无法直接获取本地剪贴板内容，你可能需要启用悬浮窗或使用其他工具绕过此限制。",
+      "confirm": "确认开启"
+    },
+    "batteryFallback": {
+      "title": "无法唤起系统弹窗",
+      "text": "系统限制每次安装仅允许弹出一次电池优化请求，请前往系统设置手动关闭电池优化。",
+      "confirm": "前往设置"
+    }
+  },
+  "toast": {
+    "autoSyncRestored": "已恢复后台自动同步",
+    "autoSyncEnabled": "已启用后台自动同步",
+    "autoSyncDisabled": "已禁用后台自动同步",
+    "downloadEnabled": "已启用后台下载远程",
+    "downloadDisabled": "已禁用后台下载远程",
+    "uploadEnabled": "已启用后台上传本地",
+    "uploadDisabled": "已禁用后台上传本地",
+    "clipboardAccessChanged": "已切换后台剪贴板读取方式",
+    "setFailed": "设置失败"
+  },
+  "smsCode": {
+    "group": "验证码",
+    "title": "复制短信验证码",
+    "desc": "收到含验证码的短信时，自动复制并在通知中显示。需要接收短信的权限，是否同步遵循你的同步设置。",
+    "denied": "需要短信权限才能复制验证码",
+    "enabled": "将自动复制验证码",
+    "disabled": "已关闭验证码复制"
+  }
+}

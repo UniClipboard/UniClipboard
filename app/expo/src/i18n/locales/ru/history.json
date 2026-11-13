@@ -1,0 +1,122 @@
+{
+  "transferQueue": {
+    "title": "Очередь передачи",
+    "empty": "Нет задач передачи",
+    "status": {
+      "pending": "Ожидание",
+      "running": "Передача",
+      "completed": "Завершено",
+      "failed": "Ошибка",
+      "cancelled": "Отменено",
+      "waitForRetry": "Ожидание повтора"
+    }
+  },
+  "filter": {
+    "title": "Фильтры",
+    "section": {
+      "kind": "Тип",
+      "date": "Дата"
+    },
+    "date": {
+      "all": "Все",
+      "today": "Сегодня",
+      "yesterday": "Вчера",
+      "pastWeek": "За 7 дней"
+    },
+    "chip": {
+      "all": "Все",
+      "date": "Дата",
+      "kind": "Тип",
+      "source": "Источник"
+    },
+    "source": {
+      "all": "Все источники",
+      "local": "Это устройство",
+      "remote": "Другие устройства"
+    }
+  },
+  "kind": {
+    "text": "Текст",
+    "url": "Ссылка",
+    "image": "Изображение",
+    "file": "Файл",
+    "group": "Архив"
+  },
+  "time": {
+    "justNow": "Только что",
+    "secondsAgo": "{{n}} с назад",
+    "minutesAgo": "{{n}} мин назад",
+    "hoursAgo": "{{n}} ч назад",
+    "daysAgo": "{{n}} дн назад"
+  },
+  "delivery": {
+    "delivered": "Доставлено",
+    "partial": "Отправлено: {{accepted}}, уже есть: {{duplicate}}, не в сети: {{offline}}, ошибок: {{errored}}, ожидают: {{pending}}",
+    "offline": "Устройство не в сети",
+    "failed": "Не удалось отправить",
+    "pending": "Отправка"
+  },
+  "wordPicker": {
+    "truncated_one": "Текст слишком длинный, показан первый {{count}} символ",
+    "truncated_few": "Текст слишком длинный, показаны первые {{count}} символа",
+    "truncated_many": "Текст слишком длинный, показаны первые {{count}} символов",
+    "truncated_other": "Текст слишком длинный, показаны первые {{count}} символа",
+    "empty": "Нет текста для выбора",
+    "granularity": {
+      "word": "Слова",
+      "char": "Символы"
+    },
+    "deselectAll": "Отменить выбор",
+    "placeholder": "Нажмите или проведите, чтобы выбрать текст",
+    "copyFailed": "Не удалось скопировать",
+    "copied": "Скопировано в буфер обмена",
+    "hints": {
+      "tap": "Нажатие: выбрать слово",
+      "swipe": "Свайп: выделить подряд",
+      "hold": "Удержание и перетаскивание: диапазон"
+    },
+    "noneSelected": "Ничего не выбрано",
+    "summary": {
+      "words_one": "Выбрано {{count}} слово",
+      "words_few": "Выбрано {{count}} слова",
+      "words_many": "Выбрано {{count}} слов",
+      "words_other": "Выбрано {{count}} слова",
+      "chars_one": "{{count}} символ",
+      "chars_few": "{{count}} символа",
+      "chars_many": "{{count}} символов",
+      "chars_other": "{{count}} символа",
+      "charsOnly_one": "Выбран {{count}} символ",
+      "charsOnly_few": "Выбрано {{count}} символа",
+      "charsOnly_many": "Выбрано {{count}} символов",
+      "charsOnly_other": "Выбрано {{count}} символа"
+    },
+    "webSearch": "Искать в интернете",
+    "expandPreview": "Развернуть предпросмотр",
+    "collapsePreview": "Свернуть предпросмотр",
+    "previewTitle": "Предпросмотр перед копированием",
+    "editable": "Можно редактировать",
+    "joinLabel": "Соединение отдельных фрагментов",
+    "join": {
+      "original": "Как в оригинале",
+      "space": "Пробелами",
+      "newline": "Построчно"
+    },
+    "handleStart": "Начало выделения",
+    "handleEnd": "Конец выделения"
+  },
+  "menu": {
+    "copyPlain": "Копировать как обычный текст",
+    "selectText": "Выбрать текст",
+    "openBrowser": "Открыть в браузере",
+    "saveImage": "Сохранить изображение",
+    "saveFile": "Сохранить файл",
+    "resend": "Отправить снова",
+    "closeMenu": "Закрыть меню"
+  },
+  "layout": {
+    "title": "Вид",
+    "list": "Список",
+    "compact": "Компактный список",
+    "grid": "Сетка"
+  }
+}

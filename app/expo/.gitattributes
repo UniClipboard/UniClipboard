@@ -1,0 +1,2 @@
+# Patch context lines contain a required single space. Preserve upstream bytes.
+patches/*.patch -whitespace

@@ -1,0 +1,53 @@
+{
+  "title": "Armazenamento",
+  "cleanUp": "Limpar",
+  "setFailed": "Falha ao salvar a configuração",
+  "cache": {
+    "usageLabel": "Uso do cache",
+    "cleared": "Cache limpo",
+    "clearFailed": "Falha ao limpar o cache",
+    "clearDialogTitle": "Limpar cache",
+    "clearDialogMessage": "Tem certeza de que deseja limpar o diretório de cache? Isso excluirá todos os arquivos de cache.",
+    "sectionHeader": "Cache",
+    "capLabel": "Limite do cache",
+    "iosUsageLabel": "Uso do cache",
+    "clearing": "Limpando…"
+  },
+  "log": {
+    "usageLabel": "Uso dos logs",
+    "cleared": "Logs limpos",
+    "clearFailed": "Falha ao limpar os logs",
+    "clearDialogTitle": "Limpar logs",
+    "clearDialogMessage": "Tem certeza de que deseja limpar o diretório de logs? Isso excluirá todos os arquivos de log."
+  },
+  "history": {
+    "usageLabel": "Uso do histórico",
+    "sectionTitle": "Histórico",
+    "maxItemsLabel": "Máximo de itens no histórico",
+    "maxItemsHint": "Mínimo de 10 itens",
+    "maxItemsInvalid": "Digite um número maior ou igual a 10",
+    "autoDownloadLabel": "Baixar imagens automaticamente ao navegar",
+    "showCopyButtonLabel": "Mostrar botão de cópia nas imagens",
+    "showCopyButtonHint": "Mostrar um botão de copiar para a área de transferência nos itens de imagem do histórico"
+  },
+  "autoDownload": {
+    "wifi": "Somente Wi-Fi",
+    "always": "Sempre",
+    "off": "Desativado"
+  },
+  "prefetch": {
+    "sectionHeader": "Pré-download",
+    "sectionFooter": "Quando ativado, o conteúdo novo é armazenado em cache silenciosamente em segundo plano, e as prévias abrem na hora.",
+    "attachmentLabel": "Pré-download de anexos",
+    "cellularLabel": "Pré-download também em dados móveis"
+  },
+  "overview": {
+    "totalLabel": "Usado pelo UniClip",
+    "usageTitle": "Uso"
+  },
+  "kind": {
+    "history": "Histórico",
+    "cache": "Cache",
+    "logs": "Logs"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "UniClipboard UI Shell",
+    "slug": "uniclipboard-ui-shell",
+    "scheme": "uniclipboard-ui-shell",
+    "version": "0.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.uniclipboard.shell",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIApplicationSceneManifest": {
+          "UIApplicationSupportsMultipleScenes": false,
+          "UISceneConfigurations": {
+            "UIWindowSceneSessionRoleApplication": [
+              {
+                "UISceneConfigurationName": "Default Configuration",
+                "UISceneDelegateClassName": "$(PRODUCT_MODULE_NAME).SceneDelegate"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "android": {
+      "package": "app.uniclipboard.shell",
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/adaptive-icon-bg.png"
+      }
+    },
+    "plugins": [
+      "./plugins/withXcode27SceneLifecycle.js",
+      "./plugins/withXcode27DeploymentTargets.js"
+    ]
+  }
+}

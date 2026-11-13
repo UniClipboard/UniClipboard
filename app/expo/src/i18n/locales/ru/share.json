@@ -1,0 +1,59 @@
+{
+  "receive": {
+    "parsing": "Обработка содержимого…",
+    "saving": "Сохранение…",
+    "parseFailed": "Не удалось обработать содержимое: {{message}}",
+    "noContent": "Нет содержимого для обработки",
+    "emptyText": "Текст пуст",
+    "saveFailed": "Не удалось сохранить"
+  },
+  "processText": {
+    "loading": "Отправка текста…",
+    "success": "Отправлено",
+    "failure": "Не удалось отправить"
+  },
+  "upload": {
+    "copying": "Копирование файла…",
+    "hashing": "Вычисление хеша…",
+    "uploading": "Отправка…",
+    "recordNotFound": "Запись не найдена: {{hash}}"
+  },
+  "serviceRestart": {
+    "restored": "Служба восстановлена",
+    "failed": "Не удалось возобновить синхронизацию"
+  },
+  "send": {
+    "title": "Отправить",
+    "empty": "Нет ожидающих отправки",
+    "claimFailed": "Не удалось загрузить ожидающие отправки. Повторите позже.",
+    "devices": "Отправить на устройства",
+    "noDevices": "Устройств пока нет",
+    "servers": "Отправить на серверы",
+    "noServers": "Нет доступных серверов",
+    "sendAll": "Отправить",
+    "done": "Готово",
+    "cancel": "Отмена",
+    "retry": "Повторить",
+    "delete": "Удалить",
+    "deleteConfirmTitle": "Удалить содержимое?",
+    "deleteConfirmMessage": "Это действие нельзя отменить.",
+    "sending": "Отправка…",
+    "success": "Отправлено",
+    "failed": "Не удалось отправить",
+    "offlineTitle": "Не удалось отправить",
+    "offline": "Устройство не в сети. Повторите попытку, когда оно будет в сети.",
+    "selectHint": "Выберите устройства",
+    "localDevice": "Это устройство",
+    "allDevices": "Все устройства",
+    "unconfirmed": "Result unconfirmed. Check the existing transfer.",
+    "checkExisting": "Check existing transfer",
+    "targetState": {
+      "preparing": "Подготовка…",
+      "sending": "Отправка",
+      "confirming": "Ожидание подтверждения…",
+      "success": "Отправлено",
+      "failed": "Ошибка отправки",
+      "unconfirmed": "Доставка не подтверждена"
+    }
+  }
+}

@@ -1,0 +1,205 @@
+{
+  "title": "About",
+  "versionLabel": "Version",
+  "update": {
+    "check": "Check for updates",
+    "checking": "Checking...",
+    "updateTo": "Update {{version}}",
+    "upToDate": "You're on the latest version",
+    "checkFailed": "Update check failed, please check your network connection",
+    "available": "Version {{version}} available"
+  },
+  "autoCheck": {
+    "label": "Auto check for updates"
+  },
+  "updateToBeta": {
+    "label": "Update to beta",
+    "confirmTitle": "Enable beta updates?",
+    "description": "Receive beta updates and check for a new version immediately.",
+    "warning": "Beta versions may be unstable and cause crashes, sync issues, or data corruption or loss.",
+    "backup": "Back up important data before continuing. Turning this off will not downgrade an installed beta to a stable version.",
+    "confirm": "Accept risks and enable",
+    "cancel": "Not now"
+  },
+  "download": {
+    "newVersionTitle": "New version available",
+    "latestVersion": "Latest version: {{version}}",
+    "currentVersion": "Current version: {{version}}",
+    "releaseNotes": "Release notes:\n{{notes}}",
+    "r2": "Download (recommended)",
+    "github": "Download from GitHub",
+    "downloading": "Downloading {{percent}}%",
+    "canceled": "Download canceled",
+    "failed": "Download failed",
+    "noSuitableApk": "No suitable APK found for this device"
+  },
+  "cancelDownload": {
+    "title": "Cancel download",
+    "message": "Are you sure you want to cancel the download?",
+    "confirm": "Cancel download",
+    "dismiss": "Keep downloading"
+  },
+  "error": {
+    "saveFailed": "Failed to save settings"
+  },
+  "log": {
+    "title": "Logs",
+    "levelLabel": "Log level",
+    "level": {
+      "debug": "Debug",
+      "info": "Info",
+      "warn": "Warning",
+      "error": "Error"
+    },
+    "setSuccess": "Log level set to {{level}}",
+    "setFailed": "Failed to set log level",
+    "exportLabel": "Export logs",
+    "export": "Export",
+    "exported": "Logs saved",
+    "warning": {
+      "engineLogsMissing": "Engine logs were not found, so the package has no Engine evidence. Restart UniClip and export again.",
+      "engineLogsUnreadable": "Some or all Engine logs were found but couldn't be read, so the package may be incomplete. Restart UniClip and export again.",
+      "engineLogsWrittenNotFound": "The Engine reports written logs, but the files are missing from disk. The package is incomplete; restart UniClip and export again.",
+      "networkLogsIncomplete": "Network logs may be incomplete: some files could not be flushed, read or verified. Only this process was flushed; other processes such as the keyboard were not."
+    },
+    "exportMethodPrompt": "Choose whether to share the logs or export them as a file.",
+    "exportFile": "Export file",
+    "shareFailed": "Failed to share logs",
+    "exportCanceled": "Export canceled",
+    "exportFailed": "Failed to export logs",
+    "capture": {
+      "title": "Detailed diagnostics",
+      "start": "Start detailed recording (10 minutes)",
+      "stop": "Stop detailed recording",
+      "description": "Start recording before reproducing the issue, then export logs. Details stay on this device for a capture of up to 10 minutes. Earlier activity is not recovered, and other extensions are not enabled automatically.",
+      "remaining": "Recording, about {{count}} minutes left",
+      "failed": "Could not complete the action. Please try again.",
+      "unavailable": "Unavailable until the service is ready."
+    },
+    "exportDescription": "Share, or save as a file",
+    "storageHint": "Log files can be cleared under Storage."
+  },
+  "debug": {
+    "connectionPreview": "Preview connection screens",
+    "connectionPreviewComputer": "Example computer",
+    "onboardingPreview": "Preview welcome tour",
+    "title": "Debug",
+    "modeLabel": "Debug mode",
+    "modeEnabled": "Debug mode enabled",
+    "modeDisabled": "Debug mode disabled",
+    "overlayLabel": "Show overlay",
+    "overlayDesc": "Show a visible overlay when reading the clipboard in the background",
+    "overlayVisibleToast": "Overlay will be visible in the background",
+    "overlayHiddenToast": "Overlay hidden",
+    "urlSchemeLabel": "Show URL Scheme calls",
+    "updateNoLimitLabel": "Unlimited update checks",
+    "updateNoLimitDesc": "When on, checks for updates on every launch instead of once a day",
+    "deviceTrustPreview": {
+      "label": "Preview device relationship decision",
+      "description": "Open the real dialog with safe sample data",
+      "pickerTitle": "Choose a preview scenario",
+      "pickerDescription": "Preview actions stay on this device and do not change any real device relationship.",
+      "unavailable": "Finish the current device relationship action before opening a preview",
+      "scenarios": {
+        "standard": "Two available choices",
+        "singleChoice": "Only one available choice",
+        "confirmKeepCurrent": "Confirm keeping the current group",
+        "confirmLeaveCurrent": "Confirm leaving the current group",
+        "submitting": "Submitting",
+        "failedRetry": "Failed, ready to retry",
+        "stateChanged": "State changed elsewhere",
+        "longScrollable": "Long names and many devices",
+        "groupChoices": "Updated device lists and unconfirmed members"
+      }
+    },
+    "connectionSheetPreview": {
+      "label": "Preview pairing sheet",
+      "description": "Choose a state and open the real pairing UI",
+      "pickerTitle": "Choose a pairing sheet state",
+      "pickerDescription": "The preview uses isolated sample data. Close it to choose another state. Its buttons never start real pairing or change device data.",
+      "scenarios": {
+        "joinPending": "Joining",
+        "joinProcessing": "Processing, waiting for confirmation",
+        "joinTakingLonger": "Joining is taking longer",
+        "joinCancelling": "Cancelling",
+        "joinFailed": "Join failed",
+        "deviceUpdating": "Updating space device status",
+        "deviceRetrying": "Retrying automatically later",
+        "deviceStateRejected": "Needs attention: device status rejected",
+        "deviceRelationshipConflict": "Needs attention: relationship conflict",
+        "deviceSecurityUpdateRejected": "Needs attention: device security",
+        "deviceUpgradeRequired": "Needs attention: related device update",
+        "localIdentityMismatch": "Needs attention: local identity mismatch",
+        "deviceUpdated": "Space device status updated",
+        "inviterWaiting": "Inviter: waiting for another device",
+        "invitationExpired": "Inviter: invitation expired",
+        "inviterConnected": "Inviter: device connected"
+      }
+    },
+    "previewsTitle": "Previews",
+    "previewRows": {
+      "welcomeTour": "Welcome tour",
+      "connectionScreens": "Connection screens",
+      "connectionSheet": "Pairing sheet",
+      "deviceRelationship": "Device relationship decision"
+    },
+    "smsCodeTest": {
+      "label": "SMS code recognition test",
+      "title": "SMS code recognition test",
+      "description": "Paste sample SMS text to see which code would be recognized. Nothing is copied, saved or synced, and no SMS permission is used.",
+      "inputLabel": "Sample SMS text",
+      "run": "Recognize",
+      "clear": "Clear",
+      "recognized": "Recognized code: {{code}}",
+      "none": "No code recognized",
+      "ambiguous": "Several possible codes, none chosen",
+      "copy": "Copy",
+      "copied": "Copied to clipboard",
+      "copyFailed": "Could not copy"
+    }
+  },
+  "stats": {
+    "title": "Statistics",
+    "view": "View",
+    "copied": "Statistics copied"
+  },
+  "versionValue": "Version {{version}}",
+  "updatesTitle": "Updates",
+  "power": {
+    "title": "Battery and background activity",
+    "period": "Last 24 hours",
+    "loading": "Collecting…",
+    "unavailable": "Not available on this device.",
+    "collecting": "Not enough data yet. Use the phone normally and check again later.",
+    "state": {
+      "foreground": "In the app",
+      "backgroundScreenOn": "In background, screen on",
+      "backgroundScreenOff": "In background, screen off"
+    },
+    "stateDetail": "{{duration}} · CPU {{cpu}} · Network {{network}}",
+    "unknownValue": "unavailable",
+    "battery": {
+      "title": "Whole-phone battery (not this app)",
+      "ready": "{{change}} % over {{duration}} unplugged, all apps and the screen included",
+      "suspect": "{{change}} % over {{duration}} unplugged. This phone's charge counter looks unreliable, so only the percentage is shown",
+      "collecting": "Needs about 10 minutes unplugged to show a change",
+      "unavailable": "This phone does not report battery readings to apps"
+    },
+    "service": {
+      "title": "Background service",
+      "detail": "Running {{duration}} · {{events}} sync events"
+    },
+    "gap": "{{duration}} was not recorded because the app was not running.",
+    "reset": "Reset statistics",
+    "resetAction": "Reset",
+    "resetDone": "Statistics cleared",
+    "resetFailed": "Could not clear statistics",
+    "footer": "Android does not tell apps how much battery they use. Battery figures cover the whole phone, and CPU and network figures are this app's own activity, not a measured power cost. Statistics stay on this device and are included when you export logs.",
+    "duration": {
+      "minutes": "{{minutes}} min",
+      "hours": "{{hours}} h {{minutes}} min",
+      "none": "0 min",
+      "lessThanMinute": "<1 min"
+    }
+  }
+}

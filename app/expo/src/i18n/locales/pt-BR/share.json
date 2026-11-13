@@ -1,0 +1,59 @@
+{
+  "receive": {
+    "parsing": "Analisando conteúdo compartilhado…",
+    "saving": "Salvando…",
+    "parseFailed": "Falha ao analisar o conteúdo compartilhado: {{message}}",
+    "noContent": "Nenhum conteúdo compartilhado para processar",
+    "emptyText": "O texto compartilhado está vazio",
+    "saveFailed": "Falha ao salvar"
+  },
+  "processText": {
+    "loading": "Enviando texto…",
+    "success": "Envio concluído",
+    "failure": "Falha no envio"
+  },
+  "upload": {
+    "copying": "Copiando arquivo…",
+    "hashing": "Calculando hash…",
+    "uploading": "Enviando…",
+    "recordNotFound": "Registro não encontrado: {{hash}}"
+  },
+  "serviceRestart": {
+    "restored": "Serviço restaurado",
+    "failed": "Não foi possível retomar a sincronização"
+  },
+  "send": {
+    "title": "Compartilhar",
+    "empty": "Nada para enviar ainda",
+    "claimFailed": "Não foi possível carregar os compartilhamentos pendentes. Tente novamente mais tarde.",
+    "devices": "Enviar para dispositivos",
+    "noDevices": "Nenhum dispositivo ainda",
+    "servers": "Enviar para servidores",
+    "noServers": "Nenhum servidor disponível",
+    "sendAll": "Enviar",
+    "done": "Concluído",
+    "cancel": "Cancelar",
+    "retry": "Tentar novamente",
+    "delete": "Excluir",
+    "deleteConfirmTitle": "Excluir conteúdo compartilhado?",
+    "deleteConfirmMessage": "Esta ação não pode ser desfeita.",
+    "sending": "Enviando…",
+    "success": "Enviado",
+    "failed": "Falha no envio",
+    "offlineTitle": "Não foi possível enviar",
+    "offline": "O dispositivo está offline. Tente novamente quando ele estiver online.",
+    "selectHint": "Escolha os dispositivos de destino",
+    "localDevice": "Este dispositivo",
+    "allDevices": "Todos os dispositivos",
+    "unconfirmed": "Result unconfirmed. Check the existing transfer.",
+    "checkExisting": "Check existing transfer",
+    "targetState": {
+      "preparing": "Preparando…",
+      "sending": "Enviando",
+      "confirming": "Aguardando confirmação…",
+      "success": "Enviado",
+      "failed": "Falha no envio",
+      "unconfirmed": "Entrega não confirmada"
+    }
+  }
+}

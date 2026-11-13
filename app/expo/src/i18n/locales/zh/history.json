@@ -1,0 +1,110 @@
+{
+  "transferQueue": {
+    "title": "传输队列",
+    "empty": "暂无传输任务",
+    "status": {
+      "pending": "等待中",
+      "running": "传输中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "waitForRetry": "等待重试"
+    }
+  },
+  "filter": {
+    "title": "筛选条件",
+    "section": {
+      "kind": "类型",
+      "date": "日期"
+    },
+    "date": {
+      "all": "全部",
+      "today": "今天",
+      "yesterday": "昨天",
+      "pastWeek": "近 7 天"
+    },
+    "chip": {
+      "all": "全部",
+      "date": "时间",
+      "kind": "类型",
+      "source": "来源"
+    },
+    "source": {
+      "all": "全部来源",
+      "local": "本机",
+      "remote": "其他设备"
+    }
+  },
+  "kind": {
+    "text": "文本",
+    "url": "链接",
+    "image": "图片",
+    "file": "文件",
+    "group": "归档"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "secondsAgo": "{{n}}秒前",
+    "minutesAgo": "{{n}}分钟前",
+    "hoursAgo": "{{n}}小时前",
+    "daysAgo": "{{n}}天前"
+  },
+  "delivery": {
+    "delivered": "已送达",
+    "partial": "送达 {{accepted}}，已存在 {{duplicate}}，离线 {{offline}}，失败 {{errored}}，等待 {{pending}}",
+    "offline": "设备离线",
+    "failed": "发送失败",
+    "pending": "发送中"
+  },
+  "wordPicker": {
+    "truncated": "文本过长，仅显示前 {{count}} 字",
+    "empty": "没有可选择的文本",
+    "granularity": {
+      "word": "分词",
+      "char": "逐字"
+    },
+    "deselectAll": "取消全选",
+    "placeholder": "点按或滑动选择文字",
+    "copyFailed": "复制失败",
+    "copied": "已复制到剪贴板",
+    "hints": {
+      "tap": "点按：选词",
+      "swipe": "横滑：连续涂选",
+      "hold": "长按拖动：选范围"
+    },
+    "noneSelected": "未选择",
+    "summary": {
+      "words": "已选 {{count}} 个词",
+      "chars": "{{count}} 字",
+      "charsOnly": "已选 {{count}} 字"
+    },
+    "webSearch": "网页搜索",
+    "expandPreview": "展开预览",
+    "collapsePreview": "收起预览",
+    "previewTitle": "复制前预览",
+    "editable": "可直接编辑",
+    "joinLabel": "不连续选择时的拼接方式",
+    "join": {
+      "original": "保持原文",
+      "space": "空格连接",
+      "newline": "逐行"
+    },
+    "handleStart": "选区起点",
+    "handleEnd": "选区终点"
+  },
+  "menu": {
+    "copyPlain": "复制为纯文本",
+    "selectText": "选择文本",
+    "openBrowser": "在浏览器中打开",
+    "saveImage": "保存图片",
+    "saveFile": "保存文件",
+    "resend": "重新发送",
+    "closeMenu": "关闭菜单"
+  },
+  "layout": {
+    "title": "显示方式",
+    "list": "列表",
+    "compact": "紧凑列表",
+    "grid": "网格"
+  }
+}

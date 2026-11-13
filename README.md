@@ -12,8 +12,8 @@
 | `internal/` | 核心实现:`session`(会话层)、`wire`(线协议)、`store`(SQLite)、`tcnet`(tailcat 传输)、`rendezvous`(配对码服务)、`clip`(剪贴板内容模型)等；另有独立迁移工具 `v1migration`，包含平台专属凭据读取 |
 | [`app/service/`](app/service/) | UI-free CLI, Engine service and offline migration tool. |
 | [`app/desktop/`](app/desktop/) | 桌面应用(Go,mygo):`unicd` daemon、`unic` cli 与 gui |
-| [`app/android/`](app/android/) | Android 应用(尚未开始) |
-| [`app/ios/`](app/ios/) | iOS 应用(尚未开始) |
+| [`app/expo/`](app/expo/) | Shared Expo UI shell for Android and iOS; Engine integration pending |
+| [`app/android/`](app/android/)、[`app/ios/`](app/ios/) | Platform guidance; no separate native applications |
 | `bindings/` | 将来:把 `engine` 暴露给 Kotlin / Swift 的薄封装(gomobile 等) |
 | [`docs/`](docs/) | 设计决策与接口契约 |
 | `prototype/` | GUI 交互原型 |

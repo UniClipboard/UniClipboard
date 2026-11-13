@@ -1,0 +1,69 @@
+{
+  "pairing": {
+    "confirm": "Connect to this computer",
+    "method": "Sync method: standard sync",
+    "details": "Connection details",
+    "hideDetails": "Hide details",
+    "connect": "Connect",
+    "retry": "Retry",
+    "rescan": "Scan again",
+    "later": "Set up later",
+    "connecting": "Checking and saving the connection…",
+    "success": "Your connection is ready",
+    "successBody": "The connection check passed and the details are saved. You can get started now.",
+    "scanFailed": "Could not scan the code. Check camera access or scan the connection code on your computer again.",
+    "saveFailed": "Could not finish connection setup. Please retry."
+  },
+  "intro": {
+    "scan": "Scan to pair",
+    "next": "Next",
+    "start": "Get started",
+    "progress": "Page {{current}} of {{total}}",
+    "saveError": "Could not save. Please try again.",
+    "history": {
+      "title": "Keep it. Find it again.",
+      "body": "Keep text, images and files in your clipboard history, ready to find when you need them."
+    },
+    "sync": {
+      "title": "Bring your devices together",
+      "body": "Connect your phone and computer to send text, images and files between your own devices."
+    },
+    "settings": {
+      "title": "Make yourself at home",
+      "body": "Start using local features now. When you need sync, choose a sync method and connect your devices in Settings."
+    }
+  },
+  "skip": "Skip",
+  "continue": "Continue",
+  "setup": {
+    "title": "Start syncing",
+    "body": "Create a new encrypted space or join an existing one with an invitation.",
+    "create": "Create new space",
+    "join": "Join existing space"
+  },
+  "result": {
+    "title": "Your space is ready",
+    "body": "This device can now sync your clipboard securely through the space.",
+    "enter": "Enter"
+  },
+  "welcome": {
+    "wordmark": "UniClip",
+    "title": "Your clipboard,\non every device",
+    "body": "All your own devices sharing one clipboard — no collaboration, no cloud."
+  },
+  "companion": {
+    "title": "A companion\nto your computer",
+    "body": "Connect to the UniClipboard desktop app that's already running, and bring your clipboard to hand.",
+    "spec": "COMPANION · CONNECTS TO DESKTOP"
+  },
+  "action": {
+    "title": "Copy here, paste there",
+    "body": "Copy on your computer and paste on your phone; use the share sheet to send anything back.",
+    "types": "Text · Link · Image · File",
+    "pair": "Scan to pair",
+    "later": "Not now",
+    "pile": {
+      "note": "Meeting notes\nWed 10:00\nAlign the plan"
+    }
+  }
+}

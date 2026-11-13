@@ -1,0 +1,175 @@
+{
+  "keyboard": {
+    "title": "Teclado",
+    "status": {
+      "done": "Concluído",
+      "undetectable": "Não é possível detectar",
+      "notAdded": "Não adicionado",
+      "on": "Ativado",
+      "off": "Desativado",
+      "notChecked": "Não verificado",
+      "detected": "Detectado"
+    },
+    "hero": {
+      "title": "Seus clipes onde você digita",
+      "description": "O Teclado UniClip mostra o que você copiou nos seus outros dispositivos. Toque em um clipe para colá-lo em qualquer app."
+    },
+    "almostThere": {
+      "title": "Quase lá",
+      "description": "O Teclado UniClip foi adicionado. Ative o Acesso Total para ele mostrar seus clipes."
+    },
+    "ready": {
+      "title": "Pronto",
+      "description": "Ativado, com Acesso Total"
+    },
+    "setup": {
+      "title": "Configuração · {{done}} de 3",
+      "add": {
+        "title": "Adicione o Teclado UniClip",
+        "subtitle": "Ajustes › Apps › UniClip › Teclados"
+      },
+      "fullAccess": {
+        "title": "Permita o Acesso Total",
+        "subtitle": "Para mostrar seus clipes sincronizados",
+        "path": "Teclados › Teclado UniClip › Permitir Acesso Total",
+        "readsOnly": "Lê apenas clipes que o UniClip já sincronizou",
+        "sendsOnly": "Envia apenas para dispositivos do seu espaço",
+        "systemWarning": "O iOS mostra um aviso genérico ao ativar."
+      },
+      "switch": {
+        "title": "Mude para ele uma vez",
+        "subtitle": "Confirma que tudo funciona",
+        "instructions": "Toque no campo, mantenha pressionada a tecla de globo e escolha Teclado UniClip.",
+        "placeholder": "Toque para abrir o teclado",
+        "detected": "Detectado, com Acesso Total. Tudo pronto.",
+        "stillOffHint": "Se o teclado mostrar “Acesso Total Necessário”, o Acesso Total ainda está desativado."
+      }
+    },
+    "openSettings": "Abrir Ajustes do iOS",
+    "openSettingsHint": "O iOS não permite que apps adicionem teclados por você. Esta página é atualizada quando você voltar.",
+    "howToUse": {
+      "title": "Como usar",
+      "switchTitle": "Trocar de teclado",
+      "switchDescription": "Em qualquer app, mantenha pressionada a tecla de globo e escolha Teclado UniClip.",
+      "tryLabel": "Experimente aqui",
+      "tryPlaceholder": "Toque para abrir o teclado"
+    },
+    "feedback": {
+      "title": "Feedback das teclas",
+      "footer": "As alterações entram em vigor na próxima vez que você abrir o teclado.",
+      "sound": "Som das teclas",
+      "haptic": "Feedback tátil"
+    },
+    "systemSettings": {
+      "row": "Ajustes do teclado no iOS",
+      "footer": "Lá você pode remover o teclado ou desativar o Acesso Total."
+    }
+  },
+  "share": {
+    "title": "Compartilhar",
+    "testMessage": "Teste de compartilhamento do UniClip",
+    "hero": {
+      "title": "Envie de qualquer app",
+      "description": "Compartilhe algo e escolha o UniClip. O UniClip abre com o item pronto para você escolher quais dispositivos recebem."
+    },
+    "flow": {
+      "tapShare": "Toque em Compartilhar",
+      "pickApp": "Escolha o UniClip",
+      "chooseDevices": "Escolha os dispositivos"
+    },
+    "tryButton": "Experimentar agora",
+    "worksWith": {
+      "title": "Funciona com",
+      "text": "Texto",
+      "links": "Links",
+      "images": "Imagens",
+      "files": "Arquivos"
+    },
+    "quickAccess": {
+      "title": "Acesso rápido",
+      "footer": "Não há nada para ativar. O UniClip aparece na folha de compartilhamento assim que é instalado.",
+      "favoritesRow": "Fixar nos Favoritos",
+      "favoritesRowSubtitle": "Deixe o UniClip primeiro na linha de apps · 4 passos"
+    },
+    "guide": {
+      "title": "Fixar nos Favoritos",
+      "progress": "Passo {{current}} de {{total}}",
+      "back": "Passo anterior",
+      "close": "Fechar",
+      "next": "Próximo passo",
+      "done": "OK",
+      "openShareSheet": "Abrir folha de compartilhamento",
+      "steps": {
+        "openSheet": {
+          "title": "Abra qualquer folha de compartilhamento",
+          "description": "Toque em Compartilhar em qualquer app ou use o botão abaixo para praticar com um exemplo."
+        },
+        "findMore": {
+          "title": "Deslize até Mais",
+          "description": "Deslize a linha de ícones de apps totalmente para a esquerda e toque em Mais no final."
+        },
+        "addFavorite": {
+          "title": "Adicione o UniClip aos Favoritos",
+          "description": "Toque em Editar e depois no sinal de mais verde ao lado do UniClip."
+        },
+        "moveToTop": {
+          "title": "Mova-o para o topo",
+          "description": "Arraste o UniClip pela alça acima dos outros e toque em OK."
+        }
+      },
+      "illustration": {
+        "noteTitle": "Notas da reunião",
+        "noteSubtitle": "Notas · Texto simples",
+        "airDrop": "AirDrop",
+        "messages": "Mensagens",
+        "notes": "Notas",
+        "reminders": "Lembretes",
+        "more": "Mais",
+        "apps": "Apps",
+        "done": "OK",
+        "favorites": "Favoritos",
+        "suggestions": "Sugestões"
+      }
+    }
+  },
+  "diagnostics": {
+    "title": "Diagnóstico",
+    "package": {
+      "appVersion": "Versão do app",
+      "format": "Formato do arquivo",
+      "zipArchive": "Arquivo ZIP",
+      "logRange": "Período dos registros",
+      "lastThreeDays": "Últimos 3 dias",
+      "appLogs": "Registros do app",
+      "engineLogs": "Registros do Engine",
+      "shareAttempts": "Registros de compartilhamento",
+      "included": "Incluídos",
+      "footer": "O ZIP contém registros do app e do Engine sem dados sensíveis, o estado do app e registros de compartilhamento. O conteúdo da área de transferência e as credenciais não são incluídos.",
+      "summary": "ZIP dos últimos 3 dias, sem conteúdo da área de transferência"
+    },
+    "action": {
+      "generate": "Exportar logs",
+      "sendTo": "Enviar para",
+      "preparing": "Preparando..."
+    },
+    "error": {
+      "title": "Não foi possível criar o diagnóstico",
+      "message": "Tente novamente mais tarde."
+    },
+    "warning": {
+      "engineLogsMissing": "Os registros do Engine não foram encontrados, então o pacote não contém dados do Engine. Reinicie o UniClip e exporte novamente.",
+      "engineLogsUnreadable": "Alguns ou todos os registros do Engine foram encontrados, mas não puderam ser lidos; o pacote pode estar incompleto. Reinicie o UniClip e exporte novamente.",
+      "engineLogsWrittenNotFound": "O Engine informa registros gravados, mas os arquivos não existem no disco. O pacote está incompleto; reinicie o UniClip e exporte novamente.",
+      "networkLogsIncomplete": "Os registros de rede podem estar incompletos: alguns arquivos não puderam ser descarregados, lidos ou verificados. Apenas este processo foi descarregado; outros processos, como o teclado, não foram."
+    },
+    "capture": {
+      "title": "Diagnóstico detalhado",
+      "start": "Iniciar registro detalhado (10 minutos)",
+      "stop": "Parar registro detalhado",
+      "description": "Inicie antes de reproduzir o problema e depois exporte os logs. Os detalhes ficam neste dispositivo, com captura de até 10 minutos. Atividades anteriores não são recuperadas e outras extensões não são ativadas automaticamente.",
+      "remaining": "Registrando, cerca de {{count}} minutos restantes",
+      "failed": "Não foi possível concluir. Tente novamente.",
+      "unavailable": "Indisponível até o serviço estar pronto."
+    }
+  }
+}

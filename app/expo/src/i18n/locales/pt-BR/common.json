@@ -1,0 +1,54 @@
+{
+  "appName": "UniClip",
+  "action": {
+    "confirm": "Confirmar",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "delete": "Excluir",
+    "remove": "Remover",
+    "edit": "Editar",
+    "add": "Adicionar",
+    "close": "Fechar",
+    "done": "Concluído",
+    "retry": "Tentar novamente",
+    "refresh": "Atualizar",
+    "copy": "Copiar",
+    "share": "Compartilhar",
+    "open": "Abrir",
+    "back": "Voltar",
+    "next": "Avançar",
+    "ok": "OK",
+    "reset": "Redefinir",
+    "clear": "Limpar",
+    "select": "Selecionar",
+    "selectAll": "Selecionar tudo",
+    "deselect": "Desmarcar",
+    "more": "Mais",
+    "settings": "Configurações",
+    "undo": "Desfazer"
+  },
+  "state": {
+    "loading": "Carregando…",
+    "saving": "Salvando…",
+    "empty": "Nada por aqui ainda",
+    "success": "Sucesso",
+    "failed": "Falhou",
+    "enabled": "Ativado",
+    "disabled": "Desativado"
+  },
+  "language": {
+    "title": "Idioma",
+    "system": "Seguir o sistema"
+  },
+  "configImport": {
+    "rejectedTitle": "A importação não foi concluída",
+    "reason": {
+      "unsupportedFormat": "A configuração pendente usa um formato não compatível.",
+      "malformedMarker": "O marcador da configuração pendente é inválido.",
+      "missingRuntimeMembers": "Faltam dados obrigatórios na configuração pendente."
+    },
+    "reexport": "Os dados pendentes foram preservados. O espaço original continua disponível. Use a nova versão na instalação de origem para exportar o pacote de configuração novamente.",
+    "unavailableTitle": "Status da importação indisponível",
+    "unavailableMessage": "Não foi possível ler o status da importação pendente. Isso não confirma que a importação foi concluída. Você pode continuar usando o espaço original. Tente consultar o status novamente."
+  }
+}

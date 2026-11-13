@@ -102,3 +102,5 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 - Release programs: `unic` and `unicd` must have no transitive UI dependency. `unic-desktop` owns graphical integration. See [headless architecture](docs/architecture/headless.md).
 
 - Client telemetry defaults enabled. The config.toml master and per-signal switches can disable it. Ship only the ingestion-only project token; analytics uses an independent random profile identifier. See the [observability contract](docs/contracts/observability-contract.md).
+
+- Mobile presentation lives in `app/expo` as one shared Expo application. The sibling `app/ios` and `app/android` directories contain platform guidance only. Engine integration is outside the UI-shell migration. See the [Expo shell](app/expo/README.md).

@@ -1,0 +1,59 @@
+{
+  "receive": {
+    "parsing": "Parsing shared content…",
+    "saving": "Saving…",
+    "parseFailed": "Failed to parse shared content: {{message}}",
+    "noContent": "No shareable content",
+    "emptyText": "The shared text is empty",
+    "saveFailed": "Save failed"
+  },
+  "processText": {
+    "loading": "Uploading text…",
+    "success": "Upload complete",
+    "failure": "Upload failed"
+  },
+  "upload": {
+    "copying": "Copying file…",
+    "hashing": "Calculating hash…",
+    "uploading": "Uploading…",
+    "recordNotFound": "Record not found: {{hash}}"
+  },
+  "serviceRestart": {
+    "restored": "Service restored",
+    "failed": "Could not resume sync"
+  },
+  "send": {
+    "title": "Share",
+    "empty": "Nothing to send yet",
+    "claimFailed": "Couldn't load pending shares. Please try again later.",
+    "devices": "Send to devices",
+    "noDevices": "No devices yet",
+    "servers": "Send to servers",
+    "noServers": "No available servers",
+    "sendAll": "Send",
+    "done": "Done",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Delete shared content?",
+    "deleteConfirmMessage": "This cannot be undone.",
+    "sending": "Sending…",
+    "success": "Sent",
+    "failed": "Send failed",
+    "offlineTitle": "Can't send",
+    "offline": "The device is offline. Try again when it is online.",
+    "selectHint": "Choose devices to send to",
+    "localDevice": "This device",
+    "allDevices": "All devices",
+    "unconfirmed": "Result unconfirmed. Check the existing transfer.",
+    "checkExisting": "Check existing transfer",
+    "targetState": {
+      "preparing": "Preparing…",
+      "sending": "Sending",
+      "confirming": "Waiting for confirmation…",
+      "success": "Sent",
+      "failed": "Send failed",
+      "unconfirmed": "Delivery unconfirmed"
+    }
+  }
+}

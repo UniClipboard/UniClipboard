@@ -1,0 +1,54 @@
+{
+  "appName": "UniClip",
+  "action": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "remove": "Remove",
+    "edit": "Edit",
+    "add": "Add",
+    "close": "Close",
+    "done": "Done",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "copy": "Copy",
+    "share": "Share",
+    "open": "Open",
+    "back": "Back",
+    "next": "Next",
+    "ok": "OK",
+    "reset": "Reset",
+    "clear": "Clear",
+    "select": "Select",
+    "selectAll": "Select all",
+    "deselect": "Deselect",
+    "more": "More",
+    "settings": "Settings",
+    "undo": "Undo"
+  },
+  "state": {
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "empty": "Nothing here yet",
+    "success": "Success",
+    "failed": "Failed",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "language": {
+    "title": "Language",
+    "system": "Follow system"
+  },
+  "configImport": {
+    "rejectedTitle": "Import was not completed",
+    "reason": {
+      "unsupportedFormat": "The pending configuration uses an unsupported format.",
+      "malformedMarker": "The pending configuration marker is invalid.",
+      "missingRuntimeMembers": "The pending configuration is missing required data."
+    },
+    "reexport": "Your pending data was kept. The original space remains available. Use the new version on the source installation to export the configuration bundle again.",
+    "unavailableTitle": "Import status unavailable",
+    "unavailableMessage": "The app could not read the pending import status. This does not confirm import success. You can continue using the original space. Retry the status query."
+  }
+}

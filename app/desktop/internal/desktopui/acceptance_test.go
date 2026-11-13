@@ -27,6 +27,7 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("sheet-motion", scenarioSheetMotion)
 	t.Run("sidebar-collapse", scenarioSidebarCollapse)
 	t.Run("tag-fixed-columns", scenarioTagFixedColumns)
+	t.Run("tag-editor", scenarioTagEditor)
 	t.Run("tag-manager", scenarioTagManager)
 	t.Run("tag-manager-platforms", scenarioTagManagerPlatforms)
 	t.Run("token-search", scenarioTokenSearch)

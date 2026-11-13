@@ -33,7 +33,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 5e8a90ffaaf68393c2b35125982e7d2d1e1f39ca
+verified: 030de71688312046ed3219473c791e7cd640a551
 ---
 # Desktop configuration and received files
 
@@ -101,6 +101,8 @@ and `desktop.mode` / `desktop.start_in_background` for the next desktop launch.
 The service only validates and stores desktop settings. It never registers a login item or opens a window.
 See [headless architecture](headless.md#desktop-startup-settings) for desktop ownership, actual login status and platform limits.
 An external editor does not share the daemon write mutex; a later external save remains authoritative through the file watcher.
+
+Desktop tag color overrides use the same configuration API and CAS behavior. `desktop.tag_colors` holds at most 4096 SHA-256 tag-ID keys and palette or `#rrggbb` values. The desktop resolves them into its shared tag registry on refresh and reopen. The service stores and validates presentation values without depending on the UI Kit. See [tag controls and colors](overview.md#tag-controls-and-colors).
 
 ## CLI service usage
 

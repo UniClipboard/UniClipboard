@@ -38,7 +38,7 @@ func (k Kit) ComboField(c *ui.Context, p ComboFieldProps) ComboResult {
 	pal := k.fldPal()
 	switch k.Skin {
 	case MacOS:
-		pal.h = 24
+		pal.h, pal.size = 22, 12
 	case Windows:
 		pal.h = 28
 	default:
@@ -73,6 +73,9 @@ func (k Kit) ComboField(c *ui.Context, p ComboFieldProps) ComboResult {
 	})
 	focused := in.Focused()
 	k.fldStyle(row, pal, focused, false, false)
+	if k.Skin == MacOS && focused {
+		row.InsetShadow(0, 0, 0, 1, pal.accent)
+	}
 	if k.Skin == Linux && !focused {
 		row.InsetShadow(0, 0, 0, 2, pal.focus) // Adwaita keeps the tag field ringed
 	}
@@ -88,7 +91,12 @@ func (k Kit) ComboField(c *ui.Context, p ComboFieldProps) ComboResult {
 		typed = *p.Value
 	}
 	ui.PopoverBase(c, row, &open, func(panel ui.Element) {
-		k.fldPopup(panel, pal, max(row.Bounds().W, 220))
+		width := max(row.Bounds().W, 220)
+		if k.Skin == MacOS {
+			width = 300
+			pal.popupRadius = 14
+		}
+		k.fldPopup(panel, pal, width)
 		res.Selected = k.fldSuggestions(c, p.Suggestions, suggestCfg{
 			label: p.Label, footer: p.Footer, dots: true, typed: typed, hi: hi,
 			createColor: p.CreateColor, returnHint: true,

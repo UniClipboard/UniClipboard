@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -82,11 +83,13 @@ type Config struct {
 
 // Desktop configures the graphical launcher. The service only stores these values.
 type Desktop struct {
-	Language           string `toml:"language" json:"language"`
-	QuickPanelShortcut string `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
-	Mode               string `toml:"mode" json:"mode"`
-	LaunchAtLogin      bool   `toml:"launch_at_login" json:"launch_at_login"`
-	StartInBackground  bool   `toml:"start_in_background" json:"start_in_background"`
+	// TagColors maps SHA-256 tag identifiers to local presentation colors. It stores no tag names.
+	TagColors          map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
+	Language           string            `toml:"language" json:"language"`
+	QuickPanelShortcut string            `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
+	Mode               string            `toml:"mode" json:"mode"`
+	LaunchAtLogin      bool              `toml:"launch_at_login" json:"launch_at_login"`
+	StartInBackground  bool              `toml:"start_in_background" json:"start_in_background"`
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -258,6 +261,25 @@ func (c Config) Validate() error {
 	case "", "zh-CN", "en", "ja", "pt-BR", "ru":
 	default:
 		return errors.New("desktop.language: unsupported language")
+	}
+	if len(c.Desktop.TagColors) > 4096 {
+		return errors.New("desktop.tag_colors: at most 4096 overrides")
+	}
+	for id, color := range c.Desktop.TagColors {
+		key, err := hex.DecodeString(id)
+		if err != nil || len(key) != 32 {
+			return errors.New("desktop.tag_colors: invalid tag identifier")
+		}
+		switch color {
+		case "orange", "blue", "green", "purple", "gray":
+		default:
+			if len(color) != 7 || color[0] != '#' {
+				return errors.New("desktop.tag_colors: invalid color")
+			}
+			if _, err := hex.DecodeString(color[1:]); err != nil {
+				return errors.New("desktop.tag_colors: invalid color")
+			}
+		}
 	}
 	switch c.Desktop.QuickPanelShortcut {
 	case "", "Ctrl+`", "CmdOrCtrl+Shift+Space", "Ctrl+Alt+V", "Cmd+Ctrl+V":

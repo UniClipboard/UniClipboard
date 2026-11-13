@@ -94,3 +94,7 @@ The release transport fixture passed nine process assertions. It uses actual bot
 Desktop run 43411974805 passed both Linux and both Windows construction jobs. Both macOS targets passed Developer ID signing and constructed a notarized DMG. A repeated submission/stapling path failed while deriving the second archive. The next implementation notarizes a derived stage once, then constructs both formats from that accepted stage. The follow-up run must pass before marking the complete macOS candidate accepted.
 
 The sandbox harness and two-architecture CI jobs are defined for actual Nix, Flatpak and strict Snap construction and execution. These jobs must run; recipe generation is not sandbox acceptance. Production Windows signing, the durable raw Ed25519 update key and public package/channel operations remain pending.
+
+The native recording contains 8 continuously sampled frames over 9.36 seconds. Cleanup passed. The directory clipboard is synthetic; system clipboard delivery remains NOT_RUN.
+
+The complete existing Go race suite passed with `TMPDIR=/private/tmp GOCACHE=/private/tmp/unic-followup-go-cache go test -race ./...`. An earlier invocation used the macOS `/var` temporary-directory alias and failed the existing Engine no-symlink cache guard. A targeted replay with the canonical path passed before the complete rerun. No production cache guard was weakened.

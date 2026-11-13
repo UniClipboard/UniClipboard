@@ -143,6 +143,17 @@ jobs:
           python tools/package/desktop.py package --stage dist/stage --format setup.exe --output dist/packages/setup
           python tools/package/desktop.py package --stage dist/stage --format portable.zip --output dist/packages/portable
           python tools/package/desktop.py package --stage dist/stage --format update.tar.gz --output dist/packages/update
+      - name: Native Windows installer lifecycle
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          python e2e/packaging/windows-upgrade-fixture.py --target "$env:TARGET"
+          $first = (Get-ChildItem dist/packages/setup/*.exe).FullName
+          $newer = (Get-ChildItem dist/windows-upgrade-fixture/packages/*.exe).FullName
+          ./e2e/packaging/windows-lifecycle.ps1 -Installer $first -Newer $newer -Receipt dist/lifecycle -Target "$env:TARGET"
+          python tools/package/desktop.py accept --packages dist/packages/setup --receipt dist/lifecycle/report.json
       - name: Remove temporary signing keychain
         if: always() && matrix.goos == 'darwin' && inputs.distribution
         run: security delete-keychain "$RUNNER_TEMP/unic-desktop.keychain-db"
@@ -154,5 +165,6 @@ jobs:
             dist/stage/manifest.json
             dist/notarized/manifest.json
             dist/notarized/notarization.json
+            dist/lifecycle/
             dist/packages/
           if-no-files-found: error

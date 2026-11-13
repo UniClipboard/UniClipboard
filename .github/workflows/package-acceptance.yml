@@ -13,10 +13,32 @@ on:
       - 'app/desktop/internal/appupdates/**'
       - 'app/desktop/e2e/updateprobe/**'
       - '.github/workflows/package-acceptance.yml'
+      - '.github/workflows/release-desktop.yml'
+      - '.github/release-notes/**'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  github-release:
+    name: GitHub Release page process acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Actual gh process and isolated HTTP Release service
+        run: python3 e2e/packaging/github_release.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: github-release-process
+          path: .cache/github-release-e2e/
+          include-hidden-files: true
+          if-no-files-found: error
   native:
     strategy:
       fail-fast: false

@@ -10,6 +10,7 @@ paths:
   - internal/localconfig
   - app/desktop/cmd/unic-desktop
   - tools/release
+  - .github/release-notes
   - internal/releaseinfo
   - app/service/cmd/unic
   - internal/localpaths
@@ -86,6 +87,16 @@ The registered CLI build entry can also call `native-desktop-acceptance.yml` to 
 The controller uses the maintained boto3 SDK with create-only conditional R2 writes and byte-for-byte read-back. The catalogue and successful publication receipt remain immutable objects. It checks the deployed FlareRelease contract, authenticates with Cloudflare Access service credentials and registers the six updater archives through the existing API. The current 512 MiB registration limit applies to this updater set. All other formats remain downloadable immutable objects. Registration does not change a channel.
 
 Promotion consumes the immutable availability receipt, requires an explicit channel revision and verifies public numbered identity/updater hashes after the API's compare-and-swap mutation. Stable additionally checks native GUI and lifecycle evidence for every artifact entry. `release-desktop.yml` defines separate manual publication and promotion operations. It has not been run for public delivery. Its configured R2 S3 credentials, Access service policy, durable update key and Windows production signing are prerequisites. `release-cli.yml` can consume an accepted canonical run without rebuilding the locked CLI bytes.
+
+### GitHub Desktop Release pages
+
+`tools/release/github_desktop.py` adapts the v1 Release template to independent numbered Desktop builds. The template is `.github/release-notes/desktop.md.tmpl`. It renders changelog/source links, all supported native installer downloads, exact locked standalone CLI downloads, verification instructions and optional GitHub-generated new contributors. English and Chinese changelog strings remain available in `desktop-notes.json`. Mobile download claims remain outside this Desktop page.
+
+The tag is `desktop/v<version>-build.<number>` and points to the accepted candidate source, independently of the CLI tag. Draft staging attaches the 22 native files, six raw updater signatures, the immutable catalogue, bilingual notes, reproducible page context and `SHA256SUMS.txt` (32 attachments). Existing bytes and tag identity must match; missing draft assets can resume, while extra/changed assets fail. Every uploaded file is downloaded and hashed before accepting staging. Published releases cannot repair missing assets or downgrade from stable to alpha.
+
+The existing delivery workflow supports `github-draft`, `publish` and `promote`. It stages or verifies the page before origin/channel mutation. Alpha pages become public prereleases only after origin publication read-back. Stable publication leaves a draft until verified stable promotion, then marks the page as the latest Desktop release. The page context restores the original comparison tag/contributors across workflows. Local `preview --development` produces reviewable files without creating a page; remote operations retain all production signing gates.
+
+`e2e/packaging/github_release.py` drives the real GitHub CLI and release subprocess against disposable loopback HTTP endpoints. Its report and checksums establish process/transport behavior only. It does not create a real draft or public GitHub Release.
 
 `sandbox-acceptance.yml` runs actual Nix, Flatpak and strict Snap construction/execution on both Linux architectures. The harness overrides source acquisition with the exact verified pre-publication DEB; generated runtime/build steps remain unchanged. Missing runtimes, namespace failures or confinement failures fail the job. Nix sets only the Desktop ELF interpreter and supplies GTK libraries through the existing wrapper; it does not add RUNPATH to the prebuilt Go binary. The locked private CLI pair remains unchanged. The process harness verifies real private CLI/service IPC and bounded shutdown inside each environment. These nonvisual process checks do not establish clipboard, file/network, refresh or sandbox GUI acceptance.
 

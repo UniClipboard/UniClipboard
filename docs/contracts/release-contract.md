@@ -133,3 +133,17 @@ FlareRelease currently limits one numbered registration to 512 MiB in aggregate.
 Publication and promotion are separate manually selected operations. Preparation and CI construction do not establish production delivery. `--fixture` accepts only loopback services and cannot publish a development candidate to production.
 
 Desktop staging also compares target-selected configuration, local API, lifecycle and server source hashes against the CLI candidate's dependency manifest. A changed shared contract requires a new accepted CLI build before Desktop staging. Product versions alone never establish private-service compatibility.
+
+## Desktop GitHub Release page contract
+
+Use product tag `desktop/v<version>-build.<number>`. Bind its actual Git ref to the accepted source commit. Do not reuse CLI tags or v1's shared `v<version>` tag. GitHub page state is distinct from FlareRelease channel state.
+
+Use the migrated v1 page sections: changelog, comparison/source, installer table, independently locked CLI downloads, verification and optional new contributors. Do not advertise mobile release support or claim every download has the same signature format. Keep the raw Ed25519 updater format defined above; do not import v1 Minisign/Tauri semantics.
+
+Attach exactly the complete 22-artifact Desktop catalogue, six updater `.sig` files, `release-manifest.json`, `desktop-notes.json`, `release-page.json` and `SHA256SUMS.txt`. The checksum list covers every attachment except itself. `release-page.json` binds the catalogue digest, bilingual-note digest, previous comparison tag and generated contributors to support deterministic later promotion. An existing context must match supplied nonempty inputs; omitted optional context is restored from the immutable attachment.
+
+Preflight the tag, page identity and all existing attachment bytes before writes. Reject unexpected, duplicate, changed or missing published attachments. Resume missing draft attachments without replacing existing bytes. Download each new upload and compare its SHA-256. A mismatched upload leaves the page in draft and fails acceptance. Alpha retries cannot downgrade an already stable page.
+
+The workflow stages/verifies the draft before R2 publication or channel promotion. Alpha public pages require a matching successful origin-availability receipt and use `prerelease=true`, `make_latest=false`. Stable public pages additionally require a matching verified `desktop/stable` promotion receipt and use `prerelease=false`, `make_latest=true`. No code path creates a public page directly. Production signature, native-input and exact CLI-lock gates remain mandatory for remote operations.
+
+Local development previews cannot mutate GitHub. Process acceptance may use synthetic catalogues only with an explicit loopback fixture URL and disposable GitHub CLI credentials. Its output must identify the fixture and cannot be used as a production receipt.

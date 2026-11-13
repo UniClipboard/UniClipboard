@@ -35,3 +35,7 @@ Public destinations, native windows and system clipboard acceptance are separate
 - A live FlareRelease contract mismatch, stale revision or missing stable CLI must prevent channel mutation.
 - The updater must reject corrupt signatures, oversized responses, wrong format/target and downgrades; package-managed/Scoop/portable installs must not replace manager-owned files.
 - Reuse mygo's native updater and authenticated extraction/swap implementation. Its raw Ed25519/SHA256 protocol must not be confused with Minisign.
+
+## GitHub Release page migration
+
+Before implementation, require real Python release subprocesses and the actual GitHub CLI against disposable HTTP endpoints. Cover v1-style page rendering; all 22 native attachments, manifest, checksums and six raw updater signatures; exact CLI references; immutable tag/source binding; idempotent interrupted draft recovery; changed/extra/corrupt assets; publication without availability; stable without promotion; stable-to-alpha downgrade; and isolated fixture credentials. Missing evidence or cleanup fails. Never create a real Release in this fixture.

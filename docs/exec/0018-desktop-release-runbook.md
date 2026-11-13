@@ -70,9 +70,31 @@ Each process fixture emits a report and SHA256SUMS. The canonical native-window 
 
 1. Review `release/desktop-notes.json`. Accept the final candidate run, source SHA, CLI lock and update public key.
 2. Run `Release CLI` with `candidate_run_id=<final-locked-cli-run-id>` to preserve the locked bytes. The current run `43419452491` is acceptance evidence; it does not meet the production Windows-signing prerequisite. Select the intended npm channel. Do not rebuild the candidate at a later source SHA.
-3. Run `Release Desktop` with `operation=publish` and the accepted Desktop run ID. It validates the complete 22-artifact catalogue, both deployed contracts, all signatures and locked CLI npm availability before writes. It conditionally creates immutable objects, reads every object back, registers six updater archives and stores the immutable publication receipt. It does not change a Desktop channel.
+3. Run `Release Desktop` with `operation=publish` and the accepted Desktop run ID. It validates the complete 22-artifact catalogue, both deployed contracts, all signatures and locked CLI npm availability before writes. It conditionally creates immutable objects, reads every object back, registers six updater archives and stores the immutable publication receipt. It does not change a Desktop channel. The workflow first stages/verifies the GitHub draft and downloads every attachment for hash verification. After origin availability passes, alpha publishes a prerelease page without selecting GitHub latest. Stable keeps the page in draft.
 4. Read the current `desktop/alpha` or `desktop/stable` channel revision through the admin API. Review the selected build and availability receipt.
-5. Run `Release Desktop` with `operation=promote`, the same candidate run ID, the intended channel and that exact revision. It uses the API's compare-and-swap operation and checks the public numbered identity and updater hashes. A concurrent change fails. Stable fails if lifecycle/native-GUI evidence is incomplete.
+5. Run `Release Desktop` with `operation=promote`, the same candidate run ID, the intended channel and that exact revision. It uses the API's compare-and-swap operation and checks the public numbered identity and updater hashes. A concurrent change fails. Stable fails if lifecycle/native-GUI evidence is incomplete. After verified stable promotion, the workflow publishes the GitHub page as stable/latest. Page staging is verified before channel mutation. Omitted comparison/contributor input is restored from `release-page.json`.
 6. Submit package-manager definitions only after origin availability passes. Submission, approval and public index read-back are separate channel states. Existing renderer output does not submit to any package manager.
 
 The current FlareRelease registration limit is 512 MiB across registered artifacts. The six updater archives must fit that limit. All 22 formats remain in the immutable object catalogue. [R2 conditional operations](https://developers.cloudflare.com/r2/api/s3/conditional-operations/) provide create-only object semantics; the controller also checks complete bytes on retries and read-back.
+
+## GitHub page preview and draft
+
+The v1 reference is [v1.6.2](https://github.com/UniClipboard/UniClipboard/releases/tag/v1.6.2), with source template/workflow at `c6483d73c7a0234be68571fdb5fa3d38a17c4871`. v2 keeps the page structure and independent product identities. It does not reuse v1 mobile links or legacy signature assertions.
+
+Generate a local review bundle without GitHub writes:
+
+```sh
+python3 tools/release/github_desktop.py preview \
+  --manifest <catalogue>/release-manifest.json \
+  --cli-manifest <locked-cli>/release-manifest.json \
+  --notes release/desktop-notes.json --channel alpha \
+  --previous-tag v1.6.2 --output <new-page-directory>
+```
+
+Use `--development` only for a local preview of unaccepted inputs. The page states that limitation. Inspect `release-notes.md`, `release-page.json` and `SHA256SUMS.txt`. The separate CLI links point to the locked CLI Release; Desktop assets remain private product payloads. Do not copy CLI files into this page under a second identity.
+
+The inspected repository default branch is still `v1`. Register the new workflow on the eventual default branch through the reviewed v2 rollout before using GitHub manual dispatch. Local preview and process acceptance do not require workflow registration. This migration does not modify v1 or change the default branch.
+
+After production prerequisites and explicit remote-write authorization, run `Release Desktop` with `operation=github-draft`, the accepted candidate run ID and optional `previous_tag`. This stages a draft only. It does not upload to R2, change a channel or publish the page. Production signing remains required even for remote staging. Use `publish` and `promote` as described above to complete delivery.
+
+Replay nonpublishing process acceptance with `python3 e2e/packaging/github_release.py`. It uses the actual `gh` executable against an isolated HTTP service and emits `.cache/github-release-e2e/report.json`, a page preview and checksums. It does not prove live GitHub creation, production-token permissions or publication.

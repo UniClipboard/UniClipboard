@@ -103,7 +103,7 @@ assertions. The 12 inline combinations require a ComboField and no dialog,
 Enter confirmation with an attached registry tag, Escape/click-away cancellation
 without tag mutation, and usable input after dismissal. The four resize
 combinations remain unchanged. Presentation kind is recorded in the JSON receipt.
-No production UI code, case, timeout or workflow is changed.
+No production UI code, timeout or workflow is changed. No case is removed.
 
 The declarative purpose/expectations and generated catalogue now describe both
 presentations. Local canonical replay passed at

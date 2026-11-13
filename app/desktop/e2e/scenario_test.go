@@ -44,6 +44,7 @@ type desktopResult struct {
 }
 type desktopScenario struct {
 	captureMu                      sync.Mutex // Do not overlap recording and checkpoint captures.
+	captureStarted                 bool
 	ctx                            context.Context
 	cancel                         context.CancelFunc
 	name, root, private, out, home string
@@ -370,10 +371,16 @@ func (s *desktopScenario) call(ctx context.Context, method string, params any, o
 		return err
 	}
 	started := time.Now()
+	deadline := 8 * time.Second
 	if method == "capture" {
 		s.captureMu.Lock()
 		defer s.captureMu.Unlock()
 		started = time.Now()
+		if !s.captureStarted {
+			// Cold native rendering initializes font/raster caches under race instrumentation.
+			deadline = 30 * time.Second
+			s.captureStarted = true
+		}
 		defer func() { s.result.CaptureSeconds = append(s.result.CaptureSeconds, time.Since(started).Seconds()) }()
 	}
 	connection, err := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "unix", s.automation)
@@ -381,7 +388,7 @@ func (s *desktopScenario) call(ctx context.Context, method string, params any, o
 		return err
 	}
 	defer func() { _ = connection.Close() }()
-	if err = connection.SetDeadline(time.Now().Add(8 * time.Second)); err != nil {
+	if err = connection.SetDeadline(time.Now().Add(deadline)); err != nil {
 		return err
 	}
 	if err = json.NewEncoder(connection).Encode(map[string]any{"id": 1, "method": method, "params": params}); err != nil {

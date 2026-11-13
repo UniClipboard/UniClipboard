@@ -14,7 +14,13 @@ import tempfile
 def run(args):
     r = subprocess.run([str(x) for x in args], capture_output=True, text=True)
     if r.returncode:
-        raise RuntimeError("native signing command failed: " + str(args[0]))
+        detail = ""
+        if str(args[0]) == "xcrun":
+            detail = (r.stderr + "\n" + r.stdout)[-1800:]
+            for name in ["APPLE_ID", "APPLE_TEAM_ID", "APPLE_PASSWORD", "APPLE_APP_SPECIFIC_PASSWORD"]:
+                value = os.environ.get(name)
+                if value: detail = detail.replace(value, "[redacted]")
+        raise RuntimeError("native signing command failed: " + " ".join(map(str, args[:3])) + "\n" + detail)
     return r.stdout
 
 

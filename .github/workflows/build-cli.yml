@@ -5,6 +5,10 @@ on:
     branches: [main, v2]
   workflow_dispatch:
     inputs:
+      sandbox_run_id:
+        type: string
+        default: ''
+        description: Run native Nix, Flatpak and Snap acceptance from a completed Desktop candidate
       desktop_only:
         type: boolean
         default: false
@@ -32,7 +36,7 @@ permissions:
   actions: read
 jobs:
   prepare:
-    if: ${{ !inputs.desktop_only }}
+    if: ${{ !inputs.desktop_only && !inputs.sandbox_run_id }}
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
@@ -145,3 +149,10 @@ jobs:
       source_sha: ${{ github.sha }}
       distribution: ${{ inputs.distribution }}
     secrets: inherit
+
+  sandboxes:
+    if: github.event_name == 'workflow_dispatch' && inputs.sandbox_run_id != ''
+    uses: ./.github/workflows/sandbox-acceptance.yml
+    with:
+      source_sha: ${{ github.sha }}
+      candidate_run_id: ${{ inputs.sandbox_run_id }}

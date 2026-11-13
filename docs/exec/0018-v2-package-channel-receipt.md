@@ -84,3 +84,13 @@ Canonical distribution CLI run [43408274394](https://github.com/UniClipboard/Uni
 Process run [43408815344](https://github.com/UniClipboard/UniClipboard/actions/runs/43408815344) passed Windows amd64/arm64 and macOS amd64/arm64. Both Linux jobs reached the immediate socket-removal assertion after listener retirement. The follow-up now waits at most 15 seconds for Engine shutdown cleanup. A passing rerun is required.
 
 The local signed updater process fixture passed 16 assertions on macOS arm64. It exercised the production HTTP adapter, raw Ed25519 verification, signed identity binding, actual mygo bundle replacement, owned-file removal and synthetic user-data preservation. It used a disposable key and directory. It did not launch a GUI or use the production feed.
+
+## Native and controller follow-up
+
+The canonical native-window case `make desktop-e2e CASE=history-search-copy` passed on macOS arm64. Its frozen-source report is `.build/desktop-e2e/20261113T105049Z-118e1356/index.html`; the manifest and SHA256SUMS bind synthetic screenshots, continuous recording and assertions. This is application-native interaction evidence. It does not establish system clipboard delivery, OS focus or package-manager installation.
+
+The release transport fixture passed nine process assertions. It uses actual boto3 S3 requests and real release subprocesses with disposable HTTP endpoints. It checks the full 22-artifact catalogue, pre-write contract/development rejection, conditional create-only writes, complete byte read-back, immutable retry, conflict/racing-writer rejection and revision-bound promotion. Production R2 credentials, Cloudflare Access authorization and public availability were not exercised.
+
+Desktop run 43411974805 passed both Linux and both Windows construction jobs. Both macOS targets passed Developer ID signing and constructed a notarized DMG. A repeated submission/stapling path failed while deriving the second archive. The next implementation notarizes a derived stage once, then constructs both formats from that accepted stage. The follow-up run must pass before marking the complete macOS candidate accepted.
+
+The sandbox harness and two-architecture CI jobs are defined for actual Nix, Flatpak and strict Snap construction and execution. These jobs must run; recipe generation is not sandbox acceptance. Production Windows signing, the durable raw Ed25519 update key and public package/channel operations remain pending.

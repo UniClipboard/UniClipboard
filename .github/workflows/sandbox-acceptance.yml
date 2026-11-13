@@ -1,0 +1,63 @@
+name: Sandbox package acceptance
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: true
+      candidate_run_id:
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        kind: [nix, flatpak, snap]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Acquire exact six-platform construction candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+        run: python3 tools/release/desktop_release.py acquire --run-id "$CANDIDATE_RUN" --output dist/candidate
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31
+        if: matrix.kind == 'nix'
+        with:
+          nix_path: nixpkgs=https://github.com/NixOS/nixpkgs/archive/ac588ef1c914865dad517b337ea0eb9694a4021c.tar.gz
+      - name: Prepare Flatpak runtime
+        if: matrix.kind == 'flatpak'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Prepare strict snapd and Snapcraft
+        if: matrix.kind == 'snap'
+        run: |
+          sudo snap install snapcraft --classic --channel=8.x/stable
+          snap version
+          snapcraft --version
+      - name: Build and execute actual native sandbox
+        env:
+          SANDBOX_KIND: ${{ matrix.kind }}
+        run: python3 e2e/packaging/sandboxes.py --input dist/candidate --kind "$SANDBOX_KIND"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sandbox-${{ matrix.runner }}-${{ matrix.kind }}
+          path: .cache/sandbox-e2e/
+          include-hidden-files: true
+          if-no-files-found: warn

@@ -42,7 +42,7 @@ Self-managed pacman parity initially targets x86_64, matching its v1 workflow. A
 The user accepted replacement of v1 by v2 within the same distribution channel.
 The user also accepted the product/package identifiers, independent product versions, private bundled CLI ownership, update authority and explicit migration rules in [decision 0025](../decisions/proposed/0025-desktop-package-identity-and-replacement.md).
 The normative requirements are in the [release contract](../contracts/release-contract.md#desktop-installation-identity-and-update-ownership).
-The user selected Desktop version `2.0.0`, build number `1`. `release/products.toml` records this candidate identity. The CLI lock remains unresolved until an exact accepted CLI build and manifest are selected; matching product version numbers do not establish that lock.
+The user selected Desktop version `2.0.0`, build number `1`. `release/products.toml` records this candidate identity. Desktop now selects the exact signed CLI `2.0.0 (1)` manifest from canonical run 43408274394. The implementation receipt records its digest. Public npm availability remains a separate prerequisite.
 These requirements are accepted but not implemented. Exact native version encodings, platform installation metadata and lifecycle acceptance remain P0 work.
 
 ### Implementation structure
@@ -301,3 +301,10 @@ Document validation: `go run ./tools/docscheck` and `git diff --check`; record o
 - [Flatpak sandbox permissions](https://docs.flatpak.org/en/latest/sandbox-permissions.html): explicit resource access and portals; permissions require real acceptance.
 
 Recheck channel policies and tool versions during implementation. These references do not establish channel approval or application compatibility.
+
+
+## Follow-up execution state
+
+The current implementation includes canonical CI acquisition, six-target CLI locking, native mygo updater integration, Apple signing/notarization derivation, immutable Desktop object publication and revision-bound FlareRelease promotion. The manual delivery workflow is prepared but has not published any installer or changed any channel.
+
+Completed evidence: six native CLI identity jobs; six-target packaging/update process acceptance is being rerun; local native-window history/search/copy acceptance; local signed updater and S3/HTTP publication process fixtures. Exact CI results and remaining failures belong in the implementation receipt. Nix/Flatpak/Snap jobs are defined and require actual execution before acceptance. Windows production signing and the durable raw updater key remain deployment prerequisites. No template or passing fixture closes these production gates.

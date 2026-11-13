@@ -59,6 +59,7 @@ jobs:
             .cache/package-e2e/
             .cache/channel-e2e/
             .cache/update-e2e/
+            .cache/publication-e2e/
           include-hidden-files: true
           if-no-files-found: warn
   linux:
@@ -88,6 +89,14 @@ jobs:
         env:
           CGO_ENABLED: '0'
         run: PATH="/tmp:$PATH" python3 e2e/packaging/run.py --format deb --format rpm --format archlinux --lifecycle
+      - name: Release transport process acceptance
+        if: matrix.target == 'linux-amd64'
+        run: |
+          apt-get update
+          apt-get install -y python3-venv
+          python3 -m venv /tmp/unic-release-tools
+          /tmp/unic-release-tools/bin/pip install -r tools/release/requirements.txt
+          /tmp/unic-release-tools/bin/python e2e/packaging/publication.py
       - name: Signed update and native SDK installation acceptance
         run: python3 e2e/packaging/updates.py
       - uses: actions/upload-artifact@v4
@@ -97,5 +106,6 @@ jobs:
           path: |
             .cache/package-e2e/
             .cache/update-e2e/
+            .cache/publication-e2e/
           include-hidden-files: true
           if-no-files-found: warn

@@ -392,7 +392,6 @@ package() {{
                     "runtime-version": "50",
                     "sdk": "org.gnome.Sdk",
                     "command": "uniclipboard",
-                    "rename-icon": "uniclipboard",
                     "finish-args": [
                         "--share=network",
                         "--share=ipc",

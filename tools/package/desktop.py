@@ -254,6 +254,29 @@ def sign(args):
     print(root / "manifest.json")
 
 
+def notarize_stage(args):
+    root, m, _ = validated_stage(args.stage)
+    if not m["target"].startswith("darwin-") or not m["acceptance"].get("signing"):
+        raise ValueError("notarization requires a signed macOS stage")
+    output = fresh_output(args.output)
+    try:
+        shutil.copytree(root, output, symlinks=True)
+        with tempfile.TemporaryDirectory(prefix="unic-notary-") as temporary:
+            archive = Path(temporary) / "notary.zip"
+            bundle = output / "UniClipboard.app"
+            run(["ditto", "-c", "-k", "--keepParent", bundle, archive])
+            run([sys.executable, ROOT / "tools/package/signing.py", "notarize", "--file", archive, "--staple", bundle, "--receipt", output / "notarization.json"])
+        run(["codesign", "--verify", "--deep", "--strict", bundle])
+        m["files"] = {str(p.relative_to(output)): sha(p) for p in output.rglob("*") if p.is_file() and not p.is_symlink() and p != output / "manifest.json"}
+        m["acceptance"]["notarization"] = True
+        save(output / "manifest.json", m)
+        validated_stage(output)
+    except BaseException:
+        if output.exists(): shutil.rmtree(output)
+        raise
+    print(output / "manifest.json")
+
+
 def stage(args):
     target = args.target
     if target not in TARGETS:
@@ -725,7 +748,7 @@ def package(args):
                 "sha256": sha(file),
                 "size": file.stat().st_size,
                 "signed": bool(m["acceptance"].get("signing")),
-                "notarized": bool(args.notarize),
+                "notarized": bool(args.notarize or m["acceptance"].get("notarization")),
             }
         )
         validated_stage(root)
@@ -801,6 +824,9 @@ def main():
     s = sub.add_parser("sign")
     s.add_argument("--stage", required=True)
     s.add_argument("--identity", required=True)
+    s = sub.add_parser("notarize-stage")
+    s.add_argument("--stage", required=True)
+    s.add_argument("--output", required=True)
     s = sub.add_parser("stage")
     s.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
     s.add_argument("--cli-manifest", required=True)
@@ -827,6 +853,7 @@ def main():
         "fetch-cli": fetch_cli,
         "sign": sign,
         "stage": stage,
+        "notarize-stage": notarize_stage,
         "smoke": smoke,
         "package": package,
     }[args.command](args)

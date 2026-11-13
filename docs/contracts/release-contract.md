@@ -115,3 +115,19 @@ Source AUR builds produce their own source receipt; Nix may patch only Desktop-o
 
 `UNIC_HOME` overrides portable/default paths. A regular sibling `portable.dat` selects `data/` beside the resolved executable. Other marker types fail.
 Default version-`dev` data uses `unic-development/`; released data uses `unic/`. Both remain separate from v1 data. The socket defaults to the chosen data directory and remains subject to platform path-length bounds.
+
+## Numbered Desktop updater and delivery
+
+The in-app updater uses mygo's raw Ed25519 format: a base64 32-byte public key and a base64 64-byte private key. The signature covers the archive SHA-256 digest. Existing Minisign and Tauri key encodings are not interchangeable with this format.
+
+The signed archive contains exactly one regular `release-identity.json` with the Desktop product, product version, build number and native target. The client verifies the declared identity against that signed content before handing the archive to mygo. A correctly signed archive for another build must fail. Same-version builds compare as `<version>-build.<number>` inside the SDK. Feed channels remain external metadata.
+
+The metadata's `update_public_key` enables in-app updates. An empty key disables them. `desktop.update_channel` accepts `stable` and `alpha`, defaults to `stable`, and applies on the next check. Package-manager and portable installations do not start the direct updater. AppImage self-update is unsupported by the pinned SDK. Windows NSIS records `/MANAGED=winget` or `/MANAGED=chocolatey`; reinstall preserves existing ownership.
+
+Apple notarization derives a copied, signed stage. It submits and staples that bundle once before deriving both containers. The original signed stage and locked CLI bytes remain unchanged. Final container hashes include the stapled bundle. A payload signature is distinct from a separately signed installer/container.
+
+The immutable Desktop catalogue requires every declared target and format. Object keys use `artifacts/desktop/<version>/build.<number>/<filename>`. Uploads use conditional create-only S3 writes and full-byte read-back. Existing bytes must match. A conflict fails without overwriting the key. Publication requires verified npm availability of the exact locked CLI package set.
+
+FlareRelease currently limits one numbered registration to 512 MiB in aggregate. The registration selects the six signed native updater archives. All 22 platform/format combinations remain in the object catalogue. Non-updater download assets are not silently discarded. Registration does not promote a channel. Promotion requires a matching availability receipt and the expected channel revision. It verifies the public numbered identity and exact updater hashes after the mutation. Stable additionally requires package lifecycle and native GUI evidence for every catalogue entry. Missing evidence blocks stable promotion.
+
+Publication and promotion are separate manually selected operations. Preparation and CI construction do not establish production delivery. `--fixture` accepts only loopback services and cannot publish a development candidate to production.

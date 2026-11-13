@@ -1,0 +1,89 @@
+name: Release Desktop
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [publish, promote]
+        required: true
+      candidate_run_id:
+        type: string
+        required: true
+      channel:
+        type: choice
+        options: [alpha, stable]
+        default: alpha
+      expected_revision:
+        type: string
+        default: '0'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: release-desktop
+  cancel-in-progress: false
+jobs:
+  deliver:
+    runs-on: ubuntu-24.04
+    environment: Production
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: pip install -r tools/release/requirements.txt
+      - name: Acquire exact accepted native candidate and locked CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+        run: |
+          python3 tools/release/desktop_release.py acquire --run-id "$CANDIDATE_RUN" --output dist/candidate
+          python3 tools/package/desktop.py fetch-cli --allow-ci --target linux-amd64 --output dist/cli-input
+          python3 tools/release/desktop_release.py assemble --input dist/candidate --output dist/catalogue
+      - name: Publish immutable packages and register numbered build
+        if: inputs.operation == 'publish'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+          R2_ENDPOINT: ${{ vars.R2_RELEASE_ENDPOINT }}
+          RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+        run: |
+          python3 tools/release/desktop_release.py publish --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --endpoint "$R2_ENDPOINT" --admin "$RELEASE_ADMIN" --notes release/desktop-notes.json --receipt dist/publication.json
+      - name: Promote exact immutable numbered build
+        if: inputs.operation == 'promote'
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+          RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+          CHANNEL: ${{ inputs.channel }}
+          EXPECTED_REVISION: ${{ inputs.expected_revision }}
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          p = json.load(open('dist/catalogue/release-manifest.json'))
+          url = f"https://release.uniclipboard.app/artifacts/desktop/{p['version']}/build.{p['build_number']}/publication.json?source=origin"
+          with urllib.request.urlopen(url, timeout=60) as response:
+              data = response.read(1048577)
+          if len(data) > 1048576:
+              raise ValueError('publication receipt exceeds limit')
+          open('dist/publication.json', 'wb').write(data)
+          PY
+          python3 tools/release/desktop_release.py promote --manifest dist/catalogue/release-manifest.json --publication dist/publication.json --admin "$RELEASE_ADMIN" --channel "$CHANNEL" --expected-revision "$EXPECTED_REVISION" --receipt dist/promotion.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-delivery-receipt
+          path: |
+            dist/publication.json
+            dist/promotion.json
+            dist/catalogue/release-manifest.json
+          if-no-files-found: warn

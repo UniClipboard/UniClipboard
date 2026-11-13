@@ -18,6 +18,8 @@ paths:
   - .github/workflows/build-cli.yml
   - .github/workflows/build-desktop.yml
   - .github/workflows/package-acceptance.yml
+  - .github/workflows/release-desktop.yml
+  - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
 verified: dc779bfbd9b014979cd71d8954478cfe5dea7fa5
@@ -71,7 +73,17 @@ The Desktop host uses the pinned mygo native updater plugin. `appupdates.Source`
 
 `desktop.update_channel` accepts `stable` (default) or `alpha` and takes effect on the next check. Updater preferences use the v2 data directory. `release/products.toml` selects the durable `update_public_key`; an empty key disables in-app updates. The production private key must use mygo's raw Ed25519 format, independent of existing Minisign/Tauri keys. `go run ./tools/release/update-sign` generates a private key directory or signs archives from `UNIC_UPDATE_PRIVATE_KEY` without logging the private key.
 
-The host enables automatic/native-menu updates only for direct installations. System Linux packages, Snap, Flatpak, AppImage, Homebrew-owned bundles, Scoop and portable archives remain externally managed. NSIS records winget/Chocolatey ownership from `/MANAGED=`. Manual reinstalls preserve that receipt. Windows and Linux updates use mygo's owned-file list and preserve unowned data. AppImage self-update remains unsupported by the pinned SDK. Public feed/key provisioning and complete release orchestration remain prerequisites.
+The host enables automatic/native-menu updates only for direct installations. System Linux packages, Snap, Flatpak, AppImage, Homebrew-owned bundles, Scoop and portable archives remain externally managed. NSIS records winget/Chocolatey ownership from `/MANAGED=`. Manual reinstalls preserve that receipt. Windows and Linux updates use mygo's owned-file list and preserve unowned data. AppImage self-update remains unsupported by the pinned SDK. Public feed/key provisioning remains a deployment prerequisite.
+
+### Desktop delivery controller
+
+`tools/release/desktop_release.py` acquires six-target candidates only from a successful canonical repository build, checks package/source provenance and assembles the complete 22-artifact catalogue. Production assembly requires native executable identity, code signatures on macOS/Windows, Apple notarization and native updater signatures. The publication command also verifies npm availability of the locked CLI set.
+
+The controller uses the maintained boto3 SDK with create-only conditional R2 writes and byte-for-byte read-back. The catalogue and successful publication receipt remain immutable objects. It checks the deployed FlareRelease contract, authenticates with Cloudflare Access service credentials and registers the six updater archives through the existing API. The current 512 MiB registration limit applies to this updater set. All other formats remain downloadable immutable objects. Registration does not change a channel.
+
+Promotion consumes the immutable availability receipt, requires an explicit channel revision and verifies public numbered identity/updater hashes after the API's compare-and-swap mutation. Stable additionally checks native GUI and lifecycle evidence for every artifact entry. `release-desktop.yml` defines separate manual publication and promotion operations. It has not been run for public delivery. Its configured R2 S3 credentials, Access service policy, durable update key and Windows production signing are prerequisites. `release-cli.yml` can consume an accepted canonical run without rebuilding the locked CLI bytes.
+
+`sandbox-acceptance.yml` runs actual Nix, Flatpak and strict Snap construction/execution on both Linux architectures. The harness overrides source acquisition with the exact verified pre-publication DEB; generated runtime/build steps remain unchanged. Missing runtimes, namespace failures or confinement failures fail the job. These nonvisual process checks do not establish clipboard, file/network, refresh or sandbox GUI acceptance.
 
 ## v1 upgrade notice and migration
 

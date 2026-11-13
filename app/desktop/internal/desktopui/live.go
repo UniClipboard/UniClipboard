@@ -57,16 +57,18 @@ func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
 }
 
 type liveState struct {
-	sendCancel                                               context.CancelFunc
-	sendStage                                                string
-	queryOverride                                            func() engine.HistorySearchQuery
-	appliedSerial, contentSerial                             uint64
-	searchCancel, catalogueCancel, countCancel, detailCancel context.CancelFunc
-	detailGeneration                                         uint64
-	loadGeneration                                           uint64
-	catalogueKey, countKey                                   string
-	catalogue                                                map[string][]engine.HistorySearchCandidate
-	counts                                                   map[string]uint64
+	sendCancel                                 context.CancelFunc
+	sendStage                                  string
+	queryOverride                              func() engine.HistorySearchQuery
+	appliedSerial, contentSerial               uint64
+	searchCancel, catalogueCancel, countCancel context.CancelFunc
+	detailEpoch                                uint64
+	detailWindow                               []string
+	detailReads                                map[string]*detailRead
+	loadGeneration                             uint64
+	catalogueKey, countKey                     string
+	catalogue                                  map[string][]engine.HistorySearchCandidate
+	counts                                     map[string]uint64
 
 	ctx                                          context.Context
 	cancel                                       context.CancelFunc
@@ -166,9 +168,7 @@ drained:
 	if !l.loading && !l.busy && (key != l.key || time.Now().After(l.nextRefresh)) {
 		l.loadHistory(d, false)
 	}
-	if d.selected != "" && d.selected != l.detailKey {
-		l.loadDetail(d)
-	}
+	l.loadDetail(d)
 	// Pairing codes are created only while the invitation page is visible.
 	if d.devicesOpen && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && ((l.code.Code == "" && !l.codeAttempted) || (l.code.Code != "" && time.Now().UnixMilli() >= l.code.ExpiresAtMs)) {
 		d.newLiveCode()
@@ -239,6 +239,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 	target := max(50, len(d.entries))
 	key := d.liveQueryKey()
 	if key != l.key {
+		l.resetDetails(d)
 		target = 50
 		d.entries = nil
 		l.items = map[string]api.HistoryItem{}
@@ -331,6 +332,17 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				l.readError = ""
 				if page.IndexIncomplete {
 					l.readError = "部分内容的搜索索引不可用。元数据仍可浏览。"
+				}
+				if !more {
+					fresh := make(map[string]api.HistoryItem, len(page.Hits))
+					for _, hit := range page.Hits {
+						fresh[hit.Item.ID] = hit.Item
+					}
+					for id, old := range l.items {
+						if it, ok := fresh[id]; !ok || old.Revision != it.Revision {
+							l.dropDetail(d, id)
+						}
+					}
 				}
 				if !more {
 					d.entries = nil
@@ -471,65 +483,6 @@ func shortText(s string, n int) string {
 		return string([]rune(s)[:n]) + "…"
 	}
 	return s
-}
-func (l *liveState) loadDetail(d *viewState) {
-	id := d.selected
-	it, ok := l.items[id]
-	if !ok {
-		return
-	}
-	l.detailBusy = true
-	l.detailKey = id
-	l.detailGeneration++
-	generation := l.detailGeneration
-	if l.detailCancel != nil {
-		l.detailCancel()
-	}
-	ctx, cancel := context.WithTimeout(l.ctx, 8*time.Second)
-	l.detailCancel = cancel
-	go func() {
-		defer cancel()
-
-		v := loadSearchEntry(ctx, l.client, it)
-		apply := func() {
-			if generation != l.detailGeneration {
-				return
-			}
-			l.detailBusy = false
-			if d.selected != id {
-				return
-			}
-			if _, ok := l.items[id]; !ok {
-				return
-			}
-			l.contentSerial++
-			// Keep only one full payload, regardless of how many pages are loaded.
-			l.details = map[string]entry{id: v}
-			for i := range d.entries {
-				if d.entries[i].id != id {
-					d.entries[i].text = ""
-					d.entries[i].image = nil
-					d.entries[i].rich = nil
-					d.entries[i].contentError = ""
-					d.entries[i].folder = nil
-				}
-			}
-			for i := range d.entries {
-				if d.entries[i].id == id {
-					d.entries[i].text = v.text
-					d.entries[i].image = v.image
-					d.entries[i].rich = v.rich
-					d.entries[i].contentError = v.contentError
-					d.entries[i].folder = v.folder
-				}
-			}
-		}
-		select {
-		case l.results <- apply:
-		case <-l.ctx.Done():
-		}
-	}()
-
 }
 
 // mutate queues one user intent. Writes are never automatically replayed.

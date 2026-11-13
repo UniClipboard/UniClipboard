@@ -1,6 +1,6 @@
 # Case: History search contract
 # Mode: process
-# Purpose: Literal matching, paging, counts, candidates, repair and cancellation.
+# Purpose: Literal matching, paging, counts, candidates, repair, cancellation and viewport detail prefetch.
 # Steps:
 #   Execute the registered production-process suite and validate its receipt.
 # Expected:

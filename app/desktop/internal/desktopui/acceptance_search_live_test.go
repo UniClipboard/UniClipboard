@@ -305,15 +305,106 @@ func scenarioHistorySearchProcess(t *testing.T) {
 	desktop := NewDesktop(ctx, client)
 	defer desktop.Close()
 	d := desktop.d
+	// Exercise production content reads through the real service without a renderer.
+	wait("prefetch metadata", func() bool { d.live.poll(d); return d.live.loaded && !d.live.loading && len(d.entries) == 50 })
+	l := d.live
+	window := func(first, last int) {
+		t.Helper()
+		d.selectEntry(d.entries[first].id)
+		l.prefetchDetails(d, d.entries, first, last)
+		wait("prefetch window", func() bool {
+			l.poll(d)
+			if len(l.detailReads) > detailReadLimit {
+				t.Fatal("content read concurrency exceeds bound")
+			}
+			for i := max(0, first-10); i <= min(len(d.entries)-1, last+10); i++ {
+				if _, ok := l.details[d.entries[i].id]; !ok {
+					return false
+				}
+			}
+			return len(l.detailReads) == 0
+		})
+	}
+	window(20, 39)
+	if len(l.details) != 40 {
+		t.Fatalf("20 visible plus ten each side: got %d", len(l.details))
+	}
+	serialBefore := l.contentSerial
+	for i := 20; i <= 39; i++ {
+		d.selectEntry(d.entries[i].id)
+		l.loadDetail(d)
+		if l.detailBusy || d.current().text == "" {
+			t.Fatal("prefetched selection is not immediately ready")
+		}
+	}
+	if l.contentSerial != serialBefore || len(l.detailReads) != 0 {
+		t.Fatal("cached selection reread content")
+	}
+	window(40, 49)
+	if len(l.details) != 20 {
+		t.Fatalf("bottom window retained %d details", len(l.details))
+	}
+	for i := 0; i < 30; i++ {
+		v := d.entries[i]
+		if v.text != "" || v.image != nil || v.rich != nil || v.folder != nil {
+			t.Fatal("evicted entry retains payload")
+		}
+	}
+	window(0, 19)
+	if len(l.details) != 30 {
+		t.Fatal("reverse scroll did not refill top window")
+	}
+	// Keep the active detail while its list row leaves the prefetch window.
+	d.selectEntry(d.entries[0].id)
+	l.prefetchDetails(d, d.entries, 40, 49)
+	wait("active detail retained", func() bool { l.poll(d); return len(l.detailReads) == 0 && len(l.details) == 21 })
+	if d.current().text == "" {
+		t.Fatal("scrolling removed the active detail")
+	}
+	// Reconciliation must preserve ready content and must not refetch it.
+	serialBefore = l.contentSerial
+	appliedBefore := l.appliedSerial
+	l.nextRefresh = time.Time{}
+	wait("prefetch reconciliation", func() bool { l.poll(d); return l.appliedSerial > appliedBefore && !l.loading })
+	if l.contentSerial != serialBefore || len(l.detailReads) != 0 {
+		t.Fatal("unchanged reconciliation reread details")
+	}
+	// Leave active reads outstanding before replacing the search generation.
+	l.prefetchDetails(d, d.entries, 40, 49)
+	checks = append(checks, "20 visible details plus ten per side are prefetched; cached selection is immediate without rereads; scrolling evicts and reverse scrolling refills payloads")
 	wait("desktop query", func() bool {
 		d.query = "产品"
 		d.search.buffer = "产品"
 		d.live.poll(d)
 		return !d.live.loading && len(d.entries) == 1 && d.entries[0].id == longID
 	})
+	for id := range l.details {
+		if id != longID {
+			t.Fatal("obsolete query payload survived")
+		}
+	}
+	l.prefetchDetails(d, d.entries, 0, 0)
+	wait("search detail prefetch", func() bool { l.poll(d); _, ok := l.details[longID]; return ok && len(l.detailReads) == 0 })
+	serialBefore = l.contentSerial
+	l.loadDetail(d)
+	if l.detailBusy || l.contentSerial != serialBefore {
+		t.Fatal("search result reread prefetched detail")
+	}
+	checks = append(checks, "search results reuse viewport prefetch and reject prior-query completions")
 	checks = append(checks, "main desktop uses global content search rather than page filtering")
 	quick := newLiveQuick(ctx, client, "system", nil)
 	defer quick.live.d.live.cancel()
+	wait("quick prefetch metadata", func() bool { quick.live.poll(quick); return len(quick.rows) == 50 && !quick.live.d.live.loading })
+	ql := quick.live.d.live
+	ql.prefetchDetails(quick.live.d, quick.live.d.entries, 20, 39)
+	wait("quick prefetch", func() bool { quick.live.poll(quick); return len(ql.details) >= 40 && len(ql.detailReads) == 0 })
+	quick.hovered = 22
+	quick.previewID = quick.rows[22].id
+	quick.live.poll(quick)
+	if ql.detailBusy || quick.live.d.current().text == "" || quick.hovered != 22 {
+		t.Fatal("quick prefetched preview was not immediately ready")
+	}
+	checks = append(checks, "quick-panel results use the same prefetch cache; ready previews preserve hover and avoid loading")
 	quick.query = "foo bar"
 	quick.applySearch()
 	wait("quick phrase", func() bool {

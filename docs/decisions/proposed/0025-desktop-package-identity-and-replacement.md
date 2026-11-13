@@ -1,6 +1,6 @@
 # 0025: Desktop package identity and replacement
 
-- Status: Accepted; implementation and package lifecycle acceptance pending.
+- Status: Accepted; runtime/construction implemented and native v2 lifecycle partially accepted. Production activation and real v1 replacement acceptance remain pending.
 - Date: 2026-11-13.
 - Execution plan: [v2 package channel parity](../../exec/0018-v2-package-channel-plan.md).
 - Requirements: [release contract](../../contracts/release-contract.md#desktop-installation-identity-and-update-ownership).
@@ -24,7 +24,7 @@ Use `unic-desktop`, `unic` and `unicd` as executable names. Keep `uniclip` as th
 Desktop and CLI retain independent product versions and increasing build numbers.
 The first v2 Desktop release uses product version `2.0.0` and build number `1`, as explicitly selected by the user. This selection is not a published release.
 Desktop locks one exact accepted CLI build and manifest.
-Native package versions must order increasing product versions and builds correctly; exact per-format encoding remains to be validated in P0.
+Native package versions must order increasing product versions and builds correctly; exact per-format encoding is defined in the release contract and exercised by construction/process acceptance.
 
 Place the bundled CLI and service in the Desktop application's private directory.
 Desktop installation must not overwrite an independently installed CLI or its public commands.

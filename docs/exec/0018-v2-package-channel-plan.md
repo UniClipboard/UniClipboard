@@ -1,6 +1,6 @@
 # Implementation plan: v2 package channel parity
 
-- Status: implementation in progress; construction/process checks partially passed. Complete native, sandbox and publication acceptance remains open. See the [implementation receipt](0018-v2-package-channel-receipt.md).
+- Status: implementation in progress; six-target construction/native-window cases, macOS signing/notarization, native NSIS lifecycle and two-architecture sandbox process acceptance passed. Production signing/key provisioning, package-specific OS integration and public activation remain open. See the [implementation receipt](0018-v2-package-channel-receipt.md).
 - Date: 2026-11-13.
 - v2 baseline: `1a6e8d617a8719b575a0c5bf9a6eec1060d730e5`.
 - v1 inventory baseline: `c6483d73c7a0234be68571fdb5fa3d38a17c4871` (`origin/v1`, local reference).
@@ -19,7 +19,9 @@ Track five separate results for every channel: package built, package installed 
 The packaging milestone requires the first two results. Public rollout additionally requires all applicable destination results.
 Missing credentials or external approval must leave publication pending without hiding a packaging failure.
 
-## 2. Verified baseline and prerequisites
+## 2. Planning baseline and prerequisites
+
+This table records the pre-implementation baseline. Current accepted identities and results are recorded in the implementation receipt and checked work items below.
 
 | Area | Current v2 state | Required work |
 |---|---|---|
@@ -32,7 +34,7 @@ Missing credentials or external approval must leave publication pending without 
 | Distribution | CLI/npm implemented; Desktop R2/FlareRelease work remains open | Complete the relevant parent-plan Desktop gates before public activation. |
 
 Do not change product versions as a side effect of adding recipes.
-The six-target Desktop matrix is a planned requirement, not current support.
+The six-target Desktop construction matrix now has native evidence. Product OS integration and public availability remain separate gates.
 Self-managed pacman parity initially targets x86_64, matching its v1 workflow. Add aarch64 repository publication only after its own signed installation acceptance.
 
 ## 3. Packaging design
@@ -42,8 +44,8 @@ Self-managed pacman parity initially targets x86_64, matching its v1 workflow. A
 The user accepted replacement of v1 by v2 within the same distribution channel.
 The user also accepted the product/package identifiers, independent product versions, private bundled CLI ownership, update authority and explicit migration rules in [decision 0025](../decisions/proposed/0025-desktop-package-identity-and-replacement.md).
 The normative requirements are in the [release contract](../contracts/release-contract.md#desktop-installation-identity-and-update-ownership).
-The user selected Desktop version `2.0.0`, build number `1`. `release/products.toml` records this candidate identity. Desktop now selects the exact signed CLI `2.0.0 (1)` manifest from canonical run 43408274394. The implementation receipt records its digest. Public npm availability remains a separate prerequisite.
-These requirements are accepted but not implemented. Exact native version encodings, platform installation metadata and lifecycle acceptance remain P0 work.
+The user selected Desktop version `2.0.0`, build number `1`. `release/products.toml` records this candidate identity. Desktop selects compatible CLI `2.0.0 (2)` from canonical run 43419452491. Both macOS targets are signed; Windows production signing remains pending. The implementation receipt records its digest. Public npm availability remains a separate prerequisite.
+These requirements now have runtime/construction implementations. The release contract specifies native version encodings and platform metadata. Native v2 lifecycle and sandbox process evidence are recorded separately from real v1 replacement and package-specific OS integration acceptance.
 
 ### Implementation structure
 
@@ -117,23 +119,23 @@ Exit: reviewed release-contract additions, target matrix and executable acceptan
 ### P1. Establish one complete Desktop path
 
 - [x] Implement exact accepted CLI consumption and production Desktop staging; process fixtures passed.
-- [ ] Select the real complete production CLI lock; the checked-in lock remains unresolved.
+- [x] Select and verify a real complete six-target CLI lock: CLI `2.0.0 (2)`, run `43419452491`. Production Windows signing remains a separate prerequisite.
 - [x] Complete the available Linux arm64 DEB construction/install/upgrade/uninstall path with private service and data-preservation evidence.
-- [ ] Repeat the complete lifecycle on Linux amd64; arm64 acceptance does not satisfy that target.
-- [ ] Preserve this working path while extending other formats. Do not create all channel workflows before one package works.
+- [x] Repeat the DEB lifecycle on Linux amd64; package process run `43423581732` passed both architectures.
+- [x] Preserve this working path while extending other formats. Do not create all channel workflows before one package works.
 
 Exit: one reproducible production package and process acceptance receipt. This is a Linux amd64 slice, not a complete six-target release candidate. Public stable still requires the exact locked CLI to be stable in npm.
 
 ### P2. Complete direct-download packages and architecture coverage
 
-- [ ] Build and accept the missing Windows arm64 CLI target through the existing candidate flow, then select one complete CLI build for the final six-target Desktop candidate.
+- [x] Build and accept the Windows arm64 CLI target and select the compatible CLI build 2 for all six Desktop targets.
 - [x] Add macOS bundle, DMG/application archive construction and signing entrypoints; unsigned arm64 construction passed.
-- [ ] Complete real signing/notarization and both native macOS targets.
+- [x] Complete real signing/notarization on both native macOS targets; Desktop run `43421800442` passed.
 - [x] Add Windows setup/portable construction and portable runtime semantics; actual amd64/arm64 PE and EXE/ZIP cross-construction passed.
-- [ ] Accept production Windows signatures and native installer/runtime lifecycle.
+- [ ] Accept production Windows signatures. Native NSIS lifecycle passed on both architectures in run `43421800442`.
 - [x] Add Linux format entrypoints; arm64 DEB/RPM/pacman construction passed.
 - [ ] Accept AppImage construction/runtime and complete bundled-versus-system dependency acceptance.
-- [ ] Complete all six Desktop native targets; record missing native environments as pending rather than reducing the matrix.
+- [x] Complete construction and private CLI/service runtime checks on all six native targets in run `43421800442`. Native GUI and package-specific OS integration remain separate acceptance gates.
 - [ ] Complete parent-plan immutable storage and Desktop release registration prerequisites. Detect install format for update routing.
 
 Exit: complete candidate manifest with final hashes, native identity evidence and format lifecycle receipts.
@@ -155,7 +157,7 @@ Exit: runnable package/recipe artifacts and accepted installation transactions f
 - [x] Generate `.SRCINFO` with real makepkg in an offline container.
 - [ ] Run clean source builds and native lifecycle with a real production lock.
 - [ ] Produce and verify signed stable pacman repository snapshots using disposable acceptance keys.
-- [ ] Complete Snap strict-confinement packaging and Flatpak packaging against real runtimes.
+- [x] Complete Snap strict-confinement and Flatpak build/install/execution against real runtimes on both architectures; run `43423601595` passed. Nix build/install/execution also passed.
 - [ ] Verify actual X11/Wayland capability limits, tray, notifications, file access and user-session lifecycle.
 
 Exit: accepted real package-manager and sandbox transactions. Sandbox restrictions must have explicit product capability results.
@@ -164,7 +166,7 @@ Exit: accepted real package-manager and sandbox transactions. Sandbox restrictio
 
 - [ ] Connect channel-specific workflows to an accepted immutable product candidate. CI package construction must not itself publish.
 - [ ] Configure destination credentials/signing, least required workflow permissions and upstream submission identities.
-- [ ] Validate retries, partial publication, stale jobs and same-identity conflicts with process E2E before public writes.
+- [x] Validate retries, partial publication, stale jobs and same-identity conflicts with process E2E before public writes; the nine-check disposable HTTP/S3 fixture passed.
 - [ ] After explicit rollout authorization, submit/publish selected channels and read back exact versions, hashes and states.
 - [ ] Add a destination status report covering all twelve channels; retain pending moderation states.
 - [ ] Update live architecture/contracts and run documentation lifecycle checks. Keep 0018 open until its other product obligations are complete.

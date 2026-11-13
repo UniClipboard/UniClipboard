@@ -205,6 +205,9 @@ def run(specs, selected, output):
             raise RuntimeError('case selection changed while taking the snapshot')
         manifest['go'] = subprocess.check_output(['go', 'version'], text=True).strip()
         manifest['platform'] = subprocess.check_output(['go', 'env', 'GOOS', 'GOARCH'], text=True).splitlines()
+        # The pinned Go toolchain has no race detector for Windows arm64.
+        race_flags = [] if manifest['platform'] == ['windows', 'arm64'] else ['-race']
+        manifest['race_detector'] = bool(race_flags)
         binaries = private / 'bin'
         binaries.mkdir()
         manifest['binary_sha256'] = {}
@@ -212,7 +215,7 @@ def run(specs, selected, output):
             for name, tags in [('unicd', []), ('unic-desktop', ['-tags', 'desktop_e2e'])]:
                 print('BUILD ' + name, flush=True)
                 target = binaries / (name + ('.exe' if os.name == 'nt' else ''))
-                subprocess.run(['go', 'build', '-race', '-buildvcs=false', *tags, '-o', str(target),
+                subprocess.run(['go', 'build', *race_flags, '-buildvcs=false', *tags, '-o', str(target),
                                 './app/' + ('service' if name == 'unicd' else 'desktop') + '/cmd/' + name], cwd=snapshot, check=True)
                 manifest['binary_sha256'][name] = digest(target)
         manifest['desktop_build_tags'] = ['desktop_e2e'] if native else []
@@ -220,7 +223,7 @@ def run(specs, selected, output):
         environment.update(TMPDIR=str(private), UNIC_DESKTOP_E2E='1', UNIC_DESKTOP_E2E_BIN=str(binaries),
                            UNIC_DESKTOP_E2E_SOURCE_HEAD=manifest['source_head'], UNIC_DESKTOP_E2E_ARTIFACTS=str(out / 'cases'), UNIC_DESKTOP_E2E_PRIVATE=str(private / 'cases'))
         expression = '^TestDesktopScenarios$/^(' + '|'.join(selected) + ')$'
-        command = ['go', 'test', '-race', './app/desktop/e2e', '-run', expression, '-parallel', '1', '-count=1', '-timeout=45m', '-v']
+        command = ['go', 'test', *race_flags, './app/desktop/e2e', '-run', expression, '-parallel', '1', '-count=1', '-timeout=45m', '-v']
         with (private / 'go-test.log').open('w') as log:
             process = subprocess.Popen(command, cwd=snapshot, env=environment, stdout=log, stderr=subprocess.STDOUT,
                                        start_new_session=os.name == 'posix')

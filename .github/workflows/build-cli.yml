@@ -5,6 +5,10 @@ on:
     branches: [main, v2]
   workflow_dispatch:
     inputs:
+      native_gui:
+        type: boolean
+        default: false
+        description: Run the standard native-window scenario on all six OS/architecture targets
       sandbox_run_id:
         type: string
         default: ''
@@ -36,7 +40,7 @@ permissions:
   actions: read
 jobs:
   prepare:
-    if: ${{ !inputs.desktop_only && !inputs.sandbox_run_id }}
+    if: ${{ !inputs.desktop_only && !inputs.sandbox_run_id && !inputs.native_gui }}
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
@@ -156,3 +160,9 @@ jobs:
     with:
       source_sha: ${{ github.sha }}
       candidate_run_id: ${{ inputs.sandbox_run_id }}
+
+  native-gui:
+    if: github.event_name == 'workflow_dispatch' && inputs.native_gui
+    uses: ./.github/workflows/native-desktop-acceptance.yml
+    with:
+      source_sha: ${{ github.sha }}

@@ -31,3 +31,9 @@ Missing ffmpeg/display; stale catalogue; unknown case; duplicate IDs; escaped so
 ## Production module boundary
 
 The `production-boundary` process case checks the production command dependency graph, the shared renderer dependency graph and the i18n embedded catalogue. It builds `unic-desktop` and the separate `unic-desktop-demo`, checks demo help and rejects removed preview pages without opening a native window. `desktopui` is the package key for shared-renderer view and service-binding scenarios. Fixture builders are imported by preview startup and acceptance only.
+
+## Hosted native-window replay
+
+The reusable native Desktop workflow runs `history-search-copy` on all six declared OS/architecture targets. Linux uses GTK under Xvfb and a private D-Bus session. Windows/macOS use the hosted native desktop. The same canonical runner freezes source, builds isolated programs, drives semantic native actions, records continuous content frames and verifies cleanup. The report's scope remains application-native directory-clipboard interaction; it does not prove OS focus or system clipboard delivery.
+
+The pinned Go 1.27 toolchain has no Windows arm64 race detector. For that target, the native runner omits `-race` from the selected binary and driver builds and records `race_detector=false`. It still requires every selected scenario and evidence assertion to pass. Other declared targets retain race instrumentation. This target-specific toolchain limitation is not a skipped scenario or a claim of full cross-platform catalogue acceptance.

@@ -19,10 +19,12 @@ paths:
   - .github/workflows/build-desktop.yml
   - .github/workflows/package-acceptance.yml
   - .github/workflows/release-desktop.yml
+  - .github/workflows/native-desktop-acceptance.yml
+  - app/desktop/e2e/run.py
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 3ef6e797f9b2cadbe7cdd45408d07671e9788798
+verified: 09488aaaa20aaf297d7be5c89271cba5f40786c4
 ---
 # Product builds and CLI releases
 
@@ -74,6 +76,8 @@ The Desktop host uses the pinned mygo native updater plugin. `appupdates.Source`
 `desktop.update_channel` accepts `stable` (default) or `alpha` and takes effect on the next check. Updater preferences use the v2 data directory. `release/products.toml` selects the durable `update_public_key`; an empty key disables in-app updates. The production private key must use mygo's raw Ed25519 format, independent of existing Minisign/Tauri keys. `go run ./tools/release/update-sign` generates a private key directory or signs archives from `UNIC_UPDATE_PRIVATE_KEY` without logging the private key.
 
 The host enables automatic/native-menu updates only for direct installations. System Linux packages, Snap, Flatpak, AppImage, Homebrew-owned bundles, Scoop and portable archives remain externally managed. NSIS records winget/Chocolatey ownership from `/MANAGED=`. Manual reinstalls preserve that receipt. Windows and Linux updates use mygo's owned-file list and preserve unowned data. AppImage self-update remains unsupported by the pinned SDK. Public feed/key provisioning remains a deployment prerequisite.
+
+The registered CLI build entry can also call `native-desktop-acceptance.yml` to run the canonical history/search/copy native-window case on all six targets. Its screenshots, continuous recording, source/binary hashes and cleanup receipt remain distinct from production installer and real-system clipboard acceptance. Windows arm64 records the pinned Go toolchain's unavailable race detector explicitly.
 
 ### Desktop delivery controller
 

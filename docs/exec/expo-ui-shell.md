@@ -74,8 +74,41 @@ Local logs, module counts and checksums are in
 `npm run verify` reproduces them. The CI workflow runs the same bundle checks;
 it has not been dispatched or observed remotely in this migration.
 
-Native `.app`/APK compilation, CocoaPods/Gradle acceptance, application launch,
-visual inspection and Maestro execution were **NOT RUN**. The native flows and
+At the initial migration checkpoint, native `.app`/APK compilation,
+CocoaPods/Gradle acceptance, application launch, visual inspection and Maestro execution were **NOT RUN**. The native flows and
 runner are supplied, but are not counted as passing. List/dark-mode/language/tablet
 visual acceptance also remains pending. No Engine integration, release or
 publication is included.
+
+## iOS Simulator follow-up
+
+At the user's explicit request, source commit
+`041901389` was built with Xcode 27.0 (27A5194q) and installed on an iPhone 17 Pro
+Simulator running iOS 26.3 on 2026-11-13.
+
+- CocoaPods installation: passed.
+- Release Simulator build: passed with code signing disabled.
+- Installation and launch of `app.uniclipboard.shell`: passed.
+- Home screenshot: inspected and sent through Lody. It shows the demo banner,
+  history cards and the native tab bar.
+- Main executable SHA-256:
+  `0ebb9dca7d4071fae6c2532358d87a929892e4d79649f69721f6e992e7e74df7`.
+- Screenshot SHA-256:
+  `7e9e277f253bfd0af836cd8b18e9bb4d68ddd8360ea4e4d41bcdaad13c1fd999`.
+
+Reproduce the build from `app/expo` after installing locked npm dependencies:
+
+```sh
+(cd ios && pod install)
+xcodebuild -workspace ios/UniClipboardUIShell.xcworkspace \
+  -scheme UniClipboardUIShell -configuration Release \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/unic-expo-shell-simulator \
+  CODE_SIGNING_ALLOWED=NO -jobs 6 build
+```
+
+This follow-up verifies native startup and the home screenshot only. Maestro
+flows, settings/device interaction, tablet layouts, other appearances/languages,
+Android native compilation and Android startup remain unverified. No application
+source changed during this follow-up. Temporary native artifacts and screenshot
+files are not committed.

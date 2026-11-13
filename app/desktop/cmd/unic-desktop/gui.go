@@ -13,13 +13,15 @@ import (
 	"syscall"
 	"time"
 
+	"runtime"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/appupdates"
 	"github.com/uniclipboard/unic/internal/releaseinfo"
-	"runtime"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"

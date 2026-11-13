@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/appupdates"
 )
 
@@ -50,7 +51,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		defer body.Close()
+		defer func() { _ = body.Close() }()
 		var manifest struct {
 			URL string `json:"url"`
 		}
@@ -61,7 +62,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		defer archive.Close()
+		defer func() { _ = archive.Close() }()
 		_, err = io.Copy(io.Discard, archive)
 		return err
 	}()

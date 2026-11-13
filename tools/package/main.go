@@ -40,7 +40,7 @@ func run() error {
 	flag.Parse()
 	if *product == "desktop" {
 		if *desktop || *cliManifest == "" || *target == "" {
-			return fmt.Errorf("Desktop candidate requires -cli-manifest and -target, without -desktop")
+			return fmt.Errorf("desktop candidate requires -cli-manifest and -target, without -desktop")
 		}
 		python := "python3"
 		if runtime.GOOS == "windows" {

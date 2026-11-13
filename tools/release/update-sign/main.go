@@ -24,6 +24,9 @@ func main() {
 }
 func run() error {
 	keygen := flag.String("keygen", "", "Create a private directory containing public.key and private.key")
+	verify := flag.Bool("verify", false, "Verify a signature with a public key")
+	publicKey := flag.String("public-key", "", "Raw base64 public key")
+	signature := flag.String("signature", "", "Base64 archive signature")
 	file := flag.String("file", "", "Archive to sign")
 	flag.Parse()
 	if *keygen != "" {
@@ -38,6 +41,29 @@ func run() error {
 			if err := os.WriteFile(filepath.Join(*keygen, name), []byte(base64.StdEncoding.EncodeToString(value)+"\n"), 0600); err != nil {
 				return err
 			}
+		}
+		return nil
+	}
+	if *verify {
+		key, err := base64.StdEncoding.DecodeString(*publicKey)
+		if err != nil || len(key) != ed25519.PublicKeySize {
+			return fmt.Errorf("invalid public key")
+		}
+		sig, err := base64.StdEncoding.DecodeString(*signature)
+		if err != nil {
+			return err
+		}
+		f, err := os.Open(*file)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		h := sha256.New()
+		if _, err = io.Copy(h, f); err != nil {
+			return err
+		}
+		if !ed25519.Verify(key, h.Sum(nil), sig) {
+			return fmt.Errorf("archive signature mismatch")
 		}
 		return nil
 	}

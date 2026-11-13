@@ -327,12 +327,14 @@ def stage(args):
             ],
             env=env,
         )
-        save(payload / "release-identity.json", {
+        resources = payload.parent / "Resources" if os_name == "darwin" else payload
+        resources.mkdir(exist_ok=True)
+        save(resources / "release-identity.json", {
             "product": "desktop", "version": record["version"],
             "build_number": record["build_number"], "target": target,
             "cli_manifest_sha256": sha(args.cli_manifest), "source_sha": source,
         })
-        (payload / "LICENSE").write_bytes((ROOT / "LICENSE").read_bytes())
+        (resources / "LICENSE").write_bytes((ROOT / "LICENSE").read_bytes())
         if os_name == "darwin":
             info = {
                 "CFBundleIdentifier": APP_ID,
@@ -391,6 +393,7 @@ def stage(args):
             "payload": str(payload.relative_to(root)),
             "files": files,
             "links": links,
+            "update_public_key": record.get("update_public_key", ""),
             "cli": {
                 "version": manifest["version"],
                 "build_number": manifest["build_number"],
@@ -708,8 +711,15 @@ def package(args):
                     image.unlink()
         if args.notarize:
             shutil.rmtree(output / "notary-input")
+        update_signature = ""
+        if kind in ["app.tar.gz", "update.tar.gz"] and os.environ.get("UNIC_UPDATE_PRIVATE_KEY"):
+            signature = json.loads(run(["go", "run", "./tools/release/update-sign", "-file", file]))
+            if signature["public_key"] != m.get("update_public_key") or signature["sha256"] != sha(file):
+                raise ValueError("update signature disagrees with staged key or archive")
+            update_signature = signature["signature"]
         artifacts.append(
             {
+                "signature": update_signature,
                 "format": kind,
                 "file": file.name,
                 "sha256": sha(file),

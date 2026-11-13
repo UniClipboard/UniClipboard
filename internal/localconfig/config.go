@@ -372,6 +372,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # Desktop launcher settings. Mode and background visibility apply on next launch.
 # Login registration is applied by a running normal desktop session.
 # [desktop]
+# update_channel = "stable"  # "stable" or "alpha"; applies on the next update check
 # language = "zh-CN"  # "zh-CN", "en", "ja", "pt-BR", "ru"; applies immediately
 # mode = "normal"  # "normal" or "lightweight"
 # launch_at_login = false

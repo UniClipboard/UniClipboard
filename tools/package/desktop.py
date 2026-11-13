@@ -104,6 +104,36 @@ def locked_cli(metadata, manifest_path, target, development):
         for k in ["native", "version_smoke", "alias_smoke"]
     ):
         raise ValueError("locked CLI target lacks acceptance")
+    # Shared configuration and API code must agree with the bundled service.
+    env = dict(
+        os.environ,
+        GOOS=target.split("-")[0],
+        GOARCH=target.split("-")[1],
+        CGO_ENABLED="0",
+    )
+    selected_sources = run(
+        [
+            "go",
+            "list",
+            "-f",
+            "{{range .GoFiles}}{{$.Dir}}/{{.}}\n{{end}}{{range .CgoFiles}}{{$.Dir}}/{{.}}\n{{end}}",
+            "./internal/localconfig",
+            "./internal/localapi",
+            "./internal/servicelifecycle",
+            "./internal/servicelaunch",
+            "./app/service/internal/server",
+        ],
+        env=env,
+    )
+    for filename in selected_sources.splitlines():
+        if not filename.strip():
+            continue
+        path = Path(filename.strip())
+        relative = path.relative_to(ROOT).as_posix()
+        if native.get("source_sha256", {}).get(relative) != sha(path):
+            raise ValueError(
+                "locked CLI shared configuration/API mismatch: " + relative
+            )
     package = next(p for p in manifest["packages"] if p.get("target") == target)
     path = cli.checked_file(
         Path(manifest_path).parent, package["file"], package["sha256"]

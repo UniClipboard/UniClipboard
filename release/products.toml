@@ -2,7 +2,7 @@ schema = 1
 
 [products.cli]
 version = "2.0.0"
-build_number = 1
+build_number = 2
 targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
 
 [products.desktop]

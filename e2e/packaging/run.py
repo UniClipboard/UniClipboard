@@ -271,6 +271,7 @@ cli_manifest_sha256 = "{lock}"
                 run(
                     [
                         "sh",
+                        "-x",
                         ROOT / "e2e/packaging/linux-lifecycle.sh",
                         first_file,
                         second_file,

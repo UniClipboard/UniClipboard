@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -48,6 +49,14 @@ def save(path, value):
 
 
 def run(args, **kwargs):
+    if os.name == "nt" and str(args[0]) == "npm":
+        executable = shutil.which("npm")
+        if not executable:
+            raise ValueError("npm is not installed")
+        entry = Path(executable).parent / "node_modules/npm/bin/npm-cli.js"
+        if not entry.is_file():
+            raise ValueError("npm JavaScript entrypoint is missing")
+        args = ["node", str(entry), *args[1:]]
     result = subprocess.run(
         args, cwd=ROOT, check=True, text=True, stdout=subprocess.PIPE, **kwargs
     )

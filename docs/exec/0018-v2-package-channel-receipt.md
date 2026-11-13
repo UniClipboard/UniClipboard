@@ -67,3 +67,10 @@ The connected-machine inventory exposed only the current macOS host online; it d
 The first available real Linux lifecycle target was arm64 rather than the plan's preferred amd64. Keep amd64 acceptance pending; do not shrink the declared matrix.
 Native GUI/system clipboard, actual v1 installer replacement and sandbox acceptance remain separately required. Their authorization and environment requirements have not been satisfied by nonvisual construction.
 Do not archive 0018 or 0025, mark this plan complete or announce twelve published channels from this receipt.
+
+## Hosted follow-up
+
+Draft PR #2247 targets v2 from the independently authorized `feat/v2-package-release` branch. The current base includes the unrelated merged Expo shell; it remains unchanged by packaging work.
+Initial Build CLI run 43407479757 passed native executable checks on all six targets. It is construction evidence, not the selected signed release candidate.
+Initial package process run 43407479802 exposed Windows npm.cmd launch failure and an unlocalized Linux lifecycle assertion. Windows now uses npm's JavaScript entrypoint through Node; the Linux process trace identifies the exact assertion before any behavior change.
+A separate explicit distribution build imports the repository's Apple certificate for actual signing validation. No public npm/installer publication or stable-channel mutation is performed by these checks.

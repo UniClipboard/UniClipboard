@@ -1,0 +1,55 @@
+{
+  "file": {
+    "imageOnly": "Only images can be saved to the gallery"
+  },
+  "contentType": {
+    "text": "Text",
+    "image": "Image",
+    "file": "File",
+    "group": "File Group",
+    "unknown": "Unknown"
+  },
+  "contentPlaceholder": {
+    "image": "[Image]",
+    "file": "[File]",
+    "group": "[File Group]"
+  },
+  "copy": {
+    "copied": "Copied to clipboard",
+    "copiedImage": "Image copied to clipboard",
+    "unsupportedType": "Quick copy isn't supported for this type",
+    "failed": "Copy failed",
+    "textTooLarge": "Text is too large to copy to the clipboard (exceeds system limit)",
+    "failedWithReason": "Copy failed: {{reason}}",
+    "unknownError": "Unknown error",
+    "cannotReadFullText": "Couldn't read the full text"
+  },
+  "share": {
+    "dialogTitle": "Share File"
+  },
+  "refresh": {
+    "failed": "Refresh failed"
+  },
+  "connect": {
+    "failed": "Connection failed",
+    "cannotReach": "Unable to connect to other devices"
+  },
+  "notification": {
+    "uploaded": "Uploaded",
+    "downloaded": "Downloaded",
+    "fileDownloaded": "File downloaded"
+  },
+  "sync": {
+    "networkErrorQueued": "Network error, added to queue: {{error}}"
+  },
+  "upload": {
+    "failedSavedLocal": "Upload failed; content saved locally"
+  },
+  "apk": {
+    "hashMismatch": "APK hash verification failed: expected {{expected}}, got {{actual}}"
+  },
+  "log": {
+    "noFilesToExport": "No log files to export",
+    "storagePermissionDenied": "Storage permission not granted"
+  }
+}

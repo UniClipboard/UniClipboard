@@ -1,0 +1,490 @@
+--- a/ios/tabs/host/RNSTabBarController.h
++++ b/ios/tabs/host/RNSTabBarController.h
+@@ -229,6 +229,13 @@
+ - (void)updateTabBarAppearance;
+ 
+ /**
++ * Copies title, icons, badge and accessibility properties from each tab screen controller's
++ * `tabBarItem` to its `UITab`. No-op unless the controller uses the `UITab` API, which it does on
++ * iOS 26+ when one of the screens is a search system item (so that it can be a `UISearchTab`).
++ */
++- (void)syncTabsWithTabBarItems;
++
++/**
+  * Updates the interface orientation based on selected tab screen and its children.
+  *
+  * This method does nothing if the update has not been previously requested.
+--- a/ios/tabs/host/RNSTabBarController.mm
++++ b/ios/tabs/host/RNSTabBarController.mm
+@@ -89,6 +89,12 @@
+   RNSTabsNavigationStateObserverRegistry *_observerRegistry;
+ 
+   RNSParentContainerItemRegistry *_Nonnull _parentContainerRegistry;
++
++  /// YES when tabs are managed with the `UITab` API (`self.tabs`) instead of `self.viewControllers`.
++  /// Used on iOS 26+ when one of the screens is a search system item, because the iOS 27 SDK only gives
++  /// the detached search tab chrome to a real `UISearchTab`. In this mode UIKit ignores the
++  /// `viewControllers` family of properties and view-controller-based delegate methods.
++  BOOL _usesTabsAPI;
+ }
+ 
+ - (instancetype)init
+@@ -158,7 +164,7 @@
+ {
+   // `selectedViewController` may be the `moreNavigationController` (a `UINavigationController`) -
+   // we only resolve for our own tab screens.
+-  UIViewController *selectedController = self.selectedViewController;
++  UIViewController *selectedController = [self currentSelectedViewController];
+   if (![selectedController isKindOfClass:RNSTabsScreenViewController.class]) {
+     return nil;
+   }
+@@ -210,16 +216,24 @@
+   }
+ }
+ 
++- (void)setSelectedTab:(UITab *)selectedTab API_AVAILABLE(ios(18.0))
++{
++  [super setSelectedTab:selectedTab];
++  if (_usesTabsAPI && !_isHandlingExplicitSelectionUpdate) {
++    [self reconcileNavigationStateWithUIKitState];
++  }
++}
++
+ - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
+ {
+   [super traitCollectionDidChange:previousTraitCollection];
+ 
+-  if (previousTraitCollection == nil || self.selectedViewController == nil) {
++  if (previousTraitCollection == nil || [self currentSelectedViewController] == nil) {
+     return;
+   }
+ 
+   if (self.traitCollection.horizontalSizeClass != previousTraitCollection.horizontalSizeClass &&
+-      [self isViewControllerHostedByMoreNavigationController:self.selectedViewController]) {
++      [self isViewControllerHostedByMoreNavigationController:[self currentSelectedViewController]]) {
+     [self disableNavigationBarInMoreNavigationController];
+   }
+ }
+@@ -302,7 +316,7 @@
+     return NO;
+   }
+ 
+-  UIViewController *currSelectedViewController = self.selectedViewController;
++  UIViewController *currSelectedViewController = [self currentSelectedViewController];
+ 
+   RCTAssert(![NSString rnscreens_isBlankOrNull:screenKey],
+             @"[RNScreens] The screenKey MUST NOT be null if the view controller is not null");
+@@ -313,7 +327,7 @@
+     return YES;
+   }
+ 
+-  [self setSelectedViewController:nextSelectedViewController];
++  [self selectViewControllerNatively:nextSelectedViewController];
+   return YES;
+ }
+ 
+@@ -330,7 +344,7 @@
+ 
+ - (void)userDidRepeatViewControllerSelection:(nonnull UIViewController *)viewController
+ {
+-  RCTAssert(self.selectedViewController == viewController,
++  RCTAssert([self currentSelectedViewController] == viewController,
+             @"[RNScreens] Expected UIKit to update selectedViewController");
+ 
+   if ([self isSelectedViewControllerTheMoreNavigationController]) {
+@@ -354,7 +368,7 @@
+ - (void)userDidSelectViewController:(nonnull UIViewController *)viewController
+ {
+   // At this moment the `UITabBarController` model is already updated.
+-  RCTAssert(self.selectedViewController == viewController,
++  RCTAssert([self currentSelectedViewController] == viewController,
+             @"[RNScreens] Expected UIKit to update selectedViewController");
+ 
+   if ([self isSelectedViewControllerTheMoreNavigationController]) {
+@@ -395,6 +409,47 @@
+ // These methods are not called on programatic selection!
+ // They are called only when a user taps on tab bar.
+ 
++// With the `UITab` API UIKit calls these instead of the view-controller-based methods below.
++// They mirror `tabBarController:shouldSelectViewController:` / `didSelectViewController:`.
++
++- (BOOL)tabBarController:(UITabBarController *)tabBarController shouldSelectTab:(UITab *)tab API_AVAILABLE(ios(18.0))
++{
++  RCTAssert(tabBarController == self, @"[RNScreens] Unexpected type of controller: %@", tabBarController.class);
++
++  UIViewController *viewController = [self viewControllerForTab:tab];
++  if (viewController == nil) {
++    return YES;
++  }
++
++  if ([self currentSelectedViewController] == viewController) {
++    // Same as the view-controller-based path: prevent the native pop to root and handle the
++    // repeated selection ourselves.
++    [self userDidRepeatViewControllerSelection:viewController];
++    return NO;
++  }
++
++  if ([self shouldPreventNativeTabSelection:viewController]) {
++    [self onDidPreventUserFromSelectingViewControllerWithKey:[self screenKeyForViewController:viewController]];
++    return NO;
++  }
++
++  _isHandlingExplicitSelectionUpdate = YES;
++  return YES;
++}
++
++- (void)tabBarController:(UITabBarController *)tabBarController
++            didSelectTab:(UITab *)selectedTab
++             previousTab:(UITab *)previousTab API_AVAILABLE(ios(18.0))
++{
++  RCTAssert(self == tabBarController, @"[RNScreens] Unexpected type of controller: %@", tabBarController.class);
++
++  UIViewController *viewController = [self viewControllerForTab:selectedTab];
++  if (viewController != nil) {
++    [self userDidSelectViewController:viewController];
++  }
++  _isHandlingExplicitSelectionUpdate = NO;
++}
++
+ - (BOOL)tabBarController:(UITabBarController *)tabBarController
+     shouldSelectViewController:(UIViewController *)viewController
+ {
+@@ -499,11 +554,193 @@
+   if (_tabScreenControllers == nil) {
+     RCTLogWarn(@"[RNScreens] Attempt to update react children while the _updatedChildren array is nil!");
+     return;
++  }
++
++  BOOL shouldUseTabsAPI = [self shouldUseTabsAPIForControllers:_tabScreenControllers];
++  if (@available(iOS 18.0, *)) {
++    if (shouldUseTabsAPI) {
++      [self updateTabsWithControllers:_tabScreenControllers];
++      return;
++    }
++    if (_usesTabsAPI) {
++      // Leaving the `UITab` API; drop the tabs before going back to view controllers.
++      _usesTabsAPI = NO;
++      [self setTabs:@[] animated:NO];
++    }
+   }
+ 
+   [self setViewControllers:_tabScreenControllers animated:[[self viewControllers] count] != 0];
+ }
+ 
++#pragma mark - UITab API
++
++- (BOOL)shouldUseTabsAPIForControllers:(nonnull NSArray<RNSTabsScreenViewController *> *)controllers
++{
++#if !TARGET_OS_TV && !TARGET_OS_VISION
++  if (@available(iOS 26.0, *)) {
++    for (RNSTabsScreenViewController *controller in controllers) {
++      if (controller.tabScreenComponentView.systemItem == RNSTabsScreenSystemItemSearch) {
++        return YES;
++      }
++    }
++  }
++#endif // !TARGET_OS_TV && !TARGET_OS_VISION
++  return NO;
++}
++
++- (void)updateTabsWithControllers:(nonnull NSArray<RNSTabsScreenViewController *> *)controllers
++    API_AVAILABLE(ios(18.0))
++{
++  NSMutableArray<UITab *> *nextTabs = [NSMutableArray arrayWithCapacity:controllers.count];
++  for (RNSTabsScreenViewController *controller in controllers) {
++    BOOL isSearch = controller.tabScreenComponentView.systemItem == RNSTabsScreenSystemItemSearch;
++    UITab *tab = [self existingTabForController:controller isSearch:isSearch];
++    if (tab == nil) {
++      tab = [self createTabForController:controller isSearch:isSearch];
++    }
++    [nextTabs addObject:tab];
++  }
++
++  BOOL animated = _usesTabsAPI && self.tabs.count != 0;
++  _usesTabsAPI = YES;
++  [self setTabs:nextTabs animated:animated];
++  [self updateProminentSearchTab];
++  [self syncTabsWithTabBarItems];
++}
++
++/// On iOS 27 a `UISearchTab` is detached from the tab bar only when it is the prominent tab
++/// (or when it activates search automatically, which our search tab does not).
++- (void)updateProminentSearchTab API_AVAILABLE(ios(18.0))
++{
++#if RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
++  if (@available(iOS 27.0, *)) {
++    NSString *searchTabIdentifier = nil;
++    for (UITab *tab in self.tabs) {
++      if ([tab isKindOfClass:UISearchTab.class]) {
++        searchTabIdentifier = tab.identifier;
++        break;
++      }
++    }
++    if (self.prominentTabIdentifier != searchTabIdentifier &&
++        ![self.prominentTabIdentifier isEqualToString:searchTabIdentifier]) {
++      [self setProminentTabIdentifier:searchTabIdentifier animated:NO];
++    }
++  }
++#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(27_0) && !TARGET_OS_TV
++}
++
++- (nullable UITab *)existingTabForController:(nonnull RNSTabsScreenViewController *)controller
++                                    isSearch:(BOOL)isSearch API_AVAILABLE(ios(18.0))
++{
++  for (UITab *tab in self.tabs) {
++    if (tab.userInfo == controller && [tab isKindOfClass:UISearchTab.class] == isSearch) {
++      return tab;
++    }
++  }
++  return nil;
++}
++
++- (nonnull UITab *)createTabForController:(nonnull RNSTabsScreenViewController *)controller
++                                 isSearch:(BOOL)isSearch API_AVAILABLE(ios(18.0))
++{
++  // The tab keeps the controller in `userInfo`; the provider returns it lazily.
++  UIViewController * (^provider)(__kindof UITab *) = ^UIViewController *(__kindof UITab *tab) {
++    return static_cast<UIViewController *>(tab.userInfo);
++  };
++
++  UITab *tab = nil;
++  if (isSearch) {
++    tab = [[UISearchTab alloc] initWithViewControllerProvider:provider];
++  } else {
++    NSString *identifier = controller.getScreenKeyOrNull ?: [NSUUID UUID].UUIDString;
++    tab = [[UITab alloc] initWithTitle:controller.tabBarItem.title ?: @""
++                                 image:controller.tabBarItem.image
++                            identifier:identifier
++                viewControllerProvider:provider];
++  }
++  tab.userInfo = controller;
++  return tab;
++}
++
++- (void)syncTabsWithTabBarItems
++{
++  if (!_usesTabsAPI) {
++    return;
++  }
++  if (@available(iOS 18.0, *)) {
++    for (UITab *tab in self.tabs) {
++      auto *controller = static_cast<RNSTabsScreenViewController *>(tab.userInfo);
++      UITabBarItem *item = controller.tabBarItem;
++      if (controller == nil || item == nil) {
++        continue;
++      }
++
++      // A search tab keeps its system-localized title and magnifier image unless overridden.
++      BOOL isSearch = [tab isKindOfClass:UISearchTab.class];
++      RNSTabsScreenComponentView *screenView = controller.tabScreenComponentView;
++      BOOL hasCustomIcon = screenView.iconResourceName != nil || screenView.iconImageSource != nil;
++
++      if (item.title != nil && ![tab.title isEqualToString:item.title]) {
++        tab.title = item.title;
++      }
++      if ((!isSearch || hasCustomIcon) && tab.image != item.image) {
++        tab.image = item.image;
++      }
++#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
++      if (@available(iOS 26.1, *)) {
++        if ((!isSearch || hasCustomIcon) && tab.selectedImage != item.selectedImage) {
++          tab.selectedImage = item.selectedImage;
++        }
++      }
++#endif // __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
++      if (tab.badgeValue != item.badgeValue && ![tab.badgeValue isEqualToString:item.badgeValue]) {
++        tab.badgeValue = item.badgeValue;
++      }
++      tab.accessibilityIdentifier = item.accessibilityIdentifier;
++    }
++  }
++}
++
++- (nullable UIViewController *)viewControllerForTab:(nullable UITab *)tab API_AVAILABLE(ios(18.0))
++{
++  id controller = tab.userInfo;
++  return [controller isKindOfClass:RNSTabsScreenViewController.class] ? controller : nil;
++}
++
++/// Tab screen controllers in display order, for both the `UITab` API and the view controllers API.
++- (nullable NSArray<UIViewController *> *)managedViewControllers
++{
++  return _usesTabsAPI ? _tabScreenControllers : self.viewControllers;
++}
++
++/// The selected tab screen controller (or the More navigation controller in the view controllers API).
++- (nullable UIViewController *)currentSelectedViewController
++{
++  if (_usesTabsAPI) {
++    if (@available(iOS 18.0, *)) {
++      return [self viewControllerForTab:self.selectedTab];
++    }
++  }
++  return self.selectedViewController;
++}
++
++- (void)selectViewControllerNatively:(nonnull UIViewController *)viewController
++{
++  if (_usesTabsAPI) {
++    if (@available(iOS 18.0, *)) {
++      for (UITab *tab in self.tabs) {
++        if (tab.userInfo == viewController) {
++          self.selectedTab = tab;
++          return;
++        }
++      }
++      RCTLogWarn(@"[RNScreens] Failed to find UITab for view controller: %@", viewController);
++      return;
++    }
++  }
++  [self setSelectedViewController:viewController];
++}
++
+ - (void)updateSelectedViewControllerIfNeeded
+ {
+   if (_pendingStateUpdate != nil) {
+@@ -513,7 +750,7 @@
+ 
+ - (void)updateSelectedViewController
+ {
+-  if (_pendingStateUpdate == nil || self.viewControllers.count == 0) {
++  if (_pendingStateUpdate == nil || [self managedViewControllers].count == 0) {
+     return;
+   }
+ 
+@@ -531,7 +768,7 @@
+ {
+   RCTAssert(_pendingStateUpdate != nil, @"[RNScreens] Pending update MUST NOT be nil");
+ 
+-  UIViewController *_Nonnull currSelectedViewController = self.selectedViewController;
++  UIViewController *_Nonnull currSelectedViewController = [self currentSelectedViewController];
+ 
+   NSString *_Nonnull nextSelectedViewControllerKey = _pendingStateUpdate.selectedScreenKey;
+   UIViewController *nextSelectedViewController = [self findChildViewControllerForKey:nextSelectedViewControllerKey];
+@@ -610,20 +847,26 @@
+                                    withHostComponentView:self.tabsHostComponentView
+                                     tabScreenControllers:_tabScreenControllers
+                                              imageLoader:[self.tabsHostComponentView reactImageLoader]];
++  [self syncTabsWithTabBarItems];
+ }
+ 
+ - (void)updateTabBarA11yIfNeeded
+ {
+-  for (UIViewController *tabViewController in self.viewControllers) {
++  BOOL hasUpdates = NO;
++  for (UIViewController *tabViewController in [self managedViewControllers]) {
+     auto screenView = static_cast<RNSTabsScreenViewController *>(tabViewController).tabScreenComponentView;
+     if (!screenView.tabBarItemNeedsA11yUpdate) {
+       continue;
+     }
+ 
++    hasUpdates = YES;
+     screenView.tabBarItemNeedsA11yUpdate = NO;
+     tabViewController.tabBarItem.accessibilityIdentifier = screenView.tabItemTestID;
+     tabViewController.tabBarItem.accessibilityLabel = screenView.tabItemAccessibilityLabel;
+   }
++  if (hasUpdates) {
++    [self syncTabsWithTabBarItems];
++  }
+ }
+ 
+ #pragma mark - Utility
+@@ -633,7 +876,7 @@
+   if (screenKey == nil) {
+     return nil;
+   }
+-  for (UIViewController *viewController in self.viewControllers) {
++  for (UIViewController *viewController in [self managedViewControllers]) {
+     RCTAssert([viewController isKindOfClass:RNSTabsScreenViewController.class],
+               @"[RNScreens] Unexpected type of controller: %@",
+               viewController.class);
+@@ -668,10 +911,11 @@
+  */
+ - (RNSTabsScreenViewController *)selectedScreenViewController
+ {
+-  RCTAssert([self.selectedViewController isKindOfClass:RNSTabsScreenViewController.class],
++  UIViewController *selectedViewController = [self currentSelectedViewController];
++  RCTAssert([selectedViewController isKindOfClass:RNSTabsScreenViewController.class],
+             @"[RNScreens] Unexpected type of selectedViewController: %@",
+-            self.selectedViewController.class);
+-  return static_cast<RNSTabsScreenViewController *>(self.selectedViewController);
++            selectedViewController.class);
++  return static_cast<RNSTabsScreenViewController *>(selectedViewController);
+ }
+ 
+ - (nonnull NSString *)screenKeyForViewController:(nonnull UIViewController *)viewController
+@@ -688,7 +932,7 @@
+ 
+ - (nonnull NSString *)screenKeyForSelectedViewController
+ {
+-  return [self screenKeyForViewController:self.selectedViewController];
++  return [self screenKeyForViewController:[self currentSelectedViewController]];
+ }
+ 
+ /**
+@@ -717,10 +961,10 @@
+     return;
+   }
+ 
+-  if (![self.selectedViewController isKindOfClass:RNSTabsScreenViewController.class]) {
++  if (![[self currentSelectedViewController] isKindOfClass:RNSTabsScreenViewController.class]) {
+     RCTAssert(NO,
+               @"[RNScreens] Unexpected controller type during state reconciliation: %@",
+-              self.selectedViewController.class);
++              [self currentSelectedViewController].class);
+     return;
+   }
+ 
+@@ -734,7 +978,7 @@
+          selectedScreenKey);
+   [self progressNavigationState:selectedScreenKey withOrigin:RNSTabsActionOriginImplicit];
+ 
+-  if ([self isViewControllerHostedByMoreNavigationController:self.selectedViewController]) {
++  if ([self isViewControllerHostedByMoreNavigationController:[self currentSelectedViewController]]) {
+     [self disableNavigationBarInMoreNavigationController];
+   }
+ 
+@@ -766,6 +1010,10 @@
+ - (BOOL)canHaveMoreNavigationController
+ {
+ #if RNS_MORE_NAVIGATION_CONTROLLER_AVAILABLE
++  if (_usesTabsAPI) {
++    // The `UITab` API does not use the More navigation controller.
++    return NO;
++  }
+   // https://developer.apple.com/documentation/uikit/uitabbarcontroller?language=objc#The-More-navigation-controller
+   // The count is documented. Size class check is empirical, to tighten the condition and have less
+   // false positives. If we ever find it not correct, we can safely remove it.
+@@ -803,7 +1051,7 @@
+ 
+ - (BOOL)isSelectedViewControllerTheMoreNavigationController
+ {
+-  return [self isViewControllerTheMoreNavigationController:self.selectedViewController];
++  return [self isViewControllerTheMoreNavigationController:[self currentSelectedViewController]];
+ }
+ 
+ - (BOOL)isMoreNavigationControllerPresentInTabBar
+@@ -1054,8 +1302,9 @@
+ 
+ - (RNSOrientation)evaluateOrientation
+ {
+-  if ([self.selectedViewController respondsToSelector:@selector(evaluateOrientation)]) {
+-    id<RNSOrientationProviding> selected = static_cast<id<RNSOrientationProviding>>(self.selectedViewController);
++  UIViewController *selectedViewController = [self currentSelectedViewController];
++  if ([selectedViewController respondsToSelector:@selector(evaluateOrientation)]) {
++    id<RNSOrientationProviding> selected = static_cast<id<RNSOrientationProviding>>(selectedViewController);
+     return [selected evaluateOrientation];
+   }
+ 
+--- a/ios/tabs/RNSTabBarAppearanceCoordinator.mm
++++ b/ios/tabs/RNSTabBarAppearanceCoordinator.mm
+@@ -164,6 +164,9 @@
+     UITabBarController *tabBarVC = (UITabBarController *)screenParentViewController;
+     [tabBarVC.tabBar setNeedsLayout];
+   }
++  if ([screenParentViewController isKindOfClass:[RNSTabBarController class]]) {
++    [static_cast<RNSTabBarController *>(screenParentViewController) syncTabsWithTabBarItems];
++  }
+ }
+ 
+ + (void)configureTabBarAppearance:(nonnull UITabBarAppearance *)tabBarAppearance

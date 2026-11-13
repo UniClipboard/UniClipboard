@@ -1,0 +1,205 @@
+{
+  "title": "Sobre",
+  "versionLabel": "Versão",
+  "update": {
+    "check": "Verificar atualizações",
+    "checking": "Verificando...",
+    "updateTo": "Atualizar para {{version}}",
+    "upToDate": "Você está na versão mais recente",
+    "checkFailed": "Falha ao verificar atualizações; verifique sua conexão de rede",
+    "available": "Versão {{version}} disponível"
+  },
+  "autoCheck": {
+    "label": "Verificar atualizações automaticamente"
+  },
+  "updateToBeta": {
+    "label": "Atualizar para beta",
+    "confirmTitle": "Ativar atualizações beta?",
+    "description": "Receba atualizações beta e verifique imediatamente se há uma nova versão.",
+    "warning": "Versões beta podem ser instáveis e causar falhas, problemas de sincronização ou corrupção e perda de dados.",
+    "backup": "Faça backup dos dados importantes antes de continuar. Desativar esta opção não substituirá uma versão beta instalada por uma versão estável.",
+    "confirm": "Aceitar riscos e ativar",
+    "cancel": "Agora não"
+  },
+  "download": {
+    "newVersionTitle": "Nova versão disponível",
+    "latestVersion": "Versão mais recente: {{version}}",
+    "currentVersion": "Versão atual: {{version}}",
+    "releaseNotes": "Notas da versão:\n{{notes}}",
+    "r2": "Baixar (recomendado)",
+    "github": "Baixar do GitHub",
+    "downloading": "Baixando {{percent}}%",
+    "canceled": "Download cancelado",
+    "failed": "Falha no download",
+    "noSuitableApk": "Nenhum APK adequado encontrado para este dispositivo"
+  },
+  "cancelDownload": {
+    "title": "Cancelar download",
+    "message": "Tem certeza de que deseja cancelar o download?",
+    "confirm": "Cancelar download",
+    "dismiss": "Continuar baixando"
+  },
+  "error": {
+    "saveFailed": "Falha ao salvar as configurações"
+  },
+  "log": {
+    "title": "Logs",
+    "levelLabel": "Nível de log",
+    "level": {
+      "debug": "Depuração",
+      "info": "Informações",
+      "warn": "Aviso",
+      "error": "Erro"
+    },
+    "setSuccess": "Nível de log definido como {{level}}",
+    "setFailed": "Falha ao definir o nível de log",
+    "exportLabel": "Exportar logs",
+    "export": "Exportar",
+    "exported": "Logs salvos",
+    "warning": {
+      "engineLogsMissing": "Os registros do Engine não foram encontrados, então o pacote não contém dados do Engine. Reinicie o UniClip e exporte novamente.",
+      "engineLogsUnreadable": "Alguns ou todos os registros do Engine foram encontrados, mas não puderam ser lidos; o pacote pode estar incompleto. Reinicie o UniClip e exporte novamente.",
+      "engineLogsWrittenNotFound": "O Engine informa registros gravados, mas os arquivos não existem no disco. O pacote está incompleto; reinicie o UniClip e exporte novamente.",
+      "networkLogsIncomplete": "Os registros de rede podem estar incompletos: alguns arquivos não puderam ser descarregados, lidos ou verificados. Apenas este processo foi descarregado; outros processos, como o teclado, não foram."
+    },
+    "exportMethodPrompt": "Escolha se deseja compartilhar os logs ou exportá-los como arquivo.",
+    "exportFile": "Exportar arquivo",
+    "shareFailed": "Falha ao compartilhar logs",
+    "exportCanceled": "Exportação cancelada",
+    "exportFailed": "Falha ao exportar logs",
+    "capture": {
+      "title": "Diagnóstico detalhado",
+      "start": "Iniciar registro detalhado (10 minutos)",
+      "stop": "Parar registro detalhado",
+      "description": "Inicie antes de reproduzir o problema e depois exporte os logs. Os detalhes ficam neste dispositivo, com captura de até 10 minutos. Atividades anteriores não são recuperadas e outras extensões não são ativadas automaticamente.",
+      "remaining": "Registrando, cerca de {{count}} minutos restantes",
+      "failed": "Não foi possível concluir. Tente novamente.",
+      "unavailable": "Indisponível até o serviço estar pronto."
+    },
+    "exportDescription": "Compartilhe ou salve como arquivo",
+    "storageHint": "Os arquivos de log podem ser limpos em Armazenamento."
+  },
+  "debug": {
+    "connectionPreview": "Prévia da conexão",
+    "connectionPreviewComputer": "Computador de exemplo",
+    "onboardingPreview": "Prévia da introdução",
+    "title": "Depuração",
+    "modeLabel": "Modo de depuração",
+    "modeEnabled": "Modo de depuração ativado",
+    "modeDisabled": "Modo de depuração desativado",
+    "overlayLabel": "Mostrar sobreposição",
+    "overlayDesc": "Mostra uma sobreposição visível ao ler a área de transferência em segundo plano",
+    "overlayVisibleToast": "A sobreposição ficará visível em segundo plano",
+    "overlayHiddenToast": "Sobreposição oculta",
+    "urlSchemeLabel": "Mostrar chamadas de esquema de URL",
+    "updateNoLimitLabel": "Verificações de atualização ilimitadas",
+    "updateNoLimitDesc": "Quando ativado, verifica atualizações a cada inicialização, em vez de uma vez por dia",
+    "deviceTrustPreview": {
+      "label": "Pré-visualizar decisão de relação entre dispositivos",
+      "description": "Abra o diálogo real com dados de exemplo seguros",
+      "pickerTitle": "Escolha um cenário de pré-visualização",
+      "pickerDescription": "As ações de pré-visualização ficam neste dispositivo e não alteram relações reais.",
+      "unavailable": "Conclua a ação atual de relação entre dispositivos antes de abrir a pré-visualização",
+      "scenarios": {
+        "standard": "Duas opções disponíveis",
+        "singleChoice": "Apenas uma opção disponível",
+        "confirmKeepCurrent": "Confirmar manutenção do grupo atual",
+        "confirmLeaveCurrent": "Confirmar saída do grupo atual",
+        "submitting": "Enviando",
+        "failedRetry": "Falhou, pronto para tentar novamente",
+        "stateChanged": "Estado alterado em outro dispositivo",
+        "longScrollable": "Nomes longos e muitos dispositivos",
+        "groupChoices": "Listas atualizadas e membros não confirmados"
+      }
+    },
+    "connectionSheetPreview": {
+      "label": "Pré-visualizar tela de pareamento",
+      "description": "Escolha um estado e abra a tela real de pareamento",
+      "pickerTitle": "Escolha um estado da tela de pareamento",
+      "pickerDescription": "A pré-visualização usa dados de exemplo isolados. Feche para escolher outro estado. Os botões não iniciam pareamentos reais nem alteram dados do dispositivo.",
+      "scenarios": {
+        "joinPending": "Entrando",
+        "joinProcessing": "Processando, aguardando confirmação",
+        "joinTakingLonger": "A entrada está demorando",
+        "joinCancelling": "Cancelando",
+        "joinFailed": "Falha ao entrar",
+        "deviceUpdating": "Atualizando o estado dos dispositivos do espaço",
+        "deviceRetrying": "Nova tentativa automática mais tarde",
+        "deviceStateRejected": "Requer atenção: estado do dispositivo rejeitado",
+        "deviceRelationshipConflict": "Requer atenção: conflito de relação",
+        "deviceSecurityUpdateRejected": "Requer atenção: segurança do dispositivo",
+        "deviceUpgradeRequired": "Requer atenção: atualização de dispositivo relacionado",
+        "localIdentityMismatch": "Precisa de atenção: identidade local divergente",
+        "deviceUpdated": "Estado dos dispositivos do espaço atualizado",
+        "inviterWaiting": "Quem convidou: aguardando outro dispositivo",
+        "invitationExpired": "Quem convidou: convite expirado",
+        "inviterConnected": "Quem convidou: dispositivo conectado"
+      }
+    },
+    "previewsTitle": "Pré-visualizações",
+    "previewRows": {
+      "welcomeTour": "Introdução",
+      "connectionScreens": "Telas de conexão",
+      "connectionSheet": "Tela de pareamento",
+      "deviceRelationship": "Decisão de relação entre dispositivos"
+    },
+    "smsCodeTest": {
+      "label": "Teste de reconhecimento de código SMS",
+      "title": "Teste de reconhecimento de código SMS",
+      "description": "Digite um texto de SMS de exemplo para ver qual código seria reconhecido. Nada é copiado, salvo ou sincronizado, e nenhuma permissão de SMS é usada.",
+      "inputLabel": "Texto de SMS de exemplo",
+      "run": "Reconhecer",
+      "clear": "Limpar",
+      "recognized": "Código reconhecido: {{code}}",
+      "none": "Nenhum código reconhecido",
+      "ambiguous": "Vários códigos possíveis, nenhum escolhido",
+      "copy": "Copiar",
+      "copied": "Copiado para a área de transferência",
+      "copyFailed": "Não foi possível copiar"
+    }
+  },
+  "stats": {
+    "title": "Estatísticas",
+    "view": "Ver",
+    "copied": "Estatísticas copiadas"
+  },
+  "versionValue": "Versão {{version}}",
+  "updatesTitle": "Atualizações",
+  "power": {
+    "title": "Bateria e atividade em segundo plano",
+    "period": "Últimas 24 horas",
+    "loading": "Coletando…",
+    "unavailable": "Indisponível neste dispositivo.",
+    "collecting": "Ainda há poucos dados. Use o telefone normalmente e volte mais tarde.",
+    "state": {
+      "foreground": "No app",
+      "backgroundScreenOn": "Em segundo plano, tela ligada",
+      "backgroundScreenOff": "Em segundo plano, tela desligada"
+    },
+    "stateDetail": "{{duration}} · CPU {{cpu}} · Rede {{network}}",
+    "unknownValue": "indisponível",
+    "battery": {
+      "title": "Bateria do telefone inteiro (não só este app)",
+      "ready": "{{change}} % em {{duration}} sem carregar, incluindo todos os apps e a tela",
+      "suspect": "{{change}} % em {{duration}} sem carregar. O contador de carga deste telefone parece pouco confiável, então só a porcentagem é mostrada",
+      "collecting": "São necessários cerca de 10 minutos sem carregar para mostrar uma variação",
+      "unavailable": "Este telefone não informa leituras da bateria aos apps"
+    },
+    "service": {
+      "title": "Serviço em segundo plano",
+      "detail": "Em execução por {{duration}} · {{events}} eventos de sincronização"
+    },
+    "gap": "{{duration}} não foi registrado porque o app não estava em execução.",
+    "reset": "Redefinir estatísticas",
+    "resetAction": "Redefinir",
+    "resetDone": "Estatísticas apagadas",
+    "resetFailed": "Não foi possível apagar as estatísticas",
+    "footer": "O Android não informa aos apps quanta bateria eles usam. Os valores da bateria são do telefone inteiro, e CPU e rede são a atividade do próprio app, não um consumo de energia medido. As estatísticas ficam neste dispositivo e entram na exportação de logs.",
+    "duration": {
+      "minutes": "{{minutes}} min",
+      "hours": "{{hours}} h {{minutes}} min",
+      "none": "0 min",
+      "lessThanMinute": "<1 min"
+    }
+  }
+}

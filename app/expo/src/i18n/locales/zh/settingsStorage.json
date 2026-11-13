@@ -1,0 +1,53 @@
+{
+  "title": "存储",
+  "cleanUp": "清理",
+  "setFailed": "设置失败",
+  "cache": {
+    "usageLabel": "缓存空间占用",
+    "cleared": "缓存已清空",
+    "clearFailed": "清空缓存失败",
+    "clearDialogTitle": "清空缓存",
+    "clearDialogMessage": "确定要清空缓存目录吗？这将删除所有缓存文件。",
+    "sectionHeader": "缓存",
+    "capLabel": "缓存上限",
+    "iosUsageLabel": "缓存占用",
+    "clearing": "清除中…"
+  },
+  "log": {
+    "usageLabel": "日志空间占用",
+    "cleared": "日志已清空",
+    "clearFailed": "清空日志失败",
+    "clearDialogTitle": "清空日志",
+    "clearDialogMessage": "确定要清空日志目录吗？这将删除所有日志文件。"
+  },
+  "history": {
+    "usageLabel": "历史记录空间占用",
+    "sectionTitle": "历史记录",
+    "maxItemsLabel": "历史记录最大保留条数",
+    "maxItemsHint": "最小值为10条",
+    "maxItemsInvalid": "请输入大于等于10的数字",
+    "autoDownloadLabel": "浏览到图片时自动下载",
+    "showCopyButtonLabel": "为图片显示复制按钮",
+    "showCopyButtonHint": "在历史记录的图片项显示复制到剪贴板按钮"
+  },
+  "autoDownload": {
+    "wifi": "仅 Wi-Fi",
+    "always": "总是",
+    "off": "关闭"
+  },
+  "prefetch": {
+    "sectionHeader": "预下载",
+    "sectionFooter": "开启后，新内容会在后台静默缓存，点击预览无需等待。",
+    "attachmentLabel": "预下载附件",
+    "cellularLabel": "蜂窝下也预下载"
+  },
+  "overview": {
+    "totalLabel": "UniClip 已占用",
+    "usageTitle": "占用明细"
+  },
+  "kind": {
+    "history": "历史记录",
+    "cache": "缓存",
+    "logs": "日志"
+  }
+}

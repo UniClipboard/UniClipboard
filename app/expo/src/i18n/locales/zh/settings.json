@@ -1,0 +1,126 @@
+{
+  "appearance": {
+    "sectionTitle": "外观",
+    "mode": {
+      "label": "外观模式",
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "hideFromRecents": {
+      "title": "在最近任务列表中隐藏",
+      "desc": "建议隐藏前先锁定，防止被一键清理"
+    },
+    "modeChangeFailed": "外观模式切换失败",
+    "updateFailed": "设置失败",
+    "displayTitle": "显示"
+  },
+  "general": {
+    "sectionTitle": "通用",
+    "theme": "主题"
+  },
+  "syncChannel": {
+    "title": "同步方式",
+    "lan": "常规同步",
+    "p2p": "设备直连",
+    "lanShort": "常规",
+    "p2pShort": "直连",
+    "default": "默认",
+    "experimental": "实验功能",
+    "experimentalBadge": "实验",
+    "currentConnection": "当前连接",
+    "connectionSettings": "连接设置",
+    "notConfigured": "未配置",
+    "confirmationTitle": "使用设备直连？",
+    "confirmationDescription": "设备可以跨网络同步，不需要连接到同一个 Wi-Fi。",
+    "confirmationCrossNetwork": "即使设备不在同一个 Wi-Fi 下，也支持跨网络同步。",
+    "confirmationExperimental": "这是实验功能，连接稳定性可能不如常规同步。",
+    "confirmationWarning": "这是实验功能，连接可能不稳定。",
+    "confirmationReversible": "之后可以随时在「设备」页切回常规同步。",
+    "confirmationCancel": "取消",
+    "confirmationConfirm": "使用设备直连",
+    "updateFailed": "切换同步方式失败"
+  },
+  "category": {
+    "sync": "同步",
+    "about": "关于",
+    "other": "其他",
+    "storage": "存储",
+    "history": "历史记录",
+    "background": "后台运行",
+    "developer": "开发者选项",
+    "extensions": "扩展与权限",
+    "privacy": "隐私",
+    "diagnostics": "诊断日志",
+    "support": "支持"
+  },
+  "hub": {
+    "clipboardSync": {
+      "title": "剪贴板同步",
+      "autoApply": {
+        "title": "自动写入本机剪贴板",
+        "descLan": "服务器有新内容时，自动写入本机系统剪贴板",
+        "descP2p": "空间中有新内容时，自动写入本机系统剪贴板"
+      },
+      "autoPush": {
+        "title": "自动推送本机剪贴板",
+        "descLan": "本机复制内容或使用历史记录后，自动发送到当前服务器",
+        "descP2p": "本机复制内容或使用历史记录后，自动发送到空间中的其他设备"
+      },
+      "footer": "以上选项控制同步方向；后台执行能力由“后台运行”设置单独控制",
+      "updateFailed": "设置失败"
+    },
+    "rows": {},
+    "summary": {
+      "history": "最多保留 {{count}} 条",
+      "backgroundTempDisabled": "已临时停止,重启应用后恢复",
+      "backgroundOn": "后台任务已开启",
+      "backgroundOff": "后台任务已关闭",
+      "storage": "缓存、日志与历史记录占用",
+      "about": "当前版本 {{version}}",
+      "developer": "调试、预览与快捷方式",
+      "privacy": "匿名使用数据",
+      "diagnostics": "录制并导出日志,用于反馈问题",
+      "theme": "浅色、深色或跟随系统",
+      "language": "即时切换应用语言"
+    }
+  },
+  "ios": {
+    "sync": {
+      "footer": "开启自动写入后，空间中的新内容会立即写入本机剪贴板；关闭后，内容只会在首页提示。自动推送会读取每次复制的内容，建议先在「剪贴板访问权限」中设为「允许」，否则 iOS 每次都会弹窗询问。",
+      "autoApply": "自动写入本机剪贴板",
+      "autoPush": "自动推送本机剪贴板",
+      "sse": "实时推送 (SSE)"
+    },
+    "extensions": {
+      "footer": "键盘和分享扩展让你在其他 App 里直接使用 UniClip；剪贴板访问设为「允许」可避免同步时反复弹窗。",
+      "keyboard": "键盘",
+      "share": "分享",
+      "clipboardAccess": "剪贴板访问权限"
+    },
+    "keyboardHint": {
+      "needsFullAccess": "需完全访问",
+      "notEnabled": "未启用"
+    },
+    "general": {
+      "checkUpdateOnLaunch": "启动时检查更新"
+    },
+    "about": {
+      "projectHome": "项目主页",
+      "version": "版本"
+    }
+  },
+  "openSystemSettings": "打开系统设置",
+  "analytics": {
+    "sectionTitle": "隐私",
+    "consentTitle": "分享匿名使用与诊断数据",
+    "consentDescription": "帮助改进 UniClip，不收集剪贴板内容或名称",
+    "footer": "可能发送应用版本、系统、地区、会话、设备数量、匿名空间分组，以及不含内容或名称的诊断记录。关闭后停止发送并清除待发送数据。",
+    "reset": "重置",
+    "resetTitle": "重置统计身份",
+    "resetMessage": "这会删除待发送的统计和诊断数据，并创建新的匿名身份。",
+    "resetConfirm": "重置身份",
+    "resetDone": "统计身份已重置",
+    "error": "无法更新统计设置"
+  }
+}

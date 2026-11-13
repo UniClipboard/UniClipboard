@@ -1,0 +1,71 @@
+{
+  "action": {
+    "openSettings": "前往设置"
+  },
+  "quickActions": {
+    "title": "快捷操作",
+    "addDownloadShortcut": "添加桌面快捷方式：下载",
+    "addUploadShortcut": "添加桌面快捷方式：上传",
+    "addFailed": "添加失败"
+  },
+  "clipboardAccess": {
+    "title": "剪贴板访问",
+    "hero": {
+      "title": "粘贴时不再询问",
+      "description": "UniClip 每次读取你在其他 App 里复制的内容，iOS 都会询问一次。允许一次，之后同步就不再打扰。",
+      "trigger": "弹出授权提示",
+      "triggerAgain": "再弹一次",
+      "emptyClipboardHint": "先在其他 App 里复制一段文字。剪贴板为空时，iOS 不会弹出提示。",
+      "triggered": "已请求授权。如果弹出了提示，点「允许粘贴」即可。"
+    },
+    "prompt": {
+      "title": "“UniClip”想要从“备忘录”粘贴",
+      "message": "是否允许？",
+      "deny": "不允许粘贴",
+      "allow": "允许粘贴"
+    },
+    "fallbackSection": {
+      "header": "没有弹窗，或点了「不允许」？",
+      "footer": "UniClip 请求过一次之后，系统设置里才会出现「从其他 App 粘贴」。iOS 不会告诉 App 你选了哪一项，所以改完不需要回来确认。",
+      "guideRow": "在 iOS 设置中允许",
+      "guideRowSubtitle": "3 个步骤，附示意图",
+      "openSettings": "打开 iOS 设置"
+    },
+    "guide": {
+      "title": "在设置中允许",
+      "progress": "第 {{current}} 步，共 {{total}} 步",
+      "back": "上一步",
+      "close": "关闭",
+      "next": "下一步",
+      "done": "完成",
+      "openSettings": "打开 iOS 设置",
+      "steps": {
+        "findApp": {
+          "title": "在设置中找到 UniClip",
+          "description": "打开「设置」App，进入「App」，点 UniClip。点下方「打开 iOS 设置」可以直接跳过去。",
+          "tip": "iOS 17 及更早的版本，UniClip 在「设置」主列表靠下的位置。"
+        },
+        "openPaste": {
+          "title": "点「从其他 App 粘贴」",
+          "description": "它在「允许“UniClip”访问」列表里，通常显示为「询问」。",
+          "tip": "找不到这一行？UniClip 请求过一次之后 iOS 才会显示它。先关闭这里，点「弹出授权提示」。"
+        },
+        "chooseAllow": {
+          "title": "选择「允许」",
+          "description": "之后 UniClip 读取你在其他 App 里复制的内容时不再询问，修改立即生效。",
+          "tip": "iOS 不会告诉 UniClip 你选了哪一项，所以不用等待确认。"
+        }
+      },
+      "illustration": {
+        "settings": "设置",
+        "apps": "App",
+        "search": "搜索",
+        "accessHeader": "允许“UniClip”访问",
+        "pasteFromOtherApps": "从其他 App 粘贴",
+        "ask": "询问",
+        "deny": "拒绝",
+        "allow": "允许"
+      }
+    }
+  }
+}

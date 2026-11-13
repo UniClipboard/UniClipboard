@@ -1,5 +1,12 @@
 # unic Android
 
-尚未开始。计划:原生 Kotlin / Gradle 工程,通过 `bindings/` 嵌入公开的 Go `engine`(见 [0003](../../docs/decisions/proposed/0003-engine-sdk.md))。
+The mobile UI is shared with the other mobile platform in
+[`app/expo`](../expo/README.md). This directory contains platform guidance only.
+Do not create a separate native application here. Expo generates its native
+project under `app/expo/android`.
 
-先验证的范围:前台文本的发送与接收应用,再扩展图片、文件和系统允许的后台场景。Android 对后台读剪贴板有限制,宿主通过 `HostCapabilities` 如实声明,不要用额外权限绕过。
+The Expo application currently uses demo state. Engine integration, clipboard
+access, permissions, background execution and native extensions are outside the
+UI-shell migration. Future integration must follow the
+[Engine contract](../../docs/contracts/engine-contract.md) and report platform
+capabilities accurately.

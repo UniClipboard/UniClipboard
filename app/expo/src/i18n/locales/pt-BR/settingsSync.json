@@ -1,0 +1,527 @@
+{
+  "connection": {
+    "addTitle": "Adicionar conexão de sincronização",
+    "addSheetTitle": "Nova conexão",
+    "p2pDescription": "Espaço com criptografia de ponta a ponta",
+    "invitationExpires": "O convite expira às {{time}}"
+  },
+  "relay": {
+    "title": "Relay personalizado",
+    "url": "Endereço do relay",
+    "token": "Token de acesso (opcional)",
+    "save": "Salvar relay",
+    "remove": "Remover relay",
+    "add": "Adicionar nó relay",
+    "edit": "Editar nó relay",
+    "summary": "Não configurado",
+    "configured": "Configurado",
+    "credentialConfigured": "Token de acesso salvo",
+    "configuredCount": "{{count}} nós configurados",
+    "footer": "Use um endereço HTTP ou HTTPS. O token fica apenas no armazenamento seguro deste dispositivo.",
+    "error": {
+      "saveFailed": "Não foi possível salvar o relay",
+      "refreshFailed": "Não foi possível atualizar os relays",
+      "invalidUrl": "Insira um endereço HTTP ou HTTPS válido",
+      "duplicate": "Este relay já existe",
+      "notFound": "Este relay não existe mais"
+    },
+    "builtIn": {
+      "title": "Relays integrados",
+      "footer": "Somente leitura. Estes relays vêm com o mecanismo de rede do app. Estar na lista não significa que estejam acessíveis.",
+      "loading": "Carregando relays…",
+      "loadFailed": "Não foi possível carregar os relays integrados",
+      "retryHint": "Toque em qualquer lugar desta linha para tentar novamente"
+    },
+    "source": {
+      "builtIn": "Integrado"
+    },
+    "region": {
+      "na-east": "América do Norte (leste)",
+      "na-west": "América do Norte (oeste)",
+      "eu": "Europa",
+      "asia-pacific": "Ásia-Pacífico"
+    },
+    "usage": {
+      "inEffect": "Configurado no nó em execução",
+      "notApplied": "Ainda não aplicado ao nó em execução",
+      "replacedByCustom": "Não usado enquanto houver relays personalizados",
+      "off": "Relays desativados"
+    },
+    "status": {
+      "builtIn": "Usando relays integrados",
+      "custom": "Usando seus relays personalizados",
+      "off": "Relays desativados",
+      "nodeNotStarted": "O nó de rede ainda não foi iniciado.",
+      "pending": "O nó em execução ainda usa a configuração anterior. Ela muda depois que o nó de rede for totalmente recriado, por exemplo ao reiniciar o app.",
+      "builtInHint": "Nenhum relay personalizado definido; o app usa a lista integrada.",
+      "customHint": "Os relays integrados não são usados enquanto houver relay personalizado. Remova-o para voltar à lista integrada.",
+      "offHint": "Os relays estão desativados; nenhum relay é usado.",
+      "pendingTitle": "Salvo, ainda não aplicado"
+    },
+    "page": {
+      "title": "Relay",
+      "network": "Rede"
+    },
+    "retry": "Tentar novamente",
+    "listFooter": "Adicionar um relay personalizado substitui a lista integrada. O token de acesso fica apenas no armazenamento seguro deste dispositivo.",
+    "editor": {
+      "title": "Nó relay"
+    }
+  },
+  "space": {
+    "title": "Meu Espaço",
+    "footer": "O nome do dispositivo, a senha do espaço e o código de convite são usados apenas nesta operação e não são salvos nas configurações.",
+    "mode": "Forma de configuração",
+    "working": "Processando...",
+    "empty": {
+      "title": "Comece com o Meu Espaço",
+      "body": "Sincronize a área de transferência com segurança entre seus dispositivos."
+    },
+    "overview": {
+      "title": "Status",
+      "syncHealthy": "A sincronização está ativa",
+      "deviceSummary": "{{online}} online · {{offline}} offline",
+      "syncError": "Problema de sincronização",
+      "devicesAvailable": "Dispositivos disponíveis",
+      "noDevicesOnline": "Nenhum dispositivo disponível para sincronizar",
+      "noOtherDevices": "Ainda não há outros dispositivos",
+      "otherDevicesOffline": "{{count}} outros dispositivos estão off-line",
+      "statusUnavailable": "O status dos dispositivos não está disponível",
+      "memberCount": "{{count}} dispositivos neste espaço",
+      "maintenanceWaiting": "Atualizando o estado dos dispositivos do espaço. Nova tentativa automática mais tarde.",
+      "maintenanceRetryAt": "Atualizando o estado dos dispositivos do espaço. Nova tentativa automática mais tarde.",
+      "maintenanceAction": "O estado dos dispositivos do espaço precisa de atenção. Confira a ação sugerida.",
+      "localIdentityMismatch": "A identidade deste dispositivo não corresponde mais ao registro neste espaço. A sincronização neste dispositivo está pausada.",
+      "status": {
+        "decisionRequired": "Revise uma alteração de dispositivos",
+        "unverifiable": "Não foi possível verificar os dispositivos",
+        "updateRequired": "Um dispositivo precisa ser atualizado",
+        "updating": "Atualizando o espaço",
+        "refreshing": "Atualizando o status dos dispositivos",
+        "healthy": "Os dispositivos podem sincronizar",
+        "maintenanceRetrying": "Atualizando dispositivos do espaço",
+        "maintenanceNeedsAttention": "Dispositivos do espaço precisam de atenção",
+        "empty": "Nenhum dispositivo no espaço"
+      },
+      "groupUpdateRetrying": "A atualização de segurança ainda não foi entregue a {{devices}}. Nova tentativa automática em breve.",
+      "groupUpdateNeedsReview": "{{devices}} recusou uma atualização de segurança. Abra o dispositivo para ver o que fazer."
+    },
+    "create": {
+      "title": "Criar um novo espaço",
+      "description": "Iniciar um novo espaço criptografado neste dispositivo",
+      "action": "Criar"
+    },
+    "join": {
+      "title": "Entrar em um espaço existente",
+      "description": "Usar um convite gerado em outro dispositivo",
+      "action": "Entrar",
+      "pending": "Entrando",
+      "processing": "Pareando",
+      "takingLonger": "A conexão está demorando. Ainda tentando entrar.",
+      "cancelling": "Cancelando entrada",
+      "failedTitle": "Não foi possível entrar no espaço",
+      "editDetails": "Digitar novamente",
+      "cancelFailed": "Não foi possível cancelar ainda. A entrada continua em andamento. Tente cancelar novamente."
+    },
+    "field": {
+      "deviceName": "Nome do dispositivo",
+      "passphrase": "Senha do espaço",
+      "invitationCode": "Código de convite"
+    },
+    "flow": {
+      "createTitle": "Torne este o primeiro dispositivo",
+      "createBody": "Defina uma senha para o espaço. Todo dispositivo que entrar neste espaço deverá informar exatamente a mesma senha. Guarde-a bem, pois ela não poderá ser recuperada se for esquecida.",
+      "joinCodeSheetTitle": "Entrar no espaço",
+      "joinCodeTitle": "Digite o convite de outro dispositivo",
+      "joinCodeBody": "Abra Adicionar dispositivo em um aparelho que já está no espaço para ver o código de convite de 6 dígitos.",
+      "pasteInvitation": "Colar da área de transferência",
+      "joinDetailsTitle": "Confirme este dispositivo",
+      "joinDetailsBody": "Digite a senha definida quando este espaço foi criado. Este dispositivo só poderá entrar e sincronizar se a senha for a mesma.",
+      "continue": "Continuar",
+      "waitingTitle": "Seu espaço está pronto",
+      "waitingForDevice": "Aguardando outro dispositivo",
+      "waitingBody": "Mantenha este convite aberto enquanto o outro dispositivo entra.",
+      "successTitle": "Dispositivos conectados",
+      "successBody": "Este espaço está pronto para sincronizar a área de transferência.",
+      "copyInvitation": "Copiar convite",
+      "shareInvitation": "Compartilhar convite",
+      "shareMessage": "Entre no meu espaço UniClip com o convite {{code}}.",
+      "expiresIn": "Expira em {{time}}",
+      "expired": "Este convite expirou",
+      "expiredBody": "Gere um novo convite para que outro dispositivo possa entrar neste espaço.",
+      "renewInvitation": "Gerar novo convite",
+      "finishLater": "Concluir depois",
+      "thisDevice": "Este dispositivo",
+      "otherDevice": "Outro dispositivo",
+      "peerUpgradeRequired": "Conectado. Atualize o UniClip nos outros dispositivos para continuar sincronizando.",
+      "deviceUpdate": {
+        "updatingTitle": "Atualizando o estado dos dispositivos do espaço",
+        "updatingBody": "Este dispositivo entrou no espaço. Finalizando a atualização do estado.",
+        "retryingBody": "A atualização ainda não terminou. Uma nova tentativa será feita automaticamente.",
+        "needsAttentionTitle": "O estado dos dispositivos precisa de atenção",
+        "completedTitle": "Estado dos dispositivos atualizado",
+        "completedBody": "Agora estes dispositivos podem sincronizar.",
+        "removalNotificationPending": "Removido deste dispositivo. Notificando os outros dispositivos.",
+        "continueInBackground": "Continuar em segundo plano",
+        "reviewAction": "Ver como resolver",
+        "attention": {
+          "blockedTitle": "Não foi possível entrar neste espaço",
+          "reviewAction": "Ver status dos dispositivos",
+          "cancelAction": "Cancelar"
+        },
+        "reason": {
+          "deviceStateRejected": "Não foi possível verificar o estado. Revise a lista de dispositivos.",
+          "deviceRelationshipConflict": "As relações entre dispositivos precisam de confirmação.",
+          "deviceSecurityUpdateRejected": "O estado de segurança dos dispositivos precisa de atenção.",
+          "deviceUpgradeRequired": "Atualize os dispositivos relacionados para continuar.",
+          "localIdentityMismatch": "A identidade deste dispositivo não corresponde mais ao registro neste espaço. A sincronização neste dispositivo está pausada."
+        }
+      },
+      "joinPassphraseTitle": "Digite a senha do espaço",
+      "editInvitationCode": "Editar",
+      "editInvitationCodeAccessibility": "Código de convite {{code}}, toque duas vezes para editar",
+      "showPassphrase": "Mostrar senha",
+      "hidePassphrase": "Ocultar senha",
+      "joinAsDevice": "Entrando como “{{name}}”",
+      "renameDevice": "Renomear"
+    },
+    "status": {
+      "ready": "O espaço está pronto",
+      "spaceId": "ID do espaço",
+      "currentDevice": "Este dispositivo: {{name}}"
+    },
+    "invitation": {
+      "title": "Convidar outro dispositivo",
+      "description": "Gerar um convite temporário para o espaço atual.",
+      "action": "Gerar convite",
+      "addAction": "Adicionar dispositivo",
+      "addA11y": "Convidar um novo dispositivo",
+      "code": "Código de convite",
+      "pairingInstructions": "Digite este convite no novo dispositivo para entrar neste espaço e concluir o pareamento.",
+      "pairedDevice": "{{device}} entrou neste espaço.",
+      "crossNetwork": "Este convite pode ser usado por um dispositivo em outra rede.",
+      "sameLocalNetwork": "Este convite só funciona enquanto os dois dispositivos estiverem na mesma rede local."
+    },
+    "devices": {
+      "title": "Dispositivos do espaço",
+      "empty": "Nenhum outro dispositivo ainda",
+      "refreshFailed": "Não foi possível atualizar os dispositivos, mostrando a lista anterior.",
+      "online": "Online",
+      "offline": "Offline",
+      "thisDevice": "Este dispositivo",
+      "otherTitle": "Outros dispositivos",
+      "remove": "Remover dispositivo",
+      "removeConfirm": "Remover este dispositivo do espaço?",
+      "removeConfirmNamed": "Remover {{device}} deste espaço? O compartilhamento com este dispositivo será interrompido imediatamente e um novo convite será necessário para entrar novamente. Outros dispositivos off-line poderão solicitar a confirmação desta alteração quando voltarem.",
+      "removeEffect": "O compartilhamento com este dispositivo será interrompido imediatamente e um novo convite será necessário para entrar novamente. Outros dispositivos off-line poderão solicitar a confirmação desta alteração quando voltarem.",
+      "manageHint": "Abre o gerenciamento do dispositivo",
+      "idLabel": "ID do dispositivo {{id}}"
+    },
+    "deviceDetail": {
+      "title": "Detalhes do dispositivo",
+      "updateAction": "Verificar atualizações",
+      "identity": {
+        "label": "Identidade do dispositivo",
+        "local": "Este dispositivo",
+        "remote": "Outro dispositivo"
+      },
+      "blockedReason": {
+        "noCurrentChange": "Não há nenhuma alteração de dispositivo para revisar.",
+        "changeNoLongerCurrent": "Esta alteração não é mais a atual. Atualize e tente novamente.",
+        "localDeviceConfirmationRequired": "Confirme primeiro a alteração deste dispositivo.",
+        "localDeviceRemoved": "Este dispositivo não faz mais parte do espaço.",
+        "recoveryNotAvailableInThisVersion": "Esta versão não consegue recuperar o espaço.",
+        "peerUpgradeRequired": "Os dispositivos relacionados precisam ser atualizados primeiro.",
+        "deviceFactsUnverifiable": "Não foi possível verificar agora os dados deste dispositivo.",
+        "engineUnavailable": "Os dados dos dispositivos do espaço estão indisponíveis agora."
+      },
+      "reachability": {
+        "label": "Conexão",
+        "online": "Online",
+        "offline": "Offline",
+        "unknown": "Desconhecida"
+      },
+      "groupRelationship": {
+        "label": "Espaço",
+        "consistent": "Espaço atual",
+        "confirmationPending": "Atualizando o espaço",
+        "pendingLocalDecision": "Aguardando sua escolha",
+        "awaitingRemovalAcknowledgement": "Removido deste dispositivo. Notificando os outros dispositivos.",
+        "diverged": "Espaço diferente",
+        "unverifiable": "Não foi possível verificar",
+        "unknown": "Desconhecido"
+      },
+      "syncRelationship": {
+        "label": "Sincronização",
+        "usable": "Disponível",
+        "waitingForLocalDecision": "Aguardando sua escolha",
+        "pausedGroupDiverged": "Interrompida por espaço diferente",
+        "pausedUpgradeRequired": "Pausada até a atualização",
+        "pausedUnverifiable": "Pausada durante a verificação",
+        "removedLocalDevice": "Este dispositivo saiu",
+        "removedPeerDevice": "Dispositivo removido",
+        "unknown": "Desconhecida"
+      },
+      "compatibility": {
+        "label": "Versão",
+        "compatible": "Compatível",
+        "upgradeRequired": "Atualização necessária",
+        "unknown": "Desconhecida"
+      },
+      "groupUpdate": {
+        "label": "Atualização de segurança",
+        "epoch": "Versão da atualização",
+        "attempts": "Tentativas de entrega",
+        "nextRetry": "Próxima tentativa automática",
+        "state": {
+          "waiting": "Ainda não entregue",
+          "receiverUnavailable": "Dispositivo temporariamente sem condições de aplicar",
+          "rejectedUnclassified": "Recusada, motivo desconhecido",
+          "rejectedByReceiver": "Recusada pelo dispositivo"
+        },
+        "recovery": {
+          "automatic": "Será entregue automaticamente; nenhuma ação é necessária. Atualizar a tela não a reenvia.",
+          "automaticOnReconnect": "Será tentada novamente uma vez quando o dispositivo se reconectar e for verificado. Atualizar a tela não a reenvia. Se persistir, atualize o app nesse dispositivo.",
+          "reviewDevice": "Não será reenviada automaticamente. Verifique este dispositivo: atualize o app ou, se não o reconhecer, remova-o e pareie novamente."
+        }
+      }
+    },
+    "operation": {
+      "title": {
+        "removeMember": "Dispositivo removido",
+        "applyChange": "Alteração aplicada",
+        "keepCurrentSpace": "Espaço atual mantido",
+        "leaveSpace": "Você saiu do espaço",
+        "stateChanged": "O estado do espaço mudou"
+      },
+      "outcome": {
+        "stateChanged": "O espaço mudou antes que esta escolha fosse salva. O resultado atual aparece abaixo.",
+        "alreadyCompleted": "Esta alteração já foi tratada em outro lugar. O resultado realmente concluído aparece abaixo."
+      },
+      "none": "Nenhum",
+      "verified": "O estado mais recente dos dispositivos foi verificado.",
+      "unverified": "A alteração foi aceita, mas os dados mais recentes ainda não puderam ser verificados.",
+      "localStatus": {
+        "inSpace": "Este dispositivo continua no espaço original.",
+        "leftSpace": "Este dispositivo saiu do espaço original. O histórico local continua disponível."
+      },
+      "usable": "Podem continuar sincronizando: {{devices}}",
+      "separated": "Não sincronizam mais entre si: {{devices}}",
+      "continuing": "Continuam no espaço original: {{devices}}",
+      "offlinePending": "Alguns dispositivos estão off-line; o estado final de entrega ainda não foi confirmado.",
+      "done": "Concluir"
+    },
+    "deviceTrust": {
+      "pendingConfirmation": "Ainda aguardando confirmação: {{devices}}",
+      "reason": {
+        "unknown": "Os dispositivos têm listas de membros diferentes.",
+        "pending_removal": "Uma remoção de dispositivo aguarda confirmação.",
+        "different_removals": "Os dispositivos removeram membros diferentes.",
+        "removal_decision_disagreement": "Os dispositivos discordam sobre uma remoção.",
+        "diverged_history": "As listas de dispositivos mudaram separadamente.",
+        "added_device": "{{actor}} adicionou {{target}}.",
+        "removed_device": "{{actor}} removeu {{target}}.",
+        "accepted": "{{actor}} aceitou a remoção de {{target}}.",
+        "rejected": "{{actor}} rejeitou a remoção de {{target}}.",
+        "incomplete": "Alguns detalhes ainda não estão disponíveis."
+      },
+      "title": "Escolha os dispositivos que sincronizam com este celular",
+      "body": "{{source}} propôs uma lista de dispositivos atualizada. Escolha qual lista usar.",
+      "sheetTitle": "Escolha os dispositivos",
+      "sheetBody": "{{source}} atualizou a lista de dispositivos. Escolha com quais dispositivos este celular deve sincronizar.",
+      "targets": "Dispositivos afetados: {{devices}}",
+      "apply": "Usar a lista de dispositivos de {{source}}",
+      "leave": "Usar a lista de {{source}} e parar de sincronizar este celular",
+      "keep": "Lista de dispositivos deste celular",
+      "continues": "Sincroniza com: {{devices}}",
+      "continuesSummary": "Dispositivos que continuarão sincronizando: {{count}}",
+      "stops": "Deixará de sincronizar com: {{devices}}",
+      "requiresRejoin": "Um novo convite será necessário para voltar a sincronizar: {{devices}}",
+      "changesTitle": "O que vai mudar",
+      "noStops": "Nenhum dispositivo deixará de sincronizar.",
+      "none": "Nenhum",
+      "confirmKeepTitle": "Estes dispositivos deixarão de sincronizar com este celular",
+      "confirmKeepBody": "Ao manter a lista atual, os dispositivos abaixo precisarão de um novo convite para sincronizar novamente.",
+      "confirmLeaveTitle": "Este celular deixará de sincronizar",
+      "confirmLeaveBody": "Este celular não sincronizará mais com a lista atual. O histórico local será mantido.",
+      "confirmStopTitle": "Estes dispositivos deixarão de sincronizar",
+      "confirmStopBody": "Após a confirmação, os dispositivos abaixo deixarão de sincronizar com este celular. Um novo convite será necessário para sincronizar novamente.",
+      "confirm": "Confirmar",
+      "continue": "Continuar",
+      "chooseAction": "Escolha uma lista de dispositivos",
+      "applyAction": "Usar a lista de {{source}}",
+      "keepAction": "Manter lista atual",
+      "reviewStopAction": "Revisar dispositivos que deixarão de sincronizar",
+      "reviewLeaveAction": "Revisar impacto da saída",
+      "confirmKeepAction": "Manter lista atual e parar a sincronização",
+      "confirmStopAction": "Confirmar e parar a sincronização",
+      "confirmLeaveAction": "Parar de sincronizar este celular",
+      "notificationTitle": "Revise uma alteração de dispositivos",
+      "notificationBody": "Abra o UniClip para revisar quais dispositivos podem continuar sincronizando.",
+      "notificationReviewTitle": "Revise uma alteração de dispositivos",
+      "notificationReviewBody": "Abra o UniClip para escolher quais dispositivos podem continuar sincronizando.",
+      "notificationUpgradeTitle": "Um dispositivo precisa ser atualizado",
+      "notificationUpgradeBody": "Abra o UniClip para revisar o estado atual do espaço.",
+      "notificationUnverifiableTitle": "Os dados do dispositivo precisam de atenção",
+      "notificationUnverifiableBody": "Abra o UniClip para revisar o estado atual do espaço.",
+      "notificationChannel": "Alterações de dispositivos",
+      "stateChanged": "O estado dos dispositivos mudou. Revise o resultado mais recente.",
+      "error": "Não foi possível salvar a escolha. O estado mais recente está sendo mostrado; tente novamente.",
+      "status": {
+        "waitingForLocalDecision": "Aguardando sua escolha",
+        "unverifiable": "Não foi possível verificar os dados",
+        "upgradeRequired": "Atualização necessária",
+        "removalAcknowledgementPending": "Removido deste dispositivo. Notificando os outros dispositivos.",
+        "updating": "Atualizando o espaço",
+        "pairingAwaitingConfirmation": "Pareamento concluído, aguardando confirmação do outro dispositivo",
+        "pairingUnconfirmed": "Pareamento concluído, mas não confirmado",
+        "differentSpace": "Espaço diferente",
+        "removed": "Removido",
+        "usable": "Disponível",
+        "unknown": "Status indisponível",
+        "groupUpdatePending": "Atualização de segurança ainda não entregue",
+        "groupUpdateRejected": "Atualização de segurança recusada"
+      },
+      "groupChoiceBody": "Escolha o grupo de dispositivos para este celular.",
+      "currentGroup": "Manter o grupo atual",
+      "otherGroup": "Grupo de dispositivos {{number}}",
+      "membersUnknown": "Os membros deste grupo ainda não foram totalmente confirmados.",
+      "rePairingBody": "Será necessário um novo convite para entrar novamente e retomar a sincronização.",
+      "decision": {
+        "pending": "Sua escolha foi enviada. Aguardando a confirmação dos outros dispositivos."
+      }
+    },
+    "convergence": {
+      "title": "Status da sincronização",
+      "waiting": "Aguardando os dispositivos deste espaço concluírem a sincronização.",
+      "pendingDevice": "Sincronização pendente",
+      "recoveryRequired": "A sincronização precisa de recuperação. Aguarde o dispositivo se reconectar.",
+      "complete": "Os dispositivos deste espaço concluíram a sincronização."
+    },
+    "leave": {
+      "action": "Sair do espaço",
+      "confirm": "Somente este celular sairá; os outros dispositivos continuarão no espaço original. O histórico local será mantido, e será necessário um novo convite para entrar novamente."
+    },
+    "switch": {
+      "title": "Trocar de espaço",
+      "description": "Use um código de convite para entrar em outro espaço",
+      "unavailable": "Ainda não foi possível verificar os dispositivos, por isso não é possível trocar de espaço. Tente novamente mais tarde.",
+      "confirmTitle": "Trocar de espaço",
+      "confirm": "Este dispositivo sairá do espaço atual e entrará em um novo. O histórico local será mantido e a sincronização continuará apenas no novo espaço.",
+      "confirmAction": "Confirmar troca"
+    },
+    "unreadableHistory": {
+      "title": "Parte do histórico local não pode ser aberta",
+      "body": "Esses itens continuarão criptografados neste dispositivo, mas ficarão indisponíveis. O restante do histórico será movido para o novo espaço. Continuar?",
+      "continue": "Manter e continuar"
+    },
+    "error": {
+      "title": "O espaço precisa de atenção",
+      "deviceNameRequired": "Informe o nome do dispositivo",
+      "passphraseRequired": "Informe a senha do espaço",
+      "invitationCodeRequired": "Informe um código de convite",
+      "invitationCodeInvalid": "Digite o código de convite completo de 6 dígitos",
+      "invitationNotFound": "Este código de convite não existe",
+      "invitationExpired": "Este convite expirou. Peça um novo código",
+      "joinExpired": "Esta entrada expirou e o pareamento incompleto foi encerrado automaticamente. Peça um novo convite",
+      "joinSuperseded": "Um pareamento mais recente substituiu esta entrada. Recomece com o convite mais recente",
+      "passphraseMismatch": "A senha do espaço está incorreta. Digite a senha usada para criar este espaço",
+      "sponsorUnreachable": "Não foi possível acessar o outro dispositivo agora",
+      "sponsorUnresponsive": "O outro dispositivo não respondeu. Verifique se o UniClip está aberto nele e se ambos os dispositivos estão online e tente novamente",
+      "connectionTimedOut": "A conexão expirou. Tente novamente",
+      "invitationRejected": "O outro dispositivo não aceitou este convite",
+      "serviceUnavailable": "O serviço de conexão está indisponível. Tente mais tarde",
+      "connectionLost": "A conexão foi interrompida. Tente novamente",
+      "operationFailed": "A operação falhou. Verifique os dados e tente novamente.",
+      "peerUpgradeRequired": "Atualize o UniClip no outro dispositivo e tente novamente.",
+      "joinNeedsAttention": "Esta entrada precisa de atenção. Mantenha os dados atuais e exporte os diagnósticos para o suporte.",
+      "invitationNetworkNotReady": "A sincronização ainda está iniciando. Tente novamente em instantes",
+      "invitationDevicesUpdating": "Os dispositivos do espaço ainda estão sendo atualizados. Tente novamente em instantes",
+      "invitationRecoveryRequired": "O status dos dispositivos do espaço precisa de atenção antes de convidar um dispositivo",
+      "invitationNoNetworkAddress": "Nenhuma conexão de rede disponível para o convite. Verifique a rede e tente novamente",
+      "invitationPublishFailed": "Não foi possível preparar o convite. Tente novamente",
+      "invitationServiceUnreachable": "O serviço de convites não está acessível agora. Tente novamente",
+      "invitationServiceRejected": "O serviço de convites recusou esta solicitação. Tente novamente mais tarde",
+      "joinRestartWithNewInvitation": "Este código de convite não pode mais concluir a entrada. Gere um novo código no outro dispositivo e entre novamente."
+    },
+    "manage": {
+      "title": "Ações do espaço"
+    },
+    "settings": {
+      "title": "Configurações do espaço",
+      "summary": "Relay, trocar ou sair do espaço"
+    },
+    "advanced": {
+      "title": "Avançado"
+    },
+    "danger": {
+      "title": "Zona de perigo"
+    }
+  },
+  "lan": {
+    "title": "Configurações da conexão",
+    "summary": "Gerencie conexões de sincronização",
+    "configuredCount_one": "{{count}} servidor",
+    "configuredCount_other": "{{count}} servidores",
+    "add": "Adicionar servidor",
+    "edit": "Editar servidor",
+    "scan": "Escanear código QR",
+    "connectionInfo": "Conexão",
+    "security": "Segurança",
+    "scanHint": "Escaneie o QR do computador para preencher endereço e credenciais.",
+    "name": "Nome",
+    "namePlaceholder": "Por exemplo: Computador de casa",
+    "addresses": "Endereços do servidor",
+    "addressesHint": "Adicione vários endereços na ordem de tentativa.",
+    "addAddress": "Adicionar endereço alternativo",
+    "removeAddress": "Remover este endereço",
+    "credentials": "Credenciais",
+    "username": "Usuário",
+    "password": "Senha",
+    "passwordShow": "Mostrar senha",
+    "passwordHide": "Ocultar senha",
+    "discardTitle": "Descartar alterações não salvas?",
+    "discardMessage": "As alterações ainda não foram salvas e serão perdidas ao fechar.",
+    "discardAction": "Descartar alterações",
+    "allowInsecureTls": "Permitir certificados HTTPS não confiáveis",
+    "insecureTlsHint": "Use somente com servidor autoassinado confiável. Não afeta HTTP.",
+    "probe": {
+      "section": "Testar conexão",
+      "test": "Testar conexão",
+      "retest": "Testar novamente",
+      "testing": "Testando…",
+      "success": "Pelo menos um endereço está disponível.",
+      "authFailed": "O servidor está acessível, mas o usuário ou a senha está incorreto.",
+      "allUnreachable": "Nenhum endereço está acessível. Verifique a rede e os endereços.",
+      "willUse": "Será usado",
+      "results": {
+        "Success": "Conectado",
+        "AuthFailed": "Falha na autenticação",
+        "Unreachable": "Inacessível",
+        "MissingFields": "Informe as credenciais"
+      }
+    },
+    "deleteTitle": "Excluir servidor",
+    "deleteMessage": "Os dados do servidor e a senha serão removidos deste dispositivo.",
+    "notAvailableYet": "Os dados da conexão ficam neste dispositivo e as senhas usam o armazenamento seguro do sistema.",
+    "qr": {
+      "title": "Escanear QR do servidor",
+      "hint": "Coloque o código QR dentro da moldura",
+      "torch": "Lanterna",
+      "failedTitle": "Não foi possível ler o QR",
+      "rescan": "Escanear novamente",
+      "permissionTitle": "Acesso à câmera necessário",
+      "permissionBody": "O UniClip usa a câmera para escanear o QR de conexão.",
+      "requestPermission": "Permitir câmera",
+      "openSettings": "Abrir ajustes",
+      "errors": {
+        "INVALID_SCHEME": "Este não é um QR de servidor UniClip.",
+        "UNSUPPORTED_VERSION": "Esta versão do QR não é compatível. Atualize o app.",
+        "UNSUPPORTED_SERVICE": "Este QR não é do Mobile LAN.",
+        "PAYLOAD_DECODE_FAILED": "O QR está danificado. Gere outro.",
+        "MISSING_FIELD": "Faltam dados de conexão no QR.",
+        "INVALID_URL": "O endereço do servidor no QR é inválido."
+      }
+    }
+  }
+}

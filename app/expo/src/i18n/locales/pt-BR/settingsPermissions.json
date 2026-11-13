@@ -1,0 +1,71 @@
+{
+  "action": {
+    "openSettings": "Abrir configurações"
+  },
+  "quickActions": {
+    "title": "Ações rápidas",
+    "addDownloadShortcut": "Adicionar atalho à tela inicial: Baixar",
+    "addUploadShortcut": "Adicionar atalho à tela inicial: Enviar",
+    "addFailed": "Falha ao adicionar"
+  },
+  "clipboardAccess": {
+    "title": "Acesso à área de transferência",
+    "hero": {
+      "title": "Colar sem perguntas",
+      "description": "O iOS pergunta toda vez que o UniClip lê algo que você copiou em outro app. Permita uma vez e a sincronização segue sem interrupções.",
+      "trigger": "Mostrar o aviso",
+      "triggerAgain": "Mostrar de novo",
+      "emptyClipboardHint": "Copie algum texto em outro app primeiro. O iOS não mostra o aviso quando a área de transferência está vazia.",
+      "triggered": "Aviso solicitado. Se ele apareceu, basta tocar em \"Permitir Colar\"."
+    },
+    "prompt": {
+      "title": "“UniClip” deseja colar de “Notas”",
+      "message": "Deseja permitir?",
+      "deny": "Não Permitir Colar",
+      "allow": "Permitir Colar"
+    },
+    "fallbackSection": {
+      "header": "Nenhum aviso, ou tocou em \"Não Permitir\"?",
+      "footer": "A opção \"Colar de Outros Apps\" só aparece depois que o UniClip pediu uma vez. O iOS não informa aos apps qual opção você escolheu, então não há nada para confirmar aqui.",
+      "guideRow": "Permitir nos Ajustes do iOS",
+      "guideRowSubtitle": "3 passos, com imagens",
+      "openSettings": "Abrir Ajustes do iOS"
+    },
+    "guide": {
+      "title": "Permitir nos Ajustes",
+      "progress": "Passo {{current}} de {{total}}",
+      "back": "Passo anterior",
+      "close": "Fechar",
+      "next": "Próximo passo",
+      "done": "Concluído",
+      "openSettings": "Abrir Ajustes do iOS",
+      "steps": {
+        "findApp": {
+          "title": "Encontre o UniClip nos Ajustes",
+          "description": "Abra o app Ajustes, vá em Apps e toque em UniClip. O botão Abrir Ajustes do iOS abaixo leva direto até lá.",
+          "tip": "No iOS 17 e anteriores, o UniClip fica perto do fim da lista principal dos Ajustes."
+        },
+        "openPaste": {
+          "title": "Toque em Colar de Outros Apps",
+          "description": "Fica na lista Permitir que UniClip Acesse e normalmente mostra Perguntar.",
+          "tip": "Não encontrou a opção? O iOS só a adiciona depois que o UniClip pediu uma vez. Feche aqui e toque em Mostrar o aviso primeiro."
+        },
+        "chooseAllow": {
+          "title": "Escolha Permitir",
+          "description": "Agora o UniClip lê o que você copia em outros apps sem perguntar. A mudança vale na hora.",
+          "tip": "O iOS não informa ao UniClip qual opção você escolheu, então não há confirmação para esperar."
+        }
+      },
+      "illustration": {
+        "settings": "Ajustes",
+        "apps": "Apps",
+        "search": "Buscar",
+        "accessHeader": "Permitir que UniClip Acesse",
+        "pasteFromOtherApps": "Colar de Outros Apps",
+        "ask": "Perguntar",
+        "deny": "Negar",
+        "allow": "Permitir"
+      }
+    }
+  }
+}

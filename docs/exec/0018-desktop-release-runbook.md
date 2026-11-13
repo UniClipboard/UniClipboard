@@ -5,8 +5,8 @@ Status: delivery implementation prepared; production activation blocked by the p
 ## Accepted identities
 
 - Desktop: `2.0.0 (1)`, six native targets.
-- CLI: `2.0.0 (1)`, canonical run `43408274394`.
-- Locked CLI manifest SHA-256: `086222adec4588a2b3a9ff1e134d9bae35d67b4a6df475956fa19ad58660b588`.
+- CLI: `2.0.0 (2)`, canonical run `43419452491`.
+- Locked CLI manifest SHA-256: `ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be`.
 - Complete native construction candidate: run `43415678890`, source `729751d902bb11d9d70b6ede9717e90c75fa1de0`. This run includes all 22 artifacts, real Windows installer lifecycle and macOS signing/notarization. Windows production signing and raw updater-key provisioning still block public delivery.
 
 A later source change requires its own accepted candidate. Publication and promotion consume immutable files; they do not rebuild them.
@@ -56,7 +56,7 @@ Each process fixture emits a report and SHA256SUMS. The canonical native-window 
 ## Public delivery after separate authorization
 
 1. Review `release/desktop-notes.json`. Accept the final candidate run, source SHA, CLI lock and update public key.
-2. Run `Release CLI` with `candidate_run_id=43408274394` to preserve the locked bytes. Select the intended npm channel. Do not rebuild the candidate at a later source SHA.
+2. Run `Release CLI` with `candidate_run_id=43419452491` to preserve the locked bytes. Select the intended npm channel. Do not rebuild the candidate at a later source SHA.
 3. Run `Release Desktop` with `operation=publish` and the accepted Desktop run ID. It validates the complete 22-artifact catalogue, both deployed contracts, all signatures and locked CLI npm availability before writes. It conditionally creates immutable objects, reads every object back, registers six updater archives and stores the immutable publication receipt. It does not change a Desktop channel.
 4. Read the current `desktop/alpha` or `desktop/stable` channel revision through the admin API. Review the selected build and availability receipt.
 5. Run `Release Desktop` with `operation=promote`, the same candidate run ID, the intended channel and that exact revision. It uses the API's compare-and-swap operation and checks the public numbered identity and updater hashes. A concurrent change fails. Stable fails if lifecycle/native-GUI evidence is incomplete.

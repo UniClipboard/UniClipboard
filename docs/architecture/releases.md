@@ -28,7 +28,7 @@ verified: 3ef6e797f9b2cadbe7cdd45408d07671e9788798
 
 ## Current implementation
 
-`release/products.toml` owns product versions and build numbers. The implemented release product is CLI. Desktop selects `2.0.0 (1)` for the first v2 candidate. Android and iOS records reserve independent metadata. These records do not establish release support.
+`release/products.toml` owns product versions and build numbers. CLI and Desktop have separate build and delivery controllers. Public delivery is a separate accepted operation. Desktop selects `2.0.0 (1)` for the first v2 candidate. Android and iOS records reserve independent metadata. These records do not establish release support.
 
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 
@@ -63,7 +63,7 @@ The lifecycle attachment entrypoint verifies the package digest and required obs
 
 `UNIC_MACOS_SIGNING_IDENTITY` and `UNIC_WINDOWS_CERT_SHA1` let the CLI builder sign executable files before archive hashing and native acceptance.
 Desktop signing first verifies distribution signatures on the locked CLI files and signs only Desktop-owned bytes. Real certificate signing is unverified on this host.
-Desktop locks CLI `2.0.0 (1)` from canonical distribution run 43408274394 by manifest SHA-256. `fetch-cli --allow-ci` validates the canonical successful workflow, source, complete target matrix, hashes and macOS signing before acquiring this pre-publication candidate. The default fetch path requires public immutable release assets.
+Desktop locks CLI `2.0.0 (2)` from canonical distribution run 43419452491 by manifest SHA-256 `ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be`. Build 2 includes the current shared configuration/API. Earlier build-1 evidence remains historical. `fetch-cli --allow-ci` validates the canonical successful workflow, source, complete target matrix, hashes and macOS signing before acquiring this pre-publication candidate. The default fetch path requires public immutable release assets.
 `build-desktop.yml` constructs six native targets from that exact lock. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing. Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
 `package-acceptance.yml` runs six-target nonvisual package and signed-update process acceptance, plus disposable-container DEB lifecycle checks. Exact observed results are recorded in the package receipt. These build workflows do not publish.
 
@@ -152,9 +152,9 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-The selected next CLI version is `2.0.0 (1)`, encoded as `2.0.0-build.1` on npm. Alpha selects the `alpha` dist-tag. Desktop selects `2.0.0 (1)`; Android and iOS retain independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Historical remote five-target build and package assembly acceptance passed. The new six-target matrix has not been accepted remotely. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
+The selected next CLI version is `2.0.0 (2)`, encoded as `2.0.0-build.2` on npm. Alpha selects the `alpha` dist-tag. Desktop selects `2.0.0 (1)`; Android and iOS retain independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Historical remote five-target build and package assembly acceptance passed. The six-target CLI matrix has native hosted acceptance. CLI build 2 is selected to include the current shared configuration/API; the execution receipt records its final accepted lock. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
 
-Desktop staging can consume an immutable CLI lock, but the checked-in lock remains unresolved. Signed-release acceptance, notarization, R2 uploads and FlareRelease registration are not complete. Its stable CLI gate remains a required future implementation. Android and iOS share an Expo UI shell under `app/expo`; it has no Engine integration and does not establish native release support. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
+Desktop staging checks the locked private service configuration/API in addition to executable hashes. macOS signing/notarization, native Windows installer lifecycle, and two-architecture Nix/Flatpak/strict Snap process/IPC acceptance have passed as recorded in the execution receipt. Windows production signing, the durable raw updater key and production numbered public routes remain prerequisites. R2/FlareRelease transport and the locked CLI npm availability gate are implemented but have not performed production delivery. Native sandbox GUI, package refresh and real-OS clipboard/file/network acceptance remain open. Android and iOS share an Expo UI shell under `app/expo`; it has no Engine integration and does not establish native release support. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
 
 Exact interface requirements are in the [release contract](../contracts/release-contract.md). Process ownership remains in the [headless architecture](headless.md).
 

@@ -114,3 +114,11 @@ Run 43416567154 passed Flatpak and strict Snap build/install/executable acceptan
 The updated sandbox process cases additionally exercise real private CLI/service IPC and bounded shutdown. Refresh, native sandbox GUI, clipboard/file/network integration and Store submission remain separate pending acceptance.
 
 A final dependency audit found that CLI candidate 43408274394 predates `desktop.update_channel`. Although that candidate passed native executable acceptance, its service does not have the current shared configuration schema. The follow-up selects CLI `2.0.0 (2)` rather than altering accepted build 1. Desktop retains `2.0.0 (1)`. Staging now compares target-selected shared configuration, API, lifecycle and server source hashes against the CLI dependency manifest. A mismatch fails before copying or building a Desktop stage. The new lock must pass six native jobs and macOS signing before selection.
+
+## Final compatible CLI lock
+
+CLI distribution run [43419452491](https://github.com/UniClipboard/UniClipboard/actions/runs/43419452491) passed all six native jobs and assembly from source `8ab86f230351ba2039af3c23b96126e765f053df`. Both macOS targets use real Developer ID signatures. Desktop now locks CLI `2.0.0 (2)` with manifest SHA-256 `ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be`.
+
+The actual new signed macOS arm64 CLI pair passed local Desktop staging and the shared configuration/API round-trip. The Desktop stage is explicitly a development stage, not a production-signing or GUI receipt. The packager rejects the old CLI at `internal/localconfig/config.go` before staging. The process E2E also passes a changed shared-source rejection and an actual private CLI/service round-trip. Production Desktop builds set the SDK production flag independently of updater-key provisioning; development fixtures retain SDK development mode.
+
+Sandbox run [43418866636](https://github.com/UniClipboard/UniClipboard/actions/runs/43418866636) passed all six Nix/Flatpak/strict Snap jobs. Each job built and executed the package, exercised real private CLI/service IPC and verified temporary shutdown. Nix also verified that both private CLI hashes remain unchanged. That run binds the earlier input candidate 43415678890. The final CLI-build-2 Desktop candidate must have its own native and sandbox replay.

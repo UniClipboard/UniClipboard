@@ -87,7 +87,10 @@ def load(manifest, production=True):
             raise ValueError("catalogue size mismatch")
         if production:
             acceptance = a["acceptance"]
-            if acceptance.get("native_identity") is not True:
+            if (
+                acceptance.get("native_identity") is not True
+                or acceptance.get("shared_configuration_api") is not True
+            ):
                 raise ValueError("missing native identity acceptance")
             if target.startswith(("darwin-", "windows-")) and not a.get("signed"):
                 raise ValueError("missing production code signature")

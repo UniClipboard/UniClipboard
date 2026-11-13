@@ -13,6 +13,8 @@ $install = Join-Path $work 'Installation with spaces'
 $profile = Join-Path $work 'profile'
 $oldHome = $env:UNIC_HOME
 $oldPath = $env:PATH
+$oldUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+$oldMachinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 New-Item -ItemType Directory -Path $profile -Force | Out-Null
 $env:UNIC_HOME = $profile
 $Installer = (Resolve-Path $Installer).Path
@@ -42,12 +44,14 @@ try {
   if ($value.build_number -ne '2') { throw 'Upgrade did not select the later build.' }
   $checks += 'upgrade'
   if ((Get-Content (Join-Path $install 'update-owner') -Raw).Trim() -ne 'winget') { throw 'Update ownership was lost.' }
-  if ($env:PATH -ne $oldPath) { throw 'Desktop modified public CLI ownership.' }
+  if ($env:PATH -ne $oldPath -or [Environment]::GetEnvironmentVariable('Path', 'User') -ne $oldUserPath -or [Environment]::GetEnvironmentVariable('Path', 'Machine') -ne $oldMachinePath) { throw 'Desktop modified public CLI ownership.' }
   $checks += 'private_cli_ownership'
   $uninstaller = Join-Path $install 'uninstall.exe'
-  $process = Start-Process -FilePath $uninstaller -ArgumentList "/S _?=$install" -Wait -PassThru
+  $process = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
   if ($process.ExitCode -ne 0) { throw 'Uninstall failed.' }
-  if ((Test-Path (Join-Path $install 'unic-desktop.exe')) -or (Test-Path $key)) { throw 'Owned executable or registration remains.' }
+  $deadline = [DateTime]::UtcNow.AddSeconds(15)
+  while (((Test-Path (Join-Path $install 'unic-desktop.exe')) -or (Test-Path (Join-Path $install 'uninstall.exe')) -or (Test-Path $key)) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 50 }
+  if ((Test-Path (Join-Path $install 'unic-desktop.exe')) -or (Test-Path (Join-Path $install 'uninstall.exe')) -or (Test-Path $key)) { throw 'Owned executable, uninstaller or registration remains.' }
   $checks += 'removal'
   if ((Get-Content (Join-Path $install 'data/preserve.txt') -Raw).Trim() -ne 'synthetic-user-data') { throw 'Uninstall removed user data.' }
   $checks += 'data_preservation'
@@ -59,11 +63,19 @@ try {
   } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 (Join-Path $Receipt 'report.json')
   $digest = (Get-FileHash (Join-Path $Receipt 'report.json') -Algorithm SHA256).Hash.ToLower()
   "$digest  report.json" | Set-Content -Encoding utf8 (Join-Path $Receipt 'SHA256SUMS')
+} catch {
+  New-Item -ItemType Directory -Path $Receipt -Force | Out-Null
+  @{status='failed'; target=$Target; format='setup.exe'; assertions=$checks; error_type=$_.Exception.GetType().FullName} | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 (Join-Path $Receipt 'report.json')
+  throw
 } finally {
   if (Test-Path $key) {
     $uninstaller = Join-Path $install 'uninstall.exe'
-    if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList "/S _?=$install" -Wait | Out-Null }
+    if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait | Out-Null }
   }
   $env:UNIC_HOME = $oldHome
   if (Test-Path $work) { Remove-Item -Recurse -Force $work }
+  if (Test-Path (Join-Path $Receipt 'report.json')) {
+    $digest = (Get-FileHash (Join-Path $Receipt 'report.json') -Algorithm SHA256).Hash.ToLower()
+    "$digest  report.json" | Set-Content -Encoding utf8 (Join-Path $Receipt 'SHA256SUMS')
+  }
 }

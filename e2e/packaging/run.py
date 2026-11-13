@@ -95,7 +95,8 @@ try:
         metadata = temp / "products.toml"
 
         def configure(lock="0" * 64, desktop_build=1):
-            metadata.write_text(f'''schema = 1
+            metadata.write_text(
+                f"""schema = 1
 [products.cli]
 version = "2.0.0"
 build_number = 1
@@ -107,7 +108,8 @@ targets = ["{target}"]
 cli_version = "2.0.0"
 cli_build_number = 1
 cli_manifest_sha256 = "{lock}"
-''')
+"""
+            )
 
         configure()
         cli = temp / "cli"
@@ -160,6 +162,10 @@ cli_manifest_sha256 = "{lock}"
         run(base + ["--development"])
         run([sys.executable, desktop, "smoke", "--stage", stage])
         receipt = json.loads((stage / "manifest.json").read_text())
+        check(
+            "bundled CLI/service shared configuration round-trip",
+            receipt["acceptance"]["shared_configuration_api"] is True,
+        )
         payload = stage / receipt["payload"]
         report["stage_manifest_sha256"] = sha(stage / "manifest.json")
         report["staged_source_files"] = receipt["source_files"]
@@ -204,6 +210,22 @@ cli_manifest_sha256 = "{lock}"
         )
         run(base + ["--development"], ok=False)
         check("existing stage rejected", True)
+        original_manifest = manifest.read_bytes()
+        mismatch = json.loads(original_manifest)
+        mismatch["target_manifests"][target]["source_sha256"][
+            "internal/localconfig/config.go"
+        ] = ("0" * 64)
+        manifest.write_text(json.dumps(mismatch))
+        configure(sha(manifest))
+        rejected = run(
+            base[:-1] + [temp / "incompatible service"] + ["--development"], ok=False
+        )
+        check(
+            "shared configuration/API source mismatch rejected",
+            "shared configuration/API mismatch" in rejected,
+        )
+        manifest.write_bytes(original_manifest)
+        configure(sha(manifest))
         configure()
         run(base[:-1] + [temp / "wrong lock"] + ["--development"], ok=False)
         check("wrong lock rejected", True)

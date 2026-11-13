@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import zipfile
 from urllib.parse import quote
 from urllib.request import urlopen
@@ -378,13 +379,15 @@ def stage(args):
         else:
             (payload / "uniclip").symlink_to("unic")
         linker = f"-X github.com/uniclipboard/unic/internal/releaseinfo.Version={record['version']} -X github.com/uniclipboard/unic/internal/releaseinfo.BuildNumber={record['build_number']} -X github.com/uniclipboard/unic/internal/releaseinfo.Source={source} -X main.desktopAppName=UniClipboard -X github.com/uniclipboard/unic/internal/observability.ProductVersion={record['version']}"
+        if not args.development:
+            linker += " -X github.com/egoist/mygo.production=1"
         update_key = record.get("update_public_key", "")
         if update_key:
             if len(base64.b64decode(update_key, validate=True)) != 32:
                 raise ValueError(
                     "Desktop update_public_key must be a raw Ed25519 public key"
                 )
-            linker += f" -X github.com/egoist/mygo.production=1 -X github.com/egoist/mygo.packageUpdateFeed=https://release.uniclipboard.app/v1/desktop/stable.json -X github.com/egoist/mygo.packageUpdateKey={update_key} -X github.com/uniclipboard/unic/app/desktop/internal/appupdates.PublicKey={update_key}"
+            linker += f" -X github.com/egoist/mygo.packageUpdateFeed=https://release.uniclipboard.app/v1/desktop/stable.json -X github.com/egoist/mygo.packageUpdateKey={update_key} -X github.com/uniclipboard/unic/app/desktop/internal/appupdates.PublicKey={update_key}"
         if os_name == "windows":
             linker += " -H windowsgui"
         env = dict(os.environ, GOOS=os_name, GOARCH=arch)
@@ -581,6 +584,30 @@ def smoke(args):
                 raise ValueError("native executable identity mismatch")
         if list(Path(home).iterdir()):
             raise ValueError("version inspection initialized user state")
+    with tempfile.TemporaryDirectory(prefix="unic-shared-api-") as home:
+        profile = Path(home)
+        (profile / "config.toml").write_text(
+            '[desktop]\nupdate_channel="alpha"\n[sync]\nenabled=false\n[telemetry]\nenabled=false\n'
+        )
+        env = dict(os.environ, UNIC_HOME=home)
+        value = json.loads(
+            run([payload / ("unic" + suffix), "config", "--json"], env=env)
+        )
+        if (
+            value.get("error")
+            or value.get("apply_error")
+            or value.get("config", {}).get("desktop", {}).get("update_channel")
+            != "alpha"
+        ):
+            raise ValueError(
+                "bundled CLI/service rejected the Desktop shared configuration"
+            )
+        deadline = time.monotonic() + 15
+        while (profile / "unic.sock").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if (profile / "unic.sock").exists():
+            raise ValueError("shared API acceptance service did not stop")
+    m["acceptance"]["shared_configuration_api"] = True
     m["acceptance"]["native_identity"] = True
     save(root / "manifest.json", m)
     print(root / "manifest.json")

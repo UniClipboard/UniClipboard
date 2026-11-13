@@ -1,7 +1,10 @@
 package desktopui
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -25,13 +28,17 @@ type tagManagerState struct {
 func builtinTags() []historyTag {
 	return []historyTag{
 		{id: plugin.TagText, name: "文本", color: "gray", builtin: true, sidebar: true},
-		{id: plugin.TagImage, name: "图片", color: "gray", builtin: true, sidebar: true},
+		{id: plugin.TagImage, name: "图片", color: "green", builtin: true, sidebar: true},
 		{id: plugin.TagFiles, name: "文件", color: "gray", builtin: true, sidebar: true},
 		{id: plugin.TagFolder, name: "文件夹", color: "gray", builtin: true, sidebar: true},
-		{id: plugin.TagLink, name: "链接", color: "gray", builtin: true, sidebar: true},
+		{id: plugin.TagLink, name: "链接", color: "blue", builtin: true, sidebar: true},
 	}
 }
 func (d *viewState) projectTags(ids []string) {
+	visibility := make(map[string]bool, len(d.tags))
+	for _, tag := range d.tags {
+		visibility[tag.id] = tag.sidebar
+	}
 	builtins := builtinTags()
 	for i := range builtins {
 		if previous := d.tagByID(builtins[i].id); previous != nil {
@@ -41,7 +48,17 @@ func (d *viewState) projectTags(ids []string) {
 	d.tags = builtins
 	for _, id := range ids {
 		if d.tagByID(id) == nil {
-			d.tags = append(d.tags, historyTag{id: id, name: id, color: "gray", sidebar: true})
+			color := uikit.TagColor("gray")
+			if d.live != nil {
+				if saved := d.live.config.Config.Desktop.TagColors[tagColorKey(id)]; saved != "" {
+					color = uikit.TagColor(saved)
+				}
+			}
+			sidebar, known := visibility[id]
+			if !known {
+				sidebar = true
+			}
+			d.tags = append(d.tags, historyTag{id: id, name: id, color: color, sidebar: sidebar})
 		}
 	}
 }
@@ -91,6 +108,9 @@ func (d *viewState) localTagIDs(ids []string) []string {
 }
 
 func (d *viewState) removeTags(ids []string, target string) {
+	if d.live != nil {
+		return
+	}
 	ids = d.localTagIDs(ids)
 	if len(ids) == 0 {
 		return
@@ -130,10 +150,10 @@ func (d *viewState) tagMenu(ids []string) []uikit.MenuEntry {
 	if len(ids) == 1 {
 		single = d.tagByID(ids[0])
 	}
-	if single != nil && !single.builtin {
+	if single != nil && !single.builtin && d.live == nil {
 		out = append(out, uikit.MenuEntry{ID: "rename", Label: d.tr("重命名…"), Icon: uikit.IconEdit})
 	}
-	if len(own) > 0 {
+	if len(own) > 0 && d.live == nil {
 		var targets []uikit.MenuEntry
 		for _, tag := range d.tags {
 			if !tag.builtin && !slices.Contains(ids, tag.id) {
@@ -150,10 +170,10 @@ func (d *viewState) tagMenu(ids []string) []uikit.MenuEntry {
 	if single != nil && !single.builtin {
 		out = append(out, uikit.MenuSeparator("colors"))
 		for _, v := range [][2]string{{"orange", "橙色"}, {"blue", "蓝色"}, {"green", "绿色"}, {"purple", "紫色"}, {"gray", "灰色"}} {
-			out = append(out, uikit.MenuEntry{ID: "color:" + v[0], Label: d.tr(v[1]), Swatch: uikit.TagColor(v[0]), Checked: single.color == uikit.TagColor(v[0])})
+			out = append(out, uikit.MenuEntry{ID: "color:" + v[0], Label: d.tr(v[1]), Swatch: uikit.TagColor(v[0]), Checked: single.color == uikit.TagColor(v[0]), Disabled: d.live != nil && d.live.busy})
 		}
 	}
-	if len(own) > 0 {
+	if len(own) > 0 && d.live == nil {
 		label := d.tr("删除标签（保留条目）")
 		if len(own) > 1 {
 			label = fmt.Sprintf(d.tr("删除 %d 个标签（保留条目）"), len(own))
@@ -180,7 +200,7 @@ func (d *viewState) tagAction(action string, ids []string) {
 		d.removeTags(ids, strings.TrimPrefix(action, "merge:"))
 	case strings.HasPrefix(action, "color:") && len(ids) == 1:
 		if tag := d.tagByID(ids[0]); tag != nil && !tag.builtin {
-			tag.color = uikit.TagColor(strings.TrimPrefix(action, "color:"))
+			d.setTagColor(tag.id, uikit.TagColor(strings.TrimPrefix(action, "color:")))
 		}
 	}
 }
@@ -241,11 +261,11 @@ func (d *viewState) tagSheet(c *ui.Context, k uikit.Kit) {
 		k.SearchField(c.Key("filter"), uikit.SearchFieldProps{Label: d.tr("筛选标签"), Value: &m.filter, Placeholder: fmt.Sprintf(d.tr("在 %d 个标签中筛选"), len(d.tags))}).Element.Grow(1).MinWidth(80)
 	}
 	foot := func() {
-		if k.Button(c.Key("add"), "", uikit.ButtonProps{Icon: uikit.IconAdd, Label: d.tr("新建标签")}).Clicked() {
+		if k.Button(c.Key("add"), "", uikit.ButtonProps{Icon: uikit.IconAdd, Label: d.tr("新建标签"), Disabled: d.live != nil}).Clicked() {
 			m.editing, m.name, m.error = "new", "", ""
 			m.filter = ""
 		}
-		if k.Button(c.Key("delete"), "", uikit.ButtonProps{Icon: uikit.IconDelete, Label: d.tr("删除选中标签"), Disabled: len(d.localTagIDs(m.table.Selection())) == 0}).Clicked() {
+		if k.Button(c.Key("delete"), "", uikit.ButtonProps{Icon: uikit.IconDelete, Label: d.tr("删除选中标签"), Disabled: d.live != nil || len(d.localTagIDs(m.table.Selection())) == 0}).Clicked() {
 			d.removeTags(m.table.Selection(), "")
 		}
 		sidebar, unused := 0, 0
@@ -324,4 +344,28 @@ func (d *viewState) tagSheet(c *ui.Context, k uikit.Kit) {
 	}) {
 		d.tagsOpen = false
 	}
+}
+
+// Hash IDs so the presentation-only configuration never contains user tag names.
+func tagColorKey(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:])
+}
+
+func (d *viewState) setTagColor(id string, color uikit.TagColor) {
+	tag := d.tagByID(id)
+	if tag == nil || tag.builtin {
+		return
+	}
+	if d.live == nil {
+		tag.color = color
+		return
+	}
+	cfg := d.live.config.Config
+	cfg.Desktop.TagColors = maps.Clone(cfg.Desktop.TagColors)
+	if cfg.Desktop.TagColors == nil {
+		cfg.Desktop.TagColors = map[string]string{}
+	}
+	cfg.Desktop.TagColors[tagColorKey(id)] = string(color)
+	d.saveLiveConfig(cfg)
 }

@@ -1,0 +1,8 @@
+# Case: V1 inline tag editor and colors
+# Mode: view
+# Purpose: V1-style inline tag creation, five swatches, removable tinted chips and shared Sheet colors.
+# Steps: Open production history composition on three skins and two themes; create, recolor, attach, remove, cancel and use keyboard navigation.
+# Expected: Inline ComboField and palette preserve focus, names, associations and shared color state; rendered checkpoints are retained.
+# Forbidden: Checkbox assignment Sheet, duplicate creation, mutation on color choice or cancel, skipped subcases or native claims.
+
+acceptance desktopui tag-editor

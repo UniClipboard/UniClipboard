@@ -2992,5 +2992,35 @@
     "ja": "未使用",
     "pt-BR": "Não utilizada",
     "ru": "Не используется"
+  },
+  "标签名": {
+    "en": "Tag name",
+    "ja": "タグ名",
+    "pt-BR": "Nome da etiqueta",
+    "ru": "Название тега"
+  },
+  "新建 #%s": {
+    "en": "Create #%s",
+    "ja": "#%s を作成",
+    "pt-BR": "Criar #%s",
+    "ru": "Создать #%s"
+  },
+  "移除 #%s": {
+    "en": "Remove #%s",
+    "ja": "#%s を削除",
+    "pt-BR": "Remover #%s",
+    "ru": "Убрать #%s"
+  },
+  "↑↓ 选择 · ↩ 添加 · ⇥ 颜色 · esc 关闭": {
+    "en": "↑↓ select · ↩ add · ⇥ color · esc close",
+    "ja": "↑↓ 選択 · ↩ 追加 · ⇥ 色 · esc 閉じる",
+    "pt-BR": "↑↓ selecionar · ↩ adicionar · ⇥ cor · esc fechar",
+    "ru": "↑↓ выбрать · ↩ добавить · ⇥ цвет · esc закрыть"
+  },
+  "颜色": {
+    "en": "Color",
+    "ja": "色",
+    "pt-BR": "Cor",
+    "ru": "Цвет"
   }
 }

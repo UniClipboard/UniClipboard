@@ -44,16 +44,11 @@ func scenarioTagManagerPlatforms(t *testing.T) {
 					t.Fatal(err)
 				}
 				tt.Advance(350 * time.Millisecond)
-				if !d.assignTagsOpen || d.tagsOpen {
-					t.Fatal("entry assignment opened management instead")
+				if _, ok := tt.AccessByRole(ui.RoleComboBox, "标签名"); !ok || d.tagsOpen {
+					t.Fatal("entry assignment did not open inline ComboField")
 				}
-				if err := tt.Click("#自定义标签"); err != nil {
-					t.Fatal(err)
-				}
-				if err := tt.Click("完成"); err != nil {
-					t.Fatal(err)
-				}
-				tt.Advance(250 * time.Millisecond)
+				tt.Type("自定义标签")
+				tt.Key(0, ui.KeyEnter)
 				if d.tagCount("custom:0") != 1 || len(d.entries) != 22 {
 					t.Fatal("entry assignment did not share the tag registry")
 				}

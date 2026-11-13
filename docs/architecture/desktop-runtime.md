@@ -102,6 +102,8 @@ The service only validates and stores desktop settings. It never registers a log
 See [headless architecture](headless.md#desktop-startup-settings) for desktop ownership, actual login status and platform limits.
 An external editor does not share the daemon write mutex; a later external save remains authoritative through the file watcher.
 
+Desktop tag color overrides use the same configuration API and CAS behavior. `desktop.tag_colors` holds at most 4096 SHA-256 tag-ID keys and palette or `#rrggbb` values. The desktop resolves them into its shared tag registry on refresh and reopen. The service stores and validates presentation values without depending on the UI Kit. See [tag controls and colors](overview.md#tag-controls-and-colors).
+
 ## CLI service usage
 
 Service commands acquire a generation-bound usage lease on their first request.

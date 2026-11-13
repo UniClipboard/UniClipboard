@@ -51,11 +51,7 @@ func (d *viewState) sidebar(c *ui.Context, k uikit.Kit) {
 		{ID: "devices", Title: d.tr("设备"), Items: devices},
 	}, Footer: []uikit.SidebarNavItem{{ID: "manage", Label: d.tr("管理设备…"), Icon: uikit.IconDevices}, {ID: "settings", Label: d.tr("设置…"), Icon: uikit.IconSettings, ShortcutHint: "⌘,"}}}).Grow(1)
 	if cmd, _ := d.nav.Command(); cmd == uikit.NavSectionAction || cmd == uikit.NavMore {
-		if d.live == nil {
-			d.tagsOpen = true
-		} else {
-			d.live.message = "标签管理暂不可用。请在历史详情中分配标签。"
-		}
+		d.tagsOpen = true
 	}
 	if d.nav.Changed() {
 		d.notice = ""
@@ -205,7 +201,7 @@ func (d *viewState) historyCommands(c *ui.Context, k uikit.Kit) {
 	if fit(k.Button(c.Key("pin"), "", uikit.ButtonProps{Icon: uikit.IconPin, Label: d.tr("切换置顶"), Variant: uikit.Subtle, Disabled: v == nil || d.live != nil})).Clicked() {
 		d.togglePin()
 	}
-	b, command = k.Menu(c.Key("more"), uikit.MenuProps{Label: d.tr("更多操作"), Icon: uikit.IconMore, IconOnly: true, Variant: uikit.Subtle, Items: []uikit.MenuEntry{{ID: "tags", Label: d.tr("管理标签"), Icon: uikit.IconTag, Disabled: d.live != nil}, {ID: "delete", Label: d.tr("删除"), Icon: uikit.IconDelete, Destructive: true, Disabled: v == nil}, uikit.MenuSeparator("sep"), {ID: "quick-panel", Label: d.tr("查看快捷面板")}}})
+	b, command = k.Menu(c.Key("more"), uikit.MenuProps{Label: d.tr("更多操作"), Icon: uikit.IconMore, IconOnly: true, Variant: uikit.Subtle, Items: []uikit.MenuEntry{{ID: "tags", Label: d.tr("管理标签"), Icon: uikit.IconTag}, {ID: "delete", Label: d.tr("删除"), Icon: uikit.IconDelete, Destructive: true, Disabled: v == nil}, uikit.MenuSeparator("sep"), {ID: "quick-panel", Label: d.tr("查看快捷面板")}}})
 	fit(b)
 	switch command {
 	case "tags":
@@ -419,14 +415,7 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 					k.FactList(c, uikit.FactListProps{Label: d.tr("图片信息"), Facts: facts})
 				}
 			}
-			ui.Row(c).Gap(6).Wrap().Children(func() {
-				for _, tag := range v.tags {
-					k.Tag(c.Key(tag), "#"+d.tagLabel(tag), uikit.TagProps{Color: d.tagColor(tag)})
-				}
-				if k.Button(c, d.tr("添加标签"), uikit.ButtonProps{Variant: uikit.Subtle, Icon: uikit.IconAdd, Size: uikit.SizeSmall}).Clicked() {
-					d.assignTagsOpen = true
-				}
-			})
+			d.detailTags(c.Key("detail-tags"), k, v)
 			ui.Column(c).Gap(6).Children(func() {
 				if d.live != nil {
 					k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(v.syncState)), secondary)
@@ -467,48 +456,6 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 		ui.Column(c.Key("floating-actions")).Absolute().Left(16).Right(16).Bottom(16).ZIndex(2).Children(actions)
 	} else {
 		actions()
-	}
-}
-
-func (d *viewState) assignTagSheet(c *ui.Context, k uikit.Kit) {
-	if k.Sheet(c, uikit.SheetProps{Open: &d.assignTagsOpen, Title: d.tr("添加标签"), Variant: uikit.SheetTask, Done: d.tr("完成")}, func() {
-		ui.Column(c).Gap(8).Padding(12).Children(func() {
-			v := d.current()
-			if d.live != nil {
-				field := k.TextField(c.Key("new-tag"), uikit.TextFieldProps{Label: d.tr("新标签"), Value: &d.tagInput, Placeholder: d.tr("输入标签后按回车")})
-				if field.Submitted && v != nil && !d.live.busy && strings.TrimSpace(d.tagInput) != "" {
-					tags := append(slices.Clone(v.tags), strings.TrimSpace(d.tagInput))
-					d.setEntryTags(v.id, tags)
-					d.tagInput = ""
-				}
-			}
-			for _, tag := range d.tags {
-				if tag.builtin {
-					continue
-				}
-				id := tag.id
-				on := v != nil && slices.Contains(v.tags, id)
-				before := on
-				k.Checkbox(c.Key(id), &on, uikit.CheckboxProps{Label: "#" + d.tagLabel(tag.id), Disabled: v == nil || (d.live != nil && d.live.busy)})
-				if on != before && d.live != nil {
-					tags := slices.Clone(v.tags)
-					if on {
-						tags = append(tags, id)
-					} else {
-						tags = slices.DeleteFunc(tags, func(t string) bool { return t == id })
-					}
-					d.setEntryTags(v.id, tags)
-				} else if on != before {
-					if on {
-						v.tags = append(v.tags, id)
-					} else {
-						v.tags = slices.DeleteFunc(v.tags, func(s string) bool { return s == id })
-					}
-				}
-			}
-		})
-	}) {
-		d.assignTagsOpen = false
 	}
 }
 

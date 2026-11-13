@@ -329,7 +329,7 @@ Deletion removes tag metadata and associations while preserving all history entr
 Merging unions associations into the target custom tag and removes the source tags.
 Builtin tags expose only Show Entries in their context menu. Their sidebar visibility remains editable.
 On macOS the table requests a real NSMenu; the OS owns its appearance and tracking.
-The existing Add Tags detail action remains a separate assignment picker.
+The Add Tags detail action opens the inline Kit ComboField. New names show a five-color creation row. Arrow keys select, Return attaches, Tab/Shift-Tab cycle colors, and Escape cancels. Removing a custom chip detaches it without deleting its registry entry.
 All operations remain in memory and reset on restart.
 
 The macOS sort selector uses the same 32-point height, 16-point corner radius, and shared glass material as the adjacent search field. Its position and NSMenu behavior remain unchanged. Other Select instances keep their standard appearance.
@@ -343,7 +343,7 @@ make desktop-e2e CASE=tag-manager-platforms
 ```
 
 tag-manager covers fifteen scenarios in light and dark modes and writes tag-manager.json.
-tag-manager-platforms covers the three skins in both modes and checks the separate assignment picker.
+tag-manager-platforms covers the three skins in both modes and checks inline assignment. tag-editor covers creation, swatches, keyboard interaction, cancellation, selection changes and shared Sheet colors.
 The initial management scenarios failed because the former sheet had no table.
 A subsequent geometry check detected the oversized header and rows before the Kit table spacing correction.
 These are complete-view event, accessibility, layout, and platform-menu-request checks.
@@ -351,7 +351,7 @@ Actual NSMenu rendering, native sheet appearance, and animation acceptance remai
 
 Manual acceptance: open Manage Tags; filter and sort; create and rename a custom tag; open its context menu; change its color; toggle sidebar visibility; merge or delete it; confirm history entries remain.
 Right-click a builtin tag and confirm that only Show Entries appears.
-Close the manager and use Add Tags in the detail pane to confirm assignment remains separate.
+Close the manager and use Add Tags in the detail pane to confirm assignment uses the inline field.
 
 The workspace now exposes the desktop command at app/desktop/cmd/unic-desktop.
 Build and open this entry after the service/desktop split:
@@ -391,7 +391,7 @@ The implementation uses existing mygo animation and transition APIs. It does not
 
 Keep calling Sheet while Open is false so the live dialog can finish its exit motion.
 Open records the requested state. OnClosed runs once after exit completes; clear transient selection, editing, and device-task state in that callback.
-The demo now follows this lifecycle for tag management, device management, and tag assignment.
+The demo now follows this lifecycle for tag management and device management. Tag assignment uses an inline ComboField.
 Width and content-driven height changes use the existing mygo frame transition over 280 ms with cubic-bezier(0.2, 0, 0, 1). Position and size move together to keep the top edge fixed and the panel horizontally centered. Live content is laid out at each intermediate size; text is not scaled. Changes during motion retarget from the displayed frame. Window resizing follows mygo's immediate layout behavior.
 Reduce Motion removes the panel's translation and size motion; the scrim may still fade.
 Adwaita and Fluent retain their existing DialogBase behavior.

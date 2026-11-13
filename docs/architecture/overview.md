@@ -131,6 +131,16 @@ The normal desktop opens a real-data quick-panel window from Settings or the his
 The normal UI never falls back to fixture data or simulated effects.
 See the [execution receipt](../exec/desktop-live-data.md) for nonvisual process acceptance and native limits.
 
+### History detail prefetch
+
+The production main history list, history grid and search results share a viewport-owned detail cache in `desktopui/live_details.go`. UI Kit supplies inclusive item indices through `ListState.VisibleRange`, excluding group headers and accounting for grid columns. Every visible item and ten loaded items on each side enter the prefetch window. Near the loaded tail, the main list requests the next result page so the lower buffer can fill. The quick panel uses intersecting row bounds, or its nine displayed image cells, with the same buffer.
+
+The selected detail has first priority, followed by visible entries and then buffer entries. At most four content reads run concurrently. Repeated frames reuse cached content and in-flight reads. Selecting a ready entry displays its detail in the same frame without another read or a loading indicator. An initial read, fast scrolling ahead of prefetch, or unavailable content can still show the existing loading/error state.
+
+Leaving the window cancels obsolete reads and clears payload references from both the cache and entry projections. The currently selected detail retains one additional payload while its row is outside the window. Switching selection releases that exception. Canceled reads retain their concurrency slot until completion; late results cannot repopulate an obsolete window or query. Changed history revisions invalidate affected details; unchanged background reconciliation preserves them. Existing per-entry text, manifest and image preview bounds remain in effect. Failed previews stay cached for the current window and can be retried after leaving and reentering it. This cache is local to the desktop session and does not change Engine history or transfer ownership.
+
+Run `make desktop-e2e CASE=search-contract` for real-service viewport scheduling, immediate cached selection, eviction, reverse scrolling, query replacement and quick-panel process evidence. This process scenario supplies viewport indices directly and does not establish native scrolling or visual timing. See the [prefetch receipt](../exec/history-detail-prefetch.md).
+
 ## GPUI quick panel fixture
 
 The dedicated `unic-desktop-demo --page quick-panel` entry follows cached `origin/main` commit `885546c7cf6f6f0d2076104efd1d90d9f73d9744`.

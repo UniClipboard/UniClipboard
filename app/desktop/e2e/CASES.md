@@ -18,7 +18,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [quick-panel-screenshots](#quick-panel-screenshots) | view | Quick-panel history, action menu and image-grid compositions in both themes. |
 | [quick-panel](#quick-panel) | view | Quick-panel keyboard, search, actions, previews, scrolling and simulated effects. |
 | [search-badge-delete](#search-badge-delete) | view | Whole-condition deletion from composite search badges. |
-| [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair and cancellation. |
+| [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair, cancellation and viewport detail prefetch. |
 | [search-disclosure-reduced-motion](#search-disclosure-reduced-motion) | view | Toolbar search disclosure with Reduce Motion enabled. |
 | [search-disclosure](#search-disclosure) | view | Animated toolbar search expansion, collapse, filtering and keyboard dismissal. |
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |

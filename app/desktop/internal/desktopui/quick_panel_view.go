@@ -70,6 +70,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 		}
 		p.searchRow(c, a)
 		scroll := k.Scroll(c.Key("history-scroll")).Grow(1).MinHeight(0)
+		first, last := len(p.rows), -1
 		scroll.Children(func() {
 			body := ui.Column(c).FillWidth().Padding(6)
 			// Pointer motion re-enables hover. A stationary pointer cannot undo a key.
@@ -92,13 +93,21 @@ func (p *quickPanelState) panel(c *ui.Context) {
 					p.emptyView(c, a)
 				case p.kind == "图片":
 					p.imageGrid(c, a)
+					first, last = p.gridTop*3, min(len(p.rows)-1, p.gridTop*3+8)
 				default:
 					for i, e := range p.rows {
-						p.resultRow(c.Key(e.id), a, i, e)
+						row := p.resultRow(c.Key(e.id), a, i, e).Bounds()
+						viewport := scroll.Bounds()
+						if row.H > 0 && viewport.H > 0 && row.Y < viewport.Y+viewport.H && row.Y+row.H > viewport.Y {
+							first, last = min(first, i), i
+						}
 					}
 				}
 			})
 		})
+		if p.live != nil && p.queryDue.IsZero() {
+			p.live.d.live.prefetchDetails(p.live.d, p.live.d.entries, first, last)
+		}
 		if p.message != "" {
 			tone := ui.RGB(224, 27, 36)
 			if p.message == "已复制" || p.message == "已发送粘贴指令" {
@@ -385,7 +394,7 @@ func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) 
 	}
 	return spans
 }
-func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry) {
+func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry) ui.Element {
 	selected := i == p.selected && !p.suggestFocused
 	ink, quiet := a.foreground, a.quiet
 	if selected {
@@ -453,6 +462,7 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 		p.selectRow(i)
 		p.openActions()
 	}
+	return b
 }
 func (p *quickPanelState) imageGrid(c *ui.Context, a qpPalette) {
 	grid := ui.Column(c.Key("image-wall")).FillWidth().HandleInput(func(ev ui.InputEvent) bool {

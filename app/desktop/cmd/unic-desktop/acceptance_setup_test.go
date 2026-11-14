@@ -1,12 +1,14 @@
 package main
 
 import (
+	"strings"
+	"testing"
+
 	"github.com/egoist/mygo/ui"
+
 	proof "github.com/uniclipboard/unic/app/desktop/internal/e2eproof"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupui"
 	"github.com/uniclipboard/unic/internal/v1migration"
-	"strings"
-	"testing"
 )
 
 // Failure inventory: see docs/exec/0026-first-install-setup.md. This exercises

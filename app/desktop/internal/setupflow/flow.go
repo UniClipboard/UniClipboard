@@ -110,7 +110,8 @@ func (f *Flow) save() error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	// A successful rename already removed the temporary pathname.
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	_, err = tmp.Write(append(raw, '\n'))
 	if err == nil {
 		err = tmp.Sync()
@@ -188,7 +189,8 @@ func (f *Flow) Run(ctx context.Context, password []byte, secrets v1migration.Sec
 	if err != nil {
 		return failed, err
 	}
-	defer source.Close()
+	// Release the read-only source snapshot after import or cancellation.
+	defer func() { _ = source.Close() }()
 	if err = ctx.Err(); err != nil {
 		failed.Status = "cancelled"
 		return failed, err

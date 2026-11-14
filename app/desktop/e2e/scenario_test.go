@@ -349,7 +349,7 @@ func (s *desktopScenario) startNative(migration string) error {
 		if err != nil {
 			return err
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		if migration == "complete" {
 			_, err = db.Exec("INSERT INTO clipboard_snapshot_representation VALUES('rep-bad','event-bad','text/plain','text/plain',?,NULL,9)", []byte(fixture.Repaired))
 			if err != nil {
@@ -360,7 +360,9 @@ func (s *desktopScenario) startNative(migration string) error {
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback()
+		// Rollback is best-effort cleanup after early failure; after Commit it
+		// returns sql.ErrTxDone because the transaction has already finished.
+		defer func() { _ = tx.Rollback() }()
 		for i := 0; i < 1500; i++ {
 			_, err = tx.Exec("INSERT INTO clipboard_entry VALUES(?, 'event-text', ?, ?, 'text', NULL)", fmt.Sprintf("native-%04d", i), int64(10000+i), int64(10000+i))
 			if err != nil {

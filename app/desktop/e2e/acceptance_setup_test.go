@@ -25,7 +25,11 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	ctx := context.Background()
 	base, err := os.MkdirTemp("", "uc-setup-")
 	must(t, err)
-	defer os.RemoveAll(base)
+	defer func() {
+		if err := os.RemoveAll(base); err != nil {
+			t.Errorf("remove isolated setup profile: %v", err)
+		}
+	}()
 	checks := []string{}
 	receipt := map[string]any{"native_visual_tested": false, "system_credentials_tested": false, "fixture": "internal/v1migration/testdata/v3.json"}
 	defer func() {
@@ -150,7 +154,11 @@ func scenarioFirstInstallSetup(t *testing.T) {
 		raw, _ := os.ReadFile(filepath.Join(target, "desktop-daemon.log"))
 		t.Fatalf("service readiness: %v\n%s", err, raw)
 	}
-	defer service.Stop()
+	defer func() {
+		if err := service.Stop(); err != nil {
+			t.Errorf("stop isolated setup service: %v", err)
+		}
+	}()
 	client := api.NewClient(socket)
 	deadline, done := context.WithTimeout(ctx, 5*time.Second)
 	defer done()

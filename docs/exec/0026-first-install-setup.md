@@ -125,3 +125,12 @@ Integrated `origin/v2` at `6dd839548` into the feature branch. Preserve upstream
 After integration, canonical `first-install-setup` passed in `.build/desktop-e2e/20261114T033935Z-c2ddf77f/`, `setup-pages` passed in `.build/desktop-e2e/20261114T033931Z-8ecb1a1c/`, and `setup-onboarding` passed in `.build/desktop-e2e/20261114T033934Z-6dd546cd/` with a 71.84-second native recording. Scoped vet, test compilation, catalogue consistency and whitespace checks passed. Documentation checking passed with five stale warnings on other architecture topics. The three directly maintained architecture pages now verify integrated source commit `a531ab8b4`.
 
 Setup and history still reuse one native window. Setup is 640 × 560; explicit entry or skip switches the same window to the 1100 × 720 history composition. Completion alone does not create a second window or enter history.
+
+
+## PR 2249 lint repair (2026-11-14)
+
+The failed `Lint` job in Actions run `43552995525` checked head `a6625e6806c6036c3548643aa1b17a8a93851077` and reported six unchecked deferred cleanup results plus four goimports violations. The other PR checks, including the full Desktop E2E suite, passed on that head.
+
+Reproduced all ten diagnostics locally using the repository-pinned golangci-lint v2.15.0, downloaded from the official release and checked against its published archive SHA256. Corrected only the seven affected Go files. Profile removal and service shutdown failures now fail the process acceptance case; expected rollback/temp-path cleanup and read-only fixture/source release remain explicit best-effort cleanup. Applied the configured goimports grouping without changing lint rules.
+
+Validation before source commit `546e6317c`: full `golangci-lint run --timeout=5m ./...` reported zero issues, `golangci-lint fmt --diff --diff-colored=false` produced no diff, and `git diff --check` passed. The canonical `first-install-setup` process case passed in `.build/desktop-e2e/20261114T103341Z-86dc608b/index.html`. No new unit tests or workflow bypasses were added. Updated the three directly maintained architecture verification markers after committing the checked source.

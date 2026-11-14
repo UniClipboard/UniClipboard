@@ -1,0 +1,55 @@
+{
+  "file": {
+    "imageOnly": "仅支持保存图片到相册"
+  },
+  "contentType": {
+    "text": "文本",
+    "image": "图片",
+    "file": "文件",
+    "group": "文件组",
+    "unknown": "未知"
+  },
+  "contentPlaceholder": {
+    "image": "[图片]",
+    "file": "[文件]",
+    "group": "[文件组]"
+  },
+  "copy": {
+    "copied": "已复制到剪贴板",
+    "copiedImage": "已复制图片到剪贴板",
+    "unsupportedType": "暂不支持此类型的快速复制",
+    "failed": "复制失败",
+    "textTooLarge": "文本内容过大，无法复制到剪贴板（超过系统限制）",
+    "failedWithReason": "复制失败：{{reason}}",
+    "unknownError": "未知错误",
+    "cannotReadFullText": "无法读取完整文本"
+  },
+  "share": {
+    "dialogTitle": "分享文件"
+  },
+  "refresh": {
+    "failed": "刷新失败"
+  },
+  "connect": {
+    "failed": "连接失败",
+    "cannotReach": "无法连接到其他设备"
+  },
+  "notification": {
+    "uploaded": "已上传",
+    "downloaded": "已下载",
+    "fileDownloaded": "文件已下载"
+  },
+  "sync": {
+    "networkErrorQueued": "网络错误，已添加到队列: {{error}}"
+  },
+  "upload": {
+    "failedSavedLocal": "上传失败,内容已存到本地"
+  },
+  "apk": {
+    "hashMismatch": "APK 哈希校验失败：期望 {{expected}}，实际 {{actual}}"
+  },
+  "log": {
+    "noFilesToExport": "没有可导出的日志文件",
+    "storagePermissionDenied": "未授予存储权限"
+  }
+}

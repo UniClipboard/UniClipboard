@@ -1,0 +1,85 @@
+appId: app.uniclipboard.shell
+name: Expo shell navigation and local state
+---
+- launchApp:
+    clearState: true
+- assertVisible:
+    id: shell-banner
+- assertVisible:
+    id: history-card-demo-1
+- takeScreenshot: home
+- tapOn:
+    id: history-card-demo-1
+- assertVisible:
+    id: detail-back
+- takeScreenshot: detail
+- tapOn:
+    id: detail-back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: 设备|Devices|Устройства|Dispositivos
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: main-tab-Devices
+- assertVisible:
+    id: device-0
+- tapOn:
+    id: device-0
+- takeScreenshot: integration-unavailable
+- tapOn: OK|确定|ОК
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: 设置|Settings|Настройки|Configurações
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: main-tab-Preferences
+- assertVisible:
+    id: auto-apply
+- tapOn:
+    id: auto-apply
+- scrollUntilVisible:
+    element:
+      id: history
+    direction: DOWN
+- tapOn:
+    id: history
+- assertVisible:
+    id: history-max-items
+- takeScreenshot: history-settings
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: storage
+    direction: DOWN
+- tapOn:
+    id: storage
+- assertVisible:
+    id: storage-count
+- takeScreenshot: storage
+- tapOn:
+    id: settings-back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: 剪贴板|Clipboard|Буфер обмена|Área de transferência
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: main-tab-Clipboard
+- assertVisible:
+    id: history-card-demo-1
+- takeScreenshot: navigation-restored

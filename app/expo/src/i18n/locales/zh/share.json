@@ -1,0 +1,59 @@
+{
+  "receive": {
+    "parsing": "正在解析分享内容…",
+    "saving": "正在保存…",
+    "parseFailed": "解析分享内容失败: {{message}}",
+    "noContent": "没有可处理的分享内容",
+    "emptyText": "分享的文字内容为空",
+    "saveFailed": "保存失败"
+  },
+  "processText": {
+    "loading": "正在上传文字…",
+    "success": "上传成功",
+    "failure": "上传失败"
+  },
+  "upload": {
+    "copying": "正在复制文件…",
+    "hashing": "正在计算哈希…",
+    "uploading": "正在上传…",
+    "recordNotFound": "记录不存在: {{hash}}"
+  },
+  "serviceRestart": {
+    "restored": "服务已恢复",
+    "failed": "无法恢复同步"
+  },
+  "send": {
+    "title": "分享",
+    "empty": "暂无待发送内容",
+    "claimFailed": "加载待发送内容失败，请稍后重试",
+    "devices": "发送到设备",
+    "noDevices": "暂无设备",
+    "servers": "发送到服务器",
+    "noServers": "暂无可用服务器",
+    "sendAll": "发送",
+    "done": "完成",
+    "cancel": "取消",
+    "retry": "重试",
+    "delete": "删除",
+    "deleteConfirmTitle": "删除分享内容？",
+    "deleteConfirmMessage": "删除后不可恢复。",
+    "sending": "发送中…",
+    "success": "发送成功",
+    "failed": "发送失败",
+    "offlineTitle": "无法发送",
+    "offline": "设备不在线，请在设备上线后重试",
+    "selectHint": "选择要发送的设备",
+    "localDevice": "本机",
+    "allDevices": "全部设备",
+    "unconfirmed": "结果未确认。请核对已有传输。",
+    "checkExisting": "核对已有传输",
+    "targetState": {
+      "preparing": "准备发送…",
+      "sending": "正在发送",
+      "confirming": "等待设备确认…",
+      "success": "已发送",
+      "failed": "发送失败",
+      "unconfirmed": "结果未确认"
+    }
+  }
+}

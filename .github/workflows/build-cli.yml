@@ -4,6 +4,22 @@ on:
   push:
     branches: [main, v2]
   workflow_dispatch:
+    inputs:
+      native_gui:
+        type: boolean
+        default: false
+        description: Run the standard native-window scenario on all six OS/architecture targets
+      sandbox_run_id:
+        type: string
+        default: ''
+        description: Run native Nix, Flatpak and Snap acceptance from a completed Desktop candidate
+      desktop_only:
+        type: boolean
+        default: false
+        description: Run the six-target Desktop workflow with the already locked CLI
+      distribution:
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       source_sha:
@@ -15,17 +31,23 @@ on:
     secrets:
       POSTHOG_PROJECT_KEY:
         required: false
+      APPLE_CERTIFICATE:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
 permissions:
   contents: read
+  actions: read
 jobs:
   prepare:
+    if: ${{ !inputs.desktop_only && !inputs.sandbox_run_id && !inputs.native_gui }}
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: targets
         env:
@@ -43,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@v6
         with:
@@ -51,6 +73,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+      - name: Import Apple distribution identity
+        if: inputs.distribution && matrix.goos == 'darwin'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: python3 tools/package/signing.py keychain --path "$RUNNER_TEMP/unic-cli-signing.keychain-db" --env-output "$GITHUB_ENV"
       - name: Build exact CLI pair
         shell: bash
         env:
@@ -88,6 +116,10 @@ jobs:
           name: cli-${{ matrix.target }}
           path: dist/cli/
           if-no-files-found: error
+      - name: Remove temporary signing keychain
+        if: always() && matrix.goos == 'darwin'
+        run: |
+          if [ -f "$RUNNER_TEMP/unic-cli-signing.keychain-db" ]; then security delete-keychain "$RUNNER_TEMP/unic-cli-signing.keychain-db"; fi
   assemble:
     needs: targets
     runs-on: ubuntu-24.04
@@ -95,7 +127,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
@@ -113,3 +145,24 @@ jobs:
           name: cli-npm-candidate
           path: dist/npm/
           if-no-files-found: error
+
+  desktop:
+    if: github.event_name == 'workflow_dispatch' && inputs.desktop_only
+    uses: ./.github/workflows/build-desktop.yml
+    with:
+      source_sha: ${{ github.sha }}
+      distribution: ${{ inputs.distribution }}
+    secrets: inherit
+
+  sandboxes:
+    if: github.event_name == 'workflow_dispatch' && inputs.sandbox_run_id != ''
+    uses: ./.github/workflows/sandbox-acceptance.yml
+    with:
+      source_sha: ${{ github.sha }}
+      candidate_run_id: ${{ inputs.sandbox_run_id }}
+
+  native-gui:
+    if: github.event_name == 'workflow_dispatch' && inputs.native_gui
+    uses: ./.github/workflows/native-desktop-acceptance.yml
+    with:
+      source_sha: ${{ github.sha }}

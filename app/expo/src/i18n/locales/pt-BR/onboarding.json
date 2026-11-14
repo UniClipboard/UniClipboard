@@ -1,0 +1,69 @@
+{
+  "pairing": {
+    "confirm": "Conectar a este computador",
+    "method": "Modo: sincronização padrão",
+    "details": "Detalhes da conexão",
+    "hideDetails": "Ocultar detalhes",
+    "connect": "Conectar",
+    "retry": "Tentar novamente",
+    "rescan": "Escanear novamente",
+    "later": "Configurar depois",
+    "connecting": "Verificando e salvando a conexão…",
+    "success": "Sua conexão está pronta",
+    "successBody": "A conexão foi verificada e os dados foram salvos. Você já pode começar.",
+    "scanFailed": "Não foi possível escanear. Verifique a permissão da câmera ou escaneie novamente o código no computador.",
+    "saveFailed": "Não foi possível concluir a configuração. Tente novamente."
+  },
+  "intro": {
+    "scan": "Escanear para parear",
+    "next": "Próximo",
+    "start": "Começar a usar",
+    "progress": "Página {{current}} de {{total}}",
+    "saveError": "Não foi possível salvar. Tente novamente.",
+    "history": {
+      "title": "Guarde e encontre depois",
+      "body": "Guarde textos, imagens e arquivos no histórico da área de transferência para encontrá-los quando precisar."
+    },
+    "sync": {
+      "title": "Conecte seus dispositivos",
+      "body": "Conecte seu celular e computador para enviar textos, imagens e arquivos entre seus próprios dispositivos."
+    },
+    "settings": {
+      "title": "Comece por aqui",
+      "body": "Use os recursos locais agora. Quando precisar sincronizar, escolha o modo e conecte seus dispositivos nas configurações."
+    }
+  },
+  "skip": "Pular",
+  "continue": "Continuar",
+  "setup": {
+    "title": "Começar a sincronizar",
+    "body": "Crie um novo espaço criptografado ou entre em um espaço existente com um convite.",
+    "create": "Criar novo espaço",
+    "join": "Entrar em um espaço"
+  },
+  "result": {
+    "title": "Seu espaço está pronto",
+    "body": "Este dispositivo agora pode sincronizar sua área de transferência com segurança pelo espaço.",
+    "enter": "Entrar"
+  },
+  "welcome": {
+    "wordmark": "UniClip",
+    "title": "A área de transferência\nem cada dispositivo",
+    "body": "Todos os seus dispositivos compartilham a mesma área de transferência — sem colaboração, sem nuvem."
+  },
+  "companion": {
+    "title": "O companheiro\ndo seu computador",
+    "body": "Conecte-se ao app UniClipboard que já está rodando no computador e tenha a área de transferência sempre à mão.",
+    "spec": "MODO COMPANHEIRO · CONECTA AO COMPUTADOR"
+  },
+  "action": {
+    "title": "Copiou, chegou",
+    "body": "Copie no computador e cole no celular; use o menu de compartilhamento para enviar qualquer coisa de volta.",
+    "types": "Texto · Link · Imagem · Arquivo",
+    "pair": "Escanear para parear",
+    "later": "Agora não",
+    "pile": {
+      "note": "Reunião\nQua 10:00\nAlinhar prazos"
+    }
+  }
+}

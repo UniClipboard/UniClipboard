@@ -1,0 +1,175 @@
+{
+  "keyboard": {
+    "title": "Keyboard",
+    "status": {
+      "done": "Done",
+      "undetectable": "Can't detect",
+      "notAdded": "Not added",
+      "on": "On",
+      "off": "Off",
+      "notChecked": "Not checked",
+      "detected": "Detected"
+    },
+    "hero": {
+      "title": "Your clips, where you type",
+      "description": "UniClip Keyboard shows what you copied on your other devices. Tap a clip to paste it into any app."
+    },
+    "almostThere": {
+      "title": "Almost there",
+      "description": "UniClip Keyboard is added. Turn on Full Access so it can show your clips."
+    },
+    "ready": {
+      "title": "Ready",
+      "description": "On, with Full Access"
+    },
+    "setup": {
+      "title": "Set up · {{done}} of 3",
+      "add": {
+        "title": "Add UniClip Keyboard",
+        "subtitle": "Settings › Apps › UniClip › Keyboards"
+      },
+      "fullAccess": {
+        "title": "Allow Full Access",
+        "subtitle": "So it can show your synced clips",
+        "path": "Keyboards › UniClip Keyboard › Allow Full Access",
+        "readsOnly": "Reads only clips UniClip has already synced",
+        "sendsOnly": "Sends only to devices in your space",
+        "systemWarning": "iOS shows a general warning when you turn this on."
+      },
+      "switch": {
+        "title": "Switch to it once",
+        "subtitle": "Confirms everything works",
+        "instructions": "Tap the field, then press and hold the globe key and choose UniClip Keyboard.",
+        "placeholder": "Tap to bring up the keyboard",
+        "detected": "Detected, with Full Access. You're all set.",
+        "stillOffHint": "If the keyboard shows “Full Access Required” instead, Full Access is still off."
+      }
+    },
+    "openSettings": "Open iOS Settings",
+    "openSettingsHint": "iOS doesn't let apps add keyboards for you. This page updates when you come back.",
+    "howToUse": {
+      "title": "How to use",
+      "switchTitle": "Switch keyboards",
+      "switchDescription": "In any app, press and hold the globe key and choose UniClip Keyboard.",
+      "tryLabel": "Try it here",
+      "tryPlaceholder": "Tap to bring up the keyboard"
+    },
+    "feedback": {
+      "title": "Key feedback",
+      "footer": "Changes take effect the next time you open the keyboard.",
+      "sound": "Key sound",
+      "haptic": "Haptic feedback"
+    },
+    "systemSettings": {
+      "row": "Keyboard settings in iOS",
+      "footer": "Remove the keyboard or turn off Full Access there."
+    }
+  },
+  "share": {
+    "title": "Share",
+    "testMessage": "Share test from UniClip 👋",
+    "hero": {
+      "title": "Send from any app",
+      "description": "Share something and pick UniClip. UniClip opens with the item ready, so you choose which devices get it."
+    },
+    "flow": {
+      "tapShare": "Tap Share",
+      "pickApp": "Pick UniClip",
+      "chooseDevices": "Choose devices"
+    },
+    "tryButton": "Try it now",
+    "worksWith": {
+      "title": "Works with",
+      "text": "Text",
+      "links": "Links",
+      "images": "Images",
+      "files": "Files"
+    },
+    "quickAccess": {
+      "title": "Quick access",
+      "footer": "Nothing to switch on. UniClip is in the share sheet as soon as it's installed.",
+      "favoritesRow": "Pin to Favorites",
+      "favoritesRowSubtitle": "Keep UniClip first in the app row · 4 steps"
+    },
+    "guide": {
+      "title": "Pin to Favorites",
+      "progress": "Step {{current}} of {{total}}",
+      "back": "Previous step",
+      "close": "Close",
+      "next": "Next step",
+      "done": "Done",
+      "openShareSheet": "Open share sheet",
+      "steps": {
+        "openSheet": {
+          "title": "Open any share sheet",
+          "description": "Tap Share in any app, or use Open share sheet below to practice with a sample."
+        },
+        "findMore": {
+          "title": "Scroll to More",
+          "description": "Swipe the row of app icons all the way to the left, then tap More at the end."
+        },
+        "addFavorite": {
+          "title": "Add UniClip to Favorites",
+          "description": "Tap Edit, then the green plus next to UniClip."
+        },
+        "moveToTop": {
+          "title": "Move it to the top",
+          "description": "Drag UniClip by its handle above the others, then tap Done."
+        }
+      },
+      "illustration": {
+        "noteTitle": "Meeting notes",
+        "noteSubtitle": "Notes · Plain text",
+        "airDrop": "AirDrop",
+        "messages": "Messages",
+        "notes": "Notes",
+        "reminders": "Reminders",
+        "more": "More",
+        "apps": "Apps",
+        "done": "Done",
+        "favorites": "Favorites",
+        "suggestions": "Suggestions"
+      }
+    }
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "package": {
+      "appVersion": "App version",
+      "format": "File format",
+      "zipArchive": "ZIP archive",
+      "logRange": "Log range",
+      "lastThreeDays": "Last 3 days",
+      "appLogs": "App logs",
+      "engineLogs": "Engine logs",
+      "shareAttempts": "Share attempt records",
+      "included": "Included",
+      "footer": "The ZIP contains redacted app logs, Engine logs, app state, and Share attempt records. Clipboard contents and credentials are excluded.",
+      "summary": "ZIP of the last 3 days, without clipboard content"
+    },
+    "action": {
+      "generate": "Export logs",
+      "sendTo": "Send to",
+      "preparing": "Preparing..."
+    },
+    "error": {
+      "title": "Couldn't create diagnostics",
+      "message": "Please try again later."
+    },
+    "warning": {
+      "engineLogsMissing": "Engine logs were not found, so the package has no Engine evidence. Restart UniClip and export again.",
+      "engineLogsUnreadable": "Some or all Engine logs were found but couldn't be read, so the package may be incomplete. Restart UniClip and export again.",
+      "engineLogsWrittenNotFound": "The Engine reports written logs, but the files are missing from disk. The package is incomplete; restart UniClip and export again.",
+      "networkLogsIncomplete": "Network logs may be incomplete: some files could not be flushed, read or verified. Only this process was flushed; other processes such as the keyboard were not."
+    },
+    "capture": {
+      "title": "Detailed diagnostics",
+      "start": "Start detailed recording (10 minutes)",
+      "stop": "Stop detailed recording",
+      "description": "Start recording before reproducing the issue, then export logs. Details stay on this device for a capture of up to 10 minutes. Earlier activity is not recovered, and other extensions are not enabled automatically.",
+      "remaining": "Recording, about {{count}} minutes left",
+      "failed": "Could not complete the action. Please try again.",
+      "unavailable": "Unavailable until the service is ready."
+    }
+  }
+}

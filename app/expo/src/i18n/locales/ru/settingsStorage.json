@@ -1,0 +1,53 @@
+{
+  "title": "Хранилище",
+  "cleanUp": "Очистить",
+  "setFailed": "Не удалось сохранить",
+  "cache": {
+    "usageLabel": "Занято кешем",
+    "cleared": "Кеш очищен",
+    "clearFailed": "Не удалось очистить кеш",
+    "clearDialogTitle": "Очистить кеш",
+    "clearDialogMessage": "Очистить папку кеша? Все кешированные файлы будут удалены.",
+    "sectionHeader": "Кеш",
+    "capLabel": "Лимит кеша",
+    "iosUsageLabel": "Занято",
+    "clearing": "Очистка…"
+  },
+  "log": {
+    "usageLabel": "Занято журналами",
+    "cleared": "Журналы очищены",
+    "clearFailed": "Не удалось очистить журналы",
+    "clearDialogTitle": "Очистить журналы",
+    "clearDialogMessage": "Очистить папку журналов? Все файлы журналов будут удалены."
+  },
+  "history": {
+    "usageLabel": "Занято историей",
+    "sectionTitle": "История",
+    "maxItemsLabel": "Максимум записей в истории",
+    "maxItemsHint": "Минимум 10 записей",
+    "maxItemsInvalid": "Введите число не меньше 10",
+    "autoDownloadLabel": "Автоскачивание изображений при просмотре",
+    "showCopyButtonLabel": "Показывать кнопку копирования для изображений",
+    "showCopyButtonHint": "Показывать кнопку копирования в буфер обмена на изображениях в истории"
+  },
+  "autoDownload": {
+    "wifi": "Только Wi-Fi",
+    "always": "Всегда",
+    "off": "Выключено"
+  },
+  "prefetch": {
+    "sectionHeader": "Предварительное скачивание",
+    "sectionFooter": "Если включено, новое содержимое незаметно кешируется в фоновом режиме — превью открываются мгновенно.",
+    "attachmentLabel": "Предварительно скачивать вложения",
+    "cellularLabel": "Также по мобильным данным"
+  },
+  "overview": {
+    "totalLabel": "Занято UniClip",
+    "usageTitle": "Использование"
+  },
+  "kind": {
+    "history": "История",
+    "cache": "Кэш",
+    "logs": "Журналы"
+  }
+}

@@ -1,0 +1,30 @@
+appId: app.uniclipboard.shell
+name: Expo shell selection and demo deletion
+---
+- launchApp:
+    clearState: true
+- assertVisible:
+    id: history-card-demo-1
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: home-menu
+      - tapOn:
+          id: home-menu-select
+      - tapOn:
+          id: history-card-demo-1
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - longPressOn:
+          id: history-card-demo-1
+      - tapOn: 选择|Select|Выбрать|Selecionar
+- takeScreenshot: selected
+- tapOn:
+    id: history-batch-delete
+- assertNotVisible:
+    id: history-card-demo-1
+- takeScreenshot: demo-deleted

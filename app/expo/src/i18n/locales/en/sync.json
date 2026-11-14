@@ -1,0 +1,9 @@
+{
+  "quickLoad": {
+    "uploading": "Uploading clipboard...",
+    "uploadSuccess": "Upload complete!",
+    "uploadFailed": "Upload failed",
+    "genericError": "Operation failed, please try again",
+    "unknownFile": "Unknown file"
+  }
+}

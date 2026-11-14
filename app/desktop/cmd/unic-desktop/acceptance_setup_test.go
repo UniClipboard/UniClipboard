@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Failure inventory: see docs/exec/0025-first-install-setup.md. This exercises
+// Failure inventory: see docs/exec/0026-first-install-setup.md. This exercises
 // the actual renderer with semantic controls, without native windows or secrets.
 func scenarioSetupPages(t *testing.T) {
 	eachGUISkin(t, func(t *testing.T, dark bool) {

@@ -1,6 +1,6 @@
-# 0025: Desktop first-install setup and v1 migration
+# 0026: Desktop first-install setup and v1 migration
 
-- Status: Implemented; nonvisual acceptance is recorded in the [execution receipt](../../exec/0025-first-install-setup.md). Software-view and macOS native complete/partial recording acceptance passed. Actual system credential prompts and remaining native scenarios/platforms are pending.
+- Status: Implemented; nonvisual acceptance is recorded in the [execution receipt](../../exec/0026-first-install-setup.md). Software-view and macOS native complete/partial recording acceptance passed. Actual system credential prompts and remaining native scenarios/platforms are pending.
 - Date: 2026-11-13
 - Scope: Desktop first-install experience for v2.
 - Related decision: [v1 history migration](0011-v1-history-migration.md).

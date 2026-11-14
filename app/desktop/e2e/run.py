@@ -32,7 +32,7 @@ def cases(base=HERE):
         if not re.fullmatch(r'[a-z][a-z0-9-]*', path.stem):
             raise ValueError('case IDs must use lowercase letters, digits and hyphens')
         fields, current = {}, None
-        for line in path.read_text().splitlines():
+        for line in path.read_text(encoding="utf-8").splitlines():
             if not line.startswith('#'):
                 break
             text = line[1:].strip()
@@ -49,7 +49,7 @@ def cases(base=HERE):
         spec = {name.lower(): ' '.join(fields[name]) for name in FIELDS}
         if spec['mode'] not in ('native', 'process', 'view'):
             raise ValueError(f'{path.name}: invalid Mode')
-        result.append(dict(spec, id=path.stem, script=path.read_text()))
+        result.append(dict(spec, id=path.stem, script=path.read_text(encoding="utf-8")))
     if not result:
         raise ValueError('no Desktop cases registered')
     # A registry entry without a declarative case (or vice versa) must fail preflight.
@@ -57,7 +57,7 @@ def cases(base=HERE):
     packages = {'desktopui': 'internal/desktopui', 'quickpanel': 'internal/quickpanel',
                 'gui': 'cmd/unic-desktop', 'startup': 'e2e'}
     for group, directory in packages.items():
-        source = (base.parent / directory / 'acceptance_test.go').read_text()
+        source = (base.parent / directory / 'acceptance_test.go').read_text(encoding="utf-8")
         registered.update((group, name) for name in re.findall(r't.Run\("([a-z][a-z0-9-]*)", scenario', source))
     declared = []
     for spec in result:
@@ -115,7 +115,7 @@ def freeze(destination):
 
 def write_json(path, value):
     temporary = path.with_name(path.name + '.tmp')
-    temporary.write_text(json.dumps(value, indent=2) + '\n')
+    temporary.write_bytes((json.dumps(value, indent=2) + '\n').encode("utf-8"))
     temporary.replace(path)
 
 
@@ -167,7 +167,7 @@ def report(out, manifest, specs):
                 body.append(f"<tr><td>{at:.2f}s</td><td>{esc(label)}</td><td>{esc(step['status'])}</td></tr>")
             body.append('</table>')
         body.append('</section>')
-    (out / 'index.html').write_text('\n'.join(body))
+    (out / 'index.html').write_text('\n'.join(body), encoding="utf-8")
 
 
 def run(specs, selected, output):
@@ -188,6 +188,8 @@ def run(specs, selected, output):
         wanted = [s for s in specs if s['id'] in selected]
         native = any(s['mode'] == 'native' for s in wanted)
         doctor(native)
+        if native:
+            manifest['recording_tools'] = {name: {'version': subprocess.check_output([name, '-version'], text=True).splitlines()[0], 'sha256': digest(Path(shutil.which(name)).resolve())} for name in ('ffmpeg', 'ffprobe')}
         print(f'Desktop E2E: {len(wanted)} selected cases; freezing source', flush=True)
         manifest['source_head'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
         manifest['worktree_dirty'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT))
@@ -205,6 +207,9 @@ def run(specs, selected, output):
             raise RuntimeError('case selection changed while taking the snapshot')
         manifest['go'] = subprocess.check_output(['go', 'version'], text=True).strip()
         manifest['platform'] = subprocess.check_output(['go', 'env', 'GOOS', 'GOARCH'], text=True).splitlines()
+        # The pinned Go toolchain has no race detector for Windows arm64.
+        race_flags = [] if manifest['platform'] == ['windows', 'arm64'] else ['-race']
+        manifest['race_detector'] = bool(race_flags)
         binaries = private / 'bin'
         binaries.mkdir()
         manifest['binary_sha256'] = {}
@@ -212,7 +217,7 @@ def run(specs, selected, output):
             for name, tags in [('unicd', []), ('unic-desktop', ['-tags', 'desktop_e2e'])]:
                 print('BUILD ' + name, flush=True)
                 target = binaries / (name + ('.exe' if os.name == 'nt' else ''))
-                subprocess.run(['go', 'build', '-race', '-buildvcs=false', *tags, '-o', str(target),
+                subprocess.run(['go', 'build', *race_flags, '-buildvcs=false', *tags, '-o', str(target),
                                 './app/' + ('service' if name == 'unicd' else 'desktop') + '/cmd/' + name], cwd=snapshot, check=True)
                 manifest['binary_sha256'][name] = digest(target)
         manifest['desktop_build_tags'] = ['desktop_e2e'] if native else []
@@ -220,7 +225,7 @@ def run(specs, selected, output):
         environment.update(TMPDIR=str(private), UNIC_DESKTOP_E2E='1', UNIC_DESKTOP_E2E_BIN=str(binaries),
                            UNIC_DESKTOP_E2E_SOURCE_HEAD=manifest['source_head'], UNIC_DESKTOP_E2E_ARTIFACTS=str(out / 'cases'), UNIC_DESKTOP_E2E_PRIVATE=str(private / 'cases'))
         expression = '^TestDesktopScenarios$/^(' + '|'.join(selected) + ')$'
-        command = ['go', 'test', '-race', './app/desktop/e2e', '-run', expression, '-parallel', '1', '-count=1', '-timeout=45m', '-v']
+        command = ['go', 'test', *race_flags, './app/desktop/e2e', '-run', expression, '-parallel', '1', '-count=1', '-timeout=45m', '-v']
         with (private / 'go-test.log').open('w') as log:
             process = subprocess.Popen(command, cwd=snapshot, env=environment, stdout=log, stderr=subprocess.STDOUT,
                                        start_new_session=os.name == 'posix')
@@ -235,7 +240,7 @@ def run(specs, selected, output):
                     if spec['id'] in announced or not result_path.is_file():
                         continue
                     try:
-                        current = json.loads(result_path.read_text())
+                        current = json.loads(result_path.read_text(encoding="utf-8"))
                     except (OSError, json.JSONDecodeError):
                         continue
                     print(current['status'] + ' ' + spec['id'], flush=True)
@@ -245,12 +250,12 @@ def run(specs, selected, output):
         for spec in wanted:
             result_path = out / 'cases' / spec['id'] / 'result.json'
             if result_path.is_file():
-                manifest['cases'][spec['id']] = json.loads(result_path.read_text())
+                manifest['cases'][spec['id']] = json.loads(result_path.read_text(encoding="utf-8"))
             else:
                 manifest['cases'][spec['id']] = {'status': 'FAIL', 'failure': 'case emitted no result; a skipped test cannot pass'}
         if code != 0 or any(manifest['cases'][s['id']]['status'] != 'PASS' for s in wanted):
             raise RuntimeError('one or more Desktop cases failed; inspect case evidence')
-        (out / 'CASES.md').write_text(catalogue(specs))
+        (out / 'CASES.md').write_text(catalogue(specs), encoding="utf-8")
         manifest['status'] = 'PASS'
     except (Exception, KeyboardInterrupt) as error:
         manifest['status'] = 'FAIL'
@@ -288,14 +293,16 @@ def run(specs, selected, output):
             files = sorted(p for p in out.rglob('*') if p.is_file() and p.name not in ('SHA256SUMS', 'manifest.json'))
             sums = ''.join(digest(p) + '  ' + p.relative_to(out).as_posix() + '\n' for p in files)
             sums += hashlib.sha256(final_bytes).hexdigest() + '  manifest.json\n'
-            (out / 'SHA256SUMS').write_text(sums)
+            (out / 'SHA256SUMS').write_text(sums, encoding="utf-8")
             # Publish the final verdict only after the report and evidence checksums exist.
             write_json(out / 'manifest.json', manifest)
+            if digest(out / 'manifest.json') != hashlib.sha256(final_bytes).hexdigest():
+                raise RuntimeError('final manifest checksum mismatch')
         except Exception as error:
             manifest['status'] = 'FAIL'
             manifest['failure'] = 'evidence publication failed: ' + str(error)
             write_json(out / 'manifest.json', manifest)
-            (out / 'index.html').write_text('<!doctype html><h1>Desktop E2E: FAIL</h1><p>' + html.escape(manifest['failure']) + '</p><a href="manifest.json">Manifest</a>')
+            (out / 'index.html').write_text('<!doctype html><h1>Desktop E2E: FAIL</h1><p>' + html.escape(manifest['failure']) + '</p><a href="manifest.json">Manifest</a>', encoding="utf-8")
         print(f"{manifest['status']}: {out / 'index.html'}")
     return 0 if manifest['status'] == 'PASS' else 1
 
@@ -313,8 +320,8 @@ def main():
         content = catalogue(specs)
         path = HERE / 'CASES.md'
         if args.update:
-            path.write_text(content)
-        elif not path.exists() or path.read_text() != content:
+            path.write_text(content, encoding="utf-8")
+        elif not path.exists() or path.read_text(encoding="utf-8") != content:
             raise RuntimeError('CASES.md is stale; run python3 app/desktop/e2e/run.py catalog --update')
         return 0
     if args.action == 'list':

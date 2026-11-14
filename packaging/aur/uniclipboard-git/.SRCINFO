@@ -1,0 +1,23 @@
+pkgbase = uniclipboard-git
+	pkgdesc = Cross-device clipboard synchronization
+	pkgver = 2.0.0.r212.g1a6e8d617
+	pkgrel = 1
+	url = https://uniclipboard.app
+	arch = x86_64
+	arch = aarch64
+	license = AGPL-3.0-only
+	makedepends = git
+	makedepends = go
+	makedepends = python
+	depends = gtk3
+	depends = libappindicator-gtk3
+	provides = uniclipboard
+	conflicts = uniclipboard
+	conflicts = uniclipboard-bin
+	options = !strip
+	options = !debug
+	options = !lto
+	source = uniclipboard::git+https://github.com/UniClipboard/UniClipboard.git#branch=v2
+	sha256sums = SKIP
+
+pkgname = uniclipboard-git

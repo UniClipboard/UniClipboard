@@ -1,0 +1,270 @@
+{
+  "search": {
+    "recordCount": "{{count}} 条记录",
+    "allTypes": "全部类型",
+    "anyTime": "不限时间",
+    "clearFilters": "清除筛选",
+    "reset": "重置搜索",
+    "loading": "搜索中…",
+    "resultCount": "{{count}} 项结果",
+    "emptyTitle": "没有找到匹配内容",
+    "emptyTitleQuery": "没有“{{query}}”的结果",
+    "emptyDescription": "当前搜索条件下没有记录。",
+    "emptyDescriptionFilters": "在 {{filters}} 中没有找到匹配内容",
+    "clear": "清除",
+    "clearFiltersKeepQuery": "清除筛选,保留关键词",
+    "shortcut": {
+      "kind": "按类型",
+      "date": "按时间",
+      "source": "按来源"
+    },
+    "suggestions": "建议"
+  },
+  "empty": {
+    "unconfigured": {
+      "title": "尚未加入 P2P 空间",
+      "description": "使用邀请码加入空间即可继续同步。本地历史会继续保留。"
+    },
+    "connecting": {
+      "title": "正在连接…",
+      "description": "正在连接 {{space}} 中的设备。"
+    },
+    "online": {
+      "title": "空空如也",
+      "description": "复制或添加内容后，会出现在这里。"
+    },
+    "offline": {
+      "title": "{{space}} 中的设备暂时离线",
+      "description": "其他设备当前不可达，请检查它们的网络状态。"
+    },
+    "error": {
+      "title": "同步需要处理",
+      "description": "同步已暂停，请检查空间和网络状态。"
+    }
+  },
+  "topBar": {
+    "selectedCount": "已选择 {{n}} 项",
+    "deselectAll": "取消全选",
+    "searchPlaceholder": "搜索"
+  },
+  "a11y": {
+    "addContent": "添加内容",
+    "more": "更多",
+    "closeMenu": "关闭菜单",
+    "closeCamera": "关闭相机",
+    "switchCamera": "切换前后摄像头",
+    "toggleFlash": "切换闪光灯",
+    "takePicture": "拍照",
+    "startRecording": "开始录像",
+    "stopRecording": "停止录像",
+    "search": "搜索历史记录",
+    "clearSearch": "清除搜索文字",
+    "searchFilters": "筛选搜索结果",
+    "toggleSelection": "切换这条记录的选中状态",
+    "copyItem": "复制这条记录，长按查看更多操作",
+    "openItemDetail": "打开详情，双击复制"
+  },
+  "fab": {
+    "takePhoto": "拍照",
+    "pickImage": "相册",
+    "pickFile": "选择文件",
+    "uploadClipboard": "上传剪贴板",
+    "syncNow": "立即同步",
+    "photoMode": "照片",
+    "videoMode": "录像"
+  },
+  "toast": {
+    "copied": "已复制到剪贴板",
+    "copiedLocal": "已复制到本机",
+    "copiedAutoPushEnabled": "已复制，自动推送已开启",
+    "copyFailed": "复制失败",
+    "copiedPlainText": "已复制为纯文本",
+    "savedToGallery": "已保存到相册",
+    "saveFailed": "保存失败",
+    "savedFile": "已保存文件",
+    "deleted": "已删除",
+    "deletedCount": "已删除 {{count}} 项",
+    "copiedSelected": "已复制所选内容",
+    "syncDone": "同步完成",
+    "syncFailed": "同步失败",
+    "sentToPeers": "已发送到其他设备",
+    "uploadFailed": "上传失败",
+    "savedLocally": "已保存到本地",
+    "p2pDelivery": {
+      "delivered": "已送达到其他设备",
+      "partial": "部分送达：送达 {{accepted}}，已存在 {{duplicate}}，离线 {{offline}}，失败 {{errored}}，等待 {{pending}}",
+      "offline": "已保存在本机，其他设备离线",
+      "failed": "已保存在本机，发送失败",
+      "pending": "已保存在本机，正在发送"
+    },
+    "pickFileFailed": "选择文件失败",
+    "pickImageFailed": "选择图片失败",
+    "cameraPermissionNeeded": "需要相机权限",
+    "micPermissionNeeded": "需要麦克风权限",
+    "takePhotoFailed": "拍照失败",
+    "takeVideoFailed": "录像失败",
+    "cameraUnavailable": "相机不可用",
+    "sendToUnavailable": "这条内容暂时无法发送"
+  },
+  "deleteConfirm": {
+    "singleTitle": "删除这条历史记录？",
+    "singleMessage": "删除后将不再显示这条记录。",
+    "batchTitle": "删除所选历史记录？",
+    "batchMessage": "将删除所选的 {{count}} 条记录。"
+  },
+  "detail": {
+    "placeholderTitle": "选择一项查看详情",
+    "placeholderDesc": "从左侧列表点选任意条目，在这里查看完整内容并操作。",
+    "fromDevice": "来自 {{device}}",
+    "unknownDevice": "本机",
+    "quickActions": {
+      "select": "选择",
+      "open": "打开",
+      "save": "保存"
+    },
+    "close": "关闭详情",
+    "view": "查看详情",
+    "stats": {
+      "chars": "{{count}} 字符",
+      "lines": "{{count}} 行"
+    },
+    "fullUrl": "完整链接",
+    "imageUnavailable": "图片尚未下载到本机",
+    "info": {
+      "dimensions": "尺寸",
+      "format": "格式",
+      "size": "大小",
+      "fileName": "文件名",
+      "fileType": "类型",
+      "localState": "本地状态",
+      "time": "时间",
+      "localReady": "已下载到本机",
+      "localMissing": "尚未下载到本机"
+    },
+    "sendTo": "发送到",
+    "star": "收藏"
+  },
+  "rail": {
+    "filters": "筛选",
+    "all": "全部"
+  },
+  "nav": {
+    "clipboard": "剪贴板",
+    "devices": "设备",
+    "settings": "设置"
+  },
+  "card": {
+    "copied": "已复制"
+  },
+  "receive": {
+    "title": "传输结果",
+    "menuEntry": "传输结果",
+    "empty": "当前没有正在接收的文件。",
+    "stale": "显示的是最近一次读取到的状态，暂时无法读取最新状态。",
+    "entryTitle": "传输 {{index}}",
+    "bytes": "已保存 {{completed}} / {{total}}",
+    "members": "文件夹内已保存 {{completed}} / {{total}} 个文件",
+    "item": {
+      "file": "文件 {{index}}",
+      "content": "内容",
+      "directory": "文件夹（作为整体接收）",
+      "unknown": "项目"
+    },
+    "state": {
+      "pending": "等待中",
+      "transferring": "接收中",
+      "completed": "已保存",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "unknown": "未知"
+    },
+    "attempt": {
+      "receiving": "接收中",
+      "committing": "保存中",
+      "cancelling": "取消中",
+      "failing": "正在停止",
+      "completed": "全部已保存",
+      "failed": "部分项目失败",
+      "cancelled": "已取消",
+      "unknown": "未知"
+    },
+    "reason": {
+      "network_unavailable": "网络不可用",
+      "timed_out": "超时",
+      "access_denied": "访问被拒绝",
+      "storage_unavailable": "存储不可用",
+      "integrity_check_failed": "完整性校验失败",
+      "interrupted": "已中断",
+      "unknown": "未知原因"
+    },
+    "action": {
+      "cancel": "取消接收",
+      "retrySelected": "重试所选（{{count}}）"
+    },
+    "notice": {
+      "retryAccepted": "已开始重试。只有显示“已保存”的项目才算保存成功。",
+      "alreadyReceiving": "此传输已在接收中。",
+      "superseded": "已有更新的尝试取代了这一次，列表已刷新。",
+      "retryCancellationIncomplete": "上一次尝试仍在结束中，请稍后再试。",
+      "sourceUnavailable": "来源已不可用，无法重试这些项目。已保存的文件会保留。",
+      "accessDenied": "访问被拒绝，无法重试这些项目。",
+      "cancelled": "已取消接收。",
+      "cancellationIncomplete": "仍在取消中，清理尚未完成。",
+      "notReceiving": "此传输当前没有在接收。",
+      "tooLate": "已来不及取消，传输正在结束。",
+      "alreadyTerminal": "此传输已经结束。",
+      "requestFailed": "请求未能完成。"
+    }
+  },
+  "outbound": {
+    "title": "发送结果",
+    "target": "目标 {{index}}",
+    "item": "项目 {{index}}",
+    "unknown": "未知",
+    "bytes": "{{completed}} / {{total}} 字节",
+    "unavailable": "无法确认当前结果。之前的事实可能已过期。",
+    "freshness": "证据：{{value}}",
+    "freshnessUnavailable": "无法确认时效",
+    "lastPhase": "最后已知阶段：{{value}}",
+    "round": "第 {{round}} 轮",
+    "reconcile": "核对已有传输",
+    "requestNew": "请求新传输",
+    "confirmNew": "确认新传输",
+    "cancel": "取消",
+    "duplicateWarning": "新传输可能在此设备上产生重复文件。",
+    "newRequested": "已请求新传输；尚未确认交付",
+    "noNewRequest": "未请求新传输",
+    "freshnessValue": {
+      "waiting": "等待",
+      "live": "当前",
+      "unconfirmed": "未确认",
+      "settled": "已结算"
+    },
+    "state": {
+      "no_items": "无文件项目",
+      "waiting": "等待",
+      "in_progress": "进行中",
+      "transferring": "传输中",
+      "processing": "处理中",
+      "retrying": "重试中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "unconfirmed": "结果未确认",
+      "partially_failed": "部分失败",
+      "partially_cancelled": "部分取消",
+      "partially_unconfirmed": "部分未确认"
+    },
+    "reconciliation": {
+      "running": "已有传输仍在运行",
+      "settled": "已采用已有结果",
+      "superseded": "已采用当前替代任务",
+      "not_retained": "未保留证据",
+      "unsupported": "对端不支持核对",
+      "unreachable": "无法连接对端",
+      "busy": "核对尚未完成"
+    },
+    "unknownDevice": "未知设备",
+    "entry": "发送任务 {{index}}"
+  }
+}

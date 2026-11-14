@@ -68,6 +68,7 @@ func (q *quickLive) poll(p *quickPanelState) {
 		l.poll(d)
 	}
 	if q.seen != l.appliedSerial || q.contentSeen != l.contentSerial {
+		resultsChanged := q.seen != l.appliedSerial
 		q.seen, q.contentSeen = l.appliedSerial, l.contentSerial
 		old := ""
 		if a := p.active(); a != nil {
@@ -95,8 +96,10 @@ func (q *quickLive) poll(p *quickPanelState) {
 				break
 			}
 		}
-		p.hovered = -1
-		p.schedulePreview()
+		if resultsChanged {
+			p.hovered = -1
+			p.schedulePreview()
+		}
 		p.update()
 	}
 	if l.readError != "" {

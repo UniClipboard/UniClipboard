@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,11 +14,13 @@ import (
 )
 
 // Failure cases: no intermediate entry position, instant removal on close,
-// a retained invisible modal after exit, or motion under Reduce Motion.
+// a retained invisible modal after exit, motion under Reduce Motion, or an
+// inline tag editor that opens a Sheet or mutates tags after cancellation.
 func scenarioSheetMotion(t *testing.T) {
 	t.Run("resize", scenarioSheetResizeMotion)
 	type receipt struct {
 		Theme, Sheet, Close string
+		Presentation        string
 		EnterY, RestY       float32
 		ExitPixels          int
 		ReducedMotion       bool
@@ -63,11 +66,50 @@ func scenarioSheetMotion(t *testing.T) {
 							t.Fatal(err)
 						}
 						tt.Advance(40 * time.Millisecond)
+						if sheet == "添加标签" {
+							if _, ok := tt.AccessByRole(ui.RoleDialog, sheet); ok {
+								t.Fatal("inline tag assignment opened a Sheet")
+							}
+							editor, ok := tt.AccessByRole(ui.RoleComboBox, "标签名")
+							if !ok {
+								t.Fatal("missing inline tag editor")
+							}
+							originalTags := slices.Clone(d.current().tags)
+							const name = "motion-inline-tag"
+							tt.Type(name)
+							switch closeBy {
+							case "done":
+								tt.Key(0, ui.KeyEnter)
+							case "escape":
+								tt.Key(0, ui.KeyEscape)
+							case "backdrop":
+								tt.ClickAt(1090, 710)
+							}
+							tt.Advance(350 * time.Millisecond)
+							if _, ok := tt.AccessByRole(ui.RoleComboBox, "标签名"); ok {
+								t.Fatal("inline tag editor retained after dismissal")
+							}
+							if _, ok := tt.AccessByRole(ui.RoleDialog, sheet); ok {
+								t.Fatal("inline tag dismissal left a modal")
+							}
+							confirmed := closeBy == "done"
+							if (d.tagByID(name) != nil) != confirmed || slices.Contains(d.current().tags, name) != confirmed {
+								t.Fatal("inline tag confirmation/cancellation changed the wrong state")
+							}
+							if !confirmed && !slices.Equal(originalTags, d.current().tags) {
+								t.Fatal("inline tag cancellation changed existing assignments")
+							}
+							results = append(results, receipt{Theme: theme, Sheet: sheet, Close: closeBy, Presentation: "inline", ReducedMotion: reduced, EnterY: editor.Bounds.Y})
+							if err := tt.Click("管理标签"); err != nil {
+								t.Fatalf("inline editor blocked input after dismissal: %v", err)
+							}
+							return
+						}
 						entering, ok := tt.AccessByRole(ui.RoleDialog, sheet)
 						if !ok {
 							t.Fatal("missing sheet")
 						}
-						r := receipt{Theme: theme, Sheet: sheet, Close: closeBy, ReducedMotion: reduced, EnterY: entering.Bounds.Y}
+						r := receipt{Theme: theme, Sheet: sheet, Close: closeBy, Presentation: "sheet", ReducedMotion: reduced, EnterY: entering.Bounds.Y}
 						results = append(results, r)
 						at := len(results) - 1
 						if reduced && entering.Bounds.Y != 0 {

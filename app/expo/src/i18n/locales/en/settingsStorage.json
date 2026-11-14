@@ -1,0 +1,53 @@
+{
+  "title": "Storage",
+  "cleanUp": "Clean up",
+  "setFailed": "Failed to save setting",
+  "cache": {
+    "usageLabel": "Cache usage",
+    "cleared": "Cache cleared",
+    "clearFailed": "Failed to clear cache",
+    "clearDialogTitle": "Clear cache",
+    "clearDialogMessage": "Are you sure you want to clear the cache directory? This will delete all cached files.",
+    "sectionHeader": "Cache",
+    "capLabel": "Cache limit",
+    "iosUsageLabel": "Cache usage",
+    "clearing": "Clearing…"
+  },
+  "log": {
+    "usageLabel": "Log usage",
+    "cleared": "Logs cleared",
+    "clearFailed": "Failed to clear logs",
+    "clearDialogTitle": "Clear logs",
+    "clearDialogMessage": "Are you sure you want to clear the log directory? This will delete all log files."
+  },
+  "history": {
+    "usageLabel": "History usage",
+    "sectionTitle": "History",
+    "maxItemsLabel": "Maximum history entries",
+    "maxItemsHint": "Minimum is 10 entries",
+    "maxItemsInvalid": "Please enter a number greater than or equal to 10",
+    "autoDownloadLabel": "Auto-download images when browsing",
+    "showCopyButtonLabel": "Show copy button for images",
+    "showCopyButtonHint": "Show a copy-to-clipboard button on image items in history"
+  },
+  "autoDownload": {
+    "wifi": "Wi-Fi only",
+    "always": "Always",
+    "off": "Off"
+  },
+  "prefetch": {
+    "sectionHeader": "Prefetch",
+    "sectionFooter": "When enabled, new content is cached silently in the background so previews open instantly.",
+    "attachmentLabel": "Prefetch attachments",
+    "cellularLabel": "Prefetch on cellular too"
+  },
+  "overview": {
+    "totalLabel": "Used by UniClip",
+    "usageTitle": "Usage"
+  },
+  "kind": {
+    "history": "History",
+    "cache": "Cache",
+    "logs": "Logs"
+  }
+}

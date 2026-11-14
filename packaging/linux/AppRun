@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+APPDIR=${APPDIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}
+export UNIC_INSTALL_FORMAT=appimage
+exec "$APPDIR/usr/lib/uniclipboard/unic-desktop" "$@"

@@ -2,12 +2,17 @@ name: Release CLI
 on:
   workflow_dispatch:
     inputs:
+      candidate_run_id:
+        type: string
+        default: ''
+        description: Publish exact files from an already accepted canonical CLI build
       channel:
         type: choice
         options: [alpha, stable]
         required: true
 permissions:
   contents: write
+  actions: read
   id-token: write
 concurrency:
   group: release-cli
@@ -27,7 +32,14 @@ jobs:
         id: resume
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT"
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+        run: |
+          if [ -n "$CANDIDATE_RUN" ]; then
+            python3 tools/release/cli_candidate.py --run-id "$CANDIDATE_RUN" --output dist/npm --require-macos-signing
+            echo "staged=true" >> "$GITHUB_OUTPUT"
+          else
+            python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT"
+          fi
       - uses: actions/upload-artifact@v4
         if: steps.resume.outputs.staged == 'true'
         with:
@@ -43,6 +55,8 @@ jobs:
       distribution: true
     secrets:
       POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
   publish:
     needs: [resolve, build]
     if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true') }}

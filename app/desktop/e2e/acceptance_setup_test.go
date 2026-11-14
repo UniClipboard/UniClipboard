@@ -19,7 +19,7 @@ import (
 	"github.com/uniclipboard/unic/internal/v1migration/v1fixture"
 )
 
-// Failure inventory is specified in docs/exec/0025-first-install-setup.md.
+// Failure inventory is specified in docs/exec/0026-first-install-setup.md.
 // This scenario uses actual encrypted source data, target storage and service IPC.
 func scenarioFirstInstallSetup(t *testing.T) {
 	ctx := context.Background()

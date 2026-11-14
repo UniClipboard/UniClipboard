@@ -1,0 +1,55 @@
+{
+  "file": {
+    "imageOnly": "Só é possível salvar imagens na galeria"
+  },
+  "contentType": {
+    "text": "Texto",
+    "image": "Imagem",
+    "file": "Arquivo",
+    "group": "Grupo de arquivos",
+    "unknown": "Desconhecido"
+  },
+  "contentPlaceholder": {
+    "image": "[Imagem]",
+    "file": "[Arquivo]",
+    "group": "[Grupo de arquivos]"
+  },
+  "copy": {
+    "copied": "Copiado para a área de transferência",
+    "copiedImage": "Imagem copiada para a área de transferência",
+    "unsupportedType": "Cópia rápida não é compatível com este tipo",
+    "failed": "Falha ao copiar",
+    "textTooLarge": "Texto grande demais para copiar para a área de transferência (excede o limite do sistema)",
+    "failedWithReason": "Falha ao copiar: {{reason}}",
+    "unknownError": "Erro desconhecido",
+    "cannotReadFullText": "Não foi possível ler o texto completo"
+  },
+  "share": {
+    "dialogTitle": "Compartilhar arquivo"
+  },
+  "refresh": {
+    "failed": "Falha ao atualizar"
+  },
+  "connect": {
+    "failed": "Falha na conexão",
+    "cannotReach": "Não foi possível conectar aos outros dispositivos"
+  },
+  "notification": {
+    "uploaded": "Enviado",
+    "downloaded": "Baixado",
+    "fileDownloaded": "Arquivo baixado"
+  },
+  "sync": {
+    "networkErrorQueued": "Erro de rede, adicionado à fila: {{error}}"
+  },
+  "upload": {
+    "failedSavedLocal": "Falha no envio; conteúdo salvo localmente"
+  },
+  "apk": {
+    "hashMismatch": "Falha na verificação do hash do APK: esperado {{expected}}, obtido {{actual}}"
+  },
+  "log": {
+    "noFilesToExport": "Nenhum arquivo de log para exportar",
+    "storagePermissionDenied": "Permissão de armazenamento não concedida"
+  }
+}

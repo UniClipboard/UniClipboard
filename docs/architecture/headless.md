@@ -5,6 +5,7 @@ paths:
   - internal/localapi
   - internal/localconfig
   - internal/localpaths
+  - internal/releaseinfo
   - internal/servicelifecycle
   - internal/servicelaunch
   - app/desktop/internal/lifecycle
@@ -20,7 +21,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: f8d5a41544932c2ca2bf4a9a2c230ee5db939353
+verified: c0e1b63c75f3b25f616ad9444ca0f15092a6e354
 ---
 # Headless service and desktop integration
 
@@ -34,6 +35,7 @@ The product has three runtime programs and two development distributions.
 The headless distribution includes `unic` and `unicd`.
 The desktop distribution includes those same binary files plus `unic-desktop`.
 Both archives expose `uniclip` as an alias of `unic`.
+Production Desktop staging copies an accepted exact CLI pair into an application-private directory. Its format constructors and remaining release gates are described in [releases](releases.md#desktop-staging-and-package-definitions).
 On macOS/Linux, `uniclip` is a relative symbolic link to the sibling `unic` file; tar preserves the link.
 On Windows, `uniclip.cmd` invokes the sibling `unic.exe` and preserves arguments and its exit code without requiring symbolic-link privileges.
 The packaging manifest records the alias separately from executable hashes. Moving an extracted installation keeps the alias valid.
@@ -154,9 +156,9 @@ See the [local service contract](../contracts/local-service-contract.md),
 ## Gaps
 
 Native macOS, Windows and Linux clipboard acceptance remains separate from process fixtures.
-Signed platform installers, standalone service-manager registration and store publication are not supplied by the archive builder.
+The development archive builder does not supply signed platform installers, standalone service-manager registration or store publication. Separate Desktop format construction does not establish those release gates.
 The normal desktop registers login startup through mygo. macOS requires an application bundle.
-The flat binary archives are not macOS application bundles.
+The flat development binary archives are not macOS application bundles. The production Desktop stager constructs a macOS bundle, but signing/notarization acceptance and a selected public CLI lock remain open.
 A temporary service gives no continuous reception between CLI invocations; run `unicd` or the desktop for that.
 Temporary transfer has no GUI entry. This follow-up remains separate from the archived command-surface and host implementation. The page's reply (`push`) is not supported. The production code service for `uc-web-try` tickets is not verified; links work without it.
 Closing a desktop login session does not promise service survival; that depends on its service manager.
@@ -226,3 +228,12 @@ The container-based production acceptance job trusts only its checked-out reposi
 `unic send --to all -f /absolute/path/to/directory` sends one directory selection through paired devices. Multiple file and directory arguments form one batch. `unic history send REF --to DEVICE|all` prepares a source reference or resends a retained immutable snapshot. It does not restore the item to the local clipboard. Directory arguments require `--to`; temporary code/link transfers continue to accept ordinary files only.
 
 Directory source preparation runs in Engine outside clipboard polling. Async local submissions expose preparation stages and explicit cancellation. Client disconnection does not cancel admitted work. A host-owned cancellation context and `DELETE /v1/submissions/{request_id}` cancel the operation without replay. A cancellation after local commit preserves the committed history and cancels remaining transmission where possible. See the [local service contract](../contracts/local-service-contract.md) and [directory contract](../contracts/directory-contract.md).
+
+## Installation paths and development isolation
+
+`UNIC_HOME` explicitly selects the data directory and takes precedence over portable/default paths.
+Without it, a regular `portable.dat` file beside the resolved executable selects its sibling `data/` directory. A marker symlink or directory is rejected.
+All bundled programs use the same portable resolver. `UNIC_SOCK` remains an explicit socket override; otherwise the socket remains inside the selected data directory and retains native Unix-socket path limits.
+Released executables default to the user configuration directory's `unic/`. Version-`dev` executables default to `unic-development/`.
+The raw Desktop development entry uses `UniClipboard Development` for single-instance identity; production staging selects `UniClipboard`.
+These paths are separate from v1 data. Program replacement never imports v1 history or credentials automatically.

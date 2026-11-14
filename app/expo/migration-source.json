@@ -1,0 +1,1874 @@
+{
+  "repository": "https://github.com/UniClipboard/UniClip",
+  "commit": "ac90f94805a9f2003f6e319aa84484cf0bd615c9",
+  "license": "MIT",
+  "scope": "Presentation only. Runtime composition and controllers are replaced with explicit demo state.",
+  "files": [
+    {
+      "path": ".gitignore",
+      "upstreamPath": ".gitignore",
+      "upstreamSha256": "c424dd29fcf4368d970bbef1d2c533587f228b19a4bf2d835d2e60b99c311626",
+      "adapted": true
+    },
+    {
+      "path": ".nvmrc",
+      "upstreamPath": ".nvmrc",
+      "upstreamSha256": "b2aec884ec0d77122defe641079e30dedc8ffbe11edd5ec299e768d1c6b0dadc",
+      "adapted": true
+    },
+    {
+      "path": "AGENTS.md",
+      "upstreamPath": "AGENTS.md",
+      "upstreamSha256": "c26b89781a56a2a57c17cafb008f4b6f256778577aac933d137e79fa77032c7d",
+      "adapted": true
+    },
+    {
+      "path": "App.tsx",
+      "upstreamPath": "App.tsx",
+      "upstreamSha256": "d71a800ea7f8a08f23c00a7aad6dff52016a608316b3b230d978677168ff6112",
+      "adapted": true
+    },
+    {
+      "path": "LICENSE",
+      "upstreamPath": "LICENSE",
+      "upstreamSha256": "f385a399465c4a95e2e897ba26bbe022f17450c7058ca9ea38f6363ecd265088",
+      "adapted": false
+    },
+    {
+      "path": "README.md",
+      "upstreamPath": "README.md",
+      "upstreamSha256": "6437b3b67691cc57385767823aba9d12a821a60bcd0312f36dfc58483aafbe40",
+      "adapted": true
+    },
+    {
+      "path": "app.json",
+      "upstreamPath": "app.json",
+      "upstreamSha256": "a146052a6e7146f40142c53b6d9bb59167dfda10c855baa6dd0bf168c7ad228c",
+      "adapted": true
+    },
+    {
+      "path": "assets/adaptive-icon-bg.png",
+      "upstreamPath": "assets/adaptive-icon-bg.png",
+      "upstreamSha256": "43c58f3b6a5e3977b84b30aef9bf494d34d966ccc10a704f6c39f990648c824c",
+      "adapted": false
+    },
+    {
+      "path": "assets/adaptive-icon-mono.png",
+      "upstreamPath": "assets/adaptive-icon-mono.png",
+      "upstreamSha256": "81766659c914d70d78d3aaee19d573653b014b955767378ce1cf347c7a717780",
+      "adapted": false
+    },
+    {
+      "path": "assets/adaptive-icon.png",
+      "upstreamPath": "assets/adaptive-icon.png",
+      "upstreamSha256": "81766659c914d70d78d3aaee19d573653b014b955767378ce1cf347c7a717780",
+      "adapted": false
+    },
+    {
+      "path": "assets/icon.png",
+      "upstreamPath": "assets/icon.png",
+      "upstreamSha256": "9d50ad379c403c80c1309088a0f8b60ce1c1a981725218076e0173d0a6d9f16d",
+      "adapted": false
+    },
+    {
+      "path": "assets/onboarding-device-sync.png",
+      "upstreamPath": "assets/onboarding-device-sync.png",
+      "upstreamSha256": "d9240fc1f9ba0d3acf405e272fd5c31389fa2a4c7eb306f8bae1f42c278093c5",
+      "adapted": false
+    },
+    {
+      "path": "assets/onboarding-history.png",
+      "upstreamPath": "assets/onboarding-history.png",
+      "upstreamSha256": "19a19607b66a4068945dc035cebce7a3f8e3639ac2bbf3d2f8f1c0421cf64192",
+      "adapted": false
+    },
+    {
+      "path": "assets/onboarding-scan-pair.png",
+      "upstreamPath": "assets/onboarding-scan-pair.png",
+      "upstreamSha256": "739f6f7ee79b73e4b2c58e47c1434e5c97f534dc3c1f3526ff34aee66a3756fb",
+      "adapted": false
+    },
+    {
+      "path": "babel.config.js",
+      "upstreamPath": "babel.config.js",
+      "upstreamSha256": "44c1c55a5d39b301a2f50dd102ec192f35d40228d37c2c00b9c6987e9e4ff33b",
+      "adapted": true
+    },
+    {
+      "path": "e2e/README.md",
+      "upstreamPath": "e2e/README.md",
+      "upstreamSha256": "ff7feb49a1b8b0dc5d4cc0f4fa0bc10d96eada0b6f832b227dcc26a55190c14e",
+      "adapted": true
+    },
+    {
+      "path": "index.ts",
+      "upstreamPath": "index.ts",
+      "upstreamSha256": "1fd1d81cf741e20de7b72cd8b597eacaa2a65fd268c6cf1f95f61a7106372d3a",
+      "adapted": true
+    },
+    {
+      "path": "ios-shims/expo-ui-jetpack-compose-modifiers.ts",
+      "upstreamPath": "ios-shims/expo-ui-jetpack-compose-modifiers.ts",
+      "upstreamSha256": "e9b0087404a632add473b4cc1a3809f46b28334b6e62a416ef16e82dd4fdcc76",
+      "adapted": false
+    },
+    {
+      "path": "ios-shims/expo-ui-jetpack-compose.tsx",
+      "upstreamPath": "ios-shims/expo-ui-jetpack-compose.tsx",
+      "upstreamSha256": "00bac440a51e8ce560137bdac41c7cd0eb30c154542a4bf7542b86a753c43311",
+      "adapted": false
+    },
+    {
+      "path": "metro.config.js",
+      "upstreamPath": "metro.config.js",
+      "upstreamSha256": "633d8fd632fa4a30a1569cdaa1461bac312c075e06e449ccabf7443d5e384c1a",
+      "adapted": true
+    },
+    {
+      "path": "package-lock.json",
+      "upstreamPath": "package-lock.json",
+      "upstreamSha256": "71c8ac57e6d5f82d7a11f42241c6d0602c69e672c8e7ce5154a78f4d66aae51a",
+      "adapted": true
+    },
+    {
+      "path": "package.json",
+      "upstreamPath": "package.json",
+      "upstreamSha256": "55a01f9d04325916ae033ac8f707bab4f69c6362a956ee80aef35ea5b210715d",
+      "adapted": true
+    },
+    {
+      "path": "patches/react-native-screens-search-tab.patch",
+      "upstreamPath": "patches/react-native-screens-search-tab.patch",
+      "upstreamSha256": "35860cb1a6a452eaa062602fc144cd02f9b22a9e3452df74b402615dfe5a029d",
+      "adapted": false
+    },
+    {
+      "path": "patches/react-native-screens-tab-bar-animation.patch",
+      "upstreamPath": "patches/react-native-screens-tab-bar-animation.patch",
+      "upstreamSha256": "ca4f142df50f79309e9c8721a12c87213dc6dc0643d413e60b59e61a78286524",
+      "adapted": false
+    },
+    {
+      "path": "plugins/withXcode27DeploymentTargets.js",
+      "upstreamPath": "plugins/withXcode27DeploymentTargets.ts",
+      "upstreamSha256": "e520db2d2ee0e96759e96fcb451179418d5a5f314d9449efd8176779949421bb",
+      "adapted": true
+    },
+    {
+      "path": "plugins/withXcode27SceneLifecycle.js",
+      "upstreamPath": "plugins/withXcode27SceneLifecycle.ts",
+      "upstreamSha256": "afc267c29b947431dfe7add1eb8e5eb603b9c5f43b8e29216eb8d761bed3ce19",
+      "adapted": true
+    },
+    {
+      "path": "scripts/patch-react-native-screens-search-tab.cjs",
+      "upstreamPath": "scripts/patch-react-native-screens-search-tab.cjs",
+      "upstreamSha256": "5d406c45e4c63bd49ad052197fba258f9b84def414f5ae0d8698dfa697ce5388",
+      "adapted": false
+    },
+    {
+      "path": "scripts/patch-react-native-screens-tab-bar-animation.cjs",
+      "upstreamPath": "scripts/patch-react-native-screens-tab-bar-animation.cjs",
+      "upstreamSha256": "970cf013c198500969464ba02f8d31f9248e7b903d4be55ceed999b1bd152cb8",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/check.xml",
+      "upstreamPath": "src/assets/icons/check.xml",
+      "upstreamSha256": "5465c9ddf8a979a2a824c9d0bbecd6ca3ee1984d234fd06f070d999df11b915d",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/chevron_right.xml",
+      "upstreamPath": "src/assets/icons/chevron_right.xml",
+      "upstreamSha256": "bc3159840689d0fdea5da8be351bb6e29214bf4c954e32f83275b9404410c268",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/close.xml",
+      "upstreamPath": "src/assets/icons/close.xml",
+      "upstreamSha256": "3d9de826785e4f6c67388670e4677ea5f20dd47de2985bb2b7748eba20a16666",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/content_paste.xml",
+      "upstreamPath": "src/assets/icons/content_paste.xml",
+      "upstreamSha256": "8499edbb3ebec2a4b0cfd049cd44d3db2483f1399ef5fdde218e04b8f7fb0b70",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/devices.xml",
+      "upstreamPath": "src/assets/icons/devices.xml",
+      "upstreamSha256": "357dc7c81b5e2214d09297e971711aeb9775ea843a586970390b12003a98307e",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/expand_more.xml",
+      "upstreamPath": "src/assets/icons/expand_more.xml",
+      "upstreamSha256": "d508b90d5165f06a322ed1a8dddb0b3d1a1fd98d3518787becf430a8fb8624c0",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/settings.xml",
+      "upstreamPath": "src/assets/icons/settings.xml",
+      "upstreamSha256": "8d6779821344ab23bca22ec6c14b3d948b540753fb78f7c8707d85367907f246",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/visibility.xml",
+      "upstreamPath": "src/assets/icons/visibility.xml",
+      "upstreamSha256": "e37892fc146bc57218e4837798cd03dd502473f3e9c34036b5693a23a893440d",
+      "adapted": false
+    },
+    {
+      "path": "src/assets/icons/visibility_off.xml",
+      "upstreamPath": "src/assets/icons/visibility_off.xml",
+      "upstreamSha256": "66406ba8043373ff3aa49904b5a7626a176beb1c91b61e6dacfee6a37c680994",
+      "adapted": false
+    },
+    {
+      "path": "src/components/AddActionsFab.android.tsx",
+      "upstreamPath": "src/components/AddActionsFab.android.tsx",
+      "upstreamSha256": "04802079e03c763671682abeeeba8b40a31d79496850642781067f0081ee5246",
+      "adapted": false
+    },
+    {
+      "path": "src/components/AddActionsFab.ios.tsx",
+      "upstreamPath": "src/components/AddActionsFab.ios.tsx",
+      "upstreamSha256": "025d2a052309edf8c688da54a7af47f990a459b3dca16c932cd0c73c3f7bf864",
+      "adapted": false
+    },
+    {
+      "path": "src/components/AddActionsFab.tsx",
+      "upstreamPath": "src/components/AddActionsFab.tsx",
+      "upstreamSha256": "7c1ec1a832b3376dcc5b7f8f28ea14ddb3a4c273948a61560d241e74d51e7c7b",
+      "adapted": false
+    },
+    {
+      "path": "src/components/AddActionsFab.types.ts",
+      "upstreamPath": "src/components/AddActionsFab.types.ts",
+      "upstreamSha256": "07708a0e80c21a29fe28135d4742339c3e2facaca0bfe1a392f36c54d28aa909",
+      "adapted": false
+    },
+    {
+      "path": "src/components/AnimatedCardGrid.tsx",
+      "upstreamPath": "src/components/AnimatedCardGrid.tsx",
+      "upstreamSha256": "0c9d7f2c3ff099a2898d5811509730ae6b11ad762e792dcb9ffb9d8945f59e43",
+      "adapted": false
+    },
+    {
+      "path": "src/components/CardContextOverlay.android.tsx",
+      "upstreamPath": "src/components/CardContextOverlay.android.tsx",
+      "upstreamSha256": "4eebd1a7425cd6a8e5a014818c12e6808399ebc2eaa897f312eeb94ce91bd62c",
+      "adapted": true
+    },
+    {
+      "path": "src/components/CardContextOverlay.ios.tsx",
+      "upstreamPath": "src/components/CardContextOverlay.ios.tsx",
+      "upstreamSha256": "70c528a6415090eb72c93258b872fdc5694bfb6be892aabae7c99e4a0d21e8ec",
+      "adapted": true
+    },
+    {
+      "path": "src/components/CardContextOverlay.tsx",
+      "upstreamPath": "src/components/CardContextOverlay.tsx",
+      "upstreamSha256": "24a94d448a836f54a5dc2768a3fcfae6f26226c5dda1077680828a328d77fc43",
+      "adapted": false
+    },
+    {
+      "path": "src/components/CardContextOverlay.types.ts",
+      "upstreamPath": "src/components/CardContextOverlay.types.ts",
+      "upstreamSha256": "fe64ddd353b8a2741d9994e3b350cef8f2817d423f9f9e40edf3f012c24d7f7e",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardCard.android.tsx",
+      "upstreamPath": "src/components/ClipboardCard.android.tsx",
+      "upstreamSha256": "fc2e5311f6eacc013897cb0e427c7b36e1ca5645262e7880363df6008f4b7201",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardCard.ios.tsx",
+      "upstreamPath": "src/components/ClipboardCard.ios.tsx",
+      "upstreamSha256": "8a3ddd7095870a3229840f5fa538880fb04f354806aca23fa4487a3aabf64637",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardCard.tsx",
+      "upstreamPath": "src/components/ClipboardCard.tsx",
+      "upstreamSha256": "2dfcdd23c7f370e1824620836d39cd0a0533feb4880d2b9f8c22b396042e6b05",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardCard.types.ts",
+      "upstreamPath": "src/components/ClipboardCard.types.ts",
+      "upstreamSha256": "49faebbafce9487c6bf333faa24b58a6e09694035002ed4f9cb9103b671b396d",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailActionBar.android.tsx",
+      "upstreamPath": "src/components/ClipboardDetailActionBar.android.tsx",
+      "upstreamSha256": "18315d28ac1802cca68768377ba156d8479bf8645b071d5a0fb87664870bec01",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailActionBar.ios.tsx",
+      "upstreamPath": "src/components/ClipboardDetailActionBar.ios.tsx",
+      "upstreamSha256": "ed4e7b3ebdd40a65f25c0a287f6810b4f91f374bdb4e97881a85340b05048d72",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailActionBar.tsx",
+      "upstreamPath": "src/components/ClipboardDetailActionBar.tsx",
+      "upstreamSha256": "8898f1f739a60469d27ced7c47a507955a37748afb5bbce9cc41d8d1ffa9af96",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailActionBar.types.ts",
+      "upstreamPath": "src/components/ClipboardDetailActionBar.types.ts",
+      "upstreamSha256": "54f6c47de4f85f76b8b575949503064b0ec805355b17362e9f1bc240bcb628e7",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailModal.android.tsx",
+      "upstreamPath": "src/components/ClipboardDetailModal.android.tsx",
+      "upstreamSha256": "824eba555123abfac89dc382cf01c63c41e4e8f96b5345bd3ecf99c9c6996fc2",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailModal.ios.tsx",
+      "upstreamPath": "src/components/ClipboardDetailModal.ios.tsx",
+      "upstreamSha256": "5b385030f6f13bc56d3e94f86206d9bf883bd6fa724b40529d155bb193912da8",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailModal.tsx",
+      "upstreamPath": "src/components/ClipboardDetailModal.tsx",
+      "upstreamSha256": "118655c1743b5b3bd30becb93eabb1150b3aaef5bfd396041f8eb343f5dfc303",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailModal.types.ts",
+      "upstreamPath": "src/components/ClipboardDetailModal.types.ts",
+      "upstreamSha256": "189e35aabced69ea1927d3acf149950b9937aa54c319d5ae204ae39a6acdbf8a",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ClipboardDetailPane.tsx",
+      "upstreamPath": "src/components/ClipboardDetailPane.tsx",
+      "upstreamSha256": "4855fc2c5efc6f04b4c4106edea71bfbad20602a41706b41969c6a4713ab0bc0",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ConnectedMessageToast.tsx",
+      "upstreamPath": "src/components/ConnectedMessageToast.tsx",
+      "upstreamSha256": "e60d079c9670a8fe068866393b87bfe39ecd98f2281e4ff849bcd6f0ab5533a6",
+      "adapted": false
+    },
+    {
+      "path": "src/components/GridCell.tsx",
+      "upstreamPath": "src/components/GridCell.tsx",
+      "upstreamSha256": "ab285894a55cd176cdac431ba2f3bd7a2898063efc55ac0ee17d4bf0adc8329d",
+      "adapted": false
+    },
+    {
+      "path": "src/components/HomeBottomBar.android.tsx",
+      "upstreamPath": "src/components/HomeBottomBar.android.tsx",
+      "upstreamSha256": "145ffab04b2e4f92f255e119fea86b70a2193b8b059ddbd5aea1c6448264bbfd",
+      "adapted": false
+    },
+    {
+      "path": "src/components/HomeBottomBar.ios.tsx",
+      "upstreamPath": "src/components/HomeBottomBar.ios.tsx",
+      "upstreamSha256": "a945461c55bd77a15228a710b759d096801638975d84c4e65ec5f5e0f4fe76bf",
+      "adapted": false
+    },
+    {
+      "path": "src/components/HomeBottomBar.tsx",
+      "upstreamPath": "src/components/HomeBottomBar.tsx",
+      "upstreamSha256": "4c17eaadfbc6b8dd675cede65bdfea33da7e76a54f039de7d1dbc5cfe57666b6",
+      "adapted": false
+    },
+    {
+      "path": "src/components/HomeBottomBar.types.ts",
+      "upstreamPath": "src/components/HomeBottomBar.types.ts",
+      "upstreamSha256": "b4085d0be88f834822d21fc2d875fd5c4e72ce9eade4d37fc53896db37c738af",
+      "adapted": false
+    },
+    {
+      "path": "src/components/HomeTopBar.android.tsx",
+      "upstreamPath": "src/components/HomeTopBar.android.tsx",
+      "upstreamSha256": "1dbc52b420aa1aaf2d3667a84369d17b1c14fdd63c4a554bfa3e00331aecf701",
+      "adapted": false
+    },
+    {
+      "path": "src/components/HomeTopBar.ios.tsx",
+      "upstreamPath": "src/components/HomeTopBar.ios.tsx",
+      "upstreamSha256": "69b698b22957523b7ec7ff0659b080bdc5cd4b0ada6ce608cb9329e6f818c5c9",
+      "adapted": false
+    },
+    {
+      "path": "src/components/HomeTopBar.tsx",
+      "upstreamPath": "src/components/HomeTopBar.tsx",
+      "upstreamSha256": "235847d069e00bfdb7b263a82c2e5ba6c1cb002a601c79776d52c8e6001d34c7",
+      "adapted": false
+    },
+    {
+      "path": "src/components/HomeTopBar.types.ts",
+      "upstreamPath": "src/components/HomeTopBar.types.ts",
+      "upstreamSha256": "ab603a8ca49b786ecdbb812c85a524fb84a2f6797c39f2693d2556772da4c13e",
+      "adapted": false
+    },
+    {
+      "path": "src/components/MessageToast.android.tsx",
+      "upstreamPath": "src/components/MessageToast.android.tsx",
+      "upstreamSha256": "dcb06e2b0d101165b94eba725789a9baf28a1d007288b719d0251ed17ccc204b",
+      "adapted": false
+    },
+    {
+      "path": "src/components/MessageToast.ios.tsx",
+      "upstreamPath": "src/components/MessageToast.ios.tsx",
+      "upstreamSha256": "27245578f1c3dfa9afb4272b03f061077518b5d0634df234af28f1e77d66a867",
+      "adapted": false
+    },
+    {
+      "path": "src/components/MessageToast.tsx",
+      "upstreamPath": "src/components/MessageToast.tsx",
+      "upstreamSha256": "cfb9ff6e475700407c7a7ab482a4a830c07958a1086b7edf2e6a4f10a6e07161",
+      "adapted": false
+    },
+    {
+      "path": "src/components/MessageToast.types.ts",
+      "upstreamPath": "src/components/MessageToast.types.ts",
+      "upstreamSha256": "52fbc7b388957dac45930f15a6428e05f7dc2ead9eda9e41dd62019cac4e9f67",
+      "adapted": false
+    },
+    {
+      "path": "src/components/WordPickerOverlay.android.tsx",
+      "upstreamPath": "src/components/WordPickerOverlay.android.tsx",
+      "upstreamSha256": "0dce43684738d025fd3862db02a2e35e908f8e57c5461ff89175fc88921c12aa",
+      "adapted": false
+    },
+    {
+      "path": "src/components/WordPickerOverlay.ios.tsx",
+      "upstreamPath": "src/components/WordPickerOverlay.ios.tsx",
+      "upstreamSha256": "1f6a0ecedf9d51ed53e5c6f0f0fe60b500d776aaf4cf2c2153eb5d6ebcc6d5b0",
+      "adapted": false
+    },
+    {
+      "path": "src/components/WordPickerOverlay.tsx",
+      "upstreamPath": "src/components/WordPickerOverlay.tsx",
+      "upstreamSha256": "9e0e36155abb9439bf2b2d1850184b2fc000262fe15f2faf82fff19c3b1bd307",
+      "adapted": false
+    },
+    {
+      "path": "src/components/WordPickerOverlay.types.ts",
+      "upstreamPath": "src/components/WordPickerOverlay.types.ts",
+      "upstreamSha256": "3e72137ef5ac72a13b0211011d75de3a5c03958d5d51dd8d4d747cd891fa1516",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/ClipboardDetailPage.tsx",
+      "upstreamPath": "src/components/android/ClipboardDetailPage.tsx",
+      "upstreamSha256": "804a8c69bad0a0e01f8eb3e38351f52073d931ca7f63779e1969d08395adc3d6",
+      "adapted": true
+    },
+    {
+      "path": "src/components/android/DetailFloatingToolbar.tsx",
+      "upstreamPath": "src/components/android/DetailFloatingToolbar.tsx",
+      "upstreamSha256": "ac5a2e0447d93c80d87950408c2577da0f622d3a979294646fe9be38f4bb49ba",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/FilterChip.tsx",
+      "upstreamPath": "src/components/android/FilterChip.tsx",
+      "upstreamSha256": "29cf270e6fb403119da6aa4848a041ea54dafd755a3acd05086d77cffd19bcae",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/FloatingNavigationBar.tsx",
+      "upstreamPath": "src/components/android/FloatingNavigationBar.tsx",
+      "upstreamSha256": "986c08fe9fb9eb26d78afb17d552b87ff8a55281f2218147b4007b0bdfbdb6a4",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/HistoryList.tsx",
+      "upstreamPath": "src/components/android/HistoryList.tsx",
+      "upstreamSha256": "c14ad9caf67be7822f3de142dee50f83aede777800783b003faaf3515cabd4de",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/HistoryListRow.tsx",
+      "upstreamPath": "src/components/android/HistoryListRow.tsx",
+      "upstreamSha256": "1888872576168cddccea3a4f407d46aafd1e4bb7ba55cd79d35d02b27a8ba3e6",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/M3IconButton.tsx",
+      "upstreamPath": "src/components/android/M3IconButton.tsx",
+      "upstreamSha256": "c7fba8feada878c3edab449986a71eb4df16dd00f140e699111da3dabeec3fd6",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/MainNavigationBar.tsx",
+      "upstreamPath": "src/components/android/MainNavigationBar.tsx",
+      "upstreamSha256": "0fb3646253328ee9d5dd611edd0cc920d2dbb42cb29b93bd2800c4ecfaca96ff",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/OverflowMenu.tsx",
+      "upstreamPath": "src/components/android/OverflowMenu.tsx",
+      "upstreamSha256": "4a3a5ea94cf90f7cad93d033fcee6a6793ce038b29bd20532eeab51c1e10860e",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/floatingNavigationClearance.ts",
+      "upstreamPath": "src/components/android/floatingNavigationClearance.ts",
+      "upstreamSha256": "3f4ddc631d4591db6d500adea136bfcd07cb37d26f329f35206c137f4c649f8b",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/historyKindStyle.ts",
+      "upstreamPath": "src/components/android/historyKindStyle.ts",
+      "upstreamSha256": "553456c4b14af1cdad2a85e64fa233268d2003bc319290e4c01464ee8a0c34b7",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/historySwipe.ts",
+      "upstreamPath": "src/components/android/historySwipe.ts",
+      "upstreamSha256": "1f70b41144e28fbb50b16fe35816fdbdac8dba16eef229cb43b2202ec43d7228",
+      "adapted": false
+    },
+    {
+      "path": "src/components/android/mainNavigationMetrics.ts",
+      "upstreamPath": "src/components/android/mainNavigationMetrics.ts",
+      "upstreamSha256": "c9746e633606fa816535c2e93d7dd775994adac047af346af999a3f0fbe023e9",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ios/ClipboardDetailPage.tsx",
+      "upstreamPath": "src/components/ios/ClipboardDetailPage.tsx",
+      "upstreamSha256": "bc489ec812e0ecf151325ddcc57380b2f4b001d42093052c87d27d151231d0a0",
+      "adapted": true
+    },
+    {
+      "path": "src/components/ios/HistoryList.tsx",
+      "upstreamPath": "src/components/ios/HistoryList.tsx",
+      "upstreamSha256": "ac4604cd68df978b739f830db160b8362ab3d10245509584aba9c555c81bf3e7",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ios/HistoryListRow.tsx",
+      "upstreamPath": "src/components/ios/HistoryListRow.tsx",
+      "upstreamSha256": "bb2e1720eca2291d13aa840eddacae4376850fffc82cb0547c958484c3993b1d",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ios/historyRowSwipe.ts",
+      "upstreamPath": "src/components/ios/historyRowSwipe.ts",
+      "upstreamSha256": "8cff4ac6aff4e97b2955937f056e6aa92da671ebed93ee56e6d114640c7d52b4",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppAlertDialog.android.tsx",
+      "upstreamPath": "src/components/ui/AppAlertDialog.android.tsx",
+      "upstreamSha256": "08863882b048920759b2d50801d354627c457a9c778bc8b2ffe07b4a5d141ad7",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppAlertDialog.ios.tsx",
+      "upstreamPath": "src/components/ui/AppAlertDialog.ios.tsx",
+      "upstreamSha256": "1f6ace96a657cee153672ce493d7787274f76603a34b9b527e6b081c635c26ae",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppAlertDialog.tsx",
+      "upstreamPath": "src/components/ui/AppAlertDialog.tsx",
+      "upstreamSha256": "1ee5a902f56f93880db1925ce33c877bbb4453c127c0447173408dcb5b5a8b47",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppBottomSheet.android.tsx",
+      "upstreamPath": "src/components/ui/AppBottomSheet.android.tsx",
+      "upstreamSha256": "41b41dd53c298a053ac3338077a11ba486d1367950e1ea54fde5feed76c164d7",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppBottomSheet.ios.tsx",
+      "upstreamPath": "src/components/ui/AppBottomSheet.ios.tsx",
+      "upstreamSha256": "c301406f3507e027974e481c69266de4d496336d1346b49c3af34942bfeed260",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppBottomSheet.tsx",
+      "upstreamPath": "src/components/ui/AppBottomSheet.tsx",
+      "upstreamSha256": "a0bc5d864c208ab48519943ee64955c2d8beb17a266bf4ae22e9320f12caf771",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppButton.android.tsx",
+      "upstreamPath": "src/components/ui/AppButton.android.tsx",
+      "upstreamSha256": "a7de33668de3a8142c5c5fca9c9ab3d35a98053961a201f4300949551372a9ca",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppButton.ios.tsx",
+      "upstreamPath": "src/components/ui/AppButton.ios.tsx",
+      "upstreamSha256": "9fa73e0e7ce4b765018cb0eb2028b59fe029af776d29f1765bcbc9d2f9ff6df7",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppButton.tsx",
+      "upstreamPath": "src/components/ui/AppButton.tsx",
+      "upstreamSha256": "38b802da77fd5778e43dc30f69961e29d79433eb8d314a2d7ec84abd7b0cf251",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppButton.types.ts",
+      "upstreamPath": "src/components/ui/AppButton.types.ts",
+      "upstreamSha256": "61b7bccd31444b8fc9fbe0cfb3add87d8c3659aec92c68e202e7ade670f00813",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppCard.android.tsx",
+      "upstreamPath": "src/components/ui/AppCard.android.tsx",
+      "upstreamSha256": "9115cc7d02ed7665a27f769af9ea69189077aa38220e25d2e539eafc2ddc571f",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppCard.ios.tsx",
+      "upstreamPath": "src/components/ui/AppCard.ios.tsx",
+      "upstreamSha256": "303219a488a0bc2736d61faf75b19af8716d7c30e25f93be522028b12e6df540",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppCard.tsx",
+      "upstreamPath": "src/components/ui/AppCard.tsx",
+      "upstreamSha256": "53e4f92251cd4287d7542c2b1821aa4548324db3cc4199458c139500a598c6ea",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppColumn.android.tsx",
+      "upstreamPath": "src/components/ui/AppColumn.android.tsx",
+      "upstreamSha256": "408516cd3688004bd93ba248bf03a2aa565f3e17b2bc9b931ef8b221ec61d842",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppColumn.ios.tsx",
+      "upstreamPath": "src/components/ui/AppColumn.ios.tsx",
+      "upstreamSha256": "1bbc6557a061b352e67463e9ef4041cbcac30db228dbe6c6231ca670c00cd589",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppColumn.tsx",
+      "upstreamPath": "src/components/ui/AppColumn.tsx",
+      "upstreamSha256": "ca8223975e66b83afbbb5a5e6e74ad242ca92c3ade26a8fb6b60930b961955e3",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppDivider.android.tsx",
+      "upstreamPath": "src/components/ui/AppDivider.android.tsx",
+      "upstreamSha256": "1a0a5376cd1482328a9ff8a72e02999eac2ffd6aec4dac0b533d7769e032b390",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppDivider.ios.tsx",
+      "upstreamPath": "src/components/ui/AppDivider.ios.tsx",
+      "upstreamSha256": "99b426e8f47fc22d167a9fcf87310e76859f4e9af17a5c198559da184fc2d47d",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppDivider.tsx",
+      "upstreamPath": "src/components/ui/AppDivider.tsx",
+      "upstreamSha256": "1ce292c02f7be311d484eea0ea6dd026771735dd7ab5c966acbd98366878cb95",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppDropdown.android.tsx",
+      "upstreamPath": "src/components/ui/AppDropdown.android.tsx",
+      "upstreamSha256": "7f6ef8b5fd1c7ddf55594a0385be016684b1c8fe25794fbd5cba2ac48e02ecae",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppDropdown.ios.tsx",
+      "upstreamPath": "src/components/ui/AppDropdown.ios.tsx",
+      "upstreamSha256": "3a8c440b9db977f3c358fe83b8a690635430e7e7327f626afae972f6d305a6ee",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppDropdown.tsx",
+      "upstreamPath": "src/components/ui/AppDropdown.tsx",
+      "upstreamSha256": "8213bc3f9f1263929c8390f5d5be212383d778e79a6cdfa0e215f0cd23e90d67",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppHost.android.tsx",
+      "upstreamPath": "src/components/ui/AppHost.android.tsx",
+      "upstreamSha256": "3b2daaa75e4408cc4a5c4839ba2f7ddb68df4e422c7a56bf61ecc46b80d436f8",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppHost.ios.tsx",
+      "upstreamPath": "src/components/ui/AppHost.ios.tsx",
+      "upstreamSha256": "4ea70833525e83065fc1e3b7a4be25cd86fb9efab6fe1d8211647bf011e28d09",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppHost.tsx",
+      "upstreamPath": "src/components/ui/AppHost.tsx",
+      "upstreamSha256": "71e353461a994a0d932b465568ff95de577125da798eb22ec70d50835aa822de",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppProgressIndicator.android.tsx",
+      "upstreamPath": "src/components/ui/AppProgressIndicator.android.tsx",
+      "upstreamSha256": "0dab613a800ec3f760418463807d2c6ce5ae2718b9621036a098ac347683854d",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppProgressIndicator.ios.tsx",
+      "upstreamPath": "src/components/ui/AppProgressIndicator.ios.tsx",
+      "upstreamSha256": "e01f4248fd6bca08bc44a3c13e216c2c136671880bf9bfcabaffcf3008f32360",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppProgressIndicator.tsx",
+      "upstreamPath": "src/components/ui/AppProgressIndicator.tsx",
+      "upstreamSha256": "c3c11d5aa5fe0f105e689040f7e05ea110918e7fcdf963c13536542c7cf8aaec",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppRow.android.tsx",
+      "upstreamPath": "src/components/ui/AppRow.android.tsx",
+      "upstreamSha256": "c9dcbe9e3c88952e9ba5dabeb3247a94558502fccfd43e91208e681797ed9c25",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppRow.ios.tsx",
+      "upstreamPath": "src/components/ui/AppRow.ios.tsx",
+      "upstreamSha256": "ff17c893c11dbe58487d247996e3fccedfdc0bdfe58ae7749d26ece4875384d7",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppRow.tsx",
+      "upstreamPath": "src/components/ui/AppRow.tsx",
+      "upstreamSha256": "1343ff7ee0e288646b8792cbd55454c00124f2044dadbbfa19881b396fd6ea5b",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppSpacer.android.tsx",
+      "upstreamPath": "src/components/ui/AppSpacer.android.tsx",
+      "upstreamSha256": "2b3a6530eb3bcc7bed51ebda369eff6ad4b84d6f690c4f040e0cf67be50ed50d",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppSpacer.ios.tsx",
+      "upstreamPath": "src/components/ui/AppSpacer.ios.tsx",
+      "upstreamSha256": "61185fab479b6c2850bc9b238dc52ef741b7556357a6c3bea44ee18997518e75",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppSpacer.tsx",
+      "upstreamPath": "src/components/ui/AppSpacer.tsx",
+      "upstreamSha256": "8e71aebd98df00accdde4ed7244c46627f040f75f0c0b86ee916685a572f7bd6",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppSwitch.android.tsx",
+      "upstreamPath": "src/components/ui/AppSwitch.android.tsx",
+      "upstreamSha256": "0d1824dfea10a7547c9bda6c7b0ae730b1d1356e272652f3f621e05224af7c40",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppSwitch.ios.tsx",
+      "upstreamPath": "src/components/ui/AppSwitch.ios.tsx",
+      "upstreamSha256": "0638714ff03b81b93eba2e72ea65841a6ce08e6697f0315c561bcba570701569",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppSwitch.tsx",
+      "upstreamPath": "src/components/ui/AppSwitch.tsx",
+      "upstreamSha256": "15603f49be9fb4915fd685860ea2b064b422828a2350f79b2812aa929e0f68bf",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppText.android.tsx",
+      "upstreamPath": "src/components/ui/AppText.android.tsx",
+      "upstreamSha256": "8949564085be4de3dbd30842f9ec65c01fea2e2653a74f17594734e4d70dfa75",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppText.ios.tsx",
+      "upstreamPath": "src/components/ui/AppText.ios.tsx",
+      "upstreamSha256": "86bf04361ff7bf6d1fa6973db1b60f3749815c44e318104d4002975ae844f90c",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppText.tsx",
+      "upstreamPath": "src/components/ui/AppText.tsx",
+      "upstreamSha256": "24e616446ca0f392e5569a4c60fda62e97e01011087fe535154d7ea61e307eb4",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppTextField.android.tsx",
+      "upstreamPath": "src/components/ui/AppTextField.android.tsx",
+      "upstreamSha256": "e9a57bb8cb0625dad08efdf608be7982dd5c442f3fce4514c0ee58eeef8a0430",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppTextField.ios.tsx",
+      "upstreamPath": "src/components/ui/AppTextField.ios.tsx",
+      "upstreamSha256": "ce5b7a6afacaccb199a7a85b99716da439f7f9208679d1a9c8f90413ae074964",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppTextField.tsx",
+      "upstreamPath": "src/components/ui/AppTextField.tsx",
+      "upstreamSha256": "f41f4d1a6b36509573e47850fcd57cd65d4f6d8fccfd20bdf84be915bf2388cd",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppTopSheet.android.tsx",
+      "upstreamPath": "src/components/ui/AppTopSheet.android.tsx",
+      "upstreamSha256": "6064653898c75ba13976b29b5470646d146c941ec4645a2b943ec58b129b729f",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/AppTopSheet.tsx",
+      "upstreamPath": "src/components/ui/AppTopSheet.tsx",
+      "upstreamSha256": "01b4e9fe7681b0c1e3a1f46cf0e107daff9f458f611d8e575d1ad0f34a55abd4",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/GlassContainer.ios.tsx",
+      "upstreamPath": "src/components/ui/GlassContainer.ios.tsx",
+      "upstreamSha256": "5a2db5cd209dc3f8f084f2623be970c00f6436bc7f77d64b14cc0a688e351f3a",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/GlassContainer.tsx",
+      "upstreamPath": "src/components/ui/GlassContainer.tsx",
+      "upstreamSha256": "2d54e98124c1b957e5fd83ea1089515dacadda7c092be4c08c53409055f238cc",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/IosSheetPage.ios.tsx",
+      "upstreamPath": "src/components/ui/IosSheetPage.ios.tsx",
+      "upstreamSha256": "b168a2303d6e762eca8aec0979a9f7504566dda819c104f1d46d6fb9de9ac9c4",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/IosSheetPage.tsx",
+      "upstreamPath": "src/components/ui/IosSheetPage.tsx",
+      "upstreamSha256": "f7d5873d8068cc82e81ab8d5badbe3f30ebeac7624853aef0e08077a9f882b2f",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/SheetHeader.ios.tsx",
+      "upstreamPath": "src/components/ui/SheetHeader.ios.tsx",
+      "upstreamSha256": "469d4ba6382f610294b37fc5d09760c8d2e83a27fd2c6843bfe0323a80a18aca",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/SheetHeader.tsx",
+      "upstreamPath": "src/components/ui/SheetHeader.tsx",
+      "upstreamSha256": "38feaeb8bbbbe3d745d0054260b4cd2b0ca306806ffc061598eded3f67b0b3e4",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/SheetPageTransition.android.tsx",
+      "upstreamPath": "src/components/ui/SheetPageTransition.android.tsx",
+      "upstreamSha256": "3dbec1bfc91317c69a8726d073a2851976f614c8add7ceed715127f5732cdda0",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/SheetPageTransition.ios.tsx",
+      "upstreamPath": "src/components/ui/SheetPageTransition.ios.tsx",
+      "upstreamSha256": "d9ab1f36f3b00f47fae910a04601624f0b9c2645fac872569ee97cc79c751729",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/SheetPageTransition.tsx",
+      "upstreamPath": "src/components/ui/SheetPageTransition.tsx",
+      "upstreamSha256": "2608d463c04850a0224862863e74a7932868c867c9db8d0eee71aa282ef1d1ce",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/SheetPageTransition.types.ts",
+      "upstreamPath": "src/components/ui/SheetPageTransition.types.ts",
+      "upstreamSha256": "28a08ec3191fcf75c77b65bb8216c6e07804a3133c1f176059b44df94c5d8c56",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/index.ts",
+      "upstreamPath": "src/components/ui/index.ts",
+      "upstreamSha256": "3ff14bc03cf6475fb64a1af378ebc94a0233a4f87f1a9151574d68d89258ac7b",
+      "adapted": false
+    },
+    {
+      "path": "src/components/ui/iosButtonStyles.ios.ts",
+      "upstreamPath": "src/components/ui/iosButtonStyles.ios.ts",
+      "upstreamSha256": "a8658b6699cd69d628fe11aec50f3b0acda4ef14c2756610b9d17529b4cc7692",
+      "adapted": false
+    },
+    {
+      "path": "src/components/useDetailActionBarBehavior.ts",
+      "upstreamPath": "src/components/useDetailActionBarBehavior.ts",
+      "upstreamSha256": "3aaa04a019a92dd50a1360080528cbd495136e39c39a83d303ff77fdc4d67a4b",
+      "adapted": false
+    },
+    {
+      "path": "src/components/usePopoverTransition.ts",
+      "upstreamPath": "src/components/usePopoverTransition.ts",
+      "upstreamSha256": "5bd8a75dfad74a3929250793183903fc8c311dbb5781fb813fca121fcb2c103e",
+      "adapted": false
+    },
+    {
+      "path": "src/constants/index.ts",
+      "upstreamPath": "src/constants/index.ts",
+      "upstreamSha256": "00f328678a57a724e6d5f55266d1eda9d06bb070a9c58c86e1b2455ab450421d",
+      "adapted": true
+    },
+    {
+      "path": "src/contexts/ThemeContext.tsx",
+      "upstreamPath": "src/contexts/ThemeContext.tsx",
+      "upstreamSha256": "bdbab2cc3d584820a7188336e9d87b718de0c698065c284119d6faf2d7d227c0",
+      "adapted": true
+    },
+    {
+      "path": "src/hooks/useCardContextTransition.ts",
+      "upstreamPath": "src/hooks/useCardContextTransition.ts",
+      "upstreamSha256": "fb993a00536652988c450e1ec6dbd12b4c75ea5564686fb66b4778c6eae24703",
+      "adapted": false
+    },
+    {
+      "path": "src/hooks/useClipboardCardViewModel.ts",
+      "upstreamPath": "src/hooks/useClipboardCardViewModel.ts",
+      "upstreamSha256": "4a03dd44628f88b2c0b5169a42e22119a3223f3aaf040a854bc0752c4e78ba16",
+      "adapted": false
+    },
+    {
+      "path": "src/hooks/useCopyFeedback.ts",
+      "upstreamPath": "src/hooks/useCopyFeedback.ts",
+      "upstreamSha256": "22dcc7b5cd81835e6d4e8e04805510474ad4abe3cbceeeec3bf84b99c9559c51",
+      "adapted": false
+    },
+    {
+      "path": "src/hooks/useDoubleTap.ts",
+      "upstreamPath": "src/hooks/useDoubleTap.ts",
+      "upstreamSha256": "99327213476fa911e6213c0d277bba722367cf035d2f4ae1bf5fc5089a259f89",
+      "adapted": false
+    },
+    {
+      "path": "src/hooks/useHistoryDisplaySettings.ts",
+      "upstreamPath": "src/hooks/useHistoryDisplaySettings.ts",
+      "upstreamSha256": "79edc86e41fa59233c54c7491df6d5693ae3a6b0651a5d00021df625a76d32b1",
+      "adapted": true
+    },
+    {
+      "path": "src/hooks/useHistoryItemText.ts",
+      "upstreamPath": "src/hooks/useHistoryItemText.ts",
+      "upstreamSha256": "69c257553e03089802bfc2b411083e7b493319a6cb7902008637243b6f8033f3",
+      "adapted": true
+    },
+    {
+      "path": "src/hooks/useLayoutMode.ts",
+      "upstreamPath": "src/hooks/useLayoutMode.ts",
+      "upstreamSha256": "222b811fb50dd1b50bc9db6f33f016d121bd16391f7b5b2c4cb27d44bb34a89c",
+      "adapted": false
+    },
+    {
+      "path": "src/hooks/usePagePushTransition.ts",
+      "upstreamPath": "src/hooks/usePagePushTransition.ts",
+      "upstreamSha256": "9290f44909e32a2e6ad9e180024c944b701fb1b055e87d406cc9e73c9033f64b",
+      "adapted": false
+    },
+    {
+      "path": "src/hooks/useTheme.ts",
+      "upstreamPath": "src/hooks/useTheme.ts",
+      "upstreamSha256": "7156b3278db8b762e9530265d2207efc7f4f07a9a53dba9d50b88b45b171e353",
+      "adapted": false
+    },
+    {
+      "path": "src/hooks/useURLMetadata.ts",
+      "upstreamPath": "src/hooks/useURLMetadata.ts",
+      "upstreamSha256": "bacb038b64632cafeb731004cec05472a5d8e8b52b26f5b4cc3bb2232438bdbf",
+      "adapted": true
+    },
+    {
+      "path": "src/hooks/useWordPicker.ts",
+      "upstreamPath": "src/hooks/useWordPicker.ts",
+      "upstreamSha256": "3229f4589a01f1f09280c9466aa7ea776192c432de90f8eb1de5d72e01f8bd44",
+      "adapted": true
+    },
+    {
+      "path": "src/hooks/useWordPickerHint.ts",
+      "upstreamPath": "src/hooks/useWordPickerHint.ts",
+      "upstreamSha256": "8b53035514486ff09d93c428f26c6eefa0fbf3335bae29f416c87aa2bb5dfc8e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/index.ts",
+      "upstreamPath": "src/i18n/index.ts",
+      "upstreamSha256": "5e4a75db3e15dc28522826e93a70cf131362b3f683158ce77f095d2893faad05",
+      "adapted": true
+    },
+    {
+      "path": "src/i18n/languages.ts",
+      "upstreamPath": "src/i18n/languages.ts",
+      "upstreamSha256": "cc6c67cb54e25ac5188e0e91d0581a018f58d58efa6e7cd95837d30620d06785",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/common.json",
+      "upstreamPath": "src/i18n/locales/en/common.json",
+      "upstreamSha256": "83c311de3ef33c7da89dbe096ed24e81c905c8b2c781d5c1bb5bd501d90c609e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/errors.json",
+      "upstreamPath": "src/i18n/locales/en/errors.json",
+      "upstreamSha256": "b4fa80efdc9560d27893996d1014c4cc932f48dce94f2f112a70c3630ad9fab3",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/history.json",
+      "upstreamPath": "src/i18n/locales/en/history.json",
+      "upstreamSha256": "0699c9f85e88e3a8b547511d4a36a341b70d24db4c72ab20a57e89fb93bc98f9",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/home.json",
+      "upstreamPath": "src/i18n/locales/en/home.json",
+      "upstreamSha256": "6142aa03b3d5582dfd04b2ee2a40632acdb9816ad481d2d661e1f4780c955c48",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/onboarding.json",
+      "upstreamPath": "src/i18n/locales/en/onboarding.json",
+      "upstreamSha256": "10e9bedb0d0cd6a0a2e5d4747f756269f559efbfb01fd687786097b5a21b8c7e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/settings.json",
+      "upstreamPath": "src/i18n/locales/en/settings.json",
+      "upstreamSha256": "f83d8d301332b58bf19ee61357ef25f3619fbf257153774dbef3697d83b97853",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/settingsAbout.json",
+      "upstreamPath": "src/i18n/locales/en/settingsAbout.json",
+      "upstreamSha256": "c30d752c58d379e9c76dc221c9e80b95b27941734bd5d7f2f2352bc7ec287219",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/settingsBackground.json",
+      "upstreamPath": "src/i18n/locales/en/settingsBackground.json",
+      "upstreamSha256": "538e9d6da277ae37aa4ea89889e4533e2be8f99f171cc680f12115d1b382783f",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/settingsIos.json",
+      "upstreamPath": "src/i18n/locales/en/settingsIos.json",
+      "upstreamSha256": "66f5b6cc2bf1ee587241404b50e12599bbbb3986d87491bfb8f1504e7b2b617e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/settingsPermissions.json",
+      "upstreamPath": "src/i18n/locales/en/settingsPermissions.json",
+      "upstreamSha256": "f4e9c70516f57ae201e8e38fb1bd3af949995310cc71f5f7bcd998a073238d5e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/settingsStorage.json",
+      "upstreamPath": "src/i18n/locales/en/settingsStorage.json",
+      "upstreamSha256": "d0c5da704e1dd43742fda9e4c454c04c0df60f7dde5cf67bf664bb093eb3822e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/settingsSync.json",
+      "upstreamPath": "src/i18n/locales/en/settingsSync.json",
+      "upstreamSha256": "36439a1d7563912e99dd2f32635062ca02c718341d37fbea85cbb93191805be2",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/share.json",
+      "upstreamPath": "src/i18n/locales/en/share.json",
+      "upstreamSha256": "15094d7a22f216f5bbac619786611581c25ae16d0babfc63e981acd81f522e04",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/en/sync.json",
+      "upstreamPath": "src/i18n/locales/en/sync.json",
+      "upstreamSha256": "eaaa677cbc9f78b3a38fbddf3a50378550f06ccc204b18cb362e3b4e2f71d736",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/common.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/common.json",
+      "upstreamSha256": "3dd9147b968d7c62249532965adca8d86e3d0e4356e5362979a910d2955a0cb0",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/errors.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/errors.json",
+      "upstreamSha256": "6627f5fd7397cb73d97e5557b78e7adc3c4b005302a85902b9a785fbe6868ce7",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/history.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/history.json",
+      "upstreamSha256": "cd421c8ad29afde1b10b605af8a57d6056584cd8dde27733ec4c4dba44f9526e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/home.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/home.json",
+      "upstreamSha256": "fc511550135a98f4549133af1bfe6631ce8bdf06da3f5a929ef7ab68b4a98592",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/onboarding.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/onboarding.json",
+      "upstreamSha256": "da244e4761a6665d692e23feb84c374adfff4f3f4f3c143bc4674023c12e67d4",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/settings.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/settings.json",
+      "upstreamSha256": "07e8dcf98cd8fca40180a39eed61f7785339304323c1dedad15355d2c0ab837d",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/settingsAbout.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/settingsAbout.json",
+      "upstreamSha256": "da1000cc2c24b8b68ebf74fd2c9c3cefed7e3dcdba74499ffb5f914d63f7cc5a",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/settingsBackground.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/settingsBackground.json",
+      "upstreamSha256": "421e6ce1eaba464b3d14e9845f5ad921eb3262c9588873de16b955973819d6ec",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/settingsIos.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/settingsIos.json",
+      "upstreamSha256": "08d4de124552597b157d26cee95614e098f6e103eb25ce8172420b70f4f3fc71",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/settingsPermissions.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/settingsPermissions.json",
+      "upstreamSha256": "8a0002f5585f7e5f90ea9f3049e87b658eeebada640346fe849ef1fcea242ac7",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/settingsStorage.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/settingsStorage.json",
+      "upstreamSha256": "d88a353ba58ddd775d096d3826e53fe76360dcad440702728339343be3565ac3",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/settingsSync.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/settingsSync.json",
+      "upstreamSha256": "f7497512dafb7518c00719d94c2043fcbe461b08e295d71fd12ce37c6ab8360d",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/share.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/share.json",
+      "upstreamSha256": "b8f1345dda3ed5fae1de5cc3fd7d7a41b12e64e735dc9766ebfe4d74d250c31f",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/pt-BR/sync.json",
+      "upstreamPath": "src/i18n/locales/pt-BR/sync.json",
+      "upstreamSha256": "b712ed9a3208c8d0768f8f8cd8924e0ceaffde92b29ed96720c6d5a98e080275",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/common.json",
+      "upstreamPath": "src/i18n/locales/ru/common.json",
+      "upstreamSha256": "0934042da82236cc4afaf94cd22da2b2f0070526a67da0ab60a18e61ef122d3d",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/errors.json",
+      "upstreamPath": "src/i18n/locales/ru/errors.json",
+      "upstreamSha256": "f52bd773d3ab4ce0b8527c99ae1f6a1736d3167629138a306cd8313323a0f48d",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/history.json",
+      "upstreamPath": "src/i18n/locales/ru/history.json",
+      "upstreamSha256": "bac4459353494fd2df5d2fa4b02f11d3df91c580663258319aad3990cce643a7",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/home.json",
+      "upstreamPath": "src/i18n/locales/ru/home.json",
+      "upstreamSha256": "40b1f0fe6e57e48e426eb064fa1b3a36c3be133a8e1475b10bfc5b776f752399",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/onboarding.json",
+      "upstreamPath": "src/i18n/locales/ru/onboarding.json",
+      "upstreamSha256": "5b695a539ffea2b4df786af204445624359fb64dea7c48305e73273d164b8573",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/settings.json",
+      "upstreamPath": "src/i18n/locales/ru/settings.json",
+      "upstreamSha256": "e589e2ee626768c3e40cf18ead6cb65e8680b54970c04f0b5b1aea0def38b50b",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/settingsAbout.json",
+      "upstreamPath": "src/i18n/locales/ru/settingsAbout.json",
+      "upstreamSha256": "4d372f09d4a6245a1843c3ea9f065388eecd8707eda19b821a289fc5bd954288",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/settingsBackground.json",
+      "upstreamPath": "src/i18n/locales/ru/settingsBackground.json",
+      "upstreamSha256": "029607740836b15eeee17da61f14ef6f7aea83a82e80689167f921c89151a471",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/settingsIos.json",
+      "upstreamPath": "src/i18n/locales/ru/settingsIos.json",
+      "upstreamSha256": "14e24d0c20ad842b122c2c365c42cc2700e59cb334e3628da1648744158d6a58",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/settingsPermissions.json",
+      "upstreamPath": "src/i18n/locales/ru/settingsPermissions.json",
+      "upstreamSha256": "7fe11e9f75bf70b340b1d675c8812f6c29ab0fddf61f2112c50ccb86861dd031",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/settingsStorage.json",
+      "upstreamPath": "src/i18n/locales/ru/settingsStorage.json",
+      "upstreamSha256": "2178fd1a8570bf17cb2d65e8ace033bfcab6648c930d448c1d276c4cb9c3c31c",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/settingsSync.json",
+      "upstreamPath": "src/i18n/locales/ru/settingsSync.json",
+      "upstreamSha256": "313b3efae4244477c954d6973bafab6afaf798593fb115f0597f7b6b91cd3099",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/share.json",
+      "upstreamPath": "src/i18n/locales/ru/share.json",
+      "upstreamSha256": "f092529e3eebf2793ced09685411f578901579730b8839283ecf02eb7f9150b8",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/ru/sync.json",
+      "upstreamPath": "src/i18n/locales/ru/sync.json",
+      "upstreamSha256": "77a39af3f8c80cfad5240f72e3c260b55dc798f3e3965330d452352f8feae04e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/common.json",
+      "upstreamPath": "src/i18n/locales/zh/common.json",
+      "upstreamSha256": "dd74de10a768636b5cb97ab8af219f2eb6222cf8354eb9e2ddee4f0b284d3a5f",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/errors.json",
+      "upstreamPath": "src/i18n/locales/zh/errors.json",
+      "upstreamSha256": "0dd6345ff678f49f4a5a6983ca2c474317261589b7856c16e92ff1dd26c3bb24",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/history.json",
+      "upstreamPath": "src/i18n/locales/zh/history.json",
+      "upstreamSha256": "45202fceb5180e9579adc5c917294ff3b4b44fd51377969da68dc4fe29ef60f6",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/home.json",
+      "upstreamPath": "src/i18n/locales/zh/home.json",
+      "upstreamSha256": "34a9d1ce9fa852fef42974f370611953d4cfad291f4ecdb50495f098faeefb1e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/onboarding.json",
+      "upstreamPath": "src/i18n/locales/zh/onboarding.json",
+      "upstreamSha256": "a420a3e40026451c4ec9f1c35dae5ff295009a3c431e5b213fc092d9f3d31f8b",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/settings.json",
+      "upstreamPath": "src/i18n/locales/zh/settings.json",
+      "upstreamSha256": "acea50819c01e5c7ecc4ad7df93652ae03259da30e9543b183126c6cb660b9bc",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/settingsAbout.json",
+      "upstreamPath": "src/i18n/locales/zh/settingsAbout.json",
+      "upstreamSha256": "9c9c743e6979d8a529f503c953066c53f5efe85410b29ca09618df3f487c8b6e",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/settingsBackground.json",
+      "upstreamPath": "src/i18n/locales/zh/settingsBackground.json",
+      "upstreamSha256": "f25563c5b9da006a53e80065dbf3c34c517282a9f35d27b962d3a8a8d3fd5a81",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/settingsIos.json",
+      "upstreamPath": "src/i18n/locales/zh/settingsIos.json",
+      "upstreamSha256": "fb2de2ac31d666e977f6f122b6a2f2fd0eba717eab08dac0bc15e7bdea9fcdc4",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/settingsPermissions.json",
+      "upstreamPath": "src/i18n/locales/zh/settingsPermissions.json",
+      "upstreamSha256": "47ecc5a796c95f2c195b69322df46a60a492a61258caf1f84d44a94e6fbdfd47",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/settingsStorage.json",
+      "upstreamPath": "src/i18n/locales/zh/settingsStorage.json",
+      "upstreamSha256": "31fb9797e1db52af35c5cfa1b61f9cd01d2defd307b89f0c0b5d66e6474d043c",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/settingsSync.json",
+      "upstreamPath": "src/i18n/locales/zh/settingsSync.json",
+      "upstreamSha256": "e885b92dec057eec439e220de8b61f5640ea03bd9cf9e0a15d338ee1e02799bf",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/share.json",
+      "upstreamPath": "src/i18n/locales/zh/share.json",
+      "upstreamSha256": "66aae5de79197150b21298a86cb91c2462042c9e503a7189c137e6117449d705",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/locales/zh/sync.json",
+      "upstreamPath": "src/i18n/locales/zh/sync.json",
+      "upstreamSha256": "8a08ad8a97ad0ce1a5839ef369d0d5567f96667eba86e28f9b7082aa4a620eee",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/resources.ts",
+      "upstreamPath": "src/i18n/resources.ts",
+      "upstreamSha256": "43a6ff50841c4c1c19e52e85a2dbcf7ae8f1c7bc6f14fd311b2347138d22ce78",
+      "adapted": false
+    },
+    {
+      "path": "src/i18n/useAppLanguage.ts",
+      "upstreamPath": "src/i18n/useAppLanguage.ts",
+      "upstreamSha256": "96fabfcbf3aca890bfdab5c6989787e5c5017e4b18a196848cbbfc525da96b94",
+      "adapted": true
+    },
+    {
+      "path": "src/navigation/AppNavigator.tsx",
+      "upstreamPath": "src/navigation/AppNavigator.tsx",
+      "upstreamSha256": "3c98431d2e4cb502363027b9acaf47f888aa5b120f8eb7c1515024a2e6070ed8",
+      "adapted": true
+    },
+    {
+      "path": "src/navigation/AppNavigator.types.ts",
+      "upstreamPath": "src/navigation/AppNavigator.types.ts",
+      "upstreamSha256": "0ebccc27689a424926192ee1e9113755c44fd694af855fdf60bdf96478510a0e",
+      "adapted": true
+    },
+    {
+      "path": "src/navigation/MainScreen.android.tsx",
+      "upstreamPath": "src/navigation/MainScreen.android.tsx",
+      "upstreamSha256": "ff200532b4dccac21445b5f3edcc62a2ae84b34db57d0127ad76f7f2019e0a0a",
+      "adapted": true
+    },
+    {
+      "path": "src/navigation/MainScreen.ios.tsx",
+      "upstreamPath": "src/navigation/MainScreen.ios.tsx",
+      "upstreamSha256": "acd85a7c7318bd61782c63f5d031b7f1c65297db7635b050802ac93f771b147e",
+      "adapted": true
+    },
+    {
+      "path": "src/navigation/MainScreen.tsx",
+      "upstreamPath": "src/navigation/MainScreen.tsx",
+      "upstreamSha256": "8ebc56ead61a12e6a99cd937635126775051529712236aa91798e089e2252895",
+      "adapted": false
+    },
+    {
+      "path": "src/navigation/settingsSubNavigation.ts",
+      "upstreamPath": "src/navigation/settingsSubNavigation.ts",
+      "upstreamSha256": "06ee45adea12a6460b26e6ab3b63f64d819b56d544560109412bcfb737ac2f16",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/ConnectionPreviewScreen.tsx",
+      "upstreamPath": "src/screens/ConnectionPreviewScreen.tsx",
+      "upstreamSha256": "bfae26deeb774a45c0f98dac50414e25224ed6704ffd6c0ddafa2bfeb3b4d57b",
+      "adapted": true
+    },
+    {
+      "path": "src/screens/HomeChrome.tsx",
+      "upstreamPath": "src/screens/HomeChrome.tsx",
+      "upstreamSha256": "60fd4e00a74a4ad567645e804a8418057d8f1284b5cda84e8763514e0a8759e7",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeCollectionSlot.types.ts",
+      "upstreamPath": "src/screens/HomeCollectionSlot.types.ts",
+      "upstreamSha256": "2422bacce6684201b554d7c145fdf9a7e3b50720d3d8ebe195b0d9f69fe2ca56",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeCompactView.tsx",
+      "upstreamPath": "src/screens/HomeCompactView.tsx",
+      "upstreamSha256": "37fb9dc5cdb5d66f09dad5297efa418413a250339d919cc720422541bfb6df8e",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeExpandedView.tsx",
+      "upstreamPath": "src/screens/HomeExpandedView.tsx",
+      "upstreamSha256": "cb0ffcea18c7dc532e3b44ead3030f480bd2f472b18fc9b34bb560652f0e3dfa",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeFilterRail.tsx",
+      "upstreamPath": "src/screens/HomeFilterRail.tsx",
+      "upstreamSha256": "598d016464ae47a53cb26cf9855f22c9bd5a0d20a5265f0c3671079244fd2ccd",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeMasterGrid.tsx",
+      "upstreamPath": "src/screens/HomeMasterGrid.tsx",
+      "upstreamSha256": "87eeb60f68a804a57a5b82a9a5ed3ebf62abec0405e406c36f2f99dd25648359",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeOverlays.tsx",
+      "upstreamPath": "src/screens/HomeOverlays.tsx",
+      "upstreamSha256": "54bd2390504b85111b3c730e16993fc4dbfbb31aa881edf5e90ce11d86c3c942",
+      "adapted": true
+    },
+    {
+      "path": "src/screens/HomeSearchSlots.types.ts",
+      "upstreamPath": "src/screens/HomeSearchSlots.types.ts",
+      "upstreamSha256": "cbf5a191c047fa69cb9133b9c45d7c7e76202f936a535e3eb9155afe071c4766",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeView.android.tsx",
+      "upstreamPath": "src/screens/HomeView.android.tsx",
+      "upstreamSha256": "9840dccaf64ad3a7b9d767a0721387a68e872f3a966dd699c2ab488db1da50a1",
+      "adapted": true
+    },
+    {
+      "path": "src/screens/HomeView.ios.tsx",
+      "upstreamPath": "src/screens/HomeView.ios.tsx",
+      "upstreamSha256": "5a34bfff95766f9d18f7a086f3118af3aad68dea468f87860503177a73db705d",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeView.tsx",
+      "upstreamPath": "src/screens/HomeView.tsx",
+      "upstreamSha256": "a08863abf0383ee10f87b561edb0ce899249bbcd89fe3d9ca9741a8662372c56",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/HomeView.types.ts",
+      "upstreamPath": "src/screens/HomeView.types.ts",
+      "upstreamSha256": "41dc5fbbb705e3a7378cb8ee3593c5b4054cddec64e5c68d4b8270fb75660a0d",
+      "adapted": true
+    },
+    {
+      "path": "src/screens/OnboardingPreviewScreen.tsx",
+      "upstreamPath": "src/screens/OnboardingPreviewScreen.tsx",
+      "upstreamSha256": "478b0fc015fbd0dd8ee64631ba843bbe7c9a345f1d57611a555a8378a44bf707",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/OnboardingScreen.tsx",
+      "upstreamPath": "src/screens/OnboardingScreen.tsx",
+      "upstreamSha256": "58c8d1bbcdce00ad0cb5d9a5cc56f5149d8362625edde46198192a9d4139ca74",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/OnboardingScreen.types.ts",
+      "upstreamPath": "src/screens/OnboardingScreen.types.ts",
+      "upstreamSha256": "98b8904b63a644faeb1f75fd75541109282d47b58930498eccfe09841d2753f1",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/SettingsScreen.tsx",
+      "upstreamPath": "src/screens/SettingsScreen.tsx",
+      "upstreamSha256": "3241a629a7b32727338187604245b9dde594b68699411da6e4765875ce64331a",
+      "adapted": true
+    },
+    {
+      "path": "src/screens/android/HomeSearchFilterBar.tsx",
+      "upstreamPath": "src/screens/android/HomeSearchFilterBar.tsx",
+      "upstreamSha256": "103c1f5dab18108585bac40f267e472f6cd8ec3798a6c5cb6f1c394a19716fb9",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/android/HomeSearchShortcuts.tsx",
+      "upstreamPath": "src/screens/android/HomeSearchShortcuts.tsx",
+      "upstreamSha256": "e23d2c6d01e6764a630d509eff24ed1d962a47d4e96950644a10a0c936082c99",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/android/homeHistoryCollection.tsx",
+      "upstreamPath": "src/screens/android/homeHistoryCollection.tsx",
+      "upstreamSha256": "934f2321ba2cd598f2662d1e77f2cfcedb37bb4616a1d4f3befe64cd96dff81d",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/android/homeSearchSlots.tsx",
+      "upstreamPath": "src/screens/android/homeSearchSlots.tsx",
+      "upstreamSha256": "3134ab2bec0bc33943e253d45ee7344d6a20b05ca261c1eaa2ce5e7ae6ee8f37",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/ios/HomeLargeTitle.tsx",
+      "upstreamPath": "src/screens/ios/HomeLargeTitle.tsx",
+      "upstreamSha256": "a37b3d412cbea12a3625f8b478694531ad272e46aebbd74475a0748afb086229",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/ios/HomeSearchDock.tsx",
+      "upstreamPath": "src/screens/ios/HomeSearchDock.tsx",
+      "upstreamSha256": "f574397137e8700c94bb48f52855984d87f02fb5574b093d43e30832e2fdd5dc",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/ios/HomeSearchFilterBar.tsx",
+      "upstreamPath": "src/screens/ios/HomeSearchFilterBar.tsx",
+      "upstreamSha256": "b6a0052fd5b4654c8c1e3eaf889bf1e146886bde1a03650e1d97db361738b8fc",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/ios/HomeSearchSuggestions.tsx",
+      "upstreamPath": "src/screens/ios/HomeSearchSuggestions.tsx",
+      "upstreamSha256": "935ed868e398c091832a0813d32f98a0df5b27313ebb5fe906bed8a0391e6616",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/ios/homeHistoryCollection.tsx",
+      "upstreamPath": "src/screens/ios/homeHistoryCollection.tsx",
+      "upstreamSha256": "a8794c54946df8876e9431551de348287bb9fbe0271b595184df4ed794d540c9",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/ios/homeSearchSlots.tsx",
+      "upstreamPath": "src/screens/ios/homeSearchSlots.tsx",
+      "upstreamSha256": "9c22ac1aa2d2c88225ba450b79bac297568a5c1b1bc2f516c0552f968a35b43c",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/ios/useHomeBaseItems.ts",
+      "upstreamPath": "src/screens/ios/useHomeBaseItems.ts",
+      "upstreamSha256": "425d1cd707ca5a1c19fb08341f88a6edeedc6f7e55f40121675885e4eb48201e",
+      "adapted": true
+    },
+    {
+      "path": "src/screens/ios/useSearchPullToDismiss.ts",
+      "upstreamPath": "src/screens/ios/useSearchPullToDismiss.ts",
+      "upstreamSha256": "0f30207f66b32266ac42f145de14a8eb6280667d45d2808b02228759dde22330",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/onboarding/OnboardingArtwork.tsx",
+      "upstreamPath": "src/screens/onboarding/OnboardingArtwork.tsx",
+      "upstreamSha256": "b88251afe033a06f2cc9bce3d2fdca0d4a10b668a1ad7d15752e901ce3e1e4c9",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/onboarding/OnboardingCloseButton.android.tsx",
+      "upstreamPath": "src/screens/onboarding/OnboardingCloseButton.android.tsx",
+      "upstreamSha256": "dc1e022cd2c6847ac3d6c0170186ed6cfa2cb34199e54f2b2e79b32044b17d2b",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/onboarding/OnboardingCloseButton.ios.tsx",
+      "upstreamPath": "src/screens/onboarding/OnboardingCloseButton.ios.tsx",
+      "upstreamSha256": "1bdc3312ef9f08e06446cbe88e8cc0e178b92885d0ffc981eee6b9fbf7768e30",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/onboarding/OnboardingCloseButton.tsx",
+      "upstreamPath": "src/screens/onboarding/OnboardingCloseButton.tsx",
+      "upstreamSha256": "8e008ee629c05c423e1b2c8d179a3435f3f03365028f006604a582e074a646bd",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/onboarding/OnboardingCloseButton.types.ts",
+      "upstreamPath": "src/screens/onboarding/OnboardingCloseButton.types.ts",
+      "upstreamSha256": "caa52da7fc82a1e460ef75300e38bf30a23aa731c34e260c0cc600a3dfbca903",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/onboarding/OnboardingConnection.tsx",
+      "upstreamPath": "src/screens/onboarding/OnboardingConnection.tsx",
+      "upstreamSha256": "66303b8d727b5c1060cf6e5884d92350e81e4e7326b5f513d9f0c29da06ba13d",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/onboarding/useOnboardingConnection.ts",
+      "upstreamPath": "src/screens/onboarding/useOnboardingConnection.ts",
+      "upstreamSha256": "5f6610d054489db978e16f0a9f762762cd184a5c0f1b703b0db1874a6ee4bab5",
+      "adapted": true
+    },
+    {
+      "path": "src/screens/settings/SettingsSectionItem.tsx",
+      "upstreamPath": "src/screens/settings/SettingsSectionItem.tsx",
+      "upstreamSha256": "17d67282d2c11195485bc4a79434d251d1bbe6112ccc775fd6bda3a39380b6f3",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/settings/SettingsSubScreen.tsx",
+      "upstreamPath": "src/screens/settings/SettingsSubScreen.tsx",
+      "upstreamSha256": "b0fbc7e5c0356e34248cb18b0428f64947bb3f5a7ab4df9f3aa40dc89266f568",
+      "adapted": true
+    },
+    {
+      "path": "src/screens/settings/android/SettingsLeadingIcon.tsx",
+      "upstreamPath": "src/screens/settings/android/SettingsLeadingIcon.tsx",
+      "upstreamSha256": "2a6fb5cbd113ba6f5316a2d0675551ecabe982900fcb9bac42949b6e03237088",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/settings/android/SettingsListRow.tsx",
+      "upstreamPath": "src/screens/settings/android/SettingsListRow.tsx",
+      "upstreamSha256": "dcf793cd1294ae308488aa3972b1bffe43ecdc98d20d35b2af769fccbefa9604",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/settings/android/SettingsSelectRow.tsx",
+      "upstreamPath": "src/screens/settings/android/SettingsSelectRow.tsx",
+      "upstreamSha256": "fb33397584313c38b3d41db57d1bb749c6242b7a0dbff464ad2168c668bbd8a4",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/settings/android/SettingsSwitchRow.tsx",
+      "upstreamPath": "src/screens/settings/android/SettingsSwitchRow.tsx",
+      "upstreamSha256": "eeec1ce19e17d4d9b7d26c6165df36ee1d7d8450d5d89dff7b347226f25ce858",
+      "adapted": false
+    },
+    {
+      "path": "src/screens/settings/ios/common.tsx",
+      "upstreamPath": "src/screens/settings/ios/common.tsx",
+      "upstreamSha256": "2ef74c05965797421ce605b587fa4b1d7c80ba86d196c5a0f71f8046e1a315ad",
+      "adapted": false
+    },
+    {
+      "path": "src/stores/messageStore.ts",
+      "upstreamPath": "src/stores/messageStore.ts",
+      "upstreamSha256": "5ef2f498c06a87526529a298044a43fa3891f4616046ffdecc29e622e08e0e1c",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/colorUtils.ts",
+      "upstreamPath": "src/theme/colorUtils.ts",
+      "upstreamSha256": "3240737bdeb9bc63bb30b40da723366f9055b3934069df2300959cd228f3fd97",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/colors.android.ts",
+      "upstreamPath": "src/theme/colors.android.ts",
+      "upstreamSha256": "af7247d5bd9cbe547f14dac185104290952b3730559fc6ff5cf8fde2906b8a1a",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/colors.ios.ts",
+      "upstreamPath": "src/theme/colors.ios.ts",
+      "upstreamSha256": "c12ec9b8ac3df463b126d49aa1ea9de60294b60bb9a308268ba4c61ca4f7de95",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/colors.ts",
+      "upstreamPath": "src/theme/colors.ts",
+      "upstreamSha256": "485b52b8d8fd29073401557f6fd271da8913bbc8dcf5860b26f138fb28321a75",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/colors.types.ts",
+      "upstreamPath": "src/theme/colors.types.ts",
+      "upstreamSha256": "c5fcef97f1b9dd640bb5230fa734d931586709e1af474e0e062dd476a9d87eb6",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/elevation.ts",
+      "upstreamPath": "src/theme/elevation.ts",
+      "upstreamSha256": "9ff783239256c8e4598afc86174389f7ce96795d4f465cad197004b7554c11c5",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/index.ts",
+      "upstreamPath": "src/theme/index.ts",
+      "upstreamSha256": "d60e4d148ce9a38a07d7ec77c3350a4567c44baaed339c29271d5e501ffa0e0c",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/iosDesignTokens.ts",
+      "upstreamPath": "src/theme/iosDesignTokens.ts",
+      "upstreamSha256": "10b89f7c09a286290d66a6217432fff78b64b7038299d9d23e97c3b69e6a6548",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/m3Typography.ts",
+      "upstreamPath": "src/theme/m3Typography.ts",
+      "upstreamSha256": "6ac7021be0512394a68cdd58b990a6c43e2316fef3c8d6a0c4340f8862402bf2",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/motion.ts",
+      "upstreamPath": "src/theme/motion.ts",
+      "upstreamSha256": "0a941459142ca91b3c359cb788e92b35916e28d63135de0e4f3aea65eeb71d5c",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/radius.ts",
+      "upstreamPath": "src/theme/radius.ts",
+      "upstreamSha256": "f0177d2e10e8534f0f63e4d22fbf48a0b025a85fbeeb4eeda4f61ec8bd32b4d5",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/spacing.ts",
+      "upstreamPath": "src/theme/spacing.ts",
+      "upstreamSha256": "e08d1884c6c03452726b356c5ea1db88a0e7c82094d31d56f9bc39d920d59186",
+      "adapted": false
+    },
+    {
+      "path": "src/theme/typography.ts",
+      "upstreamPath": "src/theme/typography.ts",
+      "upstreamSha256": "45807644e0d97f8767984241ec4b3e35ea4fece1df8252d938f4c8f746661aa4",
+      "adapted": false
+    },
+    {
+      "path": "src/types/api.ts",
+      "upstreamPath": "src/types/api.ts",
+      "upstreamSha256": "4c7c995b691bca3ffc35eef662bb7b39ffb37fb66b7fd16c674ef3d386cda886",
+      "adapted": false
+    },
+    {
+      "path": "src/types/clipboard.ts",
+      "upstreamPath": "src/types/clipboard.ts",
+      "upstreamSha256": "e4f25cda634d12b64554f2e15fc439a76f10a08fd243f3615762def9f4ac9ad3",
+      "adapted": false
+    },
+    {
+      "path": "src/types/segmentit.d.ts",
+      "upstreamPath": "src/types/segmentit.d.ts",
+      "upstreamSha256": "e30aa4fafcbcaa4a571d52290ba645c01a69baf532b2a5190f9eb8e65d0c7ce6",
+      "adapted": false
+    },
+    {
+      "path": "src/types/storage.ts",
+      "upstreamPath": "src/types/storage.ts",
+      "upstreamSha256": "c4dae6e1c393d06fb7bab8d2d7064fe0d1b50f7120583764f10f3aa684320975",
+      "adapted": true
+    },
+    {
+      "path": "src/utils/actionMenuItems.ts",
+      "upstreamPath": "src/utils/actionMenuItems.ts",
+      "upstreamSha256": "f35402ae6da6aafa169e259162756cb7f40c9b16583c00a0607412a4f5d6a69a",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/detailActionLayout.ts",
+      "upstreamPath": "src/utils/detailActionLayout.ts",
+      "upstreamSha256": "cb81a68d61a0e34074113a03dffda3fadaf04008b7f3da2608c3eec8bfefeba8",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/displayKind.ts",
+      "upstreamPath": "src/utils/displayKind.ts",
+      "upstreamSha256": "1ecb34cb042d42689376f1ac4be7766762c0bcfdf765e3c46b1e6f0957f47df1",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/domainColor.ts",
+      "upstreamPath": "src/utils/domainColor.ts",
+      "upstreamSha256": "090ba4106d21472a706f28f0826058e925e91a55c68f29f2d2ee0cb325a84b50",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/fileTypeColor.ts",
+      "upstreamPath": "src/utils/fileTypeColor.ts",
+      "upstreamSha256": "7aa71f3a50b65483b4d7e0b3627b6d7559b0859603fde61d6bfe94d5fc1a64bb",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/gridLayout.ts",
+      "upstreamPath": "src/utils/gridLayout.ts",
+      "upstreamSha256": "40574aeb633f760ee757f044c2a90578769bfc334b6f7082f5f11a92f322f995",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/historyDayGroups.ts",
+      "upstreamPath": "src/utils/historyDayGroups.ts",
+      "upstreamSha256": "71a048ec8174eeac1ea8d35dad514b890a5c6cbc8915ceb36cbbc1f64b625651",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/historyDirection.ts",
+      "upstreamPath": "src/utils/historyDirection.ts",
+      "upstreamSha256": "00d8080a4e81bf394ea752905bae25da35a4ba50c3e91da4a2c89d32ba0ec8e8",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/historyFilterOptions.ts",
+      "upstreamPath": "src/utils/historyFilterOptions.ts",
+      "upstreamSha256": "1f9801b495ddb82dbd4b6b2450d08b87d19f04f2d23f5d1b075c57a4a2cb7ff7",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/historyFilters.ts",
+      "upstreamPath": "src/utils/historyFilters.ts",
+      "upstreamSha256": "70dc07ddf8339db349978334e8bcea3f3f47ac7cb2cf2430e0866ccabb4b6fd6",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/historySearchText.ts",
+      "upstreamPath": "src/utils/historySearchText.ts",
+      "upstreamSha256": "0c3ebb7b731dc9bad1196ee4883d4dc20d4a647b21723a135fb124421741def3",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/index.ts",
+      "upstreamPath": "src/utils/index.ts",
+      "upstreamSha256": "f110a559809eab13f802328b7e26a9df2f52ef42f7612ded80a7abd5519d1bc7",
+      "adapted": true
+    },
+    {
+      "path": "src/utils/occurrenceKeys.ts",
+      "upstreamPath": "src/utils/occurrenceKeys.ts",
+      "upstreamSha256": "d3d17b88ae3582e6eb13598a796010766c7257e8a1b614b46708f48971cf594f",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/pullToDismiss.ts",
+      "upstreamPath": "src/utils/pullToDismiss.ts",
+      "upstreamSha256": "d9fec54e3398eb4cc279af0d0e3e77385db0193ec8a6cb98b022003138251a5b",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/textUtils.ts",
+      "upstreamPath": "src/utils/textUtils.ts",
+      "upstreamSha256": "08d80a8065e64feeef8fefb4f096165ffa4a6025e37367da81b493d6762cc2aa",
+      "adapted": false
+    },
+    {
+      "path": "src/utils/wordSegmentation.ts",
+      "upstreamPath": "src/utils/wordSegmentation.ts",
+      "upstreamSha256": "cb1f8f1a5e9f06bddec41975c463dea02101bc5c4a33265b3c290410f52f2bcd",
+      "adapted": false
+    },
+    {
+      "path": "tsconfig.json",
+      "upstreamPath": "tsconfig.json",
+      "upstreamSha256": "be233baa05bd27448314faf025ae34e2b948d5717b71745499ec5ef40a6fd17f",
+      "adapted": true
+    }
+  ]
+}

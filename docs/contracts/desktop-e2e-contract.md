@@ -16,7 +16,7 @@ The desktop_e2e build tag enables mygo automation and a directory clipboard. It 
 
 ## Evidence
 
-Each case has an explicit PASS, FAIL or NOT_RUN result, an operation timeline, assertions and evidence links. Required cases cannot silently skip. Native cases must start a real native window, pass assertions, capture screenshots and produce a nonempty playable recording from continuously sampled window-content frames. The recording uses capture timestamps; it is not a slideshow assembled from selected checkpoint screenshots. Report frame count and duration. A resized window must retain all later frames on a fixed canvas with original-scale, centered padding. Missing required evidence fails that case.
+Each case has an explicit PASS, FAIL or NOT_RUN result, an operation timeline, assertions and evidence links. Required cases cannot silently skip. Native cases must start a real native window, pass assertions, capture screenshots and produce a nonempty playable recording from continuously sampled window-content frames. The recording uses capture timestamps; it is not a slideshow assembled from selected checkpoint screenshots. Report frame count and duration. A resized window must retain all later frames on a fixed canvas with original-scale, centered padding. Recording and checkpoint captures use one capture lock; semantic commands do not wait for that lock. Allow up to 30 seconds for each native raster capture; keep the eight-second RPC deadline for semantic commands. Recording shutdown waits at most 40 seconds for an in-flight capture to finish. Native reports record capture durations and the actual FFmpeg/FFprobe versions and executable hashes. Missing required evidence fails that case.
 
 View scenarios use the mygo software tester and retain final exercised PNG checkpoints for every created view. These images do not establish native-window behavior. They do not produce a continuous recording. The three legacy GUI scenarios remain identified as legacy-view coverage. Go JSON events must show the requested scenario passed with no skipped or failed subcases.
 
@@ -31,3 +31,9 @@ Missing ffmpeg/display; stale catalogue; unknown case; duplicate IDs; escaped so
 ## Production module boundary
 
 The `production-boundary` process case checks the production command dependency graph, the shared renderer dependency graph and the i18n embedded catalogue. It builds `unic-desktop` and the separate `unic-desktop-demo`, checks demo help and rejects removed preview pages without opening a native window. `desktopui` is the package key for shared-renderer view and service-binding scenarios. Fixture builders are imported by preview startup and acceptance only.
+
+## Hosted native-window replay
+
+The reusable native Desktop workflow runs `history-search-copy` on all six declared OS/architecture targets. Linux uses GTK under Xvfb and a private D-Bus session. Windows/macOS use the hosted native desktop. The same canonical runner freezes source, builds isolated programs, drives semantic native actions, records continuous content frames and verifies cleanup. The report's scope remains application-native directory-clipboard interaction; it does not prove OS focus or system clipboard delivery.
+
+The pinned Go 1.27 toolchain has no Windows arm64 race detector. For that target, the native runner omits `-race` from the selected binary and driver builds and records `race_detector=false`. It still requires every selected scenario and evidence assertion to pass. Other declared targets retain race instrumentation. This target-specific toolchain limitation is not a skipped scenario or a claim of full cross-platform catalogue acceptance.

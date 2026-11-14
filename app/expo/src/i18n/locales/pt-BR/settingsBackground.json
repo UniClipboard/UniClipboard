@@ -1,0 +1,239 @@
+{
+  "main": {
+    "cardTitle": "Sincronização automática em segundo plano",
+    "toggle": {
+      "descTempDisabled": "Pausada temporariamente; será retomada após reiniciar o app",
+      "descNormal": "Permite que as direções de sincronização ativadas sejam executadas em segundo plano e orienta sobre as permissões necessárias"
+    },
+    "footer": "O download e o envio em segundo plano seguem as configurações de direção Gravar automaticamente e Enviar automaticamente"
+  },
+  "advanced": {
+    "cardTitle": "Opções avançadas",
+    "notification": {
+      "title": "Notificação persistente do serviço",
+      "desc": "Mantê-la ativada melhora a estabilidade do serviço em segundo plano"
+    },
+    "battery": {
+      "title": "Ignorar otimização de bateria",
+      "desc": "Impede que a economia de bateria interrompa a sincronização em segundo plano"
+    },
+    "network": {
+      "title": "Continuar a sincronização em segundo plano com dados móveis",
+      "desc": "Quando desativado, a sincronização em segundo plano funciona apenas no Wi-Fi"
+    },
+    "download": {
+      "title": "Baixar do remoto",
+      "desc": "Recebe novo conteúdo remoto em segundo plano quando Gravar automaticamente está ativado"
+    },
+    "upload": {
+      "title": "Enviar área de transferência local",
+      "desc": "Envia alterações da área de transferência em segundo plano quando Enviar automaticamente está ativado"
+    },
+    "clipboardAccess": {
+      "title": "Leitura em segundo plano",
+      "method": {
+        "overlay-polling": "Consulta",
+        "overlay-event": "Eventos ADB",
+        "shizuku": "Shizuku"
+      },
+      "issue": {
+        "service-unavailable": "O Shizuku não está em execução",
+        "permission-required": "O acesso à área de transferência ainda precisa de permissão",
+        "system-restriction": "O MIUI está bloqueando o acesso em segundo plano",
+        "monitoring-setup-required": "Configuração única necessária"
+      },
+      "issueDescription": {
+        "service-unavailable": "Instale e inicie o Shizuku, depois volte para autorizar",
+        "permission-required": "Siga a solicitação do sistema para permitir este método ao UniClip",
+        "system-restriction": "Use o Shizuku para desativar a restrição da área de transferência inteligente do MIUI",
+        "monitoring-setup-required": "Copie um comando adb e execute-o no computador"
+      },
+      "action": {
+        "service-unavailable": "Abrir Shizuku",
+        "permission-required": "Autorizar",
+        "system-restriction": "Resolver",
+        "monitoring-setup-required": "Configurar",
+        "check": "Verificar acesso"
+      },
+      "setup": {
+        "completed": "O acesso à área de transferência em segundo plano está pronto",
+        "commandCopied": "Comando copiado; execute-o no terminal do computador",
+        "failed": "Não foi possível concluir a configuração da área de transferência"
+      },
+      "sheet": {
+        "title": "Leitura em segundo plano",
+        "subtitle": "O Android bloqueia a leitura da área de transferência em segundo plano. Escolha como o UniClip percebe uma cópia.",
+        "inUse": "Em uso",
+        "currentButton": "Em uso no momento",
+        "continue": {
+          "overlay-polling": "Usar verificação periódica",
+          "overlay-event": "Continuar com eventos ADB",
+          "shizuku": "Continuar com Shizuku"
+        },
+        "nextHint": {
+          "overlay-event": "Próximo: copie um comando adb para executar no computador"
+        },
+        "labels": {
+          "bestFor": "Ideal para",
+          "tradeoff": "Lembre-se",
+          "setup": "Antes de começar"
+        },
+        "methods": {
+          "overlay-polling": {
+            "title": "Verificação periódica",
+            "summary": "Não exige configuração, mas interrompe a digitação.",
+            "tag1": "Sem computador",
+            "tag2": "Interrompe a digitação",
+            "bestFor": "Para testar o UniClip ou quando nada mais estiver disponível",
+            "tradeoff": "Verifica a cada segundo e toma o foco por instantes: o teclado pode sumir, toques podem se perder e jogos ou apps em tela cheia podem ser afetados",
+            "setup": "Permita que o UniClip apareça sobre outros apps"
+          },
+          "overlay-event": {
+            "title": "Eventos ADB",
+            "summary": "Lê somente após uma cópia. Menos interferência, menor consumo.",
+            "tag1": "Computador, uma vez",
+            "tag2": "Por eventos",
+            "bestFor": "Quem pode conectar a um computador e quer gastar menos bateria",
+            "tradeoff": "Execute o comando de novo após reinstalar o app",
+            "setup": "Permissão de sobreposição, depuração USB e ADB no computador"
+          },
+          "shizuku": {
+            "title": "Shizuku",
+            "summary": "O mais fluido, sem sobreposição.",
+            "tag1": "Shizuku em execução",
+            "tag2": "Por eventos",
+            "bestFor": "Quem já usa o Shizuku",
+            "tradeoff": "O Shizuku geralmente precisa ser reiniciado após cada reinicialização",
+            "setup": "Instale e inicie o Shizuku e depois conceda acesso"
+          }
+        }
+      },
+      "adbGuide": {
+        "title": "Autorizar eventos ADB",
+        "subtitle": "O UniClip usa isso apenas para detectar eventos de cópia e nunca lê outro conteúdo do log.",
+        "status": {
+          "copied": "Comando copiado. Cole-o no terminal do computador e toque em Verificar acesso.",
+          "notDetected": "Acesso ainda não detectado. Confirme que o comando terminou sem erro e que o telefone aparece como “device”."
+        },
+        "step1": {
+          "title": "Prepare o computador",
+          "text": "Instale o Android Platform Tools (adb). No telefone, ative a depuração USB nas Opções do desenvolvedor."
+        },
+        "step2": {
+          "title": "Conecte e permita",
+          "text": "Conecte por USB e toque em Permitir no telefone. Este comando deve listar o telefone como “device”:"
+        },
+        "step3": {
+          "title": "Conceda acesso uma vez",
+          "text": "Execute no mesmo terminal. Só será necessário de novo após reinstalar o UniClip."
+        },
+        "terminalLabel": "Terminal",
+        "copy": "Copiar",
+        "copied": "Copiado",
+        "copyCommand": "Copiar comando de concessão",
+        "copyAgain": "Copiar comando de concessão novamente",
+        "check": "Verificar acesso",
+        "checkAgain": "Verificar novamente"
+      },
+      "restriction": {
+        "title": "Desativar a restrição de área de transferência do MIUI",
+        "subtitle": "Necessário para leitura e escrita em segundo plano.",
+        "warning": "Isso também pode desativar a área de transferência inteligente do MIUI.",
+        "text": "O UniClip usará o Shizuku para desativar a restrição da área de transferência inteligente do MIUI. Você pode reativá-la nas configurações do sistema a qualquer momento.",
+        "confirm": "Desativar restrição",
+        "dismiss": "Agora não"
+      },
+      "entry": {
+        "change": "Alterar"
+      },
+      "status": {
+        "ready": {
+          "title": "Pronto",
+          "description": {
+            "overlay-polling": "Verifica a área de transferência a cada segundo",
+            "overlay-event": "Lê somente após um evento de cópia",
+            "shizuku": "Leitura via Shizuku"
+          }
+        }
+      },
+      "shizukuGuide": {
+        "title": "Configurar o Shizuku",
+        "subtitle": "O UniClip usa o Shizuku para ler a área de transferência sem sobreposição.",
+        "status": {
+          "notRunning": "O Shizuku não está em execução. Inicie-o e volte aqui.",
+          "authorize": "O Shizuku está em execução. Último passo: permita o UniClip."
+        },
+        "step1": {
+          "title": "Instale o Shizuku",
+          "text": "Instale o app Shizuku e abra-o uma vez.",
+          "done": "Instalado."
+        },
+        "step2": {
+          "title": "Inicie o serviço",
+          "text": "No Android 11+, use a Depuração sem fio dentro do Shizuku, sem computador. Ou execute no computador:",
+          "done": "Em execução."
+        },
+        "step3": {
+          "title": "Permita o UniClip",
+          "text": "Com o Shizuku em execução, o sistema pedirá para permitir o UniClip.",
+          "authorizeText": "Toque em Autorizar e aceite o aviso do Shizuku. Ele só permite que o UniClip detecte mudanças na área de transferência."
+        },
+        "open": "Abrir o Shizuku",
+        "authorize": "Autorizar o UniClip",
+        "checkAgain": "Verificar novamente"
+      }
+    },
+    "groups": {
+      "clipboardAccess": "Acesso à área de transferência",
+      "sync": "Sincronização em segundo plano",
+      "reliability": "Confiabilidade"
+    }
+  },
+  "dialog": {
+    "enableAutoSync": {
+      "title": "Ativar sincronização automática em segundo plano",
+      "text": "Depois de ativado, o app continuará sincronizando a área de transferência em segundo plano. Vamos orientar sobre bateria, notificações e acesso à área de transferência para o método selecionado. Permitir tudo oferece o melhor resultado, mas recusas ainda permitem continuar usando o app.",
+      "confirm": "Ativar"
+    },
+    "disableNotification": {
+      "title": "Desativar notificação persistente",
+      "text": "Desativar a notificação persistente reduz a estabilidade do serviço em segundo plano e aumenta a probabilidade de o sistema encerrar as tarefas em segundo plano.",
+      "confirm": "Desativar"
+    },
+    "missingNotificationPermission": {
+      "title": "Permissão de notificação ausente",
+      "text": "A permissão de notificação não foi concedida, portanto a notificação persistente pode não aparecer. Recomendamos permitir notificações nas configurações do sistema.",
+      "confirm": "Abrir configurações",
+      "dismiss": "Mais tarde"
+    },
+    "enableUpload": {
+      "title": "Ativar envio em segundo plano da área de transferência local",
+      "text": "Não é necessário ativar esta opção: o UniClip também permite enviar texto diretamente pelo menu exibido ao selecionar texto.\n\nNo Android 10 e versões posteriores, os apps não podem ler diretamente a área de transferência local em segundo plano. Talvez seja necessário ativar a sobreposição ou usar outra ferramenta para contornar essa limitação.",
+      "confirm": "Ativar"
+    },
+    "batteryFallback": {
+      "title": "Não foi possível abrir a caixa de diálogo do sistema",
+      "text": "O sistema permite que a solicitação de otimização de bateria apareça apenas uma vez por instalação. Desative a otimização de bateria manualmente nas configurações do sistema.",
+      "confirm": "Abrir configurações"
+    }
+  },
+  "toast": {
+    "autoSyncRestored": "Sincronização automática em segundo plano retomada",
+    "autoSyncEnabled": "Sincronização automática em segundo plano ativada",
+    "autoSyncDisabled": "Sincronização automática em segundo plano desativada",
+    "downloadEnabled": "Download remoto em segundo plano ativado",
+    "downloadDisabled": "Download remoto em segundo plano desativado",
+    "uploadEnabled": "Envio local em segundo plano ativado",
+    "uploadDisabled": "Envio local em segundo plano desativado",
+    "clipboardAccessChanged": "Método de acesso à área de transferência em segundo plano alterado",
+    "setFailed": "Falha ao atualizar a configuração"
+  },
+  "smsCode": {
+    "group": "Códigos de verificação",
+    "title": "Copiar códigos de mensagens de texto",
+    "desc": "Quando uma mensagem de texto contém um código de verificação, ele é copiado e mostrado em uma notificação. Requer permissão para receber mensagens de texto. A sincronização segue suas configurações de sincronização.",
+    "denied": "A permissão de mensagens de texto é necessária para copiar códigos de verificação",
+    "enabled": "Os códigos de verificação serão copiados",
+    "disabled": "Cópia de códigos de verificação desativada"
+  }
+}

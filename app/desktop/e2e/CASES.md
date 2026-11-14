@@ -19,7 +19,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [quick-panel-screenshots](#quick-panel-screenshots) | view | Quick-panel history, action menu and image-grid compositions in both themes. |
 | [quick-panel](#quick-panel) | view | Quick-panel keyboard, search, actions, previews, scrolling and simulated effects. |
 | [search-badge-delete](#search-badge-delete) | view | Whole-condition deletion from composite search badges. |
-| [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair and cancellation. |
+| [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair, cancellation and viewport detail prefetch. |
 | [search-disclosure-reduced-motion](#search-disclosure-reduced-motion) | view | Toolbar search disclosure with Reduce Motion enabled. |
 | [search-disclosure](#search-disclosure) | view | Animated toolbar search expansion, collapse, filtering and keyboard dismissal. |
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |
@@ -27,7 +27,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [setup-pages](#setup-pages) | view | Exercise the production UI Kit setup renderer across three skins and two themes. |
 | [setup-partial](#setup-partial) | native | Record an honest partial result and entry into usable migrated history. |
 | [sheet-exit-stability](#sheet-exit-stability) | view | Sheet exit frames and input stability after dismissal. |
-| [sheet-motion](#sheet-motion) | view | Sheet entry and dismissal by Done, Escape and backdrop, plus live size changes, reversal and dismissal during resize, including Reduce Motion. |
+| [sheet-motion](#sheet-motion) | view | Real Sheet entry and dismissal by Done, Escape and backdrop, live resize/reversal, and inline tag confirmation or cancellation, including Reduce Motion. |
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
 | [source-application](#source-application) | view | Show the captured application's cached icon and name immediately after device and time. |
 | [startup-lifecycle](#startup-lifecycle) | process | Ownership, background intent, lightweight launch and process cleanup. |
@@ -448,7 +448,7 @@ Sheet motion
 
 Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
 
-Expected: All sheet/theme/dismissal combinations preserve entry geometry, intermediate centered size changes and completed exit behavior.
+Expected: Real Sheets preserve entry geometry, centered resizing and completed exits; inline tags use no Sheet, Enter attaches, and Escape/click-away cancel without mutation across all theme/motion combinations.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 

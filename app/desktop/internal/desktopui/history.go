@@ -274,6 +274,13 @@ func (d *viewState) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 		}
 		k.GroupedList(c.Key("list"), &d.list, uikit.GroupedListProps{Label: d.tr("历史条目"), Groups: groups, Items: rows}).Grow(1).MinHeight(0).Margin(0, 0, 0, 8)
 	}
+	if d.live != nil {
+		first, last := d.list.VisibleRange()
+		d.live.prefetchDetails(d, items, first, last)
+		if last >= 0 && last+10 >= len(items) && d.live.cursor != "" && !d.live.loading {
+			d.live.loadHistory(d, true)
+		}
+	}
 	if d.list.Changed() {
 		if ids := d.list.Selection(); len(ids) > 0 {
 			d.selected, d.notice, d.detailOpen, d.inspector = ids[0], "", true, true
@@ -283,6 +290,9 @@ func (d *viewState) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 		d.selected = id
 		d.useEntry()
 		d.detailOpen, d.inspector = true, true
+	}
+	if d.live != nil {
+		d.live.loadDetail(d)
 	}
 	if ids, ok := d.list.DeleteRequested(); ok && len(ids) > 0 {
 		d.requestDelete(ids)

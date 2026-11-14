@@ -1,7 +1,7 @@
-# 0025: Desktop first-install setup implementation
+# 0026: Desktop first-install setup implementation
 
 - Date: 2026-11-13
-- Decision: [0025](../decisions/proposed/0025-first-install-setup.md).
+- Decision: [0026](../decisions/proposed/0026-first-install-setup.md).
 - Prototype: [setup](../../prototype/setup.html), using the established [GUI](../../prototype/gui.html) style.
 - Status: Implemented. Process acceptance, platform builds, software-view acceptance and macOS native complete/partial recordings passed. Real system credential prompts and other native platforms remain NOT_RUN.
 

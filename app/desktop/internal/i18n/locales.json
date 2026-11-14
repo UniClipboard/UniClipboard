@@ -3706,5 +3706,11 @@
     "ja": "全体の失敗ポリシーを使用",
     "pt-BR": "Usar política global de falhas",
     "ru": "Использовать общую политику ошибок"
+  },
+  "已启用": {
+    "en": "Enabled",
+    "ja": "有効",
+    "pt-BR": "Ativado",
+    "ru": "Включён"
   }
 }

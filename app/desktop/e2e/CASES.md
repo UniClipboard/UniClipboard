@@ -4,6 +4,8 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 
 | Case | Mode | Purpose |
 |---|---|---|
+| [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
+| [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
 | [first-install-setup](#first-install-setup) | process | Verify setup persistence and migration with real Engine, SQLite and a service process. |
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
@@ -38,6 +40,192 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [token-search](#token-search) | view | Composite search prefixes, counts, completion, literal input, caret handling and Escape. |
 | [toolbar-alignment](#toolbar-alignment) | view | Toolbar menu-trigger alignment against adjacent controls. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
+
+## builtin-plugin-policy
+
+Built-in Tailcat policy through Desktop settings
+
+Steps: Toggle each content permission, validate Engine decisions, check directory grouping and total-byte threshold, then reopen Desktop.
+
+Expected: Saved policies persist; Engine decisions change immediately; manual sends bypass only the automatic threshold.
+
+Forbidden: Fixture settings, unsupported Tailcat disablement, altered global permissions, or false runtime success.
+
+```text
+start
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-wait button 'Tailcat 同步'
+ui-enabled button 'Tailcat 同步'
+ui-click button 'Tailcat 同步'
+ui-wait switch '同步文本'
+screenshot tailcat-defaults
+ui-enabled switch '同步文本'
+ui-click switch '同步文本'
+config-equals plugins.instances.builtin.tailcat.sync.text false
+ui-click listItem 同步
+ui-enabled switch '启用同步'
+ui-click switch 启用同步
+config-equals sync.enabled true
+ui-click listItem 插件
+plugin-probe text policy_filtered
+ui-enabled switch '同步文本'
+ui-click switch '同步文本'
+config-equals plugins.instances.builtin.tailcat.sync.text true
+plugin-probe text no_targets
+ui-enabled switch '同步图片'
+ui-click switch '同步图片'
+config-equals plugins.instances.builtin.tailcat.sync.images false
+plugin-probe image policy_filtered
+ui-enabled switch '同步图片'
+ui-click switch '同步图片'
+config-equals plugins.instances.builtin.tailcat.sync.images true
+plugin-probe image no_targets
+ui-enabled switch '同步文件与文件夹'
+ui-click switch '同步文件与文件夹'
+config-equals plugins.instances.builtin.tailcat.sync.files false
+plugin-probe file policy_filtered
+plugin-probe directory sync_disabled
+ui-enabled switch '同步文件与文件夹'
+ui-click switch '同步文件与文件夹'
+config-equals plugins.instances.builtin.tailcat.sync.files true
+plugin-probe directory no_targets
+ui-enabled textField '自动文件传输阈值（MB）'
+ui-click textField '自动文件传输阈值（MB）'
+ui-set textField '自动文件传输阈值（MB）' '-1'
+ui-key Enter
+ui-wait alert '请输入 0 到 4096 之间的整数。'
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 0
+ui-enabled textField '自动文件传输阈值（MB）'
+ui-click textField '自动文件传输阈值（MB）'
+ui-set textField '自动文件传输阈值（MB）' '1'
+ui-key Enter
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 1048576
+connect-policy-peer
+plugin-auto-probe file auto_file_too_large
+plugin-probe large-file queued
+ui-click listItem 同步
+ui-enabled switch 自动同步目录
+ui-click switch 自动同步目录
+config-equals sync.directories.automatic true
+ui-click listItem 插件
+plugin-auto-probe directory auto_file_too_large
+plugin-probe large-directory queued
+ui-enabled textField '自动文件传输阈值（MB）'
+ui-click textField '自动文件传输阈值（MB）'
+ui-set textField '自动文件传输阈值（MB）' '0'
+ui-key Enter
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 0
+plugin-auto-probe directory queued
+ui-enabled textField '自动文件传输阈值（MB）'
+ui-click textField '自动文件传输阈值（MB）'
+ui-set textField '自动文件传输阈值（MB）' '1'
+ui-key Enter
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 1048576
+screenshot tailcat-saved
+stop-policy-peer
+restart-desktop
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-enabled button 'Tailcat 同步'
+ui-click button 'Tailcat 同步'
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 1048576
+plugin-probe text no_targets
+screenshot tailcat-reopened
+```
+
+## builtin-plugin-processors
+
+Built-in processors saved and applied from Desktop
+
+Steps: Disable each plugin, set failure policies, check pending restart, restart, verify tags and Actions, then enable both again.
+
+Expected: Classification alone reports restart; old runtime remains active until restart; saved changes survive restart and affect new history and Actions.
+
+Forbidden: Premature runtime claims, lost settings, missing restart notice, fixture-only acceptance or old service residue.
+
+```text
+start
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-enabled button '内容分类'
+ui-click button 内容分类
+ui-enabled switch '启用内容分类'
+ui-click switch 启用内容分类
+config-equals plugins.instances.builtin.classify.enabled false
+restart-required plugins
+ui-wait text '插件设置已保存。请退出并重新启动桌面端以生效。'
+ui-enabled switch '启用内容分类'
+ui-click switch 启用内容分类
+config-equals plugins.instances.builtin.classify.enabled true
+restart-clear
+ui-enabled switch '启用内容分类'
+ui-click switch 启用内容分类
+config-equals plugins.instances.builtin.classify.enabled false
+ui-enabled switch '处理失败时阻止同步'
+ui-click switch 处理失败时阻止同步
+config-equals plugins.instances.builtin.classify.on_error '"block_sync"'
+ui-enabled button '返回插件列表'
+ui-click button 返回插件列表
+ui-enabled button '文本工具'
+ui-click button 文本工具
+ui-enabled switch '启用文本工具'
+ui-click switch 启用文本工具
+config-equals plugins.instances.builtin.text.enabled false
+ui-enabled switch '处理失败时阻止同步'
+ui-click switch 处理失败时阻止同步
+config-equals plugins.instances.builtin.text.on_error '"block_sync"'
+processor-probe enabled
+screenshot processors-pending
+restart-desktop
+processor-probe disabled
+restart-clear
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-enabled button '内容分类'
+ui-click button 内容分类
+config-equals plugins.instances.builtin.classify.enabled false
+ui-enabled switch '启用内容分类'
+ui-click switch 启用内容分类
+config-equals plugins.instances.builtin.classify.enabled true
+ui-enabled button '返回插件列表'
+ui-click button 返回插件列表
+ui-enabled button '文本工具'
+ui-click button 文本工具
+ui-enabled switch '启用文本工具'
+ui-click switch 启用文本工具
+config-equals plugins.instances.builtin.text.enabled true
+screenshot processors-enable-pending
+restart-desktop
+processor-probe enabled
+restart-clear
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+screenshot processors-active
+ui-enabled button 文本工具
+ui-click button 文本工具
+ui-enabled button 使用全局失败策略
+ui-click button 使用全局失败策略
+config-equals plugins.instances.builtin.text.on_error null
+restart-required plugins.settings
+ui-enabled switch 处理失败时阻止同步
+ui-click switch 处理失败时阻止同步
+config-equals plugins.instances.builtin.text.on_error '"block_sync"'
+restart-clear
+config-equals telemetry.enabled false
+config-equals sync.enabled false
+screenshot processors-policy-restored
+```
 
 ## data-binding
 

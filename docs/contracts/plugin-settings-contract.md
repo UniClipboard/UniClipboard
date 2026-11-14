@@ -4,6 +4,8 @@
 - 依据：[0010](../decisions/proposed/0010-plugin-settings-schema.md)、[插件契约](plugin-contract.md)、[SDK 配置所有权](sdk-extension-contract.md#4-插件装配与配置所有权)。
 - 实现：`plugin/settings`；保留的实验 shell 模型 `app/mac/Sources/SettingsSchema`，控件 `SchemaSettingsForm.swift`。SwiftUI 客户端路线已取消；桌面表单后续由 mygo + 自定义 UI Kit 承载，界面原型待定，现有实验表单不表示桌面运行时集成已完成。
 
+Built-in host policy controls are available in Desktop Settings > Plugins. They use the existing revision-checked configuration API and do not constitute plugin-specific Schema integration. See [Desktop configuration](../architecture/desktop-runtime.md#built-in-plugin-management).
+
 ## 1. 格式与支持范围
 
 根必须有：

@@ -19,6 +19,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -111,7 +112,8 @@ func (m *Manager) State() State {
 	if m.cur.History.MaxBytes != m.started.History.MaxBytes {
 		s.RestartRequired = append(s.RestartRequired, "history")
 	}
-	if m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) {
+	if m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) ||
+		m.cur.PluginEnabled(builtinclassify.ID) != m.started.PluginEnabled(builtinclassify.ID) {
 		s.RestartRequired = append(s.RestartRequired, "plugins")
 	}
 	if !reflect.DeepEqual(m.cur.processorSettingsKey(), m.started.processorSettingsKey()) {

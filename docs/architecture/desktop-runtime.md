@@ -51,6 +51,16 @@ Saved-but-not-applied failures remain visible. Native login status remains a sep
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
 `unic-desktop --version --json` reports build identity before configuration, service ownership or UI initialization. See the [release architecture](releases.md).
 
+## Built-in plugin management
+
+Settings > Plugins lists Tailcat sync, text tools and content classification. The detail pages edit the existing configuration through the revision-checked local API. Plugin maps and pointer values are copied before editing; failed writes retain the authoritative service snapshot. A successful save publishes the returned configuration on the view thread before controls accept another write. Saved-but-unapplied and invalid-file states remain visible.
+
+Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes` backend policies. They apply immediately. The file permission covers files and entire directory snapshots, including empty trees. The automatic threshold uses the selected files' total byte count; explicit sends bypass only that threshold. Global synchronization permissions and automatic-directory intent remain on Settings > Sync. Tailcat stays assembled and cannot be independently disabled or uninstalled.
+
+Text tools and classification expose enablement and a processor failure policy. The default policy inherits `plugins.on_error`; an explicit instance override can be reset to inheritance. These settings apply after quitting and reopening Desktop, which restarts its owned service. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
+
+The three built-in plugins have no plugin-specific Schema fields. This interface does not implement external plugin installation, removal or arbitrary Schema forms. See the [execution receipt](../exec/desktop-builtin-plugin-settings.md) for failure cases and native Desktop evidence.
+
 ## Native application updates
 
 Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences use the same v2 user-data directory as the Desktop profile. Package-manager installations and portable archives retain external update ownership. AppImage self-update remains unsupported. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.

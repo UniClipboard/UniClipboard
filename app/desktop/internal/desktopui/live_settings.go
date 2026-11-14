@@ -95,6 +95,9 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 		group("privacy", d.tr("隐私与诊断"), func() {
 			toggle("telemetry", d.tr("发送使用数据与诊断"), d.tr("关闭后停止遥测上传。"), &cfg.Telemetry.Enabled)
 		})
+	case "plugins":
+		d.builtinPluginsContent(c, k)
+		return
 	case "sync":
 		group("sync", d.tr("同步行为"), func() {
 			toggle("enabled", d.tr("启用同步"), d.tr("控制所有同步后端。"), &cfg.Sync.Enabled)

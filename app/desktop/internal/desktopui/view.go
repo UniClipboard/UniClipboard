@@ -95,6 +95,8 @@ type deviceCandidate struct {
 }
 
 type viewState struct {
+	pluginSettings builtinPluginSettings
+
 	reference                                                              string
 	previewImage                                                           ui.ImageSource
 	language                                                               string

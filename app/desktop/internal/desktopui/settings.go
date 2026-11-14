@@ -12,6 +12,7 @@ var categories = []uikit.SidebarNavItem{
 	{ID: "shortcuts", Label: "快捷键", Icon: uikit.IconEdit},
 	{ID: "quickPanel", Label: "快捷面板", Icon: uikit.IconList},
 	{ID: "sync", Label: "同步", Icon: uikit.IconRetry},
+	{ID: "plugins", Label: "插件", Icon: uikit.IconPackage},
 	{ID: "security", Label: "安全", Icon: uikit.IconShield},
 	{ID: "network", Label: "网络", Icon: uikit.IconGlobe},
 	{ID: "storage", Label: "存储", Icon: uikit.IconPackage},

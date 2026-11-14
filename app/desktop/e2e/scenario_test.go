@@ -48,6 +48,7 @@ type desktopResult struct {
 	Cleanup          string           `json:"cleanup"`
 }
 type desktopScenario struct {
+	policyPeer                     *pluginPolicyPeer
 	captureMu                      sync.Mutex // Do not overlap recording and checkpoint captures.
 	ctx                            context.Context
 	cancel                         context.CancelFunc
@@ -207,17 +208,24 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			if len(a) != 2 {
 				return errors.New("ui-enabled role label")
 			}
+			var previous desktopNode
+			stable := time.Time{}
 			err := s.wait(func() bool {
 				node, err := s.find(a[0], a[1])
 				if err != nil {
+					stable = time.Time{}
 					return false
 				}
 				for _, state := range node.States {
 					if state == "disabled" {
+						stable = time.Time{}
 						return false
 					}
 				}
-				return true
+				if stable.IsZero() || node.ID != previous.ID || node.Bounds != previous.Bounds {
+					stable, previous = time.Now(), node
+				}
+				return time.Since(stable) >= 350*time.Millisecond
 			})
 			if err == nil {
 				s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("%s %q is enabled", a[0], a[1]))
@@ -275,6 +283,9 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			}
 			return s.acceptance(a[0], a[1])
 		},
+	}
+	for name, handler := range builtinPluginCommands() {
+		handlers[name] = handler
 	}
 	result := map[string]func(*testscript.TestScript, bool, []string){}
 	for name, handler := range handlers {
@@ -375,6 +386,23 @@ func (s *desktopScenario) startNative(migration string) error {
 		s.result.Assertions = append(s.result.Assertions, "isolated encrypted v1 fixture with 1505 records; synthetic system credentials unavailable")
 	}
 
+	if err := s.launchNative(); err != nil {
+		return err
+	}
+	if migration == "" {
+		if err := s.wait(func() bool { _, e := s.client.Status(s.ctx); return e == nil }); err != nil {
+			return err
+		}
+		s.result.Assertions = append(s.result.Assertions, "an isolated native content window and production service are running")
+	} else {
+		s.result.Assertions = append(s.result.Assertions, "a real native setup window is running before service startup")
+	}
+	s.media = newDesktopRecording(s)
+	return s.screenshot("started")
+}
+
+// launchNative reopens the existing private profile without rewriting configuration.
+func (s *desktopScenario) launchNative() error {
 	s.automation = filepath.Join(s.home, "automation.sock")
 	binary := filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic-desktop")
 	if os.PathSeparator == '\\' {
@@ -387,7 +415,7 @@ func (s *desktopScenario) startNative(migration string) error {
 		}
 	}
 	s.app.Env = append(s.app.Env, "UNIC_HOME="+s.home, "UNIC_DESKTOP_E2E_PROFILE="+s.home, "MYGO_AUTOMATION="+s.automation, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
-	log, err := os.Create(filepath.Join(s.private, "desktop.log"))
+	log, err := os.OpenFile(filepath.Join(s.private, "desktop.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}
@@ -422,16 +450,7 @@ func (s *desktopScenario) startNative(migration string) error {
 	if err != nil {
 		return fmt.Errorf("native window: %w", err)
 	}
-	if migration == "" {
-		if err = s.wait(func() bool { _, e := s.client.Status(s.ctx); return e == nil }); err != nil {
-			return err
-		}
-		s.result.Assertions = append(s.result.Assertions, "an isolated native content window and production service are running")
-	} else {
-		s.result.Assertions = append(s.result.Assertions, "a real native setup window is running before service startup")
-	}
-	s.media = newDesktopRecording(s)
-	return s.screenshot("started")
+	return nil
 }
 
 type desktopNode struct {
@@ -513,8 +532,6 @@ func (s *desktopScenario) call(ctx context.Context, method string, params any, o
 	started := time.Now()
 	deadline := 8 * time.Second
 	if method == "capture" {
-		s.captureMu.Lock()
-		defer s.captureMu.Unlock()
 		started = time.Now()
 		// Bound raster capture separately from semantic UI commands.
 		deadline = 30 * time.Second
@@ -547,6 +564,8 @@ func (s *desktopScenario) call(ctx context.Context, method string, params any, o
 	return nil
 }
 func (s *desktopScenario) capture() (data []byte, err error) {
+	s.captureMu.Lock()
+	defer s.captureMu.Unlock()
 	var out struct{ PNG string }
 	if err = s.call(s.ctx, "capture", map[string]any{"window": s.window}, &out); err != nil {
 		return nil, err
@@ -599,6 +618,9 @@ func (s *desktopScenario) finish(env *testscript.Env) {
 	}
 	s.cancel()
 	cleanupErr := s.stopApp()
+	if s.policyPeer != nil {
+		cleanupErr = errors.Join(cleanupErr, s.policyPeer.stop())
+	}
 	if cleanupErr != nil {
 		failed = true
 		if s.result.Failure == "" {

@@ -1,0 +1,228 @@
+package e2e
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"image"
+	"image/png"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/uniclipboard/unic/internal/clip"
+	api "github.com/uniclipboard/unic/internal/localapi"
+	config "github.com/uniclipboard/unic/internal/localconfig"
+)
+
+// These commands observe the production process; all setting writes happen via UI.
+func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
+	return map[string]func(*desktopScenario, []string) error{
+		"connect-policy-peer": func(s *desktopScenario, a []string) error { return s.connectPolicyPeer(a) },
+		"stop-policy-peer": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 || s.policyPeer == nil {
+				return errors.New("stop-policy-peer requires an owned peer")
+			}
+			err := s.policyPeer.stop()
+			s.policyPeer = nil
+			return err
+		},
+		"config-equals": func(s *desktopScenario, a []string) error {
+			if len(a) != 2 {
+				return errors.New("config-equals path JSON-value")
+			}
+			var last any
+			err := s.wait(func() bool {
+				st, e := s.client.Config(s.ctx)
+				if e != nil || st.Error != "" || st.ApplyError != "" {
+					return false
+				}
+				b, _ := json.Marshal(st.Config)
+				var value any
+				_ = json.Unmarshal(b, &value)
+				// Plugin IDs contain dots; traverse the fixed instances prefix explicitly.
+				path := strings.Split(a[0], ".")
+				if len(path) > 3 && path[0] == "plugins" && path[1] == "instances" {
+					path = append([]string{"plugins", "instances", path[2] + "." + path[3]}, path[4:]...)
+				}
+				for _, key := range path {
+					m, ok := value.(map[string]any)
+					if !ok {
+						return false
+					}
+					value = m[key]
+				}
+				last = value
+				encoded, _ := json.Marshal(value)
+				if string(encoded) != a[1] {
+					return false
+				}
+				// Check the saved TOML too; a displayed or API-only value is insufficient.
+				raw, e := os.ReadFile(filepath.Join(s.home, "config.toml"))
+				if e != nil {
+					return false
+				}
+				disk, e := config.Parse(raw)
+				if e != nil {
+					return false
+				}
+				encoded, _ = json.Marshal(disk)
+				effective, _ := json.Marshal(st.Config)
+				return bytes.Equal(encoded, effective)
+			})
+			if err != nil {
+				return fmt.Errorf("%s expected %s, last=%v: %w", a[0], a[1], last, err)
+			}
+			s.result.Assertions = append(s.result.Assertions, "persisted "+a[0]+" = "+a[1])
+			return nil
+		},
+		"restart-required": func(s *desktopScenario, a []string) error {
+			if len(a) != 1 {
+				return errors.New("restart-required key")
+			}
+			err := s.wait(func() bool {
+				st, e := s.client.Config(s.ctx)
+				return e == nil && slices.Contains(st.RestartRequired, a[0])
+			})
+			if err == nil {
+				s.result.Assertions = append(s.result.Assertions, "restart required: "+a[0])
+			}
+			return err
+		},
+		"restart-clear": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("restart-clear takes no arguments")
+			}
+			err := s.wait(func() bool { st, e := s.client.Config(s.ctx); return e == nil && len(st.RestartRequired) == 0 })
+			if err == nil {
+				s.result.Assertions = append(s.result.Assertions, "no pending restart settings")
+			}
+			return err
+		},
+		"plugin-probe": func(s *desktopScenario, a []string) error {
+			if len(a) != 2 {
+				return errors.New("plugin-probe kind disposition-or-error")
+			}
+			snap, e := s.pluginSnapshot(a[0])
+			if e != nil {
+				return e
+			}
+			r, e := s.client.Submit(s.ctx, api.SubmitInput{RequestID: fmt.Sprintf("probe-%d", time.Now().UnixNano()), Snapshot: snap})
+			if a[1] == "sync_disabled" {
+				var ae *api.Error
+				if !errors.As(e, &ae) || ae.Reason != "sync_disabled" {
+					return fmt.Errorf("expected sync_disabled, got %+v %v", r, e)
+				}
+			} else if e != nil || string(r.SyncDisposition) != a[1] {
+				return fmt.Errorf("%s: expected %s, got %+v %v", a[0], a[1], r, e)
+			}
+			if a[1] == "queued" {
+				if err := s.verifyPeerContent(snap); err != nil {
+					return err
+				}
+			}
+			s.result.Assertions = append(s.result.Assertions, "live Engine "+a[0]+" = "+a[1])
+			return nil
+		},
+		"plugin-auto-probe": func(s *desktopScenario, a []string) error { return s.probeAutomaticPolicy(a) },
+		"processor-probe": func(s *desktopScenario, a []string) error {
+			if len(a) != 1 || (a[0] != "enabled" && a[0] != "disabled") {
+				return errors.New("processor-probe enabled|disabled")
+			}
+			r, e := s.client.Submit(s.ctx, api.SubmitInput{RequestID: fmt.Sprintf("processor-%d", time.Now().UnixNano()), Snapshot: clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("plugin acceptance person@example.com " + strconv.FormatInt(time.Now().UnixNano(), 10))}}}})
+			if e != nil {
+				return e
+			}
+			it, e := s.client.GetHistory(s.ctx, string(r.HistoryID))
+			if e != nil {
+				return e
+			}
+			enabled := a[0] == "enabled"
+			if slices.Contains(it.Tags, "builtin:text") != enabled || slices.Contains(it.Tags, "email") != enabled {
+				return fmt.Errorf("processor tags do not match %s: %v", a[0], it.Tags)
+			}
+			actions, e := s.client.Actions(s.ctx)
+			if e != nil {
+				return e
+			}
+			count := 0
+			for _, action := range actions {
+				if action.PluginID == "builtin.text" {
+					count++
+				}
+			}
+			if (count == 4) != enabled || (!enabled && count != 0) {
+				return fmt.Errorf("text Actions do not match %s: %d", a[0], count)
+			}
+			s.result.Assertions = append(s.result.Assertions, "real history classification/email tags and four text Actions: "+a[0])
+			return nil
+		},
+		"restart-desktop": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("restart-desktop takes no arguments")
+			}
+			// Pause the recorder across the actual quit/reopen gap; retain all sampled frames.
+			s.captureMu.Lock()
+			defer s.captureMu.Unlock()
+			if err := s.stopApp(); err != nil {
+				return err
+			}
+			s.app = nil
+			s.appDone = nil
+			if err := s.launchNative(); err != nil {
+				return err
+			}
+			if err := s.wait(func() bool { _, e := s.client.Status(s.ctx); return e == nil }); err != nil {
+				return err
+			}
+			s.result.Assertions = append(s.result.Assertions, "Desktop quit stopped its owned service; reopened the same profile")
+			return nil
+		},
+	}
+}
+
+func (s *desktopScenario) pluginSnapshot(kind string) (clip.Snapshot, error) {
+	id := strconv.FormatInt(time.Now().UnixNano(), 10)
+	switch kind {
+	case "text":
+		return clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("policy probe " + id)}}}, nil
+	case "image":
+		var b bytes.Buffer
+		img := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+		img.Pix[0] = uint8(time.Now().UnixNano())
+		if e := png.Encode(&b, img); e != nil {
+			return clip.Snapshot{}, e
+		}
+		return clip.Snapshot{Parts: []clip.Part{{Format: clip.PNG, Data: b.Bytes()}}}, nil
+	case "file", "large-file", "directory", "large-directory":
+		p := filepath.Join(s.home, "probe-"+id)
+		size := 32
+		if kind == "large-file" {
+			size = 2 << 20
+		}
+		if kind == "directory" || kind == "large-directory" {
+			if e := os.MkdirAll(filepath.Join(p, "empty"), 0700); e != nil {
+				return clip.Snapshot{}, e
+			}
+			data := []byte(id)
+			if kind == "large-directory" {
+				data = bytes.Repeat([]byte("d"), 600<<10)
+				copy(data, []byte(id))
+				if e := os.WriteFile(filepath.Join(p, "second.txt"), data, 0600); e != nil {
+					return clip.Snapshot{}, e
+				}
+			}
+			if e := os.WriteFile(filepath.Join(p, "member.txt"), data, 0600); e != nil {
+				return clip.Snapshot{}, e
+			}
+		} else if e := os.WriteFile(p, append([]byte(id), bytes.Repeat([]byte("x"), size-len(id))...), 0600); e != nil {
+			return clip.Snapshot{}, e
+		}
+		return clip.Snapshot{Files: []clip.File{{Name: filepath.Base(p), Path: p, Size: int64(size), Directory: kind == "directory" || kind == "large-directory"}}}, nil
+	}
+	return clip.Snapshot{}, fmt.Errorf("unknown probe kind %q", kind)
+}

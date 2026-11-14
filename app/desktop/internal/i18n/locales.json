@@ -1203,7 +1203,7 @@
     "en": "Sync images",
     "ja": "画像を同期",
     "pt-BR": "Sincronizar imagens",
-    "ru": "Синхронизировать изображения"
+    "ru": "Синхронизация изображений"
   },
   "同步文字": {
     "en": "Sync text",
@@ -3514,5 +3514,197 @@
     "ja": "新しくインポートする記録はありません。以前の記録は履歴に残っています。",
     "pt-BR": "Não há novos registros para importar. Os registros importados anteriormente permanecem no histórico.",
     "ru": "Новых записей для импорта нет. Ранее импортированные записи остаются в истории."
+  },
+  "插件": {
+    "en": "Plugins",
+    "ja": "プラグイン",
+    "pt-BR": "Plugins",
+    "ru": "Плагины"
+  },
+  "内置插件": {
+    "en": "Built-in plugins",
+    "ja": "組み込みプラグイン",
+    "pt-BR": "Plugins integrados",
+    "ru": "Встроенные плагины"
+  },
+  "Tailcat 同步": {
+    "en": "Tailcat sync",
+    "ja": "Tailcat 同期",
+    "pt-BR": "Sincronização Tailcat",
+    "ru": "Синхронизация Tailcat"
+  },
+  "文本工具": {
+    "en": "Text tools",
+    "ja": "テキストツール",
+    "pt-BR": "Ferramentas de texto",
+    "ru": "Инструменты текста"
+  },
+  "内容分类": {
+    "en": "Content classification",
+    "ja": "コンテンツ分類",
+    "pt-BR": "Classificação de conteúdo",
+    "ru": "Классификация содержимого"
+  },
+  "设备间同步。支持文本、图片、文件与文件夹。": {
+    "en": "Sync text, images, files and folders between devices.",
+    "ja": "デバイス間でテキスト、画像、ファイル、フォルダーを同期します。",
+    "pt-BR": "Sincronize texto, imagens, arquivos e pastas entre dispositivos.",
+    "ru": "Синхронизация текста, изображений, файлов и папок между устройствами."
+  },
+  "标注邮箱和链接，提供大写、小写、去除首尾空白和纯文本动作。": {
+    "en": "Tag email addresses and links; change case, trim whitespace or use plain text.",
+    "ja": "メールとリンクをタグ付けし、大文字・小文字変換、空白除去、プレーンテキスト化を行います。",
+    "pt-BR": "Marque e-mails e links; altere maiúsculas, remova espaços ou use texto simples.",
+    "ru": "Метки для почты и ссылок; смена регистра, удаление пробелов и простой текст."
+  },
+  "按文本、图片、文件、文件夹和链接添加类型标签。": {
+    "en": "Add type tags for text, images, files, folders and links.",
+    "ja": "テキスト、画像、ファイル、フォルダー、リンクに種類タグを付けます。",
+    "pt-BR": "Adicione etiquetas de tipo para texto, imagens, arquivos, pastas e links.",
+    "ru": "Метки типов для текста, изображений, файлов, папок и ссылок."
+  },
+  "设置已保存，但未能生效。请重试或重新启动桌面端。": {
+    "en": "Settings saved but not applied. Retry or restart Desktop.",
+    "ja": "設定は保存されましたが適用できませんでした。再試行するかアプリを再起動してください。",
+    "pt-BR": "Configurações salvas, mas não aplicadas. Tente novamente ou reinicie o aplicativo.",
+    "ru": "Настройки сохранены, но не применены. Повторите или перезапустите приложение."
+  },
+  "配置文件无效。当前保留上一份有效设置。": {
+    "en": "Invalid configuration file. Keeping the last valid settings.",
+    "ja": "設定ファイルが無効です。前の有効な設定を維持します。",
+    "pt-BR": "Arquivo de configuração inválido. Mantendo as últimas configurações válidas.",
+    "ru": "Недопустимый файл конфигурации. Сохранены последние допустимые настройки."
+  },
+  "插件设置已保存。请退出并重新启动桌面端以生效。": {
+    "en": "Plugin settings saved. Quit and reopen Desktop to apply them.",
+    "ja": "プラグイン設定を保存しました。アプリを終了して再起動すると適用されます。",
+    "pt-BR": "Configurações dos plugins salvas. Saia e reabra o aplicativo para aplicá-las.",
+    "ru": "Настройки плагинов сохранены. Закройте и откройте приложение для применения."
+  },
+  "已停用": {
+    "en": "Disabled",
+    "ja": "無効",
+    "pt-BR": "Desativado",
+    "ru": "Отключён"
+  },
+  "需要重启": {
+    "en": "Restart required",
+    "ja": "再起動が必要",
+    "pt-BR": "Reinicialização necessária",
+    "ru": "Требуется перезапуск"
+  },
+  "返回插件列表": {
+    "en": "Back to plugins",
+    "ja": "プラグイン一覧に戻る",
+    "pt-BR": "Voltar aos plugins",
+    "ru": "Назад к плагинам"
+  },
+  "内置同步后端": {
+    "en": "Built-in sync backend",
+    "ja": "組み込み同期バックエンド",
+    "pt-BR": "Backend de sincronização integrado",
+    "ru": "Встроенный механизм синхронизации"
+  },
+  "随应用升级，不能单独停用或卸载。": {
+    "en": "Updated with the app; cannot be disabled or removed separately.",
+    "ja": "アプリと共に更新され、単独で無効化・削除できません。",
+    "pt-BR": "Atualizado com o aplicativo; não pode ser desativado ou removido separadamente.",
+    "ru": "Обновляется с приложением; нельзя отключить или удалить отдельно."
+  },
+  "以下策略保存后立即生效，仍受全局同步设置限制。": {
+    "en": "These policies apply immediately and remain subject to global sync settings.",
+    "ja": "次のポリシーは保存後すぐ適用され、全体の同期設定にも従います。",
+    "pt-BR": "Estas políticas são aplicadas imediatamente, respeitando as configurações globais.",
+    "ru": "Эти правила действуют сразу с учётом общих настроек синхронизации."
+  },
+  "同步文本": {
+    "en": "Sync text",
+    "ja": "テキストを同期",
+    "pt-BR": "Sincronizar texto",
+    "ru": "Синхронизация текста"
+  },
+  "同步文件与文件夹": {
+    "en": "Sync files and folders",
+    "ja": "ファイルとフォルダーを同期",
+    "pt-BR": "Sincronizar arquivos e pastas",
+    "ru": "Синхронизация файлов и папок"
+  },
+  "允许此后端发送和接收文本。": {
+    "en": "Allow this backend to send and receive text.",
+    "ja": "このバックエンドでテキストの送受信を許可します。",
+    "pt-BR": "Permitir que este backend envie e receba texto.",
+    "ru": "Разрешить отправку и получение текста этим механизмом."
+  },
+  "允许此后端发送和接收图片。": {
+    "en": "Allow this backend to send and receive images.",
+    "ja": "このバックエンドで画像の送受信を許可します。",
+    "pt-BR": "Permitir que este backend envie e receba imagens.",
+    "ru": "Разрешить отправку и получение изображений этим механизмом."
+  },
+  "文件夹作为完整内容传输。自动同步目录仍由全局同步设置控制。": {
+    "en": "Folders transfer as complete content. Global sync settings control automatic directory sync.",
+    "ja": "フォルダーは全体を転送します。自動同期は全体の同期設定で制御します。",
+    "pt-BR": "Pastas são transferidas por inteiro. A sincronização automática depende das configurações globais.",
+    "ru": "Папки передаются целиком. Автосинхронизация папок зависит от общих настроек."
+  },
+  "自动文件传输阈值（MB）": {
+    "en": "Automatic file threshold (MB)",
+    "ja": "ファイル自動転送の上限（MB）",
+    "pt-BR": "Limite automático de arquivos (MB)",
+    "ru": "Порог автопередачи файлов (МБ)"
+  },
+  "0 表示不增加限制。按整次选择的文件总大小计算。主动发送不受此阈值限制。": {
+    "en": "0 adds no limit. Uses total file bytes for the selection. Manual sends bypass this threshold.",
+    "ja": "0 は追加制限なしです。選択したファイルの合計サイズに適用し、手動送信には適用しません。",
+    "pt-BR": "0 não adiciona limite. Usa o tamanho total da seleção. Envios manuais ignoram este limite.",
+    "ru": "0 — без дополнительного ограничения. Учитывается весь объём выбора. Ручная отправка не ограничена этим порогом."
+  },
+  "请输入 0 到 4096 之间的整数。": {
+    "en": "Enter an integer from 0 to 4096.",
+    "ja": "0 から 4096 の整数を入力してください。",
+    "pt-BR": "Insira um número inteiro de 0 a 4096.",
+    "ru": "Введите целое число от 0 до 4096."
+  },
+  "启用文本工具": {
+    "en": "Enable text tools",
+    "ja": "テキストツールを有効化",
+    "pt-BR": "Ativar ferramentas de texto",
+    "ru": "Включить инструменты текста"
+  },
+  "启用内容分类": {
+    "en": "Enable content classification",
+    "ja": "コンテンツ分類を有効化",
+    "pt-BR": "Ativar classificação de conteúdo",
+    "ru": "Включить классификацию содержимого"
+  },
+  "退出并重新启动桌面端后生效。": {
+    "en": "Applies after quitting and reopening Desktop.",
+    "ja": "アプリを終了して再起動すると適用されます。",
+    "pt-BR": "Aplicado após sair e reabrir o aplicativo.",
+    "ru": "Применяется после закрытия и открытия приложения."
+  },
+  "处理失败时阻止同步": {
+    "en": "Block sync on processing failure",
+    "ja": "処理失敗時に同期を阻止",
+    "pt-BR": "Bloquear sincronização se o processamento falhar",
+    "ru": "Блокировать синхронизацию при ошибке обработки"
+  },
+  "开启后，处理失败将阻止该条内容同步。关闭后继续同步。重启后生效。": {
+    "en": "When on, processing failure blocks sync for that item. Otherwise sync continues. Applies after restart.",
+    "ja": "有効時は処理失敗でその項目の同期を阻止します。無効時は続行します。再起動後に適用されます。",
+    "pt-BR": "Quando ativado, falhas bloqueiam a sincronização do item. Caso contrário, ela continua. Aplicado após reiniciar.",
+    "ru": "При включении ошибка обработки блокирует синхронизацию записи. Иначе она продолжается. Действует после перезапуска."
+  },
+  "当前使用全局失败策略。": {
+    "en": "Using the global failure policy.",
+    "ja": "全体の失敗ポリシーを使用中です。",
+    "pt-BR": "Usando a política global de falhas.",
+    "ru": "Используется общая политика обработки ошибок."
+  },
+  "使用全局失败策略": {
+    "en": "Use global failure policy",
+    "ja": "全体の失敗ポリシーを使用",
+    "pt-BR": "Usar política global de falhas",
+    "ru": "Использовать общую политику ошибок"
   }
 }

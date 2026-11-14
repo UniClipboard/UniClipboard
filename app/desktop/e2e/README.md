@@ -18,11 +18,11 @@ make desktop-e2e CASE=history-search-copy
 
 ## What the evidence proves
 
-The native case starts the real mygo desktop composition and production service, with a test-only automation plugin and directory clipboard. It submits history through the service, interacts with the running window, checks search results and verifies the full copied text at the directory clipboard. It records continuously sampled window-content frames with actual capture timestamps. It does not assemble a movie from selected checkpoint screenshots.
+The native case starts the real mygo desktop composition and production service, with a test-only automation plugin and directory clipboard. It submits history through the service, interacts with the running window, checks search results and verifies the full copied text at the directory clipboard. It records continuously sampled window-content frames with actual capture timestamps. It does not assemble a movie from selected checkpoint screenshots. When the window changes size, the recorder centers original-scale frames on a fixed canvas sized to the largest captured window; it does not discard the later history frames.
 
 Capture uses mygo `Window.CapturePage`. This captures the running window's rendered content, including the current view state. It excludes window-manager decorations and desktop compositing. Input is app-scoped automation rather than physical input. System clipboard, global shortcut delivery, OS focus restoration and cross-application paste remain explicitly NOT_RUN. Process cases retain JSON assertions. View cases retain software-rendered PNG checkpoints, including failing subcases. They do not open native windows or produce a continuous recording. The three `gui-*` cases cover the retained legacy GUI view; they do not establish coverage of the active desktop composition.
 
-The `desktop_e2e` build tag adds automation, a unique application identity and an isolated directory clipboard. Release builds do not import the automation plugin and keep the normal system clipboard implementation. Tests disable telemetry, sync, global shortcut registration and login-startup intent.
+The `desktop_e2e` build tag adds automation, a unique application identity and an isolated directory clipboard. Release builds do not import the automation plugin and keep the normal system clipboard implementation. Native setup cases additionally use a build-tagged source adapter that discovers only the runner-owned v1 fixture and returns unavailable system credentials. The real passphrase fallback and importer remain active; no personal credential store is accessed. Tests disable telemetry, sync, global shortcut registration and login-startup intent.
 
 ## Run structure
 
@@ -69,11 +69,16 @@ The runner opens only test-owned windows with synthetic content and a unique pro
 
 | Command | Meaning |
 |---|---|
-| `start` | Start an owned native desktop with real service and recording. |
+| `start` | Start an owned native desktop with completed setup, real service and recording. |
+| `start-setup complete\|partial` | Start a fresh native setup with an isolated encrypted v1 source; recording starts before service startup. |
+| `observe <seconds>` | Keep recording the current live state for 1–5 seconds for human review. |
+| `service-absent` | Assert that setup has not started a service. |
+| `history-count <expected>` | Assert the exact migrated-history count through production IPC. |
 | `submit <id> <text>` | Seed synthetic history through the production service. |
-| `ui-wait <role> <label>` | Require a stable matching accessible element. |
+| `ui-wait <role> <label> [seconds]` | Require a stable matching accessible element; optional timeout is 1–120 seconds (default 20). |
 | `ui-absent <role> <label>` | Require stable absence of matching elements. |
 | `ui-click <role> <label>` | Click the unique matching element through app-scoped window input. |
+| `ui-enabled <role> <label>` | Wait until the matching live control is enabled before acting. |
 | `ui-set <role> <label> <text>` | Set the unique matching input through its accessibility action. |
 | `ui-key <accelerator>` | Send a key to the owned window, not the global desktop. |
 | `board-equals <text>` | Require exact text at the test directory clipboard. |

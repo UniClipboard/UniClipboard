@@ -3022,5 +3022,497 @@
     "ja": "色",
     "pt-BR": "Cor",
     "ru": "Цвет"
+  },
+  "数据迁移": {
+    "en": "Data migration",
+    "ja": "データ移行",
+    "pt-BR": "Migração de dados",
+    "ru": "Перенос данных"
+  },
+  "从 v1 迁移": {
+    "en": "Migrate from v1",
+    "ja": "v1 から移行",
+    "pt-BR": "Migrar da v1",
+    "ru": "Перенести из v1"
+  },
+  "迁移前会停止当前同步和剪贴板捕获。旧数据会保留。": {
+    "en": "Sync and clipboard capture will stop before migration. Your old data will be preserved.",
+    "ja": "移行前に同期とクリップボードの取得を停止します。旧データは保持されます。",
+    "pt-BR": "A sincronização e a captura da área de transferência serão interrompidas antes da migração. Os dados antigos serão preservados.",
+    "ru": "Перед переносом синхронизация и захват буфера обмена будут остановлены. Старые данные сохранятся."
+  },
+  "欢迎使用 UniClipboard": {
+    "en": "Welcome to UniClipboard",
+    "ja": "UniClipboard へようこそ",
+    "pt-BR": "Boas-vindas ao UniClipboard",
+    "ru": "Добро пожаловать в UniClipboard"
+  },
+  "让每一次复制更有用": {
+    "en": "Make every copy more useful",
+    "ja": "コピーをもっと便利に",
+    "pt-BR": "Torne cada cópia mais útil",
+    "ru": "Больше пользы от каждого копирования"
+  },
+  "开始使用": {
+    "en": "Get started",
+    "ja": "使い始める",
+    "pt-BR": "Começar",
+    "ru": "Начать"
+  },
+  "正在检查这台电脑上的 v1 数据…": {
+    "en": "Checking this computer for v1 data…",
+    "ja": "このコンピューターの v1 データを確認中…",
+    "pt-BR": "Verificando dados da v1 neste computador…",
+    "ru": "Проверка данных v1 на этом компьютере…"
+  },
+  "发现 UniClipboard v1 的数据": {
+    "en": "UniClipboard v1 data found",
+    "ja": "UniClipboard v1 のデータが見つかりました",
+    "pt-BR": "Dados do UniClipboard v1 encontrados",
+    "ru": "Найдены данные UniClipboard v1"
+  },
+  "手动选择目录": {
+    "en": "Choose a directory manually",
+    "ja": "フォルダーを手動で選択",
+    "pt-BR": "Escolher pasta manualmente",
+    "ru": "Выбрать папку вручную"
+  },
+  "重试": {
+    "en": "Retry",
+    "ja": "再試行",
+    "pt-BR": "Tentar novamente",
+    "ru": "Повторить"
+  },
+  "正在启动应用…": {
+    "en": "Starting the app…",
+    "ja": "アプリを起動中…",
+    "pt-BR": "Iniciando o aplicativo…",
+    "ru": "Запуск приложения…"
+  },
+  "从 UniClipboard v1 导入历史": {
+    "en": "Import history from UniClipboard v1",
+    "ja": "UniClipboard v1 から履歴をインポート",
+    "pt-BR": "Importar histórico do UniClipboard v1",
+    "ru": "Импорт истории из UniClipboard v1"
+  },
+  "导入后可在历史中直接使用。": {
+    "en": "Imported records will be available in history.",
+    "ja": "インポートした記録は履歴から利用できます。",
+    "pt-BR": "Os registros importados ficarão disponíveis no histórico.",
+    "ru": "Импортированные записи будут доступны в истории."
+  },
+  "v1 数据目录": {
+    "en": "v1 data directory",
+    "ja": "v1 データフォルダー",
+    "pt-BR": "Pasta de dados da v1",
+    "ru": "Папка данных v1"
+  },
+  "选择其他目录": {
+    "en": "Choose another directory",
+    "ja": "別のフォルダーを選択",
+    "pt-BR": "Escolher outra pasta",
+    "ru": "Выбрать другую папку"
+  },
+  "会导入": {
+    "en": "Included",
+    "ja": "インポートする項目",
+    "pt-BR": "Incluído",
+    "ru": "Будет импортировано"
+  },
+  "不会导入": {
+    "en": "Excluded",
+    "ja": "インポートしない項目",
+    "pt-BR": "Não incluído",
+    "ru": "Не будет импортировано"
+  },
+  "文本与 HTML": {
+    "en": "Text and HTML",
+    "ja": "テキストと HTML",
+    "pt-BR": "Texto e HTML",
+    "ru": "Текст и HTML"
+  },
+  "标签及其关联": {
+    "en": "Tags and their assignments",
+    "ja": "タグとその関連付け",
+    "pt-BR": "Etiquetas e suas associações",
+    "ru": "Теги и их связи"
+  },
+  "设备身份": {
+    "en": "Device identities",
+    "ja": "デバイス ID",
+    "pt-BR": "Identidades dos dispositivos",
+    "ru": "Идентификаторы устройств"
+  },
+  "设备信任关系": {
+    "en": "Device trust",
+    "ja": "デバイスの信頼関係",
+    "pt-BR": "Confiança entre dispositivos",
+    "ru": "Доверие устройств"
+  },
+  "其他设备需要升级到 v2，然后重新配对。": {
+    "en": "Upgrade other devices to v2, then pair them again.",
+    "ja": "他のデバイスを v2 に更新し、再度ペアリングしてください。",
+    "pt-BR": "Atualize os outros dispositivos para a v2 e emparelhe-os novamente.",
+    "ru": "Обновите другие устройства до v2 и выполните сопряжение заново."
+  },
+  "迁移只读取 v1 数据，不修改也不删除旧数据。": {
+    "en": "Migration only reads v1 data. Your old data is not changed or deleted.",
+    "ja": "移行は v1 データの読み取りのみを行います。旧データは変更も削除もしません。",
+    "pt-BR": "A migração apenas lê os dados da v1. Os dados antigos não serão alterados nem excluídos.",
+    "ru": "Перенос только читает данные v1. Старые данные не изменяются и не удаляются."
+  },
+  "开始前，请先退出 UniClipboard v1。应用不会自动退出 v1。": {
+    "en": "Quit UniClipboard v1 before starting. This app will not quit v1 for you.",
+    "ja": "開始前に UniClipboard v1 を終了してください。自動的には終了しません。",
+    "pt-BR": "Feche o UniClipboard v1 antes de começar. Este aplicativo não fechará a v1 automaticamente.",
+    "ru": "Перед началом закройте UniClipboard v1. Приложение не закроет v1 автоматически."
+  },
+  "另一个 unic 服务正在使用数据目录。请先停止该服务，然后重试。应用不会自动停止它。": {
+    "en": "Another unic service is using the data directory. Stop it and retry. This app will not stop it automatically.",
+    "ja": "別の unic サービスがデータフォルダーを使用中です。そのサービスを停止して再試行してください。自動的には停止しません。",
+    "pt-BR": "Outro serviço unic está usando a pasta de dados. Pare-o e tente novamente. O aplicativo não o interromperá automaticamente.",
+    "ru": "Папка данных используется другим сервисом unic. Остановите его и повторите. Приложение не остановит его автоматически."
+  },
+  "没有读取凭据，也没有导入任何记录。": {
+    "en": "No credentials were read and no records were imported.",
+    "ja": "認証情報の読み取りも記録のインポートも行っていません。",
+    "pt-BR": "Nenhuma credencial foi lida e nenhum registro foi importado.",
+    "ru": "Учётные данные не прочитаны. Записи не импортированы."
+  },
+  "解锁旧数据": {
+    "en": "Unlock old data",
+    "ja": "旧データを解除",
+    "pt-BR": "Desbloquear dados antigos",
+    "ru": "Разблокировать старые данные"
+  },
+  "导入记录": {
+    "en": "Import records",
+    "ja": "記録をインポート",
+    "pt-BR": "Importar registros",
+    "ru": "Импортировать записи"
+  },
+  "校验内容": {
+    "en": "Verify content",
+    "ja": "内容を検証",
+    "pt-BR": "Verificar conteúdo",
+    "ru": "Проверить содержимое"
+  },
+  "输入 v1 口令": {
+    "en": "Enter your v1 passphrase",
+    "ja": "v1 のパスフレーズを入力",
+    "pt-BR": "Digite a senha da v1",
+    "ru": "Введите пароль v1"
+  },
+  "系统凭据无法解锁 v1 数据。请输入旧版口令。口令只用于本次解锁，不会保存。": {
+    "en": "System credentials could not unlock v1 data. Enter your old passphrase. It is used only for this unlock and will not be saved.",
+    "ja": "システムの認証情報で v1 データを解除できませんでした。旧パスフレーズを入力してください。今回の解除にのみ使用し、保存しません。",
+    "pt-BR": "As credenciais do sistema não desbloquearam os dados da v1. Digite a senha antiga. Ela será usada apenas neste desbloqueio e não será salva.",
+    "ru": "Системные учётные данные не разблокировали данные v1. Введите старый пароль. Он используется только для этой разблокировки и не сохраняется."
+  },
+  "v1 口令": {
+    "en": "v1 passphrase",
+    "ja": "v1 パスフレーズ",
+    "pt-BR": "Senha da v1",
+    "ru": "Пароль v1"
+  },
+  "显示口令": {
+    "en": "Show passphrase",
+    "ja": "パスフレーズを表示",
+    "pt-BR": "Mostrar senha",
+    "ru": "Показать пароль"
+  },
+  "隐藏口令": {
+    "en": "Hide passphrase",
+    "ja": "パスフレーズを隠す",
+    "pt-BR": "Ocultar senha",
+    "ru": "Скрыть пароль"
+  },
+  "正在读取系统凭据": {
+    "en": "Reading system credentials",
+    "ja": "システムの認証情報を読み取り中",
+    "pt-BR": "Lendo credenciais do sistema",
+    "ru": "Чтение системных учётных данных"
+  },
+  "系统可能请求访问 UniClipboard 凭据。请在系统窗口中允许访问。": {
+    "en": "The system may ask to access UniClipboard credentials. Allow access in the system dialog.",
+    "ja": "システムが UniClipboard の認証情報へのアクセスを求める場合があります。システムのダイアログで許可してください。",
+    "pt-BR": "O sistema pode solicitar acesso às credenciais do UniClipboard. Permita o acesso na janela do sistema.",
+    "ru": "Система может запросить доступ к учётным данным UniClipboard. Разрешите доступ в системном окне."
+  },
+  "正在导入记录": {
+    "en": "Importing records",
+    "ja": "記録をインポート中",
+    "pt-BR": "Importando registros",
+    "ru": "Импорт записей"
+  },
+  "按条写入历史。已写入的记录在中断后保留。": {
+    "en": "Writing history one record at a time. Committed records survive interruption.",
+    "ja": "履歴を1件ずつ保存します。中断しても保存済みの記録は保持されます。",
+    "pt-BR": "Gravando um registro por vez. Os registros salvos permanecem após uma interrupção.",
+    "ru": "Запись истории по одной записи. Сохранённые записи останутся после прерывания."
+  },
+  "正在校验导入的内容": {
+    "en": "Verifying imported content",
+    "ja": "インポートした内容を検証中",
+    "pt-BR": "Verificando conteúdo importado",
+    "ru": "Проверка импортированного содержимого"
+  },
+  "重新打开历史库，逐条比对内容。": {
+    "en": "Reopening history and comparing content record by record.",
+    "ja": "履歴を再度開き、内容を1件ずつ比較します。",
+    "pt-BR": "Reabrindo o histórico e comparando o conteúdo de cada registro.",
+    "ru": "Повторное открытие истории и проверка содержимого каждой записи."
+  },
+  "正在安全停止": {
+    "en": "Stopping safely",
+    "ja": "安全に停止中",
+    "pt-BR": "Interrompendo com segurança",
+    "ru": "Безопасная остановка"
+  },
+  "正在等待当前操作结束。已提交的记录会保留。": {
+    "en": "Waiting for the current operation to finish. Committed records will be kept.",
+    "ja": "現在の操作の終了を待っています。保存済みの記録は保持されます。",
+    "pt-BR": "Aguardando a operação atual terminar. Os registros salvos serão mantidos.",
+    "ru": "Ожидание завершения текущей операции. Сохранённые записи останутся."
+  },
+  "已处理 %d / %d 条": {
+    "en": "Processed %d / %d records",
+    "ja": "処理済み %d / %d 件",
+    "pt-BR": "Processados %d / %d registros",
+    "ru": "Обработано записей: %d / %d"
+  },
+  "已校验 %d / %d 条": {
+    "en": "Verified %d / %d records",
+    "ja": "検証済み %d / %d 件",
+    "pt-BR": "Verificados %d / %d registros",
+    "ru": "Проверено записей: %d / %d"
+  },
+  "暂不迁移": {
+    "en": "Skip migration",
+    "ja": "今は移行しない",
+    "pt-BR": "Pular migração",
+    "ru": "Пропустить перенос"
+  },
+  "解锁并继续": {
+    "en": "Unlock and continue",
+    "ja": "解除して続行",
+    "pt-BR": "Desbloquear e continuar",
+    "ru": "Разблокировать и продолжить"
+  },
+  "开始迁移": {
+    "en": "Start migration",
+    "ja": "移行を開始",
+    "pt-BR": "Iniciar migração",
+    "ru": "Начать перенос"
+  },
+  "迁移期间不会捕获剪贴板，也不会同步": {
+    "en": "Clipboard capture and sync are paused during migration",
+    "ja": "移行中はクリップボードの取得と同期を停止します",
+    "pt-BR": "A captura e a sincronização ficam pausadas durante a migração",
+    "ru": "Во время переноса захват буфера обмена и синхронизация приостановлены"
+  },
+  "停止迁移": {
+    "en": "Stop migration",
+    "ja": "移行を停止",
+    "pt-BR": "Interromper migração",
+    "ru": "Остановить перенос"
+  },
+  "正在停止…": {
+    "en": "Stopping…",
+    "ja": "停止中…",
+    "pt-BR": "Interrompendo…",
+    "ru": "Остановка…"
+  },
+  "重试迁移": {
+    "en": "Retry migration",
+    "ja": "移行を再試行",
+    "pt-BR": "Tentar migrar novamente",
+    "ru": "Повторить перенос"
+  },
+  "进入应用": {
+    "en": "Open the app",
+    "ja": "アプリに進む",
+    "pt-BR": "Abrir o aplicativo",
+    "ru": "Открыть приложение"
+  },
+  "继续迁移": {
+    "en": "Resume migration",
+    "ja": "移行を再開",
+    "pt-BR": "Retomar migração",
+    "ru": "Продолжить перенос"
+  },
+  "不再迁移，进入应用": {
+    "en": "Open without further migration",
+    "ja": "移行を終了してアプリに進む",
+    "pt-BR": "Abrir sem continuar a migração",
+    "ru": "Открыть без продолжения переноса"
+  },
+  "之后可在设置 › 存储 › 从 v1 迁移中导入": {
+    "en": "Import later in Settings › Storage › Migrate from v1",
+    "ja": "後から設定 › ストレージ › v1 から移行でインポートできます",
+    "pt-BR": "Importe depois em Configurações › Armazenamento › Migrar da v1",
+    "ru": "Импортировать позже: Настройки › Хранилище › Перенести из v1"
+  },
+  "迁移未完成": {
+    "en": "Migration did not complete",
+    "ja": "移行は完了していません",
+    "pt-BR": "A migração não foi concluída",
+    "ru": "Перенос не завершён"
+  },
+  "已提交的记录不会回滚。重试会跳过它们。": {
+    "en": "Committed records are kept. Retrying skips them.",
+    "ja": "保存済みの記録は保持されます。再試行時にはスキップします。",
+    "pt-BR": "Os registros salvos serão mantidos e ignorados ao tentar novamente.",
+    "ru": "Сохранённые записи останутся и будут пропущены при повторе."
+  },
+  "迁移完成": {
+    "en": "Migration complete",
+    "ja": "移行が完了しました",
+    "pt-BR": "Migração concluída",
+    "ru": "Перенос завершён"
+  },
+  "所有记录都已导入并通过校验。": {
+    "en": "All records were imported and verified.",
+    "ja": "すべての記録をインポートし、検証しました。",
+    "pt-BR": "Todos os registros foram importados e verificados.",
+    "ru": "Все записи импортированы и проверены."
+  },
+  "部分数据未能导入": {
+    "en": "Some data could not be imported",
+    "ja": "一部のデータをインポートできませんでした",
+    "pt-BR": "Alguns dados não puderam ser importados",
+    "ru": "Часть данных не удалось импортировать"
+  },
+  "已导入的记录可以正常使用。问题记录可在重试时再次处理。": {
+    "en": "Imported records are available. Retry to process problem records again.",
+    "ja": "インポート済みの記録は利用できます。問題のある記録は再試行で処理できます。",
+    "pt-BR": "Os registros importados estão disponíveis. Tente novamente para processar os registros com problemas.",
+    "ru": "Импортированные записи доступны. Повторите перенос для обработки проблемных записей."
+  },
+  "迁移已停止": {
+    "en": "Migration stopped",
+    "ja": "移行を停止しました",
+    "pt-BR": "Migração interrompida",
+    "ru": "Перенос остановлен"
+  },
+  "已提交的记录已保留。继续迁移时会跳过它们。": {
+    "en": "Committed records were kept. Resuming migration skips them.",
+    "ja": "保存済みの記録は保持されています。移行再開時にはスキップします。",
+    "pt-BR": "Os registros salvos foram mantidos e serão ignorados ao retomar.",
+    "ru": "Сохранённые записи остались и будут пропущены при продолжении."
+  },
+  "本次新导入": {
+    "en": "Newly imported",
+    "ja": "今回のインポート",
+    "pt-BR": "Importados agora",
+    "ru": "Импортировано сейчас"
+  },
+  "此前已导入": {
+    "en": "Previously imported",
+    "ja": "以前のインポート",
+    "pt-BR": "Importados antes",
+    "ru": "Импортировано ранее"
+  },
+  "已校验": {
+    "en": "Verified",
+    "ja": "検証済み",
+    "pt-BR": "Verificados",
+    "ru": "Проверено"
+  },
+  "失败记录": {
+    "en": "Failed records",
+    "ja": "失敗した記録",
+    "pt-BR": "Registros com falha",
+    "ru": "Записи с ошибкой"
+  },
+  "缺失内容": {
+    "en": "Missing content parts",
+    "ja": "欠落した内容",
+    "pt-BR": "Partes ausentes",
+    "ru": "Отсутствующие части"
+  },
+  "校验失败": {
+    "en": "Verification failures",
+    "ja": "検証の失敗",
+    "pt-BR": "Falhas de verificação",
+    "ru": "Ошибки проверки"
+  },
+  "缺失内容是记录中丢失的图片或文件附件。它与失败记录分开计数。": {
+    "en": "Missing content parts are absent images or file attachments. They are counted separately from failed records.",
+    "ja": "欠落した内容は記録内の画像や添付ファイルです。失敗した記録とは別に集計します。",
+    "pt-BR": "Partes ausentes são imagens ou anexos de arquivo que faltam. São contadas separadamente dos registros com falha.",
+    "ru": "Отсутствующие части — это изображения или вложения файлов. Они учитываются отдельно от записей с ошибкой."
+  },
+  "选择 v1 数据目录": {
+    "en": "Choose the v1 data directory",
+    "ja": "v1 データフォルダーを選択",
+    "pt-BR": "Escolher pasta de dados da v1",
+    "ru": "Выбрать папку данных v1"
+  },
+  "无法打开目录选择窗口。请重试。": {
+    "en": "Could not open the directory picker. Please retry.",
+    "ja": "フォルダー選択画面を開けませんでした。再試行してください。",
+    "pt-BR": "Não foi possível abrir o seletor de pastas. Tente novamente.",
+    "ru": "Не удалось открыть окно выбора папки. Повторите попытку."
+  },
+  "这个目录不是受支持的 v1 数据目录。请选择其他目录。": {
+    "en": "This is not a supported v1 data directory. Choose another directory.",
+    "ja": "このフォルダーは対応する v1 データフォルダーではありません。別のフォルダーを選択してください。",
+    "pt-BR": "Esta não é uma pasta de dados da v1 compatível. Escolha outra pasta.",
+    "ru": "Эта папка данных v1 не поддерживается. Выберите другую папку."
+  },
+  "无法检查 v1 数据。请重试或手动选择目录。": {
+    "en": "Could not check v1 data. Retry or choose a directory manually.",
+    "ja": "v1 データを確認できませんでした。再試行するか、フォルダーを手動で選択してください。",
+    "pt-BR": "Não foi possível verificar os dados da v1. Tente novamente ou escolha uma pasta manualmente.",
+    "ru": "Не удалось проверить данные v1. Повторите или выберите папку вручную."
+  },
+  "未发现 v1 数据。请选择其他目录。": {
+    "en": "No v1 data found. Choose another directory.",
+    "ja": "v1 データが見つかりません。別のフォルダーを選択してください。",
+    "pt-BR": "Nenhum dado da v1 encontrado. Escolha outra pasta.",
+    "ru": "Данные v1 не найдены. Выберите другую папку."
+  },
+  "无法解锁旧数据。请核对 v1 口令后重试。": {
+    "en": "Could not unlock old data. Check your v1 passphrase and retry.",
+    "ja": "旧データを解除できませんでした。v1 のパスフレーズを確認して再試行してください。",
+    "pt-BR": "Não foi possível desbloquear os dados antigos. Confira a senha da v1 e tente novamente.",
+    "ru": "Не удалось разблокировать старые данные. Проверьте пароль v1 и повторите."
+  },
+  "迁移未完成。请检查数据目录、可用磁盘空间和访问权限，然后重试。": {
+    "en": "Migration did not complete. Check the data directory, free disk space and access permissions, then retry.",
+    "ja": "移行が完了しませんでした。データフォルダー、空き容量、アクセス権限を確認して再試行してください。",
+    "pt-BR": "A migração não foi concluída. Verifique a pasta de dados, o espaço livre e as permissões e tente novamente.",
+    "ru": "Перенос не завершён. Проверьте папку данных, свободное место и права доступа, затем повторите."
+  },
+  "无法保存引导状态。请检查数据目录权限，然后重试。": {
+    "en": "Could not save setup progress. Check data directory permissions and retry.",
+    "ja": "初期設定の状態を保存できませんでした。データフォルダーの権限を確認して再試行してください。",
+    "pt-BR": "Não foi possível salvar o progresso da configuração. Verifique as permissões da pasta e tente novamente.",
+    "ru": "Не удалось сохранить состояние настройки. Проверьте права на папку данных и повторите."
+  },
+  "正在准备应用…": {
+    "en": "Preparing the app…",
+    "ja": "アプリを準備中…",
+    "pt-BR": "Preparando o aplicativo…",
+    "ru": "Подготовка приложения…"
+  },
+  "无法启动应用。请检查数据目录和后台服务，然后重试。": {
+    "en": "Could not start the app. Check the data directory and background service, then retry.",
+    "ja": "アプリを起動できませんでした。データフォルダーとバックグラウンドサービスを確認して再試行してください。",
+    "pt-BR": "Não foi possível iniciar o aplicativo. Verifique a pasta de dados e o serviço em segundo plano e tente novamente.",
+    "ru": "Не удалось запустить приложение. Проверьте папку данных и фоновый сервис, затем повторите."
+  },
+  "无法停止当前后台服务。请退出应用后重试迁移。": {
+    "en": "Could not stop the background service. Quit the app and retry migration.",
+    "ja": "バックグラウンドサービスを停止できませんでした。アプリを終了して移行を再試行してください。",
+    "pt-BR": "Não foi possível parar o serviço em segundo plano. Feche o aplicativo e tente migrar novamente.",
+    "ru": "Не удалось остановить фоновый сервис. Закройте приложение и повторите перенос."
+  },
+  "没有新的记录需要导入。此前导入的记录仍在历史中。": {
+    "en": "There are no new records to import. Previously imported records remain in history.",
+    "ja": "新しくインポートする記録はありません。以前の記録は履歴に残っています。",
+    "pt-BR": "Não há novos registros para importar. Os registros importados anteriormente permanecem no histórico.",
+    "ru": "Новых записей для импорта нет. Ранее импортированные записи остаются в истории."
   }
 }

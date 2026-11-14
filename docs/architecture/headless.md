@@ -8,6 +8,8 @@ paths:
   - internal/servicelifecycle
   - internal/servicelaunch
   - app/desktop/internal/lifecycle
+  - app/desktop/internal/setupflow
+  - app/desktop/internal/setupui
   - app/desktop/internal/quickpanel
   - internal/localcontent
   - internal/clipboardintegration
@@ -176,8 +178,7 @@ Historical process evidence retains its original source/binary identity. The lat
 
 ## Desktop view
 
-The normal desktop uses the approved mygo composition and opens history directly.
-Setup and passphrase-unlock flows are removed.
+The normal desktop uses the approved mygo composition. Fresh profiles complete first-install setup or skip optional v1 migration before the normal service and clipboard adapter start. Established profiles and completed setup open history directly. There is no recurring passphrase-unlock flow. See [first-install behavior](overview.md#live-desktop-composition).
 The service remains the Engine owner; the view uses the shared local socket client.
 The live binding and acceptance boundary are described in [repository overview](overview.md#live-desktop-composition) and the [execution receipt](../exec/desktop-live-data.md).
 
@@ -187,7 +188,7 @@ The shared `config.toml` has a `[desktop]` section. Engine does not consume it.
 `language = "zh-CN"` selects the default desktop language. Supported alternatives are `en`, `ja`, `pt-BR` and `ru`. Language changes apply through normal configuration refresh without a restart. See [desktop languages](overview.md#desktop-languages).
 `mode = "normal"` is the default. `mode = "lightweight"` selects service-only startup.
 `launch_at_login = false` and `start_in_background = false` are the defaults.
-Mode and background changes apply on the next launch. Normal background startup creates its window with `Hidden: true`.
+Mode and background changes apply on the next launch. Normal background startup creates its window with `Hidden: true` after setup completion. First-install setup remains visible. Lightweight mode retains service-only startup without a GUI setup gate.
 The tray action and a second normal launch show the window. Closing the window hides it; explicit Quit ends the process and its owned service.
 `unic-desktop --mode normal|lightweight` overrides the mode for that launch without changing the file.
 Use `--mode normal` to reopen settings after selecting lightweight mode.

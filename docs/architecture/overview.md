@@ -98,7 +98,11 @@ See the [demo acceptance guide](../../app/desktop/UI-DEMO.md) for source mapping
 
 ## Live desktop composition
 
-The normal desktop opens the shared history composition directly. It has no setup or unlock gate.
+A fresh Desktop profile opens the first-install setup before starting the normal service or clipboard adapter. The welcome slogan is “让每一次复制更有用”. It offers optional, offline v1 history migration and shows importing, verification, and complete/partial/cancelled/failed results. After setup completion, the normal desktop opens the shared history composition directly. It has no recurring unlock gate.
+`app/desktop/internal/setupflow` owns the profile-scoped `desktop-setup.json` marker and calls the existing v1 importer. `app/desktop/internal/setupui` renders the [setup prototype](../../prototype/setup.html) with existing UI Kit controls. `session_gui.go` serializes setup, runtime startup, and later migration ownership.
+A pre-existing regular, nonempty `unic.db` without the new marker identifies an established v2 profile, including one with empty history. A pending marker takes precedence over database presence, so interrupted imports return to setup. Source selection is saved; imported-record mappings remain owned by the importer. Invalid setup state is an error rather than an implicit completion.
+Settings > Storage > Migrate from v1 stops the Desktop-owned adapter, quick panel and service before showing migration. It does not automatically stop an independently running service during migration. The importer requires exclusive Engine ownership and never applies imported content to the system clipboard.
+See the [setup execution receipt](../exec/0025-first-install-setup.md) for acceptance limits.
 Quit uses a window-scoped platform command-Q shortcut, including when no view control has focus.
 `desktopui.NewDesktop` initializes empty service-backed state, without fixture data.
 `live.go` serializes local socket work and applies completions on the view thread.

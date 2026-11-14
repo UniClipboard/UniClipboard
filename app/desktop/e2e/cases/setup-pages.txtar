@@ -1,0 +1,8 @@
+# Case: First-install setup pages
+# Mode: view
+# Purpose: Exercise the production UI Kit setup renderer across three skins and two themes.
+# Steps: Render welcome, detection error, confirmation, invalid source, passphrase, conflict, import, verification, stopping and each terminal result; activate primary and secondary actions.
+# Expected: Agreed welcome copy, masked input, separate progress phases and report counts, actionable errors, correct buttons and screenshots for each exercised view.
+# Forbidden: Native window launch, credential access, personal data access, partial results labeled complete, or missing view evidence.
+
+acceptance gui setup-pages

@@ -44,7 +44,7 @@ Use `UNIC_UI_SKIN=linux|macos|windows` to select a skin.
 Use `--theme light|dark|system` to select a color mode.
 Use `--page history|devices|settings|quick-panel` to choose the initial page.
 The demo does not require `unicd`. All changes remain in memory.
-The normal `unic-desktop` entry uses the same history, device sheet and settings composition with real service data. It opens history directly. Setup and unlock flows are removed.
+The normal `unic-desktop` entry uses the same history, device sheet and settings composition with real service data. Fresh profiles show first-install setup and optional offline v1 migration. Completed setup and established v2 profiles open history directly. Settings > Storage > Migrate from v1 permits later import. See [startup and migration behavior](../../docs/architecture/overview.md#live-desktop-composition).
 See the [live-data execution receipt](../../docs/exec/desktop-live-data.md) for supported operations, remaining gaps and nonvisual process acceptance.
 See [UI-DEMO.md](UI-DEMO.md) for the reference commit, scope, and repeatable acceptance steps.
 

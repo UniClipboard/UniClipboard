@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · 首次安装引导原型（0025）</title>
+<!--
+  Interactive prototype for decision 0025 (desktop first-install setup and v1 migration).
+  Open directly in a browser. The toolbar jumps to any state; the simulation controls
+  choose detection and migration outcomes for the clickable flow.
+-->
+<style>
+  :root{
+    --bg:#e9ebef; --win:#ffffff; --surface:#f5f6f8; --surface-2:#eceef2; --border:#e1e4e9;
+    --text:#1b1d22; --muted:#6b7280; --faint:#9aa1ad;
+    --accent:#3b6cf6; --accent-soft:#e8eefe; --ok:#1f9d55; --ok-soft:#e3f5ea;
+    --warn:#c27c0e; --warn-soft:#fdf3e1; --danger:#d93f3f; --danger-soft:#fdeaea;
+    --shadow:0 20px 50px -12px rgba(20,24,40,.28),0 0 0 .5px rgba(0,0,0,.12);
+  }
+  [data-theme=dark]{
+    --bg:#121317; --win:#1d1f24; --surface:#25282e; --surface-2:#2d3037; --border:#33363d;
+    --text:#eceef2; --muted:#9aa1ad; --faint:#6b7280;
+    --accent:#6b8fff; --accent-soft:#273256; --ok:#3ecf7c; --ok-soft:#1d3a2a;
+    --warn:#f0b347; --warn-soft:#3d3220; --danger:#ff6b6b; --danger-soft:#432526;
+    --shadow:0 20px 50px -12px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.1);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;transition:background .2s}
+  button{font:inherit;color:inherit;cursor:pointer}
+  svg{display:block}
+  /* ---------- 控制条 ---------- */
+  .toolbar{position:sticky;top:0;z-index:10;display:flex;flex-direction:column;gap:8px;
+    padding:10px 24px;background:color-mix(in srgb,var(--win) 88%,transparent);backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border)}
+  .toolbar .line{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .toolbar b{font-size:14px}
+  .grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+  .lbl{color:var(--muted);font-size:12px;margin-right:4px}
+  .chip{border:1px solid var(--border);background:var(--win);padding:3px 9px;border-radius:999px;font-size:11.5px}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .sel{border:1px solid var(--border);background:var(--win);color:var(--text);border-radius:6px;padding:3px 6px;font:inherit;font-size:12px}
+  .stage{display:flex;gap:32px;justify-content:center;align-items:flex-start;padding:36px 24px 60px;flex-wrap:wrap}
+  /* ---------- 窗口 ---------- */
+  .window{width:640px;height:560px;background:var(--win);border-radius:12px;box-shadow:var(--shadow);
+    display:flex;flex-direction:column;overflow:hidden;position:relative;flex:none}
+  .titlebar{height:38px;display:flex;align-items:center;padding:0 14px;gap:8px;flex:none}
+  .lights{display:flex;gap:8px}.lights i{width:12px;height:12px;border-radius:50%;display:block}
+  .lights i:nth-child(1){background:#ff5f57;cursor:pointer}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+  .titlebar .t{flex:1;text-align:center;font-weight:600;font-size:13px;margin-right:52px;color:var(--muted)}
+  .page{flex:1;display:flex;flex-direction:column;min-height:0}
+  .body{flex:1;overflow:auto;padding:8px 36px 16px}
+  .actions{flex:none;display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border)}
+  .actions .sp{flex:1}
+  .actions .hint{font-size:11.5px;color:var(--muted)}
+  /* 按钮/输入 */
+  .btn{border:1px solid var(--border);background:var(--win);padding:6px 14px;border-radius:7px;font-size:13px;white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
+  .btn:hover{background:var(--surface)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn.lg{padding:9px 28px;font-size:14px;border-radius:9px}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+  .btn.ghost:hover{background:var(--surface-2);color:var(--text)}
+  .btn:disabled{opacity:.45;cursor:default;filter:none}
+  .link{border:0;background:none;padding:0;color:var(--accent);font-size:inherit}
+  .link:hover{text-decoration:underline}
+  .input{width:100%;border:1px solid var(--border);background:var(--win);color:var(--text);border-radius:7px;padding:7px 10px;font:inherit;font-size:13px;outline:none}
+  .input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .input.bad{border-color:var(--danger)}
+  .spin{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;flex:none}
+  .btn.primary .spin{border-color:rgba(255,255,255,.35);border-top-color:#fff}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  /* 欢迎 */
+  .welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px}
+  .logo{width:76px;height:76px;border-radius:20px;background:linear-gradient(145deg,var(--accent),#7b5cf6);display:grid;place-items:center;color:#fff;
+    box-shadow:0 10px 24px -8px color-mix(in srgb,var(--accent) 70%,transparent)}
+  .logo svg{width:40px;height:40px}
+  .welcome h1{margin:22px 0 6px;font-size:26px;font-weight:700;letter-spacing:.01em}
+  .welcome .slogan{font-size:15px;color:var(--muted);margin:0 0 34px}
+  .detect{height:40px;margin-top:22px;font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;justify-content:center}
+  .detect.err{color:var(--danger)}
+  .detect svg{width:14px;height:14px}
+  /* 迁移 */
+  .phead{display:flex;gap:12px;align-items:center;margin:6px 0 16px}
+  .pic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;flex:none;background:var(--accent-soft);color:var(--accent)}
+  .pic svg{width:22px;height:22px}
+  .phead h2{margin:0;font-size:17px}
+  .phead p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+  .src{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:center;position:relative}
+  .src.bad{border-color:color-mix(in srgb,var(--danger) 55%,transparent);background:var(--danger-soft)}
+  .src .ic{width:30px;height:30px;border-radius:8px;background:var(--surface);display:grid;place-items:center;flex:none;color:var(--muted)}
+  .src .ic svg{width:17px;height:17px}
+  .src .m{flex:1;min-width:0}
+  .src .k{font-size:11.5px;color:var(--muted)}
+  .src code{display:block;font:12px ui-monospace,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .picker{position:absolute;right:10px;top:46px;z-index:5;background:var(--win);border:1px solid var(--border);border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,.15);padding:4px;min-width:280px}
+  .picker .h{font-size:11px;color:var(--faint);padding:4px 10px}
+  .picker button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:5px;font:12px ui-monospace,Menlo,monospace}
+  .picker button:hover{background:var(--surface)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+  .box{border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+  .box h4{margin:0 0 6px;font-size:11.5px;color:var(--muted);font-weight:600}
+  .box ul{margin:0;padding:0;list-style:none}
+  .box li{display:flex;gap:7px;align-items:center;padding:2px 0}
+  .box li svg{width:13px;height:13px;flex:none}
+  .box.yes li svg{color:var(--ok)} .box.no li svg{color:var(--faint)} .box.no li{color:var(--muted)}
+  .notes{margin-top:14px;display:flex;flex-direction:column;gap:6px}
+  .note{font-size:12px;display:flex;gap:7px;align-items:flex-start;color:var(--muted)}
+  .note svg{width:14px;height:14px;flex:none;margin-top:2px}
+  .note.warn{color:var(--warn);background:var(--warn-soft);padding:8px 10px;border-radius:8px}
+  .note.err{color:var(--danger);background:var(--danger-soft);padding:8px 10px;border-radius:8px}
+  .note.info{background:var(--surface);padding:8px 10px;border-radius:8px}
+  .note b{color:var(--text);font-weight:600}
+  .note.warn b,.note.err b{color:inherit}
+  /* 步骤 */
+  .steps{display:flex;align-items:center;gap:0;margin:4px 0 22px}
+  .step{display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--faint)}
+  .step i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700;
+    background:var(--surface-2);color:var(--muted)}
+  .step i svg{width:12px;height:12px}
+  .step.cur{color:var(--text);font-weight:600}.step.cur i{background:var(--accent);color:#fff}
+  .step.done{color:var(--muted)}.step.done i{background:var(--ok-soft);color:var(--ok)}
+  .steps .bar{flex:1;height:2px;background:var(--surface-2);margin:0 10px;border-radius:1px}
+  .steps .bar.done{background:var(--ok)}
+  .panel{border:1px solid var(--border);border-radius:12px;padding:18px}
+  .panel .ttl{display:flex;gap:8px;align-items:center;font-weight:600;font-size:14px}
+  .panel .ttl svg{width:16px;height:16px;flex:none}
+  .btn svg{width:12px;height:12px;flex:none}
+  .panel .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .track{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin:16px 0 8px}
+  .track span{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .2s linear}
+  .track.verify span{background:var(--ok)}
+  .track.stop span{background:var(--faint)}
+  .counts{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .counts b{color:var(--text);font-weight:600}
+  .pass{margin-top:14px}
+  .pass label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  /* 结果 */
+  .result{flex:1;display:flex;flex-direction:column;align-items:center;padding:30px 40px 0;text-align:center}
+  .ring{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;flex:none}
+  .ring svg{width:30px;height:30px}
+  .ring.ok{background:var(--ok-soft);color:var(--ok)}
+  .ring.warn{background:var(--warn-soft);color:var(--warn)}
+  .ring.stop{background:var(--surface-2);color:var(--muted)}
+  .ring.err{background:var(--danger-soft);color:var(--danger)}
+  .result h2{margin:16px 0 4px;font-size:20px}
+  .result p.lead{margin:0;color:var(--muted);font-size:13px;max-width:440px}
+  .stats{display:grid;gap:10px;margin-top:22px;width:100%;max-width:500px}
+  .stat{background:var(--surface);border-radius:10px;padding:12px 10px;text-align:center}
+  .stat b{display:block;font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat span{font-size:11.5px;color:var(--muted)}
+  .stat.bad b{color:var(--danger)} .stat.warn b{color:var(--warn)} .stat.ok b{color:var(--ok)}
+  .result .note{text-align:left;margin-top:16px;max-width:500px;width:100%}
+  /* 历史占位 */
+  .hist{flex:1;display:flex;flex-direction:column}
+  .hist .search{margin:4px 20px 10px;background:var(--surface);border-radius:8px;padding:7px 10px;color:var(--faint);font-size:12.5px}
+  .hist .row{display:flex;gap:10px;padding:9px 20px;align-items:center;border-top:1px solid var(--border)}
+  .hist .row .kd{width:28px;height:28px;border-radius:7px;background:var(--surface);flex:none}
+  .hist .row .ln{height:9px;border-radius:4px;background:var(--surface-2)}
+  .hist .empty{flex:1;display:grid;place-items:center;color:var(--muted);text-align:center;font-size:12.5px}
+  .tag{font-size:10.5px;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:0 5px;margin-left:6px}
+  /* 关闭遮罩 */
+  .overlay{position:absolute;inset:0;background:color-mix(in srgb,var(--win) 70%,transparent);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:8}
+  .dialog{width:360px;background:var(--win);border-radius:12px;box-shadow:var(--shadow);padding:18px}
+  .dialog h3{margin:0 0 6px;font-size:14px}
+  .dialog p{margin:0;color:var(--muted);font-size:12.5px}
+  .dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  /* 规格说明 */
+  .spec{width:340px;flex:none;background:var(--win);border-radius:12px;box-shadow:var(--shadow);padding:16px 18px;font-size:12.5px}
+  .spec h3{margin:0 0 2px;font-size:13px}
+  .spec .key{font:11px ui-monospace,Menlo,monospace;color:var(--faint)}
+  .spec ul{margin:10px 0 0;padding-left:17px;color:var(--muted)}
+  .spec li{margin:4px 0}
+  .spec li b{color:var(--text);font-weight:600}
+  .spec .flow{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);color:var(--muted)}
+  .spec .flow code{font-size:11px;background:var(--surface);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div class="line">
+    <b>首次安装引导 · 0025</b>
+    <div class="grp"><span class="lbl">主题</span>
+      <button class="chip on" data-theme-btn="light">浅色</button>
+      <button class="chip" data-theme-btn="dark">深色</button>
+    </div>
+    <div class="grp"><span class="lbl">模拟 · 检测</span>
+      <select class="sel" id="simDetect">
+        <option value="found">发现 v1 数据</option>
+        <option value="none">未发现</option>
+        <option value="error">检测出错</option>
+      </select>
+    </div>
+    <div class="grp"><span class="lbl">凭据</span>
+      <select class="sel" id="simCred">
+        <option value="ok">系统凭据可解锁</option>
+        <option value="pass">需要输入口令（v1pass）</option>
+        <option value="deny">系统拒绝访问</option>
+      </select>
+    </div>
+    <div class="grp"><span class="lbl">结果</span>
+      <select class="sel" id="simResult">
+        <option value="complete">完整</option>
+        <option value="partial">部分</option>
+        <option value="failed">失败</option>
+        <option value="conflict">目标被占用</option>
+      </select>
+    </div>
+    <button class="chip" id="restart">从头演示</button>
+  </div>
+  <div class="line">
+    <div class="grp" id="jumps"><span class="lbl">跳转</span></div>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="window" id="win">
+    <div class="titlebar">
+      <div class="lights" title="点击红灯模拟关闭窗口"><i id="closeBtn"></i><i></i><i></i></div>
+      <div class="t" id="wtitle">UniClipboard</div>
+    </div>
+    <div class="page" id="page"></div>
+  </div>
+  <aside class="spec" id="spec"></aside>
+</div>
+
+<script>
+/* ---------- 图标 ---------- */
+const I = {
+  clip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>',
+  box:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  minus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h12"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>',
+  key:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg>',
+  devices:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="11" rx="1"/></svg>',
+  stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  server:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>',
+};
+
+/* ---------- 状态 ---------- */
+const TOTAL = 1204;
+const DEFAULT_SRC = '~/Library/Application Support/app.uniclipboard.desktop';
+const SOURCES = [
+  {path: DEFAULT_SRC, ok: true, label: '默认位置'},
+  {path: '/Volumes/USB/UniClipboard-Portable/data', ok: true, label: '便携版'},
+  {path: '~/Downloads', ok: false, label: '不是 v1 数据目录'},
+];
+const S = {
+  key: 'w-detecting',
+  src: SOURCES[0],
+  picker: false,
+  pendingStart: false,     // 用户在检测完成前点了“开始使用”
+  committed: 0,            // 历史上已提交（跨次运行保留，对应持久映射）
+  runPrior: 0,             // 本次运行开始时已存在的记录
+  processed: 0, verified: 0,
+  passErr: false, pass: '',
+  closing: false,          // 关闭窗口触发的安全停止
+  closeAsk: false,
+  timer: null,
+};
+const $ = s => document.querySelector(s);
+const sim = id => $('#'+id).value;
+const fmt = n => n.toLocaleString('zh-CN');
+
+function clearTimer(){ if(S.timer){ clearInterval(S.timer); clearTimeout(S.timer); S.timer = null; } }
+function go(key){ clearTimer(); S.key = key; S.picker = false; render(); enter(key); }
+
+/* 进入状态时启动的模拟 */
+function enter(key){
+  if(key === 'w-detecting'){
+    S.timer = setTimeout(() => {
+      const d = sim('simDetect');
+      const next = d === 'found' ? 'w-found' : d === 'none' ? 'w-none' : 'w-error';
+      if(S.pendingStart){ S.pendingStart = false; return startFrom(next); }
+      go(next);
+    }, 1400);
+  }
+  if(key === 'm-cred-system'){
+    S.timer = setTimeout(() => {
+      const c = sim('simCred');
+      if(c === 'ok') return beginImport();
+      S.passErr = false; S.pass = '';
+      go(c === 'pass' ? 'm-cred-pass' : 'm-cred-denied');
+    }, 1600);
+  }
+  if(key === 'm-import'){
+    const failAt = Math.round(TOTAL * .41);
+    S.timer = setInterval(() => {
+      S.processed = Math.min(TOTAL, S.processed + 23);
+      if(sim('simResult') === 'failed' && S.processed >= failAt){
+        S.processed = failAt; S.committed = Math.max(S.committed, failAt); return go('r-failed');
+      }
+      S.committed = Math.max(S.committed, S.processed);
+      if(S.processed >= TOTAL){ S.verified = 0; return go('m-verify'); }
+      update();
+    }, 60);
+  }
+  if(key === 'm-verify'){
+    S.timer = setInterval(() => {
+      S.verified = Math.min(TOTAL, S.verified + 41);
+      if(S.verified >= TOTAL){
+        const r = sim('simResult');
+        if(r === 'partial') return go('r-partial');
+        return go(S.runPrior >= TOTAL ? 'r-complete-retry' : 'r-complete');
+      }
+      update();
+    }, 60);
+  }
+  if(key === 'm-stopping'){
+    S.timer = setTimeout(() => go(S.closing ? 'closed' : 'r-cancelled'), 1500);
+  }
+}
+
+function startFrom(k){
+  if(k === 'w-found') return go('m-confirm');
+  go('history-empty');
+}
+function startMigration(){
+  if(sim('simResult') === 'conflict') return go('m-conflict');
+  go('m-cred-system');
+}
+function beginImport(){
+  S.runPrior = S.committed;
+  S.processed = S.committed;   // 已提交的记录由持久映射跳过
+  go('m-import');
+}
+function stopMigration(){ go('m-stopping'); }
+
+/* ---------- 渲染片段 ---------- */
+const btn = (label, act, cls='') => `<button class="btn ${cls}" data-act="${act}">${label}</button>`;
+
+function srcCard(){
+  const bad = !S.src.ok;
+  return `<div class="src ${bad?'bad':''}">
+    <div class="ic">${I.folder}</div>
+    <div class="m"><div class="k">v1 数据目录 · ${S.src.label}</div><code title="${S.src.path}">${S.src.path}</code></div>
+    <button class="btn" data-act="pick">选择其他目录…</button>
+    ${S.picker ? `<div class="picker"><div class="h">模拟目录选择器</div>
+      ${SOURCES.map((s,i)=>`<button data-src="${i}">${s.path}</button>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+function steps(cur){
+  const names = ['解锁旧数据','导入','校验'];
+  let h = '<div class="steps">';
+  names.forEach((n,i) => {
+    const st = i < cur ? 'done' : i === cur ? 'cur' : '';
+    h += `<div class="step ${st}"><i>${i < cur ? I.check : i+1}</i>${n}</div>`;
+    if(i < names.length-1) h += `<div class="bar ${i < cur ? 'done':''}"></div>`;
+  });
+  return h + '</div>';
+}
+
+function migHead(sub){
+  return `<div class="phead"><div class="pic">${I.box}</div>
+    <div><h2>从 UniClipboard v1 导入历史</h2><p>${sub}</p></div></div>`;
+}
+
+function confirmBody(extra=''){
+  return `${migHead('在这台电脑上发现了 v1 的数据。导入后可在历史中直接使用。')}
+    ${srcCard()}
+    ${extra}
+    <div class="cols">
+      <div class="box yes"><h4>会导入</h4><ul>
+        <li>${I.check}文本与 HTML</li><li>${I.check}图片</li><li>${I.check}文件</li><li>${I.check}标签及其关联</li></ul></div>
+      <div class="box no"><h4>不会导入</h4><ul>
+        <li>${I.minus}设置</li><li>${I.minus}收藏</li><li>${I.minus}设备身份</li><li>${I.minus}设备信任关系</li></ul></div>
+    </div>
+    <div class="notes">
+      <div class="note info">${I.devices}<span>其他设备需要升级到 v2，然后重新配对。</span></div>
+      <div class="note info">${I.shield}<span>迁移只读取 v1 数据，<b>不修改也不删除</b>旧数据。</span></div>
+      <div class="note warn">${I.warn}<span><b>开始前，请先退出 UniClipboard v1。</b>应用不会自动退出 v1。</span></div>
+    </div>`;
+}
+
+function laterHint(){ return `<span class="hint">之后可在 设置 › 数据 › 从 v1 迁移 中导入</span>`; }
+
+/* ---------- 页面 ---------- */
+const PAGES = {
+  'w-detecting': () => welcome(`<span class="spin"></span>正在检查这台电脑上的 v1 数据…`, false, S.pendingStart),
+  'w-found':     () => welcome(`<span style="color:var(--ok)">${I.check}</span>发现 UniClipboard v1 的数据`),
+  'w-none':      () => welcome(''),
+  'w-error':     () => welcome(`${I.warn}无法检查 v1 数据。<button class="link" data-act="redetect">重试</button>
+                     <span style="color:var(--muted)">或</span><button class="link" data-act="manual">手动选择目录</button>`, true),
+
+  'm-confirm': () => page(confirmBody(),
+      btn('暂不迁移','skip','ghost') + laterHint() + '<span class="sp"></span>' + btn('开始迁移','start','primary')),
+  'm-invalid': () => page(confirmBody(`<div class="notes"><div class="note err">${I.warn}<span>这个目录不是受支持的 v1 数据目录。请选择其他目录。</span></div></div>`),
+      btn('暂不迁移','skip','ghost') + laterHint() + '<span class="sp"></span>' + '<button class="btn primary" disabled>开始迁移</button>'),
+
+  'm-cred-system': () => page(migHead('正在准备迁移。') + steps(0) + `
+      <div class="panel"><div class="ttl"><span class="spin"></span>正在读取系统凭据</div>
+      <div class="sub">系统可能弹出窗口，请求访问钥匙串中的 UniClipboard 项目。请在系统窗口中允许访问。</div></div>`,
+      '<span class="sp"></span>' + btn('停止迁移','stop')),
+
+  'm-cred-pass':   () => passPage(false),
+  'm-cred-denied': () => passPage(true),
+
+  'm-conflict': () => page(migHead('无法开始迁移。') + `
+      <div class="panel"><div class="ttl" style="color:var(--danger)">${I.server}另一个 unic 服务正在使用数据目录</div>
+      <div class="sub">迁移需要独占数据目录。请先停止该服务，然后重试。应用不会自动停止它。</div></div>
+      <div class="notes"><div class="note info">${I.shield}<span>没有读取凭据，也没有写入任何数据。</span></div></div>`,
+      btn('暂不迁移','skip','ghost') + '<span class="sp"></span>' + btn('重试','start','primary')),
+
+  'm-import': () => page(migHead('请保持应用打开。') + steps(1) + progressPanel('import'),
+      '<span class="hint">导入期间不会捕获剪贴板，也不会同步</span><span class="sp"></span>' + btn(`${I.stop}停止迁移`,'stop')),
+  'm-verify': () => page(migHead('请保持应用打开。') + steps(2) + progressPanel('verify'),
+      '<span class="hint">导入期间不会捕获剪贴板，也不会同步</span><span class="sp"></span>' + btn(`${I.stop}停止迁移`,'stop')),
+  'm-stopping': () => page(migHead('正在停止。') + steps(S.verified ? 2 : 1) + progressPanel('stop'),
+      '<span class="sp"></span><button class="btn" disabled><span class="spin"></span>正在停止…</button>'),
+
+  'r-complete': () => resultPage('ok', I.check, '迁移完成', '所有记录都已导入并通过校验。',
+      [['ok', S.committed - S.runPrior, '本次新导入'], ['', TOTAL, '已校验']].concat(S.runPrior ? [['', S.runPrior, '此前已导入']] : []),
+      '', '<span class="sp"></span>' + btn('开始使用','enter','primary lg')),
+  'r-complete-retry': () => resultPage('ok', I.check, '迁移完成', '没有新的记录需要导入。此前导入的记录仍在历史中。',
+      [['', 0, '本次新导入'], ['', S.runPrior, '此前已导入'], ['ok', TOTAL, '已校验']],
+      '', '<span class="sp"></span>' + btn('开始使用','enter','primary lg')),
+  'r-partial': () => resultPage('warn', I.warn, '部分数据未能导入', '已导入的记录可以正常使用。问题记录可在重试时再次处理。',
+      [['', TOTAL - 18, '已导入记录'], ['bad', 18, '失败记录'], ['warn', 9, '缺失内容'], ['bad', 6, '校验失败']],
+      `<div class="note info">${I.info}<span><b>缺失内容</b>是记录中丢失的图片或文件附件，不计为失败记录。这些记录仍保留其余可用内容。</span></div>`,
+      btn('重试迁移','retry') + '<span class="sp"></span>' + btn('进入应用','enter','primary')),
+  'r-cancelled': () => resultPage('stop', I.stop, '迁移已停止', `已提交的 ${fmt(S.committed)} 条记录已保留，可以在历史中使用。继续迁移时会跳过它们。`,
+      [['', S.committed - S.runPrior, '本次已提交'], ['', TOTAL - S.committed, '尚未导入']],
+      '', btn('进入应用','enter') + '<span class="sp"></span>' + btn('继续迁移','retry','primary')),
+  'r-failed': () => resultPage('err', I.x, '迁移未完成', '读取 v1 数据时出错：部分数据文件已损坏，或格式不受支持。',
+      [['', S.committed, '已提交并保留'], ['', TOTAL - S.committed, '尚未导入']],
+      `<div class="note info">${I.info}<span>已提交的记录<b>不会回滚</b>，仍可在历史中使用。重试会跳过它们。若问题持续，请确认 v1 已退出，或选择其他目录。</span></div>`,
+      btn('不再迁移，进入应用','enter') + '<span class="sp"></span>' + btn('重试','retry','primary')),
+
+  'history-empty': () => history(0),
+  'history':       () => history(S.committed),
+  'closed': () => `<div class="welcome"><div class="ring stop">${I.check}</div>
+      <h1 style="font-size:18px">进程已退出</h1>
+      <p class="slogan" style="font-size:13px;margin-bottom:20px">原型模拟：关闭窗口走同一条安全停止路径，释放迁移资源后退出。<br>已提交 ${fmt(S.committed)} 条。设置未标记完成，下次启动回到迁移页。</p>
+      ${btn('模拟重新启动','relaunch','primary')}</div>`,
+};
+
+function welcome(detectHtml, err=false, waiting=false){
+  return `<div class="welcome">
+    <div class="logo">${I.clip}</div>
+    <h1>欢迎使用 UniClipboard</h1>
+    <p class="slogan">让每一次复制更有用</p>
+    ${waiting ? `<button class="btn primary lg" disabled><span class="spin"></span>开始使用</button>` : btn('开始使用','begin','primary lg')}
+    <div class="detect ${err?'err':''}">${detectHtml}</div>
+  </div>`;
+}
+
+function page(body, actions){
+  return `<div class="body">${body}</div><div class="actions">${actions}</div>`;
+}
+
+function passPage(denied){
+  const lead = denied ? '系统拒绝了凭据访问。' : '系统凭据无法解锁 v1 数据。';
+  return page(migHead('正在准备迁移。') + steps(0) + `
+    <div class="panel"><div class="ttl">${I.key}输入 v1 口令</div>
+    <div class="sub">${lead}请输入 v1 中设置的口令。口令只用于本次解锁，不会保存。</div>
+    <div class="pass"><label for="pw">v1 口令</label>
+      <input id="pw" class="input ${S.passErr?'bad':''}" type="password" autocomplete="off" placeholder="原型口令：v1pass" value="${S.pass}">
+      ${S.passErr ? `<div class="note" style="color:var(--danger);margin-top:6px">${I.warn}口令不正确。请重试。</div>` : ''}
+    </div></div>`,
+    btn('暂不迁移','skip','ghost') + laterHint() + '<span class="sp"></span>' + btn('解锁并继续','unlock','primary'));
+}
+
+function progressPanel(mode){
+  const verify = mode === 'verify' || (mode === 'stop' && S.verified > 0);
+  const done = verify ? S.verified : S.processed;
+  const pct = Math.round(done / TOTAL * 100);
+  const title = mode === 'stop' ? `<span class="spin"></span>正在安全停止`
+              : verify ? `<span class="spin"></span>正在校验导入的内容` : `<span class="spin"></span>正在导入记录`;
+  const sub = mode === 'stop' ? '正在等待当前记录写完。已提交的记录会保留。'
+            : verify ? '重新打开历史库，逐条比对内容。' : (S.runPrior ? `跳过此前已导入的 ${fmt(S.runPrior)} 条记录。` : '按条写入历史。已写入的记录在中断后保留。');
+  return `<div class="panel"><div class="ttl">${title}</div><div class="sub">${sub}</div>
+    <div class="track ${mode==='stop'?'stop':verify?'verify':''}"><span id="bar" style="width:${pct}%"></span></div>
+    <div class="counts"><span id="cnt">${verify?'已校验':'已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条</span><span id="pct">${pct}%</span></div></div>`;
+}
+
+function resultPage(tone, icon, title, lead, stats, note, actions){
+  const cols = Math.min(stats.length, 4);
+  return `<div class="result"><div class="ring ${tone}">${icon}</div><h2>${title}</h2><p class="lead">${lead}</p>
+    <div class="stats" style="grid-template-columns:repeat(${cols},1fr)">
+      ${stats.map(([c,n,l]) => `<div class="stat ${c}"><b>${fmt(n)}</b><span>${l}</span></div>`).join('')}
+    </div>${note}</div>
+    <div class="actions">${actions}</div>`;
+}
+
+function history(n){
+  const rows = n ? Array.from({length:8}, (_,i) => `<div class="row"><div class="kd"></div><div style="flex:1">
+      <div class="ln" style="width:${40+((i*37)%50)}%"></div><div class="ln" style="width:22%;margin-top:6px;opacity:.6"></div></div>
+      <span class="tag">v1</span></div>`).join('') : '';
+  return `<div class="hist"><div class="search">搜索历史</div>
+    ${n ? rows : `<div class="empty"><div>还没有历史记录<br><span style="color:var(--faint)">复制任意内容后会出现在这里</span></div></div>`}
+    <div class="actions"><span class="hint">原型：已进入历史，设置标记为完成${n?` · ${fmt(n)} 条来自 v1`:''}。</span><span class="sp"></span>${btn('重置原型','reset')}</div></div>`;
+}
+
+/* ---------- 规格说明 ---------- */
+const SPEC = {
+  'w-detecting': ['欢迎 · 检测中', [
+    '后台检测默认 v1 目录。<b>不读取剪贴板，不请求系统凭据，不开始迁移。</b>',
+    '检测期间可点“开始使用”；按钮进入等待态，检测结束后自动分流。',
+    '文案严格使用决策中的标题、标语与按钮文本。']],
+  'w-found': ['欢迎 · 发现 v1', [
+    '“开始使用”进入迁移确认页。',
+    '发现源不等于同意迁移；此处不显示任何导入动作。']],
+  'w-none': ['欢迎 · 未发现', [
+    '“开始使用”直接进入历史，<b>没有额外完成页</b>。',
+    '此时持久化 setup 完成标记。']],
+  'w-error': ['欢迎 · 检测出错', [
+    '检测错误与“未发现”<b>明确区分</b>：显示错误行。',
+    '用户可重试检测、手动选择目录，或直接“开始使用”跳过迁移。']],
+  'm-confirm': ['迁移 · 确认', [
+    '在请求凭据或写入目标之前，说明导入范围与不导入的内容。',
+    '不承诺导入设置、收藏、设备身份与信任；说明设备需升级并重新配对。',
+    '说明 v1 数据被保留；<b>警告放在开始按钮之前</b>：请先退出 v1，应用不会自动退出。',
+    '可选择其他目录（自定义或便携版）。',
+    '“暂不迁移”进入历史并完成 setup；提示之后的设置入口。']],
+  'm-invalid': ['迁移 · 无效目录', [
+    '不受支持或无效的源被拒绝，“开始迁移”不可用。',
+    '不创建任何成功结果；用户可重新选择或暂不迁移。']],
+  'm-cred-system': ['迁移 · 读取系统凭据', [
+    '只有点击“开始迁移”后才触发系统凭据弹窗。',
+    '三步进度从“解锁旧数据”开始。',
+    '此阶段也可停止。']],
+  'm-cred-pass': ['迁移 · 输入口令', [
+    '系统凭据无法解锁时，在当前流程内请求旧口令。',
+    '口令不进入命令参数、环境变量、持久化、日志或报告。',
+    '口令错误允许重试或暂不迁移。']],
+  'm-cred-denied': ['迁移 · 凭据被拒绝', [
+    '系统拒绝访问时同样回落到口令输入。',
+    '用户仍可“暂不迁移”。']],
+  'm-conflict': ['迁移 · 目标被占用', [
+    '迁移需要独占目标目录。已有服务占用时报告冲突。',
+    '<b>不自动终止</b>独立运行的服务；用户停止后重试。']],
+  'm-import': ['迁移 · 导入中', [
+    '显示当前阶段与 已处理 / 总数，<b>不显示剩余时间估计</b>。',
+    '导入与校验分开展示；导入 100% 不等于完成。',
+    '迁移期间不捕获剪贴板、不启动同步。',
+    '点击红灯关闭窗口会走同一条安全停止路径。']],
+  'm-verify': ['迁移 · 校验中', [
+    '重新打开目标后校验内容；进度条换为校验色，计数改为“已校验”。',
+    '校验未结束前不显示“迁移完成”。']],
+  'm-stopping': ['迁移 · 正在停止', [
+    '等待安全取消完成后才显示终态。',
+    '按钮全部禁用，避免重复操作。已提交记录保留。']],
+  'r-complete': ['结果 · 完成', [
+    '“迁移完成”只用于完整且通过校验的结果。',
+    '显示导入数与校验数；“开始使用”直接打开历史。',
+    '不再弹完成对话框，不自动写入系统剪贴板。']],
+  'r-complete-retry': ['结果 · 重试无新增', [
+    '区分“本次新导入”与“此前已导入”。',
+    '0 条新记录<b>不表现为空历史</b>。']],
+  'r-partial': ['结果 · 部分', [
+    '分别显示已导入、失败记录、缺失内容、校验失败；为 0 的项不显示。',
+    '缺失内容不是失败记录；记录可以保留其余可用内容。',
+    '操作：进入应用或重试迁移。']],
+  'r-cancelled': ['结果 · 已停止', [
+    '说明已提交记录保留。',
+    '操作：继续迁移（复用持久映射跳过已成功项）或进入应用。']],
+  'r-failed': ['结果 · 失败', [
+    '显示安全、可操作的原因；不含路径、正文或秘密。',
+    '<b>不暗示已提交记录被回滚。</b>',
+    '操作：重试，或不再迁移直接进入应用。']],
+  'history-empty': ['历史（无迁移）', [
+    '跳过路径或无 v1 源时进入历史，持久化 setup 完成。',
+    '之后启动直接打开历史。']],
+  'history': ['历史（迁移后）', [
+    '进入应用即打开历史，导入的记录可直接使用。',
+    '之后启动直接打开历史；已初始化的 v2 安装同样绕过 setup。']],
+  'closed': ['关闭窗口', [
+    '关闭或退出与“停止迁移”使用同一条安全取消路径。',
+    '未完成的流程不标记 setup 完成；重启后恢复到迁移页，<b>不自动继续导入</b>。']],
+};
+
+const JUMPS = [
+  ['w-detecting','欢迎·检测中'],['w-found','欢迎·发现'],['w-none','欢迎·未发现'],['w-error','欢迎·出错'],
+  ['m-confirm','确认'],['m-invalid','无效目录'],['m-cred-system','系统凭据'],['m-cred-pass','输入口令'],['m-cred-denied','凭据被拒'],
+  ['m-conflict','目标被占用'],['m-import','导入中'],['m-verify','校验中'],['m-stopping','停止中'],
+  ['r-complete','完成'],['r-complete-retry','重试无新增'],['r-partial','部分'],['r-cancelled','已停止'],['r-failed','失败'],
+  ['history','历史'],['closed','关闭窗口'],
+];
+
+/* ---------- 渲染 ---------- */
+function render(){
+  const k = S.key;
+  $('#page').innerHTML = PAGES[k]() + (S.closeAsk ? closeDialog() : '');
+  $('#wtitle').textContent = k.startsWith('history') ? 'UniClipboard · 历史' : k.startsWith('w-') || k === 'closed' ? 'UniClipboard' : 'UniClipboard · 从 v1 迁移';
+  const [t, items] = SPEC[k];
+  $('#spec').innerHTML = `<h3>${t}</h3><div class="key">${k}</div><ul>${items.map(i=>`<li>${i}</li>`).join('')}</ul>
+    <div class="flow">三个逻辑页：<b>欢迎</b> → <b>迁移</b>（确认、凭据、进度共用一页）→ <b>结果</b>。<br>
+    “模拟”下拉框决定点击流程中的检测、凭据与结果分支。红灯可模拟关闭窗口。</div>`;
+  document.querySelectorAll('#jumps .chip').forEach(c => c.classList.toggle('on', c.dataset.jump === k));
+  const pw = $('#pw'); if(pw){ pw.focus(); pw.oninput = e => S.pass = e.target.value; pw.onkeydown = e => { if(e.key==='Enter') act('unlock'); }; }
+}
+function update(){
+  const verify = S.key === 'm-verify';
+  const done = verify ? S.verified : S.processed;
+  const pct = Math.round(done / TOTAL * 100);
+  const bar = $('#bar'); if(!bar) return;
+  bar.style.width = pct + '%';
+  $('#cnt').innerHTML = `${verify?'已校验':'已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条`;
+  $('#pct').textContent = pct + '%';
+}
+function closeDialog(){
+  return `<div class="overlay"><div class="dialog"><h3>迁移正在进行</h3>
+    <p>关闭窗口会先安全停止迁移，然后退出。已提交的记录会保留，下次启动可以继续。</p>
+    <div class="acts">${btn('继续迁移','close-cancel')}${btn('停止并退出','close-confirm','primary')}</div></div></div>`;
+}
+
+/* ---------- 交互 ---------- */
+function act(a){
+  switch(a){
+    case 'begin': {
+      if(S.key === 'w-detecting'){ S.pendingStart = true; return render(); }
+      return startFrom(S.key);
+    }
+    case 'redetect': return go('w-detecting');
+    case 'manual': S.src = SOURCES[1]; return go('m-confirm');
+    case 'pick': S.picker = !S.picker; return render();
+    case 'skip': return go('history-empty');
+    case 'start': return startMigration();
+    case 'stop': return stopMigration();
+    case 'unlock': {
+      if(!S.pass) return;
+      if(S.pass !== 'v1pass'){ S.passErr = true; S.pass = ''; return render(); }
+      S.passErr = false; S.pass = ''; return beginImport();
+    }
+    case 'retry': return startMigration();
+    case 'enter': return go(S.committed ? 'history' : 'history-empty');
+    case 'reset': S.committed = 0; S.runPrior = 0; S.processed = 0; S.verified = 0; S.src = SOURCES[0]; S.closing = false; return go('w-detecting');
+    case 'relaunch': S.closing = false; S.processed = S.committed; return go('m-confirm');
+    case 'close-cancel': S.closeAsk = false; return render();
+    case 'close-confirm': S.closeAsk = false; S.closing = true; return go('m-stopping');
+  }
+}
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-src]');
+  if(s){ S.src = SOURCES[+s.dataset.src]; return go(S.src.ok ? 'm-confirm' : 'm-invalid'); }
+  const b = e.target.closest('[data-act]'); if(b && !b.disabled) return act(b.dataset.act);
+  if(S.picker && !e.target.closest('.picker')){ S.picker = false; render(); }
+});
+$('#closeBtn').onclick = () => {
+  if(['m-import','m-verify','m-cred-system'].includes(S.key)){ S.closeAsk = true; render(); }
+};
+document.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach(x => x.classList.toggle('on', x === b));
+});
+$('#restart').onclick = () => act('reset');
+
+/* 跳转：为静态状态预填合理数据 */
+const PRESET = {
+  'm-import':        () => { S.runPrior = 0; S.processed = 380; S.committed = 380; S.verified = 0; },
+  'm-verify':        () => { S.runPrior = 0; S.processed = TOTAL; S.committed = TOTAL; S.verified = 520; },
+  'm-stopping':      () => { S.runPrior = 0; S.processed = 312; S.committed = 312; S.verified = 0; S.closing = false; },
+  'r-complete':      () => { S.runPrior = 0; S.committed = TOTAL; },
+  'r-complete-retry':() => { S.runPrior = TOTAL; S.committed = TOTAL; },
+  'r-partial':       () => { S.runPrior = 0; S.committed = TOTAL - 18; },
+  'r-cancelled':     () => { S.runPrior = 0; S.committed = 312; },
+  'r-failed':        () => { S.runPrior = 0; S.committed = 494; },
+  'history':         () => { if(!S.committed) S.committed = TOTAL; },
+  'closed':          () => { S.committed = 312; },
+  'm-invalid':       () => { S.src = SOURCES[2]; },
+  'm-confirm':       () => { S.src = SOURCES[0]; },
+  'm-cred-pass':     () => { S.passErr = false; S.pass = ''; },
+  'm-cred-denied':   () => { S.passErr = false; S.pass = ''; },
+};
+const jumps = $('#jumps');
+JUMPS.forEach(([k,l]) => {
+  const c = document.createElement('button');
+  c.className = 'chip'; c.dataset.jump = k; c.textContent = l;
+  c.onclick = () => {
+    clearTimer(); S.pendingStart = false; S.closeAsk = false;
+    (PRESET[k] || (()=>{}))();
+    S.key = k; S.picker = false; render();
+    // 跳转到进行中的状态时继续运行模拟，便于观察过渡
+    if(['w-detecting','m-cred-system','m-import','m-verify','m-stopping'].includes(k)) enter(k);
+  };
+  jumps.appendChild(c);
+});
+
+// 支持 #状态 直接打开某个状态，例如 setup.html#r-partial
+const initial = location.hash.slice(1);
+const chip = initial && jumps.querySelector(`[data-jump="${initial}"]`);
+chip ? chip.click() : go('w-detecting');
+</script>
+</body>
+</html>

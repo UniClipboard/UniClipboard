@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,8 +88,25 @@ func (r *desktopRecording) stop() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
+	// Keep one canvas when the actual window changes from setup to history.
+	// Preserve every sampled frame at its original scale, with centered padding.
+	width, height := 0, 0
+	for _, frame := range r.frames {
+		file, err := os.Open(filepath.Join(dir, frame.File))
+		if err != nil {
+			return err
+		}
+		cfg, err := png.DecodeConfig(file)
+		_ = file.Close()
+		if err != nil {
+			return err
+		}
+		width, height = max(width, cfg.Width), max(height, cfg.Height)
+	}
+	width, height = (width+1)/2*2, (height+1)/2*2
+	filter := fmt.Sprintf("pad=%d:%d:(ow-iw)/2:(oh-ih)/2", width, height)
 	target := filepath.Join(r.s.out, "recording.mp4")
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat", "-an", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", target)
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat", "-an", "-vf", filter, "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", target)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("recording encoder: %v (%s)", err, string(out))

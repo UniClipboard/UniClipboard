@@ -1,0 +1,35 @@
+# Case: Native first-install partial migration
+# Mode: native
+# Purpose: Record an honest partial result and entry into usable migrated history.
+# Steps: Start with an encrypted source containing one unrecoverable record; unlock through the fixture passphrase; observe the partial report; enter history and count 1504 imported records.
+# Expected: The result says some data could not be imported; the failed-record count is separate; entry into history remains available; the real service exposes exactly 1504 records; continuous video is retained.
+# Forbidden: Complete-success title for partial import, personal credentials, system clipboard access, fabricated progress, or unavailable retained recording.
+
+start-setup partial
+ui-wait text '欢迎使用 UniClipboard'
+observe 2
+screenshot welcome
+ui-click button '开始使用'
+ui-wait button '开始迁移'
+observe 2
+screenshot confirmation
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+ui-set textField 'v1 口令' fixture-passphrase
+ui-enabled button '解锁并继续'
+ui-click button '解锁并继续'
+ui-wait text '正在导入记录'
+screenshot importing
+ui-wait text '正在校验导入的内容' 90
+screenshot verifying
+ui-wait text '部分数据未能导入' 90
+ui-wait text '失败记录'
+ui-absent button '开始使用'
+observe 4
+screenshot partial
+service-absent
+ui-click button '进入应用'
+history-count 1504
+ui-wait listItem '~.*fixture text.*'
+observe 3
+screenshot history

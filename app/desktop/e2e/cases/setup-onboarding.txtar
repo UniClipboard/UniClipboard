@@ -1,0 +1,44 @@
+# Case: Native first-install onboarding and complete migration
+# Mode: native
+# Purpose: Record the real welcome, migration confirmation, passphrase fallback, import, verification and history entry.
+# Steps: Start with 1505 encrypted synthetic records; verify no service before consent; submit a wrong passphrase then the correct fixture passphrase; observe import and verification; enter history and count all migrated records.
+# Expected: Welcome copy matches the decision; secrets stay masked; import and verification remain distinct; migration completes with 1505 records visible through production IPC; every page has a screenshot and a continuous recording.
+# Forbidden: Personal profiles, system credential access, actual clipboard access, fixture data linked into release binaries, fabricated progress, or missing video frames after resizing.
+
+start-setup complete
+ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '让每一次复制更有用'
+observe 2
+screenshot welcome
+service-absent
+ui-click button '开始使用'
+ui-wait button '开始迁移'
+observe 3
+screenshot confirmation
+service-absent
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+observe 2
+screenshot passphrase
+ui-set textField 'v1 口令' wrong-passphrase
+ui-enabled button '解锁并继续'
+ui-click button '解锁并继续'
+ui-wait alert '无法解锁旧数据。请核对 v1 口令后重试。'
+observe 2
+screenshot wrong-passphrase
+ui-set textField 'v1 口令' fixture-passphrase
+ui-enabled button '解锁并继续'
+ui-click button '解锁并继续'
+ui-wait text '正在导入记录'
+screenshot importing
+ui-wait text '正在校验导入的内容' 90
+screenshot verifying
+ui-wait text '迁移完成' 90
+observe 3
+screenshot complete
+service-absent
+ui-click button '开始使用'
+history-count 1505
+ui-wait listItem '~.*fixture text.*'
+observe 3
+screenshot history

@@ -24,9 +24,8 @@ import (
 	"github.com/uniclipboard/unic/internal/releaseinfo"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
-	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
-	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
+	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
@@ -146,12 +145,13 @@ func runGUI(settings *config.Manager) error {
 		cancel()
 		return err
 	}
-	service, err := lifecycle.Start(ctx, dir, c.Path, executable, true)
+	flow, err := setupflow.Open(dir)
 	if err != nil {
 		cancel()
 		return err
 	}
-	defer func() { _ = service.Stop() }()
+	session := &desktopSession{g: g, ctx: ctx, settings: settings, flow: flow, dir: dir, executable: executable}
+	defer session.close()
 	g.login = lifecycle.LoginRegistration{
 		Path:    filepath.Join(dir, "desktop-login.json"),
 		Enabled: mygo.App.OpenAtLogin,
@@ -166,13 +166,15 @@ func runGUI(settings *config.Manager) error {
 	defer cancel()
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		// A code nobody is looking at should not stay usable.
-		qctx, qcancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_ = g.c.CancelCode(qctx)
-		qcancel()
+		if session.runtime != nil {
+			qctx, qcancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = g.c.CancelCode(qctx)
+			qcancel()
+		}
 		cancel()
 	})
 	quitting := false
-	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) { session.requestQuit(e); quitting = !e.DefaultPrevented() })
 	mygo.App.OnWindowAllClosed(func() {})
 	showDesktop = func() {
 		if g.win != nil {
@@ -181,36 +183,34 @@ func runGUI(settings *config.Manager) error {
 		}
 	}
 	mygo.App.WhenReady(func() {
-		go func() {
-			select {
-			case <-ctx.Done():
-			case <-service.Done():
-			}
-			mygo.App.Quit()
-		}()
-		g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, false)
-
+		go func() { <-ctx.Done(); mygo.App.Quit() }()
 		updateTrayLanguage := setupTray(settings.Current().Desktop.Language)
-		go notifyPending(ctx, g.c.Path, func() string { return settings.Current().Desktop.Language })
-		clipboard := quickpanel.NewClipboard(newDesktopBoard())
-		go func() { _ = clipboardintegration.RunRemote(ctx, g.c, clipboard, nil) }()
-		screen := desktopui.NewDesktop(ctx, g.c)
-		screen.SetLoginStatus(func() (bool, string) { g.mu.Lock(); defer g.mu.Unlock(); return g.loginEnabled, g.loginError }, func() { g.applyLoginSettings(settings.Current().Desktop.LaunchAtLogin, true) })
-		opts := mygo.WindowOptions{Title: "unic", Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View), Hidden: settings.Current().Desktop.StartInBackground}
+
+		opts := mygo.WindowOptions{Title: "unic", Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view), Hidden: !flow.Required() && settings.Current().Desktop.StartInBackground}
 		if uikit.DefaultSkin() == uikit.MacOS {
 			opts.TitleBarStyle = mygo.TitleBarHidden
 			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
 			opts.Vibrancy = mygo.VibrancySidebar
 		}
+		if flow.Required() {
+			opts.Width, opts.Height = 640, 560
+		}
 		g.win = mygo.NewWindow(opts)
-		screen.AttachWindow(g.win, clipboard)
-		showQuickPanel = screen.OpenQuickPanel
-		screen.SetQuickPanelShortcut(settings.Current().Desktop.QuickPanelShortcut)
+		if flow.Required() {
+			session.showSetup(false)
+		} else {
+			session.start()
+		}
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {
-				g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
 				mygo.RunOnMain(func() {
-					screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut)
+					if session.setup != nil {
+						session.setup.SetLanguage(current.Desktop.Language)
+					}
+					if session.runtime != nil {
+						g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
+						session.runtime.screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut)
+					}
 					updateTrayLanguage(current.Desktop.Language)
 					g.win.Invalidate()
 				})
@@ -218,7 +218,13 @@ func runGUI(settings *config.Manager) error {
 		}
 		go func() { _ = settings.Watch(ctx) }()
 		g.win.OnClose(func(e *mygo.CloseEvent) {
-			if !quitting {
+			if quitting {
+				return
+			}
+			if session.setup != nil || session.starting {
+				e.PreventDefault()
+				mygo.App.Quit()
+			} else if !quitting {
 				e.PreventDefault()
 				g.win.Hide()
 			}

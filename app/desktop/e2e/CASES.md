@@ -5,6 +5,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | Case | Mode | Purpose |
 |---|---|---|
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
+| [first-install-setup](#first-install-setup) | process | Verify setup persistence and migration with real Engine, SQLite and a service process. |
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
@@ -22,6 +23,9 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [search-disclosure-reduced-motion](#search-disclosure-reduced-motion) | view | Toolbar search disclosure with Reduce Motion enabled. |
 | [search-disclosure](#search-disclosure) | view | Animated toolbar search expansion, collapse, filtering and keyboard dismissal. |
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |
+| [setup-onboarding](#setup-onboarding) | native | Record the real welcome, migration confirmation, passphrase fallback, import, verification and history entry. |
+| [setup-pages](#setup-pages) | view | Exercise the production UI Kit setup renderer across three skins and two themes. |
+| [setup-partial](#setup-partial) | native | Record an honest partial result and entry into usable migrated history. |
 | [sheet-exit-stability](#sheet-exit-stability) | view | Sheet exit frames and input stability after dismissal. |
 | [sheet-motion](#sheet-motion) | view | Real Sheet entry and dismissal by Done, Escape and backdrop, live resize/reversal, and inline tag confirmation or cancellation, including Reduce Motion. |
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
@@ -47,6 +51,20 @@ Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS
 
 ```text
 acceptance desktopui data-binding
+```
+
+## first-install-setup
+
+First-install setup and offline v1 import
+
+Steps: Discover synthetic sources; skip and reopen; import with wrong and correct credentials; cancel and resume; repair and retry; start a real service and read imported history; reject concurrent migration.
+
+Expected: Established profiles bypass setup; unfinished setup resumes; imported records survive cancellation without duplication; partial counts remain distinct; source data remains unchanged; service exposes imported history.
+
+Forbidden: Native GUI launch, personal profile or credential access, sync, clipboard capture, duplicate import, or automatic termination of an unrelated service.
+
+```text
+acceptance startup first-install-setup
 ```
 
 ## gui-approval-reconnect
@@ -303,6 +321,111 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui send-device-menu
+```
+
+## setup-onboarding
+
+Native first-install onboarding and complete migration
+
+Steps: Start with 1505 encrypted synthetic records; verify no service before consent; submit a wrong passphrase then the correct fixture passphrase; observe import and verification; enter history and count all migrated records.
+
+Expected: Welcome copy matches the decision; secrets stay masked; import and verification remain distinct; migration completes with 1505 records visible through production IPC; every page has a screenshot and a continuous recording.
+
+Forbidden: Personal profiles, system credential access, actual clipboard access, fixture data linked into release binaries, fabricated progress, or missing video frames after resizing.
+
+```text
+start-setup complete
+ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '让每一次复制更有用'
+observe 2
+screenshot welcome
+service-absent
+ui-click button '开始使用'
+ui-wait button '开始迁移'
+observe 3
+screenshot confirmation
+service-absent
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+observe 2
+screenshot passphrase
+ui-set textField 'v1 口令' wrong-passphrase
+ui-enabled button '解锁并继续'
+ui-click button '解锁并继续'
+ui-wait alert '无法解锁旧数据。请核对 v1 口令后重试。'
+observe 2
+screenshot wrong-passphrase
+ui-set textField 'v1 口令' fixture-passphrase
+ui-enabled button '解锁并继续'
+ui-click button '解锁并继续'
+ui-wait text '正在导入记录'
+screenshot importing
+ui-wait text '正在校验导入的内容' 90
+screenshot verifying
+ui-wait text '迁移完成' 90
+observe 3
+screenshot complete
+service-absent
+ui-click button '开始使用'
+history-count 1505
+ui-wait listItem '~.*fixture text.*'
+observe 3
+screenshot history
+```
+
+## setup-pages
+
+First-install setup pages
+
+Steps: Render welcome, detection error, confirmation, invalid source, passphrase, conflict, import, verification, stopping and each terminal result; activate primary and secondary actions.
+
+Expected: Agreed welcome copy, masked input, separate progress phases and report counts, actionable errors, correct buttons and screenshots for each exercised view.
+
+Forbidden: Native window launch, credential access, personal data access, partial results labeled complete, or missing view evidence.
+
+```text
+acceptance gui setup-pages
+```
+
+## setup-partial
+
+Native first-install partial migration
+
+Steps: Start with an encrypted source containing one unrecoverable record; unlock through the fixture passphrase; observe the partial report; enter history and count 1504 imported records.
+
+Expected: The result says some data could not be imported; the failed-record count is separate; entry into history remains available; the real service exposes exactly 1504 records; continuous video is retained.
+
+Forbidden: Complete-success title for partial import, personal credentials, system clipboard access, fabricated progress, or unavailable retained recording.
+
+```text
+start-setup partial
+ui-wait text '欢迎使用 UniClipboard'
+observe 2
+screenshot welcome
+ui-click button '开始使用'
+ui-wait button '开始迁移'
+observe 2
+screenshot confirmation
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+ui-set textField 'v1 口令' fixture-passphrase
+ui-enabled button '解锁并继续'
+ui-click button '解锁并继续'
+ui-wait text '正在导入记录'
+screenshot importing
+ui-wait text '正在校验导入的内容' 90
+screenshot verifying
+ui-wait text '部分数据未能导入' 90
+ui-wait text '失败记录'
+ui-absent button '开始使用'
+observe 4
+screenshot partial
+service-absent
+ui-click button '进入应用'
+history-count 1504
+ui-wait listItem '~.*fixture text.*'
+observe 3
+screenshot history
 ```
 
 ## sheet-exit-stability

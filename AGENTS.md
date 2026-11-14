@@ -54,6 +54,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0023](docs/decisions/proposed/0023-cli-lifecycle-acceptance-followup.md) | CLI lifecycle acceptance follow-up | Draft: other-platform process runs (C36), file release barrier after send deadline, C03 race investigation |
 | [0024](docs/decisions/proposed/0024-directory-copy-and-send.md) | Directory copy and explicit send | Implemented; local process acceptance passed; native/real-device acceptance pending. One-shot directory transfer; automatic sync defaults off; explicit send prepares snapshots; mixed selections follow directory policy. |
 | [0025](docs/decisions/proposed/0025-desktop-package-identity-and-replacement.md) | Desktop package identity and replacement | Accepted; same-channel v2 replaces v1, alpha/stable share installation identity, development stays isolated, bundled CLI files are private, package managers own updates; runtime and construction implemented, production activation and real v1 replacement acceptance pending. |
+| [0026](docs/decisions/proposed/0026-first-install-setup.md) | Desktop first-install setup | Implemented with existing UI Kit and prototype/setup.html. Software-view and macOS native complete/partial recordings passed; actual credential prompts and remaining native scenarios/platforms are pending. Slogan: “让每一次复制更有用”. |
 
 ### 接口契约（`docs/contracts/`）
 
@@ -93,7 +94,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 ## 约定
 
-- Desktop uses mygo and the existing UI Kit demo composition. The normal entry opens history directly; setup and passphrase-unlock flows are removed. See [live desktop composition](docs/architecture/overview.md#live-desktop-composition).
+- Desktop uses mygo and the existing UI Kit demo composition. Fresh profiles show first-install setup and optional offline v1 migration. Completed setup and established v2 profiles open history directly; recurring passphrase-unlock flows remain removed. See [live desktop composition](docs/architecture/overview.md#live-desktop-composition).
 - 核心不得依赖 `app/*`；宿主专属代码留在对应应用，公开 Engine 的传递依赖边界由 `engine/boundary_test.go` 检查。
 - 设备地址与配对票据都是秘密：不要写进日志、事件或错误信息。
 - 通过配对码进来的设备永远需要用户批准；不要为了方便绕过。

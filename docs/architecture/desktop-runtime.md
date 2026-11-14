@@ -5,6 +5,8 @@ paths:
   - internal/localcontent/directory.go
   - app/desktop/internal/appupdates
   - app/desktop/internal/lifecycle
+  - app/desktop/internal/setupflow
+  - app/desktop/internal/setupui
   - app/desktop/e2e
   - app/desktop/internal/desktopui
   - app/desktop/internal/i18n
@@ -34,7 +36,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: cb1749765fb824c05babd9ad490aa8b6d929a6bb
+verified: 546e6317c7fb0709c5a5c241f40dd07a68d89b9b
 ---
 # Desktop configuration and received files
 
@@ -42,7 +44,8 @@ The UI-free service loads `config.toml` and exposes the effective saved configur
 CLI changes and file edits use the same validation and Engine settings.
 
 The normal desktop uses the production `desktopui` renderer with live service data.
-It opens history directly, with no setup or unlock flow.
+Fresh profiles show first-install setup and optional v1 migration before normal runtime startup. Completed setup and established v2 profiles open history directly. There is no recurring unlock flow. The marker, source detection and exclusive migration lifecycle are described in the [live desktop composition](overview.md#live-desktop-composition).
+Settings > Storage > Migrate from v1 reopens the migration flow. Desktop closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. Entering history starts the normal runtime again. An external target owner blocks import before credential access; it is not automatically stopped by migration.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.

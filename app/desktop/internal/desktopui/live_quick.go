@@ -183,6 +183,7 @@ func (p *quickPanelState) liveAction(id string) {
 
 // quickHost keeps native session state out of the editor and search modules.
 type quickHost struct {
+	close                        func()
 	shortcut                     *quickpanel.Shortcut
 	requested, registrationError string
 }
@@ -251,16 +252,32 @@ func (s *Desktop) AttachWindow(window *mygo.Window, clipboard *quickpanel.Clipbo
 	d.openQuickPanel = open
 	d.quickShortcutStatus = func() (string, string) { return s.quickHost.shortcut.Effective, s.quickHost.registrationError }
 	d.retryQuickShortcut = func() { s.SetQuickPanelShortcut(s.quickHost.requested) }
-	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+
+	closed := false
+	var off func()
+	s.quickHost.close = func() {
+		if closed {
+			return
+		}
+		closed = true
+		if off != nil {
+			off()
+		}
 		s.quickHost.shortcut.Close()
 		if quick != nil {
 			quick.live.system.Dismiss(false)
 			quick.live.d.live.cancel()
 		}
+		if quickWindow != nil {
+			quickWindow.Destroy()
+			quickWindow = nil
+		}
 		if closer, ok := native.(interface{ Close() }); ok {
 			closer.Close()
 		}
-	})
+	}
+	off = mygo.App.OnWillQuit(func(*mygo.QuitEvent) { s.quickHost.close() })
+
 }
 
 // SetQuickPanelShortcut applies the persisted preference on the host event thread.

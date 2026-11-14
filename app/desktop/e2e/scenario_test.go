@@ -3,6 +3,7 @@ package e2e
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -23,9 +25,12 @@ import (
 
 	"github.com/rogpeppe/go-internal/testscript"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
+	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	"github.com/uniclipboard/unic/internal/testboard"
+	"github.com/uniclipboard/unic/internal/v1migration/v1fixture"
 )
 
 type desktopResult struct {
@@ -132,6 +137,63 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			}
 			return s.start()
 		},
+		"start-setup": func(s *desktopScenario, a []string) error {
+			if len(a) != 1 || (a[0] != "complete" && a[0] != "partial") {
+				return errors.New("start-setup complete|partial")
+			}
+			return s.startNative(a[0])
+		},
+		"observe": func(s *desktopScenario, a []string) error {
+			if s.result.Mode != "native" || len(a) != 1 {
+				return errors.New("observe seconds requires a native case")
+			}
+			seconds, err := strconv.Atoi(a[0])
+			if err != nil || seconds < 1 || seconds > 5 {
+				return errors.New("observe requires 1 to 5 seconds")
+			}
+			timer := time.NewTimer(time.Duration(seconds) * time.Second)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				return nil
+			case <-s.ctx.Done():
+				return s.ctx.Err()
+			}
+		},
+		"service-absent": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("service-absent takes no arguments")
+			}
+			_, err := s.client.Service(s.ctx)
+			if !errors.Is(err, api.ErrNoDaemon) {
+				return fmt.Errorf("service exists before setup entry: %v", err)
+			}
+			s.result.Assertions = append(s.result.Assertions, "no service runs before setup entry")
+			return nil
+		},
+		"history-count": func(s *desktopScenario, a []string) error {
+			if len(a) != 1 {
+				return errors.New("history-count expected")
+			}
+			expected, err := strconv.Atoi(a[0])
+			if err != nil {
+				return err
+			}
+			var actual uint64
+			err = s.wait(func() bool {
+				counts, e := s.client.CountHistorySearches(s.ctx, engine.HistorySearchCountsRequest{Queries: []engine.HistorySearchQuery{{}}})
+				if e != nil || len(counts.Counts) != 1 {
+					return false
+				}
+				actual = counts.Counts[0]
+				return actual == uint64(expected)
+			})
+			if err != nil {
+				return fmt.Errorf("history count: got %d, expected %d: %w", actual, expected, err)
+			}
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("production history contains exactly %d migrated records", expected))
+			return nil
+		},
 		"submit": func(s *desktopScenario, a []string) error {
 			if len(a) != 2 {
 				return errors.New("submit id text")
@@ -141,6 +203,27 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 		},
 		"ui-wait":   func(s *desktopScenario, a []string) error { return s.expect(a, false) },
 		"ui-absent": func(s *desktopScenario, a []string) error { return s.expect(a, true) },
+		"ui-enabled": func(s *desktopScenario, a []string) error {
+			if len(a) != 2 {
+				return errors.New("ui-enabled role label")
+			}
+			err := s.wait(func() bool {
+				node, err := s.find(a[0], a[1])
+				if err != nil {
+					return false
+				}
+				for _, state := range node.States {
+					if state == "disabled" {
+						return false
+					}
+				}
+				return true
+			})
+			if err == nil {
+				s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("%s %q is enabled", a[0], a[1]))
+			}
+			return err
+		},
 		"ui-set": func(s *desktopScenario, a []string) error {
 			if len(a) != 3 {
 				return errors.New("ui-set role label text")
@@ -211,8 +294,9 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 	}
 	return result
 }
-func (s *desktopScenario) wait(check func() bool) error {
-	timeout := time.NewTimer(20 * time.Second)
+func (s *desktopScenario) wait(check func() bool) error { return s.waitFor(20*time.Second, check) }
+func (s *desktopScenario) waitFor(limit time.Duration, check func() bool) error {
+	timeout := time.NewTimer(limit)
 	defer timeout.Stop()
 	tick := time.NewTicker(60 * time.Millisecond)
 	defer tick.Stop()
@@ -224,12 +308,13 @@ func (s *desktopScenario) wait(check func() bool) error {
 		case <-s.ctx.Done():
 			return s.ctx.Err()
 		case <-timeout.C:
-			return errors.New("condition did not become true within 20 seconds")
+			return fmt.Errorf("condition did not become true within %s", limit)
 		case <-tick.C:
 		}
 	}
 }
-func (s *desktopScenario) start() error {
+func (s *desktopScenario) start() error { return s.startNative("") }
+func (s *desktopScenario) startNative(migration string) error {
 	if s.result.Mode != "native" {
 		return errors.New("only native cases may start a desktop window")
 	}
@@ -243,10 +328,53 @@ func (s *desktopScenario) start() error {
 	if err := os.WriteFile(filepath.Join(s.home, "e2e-owner"), []byte("desktop-e2e"), 0600); err != nil {
 		return err
 	}
-	config := "[telemetry]\nenabled=false\n[sync]\nenabled=false\n[desktop]\nmode='normal'\nlaunch_at_login=false\nstart_in_background=false\nquick_panel_shortcut=''\n"
+	config := "[history]\nauto_cleanup=false\n[telemetry]\nenabled=false\n[sync]\nenabled=false\n[desktop]\nmode='normal'\nlaunch_at_login=false\nstart_in_background=false\nquick_panel_shortcut=''\n"
 	if err := os.WriteFile(filepath.Join(s.home, "config.toml"), []byte(config), 0600); err != nil {
 		return err
 	}
+	if migration == "" {
+		flow, err := setupflow.Open(s.home)
+		if err != nil {
+			return err
+		}
+		if err = flow.Complete(); err != nil {
+			return err
+		}
+	} else {
+		_, dbpath, fixture, err := v1fixture.Build(filepath.Join(s.private, "v1-source"))
+		if err != nil {
+			return err
+		}
+		db, err := sql.Open("sqlite", dbpath)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = db.Close() }()
+		if migration == "complete" {
+			_, err = db.Exec("INSERT INTO clipboard_snapshot_representation VALUES('rep-bad','event-bad','text/plain','text/plain',?,NULL,9)", []byte(fixture.Repaired))
+			if err != nil {
+				return err
+			}
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		// Rollback is best-effort cleanup after early failure; after Commit it
+		// returns sql.ErrTxDone because the transaction has already finished.
+		defer func() { _ = tx.Rollback() }()
+		for i := 0; i < 1500; i++ {
+			_, err = tx.Exec("INSERT INTO clipboard_entry VALUES(?, 'event-text', ?, ?, 'text', NULL)", fmt.Sprintf("native-%04d", i), int64(10000+i), int64(10000+i))
+			if err != nil {
+				return err
+			}
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		s.result.Assertions = append(s.result.Assertions, "isolated encrypted v1 fixture with 1505 records; synthetic system credentials unavailable")
+	}
+
 	s.automation = filepath.Join(s.home, "automation.sock")
 	binary := filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic-desktop")
 	if os.PathSeparator == '\\' {
@@ -294,17 +422,22 @@ func (s *desktopScenario) start() error {
 	if err != nil {
 		return fmt.Errorf("native window: %w", err)
 	}
-	if err = s.wait(func() bool { _, e := s.client.Status(s.ctx); return e == nil }); err != nil {
-		return err
+	if migration == "" {
+		if err = s.wait(func() bool { _, e := s.client.Status(s.ctx); return e == nil }); err != nil {
+			return err
+		}
+		s.result.Assertions = append(s.result.Assertions, "an isolated native content window and production service are running")
+	} else {
+		s.result.Assertions = append(s.result.Assertions, "a real native setup window is running before service startup")
 	}
 	s.media = newDesktopRecording(s)
-	s.result.Assertions = append(s.result.Assertions, "an isolated native content window and production service are running")
 	return s.screenshot("started")
 }
 
 type desktopNode struct {
 	ID                 string
 	Role, Label, Value string
+	States             []string
 	Bounds             struct{ X, Y, Width, Height float64 }
 }
 
@@ -334,15 +467,23 @@ func (s *desktopScenario) find(role, label string) (desktopNode, error) {
 	return found[0], nil
 }
 func (s *desktopScenario) expect(args []string, absent bool) error {
-	if len(args) != 2 {
-		return errors.New("ui assertion requires role and exact label")
+	if len(args) < 2 || len(args) > 3 {
+		return errors.New("ui assertion requires role, exact label and optional timeout seconds")
+	}
+	limit := 20 * time.Second
+	if len(args) == 3 {
+		seconds, err := strconv.Atoi(args[2])
+		if err != nil || seconds < 1 || seconds > 120 {
+			return errors.New("timeout must be 1 to 120 seconds")
+		}
+		limit = time.Duration(seconds) * time.Second
 	}
 	match, err := desktopLabel(args[1])
 	if err != nil {
 		return err
 	}
 	stable := time.Time{}
-	err = s.wait(func() bool {
+	err = s.waitFor(limit, func() bool {
 		nodes, e := s.tree()
 		if e != nil {
 			return false

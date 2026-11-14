@@ -13,4 +13,5 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("gui-navigation", scenarioGUINavigation)
 	t.Run("gui-approval-reconnect", scenarioGUIApprovalAndReconnect)
 	t.Run("gui-empty-layout", scenarioGUIEmptyHistoryLayout)
+	t.Run("setup-pages", scenarioSetupPages)
 }

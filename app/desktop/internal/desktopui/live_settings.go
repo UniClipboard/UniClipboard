@@ -112,6 +112,15 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 			cfg.Limits.MaxFileBytes = config.Size(n) * (1 << 20)
 		})
 	case "storage":
+		if l.openMigration != nil {
+			group("migration", d.tr("数据迁移"), func() {
+				k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("从 v1 迁移"), Description: d.tr("迁移前会停止当前同步和剪贴板捕获。旧数据会保留。")}, nil, func() {
+					if k.Button(c.Key("open-migration"), d.tr("从 v1 迁移"), uikit.ButtonProps{Disabled: l.busy}).Clicked() {
+						l.openMigration()
+					}
+				})
+			})
+		}
 		group("history", d.tr("历史保留"), func() {
 			toggle("cleanup", d.tr("自动清理历史"), d.tr("清理历史记录及应用管理的文件。"), &cfg.History.AutoCleanup)
 			number("days", d.tr("历史保留时间"), d.tr("按创建时间计算。"), &cfg.History.RetentionDays, []int{7, 30, 90, 180, 365, 0}, d.tr("天"))

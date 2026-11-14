@@ -44,6 +44,9 @@ func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
 }
 func (s *Desktop) View(c *ui.Context) { s.d.view(c) }
 func (s *Desktop) Close() {
+	if s.quickHost != nil && s.quickHost.close != nil {
+		s.quickHost.close()
+	}
 	if s.d.live != nil {
 		s.d.live.cancel()
 	}
@@ -56,7 +59,11 @@ func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
 	s.d.live.retryLogin = retry
 }
 
+// SetMigrationOpener delegates exclusive runtime ownership to the Desktop host.
+func (s *Desktop) SetMigrationOpener(open func()) { s.d.live.openMigration = open }
+
 type liveState struct {
+	openMigration                              func()
 	sendCancel                                 context.CancelFunc
 	sendStage                                  string
 	queryOverride                              func() engine.HistorySearchQuery

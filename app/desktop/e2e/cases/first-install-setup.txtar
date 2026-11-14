@@ -1,0 +1,8 @@
+# Case: First-install setup and offline v1 import
+# Mode: process
+# Purpose: Verify setup persistence and migration with real Engine, SQLite and a service process.
+# Steps: Discover synthetic sources; skip and reopen; import with wrong and correct credentials; cancel and resume; repair and retry; start a real service and read imported history; reject concurrent migration.
+# Expected: Established profiles bypass setup; unfinished setup resumes; imported records survive cancellation without duplication; partial counts remain distinct; source data remains unchanged; service exposes imported history.
+# Forbidden: Native GUI launch, personal profile or credential access, sync, clipboard capture, duplicate import, or automatic termination of an unrelated service.
+
+acceptance startup first-install-setup

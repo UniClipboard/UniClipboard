@@ -37,9 +37,13 @@ Evidence includes source/binary identities, JSON assertions, screenshots and con
 - Host: macOS arm64, Go 1.27.3, race detector enabled.
 - `builtin-plugin-processors`: passed in `.build/desktop-e2e/20261114T162933Z-51e86fce/`. Saved/reverted settings, old runtime before restart, disabled/enabled runtime after two real restarts, inherited policy reset, unchanged telemetry/global sync, screenshots and recording passed.
 - `builtin-plugin-policy`: passed in `.build/desktop-e2e/20261114T164520Z-b3bcfae3/`. All content switches, rejected negative threshold, persistence/reopen, real paired-service threshold checks and receiver payload SHA-256 assertions passed. The case recorded 52 assertions and 29 frames over 36.28 seconds.
-- `TMPDIR=/private/tmp go test -race ./...`: 782 tests passed across 75 packages after the final production changes.
+- `TMPDIR=/private/tmp go test -race ./...`: 782 tests passed across 75 packages after the Go implementation changes. The subsequent translation-only correction passed the dedicated i18n acceptance run.
 - Repository-pinned golangci-lint v2.15.0: 0 issues in Desktop renderer, Desktop E2E and local configuration packages.
-- Full `make desktop-e2e` catalogue: running in `.build/desktop-e2e/20261114T164644Z-3cce45f8/`; final result will be recorded below.
+- Full `make desktop-e2e` catalogue: 35 of 36 cases passed in `.build/desktop-e2e/20261114T164644Z-3cce45f8/`. Both new native plugin cases passed. The original aggregate remains FAIL because its frozen catalogue lacked the `已启用` translation.
+- Fixed the missing status translation in all four non-Chinese locales. `make desktop-e2e CASE=i18n` passed in `.build/desktop-e2e/20261114T170003Z-ee7a7136/`. The complete catalogue was not rerun after this translation-only correction; the original failure and successful targeted rerun remain separate evidence.
+- Source identity: implementation commit `8921cbda9`; translation correction `80087940d`. All 526 Go source hashes in both reports match the final implementation. The targeted i18n report also matches the final translation catalogue. Differences from the full-run frozen source are limited to that catalogue and documentation updates.
+- Evidence integrity: all 647 full-run and 124 i18n-run checksums verified. Both runs reported unchanged frozen snapshots and successful private cleanup. No task source, binaries, profiles or raw logs remain in their private work directories.
+- `go run ./tools/docscheck`: passed; Desktop runtime verification points to `80087940d`. Seven other architecture pages report stale-source warnings; they were not blanket reverified.
 - The host's default temporary-directory alias triggers the existing cache-root symlink guard; the canonical temporary directory resolves that environment issue. No cache-root validation was weakened.
 - Recording pauses across actual Desktop quit/reopen gaps. The test-only capture lock protects the window identity before capture. The profile and service remain real, isolated processes.
 - Native OS clipboard delivery, OS focus restoration and cross-application paste: NOT_RUN.

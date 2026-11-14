@@ -17,7 +17,7 @@ This decision introduces a first-install exception to direct entry. Subsequent l
 
 ## Decision
 
-Use three logical pages: welcome, migration, and migration result. Migration confirmation and progress share the migration page. Use the existing mygo UI Kit. Use the user-approved [setup prototype](../../../prototype/setup.html), with the established [GUI style](../../../prototype/gui.html).
+Use three logical pages: welcome, migration, and migration result. Reuse one native window for setup and history. Migration completion alone does not open history: the user must choose entry, or explicitly skip migration. The host resizes that window from 640 × 560 to 1100 × 720 when entering history. Migration confirmation and progress share the migration page. Use the existing mygo UI Kit. Use the user-approved [setup prototype](../../../prototype/setup.html), with the established [GUI style](../../../prototype/gui.html).
 
 ### 1. Welcome
 

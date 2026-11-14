@@ -116,3 +116,12 @@ make desktop-e2e CASE=setup-pages
 ```
 
 These results supersede the earlier NOT_RUN entries only for the named macOS native and software-view scenarios. Native cancellation, native later Settings migration, native directory picker interaction, actual system credential prompts, and Windows/Linux native execution remain NOT_RUN. The earlier nonvisual cancellation and ownership evidence retains its original scope.
+
+
+## PR integration (2026-11-14)
+
+Integrated `origin/v2` at `6dd839548` into the feature branch. Preserve upstream history-detail prefetch and serialized native capture/RPC budgets. Upstream had already allocated decision 0025 to package identity, so this setup decision and receipt now use 0026; historical evidence retains its original frozen source identity.
+
+After integration, canonical `first-install-setup` passed in `.build/desktop-e2e/20261114T033935Z-c2ddf77f/`, `setup-pages` passed in `.build/desktop-e2e/20261114T033931Z-8ecb1a1c/`, and `setup-onboarding` passed in `.build/desktop-e2e/20261114T033934Z-6dd546cd/` with a 71.84-second native recording. Scoped vet, test compilation, catalogue consistency and whitespace checks passed. Documentation checking passed with five stale warnings on other architecture topics. The three directly maintained architecture pages now verify integrated source commit `a531ab8b4`.
+
+Setup and history still reuse one native window. Setup is 640 × 560; explicit entry or skip switches the same window to the 1100 × 720 history composition. Completion alone does not create a second window or enter history.

@@ -22,6 +22,39 @@ import (
 // These commands observe the production process; all setting writes happen via UI.
 func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 	return map[string]func(*desktopScenario, []string) error{
+		"plugin-back-in-toolbar": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("plugin-back-in-toolbar takes no arguments")
+			}
+			err := s.wait(func() bool {
+				button, e := s.find("button", "返回插件列表")
+				if e != nil {
+					return false
+				}
+				bar, e := s.find("toolbar", "插件")
+				if e != nil {
+					return false
+				}
+				b, t := button.Bounds, bar.Bounds
+				if b.Width <= 0 || b.Width > 44 || b.Height > 44 || b.X < t.X || b.Y < t.Y || b.Y+b.Height > t.Y+t.Height {
+					return false
+				}
+				nodes, e := s.tree()
+				if e != nil {
+					return false
+				}
+				for _, n := range nodes {
+					if n.Role == "text" && n.Label == "插件" && n.Bounds.Y >= t.Y && n.Bounds.Y+n.Bounds.Height <= t.Y+t.Height && n.Bounds.X >= t.X {
+						return b.X+b.Width <= n.Bounds.X
+					}
+				}
+				return false
+			})
+			if err == nil {
+				s.result.Assertions = append(s.result.Assertions, "compact accessible plugin back icon is inside the toolbar, before its title")
+			}
+			return err
+		},
 		"connect-policy-peer": func(s *desktopScenario, a []string) error { return s.connectPolicyPeer(a) },
 		"stop-policy-peer": func(s *desktopScenario, a []string) error {
 			if len(a) != 0 || s.policyPeer == nil {

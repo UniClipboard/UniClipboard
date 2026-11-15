@@ -61,6 +61,7 @@ ui-wait button 'Tailcat 同步'
 ui-enabled button 'Tailcat 同步'
 ui-click button 'Tailcat 同步'
 ui-wait switch '同步文本'
+plugin-back-in-toolbar
 screenshot tailcat-defaults
 ui-enabled switch '同步文本'
 ui-click switch '同步文本'
@@ -156,6 +157,8 @@ ui-wait listItem 插件
 ui-click listItem 插件
 ui-enabled button '内容分类'
 ui-click button 内容分类
+plugin-back-in-toolbar
+screenshot classification-toolbar
 ui-enabled switch '启用内容分类'
 ui-click switch 启用内容分类
 config-equals plugins.instances.builtin.classify.enabled false
@@ -173,6 +176,7 @@ ui-click switch 处理失败时阻止同步
 config-equals plugins.instances.builtin.classify.on_error '"block_sync"'
 ui-enabled button '返回插件列表'
 ui-click button 返回插件列表
+ui-absent button 返回插件列表
 ui-enabled button '文本工具'
 ui-click button 文本工具
 ui-enabled switch '启用文本工具'
@@ -198,6 +202,7 @@ ui-click switch 启用内容分类
 config-equals plugins.instances.builtin.classify.enabled true
 ui-enabled button '返回插件列表'
 ui-click button 返回插件列表
+ui-absent button 返回插件列表
 ui-enabled button '文本工具'
 ui-click button 文本工具
 ui-enabled switch '启用文本工具'

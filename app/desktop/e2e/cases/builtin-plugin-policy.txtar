@@ -14,6 +14,7 @@ ui-wait button 'Tailcat 同步'
 ui-enabled button 'Tailcat 同步'
 ui-click button 'Tailcat 同步'
 ui-wait switch '同步文本'
+plugin-back-in-toolbar
 screenshot tailcat-defaults
 ui-enabled switch '同步文本'
 ui-click switch '同步文本'

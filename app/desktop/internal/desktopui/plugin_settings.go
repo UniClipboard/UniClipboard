@@ -68,10 +68,6 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 		})
 		return
 	}
-	if k.Button(c.Key("back-to-plugins"), d.tr("返回插件列表"), uikit.ButtonProps{Icon: uikit.IconBack, Disabled: l.busy || l.loading}).Clicked() {
-		*p = builtinPluginSettings{}
-		return
-	}
 	name := ""
 	for _, entry := range builtinPluginEntries {
 		if entry.id == p.id {

@@ -58,3 +58,16 @@ make desktop-e2e
 ```
 
 The final report, `manifest.json`, `SHA256SUMS`, per-case JSON assertions, screenshots and recordings are the reproducible evidence. The runner verifies its frozen source and removes private source, binaries, profiles and logs after process cleanup.
+
+## Toolbar back icon refinement
+
+Failure inventory before implementation: the back control stays in the scrollable body, stretches to content width, appears after the title, loses its accessible name or tooltip, appears on the plugin list, or fails to return from a plugin detail. Native plugin cases check that the accessible back button is compact, contained by the title toolbar and left of the title. Existing navigation, saved settings and runtime-effect assertions remain active.
+
+The detail back action now uses an icon-only, subtle button before the Plugins toolbar title. It keeps the existing translated accessible name and tooltip. The old scroll-body button is removed. The UI Kit exposes an optional title-leading slot; existing callers retain their original layout.
+
+Validation on macOS arm64:
+
+- `builtin-plugin-processors`: passed in `.build/desktop-e2e/20261115T022041Z-784e245b/`, including toolbar geometry, return navigation, configuration persistence and runtime effects after restart. `02-classification-toolbar.png` records the new header position.
+- `builtin-plugin-policy`: passed in `.build/desktop-e2e/20261115T022233Z-0155e8fc/`, including Tailcat header geometry and existing live policy/receiver-hash assertions.
+- `toolbar-alignment`: passed in `.build/desktop-e2e/20261115T022309Z-ef25c587/` for the existing toolbar layout scenarios.
+- Repository-pinned golangci-lint v2.15.0: 0 issues in the renderer, UI Kit and Desktop E2E packages.

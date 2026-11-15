@@ -9,6 +9,7 @@ paths:
   - app/desktop/internal/setupui
   - app/desktop/e2e
   - app/desktop/internal/desktopui
+  - app/desktop/internal/uikit/split.go
   - app/desktop/internal/i18n
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
@@ -53,7 +54,7 @@ See the [live binding execution receipt](../exec/desktop-live-data.md) for suppo
 
 ## Built-in plugin management
 
-Settings > Plugins lists Tailcat sync, text tools and content classification. The detail pages edit the existing configuration through the revision-checked local API. Plugin maps and pointer values are copied before editing; failed writes retain the authoritative service snapshot. A successful save publishes the returned configuration on the view thread before controls accept another write. Saved-but-unapplied and invalid-file states remain visible.
+Settings > Plugins lists Tailcat sync, text tools and content classification. Plugin details use a compact back icon immediately before the toolbar title. The icon retains the translated “Back to plugins” accessible name and tooltip; the plugin list has no back icon. The detail pages edit the existing configuration through the revision-checked local API. Plugin maps and pointer values are copied before editing; failed writes retain the authoritative service snapshot. A successful save publishes the returned configuration on the view thread before controls accept another write. Saved-but-unapplied and invalid-file states remain visible.
 
 Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes` backend policies. They apply immediately. The file permission covers files and entire directory snapshots, including empty trees. The automatic threshold uses the selected files' total byte count; explicit sends bypass only that threshold. Global synchronization permissions and automatic-directory intent remain on Settings > Sync. Tailcat stays assembled and cannot be independently disabled or uninstalled.
 

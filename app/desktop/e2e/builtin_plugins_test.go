@@ -113,6 +113,24 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 			s.result.Assertions = append(s.result.Assertions, "persisted "+a[0]+" = "+a[1])
 			return nil
 		},
+		// ui-value checks what a control shows. The driver cannot choose from
+		// macOS pop-up menus; the data-binding acceptance chooses them.
+		"ui-value": func(s *desktopScenario, a []string) error {
+			if len(a) != 3 {
+				return errors.New("ui-value role label value")
+			}
+			last := ""
+			err := s.wait(func() bool {
+				node, e := s.find(a[0], a[1])
+				last = node.Value
+				return e == nil && node.Value == a[2]
+			})
+			if err != nil {
+				return fmt.Errorf("%s %q shows %q, want %q: %w", a[0], a[1], last, a[2], err)
+			}
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("%s %q shows %q", a[0], a[1], a[2]))
+			return nil
+		},
 		"restart-required": func(s *desktopScenario, a []string) error {
 			if len(a) != 1 {
 				return errors.New("restart-required key")

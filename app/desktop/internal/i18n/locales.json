@@ -3683,34 +3683,154 @@
     "pt-BR": "Aplicado após sair e reabrir o aplicativo.",
     "ru": "Применяется после закрытия и открытия приложения."
   },
-  "处理失败时阻止同步": {
-    "en": "Block sync on processing failure",
-    "ja": "処理失敗時に同期を阻止",
-    "pt-BR": "Bloquear sincronização se o processamento falhar",
-    "ru": "Блокировать синхронизацию при ошибке обработки"
-  },
-  "开启后，处理失败将阻止该条内容同步。关闭后继续同步。重启后生效。": {
-    "en": "When on, processing failure blocks sync for that item. Otherwise sync continues. Applies after restart.",
-    "ja": "有効時は処理失敗でその項目の同期を阻止します。無効時は続行します。再起動後に適用されます。",
-    "pt-BR": "Quando ativado, falhas bloqueiam a sincronização do item. Caso contrário, ela continua. Aplicado após reiniciar.",
-    "ru": "При включении ошибка обработки блокирует синхронизацию записи. Иначе она продолжается. Действует после перезапуска."
-  },
-  "当前使用全局失败策略。": {
-    "en": "Using the global failure policy.",
-    "ja": "全体の失敗ポリシーを使用中です。",
-    "pt-BR": "Usando a política global de falhas.",
-    "ru": "Используется общая политика обработки ошибок."
-  },
-  "使用全局失败策略": {
-    "en": "Use global failure policy",
-    "ja": "全体の失敗ポリシーを使用",
-    "pt-BR": "Usar política global de falhas",
-    "ru": "Использовать общую политику ошибок"
-  },
   "已启用": {
     "en": "Enabled",
     "ja": "有効",
     "pt-BR": "Ativado",
     "ru": "Включён"
+  },
+  "插件详情": {
+    "en": "Plugin details",
+    "ja": "プラグインの詳細",
+    "pt-BR": "Detalhes do plugin",
+    "ru": "Сведения о плагине"
+  },
+  "概览": {
+    "en": "Overview",
+    "ja": "概要",
+    "pt-BR": "Visão geral",
+    "ru": "Обзор"
+  },
+  "动作": {
+    "en": "Actions",
+    "ja": "アクション",
+    "pt-BR": "Ações",
+    "ru": "Действия"
+  },
+  "接受：文本": {
+    "en": "Accepts: text",
+    "ja": "対象：テキスト",
+    "pt-BR": "Aceita: texto",
+    "ru": "Принимает: текст"
+  },
+  "动作显示在历史条目的“动作”菜单中。结果是新的历史条目。": {
+    "en": "Actions appear in the Actions menu of a history item. The result is a new history item.",
+    "ja": "アクションは履歴項目の「アクション」メニューに表示されます。結果は新しい履歴項目になります。",
+    "pt-BR": "As ações aparecem no menu Ações de um item do histórico. O resultado é um novo item.",
+    "ru": "Действия отображаются в меню «Действия» элемента истории. Результат — новый элемент истории."
+  },
+  "能力": {
+    "en": "Capabilities",
+    "ja": "機能",
+    "pt-BR": "Recursos",
+    "ru": "Возможности"
+  },
+  "订阅事件": {
+    "en": "Subscribed events",
+    "ja": "購読イベント",
+    "pt-BR": "Eventos assinados",
+    "ru": "Подписки на события"
+  },
+  "运行状态": {
+    "en": "Run state",
+    "ja": "実行状態",
+    "pt-BR": "Estado de execução",
+    "ru": "Состояние работы"
+  },
+  "插件信息": {
+    "en": "Plugin information",
+    "ja": "プラグイン情報",
+    "pt-BR": "Informações do plugin",
+    "ru": "Сведения о плагине"
+  },
+  "无匹配": {
+    "en": "No match",
+    "ja": "一致なし",
+    "pt-BR": "Nenhuma correspondência",
+    "ru": "Нет совпадений"
+  },
+  "启用": {
+    "en": "Enable ",
+    "ja": "有効化：",
+    "pt-BR": "Ativar ",
+    "ru": "Включить: "
+  },
+  "同步后端": {
+    "en": "Sync backend",
+    "ja": "同期バックエンド",
+    "pt-BR": "Backend de sincronização",
+    "ru": "Бэкенд синхронизации"
+  },
+  "自动标注": {
+    "en": "Auto tagging",
+    "ja": "自動タグ付け",
+    "pt-BR": "Marcação automática",
+    "ru": "Автоматические теги"
+  },
+  "转大写": {
+    "en": "Uppercase",
+    "ja": "大文字に変換",
+    "pt-BR": "Maiúsculas",
+    "ru": "Верхний регистр"
+  },
+  "转小写": {
+    "en": "Lowercase",
+    "ja": "小文字に変換",
+    "pt-BR": "Minúsculas",
+    "ru": "Нижний регистр"
+  },
+  "去除首尾空白": {
+    "en": "Trim whitespace",
+    "ja": "前後の空白を削除",
+    "pt-BR": "Remover espaços das extremidades",
+    "ru": "Обрезать пробелы"
+  },
+  "纯文本": {
+    "en": "Plain text",
+    "ja": "プレーンテキスト",
+    "pt-BR": "Texto simples",
+    "ru": "Простой текст"
+  },
+  "搜索插件": {
+    "en": "Search plugins",
+    "ja": "プラグインを検索",
+    "pt-BR": "Buscar plugins",
+    "ru": "Поиск плагинов"
+  },
+  "搜索插件名称或 ID": {
+    "en": "Search plugin name or ID",
+    "ja": "プラグイン名またはIDで検索",
+    "pt-BR": "Buscar nome ou ID do plugin",
+    "ru": "Поиск по имени или ID плагина"
+  },
+  "处理失败时": {
+    "en": "On processing failure",
+    "ja": "処理に失敗したとき",
+    "pt-BR": "Em caso de falha no processamento",
+    "ru": "При ошибке обработки"
+  },
+  "重启后生效。": {
+    "en": "Takes effect after restart.",
+    "ja": "再起動後に有効になります。",
+    "pt-BR": "Entra em vigor após reiniciar.",
+    "ru": "Вступает в силу после перезапуска."
+  },
+  "跟随全局（%s）": {
+    "en": "Use global (%s)",
+    "ja": "全体設定に従う（%s）",
+    "pt-BR": "Usar global (%s)",
+    "ru": "Как в общих настройках (%s)"
+  },
+  "继续处理": {
+    "en": "Continue processing",
+    "ja": "処理を続行",
+    "pt-BR": "Continuar o processamento",
+    "ru": "Продолжить обработку"
+  },
+  "禁止同步此条目": {
+    "en": "Do not sync this item",
+    "ja": "この項目を同期しない",
+    "pt-BR": "Não sincronizar este item",
+    "ru": "Не синхронизировать этот элемент"
   }
 }

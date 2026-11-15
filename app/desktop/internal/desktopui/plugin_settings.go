@@ -1,6 +1,7 @@
 package desktopui
 
 import (
+	"fmt"
 	"maps"
 	"strconv"
 	"strings"
@@ -15,12 +16,22 @@ import (
 // Keep draft text separate from the authoritative service snapshot.
 type builtinPluginSettings struct {
 	id, revision, threshold, thresholdError string
+	tab, query                              string
 }
 
-var builtinPluginEntries = []struct{ id, name, description string }{
-	{"builtin.tailcat", "Tailcat 同步", "设备间同步。支持文本、图片、文件与文件夹。"},
-	{"builtin.text", "文本工具", "标注邮箱和链接，提供大写、小写、去除首尾空白和纯文本动作。"},
-	{"builtin.classify", "内容分类", "按文本、图片、文件、文件夹和链接添加类型标签。"},
+type builtinPluginEntry struct {
+	id, name, description string
+	icon                  uikit.IconName
+	capabilities, events  []string
+	actions               []string
+}
+
+var builtinPluginEntries = []builtinPluginEntry{
+	{id: "builtin.tailcat", name: "Tailcat 同步", description: "设备间同步。支持文本、图片、文件与文件夹。", icon: uikit.IconRetry, capabilities: []string{"同步后端"}},
+	{id: "builtin.text", name: "文本工具", description: "标注邮箱和链接，提供大写、小写、去除首尾空白和纯文本动作。", icon: uikit.IconEdit,
+		capabilities: []string{"自动标注", "动作"}, events: []string{"clipboard.captured", "clipboard.received"}, actions: []string{"转大写", "转小写", "去除首尾空白", "纯文本"}},
+	{id: "builtin.classify", name: "内容分类", description: "按文本、图片、文件、文件夹和链接添加类型标签。", icon: uikit.IconList,
+		capabilities: []string{"自动标注"}, events: []string{"clipboard.captured", "clipboard.received"}},
 }
 
 func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
@@ -48,36 +59,56 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
 	}
 	p := &d.pluginSettings
+	status := func(id string) (string, uikit.StatusTone) {
+		switch {
+		case pending && id != "builtin.tailcat":
+			return d.tr("需要重启"), uikit.StatusWarning
+		case cfg.PluginEnabled(id):
+			return d.tr("已启用"), uikit.StatusPositive
+		}
+		return d.tr("已停用"), uikit.StatusNeutral
+	}
 	if p.id == "" {
-		k.SettingsGroup(c.Key("builtin-plugin-list"), uikit.SettingsGroupProps{Title: d.tr("内置插件")}, func() {
-			for _, entry := range builtinPluginEntries {
-				k.SettingsRow(c.Key(entry.id), uikit.SettingsRowProps{Label: d.tr(entry.name), Description: d.tr(entry.description)}, nil, func() {
-					status := d.tr("已启用")
-					if !cfg.PluginEnabled(entry.id) {
-						status = d.tr("已停用")
-					}
-					if pending && entry.id != "builtin.tailcat" {
-						status = d.tr("需要重启")
-					}
-					k.Text(c, status, footnote)
-					if k.Button(c.Key("open-"+entry.id), d.tr(entry.name), uikit.ButtonProps{Disabled: l.busy || l.loading}).Clicked() {
-						*p = builtinPluginSettings{id: entry.id}
-					}
-				})
-			}
-		})
+		d.builtinPluginList(c, k, &cfg)
 		return
 	}
-	name := ""
-	for _, entry := range builtinPluginEntries {
-		if entry.id == p.id {
-			name = d.tr(entry.name)
+	var entry builtinPluginEntry
+	for _, e := range builtinPluginEntries {
+		if e.id == p.id {
+			entry = e
 		}
 	}
-	if name == "" {
+	if entry.id == "" {
 		*p = builtinPluginSettings{}
 		return
 	}
+	name := d.tr(entry.name)
+	text, tone := status(entry.id)
+	k.EntityHeader(c.Key("plugin-header"), uikit.EntityHeaderProps{Icon: entry.icon, Title: name, Badge: d.tr("内置"), Status: uikit.EntityStatus{Text: text, Tone: tone}, Description: d.tr(entry.description)}, nil)
+	if len(entry.actions) > 0 {
+		if p.tab == "" {
+			p.tab = "overview"
+		}
+		k.SegmentedControl(c.Key("plugin-tabs"), uikit.SegmentedControlProps{Label: d.tr("插件详情"), Value: &p.tab, Items: []uikit.SegmentedItem{{Value: "overview", Label: d.tr("概览")}, {Value: "actions", Label: d.tr("动作")}}})
+	} else {
+		p.tab = "overview"
+	}
+	if p.tab == "actions" {
+		k.SettingsGroup(c.Key("plugin-actions"), uikit.SettingsGroupProps{Title: d.tr("动作")}, func() {
+			for _, a := range entry.actions {
+				k.SettingsRow(c.Key(a), uikit.SettingsRowProps{Label: d.tr(a), Description: d.tr("接受：文本")}, nil, nil)
+			}
+		})
+		k.Text(c, d.tr("动作显示在历史条目的“动作”菜单中。结果是新的历史条目。"), footnote)
+		return
+	}
+	facts := []uikit.Fact{{ID: "caps", Label: d.tr("能力"), Value: d.join(entry.capabilities)}}
+	events := "—"
+	if len(entry.events) > 0 {
+		events = strings.Join(entry.events, ", ")
+	}
+	facts = append(facts, uikit.Fact{ID: "events", Label: d.tr("订阅事件"), Value: events, Monospace: true}, uikit.Fact{ID: "state", Label: d.tr("运行状态"), Value: text})
+	k.FactList(c.Key("plugin-facts"), uikit.FactListProps{Label: d.tr("插件信息"), Facts: facts})
 	changed := false
 	instance := cfg.Plugins.Instances[p.id]
 	toggle := func(id, label, desc string, on *bool) {
@@ -131,29 +162,80 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 			if changed {
 				instance.Enabled = &enabled
 			}
-			policy, _ := cfg.ProcessorSettings(p.id)
-			block := policy == "block_sync"
-			k.SettingsRow(c.Key("failure"), uikit.SettingsRowProps{Label: d.tr("处理失败时阻止同步"), Description: d.tr("开启后，处理失败将阻止该条内容同步。关闭后继续同步。重启后生效。")}, nil, func() {
-				if k.Switch(c, &block, uikit.SwitchProps{Label: d.tr("处理失败时阻止同步"), Disabled: l.busy || l.loading}).Changed() {
-					instance.OnError = "continue"
-					if block {
-						instance.OnError = "block_sync"
+			// One choice for inheritance and both overrides, as in the prototype.
+			global := d.tr("继续处理")
+			if cfg.Plugins.OnError == "block_sync" {
+				global = d.tr("禁止同步此条目")
+			}
+			policy := instance.OnError
+			if policy == "" {
+				policy = "inherit"
+			}
+			k.SettingsRow(c.Key("failure"), uikit.SettingsRowProps{Label: d.tr("处理失败时"), Description: d.tr("重启后生效。")}, nil, func() {
+				items := []uikit.SelectItem{
+					{Value: "inherit", Label: fmt.Sprintf(d.tr("跟随全局（%s）"), global)},
+					{Value: "continue", Label: d.tr("继续处理")},
+					{Value: "block_sync", Label: d.tr("禁止同步此条目")},
+				}
+				if k.Select(c, uikit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.busy || l.loading}).Changed {
+					instance.OnError = policy
+					if policy == "inherit" {
+						instance.OnError = ""
 					}
 					changed = true
 				}
 			})
-			if instance.OnError == "" {
-				k.Text(c, d.tr("当前使用全局失败策略。"), footnote)
-			} else {
-				if k.Button(c.Key("inherit-failure-policy"), d.tr("使用全局失败策略"), uikit.ButtonProps{Disabled: l.busy || l.loading}).Clicked() {
-					instance.OnError = ""
-					changed = true
-				}
-			}
 		})
 	}
 	if changed {
 		cfg.Plugins.Instances[p.id] = instance
 		d.saveLiveConfig(cfg)
 	}
+}
+
+func (d *viewState) join(items []string) string {
+	out := make([]string, len(items))
+	for i, v := range items {
+		out[i] = d.tr(v)
+	}
+	return strings.Join(out, " · ")
+}
+
+func (d *viewState) builtinPluginList(c *ui.Context, k uikit.Kit, cfg *config.Config) {
+	l := d.live
+	p := &d.pluginSettings
+	search := k.SearchField(c.Key("plugin-search"), uikit.SearchFieldProps{Label: d.tr("搜索插件"), Placeholder: d.tr("搜索插件名称或 ID"), Value: &p.query})
+	if search.Escaped {
+		p.query = ""
+	}
+	query := strings.ToLower(strings.TrimSpace(p.query))
+	k.SettingsGroup(c.Key("builtin-plugin-list"), uikit.SettingsGroupProps{Title: d.tr("内置插件")}, func() {
+		shown := 0
+		for _, entry := range builtinPluginEntries {
+			if query != "" && !strings.Contains(strings.ToLower(d.tr(entry.name)+" "+entry.id), query) {
+				continue
+			}
+			shown++
+			labelExtra := func() {
+				for _, cap := range entry.capabilities {
+					k.Tag(c.Key("cap-"+entry.id+cap), d.tr(cap), uikit.TagProps{Color: "blue"})
+				}
+			}
+			k.SettingsRow(c.Key(entry.id), uikit.SettingsRowProps{Label: d.tr(entry.name), Description: entry.id + " · " + d.tr(entry.description)}, labelExtra, func() {
+				on := cfg.PluginEnabled(entry.id)
+				if k.Switch(c.Key("enable-"+entry.id), &on, uikit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: entry.id == "builtin.tailcat" || l.busy || l.loading}).Changed() {
+					instance := cfg.Plugins.Instances[entry.id]
+					instance.Enabled = &on
+					cfg.Plugins.Instances[entry.id] = instance
+					d.saveLiveConfig(*cfg)
+				}
+				if k.Button(c.Key("open-"+entry.id), "", uikit.ButtonProps{Variant: uikit.Subtle, Icon: uikit.IconChevronRight, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.busy || l.loading}).Clicked() {
+					*p = builtinPluginSettings{id: entry.id}
+				}
+			})
+		}
+		if shown == 0 {
+			k.Text(c, d.tr("无匹配"), footnote)
+		}
+	})
 }

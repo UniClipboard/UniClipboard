@@ -67,6 +67,10 @@ func (k Kit) Select(c *ui.Context, p SelectProps) SelectResult {
 			chosen = i
 		}
 	}
+	// The trigger's accessible value is the chosen item's label, which is what it shows.
+	if chosen >= 0 {
+		tr.Value(p.Items[chosen].Label)
+	}
 	tr.Label(p.Label).Disabled(p.Disabled).FontSize(pal.size).AlignItems(ui.Center).Gap(8).TextColor(pal.fg)
 	h, padL, padR := pal.h, pal.padX+2, pal.padX
 	bg := pal.bg

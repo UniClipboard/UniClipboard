@@ -143,7 +143,7 @@ screenshot tailcat-reopened
 
 Built-in processors saved and applied from Desktop
 
-Steps: Disable each plugin, set failure policies, check pending restart, restart, verify tags and Actions, then enable both again.
+Steps: Disable each plugin, check the failure-policy dropdown shows inheritance, check pending restart, restart, verify tags and Actions, then enable both again. The data-binding acceptance chooses dropdown values through the system menu; this driver cannot.
 
 Expected: Classification alone reports restart; old runtime remains active until restart; saved changes survive restart and affect new history and Actions.
 
@@ -171,9 +171,8 @@ restart-clear
 ui-enabled switch '启用内容分类'
 ui-click switch 启用内容分类
 config-equals plugins.instances.builtin.classify.enabled false
-ui-enabled switch '处理失败时阻止同步'
-ui-click switch 处理失败时阻止同步
-config-equals plugins.instances.builtin.classify.on_error '"block_sync"'
+ui-value popUpButton 处理失败时 '跟随全局（继续处理）'
+config-equals plugins.instances.builtin.classify.on_error null
 ui-enabled button '返回插件列表'
 ui-click button 返回插件列表
 ui-absent button 返回插件列表
@@ -182,9 +181,8 @@ ui-click button 文本工具
 ui-enabled switch '启用文本工具'
 ui-click switch 启用文本工具
 config-equals plugins.instances.builtin.text.enabled false
-ui-enabled switch '处理失败时阻止同步'
-ui-click switch 处理失败时阻止同步
-config-equals plugins.instances.builtin.text.on_error '"block_sync"'
+ui-value popUpButton 处理失败时 '跟随全局（继续处理）'
+config-equals plugins.instances.builtin.text.on_error null
 processor-probe enabled
 screenshot processors-pending
 restart-desktop
@@ -219,13 +217,8 @@ ui-click listItem 插件
 screenshot processors-active
 ui-enabled button 文本工具
 ui-click button 文本工具
-ui-enabled button 使用全局失败策略
-ui-click button 使用全局失败策略
+ui-value popUpButton 处理失败时 '跟随全局（继续处理）'
 config-equals plugins.instances.builtin.text.on_error null
-restart-required plugins.settings
-ui-enabled switch 处理失败时阻止同步
-ui-click switch 处理失败时阻止同步
-config-equals plugins.instances.builtin.text.on_error '"block_sync"'
 restart-clear
 config-equals telemetry.enabled false
 config-equals sync.enabled false

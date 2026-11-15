@@ -71,3 +71,19 @@ Validation on macOS arm64:
 - `builtin-plugin-policy`: passed in `.build/desktop-e2e/20261115T022233Z-0155e8fc/`, including Tailcat header geometry and existing live policy/receiver-hash assertions.
 - `toolbar-alignment`: passed in `.build/desktop-e2e/20261115T022309Z-ef25c587/` for the existing toolbar layout scenarios.
 - Repository-pinned golangci-lint v2.15.0: 0 issues in the renderer, UI Kit and Desktop E2E packages.
+
+## Prototype alignment (list and detail)
+
+The plugin list follows `prototype/plugins.html` for the built-in group: name, capability tags, ID, an inline enable switch (Tailcat is fixed on and disabled) and a name or ID filter. The detail page has an entity header (icon, name, built-in badge, status), an overview with capability, subscribed-event and run-state facts, and an Actions tab for the text tool.
+
+Not aligned, by decision: execution order page, GitHub install, Source tab, uninstall, schema forms, capability filter and "restart Engine" button (Desktop has no in-process restart).
+
+Evidence: `builtin-plugin-processors`, `builtin-plugin-policy` and `i18n` passed after the change (`.build/desktop-e2e/20261115T022513Z-00d62845/`, `...T022623Z-baa3cc87/`, `...T022734Z-ab8f9caa/`). The full catalogue was not rerun.
+
+## Failure-policy dropdown and PR readiness
+
+The processor failure policy now uses one dropdown with inheritance, explicit continue and explicit block-sync choices. The inherited label includes the global policy. The Select accessibility value exposes the displayed choice. The native processor case checks that value; its driver cannot select a macOS system-menu item.
+
+- Native `builtin-plugin-processors` passed in `.build/desktop-e2e/20261115T124732Z-3ef16b44/`. Its source hashes match the current product code; only the subsequent `acceptance_live_test.go` changes differ.
+- Process `data-binding` failed in `.build/desktop-e2e/20261115T125447Z-012994d7/`. All recorded source hashes match the current source. The dropdown menu was empty when the case attempted the second choice (`continue`). The run verified its frozen snapshot and private cleanup. Dropdown selection and persistence acceptance remain incomplete.
+- The PR remains a draft until this failure is resolved. Earlier passing native and translation runs do not establish acceptance of the final dropdown implementation. Native OS clipboard, OS focus and cross-application paste remain NOT_RUN.

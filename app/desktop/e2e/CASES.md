@@ -13,6 +13,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
+| [incremental-browsing](#incremental-browsing) | process | Multi-page production browsing, idle request timeline, coalescing, selection and cancellation. |
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
 | [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation. |
 | [native-menus](#native-menus) | view | System-menu requests, cancellation and selected-value dispatch in the software view. |
@@ -339,6 +340,20 @@ Forbidden: Missing translations or translated user content.
 
 ```text
 acceptance desktopui i18n
+```
+
+## incremental-browsing
+
+Incremental history browsing
+
+Steps: Start isolated unicd, populate synthetic history, and exercise the production Desktop binding.
+
+Expected: Idle history stays unchanged; paging and history events preserve browsing context.
+
+Forbidden: Native UI claims, skipped assertions, missing source/binary hashes or receipt.
+
+```text
+acceptance desktopui incremental-browsing
 ```
 
 ## interaction-motion

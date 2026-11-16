@@ -1,0 +1,11 @@
+# Case: Incremental history browsing
+# Mode: process
+# Purpose: Multi-page production browsing, idle request timeline, coalescing, selection and cancellation.
+# Steps:
+#   Start isolated unicd, populate synthetic history, and exercise the production Desktop binding.
+# Expected:
+#   Idle history stays unchanged; paging and history events preserve browsing context.
+# Forbidden:
+#   Native UI claims, skipped assertions, missing source/binary hashes or receipt.
+
+acceptance desktopui incremental-browsing

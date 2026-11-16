@@ -232,6 +232,9 @@ func (d *viewState) current() *entry {
 			return &d.entries[i]
 		}
 	}
+	if d.live != nil && d.live.retained != nil && d.live.retained.id == d.selected {
+		return d.live.retained
+	}
 	return nil
 }
 

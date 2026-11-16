@@ -69,6 +69,52 @@ The probes run sequentially against the same existing read-only service, using a
 
 The final candidate's hidden-state footprint exceeds its visible-state footprint in this sequential run. Between the 9-second visible and 21-second hidden samples, HeapAlloc falls from 21.31 MB to 9.42 MB and image CPU storage stays at 364,544 bytes. These counters exclude cache growth as the explanation; they do not identify the native allocation or accounting responsible for the physical delta. The retained selected vmmap lines cannot account for the full delta. Full native-category attribution and age-matched repeated hide/show controls remain follow-up work. Window.Hide is distinct from application hide, minimization and production close-to-tray behavior.
 
+### Hidden-state attribution (macOS `footprint` categories)
+
+A bare mygo window with the 50-entry text layout and no service, application cache or image code (`.cache/memory-hidden-attribution/`, source HEAD `ff96bb477`, 1100 x 720, `Window.Hide`/`Show`) reproduces the effect. Sampling is at 6/9 s visible, 16/19 s hidden and 26/29 s restored. Receipts are in `hide-text.json`, `rep1-hide-text.json` and `rep2-hide-text.json`; each uses `processes[0].categories` and the category dirty sum equals the footprint.
+
+- Hidden footprint is 75.4-77.8 MB against 60.4-63.5 MB visible. The delta is 12.0-12.4 MB in three runs.
+- The whole delta is in `Owned physical footprint (unmapped)`. Go heap, malloc and application caches do not change. The earlier visible run at the same age shows an `IOSurface` category of 12.3 MB. This matches one 2200 x 1440 x 4 byte drawable (about 12.7 MB decimal).
+- The delta disappears after `Show` (65.6-66.2 MB). An empty-layout window drops 3-4 MB when hidden, so the effect needs a rendered text scene.
+- Interpretation, not proven: after hide, the last presented drawable surface is accounted to the process. While visible and settled, it is not. The idle trim does not release it.
+
+Visible state is not stationary. A never-hidden text window showed a transient peak of 139-144 MB (`Owned physical footprint (unmapped) (graphics)` +56.6 MB, `IOSurface` +12.3 MB, `IOAccelerator` +5.7 MB) at a non-deterministic time during the first 6-19 s, then settled at 64-67 MB. An age-matched visible sample can therefore be higher or lower than the hidden sample. Earlier sequential comparisons mix age and state. Use settled samples and several runs.
+
+The delta is a framework/native graphics effect, not application state. No application change is justified. A fix belongs in mygo (release or shrink the drawable on `Hide`) and needs its own measurement. The startup transient is a separate lead.
+
+Release-on-hide experiment (isolated mygo copy, not adopted; diff in `.cache/memory-hidden-attribution/release-on-hide.patch`): `Window.Hide` ran the existing trim and then set the layer contents to nil. Hidden footprint fell to 58-62 MB and the 12 MB delta disappeared in three runs. After `Show`, `IOSurface` returned at 24.7 MB (two surfaces) and the restored footprint stayed at 80-92 MB for at least 8 s, against 65.6-66.2 MB without the patch. The patch moves the cost from hidden to restored state and is a net loss. Native surface ownership depends on who holds the last presented frame, and a simple release does not control it. Do not adopt it. A correct fix needs a mygo change that keeps the restored window settled, and needs its own measurement.
+
+### Wake-up transient (macOS `footprint`, bare text window, `.cache/memory-hidden-attribution/corr*.json`)
+
+- A never-hidden window shows short peaks of 137-152 MB over a 57-68 MB baseline. A peak lasts about 1-3 s. In eight 1 Hz runs, five showed at least one peak (nine peak clusters in total).
+- Each peak matches one full-scene redraw in `MYGO_FRAME_STATS=all` logs (565 instances, present 7-10 ms), logged after an idle period. Metal idle trim shrinks the drawables to 1x1 after 2 s of no drawing. The next frame sees `trimmed` and re-creates full-size drawables: `IOSurface` 12.3 to 37 MB and graphics-owned memory +56.6 MB. The next trim releases them.
+- Startup shows the same pattern once (93-152 MB in the first 2-3 s).
+- Ten single-sample runs and four 10-sample runs from 8 s showed no peak. Unsampled runs still logged wake-up frames: at startup, and in one run at 27 s. The cause of idle wake-ups is not identified. Repeated `footprint` sampling probably adds wake-ups; this is not proven.
+- Consequence: any wake-up after 2 s of idle (for example a new clipboard entry) can raise the footprint by about 77 MB for at least 2 s. Peak footprint is therefore higher than the settled 57-68 MB.
+- The application cannot change the drawable lifecycle. A fix belongs in mygo (for example, keep the trimmed size above 1x1, or reuse a drawable pool). It needs its own measurement. The application should keep avoiding redraws with unchanged content.
+
+### Release Go heap while hidden (adopted)
+
+`app/desktop/internal/memrelease` calls `debug.FreeOSMemory` once the main window has been hidden for 3 s (also when the window starts hidden). `gui.go` installs it. Go's own scavenger returned almost nothing within 30 s in the controls below.
+
+Native probe, bare text window with the shipped package, 40 MB of synthetic heap garbage created at 4 s, hide at 10 s, show at 20 s, three runs per column. The garbage is synthetic: it models decode temporaries and is not a measurement of real history content.
+
+| State | Without release | With release |
+| --- | ---: | ---: |
+| Hidden | 100.0-104.3 MB | 62.8-76.4 MB |
+| Restored | 106.6-113.7 MB | 62.8-68.2 MB |
+
+The hidden figure with release still includes the 12 MB graphics-owned surface described above. Real heap garbage with the live history view is not measured; the earlier live receipt retains about 36 MB of Go-held memory, so the gain there is smaller than in this synthetic case. The native hide path of the production entry is not launched; the probe imports the same package. Cost: one forced GC per hide, and no GC tuning is set.
+
+Live-view check with the shipped package: an isolated headless `unicd` (temporary home, no system clipboard) held 50 synthetic text entries (up to about 80 KB) and six synthetic noisy PNG images (1600x900 and larger). The production history view read it through the real local API. Runs alternated between no release and release, after one warm-up run; three runs each; hide at 10 s, show at 20 s.
+
+| State | Without release | With release |
+| --- | ---: | ---: |
+| Hidden | 109.5-114.7 MB | 83.9-107.2 MB |
+| Restored | 112.8-121.2 MB | 88.4-94.9 MB |
+
+The gain is about 20 MB when restored and 18-26 MB when hidden. The absolute values are higher than the earlier real-history receipts because the synthetic images are larger and noisier than typical content; they do not show a 100 MB ceiling. An earlier, non-alternating set of runs differed by about 70 MB before any hide and is discarded. Order and daemon cache state matter; always alternate and warm up. The visible state before hide is unchanged by the release.
+
 The final candidate is below 100 MB at all six sample points in this run. It does not establish a long-duration or all-content ceiling. Decode temporaries, a selected large original, allocator/scavenger timing and native compositor state can exceed this idle scenario. The earlier per-stage numbers are independent process runs; do not attribute their entire physical-footprint difference to a single code change.
 
 The complete canonical Desktop run finishes with 44 PASS and one FAIL (`i18n`), with private cleanup PASS. The exact pre-image source reproduces that translation failure. Image previews, event wakeups, search/prefetch, incremental browsing, data binding, native history copy, startup and all native scenarios pass. Pinned golangci-lint v2.15.0 reports zero issues for desktopui. Formatting, three entrypoint builds and docscheck pass. Docscheck retains seven pre-existing stale-page warnings outside the updated overview.

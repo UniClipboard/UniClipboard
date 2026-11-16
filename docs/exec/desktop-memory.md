@@ -1,6 +1,6 @@
 # Desktop memory implementation and acceptance
 
-Status: event-driven rendering and application image optimizations accepted for the exercised macOS scenarios. Full Desktop acceptance has one reproduced baseline translation failure. The optional framework patch remains separate. Baseline workspace: `e6f03d5174ecc55ec73981d67ce93ba2ddfa746d`. The installed-process investigation used `bd89ff5a12885079e4259c3a72c90ab5e8b420ca`; implementation uses the current workspace.
+Status: event-driven rendering and application image optimizations accepted for the exercised macOS scenarios. Full Desktop acceptance has one reproduced baseline translation failure. The optional framework patch remains separate. Since commit `71a4ef969` the main window also returns free Go heap to the system after it has been hidden for 3 s (see "Release Go heap while hidden"); the tables before that section describe builds without it. Baseline workspace: `e6f03d5174ecc55ec73981d67ce93ba2ddfa746d`. The installed-process investigation used `bd89ff5a12885079e4259c3a72c90ab5e8b420ca`; implementation uses the current workspace.
 
 ## Ordered scope
 
@@ -67,7 +67,7 @@ The probes run sequentially against the same existing read-only service, using a
 | Restored | 96.05-97.31 MB | 75.71-82.00 MB |
 | Retained image CPU base/mips | 14,735,712 bytes | 364,544 bytes |
 
-The final candidate's hidden-state footprint exceeds its visible-state footprint in this sequential run. Between the 9-second visible and 21-second hidden samples, HeapAlloc falls from 21.31 MB to 9.42 MB and image CPU storage stays at 364,544 bytes. These counters exclude cache growth as the explanation; they do not identify the native allocation or accounting responsible for the physical delta. The retained selected vmmap lines cannot account for the full delta. Full native-category attribution and age-matched repeated hide/show controls remain follow-up work. Window.Hide is distinct from application hide, minimization and production close-to-tray behavior.
+The final candidate's hidden-state footprint exceeds its visible-state footprint in this sequential run. Between the 9-second visible and 21-second hidden samples, HeapAlloc falls from 21.31 MB to 9.42 MB and image CPU storage stays at 364,544 bytes. These counters exclude cache growth as the explanation; they do not identify the native allocation or accounting responsible for the physical delta. The retained selected vmmap lines cannot account for the full delta. The next section attributes the delta with native categories and repeated controls. Window.Hide is distinct from application hide, minimization and production close-to-tray behavior.
 
 ### Hidden-state attribution (macOS `footprint` categories)
 
@@ -80,7 +80,7 @@ A bare mygo window with the 50-entry text layout and no service, application cac
 
 Visible state is not stationary. A never-hidden text window showed a transient peak of 139-144 MB (`Owned physical footprint (unmapped) (graphics)` +56.6 MB, `IOSurface` +12.3 MB, `IOAccelerator` +5.7 MB) at a non-deterministic time during the first 6-19 s, then settled at 64-67 MB. An age-matched visible sample can therefore be higher or lower than the hidden sample. Earlier sequential comparisons mix age and state. Use settled samples and several runs.
 
-The delta is a framework/native graphics effect, not application state. No application change is justified. A fix belongs in mygo (release or shrink the drawable on `Hide`) and needs its own measurement. The startup transient is a separate lead.
+The 12 MB hidden-state delta is a framework/native graphics effect, not application state, so no application change addresses it. A fix belongs in mygo and needs its own measurement. The Go heap is a separate, application-side cost; see "Release Go heap while hidden". The transient peaks are explained in the wake-up section.
 
 Release-on-hide experiment (isolated mygo copy, not adopted; diff in `.cache/memory-hidden-attribution/release-on-hide.patch`): `Window.Hide` ran the existing trim and then set the layer contents to nil. Hidden footprint fell to 58-62 MB and the 12 MB delta disappeared in three runs. After `Show`, `IOSurface` returned at 24.7 MB (two surfaces) and the restored footprint stayed at 80-92 MB for at least 8 s, against 65.6-66.2 MB without the patch. The patch moves the cost from hidden to restored state and is a net loss. Native surface ownership depends on who holds the last presented frame, and a simple release does not control it. Do not adopt it. A correct fix needs a mygo change that keeps the restored window settled, and needs its own measurement.
 
@@ -104,7 +104,7 @@ Native probe, bare text window with the shipped package, 40 MB of synthetic heap
 | Hidden | 100.0-104.3 MB | 62.8-76.4 MB |
 | Restored | 106.6-113.7 MB | 62.8-68.2 MB |
 
-The hidden figure with release still includes the 12 MB graphics-owned surface described above. Real heap garbage with the live history view is not measured; the earlier live receipt retains about 36 MB of Go-held memory, so the gain there is smaller than in this synthetic case. The native hide path of the production entry is not launched; the probe imports the same package. Cost: one forced GC per hide, and no GC tuning is set.
+The hidden figure with release still includes the 12 MB graphics-owned surface described above. The live-view check below measures the gain with a real history view. The native hide path of the production entry is not launched; the probe imports the same package. Cost: one forced GC per hide, and no GC tuning is set.
 
 Live-view check with the shipped package: an isolated headless `unicd` (temporary home, no system clipboard) held 50 synthetic text entries (up to about 80 KB) and six synthetic noisy PNG images (1600x900 and larger). The production history view read it through the real local API. Runs alternated between no release and release, after one warm-up run; three runs each; hide at 10 s, show at 20 s.
 
@@ -115,7 +115,7 @@ Live-view check with the shipped package: an isolated headless `unicd` (temporar
 
 The gain is about 20 MB when restored and 18-26 MB when hidden. The absolute values are higher than the earlier real-history receipts because the synthetic images are larger and noisier than typical content; they do not show a 100 MB ceiling. An earlier, non-alternating set of runs differed by about 70 MB before any hide and is discarded. Order and daemon cache state matter; always alternate and warm up. The visible state before hide is unchanged by the release.
 
-The final candidate is below 100 MB at all six sample points in this run. It does not establish a long-duration or all-content ceiling. Decode temporaries, a selected large original, allocator/scavenger timing and native compositor state can exceed this idle scenario. The earlier per-stage numbers are independent process runs; do not attribute their entire physical-footprint difference to a single code change.
+The final candidate is below 100 MB at all six sample points in this run. These numbers were taken before the hidden-window release and do not include it. It does not establish a long-duration or all-content ceiling. Decode temporaries, a selected large original, allocator/scavenger timing and native compositor state can exceed this idle scenario. The earlier per-stage numbers are independent process runs; do not attribute their entire physical-footprint difference to a single code change.
 
 The complete canonical Desktop run finishes with 44 PASS and one FAIL (`i18n`), with private cleanup PASS. The exact pre-image source reproduces that translation failure. Image previews, event wakeups, search/prefetch, incremental browsing, data binding, native history copy, startup and all native scenarios pass. Pinned golangci-lint v2.15.0 reports zero issues for desktopui. Formatting, three entrypoint builds and docscheck pass. Docscheck retains seven pre-existing stale-page warnings outside the updated overview.
 
@@ -137,7 +137,7 @@ The separate original-source replay reports the expected `idle renderer rebuilt 
 
 ## Current application optimization sequence
 
-The user requested independent application-side optimization after exact attribution. Framework-fork identity is not a prerequisite. Implement and measure neighbor thumbnails, then CPU-pixel release, then bounded decode admission. Do not force GC or change GC tuning as an optimization.
+The user requested independent application-side optimization after exact attribution. Framework-fork identity is not a prerequisite. Implement and measure neighbor thumbnails, then CPU-pixel release, then bounded decode admission. Do not force GC or change GC tuning inside this image batch. The later hidden-window release (below) adds one deliberate `FreeOSMemory` call per hide and is measured separately.
 
 Additional failure inventory before implementation:
 

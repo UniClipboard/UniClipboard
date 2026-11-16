@@ -44,6 +44,6 @@ package() {
   cp -a "$srcdir/desktop-stage/payload/." "$pkgdir/usr/lib/uniclipboard/"
   ln -s /usr/lib/uniclipboard/unic-desktop "$pkgdir/usr/bin/uniclipboard"
   install -Dm644 packaging/linux/uniclipboard.desktop "$pkgdir/usr/share/applications/app.uniclipboard.desktop.desktop"
-  install -Dm644 packaging/linux/uniclipboard.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/uniclipboard.svg"
+  install -Dm644 "$srcdir/desktop-stage/payload/icon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/uniclipboard.png"
   install -Dm644 "$srcdir/desktop-stage/manifest.json" "$pkgdir/usr/share/doc/uniclipboard/source-build.json"
 }

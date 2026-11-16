@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	xdraw "golang.org/x/image/draw"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/appicons"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
@@ -88,26 +90,29 @@ func notifyPending(ctx context.Context, sock string, language func() string) {
 	}
 }
 
-// trayIcon draws two overlapping sheets, black on transparent so macOS tints
-// it for the menu bar; elsewhere it is blue to show on any taskbar.
+// trayIcon preserves the v1 cat artwork and macOS menu-bar padding.
 func trayIcon() []byte {
-	img := image.NewNRGBA(image.Rect(0, 0, 32, 32))
+	src, err := png.Decode(bytes.NewReader(appicons.TrayPNG))
+	if err != nil {
+		panic(err)
+	}
+	size, art := 32, 32
 	ink := color.NRGBA{R: 79, G: 124, B: 255, A: 255}
 	if runtime.GOOS == "darwin" {
+		size, art = 44, 34
+		ink = color.NRGBA{A: 255}
+	} else if runtime.GOOS == "windows" {
 		ink = color.NRGBA{A: 255}
 	}
-	for _, r := range []image.Rectangle{
-		// back sheet
-		image.Rect(4, 3, 20, 5), image.Rect(4, 5, 6, 21), image.Rect(18, 3, 20, 9),
-		// front sheet
-		image.Rect(11, 11, 28, 13), image.Rect(11, 28, 28, 30),
-		image.Rect(11, 13, 13, 28), image.Rect(26, 13, 28, 28),
-		image.Rect(15, 17, 24, 19), image.Rect(15, 22, 22, 24),
-	} {
-		draw.Draw(img, r, image.NewUniform(ink), image.Point{}, draw.Src)
-	}
+	mask := image.NewAlpha(image.Rect(0, 0, size, size))
+	offset := (size - art) / 2
+	xdraw.CatmullRom.Scale(mask, image.Rect(offset, offset, offset+art, offset+art), src, src.Bounds(), xdraw.Src, nil)
+	img := image.NewNRGBA(mask.Bounds())
+	draw.DrawMask(img, img.Bounds(), image.NewUniform(ink), image.Point{}, mask, image.Point{}, draw.Src)
 	var b bytes.Buffer
-	_ = png.Encode(&b, img)
+	if err := png.Encode(&b, img); err != nil {
+		panic(err)
+	}
 	return b.Bytes()
 }
 

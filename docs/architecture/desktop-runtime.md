@@ -3,6 +3,7 @@ paths:
   - engine/directory.go
   - internal/directory
   - internal/localcontent/directory.go
+  - app/desktop/internal/appicons
   - app/desktop/internal/appupdates
   - app/desktop/internal/lifecycle
   - app/desktop/internal/setupflow
@@ -295,3 +296,7 @@ The directory flow follows the [directory contract](../contracts/directory-contr
 Default-cache directory application builds lease-owned views from retained members. Custom receives stage one complete batch under the configured destination, then publish it by rename. The host journals only its exact unpublished staging path in private profile storage before creation. Startup recovery uses those journals and validates destination identity; it never scans the custom destination or deletes published trees. Failed cleanup retains its journal. Existing custom destinations are never merged into or overwritten.
 
 Before writing a prepared tree, the adapter rechecks the current clipboard against its observed baseline. A newer local copy defers the old application. Copying the same held paths again keeps their application lease while the new copy action is processed.
+
+## Application and tray icons
+
+Desktop reuses the original v1 assets in `app/desktop/internal/appicons`. The asset README records their source commit and SHA-256 digests. The main window, macOS Dock and About view share the embedded application PNG. The tray uses the original cat alpha mask, scaled to 34 pixels inside a 44-pixel canvas on macOS. Mygo handles template contrast on macOS and Windows. Linux renders the cat in blue for contrast on light and dark panels. Native panel appearance remains subject to platform acceptance.

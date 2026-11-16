@@ -52,7 +52,7 @@ func (k Kit) SegmentedControl(c *ui.Context, p SegmentedControlProps) SegmentedR
 		track.Height(24).Padding(2).Radius(8).Background(pal.fill)
 		if p.Toolbar {
 			track.Height(32).Padding(3).Radius(16).Background(ui.Transparent)
-			k.glassSurface(track)
+			k.outlinedGlassSurface(track)
 		}
 	case Windows:
 		track.Padding(2).Gap(2).Radius(4).Background(pal.fill).Border(1, pal.edge)

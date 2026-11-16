@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/egoist/mygo"
 	_ "github.com/egoist/mygo/plugins/automation"
 
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
@@ -22,6 +23,14 @@ func init() {
 	}
 	if marker, err := os.ReadFile(filepath.Join(profile, "e2e-owner")); err != nil || string(marker) != "desktop-e2e" {
 		panic("desktop_e2e profile has no ownership marker")
+	}
+	if size := os.Getenv("UNIC_DESKTOP_E2E_WINDOW"); size != "" {
+		var width, height int
+		if _, err := fmt.Sscanf(size, "%dx%d", &width, &height); err != nil || width < 600 || height < 480 {
+			panic("invalid E2E window geometry")
+		}
+		mygo.Theme.SetSource(mygo.ThemeSource(os.Getenv("UNIC_DESKTOP_E2E_THEME")))
+		desktopWindowWidth, desktopWindowHeight = width, height
 	}
 	sum := sha256.Sum256([]byte(profile))
 	desktopAppName = fmt.Sprintf("unic E2E %x", sum[:6])

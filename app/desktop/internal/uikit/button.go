@@ -193,7 +193,7 @@ func (k Kit) styleMacButton(e ui.Element, v ButtonVariant, st ctrlVisual, disabl
 	}
 	switch v {
 	case Glass:
-		k.glassSurface(e)
+		k.outlinedGlassSurface(e)
 	case Primary:
 		e.Background(pick(k.Color("accent"), k.Color("accent"), k.Color("accent-pressed")))
 		e.InsetShadow(0, 0.5, 0, 0, ui.RGBA(255, 255, 255, .25)).Shadow(0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, .2))

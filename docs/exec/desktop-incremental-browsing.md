@@ -38,6 +38,6 @@ Each report records PASS for private-profile/source cleanup and unchanged frozen
 
 The Desktop program built successfully. Targeted race checks passed in Desktop, UI Kit, local API and Desktop E2E packages. The pinned golangci-lint v2.15.0 reported zero issues; format and whitespace checks passed.
 
-`go run ./tools/docscheck` passed with eight stale-page warnings, including pre-existing warnings. The required `-bump docs/architecture/desktop-runtime.md` command refused uncommitted source by design. The verified marker remains unchanged until the implementation is committed.
+`go run ./tools/docscheck -bump docs/architecture/desktop-runtime.md` updated the verified marker to implementation commit `262358694ac8eae96dd365c54e8183edf35b4b38` after the source was committed. The final documentation check passed; seven unrelated stale-page warnings remain.
 
 Revisiting a distant discarded cursor checkpoint can require sequential cursor reads. Each search attempt has the existing ten-second budget. A timeout retains the current window and backs off before recovery. Native-window acceptance remains NOT_RUN.

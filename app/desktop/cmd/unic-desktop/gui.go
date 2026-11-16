@@ -26,6 +26,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
+	"github.com/uniclipboard/unic/app/desktop/internal/memrelease"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -205,6 +206,7 @@ func runGUI(settings *config.Manager) error {
 			opts.Width, opts.Height = 640, 560
 		}
 		g.win = mygo.NewWindow(opts)
+		memrelease.WhenHidden(g.win)
 		if err := g.win.SetIcon(appicons.PNG); err != nil {
 			logHostFailure()
 		}

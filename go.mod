@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/disintegration/imaging v1.6.2
 	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.8.4-0.20261108082913-9233663736ca
 	github.com/fsnotify/fsnotify v1.9.0

@@ -103,6 +103,7 @@ func (l *liveState) loadCatalogue(d *viewState) {
 				d.search.change(d, d.search.start, d.search.end)
 			}
 		}:
+			l.wake()
 		case <-l.ctx.Done():
 		}
 	}()
@@ -139,6 +140,7 @@ func (l *liveState) requestCounts(queries []engine.HistorySearchQuery) {
 				l.counts[searchQueryKey(queries[i])] = n
 			}
 		}:
+			l.wake()
 		case <-l.ctx.Done():
 		}
 	}()

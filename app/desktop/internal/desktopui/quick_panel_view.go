@@ -410,7 +410,7 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 	b.Children(func() {
 		ui.Row(c).Width(24).Shrink(0).Justify(ui.Center).Children(func() {
 			if e.kind == "图片" {
-				ui.Image(c, p.quickImage(e)).Size(24, 16).Radius(3).Fit(ui.Cover)
+				ui.Image(c, p.quickImage(c, e)).Size(24, 16).Radius(3).Fit(ui.Cover)
 			} else {
 				icons := map[string]uikit.IconName{"文本": uikit.IconList, "代码": uikit.IconPackage, "链接": uikit.IconGlobe, "文件": uikit.IconFile, "富文本": uikit.IconList}
 				uikit.For(false).Icon(c, icons[e.kind], 14).TextColor(quiet)
@@ -489,7 +489,7 @@ func (p *quickPanelState) imageGrid(c *ui.Context, a qpPalette) {
 						b.BorderColor(a.primary)
 					}
 					b.Children(func() {
-						ui.Image(c, p.quickImage(e)).Fill().Fit(ui.Cover).Radius(5)
+						ui.Image(c, p.quickImage(c, e)).Fill().Fit(ui.Cover).Radius(5)
 						ui.Row(c).Absolute().Right(4).Bottom(4).Children(func() { qpKeycap(c, p.commandLabel()+fmt.Sprint(row*3+col+1), a) })
 					})
 					if b.Hovered() && !p.keyboard && p.menu == "" && p.hovered != at {
@@ -609,7 +609,7 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 			ui.Column(c).FillWidth().Padding(16).Gap(8).Children(func() {
 				switch e.kind {
 				case "图片":
-					ui.Image(c, p.quickImage(*e)).FillWidth().Height(230).Fit(ui.Contain).Label(e.title)
+					ui.Image(c, p.quickImage(c, *e)).FillWidth().Height(230).Fit(ui.Contain).Label(e.title)
 				case "富文本":
 					if p.live != nil {
 						ui.Text(c, e.text).FontSize(14).FillWidth().Selectable()

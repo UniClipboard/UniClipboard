@@ -267,6 +267,16 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("all five toolbar controls fit the 52-point band at %dx%d, %s", s.windowWidth, s.windowHeight, s.windowTheme))
 			return nil
 		},
+		"ui-idle": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("ui-idle takes no arguments")
+			}
+			if err := s.call(s.ctx, "idle", map[string]any{"window": s.window, "timeout": 2000}, nil); err != nil {
+				return err
+			}
+			s.result.Assertions = append(s.result.Assertions, "native UI settles without perpetual frame requests")
+			return nil
+		},
 		"ui-wait":   func(s *desktopScenario, a []string) error { return s.expect(a, false) },
 		"ui-absent": func(s *desktopScenario, a []string) error { return s.expect(a, true) },
 		"ui-enabled": func(s *desktopScenario, a []string) error {

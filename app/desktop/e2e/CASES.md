@@ -7,12 +7,15 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
+| [event-wakeup](#event-wakeup) | process | Exercise actual service events, content completions and recovery through stopped production renderers. |
 | [first-install-setup](#first-install-setup) | process | Verify setup persistence and migration with real Engine, SQLite and a service process. |
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
+| [idle-event-wakeup](#idle-event-wakeup) | native | Verify native service event and content completion delivery. |
+| [image-previews](#image-previews) | process | Exercise thumbnail ownership, original selection, original bytes, EXIF orientation, shown-pixel lifecycle and serial image reads through real service content reads. |
 | [incremental-browsing](#incremental-browsing) | process | Multi-page production browsing, idle request timeline, coalescing, selection and cancellation. |
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
 | [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation and continuous light action-bar outlines. |
@@ -246,6 +249,20 @@ Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS
 acceptance desktopui data-binding
 ```
 
+## event-wakeup
+
+Event-driven history and quick-panel rendering
+
+Steps: Start isolated unicd, render both production bindings, advance idle UI time, submit real history and await independent deadline recovery.
+
+Expected: No idle heartbeat builds; async events and content appear without manual frames; recovery still runs.
+
+Forbidden: Manual polling to deliver completions, future 200 ms frame requests, native OS claims or missing receipt.
+
+```text
+acceptance desktopui event-wakeup
+```
+
 ## first-install-setup
 
 First-install setup and offline v1 import
@@ -346,6 +363,42 @@ Forbidden: Missing translations or translated user content.
 
 ```text
 acceptance desktopui i18n
+```
+
+## idle-event-wakeup
+
+Idle desktop wakes for asynchronous service changes
+
+Steps: Start an isolated desktop, await one history item and idle UI, submit another item, then await its display and idle UI.
+
+Expected: Current native work settles and service changes appear without input or manual refresh; event-wakeup checks future heartbeat timers.
+
+Forbidden: Unsettled current frames, lost completions, fixture history, system clipboard writes or missing native evidence.
+
+```text
+start
+submit initial 'Memory acceptance initial text'
+ui-wait listItem 'Memory acceptance initial text'
+ui-idle
+screenshot idle
+submit changed 'Memory acceptance asynchronous change'
+ui-wait listItem 'Memory acceptance asynchronous change'
+ui-idle
+screenshot changed
+```
+
+## image-previews
+
+Bounded history image previews
+
+Steps: Submit synthetic PNG and JPEG-file history, prefetch both production views, switch selection and reread stored bytes, release shown CPU pixels and count concurrent image-body readers.
+
+Expected: Neighbor thumbnails are bounded; selected images keep original dimensions; old selections downgrade; original bytes, EXIF orientation, shown-pixel lifecycle and serial image reads remain correct; shown CPU pixels release on a later frame; image-body consumption is serial.
+
+Forbidden: Full rasters for every neighbor, changed clipboard payloads, stale selection tiers, skipped assertions or missing receipt.
+
+```text
+acceptance desktopui image-previews
 ```
 
 ## incremental-browsing

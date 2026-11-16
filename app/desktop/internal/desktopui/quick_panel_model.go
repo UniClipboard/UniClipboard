@@ -99,8 +99,8 @@ func (p *quickPanelState) queryChanged() {
 }
 func (p *quickPanelState) tick(c *ui.Context) {
 	if p.live != nil {
+		p.live.d.live.bindWake(c)
 		p.live.poll(p)
-		c.After(200 * time.Millisecond)
 	}
 	p.now = c.Now()
 	if !p.blurDue.IsZero() {

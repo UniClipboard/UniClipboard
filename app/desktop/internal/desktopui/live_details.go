@@ -10,6 +10,7 @@ const detailReadLimit = 4
 type detailRead struct {
 	cancel   context.CancelFunc
 	obsolete bool
+	edge     int
 }
 
 // prefetchDetails consumes inclusive item indices from the list or grid viewport.
@@ -49,6 +50,7 @@ func (l *liveState) detailWanted(d *viewState, id string) bool {
 
 func copyDetail(dst *entry, src entry) {
 	dst.text, dst.image, dst.rich = src.text, src.image, src.rich
+	dst.picture = src.picture
 	dst.contentError, dst.folder = src.contentError, src.folder
 }
 
@@ -61,6 +63,9 @@ func (l *liveState) dropDetail(d *viewState, id string) {
 		return
 	}
 	delete(l.details, id)
+	if l.retained != nil && l.retained.id == id {
+		copyDetail(l.retained, entry{})
+	}
 	for i := range d.entries {
 		if d.entries[i].id == id {
 			copyDetail(&d.entries[i], entry{})
@@ -88,14 +93,23 @@ func (l *liveState) loadDetail(d *viewState) {
 	if l.key != d.liveQueryKey() || l.ctx.Err() != nil {
 		return
 	}
+	edge := thumbnailEdge(len(l.detailWindow) + 1)
+	wantedEdge := func(id string) int {
+		if id == d.selected {
+			return 0
+		}
+		return edge
+	}
 	for id, read := range l.detailReads {
-		if !l.detailWanted(d, id) {
+		it := l.items[id]
+		wrongTier := (it.Kind == "image" || it.Kind == "files") && ((read.edge == 0) != (wantedEdge(id) == 0) || (read.edge > wantedEdge(id) && wantedEdge(id) > 0))
+		if !l.detailWanted(d, id) || wrongTier {
 			read.obsolete = true
 			read.cancel()
 		}
 	}
-	for id := range l.details {
-		if !l.detailWanted(d, id) {
+	for id, v := range l.details {
+		if !l.detailWanted(d, id) || (id != d.selected && v.picture != nil && !v.picture.matches(edge)) {
 			l.dropDetail(d, id)
 		}
 	}
@@ -115,23 +129,23 @@ func (l *liveState) loadDetail(d *viewState) {
 		if !ok {
 			continue
 		}
-		if _, ok := l.details[id]; ok {
+		if v, ok := l.details[id]; ok && (v.picture == nil || v.picture.matches(wantedEdge(id))) {
 			continue
 		}
 		if _, ok := l.detailReads[id]; ok {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(l.ctx, 8*time.Second)
-		read := &detailRead{cancel: cancel}
+		read := &detailRead{cancel: cancel, edge: wantedEdge(id)}
 		l.detailReads[id] = read
 		epoch, key := l.detailEpoch, l.key
 		go func() {
 			defer cancel()
-			v := loadSearchEntry(ctx, l.client, it)
+			v := loadSearchEntry(ctx, l.client, it, read.edge)
 			apply := func() {
 				delete(l.detailReads, id)
 				current, present := l.items[id]
-				if !read.obsolete && epoch == l.detailEpoch && key == d.liveQueryKey() && present && current.Revision == it.Revision && l.detailWanted(d, id) {
+				if !read.obsolete && epoch == l.detailEpoch && key == d.liveQueryKey() && present && current.Revision == it.Revision && l.detailWanted(d, id) && (v.picture == nil || v.picture.matches(wantedEdge(id))) {
 					l.details[id] = v
 					if l.retained != nil && l.retained.id == id {
 						copyDetail(l.retained, v)
@@ -147,6 +161,7 @@ func (l *liveState) loadDetail(d *viewState) {
 			}
 			select {
 			case l.results <- apply:
+				l.wake()
 			case <-l.ctx.Done():
 			}
 		}()

@@ -152,7 +152,7 @@ func (d *viewState) history(c *ui.Context, k uikit.Kit) {
 		if d.current().kind == uikit.KindFile {
 			copyLabel = "复制文件"
 		}
-		r := k.QuickLook(c.Key("quick-look"), uikit.QuickLookProps{Open: &d.quickLook, Title: d.entryTitle(*d.current()), CloseLabel: d.tr("关闭预览"), Src: d.entryImage(*d.current()), Alt: d.current().title, PrimaryLabel: d.tr(copyLabel)}, nil)
+		r := k.QuickLook(c.Key("quick-look"), uikit.QuickLookProps{Open: &d.quickLook, Title: d.entryTitle(*d.current()), CloseLabel: d.tr("关闭预览"), Src: d.entryImage(c, *d.current()), Alt: d.current().title, PrimaryLabel: d.tr(copyLabel)}, nil)
 		if r.Primary {
 			d.useEntry()
 		}
@@ -243,7 +243,7 @@ func (d *viewState) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 		for _, v := range items {
 			card := uikit.GridItem{ID: v.id, Title: d.entryTitle(v), Subtitle: d.sourceName(v.source) + " · " + d.displayDate(v.date), Kind: v.kind, Text: v.text}
 			if v.kind == uikit.KindImage {
-				card.Media = func() { ui.Image(c, d.entryImage(v)).FillWidth().Height(110) }
+				card.Media = func() { ui.Image(c, d.entryImage(c, v)).FillWidth().Height(110) }
 			}
 			cards = append(cards, card)
 		}
@@ -255,7 +255,7 @@ func (d *viewState) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 				labels := []string{"TXT", "CODE", "URL", "图片", "FILE", "DIR"}
 				p := uikit.KindBadgeProps{Kind: v.kind, Label: d.tr(labels[v.kind])}
 				if v.kind == uikit.KindImage {
-					p.Image = d.entryImage(v)
+					p.Image = d.entryImage(c, v)
 				}
 				k.KindBadge(c.Key(v.id+"-icon"), p)
 			}, Trailing: func() {
@@ -387,7 +387,7 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 					return
 				}
 				if kind == uikit.PreviewImage {
-					ui.Image(c, d.entryImage(*v)).FillWidth().Height(220)
+					ui.Image(c, d.entryImage(c, *v)).FillWidth().Height(220)
 					return
 				}
 				if v.kind == uikit.KindFolder {
@@ -410,7 +410,7 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 				if d.live != nil {
 					facts = nil
 					if v.image != nil {
-						w, h := ui.ImageSize(v.image)
+						w, h := imageDimensions(*v)
 						facts = []uikit.Fact{{ID: "size", Label: d.tr("尺寸"), Value: fmt.Sprintf("%.0f × %.0f", w, h)}, {ID: "bytes", Label: d.tr("大小"), Value: v.size}}
 					}
 				}
@@ -490,8 +490,11 @@ func (d *viewState) sendTo(target string) {
 	d.notice = "演示：已发送到" + name
 }
 
-func (d *viewState) entryImage(v entry) ui.ImageSource {
+func (d *viewState) entryImage(c *ui.Context, v entry) ui.ImageSource {
 	if d.live != nil {
+		if v.picture != nil {
+			return v.picture.source(c)
+		}
 		return v.image
 	}
 	return d.previewImage
@@ -555,6 +558,7 @@ func (d *viewState) startHistorySend(target string) {
 		progress := func(stage string) {
 			select {
 			case l.results <- func() { l.sendStage = stage }:
+				l.wake()
 			case <-l.ctx.Done():
 			}
 		}
@@ -608,6 +612,7 @@ func (d *viewState) startHistorySend(target string) {
 				d.notice = "发送完成"
 			}
 		}:
+			l.wake()
 		case <-l.ctx.Done():
 		}
 	}()

@@ -24,6 +24,7 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("search-contract", scenarioHistorySearchProcess)
 	t.Run("incremental-browsing", scenarioIncrementalBrowsing)
 	t.Run("event-wakeup", scenarioEventWakeup)
+	t.Run("image-previews", scenarioImagePreviews)
 	t.Run("send-device-menu", scenarioSendDeviceMenu)
 	t.Run("sheet-exit-stability", scenarioSheetExitStability)
 	t.Run("sheet-motion", scenarioSheetMotion)

@@ -110,12 +110,25 @@ func (q *quickLive) poll(p *quickPanelState) {
 		l.loadHistory(d, true)
 	}
 }
-func (p *quickPanelState) quickImage(e qpEntry) ui.ImageSource {
+func (p *quickPanelState) quickImageSize(e qpEntry) (float32, float32) {
+	if p.live != nil {
+		for _, v := range p.live.d.entries {
+			if v.id == e.id {
+				return imageDimensions(v)
+			}
+		}
+	}
+	return ui.ImageSize(p.previewImage)
+}
+func (p *quickPanelState) quickImage(c *ui.Context, e qpEntry) ui.ImageSource {
 	if p.live == nil {
 		return p.previewImage
 	}
 	for _, v := range p.live.d.entries {
 		if v.id == e.id {
+			if v.picture != nil {
+				return v.picture.source(c)
+			}
 			return v.image
 		}
 	}

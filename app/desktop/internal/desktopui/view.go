@@ -20,6 +20,7 @@ type entry struct {
 	rich                                *richtext.Document
 	preview                             string
 	highlights                          []engine.HistorySearchRange
+	picture                             *historyImage
 	image                               ui.ImageSource
 	sourceAppName, sourceAppID          string
 	sourceAppIcon                       ui.ImageSource

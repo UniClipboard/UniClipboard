@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"image"
 	"io"
 	"mime"
 	"path/filepath"
@@ -473,11 +472,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						it := hit.Item
 						l.items[it.ID] = it
 						if cached, ok := l.details[it.ID]; ok {
-							entries[i].text = cached.text
-							entries[i].image = cached.image
-							entries[i].rich = cached.rich
-							entries[i].contentError = cached.contentError
-							entries[i].folder = cached.folder
+							copyDetail(&entries[i], cached)
 						}
 						at := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == it.ID })
 						if at < 0 {
@@ -812,7 +807,7 @@ func newRequestID() string {
 	return hex.EncodeToString(b[:])
 }
 
-func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem) entry {
+func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem, edge int) entry {
 	id := it.ID
 	v := projectHistory(it)
 	switch it.Kind {
@@ -914,7 +909,10 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			// Damaged or oversized images retain the ordinary file preview.
 			imageFile := strings.HasPrefix(r.MIME, "image/") || strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(r.Name))), "image/")
 			if fileCount == 1 && imageFile && p.Size <= 32<<20 && r.Size <= 32<<20 {
-				v.image, _ = readPreviewImage(r)
+				v.picture, _ = readPreviewImage(ctx, r, edge)
+				if v.picture != nil {
+					v.image = v.picture.bitmap
+				}
 			}
 			_ = r.Close()
 		}
@@ -951,7 +949,10 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			break
 		}
 		if it.Kind == "image" {
-			v.image, v.contentError = readPreviewImage(r)
+			v.picture, v.contentError = readPreviewImage(ctx, r, edge)
+			if v.picture != nil {
+				v.image = v.picture.bitmap
+			}
 			_ = r.Close()
 			break
 		}
@@ -976,25 +977,4 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 		v.generatedTitle = false
 	}
 	return v
-}
-
-// readPreviewImage bounds encoded bytes and decoded pixels before allocating a bitmap.
-func readPreviewImage(r io.Reader) (ui.ImageSource, string) {
-	const limit = 32 << 20
-	raw, err := io.ReadAll(io.LimitReader(r, limit+1))
-	if err != nil {
-		return nil, "读取内容失败。"
-	}
-	if len(raw) > limit {
-		return nil, "内容超过预览大小限制。"
-	}
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
-		return nil, "图片无法预览。"
-	}
-	src, err := ui.DecodeImage(raw)
-	if err != nil {
-		return nil, "图片无法预览。"
-	}
-	return src, ""
 }

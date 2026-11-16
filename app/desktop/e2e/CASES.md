@@ -15,6 +15,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
 | [idle-event-wakeup](#idle-event-wakeup) | native | Verify native service event and content completion delivery. |
+| [image-previews](#image-previews) | process | Exercise thumbnail ownership, original selection, original bytes, EXIF orientation, shown-pixel lifecycle and serial image reads through real service content reads. |
 | [incremental-browsing](#incremental-browsing) | process | Multi-page production browsing, idle request timeline, coalescing, selection and cancellation. |
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
 | [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation and continuous light action-bar outlines. |
@@ -383,6 +384,20 @@ submit changed 'Memory acceptance asynchronous change'
 ui-wait listItem 'Memory acceptance asynchronous change'
 ui-idle
 screenshot changed
+```
+
+## image-previews
+
+Bounded history image previews
+
+Steps: Submit synthetic PNG and JPEG-file history, prefetch both production views, switch selection and reread stored bytes, release shown CPU pixels and count concurrent image-body readers.
+
+Expected: Neighbor thumbnails are bounded; selected images keep original dimensions; old selections downgrade; original bytes, EXIF orientation, shown-pixel lifecycle and serial image reads remain correct; shown CPU pixels release on a later frame; image-body consumption is serial.
+
+Forbidden: Full rasters for every neighbor, changed clipboard payloads, stale selection tiers, skipped assertions or missing receipt.
+
+```text
+acceptance desktopui image-previews
 ```
 
 ## incremental-browsing

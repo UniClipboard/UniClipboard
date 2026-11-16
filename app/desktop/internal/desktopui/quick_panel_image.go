@@ -18,7 +18,7 @@ func (p *quickPanelState) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 	bounds := stage.Bounds()
 	width, height := float32(800), float32(500)
 	if p.live != nil {
-		width, height = ui.ImageSize(p.quickImage(e))
+		width, height = p.quickImageSize(e)
 	}
 	clamp := func() {
 		maxX := max(float32(0), (width-bounds.W)/2)
@@ -60,9 +60,9 @@ func (p *quickPanelState) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 	})
 	stage.Children(func() {
 		if p.actualSize {
-			ui.Image(c, p.quickImage(e)).Size(width, height).Absolute().LeftPercent(50).TopPercent(50).Margin(-height/2+p.imagePan.Y, 0, 0, -width/2+p.imagePan.X)
+			ui.Image(c, p.quickImage(c, e)).Size(width, height).Absolute().LeftPercent(50).TopPercent(50).Margin(-height/2+p.imagePan.Y, 0, 0, -width/2+p.imagePan.X)
 		} else {
-			ui.Image(c, p.quickImage(e)).Fill().Fit(ui.Contain).Label(e.title)
+			ui.Image(c, p.quickImage(c, e)).Fill().Fit(ui.Contain).Label(e.title)
 		}
 		target := float32(0)
 		if stage.Hovered() {

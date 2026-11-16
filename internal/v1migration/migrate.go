@@ -28,6 +28,11 @@ type Report struct {
 	Verified           int    `json:"verified"`
 	VerificationFailed int    `json:"verification_failed"`
 	Tags               int    `json:"tags"`
+	TagFailures        int    `json:"tag_failures"`
+	UnsupportedTags    int    `json:"unsupported_tags"`
+	TagMismatches      int    `json:"tag_mismatches"`
+	TagsRepaired       int    `json:"tags_repaired"`
+	TagRepairsSkipped  int    `json:"tag_repairs_skipped"`
 }
 type Progress struct {
 	Stage     string `json:"stage"`
@@ -35,9 +40,10 @@ type Progress struct {
 	Total     int    `json:"total"`
 }
 type RunOptions struct {
-	Target   string
-	DryRun   bool
-	Progress func(Progress)
+	Target     string
+	DryRun     bool
+	RepairTags bool
+	Progress   func(Progress)
 }
 
 // Run owns the complete offline migration. A non-complete report must never
@@ -88,6 +94,10 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		processed++
 		notify("import", processed)
 		report.MissingParts += r.MissingParts
+		report.UnsupportedTags += r.UnsupportedTags
+		if errors.Is(sourceErr, ErrTags) {
+			report.TagFailures++
+		}
 		if sourceErr != nil {
 			report.Failed++
 			return nil
@@ -109,12 +119,42 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 			report.Recoverable++
 			return nil
 		}
-		_, known, err := target.LookupHistoryImport(ctx, s.ID(), r.ID)
+		id, known, err := target.LookupHistoryImport(ctx, s.ID(), r.ID)
 		if err != nil {
 			return err
 		}
 		if known {
 			report.Skipped++
+			if opts.RepairTags {
+				item, err := target.GetItem(ctx, id)
+				var ee *engine.Error
+				if errors.As(err, &ee) && ee.Code == engine.CodeNotFound {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				missing := false
+				for _, tag := range r.Tags {
+					if !slices.Contains(item.Tags, tag) {
+						missing = true
+						break
+					}
+				}
+				if missing {
+					if item.Revision != 1 {
+						report.TagRepairsSkipped++
+						return nil
+					}
+					tags := append(slices.Clone(item.Tags), r.Tags...)
+					slices.Sort(tags)
+					tags = slices.Compact(tags)
+					if _, err := target.UpdateItem(ctx, engine.UpdateItemRequest{ID: id, ExpectedRevision: item.Revision, Tags: &tags}); err != nil {
+						return err
+					}
+					report.TagsRepaired++
+				}
+			}
 			return nil
 		}
 		request, closers, err := r.importRequest(s.ID())
@@ -176,6 +216,10 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 				report.VerificationFailed++
 				return nil
 			}
+			item, itemErr := target.GetItem(ctx, id)
+			if itemErr == nil && !slices.Equal(item.Tags, r.Tags) {
+				report.TagMismatches++
+			}
 			if err = verifyRecord(ctx, target, id, r); err != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
@@ -194,7 +238,7 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		}
 	}
 	report.Status = "complete"
-	if report.Failed > 0 || report.MissingParts > 0 || report.VerificationFailed > 0 {
+	if report.Failed > 0 || report.MissingParts > 0 || report.VerificationFailed > 0 || report.UnsupportedTags > 0 {
 		report.Status = "partial"
 	}
 	if opts.DryRun && report.Status == "complete" {
@@ -304,7 +348,7 @@ func verifyRecord(ctx context.Context, e *engine.Engine, id engine.HistoryID, r 
 	tags := slices.Clone(r.Tags)
 	slices.Sort(tags)
 	tags = slices.Compact(tags)
-	if item.CreatedAtMs != r.CreatedAtMs || item.UpdatedAtMs != r.UpdatedAtMs || !slices.Equal(item.Tags, tags) {
+	if item.CreatedAtMs != r.CreatedAtMs || (item.Revision == 1 && item.UpdatedAtMs != r.UpdatedAtMs) || !slices.Equal(item.Tags, tags) {
 		return ErrContent
 	}
 	h, err := e.RetainHistoryContent(ctx, id)

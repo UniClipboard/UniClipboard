@@ -7,4 +7,5 @@ const (
 	TagFiles  = "builtin:files"
 	TagFolder = "builtin:folder"
 	TagLink   = "builtin:link"
+	TagCode   = "builtin:code"
 )

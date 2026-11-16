@@ -41,3 +41,10 @@
 串行处理，一页 128 个 entry id；单记录所持明文数据最多 500 MiB，图片最多 3200 万像素，文件清单最多 10000 行，外部文件流式复制。AEAD 解密与转换过程中还会持有密文、解压或图像工作内存，500 MiB 不是进程 RSS 上限；峰值尚需实测。ZIP 归档在有界内存中生成，不落完整明文中间归档。
 
 关闭并重开目标后通过公开内容接口校验字节摘要。终态区分 `ready`（预检）、`complete`、`partial`、`cancelled` 和 `failed`；部分迁移退出码 3，失败/取消退出码 1，完整成功退出码 0。进度和报告只携带数量、阶段与错误类别，不输出正文、路径、文件名或秘密。
+
+## Tag preservation follow-up
+
+The [history contract](../../contracts/history-contract.md#v1-tag-migration-and-explicit-recovery-issue-2252)
+defines canonical built-in mapping, custom assignment failures and the explicit
+non-destructive missing-tag recovery operation. The
+[process acceptance receipt](../../exec/2252-v1-migration-tags.md) records issue 2252.

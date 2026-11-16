@@ -42,6 +42,13 @@ content is reported as partial. Exit codes: 0 ready/complete, 3 partial, 1 faile
 The source remains unchanged. Rerun the same command after an interruption;
 successful records are not duplicated. A dry run is not a completed import.
 
+For an older import with missing tags, rerun normally to diagnose tag_mismatches.
+Use --repair-tags to add missing source tags to unedited imported records only.
+Edited records and deletions are preserved. Check tag_repairs_skipped and resolve
+those records manually in v2. Back up the target before repair. Repair is idempotent.
+Built-in link/image/directory/code tags retain their canonical v2 identities.
+Favorites are unsupported and reported; they are not silently imported.
+
 Allow the system credential prompt or enter the old passphrase when requested.
 For automation use --passphrase-stdin. Never put a passphrase in arguments or
 environment variables. Custom or portable v1 profiles require --source DIR.
@@ -63,6 +70,7 @@ func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
 	target := fs.String("target", "", "unic data directory (default: UNIC_HOME or normal unic directory)")
 	service := fs.String("service", "UniClipboard", "old credential service; named profiles use UniClipboard-PROFILE")
 	dry := fs.Bool("dry-run", false, "read and authenticate content without changing the target")
+	repairTags := fs.Bool("repair-tags", false, "add missing source tags to unedited imported records; preserve target edits and deletions")
 	jsonMode := fs.Bool("json", false, "emit JSON progress and final report")
 	stdinPassword := fs.Bool("passphrase-stdin", false, "read old passphrase as one line from stdin; never pass it as an argument")
 	if err := fs.Parse(args); err != nil {
@@ -130,7 +138,7 @@ func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
 	}
 	defer func() { _ = s.Close() }()
 	var lastStage string
-	report, err := s.Run(ctx, v1migration.RunOptions{Target: *target, DryRun: *dry, Progress: func(p v1migration.Progress) {
+	report, err := s.Run(ctx, v1migration.RunOptions{Target: *target, DryRun: *dry, RepairTags: *repairTags, Progress: func(p v1migration.Progress) {
 		if p.Stage != lastStage || p.Processed == 1 || p.Processed%25 == 0 || p.Processed == p.Total {
 			if *jsonMode {
 				_ = json.NewEncoder(out).Encode(p)
@@ -143,8 +151,8 @@ func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
 	if *jsonMode {
 		_ = json.NewEncoder(out).Encode(report)
 	} else {
-		_, _ = fmt.Fprintf(out, "%s: total=%d recoverable=%d imported=%d skipped=%d failed=%d missing_parts=%d verified=%d verification_failed=%d tags=%d\n",
-			report.Status, report.Total, report.Recoverable, report.Imported, report.Skipped, report.Failed, report.MissingParts, report.Verified, report.VerificationFailed, report.Tags)
+		_, _ = fmt.Fprintf(out, "%s: total=%d recoverable=%d imported=%d skipped=%d failed=%d missing_parts=%d verified=%d verification_failed=%d tags=%d tag_failures=%d unsupported_tags=%d tag_mismatches=%d tags_repaired=%d tag_repairs_skipped=%d\n",
+			report.Status, report.Total, report.Recoverable, report.Imported, report.Skipped, report.Failed, report.MissingParts, report.Verified, report.VerificationFailed, report.Tags, report.TagFailures, report.UnsupportedTags, report.TagMismatches, report.TagsRepaired, report.TagRepairsSkipped)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintln(errOut, err)

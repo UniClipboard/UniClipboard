@@ -222,3 +222,45 @@ See the [observability contract](observability-contract.md#111-product-value-and
 ## Directory extension
 
 Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.
+
+## v1 tag migration and explicit recovery (issue 2252)
+
+The v1 importer reads encrypted `history_tag` definitions and encrypted
+`history_tag_assignment` associations. It reads built-in membership separately
+from `search_entry_tag`, restricted to the unlocked keyslot's profile ID.
+Custom display names never identify built-ins. Custom names beginning with the
+reserved `builtin:` namespace are rejected as unsupported source format.
+
+| v1 reserved tag ID | v2 tag ID | Treatment |
+| --- | --- | --- |
+| `link` | `builtin:link` | Preserve membership |
+| `image` | `builtin:image` | Preserve membership, including image-file membership |
+| `directory` | `builtin:folder` | Preserve membership; directory payloads remain ZIP imports |
+| `code` | `builtin:code` | Preserve membership; Desktop provides a localized built-in filter |
+| `favorited` | None | Not imported; increment `unsupported_tags` and report `partial` |
+
+The importer preserves custom names, multiple associations and unassigned
+custom definitions. It does not reconstruct or rebuild the v1 search index.
+A missing optional search tag table represents an older format; only available
+memberships can be preserved. It never derives built-ins from localized names.
+A malformed assignment, an unknown assigned custom ID, a missing definition or
+an invalid tag table fails the affected record and increments `tag_failures`.
+Definition authentication or decoding failures stop opening the source.
+Neither outcome can produce a complete successful migration.
+
+Normal repeated migration preserves every mapped record. Post-reopen verification
+reports `tag_mismatches` separately from content verification. Run
+`unic migrate --source DIR --target DIR --passphrase-stdin --json --repair-tags`
+only after backing up the target. This explicit operation adds missing source
+tags to mapped records whose target revision is still 1. It unions tags through
+`UpdateItem` with compare-and-swap; it does not replace content, expiry or target
+tags. It counts changed records in `tags_repaired`. It preserves edited records
+and counts missing-tag repairs it cannot apply in `tag_repairs_skipped`.
+Deleted records retain their import mapping and remain deleted. Repeated repair
+is idempotent, including interruption after a completed item update.
+
+Any later metadata edit may advance `UpdatedAtMs`. Verification still requires
+the original creation time and exact content bytes. It checks the original
+activity time only at revision 1. Remaining tag differences or deleted mapped
+records remain verification failures and report `partial`; they require manual
+review in v2. See the [repeatable process receipt](../exec/2252-v1-migration-tags.md).

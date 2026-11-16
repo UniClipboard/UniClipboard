@@ -75,7 +75,9 @@ Text containing an HTTP(S) URL also receives `builtin:link`; inspection is limit
 It changes no content and performs no network or file-body reads.
 Existing history is not backfilled. Disabling `plugins.instances."builtin.classify".enabled` takes effect after service restart and stops classification of new items; existing tags remain.
 The existing `builtin.text` email/URL hints and text Actions remain independent.
-Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes only the five built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
+Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes the six built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
+
+The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. `builtin:code` is currently preserved by migration; `builtin.classify` does not produce it for new content. Explicit missing-tag recovery preserves target edits and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-explicit-recovery-issue-2252).
 
 ## Invariants
 

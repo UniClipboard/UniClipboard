@@ -374,9 +374,15 @@ Processor `Item.Type` additionally accepts `directory_reference` and `directory`
 | `directory`, `directory_reference` | `builtin:folder` |
 | Text containing an HTTP(S) URL in the first 64 KiB | `builtin:link`, in addition to `builtin:text` |
 
-The processor performs no network access and does not change content. It does not backfill existing history. Hosts translate the five built-in labels at display time and retain these IDs in persisted tags, filters and settings. User-defined tag labels remain literal. Existing `builtin.text` email/url hints and Actions remain independent.
+The processor performs no network access and does not change content. It does not backfill existing history. Hosts translate the six built-in labels at display time and retain these IDs in persisted tags, filters and settings. User-defined tag labels remain literal. Existing `builtin.text` email/url hints and Actions remain independent.
 
 ## Source application metadata
 
 Clipboard content and history preserve optional source application identity and cached PNG icons.
 See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.
+
+The reserved `plugin.TagCode` identifier is `builtin:code`. The offline v1
+importer preserves v1 code membership under this identifier. `builtin.classify`
+does not currently generate code membership for new content. The
+[history contract](history-contract.md#v1-tag-migration-and-explicit-recovery-issue-2252)
+defines migration and explicit recovery.

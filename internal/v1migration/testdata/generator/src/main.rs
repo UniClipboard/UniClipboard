@@ -156,7 +156,12 @@ fn main() {
         "file_original":protect(b"/fixture/original.bin",b"uc:file_set_line:v1|entry-file|0|original-text",10),
         "tag":protect(serde_json::to_vec(&json!({"name":"\u{6807}\u{7b7e}","created_at_ms":1000})).unwrap().as_slice(),b"uc:history_tag:v1|tag-one",11),
         "unused_tag":protect(serde_json::to_vec(&json!({"name":"unused","created_at_ms":1000})).unwrap().as_slice(),b"uc:history_tag:v1|tag-unused",12),
-        "assignment":protect(br#"["tag-one"]"#,b"uc:history_tag_assignment:v1|entry-text",13)
+        "assignment":protect(br#"["tag-one"]"#,b"uc:history_tag_assignment:v1|entry-text",13),
+        "link_text":protect(b"https://example.test/migration",b"uc:inline:v1|event-link|rep-link",19),
+        "directory_root":protect(b"fixture-directory",b"uc:file_set_line:v1|entry-file|0|root-name",20),
+        "directory_relative":protect(b"child.bin",b"uc:file_set_line:v1|entry-file|0|relative-path",21),
+        "collision_tag":protect(br#"{"name":"Links","created_at_ms":1000}"#,b"uc:history_tag:v1|tag-collision",17),
+        "multi_assignment":protect(br#"["tag-one","tag-collision"]"#,b"uc:history_tag_assignment:v1|entry-text",18)
     });
     println!("{}",serde_json::to_string_pretty(&output).unwrap());
 }

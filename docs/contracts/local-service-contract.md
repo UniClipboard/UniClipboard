@@ -297,3 +297,7 @@ The adapter supports explicit leased `tree-paths` and `tree-references` calls. O
 
 Clipboard content and history preserve optional source application identity and cached PNG icons.
 See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.
+
+## Desktop tray icon preference
+
+The configuration API exposes `config.desktop.tray_icon` as `glyph` or `cat`. An omitted TOML key uses `glyph`. Revision-checked saves, `unic config set` and direct file reloads use the same enum validation. Invalid values do not replace the previous valid configuration. The service stores the preference and does not render a tray. A running normal Desktop watches the saved configuration and updates its tray image without requiring restart. `desktop.tray_icon` is not a restart-required key.

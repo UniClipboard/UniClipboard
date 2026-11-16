@@ -12,3 +12,8 @@ var PNG []byte
 //
 //go:embed tray-cat@2x.png
 var TrayPNG []byte
+
+// TrayGlyphSVG retains the exact v1 glyph geometry on its 24-unit grid.
+//
+//go:embed tray-glyph.svg
+var TrayGlyphSVG []byte

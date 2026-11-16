@@ -1,23 +1,17 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image"
-	"image/color"
-	"image/draw"
-	"image/png"
 	"log/slog"
-	"runtime"
 	"time"
 
 	"github.com/egoist/mygo"
-	xdraw "golang.org/x/image/draw"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/appicons"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
+	"github.com/uniclipboard/unic/app/desktop/internal/trayicon"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	config "github.com/uniclipboard/unic/internal/localconfig"
 )
 
 var checkDesktopUpdates func()
@@ -25,7 +19,8 @@ var checkDesktopUpdates func()
 var showDesktop = func() {}
 var showQuickPanel = func() {}
 
-func setupTray(language string) func(string) {
+func setupTray(ctx context.Context, cfg config.Desktop) func(config.Desktop) {
+	language := cfg.Language
 	menu := func(language string) *mygo.Menu {
 		tr := func(text string) string { return i18n.Translate(language, text) }
 		items := []*mygo.MenuItem{
@@ -39,22 +34,49 @@ func setupTray(language string) func(string) {
 		return mygo.NewMenu(items)
 	}
 
+	raw, template, err := trayicon.Render(cfg.TrayIcon)
+	if err != nil {
+		logHostFailure()
+		return func(config.Desktop) {}
+	}
 	tray, err := mygo.NewTray(mygo.TrayOptions{
 		ID:             "unic-desktop",
-		Icon:           trayIcon(),
-		IconIsTemplate: true,
+		Icon:           raw,
+		IconIsTemplate: template,
 		ToolTip:        i18n.Translate(language, "跨设备剪贴板同步"),
 		Menu:           menu(language),
 	})
 	if err != nil {
 		// Some desktop sessions do not provide a tray host.
 		logHostFailure()
-		return func(string) {}
+		return func(config.Desktop) {}
 	}
-	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { tray.Destroy() })
-	return func(language string) {
-		tray.SetMenu(menu(language))
-		tray.SetToolTip(i18n.Translate(language, "跨设备剪贴板同步"))
+	icon := trayicon.New(tray.SetIcon)
+	if err := icon.SetStyle(cfg.TrayIcon); err != nil {
+		logHostFailure()
+	}
+	themeCtx, cancelTheme := context.WithCancel(ctx)
+	refresh := func() {
+		mygo.RunOnMain(func() {
+			if themeCtx.Err() == nil {
+				if err := icon.Refresh(); err != nil {
+					logHostFailure()
+				}
+			}
+		})
+	}
+	stopTheme := mygo.Theme.OnUpdated(refresh)
+	trayicon.WatchTheme(themeCtx, refresh)
+	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancelTheme(); stopTheme(); tray.Destroy() })
+	return func(current config.Desktop) {
+		if current.Language != language {
+			tray.SetMenu(menu(current.Language))
+			tray.SetToolTip(i18n.Translate(current.Language, "跨设备剪贴板同步"))
+			language = current.Language
+		}
+		if err := icon.SetStyle(current.TrayIcon); err != nil {
+			logHostFailure()
+		}
 	}
 }
 
@@ -88,32 +110,6 @@ func notifyPending(ctx context.Context, sock string, language func() string) {
 		case <-time.After(2 * time.Second):
 		}
 	}
-}
-
-// trayIcon preserves the v1 cat artwork and macOS menu-bar padding.
-func trayIcon() []byte {
-	src, err := png.Decode(bytes.NewReader(appicons.TrayPNG))
-	if err != nil {
-		panic(err)
-	}
-	size, art := 32, 32
-	ink := color.NRGBA{R: 79, G: 124, B: 255, A: 255}
-	if runtime.GOOS == "darwin" {
-		size, art = 44, 34
-		ink = color.NRGBA{A: 255}
-	} else if runtime.GOOS == "windows" {
-		ink = color.NRGBA{A: 255}
-	}
-	mask := image.NewAlpha(image.Rect(0, 0, size, size))
-	offset := (size - art) / 2
-	xdraw.CatmullRom.Scale(mask, image.Rect(offset, offset, offset+art, offset+art), src, src.Bounds(), xdraw.Src, nil)
-	img := image.NewNRGBA(mask.Bounds())
-	draw.DrawMask(img, img.Bounds(), image.NewUniform(ink), image.Point{}, mask, image.Point{}, draw.Src)
-	var b bytes.Buffer
-	if err := png.Encode(&b, img); err != nil {
-		panic(err)
-	}
-	return b.Bytes()
 }
 
 var daemonLogger *slog.Logger

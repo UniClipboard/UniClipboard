@@ -3832,5 +3832,35 @@
     "ja": "この項目を同期しない",
     "pt-BR": "Não sincronizar este item",
     "ru": "Не синхронизировать этот элемент"
+  },
+  "托盘": {
+    "en": "Tray",
+    "ja": "トレイ",
+    "pt-BR": "Bandeja",
+    "ru": "Область уведомлений"
+  },
+  "托盘图标": {
+    "en": "Tray icon",
+    "ja": "トレイアイコン",
+    "pt-BR": "Ícone da bandeja",
+    "ru": "Значок в области уведомлений"
+  },
+  "经典猫头": {
+    "en": "Classic cat",
+    "ja": "クラシックな猫",
+    "pt-BR": "Gato clássico",
+    "ru": "Классический кот"
+  },
+  "更改后立即生效。": {
+    "en": "Changes apply immediately.",
+    "ja": "変更はすぐに反映されます。",
+    "pt-BR": "As alterações são aplicadas imediatamente.",
+    "ru": "Изменения применяются сразу."
+  },
+  "默认": {
+    "en": "Default",
+    "ja": "デフォルト",
+    "pt-BR": "Padrão",
+    "ru": "По умолчанию"
   }
 }

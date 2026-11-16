@@ -3,6 +3,7 @@ paths:
   - engine/directory.go
   - internal/directory
   - internal/localcontent/directory.go
+  - app/desktop/internal/trayicon
   - app/desktop/internal/appicons
   - app/desktop/internal/appupdates
   - app/desktop/internal/lifecycle
@@ -85,6 +86,7 @@ The [Desktop source application receipt](../exec/desktop-source-application.md) 
 |---|---|---|
 | `desktop.mode` | `"normal"` | Next launch: normal desktop owns/restarts its service; lightweight leaves only a standalone service. |
 | `desktop.launch_at_login` | `false` | Running normal desktop applies login registration; actual OS status is displayed separately. |
+| `desktop.tray_icon` | `"glyph"` | Immediately select `glyph` or `cat`; no restart required. |
 | `desktop.start_in_background` | `false` | Next normal launch: create the main window hidden while tray and clipboard integration run. |
 | `sync.enabled` | `true` | Pause content sends and receives. Keep connections and local history. |
 | `sync.automatic` | `true` | Send new observed copies. Local history, manual sends, receives, and Actions remain independent. |
@@ -299,4 +301,12 @@ Before writing a prepared tree, the adapter rechecks the current clipboard again
 
 ## Application and tray icons
 
-Desktop reuses the original v1 assets in `app/desktop/internal/appicons`. The asset README records their source commit and SHA-256 digests. The main window, macOS Dock and About view share the embedded application PNG. The tray uses the original cat alpha mask, scaled to 34 pixels inside a 44-pixel canvas on macOS. Mygo handles template contrast on macOS and Windows. Linux renders the cat in blue for contrast on light and dark panels. Native panel appearance remains subject to platform acceptance.
+Desktop reuses the original v1 application assets in `app/desktop/internal/appicons`. The asset README records their source commit and SHA-256 digests. The main window, macOS Dock and About view share the embedded application PNG.
+
+Settings > General > Tray icon selects `glyph` (the v1 default, two offset rounded cards) or `cat` (the original cat alpha mask). The revision-checked configuration API persists `desktop.tray_icon`. The existing Desktop file watcher applies the saved preference immediately. `unic config set desktop.tray_icon '"cat"'` and direct TOML edits use the same validation and update path. Invalid values retain the previous valid configuration. Lightweight mode has no tray owner.
+
+`app/desktop/internal/trayicon` owns geometry, platform palettes and image publication. It uses mygo's existing SVG renderer for the v1 glyph paths and x/image for cat scaling. macOS uses a 44-pixel template with a centered 36-pixel glyph grid or 34-pixel cat source. Windows uses the system small-icon metric and mygo template contrast. Linux uses 22 pixels, explicit light/dark foreground colors and the v1 KDE/gsettings palette selection. Theme changes repaint the currently selected style; Linux also checks KDE configuration changes once per second until Desktop shutdown.
+
+Unchanged style preferences do not publish an image. Failed native delivery retains the shown style so the next update can retry. Style changes call only the native image API. Only language changes rebuild translated menus. No state badges or animation are implemented.
+
+The [style execution receipt](../exec/desktop-tray-icon-styles.md) records nonvisual acceptance and remaining native tray appearance, DPI, theme-event and open-menu acceptance boundaries.

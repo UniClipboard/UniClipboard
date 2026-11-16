@@ -1,6 +1,6 @@
 # Desktop icons
 
-Copied byte-for-byte from UniClipboard v1 commit `c6483d73c7a0234be68571fdb5fa3d38a17c4871`.
+The four binary assets below were copied byte-for-byte from UniClipboard v1 commit `c6483d73c7a0234be68571fdb5fa3d38a17c4871`.
 The source directory is `apps/gui-go/icons/`.
 
 | Asset | SHA-256 |
@@ -16,6 +16,7 @@ Windows executables embed resources generated from the original ICO for amd64 an
 Regenerate these resources with `sh tools/package/windows-icons.sh` (GNU windres and LLVM cvtres required).
 The installer also uses the original ICO.
 
-The tray uses the v1 cat alpha mask. macOS scales it to 34 pixels inside a 44-pixel transparent canvas, matching v1 padding.
-Windows delegates template contrast to mygo. Linux uses a colored cat to retain contrast on light and dark panels.
+The tray defaults to `glyph` and also supports `cat`, matching v1. `tray-glyph.svg` copies the exact front/back paths and stroke geometry from `apps/gui-go/tray_icon_design.go` at the source commit above. It uses a transparent 24-unit grid and the current foreground color. The application renders it with existing mygo SVG support, rather than maintaining a separate SVG rasterizer.
+
+The cat PNG remains unchanged. macOS scales it to 34 pixels inside a 44-pixel transparent canvas, matching v1 padding; the glyph uses a centered 36-pixel design grid. Windows delegates template contrast to mygo. Linux reuses the v1 explicit KDE/gsettings palette rules for both styles.
 Native panel sizing, contrast and installed icon cache behavior require separate platform acceptance.

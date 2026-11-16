@@ -39,6 +39,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [tag-manager](#tag-manager) | view | Tag management, assignment, rename, merge, deletion and protected built-in tags. |
 | [token-search](#token-search) | view | Composite search prefixes, counts, completion, literal input, caret handling and Escape. |
 | [toolbar-alignment](#toolbar-alignment) | view | Toolbar menu-trigger alignment against adjacent controls. |
+| [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 
 ## builtin-plugin-policy
@@ -766,6 +767,20 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui toolbar-alignment
+```
+
+## tray-icon-settings
+
+Tray icon styles saved and applied
+
+Steps: Use the production settings view, real service/CLI, persisted TOML, configuration watcher and tray image controller; reopen and reject invalid values.
+
+Expected: Glyph is the default; both styles persist and apply without restart; duplicate updates do not publish images; failed delivery retries.
+
+Forbidden: Native GUI launch, fixture-only configuration, style changes rebuilding tray menus, or claiming OS-tray acceptance.
+
+```text
+acceptance desktopui tray-icon-settings
 ```
 
 ## unified-scrollbars

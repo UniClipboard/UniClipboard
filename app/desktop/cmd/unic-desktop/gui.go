@@ -190,7 +190,7 @@ func runGUI(settings *config.Manager) error {
 			}
 		}
 		go func() { <-ctx.Done(); mygo.App.Quit() }()
-		updateTrayLanguage := setupTray(settings.Current().Desktop.Language)
+		updateTray := setupTray(ctx, settings.Current().Desktop)
 
 		opts := mygo.WindowOptions{Title: "unic", Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view), Hidden: !flow.Required() && settings.Current().Desktop.StartInBackground}
 		if uikit.DefaultSkin() == uikit.MacOS {
@@ -220,7 +220,7 @@ func runGUI(settings *config.Manager) error {
 						g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
 						session.runtime.screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut)
 					}
-					updateTrayLanguage(current.Desktop.Language)
+					updateTray(current.Desktop)
 					g.win.Invalidate()
 				})
 			}

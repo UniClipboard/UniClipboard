@@ -92,6 +92,13 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 				}
 			}
 		})
+		group("tray", d.tr("托盘"), func() {
+			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("托盘图标"), Description: d.tr("更改后立即生效。")}, nil, func() {
+				if k.Select(c, uikit.SelectProps{Label: d.tr("托盘图标"), Value: &cfg.Desktop.TrayIcon, Disabled: l.busy, Items: []uikit.SelectItem{{Value: "glyph", Label: d.tr("默认")}, {Value: "cat", Label: d.tr("经典猫头")}}}).Changed {
+					changed = true
+				}
+			})
+		})
 		group("privacy", d.tr("隐私与诊断"), func() {
 			toggle("telemetry", d.tr("发送使用数据与诊断"), d.tr("关闭后停止遥测上传。"), &cfg.Telemetry.Enabled)
 		})

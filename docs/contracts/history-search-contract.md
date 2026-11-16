@@ -53,3 +53,15 @@ The process fixture additionally requires a small ordinary submission to finish 
 Long text/older-page false misses; short Chinese misses; phrase/term confusion; cross-filename phrases; Unicode/emoji offsets; wildcard/operator interpretation; tag intersections/unions; stale cursor/results/counts; deleted/expired/imported content; incomplete index/repair; body/path/script leakage; slow counts blocking writes; lost event refresh; cancellation and admission limits; index quota exhaustion; file-body access during filename search.
 
 Directory snapshots and source references use Engine history kinds `directory` and `directory_reference`. Both participate in ordinary history queries. Their content semantics follow the [directory contract](directory-contract.md).
+
+## Incremental desktop browsing
+
+The production Desktop list and grid request the next 50-entry cursor page when the visible range is within ten entries of its loaded end. There is no manual page button. Near the loaded start, an evicted newer page is restored automatically.
+
+One traversal retains at most 500 projected entries and one selected entry outside that window. Payload prefetch retains the existing visible-range and four-reader bounds. At most 128 content-free cursor checkpoints are retained; older checkpoints are thinned. Revisiting an evicted checkpoint follows Engine cursors sequentially from the closest retained checkpoint. Search workers occupy one slot, including canceled generations until they exit. Repeated viewport triggers coalesce into that slot. A failed read retains the previous window and backs off for two seconds.
+
+Relevant service notifications schedule a revision check. An idle recovery check runs at most every 30 seconds. It reads one metadata entry and the collection revision, together with auxiliary service state. An unchanged collection does not invoke SearchHistory, replace entries, invalidate detail caches or reset selection. A broken event stream invalidates cursors and schedules reconciliation. Collection revision changes, expired loaded entries and a new query also require reconciliation. A new query cancels the old generation; obsolete results cannot publish.
+
+Reconciliation follows fresh Engine cursors to a surviving anchor in the visible range, then reads only a bounded window. It discards pages scanned before that anchor. If every anchor was deleted, it returns the final available page. Revision changes during traversal fail that attempt and schedule recovery rather than publishing inconsistent pages. Stable item keys preserve the visible scroll anchor when it survives. Search text, filters, selected entry and open detail state remain unchanged. A selected entry outside the window retains one detail; deletion clears that selection and closes its detail and preview. A new query clears the old selection and restarts browsing from the first page.
+
+The repeatable `incremental-browsing` Desktop E2E case uses a real isolated service and software-rendered scrolling. It records source and service binary hashes, the request timeline, assertions and view checkpoints. Its receipt does not establish native-window behavior.

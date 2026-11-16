@@ -170,8 +170,8 @@ func scenarioDesktopLiveData(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 		refreshes := d.live.appliedSerial - serial
-		if refreshes < 2 {
-			t.Fatalf("%s: periodic reconciliation did not run twice: %d", label, refreshes)
+		if refreshes != 0 {
+			t.Fatalf("%s: unchanged idle history reloaded: %d", label, refreshes)
 		}
 		checks = append(checks, fmt.Sprintf("%s: 11 idle seconds, %d background refreshes, no foreground loading or selection/payload changes", label, refreshes))
 	}
@@ -434,7 +434,10 @@ func scenarioDesktopLiveData(t *testing.T) {
 			})
 			d.live.nextRefresh = time.Time{}
 			serial := d.live.appliedSerial
-			spin("preview reconciliation", func() bool { return d.live.appliedSerial > serial && !d.live.loading })
+			spin("preview revision probe", func() bool { return !d.live.nextRefresh.IsZero() && !d.live.loading })
+			if d.live.appliedSerial != serial {
+				t.Fatal("unchanged preview probe reloaded history")
+			}
 			if d.current().image == nil || d.current().kind != uikit.KindFile {
 				t.Fatal("reconciliation discarded file image or changed file kind")
 			}
@@ -624,6 +627,11 @@ func scenarioDesktopLiveData(t *testing.T) {
 		spin("failure policy idle", func() bool { return !d.live.busy && !d.live.loading })
 		// A new tester per step drops pointer state left by the previous menu.
 		tt = ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{})
+		spin("failure policy trigger enabled", func() bool {
+			tt.Frame()
+			trigger, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时")
+			return ok && !trigger.Disabled && !d.live.busy && !d.live.loading
+		})
 		trigger, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时")
 		if !ok {
 			t.Fatal("failure policy trigger missing")

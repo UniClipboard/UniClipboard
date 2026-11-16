@@ -106,7 +106,7 @@ func (q *quickLive) poll(p *quickPanelState) {
 		p.message = l.readError
 	}
 
-	if p.queryDue.IsZero() && !l.loading && l.cursor != "" && (p.selected >= len(p.rows)-8 || p.hovered >= len(p.rows)-8) {
+	if p.queryDue.IsZero() && !l.loading && !time.Now().Before(l.pageRetry) && l.cursor != "" && (p.selected >= len(p.rows)-8 || p.hovered >= len(p.rows)-8) {
 		l.loadHistory(d, true)
 	}
 }

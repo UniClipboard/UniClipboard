@@ -89,7 +89,7 @@ func (d *viewState) history(c *ui.Context, k uikit.Kit) {
 	}
 
 	items := d.filtered()
-	if !slices.ContainsFunc(items, func(v entry) bool { return v.id == d.selected }) {
+	if d.current() == nil || (d.live == nil && !slices.ContainsFunc(items, func(v entry) bool { return v.id == d.selected })) {
 		d.selectEntry("")
 		if len(items) > 0 {
 			d.selectEntry(items[0].id)
@@ -141,11 +141,6 @@ func (d *viewState) history(c *ui.Context, k uikit.Kit) {
 				})
 			} else {
 				d.historyList(c, k, items)
-				if d.live != nil && d.live.cursor != "" {
-					if k.Button(c.Key("more-history"), d.tr("加载更早的历史"), uikit.ButtonProps{Disabled: d.live.loading}).Clicked() {
-						d.live.loadHistory(d, true)
-					}
-				}
 			}
 		})
 		if d.layout == "list" || d.inspector || (d.compact && d.detailOpen) {
@@ -277,9 +272,7 @@ func (d *viewState) historyList(c *ui.Context, k uikit.Kit, items []entry) {
 	if d.live != nil {
 		first, last := d.list.VisibleRange()
 		d.live.prefetchDetails(d, items, first, last)
-		if last >= 0 && last+10 >= len(items) && d.live.cursor != "" && !d.live.loading {
-			d.live.loadHistory(d, true)
-		}
+		d.live.browseRange(d, first, last, len(items))
 	}
 	if d.list.Changed() {
 		if ids := d.list.Selection(); len(ids) > 0 {

@@ -37,7 +37,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: fc48e6e42fc8cc3aaf11493909d17a25e099bac2
+verified: 262358694ac8eae96dd365c54e8183edf35b4b38
 ---
 # Desktop configuration and received files
 
@@ -65,6 +65,12 @@ The three built-in plugins have no plugin-specific Schema fields. This interface
 ## Native application updates
 
 Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences use the same v2 user-data directory as the Desktop profile. Package-manager installations and portable archives retain external update ownership. AppImage self-update remains unsupported. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
+
+## Incremental history browsing
+
+Desktop loads history in 50-entry cursor pages as the list or grid approaches its loaded end. It retains a 500-entry sliding window, bounded cursor checkpoints and one selected detail outside that window. Scrolling toward an evicted newer page reloads it automatically. Stable item keys retain surviving scroll anchors.
+
+Service events trigger metadata revision checks. A 30-second bounded recovery probe detects missed notifications. An unchanged revision does not reload search results. Stream failure renews cursors, while query changes cancel stale generations. Selection, detail state and filters survive background reconciliation; selected deletion closes its detail and preview. See the [search contract](../contracts/history-search-contract.md#incremental-desktop-browsing) and [execution receipt](../exec/desktop-incremental-browsing.md).
 
 ## History source application
 

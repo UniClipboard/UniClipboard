@@ -365,8 +365,8 @@ func scenarioHistorySearchProcess(t *testing.T) {
 	serialBefore = l.contentSerial
 	appliedBefore := l.appliedSerial
 	l.nextRefresh = time.Time{}
-	wait("prefetch reconciliation", func() bool { l.poll(d); return l.appliedSerial > appliedBefore && !l.loading })
-	if l.contentSerial != serialBefore || len(l.detailReads) != 0 {
+	wait("prefetch reconciliation", func() bool { l.poll(d); return !l.nextRefresh.IsZero() && !l.loading })
+	if l.appliedSerial != appliedBefore || l.contentSerial != serialBefore || len(l.detailReads) != 0 {
 		t.Fatal("unchanged reconciliation reread details")
 	}
 	// Leave active reads outstanding before replacing the search generation.
@@ -432,9 +432,12 @@ func scenarioHistorySearchProcess(t *testing.T) {
 	}
 	wait("quick silent reconciliation", func() bool {
 		quick.live.poll(quick)
-		return quick.live.d.live.appliedSerial > serial && !quick.live.d.live.loading
+		return !quick.live.d.live.nextRefresh.IsZero() && !quick.live.d.live.loading
 	})
-	checks = append(checks, "quick-panel background reconciliation preserves results without foreground loading")
+	if quick.live.d.live.appliedSerial != serial {
+		t.Fatal("unchanged quick-panel probe reloaded history")
+	}
+	checks = append(checks, "quick-panel revision probe preserves results without reloading unchanged history")
 	// Fresh candidate pages, limit validation, expiry and Action commits use the same read surface.
 	catalogueFirst, e := client.ListHistorySearchCandidates(ctx, engine.HistorySearchCandidatesRequest{Field: "tag", Limit: 1})
 	if e != nil || catalogueFirst.NextCursor == "" {

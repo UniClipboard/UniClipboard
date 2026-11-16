@@ -63,6 +63,11 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Verify production binaries without a display
         run: env -u DISPLAY -u WAYLAND_DISPLAY make headless-e2e
+      - name: Verify v1 tag and color migration
+        env:
+          UNIC_MIGRATION_TAGS_E2E: "1"
+          UNIC_MIGRATION_TAGS_ARTIFACTS: ${{ github.workspace }}/.cache/0015-acceptance/migration
+        run: env -u DISPLAY -u WAYLAND_DISPLAY go test ./e2e/headless -run '^TestProductionMigrationTags$' -count=1 -v
       - uses: actions/upload-artifact@v4
         if: always()
         with:

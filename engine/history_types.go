@@ -56,6 +56,31 @@ type HistoryBackendSyncState struct {
 	ErrorCode   Code               `json:"error_code,omitempty"`
 }
 
+// HistoryTargetState is the last send result towards one target. "sent" means
+// every byte was written to the connection; it does not say the peer received
+// the content. ErrorCode is a stable failure class, set when State is failed.
+type HistoryTargetState struct {
+	BackendID  PluginID       `json:"backend_id"`
+	TargetKind SyncTargetKind `json:"target_kind"`
+	TargetID   string         `json:"target_id"`
+	State      TargetState    `json:"state"`
+	ErrorCode  Code           `json:"error_code,omitempty"`
+	// Items is present only while the send runs.
+	Items []HistoryTargetItem `json:"items,omitempty"`
+}
+
+// HistoryTargetItem is the live progress of one part towards a target. It is
+// kept in memory only, while the send runs. Reaching TotalBytes never means the
+// target was sent: the target State decides.
+type HistoryTargetItem struct {
+	Index          int      `json:"index"`
+	Kind           PartKind `json:"kind"`
+	Name           string   `json:"name,omitempty"` // file name; files only
+	State          string   `json:"state"`          // waiting, transferring, completed, failed
+	CompletedBytes int64    `json:"completed_bytes"`
+	TotalBytes     int64    `json:"total_bytes"`
+}
+
 type HistoryItem struct {
 	ID                HistoryID              `json:"id"`
 	Revision          uint64                 `json:"revision,string"`
@@ -71,6 +96,8 @@ type HistoryItem struct {
 	SyncState         HistorySyncState       `json:"sync_state"`
 	// BackendSyncStates is sorted by BackendID; empty when nothing was tried.
 	BackendSyncStates []HistoryBackendSyncState `json:"backend_sync_states"`
+	// Targets is sorted by backend, kind and target; empty when nothing was sent.
+	Targets []HistoryTargetState `json:"targets"`
 }
 
 type HistoryFilter struct {

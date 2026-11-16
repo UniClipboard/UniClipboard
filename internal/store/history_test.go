@@ -161,13 +161,13 @@ func TestSyncSummaryAndRestartInterruption(t *testing.T) {
 	s, path := openTemp(t)
 	_, _, _ = s.InsertHistory(item("a", 100))
 	_, _, _ = s.InsertHistory(item("b", 101))
-	if _, err := s.SetSyncState("a", "pending", map[string]BackendSync{"x": {State: "pending", Disposition: "queued"}, "y": {State: "failed", Disposition: "failed", ErrorCode: "unavailable"}}, 200); err != nil {
+	if _, err := s.SetSyncState("a", "pending", map[string]BackendSync{"x": {State: "pending", Disposition: "queued"}, "y": {State: "failed", Disposition: "failed", ErrorCode: "unavailable"}}, nil, 200); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SetSyncState("b", "sent", map[string]BackendSync{"x": {State: "sent", Disposition: "queued"}}, 200); err != nil {
+	if _, err := s.SetSyncState("b", "sent", map[string]BackendSync{"x": {State: "sent", Disposition: "queued"}}, nil, 200); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SetSyncState("nope", "sent", nil, 200); !errors.Is(err, ErrNotFound) {
+	if _, err := s.SetSyncState("nope", "sent", nil, nil, 200); !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}
 	_ = s.Close()

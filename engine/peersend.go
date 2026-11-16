@@ -205,6 +205,10 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 					return
 				}
 				emitQueue("started")
+				sink, _ := h.(progressSink)
+				if sink != nil {
+					sink.InitProgress(k, v.set.parts)
+				}
 				h.Report(k, TargetSending, nil)
 				// A duplicate connection to the same peer is resolved shortly
 				// after both ends connect: the loser ends before its first byte.
@@ -213,6 +217,9 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 				cur := s
 				for attempt := 0; ; attempt++ {
 					src := &peerSendSource{b: b, v: v, conn: cur.conn, token: cur.token}
+					if sink != nil {
+						src.progress = func(index int, state string, done int64) { sink.ReportPart(k, index, state, done) }
+					}
 					started := time.Now()
 					err := b.sendOver(ctx, disp, src, cur, v, clip)
 					outcome, code := diagnosticOutcome(err)
@@ -277,6 +284,8 @@ type peerSendSource struct {
 	v     backendView
 	conn  string
 	token string
+	// progress, if set, is told how far each part was read.
+	progress func(index int, state string, done int64)
 
 	mu      sync.Mutex
 	grant   string
@@ -382,5 +391,10 @@ func (s *peerSendSource) OpenPart(_ context.Context, grantID string, index int) 
 	}
 	h := s.handles[index]
 	s.handles[index] = nil
+	if s.progress != nil {
+		report := func(state string, done int64) { s.progress(index, state, done) }
+		report("transferring", 0)
+		h = &countingPart{ReadCloser: h, report: report}
+	}
 	return h, nil
 }

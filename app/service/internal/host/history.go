@@ -18,6 +18,13 @@ func apiHistory(it engine.HistoryItem, deviceName string) api.HistoryItem {
 		Tags: append([]string{}, it.Tags...), TotalBytes: it.TotalBytes, SyncState: string(it.SyncState),
 		Parts:    make([]api.HistoryPart, len(it.Parts)),
 		Backends: make([]api.HistoryBackendSync, len(it.BackendSyncStates)),
+		Targets:  make([]api.HistoryTarget, len(it.Targets)),
+	}
+	for i, t := range it.Targets {
+		out.Targets[i] = api.HistoryTarget{BackendID: string(t.BackendID), TargetKind: string(t.TargetKind), TargetID: t.TargetID, State: string(t.State), ErrorCode: string(t.ErrorCode)}
+		for _, x := range t.Items {
+			out.Targets[i].Items = append(out.Targets[i].Items, api.HistoryTargetItem{Index: x.Index, Kind: string(x.Kind), Name: x.Name, State: x.State, CompletedBytes: x.CompletedBytes, TotalBytes: x.TotalBytes})
+		}
 	}
 	for i, b := range it.BackendSyncStates {
 		out.Backends[i] = api.HistoryBackendSync{BackendID: string(b.BackendID), State: string(b.State), Disposition: string(b.Disposition), ErrorCode: string(b.ErrorCode)}

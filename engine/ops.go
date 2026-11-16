@@ -22,6 +22,13 @@ type opEntry struct {
 	productRecorded bool
 	kind            DiagnosticContentKind
 	recorded        bool // the final summary was written
+	// progress is the live per-part state of each target; guarded by Engine.mu.
+	progress map[targetKey]*targetProgress
+}
+
+type targetProgress struct {
+	items []HistoryTargetItem
+	last  time.Time // last published change
 }
 
 type opTable struct {

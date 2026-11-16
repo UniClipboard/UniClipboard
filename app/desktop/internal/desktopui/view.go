@@ -13,6 +13,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 	"github.com/uniclipboard/unic/engine"
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 type entry struct {
@@ -25,6 +26,7 @@ type entry struct {
 	sourceAppName, sourceAppID          string
 	sourceAppIcon                       ui.ImageSource
 	contentError, syncState             string
+	targets                             []api.HistoryTarget
 	createdAt                           int64
 	id, title, text, source, date, size string
 	kind                                uikit.ContentKind
@@ -120,7 +122,7 @@ type viewState struct {
 	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook bool
 	compact                                                                bool
 	gridSize                                                               float64
-	deviceTask, fieldError, notice, confirm, confirmID                     string
+	deviceTask, fieldError, notice, confirm, confirmID, resendTo           string
 	deviceName                                                             string
 	pending                                                                []pendingDevice
 	candidates                                                             []deviceCandidate
@@ -174,6 +176,7 @@ func (d *viewState) view(c *ui.Context) {
 		d.deviceSheet(c.Key("devices"), k)
 		d.tagSheet(c.Key("tags"), k)
 		d.confirmDialog(c.Key("confirm"), k)
+		d.resendDialog(c.Key("resend"), k)
 	})
 }
 

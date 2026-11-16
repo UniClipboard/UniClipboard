@@ -3874,5 +3874,101 @@
     "ja": "デフォルト",
     "pt-BR": "Padrão",
     "ru": "По умолчанию"
+  },
+  "未发送": {
+    "en": "Not sent",
+    "ja": "未送信",
+    "pt-BR": "Não enviado",
+    "ru": "Не отправлено"
+  },
+  "排队中": {
+    "en": "Queued",
+    "ja": "待機中",
+    "pt-BR": "Na fila",
+    "ru": "В очереди"
+  },
+  "发送中": {
+    "en": "Sending",
+    "ja": "送信中",
+    "pt-BR": "Enviando",
+    "ru": "Отправка"
+  },
+  "已被新内容替代": {
+    "en": "Replaced by newer content",
+    "ja": "新しい内容に置き換えられました",
+    "pt-BR": "Substituído por conteúdo mais novo",
+    "ru": "Заменено новым содержимым"
+  },
+  "发送未完成": {
+    "en": "Sending did not finish",
+    "ja": "送信が完了しませんでした",
+    "pt-BR": "O envio não foi concluído",
+    "ru": "Отправка не завершена"
+  },
+  "应用退出时发送尚未完成": {
+    "en": "Sending was not finished when the app quit",
+    "ja": "アプリ終了時に送信が完了していませんでした",
+    "pt-BR": "O envio não terminou quando o app foi encerrado",
+    "ru": "Отправка не завершилась при закрытии приложения"
+  },
+  "同步已关闭": {
+    "en": "Sync is off",
+    "ja": "同期はオフです",
+    "pt-BR": "A sincronização está desativada",
+    "ru": "Синхронизация отключена"
+  },
+  "连接不可用": {
+    "en": "Connection unavailable",
+    "ja": "接続できません",
+    "pt-BR": "Conexão indisponível",
+    "ru": "Соединение недоступно"
+  },
+  "%d/%d 台设备": {
+    "en": "%d/%d devices",
+    "ja": "%d/%d 台のデバイス",
+    "pt-BR": "%d/%d dispositivos",
+    "ru": "%d/%d устройств"
+  },
+  "暂未配对任何设备": {
+    "en": "No paired devices yet",
+    "ja": "ペアリング済みのデバイスはありません",
+    "pt-BR": "Nenhum dispositivo pareado",
+    "ru": "Нет сопряжённых устройств"
+  },
+  "重新发送到 %s？": {
+    "en": "Send again to %s?",
+    "ja": "%s に再送信しますか？",
+    "pt-BR": "Enviar novamente para %s?",
+    "ru": "Отправить повторно на %s?"
+  },
+  "之前的发送没有完成或没有结果。对方设备上可能出现重复内容。": {
+    "en": "The earlier send did not finish or has no result. The device may receive duplicate content.",
+    "ja": "前回の送信は完了していないか、結果がありません。相手のデバイスに内容が重複する場合があります。",
+    "pt-BR": "O envio anterior não terminou ou não tem resultado. O dispositivo pode receber conteúdo duplicado.",
+    "ru": "Предыдущая отправка не завершена или без результата. На устройстве может появиться дубликат."
+  },
+  "重新发送": {
+    "en": "Send again",
+    "ja": "再送信",
+    "pt-BR": "Enviar novamente",
+    "ru": "Отправить повторно"
+  },
+  "项目 %d": {
+    "en": "Item %d",
+    "ja": "項目 %d",
+    "pt-BR": "Item %d",
+    "ru": "Элемент %d"
+  },
+  "传输中": {
+    "en": "Transferring",
+    "ja": "転送中",
+    "pt-BR": "Transferindo",
+    "ru": "Передача"
+  },
+  "等待": {
+    "en": "Waiting",
+    "ja": "待機",
+    "pt-BR": "Aguardando",
+    "ru": "Ожидание"
   }
 }

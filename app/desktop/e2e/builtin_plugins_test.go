@@ -56,6 +56,53 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 			return err
 		},
 		"connect-policy-peer": func(s *desktopScenario, a []string) error { return s.connectPolicyPeer(a) },
+		"start-pairing-peer": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 || s.policyPeer != nil {
+				return errors.New("start-pairing-peer takes no arguments and creates one peer")
+			}
+			_, _, err := s.spawnPeer()
+			return err
+		},
+		"peer-pair-desktop": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 || s.policyPeer == nil {
+				return errors.New("peer-pair-desktop requires an owned peer")
+			}
+			ticket, err := s.client.ExportTicket(s.ctx)
+			if err != nil {
+				return err
+			}
+			if _, err = s.policyPeer.client.Pair(s.ctx, ticket); err != nil {
+				return err
+			}
+			var pending []api.PendingPeer
+			if err = s.wait(func() bool {
+				var e error
+				pending, e = s.policyPeer.client.Pending(s.ctx)
+				return e == nil && len(pending) == 1
+			}); err != nil {
+				return err
+			}
+			req := pending[0]
+			if _, err = s.policyPeer.client.Approve(s.ctx, req.ID, api.Approval{Fingerprint: req.Fingerprint, Revision: req.Revision, Bindings: req.Bindings}); err != nil {
+				return err
+			}
+			s.result.Assertions = append(s.result.Assertions, "peer joined the Desktop invitation and approved the exact displayed request")
+			return nil
+		},
+		"assert-paired": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 || s.policyPeer == nil {
+				return errors.New("assert-paired requires an owned peer")
+			}
+			err := s.wait(func() bool {
+				st, e := s.client.Status(s.ctx)
+				pt, f := s.policyPeer.client.Status(s.ctx)
+				return e == nil && f == nil && len(st.Peers) == 1 && len(pt.Peers) == 1 && len(st.Pending) == 0
+			})
+			if err == nil {
+				s.result.Assertions = append(s.result.Assertions, "both production services list exactly one peer and Desktop has no pending request")
+			}
+			return err
+		},
 		"stop-policy-peer": func(s *desktopScenario, a []string) error {
 			if len(a) != 0 || s.policyPeer == nil {
 				return errors.New("stop-policy-peer requires an owned peer")

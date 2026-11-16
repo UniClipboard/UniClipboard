@@ -13,9 +13,11 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
+| [incremental-browsing](#incremental-browsing) | process | Multi-page production browsing, idle request timeline, coalescing, selection and cancellation. |
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
 | [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation. |
 | [native-menus](#native-menus) | view | System-menu requests, cancellation and selected-value dispatch in the software view. |
+| [pairing-inline-approval](#pairing-inline-approval) | native | Approve an incoming device from the invitation page of the real Desktop. |
 | [production-boundary](#production-boundary) | process | Build independent production and demo commands and verify their dependency and embedded catalogue boundaries. |
 | [quick-panel-contract](#quick-panel-contract) | process | Target session, clipboard application, cancellation and paste-request ordering with OS fixtures. |
 | [quick-panel-screenshots](#quick-panel-screenshots) | view | Quick-panel history, action menu and image-grid compositions in both themes. |
@@ -342,6 +344,20 @@ Forbidden: Missing translations or translated user content.
 acceptance desktopui i18n
 ```
 
+## incremental-browsing
+
+Incremental history browsing
+
+Steps: Start isolated unicd, populate synthetic history, and exercise the production Desktop binding.
+
+Expected: Idle history stays unchanged; paging and history events preserve browsing context.
+
+Forbidden: Native UI claims, skipped assertions, missing source/binary hashes or receipt.
+
+```text
+acceptance desktopui incremental-browsing
+```
+
 ## interaction-motion
 
 Interaction motion
@@ -382,6 +398,45 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui native-menus
+```
+
+## pairing-inline-approval
+
+Pairing approval without leaving the invitation
+
+Steps: Open the device sheet, show a ticket invitation, let a second production service join and approve, then approve in the same task panel.
+
+Expected: The fingerprint approval replaces the invitation inside the task; accepting it closes the task and lists the new device.
+
+Forbidden: Returning to the device list to approve, a pending request left behind, or fixture-only device data.
+
+```text
+start
+start-pairing-peer
+ui-wait listItem 管理设备…
+ui-click listItem 管理设备…
+ui-wait button 邀请设备
+ui-click button 邀请设备
+ui-wait radio 完整票据
+ui-click radio 完整票据
+ui-wait button 复制票据
+ui-enabled button 复制票据
+ui-wait text 邀请设备
+screenshot invitation-shown
+peer-pair-desktop
+ui-wait text '核对并批准'
+screenshot approval-inside-task
+ui-click button 接受
+assert-paired
+ui-absent text '核对并批准'
+ui-absent text '邀请设备'
+ui-wait text 本机
+screenshot paired-device-listed
+observe 2
+ui-wait button 完成
+ui-click button 完成
+ui-absent dialog 管理设备
+stop-policy-peer
 ```
 
 ## production-boundary

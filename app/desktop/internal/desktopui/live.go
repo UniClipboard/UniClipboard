@@ -37,7 +37,7 @@ type Desktop struct {
 func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
 	d := &viewState{page: "history", theme: "system", layout: "list", nav: uikit.NavState{Value: "all"}, settings: uikit.NavState{Value: "general"}, deviceList: uikit.SourceState{Value: "local"}, gridSize: .4, options: map[string]bool{}, choices: map[string]string{}}
 	ctx, cancel := context.WithCancel(ctx)
-	d.live = &liveState{ctx: ctx, cancel: cancel, client: client, jobs: make(chan func(context.Context) func(), 16), results: make(chan func(), 32), changed: make(chan struct{}, 1), items: map[string]api.HistoryItem{}, details: map[string]entry{}, pending: map[string]api.PendingPeer{}}
+	d.live = &liveState{ctx: ctx, cancel: cancel, client: client, jobs: make(chan func(context.Context) func(), 16), results: make(chan func(), 32), changed: make(chan struct{}, 1), recovery: make(chan struct{}, 1), searchSlots: make(chan struct{}, 1), items: map[string]api.HistoryItem{}, details: map[string]entry{}, pending: map[string]api.PendingPeer{}}
 	go d.live.work()
 	go d.live.follow()
 	return &Desktop{d: d}
@@ -83,11 +83,21 @@ type liveState struct {
 	jobs                                         chan func(context.Context) func()
 	results                                      chan func()
 	changed                                      chan struct{}
+	recovery                                     chan struct{}
+	searchSlots                                  chan struct{}
 	connected, loaded, loading, busy, detailBusy bool
 	// loading serializes all history reads; foregroundLoading controls visible loading.
 	foregroundLoading                          bool
 	message, readError, cursor, key, detailKey string
 	nextRefresh                                time.Time
+	pageRetry                                  time.Time
+	historyRevision                            uint64
+	historyInvalid                             bool
+	serviceID                                  string
+	windowOffset                               int
+	previousPage                               bool
+	checkpoints                                []historyCheckpoint
+	retained                                   *entry
 	items                                      map[string]api.HistoryItem
 	details                                    map[string]entry
 	config                                     config.State
@@ -119,14 +129,19 @@ func (l *liveState) work() {
 }
 func (l *liveState) follow() {
 	for l.ctx.Err() == nil {
-		_ = l.client.Events(l.ctx, func(api.Event) {
+		_ = l.client.Events(l.ctx, func(ev api.Event) {
+			switch ev.Kind {
+			case "history", "config", "peer-up", "peer-down", "peers", "pending", "code", "candidates", "channel", "received", "sent":
+			default:
+				return
+			}
 			select {
 			case l.changed <- struct{}{}:
 			default:
 			}
 		})
 		select {
-		case l.changed <- struct{}{}:
+		case l.recovery <- struct{}{}:
 		default:
 		}
 		select {
@@ -164,6 +179,13 @@ drained:
 		dirty = true
 	default:
 	}
+	select {
+	case <-l.recovery:
+		l.historyInvalid = true
+		l.invalidateSearch()
+		dirty = true
+	default:
+	}
 	if dirty {
 		l.nextRefresh = time.Time{}
 	}
@@ -172,7 +194,10 @@ drained:
 	if l.loading && key != l.key {
 		l.invalidateSearch()
 	}
-	if !l.loading && !l.busy && (key != l.key || time.Now().After(l.nextRefresh)) {
+	if key != l.key {
+		l.foregroundLoading = true
+	}
+	if !l.loading && !l.busy && (key != l.key || (time.Now().After(l.nextRefresh) && !time.Now().Before(l.pageRetry))) {
 		l.loadHistory(d, false)
 	}
 	l.loadDetail(d)
@@ -242,12 +267,66 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 	if l.loading {
 		return
 	}
+	if l.searchSlots == nil {
+		l.searchSlots = make(chan struct{}, 1)
+	}
+	select {
+	case l.searchSlots <- struct{}{}:
+	default:
+		return
+	}
+	started := false
+	defer func() {
+		if !started {
+			<-l.searchSlots
+		}
+	}()
 	q := engine.HistorySearchRequest{Query: d.historySearchQuery(), Limit: 50}
-	target := max(50, len(d.entries))
+	previous := l.previousPage
+	l.previousPage = false
+	target := min(historyWindowLimit, max(50, len(d.entries)))
+	offset := l.windowOffset
+	points := slices.Clone(l.checkpoints)
+	// These are stable IDs from the last rendered viewport. A binding with
+	// no rendered viewport has no scroll anchor to preserve.
+	anchors := slices.Clone(l.detailWindow[:min(50, len(l.detailWindow))])
+	if len(anchors) == 0 && offset > 0 {
+		for _, v := range d.entries[:min(50, len(d.entries))] {
+			anchors = append(anchors, v.id)
+		}
+	}
+	selected := d.selected
+	selectedItem := l.items[selected]
+	var selectedEntry *entry
+	if v := d.current(); v != nil {
+		copy := *v
+		selectedEntry = &copy
+	}
+	revision, serviceID := l.historyRevision, l.serviceID
+	invalid := l.historyInvalid
+	selectedRevision := selectedItem.Revision
 	key := d.liveQueryKey()
+	foreground := !l.loaded || key != l.key
+	expired := false
+	for _, it := range l.items {
+		if it.ExpiresAt > 0 && it.ExpiresAt <= time.Now().UnixMilli() {
+			expired = true
+			break
+		}
+	}
 	if key != l.key {
+		previous = false
 		l.resetDetails(d)
 		target = 50
+		offset = 0
+		points = nil
+		anchors = nil
+		selected = ""
+		selectedEntry = nil
+		l.retained = nil
+		l.windowOffset = 0
+		l.cursor = ""
+		l.pageRetry = time.Time{}
 		d.entries = nil
 		l.items = map[string]api.HistoryItem{}
 		d.selected = ""
@@ -259,6 +338,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			return
 		}
 		q.Cursor = l.cursor
+		points = rememberHistoryCheckpoint(points, historyCheckpoint{offset + len(d.entries), q.Cursor})
 	}
 	l.foregroundLoading = !l.loaded || key != l.key
 	l.loading = true
@@ -270,8 +350,10 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 	}
 	l.searchCancel = cancel
 	l.key = key
-	l.nextRefresh = time.Now().Add(5 * time.Second)
+	l.nextRefresh = time.Now().Add(historyRecoveryInterval)
+	started = true
 	go func() {
+		defer func() { <-l.searchSlots }()
 		defer cancel()
 		apply := func() func() {
 			status, err := l.client.Status(ctx)
@@ -280,19 +362,31 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			var saved config.State
 			var tags []string
 			var candidates []api.Candidate
-			if err == nil {
-				page, err = l.client.SearchHistory(ctx, q)
-				if !more && err == nil {
-					for len(page.Hits) < target && page.NextCursor != "" {
-						nextQuery := q
-						nextQuery.Cursor = page.NextCursor
-						next, e := l.client.SearchHistory(ctx, nextQuery)
-						if e != nil {
-							err = e
-							break
+			historyChanged := more || previous
+			// Query state was captured on the view thread.
+			historyChanged = historyChanged || invalid
+			if err == nil && !more && !previous {
+				probe, e := l.client.QueryHistory(ctx, api.HistoryQuery{Limit: 1})
+				err = e
+				historyChanged = historyChanged || probe.Revision != revision || status.ID != serviceID || expired
+			}
+			// A new query always has a foreground load, regardless of revision.
+			historyChanged = historyChanged || foreground
+			if err == nil && historyChanged {
+				page, offset, points, err = readHistoryWindow(ctx, l.client, q, more, previous, offset, target, anchors, points, revision)
+				if err == nil && selectedEntry != nil && !more {
+					current, e := l.client.GetHistory(ctx, selected)
+					if e != nil && api.ReasonOf(e) != "not_found" {
+						err = e
+					}
+					if e != nil {
+						selectedEntry = nil
+					} else {
+						selectedItem = current
+						if current.Revision != selectedRevision {
+							v := projectHistory(current)
+							selectedEntry = &v
 						}
-						page.Hits = append(page.Hits, next.Hits...)
-						page.NextCursor = next.NextCursor
 					}
 				}
 			}
@@ -330,57 +424,95 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					if api.ReasonOf(err) == "invalid_argument" {
 						l.readError = "搜索条件无效或超过限制。"
 					}
-					l.detailKey = ""
+					l.pageRetry = time.Now().Add(2 * time.Second)
+					l.nextRefresh = l.pageRetry
+					if more || previous {
+						l.historyInvalid = true
+					}
 					return
 				}
-				l.appliedSerial++
-				l.connected = true
-				l.loaded = true
+				l.serviceID = status.ID
 				l.readError = ""
-				if page.IndexIncomplete {
-					l.readError = "部分内容的搜索索引不可用。元数据仍可浏览。"
-				}
-				if !more {
-					fresh := make(map[string]api.HistoryItem, len(page.Hits))
-					for _, hit := range page.Hits {
-						fresh[hit.Item.ID] = hit.Item
+				if historyChanged {
+					l.appliedSerial++
+					l.connected = true
+					l.loaded = true
+					l.readError = ""
+					if page.IndexIncomplete {
+						l.readError = "部分内容的搜索索引不可用。元数据仍可浏览。"
 					}
-					for id, old := range l.items {
-						if it, ok := fresh[id]; !ok || old.Revision != it.Revision {
+					if !more {
+						fresh := make(map[string]api.HistoryItem, len(page.Hits))
+						for _, hit := range page.Hits {
+							fresh[hit.Item.ID] = hit.Item
+						}
+						for id, old := range l.items {
+							if it, ok := fresh[id]; (!ok && id != selected) || (ok && old.Revision != it.Revision) {
+								l.dropDetail(d, id)
+							}
+						}
+					}
+					if !more {
+						d.entries = nil
+						l.items = map[string]api.HistoryItem{}
+					}
+					l.countKey = ""
+					l.counts = nil
+					for i, hit := range page.Hits {
+						it := hit.Item
+						l.items[it.ID] = it
+						if cached, ok := l.details[it.ID]; ok {
+							entries[i].text = cached.text
+							entries[i].image = cached.image
+							entries[i].rich = cached.rich
+							entries[i].contentError = cached.contentError
+							entries[i].folder = cached.folder
+						}
+						at := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == it.ID })
+						if at < 0 {
+							d.entries = append(d.entries, entries[i])
+						} else {
+							d.entries[at] = entries[i]
+						}
+					}
+					// Keep detail memory bounded by the visible page set.
+					for id := range l.details {
+						if _, ok := l.items[id]; !ok && id != selected {
+							delete(l.details, id)
+						}
+					}
+					if selectedEntry != nil {
+						if selectedItem.Revision != selectedRevision {
+							l.dropDetail(d, selected)
+						}
+						l.retained = selectedEntry
+						l.items[selected] = selectedItem
+					} else {
+						l.retained = nil
+					}
+					if more && len(d.entries) > historyWindowLimit {
+						drop := len(d.entries) - historyWindowLimit
+						d.entries = slices.Clone(d.entries[drop:])
+						offset += drop
+					}
+					l.windowOffset = offset
+					l.checkpoints = points
+					l.historyRevision = page.HistoryRevision
+					l.historyInvalid = false
+					l.pageRetry = time.Time{}
+					keep := map[string]bool{selected: selectedEntry != nil}
+					for _, v := range d.entries {
+						keep[v.id] = true
+					}
+					for id := range l.items {
+						if !keep[id] {
+							delete(l.items, id)
 							l.dropDetail(d, id)
 						}
 					}
+					l.cursor = page.NextCursor
 				}
-				if !more {
-					d.entries = nil
-					l.items = map[string]api.HistoryItem{}
-				}
-				l.countKey = ""
-				l.counts = nil
-				for i, hit := range page.Hits {
-					it := hit.Item
-					l.items[it.ID] = it
-					if cached, ok := l.details[it.ID]; ok {
-						entries[i].text = cached.text
-						entries[i].image = cached.image
-						entries[i].rich = cached.rich
-						entries[i].contentError = cached.contentError
-						entries[i].folder = cached.folder
-					}
-					at := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == it.ID })
-					if at < 0 {
-						d.entries = append(d.entries, entries[i])
-					} else {
-						d.entries[at] = entries[i]
-					}
-				}
-				// Keep detail memory bounded by the visible page set.
-				for id := range l.details {
-					if _, ok := l.items[id]; !ok {
-						delete(l.details, id)
-					}
-				}
-				l.cursor = page.NextCursor
+				l.connected = true
 				l.config = saved
 				d.projectLiveConfig()
 				d.projectTags(tags)
@@ -418,9 +550,10 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				if d.selected == "" && len(d.entries) > 0 {
 					d.selectEntry(d.entries[0].id)
 				}
-				if !slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == d.selected }) {
-					d.selected = ""
+				if d.current() == nil {
+					d.selectEntry("")
 					l.detailKey = ""
+					d.quickLook, d.detailOpen, d.inspector = false, false, false
 				}
 			}
 		}()

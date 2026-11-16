@@ -278,7 +278,7 @@ func renderResult(c *ui.Context, k uikit.Kit, m Model, tr func(string) string) {
 		for _, v := range []struct {
 			label string
 			count int
-		}{{"失败记录", m.Report.Failed}, {"缺失内容", m.Report.MissingParts}, {"校验失败", m.Report.VerificationFailed}} {
+		}{{"失败记录", m.Report.Failed}, {"缺失内容", m.Report.MissingParts}, {"校验失败", m.Report.VerificationFailed}, {"颜色导入失败", m.Report.ColorFailures}, {"待补回颜色", m.Report.ColorsMissing}} {
 			if v.count > 0 {
 				stats = append(stats, v)
 			}

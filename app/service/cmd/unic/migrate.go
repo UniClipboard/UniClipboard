@@ -44,6 +44,9 @@ successful records are not duplicated. A dry run is not a completed import.
 
 For an older import with missing tags, rerun normally to diagnose tag_mismatches.
 Use --repair-tags to add missing source tags to unedited imported records only.
+It also fills missing tag colors. Existing target color overrides are preserved.
+Fresh imports preserve palette and custom hex colors from the v1 tag layout.
+Check color_failures and colors_missing; invalid layouts or settings report partial.
 Edited records and deletions are preserved. Check tag_repairs_skipped and resolve
 those records manually in v2. Back up the target before repair. Repair is idempotent.
 Built-in link/image/directory/code tags retain their canonical v2 identities.
@@ -151,8 +154,8 @@ func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
 	if *jsonMode {
 		_ = json.NewEncoder(out).Encode(report)
 	} else {
-		_, _ = fmt.Fprintf(out, "%s: total=%d recoverable=%d imported=%d skipped=%d failed=%d missing_parts=%d verified=%d verification_failed=%d tags=%d tag_failures=%d unsupported_tags=%d tag_mismatches=%d tags_repaired=%d tag_repairs_skipped=%d\n",
-			report.Status, report.Total, report.Recoverable, report.Imported, report.Skipped, report.Failed, report.MissingParts, report.Verified, report.VerificationFailed, report.Tags, report.TagFailures, report.UnsupportedTags, report.TagMismatches, report.TagsRepaired, report.TagRepairsSkipped)
+		_, _ = fmt.Fprintf(out, "%s: total=%d recoverable=%d imported=%d skipped=%d failed=%d missing_parts=%d verified=%d verification_failed=%d tags=%d tag_failures=%d unsupported_tags=%d tag_mismatches=%d tags_repaired=%d tag_repairs_skipped=%d colors_imported=%d colors_preserved=%d colors_missing=%d colors_verified=%d color_failures=%d\n",
+			report.Status, report.Total, report.Recoverable, report.Imported, report.Skipped, report.Failed, report.MissingParts, report.Verified, report.VerificationFailed, report.Tags, report.TagFailures, report.UnsupportedTags, report.TagMismatches, report.TagsRepaired, report.TagRepairsSkipped, report.ColorsImported, report.ColorsPreserved, report.ColorsMissing, report.ColorsVerified, report.ColorFailures)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintln(errOut, err)

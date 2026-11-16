@@ -264,3 +264,33 @@ the original creation time and exact content bytes. It checks the original
 activity time only at revision 1. Remaining tag differences or deleted mapped
 records remain verification failures and report `partial`; they require manual
 review in v2. See the [repeatable process receipt](../exec/2252-v1-migration-tags.md).
+
+### v1 tag color preservation
+
+The importer reads `history-tags/layout.v1.json` separately from the encrypted
+tag tables. It accepts version 1 with at most 1 MiB, palette names `orange`,
+`blue`, `green`, `purple`, `gray`, and six-digit hexadecimal colors. Hexadecimal
+values become lowercase. Custom layout IDs resolve through the authenticated
+source definition map. Built-in layout IDs use the mapping above. Stale custom
+IDs without a surviving definition are ignored. Conflicting colors from custom
+IDs that collapse to one v2 name fail color import. An absent file uses v1
+built-in defaults: Link blue, Code purple, Image green and Folder gray.
+
+Colors remain host presentation settings. They are not Engine metadata or
+synchronized tag edits. The importer writes only `desktop.tag_colors` through
+the existing configuration manager while holding the offline target lock.
+Keys remain SHA256 of the v2 canonical identifier or custom name. Existing
+target overrides, including explicit gray, always win. Other configuration
+values remain unchanged. The usual configuration CAS rejects concurrent edits.
+The first import of a source fills missing colors. When the source already has
+mapped records, a normal rerun reports missing colors without writing them;
+explicit `--repair-tags` fills those gaps. This also supports earlier imports
+that lack a target config file. Repeated repair makes no further changes.
+
+Reports expose `colors_imported`, `colors_preserved`, `colors_missing`,
+`colors_verified` and `color_failures`. Verification reopens the persisted
+configuration. Missing colors or failures make the migration partial. Invalid
+layouts and invalid target config do not overwrite existing settings or block
+recoverable history import. Dry runs validate the source layout and never
+create target configuration. Desktop projects saved overrides for both built-in
+and custom tags. Code's default is purple even without an override.

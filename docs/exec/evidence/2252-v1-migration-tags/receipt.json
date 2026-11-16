@@ -1,4 +1,13 @@
 {
+  "actual_color_overrides": {
+    "1d0fd5f9336d9103b3ed62c663b44b847af5d14203b2259ddf35507659de5908": "orange",
+    "2286171e1526d2e5b1cc2919ddb24fb448931a180d9c01b6f6bd177d6b07f42b": "gray",
+    "276ba90724b88fd63fa8932cf5b46995f0965b07d23fc36396659f7130ad1766": "purple",
+    "9024c197d84940e47ff6aa631b7711c4cbff4e7fb2fe1a574a3592b662983a0d": "#12ab34",
+    "a94913131b7ea03f4684d9ccb8278994e0bd3b94073564c4698b177354a5d3a0": "#abcdef",
+    "d7c5cb03c36b670a90a56ffbb03f05ba88810aa62b35f616c286a286f88e64b4": "purple",
+    "febe1d741b49e5a9c31526728d8c5134a803adfc4c04c4f052673722ed85597e": "green"
+  },
   "actual_tags": {
     "entry-duplicate": [
       "builtin:link"
@@ -16,17 +25,24 @@
     ]
   },
   "binary_sha256": {
-    "unic": "f1b80bdb383027302a681c2be35e0f0e5139a61e2ab1148b427b082de202c4ee",
-    "unicd": "c5e4b8b1e83b91156184f2ea6553782e1b43d5b8ed40b1689f703b7825f46233"
+    "unic": "29aa2b3b57dcecc9e41ced123fd74be69f2e11b4cda285007736b5123955c075",
+    "unicd": "6eee63dfa059d4736f839dffe80ceea82f746f9dcaf521bfcd4bded5b2ff4563"
   },
   "checks": [
     "custom associations, multiple tags, canonical built-ins and name collision",
     "real history/tag/search socket filters after two daemon starts",
     "explicit repair preserves target edits and deletion and is idempotent",
+    "palette and hex colors, built-in defaults, target overrides and restart persistence",
+    "invalid color layouts and target config report partial; missing layout preserves v1 defaults",
     "unsupported favorites, corrupted assignments and missing definitions report partial",
     "source profile and implementation checksums unchanged"
   ],
   "damaged_assignment_report": {
+    "color_failures": 0,
+    "colors_imported": 7,
+    "colors_missing": 0,
+    "colors_preserved": 0,
+    "colors_verified": 7,
     "failed": 1,
     "imported": 3,
     "missing_parts": 0,
@@ -43,7 +59,34 @@
     "verification_failed": 0,
     "verified": 3
   },
+  "default_color_report": {
+    "color_failures": 0,
+    "colors_imported": 4,
+    "colors_missing": 0,
+    "colors_preserved": 0,
+    "colors_verified": 4,
+    "failed": 0,
+    "imported": 4,
+    "missing_parts": 0,
+    "recoverable": 0,
+    "skipped": 0,
+    "status": "complete",
+    "tag_failures": 0,
+    "tag_mismatches": 0,
+    "tag_repairs_skipped": 0,
+    "tags": 3,
+    "tags_repaired": 0,
+    "total": 4,
+    "unsupported_tags": 0,
+    "verification_failed": 0,
+    "verified": 4
+  },
   "diagnosis": {
+    "color_failures": 0,
+    "colors_imported": 0,
+    "colors_missing": 6,
+    "colors_preserved": 1,
+    "colors_verified": 1,
     "failed": 0,
     "imported": 0,
     "missing_parts": 0,
@@ -61,6 +104,11 @@
     "verified": 0
   },
   "dry_run_report": {
+    "color_failures": 0,
+    "colors_imported": 0,
+    "colors_missing": 0,
+    "colors_preserved": 0,
+    "colors_verified": 0,
     "failed": 0,
     "imported": 0,
     "missing_parts": 0,
@@ -76,6 +124,15 @@
     "unsupported_tags": 0,
     "verification_failed": 0,
     "verified": 0
+  },
+  "expected_colors": {
+    "Links": "#12ab34",
+    "builtin:code": "purple",
+    "builtin:folder": "gray",
+    "builtin:image": "#abcdef",
+    "builtin:link": "purple",
+    "unused": "green",
+    "标签": "orange"
   },
   "expected_tags": {
     "entry-duplicate": [
@@ -94,6 +151,7 @@
     ]
   },
   "fixture_sha256": {
+    "history-tags/layout.v1.json": "69ada88c8059f6d27f00fac82e3e151ec9d7f90b8e14621c25c9741b3e6203ad",
     "profile-data-generations/372bd6fe8b22727a1a5057fe05a2e2a9702c9457357c64e639a7898971d96cae/v3-payloads/blobs/blob-file": "7a550e162d515e7cfab3734edbfbc098ddbade004f7ad2a2bbe1b2d47473afaf",
     "profile-data-generations/372bd6fe8b22727a1a5057fe05a2e2a9702c9457357c64e639a7898971d96cae/v3-payloads/blobs/blob-image": "c6906c90939d6c95481c0ed48f94a3f3c0cbc6378cf08e36488f36a819e9094e",
     "profile-data-generations/372bd6fe8b22727a1a5057fe05a2e2a9702c9457357c64e639a7898971d96cae/v3-payloads/profile.sqlite": "35f013b887f99d04e1e82d4cb68b975c153d490441bfc2c1ae18da2bf2d44cfd",
@@ -103,6 +161,11 @@
     "vault/profile-secrets-v1": "2bba308788ef0c48e3857c8bd94cfa007ec44ae6229a07e66bf4106fd1f8993c"
   },
   "initial_report": {
+    "color_failures": 0,
+    "colors_imported": 7,
+    "colors_missing": 0,
+    "colors_preserved": 0,
+    "colors_verified": 7,
     "failed": 0,
     "imported": 4,
     "missing_parts": 0,
@@ -119,8 +182,35 @@
     "verification_failed": 0,
     "verified": 4
   },
+  "missing_config_color_diagnosis": {
+    "color_failures": 0,
+    "colors_imported": 0,
+    "colors_missing": 7,
+    "colors_preserved": 0,
+    "colors_verified": 0,
+    "failed": 0,
+    "imported": 0,
+    "missing_parts": 0,
+    "recoverable": 0,
+    "skipped": 4,
+    "status": "partial",
+    "tag_failures": 0,
+    "tag_mismatches": 3,
+    "tag_repairs_skipped": 0,
+    "tags": 3,
+    "tags_repaired": 0,
+    "total": 4,
+    "unsupported_tags": 0,
+    "verification_failed": 4,
+    "verified": 0
+  },
   "native_ui": "NOT_RUN",
   "orphaned_assignment_report": {
+    "color_failures": 0,
+    "colors_imported": 4,
+    "colors_missing": 0,
+    "colors_preserved": 0,
+    "colors_verified": 4,
     "failed": 1,
     "imported": 3,
     "missing_parts": 0,
@@ -137,7 +227,34 @@
     "verification_failed": 0,
     "verified": 3
   },
+  "precolored_target_report": {
+    "color_failures": 0,
+    "colors_imported": 6,
+    "colors_missing": 0,
+    "colors_preserved": 1,
+    "colors_verified": 7,
+    "failed": 0,
+    "imported": 4,
+    "missing_parts": 0,
+    "recoverable": 0,
+    "skipped": 0,
+    "status": "complete",
+    "tag_failures": 0,
+    "tag_mismatches": 0,
+    "tag_repairs_skipped": 0,
+    "tags": 3,
+    "tags_repaired": 0,
+    "total": 4,
+    "unsupported_tags": 0,
+    "verification_failed": 0,
+    "verified": 4
+  },
   "repair": {
+    "color_failures": 0,
+    "colors_imported": 6,
+    "colors_missing": 0,
+    "colors_preserved": 1,
+    "colors_verified": 7,
     "failed": 0,
     "imported": 0,
     "missing_parts": 0,
@@ -155,6 +272,11 @@
     "verified": 2
   },
   "repeat_report": {
+    "color_failures": 0,
+    "colors_imported": 0,
+    "colors_missing": 0,
+    "colors_preserved": 7,
+    "colors_verified": 7,
     "failed": 0,
     "imported": 0,
     "missing_parts": 0,
@@ -171,7 +293,7 @@
     "verification_failed": 0,
     "verified": 4
   },
-  "source_commit": "0a487e277e8525f29076ba65ecefe886367555ff",
+  "source_commit": "e8f8ee6e511fc867dc4ab1a8827bac35de559b04",
   "source_sha256": {
     "app/service/AGENTS.md": "8b1603af3eb7ffc4213080319e28656eff63b4525b727dd6fb5978287f1217aa",
     "app/service/README.md": "e3925d85d165cbffa653b7e793bbf94f5590fb66fea69d73327c92b7729c4c9c",
@@ -182,7 +304,7 @@
     "app/service/cmd/unic/history_test.go": "609920a2525d9ef7b4347b43ff336da6301d5cfedb5a0d9666f40284abccc656",
     "app/service/cmd/unic/logs_export.go": "43e7ecb1236e4eb846a4cbb05e4ed1c0ab0923c7f5c808f1f2945a8a2f379a13",
     "app/service/cmd/unic/main.go": "ba9e09d74269634f0962b54a2e62f28485a75f1c877d2af0fab8da9a20a500b3",
-    "app/service/cmd/unic/migrate.go": "0677e79ff5cb7800ffa405f98d9b654260f4c694f2107d82aa7e002477b0e5af",
+    "app/service/cmd/unic/migrate.go": "efce41fcd30596f9a97fc56d56d08b1477af67450bf012e211d7901f5ae02679",
     "app/service/cmd/unic/plugin.go": "4bd628a59762bdce4cbc66e5b69cecb873906fcac59140fa48896a36b8fafbfe",
     "app/service/cmd/unic/plugin_test.go": "f792aacc883fb878950a072f9f96fd9c0c941020f1526d870814ea36e7566552",
     "app/service/cmd/unic/requirements.go": "797e1d8038f0ebd323b436e155abb8beb0e922a0dfce1caebf3552ee43d3a305",
@@ -227,9 +349,9 @@
     "app/service/internal/server/protocol_alias_test.go": "fa9fc8ba813a97ff77bdec69fb13d91d8364fae422cf2fd53fa79bb692d56e1a",
     "app/service/internal/server/search.go": "7f9720e7cbd6867cb0ed7e498a784565d00fb81846c72f6cbd1b548dbfd43522",
     "app/service/internal/server/server.go": "7e061266d27dbb546858e8128b6ec1f862809ebb3bcec2733fb11f2dc508a451",
-    "e2e/headless/README.md": "2a631955641417aa88c6686caef284e2ab741ffc87b7420575a2bfa743bfe7d1",
+    "e2e/headless/README.md": "0e791ffdf19ac0ae6e13ecf0ff87f8fa944165eca1560749cd6c619d7ba15a10",
     "e2e/headless/headless_test.go": "c697a48cfb611c8488f2e9b6bc6cbb467dbd4fa97e776e2219a223b25b122c91",
-    "e2e/headless/migration_tags_test.go": "71296f4fc72fec6487a7c9837eec1d362a45b90e7a7f6d6f5ce035570340b088",
+    "e2e/headless/migration_tags_test.go": "552c108b3213b555e348f31ace6873ab46eb56dbf422f22c553f685041b539d6",
     "engine/action.go": "c3c6c2e0260d14203b074e37cc71e9139b276bfa23a40348e2f022ac13b7ca3e",
     "engine/action_test.go": "b889ec64fb62c55724705577052734b9a0250227c1a32e1f4ca12af786982ca3",
     "engine/backend.go": "4ffbac1fa7cd24c03daccfae9e09060f20c3ced475cc710eaf47273ed667d38f",
@@ -435,9 +557,10 @@
     "internal/v1migration/hash_test.go": "3cca54e8b50ccd313d78e971dab4d9b11839172e48a1eadd3b27353b55e38aa0",
     "internal/v1migration/layout.go": "d7697badf384a72b57a034184614b5657194bac28b3e4c2142b1b03d8c0c4404",
     "internal/v1migration/local_test.go": "6be1aa909238e7f56132f6cdfb9aa48371647b8219a120b087f26765ec052103",
-    "internal/v1migration/migrate.go": "48e38e361b5ee94e8467bf9b9bb5e01a1352c48f7755f3437367fab6e63d16ea",
+    "internal/v1migration/migrate.go": "a47be160e29d8e41b14681591c0672ecf7437013544c916a73dc19a7bad95de5",
     "internal/v1migration/migrate_test.go": "2f96af30354809d1323ccc6b4db27a83dbc89dee28f180c261bf910e524d789b",
     "internal/v1migration/source.go": "79e5ce2e5652bfe2b611fe44e7f1cb4a4da47cb7943422904f1f16abe584898e",
+    "internal/v1migration/tag_colors.go": "2d185576995461267ce8322dea493bcd9f38fbf8771876e880aa3853a0ba2cfd",
     "internal/v1migration/testdata/generator/Cargo.lock": "60618f472cd221dfd337f8d035f50e157a5a219e560c354297630c5d77bb1c8d",
     "internal/v1migration/testdata/generator/Cargo.toml": "b153044f002a77bf6532a507536b7a9ae016c30491667a253175a3a56e5a1570",
     "internal/v1migration/testdata/generator/src/main.rs": "f0fa1ad84bf5f40a9061186511dde02e73dedaa7f2dda2c8c9569df433a2b097",
@@ -478,6 +601,11 @@
   "status": "passed",
   "temporary_profiles_removed": true,
   "unsupported_report": {
+    "color_failures": 0,
+    "colors_imported": 7,
+    "colors_missing": 0,
+    "colors_preserved": 0,
+    "colors_verified": 7,
     "failed": 0,
     "imported": 4,
     "missing_parts": 0,

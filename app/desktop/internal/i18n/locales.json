@@ -3832,5 +3832,17 @@
     "ja": "この項目を同期しない",
     "pt-BR": "Não sincronizar este item",
     "ru": "Не синхронизировать этот элемент"
+  },
+  "颜色导入失败": {
+    "en": "Color import failures",
+    "ja": "色のインポート失敗",
+    "pt-BR": "Falhas ao importar cores",
+    "ru": "Ошибки импорта цветов"
+  },
+  "待补回颜色": {
+    "en": "Missing colors",
+    "ja": "未復元の色",
+    "pt-BR": "Cores ausentes",
+    "ru": "Отсутствующие цвета"
   }
 }

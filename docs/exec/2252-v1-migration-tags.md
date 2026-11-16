@@ -86,3 +86,88 @@ After the fix, the pinned full lint run reported `0 issues`. The CI formatter
 check produced no diff. The production migration process scenario passed again.
 The attached receipt and checksum manifest were regenerated from this source.
 No production runtime behavior changed.
+
+## Color preservation implementation contract
+
+Read `history-tags/layout.v1.json` with a 1 MiB bound. Version 1 contains
+`sidebar` and `colors`. Resolve custom IDs through authenticated definitions;
+resolve built-in IDs through the canonical migration mapping. Preserve palette
+colors and normalize six-digit hexadecimal colors to lowercase. A missing file
+uses v1 built-in defaults, including purple Code. Ignore stale custom IDs with
+no surviving definition. Do not infer built-in identity from display names.
+
+Use the existing target `desktop.tag_colors` setting and atomic configuration
+CAS. The migration's exclusive target lock covers the color write. Preserve
+all existing overrides and unrelated settings. A fresh source import fills
+missing overrides; a mapped source requires explicit `--repair-tags` to fill
+missing colors. Existing target overrides win. Verify persisted colors after
+reopening configuration. Keep presentation metadata outside Engine storage.
+Desktop must project saved colors for both built-in and custom tags.
+
+### Color failure inventory
+
+Malformed/truncated/oversized layout; unsupported version; invalid color;
+ambiguous duplicate-name colors; unknown stale ID; localized-name collision;
+missing layout defaults; existing target colors; invalid target config;
+interruption/repeat; repair of already-imported profiles; preservation of
+unrelated target settings; config CAS conflict; lost overrides on restart;
+dry-run writes; source writes; raw personal data in receipts. Layout or
+configuration failures must report partial migration without claiming color
+success. Native visual acceptance remains outside this process scenario.
+
+### Color acceptance result
+
+The initial production migration scenario reproduced the missing target color
+configuration. The corrected scenario passed with palette and uppercase hex
+source colors, an unused colored definition, a stale layout ID and a custom
+Links name distinct from the built-in Link ID. Source hex colors normalize to
+lowercase. Missing layouts preserve all four v1 built-in defaults.
+
+The scenario verified colors through parsed persisted settings and the real
+service configuration API after two service starts. Both initial import into
+an existing target and later repair preserved explicit target overrides and
+unrelated settings. A normal rerun of an older import diagnosed six missing
+colors without adding them. Explicit repair added six and preserved one.
+Repeated repair added none. Malformed, unsupported-version, oversized and
+invalid-color layouts reported partial completion. Invalid target configuration
+remained unchanged and produced a color failure. Source checksums remained
+unchanged. The refreshed JSON receipt contains expected colors, actual hashed
+configuration entries and color counts alongside the tag acceptance evidence.
+
+Desktop projection now reads saved built-in overrides as well as custom-tag
+overrides. Code defaults to purple. Local native visual acceptance remains
+NOT_RUN; the desktop package is compiled without opening an application.
+
+The canonical `data-binding` case also checks built-in color overrides in the
+production Desktop model, refresh reconciliation and a newly opened model.
+Its later settings-menu checks use the software tester, not a native window.
+The receipt identifies this software rendering explicitly. The first run passed
+the color assertions but exposed a menu test race: the first frame can start a
+background read and disable the trigger. The scenario now waits for the rendered
+idle state and uses Reduce Motion to keep the sheet stationary before pressing
+the menu. Animation behavior remains covered by its dedicated scenarios. Existing tag-manager count assertions now
+include the sixth built-in Code tag.
+
+The setup result also displays color failures and missing-color counts. The
+new labels are translated into every supported desktop language.
+
+Validation for the color follow-up:
+
+- `TMPDIR=/private/tmp go test -race ./internal/v1migration ./app/service/cmd/unic ./internal/localconfig ./engine`: passed.
+- `go vet ./internal/v1migration ./e2e/headless ./app/service/cmd/unic`: passed.
+- Pinned `golangci-lint v2.15.0` full lint: `0 issues`; formatter check: no diff.
+- Production migration color E2E: passed with a refreshed checksummed receipt.
+- Canonical `make desktop-e2e CASE=data-binding`: passed after menu synchronization.
+- Canonical `make desktop-e2e CASE=tag-manager`: passed with the six built-in tags.
+- Desktop package compilation and translation/setup package checks: passed.
+
+These results establish process persistence, production model projection and
+software UI behavior. They do not establish native-window appearance or system
+clipboard behavior. Retain only the small migration and binding receipts; owned
+source snapshots, binaries, logs and software screenshots are disposable.
+
+The [Desktop color binding receipt](evidence/2252-v1-migration-tags/desktop-color-binding.json)
+records successful production model color projection, reconciliation and reopen.
+It reports software rendering for the later settings-menu checks and records
+that no native window or system clipboard was used. Both JSON receipts are
+covered by the checksum manifest.

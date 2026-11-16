@@ -16,8 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/v1migration"
 	"github.com/uniclipboard/unic/internal/v1migration/v1fixture"
 )
@@ -135,6 +138,36 @@ func TestProductionMigrationTags(t *testing.T) {
 		}))
 		return out
 	}
+	layoutPath := filepath.Join(source, "history-tags", "layout.v1.json")
+	need(t, os.MkdirAll(filepath.Dir(layoutPath), 0700))
+	layout := []byte(`{"version":1,"sidebar":["link","code","image","directory"],"colors":{"tag-one":"orange","tag-collision":"#12AB34","tag-unused":"green","link":"purple","image":"#ABCDEF","00000000-0000-4000-8000-000000000001":"orange"}}`)
+	need(t, os.WriteFile(layoutPath, layout, 0600))
+	colorKey := func(id string) string { sum := sha256.Sum256([]byte(id)); return hex.EncodeToString(sum[:]) }
+	expectedColors := map[string]string{"标签": "orange", "Links": "#12ab34", "unused": "green", "builtin:link": "purple", "builtin:code": "purple", "builtin:image": "#abcdef", "builtin:folder": "gray"}
+	readConfig := func(dir string) config.Config {
+		raw, err := os.ReadFile(filepath.Join(dir, "config.toml"))
+		need(t, err)
+		cfg, err := config.Parse(raw)
+		need(t, err)
+		return cfg
+	}
+	saveConfig := func(dir string, edit func(*config.Config)) {
+		m, err := config.Open(filepath.Join(dir, "config.toml"), nil)
+		need(t, err)
+		cfg := m.Current()
+		edit(&cfg)
+		var b bytes.Buffer
+		need(t, toml.NewEncoder(&b).Encode(cfg))
+		_, err = m.Replace(m.State().Revision, b.Bytes())
+		need(t, err)
+	}
+	checkColors := func(cfg config.Config, expected map[string]string) {
+		for id, want := range expected {
+			if cfg.Desktop.TagColors[colorKey(id)] != want {
+				t.Fatalf("color %s=%q want=%q", id, cfg.Desktop.TagColors[colorKey(id)], want)
+			}
+		}
+	}
 	before := snapshot()
 	receipt["fixture_sha256"] = before
 	target := filepath.Join(work, "target")
@@ -174,6 +207,10 @@ func TestProductionMigrationTags(t *testing.T) {
 	receipt["dry_run_report"] = dry
 	first := migrate(target, 0)
 	receipt["initial_report"] = first
+	checkColors(readConfig(target), expectedColors)
+	receipt["expected_colors"] = expectedColors
+	receipt["actual_color_overrides"] = readConfig(target).Desktop.TagColors
+
 	src, err := v1migration.Open(ctx, source, "fixture", []byte(f.Passphrase), nil)
 	need(t, err)
 	sourceID := src.ID()
@@ -212,12 +249,37 @@ func TestProductionMigrationTags(t *testing.T) {
 		t.Fatal(repeat)
 	}
 	receipt["repeat_report"] = repeat
-	need(t, os.WriteFile(filepath.Join(target, "config.toml"), []byte("[telemetry]\nenabled=false\n[history]\nretention_days=0\n[sync]\nenabled=false\n"), 0600))
+	saveConfig(target, func(cfg *config.Config) {
+		cfg.Telemetry.Enabled = false
+		cfg.History.RetentionDays = 0
+		cfg.Sync.Enabled = false
+		cfg.DeviceName = "preserved-target"
+		cfg.Desktop.TagColors[colorKey("Links")] = "blue"
+		cfg.Desktop.TagColors[colorKey("unrelated")] = "orange"
+	})
+	targetColors := map[string]string{}
+	for id, color := range expectedColors {
+		targetColors[id] = color
+	}
+	targetColors["Links"] = "blue"
+	targetColors["unrelated"] = "orange"
+	editedRepeat := migrate(target, 0)
+	if editedRepeat["colors_imported"] != float64(0) {
+		t.Fatal(editedRepeat)
+	}
+	checkColors(readConfig(target), targetColors)
+
 	for restart := 0; restart < 2; restart++ {
 		p := start(t, filepath.Join(work, "unicd"), nil, append(env, "UNIC_HOME="+target, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1"), filepath.Join(work, "daemon.log"))
 		defer p.stop()
 		c := api.NewClient(filepath.Join(target, "unic.sock"))
 		until(t, "daemon", func() bool { _, err := c.HistoryTags(ctx); return err == nil })
+		state, err := c.Config(ctx)
+		need(t, err)
+		checkColors(state.Config, targetColors)
+		if state.Config.DeviceName != "preserved-target" {
+			t.Fatal("unrelated setting lost")
+		}
 		tags, err := c.HistoryTags(ctx)
 		need(t, err)
 		if !slices.Contains(tags, "unused") {
@@ -278,18 +340,52 @@ func TestProductionMigrationTags(t *testing.T) {
 	need(t, err)
 	need(t, e.DeleteItem(ctx, engine.DeleteItemRequest{ID: deletedID, ExpectedRevision: 1}))
 	need(t, e.Close(ctx))
+	missingConfigDiagnosis := migrate(old, 3)
+	if missingConfigDiagnosis["colors_missing"] != float64(7) {
+		t.Fatal(missingConfigDiagnosis)
+	}
+	if _, err := os.Stat(filepath.Join(old, "config.toml")); !os.IsNotExist(err) {
+		t.Fatal("diagnosis created target config")
+	}
+	receipt["missing_config_color_diagnosis"] = missingConfigDiagnosis
+	saveConfig(old, func(cfg *config.Config) {
+		cfg.DeviceName = "keep-old-target"
+		cfg.Desktop.TagColors = map[string]string{colorKey("标签"): "blue", colorKey("unrelated"): "orange"}
+	})
 	diagnosis := migrate(old, 3)
 	receipt["diagnosis"] = diagnosis
+	if diagnosis["colors_missing"] != float64(6) {
+		t.Fatal(diagnosis)
+	}
+	beforeRepairConfig := readConfig(old)
+	if len(beforeRepairConfig.Desktop.TagColors) != 2 {
+		t.Fatal("normal rerun changed colors")
+	}
+
 	if diagnosis["tag_mismatches"] != float64(3) {
 		t.Fatal(diagnosis)
 	}
 	repair := migrate(old, 3, "--repair-tags")
 	receipt["repair"] = repair
+	if repair["colors_imported"] != float64(6) || repair["colors_preserved"] != float64(1) {
+		t.Fatal(repair)
+	}
+	repairedColors := map[string]string{}
+	for id, color := range expectedColors {
+		repairedColors[id] = color
+	}
+	repairedColors["标签"] = "blue"
+	repairedColors["unrelated"] = "orange"
+	checkColors(readConfig(old), repairedColors)
+	if readConfig(old).DeviceName != "keep-old-target" {
+		t.Fatal("repair changed unrelated settings")
+	}
+
 	if repair["tags_repaired"] != float64(2) || repair["tag_repairs_skipped"] != float64(1) {
 		t.Fatal(repair)
 	}
 	again := migrate(old, 3, "--repair-tags")
-	if again["tags_repaired"] != float64(0) {
+	if again["tags_repaired"] != float64(0) || again["colors_imported"] != float64(0) {
 		t.Fatal(again)
 	}
 	e, err = engine.New(ctx, engine.Options{DataDir: old, MigrationMode: true})
@@ -332,6 +428,58 @@ func TestProductionMigrationTags(t *testing.T) {
 	if !reflect.DeepEqual(sourceHashesBefore, after) {
 		t.Fatal("source tree changed")
 	}
+	precolored := filepath.Join(work, "precolored")
+	need(t, os.MkdirAll(precolored, 0700))
+	saveConfig(precolored, func(cfg *config.Config) {
+		cfg.DeviceName = "preexisting-settings"
+		cfg.Desktop.TagColors = map[string]string{colorKey("Links"): "gray"}
+	})
+	precoloredReport := migrate(precolored, 0)
+	if precoloredReport["colors_preserved"] != float64(1) || precoloredReport["colors_imported"] != float64(6) {
+		t.Fatal(precoloredReport)
+	}
+	wantedPrecolored := map[string]string{}
+	for id, color := range expectedColors {
+		wantedPrecolored[id] = color
+	}
+	wantedPrecolored["Links"] = "gray"
+	checkColors(readConfig(precolored), wantedPrecolored)
+	if readConfig(precolored).DeviceName != "preexisting-settings" {
+		t.Fatal("initial import changed existing config")
+	}
+	receipt["precolored_target_report"] = precoloredReport
+	checks = append(checks, "palette and hex colors, built-in defaults, target overrides and restart persistence")
+	for name, bad := range map[string][]byte{"malformed": []byte(`{"version":`), "missing-fields": []byte(`{"version":1,"sidebar":[]}`), "version": []byte(`{"version":2,"sidebar":[],"colors":{}}`), "invalid": []byte(`{"version":1,"sidebar":[],"colors":{"link":"red"}}`), "oversized": bytes.Repeat([]byte("x"), (1<<20)+1)} {
+		need(t, os.WriteFile(layoutPath, bad, 0600))
+		colorBefore := snapshot()
+		report := migrate(filepath.Join(work, "bad-color-"+name), 3)
+		if report["color_failures"] != float64(1) || report["imported"] != float64(4) {
+			t.Fatal(name, report)
+		}
+		if !reflect.DeepEqual(colorBefore, snapshot()) {
+			t.Fatal("layout source changed")
+		}
+	}
+	need(t, os.WriteFile(layoutPath, layout, 0600))
+	brokenTarget := filepath.Join(work, "broken-config")
+	need(t, os.MkdirAll(brokenTarget, 0700))
+	broken := []byte("[desktop\n")
+	need(t, os.WriteFile(filepath.Join(brokenTarget, "config.toml"), broken, 0600))
+	badConfig := migrate(brokenTarget, 3)
+	if badConfig["color_failures"] != float64(1) {
+		t.Fatal(badConfig)
+	}
+	unchanged, err := os.ReadFile(filepath.Join(brokenTarget, "config.toml"))
+	need(t, err)
+	if !bytes.Equal(unchanged, broken) {
+		t.Fatal("invalid target config overwritten")
+	}
+	need(t, os.Remove(layoutPath))
+	defaultReport := migrate(filepath.Join(work, "default-colors"), 0)
+	receipt["default_color_report"] = defaultReport
+	checkColors(readConfig(filepath.Join(work, "default-colors")), map[string]string{"builtin:link": "blue", "builtin:code": "purple", "builtin:image": "green", "builtin:folder": "gray"})
+	need(t, os.WriteFile(layoutPath, layout, 0600))
+	checks = append(checks, "invalid color layouts and target config report partial; missing layout preserves v1 defaults")
 	// Each failure case uses an independent target and preserves its source snapshot.
 	db, err = sql.Open("sqlite", dbpath)
 	need(t, err)

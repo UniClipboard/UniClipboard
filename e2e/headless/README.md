@@ -17,3 +17,8 @@ unsupported favorites and damaged assignments. `receipt.json` binds source and
 binary identities, fixture checksums and expected/actual mappings. `SHA256SUMS`
 checks the receipt. Profiles, binaries and raw process logs are temporary.
 Native GUI acceptance is outside this scenario.
+
+The same scenario checks v1 palette/hex colors, default built-in colors,
+protection of existing target overrides, explicit color repair and persistence
+through the real service configuration API. Missing colors and color failures
+must report partial completion.

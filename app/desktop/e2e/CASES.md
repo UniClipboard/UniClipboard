@@ -12,6 +12,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
+| [history-delivery](#history-delivery) | native | Show the delivery list of a history entry in the real Desktop before and after a send to a paired device. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
 | [idle-event-wakeup](#idle-event-wakeup) | native | Verify native service event and content completion delivery. |
@@ -317,6 +318,45 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance gui gui-navigation
+```
+
+## history-delivery
+
+Per-device delivery in history detail
+
+Steps: Pair one production peer, select a local entry, send it to the peer, then read the delivery list.
+
+Expected: The entry first shows the device as not sent, then as sent with a 1/1 device count.
+
+Forbidden: Fixture device rows, a delivery state that contradicts the production service, or missing recording.
+
+```text
+start
+start-pairing-peer
+ui-wait listItem 管理设备…
+ui-click listItem 管理设备…
+ui-wait button 邀请设备
+ui-click button 邀请设备
+ui-wait radio 完整票据
+ui-click radio 完整票据
+ui-wait button 复制票据
+peer-pair-desktop
+ui-wait text '核对并批准'
+ui-click button 接受
+assert-paired
+ui-wait button 完成
+ui-click button 完成
+submit delivery-1 'Delivery evidence entry'
+ui-wait listItem 'Delivery evidence entry'
+ui-click listItem 'Delivery evidence entry'
+ui-wait text 送达
+ui-wait text '0/1 台设备'
+screenshot not-sent
+enable-sync
+send-newest-to-peer delivery-send
+ui-wait text '1/1 台设备'
+screenshot sent
+stop-policy-peer
 ```
 
 ## history-search-copy

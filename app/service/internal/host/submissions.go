@@ -125,7 +125,7 @@ func (n *Node) commitExplicit(ctx context.Context, v api.SubmitInput) (engine.Su
 		return engine.SubmissionResult{}, apiErr(e, false)
 	}
 	defer func() { _ = n.e.ReleaseContent(context.Background(), h.LeaseID) }()
-	out, e := n.e.CommitContent(ctx, engine.CommitRequest{CancelOnContext: true, RequestID: engine.RequestID(v.RequestID), LeaseID: h.LeaseID, DeviceIDs: deviceIDs(v.DeviceIDs)})
+	out, e := n.e.CommitContent(ctx, engine.CommitRequest{CancelOnContext: true, RequestID: engine.RequestID(v.RequestID), LeaseID: h.LeaseID, DeviceIDs: deviceIDs(v.DeviceIDs), HistoryID: engine.HistoryID(v.HistoryID)})
 	if e == nil && out.SyncDisposition == engine.SyncQueued {
 		info := "text"
 		for _, p := range v.Snapshot.Parts {

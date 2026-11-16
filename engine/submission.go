@@ -219,7 +219,10 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	}
 	e.setSubmissionStage(entry, "processing")
 	var processed *processedContent
-	if failure == nil {
+	if failure == nil && req.existing != "" {
+		// A resend of a stored record: no processors, no new record.
+		processed = &processedContent{c: c, item: describePipelineItem(e.newID(), c, origin), policy: pipelinePolicy{Sync: true}}
+	} else if failure == nil {
 		processed, failure = e.processContent(ctx, pipelineCaptured, c, origin)
 		if failure == nil && req.action != nil {
 			processed.policy.Persist = true // the host applies the result through its history item
@@ -240,7 +243,9 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 		}
 	}
 	if failure == nil {
-		if processed.policy.Persist {
+		if req.existing != "" {
+			historyID = req.existing
+		} else if processed.policy.Persist {
 			// A record that cannot be stored means the commit failed: nothing is sent.
 			historyID, failure = e.persistHistory(ctx, processed, nil)
 		}
@@ -251,7 +256,9 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	}
 	if historyID != "" && failure == nil {
 		e.linkHistory(historyID, id, results)
-		e.notifyObservers(plugin.EventCommitted, string(historyID))
+		if req.existing == "" {
+			e.notifyObservers(plugin.EventCommitted, string(historyID))
+		}
 	}
 	e.mu.Lock()
 	if id != "" {
@@ -345,7 +352,7 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 		return SubmissionResult{}, derr
 	}
 	e.mu.Lock()
-	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids, DeviceIDs: devs})
+	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids, DeviceIDs: devs, existing: req.HistoryID})
 	e.mu.Unlock()
 	if err != nil {
 		return SubmissionResult{}, err

@@ -1,6 +1,6 @@
 # Desktop memory implementation and acceptance
 
-Status: event-driven rendering accepted; application image optimizations implemented; final acceptance in progress. The optional framework patch remains separate. Baseline workspace: `e6f03d5174ecc55ec73981d67ce93ba2ddfa746d`. The installed-process investigation used `bd89ff5a12885079e4259c3a72c90ab5e8b420ca`; implementation uses the current workspace.
+Status: event-driven rendering and application image optimizations accepted for the exercised macOS scenarios. Full Desktop acceptance has one reproduced baseline translation failure. The optional framework patch remains separate. Baseline workspace: `e6f03d5174ecc55ec73981d67ce93ba2ddfa746d`. The installed-process investigation used `bd89ff5a12885079e4259c3a72c90ab5e8b420ca`; implementation uses the current workspace.
 
 ## Ordered scope
 
@@ -44,23 +44,43 @@ Each image preview owns its first-shown frame and releases CPU pixels on a later
 - `idle-event-wakeup`: native async-delivery smoke passed. Its idle API deliberately excludes future timers.
 - `event-wakeup`: stopped-renderer production-service acceptance passed. Two seconds of future renderer time produced no idle heartbeat frames. A baseline control using original production sources failed with ten idle rebuilds in two seconds. Both main-history and quick-panel async delivery and independent recovery deadlines passed. A focused input caret is legitimate animation; the background-idle phase removes keyboard focus.
 - `search-contract` and `incremental-browsing`: passed with actual isolated services, bounded prefetch, cancellation and recovery.
-- `go test -race ./...`: 569 passed, 213 failed. An independent original-HEAD archive reproduced the same 569 passing and 213 failing tests, including 210 default-file-cache error messages. These broad failures are baseline failures, not a passing full suite.
+- Before image optimization, `go test -race ./...`: 569 passed, 213 failed. An independent original-HEAD archive reproduced the same 569 passing and 213 failing tests, including 210 default-file-cache error messages. These broad failures are baseline failures, not a passing full suite.
 - A release-mode UI-only candidate with read-only access to the existing history used 97.31 MB visible, 111.88-111.99 MB hidden, and 100.87-102.13 MB after restoration. This candidate used the original mygo dependency plus aggregate instrumentation. It does not prove that every production state is below 100 MB.
 - The isolated mygo patch retained idle trim and reduced 35 unchanged timed requests to one presentation and one trim. Actual native-screen pixel checks passed before and after hidden content changes, restoration and resize from 1100x720 to 800x600. The patch remains optional diagnostic evidence and is not adopted by this repository.
+- The full canonical Desktop run reports an `i18n` failure: `live_devices.go` uses an uncatalogued approval label. A separate canonical replay from the exact pre-image commit `f203085722809d8f00f545f67708ed958f252a0e` reproduces the identical failure. The replay freezes `git archive` source and records per-file hashes; its outer recorder HEAD remains the current checkout. This unrelated translation issue is not changed here.
 - `image-previews`: real PNG history, selected original dimensions, former-selection downgrade, unchanged stored bytes, quick-panel selection, JPEG EXIF orientation and shown-bitmap lifecycle passed. Original production sources fail on a 1024-pixel neighbor raster. The thumbnail-only stage passed before CPU release. Before decode serialization, the same transport scenario fails with four overlapping image-body readers; serialization passes with one.
 - Thumbnail-only native measurements: 91.75 MB visible, 102.24-105.17 MB hidden, 83.05-90.60 MB restored. Six images retain 694,272 bytes of CPU base/mips, compared with 14,735,712 bytes in the earlier attribution snapshot. The history changed between those snapshots; this is attribution evidence, not a fixed-corpus allocation benchmark.
 - After shown-pixel release: 87.24-87.35 MB visible, 100.35-100.45 MB hidden, 86.61-88.92 MB restored. Retained image CPU pixels fall to 364,544 bytes, with no retained mip pixels. These measurements use ordinary Go collection and scavenging. They do not force GC or set GOGC/GOMEMLIMIT.
 
 The installed Desktop and its daemon were not restarted or replaced. A hard 100 MB ceiling for arbitrary original images is not established. Decode scratch space, selected large originals and native compositor state remain distinct from idle thumbnail retention.
 
+## Final same-history native comparison
+
+The pre-image source is `f203085722809d8f00f545f67708ed958f252a0e`. The final application source is `4af0019e8fac9380c383169f1652e677a46aba7f`. The final instrumented snapshot was frozen before that commit; all 208 Desktop Go files match the committed files. Both probes use the same original pinned mygo version, with aggregate diagnostic counters only. No product fork patch is applied.
+
+The probes run sequentially against the same existing read-only service, using a fresh production history view at 1100 x 720. Both retain 50 metadata entries, 23 wanted details, six image objects and 2,500 cached text bytes. The selected entry is text. Each 34-second run samples visible state at 5/9 seconds, hidden state at 17/21 seconds and restored state at 28/32 seconds. Units are decimal MB of macOS physical footprint. Collection and page scavenging follow ordinary Go behavior; no forced GC or GC environment tuning is used.
+
+| State | Before image optimization | Final candidate |
+| --- | ---: | ---: |
+| Visible | 93.85-95.11 MB | 84.72-84.83 MB |
+| Hidden | 106.85 MB | 94.48-94.69 MB |
+| Restored | 96.05-97.31 MB | 75.71-82.00 MB |
+| Retained image CPU base/mips | 14,735,712 bytes | 364,544 bytes |
+
+The final candidate is below 100 MB at all six sample points in this run. It does not establish a long-duration or all-content ceiling. Decode temporaries, a selected large original, allocator/scavenger timing and native compositor state can exceed this idle scenario. The earlier per-stage numbers are independent process runs; do not attribute their entire physical-footprint difference to a single code change.
+
+The complete canonical Desktop run finishes with 44 PASS and one FAIL (`i18n`), with private cleanup PASS. The exact pre-image source reproduces that translation failure. Image previews, event wakeups, search/prefetch, incremental browsing, data binding, native history copy, startup and all native scenarios pass. Pinned golangci-lint v2.15.0 reports zero issues for desktopui. Formatting, three entrypoint builds and docscheck pass. Docscheck retains seven pre-existing stale-page warnings outside the updated overview.
+
 ## Retained evidence
 
 The canonical runner emits per-run source snapshots, binary hashes and self-contained reports under `.build/desktop-e2e`. Accepted targeted runs in this session were:
 
+- `20261116T084547Z-b9d944a8`: full canonical Desktop run, 44 PASS / one reproduced baseline FAIL.
 - `20261116T055148Z-c59abd99`: native `idle-event-wakeup`.
 - `20261116T055529Z-2f9fc76e`: process `event-wakeup`.
 - `20261116T055615Z-45270e4e`: process `incremental-browsing`.
 - `20261116T055616Z-a17be556`: process `search-contract`.
+- `desktop-memory-i18n-baseline`: identical original-source translation failure.
 - `20261116T084521Z-26095673`: process `image-previews`, including serial image reads.
 - `20261116T084434Z-4254140c`: expected red control before serialization (four overlapping readers).
 - `20261116T083943Z-26ea8fd8`: thumbnail-only process acceptance before CPU release.
@@ -82,3 +102,5 @@ Additional failure inventory before implementation:
 - Waiting for a decoder slot must honor context cancellation; every admitted exit must release its slot. Text/content jobs retain their existing four-reader concurrency.
 
 Use the existing x/image scaling capability where sufficient. JPEG auto-orientation is not provided by the standard decoder; use an established pure-Go image library for the bounded thumbnail path rather than copying EXIF parsing. The full-resolution selected path keeps mygo's existing decoder.
+
+Final native aggregate receipts, exact source-file hashes and reproduction scripts remain under `.cache/memory-image-current-baseline` and `.cache/memory-image-step3`. The baseline used a `git archive` snapshot. The final snapshot records its dirty-source parent plus per-file hashes. Diagnostic source copies, mygo copies, executable probes, temporary profiles and raw logs are removed after measurement. The installed Desktop PID 94960, daemon PID 707, start identities and installed executable SHA256 remain unchanged.

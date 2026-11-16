@@ -20,6 +20,7 @@ import (
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/appicons"
 	"github.com/uniclipboard/unic/app/desktop/internal/appupdates"
 	"github.com/uniclipboard/unic/internal/releaseinfo"
 
@@ -186,8 +187,13 @@ func runGUI(settings *config.Manager) error {
 		}
 	}
 	mygo.App.WhenReady(func() {
+		if runtime.GOOS == "darwin" {
+			if err := mygo.App.Dock.SetIcon(appicons.PNG); err != nil {
+				logHostFailure()
+			}
+		}
 		go func() { <-ctx.Done(); mygo.App.Quit() }()
-		updateTrayLanguage := setupTray(settings.Current().Desktop.Language)
+		updateTray := setupTray(ctx, settings.Current().Desktop)
 
 		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view), Hidden: !flow.Required() && settings.Current().Desktop.StartInBackground}
 		if uikit.DefaultSkin() == uikit.MacOS {
@@ -199,6 +205,9 @@ func runGUI(settings *config.Manager) error {
 			opts.Width, opts.Height = 640, 560
 		}
 		g.win = mygo.NewWindow(opts)
+		if err := g.win.SetIcon(appicons.PNG); err != nil {
+			logHostFailure()
+		}
 		if flow.Required() {
 			session.showSetup(false)
 		} else {
@@ -214,7 +223,7 @@ func runGUI(settings *config.Manager) error {
 						g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
 						session.runtime.screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut)
 					}
-					updateTrayLanguage(current.Desktop.Language)
+					updateTray(current.Desktop)
 					g.win.Invalidate()
 				})
 			}

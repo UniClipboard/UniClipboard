@@ -222,3 +222,78 @@ See the [observability contract](observability-contract.md#111-product-value-and
 ## Directory extension
 
 Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.
+
+## v1 tag migration and automatic recovery (issue 2252)
+
+The v1 importer reads encrypted `history_tag` definitions and encrypted
+`history_tag_assignment` associations. It reads built-in membership separately
+from `search_entry_tag`, restricted to the unlocked keyslot's profile ID.
+Custom display names never identify built-ins. Custom names beginning with the
+reserved `builtin:` namespace are rejected as unsupported source format.
+
+| v1 reserved tag ID | v2 tag ID | Treatment |
+| --- | --- | --- |
+| `link` | `builtin:link` | Preserve membership |
+| `image` | `builtin:image` | Preserve membership, including image-file membership |
+| `directory` | `builtin:folder` | Preserve membership; directory payloads remain ZIP imports |
+| `code` | `builtin:code` | Preserve membership; Desktop provides a localized built-in filter |
+| `favorited` | None | Not imported; increment `unsupported_tags` and report `partial` |
+
+The importer preserves custom names, multiple associations and unassigned
+custom definitions. It does not reconstruct or rebuild the v1 search index.
+A missing optional search tag table represents an older format; only available
+memberships can be preserved. It never derives built-ins from localized names.
+A malformed assignment, an unknown assigned custom ID, a missing definition or
+an invalid tag table fails the affected record and increments `tag_failures`.
+Definition authentication or decoding failures stop opening the source.
+Neither outcome can produce a complete successful migration.
+
+Every real migration run automatically fills safe missing tags and colors.
+CLI and Desktop setup both call `Source.Run` with the same defaults. There is
+no repair flag or opt-in option. Run the ordinary migration command again:
+`unic migrate --source DIR --target DIR --passphrase-stdin --json`.
+
+For mapped records whose revision is still 1, the importer unions missing
+source tags through `UpdateItem` with compare-and-swap. It never replaces
+content, expiry or existing target tags. It counts changed records in
+`tags_repaired`. It preserves edited records and counts missing-tag repairs
+it cannot apply in `tag_repairs_skipped`. Deleted records retain their import
+mapping and remain deleted. Repeated migration is idempotent, including
+interruption after a completed item update. Post-reopen verification reports
+remaining `tag_mismatches` separately from content verification.
+
+Any later metadata edit may advance `UpdatedAtMs`. Verification still requires
+the original creation time and exact content bytes. It checks the original
+activity time only at revision 1. Remaining tag differences or deleted mapped
+records remain verification failures and report `partial`; they require manual
+review in v2. See the [repeatable process receipt](../exec/2252-v1-migration-tags.md).
+
+### v1 tag color preservation
+
+The importer reads `history-tags/layout.v1.json` separately from the encrypted
+tag tables. It accepts version 1 with at most 1 MiB, palette names `orange`,
+`blue`, `green`, `purple`, `gray`, and six-digit hexadecimal colors. Hexadecimal
+values become lowercase. Custom layout IDs resolve through the authenticated
+source definition map. Built-in layout IDs use the mapping above. Stale custom
+IDs without a surviving definition are ignored. Conflicting colors from custom
+IDs that collapse to one v2 name fail color import. An absent file uses v1
+built-in defaults: Link blue, Code purple, Image green and Folder gray.
+
+Colors remain host presentation settings. They are not Engine metadata or
+synchronized tag edits. The importer writes only `desktop.tag_colors` through
+the existing configuration manager while holding the offline target lock.
+Keys remain SHA256 of the v2 canonical identifier or custom name. Existing
+target overrides, including explicit gray, always win. Other configuration
+values remain unchanged. The usual configuration CAS rejects concurrent edits.
+Every real migration fills missing colors, including mapped sources and earlier
+imports that lack a target config file. This is the same default in CLI and
+Desktop setup. Existing overrides remain untouched. Repeated migration makes
+no further changes. `colors_missing` counts gaps left after a failed color write.
+
+Reports expose `colors_imported`, `colors_preserved`, `colors_missing`,
+`colors_verified` and `color_failures`. Verification reopens the persisted
+configuration. Missing colors or failures make the migration partial. Invalid
+layouts and invalid target config do not overwrite existing settings or block
+recoverable history import. Dry runs validate the source layout and never
+create target configuration. Desktop projects saved overrides for both built-in
+and custom tags. Code's default is purple even without an override.

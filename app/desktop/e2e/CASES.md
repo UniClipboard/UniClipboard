@@ -48,6 +48,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
 | [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
 | [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
+| [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 
 ## builtin-plugin-policy
@@ -1014,6 +1015,20 @@ screenshot grid
 ui-click menuButton '更多操作'
 screenshot menu
 ui-key Escape
+```
+
+## tray-icon-settings
+
+Tray icon styles saved and applied
+
+Steps: Use the production settings view, real service/CLI, persisted TOML, configuration watcher and tray image controller; reopen and reject invalid values.
+
+Expected: Glyph is the default; both styles persist and apply without restart; duplicate updates do not publish images; failed delivery retries.
+
+Forbidden: Native GUI launch, fixture-only configuration, style changes rebuilding tray menus, or claiming OS-tray acceptance.
+
+```text
+acceptance desktopui tray-icon-settings
 ```
 
 ## unified-scrollbars

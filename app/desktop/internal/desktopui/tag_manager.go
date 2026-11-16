@@ -31,6 +31,7 @@ func builtinTags() []historyTag {
 		{id: plugin.TagImage, name: "图片", color: "green", builtin: true, sidebar: true},
 		{id: plugin.TagFiles, name: "文件", color: "gray", builtin: true, sidebar: true},
 		{id: plugin.TagFolder, name: "文件夹", color: "gray", builtin: true, sidebar: true},
+		{id: plugin.TagCode, name: "代码", color: "purple", builtin: true, sidebar: true},
 		{id: plugin.TagLink, name: "链接", color: "blue", builtin: true, sidebar: true},
 	}
 }
@@ -41,6 +42,11 @@ func (d *viewState) projectTags(ids []string) {
 	}
 	builtins := builtinTags()
 	for i := range builtins {
+		if d.live != nil {
+			if saved := d.live.config.Config.Desktop.TagColors[tagColorKey(builtins[i].id)]; saved != "" {
+				builtins[i].color = uikit.TagColor(saved)
+			}
+		}
 		if previous := d.tagByID(builtins[i].id); previous != nil {
 			builtins[i].sidebar = previous.sidebar
 		}

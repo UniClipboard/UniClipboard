@@ -34,7 +34,8 @@ import (
 
 // Failure scenarios are specified in docs/exec/desktop-live-data.md.
 // This drives the production binding and a production unicd process. It never
-// starts mygo, a renderer, a native window, or the system clipboard.
+// opens a native window or accesses the system clipboard. Settings menus use
+// the software tester; history and color projection use the production binding.
 func scenarioDesktopLiveData(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -52,7 +53,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 		}
 	}()
 	checks := []string{}
-	receipt := map[string]any{"go": runtime.Version(), "os": runtime.GOOS, "native_ui": false, "renderer": false, "system_clipboard": false}
+	receipt := map[string]any{"go": runtime.Version(), "os": runtime.GOOS, "native_ui": false, "renderer": "software", "system_clipboard": false}
 	hash := func(b []byte) string { v := sha256.Sum256(b); return hex.EncodeToString(v[:]) }
 	sources := map[string]string{}
 	for _, dir := range []string{"app/desktop", "internal/localapi", "internal/localconfig", "app/service", "engine"} {
@@ -150,7 +151,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 		t.Fatal("initial history read must expose foreground loading")
 	}
 	spin("empty history", func() bool { return d.live.loaded && !d.live.loading })
-	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != 5 {
+	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != 6 {
 		t.Fatal("fixture or entry flow leaked")
 	}
 	checks = append(checks, "opens empty history directly without fixtures")
@@ -294,7 +295,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 	checks = append(checks, "create-and-attach saves name-free color configuration and real history; invalid keys/colors are rejected")
 	// A stale color command must not overwrite another client's valid config.
 	changed := savedColors.Config
-	changed.Desktop.TagColors = map[string]string{tagColorKey("acceptance"): "green", tagColorKey("palette-created"): "blue"}
+	changed.Desktop.TagColors = map[string]string{tagColorKey("acceptance"): "green", tagColorKey("palette-created"): "blue", tagColorKey("builtin:link"): "#123abc", tagColorKey("builtin:code"): "#ab12cd"}
 	var colorData bytes.Buffer
 	if e = toml.NewEncoder(&colorData).Encode(changed); e != nil {
 		t.Fatal(e)
@@ -306,6 +307,21 @@ func scenarioDesktopLiveData(t *testing.T) {
 	spin("stale color error", func() bool { return !d.live.busy && d.live.message != "" })
 	spin("reconcile color conflict", func() bool { return !d.live.loading && d.tagColor("acceptance") == "green" })
 	checks = append(checks, "stale color save reports failure and preserves the concurrent color")
+	if d.tagColor("builtin:link") != "#123abc" || d.tagColor("builtin:code") != "#ab12cd" {
+		t.Fatal("built-in color overrides were not projected")
+	}
+	builtinDesktop := NewDesktop(ctx, client)
+	defer builtinDesktop.Close()
+	builtinView := builtinDesktop.d
+	spin("built-in colors reopen", func() bool {
+		builtinView.live.poll(builtinView)
+		return builtinView.live.loaded && !builtinView.live.loading
+	})
+	if builtinView.tagColor("builtin:link") != "#123abc" || builtinView.tagColor("builtin:code") != "#ab12cd" {
+		t.Fatal("built-in color overrides lost after reopen")
+	}
+	checks = append(checks, "real service built-in color overrides survive projection, reconciliation and Desktop reopen before software menu interaction")
+
 	current, e = client.GetHistory(ctx, id)
 	if e != nil {
 		t.Fatal(e)
@@ -626,7 +642,11 @@ func scenarioDesktopLiveData(t *testing.T) {
 		// The trigger is disabled while a write or read is in flight.
 		spin("failure policy idle", func() bool { return !d.live.busy && !d.live.loading })
 		// A new tester per step drops pointer state left by the previous menu.
-		tt = ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{})
+		// Reduce Motion keeps the settings sheet still while coordinates are used;
+		// motion behavior has its own dedicated acceptance case.
+		tt = ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true, TextScale: 1}})
+		// Rendering can start a background refresh. Wait until the actual trigger
+		// is enabled before opening the platform menu.
 		spin("failure policy trigger enabled", func() bool {
 			tt.Frame()
 			trigger, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时")
@@ -639,15 +659,14 @@ func scenarioDesktopLiveData(t *testing.T) {
 		x, y := trigger.Bounds.X+trigger.Bounds.W/2, trigger.Bounds.Y+trigger.Bounds.H/2
 		tt.Press(x, y)
 		if items := tt.Menu(); len(items) != 3 || !slices.Contains(items, step.choice) {
-			t.Fatalf("failure policy menu items for %q = %v", step.choice, items)
+			t.Fatalf("failure policy menu items for %q = %v (trigger=%+v busy=%v loading=%v)", step.choice, items, trigger, d.live.busy, d.live.loading)
 		}
-		tt.CloseMenu()
-		tt.Release(x, y)
-		// Click by position: the row title shares the trigger's accessible name.
-		tt.ClickAt(x, y)
+		// The native menu is already open from pointer-down. Choose from that
+		// menu rather than closing and reopening against a refreshed layout.
 		if err := tt.ChooseMenuItem(step.choice); err != nil {
 			t.Fatal(err)
 		}
+		tt.CancelPress()
 		spin("failure policy "+step.choice, func() bool {
 			tt.Frame()
 			return !d.live.busy && d.live.config.Config.Plugins.Instances["builtin.text"].OnError == step.want

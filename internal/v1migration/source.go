@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -19,6 +20,7 @@ import (
 	pathpkg "path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -27,16 +29,19 @@ import (
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 	_ "modernc.org/sqlite"
+
+	"github.com/uniclipboard/unic/plugin"
 )
 
 const maxPayload = 500 << 20
 
 type Source struct {
-	root   string
-	crypto *cryptoState
-	db     *sql.DB
-	tx     *sql.Tx
-	tags   map[string]string
+	root                     string
+	crypto                   *cryptoState
+	db                       *sql.DB
+	tx                       *sql.Tx
+	tags                     map[string]string
+	assignments, builtinTags bool
 }
 
 type Record struct {
@@ -45,7 +50,8 @@ type Record struct {
 	Tags                     []string
 	Parts                    []Part
 	// Unrecoverable parts are reported even when other parts can be imported.
-	MissingParts int
+	MissingParts    int
+	UnsupportedTags int
 }
 
 type Part struct {
@@ -104,7 +110,29 @@ func (s *Source) TagNames() []string {
 	}
 	return names
 }
+
+// ErrTags identifies a record whose tag associations cannot be safely imported.
+var ErrTags = errors.New("v1 migration: unsupported or damaged tags")
+
+func (s *Source) hasTable(name string) (bool, error) {
+	var n int
+	if s.tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", name).Scan(&n) != nil {
+		return false, ErrFormat
+	}
+	return n != 0, nil
+}
+
 func (s *Source) loadTags() error {
+	var err error
+	s.assignments, err = s.hasTable("history_tag_assignment")
+	if err != nil {
+		return err
+	}
+	s.builtinTags, err = s.hasTable("search_entry_tag")
+	if err != nil {
+		return err
+	}
+
 	var exists int
 	if s.tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='history_tag'").Scan(&exists) != nil {
 		return ErrFormat
@@ -132,7 +160,7 @@ func (s *Source) loadTags() error {
 		}
 		err = json.Unmarshal(plain, &payload)
 		clear(plain)
-		if err != nil || payload.Name == "" {
+		if err != nil || payload.Name == "" || strings.HasPrefix(payload.Name, "builtin:") {
 			return ErrFormat
 		}
 		s.tags[id] = payload.Name
@@ -191,31 +219,66 @@ WHERE deleted_at_ms IS NULL ORDER BY created_at_ms,entry_id LIMIT 128 OFFSET ?`,
 	}
 }
 func (s *Source) readRecord(r *Record, category string) error {
-	if len(s.tags) > 0 {
+	if s.assignments {
 		var ct []byte
 		err := s.tx.QueryRow("SELECT tags_ct FROM history_tag_assignment WHERE entry_id=?", r.ID).Scan(&ct)
 		if err == nil {
 			plain, e := s.crypto.open(ct, []byte("uc:history_tag_assignment:v1|"+r.ID))
 			if e != nil {
-				return e
+				return errors.Join(ErrTags, e)
 			}
 			var ids []string
 			e = json.Unmarshal(plain, &ids)
 			clear(plain)
 			if e != nil {
-				return ErrFormat
+				return ErrTags
 			}
 			for _, id := range ids {
 				name, ok := s.tags[id]
 				if !ok {
-					return ErrFormat
+					return ErrTags
 				}
 				r.Tags = append(r.Tags, name)
 			}
 		} else if err != sql.ErrNoRows {
-			return ErrFormat
+			return ErrTags
 		}
 	}
+	if s.builtinTags {
+		rows, err := s.tx.Query("SELECT tag_id FROM search_entry_tag WHERE profile_id=? AND entry_id=? LIMIT 1001", s.crypto.profileID, r.ID)
+		if err != nil {
+			return ErrTags
+		}
+		count := 0
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) != nil {
+				_ = rows.Close()
+				return ErrTags
+			}
+			count++
+			switch id {
+			case "link":
+				r.Tags = append(r.Tags, plugin.TagLink)
+			case "image":
+				r.Tags = append(r.Tags, plugin.TagImage)
+			case "directory":
+				r.Tags = append(r.Tags, plugin.TagFolder)
+			case "code":
+				r.Tags = append(r.Tags, plugin.TagCode)
+			case "favorited":
+				r.UnsupportedTags++
+			}
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil || count > 1000 {
+			return ErrTags
+		}
+	}
+	slices.Sort(r.Tags)
+	r.Tags = slices.Compact(r.Tags)
+
 	if category == "file" {
 		if err := s.readFiles(r); err != nil {
 			return err

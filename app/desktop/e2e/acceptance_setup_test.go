@@ -1,8 +1,11 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,10 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/v1migration"
 	"github.com/uniclipboard/unic/internal/v1migration/v1fixture"
 )
@@ -74,11 +80,46 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	if !found {
 		t.Fatal("fixture not discovered")
 	}
+	layoutPath := filepath.Join(source, "history-tags", "layout.v1.json")
+	must(t, os.MkdirAll(filepath.Dir(layoutPath), 0700))
+	must(t, os.WriteFile(layoutPath, []byte(`{"version":1,"sidebar":["link"],"colors":{"tag-one":"#23AB45","link":"orange"}}`), 0600))
+	initialLayoutHash := hash(t, layoutPath)
+	colorKey := func(id string) string { sum := sha256.Sum256([]byte(id)); return hex.EncodeToString(sum[:]) }
 	target := filepath.Join(base, "target")
 	flow, err := setupflow.Open(target)
 	must(t, err)
 	must(t, flow.SelectSource(source))
 	initialSourceHash := hash(t, dbpath)
+	// Seed an untouched record as produced by the old importer, with no tags or
+	// color configuration. The ordinary desktop flow must repair it itself.
+	func() {
+		src, err := v1migration.Open(ctx, source, "fixture", []byte(fixture.Passphrase), nil)
+		must(t, err)
+		defer func() { must(t, src.Close()) }()
+		e, err := engine.New(ctx, engine.Options{DataDir: target, MigrationMode: true})
+		must(t, err)
+		defer func() { must(t, e.Close(ctx)) }()
+		must(t, src.Walk(ctx, func(r *v1migration.Record, sourceErr error) error {
+			if r.ID != "entry-text" {
+				return nil
+			}
+			if sourceErr != nil {
+				return sourceErr
+			}
+			req := engine.HistoryImportRequest{Source: src.ID(), RecordID: r.ID, CreatedAtMs: r.CreatedAtMs, UpdatedAtMs: r.UpdatedAtMs}
+			for _, part := range r.Parts {
+				reader, err := part.Open()
+				if err != nil {
+					return err
+				}
+				defer func() { must(t, reader.Close()) }()
+				req.Content.Representations = append(req.Content.Representations, engine.RepresentationInput{MIME: part.MIME, Size: part.Size, Reader: reader})
+			}
+			_, err := e.ImportHistory(ctx, req)
+			return err
+		}))
+	}()
+
 	secretCalls := 0
 	denied := func(string, string) ([]byte, error) { secretCalls++; return nil, v1migration.ErrUnlock }
 	if _, err = flow.Run(ctx, nil, denied, nil); !errors.Is(err, v1migration.ErrUnlock) {
@@ -102,7 +143,7 @@ func scenarioFirstInstallSetup(t *testing.T) {
 		}
 	})
 	cancel()
-	if !errors.Is(err, context.Canceled) || report.Status != "cancelled" || report.Imported == 0 {
+	if !errors.Is(err, context.Canceled) || report.Status != "cancelled" || report.Imported == 0 || report.TagsRepaired != 1 {
 		t.Fatalf("cancel did not retain commits: %+v %v", report, err)
 	}
 	checks = append(checks, "credential denial, wrong password, pending state after database creation and safe cancellation")
@@ -114,6 +155,14 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	if hash(t, dbpath) != initialSourceHash {
 		t.Fatal("source database changed during import")
 	}
+	if report.ColorsImported != 5 || report.ColorsVerified != 5 || report.ColorFailures != 0 {
+		t.Fatalf("desktop default colors: %+v", report)
+	}
+	if hash(t, layoutPath) != initialLayoutHash {
+		t.Fatal("source color layout changed")
+	}
+	receipt["source_layout_sha256"] = initialLayoutHash
+	checks = append(checks, "ordinary desktop migration automatically repairs an untouched old tag assignment and imports original colors without flags")
 	receipt["partial_report"] = report
 	db, err := sql.Open("sqlite", dbpath)
 	must(t, err)
@@ -139,7 +188,16 @@ func scenarioFirstInstallSetup(t *testing.T) {
 		t.Fatal("completed migration reopened setup")
 	}
 	// Starting the actual service proves imported records survive release of offline ownership.
-	must(t, os.WriteFile(filepath.Join(target, "config.toml"), []byte("[telemetry]\nenabled=false\n[sync]\nenabled=false\n[history]\nauto_cleanup=false\n"), 0600))
+	manager, err := config.Open(filepath.Join(target, "config.toml"), nil)
+	must(t, err)
+	cfg := manager.Current()
+	cfg.Telemetry.Enabled = false
+	cfg.Sync.Enabled = false
+	cfg.History.AutoCleanup = false
+	var settings bytes.Buffer
+	must(t, toml.NewEncoder(&settings).Encode(cfg))
+	_, err = manager.Replace(manager.State().Revision, settings.Bytes())
+	must(t, err)
 	executable := filepath.Join(base, "unicd")
 	root, err := filepath.Abs("../../..")
 	must(t, err)
@@ -167,6 +225,17 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	if len(page.Items) != 5 {
 		t.Fatalf("service history count: %d", len(page.Items))
 	}
+	state, err := client.Config(deadline)
+	must(t, err)
+	if state.Config.Desktop.TagColors[colorKey("标签")] != "#23ab45" || state.Config.Desktop.TagColors[colorKey("builtin:link")] != "orange" {
+		t.Fatal("desktop migrated colors unavailable through service")
+	}
+	tagged, err := client.QueryHistory(deadline, api.HistoryQuery{Tags: []string{"标签"}})
+	must(t, err)
+	if len(tagged.Items) != 1 {
+		t.Fatal("desktop did not repair legacy assignment")
+	}
+	checks = append(checks, "production service exposes original colors and repaired tag filters after desktop migration")
 	instance, err := client.Service(deadline)
 	must(t, err)
 	secretCalls = 0
@@ -181,5 +250,20 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	}
 	checks = append(checks, "real service exposes five records; concurrent import rejects before credential access and preserves owner")
 	must(t, service.Stop())
+	restarted, err := lifecycle.Start(ctx, target, socket, executable, true)
+	must(t, err)
+	defer func() {
+		if err := restarted.Stop(); err != nil {
+			t.Error(err)
+		}
+	}()
+	restartedClient := api.NewClient(socket)
+	state, err = restartedClient.Config(ctx)
+	must(t, err)
+	if state.Config.Desktop.TagColors[colorKey("标签")] != "#23ab45" || state.Config.Desktop.TagColors[colorKey("builtin:link")] != "orange" {
+		t.Fatal("desktop migrated colors lost after service restart")
+	}
+	must(t, restarted.Stop())
+	checks = append(checks, "desktop default migration colors survive service restart")
 	// The cleanup above is idempotent and also runs if a preceding assertion fails.
 }

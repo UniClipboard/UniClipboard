@@ -171,3 +171,13 @@ records successful production model color projection, reconciliation and reopen.
 It reports software rendering for the later settings-menu checks and records
 that no native window or system clipboard was used. Both JSON receipts are
 covered by the checksum manifest.
+
+Color implementation commit: `3c48ee29927b5fceb1c1debd071eb82cf1382108`. The receipt's per-file checksums match
+this implementation; its baseline commit field records the pre-commit HEAD.
+The overview and pipeline verification markers were refreshed after the
+implementation and CI wiring commits passed their relevant checks.
+
+The existing Production headless E2E CI job now runs the migration color
+scenario explicitly. Its absolute artifact path places the receipt under the
+job's existing uploaded acceptance directory. This prevents opt-in migration
+coverage from silently skipping during pull-request validation.

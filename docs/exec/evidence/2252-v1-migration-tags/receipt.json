@@ -16,8 +16,8 @@
     ]
   },
   "binary_sha256": {
-    "unic": "7589ab47599fc8aec33ea7049557f2d6f8d644c6a8ea5db6e123c3b85494cf9c",
-    "unicd": "e106f9fde3db5e66728831fc504f52b61755e21efb9c36c686a65c8f8569199f"
+    "unic": "f1b80bdb383027302a681c2be35e0f0e5139a61e2ab1148b427b082de202c4ee",
+    "unicd": "c5e4b8b1e83b91156184f2ea6553782e1b43d5b8ed40b1689f703b7825f46233"
   },
   "checks": [
     "custom associations, multiple tags, canonical built-ins and name collision",
@@ -171,7 +171,7 @@
     "verification_failed": 0,
     "verified": 4
   },
-  "source_commit": "bd89ff5a12885079e4259c3a72c90ab5e8b420ca",
+  "source_commit": "0a487e277e8525f29076ba65ecefe886367555ff",
   "source_sha256": {
     "app/service/AGENTS.md": "8b1603af3eb7ffc4213080319e28656eff63b4525b727dd6fb5978287f1217aa",
     "app/service/README.md": "e3925d85d165cbffa653b7e793bbf94f5590fb66fea69d73327c92b7729c4c9c",
@@ -229,7 +229,7 @@
     "app/service/internal/server/server.go": "7e061266d27dbb546858e8128b6ec1f862809ebb3bcec2733fb11f2dc508a451",
     "e2e/headless/README.md": "2a631955641417aa88c6686caef284e2ab741ffc87b7420575a2bfa743bfe7d1",
     "e2e/headless/headless_test.go": "c697a48cfb611c8488f2e9b6bc6cbb467dbd4fa97e776e2219a223b25b122c91",
-    "e2e/headless/migration_tags_test.go": "59db41cf37a1055a69d0b26e76a62d44841c49d455a3a47d2cbac05c95f5b649",
+    "e2e/headless/migration_tags_test.go": "71296f4fc72fec6487a7c9837eec1d362a45b90e7a7f6d6f5ce035570340b088",
     "engine/action.go": "c3c6c2e0260d14203b074e37cc71e9139b276bfa23a40348e2f022ac13b7ca3e",
     "engine/action_test.go": "b889ec64fb62c55724705577052734b9a0250227c1a32e1f4ca12af786982ca3",
     "engine/backend.go": "4ffbac1fa7cd24c03daccfae9e09060f20c3ced475cc710eaf47273ed667d38f",

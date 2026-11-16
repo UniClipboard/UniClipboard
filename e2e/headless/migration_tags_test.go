@@ -182,7 +182,7 @@ func TestProductionMigrationTags(t *testing.T) {
 	read := func(target string) map[string]engine.HistoryItem {
 		e, err := engine.New(ctx, engine.Options{DataDir: target, MigrationMode: true})
 		need(t, err)
-		defer e.Close(ctx)
+		defer func() { need(t, e.Close(ctx)) }()
 		items := map[string]engine.HistoryItem{}
 		for record := range expected {
 			id, known, err := e.LookupHistoryImport(ctx, sourceID, record)
@@ -258,7 +258,7 @@ func TestProductionMigrationTags(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			defer reader.Close()
+			defer func() { need(t, reader.Close()) }()
 			if part.Name == "" {
 				req.Content.Representations = append(req.Content.Representations, engine.RepresentationInput{MIME: part.MIME, Size: part.Size, Reader: reader})
 			} else {

@@ -74,3 +74,15 @@ Temporary profiles, binaries and process logs were removed. Native UI and
 personal-profile acceptance remain NOT_RUN. The implementation and receipt are
 committed together. The normal migration command diagnoses existing imports; only an
 explicit `--repair-tags` modifies eligible mapped records.
+
+## PR 2257 CI lint follow-up
+
+The hosted Lint job on `0a487e277` rejected two unchecked deferred close
+results in the migration process scenario. The pinned `golangci-lint v2.15.0`
+reproduced both failures locally. The scenario now checks Engine and content
+reader close results and fails if either close fails.
+
+After the fix, the pinned full lint run reported `0 issues`. The CI formatter
+check produced no diff. The production migration process scenario passed again.
+The attached receipt and checksum manifest were regenerated from this source.
+No production runtime behavior changed.

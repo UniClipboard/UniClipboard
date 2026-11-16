@@ -1,0 +1,28 @@
+# Case: Native toolbar bounds at 600 points in dark mode
+# Mode: native
+# Purpose: Keep macOS-skin production history controls within the toolbar at 600x480.
+# Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+# Expected: Every toolbar control remains inside the band; search and menus remain usable.
+# Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+start 600 480 dark
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape

@@ -6,6 +6,7 @@ import hashlib
 import html
 import json
 import os
+import platform
 import re
 from pathlib import Path
 import shutil
@@ -206,6 +207,7 @@ def run(specs, selected, output):
         if len(wanted) != len(selected):
             raise RuntimeError('case selection changed while taking the snapshot')
         manifest['go'] = subprocess.check_output(['go', 'version'], text=True).strip()
+        manifest['host_os'] = platform.platform()
         manifest['platform'] = subprocess.check_output(['go', 'env', 'GOOS', 'GOARCH'], text=True).splitlines()
         # The pinned Go toolchain has no race detector for Windows arm64.
         race_flags = [] if manifest['platform'] == ['windows', 'arm64'] else ['-race']

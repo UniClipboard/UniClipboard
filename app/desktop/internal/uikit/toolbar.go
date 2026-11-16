@@ -26,7 +26,7 @@ func (k Kit) ToolbarGroup(c *ui.Context, body func()) ui.Element {
 	g := ui.Row(c).AlignItems(ui.Center)
 	if k.Skin == MacOS {
 		g.Gap(0).Height(32).Padding(0, 4).Radius(16)
-		k.glassSurface(g)
+		k.outlinedGlassSurface(g)
 	} else {
 		g.Gap(2)
 	}

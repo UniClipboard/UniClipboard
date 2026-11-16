@@ -3844,5 +3844,35 @@
     "ja": "未復元の色",
     "pt-BR": "Cores ausentes",
     "ru": "Отсутствующие цвета"
+  },
+  "托盘": {
+    "en": "Tray",
+    "ja": "トレイ",
+    "pt-BR": "Bandeja",
+    "ru": "Область уведомлений"
+  },
+  "托盘图标": {
+    "en": "Tray icon",
+    "ja": "トレイアイコン",
+    "pt-BR": "Ícone da bandeja",
+    "ru": "Значок в области уведомлений"
+  },
+  "经典猫头": {
+    "en": "Classic cat",
+    "ja": "クラシックな猫",
+    "pt-BR": "Gato clássico",
+    "ru": "Классический кот"
+  },
+  "更改后立即生效。": {
+    "en": "Changes apply immediately.",
+    "ja": "変更はすぐに反映されます。",
+    "pt-BR": "As alterações são aplicadas imediatamente.",
+    "ru": "Изменения применяются сразу."
+  },
+  "默认": {
+    "en": "Default",
+    "ja": "デフォルト",
+    "pt-BR": "Padrão",
+    "ru": "По умолчанию"
   }
 }

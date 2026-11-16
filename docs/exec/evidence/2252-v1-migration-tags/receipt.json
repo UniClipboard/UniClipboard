@@ -25,8 +25,8 @@
     ]
   },
   "binary_sha256": {
-    "unic": "445e2f99d2ab4eb8b37a19ec36f7c28ddc8707ae4de143603cb789c93b4a4d81",
-    "unicd": "bd24fca145703ffc8f20802a100870c1f3498c266a51ffe044977a2d5fa37d40"
+    "unic": "42ab42bb4bfa3e26348a9d26e1bc02d0dd1156738929fbf4604922ffda85c67f",
+    "unicd": "afff21a39ef4ceffda30c7e04212e9a91b36389773288f3e9046af03d07343cd"
   },
   "checks": [
     "custom associations, multiple tags, canonical built-ins and name collision",
@@ -249,7 +249,7 @@
     "verification_failed": 0,
     "verified": 4
   },
-  "source_commit": "efcdf5a8ec525332f23a758f4cf940b74d759d53",
+  "source_commit": "166549c5a958b133dcff3405952836158c913101",
   "source_sha256": {
     "app/service/AGENTS.md": "8b1603af3eb7ffc4213080319e28656eff63b4525b727dd6fb5978287f1217aa",
     "app/service/README.md": "e3925d85d165cbffa653b7e793bbf94f5590fb66fea69d73327c92b7729c4c9c",
@@ -407,7 +407,7 @@
     "internal/localapi/lease.go": "39662e72afca430a31de79283ccf38e8054253d87da6ecdc2e25efbf28933cf4",
     "internal/localapi/search.go": "febf65b2f43aa6927cb29702b7b87239b141fb26608484343063266d6f526491",
     "internal/localapi/transfer.go": "587a9ffdbe5b25f3d55dc92301c8ce96aa8908a4f3e353f49333c5998ccc24ec",
-    "internal/localconfig/config.go": "ab8da67182d0e37acc4ac6ecc22cf3adca93f6ce9a00e68e78e5405d3bbff3a6",
+    "internal/localconfig/config.go": "f7c5d0b0f3f6ac6506126dbaba7f7f9f3e2967cdd4696fee8101ee7aeff67ad0",
     "internal/localconfig/config_test.go": "2cb0b3e277828e18b0390256e619b4b812da7b911ff251b707dd06524f8310ef",
     "internal/localconfig/luaedit.go": "171412fefa639449630f960ff4b4ad597fef3ab0fc582c52de2cc6dbc7fe58f8",
     "internal/localconfig/luaedit_test.go": "2c369ee3427a3486f48adef915f4b4add6f08514e1938593d4fdd535edbdf723",

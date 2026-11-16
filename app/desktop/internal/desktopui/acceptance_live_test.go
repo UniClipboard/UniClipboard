@@ -171,8 +171,8 @@ func scenarioDesktopLiveData(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 		refreshes := d.live.appliedSerial - serial
-		if refreshes < 2 {
-			t.Fatalf("%s: periodic reconciliation did not run twice: %d", label, refreshes)
+		if refreshes != 0 {
+			t.Fatalf("%s: unchanged idle history reloaded: %d", label, refreshes)
 		}
 		checks = append(checks, fmt.Sprintf("%s: 11 idle seconds, %d background refreshes, no foreground loading or selection/payload changes", label, refreshes))
 	}
@@ -450,7 +450,10 @@ func scenarioDesktopLiveData(t *testing.T) {
 			})
 			d.live.nextRefresh = time.Time{}
 			serial := d.live.appliedSerial
-			spin("preview reconciliation", func() bool { return d.live.appliedSerial > serial && !d.live.loading })
+			spin("preview revision probe", func() bool { return !d.live.nextRefresh.IsZero() && !d.live.loading })
+			if d.live.appliedSerial != serial {
+				t.Fatal("unchanged preview probe reloaded history")
+			}
 			if d.current().image == nil || d.current().kind != uikit.KindFile {
 				t.Fatal("reconciliation discarded file image or changed file kind")
 			}
@@ -642,9 +645,13 @@ func scenarioDesktopLiveData(t *testing.T) {
 		// Reduce Motion keeps the settings sheet still while coordinates are used;
 		// motion behavior has its own dedicated acceptance case.
 		tt = ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true, TextScale: 1}})
-		// The first rendered frame can start a background refresh. Wait for its
-		// disabled trigger to reconcile before pressing the platform menu.
-		spin("failure policy rendered idle", func() bool { tt.Frame(); return !d.live.busy && !d.live.loading })
+		// Rendering can start a background refresh. Wait until the actual trigger
+		// is enabled before opening the platform menu.
+		spin("failure policy trigger enabled", func() bool {
+			tt.Frame()
+			trigger, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时")
+			return ok && !trigger.Disabled && !d.live.busy && !d.live.loading
+		})
 		trigger, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时")
 		if !ok {
 			t.Fatal("failure policy trigger missing")
@@ -654,13 +661,12 @@ func scenarioDesktopLiveData(t *testing.T) {
 		if items := tt.Menu(); len(items) != 3 || !slices.Contains(items, step.choice) {
 			t.Fatalf("failure policy menu items for %q = %v (trigger=%+v busy=%v loading=%v)", step.choice, items, trigger, d.live.busy, d.live.loading)
 		}
-		tt.CloseMenu()
-		tt.Release(x, y)
-		// Click by position: the row title shares the trigger's accessible name.
-		tt.ClickAt(x, y)
+		// The native menu is already open from pointer-down. Choose from that
+		// menu rather than closing and reopening against a refreshed layout.
 		if err := tt.ChooseMenuItem(step.choice); err != nil {
 			t.Fatal(err)
 		}
+		tt.CancelPress()
 		spin("failure policy "+step.choice, func() bool {
 			tt.Frame()
 			return !d.live.busy && d.live.config.Config.Plugins.Instances["builtin.text"].OnError == step.want

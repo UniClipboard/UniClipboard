@@ -421,8 +421,15 @@ def stage(args):
             },
         )
         (resources / "LICENSE").write_bytes((ROOT / "LICENSE").read_bytes())
+        icon_name = {
+            "darwin": "icon.icns", "windows": "icon.ico", "linux": "icon.png"
+        }[os_name]
+        shutil.copyfile(
+            ROOT / "app/desktop/internal/appicons" / icon_name, resources / icon_name
+        )
         if os_name == "darwin":
             info = {
+                "CFBundleIconFile": "icon.icns",
                 "CFBundleIdentifier": APP_ID,
                 "CFBundleName": "UniClipboard",
                 "CFBundleDisplayName": "UniClipboard",
@@ -659,8 +666,8 @@ def package(args):
                     "dst": "/usr/share/applications/" + APP_ID + ".desktop",
                 },
                 {
-                    "src": str(ROOT / "packaging/linux/uniclipboard.svg"),
-                    "dst": "/usr/share/icons/hicolor/scalable/apps/uniclipboard.svg",
+                    "src": str(payload / "icon.png"),
+                    "dst": "/usr/share/icons/hicolor/512x512/apps/uniclipboard.png",
                 },
             ]
             dependencies = {
@@ -786,7 +793,7 @@ def package(args):
                     app / "uniclipboard.desktop",
                 )
                 shutil.copy(
-                    ROOT / "packaging/linux/uniclipboard.svg", app / "uniclipboard.svg"
+                    payload / "icon.png", app / "uniclipboard.png"
                 )
                 env = dict(
                     os.environ, ARCH={"amd64": "x86_64", "arm64": "aarch64"}[arch]

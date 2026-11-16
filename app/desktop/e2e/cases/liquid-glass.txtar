@@ -1,8 +1,8 @@
 # Case: Liquid glass
 # Mode: view
-# Purpose: Glass hover feedback, pointer-exit reset and system-menu delegation.
+# Purpose: Glass hover feedback, pointer-exit reset and system-menu delegation and continuous light action-bar outlines.
 # Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
-# Expected: Light and dark view rasters show reactive rims and reset without stale hover feedback.
+# Expected: Light and dark view rasters show reactive rims and reset without stale hover feedback; the light action bar and send button retain visible top/bottom outlines.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 acceptance desktopui liquid-glass

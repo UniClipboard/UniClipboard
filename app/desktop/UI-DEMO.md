@@ -21,7 +21,7 @@ Setup, space creation, unlock, startup-preview and recovery-preview pages have b
 | `pages/devices-kit/DevicesKitSheet.tsx` | `devices.go`: management sheet, master/detail, invite/connect/phone tasks, pending fingerprint review, sync policy, latency |
 | `pages/settings-kit/SettingsKitPage.tsx`, `components/setting/settings-config.ts` | `settings.go`: category sidebar and nine setting pages |
 | `apps/quick-panel` and `crates/quick-panel-core` at cached `origin/main` `885546c7` | `quick_panel_*.go`: isolated GPUI quick panel fixture; see [acceptance guide](QUICK-PANEL-DEMO.md) |
-| `updater/app-icon.png` | `app-icon.png`: original embedded app icon |
+| `updater/app-icon.png` | `../appicons/icon.png`: shared original v1 app icon |
 
 The Kit selects Adwaita, macOS glass, or Fluent and applies the matching tokens.
 The demo reuses the Kit's existing native approximations for window chrome, controls, materials, and animations.

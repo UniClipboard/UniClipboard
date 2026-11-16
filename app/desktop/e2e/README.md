@@ -91,3 +91,7 @@ The `acceptance <package> <case-id>` command dispatches a package-local scenario
 Existing assertions were migrated into scenario functions, rather than duplicated behind a second test entry. Ordinary `go test` checks catalogue freshness and skips the explicit acceptance registries. Detailed measurements and subcase results appear in the unified report.
 
 The [Desktop E2E contract](../../../docs/contracts/desktop-e2e-contract.md) defines evidence and isolation requirements.
+
+### Tray style parity
+
+`make desktop-e2e CASE=tray-icon-settings` drives the real settings composition through the software tester, production unicd/CLI processes and the production configuration watcher. It observes generated PNGs at the tray image API boundary and verifies both styles, persistence, immediate delivery, invalid-value rejection, duplicate suppression, repaint and failed-delivery retry. It opens no native window. Its receipt does not establish OS-tray visibility, native menu preservation or actual theme notification delivery.

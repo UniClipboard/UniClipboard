@@ -13,9 +13,11 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
+| [incremental-browsing](#incremental-browsing) | process | Multi-page production browsing, idle request timeline, coalescing, selection and cancellation. |
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
-| [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation. |
+| [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation and continuous light action-bar outlines. |
 | [native-menus](#native-menus) | view | System-menu requests, cancellation and selected-value dispatch in the software view. |
+| [pairing-inline-approval](#pairing-inline-approval) | native | Approve an incoming device from the invitation page of the real Desktop. |
 | [production-boundary](#production-boundary) | process | Build independent production and demo commands and verify their dependency and embedded catalogue boundaries. |
 | [quick-panel-contract](#quick-panel-contract) | process | Target session, clipboard application, cancellation and paste-request ordering with OS fixtures. |
 | [quick-panel-screenshots](#quick-panel-screenshots) | view | Quick-panel history, action menu and image-grid compositions in both themes. |
@@ -38,7 +40,12 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [tag-manager-platforms](#tag-manager-platforms) | view | Tag management and separate entry assignment across all three skins. |
 | [tag-manager](#tag-manager) | view | Tag management, assignment, rename, merge, deletion and protected built-in tags. |
 | [token-search](#token-search) | view | Composite search prefixes, counts, completion, literal input, caret handling and Escape. |
-| [toolbar-alignment](#toolbar-alignment) | view | Toolbar menu-trigger alignment against adjacent controls. |
+| [toolbar-alignment](#toolbar-alignment) | view | Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-capsule pixel contrast. |
+| [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
+| [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 
 ## builtin-plugin-policy
@@ -341,6 +348,20 @@ Forbidden: Missing translations or translated user content.
 acceptance desktopui i18n
 ```
 
+## incremental-browsing
+
+Incremental history browsing
+
+Steps: Start isolated unicd, populate synthetic history, and exercise the production Desktop binding.
+
+Expected: Idle history stays unchanged; paging and history events preserve browsing context.
+
+Forbidden: Native UI claims, skipped assertions, missing source/binary hashes or receipt.
+
+```text
+acceptance desktopui incremental-browsing
+```
+
 ## interaction-motion
 
 Interaction motion
@@ -361,7 +382,7 @@ Liquid glass
 
 Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
 
-Expected: Light and dark view rasters show reactive rims and reset without stale hover feedback.
+Expected: Light and dark view rasters show reactive rims and reset without stale hover feedback; the light action bar and send button retain visible top/bottom outlines.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
@@ -381,6 +402,45 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui native-menus
+```
+
+## pairing-inline-approval
+
+Pairing approval without leaving the invitation
+
+Steps: Open the device sheet, show a ticket invitation, let a second production service join and approve, then approve in the same task panel.
+
+Expected: The fingerprint approval replaces the invitation inside the task; accepting it closes the task and lists the new device.
+
+Forbidden: Returning to the device list to approve, a pending request left behind, or fixture-only device data.
+
+```text
+start
+start-pairing-peer
+ui-wait listItem 管理设备…
+ui-click listItem 管理设备…
+ui-wait button 邀请设备
+ui-click button 邀请设备
+ui-wait radio 完整票据
+ui-click radio 完整票据
+ui-wait button 复制票据
+ui-enabled button 复制票据
+ui-wait text 邀请设备
+screenshot invitation-shown
+peer-pair-desktop
+ui-wait text '核对并批准'
+screenshot approval-inside-task
+ui-click button 接受
+assert-paired
+ui-absent text '核对并批准'
+ui-absent text '邀请设备'
+ui-wait text 本机
+screenshot paired-device-listed
+observe 2
+ui-wait button 完成
+ui-click button 完成
+ui-absent dialog 管理设备
+stop-policy-peer
 ```
 
 ## production-boundary
@@ -760,12 +820,162 @@ Toolbar alignment
 
 Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
 
-Expected: Both themes align menu triggers with the pin button at the expected geometry.
+Expected: A 52-point band contains layout, search and command controls with vertical insets; expanded search stays within 600, 800, 1100 and 1440-point windows; light capsule top and bottom edges remain visible against white.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
 acceptance desktopui toolbar-alignment
+```
+
+## toolbar-bounds-dark-1100
+
+Native toolbar bounds at 1100 points in dark mode
+
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+
+Expected: Every toolbar control remains inside the band; search and menus remain usable.
+
+Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+```text
+start 1100 720 dark
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape
+```
+
+## toolbar-bounds-dark-600
+
+Native toolbar bounds at 600 points in dark mode
+
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+
+Expected: Every toolbar control remains inside the band; search and menus remain usable.
+
+Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+```text
+start 600 480 dark
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape
+```
+
+## toolbar-bounds-light-1100
+
+Native toolbar bounds at 1100 points in light mode
+
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+
+Expected: Every toolbar control remains inside the band; search and menus remain usable.
+
+Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+```text
+start 1100 720 light
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape
+```
+
+## toolbar-bounds-light-600
+
+Native toolbar bounds at 600 points in light mode
+
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+
+Expected: Every toolbar control remains inside the band; search and menus remain usable.
+
+Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+```text
+start 600 480 light
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape
+```
+
+## tray-icon-settings
+
+Tray icon styles saved and applied
+
+Steps: Use the production settings view, real service/CLI, persisted TOML, configuration watcher and tray image controller; reopen and reject invalid values.
+
+Expected: Glyph is the default; both styles persist and apply without restart; duplicate updates do not publish images; failed delivery retries.
+
+Forbidden: Native GUI launch, fixture-only configuration, style changes rebuilding tray menus, or claiming OS-tray acceptance.
+
+```text
+acceptance desktopui tray-icon-settings
 ```
 
 ## unified-scrollbars

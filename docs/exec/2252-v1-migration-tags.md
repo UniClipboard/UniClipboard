@@ -114,3 +114,19 @@ Default-behavior implementation commit: `bf5da54e87d72de9224685881aedcbb3e811869
 setup receipts bind the per-file source checksums used for this implementation.
 The overview and pipeline verification markers were refreshed against this
 commit after validation.
+
+## Integration with current v2
+
+Merged upstream `4f9496e4599d4769fb6859f1ea7072a55c20d9f6` into the PR branch.
+Conflict resolution retains automatic CLI/Desktop migration, original colors,
+target-edit protection, upstream incremental history browsing, pairing and
+tray styles. Both translation sets remain intact. The menu acceptance combines
+Reduce Motion with waiting for the actual enabled trigger. It selects the
+already-open native-menu model instead of closing and reopening it against
+a potentially refreshed layout. The upstream tray test now checks watcher
+shutdown errors. Neither adjustment changes production behavior.
+
+The merged source passed production CLI migration, canonical Desktop setup
+and data-binding scenarios, all 216 affected race tests, pinned lint,
+formatting, JSON union checks and documentation checks. Refreshed receipts bind
+the merged source identities. Native-window acceptance remains NOT_RUN.

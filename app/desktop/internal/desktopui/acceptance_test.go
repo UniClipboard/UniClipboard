@@ -11,6 +11,7 @@ func TestDesktopAcceptance(t *testing.T) {
 		t.Skip("run make desktop-e2e")
 	}
 	t.Run("i18n", scenarioI18n)
+	t.Run("tray-icon-settings", scenarioTrayIconSettings)
 	t.Run("liquid-glass", scenarioLiquidGlass)
 	t.Run("interaction-motion", scenarioInteractionMotion)
 	t.Run("data-binding", scenarioDesktopLiveData)
@@ -22,6 +23,7 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("search-disclosure", scenarioSearchDisclosure)
 	t.Run("search-disclosure-reduced-motion", scenarioSearchDisclosureReducedMotion)
 	t.Run("search-contract", scenarioHistorySearchProcess)
+	t.Run("incremental-browsing", scenarioIncrementalBrowsing)
 	t.Run("send-device-menu", scenarioSendDeviceMenu)
 	t.Run("sheet-exit-stability", scenarioSheetExitStability)
 	t.Run("sheet-motion", scenarioSheetMotion)

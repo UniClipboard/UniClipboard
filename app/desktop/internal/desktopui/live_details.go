@@ -133,6 +133,9 @@ func (l *liveState) loadDetail(d *viewState) {
 				current, present := l.items[id]
 				if !read.obsolete && epoch == l.detailEpoch && key == d.liveQueryKey() && present && current.Revision == it.Revision && l.detailWanted(d, id) {
 					l.details[id] = v
+					if l.retained != nil && l.retained.id == id {
+						copyDetail(l.retained, v)
+					}
 					for i := range d.entries {
 						if d.entries[i].id == id {
 							copyDetail(&d.entries[i], v)

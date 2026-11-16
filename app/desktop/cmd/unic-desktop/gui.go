@@ -20,6 +20,7 @@ import (
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/appicons"
 	"github.com/uniclipboard/unic/app/desktop/internal/appupdates"
 	"github.com/uniclipboard/unic/internal/releaseinfo"
 
@@ -96,6 +97,9 @@ type gui struct {
 	loginEnabled                bool
 	loginError                  string
 }
+
+// The E2E build overrides both initial and post-startup window dimensions.
+var desktopWindowWidth, desktopWindowHeight = 1100, 720
 
 // Production packaging sets this to UniClipboard. Development instances use a
 // distinct single-instance identity as well as their separate default data root.
@@ -183,10 +187,15 @@ func runGUI(settings *config.Manager) error {
 		}
 	}
 	mygo.App.WhenReady(func() {
+		if runtime.GOOS == "darwin" {
+			if err := mygo.App.Dock.SetIcon(appicons.PNG); err != nil {
+				logHostFailure()
+			}
+		}
 		go func() { <-ctx.Done(); mygo.App.Quit() }()
-		updateTrayLanguage := setupTray(settings.Current().Desktop.Language)
+		updateTray := setupTray(ctx, settings.Current().Desktop)
 
-		opts := mygo.WindowOptions{Title: "unic", Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view), Hidden: !flow.Required() && settings.Current().Desktop.StartInBackground}
+		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view), Hidden: !flow.Required() && settings.Current().Desktop.StartInBackground}
 		if uikit.DefaultSkin() == uikit.MacOS {
 			opts.TitleBarStyle = mygo.TitleBarHidden
 			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
@@ -196,6 +205,9 @@ func runGUI(settings *config.Manager) error {
 			opts.Width, opts.Height = 640, 560
 		}
 		g.win = mygo.NewWindow(opts)
+		if err := g.win.SetIcon(appicons.PNG); err != nil {
+			logHostFailure()
+		}
 		if flow.Required() {
 			session.showSetup(false)
 		} else {
@@ -211,7 +223,7 @@ func runGUI(settings *config.Manager) error {
 						g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
 						session.runtime.screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut)
 					}
-					updateTrayLanguage(current.Desktop.Language)
+					updateTray(current.Desktop)
 					g.win.Invalidate()
 				})
 			}

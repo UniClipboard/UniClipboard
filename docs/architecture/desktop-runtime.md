@@ -3,6 +3,8 @@ paths:
   - engine/directory.go
   - internal/directory
   - internal/localcontent/directory.go
+  - app/desktop/internal/trayicon
+  - app/desktop/internal/appicons
   - app/desktop/internal/appupdates
   - app/desktop/internal/lifecycle
   - app/desktop/internal/setupflow
@@ -37,7 +39,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: fc48e6e42fc8cc3aaf11493909d17a25e099bac2
+verified: 2935aa70beacd71dd02ad1707a65bf2a1b68f82c
 ---
 # Desktop configuration and received files
 
@@ -66,6 +68,12 @@ The three built-in plugins have no plugin-specific Schema fields. This interface
 
 Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences use the same v2 user-data directory as the Desktop profile. Package-manager installations and portable archives retain external update ownership. AppImage self-update remains unsupported. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
 
+## Incremental history browsing
+
+Desktop loads history in 50-entry cursor pages as the list or grid approaches its loaded end. It retains a 500-entry sliding window, bounded cursor checkpoints and one selected detail outside that window. Scrolling toward an evicted newer page reloads it automatically. Stable item keys retain surviving scroll anchors.
+
+Service events trigger metadata revision checks. A 30-second bounded recovery probe detects missed notifications. An unchanged revision does not reload search results. Stream failure renews cursors, while query changes cancel stale generations. Selection, detail state and filters survive background reconciliation; selected deletion closes its detail and preview. See the [search contract](../contracts/history-search-contract.md#incremental-desktop-browsing) and [execution receipt](../exec/desktop-incremental-browsing.md).
+
 ## History source application
 
 The history detail header shows the stored source application's icon and name immediately after device/time.
@@ -84,6 +92,7 @@ The [Desktop source application receipt](../exec/desktop-source-application.md) 
 |---|---|---|
 | `desktop.mode` | `"normal"` | Next launch: normal desktop owns/restarts its service; lightweight leaves only a standalone service. |
 | `desktop.launch_at_login` | `false` | Running normal desktop applies login registration; actual OS status is displayed separately. |
+| `desktop.tray_icon` | `"glyph"` | Immediately select `glyph` or `cat`; no restart required. |
 | `desktop.start_in_background` | `false` | Next normal launch: create the main window hidden while tray and clipboard integration run. |
 | `sync.enabled` | `true` | Pause content sends and receives. Keep connections and local history. |
 | `sync.automatic` | `true` | Send new observed copies. Local history, manual sends, receives, and Actions remain independent. |
@@ -295,3 +304,15 @@ The directory flow follows the [directory contract](../contracts/directory-contr
 Default-cache directory application builds lease-owned views from retained members. Custom receives stage one complete batch under the configured destination, then publish it by rename. The host journals only its exact unpublished staging path in private profile storage before creation. Startup recovery uses those journals and validates destination identity; it never scans the custom destination or deletes published trees. Failed cleanup retains its journal. Existing custom destinations are never merged into or overwritten.
 
 Before writing a prepared tree, the adapter rechecks the current clipboard against its observed baseline. A newer local copy defers the old application. Copying the same held paths again keeps their application lease while the new copy action is processed.
+
+## Application and tray icons
+
+Desktop reuses the original v1 application assets in `app/desktop/internal/appicons`. The asset README records their source commit and SHA-256 digests. The main window, macOS Dock and About view share the embedded application PNG.
+
+Settings > General > Tray icon selects `glyph` (the v1 default, two offset rounded cards) or `cat` (the original cat alpha mask). The revision-checked configuration API persists `desktop.tray_icon`. The existing Desktop file watcher applies the saved preference immediately. `unic config set desktop.tray_icon '"cat"'` and direct TOML edits use the same validation and update path. Invalid values retain the previous valid configuration. Lightweight mode has no tray owner.
+
+`app/desktop/internal/trayicon` owns geometry, platform palettes and image publication. It uses mygo's existing SVG renderer for the v1 glyph paths and x/image for cat scaling. macOS uses a 44-pixel template with a centered 36-pixel glyph grid or 34-pixel cat source. Windows uses the system small-icon metric and mygo template contrast. Linux uses 22 pixels, explicit light/dark foreground colors and the v1 KDE/gsettings palette selection. Theme changes repaint the currently selected style; Linux also checks KDE configuration changes once per second until Desktop shutdown.
+
+Unchanged style preferences do not publish an image. Failed native delivery retains the shown style so the next update can retry. Style changes call only the native image API. Only language changes rebuild translated menus. No state badges or animation are implemented.
+
+The [style execution receipt](../exec/desktop-tray-icon-styles.md) records nonvisual acceptance and remaining native tray appearance, DPI, theme-event and open-menu acceptance boundaries.

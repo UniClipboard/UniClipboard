@@ -76,6 +76,16 @@ func (k Kit) glassSurface(e ui.Element) ui.Element {
 	return e.Material(glass.Glass{Style: glass.Regular, Interactive: true})
 }
 
+// outlinedGlassSurface keeps a continuous light-theme control outline over
+// the glass's directional highlight without changing layout or hit targets.
+func (k Kit) outlinedGlassSurface(e ui.Element) ui.Element {
+	k.glassSurface(e)
+	if !k.Dark {
+		e.InsetShadow(0, 0, 0, 1, k.Color("separator"))
+	}
+	return e
+}
+
 func (m sidebarGlass) PaintMaterial(p *ui.Painter, r ui.Rect, radii [4]float32) {
 	fill := m.fill
 	if p.Preferences().ReduceTransparency {

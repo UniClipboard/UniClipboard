@@ -44,7 +44,7 @@
 
 ## Tag preservation follow-up
 
-The [history contract](../../contracts/history-contract.md#v1-tag-migration-and-explicit-recovery-issue-2252)
-defines canonical built-in mapping, custom assignment failures and the explicit
+The [history contract](../../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252)
+defines canonical built-in mapping, custom assignment failures and the automatic
 non-destructive missing-tag recovery operation. The
 [process acceptance receipt](../../exec/2252-v1-migration-tags.md) records issue 2252.

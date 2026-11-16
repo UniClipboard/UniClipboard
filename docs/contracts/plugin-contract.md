@@ -384,5 +384,5 @@ See the [source application contract](source-application-contract.md) for captur
 The reserved `plugin.TagCode` identifier is `builtin:code`. The offline v1
 importer preserves v1 code membership under this identifier. `builtin.classify`
 does not currently generate code membership for new content. The
-[history contract](history-contract.md#v1-tag-migration-and-explicit-recovery-issue-2252)
-defines migration and explicit recovery.
+[history contract](history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252)
+defines migration and automatic recovery.

@@ -197,7 +197,7 @@ func TestProductionMigrationTags(t *testing.T) {
 		return report
 	}
 	dryTarget := filepath.Join(work, "dry-target")
-	dry := migrate(dryTarget, 0, "--dry-run", "--repair-tags")
+	dry := migrate(dryTarget, 0, "--dry-run")
 	if dry["status"] != "ready" {
 		t.Fatal(dry)
 	}
@@ -340,32 +340,11 @@ func TestProductionMigrationTags(t *testing.T) {
 	need(t, err)
 	need(t, e.DeleteItem(ctx, engine.DeleteItemRequest{ID: deletedID, ExpectedRevision: 1}))
 	need(t, e.Close(ctx))
-	missingConfigDiagnosis := migrate(old, 3)
-	if missingConfigDiagnosis["colors_missing"] != float64(7) {
-		t.Fatal(missingConfigDiagnosis)
-	}
-	if _, err := os.Stat(filepath.Join(old, "config.toml")); !os.IsNotExist(err) {
-		t.Fatal("diagnosis created target config")
-	}
-	receipt["missing_config_color_diagnosis"] = missingConfigDiagnosis
 	saveConfig(old, func(cfg *config.Config) {
 		cfg.DeviceName = "keep-old-target"
 		cfg.Desktop.TagColors = map[string]string{colorKey("标签"): "blue", colorKey("unrelated"): "orange"}
 	})
-	diagnosis := migrate(old, 3)
-	receipt["diagnosis"] = diagnosis
-	if diagnosis["colors_missing"] != float64(6) {
-		t.Fatal(diagnosis)
-	}
-	beforeRepairConfig := readConfig(old)
-	if len(beforeRepairConfig.Desktop.TagColors) != 2 {
-		t.Fatal("normal rerun changed colors")
-	}
-
-	if diagnosis["tag_mismatches"] != float64(3) {
-		t.Fatal(diagnosis)
-	}
-	repair := migrate(old, 3, "--repair-tags")
+	repair := migrate(old, 3)
 	receipt["repair"] = repair
 	if repair["colors_imported"] != float64(6) || repair["colors_preserved"] != float64(1) {
 		t.Fatal(repair)
@@ -384,7 +363,7 @@ func TestProductionMigrationTags(t *testing.T) {
 	if repair["tags_repaired"] != float64(2) || repair["tag_repairs_skipped"] != float64(1) {
 		t.Fatal(repair)
 	}
-	again := migrate(old, 3, "--repair-tags")
+	again := migrate(old, 3)
 	if again["tags_repaired"] != float64(0) || again["colors_imported"] != float64(0) {
 		t.Fatal(again)
 	}
@@ -419,7 +398,7 @@ func TestProductionMigrationTags(t *testing.T) {
 		t.Fatalf("unexpected repaired history count %d", len(page.Items))
 	}
 	need(t, e.Close(ctx))
-	checks = append(checks, "explicit repair preserves target edits and deletion and is idempotent")
+	checks = append(checks, "default migration repairs missing tags/colors, preserves target edits and deletion, and is idempotent")
 	if !reflect.DeepEqual(before, snapshot()) {
 		t.Fatal("source changed")
 	}

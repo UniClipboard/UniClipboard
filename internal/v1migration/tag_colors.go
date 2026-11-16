@@ -84,29 +84,14 @@ func migrationColorKey(id string) string {
 
 // importTagColors uses the host's existing config CAS while Run owns the target
 // directory lock. Existing target overrides always win, including explicit gray.
-func importTagColors(ctx context.Context, target string, colors map[string]string, write bool, report *Report) {
+func importTagColors(ctx context.Context, target string, colors map[string]string, report *Report) {
 	path := filepath.Join(target, "config.toml")
-	cfg := config.Default()
-	var manager *config.Manager
-	var err error
-	if write {
-		manager, err = config.Open(path, nil)
-		if err == nil {
-			cfg = manager.Current()
-		}
-	} else {
-		var raw []byte
-		raw, err = os.ReadFile(path)
-		if err == nil {
-			cfg, err = config.Parse(raw)
-		} else if errors.Is(err, os.ErrNotExist) {
-			err = nil
-		}
-	}
+	manager, err := config.Open(path, nil)
 	if err != nil {
 		report.ColorFailures++
 		return
 	}
+	cfg := manager.Current()
 	cfg.Desktop.TagColors = maps.Clone(cfg.Desktop.TagColors)
 	if cfg.Desktop.TagColors == nil {
 		cfg.Desktop.TagColors = map[string]string{}
@@ -121,15 +106,11 @@ func importTagColors(ctx context.Context, target string, colors map[string]strin
 			continue
 		}
 		missing++
-		if write {
-			cfg.Desktop.TagColors[key] = color
-			expected[key] = color
-		}
+		cfg.Desktop.TagColors[key] = color
+		expected[key] = color
 	}
-	if !write {
-		report.ColorsMissing = missing
-	}
-	if write && missing > 0 {
+	report.ColorsMissing = missing
+	if missing > 0 {
 		if ctx.Err() != nil {
 			report.ColorFailures++
 			return
@@ -144,6 +125,7 @@ func importTagColors(ctx context.Context, target string, colors map[string]strin
 			return
 		}
 		report.ColorsImported = missing
+		report.ColorsMissing = 0
 	}
 	// Reopen persisted configuration rather than trusting the in-memory candidate.
 	persisted, readErr := os.ReadFile(path)

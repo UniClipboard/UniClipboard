@@ -45,10 +45,9 @@ type Progress struct {
 	Total     int    `json:"total"`
 }
 type RunOptions struct {
-	Target     string
-	DryRun     bool
-	RepairTags bool
-	Progress   func(Progress)
+	Target   string
+	DryRun   bool
+	Progress func(Progress)
 }
 
 // Run owns the complete offline migration. A non-complete report must never
@@ -134,35 +133,33 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		}
 		if known {
 			report.Skipped++
-			if opts.RepairTags {
-				item, err := target.GetItem(ctx, id)
-				var ee *engine.Error
-				if errors.As(err, &ee) && ee.Code == engine.CodeNotFound {
+			item, err := target.GetItem(ctx, id)
+			var ee *engine.Error
+			if errors.As(err, &ee) && ee.Code == engine.CodeNotFound {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			missing := false
+			for _, tag := range r.Tags {
+				if !slices.Contains(item.Tags, tag) {
+					missing = true
+					break
+				}
+			}
+			if missing {
+				if item.Revision != 1 {
+					report.TagRepairsSkipped++
 					return nil
 				}
-				if err != nil {
+				tags := append(slices.Clone(item.Tags), r.Tags...)
+				slices.Sort(tags)
+				tags = slices.Compact(tags)
+				if _, err := target.UpdateItem(ctx, engine.UpdateItemRequest{ID: id, ExpectedRevision: item.Revision, Tags: &tags}); err != nil {
 					return err
 				}
-				missing := false
-				for _, tag := range r.Tags {
-					if !slices.Contains(item.Tags, tag) {
-						missing = true
-						break
-					}
-				}
-				if missing {
-					if item.Revision != 1 {
-						report.TagRepairsSkipped++
-						return nil
-					}
-					tags := append(slices.Clone(item.Tags), r.Tags...)
-					slices.Sort(tags)
-					tags = slices.Compact(tags)
-					if _, err := target.UpdateItem(ctx, engine.UpdateItemRequest{ID: id, ExpectedRevision: item.Revision, Tags: &tags}); err != nil {
-						return err
-					}
-					report.TagsRepaired++
-				}
+				report.TagsRepaired++
 			}
 			return nil
 		}
@@ -202,7 +199,7 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 	}
 	if target != nil {
 		if colorErr == nil {
-			importTagColors(ctx, dst, colors, opts.RepairTags || report.Skipped == 0, &report)
+			importTagColors(ctx, dst, colors, &report)
 		}
 		runErr = target.Close(ctx)
 		target = nil

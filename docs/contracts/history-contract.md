@@ -223,7 +223,7 @@ See the [observability contract](observability-contract.md#111-product-value-and
 
 Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.
 
-## v1 tag migration and explicit recovery (issue 2252)
+## v1 tag migration and automatic recovery (issue 2252)
 
 The v1 importer reads encrypted `history_tag` definitions and encrypted
 `history_tag_assignment` associations. It reads built-in membership separately
@@ -248,16 +248,19 @@ an invalid tag table fails the affected record and increments `tag_failures`.
 Definition authentication or decoding failures stop opening the source.
 Neither outcome can produce a complete successful migration.
 
-Normal repeated migration preserves every mapped record. Post-reopen verification
-reports `tag_mismatches` separately from content verification. Run
-`unic migrate --source DIR --target DIR --passphrase-stdin --json --repair-tags`
-only after backing up the target. This explicit operation adds missing source
-tags to mapped records whose target revision is still 1. It unions tags through
-`UpdateItem` with compare-and-swap; it does not replace content, expiry or target
-tags. It counts changed records in `tags_repaired`. It preserves edited records
-and counts missing-tag repairs it cannot apply in `tag_repairs_skipped`.
-Deleted records retain their import mapping and remain deleted. Repeated repair
-is idempotent, including interruption after a completed item update.
+Every real migration run automatically fills safe missing tags and colors.
+CLI and Desktop setup both call `Source.Run` with the same defaults. There is
+no repair flag or opt-in option. Run the ordinary migration command again:
+`unic migrate --source DIR --target DIR --passphrase-stdin --json`.
+
+For mapped records whose revision is still 1, the importer unions missing
+source tags through `UpdateItem` with compare-and-swap. It never replaces
+content, expiry or existing target tags. It counts changed records in
+`tags_repaired`. It preserves edited records and counts missing-tag repairs
+it cannot apply in `tag_repairs_skipped`. Deleted records retain their import
+mapping and remain deleted. Repeated migration is idempotent, including
+interruption after a completed item update. Post-reopen verification reports
+remaining `tag_mismatches` separately from content verification.
 
 Any later metadata edit may advance `UpdatedAtMs`. Verification still requires
 the original creation time and exact content bytes. It checks the original
@@ -282,10 +285,10 @@ the existing configuration manager while holding the offline target lock.
 Keys remain SHA256 of the v2 canonical identifier or custom name. Existing
 target overrides, including explicit gray, always win. Other configuration
 values remain unchanged. The usual configuration CAS rejects concurrent edits.
-The first import of a source fills missing colors. When the source already has
-mapped records, a normal rerun reports missing colors without writing them;
-explicit `--repair-tags` fills those gaps. This also supports earlier imports
-that lack a target config file. Repeated repair makes no further changes.
+Every real migration fills missing colors, including mapped sources and earlier
+imports that lack a target config file. This is the same default in CLI and
+Desktop setup. Existing overrides remain untouched. Repeated migration makes
+no further changes. `colors_missing` counts gaps left after a failed color write.
 
 Reports expose `colors_imported`, `colors_preserved`, `colors_missing`,
 `colors_verified` and `color_failures`. Verification reopens the persisted

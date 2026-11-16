@@ -25,7 +25,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 
 - 根 `go.mod` 的模块路径为 `github.com/uniclipboard/unic`。当前只有一个 Go 模块，没有 `go.work` 或 `bindings/`；`go test -race ./...` 覆盖核心、插件和桌面端的 Go 测试。
 - `engine/` 是公开 Go SDK，管理生命周期、设备信任、历史、处理流水线与同步调度；根 `internal/` 放核心实现及内置插件。`plugin/` 提供独立进程插件 SDK、RPC 和设置 Schema 工具，`plugins/` 放插件示例及开发说明。
-- Root `internal/v1migration/` provides old-history migration through the in-process `unic migrate` command. It includes desktop profile discovery and platform credential reads, such as macOS Security.framework. Engine does not import it. There is no separate migration program.
+- Root `internal/v1migration/` provides old-history migration through the in-process `unic migrate` command. It includes desktop profile discovery and platform credential reads, such as macOS Security.framework. Engine does not import it. There is no separate migration program. CLI and Desktop setup share `Source.Run`, including automatic safe tag and color completion on every migration run.
 - `app/service/` contains the UI-free CLI and service. `app/desktop/` contains `unic-desktop`, mygo, UI Kit and native integration. Shared local protocol, configuration, paths and content conversion live in root `internal/local*` packages.
 - `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
 - `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/expo/` owns the shared Expo UI shell for Android and iOS. It uses demo state and has no Engine integration. `app/android/` and `app/ios/` retain platform guidance only. Every application directory has its own README and AGENTS.md.

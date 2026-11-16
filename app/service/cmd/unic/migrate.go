@@ -42,13 +42,12 @@ content is reported as partial. Exit codes: 0 ready/complete, 3 partial, 1 faile
 The source remains unchanged. Rerun the same command after an interruption;
 successful records are not duplicated. A dry run is not a completed import.
 
-For an older import with missing tags, rerun normally to diagnose tag_mismatches.
-Use --repair-tags to add missing source tags to unedited imported records only.
-It also fills missing tag colors. Existing target color overrides are preserved.
-Fresh imports preserve palette and custom hex colors from the v1 tag layout.
-Check color_failures and colors_missing; invalid layouts or settings report partial.
-Edited records and deletions are preserved. Check tag_repairs_skipped and resolve
-those records manually in v2. Back up the target before repair. Repair is idempotent.
+Every import automatically fills missing source tags on unedited imported
+records and fills missing tag colors. Existing target color overrides, edited
+records and deletions are preserved. The desktop uses the same migration path.
+Rerun the normal command to resume or repair; no repair option is needed.
+Check tag_repairs_skipped, color_failures and colors_missing in the report.
+Resolve edited records manually in v2. Repeated migration is idempotent.
 Built-in link/image/directory/code tags retain their canonical v2 identities.
 Favorites are unsupported and reported; they are not silently imported.
 
@@ -73,7 +72,6 @@ func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
 	target := fs.String("target", "", "unic data directory (default: UNIC_HOME or normal unic directory)")
 	service := fs.String("service", "UniClipboard", "old credential service; named profiles use UniClipboard-PROFILE")
 	dry := fs.Bool("dry-run", false, "read and authenticate content without changing the target")
-	repairTags := fs.Bool("repair-tags", false, "add missing source tags to unedited imported records; preserve target edits and deletions")
 	jsonMode := fs.Bool("json", false, "emit JSON progress and final report")
 	stdinPassword := fs.Bool("passphrase-stdin", false, "read old passphrase as one line from stdin; never pass it as an argument")
 	if err := fs.Parse(args); err != nil {
@@ -141,7 +139,7 @@ func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
 	}
 	defer func() { _ = s.Close() }()
 	var lastStage string
-	report, err := s.Run(ctx, v1migration.RunOptions{Target: *target, DryRun: *dry, RepairTags: *repairTags, Progress: func(p v1migration.Progress) {
+	report, err := s.Run(ctx, v1migration.RunOptions{Target: *target, DryRun: *dry, Progress: func(p v1migration.Progress) {
 		if p.Stage != lastStage || p.Processed == 1 || p.Processed%25 == 0 || p.Processed == p.Total {
 			if *jsonMode {
 				_ = json.NewEncoder(out).Encode(p)

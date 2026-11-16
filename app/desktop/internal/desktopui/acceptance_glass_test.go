@@ -14,7 +14,8 @@ import (
 )
 
 // Failure cases: blur-only capsules with no reactive rim; hover lighting that
-// never resets; a secondary action that fails to enter system-menu tracking.
+// never resets; a secondary action that fails to enter system-menu tracking;
+// light action-bar and send-button outlines lost against white.
 // Drive the full demo view with real pointer events and sample material pixels
 // outside child content. No native window is opened. GPU/native acceptance is
 // separate from this software-renderer check.
@@ -23,6 +24,7 @@ func scenarioLiquidGlass(t *testing.T) {
 		Theme, Surface                        string
 		HoverPixels, ResetPixels, PressPixels int
 		NativeMenu                            bool
+		VisibleActionEdges                    int
 	}
 	var results []result
 	defer func() {
@@ -61,6 +63,50 @@ func scenarioLiquidGlass(t *testing.T) {
 					t.Fatalf("glass surface missing: %s", surface)
 				}
 				rc := info.Bounds
+				visibleEdges := 0
+				if theme == "light" && surface == "secondary-action" {
+					copy, ok := tt.AccessByRole(ui.RoleButton, "复制")
+					if !ok {
+						t.Fatal("copy action missing")
+					}
+					hint, ok := tt.Find("↩ 复制 · T 标签 · …")
+					if !ok {
+						t.Fatal("action hint missing")
+					}
+					// The production floating bar has 12-point horizontal and 10-point vertical insets.
+					outer := ui.Rect{X: copy.Bounds.X - 12, Y: copy.Bounds.Y - 10, W: hint.X + hint.W - copy.Bounds.X + 24, H: copy.Bounds.H + 20}
+					im := tt.Image()
+					for label, frame := range map[string]ui.Rect{"action-bar": outer, "send-action": rc} {
+						for _, bottom := range []bool{false, true} {
+							edge, outside := frame.Y, frame.Y-7
+							if bottom {
+								edge, outside = frame.Y+frame.H, frame.Y+frame.H+7
+							}
+							visible := 0
+							for dx := -2; dx <= 2; dx++ {
+								x := int((frame.X + frame.W/2 + float32(dx)) * 2)
+								bg := im.RGBAAt(x, int(outside*2))
+								contrast := 0
+								for dy := -2; dy < 4; dy++ {
+									px := im.RGBAAt(x, int(edge*2)+dy)
+									delta := int(bg.R) + int(bg.G) + int(bg.B) - int(px.R) - int(px.G) - int(px.B)
+									if delta > contrast {
+										contrast = delta
+									}
+								}
+								if contrast >= 36 {
+									visible++
+								}
+							}
+							if visible < 4 {
+								t.Errorf("light %s outline missing: bottom=%t, visible=%d/5", label, bottom, visible)
+							} else {
+								visibleEdges++
+							}
+						}
+					}
+				}
+
 				patch := func(outside bool) []color.RGBA {
 					im := tt.Image()
 					var pixels []color.RGBA
@@ -92,7 +138,7 @@ func scenarioLiquidGlass(t *testing.T) {
 				x, y := rc.X+rc.W/2, rc.Y+rc.H/2
 				tt.Move(x, y)
 				tt.Advance(200 * time.Millisecond)
-				r := result{Theme: theme, Surface: surface, HoverPixels: diff(base, patch(false))}
+				r := result{Theme: theme, Surface: surface, VisibleActionEdges: visibleEdges, HoverPixels: diff(base, patch(false))}
 				if r.HoverPixels == 0 {
 					t.Error("glass rim did not react to hover")
 				}

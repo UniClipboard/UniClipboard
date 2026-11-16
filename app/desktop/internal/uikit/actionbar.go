@@ -23,7 +23,7 @@ func (k Kit) ActionBar(c *ui.Context, p ActionBarProps, body func()) ui.Element 
 	switch k.Skin {
 	case MacOS:
 		bar := ui.Row(c).Height(60).Padding(0, 12).Radius(30).Gap(8).AlignItems(ui.Center).Clip()
-		k.glassSurface(bar)
+		k.outlinedGlassSurface(bar)
 		return bar.Children(func() { body(); hint(11) })
 	case Windows:
 		return ui.Column(c).Children(func() {

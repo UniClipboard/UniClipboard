@@ -259,7 +259,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			if p.Sidebar != nil {
 				inset += 108 * (1 - reveal)
 			}
-			bar.Padding(8, 12, 0, inset).Gap(10)
+			bar.Padding(10, 12, 10, inset).Gap(10).Shrink(0)
 		case Windows:
 			bar.Padding(0, 8, 0, 4)
 		default:
@@ -319,6 +319,8 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				search := ui.Row(c.Key("split-search")).Shrink(1)
 				if k.Skin != MacOS {
 					search.Width(width).MinWidth(120)
+				} else {
+					search.MinWidth(32)
 				}
 				search.Children(p.Search)
 			}

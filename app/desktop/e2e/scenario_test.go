@@ -53,6 +53,8 @@ type desktopScenario struct {
 	ctx                            context.Context
 	cancel                         context.CancelFunc
 	name, root, private, out, home string
+	windowWidth, windowHeight      int
+	windowTheme                    string
 	app                            *exec.Cmd
 	appDone                        chan error
 	client                         *api.Client
@@ -134,7 +136,22 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 	handlers := map[string]func(*desktopScenario, []string) error{
 		"start": func(s *desktopScenario, a []string) error {
 			if len(a) != 0 {
-				return errors.New("start takes no arguments")
+				if len(a) != 3 {
+					return errors.New("start [width height light|dark]")
+				}
+				var err error
+				s.windowWidth, err = strconv.Atoi(a[0])
+				if err != nil || s.windowWidth < 600 {
+					return errors.New("invalid window width")
+				}
+				s.windowHeight, err = strconv.Atoi(a[1])
+				if err != nil || s.windowHeight < 480 {
+					return errors.New("invalid window height")
+				}
+				if a[2] != "light" && a[2] != "dark" {
+					return errors.New("invalid window theme")
+				}
+				s.windowTheme = a[2]
 			}
 			return s.start()
 		},
@@ -201,6 +218,54 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			}
 			_, err := s.client.Submit(s.ctx, api.SubmitInput{RequestID: a[0], Snapshot: clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte(a[1])}}}})
 			return err
+		},
+		"ui-toolbar-contained": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("ui-toolbar-contained takes no arguments")
+			}
+			nodes, err := s.tree()
+			if err != nil {
+				return err
+			}
+			var bar *desktopNode
+			for i := range nodes {
+				if nodes[i].Role == "toolbar" && nodes[i].Label == "全部" {
+					bar = &nodes[i]
+					break
+				}
+			}
+			if bar == nil {
+				return errors.New("history toolbar missing")
+			}
+			if s.windowWidth > 0 && bar.Bounds.X+bar.Bounds.Width != float64(s.windowWidth) {
+				return fmt.Errorf("actual window width=%v, want %d", bar.Bounds.X+bar.Bounds.Width, s.windowWidth)
+			}
+			if bar.Bounds.Height != 52 {
+				return fmt.Errorf("toolbar height=%v, want 52", bar.Bounds.Height)
+			}
+			count := 0
+			for _, n := range nodes {
+				if n.Label != "显示方式" && n.Label != "发送到设备" && n.Label != "切换置顶" && n.Label != "更多操作" && n.Role != "search" {
+					continue
+				}
+				b := n.Bounds
+				if b.X < bar.Bounds.X || b.X+b.Width > bar.Bounds.X+bar.Bounds.Width+.1 || b.Y < bar.Bounds.Y+8 || b.Y+b.Height > bar.Bounds.Y+bar.Bounds.Height-8+.1 {
+					return fmt.Errorf("%s outside toolbar insets: control=%+v toolbar=%+v", n.Label, b, bar.Bounds)
+				}
+				count++
+			}
+			if count != 5 {
+				return fmt.Errorf("toolbar controls=%d, want 5", count)
+			}
+			data, err := json.MarshalIndent(nodes, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(s.out, fmt.Sprintf("toolbar-%02d.json", len(s.result.Steps))), append(data, '\n'), 0644); err != nil {
+				return err
+			}
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("all five toolbar controls fit the 52-point band at %dx%d, %s", s.windowWidth, s.windowHeight, s.windowTheme))
+			return nil
 		},
 		"ui-wait":   func(s *desktopScenario, a []string) error { return s.expect(a, false) },
 		"ui-absent": func(s *desktopScenario, a []string) error { return s.expect(a, true) },
@@ -414,6 +479,9 @@ func (s *desktopScenario) launchNative() error {
 			s.app.Env = append(s.app.Env, env)
 		}
 	}
+	if s.windowWidth > 0 {
+		s.app.Env = append(s.app.Env, fmt.Sprintf("UNIC_DESKTOP_E2E_WINDOW=%dx%d", s.windowWidth, s.windowHeight), "UNIC_DESKTOP_E2E_THEME="+s.windowTheme, "UNIC_UI_SKIN=macos")
+	}
 	s.app.Env = append(s.app.Env, "UNIC_HOME="+s.home, "UNIC_DESKTOP_E2E_PROFILE="+s.home, "MYGO_AUTOMATION="+s.automation, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
 	log, err := os.OpenFile(filepath.Join(s.private, "desktop.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
@@ -590,6 +658,19 @@ func (s *desktopScenario) screenshot(name string) error {
 		return err
 	}
 	s.result.Screenshots = append(s.result.Screenshots, file)
+	if s.windowWidth > 0 {
+		config, err := png.DecodeConfig(strings.NewReader(string(data)))
+		if err != nil {
+			return err
+		}
+		metadata, err := json.MarshalIndent(map[string]any{"content_width": s.windowWidth, "content_height": s.windowHeight, "theme": s.windowTheme, "skin": "macos", "pixel_width": config.Width, "pixel_height": config.Height, "capture_scale": float64(config.Width) / float64(s.windowWidth)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(s.out, file+".json"), append(metadata, '\n'), 0600); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (s *desktopScenario) finish(env *testscript.Env) {

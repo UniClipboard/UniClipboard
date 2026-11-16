@@ -15,7 +15,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
 | [incremental-browsing](#incremental-browsing) | process | Multi-page production browsing, idle request timeline, coalescing, selection and cancellation. |
 | [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
-| [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation. |
+| [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation and continuous light action-bar outlines. |
 | [native-menus](#native-menus) | view | System-menu requests, cancellation and selected-value dispatch in the software view. |
 | [pairing-inline-approval](#pairing-inline-approval) | native | Approve an incoming device from the invitation page of the real Desktop. |
 | [production-boundary](#production-boundary) | process | Build independent production and demo commands and verify their dependency and embedded catalogue boundaries. |
@@ -40,7 +40,11 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [tag-manager-platforms](#tag-manager-platforms) | view | Tag management and separate entry assignment across all three skins. |
 | [tag-manager](#tag-manager) | view | Tag management, assignment, rename, merge, deletion and protected built-in tags. |
 | [token-search](#token-search) | view | Composite search prefixes, counts, completion, literal input, caret handling and Escape. |
-| [toolbar-alignment](#toolbar-alignment) | view | Toolbar menu-trigger alignment against adjacent controls. |
+| [toolbar-alignment](#toolbar-alignment) | view | Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-capsule pixel contrast. |
+| [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 
@@ -378,7 +382,7 @@ Liquid glass
 
 Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
 
-Expected: Light and dark view rasters show reactive rims and reset without stale hover feedback.
+Expected: Light and dark view rasters show reactive rims and reset without stale hover feedback; the light action bar and send button retain visible top/bottom outlines.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
@@ -816,12 +820,148 @@ Toolbar alignment
 
 Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
 
-Expected: Both themes align menu triggers with the pin button at the expected geometry.
+Expected: A 52-point band contains layout, search and command controls with vertical insets; expanded search stays within 600, 800, 1100 and 1440-point windows; light capsule top and bottom edges remain visible against white.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 ```text
 acceptance desktopui toolbar-alignment
+```
+
+## toolbar-bounds-dark-1100
+
+Native toolbar bounds at 1100 points in dark mode
+
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+
+Expected: Every toolbar control remains inside the band; search and menus remain usable.
+
+Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+```text
+start 1100 720 dark
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape
+```
+
+## toolbar-bounds-dark-600
+
+Native toolbar bounds at 600 points in dark mode
+
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+
+Expected: Every toolbar control remains inside the band; search and menus remain usable.
+
+Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+```text
+start 600 480 dark
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape
+```
+
+## toolbar-bounds-light-1100
+
+Native toolbar bounds at 1100 points in light mode
+
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+
+Expected: Every toolbar control remains inside the band; search and menus remain usable.
+
+Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+```text
+start 1100 720 light
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape
+```
+
+## toolbar-bounds-light-600
+
+Native toolbar bounds at 600 points in light mode
+
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+
+Expected: Every toolbar control remains inside the band; search and menus remain usable.
+
+Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
+
+```text
+start 600 480 light
+submit entry 'Toolbar bounds evidence'
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot collapsed
+ui-click button '搜索历史'
+ui-wait comboBox '搜索历史'
+ui-toolbar-contained
+ui-set comboBox '搜索历史' bounds
+ui-wait listItem 'Toolbar bounds evidence'
+ui-toolbar-contained
+screenshot expanded
+ui-set comboBox '搜索历史' ''
+ui-key Escape
+ui-key Escape
+ui-click radio '网格'
+ui-toolbar-contained
+screenshot grid
+ui-click menuButton '更多操作'
+screenshot menu
+ui-key Escape
 ```
 
 ## tray-icon-settings

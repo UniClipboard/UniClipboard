@@ -98,6 +98,9 @@ type gui struct {
 	loginError                  string
 }
 
+// The E2E build overrides both initial and post-startup window dimensions.
+var desktopWindowWidth, desktopWindowHeight = 1100, 720
+
 // Production packaging sets this to UniClipboard. Development instances use a
 // distinct single-instance identity as well as their separate default data root.
 var desktopAppName = "UniClipboard Development"
@@ -192,7 +195,7 @@ func runGUI(settings *config.Manager) error {
 		go func() { <-ctx.Done(); mygo.App.Quit() }()
 		updateTray := setupTray(ctx, settings.Current().Desktop)
 
-		opts := mygo.WindowOptions{Title: "unic", Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view), Hidden: !flow.Required() && settings.Current().Desktop.StartInBackground}
+		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view), Hidden: !flow.Required() && settings.Current().Desktop.StartInBackground}
 		if uikit.DefaultSkin() == uikit.MacOS {
 			opts.TitleBarStyle = mygo.TitleBarHidden
 			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}

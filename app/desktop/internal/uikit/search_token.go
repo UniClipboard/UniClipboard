@@ -97,7 +97,7 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 			target = 460
 		}
 		width = row.AnimateTo("width", target, ui.Animation{Duration: 280 * time.Millisecond, Ease: ui.CubicBezier(.2, 0, 0, 1)})
-		row.Padding(0).Gap(0).Height(32).Width(width).MinWidth(width).MaxWidth(width).Shrink(0).Radius(16).Clip()
+		row.Padding(0).Gap(0).Height(32).Width(width).MinWidth(32).MaxWidth(width).Shrink(1).Radius(16).Clip()
 	} else if p.Toolbar {
 		row.Grow(1).MinWidth(80)
 	}
@@ -163,8 +163,8 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 			if trigger.Clicked() {
 				state.Open, state.Request = true, true
 			}
-			ui.Row(c.Key("reveal")).Width(max(0, width-32)).Height(32).MinWidth(0).Shrink(0).Clip().AccessHidden(!state.Open).Children(func() {
-				ui.Row(c.Key("input-body")).Width(428).MinWidth(428).Shrink(0).Gap(6).PaddingEnd(10).AlignItems(ui.Center).Children(body)
+			ui.Row(c.Key("reveal")).Width(max(0, width-32)).Height(32).MinWidth(0).Shrink(1).Clip().AccessHidden(!state.Open).Children(func() {
+				ui.Row(c.Key("input-body")).Width(428).MinWidth(0).Shrink(1).Gap(6).PaddingEnd(10).AlignItems(ui.Center).Children(body)
 			})
 		} else {
 			if k.Skin != Windows {
@@ -184,7 +184,11 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 	k.fldStyle(row, pal, focused, false, p.Disabled)
 	if k.Skin == MacOS {
 		row.Background(ui.Transparent).Border(0, ui.Transparent).NoShadow()
-		k.glassSurface(row)
+		if disclosure {
+			k.outlinedGlassSurface(row)
+		} else {
+			k.glassSurface(row)
+		}
 		if focused {
 			row.Shadow(0, 0, 0, 3.5, pal.focus)
 		}

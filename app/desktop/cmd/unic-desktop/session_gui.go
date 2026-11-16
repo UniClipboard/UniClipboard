@@ -132,7 +132,7 @@ func (s *desktopSession) start() {
 				}
 			}()
 			s.g.win.SetMinimumSize(600, 480)
-			s.g.win.SetContentSize(1100, 720)
+			s.g.win.SetContentSize(desktopWindowWidth, desktopWindowHeight)
 			s.g.win.Invalidate()
 		})
 	}()

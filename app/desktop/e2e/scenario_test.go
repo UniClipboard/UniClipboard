@@ -327,6 +327,16 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			}
 			return s.call(s.ctx, "input", map[string]any{"window": s.window, "events": []any{map[string]any{"type": "click", "x": node.Bounds.X + node.Bounds.Width/2, "y": node.Bounds.Y + node.Bounds.Height/2}}}, nil)
 		},
+		"ui-hover": func(s *desktopScenario, a []string) error {
+			if len(a) != 2 {
+				return errors.New("ui-hover role label")
+			}
+			node, err := s.find(a[0], a[1])
+			if err != nil {
+				return err
+			}
+			return s.call(s.ctx, "input", map[string]any{"window": s.window, "events": []any{map[string]any{"type": "pointerMove", "x": node.Bounds.X + node.Bounds.Width/2, "y": node.Bounds.Y + node.Bounds.Height/2}}}, nil)
+		},
 		"ui-key": func(s *desktopScenario, a []string) error {
 			if len(a) != 1 {
 				return errors.New("ui-key accelerator")
@@ -360,6 +370,9 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 		},
 	}
 	for name, handler := range builtinPluginCommands() {
+		handlers[name] = handler
+	}
+	for name, handler := range peerStallCommands() {
 		handlers[name] = handler
 	}
 	result := map[string]func(*testscript.TestScript, bool, []string){}

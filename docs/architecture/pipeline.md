@@ -1,5 +1,6 @@
 ---
 paths:
+  - internal/v1migration/
   - engine/directory.go
   - internal/directory
   - internal/localcontent/directory.go
@@ -45,7 +46,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 5e8a90ffaaf68393c2b35125982e7d2d1e1f39ca
+verified: bf5da54e87d72de9224685881aedcbb3e8118693
 ---
 # Clipboard pipeline and local history
 
@@ -75,7 +76,9 @@ Text containing an HTTP(S) URL also receives `builtin:link`; inspection is limit
 It changes no content and performs no network or file-body reads.
 Existing history is not backfilled. Disabling `plugins.instances."builtin.classify".enabled` takes effect after service restart and stops classification of new items; existing tags remain.
 The existing `builtin.text` email/URL hints and text Actions remain independent.
-Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes only the five built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
+Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes the six built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
+
+The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. `builtin:code` is currently preserved by migration; `builtin.classify` does not produce it for new content. The importer also preserves palette and hexadecimal colors from the v1 presentation layout through host configuration. Every CLI and Desktop migration automatically fills safe missing tags and colors while preserving target edits, existing color overrides and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252).
 
 ## Invariants
 

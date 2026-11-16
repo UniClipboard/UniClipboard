@@ -15,7 +15,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: f8f58604de5dc7e1962c4a29f27c3ca0e0c0cf02
+verified: 29832cfb95cfe3e24a61b50f9adfb48eba4fa1b6
 ---
 # 仓库布局与依赖边界
 
@@ -25,7 +25,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 
 - 根 `go.mod` 的模块路径为 `github.com/uniclipboard/unic`。当前只有一个 Go 模块，没有 `go.work` 或 `bindings/`；`go test -race ./...` 覆盖核心、插件和桌面端的 Go 测试。
 - `engine/` 是公开 Go SDK，管理生命周期、设备信任、历史、处理流水线与同步调度；根 `internal/` 放核心实现及内置插件。`plugin/` 提供独立进程插件 SDK、RPC 和设置 Schema 工具，`plugins/` 放插件示例及开发说明。
-- Root `internal/v1migration/` provides old-history migration through the in-process `unic migrate` command. It includes desktop profile discovery and platform credential reads, such as macOS Security.framework. Engine does not import it. There is no separate migration program.
+- Root `internal/v1migration/` provides old-history migration through the in-process `unic migrate` command. It includes desktop profile discovery and platform credential reads, such as macOS Security.framework. Engine does not import it. There is no separate migration program. CLI and Desktop setup share `Source.Run`, including automatic safe tag and color completion on every migration run.
 - `app/service/` contains the UI-free CLI and service. `app/desktop/` contains `unic-desktop`, mygo, UI Kit and native integration. Shared local protocol, configuration, paths and content conversion live in root `internal/local*` packages.
 - `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
 - `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/expo/` owns the shared Expo UI shell for Android and iOS. It uses demo state and has no Engine integration. `app/android/` and `app/ios/` retain platform guidance only. Every application directory has its own README and AGENTS.md.
@@ -198,7 +198,7 @@ The canonical Desktop acceptance entry is `make desktop-e2e`. It runs the declar
 
 ### Tag controls and colors
 
-Desktop lists Text, Images, Files, Folders and Links as protected built-in tags, including in an empty library. The labels use the selected interface language. Search, history, assignment and cleanup use stable `builtin:text`, `builtin:image`, `builtin:files`, `builtin:folder` and `builtin:link` IDs. Images use green and Links use blue; the other types use gray. Built-in tags cannot be manually assigned, removed, renamed, merged or recolored in the manager. Custom tags retain their literal labels. The [pipeline](pipeline.md#built-in-content-tags) defines automatic classification and the no-backfill boundary.
+Desktop lists Text, Images, Files, Folders, Code and Links as protected built-in tags, including in an empty library. The labels use the selected interface language. Search, history, assignment and cleanup use stable `builtin:text`, `builtin:image`, `builtin:files`, `builtin:folder`, `builtin:code` and `builtin:link` IDs. Images default to green, Links to blue and Code to purple; the other types default to gray. Persisted color overrides apply to built-in and custom tags, including v1 migration colors. Built-in tags cannot be manually assigned, removed, renamed, merged or recolored in the manager. Custom tags retain their literal labels. The [pipeline](pipeline.md#built-in-content-tags) defines automatic classification and the no-backfill boundary.
 
 The detail view uses existing Kit Tag chips and an inline ComboField, following the V1 macOS controls. Add Tag or T opens a 170 by 22 point field on macOS. The 300 point suggestion popup puts Create first for a new nonempty name, followed by unattached matching tags or frequent tags. Names are trimmed, limited to 64 Unicode scalars and matched without case for duplicate prevention. Built-in names and IDs are not offered as new tags. A selected Create row and its five swatches share one highlighted surface. The palette order is orange, blue, green, purple and gray. Clicking a swatch keeps editor focus. Arrow keys select, Return attaches, Tab/Shift-Tab cycle creation colors and Escape cancels. Moving focus elsewhere or selecting another entry cancels the editor. Removing a custom tag chip detaches it from that entry and keeps the tag registry. Other skins reuse the same model with their existing Kit styling.
 

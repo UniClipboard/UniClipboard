@@ -159,6 +159,7 @@ type cryptoState struct {
 	keys                         map[string]contentKey
 	database, blobRoot, sourceID string
 	v3                           bool
+	profileID                    string
 }
 
 func derive(key, salt, info []byte) []byte {
@@ -214,7 +215,7 @@ func unlock(root, service string, password []byte, secrets SecretReader) (*crypt
 		clear(master)
 		return nil, ErrUnlock
 	}
-	s := &cryptoState{master: master, keys: map[string]contentKey{}, database: filepath.Join(root, "uniclipboard.db"), blobRoot: filepath.Join(root, "blobs")}
+	s := &cryptoState{profileID: slot.Scope.ProfileID, master: master, keys: map[string]contentKey{}, database: filepath.Join(root, "uniclipboard.db"), blobRoot: filepath.Join(root, "blobs")}
 	fail := func(err error) (*cryptoState, error) { s.close(); return nil, err }
 	// Keyslot and scope identify the source even after its directory is moved.
 	id := sha256.New()

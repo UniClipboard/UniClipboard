@@ -38,7 +38,7 @@ Content readers are bounded and closed. Switching records must never show anothe
 
 ## Acceptance
 
-Use a private profile and production unicd process. Exercise the real desktop binding without a renderer.
+Use a private profile and production unicd process. Exercise the real desktop binding. The current process scenario also uses the software tester for settings menus; it opens no native window and does not establish native menu behavior.
 Use the existing directory clipboard adapter to verify restore bytes.
 Record source and executable SHA-256 values, scenario outcomes and explicit native limits in a JSON receipt.
 Delete private profiles, logs and binaries after acceptance; retain only the small receipt.

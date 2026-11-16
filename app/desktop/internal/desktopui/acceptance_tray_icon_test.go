@@ -112,7 +112,12 @@ func scenarioTrayIconSettings(t *testing.T) {
 	watchCtx, stopWatch := context.WithCancel(ctx)
 	watchDone := make(chan error, 1)
 	go func() { watchDone <- manager.Watch(watchCtx) }()
-	defer func() { stopWatch(); <-watchDone }()
+	defer func() {
+		stopWatch()
+		if err := <-watchDone; err != nil {
+			t.Errorf("stop configuration watcher: %v", err)
+		}
+	}()
 	images := []string{}
 	failImage := false
 	icon := trayicon.New(func(raw []byte, template bool) error {

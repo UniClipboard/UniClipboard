@@ -130,3 +130,8 @@ The merged source passed production CLI migration, canonical Desktop setup
 and data-binding scenarios, all 216 affected race tests, pinned lint,
 formatting, JSON union checks and documentation checks. Refreshed receipts bind
 the merged source identities. Native-window acceptance remains NOT_RUN.
+
+Validated merge commit: `29832cfb95cfe3e24a61b50f9adfb48eba4fa1b6`. Its parents
+are the PR head `166549c5a958b133dcff3405952836158c913101` and upstream v2
+`4f9496e4599d4769fb6859f1ea7072a55c20d9f6`. The overview verification marker
+was refreshed against this merged implementation after all local checks passed.

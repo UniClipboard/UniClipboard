@@ -49,6 +49,7 @@ func (d *viewState) approveLive(id string, accept bool) {
 					d.deviceList.Value, d.deviceDetailOpen = peer.ID, false
 				}
 			}:
+				d.live.wake()
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -72,6 +73,7 @@ func (d *viewState) pairLive(input string, backend string) {
 		if err == nil {
 			select {
 			case d.live.results <- func() { d.live.join = &result; d.deviceTask = "wait" }:
+				d.live.wake()
 			case <-ctx.Done():
 				return ctx.Err()
 			}

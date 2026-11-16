@@ -147,6 +147,7 @@ func (l *liveState) loadDetail(d *viewState) {
 			}
 			select {
 			case l.results <- apply:
+				l.wake()
 			case <-l.ctx.Done():
 			}
 		}()

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -132,8 +131,8 @@ type viewState struct {
 
 func (d *viewState) view(c *ui.Context) {
 	if d.live != nil {
+		d.live.bindWake(c)
 		d.live.poll(d)
-		c.After(200 * time.Millisecond)
 	}
 	dark := c.Theme().Dark
 	if d.theme != "system" {

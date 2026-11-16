@@ -555,6 +555,7 @@ func (d *viewState) startHistorySend(target string) {
 		progress := func(stage string) {
 			select {
 			case l.results <- func() { l.sendStage = stage }:
+				l.wake()
 			case <-l.ctx.Done():
 			}
 		}
@@ -608,6 +609,7 @@ func (d *viewState) startHistorySend(target string) {
 				d.notice = "发送完成"
 			}
 		}:
+			l.wake()
 		case <-l.ctx.Done():
 		}
 	}()

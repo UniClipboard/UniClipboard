@@ -109,8 +109,9 @@ See the [setup execution receipt](../exec/0026-first-install-setup.md) for accep
 Quit uses a window-scoped platform command-Q shortcut, including when no view control has focus.
 `desktopui.NewDesktop` initializes empty service-backed state, without fixture data.
 `live.go` serializes local socket work and applies completions on the view thread.
+`live_wake.go` binds weak, thread-safe mygo window services to each production view. Every successful bounded result publication and relevant service event invalidates its owning window. The main history and quick panel no longer request a frame every 200 ms. Their models still apply queued completions only on the view thread. Independent deadlines wake the window for the 30-second recovery check, failed-page retry and visible invitation expiry. Search debounce, blur and preview timers retain their existing view deadlines. Closing a binding cancels its background work and stops its wake timer.
 It owns query pagination, reconciliation, bounded content previews and revision-checked history mutations.
-The event stream requests fresh snapshots; a five-second reconciliation also covers lost events.
+The event stream requests fresh snapshots; an independent 30-second revision check also covers lost events without a frame heartbeat.
 Initial reads and changed queries show loading. Timer/event reconciliation and pagination keep existing history visible without adding a loading row. The quick panel uses the same foreground-loading state. Cancellation and completion clear only the matching read generation.
 The history list has no manual refresh button; event updates and periodic reconciliation refresh it automatically.
 Selected single-image files use the same image frame and Quick Look as image records, with their filename and actual dimensions. Their stored file kind, type filters and file-copy semantics stay unchanged. Preview reads are limited to 32 MiB and 16 million decoded pixels; unsupported, corrupt, oversized and multi-file payloads retain the file list.

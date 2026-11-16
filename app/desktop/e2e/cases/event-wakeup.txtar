@@ -1,0 +1,11 @@
+# Case: Event-driven history and quick-panel rendering
+# Mode: process
+# Purpose: Exercise actual service events, content completions and recovery through stopped production renderers.
+# Steps:
+#   Start isolated unicd, render both production bindings, advance idle UI time, submit real history and await independent deadline recovery.
+# Expected:
+#   No idle heartbeat builds; async events and content appear without manual frames; recovery still runs.
+# Forbidden:
+#   Manual polling to deliver completions, future 200 ms frame requests, native OS claims or missing receipt.
+
+acceptance desktopui event-wakeup

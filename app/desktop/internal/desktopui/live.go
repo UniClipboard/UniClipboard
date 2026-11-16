@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -38,6 +39,7 @@ func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
 	d := &viewState{page: "history", theme: "system", layout: "list", nav: uikit.NavState{Value: "all"}, settings: uikit.NavState{Value: "general"}, deviceList: uikit.SourceState{Value: "local"}, gridSize: .4, options: map[string]bool{}, choices: map[string]string{}}
 	ctx, cancel := context.WithCancel(ctx)
 	d.live = &liveState{ctx: ctx, cancel: cancel, client: client, jobs: make(chan func(context.Context) func(), 16), results: make(chan func(), 32), changed: make(chan struct{}, 1), recovery: make(chan struct{}, 1), searchSlots: make(chan struct{}, 1), items: map[string]api.HistoryItem{}, details: map[string]entry{}, pending: map[string]api.PendingPeer{}}
+	context.AfterFunc(ctx, d.live.stopWake)
 	go d.live.work()
 	go d.live.follow()
 	return &Desktop{d: d}
@@ -63,6 +65,11 @@ func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
 func (s *Desktop) SetMigrationOpener(open func()) { s.d.live.openMigration = open }
 
 type liveState struct {
+	wakeMu       sync.Mutex
+	wakeServices ui.Services
+	wakeTimer    *time.Timer
+	wakeDue      time.Time
+
 	openMigration                              func()
 	sendCancel                                 context.CancelFunc
 	sendStage                                  string
@@ -123,6 +130,7 @@ func (l *liveState) work() {
 			case <-l.ctx.Done():
 				return
 			case l.results <- apply:
+				l.wake()
 			}
 		}
 	}
@@ -137,11 +145,13 @@ func (l *liveState) follow() {
 			}
 			select {
 			case l.changed <- struct{}{}:
+				l.wake()
 			default:
 			}
 		})
 		select {
 		case l.recovery <- struct{}{}:
+			l.wake()
 		default:
 		}
 		select {
@@ -208,6 +218,7 @@ drained:
 	if d.devicesOpen && d.deviceTask == "invite" && d.inviteMode == "ticket" && !l.busy && l.ticket == "" && !l.ticketAttempted {
 		d.newLiveTicket()
 	}
+	l.scheduleWake(d)
 }
 func (d *viewState) liveQueryKey() string { return searchQueryKey(d.historySearchQuery()) }
 
@@ -559,6 +570,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 		}()
 		select {
 		case l.results <- apply:
+			l.wake()
 		case <-l.ctx.Done():
 		}
 	}()
@@ -733,6 +745,7 @@ func (d *viewState) saveLiveConfig(cfg config.Config) {
 			// value and revision to a second user intent.
 			select {
 			case d.live.results <- func() { d.live.config = state; d.projectLiveConfig() }:
+				d.live.wake()
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -762,6 +775,7 @@ func (d *viewState) newLiveCode() {
 		if err == nil {
 			select {
 			case d.live.results <- func() { d.live.code = code; d.inviteCode = code.Code }:
+				d.live.wake()
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -781,6 +795,7 @@ func (d *viewState) newLiveTicket() {
 		if err == nil {
 			select {
 			case d.live.results <- func() { d.live.ticket = ticket }:
+				d.live.wake()
 			case <-ctx.Done():
 				return ctx.Err()
 			}

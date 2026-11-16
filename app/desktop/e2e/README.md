@@ -76,6 +76,7 @@ The runner opens only test-owned windows with synthetic content and a unique pro
 | `history-count <expected>` | Assert the exact migrated-history count through production IPC. |
 | `submit <id> <text>` | Seed synthetic history through the production service. |
 | `ui-wait <role> <label> [seconds]` | Require a stable matching accessible element; optional timeout is 1–120 seconds (default 20). |
+| `ui-idle` | Require the native window to settle; future timers are checked separately by `event-wakeup`. |
 | `ui-absent <role> <label>` | Require stable absence of matching elements. |
 | `ui-click <role> <label>` | Click the unique matching element through app-scoped window input. |
 | `ui-enabled <role> <label>` | Wait until the matching live control is enabled before acting. |

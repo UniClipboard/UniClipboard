@@ -1,0 +1,80 @@
+# Case: Built-in processors saved and applied from Desktop
+# Mode: native
+# Purpose: Manage classification and text tools from Plugins and verify actual behavior after Desktop restart.
+# Steps: Disable each plugin, check the failure-policy dropdown shows inheritance, check pending restart, restart, verify tags and Actions, then enable both again. The data-binding acceptance chooses dropdown values through the system menu; this driver cannot.
+# Expected: Classification alone reports restart; old runtime remains active until restart; saved changes survive restart and affect new history and Actions.
+# Forbidden: Premature runtime claims, lost settings, missing restart notice, fixture-only acceptance or old service residue.
+
+start
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-enabled button '内容分类'
+ui-click button 内容分类
+plugin-back-in-toolbar
+screenshot classification-toolbar
+ui-enabled switch '启用内容分类'
+ui-click switch 启用内容分类
+config-equals plugins.instances.builtin.classify.enabled false
+restart-required plugins
+ui-wait text '插件设置已保存。请退出并重新启动桌面端以生效。'
+ui-enabled switch '启用内容分类'
+ui-click switch 启用内容分类
+config-equals plugins.instances.builtin.classify.enabled true
+restart-clear
+ui-enabled switch '启用内容分类'
+ui-click switch 启用内容分类
+config-equals plugins.instances.builtin.classify.enabled false
+ui-value popUpButton 处理失败时 '跟随全局（继续处理）'
+config-equals plugins.instances.builtin.classify.on_error null
+ui-enabled button '返回插件列表'
+ui-click button 返回插件列表
+ui-absent button 返回插件列表
+ui-enabled button '文本工具'
+ui-click button 文本工具
+ui-enabled switch '启用文本工具'
+ui-click switch 启用文本工具
+config-equals plugins.instances.builtin.text.enabled false
+ui-value popUpButton 处理失败时 '跟随全局（继续处理）'
+config-equals plugins.instances.builtin.text.on_error null
+processor-probe enabled
+screenshot processors-pending
+restart-desktop
+processor-probe disabled
+restart-clear
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-enabled button '内容分类'
+ui-click button 内容分类
+config-equals plugins.instances.builtin.classify.enabled false
+ui-enabled switch '启用内容分类'
+ui-click switch 启用内容分类
+config-equals plugins.instances.builtin.classify.enabled true
+ui-enabled button '返回插件列表'
+ui-click button 返回插件列表
+ui-absent button 返回插件列表
+ui-enabled button '文本工具'
+ui-click button 文本工具
+ui-enabled switch '启用文本工具'
+ui-click switch 启用文本工具
+config-equals plugins.instances.builtin.text.enabled true
+screenshot processors-enable-pending
+restart-desktop
+processor-probe enabled
+restart-clear
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+screenshot processors-active
+ui-enabled button 文本工具
+ui-click button 文本工具
+ui-value popUpButton 处理失败时 '跟随全局（继续处理）'
+config-equals plugins.instances.builtin.text.on_error null
+restart-clear
+config-equals telemetry.enabled false
+config-equals sync.enabled false
+screenshot processors-policy-restored

@@ -9,6 +9,7 @@ paths:
   - app/desktop/internal/setupui
   - app/desktop/e2e
   - app/desktop/internal/desktopui
+  - app/desktop/internal/uikit/split.go
   - app/desktop/internal/i18n
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
@@ -36,7 +37,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 546e6317c7fb0709c5a5c241f40dd07a68d89b9b
+verified: fc48e6e42fc8cc3aaf11493909d17a25e099bac2
 ---
 # Desktop configuration and received files
 
@@ -50,6 +51,16 @@ General, Sync and Storage controls save through the revision-checked local confi
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
 `unic-desktop --version --json` reports build identity before configuration, service ownership or UI initialization. See the [release architecture](releases.md).
+
+## Built-in plugin management
+
+Settings > Plugins lists Tailcat sync, text tools and content classification. Plugin details use a compact back icon immediately before the toolbar title. The icon retains the translated “Back to plugins” accessible name and tooltip; the plugin list has no back icon. The detail pages edit the existing configuration through the revision-checked local API. Plugin maps and pointer values are copied before editing; failed writes retain the authoritative service snapshot. A successful save publishes the returned configuration on the view thread before controls accept another write. Saved-but-unapplied and invalid-file states remain visible. The list shows capability tags, the plugin ID, an inline enable switch (Tailcat is fixed on) and a name or ID filter. A detail page has an entity header, an overview with capability, event and run-state facts, and an Actions tab for the text tool.
+
+Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes` backend policies. They apply immediately. The file permission covers files and entire directory snapshots, including empty trees. The automatic threshold uses the selected files' total byte count; explicit sends bypass only that threshold. Global synchronization permissions and automatic-directory intent remain on Settings > Sync. Tailcat stays assembled and cannot be independently disabled or uninstalled.
+
+Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after quitting and reopening Desktop, which restarts its owned service. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
+
+The three built-in plugins have no plugin-specific Schema fields. This interface does not implement external plugin installation, removal or arbitrary Schema forms. See the [execution receipt](../exec/desktop-builtin-plugin-settings.md) for failure cases and native Desktop evidence.
 
 ## Native application updates
 

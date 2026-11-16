@@ -607,6 +607,59 @@ func scenarioDesktopLiveData(t *testing.T) {
 		t.Fatal("deleted record remains")
 	}
 	checks = append(checks, "revision-checked deletion updates history")
+
+	// Failure cases for the processor failure policy: the platform menu does
+	// not open, a choice does not persist, inheritance is flattened into an
+	// explicit "continue", the trigger shows a stale value, or another plugin
+	// instance is changed.
+	t.Setenv("UNIC_UI_SKIN", "macos")
+	d.page, d.settings.Value, d.pluginSettings = "settings", "plugins", builtinPluginSettings{id: "builtin.text"}
+	var tt *ui.Tester
+	for _, step := range []struct{ choice, want, shown string }{
+		{"禁止同步此条目", "block_sync", "禁止同步此条目"},
+		{"继续处理", "continue", "继续处理"},
+		{"跟随全局（继续处理）", "", "跟随全局（继续处理）"},
+	} {
+		// The trigger is disabled while a write or read is in flight.
+		spin("failure policy idle", func() bool { return !d.live.busy && !d.live.loading })
+		// A new tester per step drops pointer state left by the previous menu.
+		tt = ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{})
+		trigger, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时")
+		if !ok {
+			t.Fatal("failure policy trigger missing")
+		}
+		x, y := trigger.Bounds.X+trigger.Bounds.W/2, trigger.Bounds.Y+trigger.Bounds.H/2
+		tt.Press(x, y)
+		if items := tt.Menu(); len(items) != 3 || !slices.Contains(items, step.choice) {
+			t.Fatalf("failure policy menu items for %q = %v", step.choice, items)
+		}
+		tt.CloseMenu()
+		tt.Release(x, y)
+		// Click by position: the row title shares the trigger's accessible name.
+		tt.ClickAt(x, y)
+		if err := tt.ChooseMenuItem(step.choice); err != nil {
+			t.Fatal(err)
+		}
+		spin("failure policy "+step.choice, func() bool {
+			tt.Frame()
+			return !d.live.busy && d.live.config.Config.Plugins.Instances["builtin.text"].OnError == step.want
+		})
+		saved, e := client.Config(ctx)
+		if e != nil || saved.Config.Plugins.Instances["builtin.text"].OnError != step.want || saved.Config.Plugins.Instances["builtin.classify"].OnError != "" {
+			t.Fatalf("failure policy %q not persisted alone: %v", step.choice, e)
+		}
+		// The engine fixes processor policy at startup. The startup effective
+		// policy is "continue", so only "block_sync" leaves a pending restart.
+		if pending := slices.Contains(saved.RestartRequired, "plugins.settings"); pending != (step.want == "block_sync") {
+			t.Fatalf("failure policy %q restart required = %v: %v", step.choice, pending, saved.RestartRequired)
+		}
+		tt.Frame()
+		if info, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时"); !ok || info.Value != step.shown {
+			t.Fatalf("failure policy trigger shows %q, want %q", info.Value, step.shown)
+		}
+	}
+	d.page, d.pluginSettings = "history", builtinPluginSettings{}
+	checks = append(checks, "processor failure policy dropdown chooses inherit/continue/block through the system menu and persists each choice")
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
 	spin("disconnect", func() bool { return !d.live.connected })

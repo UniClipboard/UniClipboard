@@ -102,6 +102,8 @@ type SplitViewProps struct {
 	// Title of the content at the leading end of the toolbar band; Subtitle is secondary
 	// text after it, e.g. the item count.
 	Title, Subtitle string
+	// TitleLeading holds navigation controls immediately before the heading.
+	TitleLeading func()
 	// Sidebar is drawn on the sidebar window region. Leave nil for a window without one.
 	Sidebar func()
 	// SidebarHidden is the hidden state of the sidebar; the toggle flips it. Nil keeps the
@@ -273,6 +275,9 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			}
 			if k.Skin != MacOS {
 				toggle()
+			}
+			if p.TitleLeading != nil {
+				p.TitleLeading()
 			}
 			heading := func() {
 				ui.Row(c.Key("split-heading")).Gap(8).AlignItems(ui.Baseline).MinWidth(0).Children(func() {

@@ -594,6 +594,16 @@ func (d *viewState) saveLiveConfig(cfg config.Config) {
 			return err
 		}
 		state, err := client.SaveConfig(ctx, revision, buf.Bytes())
+		if err == nil {
+			// Publish the saved snapshot before mutate enables another write.
+			// Waiting for a later history refresh can expose the old switch
+			// value and revision to a second user intent.
+			select {
+			case d.live.results <- func() { d.live.config = state; d.projectLiveConfig() }:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 		if err == nil && state.ApplyError != "" {
 			return &api.Error{Message: "saved but not applied", Reason: "config_apply_failed"}
 		}

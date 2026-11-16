@@ -1,0 +1,92 @@
+# Case: Built-in Tailcat policy through Desktop settings
+# Mode: native
+# Purpose: Save Tailcat content policies and automatic thresholds from the real Plugins page.
+# Steps: Toggle each content permission, validate Engine decisions, check directory grouping and total-byte threshold, then reopen Desktop.
+# Expected: Saved policies persist; Engine decisions change immediately; manual sends bypass only the automatic threshold.
+# Forbidden: Fixture settings, unsupported Tailcat disablement, altered global permissions, or false runtime success.
+
+start
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-wait button 'Tailcat 同步'
+ui-enabled button 'Tailcat 同步'
+ui-click button 'Tailcat 同步'
+ui-wait switch '同步文本'
+plugin-back-in-toolbar
+screenshot tailcat-defaults
+ui-enabled switch '同步文本'
+ui-click switch '同步文本'
+config-equals plugins.instances.builtin.tailcat.sync.text false
+ui-click listItem 同步
+ui-enabled switch '启用同步'
+ui-click switch 启用同步
+config-equals sync.enabled true
+ui-click listItem 插件
+plugin-probe text policy_filtered
+ui-enabled switch '同步文本'
+ui-click switch '同步文本'
+config-equals plugins.instances.builtin.tailcat.sync.text true
+plugin-probe text no_targets
+ui-enabled switch '同步图片'
+ui-click switch '同步图片'
+config-equals plugins.instances.builtin.tailcat.sync.images false
+plugin-probe image policy_filtered
+ui-enabled switch '同步图片'
+ui-click switch '同步图片'
+config-equals plugins.instances.builtin.tailcat.sync.images true
+plugin-probe image no_targets
+ui-enabled switch '同步文件与文件夹'
+ui-click switch '同步文件与文件夹'
+config-equals plugins.instances.builtin.tailcat.sync.files false
+plugin-probe file policy_filtered
+plugin-probe directory sync_disabled
+ui-enabled switch '同步文件与文件夹'
+ui-click switch '同步文件与文件夹'
+config-equals plugins.instances.builtin.tailcat.sync.files true
+plugin-probe directory no_targets
+ui-enabled textField '自动文件传输阈值（MB）'
+ui-click textField '自动文件传输阈值（MB）'
+ui-set textField '自动文件传输阈值（MB）' '-1'
+ui-key Enter
+ui-wait alert '请输入 0 到 4096 之间的整数。'
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 0
+ui-enabled textField '自动文件传输阈值（MB）'
+ui-click textField '自动文件传输阈值（MB）'
+ui-set textField '自动文件传输阈值（MB）' '1'
+ui-key Enter
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 1048576
+connect-policy-peer
+plugin-auto-probe file auto_file_too_large
+plugin-probe large-file queued
+ui-click listItem 同步
+ui-enabled switch 自动同步目录
+ui-click switch 自动同步目录
+config-equals sync.directories.automatic true
+ui-click listItem 插件
+plugin-auto-probe directory auto_file_too_large
+plugin-probe large-directory queued
+ui-enabled textField '自动文件传输阈值（MB）'
+ui-click textField '自动文件传输阈值（MB）'
+ui-set textField '自动文件传输阈值（MB）' '0'
+ui-key Enter
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 0
+plugin-auto-probe directory queued
+ui-enabled textField '自动文件传输阈值（MB）'
+ui-click textField '自动文件传输阈值（MB）'
+ui-set textField '自动文件传输阈值（MB）' '1'
+ui-key Enter
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 1048576
+screenshot tailcat-saved
+stop-policy-peer
+restart-desktop
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-enabled button 'Tailcat 同步'
+ui-click button 'Tailcat 同步'
+config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 1048576
+plugin-probe text no_targets
+screenshot tailcat-reopened

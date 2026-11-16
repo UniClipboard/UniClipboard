@@ -12,6 +12,7 @@ var categories = []uikit.SidebarNavItem{
 	{ID: "shortcuts", Label: "快捷键", Icon: uikit.IconEdit},
 	{ID: "quickPanel", Label: "快捷面板", Icon: uikit.IconList},
 	{ID: "sync", Label: "同步", Icon: uikit.IconRetry},
+	{ID: "plugins", Label: "插件", Icon: uikit.IconPackage},
 	{ID: "security", Label: "安全", Icon: uikit.IconShield},
 	{ID: "network", Label: "网络", Icon: uikit.IconGlobe},
 	{ID: "storage", Label: "存储", Icon: uikit.IconPackage},
@@ -29,7 +30,16 @@ func (d *viewState) settingsPage(c *ui.Context, k uikit.Kit) {
 			title = v.Label
 		}
 	}
-	k.SplitView(c, uikit.SplitViewProps{Title: title, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
+	var titleLeading func()
+	if d.live != nil && d.settings.Value == "plugins" && d.pluginSettings.id != "" {
+		titleLeading = func() {
+			label := d.tr("返回插件列表")
+			if k.Button(c.Key("back-to-plugins"), "", uikit.ButtonProps{Variant: uikit.Subtle, Icon: uikit.IconBack, Label: label, Tooltip: label, Disabled: d.live.busy || d.live.loading}).Clicked() {
+				d.pluginSettings = builtinPluginSettings{}
+			}
+		}
+	}
+	k.SplitView(c, uikit.SplitViewProps{Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
 		k.SidebarNav(c, &d.settings, uikit.SidebarNavProps{Label: d.tr("设置"), Sections: []uikit.SidebarNavSection{{ID: "categories", Items: items}}, Footer: []uikit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: uikit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
 		if d.settings.Changed() {
 			if d.settings.Value == "back" {

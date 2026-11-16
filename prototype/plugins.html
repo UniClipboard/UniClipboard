@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · 插件管理原型</title>
+<!--
+  Interactive prototype for desktop plugin management (Settings → Plugins).
+  Open directly in a browser. Sources: docs/contracts/plugin-contract.md (§1 identity,
+  §3 configuration and order, §8 GitHub install) and docs/contracts/plugin-settings-contract.md
+  (schema-driven form). The settings form is rendered from the settingsdemo schema.
+-->
+<style>
+:root{
+  --bg:#e9ebef;--win:#fff;--side:#f5f6f8;--surface:#f5f6f8;--surface-2:#eceef2;--border:#e1e4e9;
+  --text:#1b1d22;--muted:#6b7280;--faint:#9aa1ad;
+  --accent:#3b6cf6;--accent-soft:#e8eefe;--ok:#1f9d55;--ok-soft:#e3f5ea;
+  --warn:#c27c0e;--warn-soft:#fdf3e1;--danger:#d93f3f;--danger-soft:#fdeaea;
+  --shadow:0 20px 50px -12px rgba(20,24,40,.28),0 0 0 .5px rgba(0,0,0,.12);
+}
+[data-theme=dark]{
+  --bg:#121317;--win:#1d1f24;--side:#22252a;--surface:#25282e;--surface-2:#2d3037;--border:#33363d;
+  --text:#eceef2;--muted:#9aa1ad;--faint:#6b7280;
+  --accent:#6b8fff;--accent-soft:#273256;--ok:#3ecf7c;--ok-soft:#1d3a2a;
+  --warn:#f0b347;--warn-soft:#3d3220;--danger:#ff6b6b;--danger-soft:#432526;
+  --shadow:0 20px 50px -12px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.1);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.toolbar{position:sticky;top:0;z-index:20;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:10px 24px;
+  background:color-mix(in srgb,var(--win) 88%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.toolbar b{font-size:14px}
+.lbl{color:var(--muted);font-size:12px}
+.chip{border:1px solid var(--border);background:var(--win);padding:3px 9px;border-radius:999px;font-size:11.5px}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.stage{display:flex;justify-content:center;padding:32px 24px 60px}
+.window{width:960px;height:640px;background:var(--win);border-radius:12px;box-shadow:var(--shadow);display:flex;overflow:hidden;position:relative}
+/* sidebar */
+.side{width:210px;background:var(--side);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:10px 8px}
+.lights{display:flex;gap:8px;padding:4px 6px 14px}.lights i{width:12px;height:12px;border-radius:50%}
+.lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.nav{display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:7px;color:var(--text);cursor:pointer}
+.nav:hover{background:var(--surface-2)}
+.nav.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav .ico{width:18px;text-align:center;opacity:.8}
+.nav .cnt{margin-left:auto;font-size:11px;background:var(--warn);color:#fff;border-radius:9px;padding:0 6px}
+.side .sp{flex:1}
+.side .foot{color:var(--muted)}
+.side .foot kbd{margin-left:auto;font-size:10.5px;color:var(--faint)}
+/* main */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.head{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 22px;border-bottom:1px solid var(--border)}
+.head h1{font-size:15px;margin:0}
+.head .crumb{color:var(--muted);cursor:pointer}.head .crumb:hover{color:var(--accent)}
+.head .sp{flex:1}
+.content{flex:1;overflow:auto;padding:16px 22px 28px}
+.btn{border:1px solid var(--border);background:var(--win);padding:5px 12px;border-radius:7px;white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
+.btn:hover{background:var(--surface)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:disabled{opacity:.45;cursor:not-allowed}
+.btn.danger{color:var(--danger)}
+.btn.sm{padding:2px 8px;font-size:12px}
+.btn.ghost{border-color:transparent;background:transparent}
+.banner{display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:9px;margin-bottom:14px;font-size:12.5px}
+.banner.warn{background:var(--warn-soft);color:var(--warn)}
+.banner.info{background:var(--accent-soft);color:var(--accent)}
+.banner.err{background:var(--danger-soft);color:var(--danger)}
+.banner .sp{flex:1}
+.search{display:flex;gap:8px;margin-bottom:14px}
+.search input{flex:1;border:1px solid var(--border);background:var(--surface);border-radius:7px;padding:5px 10px}
+.search select{border:1px solid var(--border);background:var(--surface);border-radius:7px;padding:4px 6px}
+.group{margin-bottom:18px}
+.group h3{font-size:11.5px;font-weight:600;color:var(--muted);margin:0 0 6px 4px;text-transform:uppercase;letter-spacing:.04em;display:flex;gap:8px}
+.group h3 span{font-weight:400;text-transform:none;letter-spacing:0}
+.card{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--win)}
+.prow{display:flex;gap:12px;align-items:center;padding:11px 14px;border-top:1px solid var(--border);cursor:pointer}
+.prow:first-child{border-top:none}
+.prow:hover{background:var(--surface)}
+.picon{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:17px;flex:none;background:var(--surface-2)}
+.pmain{flex:1;min-width:0}
+.pmain .n{font-weight:600;display:flex;gap:6px;align-items:center}
+.pmain .s{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{font-size:10.5px;border-radius:5px;padding:0 6px;background:var(--surface-2);color:var(--muted);font-weight:500}
+.tag.cap{background:var(--accent-soft);color:var(--accent)}
+.state{font-size:11.5px;display:flex;gap:5px;align-items:center;color:var(--muted);white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--danger)}
+.sw{width:34px;height:20px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);position:relative;flex:none;cursor:pointer}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0004;transition:left .15s}
+.sw.on{background:var(--accent);border-color:var(--accent)}.sw.on::after{left:16px}
+.sw.dis{opacity:.4;cursor:not-allowed}
+.chev{color:var(--faint)}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+/* detail */
+.dhead{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.dhead .picon{width:52px;height:52px;font-size:26px;border-radius:12px}
+.dhead h2{margin:0;font-size:18px;display:flex;gap:8px;align-items:center}
+.dhead .s{color:var(--muted);font-size:12px}
+.dhead .sp{flex:1}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px}
+.tabs button{border:none;background:none;padding:7px 12px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--accent);border-color:var(--accent);font-weight:600}
+.srow{display:flex;gap:14px;align-items:center;padding:10px 14px;border-top:1px solid var(--border)}
+.srow:first-child{border-top:none}
+.srow .l{flex:1;min-width:0}
+.srow .l b{font-weight:500;display:block}
+.srow .l span{color:var(--muted);font-size:12px}
+.srow .l .req{color:var(--danger);margin-left:2px}
+.srow .err{color:var(--danger);font-size:11.5px;display:block}
+.ctl{display:flex;gap:6px;align-items:center}
+.ctl input[type=text],.ctl input[type=password],.ctl input[type=number],.ctl select,.ctl textarea{border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:4px 8px;width:220px}
+.ctl textarea{height:62px;resize:vertical}
+.ctl .bad{border-color:var(--danger)!important;background:var(--danger-soft)!important}
+.list{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.list .it{display:flex;gap:4px}
+.list input{width:180px!important}
+.unset{color:var(--faint);font-size:12px}
+.sub{padding:0 0 0 14px;border-left:2px solid var(--border);margin:4px 14px 10px}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:6px 14px;padding:12px 14px;font-size:12.5px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all}
+.savebar{position:sticky;bottom:-28px;margin:14px -22px -28px;padding:10px 22px;border-top:1px solid var(--border);background:var(--win);display:flex;gap:8px;align-items:center}
+.savebar .hint{color:var(--muted);font-size:12px}
+.savebar .sp{flex:1}
+.order{display:flex;gap:10px;align-items:center;padding:8px 14px;border-top:1px solid var(--border)}
+.order:first-child{border-top:none}
+.order .i{width:20px;color:var(--faint);text-align:right;font-variant-numeric:tabular-nums}
+.order .n{flex:1}
+/* dialog */
+.scrim{position:absolute;inset:0;background:#0006;display:grid;place-items:center;z-index:5}
+.dialog{width:480px;background:var(--win);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.dialog .dh{padding:16px 20px 4px;font-weight:600;font-size:15px}
+.dialog .db{padding:8px 20px 14px}
+.dialog .db p{color:var(--muted);margin:0 0 12px;font-size:12.5px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.field input{width:100%;border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:5px 9px}
+.field .two{display:flex;gap:8px}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px}
+.check small{display:block;color:var(--muted)}
+.dialog .df{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.steps{list-style:none;margin:0;padding:0;font-size:12.5px}
+.steps li{display:flex;gap:8px;padding:4px 0;color:var(--muted)}
+.steps li.done{color:var(--text)}.steps li.done::before{content:"✓";color:var(--ok)}
+.steps li.run{color:var(--accent)}.steps li.run::before{content:"◌"}
+.steps li.fail{color:var(--danger)}.steps li.fail::before{content:"✕"}
+.steps li.todo::before{content:"·"}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.notes{max-width:960px;margin:0 auto 40px;color:var(--muted);font-size:12px;padding:0 24px}
+.notes li{margin:2px 0}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <b>插件管理原型</b>
+  <span class="lbl">主题</span>
+  <span id="theme"></span>
+  <span class="lbl">状态预设</span>
+  <span id="presets"></span>
+</div>
+<div class="stage"><div class="window" id="win"></div></div>
+<div class="notes">
+  <ul>
+    <li>入口：设置 → 插件。列表区分“内置”和“已安装”，显示能力、运行版本与状态。</li>
+    <li>启用、停用、顺序、on_error 修改后需要重启 Engine 生效（插件契约 §3）；页面顶部显示“需要重启”横幅。</li>
+    <li>“设置”标签页由插件的 settings schema 生成；校验失败时禁用保存。秘密字段显示“已设置”状态，不回显值。</li>
+    <li>安装对话框对应 <span class="mono">unic plugin install</span>：GitHub URL、ref、path、--build；新安装的插件默认不启用（§8）。</li>
+  </ul>
+</div>
+
+<script>
+// ---------- data ----------
+const SCHEMA = {
+  type:"object", additionalProperties:false, required:["prefix","max_length","mode","retry"],
+  properties:{
+    enabled:{type:"boolean",title:"添加标签",default:true,"x-unic-ui":{order:4,group:"标签"}},
+    max_length:{type:"integer",title:"最大长度",default:500,minimum:1,maximum:10000,"x-unic-ui":{order:2,group:"标签"}},
+    mode:{type:"string",title:"文本模式",enum:["plain","markdown"],default:"plain","x-unic-ui":{order:3,group:"标签",option_labels:["纯文本","Markdown"]}},
+    notes:{type:"string",title:"备注",default:"",maxLength:2000,"x-unic-ui":{widget:"textarea",order:5,group:"高级"}},
+    prefix:{type:"string",title:"标签前缀",description:"添加到自动生成的标签前。",default:"clip",minLength:1,maxLength:32,"x-unic-ui":{order:1,group:"标签"}},
+    retry:{type:"object",title:"重试策略",additionalProperties:false,required:["count","delay"],default:{},"x-unic-ui":{order:8},
+      properties:{count:{type:"integer",title:"次数",default:3,minimum:0,maximum:10,"x-unic-ui":{order:1}},
+                  delay:{type:"number",title:"间隔（秒）",default:0.5,minimum:0,maximum:60,"x-unic-ui":{order:2}}}},
+    tags:{type:"array",title:"额外标签",items:{type:"string"},default:[],maxItems:8,"x-unic-ui":{order:7,group:"高级"}},
+    token:{type:"string",title:"访问令牌",description:"可选。只写字段，不回显已保存的值。",minLength:1,writeOnly:true,"x-unic-ui":{order:6,group:"高级"}}
+  }
+};
+const CAP = {processor:"自动标注",observer:"只读通知",action:"动作",sync_backend:"同步后端"};
+function initial(){ return [
+  {id:"builtin.tailcat",name:"Tailcat 同步",icon:"🛰",kind:"builtin",version:"2.0.0",caps:["sync_backend"],transport:"peer_sessions",
+   enabled:true,running:"2.0.0",status:"running",events:[],desc:"默认点对点同步后端，随应用内置与升级。",reserved:true},
+  {id:"builtin.text",name:"文本工具",icon:"Aa",kind:"builtin",version:"2.0.0",caps:["action"],enabled:true,running:"2.0.0",status:"running",events:[],
+   actions:["转大写","转小写","去除首尾空白","纯文本"],desc:"对文本条目执行用户触发的变换。"},
+  {id:"builtin.classify",name:"内容分类",icon:"🏷",kind:"builtin",version:"2.0.0",caps:["processor"],enabled:true,running:"2.0.0",status:"running",events:["clipboard.captured","clipboard.received"],desc:"识别链接、颜色、代码等内容类型并打标签。"},
+  {id:"example.settingsdemo",name:"Settings Demo",icon:"⚙",kind:"go",version:"1.0.0",caps:["processor"],enabled:true,running:"1.0.0",status:"running",
+   events:["clipboard.captured","clipboard.received"],schema:true,repo:"github.com/uniclipboard/unic",commit:"4aac8eb36c1f0e2a9b7d55e1f8a3c2b6d9e0f114",path:"plugins/examples/settingsdemo",source:"prebuilt",
+   sha:"9f2c…e41a",desc:"演示设置表单：按条件添加前缀与额外标签，正文不变。"},
+  {id:"example.emailtag",name:"Email 标签",icon:"✉",kind:"lua",version:"1.2.0",caps:["processor"],enabled:false,running:null,status:"stopped",
+   events:["clipboard.captured"],repo:"github.com/example/emailtag",commit:"b81d3e07a9c4f25d6e1a0b3c7f8e9d2a4b5c6d70",path:"",source:"lua",sha:"1a7e…03bd",desc:"识别邮件地址并添加 email 标签。"}
+];}
+let S = {theme:"light",page:"list",cur:null,tab:"overview",plugins:initial(),order:["builtin.classify","example.settingsdemo","builtin.text","builtin.tailcat"],
+  onError:"continue",restart:false,dialog:null,install:null,q:"",filter:"all",
+  cfg:{prefix:"clip",max_length:500,mode:"plain",enabled:true,notes:"",tags:["work"],retry:{count:3,delay:0.5}},tokenSet:true,tokenOp:"keep",tokenVal:"",
+  dirty:false,saved:null,pluginOnErr:{}};
+const P = id => S.plugins.find(p=>p.id===id);
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ---------- toolbar ----------
+function toolbar(){
+  document.getElementById("theme").innerHTML = ["light","dark"].map(t=>`<button class="chip ${S.theme===t?"on":""}" onclick="S.theme='${t}';render()">${t==="light"?"浅色":"深色"}</button>`).join(" ");
+  const ps = {normal:"正常",restart:"需要重启",unavailable:"插件不可用",empty:"无第三方插件",install:"安装进行中",installfail:"摘要校验失败"};
+  document.getElementById("presets").innerHTML = Object.entries(ps).map(([k,v])=>`<button class="chip" onclick="preset('${k}')">${v}</button>`).join(" ");
+  document.documentElement.dataset.theme = S.theme;
+}
+function preset(k){
+  const theme=S.theme; S.plugins=initial(); S.restart=false; S.dialog=null; S.page="list"; S.theme=theme;
+  if(k==="restart"){P("example.emailtag").enabled=true;P("example.emailtag").status="pending_enable";S.restart=true}
+  if(k==="unavailable"){Object.assign(P("example.settingsdemo"),{status:"unavailable"})}
+  if(k==="empty"){S.plugins=S.plugins.filter(p=>p.kind==="builtin")}
+  if(k==="install"){openInstall();S.install={url:"https://github.com/example/linkpreview",ref:"v0.3.0",path:"",build:false,step:3,fail:null}}
+  if(k==="installfail"){openInstall();S.install={url:"https://github.com/example/linkpreview",ref:"v0.3.0",path:"",build:true,step:3,fail:"sha"}}
+  render();
+}
+
+// ---------- status ----------
+function statusOf(p){
+  return {running:["ok",`运行中 · v${p.running}`],stopped:["","已停用"],pending_enable:["warn","重启后启用"],pending_disable:["warn","重启后停用"],
+    pending_uninstall:["warn","重启后卸载"],unavailable:["bad","不可用 · 60 秒内崩溃 3 次"]}[p.status];
+}
+function stateHTML(p){const [c,t]=statusOf(p);return `<span class="state"><i class="dot ${c}"></i>${t}</span>`}
+function kindTag(p){return `<span class="tag">${{builtin:"内置",go:"Go",lua:"Lua"}[p.kind]}</span>`}
+function capTags(p){return p.caps.map(c=>`<span class="tag cap">${CAP[c]}</span>`).join(" ")}
+
+// ---------- render ----------
+function render(){
+  toolbar();
+  const nav=[["general","⚙","通用"],["appearance","☀","外观"],["shortcuts","⌨","快捷键"],["quickPanel","☰","快捷面板"],["sync","⟳","同步"],["plugins","⧉","插件"],["security","⛨","安全"],["network","◎","网络"],["storage","▤","存储"],["about","ⓘ","关于"]];
+  const bad=S.plugins.filter(p=>p.status==="unavailable").length;
+  let side=`<div class="side"><div class="lights"><i></i><i></i><i></i></div>`+
+    nav.map(([id,ic,l])=>`<div class="nav ${id==="plugins"?"on":""}" onclick="${id==="plugins"?"S.page='list';render()":""}"><span class="ico">${ic}</span>${l}${id==="plugins"&&bad?`<span class="cnt">${bad}</span>`:""}</div>`).join("")+
+    `<div class="sp"></div><div class="nav foot"><span class="ico">←</span>返回历史<kbd>Esc</kbd></div></div>`;
+  let main = S.page==="list"?listPage():S.page==="order"?orderPage():detailPage();
+  document.getElementById("win").innerHTML = side+`<div class="main">${main}</div>`+(S.dialog?dialogHTML():"");
+}
+function restartBanner(){
+  return S.restart?`<div class="banner warn">⟳ 插件启用、停用或顺序已更改。重启后生效；当前仍按旧配置运行。<span class="sp"></span><button class="btn sm" onclick="doRestart()">立即重启 Engine</button></div>`:"";
+}
+function doRestart(){
+  S.plugins.forEach(p=>{
+    if(p.status==="pending_enable"){p.status="running";p.running=p.version}
+    if(p.status==="pending_disable"){p.status="stopped";p.running=null}
+  });
+  S.plugins=S.plugins.filter(p=>p.status!=="pending_uninstall");
+  S.order=S.order.filter(id=>P(id));
+  S.restart=false;render();
+}
+function listPage(){
+  const q=S.q.toLowerCase();
+  const vis=S.plugins.filter(p=>(!q||(p.name+p.id).toLowerCase().includes(q))&&(S.filter==="all"||p.caps.includes(S.filter)));
+  const row=p=>`<div class="prow" onclick="openDetail('${p.id}')">
+      <div class="picon">${p.icon}</div>
+      <div class="pmain"><div class="n">${esc(p.name)} ${kindTag(p)} ${capTags(p)}</div><div class="s"><span class="mono">${p.id}</span> · v${p.version} · ${esc(p.desc)}</div></div>
+      ${stateHTML(p)}
+      <div class="sw ${isOn(p)?"on":""}" onclick="event.stopPropagation();toggle('${p.id}')" title="${isOn(p)?"停用":"启用"}"></div>
+      <span class="chev">›</span></div>`;
+  const b=vis.filter(p=>p.kind==="builtin"), x=vis.filter(p=>p.kind!=="builtin");
+  const unavailable=S.plugins.filter(p=>p.status==="unavailable");
+  return `<div class="head"><h1>插件</h1><span class="sp"></span>
+      <button class="btn" onclick="S.page='order';render()">执行顺序…</button>
+      <button class="btn primary" onclick="openInstall();render()">＋ 从 GitHub 安装</button></div>
+    <div class="content">${restartBanner()}
+      ${unavailable.map(p=>`<div class="banner err">✕ ${esc(p.name)} 已停止响应并被标记为不可用。本机历史不受影响。<span class="sp"></span><button class="btn sm" onclick="P('${p.id}').status='running';render()">重新启动插件</button></div>`).join("")}
+      <div class="search"><input placeholder="搜索名称或 ID" value="${esc(S.q)}" oninput="S.q=this.value;render();this.focus();this.setSelectionRange(this.value.length,this.value.length)">
+        <select onchange="S.filter=this.value;render()">${[["all","全部能力"],...Object.entries(CAP)].map(([v,l])=>`<option value="${v}" ${S.filter===v?"selected":""}>${l}</option>`).join("")}</select></div>
+      <div class="group"><h3>内置 <span>随应用升级，不能卸载</span></h3><div class="card">${b.map(row).join("")||`<div class="empty">无匹配</div>`}</div></div>
+      <div class="group"><h3>已安装 <span>来自 GitHub，存放于 $UNIC_HOME/plugins/installed</span></h3><div class="card">${x.map(row).join("")||
+        `<div class="empty">尚未安装第三方插件。<br><button class="btn" style="margin-top:8px" onclick="openInstall();render()">从 GitHub 安装</button></div>`}</div></div>
+    </div>`;
+}
+function isOn(p){return ["running","pending_enable","unavailable"].includes(p.status)}
+function toggle(id){
+  const p=P(id);
+  if(p.status==="running"||p.status==="unavailable"){p.status="pending_disable"}
+  else if(p.status==="pending_disable"){p.status="running"}
+  else if(p.status==="stopped"){p.status="pending_enable";if(!S.order.includes(id))S.order.push(id)}
+  else if(p.status==="pending_enable"){p.status="stopped"}
+  S.restart=S.plugins.some(p=>p.status.startsWith("pending"));
+  render();
+}
+function openDetail(id){S.cur=id;S.page="detail";S.tab=P(id).schema?"settings":"overview";render()}
+
+// ---------- order ----------
+function orderPage(){
+  const rows=S.order.map((id,i)=>{const p=P(id);return `<div class="order"><span class="i">${i+1}</span><div class="picon" style="width:26px;height:26px;font-size:13px">${p.icon}</div>
+    <span class="n">${esc(p.name)} <span class="mono" style="color:var(--muted)">${id}</span></span>${capTags(p)}
+    <button class="btn sm ghost" ${i===0?"disabled":""} onclick="mv(${i},-1)">↑</button><button class="btn sm ghost" ${i===S.order.length-1?"disabled":""} onclick="mv(${i},1)">↓</button></div>`}).join("");
+  return `<div class="head"><span class="crumb" onclick="S.page='list';render()">插件</span><span class="chev">›</span><h1>执行顺序</h1></div>
+    <div class="content">${restartBanner()}
+      <div class="banner info">ⓘ 顺序只作用于同一阶段。同步始终在处理与提交之后执行，不能提前。</div>
+      <div class="group"><h3>已启用插件</h3><div class="card">${rows}</div></div>
+      <div class="group"><h3>失败策略</h3><div class="card"><div class="srow"><div class="l"><b>插件处理失败时（全局默认）</b><span>单个插件可以覆盖此设置。</span></div>
+        <div class="ctl"><select onchange="S.onError=this.value;S.restart=true;render()">
+          <option value="continue" ${S.onError==="continue"?"selected":""}>继续处理（仍可能同步）</option>
+          <option value="block_sync" ${S.onError==="block_sync"?"selected":""}>禁止同步此条目</option></select></div></div></div></div>
+    </div>`;
+}
+function mv(i,d){const o=S.order;[o[i],o[i+d]]=[o[i+d],o[i]];S.restart=true;render()}
+
+// ---------- detail ----------
+function detailPage(){
+  const p=P(S.cur);
+  const tabs=[["overview","概览"],...(p.schema?[["settings","设置"]]:[]),...(p.actions?[["actions","动作"]]:[]),["source","来源"]];
+  let body={overview:overviewTab,settings:settingsTab,actions:actionsTab,source:sourceTab}[S.tab](p);
+  return `<div class="head"><span class="crumb" onclick="S.page='list';render()">插件</span><span class="chev">›</span><h1>${esc(p.name)}</h1></div>
+    <div class="content">${restartBanner()}
+      <div class="dhead"><div class="picon">${p.icon}</div><div><h2>${esc(p.name)} ${kindTag(p)}</h2><div class="s"><span class="mono">${p.id}</span> · v${p.version} · ${esc(p.desc)}</div></div>
+        <span class="sp"></span>${stateHTML(p)}<div class="sw ${isOn(p)?"on":""}" onclick="toggle('${p.id}')"></div></div>
+      <div class="tabs">${tabs.map(([k,l])=>`<button class="${S.tab===k?"on":""}" onclick="S.tab='${k}';render()">${l}</button>`).join("")}</div>
+      ${body}
+    </div>`;
+}
+function overviewTab(p){
+  const oe=S.pluginOnErr[p.id]||"inherit";
+  return `<div class="group"><div class="card"><dl class="kv">
+      <dt>能力</dt><dd>${capTags(p)}${p.transport?` <span class="tag">${p.transport}</span>`:""}</dd>
+      <dt>订阅事件</dt><dd>${p.events.length?p.events.join("<br>"):"—（专用接口，不经通知队列）"}</dd>
+      <dt>配置版本</dt><dd>v${p.version}</dd>
+      <dt>运行版本</dt><dd>${p.running?"v"+p.running:"未运行"}</dd>
+      <dt>执行顺序</dt><dd>${S.order.includes(p.id)?`第 ${S.order.indexOf(p.id)+1} 位 · <a href="#" onclick="S.page='order';render();return false">调整</a>`:"未启用"}</dd></dl></div></div>
+    ${p.caps.includes("processor")?`<div class="group"><h3>失败策略</h3><div class="card"><div class="srow"><div class="l"><b>处理失败时</b><span>修改后需要重启。</span></div><div class="ctl">
+      <select onchange="S.pluginOnErr['${p.id}']=this.value;S.restart=true;render()">
+      ${[["inherit",`跟随全局（${S.onError==="continue"?"继续处理":"禁止同步"}）`],["continue","继续处理"],["block_sync","禁止同步此条目"]].map(([v,l])=>`<option value="${v}" ${oe===v?"selected":""}>${l}</option>`).join("")}</select></div></div></div></div>`:""}
+    ${p.reserved?`<div class="banner info">ⓘ 停用后保留设备关联。所有同步后端停用时，unic 进入仅本机历史模式。设备与同步类型在“同步”页管理。</div>`:""}
+    ${p.kind!=="builtin"?`<div class="group"><h3>危险操作</h3><div class="card"><div class="srow"><div class="l"><b>卸载插件</b><span>重启时停止并删除程序文件。不删除剪贴板历史，也不删除 config.toml 中的设置。</span></div>
+      <button class="btn danger" onclick="P('${p.id}').status='pending_uninstall';S.restart=true;render()">${p.status==="pending_uninstall"?"已标记卸载":"卸载…"}</button></div></div></div>`:""}`;
+}
+function actionsTab(p){
+  return `<div class="group"><h3>动作 <span>在历史条目的“动作”菜单中显示；结果为新历史条目</span></h3><div class="card">${p.actions.map(a=>`<div class="srow"><div class="l"><b>${a}</b><span>接受：文本</span></div></div>`).join("")}</div></div>`;
+}
+function sourceTab(p){
+  if(p.kind==="builtin")return `<div class="card"><dl class="kv"><dt>来源</dt><dd>随应用内置</dd><dt>升级</dt><dd>随 unic 升级</dd></dl></div>`;
+  return `<div class="card"><dl class="kv"><dt>仓库</dt><dd>${p.repo}</dd><dt>Commit</dt><dd>${p.commit}</dd><dt>子目录</dt><dd>${p.path||"/"}</dd>
+    <dt>产物</dt><dd>${{prebuilt:"预编译（Release 资产）",source:"源码构建",lua:"Lua 脚本"}[p.source]}</dd><dt>SHA-256</dt><dd>${p.sha}</dd></dl></div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn">检查更新</button><button class="btn">在 Finder 中显示</button></div>`;
+}
+
+// ---------- schema form ----------
+function sorted(props){return Object.entries(props).sort((a,b)=>((a[1]["x-unic-ui"]||{}).order||0)-((b[1]["x-unic-ui"]||{}).order||0)||a[0].localeCompare(b[0]))}
+function validate(s,v){
+  if(v===undefined)return null;
+  if(s.type==="string"){if(s.minLength!=null&&[...v].length<s.minLength)return s.minLength===1?"不能为空":`至少 ${s.minLength} 个字符`;if(s.maxLength!=null&&[...v].length>s.maxLength)return `最多 ${s.maxLength} 个字符`}
+  if(s.type==="integer"||s.type==="number"){if(v===""||isNaN(v))return "请输入数字";if(s.type==="integer"&&!Number.isInteger(+v))return "必须是整数";
+    if(s.minimum!=null&&+v<s.minimum||s.maximum!=null&&+v>s.maximum)return `范围 ${s.minimum} – ${s.maximum}`}
+  if(s.type==="array"&&s.maxItems!=null&&v.length>s.maxItems)return `最多 ${s.maxItems} 项`;
+  return null;
+}
+let ERR=0;
+function field(path,key,s,val,required){
+  const ui=s["x-unic-ui"]||{};const id=path.join(".");const e=validate(s,val);if(e)ERR++;
+  const label=`<div class="l"><b>${esc(s.title||key)}${required?'<span class="req">*</span>':""}</b>${s.description?`<span>${esc(s.description)}</span>`:""}${e?`<span class="err">${e}</span>`:""}</div>`;
+  let ctl="";
+  if(s.writeOnly){
+    ctl= S.tokenOp==="replace"?`<input type="password" placeholder="输入新值" value="${esc(S.tokenVal)}" oninput="S.tokenVal=this.value;S.dirty=true"><button class="btn sm" onclick="S.tokenOp='keep';S.tokenVal='';render()">取消</button>`
+      : S.tokenOp==="clear"?`<span class="unset">保存后清除</span><button class="btn sm" onclick="S.tokenOp='keep';render()">撤销</button>`
+      : S.tokenSet?`<span class="tag" style="background:var(--ok-soft);color:var(--ok)">已设置</span><button class="btn sm" onclick="S.tokenOp='replace';S.dirty=true;render()">替换…</button><button class="btn sm" onclick="S.tokenOp='clear';S.dirty=true;render()">清除</button>`
+      : `<span class="unset">未设置</span><button class="btn sm" onclick="S.tokenOp='replace';S.dirty=true;render()">设置…</button>`;
+  } else if(s.type==="boolean") ctl=`<div class="sw ${val?"on":""}" onclick="setv('${id}',${!val})"></div>`;
+  else if(s.enum) ctl=`<select onchange="setv('${id}',this.value)">${s.enum.map((o,i)=>`<option value="${o}" ${o===val?"selected":""}>${esc((ui.option_labels||[])[i]||o)}</option>`).join("")}</select>`;
+  else if(s.type==="integer"||s.type==="number") ctl=`<input type="number" class="${e?"bad":""}" step="${s.type==="integer"?1:0.1}" value="${esc(val)}" onchange="setv('${id}',this.value,1)">`;
+  else if(ui.widget==="textarea") ctl=`<textarea onchange="setv('${id}',this.value)">${esc(val)}</textarea>`;
+  else if(s.type==="string") ctl=`<input type="text" class="${e?"bad":""}" value="${esc(val)}" onchange="setv('${id}',this.value)">`;
+  else if(s.type==="array") ctl=`<div class="list">${val.map((t,i)=>`<div class="it"><input type="text" value="${esc(t)}" onchange="setArr('${id}',${i},this.value)"><button class="btn sm ghost" onclick="delArr('${id}',${i})">−</button></div>`).join("")}
+      <button class="btn sm" ${val.length>=s.maxItems?"disabled":""} onclick="addArr('${id}')">＋ 添加</button></div>`;
+  if(s.type==="object") return `<div class="srow">${label}</div><div class="sub">${sorted(s.properties).map(([k,c])=>field([...path,k],k,c,val[k],(s.required||[]).includes(k))).join("")}</div>`;
+  return `<div class="srow">${label}<div class="ctl">${ctl}</div></div>`;
+}
+function getRef(id){const ks=id.split(".");let o=S.cfg;for(const k of ks.slice(0,-1))o=o[k];return [o,ks.at(-1)]}
+function setv(id,v,num){const [o,k]=getRef(id);o[k]=num?(v===""?"":Number(v)):v;S.dirty=true;S.saved=null;render()}
+function setArr(id,i,v){getRef(id)[0][getRef(id)[1]][i]=v;S.dirty=true;render()}
+function delArr(id,i){getRef(id)[0][getRef(id)[1]].splice(i,1);S.dirty=true;render()}
+function addArr(id){getRef(id)[0][getRef(id)[1]].push("");S.dirty=true;render()}
+function settingsTab(){
+  ERR=0;
+  const groups=[];const map={};
+  for(const [k,s] of sorted(SCHEMA.properties)){const g=(s["x-unic-ui"]||{}).group||"";if(!(g in map)){map[g]=[];groups.push(g)}map[g].push([k,s])}
+  const html=groups.map(g=>`<div class="group">${g?`<h3>${g}</h3>`:""}<div class="card">${map[g].map(([k,s])=>field([k],k,s,S.cfg[k],SCHEMA.required.includes(k))).join("")}</div></div>`).join("");
+  const msg = ERR?`<span class="hint" style="color:var(--danger)">${ERR} 个字段无效，修正后才能保存</span>`
+    : S.saved==="hot"?`<span class="hint" style="color:var(--ok)">✓ 已保存并生效</span>`
+    : S.saved==="biz"?`<span class="hint" style="color:var(--danger)">插件拒绝此配置：标签前缀超过 16 字节（/prefix）。已保留上一份有效配置。</span>`
+    : S.dirty?`<span class="hint">有未保存的修改</span>`:`<span class="hint">配置保存在 config.toml 的 [plugins.instances."example.settingsdemo".config]</span>`;
+  return html+`<div class="savebar">${msg}<span class="sp"></span>
+    <button class="btn" onclick="resetCfg()">恢复默认</button>
+    <button class="btn" ${S.dirty?"":"disabled"} onclick="S.cfg=initialCfg();S.tokenOp='keep';S.dirty=false;S.saved=null;render()">放弃修改</button>
+    <button class="btn primary" ${ERR||!S.dirty?"disabled":""} onclick="save()">保存</button></div>`;
+}
+function initialCfg(){return {prefix:"clip",max_length:500,mode:"plain",enabled:true,notes:"",tags:["work"],retry:{count:3,delay:0.5}}}
+function resetCfg(){S.cfg={prefix:"clip",max_length:500,mode:"plain",enabled:true,notes:"",tags:[],retry:{count:3,delay:0.5}};S.dirty=true;render()}
+function save(){
+  // Business validation is the plugin's job (Init); simulate a rejection for long UTF-8 prefixes.
+  if(new TextEncoder().encode(S.cfg.prefix).length>16){S.saved="biz";render();return}
+  if(S.tokenOp==="replace"&&S.tokenVal)S.tokenSet=true;if(S.tokenOp==="clear")S.tokenSet=false;
+  S.tokenOp="keep";S.tokenVal="";S.dirty=false;S.saved="hot";render();
+}
+
+// ---------- install dialog ----------
+const STEPS=["解析仓库并锁定 commit","读取 spec.toml 清单","查找匹配 darwin/arm64 的预编译产物","下载并校验 SHA-256","原子安装到 plugins/installed"];
+function openInstall(){S.dialog="install";S.install={url:"",ref:"",path:"",build:false,step:-1,fail:null}}
+function dialogHTML(){
+  const I=S.install;
+  if(I.step===-1) return `<div class="scrim"><div class="dialog"><div class="dh">从 GitHub 安装插件</div><div class="db">
+      <p>只支持公共仓库。安装后插件默认处于停用状态，启用后重启生效。第三方程序以本机权限运行，只安装可信来源。</p>
+      <div class="field"><label>仓库 URL</label><input placeholder="https://github.com/owner/repo" value="${esc(I.url)}" oninput="S.install.url=this.value;document.getElementById('go').disabled=!/^https:\\/\\/github\\.com\\/[^/]+\\/[^/]+?(\\.git)?$/.test(this.value)"></div>
+      <div class="field two"><div style="flex:1"><label>版本（分支、tag 或 commit，可选）</label><input placeholder="默认分支" value="${esc(I.ref)}" oninput="S.install.ref=this.value"></div>
+        <div style="flex:1"><label>子目录（可选）</label><input placeholder="plugins/emailtag" value="${esc(I.path)}" oninput="S.install.path=this.value"></div></div>
+      <label class="check"><input type="checkbox" ${I.build?"checked":""} onchange="S.install.build=this.checked"><span>没有预编译产物时从源码构建<small>需要本机 Go 工具链。仍优先使用有效的预编译产物。</small></span></label>
+    </div><div class="df"><button class="btn" onclick="S.dialog=null;render()">取消</button><button id="go" class="btn primary" disabled onclick="runInstall()">安装</button></div></div></div>`;
+  const done=I.step>=STEPS.length;
+  const li=STEPS.map((t,i)=>`<li class="${I.fail&&i===I.step?"fail":i<I.step?"done":i===I.step?"run":"todo"}">${t}</li>`).join("");
+  const err=I.fail==="sha"?`<div class="banner err" style="margin-top:10px">✕ 下载内容的 SHA-256 与清单不一致。安装已中止，现有插件和配置未改动。完整性错误不会改用源码构建。</div>`:"";
+  return `<div class="scrim"><div class="dialog"><div class="dh">${done?"安装完成":I.fail?"安装失败":"正在安装…"}</div><div class="db">
+      <p class="mono">${esc(I.url)}${I.ref?" @ "+esc(I.ref):""}</p><ul class="steps">${li}</ul>${err}
+      ${done?`<div class="banner info" style="margin-top:10px">Link Preview v0.3.0 已安装，当前未启用。</div>`:""}
+    </div><div class="df">${done?`<button class="btn" onclick="S.dialog=null;render()">稍后</button><button class="btn primary" onclick="finishInstall(true)">启用并查看</button>`
+      :I.fail?`<button class="btn" onclick="S.dialog=null;render()">关闭</button>`:`<button class="btn" onclick="S.dialog=null;clearTimeout(window.T);render()">取消安装</button>`}</div></div></div>`;
+}
+function runInstall(){S.install.step=0;tick();render()}
+function tick(){window.T=setTimeout(()=>{if(S.dialog!=="install"||S.install.fail)return;S.install.step++;
+  if(S.install.step===STEPS.length)S.plugins.push({id:"example.linkpreview",name:"Link Preview",icon:"🔗",kind:"go",version:"0.3.0",caps:["processor"],enabled:false,running:null,status:"stopped",
+    events:["clipboard.captured"],repo:S.install.url.replace("https://",""),commit:"e3c90a14d7b25f6801c9ae3d4b7f2e65a1d08c39",path:S.install.path,source:"prebuilt",sha:"c40b…7d9e",desc:"为链接添加站点名称标签。"});
+  render();if(S.install.step<STEPS.length)tick()},650)}
+function finishInstall(){S.dialog=null;toggle("example.linkpreview");openDetail("example.linkpreview")}
+
+render();
+</script>
+</body>
+</html>

@@ -114,6 +114,12 @@ go build -o .build/unicd ./app/service/cmd/unicd
 
 配对审批必须显式提供另一台设备上显示的完整指纹：`unic device approve <id> '<fingerprint>'`。HTTP `POST /v1/pending/{id}/approve` 必须带 `fingerprint`、`revision` 与 `bindings:[{id,revision}]`（修订来自 `/v1/pending`）；设备或待批准关联变化时整个审批失败，刷新后重新核对。普通 `/v1/status` 不含票据；`unic device addr` 与 GUI「生成票据」显式调用 `POST /v1/pairing-ticket`，返回的秘密票据 5 分钟有效且仅用一次。详见[身份与信任](../../docs/architecture/identity-and-trust.md)。
 
+## Built-in plugin settings
+
+Open Settings > Plugins to configure Tailcat content policies and the automatic file threshold. Files and folders share the same backend permission. Policies apply immediately and remain subject to global Sync settings.
+
+Text tools and content classification expose enablement and processor failure policy. Quit and reopen Desktop to apply these settings. The pending-restart notice remains visible until the startup settings match. Existing history remains unchanged. See [Desktop configuration](../../docs/architecture/desktop-runtime.md#built-in-plugin-management).
+
 ## CLI sync and file settings
 
 Read the saved settings, change one TOML value, or apply a complete file:

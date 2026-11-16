@@ -45,39 +45,8 @@ func (s *desktopScenario) connectPolicyPeer(args []string) error {
 	if len(args) != 0 || s.policyPeer != nil {
 		return errors.New("connect-policy-peer takes no arguments and creates one peer")
 	}
-	home := filepath.Join(s.private, "policy-peer")
-	if err := os.MkdirAll(home, 0700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[telemetry]\nenabled=false\n"), 0600); err != nil {
-		return err
-	}
-	binary := filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unicd")
-	if os.PathSeparator == '\\' {
-		binary += ".exe"
-	}
-	cmd := exec.Command(binary)
-	for _, v := range os.Environ() {
-		if !strings.HasPrefix(v, "UNIC_") && !strings.HasPrefix(v, "MYGO_AUTOMATION=") {
-			cmd.Env = append(cmd.Env, v)
-		}
-	}
-	cmd.Env = append(cmd.Env, "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
-	log, err := os.Create(filepath.Join(s.private, "policy-peer.log"))
+	p, ticket, err := s.spawnPeer()
 	if err != nil {
-		return err
-	}
-	cmd.Stdout = log
-	cmd.Stderr = log
-	if err = cmd.Start(); err != nil {
-		_ = log.Close()
-		return err
-	}
-	p := &pluginPolicyPeer{client: api.NewClient(filepath.Join(home, "unic.sock")), cmd: cmd, done: make(chan error, 1)}
-	s.policyPeer = p
-	go func() { err := cmd.Wait(); _ = log.Close(); p.done <- err }()
-	var ticket string
-	if err = s.wait(func() bool { var e error; ticket, e = p.client.ExportTicket(s.ctx); return e == nil }); err != nil {
 		return err
 	}
 	if _, err = s.client.Pair(s.ctx, ticket); err != nil {
@@ -250,4 +219,44 @@ func (s *desktopScenario) verifyPeerContent(snap clip.Snapshot) error {
 		s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("receiver content SHA-256 matches all %d source file payloads: %v", len(expected), expected))
 	}
 	return err
+}
+
+// spawnPeer starts one owned production service and returns it with its pairing ticket.
+func (s *desktopScenario) spawnPeer() (*pluginPolicyPeer, string, error) {
+	home := filepath.Join(s.private, "policy-peer")
+	if err := os.MkdirAll(home, 0700); err != nil {
+		return nil, "", err
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[telemetry]\nenabled=false\n"), 0600); err != nil {
+		return nil, "", err
+	}
+	binary := filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unicd")
+	if os.PathSeparator == '\\' {
+		binary += ".exe"
+	}
+	cmd := exec.Command(binary)
+	for _, v := range os.Environ() {
+		if !strings.HasPrefix(v, "UNIC_") && !strings.HasPrefix(v, "MYGO_AUTOMATION=") {
+			cmd.Env = append(cmd.Env, v)
+		}
+	}
+	cmd.Env = append(cmd.Env, "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+	log, err := os.Create(filepath.Join(s.private, "policy-peer.log"))
+	if err != nil {
+		return nil, "", err
+	}
+	cmd.Stdout = log
+	cmd.Stderr = log
+	if err = cmd.Start(); err != nil {
+		_ = log.Close()
+		return nil, "", err
+	}
+	p := &pluginPolicyPeer{client: api.NewClient(filepath.Join(home, "unic.sock")), cmd: cmd, done: make(chan error, 1)}
+	s.policyPeer = p
+	go func() { err := cmd.Wait(); _ = log.Close(); p.done <- err }()
+	var ticket string
+	if err = s.wait(func() bool { var e error; ticket, e = p.client.ExportTicket(s.ctx); return e == nil }); err != nil {
+		return nil, "", err
+	}
+	return p, ticket, nil
 }

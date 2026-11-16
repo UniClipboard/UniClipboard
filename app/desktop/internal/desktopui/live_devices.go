@@ -39,7 +39,20 @@ func (d *viewState) approveLive(id string, accept bool) {
 		if !accept {
 			return client.Reject(ctx, id)
 		}
-		_, err := client.Approve(ctx, id, approval)
+		peer, err := client.Approve(ctx, id, approval)
+		if err == nil {
+			// The approved device ends the pairing task.
+			select {
+			case d.live.results <- func() {
+				if d.deviceTask == "invite" || d.deviceTask == "wait" {
+					d.deviceTask = ""
+					d.deviceList.Value, d.deviceDetailOpen = peer.ID, false
+				}
+			}:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 		return err
 	}, "请求已处理")
 }
@@ -80,6 +93,10 @@ func (d *viewState) liveDeviceTaskView(c *ui.Context, k uikit.Kit) {
 	l := d.live
 	if l.message != "" {
 		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr(l.message)})
+	}
+	if (d.deviceTask == "invite" || d.deviceTask == "wait") && len(d.pending) > 0 {
+		d.approvalTask(c, k, d.pending[0])
+		return
 	}
 	switch d.deviceTask {
 	case "invite":
@@ -135,5 +152,28 @@ func (d *viewState) liveDeviceTaskView(c *ui.Context, k uikit.Kit) {
 		}) {
 			d.setDeviceTask("")
 		}
+	}
+}
+
+// approvalTask shows the fingerprint approval inside the pairing task, so the user need not leave it.
+func (d *viewState) approvalTask(c *ui.Context, k uikit.Kit, p pendingDevice) {
+	l := d.live
+	if k.TaskPanel(c, uikit.TaskPanelProps{Title: d.tr("核对并批准"), Description: d.tr("对方屏幕上显示相同的指纹时，才接受。"), BackLabel: d.tr("返回设备列表")}, func() {
+		k.Text(c, p.name, uikit.TextProps{Emphasized: true})
+		for _, line := range fingerprintLines(p.fingerprint) {
+			k.Text(c, line, uikit.TextProps{Monospace: true, Emphasized: true})
+		}
+		k.Text(c, d.tr("名称由对方自报，未经验证。"), footnote)
+	}, func() {
+		if k.Button(c.Key("deny"), d.tr("拒绝"), uikit.ButtonProps{Variant: uikit.Destructive, Disabled: l.busy}).Clicked() {
+			d.approveLive(p.id, false)
+			d.setDeviceTask("")
+			return
+		}
+		if k.Button(c.Key("accept"), d.tr("接受"), uikit.ButtonProps{Variant: uikit.Primary, Disabled: l.busy}).Clicked() {
+			d.approveLive(p.id, true)
+		}
+	}) {
+		d.setDeviceTask("")
 	}
 }

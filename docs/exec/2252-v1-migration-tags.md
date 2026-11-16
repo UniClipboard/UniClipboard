@@ -109,3 +109,8 @@ shasum -a 256 -c SHA256SUMS
 Owned temporary profiles, source snapshots, binaries, logs and software images
 are removed after acceptance. Personal-profile and native visual acceptance
 remain NOT_RUN.
+
+Default-behavior implementation commit: `bf5da54e87d72de9224685881aedcbb3e8118693`. The latest CLI and Desktop
+setup receipts bind the per-file source checksums used for this implementation.
+The overview and pipeline verification markers were refreshed against this
+commit after validation.

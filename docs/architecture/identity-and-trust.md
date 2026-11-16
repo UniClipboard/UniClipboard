@@ -20,7 +20,7 @@ paths:
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: 1262fbd01c0ab26a1f206bb19addabdd86e6aeb5
+verified: 7a21f4dbfa33d9772ff8ac07abdd6784f824e6ab
 ---
 # 设备身份、信任与配对
 
@@ -75,6 +75,7 @@ CLI and desktop clients submit approval snapshots through the same service route
 The desktop process owns no second Engine or identity store.
 The normal desktop uses the approved mygo composition and opens history directly.
 `desktopui/live_devices.go` submits the displayed fingerprint, device revision and complete binding revision set through the shared client.
+While an invitation or a join-wait task is open and a request is pending, the desktop shows the approval (name, fingerprint, Accept and Reject) inside that task panel. The user does not return to the device sheet. A successful `Approve` closes the task and selects the new device. Reject closes the task. The device sheet still lists pending requests as a fallback.
 The host applies the global file-sync switch when projecting backend policy; this restriction does not grant or revoke device trust.
 A newly trusted device emits the categorical `pairing_completed` product event after the trust transaction succeeds.
 The event contains no device identity, fingerprint, binding context or pairing material. See [observability](observability.md).

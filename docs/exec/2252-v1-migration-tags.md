@@ -56,8 +56,8 @@ partial reports. Source checksums remain unchanged during each migration.
 - Existing regression suites: `TMPDIR=/private/tmp go test -race ./internal/v1migration ./app/service/cmd/unic ./engine ./plugin`: 207 tests passed.
 - `go vet ./internal/v1migration ./app/service/cmd/unic ./e2e/headless`: passed.
 - Desktop package compilation with `go test ./app/desktop/internal/desktopui -run '^$'`: passed; no GUI test executed.
-- `go run ./tools/docscheck`: passed with eight stale-page warnings.
-- `go run ./tools/docscheck -bump docs/architecture/pipeline.md`: refused uncommitted `plugin/tags.go`, as designed. Verification markers remain unchanged until scoped code is committed.
+- `go run ./tools/docscheck`: passed. Six other architecture pages retain stale-page warnings.
+- After implementation commit `81d9764`, `go run ./tools/docscheck -bump` updated `pipeline.md` and `overview.md` to the verified implementation commit.
 - `git diff --check`: passed.
 
 The [JSON receipt](evidence/2252-v1-migration-tags/receipt.json) contains the
@@ -71,6 +71,6 @@ shasum -a 256 -c SHA256SUMS
 ```
 
 Temporary profiles, binaries and process logs were removed. Native UI and
-personal-profile acceptance remain NOT_RUN. This change was not committed or
-published. The normal migration command diagnoses existing imports; only an
+personal-profile acceptance remain NOT_RUN. The implementation and receipt are
+committed together. The normal migration command diagnoses existing imports; only an
 explicit `--repair-tags` modifies eligible mapped records.

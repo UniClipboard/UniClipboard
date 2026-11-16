@@ -40,10 +40,10 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [tag-manager](#tag-manager) | view | Tag management, assignment, rename, merge, deletion and protected built-in tags. |
 | [token-search](#token-search) | view | Composite search prefixes, counts, completion, literal input, caret handling and Escape. |
 | [toolbar-alignment](#toolbar-alignment) | view | Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-capsule pixel contrast. |
-| [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep production history controls within the toolbar at 1100x720. |
-| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep production history controls within the toolbar at 600x480. |
-| [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep production history controls within the toolbar at 1100x720. |
-| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 
 ## builtin-plugin-policy
@@ -791,7 +791,7 @@ acceptance desktopui toolbar-alignment
 
 Native toolbar bounds at 1100 points in dark mode
 
-Steps: Start an isolated production desktop; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -825,7 +825,7 @@ ui-key Escape
 
 Native toolbar bounds at 600 points in dark mode
 
-Steps: Start an isolated production desktop; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -859,7 +859,7 @@ ui-key Escape
 
 Native toolbar bounds at 1100 points in light mode
 
-Steps: Start an isolated production desktop; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -893,7 +893,7 @@ ui-key Escape
 
 Native toolbar bounds at 600 points in light mode
 
-Steps: Start an isolated production desktop; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 

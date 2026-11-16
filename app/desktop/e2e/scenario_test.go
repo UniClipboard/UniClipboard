@@ -480,7 +480,7 @@ func (s *desktopScenario) launchNative() error {
 		}
 	}
 	if s.windowWidth > 0 {
-		s.app.Env = append(s.app.Env, fmt.Sprintf("UNIC_DESKTOP_E2E_WINDOW=%dx%d", s.windowWidth, s.windowHeight), "UNIC_DESKTOP_E2E_THEME="+s.windowTheme)
+		s.app.Env = append(s.app.Env, fmt.Sprintf("UNIC_DESKTOP_E2E_WINDOW=%dx%d", s.windowWidth, s.windowHeight), "UNIC_DESKTOP_E2E_THEME="+s.windowTheme, "UNIC_UI_SKIN=macos")
 	}
 	s.app.Env = append(s.app.Env, "UNIC_HOME="+s.home, "UNIC_DESKTOP_E2E_PROFILE="+s.home, "MYGO_AUTOMATION="+s.automation, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
 	log, err := os.OpenFile(filepath.Join(s.private, "desktop.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
@@ -663,7 +663,7 @@ func (s *desktopScenario) screenshot(name string) error {
 		if err != nil {
 			return err
 		}
-		metadata, err := json.MarshalIndent(map[string]any{"content_width": s.windowWidth, "content_height": s.windowHeight, "theme": s.windowTheme, "pixel_width": config.Width, "pixel_height": config.Height, "capture_scale": float64(config.Width) / float64(s.windowWidth)}, "", "  ")
+		metadata, err := json.MarshalIndent(map[string]any{"content_width": s.windowWidth, "content_height": s.windowHeight, "theme": s.windowTheme, "skin": "macos", "pixel_width": config.Width, "pixel_height": config.Height, "capture_scale": float64(config.Width) / float64(s.windowWidth)}, "", "  ")
 		if err != nil {
 			return err
 		}

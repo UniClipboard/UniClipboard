@@ -1,7 +1,7 @@
 # Case: Native toolbar bounds at 600 points in dark mode
 # Mode: native
-# Purpose: Keep production history controls within the toolbar at 600x480.
-# Steps: Start an isolated production desktop; inspect collapsed and expanded search, switch layouts and open the command menu.
+# Purpose: Keep macOS-skin production history controls within the toolbar at 600x480.
+# Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
 # Expected: Every toolbar control remains inside the band; search and menus remain usable.
 # Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
 

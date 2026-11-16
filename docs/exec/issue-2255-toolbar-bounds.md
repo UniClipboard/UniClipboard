@@ -4,7 +4,7 @@
 
 The shared UI Kit toolbar keeps a fixed 52-point band, balanced 10-point vertical padding. The toolbar and history content form a continuous surface without a horizontal separator, as requested during visual review. Search expands to at most 460 points and shrinks with its input to the available width. History actions, selection and filters retain their existing composition. Light toolbar capsules use a continuous one-point inset outline with the existing separator token. The outline consumes no layout space. The floating detail action bar and its Glass send button share the light outline. Dark rendering and other glass surfaces are unchanged. Native titlebar configuration and drag regions are unchanged.
 
-The source baseline is `bd89ff5a12885079e4259c3a72c90ab5e8b420ca`. Acceptance runs use a dirty frozen snapshot. Each report manifest binds the full source file hashes, executable hashes, toolchain and host OS. Each `SHA256SUMS` binds the retained report, geometry JSON, PNGs and continuous recording. The source and architecture verification marker are committed separately so the marker names the verified source commit.
+The investigation baseline is `bd89ff5a12885079e4259c3a72c90ab5e8b420ca`. PR preparation rebased the change onto `1c5de93c6528a5f120648ed099139d0bf6acc985`, including the upstream incremental-browsing fix. Acceptance runs use a dirty frozen snapshot. Each report manifest binds the full source file hashes, executable hashes, toolchain and host OS. Each `SHA256SUMS` binds the retained report, geometry JSON, PNGs and continuous recording. The source and architecture verification marker are committed separately so the marker names the verified source commit.
 
 ## Reproduction
 
@@ -30,7 +30,7 @@ The software matrix exercises 32 scenarios: 600, 800, 1100 and 1440-point widths
 
 Existing search disclosure and menu scenarios passed in `.build/desktop-e2e/20261116T034908Z-9c56d74d/index.html` and `.build/desktop-e2e/20261116T035057Z-77ba7b13/index.html`. These are software-view evidence. Sidebar collapse also passed in `.build/desktop-e2e/20261116T035446Z-df90e303/index.html`.
 
-Native cases use the production Desktop, service, Engine, SQLite and IPC with private profiles and synthetic history. They assert actual window width and control bounds, type a search, switch to grid and open the command menu. The E2E-only hook applies requested dimensions to initial and post-startup sizing. Production dimensions remain 1100x720.
+Native cases use the production Desktop, service, Engine, SQLite and IPC with private profiles and synthetic history. They assert actual window width and control bounds, type a search, switch to grid and open the command menu. The E2E-only hook applies requested dimensions to initial and post-startup sizing. Sized/theme native cases explicitly select the macOS skin and record it in screenshot metadata. Runs on other hosts exercise that skin without establishing macOS titlebar integration. Production dimensions remain 1100x720.
 
 Native host: macOS 27.0, Apple Silicon. Captures use 2x rendering. Each screenshot has a JSON sidecar with logical dimensions, pixel dimensions, theme and capture scale. This host does not reproduce the reported macOS 15.6 environment.
 
@@ -59,7 +59,7 @@ The current native light 1100-point report is `.build/desktop-e2e/20261116T04311
 
 ## Continuous toolbar and history surface
 
-The user rejected the horizontal separator because the toolbar and history should read as one surface. The final macOS toolbar retains fixed height, balanced padding and capsule outlines, with no horizontal separator. Updated native light and dark 1100-point runs passed in `20261116T043438Z-71bccd5b` and `20261116T043533Z-c018cbd0`. The new light screenshot was sent through Lody.
+The user rejected the horizontal separator because the toolbar and history should read as one surface. The final macOS toolbar retains fixed height, balanced padding and capsule outlines, with no horizontal separator. Updated native light and dark 1100-point runs passed in `20261116T043438Z-71bccd5b` and `20261116T043533Z-c018cbd0`. The new light screenshot was sent through Lody. After rebasing onto the incremental-browsing fix, the 32-case toolbar matrix passed in `20261116T043716Z-b403dee2`, glass interaction passed in `20261116T043718Z-843d2cab`, and native light 1100-point acceptance passed in `20261116T043719Z-1c92b091`. The final explicit-skin replay also passed at source `f8f58604de5dc7e1962c4a29f27c3ca0e0c0cf02` in `20261116T043912Z-a8cdf563`; its checksums were verified. Compact native report rows above predate separator removal; the final software matrix covers compact layout without that separator.
 
 ## Evidence limits
 

@@ -109,7 +109,11 @@ func (e *Engine) reportTarget(id OperationID, k targetKey, st TargetState, cause
 		t.Error = e.sendFailure(cause)
 	}
 	done := e.refreshOpLocked(o)
+	hid := o.history
 	e.mu.Unlock()
+	if hid != "" { // the detail pane shows per-target state
+		e.historyChanged(string(hid))
+	}
 	if done != nil {
 		e.cs.unref(done)
 		e.opFinished(id)

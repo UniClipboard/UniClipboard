@@ -198,6 +198,14 @@ drained:
 	if dirty {
 		l.nextRefresh = time.Time{}
 	}
+	// Live progress has no revision and no final event: poll while the selected entry sends.
+	if !l.loading {
+		for _, t := range l.items[d.selected].Targets {
+			if (t.State == "queued" || t.State == "sending") && l.nextRefresh.After(time.Now().Add(time.Second)) {
+				l.nextRefresh = time.Now().Add(time.Second)
+			}
+		}
+	}
 	l.loadCatalogue(d)
 	key := d.liveQueryKey()
 	if l.loading && key != l.key {
@@ -382,6 +390,10 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			}
 			// A new query always has a foreground load, regardless of revision.
 			historyChanged = historyChanged || foreground
+			// Live byte progress is not part of the stored revision: keep reading while a target is open.
+			for _, t := range selectedItem.Targets {
+				historyChanged = historyChanged || t.State == "queued" || t.State == "sending"
+			}
 			if err == nil && historyChanged {
 				page, offset, points, err = readHistoryWindow(ctx, l.client, q, more, previous, offset, target, anchors, points, revision)
 				if err == nil && selectedEntry != nil && !more {
@@ -393,7 +405,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						selectedEntry = nil
 					} else {
 						selectedItem = current
-						if current.Revision != selectedRevision {
+						if current.Revision != selectedRevision || len(current.Targets) > 0 {
 							v := projectHistory(current)
 							selectedEntry = &v
 						}

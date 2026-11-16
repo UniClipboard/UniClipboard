@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -167,6 +168,16 @@ cli_manifest_sha256 = "{lock}"
             receipt["acceptance"]["shared_configuration_api"] is True,
         )
         payload = stage / receipt["payload"]
+        icons = ROOT / "app/desktop/internal/appicons"
+        if operating_system == "darwin":
+            info = plistlib.loads((payload.parent / "Info.plist").read_bytes())
+            check("macOS v1 bundle icon declaration", info.get("CFBundleIconFile") == "icon.icns")
+            packaged_icon = payload.parent / "Resources/icon.icns"
+            source_icon = icons / "icon.icns"
+        else:
+            source_icon = icons / ("icon.ico" if operating_system == "windows" else "icon.png")
+            packaged_icon = payload / source_icon.name
+        check("packaged icon matches v1 artwork", sha(packaged_icon) == sha(source_icon))
         report["stage_manifest_sha256"] = sha(stage / "manifest.json")
         report["staged_source_files"] = receipt["source_files"]
         suffix = ".exe" if operating_system == "windows" else ""

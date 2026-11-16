@@ -98,6 +98,14 @@ func (d *viewState) settingsContent(c *ui.Context, k uikit.Kit) {
 		group("startup", d.tr("启动与托盘"), func() {
 			d.switchRow(c, k, "startup", d.tr("登录时启动"), d.tr("登录系统后自动启动 UniClipboard"))
 			d.switchRow(c, k, "tray", d.tr("显示托盘图标"), d.tr("在托盘或菜单栏中显示同步状态"))
+			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("托盘图标"), Description: d.tr("更改后立即生效。")}, nil, func() {
+				value := d.choices["trayIcon"]
+				if value == "" {
+					value = "glyph"
+				}
+				k.Select(c, uikit.SelectProps{Label: d.tr("托盘图标"), Value: &value, Items: []uikit.SelectItem{{Value: "glyph", Label: d.tr("默认")}, {Value: "cat", Label: d.tr("经典猫头")}}})
+				d.choices["trayIcon"] = value
+			})
 		})
 		group("language", d.tr("语言"), func() {
 			d.languageRow(c, k)

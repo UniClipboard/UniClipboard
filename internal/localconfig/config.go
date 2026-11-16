@@ -83,6 +83,7 @@ type Config struct {
 
 // Desktop configures the graphical launcher. The service only stores these values.
 type Desktop struct {
+	TrayIcon      string `toml:"tray_icon" json:"tray_icon"`
 	UpdateChannel string `toml:"update_channel" json:"update_channel"`
 	// TagColors maps SHA-256 tag identifiers to local presentation colors. It stores no tag names.
 	TagColors          map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
@@ -206,7 +207,7 @@ func Default() Config {
 		shortcut = "Cmd+Ctrl+V"
 	}
 	return Config{
-		Desktop: Desktop{UpdateChannel: "stable", Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
+		Desktop: Desktop{TrayIcon: "glyph", UpdateChannel: "stable", Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
 		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
 		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
@@ -286,6 +287,9 @@ func (c Config) Validate() error {
 	case "", "Ctrl+`", "CmdOrCtrl+Shift+Space", "Ctrl+Alt+V", "Cmd+Ctrl+V":
 	default:
 		return errors.New("desktop.quick_panel_shortcut: unsupported shortcut")
+	}
+	if c.Desktop.TrayIcon != "glyph" && c.Desktop.TrayIcon != "cat" {
+		return errors.New(`desktop.tray_icon: must be "glyph" or "cat"`)
 	}
 	if c.Desktop.UpdateChannel != "stable" && c.Desktop.UpdateChannel != "alpha" {
 		return errors.New(`desktop.update_channel: must be "stable" or "alpha"`)
@@ -377,6 +381,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # mode = "normal"  # "normal" or "lightweight"
 # launch_at_login = false
 # start_in_background = false
+# tray_icon = "glyph"  # "glyph" or "cat"; applies immediately
 # quick_panel_shortcut = "Ctrl+Alt+V"
 # macOS default: "Cmd+Ctrl+V"
 

@@ -11,6 +11,7 @@ func TestDesktopAcceptance(t *testing.T) {
 		t.Skip("run make desktop-e2e")
 	}
 	t.Run("i18n", scenarioI18n)
+	t.Run("tray-icon-settings", scenarioTrayIconSettings)
 	t.Run("liquid-glass", scenarioLiquidGlass)
 	t.Run("interaction-motion", scenarioInteractionMotion)
 	t.Run("data-binding", scenarioDesktopLiveData)

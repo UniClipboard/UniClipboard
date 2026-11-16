@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import tempfile
 
@@ -56,7 +57,7 @@ try:
     report["source_sha"] = source
     report["source_files"] = {
         str(p.relative_to(ROOT)): sha(p)
-        for directory in ["tools/package", "packaging", "internal/localpaths"]
+        for directory in ["tools/package", "packaging", "internal/localpaths", "app/desktop/internal/appicons", "app/desktop/cmd/unic-desktop"]
         for p in (ROOT / directory).rglob("*")
         if p.is_file() and "__pycache__" not in str(p)
     }
@@ -91,6 +92,19 @@ try:
                 '{"update_owner":"package-manager"}\n'
             )
             (payload / "LICENSE").write_bytes((ROOT / "LICENSE").read_bytes())
+            shutil.copyfile(ROOT / "app/desktop/internal/appicons/icon.ico", payload / "icon.ico")
+            # Inspect the resources of the actual cross-built executable.
+            resources = run(["llvm-readobj", "--coff-resources", payload / "unic-desktop.exe"])
+            assert "Type: ICON (ID 3)" in resources
+            assert "Type: GROUP_ICON (ID 14)" in resources
+            report["checks"].append(arch + " executable embeds v1 icon resources")
+
+            (payload / "release-identity.json").write_text(json.dumps({
+                "product": "desktop", "version": "2.0.0", "build_number": 1,
+                "target": "windows-" + arch, "source_sha": source,
+                "cli_manifest_sha256": "0" * 64,
+            }) + "\n")
+            (payload / ".mygo-files").write_text("".join(p.name + "\n" for p in sorted(payload.iterdir())))
             cli_hashes = {
                 name: sha(payload / name) for name in ["unic.exe", "unicd.exe"]
             }

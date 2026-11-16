@@ -1,0 +1,8 @@
+# Case: Tray icon styles saved and applied
+# Mode: view
+# Purpose: Match v1 glyph/cat defaults, settings selection and immediate image delivery.
+# Steps: Use the production settings view, real service/CLI, persisted TOML, configuration watcher and tray image controller; reopen and reject invalid values.
+# Expected: Glyph is the default; both styles persist and apply without restart; duplicate updates do not publish images; failed delivery retries.
+# Forbidden: Native GUI launch, fixture-only configuration, style changes rebuilding tray menus, or claiming OS-tray acceptance.
+
+acceptance desktopui tray-icon-settings

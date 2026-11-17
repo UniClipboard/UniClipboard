@@ -7,7 +7,7 @@ use crate::clipboard::{
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use clipboard_rs::{common::RustImage, ClipboardContext};
-use objc2::rc::Retained;
+use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::ProtocolObject;
 use objc2_app_kit::{
     NSPasteboard, NSPasteboardItem, NSPasteboardTypeFileURL, NSPasteboardTypeHTML,
@@ -27,10 +27,12 @@ pub struct MacOSClipboard {
 
 impl MacOSClipboard {
     pub fn new() -> Result<Self> {
-        let context = ClipboardContext::new()
-            .map_err(|e| anyhow::anyhow!("Failed to create clipboard context: {}", e))?;
-        Ok(Self {
-            inner: Arc::new(Mutex::new(context)),
+        autoreleasepool(|_| {
+            let context = ClipboardContext::new()
+                .map_err(|e| anyhow::anyhow!("Failed to create clipboard context: {}", e))?;
+            Ok(Self {
+                inner: Arc::new(Mutex::new(context)),
+            })
         })
     }
 }
@@ -43,26 +45,30 @@ impl SystemClipboard for MacOSClipboard {
 
     fn read_observation(&self) -> Result<crate::clipboard::ClipboardObservation> {
         let span = debug_span!("platform.macos.read_clipboard");
-        span.in_scope(|| {
-            let mut ctx = self
-                .inner
-                .lock()
-                .map_err(|_| anyhow!("clipboard context lock poisoned"))?;
-            let pasteboard = NSPasteboard::generalPasteboard();
-            let before = pasteboard.changeCount();
-            let snapshot = CommonClipboardImpl::read_snapshot(&mut ctx)?;
-            // Never attribute bytes assembled across two different owners.
-            if pasteboard.changeCount() != before {
-                anyhow::bail!("clipboard ownership changed during snapshot read");
-            }
-            debug!(
-                formats = snapshot.representations.len(),
-                total_size_bytes = snapshot.total_size_bytes(),
-                clipboard_ownership_version = before,
-                clipboard_identity_ref = %crate::clipboard::clipboard_identity_ref(Some(&before.to_le_bytes())),
-                "Captured system clipboard snapshot"
-            );
-            Ok((snapshot, Some(before.to_le_bytes().to_vec())))
+        // Native reads can autorelease large buffers even after their Retained
+        // handles drop. Drain them per operation on the long-lived watcher thread.
+        autoreleasepool(|_| {
+            span.in_scope(|| {
+                let mut ctx = self
+                    .inner
+                    .lock()
+                    .map_err(|_| anyhow!("clipboard context lock poisoned"))?;
+                let pasteboard = NSPasteboard::generalPasteboard();
+                let before = pasteboard.changeCount();
+                let snapshot = CommonClipboardImpl::read_snapshot(&mut ctx)?;
+                // Never attribute bytes assembled across two different owners.
+                if pasteboard.changeCount() != before {
+                    anyhow::bail!("clipboard ownership changed during snapshot read");
+                }
+                debug!(
+                    formats = snapshot.representations.len(),
+                    total_size_bytes = snapshot.total_size_bytes(),
+                    clipboard_ownership_version = before,
+                    clipboard_identity_ref = %crate::clipboard::clipboard_identity_ref(Some(&before.to_le_bytes())),
+                    "Captured system clipboard snapshot"
+                );
+                Ok((snapshot, Some(before.to_le_bytes().to_vec())))
+            })
         })
     }
 
@@ -75,20 +81,22 @@ impl SystemClipboard for MacOSClipboard {
             "platform.macos.write_clipboard",
             representations = snapshot.representations.len()
         );
-        span.in_scope(|| {
-            // Serialize our native writes with snapshot reads on this adapter.
-            let _ctx = self
-                .inner
-                .lock()
-                .map_err(|_| anyhow!("clipboard context lock poisoned"))?;
-            let identity =
-                write_snapshot_to_pasteboard(snapshot, &NSPasteboard::generalPasteboard())?;
-            debug!(
-                identified = identity.is_some(),
-                clipboard_identity_ref = %crate::clipboard::clipboard_identity_ref(identity.as_deref()),
-                "Wrote clipboard snapshot to system"
-            );
-            Ok(identity)
+        autoreleasepool(|_| {
+            span.in_scope(|| {
+                // Serialize our native writes with snapshot reads on this adapter.
+                let _ctx = self
+                    .inner
+                    .lock()
+                    .map_err(|_| anyhow!("clipboard context lock poisoned"))?;
+                let identity =
+                    write_snapshot_to_pasteboard(snapshot, &NSPasteboard::generalPasteboard())?;
+                debug!(
+                    identified = identity.is_some(),
+                    clipboard_identity_ref = %crate::clipboard::clipboard_identity_ref(identity.as_deref()),
+                    "Wrote clipboard snapshot to system"
+                );
+                Ok(identity)
+            })
         })
     }
 }
@@ -233,7 +241,9 @@ fn make_nsdata(bytes: &[u8]) -> Retained<NSData> {
 /// **不调用 clearContents()**，避免把用户原本的 clipboard 内容抹掉却什么都写不进去
 /// （与 Windows 任务的 `empty()` 副作用防御同构）。
 pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> Result<()> {
-    write_snapshot_to_pasteboard(snapshot, &NSPasteboard::generalPasteboard()).map(|_| ())
+    autoreleasepool(|_| {
+        write_snapshot_to_pasteboard(snapshot, &NSPasteboard::generalPasteboard()).map(|_| ())
+    })
 }
 
 fn write_snapshot_to_pasteboard(

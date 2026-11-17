@@ -53,6 +53,11 @@ jobs:
           clang -fobjc-arc -dynamiclib -framework AppKit scripts/e2e/clipboard-startup/private-pasteboard.m -o target/clipboard-loop-tools/private-pasteboard.dylib
       - name: Verify isolated native clipboard receive without recapture
         run: python3 scripts/e2e/inbound-clipboard-loop/run.py --daemon target/debug/uniclipd --tools target/clipboard-loop-tools --artifacts target/clipboard-loop-evidence --recopy
+      - name: Verify bounded native clipboard allocations
+        shell: bash
+        run: |
+          mkdir -p target/clipboard-loop-evidence
+          bash scripts/build-cache/mbx.sh --exec cargo test --locked -p uc-platform --test macos_clipboard_autorelease -- --nocapture 2>&1 | tee target/clipboard-loop-evidence/autorelease.txt
       - uses: actions/upload-artifact@v7
         if: always()
         with:

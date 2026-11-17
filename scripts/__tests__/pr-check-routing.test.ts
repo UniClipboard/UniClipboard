@@ -23,6 +23,24 @@ function route(files: string[]): string[] {
 }
 
 describe('PR check routing', () => {
+  it('routes native memory regression inputs through the clipboard check', () => {
+    const filters = parse(read('.github/ci-paths.yml'))
+    const matches = picomatch(filters.clipboard_loop.flat(Infinity), { dot: true })
+    for (const file of [
+      'crates/uc-platform/src/clipboard/platform/macos.rs',
+      'crates/uc-platform/tests/macos_clipboard_autorelease.rs',
+      'scripts/e2e/clipboard-startup/private-pasteboard.m',
+      '.github/workflows/clipboard-loop-e2e.yml',
+    ]) {
+      expect(matches(file)).toBe(true)
+    }
+    expect(matches('docs/overview.md')).toBe(false)
+    expect(matches('apps/gui-go/frontend/src/App.tsx')).toBe(false)
+    const job = workflow('pr-check.yml').jobs['clipboard-loop']
+    expect(job.needs).toBe('changes')
+    expect(job.if).toContain("outputs.clipboard_loop == 'true'")
+  })
+
   it.each([
     ['coverage', 'rust'],
     ['rust', 'rust'],

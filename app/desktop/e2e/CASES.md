@@ -13,6 +13,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
 | [history-delivery-progress](#history-delivery-progress) | native | Show the progress ring and the per-file popover while a large file is sent to a paired device. |
+| [history-delivery-resend](#history-delivery-resend) | native | Show a failed device row, the resend confirmation, and a successful resend to that device only. |
 | [history-delivery](#history-delivery) | native | Show the delivery list of a history entry in the real Desktop before and after a send to a paired device. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
@@ -360,6 +361,56 @@ screenshot stalled
 peer-resume
 ui-wait text '1/1 台设备' 90
 screenshot sent
+stop-policy-peer
+```
+
+## history-delivery-resend
+
+Failed delivery and single-device resend in history detail
+
+Steps: Pair one production peer, send a 90 MB file, stop the peer after 8 MB and turn sync off so the send fails, turn sync on and restart the peer, click the failed row, confirm the dialog.
+
+Expected: The row shows 发送失败 with a reason; clicking it opens a confirmation that warns about duplicates; confirming sends again and the row reaches 1/1 sent without a second history entry.
+
+Forbidden: A fixture state, a resend without confirmation, a second history record, or missing recording.
+
+```text
+start
+start-pairing-peer
+ui-wait listItem 管理设备…
+ui-click listItem 管理设备…
+ui-wait button 邀请设备
+ui-click button 邀请设备
+ui-wait radio 完整票据
+ui-click radio 完整票据
+ui-wait button 复制票据
+peer-pair-desktop
+ui-wait text '核对并批准'
+ui-click button 接受
+assert-paired
+ui-wait button 完成
+ui-click button 完成
+enable-sync
+submit-sized-file resend-1 90
+ui-wait listItem '~.*big-resend-1.bin.*'
+ui-click listItem '~.*big-resend-1.bin.*'
+ui-wait text '0/1 台设备'
+send-newest-to-peer resend-send
+peer-pause-at-bytes 8
+peer-kill
+disable-sync
+ui-wait button '~.*Mac-mini.*发送失败' 30
+ui-hover button '~.*Mac-mini.*发送失败'
+screenshot failed
+enable-sync
+peer-restart
+ui-click button '~.*Mac-mini.*发送失败'
+ui-wait button 重新发送
+screenshot confirm
+ui-hover button 重新发送
+ui-click button 重新发送
+ui-wait text '1/1 台设备' 90
+screenshot resent
 stop-policy-peer
 ```
 

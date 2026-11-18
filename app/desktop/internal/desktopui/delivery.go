@@ -110,6 +110,7 @@ func (d *viewState) resendDialog(c *ui.Context, k uikit.Kit) {
 		ConfirmLabel: d.tr("重新发送"), CancelLabel: d.tr("取消")}, nil)
 	if r.Confirmed {
 		d.startHistorySend(d.resendTo)
+		open = false
 	}
 	if !open {
 		d.resendTo = ""

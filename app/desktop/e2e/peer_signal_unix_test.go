@@ -27,6 +27,31 @@ func peerStallCommands() map[string]func(*desktopScenario, []string) error {
 	return map[string]func(*desktopScenario, []string) error{
 		"peer-pause":  signal(syscall.SIGSTOP),
 		"peer-resume": signal(syscall.SIGCONT),
+		// peer-kill: end the peer abruptly; a send in flight fails. Its home stays for peer-restart.
+		"peer-kill": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 || s.policyPeer == nil {
+				return errors.New("peer-kill takes no arguments and requires an owned peer")
+			}
+			p := s.policyPeer
+			_ = p.cmd.Process.Signal(syscall.SIGCONT)
+			err := p.cmd.Process.Kill()
+			<-p.done
+			s.policyPeer = nil
+			return err
+		},
+		// peer-restart: start the killed peer again on its old home and wait until it is connected.
+		"peer-restart": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 || s.policyPeer != nil {
+				return errors.New("peer-restart takes no arguments and requires a killed peer")
+			}
+			if _, _, err := s.spawnPeer(); err != nil {
+				return err
+			}
+			return s.wait(func() bool {
+				st, e := s.client.Status(s.ctx)
+				return e == nil && len(st.Peers) == 1 && st.Peers[0].Connected
+			})
+		},
 		// peer-pause-at-bytes n: pause the peer once the newest entry's send passed n megabytes.
 		"peer-pause-at-bytes": func(s *desktopScenario, a []string) error {
 			if len(a) != 1 || s.policyPeer == nil {

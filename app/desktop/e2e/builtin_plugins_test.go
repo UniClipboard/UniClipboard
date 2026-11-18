@@ -124,6 +124,27 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 				return e == nil && st.Error == "" && st.Config.Sync.Enabled
 			})
 		},
+		"disable-sync": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("disable-sync takes no arguments")
+			}
+			path := filepath.Join(s.home, "config.toml")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			next := strings.Replace(string(raw), "enabled=true", "enabled=false", 1)
+			if next == string(raw) {
+				return errors.New("sync switch not found in the profile config")
+			}
+			if err = os.WriteFile(path, []byte(next), 0600); err != nil {
+				return err
+			}
+			return s.wait(func() bool {
+				st, e := s.client.Config(s.ctx)
+				return e == nil && st.Error == "" && !st.Config.Sync.Enabled
+			})
+		},
 		"send-newest-to-peer": func(s *desktopScenario, a []string) error {
 			if len(a) != 1 || s.policyPeer == nil {
 				return errors.New("send-newest-to-peer request-id requires an owned peer")

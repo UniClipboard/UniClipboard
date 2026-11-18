@@ -28,6 +28,7 @@ paths:
   - internal/servicelifecycle
   - app/service/cmd/unicd/daemon.go
   - engine/history.go
+  - app/desktop/internal/desktopui/delivery.go
   - engine/history_cleanup.go
   - engine/file_cache.go
   - engine/restore.go
@@ -304,6 +305,12 @@ The directory flow follows the [directory contract](../contracts/directory-contr
 Default-cache directory application builds lease-owned views from retained members. Custom receives stage one complete batch under the configured destination, then publish it by rename. The host journals only its exact unpublished staging path in private profile storage before creation. Startup recovery uses those journals and validates destination identity; it never scans the custom destination or deletes published trees. Failed cleanup retains its journal. Existing custom destinations are never merged into or overwritten.
 
 Before writing a prepared tree, the adapter rechecks the current clipboard against its observed baseline. A newer local copy defers the old application. Copying the same held paths again keeps their application lease while the new copy action is processed.
+
+## History detail delivery list
+
+The detail pane lists one row per paired device under the heading 送达 with the count `N/M 台设备`. N counts `sent` targets. The wording is 已发送, never 已送达. Each row uses the UI Kit `TransferStatus`. It shows a ring when every part reports a total size. It shows a spinner otherwise. It never shows a made-up percentage. The hover popover lists each file with its state and bytes. A failed row shows the reason. A click on a failed, superseded or never-sent row asks for confirmation, then sends the entry again to that device only. The dialog warns about duplicate content.
+
+Live progress has no stored revision. While the selected entry has a queued or sending target, the view re-reads it and polls once per second. Native acceptance is in the cases `history-delivery`, `history-delivery-progress` and `history-delivery-resend`. The progress and resend cases pause or stop a production peer process and turn sync off to cause the failure.
 
 ## Application and tray icons
 

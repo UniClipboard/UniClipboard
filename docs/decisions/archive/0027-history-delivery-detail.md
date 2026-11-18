@@ -1,6 +1,7 @@
 # 0027: History detail delivery list and send progress
 
-- Status: Implemented. Engine/store targets, desktop device rows with single-device resend, and live byte progress pass process E2E (`TestHistoryTargets`, `TestHistoryTargetProgress`). Native window acceptance passed for sent, live progress with file popover, failed row, resend confirmation and single-device resend (cases `history-delivery`, `history-delivery-progress`, `history-delivery-resend`). Contract landed in the [history contract](../../contracts/history-contract.md).
+- 状态：已归档（2026-11-18）。Implemented and accepted by process E2E and the native window cases `history-delivery`, `history-delivery-progress` and `history-delivery-resend`.
+- 落地： [pipeline](../../architecture/pipeline.md#per-device-delivery-and-send-progress), [desktop-runtime](../../architecture/desktop-runtime.md#history-detail-delivery-list), [history contract](../../contracts/history-contract.md).
 - Date: 2026-11-16
 - Scope: Per-device delivery state and byte progress of a history entry, from Engine to the desktop detail pane.
 - Related decisions: [0024 directory copy and send](0024-directory-copy-and-send.md), [0017 history cleanup](0017-history-auto-cleanup.md).

@@ -104,7 +104,7 @@ func historyTargets(t *testing.T, h *observabilityRun) []struct{ TargetID, State
 	return out
 }
 
-// TestHistoryTargets covers 0027 layer 1: a history entry keeps the last send result per device,
+// TestHistoryTargets covers per-device targets: a history entry keeps the last send result per device,
 // and a later failure is stored as failed with a stable code.
 func TestHistoryTargets(t *testing.T) {
 	if os.Getenv("UNIC_E2E") == "" {
@@ -143,7 +143,7 @@ func TestHistoryTargets(t *testing.T) {
 	})
 }
 
-// TestHistoryTargetProgress covers 0027 layer 3: while a send runs, the history entry lists each
+// TestHistoryTargetProgress covers live byte progress: while a send runs, the history entry lists each
 // part with rising completed bytes; after the send the items are gone and the target is sent.
 func TestHistoryTargetProgress(t *testing.T) {
 	if os.Getenv("UNIC_E2E") == "" {

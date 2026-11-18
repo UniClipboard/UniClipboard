@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Live send progress (0027). Bytes are counted where the backend reads a part
+// Live send progress. Bytes are counted where the backend reads a part
 // from the engine, so every backend gets it without a protocol change. The
 // progress stays in memory and is merged into history items while the send runs.
 

@@ -9,7 +9,7 @@ import (
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
-// deliveryView is the presentation of one device row of the delivery list (0027).
+// deliveryView is the presentation of one device row of the delivery list.
 // "sent" only means every byte was written to the connection, so it reads 已发送.
 type deliveryView struct {
 	status, reason string

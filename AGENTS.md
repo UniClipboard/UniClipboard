@@ -55,7 +55,6 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0024](docs/decisions/proposed/0024-directory-copy-and-send.md) | Directory copy and explicit send | Implemented; local process acceptance passed; native/real-device acceptance pending. One-shot directory transfer; automatic sync defaults off; explicit send prepares snapshots; mixed selections follow directory policy. |
 | [0025](docs/decisions/proposed/0025-desktop-package-identity-and-replacement.md) | Desktop package identity and replacement | Accepted; same-channel v2 replaces v1, alpha/stable share installation identity, development stays isolated, bundled CLI files are private, package managers own updates; runtime and construction implemented, production activation and real v1 replacement acceptance pending. |
 | [0026](docs/decisions/proposed/0026-first-install-setup.md) | Desktop first-install setup | Implemented with existing UI Kit and prototype/setup.html. Software-view and macOS native complete/partial recordings passed; actual credential prompts and remaining native scenarios/platforms are pending. Slogan: “让每一次复制更有用”. |
-| [0027](docs/decisions/proposed/0027-history-delivery-detail.md) | History detail delivery list and send progress | Proposed. Per-device delivery state stored per history entry; byte progress from a counting reader on `OpenPart`; v1 layout with ui-kit `TransferStatus`. Implemented; process E2E passed; native window acceptance pending. |
 
 ### 接口契约（`docs/contracts/`）
 

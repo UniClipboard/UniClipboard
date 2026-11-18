@@ -41,6 +41,8 @@ paths:
   - engine/observers.go
   - plugin/plugin.go
   - internal/store/history.go
+  - engine/progress.go
+  - engine/send.go
   - internal/store/search.go
   - internal/store/store.go
   - internal/plugins/builtintext
@@ -136,7 +138,8 @@ See [observability](observability.md) and its [contract](../contracts/observabil
 | `engine/history.go`, `history_types.go`, `history_sync.go`, `restore.go` | History API, source classification, sync summaries and restore sending |
 | `engine/history_cleanup.go`, `file_cache.go`, `history_import.go` | Cleanup eligibility, managed-file ownership and import |
 | `engine/observers.go` | Bounded read-only notification dispatch |
-| `internal/store/history.go` | History and deduplication storage |
+| `engine/progress.go` | Live per-part byte progress and its overlay on `HistoryItem.Targets` |
+| `internal/store/history.go` | History and deduplication storage, including `clip_item_target` |
 
 Service routes live in `app/service/internal/server/`; CLI handling lives in `app/service/cmd/unic/history.go`. Shared clients and DTOs live in `internal/localapi/`.
 
@@ -145,6 +148,14 @@ Service routes live in `app/service/internal/server/`; CLI handling lives in `ap
 - [Pipeline contract](../contracts/pipeline-contract.md), [history contract](../contracts/history-contract.md), [Action contract](../contracts/clipboard-action-contract.md).
 - [Engine contract](../contracts/engine-contract.md), [SDK extension contract](../contracts/sdk-extension-contract.md).
 - [Plugin contract](../contracts/plugin-contract.md), [sync backend contract](../contracts/sync-backend-contract.md).
+
+## Per-device delivery and send progress
+
+Each history entry stores the last send result per target in `clip_item_target`: backend, target kind and ID, state (`queued`, `sending`, `sent`, `failed`, `superseded`) and error code. `HistoryItem.Targets` exposes it. `sent` means every byte was written to the connection. It never means the peer received or applied the content. A restart turns open targets into `failed` with code `interrupted`. The aggregate `sync_state` stays for list badges.
+
+While a send runs, `peerSendSource.OpenPart` wraps each part reader in a counting reader. Per-part state (`waiting`, `transferring`, `completed`, `failed`) and bytes live in memory on the operation and are overlaid on `Targets`. Events are throttled to 250 ms per target and always sent on a state change. Backends need no RPC change. Reaching the part size never makes a target `sent`.
+
+`CommitRequest.HistoryID` sends a stored entry again without a new record and without running processors. A request with `HistoryID` must also retain the history content for the send. Each target state change publishes a history event.
 
 ## Gaps
 

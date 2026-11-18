@@ -71,7 +71,7 @@ CREATE TABLE clip_item_sync (
   error_code TEXT NOT NULL DEFAULT '',    -- a stable error class
   PRIMARY KEY (item_seq, backend_id)
 ) WITHOUT ROWID;
--- The last send result towards each target of a record (0027). A resend to one
+-- The last send result towards each target of a record. A resend to one
 -- device replaces only that device's row.
 CREATE TABLE clip_item_target (
   item_seq    INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,

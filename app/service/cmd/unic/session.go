@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/climigration"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	"github.com/uniclipboard/unic/internal/servicelaunch"
 	"github.com/uniclipboard/unic/internal/servicelifecycle"
@@ -184,11 +185,14 @@ func (s *session) acquire(ctx context.Context) error {
 }
 
 func (s *session) attempt(ctx context.Context) error {
-	unlock, err := servicelaunch.Lock(s.dir)
+	unlock, err := servicelaunch.LockContext(ctx, s.dir)
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	if err := climigration.Required(s.dir); err != nil {
+		return err
+	}
 	probe, cancel := context.WithTimeout(ctx, probeTimeout)
 	inst, err := s.raw.Service(probe)
 	cancel()

@@ -186,6 +186,11 @@ func (s *desktopSession) migrate() {
 				s.g.win.Invalidate()
 				return
 			}
+			if err := s.flow.BeginMigration(); err != nil {
+				s.message = "无法保存引导状态。请检查数据目录权限，然后重试。"
+				s.g.win.Invalidate()
+				return
+			}
 			s.showSetup(true)
 		})
 	}()

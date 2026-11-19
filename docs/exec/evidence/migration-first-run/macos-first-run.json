@@ -1,0 +1,29 @@
+{
+  "arch": "arm64",
+  "binary_sha256": {
+    "unic": "8690e6c75b43808a8a5c8b96d9b128879366f929cdd93830701caaf19da26e31",
+    "unicd": "3ff1f6a51f02cde632f93b25bc9fe26ae814cb9e5e284d12690a4cbd5141eda6"
+  },
+  "checks": [
+    "empty legacy directory can initialize explicitly; nonempty legacy source refuses",
+    "fresh JSON refusal has actionable reason and creates no service/database",
+    "help/version/migrate remain accessible",
+    "explicit no-source initialization and two service restarts",
+    "invalid source cannot complete implicitly; explicit no-source initialization remains available",
+    "source overlap is rejected before any target write",
+    "dry-run and partial import never complete first run",
+    "partial repair, repeat idempotence and two service restarts preserve five imported identities",
+    "database presence cannot bypass first run; completion belongs to exact target",
+    "corrupt state fails closed and keeps guidance accessible",
+    "SIGINT interrupts a second process waiting for the migration lock",
+    "SIGINT during secret input exits and leaves pending state",
+    "authenticated source identity cannot replace another pending migration",
+    "concurrent explicit initialization produces durable completion"
+  ],
+  "completed_at": "2026-11-19T02:44:20Z",
+  "os": "darwin",
+  "passed": true,
+  "profiles_removed": true,
+  "replay": "UNIC_E2E=1 go test ./e2e/cli -run '^TestMigrationFirstRun$' -count=1 -v",
+  "source_commit": "9d6c3fb56e31b0b29ec33301c073f66722ebb753"
+}

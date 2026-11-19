@@ -39,7 +39,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: c675e137a036afc334faa87e73418383c1260481
+verified: 00bc674dcd12e26f6c8c27143468a4fae976810d
 ---
 # Desktop configuration and received files
 
@@ -48,7 +48,7 @@ CLI changes and file edits use the same validation and Engine settings.
 
 The normal desktop uses the production `desktopui` renderer with live service data.
 Fresh profiles show first-install setup and optional v1 migration before normal runtime startup. Completed setup and established v2 profiles open history directly. There is no recurring unlock flow. The marker, source detection and exclusive migration lifecycle are described in the [live desktop composition](overview.md#live-desktop-composition).
-Settings > Storage > Migrate from v1 reopens the migration flow. Desktop closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. Entering history starts the normal runtime again. An external target owner blocks import before credential access; it is not automatically stopped by migration.
+Settings > Storage > Migrate from v1 reopens the migration flow. Desktop closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. It then persists a pending setup marker before showing migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
@@ -297,7 +297,7 @@ macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication ident
 
 ## Desktop acceptance entry
 
-`make desktop-e2e` is the canonical local and CI acceptance entry. Declarative testscript cases live under `app/desktop/e2e/cases`; the generated catalogue is checked during ordinary Go tests. The runner owns source snapshots, binary assembly, private profiles, per-case results and one HTML report. It retains screenshots and continuously sampled window-content recordings for native cases, with source/program/evidence hashes. All 25 former Desktop acceptance entries are migrated into package-local scenario registries. The 26-case catalogue includes 21 software-view cases, four process cases and one native-window case. View cases retain decodable software-rendered checkpoints. The runner verifies Go JSON events and rejects skipped subcases. Registry/catalogue mismatches fail preflight. Original test entries and standalone scripts are removed.
+`make desktop-e2e` is the canonical local and CI acceptance entry. Declarative testscript cases live under `app/desktop/e2e/cases`; the generated catalogue is checked during ordinary Go tests. The runner owns source snapshots, binary assembly, private profiles, per-case results and one HTML report. It retains screenshots and continuously sampled window-content recordings for native cases, with source/program/evidence hashes. All 25 former Desktop acceptance entries are migrated into package-local scenario registries. The 47-case catalogue includes 26 software-view cases, nine process cases and twelve native-window cases. PR CI runs all cases in three disjoint round-robin shards on independent hosted runners. Each job keeps the thirty-minute budget and normal evidence/cleanup requirements; full acceptance requires all shards to pass. View cases retain decodable software-rendered checkpoints. The runner verifies Go JSON events and rejects skipped subcases. Registry/catalogue mismatches fail preflight. Original test entries and standalone scripts are removed.
 
 The `desktop_e2e` build tag imports mygo's opt-in automation plugin, assigns a unique application name and supplies the existing directory clipboard through the host Board seam. Untagged builds use the original system board and do not import automation. The native case executes real desktop view actions against a production service and checks actual directory-clipboard bytes. It does not establish global key delivery, OS focus policy, system clipboard or cross-application paste.
 
@@ -322,3 +322,13 @@ Settings > General > Tray icon selects `glyph` (the v1 default, two offset round
 Unchanged style preferences do not publish an image. Failed native delivery retains the shown style so the next update can retry. Style changes call only the native image API. Only language changes rebuild translated menus. No state badges or animation are implemented.
 
 The [style execution receipt](../exec/desktop-tray-icon-styles.md) records nonvisual acceptance and remaining native tray appearance, DPI, theme-event and open-menu acceptance boundaries.
+
+
+### Shared migration admission
+
+Desktop and CLI imports publish the same profile-scoped migration receipt under
+the service transition lock. A partial or cancelled Desktop import remains
+pending for CLI initialization, including custom sources outside default
+discovery. Only a verified complete import publishes completion. Desktop
+welcome/skip and history navigation do not publish CLI completion. See the
+[initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).

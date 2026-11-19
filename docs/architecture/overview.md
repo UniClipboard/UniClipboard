@@ -15,7 +15,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: dc7da2a0a697aa3291f0fb3a161d172185a21716
+verified: afcce7e17fbc97a07840e4d79b63bf87efefa52f
 ---
 # 仓库布局与依赖边界
 
@@ -245,3 +245,13 @@ integration, native release/signing and Store workflows remain separate work.
 Expo prebuild and both Metro/Hermes bundles. It emits checksummed artifacts and a
 receipt, and explicitly records native UI as not run. Maestro flows provide a
 separate native interaction path. See the [execution receipt](../exec/expo-ui-shell.md).
+
+
+### Resuming a later Desktop migration
+
+The Settings migration action stops and waits for the owned adapter and service,
+then persists pending setup before displaying migration. Cancelling or quitting
+preserves that intent. Reopening the same data directory resumes setup rather
+than starting history implicitly. Explicit history entry publishes Desktop setup
+completion. This navigation receipt is separate from the CLI's explicit
+[migration initialization](../contracts/local-service-contract.md#explicit-cli-migration-initialization).

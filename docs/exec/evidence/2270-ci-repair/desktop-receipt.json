@@ -1,0 +1,43 @@
+{
+  "host": "darwin-arm64",
+  "native_window": "NOT_RUN",
+  "system_clipboard": "NOT_RUN",
+  "credentials": "NOT_RUN",
+  "cases": {
+    "startup-lifecycle": {
+      "command": "make desktop-e2e CASE=startup-lifecycle",
+      "status": "PASS",
+      "cleanup": "PASS",
+      "private_cleanup": "PASS",
+      "source_unchanged": true,
+      "manifest_sha256": "d5562abd2f30d14e48aa0eb32ed4a9def35958ee60f7c2b6871faa8b0413a4b1",
+      "race": true
+    },
+    "tray-icon-settings": {
+      "command": "make desktop-e2e CASE=tray-icon-settings",
+      "status": "PASS",
+      "cleanup": "PASS",
+      "private_cleanup": "PASS",
+      "source_unchanged": true,
+      "manifest_sha256": "f599dbfbef00028166f61f9c44b450092b9a38ac6434b8e9b2c6039babc198fa",
+      "race": true
+    }
+  },
+  "selection": {
+    "catalogue": 47,
+    "shards": [
+      16,
+      16,
+      15
+    ],
+    "disjoint_and_complete": true,
+    "invalid_requests_refused": 7
+  },
+  "source_sha256": {
+    "app/desktop/e2e/acceptance_startup_test.go": "16979f39729e6806809c4ca92cc2ec2da819063dce1225bb64ec61848c1866ef",
+    "app/desktop/internal/desktopui/acceptance_tray_icon_test.go": "9b96ab67d1c5c32dba38cafc4d59e38998e837f205d2773eff4e2788dc2ac255",
+    "app/desktop/e2e/run.py": "ee9cfc8c270e0f7b573e691e7a2e0b9503e36bd94cf5a73e0d9d878d2c855611",
+    ".github/workflows/pr-checks.yml": "8c6181d60a4321abbb0cd0b9150dc2a56ee848606755d6f343309e19fe2cd3b0",
+    "Makefile": "6df9b0cf549a32c1ea35e6da5568f310a922953235cb5a5bbc9615df8e32181f"
+  }
+}

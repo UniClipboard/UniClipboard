@@ -2,6 +2,7 @@ package v1migration
 
 import (
 	"bytes"
+	"context"
 	"runtime"
 	"unsafe"
 
@@ -13,7 +14,7 @@ import (
 func ReadSecret(service, account string) ([]byte, error) {
 	lib, err := purego.Dlopen("/System/Library/Frameworks/Security.framework/Security", purego.RTLD_NOW|purego.RTLD_LOCAL)
 	if err != nil {
-		return nil, ErrUnlock
+		return nil, credentialError("macOS Keychain is unavailable; unlock the login keychain")
 	}
 	defer func() { _ = purego.Dlclose(lib) }()
 	var find func(uintptr, uint32, *byte, uint32, *byte, *uint32, *unsafe.Pointer, uintptr) int32
@@ -27,11 +28,31 @@ func ReadSecret(service, account string) ([]byte, error) {
 	runtime.KeepAlive(sb)
 	runtime.KeepAlive(ab)
 	if status != 0 {
-		return nil, ErrUnlock
+		if status == -25300 { // errSecItemNotFound
+			return nil, credentialError("macOS credential was not found; select the original v1 profile and credential service")
+		}
+		if status == -128 { // userCanceledErr
+			return nil, credentialError("macOS Keychain prompt was cancelled; retry and allow access")
+		}
+		return nil, credentialError("macOS Keychain access failed; unlock the login keychain and allow credential access")
 	}
 	defer free(0, ptr)
 	if n > 1<<20 {
 		return nil, ErrFormat
 	}
 	return bytes.Clone(unsafe.Slice((*byte)(ptr), int(n))), nil
+}
+
+// ReadSecretContext checks cancellation around the synchronous native API.
+// The OS owns any native authorization prompt; the caller cannot dismiss it.
+func ReadSecretContext(ctx context.Context, service, account string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	value, err := ReadSecret(service, account)
+	if cancelErr := ctx.Err(); cancelErr != nil {
+		clear(value)
+		return nil, cancelErr
+	}
+	return value, err
 }

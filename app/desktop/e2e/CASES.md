@@ -30,6 +30,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [search-disclosure-reduced-motion](#search-disclosure-reduced-motion) | view | Toolbar search disclosure with Reduce Motion enabled. |
 | [search-disclosure](#search-disclosure) | view | Animated toolbar search expansion, collapse, filtering and keyboard dismissal. |
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |
+| [setup-later-migration](#setup-later-migration) | native | Resume a later migration after cancelling and reopening the real Desktop. |
 | [setup-onboarding](#setup-onboarding) | native | Record the real welcome, migration confirmation, passphrase fallback, import, verification and history entry. |
 | [setup-pages](#setup-pages) | view | Exercise the production UI Kit setup renderer across three skins and two themes. |
 | [setup-partial](#setup-partial) | native | Record an honest partial result and entry into usable migrated history. |
@@ -267,9 +268,9 @@ acceptance desktopui event-wakeup
 
 First-install setup and offline v1 import
 
-Steps: Discover synthetic sources; skip and reopen; import with wrong and correct credentials; cancel and resume; repair and retry; start a real service and read imported history; reject concurrent migration.
+Steps: Discover synthetic sources; skip and reopen; import with wrong and correct credentials; cancel and resume; repair and retry; start a real service and read imported history; reject concurrent migration; stop the owned service, reopen a pending later migration, cancel and resume, then restart service.
 
-Expected: Established profiles bypass setup; unfinished setup resumes; imported records survive cancellation without duplication; partial counts remain distinct; source data remains unchanged; service exposes imported history.
+Expected: Established profiles bypass setup; unfinished first and later migrations resume; imported records survive cancellation without duplication; partial counts remain distinct; source data remains unchanged; service exposes stable imported history identities after restart.
 
 Forbidden: Native GUI launch, personal profile or credential access, sync, clipboard capture, duplicate import, or automatic termination of an unrelated service.
 
@@ -622,6 +623,64 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 acceptance desktopui send-device-menu
 ```
 
+## setup-later-migration
+
+Settings migration cancellation and restart
+
+Steps: Explicitly postpone first-run migration; open migration from Settings; unlock and cancel actual import; quit and reopen the same profile; resume import; enter history; reopen again.
+
+Expected: Settings stops its owned service; pending migration survives restart; completion alone leaves service stopped; explicit entry starts service; all 1505 records persist without duplication after another restart.
+
+Forbidden: Personal data or credentials, system clipboard access, implicit completion after cancellation, active service during import, missing recordings or source mutation.
+
+```text
+start-setup complete
+ui-wait text '欢迎使用 UniClipboard'
+ui-click button '开始使用'
+ui-wait button '暂不迁移'
+ui-click button '暂不迁移'
+history-count 0
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 存储
+ui-click listItem 存储
+ui-wait button '从 v1 迁移'
+screenshot settings
+ui-click button '从 v1 迁移'
+ui-wait button '开始迁移'
+service-absent
+screenshot later-confirmation
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+ui-set textField 'v1 口令' fixture-passphrase
+ui-enabled button '解锁并继续'
+ui-click button '解锁并继续'
+ui-wait text '正在导入记录'
+ui-click button '停止迁移'
+ui-wait text '迁移已停止'
+service-absent
+screenshot cancelled
+restart-desktop setup
+ui-wait button '开始迁移'
+service-absent
+screenshot reopened-pending
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+ui-set textField 'v1 口令' fixture-passphrase
+ui-enabled button '解锁并继续'
+ui-click button '解锁并继续'
+ui-wait text '迁移完成' 90
+service-absent
+screenshot complete
+ui-click button '开始使用'
+history-count 1505
+screenshot history
+restart-desktop
+history-count 1505
+ui-wait listItem '~.*fixture text.*'
+screenshot persisted-history
+```
+
 ## setup-onboarding
 
 Native first-install onboarding and complete migration
@@ -787,7 +846,7 @@ acceptance desktopui source-application
 
 Desktop startup and service lifetime
 
-Steps: Execute the registered production-process suite and validate its receipt.
+Steps: Assert fresh CLI refusal, explicitly initialize both private profiles, then execute the production-process suite and validate its receipt.
 
 Expected: The suite runs, passes its assertions and emits a successful receipt.
 

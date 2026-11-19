@@ -80,6 +80,33 @@ make desktop-e2e CASE=production-boundary
 
 A restricted sandbox must permit local UNIX sockets for the process cases. The canonical runner owns temporary source snapshots, profiles, logs and process cleanup. Public receipts contain synthetic data only.
 
+## E-group follow-up: later migration persistence (2026-11-19)
+
+Failure inventory recorded before implementation:
+
+- Settings starts a later migration while the setup marker remains complete; quitting or cancelling then reopening bypasses unfinished migration.
+- A failed pending-marker write starts import anyway or silently completes setup.
+- A later import runs while the old service still owns the target.
+- Reopening a pending later import duplicates old records or loses existing history, tags or colors.
+- The native restart helper waits for a service during pending setup and reports a false timeout.
+
+Extend canonical `first-install-setup` with a real service stop, explicit pending transition, reopen/cancel/retry, idempotent import and post-restart history/state assertions. Add native `setup-later-migration` to drive Settings, cancel actual import, quit/reopen, resume and enter persisted history. These cases use encrypted synthetic sources and isolated profiles only. Native execution remains separate from process acceptance.
+
+Implemented `Flow.BeginMigration` and call it after the Desktop-owned adapter and service have stopped. A failed marker write prevents the migration screen from opening. A pending later migration survives process exit and returns to source confirmation. Import completion still requires explicit application entry.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Canonical `first-install-setup`, macOS arm64, race enabled | PASS | `/private/tmp/unic-e-desktop/.build/desktop-e2e/20261119T020702Z-35efba5c/index.html` |
+| Report checksum verification | PASS | All five entries in the report's `SHA256SUMS` verified. |
+| Cleanup | PASS | Canonical result reports cleanup PASS; the runner removed private source, profile, program and logs. |
+| Desktop command compilation and scoped setup-flow vet | PASS | `go test ./app/desktop/cmd/unic-desktop -run '^$'`; `go vet ./app/desktop/internal/setupflow`. |
+| Documentation check | PASS with seven stale-page warnings | `go run ./tools/docscheck`. Verification markers require the integrated source commit. |
+| Native `setup-later-migration`, native directory picker, real system credential prompt | NOT_RUN | No native window or personal credential store was opened in this worker. |
+
+The process receipt verifies five stable history IDs and their order after later migration and real service restart. A cancelled later migration retains its source and pending marker. Retry imports zero records, skips five and verifies five. Explicit entry persists completion. The source and original tag/color data remain intact. This process evidence does not establish native Settings interaction.
+
+The first sandboxed attempt reached service startup and failed because UNIX socket binding was denied. Its cleanup passed. The successful run used permission for private UNIX sockets. `GOCACHE=/private/tmp/unic-e-go-cache` was needed because the default system Go cache was outside the worker's writable roots.
+
 After visual execution is explicitly authorized, run `make desktop-e2e CASE=setup-pages`. This produces software-view PNG evidence across skins and themes. It does not establish native directory dialogs, system credential access, or operating-system window behavior. Compare the native flow against the supplied prototype separately before declaring visual acceptance.
 
 
@@ -134,3 +161,30 @@ The failed `Lint` job in Actions run `43552995525` checked head `a6625e6806c6036
 Reproduced all ten diagnostics locally using the repository-pinned golangci-lint v2.15.0, downloaded from the official release and checked against its published archive SHA256. Corrected only the seven affected Go files. Profile removal and service shutdown failures now fail the process acceptance case; expected rollback/temp-path cleanup and read-only fixture/source release remain explicit best-effort cleanup. Applied the configured goimports grouping without changing lint rules.
 
 Validation before source commit `546e6317c`: full `golangci-lint run --timeout=5m ./...` reported zero issues, `golangci-lint fmt --diff --diff-colored=false` produced no diff, and `git diff --check` passed. The canonical `first-install-setup` process case passed in `.build/desktop-e2e/20261114T103341Z-86dc608b/index.html`. No new unit tests or workflow bypasses were added. Updated the three directly maintained architecture verification markers after committing the checked source.
+
+
+## Integrated E-group acceptance (2026-11-19)
+
+The integrated native `setup-later-migration` case passed in
+`.build/desktop-e2e/20261119T023210Z-12d88a05/`. It drove actual Settings,
+stopped the owned runtime, cancelled import, quit/reopened the same profile,
+resumed and entered history, then reopened again with exactly 1505 records.
+The canonical runner recorded continuous native-window content and removed
+private profiles, source snapshots, programs and logs. This extends the earlier
+complete/partial native evidence; it does not replace those results.
+
+Canonical `first-install-setup` passed again in
+`.build/desktop-e2e/20261119T023030Z-dc2959b6/` after a red process run exposed a
+cross-entry gap: a Desktop partial import previously left no CLI pending state.
+CLI and Desktop now share pending intent and source-identity binding. A verified
+Desktop import completes that receipt; welcome/skip does not. Desktop navigation
+remains independent. Linux CLI/process evidence is recorded in the
+[0011 execution receipt](0011-v1-history-migration.md).
+
+The real directory chooser remains `mygo.Dialog.Open(Directory: true)`. The
+Peekaboo permission probe reported Screen Recording granted and Accessibility
+not granted. System-dialog automation was paused at that boundary. Actual system
+credential prompts and Windows native execution remain NOT_RUN. Test credential
+reads use only the isolated Linux GNOME Secret Service items described in 0011.
+No personal profile, credentials, clipboard, configuration or trust settings were
+read or modified.

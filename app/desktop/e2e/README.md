@@ -12,7 +12,10 @@ Run from the repository root. The command executes the registered native-window,
 make desktop-e2e-list
 make desktop-e2e-doctor
 make desktop-e2e CASE=history-search-copy
+make desktop-e2e SHARD=1/3
 ```
+
+`SHARD=index/count` selects one disjoint round-robin partition of the sorted catalogue. Run every shard for complete coverage. Do not combine `CASE` and `SHARD`. PR CI runs three shards on separate hosted runners, preserves the thirty-minute limit for each job and uploads distinct reports. Preview a selection with `python3 app/desktop/e2e/run.py list --shard 1/3`.
 
 [CASES.md](CASES.md) is generated from `cases/*.txtar`. Each case states its purpose, actions, expected result, forbidden result and evidence mode. Developers do not set individual `UNIC_*` switches or assemble receipt paths. All 25 prior Desktop acceptance entries are migrated. Original test files, switches and standalone entries are removed. See the [migration map](MIGRATION.md). UI Kit component checks remain outside the Desktop E2E catalogue.
 
@@ -45,7 +48,7 @@ Source, binaries, profiles, raw logs and intermediate frames live in a private t
 
 ## Requirements
 
-Use the repository Go toolchain, Python 3.10+, ffmpeg and ffprobe. Native cases need a logged-in desktop session. On Linux, install mygo's GTK/WebKit runtime dependencies and use a real display or `xvfb-run`. CI supplies Xvfb; that proves native window operation in a virtual display, not physical desktop policy.
+Use the repository Go toolchain, Python 3.10+, ffmpeg and ffprobe. Native cases need a logged-in desktop session. On Linux, install mygo's native GTK and tray indicator runtime dependencies and use a real display or `xvfb-run`. CI supplies Xvfb; that proves native window operation in a virtual display, not physical desktop policy.
 
 The runner opens only test-owned windows with synthetic content and a unique profile. It never reads or replaces the user's system clipboard. Do not run two native Desktop acceptance commands against the same physical desktop concurrently.
 

@@ -35,13 +35,11 @@ func V1DataDir() (string, error) {
 	return filepath.Join(base, "app.uniclipboard.desktop"), nil
 }
 
-// Dir is the state directory: database, socket, received files.
-func Dir() (string, error) {
+// ResolveDir selects the profile without creating it. Offline migration must
+// validate source/target separation before any target filesystem mutation.
+func ResolveDir() (string, error) {
 	if d := os.Getenv("UNIC_HOME"); d != "" {
-		if err := os.MkdirAll(d, 0700); err != nil {
-			return "", err
-		}
-		return filepath.EvalSymlinks(d)
+		return filepath.Abs(d)
 	}
 	executable, err := os.Executable()
 	if err != nil {
@@ -52,17 +50,13 @@ func Dir() (string, error) {
 		return "", err
 	}
 	portable := filepath.Join(filepath.Dir(executable), "portable.dat")
-	if info, statErr := os.Lstat(portable); statErr == nil {
+	if info, err := os.Lstat(portable); err == nil {
 		if !info.Mode().IsRegular() {
 			return "", errors.New("portable.dat must be a regular file")
 		}
-		d := filepath.Join(filepath.Dir(executable), "data")
-		if err := os.MkdirAll(d, 0700); err != nil {
-			return "", err
-		}
-		return filepath.EvalSymlinks(d)
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return "", statErr
+		return filepath.Join(filepath.Dir(executable), "data"), nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
 	}
 	base, err := os.UserConfigDir()
 	if err != nil {
@@ -72,11 +66,19 @@ func Dir() (string, error) {
 	if releaseinfo.Version == "dev" {
 		name = "unic-development"
 	}
-	d := filepath.Join(base, name)
-	if err := os.MkdirAll(d, 0700); err != nil {
+	return filepath.Join(base, name), nil
+}
+
+// Dir is the state directory: database, socket, received files.
+func Dir() (string, error) {
+	dir, err := ResolveDir()
+	if err != nil {
 		return "", err
 	}
-	return filepath.EvalSymlinks(d)
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(dir)
 }
 
 func sub(name string) (string, error) {

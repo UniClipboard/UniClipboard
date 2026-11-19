@@ -201,7 +201,8 @@ func usageText() string {
 		fmt.Fprintf(&b, "  %s%s%s\n", style(outTTY, sCmd, l.Usage), pad, l.Text)
 	}
 	b.WriteString("\n" + style(outTTY, sBold, "Exit codes:") + ` 0 done, 1 failed, 2 usage, 3 migration partial,
-4 committed but incomplete, 5 done but temporary unicd cleanup failed.
+4 committed but incomplete, 5 done but temporary unicd cleanup failed,
+6 migration initialization required (run unic migrate --help).
 `)
 	return b.String()
 }

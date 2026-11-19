@@ -98,6 +98,9 @@ func newLab(t *testing.T, rec *recorder, root, name string, extra ...string) *la
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("\n[telemetry]\nenabled=false\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := initializeFixtureProfile(filepath.Join(binDir, "unic"), home, l.env); err != nil {
+		t.Fatal(err)
+	}
 	return l
 }
 

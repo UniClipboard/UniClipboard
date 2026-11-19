@@ -8,10 +8,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/climigration"
+	"github.com/uniclipboard/unic/internal/servicelaunch"
 	"github.com/uniclipboard/unic/internal/v1migration"
 )
 
@@ -89,6 +90,18 @@ func (f *Flow) Complete() error {
 	next.Complete = true
 	return f.update(next)
 }
+
+// BeginMigration persists pending intent for a later import before the host
+// opens the migration screen. Cancellation or process exit must not lose it.
+// The host first stops and waits for its normal runtime.
+func (f *Flow) BeginMigration() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	next := f.state
+	next.Complete = false
+	return f.update(next)
+}
+
 func (f *Flow) update(next State) error {
 	previous := f.state
 	f.state = next
@@ -157,20 +170,17 @@ func (f *Flow) Run(ctx context.Context, password []byte, secrets v1migration.Sec
 		failed.Status = "cancelled"
 		return failed, err
 	}
-	sourceDir, err := filepath.EvalSymlinks(f.State().Source)
-	if err != nil {
-		return failed, v1migration.ErrFormat
+	if err := v1migration.ValidateDirectories(f.State().Source, f.target); err != nil {
+		return failed, err
 	}
-	targetDir, err := filepath.EvalSymlinks(f.target)
+	unlock, err := servicelaunch.LockContext(ctx, f.target)
 	if err != nil {
 		return failed, err
 	}
-	contains := func(parent, child string) bool {
-		rel, err := filepath.Rel(parent, child)
-		return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-	}
-	if contains(sourceDir, targetDir) || contains(targetDir, sourceDir) {
-		return failed, v1migration.ErrFormat
+	defer unlock()
+	pending, err := climigration.Begin(f.target, f.State().Source)
+	if err != nil {
+		return failed, err
 	}
 	// Check exclusive ownership before any system credential prompt. The importer
 	// re-acquires the Engine lock and remains authoritative if ownership changes.
@@ -195,10 +205,18 @@ func (f *Flow) Run(ctx context.Context, password []byte, secrets v1migration.Sec
 		failed.Status = "cancelled"
 		return failed, err
 	}
+	if _, err = climigration.Bind(f.target, pending, source.ID()); err != nil {
+		return failed, err
+	}
 	report, err := source.Run(ctx, v1migration.RunOptions{Target: f.target, Progress: progress})
 	var ee *engine.Error
 	if errors.As(err, &ee) && ee.Code == engine.CodeInUse {
 		return report, ErrTargetBusy
+	}
+	if err == nil && report.Status == "complete" && ctx.Err() == nil {
+		if err = climigration.Write(f.target, climigration.State{Status: "complete", Outcome: "imported", SourceID: source.ID()}); err != nil {
+			report.Status = "failed"
+		}
 	}
 	return report, err
 }

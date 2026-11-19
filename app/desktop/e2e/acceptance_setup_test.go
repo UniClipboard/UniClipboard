@@ -19,6 +19,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/climigration"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/v1migration"
@@ -163,6 +164,12 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	}
 	receipt["source_layout_sha256"] = initialLayoutHash
 	checks = append(checks, "ordinary desktop migration automatically repairs an untouched old tag assignment and imports original colors without flags")
+	gate, gateErr := climigration.Read(target)
+	must(t, gateErr)
+	if gate.Status != "pending" {
+		t.Fatal("Desktop partial import did not block CLI no-source initialization")
+	}
+	checks = append(checks, "Desktop partial import persists the shared CLI pending gate")
 	receipt["partial_report"] = report
 	db, err := sql.Open("sqlite", dbpath)
 	must(t, err)
@@ -178,6 +185,11 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	must(t, err)
 	if report.Imported != 0 || report.Skipped != 5 {
 		t.Fatalf("duplicate import: %+v", report)
+	}
+	gate, gateErr = climigration.Read(target)
+	must(t, gateErr)
+	if gate.Status != "complete" || gate.Outcome != "imported" {
+		t.Fatal("verified Desktop import did not complete the shared CLI gate")
 	}
 	receipt["retry_report"] = report
 	checks = append(checks, "source database preserved, partial report, repair, resume and zero-new-record retry")
@@ -265,5 +277,53 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	}
 	must(t, restarted.Stop())
 	checks = append(checks, "desktop default migration colors survive service restart")
+	// Settings has stopped its owned service before entering a later migration.
+	// Its explicit pending transition must survive cancellation and app restart.
+	must(t, flow.BeginMigration())
+	later, err := setupflow.Open(target)
+	must(t, err)
+	if !later.Required() || later.State().Source != source {
+		t.Fatal("later migration did not persist pending source before restart")
+	}
+	stopCtx, stop := context.WithCancel(ctx)
+	stop()
+	_, err = later.Run(stopCtx, []byte(fixture.Passphrase), denied, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("later migration cancel: %v", err)
+	}
+	later, err = setupflow.Open(target)
+	must(t, err)
+	if !later.Required() {
+		t.Fatal("cancelled later migration marked setup complete")
+	}
+	report, err = later.Run(ctx, []byte(fixture.Passphrase), denied, nil)
+	must(t, err)
+	if report.Status != "complete" || report.Imported != 0 || report.Skipped != 5 || report.Verified != 5 {
+		t.Fatalf("later migration resume: %+v", report)
+	}
+	if !later.Required() {
+		t.Fatal("import alone completed setup before explicit entry")
+	}
+	finalService, err := lifecycle.Start(ctx, target, socket, executable, true)
+	must(t, err)
+	defer func() { must(t, finalService.Stop()) }()
+	must(t, later.Complete())
+	finalState, err := setupflow.Open(target)
+	must(t, err)
+	if finalState.Required() {
+		t.Fatal("later migration entry did not survive restart")
+	}
+	finalClient := api.NewClient(socket)
+	finalPage, err := finalClient.QueryHistory(ctx, api.HistoryQuery{Limit: 50})
+	must(t, err)
+	if len(finalPage.Items) != 5 {
+		t.Fatalf("later migration lost or duplicated history: %d", len(finalPage.Items))
+	}
+	for i := range page.Items {
+		if page.Items[i].ID != finalPage.Items[i].ID {
+			t.Fatal("later migration changed persisted history identity/order")
+		}
+	}
+	checks = append(checks, "later migration persists pending state; cancellation and reopen retain source; resume verifies five existing records without duplicates; explicit entry persists and restarted service retains history identities")
 	// The cleanup above is idempotent and also runs if a preceding assertion fails.
 }

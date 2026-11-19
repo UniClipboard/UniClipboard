@@ -303,6 +303,59 @@ See the [source application contract](source-application-contract.md) for captur
 
 The configuration API exposes `config.desktop.tray_icon` as `glyph` or `cat`. An omitted TOML key uses `glyph`. Revision-checked saves, `unic config set` and direct file reloads use the same enum validation. Invalid values do not replace the previous valid configuration. The service stores the preference and does not render a tray. A running normal Desktop watches the saved configuration and updates its tray image without requiring restart. `desktop.tray_icon` is not a restart-required key.
 
+## Explicit CLI migration initialization
+
+The CLI requires explicit initialization for each resolved data directory before any
+business command. The host receipt is `cli-migration.json`; an existing database,
+Desktop navigation receipt, environment variable, dry run, or successful service probe
+never substitutes for this receipt. A verified explicit Desktop import publishes the same migration receipt. A Desktop welcome/skip action does not. This is a CLI admission rule, not an Engine
+or socket API credential. Direct daemon and Desktop lifecycle policies stay separate.
+
+`help`, group help, version and `migrate` remain available. A blocked business
+command exits **6** before contacting or starting a service, sync, or clipboard
+adapter. JSON mode writes an error to stderr with `reason: migration_required`,
+`next_command: unic migrate --help`, and the explicit no-source initialization
+command. Plain text prints the same actionable instructions. No interactive
+answer or default consent is inferred.
+
+- `unic migrate --source DIR --json` unlocks, imports, reopens and verifies through
+  the existing v1 importer. Only an error-free `complete` report publishes CLI
+  completion. A partial report exits 3 and keeps the CLI blocked. Failure and
+  cancellation exit 1. Dry-run never changes initialization state.
+- `unic migrate --initialize-empty --json` is the explicit no-source completion
+  path. It checks default v1 discovery and the selected `UC_PROFILE` location,
+  accepts an absent path or an empty leftover directory, refuses a nonempty or
+  unreadable source, and refuses a pending import. A
+  custom source must be imported with `--source`. The command does not infer
+  that a custom source elsewhere is absent. It accepts only `--target` and
+  `--json` alongside the explicit initialization option.
+- Missing/invalid source paths fail before creating pending import state. This
+  allows a user who has no v1 data to correct a typo and initialize explicitly.
+  Once a valid source import begins, only completion of that source can clear
+  the pending state. Before unlock it is bound to the key-slot fingerprint;
+  after unlock it is bound to the importer's stable source identity. Moving a
+  source preserves its identity. An unrelated source cannot replace it.
+- State is scoped to the exact target. Normal commands and migration use the
+  same portable/development/`UNIC_HOME` resolver. Path selection is read-only
+  until source/target overlap, including symlink overlap, has been rejected.
+- Migration holds the profile transition lock, publishes pending intent before
+  credentials, probes exclusive offline ownership, and never stops a borrowed
+  service. Waiting for the lock and passphrase input can be cancelled. Service
+  acquisition checks completion again under that lock. Import and verification
+  release the target before atomic completion publication. A failed publication
+  leaves pending intent and requires a safe idempotent retry.
+- Corrupt or unknown state fails closed. Help stays accessible. A fresh explicit
+  verified import can repair a corrupt receipt. No skip or environment bypass
+  exists. Atomic publication uses a private synchronized temporary file and rename.
+
+The initialization receipt contains no content or credentials. CLI and Desktop
+imports share its pending/source/completion transitions under the same lock. It
+is separate from importer idempotence and Desktop navigation. Imported timestamps retain
+v1 values. Normal configured age/count cleanup applies after startup; importing
+does not silently disable a user's policy. Acceptance with historical synthetic
+timestamps explicitly disables automatic cleanup and verifies stable identities
+across service restarts. Review cleanup policy before importing old real history.
+
 ## Plugin configuration
 
 The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.

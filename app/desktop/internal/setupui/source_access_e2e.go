@@ -3,6 +3,7 @@
 package setupui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
@@ -23,4 +24,6 @@ func defaultSourceDirectory() (string, error) {
 	}
 	return filepath.Join(filepath.Dir(profile), "v1-source"), nil
 }
-func readSourceSecret(string, string) ([]byte, error) { return nil, v1migration.ErrUnlock }
+func readSourceSecret(context.Context, string, string) ([]byte, error) {
+	return nil, v1migration.ErrUnlock
+}

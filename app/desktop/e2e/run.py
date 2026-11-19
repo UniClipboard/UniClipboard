@@ -312,12 +312,25 @@ def run(specs, selected, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('run', 'list', 'doctor', 'catalog'), nargs='?', default='run')
-    parser.add_argument('--case', default='')
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--case', default='')
+    selection.add_argument('--shard', help='one-based index/count over the sorted complete catalogue')
     parser.add_argument('--out')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--update', action='store_true')
     args = parser.parse_args()
     specs = cases()
+    selected = [args.case] if args.case else [s['id'] for s in specs]
+    if args.shard:
+        match = re.fullmatch(r'([1-9][0-9]*)/([1-9][0-9]*)', args.shard)
+        if not match:
+            raise ValueError('shard must be index/count, for example 1/3')
+        index, count = map(int, match.groups())
+        if not 1 <= index <= count <= len(specs):
+            raise ValueError('shard requires 1 <= index <= count <= catalogue size')
+        selected = selected[index - 1::count]
+    if not set(selected).issubset({s['id'] for s in specs}):
+        raise ValueError('unknown Desktop case')
     if args.action == 'catalog':
         content = catalogue(specs)
         path = HERE / 'CASES.md'
@@ -328,11 +341,9 @@ def main():
         return 0
     if args.action == 'list':
         for s in specs:
-            print(f"{s['id']:24} {s['mode']:8} {s['case']}")
+            if s['id'] in selected:
+                print(f"{s['id']:24} {s['mode']:8} {s['case']}")
         return 0
-    selected = [args.case] if args.case else [s['id'] for s in specs]
-    if not set(selected).issubset({s['id'] for s in specs}):
-        raise ValueError('unknown Desktop case')
     if args.action == 'doctor':
         doctor(any(s['mode'] == 'native' and s['id'] in selected for s in specs))
         print('READY: basic prerequisites found; native startup is verified by the case')

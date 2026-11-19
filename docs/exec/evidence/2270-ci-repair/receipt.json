@@ -1,0 +1,82 @@
+{
+  "attempt": 1,
+  "cleanup": "canonical TemporaryDirectory removed all private build/profile directories; only small redacted receipt retained",
+  "command": "TMPDIR=/private/tmp python3 e2e/packaging/run.py --output <PRIVATE_OUTPUT>",
+  "failed_pr_head": "c3e85ec93613662bd57dc7ef4aff9f1ac387369b",
+  "failed_run": 44452818995,
+  "failed_targets": [
+    "darwin-arm64",
+    "darwin-amd64",
+    "windows-arm64",
+    "windows-amd64",
+    "linux-arm64",
+    "linux-amd64"
+  ],
+  "failure": "six package smoke jobs called config before explicit CLI migration initialization; exit 6 migration_required",
+  "gui": "NOT_RUN",
+  "local_repair": {
+    "checks": [
+      "bundled business command requires explicit migration initialization",
+      "migration refusal creates no database, receipt or service socket",
+      "bundled CLI/service shared configuration round-trip",
+      "macOS v1 bundle icon declaration",
+      "packaged icon matches v1 artwork",
+      "desktop version identity",
+      "locked unic bytes unchanged",
+      "locked unicd bytes unchanged",
+      "explicit no-source initialization for selected profile",
+      "portable data root",
+      "portable initialization persists beside executable",
+      "explicit no-source initialization for selected profile",
+      "explicit profile overrides portable",
+      "explicit initialization is independent from portable data",
+      "existing stage rejected",
+      "shared configuration/API source mismatch rejected",
+      "wrong lock rejected",
+      "changed manifest rejected",
+      "changed npm bytes rejected",
+      "source unchanged during acceptance"
+    ],
+    "source_sha256": {
+      "e2e/packaging/CASES.md": "6c7cadde84dea3146a32576231494e067d59b4397376ec5abd7fae4836f95635",
+      "e2e/packaging/README.md": "c83444d90918d3aead0ade94c5396208bdc34f0f7d6e447f462a97de6c17e3e2",
+      "e2e/packaging/channels.py": "52206e81bac4af033f2d16ded9c785f56577c92e4a7bfb9728dda63cf34a931a",
+      "e2e/packaging/github_release.py": "67b024fede9e8d0088819892662452aee43e6acc4fe794fd96b9eb63000d2dfe",
+      "e2e/packaging/linux-lifecycle.sh": "86ab28908708d80ed2ca8269b177fbb8e5a60fb5c9a595399c0c593bd55b1de5",
+      "e2e/packaging/publication.py": "13cecf15788889e955518c8cd2da38cae6636fa630674c21da399585aa91157b",
+      "e2e/packaging/run.py": "aea6772d270f18ed2ce715582e1b0c5525006c8af11181940999f4f7a889f847",
+      "e2e/packaging/sandboxes.py": "64ac30efcdcb20bbf56dac7ae1768ccb729eaf4a5039023dee2ee76760f90664",
+      "e2e/packaging/updates.py": "fb61008f18c33c9136724b805f91171af9ea76568ae64cbc3ec7682f0abbd5f4",
+      "e2e/packaging/windows-build.py": "03dcc49db1cb0e2413c58bac4a7b86c3aa243a526a0906b3e13a6675f1495daa",
+      "e2e/packaging/windows-lifecycle.ps1": "b04182907bd4f062259811f94b553664ed41827e59053258f4d642b9f80146c6",
+      "e2e/packaging/windows-upgrade-fixture.py": "21c3822410bcb89fa9dc5d01341b2bd34f25e98c28f165684d85b9c484175cbf",
+      "packaging/README.md": "17e1257371855beb63e173717b5ec596a8428d11de432e9597ff9dfb64cde462",
+      "packaging/aur/uniclipboard-git/.SRCINFO": "f8e84f6341a3f729f48a7a98c04dd2477916aabd0bef456703627a1367522caf",
+      "packaging/aur/uniclipboard-git/PKGBUILD": "d4c056ead0866f5644328a4f10d8d40ab610b465ff87e2061e2c36fbc7dc6068",
+      "packaging/linux/AppRun": "2a5cc159c2ec17f5a198a755c793f743cb85125cd68ce672b382dea75c0de899",
+      "packaging/linux/uniclipboard.desktop": "5ca5134c8f4da3a5857c50dbd9ab4cd9d481c0e3ca1fc493abe7664a54d1724a",
+      "packaging/tools.json": "5e92990148dfabe9722a25fdd678d722728766186b8193db24aecccf648ae0b3",
+      "packaging/windows/installer.nsi": "04507dfa5fd655bc2c1518fdacccd66fde29f82dccc93924743314378cd793b1",
+      "release/desktop-notes.json": "3d41935c05b2a8dea702966fffaf51f8095da60263312c1b7cd8663c01b1ba30",
+      "release/products.toml": "baac0d7bd69ea7c3a70ce478249853dfa9c8fd4ff9b67393912f54e8ceaed000",
+      "tools/package/channels.py": "7ebdfaa1d5964474013b4109804ea339369c805e2434bf1be3935e78d4adab50",
+      "tools/package/desktop.py": "30e702132f92dd176d9b875714d882346dde0b97a92c09b5a4924ea69fdecab1",
+      "tools/package/install-tools.py": "a7f7978444fc92fb7f83ecae07e4d6302aa77ef3578c5c022aa7c501ebb9a251",
+      "tools/package/main.go": "996a9f67c2a0ee79100c33bb3ce177a527e07aa584de744127422c85329a1d82",
+      "tools/package/pacman.py": "bccfe72102bf36f1489f1987fa16451b2be269eac74920a8c317debfdfbf1cc6",
+      "tools/package/signing.py": "55452796393b596953b5800d79c158dba5dbefe4111df7d22f1321860975223e",
+      "tools/package/windows-icons.sh": "bdcf1d5d4e3e7931038a79088257e73ab954c4bce1cce36b3f0258eeaeb41d09"
+    },
+    "status": "passed",
+    "target": "darwin-arm64"
+  },
+  "local_reproduction": {
+    "gate_assertions_passed_before_smoke_failure": [
+      "bundled business command requires explicit migration initialization",
+      "migration refusal creates no database, receipt or service socket"
+    ],
+    "status": "failed",
+    "target": "darwin-arm64"
+  },
+  "native_windows_linux": "pending hosted repair-head CI; local macOS is not substituted"
+}

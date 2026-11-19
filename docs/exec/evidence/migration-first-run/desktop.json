@@ -1,0 +1,67 @@
+{
+  "actual_native_credential_prompts": "NOT_RUN",
+  "cases": [
+    {
+      "assertions": [
+        "isolated encrypted v1 fixture with 1505 records; synthetic system credentials unavailable",
+        "a real native setup window is running before service startup",
+        "text \"\u6b22\u8fce\u4f7f\u7528 UniClipboard\" present=true",
+        "button \"\u6682\u4e0d\u8fc1\u79fb\" present=true",
+        "production history contains exactly 0 migrated records",
+        "listItem \"\u8bbe\u7f6e\u2026\" present=true",
+        "listItem \"\u5b58\u50a8\" present=true",
+        "button \"\u4ece v1 \u8fc1\u79fb\" present=true",
+        "button \"\u5f00\u59cb\u8fc1\u79fb\" present=true",
+        "no service runs before setup entry",
+        "textField \"v1 \u53e3\u4ee4\" present=true",
+        "button \"\u89e3\u9501\u5e76\u7ee7\u7eed\" is enabled",
+        "text \"\u6b63\u5728\u5bfc\u5165\u8bb0\u5f55\" present=true",
+        "text \"\u8fc1\u79fb\u5df2\u505c\u6b62\" present=true",
+        "no service runs before setup entry",
+        "Desktop quit stopped its owned service; reopened the same profile",
+        "button \"\u5f00\u59cb\u8fc1\u79fb\" present=true",
+        "no service runs before setup entry",
+        "textField \"v1 \u53e3\u4ee4\" present=true",
+        "button \"\u89e3\u9501\u5e76\u7ee7\u7eed\" is enabled",
+        "text \"\u8fc1\u79fb\u5b8c\u6210\" present=true",
+        "no service runs before setup entry",
+        "production history contains exactly 1505 migrated records",
+        "Desktop quit stopped its owned service; reopened the same profile",
+        "production history contains exactly 1505 migrated records",
+        "listItem \"~.*fixture text.*\" present=true"
+      ],
+      "binary_sha256": {
+        "unic-desktop": "ad9297c744d3ec6ccc906e7abef28ffb449406b4749b7a70b568dd82808b0daa",
+        "unicd": "65611ec582893dbbb59e074e541953b41b46a5ea8159a39e2e064dcd7a797792"
+      },
+      "case": "setup-later-migration",
+      "cleanup": "PASS",
+      "manifest_sha256": "ad8ca9ca30bee14c680330cb771c871580e0888c39a7740134ea3b56e21f0681",
+      "private_cleanup": "PASS",
+      "report": ".build/desktop-e2e/20261119T023210Z-12d88a05/index.html",
+      "source_manifest_sha256": "819e3d4c270b7e581393b3e86368bee56052569b0cd34c5c6eae49123dc9ec7b",
+      "status": "PASS"
+    },
+    {
+      "assertions": [
+        "TestDesktopAcceptance/first-install-setup"
+      ],
+      "binary_sha256": {},
+      "case": "first-install-setup",
+      "cleanup": "PASS",
+      "manifest_sha256": "30c4ce341e3d12b2320a796cb81c6d7b66c5b4e41c231c49dc5d89ff94df1675",
+      "private_cleanup": "PASS",
+      "report": ".build/desktop-e2e/20261119T023030Z-dc2959b6/index.html",
+      "source_manifest_sha256": "819e3d4c270b7e581393b3e86368bee56052569b0cd34c5c6eae49123dc9ec7b",
+      "status": "PASS"
+    }
+  ],
+  "native_source_identity": "frozen working tree before local source commit; exact file hashes retained by canonical runner",
+  "shared_receipt_difference": "two comments only; production code unchanged",
+  "system_clipboard": "NOT_RUN: directory clipboard used",
+  "system_directory_picker": "NOT_RUN: Accessibility permission absent",
+  "visual_check": [
+    "cancellation screen inspected",
+    "persisted history screen inspected"
+  ]
+}

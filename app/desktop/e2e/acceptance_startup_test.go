@@ -86,7 +86,11 @@ func scenarioStartupProcesses(t *testing.T) {
 				env = append(env, entry)
 			}
 		}
-		return append(env, "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+		discovery := filepath.Join(base, "discovery")
+		return append(env, "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1",
+			"HOME="+discovery, "USERPROFILE="+discovery, "APPDATA="+filepath.Join(discovery, "roaming"),
+			"LOCALAPPDATA="+filepath.Join(discovery, "local"), "XDG_CONFIG_HOME="+filepath.Join(discovery, "config"),
+			"XDG_DATA_HOME="+filepath.Join(discovery, "data"), "UC_PROFILE=")
 	}
 	launchCount := 0
 	launch := func(home, name string, args ...string) *child {
@@ -129,7 +133,25 @@ func scenarioStartupProcesses(t *testing.T) {
 	other := filepath.Join(base, "b")
 	for _, dir := range []string{home, other} {
 		must(t, os.MkdirAll(dir, 0700))
+		must(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("[telemetry]\nenabled=false\n"), 0600))
+		out, err := run(dir, "unic", "status", "--json")
+		exit, ok := err.(*exec.ExitError)
+		var refusal map[string]any
+		if !ok || exit.ExitCode() != 6 || json.Unmarshal(out, &refusal) != nil || refusal["reason"] != "migration_required" {
+			t.Fatalf("uninitialized lifecycle fixture did not refuse business work: %v %s", err, out)
+		}
+		for _, name := range []string{"unic.db", "unic.sock", "cli-migration.json"} {
+			if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+				t.Fatalf("migration refusal created %s", name)
+			}
+		}
+		var initialized map[string]any
+		must(t, json.Unmarshal(success(dir, "unic", "migrate", "--initialize-empty", "--json"), &initialized))
+		if initialized["status"] != "complete" || initialized["outcome"] != "no_source" {
+			t.Fatalf("lifecycle fixture initialization incomplete: %v", initialized)
+		}
 	}
+	checks = append(checks, "two isolated lifecycle profiles refuse business work before explicit production CLI initialization")
 	c := api.NewClient(filepath.Join(home, "unic.sock"))
 	b := api.NewClient(filepath.Join(other, "unic.sock"))
 	// Clean up services created by short-lived lightweight launchers even when an assertion fails.

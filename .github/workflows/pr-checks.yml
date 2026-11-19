@@ -76,9 +76,13 @@ jobs:
           include-hidden-files: true
 
   desktop-e2e:
-    name: Desktop E2E and visual evidence
+    name: Desktop E2E and visual evidence (${{ matrix.shard }}/3)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -89,11 +93,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1
       - name: Execute the canonical Desktop suite
-        run: xvfb-run -a -s '-screen 0 1600x1000x24' make desktop-e2e
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' make desktop-e2e SHARD=${{ matrix.shard }}/3
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-e2e-evidence
+          name: desktop-e2e-evidence-${{ matrix.shard }}
           path: .build/desktop-e2e
           include-hidden-files: true
           retention-days: 7

@@ -846,7 +846,7 @@ acceptance desktopui source-application
 
 Desktop startup and service lifetime
 
-Steps: Execute the registered production-process suite and validate its receipt.
+Steps: Assert fresh CLI refusal, explicitly initialize both private profiles, then execute the production-process suite and validate its receipt.
 
 Expected: The suite runs, passes its assertions and emits a successful receipt.
 

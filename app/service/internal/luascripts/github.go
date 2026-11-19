@@ -88,7 +88,7 @@ func (g githubRepo) commit(ctx context.Context, ref string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("could not resolve GitHub ref: %w", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	raw, err := io.ReadAll(body)
 	var commit struct{ SHA string }
 	if err != nil || len(raw) > limit || json.Unmarshal(raw, &commit) != nil || !commitPattern.MatchString(commit.SHA) {
@@ -105,7 +105,7 @@ func (g githubRepo) source(ctx context.Context, commit, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	return extractTarGzip(body, dest, true)
 }
 
@@ -114,7 +114,7 @@ func extractTarGzip(body io.Reader, dest string, stripRoot bool) error {
 	if err != nil {
 		return errors.New("invalid plugin gzip archive")
 	}
-	defer z.Close()
+	defer func() { _ = z.Close() }()
 	limited := &io.LimitedReader{R: z, N: archiveLimit + 1}
 	r := tar.NewReader(limited)
 	if err := os.MkdirAll(dest, 0700); err != nil {
@@ -189,7 +189,7 @@ func copyPluginFile(source, target string, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 		return err
 	}

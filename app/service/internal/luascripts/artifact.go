@@ -46,7 +46,7 @@ func (g githubRepo) prepareGo(ctx context.Context, stage, work, bundle string, m
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	_, err = readFile(root, "go.mod", 1<<20)
 	if err != nil {
 		return errors.New("plugin go.mod does not match its manifest")
@@ -90,7 +90,7 @@ func (g githubRepo) asset(ctx context.Context, stage string, a Artifact, out str
 	if err != nil {
 		return err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	raw, err := io.ReadAll(body)
 	if err != nil || len(raw) > archiveLimit || digest(raw) != a.SHA256 {
 		return errors.New("GitHub plugin asset digest or size mismatch")
@@ -130,7 +130,7 @@ func finishExecutable(path string, pin *installedPlugin) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	raw, err := readFile(root, filepath.Base(path), archiveLimit)
 	if err != nil {
 		return errors.New("plugin executable exceeds the size limit")
@@ -145,14 +145,14 @@ func nativeExecutable(path string) bool {
 		want := map[string]macho.Cpu{"amd64": macho.CpuAmd64, "arm64": macho.CpuArm64}[runtime.GOARCH]
 		f, err := macho.Open(path)
 		if err == nil {
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			return f.Type == macho.TypeExec && f.Cpu == want
 		}
 		fat, err := macho.OpenFat(path)
 		if err != nil {
 			return false
 		}
-		defer fat.Close()
+		defer func() { _ = fat.Close() }()
 		for _, arch := range fat.Arches {
 			if arch.Type == macho.TypeExec && arch.Cpu == want {
 				return true
@@ -163,7 +163,7 @@ func nativeExecutable(path string) bool {
 		if err != nil {
 			return false
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		want := map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64, "386": elf.EM_386, "arm": elf.EM_ARM}[runtime.GOARCH]
 		return want != 0 && f.Entry != 0 && f.Machine == want && (f.Type == elf.ET_EXEC || f.Type == elf.ET_DYN)
 	case "windows":
@@ -171,7 +171,7 @@ func nativeExecutable(path string) bool {
 		if err != nil {
 			return false
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		want := map[string]uint16{"amd64": pe.IMAGE_FILE_MACHINE_AMD64, "arm64": pe.IMAGE_FILE_MACHINE_ARM64, "386": pe.IMAGE_FILE_MACHINE_I386}[runtime.GOARCH]
 		return want != 0 && f.Machine == want && f.Characteristics&pe.IMAGE_FILE_EXECUTABLE_IMAGE != 0 && f.Characteristics&pe.IMAGE_FILE_DLL == 0
 	}

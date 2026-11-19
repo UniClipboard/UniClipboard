@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	api "github.com/uniclipboard/unic/internal/localapi"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+
+	api "github.com/uniclipboard/unic/internal/localapi"
 
 	"github.com/uniclipboard/unic/app/service/internal/luascripts"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -208,7 +209,7 @@ func pluginSet(on bool, id, root, cfgPath string, out io.Writer) error {
 
 func pluginInstall(ctx context.Context, args []string, root, cfg string, out io.Writer) error {
 	if len(args) == 0 {
-		return errors.New(pluginUsage)
+		return errors.New(strings.TrimRight(pluginUsage, "\n"))
 	}
 	opt := luascripts.InstallOptions{Repository: args[0]}
 	enable := false
@@ -252,13 +253,17 @@ func pluginInstall(ctx context.Context, args []string, root, cfg string, out io.
 
 func printRunningPlugins(out io.Writer, plugins []api.PluginInfo) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tVERSION\tSOURCE\tCONFIGURED\tRUNNING\tRESTART")
+	if _, err := fmt.Fprintln(w, "ID\tVERSION\tSOURCE\tCONFIGURED\tRUNNING\tRESTART"); err != nil {
+		return err
+	}
 	for _, p := range plugins {
 		running := p.RunningVersion
 		if running == "" {
 			running = "-"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s\t%t\n", p.ID, p.Version, p.Source, p.Configured, running, p.Restart)
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s\t%t\n", p.ID, p.Version, p.Source, p.Configured, running, p.Restart); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }
@@ -266,7 +271,7 @@ func printRunningPlugins(out io.Writer, plugins []api.PluginInfo) error {
 func runPluginSettings(ctx context.Context, client *api.Client, command string, args []string) error {
 	save := command == "plugin settings save"
 	if (!save && len(args) != 1) || (save && len(args) != 2) || !luascripts.ValidID(args[0]) {
-		return errors.New(pluginUsage)
+		return errors.New(strings.TrimRight(pluginUsage, "\n"))
 	}
 	var edit api.PluginSettingsEdit
 	if save {
@@ -276,7 +281,7 @@ func runPluginSettings(ctx context.Context, client *api.Client, command string, 
 			if err != nil {
 				return errors.New("could not open plugin settings input")
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			source = file
 		}
 		dec := json.NewDecoder(io.LimitReader(source, 128<<10))

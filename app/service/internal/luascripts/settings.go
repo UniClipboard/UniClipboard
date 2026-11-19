@@ -31,7 +31,7 @@ func (s Script) ReadSettings(root string) (string, []byte, error) {
 	if err != nil {
 		return "", nil, errors.New("plugin settings unavailable")
 	}
-	defer dir.Close()
+	defer func() { _ = dir.Close() }()
 	raw, err := readFile(dir, filepath.Base(path), settings.MaxConfigBytes+settings.MaxSchemaBytes)
 	var saved savedSettings
 	if err != nil || json.Unmarshal(raw, &saved) != nil || !hashPattern.MatchString(saved.Revision) || !hashPattern.MatchString(saved.Schema) {
@@ -234,7 +234,7 @@ func atomicWrite(dir, name string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 	_, writeErr := f.Write(data)
 	if writeErr == nil {
 		writeErr = f.Sync()

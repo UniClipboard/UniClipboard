@@ -95,7 +95,7 @@ func ReadManifest(dir string, installed bool) (Script, error) {
 	if err != nil {
 		return Script{}, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	data, err := readFile(root, ManifestFile, maxSource)
 	if err != nil {
 		return Script{}, errors.New("plugin manifest unavailable")
@@ -152,7 +152,7 @@ func readFile(root *os.Root, name string, limit int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 	if err != nil || len(data) > limit {
 		return nil, errors.New("file read limit exceeded")

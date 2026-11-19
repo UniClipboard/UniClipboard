@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/rogpeppe/go-internal/lockedfile"
+
 	"github.com/uniclipboard/unic/internal/luaplugin"
 )
 
@@ -52,7 +53,7 @@ func readLock(dir string) (map[string]installedPlugin, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	raw, err := readFile(r, "installed.lock", 1<<20)
 	if _, statErr := r.Lstat("installed.lock"); errors.Is(statErr, os.ErrNotExist) {
 		return map[string]installedPlugin{}, nil
@@ -122,7 +123,7 @@ func Install(ctx context.Context, root string, o InstallOptions) (string, error)
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(stage)
+	defer func() { _ = os.RemoveAll(stage) }()
 	source := filepath.Join(stage, "source")
 	if err := repo.source(ctx, commit, source); err != nil {
 		return "", err
@@ -172,7 +173,7 @@ func Install(ctx context.Context, root string, o InstallOptions) (string, error)
 		m := script.Manifest
 		p, err := luaplugin.New(luaplugin.Spec{ID: id, Version: m.Version, APIVersion: m.APIVersion, Capabilities: m.Capabilities, Source: script.Source})
 		if err != nil {
-			return "", errors.New("Lua plugin failed validation")
+			return "", errors.New("plugin failed Lua validation")
 		}
 		_ = p.Close(ctx)
 		names = append(names, m.Entry)

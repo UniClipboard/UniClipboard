@@ -95,7 +95,7 @@ sha256 = "%x"
 				http.NotFound(w, r)
 				return
 			}
-			fmt.Fprintf(w, "{\"sha\":%q}", commit)
+			_, _ = fmt.Fprintf(w, "{\"sha\":%q}", commit)
 		case strings.HasPrefix(r.URL.Path, "/codeload.github.com/example/repo/tar.gz/"):
 			commit := strings.TrimPrefix(r.URL.Path, "/codeload.github.com/example/repo/tar.gz/")
 			if archive := archives[commit]; archive != nil {

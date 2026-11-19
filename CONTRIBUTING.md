@@ -44,6 +44,20 @@ golangci-lint run ./...
 golangci-lint fmt --diff
 ```
 
+### Run lint after local commits
+
+Enable the repository hooks in a checkout with no custom hooks path:
+
+```sh
+git config --local core.hooksPath .githooks
+```
+
+If you already use Git hooks, invoke `.githooks/post-commit` from your existing
+`post-commit` hook. The hook uses the pinned linter version and checks the
+current worktree. If that version is missing from PATH, the hook installs it
+under `.cache/tools/` for reuse. Git retains the commit if the check fails.
+GitHub runs the existing lint job when you update a pull request.
+
 ## Submit a change
 
 Keep changes focused. Describe the problem, resulting behavior and checks run.

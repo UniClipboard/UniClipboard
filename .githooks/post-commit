@@ -16,5 +16,5 @@ if ! "$lint" --version 2>/dev/null | grep -Fq "version $version "; then
 fi
 
 printf 'post-commit: running golangci-lint %s\n' "$pin"
-"$lint" run ./...
+"$lint" run --allow-serial-runners ./...
 "$lint" fmt --diff --diff-colored=false

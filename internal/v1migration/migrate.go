@@ -71,18 +71,13 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 	var target *engine.Engine
 	var dst string // the resolved target; every reopen must use it, never the caller's spelling
 	if !opts.DryRun {
-		if opts.Target == "" {
-			return report, errors.New("v1 migration: target directory is required")
+		// Hosts must apply this same check before creating or probing a target.
+		if runErr = ValidateDirectories(s.root, opts.Target); runErr != nil {
+			return
 		}
-		// Opening the wrong directory must not create a target within the source.
-		src, e1 := canonicalDirectory(s.root)
-		var e2 error
-		dst, e2 = canonicalDirectory(opts.Target)
-		if e1 != nil || e2 != nil {
-			return report, ErrFormat
-		}
-		if containsDirectory(src, dst) || containsDirectory(dst, src) {
-			return report, errors.New("v1 migration: source and target must be separate directories")
+		dst, runErr = canonicalDirectory(opts.Target)
+		if runErr != nil {
+			return
 		}
 		target, runErr = engine.New(ctx, engine.Options{DataDir: dst, MigrationMode: true})
 		if runErr != nil {
@@ -254,6 +249,27 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		report.Status = "ready"
 	}
 	return
+}
+
+// ValidateDirectories rejects overlapping source and target paths before a host
+// creates state, acquires a target probe, or requests source credentials.
+// It resolves existing symlinks and missing path suffixes without writing.
+func ValidateDirectories(source, target string) error {
+	if source == "" {
+		return ErrFormat
+	}
+	if target == "" {
+		return errors.New("v1 migration: target directory is required")
+	}
+	src, sourceErr := canonicalDirectory(source)
+	dst, targetErr := canonicalDirectory(target)
+	if sourceErr != nil || targetErr != nil {
+		return ErrFormat
+	}
+	if containsDirectory(src, dst) || containsDirectory(dst, src) {
+		return errors.New("v1 migration: source and target must be separate directories")
+	}
+	return nil
 }
 
 func canonicalDirectory(name string) (string, error) {

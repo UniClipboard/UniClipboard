@@ -21,7 +21,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: c675e137a036afc334faa87e73418383c1260481
+verified: 289d46241d0c76e236a0cc104b15807ca0cc0535
 ---
 # Headless service and desktop integration
 
@@ -96,6 +96,19 @@ Lightweight desktop startup refuses a temporary generation; it is not promoted.
 Commands that start a paired-device send observe only their own Engine operation and report `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted` or `none`. An operation-query error returns a command error without a send report; it does not prove that the local commit failed.
 Pairing approval, `device add` without an argument, and `dev logs level --for` hold a temporary generation for a bounded, announced window.
 Exact DTOs, budgets and exit codes are in the [local service contract](../contracts/local-service-contract.md#service-lifecycle).
+
+## First CLI use
+
+Every CLI data directory requires explicit migration initialization. Business
+commands refuse with exit 6 (`migration_required`) before service acquisition.
+Run `unic migrate --help`, then complete a verified import. When no known v1
+source exists, use `unic migrate --initialize-empty --json` explicitly. Pending
+imports cannot use that path. Help/version/migration remain accessible. Receipt
+publication and service acquisition share the profile transition lock; acquisition
+rechecks initialization after waiting. Partial, failure, cancellation and dry-run
+never grant permission. Explicit Desktop imports share this gate; welcome/skip
+does not initialize the CLI. Source identity prevents another source from completing
+a pending import. See the [CLI initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
 
 ## Offline CLI operations
 

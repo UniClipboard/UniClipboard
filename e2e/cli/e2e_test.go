@@ -132,12 +132,13 @@ func (l *lockedBuffer) Bytes() []byte {
 func (l *lockedBuffer) String() string { return string(l.Bytes()) }
 
 type node struct {
-	name string
-	home string
-	sock string
-	cmd  *exec.Cmd
-	done chan struct{}
-	rv   string
+	name        string
+	initialized bool
+	home        string
+	sock        string
+	cmd         *exec.Cmd
+	done        chan struct{}
+	rv          string
 }
 
 func (n *node) env() []string {
@@ -326,6 +327,10 @@ func cmdNodeStart(ts *testscript.TestScript, neg bool, args []string) {
 	if !strings.Contains(string(raw), "[telemetry]") {
 		raw = append(raw, []byte("\n[telemetry]\nenabled=false\n")...)
 		ts.Check(os.WriteFile(cfgPath, raw, 0600))
+	}
+	if !n.initialized {
+		ts.Check(initializeFixtureProfile(filepath.Join(binDir, "unic"), n.home, n.env()))
+		n.initialized = true
 	}
 	logf, err := os.OpenFile(filepath.Join(st.work, args[0]+".log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	ts.Check(err)
@@ -923,4 +928,6 @@ func cmdNodeDefine(ts *testscript.TestScript, _ bool, args []string) {
 		raw = append(raw, []byte("\n[telemetry]\nenabled=false\n")...)
 		ts.Check(os.WriteFile(cfgPath, raw, 0600))
 	}
+	ts.Check(initializeFixtureProfile(filepath.Join(binDir, "unic"), n.home, n.env()))
+	n.initialized = true
 }

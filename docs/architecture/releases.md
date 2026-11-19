@@ -20,13 +20,14 @@ paths:
   - .github/workflows/build-cli.yml
   - .github/workflows/build-desktop.yml
   - .github/workflows/package-acceptance.yml
+  - .github/workflows/pr-checks.yml
   - .github/workflows/release-desktop.yml
   - .github/workflows/native-desktop-acceptance.yml
   - app/desktop/e2e/run.py
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: cc41d2ce7e4cc92f8f7e9bce418a5890b8566a56
+verified: f555ba8643d8a55e345bcd4d05e083d32a887403
 ---
 # Product builds and CLI releases
 
@@ -71,6 +72,10 @@ The lifecycle attachment entrypoint verifies the package digest and required obs
 Desktop signing first verifies distribution signatures on the locked CLI files and signs only Desktop-owned bytes. Real certificate signing is unverified on this host.
 Desktop locks CLI `2.0.0 (2)` from canonical distribution run 43419452491 by manifest SHA-256 `ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be`. Build 2 includes the current shared configuration/API. Earlier build-1 evidence remains historical. `fetch-cli --allow-ci` validates the canonical successful workflow, source, complete target matrix, hashes and macOS signing before acquiring this pre-publication candidate. The default fetch path requires public immutable release assets.
 `build-desktop.yml` constructs six native targets from that exact lock. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing. Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
+Native package smoke keeps version inspection state-free, then explicitly initializes its isolated CLI profile with `unic migrate --initialize-empty --json` before shared-configuration IPC. Discovery HOME, XDG and Windows profile paths remain private. Portable and explicit data directories initialize independently; there is no gate bypass or direct receipt write. Disposable DEB lifecycle acceptance initializes before its first business command and verifies that the receipt survives upgrade and removal.
+
+The primary PR Desktop suite uses the same Ubuntu 24.04 and native GTK 3/indicator runtime baseline as the native Linux acceptance workflow. It installs display/recording tools without the webview-only WebKitGTK stack. The complete canonical suite is partitioned into three disjoint round-robin shards on independent hosted runners. All shards must pass, fail-fast is disabled, and each keeps the thirty-minute job budget. The canonical runner records a separate evidence artifact for each shard; unselected cases remain NOT_RUN in that shard.
+
 `package-acceptance.yml` runs six-target nonvisual package and signed-update process acceptance, plus disposable-container DEB lifecycle checks. Exact observed results are recorded in the package receipt. These build workflows do not publish.
 
 ### Native application updates

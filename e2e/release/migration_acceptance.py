@@ -11,6 +11,47 @@ import subprocess
 import tempfile
 
 
+def frozen_source(root, source):
+    vault = source / "vault"
+    vault.mkdir(parents=True)
+    fixture = json.loads(
+        (root / "internal/v1migration/testdata/v3.json").read_text()
+    )
+    for name, value in fixture["vault"].items():
+        (vault / name).write_text(json.dumps(value))
+    payload = (
+        source
+        / "profile-data-generations"
+        / fixture["generation"]
+        / "v3-payloads"
+    )
+    payload.mkdir(parents=True)
+    dbpath = payload / "profile.sqlite"
+    with sqlite3.connect(dbpath) as db:
+        db.executescript("""
+    CREATE TABLE clipboard_entry(entry_id TEXT PRIMARY KEY,event_id TEXT,created_at_ms INTEGER,active_time_ms INTEGER,content_category TEXT,deleted_at_ms INTEGER);
+    CREATE TABLE clipboard_snapshot_representation(id TEXT PRIMARY KEY,event_id TEXT,mime_type TEXT,format_id TEXT,inline_data BLOB,blob_id TEXT,size_bytes INTEGER);
+    CREATE TABLE entry_file_set(entry_id TEXT,line_index INTEGER,kind TEXT,blob_id TEXT,size_bytes INTEGER,content_hash TEXT,original_text_ct BLOB,relative_path_ct BLOB,root_name_ct BLOB,kind_tag TEXT,root_index INTEGER);
+    CREATE TABLE blob(blob_id TEXT PRIMARY KEY,content_hash TEXT,size_bytes INTEGER,storage_path TEXT);
+    CREATE TABLE history_tag(tag_id TEXT PRIMARY KEY,payload_ct BLOB);
+    CREATE TABLE history_tag_assignment(entry_id TEXT PRIMARY KEY,tags_ct BLOB);
+    INSERT INTO clipboard_entry VALUES('entry-text','event-text',1000,1100,'text',NULL),('entry-bad','event-bad',4000,4100,'text',NULL);
+    """)
+        db.execute(
+            "INSERT INTO clipboard_snapshot_representation VALUES('rep-text','event-text','text/plain','text/plain',?,NULL,12)",
+            [bytes(fixture["text"])],
+        )
+        db.execute(
+            "INSERT INTO history_tag VALUES('tag-one',?)",
+            [bytes(fixture["tag"])],
+        )
+        db.execute(
+            "INSERT INTO history_tag_assignment VALUES('entry-text',?)",
+            [bytes(fixture["assignment"])],
+        )
+    return fixture, dbpath
+
+
 def accept_migration(root, installed, temp, env, execute, check, report):
     original = dict(env)
     cli = installed / "node_modules/.bin/unic"
@@ -79,17 +120,13 @@ def accept_migration(root, installed, temp, env, execute, check, report):
             legacy.unlink()
             legacy.mkdir()
             _, notice = terminal(["--version"])
+            check("version stays informational when v1 exists", not notice)
+            guide = execute([cli, "migrate", "--help"])
             check(
-                "existing v1 directory displays incompatibility and migration steps",
-                all(
-                    s in notice
-                    for s in [
-                        "incompatible with v1",
-                        "unic migrate --help",
-                        "--dry-run --json",
-                        "unic migrate --json",
-                    ]
-                ),
+                "migration guide explains the required explicit initialization",
+                "--initialize-empty" in guide.stdout
+                and "migration_required" in guide.stdout
+                and "unic migrate --json" in guide.stdout,
             )
             value, notice = terminal(["--version", "--json"])
             check(
@@ -108,8 +145,9 @@ def accept_migration(root, installed, temp, env, execute, check, report):
                 1,
             )
             check(
-                "JSON flag assignment suppresses the v1 warning",
-                json.loads(value)["stage"] == "unlock" and "WARNING:" not in notice,
+                "invalid source returns actionable JSON before target initialization",
+                not value and json.loads(notice)["reason"] == "source_invalid"
+                and not Path(env["UNIC_HOME"]).exists(),
             )
             quiet = execute([cli, "--version"])
             check("noninteractive output omits migration warning", not quiet.stderr)
@@ -119,18 +157,19 @@ def accept_migration(root, installed, temp, env, execute, check, report):
             named.mkdir()
             _, notice = terminal(["--version"])
             check(
-                "active named v1 profile displays migration warning",
-                "incompatible with v1" in notice,
+                "version stays informational for a named v1 profile",
+                not notice,
             )
             env.pop("UC_PROFILE")
         else:
-            report["not_run"].append("Windows terminal warning acceptance")
+            report["not_run"].append("Windows terminal informational version acceptance")
         for args in [[], ["--help"]]:
             guide = execute([cli, "migrate", *args])
             check(
                 "offline migration guide " + ("help" if args else "default"),
                 "--passphrase-stdin" in guide.stdout
                 and "pair them again" in guide.stdout
+                and "--initialize-empty" in guide.stdout
                 and not Path(env["UNIC_HOME"]).exists(),
             )
 
@@ -141,43 +180,7 @@ def accept_migration(root, installed, temp, env, execute, check, report):
         ) as work:
             work = Path(work)
             source, target = work / "source", work / "target"
-            vault = source / "vault"
-            vault.mkdir(parents=True)
-            fixture = json.loads(
-                (root / "internal/v1migration/testdata/v3.json").read_text()
-            )
-            for name, value in fixture["vault"].items():
-                (vault / name).write_text(json.dumps(value))
-            payload = (
-                source
-                / "profile-data-generations"
-                / fixture["generation"]
-                / "v3-payloads"
-            )
-            payload.mkdir(parents=True)
-            dbpath = payload / "profile.sqlite"
-            with sqlite3.connect(dbpath) as db:
-                db.executescript("""
-CREATE TABLE clipboard_entry(entry_id TEXT PRIMARY KEY,event_id TEXT,created_at_ms INTEGER,active_time_ms INTEGER,content_category TEXT,deleted_at_ms INTEGER);
-CREATE TABLE clipboard_snapshot_representation(id TEXT PRIMARY KEY,event_id TEXT,mime_type TEXT,format_id TEXT,inline_data BLOB,blob_id TEXT,size_bytes INTEGER);
-CREATE TABLE entry_file_set(entry_id TEXT,line_index INTEGER,kind TEXT,blob_id TEXT,size_bytes INTEGER,content_hash TEXT,original_text_ct BLOB,relative_path_ct BLOB,root_name_ct BLOB,kind_tag TEXT,root_index INTEGER);
-CREATE TABLE blob(blob_id TEXT PRIMARY KEY,content_hash TEXT,size_bytes INTEGER,storage_path TEXT);
-CREATE TABLE history_tag(tag_id TEXT PRIMARY KEY,payload_ct BLOB);
-CREATE TABLE history_tag_assignment(entry_id TEXT PRIMARY KEY,tags_ct BLOB);
-INSERT INTO clipboard_entry VALUES('entry-text','event-text',1000,1100,'text',NULL),('entry-bad','event-bad',4000,4100,'text',NULL);
-""")
-                db.execute(
-                    "INSERT INTO clipboard_snapshot_representation VALUES('rep-text','event-text','text/plain','text/plain',?,NULL,12)",
-                    [bytes(fixture["text"])],
-                )
-                db.execute(
-                    "INSERT INTO history_tag VALUES('tag-one',?)",
-                    [bytes(fixture["tag"])],
-                )
-                db.execute(
-                    "INSERT INTO history_tag_assignment VALUES('entry-text',?)",
-                    [bytes(fixture["assignment"])],
-                )
+            fixture, dbpath = frozen_source(root, source)
 
             def snapshot():
                 return {

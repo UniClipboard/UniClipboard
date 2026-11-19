@@ -41,6 +41,9 @@ func TestLogsExport(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(home, "logs"), 0700); err != nil {
 				t.Fatal(err)
 			}
+			if err := initializeFixtureProfile(executable, home, append(os.Environ(), "UNIC_SOCK="+filepath.Join(dir, "absent.sock"))); err != nil {
+				t.Fatal(err)
+			}
 			fn(t, dir, home)
 		})
 		results[name] = "PASS"
@@ -389,6 +392,9 @@ func logsExportSources(t *testing.T) map[string]string {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(root, name))
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
 			t.Fatal(err)
 		}

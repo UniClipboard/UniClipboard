@@ -297,3 +297,41 @@ layouts and invalid target config do not overwrite existing settings or block
 recoverable history import. Dry runs validate the source layout and never
 create target configuration. Desktop projects saved overrides for both built-in
 and custom tags. Code's default is purple even without an override.
+
+## v1 system credentials and process resilience
+
+The importer reads the v1 credential store without modifying it. Windows uses
+Generic Credentials with the keyring-rs `account.service` target. Linux searches
+Secret Service attributes `service`, `username` and `target=default` first, then
+the legacy `service`/`username` pair. It rejects ambiguous results. macOS uses
+the original generic-password service/account lookup. All three readers return
+raw bytes, including NUL and non-UTF-8 bytes; they never reinterpret a secret as
+text or base64.
+
+Linux completes a locked collection through the standard Secret Service
+`Prompt`/`Completed` protocol. The credential service owns the prompt. The
+reader subscribes before requesting it, validates the returned item, and
+cancels or dismisses the prompt on timeout. `ReadSecretContext` allows a Linux
+host to cancel this wait. The Linux default reader bounds credential operations
+to 45 seconds. On macOS and Windows, the same context API checks cancellation
+before and after the synchronous native call. The OS owns any native prompt;
+the caller cannot dismiss it. A dismissed prompt never grants access or completes migration.
+Missing, unavailable and denied credentials return fixed platform guidance and
+retain `ErrUnlock` identity so the host can offer the old passphrase. These
+errors contain no service/account values, source paths or native error strings.
+
+Hosts call `v1migration.ValidateDirectories(source, target)` before creating a
+target, persisting a first-run state, probing the target lock, or requesting
+credentials. It resolves existing symlinks and missing suffixes without writes.
+The importer repeats the same check before opening its offline Engine.
+
+The [resilience acceptance](../../e2e/release/MIGRATION_RESILIENCE.md) runs the
+production CLI importer, SIGINT recovery, partial repair, idempotent retries,
+reopen verification, two real service restarts, and target ownership rejection.
+A separate bounded filesystem supplies real ENOSPC. Freeing its test filler
+must permit a complete retry with exact history/mapping counts and SQLite
+integrity. Explicit age/count cleanup is disabled in the private test profile;
+a deliberately small byte budget exercises the persisted import capacity
+floor. This does not override a user's explicit cleanup policy. The receipt
+records program/source hashes, process peak RSS, reports and private-data
+cleanup. Native credential prompts require separate platform evidence.

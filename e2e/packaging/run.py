@@ -161,6 +161,24 @@ cli_manifest_sha256 = "{lock}"
             stage,
         ]
         run(base + ["--development"])
+        staged = json.loads((stage / "manifest.json").read_text())
+        staged_payload = stage / staged["payload"]
+        suffix = ".exe" if operating_system == "windows" else ""
+        preflight = temp / "uninitialized profile"
+        refusal = run(
+            [staged_payload / ("unic" + suffix), "config", "--json"],
+            ok=False,
+            env=dict(os.environ, UNIC_HOME=str(preflight)),
+        )
+        check(
+            "bundled business command requires explicit migration initialization",
+            report["commands"][-1]["exit_code"] == 6
+            and json.loads(refusal).get("reason") == "migration_required",
+        )
+        check(
+            "migration refusal creates no database, receipt or service socket",
+            not any((preflight / name).exists() for name in ["unic.db", "unic.sock", "cli-migration.json"]),
+        )
         run([sys.executable, desktop, "smoke", "--stage", stage])
         receipt = json.loads((stage / "manifest.json").read_text())
         check(
@@ -204,14 +222,36 @@ cli_manifest_sha256 = "{lock}"
             APPDATA=str(temp / "roaming"),
             LOCALAPPDATA=str(temp / "local"),
             XDG_CONFIG_HOME=str(temp / "config"),
+            XDG_DATA_HOME=str(temp / "data"),
+            UC_PROFILE="",
         )
         portable_env.pop("UNIC_HOME", None)
         portable_env.pop("UNIC_SOCK", None)
+        initialized = json.loads(run(
+            [portable / ("unic" + suffix), "migrate", "--initialize-empty", "--json"],
+            env=portable_env,
+        ))
+        check(
+            "explicit no-source initialization for selected profile",
+            initialized.get("status") == "complete"
+            and initialized.get("outcome") == "no_source",
+        )
         config_path = run(
             [portable / ("unic" + suffix), "config", "path"], env=portable_env
         ).strip()
         check("portable data root", Path(config_path) == portable / "data/config.toml")
+        portable_state = json.loads((portable / "data/cli-migration.json").read_text())
+        check("portable initialization persists beside executable", portable_state.get("status") == "complete")
         portable_env["UNIC_HOME"] = str(temp / "explicit")
+        initialized = json.loads(run(
+            [portable / ("unic" + suffix), "migrate", "--initialize-empty", "--json"],
+            env=portable_env,
+        ))
+        check(
+            "explicit no-source initialization for selected profile",
+            initialized.get("status") == "complete"
+            and initialized.get("outcome") == "no_source",
+        )
         config_path = run(
             [portable / ("unic" + suffix), "config", "path"], env=portable_env
         ).strip()
@@ -219,6 +259,8 @@ cli_manifest_sha256 = "{lock}"
             "explicit profile overrides portable",
             Path(config_path) == temp / "explicit/config.toml",
         )
+        explicit_state = json.loads((temp / "explicit/cli-migration.json").read_text())
+        check("explicit initialization is independent from portable data", explicit_state.get("status") == "complete")
         run(base + ["--development"], ok=False)
         check("existing stage rejected", True)
         original_manifest = manifest.read_bytes()

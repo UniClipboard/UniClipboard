@@ -70,7 +70,16 @@ func (r *Record) Close() {
 }
 
 func Open(ctx context.Context, root, service string, password []byte, secrets SecretReader) (*Source, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s, err := unlock(root, service, password, secrets)
+	if cancelErr := ctx.Err(); cancelErr != nil {
+		if s != nil {
+			s.close()
+		}
+		return nil, cancelErr
+	}
 	if err != nil {
 		return nil, err
 	}

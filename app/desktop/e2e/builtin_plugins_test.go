@@ -260,8 +260,8 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 			return nil
 		},
 		"restart-desktop": func(s *desktopScenario, a []string) error {
-			if len(a) != 0 {
-				return errors.New("restart-desktop takes no arguments")
+			if len(a) > 1 || (len(a) == 1 && a[0] != "setup") {
+				return errors.New("restart-desktop [setup]")
 			}
 			// Pause the recorder across the actual quit/reopen gap; retain all sampled frames.
 			s.captureMu.Lock()
@@ -274,8 +274,10 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 			if err := s.launchNative(); err != nil {
 				return err
 			}
-			if err := s.wait(func() bool { _, e := s.client.Status(s.ctx); return e == nil }); err != nil {
-				return err
+			if len(a) == 0 {
+				if err := s.wait(func() bool { _, e := s.client.Status(s.ctx); return e == nil }); err != nil {
+					return err
+				}
 			}
 			s.result.Assertions = append(s.result.Assertions, "Desktop quit stopped its owned service; reopened the same profile")
 			return nil

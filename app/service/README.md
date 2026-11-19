@@ -5,6 +5,9 @@ Packaged archives expose the `uniclip` alias for `unic`: a relative symlink on m
 
 ```sh
 go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
+UNIC_HOME=/absolute/private/state dist/unic migrate --help
+# Import v1 history, or explicitly initialize when there is no v1 source:
+UNIC_HOME=/absolute/private/state dist/unic migrate --initialize-empty --json
 echo hello | UNIC_HOME=/absolute/private/state dist/unic send --to all --json
 ```
 
@@ -26,7 +29,7 @@ Commands that wait for another device (`device add`, `dev logs level --for`) kee
 See [headless architecture](../../docs/architecture/headless.md) and the [local service contract](../../docs/contracts/local-service-contract.md).
 The `unic migrate` command performs offline history import in-process.
 Run `unic migrate --help` for backup, preflight, import and verification steps.
-Interactive commands warn when a known v1 data directory exists. JSON and noninteractive output remain silent.
+Business commands refuse until explicit migration initialization completes for the selected data directory. JSON and noninteractive invocations receive the same actionable refusal (exit 6, `migration_required`). Help and version remain accessible. A partial import remains pending. See the [initialization contract](../../docs/contracts/local-service-contract.md#explicit-cli-migration-initialization).
 
 
 Remote logs, metrics and product events default enabled. Release assembly supplies the selected PostHog project endpoint and ingestion-only token.

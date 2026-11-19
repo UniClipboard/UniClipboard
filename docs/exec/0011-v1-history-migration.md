@@ -82,11 +82,132 @@ UNIC_V1_TEST_TARGET="目标目录" go test -v ./app/desktop/internal/host -run '
 ## 交付边界
 
 - 主验收格式是本机 V3。早期 JSON inline/UCBL V1/UCFS 分支未逐个历史发布版本验收。
-- Windows/Linux 系统凭据路径已实现并跨编译，尚无真实机器授权运行证据。CLI 未交付平台安装包或生产签名。
-- 集成入口是 Go 桌面 CLI；尚无图形化目录选择、口令与迁移进度向导。SwiftUI 客户端路线已取消，后续 GUI 由 mygo + 自定义 UI Kit 承载，界面原型待定。
+- Windows credential lookup is implemented and compile-checked. Real Linux GNOME Secret Service acceptance is recorded below. Native locked-store prompts and Windows native execution remain NOT_RUN. Platform installer/signing acceptance remains separate.
+- The CLI importer and mygo/UI Kit setup wizard are implemented. Decision 0026 supplies source selection, passphrase fallback, progress, cancellation and later Settings migration. Existing macOS complete/partial evidence remains valid; the integrated follow-up below extends it.
 - 丢失文件、损坏密文、超限记录显示部分完成，不生成虚假的可用占位内容。当前报告为数量级，未提供逐条修复界面。
 - 不迁移收藏、设备身份与信任、设置和宿主专用非标准 representation。文件夹以 ZIP 表达。
 - 标签保存名称与关联，不保留旧不透明 tag ID 或标签创建时间；已有目标标签关联不会被覆盖。
 - 源标签变更不更新已导入记录；目标主动删除的映射保留，不会复活。
-- 单记录明文预算 500 MiB、图片 3200 万像素、文件清单 10000 行；不代表峰值 RSS，尚未进行大库峰值内存和磁盘不足故障注入。
+- Limits remain 500 MiB plaintext per record, 32 million image pixels and 10,000 file-list rows. The 10,000-record RSS and bounded ENOSPC evidence below measures record-count pressure; it does not establish multi-GiB payload performance.
 - SQLite 只读事务不等于整个文件系统快照，建议退出旧应用再作最终迁移。工具不修改源库、vault、blob 或钥匙串。
+
+
+## E-group implementation and process acceptance (2026-11-19)
+
+Baseline: `4e3cf4d4b81dc103c59e5024f2dc9031c224f452` in the clean,
+independent `feat/migration-first-run` worktree. Origin was checked as
+`https://github.com/UniClipboard/UniClipboard.git`. The source session worktree
+was not modified. Failure inventories preceded implementation in the
+[first-run inventory](migration-first-run-failures.md),
+[resilience plan](../../e2e/release/MIGRATION_RESILIENCE.md) and 0026 follow-up.
+No unit tests were added after implementation.
+
+### Behavior
+
+Each CLI profile requires explicit migration initialization. Ordinary commands
+refuse with exit 6 and an actionable JSON/text error before service, sync or
+clipboard work. Help, version and migration remain accessible. No-source users
+explicitly run `unic migrate --initialize-empty --json`. An absent source or empty leftover directory can use this explicit path. A pending import cannot
+use that path. Missing-source typos do not create an unfinishable import.
+
+The CLI and Desktop share pending/source/completion state. A verified explicit
+Desktop import can complete the gate; welcome/skip cannot. Dry-run, partial,
+failure and cancellation never complete it. Sources bind first to a public
+key-slot fingerprint and then to the importer's stable source identity.
+No-source and import preflight reject source/target overlap before any target
+write. Portable, development and `UNIC_HOME` paths use one resolver. Lock waits
+and stdin/terminal passphrase input can be cancelled; private PTY acceptance
+verifies restored echo after SIGINT. See the
+[exact contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
+
+Three platform credential readers now retain fixed actionable errors. Linux
+implements the standard Prompt/Completed/Dismiss handshake with bounded,
+context-aware waits. Windows keeps the original keyring-rs target layout.
+Only task-created GNOME Secret Service items were used for native credential
+reads. NUL/non-UTF-8 values, modern/legacy lookup, missing/ambiguous items,
+pre-cancelled access and unavailable bus cases passed. This is not locked-store
+native-prompt acceptance.
+
+### Evidence and limits
+
+- macOS CLI first-run/partial/repair/idempotence/two-restart and private PTY cases:
+  PASS. Receipts: [macOS first-run receipt](evidence/migration-first-run/macos-first-run.json).
+- Real Linux arm64 CLI/service first-run and private PTY cases: PASS in a
+  read-only, no-network Docker container. Receipt:
+  [Linux first-run receipt](evidence/migration-first-run/linux-first-run.json).
+- Real Linux 10,000-record production import: PASS for partial repair, SIGINT
+  resume, exact mappings/IDs, two service restarts, ownership refusal before
+  source import, unchanged service generation and source hashes, and idempotence.
+- A separate 32 MiB tmpfs produced actual ENOSPC. Recovery after removing only
+  the task filler verified all 10,000 records and retained an unrelated seed
+  record. No host filesystem was filled. Receipt:
+  [Linux resilience receipt](evidence/migration-first-run/linux-resilience.json).
+- The private test disables configured age cleanup because frozen records date
+  from 1970. Normal user cleanup policy is preserved. Small byte limits still
+  exercise the import capacity floor. Peak RSS has a predeclared 512 MiB bound.
+- Canonical Desktop process and macOS native later-migration results are in
+  [0026](0026-first-install-setup.md). System-dialog automation paused because
+  Accessibility permission was absent. Windows native credentials/execution,
+  Linux locked-store native prompts and macOS actual credential prompts remain
+  NOT_RUN. No personal history, credentials or configuration was accessed.
+
+Reproduction entries:
+
+```sh
+TMPDIR=/private/tmp UNIC_E2E=1 go test ./e2e/cli -run '^(TestMigrationFirstRun|TestMigrationTerminalCancellation)$' -count=1 -v
+make desktop-e2e CASE=first-install-setup
+make desktop-e2e CASE=setup-later-migration
+UNIC_MIGRATION_RESILIENCE_E2E=1 go test ./e2e/headless -run '^TestProductionMigrationResilience$' -count=1 -v
+# In an isolated Linux container, add a dedicated bounded /limited tmpfs:
+python3 e2e/release/migration_resilience.py --cli /bin/task/unic --daemon /bin/task/unicd --artifacts /results --records 10000 --limited-dir /limited
+sh e2e/credentials/run.sh /bin/task/credentials
+```
+
+The ordinary race suite passed with canonical `TMPDIR=/private/tmp`. The first
+run used macOS temporary-directory aliases and hit existing cache-root checks.
+Static checks use the repository-pinned golangci-lint v2.15.0. The installed
+legacy checker could not parse the v2 configuration and was not used as evidence.
+The separate lifecycle process suite reproduced its already-recorded C03
+assertion (`temporary service outlived its last user`); a three-run isolated C03
+probe failed once and passed twice. The migration/ownership cases passed. This
+receipt does not claim the entire lifecycle process suite passed or identify the
+C03 cause. See the existing [lifecycle gap](../architecture/headless.md#gaps).
+
+Each process runner writes checksummed redacted receipts and removes task-owned
+profiles. Source snapshots, programs, raw logs, encrypted private test profiles
+and native recordings are not committed. Local commits do not publish, merge,
+release or deploy the change.
+
+
+Final production source: `9d6c3fb56e31b0b29ec33301c073f66722ebb753`.
+All three OS/two architecture CLI/service targets compiled. Actual process runs
+were macOS arm64 and Linux arm64. The exact final Linux run measured 81,948,672
+bytes peak child RSS and a 33,554,432-byte ENOSPC filesystem. Final macOS/Linux
+production first-run receipts name that source commit and the actual executable
+hashes. See the [small evidence package](evidence/migration-first-run/README.md)
+and its [SHA256SUMS](evidence/migration-first-run/SHA256SUMS).
+Task-only binaries, build trees, patches, caches, private profiles and worker
+worktrees were removed after receipt verification. Canonical native report
+paths remain local, ignored review artifacts. No binary, source snapshot, raw
+log, screenshot or recording is committed.
+
+
+## PR-base integration (2026-11-19)
+
+Integrated `origin/v2` at `a0c49ae55bd0bddfa261a3a4cf3b6879c408c8f9`
+with merge commit `afcce7e17fbc97a07840e4d79b63bf87efefa52f`. This includes
+upstream observability acceptance and plugin installation/settings/Actions.
+Three architecture verification-marker conflicts and the appended local-service
+contract sections were resolved without dropping either migration or plugin
+behavior. CLI dispatch, command requirements and the observability fixture
+merged automatically and were inspected.
+
+Revalidation on the integrated tree: `TMPDIR=/private/tmp go test -race -p 2
+./...` passed 782 tests in 80 packages; fixed golangci-lint v2.15.0 reported zero
+issues. The real CLI/service `TestMigrationFirstRun` and private-PTY
+`TestMigrationTerminalCancellation` both passed. Original macOS/Linux native,
+large-library, ENOSPC and credential evidence retains its frozen source and
+program identities; this merge does not extend unperformed native acceptance.
+The required read-only context audit found no `CONTEXT.md` on the updated base
+or integrated tree. Architecture verification markers were refreshed after the
+merge commit. The existing C03 acceptance limit remains unchanged.

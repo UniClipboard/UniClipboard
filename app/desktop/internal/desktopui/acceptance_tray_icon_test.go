@@ -74,7 +74,18 @@ func scenarioTrayIconSettings(t *testing.T) {
 			env = append(env, entry)
 		}
 	}
-	env = append(env, "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+	discovery := filepath.Join(private, "discovery")
+	env = append(env, "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1",
+		"HOME="+discovery, "USERPROFILE="+discovery, "APPDATA="+filepath.Join(discovery, "roaming"),
+		"LOCALAPPDATA="+filepath.Join(discovery, "local"), "XDG_CONFIG_HOME="+filepath.Join(discovery, "config"),
+		"XDG_DATA_HOME="+filepath.Join(discovery, "data"), "UC_PROFILE=")
+	initialize := exec.CommandContext(ctx, filepath.Join(bin, "unic"+suffix), "migrate", "--initialize-empty", "--json")
+	initialize.Env = env
+	output, err := initialize.CombinedOutput()
+	var initialized map[string]any
+	if err != nil || json.Unmarshal(output, &initialized) != nil || initialized["status"] != "complete" || initialized["outcome"] != "no_source" {
+		t.Fatalf("initialize tray fixture before service start: %v %s", err, output)
+	}
 	log, err := os.Create(filepath.Join(private, "unicd.log"))
 	if err != nil {
 		t.Fatal(err)

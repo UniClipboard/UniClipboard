@@ -46,7 +46,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 278fe6da1eb57fd6408349300386db080b498c7c
+verified: c675e137a036afc334faa87e73418383c1260481
 ---
 # Clipboard pipeline and local history
 
@@ -57,7 +57,7 @@ Engine owns processing, commit, synchronization, local history and user-triggere
 The stage chain is Capture/Receive → Processing → Commit → Sync → Use → End.
 
 - **Entry points**: `ObserveClipboard` uses origin `local_system` and a reserved observation request key. Baseline, echo, unchanged and empty observations do not enter processing. Explicit `CommitContent`/`SubmitContent` and `RunAction` use origins `explicit` and `action`. These entries share `startSubmissionLocked` and `runSubmission`. Remote receipt uses `delivered` without a submission record.
-- **Processing**: Registered built-in/Go processors run in assembly order, followed by configured Lua processors. Local entries emit `clipboard.captured`; receipt emits `clipboard.received`. Processors can stage tags, persistence, sync and expiry through `processingContext`. They cannot change content. Each call has a 200 ms budget including its shared per-instance serial gate. Errors, timeout, panic or an invalid mutation discard that call's changes. A failed `on_error=block_sync` processor disables sync for all later processors. Persistence and sync default to true. Exact limits are in the [plugin contract](../contracts/plugin-contract.md).
+- **Processing**: The service passes an explicit processing order for configured IDs across built-in, Go process and Lua processors. Unlisted processors keep their assembly order. Local entries emit `clipboard.captured`; receipt emits `clipboard.received`. Processors can stage tags, persistence, sync and expiry through `processingContext`. They cannot change content. Each call has a 200 ms budget including its shared per-instance serial gate. Errors, timeout, panic or an invalid mutation discard that call's changes. A failed `on_error=block_sync` processor disables sync for all later processors. Persistence and sync default to true. Exact limits are in the [plugin contract](../contracts/plugin-contract.md).
 - **Commit**: With persistence enabled, validate size, reserve storage and persist blobs before publishing history and deduplication. Capacity reclamation follows unified cleanup eligibility. Bounded age/count cleanup preserves the newly committed record. Notifications and sync dispatch follow successful commit. Sending failure does not undo history.
 - **Sync**: `dispatchProcessed` checks global and item switches, automatic-sync settings, backend type policy, automatic file thresholds and transfer limits. Only explicit submissions bypass the automatic file threshold. Backends run in ID order and share one Operation. History stores per-backend sync summaries when a backend queues or fails. Restart marks pending summaries interrupted without resending.
 - **Device selection**: `CommitContent.DeviceIDs=nil` selects all eligible targets. A nonempty selection is sorted before request-key construction. Empty, repeated, unknown or revoked IDs return `invalid_argument`. Peer-session backends filter their live targets by the selection. Non-peer backends skip selected-device submissions. Validation loads device records; actual sending still requires an eligible live peer session.
@@ -148,9 +148,7 @@ Service routes live in `app/service/internal/server/`; CLI handling lives in `ap
 
 ## Gaps
 
-- GitHub plugin installation (`unic plugin install`) is unavailable.
 - Two-host CLI acceptance covers the recorded source snapshot. Native clipboard acceptance remains pending. See the [physical-host receipt](../exec/baselines/0004-2026-11-10-cli-twohost.md).
-- The desktop GUI Action menu awaits the mygo/UI Kit interface design.
 - Nonempty `CommitRequest.WritebackGuard` returns `unsupported`; automatic writeback is cancelled.
 
 ## Explicit history search

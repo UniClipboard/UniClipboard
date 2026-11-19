@@ -257,42 +257,56 @@ func (b *base) Close(ctx context.Context) error {
 // new state is built, initialised and started before it replaces the old one;
 // on failure the old state keeps serving — unless it was already dead, in
 // which case the plugin stays unavailable. In-flight callbacks finish first.
-func (b *base) Reload(ctx context.Context, src string) error {
+func (b *base) Reload(ctx context.Context, src string, cfg plugin.Config, commit func() error) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if src == "" {
 		src = b.spec.Source
 	}
-	b.mu.Lock()
 	nb := &base{spec: b.spec, host: b.host, cfg: b.cfg}
-	started := b.started
-	b.mu.Unlock()
+	if commit != nil {
+		nb.cfg = cfg
+	}
 	nb.spec.Source = src
 	sb, tbl, ps, err := nb.load(ctx, src)
 	if err != nil {
 		return err
 	}
 	nb.sb, nb.tbl = sb, tbl
+	accepted := false
+	defer func() {
+		if !accepted {
+			_ = nb.Close(context.WithoutCancel(ctx))
+		}
+	}()
 	if !slices.EqualFunc(ps.Actions, b.pspec.Actions, func(a, c plugin.ActionSpec) bool {
 		return a.ID == c.ID && a.Title == c.Title && slices.Equal(a.Accepts, c.Accepts)
 	}) {
-		sb.Close()
 		return fmt.Errorf("%w: actions cannot change on reload", ErrFailed)
 	}
 	if err := nb.initLocked(ctx); err != nil {
-		sb.Close()
 		return err
 	}
-	if started {
-		if err := nb.callLocked(ctx, "start"); err != nil {
-			sb.Close()
+	if b.started {
+		if err := nb.Start(ctx); err != nil {
 			return err
 		}
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	old := b.sb
-	b.sb, b.tbl, b.dead = sb, tbl, false
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if commit != nil {
+		if err := commit(); err != nil {
+			return err
+		}
+	}
+	if b.started && !b.dead {
+		_ = b.callLocked(context.WithoutCancel(ctx), "close")
+	}
+	b.sb.Close()
+	b.sb, b.tbl, b.dead, b.cfg = sb, tbl, false, nb.cfg
 	b.spec.Source = src
-	old.Close()
+	accepted = true
 	return nil
 }
 

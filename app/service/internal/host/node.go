@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 	"github.com/uniclipboard/unic/internal/session"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 type desktop interface {
@@ -68,8 +70,11 @@ type Node struct {
 	logf          func(string, ...any)
 	customReceive bool
 
-	luaDir string
-	lua    map[string]luascripts.Script // as running, by plugin ID
+	luaDir          string
+	pluginMu        sync.Mutex
+	runningPlugins  map[string]luascripts.Script
+	pluginRevisions map[string]string
+	lua             map[string]luascripts.Script // as running, by plugin ID
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -136,10 +141,37 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if o.LuaDir != "" {
 		var specs []engine.LuaPluginSpec
 		var lerr error
-		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, c.Plugins.Lua, c.ProcessorSettings); lerr != nil {
+		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, c.ExternalPlugins(), c.ProcessorSettings); lerr != nil {
 			return nil, lerr
 		}
 		opts.LuaPlugins = specs
+		opts.PluginOrder = slices.DeleteFunc(slices.Clone(c.Plugins.Lua), func(id string) bool {
+			return slices.Contains(c.Plugins.Order, id)
+		})
+		opts.PluginOrder = append(opts.PluginOrder, c.Plugins.Order...)
+		n.runningPlugins = loaded
+		n.lua = make(map[string]luascripts.Script)
+		for _, id := range c.ExternalPlugins() {
+			s := loaded[id]
+			if s.Manifest.Kind == "lua" {
+				n.lua[id] = s
+				continue
+			}
+			onError, raw := c.ProcessorSettings(id)
+			values, err := s.RuntimeConfig(o.LuaDir, raw)
+			if err != nil {
+				return nil, err
+			}
+			spec := s.Manifest.PluginSpec()
+			pp := &engine.PluginProcess{Path: s.Executable(), SHA256: s.BinarySHA256, Spec: spec}
+			if !slices.Contains(spec.Capabilities, plugin.CapSyncBackend) {
+				pp.Dir = filepath.Join(o.Dir, "plugins", "data", id)
+				if err := os.MkdirAll(pp.Dir, 0700); err != nil {
+					return nil, err
+				}
+			}
+			opts.Plugins = append(opts.Plugins, engine.PluginInstance{Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events})
+		}
 	}
 	e, err := engine.New(ctx, opts)
 	if err != nil {
@@ -151,10 +183,15 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		_ = e.Close(context.Background())
 		return nil, err
 	}
+	n.pluginRevisions = make(map[string]string)
+	for id, s := range n.runningPlugins {
+		if s.Schema != nil {
+			n.pluginRevisions[id], _, _ = s.ReadSettings(o.LuaDir)
+		}
+	}
 	n.cfg = o.Settings
 	n.logf = func(string, ...any) { diagnostics.Logger().Error("host.failed", "code", "internal") }
 	n.luaDir = o.LuaDir
-	n.lua = loaded
 	n.customReceive = storeReceived != nil
 	opened = true
 	n.adapter.init(n)
@@ -181,6 +218,11 @@ func (n *Node) Start(ctx context.Context) error {
 	n.cancel = cancel
 	n.runCtx = runCtx
 	n.diagnostics.StartProduct("cli")
+	if n.luaDir != "" {
+		if err := luascripts.Prune(n.luaDir, n.runningPlugins); err != nil {
+			n.logf("plugin installation cleanup failed")
+		}
+	}
 	n.wg.Add(2)
 	if n.luaDir != "" && len(n.lua) > 0 {
 		n.wg.Add(1)

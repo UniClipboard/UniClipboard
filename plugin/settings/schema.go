@@ -154,12 +154,22 @@ func (d *Definition) Validate(data []byte) error {
 // validates it. Explicit false, zero, empty string, and null are never replaced.
 // An absent object is not created unless that object has its own default.
 func (d *Definition) Normalize(data []byte) ([]byte, error) {
+	return d.normalize(data, false)
+}
+
+// NormalizeDefaults checks non-secret manifest defaults and fills Schema defaults.
+// Required fields may be supplied by the user before the plugin is enabled.
+func (d *Definition) NormalizeDefaults(data []byte) ([]byte, error) {
+	return d.normalize(data, true)
+}
+
+func (d *Definition) normalize(data []byte, defaultsOnly bool) ([]byte, error) {
 	v, err := decodeJSON(data, MaxConfigBytes)
 	if err != nil {
 		return nil, fail("invalid_json", "")
 	}
 	v = defaults(d.root, v)
-	if err := validate(d.root, v, ""); err != nil {
+	if err := validateValue(d.root, v, "", defaultsOnly); err != nil {
 		return nil, err
 	}
 	out, err := json.Marshal(v)

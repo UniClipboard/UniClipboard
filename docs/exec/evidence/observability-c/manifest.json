@@ -1,0 +1,122 @@
+{
+  "cloud_evidence": {
+    "0014": "cloud-0014.json",
+    "0020": "cloud-0020.json"
+  },
+  "local": {
+    "arch": "arm64",
+    "binaries_sha256": {
+      "unic": "b49364f0a531c06fe7440ad4b826cc30add862ef24d10c7735aed8ddfb5d2fea",
+      "unicd": "098d60babca3dbee1dfd53e2264f0602b18c42b45e95b674bd3bc739ff3d09f4"
+    },
+    "changed_fixture_sha256": {
+      "app/service/cmd/unicd/fixtures_e2e.go": "5684e9e6002cfaa7a288fecdd84ccc53249e380eeb66958f7756b5a80d268125",
+      "app/service/internal/host/sync_probe_e2e.go": "cbdc1d837139fa44581180677769067e22afa3ebf308e855ac16d2d149278d33",
+      "e2e/cli/observability_e2e_test.go": "02981e51481f2e71a601649b3587bed9f38ee43090599e76686d48bd1fd7b14d",
+      "e2e/cli/sync_observability_e2e_test.go": "62cac43c90de0484b0a08017f0447aa3d459ad8c38877bd933c539cae7c48d85",
+      "e2e/cli/sync_payload_observability_e2e_test.go": "4b9a9f3a6618a6679001d98abbcc66eb78b9d97f898be3497ce80e0a42350974",
+      "e2e/cli/sync_sampling_e2e_test.go": "474e99eaefe4a9fe53332800106e3edf2f40f39db4c2f52a1f0caa4926f2f5d8",
+      "e2e/syncpath/cloud.sh": "653cbdbc6b012075c4324cc47e6fff8d82cec4b5642933289b00548abadcd23c",
+      "e2e/syncpath/syncpath_test.go": "da354d0ecaa4bbae665408a67a9fd54ae13b9b38bef30999959d5a7256efc7b8"
+    },
+    "daemon_build_settings": {
+      "-race": "true",
+      "-tags": "unic_e2e",
+      "GOARCH": "arm64",
+      "GOOS": "darwin",
+      "vcs.modified": "true",
+      "vcs.revision": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452"
+    },
+    "daemon_race": true,
+    "go": "go1.27.3",
+    "log_interval_ms": 100,
+    "metrics_interval_ms": 500,
+    "os": "darwin",
+    "production_release_assembly": false,
+    "race": true,
+    "source_head": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452",
+    "source_inventory_sha256": "3d4e11088f7e5a6d48044e4f7ebaa0601208968c8e1a8980bdec084f1e86207b",
+    "source_unchanged": true,
+    "test_daemon_build_tag": "unic_e2e",
+    "transport": "local TCP through existing host transport seam"
+  },
+  "replay": "./replay.sh",
+  "sampling": {
+    "arch": "arm64",
+    "binaries_sha256": {
+      "unic": "2ad2e2ac5ec044275d33cc57aa0666006d855e26f813c356771bf2638393514f",
+      "unicd": "69ee93214bd24065ade21deedb9defe22620be19a6761642dab0adfa33edc81c"
+    },
+    "changed_fixture_sha256": {
+      "app/service/cmd/unicd/fixtures_e2e.go": "5684e9e6002cfaa7a288fecdd84ccc53249e380eeb66958f7756b5a80d268125",
+      "app/service/internal/host/sync_probe_e2e.go": "cbdc1d837139fa44581180677769067e22afa3ebf308e855ac16d2d149278d33",
+      "e2e/cli/observability_e2e_test.go": "02981e51481f2e71a601649b3587bed9f38ee43090599e76686d48bd1fd7b14d",
+      "e2e/cli/sync_observability_e2e_test.go": "62cac43c90de0484b0a08017f0447aa3d459ad8c38877bd933c539cae7c48d85",
+      "e2e/cli/sync_payload_observability_e2e_test.go": "4b9a9f3a6618a6679001d98abbcc66eb78b9d97f898be3497ce80e0a42350974",
+      "e2e/cli/sync_sampling_e2e_test.go": "474e99eaefe4a9fe53332800106e3edf2f40f39db4c2f52a1f0caa4926f2f5d8",
+      "e2e/syncpath/cloud.sh": "653cbdbc6b012075c4324cc47e6fff8d82cec4b5642933289b00548abadcd23c",
+      "e2e/syncpath/syncpath_test.go": "da354d0ecaa4bbae665408a67a9fd54ae13b9b38bef30999959d5a7256efc7b8"
+    },
+    "daemon_build_settings": {
+      "-tags": "unic_e2e",
+      "GOARCH": "arm64",
+      "GOOS": "darwin",
+      "vcs.modified": "true",
+      "vcs.revision": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452"
+    },
+    "daemon_race": false,
+    "go": "go1.27.3",
+    "log_interval_ms": 5000,
+    "metrics_interval_ms": 60000,
+    "os": "darwin",
+    "production_release_assembly": false,
+    "race": true,
+    "source_head": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452",
+    "source_inventory_sha256": "3d4e11088f7e5a6d48044e4f7ebaa0601208968c8e1a8980bdec084f1e86207b",
+    "source_unchanged": true,
+    "test_daemon_build_tag": "unic_e2e",
+    "transport": "local TCP through existing host transport seam"
+  },
+  "tailcat": {
+    "derp": {
+      "binary_sha256": "69780dbd401d8e808fcd84f2a15e6fae6613e87529968c74bc6689b59946c009",
+      "build_tags": [
+        "ts_omit_captiveportal",
+        "ts_omit_portmapper"
+      ],
+      "changed_fixture_sha256": {
+        "app/service/cmd/unicd/fixtures_e2e.go": "5684e9e6002cfaa7a288fecdd84ccc53249e380eeb66958f7756b5a80d268125",
+        "app/service/internal/host/sync_probe_e2e.go": "cbdc1d837139fa44581180677769067e22afa3ebf308e855ac16d2d149278d33",
+        "e2e/syncpath/cloud.sh": "653cbdbc6b012075c4324cc47e6fff8d82cec4b5642933289b00548abadcd23c",
+        "e2e/syncpath/syncpath_test.go": "da354d0ecaa4bbae665408a67a9fd54ae13b9b38bef30999959d5a7256efc7b8"
+      },
+      "hosted": "NOT_RUN",
+      "native_clipboard": "NOT_RUN",
+      "race": true,
+      "source_head": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452",
+      "source_inventory_sha256": "0d5b5d15a81151f41da272de83a16792ee0476dc8aeacd30922d0a22a7eca1a2",
+      "tailcat": "v0.7.0",
+      "tailscale": "a2263542f260"
+    },
+    "direct": {
+      "binary_sha256": "69780dbd401d8e808fcd84f2a15e6fae6613e87529968c74bc6689b59946c009",
+      "build_tags": [
+        "ts_omit_captiveportal",
+        "ts_omit_portmapper"
+      ],
+      "changed_fixture_sha256": {
+        "app/service/cmd/unicd/fixtures_e2e.go": "5684e9e6002cfaa7a288fecdd84ccc53249e380eeb66958f7756b5a80d268125",
+        "app/service/internal/host/sync_probe_e2e.go": "cbdc1d837139fa44581180677769067e22afa3ebf308e855ac16d2d149278d33",
+        "e2e/syncpath/cloud.sh": "653cbdbc6b012075c4324cc47e6fff8d82cec4b5642933289b00548abadcd23c",
+        "e2e/syncpath/syncpath_test.go": "da354d0ecaa4bbae665408a67a9fd54ae13b9b38bef30999959d5a7256efc7b8"
+      },
+      "hosted": "NOT_RUN",
+      "native_clipboard": "NOT_RUN",
+      "race": true,
+      "source_head": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452",
+      "source_inventory_sha256": "0d5b5d15a81151f41da272de83a16792ee0476dc8aeacd30922d0a22a7eca1a2",
+      "tailcat": "v0.7.0",
+      "tailscale": "a2263542f260"
+    }
+  }
+}

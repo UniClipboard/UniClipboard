@@ -1,7 +1,7 @@
 # 0010 · 插件设置 Schema 与各端表单生成
 
 - 日期：2026-11-08。
-- 状态：已采纳；独立 schema 工具和 macOS 预览已实现，运行时配置 API、插件清单/RPC 与安装器集成待主线接入。
+- Status: Implemented in the service, installation manifest, Go handshake and production mygo renderer. Native interaction acceptance is pending.
 - 关联：[0004 插件](0004-clipboard-pipeline-lua.md)、[0005 布局](../archive/0005-monorepo-layout.md)、[0006 macOS](../archive/0006-macos-swiftui-client.md)、[0008 实例与身份](../archive/0008-device-identity-and-backend-bindings.md)。
 
 ## 决策

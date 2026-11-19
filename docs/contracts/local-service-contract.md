@@ -302,3 +302,7 @@ See the [source application contract](source-application-contract.md) for captur
 ## Desktop tray icon preference
 
 The configuration API exposes `config.desktop.tray_icon` as `glyph` or `cat`. An omitted TOML key uses `glyph`. Revision-checked saves, `unic config set` and direct file reloads use the same enum validation. Invalid values do not replace the previous valid configuration. The service stores the preference and does not render a tray. A running normal Desktop watches the saved configuration and updates its tray image without requiring restart. `desktop.tray_icon` is not a restart-required key.
+
+## Plugin configuration
+
+The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.

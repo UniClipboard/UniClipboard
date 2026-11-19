@@ -107,6 +107,8 @@ type liveState struct {
 	items                                      map[string]api.HistoryItem
 	details                                    map[string]entry
 	config                                     config.State
+	actions                                    []api.Action
+	externalPlugins                            []api.PluginInfo
 	pending                                    map[string]api.PendingPeer
 	join                                       *api.PairResult
 	codeAttempted, ticketAttempted             bool
@@ -370,6 +372,8 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			var page api.HistorySearchPage
 			var entries []entry
 			var saved config.State
+			var actions []api.Action
+			var externalPlugins []api.PluginInfo
 			var tags []string
 			var candidates []api.Candidate
 			historyChanged := more || previous
@@ -411,6 +415,8 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					entries = append(entries, v)
 				}
 				saved, err = l.client.Config(ctx)
+				actions, _ = l.client.Actions(ctx)
+				externalPlugins, _ = l.client.Plugins(ctx)
 			}
 			if err == nil {
 				tags, err = l.client.HistoryTags(ctx)
@@ -520,6 +526,8 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				}
 				l.connected = true
 				l.config = saved
+				l.actions = actions
+				l.externalPlugins = externalPlugins
 				d.projectLiveConfig()
 				d.projectTags(tags)
 				previousName := ""
@@ -652,6 +660,9 @@ func (d *viewState) mutate(work func(context.Context) error, success string) {
 				l.message = "操作未能确认完成。请刷新数据后检查结果。"
 				if api.ReasonOf(err) == "config_apply_failed" {
 					l.message = "设置已保存，但未能生效。请检查设置后重试。"
+				}
+				if api.ReasonOf(err) == "action_apply_failed" {
+					l.message = "动作结果已保存到历史记录。未能复制到剪贴板。"
 				}
 				if api.ReasonOf(err) == "conflict" {
 					l.message = "数据已变化。请刷新后重试。"
@@ -977,4 +988,19 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 		v.generatedTitle = false
 	}
 	return v
+}
+
+func (d *viewState) runHistoryAction(id, key string) {
+	client := d.live.client
+	request := api.ActionInput{RequestID: "desktop-" + newRequestID(), Apply: true}
+	d.mutate(func(ctx context.Context) error {
+		result, err := client.ExecuteAction(ctx, id, key, request)
+		if err != nil {
+			return err
+		}
+		if !result.Applied {
+			return &api.Error{Reason: "action_apply_failed", Message: "action saved to history"}
+		}
+		return nil
+	}, "已复制")
 }

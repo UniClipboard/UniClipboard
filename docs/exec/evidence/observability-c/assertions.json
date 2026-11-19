@@ -1,0 +1,1008 @@
+{
+  "exporter_faults": {
+    "connection-refused": [
+      {
+        "assertion": "degraded exporter and successful peer clipboard application",
+        "expected": "unavailable",
+        "logs": "unavailable",
+        "metrics": "unavailable",
+        "peer_applied": true
+      }
+    ],
+    "dns": [
+      {
+        "assertion": "degraded exporter and successful peer clipboard application",
+        "expected": "dns",
+        "logs": "dns",
+        "metrics": "dns",
+        "peer_applied": true
+      }
+    ],
+    "rate-limited": [
+      {
+        "assertion": "degraded exporter and successful peer clipboard application",
+        "expected": "rate_limited",
+        "logs": "rate_limited",
+        "metrics": "rate_limited",
+        "peer_applied": true
+      }
+    ],
+    "timeout": [
+      {
+        "assertion": "degraded exporter and successful peer clipboard application",
+        "expected": "timeout",
+        "logs": "timeout",
+        "metrics": "timeout",
+        "peer_applied": true
+      }
+    ],
+    "tls": [
+      {
+        "assertion": "degraded exporter and successful peer clipboard application",
+        "expected": "tls",
+        "logs": "tls",
+        "metrics": "tls",
+        "peer_applied": true
+      }
+    ],
+    "unauthorized": [
+      {
+        "assertion": "degraded exporter and successful peer clipboard application",
+        "expected": "unauthorized",
+        "logs": "unauthorized",
+        "metrics": "unauthorized",
+        "peer_applied": true
+      }
+    ],
+    "unavailable": [
+      {
+        "assertion": "degraded exporter and successful peer clipboard application",
+        "expected": "unavailable",
+        "logs": "unavailable",
+        "metrics": "unavailable",
+        "peer_applied": true
+      }
+    ]
+  },
+  "local_tailcat": {
+    "derp": {
+      "duration_seconds": 61.372215416,
+      "failed": false,
+      "independent_control": "forced UDP disable through maintained magicsock knob",
+      "known_series_observations": 1,
+      "mode": "derp",
+      "unknown_series_observations": 2
+    },
+    "direct": {
+      "duration_seconds": 62.996723834,
+      "failed": false,
+      "independent_control": "payload received after the only local DERP server was closed",
+      "known_series_observations": 1,
+      "mode": "direct",
+      "unknown_series_observations": 1
+    }
+  },
+  "payloads": {
+    "first": [
+      {
+        "actual_buckets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 1,
+        "actual_successful_bytes": 45,
+        "actual_sum": 45,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "incoming",
+        "expected_buckets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 1,
+        "expected_successful_bytes": 45,
+        "expected_sum": 45,
+        "fixture_bytes": 45,
+        "scenario": "multipart"
+      },
+      {
+        "actual_buckets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 1,
+        "actual_successful_bytes": 133,
+        "actual_sum": 88,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "incoming",
+        "expected_buckets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 1,
+        "expected_successful_bytes": 133,
+        "expected_sum": 88,
+        "fixture_bytes": 88,
+        "scenario": "image"
+      },
+      {
+        "actual_buckets": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 1,
+        "actual_successful_bytes": 2181,
+        "actual_sum": 2048,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "incoming",
+        "expected_buckets": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 1,
+        "expected_successful_bytes": 2181,
+        "expected_sum": 2048,
+        "fixture_bytes": 2048,
+        "scenario": "file"
+      },
+      {
+        "actual_buckets": [
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 2,
+        "actual_successful_bytes": 2181,
+        "actual_sum": 2048,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "incoming",
+        "expected_buckets": [
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 2,
+        "expected_successful_bytes": 2181,
+        "expected_sum": 2048,
+        "fixture_bytes": 0,
+        "scenario": "empty-file"
+      }
+    ],
+    "second": [
+      {
+        "actual_buckets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 1,
+        "actual_successful_bytes": 45,
+        "actual_sum": 45,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "incoming",
+        "expected_buckets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 1,
+        "expected_successful_bytes": 45,
+        "expected_sum": 45,
+        "fixture_bytes": 45,
+        "scenario": "multipart"
+      },
+      {
+        "actual_buckets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 1,
+        "actual_successful_bytes": 133,
+        "actual_sum": 88,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "incoming",
+        "expected_buckets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 1,
+        "expected_successful_bytes": 133,
+        "expected_sum": 88,
+        "fixture_bytes": 88,
+        "scenario": "image"
+      },
+      {
+        "actual_buckets": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 1,
+        "actual_successful_bytes": 2181,
+        "actual_sum": 2048,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "incoming",
+        "expected_buckets": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 1,
+        "expected_successful_bytes": 2181,
+        "expected_sum": 2048,
+        "fixture_bytes": 2048,
+        "scenario": "file"
+      },
+      {
+        "actual_buckets": [
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 2,
+        "actual_successful_bytes": 2181,
+        "actual_sum": 2048,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "incoming",
+        "expected_buckets": [
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 2,
+        "expected_successful_bytes": 2181,
+        "expected_sum": 2048,
+        "fixture_bytes": 0,
+        "scenario": "empty-file"
+      }
+    ],
+    "sender": [
+      {
+        "actual_buckets": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 2,
+        "actual_successful_bytes": 90,
+        "actual_sum": 90,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "outgoing",
+        "expected_buckets": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 2,
+        "expected_successful_bytes": 90,
+        "expected_sum": 90,
+        "fixture_bytes": 45,
+        "scenario": "multipart"
+      },
+      {
+        "actual_buckets": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 2,
+        "actual_successful_bytes": 266,
+        "actual_sum": 176,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "outgoing",
+        "expected_buckets": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 2,
+        "expected_successful_bytes": 266,
+        "expected_sum": 176,
+        "fixture_bytes": 88,
+        "scenario": "image"
+      },
+      {
+        "actual_buckets": [
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 2,
+        "actual_successful_bytes": 4362,
+        "actual_sum": 4096,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "outgoing",
+        "expected_buckets": [
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 2,
+        "expected_successful_bytes": 4362,
+        "expected_sum": 4096,
+        "fixture_bytes": 2048,
+        "scenario": "file"
+      },
+      {
+        "actual_buckets": [
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "actual_count": 4,
+        "actual_successful_bytes": 4362,
+        "actual_sum": 4096,
+        "bounds": [
+          0,
+          1024,
+          65536,
+          1048576,
+          16777216,
+          67108864,
+          1073741824,
+          4294967296
+        ],
+        "direction": "outgoing",
+        "expected_buckets": [
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "expected_count": 4,
+        "expected_successful_bytes": 4362,
+        "expected_sum": 4096,
+        "fixture_bytes": 0,
+        "scenario": "empty-file"
+      }
+    ]
+  },
+  "process_outcomes": {
+    "local": [
+      {
+        "Action": "pass",
+        "Elapsed": 1.68,
+        "Test": "TestObservability/default-off"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.01,
+        "Test": "TestObservability/invalid-input"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 2.34,
+        "Test": "TestObservability/level-override"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.78,
+        "Test": "TestObservability/remote-logs-metrics"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.23,
+        "Test": "TestObservability/log-level-branches"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.81,
+        "Test": "TestObservability/metrics-idempotency"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0,
+        "Test": "TestObservability/invalid-diagnostic"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.17,
+        "Test": "TestObservability/queue-pressure"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.14,
+        "Test": "TestObservability/resume"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0,
+        "Test": "TestObservability/privacy"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.23,
+        "Test": "TestObservability/disable-barrier"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.11,
+        "Test": "TestObservability/endpoint-restart"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.14,
+        "Test": "TestObservability/export-failures"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 8.6,
+        "Test": "TestObservability/lifecycle"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.28,
+        "Test": "TestObservability/local-retention"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 18.29,
+        "Test": "TestObservability"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.95,
+        "Test": "TestObservabilityPipeline"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 124.79,
+        "Test": "TestObservabilityProductionCycle"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.51,
+        "Test": "TestObservabilityResources/off-0"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.4,
+        "Test": "TestObservabilityResources/off-1"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.62,
+        "Test": "TestObservabilityResources/off-2"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.52,
+        "Test": "TestObservabilityResources/normal-0"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.57,
+        "Test": "TestObservabilityResources/normal-1"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.62,
+        "Test": "TestObservabilityResources/normal-2"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.81,
+        "Test": "TestObservabilityResources/debug-0"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.55,
+        "Test": "TestObservabilityResources/debug-1"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.57,
+        "Test": "TestObservabilityResources/debug-2"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 3.79,
+        "Test": "TestObservabilityResources/pressure-0"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 3.74,
+        "Test": "TestObservabilityResources/pressure-1"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 3.74,
+        "Test": "TestObservabilityResources/pressure-2"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 25.44,
+        "Test": "TestObservabilityResources"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 2.48,
+        "Test": "TestObservabilityFaults/unauthorized"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 2.55,
+        "Test": "TestObservabilityFaults/rate-limited"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 2.54,
+        "Test": "TestObservabilityFaults/unavailable"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 5.77,
+        "Test": "TestObservabilityFaults/timeout"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 2.55,
+        "Test": "TestObservabilityFaults/tls"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 2.52,
+        "Test": "TestObservabilityFaults/connection-refused"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 2.52,
+        "Test": "TestObservabilityFaults/dns"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 20.93,
+        "Test": "TestObservabilityFaults"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.53,
+        "Test": "TestSyncObservability/connection-and-permission"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.08,
+        "Test": "TestSyncObservability/payload-and-remote-daily"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 19.71,
+        "Test": "TestSyncObservability/path-plumbing-and-recovery"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.48,
+        "Test": "TestSyncObservability/disable-and-fresh-baseline"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.51,
+        "Test": "TestSyncObservability/daily-marker-restart-and-rollover"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 1.17,
+        "Test": "TestSyncObservability/analytics-disable-and-identity-rotation"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.18,
+        "Test": "TestSyncObservability/privacy"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 28.05,
+        "Test": "TestSyncObservability"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.5,
+        "Test": "TestSyncObservabilityFaults/partial-body"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 14.55,
+        "Test": "TestSyncObservabilityFaults/pending-recovery-and-timeout"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.74,
+        "Test": "TestSyncObservabilityFaults/daily-persistence-failure"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.04,
+        "Test": "TestSyncObservabilityFaults/local-stop-is-expected"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 18.13,
+        "Test": "TestSyncObservabilityFaults"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.82,
+        "Test": "TestSyncObservabilityPayloads/multipart"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.72,
+        "Test": "TestSyncObservabilityPayloads/image"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.52,
+        "Test": "TestSyncObservabilityPayloads/file"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 0.73,
+        "Test": "TestSyncObservabilityPayloads/empty-file"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 5.51,
+        "Test": "TestSyncObservabilityPayloads"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 244.591
+      }
+    ],
+    "sampling": [
+      {
+        "Action": "pass",
+        "Elapsed": 21.31,
+        "Test": "TestSyncObservabilitySampling/0/metrics-false"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 22.14,
+        "Test": "TestSyncObservabilitySampling/0/metrics-true"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 44.94,
+        "Test": "TestSyncObservabilitySampling/0"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 21.1,
+        "Test": "TestSyncObservabilitySampling/1/metrics-false"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 22.21,
+        "Test": "TestSyncObservabilitySampling/1/metrics-true"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 45.56,
+        "Test": "TestSyncObservabilitySampling/1"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 21.18,
+        "Test": "TestSyncObservabilitySampling/8/metrics-false"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 22.22,
+        "Test": "TestSyncObservabilitySampling/8/metrics-true"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 49.51,
+        "Test": "TestSyncObservabilitySampling/8"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 140.02,
+        "Test": "TestSyncObservabilitySampling"
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 141.528
+      }
+    ]
+  },
+  "sampling_cadence": {
+    "0": [
+      {
+        "actual_calls": 0,
+        "expected_calls": 0,
+        "metrics_enabled": false,
+        "scenario": "collection cadence",
+        "sessions": 0
+      },
+      {
+        "actual_calls": 0,
+        "expected_calls": 0,
+        "metrics_enabled": true,
+        "scenario": "collection cadence",
+        "sessions": 0
+      }
+    ],
+    "1": [
+      {
+        "actual_calls": 0,
+        "expected_calls": 0,
+        "metrics_enabled": false,
+        "scenario": "collection cadence",
+        "sessions": 1
+      },
+      {
+        "actual_calls": 2,
+        "expected_calls": 2,
+        "metrics_enabled": true,
+        "scenario": "collection cadence",
+        "sessions": 1
+      }
+    ],
+    "8": [
+      {
+        "actual_calls": 0,
+        "expected_calls": 0,
+        "metrics_enabled": false,
+        "scenario": "collection cadence",
+        "sessions": 8
+      },
+      {
+        "actual_calls": 2,
+        "expected_calls": 2,
+        "metrics_enabled": true,
+        "scenario": "collection cadence",
+        "sessions": 8
+      }
+    ]
+  }
+}

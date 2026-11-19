@@ -49,6 +49,19 @@ func luaInstances(specs []LuaPluginSpec) ([]PluginInstance, *Error) {
 // load, init or start, the old one keeps running. A plugin that failed a
 // callback is unavailable until this succeeds.
 func (e *Engine) ReloadLuaPlugin(ctx context.Context, id PluginID, source string) error {
+	return e.reloadLua(ctx, id, source, nil, nil)
+}
+
+// ConfigureLuaPlugin starts a replacement with cfg before committing the host
+// settings. A failed commit discards the replacement.
+func (e *Engine) ConfigureLuaPlugin(ctx context.Context, id PluginID, cfg plugin.Config, commit func() error) error {
+	if commit == nil {
+		return newErr(CodeInvalidArgument, "configuration commit is required")
+	}
+	return e.reloadLua(ctx, id, "", cfg, commit)
+}
+
+func (e *Engine) reloadLua(ctx context.Context, id PluginID, source string, cfg plugin.Config, commit func() error) error {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return gerr
@@ -59,12 +72,23 @@ func (e *Engine) ReloadLuaPlugin(ctx context.Context, id PluginID, source string
 		return newErr(CodeNotFound, "no such plugin")
 	}
 	r, ok := e.plugins[i].(interface {
-		Reload(context.Context, string) error
+		Reload(context.Context, string, plugin.Config, func() error) error
 	})
 	if !ok {
 		return newErr(CodeUnsupported, "this plugin is not a Lua plugin")
 	}
-	if err := r.Reload(ctx, source); err != nil {
+	var commitErr error
+	if commit != nil {
+		persist := commit
+		commit = func() error {
+			commitErr = persist()
+			return commitErr
+		}
+	}
+	if err := r.Reload(ctx, source, cfg, commit); err != nil {
+		if commitErr != nil {
+			return commitErr
+		}
 		switch {
 		case ctx.Err() != nil:
 			return ctxErr(ctx.Err())

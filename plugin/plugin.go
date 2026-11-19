@@ -47,10 +47,11 @@ const (
 
 // Spec identifies a plugin and what it offers.
 type Spec struct {
-	ID           string // e.g. "builtin.text"
-	Version      string
-	APIVersion   int // 1
-	Capabilities []string
+	ID             string // e.g. "builtin.text"
+	Version        string
+	APIVersion     int    // 1
+	SettingsSHA256 string // SHA-256 of the published static settings schema
+	Capabilities   []string
 	// TransportKind is for sync backends only; other plugins leave it empty.
 	TransportKind string
 	Actions       []ActionSpec // only with CapAction

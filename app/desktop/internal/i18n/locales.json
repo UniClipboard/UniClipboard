@@ -3874,5 +3874,71 @@
     "ja": "デフォルト",
     "pt-BR": "Padrão",
     "ru": "По умолчанию"
+  },
+  "核对并批准": {
+    "en": "Verify and approve",
+    "ja": "確認して承認",
+    "pt-BR": "Verificar e aprovar",
+    "ru": "Проверить и одобрить"
+  },
+  "名称由对方自报，未经验证。": {
+    "en": "The name is self-reported and unverified.",
+    "ja": "名前は相手が申告したもので、未検証です。",
+    "pt-BR": "O nome foi informado pelo outro dispositivo e não foi verificado.",
+    "ru": "Имя указано другим устройством и не проверено."
+  },
+  "插件设置": {
+    "en": "Plugin settings",
+    "ja": "プラグイン設定",
+    "pt-BR": "Configurações do plugin",
+    "ru": "Настройки плагина"
+  },
+  "重新加载": {
+    "en": "Reload",
+    "ja": "再読み込み",
+    "pt-BR": "Recarregar",
+    "ru": "Перезагрузить"
+  },
+  "保存": {
+    "en": "Save",
+    "ja": "保存",
+    "pt-BR": "Salvar",
+    "ru": "Сохранить"
+  },
+  "未设置": {
+    "en": "Not set",
+    "ja": "未設定",
+    "pt-BR": "Não definido",
+    "ru": "Не задано"
+  },
+  "已设置": {
+    "en": "Set",
+    "ja": "設定済み",
+    "pt-BR": "Definido",
+    "ru": "Задано"
+  },
+  "清除": {
+    "en": "Clear",
+    "ja": "クリア",
+    "pt-BR": "Limpar",
+    "ru": "Очистить"
+  },
+  "添加": {
+    "en": "Add",
+    "ja": "追加",
+    "pt-BR": "Adicionar",
+    "ru": "Добавить"
+  },
+  "请输入有效数值。": {
+    "en": "Enter a valid number.",
+    "ja": "有効な数値を入力してください。",
+    "pt-BR": "Insira um número válido.",
+    "ru": "Введите допустимое число."
+  },
+  "外部插件": {
+    "en": "External plugins",
+    "ja": "外部プラグイン",
+    "pt-BR": "Plugins externos",
+    "ru": "Внешние плагины"
   }
 }

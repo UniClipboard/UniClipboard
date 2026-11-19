@@ -128,3 +128,25 @@ with a disjoint union equal to the complete catalogue. Six malformed/out-of-rang
 shard requests and a mixed CASE/shard request refused before execution.
 Pinned golangci-lint 2.15.0 reported zero issues and no formatting differences.
 Hosted full-suite acceptance remains required on the pushed repair head.
+
+## Translation catalogue failure inventory (before repair)
+
+On `996b98c`, shard 1 executed all sixteen selected cases. Fifteen passed,
+including the repaired tray fixture. The existing `i18n` view E2E failed before
+rendering: `live_devices.go` used an uncatalogued literal. Auditing the same
+literal pattern found eleven missing catalogue keys across device approval and
+plugin settings, introduced by previously integrated features.
+
+Use the unchanged canonical `CASE=i18n` to reproduce before changing the
+catalogue. Supply all four supported translations for every missing key. Preserve
+format arguments, source keys, device-name trust wording and user content.
+Do not relax catalogue completeness assertions or substitute Chinese strings for
+missing translations. Re-run the full existing five-language/three-skin/two-theme
+view scenario, then verify all hosted shards on the new head.
+
+The unchanged canonical i18n entry failed locally before the catalogue repair
+and passed afterward across all thirty language/skin/theme combinations.
+Private cleanup and source revalidation passed. The repair adds eleven keys
+with English, Japanese, Brazilian Portuguese and Russian translations. It
+changes no source labels, controls, device trust behavior or catalogue checks.
+The small redacted receipt and checksums are retained beside the package proof.

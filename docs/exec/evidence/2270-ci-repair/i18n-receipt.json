@@ -1,0 +1,17 @@
+{
+  "command": "make desktop-e2e CASE=i18n",
+  "host": "darwin-arm64",
+  "before": "existing canonical i18n scenario failed on an uncatalogued source literal",
+  "missing_catalogue_keys": 11,
+  "languages": 5,
+  "skins": 3,
+  "themes": 2,
+  "status": "PASS",
+  "cleanup": "PASS",
+  "private_cleanup": "PASS",
+  "source_unchanged": true,
+  "race": true,
+  "native_window": "NOT_RUN",
+  "manifest_sha256": "f75c077a5e38d91f1342fc16cff143ac50d558afc92e4c58db828d56ba74b69c",
+  "catalogue_sha256": "ad0742a23876b2bfcd59277b44f396586592f32d77a8ae416416cce6e4a6b186"
+}

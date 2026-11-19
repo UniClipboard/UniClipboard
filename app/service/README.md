@@ -42,7 +42,7 @@ enabled = false
 ```
 
 Use `[telemetry.logs]`, `[telemetry.metrics]`, `[telemetry.traces]`, or `[telemetry.analytics]` with `enabled = false` to disable one signal.
-Traces default disabled. Set `[telemetry.traces]` to `enabled = true` to sample 1% of unique explicit submissions and their commit calls. Trace context stays inside the service.
+Traces default enabled and sample 1% of unique explicit submissions and their commit calls. Set `[telemetry.traces]` to `enabled = false` to disable traces. Trace context stays inside the service.
 Switch changes hot reload and remain effective across restart. Check `unic dev diagnostics telemetry` for actual signal state.
 See the [observability contract](../../docs/contracts/observability-contract.md).
 

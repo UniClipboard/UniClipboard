@@ -1,6 +1,6 @@
 # 0014 · 客户端可观测性：OpenTelemetry / OTLP 与动态日志等级
 
-- 状态：已采纳；logs + metrics 已接入工作区，验收进度见执行计划。The first opt-in submission trace slice is implemented. The [trace receipt](../../exec/observability-traces.md) records its exact boundaries.
+- 状态：已采纳；logs + metrics 已接入工作区，验收进度见执行计划。The first sampled submission trace slice is implemented. The [trace receipt](../../exec/observability-traces.md) records its exact boundaries.
 - 日期：2026-11-09。
 - 本次实施：仅 logs + metrics；精确接口见[可观测性契约](../../contracts/observability-contract.md)，阶段和证据见[执行计划](../../exec/0014-client-observability-otlp.md)。The subsequent first trace slice follows the live contract and trace receipt. Broader trace goals below remain future work.
 - 关联：[0002 配置热加载](0002-config-file.md)、[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](../archive/0005-monorepo-layout.md)、[Engine 契约](../../contracts/engine-contract.md)、[流水线契约](../../contracts/pipeline-contract.md)、[同步后端契约](../../contracts/sync-backend-contract.md)。
@@ -17,7 +17,7 @@ Engine 已支持注入 `*slog.Logger`，要求日志不阻塞且不包含内容�
 
 ### 1. 进程内 SDK，OTLP/HTTP 上报，Collector 放在接收端
 
-使用标准库 `log/slog` 作为业务日志接口，使用官方 OpenTelemetry Go SDK 采集 metrics 和经过筛选的 logs，通过 OTLP/HTTP + Protobuf 主动上报。The subsequent service-owned trace slice is implemented with HTTPS. Logs, metrics and analytics default enabled; traces default disabled.
+使用标准库 `log/slog` 作为业务日志接口，使用官方 OpenTelemetry Go SDK 采集 metrics 和经过筛选的 logs，通过 OTLP/HTTP + Protobuf 主动上报。The subsequent service-owned trace slice is implemented with HTTPS. All four signals default enabled.
 
 ```text
 Engine / 插件 / 宿主

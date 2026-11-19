@@ -41,7 +41,7 @@ type Config struct {
 }
 
 func Default() Config {
-	return Config{Logging: Logging{"info"}, Telemetry: Telemetry{Enabled: true, Endpoint: releaseEndpoint(), Logs: Logs{Enabled: true, Level: "warn"}, Metrics: Metrics{Enabled: true}, Analytics: Analytics{Enabled: true}}}
+	return Config{Logging: Logging{"info"}, Telemetry: Telemetry{Enabled: true, Endpoint: releaseEndpoint(), Logs: Logs{Enabled: true, Level: "warn"}, Metrics: Metrics{Enabled: true}, Analytics: Analytics{Enabled: true}, Traces: Traces{Enabled: true}}}
 }
 func Level(s string) (slog.Level, bool) {
 	switch s {

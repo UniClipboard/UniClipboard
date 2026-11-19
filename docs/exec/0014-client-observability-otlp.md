@@ -1,6 +1,6 @@
 # 0014 执行计划：Logs 与 Metrics
 
-- 状态：logs + metrics 已接入工作区；验收结果与未覆盖边界见文末收据。The first opt-in trace slice is implemented; see the [trace receipt](observability-traces.md).
+- 状态：logs + metrics 已接入工作区；验收结果与未覆盖边界见文末收据。The first sampled trace slice is implemented; see the [trace receipt](observability-traces.md).
 - 日期：2026-11-09。
 - 设计：[0014 决策](../decisions/proposed/0014-client-observability-otlp.md)。
 - 规格：[可观测性契约](../contracts/observability-contract.md)、[Engine 契约](../contracts/engine-contract.md)。

@@ -1,6 +1,6 @@
 # Client observability contract: logs, metrics, traces and product events
 
-- Status: Logs, metrics and PostHog product events are implemented in the workspace. Local process acceptance and hosted limitations are recorded in the [0019 receipt](../exec/0019-posthog-integration.md). Opt-in sampled submission traces are implemented; see the [trace receipt](../exec/observability-traces.md).
+- Status: Logs, metrics and PostHog product events are implemented in the workspace. Local process acceptance and hosted limitations are recorded in the [0019 receipt](../exec/0019-posthog-integration.md). Sampled submission traces are implemented; see the [trace receipt](../exec/observability-traces.md).
 - Date: 2026-11-10.
 - Scope: Local structured logs, independent log levels, configurable OTLP logs/metrics/traces, PostHog product events, lifecycle and resource bounds.
 - 依据：[Engine 契约](engine-contract.md)、[流水线契约](pipeline-contract.md)、[历史契约](history-contract.md)、[同步后端契约](sync-backend-contract.md)。
@@ -9,9 +9,9 @@
 ## 1. 范围与不变量
 
 This implementation provides logs, metrics, sampled submission traces and product events. Cross-device propagation, remote control, crash reports, durable upload and production Collector deployment remain outside scope.
-`telemetry.traces.enabled` is accepted and defaults to false.
+`telemetry.traces.enabled` is accepted and defaults to true.
 
-1. Logs, metrics and analytics default enabled. Traces default disabled. The TOML master and each signal switch can disable upload. Log level changes never change these switches.
+1. All four signals default enabled. The TOML master and each signal switch can disable upload. Log level changes never change these switches.
 2. 遥测失败不改变业务结果，不阻止 Engine 启动。
 3. 配置非法仍按现有配置规则处理：启动时报错；热加载时保留上一有效配置。
 4. 诊断公开签名只依赖标准库和公开 Engine 类型。公开 Options 不出现 OTel 类型。
@@ -212,7 +212,7 @@ enabled = true
 enabled = true
 
 [telemetry.traces]
-enabled = false
+enabled = true
 ```
 
 以上是本次默认值。`telemetry.enabled && telemetry.logs.enabled` 决定远程 logs 的请求开启状态。

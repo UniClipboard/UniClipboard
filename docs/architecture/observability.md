@@ -49,7 +49,7 @@ verified: f06ba4a7238e62db35353435ce86f843da671622
 ---
 # Client logs, metrics, traces and product analytics
 
-The UI-free service owns OTLP/HTTP logs, metrics and sampled traces plus PostHog product events. Logs, metrics and analytics default enabled; traces default disabled; `config.toml` can disable the master switch or any individual signal. Missing release deployment metadata degrades uploads without preventing service startup.
+The UI-free service owns OTLP/HTTP logs, metrics and sampled traces plus PostHog product events. All four signals default enabled; `config.toml` can disable the master switch or any individual signal. Missing release deployment metadata degrades uploads without preventing service startup.
 Current workspace implementation and acceptance scope are recorded in the [PostHog execution receipt](../exec/0019-posthog-integration.md). Local process evidence and Cloud read-back are recorded separately. The selected Cloud project is US Cloud / UniClipboard (722858).
 
 ## Current behavior

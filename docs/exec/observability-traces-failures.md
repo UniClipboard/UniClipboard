@@ -6,7 +6,8 @@ receiver. No unit tests are added. Each next slice starts with process acceptanc
 
 | Failure | Process assertion |
 |---|---|
-| Default or either switch leaks traces | Observe zero trace requests for more than the full five-second export period. |
+| Default silently disables traces | Omit the trace setting; require trace admission and one idempotent root/child tree at the synthetic 100% sample rate. |
+| Either explicit switch leaks traces | Observe zero trace requests for more than the full five-second export period, including explicit trace false after restart. |
 | Enabled submission is missing or duplicated | Decode one root and one child; repeat the same local request and require no second commit. |
 | Caller metadata leaks | Supply synthetic content, path/request canaries and poisoned OTEL environment; reject canaries in complete decoded OTLP before retaining evidence. |
 | Parent sampling differs | Offer a fixed workload; every exported root has exactly one child, one trace ID and the expected parent ID. |

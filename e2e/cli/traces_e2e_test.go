@@ -36,12 +36,20 @@ func TestTraces(t *testing.T) {
 	h.cliExecutable = buildTraceCLI(t, h)
 	h.requestHeaders = map[string]string{"traceparent": "00-11111111111111111111111111111111-2222222222222222-01", "tracestate": "private=trace-header-canary", "baggage": "private=trace-baggage-canary"}
 	cfg := fmt.Sprintf("[sync]\nenabled=false\n[telemetry]\nendpoint=%q\n[telemetry.logs]\nenabled=false\n[telemetry.metrics]\nenabled=false\n[telemetry.analytics]\nenabled=false\n", h.server.URL)
-	h.run(t, "default-disabled-full-window", func(t *testing.T) {
+	h.run(t, "default-enabled-and-idempotent", func(t *testing.T) {
 		h.startConfig(t, cfg)
+		if !traceState(t, h).Requested {
+			t.Fatal("traces are not enabled by default")
+		}
 		traceSubmit(t, h, "trace-default-canary")
-		h.requireNoRequests(t, 5500*time.Millisecond)
+		traceSubmit(t, h, "trace-default-canary")
+		h.eventually(t, func() bool { return len(traceSpans(t, h)) >= 2 })
+		time.Sleep(5500 * time.Millisecond)
+		assertTraceTrees(t, h, 1)
 	})
 	h.run(t, "enabled-and-idempotent", func(t *testing.T) {
+		h.cli(t, "config", "set", "telemetry.traces.enabled", "false")
+		h.traceSince = time.Now()
 		h.cli(t, "config", "set", "telemetry.traces.enabled", "true")
 		traceSubmit(t, h, "trace-request-canary")
 		traceSubmit(t, h, "trace-request-canary")
@@ -58,6 +66,15 @@ func TestTraces(t *testing.T) {
 	h.run(t, "signal-disabled-full-window", func(t *testing.T) {
 		h.cli(t, "config", "set", "telemetry.traces.enabled", "false")
 		traceSubmit(t, h, "trace-signal-off")
+		h.stop(t)
+		saved, err := os.ReadFile(filepath.Join(h.home, "config.toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.startConfig(t, string(saved))
+		if traceState(t, h).Requested {
+			t.Fatal("explicit false was ignored after restart")
+		}
 		h.requireNoRequests(t, 5500*time.Millisecond)
 		h.cli(t, "config", "set", "telemetry.traces.enabled", "true")
 	})

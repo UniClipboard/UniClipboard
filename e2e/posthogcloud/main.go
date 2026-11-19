@@ -127,7 +127,7 @@ func run() error {
 		if err = os.MkdirAll(home, 0700); err != nil {
 			return err
 		}
-		if err = os.WriteFile(filepath.Join(home, "config.toml"), []byte("[sync]\nenabled=false\n"), 0600); err != nil {
+		if err = os.WriteFile(filepath.Join(home, "config.toml"), []byte("[sync]\nenabled=false\n[telemetry.traces]\nenabled=false\n"), 0600); err != nil {
 			return err
 		}
 		sock := filepath.Join(dir, fmt.Sprintf("%d.sock", i))

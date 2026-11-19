@@ -13,7 +13,7 @@
 
 The existing service diagnostics assembly now owns an OTel v1.47 TracerProvider
 and matching official OTLP/HTTP trace exporter. The only new runtime setting is
-`telemetry.traces.enabled`, default `false`. The telemetry master also controls
+`telemetry.traces.enabled`, default `true`. The telemetry master also controls
 admission. Endpoint restart semantics and exact release credential binding are
 shared with logs and metrics. Runtime `OTEL_*` values do not grant upload,
 change sampling, or contribute Resource fields.
@@ -49,7 +49,7 @@ Disabled and unsampled runs made zero requests. Production-candidate CPU was
 3.517 versus 3.496 ms. These short single-run observations do not establish a
 release overhead limit or statistical significance.
 
-Adopt 1% for the first opt-in release. The workload offered roughly 500 roots/s;
+Adopt 1% for the first sampled release. The workload offered roughly 500 roots/s;
 at that rate, one five-second period expects about 50 completed spans at 1%.
 A queue of 256 plus a batch of 128 accommodates that synthetic baseline while
 keeping a fixed memory bound. This is not a throughput guarantee. Slow exports
@@ -73,7 +73,9 @@ shutdown scenarios. A review found discarded-export loss undercount; a process
 assertion was added before its correction. Development resource artifacts whose
 binary identities were removed too early are not final evidence.
 
-Final-source commit: `f06ba4a7238e62db35353435ce86f843da671622`.
+Initial acceptance source: `f06ba4a7238e62db35353435ce86f843da671622`.
+These results describe the initial default-disabled slice. The default-enabled
+follow-up below supersedes its default behavior.
 
 | Check | Result |
 |---|---|
@@ -110,8 +112,8 @@ artifacts are in `.cache/observability-acceptance`.
 
 The build metadata can report `vcs.modified=true` because documentation verification
 was updated after the source commit. The source manifest verifies every code,
-build and runner file against the frozen identities. The final receipt commit
-changes documentation and evidence only.
+build and runner file against the frozen identities. The initial receipt commit
+changed documentation and evidence only.
 
 ## Boundaries
 
@@ -143,3 +145,18 @@ The runner reaps private services, closes the receiver, removes profiles,
 databases and programs, then seals cleanup and checksums. Repository evidence
 contains only small sanitized receipts. It contains no credentials, personal
 history, database, program, source snapshot or large log.
+
+## Default-enabled follow-up
+
+The trace switch now defaults to true. Root sampling stays fixed at 1%.
+An explicit master false or trace false still disables admission. A saved trace
+false remains false across restart. No compatibility or configuration migration
+is added. Logs/metrics/analytics-only acceptance fixtures explicitly disable
+traces so their signal assertions remain independent.
+
+The production-process E2E was changed first and failed because the old default
+did not request traces. The implementation then changed the default. The updated
+suite checks omitted trace settings, idempotency and explicit false after restart,
+in addition to the existing exporter, generation, privacy and shutdown scenarios.
+Current acceptance: PENDING_DEFAULT_ENABLED_ACCEPTANCE.
+The initial signed receipt and measurements above remain historical evidence.

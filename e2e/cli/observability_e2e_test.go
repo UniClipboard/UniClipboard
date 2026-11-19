@@ -361,6 +361,11 @@ func (h *observabilityRun) start(t *testing.T, endpoint string) {
 	h.startConfig(t, cfg)
 }
 func (h *observabilityRun) startConfig(t *testing.T, cfg string) {
+	// Non-trace suites isolate their signals explicitly; production defaults are
+	// exercised only by the trace suites.
+	if !strings.HasPrefix(h.artifactName, "traces") && !strings.Contains(cfg, "[telemetry.traces]") {
+		cfg += "\n[telemetry.traces]\nenabled=false\n"
+	}
 	if err := os.WriteFile(filepath.Join(h.home, "config.toml"), []byte(cfg), 0600); err != nil {
 		t.Fatal(err)
 	}

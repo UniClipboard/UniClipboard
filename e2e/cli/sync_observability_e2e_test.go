@@ -118,9 +118,10 @@ func TestSyncObservability(t *testing.T) {
 			t.Fatal(err)
 		}
 		b.startConfig(t, fmt.Sprintf("[telemetry]\nendpoint=%q\n", b.server.URL))
-		if _, err := os.Lstat(filepath.Join(b.home, ".analytics-remote-day.tmp")); !os.IsNotExist(err) {
-			t.Fatal("stale daily temporary retained")
-		}
+		b.eventually(t, func() bool {
+			_, err := os.Lstat(filepath.Join(b.home, ".analytics-remote-day.tmp"))
+			return os.IsNotExist(err)
+		})
 
 		a.eventually(t, func() bool { return strings.Contains(string(a.get(t, "/v1/status")), `"connected":true`) })
 		a.cli(t, "dev", "copy", "0020-restart-same-day")

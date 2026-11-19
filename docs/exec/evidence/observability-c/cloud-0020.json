@@ -1,0 +1,325 @@
+{
+  "assertions": [
+    {
+      "actual": 22,
+      "expected": 22,
+      "name": "incoming successful bytes",
+      "passed": true
+    },
+    {
+      "actual": [
+        [
+          1,
+          22,
+          [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "expected": [
+        [
+          1,
+          22,
+          [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "name": "incoming size histogram",
+      "passed": true
+    },
+    {
+      "actual": 22,
+      "expected": 22,
+      "name": "outgoing successful bytes",
+      "passed": true
+    },
+    {
+      "actual": [
+        [
+          1,
+          22,
+          [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "expected": [
+        [
+          1,
+          22,
+          [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "name": "outgoing size histogram",
+      "passed": true
+    },
+    {
+      "actual": true,
+      "expected": true,
+      "name": "incoming DERP positive",
+      "passed": true
+    },
+    {
+      "actual": true,
+      "expected": true,
+      "name": "outgoing unknown positive",
+      "passed": true
+    },
+    {
+      "actual": 0,
+      "expected": 0,
+      "name": "no forced-relay direct or known outgoing samples",
+      "passed": true
+    },
+    {
+      "actual": [
+        "delta"
+      ],
+      "expected": [
+        "delta"
+      ],
+      "name": "metric temporality",
+      "passed": true
+    },
+    {
+      "actual": true,
+      "expected": true,
+      "name": "allowed resource fields",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "path_sample_counts": {
+    "incoming_derp": 4,
+    "incoming_unknown": 3,
+    "outgoing_unknown": 7
+  },
+  "project_id": 722858,
+  "queries": {
+    "metrics": {
+      "query": "SELECT metric_name, toString(series_fingerprint), aggregation_temporality, value, count, toString(histogram_counts) FROM posthog.metrics WHERE timestamp >= toDateTime('2026-11-19 02:21:21','UTC') AND timestamp < toDateTime('2026-11-19 02:22:41','UTC') AND service_name = 'unicd' AND toString(series_fingerprint) IN ('4921011334299096439','5267277279885227329','7979143869666758418','14445006321935014065','8034340721343730590','12455361959941495581','17155088942288754180') ORDER BY metric_name, toString(series_fingerprint), timestamp LIMIT 50",
+      "rows": [
+        [
+          "unic.sync.path.samples",
+          "4921011334299096439",
+          "delta",
+          "1.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.path.samples",
+          "4921011334299096439",
+          "delta",
+          "3.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.path.samples",
+          "5267277279885227329",
+          "delta",
+          "2.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.path.samples",
+          "5267277279885227329",
+          "delta",
+          "1.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.path.samples",
+          "7979143869666758418",
+          "delta",
+          "5.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.path.samples",
+          "7979143869666758418",
+          "delta",
+          "1.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.path.samples",
+          "7979143869666758418",
+          "delta",
+          "1.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.transfer.bytes",
+          "14445006321935014065",
+          "delta",
+          "22.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.transfer.bytes",
+          "8034340721343730590",
+          "delta",
+          "22.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.sync.transfer.size",
+          "12455361959941495581",
+          "delta",
+          "22.0",
+          "1",
+          "[0,1,0,0,0,0,0,0,0]"
+        ],
+        [
+          "unic.sync.transfer.size",
+          "17155088942288754180",
+          "delta",
+          "22.0",
+          "1",
+          "[0,1,0,0,0,0,0,0,0]"
+        ]
+      ]
+    },
+    "series": {
+      "query": "SELECT metric_name, toJSONString(attributes), toString(series_fingerprint), toJSONString(resource_attributes) FROM posthog.metric_series WHERE metric_name IN ('unic.sync.transfer.bytes','unic.sync.transfer.size','unic.sync.path.samples') AND service_name = 'unicd' AND position(toString(resource_attributes), 'acceptance.sync.1795054860.37107') > 0 GROUP BY metric_name, toJSONString(attributes), toString(series_fingerprint), toJSONString(resource_attributes) ORDER BY metric_name, toJSONString(attributes) LIMIT 30",
+      "rows": [
+        [
+          "unic.sync.path.samples",
+          "{\"direction\":\"incoming\",\"path\":\"derp\"}",
+          "4921011334299096439",
+          "{\"host.arch\":\"arm64\",\"os.type\":\"darwin\",\"service.name\":\"unicd\",\"service.version\":\"acceptance.sync.1795054860.37107\"}"
+        ],
+        [
+          "unic.sync.path.samples",
+          "{\"direction\":\"incoming\",\"path\":\"unknown\"}",
+          "5267277279885227329",
+          "{\"host.arch\":\"arm64\",\"os.type\":\"darwin\",\"service.name\":\"unicd\",\"service.version\":\"acceptance.sync.1795054860.37107\"}"
+        ],
+        [
+          "unic.sync.path.samples",
+          "{\"direction\":\"outgoing\",\"path\":\"unknown\"}",
+          "7979143869666758418",
+          "{\"host.arch\":\"arm64\",\"os.type\":\"darwin\",\"service.name\":\"unicd\",\"service.version\":\"acceptance.sync.1795054860.37107\"}"
+        ],
+        [
+          "unic.sync.transfer.bytes",
+          "{\"direction\":\"incoming\",\"result\":\"succeeded\"}",
+          "14445006321935014065",
+          "{\"host.arch\":\"arm64\",\"os.type\":\"darwin\",\"service.name\":\"unicd\",\"service.version\":\"acceptance.sync.1795054860.37107\"}"
+        ],
+        [
+          "unic.sync.transfer.bytes",
+          "{\"direction\":\"outgoing\",\"result\":\"succeeded\"}",
+          "8034340721343730590",
+          "{\"host.arch\":\"arm64\",\"os.type\":\"darwin\",\"service.name\":\"unicd\",\"service.version\":\"acceptance.sync.1795054860.37107\"}"
+        ],
+        [
+          "unic.sync.transfer.size",
+          "{\"content_kind\":\"text\",\"direction\":\"incoming\"}",
+          "12455361959941495581",
+          "{\"host.arch\":\"arm64\",\"os.type\":\"darwin\",\"service.name\":\"unicd\",\"service.version\":\"acceptance.sync.1795054860.37107\"}"
+        ],
+        [
+          "unic.sync.transfer.size",
+          "{\"content_kind\":\"text\",\"direction\":\"outgoing\"}",
+          "17155088942288754180",
+          "{\"host.arch\":\"arm64\",\"os.type\":\"darwin\",\"service.name\":\"unicd\",\"service.version\":\"acceptance.sync.1795054860.37107\"}"
+        ]
+      ]
+    }
+  },
+  "region": "US",
+  "service_version": "acceptance.sync.1795054860.37107",
+  "source": "upload-receipt.json",
+  "upload": {
+    "all_exporters_active": true,
+    "binary_sha256": "4c58cc173522b96a3ff73e7a49648f04daecf4be65a618e0df276760a5991d87",
+    "build_flags": [
+      "-race",
+      "-trimpath",
+      "-tags ts_omit_captiveportal,ts_omit_portmapper",
+      "-ldflags [ingestion metadata redacted]"
+    ],
+    "changed_fixture_sha256": {
+      "app/service/cmd/unicd/fixtures_e2e.go": "5684e9e6002cfaa7a288fecdd84ccc53249e380eeb66958f7756b5a80d268125",
+      "app/service/internal/host/sync_probe_e2e.go": "cbdc1d837139fa44581180677769067e22afa3ebf308e855ac16d2d149278d33",
+      "e2e/syncpath/cloud.sh": "653cbdbc6b012075c4324cc47e6fff8d82cec4b5642933289b00548abadcd23c",
+      "e2e/syncpath/syncpath_test.go": "da354d0ecaa4bbae665408a67a9fd54ae13b9b38bef30999959d5a7256efc7b8"
+    },
+    "expected_payload_bytes_each_direction": 22,
+    "finished_at": "2026-11-19T02:22:31.3231Z",
+    "ingestion_host": "https://us.i.posthog.com",
+    "metrics_exporters": [
+      {
+        "dropped_records": 0,
+        "export_failures": 0,
+        "last_error_code": null,
+        "requested_enabled": true,
+        "state": "active"
+      },
+      {
+        "dropped_records": 0,
+        "export_failures": 0,
+        "last_error_code": null,
+        "requested_enabled": true,
+        "state": "active"
+      }
+    ],
+    "project_id": "722858",
+    "read_back": "PENDING",
+    "receiver_history_verified": true,
+    "service_version": "acceptance.sync.1795054860.37107",
+    "source_head": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452",
+    "source_inventory_sha256": "0d5b5d15a81151f41da272de83a16792ee0476dc8aeacd30922d0a22a7eca1a2",
+    "started_at": "2026-11-19T02:21:21.275244Z",
+    "transport": "forced local DERP"
+  },
+  "window_utc": [
+    "2026-11-19T02:21:21Z",
+    "2026-11-19T02:22:41Z"
+  ]
+}

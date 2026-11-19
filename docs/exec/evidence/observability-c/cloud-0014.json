@@ -1,0 +1,300 @@
+{
+  "assertions": [
+    {
+      "actual": [
+        [
+          "config.rejected",
+          "warn",
+          2
+        ]
+      ],
+      "expected": [
+        [
+          "config.rejected",
+          "warn",
+          2
+        ]
+      ],
+      "name": "warning logs",
+      "passed": true
+    },
+    {
+      "actual": [
+        "host.arch",
+        "os.type",
+        "service.name",
+        "service.version"
+      ],
+      "expected": [
+        "host.arch",
+        "os.type",
+        "service.name",
+        "service.version"
+      ],
+      "name": "allowed resource fields",
+      "passed": true
+    },
+    {
+      "actual": [
+        3,
+        7
+      ],
+      "expected": [
+        3,
+        7
+      ],
+      "name": "commits per process",
+      "passed": true
+    },
+    {
+      "actual": [
+        3,
+        7
+      ],
+      "expected": [
+        3,
+        7
+      ],
+      "name": "commit duration histogram counts",
+      "passed": true
+    },
+    {
+      "actual": [
+        3,
+        7
+      ],
+      "expected": [
+        3,
+        7
+      ],
+      "name": "histogram bucket totals",
+      "passed": true
+    },
+    {
+      "actual": [
+        "delta"
+      ],
+      "expected": [
+        "delta"
+      ],
+      "name": "metric temporality",
+      "passed": true
+    },
+    {
+      "actual": [
+        [
+          "app_started",
+          2,
+          2,
+          2
+        ],
+        [
+          "manual_send_completed",
+          10,
+          2,
+          10
+        ]
+      ],
+      "expected": [
+        [
+          "app_started",
+          2,
+          2,
+          2
+        ],
+        [
+          "manual_send_completed",
+          10,
+          2,
+          10
+        ]
+      ],
+      "name": "event counts, anonymous process count, privacy flags",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "project_id": 722858,
+  "queries": {
+    "events": {
+      "query": "SELECT event, count(), uniqExact(distinct_id), countIf(properties.$process_person_profile = false AND properties.$geoip_disable = true) AS privacy_flags FROM events WHERE timestamp >= toDateTime('2026-11-19 02:03:32','UTC') AND timestamp < toDateTime('2026-11-19 02:04:51','UTC') AND event IN ('app_started','manual_send_completed') AND properties.product_version = 'acceptance.1795053805441991000' GROUP BY event ORDER BY event",
+      "rows": [
+        [
+          "app_started",
+          "2",
+          "2",
+          "2"
+        ],
+        [
+          "manual_send_completed",
+          "10",
+          "2",
+          "10"
+        ]
+      ]
+    },
+    "logs": {
+      "query": "SELECT body, severity_text, count(), groupUniqArray(toJSONString(resource_attributes)) FROM logs WHERE timestamp >= toDateTime('2026-11-19 02:03:32','UTC') AND timestamp < toDateTime('2026-11-19 02:04:51','UTC') AND service_name = 'unicd' AND position(toString(resource_attributes), 'acceptance.1795053805441991000') > 0 GROUP BY body,severity_text LIMIT 10",
+      "rows": [
+        [
+          "config.rejected",
+          "warn",
+          "2",
+          "['{\"host.arch\":\"arm64\",\"os.type\":\"darwin\",\"service.name\":\"unicd\",\"service.version\":\"acceptance.1795053805441991000\"}']"
+        ]
+      ]
+    },
+    "metric_series": {
+      "query": "SELECT metric_name, toString(attributes), series_fingerprint FROM posthog.metric_series WHERE metric_name IN ('unic.pipeline.operations','unic.pipeline.duration') AND service_name = 'unicd' AND position(toString(resource_attributes), 'acceptance.1795053805441991000') > 0 GROUP BY metric_name, toString(attributes), series_fingerprint ORDER BY metric_name, toString(attributes) LIMIT 30",
+      "rows": [
+        [
+          "unic.pipeline.duration",
+          "{'backend':'none','result':'succeeded','stage':'commit'}",
+          "7420768867725108339"
+        ],
+        [
+          "unic.pipeline.duration",
+          "{'backend':'none','result':'succeeded','stage':'process'}",
+          "1621662860525003556"
+        ],
+        [
+          "unic.pipeline.operations",
+          "{'backend':'none','content_kind':'text','result':'succeeded','stage':'commit'}",
+          "14453828427895174534"
+        ],
+        [
+          "unic.pipeline.operations",
+          "{'backend':'none','content_kind':'text','result':'succeeded','stage':'process'}",
+          "7658733111530110440"
+        ]
+      ]
+    },
+    "metrics": {
+      "query": "SELECT metric_name, aggregation_temporality, value, count, toString(histogram_counts) FROM posthog.metrics WHERE timestamp >= toDateTime('2026-11-19 02:03:32','UTC') AND timestamp < toDateTime('2026-11-19 02:04:51','UTC') AND service_name = 'unicd' AND ((metric_name = 'unic.pipeline.operations' AND toString(series_fingerprint) = '14453828427895174534') OR (metric_name = 'unic.pipeline.duration' AND toString(series_fingerprint) = '7420768867725108339')) ORDER BY metric_name, value, count LIMIT 20",
+      "rows": [
+        [
+          "unic.pipeline.duration",
+          "delta",
+          "0.019488000999999998",
+          "3",
+          "[0,0,3,0,0,0,0,0,0,0,0,0,0,0,0]"
+        ],
+        [
+          "unic.pipeline.duration",
+          "delta",
+          "0.04445866699999999",
+          "7",
+          "[0,0,7,0,0,0,0,0,0,0,0,0,0,0,0]"
+        ],
+        [
+          "unic.pipeline.operations",
+          "delta",
+          "3.0",
+          "1",
+          "[]"
+        ],
+        [
+          "unic.pipeline.operations",
+          "delta",
+          "7.0",
+          "1",
+          "[]"
+        ]
+      ]
+    }
+  },
+  "region": "US",
+  "service_version": "acceptance.1795053805441991000",
+  "source": "upload-receipt.json",
+  "upload": {
+    "all_exporters_active": true,
+    "binaries_sha256": {
+      "unic": "8b21843e297e7ec62a38b3fd8872f52bd082b59f8f4a59e81ed6effd939b9b05",
+      "unicd": "ce1cda3b6fe2d77234f8c7136740c6b38cef6c166d1abdbe324e92304fc307c1"
+    },
+    "build_flags": [
+      "-race",
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags [ingestion metadata redacted]"
+    ],
+    "changed_fixture_sha256": {
+      "app/service/cmd/unicd/fixtures_e2e.go": "b65f166d4e271b351df4d2708a38437a7b1675d2cd309b7c4ccf4144dcb60c25",
+      "e2e/posthogcloud/main.go": "679660e2422a52e8a746093abcf23e9cfd901b291f3325c064a405e002491964"
+    },
+    "expected_operations": 10,
+    "expected_person_profiles": 0,
+    "expected_startups": 2,
+    "finished_at": "2026-11-19T02:04:50.078003Z",
+    "ingestion_host": "https://us.i.posthog.com",
+    "local_export_states": [
+      {
+        "analytics": {
+          "dropped_records": 0,
+          "export_failures": 0,
+          "last_error_code": null,
+          "pending_records": 0,
+          "requested_enabled": true,
+          "state": "active"
+        },
+        "configured_enabled": true,
+        "credential_configured": true,
+        "effective_enabled": true,
+        "logs": {
+          "dropped_records": 0,
+          "export_failures": 0,
+          "last_error_code": null,
+          "requested_enabled": true,
+          "state": "active"
+        },
+        "metrics": {
+          "dropped_records": 0,
+          "export_failures": 0,
+          "last_error_code": null,
+          "requested_enabled": true,
+          "state": "active"
+        },
+        "restart_required": []
+      },
+      {
+        "analytics": {
+          "dropped_records": 0,
+          "export_failures": 0,
+          "last_error_code": null,
+          "pending_records": 0,
+          "requested_enabled": true,
+          "state": "active"
+        },
+        "configured_enabled": true,
+        "credential_configured": true,
+        "effective_enabled": true,
+        "logs": {
+          "dropped_records": 0,
+          "export_failures": 0,
+          "last_error_code": null,
+          "requested_enabled": true,
+          "state": "active"
+        },
+        "metrics": {
+          "dropped_records": 0,
+          "export_failures": 0,
+          "last_error_code": null,
+          "requested_enabled": true,
+          "state": "active"
+        },
+        "restart_required": []
+      }
+    ],
+    "project_id": "722858",
+    "read_back": "PENDING",
+    "service_version": "acceptance.1795053805441991000",
+    "source_inventory_sha256": "54ad7a0214c376a3985d350f82d91207b30a5beb4e95784553485317265a1736",
+    "source_unchanged": true,
+    "started_at": "2026-11-19T02:03:32.576081Z",
+    "test_build_tags": []
+  },
+  "window_utc": [
+    "2026-11-19T02:03:32Z",
+    "2026-11-19T02:04:51Z"
+  ]
+}

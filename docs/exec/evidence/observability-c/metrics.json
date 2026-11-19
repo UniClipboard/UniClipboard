@@ -1,0 +1,683 @@
+{
+  "first": {
+    "unic.sync.transfer.bytes": {
+      "metric": {
+        "name": "unic.sync.transfer.bytes",
+        "sum": {
+          "aggregationTemporality": "AGGREGATION_TEMPORALITY_CUMULATIVE",
+          "dataPoints": [
+            {
+              "asInt": "2181",
+              "attributes": [
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "incoming"
+                  }
+                },
+                {
+                  "key": "result",
+                  "value": {
+                    "stringValue": "succeeded"
+                  }
+                }
+              ],
+              "startTimeUnixNano": "1795055158457784000",
+              "timeUnixNano": "1795055162160027000"
+            }
+          ],
+          "isMonotonic": true
+        },
+        "unit": "By"
+      },
+      "received_at": "2026-11-19T10:26:02.161612+08:00",
+      "resource": [
+        {
+          "key": "host.arch",
+          "value": {
+            "stringValue": "arm64"
+          }
+        },
+        {
+          "key": "os.type",
+          "value": {
+            "stringValue": "darwin"
+          }
+        },
+        {
+          "key": "service.name",
+          "value": {
+            "stringValue": "unicd"
+          }
+        },
+        {
+          "key": "service.version",
+          "value": {
+            "stringValue": "dev"
+          }
+        }
+      ]
+    },
+    "unic.sync.transfer.size": {
+      "metric": {
+        "histogram": {
+          "aggregationTemporality": "AGGREGATION_TEMPORALITY_CUMULATIVE",
+          "dataPoints": [
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "image"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "incoming"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "0",
+                "1",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "1",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 88,
+              "min": 88,
+              "startTimeUnixNano": "1795055158458058000",
+              "sum": 88,
+              "timeUnixNano": "1795055162160118000"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "files"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "incoming"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "1",
+                "0",
+                "1",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "2",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 2048,
+              "min": 0,
+              "startTimeUnixNano": "1795055158458058000",
+              "sum": 2048,
+              "timeUnixNano": "1795055162160118000"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "text"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "incoming"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "0",
+                "1",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "1",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 45,
+              "min": 45,
+              "startTimeUnixNano": "1795055158458058000",
+              "sum": 45,
+              "timeUnixNano": "1795055162160118000"
+            }
+          ]
+        },
+        "name": "unic.sync.transfer.size",
+        "unit": "By"
+      },
+      "received_at": "2026-11-19T10:26:02.161612+08:00",
+      "resource": [
+        {
+          "key": "host.arch",
+          "value": {
+            "stringValue": "arm64"
+          }
+        },
+        {
+          "key": "os.type",
+          "value": {
+            "stringValue": "darwin"
+          }
+        },
+        {
+          "key": "service.name",
+          "value": {
+            "stringValue": "unicd"
+          }
+        },
+        {
+          "key": "service.version",
+          "value": {
+            "stringValue": "dev"
+          }
+        }
+      ]
+    }
+  },
+  "second": {
+    "unic.sync.transfer.bytes": {
+      "metric": {
+        "name": "unic.sync.transfer.bytes",
+        "sum": {
+          "aggregationTemporality": "AGGREGATION_TEMPORALITY_CUMULATIVE",
+          "dataPoints": [
+            {
+              "asInt": "2181",
+              "attributes": [
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "incoming"
+                  }
+                },
+                {
+                  "key": "result",
+                  "value": {
+                    "stringValue": "succeeded"
+                  }
+                }
+              ],
+              "startTimeUnixNano": "1795055158694638000",
+              "timeUnixNano": "1795055161769841000"
+            }
+          ],
+          "isMonotonic": true
+        },
+        "unit": "By"
+      },
+      "received_at": "2026-11-19T10:26:01.77075+08:00",
+      "resource": [
+        {
+          "key": "host.arch",
+          "value": {
+            "stringValue": "arm64"
+          }
+        },
+        {
+          "key": "os.type",
+          "value": {
+            "stringValue": "darwin"
+          }
+        },
+        {
+          "key": "service.name",
+          "value": {
+            "stringValue": "unicd"
+          }
+        },
+        {
+          "key": "service.version",
+          "value": {
+            "stringValue": "dev"
+          }
+        }
+      ]
+    },
+    "unic.sync.transfer.size": {
+      "metric": {
+        "histogram": {
+          "aggregationTemporality": "AGGREGATION_TEMPORALITY_CUMULATIVE",
+          "dataPoints": [
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "files"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "incoming"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "1",
+                "0",
+                "1",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "2",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 2048,
+              "min": 0,
+              "startTimeUnixNano": "1795055158694881000",
+              "sum": 2048,
+              "timeUnixNano": "1795055161769928000"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "text"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "incoming"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "0",
+                "1",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "1",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 45,
+              "min": 45,
+              "startTimeUnixNano": "1795055158694881000",
+              "sum": 45,
+              "timeUnixNano": "1795055161769928000"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "image"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "incoming"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "0",
+                "1",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "1",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 88,
+              "min": 88,
+              "startTimeUnixNano": "1795055158694881000",
+              "sum": 88,
+              "timeUnixNano": "1795055161769928000"
+            }
+          ]
+        },
+        "name": "unic.sync.transfer.size",
+        "unit": "By"
+      },
+      "received_at": "2026-11-19T10:26:01.77075+08:00",
+      "resource": [
+        {
+          "key": "host.arch",
+          "value": {
+            "stringValue": "arm64"
+          }
+        },
+        {
+          "key": "os.type",
+          "value": {
+            "stringValue": "darwin"
+          }
+        },
+        {
+          "key": "service.name",
+          "value": {
+            "stringValue": "unicd"
+          }
+        },
+        {
+          "key": "service.version",
+          "value": {
+            "stringValue": "dev"
+          }
+        }
+      ]
+    }
+  },
+  "sender": {
+    "unic.sync.transfer.bytes": {
+      "metric": {
+        "name": "unic.sync.transfer.bytes",
+        "sum": {
+          "aggregationTemporality": "AGGREGATION_TEMPORALITY_CUMULATIVE",
+          "dataPoints": [
+            {
+              "asInt": "4362",
+              "attributes": [
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "outgoing"
+                  }
+                },
+                {
+                  "key": "result",
+                  "value": {
+                    "stringValue": "succeeded"
+                  }
+                }
+              ],
+              "startTimeUnixNano": "1795055158207557000",
+              "timeUnixNano": "1795055162618122000"
+            }
+          ],
+          "isMonotonic": true
+        },
+        "unit": "By"
+      },
+      "received_at": "2026-11-19T10:26:02.620246+08:00",
+      "resource": [
+        {
+          "key": "host.arch",
+          "value": {
+            "stringValue": "arm64"
+          }
+        },
+        {
+          "key": "os.type",
+          "value": {
+            "stringValue": "darwin"
+          }
+        },
+        {
+          "key": "service.name",
+          "value": {
+            "stringValue": "unicd"
+          }
+        },
+        {
+          "key": "service.version",
+          "value": {
+            "stringValue": "dev"
+          }
+        }
+      ]
+    },
+    "unic.sync.transfer.size": {
+      "metric": {
+        "histogram": {
+          "aggregationTemporality": "AGGREGATION_TEMPORALITY_CUMULATIVE",
+          "dataPoints": [
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "image"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "outgoing"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "0",
+                "2",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "2",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 88,
+              "min": 88,
+              "startTimeUnixNano": "1795055158207692000",
+              "sum": 176,
+              "timeUnixNano": "1795055162618321000"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "files"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "outgoing"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "2",
+                "0",
+                "2",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "4",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 2048,
+              "min": 0,
+              "startTimeUnixNano": "1795055158207692000",
+              "sum": 4096,
+              "timeUnixNano": "1795055162618321000"
+            },
+            {
+              "attributes": [
+                {
+                  "key": "content_kind",
+                  "value": {
+                    "stringValue": "text"
+                  }
+                },
+                {
+                  "key": "direction",
+                  "value": {
+                    "stringValue": "outgoing"
+                  }
+                }
+              ],
+              "bucketCounts": [
+                "0",
+                "2",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              "count": "2",
+              "explicitBounds": [
+                0,
+                1024,
+                65536,
+                1048576,
+                16777216,
+                67108864,
+                1073741824,
+                4294967296
+              ],
+              "max": 45,
+              "min": 45,
+              "startTimeUnixNano": "1795055158207692000",
+              "sum": 90,
+              "timeUnixNano": "1795055162618321000"
+            }
+          ]
+        },
+        "name": "unic.sync.transfer.size",
+        "unit": "By"
+      },
+      "received_at": "2026-11-19T10:26:02.620246+08:00",
+      "resource": [
+        {
+          "key": "host.arch",
+          "value": {
+            "stringValue": "arm64"
+          }
+        },
+        {
+          "key": "os.type",
+          "value": {
+            "stringValue": "darwin"
+          }
+        },
+        {
+          "key": "service.name",
+          "value": {
+            "stringValue": "unicd"
+          }
+        },
+        {
+          "key": "service.version",
+          "value": {
+            "stringValue": "dev"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "private_profile_cleanup_receipts": 64,
+  "standalone_driver_cleanup_passed": true,
+  "program_directories_removed": true,
+  "redundant_development_artifact_roots_removed": [
+    ".cache/observability-final",
+    ".cache/traces-development",
+    ".cache/tracecloud",
+    ".cache/observability-sync-followup",
+    ".cache/go-build",
+    ".cache/observability-acceptance/bin-race",
+    ".cache/observability-acceptance/bin-nonrace"
+  ],
+  "retained_raw_log_files": 0,
+  "raw_log_files_removed": 166,
+  "retained_private_artifacts": ".cache/observability-acceptance",
+  "verified_retained_artifact_files": 870,
+  "hosted_process_started": false,
+  "gui_vm_system_clipboard_used": false,
+  "scope": "This task only. No production service or other checkout was changed.",
+  "temporary_build_caches_removed": [
+    "unic-observability-go-cache",
+    "unic-traces-lint-cache"
+  ]
+}

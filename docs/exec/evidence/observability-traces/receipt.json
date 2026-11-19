@@ -1,0 +1,304 @@
+{
+  "status": "PASS_WITH_EXPLICIT_EXTERNAL_LIMITS",
+  "baseline_sha": "28e1c5a93fb908a394034ff84d9086ef638f0300",
+  "source_sha": "f06ba4a7238e62db35353435ce86f843da671622",
+  "runtime_implementation_sha": "edaa565986150b5d4003dbbb331b9bb926b9b000",
+  "branch": "feat/observability-traces",
+  "worktree_id": "3adcd614-3a07-4ac9-a893-6447cb95ae2b",
+  "os": "darwin",
+  "arch": "arm64",
+  "go": "go1.27.3",
+  "production_trace_binary_identity": {
+    "arch": "arm64",
+    "binaries_sha256": {
+      "unic": "f384c121d16ecfc7771a3c8c755de59f9bdcb5ee281a0e7bc46e560c86a412e0",
+      "unicd": "c7334ba0cde23ada823eb985b5e5e9cf9d05021472f6dbac241ef35ab3e4e065"
+    },
+    "daemon_build_settings": {
+      "-race": "true",
+      "GOARCH": "arm64",
+      "GOOS": "darwin",
+      "vcs.modified": "true",
+      "vcs.revision": "f06ba4a7238e62db35353435ce86f843da671622"
+    },
+    "daemon_race": true,
+    "go": "go1.27.3",
+    "log_interval_ms": 5000,
+    "metrics_interval_ms": 60000,
+    "os": "darwin",
+    "production_program": true,
+    "production_release_assembly": false,
+    "source_head": "f06ba4a7238e62db35353435ce86f843da671622",
+    "source_unchanged": true,
+    "test_daemon_build_tag": "",
+    "trace_batch_capacity": 128,
+    "trace_export_interval_ms": 5000,
+    "trace_queue_capacity": 256,
+    "trace_root_sample_ratio": "1",
+    "transport": "production service, private local TLS receiver, sync disabled"
+  },
+  "source_file_hashes_digest": "f4c65d1fa491bbc48dd45ecc684d22b1ded27af6b413dd35c2833f150d415794",
+  "independent_tls_driver": {
+    "all_exporters_expected": true,
+    "arch": "arm64",
+    "batch_period_seconds": 5,
+    "binaries_sha256": {
+      "unic": "8db10554460010562348f88daf0dc5d7d2dcf0954c6674a6b2239e379fd35eb3",
+      "unicd": "711dae9d215a4bfc482f8350afce31bc0d1ccba68bcba5e6eea8b8eee32c3d1d"
+    },
+    "build_flags": [
+      "-race",
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags [exact-bound ingestion credential redacted; traceSampleRatio=1]"
+    ],
+    "expected_children": 3,
+    "expected_roots": 3,
+    "finished_at": "2026-11-19T07:26:24.032463Z",
+    "go": "go1.27.3",
+    "ingestion_host": "https://127.0.0.1:53071",
+    "local_export_state": {
+      "configured_enabled": true,
+      "effective_enabled": true,
+      "restart_required": [],
+      "credential_configured": true,
+      "logs": {
+        "requested_enabled": false,
+        "state": "disabled",
+        "last_error_code": null,
+        "dropped_records": 0,
+        "export_failures": 0
+      },
+      "metrics": {
+        "requested_enabled": false,
+        "state": "disabled",
+        "last_error_code": null,
+        "dropped_records": 0,
+        "export_failures": 0
+      },
+      "analytics": {
+        "requested_enabled": false,
+        "state": "disabled",
+        "last_error_code": null,
+        "dropped_records": 0,
+        "export_failures": 0,
+        "pending_records": 0
+      },
+      "traces": {
+        "requested_enabled": true,
+        "state": "active",
+        "last_error_code": null,
+        "dropped_records": 0,
+        "export_failures": 0
+      }
+    },
+    "local_resource_assertion": true,
+    "local_tree_assertion": true,
+    "os": "darwin",
+    "otlp_bytes": 765,
+    "project_id": "local",
+    "read_back": "LOCAL_TLS_VERIFIED",
+    "receiver_errors": null,
+    "send_commands": 4,
+    "service_version": "traceacceptance.1795073163446746000",
+    "source_sha": "f06ba4a7238e62db35353435ce86f843da671622",
+    "source_unchanged": true,
+    "started_at": "2026-11-19T07:26:11.711511Z",
+    "test_build_tags": [],
+    "trace_requests": 1
+  },
+  "checks": {
+    "traces_functional": {
+      "status": "PASS",
+      "suites": [
+        {
+          "name": "TestTraces",
+          "seconds": 108.5
+        }
+      ],
+      "passed_subtests": 13,
+      "failed_subtests": 0
+    },
+    "regression": {
+      "status": "PASS",
+      "suites": [
+        {
+          "name": "TestObservability",
+          "seconds": 15.49
+        },
+        {
+          "name": "TestObservabilityPipeline",
+          "seconds": 1.75
+        },
+        {
+          "name": "TestObservabilityFaults",
+          "seconds": 24.05
+        },
+        {
+          "name": "TestPostHog",
+          "seconds": 7.34
+        },
+        {
+          "name": "TestPostHogTransport",
+          "seconds": 9.63
+        },
+        {
+          "name": "TestPostHogEnableFromDisabled",
+          "seconds": 1.09
+        },
+        {
+          "name": "TestSyncObservabilityRecoveryFollowup",
+          "seconds": 49.62
+        },
+        {
+          "name": "TestSyncObservabilityDailyFollowup",
+          "seconds": 16.24
+        },
+        {
+          "name": "TestSyncObservabilityHandshakeFollowup",
+          "seconds": 2.71
+        },
+        {
+          "name": "TestSyncObservabilityCrashFollowup",
+          "seconds": 13.14
+        },
+        {
+          "name": "TestSyncObservabilitySourceFollowup",
+          "seconds": 1.76
+        },
+        {
+          "name": "TestSyncObservabilityExternalFollowup",
+          "seconds": 2.53
+        },
+        {
+          "name": "TestSyncObservability",
+          "seconds": 27.76
+        },
+        {
+          "name": "TestSyncObservabilityFaults",
+          "seconds": 17.47
+        }
+      ],
+      "passed_subtests": 76,
+      "failed_subtests": 0
+    },
+    "traces_cost": {
+      "status": "PASS",
+      "seconds": 56.53,
+      "modes": 4,
+      "submissions_per_mode": 1000
+    },
+    "sync_cost": {
+      "status": "PASS",
+      "seconds": 78.06,
+      "modes": 4,
+      "batches_per_mode": 3,
+      "copies_per_batch": 12
+    },
+    "all_package_race": {
+      "status": "PASS",
+      "packages_with_tests": 31,
+      "native_e2e_enabled": false
+    },
+    "vet": {
+      "status": "PASS"
+    },
+    "changed_code_tagged_lint": {
+      "status": "PASS",
+      "version": "2.15.0",
+      "issues": 0
+    },
+    "full_affected_tagged_lint": {
+      "status": "BASELINE_FAIL",
+      "issues": [
+        {
+          "file": "app/service/cmd/unicd/daemon_e2e.go",
+          "line": 106,
+          "rule": "errcheck",
+          "existing_at_baseline": true
+        },
+        {
+          "file": "app/service/cmd/unicd/transport_e2e.go",
+          "line": 121,
+          "rule": "QF1008",
+          "existing_at_baseline": true
+        }
+      ]
+    },
+    "docscheck": {
+      "status": "PASS",
+      "staleness_warnings": 7
+    }
+  },
+  "commands": {
+    "traces_functional": "UNIC_E2E=1 UNIC_TRACE_RACE=1 UNIC_E2E_BIN=<race-bootstrap> UNIC_E2E_ARTIFACTS=<private>/traces-race go test -race ./e2e/cli -run '^TestTraces$' -count=1 -v",
+    "regression": "UNIC_E2E=1 UNIC_E2E_BIN=<race-fixture-bin> UNIC_E2E_ARTIFACTS=<private>/regression-race go test -race ./e2e/cli -run '^(TestObservability(|Pipeline|Faults)|TestPostHog(|Transport|EnableFromDisabled)|TestSyncObservability(|Faults|RecoveryFollowup|DailyFollowup|HandshakeFollowup|CrashFollowup|SourceFollowup|ExternalFollowup))$' -count=1 -v",
+    "trace_cost": "UNIC_E2E=1 UNIC_TRACE_RACE=0 UNIC_E2E_BIN=<nonrace-bootstrap> UNIC_E2E_ARTIFACTS=<private>/traces-cost go test -race ./e2e/cli -run '^TestTracesCostAndSampling$' -count=1 -v",
+    "sync_cost": "UNIC_E2E=1 UNIC_E2E_BIN=<nonrace-fixture-bin> UNIC_E2E_ARTIFACTS=<private>/sync-cost go test -race ./e2e/cli -run '^TestSyncObservabilityCostFollowup$' -count=1 -v",
+    "standalone_tls": "go run ./e2e/tracecloud --local --artifact <private>/local-driver",
+    "race": "go test -race ./...",
+    "vet": "go vet -tags unic_e2e ./internal/observability/... ./internal/localconfig/... ./app/service/... ./e2e/cli/... ./e2e/tracecloud/...",
+    "new_lint": "golangci-lint v2.15.0 run --build-tags unic_e2e --new-from-rev 28e1c5a93fb908a394034ff84d9086ef638f0300 <affected packages>",
+    "docs": "go run ./tools/docscheck",
+    "replay": [
+      "./replay.sh",
+      "./replay-sync.sh"
+    ]
+  },
+  "private_artifacts": ".cache/observability-acceptance",
+  "artifact_integrity": {
+    "original_files_verified": 1036,
+    "decoded_privacy_files_checked": 112,
+    "profiles_with_stable_identity_and_cleanup": 64,
+    "retained_files_verified_after_raw_log_removal": 870
+  },
+  "not_run": [
+    "hosted trace upload/read-back: no safe credential environment injection channel",
+    "internal syncdiag.Observer panic",
+    "damaged Tailcat credentials",
+    "real-stack stale and peer-relay",
+    "OS ENOSPC/unlink",
+    "external DNS infrastructure outage",
+    "whole-system sleep",
+    "native clipboard and other-platform native runs",
+    "business Tailcat network byte overhead"
+  ],
+  "blocked_upstream": [
+    "passive outgoing Tailcat Client status"
+  ],
+  "excluded": [
+    "cross-device/plugin trace propagation",
+    "automatic clipboard/Action/migration trace roots",
+    "automatic paste analysis",
+    "production deployment and release"
+  ],
+  "approval_rejection": {
+    "action": "Generated command text carrying the ingestion token into a subprocess environment",
+    "reason": "Token would enter command arguments and execution records",
+    "safe_alternative": "Controlled private environment injection",
+    "hosted_process_started": false,
+    "hosted_telemetry_sent": false
+  },
+  "development_failures": [
+    {
+      "kind": "EXPECTED_RED",
+      "case": "unknown telemetry.traces.enabled before implementation"
+    },
+    {
+      "kind": "EXPECTED_RED",
+      "case": "exporter failure lost spans without incrementing dropped_records; process assertion preceded correction"
+    },
+    {
+      "kind": "TEST_FAILURE_FIXED",
+      "source_sha": "edaa565986150b5d4003dbbb331b9bb926b9b000",
+      "case": "external fixture received before adapter ready; corrected with public clipboard-read round trip",
+      "first_combined_suite_status": "FAIL",
+      "corrected_combined_suite_status": "PASS"
+    },
+    {
+      "kind": "EVIDENCE_CORRECTION",
+      "case": "development program cleanup order and inherited transport/build labels corrected before final receipts"
+    }
+  ],
+  "cleanup_receipt": "cleanup.json"
+}

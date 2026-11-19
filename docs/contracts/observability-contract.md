@@ -1,8 +1,8 @@
-# Client observability contract: logs, metrics and product events
+# Client observability contract: logs, metrics, traces and product events
 
 - Status: Logs, metrics and PostHog product events are implemented in the workspace. Local process acceptance and hosted limitations are recorded in the [0019 receipt](../exec/0019-posthog-integration.md). Opt-in sampled submission traces are implemented; see the [trace receipt](../exec/observability-traces.md).
 - Date: 2026-11-10.
-- Scope: Local structured logs, independent log levels, configurable OTLP logs/metrics, PostHog product events, lifecycle and resource bounds.
+- Scope: Local structured logs, independent log levels, configurable OTLP logs/metrics/traces, PostHog product events, lifecycle and resource bounds.
 - 依据：[Engine 契约](engine-contract.md)、[流水线契约](pipeline-contract.md)、[历史契约](history-contract.md)、[同步后端契约](sync-backend-contract.md)。
 - 执行与证据：[0014 执行计划](../exec/0014-client-observability-otlp.md)。
 
@@ -330,6 +330,13 @@ TelemetryState 的固定结构：
     "dropped_records": 0,
     "export_failures": 0,
     "pending_records": 0
+  },
+  "traces": {
+    "requested_enabled": false,
+    "state": "disabled",
+    "last_error_code": null,
+    "dropped_records": 0,
+    "export_failures": 0
   }
 }
 ```

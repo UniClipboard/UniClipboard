@@ -219,18 +219,18 @@ seconds over eleven seconds relative to unchanged baseline. They were fixed befo
 resource execution, but after runtime implementation. This deviates from the original
 P0 timing requirement. Do not claim the complete P0/P5 resource gate.
 
-### Remaining acceptance gaps
+### Current acceptance boundaries (updated 2026-11-19)
 
 | Boundary | State |
 |---|---|
 | Maintained symmetric public Client status | BLOCKED_UPSTREAM: latest tag v0.7.0 and checked main lack Client.Status; no fork or private access used |
 | Peer-relay, stale/inactive/unmapped reducer inputs and startup/close races | Implementation handles these cases; dedicated real-stack fault acceptance NOT_RUN |
-| Invalid/damaged transport credentials, identity/protocol mismatch and observer panic | Finite handling implemented; dedicated process scenarios NOT_RUN |
-| Revocation/suspension during pending recovery and crash coverage | Bookkeeping implemented; dedicated injected process scenarios NOT_RUN |
-| Exact image/file/multipart/empty/multiple-target metric assertions | Runtime implemented; ordinary CLI content cases pass, dedicated metric assertions NOT_RUN |
-| External/action/migration source mapping and all daily failure permutations | Mapping implemented; remote/local operation paths accepted, complete matrix NOT_RUN |
-| Sampler scheduling wakeups and isolated collection cost | NOT_RUN; code inspection and worker/goroutine evidence do not replace these measurements |
-| Hosted upload/read-back, dashboards/alerts, release publication | NOT_RUN; no hosted write performed |
+| Identity/protocol errors and observer panic | Real handshake protocol/signature failures and public plugin Observer panic are covered by the [follow-up](observability-sync-followup.md). Damaged Tailcat credentials and internal syncdiag.Observer panic remain NOT_RUN. |
+| Revocation/suspension during pending recovery and crash coverage | The [follow-up](observability-sync-followup.md) covers abandoned/interrupted episodes, stopped pending samples, SIGKILL restart and fresh baselines through real private processes. |
+| Exact image/file/multipart/empty/multiple-target metrics | PASS in the existing [C receipt](observability-c-acceptance.md); not reopened by the trace work. |
+| External/action/migration source mapping and bounded daily failures | The [follow-up](observability-sync-followup.md) covers real source operations, duplicate admission, six private marker faults and same-day crash coalescing. OS-wide storage faults remain NOT_RUN. |
+| Sampler scheduling wakeups and isolated collection cost | PASS within the measured 0/1/8-session scope of the existing [C receipt](observability-c-acceptance.md). No release-wide overhead claim. |
+| Hosted logs/metrics read-back | PASS in the existing [C receipt](observability-c-acceptance.md). Hosted traces are separately recorded in the [trace target receipt](observability-traces-hosted.md). Dashboards/alerts and release publication remain NOT_RUN. |
 | Native clipboard and actual paste | Native NOT_RUN; paste excluded by scope |
 
 Do not mark all P0–P6 gates complete or archive the decision. The remaining upstream
@@ -296,3 +296,12 @@ See the [C acceptance receipt](observability-c-acceptance.md) for payload bucket
 and fan-out assertions, passive collection timings, process wakeups and hosted
 verification. The [Client status dependency record](0020-tailcat-client-status.md)
 tracks the upstream blocker and the criteria for resuming outgoing path work.
+
+## 8. Process fault, source and cost follow-up
+
+The [follow-up receipt](observability-sync-followup.md) records private real-process
+recovery, handshake, crash, source, daily-marker and observer-panic acceptance.
+It also records matched nonrace process resources and observed remote clipboard
+availability. Injected TCP/adapter evidence is explicitly separate from production
+Tailcat route coverage. The [trace receipt](observability-traces.md) owns the new
+service trace signal and its independent TLS/process evidence.

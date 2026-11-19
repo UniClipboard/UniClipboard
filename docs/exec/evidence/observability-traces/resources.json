@@ -1,0 +1,899 @@
+{
+  "trace_workload": {
+    "submissions_per_mode": 1000,
+    "daemon_race": false,
+    "runner_race": true,
+    "normal_trace_export_period_seconds": 5,
+    "measurements": [
+      {
+        "after": {
+          "cpu_seconds": 1.85,
+          "rss_kib": 48480,
+          "handles": 37
+        },
+        "before": {
+          "cpu_seconds": 0.04,
+          "rss_kib": 32928,
+          "handles": 22
+        },
+        "cpu_seconds": 1.81,
+        "elapsed_seconds": 7.317562041,
+        "exported_roots": 0,
+        "http_requests": 0,
+        "mode": "disabled",
+        "offered_roots": 1000,
+        "p50_us": 1467,
+        "p95_us": 2042,
+        "p99_us": 2382,
+        "request_body_bytes": 0,
+        "sync_latency": "NOT_RUN: independent trace workload uses sync disabled",
+        "wire_bytes_received": 0,
+        "wire_bytes_sent": 0
+      },
+      {
+        "after": {
+          "cpu_seconds": 2,
+          "rss_kib": 49760,
+          "handles": 38
+        },
+        "before": {
+          "cpu_seconds": 0.04,
+          "rss_kib": 32784,
+          "handles": 22
+        },
+        "cpu_seconds": 1.96,
+        "elapsed_seconds": 7.388575334,
+        "exported_roots": 8,
+        "http_requests": 1,
+        "mode": "production",
+        "offered_roots": 1000,
+        "p50_us": 1565,
+        "p95_us": 2193,
+        "p99_us": 2675,
+        "request_body_bytes": 1743,
+        "sync_latency": "NOT_RUN: independent trace workload uses sync disabled",
+        "wire_bytes_received": 3522,
+        "wire_bytes_sent": 2607
+      },
+      {
+        "after": {
+          "cpu_seconds": 1.82,
+          "rss_kib": 50528,
+          "handles": 38
+        },
+        "before": {
+          "cpu_seconds": 0.04,
+          "rss_kib": 33184,
+          "handles": 22
+        },
+        "cpu_seconds": 1.78,
+        "elapsed_seconds": 7.772242958,
+        "exported_roots": 1000,
+        "http_requests": 16,
+        "mode": "sampled",
+        "offered_roots": 1000,
+        "p50_us": 1441,
+        "p95_us": 2051,
+        "p99_us": 2394,
+        "request_body_bytes": 204032,
+        "sync_latency": "NOT_RUN: independent trace workload uses sync disabled",
+        "wire_bytes_received": 209214,
+        "wire_bytes_sent": 4632
+      },
+      {
+        "after": {
+          "cpu_seconds": 1.86,
+          "rss_kib": 49664,
+          "handles": 37
+        },
+        "before": {
+          "cpu_seconds": 0.04,
+          "rss_kib": 33360,
+          "handles": 22
+        },
+        "cpu_seconds": 1.82,
+        "elapsed_seconds": 7.3006465,
+        "exported_roots": 0,
+        "http_requests": 0,
+        "mode": "unsampled",
+        "offered_roots": 1000,
+        "p50_us": 1454,
+        "p95_us": 2329,
+        "p99_us": 3824,
+        "request_body_bytes": 0,
+        "sync_latency": "NOT_RUN: independent trace workload uses sync disabled",
+        "wire_bytes_received": 0,
+        "wire_bytes_sent": 0
+      }
+    ]
+  },
+  "sync_workload": {
+    "copies_per_batch": 12,
+    "batches_per_mode": 3,
+    "daemon_race": false,
+    "runner_race": true,
+    "measurements": [
+      {
+        "copies": 12,
+        "mode": "debug",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.22,
+          "goroutines": 36,
+          "heap_alloc": 4782808,
+          "heap_sys": 11337728,
+          "open_descriptors": 46,
+          "rss_kib": 45296
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.03,
+          "goroutines": 33,
+          "heap_alloc": 3941392,
+          "heap_sys": 11436032,
+          "open_descriptors": 43,
+          "rss_kib": 40448
+        },
+        "receiver_cpu_seconds": 0.19,
+        "receiver_export_delta": {
+          "body_bytes": 64492,
+          "requests": 23,
+          "tls_wire_received": 70813,
+          "tls_wire_sent": 3105
+        },
+        "repeat": 0,
+        "sender_after": {
+          "cpu_seconds": 0.13,
+          "goroutines": 36,
+          "heap_alloc": 5143120,
+          "heap_sys": 11206656,
+          "open_descriptors": 46,
+          "rss_kib": 44384
+        },
+        "sender_before": {
+          "cpu_seconds": 0.03,
+          "goroutines": 33,
+          "heap_alloc": 4040288,
+          "heap_sys": 11436032,
+          "open_descriptors": 43,
+          "rss_kib": 40144
+        },
+        "sender_cpu_seconds": 0.1,
+        "sender_export_delta": {
+          "body_bytes": 69354,
+          "requests": 23,
+          "tls_wire_received": 75675,
+          "tls_wire_sent": 3105
+        },
+        "submission_quantiles_us": {
+          "max": 32831,
+          "p50": 27895,
+          "p95": 32441
+        },
+        "synchronization_quantiles_us": {
+          "max": 450674,
+          "p50": 428331,
+          "p95": 447555
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5539015
+      },
+      {
+        "copies": 12,
+        "mode": "debug",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.4,
+          "goroutines": 33,
+          "heap_alloc": 4874208,
+          "heap_sys": 15564800,
+          "open_descriptors": 44,
+          "rss_kib": 46672
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.22,
+          "goroutines": 36,
+          "heap_alloc": 4786344,
+          "heap_sys": 11337728,
+          "open_descriptors": 46,
+          "rss_kib": 45296
+        },
+        "receiver_cpu_seconds": 0.18000000000000002,
+        "receiver_export_delta": {
+          "body_bytes": 65041,
+          "requests": 23,
+          "tls_wire_received": 71340,
+          "tls_wire_sent": 3105
+        },
+        "repeat": 1,
+        "sender_after": {
+          "cpu_seconds": 0.23,
+          "goroutines": 33,
+          "heap_alloc": 4836616,
+          "heap_sys": 11141120,
+          "open_descriptors": 46,
+          "rss_kib": 45232
+        },
+        "sender_before": {
+          "cpu_seconds": 0.13,
+          "goroutines": 36,
+          "heap_alloc": 5168320,
+          "heap_sys": 11239424,
+          "open_descriptors": 46,
+          "rss_kib": 44384
+        },
+        "sender_cpu_seconds": 0.1,
+        "sender_export_delta": {
+          "body_bytes": 69354,
+          "requests": 23,
+          "tls_wire_received": 75653,
+          "tls_wire_sent": 3105
+        },
+        "submission_quantiles_us": {
+          "max": 31640,
+          "p50": 26321,
+          "p95": 31463
+        },
+        "synchronization_quantiles_us": {
+          "max": 443902,
+          "p50": 423858,
+          "p95": 443841
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5514760
+      },
+      {
+        "copies": 12,
+        "mode": "debug",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.57,
+          "goroutines": 33,
+          "heap_alloc": 5466416,
+          "heap_sys": 15466496,
+          "open_descriptors": 44,
+          "rss_kib": 46960
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.4,
+          "goroutines": 33,
+          "heap_alloc": 4877672,
+          "heap_sys": 15564800,
+          "open_descriptors": 44,
+          "rss_kib": 46672
+        },
+        "receiver_cpu_seconds": 0.16999999999999993,
+        "receiver_export_delta": {
+          "body_bytes": 70716,
+          "requests": 24,
+          "tls_wire_received": 77304,
+          "tls_wire_sent": 3240
+        },
+        "repeat": 2,
+        "sender_after": {
+          "cpu_seconds": 0.32,
+          "goroutines": 33,
+          "heap_alloc": 6715296,
+          "heap_sys": 11108352,
+          "open_descriptors": 44,
+          "rss_kib": 46464
+        },
+        "sender_before": {
+          "cpu_seconds": 0.23,
+          "goroutines": 36,
+          "heap_alloc": 4932448,
+          "heap_sys": 11141120,
+          "open_descriptors": 46,
+          "rss_kib": 45232
+        },
+        "sender_cpu_seconds": 0.09,
+        "sender_export_delta": {
+          "body_bytes": 69354,
+          "requests": 23,
+          "tls_wire_received": 75653,
+          "tls_wire_sent": 3105
+        },
+        "submission_quantiles_us": {
+          "max": 32571,
+          "p50": 26166,
+          "p95": 32445
+        },
+        "synchronization_quantiles_us": {
+          "max": 446215,
+          "p50": 424579,
+          "p95": 443255
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5515352
+      },
+      {
+        "copies": 12,
+        "mode": "disabled",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.21,
+          "goroutines": 30,
+          "heap_alloc": 2806536,
+          "heap_sys": 11468800,
+          "open_descriptors": 44,
+          "rss_kib": 39840
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.03,
+          "goroutines": 27,
+          "heap_alloc": 2424416,
+          "heap_sys": 11436032,
+          "open_descriptors": 41,
+          "rss_kib": 37008
+        },
+        "receiver_cpu_seconds": 0.18,
+        "receiver_export_delta": {
+          "body_bytes": 0,
+          "requests": 0,
+          "tls_wire_received": 0,
+          "tls_wire_sent": 0
+        },
+        "repeat": 0,
+        "sender_after": {
+          "cpu_seconds": 0.13,
+          "goroutines": 30,
+          "heap_alloc": 3057488,
+          "heap_sys": 11403264,
+          "open_descriptors": 44,
+          "rss_kib": 39616
+        },
+        "sender_before": {
+          "cpu_seconds": 0.04,
+          "goroutines": 27,
+          "heap_alloc": 2372184,
+          "heap_sys": 11370496,
+          "open_descriptors": 41,
+          "rss_kib": 36928
+        },
+        "sender_cpu_seconds": 0.09,
+        "sender_export_delta": {
+          "body_bytes": 0,
+          "requests": 0,
+          "tls_wire_received": 0,
+          "tls_wire_sent": 0
+        },
+        "submission_quantiles_us": {
+          "max": 30741,
+          "p50": 25636,
+          "p95": 30366
+        },
+        "synchronization_quantiles_us": {
+          "max": 445422,
+          "p50": 426704,
+          "p95": 444186
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5501603
+      },
+      {
+        "copies": 12,
+        "mode": "disabled",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.37,
+          "goroutines": 27,
+          "heap_alloc": 2849320,
+          "heap_sys": 11436032,
+          "open_descriptors": 42,
+          "rss_kib": 40640
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.21,
+          "goroutines": 30,
+          "heap_alloc": 2811608,
+          "heap_sys": 11468800,
+          "open_descriptors": 44,
+          "rss_kib": 39840
+        },
+        "receiver_cpu_seconds": 0.16,
+        "receiver_export_delta": {
+          "body_bytes": 0,
+          "requests": 0,
+          "tls_wire_received": 0,
+          "tls_wire_sent": 0
+        },
+        "repeat": 1,
+        "sender_after": {
+          "cpu_seconds": 0.21,
+          "goroutines": 27,
+          "heap_alloc": 2605936,
+          "heap_sys": 11239424,
+          "open_descriptors": 42,
+          "rss_kib": 40432
+        },
+        "sender_before": {
+          "cpu_seconds": 0.13,
+          "goroutines": 30,
+          "heap_alloc": 3084432,
+          "heap_sys": 11403264,
+          "open_descriptors": 44,
+          "rss_kib": 39616
+        },
+        "sender_cpu_seconds": 0.07999999999999999,
+        "sender_export_delta": {
+          "body_bytes": 0,
+          "requests": 0,
+          "tls_wire_received": 0,
+          "tls_wire_sent": 0
+        },
+        "submission_quantiles_us": {
+          "max": 31573,
+          "p50": 26489,
+          "p95": 29586
+        },
+        "synchronization_quantiles_us": {
+          "max": 450173,
+          "p50": 342444,
+          "p95": 444094
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5119106
+      },
+      {
+        "copies": 12,
+        "mode": "disabled",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.53,
+          "goroutines": 27,
+          "heap_alloc": 2624192,
+          "heap_sys": 11436032,
+          "open_descriptors": 42,
+          "rss_kib": 40944
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.37,
+          "goroutines": 27,
+          "heap_alloc": 2853912,
+          "heap_sys": 11436032,
+          "open_descriptors": 42,
+          "rss_kib": 40640
+        },
+        "receiver_cpu_seconds": 0.16000000000000003,
+        "receiver_export_delta": {
+          "body_bytes": 0,
+          "requests": 0,
+          "tls_wire_received": 0,
+          "tls_wire_sent": 0
+        },
+        "repeat": 2,
+        "sender_after": {
+          "cpu_seconds": 0.29,
+          "goroutines": 30,
+          "heap_alloc": 3358480,
+          "heap_sys": 11108352,
+          "open_descriptors": 44,
+          "rss_kib": 41248
+        },
+        "sender_before": {
+          "cpu_seconds": 0.21,
+          "goroutines": 27,
+          "heap_alloc": 2610880,
+          "heap_sys": 11239424,
+          "open_descriptors": 42,
+          "rss_kib": 40432
+        },
+        "sender_cpu_seconds": 0.07999999999999999,
+        "sender_export_delta": {
+          "body_bytes": 0,
+          "requests": 0,
+          "tls_wire_received": 0,
+          "tls_wire_sent": 0
+        },
+        "submission_quantiles_us": {
+          "max": 31371,
+          "p50": 27286,
+          "p95": 30434
+        },
+        "synchronization_quantiles_us": {
+          "max": 447598,
+          "p50": 422744,
+          "p95": 446412
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5218569
+      },
+      {
+        "copies": 12,
+        "mode": "normal",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.2,
+          "goroutines": 34,
+          "heap_alloc": 4442496,
+          "heap_sys": 15630336,
+          "open_descriptors": 45,
+          "rss_kib": 44608
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.03,
+          "goroutines": 31,
+          "heap_alloc": 3823400,
+          "heap_sys": 15663104,
+          "open_descriptors": 42,
+          "rss_kib": 40480
+        },
+        "receiver_cpu_seconds": 0.17,
+        "receiver_export_delta": {
+          "body_bytes": 61876,
+          "requests": 11,
+          "tls_wire_received": 65077,
+          "tls_wire_sent": 1485
+        },
+        "repeat": 0,
+        "sender_after": {
+          "cpu_seconds": 0.13,
+          "goroutines": 34,
+          "heap_alloc": 6112512,
+          "heap_sys": 15400960,
+          "open_descriptors": 45,
+          "rss_kib": 44624
+        },
+        "sender_before": {
+          "cpu_seconds": 0.04,
+          "goroutines": 31,
+          "heap_alloc": 3855864,
+          "heap_sys": 11501568,
+          "open_descriptors": 42,
+          "rss_kib": 40672
+        },
+        "sender_cpu_seconds": 0.09,
+        "sender_export_delta": {
+          "body_bytes": 66726,
+          "requests": 11,
+          "tls_wire_received": 69927,
+          "tls_wire_sent": 1485
+        },
+        "submission_quantiles_us": {
+          "max": 33779,
+          "p50": 28253,
+          "p95": 32083
+        },
+        "synchronization_quantiles_us": {
+          "max": 449026,
+          "p50": 423984,
+          "p95": 445449
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5437615
+      },
+      {
+        "copies": 12,
+        "mode": "normal",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.37,
+          "goroutines": 31,
+          "heap_alloc": 4232064,
+          "heap_sys": 15630336,
+          "open_descriptors": 43,
+          "rss_kib": 45424
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.2,
+          "goroutines": 34,
+          "heap_alloc": 4447088,
+          "heap_sys": 15630336,
+          "open_descriptors": 45,
+          "rss_kib": 44608
+        },
+        "receiver_cpu_seconds": 0.16999999999999998,
+        "receiver_export_delta": {
+          "body_bytes": 62425,
+          "requests": 11,
+          "tls_wire_received": 65604,
+          "tls_wire_sent": 1485
+        },
+        "repeat": 1,
+        "sender_after": {
+          "cpu_seconds": 0.23,
+          "goroutines": 31,
+          "heap_alloc": 4491008,
+          "heap_sys": 15400960,
+          "open_descriptors": 43,
+          "rss_kib": 46736
+        },
+        "sender_before": {
+          "cpu_seconds": 0.13,
+          "goroutines": 34,
+          "heap_alloc": 6117104,
+          "heap_sys": 15400960,
+          "open_descriptors": 45,
+          "rss_kib": 44624
+        },
+        "sender_cpu_seconds": 0.1,
+        "sender_export_delta": {
+          "body_bytes": 66726,
+          "requests": 11,
+          "tls_wire_received": 69905,
+          "tls_wire_sent": 1485
+        },
+        "submission_quantiles_us": {
+          "max": 33807,
+          "p50": 27008,
+          "p95": 30307
+        },
+        "synchronization_quantiles_us": {
+          "max": 448275,
+          "p50": 422063,
+          "p95": 443978
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5203184
+      },
+      {
+        "copies": 12,
+        "mode": "normal",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.52,
+          "goroutines": 31,
+          "heap_alloc": 4285040,
+          "heap_sys": 15532032,
+          "open_descriptors": 43,
+          "rss_kib": 45680
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.37,
+          "goroutines": 31,
+          "heap_alloc": 4236656,
+          "heap_sys": 15630336,
+          "open_descriptors": 43,
+          "rss_kib": 45424
+        },
+        "receiver_cpu_seconds": 0.15000000000000002,
+        "receiver_export_delta": {
+          "body_bytes": 56750,
+          "requests": 10,
+          "tls_wire_received": 59640,
+          "tls_wire_sent": 1350
+        },
+        "repeat": 2,
+        "sender_after": {
+          "cpu_seconds": 0.31,
+          "goroutines": 34,
+          "heap_alloc": 5716224,
+          "heap_sys": 15302656,
+          "open_descriptors": 45,
+          "rss_kib": 47216
+        },
+        "sender_before": {
+          "cpu_seconds": 0.23,
+          "goroutines": 31,
+          "heap_alloc": 4517600,
+          "heap_sys": 15400960,
+          "open_descriptors": 43,
+          "rss_kib": 46736
+        },
+        "sender_cpu_seconds": 0.07999999999999999,
+        "sender_export_delta": {
+          "body_bytes": 60660,
+          "requests": 10,
+          "tls_wire_received": 63550,
+          "tls_wire_sent": 1350
+        },
+        "submission_quantiles_us": {
+          "max": 30785,
+          "p50": 24087,
+          "p95": 29049
+        },
+        "synchronization_quantiles_us": {
+          "max": 445106,
+          "p50": 423749,
+          "p95": 443182
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5229430
+      },
+      {
+        "copies": 12,
+        "mode": "queue-pressure",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.23,
+          "goroutines": 40,
+          "heap_alloc": 5115640,
+          "heap_sys": 15466496,
+          "open_descriptors": 46,
+          "rss_kib": 46624
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.08,
+          "goroutines": 35,
+          "heap_alloc": 3827576,
+          "heap_sys": 15794176,
+          "open_descriptors": 43,
+          "rss_kib": 45392
+        },
+        "receiver_cpu_seconds": 0.15000000000000002,
+        "receiver_export_delta": {
+          "body_bytes": 23391,
+          "requests": 3,
+          "tls_wire_received": 25902,
+          "tls_wire_sent": 2776
+        },
+        "repeat": 0,
+        "sender_after": {
+          "cpu_seconds": 0.2,
+          "goroutines": 40,
+          "heap_alloc": 5987440,
+          "heap_sys": 11272192,
+          "open_descriptors": 46,
+          "rss_kib": 46096
+        },
+        "sender_before": {
+          "cpu_seconds": 0.1,
+          "goroutines": 35,
+          "heap_alloc": 5252752,
+          "heap_sys": 11567104,
+          "open_descriptors": 43,
+          "rss_kib": 44224
+        },
+        "sender_cpu_seconds": 0.1,
+        "sender_export_delta": {
+          "body_bytes": 24718,
+          "requests": 3,
+          "tls_wire_received": 28878,
+          "tls_wire_sent": 5193
+        },
+        "submission_quantiles_us": {
+          "max": 32652,
+          "p50": 27671,
+          "p95": 32132
+        },
+        "synchronization_quantiles_us": {
+          "max": 451859,
+          "p50": 423293,
+          "p95": 443599
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5443003
+      },
+      {
+        "copies": 12,
+        "mode": "queue-pressure",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.43,
+          "goroutines": 37,
+          "heap_alloc": 4585544,
+          "heap_sys": 15400960,
+          "open_descriptors": 44,
+          "rss_kib": 47872
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.27,
+          "goroutines": 40,
+          "heap_alloc": 6200000,
+          "heap_sys": 15564800,
+          "open_descriptors": 46,
+          "rss_kib": 47568
+        },
+        "receiver_cpu_seconds": 0.15999999999999998,
+        "receiver_export_delta": {
+          "body_bytes": 36270,
+          "requests": 4,
+          "tls_wire_received": 43968,
+          "tls_wire_sent": 10331
+        },
+        "repeat": 1,
+        "sender_after": {
+          "cpu_seconds": 0.33,
+          "goroutines": 37,
+          "heap_alloc": 4766312,
+          "heap_sys": 15368192,
+          "open_descriptors": 44,
+          "rss_kib": 48096
+        },
+        "sender_before": {
+          "cpu_seconds": 0.23,
+          "goroutines": 40,
+          "heap_alloc": 6391488,
+          "heap_sys": 15499264,
+          "open_descriptors": 46,
+          "rss_kib": 47712
+        },
+        "sender_cpu_seconds": 0.1,
+        "sender_export_delta": {
+          "body_bytes": 36898,
+          "requests": 4,
+          "tls_wire_received": 44596,
+          "tls_wire_sent": 10276
+        },
+        "submission_quantiles_us": {
+          "max": 31528,
+          "p50": 23442,
+          "p95": 30820
+        },
+        "synchronization_quantiles_us": {
+          "max": 447304,
+          "p50": 423179,
+          "p95": 444771
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5202701
+      },
+      {
+        "copies": 12,
+        "mode": "queue-pressure",
+        "phase": "matched-sync-cost",
+        "receiver_after": {
+          "cpu_seconds": 0.66,
+          "goroutines": 37,
+          "heap_alloc": 4379320,
+          "heap_sys": 15466496,
+          "open_descriptors": 44,
+          "rss_kib": 48640
+        },
+        "receiver_before": {
+          "cpu_seconds": 0.48,
+          "goroutines": 37,
+          "heap_alloc": 5813352,
+          "heap_sys": 15466496,
+          "open_descriptors": 44,
+          "rss_kib": 48464
+        },
+        "receiver_cpu_seconds": 0.18000000000000005,
+        "receiver_export_delta": {
+          "body_bytes": 36270,
+          "requests": 4,
+          "tls_wire_received": 43968,
+          "tls_wire_sent": 10276
+        },
+        "repeat": 2,
+        "sender_after": {
+          "cpu_seconds": 0.46,
+          "goroutines": 37,
+          "heap_alloc": 6159592,
+          "heap_sys": 15237120,
+          "open_descriptors": 44,
+          "rss_kib": 48736
+        },
+        "sender_before": {
+          "cpu_seconds": 0.37,
+          "goroutines": 37,
+          "heap_alloc": 4701536,
+          "heap_sys": 15466496,
+          "open_descriptors": 44,
+          "rss_kib": 48544
+        },
+        "sender_cpu_seconds": 0.09000000000000002,
+        "sender_export_delta": {
+          "body_bytes": 36898,
+          "requests": 4,
+          "tls_wire_received": 44596,
+          "tls_wire_sent": 10276
+        },
+        "submission_quantiles_us": {
+          "max": 30800,
+          "p50": 26145,
+          "p95": 30572
+        },
+        "synchronization_quantiles_us": {
+          "max": 454647,
+          "p50": 423364,
+          "p95": 445700
+        },
+        "threshold_acceptance": "NOT_RUN; matched observations only",
+        "transport": "real session/wire over injected local TCP; not Tailcat",
+        "window_us": 5436403
+      }
+    ]
+  },
+  "limits": "Matched synthetic observations, not release overhead limits. TLS wire bytes exclude business TCP traffic."
+}

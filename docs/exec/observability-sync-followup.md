@@ -30,8 +30,12 @@ The scenarios are implemented in the
 initialized private profiles and real `unic` / `unicd` programs. The `unic_e2e`
 tag supplies a local TCP transport, directory-backed adapter, runtime-state
 control, and opt-in fixture plugins. The tag supplies no product telemetry
-records. The final frozen-source run is recorded with the
-[Traces acceptance](observability-traces.md).
+records. The final frozen-source run passed with the
+[Traces acceptance](observability-traces.md). Source commit:
+`f06ba4a7238e62db35353435ce86f843da671622`. The complete related regression
+passed 14 top-level suites and 76 subtests in 192.101 seconds. All 51 process
+artifact manifests have stable source hashes, nonempty binary identities and
+passing cleanup receipts.
 
 | Scenario | Process assertion |
 | --- | --- |
@@ -52,6 +56,10 @@ not frozen-source acceptance. The external extension first failed without its
 fixture routes, then exercised the actual external receive path. Earlier invalid
 test assumptions were corrected: content sync disable does not suspend sessions,
 and the public external Receiver rejects duplicate messages.
+A combined regression exposed an adapter-readiness race in the external fixture:
+startup deliberately ignores pre-existing receipts. The scenario now completes
+a public clipboard-read command round trip before injecting fresh external
+content. This proves the adapter ready barrier without timing sleeps.
 
 ## Resource method
 
@@ -69,6 +77,28 @@ local receiver. These bytes exclude business TCP traffic. The TCP fixture does
 not measure Tailcat, DERP, peer-relay, or public network cost. Prefer non-race
 daemons for release resource observations; a race-run's RSS includes race runtime
 cost. No release overhead threshold is established by this follow-up.
+
+## Final matched nonrace observations
+
+The final four-mode run passed twelve batches of twelve copies in 78.06 seconds.
+Every copy reached the directory adapter. The runner used race detection; both
+service programs were nonrace builds. The median of each mode's three per-batch
+p50/p95 values is shown below. Units are milliseconds.
+
+| Mode | Submission p50 | Submission p95 | Availability p50 | Availability p95 |
+|---|---:|---:|---:|---:|
+| disabled | 26.489 | 30.366 | 422.744 | 444.186 |
+| normal | 27.008 | 30.307 | 423.749 | 443.978 |
+| debug | 26.321 | 32.441 | 424.579 | 443.841 |
+| queue-pressure | 26.145 | 30.820 | 423.293 | 444.771 |
+
+Disabled batches made zero telemetry requests and transferred zero TLS bytes.
+The [resource receipt](evidence/observability-traces/resources.json) retains each
+batch's CPU/RSS/heap/goroutines/FD counts and request/body/TLS-byte deltas for both
+processes. These TLS bytes exclude business TCP traffic. Source identities and
+cleanup passed for all eight private process profiles. This acceptance does not
+supersede the historical race-daemon eight-session RSS failure or the C sampler
+measurements. It establishes no release overhead threshold.
 
 ## Replay and retained evidence
 

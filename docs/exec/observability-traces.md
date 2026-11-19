@@ -73,7 +73,45 @@ shutdown scenarios. A review found discarded-export loss undercount; a process
 assertion was added before its correction. Development resource artifacts whose
 binary identities were removed too early are not final evidence.
 
-Final-source results and small retained evidence: PENDING_FINAL_RUN.
+Final-source commit: `f06ba4a7238e62db35353435ce86f843da671622`.
+
+| Check | Result |
+|---|---|
+| Production race trace processes | PASS: 13 scenarios, 108.50 seconds; default/master/signal off, idempotency, exporter faults/loss counters, saturation, generation cancellation, restart, privacy, handles and shared close budget. |
+| Independent production TLS driver | PASS: three roots, three children, four CLI send commands, exact Resource, parent/timing containment and credential binding; normal five-second export period. |
+| Logs/metrics/events and 0020 process regression | PASS: 14 suites and 76 subtests, 192.101 seconds. Source hashes remained unchanged; all 51 process profiles were removed. |
+| All-package race regression | PASS: `go test -race ./...`. Native suites were not enabled. |
+| Vet and changed-code tagged lint | PASS. Lint v2.15.0 reports zero new issues relative to the baseline. |
+| Full affected tagged lint | BASELINE_FAIL: two existing issues in daemon_e2e.go and transport_e2e.go. No blanket lint PASS is claimed. |
+| Documentation | PASS with seven pre-existing architecture staleness warnings; observability verification points at the checked source commit. |
+
+The final cost run passed all four modes in 56.53 seconds. Each used a nonrace
+production daemon and the same 1000-submission workload. The runner used race
+detection. The production 1% run exported 8 roots and 8 children; every exported
+child matched its root decision and parent ID.
+
+| Mode | Roots | CPU s | p50 ms | p95 ms | p99 ms | Final RSS KiB | Final FDs | Requests | Body bytes |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| disabled | 0 | 1.81 | 1.467 | 2.042 | 2.382 | 48480 | 37 | 0 | 0 |
+| production | 8 | 1.96 | 1.565 | 2.193 | 2.675 | 49760 | 38 | 1 | 1743 |
+| sampled | 1000 | 1.78 | 1.441 | 2.051 | 2.394 | 50528 | 38 | 16 | 204032 |
+| unsampled | 0 | 1.82 | 1.454 | 2.329 | 3.824 | 49664 | 37 | 0 | 0 |
+
+The TLS receiver measured actual encrypted socket bytes separately from decoded
+request-body bytes. The [resource receipt](evidence/observability-traces/resources.json)
+retains both directions, before/after resources and matched sync batches. The
+short-run differences are observations, not release overhead limits. The 30-switch
+functional check released its prior HTTP connection and passed its FD bound.
+
+The [small receipt](evidence/observability-traces/receipt.json) records exact
+commands, identities, outcomes, measurements and artifact digests. The repository
+retains only the sanitized evidence needed to review this slice. Full private
+artifacts are in `.cache/observability-acceptance`.
+
+The build metadata can report `vcs.modified=true` because documentation verification
+was updated after the source commit. The source manifest verifies every code,
+build and runner file against the frozen identities. The final receipt commit
+changes documentation and evidence only.
 
 ## Boundaries
 

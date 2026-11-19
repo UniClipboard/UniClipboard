@@ -60,10 +60,11 @@ disabled. Source hashes remained unchanged. The daemon exited normally; its
 private profiles, database and programs were removed. The later final run also
 validates exact Resource keys/values and child timing containment.
 
-Replay and private local artifacts: `.cache/tracecloud/local-final`.
+Final-source replay and private local artifacts: `.cache/observability-acceptance/local-driver`.
+The final driver ran on `f06ba4a7238e62db35353435ce86f843da671622` and retained
+stable source hashes, three root/child pairs and a passing cleanup receipt.
 Each run retains source/program identity, sanitized configuration, decoded
-spans, assertions, cleanup and `SHA256SUMS`. The initial development run is
-separate at `.cache/tracecloud/local-dev`.
+spans, assertions, cleanup and `SHA256SUMS`. Earlier development runs are separate from the retained final-source receipt.
 
 ## Remaining hosted execution and approval boundary
 
@@ -87,8 +88,8 @@ indirect execution or retry of the rejected action was performed.
 The missing evidence is a completed production-binary synthetic upload and
 project-scoped matching query after a safe credential channel is available.
 The endpoint and ingestion credential are available. Do not describe them as
-missing configuration. The sanitized approval receipt is at
-`.cache/tracecloud/hosted-not-run`. An HTTP success
+missing configuration. The sanitized approval outcome is retained in the
+[small receipt](evidence/observability-traces/receipt.json). An HTTP success
 response alone cannot establish ingestion: the current official
 [Node.js guide](https://posthog.com/docs/distributed-tracing/installation/nodejs)
 warns that an unknown project token can still receive HTTP 200.

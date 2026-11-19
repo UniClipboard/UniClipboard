@@ -167,6 +167,14 @@ func plannedPayloadBound(c lab) int64 {
 	for _, p := range payloads(c.Suite) {
 		size := p.Size
 		switch p.Kind {
+		case "directory":
+			switch p.Size {
+			case 0:
+				size = 226
+			case 1024:
+				size = 1024 * 1024
+			}
+			size += 512 << 10 // bounded directory metadata, separate from file bytes
 		case "png":
 			size = 4*size*size + (1 << 20)
 		case "html":

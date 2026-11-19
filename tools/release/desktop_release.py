@@ -92,10 +92,8 @@ def load(manifest, production=True):
                 or acceptance.get("shared_configuration_api") is not True
             ):
                 raise ValueError("missing native identity acceptance")
-            if target.startswith(("darwin-", "windows-")) and not a.get("signed"):
+            if target.startswith("darwin-") and not a.get("signed"):
                 raise ValueError("missing production code signature")
-            if kind == "setup.exe" and not a.get("container_signed"):
-                raise ValueError("missing Windows installer signature")
             if target.startswith("darwin-") and not a.get("notarized"):
                 raise ValueError("missing Apple notarization")
             if a["updater"]:

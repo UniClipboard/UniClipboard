@@ -115,7 +115,7 @@ def page(m, cli, notes, channel, previous, generated):
         for a in m["artifacts"]
     ):
         warnings.append(
-            "Windows packages are not code-signed. Verify the attachment checksums before installation."
+            "Windows packages are unsigned (no production Authenticode signature). Verify the attachment checksums before installation."
         )
     contributors = ""
     if generated:

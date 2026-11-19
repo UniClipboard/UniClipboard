@@ -2,13 +2,17 @@ param(
   [Parameter(Mandatory=$true)][string]$Installer,
   [Parameter(Mandatory=$true)][string]$Newer,
   [Parameter(Mandatory=$true)][string]$Receipt,
-  [Parameter(Mandatory=$true)][string]$Target
+  [Parameter(Mandatory=$true)][string]$Target,
+  [string]$IsolatedVMRoot
 )
 $ErrorActionPreference = 'Stop'
-if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Use only an ephemeral GitHub-hosted Windows runner.' }
+if ($IsolatedVMRoot) {
+  if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18') { throw 'VM acceptance requires the isolated SYSTEM account, never a personal account.' }
+  if ($IsolatedVMRoot -notmatch '^C:\\ProgramData\\UniClipboard-Acceptance-[a-zA-Z0-9-]+$' -or (Test-Path $IsolatedVMRoot)) { throw 'VM acceptance requires a fresh task-owned root.' }
+} elseif ($env:GITHUB_ACTIONS -ne 'true') { throw 'Use only an ephemeral GitHub-hosted runner or an explicitly isolated VM root.' }
 $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard'
 if (Test-Path $key) { throw 'Refuse an existing UniClipboard installation.' }
-$work = Join-Path $env:RUNNER_TEMP ('unic-install-' + [guid]::NewGuid().ToString('N'))
+$work = if ($IsolatedVMRoot) { $IsolatedVMRoot } else { Join-Path $env:RUNNER_TEMP ('unic-install-' + [guid]::NewGuid().ToString('N')) }
 $install = Join-Path $work 'Installation with spaces'
 $profile = Join-Path $work 'profile'
 $oldHome = $env:UNIC_HOME
@@ -28,11 +32,20 @@ try {
   Install-Package $Installer
   $value = (& (Join-Path $install 'unic-desktop.exe') --version --json | ConvertFrom-Json)
   if ($value.version -ne '2.0.0' -or $value.build_number -ne '1') { throw 'Wrong installed Desktop identity.' }
+  $installedHashes = @{}
+  $signatureStates = @{}
+  foreach ($name in @('unic-desktop.exe', 'unic.exe', 'unicd.exe')) {
+    $installedHashes[$name] = (Get-FileHash (Join-Path $install $name) -Algorithm SHA256).Hash.ToLower()
+    $signatureStates[$name] = (Get-AuthenticodeSignature (Join-Path $install $name)).Status.ToString()
+  }
+  $installerSignature = (Get-AuthenticodeSignature $Installer).Status.ToString()
   $checks += 'installation'
   New-Item -ItemType Directory -Path (Join-Path $install 'data') | Out-Null
   Set-Content -Path (Join-Path $install 'data/preserve.txt') -Value 'synthetic-user-data'
   Install-Package $Installer
   $checks += 'reinstallation'
+  & (Join-Path $install 'unic.exe') migrate --initialize-empty --json | Set-Content (Join-Path $profile 'initialize.json')
+  if ($LASTEXITCODE -ne 0) { throw 'Explicit isolated CLI initialization failed.' }
   & (Join-Path $install 'unic.exe') status --json | Set-Content (Join-Path $profile 'status.json')
   if ($LASTEXITCODE -ne 0) { throw 'Bundled CLI/service lifecycle failed.' }
   $deadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -43,6 +56,15 @@ try {
   $value = (& (Join-Path $install 'unic-desktop.exe') --version --json | ConvertFrom-Json)
   if ($value.build_number -ne '2') { throw 'Upgrade did not select the later build.' }
   $checks += 'upgrade'
+  $process = Start-Process -FilePath $Installer -ArgumentList "/S /D=$install" -PassThru
+  if (-not $process.WaitForExit(15000)) {
+    $process.Kill()
+    throw 'Silent downgrade refusal did not terminate.'
+  }
+  if ($process.ExitCode -eq 0) { throw 'Downgrade was not rejected.' }
+  $value = (& (Join-Path $install 'unic-desktop.exe') --version --json | ConvertFrom-Json)
+  if ($value.build_number -ne '2') { throw 'Failed downgrade changed installed files.' }
+  $checks += 'downgrade_rejection_preserves_installation'
   if ((Get-Content (Join-Path $install 'update-owner') -Raw).Trim() -ne 'winget') { throw 'Update ownership was lost.' }
   if ($env:PATH -ne $oldPath -or [Environment]::GetEnvironmentVariable('Path', 'User') -ne $oldUserPath -or [Environment]::GetEnvironmentVariable('Path', 'Machine') -ne $oldMachinePath) { throw 'Desktop modified public CLI ownership.' }
   $checks += 'private_cli_ownership'
@@ -59,7 +81,9 @@ try {
   @{
     status='passed'; target=$Target; format='setup.exe'; scope='native NSIS lifecycle with an unsigned later-build fixture';
     artifacts_sha256=@((Get-FileHash $Installer -Algorithm SHA256).Hash.ToLower(), (Get-FileHash $Newer -Algorithm SHA256).Hash.ToLower());
-    assertions=$checks; gui='not_run'; v1_replacement='not_run'; update_owner='winget'
+    assertions=$checks; gui='not_run'; v1_replacement='not_run'; update_owner='winget';
+    isolated_vm=[bool]$IsolatedVMRoot; os_architecture=$env:PROCESSOR_ARCHITECTURE; process_account_sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;
+    installed_binaries_sha256=$installedHashes; authenticode=$signatureStates; installer_authenticode=$installerSignature
   } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 (Join-Path $Receipt 'report.json')
   $digest = (Get-FileHash (Join-Path $Receipt 'report.json') -Algorithm SHA256).Hash.ToLower()
   "$digest  report.json" | Set-Content -Encoding utf8 (Join-Path $Receipt 'SHA256SUMS')

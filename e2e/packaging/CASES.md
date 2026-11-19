@@ -49,3 +49,9 @@ Before implementation, require real Python release subprocesses and the actual G
 - Runtime artwork differs from the packaged artwork: share one embedded PNG between the window, Dock and About view.
 - Tray artwork loses template contrast: retain mygo template handling and the v1 macOS padding.
 - Native visual acceptance requires separate authorization; process acceptance must not start the GUI.
+
+## Unsigned Windows policy
+
+Run `python3 e2e/packaging/signing_policy.py`. Real production-mode assembly and page-preview subprocesses must accept unsigned Windows for both channels and retain false signature fields. Real temporary Ed25519 signatures must verify. Missing macOS signing/notarization, missing/corrupt updater signatures, changed bytes, mixed source and wrong CLI locks must fail. All files are synthetic fixtures; no production key or remote mutation is used.
+
+The canonical Windows lifecycle runner accepts `-IsolatedVMRoot C:\ProgramData\UniClipboard-Acceptance-<task>` only under SYSTEM in an explicitly authorized disposable VM scope. It refuses an existing root or installation. It initializes the task CLI profile explicitly, checks silent downgrade rejection and preserves the newer installation. Interactive personal accounts are rejected. This path establishes native process lifecycle, not interactive GUI or v1 replacement.

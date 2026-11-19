@@ -92,7 +92,9 @@ func dispatch(ctx context.Context, c *api.Client, l leaf, args, left []string) e
 		fmt.Println(groupUsage["dev"])
 		return nil
 	case l.Name == "plugin":
-		return runPlugin(args)
+		return runPlugin(ctx, args)
+	case strings.HasPrefix(l.Name, "plugin settings "):
+		return runPluginSettings(ctx, c, l.Name, left)
 	case strings.HasPrefix(l.Name, "history "):
 		return runHistory(ctx, c, args)
 	}

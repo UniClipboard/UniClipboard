@@ -62,7 +62,13 @@ Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes`
 
 Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after quitting and reopening Desktop, which restarts its owned service. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
 
-The three built-in plugins have no plugin-specific Schema fields. This interface does not implement external plugin installation, removal or arbitrary Schema forms. See the [execution receipt](../exec/desktop-builtin-plugin-settings.md) for failure cases and native Desktop evidence.
+The three built-in plugins have no plugin-specific Schema fields. See the [execution receipt](../exec/desktop-builtin-plugin-settings.md) for built-in management evidence.
+
+## External plugin settings
+
+Settings > Plugins lists external plugins discovered by the service. An external plugin detail page shows enablement, pending restart and any form defined by its manifest. The mygo renderer uses the same portable Schema as the service. Password fields show presence and allow replacement or clearing. Save checks the last revision. The service hot-replaces running Lua settings and reports a restart for Go settings. Install and uninstall are CLI operations.
+
+The history toolbar exposes the Actions menu for records accepted by the currently running plugins. Desktop requests a new Action result and applies it through the active clipboard adapter. A clipboard failure leaves the committed result in history. See the [settings contract](../contracts/plugin-settings-contract.md) and [Action contract](../contracts/clipboard-action-contract.md).
 
 ## Native application updates
 

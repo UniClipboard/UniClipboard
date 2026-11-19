@@ -14,13 +14,23 @@
 - [x] Go/Swift 共用 schema 与校验向量，并检查生成产物是否过期。
 - [x] 完成最终构建、竞态测试、原生表单截图检查并登记结果。
 
-## 后续集成（不属于本次独立交付）
+## Runtime integration
 
-- [ ] 与 P5 对齐插件实现 ID / 配置实例 ID。
-- [ ] 与 P7 对齐 schema 清单/安装/版本摘要与禁用实例读取；不执行插件发现配置。
-- [ ] 配置读取/保存 API、修订冲突、秘密字段操作、TOML 原子持久化及生效结果。
-- [ ] 真实实例与 Lua 热替换接入；不通过 GUI 自行修改运行期策略。
-- [ ] mygo + 自定义 UI Kit 表单渲染器与相同向量验收；界面原型待定。SwiftUI 客户端路线已取消，现有 `app/mac` 表单和已完成验证仅保留为实验样例。
+- [x] Bind static Schema to the manifest and Go handshake digest.
+- [x] Provide revision-checked settings, write-only presence, replacement and clearing.
+- [x] Persist settings privately. Reload Lua at a callback boundary and mark Go settings for restart.
+- [x] Render the portable form and password control in Desktop.
+- [ ] Verify native form interaction on each supported desktop platform.
+
+## Runtime acceptance
+
+Run from the repository root:
+
+```sh
+UNIC_E2E=1 UNIC_E2E_ARTIFACTS=/tmp/unic-plugin-e2e go test ./e2e/cli -run '^(TestGitHubPluginInstallation|TestCLI)$/^(plugin-schema-reload|plugin-tag-and-action)$' -count=1 -v
+```
+
+The GitHub fixture uses real CLI binaries with an HTTP service on loopback. It records the tested commits, platform and request count in `github-plugin-install.json`. The CLI scenarios record per-node history, capability and cache snapshots. They verify Lua settings, secret handling, stale revision rejection, restart persistence and Action application through the directory clipboard adapter. The live GitHub service and native Desktop interaction require separate acceptance.
 
 ## 验证
 
@@ -47,4 +57,4 @@ UNIC_SNAPSHOT=/tmp/unic-settings-dark.png UNIC_TARGET=plugin-settings UNIC_DARK=
 - 检查浅色/深色表单渲染截图：`/private/tmp/unic-settings-light.png`、`/private/tmp/unic-settings-dark.png`。模型测试与截图检查通过；应用未获得 UI 自动化授权，未完成真实点击的保存/取消交互实测。
 - `git diff --check` 与新增文档相对链接检查通过。
 
-宿主：macOS 15.6.1，Xcode 26.3（17C529），macOS SDK 26.2。截图只证明当前宿主的控件布局，不代替 macOS 26/27 外观或辅助功能实测。当前独立交付已完成，上述后续集成项保持未完成。
+宿主：macOS 15.6.1，Xcode 26.3（17C529），macOS SDK 26.2。截图只证明当前宿主的控件布局，不代替 macOS 26/27 外观或辅助功能实测。The runtime acceptance record above supersedes the integration status of this initial experiment.

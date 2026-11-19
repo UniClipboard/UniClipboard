@@ -66,6 +66,9 @@ type Options struct {
 	Plugins []PluginInstance
 	// LuaPlugins run after Plugins, in this order, under the Lua sandbox.
 	LuaPlugins []LuaPluginSpec
+	// PluginOrder places named plugins in explicit processing order. Unlisted
+	// plugins retain their relative order ahead of the explicit list.
+	PluginOrder []string
 	// PluginNotify shows a plugin's short message to the user. It must not
 	// block. Nil: messages are dropped.
 	PluginNotify func(plugin PluginID, message string)

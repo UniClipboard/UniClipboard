@@ -1,10 +1,6 @@
 # 插件设置 Schema 契约 v1
 
-- 状态：独立工具与固定 schema 的 macOS 表单已实现；Engine/daemon 配置接口、清单与 RPC 发布、安装器读取、Lua 热替换均未接入。
-- 依据：[0010](../decisions/proposed/0010-plugin-settings-schema.md)、[插件契约](plugin-contract.md)、[SDK 配置所有权](sdk-extension-contract.md#4-插件装配与配置所有权)。
-- 实现：`plugin/settings`；保留的实验 shell 模型 `app/mac/Sources/SettingsSchema`，控件 `SchemaSettingsForm.swift`。SwiftUI 客户端路线已取消；桌面表单后续由 mygo + 自定义 UI Kit 承载，界面原型待定，现有实验表单不表示桌面运行时集成已完成。
-
-Built-in host policy controls are available in Desktop Settings > Plugins. They use the existing revision-checked configuration API and do not constitute plugin-specific Schema integration. See [Desktop configuration](../architecture/desktop-runtime.md#built-in-plugin-management).
+The service implements manifest discovery, Schema validation, revision-checked settings, write-only fields, and Lua replacement. Desktop renders the portable profile with mygo and the UI Kit. The built-in management pages expose host policy. See the [desktop architecture](../architecture/desktop-runtime.md#external-plugin-settings).
 
 ## 1. 格式与支持范围
 
@@ -113,18 +109,20 @@ err = definition.Validate(normalizedJSON)
 
 示例 `plugins/examples/settingsdemo` 同时提供 struct、开发期生成命令、静态 schema 和可编译的处理插件。`Init` 按嵌入的静态 schema 规范化后解码配置，再检查业务条件（例如标签 UTF-8 字节限制）。模式、备注、凭据与重试字段用于演示控件，不执行外部操作；处理器只按开关/长度条件添加前缀及额外标签，正文不变。
 
-## 4. 配置所有权与后续接入
+## 4. Runtime configuration
 
-schema 绑定插件实现及版本，配置绑定实例。同一实现的多个实例共用 schema，互不共享值。Go/builtin/Lua 使用同样的数据格式。schema 的发布、摘要与插件版本一致性须随清单/安装器一起落实；本次不新增清单或 RPC 字段。
+A plugin declares a relative `settings_schema` file in `spec.toml`. GitHub bundles must declare `settings_sha256` over the original file bytes. For a Go process, the same digest is part of the RPC handshake. A plugin author publishes static Schema and may validate business constraints in `Init`. The host never executes a Go plugin to discover the Schema.
 
-最终配置路径是：shell 编辑 → 宿主配置接口 → schema 校验 → 插件业务校验 → 持久化/生效。必须对齐修订冲突、坏配置保留、需重启和 Lua 候选替换失败保留旧实例等既有契约。GUI 通过 schema 校验不表示业务校验、持久化或运行期生效成功。
+`GET /v1/plugins` reports installed and running versions. `GET /v1/plugins/{id}/settings` returns `revision`, `schema`, `values`, `secrets`, and `restart_required`. Disabled installed plugins can be edited. `PUT /v1/plugins/{id}/settings` requires the last revision and a full public `values` object. Conflicts return HTTP 409. The CLI accepts this object through `unic plugin settings save ID FILE` or standard input using `-`. The CLI accepts an explicit revision or obtains the current revision immediately before saving.
 
-writeOnly 是字段分类和 UI 约定，不自动加密或脱敏。当前预览无已有凭据，密码仅存内存，日志、截图数据、UserDefaults 均不输出密码。真实接口须单独约定 `is_set` 状态、保留/替换/清空操作，禁止把掩码当作真实值发回。
+Public fields use their Schema types. A missing public field takes its Schema default when declared. Secrets are absent from `values`. The `secrets` object reports presence as a boolean for each declared JSON Pointer. Omit a secret on write to retain it. Send a string to replace it. Send null to clear an optional secret. Empty strings are actual values and must pass field validation. The host preserves a retained secret inside an omitted optional group.
 
-Engine 启用、顺序、事件、全局同步授权和标准后端策略不属于此 schema。运行时生效方式以宿主返回的结果为准，插件不能用 UI 提示自行声明热更新。
+The service atomically saves each configuration under `$UNIC_HOME/plugins/settings/` in a private local file. The random revision is independent of the secret value. Schema changes carry forward compatible fields. Former secrets cannot become readable through a new Schema. Legacy TOML plugin configuration remains available for Schema-less Lua plugins. Use the settings API for secrets.
+
+For a running Lua instance, the service validates the candidate and completes its Init and Start at a callback boundary. It persists the settings, switches the instance and closes the old Lua state. Failed preparation or persistence preserves the old state and settings. Go settings are validated by Schema before saving and by the plugin at the next service start. Enabling a plugin and changing its manifest or installed commit require a service restart.
 
 ## 5. 验收与边界
 
 Go 和 Swift 读取同一份 Go 生成 schema 与 `validation-cases.json`：校验默认值、false/0、类型、枚举、边界、嵌套未知键、列表、Unicode 长度与秘密错误。另测重复键、深度/大小、生成器不支持的类型、schema 不支持关键字和数值精度。
 
-macOS 设置的 Plugins 页提供“Preview plugin settings…”。保存只作用于该预览会话；Cancel 丢弃草稿，Restore defaults 重新填默认值并移除可选凭据。该预览不向 daemon、TOML 或真实插件实例写入。其他 GUI shell 的渲染器和真实配置接口仍待实现。
+macOS 设置的 Plugins 页提供“Preview plugin settings…”。保存只作用于该预览会话；Cancel 丢弃草稿，Restore defaults 重新填默认值并移除可选凭据。该预览不向 daemon、TOML 或真实插件实例写入。The production Desktop form and the historical experiment are separate entry points.

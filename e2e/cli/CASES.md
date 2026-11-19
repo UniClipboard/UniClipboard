@@ -34,6 +34,7 @@
 | [history-restore-sync](#history-restore-sync) | History restore sync policy |
 | [host-received-files](#host-received-files) | Host-owned custom receive files |
 | [pair-and-sync-text](#pair-and-sync-text) | 两台设备配对批准后，文本双向同步 |
+| [plugin-schema-reload](#plugin-schema-reload) | 插件设置与 Lua 热替换 |
 | [plugin-sensitive-blocks-sync](#plugin-sensitive-blocks-sync) | 敏感内容插件：打标签、禁止同步、设置过期 |
 | [plugin-tag-and-action](#plugin-tag-and-action) | 邮箱标签插件与 Action 改写 |
 | [restart-keeps-state](#restart-keeps-state) | 重启后身份、配对、历史与标签保持不变 |
@@ -1855,6 +1856,80 @@ until beta 'alpha\s+\d+B' h list
 board-set beta text from-beta.txt
 board-wait alpha text from-beta.txt
 until alpha 'beta\s+\d+B' h list
+```
+
+</details>
+
+## plugin-schema-reload
+
+**插件设置与 Lua 热替换**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/plugin-schema-reload' -v`
+
+**目的**
+
+验证本机服务写入插件设置、秘密字段的只写语义、失败保留及重启持久化。
+
+
+**流程**
+
+保存配置和凭据，尝试过期修订和 Lua 拒绝的配置，重启后清除凭据。
+
+
+**期望**
+
+Lua 立即使用新标签。重启后设置保留。清除后凭据状态为 false。
+
+
+**不应**
+
+显示凭据明文，或在 Lua 拒绝配置时替换已保存的设置。
+
+
+<details><summary>脚本 testdata/plugin-schema-reload.txtar</summary>
+
+```
+node-start alpha
+u alpha plugin settings show example.schema
+stdout '"/credential":false'
+u alpha plugin settings save example.schema $WORK/valid.json
+stdout '"/credential":true'
+! stdout 'fixture-secret'
+u alpha plugin settings show example.schema
+stdout '"/credential":true'
+! stdout 'fixture-secret'
+! u alpha plugin settings save example.schema $WORK/stale.json
+stderr 'settings changed'
+! u alpha plugin settings save example.schema $WORK/invalid.json
+u alpha plugin settings show example.schema
+stdout '"tag":"saved"'
+board-set alpha text first.txt
+until alpha 'saved' h list -n 1
+node-stop alpha
+node-start alpha
+u alpha plugin settings show example.schema
+stdout '"/credential":true'
+! stdout 'fixture-secret'
+board-set alpha text second.txt
+until alpha 'second setting fixture' h show @1
+until alpha 'saved' h list -n 1
+cp broken.lua alpha/plugins/lua/schema/main.lua
+sleep 400ms
+board-set alpha text third.txt
+until alpha 'third setting fixture' h show @1
+until alpha 'saved' h list -n 1
+cp next.lua alpha/plugins/lua/schema/main.lua
+sleep 400ms
+board-set alpha text fourth.txt
+until alpha 'fourth setting fixture' h show @1
+until alpha 'reloaded' h list -n 1
+u alpha plugin settings save example.schema $WORK/clear.json
+stdout '"/credential":false'
+u alpha plugin disable example.schema
+grep 'enabled = false' alpha/config.toml
+grep 'on_error = "block_sync"' alpha/config.toml
+u alpha plugin enable example.schema
+! grep 'enabled = false' alpha/config.toml
 ```
 
 </details>

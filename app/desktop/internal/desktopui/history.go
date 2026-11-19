@@ -196,6 +196,22 @@ func (d *viewState) historyCommands(c *ui.Context, k uikit.Kit) {
 	if fit(k.Button(c.Key("pin"), "", uikit.ButtonProps{Icon: uikit.IconPin, Label: d.tr("切换置顶"), Variant: uikit.Subtle, Disabled: v == nil || d.live != nil})).Clicked() {
 		d.togglePin()
 	}
+	if d.live != nil && v != nil && !d.live.busy {
+		kind := d.live.items[v.id].Kind
+		var actions []uikit.MenuEntry
+		for _, action := range d.live.actions {
+			if slices.Contains(action.Accepts, kind) {
+				actions = append(actions, uikit.MenuEntry{ID: action.Key, Label: d.tr(action.Title)})
+			}
+		}
+		if len(actions) > 0 {
+			button, key := k.Menu(c.Key("history-actions"), uikit.MenuProps{Label: d.tr("动作"), Icon: uikit.IconEdit, IconOnly: true, Variant: uikit.Subtle, Items: actions})
+			fit(button)
+			if key != "" {
+				d.runHistoryAction(v.id, key)
+			}
+		}
+	}
 	b, command = k.Menu(c.Key("more"), uikit.MenuProps{Label: d.tr("更多操作"), Icon: uikit.IconMore, IconOnly: true, Variant: uikit.Subtle, Items: []uikit.MenuEntry{{ID: "tags", Label: d.tr("管理标签"), Icon: uikit.IconTag}, {ID: "delete", Label: d.tr("删除"), Icon: uikit.IconDelete, Destructive: true, Disabled: v == nil}, uikit.MenuSeparator("sep"), {ID: "quick-panel", Label: d.tr("查看快捷面板")}}})
 	fit(b)
 	switch command {

@@ -8,7 +8,8 @@ type TextFieldProps struct {
 	Label       string  // accessible name
 	Value       *string // edited in place
 	Placeholder string
-	MaxLength   int  // 0 = unlimited (counted in UTF-16 units like HTML maxlength)
+	MaxLength   int // 0 = unlimited (counted in UTF-16 units like HTML maxlength)
+	Password    bool
 	AutoFocus   bool // focus the field when it appears
 	Disabled    bool
 	// Error is shown under the field (e.g. "#design already exists.") and marks it invalid.
@@ -28,6 +29,9 @@ func (k Kit) TextField(c *ui.Context, p TextFieldProps) FieldResult {
 	col.Children(func() {
 		in = ui.TextInputBase(c, p.Value).Label(p.Label).Disabled(p.Disabled)
 		in.FontSize(pal.size).Height(pal.h).PaddingX(pal.padX).Placeholder(p.Placeholder).PlaceholderColor(pal.hint)
+		if p.Password {
+			in.Password()
+		}
 		if p.MaxLength > 0 {
 			in.MaxLength(p.MaxLength)
 		}

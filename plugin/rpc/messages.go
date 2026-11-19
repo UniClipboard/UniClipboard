@@ -61,11 +61,12 @@ type ActionSpec struct {
 
 // Spec is the wire form of a plugin description.
 type Spec struct {
-	ID            string   `json:"id"`
-	Version       string   `json:"version"`
-	APIVersion    int      `json:"api_version"`
-	Capabilities  []string `json:"capabilities"`
-	TransportKind string   `json:"transport_kind,omitempty"`
+	ID             string   `json:"id"`
+	Version        string   `json:"version"`
+	APIVersion     int      `json:"api_version"`
+	SettingsSHA256 string   `json:"settings_sha256,omitempty"`
+	Capabilities   []string `json:"capabilities"`
+	TransportKind  string   `json:"transport_kind,omitempty"`
 	// ExternalChannels and RemoteRevocation describe an external-channel sync
 	// backend (decision 0009).
 	ExternalChannels bool         `json:"external_channels,omitempty"`
@@ -75,7 +76,7 @@ type Spec struct {
 
 // Equal compares ID, version, API, capabilities (as a set) and actions.
 func (s Spec) Equal(o Spec) bool {
-	if s.ID != o.ID || s.Version != o.Version || s.APIVersion != o.APIVersion || s.TransportKind != o.TransportKind || s.ExternalChannels != o.ExternalChannels || s.RemoteRevocation != o.RemoteRevocation {
+	if s.ID != o.ID || s.Version != o.Version || s.APIVersion != o.APIVersion || s.SettingsSHA256 != o.SettingsSHA256 || s.TransportKind != o.TransportKind || s.ExternalChannels != o.ExternalChannels || s.RemoteRevocation != o.RemoteRevocation {
 		return false
 	}
 	norm := func(c []string) []string { return slices.Sorted(slices.Values(c)) }

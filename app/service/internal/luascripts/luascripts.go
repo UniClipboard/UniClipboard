@@ -6,8 +6,12 @@
 package luascripts
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +20,7 @@ import (
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/settings"
 )
 
 // ManifestFile is the manifest name inside a plugin directory.
@@ -25,21 +30,48 @@ const maxSource = 1 << 20
 
 // Manifest is spec.toml of a Lua plugin.
 type Manifest struct {
-	ManifestVersion int      `toml:"manifest_version"`
-	ID              string   `toml:"id"`
-	Version         string   `toml:"version"`
-	APIVersion      int      `toml:"api_version"`
-	Kind            string   `toml:"kind"`
-	Entry           string   `toml:"entry"`
-	Capabilities    []string `toml:"capabilities"`
-	Events          []string `toml:"events"`
+	ManifestVersion  int                 `toml:"manifest_version"`
+	ID               string              `toml:"id"`
+	Version          string              `toml:"version"`
+	APIVersion       int                 `toml:"api_version"`
+	Kind             string              `toml:"kind"`
+	Entry            string              `toml:"entry"`
+	Capabilities     []string            `toml:"capabilities"`
+	Events           []string            `toml:"events"`
+	SettingsSchema   string              `toml:"settings_schema"`
+	SettingsSHA256   string              `toml:"settings_sha256"`
+	Module           string              `toml:"module"`
+	Package          string              `toml:"package"`
+	TransportKind    string              `toml:"transport_kind"`
+	ExternalChannels bool                `toml:"external_channels"`
+	RemoteRevocation bool                `toml:"remote_revocation"`
+	Actions          []plugin.ActionSpec `toml:"actions"`
+	Artifacts        []Artifact          `toml:"artifacts"`
+	Defaults         map[string]any      `toml:"config"`
+}
+
+type Artifact struct {
+	GOOS             string   `toml:"goos"`
+	GOARCH           string   `toml:"goarch"`
+	Release          string   `toml:"release"`
+	Asset            string   `toml:"asset"`
+	Executable       string   `toml:"executable"`
+	SHA256           string   `toml:"sha256"`
+	MinimumOS        string   `toml:"minimum_os"`
+	RuntimeLibraries []string `toml:"runtime_libraries"`
 }
 
 // Script is one installed plugin: manifest plus entry source.
 type Script struct {
-	Dir      string
-	Manifest Manifest
-	Source   string
+	Dir             string
+	Manifest        Manifest
+	Source          string
+	Schema          *settings.Definition
+	InitialSettings []byte
+	Commit          string
+	BinarySHA256    string
+	SourceKind      string
+	Repository      string
 }
 
 // Same reports whether two versions of a script may replace each other
@@ -50,48 +82,101 @@ func (s Script) Same(o Script) bool {
 	a, b := s.Manifest, o.Manifest
 	return a.ID == b.ID && a.Version == b.Version && a.APIVersion == b.APIVersion &&
 		slices.Equal(sorted(a.Capabilities), sorted(b.Capabilities)) &&
-		slices.Equal(a.Events, b.Events)
+		slices.Equal(a.Events, b.Events) && s.Commit == o.Commit && schemaDigest(s.Schema) == schemaDigest(o.Schema)
 }
 
 func sorted(s []string) []string { return slices.Sorted(slices.Values(s)) }
 
 // Read loads one plugin directory.
-func Read(dir string) (Script, error) {
+func Read(dir string) (Script, error) { return ReadManifest(dir, false) }
+
+func ReadManifest(dir string, installed bool) (Script, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return Script{}, err
+	}
+	defer root.Close()
+	data, err := readFile(root, ManifestFile, maxSource)
+	if err != nil {
+		return Script{}, errors.New("plugin manifest unavailable")
+	}
 	var m Manifest
-	md, err := toml.DecodeFile(filepath.Join(dir, ManifestFile), &m)
-	if err != nil {
-		return Script{}, fmt.Errorf("%s: manifest: %w", filepath.Base(dir), err)
+	md, err := toml.Decode(string(data), &m)
+	if err != nil || len(md.Undecoded()) > 0 || (!installed && m.Defaults != nil) {
+		return Script{}, errors.New("invalid plugin manifest")
 	}
-	if un := md.Undecoded(); len(un) > 0 {
-		return Script{}, fmt.Errorf("%s: manifest has unknown keys", filepath.Base(dir))
+	if err := m.validate(installed); err != nil {
+		return Script{}, err
 	}
-	switch {
-	case m.ManifestVersion != 1:
-		return Script{}, fmt.Errorf("%s: manifest_version must be 1", filepath.Base(dir))
-	case m.Kind != "lua":
-		return Script{}, fmt.Errorf("%s: kind must be \"lua\"", filepath.Base(dir))
-	case m.ID == "" || m.Version == "" || m.APIVersion == 0 || len(m.Capabilities) == 0:
-		return Script{}, fmt.Errorf("%s: manifest needs id, version, api_version and capabilities", filepath.Base(dir))
-	case m.Entry == "" || !filepath.IsLocal(m.Entry):
-		return Script{}, fmt.Errorf("%s: entry must be a path inside the plugin directory", filepath.Base(dir))
+	s := Script{Dir: dir, Manifest: m}
+	if m.Kind == "lua" {
+		src, err := readFile(root, m.Entry, maxSource)
+		if err != nil {
+			return Script{}, errors.New("plugin entry unavailable")
+		}
+		s.Source = string(src)
 	}
-	path := filepath.Join(dir, m.Entry)
-	// The entry must be a regular file itself, not a link out of the directory.
-	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() || fi.Size() > maxSource {
-		return Script{}, fmt.Errorf("%s: entry is not a regular file of at most 1MiB", filepath.Base(dir))
+	if m.SettingsSchema != "" {
+		raw, err := readFile(root, m.SettingsSchema, settings.MaxSchemaBytes)
+		if err != nil {
+			return Script{}, errors.New("plugin schema unavailable")
+		}
+		if m.SettingsSHA256 != "" && digest(raw) != m.SettingsSHA256 || installed && m.SettingsSHA256 == "" {
+			return Script{}, errors.New("plugin schema digest mismatch")
+		}
+		s.Schema, err = settings.Parse(raw)
+		if err != nil {
+			return Script{}, err
+		}
+		defaults := []byte("{}")
+		if m.Defaults != nil {
+			defaults, err = json.Marshal(m.Defaults)
+			if err != nil {
+				return Script{}, errors.New("invalid plugin defaults")
+			}
+		}
+		s.InitialSettings, err = s.Schema.NormalizeDefaults(defaults)
+		if err != nil {
+			return Script{}, err
+		}
 	}
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return Script{}, fmt.Errorf("%s: entry: %w", filepath.Base(dir), err)
-	}
-	return Script{Dir: dir, Manifest: m, Source: string(src)}, nil
+	return s, nil
 }
 
-// Scan reads every plugin directory under root, keyed by plugin ID. A
+func readFile(root *os.Root, name string, limit int) ([]byte, error) {
+	info, err := root.Lstat(name)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
+		return nil, errors.New("expected a bounded regular file")
+	}
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
+	if err != nil || len(data) > limit {
+		return nil, errors.New("file read limit exceeded")
+	}
+	return data, nil
+}
+
+func digest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func schemaDigest(d *settings.Definition) string {
+	if d == nil {
+		return ""
+	}
+	return digest(d.JSON())
+}
+
+// scanLocal reads every plugin directory under root, keyed by plugin ID. A
 // directory that cannot be read is reported in errs and does not hide the
 // others; two directories with one ID are both rejected. A missing root is
 // an empty result.
-func Scan(root string) (found map[string]Script, errs map[string]error) {
+func scanLocal(root string) (found map[string]Script, errs map[string]error) {
 	found, errs = map[string]Script{}, map[string]error{}
 	ents, err := os.ReadDir(root)
 	if err != nil {
@@ -122,8 +207,36 @@ func Scan(root string) (found map[string]Script, errs map[string]error) {
 	return
 }
 
-// Specs returns engine specs for the enabled IDs, in that order, plus the
-// scripts they came from. Any enabled plugin that is missing or unreadable is
+// Scan combines local Lua scripts and GitHub installations by ID.
+func Scan(root string) (map[string]Script, map[string]error) {
+	found, bad := scanLocal(root)
+	if root == "" {
+		return found, bad
+	}
+	dir := installedDir(root)
+	lock, err := readLock(dir)
+	if err != nil {
+		bad[dir] = err
+		return found, bad
+	}
+	for id, pin := range lock {
+		if _, exists := found[id]; exists {
+			delete(found, id)
+			bad[id] = errors.New("plugin ID exists in both local and GitHub installations")
+			continue
+		}
+		s, err := readInstalled(dir, id, pin)
+		if err != nil {
+			bad[id] = err
+			continue
+		}
+		found[id] = s
+	}
+	return found, bad
+}
+
+// Specs returns enabled Lua specs in processing order and all enabled
+// manifests for service assembly. Any enabled plugin that is missing or unreadable is
 // an error: the daemon must not start with less than the user asked for.
 func Specs(root string, enabled []string, settings func(id string) (onError string, cfg map[string]any)) ([]engine.LuaPluginSpec, map[string]Script, error) {
 	if len(enabled) == 0 {
@@ -136,16 +249,22 @@ func Specs(root string, enabled []string, settings func(id string) (onError stri
 		s, ok := found[id]
 		if !ok {
 			for _, err := range errs { // a broken directory may be the one asked for
-				return nil, nil, fmt.Errorf("plugins.lua: %q is not usable: %w", id, err)
+				return nil, nil, fmt.Errorf("plugin %q is not usable: %w", id, err)
 			}
-			return nil, nil, fmt.Errorf("plugins.lua: %q is not installed in %s", id, root)
+			return nil, nil, fmt.Errorf("plugin %q is not installed", id)
 		}
+		loaded[id] = s
 		m := s.Manifest
 		onError, c := settings(id)
-		cfg := plugin.Config(c)
+		if m.Kind != "lua" {
+			continue
+		}
+		cfg, err := s.RuntimeConfig(root, c)
+		if err != nil {
+			return nil, nil, err
+		}
 		specs = append(specs, engine.LuaPluginSpec{ID: m.ID, Version: m.Version, APIVersion: m.APIVersion,
 			Capabilities: m.Capabilities, Source: s.Source, Config: cfg, Events: m.Events, OnError: onError})
-		loaded[id] = s
 	}
 	return specs, loaded, nil
 }

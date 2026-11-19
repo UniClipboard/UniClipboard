@@ -1,0 +1,94 @@
+# 用例: 插件设置与 Lua 热替换
+# 目的: 验证本机服务写入插件设置、秘密字段的只写语义、失败保留及重启持久化。
+# 流程: 保存配置和凭据，尝试过期修订和 Lua 拒绝的配置，重启后清除凭据。
+# 期望: Lua 立即使用新标签。重启后设置保留。清除后凭据状态为 false。
+# 不应: 显示凭据明文，或在 Lua 拒绝配置时替换已保存的设置。
+node-start alpha
+u alpha plugin settings show example.schema
+stdout '"/credential":false'
+u alpha plugin settings save example.schema $WORK/valid.json
+stdout '"/credential":true'
+! stdout 'fixture-secret'
+u alpha plugin settings show example.schema
+stdout '"/credential":true'
+! stdout 'fixture-secret'
+! u alpha plugin settings save example.schema $WORK/stale.json
+stderr 'settings changed'
+! u alpha plugin settings save example.schema $WORK/invalid.json
+u alpha plugin settings show example.schema
+stdout '"tag":"saved"'
+board-set alpha text first.txt
+until alpha 'saved' h list -n 1
+node-stop alpha
+node-start alpha
+u alpha plugin settings show example.schema
+stdout '"/credential":true'
+! stdout 'fixture-secret'
+board-set alpha text second.txt
+until alpha 'second setting fixture' h show @1
+until alpha 'saved' h list -n 1
+cp broken.lua alpha/plugins/lua/schema/main.lua
+sleep 400ms
+board-set alpha text third.txt
+until alpha 'third setting fixture' h show @1
+until alpha 'saved' h list -n 1
+cp next.lua alpha/plugins/lua/schema/main.lua
+sleep 400ms
+board-set alpha text fourth.txt
+until alpha 'fourth setting fixture' h show @1
+until alpha 'reloaded' h list -n 1
+u alpha plugin settings save example.schema $WORK/clear.json
+stdout '"/credential":false'
+u alpha plugin disable example.schema
+grep 'enabled = false' alpha/config.toml
+grep 'on_error = "block_sync"' alpha/config.toml
+u alpha plugin enable example.schema
+! grep 'enabled = false' alpha/config.toml
+-- alpha/config.toml --
+device_name = "alpha"
+[plugins]
+lua = ["example.schema"]
+[plugins.instances."example.schema"]
+on_error = "block_sync"
+-- alpha/plugins/lua/schema/spec.toml --
+manifest_version = 1
+id = "example.schema"
+version = "1.0.0"
+api_version = 1
+kind = "lua"
+entry = "main.lua"
+capabilities = ["processor"]
+settings_schema = "settings.schema.json"
+-- alpha/plugins/lua/schema/settings.schema.json --
+{"$schema":"https://json-schema.org/draft/2020-12/schema","x-unic-settings-version":1,"type":"object","additionalProperties":false,"properties":{"tag":{"type":"string","default":"initial"},"credential":{"type":"string","writeOnly":true}}}
+-- alpha/plugins/lua/schema/main.lua --
+local tag
+return { id = "example.schema", version = "1.0.0", api_version = 1, capabilities = {"processor"},
+  init = function(host, config)
+    if config.tag == "rejected" then error("invalid setting") end
+    tag = config.tag
+  end,
+  process = function(ctx) ctx:add_tag(tag) end
+}
+-- valid.json --
+{"values":{"tag":"saved","credential":"fixture-secret"}}
+-- invalid.json --
+{"values":{"tag":"rejected"}}
+-- clear.json --
+{"values":{"tag":"saved","credential":null}}
+-- stale.json --
+{"revision":"old","values":{"tag":"stale"}}
+-- first.txt --
+first setting fixture
+-- second.txt --
+second setting fixture
+-- third.txt --
+third setting fixture
+-- fourth.txt --
+fourth setting fixture
+-- broken.lua --
+return {
+-- next.lua --
+return { id = "example.schema", version = "1.0.0", api_version = 1, capabilities = {"processor"},
+  process = function(ctx) ctx:add_tag("reloaded") end
+}

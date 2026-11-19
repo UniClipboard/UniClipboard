@@ -175,6 +175,10 @@ func TestTraces(t *testing.T) {
 
 func buildTraceDaemon(t *testing.T, h *observabilityRun, ratio string) string {
 	t.Helper()
+	h.traceSamplingRatio = ratio
+	if ratio == "" {
+		h.traceSamplingRatio = "0.01"
+	}
 	root, err := repoRoot()
 	if err != nil {
 		t.Fatal(err)

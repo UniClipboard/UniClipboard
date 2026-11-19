@@ -245,19 +245,20 @@ type otlpRequest struct {
 	Authorized bool
 }
 type observabilityRun struct {
-	traceSince       time.Time
-	requestHeaders   map[string]string
-	wireReceived     atomic.Int64
-	wireSent         atomic.Int64
-	cliExecutable    string
-	syncMetricStart  time.Time
-	responseDelay    time.Duration
-	responseLocation string
-	untrusted        bool
-	sourceHashes     map[string]string
-	scenarioResults  map[string]string
-	assertions       []map[string]any
-	resourceSamples  []map[string]any
+	traceSamplingRatio string
+	traceSince         time.Time
+	requestHeaders     map[string]string
+	wireReceived       atomic.Int64
+	wireSent           atomic.Int64
+	cliExecutable      string
+	syncMetricStart    time.Time
+	responseDelay      time.Duration
+	responseLocation   string
+	untrusted          bool
+	sourceHashes       map[string]string
+	scenarioResults    map[string]string
+	assertions         []map[string]any
+	resourceSamples    []map[string]any
 
 	artifactName          string
 	production            bool
@@ -577,13 +578,16 @@ func (h *observabilityRun) artifacts() {
 		manifest["log_interval_ms"] = 5000
 	}
 	manifest["source_head"] = strings.TrimSpace(string(head))
+	manifest["transport"] = "local TCP through existing host transport seam"
 	if strings.HasPrefix(h.artifactName, "traces") {
+		manifest["production_program"] = true
+		manifest["production_release_assembly"] = false
+		manifest["trace_root_sample_ratio"] = h.traceSamplingRatio
 		manifest["trace_export_interval_ms"] = 5000
 		manifest["trace_queue_capacity"] = 256
 		manifest["trace_batch_capacity"] = 128
 		manifest["transport"] = "production service, private local TLS receiver, sync disabled"
 	}
-	manifest["transport"] = "local TCP through existing host transport seam"
 	binaryHashes := map[string]string{}
 	for _, name := range []string{"unic", "unicd"} {
 		v, _ := os.ReadFile(filepath.Join(d, name+".sha256"))
@@ -685,7 +689,7 @@ TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" UNIC_E2E_ARTIFACTS="$dest" go
 		if strings.HasPrefix(h.artifactName, "sync-") {
 			h.syncArtifacts(d, decoded)
 		}
-		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": "unic_e2e", "test_selector": selector, "exit_code": exit}, "", "  ")
+		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": manifest["test_daemon_build_tag"], "test_selector": selector, "exit_code": exit}, "", "  ")
 		_ = os.WriteFile(filepath.Join(d, "commands.json"), b, 0600)
 		entries, _ := os.ReadDir(d)
 		var sums strings.Builder

@@ -596,6 +596,9 @@ func TestSyncObservabilityExternalFollowup(t *testing.T) {
 	h.artifactName, h.posthog = "sync-external-followup", true
 	syncFollowupStart(t, h, fmt.Sprintf("[telemetry]\nendpoint=%q\n", h.server.URL))
 	h.run(t, "external-receive-and-source", func(t *testing.T) {
+		// Ready intentionally ignores pre-existing receipts. Complete a real adapter
+		// read round trip before receiving fresh content. Capabilities precede ready.
+		h.eventually(t, func() bool { code, _ := h.request(t, "GET", "/v1/clipboard", ""); return code == 200 })
 		if code, _ := h.request(t, "POST", "/test/followup/external", ""); code != 200 {
 			t.Fatal("external fixture receive failed")
 		}

@@ -11,6 +11,7 @@ system clipboard to reproduce a hosted Ubuntu package-download failure.
 | Dependency downloads consume the entire job | Package bootstrap must finish inside a five-minute step budget. The job retains its thirty-minute limit. |
 | A regional archive stalls a package connection | Use the official Ubuntu HTTPS archive for EC2 archive entries and finite APT connection/data timeouts with bounded retries. Preserve signature verification. |
 | Mirror rewriting targets the wrong distribution file | Operate on the Ubuntu 24.04 deb822 source file used by the pinned hosted image; retain all suites, components and signing configuration. A missing file fails setup. |
+| Runner mirror-list indirection bypasses the chosen archive | When `/etc/apt/apt-mirrors.txt` exists, replace its candidates with the official HTTPS archive before updating package indices. Verify the hosted download log uses that destination. |
 | A test failure is hidden by infrastructure changes | Run all three original shards with their existing cases, assertions, recordings and artifact upload. Require all three checks to pass on the pushed PR head. |
 | Increasing timeout hides missing execution budget | Keep the job at thirty minutes and preserve the catalogue partition and race instrumentation. |
 | An old passing run is mistaken for the repair | Bind the new workflow run and every job result to the exact pushed source SHA. |
@@ -37,6 +38,12 @@ manual cancellation. The repair is validated by another full hosted run; local
 syntax checks cannot establish Ubuntu download or native-window acceptance.
 
 ## Repair
+
+The first repair run, [44492010370](https://github.com/UniClipboard/UniClipboard/actions/runs/44492010370),
+exposed runner mirror-list indirection. Direct deb822 URI rewriting did not affect
+`file:/etc/apt/apt-mirrors.txt`. Two installation steps reached the new five-minute
+limit while still downloading from regional EC2 mirrors. The corrected workflow
+also configures that existing mirror list; it does not extend either timeout.
 
 The PR Desktop jobs rewrite only regional EC2 Ubuntu archive URIs to
 `https://archive.ubuntu.com/ubuntu` in the pinned Ubuntu 24.04 deb822 source file.

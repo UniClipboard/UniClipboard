@@ -95,6 +95,9 @@ jobs:
           sudo sed -i -E \
             's@https?://([a-z0-9-]+\.)?ec2\.archive\.ubuntu\.com/ubuntu@https://archive.ubuntu.com/ubuntu@g' \
             /etc/apt/sources.list.d/ubuntu.sources
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
+          fi
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1
       - name: Execute the canonical Desktop suite

@@ -21,7 +21,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: 546e6317c7fb0709c5a5c241f40dd07a68d89b9b
+verified: c675e137a036afc334faa87e73418383c1260481
 ---
 # Headless service and desktop integration
 
@@ -72,6 +72,8 @@ The CLI is organized by user intent. `unic send` (`s`) and `unic recv` (`r`) mov
 `send` without `--to` and `recv CODE|LINK` run a temporary transfer with a peer that has no unic device identity, such as the page at `try.uniclipboard.app`. It speaks the page's pull protocol (`internal/webtransfer`: frames, offer, SHA-256 verification, 20 MiB and 50 items per transfer). The sender listens on a fresh random-key tailcat endpoint (`internal/tcnet/ephemeral.go`) that accepts every virtual port and serves one receiver. When rendezvous accepts the ticket, a 6-digit code aliases it for at most five minutes with ticket kind `uc-web-try`; otherwise the sender prints only a link. Bare tailcat addresses cannot initiate a pull. `recv` accepts links or ticket fragments (`#c=…&k=…`); `recv` refuses a `unic-pair` code and `device add` refuses a transfer code.
 
 The receiver admits the offer through `Engine.AdmitTransfer` before reading data, writes files into a private inbox directory and completes into the ordinary received pipeline. History origin is `external` with plugin ID `unic.transfer`. The transfer never creates a device or trust. The sender keeps its prepared transfer payload in memory. Delivery means that the receiver verified payload hashes and sent a protocol ACK. The ACK precedes receiver file placement and pipeline completion; it does not prove history persistence or system clipboard application. Addresses, tokens, codes and links are never logged.
+
+The plugin manager installs public GitHub Go and Lua plugins from a pinned commit. It prefers a verified release asset and permits a source build only with `--build`. Use `unic plugin list` for installed and active versions, and `unic plugin settings` for revision-checked configuration through the local service. See the [installation contract](../contracts/plugin-contract.md#8-从-github-仓库安装).
 
 ## On-demand service for CLI commands
 

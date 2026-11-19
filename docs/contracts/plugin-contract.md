@@ -2,7 +2,7 @@
 
 > 统一设备身份修订：设备身份、信任与各实例关联授权以[设备契约](device-contract.md)为准；实现标识和配置实例标识须分离，同实现可配置多个实例。后端发现/连接不授信，SyncState 仅含该实例已授权关联和必要候选。下文 P2P 接口草案须补齐身份证明/关联 DTO 后才能作为实现依据。
 
-- 状态：Go（builtin 与外部进程）和 Lua 的注册、生命周期、顺序、严格配置、`builtin.tailcat` 后端边界及桌面 `config.toml` 映射已实现并有测试；本地 Lua 插件目录可发现、`unic plugin list/enable/disable` 已实现。§8 的 GitHub 安装（install/uninstall、预编译与 `--build`、`installed.lock`）和 Go 外部插件的本地目录约定尚未实现。
+- The runtime supports built-in, GitHub Go process, and local or GitHub Lua plugins. See [installation](#8-从-github-仓库安装) and the [settings contract](plugin-settings-contract.md).
 - 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)。
 - 范围：Go / Lua 统一模型、builtin 进程内装配与外部独立进程 RPC、默认同步插件及 GitHub 安装。历史、流水线与插件调度在 `engine/`。
 
@@ -73,7 +73,7 @@ Stop 先取消新工作与在途请求，再 Close；默认 5 秒退出窗口，
 
 插件专属 Config 的静态描述与 GUI 生成见[插件设置 Schema 契约](plugin-settings-contract.md)和[0010](../decisions/proposed/0010-plugin-settings-schema.md)。独立 `plugin/settings` 工具与 macOS 固定 schema 预览已实现；Spec/清单/RPC 发布、实例配置保存和安装器读取尚未接入，不将 GUI 预览视为运行期配置能力。
 
-SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enabled、Events、Config。标准同步策略只存于 Settings.BackendPolicies（Text/Images/Files/AutoFileMaxBytes），不在实例设置重复保存；规范见[0007](../decisions/proposed/0007-multiple-sync-backends.md)，具体 Go 类型、LuaPlugins 装配、严格配置和错误映射见[SDK 扩展类型契约](sdk-extension-contract.md)。宿主映射 TOML。归属原则：用户的选择（启用、顺序、`on_error`、插件设置值）只存于 `config.toml`；插件目录里的清单（`spec.toml`）只放插件自己的静态声明（ID、版本、能力、事件、入口），不含 `on_error` 与 `config`，含有即被拒绝，这样安装、升级、卸载都不会改动用户设置。`[plugins] on_error` 为全局默认，实例的 `on_error` 优先；Lua 插件是否运行由 `plugins.lua` 决定，其实例表只接受 `on_error` 与 `config`；这些项的改动需重启（`restart_required` 报告 `plugins.settings`）。
+SDK 的 PluginSettings 包含 Order、Instances、OnError；每实例包括 Enabled、Events、Config。标准同步策略只存于 Settings.BackendPolicies（Text/Images/Files/AutoFileMaxBytes），不在实例设置重复保存；规范见[0007](../decisions/proposed/0007-multiple-sync-backends.md)，具体 Go 类型、LuaPlugins 装配、严格配置和错误映射见[SDK 扩展类型契约](sdk-extension-contract.md)。宿主映射 TOML。The host stores enablement and order in TOML. `plugins.order` enables listed external IDs and orders the IDs it names. Existing `plugins.lua` entries still enable local Lua plugins. Unlisted built-ins keep their assembly order. Per-instance `on_error` overrides the global policy. Schema-managed values use the [settings API](plugin-settings-contract.md#4-runtime-configuration).
 
 ```toml
 [plugins]
@@ -96,7 +96,7 @@ files = true
 auto_file_max_bytes = "100MB"
 ```
 
-所有启用实例在 Order 中恰好一次；不按文件名或注册时机排序。顺序作用于同阶段与生命周期，不能把同步提前到处理/commit 之前。未知事件、能力或 API 不兼容均拒绝；核心先验证 Config 的 JSON 结构/限额，插件 Init 严格递归拒绝未知专属配置键（invalid_config），启动失败或热替换保留旧版本，不能在安装时执行程序做校验。配置不能让普通插件取得同步能力。
+Each explicit list accepts an ID once. The host assembles the processing order from the configured lists.顺序作用于同阶段与生命周期，不能把同步提前到处理/commit 之前。未知事件、能力或 API 不兼容均拒绝；核心先验证 Config 的 JSON 结构/限额，插件 Init 严格递归拒绝未知专属配置键（invalid_config），启动失败或热替换保留旧版本，不能在安装时执行程序做校验。配置不能让普通插件取得同步能力。
 
 发行版默认内置并启用 builtin.tailcat，允许 0..MaxSyncBackends 个后端实例并存（builtin 为独立对象，external 为独立进程），0 为本机历史模式。全局 sync.enabled=false 立即取消所有后端内容发送/接收/远端自动应用及重试，控制连接与配对可保留；本机历史/Action 不受影响。各后端独立类型开关和自动文件阈值由 Engine 统一执行，手动提交仅可越过自动阈值。
 
@@ -270,7 +270,7 @@ Go 与 Lua 的正则方言不同，示例只展示接口对应关系；Go 版 Ac
 
 ## 8. 从 GitHub 仓库安装
 
-目标 CLI（尚未实现）：
+Plugin commands:
 
 ```sh
 unic plugin install https://github.com/owner/repo
@@ -281,6 +281,7 @@ unic plugin list
 unic plugin enable example.emailtag
 unic plugin disable example.emailtag
 unic plugin uninstall example.emailtag
+unic plugin rollback example.emailtag
 ```
 
 ### 清单与产物
@@ -325,7 +326,7 @@ sha256 = "<发布时替换为 64 位十六进制摘要>"
 tag = "email"
 ```
 
-artifacts 可为空，同一 GOOS/GOARCH 最多一项，可声明最低系统版本与运行库要求；未满足不算匹配。Release/asset 指向同仓库发布资产，不猜文件名；摘要固定内容。清单是所选 commit 中的数据，不能用 Release 名称代替 commit 锁定。清单与启动握手 Spec 必须一致。
+An artifact specifies a gzip tar archive. Each GOOS/GOARCH may appear once. A declared minimum macOS version is checked on macOS. Other minimum OS and library requirements are treated as unverified and the artifact is skipped.Release/asset 指向同仓库发布资产，不猜文件名；摘要固定内容。清单是所选 commit 中的数据，不能用 Release 名称代替 commit 锁定。清单与启动握手 Spec 必须一致。
 
 ### 安装选择与 --build
 
@@ -342,9 +343,9 @@ artifacts 可为空，同一 GOOS/GOARCH 最多一项，可声明最低系统版
 
 ### 启用、升级与卸载
 
-首次安装默认不启用；--enable 等价显式 enable，采用清单配置默认值并追加到阶段顺序末尾，不覆盖用户已有配置。启用列表变更按第 3 节在重启时生效。安装器不覆盖正在运行的版本，重启切换失败可回退旧版本；Go 无需构建宿主。
+首次安装默认不启用；--enable 等价显式 enable，采用清单配置默认值并追加到阶段顺序末尾，不覆盖用户已有配置。启用列表变更按第 3 节在重启时生效。The installed version and its previous version remain immutable. Use `unic plugin rollback ID` to select the previous commit, then restart the service.
 
-list 显示 installed/ready、source、configured_enabled、running_version、restart_required，区分磁盘与实际运行状态。disable/uninstall 先标记待停用，重启时取消并回收进程，之后删除无引用文件，不碰历史。内置 builtin.tailcat 随宿主编译和升级，不经外部安装器安装/卸载，不允许第三方覆盖保留 ID；可禁用，其关联记录保留，全部后端禁用后进入本机模式。
+list 显示 installed/ready、source、configured_enabled、running_version、restart_required，区分磁盘与实际运行状态。Disable and uninstall take effect after restart. The service closes the process, and startup prunes version directories that the current lock and running service no longer reference. Uninstall preserves history and settings.内置 builtin.tailcat 随宿主编译和升级，不经外部安装器安装/卸载，不允许第三方覆盖保留 ID；可禁用，其关联记录保留，全部后端禁用后进入本机模式。
 
 桌面管理器负责 GitHub、文件、锁与配置；Engine 只接收已校验程序描述/脚本。锁文件不含配对或剪贴板秘密。交付必须包含资产探测、--build 兜底、原子安装/回滚、进程启动与回收，不能以下载成功代替运行成功。
 

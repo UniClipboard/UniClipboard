@@ -9,11 +9,12 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/uniclipboard/unic/internal/clip"
-	"github.com/uniclipboard/unic/internal/testboard"
 	collectmetrics "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/testboard"
 )
 
 func TestSyncObservabilityPayloads(t *testing.T) {

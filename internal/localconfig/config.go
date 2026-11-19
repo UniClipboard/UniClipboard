@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -136,7 +137,8 @@ type Plugins struct {
 	// is a directory under $UNIC_HOME/plugins/lua/ with a spec.toml.
 	// Changing the script text takes effect at once; changing this list
 	// waits for a restart.
-	Lua []string `toml:"lua" json:"lua,omitempty"`
+	Lua   []string `toml:"lua" json:"lua,omitempty"`
+	Order []string `toml:"order" json:"order,omitempty"`
 	// OnError is what a failed processor means for syncing, for every plugin
 	// that does not set its own: "continue" (default) or "block_sync".
 	OnError string `toml:"on_error" json:"on_error,omitempty"`
@@ -168,11 +170,29 @@ func (c Config) ProcessorSettings(id string) (onError string, cfg map[string]any
 	return onError, in.Config
 }
 
+// A disabled external instance can retain its host settings across restarts.
+func dormantExternalPlugin(id string, in Instance) bool {
+	return !strings.HasPrefix(id, "builtin.") && strings.Contains(id, ".") &&
+		in.Enabled != nil && !*in.Enabled && in.Sync == (BackendSync{})
+}
+
+// ExternalPlugins returns configured external IDs. The order key can also
+// include built-ins to position them explicitly.
+func (c Config) ExternalPlugins() []string {
+	out := slices.Clone(c.Plugins.Lua)
+	for _, id := range c.Plugins.Order {
+		if !strings.HasPrefix(id, "builtin.") && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // processorSettingsKey is everything of ProcessorSettings that the engine
 // fixes at startup, for the plugins that run.
 func (c Config) processorSettingsKey() map[string]Instance {
 	out := map[string]Instance{}
-	ids := append([]string{builtinclassify.ID, builtintext.ID}, c.Plugins.Lua...)
+	ids := append([]string{builtinclassify.ID, builtintext.ID}, c.ExternalPlugins()...)
 	for _, id := range ids {
 		oe, cfg := c.ProcessorSettings(id)
 		out[id] = Instance{OnError: oe, Config: cfg}
@@ -310,20 +330,20 @@ func (c Config) Validate() error {
 		return errors.New(`plugins.on_error: must be "continue" or "block_sync"`)
 	}
 	lua := map[string]bool{}
-	for _, id := range c.Plugins.Lua {
+	for _, id := range c.ExternalPlugins() {
 		lua[id] = true
 	}
 	for id, in := range c.Plugins.Instances {
 		if !validOnError(in.OnError) {
 			return fmt.Errorf(`plugins.instances.%q.on_error: must be "continue" or "block_sync"`, id)
 		}
-		if in.Config != nil && !lua[id] {
+		if in.Config != nil && !lua[id] && !dormantExternalPlugin(id, in) {
 			return fmt.Errorf("plugins.instances.%q: this plugin takes no config", id)
 		}
 		switch {
 		case lua[id]:
 			if in.Enabled != nil || in.Sync != (BackendSync{}) {
-				return fmt.Errorf("plugins.instances.%q: a Lua plugin runs when it is listed in plugins.lua; only on_error and config apply", id)
+				return fmt.Errorf("plugins.instances.%q: list membership enables external plugins; only on_error and config apply", id)
 			}
 			continue
 		}
@@ -340,16 +360,21 @@ func (c Config) Validate() error {
 				return fmt.Errorf("plugins.instances.%q: this plugin has no sync settings", id)
 			}
 		default:
-			return fmt.Errorf("plugins.instances: %q is not an installed plugin", id)
+			if !dormantExternalPlugin(id, in) {
+				return fmt.Errorf("plugins.instances: %q is not an enabled plugin", id)
+			}
 		}
 	}
-	seen := map[string]bool{}
-	for _, id := range c.Plugins.Lua {
-		if id == "" || len(id) > 128 || seen[id] {
-			return errors.New("plugins.lua: ids must be non-empty and unique")
+	for _, list := range [][]string{c.Plugins.Lua, c.Plugins.Order} {
+		seen := map[string]bool{}
+		for _, id := range list {
+			if id == "" || len(id) > 128 || seen[id] {
+				return errors.New("plugin list: ids must be non-empty and unique")
+			}
+			seen[id] = true
 		}
-		seen[id] = true
 	}
+
 	h := c.History
 	switch {
 	case h.MaxItems < 0 || h.MaxItems > 1_000_000:
@@ -464,6 +489,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # [plugins.instances."builtin.text"]
 # enabled = true
 
+# GitHub plugins use order = ["owner.plugin"]. Changes require a restart.
 # Lua plugins you installed under $UNIC_HOME/plugins/lua/<name>/ (a spec.toml
 # and its script), run in this order. Saving a script applies it at once;
 # changing this list needs a restart of unicd.

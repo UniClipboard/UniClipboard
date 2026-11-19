@@ -107,7 +107,7 @@ No unit tests were added after implementation.
 Each CLI profile requires explicit migration initialization. Ordinary commands
 refuse with exit 6 and an actionable JSON/text error before service, sync or
 clipboard work. Help, version and migration remain accessible. No-source users
-explicitly run `unic migrate --initialize-empty --json`. A pending import cannot
+explicitly run `unic migrate --initialize-empty --json`. An absent source or empty leftover directory can use this explicit path. A pending import cannot
 use that path. Missing-source typos do not create an unfinishable import.
 
 The CLI and Desktop share pending/source/completion state. A verified explicit

@@ -341,8 +341,7 @@ func initializeWithoutSource(ctx context.Context, target string, jsonMode bool, 
 			migrationFailure(jsonMode, errOut, "source_target_overlap", "Keep the v2 target separate from known v1 source directories.")
 			return 1
 		}
-		_, err := os.Stat(candidate)
-		if err == nil || !errors.Is(err, os.ErrNotExist) {
+		if !sourceAbsentOrEmpty(candidate) {
 			migrationFailure(jsonMode, errOut, "source_present", "A v1 source exists or cannot be checked. Complete unic migrate --source DIR before using this profile.")
 			return 1
 		}
@@ -375,7 +374,7 @@ func initializeWithoutSource(ctx context.Context, target string, jsonMode bool, 
 		return 1
 	}
 	for _, candidate := range sources {
-		if _, err := os.Stat(candidate); err == nil || !errors.Is(err, os.ErrNotExist) {
+		if !sourceAbsentOrEmpty(candidate) {
 			migrationFailure(jsonMode, errOut, "source_present", "A v1 source exists or cannot be checked. Complete unic migrate --source DIR before using this profile.")
 			return 1
 		}
@@ -416,4 +415,19 @@ func migrationTargetFailure(jsonMode bool, w io.Writer, err error) {
 		return
 	}
 	migrationFailure(jsonMode, w, "target_unavailable", "Cannot initialize the target. Check data-directory permissions, storage and available disk space, then retry.")
+}
+
+// Inspect at most one public directory entry. Empty leftovers contain no v1
+// data; a nonempty, unreadable or non-directory path must never be discarded.
+func sourceAbsentOrEmpty(path string) bool {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	entries, err := f.ReadDir(1)
+	return len(entries) == 0 && errors.Is(err, io.EOF)
 }

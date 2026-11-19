@@ -143,6 +143,21 @@ func TestMigrationFirstRun(t *testing.T) {
 			t.Fatalf("completed state lost after restart %d %s", code, stderr)
 		}
 	}
+	// An empty leftover legacy directory has no data to migrate.
+	must(os.MkdirAll(legacyDefault, 0700))
+	emptyLegacy := profile("empty-legacy")
+	code, _, stderr = call(emptyLegacy, "", "migrate", "--initialize-empty", "--json")
+	if code != 0 {
+		t.Fatalf("empty legacy directory trapped a new user: %d %s", code, stderr)
+	}
+	must(os.WriteFile(filepath.Join(legacyDefault, "unknown-data"), []byte("synthetic"), 0600))
+	withLegacy := profile("present-legacy")
+	code, _, stderr = call(withLegacy, "", "migrate", "--initialize-empty", "--json")
+	if code == 0 || !strings.Contains(stderr, "source_present") {
+		t.Fatal("nonempty legacy source was discarded by empty initialization")
+	}
+	must(os.RemoveAll(legacyDefault))
+	checks = append(checks, "empty legacy directory can initialize explicitly; nonempty legacy source refuses")
 	checks = append(checks, "fresh JSON refusal has actionable reason and creates no service/database", "help/version/migrate remain accessible", "explicit no-source initialization and two service restarts")
 	b := profile("failed")
 	code, _, _ = call(b, "", "migrate", "--source", filepath.Join(work, "absent"), "--json")

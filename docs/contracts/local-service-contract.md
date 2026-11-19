@@ -323,7 +323,8 @@ answer or default consent is inferred.
   cancellation exit 1. Dry-run never changes initialization state.
 - `unic migrate --initialize-empty --json` is the explicit no-source completion
   path. It checks default v1 discovery and the selected `UC_PROFILE` location,
-  refuses an existing or unreadable source, and refuses a pending import. A
+  accepts an absent path or an empty leftover directory, refuses a nonempty or
+  unreadable source, and refuses a pending import. A
   custom source must be imported with `--source`. The command does not infer
   that a custom source elsewhere is absent. It accepts only `--target` and
   `--json` alongside the explicit initialization option.

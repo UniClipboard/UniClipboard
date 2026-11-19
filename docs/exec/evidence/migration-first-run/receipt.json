@@ -1,0 +1,42 @@
+{
+  "branch": "feat/migration-first-run",
+  "checks": {
+    "canonical_cli_selection": "6 passed: settings, plugin, history cleanup/restore and cold-start send",
+    "canonical_desktop_process": "passed",
+    "documentation": "passed; four unrelated stale-page warnings",
+    "format": "clean",
+    "lint": "golangci-lint v2.15.0: zero issues",
+    "linux_10000_records_and_32MiB_ENOSPC": "passed",
+    "linux_first_run_and_terminal": "passed, production binaries in actual Linux container",
+    "macos_first_run_and_terminal": "passed, production binaries",
+    "native_desktop_later_migration": "passed; 1505 persistent records",
+    "race": "782 passed in 80 packages; TMPDIR=/private/tmp",
+    "real_linux_credentials": "passed"
+  },
+  "cleanup": {
+    "canonical_private_sources_programs_logs_removed": true,
+    "temporary_programs_removed": true,
+    "test_credentials_removed": true,
+    "test_profiles_removed": true,
+    "worker_worktrees_removed": true
+  },
+  "limits": {
+    "Linux locked-store native prompt": "NOT_RUN",
+    "OS directory picker automation": "NOT_RUN: Accessibility permission absent",
+    "Windows native execution/credentials": "NOT_RUN: no authorized online Windows host discovered",
+    "large payloads": "10000 small encrypted-text records; not multi-GiB blob performance",
+    "lifecycle_C03": "existing intermittent assertion reproduced; isolated probe 1 fail / 2 pass; full lifecycle suite not claimed passed",
+    "macOS actual credential prompt": "NOT_RUN"
+  },
+  "publication": "local commits only; no push, PR, merge, release or deployment",
+  "restart_assertions": [
+    "CLI completed gate remains durable",
+    "five fixture history identities persist across two macOS and Linux service starts",
+    "10000 large-library identities persist across two Linux service starts",
+    "native Desktop retains 1505 records across reopen",
+    "ENOSPC recovery retains unrelated seed without eviction"
+  ],
+  "source_commit": "9d6c3fb56e31b0b29ec33301c073f66722ebb753",
+  "status": "implemented_with_native_acceptance_limits",
+  "worktree": "<TASK_WORKTREE>"
+}

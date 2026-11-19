@@ -1,0 +1,30 @@
+{
+  "build": "CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> go build -o <task-artifact> ./app/service/cmd/<program>",
+  "programs_sha256": {
+    "darwin/amd64": {
+      "unic": "9015aed9fed1fc37d27943650c97b464e1161ed7d3fc72907bc82d41378ec3c8",
+      "unicd": "e2ea6da2f86b7a16e643187cf74757b20026b1c8bae16639b401a9eaf0ffc5b0"
+    },
+    "darwin/arm64": {
+      "unic": "8690e6c75b43808a8a5c8b96d9b128879366f929cdd93830701caaf19da26e31",
+      "unicd": "3ff1f6a51f02cde632f93b25bc9fe26ae814cb9e5e284d12690a4cbd5141eda6"
+    },
+    "linux/amd64": {
+      "unic": "31e49a7e95845ff6badfcb322ce24929f51d318f9ab52e2b749856c697986522",
+      "unicd": "4c03db4a5cce3ab44185aa3a341afa85ca5035f313fb5537a1aa96fe82566d29"
+    },
+    "linux/arm64": {
+      "unic": "b102bc96ccfc5becd9c80863ae0a49300d68734596a1bdc074b775a956e5d581",
+      "unicd": "24a840bb493c8534ad242ef55ecedd5b535991781deeb8d97e6ce6c457808a2e"
+    },
+    "windows/amd64": {
+      "unic": "73e102ac2b87f9af86ff02fcdee8ca56657b85414f70976b348fc1214ab0ea91",
+      "unicd": "b9e6e8fbe3ef43afdadcc1905bbd3b699b204bd5a127760091cee61efeade79b"
+    },
+    "windows/arm64": {
+      "unic": "f15e5a45a6de95097e0b0c6060ab25a3e42596b61f2516b35177b7396d6349b0",
+      "unicd": "7782d1e3a17d99e8ae0de398d00e5634da96864f6cfba2c40301a31875d09367"
+    }
+  },
+  "source_commit": "9d6c3fb56e31b0b29ec33301c073f66722ebb753"
+}

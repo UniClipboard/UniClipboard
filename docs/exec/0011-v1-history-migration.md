@@ -131,17 +131,17 @@ native-prompt acceptance.
 ### Evidence and limits
 
 - macOS CLI first-run/partial/repair/idempotence/two-restart and private PTY cases:
-  PASS. Receipts: `/private/tmp/unic-e-first-run-final/`.
+  PASS. Receipts: [macOS first-run receipt](evidence/migration-first-run/macos-first-run.json).
 - Real Linux arm64 CLI/service first-run and private PTY cases: PASS in a
   read-only, no-network Docker container. Receipt:
-  `/private/tmp/unic-e-integrated/linux-results/first-run/`.
+  [Linux first-run receipt](evidence/migration-first-run/linux-first-run.json).
 - Real Linux 10,000-record production import: PASS for partial repair, SIGINT
   resume, exact mappings/IDs, two service restarts, ownership refusal before
   source import, unchanged service generation and source hashes, and idempotence.
 - A separate 32 MiB tmpfs produced actual ENOSPC. Recovery after removing only
   the task filler verified all 10,000 records and retained an unrelated seed
   record. No host filesystem was filled. Receipt:
-  `/private/tmp/unic-e-integrated/linux-results/resilience/`.
+  [Linux resilience receipt](evidence/migration-first-run/linux-resilience.json).
 - The private test disables configured age cleanup because frozen records date
   from 1970. Normal user cleanup policy is preserved. Small byte limits still
   exercise the import capacity floor. Peak RSS has a predeclared 512 MiB bound.
@@ -177,3 +177,16 @@ Each process runner writes checksummed redacted receipts and removes task-owned
 profiles. Source snapshots, programs, raw logs, encrypted private test profiles
 and native recordings are not committed. Local commits do not publish, merge,
 release or deploy the change.
+
+
+Final production source: `9d6c3fb56e31b0b29ec33301c073f66722ebb753`.
+All three OS/two architecture CLI/service targets compiled. Actual process runs
+were macOS arm64 and Linux arm64. The exact final Linux run measured 81,948,672
+bytes peak child RSS and a 33,554,432-byte ENOSPC filesystem. Final macOS/Linux
+production first-run receipts name that source commit and the actual executable
+hashes. See the [small evidence package](evidence/migration-first-run/README.md)
+and its [SHA256SUMS](evidence/migration-first-run/SHA256SUMS).
+Task-only binaries, build trees, patches, caches, private profiles and worker
+worktrees were removed after receipt verification. Canonical native report
+paths remain local, ignored review artifacts. No binary, source snapshot, raw
+log, screenshot or recording is committed.

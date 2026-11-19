@@ -30,6 +30,7 @@ func retireHold() {
 }
 
 func configureDaemon(o *host.Options) error {
+	configureSyncFollowup(o)
 	// A slow startup lets a test kill the launching CLI before readiness.
 	if ms, err := strconv.Atoi(os.Getenv("UNIC_E2E_START_DELAY_MS")); err == nil && ms > 0 {
 		time.Sleep(time.Duration(ms) * time.Millisecond)

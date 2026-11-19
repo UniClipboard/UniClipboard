@@ -30,7 +30,7 @@ type Controller struct {
 	syncEpoch      uint64
 	syncWake       chan struct{}
 	syncCollector  func(uint64) ([]syncdiag.Record, bool)
-	failures       [4][7]uint64
+	failures       [5][7]uint64
 	effective      bool
 	lastLocalError time.Time
 	control        sync.Mutex
@@ -45,8 +45,9 @@ type Controller struct {
 	localDone      chan struct{}
 	logs           *generation
 	metrics        *generation
-	states         [4]SignalState
-	drops          [4][5]uint64
+	traces         *generation
+	states         [5]SignalState
+	drops          [5][5]uint64
 	logger         *slog.Logger
 	analytics      *analyticsGeneration
 	analyticsReady bool
@@ -164,7 +165,7 @@ func (c *Controller) Telemetry() TelemetryState {
 	if c.analytics != nil {
 		pending = c.analytics.pending.Load()
 	}
-	return TelemetryState{Configured: c.cfg.Telemetry.Enabled, Effective: c.effective && !c.closed, Restart: restart, Credential: c.states[1].Requested && c.logs != nil && c.logs.credential || c.states[2].Requested && c.metrics != nil && c.metrics.credential || c.analytics != nil, Logs: copySignalState(c.states[1]), Metrics: copySignalState(c.states[2]), Analytics: AnalyticsState{SignalState: copySignalState(c.states[3]), Pending: pending}}
+	return TelemetryState{Configured: c.cfg.Telemetry.Enabled, Effective: c.effective && !c.closed, Restart: restart, Credential: c.states[1].Requested && c.logs != nil && c.logs.credential || c.states[2].Requested && c.metrics != nil && c.metrics.credential || c.analytics != nil || c.traces != nil && c.traces.credential, Traces: copySignalState(c.states[4]), Logs: copySignalState(c.states[1]), Metrics: copySignalState(c.states[2]), Analytics: AnalyticsState{SignalState: copySignalState(c.states[3]), Pending: pending}}
 }
 
 // Apply serializes reconfiguration. Detaching a generation closes admission;
@@ -181,11 +182,14 @@ func (c *Controller) Apply(cfg Config) {
 	c.states[1].Requested = cfg.Telemetry.Enabled && cfg.Telemetry.Logs.Enabled
 	c.states[2].Requested = cfg.Telemetry.Enabled && cfg.Telemetry.Metrics.Enabled
 	c.mu.Unlock()
-	for _, i := range []int{1, 2} {
+	for _, i := range []int{1, 2, 4} {
 		want := cfg.Telemetry.Enabled
-		if i == 1 {
+		switch i {
+		case 1:
 			want = want && cfg.Telemetry.Logs.Enabled
-		} else {
+		case 4:
+			want = want && cfg.Telemetry.Traces.Enabled
+		default:
 			want = want && cfg.Telemetry.Metrics.Enabled
 		}
 		c.mu.Lock()
@@ -193,11 +197,17 @@ func (c *Controller) Apply(cfg Config) {
 		if i == 2 {
 			g = c.metrics
 		}
+		if i == 4 {
+			g = c.traces
+		}
 		c.states[i].Requested = want
 		if !want && g != nil {
-			if i == 1 {
+			switch i {
+			case 1:
 				c.logs = nil
-			} else {
+			case 4:
+				c.traces = nil
+			default:
 				c.metrics = nil
 			}
 			c.states[i].State = "stopping"
@@ -245,9 +255,12 @@ func (c *Controller) Apply(cfg Config) {
 			c.states[i].State = "degraded"
 			c.states[i].Error = &code
 		} else {
-			if i == 1 {
+			switch i {
+			case 1:
 				c.logs = g
-			} else {
+			case 4:
+				c.traces = g
+			default:
 				c.metrics = g
 			}
 			c.states[i].State = "active"
@@ -320,7 +333,8 @@ func (c *Controller) Close(ctx context.Context) {
 		return
 	}
 	c.closed = true
-	logs, metrics, analytics := c.logs, c.metrics, c.analytics
+	logs, metrics, analytics, traces := c.logs, c.metrics, c.analytics, c.traces
+	c.traces = nil
 	c.analytics = nil
 	c.logs = nil
 	c.metrics = nil
@@ -334,7 +348,7 @@ func (c *Controller) Close(ctx context.Context) {
 	closeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	var wg sync.WaitGroup
-	for _, g := range []*generation{logs, metrics} {
+	for _, g := range []*generation{logs, metrics, traces} {
 		if g != nil {
 			wg.Add(1)
 			go func() { defer wg.Done(); g.stop(true, closeCtx) }()

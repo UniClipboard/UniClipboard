@@ -27,6 +27,7 @@ paths:
   - internal/plugins/tailcat
   - internal/wire
   - internal/localconfig
+  - app/service/internal/host/submissions.go
   - app/service/internal/host/node.go
   - internal/localapi/diagnostics.go
   - app/service/internal/server/diagnostics.go
@@ -39,14 +40,16 @@ paths:
   - app/service/cmd/unic/sendwait.go
   - app/service/cmd/unic/diagnostics.go
   - app/service/cmd/unicd
+  - e2e/cli/traces_e2e_test.go
+  - e2e/tracecloud
   - e2e/cli/observability_e2e_test.go
   - e2e/cli/sync_observability_e2e_test.go
   - e2e/syncpath
 verified: 854df5e68966b8ef3db1cf73c33785355fc54cb0
 ---
-# Client logs, metrics and product analytics
+# Client logs, metrics, traces and product analytics
 
-The UI-free service owns OTLP/HTTP logs and metrics plus PostHog product events. All remote switches default enabled; `config.toml` can disable the master switch or any individual signal. Missing release deployment metadata degrades uploads without preventing service startup.
+The UI-free service owns OTLP/HTTP logs, metrics and sampled traces plus PostHog product events. Logs, metrics and analytics default enabled; traces default disabled; `config.toml` can disable the master switch or any individual signal. Missing release deployment metadata degrades uploads without preventing service startup.
 Current workspace implementation and acceptance scope are recorded in the [PostHog execution receipt](../exec/0019-posthog-integration.md). Local process evidence and Cloud read-back are recorded separately. The selected Cloud project is US Cloud / UniClipboard (722858).
 
 ## Current behavior
@@ -61,10 +64,41 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 - Each remote signal has an independently cancelled generation. Disabling a signal closes admission, cancels the current export, discards queued data, and waits for cleanup. Re-enabling creates fresh aggregation and queues.
 - The remote log queue is the only asynchronous log SDK queue. A custom processor uses public `sdk/log.Processor` methods, clones accepted records, and batches at most 128 records for the official HTTP exporter.
 - Metrics use the official SDK and a ManualReader. The host worker controls collection and export every 60 seconds. PostHog `/i` endpoints use delta temporality; pathless Collector endpoints retain cumulative temporality. Histograms have fixed second-based boundaries; cardinality is capped at 1024 sets per instrument, and exemplars are disabled.
-- Export attempts have a three-second HTTP timeout and no exporter retries. Logs, metrics and analytics share one two-second shutdown flush budget.
+- Export attempts have a three-second HTTP timeout and no exporter retries. Logs, metrics, traces and analytics share one two-second shutdown flush budget.
 - All log fields pass an enum allowlist before encoding. Unapproved LogValuer values are never resolved. The log bridge receives a clean background context.
 - OTel v1.47 merges environment Resource attributes even with `WithResource`. Metrics replace Resource before export. The private logs HTTP transport replaces Resource using the standard OTLP protobuf before sending. Both keep only service name/version, OS type, and architecture.
 - Export failures update local counters and finite error categories. Exporter degradation messages only enter the bounded local path and respect the local level. They are rate-limited and never feed the failing exporter.
+
+## Explicit submission traces
+
+`host.commitExplicit` starts `unic.submission` after the unique host admission
+cache. A nested `unic.commit` measures the Engine `CommitContent` call. Import
+failures produce only a failed root. A repeated request returns the first result
+without another root or child. Neither span waits for network send completion.
+The public Engine and device/plugin wire interfaces remain unchanged.
+
+The service owns the OTel v1.47 TracerProvider and matching official HTTP trace
+exporter. It uses `ParentBased(TraceIDRatioBased(0.01))`, one 256-span queue and
+at most 128 spans in an export batch. The worker exports every five seconds or
+at batch capacity. It never waits for queue space. Overload can drop individual
+spans and leave incomplete trees; these are lossy diagnostics. The explicit
+sampler overrides used in synthetic builds are unavailable through TOML or
+runtime environment. The [trace receipt](../exec/observability-traces.md) records
+matched cost measurements and the sampling/capacity rationale.
+
+Root creation ignores caller OTel context, baggage and socket metadata. A private
+host context carries only the local generation and parent SpanContext to the
+commit call. Span names are fixed. The only attributes are finite `result` and
+optional Engine `code`. Spans contain no events, links or status descriptions.
+The final protobuf transport replaces Resource and removes Scope attributes,
+including any SDK-added environment values. There is no propagation into device
+or plugin protocols and no automatic capture, Action, migration or paste roots.
+
+A trace generation follows the same disable barrier as logs and metrics. Disable
+detaches admission, cancels in-flight HTTP, discards pending spans and waits for
+worker/SDK/transport cleanup. A child cannot attach to a re-enabled generation.
+Local process totals expose drops and finite export failures in `traces` state;
+health metrics include `signal=traces` when metrics are enabled.
 
 ## Offline log archive
 
@@ -92,7 +126,7 @@ Person processing and GeoIP are disabled. A separate random profile identifier s
 The identifier persists while enabled, rotates after disable, and is never attached to logs or metrics. A CLI-temporary service start counts as a process start (`app_started`), not an installation; the identifier persists across temporary restarts. Disabling the telemetry master or analytics switch suppresses product events and analytics-identifier creation.
 An invalidation marker prevents reuse after an interrupted identity cleanup where it can be persisted.
 
-The master and three signal switches hot reload. Explicit false takes effect before startup initialization.
+The master and four signal switches hot reload. Explicit false takes effect before startup initialization.
 Endpoint changes require restart; changing the endpoint never forwards the compiled project token to the new destination.
 Versioned CLI packaging reads the product version from `release/products.toml` and preserves the validated deployment metadata. `--version` exits before telemetry initialization.
 `tools/package` accepts validated build-time deployment metadata. No runtime `POSTHOG_*` or `OTEL_*` override grants upload or changes the project.
@@ -184,7 +218,7 @@ passive path samples over a forced local DERP.
 
 ## Gaps
 
-- Traces have an [independent implementation plan](../exec/observability-traces.md). Cross-device propagation, reliable offline upload, crash reports, and production Collector deployment remain open.
+- The [trace receipt](../exec/observability-traces.md) records the first explicit-submission slice. Cross-device propagation, reliable offline upload, crash reports, and production Collector deployment remain open.
 - PostHog delta counts and histogram sums are verified locally across processes. US Cloud read-back also confirms a combined commit delta of 10 and histogram sample counts of 3 and 7. A pathless cumulative Collector still needs isolated stream identity before multi-client deployment.
 - Release assembly supports an ingestion-only project token bound to its exact endpoint. US Cloud / UniClipboard (722858) is selected and verified using isolated production builds; the ingestion token remains in private local build configuration, outside source and receipts. No production credential-store UI is shipped.
 - Nonvisual acceptance uses the real session/wire protocol over the host's local TCP test transport. It does not establish public DERP, native clipboard, true system sleep, or Windows/Linux native acceptance.

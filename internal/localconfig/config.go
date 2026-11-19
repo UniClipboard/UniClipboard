@@ -410,7 +410,8 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # quick_panel_shortcut = "Ctrl+Alt+V"
 # macOS default: "Cmd+Ctrl+V"
 
-# Logging and PostHog/OTLP upload. All remote signals are on by default.
+# Logging and PostHog/OTLP upload. Logs, metrics and analytics default on.
+# Traces default off and use a fixed 1% root sample when enabled.
 # Set telemetry.enabled = false to stop all uploads. Signal switches also hot reload.
 # [logging]
 # level = "info"
@@ -424,6 +425,8 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # enabled = true
 # [telemetry.analytics]
 # enabled = true
+# [telemetry.traces]
+# enabled = false
 
 # Name shown to your other devices. Default: this computer's host name.
 # Takes effect on the next connection to each device.

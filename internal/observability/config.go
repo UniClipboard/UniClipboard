@@ -21,6 +21,9 @@ type Logs struct {
 type Metrics struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
 }
+type Traces struct {
+	Enabled bool `toml:"enabled" json:"enabled"`
+}
 type Analytics struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
 }
@@ -30,6 +33,7 @@ type Telemetry struct {
 	Logs      Logs      `toml:"logs" json:"logs"`
 	Metrics   Metrics   `toml:"metrics" json:"metrics"`
 	Analytics Analytics `toml:"analytics" json:"analytics"`
+	Traces    Traces    `toml:"traces" json:"traces"`
 }
 type Config struct {
 	Logging   Logging
@@ -107,6 +111,7 @@ type TelemetryState struct {
 	Logs       SignalState    `json:"logs"`
 	Metrics    SignalState    `json:"metrics"`
 	Analytics  AnalyticsState `json:"analytics"`
+	Traces     SignalState    `json:"traces"`
 }
 type override struct {
 	level    string

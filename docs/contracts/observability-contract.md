@@ -1,6 +1,6 @@
 # Client observability contract: logs, metrics and product events
 
-- Status: Logs, metrics and PostHog product events are implemented in the workspace. Local process acceptance and hosted limitations are recorded in the [0019 receipt](../exec/0019-posthog-integration.md). Traces are not implemented.
+- Status: Logs, metrics and PostHog product events are implemented in the workspace. Local process acceptance and hosted limitations are recorded in the [0019 receipt](../exec/0019-posthog-integration.md). Opt-in sampled submission traces are implemented; see the [trace receipt](../exec/observability-traces.md).
 - Date: 2026-11-10.
 - Scope: Local structured logs, independent log levels, configurable OTLP logs/metrics, PostHog product events, lifecycle and resource bounds.
 - 依据：[Engine 契约](engine-contract.md)、[流水线契约](pipeline-contract.md)、[历史契约](history-contract.md)、[同步后端契约](sync-backend-contract.md)。
@@ -8,10 +8,10 @@
 
 ## 1. 范围与不变量
 
-This implementation provides logs, metrics and product events. Traces、跨设备传播、远程控制、崩溃采集、诊断包、磁盘补传和生产 Collector 部署不在本次范围。
-本次不解析 `telemetry.traces` 配置。该配置按未知键拒绝，不提供无效开关。
+This implementation provides logs, metrics, sampled submission traces and product events. Cross-device propagation, remote control, crash reports, durable upload and production Collector deployment remain outside scope.
+`telemetry.traces.enabled` is accepted and defaults to false.
 
-1. Uploads default enabled. The TOML master and each signal switch can disable upload. Log level changes never change these switches.
+1. Logs, metrics and analytics default enabled. Traces default disabled. The TOML master and each signal switch can disable upload. Log level changes never change these switches.
 2. 遥测失败不改变业务结果，不阻止 Engine 启动。
 3. 配置非法仍按现有配置规则处理：启动时报错；热加载时保留上一有效配置。
 4. 诊断公开签名只依赖标准库和公开 Engine 类型。公开 Options 不出现 OTel 类型。
@@ -57,7 +57,7 @@ Diagnostics func(context.Context, DiagnosticRecord)
 回调必须快速返回。回调只校验固定字段并尝试放入有界队列。
 Engine releases its state mutex before invoking the callback. Lifecycle/commit guards may remain held. The callback must not call Engine methods or wait for business/lifecycle completion.
 宿主不得保存回调 context。回调 panic 必须在诊断调用边界隔离，不改变已经确定的业务结果。
-本次不使用 context 生成 trace、标签或后台任务取消关系。
+The metrics callback does not create traces or derive attributes from context. Service-owned submission tracing uses a separate private context; see section 13.
 
 ### 2.2 有限取值
 
@@ -128,7 +128,7 @@ Histogram 边界固定为 `0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2
 
 `code` 仅允许现有公开 Engine Code。Exporter 错误单独映射为 `dns`、`tls`、`timeout`、`rate_limited`、`unauthorized`、`unavailable`、`internal`。
 遥测禁用引起的主动取消不计 export_failures。
-`signal` accepts `local_logs`, `remote_logs`, `metrics`, and `analytics`.
+`signal` accepts `local_logs`, `remote_logs`, `metrics`, `analytics`, and `traces`.
 `reason` 仅为 `queue_full`、`oversize`、`invalid_record`、`sink_failed`、`disabled_discard`。
 等级过滤、正常关闭时未采集的业务、停用期间的新记录都不计丢弃。
 
@@ -210,15 +210,19 @@ enabled = true
 
 [telemetry.analytics]
 enabled = true
+
+[telemetry.traces]
+enabled = false
 ```
 
 以上是本次默认值。`telemetry.enabled && telemetry.logs.enabled` 决定远程 logs 的请求开启状态。
 `telemetry.enabled && telemetry.metrics.enabled` 决定 metrics 的请求开启状态。
+`telemetry.enabled && telemetry.traces.enabled` controls trace admission.
 `telemetry.enabled && telemetry.analytics.enabled` controls product events. Actual export also requires successful initialization; requested enabled does not prove delivery.
 
 等级、总开关和信号开关热更新。endpoint 修改需重启。
 endpoint 是不含用户信息、查询串和 fragment 的 HTTPS 基地址，不接受信号路径。
-The base path accepts empty, `/`, `/i`, or `/i/`; exporters append `/v1/logs` and `/v1/metrics`. An absent deployment endpoint is allowed so developer builds remain usable; signals report `not_configured`. An explicitly malformed endpoint is invalid even when upload is disabled.
+The base path accepts empty, `/`, `/i`, or `/i/`; exporters append `/v1/logs`, `/v1/metrics` and `/v1/traces`. An absent deployment endpoint is allowed so developer builds remain usable; signals report `not_configured`. An explicitly malformed endpoint is invalid even when upload is disabled.
 本机测试使用显式开发装配允许 HTTP loopback，发行 TOML 没有不安全传输选项。
 HTTPS loopback 可用于与发行配置完全相同的验收路径。
 
@@ -489,7 +493,7 @@ An encoded transmitted event is at most 2 KiB. Requests time out after three sec
 Response reads are capped at 4 KiB. The transport only accepts the configured origin and `/batch/` without a query, so redirects and ancillary SDK destinations cannot receive credentials.
 SDK debug/error output is suppressed because it may contain arbitrary HTTP details.
 Delivery failures and queue refusal update safe loss counters; pending records are exposed in diagnostics.
-A cancelled transport precedes the SDK's flushing Close path during disable. All three signals share one two-second normal exit budget.
+A cancelled transport precedes the SDK's flushing Close path during disable. All four signals share one two-second normal exit budget.
 
 ### 10.3 Release metadata
 
@@ -676,3 +680,45 @@ only the archive created by this command. Propagate archive/gzip/output close fa
 This is a best-effort snapshot of already-written bytes. It does not flush service
 queues or claim an atomic cross-file view; the last JSONL record can be incomplete
 if export overlaps its write. No new service endpoint or configuration key is added.
+
+## 13. Sampled explicit-submission traces
+
+The service owns the Provider, exporter and processor. The public Engine Options
+and device/plugin protocols gain no OTel types or propagation fields. The exact
+endpoint and release credential binding in section 5 also applies to traces.
+A trace-capable hosted destination must be independently verified before hosted
+acceptance; working logs and metrics do not establish trace capability.
+
+| Span | Start/end boundary | Parent |
+|---|---|---|
+| `unic.submission` | Unique admitted explicit host work through its terminal local result | New local root |
+| `unic.commit` | The Engine `CommitContent` call and its returned local result | Same-generation submission |
+
+Import rejection can end the root without a child. Idempotent host retries create
+neither another root nor another commit span. Root and child do not measure send
+or paste completion. Automatic clipboard, Action and migration roots are excluded.
+The root discards incoming trace context, baggage and socket metadata. A private
+context value carries only a local generation and SpanContext. It crosses no wire.
+
+Both spans use only `result=succeeded|failed|cancelled` and optional `code` from
+the finite Engine code set. Unknown failures reduce to `internal`. Success omits
+code. Failure sets Error status with an empty description. There are no events,
+links, tracestate, arbitrary attributes or raw errors. Resource is exactly service
+name/version, OS type and architecture. The final OTLP transport replaces Resource
+and strips Scope attributes before network I/O. Body, paths, addresses, identities,
+request IDs, tickets, credentials and clipboard/source metadata are prohibited.
+
+Sampling is `ParentBased(TraceIDRatioBased(0.01))`. Children use the root decision.
+There is one nonblocking queue of 256 completed spans and a batch of at most 128.
+The worker exports at batch capacity or every five seconds. The official HTTP
+exporter has a three-second timeout, no retries and no redirects. Synthetic E2E
+builds may link an internal sampling override; TOML and runtime environment cannot
+alter it. Queue pressure can independently drop spans and leave partial trees.
+Local `TelemetryState.traces` uses the same SignalState schema as logs/metrics.
+It reports process-total dropped records, finite failures and current admission.
+Health metrics add the `traces` signal without changing existing signal values.
+
+Disable closes admission, cancels in-flight export, discards queued/batched spans
+and waits for cleanup. Re-enable creates a new Provider/queue; old contexts cannot
+enter it. Shutdown flushes concurrently with logs, metrics and analytics within
+the existing shared two-second budget. No disk backlog is created.

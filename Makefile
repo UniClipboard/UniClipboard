@@ -107,3 +107,8 @@ desktop-e2e-list:
 	python3 app/desktop/e2e/run.py list
 desktop-e2e-doctor:
 	python3 app/desktop/e2e/run.py doctor --case "$(CASE)"
+
+# Production trace processes, private local TLS receiver, no GUI or clipboard.
+.PHONY: traces-e2e
+traces-e2e:
+	sh docs/exec/evidence/observability-traces/replay.sh

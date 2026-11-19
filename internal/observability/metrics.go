@@ -68,8 +68,8 @@ type instruments struct {
 	errors       metric.Int64Counter
 	dropped      metric.Int64Counter
 	failures     metric.Int64Counter
-	lastDrops    [4][5]uint64
-	lastFailures [4][7]uint64
+	lastDrops    [5][5]uint64
+	lastFailures [5][7]uint64
 }
 
 func (g *generation) initMetrics() error {
@@ -123,7 +123,7 @@ func (g *generation) collectHealth() {
 	drops := g.c.drops
 	failures := g.c.failures
 	g.c.mu.Unlock()
-	signals := []string{"local_logs", "remote_logs", "metrics", "analytics"}
+	signals := []string{"local_logs", "remote_logs", "metrics", "analytics", "traces"}
 	reasons := []string{"queue_full", "oversize", "invalid_record", "sink_failed", "disabled_discard"}
 	for i := range signals {
 		for j := range reasons {

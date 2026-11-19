@@ -8,6 +8,11 @@ Status: implemented in the working tree; execution evidence is recorded in the [
 
 `SHARD=<index>/<count>` partitions the sorted complete catalogue by round-robin position, using one-based indices. It is mutually exclusive with `CASE`. Invalid indices, counts above the catalogue size and empty shards fail before building. `python3 app/desktop/e2e/run.py list --shard 1/3` previews the exact selection. PR CI runs all three shards on separate hosted desktops with fail-fast disabled and distinct evidence artifacts. Each shard keeps the same assertions, source identity, race instrumentation, cleanup and thirty-minute job limit. Cases assigned to other shards remain NOT_RUN in that shard's report; full acceptance requires all three shards to pass.
 
+The Ubuntu 24.04 PR jobs bound dependency installation to five minutes. Regional
+EC2 Ubuntu archive entries use the official HTTPS archive. APT retains package
+signature verification, three retries and thirty-second connection/data timeouts.
+This bootstrap policy preserves the full Desktop catalogue and job budget.
+
 Cases live in `app/desktop/e2e/cases/*.txtar` and use the existing testscript dependency. Each case declares Case, Mode, Purpose, Steps, Expected and Forbidden. Mode is native, process or view. The generated CASES.md must match these declarations. Native scripts use semantic accessibility selection and app-scoped input through the pinned mygo automation plugin. All previous Desktop acceptance functions are scenarios in package-local `TestDesktopAcceptance` registries. The `acceptance` command dispatches them through one controlled interface. Preflight requires exact registry/catalogue correspondence. Original test entries, switches and standalone scripts are removed. See the [migration map](../../app/desktop/e2e/MIGRATION.md).
 
 ## Execution identity and isolation

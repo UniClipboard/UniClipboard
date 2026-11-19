@@ -19,12 +19,14 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
 	collectlogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectmetrics "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	collecttrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -243,14 +245,20 @@ type otlpRequest struct {
 	Authorized bool
 }
 type observabilityRun struct {
-	syncMetricStart  time.Time
-	responseDelay    time.Duration
-	responseLocation string
-	untrusted        bool
-	sourceHashes     map[string]string
-	scenarioResults  map[string]string
-	assertions       []map[string]any
-	resourceSamples  []map[string]any
+	traceSamplingRatio string
+	traceSince         time.Time
+	requestHeaders     map[string]string
+	wireReceived       atomic.Int64
+	wireSent           atomic.Int64
+	cliExecutable      string
+	syncMetricStart    time.Time
+	responseDelay      time.Duration
+	responseLocation   string
+	untrusted          bool
+	sourceHashes       map[string]string
+	scenarioResults    map[string]string
+	assertions         []map[string]any
+	resourceSamples    []map[string]any
 
 	artifactName          string
 	production            bool
@@ -278,7 +286,7 @@ func newObservabilityRun(t *testing.T) *observabilityRun {
 	if err := os.MkdirAll(h.home, 0700); err != nil {
 		t.Fatal(err)
 	}
-	h.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h.server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		authorized := r.Header.Get("Authorization") == "Bearer phc_unic_e2e_only"
 		if r.URL.Path == "/batch/" {
@@ -308,6 +316,8 @@ func newObservabilityRun(t *testing.T) *observabilityRun {
 		w.Header().Set("Content-Type", "application/x-protobuf")
 		w.WriteHeader(status)
 	}))
+	h.server.Listener = &observabilityWireListener{Listener: h.server.Listener, received: &h.wireReceived, sent: &h.wireSent}
+	h.server.StartTLS()
 	h.cert = filepath.Join(d, "ca.pem")
 	_ = os.WriteFile(h.cert, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: h.server.Certificate().Raw}), 0600)
 	t.Cleanup(func() {
@@ -316,7 +326,8 @@ func newObservabilityRun(t *testing.T) *observabilityRun {
 		}
 		h.server.Close()
 		h.artifacts()
-		_ = os.RemoveAll(d)
+		removeErr := os.RemoveAll(d)
+		h.finishCleanup(removeErr)
 	})
 	if err := initializeFixtureProfile(filepath.Join(binDir, "unic"), h.home, h.env()); err != nil {
 		t.Fatal(err)
@@ -350,6 +361,11 @@ func (h *observabilityRun) start(t *testing.T, endpoint string) {
 	h.startConfig(t, cfg)
 }
 func (h *observabilityRun) startConfig(t *testing.T, cfg string) {
+	// Non-trace suites isolate their signals explicitly; production defaults are
+	// exercised only by the trace suites.
+	if !strings.HasPrefix(h.artifactName, "traces") && !strings.Contains(cfg, "[telemetry.traces]") {
+		cfg += "\n[telemetry.traces]\nenabled=false\n"
+	}
 	if err := os.WriteFile(filepath.Join(h.home, "config.toml"), []byte(cfg), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +413,11 @@ func (h *observabilityRun) stop(t *testing.T) {
 }
 func (h *observabilityRun) cli(t *testing.T, args ...string) string {
 	t.Helper()
-	cmd := exec.Command(filepath.Join(binDir, "unic"), args...)
+	exe := h.cliExecutable
+	if exe == "" {
+		exe = filepath.Join(binDir, "unic")
+	}
+	cmd := exec.Command(exe, args...)
 	cmd.Env = h.env()
 	b, err := cmd.CombinedOutput()
 	if err != nil {
@@ -413,6 +433,9 @@ func (h *observabilityRun) request(t *testing.T, method, path, body string) (int
 	defer c.CloseIdleConnections()
 	r, _ := http.NewRequest(method, "http://local"+path, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
+	for key, value := range h.requestHeaders {
+		r.Header.Set(key, value)
+	}
 	resp, err := c.Do(r)
 	if err != nil {
 		t.Fatal(err)
@@ -494,6 +517,9 @@ func (h *observabilityRun) artifacts() {
 	_ = os.MkdirAll(d, 0700)
 	for _, n := range []string{"unic", "unicd"} {
 		binaryPath := filepath.Join(binDir, n)
+		if n == "unic" && h.cliExecutable != "" {
+			binaryPath = h.cliExecutable
+		}
 		if n == "unicd" && h.executable != "" {
 			binaryPath = h.executable
 		}
@@ -514,9 +540,12 @@ func (h *observabilityRun) artifacts() {
 			continue
 		}
 		var msg proto.Message
-		if r.Path == "/v1/logs" || r.Path == "/i/v1/logs" {
+		switch r.Path {
+		case "/v1/logs", "/i/v1/logs":
 			msg = &collectlogs.ExportLogsServiceRequest{}
-		} else {
+		case "/v1/traces", "/i/v1/traces":
+			msg = &collecttrace.ExportTraceServiceRequest{}
+		default:
 			msg = &collectmetrics.ExportMetricsServiceRequest{}
 		}
 		if proto.Unmarshal(r.Body, msg) != nil {
@@ -524,7 +553,7 @@ func (h *observabilityRun) artifacts() {
 		}
 		j, _ := protojson.Marshal(msg)
 		safe := true
-		for _, needle := range []string{"otlp-env-secret", "otlp-synthetic-content-secret", "otlp-second-synthetic-secret", "fixture-private-attribute", "fixture-private-message", "fixture-group-secret", "fixture-private-clipboard", "pipeline-private-synthetic-content", "fault-private-fixture", "fault-sync-fixture", "synthetic rich text", "0020-", h.dir} {
+		for _, needle := range []string{"trace-content-canary", "trace-request-canary", "otlp-env-secret", "otlp-synthetic-content-secret", "otlp-second-synthetic-secret", "fixture-private-attribute", "fixture-private-message", "fixture-group-secret", "fixture-private-clipboard", "pipeline-private-synthetic-content", "fault-private-fixture", "fault-sync-fixture", "synthetic rich text", "0020-", h.dir} {
 			if strings.Contains(string(j), needle) {
 				safe = false
 				h.t.Error("unsafe telemetry payload omitted from artifact")
@@ -542,7 +571,7 @@ func (h *observabilityRun) artifacts() {
 	_ = os.WriteFile(filepath.Join(d, "otlp-decoded.json"), b, 0600)
 	b, _ = json.Marshal(map[string]any{"failed": h.t.Failed(), "requests": len(h.requests), "scenarios": h.scenarioResults, "replay": "TMPDIR=/private/tmp UNIC_E2E=1 go test -race ./e2e/cli -run TestObservability -count=1 -v"})
 	_ = os.WriteFile(filepath.Join(d, "summary.json"), b, 0600)
-	manifest := map[string]any{"source_files_sha256": h.sourceHashes, "source_unchanged": sameHashes(h.sourceHashes, observabilitySourceHashes(h.t)), "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "test_daemon_build_tag": "unic_e2e", "metrics_interval_ms": 500, "log_interval_ms": 100, "race": true}
+	manifest := map[string]any{"source_files_sha256": h.sourceHashes, "source_unchanged": sameHashes(h.sourceHashes, observabilitySourceHashes(h.t)), "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "test_daemon_build_tag": "unic_e2e", "metrics_interval_ms": 500, "log_interval_ms": 100}
 	root, _ := repoRoot()
 	head, _ := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 	if h.executable != "" {
@@ -555,6 +584,15 @@ func (h *observabilityRun) artifacts() {
 	}
 	manifest["source_head"] = strings.TrimSpace(string(head))
 	manifest["transport"] = "local TCP through existing host transport seam"
+	if strings.HasPrefix(h.artifactName, "traces") {
+		manifest["production_program"] = true
+		manifest["production_release_assembly"] = false
+		manifest["trace_root_sample_ratio"] = h.traceSamplingRatio
+		manifest["trace_export_interval_ms"] = 5000
+		manifest["trace_queue_capacity"] = 256
+		manifest["trace_batch_capacity"] = 128
+		manifest["transport"] = "production service, private local TLS receiver, sync disabled"
+	}
 	binaryHashes := map[string]string{}
 	for _, name := range []string{"unic", "unicd"} {
 		v, _ := os.ReadFile(filepath.Join(d, name+".sha256"))
@@ -624,10 +662,13 @@ go build %s-o "$bin/unic" ./app/service/cmd/unic
 dest=${UNIC_E2E_ARTIFACTS:-"$root/.cache/obs-c/replay"}
 TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" UNIC_E2E_ARTIFACTS="$dest" go test -race ./e2e/cli -run '%s' -count=1 -v
 `, raceBuild, raceBuild, selector)
+	if strings.HasPrefix(h.artifactName, "traces") {
+		replay = "#!/bin/sh\nset -eu\ncd \"$(git rev-parse --show-toplevel)\"\nexec sh docs/exec/evidence/observability-traces/replay.sh \"${UNIC_E2E_ARTIFACTS:-.cache/traces-replay}\"\n"
+	}
 	_ = os.WriteFile(filepath.Join(d, "replay.sh"), []byte(replay), 0700)
 	b, _ = json.Marshal(map[string]any{"failed": h.t.Failed(), "requests": len(h.requests), "scenarios": h.scenarioResults})
 	_ = os.WriteFile(filepath.Join(d, "summary.json"), b, 0600)
-	if h.posthog {
+	if h.posthog || strings.HasPrefix(h.artifactName, "traces") {
 		timeline := make([]map[string]any, 0, len(h.requests))
 		var analytics []any
 		for _, r := range h.requests {
@@ -653,7 +694,7 @@ TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" UNIC_E2E_ARTIFACTS="$dest" go
 		if strings.HasPrefix(h.artifactName, "sync-") {
 			h.syncArtifacts(d, decoded)
 		}
-		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": "unic_e2e", "test_selector": selector, "exit_code": exit}, "", "  ")
+		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": manifest["test_daemon_build_tag"], "test_selector": selector, "exit_code": exit}, "", "  ")
 		_ = os.WriteFile(filepath.Join(d, "commands.json"), b, 0600)
 		entries, _ := os.ReadDir(d)
 		var sums strings.Builder
@@ -887,7 +928,7 @@ func observabilitySourceHashes(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "Makefile", "engine", "internal", "app/service", "app/desktop", "e2e/cli", "e2e/syncpath")
+	cmd := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "Makefile", "engine", "internal", "app/service", "app/desktop", "e2e/cli", "e2e/syncpath", "e2e/tracecloud")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
@@ -1100,4 +1141,64 @@ func TestObservabilityFaults(t *testing.T) {
 			h.requireNoRequests(t, 700*time.Millisecond)
 		})
 	}
+}
+
+// Count the encrypted TLS socket bytes as well as decoded OTLP body bytes.
+// These are local receiver totals, not inferred SDK serialization sizes.
+type observabilityWireListener struct {
+	net.Listener
+	received, sent *atomic.Int64
+}
+
+func (l *observabilityWireListener) Accept() (net.Conn, error) {
+	c, e := l.Listener.Accept()
+	if e != nil {
+		return nil, e
+	}
+	return &observabilityWireConn{Conn: c, received: l.received, sent: l.sent}, nil
+}
+
+type observabilityWireConn struct {
+	net.Conn
+	received, sent *atomic.Int64
+}
+
+func (c *observabilityWireConn) Read(b []byte) (int, error) {
+	n, e := c.Conn.Read(b)
+	c.received.Add(int64(n))
+	return n, e
+}
+func (c *observabilityWireConn) Write(b []byte) (int, error) {
+	n, e := c.Conn.Write(b)
+	c.sent.Add(int64(n))
+	return n, e
+}
+
+func (h *observabilityRun) finishCleanup(removeErr error) {
+	dest := os.Getenv("UNIC_E2E_ARTIFACTS")
+	if dest == "" {
+		return
+	}
+	d := filepath.Join(dest, h.artifactName)
+	_, profileErr := os.Stat(h.dir)
+	clean := removeErr == nil && os.IsNotExist(profileErr) && h.cmd == nil
+	if !clean {
+		h.t.Error("private acceptance resources were not removed")
+	}
+	data, _ := json.MarshalIndent(map[string]any{"daemon_reaped": h.cmd == nil, "private_profile_and_programs_removed": os.IsNotExist(profileErr), "tls_receiver_closed": true, "passed": clean}, "", "  ")
+	_ = os.WriteFile(filepath.Join(d, "cleanup.json"), data, 0600)
+	entries, _ := os.ReadDir(d)
+	var sums strings.Builder
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == "SHA256SUMS" {
+			continue
+		}
+		data, e := os.ReadFile(filepath.Join(d, entry.Name()))
+		if e != nil {
+			h.t.Error("artifact unreadable")
+			continue
+		}
+		fmt.Fprintf(&sums, "%x  %s\n", sha256.Sum256(data), entry.Name())
+	}
+	_ = os.WriteFile(filepath.Join(d, "SHA256SUMS"), []byte(sums.String()), 0600)
 }

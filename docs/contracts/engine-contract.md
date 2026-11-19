@@ -60,7 +60,7 @@
 
 [可观测性契约](observability-contract.md) 确定 `Options.Diagnostics func(context.Context, DiagnosticRecord)`，以及公开的 `DiagnosticStage`、`DiagnosticResult`、`DiagnosticBackend`、`DiagnosticContentKind` 和 `DiagnosticRecord` 类型。现有 `Options.Logger` 保留。类型、有限枚举、统计边界和调用约束以该契约第 2 节为准，已接入当前工作区；验收范围见该契约关联的执行计划。
 
-诊断仅传递阶段、结果、后端大类、内容大类、稳定 Code 和耗时。Engine 在业务锁外调用，宿主必须非阻塞接纳。诊断失败和回调 panic 不改变业务结果。公开签名不依赖 OTel 或 internal 类型，不暴露内容、路径或身份。本次不增加 traces、采样配置或传播协议。
+诊断仅传递阶段、结果、后端大类、内容大类、稳定 Code 和耗时。Engine 在业务锁外调用，宿主必须非阻塞接纳。诊断失败和回调 panic 不改变业务结果。公开签名不依赖 OTel 或 internal 类型，不暴露内容、路径或身份。The diagnostic hook adds no tracing, sampling or propagation fields. The service owns the [explicit-submission trace slice](observability-contract.md#13-sampled-explicit-submission-traces) outside the public Engine API.
 
 ### 1.5 Product event observation
 

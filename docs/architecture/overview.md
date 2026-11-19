@@ -15,7 +15,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: afcce7e17fbc97a07840e4d79b63bf87efefa52f
+verified: 456dc41506cb3d1a8e98c51dc49ee3f237a2ac59
 ---
 # 仓库布局与依赖边界
 
@@ -30,6 +30,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 - `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
 - `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/expo/` owns the shared Expo UI shell for Android and iOS. It uses demo state and has no Engine integration. `app/android/` and `app/ios/` retain platform guidance only. Every application directory has its own README and AGENTS.md.
 - CI runs lint, formatting, race checks, all three entry-point builds, and production headless process acceptance. The separate Expo workflow checks TypeScript, prebuild and both native bundles. It does not compile or run native mobile applications or build Swift experiments.
+- Desktop PR CI runs the three complete catalogue shards with a thirty-minute limit per job. Ubuntu package bootstrap has a separate five-minute step limit, uses the official HTTPS archive for direct sources and the runner's file-backed mirror list, and bounds APT connection/data waits and retries. See the [Desktop E2E contract](../contracts/desktop-e2e-contract.md).
 
 ## 不变量
 

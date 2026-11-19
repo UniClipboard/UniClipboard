@@ -106,7 +106,9 @@ func deviceIDs(ids []string) []engine.DeviceID {
 	return out
 }
 
-func (n *Node) commitExplicit(ctx context.Context, v api.SubmitInput) (engine.SubmissionResult, error) {
+func (n *Node) commitExplicit(ctx context.Context, v api.SubmitInput) (result engine.SubmissionResult, resultErr error) {
+	ctx, end := n.diagnostics.StartSubmission(ctx)
+	defer func() { end(traceOutcome(resultErr)) }()
 	var h engine.ContentHandle
 	var e error
 	if v.HistoryID != "" {
@@ -125,7 +127,9 @@ func (n *Node) commitExplicit(ctx context.Context, v api.SubmitInput) (engine.Su
 		return engine.SubmissionResult{}, apiErr(e, false)
 	}
 	defer func() { _ = n.e.ReleaseContent(context.Background(), h.LeaseID) }()
-	out, e := n.e.CommitContent(ctx, engine.CommitRequest{CancelOnContext: true, RequestID: engine.RequestID(v.RequestID), LeaseID: h.LeaseID, DeviceIDs: deviceIDs(v.DeviceIDs)})
+	commitCtx, commitEnd := n.diagnostics.StartCommit(ctx)
+	out, e := n.e.CommitContent(commitCtx, engine.CommitRequest{CancelOnContext: true, RequestID: engine.RequestID(v.RequestID), LeaseID: h.LeaseID, DeviceIDs: deviceIDs(v.DeviceIDs)})
+	commitEnd(traceOutcome(e))
 	if e == nil && out.SyncDisposition == engine.SyncQueued {
 		info := "text"
 		for _, p := range v.Snapshot.Parts {
@@ -156,4 +160,15 @@ func (n *Node) CancelSubmission(ctx context.Context, id string) error {
 		return nil
 	}
 	return apiErr0(err)
+}
+
+func traceOutcome(err error) (engine.DiagnosticResult, engine.Code) {
+	if err == nil {
+		return "succeeded", ""
+	}
+	code := engine.Code(api.ReasonOf(err))
+	if code == engine.CodeCancelled {
+		return "cancelled", code
+	}
+	return "failed", code
 }

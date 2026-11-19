@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	collectlogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	collecttrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	common "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	"google.golang.org/protobuf/proto"
@@ -23,7 +24,8 @@ type privateTransport struct {
 }
 
 func (t *privateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Path != "/v1/logs" && req.URL.Path != "/i/v1/logs" {
+	isTrace := req.URL.Path == "/v1/traces" || req.URL.Path == "/i/v1/traces"
+	if !isTrace && req.URL.Path != "/v1/logs" && req.URL.Path != "/i/v1/logs" {
 		return t.roundTrip(req)
 	}
 	b, err := io.ReadAll(io.LimitReader(req.Body, 2<<20))
@@ -31,22 +33,43 @@ func (t *privateTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	if err != nil {
 		return nil, errors.New("invalid diagnostic batch")
 	}
-	var data collectlogs.ExportLogsServiceRequest
-	if err := proto.Unmarshal(b, &data); err != nil {
-		return nil, errors.New("invalid diagnostic batch")
-	}
-	for _, r := range data.ResourceLogs {
-		r.Resource = proto.Clone(t.resource).(*resourcepb.Resource)
-		r.SchemaUrl = ""
-		for _, s := range r.ScopeLogs {
-			if s.Scope != nil {
-				s.Scope.Attributes = nil
-				s.Scope.DroppedAttributesCount = 0
-			}
-			s.SchemaUrl = ""
+	var message proto.Message
+	if isTrace {
+		data := &collecttrace.ExportTraceServiceRequest{}
+		if proto.Unmarshal(b, data) != nil {
+			return nil, errors.New("invalid diagnostic batch")
 		}
+		for _, r := range data.ResourceSpans {
+			r.Resource = proto.Clone(t.resource).(*resourcepb.Resource)
+			r.SchemaUrl = ""
+			for _, s := range r.ScopeSpans {
+				if s.Scope != nil {
+					s.Scope.Attributes = nil
+					s.Scope.DroppedAttributesCount = 0
+				}
+				s.SchemaUrl = ""
+			}
+		}
+		message = data
+	} else {
+		var data collectlogs.ExportLogsServiceRequest
+		if err := proto.Unmarshal(b, &data); err != nil {
+			return nil, errors.New("invalid diagnostic batch")
+		}
+		for _, r := range data.ResourceLogs {
+			r.Resource = proto.Clone(t.resource).(*resourcepb.Resource)
+			r.SchemaUrl = ""
+			for _, s := range r.ScopeLogs {
+				if s.Scope != nil {
+					s.Scope.Attributes = nil
+					s.Scope.DroppedAttributesCount = 0
+				}
+				s.SchemaUrl = ""
+			}
+		}
+		message = &data
 	}
-	b, err = proto.Marshal(&data)
+	b, err = proto.Marshal(message)
 	if err != nil {
 		return nil, errors.New("invalid diagnostic batch")
 	}

@@ -15,7 +15,7 @@
 
 ## 0014 日志与遥测扩展（已接入工作区）
 
-[0014](0014-client-observability-otlp.md) 新增 `[logging]` 与 `[telemetry]` 配置：本机和远程日志等级分别热更新，远程遥测默认关闭，本次总开关与 logs/metrics 开关热更新，端点修改需重启；traces 与采样率留待后续实施。非法配置沿用上一有效值。logging、telemetry、logs 与 metrics 键已接入解析器。Traces 键仍按未知键拒绝。
+[0014](0014-client-observability-otlp.md) adds `[logging]` and `[telemetry]`. Local and remote log levels, the master switch and each signal switch hot reload. Logs, metrics and analytics default enabled; `[telemetry.traces].enabled` defaults true. Trace sampling is fixed at 1%; no runtime sampling key is accepted. Endpoint changes require restart. Invalid reloads preserve the previous valid configuration. See the [live observability contract](../../contracts/observability-contract.md).
 
 本机 CLI/socket API 另提供限时日志等级覆盖，不改写 TOML；覆盖到期/reset 恢复最新有效配置，重启清除。`unic config` / `GET /v1/config` 展示持久配置，当前有效等级和覆盖状态经诊断 API 查询；完整默认值和控制语义见[可观测性契约](../../contracts/observability-contract.md)，验收见[0014 执行计划](../../exec/0014-client-observability-otlp.md)。
 

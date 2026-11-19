@@ -17,10 +17,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	common "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
@@ -51,6 +53,9 @@ func (g *generation) record(r metricRecord) {
 }
 
 type generation struct {
+	traceProvider  *sdktrace.TracerProvider
+	traceExporter  *otlptrace.Exporter
+	spans          chan sdktrace.ReadOnlySpan
 	epoch          uint64
 	wire           *privateTransport
 	c              *Controller
@@ -77,7 +82,11 @@ type generation struct {
 
 func (c *Controller) newGeneration(i int) (*generation, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	g := &generation{c: c, index: i, ctx: ctx, cancel: cancel, active: true, done: make(chan struct{}), flush: make(chan flushRequest), records: make(chan sdklog.Record, 1024), diagnostics: make(chan metricRecord, 1024)}
+	g := &generation{c: c, index: i, ctx: ctx, cancel: cancel, active: true, done: make(chan struct{}), flush: make(chan flushRequest)}
+	if i != 4 {
+		g.records = make(chan sdklog.Record, 1024)
+		g.diagnostics = make(chan metricRecord, 1024)
+	}
 	version := safeVersion(c.opts.Version)
 	if version == "" {
 		version = "dev"
@@ -115,13 +124,16 @@ func (c *Controller) newGeneration(i int) (*generation, error) {
 	}
 	endpoint := strings.TrimSuffix(c.endpoint, "/")
 	var err error
-	if i == 1 {
+	switch i {
+	case 1:
 		g.logExporter, err = otlploghttp.New(ctx, otlploghttp.WithEndpointURL(endpoint+"/v1/logs"), otlploghttp.WithHTTPClient(client), otlploghttp.WithTLSClientConfig(g.transport.TLSClientConfig), otlploghttp.WithHeaders(headers), otlploghttp.WithTimeout(3*time.Second), otlploghttp.WithRetry(otlploghttp.RetryConfig{Enabled: false}), otlploghttp.WithCompression(otlploghttp.NoCompression))
 		if err == nil {
 			g.provider = sdklog.NewLoggerProvider(sdklog.WithResource(g.resource), sdklog.WithProcessor(g), sdklog.WithAttributeCountLimit(7), sdklog.WithAttributeValueLengthLimit(256), sdklog.WithAttributeValueDepthLimit(1))
 			g.handler = otelslog.NewHandler("unic.observability", otelslog.WithVersion("1"), otelslog.WithLoggerProvider(g.provider), otelslog.WithSource(false))
 		}
-	} else {
+	case 4:
+		err = g.initTraces(ctx, endpoint, client, headers)
+	default:
 		g.metricExporter, err = otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(endpoint+"/v1/metrics"), otlpmetrichttp.WithHTTPClient(client), otlpmetrichttp.WithTLSClientConfig(g.transport.TLSClientConfig), otlpmetrichttp.WithHeaders(headers), otlpmetrichttp.WithTimeout(3*time.Second), otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}), otlpmetrichttp.WithCompression(otlpmetrichttp.NoCompression), otlpmetrichttp.WithTemporalitySelector(func(sdkmetric.InstrumentKind) metricdata.Temporality { return g.temporality() }))
 		if err == nil {
 			err = g.initMetrics()
@@ -209,6 +221,10 @@ func (g *generation) stop(flush bool, ctx context.Context) {
 	<-g.done
 }
 func (g *generation) run() {
+	if g.index == 4 {
+		g.runTraces()
+		return
+	}
 	syncTimer := time.NewTimer(time.Hour)
 	syncTimer.Stop()
 	defer syncTimer.Stop()
@@ -336,6 +352,12 @@ func (g *generation) cleanup() {
 	}
 	if g.metricExporter != nil {
 		_ = g.metricExporter.Shutdown(ctx)
+	}
+	if g.traceProvider != nil {
+		_ = g.traceProvider.Shutdown(ctx)
+	}
+	if g.traceExporter != nil {
+		_ = g.traceExporter.Shutdown(ctx)
 	}
 	if g.transport != nil {
 		g.transport.CloseIdleConnections()

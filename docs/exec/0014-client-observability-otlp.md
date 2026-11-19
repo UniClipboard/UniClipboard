@@ -1,6 +1,6 @@
 # 0014 执行计划：Logs 与 Metrics
 
-- 状态：logs + metrics 已接入工作区；验收结果与未覆盖边界见文末收据。Traces 未实现。
+- 状态：logs + metrics 已接入工作区；验收结果与未覆盖边界见文末收据。The first sampled trace slice is implemented; see the [trace receipt](observability-traces.md).
 - 日期：2026-11-09。
 - 设计：[0014 决策](../decisions/proposed/0014-client-observability-otlp.md)。
 - 规格：[可观测性契约](../contracts/observability-contract.md)、[Engine 契约](../contracts/engine-contract.md)。
@@ -8,7 +8,7 @@
 ## 1. 交付边界与当前基线
 
 交付本机日志、动态等级、远程 logs、业务 metrics、本机诊断状态和可重复的真实进程验收。
-Traces 留待后续实施。本次不实现其 Provider、配置开关、采样器或传播。
+The original logs/metrics slice excluded traces. The [trace receipt](observability-traces.md) now owns the service Provider, switch, sampler and process acceptance. Cross-device propagation remains excluded.
 不部署生产接收端，不修改 GUI，不启动原生界面，不改变协议和业务结果。
 
 2026-11-09 核对基线：分支 `v2`，HEAD `29286ce50f04d69a087b3e4d6140da8326849dfa`。
@@ -216,7 +216,7 @@ Lint 使用执行时仓库 CI 的命令，不引入另一套标准。
 
 行为落地后补充 `docs/architecture/observability.md`，并更新桌面运行时页面与架构索引。
 只有对应代码已实现并核对后，才执行 `go run ./tools/docscheck -bump <页>`。
-0014 的 traces 目标仍未实施，因此本次不得将整个 0014 标为完成或归档。
+The original receipt did not implement traces. The [trace receipt](observability-traces.md) records the subsequent first slice; outstanding acceptance still prevents blanket closure of 0014.
 
 ## 8. 实施台账
 
@@ -307,7 +307,7 @@ CPU 与 RSS 使用宿主 ps 采样，保留原始字段和采样时间。%CPU �
 `go run ./tools/docscheck` 通过，保留五条过期警告。尝试 bump 被工具拒绝，因为源码尚未提交。没有为更新 verified 擅自提交；新架构页明确保留基线 verified 的含义。
 
 未运行：真实 DNS 故障、强制文件系统 ENOSPC/unlink 故障、完整应用并发与停用竞态排列、真实系统休眠、原生剪贴板/UI、Windows/Linux 原生和生产接收端/认证部署。
-这些条目使 P4 保持部分完成。Traces 仍未实现，0014 不归档。
+These acceptance limits keep P4 partial. The subsequent first trace slice is recorded separately. Do not archive 0014.
 
 
 ## 12. 范围限定提交收据

@@ -1,8 +1,8 @@
 # 0014 · 客户端可观测性：OpenTelemetry / OTLP 与动态日志等级
 
-- 状态：已采纳；logs + metrics 已接入工作区，验收进度见执行计划。Traces 尚未实施，本文保留其后续设计目标。
+- 状态：已采纳；logs + metrics 已接入工作区，验收进度见执行计划。The first sampled submission trace slice is implemented. The [trace receipt](../../exec/observability-traces.md) records its exact boundaries.
 - 日期：2026-11-09。
-- 本次实施：仅 logs + metrics；精确接口见[可观测性契约](../../contracts/observability-contract.md)，阶段和证据见[执行计划](../../exec/0014-client-observability-otlp.md)。Traces 保留为后续设计目标，不作为本次依赖或验收条件。本文后续 trace 段落均属于该后续目标。
+- 本次实施：仅 logs + metrics；精确接口见[可观测性契约](../../contracts/observability-contract.md)，阶段和证据见[执行计划](../../exec/0014-client-observability-otlp.md)。The subsequent first trace slice follows the live contract and trace receipt. Broader trace goals below remain future work.
 - 关联：[0002 配置热加载](0002-config-file.md)、[0003 Engine SDK](0003-engine-sdk.md)、[0005 仓库布局](../archive/0005-monorepo-layout.md)、[Engine 契约](../../contracts/engine-contract.md)、[流水线契约](../../contracts/pipeline-contract.md)、[同步后端契约](../../contracts/sync-backend-contract.md)。
 
 ## 背景
@@ -17,7 +17,7 @@ Engine 已支持注入 `*slog.Logger`，要求日志不阻塞且不包含内容�
 
 ### 1. 进程内 SDK，OTLP/HTTP 上报，Collector 放在接收端
 
-使用标准库 `log/slog` 作为业务日志接口，使用官方 OpenTelemetry Go SDK 采集 metrics 和经过筛选的 logs，通过 OTLP/HTTP + Protobuf 主动上报。Traces 在后续阶段接入。发行客户端的远程遥测默认关闭，启用后使用 HTTPS。
+使用标准库 `log/slog` 作为业务日志接口，使用官方 OpenTelemetry Go SDK 采集 metrics 和经过筛选的 logs，通过 OTLP/HTTP + Protobuf 主动上报。The subsequent service-owned trace slice is implemented with HTTPS. All four signals default enabled.
 
 ```text
 Engine / 插件 / 宿主
@@ -89,7 +89,7 @@ enabled = true
 | `telemetry.logs.level` | 热更新，远程日志门槛 |
 | `telemetry.enabled`、logs/metrics 的 `enabled` | 热更新；关闭立即停止接纳相应远程记录并取消导出 |
 | `telemetry.endpoint` | 创建 exporter 时使用，修改需重启；关闭后再开启也不能偷偷应用待重启值 |
-| `telemetry.traces.sample_ratio` | 后续 traces 阶段目标：范围 0..1，修改需重启；本次不接入 |
+| Trace sampling | First slice uses a fixed 1% root rate. No runtime `sample_ratio` setting is accepted. See the live contract. |
 
 等级门槛使用独立的 `slog.LevelVar`。组合 Handler 的 `Enabled` 在任一已启用输出接受该等级时返回 true，`Handle` 再分别检查各输出门槛；`WithAttrs` / `WithGroup` 派生的 Logger 必须共享动态等级控制。不能在入口统一按本机等级丢弃远程输出本来接受的记录。
 
@@ -195,7 +195,7 @@ SDK 队列只作为临时缓冲，不承诺断网、崩溃或重启后的可靠�
 
 ### 7. 开发环境与接收端
 
-本地开发可采用 `grafana/otel-lgtm` 人工查询 logs/metrics；它只作为开发工具，不替代真实进程与可控 OTLP 接收端的自动验收。Traces 后续接入。生产客户端只绑定标准 OTLP，不绑定查询平台或厂商 SDK。
+本地开发可采用 `grafana/otel-lgtm` 人工查询 logs/metrics；它只作为开发工具，不替代真实进程与可控 OTLP 接收端的自动验收。The first trace slice now uses the same OTLP boundary. Product events retain the separately accepted PostHog SDK.
 
 自托管接收端优先评估 SigNoz；已有 Grafana 平台时复用 Collector、Tempo/Loki 和指标存储。接收端的部署、存储保留期、成本和服务配置另行决定，不作为客户端首批实现的前置交付。
 
@@ -204,7 +204,7 @@ SDK 队列只作为临时缓冲，不承诺断网、崩溃或重启后的可靠�
 ## 实施顺序与验收
 
 1. **本机日志与动态控制。** 接通 Engine Logger，统一关键日志等级和 context，加入有界输出、配置热加载、CLI/API、临时覆盖和状态查询。补齐 Engine 诊断 hooks 与桌面 API 契约后再实现，状态变化不包含正文。
-2. **Metrics 最小闭环。** 覆盖 commit、send_queue、send、receive、apply，使用真实进程和本机 OTLP 接收端验证阶段结果、累计语义和错误分类；默认关闭远程遥测。Traces 后续单独实施。
+2. **Metrics 最小闭环。** 覆盖 commit、send_queue、send、receive、apply，使用真实进程和本机 OTLP 接收端验证阶段结果、累计语义和错误分类；Current defaults and the subsequent trace slice are defined by the live observability contract.
 3. **远程 Logs。** 接入经过审核的 slog 桥接和独立等级门槛，验证 local/remote 分支分别过滤，配置/覆盖均不能绕过上传开关。
 4. **故障与资源验收。** 验证队列满、断网、DNS/TLS 失败、接收端限流、磁盘满、退出超时、反复启停和系统恢复；确认同步不等待遥测，Provider/工作线程不泄漏。
 

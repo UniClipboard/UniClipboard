@@ -1,0 +1,13 @@
+[sync]
+enabled=false
+[telemetry]
+enabled=true
+endpoint="https://local-tls-receiver.invalid/i"
+[telemetry.logs]
+enabled=false
+[telemetry.metrics]
+enabled=false
+[telemetry.analytics]
+enabled=false
+[telemetry.traces]
+enabled=true

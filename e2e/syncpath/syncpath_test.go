@@ -159,7 +159,7 @@ func runPath(t *testing.T, bin, mode, cloudVersion string) {
 		ci := tailcat.ConnInfo{ServerPublic: tailcat.NodePublic{NodePublic: sk.Public()}, PresharedKey: psk, Region: []*tailcfg.DERPRegion{region}}
 		creds, _ := json.Marshal(map[string]any{"version": 1, "server_key": string(sktext), "client_key": string(cktext), "psk": string(psktext), "addr": string(ci.Addr())})
 		must(t, os.WriteFile(filepath.Join(dir, "tailcat.json"), creds, 0600))
-		cfg := "[telemetry.logs]\nenabled=false\n[telemetry.analytics]\nenabled=false\n"
+		cfg := "[telemetry.logs]\nenabled=false\n[telemetry.analytics]\nenabled=false\n[telemetry.traces]\nenabled=false\n"
 		if cloudVersion == "" {
 			cfg = fmt.Sprintf("[telemetry]\nendpoint=%q\n", collector.URL) + cfg
 		} else {

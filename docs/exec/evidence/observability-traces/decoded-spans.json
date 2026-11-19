@@ -1,0 +1,157 @@
+[
+  {
+    "resourceSpans": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "unicd"
+              }
+            },
+            {
+              "key": "service.version",
+              "value": {
+                "stringValue": "traceacceptance.1795073163446746000"
+              }
+            },
+            {
+              "key": "os.type",
+              "value": {
+                "stringValue": "darwin"
+              }
+            },
+            {
+              "key": "host.arch",
+              "value": {
+                "stringValue": "arm64"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "unic.observability",
+              "version": "1"
+            },
+            "spans": [
+              {
+                "traceId": "LErNHwJyGh7zGOSmwgfB5w==",
+                "spanId": "5IBRtWeRTLM=",
+                "parentSpanId": "124uh5sDZzo=",
+                "flags": 257,
+                "name": "unic.commit",
+                "kind": "SPAN_KIND_INTERNAL",
+                "startTimeUnixNano": "1795073172885411000",
+                "endTimeUnixNano": "1795073172893386917",
+                "attributes": [
+                  {
+                    "key": "result",
+                    "value": {
+                      "stringValue": "succeeded"
+                    }
+                  }
+                ],
+                "status": {}
+              },
+              {
+                "traceId": "LErNHwJyGh7zGOSmwgfB5w==",
+                "spanId": "124uh5sDZzo=",
+                "flags": 257,
+                "name": "unic.submission",
+                "kind": "SPAN_KIND_INTERNAL",
+                "startTimeUnixNano": "1795073172885353000",
+                "endTimeUnixNano": "1795073172893424875",
+                "attributes": [
+                  {
+                    "key": "result",
+                    "value": {
+                      "stringValue": "succeeded"
+                    }
+                  }
+                ],
+                "status": {}
+              },
+              {
+                "traceId": "hR6cJ/9SmnuGVIP12PJoug==",
+                "spanId": "ZKq3tb7okyo=",
+                "parentSpanId": "+0MJRaCTGYk=",
+                "flags": 257,
+                "name": "unic.commit",
+                "kind": "SPAN_KIND_INTERNAL",
+                "startTimeUnixNano": "1795073172912885000",
+                "endTimeUnixNano": "1795073172919037375",
+                "attributes": [
+                  {
+                    "key": "result",
+                    "value": {
+                      "stringValue": "succeeded"
+                    }
+                  }
+                ],
+                "status": {}
+              },
+              {
+                "traceId": "hR6cJ/9SmnuGVIP12PJoug==",
+                "spanId": "+0MJRaCTGYk=",
+                "flags": 257,
+                "name": "unic.submission",
+                "kind": "SPAN_KIND_INTERNAL",
+                "startTimeUnixNano": "1795073172912856000",
+                "endTimeUnixNano": "1795073172919052584",
+                "attributes": [
+                  {
+                    "key": "result",
+                    "value": {
+                      "stringValue": "succeeded"
+                    }
+                  }
+                ],
+                "status": {}
+              },
+              {
+                "traceId": "IeJc3A/oNdRxKdYSwl0jEA==",
+                "spanId": "8/isorEvJlQ=",
+                "parentSpanId": "CRxFc7SSM/Y=",
+                "flags": 257,
+                "name": "unic.commit",
+                "kind": "SPAN_KIND_INTERNAL",
+                "startTimeUnixNano": "1795073172957480000",
+                "endTimeUnixNano": "1795073172963829625",
+                "attributes": [
+                  {
+                    "key": "result",
+                    "value": {
+                      "stringValue": "succeeded"
+                    }
+                  }
+                ],
+                "status": {}
+              },
+              {
+                "traceId": "IeJc3A/oNdRxKdYSwl0jEA==",
+                "spanId": "CRxFc7SSM/Y=",
+                "flags": 257,
+                "name": "unic.submission",
+                "kind": "SPAN_KIND_INTERNAL",
+                "startTimeUnixNano": "1795073172957451000",
+                "endTimeUnixNano": "1795073172963844500",
+                "attributes": [
+                  {
+                    "key": "result",
+                    "value": {
+                      "stringValue": "succeeded"
+                    }
+                  }
+                ],
+                "status": {}
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

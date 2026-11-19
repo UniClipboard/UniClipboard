@@ -187,7 +187,7 @@ func (n *node) copy(ctx context.Context, source, dest string) error {
 		}
 		return os.WriteFile(dest, b, 0700)
 	}
-	_, err := command(ctx, "", nil, "scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", source, n.config.Host+":"+strings.ReplaceAll(dest, "\\", "/"))
+	_, err := command(ctx, "", nil, "scp", "-C", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", source, n.config.Host+":"+strings.ReplaceAll(dest, "\\", "/"))
 	if err != nil {
 		return fmt.Errorf("artifact_copy_failed")
 	}
@@ -232,6 +232,11 @@ func (n *node) call(ctx context.Context, method string, value, out any) error {
 			return fmt.Errorf("%s: control_sequence_mismatch", n.name)
 		}
 		if r.Error != "" {
+			if method == "submit" && out != nil && len(r.Value) > 0 {
+				if err = json.Unmarshal(r.Value, out); err != nil {
+					return fmt.Errorf("%s: invalid_submit_failure_metadata", n.name)
+				}
+			}
 			return fmt.Errorf("%s: %s: %s", n.name, method, r.Error)
 		}
 		if out != nil {

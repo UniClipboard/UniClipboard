@@ -254,6 +254,14 @@ func (c *controller) transfer(ctx context.Context, phase string, source *node, r
 	out, err := submit(ctx, source, f, key)
 	submitted := time.Since(before)
 	if err != nil {
+		for _, n := range receivers {
+			var resources directoryResources
+			_ = directoryCall(ctx, n, directoryCommand{Action: "resources"}, &resources)
+			c.manifest.Outcomes = append(c.manifest.Outcomes, targetOutcome{InitialCLIResultKnown: out.InitialCLIResultKnown, InitialCLIExit: out.InitialCLIExit, InitialSendOutcome: out.InitialSendOutcome, LastOperation: out.LastOperation, ReceiverFailureResources: &resources, Scenario: phase, Case: key, Sender: source.name, Receiver: n.name, Kind: f.Kind, Bytes: f.Total, Expected: f.Parts, ExpectedTrees: f.Trees, SenderResources: out.Resources, SubmitMS: float64(submitted) / float64(time.Millisecond), Error: err.Error()})
+		}
+		if saveErr := c.save(); saveErr != nil {
+			return out, saveErr
+		}
 		return out, err
 	}
 	if out.Result.Phase != engine.SubmissionCommitted || out.Result.HistoryID == "" {
@@ -290,7 +298,7 @@ func (c *controller) transfer(ctx context.Context, phase string, source *node, r
 	}
 	for _, n := range receivers {
 		x := results[n.name]
-		event := targetOutcome{Scenario: phase, Case: key, Sender: source.name, Receiver: n.name, Kind: f.Kind, Bytes: f.Total, Expected: f.Parts, Actual: x.delivery.Actual, HashVerified: x.err == nil, VerifiedMS: float64(x.duration) / float64(time.Millisecond)}
+		event := targetOutcome{InitialCLIResultKnown: out.InitialCLIResultKnown, InitialCLIExit: out.InitialCLIExit, InitialSendOutcome: out.InitialSendOutcome, SettledAfterTimeout: out.SettledAfterTimeout, PreparationAdmissionMS: out.PreparationAdmissionMS, SendOperationMS: out.SendOperationMS, SenderResources: out.Resources, ReceiverResources: x.delivery.Resources, SubmitMS: float64(submitted) / float64(time.Millisecond), ExpectedTrees: f.Trees, ActualTrees: x.delivery.Trees, Scenario: phase, Case: key, Sender: source.name, Receiver: n.name, Kind: f.Kind, Bytes: f.Total, Expected: f.Parts, Actual: x.delivery.Actual, HashVerified: x.err == nil, VerifiedMS: float64(x.duration) / float64(time.Millisecond)}
 		if x.err != nil {
 			event.Error = x.err.Error()
 		}
@@ -792,6 +800,21 @@ func (c *controller) runScenarios(ctx context.Context) error {
 			if err := c.check("pairwise: two-node mesh also supplies the isolated pairwise baseline"); err != nil {
 				return err
 			}
+		}
+	}
+	if enabled["directory-crash"] {
+		if err := c.directoryFailures(ctx, "sender-crash"); err != nil {
+			return err
+		}
+	}
+	if enabled["directory-revoke"] {
+		if err := c.directoryFailures(ctx, "revoke"); err != nil {
+			return err
+		}
+	}
+	if enabled["directory"] {
+		if err := c.directoryFailures(ctx, ""); err != nil {
+			return err
 		}
 	}
 	if enabled["isolation"] {

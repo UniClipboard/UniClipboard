@@ -48,6 +48,7 @@ unic-desktop ----+
 ```
 
 The service accepts explicit text, PNG and file-reference submissions without a clipboard observation epoch.
+Directory snapshot export runs in the CLI and reconstructs independently owned roots under `rN/<original-name>`. It validates manifest bounds and member hashes, preserves empty directories and rejects existing root containers. Failed exports roll back only their newly created containers. See the [directory export contract](../contracts/directory-contract.md#cli-snapshot-export).
 Incoming content remains readable through history or the bounded transient Received list.
 Clipboard ability does not filter headless content reception.
 An Action creates a new item and applies it only when explicitly requested.

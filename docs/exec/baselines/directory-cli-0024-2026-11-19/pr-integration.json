@@ -1,0 +1,125 @@
+{
+  "source_head": "350ac4ce1ddcd8072b01a26bbcd620255ef5e7c1",
+  "source_sha256": "b43cd182f08cf9385fced66072a67aa29be0313027977d84ca8e83f9faa8bb19",
+  "build_input_sha256": "3c489bf2d03f90bc81cdbc71deb55f0e0f153f557e18eb2b226074bc4597516a",
+  "binary_sha256": {
+    "unic": "404fc64ca0fb0e1cc14471b94787f541aaf3e0046ed47da5e3dc9c210f7dd093",
+    "unicd": "016f4cce7bc83c07aac45b49de6b78ce51e36821bc7dcbc71abaf2b80fe49ab4"
+  },
+  "go": "go version go1.27.3 darwin/arm64",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "frozen_source_unchanged": true,
+  "private_cleanup": "PASS",
+  "status": "PASS",
+  "case_count": 20,
+  "cases": [
+    {
+      "case": "TestCLI/content-formats",
+      "result": "PASS",
+      "seconds": 38.72
+    },
+    {
+      "case": "TestCLI/directory-receive-race",
+      "result": "PASS",
+      "seconds": 40.48
+    },
+    {
+      "case": "TestCLI/directory-custom-receive",
+      "result": "PASS",
+      "seconds": 48.8
+    },
+    {
+      "case": "TestCLI/directory-roots-and-bounds",
+      "result": "PASS",
+      "seconds": 62.42
+    },
+    {
+      "case": "TestCLI/directory-mixed-auto",
+      "result": "PASS",
+      "seconds": 45.62
+    },
+    {
+      "case": "TestCLI/directory-source-metadata",
+      "result": "PASS",
+      "seconds": 54.93
+    },
+    {
+      "case": "TestCLI/directory-history-cancel",
+      "result": "PASS",
+      "seconds": 47.91
+    },
+    {
+      "case": "TestCLI/directory-cli-export",
+      "result": "PASS",
+      "seconds": 59.73
+    },
+    {
+      "case": "TestCLI/directory-copy-and-send",
+      "result": "PASS",
+      "seconds": 54.35
+    },
+    {
+      "case": "TestCLI/history-restore-sync",
+      "result": "PASS",
+      "seconds": 55.65
+    },
+    {
+      "case": "TestCLI/pair-and-sync-text",
+      "result": "PASS",
+      "seconds": 47.32
+    },
+    {
+      "case": "TestCLI/sync-settings",
+      "result": "PASS",
+      "seconds": 76.64
+    },
+    {
+      "case": "TestCLI/send-to-device",
+      "result": "PASS",
+      "seconds": 66.46
+    },
+    {
+      "case": "TestCLI/directory-invalid-manifest",
+      "result": "PASS",
+      "seconds": 37.75
+    },
+    {
+      "case": "TestCLI/directory-auto-responsive",
+      "result": "PASS",
+      "seconds": 40.84
+    },
+    {
+      "case": "TestCLI/host-received-files",
+      "result": "PASS",
+      "seconds": 77.46
+    },
+    {
+      "case": "TestCLI/history-auto-cleanup",
+      "result": "PASS",
+      "seconds": 39.26
+    },
+    {
+      "case": "TestCLI/history-cache-quota",
+      "result": "PASS",
+      "seconds": 56.12
+    },
+    {
+      "case": "TestCLI/directory-source-and-recovery",
+      "result": "PASS",
+      "seconds": 38.78
+    },
+    {
+      "case": "TestCLI/file-size-policy",
+      "result": "PASS",
+      "seconds": 54.7
+    }
+  ],
+  "production_headless_result": "PASS",
+  "production_headless_manifest_sha256": "703a1c6fe39f473e56aaf9a2cb24a9033e8f83455051d04543008f68ac30c499",
+  "merge_commit": "350ac4ce1ddcd8072b01a26bbcd620255ef5e7c1",
+  "base": "v2",
+  "base_sha": "a0c49ae55bd0bddfa261a3a4cf3b6879c408c8f9",
+  "directory_production_modules_unchanged_from_original_delivery": true,
+  "real_host_receipts_reissued_for_merge_head": false,
+  "docscheck": "PASS; 5 unrelated staleness warnings"
+}

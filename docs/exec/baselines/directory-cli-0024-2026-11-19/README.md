@@ -60,3 +60,7 @@ docs/exec/baselines/directory-cli-0024-2026-11-19/replay.sh primaryserver /absol
 The script runs frozen race CLI acceptance, the 32-check real-host functional suite, then the independent six-cell performance suite and production headless acceptance. Fresh identities and synthetic data are used. Source/worker/producer hashes are checked. Owned profiles, source/build copies and raw private logs are removed on success/failure. No personal history is read. See [exact commands](commands.md).
 
 Check every retained file from this receipt directory with `shasum -a 256 -c SHA256SUMS`. JSON manifests/results use deterministic gzip compression; inspect them with `gzip -dc final-functional/manifest.json.gz`. Retained artifacts contain hashes and small receipts, not source snapshots, databases, test keys, executable binaries, raw logs or recordings.
+
+## PR integration
+
+After the original local delivery, the branch merged the latest `v2` at `350ac4ce1`. Only two architecture `verified` markers conflicted. Directory export/session producer modules are unchanged. The merged source passed all 20 frozen race CLI cases, production headless acceptance and documentation checks. See [the integration receipt](pr-integration.json), [input inventory](pr-integration-source-files.json.gz) and [headless manifest](pr-integration-headless.json.gz). Original physical-host receipts remain bound to their recorded pre-integration source; they are not reissued for this merge. Statements about no publication above describe the initial delivery checkpoint.

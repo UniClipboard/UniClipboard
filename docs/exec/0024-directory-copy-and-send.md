@@ -278,3 +278,8 @@ The Linux-to-macOS large-file CLI initially exited 4/timeout after its existing 
 A harness-only follow-up corrects directory recipe byte-budget reporting. Historical controller upper-bound fields remain unchanged and are annotated; runtime file-byte inventories and the independent 1 GiB free-space check were correct. The final receipt includes the corrected CLI plan. All producer Go inputs/module files match the tested freeze, and producer hashes match between final functional/performance runs.
 
 The decision remains proposed because native/platform acceptance is not complete. Replay with `docs/exec/baselines/directory-cli-0024-2026-11-19/replay.sh primaryserver /absolute/new/receipt`. Only small English receipts, hashes and replay instructions are retained; task source copies, binaries, profiles, test keys and raw logs are removed.
+
+
+## 17. PR integration with current v2
+
+The branch merged current `v2` (`a0c49ae55`) as `350ac4ce1`. Only architecture verification markers conflicted; production directory export and session modules are unchanged from the original delivery. All 20 frozen race CLI cases and production headless acceptance passed after integration. Documentation checks passed with five unrelated staleness warnings. The [integration receipt](baselines/directory-cli-0024-2026-11-19/pr-integration.json) binds the merged source and resulting binaries. The original real-host evidence remains valid only for its recorded freeze; it is not relabeled as a new real-host run.

@@ -425,8 +425,7 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	if err != nil {
 		return nil, rpc.NewError(rpc.CodeInternal)
 	}
-	bodyConn := &bodyDeadlineConn{Conn: conn}
-	w := wire.NewConn(bodyConn)
+	w := wire.NewConn(conn)
 	werr := make(chan error, 1)
 	go func() {
 		werr <- w.WriteJSON(wire.Hello{T: "hello", Version: wire.Version, H: mine, Name: b.selfName(), Addr: own})
@@ -491,7 +490,7 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	}
 	var s *session
 	if local && dec.SessionToken != nil {
-		s = &session{b: b, r: r, conn: conn, w: w, bodyConn: bodyConn, connID: connID, token: *dec.SessionToken, peerID: dec.PeerID, outgoing: outgoing,
+		s = &session{b: b, r: r, conn: conn, w: w, connID: connID, token: *dec.SessionToken, peerID: dec.PeerID, outgoing: outgoing,
 			trustRev: uint64(dec.TrustRevision), done: make(chan struct{}), exited: make(chan struct{})}
 	}
 	if rerr != nil {
@@ -579,7 +578,6 @@ type session struct {
 	r           *runState
 	conn        net.Conn
 	w           *wire.Conn
-	bodyConn    *bodyDeadlineConn
 	connID      string
 	token       string
 	peerID      string
@@ -830,10 +828,6 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (
 	}
 	sess.wmu.Lock()
 	defer sess.wmu.Unlock()
-	if sess.bodyConn != nil {
-		sess.bodyConn.writingBody = true
-		defer func() { sess.bodyConn.writingBody = false; _ = sess.conn.SetWriteDeadline(time.Time{}) }()
-	}
 	stop := context.AfterFunc(ctx, sess.close) // a cancelled send leaves the stream out of step
 	defer stop()
 	if err := sess.w.SendApplicationStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, m.Clip.SourceApplication, &body); err != nil {
@@ -892,11 +886,6 @@ func (b *Backend) recvLoop(s *session) error {
 // receive hands the clip header to the Engine and, if admitted, the bodies.
 // A clip nobody wants is read and dropped so the stream stays in sync.
 func (b *Backend) receive(s *session, m *wire.Clip) error {
-	// Header waits remain unbounded; only a declared body uses the I/O budget.
-	if s.bodyConn != nil {
-		s.bodyConn.body = true
-		defer func() { s.bodyConn.body = false; _ = s.conn.SetReadDeadline(time.Time{}) }()
-	}
 	rcv := b.receiver()
 	if rcv == nil {
 		return s.w.Discard(m)
@@ -935,14 +924,7 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 	body := &bodyObservation{}
 	parts := &recvParts{w: s.w, m: m, observation: body}
 	result, recvErr := rcv.Receive(ctx, *g.ReceiveID, parts)
-	var drainErr error
-	if recvErr != nil || result != rpc.OutcomeCommit {
-		// An aborted batch must not wait for a peer to finish the rejected body.
-		// Returning an error closes the session and releases its readers.
-		drainErr = rpc.NewError(rpc.CodeUnavailable)
-	} else {
-		drainErr = parts.drain()
-	}
+	drainErr := parts.drain()
 	status := "succeeded"
 	if recvErr != nil || result != rpc.OutcomeCommit || drainErr != nil {
 		status = "failed"

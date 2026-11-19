@@ -109,8 +109,7 @@ Submission and Action JSON expose stable codes and independent commit/network/ap
 
 `unic history export ID --output DIR` executes in the CLI process.
 It streams every part into an `os.Root` rooted at DIR, uses exclusive creation, and rejects unsafe names.
-Directory snapshots use the [directory export contract](directory-contract.md#cli-snapshot-export), including distinct root containers and rollback. Directory references require an explicit snapshot first.
-For other content, file parts retain their declared names; representations use `part-N.txt`, `.html`, `.png`, or `.bin`.
+File parts retain their declared names; representations use `part-N.txt`, `.html`, `.png`, or `.bin`.
 Duplicate names, existing files, symlinks at output file names, and path escape fail instead of overwriting.
 A failed export removes only files created by that export.
 Exported copies belong to the user and are independent of Engine cleanup.

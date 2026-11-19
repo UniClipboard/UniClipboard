@@ -165,9 +165,3 @@ Directory selection references, preparation, manifests, file-policy grouping, bo
 
 Clipboard content and history preserve optional source application identity and cached PNG icons.
 See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.
-
-## Built-in peer-session body lifetime
-
-The built-in session reader applies the 30-second body I/O inactivity budget to each blocked underlying body read or write while consuming a declared clip body. It refreshes the corresponding deadline for the next I/O call and clears it outside the body. This is an inactivity bound, not a 30-second total transfer limit. Waiting for a new clip on an idle authenticated connection has no body deadline.
-
-A receive error or aborted batch ends that session instead of draining an unfinished rejected body. The ordinary receive failure path closes file readers and removes unpublished staging; it never publishes a partial directory. Fresh authenticated session recovery remains available. Valid complete batches may still drain intentionally skipped parts under the same blocked-read bound. This prevents a cancelled or disconnected sender from retaining receive staging indefinitely when transport EOF is delayed.

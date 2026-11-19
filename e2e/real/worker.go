@@ -24,8 +24,6 @@ import (
 )
 
 type worker struct {
-	injectedCrashes                      int
-	directoryJob                         *directoryJob
 	root, socket, socketDir, runID, name string
 	client                               *api.Client
 	fixtures                             map[string]fixtureData
@@ -133,14 +131,6 @@ func workerMain(ctx context.Context, runID, name string) (resultErr error) {
 		reply := response{ID: req.ID}
 		if opErr != nil {
 			reply.Error = opErr.Error()
-			if req.Method == "submit" {
-				if safe, ok := value.(submitResult); ok {
-					reply.Value, err = json.Marshal(safe)
-					if err != nil {
-						return err
-					}
-				}
-			}
 			if !regexp.MustCompile(`^[a-z0-9_]+$`).MatchString(reply.Error) {
 				_ = os.WriteFile(filepath.Join(w.root, "worker-error.txt"), []byte(opErr.Error()), 0600)
 				reply.Error = "worker_operation_failed"
@@ -317,16 +307,6 @@ func (w *worker) stop() error {
 	return nil
 }
 func (w *worker) close(keep bool) (logsResult, error) {
-	if w.directoryJob != nil {
-		w.directoryJob.cancel()
-		wait, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_, err := w.finishDirectoryJob(wait)
-		cancel()
-		if err != nil {
-			return logsResult{}, fmt.Errorf("directory_cli_cleanup_failed")
-		}
-	}
-
 	if err := w.stop(); err != nil {
 		return logsResult{}, err
 	}
@@ -336,7 +316,7 @@ func (w *worker) close(keep bool) (logsResult, error) {
 	} else if err != nil {
 		return logsResult{}, fmt.Errorf("log_read_failed")
 	}
-	result := logsResult{InjectedCrashes: w.injectedCrashes, Bytes: len(b), SHA: digest(b), ForcedStop: w.forced}
+	result := logsResult{Bytes: len(b), SHA: digest(b), ForcedStop: w.forced}
 	for _, secret := range w.secrets {
 		if len(secret) > 0 && bytes.Contains(b, secret) {
 			result.ContainsSecret = true
@@ -391,7 +371,7 @@ func (w *worker) configure(v installConfig) error {
 	}
 	return nil
 }
-func (w *worker) submitContent(ctx context.Context, v submitRequest) (submitResult, error) {
+func (w *worker) submit(ctx context.Context, v submitRequest) (submitResult, error) {
 	f, ok := w.fixtures[v.Fixture]
 	if !ok {
 		return submitResult{}, fmt.Errorf("unknown_fixture")
@@ -426,9 +406,8 @@ func (w *worker) submitContent(ctx context.Context, v submitRequest) (submitResu
 			defer func() { _ = input.Close() }()
 		case "png":
 			args = append(args, "--png", f.Paths[0])
-		case "file", "directory":
-			args = append(args, "-f")
-			args = append(args, f.Paths...)
+		case "file":
+			args = append(args, "-f", f.Paths[0])
 		default:
 			return out, fmt.Errorf("invalid_submit_kind")
 		}
@@ -443,63 +422,11 @@ func (w *worker) submitContent(ctx context.Context, v submitRequest) (submitResu
 		if err != nil {
 			return out, err
 		}
-		var report struct {
-			Submission engine.SubmissionResult `json:"submission"`
-			Send       struct {
-				Operation *engine.Operation `json:"operation"`
-				Outcome   string            `json:"outcome"`
-			} `json:"send"`
+		if result.Code != 0 {
+			return out, fmt.Errorf("submit_failed")
 		}
-		if err = json.Unmarshal(result.Out, &report); err != nil {
+		if err = json.Unmarshal(result.Out, &out.Result); err != nil {
 			return out, fmt.Errorf("invalid_submission_result")
-		}
-		out.Result = report.Submission
-		out.InitialCLIResultKnown = true
-		out.InitialCLIExit = result.Code
-		out.InitialSendOutcome = report.Send.Outcome
-		if f.Meta.Kind == "directory" && result.Code == 4 && report.Send.Outcome == "timeout" && out.Result.OperationID != "" {
-			// A persistent service continues after the CLI's 60 s observation window.
-			// Observe this same operation within the predeclared 180 s case budget; never resubmit.
-			settled, cancel := context.WithDeadline(ctx, time.Unix(0, out.StartedNS).Add(180*time.Second))
-			defer cancel()
-			for {
-				op, e := w.client.Operation(settled, string(out.Result.OperationID))
-				if e == nil {
-					out.LastOperation = &op
-				}
-				if e != nil {
-					return out, fmt.Errorf("timed_out_directory_operation_unavailable")
-				}
-				if op.Done() {
-					report.Send.Operation = &op
-					if op.Outcome != engine.OutcomeSuccess {
-						return out, fmt.Errorf("timed_out_directory_operation_%s", op.Outcome)
-					}
-					out.SettledAfterTimeout = true
-					out.FinishedNS = time.Now().UnixNano()
-					break
-				}
-				select {
-				case <-settled.Done():
-					return out, fmt.Errorf("directory_operation_exceeded_180s_budget")
-				case <-time.After(100 * time.Millisecond):
-				}
-			}
-		}
-		if op := report.Send.Operation; op != nil {
-			out.PreparationAdmissionMS = float64(op.CreatedAtMs) - float64(out.StartedNS)/1e6
-			out.SendOperationMS = float64(op.UpdatedAtMs - op.CreatedAtMs)
-		}
-		if result.Code != 0 && !out.SettledAfterTimeout {
-			var codes []string
-			if report.Send.Operation != nil {
-				for _, target := range report.Send.Operation.Targets {
-					if target.Error != nil {
-						codes = append(codes, string(target.Error.Code))
-					}
-				}
-			}
-			return out, fmt.Errorf("submit_failed_exit_%d_outcome_%s_codes_%s", result.Code, report.Send.Outcome, strings.Join(codes, ","))
 		}
 		return out, nil
 	}
@@ -516,18 +443,7 @@ func (w *worker) received(ctx context.Context) ([]engine.ReceivedContent, error)
 	return out, nil
 }
 func matches(r engine.ReceivedContent, g armRequest) bool {
-	if string(r.PeerID) != g.Source {
-		return false
-	}
-	if g.Fixture.Kind == "directory" {
-		for _, p := range r.Content.Parts {
-			if p.MIME == "application/vnd.unic.directory+json" {
-				return true
-			}
-		}
-		return false
-	}
-	if len(r.Content.Parts) != len(g.Fixture.Parts) {
+	if string(r.PeerID) != g.Source || len(r.Content.Parts) != len(g.Fixture.Parts) {
 		return false
 	}
 	for i, p := range r.Content.Parts {
@@ -554,7 +470,7 @@ func (w *worker) newReceipts(ctx context.Context) ([]engine.ReceivedContent, err
 	}
 	return out, nil
 }
-func (w *worker) waitContent(ctx context.Context) (delivery, error) {
+func (w *worker) wait(ctx context.Context) (delivery, error) {
 	for {
 		if ctx.Err() != nil {
 			return delivery{}, fmt.Errorf("receive_timeout")
@@ -584,9 +500,6 @@ func (w *worker) waitContent(ctx context.Context) (delivery, error) {
 					return delivery{}, fmt.Errorf("verification_timeout")
 				}
 				return delivery{}, err
-			}
-			if w.gate.Fixture.Kind == "directory" {
-				return w.verifyDirectory(ctx, r, dir)
 			}
 			files, err := os.ReadDir(dir)
 			if err != nil || len(files) != len(w.gate.Fixture.Parts) {
@@ -626,12 +539,6 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	switch r.Method {
-	case "directory":
-		v, err := decodeValue[directoryCommand](r.Value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid_request")
-		}
-		return w.directoryCommand(ctx, v)
 	case "hello":
 		id, free, err := machineInfo(w.root)
 		if err != nil {
@@ -692,7 +599,7 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 			return nil, fmt.Errorf("unknown_fixture")
 		}
 		if len(f.Paths) > 0 {
-			if err = os.RemoveAll(filepath.Join(w.root, "fixtures", id)); err != nil {
+			if err = os.RemoveAll(filepath.Dir(f.Paths[0])); err != nil {
 				return nil, fmt.Errorf("fixture_cleanup_failed")
 			}
 		}
@@ -723,13 +630,6 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 			return nil, fmt.Errorf("invalid_request")
 		}
 		return w.submit(ctx, v)
-	case "rearm":
-		v, err := decodeValue[armRequest](r.Value)
-		if err != nil || w.gate == nil || w.gate.Source != v.Source {
-			return nil, fmt.Errorf("invalid_receive_rearm")
-		}
-		w.gate = &v
-		return true, nil
 	case "arm":
 		v, err := decodeValue[armRequest](r.Value)
 		if err != nil {

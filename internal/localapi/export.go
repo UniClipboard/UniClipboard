@@ -20,12 +20,6 @@ func (c *Client) ExportHistory(ctx context.Context, id, dir string) (names []str
 	if err != nil {
 		return nil, err
 	}
-	if item.Kind == "directory_reference" {
-		return nil, fmt.Errorf("send the directory reference before exporting its snapshot")
-	}
-	if item.Kind == "directory" {
-		return c.exportDirectory(ctx, item, dir)
-	}
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}

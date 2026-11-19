@@ -139,8 +139,6 @@ func (w *worker) prepare(v prepareRequest) (fixture, error) {
 		f.Paths = []string{path}
 		f.Meta.Parts = []expectedPart{{Kind: "representation", MIME: "image/png", Name: "image.png", Size: size, SHA: sha}}
 		f.Meta.Total = size
-	case "directory":
-		return w.prepareDirectory(v, id, dir)
 	case "file":
 		name := "payload-" + id + ".bin"
 		path := filepath.Join(dir, name)

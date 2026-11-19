@@ -47,11 +47,3 @@ Directory arguments require paired-device `--to` sending. Temporary transfer cod
 A newer local copy supersedes unfinished automatic directory preparation. Explicit sends have independent lifetimes. Submission cancellation applies only to the Engine-owned submission context; short-lived adapter RPC contexts must never cancel queued history-restore sends.
 
 Desktop history sends await asynchronous admission acknowledgement with the desktop lifetime context, independently of user cancellation. After acknowledgement, a cancelled user context triggers cancellation of the admitted request. Cancellation does not guarantee that an underlying blocking operation has stopped.
-
-## CLI snapshot export
-
-`unic history export ID --output DIR` reconstructs a directory snapshot as independent user-owned copies. Root index N maps to `rN/<original-root-name>` under DIR. This stable mapping preserves equal root names and mixed file/directory selections. The result lists those relative paths. Empty directories and zero-byte files remain present. The CLI validates the bounded manifest and verifies each exported file size and SHA-256. It does not expose the manifest as a user file or flatten descendants.
-
-Each `rN` container uses exclusive creation. Existing containers cause failure, including empty containers or symlinks. The CLI never merges or overwrites them. On a reported error or context cancellation it removes only containers created by that invocation. Failure to remove an incomplete container is reported. During execution these containers are provisional; abrupt CLI process death may leave them for user inspection. Exported copies survive history deletion and service restart. Directory references must first be explicitly sent to create a snapshot; export does not implicitly scan them. Native clipboard application remains a separate acceptance layer.
-
-The built-in peer-session path applies the [body-lifetime bound](sync-backend-contract.md#built-in-peer-session-body-lifetime). Continuous large directory transfers may exceed 30 seconds. A stalled blocked body I/O call or aborted receive fails the batch and releases unpublished files instead of waiting indefinitely to drain the old stream.

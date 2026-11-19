@@ -42,7 +42,6 @@ type expectedPart struct {
 	SHA  string `json:"sha256"`
 }
 type fixture struct {
-	Trees []treeRoot     `json:"trees,omitempty"`
 	ID    string         `json:"id"`
 	Kind  string         `json:"kind"`
 	Parts []expectedPart `json:"parts"`
@@ -57,32 +56,22 @@ type submitRequest struct {
 	Key     string `json:"key"`
 }
 type submitResult struct {
-	LastOperation          *engine.Operation       `json:"last_observed_operation,omitempty"`
-	InitialCLIResultKnown  bool                    `json:"initial_cli_result_known"`
-	InitialCLIExit         int                     `json:"initial_cli_exit"`
-	InitialSendOutcome     string                  `json:"initial_send_outcome"`
-	SettledAfterTimeout    bool                    `json:"settled_after_cli_timeout"`
-	PreparationAdmissionMS float64                 `json:"preparation_and_admission_ms"`
-	SendOperationMS        float64                 `json:"send_operation_ms"`
-	Resources              *directoryMeasure       `json:"resources,omitempty"`
-	Result                 engine.SubmissionResult `json:"result"`
-	StartedNS              int64                   `json:"started_ns"`
-	FinishedNS             int64                   `json:"finished_ns"`
-	Entry                  string                  `json:"entry"`
+	Result     engine.SubmissionResult `json:"result"`
+	StartedNS  int64                   `json:"started_ns"`
+	FinishedNS int64                   `json:"finished_ns"`
+	Entry      string                  `json:"entry"`
 }
 type armRequest struct {
 	Source  string  `json:"source"`
 	Fixture fixture `json:"fixture"`
 }
 type delivery struct {
-	Resources  *directoryMeasure `json:"resources,omitempty"`
-	Trees      []treeRoot        `json:"verified_trees,omitempty"`
-	Receipt    string            `json:"receipt_id"`
-	History    string            `json:"history_id"`
-	ReceivedMS int64             `json:"received_ms"`
-	VerifiedNS int64             `json:"verified_ns"`
-	Count      int               `json:"count"`
-	Actual     []expectedPart    `json:"verified_parts"`
+	Receipt    string         `json:"receipt_id"`
+	History    string         `json:"history_id"`
+	ReceivedMS int64          `json:"received_ms"`
+	VerifiedNS int64          `json:"verified_ns"`
+	Count      int            `json:"count"`
+	Actual     []expectedPart `json:"verified_parts"`
 }
 type historySnapshot struct {
 	Items []api.HistoryItem `json:"items"`
@@ -97,12 +86,11 @@ type cliResult struct {
 	Err  []byte `json:"stderr"`
 }
 type logsResult struct {
-	InjectedCrashes int    `json:"injected_crashes"`
-	Bytes           int    `json:"bytes"`
-	SHA             string `json:"sha256"`
-	ContainsSecret  bool   `json:"contains_secret"`
-	ForcedStop      bool   `json:"forced_stop"`
-	Removed         bool   `json:"removed"`
+	Bytes          int    `json:"bytes"`
+	SHA            string `json:"sha256"`
+	ContainsSecret bool   `json:"contains_secret"`
+	ForcedStop     bool   `json:"forced_stop"`
+	Removed        bool   `json:"removed"`
 }
 
 type waitRequest struct {

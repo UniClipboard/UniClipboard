@@ -17,13 +17,11 @@
 | [crash-and-suspend-recovery](#crash-and-suspend-recovery) | 对端崩溃或挂起后自动恢复 |
 | [data-dir-single-instance](#data-dir-single-instance) | 同一数据目录只允许一个 unicd，日志不泄露秘密 |
 | [directory-auto-responsive](#directory-auto-responsive) | Slow automatic directory preparation does not block a newer copy |
-| [directory-cli-export](#directory-cli-export) | Directory CLI export preserves trees and protects user outputs |
 | [directory-copy-and-send](#directory-copy-and-send) | Directory copy defers work and explicit send preserves a tree |
 | [directory-custom-receive](#directory-custom-receive) | Directory custom receives remain user-managed |
 | [directory-history-cancel](#directory-history-cancel) | Directory history references defer work and cancellation releases preparation |
 | [directory-invalid-manifest](#directory-invalid-manifest) | Directory manifests are validated through a real peer connection |
 | [directory-mixed-auto](#directory-mixed-auto) | Mixed directory selections follow directory automatic policy |
-| [directory-receive-race](#directory-receive-race) | A late directory apply preserves a newer local copy |
 | [directory-roots-and-bounds](#directory-roots-and-bounds) | Directory roots and resource bounds apply to the entire selection |
 | [directory-source-and-recovery](#directory-source-and-recovery) | Directory preparation detects source changes and recovers owned staging |
 | [directory-source-metadata](#directory-source-metadata) | Directory capture and preparation retain source application metadata |
@@ -753,77 +751,6 @@ directory-hold alpha false
 
 </details>
 
-## directory-cli-export
-
-**Directory CLI export preserves trees and protects user outputs**
-
-运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-cli-export' -v`
-
-**目的**
-
-Verify production history export reconstructs directory roots without flattening.
-
-
-**流程**
-
-1. Send nested directories with Unicode names, empty files and empty directories.
-2. Export received history and compare all paths and hashes.
-3. Reject an existing destination, delete history and restart without deleting exports.
-
-**期望**
-
-- Export preserves root names and complete trees. User exports survive cleanup.
-
-**不应**
-
-- Export raw manifests, flatten files, merge roots or overwrite user data.
-
-<details><summary>脚本 testdata/directory-cli-export.txtar</summary>
-
-```
-mkdir source/tree/empty
-mkdir other/tree/empty
-cp other.txt other/tree/member
-mkdir 'source/tree/中文 空格'
-cp content.txt 'source/tree/中文 空格/member.txt'
-cp empty.txt source/tree/zero
-node-start alpha
-node-start beta
-pair alpha beta
-retry-copy alpha beta warm-up
-u alpha send --to all -f $WORK/source/tree --json
-stdout '"outcome":"success"'
-tree-wait beta source/tree
-u beta history export @1 --output $WORK/export
-tree-equal source/tree export/r0/tree
-! u beta history export @1 --output $WORK/export
-tree-equal source/tree export/r0/tree
-u beta history delete @1 --yes
-node-stop beta
-node-start beta
-tree-equal source/tree export/r0/tree
-
-retry-copy alpha beta restart-warm-up
-u alpha send --to all -f $WORK/source/tree $WORK/other/tree $WORK/content.txt --json
-stdout '\"outcome\":\"success\"'
-tree-wait beta other/tree
-u beta history export @1 --output $WORK/mixed
-tree-equal source/tree mixed/r0/tree
-tree-equal other/tree mixed/r1/tree
-cmp content.txt mixed/r2/content.txt
-mkdir collision/r1
-cp content.txt collision/r1/user.txt
-! u beta history export @1 --output $WORK/collision
-! exists collision/r0
-cmp content.txt collision/r1/user.txt
-u alpha send --to all -f $WORK/source/tree/empty --json
-tree-wait beta source/tree/empty
-u beta history export @1 --output $WORK/empty-export
-tree-equal source/tree/empty empty-export/r0/empty
-```
-
-</details>
-
 ## directory-copy-and-send
 
 **Directory copy defers work and explicit send preserves a tree**
@@ -1103,63 +1030,12 @@ board-select alpha first content.txt
 until alpha '"kind":"directory_reference"' history list --json
 directory-probe alpha 0 0
 u alpha config set sync.directories.automatic true
-u beta config set sync.directories.automatic true
 ! tree-wait beta first
 board-set alpha files second
 tree-wait beta second
 directory-probe alpha 1 1
 board-set alpha files second
 directory-probe alpha 2 2
-directory-probe beta 0 0
-```
-
-</details>
-
-## directory-receive-race
-
-**A late directory apply preserves a newer local copy**
-
-运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/directory-receive-race' -v`
-
-**目的**
-
-Verify the final production adapter recheck after directory materialization.
-
-
-**流程**
-
-1. Hold only the fixture clipboard read after a received directory view exists.
-2. Copy newer local text while the old directory apply waits.
-3. Release the read and verify text, peer progress and directory lease cleanup.
-
-**期望**
-
-- The older directory never replaces the newer local text. The deferred view is released.
-
-**不应**
-
-- Use the system clipboard or claim native paste acceptance.
-
-<details><summary>脚本 testdata/directory-receive-race.txtar</summary>
-
-```
-mkdir source/tree/empty
-cp directory.txt source/tree/member
-node-start alpha
-node-start beta
-pair alpha beta
-retry-copy alpha beta warm-up
-board-apply-gate beta hold
-u alpha send --to all -f $WORK/source/tree --json
-stdout '"outcome":"success"'
-board-apply-gate beta wait
-board-set beta text newer.txt
-board-apply-gate beta release
-board-wait beta text newer.txt
-board-wait alpha text newer.txt
-! tree-wait beta source/tree
-received-dismiss-all beta
-! directory-staging beta
 ```
 
 </details>

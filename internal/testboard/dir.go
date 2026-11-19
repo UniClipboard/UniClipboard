@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/sourceapp"
@@ -29,10 +28,6 @@ var dirFormats = []struct{ file, format string }{
 const dirFiles = "files"
 
 func (d Dir) Read() (clip.Snapshot, error) {
-	if err := d.waitDirectoryApply(); err != nil {
-		return clip.Snapshot{}, err
-	}
-
 	var s clip.Snapshot
 	if data, err := os.ReadFile(filepath.Join(string(d), "source.json")); err == nil {
 		s.SourceApplication = sourceapp.Decode(data)
@@ -101,41 +96,4 @@ func writeAtomic(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp, path)
-}
-
-// waitDirectoryApply is an opt-in filesystem gate for isolated process acceptance.
-// Ordinary reads stay unchanged. No production build uses this fixture board.
-func (d Dir) waitDirectoryApply() error {
-	hold := filepath.Join(string(d), ".hold-directory-apply")
-	if _, err := os.Stat(hold); err != nil {
-		return nil
-	}
-	inbox := filepath.Join(filepath.Dir(string(d)), "inbox")
-	entries, err := os.ReadDir(inbox)
-	if err != nil {
-		return nil
-	}
-	materialized := false
-	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), "unic-content-") {
-			if info, err := os.Stat(filepath.Join(inbox, e.Name(), "view")); err == nil && info.IsDir() {
-				materialized = true
-				break
-			}
-		}
-	}
-	if !materialized {
-		return nil
-	}
-	if err := os.WriteFile(filepath.Join(string(d), ".directory-apply-held"), []byte("final clipboard read"), 0600); err != nil {
-		return err
-	}
-	end := time.Now().Add(15 * time.Second)
-	for time.Now().Before(end) {
-		if _, err := os.Stat(hold); errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	return errors.New("fixture directory apply gate expired")
 }

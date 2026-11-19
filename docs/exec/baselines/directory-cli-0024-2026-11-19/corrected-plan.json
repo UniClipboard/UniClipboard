@@ -1,1 +1,0 @@
-{"directed_links":2,"executes_hosts":false,"nodes":["linux","mac"],"pairing_edges":[["linux","mac"]],"payload_budget_excludes_setup_and_transport_overhead":true,"payload_bytes_upper_bound":38797764,"payload_cells":3,"planned_measurements":6,"repetitions":1,"scenarios":["pairwise"]}

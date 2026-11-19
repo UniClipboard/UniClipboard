@@ -292,9 +292,6 @@ func (c *controller) requiredSpace() uint64 {
 			max = size
 		}
 	}
-	if len(c.config.Suite.DirectoryBytes) > 0 {
-		return 1 << 30
-	}
 	return uint64(128<<20 + max*4)
 }
 func (c *controller) plugins() (map[string][]byte, error) {

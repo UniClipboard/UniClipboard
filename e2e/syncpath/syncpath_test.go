@@ -44,10 +44,22 @@ func TestPassivePaths(t *testing.T) {
 		t.Fatal("UNIC_SYNC_PATH_BIN is required")
 	}
 	for _, mode := range []string{"direct", "derp"} {
-		t.Run(mode, func(t *testing.T) { runPath(t, bin, mode) })
+		t.Run(mode, func(t *testing.T) { runPath(t, bin, mode, "") })
 	}
 }
-func runPath(t *testing.T, bin, mode string) {
+
+func TestCloudSyncPath(t *testing.T) {
+	if os.Getenv("UNIC_SYNC_PATH_CLOUD") != "1" {
+		t.Skip("explicit Cloud opt-in required")
+	}
+	bin, version := os.Getenv("UNIC_SYNC_PATH_BIN"), os.Getenv("UNIC_SYNC_PATH_VERSION")
+	if bin == "" || !strings.HasPrefix(version, "acceptance.") {
+		t.Fatal("a Cloud-configured production binary and unique fixture version are required")
+	}
+	runPath(t, bin, "derp", version)
+}
+
+func runPath(t *testing.T, bin, mode, cloudVersion string) {
 	start := time.Now()
 	source := sourceTree(t)
 	artifactRoot := os.Getenv("UNIC_SYNC_PATH_ARTIFACTS")
@@ -147,10 +159,18 @@ func runPath(t *testing.T, bin, mode string) {
 		ci := tailcat.ConnInfo{ServerPublic: tailcat.NodePublic{NodePublic: sk.Public()}, PresharedKey: psk, Region: []*tailcfg.DERPRegion{region}}
 		creds, _ := json.Marshal(map[string]any{"version": 1, "server_key": string(sktext), "client_key": string(cktext), "psk": string(psktext), "addr": string(ci.Addr())})
 		must(t, os.WriteFile(filepath.Join(dir, "tailcat.json"), creds, 0600))
-		cfg := fmt.Sprintf("[telemetry]\nendpoint=%q\n[telemetry.logs]\nenabled=false\n[telemetry.analytics]\nenabled=false\n", collector.URL)
+		cfg := "[telemetry.logs]\nenabled=false\n[telemetry.analytics]\nenabled=false\n"
+		if cloudVersion == "" {
+			cfg = fmt.Sprintf("[telemetry]\nendpoint=%q\n", collector.URL) + cfg
+		} else {
+			cfg = fmt.Sprintf("[telemetry]\nendpoint=%q\n", os.Getenv("UNIC_POSTHOG_HOST")+"/i") + cfg
+		}
 		must(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(cfg), 0600))
 		cmd := exec.Command(filepath.Join(bin, "unicd"))
-		cmd.Env = append(os.Environ(), "UNIC_HOME="+home, "UNIC_SOCK="+sock, "SSL_CERT_FILE="+cert, "IN_TS_TEST=true", "TS_DEBUG_ALWAYS_USE_DERP="+fmt.Sprint(mode == "derp"), "GORACE=atexit_sleep_ms=0")
+		cmd.Env = append(os.Environ(), "UNIC_HOME="+home, "UNIC_SOCK="+sock, "IN_TS_TEST=true", "TS_DEBUG_ALWAYS_USE_DERP="+fmt.Sprint(mode == "derp"), "GORACE=atexit_sleep_ms=0")
+		if cloudVersion == "" {
+			cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+cert)
+		}
 		// Logs can contain local debug-library details; retain no raw log artifact.
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
@@ -203,6 +223,48 @@ func runPath(t *testing.T, bin, mode string) {
 			}
 			return out.String() == text
 		})
+	}
+	if cloudVersion != "" {
+		submit(0)
+		select {
+		case <-ctx.Done():
+			t.Fatal("Cloud fixture deadline elapsed before export")
+		case <-time.After(65 * time.Second):
+		}
+		states := make([]any, 0, len(clients))
+		exportOK := true
+		for _, c := range clients {
+			state, err := c.Telemetry(ctx)
+			must(t, err)
+			if state.Metrics.State != "active" || state.Metrics.Failures != 0 || state.Metrics.Dropped != 0 {
+				exportOK = false
+			}
+			states = append(states, state.Metrics)
+		}
+		binary, err := os.ReadFile(filepath.Join(bin, "unicd"))
+		must(t, err)
+		if !sameSource(source, sourceTree(t)) {
+			t.Fatal("source changed during Cloud acceptance")
+		}
+		dest := filepath.Join(artifactRoot, mode)
+		must(t, os.MkdirAll(dest, 0700))
+		head, err := exec.Command("git", "rev-parse", "HEAD").Output()
+		must(t, err)
+		receipt, err := json.MarshalIndent(map[string]any{
+			"source_head": strings.TrimSpace(string(head)), "source_files_sha256": source,
+			"binary_sha256": fmt.Sprintf("%x", sha256.Sum256(binary)), "service_version": cloudVersion,
+			"started_at": start.UTC(), "finished_at": time.Now().UTC(), "transport": "forced local DERP",
+			"project_id": os.Getenv("UNIC_POSTHOG_PROJECT_ID"), "ingestion_host": os.Getenv("UNIC_POSTHOG_HOST"),
+			"build_flags":                           []string{"-race", "-trimpath", "-tags ts_omit_captiveportal,ts_omit_portmapper", "-ldflags [ingestion metadata redacted]"},
+			"expected_payload_bytes_each_direction": len("private-path-fixture-0"),
+			"receiver_history_verified":             true, "metrics_exporters": states, "all_exporters_active": exportOK, "read_back": "PENDING",
+		}, "", "  ")
+		must(t, err)
+		must(t, os.WriteFile(filepath.Join(dest, "upload-receipt.json"), receipt, 0600))
+		if !exportOK {
+			t.Fatal("fixture metrics exporter degraded; see upload receipt")
+		}
+		return
 	}
 	// Keep business traffic active until the normal 60-second export. Sampling
 	// observes existing traffic; no Ping/DiscoPing or timer-triggered transfer.

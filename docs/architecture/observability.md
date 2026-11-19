@@ -150,6 +150,8 @@ selected direct endpoint wins over a configured relay. Raw status never enters q
 The public Client status API is unavailable in tailcat v0.7.0, so outgoing paths remain
 unknown. Real-stack path and shutdown acceptance must be reported separately from
 loopback/fake-path export acceptance in the [0020 receipt](../exec/0020-tailcat-sync-observability.md).
+The [Client status dependency record](../exec/0020-tailcat-client-status.md) defines
+the conditions for accepting outgoing path classification.
 
 Authorized/admitted declared size and actual partial body bytes are separate measures.
 Body timing excludes queue, control headers and storage work after the last body I/O.
@@ -170,6 +172,9 @@ It uses isolated profiles with sync disabled, the normal 60-second metrics perio
 The Cloud query receipt confirms two anonymous startup events, ten manual submission outcomes, two sanitized warning logs, ten committed operations and corresponding histogram counts.
 No person profiles were created. This acceptance is scoped to the recorded project and time window; it is not an installation or release publication.
 The driver emits source/binary hashes and sanitized local state. Cloud query results are stored separately so local readiness cannot masquerade as ingestion success.
+The [C acceptance receipt](../exec/observability-c-acceptance.md) also records
+read-back of the two production services' sync bytes, size histograms, and
+passive path samples over a forced local DERP.
 
 ## Specifications
 
@@ -179,8 +184,8 @@ The driver emits source/binary hashes and sanitized local state. Cloud query res
 
 ## Gaps
 
-- Traces, cross-device propagation, reliable offline upload, crash reports, and production Collector deployment are not implemented.
+- Traces have an [independent implementation plan](../exec/observability-traces.md). Cross-device propagation, reliable offline upload, crash reports, and production Collector deployment remain open.
 - PostHog delta counts and histogram sums are verified locally across processes. US Cloud read-back also confirms a combined commit delta of 10 and histogram sample counts of 3 and 7. A pathless cumulative Collector still needs isolated stream identity before multi-client deployment.
 - Release assembly supports an ingestion-only project token bound to its exact endpoint. US Cloud / UniClipboard (722858) is selected and verified using isolated production builds; the ingestion token remains in private local build configuration, outside source and receipts. No production credential-store UI is shipped.
 - Nonvisual acceptance uses the real session/wire protocol over the host's local TCP test transport. It does not establish public DERP, native clipboard, true system sleep, or Windows/Linux native acceptance.
-- The execution receipt records fault and resource evidence. It does not turn missing wakeup measurements or untested platform behavior into acceptance.
+- The C receipt records process-wide macOS wake counters and isolated collector timings at 0, 1 and 8 sessions. Its scope is the measured test configuration.

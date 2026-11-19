@@ -54,7 +54,7 @@ Exit evidence: injected disconnect/recovery scenarios with exact episode counts 
 - [x] Reuse queue and whole-call pipeline metrics. Add actual payload bytes, declared size distributions and body-I/O duration.
 - [x] Record partial bytes once on failure. Distinguish bytes read from successful validated receive.
 - [x] Associate only fresh transfer-start path snapshots. Use unknown when unsupported; never block body I/O waiting for status or discovery.
-- [ ] Verify size buckets, empty content, multiple parts and multiple targets without content/path labels.
+- [x] Verify size buckets, an empty file, multiple parts and multiple targets without content/path labels. See the [C acceptance receipt](observability-c-acceptance.md).
 
 Exit evidence: real multi-process transfers with known synthetic sizes and decoded counters/histograms. No cross-device clock subtraction or sender-success-as-receive claim.
 
@@ -289,3 +289,10 @@ At eight sessions the final matched nonrace comparison observed 51 goroutines on
 both sides, 39200 vs 39520 KiB RSS, 3640056 vs 4095824 bytes heap and 0.04 CPU
 seconds on both sides over eleven seconds. These measurements meet the unchanged
 limits. They do not establish scheduler wakeups or isolated collector cost.
+
+## 7. Observability C follow-up
+
+See the [C acceptance receipt](observability-c-acceptance.md) for payload bucket
+and fan-out assertions, passive collection timings, process wakeups and hosted
+verification. The [Client status dependency record](0020-tailcat-client-status.md)
+tracks the upstream blocker and the criteria for resuming outgoing path work.

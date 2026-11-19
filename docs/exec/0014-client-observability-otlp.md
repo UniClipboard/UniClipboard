@@ -323,3 +323,10 @@ CPU 与 RSS 使用宿主 ps 采样，保留原始字段和采样时间。%CPU �
 - observability、pipeline、desktop-runtime 三个架构页的 verified 已更新为上述代码提交。
 
 未推送，未部署。原生界面、生产接收端和 P4 未执行项的边界保持不变。
+
+## 13. Observability C follow-up
+
+See the [C acceptance receipt](observability-c-acceptance.md) for the new
+exporter-fault matrix, process resource evidence, and hosted read-back. The
+[Traces implementation plan](observability-traces.md) owns separate design and
+acceptance gates for that signal.

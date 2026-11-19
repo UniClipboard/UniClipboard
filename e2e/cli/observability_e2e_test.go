@@ -112,6 +112,7 @@ func TestObservability(t *testing.T) {
 	h.run(t, "queue-pressure", func(t *testing.T) {
 		h.mu.Lock()
 		h.status = 503
+		h.responseDelay = time.Second
 		h.mu.Unlock()
 		before := h.signalDrops(t, "logs")
 		code, _ := h.request(t, "POST", "/test/pressure", "")
@@ -122,6 +123,7 @@ func TestObservability(t *testing.T) {
 		h.cli(t, "dev", "copy", "pressure-synthetic-copy")
 		h.mu.Lock()
 		h.status = 200
+		h.responseDelay = 0
 		h.mu.Unlock()
 	})
 	h.run(t, "resume", func(t *testing.T) {
@@ -255,6 +257,8 @@ type observabilityRun struct {
 	executable            string
 	posthog               bool
 	manualAdapter         bool
+	directExporter        bool
+	syncProbe             bool
 	t                     *testing.T
 	dir, home, sock, cert string
 	server                *httptest.Server
@@ -329,7 +333,14 @@ func (h *observabilityRun) env() []string {
 	if h.manualAdapter {
 		board = ""
 	}
-	return append(os.Environ(), "UNIC_HOME="+h.home, "UNIC_SOCK="+h.sock, "UNIC_MOCK_CLIPBOARD_DIR="+board, "SSL_CERT_FILE="+cert, "UNIC_E2E_DIAGNOSTICS=1", "UNIC_E2E_POSTHOG="+fmt.Sprint(h.posthog), "UNIC_E2E_FAST_DIAGNOSTICS="+fast, "GORACE=atexit_sleep_ms=0", "OTEL_RESOURCE_ATTRIBUTES=secret=otlp-env-secret", "OTEL_EXPORTER_OTLP_ENDPOINT=https://127.0.0.1:1")
+	env := append(os.Environ(), "UNIC_HOME="+h.home, "UNIC_SOCK="+h.sock, "UNIC_MOCK_CLIPBOARD_DIR="+board, "SSL_CERT_FILE="+cert, "UNIC_E2E_DIAGNOSTICS=1", "UNIC_E2E_POSTHOG="+fmt.Sprint(h.posthog), "UNIC_E2E_FAST_DIAGNOSTICS="+fast, "GORACE=atexit_sleep_ms=0", "OTEL_RESOURCE_ATTRIBUTES=secret=otlp-env-secret", "OTEL_EXPORTER_OTLP_ENDPOINT=https://127.0.0.1:1")
+	if h.directExporter {
+		env = append(env, "NO_PROXY=*", "GODEBUG=netdns=go")
+	}
+	if h.syncProbe {
+		env = append(env, "UNIC_E2E_SYNC_PROBE=1")
+	}
+	return env
 }
 func (h *observabilityRun) start(t *testing.T, endpoint string) {
 	cfg := "[logging]\nlevel=\"info\"\n[telemetry]\nenabled=false\nendpoint=" + fmt.Sprintf("%q", endpoint) + "\n[telemetry.logs]\nenabled=false\n[telemetry.analytics]\nenabled=false\n"
@@ -510,7 +521,7 @@ func (h *observabilityRun) artifacts() {
 		}
 		j, _ := protojson.Marshal(msg)
 		safe := true
-		for _, needle := range []string{"otlp-env-secret", "fixture-private-attribute", "fixture-private-message", "fixture-group-secret", "fixture-private-clipboard", "pipeline-private-synthetic-content", h.home} {
+		for _, needle := range []string{"otlp-env-secret", "otlp-synthetic-content-secret", "otlp-second-synthetic-secret", "fixture-private-attribute", "fixture-private-message", "fixture-group-secret", "fixture-private-clipboard", "pipeline-private-synthetic-content", "fault-private-fixture", "fault-sync-fixture", "synthetic rich text", "0020-", h.dir} {
 			if strings.Contains(string(j), needle) {
 				safe = false
 				h.t.Error("unsafe telemetry payload omitted from artifact")
@@ -594,21 +605,22 @@ func (h *observabilityRun) artifacts() {
 	}
 	b, _ = json.MarshalIndent(h.resourceSamples, "", "  ")
 	_ = os.WriteFile(filepath.Join(d, "resource-samples.json"), b, 0600)
-	replay := `#!/bin/sh
+	selector := "^" + strings.SplitN(h.t.Name(), "/", 2)[0] + "$"
+	raceBuild := "-race "
+	if manifest["daemon_race"] == false {
+		raceBuild = ""
+	}
+	replay := fmt.Sprintf(`#!/bin/sh
 set -eu
 root=$(git rev-parse --show-toplevel)
 cd "$root"
 bin=$(mktemp -d /private/tmp/unic-otlp-replay.XXXXXX)
 trap 'rm -rf "$bin"' EXIT
-go build -race -tags unic_e2e -o "$bin/unicd" ./app/service/cmd/unicd
-go build -race -o "$bin/unic" ./app/service/cmd/unic
-TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" go test -race ./e2e/cli -run TestObservability -count=1 -v
-`
-	if strings.HasPrefix(h.artifactName, "sync-") {
-		replay = strings.ReplaceAll(replay, "-run TestObservability", "-run '^TestSyncObservability($|Faults$)'")
-	} else if h.posthog {
-		replay = strings.ReplaceAll(replay, "-run TestObservability", "-run TestPostHog")
-	}
+go build %s-tags unic_e2e -o "$bin/unicd" ./app/service/cmd/unicd
+go build %s-o "$bin/unic" ./app/service/cmd/unic
+dest=${UNIC_E2E_ARTIFACTS:-"$root/.cache/obs-c/replay"}
+TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" UNIC_E2E_ARTIFACTS="$dest" go test -race ./e2e/cli -run '%s' -count=1 -v
+`, raceBuild, raceBuild, selector)
 	_ = os.WriteFile(filepath.Join(d, "replay.sh"), []byte(replay), 0700)
 	b, _ = json.Marshal(map[string]any{"failed": h.t.Failed(), "requests": len(h.requests), "scenarios": h.scenarioResults})
 	_ = os.WriteFile(filepath.Join(d, "summary.json"), b, 0600)
@@ -635,9 +647,7 @@ TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_BIN="$bin" go test -race ./e2e/cli -run 
 		if h.t.Failed() {
 			exit = 1
 		}
-		selector := "^TestPostHog"
 		if strings.HasPrefix(h.artifactName, "sync-") {
-			selector = "^TestSyncObservability$"
 			h.syncArtifacts(d, decoded)
 		}
 		b, _ = json.MarshalIndent(map[string]any{"replay": "./replay.sh", "build_tag": "unic_e2e", "test_selector": selector, "exit_code": exit}, "", "  ")
@@ -963,6 +973,7 @@ func TestObservabilityResources(t *testing.T) {
 				h.artifactName = fmt.Sprintf("resources-%s-%d", mode, repeat)
 				h.start(t, h.server.URL)
 				if mode != "off" {
+					h.cli(t, "config", "set", "telemetry.logs.enabled", "true")
 					h.cli(t, "config", "set", "telemetry.enabled", "true")
 				}
 				if mode == "debug" || mode == "pressure" {
@@ -973,6 +984,7 @@ func TestObservabilityResources(t *testing.T) {
 				if mode == "pressure" {
 					h.mu.Lock()
 					h.status = 503
+					h.responseDelay = time.Second
 					h.mu.Unlock()
 					code, _ := h.request(t, "POST", "/test/pressure", "")
 					if code != 200 {
@@ -1017,7 +1029,7 @@ func TestObservabilityFaults(t *testing.T) {
 		untrusted bool
 		refused   bool
 	}{
-		{name: "unauthorized", status: 401}, {name: "rate-limited", status: 429}, {name: "unavailable", status: 503}, {name: "timeout", status: 200, delay: 5 * time.Second}, {name: "tls", status: 200, untrusted: true}, {name: "connection-refused", refused: true},
+		{name: "unauthorized", status: 401}, {name: "rate-limited", status: 429}, {name: "unavailable", status: 503}, {name: "timeout", status: 200, delay: 5 * time.Second}, {name: "tls", status: 200, untrusted: true}, {name: "connection-refused", refused: true}, {name: "dns"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			h := newObservabilityRun(t)
@@ -1029,10 +1041,22 @@ func TestObservabilityFaults(t *testing.T) {
 			if scenario.refused {
 				endpoint = "https://127.0.0.1:1"
 			}
+			if scenario.name == "dns" {
+				// The Go resolver rejects this special-use hostname locally.
+				endpoint = "https://unic-export-fixture.onion"
+				h.directExporter = true
+			}
 			h.start(t, endpoint)
+			peer := newObservabilityRun(t)
+			peer.artifactName = h.artifactName + "-peer"
+			peer.start(t, "")
+			pairSyncServices(t, h, peer)
+			h.cli(t, "config", "set", "telemetry.logs.enabled", "true")
 			h.cli(t, "config", "set", "telemetry.enabled", "true")
+			if code, _ := h.request(t, "POST", "/test/logs", ""); code != 200 {
+				t.Fatal("log fixture failed")
+			}
 			h.cli(t, "dev", "copy", "fault-private-fixture")
-			h.eventually(t, func() bool { return strings.Contains(string(h.get(t, "/v1/diagnostics/telemetry")), `"degraded"`) })
 			expected := scenario.name
 			switch expected {
 			case "connection-refused", "unavailable":
@@ -1040,11 +1064,31 @@ func TestObservabilityFaults(t *testing.T) {
 			case "rate-limited":
 				expected = "rate_limited"
 			}
-			h.contains(t, "/v1/diagnostics/telemetry", `"last_error_code":"`+expected+`"`)
+			type signal struct {
+				State string `json:"state"`
+				Error string `json:"last_error_code"`
+			}
+			var states struct{ Logs, Metrics signal }
+			h.eventually(t, func() bool {
+				return json.Unmarshal(h.get(t, "/v1/diagnostics/telemetry"), &states) == nil &&
+					states.Logs.State == "degraded" && states.Metrics.State == "degraded"
+			})
+			if states.Logs.Error != expected || states.Metrics.Error != expected {
+				t.Fatalf("expected %s export failure, got logs=%s metrics=%s", expected, states.Logs.Error, states.Metrics.Error)
+			}
 			code, _ := h.request(t, "POST", "/test/commit", "")
 			if code != 200 {
 				t.Fatal("business failed because telemetry failed")
 			}
+			h.cli(t, "dev", "copy", "fault-sync-fixture")
+			peer.eventually(t, func() bool {
+				code, body := peer.request(t, "GET", "/v1/clipboard", "")
+				return code == 200 && strings.Contains(string(body), "fault-sync-fixture")
+			})
+			h.assertions = append(h.assertions, map[string]any{
+				"assertion": "degraded exporter and successful peer clipboard application",
+				"expected":  expected, "logs": states.Logs.Error, "metrics": states.Metrics.Error, "peer_applied": true,
+			})
 			disabled := time.Now()
 			h.cli(t, "config", "set", "telemetry.enabled", "false")
 			if time.Since(disabled) > time.Second {

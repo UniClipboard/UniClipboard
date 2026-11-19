@@ -1,0 +1,20 @@
+{
+  "captured_utc": "2026-11-19T03:51:35Z",
+  "stage": "during final functional run, before automatic performance run",
+  "os": "Linux",
+  "kernel": "6.8.0-147-generic",
+  "arch": "x86_64",
+  "logical_cpus": 7,
+  "load_average": [
+    0.5517578125,
+    0.7109375,
+    0.74462890625
+  ],
+  "free_temp_bytes": 29352210432,
+  "memory": {
+    "MemTotal": 8325853184,
+    "MemAvailable": 4957765632,
+    "SwapTotal": 4295991296,
+    "SwapFree": 2902220800
+  }
+}

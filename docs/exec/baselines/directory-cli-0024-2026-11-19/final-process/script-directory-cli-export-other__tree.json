@@ -1,0 +1,16 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D .",
+    "D empty",
+    "F member 23 bc93820eef63507a1bf4923e913ee4af8a9a06fe6c6bd15cc26e3556e694aff0"
+  ],
+  "received": [
+    "D .",
+    "D empty",
+    "F member 23 bc93820eef63507a1bf4923e913ee4af8a9a06fe6c6bd15cc26e3556e694aff0"
+  ],
+  "result": "PASS",
+  "scenario": "directory-cli-export",
+  "time": "2026-11-19T03:50:59.851542Z"
+}

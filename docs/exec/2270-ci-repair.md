@@ -55,3 +55,22 @@ initializes before `status` and checks the receipt remains usable after upgrade
 and remains on disk after removal. Hosted six-target and Linux installer results
 must be verified on the pushed repair head; local macOS results do not replace
 those checks.
+
+## Desktop CI provisioning follow-up
+
+After the six repaired package jobs passed on `d3d1e54`, the remaining Desktop
+job spent fourteen minutes downloading Ubuntu 26.04 graphics dependencies before
+its first attempt was cancelled for an isolated retry. The captured log showed
+ongoing downloads, including the 25.7 MB WebKitGTK library; it did not show a
+project test failure. The retry used the same commit and unchanged test scope.
+
+The primary PR Desktop job still used `ubuntu-latest` and a WebKitGTK dependency
+list. The actual Desktop creates `Content: ui.View(...)`, uses the pinned mygo
+native GTK path, and does not show web pages. The SDK's own doctor/packager only
+requires WebKitGTK for webview applications. The existing six-platform native
+acceptance already selects Ubuntu 24.04 and GTK 3 plus the tray indicator runtime.
+
+Align the primary job with that existing supported baseline and dependency list.
+Keep the same complete `make desktop-e2e` command and the same thirty-minute job
+budget. Do not skip cases, raise timeouts or weaken migration admission. Hosted
+Desktop execution must validate the changed provisioning on the new PR head.

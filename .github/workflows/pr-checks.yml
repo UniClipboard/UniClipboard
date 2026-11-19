@@ -77,7 +77,7 @@ jobs:
 
   desktop-e2e:
     name: Desktop E2E and visual evidence
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -87,7 +87,7 @@ jobs:
       - name: Install native display and recording dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb ffmpeg dbus-x11 libwebkit2gtk-4.1-0
+          sudo apt-get install -y ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1
       - name: Execute the canonical Desktop suite
         run: xvfb-run -a -s '-screen 0 1600x1000x24' make desktop-e2e
       - uses: actions/upload-artifact@v4

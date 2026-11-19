@@ -1,0 +1,33 @@
+{
+  "starting_head": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452",
+  "implementation_commit": "278fe6da1eb57fd6408349300386db080b498c7c",
+  "branch": "feat/directory-transfer-cli",
+  "matching_frozen_go_files_excluding_harness": 532,
+  "mismatched_go_files_excluding_harness": [],
+  "module_files_match": true,
+  "production_binary_hashes_match_between_final_functional_and_performance": true,
+  "programs": [
+    {
+      "name": "linux",
+      "os": "linux",
+      "arch": "amd64",
+      "program_sha256": {
+        "unic": "382c3925f067de517e9b1b2bae27f3f19b6b919d3bec69f01d24fd9c9ef84e83",
+        "unic-e2e-worker": "75a8b08eed43e4c88fab1a677fa75488609e060c4868465deb0dde1bdfcbbfbb",
+        "unicd": "4c5a32191dad8e84adb49c8afc3770f61c1c98cd7f7d4f00add3d719bdb66607"
+      }
+    },
+    {
+      "name": "mac",
+      "os": "darwin",
+      "arch": "arm64",
+      "program_sha256": {
+        "unic": "2d9019281c905a764b2d512ff05f929e73bf4080c6ca61d756897d1a2a735a0f",
+        "unic-e2e-worker": "571322ce3ecee43b67082f70d07c212d57d9d6b67cc7e638b5274e776ded3527",
+        "unicd": "b53363307c6fd0d7c2a11bf525df1167931c2166d616b844168c80998d36d1f7"
+      }
+    }
+  ],
+  "source_note": "Receipts bind the initial HEAD plus frozen working-tree hashes. Subsequent verified markers and documentation do not change producer inputs. The later harness-only byte-budget reporting correction is validated by corrected-plan.json.",
+  "byte_budget_report_fix_commit": "433c51db4f0de56be53b3aa636e776a09c794218"
+}

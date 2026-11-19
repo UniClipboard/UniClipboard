@@ -1,0 +1,176 @@
+{
+  "source_head": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "native_clipboard": "NOT_RUN",
+  "real_devices": "NOT_RUN",
+  "status": "PASS",
+  "commands": [
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unic",
+        "./app/service/cmd/unic"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unicd",
+        "./app/service/cmd/unicd"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-json",
+        "./e2e/cli",
+        "-run",
+        "^TestCLI/(directory.*|content-formats|pair-and-sync-text|file-size-policy|host-received-files|history-auto-cleanup|history-cache-quota|history-restore-sync|sync-settings|send-to-device)$",
+        "-parallel",
+        "4",
+        "-count=1"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "results": [
+    {
+      "case": "TestCLI/directory-auto-responsive",
+      "result": "PASS",
+      "seconds": 40.27
+    },
+    {
+      "case": "TestCLI/pair-and-sync-text",
+      "result": "PASS",
+      "seconds": 47.88
+    },
+    {
+      "case": "TestCLI/history-cache-quota",
+      "result": "PASS",
+      "seconds": 57.4
+    },
+    {
+      "case": "TestCLI/directory-roots-and-bounds",
+      "result": "PASS",
+      "seconds": 60.95
+    },
+    {
+      "case": "TestCLI/history-auto-cleanup",
+      "result": "PASS",
+      "seconds": 38.91
+    },
+    {
+      "case": "TestCLI/history-restore-sync",
+      "result": "PASS",
+      "seconds": 53.7
+    },
+    {
+      "case": "TestCLI/file-size-policy",
+      "result": "PASS",
+      "seconds": 53.13
+    },
+    {
+      "case": "TestCLI/sync-settings",
+      "result": "PASS",
+      "seconds": 72.65
+    },
+    {
+      "case": "TestCLI/directory-source-and-recovery",
+      "result": "PASS",
+      "seconds": 38.73
+    },
+    {
+      "case": "TestCLI/directory-receive-race",
+      "result": "PASS",
+      "seconds": 38.61
+    },
+    {
+      "case": "TestCLI/directory-source-metadata",
+      "result": "PASS",
+      "seconds": 53.9
+    },
+    {
+      "case": "TestCLI/host-received-files",
+      "result": "PASS",
+      "seconds": 71.33
+    },
+    {
+      "case": "TestCLI/directory-mixed-auto",
+      "result": "PASS",
+      "seconds": 44.14
+    },
+    {
+      "case": "TestCLI/directory-invalid-manifest",
+      "result": "PASS",
+      "seconds": 36.64
+    },
+    {
+      "case": "TestCLI/directory-history-cancel",
+      "result": "PASS",
+      "seconds": 47.39
+    },
+    {
+      "case": "TestCLI/directory-copy-and-send",
+      "result": "PASS",
+      "seconds": 49.76
+    },
+    {
+      "case": "TestCLI/directory-custom-receive",
+      "result": "PASS",
+      "seconds": 47.43
+    },
+    {
+      "case": "TestCLI/directory-cli-export",
+      "result": "PASS",
+      "seconds": 48.56
+    },
+    {
+      "case": "TestCLI/content-formats",
+      "result": "PASS",
+      "seconds": 36.66
+    },
+    {
+      "case": "TestCLI/send-to-device",
+      "result": "PASS",
+      "seconds": 66.36
+    },
+    {
+      "case": "TestCLI",
+      "result": "PASS",
+      "seconds": 0.27
+    },
+    {
+      "case": "github.com/uniclipboard/unic/e2e/cli",
+      "result": "PASS",
+      "seconds": 299.846
+    }
+  ],
+  "source_sha256": "f772ccdc3ee1ba8d51b3fd9fb7b15b3780003a1cd729953def9dbbd64de85f1f",
+  "build_input_sha256": "8ecc2427967cd97c0f3cb0341fd94a8771bc79feaf9a865a8d695d4368fe8fc5",
+  "go": "go version go1.27.3 darwin/arm64",
+  "binary_sha256": {
+    "unic": "227cd2e994b33e6a59cc07f1a9ed1b8f3c0173a29f1e96afc167f8b7cbee7a7f",
+    "unicd": "03b21f44ac8d038667659286cd8b12292e5432bab7358e9696ed531650aac67f"
+  },
+  "frozen_source_unchanged": true,
+  "private_cleanup": "PASS",
+  "seconds": 317.667
+}

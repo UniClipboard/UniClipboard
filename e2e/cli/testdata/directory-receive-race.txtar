@@ -1,0 +1,37 @@
+# 用例: A late directory apply preserves a newer local copy
+# 目的: Verify the final production adapter recheck after directory materialization.
+# 流程:
+#   1. Hold only the fixture clipboard read after a received directory view exists.
+#   2. Copy newer local text while the old directory apply waits.
+#   3. Release the read and verify text, peer progress and directory lease cleanup.
+# 期望:
+#   - The older directory never replaces the newer local text. The deferred view is released.
+# 不应:
+#   - Use the system clipboard or claim native paste acceptance.
+
+mkdir source/tree/empty
+cp directory.txt source/tree/member
+node-start alpha
+node-start beta
+pair alpha beta
+retry-copy alpha beta warm-up
+board-apply-gate beta hold
+u alpha send --to all -f $WORK/source/tree --json
+stdout '"outcome":"success"'
+board-apply-gate beta wait
+board-set beta text newer.txt
+board-apply-gate beta release
+board-wait beta text newer.txt
+board-wait alpha text newer.txt
+! tree-wait beta source/tree
+received-dismiss-all beta
+! directory-staging beta
+
+-- directory.txt --
+older-directory-receive
+-- newer.txt --
+newer-local-copy-must-survive
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"

@@ -254,3 +254,32 @@ The complete failed Lint job log for run `43214064110`, job `131168698571`, repo
 The correction propagates history-send output errors, explicitly discards errors from read-only handle cleanup and failed-start rollback, and applies the configured import formatter. It preserves existing write, sync and close error handling for output files. No lint exclusions or workflow changes are added.
 
 Local `golangci-lint run` reports `0 issues`. `golangci-lint fmt --diff --diff-colored=false` produces no output. Directory-send and history-restore process regressions pass. Production headless acceptance also passes; its manifest is retained with the receipt. Process regression evidence is recorded in [the lint-fix report](baselines/directory-copy-send-0024/ci-lint-fix/report.md). Native clipboard and real-device acceptance remain NOT_RUN.
+
+
+## 16. CLI delivery on real macOS and Linux hosts (2026-11-19)
+
+The CLI follow-up started from `4e3cf4d4b81dc103c59e5024f2dc9031c224f452` in an independent `feat/directory-transfer-cli` worktree. Producer corrections are committed as `278fe6da1`. The [final source-bound receipt](baselines/directory-cli-0024-2026-11-19/README.md) records exact inputs, native binary hashes, machine probes, commands, measurements, cleanup and replay. No source session or E-group worktree was modified. No production deployment or publication occurred.
+
+Real production CLI export initially flattened a directory into raw manifest/file parts. The correction reconstructs independent roots under `rN/<original-name>`, preserves equal root names, verifies hashes and protects existing/user-owned outputs. A separate real-host cancellation failure retained an unpublished 807,672 B receive file. Session bodies now have a distinct 30 s per-blocked-read/write inactivity deadline, and receive errors/aborts end the session instead of draining an unfinished rejected body. Continuous transfers can exceed 30 s; idle peer header waits remain unchanged. A five-second control-budget experiment rejected a valid 16 MiB transfer and is retained as failed evidence. The engineering resource-observation gate was revised to 45 s after diagnosis; it is not represented as an original preset performance gate.
+
+| Layer | Final result |
+|---|---|
+| Real macOS arm64 and Linux amd64 functional catalog | PASS: 32 checks across both directions, including scan/prepare cancellation, source mutation/deletion, limits, symlinks, concurrent text, offline no-replay, active transfer cancellation, receiver interruption, revocation/reapproval, owned sender crash and fresh recovery |
+| Real-host semantic, 1,024-small-file and 16 MiB catalog | PASS: 6/6 directed cells; root names, all relative paths/directories, file sizes and SHA-256 matched after production CLI export |
+| Frozen race CLI cases | PASS: 20 cases, including repeated copy, default no-work counters, automatic no-echo, late receive versus newer fixture copy, custom receive ownership and ordinary-content regressions |
+| Production headless acceptance | PASS |
+| Cleanup | PASS: profiles/bootstrap/controller private directories removed; independent exact-path checks passed; one intentional sender crash per node, no forced cleanup fallback |
+| Native clipboard and cross-application paste | NOT RUN; fixture clipboard and CLI export do not establish this layer |
+
+The final 16 MiB complete-verification times were 99.85 s (Linux to macOS) and 80.02 s (macOS to Linux). Maximum sampled service RSS was 71.69 MiB. All six final cells met the original 60 s preparation/admission, 180 s complete-verification and 512 MiB sampled-RSS budgets. One sample per cell does not establish percentiles or stable throughput. Source cancellation API/CLI completion retained its 5 s assertion; active-fault elapsed fields include observation/recovery and are not the isolated API duration. Exact internal preparation spans and macOS descriptor counts were not measured.
+
+The Linux-to-macOS large-file CLI initially exited 4/timeout after its existing 60 s observation window. The persistent service completed the same operation, and receiver export/hash verification passed without resubmission. Other final performance cells initially exited 0. Initial CLI timeout and eventual transfer success remain distinct results. Earlier failed runs remain failed, including the original resource gate and intermediate large-transfer experiments.
+
+A harness-only follow-up corrects directory recipe byte-budget reporting. Historical controller upper-bound fields remain unchanged and are annotated; runtime file-byte inventories and the independent 1 GiB free-space check were correct. The final receipt includes the corrected CLI plan. All producer Go inputs/module files match the tested freeze, and producer hashes match between final functional/performance runs.
+
+The decision remains proposed because native/platform acceptance is not complete. Replay with `docs/exec/baselines/directory-cli-0024-2026-11-19/replay.sh primaryserver /absolute/new/receipt`. Only small English receipts, hashes and replay instructions are retained; task source copies, binaries, profiles, test keys and raw logs are removed.
+
+
+## 17. PR integration with current v2
+
+The branch merged current `v2` (`a0c49ae55`) as `350ac4ce1`. Only architecture verification markers conflicted; production directory export and session modules are unchanged from the original delivery. All 20 frozen race CLI cases and production headless acceptance passed after integration. Documentation checks passed with five unrelated staleness warnings. The [integration receipt](baselines/directory-cli-0024-2026-11-19/pr-integration.json) binds the merged source and resulting binaries. The original real-host evidence remains valid only for its recorded freeze; it is not relabeled as a new real-host run.

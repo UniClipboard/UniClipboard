@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
+
+	"github.com/uniclipboard/unic/engine"
 )
 
 // treeInventory includes empty directories, file sizes and exact byte hashes.
@@ -214,5 +216,60 @@ func cmdDirectoryStaging(ts *testscript.TestScript, neg bool, args []string) {
 	}
 	if found == neg {
 		ts.Fatalf("directory staging existence=%v", found)
+	}
+}
+
+// cmdTreeEqual verifies a user-owned CLI export without a clipboard adapter.
+func cmdTreeEqual(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 2 || neg {
+		ts.Fatalf("usage: tree-equal expected actual")
+	}
+	want, err := treeInventory(ts.MkAbs(args[0]))
+	ts.Check(err)
+	got, err := treeInventory(ts.MkAbs(args[1]))
+	ts.Check(err)
+	if !reflect.DeepEqual(want, got) {
+		ts.Fatalf("export tree mismatch: want %v got %v", want, got)
+	}
+}
+
+// cmdBoardApplyGate controls only the isolated fixture board's final apply read.
+func cmdBoardApplyGate(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 2 {
+		ts.Fatalf("usage: board-apply-gate node hold|wait|release")
+	}
+	board := filepath.Join(stateOf(ts).node(ts, args[0]).home, "board")
+	hold := filepath.Join(board, ".hold-directory-apply")
+	switch args[1] {
+	case "hold":
+		ts.Check(os.WriteFile(hold, []byte("owned E2E gate"), 0600))
+	case "release":
+		ts.Check(os.Remove(hold))
+	case "wait":
+		end := time.Now().Add(10 * time.Second)
+		for time.Now().Before(end) {
+			if _, err := os.Stat(filepath.Join(board, ".directory-apply-held")); err == nil {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		ts.Fatalf("directory apply did not reach final clipboard recheck")
+	default:
+		ts.Fatalf("invalid board apply gate action")
+	}
+}
+
+func cmdReceivedDismissAll(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 {
+		ts.Fatalf("usage: received-dismiss-all node")
+	}
+	n := stateOf(ts).node(ts, args[0])
+	out, _, err := n.unic("recv", "list")
+	ts.Check(err)
+	var receipts []engine.ReceivedContent
+	ts.Check(json.Unmarshal([]byte(out), &receipts))
+	for _, r := range receipts {
+		_, _, err := n.unic("recv", "dismiss", string(r.ReceiptID))
+		ts.Check(err)
 	}
 }

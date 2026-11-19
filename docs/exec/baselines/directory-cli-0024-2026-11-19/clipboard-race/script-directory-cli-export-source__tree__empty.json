@@ -1,0 +1,12 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D ."
+  ],
+  "received": [
+    "D ."
+  ],
+  "result": "PASS",
+  "scenario": "directory-cli-export",
+  "time": "2026-11-19T02:47:49.547642Z"
+}

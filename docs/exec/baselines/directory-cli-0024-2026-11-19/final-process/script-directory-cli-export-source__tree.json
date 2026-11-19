@@ -1,0 +1,20 @@
+{
+  "assertion": "directory tree bytes",
+  "expected": [
+    "D .",
+    "D empty",
+    "D 中文 空格",
+    "F zero 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "F 中文 空格/member.txt 24 274f428e0a31304c83c3367de29abaf73ca78268cd6f658a032f7605c94db041"
+  ],
+  "received": [
+    "D .",
+    "D empty",
+    "D 中文 空格",
+    "F zero 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "F 中文 空格/member.txt 24 274f428e0a31304c83c3367de29abaf73ca78268cd6f658a032f7605c94db041"
+  ],
+  "result": "PASS",
+  "scenario": "directory-cli-export",
+  "time": "2026-11-19T03:50:48.262124Z"
+}

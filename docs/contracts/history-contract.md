@@ -298,6 +298,8 @@ recoverable history import. Dry runs validate the source layout and never
 create target configuration. Desktop projects saved overrides for both built-in
 and custom tags. Code's default is purple even without an override.
 
+CLI directory snapshot export follows the [directory export contract](directory-contract.md#cli-snapshot-export). Indexed root containers preserve equal root names, empty directories and independent user-owned copies. Export does not apply a system clipboard ticket. Existing Received/history/content holders remain independent; release each holder before asserting that a temporary materialized view has no owner.
+
 ## v1 system credentials and process resilience
 
 The importer reads the v1 credential store without modifying it. Windows uses

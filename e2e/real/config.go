@@ -19,6 +19,7 @@ type nodeConfig struct {
 	Host      string `toml:"host"`
 }
 type suiteConfig struct {
+	DirectoryBytes        []int64  `toml:"directory_bytes" json:"directory_bytes,omitempty"`
 	ReceiveTimeoutSeconds int      `toml:"receive_timeout_seconds" json:"receive_timeout_seconds"`
 	Topology              string   `toml:"topology" json:"topology"`
 	Repetitions           int      `toml:"repetitions" json:"repetitions"`
@@ -74,7 +75,7 @@ func readLab(path string) (lab, error) {
 		}
 		seen[v] = true
 		switch v {
-		case "contract", "pairwise", "mesh", "isolation":
+		case "contract", "pairwise", "mesh", "isolation", "directory", "directory-revoke", "directory-crash":
 		default:
 			return c, fmt.Errorf("unknown scenario: %s", v)
 		}
@@ -102,6 +103,11 @@ func readLab(path string) (lab, error) {
 			return c, fmt.Errorf("png_pixels must be between 1 and 2048")
 		}
 	}
+	for _, n := range s.DirectoryBytes {
+		if n != 0 && n != 1024 && n != 16<<20 {
+			return c, fmt.Errorf("directory_bytes supports 0, 1024 and 16777216")
+		}
+	}
 	if len(payloads(s)) == 0 {
 		return c, fmt.Errorf("at least one payload size is required")
 	}
@@ -123,6 +129,9 @@ type payload struct {
 
 func payloads(c suiteConfig) []payload {
 	var out []payload
+	for _, n := range c.DirectoryBytes {
+		out = append(out, payload{"directory", n})
+	}
 	for _, n := range c.TextBytes {
 		out = append(out, payload{"text", n})
 	}
@@ -158,6 +167,14 @@ func plannedPayloadBound(c lab) int64 {
 	for _, p := range payloads(c.Suite) {
 		size := p.Size
 		switch p.Kind {
+		case "directory":
+			switch p.Size {
+			case 0:
+				size = 226
+			case 1024:
+				size = 1024 * 1024
+			}
+			size += 512 << 10 // bounded directory metadata, separate from file bytes
 		case "png":
 			size = 4*size*size + (1 << 20)
 		case "html":

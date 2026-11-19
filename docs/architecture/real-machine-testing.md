@@ -4,7 +4,7 @@ paths:
   - e2e/twohost/README.md
   - Makefile
   - tools/docscheck
-verified: da729ef1dcf090e46ee76f5291e404adf42c0bce
+verified: 433c51db4f0de56be53b3aa636e776a09c794218
 ---
 # Real-machine CLI testing
 
@@ -27,6 +27,14 @@ Commit lookup uses `unic dev submission`. Explicit `--to all` selects paired-dev
 The worker starts a standalone `unicd`, so CLI commands borrow its service rather than own a CLI-temporary generation.
 
 Native clock exchanges bracket each payload cell. A remote-to-remote sample combines both node clock bounds, timestamp quantization and observed drift. Raw point estimates and bounds remain distinct from controller-monotonic export-verification time. Network route remains unknown unless independently observed.
+
+## Directory CLI acceptance
+
+The optional directory payload catalog uses deterministic semantic, 1,024-small-file and 16 MiB fixtures. Production CLI export reconstructs roots in separate indexed containers. The worker independently walks each root and compares root names, relative paths, directories, file sizes and SHA-256. It never treats the received manifest as the expected filesystem oracle.
+
+The two-node directory failure catalog observes production submission stages and receiver staging bytes before injecting cancellation, source mutation, receiver stop or revocation. It verifies bounds, offline no-replay, fresh recovery, concurrent text progress and user-owned exports across history deletion/restart. Worker-owned CLI children are tracked and reaped during cleanup. Sampled RSS, Linux descriptor observations and owned staging counts supplement process/socket/profile cleanup. Unavailable measurements stay explicit. Management binary deployment uses compressed SCP; content still uses unic/tailcat.
+
+Exact fixtures, predeclared budgets and remaining native boundaries are in the [directory CLI inventory](../exec/0024-cli-failure-inventory.md). The [operator guide](../../e2e/real/README.md#directory-cli-catalog) defines replay configuration. This catalog does not establish system clipboard copy/paste.
 
 ## Invariants
 

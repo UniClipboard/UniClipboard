@@ -22,12 +22,14 @@ board-select alpha first content.txt
 until alpha '"kind":"directory_reference"' history list --json
 directory-probe alpha 0 0
 u alpha config set sync.directories.automatic true
+u beta config set sync.directories.automatic true
 ! tree-wait beta first
 board-set alpha files second
 tree-wait beta second
 directory-probe alpha 1 1
 board-set alpha files second
 directory-probe alpha 2 2
+directory-probe beta 0 0
 
 -- content.txt --
 automatic-directory-canary

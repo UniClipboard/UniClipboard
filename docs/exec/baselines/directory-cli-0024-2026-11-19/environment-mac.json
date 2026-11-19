@@ -1,0 +1,15 @@
+{
+  "captured_utc": "2026-11-19T03:51:32Z",
+  "stage": "during final functional run, before automatic performance run",
+  "os": "Darwin",
+  "kernel": "27.0.0",
+  "arch": "arm64",
+  "logical_cpus": 10,
+  "load_average": [
+    2.92138671875,
+    2.875,
+    2.833984375
+  ],
+  "free_temp_bytes": 152883691520,
+  "memory_bytes": 25769803776
+}

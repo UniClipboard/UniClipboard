@@ -1,0 +1,91 @@
+{
+  "source_head": "4e3cf4d4b81dc103c59e5024f2dc9031c224f452",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "native_clipboard": "NOT_RUN",
+  "real_devices": "NOT_RUN",
+  "status": "PASS",
+  "commands": [
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unic",
+        "./app/service/cmd/unic"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-trimpath",
+        "-race",
+        "-tags",
+        "unic_e2e",
+        "-o",
+        "<private>/bin/unicd",
+        "./app/service/cmd/unicd"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-json",
+        "./e2e/cli",
+        "-run",
+        "^TestCLI/(directory-receive-race|directory-mixed-auto|directory-cli-export)$",
+        "-parallel",
+        "4",
+        "-count=1"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "results": [
+    {
+      "case": "TestCLI/directory-receive-race",
+      "result": "PASS",
+      "seconds": 40.48
+    },
+    {
+      "case": "TestCLI/directory-mixed-auto",
+      "result": "PASS",
+      "seconds": 45.48
+    },
+    {
+      "case": "TestCLI/directory-cli-export",
+      "result": "PASS",
+      "seconds": 50.16
+    },
+    {
+      "case": "TestCLI",
+      "result": "PASS",
+      "seconds": 0.02
+    },
+    {
+      "case": "github.com/uniclipboard/unic/e2e/cli",
+      "result": "PASS",
+      "seconds": 51.735
+    }
+  ],
+  "source_sha256": "8e6d24f8c775884a0158f7c59eff1671a8506916c4d4df92ef4486dbf3f0eb69",
+  "build_input_sha256": "d00848504b24ebe6772c30e2cf6a7f3002f59dd558a840c778e37351361ac919",
+  "go": "go version go1.27.3 darwin/arm64",
+  "binary_sha256": {
+    "unic": "227cd2e994b33e6a59cc07f1a9ed1b8f3c0173a29f1e96afc167f8b7cbee7a7f",
+    "unicd": "6d154b94b34c07e4ef1b7efc878773fad376f4625ff0d1e308bcbf4c6209b1d7"
+  },
+  "frozen_source_unchanged": true,
+  "private_cleanup": "PASS",
+  "seconds": 63.356
+}

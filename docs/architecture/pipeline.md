@@ -10,7 +10,7 @@ paths:
   - internal/clipboardintegration/
   - internal/localcontent/
   - internal/localapi/api.go
-  - internal/session/engine.go
+  - internal/session/
   - internal/wire/wire.go
   - plugin/rpc/
   - plugin/serve.go
@@ -194,3 +194,5 @@ Receipt retains the original application, and history restore sends the stored a
 Content hashes exclude metadata, so a focus or icon change alone cannot create history or trigger synchronization.
 Native extraction uses the current platform APIs and returns unknown when identity is unavailable.
 The [source application contract](../contracts/source-application-contract.md) specifies inference limits, icon bounds, and acceptance.
+
+The built-in peer-session body reader bounds each blocked network body read or write with the 30-second body I/O inactivity budget. The bound resets for the next I/O call and does not cap total transfer duration or idle peer lifetime. A failed or aborted receive ends its session instead of draining an unfinished rejected body. This releases unpublished receive staging when a cancelled sender leaves a stalled stream. See the [backend body-lifetime contract](../contracts/sync-backend-contract.md#built-in-peer-session-body-lifetime).

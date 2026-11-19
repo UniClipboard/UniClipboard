@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/uniclipboard/unic/engine"
 )
 
 type clockEstimate struct {
@@ -63,44 +65,58 @@ type nodeEvidence struct {
 	Cleanup   *logsResult       `json:"cleanup,omitempty"`
 }
 type targetOutcome struct {
-	Scenario     string         `json:"scenario"`
-	Case         string         `json:"case"`
-	Sender       string         `json:"sender"`
-	Receiver     string         `json:"receiver"`
-	Kind         string         `json:"kind"`
-	Bytes        int64          `json:"bytes"`
-	Expected     []expectedPart `json:"expected_parts"`
-	Actual       []expectedPart `json:"received_parts,omitempty"`
-	HashVerified bool           `json:"hash_verified"`
-	VerifiedMS   float64        `json:"verified_ms"`
-	Error        string         `json:"error,omitempty"`
+	LastOperation            *engine.Operation   `json:"last_observed_operation,omitempty"`
+	InitialCLIResultKnown    bool                `json:"initial_cli_result_known"`
+	ReceiverFailureResources *directoryResources `json:"receiver_resources_at_sender_failure,omitempty"`
+	InitialCLIExit           int                 `json:"initial_cli_exit"`
+	InitialSendOutcome       string              `json:"initial_send_outcome"`
+	SettledAfterTimeout      bool                `json:"settled_after_cli_timeout"`
+	PreparationAdmissionMS   float64             `json:"preparation_and_admission_ms"`
+	SendOperationMS          float64             `json:"send_operation_ms"`
+	SenderResources          *directoryMeasure   `json:"sender_resources,omitempty"`
+	ReceiverResources        *directoryMeasure   `json:"receiver_resources,omitempty"`
+	SubmitMS                 float64             `json:"submit_ms"`
+	ExpectedTrees            []treeRoot          `json:"expected_trees,omitempty"`
+	ActualTrees              []treeRoot          `json:"received_trees,omitempty"`
+	Scenario                 string              `json:"scenario"`
+	Case                     string              `json:"case"`
+	Sender                   string              `json:"sender"`
+	Receiver                 string              `json:"receiver"`
+	Kind                     string              `json:"kind"`
+	Bytes                    int64               `json:"bytes"`
+	Expected                 []expectedPart      `json:"expected_parts"`
+	Actual                   []expectedPart      `json:"received_parts,omitempty"`
+	HashVerified             bool                `json:"hash_verified"`
+	VerifiedMS               float64             `json:"verified_ms"`
+	Error                    string              `json:"error,omitempty"`
 }
 type manifest struct {
-	KeepPrivate         bool            `json:"keep_private"`
-	PrivateRemoved      bool            `json:"controller_private_removed"`
-	Outcomes            []targetOutcome `json:"target_outcomes"`
-	PlannedMeasurements int             `json:"planned_measurements"`
-	PayloadBound        int64           `json:"planned_payload_bytes_upper_bound"`
-	Version             int             `json:"version"`
-	RunID               string          `json:"run_id"`
-	Mode                string          `json:"mode"`
-	Status              string          `json:"status"`
-	Started             time.Time       `json:"started_at"`
-	Finished            time.Time       `json:"finished_at"`
-	Source              sourceIdentity  `json:"source"`
-	SnapshotUnchanged   bool            `json:"snapshot_unchanged"`
-	Go                  string          `json:"go"`
-	ControllerSHA       string          `json:"controller_sha256"`
-	Nodes               []nodeEvidence  `json:"nodes"`
-	MachineCount        int             `json:"distinct_machine_identities"`
-	SharedHostControl   bool            `json:"shared_host_control"`
-	Suite               suiteConfig     `json:"suite"`
-	Checks              []string        `json:"checks"`
-	Calibrations        []calibration   `json:"calibrations"`
-	Samples             []sample        `json:"samples"`
-	Failure             string          `json:"failure,omitempty"`
-	CleanupErrors       []string        `json:"cleanup_errors,omitempty"`
-	Limits              []string        `json:"limits"`
+	DirectoryChecks     []directoryCheck `json:"directory_checks,omitempty"`
+	KeepPrivate         bool             `json:"keep_private"`
+	PrivateRemoved      bool             `json:"controller_private_removed"`
+	Outcomes            []targetOutcome  `json:"target_outcomes"`
+	PlannedMeasurements int              `json:"planned_measurements"`
+	PayloadBound        int64            `json:"planned_payload_bytes_upper_bound"`
+	Version             int              `json:"version"`
+	RunID               string           `json:"run_id"`
+	Mode                string           `json:"mode"`
+	Status              string           `json:"status"`
+	Started             time.Time        `json:"started_at"`
+	Finished            time.Time        `json:"finished_at"`
+	Source              sourceIdentity   `json:"source"`
+	SnapshotUnchanged   bool             `json:"snapshot_unchanged"`
+	Go                  string           `json:"go"`
+	ControllerSHA       string           `json:"controller_sha256"`
+	Nodes               []nodeEvidence   `json:"nodes"`
+	MachineCount        int              `json:"distinct_machine_identities"`
+	SharedHostControl   bool             `json:"shared_host_control"`
+	Suite               suiteConfig      `json:"suite"`
+	Checks              []string         `json:"checks"`
+	Calibrations        []calibration    `json:"calibrations"`
+	Samples             []sample         `json:"samples"`
+	Failure             string           `json:"failure,omitempty"`
+	CleanupErrors       []string         `json:"cleanup_errors,omitempty"`
+	Limits              []string         `json:"limits"`
 }
 
 func writeJSON(path string, v any) error {
@@ -180,6 +196,13 @@ func (c *controller) report() error {
 	}
 	for _, v := range c.manifest.CleanupErrors {
 		fmt.Fprintf(&text, "\nCleanup failure: %s\n", v)
+	}
+	if len(c.manifest.DirectoryChecks) > 0 {
+		text.WriteString("\n## Directory checks\n\n| Node | Case | Result | Measured ms | Detail |\n|---|---|---|---:|---|\n")
+		for _, v := range c.manifest.DirectoryChecks {
+			fmt.Fprintf(&text, "| %s | %s | %s | %.2f | %s |\n", v.Node, v.Case, v.Result, v.Milliseconds, v.Detail)
+		}
+		text.WriteString("\nSee target outcomes for full independent expected/received tree inventories and sampled resources. RSS is sampled, not an allocator high-water mark. Open staging/fixture descriptors are measured on Linux only; -1 means unavailable. Submit and verified times include CLI/control costs. Pure network transfer and exact scan/preparation durations are not inferred from combined timers.\n")
 	}
 	text.WriteString("\n## Receive latency\n\nReceive estimates include submitting-client startup, IPC, commit, transport and receiver storage. HTML uses the production local API injector. They exclude controller-side SSH, export and hash verification round trips. `verified_ms` separately includes those control costs. Native clock exchanges bracket each payload cell. Per-sample bounds include both node clock uncertainties, timestamp quantization and observed calibration drift. Bounds are clock bounds, not statistical confidence intervals. A bound reaching zero cannot establish a precise one-way latency. No network path is inferred from the SSH route.\n\n")
 	type group struct{ samples []sample }

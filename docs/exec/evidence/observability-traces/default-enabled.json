@@ -1,0 +1,125 @@
+{
+  "status": "PASS",
+  "source_commit": "52df69cff412983a26b938594c371f6873553e03",
+  "build_base_head": "ef9bf97acf0841f6554e7809e6ffa618319cdb81",
+  "source_binding": "The tested dirty-tree file hashes match source_commit; no code changed after the run.",
+  "trace_default_enabled": true,
+  "production_root_sample_ratio": 0.01,
+  "synthetic_test_root_sample_ratio": 1,
+  "assertions": [
+    "omitted trace setting enables trace admission",
+    "default-enabled synthetic submission yields one root and one commit child",
+    "same request creates no second tree",
+    "explicit master false suppresses exports for a full window",
+    "explicit trace false survives restart and suppresses exports for a full window",
+    "existing exporter/generation/privacy/queue/handle/shared-close scenarios pass",
+    "non-trace acceptance fixtures explicitly disable traces"
+  ],
+  "suites": [
+    {
+      "name": "TestObservability",
+      "seconds": 11.92
+    },
+    {
+      "name": "TestPostHog",
+      "seconds": 7.22
+    },
+    {
+      "name": "TestTraces",
+      "seconds": 149.8
+    }
+  ],
+  "passed_subtests": 36,
+  "profiles": [
+    {
+      "scenario": "observability",
+      "binaries_sha256": {
+        "unic": "3e246fbccc3be8563db8f90d7c7b9e622642d241b024cfe85857734be9a442ff",
+        "unicd": "5a21fdda14d6c027e3ba5e8f7db029529fe52a230aee65bf0b4c8e9660e234c1"
+      },
+      "daemon_build_settings": {
+        "-tags": "unic_e2e",
+        "GOARCH": "arm64",
+        "GOOS": "darwin",
+        "vcs.modified": "true",
+        "vcs.revision": "ef9bf97acf0841f6554e7809e6ffa618319cdb81"
+      },
+      "source_files_digest": "ea03b9428a337732023c6acbe28100b42964383d4d226c49ea4a80adb4cc5c3e",
+      "source_unchanged": true,
+      "cleanup_passed": true
+    },
+    {
+      "scenario": "posthog",
+      "binaries_sha256": {
+        "unic": "3e246fbccc3be8563db8f90d7c7b9e622642d241b024cfe85857734be9a442ff",
+        "unicd": "5a21fdda14d6c027e3ba5e8f7db029529fe52a230aee65bf0b4c8e9660e234c1"
+      },
+      "daemon_build_settings": {
+        "-tags": "unic_e2e",
+        "GOARCH": "arm64",
+        "GOOS": "darwin",
+        "vcs.modified": "true",
+        "vcs.revision": "ef9bf97acf0841f6554e7809e6ffa618319cdb81"
+      },
+      "source_files_digest": "ea03b9428a337732023c6acbe28100b42964383d4d226c49ea4a80adb4cc5c3e",
+      "source_unchanged": true,
+      "cleanup_passed": true
+    },
+    {
+      "scenario": "posthog-second",
+      "binaries_sha256": {
+        "unic": "3e246fbccc3be8563db8f90d7c7b9e622642d241b024cfe85857734be9a442ff",
+        "unicd": "5a21fdda14d6c027e3ba5e8f7db029529fe52a230aee65bf0b4c8e9660e234c1"
+      },
+      "daemon_build_settings": {
+        "-tags": "unic_e2e",
+        "GOARCH": "arm64",
+        "GOOS": "darwin",
+        "vcs.modified": "true",
+        "vcs.revision": "ef9bf97acf0841f6554e7809e6ffa618319cdb81"
+      },
+      "source_files_digest": "ea03b9428a337732023c6acbe28100b42964383d4d226c49ea4a80adb4cc5c3e",
+      "source_unchanged": true,
+      "cleanup_passed": true
+    },
+    {
+      "scenario": "traces",
+      "binaries_sha256": {
+        "unic": "42335ce27965c37ae8525eead29098c5829bf691be95f060dd259f56da490497",
+        "unicd": "e4629f9fb6461856bffe1dcdac1977d97a8367a21d9f28f73c847180928b1bca"
+      },
+      "daemon_build_settings": {
+        "-race": "true",
+        "GOARCH": "arm64",
+        "GOOS": "darwin",
+        "vcs.modified": "true",
+        "vcs.revision": "ef9bf97acf0841f6554e7809e6ffa618319cdb81"
+      },
+      "source_files_digest": "ea03b9428a337732023c6acbe28100b42964383d4d226c49ea4a80adb4cc5c3e",
+      "source_unchanged": true,
+      "cleanup_passed": true
+    }
+  ],
+  "artifact_files_verified": 52,
+  "private_artifacts": ".cache/traces-default-on",
+  "affected_race": "PASS: internal/observability, internal/localconfig and app/service/... with TMPDIR=/private/tmp",
+  "changed_code_tagged_lint": "PASS: 0 issues, golangci-lint v2.15.0",
+  "docscheck": "PASS: 7 existing staleness warnings",
+  "development_failures": [
+    {
+      "status": "EXPECTED_RED",
+      "reason": "Old default did not request traces; E2E changed before implementation"
+    },
+    {
+      "status": "ENVIRONMENT_RETRY",
+      "reason": "First affected host regression omitted the established short TMPDIR; default file-cache initialization failed. The unchanged tests passed with TMPDIR=/private/tmp."
+    }
+  ],
+  "replay": "TMPDIR=/private/tmp UNIC_E2E=1 UNIC_TRACE_RACE=1 UNIC_E2E_ARTIFACTS=<private> go test -race ./e2e/cli -run '^(TestTraces|TestObservability|TestPostHog)$' -count=1 -v",
+  "cleanup": {
+    "private_profiles_and_programs_removed": true,
+    "temporary_build_caches_removed": true,
+    "raw_log_files_removed": 4,
+    "raw_log_files_retained": 0
+  }
+}

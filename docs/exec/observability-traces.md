@@ -158,5 +158,12 @@ The production-process E2E was changed first and failed because the old default
 did not request traces. The implementation then changed the default. The updated
 suite checks omitted trace settings, idempotency and explicit false after restart,
 in addition to the existing exporter, generation, privacy and shutdown scenarios.
-Current acceptance: PENDING_DEFAULT_ENABLED_ACCEPTANCE.
+Acceptance source: `52df69cff412983a26b938594c371f6873553e03`.
+PASS: the three related process suites and 36 subtests. The trace suite passed
+all 13 scenarios in 149.80 seconds. Affected configuration/service race regression
+and changed-code tagged lint passed. Documentation checks passed with seven
+existing staleness warnings. The [default-enabled receipt](evidence/observability-traces/default-enabled.json)
+binds tested source-file and program hashes to this commit. All four private
+process profiles were reaped and removed. Full sanitized replay artifacts live
+in `.cache/traces-default-on`. No hosted upload or production deployment occurred.
 The initial signed receipt and measurements above remain historical evidence.

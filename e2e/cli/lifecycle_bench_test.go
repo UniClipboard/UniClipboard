@@ -45,7 +45,13 @@ func TestServiceLifecycleResources(t *testing.T) {
 		_ = os.MkdirAll(home, 0o700)
 		_ = os.WriteFile(filepath.Join(home, "config.toml"), []byte("\n[telemetry]\nenabled=false\n"), 0o600)
 		sock = filepath.Join(root, name+".sock")
-		return home, sock, append(os.Environ(), "UNIC_HOME="+home, "UNIC_SOCK="+sock, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+		env = append(os.Environ(), "UNIC_HOME="+home, "UNIC_SOCK="+sock, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+		// Prepare both sides with the candidate's explicit initialization outside
+		// the timed section; the historical baseline need not expose this command.
+		if err := initializeFixtureProfile(filepath.Join(candDir, "unic"), home, env); err != nil {
+			t.Fatal(err)
+		}
+		return home, sock, env
 	}
 	timeStatus := func(bin string, e []string) time.Duration {
 		cmd := exec.Command(filepath.Join(bin, "unic"), "status")

@@ -314,6 +314,9 @@ func newObservabilityRun(t *testing.T) *observabilityRun {
 		h.artifacts()
 		_ = os.RemoveAll(d)
 	})
+	if err := initializeFixtureProfile(filepath.Join(binDir, "unic"), h.home, h.env()); err != nil {
+		t.Fatal(err)
+	}
 	return h
 }
 func (h *observabilityRun) env() []string {

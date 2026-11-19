@@ -207,7 +207,16 @@ func unlock(root, service string, password []byte, secrets SecretReader) (*crypt
 		}
 		kek = argon2.IDKey(password, slot.Salt, k.Params.Iters, k.Params.Mem, uint8(k.Params.Parallel), 32)
 	} else if secrets != nil {
-		kek, _ = secrets(service, "kek:v1:profile:"+slot.Scope.ProfileID)
+		var err error
+		kek, err = secrets(service, "kek:v1:profile:"+slot.Scope.ProfileID)
+		if err != nil {
+			clear(kek)
+			var failure *credentialFailure
+			if errors.As(err, &failure) {
+				return nil, failure
+			}
+			return nil, ErrUnlock
+		}
 	}
 	defer clear(kek)
 	master, err := slot.Wrapped.open(kek, nil)
@@ -268,12 +277,21 @@ func unlock(root, service string, password []byte, secrets SecretReader) (*crypt
 			clear(b)
 		}
 	}()
+	var credentialErr error
 	get := func(name string) []byte {
 		if b := managed[name]; len(b) > 0 {
 			return b
 		}
 		if secrets != nil {
-			b, _ := secrets(service, name)
+			b, err := secrets(service, name)
+			if err != nil {
+				clear(b)
+				var failure *credentialFailure
+				if errors.As(err, &failure) {
+					credentialErr = failure
+				}
+				return nil
+			}
 			managed[name] = b
 			return b
 		}
@@ -281,6 +299,9 @@ func unlock(root, service string, password []byte, secrets SecretReader) (*crypt
 	}
 	lifecycle := postcard{data: get("profile_lifecycle_marker:v1")}
 	if lifecycle.number() != 1 {
+		if credentialErr != nil {
+			return fail(credentialErr)
+		}
 		return fail(ErrUnlock)
 	}
 	generation := lifecycle.take(16)
@@ -288,6 +309,9 @@ func unlock(root, service string, password []byte, secrets SecretReader) (*crypt
 		return fail(ErrFormat)
 	}
 	profileKey := get("profile_admission_master_key:v1")
+	if len(profileKey) == 0 && credentialErr != nil {
+		return fail(credentialErr)
+	}
 	var manifest encrypted
 	if readJSON(filepath.Join(vault, ".active-space-manifest-v2"), &manifest) != nil {
 		return fail(ErrFormat)

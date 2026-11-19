@@ -95,6 +95,19 @@ Commands that start a paired-device send observe only their own Engine operation
 Pairing approval, `device add` without an argument, and `dev logs level --for` hold a temporary generation for a bounded, announced window.
 Exact DTOs, budgets and exit codes are in the [local service contract](../contracts/local-service-contract.md#service-lifecycle).
 
+## First CLI use
+
+Every CLI data directory requires explicit migration initialization. Business
+commands refuse with exit 6 (`migration_required`) before service acquisition.
+Run `unic migrate --help`, then complete a verified import. When no known v1
+source exists, use `unic migrate --initialize-empty --json` explicitly. Pending
+imports cannot use that path. Help/version/migration remain accessible. Receipt
+publication and service acquisition share the profile transition lock; acquisition
+rechecks initialization after waiting. Partial, failure, cancellation and dry-run
+never grant permission. Explicit Desktop imports share this gate; welcome/skip
+does not initialize the CLI. Source identity prevents another source from completing
+a pending import. See the [CLI initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
+
 ## Offline CLI operations
 
 `unic dev logs export [--output FILE]` reads only retained local log segments and writes

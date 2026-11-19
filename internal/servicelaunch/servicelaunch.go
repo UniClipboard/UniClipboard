@@ -65,3 +65,32 @@ func Wait(ctx context.Context, check func() (bool, error)) error {
 		}
 	}
 }
+
+// LockContext permits cancellation while another process owns the profile
+// transition. A late acquisition after cancellation immediately releases it.
+func LockContext(ctx context.Context, dir string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	type result struct {
+		unlock func()
+		err    error
+	}
+	done := make(chan result)
+	go func() {
+		unlock, err := Lock(dir)
+		select {
+		case done <- result{unlock, err}:
+		case <-ctx.Done():
+			if unlock != nil {
+				unlock()
+			}
+		}
+	}()
+	select {
+	case r := <-done:
+		return r.unlock, r.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}

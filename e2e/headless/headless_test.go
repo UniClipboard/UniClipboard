@@ -191,6 +191,16 @@ func TestProductionHeadless(t *testing.T) {
 		socket := filepath.Join(home, "unic.sock")
 		c := api.NewClient(socket)
 		clients = append(clients, c)
+		// Complete the production CLI's explicit no-source initialization before
+		// starting this fixture's service. Never discover the operator's v1 data.
+		discovery := filepath.Join(base, fmt.Sprintf("source-home-%d", i))
+		need(t, os.MkdirAll(discovery, 0700))
+		initialize := exec.CommandContext(ctx, filepath.Join(bin, "unic"), "migrate", "--initialize-empty", "--target", home, "--json")
+		initialize.Env = append(env, "UNIC_HOME="+home, "HOME="+discovery, "USERPROFILE="+discovery,
+			"XDG_DATA_HOME="+filepath.Join(discovery, "data"), "LOCALAPPDATA="+filepath.Join(discovery, "local"), "UC_PROFILE=")
+		if out, err := initialize.CombinedOutput(); err != nil {
+			t.Fatalf("initialize headless CLI fixture: %v %s", err, out)
+		}
 		p := start(t, filepath.Join(bin, "unicd"), nil, append(env, "UNIC_HOME="+home, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1"), filepath.Join(artifacts, fmt.Sprintf("node-%d.log", i)))
 		procs = append(procs, p)
 		until(t, "daemon ready", func() bool { _, e := c.Status(ctx); return e == nil })

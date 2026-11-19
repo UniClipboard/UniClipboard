@@ -48,7 +48,7 @@ CLI changes and file edits use the same validation and Engine settings.
 
 The normal desktop uses the production `desktopui` renderer with live service data.
 Fresh profiles show first-install setup and optional v1 migration before normal runtime startup. Completed setup and established v2 profiles open history directly. There is no recurring unlock flow. The marker, source detection and exclusive migration lifecycle are described in the [live desktop composition](overview.md#live-desktop-composition).
-Settings > Storage > Migrate from v1 reopens the migration flow. Desktop closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. Entering history starts the normal runtime again. An external target owner blocks import before credential access; it is not automatically stopped by migration.
+Settings > Storage > Migrate from v1 reopens the migration flow. Desktop closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. It then persists a pending setup marker before showing migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
@@ -316,3 +316,13 @@ Settings > General > Tray icon selects `glyph` (the v1 default, two offset round
 Unchanged style preferences do not publish an image. Failed native delivery retains the shown style so the next update can retry. Style changes call only the native image API. Only language changes rebuild translated menus. No state badges or animation are implemented.
 
 The [style execution receipt](../exec/desktop-tray-icon-styles.md) records nonvisual acceptance and remaining native tray appearance, DPI, theme-event and open-menu acceptance boundaries.
+
+
+### Shared migration admission
+
+Desktop and CLI imports publish the same profile-scoped migration receipt under
+the service transition lock. A partial or cancelled Desktop import remains
+pending for CLI initialization, including custom sources outside default
+discovery. Only a verified complete import publishes completion. Desktop
+welcome/skip and history navigation do not publish CLI completion. See the
+[initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).

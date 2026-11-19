@@ -80,6 +80,14 @@ Tag IDs remain language-independent through storage, filtering and cleanup setti
 
 The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. `builtin:code` is currently preserved by migration; `builtin.classify` does not produce it for new content. The importer also preserves palette and hexadecimal colors from the v1 presentation layout through host configuration. Every CLI and Desktop migration automatically fills safe missing tags and colors while preserving target edits, existing color overrides and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252).
 
+Offline CLI and Desktop imports share the profile initialization receipt and
+service transition lock. Pending imports bind to one source identity; partial,
+cancelled and failed imports cannot grant CLI admission. Credential lookup
+preserves binary bytes and fixed platform guidance. Linux uses the standard
+bounded Secret Service prompt protocol. See the
+[initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization)
+and [credential boundaries](../contracts/history-contract.md#v1-system-credentials-and-process-resilience).
+
 ## Invariants
 
 - Processors and observers cannot change content. User-triggered Actions create new content.

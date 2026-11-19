@@ -123,7 +123,7 @@ func (s *Screen) start(password []byte) {
 	go func() {
 		defer clear(password)
 		defer cancel()
-		report, err := s.flow.Run(ctx, password, readSourceSecret, func(p v1migration.Progress) {
+		report, err := s.flow.Run(ctx, password, func(service, account string) ([]byte, error) { return readSourceSecret(ctx, service, account) }, func(p v1migration.Progress) {
 			select {
 			case <-s.progress:
 			default:

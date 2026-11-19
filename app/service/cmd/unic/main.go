@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/uniclipboard/unic/internal/climigration"
 	"github.com/uniclipboard/unic/internal/releaseinfo"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -23,19 +24,19 @@ import (
 
 // Exit codes beyond 0, 1 (failed) and 2 (usage).
 const (
-	exitIncomplete = 4 // committed, but the send, approval or window did not complete
-	exitCleanup    = 5 // the command finished, but stopping its temporary service failed
+	exitIncomplete        = 4 // committed, but the send, approval or window did not complete
+	exitMigrationRequired = 6 // explicit first-run migration initialization is missing
+	exitCleanup           = 5 // the command finished, but stopping its temporary service failed
 )
 
 func main() { os.Exit(run(os.Args[1:])) }
 
 func run(args []string) int {
-	showUpgradeNotice(args)
 	if releaseinfo.Print(os.Stdout, "unic", "cli", args) {
 		return 0
 	}
 	if len(args) < 1 {
-		fmt.Fprint(os.Stderr, usageText())
+		fmt.Fprint(os.Stderr, usageText()+"\nFirst run: complete migration initialization with unic migrate --help.\n")
 		return 2
 	}
 	cmd, rest := args[0], args[1:]
@@ -45,6 +46,15 @@ func run(args []string) int {
 	}
 	if l.Requirement == reqOffline {
 		return runMigration(rest, os.Stdin, os.Stdout, os.Stderr)
+	}
+	if l.Name != "help" && !strings.HasSuffix(l.Name, " help") {
+		dir, err := paths.Dir()
+		if err != nil {
+			return report(args, err)
+		}
+		if err = climigration.Required(dir); err != nil {
+			return report(args, err)
+		}
 	}
 	socket, err := paths.Socket()
 	if err != nil {
@@ -100,12 +110,17 @@ func dispatch(ctx context.Context, c *api.Client, l leaf, args, left []string) e
 }
 
 func report(args []string, err error) int {
-	asJSON := false
-	for _, arg := range args {
-		if arg == "--json" {
-			asJSON = true
+	var required *climigration.RequiredError
+	if errors.As(err, &required) {
+		asJSON := jsonRequested(args)
+		if asJSON {
+			_ = json.NewEncoder(os.Stderr).Encode(map[string]string{"error": required.Error(), "reason": "migration_required", "next_command": "unic migrate --help", "initialize_command": "unic migrate --initialize-empty --json"})
+		} else {
+			fmt.Fprintln(os.Stderr, errorLine(required.Error()))
 		}
+		return exitMigrationRequired
 	}
+	asJSON := jsonRequested(args)
 	// Acquisition failures are not HTTP failures; print the cause alone.
 	var acquire *acquireError
 	if errors.As(err, &acquire) {
@@ -125,4 +140,13 @@ func report(args []string, err error) int {
 		return exitIncomplete
 	}
 	return 1
+}
+
+func jsonRequested(args []string) bool {
+	for _, arg := range args {
+		if arg == "--json" || arg == "-json" || arg == "--json=true" || arg == "-json=true" {
+			return true
+		}
+	}
+	return false
 }

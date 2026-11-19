@@ -1,0 +1,37 @@
+{
+  "artifacts_sha256": [
+    "9f5c93fd33a3f7065374f893f66bff2fb468033aad98055cab0640f38de592fc",
+    "a6f1612e89da97c59ec5e67a8e09ec1d95ce41abef5382d15cf24985b447bf2e"
+  ],
+  "assertions": [
+    "installation",
+    "reinstallation",
+    "temporary_service_shutdown",
+    "upgrade",
+    "downgrade_rejection_preserves_installation",
+    "private_cli_ownership",
+    "removal",
+    "data_preservation"
+  ],
+  "authenticode": {
+    "unic-desktop.exe": "NotSigned",
+    "unic.exe": "NotSigned",
+    "unicd.exe": "NotSigned"
+  },
+  "format": "setup.exe",
+  "gui": "not_run",
+  "installed_binaries_sha256": {
+    "unic-desktop.exe": "0e0cc825bfbd5f992c0e71ebc07d926729f94f97f25d3ceb11a4c4272907c944",
+    "unic.exe": "4d6191ce005a144a238217ef25fa76d5873d9ad376bb23137e842ed0c320005a",
+    "unicd.exe": "c5f9a4bdce6735a930fa977017f39d343b942ca2dc6b55144905ce81643ae9ab"
+  },
+  "installer_authenticode": "NotSigned",
+  "isolated_vm": true,
+  "os_architecture": "ARM64",
+  "process_account_sid": "S-1-5-18",
+  "scope": "native NSIS lifecycle with an unsigned later-build fixture",
+  "status": "passed",
+  "target": "windows-arm64",
+  "update_owner": "winget",
+  "v1_replacement": "not_run"
+}

@@ -1,0 +1,29 @@
+{
+  "checks": [
+    "fixture and development modes cannot mutate production",
+    "v1 page sections and independent CLI reference",
+    "no unsupported mobile links or blanket signing claim",
+    "draft stages exact source and all attachments",
+    "downloaded attachment checksums match local bundle",
+    "idempotent draft has no writes",
+    "interrupted draft resumes missing asset",
+    "no public page without availability receipt",
+    "alpha publishes prerelease without latest",
+    "stable requires matching promotion",
+    "stable restores immutable page context and publishes after verified promotion",
+    "stable cannot be downgraded to alpha",
+    "changed remote asset rejected before writes",
+    "source tag conflict rejected",
+    "extra asset rejected",
+    "upload corruption fails while page stays draft",
+    "modified local payload rejected before writes",
+    "isolated HTTP server stopped"
+  ],
+  "scope": "actual gh and Python processes; isolated HTTP; no real Release",
+  "source_files": {
+    ".github/release-notes/desktop.md.tmpl": "1f1b7158a15c747a2c48619e90c0929dff1afa2d28a40e9866eb8f578fe48e3a",
+    "e2e/packaging/github_release.py": "67b024fede9e8d0088819892662452aee43e6acc4fe794fd96b9eb63000d2dfe",
+    "tools/release/github_desktop.py": "188892af9fe96187dcdf04693d6a904bbe3a86dd7bbfa67ebb558f2ba7648bf9"
+  },
+  "status": "passed"
+}

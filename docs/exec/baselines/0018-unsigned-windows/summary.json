@@ -1,0 +1,431 @@
+{
+  "baseline_cli": {
+    "macos_signatures": false,
+    "manifest_sha256": "2833ca5db80a143c17cee12ab877a0ded0b38561a88fcf685286b52772a69ad7",
+    "packages": [
+      {
+        "integrity": "sha512-082auvjFeGchqrkQzEVmx+vAE3juC9+a85p4dUT8UFCLrt6VKFjX1SIMyclWJX3Bgqyjcoga/SaOW2CkZXoubA==",
+        "name": "@uniclipboard/cli-darwin-x64",
+        "sha256": "9c63130767f21a3a2d6f5a9e2b79e8f81a509af3e5a165f7bf25c4c727c9b41f",
+        "version": "2.0.0-build.2"
+      },
+      {
+        "integrity": "sha512-BfxJbriMnSQy4UVY7t2jCQqjM/kf2u79USBkleST6xg5dRSyHZuBVA2Yos5MXEM1WhIdPs7ZW83pMjLuN59n/A==",
+        "name": "@uniclipboard/cli-darwin-arm64",
+        "sha256": "5e54b3db49d3908298e712e81445827a62dd53b5c6bf178915f58c4bdfef185f",
+        "version": "2.0.0-build.2"
+      },
+      {
+        "integrity": "sha512-c15GhxC42Skvv3Xw1E+2yhmLUs/caI2yzHFjCSXvA7DAp2kr6h6tU9cwYyukRcy9evHLGylVVeWfL0BtJxsjqA==",
+        "name": "@uniclipboard/cli-linux-x64",
+        "sha256": "186c8a1186b73cc07abdc68690447af98e7cf0bb252803e60c59c3d0e8eb441b",
+        "version": "2.0.0-build.2"
+      },
+      {
+        "integrity": "sha512-xH5TB+XFLhFv5uU1J30yvhsUFYPbZDVq1W0JLv/m5t57U0xb3hBrI3Y+ETn/ZrppJUzVdJTrmc5tVDjCXUM4yQ==",
+        "name": "@uniclipboard/cli-linux-arm64",
+        "sha256": "3130e3e9bcbc8649e5c7841ea8c4e075d2b0ca052df44badf284a348ccd0f4c3",
+        "version": "2.0.0-build.2"
+      },
+      {
+        "integrity": "sha512-qQ8qmhNc/av3z47PbV0nL9mu88gv905tQdm6qP5UzjsO6coAkjs/M0hJJsWEn7Kjt6Z4wjsySDqNl+WhRjOTKA==",
+        "name": "@uniclipboard/cli-win32-x64",
+        "sha256": "1bc08af2003f3ff64c2e99ae766d0292664e66e98db3ef5d28f1b31e20946752",
+        "version": "2.0.0-build.2"
+      },
+      {
+        "integrity": "sha512-MlCchtR41/ydpOV6UGOG2tVPlg1wOdYTaZ8+BgKewJzEkflinLDTExGiI7tADkvZr9YIT3NFlBM0rINYeR7Grg==",
+        "name": "@uniclipboard/cli-win32-arm64",
+        "sha256": "c6a7f2fcfcc236a953110ea1a601f635e650060571a5fdebabfe3bd637f0fac3",
+        "version": "2.0.0-build.2"
+      },
+      {
+        "integrity": "sha512-0zRN3Q1pwu49qpTMV0ezBucVkTmOtvIu+X3u9pmGvTw24Cc4pvQnd7IO6+o41SIy+ZYmPXDdsGTx+esxzeNTZw==",
+        "name": "@uniclipboard/cli",
+        "sha256": "105b691b7311a90f3f715c26c9ac2ac8e78d240a219bce40d2bd7da0ab4e4a9e",
+        "version": "2.0.0-build.2"
+      }
+    ],
+    "run_id": 44496820246,
+    "source_clean": true,
+    "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+    "targets": [
+      "darwin-amd64",
+      "darwin-arm64",
+      "linux-amd64",
+      "linux-arm64",
+      "windows-amd64",
+      "windows-arm64"
+    ]
+  },
+  "branch": "feat/release-unsigned-windows",
+  "desktop": {
+    "cli_lock": {
+      "binaries_sha256": {
+        "unic.exe": "7d20055a6e3be857aad45b5470f3cc8586cced8042ebafd46ed64d6b11215fd8",
+        "unicd.exe": "975725471499b0c9461fc90ebaf4139d8fe541681f3884f83761e06b3671bbb5"
+      },
+      "build_number": 3,
+      "manifest_sha256": "61e7f42039d760948578ec70103f84840e30eeee90465199d8ec284e3da533ea",
+      "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+      "version": "2.0.0"
+    },
+    "development": true,
+    "files": {
+      "payload/.mygo-files": "8993859bb0eab15823ca1be284cfaa32f52a6efbe88bac9386f1aea3ef1dc258",
+      "payload/LICENSE": "d8a6cc31abc16b6748c7a21f21611f5a1ec33f67d22ca23d7da1c19b95496bee",
+      "payload/icon.ico": "dc691b4edab0b4adba8fe01bcdea0409562a986c415ccd163f6ae7605736f6fe",
+      "payload/installation.json": "5eb1fcfa774bcc2c32e2bcdbe67b518d0c99d70e0d7b046886b2cd8fce8aedaf",
+      "payload/release-identity.json": "2de6fd8da2f638050f578105a50cf4811d7cf575da7c0207e0dd9b209c19fde9",
+      "payload/unic-desktop.exe": "bc0ac88777b50649b03f5f93a7ce64eb7a77dd2a7a4825761021c40d5ae2a5fd",
+      "payload/unic.exe": "7d20055a6e3be857aad45b5470f3cc8586cced8042ebafd46ed64d6b11215fd8",
+      "payload/unicd.exe": "975725471499b0c9461fc90ebaf4139d8fe541681f3884f83761e06b3671bbb5",
+      "payload/uniclip.cmd": "875ea9bd6c911c4c508222fd97d3371a43e782f860619b03c38277531b1bfc93"
+    },
+    "installer": [
+      {
+        "container_signed": false,
+        "file": "uniclipboard-2.0.0-build.1-windows-arm64-setup.exe",
+        "format": "setup.exe",
+        "notarized": false,
+        "payload_signed": false,
+        "sha256": "ad17d9539529197958aa016c11b6dc2936ca061ac8149b2872e105f871a21496",
+        "signature": "",
+        "signed": false,
+        "size": 74121922
+      }
+    ],
+    "source_clean": false,
+    "source_fix_sha256": "1991c815176b105ceba711a031c19c1c302905450965223fa3630736eb0082b7",
+    "stage_manifest_sha256": "d7b65f3942e348a9be87dbf0211a9300e6ac1375dad04da0a7a2ccb9944d833b"
+  },
+  "implementation_commit": "474fd01364c8fe9b42b8ec84b4898ac79afe74ba",
+  "local_fixed_cli": {
+    "build_number": 3,
+    "manifest_sha256": "61e7f42039d760948578ec70103f84840e30eeee90465199d8ec284e3da533ea",
+    "packages": [
+      {
+        "integrity": "sha512-brLEmPHoFuMFzSGlVOI6guvDMY3fKj6m6FpqoF6ALGFjdfaQ2cOkH/JQS79inZpx7GHXIy2LT67U7lpqD2a3+g==",
+        "name": "@uniclipboard/cli-win32-arm64",
+        "sha256": "7a3e8dfa3b5eb03cd340b44c24295061c77ae2238208cb9799c75937aebc5bde",
+        "version": "2.0.0-build.3"
+      },
+      {
+        "integrity": "sha512-19zcSTgBEQYiGfF2vxJ1DPIGwtGk78C3m2tIwZz6hjIXLKTU6kTLTh0H16Jl2Pq10YN412/ol53qQtMK1b2EWA==",
+        "name": "@uniclipboard/cli",
+        "sha256": "e9b61e1193cdd6ca7a51f77e2b9b240e57209d1170a075b2f75d668309537ee4",
+        "version": "2.0.0-build.3"
+      }
+    ],
+    "source_clean": false,
+    "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+    "targets": [
+      "windows-arm64"
+    ],
+    "version": "2.0.0"
+  },
+  "macos_cli_regression": {
+    "checks": [
+      {
+        "name": "Windows-style checkout preserves canonical release metadata bytes",
+        "passed": true
+      },
+      {
+        "name": "ambiguous legacy tag rejects before publication: 2.0.0-alpha.1",
+        "passed": true
+      },
+      {
+        "name": "ambiguous legacy tag rejects before publication: 99.0.0-alpha.1",
+        "passed": true
+      },
+      {
+        "name": "ambiguous legacy tag rejects before publication: unexpected",
+        "passed": true
+      },
+      {
+        "name": "alpha publication available",
+        "passed": true
+      },
+      {
+        "name": "platform package publishes before main",
+        "passed": true
+      },
+      {
+        "name": "v2 alpha transition preserves v1 stable",
+        "passed": true
+      },
+      {
+        "name": "unic executes installed exact build",
+        "passed": true
+      },
+      {
+        "name": "unic preserves failing exit code",
+        "passed": true
+      },
+      {
+        "name": "uniclip executes installed exact build",
+        "passed": true
+      },
+      {
+        "name": "uniclip preserves failing exit code",
+        "passed": true
+      },
+      {
+        "name": "unicd executes installed exact build",
+        "passed": true
+      },
+      {
+        "name": "fresh installation has no v1 warning",
+        "passed": true
+      },
+      {
+        "name": "a non-directory v1 path has no warning",
+        "passed": true
+      },
+      {
+        "name": "version stays informational when v1 exists",
+        "passed": true
+      },
+      {
+        "name": "migration guide explains the required explicit initialization",
+        "passed": true
+      },
+      {
+        "name": "terminal JSON remains clean when v1 exists",
+        "passed": true
+      },
+      {
+        "name": "invalid source returns actionable JSON before target initialization",
+        "passed": true
+      },
+      {
+        "name": "noninteractive output omits migration warning",
+        "passed": true
+      },
+      {
+        "name": "version stays informational for a named v1 profile",
+        "passed": true
+      },
+      {
+        "name": "offline migration guide default",
+        "passed": true
+      },
+      {
+        "name": "offline migration guide help",
+        "passed": true
+      },
+      {
+        "name": "installed migration preflight reports partial without creating target",
+        "passed": true
+      },
+      {
+        "name": "installed migration preserves partial exit code and verifies imported content",
+        "passed": true
+      },
+      {
+        "name": "migration does not modify v1 source",
+        "passed": true
+      },
+      {
+        "name": "installed migration resumes only the repaired record",
+        "passed": true
+      },
+      {
+        "name": "installed migration retry does not duplicate history",
+        "passed": true
+      },
+      {
+        "name": "migration retries leave repaired source unchanged",
+        "passed": true
+      },
+      {
+        "name": "stable promotion available",
+        "passed": true
+      },
+      {
+        "name": "promotion does not upload packages",
+        "passed": true
+      },
+      {
+        "name": "promotion preserves alpha",
+        "passed": true
+      },
+      {
+        "name": "idempotent promotion reuses packages",
+        "passed": true
+      },
+      {
+        "name": "integrity conflict rejects before tag mutation",
+        "passed": true
+      },
+      {
+        "name": "missing target rejects complete promotion",
+        "passed": true
+      },
+      {
+        "name": "invalid local integrity rejects before any upload",
+        "passed": true
+      },
+      {
+        "name": "partial destination failure is failed",
+        "passed": true
+      },
+      {
+        "name": "platform publication completed before main upload failure",
+        "passed": true
+      },
+      {
+        "name": "main stable stays on previous build after platform failure",
+        "passed": true
+      },
+      {
+        "name": "retry completes direct stable publication",
+        "passed": true
+      },
+      {
+        "name": "retry uploads only the previously missing main package",
+        "passed": true
+      },
+      {
+        "name": "older build cannot replace stable",
+        "passed": true
+      },
+      {
+        "name": "missing durable record selects a new build",
+        "passed": true
+      },
+      {
+        "name": "durable staging creates the verified source tag first",
+        "passed": true
+      },
+      {
+        "name": "durable staging retry accepts identical existing assets",
+        "passed": true
+      },
+      {
+        "name": "release retry restores exact staged package bytes",
+        "passed": true
+      },
+      {
+        "name": "durable record rejects changed existing bytes",
+        "passed": true
+      }
+    ],
+    "source_files": {
+      ".gitattributes": "0ace673570e72486c85c8e06ce56d561130d2ed8acbf49a1f962f15845cfaa9f",
+      ".github/workflows/build-cli.yml": "464ef0e14bb664d61958ce9b732a1ada91fe4a1b57bca3729db63736b0ea5607",
+      ".github/workflows/promote.yml": "7f19b609857e6506a818117036025fcd250b3ea2d1e3a3b61fcaef28931aa5e4",
+      ".github/workflows/release-cli.yml": "6185d4ebe7e089b56aee3bb41a2b0b1e5ca0315b97f9a6647347bcea99a7a549",
+      "LICENSE": "d8a6cc31abc16b6748c7a21f21611f5a1ec33f67d22ca23d7da1c19b95496bee",
+      "app/desktop/cmd/unic-desktop/main.go": "dd7431c90e7b298854f87c5cf50f2df9fccc8b4ed8cced5a5035817f173eec62",
+      "app/service/cmd/unic/cli.go": "469f9074920fa9106d242998f72287bfc6efbd429f9e7e38ed1d616139f74249",
+      "app/service/cmd/unic/diagnostics.go": "ea78c738595a5663d7c866f7154e91fba278d99a41dfd4389e0784e699cafc36",
+      "app/service/cmd/unic/headless.go": "30556b7f4a0203a790d5917852f203b2ec94f0adbb7210cb304dfca3befed808",
+      "app/service/cmd/unic/history.go": "d98e14bf4ccde2675d44f44c2e5de7389a17d2d57a77c63aa1296c9bc9286726",
+      "app/service/cmd/unic/history_test.go": "609920a2525d9ef7b4347b43ff336da6301d5cfedb5a0d9666f40284abccc656",
+      "app/service/cmd/unic/logs_export.go": "43e7ecb1236e4eb846a4cbb05e4ed1c0ab0923c7f5c808f1f2945a8a2f379a13",
+      "app/service/cmd/unic/main.go": "626ddb0b9212c8b263df40f17191661a1b3d3369b718a77b0b7c2abc43649a19",
+      "app/service/cmd/unic/migrate.go": "20d009f444537edd5790e5b33206061244a99b48cbbc91da895812284a7eb72a",
+      "app/service/cmd/unic/plugin.go": "2cb8cff5211fd4ffb73beeb440c2a4a22701b52959211ec1574270e5f3a1c24f",
+      "app/service/cmd/unic/plugin_test.go": "f792aacc883fb878950a072f9f96fd9c0c941020f1526d870814ea36e7566552",
+      "app/service/cmd/unic/requirements.go": "1aff88cb7256a437429df7092d2f72d21e682163bb69d06efc71539bcd88d7f9",
+      "app/service/cmd/unic/sendwait.go": "a67d9d4265c18c3c319a6978c2202763819f0383f5b018769921c748acb39758",
+      "app/service/cmd/unic/session.go": "b3df6503ea8f14c830c2848b13e43b34b3e54b866cd734aabb3fea432ea2f22f",
+      "app/service/cmd/unic/ui.go": "807b875ae333c1a842c30cfa89fd9b01a57f3fbc14b277ed83cb297ac8e6e35d",
+      "app/service/cmd/unic/windows_e2e.go": "499e677afc39af6b9e43b08a7ebe8bc59238c464f22cf8e63c34ff8318a48ba9",
+      "app/service/cmd/unicd/main.go": "6a3dc85a65dc032e8f2df4cbb1ee8b028481fa98d42fe8b01635e48ccf6fe4b1",
+      "e2e/release/MIGRATION_RESILIENCE.md": "2d67e0145bb2cc2fd76139c8b752ae81e28beead86919ab2ee8bd1167e35449d",
+      "e2e/release/README.md": "500947724468c8e341832e79ff8a41efd12fbb86c8f1b1dff2b8fe3dc647603d",
+      "e2e/release/github_fixture.py": "833f694763102490a3b9273c3423a4e62b7046895fa93786b2d16bd590285e74",
+      "e2e/release/migration_acceptance.py": "fd69dd09f31828bbdb873c3e692eaf347d85eb63ad4d9715d565acaa45cca1cf",
+      "e2e/release/migration_resilience.py": "12cf0ed11763e0b219d0f408b5df95f8136fcd898e5ac350ca78f15fe3c472c8",
+      "e2e/release/run.py": "ae21912438d0d5e9ff22ded65abef022a51eed4e071dc5905d39757cff2bc1b6",
+      "go.mod": "ee0cd56e70d4f30cb946463697e3b7431f3ea4a0929181e4b7e5552ed288b7bc",
+      "go.sum": "08589cf05493d2be92283ebc7e7da185a8eb8a503cebac6571f4793c965f2633",
+      "internal/localpaths/paths.go": "7197469f929209bd186cba0d228903a79c284a0fe05b36b6400f849698d3835e",
+      "internal/releaseinfo/releaseinfo.go": "015c13368cd2fd6de071456abbb6039d252d86bf82240def71b47f49ee5fa14f",
+      "internal/v1migration/credentials.go": "d254efdc016e02c31c1219445cc6bdb218effe7a4d8537c47d946390579a2333",
+      "internal/v1migration/credentials_darwin.go": "94d8a296357cd1a652dc5f9df8eddc0654b13b0e6551dba0b8499bd33473158e",
+      "internal/v1migration/credentials_linux.go": "418870d062b168c35c5bc0a95d1442ce6a4c3c5bf527482fcb1bb931764dcf4b",
+      "internal/v1migration/credentials_windows.go": "3c565221cb8dc595d9bad291bcfc8adeda17b3afdd9861ee3fd1f928529dc144",
+      "internal/v1migration/crypto.go": "0294f514dc41599b4b946f7b4ce49f70c6030b546d6309f929fad0af3e3ff3f7",
+      "internal/v1migration/files_test.go": "7ccd2426ce142276d04c96dc3536aaadba142152fac1cbfffe07878600de6839",
+      "internal/v1migration/hash.go": "d45ae38dd2bae8357343e573f63131665f491662345e14932166879894344e7b",
+      "internal/v1migration/hash_test.go": "3cca54e8b50ccd313d78e971dab4d9b11839172e48a1eadd3b27353b55e38aa0",
+      "internal/v1migration/layout.go": "d7697badf384a72b57a034184614b5657194bac28b3e4c2142b1b03d8c0c4404",
+      "internal/v1migration/local_test.go": "6be1aa909238e7f56132f6cdfb9aa48371647b8219a120b087f26765ec052103",
+      "internal/v1migration/migrate.go": "918c7999222d4ea12c759d79a62194aee7a77b7661f5e18cb4c6925aac1d3748",
+      "internal/v1migration/migrate_test.go": "2f96af30354809d1323ccc6b4db27a83dbc89dee28f180c261bf910e524d789b",
+      "internal/v1migration/source.go": "1991c815176b105ceba711a031c19c1c302905450965223fa3630736eb0082b7",
+      "internal/v1migration/tag_colors.go": "49cd3b03b6e391e2b51d557046ee659f92ea6dfa731297fcd8d74449a4d70d49",
+      "internal/v1migration/testdata/v3.json": "ec50426999f86af5a528083799b588919367b662567451d2dc84eed8fa3e80a8",
+      "release/desktop-notes.json": "3d41935c05b2a8dea702966fffaf51f8095da60263312c1b7cd8663c01b1ba30",
+      "release/products.toml": "baac0d7bd69ea7c3a70ce478249853dfa9c8fd4ff9b67393912f54e8ceaed000",
+      "tools/package/channels.py": "7ebdfaa1d5964474013b4109804ea339369c805e2434bf1be3935e78d4adab50",
+      "tools/package/desktop.py": "30e702132f92dd176d9b875714d882346dde0b97a92c09b5a4924ea69fdecab1",
+      "tools/package/install-tools.py": "a7f7978444fc92fb7f83ecae07e4d6302aa77ef3578c5c022aa7c501ebb9a251",
+      "tools/package/main.go": "996a9f67c2a0ee79100c33bb3ce177a527e07aa584de744127422c85329a1d82",
+      "tools/package/pacman.py": "bccfe72102bf36f1489f1987fa16451b2be269eac74920a8c317debfdfbf1cc6",
+      "tools/package/signing.py": "55452796393b596953b5800d79c158dba5dbefe4111df7d22f1321860975223e",
+      "tools/package/windows-icons.sh": "bdcf1d5d4e3e7931038a79088257e73ab954c4bce1cce36b3f0258eeaeb41d09",
+      "tools/release/cli_candidate.py": "6014c4608211dcf4b196ed0d4a8ce4144a1dac21fc85103427fbcbcd1829bc95",
+      "tools/release/desktop_release.py": "165179df9e7f35c31ee60cb84897c97cdadd82f18b71395b29c24d6470225ed1",
+      "tools/release/github_desktop.py": "188892af9fe96187dcdf04693d6a904bbe3a86dd7bbfa67ebb558f2ba7648bf9",
+      "tools/release/release.py": "ecf0012b66841a0ede08c53c0a6788e5b6474c7ffed6e45c59dbb52c8ea25cf5",
+      "tools/release/requirements.txt": "d9349c09a0e7c5bc1249a8a58b16748f62795bbcae9a16383900087e4dcb6b16",
+      "tools/release/update-sign/main.go": "df9061f47b1ae7e500a7414a8554204e1b830da0f5c77d9b367d9eb237849b1a"
+    },
+    "status": "passed"
+  },
+  "not_run": [
+    "clean six-target CLI after URI fix",
+    "new macOS Developer ID signing/notarization",
+    "persistent production updater-key provisioning",
+    "production R2 credential usability/upload/download",
+    "authenticated FlareRelease contract and registration",
+    "public npm publication",
+    "public GitHub Release",
+    "alpha/stable/latest mutation",
+    "Windows interactive GUI/setup/native credential prompts",
+    "Windows amd64 emulation",
+    "live winget/chocolatey/scoop lifecycle",
+    "remaining package-manager submissions and availability"
+  ],
+  "production_readiness": "NOT_READY",
+  "publication_authority": "NOT_GRANTED",
+  "source_base": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+  "source_files": {
+    ".github/workflows/build-desktop.yml": "cb2025ab4826ac1eba464068b102958043345a0ff56db190adb064ed4d8e31fc",
+    ".github/workflows/package-acceptance.yml": "902fa70468017237919ee7c8e82c303921475aa7fc5efeb3334a5d5fdff489da",
+    "e2e/packaging/signing_policy.py": "5b551f3f38d7de9731e667f196f672152bd4583f176c740b4be0129b99c791f7",
+    "e2e/packaging/updates.py": "0353e7083ba2e52bebbaf59931ac00fa7dff226e1de340160aee7da0600140c8",
+    "e2e/packaging/windows-lifecycle.ps1": "a281a4ac416b40cf2749a3813e534bd36838db120520ecbc677692426dc87bc8",
+    "e2e/packaging/windows-v1-replacement.ps1": "3aa726ee6b8d5652235512b575e47d187e8e1526d3a664ca7880b90f798c4ef2",
+    "internal/v1migration/source.go": "1991c815176b105ceba711a031c19c1c302905450965223fa3630736eb0082b7",
+    "packaging/windows/installer.nsi": "6c0755e5a5c38bea497a44d5b6d3d0da22c6febc69f8128772b4bfd0203d1391",
+    "tools/package/desktop.py": "30e702132f92dd176d9b875714d882346dde0b97a92c09b5a4924ea69fdecab1",
+    "tools/release/desktop_release.py": "165179df9e7f35c31ee60cb84897c97cdadd82f18b71395b29c24d6470225ed1",
+    "tools/release/github_desktop.py": "188892af9fe96187dcdf04693d6a904bbe3a86dd7bbfa67ebb558f2ba7648bf9"
+  },
+  "vm": {
+    "architecture": "ARM64",
+    "cpu_count": 4,
+    "execution_account_sid": "S-1-5-18",
+    "final_state": "suspended",
+    "guest_personal_profile_access": "NOT_RUN",
+    "gui": "NOT_RUN",
+    "host_clipboard_access": "NOT_RUN",
+    "host_load_observation": [
+      11.48,
+      9.47,
+      7.32
+    ],
+    "id": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+    "initial_state": "suspended",
+    "memory_mib": 6144,
+    "os": "Windows 11 Pro",
+    "session_id": 0,
+    "shared_clipboard_enabled": true,
+    "shared_personal_folders_enabled": true
+  }
+}

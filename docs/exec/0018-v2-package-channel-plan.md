@@ -44,7 +44,7 @@ Self-managed pacman parity initially targets x86_64, matching its v1 workflow. A
 The user accepted replacement of v1 by v2 within the same distribution channel.
 The user also accepted the product/package identifiers, independent product versions, private bundled CLI ownership, update authority and explicit migration rules in [decision 0025](../decisions/proposed/0025-desktop-package-identity-and-replacement.md).
 The normative requirements are in the [release contract](../contracts/release-contract.md#desktop-installation-identity-and-update-ownership).
-The user selected Desktop version `2.0.0`, build number `1`. `release/products.toml` records this candidate identity. Desktop selects compatible CLI `2.0.0 (2)` from canonical run 43419452491. Both macOS targets are signed; Windows production signing remains pending. The implementation receipt records its digest. Public npm availability remains a separate prerequisite.
+The user selected Desktop version `2.0.0`, build number `1`. `release/products.toml` records this candidate identity. Desktop selects compatible CLI `2.0.0 (2)` from canonical run 43419452491. Both macOS targets are signed; Windows Authenticode may remain unsigned under the accepted policy. The implementation receipt records its digest. Public npm availability remains a separate prerequisite.
 These requirements now have runtime/construction implementations. The release contract specifies native version encodings and platform metadata. Native v2 lifecycle and sandbox process evidence are recorded separately from real v1 replacement and package-specific OS integration acceptance.
 
 ### Implementation structure
@@ -119,7 +119,7 @@ Exit: reviewed release-contract additions, target matrix and executable acceptan
 ### P1. Establish one complete Desktop path
 
 - [x] Implement exact accepted CLI consumption and production Desktop staging; process fixtures passed.
-- [x] Select and verify a real complete six-target CLI lock: CLI `2.0.0 (2)`, run `43419452491`. Production Windows signing remains a separate prerequisite.
+- [x] Select and verify a real complete six-target CLI lock: CLI `2.0.0 (2)`, run `43419452491`. Windows production Authenticode is optional; raw updater signing remains required.
 - [x] Complete the available Linux arm64 DEB construction/install/upgrade/uninstall path with private service and data-preservation evidence.
 - [x] Repeat the DEB lifecycle on Linux amd64; package process run `43423581732` passed both architectures.
 - [x] Preserve this working path while extending other formats. Do not create all channel workflows before one package works.
@@ -132,7 +132,7 @@ Exit: one reproducible production package and process acceptance receipt. This i
 - [x] Add macOS bundle, DMG/application archive construction and signing entrypoints; unsigned arm64 construction passed.
 - [x] Complete real signing/notarization on both native macOS targets; Desktop run `43421800442` passed.
 - [x] Add Windows setup/portable construction and portable runtime semantics; actual amd64/arm64 PE and EXE/ZIP cross-construction passed.
-- [ ] Accept production Windows signatures. Native NSIS lifecycle passed on both architectures in run `43421800442`.
+- [x] Accept explicitly unsigned Windows payloads/installers. Production Authenticode is optional; never claim test signing as production. Native NSIS lifecycle passed on both architectures in run `43421800442`; fresh-source acceptance is separate.
 - [x] Add Linux format entrypoints; arm64 DEB/RPM/pacman construction passed.
 - [ ] Accept AppImage construction/runtime and complete bundled-versus-system dependency acceptance.
 - [x] Complete construction and private CLI/service runtime checks on all six native targets in run `43421800442`. Native GUI and package-specific OS integration remain separate acceptance gates.
@@ -309,4 +309,4 @@ Recheck channel policies and tool versions during implementation. These referenc
 
 The current implementation includes canonical CI acquisition, six-target CLI locking, native mygo updater integration, Apple signing/notarization derivation, immutable Desktop object publication and revision-bound FlareRelease promotion. The manual delivery workflow is prepared but has not published any installer or changed any channel.
 
-Completed evidence: six native CLI identity jobs; six-target packaging/update process acceptance is being rerun; local native-window history/search/copy acceptance; local signed updater and S3/HTTP publication process fixtures. Exact CI results and remaining failures belong in the implementation receipt. Nix/Flatpak/Snap jobs are defined and require actual execution before acceptance. Windows production signing and the durable raw updater key remain deployment prerequisites. No template or passing fixture closes these production gates.
+Completed evidence: six native CLI identity jobs; six-target packaging/update process acceptance is being rerun; local native-window history/search/copy acceptance; local signed updater and S3/HTTP publication process fixtures. Exact CI results and remaining failures belong in the implementation receipt. Nix/Flatpak/Snap jobs are defined and require actual execution before acceptance. The durable raw updater key remains a deployment prerequisite; Windows Authenticode may remain unsigned. No template or passing fixture closes these production gates.

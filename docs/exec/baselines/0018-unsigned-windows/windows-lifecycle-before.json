@@ -1,0 +1,12 @@
+{
+  "assertions": [
+    "installation",
+    "reinstallation",
+    "temporary_service_shutdown",
+    "upgrade"
+  ],
+  "error_type": "System.Management.Automation.RuntimeException",
+  "format": "setup.exe",
+  "status": "failed",
+  "target": "windows-arm64"
+}

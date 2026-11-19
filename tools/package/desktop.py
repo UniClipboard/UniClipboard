@@ -592,11 +592,33 @@ def smoke(args):
         if list(Path(home).iterdir()):
             raise ValueError("version inspection initialized user state")
     with tempfile.TemporaryDirectory(prefix="unic-shared-api-") as home:
-        profile = Path(home)
+        workspace = Path(home).resolve()
+        profile = workspace / "profile"
+        profile.mkdir()
+        discovery = workspace / "home"
         (profile / "config.toml").write_text(
             '[desktop]\nupdate_channel="alpha"\n[sync]\nenabled=false\n[telemetry]\nenabled=false\n'
         )
-        env = dict(os.environ, UNIC_HOME=home)
+        env = dict(
+            os.environ,
+            UNIC_HOME=str(profile),
+            HOME=str(discovery),
+            USERPROFILE=str(discovery),
+            APPDATA=str(discovery / "roaming"),
+            LOCALAPPDATA=str(discovery / "local"),
+            XDG_CONFIG_HOME=str(discovery / "config"),
+            XDG_DATA_HOME=str(discovery / "data"),
+            UC_PROFILE="",
+        )
+        env.pop("UNIC_SOCK", None)
+        initialized = json.loads(
+            run(
+                [payload / ("unic" + suffix), "migrate", "--initialize-empty", "--json"],
+                env=env,
+            )
+        )
+        if initialized.get("status") != "complete" or initialized.get("outcome") != "no_source":
+            raise ValueError("bundled CLI did not complete explicit no-source initialization")
         value = json.loads(
             run([payload / ("unic" + suffix), "config", "--json"], env=env)
         )

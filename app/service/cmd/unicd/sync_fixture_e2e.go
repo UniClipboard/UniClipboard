@@ -38,6 +38,14 @@ func syncFixtureRoutes(mux *http.ServeMux) {
 			syncFixtureTransport.mu.Lock()
 			syncFixtureTransport.partial = 17
 			syncFixtureTransport.mu.Unlock()
+		case "slow":
+			syncFixtureTransport.mu.Lock()
+			syncFixtureTransport.slow = 40 * time.Millisecond
+			syncFixtureTransport.mu.Unlock()
+		case "normal-speed":
+			syncFixtureTransport.mu.Lock()
+			syncFixtureTransport.slow = 0
+			syncFixtureTransport.mu.Unlock()
 		case "next-day":
 			syncFixtureDay.Add(1)
 		default:

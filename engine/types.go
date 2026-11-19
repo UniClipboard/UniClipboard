@@ -289,6 +289,8 @@ type SubmitRequest struct {
 	// DeviceIDs, if non-empty, limits a peer-session send to those paired
 	// devices (sorted, validated by CommitContent). Other backend kinds send nothing.
 	DeviceIDs []DeviceID
+	// existing is the record this send belongs to (CommitRequest.HistoryID).
+	existing HistoryID
 
 	action *actionRun // set by RunAction only
 }
@@ -480,6 +482,10 @@ type CommitRequest struct {
 	// DeviceIDs limits the send to these paired devices. nil means every device;
 	// an empty list, an unknown device or a repeated ID is invalid_argument.
 	DeviceIDs []DeviceID
+	// HistoryID names an existing record whose content the lease holds (from
+	// RetainHistoryForSend). The send then belongs to that record: nothing is
+	// committed again, processors do not rerun, and its targets are updated.
+	HistoryID HistoryID
 }
 
 type PluginID string

@@ -103,6 +103,69 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 			}
 			return err
 		},
+		"enable-sync": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("enable-sync takes no arguments")
+			}
+			path := filepath.Join(s.home, "config.toml")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			next := strings.Replace(string(raw), "[sync]\nenabled=false", "[sync]\nenabled=true", 1)
+			if next == string(raw) {
+				return errors.New("sync switch not found in the profile config")
+			}
+			if err = os.WriteFile(path, []byte(next), 0600); err != nil {
+				return err
+			}
+			return s.wait(func() bool {
+				st, e := s.client.Config(s.ctx)
+				return e == nil && st.Error == "" && st.Config.Sync.Enabled
+			})
+		},
+		"disable-sync": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("disable-sync takes no arguments")
+			}
+			path := filepath.Join(s.home, "config.toml")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			next := strings.Replace(string(raw), "enabled=true", "enabled=false", 1)
+			if next == string(raw) {
+				return errors.New("sync switch not found in the profile config")
+			}
+			if err = os.WriteFile(path, []byte(next), 0600); err != nil {
+				return err
+			}
+			return s.wait(func() bool {
+				st, e := s.client.Config(s.ctx)
+				return e == nil && st.Error == "" && !st.Config.Sync.Enabled
+			})
+		},
+		"send-newest-to-peer": func(s *desktopScenario, a []string) error {
+			if len(a) != 1 || s.policyPeer == nil {
+				return errors.New("send-newest-to-peer request-id requires an owned peer")
+			}
+			st, err := s.client.Status(s.ctx)
+			if err != nil || len(st.Peers) != 1 {
+				return fmt.Errorf("want exactly one paired peer: %v", err)
+			}
+			page, err := s.client.ListHistory(s.ctx, "", "")
+			if err != nil || len(page.Items) == 0 {
+				return fmt.Errorf("no history to send: %v", err)
+			}
+			out, err := s.client.Submit(s.ctx, api.SubmitInput{RequestID: a[0], HistoryID: page.Items[0].ID, DeviceIDs: []string{st.Peers[0].ID}})
+			if err != nil {
+				return err
+			}
+			if out.SyncDisposition != "queued" {
+				return fmt.Errorf("send not queued: disposition=%q error=%+v", out.SyncDisposition, out.SyncError)
+			}
+			return nil
+		},
 		"stop-policy-peer": func(s *desktopScenario, a []string) error {
 			if len(a) != 0 || s.policyPeer == nil {
 				return errors.New("stop-policy-peer requires an owned peer")

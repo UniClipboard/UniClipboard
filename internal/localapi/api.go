@@ -177,6 +177,29 @@ type HistoryItem struct {
 	TotalBytes        int64                  `json:"total_bytes"`
 	SyncState         string                 `json:"sync_state"`
 	Backends          []HistoryBackendSync   `json:"backends"`
+	Targets           []HistoryTarget        `json:"targets"`
+}
+
+// HistoryTarget is the last send result towards one target, usually a device.
+// "sent" means every byte was written to the connection, nothing more.
+type HistoryTarget struct {
+	BackendID  string `json:"backend_id"`
+	TargetKind string `json:"target_kind"`
+	TargetID   string `json:"target_id"` // the device ID for a device
+	State      string `json:"state"`     // queued, sending, sent, failed, superseded
+	ErrorCode  string `json:"error_code,omitempty"`
+	// Items is present only while the send runs.
+	Items []HistoryTargetItem `json:"items,omitempty"`
+}
+
+// HistoryTargetItem is the live progress of one part towards a target.
+type HistoryTargetItem struct {
+	Index          int    `json:"index"`
+	Kind           string `json:"kind"`
+	Name           string `json:"name,omitempty"` // file name; files only
+	State          string `json:"state"`          // waiting, transferring, completed, failed
+	CompletedBytes int64  `json:"completed_bytes"`
+	TotalBytes     int64  `json:"total_bytes"`
 }
 
 // Action is something a plugin can do to a text record when asked.

@@ -421,7 +421,7 @@ func (d *viewState) detail(c *ui.Context, k uikit.Kit) {
 			d.detailTags(c.Key("detail-tags"), k, v)
 			ui.Column(c).Gap(6).Children(func() {
 				if d.live != nil {
-					k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(v.syncState)), secondary)
+					d.liveDelivery(c, k, *v)
 					return
 				}
 				rows := []uikit.InsetListRow{}

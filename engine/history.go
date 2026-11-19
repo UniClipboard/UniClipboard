@@ -238,6 +238,11 @@ func toHistoryItem(it store.HistoryItem) HistoryItem {
 		Tags: append([]string{}, it.Tags...), TotalBytes: it.TotalBytes, SyncState: HistorySyncState(it.SyncState),
 		Parts:             make([]HistoryPartSummary, len(it.Parts)),
 		BackendSyncStates: []HistoryBackendSyncState{},
+		Targets:           []HistoryTargetState{},
+	}
+	for _, t := range it.Targets {
+		out.Targets = append(out.Targets, HistoryTargetState{BackendID: PluginID(t.Backend), TargetKind: SyncTargetKind(t.Kind),
+			TargetID: t.Target, State: TargetState(t.State), ErrorCode: Code(t.ErrorCode)})
 	}
 	for b, st := range it.BackendStates {
 		out.BackendSyncStates = append(out.BackendSyncStates, HistoryBackendSyncState{
@@ -942,5 +947,6 @@ func (e *Engine) historyItem(it store.HistoryItem) HistoryItem {
 			out.Parts[i].Available = e.cache != nil && e.cache.available(strings.TrimPrefix(p.Ref, "cache:"))
 		}
 	}
+	e.overlayProgress(&out)
 	return out
 }

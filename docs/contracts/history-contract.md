@@ -44,6 +44,8 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 | Parts | 只含 Kind、MIME、Size；不含文本预览、文件名、路径、PartID 或实例内 ContentID |
 | TotalBytes | 所有 part 的逻辑字节总和 |
 | SyncState | not_requested/pending/sent/partial/failed/interrupted；各后端汇总，不代表远端收到或应用 |
+| Targets | 每个目标（通常是设备）最近一次发送结果：backend_id、target_kind、target_id、state（queued/sending/sent/failed/superseded）、error_code。`sent` 只表示字节已写入连接，不代表对端收到。跨重启保留；重启时未结束的目标变为 failed/interrupted。发送进行中另带 Items（按部分的 state 与已传/总字节，仅内存、不落库，字节变化每 250 ms 至多发布一次）。见 0027 |
+| （重发） | 对已有记录重发时，`CommitRequest.HistoryID` 与 `RetainHistoryForSend` 的租约配合：不新建记录、不重跑 processor，只更新该记录的 Targets（只覆盖本次涉及的设备行）。 |
 | BackendSyncStates | 按 BackendID 保存本条内容的策略跳过、传输与中断摘要，不含秘密目标 URL/token；跨重启保留 |
 
 文件名与具体 PartID 在显式 RetainHistoryContent 返回的 ContentDescriptor 获取。Ordinary State, metadata lists, events and errors contain no body. Explicit SearchHistory hits may contain only the bounded previews defined by the [search contract](history-search-contract.md).HistoryItem 只描述持久记录，不返回租约；所有返回值遵守 Engine 的快照隔离约定。

@@ -104,7 +104,14 @@ func (e *Engine) recordSync(id HistoryID, results []BackendSubmissionResult, tar
 	e.syncMu.Lock() // the later writer must also hold the newer picture
 	defer e.syncMu.Unlock()
 	e.hist.mu.Lock()
-	_, err := e.st.SetSyncState(string(id), string(state), backends, historyNow().UnixMilli())
+	rows := make([]store.TargetSync, len(targets))
+	for i, t := range targets {
+		rows[i] = store.TargetSync{Backend: string(t.BackendID), Kind: string(t.TargetKind), Target: t.TargetID, State: string(t.State)}
+		if t.Error != nil {
+			rows[i].ErrorCode = string(t.Error.Code)
+		}
+	}
+	_, err := e.st.SetSyncState(string(id), string(state), backends, rows, historyNow().UnixMilli())
 	e.hist.mu.Unlock()
 	if err == nil {
 		e.historyChanged(string(id))

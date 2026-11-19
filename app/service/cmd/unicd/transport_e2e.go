@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 // e2eTransport reuses the host's existing transport seam. The real session,
@@ -22,6 +23,7 @@ type e2eTransport struct {
 	conns       []net.Conn
 	dialTimeout bool
 	partial     int64
+	slow        time.Duration // delay of every write, to observe a running send
 }
 
 func newE2ETransport() (*e2eTransport, error) {
@@ -115,6 +117,12 @@ type faultConn struct {
 }
 
 func (c *faultConn) Write(p []byte) (int, error) {
+	c.t.mu.Lock()
+	slow := c.t.slow
+	c.t.mu.Unlock()
+	if slow > 0 {
+		time.Sleep(slow)
+	}
 	if c.failAfter > 0 {
 		n, err := c.Conn.Write(p[:min(int64(len(p)), c.failAfter)])
 		c.failAfter = 0

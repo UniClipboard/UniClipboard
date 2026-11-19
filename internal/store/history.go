@@ -71,6 +71,17 @@ CREATE TABLE clip_item_sync (
   error_code TEXT NOT NULL DEFAULT '',    -- a stable error class
   PRIMARY KEY (item_seq, backend_id)
 ) WITHOUT ROWID;
+-- The last send result towards each target of a record. A resend to one
+-- device replaces only that device's row.
+CREATE TABLE clip_item_target (
+  item_seq    INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,
+  backend_id  TEXT NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_id   TEXT NOT NULL,
+  state       TEXT NOT NULL,
+  error_code  TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (item_seq, backend_id, target_kind, target_id)
+) WITHOUT ROWID;
 -- Received transfers already committed, so the same transfer arriving through
 -- another backend is dropped. Bounded by age and count.
 CREATE TABLE sync_dedup (
@@ -136,6 +147,12 @@ type BackendSync struct {
 	ErrorCode   string
 }
 
+// TargetSync is the last send result towards one target of a record.
+type TargetSync struct {
+	Backend, Kind, Target string
+	State, ErrorCode      string
+}
+
 // HistoryItem is a stored record. Seq is private commit order.
 type HistoryItem struct {
 	SearchDocs        []SearchDocument
@@ -159,7 +176,8 @@ type HistoryItem struct {
 	Tags              []string // sorted by UTF-8 bytes
 	Parts             []HistoryPart
 	BackendStates     map[string]BackendSync
-	ImportSource      string // offline import only; not part of public metadata
+	Targets           []TargetSync // ordered by backend, kind, target
+	ImportSource      string       // offline import only; not part of public metadata
 	ImportRecord      string
 }
 
@@ -355,7 +373,23 @@ func fill(q queryer, it *HistoryItem, withInline bool) error {
 		}
 		it.BackendStates[b] = st
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_ = rows.Close()
+	trows, err := q.Query(`SELECT backend_id, target_kind, target_id, state, error_code FROM clip_item_target WHERE item_seq = ? ORDER BY backend_id, target_kind, target_id`, it.Seq)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = trows.Close() }()
+	for trows.Next() {
+		var t TargetSync
+		if err := trows.Scan(&t.Backend, &t.Kind, &t.Target, &t.State, &t.ErrorCode); err != nil {
+			return err
+		}
+		it.Targets = append(it.Targets, t)
+	}
+	return trows.Err()
 }
 
 // GetHistory returns one item. Expired items (0 < expires <= nowMs) are not
@@ -490,8 +524,9 @@ func sameStrings(a, b []string) bool {
 	return true
 }
 
-// SetSyncState records the aggregate and per-backend sync summary.
-func (s *Store) SetSyncState(id, state string, backends map[string]BackendSync, nowMs int64) (rev uint64, err error) {
+// SetSyncState records the aggregate and per-backend sync summary, and the
+// result towards each target in targets. Targets not named keep their rows.
+func (s *Store) SetSyncState(id, state string, backends map[string]BackendSync, targets []TargetSync, nowMs int64) (rev uint64, err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -508,6 +543,12 @@ func (s *Store) SetSyncState(id, state string, backends map[string]BackendSync, 
 	}
 	for b, st := range backends {
 		if err := insertBackendSync(tx, seq, b, st); err != nil {
+			return 0, err
+		}
+	}
+	for _, t := range targets {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO clip_item_target (item_seq, backend_id, target_kind, target_id, state, error_code) VALUES (?, ?, ?, ?, ?, ?)`,
+			seq, t.Backend, t.Kind, t.Target, t.State, t.ErrorCode); err != nil {
 			return 0, err
 		}
 	}
@@ -678,6 +719,9 @@ func (s *Store) InterruptPending(nowMs int64) (ids []string, err error) {
 		return nil, nil
 	}
 	if _, err := tx.Exec(`UPDATE clip_item_sync SET state = 'interrupted' WHERE state = 'pending'`); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE clip_item_target SET state = 'failed', error_code = 'interrupted' WHERE state IN ('queued', 'sending')`); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(`UPDATE clip_items SET sync_state = 'interrupted', revision = revision + 1, updated_ms = ? WHERE sync_state = 'pending'`, nowMs); err != nil {

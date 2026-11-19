@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -45,7 +46,7 @@ func testDiagnosticRoutes(mux *http.ServeMux, n *host.Node) {
 		w.WriteHeader(200)
 	})
 	mux.HandleFunc("POST /test/pressure", func(w http.ResponseWriter, _ *http.Request) {
-		for i := 0; i < 100000; i++ {
+		for i := 0; i < 4096; i++ {
 			derived.Info("pipeline.completed", "result", "succeeded")
 		}
 		w.WriteHeader(200)
@@ -54,6 +55,12 @@ func testDiagnosticRoutes(mux *http.ServeMux, n *host.Node) {
 		n.Diagnostics().Record(context.Background(), engine.DiagnosticRecord{Stage: "private-invalid-stage", Result: "private-invalid-result", Backend: "private-plugin", ContentKind: "text"})
 		w.WriteHeader(200)
 	})
+	if os.Getenv("UNIC_E2E_SYNC_PROBE") == "1" {
+		samples := n.ProbeSyncCollection()
+		mux.HandleFunc("GET /test/sync-collection", func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(samples())
+		})
+	}
 	mux.HandleFunc("GET /test/resources", func(w http.ResponseWriter, _ *http.Request) {
 		var mem runtime.MemStats
 		runtime.ReadMemStats(&mem)

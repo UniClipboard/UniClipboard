@@ -157,13 +157,11 @@ P4 剩余（均不阻塞 P5）：`device.*`/`sync.*` 通知（会话事件不带
 - [x] 映射全局 sync.enabled 和每后端 .sync 类型/阈值，拒绝旧类型键，不做兼容映射；自动/手动策略与热加载测试覆盖。（2026-11-09 核对：`[sync] enabled` 与 `[plugins.instances."builtin.tailcat".sync]` 的 text/images/files/auto_file_max_bytes 已映射到 `Settings.BackendPolicies`；旧 `sync.text` 等键被拒绝并保留上一份有效配置；热加载测试 `TestPausedSyncKeepsConnection`、`TestSyncTypeSwitches`、`TestFilePolicyAndAutoThresholdHotReload`（文件开关、自动阈值生效、手动发送豁免、调高阈值后放行）、`TestOldSyncKeysAreRefusedAndKeepTheLastGoodConfig`。）
 - [x] 增加 `unic history`（别名 `unic h`；list/show/delete/tag/expire/action，`@N` 指第 N 新；终端内 delete 确认一次，`-y` 跳过）和 Engine 历史 API 的薄 HTTP 适配；查询/读取/删除不另建历史存储，桌面 API 与 SDK 同批更新，不保留旧响应兼容层。桌面 GUI 由 mygo + 自定义 UI Kit 承载，最终界面原型待定。
 - [x] 本地 Lua 插件目录（先于 GitHub 安装）：手动放入 `$UNIC_HOME/plugins/lua/<name>/` 即被发现但不初始化、不启用；`unic plugin list` 显示发现/启用/损坏/缺失，`enable`/`disable` 保留注释地改写 config.toml 的 `plugins.lua`（改后复解析校验、原子替换），重启生效。仅 Lua；Go 外部插件随 GitHub 安装的产物格式另定。
-- [ ] 实现 install/list/enable/disable/uninstall，公共 GitHub HTTPS URL、ref→完整 commit、子目录和清单校验；不递归安装依赖、不执行安装脚本。
-- [ ] Go 优先平台匹配预编译，核对摘要/架构/归档边界；仅无匹配项或确认资产不存在时允许显式 --build。网络/限流/摘要失败不得触发源码兜底。
-- [ ] 源码固定执行 `go build -mod=readonly` 仅构建插件，不重建宿主、不自动安装工具链；安装时不执行下载程序，首次启用启动时再握手。
-- [ ] 实现 staging、下载/解包限额、防路径逃逸、installed.lock 和原子提交。相同 commit 幂等、跨仓库同 ID 不静默覆盖、升级需 --replace。
-- [ ] 安装默认不启用，--enable 追加顺序而不覆盖用户设置；list 区分安装/配置/运行版本和 restart_required。禁用卸载待进程回收、引用释放后删除，不碰历史，不允许第三方占用 builtin.tailcat。
+- [x] Install public GitHub bundles by default ref, tag or commit and optional subdirectory. Pin the manifest and binary or Lua source. Check the archive, digest, executable format and platform. Build only after explicit `--build` and only if no matching release asset exists.
+- [x] Publish staged versions atomically. Keep the current and previous commits for offline rollback. Report configured and running versions. Disable and uninstall on service restart, then prune unreferenced versions.
+- [x] Expose the running text Actions in the Desktop history toolbar.
 
-退出条件：本地假 GitHub 服务覆盖默认分支/tag/commit/子目录、缺资产、限流、损坏、构建失败和回滚；实际完成安装→启用→重启→处理/发送→停用→回收，不能以下载成功代替交付。
+See the [plugin acceptance receipt](0010-plugin-settings-schema.md#runtime-acceptance) for the reproducible local fixtures.
 
 ### P8 · 集成验收与交付登记
 

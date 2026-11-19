@@ -93,7 +93,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	flags := "-X github.com/uniclipboard/unic/internal/observability.PostHogHost=" + host + " -X github.com/uniclipboard/unic/internal/observability.PostHogToken=" + token + " -X github.com/uniclipboard/unic/internal/observability.ProductVersion=dev"
+	version := fmt.Sprintf("acceptance.%d", time.Now().UnixNano())
+	flags := "-X github.com/uniclipboard/unic/internal/observability.PostHogHost=" + host + " -X github.com/uniclipboard/unic/internal/observability.PostHogToken=" + token + " -X github.com/uniclipboard/unic/internal/observability.ProductVersion=" + version
 	binaries := map[string]string{}
 	for _, name := range []string{"unic", "unicd"} {
 		binary := filepath.Join(dir, name)
@@ -111,7 +112,7 @@ func run() error {
 		binaries[name] = hex.EncodeToString(sum[:])
 	}
 	started := time.Now().UTC()
-	receipt := map[string]any{"project_id": project, "ingestion_host": host, "started_at": started, "expected_operations": 10, "expected_startups": 2, "expected_person_profiles": 0, "source_files_sha256": source, "binaries_sha256": binaries, "build_flags": []string{"-race", "-trimpath", "-buildvcs=false", "-ldflags [ingestion metadata redacted]"}, "test_build_tags": []string{}, "read_back": "PENDING"}
+	receipt := map[string]any{"project_id": project, "ingestion_host": host, "started_at": started, "service_version": version, "expected_operations": 10, "expected_startups": 2, "expected_person_profiles": 0, "source_files_sha256": source, "binaries_sha256": binaries, "build_flags": []string{"-race", "-trimpath", "-buildvcs=false", "-ldflags [ingestion metadata redacted]"}, "test_build_tags": []string{}, "read_back": "PENDING"}
 	if err = write("upload-receipt.json", receipt); err != nil {
 		return err
 	}

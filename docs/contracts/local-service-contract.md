@@ -354,3 +354,7 @@ v1 values. Normal configured age/count cleanup applies after startup; importing
 does not silently disable a user's policy. Acceptance with historical synthetic
 timestamps explicitly disables automatic cleanup and verifies stable identities
 across service restarts. Review cleanup policy before importing old real history.
+
+## Plugin configuration
+
+The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.

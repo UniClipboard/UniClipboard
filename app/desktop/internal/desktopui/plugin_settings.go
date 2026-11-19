@@ -17,6 +17,7 @@ import (
 type builtinPluginSettings struct {
 	id, revision, threshold, thresholdError string
 	tab, query                              string
+	form                                    *pluginSettingsForm
 }
 
 type builtinPluginEntry struct {
@@ -79,6 +80,12 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 		}
 	}
 	if entry.id == "" {
+		for _, item := range l.externalPlugins {
+			if item.ID == p.id {
+				d.externalPluginDetail(c, k, item, cfg)
+				return
+			}
+		}
 		*p = builtinPluginSettings{}
 		return
 	}
@@ -238,4 +245,19 @@ func (d *viewState) builtinPluginList(c *ui.Context, k uikit.Kit, cfg *config.Co
 			k.Text(c, d.tr("无匹配"), footnote)
 		}
 	})
+	if len(l.externalPlugins) != 0 {
+		k.SettingsGroup(c.Key("external-plugins"), uikit.SettingsGroupProps{Title: d.tr("外部插件")}, func() {
+			for _, item := range l.externalPlugins {
+				if query != "" && !strings.Contains(strings.ToLower(item.ID), query) {
+					continue
+				}
+				k.SettingsRow(c.Key(item.ID), uikit.SettingsRowProps{Label: item.ID, Description: item.Version}, nil, func() {
+					if k.Button(c.Key(item.ID), d.tr("打开"), uikit.ButtonProps{Variant: uikit.Subtle, Disabled: l.busy}).Clicked() {
+						*p = builtinPluginSettings{id: item.ID}
+					}
+				})
+			}
+		})
+	}
+
 }

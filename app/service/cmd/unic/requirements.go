@@ -45,6 +45,8 @@ var catalog = []leaf{
 	{Name: "dev help", Aliases: []string{"-h", "--help"}, Requirement: reqLocal, Completion: doneNone},
 	{Name: "dev logs export", Requirement: reqLocal, Completion: doneNone},
 	{Name: "dev logs help", Aliases: []string{"-h", "--help"}, Requirement: reqLocal, Completion: doneNone},
+	{Name: "plugin settings show", Requirement: reqService, Completion: doneResponse},
+	{Name: "plugin settings save", Requirement: reqService, Completion: doneResponse},
 	{Name: "plugin", Requirement: reqLocal, Completion: doneNone},
 	{Name: "history help", Aliases: []string{"-h", "--help"}, Requirement: reqLocal, Completion: doneNone},
 	{Name: "migrate", Requirement: reqOffline, Completion: doneNone},
@@ -184,7 +186,7 @@ var helpLines = []helpLine{
 	{"device suggestions", "devices vouched for by your devices (suggest-pair|suggest-ignore|suggest-restore)", []string{"device suggestions", "device suggest-pair", "device suggest-ignore", "device suggest-restore"}},
 	{"status", "show this device and its peers", []string{"status"}},
 	{"config [path]", "show settings; set <key> <value>; apply <file>", []string{"config"}},
-	{"plugin", "list, enable or disable plugins", []string{"plugin"}},
+	{"plugin", "install, list and manage plugins", []string{"plugin"}},
 	{"migrate", "import UniClipboard v1 history", []string{"migrate"}},
 	{"dev", "development and diagnosis (unic dev help)", []string{"dev watch", "dev copy", "dev logs export"}},
 }

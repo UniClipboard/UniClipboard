@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -229,6 +231,12 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 		return invalidPlugin(s.ID, "unsupported API version")
 	case s.Version == "" || len(s.Version) > 64:
 		return invalidPlugin(s.ID, "invalid version")
+	}
+	if s.SettingsSHA256 != "" {
+		digest, err := hex.DecodeString(s.SettingsSHA256)
+		if err != nil || len(digest) != sha256.Size || s.SettingsSHA256 != hex.EncodeToString(digest) {
+			return invalidPlugin(s.ID, "invalid settings schema digest")
+		}
 	}
 	var proc, act, obs, backend bool
 	for _, c := range s.Capabilities {

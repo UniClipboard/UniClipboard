@@ -232,7 +232,7 @@ func (p *Proxy) onEvent(ctx context.Context, ev plugin.Event) error {
 func (p *Proxy) Spec() plugin.Spec { return p.spec.Expected }
 
 func wireSpec(s plugin.Spec) rpc.Spec {
-	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind, ExternalChannels: s.ExternalChannels, RemoteRevocation: s.RemoteRevocation}
+	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, SettingsSHA256: s.SettingsSHA256, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind, ExternalChannels: s.ExternalChannels, RemoteRevocation: s.RemoteRevocation}
 	for _, a := range s.Actions {
 		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts)})
 	}

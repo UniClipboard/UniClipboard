@@ -26,6 +26,10 @@
           "minLength": 1,
           "maxLength": 128
         },
+        "settings_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
         "api_version": {
           "const": 1
         },

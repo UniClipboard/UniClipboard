@@ -15,7 +15,7 @@ const luaDebounce = 150 * time.Millisecond
 // watchLua applies edits to the scripts of running Lua plugins. A changed
 // script text is swapped in at a callback boundary; if it fails to load the
 // old one keeps running. A change to anything the engine fixed at startup
-// (identity, capabilities, events, config) or a removed script waits for a
+// (identity, capabilities, events, schema) or a removed script waits for a
 // restart. Logs name the plugin ID and nothing from the script.
 func (n *Node) watchLua(ctx context.Context) {
 	w, err := fsnotify.NewWatcher()
@@ -27,6 +27,8 @@ func (n *Node) watchLua(ctx context.Context) {
 	// Directories are watched, not files: editors save by renaming over.
 	watch := func() {
 		_ = w.Add(n.luaDir)
+		n.pluginMu.Lock()
+		defer n.pluginMu.Unlock()
 		for _, s := range n.lua {
 			_ = w.Add(s.Dir)
 		}
@@ -62,13 +64,16 @@ func (n *Node) watchLua(ctx context.Context) {
 			if !ok {
 				return
 			}
-			n.logf("lua: watch: %v", err)
+			_ = err
+			n.logf("lua: watch failed")
 		}
 	}
 }
 
 // rescanLua compares the installed scripts with the running ones.
 func (n *Node) rescanLua(ctx context.Context) {
+	n.pluginMu.Lock()
+	defer n.pluginMu.Unlock()
 	found, _ := luascripts.Scan(n.luaDir)
 	for id, old := range n.lua {
 		now, ok := found[id]
@@ -85,6 +90,7 @@ func (n *Node) rescanLua(ctx context.Context) {
 				continue
 			}
 			n.lua[id] = now
+			n.runningPlugins[id] = now
 			n.logf("lua: %s: reloaded", id)
 		}
 	}

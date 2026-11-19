@@ -2,7 +2,9 @@ package settingsdemo
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"unicode/utf8"
 
@@ -18,9 +20,10 @@ var schemaJSON []byte
 type Plugin struct{ config Config }
 
 func (*Plugin) Spec() plugin.Spec {
+	digest := sha256.Sum256(schemaJSON)
 	return plugin.Spec{
 		ID: "example.settingsdemo", Version: "1.0.0", APIVersion: 1,
-		Capabilities: []string{plugin.CapProcessor},
+		Capabilities: []string{plugin.CapProcessor}, SettingsSHA256: hex.EncodeToString(digest[:]),
 	}
 }
 

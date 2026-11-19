@@ -13,6 +13,13 @@ func pointer(path, key string) string {
 }
 
 func validate(s *Schema, v any, path string) error {
+	return validateValue(s, v, path, false)
+}
+
+func validateValue(s *Schema, v any, path string, defaultsOnly bool) error {
+	if defaultsOnly && s.WriteOnly {
+		return fail("invalid_default", path)
+	}
 	switch s.Type {
 	case "object":
 		m, ok := v.(map[string]any)
@@ -32,12 +39,12 @@ func validate(s *Schema, v any, path string) error {
 		for _, k := range keys(s) {
 			child, exists := m[k]
 			if !exists {
-				if required[k] {
+				if required[k] && !defaultsOnly {
 					return fail("required", pointer(path, k))
 				}
 				continue
 			}
-			if err := validate(s.Properties[k], child, pointer(path, k)); err != nil {
+			if err := validateValue(s.Properties[k], child, pointer(path, k), defaultsOnly); err != nil {
 				return err
 			}
 		}
@@ -50,7 +57,7 @@ func validate(s *Schema, v any, path string) error {
 			return fail("items", path)
 		}
 		for i, child := range a {
-			if err := validate(s.Items, child, pointer(path, strconv.Itoa(i))); err != nil {
+			if err := validateValue(s.Items, child, pointer(path, strconv.Itoa(i)), defaultsOnly); err != nil {
 				return err
 			}
 		}
@@ -126,4 +133,31 @@ func defaults(s *Schema, v any) any {
 		}
 	}
 	return v
+}
+
+// DecodeValues reads a bounded settings object without applying schema constraints.
+// It preserves number precision and rejects duplicate keys before a partial edit.
+func DecodeValues(data []byte) (map[string]any, error) {
+	value, err := decodeJSON(data, MaxConfigBytes)
+	if err != nil {
+		return nil, fail("invalid_json", "")
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, fail("type", "")
+	}
+	return object, nil
+}
+
+// ValidateField checks a form field against one node of a parsed schema.
+func ValidateField(field *Schema, value any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fail("invalid_json", "")
+	}
+	parsed, err := decodeJSON(raw, MaxConfigBytes)
+	if err != nil {
+		return fail("invalid_json", "")
+	}
+	return validate(field, parsed, "")
 }

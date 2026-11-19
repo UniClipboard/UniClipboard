@@ -119,7 +119,7 @@ func (m *Manager) State() State {
 	if !reflect.DeepEqual(m.cur.processorSettingsKey(), m.started.processorSettingsKey()) {
 		s.RestartRequired = append(s.RestartRequired, "plugins.settings")
 	}
-	if !slices.Equal(m.cur.Plugins.Lua, m.started.Plugins.Lua) {
+	if !slices.Equal(m.cur.Plugins.Lua, m.started.Plugins.Lua) || !slices.Equal(m.cur.Plugins.Order, m.started.Plugins.Order) {
 		s.RestartRequired = append(s.RestartRequired, "plugins.lua")
 	}
 	for k := range m.marked {
@@ -195,6 +195,11 @@ func (m *Manager) Replace(revision string, raw []byte) (State, error) {
 	}
 	m.ioMu.Lock()
 	defer m.ioMu.Unlock()
+	unlock, err := configWriteLock(m.path)
+	if err != nil {
+		return State{}, errors.New("cannot lock configuration file")
+	}
+	defer unlock()
 	if revision != m.State().Revision {
 		return State{}, ErrConflict
 	}

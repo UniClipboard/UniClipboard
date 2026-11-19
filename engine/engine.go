@@ -130,6 +130,19 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		return nil, lerr
 	}
 	opts.Plugins = append(slices.Clone(opts.Plugins), luaIn...)
+	if len(opts.PluginOrder) != 0 {
+		position := func(in PluginInstance) int {
+			if in.Plugin != nil {
+				return slices.Index(opts.PluginOrder, in.Plugin.Spec().ID)
+			}
+			if in.Process != nil {
+				return slices.Index(opts.PluginOrder, in.Process.Spec.ID)
+			}
+			return -1
+		}
+		slices.SortStableFunc(opts.Plugins, func(a, b PluginInstance) int { return position(a) - position(b) })
+	}
+
 	var backendIDs []PluginID
 	for _, b := range opts.extraBackends {
 		backendIDs = append(backendIDs, b.ID())

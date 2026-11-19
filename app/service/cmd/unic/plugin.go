@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +11,9 @@ import (
 	"slices"
 	"strings"
 	"text/tabwriter"
+	"time"
+
+	api "github.com/uniclipboard/unic/internal/localapi"
 
 	"github.com/uniclipboard/unic/app/service/internal/luascripts"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -17,9 +22,14 @@ import (
 
 const pluginUsage = `usage: unic plugin <command>
 
-  list                 plugins found in the plugins directory and whether they run
-  enable <id>          add a plugin to plugins.lua in config.toml
-  disable <id>         remove it again
+  install <url> [--ref REF] [--path DIR] [--build] [--replace] [--enable]
+  list                show installed and configured plugins
+  enable <id>         enable at the next service restart
+  disable <id>        disable at the next service restart
+  uninstall <id>      remove a GitHub installation
+  rollback <id>       select the previous installed commit
+  settings show <id>  print the Schema and redacted settings
+  settings save <id> <json-file|->  read {"values":{...}} from a file or stdin
 
 A Lua plugin is a directory holding spec.toml and its script. Put it under
 the plugins directory (see 'unic plugin list') and it shows up here, but it
@@ -27,7 +37,7 @@ does not run until it is enabled. Enabling takes effect when unicd restarts.
 `
 
 // runPlugin works on files only, so it does not need the daemon.
-func runPlugin(args []string) error {
+func runPlugin(ctx context.Context, args []string) error {
 	root, err := paths.LuaDir()
 	if err != nil {
 		return err
@@ -35,6 +45,38 @@ func runPlugin(args []string) error {
 	cfg, err := paths.Config()
 	if err != nil {
 		return err
+	}
+	if len(args) > 0 {
+		switch args[0] {
+		case "install":
+			return pluginInstall(ctx, args[1:], root, cfg, os.Stdout)
+		case "rollback":
+			if len(args) != 2 || !luascripts.ValidID(args[1]) {
+				return errors.New("usage: unic plugin rollback <id>")
+			}
+			if err := luascripts.Rollback(root, args[1]); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(os.Stdout, args[1], "rolled back; restart unicd to apply")
+			return err
+		case "uninstall":
+			if len(args) != 2 || !luascripts.ValidID(args[1]) {
+				return errors.New("usage: unic plugin uninstall <id>")
+			}
+			return luascripts.Uninstall(root, args[1], func() error {
+				return pluginSet(false, args[1], root, cfg, io.Discard)
+			})
+		case "list", "ls":
+			socket, err := paths.Socket()
+			if err == nil {
+				query, cancel := context.WithTimeout(ctx, 700*time.Millisecond)
+				list, err := api.NewClient(socket).Plugins(query)
+				cancel()
+				if err == nil {
+					return printRunningPlugins(os.Stdout, list)
+				}
+			}
+		}
 	}
 	return pluginCmd(args, root, cfg, os.Stdout)
 }
@@ -76,7 +118,7 @@ func pluginList(root, cfgPath string, out io.Writer) error {
 	}
 	found, bad := luascripts.Scan(root)
 	enabled := map[string]bool{}
-	for _, id := range cfg.Plugins.Lua {
+	for _, id := range cfg.ExternalPlugins() {
 		enabled[id] = true
 	}
 	_, _ = fmt.Fprintln(out, "directory:", root)
@@ -90,7 +132,7 @@ func pluginList(root, cfgPath string, out io.Writer) error {
 		}
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", id, s.Manifest.Version, state, strings.Join(s.Manifest.Capabilities, ","), filepath.Base(s.Dir))
 	}
-	for _, id := range cfg.Plugins.Lua { // listed but nothing to run
+	for _, id := range cfg.ExternalPlugins() { // listed but nothing to run
 		if _, ok := found[id]; !ok {
 			_, _ = fmt.Fprintf(w, "%s\t-\tenabled, MISSING\t-\t-\n", id)
 		}
@@ -118,21 +160,40 @@ func mapKeys[V any](m map[string]V) func(func(string) bool) {
 }
 
 func pluginSet(on bool, id, root, cfgPath string, out io.Writer) error {
+	if !luascripts.ValidID(id) {
+		return errors.New("invalid external plugin ID")
+	}
+	found, bad := luascripts.Scan(root)
 	if on {
-		found, bad := luascripts.Scan(root)
 		if _, ok := found[id]; !ok {
 			for _, err := range bad {
 				return fmt.Errorf("%q is not usable: %w", id, err)
 			}
 			return fmt.Errorf("%q was not found in %s", id, root)
 		}
+		if found[id].Schema != nil {
+			if _, err := found[id].RuntimeConfig(root, nil); err != nil {
+				return fmt.Errorf("configure %s before enabling it: %w", id, err)
+			}
+		}
+
 	}
 	if _, err := os.Stat(cfgPath); errors.Is(err, os.ErrNotExist) {
 		if err := config.WriteTemplate(cfgPath); err != nil {
 			return err
 		}
 	}
-	changed, err := config.SetLuaEnabled(cfgPath, id, on)
+	var changed bool
+	var err error
+	switch {
+	case !on:
+		changed, err = config.DisableExternalPlugin(cfgPath, id)
+	case found[id].Commit != "":
+		changed, err = config.SetOrderedPluginEnabled(cfgPath, id, true)
+	default:
+		changed, err = config.SetLuaEnabled(cfgPath, id, true)
+	}
+
 	switch {
 	case err != nil:
 		return err
@@ -144,4 +205,103 @@ func pluginSet(on bool, id, root, cfgPath string, out io.Writer) error {
 		_, _ = fmt.Fprintf(out, "%s %sd in %s; restart unicd to apply\n", id, map[bool]string{true: "enable", false: "disable"}[on], cfgPath)
 	}
 	return nil
+}
+
+func pluginInstall(ctx context.Context, args []string, root, cfg string, out io.Writer) error {
+	if len(args) == 0 {
+		return errors.New(strings.TrimRight(pluginUsage, "\n"))
+	}
+	opt := luascripts.InstallOptions{Repository: args[0]}
+	enable := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--enable":
+			enable = true
+		case "--replace":
+			opt.Replace = true
+		case "--build":
+			opt.Build = true
+		case "--ref", "--path":
+			flag := args[i]
+			i++
+			if i == len(args) || args[i] == "" || strings.HasPrefix(args[i], "--") {
+				return errors.New("missing plugin installation option value")
+			}
+			if flag == "--ref" {
+				opt.Ref = args[i]
+			} else {
+				opt.Path = args[i]
+			}
+		default:
+			return errors.New("unknown plugin installation option")
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	id, err := luascripts.Install(ctx, root, opt)
+	if err != nil {
+		return err
+	}
+	if enable {
+		if err := pluginSet(true, id, root, cfg, out); err != nil {
+			return fmt.Errorf("%s installed but could not be enabled: %w", id, err)
+		}
+	}
+	_, err = fmt.Fprintln(out, id, "installed")
+	return err
+}
+
+func printRunningPlugins(out io.Writer, plugins []api.PluginInfo) error {
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(w, "ID\tVERSION\tSOURCE\tCONFIGURED\tRUNNING\tRESTART"); err != nil {
+		return err
+	}
+	for _, p := range plugins {
+		running := p.RunningVersion
+		if running == "" {
+			running = "-"
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s\t%t\n", p.ID, p.Version, p.Source, p.Configured, running, p.Restart); err != nil {
+			return err
+		}
+	}
+	return w.Flush()
+}
+
+func runPluginSettings(ctx context.Context, client *api.Client, command string, args []string) error {
+	save := command == "plugin settings save"
+	if (!save && len(args) != 1) || (save && len(args) != 2) || !luascripts.ValidID(args[0]) {
+		return errors.New(strings.TrimRight(pluginUsage, "\n"))
+	}
+	var edit api.PluginSettingsEdit
+	if save {
+		var source io.Reader = os.Stdin
+		if args[1] != "-" {
+			file, err := os.Open(args[1])
+			if err != nil {
+				return errors.New("could not open plugin settings input")
+			}
+			defer func() { _ = file.Close() }()
+			source = file
+		}
+		dec := json.NewDecoder(io.LimitReader(source, 128<<10))
+		dec.DisallowUnknownFields()
+		if dec.Decode(&edit) != nil || dec.Decode(new(any)) != io.EOF || len(edit.Values) == 0 {
+			return errors.New("invalid plugin settings input")
+		}
+	}
+	state, err := client.PluginSettings(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	if save {
+		if edit.Revision == "" {
+			edit.Revision = state.Revision
+		}
+		state, err = client.SavePluginSettings(ctx, args[0], edit)
+		if err != nil {
+			return err
+		}
+	}
+	return json.NewEncoder(os.Stdout).Encode(state)
 }

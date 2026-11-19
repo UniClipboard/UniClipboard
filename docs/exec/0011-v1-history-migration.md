@@ -190,3 +190,24 @@ Task-only binaries, build trees, patches, caches, private profiles and worker
 worktrees were removed after receipt verification. Canonical native report
 paths remain local, ignored review artifacts. No binary, source snapshot, raw
 log, screenshot or recording is committed.
+
+
+## PR-base integration (2026-11-19)
+
+Integrated `origin/v2` at `a0c49ae55bd0bddfa261a3a4cf3b6879c408c8f9`
+with merge commit `afcce7e17fbc97a07840e4d79b63bf87efefa52f`. This includes
+upstream observability acceptance and plugin installation/settings/Actions.
+Three architecture verification-marker conflicts and the appended local-service
+contract sections were resolved without dropping either migration or plugin
+behavior. CLI dispatch, command requirements and the observability fixture
+merged automatically and were inspected.
+
+Revalidation on the integrated tree: `TMPDIR=/private/tmp go test -race -p 2
+./...` passed 782 tests in 80 packages; fixed golangci-lint v2.15.0 reported zero
+issues. The real CLI/service `TestMigrationFirstRun` and private-PTY
+`TestMigrationTerminalCancellation` both passed. Original macOS/Linux native,
+large-library, ENOSPC and credential evidence retains its frozen source and
+program identities; this merge does not extend unperformed native acceptance.
+The required read-only context audit found no `CONTEXT.md` on the updated base
+or integrated tree. Architecture verification markers were refreshed after the
+merge commit. The existing C03 acceptance limit remains unchanged.

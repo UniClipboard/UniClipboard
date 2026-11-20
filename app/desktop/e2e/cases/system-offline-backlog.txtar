@@ -1,0 +1,23 @@
+# Case: Offline received history must not auto-apply on Desktop startup
+# Mode: native
+# Environment: disposable-guest
+# Purpose: Separate persistent offline history from fresh native clipboard delivery.
+# Steps:
+#   Pair an owned peer; quit Desktop; run the same profile as a standalone service; receive text; reopen normal Desktop; then deliver fresh text.
+# Expected:
+#   The standalone service receives history without touching the clipboard; Desktop replaces it, retains history and preserves the existing clipboard baseline; fresh text subsequently applies without echo.
+# Forbidden:
+#   Old backlog auto-application, an uninitialized profile, discarded history, parallel clipboard owners or host clipboard access.
+
+system-board-write 'UNIC-D offline startup baseline'
+start
+ui-click listItem 设置…
+ui-wait listItem 同步
+ui-click listItem 同步
+ui-enabled switch 启用同步
+ui-click switch 启用同步
+config-equals sync.enabled true
+connect-policy-peer
+screenshot before-offline-service
+system-offline-backlog
+screenshot reopened-after-offline-backlog

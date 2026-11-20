@@ -39,6 +39,18 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
 | [source-application](#source-application) | view | Show the captured application's cached icon and name immediately after device and time. |
 | [startup-lifecycle](#startup-lifecycle) | process | Ownership, background intent, lightweight launch and process cleanup. |
+| [storage-cleanup-settings](#storage-cleanup-settings) | native | Keep cleanup rules inactive when cleanup is off while preserving the independent cache quota. |
+| [system-clipboard-formats](#system-clipboard-formats) | native | Prove native MIME capture and application without shared-clipboard propagation. |
+| [system-clipboard-receive](#system-clipboard-receive) | native | Verify incoming production synchronization reaches the native clipboard without sender echo. |
+| [system-clipboard-target](#system-clipboard-target) | native | Prove actual cross-application insertion independently from clipboard application. |
+| [system-clipboard](#system-clipboard) | native | Establish a real system clipboard baseline, fresh capture and exact application without echo. |
+| [system-linux-ui-dark](#system-linux-ui-dark) | native | Inspect the real Linux skin, Chinese glyphs, search focus, menu and 600-point layout in dark appearance. |
+| [system-linux-ui-light](#system-linux-ui-light) | native | Inspect the real Linux skin, Chinese glyphs, search focus, menu and 600-point layout in light appearance. |
+| [system-managed-cleanup](#system-managed-cleanup) | native | Verify managed received files and native clipboard leases under unified cleanup. |
+| [system-offline-backlog](#system-offline-backlog) | native | Separate persistent offline history from fresh native clipboard delivery. |
+| [system-second-launch](#system-second-launch) | native | Isolate second-launch activation from the separately tested hidden-window capture requirement. |
+| [system-wayland-panel](#system-wayland-panel) | native | Verify understandable automatic-paste refusal, preserved Copy and physical Escape dismissal on Wayland. |
+| [system-window-lifecycle](#system-window-lifecycle) | native | Verify that closing the native main window preserves capture and second launch reopens the existing owner. |
 | [tag-editor](#tag-editor) | view | V1-style inline tag creation, five swatches, removable tinted chips and shared Sheet colors. |
 | [tag-fixed-columns](#tag-fixed-columns) | view | Tag-table fixed-column geometry across skins and themes. |
 | [tag-manager-platforms](#tag-manager-platforms) | view | Tag management and separate entry assignment across all three skins. |
@@ -854,6 +866,365 @@ Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS
 
 ```text
 acceptance startup startup-lifecycle
+```
+
+## storage-cleanup-settings
+
+Native cleanup control state and persistence
+
+Steps: Open real storage settings, verify disabled rules, enable cleanup, disable it again, restart and reopen.
+
+Expected: Age/count/tag controls follow the cleanup switch; cache quota stays enabled; the saved choice survives restart.
+
+Forbidden: Active cleanup-rule controls while cleanup is off, lost settings, or claims of native file deletion coverage.
+
+```text
+start
+submit text 'UNIC-D cleanup settings synthetic'
+ui-wait listItem 'UNIC-D cleanup settings synthetic'
+ui-click listItem 设置…
+ui-wait listItem 存储
+ui-click listItem 存储
+config-equals history.auto_cleanup false
+ui-disabled popUpButton 历史保留时间
+ui-disabled popUpButton 最大历史条目数
+ui-disabled checkBox '保留 #文本'
+ui-enabled popUpButton 单设备缓存配额
+screenshot cleanup-off
+ui-enabled switch 自动清理历史
+ui-click switch 自动清理历史
+config-equals history.auto_cleanup true
+ui-enabled popUpButton 历史保留时间
+ui-enabled popUpButton 最大历史条目数
+ui-enabled checkBox '保留 #文本'
+ui-enabled switch 自动清理历史
+ui-click switch 自动清理历史
+config-equals history.auto_cleanup false
+restart-desktop
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 存储
+ui-click listItem 存储
+config-equals history.auto_cleanup false
+ui-disabled popUpButton 历史保留时间
+ui-disabled popUpButton 最大历史条目数
+ui-disabled checkBox '保留 #文本'
+ui-enabled popUpButton 单设备缓存配额
+screenshot persisted-after-restart
+```
+
+## system-clipboard-formats
+
+Real guest HTML, PNG and file clipboard roundtrip
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Offer synthetic HTML, PNG and a task-owned file through wl-copy; read production history; replace the offer; select its real history row and restore through physical Enter; read wl-paste.
+
+Expected: Exact payload bytes survive capture and restore; each offer creates one history entry; restore produces no echo; the original file remains intact.
+
+Forbidden: Directory clipboard substitution, host clipboard access, target insertion claims or directory-transfer acceptance claims.
+
+```text
+system-board-write 'UNIC-D formats startup baseline'
+start
+system-format-roundtrip html
+system-format-roundtrip png
+system-format-roundtrip file
+history-count 3
+screenshot formats-restored-without-echo
+```
+
+## system-clipboard-receive
+
+Production peer to real guest clipboard
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Enable sync through settings; pair an owned production peer with fingerprint approvals; submit synthetic peer text and read the real guest clipboard and remote history.
+
+Expected: Native clipboard and remote history contain the exact received text; sender history gains only its submitted item; both owned services exit at cleanup.
+
+Forbidden: Claims of two graphical endpoints, shared clipboard propagation, skipped approvals or directory clipboard substitution.
+
+```text
+system-board-write 'UNIC-D receive startup baseline'
+start
+ui-click listItem 设置…
+ui-wait listItem 同步
+ui-click listItem 同步
+ui-enabled switch 启用同步
+ui-click switch 启用同步
+config-equals sync.enabled true
+connect-policy-peer
+system-peer-text 'UNIC-D received native 中文'
+screenshot real-clipboard-received
+```
+
+## system-clipboard-target
+
+Physical paste into a real target application
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Apply a synthetic history item through physical Enter; start an isolated GNOME Text Editor; paste, read inserted text and save through physical guest keys.
+
+Expected: The owned editor has OS focus, its accessible text matches exactly, and its saved document matches the fixture including GtkSourceView's default trailing newline.
+
+Forbidden: Host clipboard access, personal editor state, keys sent without verified focus, or treating dispatch alone as insertion.
+
+```text
+start
+submit target 'UNIC-D native target 中文'
+ui-wait listItem 'UNIC-D native target 中文'
+ui-click listItem 'UNIC-D native target 中文'
+system-key Enter
+system-board-equals 'UNIC-D native target 中文'
+screenshot applied-before-target
+system-paste-target 'UNIC-D native target 中文' expected-target.txt
+
+-- expected-target.txt --
+UNIC-D native target 中文
+```
+
+## system-clipboard
+
+Real guest clipboard capture and application
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Set a synthetic guest baseline, start Desktop, capture a fresh copy, restore another item and observe the clipboard.
+
+Expected: Startup does not capture the baseline; a fresh copy enters history; restore changes the real clipboard once without echo.
+
+Forbidden: Host clipboard access, shared-clipboard propagation, a directory clipboard, or claims of cross-application insertion.
+
+```text
+system-board-write 'UNIC-D startup baseline'
+start
+history-count 0
+system-board-equals 'UNIC-D startup baseline'
+observe 2
+history-count 0
+system-board-write 'UNIC-D native capture 中文'
+ui-wait listItem 'UNIC-D native capture 中文'
+history-count 1
+submit restore 'UNIC-D native restored 中文'
+ui-wait listItem 'UNIC-D native restored 中文'
+ui-click listItem 'UNIC-D native restored 中文'
+system-key Enter
+system-board-equals 'UNIC-D native restored 中文'
+observe 2
+history-count 2
+screenshot restored-without-echo
+```
+
+## system-linux-ui-dark
+
+Native Linux narrow window in dark appearance
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Open a 600x480 native Linux window; submit synthetic Chinese text; focus search through physical Ctrl+F; filter; open and dismiss the production command menu.
+
+Expected: Chinese history and matching search remain accessible; the real command menu opens and Escape dismisses it; screenshots and native recording retain the actual composition.
+
+Forbidden: IME claims from semantic field values, foreign skin overrides, software-view evidence or host clipboard access.
+
+```text
+system-board-write 'UNIC-D Linux UI baseline'
+start 600 480 dark
+submit ui 'UNIC-D 原生中文布局验证'
+ui-wait listItem 'UNIC-D 原生中文布局验证'
+screenshot narrow-history
+system-key Ctrl+F
+ui-wait comboBox 搜索历史
+ui-set comboBox 搜索历史 中文布局
+ui-wait listItem 'UNIC-D 原生中文布局验证'
+screenshot narrow-search
+ui-set comboBox 搜索历史 ''
+system-key Escape
+system-key Escape
+ui-click menuButton 更多操作
+screenshot native-command-menu
+system-key Escape
+history-count 1
+```
+
+## system-linux-ui-light
+
+Native Linux narrow window in light appearance
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Open a 600x480 native Linux window; submit synthetic Chinese text; focus search through physical Ctrl+F; filter; open and dismiss the production command menu.
+
+Expected: Chinese history and matching search remain accessible; the real command menu opens and Escape dismisses it; screenshots and native recording retain the actual composition.
+
+Forbidden: IME claims from semantic field values, foreign skin overrides, software-view evidence or host clipboard access.
+
+```text
+system-board-write 'UNIC-D Linux UI baseline'
+start 600 480 light
+submit ui 'UNIC-D 原生中文布局验证'
+ui-wait listItem 'UNIC-D 原生中文布局验证'
+screenshot narrow-history
+system-key Ctrl+F
+ui-wait comboBox 搜索历史
+ui-set comboBox 搜索历史 中文布局
+ui-wait listItem 'UNIC-D 原生中文布局验证'
+screenshot narrow-search
+ui-set comboBox 搜索历史 ''
+system-key Escape
+system-key Escape
+ui-click menuButton 更多操作
+screenshot native-command-menu
+system-key Escape
+history-count 1
+```
+
+## system-managed-cleanup
+
+Native clipboard holder and excluded-tag cleanup
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Pair an owned production peer; receive a synthetic user file onto the real clipboard; enable count cleanup with an excluded tag; remove the exclusion; replace the clipboard.
+
+Expected: Exclusion protects history and file; removing it deletes eligible history but preserves the held native file; replacing the clipboard reclaims only the managed file and preserves the original source.
+
+Forbidden: Directory fixtures, deleting a user-owned source, treating history deletion as holder release, or claims of two graphical endpoints.
+
+```text
+system-board-write 'UNIC-D managed cleanup baseline'
+start
+ui-click listItem 设置…
+ui-wait listItem 同步
+ui-click listItem 同步
+ui-enabled switch 启用同步
+ui-click switch 启用同步
+config-equals sync.enabled true
+connect-policy-peer
+system-file-cleanup
+screenshot native-holder-released
+```
+
+## system-offline-backlog
+
+Offline received history must not auto-apply on Desktop startup
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Pair an owned peer; quit Desktop; run the same profile as a standalone service; receive text; reopen normal Desktop; then deliver fresh text.
+
+Expected: The standalone service receives history without touching the clipboard; Desktop replaces it, retains history and preserves the existing clipboard baseline; fresh text subsequently applies without echo.
+
+Forbidden: Old backlog auto-application, an uninitialized profile, discarded history, parallel clipboard owners or host clipboard access.
+
+```text
+system-board-write 'UNIC-D offline startup baseline'
+start
+ui-click listItem 设置…
+ui-wait listItem 同步
+ui-click listItem 同步
+ui-enabled switch 启用同步
+ui-click switch 启用同步
+config-equals sync.enabled true
+connect-policy-peer
+screenshot before-offline-service
+system-offline-backlog
+screenshot reopened-after-offline-backlog
+```
+
+## system-second-launch
+
+Native second launch reopens the original window
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Close the focused task main window through physical Alt+F4; launch the same application identity; inspect the original window and service generation.
+
+Expected: The second process exits successfully; the original service generation and window remain; fresh capture works after reopening; explicit Quit cleans both processes.
+
+Forbidden: Claims that reopening proves capture while hidden, unrelated application activation or duplicate service owners.
+
+```text
+system-board-write 'UNIC-D second launch baseline'
+start
+system-key Alt+F4
+system-window unic hidden
+system-second-launch
+system-window unic visible
+system-board-write 'UNIC-D second launch reopened 中文'
+ui-wait listItem 'UNIC-D second launch reopened 中文'
+history-count 1
+screenshot original-window-reopened
+```
+
+## system-wayland-panel
+
+Native Wayland quick-panel Copy fallback
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Open the production panel from settings, attempt Enter, copy through Ctrl+C, reopen and dismiss through Escape.
+
+Expected: The panel reports unsupported automatic paste; Enter leaves the clipboard unchanged; Copy applies exact bytes; Escape hides the panel without changing the clipboard.
+
+Forbidden: Synthetic target capture authority, automatic paste claims, portal approval claims or host clipboard access.
+
+```text
+system-board-write 'UNIC-D panel baseline'
+start
+submit panel 'UNIC-D panel copy 中文'
+ui-wait listItem 'UNIC-D panel copy 中文'
+ui-click listItem 设置…
+ui-wait listItem 快捷面板
+ui-click listItem 快捷面板
+ui-wait button 打开快捷面板
+ui-click button 打开快捷面板
+system-window 'unic · 快捷面板' visible
+ui-wait alert 当前桌面会话不支持自动粘贴。请使用复制。
+screenshot wayland-copy-fallback
+system-key Enter
+system-board-equals 'UNIC-D panel baseline'
+system-key Ctrl+C
+system-board-equals 'UNIC-D panel copy 中文'
+system-window 'unic · 快捷面板' hidden
+system-window unic visible
+ui-click button 打开快捷面板
+system-window 'unic · 快捷面板' visible
+system-key Escape
+system-window 'unic · 快捷面板' hidden
+system-board-equals 'UNIC-D panel copy 中文'
+system-window unic visible
+history-count 1
+screenshot panel-dismissed
+```
+
+## system-window-lifecycle
+
+Real guest close, background capture and second launch
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Close the focused owned main window through physical Alt+F4, offer fresh text while hidden, launch the same application identity again, then reopen history and quit at cleanup.
+
+Expected: The hidden main window retains its service and captures exact fresh content; second launch exits and preserves the service generation; the original window becomes visible; explicit Quit reaps the owner and service.
+
+Forbidden: Closing unrelated applications, replacing the active service, or treating a process fixture as a native close.
+
+```text
+system-board-write 'UNIC-D lifecycle startup baseline'
+start
+system-key Alt+F4
+system-window unic hidden
+system-board-write 'UNIC-D capture while main hidden 中文'
+history-count 1
+system-second-launch
+system-window unic visible
+ui-wait listItem 'UNIC-D capture while main hidden 中文'
+screenshot reopened-existing-owner
 ```
 
 ## tag-editor

@@ -55,7 +55,7 @@ Windows process-exit and native behavior require a native host.
 
 ## Native manual acceptance
 
-These steps remain user-owned and were not run by the agent.
+The original checks below were not executed in this receipt. The later [D-group native receipt](desktop-native-integration.md) records Fedora second-launch/explicit-quit and offline-service passes, plus a reproducible hidden-window capture failure. Tray interaction, actual login startup and the remaining platform matrix stay open.
 
 1. Install an application bundle on macOS, or the native desktop package on Windows/Linux. Keep sibling `unicd` beside `unic-desktop`.
 2. Use the default profile. Enable login startup in Settings. Confirm both the requested setting and actual system state.

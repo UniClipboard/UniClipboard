@@ -106,7 +106,19 @@ func (r *desktopRecording) stop() error {
 	width, height = (width+1)/2*2, (height+1)/2*2
 	filter := fmt.Sprintf("pad=%d:%d:(ow-iw)/2:(oh-ih)/2", width, height)
 	target := filepath.Join(r.s.out, "recording.mp4")
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat", "-an", "-vf", filter, "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", target)
+	encoders, err := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-encoders").Output()
+	if err != nil {
+		return err
+	}
+	encoder := "libx264"
+	if !strings.Contains(string(encoders), " libx264 ") {
+		if !strings.Contains(string(encoders), " libopenh264 ") {
+			return errors.New("recording requires libx264 or libopenh264")
+		}
+		encoder = "libopenh264"
+	}
+	r.s.result.RecordingEncoder = encoder
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat", "-an", "-vf", filter, "-fps_mode", "vfr", "-c:v", encoder, "-pix_fmt", "yuv420p", "-movflags", "+faststart", target)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("recording encoder: %v (%s)", err, string(out))

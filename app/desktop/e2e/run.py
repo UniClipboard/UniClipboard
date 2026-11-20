@@ -38,7 +38,7 @@ def cases(base=HERE):
                 break
             text = line[1:].strip()
             name, sep, value = text.partition(':')
-            if sep and name in FIELDS:
+            if sep and name in (*FIELDS, 'Environment'):
                 current = name
                 fields.setdefault(name, [])
                 if value.strip():
@@ -48,6 +48,9 @@ def cases(base=HERE):
         if any(not fields.get(name) for name in FIELDS):
             raise ValueError(f'{path.name}: all catalogue fields are required')
         spec = {name.lower(): ' '.join(fields[name]) for name in FIELDS}
+        spec['environment'] = ' '.join(fields.get('Environment', ['isolated']))
+        if spec['environment'] not in ('isolated', 'disposable-guest'):
+            raise ValueError(f'{path.name}: invalid Environment')
         if spec['mode'] not in ('native', 'process', 'view'):
             raise ValueError(f'{path.name}: invalid Mode')
         result.append(dict(spec, id=path.stem, script=path.read_text(encoding="utf-8")))
@@ -80,6 +83,8 @@ def catalogue(specs):
         text += f"| [{s['id']}](#{s['id']}) | {s['mode']} | {s['purpose']} |\n"
     for s in specs:
         text += f"\n## {s['id']}\n\n{s['case']}\n"
+        if s['environment'] != 'isolated':
+            text += '\nEnvironment: disposable guest; explicit GUEST=<VM UUID> required.\n'
         for field in ('steps', 'expected', 'forbidden'):
             text += f"\n{field.capitalize()}: {s[field]}\n"
         text += '\n```text\n' + s['script'].split('\n\n', 1)[1].rstrip() + '\n```\n'
@@ -92,6 +97,12 @@ def doctor(native):
             raise RuntimeError(f'required executable unavailable: {name}')
     if native and sys.platform.startswith('linux') and not (os.getenv('DISPLAY') or os.getenv('WAYLAND_DISPLAY')):
         raise RuntimeError('native cases require a desktop session; on CI use xvfb-run')
+    if native and sys.platform.startswith('linux') and shutil.which('gdbus'):
+        locked = subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.ScreenSaver',
+                                 '--object-path', '/ScreenSaver', '--method', 'org.freedesktop.ScreenSaver.GetActive'],
+                                capture_output=True, text=True, timeout=3)
+        if locked.returncode == 0 and locked.stdout.strip() == '(true,)':
+            raise RuntimeError('native desktop session is locked; unlock it before acceptance')
 
 
 def freeze(destination):
@@ -126,7 +137,8 @@ def report(out, manifest, specs):
             '<style>body{font:16px system-ui;max-width:1100px;margin:40px auto;padding:0 20px;color:#20242b}section{border-top:1px solid #ddd;margin-top:28px;padding-top:16px}img{max-width:340px;border:1px solid #ddd;margin:8px}video{max-width:100%;background:#eee}pre{white-space:pre-wrap}a{color:#1565c0}.PASS{color:#137333}.FAIL,.ERROR{color:#b3261e}</style>',
             f"<h1>Desktop E2E: <span class='{esc(manifest['status'])}'>{esc(manifest['status'])}</span></h1>",
             f"<p>Run {esc(manifest['run_id'])} · Source {esc(manifest.get('source_head','unknown'))}</p>",
-            '<p>Native evidence captures a running window’s content. OS decorations, physical input, system clipboard and cross-application paste are not established by this run.</p>',
+            '<p>Native frames capture running window content. OS focus, physical input and cross-application insertion require separate real-OS assertions.</p>',
+            f"<p>System clipboard: {esc(manifest.get('system_clipboard', 'NOT_RUN'))}. Isolated cases use a directory clipboard.</p>",
             '<p><a href="manifest.json">Manifest</a> · <a href="SHA256SUMS">Evidence checksums</a></p>']
     if manifest.get('failure'):
         body.append('<pre>' + esc(manifest['failure']) + '</pre>')
@@ -171,7 +183,7 @@ def report(out, manifest, specs):
     (out / 'index.html').write_text('\n'.join(body), encoding="utf-8")
 
 
-def run(specs, selected, output):
+def run(specs, selected, output, guest=None, control=None):
     run_id = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
     out = Path(output).resolve() if output else ROOT / '.build/desktop-e2e' / run_id
     if out.exists():
@@ -180,8 +192,13 @@ def run(specs, selected, output):
     manifest = dict(version=1, run_id=run_id, status='RUNNING', cases={},
                     native_os_focus='NOT_RUN', system_clipboard='NOT_RUN', cross_application_paste='NOT_RUN',
                     runner_sha256=digest(Path(__file__)))
+    if guest:
+        manifest['guest'] = guest
     for s in specs:
-        manifest['cases'][s['id']] = {'status': 'NOT_RUN', 'reason': 'not selected' if s['id'] not in selected else 'not executed'}
+        reason = 'not selected' if s['id'] not in selected else 'not executed'
+        if s['id'] not in selected and s['environment'] == 'disposable-guest':
+            reason = 'requires explicit disposable-guest authorization'
+        manifest['cases'][s['id']] = {'status': 'NOT_RUN', 'reason': reason}
     private = None
     process = None
     snapshot_hashes = {}
@@ -216,16 +233,23 @@ def run(specs, selected, output):
         binaries.mkdir()
         manifest['binary_sha256'] = {}
         if native:
-            for name, tags in [('unicd', []), ('unic-desktop', ['-tags', 'desktop_e2e'])]:
+            programs = [('unicd', []), ('unic-desktop', ['-tags', 'desktop_e2e'])]
+            if guest:
+                programs.append(('unic', []))
+            for name, tags in programs:
                 print('BUILD ' + name, flush=True)
                 target = binaries / (name + ('.exe' if os.name == 'nt' else ''))
                 subprocess.run(['go', 'build', *race_flags, '-buildvcs=false', *tags, '-o', str(target),
-                                './app/' + ('service' if name == 'unicd' else 'desktop') + '/cmd/' + name], cwd=snapshot, check=True)
+                                './app/' + ('desktop' if name == 'unic-desktop' else 'service') + '/cmd/' + name], cwd=snapshot, check=True)
                 manifest['binary_sha256'][name] = digest(target)
         manifest['desktop_build_tags'] = ['desktop_e2e'] if native else []
         environment = {k: v for k, v in os.environ.items() if not k.startswith(('UNIC_', 'MYGO_AUTOMATION'))}
         environment.update(TMPDIR=str(private), UNIC_DESKTOP_E2E='1', UNIC_DESKTOP_E2E_BIN=str(binaries),
                            UNIC_DESKTOP_E2E_SOURCE_HEAD=manifest['source_head'], UNIC_DESKTOP_E2E_ARTIFACTS=str(out / 'cases'), UNIC_DESKTOP_E2E_PRIVATE=str(private / 'cases'))
+        if guest:
+            environment['UNIC_DESKTOP_E2E_GUEST'] = guest['id']
+        if control:
+            environment['UNIC_DESKTOP_E2E_CONTROL'] = str(control)
         expression = '^TestDesktopScenarios$/^(' + '|'.join(selected) + ')$'
         command = ['go', 'test', *race_flags, './app/desktop/e2e', '-run', expression, '-parallel', '1', '-count=1', '-timeout=45m', '-v']
         with (private / 'go-test.log').open('w') as log:
@@ -257,6 +281,10 @@ def run(specs, selected, output):
                 manifest['cases'][spec['id']] = {'status': 'FAIL', 'failure': 'case emitted no result; a skipped test cannot pass'}
         if code != 0 or any(manifest['cases'][s['id']]['status'] != 'PASS' for s in wanted):
             raise RuntimeError('one or more Desktop cases failed; inspect case evidence')
+        if any(s['environment'] == 'disposable-guest' for s in wanted):
+            manifest['system_clipboard'] = 'PASS'
+        if any((out / 'cases' / s['id'] / 'target-receipt.json').is_file() for s in wanted):
+            manifest['cross_application_paste'] = 'PASS'
         (out / 'CASES.md').write_text(catalogue(specs), encoding="utf-8")
         manifest['status'] = 'PASS'
     except (Exception, KeyboardInterrupt) as error:
@@ -316,17 +344,19 @@ def main():
     selection.add_argument('--case', default='')
     selection.add_argument('--shard', help='one-based index/count over the sorted complete catalogue')
     parser.add_argument('--out')
+    parser.add_argument('--guest', help='explicitly authorize real clipboard tests in this disposable VM UUID')
+    parser.add_argument('--control-dir', type=Path, help='owned guest directory for physical-input requests')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--update', action='store_true')
     args = parser.parse_args()
     specs = cases()
-    selected = [args.case] if args.case else [s['id'] for s in specs]
+    selected = [args.case] if args.case else [s['id'] for s in specs if args.action in ('list', 'catalog') or args.guest or s['environment'] == 'isolated']
     if args.shard:
         match = re.fullmatch(r'([1-9][0-9]*)/([1-9][0-9]*)', args.shard)
         if not match:
             raise ValueError('shard must be index/count, for example 1/3')
         index, count = map(int, match.groups())
-        if not 1 <= index <= count <= len(specs):
+        if not 1 <= index <= count <= len(selected):
             raise ValueError('shard requires 1 <= index <= count <= catalogue size')
         selected = selected[index - 1::count]
     if not set(selected).issubset({s['id'] for s in specs}):
@@ -344,11 +374,34 @@ def main():
             if s['id'] in selected:
                 print(f"{s['id']:24} {s['mode']:8} {s['case']}")
         return 0
+    guest = None
+    if any(s['environment'] == 'disposable-guest' and s['id'] in selected for s in specs):
+        if not args.guest:
+            raise ValueError('system clipboard cases require GUEST=<disposable VM UUID>')
+        uuid.UUID(args.guest)
+        if sys.platform != 'linux' or not os.getenv('WAYLAND_DISPLAY'):
+            raise ValueError('real clipboard acceptance currently requires a Linux Wayland guest')
+        virtualization = subprocess.check_output(['systemd-detect-virt', '--vm'], text=True).strip()
+        if virtualization not in ('qemu', 'kvm'):
+            raise ValueError('system clipboard acceptance requires a verified virtual machine')
+        sharing = subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'spice-vdagent'], capture_output=True)
+        if sharing.returncode != 1:
+            raise ValueError('stop the guest SPICE clipboard agent before real clipboard acceptance')
+        for name in ('wl-copy', 'wl-paste'):
+            if not shutil.which(name):
+                raise ValueError('real clipboard acceptance requires ' + name)
+        guest = dict(id=args.guest, virtualization=virtualization, session=os.getenv('XDG_SESSION_TYPE'),
+                     wayland_display=os.getenv('WAYLAND_DISPLAY'), spice_user_agent='absent')
+        if args.control_dir is None or not args.control_dir.is_absolute() or args.control_dir.is_symlink():
+            raise ValueError('system clipboard acceptance requires an owned absolute control directory')
+        control_stat = args.control_dir.stat()
+        if control_stat.st_uid != os.getuid() or control_stat.st_mode & 0o077:
+            raise ValueError('control directory must be owned by the current user with mode 0700')
     if args.action == 'doctor':
         doctor(any(s['mode'] == 'native' and s['id'] in selected for s in specs))
         print('READY: basic prerequisites found; native startup is verified by the case')
         return 0
-    return run(specs, selected, args.out)
+    return run(specs, selected, args.out, guest, args.control_dir)
 
 
 if __name__ == '__main__':

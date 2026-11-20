@@ -1,0 +1,28 @@
+# Case: Native Linux narrow window in light appearance
+# Mode: native
+# Environment: disposable-guest
+# Purpose: Inspect the real Linux skin, Chinese glyphs, search focus, menu and 600-point layout in light appearance.
+# Steps:
+#   Open a 600x480 native Linux window; submit synthetic Chinese text; focus search through physical Ctrl+F; filter; open and dismiss the production command menu.
+# Expected:
+#   Chinese history and matching search remain accessible; the real command menu opens and Escape dismisses it; screenshots and native recording retain the actual composition.
+# Forbidden:
+#   IME claims from semantic field values, foreign skin overrides, software-view evidence or host clipboard access.
+
+system-board-write 'UNIC-D Linux UI baseline'
+start 600 480 light
+submit ui 'UNIC-D 原生中文布局验证'
+ui-wait listItem 'UNIC-D 原生中文布局验证'
+screenshot narrow-history
+system-key Ctrl+F
+ui-wait comboBox 搜索历史
+ui-set comboBox 搜索历史 中文布局
+ui-wait listItem 'UNIC-D 原生中文布局验证'
+screenshot narrow-search
+ui-set comboBox 搜索历史 ''
+system-key Escape
+system-key Escape
+ui-click menuButton 更多操作
+screenshot native-command-menu
+system-key Escape
+history-count 1

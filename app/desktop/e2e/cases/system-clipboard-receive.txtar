@@ -1,0 +1,22 @@
+# Case: Production peer to real guest clipboard
+# Mode: native
+# Environment: disposable-guest
+# Purpose: Verify incoming production synchronization reaches the native clipboard without sender echo.
+# Steps:
+#   Enable sync through settings; pair an owned production peer with fingerprint approvals; submit synthetic peer text and read the real guest clipboard and remote history.
+# Expected:
+#   Native clipboard and remote history contain the exact received text; sender history gains only its submitted item; both owned services exit at cleanup.
+# Forbidden:
+#   Claims of two graphical endpoints, shared clipboard propagation, skipped approvals or directory clipboard substitution.
+
+system-board-write 'UNIC-D receive startup baseline'
+start
+ui-click listItem 设置…
+ui-wait listItem 同步
+ui-click listItem 同步
+ui-enabled switch 启用同步
+ui-click switch 启用同步
+config-equals sync.enabled true
+connect-policy-peer
+system-peer-text 'UNIC-D received native 中文'
+screenshot real-clipboard-received

@@ -1,0 +1,28 @@
+# Case: Real guest clipboard capture and application
+# Mode: native
+# Environment: disposable-guest
+# Purpose: Establish a real system clipboard baseline, fresh capture and exact application without echo.
+# Steps:
+#   Set a synthetic guest baseline, start Desktop, capture a fresh copy, restore another item and observe the clipboard.
+# Expected:
+#   Startup does not capture the baseline; a fresh copy enters history; restore changes the real clipboard once without echo.
+# Forbidden:
+#   Host clipboard access, shared-clipboard propagation, a directory clipboard, or claims of cross-application insertion.
+
+system-board-write 'UNIC-D startup baseline'
+start
+history-count 0
+system-board-equals 'UNIC-D startup baseline'
+observe 2
+history-count 0
+system-board-write 'UNIC-D native capture 中文'
+ui-wait listItem 'UNIC-D native capture 中文'
+history-count 1
+submit restore 'UNIC-D native restored 中文'
+ui-wait listItem 'UNIC-D native restored 中文'
+ui-click listItem 'UNIC-D native restored 中文'
+system-key Enter
+system-board-equals 'UNIC-D native restored 中文'
+observe 2
+history-count 2
+screenshot restored-without-echo

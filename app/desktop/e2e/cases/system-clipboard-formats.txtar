@@ -1,0 +1,18 @@
+# Case: Real guest HTML, PNG and file clipboard roundtrip
+# Mode: native
+# Environment: disposable-guest
+# Purpose: Prove native MIME capture and application without shared-clipboard propagation.
+# Steps:
+#   Offer synthetic HTML, PNG and a task-owned file through wl-copy; read production history; replace the offer; select its real history row and restore through physical Enter; read wl-paste.
+# Expected:
+#   Exact payload bytes survive capture and restore; each offer creates one history entry; restore produces no echo; the original file remains intact.
+# Forbidden:
+#   Directory clipboard substitution, host clipboard access, target insertion claims or directory-transfer acceptance claims.
+
+system-board-write 'UNIC-D formats startup baseline'
+start
+system-format-roundtrip html
+system-format-roundtrip png
+system-format-roundtrip file
+history-count 3
+screenshot formats-restored-without-echo

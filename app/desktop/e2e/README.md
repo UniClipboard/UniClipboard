@@ -27,6 +27,25 @@ Capture uses mygo `Window.CapturePage`. This captures the running window's rende
 
 The `desktop_e2e` build tag adds automation, a unique application identity and an isolated directory clipboard. Release builds do not import the automation plugin and keep the normal system clipboard implementation. Native setup cases additionally use a build-tagged source adapter that discovers only the runner-owned v1 fixture and returns unavailable system credentials. The real passphrase fallback and importer remain active; no personal credential store is accessed. Tests disable telemetry, sync, global shortcut registration and login-startup intent.
 
+## Explicit disposable-guest acceptance
+
+Cases declaring `Environment: disposable-guest` are opt-in. Ordinary runs and CI shards select the isolated catalogue; the report retains guest-only cases as NOT_RUN. `list` and the generated catalogue include both environments. An explicit guest case without `GUEST=<VM UUID>` fails preflight. Guest preflight requires Linux Wayland, a recognized VM and no running user SPICE clipboard agent. A locked native session fails before startup. Native cases request standard session-bus idle inhibition where available. Guest cases require that request to succeed. Cleanup releases the connection. Tests never unlock a session or change lock settings.
+
+The `system-clipboard` case uses the actual production board. It explicitly initializes its private profile through `unic migrate --initialize-empty` with a private XDG discovery directory. It verifies startup baseline exclusion, real Chinese text capture, exact history application and no echo. The separate `system-clipboard-target` case opens a standalone GNOME Text Editor with private XDG configuration, pastes through physical guest input, reads the exact inserted text through AT-SPI and checks saved document bytes against an exact fixture including GtkSourceView's default trailing newline. KDE Spectacle captures the active guest target window, and AT-SPI rechecks its focus. `target-content.txt` and `target-receipt.json` bind the receiving application's content. Key delivery alone cannot pass the target assertion.
+
+`system-clipboard-formats` checks external HTML/PNG/file offers, exact stored and restored payloads, physical Enter and no echo. KDE's additional text alternative must match an external read. `system-clipboard-receive` uses two approved production services but only one native clipboard. `system-wayland-panel` checks automatic-paste refusal, Copy and Escape. `system-window-lifecycle` requires capture while hidden; `system-second-launch` independently checks reopening without replacing the service. Passing the latter cannot override a hidden-capture failure. `system-managed-cleanup` checks a real received-file URI, excluded tags, native clipboard holders, reclamation and preserved user-owned source files. `system-offline-backlog` replaces a normal owner with a standalone service, receives offline history, then reopens Desktop and tests a fresh delivery. It refreshes restarted peer endpoints with real tickets because test profiles disable rendezvous. `system-linux-ui-light` and `system-linux-ui-dark` retain the actual Linux skin in a narrow native window; semantic Chinese field values do not prove IME input.
+
+For a QEMU VM registered in UTM, run the host-side input adapter after exporting the reviewed source and installing the repository Go toolchain and existing dependencies in an owned guest workspace:
+
+```sh
+python3 app/desktop/e2e/utm.py --host <SSH-alias> --guest <UTM-UUID> \
+  --workspace /var/tmp/<owned-task> --out .build/<new-control-receipt>
+```
+
+The workspace contains `source/`, `go/bin/`, `go-cache/`, `go-mod/` and `gopath/`. The adapter uses the current guest desktop environment and invokes `make desktop-e2e`; it does not replace the canonical runner. Each physical input request has a unique identity. The adapter sends only supported UTM guest scan codes and acknowledges each request once. An unknown result is never replayed. Enter requires the owned Desktop window to have OS focus. Paste and Save require the exact standalone editor process to own focus. Keep guest/host clipboard sharing disabled until owned clipboard providers exit. Restore previous sharing and VM states after the run.
+
+System clipboard and target insertion verdicts are reported separately. A passing format roundtrip does not prove receiver rendering/insertion. A headless peer does not prove two-desktop synchronization. Global portal approval, supported-platform target races, IME and OS decorations require their own native evidence.
+
 ## Run structure
 
 ```text
@@ -50,7 +69,9 @@ Source, binaries, profiles, raw logs and intermediate frames live in a private t
 
 Use the repository Go toolchain, Python 3.10+, ffmpeg and ffprobe. Native cases need a logged-in desktop session. On Linux, install mygo's native GTK and tray indicator runtime dependencies and use a real display or `xvfb-run`. CI supplies Xvfb; that proves native window operation in a virtual display, not physical desktop policy.
 
-The runner opens only test-owned windows with synthetic content and a unique profile. It never reads or replaces the user's system clipboard. Do not run two native Desktop acceptance commands against the same physical desktop concurrently.
+The ordinary runner opens only test-owned windows with synthetic content and a unique profile. It never reads or replaces the user's system clipboard. Explicit guest cases use the task-owned guest clipboard under the requirements above. Do not run two native Desktop acceptance commands against the same physical desktop concurrently.
+
+Recording requires an available H.264 encoder. The recorder uses `libx264`, or `libopenh264` when the distribution supplies it. Each native result records the selected encoder. Recording failure is appended to the original scenario failure.
 
 ## Add a case
 

@@ -35,7 +35,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 			}
 		})
 	}
-	number := func(id, label, desc string, value *int, values []int, unit string) {
+	number := func(id, label, desc string, value *int, values []int, unit string, disabled bool) {
 		k.SettingsRow(c.Key(id), uikit.SettingsRowProps{Label: label, Description: desc}, nil, func() {
 			opts := []uikit.SelectItem{}
 			if !slices.Contains(values, *value) {
@@ -49,7 +49,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 				opts = append(opts, uikit.SelectItem{Value: strconv.Itoa(n), Label: text})
 			}
 			v := strconv.Itoa(*value)
-			if k.Select(c, uikit.SelectProps{Label: label, Value: &v, Items: opts, Disabled: l.busy}).Changed {
+			if k.Select(c, uikit.SelectProps{Label: label, Value: &v, Items: opts, Disabled: l.busy || disabled}).Changed {
 				*value, _ = strconv.Atoi(v)
 				changed = true
 			}
@@ -118,7 +118,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 		})
 		group("limits", d.tr("文件传输"), func() {
 			n := int(cfg.Limits.MaxFileBytes / (1 << 20))
-			number("limit", d.tr("单文件传输上限"), d.tr("限制单个文件的传输大小。"), &n, []int{10, 50, 100, 500}, "MB")
+			number("limit", d.tr("单文件传输上限"), d.tr("限制单个文件的传输大小。"), &n, []int{10, 50, 100, 500}, "MB", false)
 			cfg.Limits.MaxFileBytes = config.Size(n) * (1 << 20)
 		})
 	case "storage":
@@ -133,11 +133,11 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 		}
 		group("history", d.tr("历史保留"), func() {
 			toggle("cleanup", d.tr("自动清理历史"), d.tr("清理历史记录及应用管理的文件。"), &cfg.History.AutoCleanup)
-			number("days", d.tr("历史保留时间"), d.tr("按创建时间计算。"), &cfg.History.RetentionDays, []int{7, 30, 90, 180, 365, 0}, d.tr("天"))
-			number("count", d.tr("最大历史条目数"), d.tr("排除标签命中的记录不计入上限。"), &cfg.History.MaxItems, []int{100, 500, 1000, 5000, 0}, d.tr("条"))
+			number("days", d.tr("历史保留时间"), d.tr("按创建时间计算。"), &cfg.History.RetentionDays, []int{7, 30, 90, 180, 365, 0}, d.tr("天"), !cfg.History.AutoCleanup)
+			number("count", d.tr("最大历史条目数"), d.tr("排除标签命中的记录不计入上限。"), &cfg.History.MaxItems, []int{100, 500, 1000, 5000, 0}, d.tr("条"), !cfg.History.AutoCleanup)
 			for _, tag := range d.tags {
 				selected := slices.Contains(cfg.History.ExcludedTags, tag.id)
-				if k.Checkbox(c.Key(tag.id), &selected, uikit.CheckboxProps{Label: d.tr("保留 #") + d.tagLabel(tag.id), Disabled: l.busy}).Changed() {
+				if k.Checkbox(c.Key(tag.id), &selected, uikit.CheckboxProps{Label: d.tr("保留 #") + d.tagLabel(tag.id), Disabled: l.busy || !cfg.History.AutoCleanup}).Changed() {
 					if selected {
 						cfg.History.ExcludedTags = append(cfg.History.ExcludedTags, tag.id)
 					} else {
@@ -149,7 +149,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 		})
 		group("cache", d.tr("文件存储"), func() {
 			n := int(cfg.FileCache.MaxBytes / (1 << 20))
-			number("quota", d.tr("单设备缓存配额"), d.tr("仅限制应用管理的文件缓存。"), &n, []int{100, 500, 1024, 2048, 4096}, "MB")
+			number("quota", d.tr("单设备缓存配额"), d.tr("仅限制应用管理的文件缓存。"), &n, []int{100, 500, 1024, 2048, 4096}, "MB", false)
 			cfg.FileCache.MaxBytes = config.Size(n) * (1 << 20)
 			inbox := cfg.Inbox
 			if inbox == "" {

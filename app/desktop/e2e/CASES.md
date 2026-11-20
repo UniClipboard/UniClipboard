@@ -1762,6 +1762,7 @@ screenshot setup-passphrase
 [windows] ui-click button '最大化'
 [windows] windows-frame setup-maximized-os custom maximized
 [windows] ui-click button '还原'
+[windows] ui-wait button '最大化'
 [windows] ui-click button '最小化'
 [windows] windows-frame setup-minimized-os custom minimized
 ```
@@ -1784,6 +1785,7 @@ screenshot startup-error
 [windows] ui-click button '最大化'
 [windows] windows-frame startup-error-maximized-os custom maximized
 [windows] ui-click button '还原'
+[windows] ui-wait button '最大化'
 [windows] ui-click button '最小化'
 [windows] windows-frame startup-error-minimized-os custom minimized
 ```

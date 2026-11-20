@@ -49,3 +49,11 @@ x64 native execution and installer replacement remain NOT_RUN.
 Formal Desktop package staging remains BLOCKED by the accepted older CLI lock.
 The package guard rejects its stale service protocol. A matching accepted CLI
 artifact is required before packaging; this task did not invent a lock or publish.
+
+## PR integration verification
+
+The branch merged v2 commit `315896d7df3841cd2f56845c7decf70ee5f55a49`.
+Only the desktop-runtime verification marker conflicted.
+`pr-merge-checks.json` binds the clean merge source and both subsequent canonical
+real-process PASS runs. The whole-repository race suite and pinned lint passed.
+This does not extend the earlier native Windows receipt to a new binary.

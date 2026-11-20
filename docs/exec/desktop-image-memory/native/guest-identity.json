@@ -1,0 +1,11 @@
+{
+    "caption":  "Microsoft Windows 11 专业版",
+    "version":  "10.0.26200",
+    "build":  "26200",
+    "osArchitecture":  "ARM 64 位处理器",
+    "processorArchitecture":  12,
+    "logicalProcessors":  4,
+    "physicalMemoryBytes":  6435831808,
+    "pageBytes":  4096,
+    "consoleSession":  1
+}

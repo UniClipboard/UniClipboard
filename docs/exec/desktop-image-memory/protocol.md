@@ -110,3 +110,10 @@ the shared bounded input reader, reused by header replay, decode and tail drain.
 This preserves strict consumed-byte accounting and streaming memory bounds.
 Repeat the full matched matrix for the final source; never relabel the first
 cohort's CPU or memory deltas as final optimized results.
+
+The exploratory cohort contained a startup readiness event after10s. Keep the
+prespecified first10s sampled peak, and additionally retain the full original45s
+visible-phase maximum from the same raw samples. This supplementary descriptive
+peak prevents late startup from appearing as a lower first10s cost. It is not a
+changed acceptance threshold. Group medians use paired same-sample counter sums.
+Native capture geometry must be2200x1440 at DPI192 before cropping.

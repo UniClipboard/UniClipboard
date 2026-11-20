@@ -41,7 +41,9 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 					return err
 				}
 			}
-			cmd := exec.CommandContext(s.ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(s.root, "app", "desktop", "e2e", "windows_chrome.ps1"), "-OwnedProcessId", fmt.Sprint(owner.PID), "-OwnedBinary", owner.BinaryPath, "-Mode", args[1], "-OutputBase", filepath.Join(s.out, args[0]), "-Action", action)
+			captureCtx, cancelCapture := context.WithTimeout(s.ctx, 30*time.Second)
+			defer cancelCapture()
+			cmd := exec.CommandContext(captureCtx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(s.root, "app", "desktop", "e2e", "windows_chrome.ps1"), "-OwnedProcessId", fmt.Sprint(owner.PID), "-OwnedBinary", owner.BinaryPath, "-Mode", args[1], "-OutputBase", filepath.Join(s.out, args[0]), "-Action", action)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("owned Windows frame: %w: %s", err, output)

@@ -7,7 +7,7 @@ param(
     [string]$Action = 'capture'
 )
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Drawing,System.Windows.Forms
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -20,6 +20,7 @@ public static class ChromeOS {
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+ [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int height,uint flags);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
@@ -100,6 +101,22 @@ if ($Mode -eq 'custom' -and $topInset -gt 20) { throw "Unexpected native title r
 $checks += "OS client/top-frame geometry confirms $Mode decoration"
 $captureRect = New-Object ChromeOS+RECT
 if ([ChromeOS]::DwmGetWindowAttribute($hwnd,9,[ref]$captureRect,16) -ne 0) { $captureRect = $rect }
+# Keep the full DWM frame above the taskbar without changing client size.
+$workArea = [Windows.Forms.Screen]::FromHandle($hwnd).WorkingArea
+$captureWidth = $captureRect.Right-$captureRect.Left
+$captureHeight = $captureRect.Bottom-$captureRect.Top
+if ($captureWidth -gt $workArea.Width -or $captureHeight -gt $workArea.Height) { throw 'Owned full frame cannot fit inside the desktop work area' }
+$dx = [Math]::Max($workArea.Left,[Math]::Min($captureRect.Left,$workArea.Right-$captureWidth))-$captureRect.Left
+$dy = [Math]::Max($workArea.Top,[Math]::Min($captureRect.Top,$workArea.Bottom-$captureHeight))-$captureRect.Top
+if ($dx -ne 0 -or $dy -ne 0) {
+ if (-not [ChromeOS]::SetWindowPos($hwnd,[IntPtr]::Zero,($rect.Left+$dx),($rect.Top+$dy),0,0,0x15)) { throw 'Could not place owned frame inside work area' }
+ if ([ChromeOS]::DwmFlush() -ne 0) { throw 'DWM work-area placement did not flush' }
+ $rect = Rect
+ $origin = New-Object ChromeOS+POINT
+ [void][ChromeOS]::ClientToScreen($hwnd,[ref]$origin)
+ if ([ChromeOS]::DwmGetWindowAttribute($hwnd,9,[ref]$captureRect,16) -ne 0) { throw 'DWM frame unavailable after placement' }
+ $checks += 'full frame placed inside desktop work area without resizing client'
+}
 $screenLeft = [ChromeOS]::GetSystemMetrics(76); $screenTop = [ChromeOS]::GetSystemMetrics(77)
 $screenRight = $screenLeft+[ChromeOS]::GetSystemMetrics(78); $screenBottom = $screenTop+[ChromeOS]::GetSystemMetrics(79)
 if ($captureRect.Left -lt $screenLeft -or $captureRect.Top -lt $screenTop -or $captureRect.Right -gt $screenRight -or $captureRect.Bottom -gt $screenBottom) { throw 'Full owned window is outside the desktop; refusing a partial OS screenshot' }
@@ -109,4 +126,4 @@ try {
  $graphics.CopyFromScreen($captureRect.Left,$captureRect.Top,0,0,$bitmap.Size)
  $bitmap.Save($OutputBase+'.png',[Drawing.Imaging.ImageFormat]::Png)
 } finally { $graphics.Dispose(); $bitmap.Dispose() }
-@{pid=$OwnedProcessId;binary=$OwnedBinary;mode=$Mode;action=$Action;dpi=$dpi;window_rect=$rect;capture_rect=$captureRect;client_origin=$origin;top_inset_logical=$topInset;checks=$checks;capture='System.Drawing.CopyFromScreen of exact owned foreground window including OS decorations'} | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 ($OutputBase+'.json')
+@{pid=$OwnedProcessId;binary=$OwnedBinary;mode=$Mode;action=$Action;dpi=$dpi;window_rect=$rect;capture_rect=$captureRect;client_origin=$origin;work_area=$workArea;top_inset_logical=$topInset;checks=$checks;capture='System.Drawing.CopyFromScreen of exact owned foreground window including OS decorations'} | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 ($OutputBase+'.json')

@@ -1,0 +1,23 @@
+{
+  "baseline": "315896d7df3841cd2f56845c7decf70ee5f55a49",
+  "builds": [
+    {
+      "name": "unic-window-chrome-macos",
+      "sha256": "5cec364aef41a8c45869fb37284a2d5291af9e288c874c2a9e9040280c103274"
+    },
+    {
+      "name": "unic-window-chrome-linux",
+      "sha256": "a1b52cf3c6632f4ba3f6a160a16a91334baafac28f784b8928af65d33405a1de"
+    },
+    {
+      "name": "unic-window-chrome-windows.exe",
+      "sha256": "b2591681496825401d9707a60fd3e7da1625160b34d6a15a9af7d0cb9d4c4b97"
+    }
+  ],
+  "native_os_acceptance": "NOT_RUN",
+  "temporary_program_cleanup": "PASS",
+  "pr_integration": {
+    "source": "4fbcd2329",
+    "windows_amd64_sha256": "0296ce8a59d5dd1a37395c6ef62dbd42c768c027ce2b7d129b52404de1f50f03"
+  }
+}

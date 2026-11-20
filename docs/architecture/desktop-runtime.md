@@ -10,6 +10,7 @@ paths:
   - app/desktop/internal/desktopprocess
   - app/desktop/internal/setupflow
   - app/desktop/internal/setupui
+  - app/desktop/internal/windowchrome
   - app/desktop/e2e
   - app/desktop/internal/desktopui
   - app/desktop/internal/uikit/split.go
@@ -40,7 +41,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 19f410995f6db869b8595f59ca47df71b6348fd4
+verified: 4fbcd23290da7224e67bb062a0663d4072591f27
 ---
 # Desktop configuration and received files
 
@@ -70,6 +71,27 @@ The three built-in plugins have no plugin-specific Schema fields. See the [execu
 Settings > Plugins lists external plugins discovered by the service. An external plugin detail page shows enablement, pending restart and any form defined by its manifest. The mygo renderer uses the same portable Schema as the service. Password fields show presence and allow replacement or clearing. Save checks the last revision. The service hot-replaces running Lua settings and reports a restart for Go settings. Install and uninstall are CLI operations.
 
 The history toolbar exposes the Actions menu for records accepted by the currently running plugins. Desktop requests a new Action result and applies it through the active clipboard adapter. A clipboard failure leaves the committed result in history. See the [settings contract](../contracts/plugin-settings-contract.md) and [Action contract](../contracts/clipboard-action-contract.md).
+
+## Main-window decoration
+
+`desktop.system_window_frame` is a persisted boolean, defaulting to `false`.
+Settings > General exposes it on Linux and macOS. Its value is captured when the
+main window is created; an existing window is not recreated on configuration
+reload. Quit and reopen Desktop to apply it. The service reports
+`desktop.system_window_frame` as restart-required when it differs from its startup
+configuration. The UI-free service only stores this host preference.
+
+With the preference off, the host uses mygo's hidden native title bar, retaining
+resize edges, rounded corners and shadows. macOS keeps its traffic lights. Linux
+reserves GTK's reported caption-control area above the application content. With
+the preference on, Linux/macOS use the normal native title bar.
+
+Windows always uses a hidden title bar with native caption buttons disabled.
+The existing UI Kit draws Minimize, Maximize/Restore and Close above every main
+window page, including setup and startup errors. Only the empty caption region
+drags the window. Maximize/Restore reads the actual window state. Close invokes
+the existing window-close lifecycle. This preference does not change Quick Panel
+or its satellite windows. See the [acceptance receipt](../exec/desktop-window-chrome.md).
 
 ## Native application updates
 

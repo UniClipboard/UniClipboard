@@ -21,6 +21,7 @@ var glyphs = map[string]string{
 	// Merge glyph: Lucide (ISC). See licenses/lucide.txt.
 	"merge":         `<path d="m8 6 4-4 4 4"/><path d="M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22"/><path d="m20 22-5-5"/>`,
 	"minus":         `<path d="M5 12h14"/>`,
+	"maximize":      `<rect x="5" y="5" width="14" height="14"/>`,
 	"chevronLeft":   `<path d="m15 6-6 6 6 6"/>`,
 	"chevronDown":   `<path d="m6 9 6 6 6-6"/>`,
 	"chevronUp":     `<path d="m6 15 6-6 6 6"/>`,
@@ -73,7 +74,8 @@ var glyphs = map[string]string{
 var iconGlyph = map[IconName]string{
 	IconAdd: "plus", IconBack: "chevronLeft", IconChat: "message",
 	IconChevronDown: "chevronDown", IconChevronRight: "chevronRight", IconCopy: "copy",
-	IconDelete: "trash", IconDesktop: "desktop", IconDevices: "devices", IconDismiss: "close",
+	IconMaximize: "maximize",
+	IconDelete:   "trash", IconDesktop: "desktop", IconDevices: "devices", IconDismiss: "close",
 	IconDownload: "download", IconEdit: "pencil", IconFile: "doc", IconFolder: "folder", IconText: "textLines", IconCode: "codeBrackets", IconLink: "chain", IconImage: "picture", IconFilter: "filter",
 	IconGlobe: "globe", IconGrid: "grid", IconHistory: "history", IconInfo: "info",
 	IconList: "list", IconLock: "lock", IconMerge: "merge", IconMoon: "moon", IconMore: "more",

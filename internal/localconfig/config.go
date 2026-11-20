@@ -93,6 +93,7 @@ type Desktop struct {
 	Mode               string            `toml:"mode" json:"mode"`
 	LaunchAtLogin      bool              `toml:"launch_at_login" json:"launch_at_login"`
 	StartInBackground  bool              `toml:"start_in_background" json:"start_in_background"`
+	SystemWindowFrame  bool              `toml:"system_window_frame" json:"system_window_frame"`
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -406,6 +407,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # mode = "normal"  # "normal" or "lightweight"
 # launch_at_login = false
 # start_in_background = false
+# system_window_frame = false  # Linux/macOS native title bar; reopen Desktop to apply
 # tray_icon = "glyph"  # "glyph" or "cat"; applies immediately
 # quick_panel_shortcut = "Ctrl+Alt+V"
 # macOS default: "Cmd+Ctrl+V"

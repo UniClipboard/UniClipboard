@@ -1,0 +1,33 @@
+{
+  "vm": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+  "initial_state": "suspended",
+  "final_state": "suspended",
+  "guest_check": "NO_TASK_PROCESSES_OR_NATIVE_ROOTS",
+  "removed_owned_stages": [
+    "/Users/mark/.cache/unic-qp-baseline-arm64",
+    "/Users/mark/.cache/unic-qp-baseline2-arm64",
+    "/Users/mark/.cache/unic-qp-candidate-arm64",
+    "/Users/mark/.cache/unic-qp-candidate2-arm64",
+    "/Users/mark/.cache/unic-qp-final-control-arm64",
+    "/Users/mark/.cache/unic-qp-final-candidate-arm64",
+    "/Users/mark/.cache/unic-qp-final2-candidate-arm64",
+    "/Users/mark/.cache/unic-qp-final-control-amd64",
+    "/Users/mark/.cache/unic-qp-satellite-candidate-arm64",
+    "/Users/mark/.cache/unic-qp-matched-control-arm64",
+    "/Users/mark/.cache/unic-qp-matched-candidate-arm64",
+    "/Users/mark/.cache/unic-qp-cohort-control-arm64",
+    "/Users/mark/.cache/unic-qp-cohort-candidate-arm64",
+    "/Users/mark/.cache/unic-qp-original-control-arm64",
+    "/Users/mark/.cache/unic-qp-original-candidate-arm64",
+    "/Users/mark/.cache/unic-qp-original-control-amd64",
+    "/Users/mark/.cache/unic-qp-original-candidate-amd64",
+    "/Users/mark/.cache/unic-qp-bounded-candidate-arm64",
+    "/Users/mark/.cache/unic-qp-bounded-candidate-amd64",
+    "/Users/mark/.cache/unic-qp-native-acceptance"
+  ],
+  "no_push_pr_merge_release": true,
+  "personal_history_credentials_clipboard_accessed": false,
+  "clipboard_sharing_or_system_permissions_changed": false,
+  "native_artifacts_ignored": ".build/qp-windows-native",
+  "vm_state_output_sha256": "0bcc83ed53835716196e869f4b201d6bb16ab84678651081ea25891807c1aa62"
+}

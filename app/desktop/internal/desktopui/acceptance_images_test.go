@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -306,6 +307,74 @@ func scenarioImagePreviews(t *testing.T) {
 			items = append(items, it)
 		}
 	}
+	// A selected original still needs its exact encoded reconstruction bytes.
+	// Failures: geometric input-buffer copies, trusting an unbounded size hint,
+	// truncation/extra bytes, changed originals, or measuring concurrent views.
+	entropy := image.NewRGBA(image.Rect(0, 0, 1024, 1024))
+	seed := uint32(0x58231)
+	for i := 0; i < len(entropy.Pix); i += 4 {
+		seed ^= seed << 13
+		seed ^= seed >> 17
+		seed ^= seed << 5
+		entropy.Pix[i], entropy.Pix[i+1], entropy.Pix[i+2], entropy.Pix[i+3] = byte(seed), byte(seed>>8), byte(seed>>16), 255
+	}
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, entropy); err != nil {
+		t.Fatal(err)
+	}
+	created, err := client.Submit(ctx, api.SubmitInput{RequestID: "original-input-allocation", Snapshot: clip.Snapshot{Parts: []clip.Part{{Format: clip.PNG, Data: encoded.Bytes()}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := client.GetHistory(ctx, string(created.HistoryID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var originalReadSize, originalReadCalls atomic.Int64
+	client.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
+		return browsingTransport(func(r *http.Request) (*http.Response, error) {
+			response, err := next.RoundTrip(r)
+			if err == nil && strings.HasPrefix(response.Header.Get("Content-Type"), "image/") {
+				response.Body = &previewResponse{ReadCloser: response.Body, ctx: ctx, closed: func() {}, maxRead: &originalReadSize, readCalls: &originalReadCalls}
+			}
+			return response, err
+		})
+	})
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	original := loadSearchEntry(ctx, client, item, 0)
+	runtime.ReadMemStats(&after)
+	allocated := after.TotalAlloc - before.TotalAlloc
+	budget := uint64(2*len(entropy.Pix) + 2*encoded.Len() + (1 << 20))
+	receipt["original_input_allocation"] = map[string]any{"encoded_bytes": encoded.Len(), "raster_bytes": len(entropy.Pix), "allocated_bytes": allocated, "budget_bytes": budget, "forced_gc": false, "largest_read_bytes": originalReadSize.Load(), "read_calls": originalReadCalls.Load()}
+	if original.picture == nil || original.picture.width != 1024 || original.picture.height != 1024 {
+		t.Fatal("selected high-entropy original failed")
+	}
+	if allocated > budget {
+		t.Fatalf("selected original allocates excess input copies: %d > %d", allocated, budget)
+	}
+	if originalReadSize.Load() > 64<<10 {
+		t.Fatalf("selected original issues oversized reads: %d > 65536", originalReadSize.Load())
+	}
+	checks = append(checks, "real-service high-entropy selected original stays within the input-copy allocation budget without forced GC")
+	for _, hint := range []int64{-1, 0, 1, int64(encoded.Len() + 4096), (32 << 20) + 1, 1 << 62} {
+		altered := api.NewClient(filepath.Join(home, "unic.sock"))
+		altered.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
+			return browsingTransport(func(r *http.Request) (*http.Response, error) {
+				response, err := next.RoundTrip(r)
+				if err == nil && strings.HasPrefix(response.Header.Get("Content-Type"), "image/") {
+					response.ContentLength = hint
+				}
+				return response, err
+			})
+		})
+		v := loadSearchEntry(ctx, altered, item, 0)
+		if v.picture == nil || v.picture.width != 1024 || v.picture.height != 1024 {
+			t.Fatalf("inaccurate original length hint %d changed preview", hint)
+		}
+	}
+	checks = append(checks, "real-service originals accept unknown, low, high and over-limit length hints as hints without changing decoding or resource bounds")
+
 	imageResourceAcceptance(t, ctx, filepath.Join(home, "unic.sock"), items, receipt, func(start bool) {
 		t.Helper()
 		if !start {

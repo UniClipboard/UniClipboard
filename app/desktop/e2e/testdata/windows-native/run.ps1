@@ -68,6 +68,9 @@ function Start-TaskProcess([string]$Program,[string[]]$ArgValues,[string]$TaskPr
     $start.CreateNoWindow=$true
     $start.RedirectStandardOutput=$true
     $start.RedirectStandardError=$true
+    # Go commands emit UTF-8, independently of the Windows console code page.
+    $start.StandardOutputEncoding=New-Object Text.UTF8Encoding($false)
+    $start.StandardErrorEncoding=New-Object Text.UTF8Encoding($false)
     foreach($key in @($start.EnvironmentVariables.Keys)){
         if($key.StartsWith('UNIC_') -or $key.StartsWith('MYGO_')){$start.EnvironmentVariables.Remove($key)}
     }

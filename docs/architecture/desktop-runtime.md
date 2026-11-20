@@ -102,8 +102,9 @@ Direct installations with a configured production update key use mygo's native u
 Desktop loads history in 50-entry cursor pages as the list or grid approaches its loaded end. It retains a 500-entry sliding window, bounded cursor checkpoints and one selected detail outside that window. Scrolling toward an evicted newer page reloads it automatically. Stable item keys retain surviving scroll anchors.
 
 Image preview admission occurs before `HistoryContent` can open or materialize a
-response. One process-wide slot covers the main window and Quick Panel through
-response close and decode completion. Selected originals take priority over queued
+response. Each UI process owns one slot through response close and decode completion.
+The independent GUI and Quick Panel reuse this implementation but have separate
+queues; this is not service-wide admission. Selected originals take priority over queued
 neighbors. Cancelling a queued request removes it without opening a response; a
 cancellation racing admission returns the transferred slot. Each view retains its
 four-job bound and cancels one pending neighbor when selection needs that job.
@@ -119,8 +120,17 @@ replay buffer uses the same encoded-input budget. Full decoding starts only afte
 the existing 16-million-pixel dimension check. A bounded remainder read detects
 trailing input beyond the byte limit. Context checks cover reads and codec/resize
 phase boundaries; a running codec/resize call is not preempted. Selected originals
-retain their encoded reconstruction bytes and full dimensions. See the
-[implementation receipt](../exec/desktop-image-memory.md).
+retain their encoded reconstruction bytes and full dimensions. For a selected
+original, a valid local response length up to 32 MiB reserves its encoded buffer
+once, and a fixed 64 KiB copy buffer bounds individual read requests. Unknown or over-limit
+lengths keep the bounded fallback. The actual byte limiter and raster check stay
+authoritative when a hint is inaccurate. Neighbor thumbnails keep their streaming
+path. See the [image implementation receipt](../exec/desktop-image-memory.md) and
+[independent quick-panel receipt](../exec/quick-panel-memory.md).
+
+Quick-panel reopening invalidates its cleared row projection even when the
+service reuses an unchanged query/revision. It preserves the service cache and
+reconstructs the real result list and satellite instead of an empty panel.
 
 Service events trigger metadata revision checks. A 30-second bounded recovery probe detects missed notifications. An unchanged revision does not reload search results. Stream failure renews cursors, while query changes cancel stale generations. Selection, detail state and filters survive background reconciliation; selected deletion closes its detail and preview. See the [search contract](../contracts/history-search-contract.md#incremental-desktop-browsing) and [execution receipt](../exec/desktop-incremental-browsing.md).
 

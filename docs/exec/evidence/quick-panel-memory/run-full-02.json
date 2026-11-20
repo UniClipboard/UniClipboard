@@ -1,0 +1,351 @@
+{
+  "scenario_status": {
+    "fresh_owned_quit": "NOT_RUN",
+    "background_core_only": "NOT_RUN",
+    "lightweight_close_reopen": "NOT_RUN",
+    "normal_gui_absent_hotkey": "FAIL",
+    "lightweight_owned_detach": "NOT_RUN"
+  },
+  "native_menu_clicks": 0,
+  "native_tray": {
+    "business_clicks": 0,
+    "method": "native mouse and PID-bound menu"
+  },
+  "task_root_removed": true,
+  "prior_panel_regression": {
+    "run": "native18",
+    "new_native_verification": "FAIL",
+    "status": "RED",
+    "observation": "role.visible=true but owned Win32 panel HWND hidden"
+  },
+  "global_shortcut": {
+    "status": "FAIL_OR_UNKNOWN",
+    "method": "single SendInput chord; never replayed"
+  },
+  "identities": [
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:15:39.7995920Z",
+      "pid": 12180,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 12180,
+        "started_at": "2026-11-20T12:15:39.8848442Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:15:40.0106943Z",
+      "pid": 7996,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 7996,
+        "started_at": "2026-11-20T12:15:40.1403499Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:15:43.7108368Z",
+      "pid": 12740,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 12740,
+        "started_at": "2026-11-20T12:15:43.7836982Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    }
+  ],
+  "system_clipboard": "NOT_RUN",
+  "verdict": "FAIL",
+  "source_requested": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+  "cross_application_paste": "NOT_RUN",
+  "events": [
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 85,
+          "height": 96,
+          "x": 2860
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:15:33.7776579Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "observe service",
+      "data": {
+        "instance": {
+          "id": "86a3e461f6d33721cc5cbd4c14b9c1a4",
+          "pid": 6648,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176934294,
+          "leases": 0,
+          "retiring": false
+        },
+        "binary_sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+        "created_utc": "2026-11-20T12:15:34.2381950Z"
+      },
+      "at_utc": "2026-11-20T12:15:39.6784960Z",
+      "kind": "service-identity"
+    },
+    {
+      "name": "tray probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:40.8569517Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:41.4489048Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "shortcut requested/effective",
+      "data": {
+        "effective": "Ctrl+Alt+V",
+        "error": "",
+        "requested": "Ctrl+Alt+V"
+      },
+      "at_utc": "2026-11-20T12:15:41.4489048Z",
+      "kind": "registration-receipt"
+    },
+    {
+      "name": "gui probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:41.6005964Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:41.8410952Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui",
+      "data": {
+        "hwnd": 23396786,
+        "pid": 7996,
+        "foreground_hwnd": 23396786
+      },
+      "at_utc": "2026-11-20T12:15:41.8526398Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "initial-manual-gui",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 23396786,
+        "pid": 7996
+      },
+      "at_utc": "2026-11-20T12:15:42.0138699Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "86a3e461f6d33721cc5cbd4c14b9c1a4",
+          "pid": 6648,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176934294,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:15:34.2381950Z"
+      },
+      "at_utc": "2026-11-20T12:15:42.0586165Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:42.1669648Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 23396786,
+        "pid": 7996,
+        "created_utc": "2026-11-20T12:15:40.0106943Z"
+      },
+      "at_utc": "2026-11-20T12:15:42.1811869Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "86a3e461f6d33721cc5cbd4c14b9c1a4",
+          "pid": 6648,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176934294,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:15:34.2381950Z"
+      },
+      "at_utc": "2026-11-20T12:15:42.4252871Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:43.6202309Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "Ctrl+Alt+V first panel with no GUI",
+      "data": {
+        "panel_first_open": true,
+        "target_pid": 3580,
+        "target_created_utc": "2026-11-20T12:15:42.6512015Z",
+        "gui_absent": true,
+        "target_hwnd": 23462322,
+        "input_replayed": false
+      },
+      "at_utc": "2026-11-20T12:15:43.6266587Z",
+      "kind": "native-SendInput"
+    },
+    {
+      "name": "quick-panel probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:44.2786655Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:44.4433312Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:44.6757005Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel",
+      "data": {
+        "hwnd": 8389590,
+        "pid": 12740,
+        "foreground_hwnd": 8389590
+      },
+      "at_utc": "2026-11-20T12:15:44.6807728Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "acceptance failed",
+      "data": {
+        "message": "\u4f20\u5165\u7684\u5bf9\u8c61\u65e0\u6548\uff0c\u5e94\u4e3a\u201c:\u201d\u6216\u201c}\u201d\u3002 (958): {\"window\":1,\"focus\":\"3658895143842042671\",\"nodes\":[{\"id\":\"3658895143842042671\",\"role\":\"textField\",\"key\":\"search\",\"label\":\"\u93bc\u6ec5\u50a8\u8e47\ue0a3\u5d4e\u95c8\u3221\u6f98\",\"placeholder\":\"\u93bc\u6ec5\u50a8\u951b\u5c7e\u57a8\u6748\u64b3\u53c6 # \u93cd\u56e9\ue137  @ \u7481\u60e7\ue62c  / \u7eeb\u8bf2\u7037\",\"bounds\":{\"x\":41,\"y\":8.5,\"width\":264.520263671875,\"height\":32},\"states\":[\"focusable\"],\"actions\":[\"focus\",\"setValue\"],\"selection\":[0,0]},{\"id\":\"7688813312726425936\",\"role\":\"button\",\"key\":\"type\",\"label\":\"\u9352\u56e8\u5d32\u7eeb\u8bf2\u7037\",\"bounds\":{\"x\":315.520263671875,\"y\":15.5,\"width\":49.479736328125,\"height\":18},\"states\":[\"focusable\"],\"actions\":[\"press\",\"focus\"]},{\"id\":\"16965720719585523961\",\"role\":\"scroll\",\"key\":\"history-scroll\",\"bounds\":{\"x\":1,\"y\":49,\"width\":378,\"height\":282}},{\"id\":\"9286007095957816345\",\"parent\":\"16965720719585523961\",\"role\":\"heading\",\"label\":\"\u6769\u6a3b\u75c5\u93c8\u590a\u58c0\u7490\u5b58\u6f98\u9358\u55d7\u5f76\",\"bounds\":{\"x\":130,\"y\":128.996826171875,\"width\":120,\"height\":20.00244140625},\"actions\":[\"scrollIntoView\"]},{\"id\":\"14852569365121613390\",\"parent\":\"16965720719585523961\",\"role\":\"text\",\"label\":\"\u9366\u3124\u6362\u93b0\u5fda\ue195\u6fb6\u56e6\u7b02\u6fb6\u5d85\u57d7\u9350\u546d\ue190\u951b\u5c84\u5158\u6d7c\u6c2c\u56ad\u941c\u677f\u6e6a\u6769\u6b13\u5677\u9286?,\"bounds\":{\"x\":76,\"y\":158.999267578125,\"width\":228,\"height\":16.001953125},\"actions\":[\"scrollIntoView\"]},{\"id\":\"17492920350724016649\",\"parent\":\"16965720719585523961\",\"role\":\"text\",\"label\":\"\u95c5\u5fd4\u6902\u935e\u3088\u6363  Ctrl+Ctrl+V\",\"bounds\":{\"x\":132.203125,\"y\":185.001220703125,\"width\":115.59375,\"height\":16.001953125},\"actions\":[\"scrollIntoView\"]},{\"id\":\"12945353015665196687\",\"role\":\"text\",\"label\":\"T\",\"bounds\":{\"x\":18.642333984375,\"y\":342.5146484375,\"width\":4.71533203125,\"height\":11.970703125}},{\"id\":\"5109346332871050683\",\"role\":\"text\",\"label\":\"\u7eee\u6a3f\u521b\u9352?\u9358\u71b7\u7c32\u9422?,\"bounds\":{\"x\":36,\"y\":340.4990234375,\"width\":75.287109375,\"height\":16.001953125}},{\"id\":\"831354789787965608\",\"role\":\"text\",\"label\":\"\u9234?,\"bounds\":{\"x\":124.2109375,\"y\":342.39892578125,\"width\":6.15234375,\"height\":12.2021484375}},{\"id\":\"7573155914733148501\",\"role\":\"button\",\"key\":\"actions\",\"label\":\"\u93bf\u5d84\u7d94\",\"bounds\":{\"x\":292.0859375,\"y\":339.5,\"width\":76.9140625,\"height\":18},\"states\":[\"focusable\"],\"actions\":[\"press\",\"focus\"]}]}\n"
+      },
+      "at_utc": "2026-11-20T12:15:44.8570074Z",
+      "kind": "failure"
+    },
+    {
+      "name": "tray probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:44.9487732Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "tray quit",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:45.0407127Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "best-effort Quit after failure",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:45.0407127Z",
+      "kind": "cleanup-role-ipc"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "86a3e461f6d33721cc5cbd4c14b9c1a4",
+          "pid": 6648,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176934294,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:15:34.2381950Z"
+      },
+      "at_utc": "2026-11-20T12:15:45.0797680Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "failure cleanup of exact driver-owned generation",
+      "data": {
+        "generation": "86a3e461f6d33721cc5cbd4c14b9c1a4",
+        "pid": 6648,
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:15:45.1674633Z",
+      "kind": "driver-generation-cleanup"
+    }
+  ],
+  "cleanup": "PASS",
+  "failure": "\u4f20\u5165\u7684\u5bf9\u8c61\u65e0\u6548\uff0c\u5e94\u4e3a\u201c:\u201d\u6216\u201c}\u201d\u3002 (958): {\"window\":1,\"focus\":\"3658895143842042671\",\"nodes\":[{\"id\":\"3658895143842042671\",\"role\":\"textField\",\"key\":\"search\",\"label\":\"\u93bc\u6ec5\u50a8\u8e47\ue0a3\u5d4e\u95c8\u3221\u6f98\",\"placeholder\":\"\u93bc\u6ec5\u50a8\u951b\u5c7e\u57a8\u6748\u64b3\u53c6 # \u93cd\u56e9\ue137  @ \u7481\u60e7\ue62c  / \u7eeb\u8bf2\u7037\",\"bounds\":{\"x\":41,\"y\":8.5,\"width\":264.520263671875,\"height\":32},\"states\":[\"focusable\"],\"actions\":[\"focus\",\"setValue\"],\"selection\":[0,0]},{\"id\":\"7688813312726425936\",\"role\":\"button\",\"key\":\"type\",\"label\":\"\u9352\u56e8\u5d32\u7eeb\u8bf2\u7037\",\"bounds\":{\"x\":315.520263671875,\"y\":15.5,\"width\":49.479736328125,\"height\":18},\"states\":[\"focusable\"],\"actions\":[\"press\",\"focus\"]},{\"id\":\"16965720719585523961\",\"role\":\"scroll\",\"key\":\"history-scroll\",\"bounds\":{\"x\":1,\"y\":49,\"width\":378,\"height\":282}},{\"id\":\"9286007095957816345\",\"parent\":\"16965720719585523961\",\"role\":\"heading\",\"label\":\"\u6769\u6a3b\u75c5\u93c8\u590a\u58c0\u7490\u5b58\u6f98\u9358\u55d7\u5f76\",\"bounds\":{\"x\":130,\"y\":128.996826171875,\"width\":120,\"height\":20.00244140625},\"actions\":[\"scrollIntoView\"]},{\"id\":\"14852569365121613390\",\"parent\":\"16965720719585523961\",\"role\":\"text\",\"label\":\"\u9366\u3124\u6362\u93b0\u5fda\ue195\u6fb6\u56e6\u7b02\u6fb6\u5d85\u57d7\u9350\u546d\ue190\u951b\u5c84\u5158\u6d7c\u6c2c\u56ad\u941c\u677f\u6e6a\u6769\u6b13\u5677\u9286?,\"bounds\":{\"x\":76,\"y\":158.999267578125,\"width\":228,\"height\":16.001953125},\"actions\":[\"scrollIntoView\"]},{\"id\":\"17492920350724016649\",\"parent\":\"16965720719585523961\",\"role\":\"text\",\"label\":\"\u95c5\u5fd4\u6902\u935e\u3088\u6363  Ctrl+Ctrl+V\",\"bounds\":{\"x\":132.203125,\"y\":185.001220703125,\"width\":115.59375,\"height\":16.001953125},\"actions\":[\"scrollIntoView\"]},{\"id\":\"12945353015665196687\",\"role\":\"text\",\"label\":\"T\",\"bounds\":{\"x\":18.642333984375,\"y\":342.5146484375,\"width\":4.71533203125,\"height\":11.970703125}},{\"id\":\"5109346332871050683\",\"role\":\"text\",\"label\":\"\u7eee\u6a3f\u521b\u9352?\u9358\u71b7\u7c32\u9422?,\"bounds\":{\"x\":36,\"y\":340.4990234375,\"width\":75.287109375,\"height\":16.001953125}},{\"id\":\"831354789787965608\",\"role\":\"text\",\"label\":\"\u9234?,\"bounds\":{\"x\":124.2109375,\"y\":342.39892578125,\"width\":6.15234375,\"height\":12.2021484375}},{\"id\":\"7573155914733148501\",\"role\":\"button\",\"key\":\"actions\",\"label\":\"\u93bf\u5d84\u7d94\",\"bounds\":{\"x\":292.0859375,\"y\":339.5,\"width\":76.9140625,\"height\":18},\"states\":[\"focusable\"],\"actions\":[\"press\",\"focus\"]}]}\n",
+  "requested_phase": "full"
+}

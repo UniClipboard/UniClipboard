@@ -1,0 +1,34 @@
+{
+  "baseline": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+  "branch": "fix/quick-panel-memory",
+  "delivery": "HOLD: sustained OS process memory goal failed; local candidate only",
+  "source_sha256": {
+    "app/desktop/internal/desktopui/live_images.go": "ea76a1f3cb6dd3e07eb0cad68e6c4adc3810f33dec3ead2312372c64608a5da2",
+    "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3",
+    "app/desktop/e2e/testdata/windows-native/run.ps1": "c71130de2afc2341d90215bba20dbb31d8cdeb1880a3b97f2e1628862651929c"
+  },
+  "production_builds": {
+    "qp-production-amd64.exe": "3f3d6fdeb381ccf455ce4d5c19a4ee8a614d1b74d8fecab0f727ff3e8d6cf6b2",
+    "qp-production-arm64.exe": "da0fbf2db899812abcded9c2f14e21f6b07f0ef68870cf0534838edd9ad1dbe0",
+    "qp-production-macos": "dad62c1236fcb4adcf1d37afab3f111a6989708bc8606359b6a71155949d283d"
+  },
+  "canonical_e2e": {
+    "image-previews": "20261120T110957Z-ad20151b",
+    "desktop-native-processes": "20261120T111318Z-7b84432a",
+    "quick-panel-contract": "20261120T111320Z-f9f0b86c"
+  },
+  "checks": {
+    "golangci-lint_2.15.0": "PASS: 0 issues",
+    "go_mod_verify": "PASS",
+    "production_macos_arm64": "PASS",
+    "production_windows_arm64": "PASS",
+    "production_windows_amd64": "PASS",
+    "docscheck": "PASS with baseline stale-page warnings"
+  },
+  "unexecuted": [
+    "physical x64 Windows",
+    "user exact dataset/package installation",
+    "actual cross-app clipboard and paste insertion",
+    "user visual acceptance"
+  ]
+}

@@ -1,0 +1,2442 @@
+{
+  "builds": {
+    "arm64/control": {
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "dirty": true,
+      "control_projection_fix": true,
+      "source_manifest_sha256": "f777c6912a68b7a3d3e44c0eeb697e7702d1779f3b22729af9658ea356ec2343",
+      "changed_product_source_sha256": {
+        "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3",
+        "app/desktop/internal/desktopui/live_images.go": "ccc6a919b33978e3bd05837c5d3291747c6db17c416ba89f31bbe22c12e061b2"
+      },
+      "arch": "arm64",
+      "go": "go version go1.27.3 darwin/arm64",
+      "race": false,
+      "build_flags": [
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w",
+        "desktop: -tags desktop_e2e -H windowsgui"
+      ],
+      "binary_sha256": {
+        "helper.exe": "906dd5ad54225f2d462cc272d220dc267c4cb845210b28e5161f7eb1a22957ae",
+        "unicd.exe": "ae13e16067b6af7d70e6fb0e7315c745ec26ec1f40f2f11d18baa5f872694eb7",
+        "unic-desktop.exe": "7ee91f3fb2986274cf81f3e56b536171088c228f044de95b8a9e639d9155929b",
+        "unic.exe": "cf1cf2ffdc8ca2a8c93fcfe3bafbfc1f0d9301fbe96b15838d6b4c682f8a3b20"
+      },
+      "pe_machine": {
+        "helper.exe": "0xaa64",
+        "unicd.exe": "0xaa64",
+        "unic-desktop.exe": "0xaa64",
+        "unic.exe": "0xaa64"
+      },
+      "cgo_enabled": false,
+      "diagnostic_sha256": {
+        "app/service/cmd/unicd/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+        "app/desktop/internal/desktopui/memory_research.go": "6ccbc14e300c2587b0e4abac39b4b81edc0fbc5e04c0795963d8ab65a1841684",
+        "app/desktop/cmd/unic-desktop/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab"
+      },
+      "instrumented_source_sha256": {
+        "app/desktop/internal/desktopui/live.go": "d831fc460681f416952caa1ac7fb386252ababb94fe70288887399521bc01d17",
+        "app/desktop/internal/desktopui/live_quick.go": "f5088b072ebd8fc44b758e4def321f228fee3ff9d9deb422fdbfbb5d7e49e98b",
+        "app/desktop/internal/desktopui/process_panel.go": "155fea3e4ad183befc63686427b7b1f2f63f326c3afa24bc52eaf205856f043a"
+      }
+    },
+    "arm64/candidate": {
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "dirty": " M app/desktop/e2e/CASES.md\n M app/desktop/e2e/cases/desktop-native-processes.txtar\n M app/desktop/e2e/native_processes_test.go\n M app/desktop/internal/desktopui/acceptance_images_test.go\n M app/desktop/internal/desktopui/live_images.go\n M app/desktop/internal/desktopui/quick_panel_model.go\n M docs/architecture/desktop-runtime.md\n?? docs/exec/quick-panel-memory.md\n?? tools/research/quick-panel-memory/\n",
+      "control_projection_fix": false,
+      "source_manifest_sha256": "7726222eec648f9aafad0db27fdc11c928ce8fba96160a5d686456a88954b0bd",
+      "changed_product_source_sha256": {
+        "app/desktop/internal/desktopui/live_images.go": "ea76a1f3cb6dd3e07eb0cad68e6c4adc3810f33dec3ead2312372c64608a5da2",
+        "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3"
+      },
+      "arch": "arm64",
+      "go": "go version go1.27.3 darwin/arm64",
+      "race": false,
+      "build_flags": [
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w",
+        "desktop: -tags desktop_e2e -H windowsgui"
+      ],
+      "binary_sha256": {
+        "helper.exe": "906dd5ad54225f2d462cc272d220dc267c4cb845210b28e5161f7eb1a22957ae",
+        "unicd.exe": "ae13e16067b6af7d70e6fb0e7315c745ec26ec1f40f2f11d18baa5f872694eb7",
+        "unic-desktop.exe": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+        "unic.exe": "cf1cf2ffdc8ca2a8c93fcfe3bafbfc1f0d9301fbe96b15838d6b4c682f8a3b20"
+      },
+      "pe_machine": {
+        "helper.exe": "0xaa64",
+        "unicd.exe": "0xaa64",
+        "unic-desktop.exe": "0xaa64",
+        "unic.exe": "0xaa64"
+      },
+      "cgo_enabled": false,
+      "diagnostic_sha256": {
+        "app/service/cmd/unicd/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+        "app/desktop/internal/desktopui/memory_research.go": "6ccbc14e300c2587b0e4abac39b4b81edc0fbc5e04c0795963d8ab65a1841684",
+        "app/desktop/cmd/unic-desktop/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab"
+      },
+      "instrumented_source_sha256": {
+        "app/desktop/internal/desktopui/live.go": "d831fc460681f416952caa1ac7fb386252ababb94fe70288887399521bc01d17",
+        "app/desktop/internal/desktopui/live_quick.go": "f5088b072ebd8fc44b758e4def321f228fee3ff9d9deb422fdbfbb5d7e49e98b",
+        "app/desktop/internal/desktopui/process_panel.go": "155fea3e4ad183befc63686427b7b1f2f63f326c3afa24bc52eaf205856f043a"
+      }
+    },
+    "amd64/control": {
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "dirty": true,
+      "control_projection_fix": true,
+      "source_manifest_sha256": "f777c6912a68b7a3d3e44c0eeb697e7702d1779f3b22729af9658ea356ec2343",
+      "changed_product_source_sha256": {
+        "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3",
+        "app/desktop/internal/desktopui/live_images.go": "ccc6a919b33978e3bd05837c5d3291747c6db17c416ba89f31bbe22c12e061b2"
+      },
+      "arch": "amd64",
+      "go": "go version go1.27.3 darwin/arm64",
+      "race": false,
+      "build_flags": [
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w",
+        "desktop: -tags desktop_e2e -H windowsgui"
+      ],
+      "binary_sha256": {
+        "helper.exe": "7d9144b99feebcea47bf75a608f58500122ac2f7860a06fd5a49630b2308298d",
+        "unicd.exe": "575e6a092220e057dbd0548b3484d5bad5b99332909ba7b24e87b4db16c2915d",
+        "unic-desktop.exe": "ae901f34edba1fef3b543cf003fc3688673b51c9b904de397cc525c0fad6c38b",
+        "unic.exe": "9f1d5082dd4b07b6f58d0113357a1b4d069976396cf3edbb087b51f0ca3a87f6"
+      },
+      "pe_machine": {
+        "helper.exe": "0x8664",
+        "unicd.exe": "0x8664",
+        "unic-desktop.exe": "0x8664",
+        "unic.exe": "0x8664"
+      },
+      "cgo_enabled": false,
+      "diagnostic_sha256": {
+        "app/service/cmd/unicd/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+        "app/desktop/internal/desktopui/memory_research.go": "6ccbc14e300c2587b0e4abac39b4b81edc0fbc5e04c0795963d8ab65a1841684",
+        "app/desktop/cmd/unic-desktop/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab"
+      },
+      "instrumented_source_sha256": {
+        "app/desktop/internal/desktopui/live.go": "d831fc460681f416952caa1ac7fb386252ababb94fe70288887399521bc01d17",
+        "app/desktop/internal/desktopui/live_quick.go": "f5088b072ebd8fc44b758e4def321f228fee3ff9d9deb422fdbfbb5d7e49e98b",
+        "app/desktop/internal/desktopui/process_panel.go": "155fea3e4ad183befc63686427b7b1f2f63f326c3afa24bc52eaf205856f043a"
+      }
+    },
+    "amd64/candidate": {
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "dirty": " M app/desktop/e2e/CASES.md\n M app/desktop/e2e/cases/desktop-native-processes.txtar\n M app/desktop/e2e/native_processes_test.go\n M app/desktop/internal/desktopui/acceptance_images_test.go\n M app/desktop/internal/desktopui/live_images.go\n M app/desktop/internal/desktopui/quick_panel_model.go\n M docs/architecture/desktop-runtime.md\n?? docs/exec/quick-panel-memory.md\n?? tools/research/quick-panel-memory/\n",
+      "control_projection_fix": false,
+      "source_manifest_sha256": "7726222eec648f9aafad0db27fdc11c928ce8fba96160a5d686456a88954b0bd",
+      "changed_product_source_sha256": {
+        "app/desktop/internal/desktopui/live_images.go": "ea76a1f3cb6dd3e07eb0cad68e6c4adc3810f33dec3ead2312372c64608a5da2",
+        "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3"
+      },
+      "arch": "amd64",
+      "go": "go version go1.27.3 darwin/arm64",
+      "race": false,
+      "build_flags": [
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w",
+        "desktop: -tags desktop_e2e -H windowsgui"
+      ],
+      "binary_sha256": {
+        "helper.exe": "7d9144b99feebcea47bf75a608f58500122ac2f7860a06fd5a49630b2308298d",
+        "unicd.exe": "575e6a092220e057dbd0548b3484d5bad5b99332909ba7b24e87b4db16c2915d",
+        "unic-desktop.exe": "ad6ec34063e53b937134fe803acd9b31d097971a05ae0e76e7e6ca5466ab1804",
+        "unic.exe": "9f1d5082dd4b07b6f58d0113357a1b4d069976396cf3edbb087b51f0ca3a87f6"
+      },
+      "pe_machine": {
+        "helper.exe": "0x8664",
+        "unicd.exe": "0x8664",
+        "unic-desktop.exe": "0x8664",
+        "unic.exe": "0x8664"
+      },
+      "cgo_enabled": false,
+      "diagnostic_sha256": {
+        "app/service/cmd/unicd/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+        "app/desktop/internal/desktopui/memory_research.go": "6ccbc14e300c2587b0e4abac39b4b81edc0fbc5e04c0795963d8ab65a1841684",
+        "app/desktop/cmd/unic-desktop/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab"
+      },
+      "instrumented_source_sha256": {
+        "app/desktop/internal/desktopui/live.go": "d831fc460681f416952caa1ac7fb386252ababb94fe70288887399521bc01d17",
+        "app/desktop/internal/desktopui/live_quick.go": "f5088b072ebd8fc44b758e4def321f228fee3ff9d9deb422fdbfbb5d7e49e98b",
+        "app/desktop/internal/desktopui/process_panel.go": "155fea3e4ad183befc63686427b7b1f2f63f326c3afa24bc52eaf205856f043a"
+      }
+    }
+  },
+  "runs": [
+    {
+      "run": "qp-final-arm64-images-images-1-control",
+      "build": "arm64/control",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 22450176,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5583523840
+          },
+          "exe": "C:\\qm4685fd\\bin\\unic-desktop.exe",
+          "pid": 7816,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:18:00.3936807Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 117309440,
+            "mappedCommitted": 140787712,
+            "imageCommitted": 222527488,
+            "reserved": 5613785088
+          },
+          "exe": "C:\\qm4685fd\\bin\\unic-desktop.exe",
+          "pid": 5972,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:18:00.5211279Z"
+        },
+        "service": {
+          "pid": 7932,
+          "exe": "C:\\qm4685fd\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:17:49.5269597Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 76857344,
+            "mappedCommitted": 68423680,
+            "imageCommitted": 214233088,
+            "reserved": 5650571264
+          },
+          "exe": "C:\\qm4685fd\\bin\\unic-desktop.exe",
+          "pid": 2208,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:18:13.2303502Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 126.909,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 68.8045,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 645.8331000000001,
+          "at": 1795173493067,
+          "originalReadyMillis": 549,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 120.3648,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 989.1777000000001,
+          "at": 1795173537138,
+          "originalReadyMillis": 554,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 58.0627,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 573.2808,
+          "at": 1795173554068,
+          "originalReadyMillis": 308,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 77.83760000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 668.5634,
+          "at": 1795173571033,
+          "originalReadyMillis": 314,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 57.5728,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 544.9171,
+          "at": 1795173588050,
+          "originalReadyMillis": 275,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 358,
+          "observedReadyMillis": 437.745,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 290,
+          "observedReadyMillis": 319.91310000000004,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 308,
+          "observedReadyMillis": 376.8358,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "dfeb52227667b317d0375580df509730401903a9a9db939015e0ed3197a2f30d"
+    },
+    {
+      "run": "qp-final-arm64-images-images-1-candidate",
+      "build": "arm64/candidate",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 23920640,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5582053376
+          },
+          "exe": "C:\\qmb7be99\\bin\\unic-desktop.exe",
+          "pid": 5092,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:20:45.4052331Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 106586112,
+            "mappedCommitted": 140787712,
+            "imageCommitted": 222527488,
+            "reserved": 5623984128
+          },
+          "exe": "C:\\qmb7be99\\bin\\unic-desktop.exe",
+          "pid": 12016,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:20:45.5435762Z"
+        },
+        "service": {
+          "pid": 5440,
+          "exe": "C:\\qmb7be99\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:20:36.4844854Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 76206080,
+            "mappedCommitted": 68423680,
+            "imageCommitted": 214233088,
+            "reserved": 5649125376
+          },
+          "exe": "C:\\qmb7be99\\bin\\unic-desktop.exe",
+          "pid": 11524,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:20:58.1331163Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 109.1678,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 78.0813,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 758.8755,
+          "at": 1795173657948,
+          "originalReadyMillis": 637,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 75.75240000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 711.5539,
+          "at": 1795173703653,
+          "originalReadyMillis": 365,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 103.8669,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 915.2239000000001,
+          "at": 1795173721130,
+          "originalReadyMillis": 507,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 143.9144,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 926.0654000000001,
+          "at": 1795173738552,
+          "originalReadyMillis": 341,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 202.9249,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2858.1820000000002,
+          "at": 1795173756068,
+          "originalReadyMillis": 1100,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 411,
+          "observedReadyMillis": 463.3401,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 409,
+          "observedReadyMillis": 481.8014,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 323,
+          "observedReadyMillis": 353.91270000000003,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "83a3270a5755f31b188c1bd03b8831b3f5e0faeddfec7942a9f62f419c474390"
+    },
+    {
+      "run": "qp-final-arm64-images-images-2-candidate",
+      "build": "arm64/candidate",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 22667264,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5585412096
+          },
+          "exe": "C:\\qm7ba0f4\\bin\\unic-desktop.exe",
+          "pid": 6160,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:24:01.5790473Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 105910272,
+            "mappedCommitted": 103235584,
+            "imageCommitted": 222527488,
+            "reserved": 5608407040
+          },
+          "exe": "C:\\qm7ba0f4\\bin\\unic-desktop.exe",
+          "pid": 12224,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:24:01.8003328Z"
+        },
+        "service": {
+          "pid": 7748,
+          "exe": "C:\\qm7ba0f4\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:23:43.4990842Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 76001280,
+            "mappedCommitted": 68423680,
+            "imageCommitted": 214233088,
+            "reserved": 5649330176
+          },
+          "exe": "C:\\qm7ba0f4\\bin\\unic-desktop.exe",
+          "pid": 11492,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:24:15.9150945Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 216.8393,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 120.00500000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1080.777,
+          "at": 1795173855706,
+          "originalReadyMillis": 960,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 94.7176,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 833.5335,
+          "at": 1795173901183,
+          "originalReadyMillis": 437,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 120.95370000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1230.2399,
+          "at": 1795173918582,
+          "originalReadyMillis": 555,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 90.22710000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 951.2978,
+          "at": 1795173936276,
+          "originalReadyMillis": 561,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 139.50300000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 866.0822000000001,
+          "at": 1795173953786,
+          "originalReadyMillis": 433,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 394,
+          "observedReadyMillis": 440.97920000000005,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 252,
+          "observedReadyMillis": 303.2782,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 450,
+          "observedReadyMillis": 512.3349000000001,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "1a22f831ae38c4b3c2484e5c13be18f07a8cc0626fcb2351c83ecb3edc64e785"
+    },
+    {
+      "run": "qp-final-arm64-images-images-2-control",
+      "build": "arm64/control",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 22159360,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5585920000
+          },
+          "exe": "C:\\qmb4e9c8\\bin\\unic-desktop.exe",
+          "pid": 11304,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:26:53.0630558Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 123793408,
+            "mappedCommitted": 140787712,
+            "imageCommitted": 222527488,
+            "reserved": 5615427584
+          },
+          "exe": "C:\\qmb4e9c8\\bin\\unic-desktop.exe",
+          "pid": 6824,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:26:53.3189376Z"
+        },
+        "service": {
+          "pid": 11384,
+          "exe": "C:\\qmb4e9c8\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:26:43.5187221Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 76013568,
+            "mappedCommitted": 68423680,
+            "imageCommitted": 214233088,
+            "reserved": 5645385728
+          },
+          "exe": "C:\\qmb4e9c8\\bin\\unic-desktop.exe",
+          "pid": 5832,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:27:06.8316066Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 146.7844,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 99.3371,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 892.1932,
+          "at": 1795174026635,
+          "originalReadyMillis": 815,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 110.6829,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1293.7754,
+          "at": 1795174071971,
+          "originalReadyMillis": 706,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 80.3665,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 846.2668,
+          "at": 1795174089908,
+          "originalReadyMillis": 436,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 185.4819,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1708.7989,
+          "at": 1795174107437,
+          "originalReadyMillis": 592,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 159.6429,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 962.5774,
+          "at": 1795174125704,
+          "originalReadyMillis": 457,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 359,
+          "observedReadyMillis": 397.72880000000004,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 281,
+          "observedReadyMillis": 331.8449,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 383,
+          "observedReadyMillis": 420.90500000000003,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "3227644ac1c89235e369ae0d46952b0fcad4b1651da040b6e62872ab99984480"
+    },
+    {
+      "run": "qp-final-arm64-images-images-3-control",
+      "build": "arm64/control",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 22528000,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5585543168
+          },
+          "exe": "C:\\qm2bfa10\\bin\\unic-desktop.exe",
+          "pid": 5096,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:29:46.8185564Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 111300608,
+            "mappedCommitted": 103235584,
+            "imageCommitted": 222527488,
+            "reserved": 5615599616
+          },
+          "exe": "C:\\qm2bfa10\\bin\\unic-desktop.exe",
+          "pid": 4932,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:29:46.9375298Z"
+        },
+        "service": {
+          "pid": 4060,
+          "exe": "C:\\qm2bfa10\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:29:36.6453104Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 83488768,
+            "mappedCommitted": 68423680,
+            "imageCommitted": 214233088,
+            "reserved": 5627162624
+          },
+          "exe": "C:\\qm2bfa10\\bin\\unic-desktop.exe",
+          "pid": 4908,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:29:59.5730405Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 201.08440000000002,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 115.69770000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1015.9908,
+          "at": 1795174199383,
+          "originalReadyMillis": 903,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 208.9635,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 936.8299000000001,
+          "at": 1795174244638,
+          "originalReadyMillis": 438,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 93.5745,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 920.7426,
+          "at": 1795174262934,
+          "originalReadyMillis": 389,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 146.263,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 835.577,
+          "at": 1795174280211,
+          "originalReadyMillis": 386,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 130.165,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1086.1647,
+          "at": 1795174297565,
+          "originalReadyMillis": 576,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 431,
+          "observedReadyMillis": 461.6145,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 268,
+          "observedReadyMillis": 283.6139,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 215,
+          "observedReadyMillis": 238.729,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "88d528bd92a62fab02af74599eaa77e0109616dde32044c9041689c19dc5226e"
+    },
+    {
+      "run": "qp-final-arm64-images-images-3-candidate",
+      "build": "arm64/candidate",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 21454848,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5584527360
+          },
+          "exe": "C:\\qm7d2ea1\\bin\\unic-desktop.exe",
+          "pid": 8288,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:32:39.6136162Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 105652224,
+            "mappedCommitted": 103235584,
+            "imageCommitted": 222527488,
+            "reserved": 5625442304
+          },
+          "exe": "C:\\qm7d2ea1\\bin\\unic-desktop.exe",
+          "pid": 4540,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:32:39.8830900Z"
+        },
+        "service": {
+          "pid": 12032,
+          "exe": "C:\\qm7d2ea1\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:32:29.1311370Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 82534400,
+            "mappedCommitted": 68423680,
+            "imageCommitted": 214233088,
+            "reserved": 5634408448
+          },
+          "exe": "C:\\qm7d2ea1\\bin\\unic-desktop.exe",
+          "pid": 7860,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:32:53.0986028Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 124.78240000000001,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 91.056,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1040.8758,
+          "at": 1795174372898,
+          "originalReadyMillis": 901,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 80.1564,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 848.4692,
+          "at": 1795174418542,
+          "originalReadyMillis": 462,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 94.03110000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 769.7714000000001,
+          "at": 1795174435856,
+          "originalReadyMillis": 412,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 118.9792,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 871.7672,
+          "at": 1795174453191,
+          "originalReadyMillis": 429,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 89.7463,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 673.4937,
+          "at": 1795174470677,
+          "originalReadyMillis": 338,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 306,
+          "observedReadyMillis": 328.5183,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 262,
+          "observedReadyMillis": 294.8772,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 441,
+          "observedReadyMillis": 468.4228,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "ffd5d2ca1513cdaa362c19316656cee603959ba2b9b81c51bb0241449e8e5048"
+    },
+    {
+      "run": "qp-final-amd64-images-images-1-control",
+      "build": "amd64/control",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 45367296,
+            "mappedCommitted": 14532608,
+            "imageCommitted": 171180032,
+            "reserved": 14225915904
+          },
+          "exe": "C:\\qm4c04f4\\bin\\unic-desktop.exe",
+          "pid": 1632,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:35:34.4590155Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 135049216,
+            "mappedCommitted": 108883968,
+            "imageCommitted": 220704768,
+            "reserved": 14256406528
+          },
+          "exe": "C:\\qm4c04f4\\bin\\unic-desktop.exe",
+          "pid": 10900,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:35:35.1433552Z"
+        },
+        "service": {
+          "pid": 13788,
+          "exe": "C:\\qm4c04f4\\bin\\unicd.exe",
+          "sha256": "575E6A092220E057DBD0548B3484D5BAD5B99332909BA7B24E87B4DB16C2915D",
+          "start": "2026-11-20T11:35:22.5212516Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 100954112,
+            "mappedCommitted": 74076160,
+            "imageCommitted": 220704768,
+            "reserved": 14299168768
+          },
+          "exe": "C:\\qm4c04f4\\bin\\unic-desktop.exe",
+          "pid": 9496,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:35:52.2908901Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 318.6646,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 159.9986,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2564.2002,
+          "at": 1795174551425,
+          "originalReadyMillis": 2123,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 487.9759,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2358.565,
+          "at": 1795174599688,
+          "originalReadyMillis": 1272,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 117.0815,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2552.1150000000002,
+          "at": 1795174619347,
+          "originalReadyMillis": 1283,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 261.6893,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2001.1076,
+          "at": 1795174639122,
+          "originalReadyMillis": 1276,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 97.3653,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1714.1368,
+          "at": 1795174657951,
+          "originalReadyMillis": 1174,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 420,
+          "observedReadyMillis": 476.67580000000004,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 357,
+          "observedReadyMillis": 358.7656,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 351,
+          "observedReadyMillis": 419.4329,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "98d81d296de792a7e9928d4690547db008cd668452c1acc1f27877109d8ae290"
+    },
+    {
+      "run": "qp-final-amd64-images-images-1-candidate",
+      "build": "amd64/candidate",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 44814336,
+            "mappedCommitted": 14614528,
+            "imageCommitted": 171180032,
+            "reserved": 14223835136
+          },
+          "exe": "C:\\qmb40c84\\bin\\unic-desktop.exe",
+          "pid": 2908,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:38:43.1393197Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 137138176,
+            "mappedCommitted": 108969984,
+            "imageCommitted": 220704768,
+            "reserved": 14257930240
+          },
+          "exe": "C:\\qmb40c84\\bin\\unic-desktop.exe",
+          "pid": 2724,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:38:43.9737624Z"
+        },
+        "service": {
+          "pid": 312,
+          "exe": "C:\\qmb40c84\\bin\\unicd.exe",
+          "sha256": "575E6A092220E057DBD0548B3484D5BAD5B99332909BA7B24E87B4DB16C2915D",
+          "start": "2026-11-20T11:38:29.4553079Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 101617664,
+            "mappedCommitted": 74153984,
+            "imageCommitted": 220704768,
+            "reserved": 14302969856
+          },
+          "exe": "C:\\qmb40c84\\bin\\unic-desktop.exe",
+          "pid": 10196,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:39:01.4629561Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 262.27250000000004,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 231.51760000000002,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2767.6031000000003,
+          "at": 1795174740367,
+          "originalReadyMillis": 2253,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 469.88730000000004,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2182.0885000000003,
+          "at": 1795174789005,
+          "originalReadyMillis": 1132,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 140.4386,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2346.0634,
+          "at": 1795174808129,
+          "originalReadyMillis": 1191,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 160.0806,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2419.4062,
+          "at": 1795174827487,
+          "originalReadyMillis": 1402,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 106.52990000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2380.3457000000003,
+          "at": 1795174846924,
+          "originalReadyMillis": 1265,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 737,
+          "observedReadyMillis": 802.5008,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 965,
+          "observedReadyMillis": 1020.8299000000001,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 386,
+          "observedReadyMillis": 427.4789,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "cb6b4d24abb8a87d81a29d9f81e6594d4fc86eb1b49323a0570505ab75ba182f"
+    },
+    {
+      "run": "qp-final-amd64-images-images-2-candidate",
+      "build": "amd64/candidate",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 45428736,
+            "mappedCommitted": 14614528,
+            "imageCommitted": 171180032,
+            "reserved": 14227423232
+          },
+          "exe": "C:\\qm2c9761\\bin\\unic-desktop.exe",
+          "pid": 10856,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:42:00.8927571Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 136810496,
+            "mappedCommitted": 108969984,
+            "imageCommitted": 220704768,
+            "reserved": 14257995776
+          },
+          "exe": "C:\\qm2c9761\\bin\\unic-desktop.exe",
+          "pid": 14256,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:42:01.5849051Z"
+        },
+        "service": {
+          "pid": 12212,
+          "exe": "C:\\qm2c9761\\bin\\unicd.exe",
+          "sha256": "575E6A092220E057DBD0548B3484D5BAD5B99332909BA7B24E87B4DB16C2915D",
+          "start": "2026-11-20T11:41:44.3182792Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 100941824,
+            "mappedCommitted": 74158080,
+            "imageCommitted": 220704768,
+            "reserved": 14299185152
+          },
+          "exe": "C:\\qm2c9761\\bin\\unic-desktop.exe",
+          "pid": 10028,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:42:18.2907098Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 577.4823,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 143.41,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2608.9738,
+          "at": 1795174937470,
+          "originalReadyMillis": 2131,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 108.7564,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2525.4004,
+          "at": 1795174984857,
+          "originalReadyMillis": 1323,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 153.4411,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2240.9609,
+          "at": 1795175003517,
+          "originalReadyMillis": 1120,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 117.9025,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2205.4253,
+          "at": 1795175022947,
+          "originalReadyMillis": 1234,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 129.35590000000002,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2295.7017,
+          "at": 1795175041982,
+          "originalReadyMillis": 1207,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 709,
+          "observedReadyMillis": 735.6747,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 356,
+          "observedReadyMillis": 378.2634,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 327,
+          "observedReadyMillis": 354.1426,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "bde35519427556a79e4f35eed52e9bff97c69b08a8033c66e6b94e33787c3ee4"
+    },
+    {
+      "run": "qp-final-amd64-images-images-2-control",
+      "build": "amd64/control",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 45244416,
+            "mappedCommitted": 14614528,
+            "imageCommitted": 171180032,
+            "reserved": 14226026496
+          },
+          "exe": "C:\\qm056b95\\bin\\unic-desktop.exe",
+          "pid": 11820,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:45:08.1009452Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 136015872,
+            "mappedCommitted": 108974080,
+            "imageCommitted": 220704768,
+            "reserved": 14255566848
+          },
+          "exe": "C:\\qm056b95\\bin\\unic-desktop.exe",
+          "pid": 13120,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:45:08.9843705Z"
+        },
+        "service": {
+          "pid": 7600,
+          "exe": "C:\\qm056b95\\bin\\unicd.exe",
+          "sha256": "575E6A092220E057DBD0548B3484D5BAD5B99332909BA7B24E87B4DB16C2915D",
+          "start": "2026-11-20T11:44:54.4538667Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 103333888,
+            "mappedCommitted": 74158080,
+            "imageCommitted": 220704768,
+            "reserved": 14303879168
+          },
+          "exe": "C:\\qm056b95\\bin\\unic-desktop.exe",
+          "pid": 7320,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:45:24.9504857Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 270.5752,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 119.5609,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2598.6657,
+          "at": 1795175124133,
+          "originalReadyMillis": 2225,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 161.47660000000002,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2418.1695,
+          "at": 1795175172373,
+          "originalReadyMillis": 1203,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 158.12990000000002,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2852.7823000000003,
+          "at": 1795175191708,
+          "originalReadyMillis": 1566,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 119.8836,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2323.474,
+          "at": 1795175211775,
+          "originalReadyMillis": 1271,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 106.661,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2200.1983,
+          "at": 1795175231059,
+          "originalReadyMillis": 1145,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 444,
+          "observedReadyMillis": 457.5192,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 451,
+          "observedReadyMillis": 490.41130000000004,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 365,
+          "observedReadyMillis": 379.0627,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "c335b3527c4f427a56e803fb5523f10a8837cac8d72037a9d9a705313b02a047"
+    },
+    {
+      "run": "qp-final-amd64-images-images-3-control",
+      "build": "amd64/control",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 44806144,
+            "mappedCommitted": 14614528,
+            "imageCommitted": 171180032,
+            "reserved": 14224113664
+          },
+          "exe": "C:\\qmeb6082\\bin\\unic-desktop.exe",
+          "pid": 13756,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:48:16.6051793Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 134615040,
+            "mappedCommitted": 108969984,
+            "imageCommitted": 220704768,
+            "reserved": 14256840704
+          },
+          "exe": "C:\\qmeb6082\\bin\\unic-desktop.exe",
+          "pid": 11968,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:48:17.2389303Z"
+        },
+        "service": {
+          "pid": 6988,
+          "exe": "C:\\qmeb6082\\bin\\unicd.exe",
+          "sha256": "575E6A092220E057DBD0548B3484D5BAD5B99332909BA7B24E87B4DB16C2915D",
+          "start": "2026-11-20T11:48:03.5363739Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 102076416,
+            "mappedCommitted": 74158080,
+            "imageCommitted": 220704768,
+            "reserved": 14300680192
+          },
+          "exe": "C:\\qmeb6082\\bin\\unic-desktop.exe",
+          "pid": 10892,
+          "sha256": "AE901F34EDBA1FEF3B543CF003FC3688673B51C9B904DE397CC525C0FAD6C38B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:48:33.0113590Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 284.8623,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 151.3257,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2663.3756000000003,
+          "at": 1795175312217,
+          "originalReadyMillis": 2233,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 108.8863,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2475.2185,
+          "at": 1795175360661,
+          "originalReadyMillis": 1256,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 119.6593,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2489.4368,
+          "at": 1795175380348,
+          "originalReadyMillis": 1298,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 144.983,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2369.3711000000003,
+          "at": 1795175399531,
+          "originalReadyMillis": 1339,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 151.6886,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2609.3641000000002,
+          "at": 1795175418726,
+          "originalReadyMillis": 1474,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 449,
+          "observedReadyMillis": 459.84220000000005,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 516,
+          "observedReadyMillis": 564.4435,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 390,
+          "observedReadyMillis": 426.34590000000003,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "572aff4b42aae490607c347ba61c5ebe6853fc974f6cd91ab6e98e3518c731e9"
+    },
+    {
+      "run": "qp-final-amd64-images-images-3-candidate",
+      "build": "amd64/candidate",
+      "dataset": "images",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 45510656,
+            "mappedCommitted": 14610432,
+            "imageCommitted": 171180032,
+            "reserved": 14225510400
+          },
+          "exe": "C:\\qmafe5bf\\bin\\unic-desktop.exe",
+          "pid": 9828,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:51:26.8150123Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 131895296,
+            "mappedCommitted": 108969984,
+            "imageCommitted": 220704768,
+            "reserved": 14248280064
+          },
+          "exe": "C:\\qmafe5bf\\bin\\unic-desktop.exe",
+          "pid": 5880,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:51:27.3200722Z"
+        },
+        "service": {
+          "pid": 13484,
+          "exe": "C:\\qmafe5bf\\bin\\unicd.exe",
+          "sha256": "575E6A092220E057DBD0548B3484D5BAD5B99332909BA7B24E87B4DB16C2915D",
+          "start": "2026-11-20T11:51:14.3897547Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 101728256,
+            "mappedCommitted": 74153984,
+            "imageCommitted": 220704768,
+            "reserved": 14305488896
+          },
+          "exe": "C:\\qmafe5bf\\bin\\unic-desktop.exe",
+          "pid": 2196,
+          "sha256": "AD6EC34063E53B937134FE803ACD9B31D097971A05AE0E76E7E6CA5466AB1804",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:51:43.9327487Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 411.59200000000004,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 236.6955,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2442.8888,
+          "at": 1795175503178,
+          "originalReadyMillis": 1939,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 156.5112,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2467.1337000000003,
+          "at": 1795175551856,
+          "originalReadyMillis": 1269,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 153.8382,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2821.1872000000003,
+          "at": 1795175571533,
+          "originalReadyMillis": 1472,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 124.0385,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 3042.5172000000002,
+          "at": 1795175592046,
+          "originalReadyMillis": 1596,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 156.8648,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 3485.4335,
+          "at": 1795175612267,
+          "originalReadyMillis": 1405,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 657,
+          "observedReadyMillis": 723.9189,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 387,
+          "observedReadyMillis": 398.5907,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 339,
+          "observedReadyMillis": 374.3204,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "d100a5a061290c3377710ea8393137aec7dbc2c350b6a13c3c4553c34eca4a0b"
+    },
+    {
+      "run": "qp-final-arm64-controls-empty-1-control",
+      "build": "arm64/control",
+      "dataset": "empty",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 21766144,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5584207872
+          },
+          "exe": "C:\\qm06bd61\\bin\\unic-desktop.exe",
+          "pid": 672,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:54:36.3607089Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 29523968,
+            "mappedCommitted": 103235584,
+            "imageCommitted": 222527488,
+            "reserved": 5644414976
+          },
+          "exe": "C:\\qm06bd61\\bin\\unic-desktop.exe",
+          "pid": 540,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:54:36.5886337Z"
+        },
+        "service": {
+          "pid": 12724,
+          "exe": "C:\\qm06bd61\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:54:30.4642344Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 33230848,
+            "mappedCommitted": 68472832,
+            "imageCommitted": 214233088,
+            "reserved": 5618176000
+          },
+          "exe": "C:\\qm06bd61\\bin\\unic-desktop.exe",
+          "pid": 1144,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:54:49.9521039Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 387.98420000000004,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 61.862300000000005,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 860.6500000000001,
+          "event": "panel-open",
+          "at": 1795175689729
+        },
+        {
+          "millis": 100.3301,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 920.5251000000001,
+          "event": "panel-open",
+          "at": 1795175734384
+        },
+        {
+          "millis": 83.09320000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 902.1275,
+          "event": "panel-open",
+          "at": 1795175751991
+        },
+        {
+          "millis": 117.9475,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 857.3597000000001,
+          "event": "panel-open",
+          "at": 1795175769772
+        },
+        {
+          "millis": 163.41070000000002,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 951.2375000000001,
+          "event": "panel-open",
+          "at": 1795175787226
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "11dd4883244b91dc52e2fa078b28de98a7418f34ddbcfab42d7bc52ceee8c6d1"
+    },
+    {
+      "run": "qp-final-arm64-controls-empty-1-candidate",
+      "build": "arm64/candidate",
+      "dataset": "empty",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 21577728,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5586493440
+          },
+          "exe": "C:\\qm7066a8\\bin\\unic-desktop.exe",
+          "pid": 2736,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:56:43.0977156Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 30056448,
+            "mappedCommitted": 140787712,
+            "imageCommitted": 222527488,
+            "reserved": 5648084992
+          },
+          "exe": "C:\\qm7066a8\\bin\\unic-desktop.exe",
+          "pid": 13908,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:56:43.2940543Z"
+        },
+        "service": {
+          "pid": 2780,
+          "exe": "C:\\qm7066a8\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:56:37.5516452Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 36937728,
+            "mappedCommitted": 68472832,
+            "imageCommitted": 214233088,
+            "reserved": 5608177664
+          },
+          "exe": "C:\\qm7066a8\\bin\\unic-desktop.exe",
+          "pid": 8060,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:56:55.6899110Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 141.9224,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 71.78450000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 1086.8371,
+          "event": "panel-open",
+          "at": 1795175815398
+        },
+        {
+          "millis": 73.058,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 785.793,
+          "event": "panel-open",
+          "at": 1795175859942
+        },
+        {
+          "millis": 229.316,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 1192.8166,
+          "event": "panel-open",
+          "at": 1795175877112
+        },
+        {
+          "millis": 104.44770000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 1010.5698000000001,
+          "event": "panel-open",
+          "at": 1795175897006
+        },
+        {
+          "millis": 79.1169,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 728.0335,
+          "event": "panel-open",
+          "at": 1795175914328
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "11dd4883244b91dc52e2fa078b28de98a7418f34ddbcfab42d7bc52ceee8c6d1"
+    },
+    {
+      "run": "qp-final-arm64-controls-text-1-control",
+      "build": "arm64/control",
+      "dataset": "text",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 22540288,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5585801216
+          },
+          "exe": "C:\\qma5e8a4\\bin\\unic-desktop.exe",
+          "pid": 8168,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:58:50.0739090Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 31420416,
+            "mappedCommitted": 140787712,
+            "imageCommitted": 222527488,
+            "reserved": 5646721024
+          },
+          "exe": "C:\\qma5e8a4\\bin\\unic-desktop.exe",
+          "pid": 9512,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:58:50.2459996Z"
+        },
+        "service": {
+          "pid": 3956,
+          "exe": "C:\\qma5e8a4\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T11:58:42.7789178Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 40304640,
+            "mappedCommitted": 65761280,
+            "imageCommitted": 214233088,
+            "reserved": 5617655808
+          },
+          "exe": "C:\\qma5e8a4\\bin\\unic-desktop.exe",
+          "pid": 5204,
+          "sha256": "7EE91F3FB2986274CF81F3E56B536171088C228F044DE95B8A9E639D9155929B",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T11:59:03.4563481Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 95.98790000000001,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 79.2204,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 941.0117,
+          "event": "panel-open",
+          "at": 1795175943253
+        },
+        {
+          "millis": 123.9666,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 933.3614,
+          "event": "panel-open",
+          "at": 1795175988036
+        },
+        {
+          "millis": 79.5363,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 824.4002,
+          "event": "panel-open",
+          "at": 1795176005902
+        },
+        {
+          "millis": 98.4535,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 977.4359000000001,
+          "event": "panel-open",
+          "at": 1795176023641
+        },
+        {
+          "millis": 66.4675,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 669.0543,
+          "event": "panel-open",
+          "at": 1795176041212
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "325a57701a05dbd97bfde516c803d0d72d2ad0cebfaf6f3ae25b41bcdc7ed919"
+    },
+    {
+      "run": "qp-final-arm64-controls-text-1-candidate",
+      "build": "arm64/candidate",
+      "dataset": "text",
+      "verdict": "PASS",
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 21319680,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165859328,
+            "reserved": 5584654336
+          },
+          "exe": "C:\\qmd337e0\\bin\\unic-desktop.exe",
+          "pid": 4052,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T12:01:00.1180588Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 32178176,
+            "mappedCommitted": 140787712,
+            "imageCommitted": 222527488,
+            "reserved": 5648322560
+          },
+          "exe": "C:\\qmd337e0\\bin\\unic-desktop.exe",
+          "pid": 524,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T12:01:00.3055228Z"
+        },
+        "service": {
+          "pid": 11200,
+          "exe": "C:\\qmd337e0\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T12:00:51.6997131Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 39329792,
+            "mappedCommitted": 65761280,
+            "imageCommitted": 214233088,
+            "reserved": 5616795648
+          },
+          "exe": "C:\\qmd337e0\\bin\\unic-desktop.exe",
+          "pid": 11708,
+          "sha256": "133136C75C3408F7C74966B28285998334D48F9C264E40F0B51B07038038EE1F",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T12:01:13.5616464Z"
+        }
+      },
+      "timing": [
+        {
+          "millis": 104.7329,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 68.5731,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 890.2163,
+          "event": "panel-open",
+          "at": 1795176073336
+        },
+        {
+          "millis": 91.9332,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 883.2136,
+          "event": "panel-open",
+          "at": 1795176118438
+        },
+        {
+          "millis": 78.7261,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 850.3341,
+          "event": "panel-open",
+          "at": 1795176136017
+        },
+        {
+          "millis": 114.967,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 854.6005,
+          "event": "panel-open",
+          "at": 1795176153503
+        },
+        {
+          "millis": 109.8955,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "searchObservedMillis": 874.7370000000001,
+          "event": "panel-open",
+          "at": 1795176170893
+        }
+      ],
+      "clipboardSequenceBefore": 40,
+      "clipboardSequenceAfter": 40,
+      "ownedProcessesRemaining": 0,
+      "seed_history_sha256": "204c339c1bfc647316d96d76aabb344aef4b6c525d8cd3ef090be6b82910dafc"
+    }
+  ]
+}

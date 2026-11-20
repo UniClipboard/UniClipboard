@@ -201,6 +201,9 @@ func (p *quickPanelState) applySearch() {
 	if p.live != nil {
 		p.rows = nil
 		p.entries = nil
+		// Reopening the same query can reuse an unchanged service revision.
+		// Rebuild the cleared projection even when no new result serial arrives.
+		p.live.seen = 0
 		p.previewID = ""
 		p.pendingPreview = ""
 		p.selected = 0

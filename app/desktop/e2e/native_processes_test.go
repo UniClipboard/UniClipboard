@@ -33,8 +33,11 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			if len(args) == 3 {
 				action = args[2]
 			}
-			if action != "capture" && action != "maximized" && action != "restored" && action != "minimized" {
-				return errors.New("physical input requires explicit owned-VM replay outside the isolated catalogue")
+			if action == "drag-resize" && os.Getenv("UNIC_DESKTOP_E2E_GUEST") == "" {
+				return errors.New("physical input requires an explicitly authorized disposable guest")
+			}
+			if action != "capture" && action != "maximized" && action != "restored" && action != "minimized" && action != "drag-resize" {
+				return errors.New("unknown owned-window action")
 			}
 			if action != "minimized" {
 				if err := s.call(s.ctx, "idle", map[string]any{"window": s.window, "timeout": 2000}, nil); err != nil {

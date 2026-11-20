@@ -41,6 +41,58 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			if err != nil {
 				return fmt.Errorf("owned Windows frame: %w: %s", err, output)
 			}
+			nodes, err := s.tree()
+			if err != nil {
+				return err
+			}
+			var toolbar *desktopNode
+			captions := map[string]desktopNode{}
+			for i := range nodes {
+				n := nodes[i]
+				if n.Role == "toolbar" && (n.Label == "全部" || n.Label == "通用" || n.Label == "插件") {
+					toolbar = &nodes[i]
+				}
+				if n.Role == "button" && (n.Label == "最小化" || n.Label == "最大化" || n.Label == "还原" || n.Label == "关闭") {
+					captions[n.Label] = n
+				}
+			}
+			if args[1] == "system" && len(captions) != 0 {
+				return errors.New("system mode contains duplicate custom caption controls")
+			}
+			if args[1] == "custom" {
+				if len(captions) != 3 {
+					return fmt.Errorf("custom caption controls=%d, want 3", len(captions))
+				}
+				if toolbar != nil {
+					b := toolbar.Bounds
+					if b.Y != 0 || b.Height != 48 {
+						return fmt.Errorf("extra native application caption row: %+v", b)
+					}
+					for label, n := range captions {
+						r := n.Bounds
+						if r.X < b.X || r.X+r.Width > b.X+b.Width+.1 || r.Y < b.Y || r.Y+r.Height > b.Y+b.Height+.1 {
+							return fmt.Errorf("native caption %s outside shared toolbar: %+v", label, r)
+						}
+					}
+					first := captions["最小化"].Bounds.X
+					for _, n := range nodes {
+						if n.Role != "search" && n.Label != "发送到设备" && n.Label != "切换置顶" && n.Label != "更多操作" {
+							continue
+						}
+						r := n.Bounds
+						if r.Y < b.Y+b.Height && (r.Width <= 0 || r.X+r.Width > first+.1) {
+							return fmt.Errorf("native history command overlaps caption: %s %+v", n.Label, r)
+						}
+					}
+				}
+			}
+			treeData, err := json.MarshalIndent(nodes, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(s.out, args[0]+"-tree.json"), treeData, 0600); err != nil {
+				return err
+			}
 			s.result.Screenshots = append(s.result.Screenshots, args[0]+".png")
 			s.result.Assertions = append(s.result.Assertions, "OS frame geometry and exact-window capture: "+args[0]+"; action="+action)
 			return nil

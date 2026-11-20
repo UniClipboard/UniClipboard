@@ -15,6 +15,7 @@ public static class ChromeOS {
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left,Top,Right,Bottom; }
  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X,Y; }
  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
+ [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h,int attribute,out RECT r,int size);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
@@ -96,13 +97,15 @@ $topInset = ($origin.Y-$rect.Top)*96.0/$dpi
 if ($Mode -eq 'system' -and $topInset -lt 23) { throw "Native title bar absent: top inset $topInset" }
 if ($Mode -eq 'custom' -and $topInset -gt 20) { throw "Unexpected native title row in custom mode: top inset $topInset" }
 $checks += "OS client/top-frame geometry confirms $Mode decoration"
+$captureRect = New-Object ChromeOS+RECT
+if ([ChromeOS]::DwmGetWindowAttribute($hwnd,9,[ref]$captureRect,16) -ne 0) { $captureRect = $rect }
 $screenLeft = [ChromeOS]::GetSystemMetrics(76); $screenTop = [ChromeOS]::GetSystemMetrics(77)
 $screenRight = $screenLeft+[ChromeOS]::GetSystemMetrics(78); $screenBottom = $screenTop+[ChromeOS]::GetSystemMetrics(79)
-if ($rect.Left -lt $screenLeft -or $rect.Top -lt $screenTop -or $rect.Right -gt $screenRight -or $rect.Bottom -gt $screenBottom) { throw 'Full owned window is outside the desktop; refusing a partial OS screenshot' }
-$bitmap = [Drawing.Bitmap]::new(($rect.Right-$rect.Left),($rect.Bottom-$rect.Top))
+if ($captureRect.Left -lt $screenLeft -or $captureRect.Top -lt $screenTop -or $captureRect.Right -gt $screenRight -or $captureRect.Bottom -gt $screenBottom) { throw 'Full owned window is outside the desktop; refusing a partial OS screenshot' }
+$bitmap = [Drawing.Bitmap]::new(($captureRect.Right-$captureRect.Left),($captureRect.Bottom-$captureRect.Top))
 $graphics = [Drawing.Graphics]::FromImage($bitmap)
 try {
- $graphics.CopyFromScreen($rect.Left,$rect.Top,0,0,$bitmap.Size)
+ $graphics.CopyFromScreen($captureRect.Left,$captureRect.Top,0,0,$bitmap.Size)
  $bitmap.Save($OutputBase+'.png',[Drawing.Imaging.ImageFormat]::Png)
 } finally { $graphics.Dispose(); $bitmap.Dispose() }
-@{pid=$OwnedProcessId;binary=$OwnedBinary;mode=$Mode;action=$Action;dpi=$dpi;window_rect=$rect;client_origin=$origin;top_inset_logical=$topInset;checks=$checks;capture='System.Drawing.CopyFromScreen of exact owned foreground window including OS decorations'} | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 ($OutputBase+'.json')
+@{pid=$OwnedProcessId;binary=$OwnedBinary;mode=$Mode;action=$Action;dpi=$dpi;window_rect=$rect;capture_rect=$captureRect;client_origin=$origin;top_inset_logical=$topInset;checks=$checks;capture='System.Drawing.CopyFromScreen of exact owned foreground window including OS decorations'} | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 ($OutputBase+'.json')

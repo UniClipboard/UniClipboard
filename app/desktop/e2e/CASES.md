@@ -4,6 +4,8 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 
 | Case | Mode | Purpose |
 |---|---|---|
+| [boardui-settings](#boardui-settings) | view | Exercise the independent BoardUI Go package through a complete settings form with real input, selection and dialog scopes. |
+| [boardui-states](#boardui-states) | view | Exercise fixed-source BoardUI component variants and narrow reduced-motion behavior through the public native API. |
 | [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
@@ -68,6 +70,34 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 | [window-chrome](#window-chrome) | view | Select native title bars on Linux/macOS and custom caption actions on Windows. |
+
+## boardui-settings
+
+BoardUI native settings composition
+
+Steps: Open the settings dialog, edit synthetic English/CJK/emoji text, validate empty input, choose Role by keyboard, dismiss nested overlays, traverse focus and save retained caller state across themes and scales.
+
+Expected: The complete operation chain passes with accessible field states, bounded overlays, restored focus and exercised software-rendered PNG checkpoints.
+
+Forbidden: Product UI replacement, system clipboard access, skipped states, static-image interaction substitutes, or software-view evidence labeled as native-window acceptance.
+
+```text
+acceptance boardui boardui-settings
+```
+
+## boardui-states
+
+BoardUI component states and narrow layout
+
+Steps: Drive the registered state matrix, inspect accessible values and geometry, and capture exercised states including the narrow-window select.
+
+Expected: Required variant and state assertions pass and each exercised view emits screenshots with explicit source and renderer scope.
+
+Forbidden: Unsupported states silently counted as delivered, altered reference source, lost focus, unbounded popup geometry, or software-view images reported as OS accessibility proof.
+
+```text
+acceptance boardui boardui-states
+```
 
 ## builtin-plugin-policy
 

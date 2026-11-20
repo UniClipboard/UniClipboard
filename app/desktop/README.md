@@ -243,3 +243,10 @@ Built-in Text, Images, Files and Links tags use the selected interface language.
 ## Tray icon style
 
 Open Settings > General > Tray icon to choose Default (the glyph) or Classic cat. The default is the glyph, matching v1. Selection saves to `desktop.tray_icon` and applies immediately. The CLI equivalent is `unic config set desktop.tray_icon '"cat"'` or `unic config set desktop.tray_icon '"glyph"'`. Direct TOML edits also apply while Desktop runs. Invalid values retain the previous valid configuration. The tray is available while a lightweight GUI session is open; closing GUI leaves only unicd. See [Desktop configuration](../../docs/architecture/desktop-runtime.md#application-and-tray-icons).
+
+### Independent BoardUI native demo
+
+The separate `boardui-demo` entry exercises the first native BoardUI component
+slice with synthetic form data. It does not replace the production UI Kit or
+connect to the service. See the [architecture boundary](../../docs/architecture/overview.md#native-boardui-first-slice)
+and [component contract](../../docs/contracts/boardui-native-contract.md).

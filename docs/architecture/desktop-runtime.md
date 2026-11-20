@@ -382,3 +382,12 @@ pending for CLI initialization, including custom sources outside default
 discovery. Only a verified complete import publishes completion. Desktop
 welcome/skip and history navigation do not publish CLI completion. See the
 [initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
+
+## Independent component acceptance
+
+The standalone native BoardUI package and `boardui-demo` use synthetic local
+form state. They do not create service, GUI, panel or tray product roles and
+do not read Desktop runtime configuration. The canonical Desktop runner exposes
+`boardui-settings` and `boardui-states` as software-view cases. Their real-React
+comparison tooling is separate from the production program. See the
+[native BoardUI contract](../contracts/boardui-native-contract.md).

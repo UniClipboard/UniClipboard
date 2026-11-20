@@ -256,3 +256,19 @@ preserves that intent. Reopening the same data directory resumes setup rather
 than starting history implicitly. Explicit history entry publishes Desktop setup
 completion. This navigation receipt is separate from the CLI's explicit
 [migration initialization](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
+
+## Native BoardUI first slice
+
+`app/desktop/boardui` is an independent native mygo package for Button, Input,
+Select and a bounded Dialog derived from the fixed public MIT BoardUI Settings
+Modal shell. It includes source-generated theme/type/shape resources and a small
+licensed font/icon set. `app/desktop/cmd/boardui-demo` opens an isolated synthetic
+settings form. Production GUI, quick panel and the existing three-skin UI Kit do
+not import this package. Core Engine and UI-free services remain independent.
+
+The package contract and platform acceptance limits are defined in the
+[native BoardUI contract](../contracts/boardui-native-contract.md). The canonical
+Desktop runner exposes `boardui-settings` and `boardui-states` software-view cases.
+These cases do not establish native-window, OS input-method or Windows memory
+acceptance. The [package guide](../../app/desktop/boardui/README.md) documents the
+demo and the separate real-React comparison tooling.

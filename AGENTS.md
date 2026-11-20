@@ -58,6 +58,8 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 ### 接口契约（`docs/contracts/`）
 
+- [Native BoardUI component contract](docs/contracts/boardui-native-contract.md): independent mygo first slice, source identity, caller-owned state, native primitives and acceptance boundaries.
+
 - [Directory content contract](docs/contracts/directory-contract.md): deferred directory references, explicit snapshots, portable manifests, file-policy grouping, resource bounds, receive ownership and platform acceptance limits.
 
 - [设备与后端关联契约](docs/contracts/device-contract.md)：统一设备、身份验证、候选/配对、实例关联审批、设备列表与全路径撤销；已实现并有测试；对象存储路径与 macOS 界面未做，密码学协议见 [identity-protocol](docs/contracts/identity-protocol.md)。

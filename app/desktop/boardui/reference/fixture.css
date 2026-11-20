@@ -1,0 +1,7 @@
+@import './upstream/styles/globals.css';
+@source './upstream/components';
+@source './fixture.tsx';
+@theme static { --font-inter: 'BoardUI Inter'; }
+@font-face { font-family: 'BoardUI Inter'; src: url('/Inter.ttf') format('truetype'); font-weight:100 900; font-style:normal; font-display:block; }
+html,body,#root { width:100%; height:100%; margin:0; }
+body { font-family:'BoardUI Inter',sans-serif; -webkit-font-smoothing:antialiased; }

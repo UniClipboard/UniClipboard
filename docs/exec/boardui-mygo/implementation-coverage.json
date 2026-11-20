@@ -1,0 +1,768 @@
+{
+  "source": "ec5c5eb3e29c2441be63b9422cd54f411ef23466",
+  "note": "Implementation coverage is separate from the immutable research inventory. Dialog is a new native interface derived from Settings Modal shell. No full-library completion claimed.",
+  "items": [
+    {
+      "id": "agent-chat",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "agent-log",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "agent-thinking",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "composer-loader",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "button",
+      "research_tier": "free-pinned",
+      "implementation": "FIRST_SLICE",
+      "scope": "See native contract and E2E; only exposed APIs are claimed."
+    },
+    {
+      "id": "button-group",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "close-button",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "icon-button",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "link-button",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "social-button",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "orders-chart-card",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "revenue-chart-card",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "checkbox",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "checkbox-card",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "radio",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "radio-card",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "segmented-control",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "slider",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "switch",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "switch-card",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "tabs",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "theme-toggle",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "date-picker",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "date-range-picker",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "meeting-scheduler",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "announcement",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "avatar",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "badge",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "chip",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "divider",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "important-alerts-card",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "kbd",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "patient-info-card",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "stat-cards",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "status-dot",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "agent-runtime",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "chevrons",
+      "research_tier": "free-pinned",
+      "implementation": "PARTIAL_FOUNDATION",
+      "scope": "Only source-derived resources required by the first slice; no full foundation API claim."
+    },
+    {
+      "id": "cx",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "direction",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "directional-icon",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "globals",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "logo",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "rules",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "scroll-direction",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "template-copy",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "theme",
+      "research_tier": "free-pinned",
+      "implementation": "PARTIAL_FOUNDATION",
+      "scope": "Only source-derived resources required by the first slice; no full foundation API claim."
+    },
+    {
+      "id": "typography",
+      "research_tier": "free-pinned",
+      "implementation": "PARTIAL_FOUNDATION",
+      "scope": "Only source-derived resources required by the first slice; no full foundation API claim."
+    },
+    {
+      "id": "use-count-up",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "use-dismiss-on-outside-press",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "app-shell",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "breadcrumb",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "carousel",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "pagination",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "sidebar",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "tree-view",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "dropdown",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "notification",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "notification-center",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "select",
+      "research_tier": "free-pinned",
+      "implementation": "FIRST_SLICE",
+      "scope": "See native contract and E2E; only exposed APIs are claimed."
+    },
+    {
+      "id": "settings-modal",
+      "research_tier": "free-pinned",
+      "implementation": "DERIVED_SHELL_ONLY",
+      "scope": "Bounded Dialog/settings form, not the full multi-page Settings Modal application."
+    },
+    {
+      "id": "tooltip",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "data-grid",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "data-table",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "table",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "auth-card",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "input",
+      "research_tier": "free-pinned",
+      "implementation": "FIRST_SLICE",
+      "scope": "See native contract and E2E; only exposed APIs are claimed."
+    },
+    {
+      "id": "input-otp",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "textarea",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "file-upload",
+      "research_tier": "free-pinned",
+      "implementation": "NOT_IMPLEMENTED",
+      "scope": ""
+    },
+    {
+      "id": "color-picker",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "tag-group",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "date-calendar",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "meter",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "progress",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "skeleton",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "spinner",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "accordion",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "command-palette",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "context-menu",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "drawer",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "modal",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "popover",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "toast",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "combobox",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "number-field",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "search-field",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "time-field",
+      "research_tier": "free-skill-only",
+      "implementation": "EXCLUDED_UNVERIFIED",
+      "scope": "Source not in the fixed MIT export."
+    },
+    {
+      "id": "agent-avatar",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "agent-creator",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "agent-limits-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "agent-progress",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "composer",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "composer-attachments",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "composer-panel",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "multi-agent-chat",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "project-board",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "questionnaire",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "task-list",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "web-search",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "activity-rings-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "area-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "bar-list-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "combo-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "contributions-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "earnings-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "funnel-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "heatmap-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "line-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "radar-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "radial-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "sankey-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "scatter-chart-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "sleep-score-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "stage-bars-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "steps-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "calendar",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "most-active-days-card",
+      "research_tier": "pro",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-ai-chat",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-ai-image-generation",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-ai-profile",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-finance",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-home-dashboard",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-hr",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-marketing",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-medical-profile",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-multi-agent-chat",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    },
+    {
+      "id": "template-project-board",
+      "research_tier": "pro-template",
+      "implementation": "EXCLUDED_PRO",
+      "scope": "No source fetched or implemented."
+    }
+  ]
+}

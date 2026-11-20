@@ -4,6 +4,7 @@
 
 Worktree: `92fff632-8c13-466c-9df4-aa0259ab3116`.
 Branch: `fix/quick-panel-memory`.
+Implementation candidate: `9caec3a031f5ff195fdd7c6dce6464b4e21e476d` (local; delivery HOLD).
 Fetched origin/v2 baseline: `ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0`.
 
 GitHub metadata independently confirms that [Build CLI run 44713097523](https://github.com/UniClipboard/UniClipboard/actions/runs/44713097523)
@@ -232,7 +233,7 @@ programs, databases, source exports and raw logs are not submitted. No push, PR,
 merge, package installation or publication occurred.
 
 The proposed next step is to retire an idle hidden panel process after operations
-settle and let the tray recreate it. Clause 17 of the [quick-panel
+settle and let the tray recreate it. The shortcut/lifecycle paragraph of the [quick-panel
 contract](../contracts/desktop-quick-panel-contract.md) currently requires it to
 remain hidden between requests. A decision was requested before changing that
 contract. The contract and current role/window lifetimes remain unchanged here.

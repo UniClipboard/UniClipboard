@@ -44,11 +44,20 @@ remaining exact generation itself, including after a failed assertion.
 
 `native18` observed panel role status `visible=true` while its Win32 panel HWND
 was hidden. This is a product acceptance failure, not a missing role fixture.
-The subsequent product Show/Focus/Invalidate change requires a new full native
-run. Neither role status, successful driver parsing nor the short lightweight
-phase can replace actual visible-window and foreground assertions.
+Full01/Full02 then reproduced the service-only SW_HIDE process launch policy
+suppressing the first native display. Commit ce4a0a8 separates UI creation flags
+from daemon flags. Full04 passed native lifecycle/focus; its pre-paint crops did
+not establish rendered content. Full05 rendered its first panel but failed a
+later menu-foreground guard. Full06 passed all scenarios with tree/idle/compositor
+readiness and menu-foreground observation. Neither role status nor the short
+lightweight phase can replace those native assertions.
 
 Native tray discovery is observational first. A candidate must be unique and
 visible. A native menu must be bound to the task tray PID before any business
 menu item is clicked. Inability to prove ownership is a failed prerequisite,
 not permission to use role IPC as a substitute for tray activation.
+
+15. The native panel owns a visible foreground HWND but has no rendered search
+    field. A pre-paint crop must not count as a usable panel. Require the existing
+    automation tree search field, drain pending frames, and preserve both the
+    app-scoped frame and the native foreground crop for separate inspection.

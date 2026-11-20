@@ -5,7 +5,7 @@
 Worktree: `b973f49e-2d6a-498f-bde6-2774391245a4`.
 Branch: `fix/desktop-lightweight-processes`.
 Baseline: `173d362036ae4a746878306915c85bcdf7468751`, fetched from `origin/v2` on 2026-11-20.
-Original process implementation: `51ee83471`. Updated activation/close semantics: `213912f70`; last-valid-configuration close correction: `f25ea8c1c3af1edb72911a51d61f746c15baeb3d`. These changes are committed locally and have not been pushed. Acceptance manifests bind the exact source-file and executable SHA-256 values; the baseline HEAD alone does not identify the modified source.
+Original process implementation: `51ee83471`. Updated activation/close semantics: `213912f70`; last-valid-configuration close correction: `f25ea8c1c3af1edb72911a51d61f746c15baeb3d`. Windows first-display correction: `ce4a0a8cf07fc15b404f20352d08406286261c04`. These changes are committed locally and have not been pushed. Acceptance manifests bind the exact source-file and executable SHA-256 values; the baseline HEAD alone does not identify the modified source.
 
 The user's Windows x64 comparison artifact is `desktop-test-windows-amd64`, artifact `14596984031`, from [Build CLI run 44665561906](https://github.com/UniClipboard/UniClipboard/actions/runs/44665561906). The GitHub API reports the same baseline SHA above. An ARM64 Windows host must distinguish this x64 emulated artifact from a native ARM64 build.
 
@@ -49,7 +49,7 @@ the original HEAD alone does not identify their changes.
 | Native event-loop panel Copy and GUI recreation | PASS | `20261120T064152Z-86917464`; app-scoped windows and directory clipboard, not OS foreground or physical input |
 | Private macOS application-bundle entry matrix | PASS | `.build/macos-bundle-background-green-20261120/`; normal background native-path RED/GREEN plus manual/light/setup checks; OS visibility/focus NOT_RUN |
 | Existing Desktop/Engine checks | PASS | 782 existing tests with race across 82 packages; module verification and fixed lint passed |
-| Updated Windows native close semantics | NOT_RUN | Awaiting serial VM handoff. Earlier `native-18` reproduced a hidden initial quick-panel HWND despite a visible model; the corrected initial explicit Show/Focus still needs Windows replay |
+| Updated Windows native close semantics, tray and first-panel activation | PASS | Native ARM64 Full06 on exact clean product `ce4a0a8cf07fc15b404f20352d08406286261c04`; five scenarios, six native tray business clicks, GUI PID exit/recreation, same service PID/generation, Ctrl+Alt+V without GUI, independent rendered panel and Escape target restoration; cleanup PASS |
 
 See the [private-bundle receipt](macos-private-bundle-launch.md). These results
 separate process identities from app-scoped visibility and OS-native input.
@@ -92,10 +92,18 @@ Each canonical run freezes source, isolates profiles and synthetic content, and 
 
 ## Windows coordination
 
-The authorized Parallels VM is `32affa85-5174-4d5b-ab6b-903a06d7fa9b`, Windows 11 ARM64. Initial state was running, with shared clipboard enabled. A read-only identity check confirmed the OS and VM identity. The independent memory research task has first use of the VM. The earlier serial window used private task profiles and directory clipboard fixtures. It confirmed normal tray activation and the prior light reopen flow, but exposed the hidden initial panel window in `native-18`. That run failed; its task processes/profiles/stage were cleaned and the VM returned suspended. The user then updated lightweight-close semantics. Updated native acceptance remains pending a new serial handoff. No VM clipboard/sharing, installation or permission changes were made. Do not mix x64 emulation measurements with ARM64 native behavior.
+The authorized Parallels VM is `32affa85-5174-4d5b-ab6b-903a06d7fa9b`, Windows 11 ARM64. The memory research task completed and explicitly handed over the suspended guest. Full06 used ARM64 binaries built from clean product commit `ce4a0a8cf07fc15b404f20352d08406286261c04`. It did not use x64 emulation or the user's installed application. Private task profiles, synthetic content and the directory clipboard board isolated all runs. No VM clipboard/sharing, installation or permission changes were made.
+
+Full01/Full02 reproduced an invisible cold panel. Windows applies `STARTF_USESHOWWINDOW/SW_HIDE` to the first ShowWindow call. Role spawning had inherited the daemon launch policy. The correction uses console-free UI process creation without the service display override. The daemon retains its separate launch policy.
+
+Full04 passed lifecycle, native visibility and foreground checks, but its panel crops were taken before first paint. Full05 added the existing search-field tree, automation idle barrier, app frame and DwmFlush before native capture. Its first panel rendered correctly, but a later menu capture lost foreground; that whole run remains FAIL. Full06 added an observational menu-foreground wait, retained every ownership guard, and passed all five scenarios. Four native panel crops now show rendered controls. No unknown business input was replayed.
+
+Full06 records standalone S0 PID `5524`, owned-then-standalone S1 PID `4684`, and fresh owned S2 PID `6372`, each with kernel creation time and service generation. S0 survived GUI closes and Quit. S1 kept its PID/generation through lightweight release and later Quit. Fresh native Quit stopped S2. Normal GUI PID `10668` exited; the tray menu opened a new GUI PID `12012`. Tray PID `11084` and panel PID `9616` were distinct. Later lightweight closes ended every UI role. Driver cleanup then stopped only its own preserved S0/S1 generations.
+
+All task processes, profiles and the guest stage were removed. The VM returned to its handed-over `suspended` state. See the compact [updated receipt](baselines/desktop-lightweight-close-20261120/summary.json), [replay instructions](baselines/desktop-lightweight-close-20261120/README.md), and [checksums](baselines/desktop-lightweight-close-20261120/SHA256SUMS). Local native images and original receipts remain under `.build/windows-native-b973-v2/outer/guest-artifacts/full-06/`; source and binary staging is removed after validation.
 
 ## Remaining evidence
 
-Native Windows tray clicks, native global-hotkey delivery and actual target insertion are separate acceptance gates. Actual login credential/permission prompts and other-platform native input remain separate from compile/process receipts. No production publication, push, PR or merge is part of this task.
+Native Windows ARM64 tray clicks, global-hotkey delivery, rendered panel visibility and target focus restoration passed. Actual target insertion remains NOT_RUN. System clipboard, real paste, login execution/permission prompts, native x64 and formal installer replacement remain NOT_RUN. Official Desktop staging is BLOCKED by the existing accepted CLI lock; it requires a matching accepted CLI artifact, as recorded in the [lock receipt](baselines/desktop-cli-lock-20261120/README.md). No production publication, push, PR or merge is part of this task.
 
 A compact [identity and cleanup receipt](baselines/desktop-processes-20261120/summary.json), [replay script](baselines/desktop-processes-20261120/replay.sh) and [checksums](baselines/desktop-processes-20261120/SHA256SUMS) are retained without programs, source bundles, databases or raw logs.

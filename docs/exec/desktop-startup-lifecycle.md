@@ -55,6 +55,6 @@ macOS flat binaries cannot register a login item. The native API cannot preserve
 
 ## Verification record
 
-Current results belong to the canonical case receipt generated for the exact tested source. This document does not claim a new native Windows, macOS or Linux pass. The earlier service-lifecycle receipt covered primitive process ownership and file-backed login only. A later [D-group receipt](desktop-native-integration.md) records its own platform/source scope; it does not establish this process change.
+Current results belong to the canonical case receipt generated for the exact tested source. The [updated process receipt](desktop-process-lifecycle.md#windows-coordination) records Windows ARM64 native tray, hotkey, foreground, rendering and close/reopen acceptance. System clipboard, actual paste, login execution and other native platforms remain outside that pass. The earlier service-lifecycle receipt covered primitive process ownership and file-backed login only. A later [D-group receipt](desktop-native-integration.md) records its own platform/source scope; it does not establish this process change.
 
 Run `go run ./tools/docscheck` after architecture updates. Verification markers remain tied to committed source and do not imply native acceptance.

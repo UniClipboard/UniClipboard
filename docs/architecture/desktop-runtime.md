@@ -133,8 +133,9 @@ The revision tracks the latest observed disk document, including an invalid docu
 
 The saved file and runtime Engine state do not share a transaction.
 `apply_error` reports a saved configuration that the host could not apply.
-`restart_required` reports fields that need a restart, including `inbox` for the service
-and `desktop.mode` / `desktop.start_in_background` for the next desktop launch.
+`restart_required` reports fields that need a restart, including `inbox` for the service.
+`desktop.mode` applies to the next GUI close. `desktop.start_in_background` applies
+to normal-mode login startup. Neither field requires a restart flag or suppresses manual activation.
 The service only validates and stores desktop settings. It never registers a login item or opens a window.
 See [headless architecture](headless.md#desktop-startup-settings) for desktop ownership, actual login status and platform limits.
 An external editor does not share the daemon write mutex; a later external save remains authoritative through the file watcher.
@@ -297,7 +298,7 @@ Enter applies history through the existing IPC clipboard adapter, hides both win
 
 Generation cancellation prevents stale clipboard completions from sending input. Focus checks, held-key waits and input dispatch are bounded; errors never automatically replay input. External blur does not restore focus. Explicit Escape dismissal restores the original target only while unic still owns the foreground. Target names, IDs and clipboard fingerprints remain transient host state and never enter logs or analytics.
 
-macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication identity. Windows uses process/window identity and SendInput. Linux X11 uses checked XGB/XTest requests and EWMH activation. Wayland retains the mygo portal shortcut and Copy; automatic target capture/paste is explicitly unavailable. Native focus/input, permission flows, display-server policy and keyboard-layout acceptance remain unverified. See the [system contract](../contracts/desktop-quick-panel-contract.md) and [execution receipt](../exec/desktop-quick-panel-system.md).
+macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication identity. Windows uses process/window identity and SendInput. Linux X11 uses checked XGB/XTest requests and EWMH activation. Wayland retains the mygo portal shortcut and Copy; automatic target capture/paste is explicitly unavailable. Windows ARM64 native hotkey delivery, panel foreground ownership and Escape target restoration passed in the [process receipt](../exec/desktop-process-lifecycle.md). Actual paste, permission flows, other-platform display-server policy and keyboard-layout acceptance remain unverified. See the [system contract](../contracts/desktop-quick-panel-contract.md) and [execution receipt](../exec/desktop-quick-panel-system.md).
 
 ## Desktop acceptance entry
 

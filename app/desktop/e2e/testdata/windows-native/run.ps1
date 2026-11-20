@@ -151,6 +151,26 @@ function Find-Window($Bound,[string]$Title,[bool]$RequireForeground=$false){
     return $script:FoundWindow
 }
 function Capture-Owned([IntPtr]$Window,[int]$ExpectedPID,[string]$Name){
+    $bound=@($Handles|Where-Object{$_.pid -eq $ExpectedPID -and $_.role -eq 'quick-panel'})
+    if($bound.Count -eq 1){
+        $profile=$bound[0].profile
+        $endpoint=Join-Path $profile 'automation-panel.sock'
+        Wait-Until {
+            $windows=Invoke-Task $Helper @('rpc','--endpoint',$endpoint,'--method','windows') $profile|ConvertFrom-Json
+            $content=@($windows.windows|Where-Object{$_.Visible -and $_.Kind -eq 'content'})
+            if($content.Count -ne 1){return $false}
+            $script:PanelFrameParams=@{window=$content[0].ID}|ConvertTo-Json -Compress
+            $tree=Invoke-Task $Helper @('rpc','--endpoint',$endpoint,'--method','tree','--params',$script:PanelFrameParams) $profile|ConvertFrom-Json
+            Save-JSON ($Name+'-tree.json') $tree
+            return @($tree.nodes|Where-Object{$_.role -eq 'textField' -and $_.label -eq '搜索快捷面板'}).Count -eq 1
+        } 'rendered panel search field'
+        $idleParams=@{window=($script:PanelFrameParams|ConvertFrom-Json).window;timeout=5000}|ConvertTo-Json -Compress
+        $null=Invoke-Task $Helper @('rpc','--endpoint',$endpoint,'--method','idle','--params',$idleParams) $profile
+        $frame=Invoke-Task $Helper @('rpc','--endpoint',$endpoint,'--method','capture','--params',$script:PanelFrameParams) $profile|ConvertFrom-Json
+        [IO.File]::WriteAllBytes((Join-Path $ArtifactDir ($Name+'-app-frame.png')),[Convert]::FromBase64String($frame.png))
+        [UnicNativeB973]::FlushCompositor()
+        Event 'app-scoped-render-readiness' $Name @{window=($script:PanelFrameParams|ConvertFrom-Json).window;search_field=$true;native_visibility_checked_separately=$true}
+    }
     $method=[UnicNativeB973]::Capture($Window,$ExpectedPID,(Join-Path $ArtifactDir ($Name+'.png')))
     Event 'native-capture' $Name @{hwnd=$Window.ToInt64();pid=$ExpectedPID;dpi=[UnicNativeB973]::GetDpiForWindow($Window);method=$method}
 }
@@ -210,10 +230,10 @@ function Show-Overflow {
 }
 function Tray-Menu($Tray,[string]$ItemName,[string]$ReceiptName){
     Show-Overflow
-    $candidates=@(Tray-Candidates|Where-Object{($BeforeTrayIDs -notcontains ($_.GetRuntimeId()-join '.'))})
+    $candidates=@(Tray-Candidates)
     Save-JSON ($ReceiptName+'-tray-candidates.json') @($candidates|ForEach-Object{UIA-Record $_})
     if($candidates.Count -gt 1){throw 'Visible task tray candidate is ambiguous; no click delivered'}
-    $script:OverflowReopened=$false
+    $script:OverflowReopenAttempts=0
     Wait-Until {
         $script:NativeIcon=[UnicNativeB973]::TrayRect([int]$Tray.pid,[uint32]3015896799)
         if($script:NativeIcon.HResult -ne 0){return $false}
@@ -221,16 +241,16 @@ function Tray-Menu($Tray,[string]$ItemName,[string]$ReceiptName){
             $r=$_.Current.BoundingRectangle
             $_.Current.NativeWindowHandle -ne 0 -and [UnicNativeB973]::IsWindowVisible([IntPtr]$_.Current.NativeWindowHandle) -and $r.Left -le $script:NativeIcon.Left -and $r.Top -le $script:NativeIcon.Top -and $r.Right -ge $script:NativeIcon.Right -and $r.Bottom -ge $script:NativeIcon.Bottom
         })
-        $fresh=@(Tray-Candidates|Where-Object{($BeforeTrayIDs -notcontains ($_.GetRuntimeId()-join '.'))})
+        $fresh=@(Tray-Candidates|Where-Object{$r=$_.Current.BoundingRectangle;-not [double]::IsNaN($r.X) -and -not [double]::IsNaN($r.Y) -and [Math]::Abs($r.X-$script:NativeIcon.Left) -lt 3 -and [Math]::Abs($r.Y-$script:NativeIcon.Top) -lt 3})
         if($fresh.Count -gt 1){throw 'Task tray became ambiguous'}
         $openRoots=@(Tray-Roots|Where-Object{$_.Current.ClassName -eq 'TopLevelWindowForOverflowXamlIsland' -and [UnicNativeB973]::IsWindowVisible([IntPtr]$_.Current.NativeWindowHandle)})
-        if($fresh.Count -eq 0 -and $openRoots.Count -eq 0 -and -not $script:OverflowReopened){
-            $script:OverflowReopened=$true
-            Event 'native-observation' 'overflow observed closed after previous action; deliberately open again' $null
+        if($fresh.Count -eq 0 -and $openRoots.Count -eq 0 -and $script:OverflowReopenAttempts -lt 3){
+            $script:OverflowReopenAttempts++
+            Event 'native-observation' 'overflow observed closed; open from confirmed closed state' @{attempt=$script:OverflowReopenAttempts}
             Show-Overflow
             return $false
         }
-        Save-JSON ($ReceiptName+'-icon-stability.json') @{icon=$script:NativeIcon;candidates=@($fresh|ForEach-Object{UIA-Record $_});roots=@(Tray-Roots|ForEach-Object{UIA-Record $_});foreground_pid=[UnicNativeB973]::Owner([UnicNativeB973]::GetForegroundWindow())}
+        Save-JSON ($ReceiptName+'-icon-stability.json') @{icon=$script:NativeIcon;candidates=@($fresh|ForEach-Object{UIA-Record $_});all_exact_tooltip_candidates=@(Tray-Candidates|ForEach-Object{UIA-Record $_});roots=@(Tray-Roots|ForEach-Object{UIA-Record $_});foreground_pid=[UnicNativeB973]::Owner([UnicNativeB973]::GetForegroundWindow())}
         if($fresh.Count -ne 1 -or $script:VisibleRoots.Count -ne 1){return $false}
         $script:CandidateRect=$fresh[0].Current.BoundingRectangle
         return -not [double]::IsNaN($script:CandidateRect.X) -and -not [double]::IsNaN($script:CandidateRect.Y) -and [Math]::Abs($script:CandidateRect.X-$script:NativeIcon.Left) -lt 3 -and [Math]::Abs($script:CandidateRect.Y-$script:NativeIcon.Top) -lt 3 -and $script:CandidateRect.Width -gt 0 -and $script:CandidateRect.Height -gt 0
@@ -267,6 +287,7 @@ function Tray-Menu($Tray,[string]$ItemName,[string]$ReceiptName){
             $script:MenuItem=$items[0];return $true
         };return $false
     } ('owned native menu '+$ItemName) 8
+    Wait-Until {return [UnicNativeB973]::Owner([UnicNativeB973]::GetForegroundWindow()) -eq $Tray.pid} 'owned native menu foreground' 8
     Capture-Owned $script:MenuWindow $Tray.pid ($ReceiptName+'-menu')
     $item=UIA-Record $script:MenuItem
     if($Tray.process.HasExited -or [UnicNativeB973]::Owner($script:MenuWindow) -ne $Tray.pid -or [UnicNativeB973]::Owner([UnicNativeB973]::GetForegroundWindow()) -ne $Tray.pid){throw 'Menu owner or foreground changed before click'}

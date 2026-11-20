@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 public static class UnicNativeB973 {
+    [DllImport("dwmapi.dll")] static extern int DwmFlush();
+    public static void FlushCompositor() { int result=DwmFlush();if(result!=0)Marshal.ThrowExceptionForHR(result); }
     [StructLayout(LayoutKind.Sequential)] public struct NOTIFYICONIDENTIFIER { public uint cbSize; public IntPtr hWnd; public uint uID; public Guid guidItem; }
     public sealed class TrayRectObservation { public int ProcessId; public uint IconId; public long Hwnd; public int HResult; public int Left,Top,Right,Bottom; public uint IdentifierSize; }
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd,StringBuilder value,int max);

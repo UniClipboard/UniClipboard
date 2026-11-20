@@ -64,8 +64,10 @@ It does not treat the fold button rectangle as the task icon. It does not guess
 other localized buttons or coordinates. If this guest exposes another UIA structure,
 stop and inspect that structure before updating the driver. Do not bypass guards.
 
-Run records candidates both before and after launching its tray. It chooses one
-new RuntimeId. Multiple candidates fail without a click. A right click opens a
+Run records candidates both before and after launching its tray. It binds one
+exact-tooltip candidate to the live task PID/HWND/icon-ID Shell rectangle.
+Explorer may reuse RuntimeIds; freshness is recorded but is not ownership.
+Multiple identity-matching candidates fail without a click. A right click opens a
 menu, but a business item is clicked only after its UIA process and native HWND
 both match the verified task tray PID. Every business menu action is a native
 mouse click. There is no IPC fallback for failed tray activation.
@@ -124,7 +126,8 @@ matrix uses three private profiles:
 2. Show the private WinForms target and verify its exact foreground HWND/PID and
    released modifiers. Inject Ctrl+Alt+V once while no GUI process exists.
    Require an independent panel process, a visible Win32 panel window and the
-   panel's actual foreground PID. App-scoped Escape then tests restoration of
+   panel's actual foreground PID. Wait for the search field in the app-scoped
+   accessibility tree and an idle rendered frame before capturing the native crop. App-scoped Escape then tests restoration of
    the same target focus. Escape is labeled separately from native key input.
 3. Use the actual native tray menu to reopen GUI. Save lightweight mode through
    production `unic config apply`. WM_CLOSE must now end all three UI roles and
@@ -145,13 +148,19 @@ The earlier `native18` run is RED evidence: first panel activation reported
 observation is distinct from the product's subsequent explicit Show/Focus/
 Invalidate change. The change does not turn native18 into a pass. The full phase
 must rerun the first-open native window assertions to establish new GREEN
-Windows evidence. The lightweight phase does not execute or establish this fix.
+Windows evidence. Full01/Full02 also reproduced the service-only SW_HIDE startup
+policy suppressing the first native panel display. UI role launch now suppresses
+console creation without applying that service display policy. The lightweight
+phase does not execute or establish this fix.
 
 The driver sets per-monitor DPI awareness for its own thread before UI queries,
 mouse actions and capture. It restores the previous context and cursor position.
 No system scaling setting changes. Screenshots use only a just-verified foreground owned
 window/menu rectangle, never the full desktop. Capture uses a cropped screen read,
-so a successful but black GPU PrintWindow response cannot masquerade as evidence. Every role records PID, Windows
+so a successful but black GPU PrintWindow response cannot masquerade as evidence. Panel captures first require the search field, the existing automation idle
+barrier and DwmFlush. The app-scoped frame and native foreground crop remain
+separate files. A visible HWND alone does not prove rendered content.
+Every role records PID, Windows
 process creation time, executable path/hash and authenticated role identity.
 The receipt distinguishes native mouse, WM_CLOSE, SendInput, production CLI,
 private role IPC and app-scoped automation. Input acknowledgement is not paste
@@ -162,7 +171,9 @@ timeline, `receipt.json` and `SHA256SUMS`. Successful cleanup removes private
 profiles. A cleanup failure retains the task root and fails the verdict. It
 never kills a PID to hide a failure or stops an unrelated process.
 
-This driver has not been executed merely because its Go helper cross-compiles.
+Cross-compilation alone does not establish driver acceptance. See the
+[process lifecycle receipt](../../../../../docs/exec/desktop-process-lifecycle.md)
+for executed runs and their limits.
 Windows PowerShell parsing, native UIA layout, menu ownership and input behavior
 must be verified in the handed-over guest. Record the actual OS, architecture,
 VM identity and pre/post VM state in the outer acceptance receipt.

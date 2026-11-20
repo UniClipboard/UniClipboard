@@ -7,6 +7,7 @@ paths:
   - app/desktop/internal/appicons
   - app/desktop/internal/appupdates
   - app/desktop/internal/lifecycle
+  - app/desktop/internal/desktopprocess
   - app/desktop/internal/setupflow
   - app/desktop/internal/setupui
   - app/desktop/e2e
@@ -39,16 +40,16 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: ea91a8f6693860dd3af2859222ca1f3c4b4ffe03
+verified: 19f410995f6db869b8595f59ca47df71b6348fd4
 ---
 # Desktop configuration and received files
 
 The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
-The normal desktop uses the production `desktopui` renderer with live service data.
+The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns the sole clipboard adapter, global shortcut, notifications, login intent and service-lifetime pipe. The quick panel runs in a third Desktop OS process and remains hidden between requests. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service; lightweight GUI close retires all Desktop roles and leaves only unicd.
 Fresh profiles show first-install setup and optional v1 migration before normal runtime startup. Completed setup and established v2 profiles open history directly. There is no recurring unlock flow. The marker, source detection and exclusive migration lifecycle are described in the [live desktop composition](overview.md#live-desktop-composition).
-Settings > Storage > Migrate from v1 reopens the migration flow. Desktop closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. It then persists a pending setup marker before showing migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
+Settings > Storage > Migrate from v1 reopens the migration flow. The GUI requests a serialized tray pause. The tray closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. The pause and pending setup marker form the migration admission barrier before the GUI shows migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
@@ -60,7 +61,7 @@ Settings > Plugins lists Tailcat sync, text tools and content classification. Pl
 
 Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes` backend policies. They apply immediately. The file permission covers files and entire directory snapshots, including empty trees. The automatic threshold uses the selected files' total byte count; explicit sends bypass only that threshold. Global synchronization permissions and automatic-directory intent remain on Settings > Sync. Tailcat stays assembled and cannot be independently disabled or uninstalled.
 
-Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after quitting and reopening Desktop, which restarts its owned service. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
+Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after restarting the service. Quitting and reopening Desktop restarts a tray-owned service. An independently started service requires a separate restart by its owner. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
 
 The three built-in plugins have no plugin-specific Schema fields. See the [execution receipt](../exec/desktop-builtin-plugin-settings.md) for built-in management evidence.
 
@@ -117,10 +118,10 @@ The [Desktop source application receipt](../exec/desktop-source-application.md) 
 
 | Key | Default | Effect |
 |---|---|---|
-| `desktop.mode` | `"normal"` | Next launch: normal desktop owns/restarts its service; lightweight leaves only a standalone service. |
-| `desktop.launch_at_login` | `false` | Running normal desktop applies login registration; actual OS status is displayed separately. |
+| `desktop.mode` | `"normal"` | Manual activation always opens the GUI. Normal GUI close keeps tray/service; lightweight GUI close leaves only unicd. Explicit background entry omits the GUI after setup. Lightweight login is service-only; normal login uses its background preference. |
+| `desktop.launch_at_login` | `false` | The running tray applies login registration; actual OS status is displayed separately. |
 | `desktop.tray_icon` | `"glyph"` | Immediately select `glyph` or `cat`; no restart required. |
-| `desktop.start_in_background` | `false` | Next normal launch: create the main window hidden while tray and clipboard integration run. |
+| `desktop.start_in_background` | `false` | Normal login startup only: true omits the GUI, false opens it. Manual activation always opens the GUI; explicit `--background` always omits it after setup. |
 | `sync.enabled` | `true` | Pause content sends and receives. Keep connections and local history. |
 | `sync.automatic` | `true` | Send new observed copies. Local history, manual sends, receives, and Actions remain independent. |
 | `sync.on_restore` | `false` | After a successful explicit history restore, dispatch the restored content once. |
@@ -153,8 +154,9 @@ The revision tracks the latest observed disk document, including an invalid docu
 
 The saved file and runtime Engine state do not share a transaction.
 `apply_error` reports a saved configuration that the host could not apply.
-`restart_required` reports fields that need a restart, including `inbox` for the service
-and `desktop.mode` / `desktop.start_in_background` for the next desktop launch.
+`restart_required` reports fields that need a restart, including `inbox` for the service.
+`desktop.mode` applies to the next GUI close. `desktop.start_in_background` applies
+to normal-mode login startup. Neither field requires a restart flag or suppresses manual activation.
 The service only validates and stores desktop settings. It never registers a login item or opens a window.
 See [headless architecture](headless.md#desktop-startup-settings) for desktop ownership, actual login status and platform limits.
 An external editor does not share the daemon write mutex; a later external save remains authoritative through the file watcher.
@@ -251,7 +253,8 @@ Cleanup does not enumerate unknown default-cache directories merely because thei
 
 - `internal/localconfig/manager.go`: serialized saves, raw-file revision, watcher, and restart status.
 - `app/service/cmd/unic/cli.go`: configuration commands and cache inventory.
-- `app/desktop/internal/lifecycle/service.go`: desktop launch policy (normal replaces a service, lightweight reuses a standalone one and refuses a desktop-owned or CLI-temporary service); process primitives are in `internal/servicelaunch`.
+- `app/desktop/internal/lifecycle/service.go`: tray acquisition policy (borrow a standalone service, start an owned service when absent, refuse another desktop owner or CLI-temporary service); process primitives are in `internal/servicelaunch`.
+- `app/desktop/internal/desktopprocess`: profile-scoped kernel role locks, private activation IPC and OS peer executable verification.
 - `app/service/cmd/unic/history.go`: explicit history restore, Action execution and retry key.
 - `app/service/cmd/unic/requirements.go`, `session.go`, `sendwait.go`: command requirements, generation-bound service usage and own-operation completion.
 - `engine/restore.go`: token-authorized resend without a new commit.
@@ -308,15 +311,15 @@ Unsupported OS paste and semantic classifications remain separate from retrieval
 
 ## Quick-panel system interaction
 
-Desktop owns a target session in `app/desktop/internal/quickpanel`. The host captures the external foreground target before showing the existing history window and nonfocusable preview. Global shortcuts, tray activation and the Settings button use the same opening path. Repeated activation while visible dismisses the panel without replacing the target.
+The tray captures the external foreground target before starting or activating the independent quick-panel process. It sends the ephemeral target through private Desktop IPC. The quick-panel process owns the target session in `app/desktop/internal/quickpanel`, its history window and its nonfocusable preview. Global shortcuts, tray activation and the Settings button use the same opening path. Repeated activation while visible dismisses the panel without replacing the target.
 
-`desktop.quick_panel_shortcut` defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Settings offers both platform bindings, Ctrl plus backtick, Command/Ctrl+Shift+Space and disabled. The existing revision-checked configuration persists the choice. The host registers a replacement before removing the working registration and exposes requested/effective disagreement with an explicit retry. Lightweight mode has no graphical shortcut host.
+`desktop.quick_panel_shortcut` defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Settings offers both platform bindings, Ctrl plus backtick, Command/Ctrl+Shift+Space and disabled. The existing revision-checked configuration persists the choice. The host registers a replacement before removing the working registration and exposes requested/effective disagreement with an explicit retry. Normal mode keeps the tray shortcut available after GUI close. Lightweight GUI close and lightweight background/login entry leave only unicd, so no shortcut or clipboard adapter remains.
 
-Enter applies history through the existing IPC clipboard adapter, hides both windows, restores the captured target and sends one paste chord. Shift+Enter uses the existing plain-text Action and applies its resulting history item. Command/Ctrl+Enter waits 150 ms after input dispatch and reopens the panel only if the target still owns focus. Copy does not inject keyboard input. A tracked clipboard wrapper verifies exactly one adapter write and compares content plus file paths before paste.
+Enter applies history through the existing IPC clipboard adapter, hides both windows, restores the captured target and sends one paste chord. Shift+Enter uses the existing plain-text Action and applies its resulting history item. Command/Ctrl+Enter waits 150 ms after input dispatch and reopens the panel only if the target still owns focus. Copy does not inject keyboard input. The panel delegates application and clipboard-match checks to the tray through private IPC. The tray's tracked clipboard wrapper verifies exactly one adapter write and compares content plus file paths before paste. The panel never acquires another adapter.
 
 Generation cancellation prevents stale clipboard completions from sending input. Focus checks, held-key waits and input dispatch are bounded; errors never automatically replay input. External blur does not restore focus. Explicit Escape dismissal restores the original target only while unic still owns the foreground. Target names, IDs and clipboard fingerprints remain transient host state and never enter logs or analytics.
 
-macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication identity. Windows uses process/window identity and SendInput. Linux X11 uses checked XGB/XTest requests and EWMH activation. Wayland retains the mygo portal shortcut and Copy; automatic target capture/paste is explicitly unavailable. Native focus/input, permission flows, display-server policy and keyboard-layout acceptance remain unverified. See the [system contract](../contracts/desktop-quick-panel-contract.md) and [execution receipt](../exec/desktop-quick-panel-system.md).
+macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication identity. Windows uses process/window identity and SendInput. Linux X11 uses checked XGB/XTest requests and EWMH activation. Wayland retains the mygo portal shortcut and Copy; automatic target capture/paste is explicitly unavailable. Windows ARM64 native hotkey delivery, panel foreground ownership and Escape target restoration passed in the [process receipt](../exec/desktop-process-lifecycle.md). Actual paste, permission flows, other-platform display-server policy and keyboard-layout acceptance remain unverified. See the [system contract](../contracts/desktop-quick-panel-contract.md) and [execution receipt](../exec/desktop-quick-panel-system.md).
 
 ## Desktop acceptance entry
 
@@ -340,7 +343,7 @@ Before writing a prepared tree, the adapter rechecks the current clipboard again
 
 Desktop reuses the original v1 application assets in `app/desktop/internal/appicons`. The asset README records their source commit and SHA-256 digests. The main window, macOS Dock and About view share the embedded application PNG.
 
-Settings > General > Tray icon selects `glyph` (the v1 default, two offset rounded cards) or `cat` (the original cat alpha mask). The revision-checked configuration API persists `desktop.tray_icon`. The existing Desktop file watcher applies the saved preference immediately. `unic config set desktop.tray_icon '"cat"'` and direct TOML edits use the same validation and update path. Invalid values retain the previous valid configuration. Lightweight mode has no tray owner.
+Settings > General > Tray icon selects `glyph` (the v1 default, two offset rounded cards) or `cat` (the original cat alpha mask). The revision-checked configuration API persists `desktop.tray_icon`. The existing Desktop file watcher applies the saved preference immediately. `unic config set desktop.tray_icon '"cat"'` and direct TOML edits use the same validation and update path. Invalid values retain the previous valid configuration. The tray applies this preference while it runs. Normal GUI close retains the tray; lightweight GUI close removes it.
 
 `app/desktop/internal/trayicon` owns geometry, platform palettes and image publication. It uses mygo's existing SVG renderer for the v1 glyph paths and x/image for cat scaling. macOS uses a 44-pixel template with a centered 36-pixel glyph grid or 34-pixel cat source. Windows uses the system small-icon metric and mygo template contrast. Linux uses 22 pixels, explicit light/dark foreground colors and the v1 KDE/gsettings palette selection. Theme changes repaint the currently selected style; Linux also checks KDE configuration changes once per second until Desktop shutdown.
 

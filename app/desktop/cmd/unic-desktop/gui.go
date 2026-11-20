@@ -2,31 +2,24 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 
 	"runtime"
 
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/plugins/updater"
-	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/appicons"
-	"github.com/uniclipboard/unic/app/desktop/internal/appupdates"
-	"github.com/uniclipboard/unic/internal/releaseinfo"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/board"
-	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
-	"github.com/uniclipboard/unic/app/desktop/internal/memrelease"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -94,9 +87,9 @@ type gui struct {
 	historyBusy, historyLoaded  bool
 	historyTag                  string
 	cleanupUI                   cleanupUIState
-	login                       lifecycle.LoginRegistration
 	loginEnabled                bool
 	loginError                  string
+	shortcut                    shortcutStatus
 }
 
 // The E2E build overrides both initial and post-startup window dimensions.
@@ -112,91 +105,100 @@ func runGUI(settings *config.Manager) error {
 	if err != nil {
 		return err
 	}
-	g := &gui{c: c}
-
-	mygo.App.SetName(desktopAppName)
-	mygo.App.SetVersion(releaseinfo.Version + "-build." + releaseinfo.BuildNumber)
-	dataDir, err := paths.Dir()
-	if err != nil {
-		return err
-	}
-	mygo.App.SetPath(mygo.PathUserData, dataDir)
-	program, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	if appupdates.PublicKey != "" && appupdates.Owner(program) == "direct" {
-		mygo.Updater.SetSource(&appupdates.Source{Base: appupdates.FeedBase, Target: runtime.GOOS + "-" + runtime.GOARCH, Key: appupdates.PublicKey, Channel: func() string { return settings.Current().Desktop.UpdateChannel }})
-		mygo.Use(native.Plugin)
-		checkDesktopUpdates = updater.CheckForUpdates
-	}
-	if !mygo.App.RequestSingleInstanceLock() {
-		return nil // the running window comes forward
-	}
-	mygo.App.OnSecondInstance(func([]string, string) {
-		if g.win != nil {
-			g.win.Show()
-			g.win.Focus()
-		}
-	})
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	dir, err := paths.Dir()
 	if err != nil {
-		cancel()
 		return err
 	}
-	executable, err := lifecycle.Sibling()
+	socket, err := paths.Socket()
 	if err != nil {
-		cancel()
 		return err
 	}
+
 	flow, err := setupflow.Open(dir)
 	if err != nil {
-		cancel()
 		return err
 	}
-	session := &desktopSession{g: g, ctx: ctx, settings: settings, flow: flow, dir: dir, executable: executable}
-	defer session.close()
-	g.login = lifecycle.LoginRegistration{
-		Path:    filepath.Join(dir, "desktop-login.json"),
-		Enabled: mygo.App.OpenAtLogin,
-		SetEnabled: func(enabled bool) error {
-			// Native login items do not preserve custom shell profile overrides.
-			if enabled && (os.Getenv("UNIC_HOME") != "" || os.Getenv("UNIC_SOCK") != "") {
-				return errors.New("login startup requires the default profile")
-			}
-			return mygo.App.SetOpenAtLogin(enabled)
-		},
-	}
+	ctx, cancel := roleContext()
 	defer cancel()
-	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
-		// A code nobody is looking at should not stay usable.
-		if session.runtime != nil {
-			qctx, qcancel := context.WithTimeout(context.Background(), 2*time.Second)
-			_ = g.c.CancelCode(qctx)
-			qcancel()
-		}
-		cancel()
-	})
+	g := &gui{c: c}
+	session := &desktopSession{g: g, ctx: ctx, settings: settings, flow: flow, dir: dir}
+	closeOnly := false
+	forcedQuit := false
 	quitting := false
-	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) { session.requestQuit(e); quitting = !e.DefaultPrevented() })
-	mygo.App.OnWindowAllClosed(func() {})
-	showDesktop = func() {
+	ready := make(chan struct{})
+	handler := func(ctx context.Context, command string, raw json.RawMessage) (any, error) {
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		switch command {
+		case "status":
+			current, err := setupflow.Open(dir)
+			if err != nil {
+				return nil, err
+			}
+			return roleStatus{Ready: !current.Required(), SetupRequired: current.Required(), Visible: true}, nil
+		case "activate":
+			var action string
+			_ = json.Unmarshal(raw, &action)
+			mygo.RunOnMain(func() {
+				session.navigate(action)
+				if g.win != nil {
+					g.win.Show()
+					g.win.Focus()
+				}
+			})
+			return nil, nil
+		case "close", "quit":
+			return desktopprocess.ReplyAfter(nil, func() {
+				mygo.RunOnMain(func() { closeOnly = true; forcedQuit = command == "quit"; mygo.App.Quit() })
+			}), nil
+		default:
+			return nil, errors.New("unknown GUI command")
+		}
+	}
+	owner, err := desktopprocess.Acquire(ctx, dir, desktopprocess.GUI, handler)
+	if errors.Is(err, desktopprocess.ErrRunning) {
+		return desktopprocess.Call(ctx, dir, desktopprocess.GUI, "activate", nil, nil)
+	}
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = owner.Close()
+		if closeOnly && !forcedQuit {
+			notifyGUIClosed(dir)
+		}
+	}()
+	if _, err = launchDesktopRole(context.Background(), dir, socket, desktopprocess.Tray, "--background"); err != nil {
+		return err
+	}
+	configureNativeRole(dir, false)
+	defer session.close()
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		session.requestQuit(e)
+		quitting = !e.DefaultPrevented()
+		if !e.DefaultPrevented() && !closeOnly && ctx.Err() == nil {
+			quitCtx, quitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = desktopprocess.Call(quitCtx, dir, desktopprocess.Tray, "quit", nil, nil)
+			quitCancel()
+		}
+
+	})
+	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancel() })
+	mygo.App.OnWindowAllClosed(func() { mygo.App.Quit() })
+	mygo.App.OnActivate(func(bool) {
 		if g.win != nil {
 			g.win.Show()
 			g.win.Focus()
 		}
-	}
+	})
 	mygo.App.WhenReady(func() {
 		if runtime.GOOS == "darwin" {
-			if err := mygo.App.Dock.SetIcon(appicons.PNG); err != nil {
-				logHostFailure()
-			}
+			_ = mygo.App.Dock.SetIcon(appicons.PNG)
 		}
-		go func() { <-ctx.Done(); mygo.App.Quit() }()
-		updateTray := setupTray(ctx, settings.Current().Desktop)
-
-		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view), Hidden: !flow.Required() && settings.Current().Desktop.StartInBackground}
+		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(session.view)}
 		if uikit.DefaultSkin() == uikit.MacOS {
 			opts.TitleBarStyle = mygo.TitleBarHidden
 			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
@@ -206,43 +208,33 @@ func runGUI(settings *config.Manager) error {
 			opts.Width, opts.Height = 640, 560
 		}
 		g.win = mygo.NewWindow(opts)
-		memrelease.WhenHidden(g.win)
-		if err := g.win.SetIcon(appicons.PNG); err != nil {
-			logHostFailure()
-		}
+		_ = g.win.SetIcon(appicons.PNG)
+		g.win.OnClose(func(e *mygo.CloseEvent) {
+			if quitting {
+				return
+			}
+			e.PreventDefault()
+			closeOnly = true
+			mygo.App.Quit()
+		})
 		if flow.Required() {
 			session.showSetup(false)
 		} else {
 			session.start()
 		}
+		close(ready)
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {
 				mygo.RunOnMain(func() {
 					if session.setup != nil {
 						session.setup.SetLanguage(current.Desktop.Language)
 					}
-					if session.runtime != nil {
-						g.applyLoginSettings(current.Desktop.LaunchAtLogin, false)
-						session.runtime.screen.SetQuickPanelShortcut(current.Desktop.QuickPanelShortcut)
-					}
-					updateTray(current.Desktop)
 					g.win.Invalidate()
 				})
 			}
 		}
 		go func() { _ = settings.Watch(ctx) }()
-		g.win.OnClose(func(e *mygo.CloseEvent) {
-			if quitting {
-				return
-			}
-			if session.setup != nil || session.starting {
-				e.PreventDefault()
-				mygo.App.Quit()
-			} else if !quitting {
-				e.PreventDefault()
-				g.win.Hide()
-			}
-		})
+		go func() { <-ctx.Done(); mygo.App.Quit() }()
 	})
 	return mygo.App.Run()
 }

@@ -1,0 +1,32 @@
+{
+  "tested_merge_commit": "19f410995f6db869b8595f59ca47df71b6348fd4",
+  "merged_v2": "315896d7df3841cd2f56845c7decf70ee5f55a49",
+  "merge_conflict": "desktop-runtime.md verified marker only; both behavioral changes preserved",
+  "race": "PASS: TMPDIR=/private/tmp go test -race ./...",
+  "lint": "PASS: golangci-lint v2.15.0, Go1.27.3; 0 issues",
+  "canonical_process_runs": [
+    {
+      "run_id": "20261120T090145Z-e6e29405",
+      "status": "PASS",
+      "source_head": "19f410995f6db869b8595f59ca47df71b6348fd4",
+      "worktree_dirty": false,
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "manifest_sha256": "1e35ad8c7fbc9f8ce3e4a789156f531fd3c426eb55955cb6ae07877429cef697"
+    },
+    {
+      "run_id": "20261120T090226Z-b71bc5bd",
+      "status": "PASS",
+      "source_head": "19f410995f6db869b8595f59ca47df71b6348fd4",
+      "worktree_dirty": false,
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "manifest_sha256": "2ae10b0695a67a024661d86d5da95cf5296b49777e1f166112a912a46a302a93"
+    }
+  ],
+  "native_boundary": "Windows ARM64 Full06 remains bound to ce4a0a8; no claim of native replay of this merge",
+  "local_log_sha256": {
+    "pr-race-20261120.log": "afa7c615c82086abe114c1a0c7a76f1c22913508d8c412daa1e9e97aef2fccff",
+    "pr-lint-pinned-20261120.log": "59e76bcf0251f3312c0e1682fee9822182247d36198d2da1d43d50a737b3e848"
+  }
+}

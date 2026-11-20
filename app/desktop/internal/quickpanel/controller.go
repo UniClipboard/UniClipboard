@@ -43,11 +43,14 @@ type Platform interface {
 type Options struct {
 	Context   context.Context
 	Client    *api.Client
-	Clipboard *Clipboard
-	Platform  Platform
-	Dispatch  func(func())
-	Visible   func(bool)
-	Changed   func()
+	Clipboard interface {
+		Apply(context.Context, *api.Client, string, bool) (string, error)
+		Matches(string) bool
+	}
+	Platform Platform
+	Dispatch func(func())
+	Visible  func(bool)
+	Changed  func()
 }
 type Controller struct {
 	captureErr           error

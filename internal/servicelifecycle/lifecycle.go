@@ -16,6 +16,10 @@ import (
 // ExitDirectoryInUse lets the launcher wait for a retiring service without parsing errors.
 const ExitDirectoryInUse = 75
 
+// OwnerReleaseMarker is the only message accepted on an exclusive desktop
+// owner pipe. The writer must close the pipe after this exact message.
+const OwnerReleaseMarker = "unic-desktop-release-standalone-v1\n"
+
 // MaxLeases bounds simultaneous CLI usages of one service generation.
 const MaxLeases = 64
 
@@ -23,9 +27,9 @@ const MaxLeases = 64
 type Mode string
 
 const (
-	// ModeStandalone is started by the user. Clients borrow it and never stop it.
+	// ModeStandalone has no desktop owner. Clients borrow it and never stop it.
 	ModeStandalone Mode = "standalone"
-	// ModeDesktop is owned by the normal desktop through a parent pipe.
+	// ModeDesktop is owned by the desktop tray through an exclusive parent pipe.
 	ModeDesktop Mode = "desktop"
 	// ModeCLITemporary lives while at least one CLI lease is held.
 	ModeCLITemporary Mode = "cli-temporary"
@@ -48,13 +52,6 @@ type Instance struct {
 	// Leases counts live CLI usages. Retiring generations admit no new lease.
 	Leases   int  `json:"leases"`
 	Retiring bool `json:"retiring"`
-}
-
-// WatchOwner cancels the service when its exclusive parent pipe closes.
-// Only --desktop-owned uses stdin for this purpose. Standalone services ignore stdin.
-func WatchOwner(input io.Reader, cancel context.CancelFunc) {
-	_, _ = io.Copy(io.Discard, input)
-	cancel()
 }
 
 // Service is the authoritative lifecycle state of one generation.
@@ -81,6 +78,20 @@ func (s *Service) Info() Instance {
 	v := s.base
 	v.Leases, v.Retiring = len(s.leases), s.retiring
 	return v
+}
+
+// WatchOwner releases ownership only for one exact marker followed by EOF.
+// Every other EOF, read error or message retires the service. The inherited
+// anonymous pipe is the authority; no local API can request this transition.
+func (s *Service) WatchOwner(input io.Reader) {
+	raw, err := io.ReadAll(io.LimitReader(input, int64(len(OwnerReleaseMarker)+1)))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err == nil && string(raw) == OwnerReleaseMarker && s.base.Mode == ModeDesktop && !s.retiring {
+		s.base.Mode = ModeStandalone
+		return
+	}
+	s.retireLocked()
 }
 
 // WatchInitialOwner releases the launcher's claim when its pipe closes.
@@ -189,7 +200,9 @@ func (s *Service) Register(mux *http.ServeMux) {
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
-		s.cancel()
+		s.mu.Lock()
+		s.retireLocked()
+		s.mu.Unlock()
 	})
 	// A lease is the open response of this request. Its first line acknowledges admission.
 	// Closing the connection, including by process death, releases the lease.

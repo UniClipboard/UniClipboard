@@ -16,6 +16,7 @@ import (
 	"github.com/egoist/mygo"
 	_ "github.com/egoist/mygo/plugins/automation"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	"github.com/uniclipboard/unic/internal/testboard"
 )
@@ -23,7 +24,49 @@ import (
 func init() {
 	profile := os.Getenv("UNIC_DESKTOP_E2E_PROFILE")
 	canonical, err := filepath.EvalSymlinks(profile)
-	if err != nil || !filepath.IsAbs(profile) || canonical != profile || os.Getenv("UNIC_HOME") != profile || os.Getenv("MYGO_AUTOMATION") != filepath.Join(profile, "automation.sock") {
+	role := ""
+	control := false
+	for i, arg := range os.Args {
+		if arg == "--command" {
+			control = true
+		}
+		if arg == "--role" && i+1 < len(os.Args) {
+			role = os.Args[i+1]
+		}
+	}
+	expected := ""
+	switch role {
+	case "gui":
+		expected = filepath.Join(profile, "automation.sock")
+	case "quick-panel":
+		expected = filepath.Join(profile, "automation-panel.sock")
+	}
+	if control {
+		expected = ""
+	}
+	automationValid := os.Getenv("MYGO_AUTOMATION") == expected
+	roleEnvironment = func(role desktopprocess.Role, env []string) []string {
+		out := make([]string, 0, len(env))
+		for _, value := range env {
+			if !strings.HasPrefix(value, "MYGO_AUTOMATION=") {
+				out = append(out, value)
+			}
+		}
+		path := ""
+		if os.Getenv("UNIC_DESKTOP_E2E_PROCESS_FIXTURE") != "1" {
+			switch role {
+			case desktopprocess.GUI:
+				path = filepath.Join(profile, "automation.sock")
+			case desktopprocess.QuickPanel:
+				path = filepath.Join(profile, "automation-panel.sock")
+			}
+		}
+		return append(out, "MYGO_AUTOMATION="+path)
+	}
+	if os.Getenv("UNIC_DESKTOP_E2E_PROCESS_FIXTURE") == "1" {
+		automationValid = os.Getenv("MYGO_AUTOMATION") == ""
+	}
+	if err != nil || !filepath.IsAbs(profile) || canonical != profile || os.Getenv("UNIC_HOME") != profile || !automationValid {
 		panic("desktop_e2e requires its isolated canonical profile and automation socket")
 	}
 	if marker, err := os.ReadFile(filepath.Join(profile, "e2e-owner")); err != nil || string(marker) != "desktop-e2e" {

@@ -1,0 +1,26 @@
+# Case: Independent native Desktop windows and process lifetimes
+# Mode: native
+# Purpose: Verify independent GUI, quick-panel, tray and service processes through native windows with an isolated directory clipboard.
+# Steps:
+#   Record role identities; request the panel through tray IPC; copy real service history through the native panel; close the GUI process; reopen it through tray IPC and inspect the new process and window.
+# Expected:
+#   Every role has a distinct PID; panel Copy writes exact directory-board bytes; GUI close terminates its process; tray and service remain; tray IPC creates a new native GUI process with retained history.
+# Forbidden:
+#   System clipboard access, physical input, native tray-click claims, global shortcut claims, hidden resident GUI, shared role PIDs, missing screenshots or missing continuous sampled-window recording.
+
+start
+submit native-role-content 'Desktop independent native process copy'
+ui-wait listItem 'Desktop independent native process copy'
+role-checkpoint started
+screenshot main-started
+role-open-panel
+ui-wait button '历史：Desktop independent native process copy'
+screenshot independent-panel
+role-panel-copy
+board-equals 'Desktop independent native process copy'
+role-select-gui
+screenshot panel-copy-applied
+role-close-gui
+role-reopen-gui
+ui-wait listItem 'Desktop independent native process copy'
+screenshot recreated-gui

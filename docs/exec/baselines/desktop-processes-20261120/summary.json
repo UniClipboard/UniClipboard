@@ -1,0 +1,530 @@
+{
+  "implementation_commit": "51ee834715eeac002463cb3050d2296b33453201",
+  "tested_source_commit": "0840d7d10216f3c8d95684e7b8bf88243d2aa4ab",
+  "worktree": "b973f49e-2d6a-498f-bde6-2774391245a4",
+  "branch": "fix/desktop-lightweight-processes",
+  "native_macos": {
+    "run": "20261120T042240Z-024eba14",
+    "status": "PASS",
+    "snapshot_unchanged": true,
+    "private_cleanup": "PASS",
+    "manifest_sha256": "0ff56eaefd015936f55b7321d8ca600ca4df41b933637a75660d4377d761194d",
+    "source_index_sha256": "ad221658f566090fd6d6b22cf6f120b3791cace0bb96f47ffe998a70eb35129f",
+    "binary_sha256": {
+      "unicd": "6bb4c439a469664172fa1b020fc3a283f4e4e99b606aae2c106378aad14d1224",
+      "unic-desktop": "d5cfc292ee76b2a8f1d2adc31bd28cc8e0a0de538128bb42e8b2e96956a724e5"
+    },
+    "initial": {
+      "activation": "private role IPC; not a tray click or global shortcut",
+      "at": "2026-11-20T04:23:13.013231Z",
+      "clipboard": "directory fixture; not system clipboard",
+      "input": "application-scoped automation; not physical input",
+      "role_start_time_semantics": "role-acquisition timestamp; not kernel creation time",
+      "roles": {
+        "gui": {
+          "role": "gui",
+          "pid": 11282,
+          "started_at": "2026-11-20T04:23:02.717187Z",
+          "profile": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home",
+          "binary_path": "/private/tmp/de-hgkcmgwt/bin/unic-desktop",
+          "binary_sha256": "d5cfc292ee76b2a8f1d2adc31bd28cc8e0a0de538128bb42e8b2e96956a724e5"
+        },
+        "tray": {
+          "role": "tray",
+          "pid": 11295,
+          "started_at": "2026-11-20T04:23:02.917247Z",
+          "profile": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home",
+          "binary_path": "/private/tmp/de-hgkcmgwt/bin/unic-desktop",
+          "binary_sha256": "d5cfc292ee76b2a8f1d2adc31bd28cc8e0a0de538128bb42e8b2e96956a724e5"
+        }
+      },
+      "selected_automation_endpoint": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home/automation.sock",
+      "selected_window_id": 1,
+      "service": {
+        "id": "b2191399d69977ef52bc9515386e4cab",
+        "pid": 11296,
+        "directory": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home",
+        "mode": "desktop",
+        "started_at_ms": 1795148583940,
+        "leases": 0,
+        "retiring": false
+      }
+    },
+    "reopened": {
+      "activation": "private role IPC; not a tray click or global shortcut",
+      "at": "2026-11-20T04:23:37.697522Z",
+      "clipboard": "directory fixture; not system clipboard",
+      "input": "application-scoped automation; not physical input",
+      "role_start_time_semantics": "role-acquisition timestamp; not kernel creation time",
+      "roles": {
+        "gui": {
+          "role": "gui",
+          "pid": 15739,
+          "started_at": "2026-11-20T04:23:30.459251Z",
+          "profile": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home",
+          "binary_path": "/private/tmp/de-hgkcmgwt/bin/unic-desktop",
+          "binary_sha256": "d5cfc292ee76b2a8f1d2adc31bd28cc8e0a0de538128bb42e8b2e96956a724e5"
+        },
+        "quick-panel": {
+          "role": "quick-panel",
+          "pid": 13084,
+          "started_at": "2026-11-20T04:23:14.972514Z",
+          "profile": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home",
+          "binary_path": "/private/tmp/de-hgkcmgwt/bin/unic-desktop",
+          "binary_sha256": "d5cfc292ee76b2a8f1d2adc31bd28cc8e0a0de538128bb42e8b2e96956a724e5"
+        },
+        "tray": {
+          "role": "tray",
+          "pid": 11295,
+          "started_at": "2026-11-20T04:23:02.917247Z",
+          "profile": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home",
+          "binary_path": "/private/tmp/de-hgkcmgwt/bin/unic-desktop",
+          "binary_sha256": "d5cfc292ee76b2a8f1d2adc31bd28cc8e0a0de538128bb42e8b2e96956a724e5"
+        }
+      },
+      "selected_automation_endpoint": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home/automation.sock",
+      "selected_window_id": 1,
+      "service": {
+        "id": "b2191399d69977ef52bc9515386e4cab",
+        "pid": 11296,
+        "directory": "/private/tmp/de-hgkcmgwt/cases/desktop-native-processes/home",
+        "mode": "desktop",
+        "started_at_ms": 1795148583940,
+        "leases": 0,
+        "retiring": false
+      }
+    }
+  },
+  "windows": {
+    "status": "NOT_RUN",
+    "reason": "The authorized VM remains occupied by a separately authorized memory study; serial handoff was requested. No guest applications or settings changed by this task.",
+    "vm_id": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+    "os": "Windows 11 ARM64",
+    "observed_state": "running",
+    "x64_comparison_artifact": 14596984031,
+    "comparison_source": "173d362036ae4a746878306915c85bcdf7468751"
+  },
+  "native_tray_click": "NOT_RUN",
+  "native_global_shortcut": "NOT_RUN",
+  "cross_application_paste": "NOT_RUN",
+  "other_passes": {
+    "macos_history": "20261120T035221Z-656bf1c5",
+    "macos_setup_migration": "20261120T035346Z-ac653298",
+    "quick_panel_os_fixture": "20261120T035124Z-fe372394",
+    "legacy_service_primitives": "20261120T034257Z-03fce0ca",
+    "existing_race_tests": 197,
+    "cross_compile": [
+      "windows/amd64",
+      "windows/arm64",
+      "linux/amd64"
+    ]
+  },
+  "cleanup": {
+    "macos_task_processes": "PASS",
+    "task_profiles_and_source_snapshots": "PASS",
+    "guest_state": "unchanged by this task",
+    "personal_installation_history_clipboard": "not changed",
+    "temporary_cross_build_executables": "removed after hashing"
+  },
+  "not_pushed": true,
+  "processes": {
+    "arch": "arm64",
+    "binary_sha256": {
+      "unic": "d0d26d5e00d72cdfcf0e9cc6d57a535540166018b7f0ac7858149d2b2d8cad8c",
+      "unic-desktop": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680",
+      "unicd": "0892c2a913bd38fee15e670d7b6c16e9d51be0d8b15945e5b7cda850b37362b8"
+    },
+    "checks": [
+      "fresh lightweight launch shows setup in an independent GUI and starts the service only after explicit completion",
+      "tray refuses an active CLI-temporary generation without replacing or stopping it",
+      "saved lightweight launch retains a tray while reusing an independently running unicd generation",
+      "three GUI open/activate/close rounds create and terminate independent OS processes without disturbing tray or service",
+      "concurrent GUI activation has one owner; quick panel has a distinct persistent process and opens without GUI",
+      "tray-owned production adapter applies history with exact bytes and no extra history echo while GUI is absent",
+      "foreign profile and different executable installation cannot activate the tray",
+      "GUI and quick-panel crashes release role ownership and permit independent recreation",
+      "explicit Quit preserves an independently started service",
+      "saved normal mode opens GUI after full restart and retains history and settings",
+      "tray recovers a crashed owned service without replacing independent GUI and panel roles",
+      "tray crash closes its owned service pipe and restart reclaims the profile role lock",
+      "explicit Quit retires the tray-owned service and every owned graphical role"
+    ],
+    "cleanup": "PASS",
+    "fixture": "build-tagged nonvisual host, production role IPC and service",
+    "native_paste": "NOT_RUN",
+    "native_shortcut": "NOT_RUN",
+    "native_tray": "NOT_RUN",
+    "os": "darwin",
+    "race_detector": true,
+    "role_start_time_semantics": "IPC owner acquisition timestamp; not kernel process creation time",
+    "roles": [
+      {
+        "role": "tray",
+        "pid": 13061,
+        "started_at": "2026-11-20T04:23:11.299203Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/fresh",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 13063,
+        "started_at": "2026-11-20T04:23:11.681087Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/fresh",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 16629,
+        "started_at": "2026-11-20T04:23:35.851774Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 16822,
+        "started_at": "2026-11-20T04:23:38.559108Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 16822,
+        "started_at": "2026-11-20T04:23:38.559108Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 16629,
+        "started_at": "2026-11-20T04:23:35.851774Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 18472,
+        "started_at": "2026-11-20T04:23:47.877344Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 18472,
+        "started_at": "2026-11-20T04:23:47.877344Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 16629,
+        "started_at": "2026-11-20T04:23:35.851774Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 20187,
+        "started_at": "2026-11-20T04:23:56.987291Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 20187,
+        "started_at": "2026-11-20T04:23:56.987291Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 16629,
+        "started_at": "2026-11-20T04:23:35.851774Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 21168,
+        "started_at": "2026-11-20T04:24:06.242393Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "quick-panel",
+        "pid": 22031,
+        "started_at": "2026-11-20T04:24:09.078784Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "quick-panel",
+        "pid": 22031,
+        "started_at": "2026-11-20T04:24:09.078784Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "quick-panel",
+        "pid": 22031,
+        "started_at": "2026-11-20T04:24:09.078784Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 23892,
+        "started_at": "2026-11-20T04:24:24.572361Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 24761,
+        "started_at": "2026-11-20T04:24:27.466849Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 16629,
+        "started_at": "2026-11-20T04:23:35.851774Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "quick-panel",
+        "pid": 22031,
+        "started_at": "2026-11-20T04:24:09.078784Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "quick-panel",
+        "pid": 25641,
+        "started_at": "2026-11-20T04:24:34.184354Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 16629,
+        "started_at": "2026-11-20T04:23:35.851774Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 26522,
+        "started_at": "2026-11-20T04:24:39.541367Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 26524,
+        "started_at": "2026-11-20T04:24:39.851114Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 27465,
+        "started_at": "2026-11-20T04:24:45.895601Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 28343,
+        "started_at": "2026-11-20T04:24:51.122794Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "quick-panel",
+        "pid": 28432,
+        "started_at": "2026-11-20T04:24:53.92279Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 27465,
+        "started_at": "2026-11-20T04:24:45.895601Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 28343,
+        "started_at": "2026-11-20T04:24:51.122794Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "tray",
+        "pid": 30185,
+        "started_at": "2026-11-20T04:25:01.915236Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "gui",
+        "pid": 28343,
+        "started_at": "2026-11-20T04:24:51.122794Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      },
+      {
+        "role": "quick-panel",
+        "pid": 28432,
+        "started_at": "2026-11-20T04:24:53.92279Z",
+        "profile": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "binary_path": "/private/tmp/de-5imsyo5t/cases/desktop-processes/acceptance/bin/unic-desktop",
+        "binary_sha256": "f7f9c156d14a82fc2513980e15760bc80e0ab68f17d7fc739b6ab0181dff1680"
+      }
+    ],
+    "service_restart": "PASS: real owned unicd crash and replacement",
+    "services": [
+      {
+        "id": "2de9a8c60d8f539921202de47cf29d8b",
+        "pid": 13152,
+        "directory": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/fresh",
+        "mode": "desktop",
+        "started_at_ms": 1795148596210,
+        "leases": 0,
+        "retiring": false
+      },
+      {
+        "id": "b4e6d31ea7f23d256543b0f5e23b230c",
+        "pid": 14843,
+        "directory": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/foreign",
+        "mode": "cli-temporary",
+        "started_at_ms": 1795148604720,
+        "leases": 0,
+        "retiring": false
+      },
+      {
+        "id": "7295ac8073fbaa34b90e532c240f92eb",
+        "pid": 15749,
+        "directory": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/external",
+        "mode": "standalone",
+        "started_at_ms": 1795148610804,
+        "leases": 0,
+        "retiring": false
+      },
+      {
+        "id": "76fad977f347596e70056b43211c3c08",
+        "pid": 27470,
+        "directory": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "mode": "desktop",
+        "started_at_ms": 1795148685913,
+        "leases": 0,
+        "retiring": false
+      },
+      {
+        "id": "601ea6f5b753911f4f8f23485f69a86b",
+        "pid": 29296,
+        "directory": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "mode": "desktop",
+        "started_at_ms": 1795148696726,
+        "leases": 0,
+        "retiring": false
+      },
+      {
+        "id": "1c9c813da43654968cafc117f4930aa3",
+        "pid": 30187,
+        "directory": "/private/tmp/de-5imsyo5t/uc-roles-3194395889/owned",
+        "mode": "desktop",
+        "started_at_ms": 1795148701939,
+        "leases": 0,
+        "retiring": false
+      }
+    ],
+    "setup_migration": "NOT_RUN in this process scenario; separate canonical first-install-setup and native setup cases",
+    "shortcut_permission_failure": "NOT_RUN in this process scenario; requires explicit fixture/native failure injection",
+    "source_head": "0840d7d10216f3c8d95684e7b8bf88243d2aa4ab",
+    "status": "PASS",
+    "run": "20261120T042241Z-e3d8c1dc",
+    "snapshot_unchanged": true,
+    "private_cleanup": "PASS",
+    "manifest_sha256": "87725464156de04047a7368dc46e46849787ad12594cd71268d0d06c7c443342",
+    "source_index_sha256": "ad221658f566090fd6d6b22cf6f120b3791cace0bb96f47ffe998a70eb35129f",
+    "timeline_sha256": "ba1f835fd7b6625e571cb09d081e218d62b2711698d9e555d82a2da92a8c5971"
+  },
+  "exact_baseline_comparison": {
+    "source": "173d362036ae4a746878306915c85bcdf7468751",
+    "os": "darwin",
+    "arch": "arm64",
+    "purpose": "exact baseline saved-lightweight launch with an existing standalone service",
+    "native_windows": "NOT_RUN",
+    "binary_sha256": {
+      "unic": "9a882894f906f0d4f90cb4de21b4d4ec73573137e8b1ddb8ebdb6e2602050a8e",
+      "unicd": "9bcb171868faa5cfc2f25f7303ed28e1a136d2d41569cadb39dc2fb1d876f6ee",
+      "unic-desktop": "fb74a8dc1a858421cdb6de8fea1cf8b8dae8d2ff81df7d2062122c7d9a1884db"
+    },
+    "status": "EXPECTED_FAILURE_REPRODUCED",
+    "launches": [
+      {
+        "desktop_pid": 69362,
+        "desktop_exit_code": 0,
+        "desktop_processes_remaining": 0,
+        "standalone_service_pid": 68493,
+        "standalone_service_alive": true
+      },
+      {
+        "desktop_pid": 69371,
+        "desktop_exit_code": 0,
+        "desktop_processes_remaining": 0,
+        "standalone_service_pid": 68493,
+        "standalone_service_alive": true
+      }
+    ],
+    "expectation": "Lightweight restart must retain a graphical tray owner; baseline retained none.",
+    "os_clipboard": "NOT_USED",
+    "gui_launched": false,
+    "task_service_exited": true,
+    "private_cleanup": "PASS"
+  },
+  "cross_build_executable_sha256": {
+    "unic-desktop-linux": "e804aa8521188bbb8d7fac2cc142d1be4621acb9c51e9f85dc899e127d8a2026",
+    "unic-desktop-amd64.exe": "aa783ed524df54b1bd2723991611de640900ee37ce2541642b061eb3b9ca1828",
+    "desktop-e2e-arm64.exe": "a411ac267ef2a7f636ca2a077bd4a594b1e98d1ff612cfa10140b08e06db5b82",
+    "unic-desktop-e2e-arm64.exe": "d0af1c8b11928db070f6106571228dcd6f8d5414cee9eb0b7c8888a35abe8329",
+    "unicd.exe": "8fc48b9dfb19f89465f380c4a9fde5ca74015e9ee6fbf9623c5cd8f278e74dd7",
+    "unic-desktop-arm64.exe": "a0eeac7d52bb05082d3822fa660f2ee95d9001ffe44567db5f6bf3960be85fdf",
+    "unic-desktop-macos": "35108b60e72a921593317756ed1723d4303b0138a2540db65d184f63b958dbca",
+    "unic.exe": "3fc7c7c334b6467e468f0da6529ff8d3c8c3c8c2db80d502dcd70f8590e5c425"
+  }
+}

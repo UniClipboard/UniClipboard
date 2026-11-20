@@ -26,7 +26,7 @@ func setupTray(ctx context.Context, cfg config.Desktop) func(config.Desktop) {
 		items := []*mygo.MenuItem{
 			{Label: tr("打开主窗口"), Click: func(*mygo.MenuItem, *mygo.Window) { showDesktop() }},
 			{Label: tr("快捷面板"), Click: func(*mygo.MenuItem, *mygo.Window) { showQuickPanel() }},
-			mygo.Separator(), {Label: tr("退出"), Role: mygo.RoleQuit},
+			mygo.Separator(), {Label: tr("退出整个应用"), Role: mygo.RoleQuit},
 		}
 		if checkDesktopUpdates != nil {
 			items = append(items[:2], append([]*mygo.MenuItem{{Label: tr("检查更新"), Click: func(*mygo.MenuItem, *mygo.Window) { checkDesktopUpdates() }}}, items[2:]...)...)

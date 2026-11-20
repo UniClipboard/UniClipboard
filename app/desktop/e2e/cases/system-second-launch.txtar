@@ -1,21 +1,22 @@
-# Case: Native second launch reopens the original window
+# Case: Native second launch recreates the GUI process
 # Mode: native
 # Environment: disposable-guest
-# Purpose: Isolate second-launch activation from the separately tested hidden-window capture requirement.
+# Purpose: Isolate second-launch activation from the separately tested capture without GUI requirement.
 # Steps:
-#   Close the focused task main window through physical Alt+F4; launch the same application identity; inspect the original window and service generation.
+#   Close the focused task main window through physical Alt+F4; launch the same application identity; inspect the new GUI process and service generation.
 # Expected:
-#   The second process exits successfully; the original service generation and window remain; fresh capture works after reopening; explicit Quit cleans both processes.
+#   The second process exits successfully; the service generation remains and a new GUI process opens; fresh capture works after reopening; explicit Quit cleans the GUI, tray and owned service.
 # Forbidden:
-#   Claims that reopening proves capture while hidden, unrelated application activation or duplicate service owners.
+#   Claims that reopening proves capture while the GUI process is absent, unrelated application activation or duplicate service owners.
 
 system-board-write 'UNIC-D second launch baseline'
 start
 system-key Alt+F4
+# Main-window close now means that the GUI process has exited.
 system-window unic hidden
 system-second-launch
 system-window unic visible
 system-board-write 'UNIC-D second launch reopened 中文'
 ui-wait listItem 'UNIC-D second launch reopened 中文'
 history-count 1
-screenshot original-window-reopened
+screenshot recreated-gui

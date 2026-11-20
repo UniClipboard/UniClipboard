@@ -7,7 +7,7 @@ Status: implementation and isolated native process acceptance passed. Production
 - Worktree: `cb606084-bf03-4199-8c9f-68d14f5e016b`.
 - Branch: `feat/release-unsigned-windows`.
 - Base: `1e90f041d1f90e3c62a41a4bb86b5503ebe00c20`, freshly fetched `origin/v2`.
-- Local implementation commit: `474fd01364c8fe9b42b8ec84b4898ac79afe74ba`. No push or PR.
+- Local implementation commit: `474fd01364c8fe9b42b8ec84b4898ac79afe74ba`. No push or PR occurred during native acceptance.
 - Windows production Authenticode is optional for both payloads and installers. Unsigned artifacts must remain explicitly unsigned in manifests and release pages.
 - macOS Developer ID/notarization, raw Ed25519 updater verification, immutable digests, source identity and exact CLI locks remain mandatory.
 
@@ -74,7 +74,7 @@ The read-only [credential/route audit](baselines/0018-unsigned-windows/credentia
 
 Public `/contract`, `/v1/desktop/alpha.json` and `/v1/desktop/stable.json` returned HTTP 403. Authenticated admin contract, R2 upload/full download, public numbered selection and version-query behavior remain NOT RUN. This observation establishes no DNS/TLS/account-suspension diagnosis.
 
-To prepare production delivery, authorize pushing this isolated branch and nonpublishing canonical acceptance CI. Construct a clean, complete new CLI build (including the Windows migration correction), sign both macOS targets with the existing Developer ID identity, accept its immutable manifest, and then update the Desktop lock. Provision one durably stored raw Ed25519 key through the approved secret interface and commit only its matching public key. Configure narrowly scoped R2/Access credentials and endpoint variables, then verify contracts read-only. Construct/accept all 22 Desktop formats with macOS signing/notarization and the real updater key. Windows may remain explicitly unsigned.
+At acceptance time, branch publication and manual nonpublishing canonical acceptance CI still required separate authorization. For production delivery, construct a clean, complete new CLI build (including the Windows migration correction), sign both macOS targets with the existing Developer ID identity, accept its immutable manifest, and then update the Desktop lock. Provision one durably stored raw Ed25519 key through the approved secret interface and commit only its matching public key. Configure narrowly scoped R2/Access credentials and endpoint variables, then verify contracts read-only. Construct/accept all 22 Desktop formats with macOS signing/notarization and the real updater key. Windows may remain explicitly unsigned.
 
 Public npm/GitHub/R2 delivery, Worker deployment, alpha/stable/latest mutation, package-manager submissions and default-branch changes remain separately unauthorized. Stable also retains its per-format lifecycle and GUI requirements. Live winget/Chocolatey/Scoop, Windows interactive setup/credential prompts and x64 emulation remain NOT RUN.
 

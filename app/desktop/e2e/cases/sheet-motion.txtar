@@ -1,7 +1,7 @@
 # Case: Sheet motion
 # Mode: view
 # Purpose: Real Sheet entry and dismissal by Done, Escape and backdrop, live resize/reversal, and inline tag confirmation or cancellation, including Reduce Motion.
-# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 # Expected: Real Sheets preserve entry geometry, centered resizing and completed exits; inline tags use no Sheet, Enter attaches, and Escape/click-away cancel without mutation across all theme/motion combinations.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 

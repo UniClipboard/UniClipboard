@@ -33,10 +33,10 @@ func scenarioSearchBadgeDelete(t *testing.T) {
 			}
 		}
 	}()
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, action := range []string{"backspace", "remove"} {
 			t.Run(skin+"/"+action, func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", skin)
+
 				d := newDemo("history", "dark")
 				for i := range d.tags {
 					if d.tags[i].name == "设计" {

@@ -1,0 +1,8 @@
+# Case: BoardUI production popup dispatch
+# Mode: view
+# Purpose: Retain filter/action menu cancellation, visible choices and selected-value dispatch using real in-window BoardUI popups.
+# Steps: Open each history filter and action popup, inspect accessible options, cancel without mutation, reopen and choose the requested item in both themes.
+# Expected: Popup content and returned commands match each exercised filter/action; legacy system menus stay absent.
+# Forbidden: Direct command invocation behind the view, lost cancellation or persistence checks, dropped options, or software views labeled native OS acceptance.
+
+acceptance desktopui boardui-menus

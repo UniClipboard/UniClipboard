@@ -8,12 +8,12 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupui"
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
 
@@ -56,23 +56,23 @@ func (s *desktopSession) view(c *ui.Context) {
 		if s.message == "" {
 			s.runtime.screen.View(c)
 		} else {
-			k := uikit.For(c.Theme().Dark)
+			k := desktopkit.For(c.Theme().Dark)
 			ui.Column(c).Fill().Children(func() {
-				k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneError, Title: i18n.Translate(s.settings.Current().Desktop.Language, s.message)})
+				k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: i18n.Translate(s.settings.Current().Desktop.Language, s.message)})
 				ui.Column(c).Grow(1).MinHeight(0).Children(func() { s.runtime.screen.View(c) })
 			})
 		}
 		return
 	}
-	k := uikit.For(c.Theme().Dark)
+	k := desktopkit.For(c.Theme().Dark)
 	k.UiRoot(c, func() {
 		ui.Column(c).Fill().Padding(40).Gap(12).Center().Children(func() {
 			if s.message == "" {
 				ui.Spinner(c)
-				k.Text(c, i18n.Translate(s.settings.Current().Desktop.Language, "正在准备应用…"), uikit.TextProps{})
+				k.Text(c, i18n.Translate(s.settings.Current().Desktop.Language, "正在准备应用…"), desktopkit.TextProps{})
 			} else {
-				k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneError, Title: i18n.Translate(s.settings.Current().Desktop.Language, s.message)})
-				if k.Button(c, i18n.Translate(s.settings.Current().Desktop.Language, "重试"), uikit.ButtonProps{Variant: uikit.Primary, Disabled: s.starting}).Clicked() {
+				k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: i18n.Translate(s.settings.Current().Desktop.Language, s.message)})
+				if k.Button(c, i18n.Translate(s.settings.Current().Desktop.Language, "重试"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: s.starting}).Clicked() {
 					s.start()
 				}
 			}

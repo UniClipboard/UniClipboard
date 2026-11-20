@@ -3,8 +3,31 @@ const fs=await import('node:fs/promises');
 const upstream=BOARDUI_REPO+'/.build/boardui-reference/upstream';
 const themeCSS=await fs.readFile(upstream+'/styles/theme.css','utf8');
 const typeCSS=await fs.readFile(upstream+'/styles/typography.css','utf8');
-const tokenNames=[...new Set([...themeCSS.matchAll(/--color-([\w-]+)\s*:/g)].map(x=>x[1]))].filter(x=>/^(text-|background-|border-|foreground-|button-|input-|dropdown-|separator-|accent-)/.test(x));
-const typeNames=[...new Set([...typeCSS.matchAll(/--text-([\w-]+)\s*:/g)].map(x=>x[1]))].filter(x=>!x.includes('--'));
+const tokenNames=[...new Set([...themeCSS.matchAll(/--color-([\w-]+)\s*:/g)].map(x=>x[1]))].filter(x=>/^(text-|background-|border-|foreground-|button-|input-|dropdown-|separator-|accent-|control-indicator-|switch-|status-|state-|notification-|badge-|segmented-control-)/.test(x));
+// Tailwind may remove unused @theme variables. Parse the fixed source with the
+// reference build's existing CSS parser, then inject only a hidden probe's exact
+// four declarations. Never let an absent variable inherit a browser default.
+const {createRequire}=await import('node:module');
+const referenceRequire=createRequire(BOARDUI_REPO+'/.build/boardui-reference/package.json');
+const typographyVariables={};
+referenceRequire('postcss').parse(typeCSS).walkAtRules('theme',rule=>{
+ rule.walkDecls(declaration=>{
+  if(!declaration.prop.startsWith('--text-'))return;
+  if(Object.hasOwn(typographyVariables,declaration.prop))throw Error('Duplicate source typography declaration '+declaration.prop);
+  typographyVariables[declaration.prop]=declaration.value;
+ });
+});
+const typeNames=Object.keys(typographyVariables).filter(name=>!name.slice('--text-'.length).includes('--')).map(name=>name.slice('--text-'.length));
+const typographyDeclarations=Object.fromEntries(typeNames.map(name=>{
+ const declarations={};
+ for(const suffix of ['','--line-height','--letter-spacing','--font-weight']){
+  const key='--text-'+name+suffix,value=typographyVariables[key];
+  if(typeof value!=='string'||value.trim()==='')throw Error('Missing source typography declaration '+key);
+  declarations[key]=value;
+ }
+ return [name,declarations];
+}));
+if(typeNames.length===0)throw Error('No complete source typography styles');
 const existing=BOARDUI_SPACE ? (await listTaskSpaces()).find(x=>x.id===BOARDUI_SPACE):null;
 if(BOARDUI_SPACE&&!existing)throw Error('Requested reference TaskSpace is absent; refusing a new recovery space');
 const task=existing ? await taskSpace(BOARDUI_SPACE):await taskSpace('BoardUI native reference');
@@ -27,21 +50,31 @@ if(BOARDUI_RESOURCES){
  const schemes={};let metrics={},numbers={};
  for(const dark of [false,true]){
   await configure(800,760,1);await page.goto(`http://127.0.0.1:${BOARDUI_PORT}/?metrics=1&theme=${dark?'dark':'light'}`);await ready();
-  const data=await page.evaluate(({tokenNames,typeNames})=>{
+  const data=await page.evaluate(({tokenNames,typeNames,typographyDeclarations})=>{
    const cs=getComputedStyle(document.documentElement);const canvas=document.createElement('canvas');canvas.width=1;canvas.height=1;const context=canvas.getContext('2d',{colorSpace:'srgb',willReadFrequently:true});
    function rgba(css){if(!css||!CSS.supports('color',css))throw new Error('Unsupported color '+css);context.clearRect(0,0,1,1);context.fillStyle=css;context.fillRect(0,0,1,1);return [...context.getImageData(0,0,1,1).data];}
    function split(s){let level=0,start=0,result=[];for(let i=0;i<s.length;i++){if(s[i]==='(')level++;if(s[i]===')')level--;if(s[i]===','&&level===0){result.push(s.slice(start,i).trim());start=i+1}}result.push(s.slice(start).trim());return result;}
    const colors=Object.fromEntries(tokenNames.map(n=>[n,rgba(cs.getPropertyValue('--color-'+n).trim())]));
-   const types={};for(const name of typeNames){const e=document.createElement('span');e.style.fontSize=`var(--text-${name})`;e.style.lineHeight=`var(--text-${name}--line-height)`;e.style.fontWeight=`var(--text-${name}--font-weight)`;e.style.letterSpacing=`var(--text-${name}--letter-spacing)`;document.body.append(e);const s=getComputedStyle(e);types[name]={Size:parseFloat(s.fontSize),LineHeight:parseFloat(s.lineHeight),Weight:parseInt(s.fontWeight),LetterSpacing:parseFloat(s.letterSpacing)||0};e.remove();}
+   const types={};for(const name of typeNames){
+    const e=document.createElement('span');e.setAttribute('aria-hidden','true');e.style.position='absolute';e.style.visibility='hidden';e.style.pointerEvents='none';
+    for(const [property,value]of Object.entries(typographyDeclarations[name]))e.style.setProperty(property,value);
+    e.style.fontSize=`var(--text-${name})`;e.style.lineHeight=`var(--text-${name}--line-height)`;e.style.fontWeight=`var(--text-${name}--font-weight)`;e.style.letterSpacing=`var(--text-${name}--letter-spacing)`;
+    document.body.append(e);
+    try {
+     const s=getComputedStyle(e);const value={Size:Number.parseFloat(s.fontSize),LineHeight:Number.parseFloat(s.lineHeight),Weight:Number.parseInt(s.fontWeight,10),LetterSpacing:s.letterSpacing==='normal'?0:Number.parseFloat(s.letterSpacing)};
+     if(Object.values(value).some(n=>!Number.isFinite(n))||value.Size<=0||value.LineHeight<=0||value.Weight<=0)throw Error('Invalid computed source typography '+name+': '+JSON.stringify(value));
+     types[name]=value;
+    }finally{e.remove();}
+   }
    const gradients={};for(const variant of ['primary','danger'])for(const state of ['default','hover','active','disabled']){const name='button-'+variant+'-'+state;const css=cs.getPropertyValue('--gradient-'+name).trim();const stops=split(css.slice(css.indexOf('(')+1,-1)).slice(1).map(s=>rgba(s.replace(/\s+[\d.]+%$/,'')));if(stops.length!==2)throw Error(css);gradients[name]=stops;}
-   const shadows={};for(const name of ['xs','dropdown']){const e=document.createElement('div');e.style.boxShadow=`var(--shadow-${name})`;document.body.append(e);const value=getComputedStyle(e).boxShadow;e.remove();shadows[name]=value==='none'?[]:split(value).map(s=>{const cm=s.match(/(?:rgba?|color)\([^)]*\)/);if(!cm)throw Error(s);const isInset=s.includes('inset');const vals=s.replace(cm[0],'').replace('inset','').trim().split(/\s+/).map(parseFloat);return {X:vals[0],Y:vals[1],Blur:vals[2]||0,Spread:vals[3]||0,Inset:isInset,Color:rgba(cm[0])};});}
+   const shadows={};for(const name of ['xs','2xs','checkbox-selected','dropdown']){const e=document.createElement('div');e.style.boxShadow=`var(--shadow-${name})`;document.body.append(e);const value=getComputedStyle(e).boxShadow;e.remove();shadows[name]=value==='none'?[]:split(value).map(s=>{const cm=s.match(/(?:rgba?|color|oklch|oklab)\([^)]*\)/);if(!cm)throw Error(s);const isInset=s.includes('inset');const vals=s.replace(cm[0],'').replace('inset','').trim().split(/\s+/).map(parseFloat);return {X:vals[0],Y:vals[1],Blur:vals[2]||0,Spread:vals[3]||0,Inset:isInset,Color:rgba(cm[0])};});}
    const geometries={};const nums={};
    function metric(component,size,e){const s=getComputedStyle(e),icon=e.querySelector('svg');geometries[component+'/'+size]={Height:e.getBoundingClientRect().height,Radius:parseFloat(s.borderRadius),PaddingX:parseFloat(s.paddingLeft),PaddingY:parseFloat(s.paddingTop),IconSize:icon?.getBoundingClientRect().width||0,Gap:parseFloat(s.gap)||0,BorderWidth:parseFloat(s.borderLeftWidth)||0};}
    for(const size of ['medium','small','xs']){const b=document.querySelector(`[data-metric="button-primary-${size}"]`);metric('button',size,b);nums['button-label-padding-'+size]=parseFloat(getComputedStyle(b.querySelector('span')).paddingLeft);}
    for(const size of ['medium','small']){const root=document.querySelector(`[data-testid="measure-input-${size}"]`),input=root.querySelector('input'),field=root.querySelector('[role=presentation]');metric('input',size,field);nums['input-inner-start']=parseFloat(getComputedStyle(input).paddingLeft);nums['input-field-gap']=parseFloat(getComputedStyle(root).gap);nums['input-hint-padding-top']=parseFloat(getComputedStyle(root.querySelector('[slot=description]')).paddingTop);}
    for(const size of ['md','sm'])metric('select',size,document.querySelector(`[data-testid="measure-select-${size}"] button`));
-   nums['color-ms']=parseFloat(cs.getPropertyValue('--button-transition-ms'));nums['button-secondary-border']=parseFloat(getComputedStyle(document.querySelector('[data-metric=button-secondary-medium]')).borderLeftWidth);return {colors,types,gradients,shadows,geometries,numbers:nums};
-  },{tokenNames,typeNames});schemes[dark?'dark':'light']=data;metrics=data.geometries;numbers=data.numbers;
+   nums['color-ms']=parseFloat(cs.getPropertyValue('--button-transition-ms'));nums['button-secondary-border']=parseFloat(getComputedStyle(document.querySelector('[data-metric=button-secondary-medium]')).borderLeftWidth);return {colors,types,typographyEvidence:{rootFontSize:getComputedStyle(document.documentElement).fontSize,sourceDeclarations:typographyDeclarations},gradients,shadows,geometries,numbers:nums};
+  },{tokenNames,typeNames,typographyDeclarations});schemes[dark?'dark':'light']=data;metrics=data.geometries;numbers=data.numbers;
  }
  await page.click('[data-testid="measure-select-md"] button');await page.waitForSelector('[role=listbox]');await settled();const popup=await page.evaluate(()=>{
   const list=document.querySelector('[role=listbox]'),panel=list.parentElement,row=list.querySelector('[role=option]'),chevron=document.querySelector('[data-testid=measure-select-md] button svg');

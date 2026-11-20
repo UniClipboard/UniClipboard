@@ -13,9 +13,12 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// Failure inventory: instant width/height changes, center or top drift,
-// stretched content, discontinuous reversal, premature modal removal,
-// retained input after exit, and spatial motion under Reduce Motion.
+// Failure inventory: instant width/height changes, center drift, stretched
+// content, discontinuous reversal, premature modal removal, retained input
+// after exit, and spatial motion under Reduce Motion.
+// Source difference: the fixed BoardUI Settings Modal ec5c5eb3 is centered,
+// not top-anchored. Dynamic application content must resize around that same
+// center; retain intermediate-size, reversal, dismissal and reopen assertions.
 func scenarioSheetResizeMotion(t *testing.T) {
 	type sample struct {
 		Theme   string
@@ -37,7 +40,7 @@ func scenarioSheetResizeMotion(t *testing.T) {
 	for _, theme := range []string{"dark", "light"} {
 		for _, reduced := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/reduced-%t", theme, reduced), func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", "macos")
+
 				d := newDemo("history", theme)
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark", Preferences: ui.Preferences{ReduceMotion: reduced}})
 				click := func(label string) {
@@ -49,7 +52,7 @@ func scenarioSheetResizeMotion(t *testing.T) {
 				invite := func() {
 					t.Helper()
 					click("添加设备")
-					if err := tt.ChooseMenuItem("邀请设备（配对码）"); err != nil {
+					if err := boarduiChooseMenu(tt, "邀请设备（配对码）"); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -60,8 +63,8 @@ func scenarioSheetResizeMotion(t *testing.T) {
 						t.Fatal("missing live sheet")
 					}
 					r := n.Bounds
-					if math.Abs(float64(r.X+r.W/2-550)) > 1 || r.Y != 0 {
-						t.Fatalf("sheet lost center/top anchor: %+v", r)
+					if math.Abs(float64(r.X+r.W/2-550)) > 1 || math.Abs(float64(r.Y+r.H/2-360)) > 1 {
+						t.Fatalf("sheet resize lost the viewport center: %+v", r)
 					}
 					samples = append(samples, sample{theme, reduced, step, r})
 					f, err := os.Create(filepath.Join(dir, fmt.Sprintf("resize-%s-%t-%s.png", theme, reduced, step)))

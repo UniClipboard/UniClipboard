@@ -1,6 +1,6 @@
 {
   "source": "ec5c5eb3e29c2441be63b9422cd54f411ef23466",
-  "note": "Implementation coverage is separate from the immutable research inventory. Dialog is a new native interface derived from Settings Modal shell. No full-library completion claimed.",
+  "note": "Implementation coverage is separate from the immutable research inventory. Dialog is a new native interface derived from Settings Modal shell. No full-library completion claimed. Production integration supersedes the independent-demo-only boundary; application compositions are not additional official BoardUI component ports.",
   "items": [
     {
       "id": "agent-chat",
@@ -53,8 +53,8 @@
     {
       "id": "link-button",
       "research_tier": "free-pinned",
-      "implementation": "NOT_IMPLEMENTED",
-      "scope": ""
+      "implementation": "NATIVE_SOURCE_SUBSET",
+      "scope": "Production migration extends the source-backed public API; see boardui/CONTROLS.md and native contract. Not all source sizes, variants or raster states are accepted."
     },
     {
       "id": "social-button",
@@ -77,8 +77,8 @@
     {
       "id": "checkbox",
       "research_tier": "free-pinned",
-      "implementation": "NOT_IMPLEMENTED",
-      "scope": ""
+      "implementation": "NATIVE_SOURCE_SUBSET",
+      "scope": "Production migration extends the source-backed public API; see boardui/CONTROLS.md and native contract. Not all source sizes, variants or raster states are accepted."
     },
     {
       "id": "checkbox-card",
@@ -101,20 +101,20 @@
     {
       "id": "segmented-control",
       "research_tier": "free-pinned",
-      "implementation": "NOT_IMPLEMENTED",
-      "scope": ""
+      "implementation": "NATIVE_SOURCE_SUBSET",
+      "scope": "Production migration extends the source-backed public API; see boardui/CONTROLS.md and native contract. Not all source sizes, variants or raster states are accepted."
     },
     {
       "id": "slider",
       "research_tier": "free-pinned",
-      "implementation": "NOT_IMPLEMENTED",
-      "scope": ""
+      "implementation": "NATIVE_SOURCE_SUBSET",
+      "scope": "Production migration extends the source-backed public API; see boardui/CONTROLS.md and native contract. Not all source sizes, variants or raster states are accepted."
     },
     {
       "id": "switch",
       "research_tier": "free-pinned",
-      "implementation": "NOT_IMPLEMENTED",
-      "scope": ""
+      "implementation": "NATIVE_SOURCE_SUBSET",
+      "scope": "Production migration extends the source-backed public API; see boardui/CONTROLS.md and native contract. Not all source sizes, variants or raster states are accepted."
     },
     {
       "id": "switch-card",

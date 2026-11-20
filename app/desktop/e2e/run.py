@@ -59,7 +59,7 @@ def cases(base=HERE):
     # A registry entry without a declarative case (or vice versa) must fail preflight.
     registered = set()
     packages = {'desktopui': 'internal/desktopui', 'quickpanel': 'internal/quickpanel',
-                'gui': 'cmd/unic-desktop', 'startup': 'e2e', 'boardui': 'boardui/e2e'}
+                'gui': 'cmd/unic-desktop', 'startup': 'e2e', 'boardui': 'boardui/e2e', 'desktopkit': 'internal/desktopkit'}
     for group, directory in packages.items():
         source = (base.parent / directory / 'acceptance_test.go').read_text(encoding="utf-8")
         registered.update((group, name) for name in re.findall(r't.Run\("([a-z][a-z0-9-]*)", scenario', source))

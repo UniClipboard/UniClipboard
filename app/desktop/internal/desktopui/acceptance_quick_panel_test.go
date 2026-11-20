@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ import (
 // - fixtures call real clipboard, host, network or persistence APIs.
 // These scenarios drive the complete mygo views. They do not launch a native window.
 func scenarioQuickPanel(t *testing.T) {
-	t.Setenv("UNIC_UI_SKIN", "macos")
+
 	receipt := map[string]any{"reference": quickPanelReference, "native_window_acceptance": "NOT RUN", "scenarios": []string{}}
 	record := func(s string) { receipt["scenarios"] = append(receipt["scenarios"].([]string), s) }
 	defer func() {
@@ -309,8 +310,8 @@ func scenarioQuickPanel(t *testing.T) {
 		record("copy-query-selection")
 	})
 	t.Run("themes-and-platform-modifiers", func(t *testing.T) {
-		for _, skin := range []string{"macos", "windows", "linux"} {
-			t.Setenv("UNIC_UI_SKIN", skin)
+		for _, skin := range []string{"boardui"} {
+
 			for _, theme := range []string{"light", "dark"} {
 				p := newQuickDemo(theme, "history")
 				tt := ui.NewTesterWith(p.panel, 380, 366, ui.TesterOptions{Dark: theme == "dark"})
@@ -319,7 +320,7 @@ func scenarioQuickPanel(t *testing.T) {
 					t.Fatal("search missing")
 				}
 				command := ui.Cmd
-				if skin != "macos" {
+				if runtime.GOOS != "darwin" {
 					command = ui.Ctrl
 				}
 				click(tt, "操作")

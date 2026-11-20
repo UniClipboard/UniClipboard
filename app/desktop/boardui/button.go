@@ -14,10 +14,17 @@ type ButtonProps struct {
 	Icon, TrailingIcon, Label string
 	IconOnly                  bool
 	Disabled, Busy            bool
+	// Leading supplies a host-owned glyph at the source icon size.
+	Leading func(size float32)
 }
 
 // Button is a native mygo button with BoardUI paint and source press motion.
 func (k Kit) Button(c *ui.Context, label string, p ButtonProps) ui.Element {
+	return k.DressButton(c, ui.ButtonBase(c), label, p)
+}
+
+// DressButton preserves an existing native base control and applies Button paint.
+func (k Kit) DressButton(c *ui.Context, base ui.Element, label string, p ButtonProps) ui.Element {
 	size := normalizedSize(p.Size)
 	variant := p.Variant
 	if variant == "" {
@@ -28,7 +35,7 @@ func (k Kit) Button(c *ui.Context, label string, p ButtonProps) ui.Element {
 	}
 	m := Geometry("button", size)
 	disabled := p.Disabled || p.Busy
-	iconOnly := p.IconOnly || (label == "" && p.Icon != "")
+	iconOnly := p.IconOnly || (label == "" && (p.Icon != "" || p.Leading != nil))
 	name := p.Label
 	if name == "" {
 		name = label
@@ -36,7 +43,7 @@ func (k Kit) Button(c *ui.Context, label string, p ButtonProps) ui.Element {
 	if iconOnly && name == "" {
 		panic("boardui: icon-only button requires Label")
 	}
-	e := ui.ButtonBase(c).Label(name).Disabled(disabled).DimDisabled(false).Busy(p.Busy).
+	e := base.Label(name).Disabled(disabled).DimDisabled(false).Busy(p.Busy).
 		Height(m.Height).Padding(m.PaddingY, m.PaddingX).Radius(m.Radius).Gap(m.Gap)
 	if iconOnly {
 		e.Size(m.Height, m.Height).Padding(0)
@@ -119,7 +126,9 @@ func (k Kit) Button(c *ui.Context, label string, p ButtonProps) ui.Element {
 	}
 	e.FocusRingColor(Token(k.Dark, "border-focus-ring")).FocusRingOffset(2)
 	e.Children(func() {
-		if p.Icon != "" {
+		if p.Leading != nil {
+			p.Leading(m.IconSize)
+		} else if p.Icon != "" {
 			ui.Icon(c.Key("leading"), IconSVG(p.Icon)).Size(m.IconSize, m.IconSize).Shrink(0).TextColor(ink).AccessHidden(true)
 		}
 		if !iconOnly {

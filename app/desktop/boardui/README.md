@@ -1,6 +1,6 @@
 # Native BoardUI for mygo
 
-A reusable native Go package for the first BoardUI settings slice. It has no React, WebView, Tailwind runtime or Node runtime dependency. The independent demo shares its complete view with the software E2E scenarios. It does not connect to UniClipboard services or the system clipboard.
+A reusable native Go package for the shared BoardUI Desktop presentation. It has no React, WebView, Tailwind runtime or Node runtime dependency. Production GUI, setup and Quick Panel use this package through application-only desktopkit compositions. The independent demo shares its complete view with the software E2E scenarios. It does not connect to UniClipboard services or the system clipboard.
 
 The sole source reference is the [official MIT export](https://github.com/BoardUI/boardui/tree/ec5c5eb3e29c2441be63b9422cd54f411ef23466). Source hash, exact font/icon/dependency identities and notices live in [assets/source-lock.json](assets/source-lock.json). The fixed source's button press scale is 0.98; newer skill rules do not override it.
 
@@ -52,3 +52,29 @@ The tracked `reference/` directory contains only the reference fixture, preparat
 After preparing and starting the isolated reference server, capture resources with `reference/capture.py --resources --only-resources --out <new-directory>`, then run `node reference/generate.mjs` from the repository root. `generate.mjs` uses the private build's exact dependency graph. Review the resulting token/source-lock diff and replay before accepting an update. Never change only generated constants.
 
 The complete MIT/OFL/Remix notices are embedded and retained under `assets/`. Inter is registered once per process. Six parsed SVG glyphs are cached once. Neither cache is keyed by widget IDs. Pro source and the 18 newer source-unavailable free entries are excluded.
+
+## Production integration and selection controls
+
+The removed three-platform UI Kit has no import alias or skin fallback. The
+internal `desktopkit` package retains application-owned layouts, table/list
+selection, paging and task flows; it delegates public controls and theme data
+to this package. It does not define another theme palette.
+
+Switch supports the inspected md pill/rectangle. Checkbox supports md/sm and
+explicit mixed state. Slider supports one horizontal thumb. SegmentedControl
+supports solid/plain single selection; arrows move focus, Enter/Space select.
+DressButton and DressLinkButton let maintained native action bases share the
+source paint. Hidden visual labels preserve the accessible names of controls
+inside application settings rows. See [selection controls](CONTROLS.md) for the
+precise source/state and acceptance boundary. Source-backed implementation is
+not a claim that every state has paired React raster acceptance.
+
+Replay the production migration with its canonical companion cases:
+
+```sh
+python3 app/desktop/e2e/replay_boardui_migration.py --out .build/boardui-production-review
+```
+
+The artifact directory must be new. Native windows, OS input methods and
+platform accessibility require separate platform evidence. Windows/Linux cross
+compilation is separate from execution on those operating systems.

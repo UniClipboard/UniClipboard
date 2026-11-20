@@ -13,7 +13,8 @@ paths:
   - app/desktop/internal/windowchrome
   - app/desktop/e2e
   - app/desktop/internal/desktopui
-  - app/desktop/internal/uikit/split.go
+  - app/desktop/internal/desktopkit
+  - app/desktop/boardui
   - app/desktop/internal/i18n
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
@@ -87,7 +88,7 @@ reserves GTK's reported caption-control area above the application content. With
 the preference on, Linux/macOS use the normal native title bar.
 
 Windows always uses a hidden title bar with native caption buttons disabled.
-The existing UI Kit draws Minimize, Maximize/Restore and Close above every main
+`internal/windowchrome` draws Minimize, Maximize/Restore and Close above every main
 window page, including setup and startup errors. Only the empty caption region
 drags the window. Maximize/Restore reads the actual window state. Close invokes
 the existing window-close lifecycle. This preference does not change Quick Panel
@@ -383,11 +384,8 @@ discovery. Only a verified complete import publishes completion. Desktop
 welcome/skip and history navigation do not publish CLI completion. See the
 [initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
 
-## Independent component acceptance
+## Unified content presentation and component acceptance
 
-The standalone native BoardUI package and `boardui-demo` use synthetic local
-form state. They do not create service, GUI, panel or tray product roles and
-do not read Desktop runtime configuration. The canonical Desktop runner exposes
-`boardui-settings` and `boardui-states` as software-view cases. Their real-React
-comparison tooling is separate from the production program. See the
-[native BoardUI contract](../contracts/boardui-native-contract.md).
+Main GUI, first-install setup, Quick Panel and demos use the same native BoardUI content resources through the public `boardui` controls and application-only `desktopkit` compositions. The former skin engine, platform token snapshots and selector are removed. System/light/dark remain scheme choices. OS frame policy, modifiers, tray/system menus, file and credential prompts, updater, clipboard ownership and focus/paste dispatch remain native host integration.
+
+The independent `boardui-demo` uses synthetic local form state and creates no product service/GUI/panel/tray role. Production pages use their existing live binding and runtime configuration. Canonical `boardui-settings`/`boardui-states` cases and the real-React replay cover the named component scenes. Production composition/migration/menu/surface cases cover their own shared-renderer scenarios. These results do not imply native OS keyboard/IME, platform accessibility, compositor or Windows memory acceptance. See the [native BoardUI contract](../contracts/boardui-native-contract.md) and [production migration receipt](../exec/boardui-production-migration.md).

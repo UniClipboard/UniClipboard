@@ -20,7 +20,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -34,7 +34,7 @@ type Desktop struct {
 }
 
 func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
-	d := &viewState{page: "history", theme: "system", layout: "list", nav: uikit.NavState{Value: "all"}, settings: uikit.NavState{Value: "general"}, deviceList: uikit.SourceState{Value: "local"}, gridSize: .4, options: map[string]bool{}, choices: map[string]string{}}
+	d := &viewState{page: "history", theme: "system", layout: "list", nav: desktopkit.NavState{Value: "all"}, settings: desktopkit.NavState{Value: "general"}, deviceList: desktopkit.SourceState{Value: "local"}, gridSize: .4, options: map[string]bool{}, choices: map[string]string{}}
 	ctx, cancel := context.WithCancel(ctx)
 	d.live = &liveState{ctx: ctx, cancel: cancel, client: client, jobs: make(chan func(context.Context) func(), 16), results: make(chan func(), 32), changed: make(chan struct{}, 1), recovery: make(chan struct{}, 1), searchSlots: make(chan struct{}, 1), items: map[string]api.HistoryItem{}, details: map[string]entry{}, pending: map[string]api.PendingPeer{}}
 	context.AfterFunc(ctx, d.live.stopWake)
@@ -530,7 +530,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				if len(d.devices) > 0 {
 					previousName = d.devices[0].name
 				}
-				d.devices = []device{{id: "local", name: status.Name, platform: "本机", icon: uikit.IconDesktop, online: true}}
+				d.devices = []device{{id: "local", name: status.Name, platform: "本机", icon: desktopkit.IconDesktop, online: true}}
 				if d.deviceName == "" || d.deviceName == previousName {
 					d.deviceName = status.Name
 				}
@@ -538,18 +538,18 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					if p.Kind == "external" {
 						continue
 					}
-					d.devices = append(d.devices, device{id: p.ID, name: p.Name, online: p.Connected, latency: -1, lastSeen: formatSeen(p.LastSeen), platform: "未提供", link: "在线", icon: uikit.IconDesktop})
+					d.devices = append(d.devices, device{id: p.ID, name: p.Name, online: p.Connected, latency: -1, lastSeen: formatSeen(p.LastSeen), platform: "未提供", link: "在线", icon: desktopkit.IconDesktop})
 				}
 				d.pending = nil
 				l.pending = map[string]api.PendingPeer{}
 				for _, p := range status.Pending {
 					l.pending[p.ID] = p
-					d.pending = append(d.pending, pendingDevice{id: p.ID, name: p.Name, fingerprint: p.Fingerprint, via: p.Via, platform: "未提供", icon: uikit.IconDesktop})
+					d.pending = append(d.pending, pendingDevice{id: p.ID, name: p.Name, fingerprint: p.Fingerprint, via: p.Via, platform: "未提供", icon: desktopkit.IconDesktop})
 				}
 				d.candidates = nil
 				for _, c := range candidates {
 					if !c.Ignored {
-						d.candidates = append(d.candidates, deviceCandidate{id: c.ID, name: c.Name, introducer: strings.Join(c.IntroducedBy, "、"), backendID: c.BackendID, icon: uikit.IconDesktop})
+						d.candidates = append(d.candidates, deviceCandidate{id: c.ID, name: c.Name, introducer: strings.Join(c.IntroducedBy, "、"), backendID: c.BackendID, icon: desktopkit.IconDesktop})
 					}
 				}
 				if l.join != nil && slices.ContainsFunc(status.Peers, func(p api.PeerStatus) bool { return p.ID == l.join.ID }) {
@@ -576,20 +576,20 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 
 }
 func projectHistory(it api.HistoryItem) entry {
-	kind := uikit.KindText
+	kind := desktopkit.KindText
 	title := "文本"
 	switch it.Kind {
 	case "image":
-		kind = uikit.KindImage
+		kind = desktopkit.KindImage
 		title = "图片"
 	case "directory", "directory_reference":
-		kind = uikit.KindFolder
+		kind = desktopkit.KindFolder
 		title = "目录快照"
 		if it.Kind == "directory_reference" {
 			title = "源目录引用"
 		}
 	case "files":
-		kind = uikit.KindFile
+		kind = desktopkit.KindFile
 		title = "文件"
 	}
 	source := it.DeviceID

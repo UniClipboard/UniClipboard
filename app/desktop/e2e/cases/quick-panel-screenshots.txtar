@@ -1,7 +1,7 @@
 # Case: Quick panel screenshots
 # Mode: view
 # Purpose: Quick-panel history, action menu and image-grid compositions in both themes.
-# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 # Expected: Six composite PNGs retain source identity, image hashes and view rectangles.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 

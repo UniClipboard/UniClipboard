@@ -5,9 +5,9 @@ import "github.com/egoist/mygo/ui"
 // Kit selects a color scheme. It never stores mutable control state.
 type Kit struct{ Dark bool }
 
-// Apply installs the source-derived theme for controls in this view. LoadFonts
-// must have succeeded before the first view is created.
-func (k Kit) Apply(c *ui.Context) {
+// Theme maps canonical source colors to mature native primitive defaults.
+// LoadFonts must succeed before the first view is created.
+func (k Kit) Theme() *ui.Theme {
 	t := ui.LightTheme()
 	if k.Dark {
 		t = ui.DarkTheme()
@@ -25,8 +25,21 @@ func (k Kit) Apply(c *ui.Context) {
 	t.FocusRingWidth, t.FocusRingOffset = 2, 2
 	t.Accent = Token(k.Dark, "accent-500")
 	t.AccentText = Token(k.Dark, "text-white")
+	t.AccentHover = Token(k.Dark, "accent-600")
+	t.AccentPressed = Token(k.Dark, "accent-800")
+	t.InactiveAccent = t.Accent
+	t.Danger = Token(k.Dark, "text-error-primary")
+	t.Success = Token(k.Dark, "notification-success-foreground")
+	t.Warning = Token(k.Dark, "status-yellow-text")
+	t.Radius = Geometry("input", "medium").Radius
 	t.Selection = t.Accent.Alpha(.25)
-	c.SetTheme(t)
+	return t
+}
+
+// Apply installs the source theme for this view.
+func (k Kit) Apply(c *ui.Context) {
+	c.SetTheme(k.Theme())
+	c.SetMenuPresentation(ui.PopoverMenus)
 }
 
 // Text applies one complete BoardUI typography record to a native text element.

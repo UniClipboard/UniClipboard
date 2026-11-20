@@ -74,7 +74,7 @@ func scenarioSourceApplication(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"dark", "light"} {
 			for _, sample := range cases {
 				for _, width := range []int{1100, 640} {
@@ -82,7 +82,7 @@ func scenarioSourceApplication(t *testing.T) {
 						continue
 					}
 					t.Run(fmt.Sprintf("%s-%s-%s-%d", skin, theme, sample.name, width), func(t *testing.T) {
-						t.Setenv("UNIC_UI_SKIN", skin)
+
 						d := newDemo("history", theme)
 						d.language = "zh-CN"
 						item := api.HistoryItem{ID: "source-record", Kind: "text", Origin: "remote_device", DeviceID: "remote-workstation", CreatedAt: time.Now().UnixMilli(), SourceApplication: sample.app}
@@ -167,7 +167,7 @@ func scenarioSourceApplication(t *testing.T) {
 				}
 			}
 			t.Run(skin+"-"+theme+"-selection", func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", skin)
+
 				d := newDemo("history", theme)
 				d.language = "zh-CN"
 				a := projectHistory(api.HistoryItem{ID: "first", Kind: "text", SourceApplication: application("Example Editor", encoded.Bytes()), CreatedAt: time.Now().UnixMilli()})

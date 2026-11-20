@@ -192,7 +192,7 @@ func scenarioTrayIconSettings(t *testing.T) {
 		}
 	}
 	drain()
-	t.Setenv("UNIC_UI_SKIN", "macos")
+
 	view := ui.NewTesterWith(d.view, 1100, 950, ui.TesterOptions{})
 	proof.Capture(t, view)
 	choose := func(value, label string) {
@@ -206,7 +206,7 @@ func scenarioTrayIconSettings(t *testing.T) {
 		x, y := target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2
 		view.Press(x, y)
 		view.Release(x, y)
-		if err := view.ChooseMenuItem(label); err != nil {
+		if err := boarduiChooseMenu(view, label); err != nil {
 			t.Fatal(err)
 		}
 		wait("saved and applied "+value, func() bool {

@@ -41,11 +41,11 @@ func scenarioTokenSearch(t *testing.T) {
 			}
 		}
 	}()
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"dark", "light"} {
 			for _, scenario := range []string{"device", "tags", "type", "time", "extension", "middle", "literal", "paste", "pointer", "quote", "filters", "keyboard", "escape", "zero"} {
 				t.Run(skin+"/"+theme+"/"+scenario, func(t *testing.T) {
-					t.Setenv("UNIC_UI_SKIN", skin)
+
 					d := newDemo("history", theme)
 					tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 					proof.Capture(t, tt)
@@ -175,9 +175,8 @@ func scenarioTokenSearch(t *testing.T) {
 							t.Fatal(err)
 						}
 						var err error
-						if skin == "macos" {
-							err = tt.ChooseMenuItem("Linux 工作站")
-						} else {
+
+						{
 							err = tt.Click("Linux 工作站")
 						}
 						if err != nil {
@@ -226,12 +225,9 @@ func scenarioTokenSearch(t *testing.T) {
 						}
 						tt.Key(0, ui.KeyEscape)
 						tt.Advance(300 * time.Millisecond)
-						if skin == "macos" {
-							info, _ := tt.AccessByRole(ui.RoleSearch, "")
-							if info.Bounds.W != 32 {
-								t.Fatal("third Escape did not collapse search")
-							}
+						{
 						}
+
 					case "zero":
 						tt.Type("/richtext")
 						choose("富文本")

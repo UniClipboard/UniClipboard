@@ -1,5 +1,9 @@
 # BoardUI native first slice
 
+Historical first-slice receipt. Production integration now follows
+[the unified migration](boardui-production-migration.md). Original run results
+and first-failure evidence below retain their original scope.
+
 Status: first usable implementation complete; software-view and official React replay PASS. Baseline unic `ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0`; official MIT BoardUI `ec5c5eb3e29c2441be63b9422cd54f411ef23466`; mygo `v0.8.4-0.20261108082913-9233663736ca`.
 
 ## Failure inventory (before implementation)

@@ -5,8 +5,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
 func (d *viewState) currentLanguage() string {
@@ -27,17 +27,17 @@ func (p *quickPanelState) tr(source string) string {
 	return i18n.Translate(p.language, source)
 }
 
-func (d *viewState) languageRow(c *ui.Context, k uikit.Kit) {
+func (d *viewState) languageRow(c *ui.Context, k desktopkit.Kit) {
 	value := d.currentLanguage()
 	if value == "" {
 		value = "zh-CN"
 	}
-	k.SettingsRow(c.Key("language-choice"), uikit.SettingsRowProps{Label: d.tr("界面语言"), Description: d.tr("立即生效，并保存到本机。")}, nil, func() {
-		items := []uikit.SelectItem{
+	k.SettingsRow(c.Key("language-choice"), desktopkit.SettingsRowProps{Label: d.tr("界面语言"), Description: d.tr("立即生效，并保存到本机。")}, nil, func() {
+		items := []desktopkit.SelectItem{
 			{Value: "zh-CN", Label: "简体中文"}, {Value: "en", Label: "English"},
 			{Value: "ja", Label: "日本語"}, {Value: "pt-BR", Label: "Português (Brasil)"}, {Value: "ru", Label: "Русский"},
 		}
-		if k.Select(c, uikit.SelectProps{Label: d.tr("界面语言"), Value: &value, Items: items, Disabled: d.live != nil && d.live.busy}).Changed {
+		if k.Select(c, desktopkit.SelectProps{Label: d.tr("界面语言"), Value: &value, Items: items, Disabled: d.live != nil && d.live.busy}).Changed {
 			if d.live == nil {
 				d.language = value
 			} else {

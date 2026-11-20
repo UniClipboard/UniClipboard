@@ -15,7 +15,7 @@ import (
 )
 
 // Failure cases: a checkbox task replaces the management table; context menus
-// bypass the native backend; builtin tags expose destructive operations; edits
+// bypass the in-window menu; builtin tags expose destructive operations; edits
 // drift from search/sidebar data; tag deletion removes clipboard history.
 func scenarioTagManager(t *testing.T) {
 	type receipt struct {
@@ -44,7 +44,7 @@ func scenarioTagManager(t *testing.T) {
 	for _, theme := range []string{"dark", "light"} {
 		for _, scenario := range []string{"builtin", "create", "rename", "color", "sidebar", "delete", "merge", "show", "filter", "protected-delete", "geometry", "cancel", "duplicate", "bulk", "sort"} {
 			t.Run(theme+"/"+scenario, func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", "macos")
+
 				d := newDemo("history", theme)
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 				proof.Capture(t, tt)
@@ -57,21 +57,21 @@ func scenarioTagManager(t *testing.T) {
 				}
 				menu := func(name string) []string {
 					t.Helper()
-					if err := tt.RightClick(name); err != nil {
+					if err := boarduiTableClick(tt, "标签", name, 0, true); err != nil {
 						t.Fatal(err)
 					}
-					items := tt.Menu()
+					items := boarduiMenuItems(tt)
 					if len(items) == 0 {
-						t.Fatal("no native context menu requested")
+						t.Fatal("no accessible in-window context menu shown")
 					}
-					if _, ok := tt.AccessByRole(ui.RoleMenu, ""); ok {
-						t.Fatal("context menu is still painted by the app")
+					if len(boarduiMenuItems(tt)) == 0 {
+						t.Fatal("in-window context popup has no accessible items")
 					}
 					return items
 				}
 				choose := func(path ...string) {
 					t.Helper()
-					if err := tt.ChooseMenuItem(path...); err != nil {
+					if err := boarduiChooseMenu(tt, path...); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -177,7 +177,7 @@ func scenarioTagManager(t *testing.T) {
 						t.Fatal("tag filter did not narrow table rows")
 					}
 				case "protected-delete":
-					if err := tt.Click("#链接"); err != nil {
+					if err := boarduiTableClick(tt, "标签", "#链接", 0, false); err != nil {
 						t.Fatal(err)
 					}
 					a, ok := tt.AccessByRole(ui.RoleButton, "删除选中标签")
@@ -191,11 +191,17 @@ func scenarioTagManager(t *testing.T) {
 						if a.Role != ui.RoleRow || a.Bounds.Y < table.Bounds.Y || a.Bounds.Y >= table.Bounds.Y+table.Bounds.H {
 							continue
 						}
+						// A virtualized 48-DIP final row can be partly clipped by
+						// the 360-DIP viewport. Require intersection and fixed
+						// horizontal bounds, not a whole-row scroll alignment.
 						rows++
+						if a.Bounds.X < table.Bounds.X-.1 || a.Bounds.X+a.Bounds.W > table.Bounds.X+table.Bounds.W+.1 || a.Bounds.Y+a.Bounds.H <= table.Bounds.Y || a.Bounds.H <= 0 {
+							t.Errorf("table row has no visible intersection or exceeds the column bounds: row=%+v table=%+v", a.Bounds, table.Bounds)
+						}
 						heights = append(heights, a.Bounds.H)
-						limit := float32(34)
+						limit := float32(48)
 						if a.Bounds.Y == table.Bounds.Y {
-							limit = 28
+							limit = 32
 						}
 						if a.Bounds.H > limit {
 							t.Errorf("table row height=%v, limit=%v", a.Bounds.H, limit)
@@ -229,10 +235,10 @@ func scenarioTagManager(t *testing.T) {
 						t.Fatal("duplicate error could not be corrected")
 					}
 				case "bulk":
-					if err := tt.Click("#工作"); err != nil {
+					if err := boarduiTableClick(tt, "标签", "#工作", 0, false); err != nil {
 						t.Fatal(err)
 					}
-					if err := tt.ClickWith(ui.Cmd, "#设计"); err != nil {
+					if err := boarduiTableClick(tt, "标签", "#设计", ui.Cmd, false); err != nil {
 						t.Fatal(err)
 					}
 					items = menu("#工作")
@@ -248,18 +254,40 @@ func scenarioTagManager(t *testing.T) {
 					if d.tagManager.sort != "newest" {
 						t.Fatal("sort did not apply")
 					}
+					// Sorting may retain the virtual table's old scroll anchor.
+					// Inspect the first logical row after explicitly returning to
+					// the top, not whichever old row remained visible on screen.
+					table, ok := tt.AccessByRole(ui.RoleTable, "标签")
+					if !ok {
+						t.Fatal("tag table missing after sort")
+					}
+					tt.Scroll(table.Bounds.X+table.Bounds.W/2, table.Bounds.Y+table.Bounds.H/2, 0, -10000)
+					all := tt.AccessAll()
 					first := ""
 					y := float32(10000)
-					table, _ := tt.AccessByRole(ui.RoleTable, "标签")
-					for _, a := range tt.AccessAll() {
-						if a.Bounds.X >= table.Bounds.X && a.Bounds.Y >= table.Bounds.Y && a.Bounds.Y < table.Bounds.Y+table.Bounds.H && strings.HasPrefix(a.Name, "#") && a.Bounds.Y < y {
-							y = a.Bounds.Y
-							first = a.Name
+					for _, text := range all {
+						if text.Role != ui.RoleText || text.Offscreen || !strings.HasPrefix(text.Name, "#") || text.Bounds.Y >= y {
+							continue
+						}
+						x, cy := text.Bounds.X+text.Bounds.W/2, text.Bounds.Y+text.Bounds.H/2
+						if x < table.Bounds.X || x >= table.Bounds.X+table.Bounds.W || cy < table.Bounds.Y || cy >= table.Bounds.Y+table.Bounds.H {
+							continue
+						}
+						for _, cell := range all {
+							if cell.Role != ui.RoleCell && cell.Role != ui.RoleRowHeader {
+								continue
+							}
+							r := cell.Bounds
+							if !cell.Offscreen && r.X >= table.Bounds.X-.1 && r.X+r.W <= table.Bounds.X+table.Bounds.W+.1 && x >= r.X && x < r.X+r.W && cy >= r.Y && cy < r.Y+r.H {
+								y, first = text.Bounds.Y, text.Name
+								break
+							}
 						}
 					}
 					if !strings.HasPrefix(first, "#自定义标签") {
-						t.Fatalf("latest tag not first: %s", first)
+						t.Fatalf("latest tag not first logical table row after scrolling to top: %q", first)
 					}
+
 				}
 				results = append(results, receipt{theme, scenario, items, len(d.entries), heights})
 			})

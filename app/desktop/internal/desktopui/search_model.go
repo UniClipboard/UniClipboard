@@ -10,7 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 )
 
@@ -23,7 +23,7 @@ type searchWord struct {
 }
 type searchCandidate struct {
 	dimension, value, label string
-	kind                    uikit.SearchTokenKind
+	kind                    desktopkit.SearchTokenKind
 }
 type historySearchState struct {
 	buffer, last, extension    string
@@ -35,7 +35,7 @@ type historySearchState struct {
 var searchDimensions = []string{"type", "tag", "source", "time", "extension"}
 var searchPrefixes = map[string]string{"type": "/", "tag": "#", "source": "@", "time": "on:", "extension": "ext:"}
 var searchLabels = map[string]string{"type": "类型", "tag": "标签", "source": "设备", "time": "时间", "extension": "扩展名"}
-var searchKinds = map[string]uikit.SearchTokenKind{"type": uikit.SearchKindType, "tag": uikit.SearchKindTag, "source": uikit.SearchKindSource, "time": uikit.SearchKindTime, "extension": uikit.SearchKindOther}
+var searchKinds = map[string]desktopkit.SearchTokenKind{"type": desktopkit.SearchKindType, "tag": desktopkit.SearchKindTag, "source": desktopkit.SearchKindSource, "time": desktopkit.SearchKindTime, "extension": desktopkit.SearchKindOther}
 
 func searchWords(buffer string) []searchWord {
 	r := []rune(buffer)
@@ -320,11 +320,11 @@ func (s *historySearchState) removeBadge(d *viewState, dimension string) {
 	s.restore = true
 	s.refresh(d)
 }
-func (s *historySearchState) tokens(d *viewState) []uikit.SearchFieldToken {
-	var out []uikit.SearchFieldToken
+func (s *historySearchState) tokens(d *viewState) []desktopkit.SearchFieldToken {
+	var out []desktopkit.SearchFieldToken
 	add := func(dim, value string) {
 		if value != "" && value != "all" {
-			out = append(out, uikit.SearchFieldToken{ID: dim, Field: d.tr(searchLabels[dim]), Value: value, Kind: searchKinds[dim], RemoveLabel: fmt.Sprintf(d.tr("移除%s条件"), d.tr(searchLabels[dim]))})
+			out = append(out, desktopkit.SearchFieldToken{ID: dim, Field: d.tr(searchLabels[dim]), Value: value, Kind: searchKinds[dim], RemoveLabel: fmt.Sprintf(d.tr("移除%s条件"), d.tr(searchLabels[dim]))})
 		}
 	}
 	add("type", d.tr(d.kind))
@@ -352,7 +352,7 @@ func (s *historySearchState) tokens(d *viewState) []uikit.SearchFieldToken {
 	}
 	return out
 }
-func (s *historySearchState) key(d *viewState, key uikit.SearchFieldKey) bool {
+func (s *historySearchState) key(d *viewState, key desktopkit.SearchFieldKey) bool {
 	s.buffer = key.Text
 	s.start, s.end = key.Start, key.End
 	s.refresh(d)
@@ -411,12 +411,12 @@ func (s *historySearchState) key(d *viewState, key uikit.SearchFieldKey) bool {
 	return false
 }
 
-func (d *viewState) historySearch(c *ui.Context, k uikit.Kit) {
+func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 	s := &d.search
 	s.refresh(d)
 	restore := s.restore
 	s.restore = false
-	var suggestions []uikit.SearchSuggestion
+	var suggestions []desktopkit.SearchSuggestion
 	var prospective []engine.HistorySearchQuery
 	previous := ""
 	for _, candidate := range s.options {
@@ -452,7 +452,7 @@ func (d *viewState) historySearch(c *ui.Context, k uikit.Kit) {
 				n = int(count)
 			}
 		}
-		suggestions = append(suggestions, uikit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: d.searchCandidateLabel(candidate), Kind: candidate.kind, Group: group, Detail: detail, Selected: selected, Muted: n == 0 && (d.live == nil || detail != "")})
+		suggestions = append(suggestions, desktopkit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: d.searchCandidateLabel(candidate), Kind: candidate.kind, Group: group, Detail: detail, Selected: selected, Muted: n == 0 && (d.live == nil || detail != "")})
 	}
 	if d.live != nil {
 		d.live.requestCounts(prospective)
@@ -465,7 +465,7 @@ func (d *viewState) historySearch(c *ui.Context, k uikit.Kit) {
 			feedback = d.tr("没有匹配的") + searchLabels[w.dimension] + d.tr("条件，按原文字搜索。")
 		}
 	}
-	res := k.TokenSearchField(c, uikit.TokenSearchFieldProps{Toolbar: true, Label: d.tr("搜索历史"), Value: &s.buffer, Placeholder: d.tr("搜索，或输入 # @ / on:"), ShortcutHint: "⌘F", Tokens: s.tokens(d), Suggestions: suggestions, Open: &s.open, Highlighted: &s.highlight, Feedback: feedback, ClearLabel: d.tr("清除搜索"), SuggestionsFooter: d.tr("↑↓ 选择 · Enter 或 Tab 转为筛选条件 · 输入框为空时退格删除最后一个条件"), OnKey: func(key uikit.SearchFieldKey) bool { return s.key(d, key) }, OnSelectionChange: func(start, end int) {
+	res := k.TokenSearchField(c, desktopkit.TokenSearchFieldProps{Toolbar: true, Label: d.tr("搜索历史"), Value: &s.buffer, Placeholder: d.tr("搜索，或输入 # @ / on:"), ShortcutHint: "⌘F", Tokens: s.tokens(d), Suggestions: suggestions, Open: &s.open, Highlighted: &s.highlight, Feedback: feedback, ClearLabel: d.tr("清除搜索"), SuggestionsFooter: d.tr("↑↓ 选择 · Enter 或 Tab 转为筛选条件 · 输入框为空时退格删除最后一个条件"), OnKey: func(key desktopkit.SearchFieldKey) bool { return s.key(d, key) }, OnSelectionChange: func(start, end int) {
 		if !restore && !s.restore && (s.start != start || s.end != end) {
 			s.start, s.end = start, end
 			s.refresh(d)
@@ -500,7 +500,7 @@ func (d *viewState) historySearch(c *ui.Context, k uikit.Kit) {
 func (d *viewState) matchesSearch(e entry) bool {
 	if d.kind != "" && d.kind != "all" {
 		if d.kind == "文本" {
-			if e.kind != uikit.KindText && e.kind != uikit.KindCode && e.kind != uikit.KindLink {
+			if e.kind != desktopkit.KindText && e.kind != desktopkit.KindCode && e.kind != desktopkit.KindLink {
 				return false
 			}
 		} else if d.kind != kindName(e.kind) {
@@ -527,7 +527,7 @@ func (d *viewState) matchesSearch(e entry) bool {
 	}
 	if d.search.extension != "" {
 		found := false
-		if e.kind == uikit.KindImage || e.kind == uikit.KindFile {
+		if e.kind == desktopkit.KindImage || e.kind == desktopkit.KindFile {
 			for _, name := range append([]string{e.title}, strings.Split(e.text, "\n")...) {
 				if strings.EqualFold(strings.TrimPrefix(filepath.Ext(name), "."), d.search.extension) {
 					found = true

@@ -5,12 +5,12 @@ package preview
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 )
 
 type Entry struct {
 	ID, Title, Text, Source, Date, Size string
-	Kind                                uikit.ContentKind
+	Kind                                desktopkit.ContentKind
 	Tags                                []string
 	Pinned                              bool
 }
@@ -20,7 +20,7 @@ type DevicePath struct {
 }
 type Device struct {
 	ID, Name, Platform                     string
-	Icon                                   uikit.IconName
+	Icon                                   desktopkit.IconName
 	Online                                 bool
 	Latency                                int
 	Link, LastSeen, Fingerprint, Direction string
@@ -29,15 +29,15 @@ type Device struct {
 }
 type PendingDevice struct {
 	ID, Name, Platform, Via, Fingerprint string
-	Icon                                 uikit.IconName
+	Icon                                 desktopkit.IconName
 }
 type DeviceCandidate struct {
 	ID, Name, Introducer, BackendID string
-	Icon                            uikit.IconName
+	Icon                            desktopkit.IconName
 }
 type Tag struct {
 	ID, Name string
-	Color    uikit.TagColor
+	Color    desktopkit.TagColor
 	Sidebar  bool
 }
 type Desktop struct {

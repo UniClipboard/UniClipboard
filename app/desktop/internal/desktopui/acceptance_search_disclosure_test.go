@@ -16,7 +16,7 @@ import (
 // a moved title/command group; lost input focus; an empty field that cannot
 // collapse. Drive the complete existing toolbar without a native replacement.
 func scenarioSearchDisclosure(t *testing.T) {
-	t.Setenv("UNIC_UI_SKIN", "macos")
+
 	d := newDemo("history", "dark")
 	tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: true})
 	proof.Capture(t, tt)
@@ -122,7 +122,7 @@ func scenarioSearchDisclosure(t *testing.T) {
 }
 
 func scenarioSearchDisclosureReducedMotion(t *testing.T) {
-	t.Setenv("UNIC_UI_SKIN", "macos")
+
 	d := newDemo("history", "light")
 	tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true, TextScale: 1}})
 	proof.Capture(t, tt)

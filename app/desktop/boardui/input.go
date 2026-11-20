@@ -8,6 +8,9 @@ import "github.com/egoist/mygo/ui"
 type InputProps struct {
 	Label, Description, Error, Placeholder, Size string
 	Password, Disabled, ReadOnly, Required       bool
+	// HideLabel keeps Label accessible without painting a duplicate label.
+	HideLabel bool
+	MaxLength int
 }
 
 // Input renders the composed label, editor and description/error. It returns
@@ -24,7 +27,7 @@ func (k Kit) Input(c *ui.Context, value *string, p InputProps) ui.Element {
 	var input ui.Element
 	ui.Column(c).MinWidth(0).Gap(Number("input-field-gap")).Children(func() {
 		var label ui.Element
-		if p.Label != "" {
+		if p.Label != "" && !p.HideLabel {
 			ui.Row(c.Key("label-row")).Gap(2).Children(func() {
 				label = k.Text(c.Key("label"), p.Label, "body-medium")
 				if p.Required {
@@ -37,8 +40,11 @@ func (k Kit) Input(c *ui.Context, value *string, p InputProps) ui.Element {
 			Invalid(p.Error != "").Height(m.Height).PaddingStart(m.PaddingX + Number("input-inner-start")).PaddingEnd(m.PaddingX).
 			Radius(m.Radius).MinWidth(0).FocusRing(false)
 		dressType(input, "body-regular")
-		if p.Label != "" {
+		if p.Label != "" && !p.HideLabel {
 			input.LabelledBy(label)
+		}
+		if p.MaxLength > 0 {
+			input.MaxLength(p.MaxLength)
 		}
 		if p.Password {
 			input.Password()

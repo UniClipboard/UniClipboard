@@ -1,0 +1,8 @@
+# Case: Production Desktop uses one BoardUI design system
+# Mode: view
+# Purpose: Verify complete production history/settings/return and quick-panel compositions use source-bound BoardUI resources with no legacy UI Kit dependency or appearance branch.
+# Steps: Inspect actual production source; ignore hostile old platform-skin overrides; operate history to settings, edit synthetic Unicode data, return to history and inspect the quick panel in both themes and scales.
+# Expected: The old Kit directory and imports are absent, source-derived BoardUI font/theme resources apply consistently, navigation and caller state survive and all exercised views produce PNG and structured receipts.
+# Forbidden: Renaming legacy skins as BoardUI, product profile or clipboard access, skipped legacy dependencies, static image interaction, or software views labeled as native platform acceptance.
+
+acceptance desktopui boardui-production-migration

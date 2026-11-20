@@ -10,19 +10,19 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/plugin"
 )
 
 type historyTag struct {
 	id, name         string
-	color            uikit.TagColor
+	color            desktopkit.TagColor
 	builtin, sidebar bool
 }
 type tagManagerState struct {
 	filter, sort, editing, name, error string
 	next                               int
-	table                              uikit.ListState
+	table                              desktopkit.ListState
 }
 
 func builtinTags() []historyTag {
@@ -44,7 +44,7 @@ func (d *viewState) projectTags(ids []string) {
 	for i := range builtins {
 		if d.live != nil {
 			if saved := d.live.config.Config.Desktop.TagColors[tagColorKey(builtins[i].id)]; saved != "" {
-				builtins[i].color = uikit.TagColor(saved)
+				builtins[i].color = desktopkit.TagColor(saved)
 			}
 		}
 		if previous := d.tagByID(builtins[i].id); previous != nil {
@@ -54,10 +54,10 @@ func (d *viewState) projectTags(ids []string) {
 	d.tags = builtins
 	for _, id := range ids {
 		if d.tagByID(id) == nil {
-			color := uikit.TagColor("gray")
+			color := desktopkit.TagColor("gray")
 			if d.live != nil {
 				if saved := d.live.config.Config.Desktop.TagColors[tagColorKey(id)]; saved != "" {
-					color = uikit.TagColor(saved)
+					color = desktopkit.TagColor(saved)
 				}
 			}
 			sidebar, known := visibility[id]
@@ -85,7 +85,7 @@ func (d *viewState) tagLabel(id string) string {
 	}
 	return id
 }
-func (d *viewState) tagColor(id string) uikit.TagColor {
+func (d *viewState) tagColor(id string) desktopkit.TagColor {
 	if t := d.tagByID(id); t != nil {
 		return t.color
 	}
@@ -149,34 +149,34 @@ func (d *viewState) removeTags(ids []string, target string) {
 	d.tagManager.table.Select()
 }
 
-func (d *viewState) tagMenu(ids []string) []uikit.MenuEntry {
+func (d *viewState) tagMenu(ids []string) []desktopkit.MenuEntry {
 	own := d.localTagIDs(ids)
-	var out []uikit.MenuEntry
+	var out []desktopkit.MenuEntry
 	var single *historyTag
 	if len(ids) == 1 {
 		single = d.tagByID(ids[0])
 	}
 	if single != nil && !single.builtin && d.live == nil {
-		out = append(out, uikit.MenuEntry{ID: "rename", Label: d.tr("重命名…"), Icon: uikit.IconEdit})
+		out = append(out, desktopkit.MenuEntry{ID: "rename", Label: d.tr("重命名…"), Icon: desktopkit.IconEdit})
 	}
 	if len(own) > 0 && d.live == nil {
-		var targets []uikit.MenuEntry
+		var targets []desktopkit.MenuEntry
 		for _, tag := range d.tags {
 			if !tag.builtin && !slices.Contains(ids, tag.id) {
-				targets = append(targets, uikit.MenuEntry{ID: "merge:" + tag.id, Label: "#" + d.tagLabel(tag.id)})
+				targets = append(targets, desktopkit.MenuEntry{ID: "merge:" + tag.id, Label: "#" + d.tagLabel(tag.id)})
 			}
 		}
 		if len(targets) > 0 {
-			out = append(out, uikit.MenuEntry{ID: "merge", Label: d.tr("合并到"), Icon: uikit.IconMerge, Children: targets})
+			out = append(out, desktopkit.MenuEntry{ID: "merge", Label: d.tr("合并到"), Icon: desktopkit.IconMerge, Children: targets})
 		}
 	}
 	if single != nil {
-		out = append(out, uikit.MenuEntry{ID: "show", Label: d.tr("显示条目"), Icon: uikit.IconSearch})
+		out = append(out, desktopkit.MenuEntry{ID: "show", Label: d.tr("显示条目"), Icon: desktopkit.IconSearch})
 	}
 	if single != nil && !single.builtin {
-		out = append(out, uikit.MenuSeparator("colors"))
+		out = append(out, desktopkit.MenuSeparator("colors"))
 		for _, v := range [][2]string{{"orange", "橙色"}, {"blue", "蓝色"}, {"green", "绿色"}, {"purple", "紫色"}, {"gray", "灰色"}} {
-			out = append(out, uikit.MenuEntry{ID: "color:" + v[0], Label: d.tr(v[1]), Swatch: uikit.TagColor(v[0]), Checked: single.color == uikit.TagColor(v[0]), Disabled: d.live != nil && d.live.busy})
+			out = append(out, desktopkit.MenuEntry{ID: "color:" + v[0], Label: d.tr(v[1]), Swatch: desktopkit.TagColor(v[0]), Checked: single.color == desktopkit.TagColor(v[0]), Disabled: d.live != nil && d.live.busy})
 		}
 	}
 	if len(own) > 0 && d.live == nil {
@@ -184,7 +184,7 @@ func (d *viewState) tagMenu(ids []string) []uikit.MenuEntry {
 		if len(own) > 1 {
 			label = fmt.Sprintf(d.tr("删除 %d 个标签（保留条目）"), len(own))
 		}
-		out = append(out, uikit.MenuSeparator("delete-separator"), uikit.MenuEntry{ID: "delete", Label: label, Icon: uikit.IconDelete, Destructive: true})
+		out = append(out, desktopkit.MenuSeparator("delete-separator"), desktopkit.MenuEntry{ID: "delete", Label: label, Icon: desktopkit.IconDelete, Destructive: true})
 	}
 	return out
 }
@@ -206,7 +206,7 @@ func (d *viewState) tagAction(action string, ids []string) {
 		d.removeTags(ids, strings.TrimPrefix(action, "merge:"))
 	case strings.HasPrefix(action, "color:") && len(ids) == 1:
 		if tag := d.tagByID(ids[0]); tag != nil && !tag.builtin {
-			d.setTagColor(tag.id, uikit.TagColor(strings.TrimPrefix(action, "color:")))
+			d.setTagColor(tag.id, desktopkit.TagColor(strings.TrimPrefix(action, "color:")))
 		}
 	}
 }
@@ -234,7 +234,7 @@ func (d *viewState) submitTagEdit() {
 	m.editing, m.name, m.error = "", "", ""
 }
 
-func (d *viewState) tagSheet(c *ui.Context, k uikit.Kit) {
+func (d *viewState) tagSheet(c *ui.Context, k desktopkit.Kit) {
 	m := &d.tagManager
 	shown := slices.Clone(d.tags)
 	shown = slices.DeleteFunc(shown, func(tag historyTag) bool {
@@ -261,17 +261,17 @@ func (d *viewState) tagSheet(c *ui.Context, k uikit.Kit) {
 		return strings.Compare(strings.ToLower(a.name), strings.ToLower(b.name))
 	})
 	header := func() {
-		k.Text(c.Key("subtitle"), fmt.Sprintf(d.tr("标签 · %d"), len(d.tags)), uikit.TextProps{Role: uikit.RoleCallout, Tone: uikit.ToneSecondary}).Shrink(0)
+		k.Text(c.Key("subtitle"), fmt.Sprintf(d.tr("标签 · %d"), len(d.tags)), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary}).Shrink(0)
 		ui.Spacer(c)
-		k.Select(c.Key("sort"), uikit.SelectProps{Label: d.tr("标签排序"), Glass: true, Value: &m.sort, Items: []uikit.SelectItem{{Value: "mostUsed", Label: d.tr("最常用")}, {Value: "name", Label: d.tr("名称")}, {Value: "newest", Label: d.tr("最新")}}}).Element.Shrink(0)
-		k.SearchField(c.Key("filter"), uikit.SearchFieldProps{Label: d.tr("筛选标签"), Value: &m.filter, Placeholder: fmt.Sprintf(d.tr("在 %d 个标签中筛选"), len(d.tags))}).Element.Grow(1).MinWidth(80)
+		k.Select(c.Key("sort"), desktopkit.SelectProps{Label: d.tr("标签排序"), Value: &m.sort, Items: []desktopkit.SelectItem{{Value: "mostUsed", Label: d.tr("最常用")}, {Value: "name", Label: d.tr("名称")}, {Value: "newest", Label: d.tr("最新")}}}).Element.Shrink(0)
+		k.SearchField(c.Key("filter"), desktopkit.SearchFieldProps{Label: d.tr("筛选标签"), Value: &m.filter, Placeholder: fmt.Sprintf(d.tr("在 %d 个标签中筛选"), len(d.tags))}).Element.Grow(1).MinWidth(80)
 	}
 	foot := func() {
-		if k.Button(c.Key("add"), "", uikit.ButtonProps{Icon: uikit.IconAdd, Label: d.tr("新建标签"), Disabled: d.live != nil}).Clicked() {
+		if k.Button(c.Key("add"), "", desktopkit.ButtonProps{Icon: desktopkit.IconAdd, Label: d.tr("新建标签"), Disabled: d.live != nil}).Clicked() {
 			m.editing, m.name, m.error = "new", "", ""
 			m.filter = ""
 		}
-		if k.Button(c.Key("delete"), "", uikit.ButtonProps{Icon: uikit.IconDelete, Label: d.tr("删除选中标签"), Disabled: d.live != nil || len(d.localTagIDs(m.table.Selection())) == 0}).Clicked() {
+		if k.Button(c.Key("delete"), "", desktopkit.ButtonProps{Icon: desktopkit.IconDelete, Label: d.tr("删除选中标签"), Disabled: d.live != nil || len(d.localTagIDs(m.table.Selection())) == 0}).Clicked() {
 			d.removeTags(m.table.Selection(), "")
 		}
 		sidebar, unused := 0, 0
@@ -283,13 +283,13 @@ func (d *viewState) tagSheet(c *ui.Context, k uikit.Kit) {
 				unused++
 			}
 		}
-		k.Text(c.Key("summary"), fmt.Sprintf(d.tr("%d 个标签 · %d 个在侧边栏 · %d 个未使用"), len(d.tags), sidebar, unused), uikit.TextProps{Role: uikit.RoleCaption, Tone: uikit.ToneSecondary}).MinWidth(0)
+		k.Text(c.Key("summary"), fmt.Sprintf(d.tr("%d 个标签 · %d 个在侧边栏 · %d 个未使用"), len(d.tags), sidebar, unused), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary}).MinWidth(0)
 	}
-	if k.Sheet(c, uikit.SheetProps{Open: &d.tagsOpen, Title: d.tr("管理"), Header: header, Footer: foot, Done: d.tr("完成"), OnClosed: func() {
+	if k.Sheet(c, desktopkit.SheetProps{Open: &d.tagsOpen, Title: d.tr("管理"), Header: header, Footer: foot, Done: d.tr("完成"), OnClosed: func() {
 		m.table.Select()
 		m.editing, m.error = "", ""
 	}}, func() {
-		var rows []uikit.TableRow
+		var rows []desktopkit.TableRow
 		nameCell := func(id string) func(*ui.Context) {
 			return func(rc *ui.Context) {
 				if m.editing == id {
@@ -297,7 +297,7 @@ func (d *viewState) tagSheet(c *ui.Context, k uikit.Kit) {
 					if id == "new" {
 						label = d.tr("新标签名称")
 					}
-					field := k.TextField(rc.Key("editor"), uikit.TextFieldProps{Label: label, Value: &m.name, AutoFocus: true, MaxLength: 64, Error: d.tr(m.error)})
+					field := k.TextField(rc.Key("editor"), desktopkit.TextFieldProps{Label: label, Value: &m.name, AutoFocus: true, MaxLength: 64, Error: d.tr(m.error)})
 					field.Element.Grow(1).MinWidth(0)
 					if field.Edited {
 						m.error = ""
@@ -320,27 +320,25 @@ func (d *viewState) tagSheet(c *ui.Context, k uikit.Kit) {
 						status = "未使用"
 					}
 					if status != "" {
-						k.Text(rc.Key("status"), d.tr(status), uikit.TextProps{Role: uikit.RoleCaption, Tone: uikit.ToneSecondary}).SingleLine()
+						k.Text(rc.Key("status"), d.tr(status), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary}).SingleLine()
 					}
 				}
 			}
 		}
 		if m.editing == "new" {
-			rows = append(rows, uikit.TableRow{ID: "new", Cells: map[string]func(*ui.Context){"name": nameCell("new")}})
+			rows = append(rows, desktopkit.TableRow{ID: "new", Cells: map[string]func(*ui.Context){"name": nameCell("new")}})
 		}
 		for _, t := range shown {
 			id := t.id
-			rows = append(rows, uikit.TableRow{ID: id, Cells: map[string]func(*ui.Context){"name": nameCell(id), "items": func(rc *ui.Context) { ui.Text(rc, fmt.Sprint(d.tagCount(id))) }, "sidebar": func(rc *ui.Context) {
+			rows = append(rows, desktopkit.TableRow{ID: id, Cells: map[string]func(*ui.Context){"name": nameCell(id), "items": func(rc *ui.Context) { ui.Text(rc, fmt.Sprint(d.tagCount(id))) }, "sidebar": func(rc *ui.Context) {
 				if tag := d.tagByID(id); tag != nil {
-					k.Switch(rc, &tag.sidebar, uikit.SwitchProps{Label: d.tr("在侧边栏显示 #") + d.tagLabel(tag.id)})
+					k.Switch(rc, &tag.sidebar, desktopkit.SwitchProps{Label: d.tr("在侧边栏显示 #") + d.tagLabel(tag.id)})
 				}
 			}}})
 		}
 		height := float32(32 + len(rows)*48)
-		if k.Skin == uikit.MacOS {
-			height = float32(26 + len(rows)*32)
-		}
-		k.Table(c.Key("table"), &m.table, uikit.TableProps{Label: d.tr("标签"), FixedColumns: true, Columns: []uikit.TableColumn{{ID: "name", Label: d.tr("名称"), Fill: true}, {ID: "items", Label: d.tr("条目"), Width: 80, Align: ui.End}, {ID: "sidebar", Label: d.tr("侧边栏"), Width: 64, Align: ui.Center}}, Rows: rows, Menu: d.tagMenu, Empty: d.tr("没有匹配的标签")}).Height(min(360, height)).MinHeight(70)
+
+		k.Table(c.Key("table"), &m.table, desktopkit.TableProps{Label: d.tr("标签"), FixedColumns: true, Columns: []desktopkit.TableColumn{{ID: "name", Label: d.tr("名称"), Fill: true}, {ID: "items", Label: d.tr("条目"), Width: 80, Align: ui.End}, {ID: "sidebar", Label: d.tr("侧边栏"), Width: 64, Align: ui.Center}}, Rows: rows, Menu: d.tagMenu, Empty: d.tr("没有匹配的标签")}).Height(min(360, height)).MinHeight(70)
 		if action, ids, ok := m.table.MenuChosen(); ok {
 			d.tagAction(action, ids)
 		}
@@ -358,7 +356,7 @@ func tagColorKey(id string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (d *viewState) setTagColor(id string, color uikit.TagColor) {
+func (d *viewState) setTagColor(id string, color desktopkit.TagColor) {
 	tag := d.tagByID(id)
 	if tag == nil || tag.builtin {
 		return

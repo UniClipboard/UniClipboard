@@ -569,9 +569,6 @@ func (s *desktopScenario) launchNative() error {
 	}
 	if s.windowWidth > 0 {
 		s.app.Env = append(s.app.Env, fmt.Sprintf("UNIC_DESKTOP_E2E_WINDOW=%dx%d", s.windowWidth, s.windowHeight), "UNIC_DESKTOP_E2E_THEME="+s.windowTheme)
-		if !s.systemClipboard {
-			s.app.Env = append(s.app.Env, "UNIC_UI_SKIN=macos")
-		}
 	}
 	s.app.Env = append(s.app.Env, "UNIC_HOME="+s.home, "UNIC_DESKTOP_E2E_PROFILE="+s.home, "MYGO_AUTOMATION="+s.automation, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
 	if s.systemClipboard {
@@ -958,7 +955,7 @@ func (s *desktopScenario) acceptance(group, id string) error {
 	if s.result.Mode == "native" || id != s.name {
 		return errors.New("invalid acceptance scenario identity")
 	}
-	packages := map[string]string{"desktopui": "./app/desktop/internal/desktopui", "quickpanel": "./app/desktop/internal/quickpanel", "gui": "./app/desktop/cmd/unic-desktop", "startup": "./app/desktop/e2e", "boardui": "./app/desktop/boardui/e2e"}
+	packages := map[string]string{"desktopui": "./app/desktop/internal/desktopui", "quickpanel": "./app/desktop/internal/quickpanel", "gui": "./app/desktop/cmd/unic-desktop", "startup": "./app/desktop/e2e", "boardui": "./app/desktop/boardui/e2e", "desktopkit": "./app/desktop/internal/desktopkit"}
 	pkg, ok := packages[group]
 	if !ok {
 		return errors.New("unknown acceptance package")
@@ -999,23 +996,51 @@ func (s *desktopScenario) acceptance(group, id string) error {
 	prefix := "TestDesktopAcceptance/" + id
 	passed := false
 	var invalid bool
-	var diagnostics []string
+	// Failure mode: a long successful tail can evict the first failed
+	// subtest's assertion before the package exits. Preserve its recent
+	// bounded context once; retain neither the full private log nor source.
+	var diagnostics, firstFailureContext []string
+	var firstFailureTest, firstFailureAction string
+	appendDiagnostic := func(output string) {
+		const maxEntryBytes, maxContextBytes = 4096, 12288
+		if len(output) > maxEntryBytes {
+			marker := "\n[diagnostic entry truncated]\n"
+			half := (maxEntryBytes - len(marker)) / 2
+			output = output[:half] + marker + output[len(output)-half:]
+		}
+		diagnostics = append(diagnostics, output)
+		bytes := 0
+		for _, line := range diagnostics {
+			bytes += len(line)
+		}
+		for len(diagnostics) > 80 || bytes > maxContextBytes {
+			bytes -= len(diagnostics[0])
+			diagnostics = diagnostics[1:]
+		}
+	}
+	retainFirstFailure := func(test, action string) {
+		if firstFailureTest == "" {
+			firstFailureTest, firstFailureAction = test, action
+			firstFailureContext = append([]string(nil), diagnostics...)
+		}
+	}
 	for scanner.Scan() {
 		var event struct{ Action, Test, Output string }
 		if json.Unmarshal(scanner.Bytes(), &event) != nil {
 			continue
 		}
 		if event.Output != "" {
-			diagnostics = append(diagnostics, event.Output)
-			if len(diagnostics) > 80 {
-				diagnostics = diagnostics[1:]
-			}
+			appendDiagnostic(event.Output)
+		}
+		if event.Action == "fail" && event.Test == "" {
+			retainFirstFailure("package "+pkg, event.Action)
 		}
 		if event.Test != prefix && !strings.HasPrefix(event.Test, prefix+"/") {
 			continue
 		}
 		if event.Action == "skip" || event.Action == "fail" {
 			invalid = true
+			retainFirstFailure(event.Test, event.Action)
 		}
 		if event.Action == "pass" {
 			s.result.Assertions = append(s.result.Assertions, event.Test)
@@ -1060,7 +1085,23 @@ func (s *desktopScenario) acceptance(group, id string) error {
 		return err
 	}
 	if runErr != nil || scanErr != nil || !passed || invalid {
-		return fmt.Errorf("acceptance scenario failed, skipped, or did not run (process=%v, stream=%v)\n%s", runErr, scanErr, strings.Join(diagnostics, ""))
+		context := "Recent diagnostic tail:\n" + strings.Join(diagnostics, "")
+		if firstFailureTest != "" {
+			context = "First failed/skipped test: " + firstFailureTest + " (" + firstFailureAction + ")\n" + strings.Join(firstFailureContext, "") + "\n" + context
+		}
+		// The report links this small receipt; the full log stays private and
+		// is cleaned with the frozen build and synthetic profile.
+		receipt, marshalErr := json.MarshalIndent(map[string]any{
+			"first_test": firstFailureTest, "first_action": firstFailureAction,
+			"first_context": firstFailureContext, "tail": diagnostics,
+			"context_limit_bytes": 12288, "entry_limit_bytes": 4096,
+		}, "", "  ")
+		if marshalErr == nil {
+			if writeErr := os.WriteFile(filepath.Join(s.out, "acceptance-diagnostics.json"), append(receipt, '\n'), 0600); writeErr != nil {
+				context += "\nDiagnostic receipt write failed: " + writeErr.Error()
+			}
+		}
+		return fmt.Errorf("acceptance scenario failed, skipped, or did not run (process=%v, stream=%v)\n%s", runErr, scanErr, context)
 	}
 	if s.result.Mode == "view" && len(s.result.Screenshots) == 0 {
 		return errors.New("view scenario emitted no screenshot")

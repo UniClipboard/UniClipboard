@@ -6,13 +6,13 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	proof "github.com/uniclipboard/unic/app/desktop/internal/e2eproof"
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 	"github.com/uniclipboard/unic/app/desktop/internal/windowchrome"
 )
 
 func scenarioWindowChrome(t *testing.T) {
-	t.Setenv("UNIC_UI_SKIN", "windows")
+
 	for _, platform := range []string{"linux", "darwin", "windows"} {
 		for _, system := range []bool{false, true} {
 			opts := mygo.WindowOptions{}
@@ -39,7 +39,7 @@ func scenarioWindowChrome(t *testing.T) {
 			ToggleMaximize: func() { maximized = !maximized }, IsMaximized: func() bool { return maximized },
 		}
 		tt := ui.NewTesterWith(func(c *ui.Context) {
-			uikit.For(dark).Apply(c)
+			desktopkit.For(dark).Apply(c)
 			windowchrome.View(c, actions, "zh-CN", func() { ui.Text(c, "Window body") })
 		}, 640, 480, ui.TesterOptions{Dark: dark})
 		proof.Capture(t, tt)

@@ -36,10 +36,10 @@ func scenarioTagFixedColumns(t *testing.T) {
 			}
 		}
 	}()
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"dark", "light"} {
 			t.Run(skin+"/"+theme, func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", skin)
+
 				d := newDemo("history", theme)
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 				proof.Capture(t, tt)
@@ -81,10 +81,10 @@ func scenarioTagFixedColumns(t *testing.T) {
 				if d.tagByID("工作").sidebar {
 					t.Fatal("switch stopped working")
 				}
-				if err := tt.RightClick("#工作"); err != nil {
+				if err := boarduiTableClick(tt, "标签", "#工作", 0, true); err != nil {
 					t.Fatal(err)
 				}
-				if err := tt.ChooseMenuItem("显示条目"); err != nil {
+				if err := boarduiChooseMenu(tt, "显示条目"); err != nil {
 					t.Fatal(err)
 				}
 				if d.tagsOpen || d.tag != "工作" {

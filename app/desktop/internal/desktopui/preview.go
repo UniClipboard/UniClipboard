@@ -6,16 +6,16 @@ import (
 
 	"github.com/egoist/mygo"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui/preview"
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
 // NewPreview renders caller-supplied data without starting a service or loading fixtures.
 func NewPreview(data preview.Desktop) *Desktop {
 	d := &viewState{
 		page: data.Page, theme: data.Theme, layout: data.Layout, selected: data.Selected,
-		nav: uikit.NavState{Value: "all"}, settings: uikit.NavState{Value: "general"},
-		deviceList: uikit.SourceState{Value: "local"}, gridSize: .4,
+		nav: desktopkit.NavState{Value: "all"}, settings: desktopkit.NavState{Value: "general"},
+		deviceList: desktopkit.SourceState{Value: "local"}, gridSize: .4,
 		deviceName: data.DeviceName, options: maps.Clone(data.Options), choices: maps.Clone(data.Choices),
 		inviteCode: data.InviteCode, inviteMode: data.InviteMode,
 		reference: data.Reference, previewImage: data.Image,

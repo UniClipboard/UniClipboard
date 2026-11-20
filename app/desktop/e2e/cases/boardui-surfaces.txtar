@@ -1,0 +1,8 @@
+# Case: BoardUI production surface interaction
+# Mode: view
+# Purpose: Retain full-view hover feedback, pointer-exit reset, visible actions and send-popup cancellation in the unified BoardUI design system.
+# Steps: Exercise view-switch, search and secondary-action surfaces in both themes at 2x, sample real surface pixels, open the in-window send popup and cancel it.
+# Expected: Hover feedback resets, action geometry remains visible, actual popup items appear and cancellation performs no action.
+# Forbidden: Requiring removed OS-glass rims, legacy system-menu delegation, dropped functional assertions, or software raster checks labeled native GPU evidence.
+
+acceptance desktopui boardui-surfaces

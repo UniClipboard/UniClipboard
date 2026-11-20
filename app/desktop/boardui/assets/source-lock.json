@@ -9,6 +9,12 @@
       "styles/typography.css": "dfd4e9b446998d063efe96a47fc31fd2492639bf641d0da1b60645fe4dcc32a1",
       "styles/globals.css": "61eb0d742c68f3fe7914626d1a31f97a9e242f084191098bbc27379b5d683183",
       "components/base/buttons/button.tsx": "b147c988c73dd8c226ab6ede3d7019eac9a7125191bbd646fcdd25bea803ca41",
+      "components/base/buttons/link-button.tsx": "a0ea455383b9fb834b086c92e37d553dac84455b9c471b754993da678f9bce3c",
+      "components/base/switch/switch.tsx": "21d65c0a1c307d05b37444d2e3d664f97841df69d6fd19c8cfcccc6e288d4953",
+      "components/base/checkbox/checkbox.tsx": "592651a10aaf0e186a08862391fa99fa7d45ee75e8bfd0bc134408bb1c076f5e",
+      "components/base/checkbox/checkbox-glyph.tsx": "e71bdc6f0dd28e792be233950df90f7f8ee68252a63e3f2da46d19f84bdf7584",
+      "components/base/slider/slider.tsx": "df422bd73cd043e0dbed496ec427cc04c9c454cbfc99c559271baa74b354ce6f",
+      "components/base/segmented-control/segmented-control.tsx": "629b165aadfb42fcd2ed7a77e338f1b1aeb2e906533fcd78be5f11e729447878",
       "components/base/input/input.tsx": "5b354fef767b5bb5159546cc8bc2547db64ee62a66d9f701edcd508d4450d5df",
       "components/base/input/hint-text.tsx": "0426d70de74274486166cf3fd2279b8c70ce184012d613f87c44dbaa484ba8c3",
       "components/base/input/label.tsx": "a053bec8ad9f79f15ad8d7f031eac740588781d4e1b34d1cb1b3c5d44a4b2199",
@@ -70,14 +76,14 @@
     "files": {
       "fixture.tsx": "afd03499b5eef61d8830c579189acd3cab6709be6468a2040f69ad90ccd71884",
       "fixture.css": "cf8597f118a08ea0c7e34c7c95eb8a396c3dabf98ebc2d01ca65ed1529067116",
-      "capture.mjs": "abc7972ac99d654c465f70a413aed0d3b2dfb7e0161c2e1a00644a9f6fc83911",
+      "capture.mjs": "26a301b1bdb003e09a75c23e74a354722ac3dbb52dc9b399013e33f56c8af696",
       "capture.py": "d7d2775fe62ae12167b2deb6ce56b36be28919c21dc0a8aafdcefaeeac175766",
-      "generate.mjs": "7404692c5aa97595d09857b511a7bb3c3aac375a4ca79569dbf048bbba60c7f7"
+      "generate.mjs": "7be8336b9abcaed5b58a7d34b35949de998f31f9e05d2a1f7360b7ab4de023e6"
     },
     "sourceScope": "bounded composition; actual official Button/Input/Select; Dialog shell derived from settings-modal"
   },
   "generated": {
-    "tokens": 74,
+    "tokens": 111,
     "typeStyles": 52,
     "geometries": 7,
     "iconCount": 6,

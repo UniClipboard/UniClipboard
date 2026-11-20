@@ -1,7 +1,7 @@
 # Case: Search badge delete
 # Mode: view
 # Purpose: Whole-condition deletion from composite search badges.
-# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 # Expected: Backspace and remove actions reset only the selected condition dimension.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 

@@ -1,38 +1,70 @@
 # Native BoardUI component contract
 
-Status: first-slice implementation. Acceptance evidence and unresolved platform limits are recorded in the [implementation receipt](../exec/boardui-mygo-implementation.md). This contract does not change Engine, plugin, sync or local-service contracts.
+Status: native controls and production presentation integration. Executed acceptance and pending platform work are recorded in the [component receipt](../exec/boardui-mygo-implementation.md) and [production migration receipt](../exec/boardui-production-migration.md). This contract does not change Engine, plugin, sync or local-service protocols.
 
-## Scope and source identity
+## Scope and ownership
 
-The public Go package is `github.com/uniclipboard/unic/app/desktop/boardui`. It depends on mygo and Go standard-library resources. Core Engine and UI-free CLI/service programs must not depend on it. The existing three-skin UI Kit and production pages retain their existing interfaces.
+The reusable public Go package is `github.com/uniclipboard/unic/app/desktop/boardui`. It depends on mygo and Go standard-library resources. It owns public control paint, source-bound resources and native primitive composition. `app/desktop/internal/desktopkit` owns application-only compositions and adapters. `desktopui` and the production command retain domain models, service binding, validation, persistence and async work.
 
-The sole BoardUI source reference is official MIT export `ec5c5eb3e29c2441be63b9422cd54f411ef23466`. Source-derived code/resources retain the BoardUI MIT notice. Embedded Inter 4.1 retains OFL 1.1. Bundled Remix assets retain their independent license. [Source lock](../../app/desktop/boardui/assets/source-lock.json) binds source files, compiler dependency lock, font and glyph hashes. The repository root license remains AGPL-3.0. Upstream MIT, OFL and Remix notices retain their independent scope; this change does not relicense existing repository code. Public-source access is not authorization for Pro source. No Pro implementation is included.
+Main GUI, setup, Quick Panel, the full Desktop demo and the isolated component demo share one BoardUI content presentation on macOS, Windows and Linux. The former `internal/uikit` package, platform token snapshots and three-skin selector are removed. There is no legacy-skin fallback. System/light/dark are color-scheme choices rather than platform design systems.
+
+Core Engine and UI-free CLI/service programs must not acquire either UI dependency. The public control package does not own windows, the clipboard, OS input delivery, networking or persisted application settings. The internal application composition must not become an additional public UI library or an independent theme source.
+
+## Source and license identity
+
+The sole BoardUI source reference is official MIT export `ec5c5eb3e29c2441be63b9422cd54f411ef23466`. Actual source takes precedence over stale comments or newer skill recipes. Source-derived code/resources retain the BoardUI MIT notice. Embedded Inter 4.1 retains OFL 1.1. Functional Remix assets retain their independent license.
+
+The [public source lock](../../app/desktop/boardui/assets/source-lock.json) binds source files, exact reference compiler dependencies, font, generated resource counts and helper glyph hashes. The current generated resource set contains 111 semantic/accent colors per scheme, 52 complete typography styles and source geometry/motion. The [application icon lock](../../app/desktop/internal/desktopkit/icons-source.json) separately binds its finite 49-glyph Remix 4.9.0 vocabulary. The public helper-glyph set remains separate. Neither cache uses transient widget/row IDs.
+
+The repository root license remains AGPL-3.0. Upstream MIT, OFL and Remix notices retain their independent scope; this work does not relicense existing repository code. No Pro implementation or source-unverified newer component is implied by catalogue metadata. Required new resources must be inspected/generated from lawful fixed source rather than silently approximated or fetched from restricted endpoints.
 
 ## State and lifecycle
 
-`Kit` is a value containing a scheme selection, not mutable widget or domain state. `LoadFonts` registers one embedded font family once per process. `Apply` installs the resolved scheme on a view context. Text and paint resources have no runtime web dependency.
+`Kit{Dark}` is a value selecting immutable source resources, not a widget or domain-state owner. `LoadFonts` registers one embedded font family once per process. `Theme` returns canonical defaults for mature native primitives. `Apply` installs the resolved scheme and in-content popover-menu policy on the view context. There is no runtime web or Node dependency.
 
-Button returns `ui.Element`; callers read its native interaction result. Input accepts a nonnil `*string` and returns the real native editor element. Select accepts a nonnil selected-value pointer, stable item IDs and an optional open pointer; nil open state uses mygo's stable widget state. Dialog accepts a nonnil open pointer and composes a caller-owned body. Stable identities are required for repeated/reordered controls.
+Controls return their actual native interactive elements. Callers read native interaction results or bound values. Required state pointers must be nonnil. Repeated/reordered controls and collection items require stable IDs/keys. A scheme change must not reset editor values, selected data, scroll state or caller-owned async work.
 
-The caller owns validation, persistence, async work, selected data and cancellation. A theme switch must not reset these values. Native editor/focus/overlay machinery remains owned by mygo. There is no generic callback bus, renderer adapter or duplicated text-editing engine.
+The caller owns validation, persistence, requests, cancellation and stale-result rejection. mygo owns mature text editing, native selection, focus/keyboard groups, overlay scoping, dragging and accessibility machinery. There is no substitute editor, generic callback bus or platform renderer adapter in this library.
 
-## Supported behavior
+## Implemented control interfaces and limits
 
-- Button preserves four named variants and three named sizes, leading/trailing glyphs, icon-only accessible names, disabled activation and source 0.98 press motion. Busy is a host extension: it exposes busy and blocks activation; it does not claim an additional official source visual variant.
-- Input preserves label/description/error association, placeholder, password, read-only and disabled behavior in two sizes. Error replaces the visible description. Required paints the source marker and adds an accessible description; the fixed mygo bridge does not expose a separate required state.
-- Select uses a real in-window listbox, stable choices, disabled choices, keyboard arrows/Home/End/Enter/Escape, outside dismissal, trigger focus and anchor/collision behavior. It composes mygo PopoverBase, FocusGroup and ButtonBase to retain nonmodal outside-action behavior. Typeahead is not implemented in this first slice. Selection is read through the bound value; no trigger Changed() notification is promised. This standalone package intentionally uses BoardUI surfaces on macOS too. It does not change production Kit native-menu policy.
-- Dialog uses the fixed Settings Modal shell's surface/motion in a bounded synthetic form composition. It restricts Tab/Shift+Tab, closes the top overlay on Escape, supports outside dismissal and restores its opener. It is not a port of the newer source-unavailable generic Modal API. Initial programmatic panel focus occurs after mygo records the opener.
+- Button preserves the source's four named variants, three named sizes, leading/trailing glyphs, icon-only accessible names, disabled activation and 0.98 press motion. `DressButton` applies that presentation to an existing native action base. Busy is a host extension that exposes busy and blocks activation; it is not an additional official source visual variant.
+- `DressLinkButton` styles an existing native button action. It does not create an anchor, URL navigation or browser behavior.
+- Input accepts caller-owned text and preserves label/description/error association, placeholder, password, read-only and disabled behavior in two sizes. Error replaces the visible description. Required paints the source marker and adds an accessible description; the fixed mygo bridge exposes no separate required state. Hidden visual labels retain the accessible name.
+- Select accepts a selected-value pointer, stable item IDs and an optional open pointer. It uses a real nonmodal in-window listbox on every OS. PopoverBase, FocusGroup and ButtonBase own outside dismissal, keyboard navigation and activation. The component retains initial selected focus, disabled choices, top-scope Escape, selection and trigger focus restoration. Typeahead, rich option renderers, sections and async option loading remain outside this API. Selection is read from the bound value; no trigger Changed() notification is promised.
+- Dialog accepts caller-owned open state and body composition. It derives its surface/motion from the fixed Settings Modal shell, restricts Tab/Shift+Tab, closes the top overlay on Escape, supports outside dismissal and restores its opener. Initial programmatic panel focus follows mygo's recording of that opener. It is not the newer source-unavailable generic Modal API or a port of the complete official multi-page settings application.
+- Switch accepts a caller-owned boolean and supports the inspected source md pill/rectangle presentation, disabled state and an optionally hidden visible caption. Checkbox accepts a boolean or the explicit three-state entry point; md/sm, mixed state, disabled state and label ownership are explicit.
+- Slider accepts one caller-owned numeric value, bounded range and step. It is a single horizontal-thumb interface with source value-bubble presentation. Range and RTL slider interfaces are not claimed.
+- SegmentedControl accepts one caller-owned value and stable items, with solid/plain presentation. Native focus groups own arrows/Home/End/Tab and native buttons own Enter/Space. Arrow focus alone does not commit or clear selection. Disabled items remain noninteractive.
 
-Unknown variants/resource names and nil mandatory pointers are programmer errors. The implementation fails visibly instead of silently selecting an approximate skin or missing token. Accessible names must be nonempty for icon-only actions. Glyphs are decorative; the action supplies its name.
+New control implementation is not automatic visual acceptance. Each added state set requires its own actual-React/native comparison and behavior evidence. Application search, code/combobox fields, lists/tables, settings/status/tag views, menus, sheets and previews are explicit `desktopkit`/`desktopui` compositions, not claims that all similarly named official catalogue APIs have been ported.
 
-## Geometry, rendering and acceptance
+Unknown variants/resource names and nil mandatory pointers are programmer errors. Fail visibly rather than selecting an approximate fallback skin or missing token. Icon-only actions require a nonempty accessible name. Glyphs are decorative; the action or field supplies its semantic name.
 
-Shared fixture data, font bytes, viewport in DIP/CSS px, device scale, locale and theme identify a comparison. Reference images must be actual official React output at device-pixel dimensions. Native software screenshots are view evidence, not native-window or OS-compositor evidence.
+## Native host boundary
 
-The first-slice comparison checks control geometry within 0.5 DIP and empty flat control interiors within 2/255 per RGB channel. Text-only regions retain full unmasked raster metrics and source typography values; native/Chromium antialias differences are reported separately. No image translation, rescaling, blank-space similarity score or hidden text mask is allowed. Original images, side-by-side images, overlays, absolute differences, geometry and per-scene statuses remain bound by SHA256SUMS.
+Native title bars, traffic lights/GTK caption reservations, Windows caption actions, drag and resize regions, actual maximize state and close lifecycle remain host responsibilities. Linux/macOS system-frame preference and restart semantics remain unchanged. Platform modifiers, tray/system menus, OS file/credential prompts, updater, notifications, shortcuts and clipboard/focus/paste integration remain native.
 
-E2E must operate the real controls, not static images. Failure artifacts are immutable. Diagnose a repeated or relevant failure before delivery; passing retries do not erase it. Native OS keyboard/IME, accessibility bridges, high-contrast system policy, GPU material composition and Windows memory require explicit platform evidence. Unicode value editing in a software tester does not establish those native behaviors.
+In-content Select, action and context menus use the shared BoardUI presentation. This does not replace the tray's OS menu or move native integration into the public control package. The separate GUI/Quick Panel/tray/service process roles and exclusive tray clipboard adapter remain intact.
 
-## Coverage boundary
+## Rendering and acceptance
 
-The first slice contains Button, Input, Select and a derived Dialog, plus Text/icon/theme helpers and the standalone settings composition. It does not claim all 69 pinned install items. The research catalogue distinguishes foundations, base controls, app compositions, unknown-source free entries and Pro. Current implementation coverage must be recorded separately from that immutable research inventory.
+The exact source/dependency/font hashes, synthetic data, locale, scheme, viewport in DIP/CSS pixels, device scale and renderer identify a comparison. Reference images must be actual official React output at original device-pixel dimensions. Native software screenshots are view evidence, not OS window/compositor evidence.
+
+The accepted first-slice comparison checks control geometry within 0.5 DIP and empty flat control interiors within 2/255 per RGB channel. Those gates apply only to the named component scenes. Text regions retain full unmasked raster metrics and source typography values; native/Chromium antialias differences remain explicit. New controls, product pages, shadows, animation trajectories and native hosts require their own scoped results. Do not translate/rescale images, hide text mismatches or use page-wide blank-space similarity as parity.
+
+E2E must operate real controls and retain assertions, action timelines, images, geometry and SHA256SUMS. Failure artifacts are immutable. Investigate relevant/repeated failures before delivery; passing retries do not erase them. Native OS keyboard/IME, accessibility bridges, high-contrast policy, GPU material/compositor behavior, multi-monitor focus/paste and Windows memory require explicit platform evidence. Software Unicode editing and builds do not establish those results. User visual approval is separate.
+
+## Coverage and historical evidence
+
+Implementation coverage must distinguish reusable controls, application compositions, exact visual-state acceptance, native platform execution, source-unavailable free entries and Pro. Neither the historical 59-component Kit contract nor the 69 pinned public install items equals the delivered native library count. Do not advertise every component or a full template based on the first settings form.
+
+The previous 0013 three-skin receipts remain historical evidence. They do not define current token choices or acceptance of the unified production presentation. Current architecture and the final component/production receipts are the source of present facts and unexecuted boundaries.
+
+## Asynchronous confirmation completion
+
+Application confirmations block user dismissal while BusyLabel is nonempty.
+The caller may clear BusyLabel and Open in the same completion update. A prior
+busy frame must not reopen a completed confirmation. The retained complete-view
+scenario exercises busy Escape, idle Escape and same-update completion closure.
+This UI state contract does not change service cancellation or Engine ownership.

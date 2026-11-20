@@ -1,0 +1,404 @@
+{
+  "version": 1,
+  "status": "PASS",
+  "acceptance_scope": "Aggregate of named canonical software-view/process receipts; native OS UI not accepted",
+  "planning_head": "35b1d56b52e4c5fdb210455fcbac00cd9831d8bf",
+  "implementation_commit": "pending local commit",
+  "official_boardui_source": "ec5c5eb3e29c2441be63b9422cd54f411ef23466",
+  "runtime_input_fingerprint": "610accdc820b300f0719dbc89bfe2747f47565e6734864f8c622bc630ced5e01",
+  "totals": {
+    "unique_view_cases": 31,
+    "process_companions": 4,
+    "unique_cases": 35
+  },
+  "cases": {
+    "boardui-composition": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/composition-busy-final/manifest.json",
+      "manifest_sha256": "486baef500eb667fc62b65812390bd657354e18b6161151730bd81f78ee933ee",
+      "assertions": 175,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "boardui-menus": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 13,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "boardui-production-migration": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/wrapper-accepted/boardui-production-migration/manifest.json",
+      "manifest_sha256": "c130b51af20cb2ae203f1b36f849f3fdea092401baa0f02cfd27914e9fa7b28a",
+      "assertions": 7,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "boardui-settings": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/reference-accepted/boardui-settings/manifest.json",
+      "manifest_sha256": "4210cc58c52b685c3731bc889d4150b925ec7e73fde83aecd56bcfaeef1d7853",
+      "assertions": 5,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "boardui-states": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/reference-accepted/boardui-states/manifest.json",
+      "manifest_sha256": "b5bc08a57165d309b195595f9be532b17ad1c403ecc06b8750c38df021b7744c",
+      "assertions": 5,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "boardui-surfaces": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 7,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "gui-approval-reconnect": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 4,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "gui-empty-layout": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 4,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "gui-navigation": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 4,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "i18n": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 21,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "interaction-motion": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/interaction-final/manifest.json",
+      "manifest_sha256": "38d390c58961273fd2ce062b0d41ac833ea19fcfba22cbf11231b4782f09b6b0",
+      "assertions": 5,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "quick-panel-screenshots": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 7,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "quick-panel": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 12,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "search-badge-delete": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 3,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "search-disclosure-reduced-motion": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 1,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "search-disclosure": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 1,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "send-device-menu": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 13,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "setup-pages": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 38,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "sheet-exit-stability": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 7,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "sheet-motion": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 42,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "sidebar-collapse": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/sidebar-final/manifest.json",
+      "manifest_sha256": "70e941a86a0bc5e7568cf6c8594efe4fe1f3d2a3cf1a6254a9cdc1e1a542042a",
+      "assertions": 1,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "source-application": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 17,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "tag-editor": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/tag-editor-final/manifest.json",
+      "manifest_sha256": "cc1847e68a57adc1753652e256d6f68577a4a1b19f2e185a5a1f3b03c96228ec",
+      "assertions": 3,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "tag-fixed-columns": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 3,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "tag-manager-platforms": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/tag-platforms-final/manifest.json",
+      "manifest_sha256": "f6c80f8257ef2fc2b8e1a239abc391e5f2cc02b3bff5b85b7a014b1b7e9bd82e",
+      "assertions": 3,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "tag-manager": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/tag-manager-final/manifest.json",
+      "manifest_sha256": "cc86771a20ec632a33dab4d365d9dd6aae13da09ebe35ee49ce4f66f648cf2cf",
+      "assertions": 31,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "token-search": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 29,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "toolbar-alignment": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 33,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "tray-icon-settings": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 1,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "unified-scrollbars": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 9,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "window-chrome": {
+      "status": "PASS",
+      "mode": "view",
+      "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+      "manifest_sha256": "006603ea22d5cf201a99729ba921fa827137c53a4431dd0676bb6c34608a3f69",
+      "assertions": 1,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "data-binding": {
+      "status": "PASS",
+      "mode": "process",
+      "manifest": ".build/boardui-migration/data-binding-final/manifest.json",
+      "manifest_sha256": "12f6b757e9437d8e27392a8481727e9c1e596cf872f5f219992668ce8dcb3aa4",
+      "assertions": 1,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "storage-cleanup-settings": {
+      "status": "PASS",
+      "mode": "native",
+      "manifest": ".build/boardui-migration/storage-final/manifest.json",
+      "manifest_sha256": "b93ff56c49830281c8880ad8eb3bfdbf0c0f91d36f276f98824addf46ae9a6a8",
+      "assertions": 27,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "first-install-setup": {
+      "status": "PASS",
+      "mode": "process",
+      "manifest": ".build/boardui-migration/setup-final/manifest.json",
+      "manifest_sha256": "50da1f771056823fa2d0e7f88edbbb8edcb16233ae01afd695ec1f0542623ce1",
+      "assertions": 1,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    },
+    "production-boundary": {
+      "status": "PASS",
+      "mode": "process",
+      "manifest": ".build/boardui-migration/boundary-final/manifest.json",
+      "manifest_sha256": "22e9ed81d90d3a659f78db57f8936def9f33f40441c31e52fe7ab97678d177a0",
+      "assertions": 1,
+      "source_snapshot_unchanged": true,
+      "private_cleanup": "PASS"
+    }
+  },
+  "raw_broad_run": {
+    "manifest": ".build/boardui-migration/all-view-final/result/manifest.json",
+    "status": "FAIL",
+    "resolution": "Six failing cases have named passing receipts; original FAIL retained"
+  },
+  "late_runtime_changes": {
+    "app/desktop/boardui/tokens_gen.go": "Corrected 35 unused typography records per theme; all 11 production styles unchanged; 104 records source-audited and current reference replay PASS",
+    "app/desktop/internal/desktopkit/dialog.go": "Same-update busy completion closure corrected after red; current 58-scenario composition receipt PASS; production confirmations do not pass BusyLabel"
+  },
+  "official_reference": {
+    "status": "PASS",
+    "manifest": ".build/boardui-migration/reference-accepted/replay.json",
+    "sha256": "6fdc72d6d8520660b6d6f6f55c4dd0990e363e5671be4c0592c00c3ab8f23d10",
+    "current_source_hashes_match": true,
+    "paired_scenes": 13,
+    "max_control_geometry_delta_dip": 0.5,
+    "max_empty_interior_channel_delta_255": 2,
+    "limitations": "Component checkpoints only; unmasked text/shadow/OS raster differences reported separately, not whole-product template equivalence"
+  },
+  "distribution_notices": {
+    "status": "PASS",
+    "notices": {
+      "BOARDUI-MIT.txt": "7a28c78354f8f88d8773f72bf37fb9c037817f8abd2fa5a63694d6c946a5ce80",
+      "Inter-OFL.txt": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a",
+      "REMIX-LICENSE.txt": "6f2f21c5f8db34635d31848e9ff831d5dc421bb83ffc9d37f82651364047ae58"
+    },
+    "archive_sha256": "ed185502f6c339421261767b395a9d82b82c450d2d91bf04c04b3d4b2401ad76",
+    "source_head": "35b1d56b52e4c5fdb210455fcbac00cd9831d8bf",
+    "native_identity_and_private_service": "passed",
+    "gui": "NOT_RUN",
+    "installation": "NOT_RUN",
+    "publication": "NOT_RUN"
+  },
+  "checks": {
+    "go_test_race": "PASS with owned short canonical temporary directory; initial two environment failures retained",
+    "lint": "PASS: 0 issues",
+    "target_builds": [
+      "darwin/arm64",
+      "linux/amd64",
+      "windows/amd64"
+    ]
+  },
+  "not_run": [
+    "native macOS/Linux/Windows GUI",
+    "OS IME and accessibility",
+    "Windows native memory",
+    "system clipboard and cross-application paste",
+    "user visual acceptance",
+    "installation/signing/publication"
+  ],
+  "remaining_limits": [
+    "Select typeahead",
+    "Slider range and RTL",
+    "Unpinned CJK fallback",
+    "Not all 69 catalogue components are ported"
+  ],
+  "cleanup": {
+    "status": "PASS",
+    "removed_owned_scratch": [
+      ".build/boardui-reference/upstream",
+      ".build/boardui-reference/node_modules",
+      ".build/boardui-reference/npm-cache",
+      ".build/boardui-migration/notices-red/package",
+      ".build/boardui-migration/notices-green/package",
+      ".build/boardui-migration/unic-desktop-macos-final",
+      ".build/boardui-migration/unic-desktop-windows-final.exe",
+      ".build/boardui-migration/unic-desktop-linux",
+      ".build/boardui-migration/unic-desktop-linux-final",
+      ".build/boardui-migration/unic-desktop-windows.exe",
+      ".build/boardui-migration/reduce"
+    ],
+    "retained": "Ignored small receipts, source audit, first failures and screenshot evidence; no production profiles or clipboard touched"
+  }
+}

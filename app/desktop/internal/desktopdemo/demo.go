@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"runtime"
 	"slices"
 
 	"github.com/egoist/mygo"
@@ -13,7 +14,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopdemo/fixtures"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/windowchrome"
 )
 
 // Run parses all preview options before starting mygo. It never opens a service.
@@ -51,10 +52,11 @@ func Run(args []string) error {
 	mygo.App.SetName("unic UI Demo")
 	mygo.App.WhenReady(func() {
 		opts := mygo.WindowOptions{Title: "unic · " + i18n.Translate("zh-CN", "界面演示"), Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View)}
-		if uikit.DefaultSkin() == uikit.MacOS {
+		if runtime.GOOS == "darwin" {
 			opts.TitleBarStyle = mygo.TitleBarHidden
 			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
-			opts.Vibrancy = mygo.VibrancySidebar
+			opts.Content = ui.View(func(c *ui.Context) { windowchrome.NativeView(c, func() { screen.View(c) }) })
+
 		}
 		mygo.NewWindow(opts)
 		var quick *desktopui.QuickPreview

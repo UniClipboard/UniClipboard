@@ -20,6 +20,8 @@ type SelectProps struct {
 	Items                                        []SelectItem
 	Label, Description, Error, Placeholder, Size string
 	Disabled                                     bool
+	// HideLabel keeps the accessible name without painting a duplicate label.
+	HideLabel bool
 }
 
 // Select renders a non-modal native listbox. PopoverBase owns dismissal and
@@ -41,11 +43,11 @@ func (k Kit) Select(c *ui.Context, p SelectProps) ui.Element {
 	var trigger ui.Element
 	ui.Column(c).MinWidth(0).Gap(Number("select-popup-gap")).Children(func() {
 		var label ui.Element
-		if p.Label != "" {
+		if p.Label != "" && !p.HideLabel {
 			label = k.Text(c.Key("label"), p.Label, "body-medium")
 		}
 		trigger = ui.ButtonBase(c.Key("select")).Role(ui.RolePopUpButton).HasPopup(ui.PopupListBox).Label(p.Label).Disabled(p.Disabled).DimDisabled(false).Height(m.Height).Padding(m.PaddingY, m.PaddingX).Radius(m.Radius).Gap(m.Gap).MinWidth(0)
-		if p.Label != "" {
+		if p.Label != "" && !p.HideLabel {
 			trigger.LabelledBy(label)
 		}
 		localOpen := ui.Local(trigger, "boardui-select-open", func() bool { return false })

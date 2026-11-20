@@ -61,7 +61,11 @@ CPU. The unmerged version hides GUI to tray; it does not exit GUI. Standalone
 tray-role costs are NOT_RUN unless that implementation is merged or independently
 accepted at a separately identified source; never merge it for this experiment.
 
-Record selected-preview readiness latency and native selected-image crop hash.
+After reopened sampling, select the third synthetic image row. Require a new
+full-resolution readiness event within8s, then observe10s and capture its native
+client pixels. Record app-observed selection-to-original latency, process startup
+to first original and command-to-observed-ready elapsed time. None is physical-input
+latency. Record both initial and changed native selected-image crop hashes.
 Require unchanged pixels and complete previews. Correctness: one open image
 request; queued cancellation and controlled blocked-response cancellation finish
 within500ms locally; no retained request at scenario exit. Performance acceptance:
@@ -74,3 +78,14 @@ not a promise of a fixed memory saving. Never sum the previous research deltas.
 Retain small source/program hashes, phase aggregates, timing/pixel checks and
 failure receipts. Remove task profiles, programs, source exports and raw captures.
 Restore the acquired VM state after owned processes exit.
+
+## Cached-selection priority refinement
+
+Before correcting the scheduler condition, add a real Desktop/software-view plus
+real-service regression. Cache all image neighbors, hold one outside image request,
+occupy all four view jobs with neighbors, then select an already cached thumbnail
+that needs an original-resolution upgrade. The selected item must be the next
+image response after the held request. This distinguishes an upgrade from an
+uncached detail: the existing detailBusy flag is false for cached thumbnails.
+The initial implementation must go red on this scenario before changing the
+reservation condition. No additional unit test is introduced.

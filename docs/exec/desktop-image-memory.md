@@ -50,6 +50,14 @@ original bytes/dimensions, Quick Panel and later-frame CPU release passed.
 Malformed/truncated/oversized-header/huge-raster/trailing-over-limit/read-error
 inputs and cancellation were rejected; the next valid request succeeded.
 
+A further test-first refinement covered a selected item whose thumbnail was
+already cached while four neighbor jobs occupied the view. Run
+20261120T061011Z-45c10e90 failed because detailBusy was false during an original
+upgrade. The scheduler now tests the required resolution tier independently of
+that display flag. Run20261120T061154Z-345d068e passed the full race-instrumented
+case, including the selected request taking the next response slot. Prepared
+binaries from before this refinement were discarded without running in Windows.
+
 No unit test was added after implementation. The acceptance additions drive the
 production view/content path and a real separate service through the canonical
 runner. Native Windows cost, native pixels and software-view correctness are

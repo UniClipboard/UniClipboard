@@ -114,7 +114,7 @@ func (l *liveState) loadDetail(d *viewState) {
 		}
 	}
 	l.detailKey = d.selected
-	_, cached := l.details[d.selected]
+	selectedDetail, cached := l.details[d.selected]
 	_, exists := l.items[d.selected]
 	l.detailBusy = exists && !cached
 	if l.detailReads == nil {
@@ -123,7 +123,8 @@ func (l *liveState) loadDetail(d *viewState) {
 	// Reserve the next per-view job for selection instead of leaving it behind
 	// four neighbors waiting for the process-wide request slot. Cancelled jobs
 	// keep their slot until completion, so the four-job bound remains intact.
-	if l.detailBusy && l.detailReads[d.selected] == nil && len(l.detailReads) >= detailReadLimit {
+	selectionNeedsRead := exists && (!cached || (selectedDetail.picture != nil && !selectedDetail.picture.matches(0)))
+	if selectionNeedsRead && l.detailReads[d.selected] == nil && len(l.detailReads) >= detailReadLimit {
 		cancelling := false
 		for _, read := range l.detailReads {
 			cancelling = cancelling || read.obsolete

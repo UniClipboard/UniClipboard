@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -160,6 +161,107 @@ func imageResourceAcceptance(t *testing.T, ctx context.Context, socket string, i
 		receipt["request_admission"] = map[string]any{"peak_open_responses": peak, "queued_cancel_ms": cancelMS, "requests_opened": len(opened), "remaining": active}
 	})
 
+	t.Run("cached-selection-job-priority", func(t *testing.T) {
+		client := api.NewClient(socket)
+		var holding atomic.Bool
+		var mu sync.Mutex
+		var opened []string
+		first := make(chan struct{})
+		release := make(chan struct{})
+		var releaseOnce sync.Once
+		defer releaseOnce.Do(func() { close(release) })
+		client.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
+			return browsingTransport(func(r *http.Request) (*http.Response, error) {
+				response, err := next.RoundTrip(r)
+				if err == nil && holding.Load() && strings.HasPrefix(response.Header.Get("Content-Type"), "image/") {
+					mu.Lock()
+					opened = append(opened, r.URL.Path)
+					held := len(opened) == 1
+					mu.Unlock()
+					if held {
+						response.Body = &previewResponse{ReadCloser: response.Body, ctx: r.Context(), release: release, closed: func() {}}
+						close(first)
+					}
+				}
+				return response, err
+			})
+		})
+		desktop := NewDesktop(ctx, client)
+		defer desktop.Close()
+		view := ui.NewTester(desktop.View, 1100, 720)
+		wait := func(label string, ready func() bool) {
+			t.Helper()
+			deadline := time.Now().Add(15 * time.Second)
+			for time.Now().Before(deadline) {
+				view.Advance(10 * time.Millisecond)
+				if ready() {
+					return
+				}
+				time.Sleep(time.Millisecond)
+			}
+			t.Fatal("timeout: " + label)
+		}
+		wait("metadata", func() bool { return !desktop.d.live.loading && len(desktop.d.entries) >= 8 })
+		d, l := desktop.d, desktop.d.live
+		l.prefetchDetails(d, d.entries, 0, len(d.entries)-1)
+		wait("cached image neighbors", func() bool { return len(l.detailReads) == 0 && len(l.details) >= 8 })
+		target := ""
+		for id, v := range l.details {
+			if id != d.selected && l.items[id].Kind == "image" && v.picture != nil && v.picture.edge > 0 {
+				target = id
+				break
+			}
+		}
+		if target == "" {
+			t.Fatal("missing cached thumbnail")
+		}
+		holding.Store(true)
+		done := make(chan entry, 1)
+		go func() { done <- loadSearchEntry(ctx, client, items[0], 256) }()
+		select {
+		case <-first:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		count := 0
+		for id, v := range l.details {
+			if id != target && id != d.selected && v.picture != nil {
+				l.dropDetail(d, id)
+				count++
+				if count == 4 {
+					break
+				}
+			}
+		}
+		if count != 4 {
+			t.Fatal("need four pending neighbors")
+		}
+		l.loadDetail(d)
+		wait("four occupied view jobs", func() bool { return len(l.detailReads) == 4 })
+		d.selectEntry(target)
+		view.Frame()
+		until := time.Now().Add(150 * time.Millisecond)
+		for time.Now().Before(until) {
+			view.Advance(10 * time.Millisecond)
+			time.Sleep(time.Millisecond)
+		}
+		releaseOnce.Do(func() { close(release) })
+		select {
+		case <-done:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		wait("cached selection upgraded", func() bool {
+			v := d.current()
+			return v != nil && v.picture != nil && v.picture.edge == 0 && len(l.detailReads) == 0
+		})
+		mu.Lock()
+		defer mu.Unlock()
+		if len(opened) < 2 || !strings.Contains(opened[1], target) {
+			t.Errorf("cached selection starved behind occupied neighbor jobs: %v", opened)
+		}
+		receipt["cached_selection_next_request"] = len(opened) > 1 && strings.Contains(opened[1], target)
+	})
 	t.Run("stream-input", func(t *testing.T) {
 		client := api.NewClient(socket)
 		raster := image.NewNRGBA(image.Rect(0, 0, 1024, 1024))

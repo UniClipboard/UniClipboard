@@ -262,7 +262,8 @@
     "existing_desktop_build": "PASS",
     "scoped_golangci_lint_v2.15.0": "PASS",
     "git_diff_check": "PASS",
-    "edge_software_probe_320_360_800_width_640_height_1x_2x": "PASS"
+    "edge_software_probe_320_360_800_width_640_height_1x_2x": "PASS",
+    "docscheck": "PASS; five pre-existing stale-page warnings remain outside this change"
   },
   "cleanup": {
     "owned_reference_server": "PASS",
@@ -289,5 +290,6 @@
     "full multi-page Settings Modal",
     "pinned CJK fallback fonts and complete long-text overflow matrix"
   ],
-  "licensing": "Root AGPL-3.0 remains unchanged. BoardUI MIT, Inter OFL and Remix Icon notices are retained separately."
+  "licensing": "Root AGPL-3.0 remains unchanged. BoardUI MIT, Inter OFL and Remix Icon notices are retained separately.",
+  "implementation_commit": "8d4f5e31159c1bd0f3520ef27070fa8e905c043f"
 }

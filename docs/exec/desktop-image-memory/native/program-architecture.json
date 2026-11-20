@@ -1,0 +1,138 @@
+{
+  "baseline-arm64": {
+    "sha256": "ee5c1a7bec21adcc3aeecfef48d9c66bcaed135c8d25ef64afc0eee15c4fe186",
+    "pe_machine": "0xaa64",
+    "go_build_metadata": [
+      "path\tgithub.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+      "mod\tgithub.com/uniclipboard/unic\t(devel)",
+      "dep\tgithub.com/egoist/mygo\tv0.8.4-0.20261108082913-9233663736ca\th1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=",
+      "build\t-buildmode=exe",
+      "build\t-compiler=gc",
+      "build\t-tags=desktop_e2e",
+      "build\t-trimpath=true",
+      "build\tCGO_ENABLED=0",
+      "build\tGOARCH=arm64",
+      "build\tGOOS=windows",
+      "build\tGOARM64=v8.0"
+    ]
+  },
+  "baseline-amd64": {
+    "sha256": "abbac290961a459cb922de5911d3902aa667bdba4cfe1008e8a172300617dea3",
+    "pe_machine": "0x8664",
+    "go_build_metadata": [
+      "path\tgithub.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+      "mod\tgithub.com/uniclipboard/unic\t(devel)",
+      "dep\tgithub.com/egoist/mygo\tv0.8.4-0.20261108082913-9233663736ca\th1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=",
+      "build\t-buildmode=exe",
+      "build\t-compiler=gc",
+      "build\t-tags=desktop_e2e",
+      "build\t-trimpath=true",
+      "build\tCGO_ENABLED=0",
+      "build\tGOARCH=amd64",
+      "build\tGOOS=windows",
+      "build\tGOAMD64=v1"
+    ]
+  },
+  "admission-arm64": {
+    "sha256": "a381caddac110faeed92328f6c98307740d6a0514dc89268f66a7f7e1507ce2b",
+    "pe_machine": "0xaa64",
+    "go_build_metadata": [
+      "path\tgithub.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+      "mod\tgithub.com/uniclipboard/unic\t(devel)",
+      "dep\tgithub.com/egoist/mygo\tv0.8.4-0.20261108082913-9233663736ca\th1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=",
+      "build\t-buildmode=exe",
+      "build\t-compiler=gc",
+      "build\t-tags=desktop_e2e",
+      "build\t-trimpath=true",
+      "build\tCGO_ENABLED=0",
+      "build\tGOARCH=arm64",
+      "build\tGOOS=windows",
+      "build\tGOARM64=v8.0"
+    ]
+  },
+  "admission-amd64": {
+    "sha256": "43aff5b7cc420ce58b130aad0beed57039892c37677071754d9c4d7b2e816725",
+    "pe_machine": "0x8664",
+    "go_build_metadata": [
+      "path\tgithub.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+      "mod\tgithub.com/uniclipboard/unic\t(devel)",
+      "dep\tgithub.com/egoist/mygo\tv0.8.4-0.20261108082913-9233663736ca\th1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=",
+      "build\t-buildmode=exe",
+      "build\t-compiler=gc",
+      "build\t-tags=desktop_e2e",
+      "build\t-trimpath=true",
+      "build\tCGO_ENABLED=0",
+      "build\tGOARCH=amd64",
+      "build\tGOOS=windows",
+      "build\tGOAMD64=v1"
+    ]
+  },
+  "streaming-arm64": {
+    "sha256": "3407c24bc1348a48d8482533c54f11f6cf6c50291287dc103ea1190051d6d83b",
+    "pe_machine": "0xaa64",
+    "go_build_metadata": [
+      "path\tgithub.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+      "mod\tgithub.com/uniclipboard/unic\t(devel)",
+      "dep\tgithub.com/egoist/mygo\tv0.8.4-0.20261108082913-9233663736ca\th1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=",
+      "build\t-buildmode=exe",
+      "build\t-compiler=gc",
+      "build\t-tags=desktop_e2e",
+      "build\t-trimpath=true",
+      "build\tCGO_ENABLED=0",
+      "build\tGOARCH=arm64",
+      "build\tGOOS=windows",
+      "build\tGOARM64=v8.0"
+    ]
+  },
+  "streaming-amd64": {
+    "sha256": "70567e52493fb2a1319b99d86ddaa5dfe13d25f48cb6a28db2a683a6106d3dae",
+    "pe_machine": "0x8664",
+    "go_build_metadata": [
+      "path\tgithub.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+      "mod\tgithub.com/uniclipboard/unic\t(devel)",
+      "dep\tgithub.com/egoist/mygo\tv0.8.4-0.20261108082913-9233663736ca\th1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=",
+      "build\t-buildmode=exe",
+      "build\t-compiler=gc",
+      "build\t-tags=desktop_e2e",
+      "build\t-trimpath=true",
+      "build\tCGO_ENABLED=0",
+      "build\tGOARCH=amd64",
+      "build\tGOOS=windows",
+      "build\tGOAMD64=v1"
+    ]
+  },
+  "combined-arm64": {
+    "sha256": "ffe244c1d0e8c3189f14d633032bcf6f027b3428fce037b119f04258d8418609",
+    "pe_machine": "0xaa64",
+    "go_build_metadata": [
+      "path\tgithub.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+      "mod\tgithub.com/uniclipboard/unic\t(devel)",
+      "dep\tgithub.com/egoist/mygo\tv0.8.4-0.20261108082913-9233663736ca\th1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=",
+      "build\t-buildmode=exe",
+      "build\t-compiler=gc",
+      "build\t-tags=desktop_e2e",
+      "build\t-trimpath=true",
+      "build\tCGO_ENABLED=0",
+      "build\tGOARCH=arm64",
+      "build\tGOOS=windows",
+      "build\tGOARM64=v8.0"
+    ]
+  },
+  "combined-amd64": {
+    "sha256": "49ce1e7ec7ba9785e0d157b6891235a79426f6b1cdaf4149824978ece5b003b9",
+    "pe_machine": "0x8664",
+    "go_build_metadata": [
+      "path\tgithub.com/uniclipboard/unic/app/desktop/cmd/unic-desktop",
+      "mod\tgithub.com/uniclipboard/unic\t(devel)",
+      "dep\tgithub.com/egoist/mygo\tv0.8.4-0.20261108082913-9233663736ca\th1:qzxskAlbE5myNwExvNeOzDvV1NNAUeVdb8DKVMbBmuo=",
+      "build\t-buildmode=exe",
+      "build\t-compiler=gc",
+      "build\t-tags=desktop_e2e",
+      "build\t-trimpath=true",
+      "build\tCGO_ENABLED=0",
+      "build\tGOARCH=amd64",
+      "build\tGOOS=windows",
+      "build\tGOAMD64=v1"
+    ]
+  }
+}

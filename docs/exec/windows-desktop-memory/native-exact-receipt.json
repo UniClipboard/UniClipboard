@@ -1,0 +1,75 @@
+{
+  "source_sha": "173d362036ae4a746878306915c85bcdf7468751",
+  "workflow_run": 44665561906,
+  "artifact_id": 14596984031,
+  "identity": {
+    "historyValidation": "OS client screenshot reviewed: synthetic image history and selected 2048x1536 preview visible",
+    "scriptSHA256": "dc92474a494bd8b201dd5022558a663f7721414c57a0e43f0ac3365187af2f72",
+    "dataset": "images",
+    "repetition": 1,
+    "diagnostic": false,
+    "session": 1,
+    "desktopPID": 8048,
+    "servicePID": 13804,
+    "desktopStart": "2026-11-20T04:48:13.3440973Z",
+    "serviceStart": "2026-11-20T04:48:13.6630166Z",
+    "processMachine": 0,
+    "nativeMachine": 43620,
+    "dpi": 192,
+    "clientWidth": 1100,
+    "clientHeight": 720,
+    "desktopSHA256": "3ca463d17b6e9829d2e912e450610be239fef94b7fee44fae13aba2be313b6f0",
+    "serviceSHA256": "0061b58316e9af9082eb134b7b22bc0077bfde4d5fe147ef272f0868775abede",
+    "regionsVisible": {
+      "privateCommitted": 138825728,
+      "mappedCommitted": 116727808,
+      "imageCommitted": 244252672,
+      "reserved": 14270754816
+    },
+    "clipboard": "locked without read/write",
+    "clipboardSequenceBefore": 25,
+    "hiddenVerified": true,
+    "reopenVerified": true,
+    "regionsFinal": {
+      "privateCommitted": 79499264,
+      "mappedCommitted": 116727808,
+      "imageCommitted": 244252672,
+      "reserved": 14320066560
+    },
+    "clipboardSequenceLocked": 25,
+    "nativeCaptureReviewed": true
+  },
+  "native_capture": {
+    "width": 2200,
+    "height": 1440,
+    "sha256": "b5cb1a3355cf999db5413fa48a53763e49eca5292e2548b732904b656c349519",
+    "method": "GDI CopyFromScreen of verified foreground client rectangle",
+    "hwnd": 4457128
+  },
+  "review": [
+    "Loaded synthetic history list is visible",
+    "Twelve image records are shown in the library count",
+    "Selected original dimensions2048x1536 and image preview are visible",
+    "Capture is the OS foreground client area, not a mygo content re-render"
+  ],
+  "settled_visible_bytes": {
+    "desktop": {
+      "workingSet": 195514368.0,
+      "privateWorkingSet": 124579840.0,
+      "privateBytes": 180490240.0
+    },
+    "service": {
+      "workingSet": 116412416.0,
+      "privateWorkingSet": 85938176.0,
+      "privateBytes": 137865216.0
+    }
+  },
+  "desktop_plus_child_private_working_set_bytes": 210518016.0,
+  "desktop_plus_child_private_working_set_MiB": 200.765625,
+  "conditions": [
+    "x64 emulation on Windows ARM64",
+    "Busy clipboard lock without content read/write",
+    "Private initialized profile, synthetic corpus only",
+    "This does not establish the user Task Manager column or grouping"
+  ]
+}

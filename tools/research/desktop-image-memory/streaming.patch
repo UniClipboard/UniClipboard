@@ -1,0 +1,104 @@
+--- a/app/desktop/internal/desktopui/live_images.go
++++ b/app/desktop/internal/desktopui/live_images.go
+@@ -1,6 +1,7 @@
+ package desktopui
+ 
+ import (
++	"bufio"
+ 	"bytes"
+ 	"context"
+ 	"image"
+@@ -76,32 +77,63 @@
+ 	if ctx.Err() != nil {
+ 		return nil, "读取内容失败。"
+ 	}
++	r = previewContextReader{ctx: ctx, reader: r}
+ 	const limit = 32 << 20
+-	raw, err := io.ReadAll(io.LimitReader(r, limit+1))
+-	if err != nil {
+-		return nil, "读取内容失败。"
+-	}
+-	if len(raw) > limit {
+-		return nil, "内容超过预览大小限制。"
+-	}
+-	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+-	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
+-		return nil, "图片无法预览。"
+-	}
++	var raw []byte
++	var err error
++	var cfg image.Config
+ 	p := &historyImage{edge: edge}
+ 	if edge > 0 {
+-		decoded, err := imaging.Decode(bytes.NewReader(raw), imaging.AutoOrientation(true))
++		// Do not let a hostile dimension header grow its replay buffer past
++		// the existing encoded-input budget. The extra overflow byte is only
++		// enabled after DecodeConfig has finished retaining the header.
++		limited := &io.LimitedReader{R: r, N: limit}
++		// Keep codec-sized reads from becoming separate local-socket reads.
++		// The shared limit stays beneath this buffer, including replay/drain.
++		buffered := bufio.NewReaderSize(limited, 64<<10)
++		var header bytes.Buffer
++		cfg, _, err = image.DecodeConfig(io.TeeReader(buffered, &header))
++		if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
++			return nil, "图片无法预览。"
++		}
++		limited.N++
++		decoded, err := imaging.Decode(io.MultiReader(bytes.NewReader(header.Bytes()), buffered), imaging.AutoOrientation(true))
+ 		if err != nil {
+ 			return nil, "图片无法预览。"
+ 		}
++		if _, err := io.Copy(io.Discard, buffered); err != nil {
++			return nil, "读取内容失败。"
++		}
++		if limited.N <= 0 {
++			return nil, "内容超过预览大小限制。"
++		}
++		header = bytes.Buffer{}
++		if ctx.Err() != nil {
++			return nil, "读取内容失败。"
++		}
+ 		p.width, p.height = decoded.Bounds().Dx(), decoded.Bounds().Dy()
+ 		thumb := imaging.Fit(decoded, edge, edge, imaging.Lanczos)
++		if ctx.Err() != nil {
++			return nil, "读取内容失败。"
++		}
+ 		var encoded bytes.Buffer
+ 		encoder := png.Encoder{CompressionLevel: png.BestSpeed}
+ 		if err := encoder.Encode(&encoded, thumb); err != nil {
+ 			return nil, "图片无法预览。"
+ 		}
+ 		raw = encoded.Bytes()
++	} else {
++		raw, err = io.ReadAll(io.LimitReader(r, limit+1))
++		if err != nil {
++			return nil, "读取内容失败。"
++		}
++		if len(raw) > limit {
++			return nil, "内容超过预览大小限制。"
++		}
++		cfg, _, err = image.DecodeConfig(bytes.NewReader(raw))
++		if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
++			return nil, "图片无法预览。"
++		}
+ 	}
+ 	p.bitmap, err = ui.DecodeBitmap(raw)
+ 	if err != nil {
+@@ -115,3 +147,17 @@
+ 	}
+ 	return p, ""
+ }
++
++// Codec reads observe cancellation even when their source is already buffered.
++// Full decode/resize calls remain bounded by the existing pixel limit.
++type previewContextReader struct {
++	ctx    context.Context
++	reader io.Reader
++}
++
++func (r previewContextReader) Read(p []byte) (int, error) {
++	if err := r.ctx.Err(); err != nil {
++		return 0, err
++	}
++	return r.reader.Read(p)
++}

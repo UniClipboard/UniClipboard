@@ -1,0 +1,28 @@
+{
+  "active_cancel_ms": 0,
+  "cached_details": 9,
+  "cached_selection_next_request": true,
+  "checks": [
+    "eight real PNG entries prefetch bounded thumbnails",
+    "selection upgrades to original dimensions; previous selection returns to thumbnail; original bytes unchanged",
+    "quick-panel selected image retains original resolution",
+    "JPEG EXIF orientation and original dimensions preserved",
+    "displayed image releases CPU pixels on a later view frame",
+    "image bodies consumed serially across both live windows"
+  ],
+  "native_ui": false,
+  "passed": true,
+  "peak_image_body_readers": 1,
+  "renderer": true,
+  "request_admission": {
+    "peak_open_responses": 1,
+    "queued_cancel_ms": 0,
+    "remaining": 0,
+    "requests_opened": 5
+  },
+  "stream_input_read_calls": 51,
+  "stream_largest_read_bytes": 65536,
+  "stream_small_read_requests": 1,
+  "thumbnail_rgba_bytes": 1835008,
+  "unicd_sha256": "e520a7c67048f90d6e8c13ba1919f1f16afe0064e248dbcee437afdb083c4a69"
+}

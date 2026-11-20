@@ -1,0 +1,49 @@
+{
+  "base_sha": "173d362036ae4a746878306915c85bcdf7468751",
+  "mygo": "github.com/egoist/mygo v0.8.4-0.20261108082913-9233663736ca",
+  "diagnostic_source_files_sha256": {
+    "app/desktop/cmd/unic-desktop/memory_research.go": "f3c785eb39fb30e9e641af78a95026fce537db0f1653a23e8bad2f48dfd5dd4c",
+    "app/service/cmd/unicd/memory_research.go": "f3c785eb39fb30e9e641af78a95026fce537db0f1653a23e8bad2f48dfd5dd4c",
+    "app/desktop/internal/desktopui/memory_research.go": "4fef8087f0a3904394bb71b4a214c4f755748b6f03fe4303ea5d3676980597d9",
+    "app/desktop/internal/desktopui/live.go": "2d09e66ba85f0b04a44920a9878d692612d673a06690ef5fec4f520e25f30e57"
+  },
+  "view_hook_change": "View records the current Desktop pointer before calling the unchanged production view. Aggregate reads run on the view thread every 5 seconds.",
+  "build": {
+    "GOOS": "windows",
+    "CGO_ENABLED": "0",
+    "desktop_tags": "desktop_e2e",
+    "desktop_ldflags": "-s -w -H windowsgui",
+    "service_ldflags": "-s -w",
+    "trimpath": true
+  },
+  "binaries_sha256": {
+    "diag-amd64/unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+    "diag-amd64/unic-desktop.exe": "cbc2bcff1bd3589ae7642fb80257e22c672b587079c3b8b4e1c9de2e4dfa438c",
+    "diag-amd64/unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542",
+    "diag-arm64/unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+    "diag-arm64/unic-desktop.exe": "de3b94d50c13b8bc32f417c9ddcd3f46471f026493fd725e8a56e451c1790d5b",
+    "diag-arm64/unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56",
+    "stream-arm64/unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+    "stream-arm64/unic-desktop.exe": "e93225fa2779f2940fe7d60cfbf56a6257e466951bb55ba824d70843b167b6a9",
+    "stream-arm64/unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56",
+    "gpu-arm64/unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+    "gpu-arm64/unic-desktop.exe": "fdda6912eee5e017744508a0de2107ac188eb584bf037fa9f8ce0c3d6e7f8e53",
+    "gpu-arm64/unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56",
+    "admission-arm64/unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+    "admission-arm64/unic-desktop.exe": "d76be247f76546e13cbf806eed41cb7f0218c9060f5dce5f5e5f90ae817ff777",
+    "admission-arm64/unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56",
+    "window-probe-v2-arm64.exe": "c3cca75c1a7c7e86142420dfecfbcdab97eb771649b01bb5fcfa7b2bf015c108",
+    "mygo-automation.exe": "ab94cd727a37cdaef142c69259291c36e84853cb82d2d0816ed7befa11a48cc4",
+    "service-probe.exe": "597ae8b0fbe9f396b4622c8445c3a70bc42af6ceb4b6938b6bee330a3f355745"
+  },
+  "stream_changed_file_sha256": "47c8de17784c24adc0c1a488c75bdad289b7e5bc726b452689d336bf2bf75536",
+  "gpu_probe_parent_mygo_commit": "9233663736ca",
+  "gpu_probe_has_private_module_override": true,
+  "fixture_generator": {
+    "python": "3.14.7",
+    "pillow": "12.1.1",
+    "zlib": "1.2.12",
+    "seed": 20261120
+  },
+  "admission_control_changed_file_sha256": "b69d5b846ec1b0d2346ead0595e3c1fd5e060daac900cbee0484c7c2a4fb7ce5"
+}

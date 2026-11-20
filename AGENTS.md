@@ -94,6 +94,12 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 ## 约定
 
+- When an end-to-end test fails, keep the first failure artifact and set a time or run limit before retrying. If the failure recurs, compare the runs and investigate the cause. If all retries pass, record the original failure, the retry results, and the unresolved cause. Hold delivery when the failure affects the behavior under change or its relevance is unclear. If evidence shows the failure is unrelated, track it separately and continue the task.
+
+- Follow a defect across layers until you identify its cause. If the implementation violates an existing public contract, fix it and verify the behavior end to end. If the fix requires changing a public contract, present the reproduction evidence, the affected contract clause, and the proposed behavior. Wait for the user's decision before changing the contract or implementing the new behavior. This applies to all public contracts, including sync behavior, the Engine public API, and plugin protocols.
+
+- When a user asks to see an image in a Lody conversation, use `lody_upload_images` to display it inline. Report it as sent after the upload succeeds. Delivery passes when the user can see the image without clicking. Record visual acceptance only when the user explicitly approves the content.
+
 - Desktop uses mygo and the existing UI Kit demo composition. Fresh profiles show first-install setup and optional offline v1 migration. Completed setup and established v2 profiles open history directly; recurring passphrase-unlock flows remain removed. See [live desktop composition](docs/architecture/overview.md#live-desktop-composition).
 - 核心不得依赖 `app/*`；宿主专属代码留在对应应用，公开 Engine 的传递依赖边界由 `engine/boundary_test.go` 检查。
 - 设备地址与配对票据都是秘密：不要写进日志、事件或错误信息。

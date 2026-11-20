@@ -1,0 +1,25 @@
+package desktopui
+
+import("encoding/json";"os";"reflect";"time";"github.com/egoist/mygo";"github.com/egoist/mygo/ui")
+var memoryResearchActive *Desktop
+func memoryResearchSeen(s *Desktop){memoryResearchActive=s}
+func memoryPixelBytes(b *ui.Bitmap) int {
+ if b==nil{return 0};v:=reflect.ValueOf(b).Elem();n:=0
+ im:=v.FieldByName("img");if !im.IsNil(){n+=im.Elem().FieldByName("Pix").Len()}
+ ls:=v.FieldByName("levels");for i:=0;i<ls.Len();i++{p:=ls.Index(i);if !p.IsNil(){n+=p.Elem().FieldByName("Pix").Len()}}
+ return n
+}
+func init(){
+ path:=os.Getenv("UNIC_MEMORY_RESEARCH");if path==""{return}
+ go func(){
+  f,e:=os.OpenFile(path+".cache.jsonl",os.O_CREATE|os.O_WRONLY|os.O_APPEND,0600);if e!=nil{return};defer f.Close();start:=time.Now()
+  for{time.Sleep(5*time.Second);mygo.RunOnMain(func(){
+   s:=memoryResearchActive;if s==nil||s.d.live==nil{return};d,l:=s.d,s.d.live
+   seen:=map[*historyImage]bool{};text:=0
+   add:=func(e entry){if e.picture!=nil{seen[e.picture]=true}}
+   for _,e:=range l.details{add(e);text+=len(e.text)};for _,e:=range d.entries{add(e)};if l.retained!=nil{add(*l.retained)}
+   cpu,full,released:=0,0,0;for p:=range seen{cpu+=memoryPixelBytes(p.bitmap);if p.edge==0{full++};if p.released{released++}}
+   json.NewEncoder(f).Encode(map[string]any{"elapsedSeconds":time.Since(start).Seconds(),"projectedRows":len(d.entries),"metadata":len(l.items),"details":len(l.details),"wanted":len(l.detailWindow),"inflight":len(l.detailReads),"imageObjects":len(seen),"fullImages":full,"releasedImages":released,"imageCPUPixelBytes":cpu,"cachedTextBytes":text,"layout":d.layout})
+  })}
+ }()
+}

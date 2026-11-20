@@ -284,9 +284,9 @@ Target: `{args.target}`. Source: `{source}`. Format: `{selected["format"]}`.
 
 This is an unsigned test package, not a published release. Native version and private CLI/service IPC checks passed. GUI and installation are not accepted by these checks. Automatic updates are disabled. macOS packages have no Developer ID/notarization; Windows packages have no production Authenticode signature.
 
-Verify every file with `shasum -a 256 -c SHA256SUMS`, or `python tools/package/desktop_test.py verify --directory <download-directory>`.
+Verify every file with `shasum -a 256 -c SHA256SUMS`, or `python tools/package/desktop_test.py verify --directory <download-directory>`. On Windows, use `Get-FileHash -LiteralPath '{artifact["file"]}' -Algorithm SHA256` and compare the package digest with the Actions run summary.
 
-The application retains the existing UniClipboard installation identity. A test installer can replace an existing installation. Use a dedicated test machine/account or a separate installation path. Set `UNIC_HOME` to a dedicated test directory before launching the application. Import only synthetic data. Production CLI release locks and source metadata were not changed.
+The application retains the existing UniClipboard installation identity. A test installer can replace an existing installation. Use a dedicated test machine/account for installers. A custom path does not isolate a registered Windows installation. Unpacked archives may use a separate folder. Set `UNIC_HOME` to a dedicated test directory before launching the application. Import only synthetic data. Production CLI release locks and source metadata were not changed.
 """)
             if (
                 original_metadata != package.sha(ROOT / "release/products.toml")

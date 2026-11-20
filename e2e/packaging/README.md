@@ -34,7 +34,7 @@ gh workflow run build-cli.yml --repo UniClipboard/UniClipboard --ref v2 \
 
 Supported targets are `darwin-arm64`, `darwin-amd64`, `windows-arm64`, `windows-amd64`, `linux-arm64` and `linux-amd64`. The target contains both OS and architecture. `test_format=default` selects DMG/setup EXE/DEB. Explicit formats use the existing target-compatible constructor. Leave `distribution`, `desktop_only`, `native_gui` and `sandbox_run_id` unset. The repository still defaults to v1; use the explicit `--ref v2` command rather than changing the default branch or relying on the default-branch dispatch form.
 
-Download `desktop-test-<target>` from the completed Actions run. Read `TESTING.md` and verify `SHA256SUMS`. The bundle is unsigned/test-only and expires after seven days. Automatic updates are disabled. The existing application installation identity is retained; use an isolated test account/machine or installation path and explicit `UNIC_HOME`.
+Download `desktop-test-<target>` from the completed Actions run. Read `TESTING.md` and verify `SHA256SUMS`. The bundle is unsigned/test-only and expires after seven days. Automatic updates are disabled. The existing application installation identity is retained; use a dedicated test account/machine for installers and explicit `UNIC_HOME`. A custom path does not isolate an existing Windows registration. Unpacked archives may use a separate folder.
 
 Local native construction and verification use the same controller:
 

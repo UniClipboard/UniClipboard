@@ -1,0 +1,155 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:18f04140cace3cb3221279be2b0a504e2448d02f51726361a3b909e5c4bc0da4",
+      "expired": false,
+      "id": 14594342944,
+      "name": "desktop-test-darwin-arm64",
+      "size_in_bytes": 82295560
+    }
+  ],
+  "conclusion": "success",
+  "created_at": "2026-11-20T02:06:22Z",
+  "download_readback": {
+    "build_controller_sha256": "7c7623c5e00b588f8eec73014d45fdb3af65a5edf4536f0bb418f3a90aac1b23",
+    "cli_binaries_sha256": {
+      "unic": "dfdb067368a329a4f202cd59775bc6ffae59935a4504f3142d7810e12a988a7f",
+      "unicd": "92b3736e71945a9e000da840c0f4d057c77e620eb9b920e5e5c9d356159efd14"
+    },
+    "files": {
+      "SHA256SUMS": "fbf5dcb7e161a494f64b2af235339c4f729eb3b45ce2965c460321e47e4baf70",
+      "TESTING.md": "99cb6874e1d736fedd76bd095758612211ebac851fbc92489f527715556dc85f",
+      "artifacts.json": "21174eafb9f1102076d8e429cb8599799a5e3181eac33351d908dcc74e378eeb",
+      "cli-manifest.json": "0d7bc46558dfa7cfb164dc48e057a75727dda7fc1a0bef2ef4dc32e085f02511",
+      "stage-manifest.json": "bfbeda641ec52223e6a484054fbe23d9923bcc92188de311c3d44f57baf847ad",
+      "test-ca1d79d6961c-uniclipboard-2.0.0-build.1-darwin-arm64.dmg": "5ba576996c1e98b9f4dc9b181744b5c8d8908b8baea8eec7524d9833ea9112a6",
+      "test-package.json": "de554f10a9309b6d703c7689f4e38eeac8821b0982a788695271577aec475a0e"
+    },
+    "native_acceptance": {
+      "native_identity": true,
+      "package_lifecycle": false,
+      "shared_configuration_api": true,
+      "signing": false
+    },
+    "stage_manifest_sha256": "bfbeda641ec52223e6a484054fbe23d9923bcc92188de311c3d44f57baf847ad",
+    "status": "passed"
+  },
+  "event": "workflow_dispatch",
+  "head_branch": "feat/desktop-test-package",
+  "head_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+  "html_url": "https://github.com/UniClipboard/UniClipboard/actions/runs/44658401620",
+  "id": 44658401620,
+  "jobs": [
+    {
+      "completed_at": "2026-11-20T02:06:39Z",
+      "conclusion": "success",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "test-package / select",
+      "runner_name": "GitHub Actions 1000069073",
+      "started_at": "2026-11-20T02:06:33Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "desktop",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "prepare",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "native-gui",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "targets",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "assemble",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "sandboxes",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:10:31Z",
+      "conclusion": "success",
+      "labels": [
+        "macos-15"
+      ],
+      "name": "test-package / Test package (darwin-arm64)",
+      "runner_name": "GitHub Actions 1000069076",
+      "started_at": "2026-11-20T02:06:43Z",
+      "status": "completed"
+    }
+  ],
+  "native_job_count": 1,
+  "native_job_seconds": 228.0,
+  "normal_build_paths_skipped": true,
+  "package_receipt": {
+    "artifact": {
+      "container_signed": false,
+      "file": "test-ca1d79d6961c-uniclipboard-2.0.0-build.1-darwin-arm64.dmg",
+      "format": "dmg",
+      "notarized": false,
+      "payload_signed": false,
+      "sha256": "5ba576996c1e98b9f4dc9b181744b5c8d8908b8baea8eec7524d9833ea9112a6",
+      "signature": "",
+      "signed": false,
+      "size": 84087426
+    },
+    "cli_manifest_sha256": "0d7bc46558dfa7cfb164dc48e057a75727dda7fc1a0bef2ef4dc32e085f02511",
+    "format": "dmg",
+    "gui": "not_run",
+    "installation": "not_run",
+    "publication": "not_requested",
+    "purpose": "device-testing",
+    "schema": 1,
+    "source_clean": true,
+    "source_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+    "status": "passed",
+    "target": "darwin-arm64",
+    "workflow_run_attempt": "1",
+    "workflow_run_id": "44658401620"
+  },
+  "run_attempt": 1,
+  "status": "completed"
+}

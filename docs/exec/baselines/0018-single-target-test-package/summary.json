@@ -1,0 +1,51 @@
+{
+  "artifact_url": "https://github.com/UniClipboard/UniClipboard/actions/runs/44659128683/artifacts/14594956780",
+  "base_sha": "5158490dbf3f29413315d89edc7252af90f73ccf",
+  "branch": "feat/desktop-test-package",
+  "checks": {
+    "actionlint": "passed",
+    "docscheck": "passed_with_6_stale_page_warnings",
+    "ruff": "passed",
+    "whitespace": "passed"
+  },
+  "download_readback": "passed",
+  "final_controller_commit": "1d5976240",
+  "implementation_commit": "5e2086369",
+  "latest_windows_package": {
+    "container_signed": false,
+    "file": "test-322986d4dc77-uniclipboard-2.0.0-build.1-windows-arm64-setup.exe",
+    "format": "setup.exe",
+    "notarized": false,
+    "payload_signed": false,
+    "sha256": "86ac1faec4c93de0bbd1b617c9f91f580d1fc95e6023dcee3cdd540d8adb1cf4",
+    "signature": "",
+    "signed": false,
+    "size": 74121952
+  },
+  "local_e2e_checks": 20,
+  "negative_dispatches": 2,
+  "normal_build_paths_skipped": true,
+  "not_run": [
+    "GUI launch",
+    "real-device installation",
+    "native credential prompts",
+    "production signing/notarization",
+    "public release/registry/channel mutation"
+  ],
+  "platforms": [
+    "darwin-arm64",
+    "linux-amd64",
+    "windows-arm64"
+  ],
+  "positive_dispatches": 4,
+  "pr": "https://github.com/UniClipboard/UniClipboard/pull/2275",
+  "source_files": {
+    ".github/workflows/build-cli.yml": "1923c982782309958607d1535134c8d6003b85e0dbdde6fd9b27c6fef218f8d0",
+    ".github/workflows/build-desktop-test.yml": "da4f551b310b6e1b2b1682d7f4c7a0c890c3c9d0f45c5c40506e9fcb5c6a84e6",
+    ".github/workflows/package-acceptance.yml": "529a7f82c0c856b94776388765de76031f3b8863660142ad76346781936bc52e",
+    "e2e/packaging/test_package.py": "9f9c3b3fb59bd187f644288c6e22bcf01dd697f82f3ee56837e9999082738bb8",
+    "tools/package/desktop_test.py": "dd6c4714c521c620082cbf3b10ce8d0b55dde52b90877b35a7970d1fb2f40a13"
+  },
+  "status": "passed",
+  "verified_hosted_source_sha": "322986d4dc77b17377b4df8f8c8e9f1e9426a954"
+}

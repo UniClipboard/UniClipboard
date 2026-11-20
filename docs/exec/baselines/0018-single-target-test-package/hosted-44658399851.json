@@ -1,0 +1,155 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:4529660c2182258da1970618958cd40f72dc58ebcd0647e0802a670f1905f2e8",
+      "expired": false,
+      "id": 14594711422,
+      "name": "desktop-test-linux-amd64",
+      "size_in_bytes": 82054437
+    }
+  ],
+  "conclusion": "success",
+  "created_at": "2026-11-20T02:06:21Z",
+  "download_readback": {
+    "build_controller_sha256": "7c7623c5e00b588f8eec73014d45fdb3af65a5edf4536f0bb418f3a90aac1b23",
+    "cli_binaries_sha256": {
+      "unic": "773300b4e362898796004e352eda8d843301e9bbb8850349bb521cf920e5694a",
+      "unicd": "848d2472df889b697c1b9d323d97d846395505d0b9007c377a9e019e5927276b"
+    },
+    "files": {
+      "SHA256SUMS": "2a34427ee6553e6943118caf6518a18cd124cfbe97209a7ab82463e174bd3440",
+      "TESTING.md": "b2d86b40ece0b4655e1bb4dc28ef21ac9a5eec7e0c7ccd4b4e5b596a434eb4c9",
+      "artifacts.json": "87bfec82117a1bb84d84dc6fbd8d3d24230ab18594276ab7b1700cc04a17e4bb",
+      "cli-manifest.json": "6fecd7647b081ba814efdf7a7b6db4af33b93f12a98e10eeafe62edb42766162",
+      "stage-manifest.json": "ef3b4ec8274ed2d743908a34fc76ff57a60206bed5c19401a7a3dccf6e400e19",
+      "test-ca1d79d6961c-uniclipboard-2.0.0-build.1-linux-amd64.deb": "f5e438a040fa0dcaacdc79031ce16c5e9db77142567167ca0169335d2800d4ea",
+      "test-package.json": "a6edf02c61d5054dc293de3d4b20af8bf88f27c2716d03efe8757247dbb69dbe"
+    },
+    "native_acceptance": {
+      "native_identity": true,
+      "package_lifecycle": false,
+      "shared_configuration_api": true,
+      "signing": false
+    },
+    "stage_manifest_sha256": "ef3b4ec8274ed2d743908a34fc76ff57a60206bed5c19401a7a3dccf6e400e19",
+    "status": "passed"
+  },
+  "event": "workflow_dispatch",
+  "head_branch": "feat/desktop-test-package",
+  "head_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+  "html_url": "https://github.com/UniClipboard/UniClipboard/actions/runs/44658399851",
+  "id": 44658399851,
+  "jobs": [
+    {
+      "completed_at": "2026-11-20T02:06:33Z",
+      "conclusion": "success",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "test-package / select",
+      "runner_name": "GitHub Actions 1000069072",
+      "started_at": "2026-11-20T02:06:25Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:22Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "targets",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:22Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "desktop",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:22Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "native-gui",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:22Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "prepare",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:22Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "sandboxes",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:22Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "assemble",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:09:11Z",
+      "conclusion": "success",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "test-package / Test package (linux-amd64)",
+      "runner_name": "GitHub Actions 1000069075",
+      "started_at": "2026-11-20T02:06:36Z",
+      "status": "completed"
+    }
+  ],
+  "native_job_count": 1,
+  "native_job_seconds": 155.0,
+  "normal_build_paths_skipped": true,
+  "package_receipt": {
+    "artifact": {
+      "container_signed": false,
+      "file": "test-ca1d79d6961c-uniclipboard-2.0.0-build.1-linux-amd64.deb",
+      "format": "deb",
+      "notarized": false,
+      "payload_signed": false,
+      "sha256": "f5e438a040fa0dcaacdc79031ce16c5e9db77142567167ca0169335d2800d4ea",
+      "signature": "",
+      "signed": false,
+      "size": 82059294
+    },
+    "cli_manifest_sha256": "6fecd7647b081ba814efdf7a7b6db4af33b93f12a98e10eeafe62edb42766162",
+    "format": "deb",
+    "gui": "not_run",
+    "installation": "not_run",
+    "publication": "not_requested",
+    "purpose": "device-testing",
+    "schema": 1,
+    "source_clean": true,
+    "source_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+    "status": "passed",
+    "target": "linux-amd64",
+    "workflow_run_attempt": "1",
+    "workflow_run_id": "44658399851"
+  },
+  "run_attempt": 1,
+  "status": "completed"
+}

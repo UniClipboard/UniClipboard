@@ -1,0 +1,97 @@
+{
+  "artifacts": [],
+  "conclusion": "failure",
+  "created_at": "2026-11-20T02:06:53Z",
+  "event": "workflow_dispatch",
+  "expected_error": "A test target cannot be combined with distribution, desktop_only, native_gui or sandbox_run_id.",
+  "head_branch": "feat/desktop-test-package",
+  "head_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+  "html_url": "https://github.com/UniClipboard/UniClipboard/actions/runs/44658462814",
+  "id": 44658462814,
+  "jobs": [
+    {
+      "completed_at": "2026-11-20T02:07:41Z",
+      "conclusion": "failure",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "test-package / select",
+      "runner_name": "GitHub Actions 1000069079",
+      "started_at": "2026-11-20T02:07:32Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:55Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "prepare",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:55Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:55Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "desktop",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:55Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:55Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "native-gui",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:55Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:55Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "targets",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:55Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:55Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "assemble",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:55Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:55Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "sandboxes",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:07:02Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:07:42Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "test-package / Test package (${{ needs.select.outputs.target }})",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:07:42Z",
+      "status": "completed"
+    }
+  ],
+  "native_job_count": 0,
+  "normal_build_paths_skipped": true,
+  "observed_error": "A test target cannot be combined with distribution, desktop_only, native_gui or sandbox_run_id.",
+  "run_attempt": 1,
+  "status": "completed",
+  "validation_status": "passed_expected_rejection"
+}

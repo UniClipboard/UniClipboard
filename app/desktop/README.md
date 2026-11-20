@@ -24,7 +24,7 @@ unic-desktop --role quick-panel --+
 | `internal/i18n` | Embedded translation catalogue and lookup |
 | `internal/desktopdemo` | Independent preview launcher and synthetic fixtures |
 
-Closing the main window exits the GUI process and keeps tray integration active. Tray Open starts or activates the GUI in both startup modes. Explicit application Quit closes UI roles, releases tray integration and stops only a service owned by the tray. An independently started service remains running.
+Opening the application icon always shows GUI, including saved lightweight mode and a running unicd. In normal mode, closing GUI keeps tray integration and unicd running. In lightweight mode, closing GUI terminates GUI, tray and quick panel, releases shortcuts and the adapter, and retains only the same unicd generation. Open the application icon to return to settings. Explicit application Quit closes all UI roles and stops only a still-owned service. An independently started or explicitly detached service remains running.
 Pairing requires explicit mutual approval with verified fingerprints. See [identity and trust](../../docs/architecture/identity-and-trust.md).
 
 ## 开发
@@ -171,7 +171,7 @@ See [headless architecture](../../docs/architecture/headless.md).
 
 ## Startup and runtime modes
 
-The tray remains active in both modes. Normal startup opens the GUI unless background startup is enabled. Lightweight startup omits the GUI after setup. Fresh or pending setup opens the GUI in either mode before runtime admission. The quick panel starts as an independent OS process on its first request and remains hidden between requests.
+Manual application launch always opens GUI. Normal GUI close keeps tray and unicd; lightweight GUI close leaves only unicd. Explicit `--background` omits GUI after completed setup: normal keeps tray integration; lightweight starts only unicd. Fresh or pending setup opens GUI before runtime admission. The quick panel has its own OS process; it hides between requests and exits with the tray.
 
 ```toml
 [desktop]
@@ -180,7 +180,7 @@ launch_at_login = false
 start_in_background = false
 ```
 
-Settings edits these values through the shared configuration API. Mode and background changes apply on the next launch. Background startup omits the GUI process. Tray Open always creates or activates it. `unic-desktop --mode normal|lightweight` overrides one launch without changing the saved mode. Running `unicd` alone supplies only the service.
+Settings edits these values through the shared configuration API. The saved mode controls the next GUI close. `start_in_background` controls only normal login startup; a manual application launch always opens GUI. Explicit `--background` selects background startup; optional `--mode normal|lightweight` selects its startup policy without changing the saved mode. Running `unicd` alone supplies only the service.
 
 One live role lock exists per canonical profile. Private Unix sockets or current-user Windows named pipes carry activation requests. The transport verifies the peer executable and binds the request to the profile and binary build. GUI and quick-panel processes never register a second shortcut or adapter. The service keeps the only Engine and history database.
 
@@ -221,7 +221,7 @@ This process acceptance does not start a native app, offscreen renderer or syste
 
 ### Quick-panel system commands
 
-The production host registers Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux by default. Change or disable it in Settings > Quick Panel. A conflicting replacement preserves the previous working registration and offers retry. The tray also opens the panel. The persistent tray owns this shortcut in both startup modes. The GUI need not be open.
+The production host registers Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux by default. Change or disable it in Settings > Quick Panel. A conflicting replacement preserves the previous working registration and offers retry. The tray also opens the panel. The tray owns this shortcut. In normal mode the GUI need not be open. Lightweight GUI close also stops the tray and shortcut; open the application icon to return.
 
 Open the panel from another application to capture its target. Enter applies history and sends paste to that target. Shift+Enter applies the existing plain-text Action first. Command/Ctrl+Enter sends paste and reopens the panel. Command/Ctrl+C copies without input injection. macOS requires Accessibility permission. Wayland keeps Copy but cannot automatically restore arbitrary target focus or inject paste.
 
@@ -242,4 +242,4 @@ Built-in Text, Images, Files and Links tags use the selected interface language.
 
 ## Tray icon style
 
-Open Settings > General > Tray icon to choose Default (the glyph) or Classic cat. The default is the glyph, matching v1. Selection saves to `desktop.tray_icon` and applies immediately. The CLI equivalent is `unic config set desktop.tray_icon '"cat"'` or `unic config set desktop.tray_icon '"glyph"'`. Direct TOML edits also apply while Desktop runs. Invalid values retain the previous valid configuration. The tray remains available in lightweight mode. See [Desktop configuration](../../docs/architecture/desktop-runtime.md#application-and-tray-icons).
+Open Settings > General > Tray icon to choose Default (the glyph) or Classic cat. The default is the glyph, matching v1. Selection saves to `desktop.tray_icon` and applies immediately. The CLI equivalent is `unic config set desktop.tray_icon '"cat"'` or `unic config set desktop.tray_icon '"glyph"'`. Direct TOML edits also apply while Desktop runs. Invalid values retain the previous valid configuration. The tray is available while a lightweight GUI session is open; closing GUI leaves only unicd. See [Desktop configuration](../../docs/architecture/desktop-runtime.md#application-and-tray-icons).

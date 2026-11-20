@@ -27,11 +27,34 @@ quick-panel process --- private apply/mark RPC ------ tray's only adapter
 
 Quit/close handlers publish their complete IPC acknowledgement before scheduling process shutdown. Tray retires UI roles, its adapter, its owned service and its role endpoint before mygo relaunch starts a replacement. GUI activation also transfers Windows foreground permission to the verified GUI PID.
 
-All three desktop roles use the same installed executable. They are separate OS processes, with separate renderer lifetimes. Closing the GUI terminates its process. Dismissing the quick panel hides its independent process, which persists until explicit application Quit. Tray and service do not require a resident GUI. A role endpoint and live kernel lock enforce per-profile, per-role ownership. Both IPC peers validate the OS peer PID and executable path/hash. The role-acquisition timestamp is not a kernel process-creation timestamp.
+All three desktop roles use the same installed executable. They are separate OS processes, with separate renderer lifetimes. Manual no-argument activation always opens the GUI. Normal GUI close terminates only that process and retains tray/service. Lightweight GUI close retires GUI, tray and panel, leaving only unicd without a hotkey or adapter. The tray transfers an owned service using the strict owner-pipe release command followed by EOF and confirms the same generation/PID report standalone through the existing service API. It does not restart the service. Explicit background entry retains tray/service in normal mode and only unicd in lightweight mode. Normal login uses `desktop.start_in_background` to choose GUI visibility; lightweight login always keeps only unicd. Fresh or pending setup cannot be bypassed. Dismissing the quick panel hides its independent process while tray integration remains. Explicit application Quit still stops only the service owned by that tray; a borrowed standalone service survives. A role endpoint and live kernel lock enforce per-profile, per-role ownership. Both IPC peers validate the OS peer PID and executable path/hash. The role-acquisition timestamp is not a kernel process-creation timestamp.
 
 See the [architecture](../architecture/headless.md#desktop-startup-settings), [design](desktop-process-design.md), [failure inventory](desktop-process-failures.md), and [quick-panel contract](../contracts/desktop-quick-panel-contract.md).
 
-## Evidence recorded so far
+## Updated close semantics acceptance
+
+The follow-up replaces the original lightweight-tray-residency requirement. Its
+canonical regression first failed at manual activation (`20261120T062043Z-d8d7b5af`).
+The following modified-source receipts record hashes of the frozen source and programs;
+the original HEAD alone does not identify their changes.
+
+| Check | Result | Evidence and boundary |
+|---|---|---|
+| Lightweight close, owned handoff, concurrent reopen, background entry and immediate saved-mode close | PASS | `20261120T064124Z-82d85f24`, nine real-process checks, same service PID/generation and cleanup |
+| Normal background/GUI/panel/crash/adapter regressions | PASS | `20261120T064124Z-6d4d767d`, thirteen real-process checks; nonvisual host |
+| Strict service ownership release | PASS | `20261120T062722Z-bb037bfc`, marker/EOF RED then GREEN, malformed frames, same PID/history and idempotent release |
+| Authenticated retiring-error classification | PASS | `.build/desktopprocess-retiring-20261120/`, real-role RED/GREEN, typed retry signal without text matching |
+| Native event-loop panel Copy and GUI recreation | PASS | `20261120T064152Z-86917464`; app-scoped windows and directory clipboard, not OS foreground or physical input |
+| Private macOS application-bundle entry matrix | PASS | `.build/macos-bundle-background-green-20261120/`; normal background native-path RED/GREEN plus manual/light/setup checks; OS visibility/focus NOT_RUN |
+| Existing Desktop/Engine checks | PASS | 206 existing tests with race across eight changed/dependency packages; module verification and fixed lint passed |
+| Updated Windows native close semantics | NOT_RUN | Awaiting serial VM handoff. Earlier `native-18` reproduced a hidden initial quick-panel HWND despite a visible model; the corrected initial explicit Show/Focus still needs Windows replay |
+
+See the [private-bundle receipt](macos-private-bundle-launch.md). These results
+separate process identities from app-scoped visibility and OS-native input.
+
+## Original implementation evidence
+
+The historical receipts below bind their original tested source. They predate the follow-up manual/background and lightweight-close semantics described above. They remain historical evidence and do not establish that the new entry matrix or same-PID ownership transfer passed. Re-run the canonical cases against the follow-up source before extending acceptance.
 
 | Check | Result | Evidence and limit |
 |---|---|---|
@@ -56,6 +79,7 @@ The first macOS native history run `20261120T035013Z-7a95cf83` passed business a
 
 ```sh
 make desktop-e2e CASE=desktop-processes
+make desktop-e2e CASE=desktop-lightweight-close
 make desktop-e2e CASE=quick-panel-contract
 make desktop-e2e CASE=history-search-copy
 make desktop-e2e CASE=setup-onboarding
@@ -66,7 +90,7 @@ Each canonical run freezes source, isolates profiles and synthetic content, and 
 
 ## Windows coordination
 
-The authorized Parallels VM is `32affa85-5174-4d5b-ab6b-903a06d7fa9b`, Windows 11 ARM64. Initial state was running, with shared clipboard enabled. A read-only identity check confirmed the OS and VM identity. The independent memory research task has first use of the VM. This task has not yet launched guest applications or changed its settings. Native acceptance remains pending until serial use is available. Do not mix x64 emulation measurements with ARM64 native behavior.
+The authorized Parallels VM is `32affa85-5174-4d5b-ab6b-903a06d7fa9b`, Windows 11 ARM64. Initial state was running, with shared clipboard enabled. A read-only identity check confirmed the OS and VM identity. The independent memory research task has first use of the VM. The earlier serial window used private task profiles and directory clipboard fixtures. It confirmed normal tray activation and the prior light reopen flow, but exposed the hidden initial panel window in `native-18`. That run failed; its task processes/profiles/stage were cleaned and the VM returned suspended. The user then updated lightweight-close semantics. Updated native acceptance remains pending a new serial handoff. No VM clipboard/sharing, installation or permission changes were made. Do not mix x64 emulation measurements with ARM64 native behavior.
 
 ## Remaining evidence
 

@@ -123,6 +123,7 @@ func runGUI(settings *config.Manager) error {
 	g := &gui{c: c}
 	session := &desktopSession{g: g, ctx: ctx, settings: settings, flow: flow, dir: dir}
 	closeOnly := false
+	forcedQuit := false
 	quitting := false
 	ready := make(chan struct{})
 	handler := func(ctx context.Context, command string, raw json.RawMessage) (any, error) {
@@ -150,7 +151,9 @@ func runGUI(settings *config.Manager) error {
 			})
 			return nil, nil
 		case "close", "quit":
-			return desktopprocess.ReplyAfter(nil, func() { mygo.RunOnMain(func() { closeOnly = true; mygo.App.Quit() }) }), nil
+			return desktopprocess.ReplyAfter(nil, func() {
+				mygo.RunOnMain(func() { closeOnly = true; forcedQuit = command == "quit"; mygo.App.Quit() })
+			}), nil
 		default:
 			return nil, errors.New("unknown GUI command")
 		}
@@ -162,8 +165,13 @@ func runGUI(settings *config.Manager) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = owner.Close() }()
-	if _, err = launchDesktopRole(context.Background(), dir, socket, desktopprocess.Tray, "--mode", "lightweight"); err != nil {
+	defer func() {
+		_ = owner.Close()
+		if closeOnly && !forcedQuit {
+			notifyGUIClosed(dir)
+		}
+	}()
+	if _, err = launchDesktopRole(context.Background(), dir, socket, desktopprocess.Tray, "--background"); err != nil {
 		return err
 	}
 	configureNativeRole(dir, false)

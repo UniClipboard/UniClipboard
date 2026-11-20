@@ -4,9 +4,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 )
@@ -24,7 +26,12 @@ func main() {
 		if *command == "status" {
 			result, err = desktopprocess.Probe(ctx, dir, desktopprocess.Role(*role))
 		} else {
-			err = desktopprocess.Call(ctx, dir, desktopprocess.Role(*role), *command, nil, &result)
+			requested := strings.TrimPrefix(*command, "classify-")
+			err = desktopprocess.Call(ctx, dir, desktopprocess.Role(*role), requested, nil, &result)
+			if strings.HasPrefix(*command, "classify-") {
+				result = map[string]any{"retryable_unavailable": errors.Is(err, desktopprocess.ErrUnavailable), "received_error": err != nil}
+				err = nil
+			}
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -35,6 +42,12 @@ func main() {
 	}
 	done := make(chan struct{}, 1)
 	owner, err := desktopprocess.Acquire(ctx, dir, desktopprocess.Role(*role), func(_ context.Context, command string, _ json.RawMessage) (any, error) {
+		if command == "retiring" {
+			return nil, fmt.Errorf("role retirement underway: %w", desktopprocess.ErrUnavailable)
+		}
+		if command == "lookalike" {
+			return nil, errors.New(desktopprocess.ErrUnavailable.Error())
+		}
 		if command == "close" {
 			return desktopprocess.ReplyAfter(map[string]any{"pid": os.Getpid(), "command": command}, func() {
 				cancel()

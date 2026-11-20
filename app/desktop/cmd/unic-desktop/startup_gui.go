@@ -45,7 +45,7 @@ func (g *gui) startupSettings(c *ui.Context, k uikit.Kit, state *config.State, b
 	loginEnabled, loginError := g.loginEnabled, g.loginError
 	g.mu.Unlock()
 	k.SettingsGroup(c.Key("startup"), uikit.SettingsGroupProps{Title: "启动与运行模式"}, func() {
-		k.SettingsRow(c.Key("mode"), uikit.SettingsRowProps{Label: "运行模式", Description: "下次启动时生效。轻量模式保留托盘和同步服务。关闭主窗口会释放界面进程。"}, nil, func() {
+		k.SettingsRow(c.Key("mode"), uikit.SettingsRowProps{Label: "运行模式", Description: "常规模式关闭主窗口后保留托盘和同步服务。轻量模式关闭主窗口后仅保留同步服务。点击应用图标可重新打开。"}, nil, func() {
 			if k.Select(c.Key("select"), uikit.SelectProps{Label: "运行模式", Value: &desktop.Mode, Disabled: busy, Items: []uikit.SelectItem{
 				{Value: "normal", Label: "常规模式"}, {Value: "lightweight", Label: "轻量模式"},
 			}}).Changed {
@@ -57,7 +57,7 @@ func (g *gui) startupSettings(c *ui.Context, k uikit.Kit, state *config.State, b
 				changed = true
 			}
 		})
-		k.SettingsRow(c.Key("background"), uikit.SettingsRowProps{Label: "后台启动", Description: "下次常规启动时不创建主窗口。通过托盘或再次启动打开窗口。"}, nil, func() {
+		k.SettingsRow(c.Key("background"), uikit.SettingsRowProps{Label: "后台启动", Description: "仅控制常规模式的登录启动。手动点击应用图标始终打开主窗口。"}, nil, func() {
 			if k.Switch(c.Key("switch"), &desktop.StartInBackground, uikit.SwitchProps{Label: "后台启动", Disabled: busy}).Changed() {
 				changed = true
 			}

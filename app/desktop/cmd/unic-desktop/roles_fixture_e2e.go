@@ -65,6 +65,7 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 	}
 	var mu sync.Mutex
 	visible := role == desktopprocess.GUI
+	userClosed := false
 	handler := func(ctx context.Context, command string, _ json.RawMessage) (any, error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -81,6 +82,7 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 		case "close":
 			visible = false
 			if role == desktopprocess.GUI {
+				userClosed = true
 				return desktopprocess.ReplyAfter(nil, cancel), nil
 			}
 			return nil, nil
@@ -99,7 +101,15 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 	if err != nil {
 		return err
 	}
-	defer func() { _ = owner.Close() }()
+	defer func() {
+		_ = owner.Close()
+		mu.Lock()
+		closed := userClosed
+		mu.Unlock()
+		if closed {
+			notifyGUIClosed(dir)
+		}
+	}()
 	<-ctx.Done()
 	return nil
 }

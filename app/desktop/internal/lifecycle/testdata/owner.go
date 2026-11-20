@@ -3,12 +3,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
+
+	api "github.com/uniclipboard/unic/internal/localapi"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -22,6 +25,7 @@ func main() {
 	fail := flag.Bool("fail", false, "simulate native registration rejection")
 	acquire := flag.Bool("acquire", false, "acquire service without replacing standalone ownership")
 	lightweight := flag.Bool("lightweight", false, "exercise legacy standalone service primitive without a graphical host")
+	detach := flag.Bool("detach", false, "release this owned generation and verify Stop cannot terminate it")
 	flag.Parse()
 	dir, err := paths.Dir()
 	if err != nil {
@@ -82,6 +86,30 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	if *detach {
+		if process == nil {
+			panic("detach fixture requires owned generation")
+		}
+		before, err := api.NewClient(socket).Service(ctx)
+		if err != nil {
+			panic(err)
+		}
+		if err := process.Detach(ctx); err != nil {
+			panic(err)
+		}
+		if err := process.Detach(ctx); err != nil {
+			panic(err)
+		}
+		if err := process.Stop(); err != nil {
+			panic(err)
+		}
+		after, err := api.NewClient(socket).Service(ctx)
+		if err != nil {
+			panic(err)
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"before": before, "after": after})
+		return
 	}
 	fmt.Println("ready")
 	if *lightweight {

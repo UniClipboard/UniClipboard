@@ -3,7 +3,9 @@ package desktopprocess_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,6 +69,44 @@ func TestRoleProcesses(t *testing.T) {
 	gui := launch("gui")
 	panel := launch("quick-panel")
 	receipt := map[string]any{"native_ui": false, "processes": []any{wait("tray"), wait("gui"), wait("quick-panel")}}
+	sources := map[string]string{}
+	for _, path := range []string{"process.go", "process_e2e_test.go", "testdata/role.go", "FAILURES.md"} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sources[path] = fmt.Sprintf("%x", sha256.Sum256(raw))
+	}
+	receipt["source_sha256"] = sources
+	defer func() {
+		receipt["status"] = "PASS"
+		if t.Failed() {
+			receipt["status"] = "FAIL"
+		}
+		raw, _ := json.MarshalIndent(receipt, "", "  ")
+		if output := os.Getenv("UNIC_ROLE_E2E_RECEIPT"); output != "" {
+			if err := os.WriteFile(output, raw, 0600); err != nil {
+				t.Error(err)
+			}
+		}
+		t.Log(string(raw))
+	}()
+	retiring, err := call("gui", "classify-retiring")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt["retiring_error_classification"] = retiring
+	if retiring["received_error"] != true || retiring["retryable_unavailable"] != true {
+		t.Fatalf("remote retiring error lost unavailable classification: %v", retiring)
+	}
+	lookalike, err := call("gui", "classify-lookalike")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt["lookalike_error_classification"] = lookalike
+	if lookalike["received_error"] != true || lookalike["retryable_unavailable"] != false {
+		t.Fatalf("human-readable error text became retryable: %v", lookalike)
+	}
 	if tray.Process.Pid == gui.Process.Pid || tray.Process.Pid == panel.Process.Pid || gui.Process.Pid == panel.Process.Pid {
 		t.Fatal("roles share PID")
 	}
@@ -114,11 +154,4 @@ func TestRoleProcesses(t *testing.T) {
 		t.Fatal("closed tray still accepts commands")
 	}
 	receipt["cleanup"] = "role endpoints closed"
-	raw, _ := json.MarshalIndent(receipt, "", "  ")
-	if output := os.Getenv("UNIC_ROLE_E2E_RECEIPT"); output != "" {
-		if err := os.WriteFile(output, raw, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Log(string(raw))
 }

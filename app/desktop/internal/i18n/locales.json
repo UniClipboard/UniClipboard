@@ -3958,5 +3958,17 @@
     "ja": "次回の通常起動時にメインウィンドウを作成しません。",
     "pt-BR": "Não criar a janela principal na próxima inicialização normal.",
     "ru": "Не создавать главное окно при следующем обычном запуске."
+  },
+  "常规模式关闭主窗口后保留托盘和同步服务。轻量模式关闭主窗口后仅保留同步服务。点击应用图标可重新打开。": {
+    "en": "Normal mode keeps the tray and sync service after the main window closes. Lightweight mode keeps only the sync service. Open the app icon to return.",
+    "ja": "通常モードではメイン画面を閉じた後もトレイと同期サービスが動作します。軽量モードでは同期サービスのみが動作します。アプリアイコンから再度開けます。",
+    "pt-BR": "O modo normal mantém a bandeja e o serviço de sincronização ao fechar a janela principal. O modo leve mantém apenas o serviço. Abra o aplicativo pelo ícone para retornar.",
+    "ru": "В обычном режиме после закрытия главного окна остаются значок в трее и служба синхронизации. В облегчённом режиме остаётся только служба. Чтобы вернуться, откройте приложение через его значок."
+  },
+  "仅控制常规模式的登录启动。手动点击应用图标始终打开主窗口。": {
+    "en": "Only controls normal-mode login startup. Opening the app icon always shows the main window.",
+    "ja": "通常モードのログイン時起動にのみ適用されます。アプリアイコンを開くとメイン画面が表示されます。",
+    "pt-BR": "Controla apenas a inicialização no login no modo normal. Abrir o aplicativo pelo ícone sempre mostra a janela principal.",
+    "ru": "Управляет только запуском при входе в обычном режиме. Открытие приложения через значок всегда показывает главное окно."
   }
 }

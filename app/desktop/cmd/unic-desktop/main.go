@@ -11,8 +11,11 @@ import (
 	"github.com/uniclipboard/unic/internal/releaseinfo"
 
 	"encoding/json"
+	"errors"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
+	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
+	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -50,7 +53,8 @@ func runDesktop(args []string) error {
 		}
 	}
 	flags := flag.NewFlagSet("unic-desktop", flag.ContinueOnError)
-	mode := flags.String("mode", "", "normal or lightweight; overrides desktop.mode for this launch")
+	mode := flags.String("mode", "", "normal or lightweight background startup policy; defaults to desktop.mode")
+	background := flags.Bool("background", false, "start without a GUI after setup; lightweight runs only unicd")
 	role := flags.String("role", "", "tray, gui or quick-panel")
 	command := flags.String("command", "", "send a private desktop role command")
 	payload := flags.String("payload", "null", "JSON command payload")
@@ -97,7 +101,7 @@ func runDesktop(args []string) error {
 	if selected != "normal" && selected != "lightweight" {
 		return fmt.Errorf("mode must be normal or lightweight")
 	}
-	desktopLaunchMode = selected
+	desktopLaunchBackground = *background
 	if *role != "" {
 		return runRole(desktopprocess.Role(*role), settings)
 	}
@@ -111,10 +115,60 @@ func runDesktop(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	if _, err = launchDesktopRole(ctx, dir, socket, desktopprocess.Tray, "--mode", selected); err != nil {
+	backgroundLaunch := *background
+	if !backgroundLaunch {
+		login, err := detectLoginLaunch()
+		if err != nil {
+			return err
+		}
+		backgroundLaunch = login && (selected == "lightweight" || settings.Current().Desktop.StartInBackground)
+	}
+	flow, err := setupflow.Open(dir)
+	if err != nil {
 		return err
 	}
-	return desktopprocess.Call(ctx, dir, desktopprocess.Tray, "startup", selected, nil)
+	if backgroundLaunch && selected == "lightweight" && !flow.Required() {
+		// A duplicate login/background request must not close an active UI.
+		if _, err := desktopprocess.Probe(ctx, dir, desktopprocess.Tray); err == nil {
+			return nil
+		} else if !errors.Is(err, desktopprocess.ErrUnavailable) {
+			return err
+		}
+		executable, err := lifecycle.Sibling()
+		if err != nil {
+			return err
+		}
+		owned, err := lifecycle.AcquireService(ctx, dir, socket, executable)
+		if err != nil {
+			return err
+		}
+		if owned != nil {
+			return owned.Detach(ctx)
+		}
+		return nil
+	}
+	startupCommand := "startup"
+	if backgroundLaunch {
+		startupCommand = "background"
+	}
+	trayArgs := []string{"--mode", selected}
+	if backgroundLaunch {
+		trayArgs = append(trayArgs, "--background")
+	}
+	for {
+		if _, err = launchDesktopRole(ctx, dir, socket, desktopprocess.Tray, trayArgs...); err != nil {
+			return err
+		}
+		err = desktopprocess.Call(ctx, dir, desktopprocess.Tray, startupCommand, nil, nil)
+		if !errors.Is(err, desktopprocess.ErrUnavailable) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 }
 
 func trunc(s string, n int) string {

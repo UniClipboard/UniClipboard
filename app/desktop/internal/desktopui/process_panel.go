@@ -37,7 +37,9 @@ func (p *capturedPlatform) Capture() (quickpanel.Target, error) { return p.targe
 func NewProcessPanel(ctx context.Context, client *api.Client, clipboard PanelClipboard, root func(string)) *ProcessPanel {
 	return &ProcessPanel{ctx: ctx, client: client, clipboard: clipboard, native: &capturedPlatform{Platform: quickpanel.NewNative()}, root: root}
 }
-func (p *ProcessPanel) Visible() bool { return p.state != nil && p.state.visible }
+func (p *ProcessPanel) Visible() bool {
+	return p.state != nil && p.state.visible && p.window != nil && p.window.IsVisible()
+}
 func (p *ProcessPanel) Open(target quickpanel.Target, captureError string) {
 	if p.Visible() {
 		p.Hide()
@@ -63,6 +65,11 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string) {
 		q.live.system = quickpanel.New(quickpanel.Options{Context: p.ctx, Client: p.client, Clipboard: p.clipboard, Platform: p.native, Dispatch: mygo.RunOnMain, Visible: show, Changed: func() { q.message = q.live.system.Message; q.update() }})
 		q.live.system.Open()
 		p.window = openQuickWindow(q, func() { q.live.system.Dismiss(false); q.live.d.live.cancel(); p.state = nil; p.window = nil })
+		// A windowless panel process must explicitly display its first window.
+		// Do not depend on a later native event turn to settle its initial show.
+		p.window.Show()
+		p.window.Focus()
+		p.window.Invalidate()
 	} else {
 		q := p.state
 		q.live.system.Open()

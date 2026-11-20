@@ -1,39 +1,47 @@
 # Independent desktop processes
 
-Status: implementation design; process and native acceptance are separate gates.
-Baseline: `173d362036ae4a746878306915c85bcdf7468751`.
+Status: updated implementation design; process and native acceptance are separate gates.
+Baseline implementation: `a99ccc0bcf2309eb8cf0bb3468802c4f740fd786`.
 
 ## Ownership
 
-Use the existing `unic-desktop` executable with explicit `--role tray`, `--role gui` and `--role quick-panel` entry points. Each role is a real OS process. Keep `unicd` UI-free as the fourth process. A no-role launch starts or contacts the tray, then requests the saved startup behavior.
+Use the existing `unic-desktop` executable with explicit `--role tray`, `--role gui` and `--role quick-panel` entry points. Each role is a real OS process. Keep `unicd` UI-free as the fourth process. The no-role application entry resolves user activation versus login/background startup before requesting a session.
 
 | Process | Lifetime | Exclusive responsibility |
 |---|---|---|
-| Tray | Desktop session | Tray, global shortcut, target capture, clipboard adapter, notifications, login intent, owned-service handle |
+| Tray | Normal desktop session; temporary while a lightweight GUI is open | Tray, global shortcut, foreground capture, clipboard adapter, notifications, login intent, owned-service handle |
 | GUI | Open until window close | Setup, migration and main history/settings rendering |
-| Quick panel | Created on first request; hidden between requests | Panel rendering, target validation, focus restoration and synthetic paste |
-| unicd | Owned pipe or independently started service | Engine, history, settings, network and adapter protocol |
+| Quick panel | Created on request; hidden between requests until tray shutdown | Panel rendering, target validation, focus restoration and synthetic paste |
+| unicd | Owned parent pipe or standalone lifetime | Engine, history, settings, network and adapter protocol |
 
-The tray follows the established main-process/native-integration pattern described in [Electron's process model](https://www.electronjs.org/docs/latest/tutorial/process-model). This does not add Electron or another runtime.
+The tray uses the existing desktop native-integration pattern. No second core or host history store is introduced.
 
-## Launch and close
+## User activation and background startup
 
-Fresh or pending setup opens the GUI in every startup mode. No clipboard adapter starts before explicit setup completion. Established normal profiles open the GUI unless background startup is selected. Lightweight profiles keep the tray and service, without creating a GUI. A later tray Open always starts or activates the GUI regardless of saved mode.
+A manual application launch always opens or activates GUI, regardless of `desktop.mode` or `desktop.start_in_background`. Desktop shortcuts, Start menu entries and application icons retain their ordinary no-argument application entry. A running service never consumes user activation.
 
-Closing the GUI exits that process and releases its renderer, caches and service subscriptions. Closing or dismissing the quick panel hides that independent process; it registers no global shortcut and owns no adapter. Explicit Quit in the tray closes both UI roles, releases the shortcut and adapter, then stops only the service started and owned by the tray. An independent `unicd` remains running. Running `unicd` alone never starts graphical integration.
+Explicit `--background` and the operating system login-launch receipt identify background startup. Normal background startup keeps tray and unicd. Lightweight background startup leaves only unicd. Fresh or pending setup opens GUI in either mode; background startup cannot bypass initialization or migration admission.
 
-## IPC and isolation
+Normal GUI window close terminates the GUI process and leaves tray, shortcut and adapter available. Lightweight GUI window close terminates GUI, tray and quick panel and releases shortcut/adapter; only unicd remains. The user reopens GUI through the application entry. No shortcut or tray is advertised while only unicd is running. The saved mode applies to GUI close, including a mode changed in the current GUI.
 
-One live role lock and one private role endpoint exist per canonical profile. Bind requests to the canonical profile and executable identity. Verify live endpoint ownership rather than trusting a PID file. Reuse existing local transports and file locks. Reject a mismatched profile, binary or unexpected listener. All content remains in Engine; no second history database exists.
+## Service handoff and exit
 
-The GUI delegates native integration requests to tray. The quick panel receives an ephemeral foreground target captured by tray before process launch or window activation. The target stays in memory and private RPC only. It delegates history application and clipboard-match checks to the tray's tracked adapter. Keep the existing generation-bound focus, permission and paste checks; no failed or uncertain paste is retried.
+A tray adopts an existing standalone service without ownership. It never stops that generation. A service newly started for an interactive desktop remains owned until explicit Quit, a normal owner failure, or an acknowledged lightweight handoff.
 
-## Failures and recovery
+Lightweight close transfers an owned service to standalone lifetime through its existing exclusive owner pipe. One fixed release message followed by owner-pipe EOF changes the service ownership mode. The tray confirms the same generation, PID and profile through the existing local service endpoint before exiting. No service restart or new history store is needed. EOF without a valid handoff retains the existing owned-service shutdown behavior. An uncertain handoff is reconciled against that generation; it must not trigger a stop or replacement of an independently running service.
 
-A GUI crash does not stop tray or service. A quick-panel crash leaves the shortcut and adapter running; the next request creates the panel again. Repeated launch and shortcut requests serialize through role ownership. A tray crash releases its shortcut and adapter session through OS process teardown. Its owned service closes through the parent pipe. Existing UI roles remain read-only service clients and reconnect after the next desktop launch recreates tray. A service restart renews the adapter session and establishes a baseline; disconnected backlog never writes to the clipboard.
+GUI close notification occurs after its view and role endpoint have closed. Tray serializes GUI launch and close admission. A close notification cannot shut down a newly opened GUI. Explicit application Quit remains a separate action: close all UI roles, shortcut and adapter, then stop only a still-owned service. After lightweight handoff the service is independently owned. Running unicd alone never creates graphical integration.
 
-Migration first pauses tray integration and closes the quick panel. Stop and await only a tray-owned service. An independent service blocks migration without stopping it. Persist pending setup before import; completion requires a ready service and explicit entry. Cancellation preserves the pending marker.
+## IPC and failures
+
+Keep one live role lock and private endpoint per canonical profile. Verify OS peer executable identity and the profile, rather than trusting a PID file. GUI and panel delegate clipboard writes to the tray's single tracked adapter. Foreground targets stay ephemeral and profile-private.
+
+A GUI crash does not masquerade as an intentional lightweight close. Tray and its shortcut remain recoverable until user activation or explicit Quit. A panel crash leaves tray integration available. A tray crash releases shortcut/adapter and closes an owned service through its parent pipe; an already detached or adopted service survives. A service restart renews the adapter baseline without applying disconnected backlog.
+
+Migration pauses the tray integration, closes panel and unregisters the shortcut before offline import. An independent service blocks import without being stopped. Explicit completion requires service readiness and a completed setup marker.
 
 ## Acceptance
 
-Write failure scenarios and real-process regression before runtime changes. Reuse canonical Desktop E2E, isolate all profiles and synthetic clipboard bytes, and record role PIDs, creation times, binary/source hashes, IPC results, persistent history/settings and cleanup. Native tray clicks and receiving-application paste remain separate evidence. Native Windows acceptance has priority; cross-compilation proves only compilation.
+Use canonical Desktop E2E and real subprocess identities. The first updated-semantics case must fail before implementation: saved lightweight plus background preference, existing service, manual application launch, GUI close, all UI processes gone, same service generation alive, manual reopen with a new GUI identity. Add owned-service handoff and background startup as subsequent slices.
+
+Native Windows tray clicks, actual window visibility/activation, global shortcut input and process fixtures are distinct evidence. Record source/binary hashes and cleanup. Do not claim clipboard or paste acceptance from directory-board runs.

@@ -1,8 +1,8 @@
 # Case: Independent Desktop role processes
 # Mode: process
-# Purpose: Lightweight restart retains a tray and independently recreates GUI and quick-panel processes.
+# Purpose: Normal runtime retains tray and service after GUI close and independently recreates GUI and quick-panel processes.
 # Steps:
-#   Start the production role launcher in an isolated nonvisual process fixture, reopen and close each UI role, then verify durable state and cleanup.
+#   Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup.
 # Expected:
 #   Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running.
 # Forbidden:

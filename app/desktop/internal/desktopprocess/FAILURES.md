@@ -47,3 +47,14 @@ value and runs its callback in an independent goroutine after a successful full
 response write. Failed encoding or a failed write never runs the callback. A
 complete acknowledgement confirms admission; probing the endpoint confirms role
 shutdown. The fixture needs no shutdown timer.
+
+## Retiring-role error classification specified before the fix
+
+A role can still authenticate and answer while retirement has already closed
+business-command admission. Returning ErrUnavailable from that handler must
+survive the IPC boundary as a stable machine-readable error code. A same-binary
+client must classify the received error with errors.Is(err, ErrUnavailable),
+including when the server wraps the sentinel. A different error with identical
+human-readable text must not become retryable. Identity verification must still
+precede any remote error-code mapping. Retrying business commands is a caller
+policy; this transport does not replay a command.

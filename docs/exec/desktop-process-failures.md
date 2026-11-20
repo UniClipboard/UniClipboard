@@ -5,7 +5,7 @@ Specified before the process-role implementation. The acceptance entry is
 
 ## Failures to prevent
 
-1. Saved lightweight mode starts only unicd and leaves no tray entry.
+1. A saved lightweight or background preference suppresses a manual request to open GUI.
 2. A running unicd prevents a tray command from creating a visible GUI process.
 3. Closing the GUI hides a resident renderer instead of terminating its process.
 4. Reopening the GUI creates duplicate processes or replaces durable history.
@@ -13,7 +13,7 @@ Specified before the process-role implementation. The acceptance entry is
 6. Concurrent launch creates duplicate tray, GUI, shortcut or adapter owners.
 7. A foreign profile or executable can activate or terminate another profile.
 8. A stale PID or endpoint blocks recovery after a role crash.
-9. A GUI or panel crash terminates the tray or the service.
+9. A GUI or panel crash terminates the tray or the service without an explicit close/handoff.
 10. A service restart leaves a stale adapter or applies disconnected backlog.
 11. Explicit Quit leaves owned roles, adapter registrations or an owned service.
 12. Explicit Quit terminates an independently started service.
@@ -24,7 +24,14 @@ Specified before the process-role implementation. The acceptance entry is
 17. Tray startup replaces an independently started standalone service.
 18. Tray startup adopts a live desktop-owned or CLI-temporary service.
 19. Invalid daemon paths or an unknown listener are modified before identity validation.
-20. An acquired desktop-owned service survives owner exit, or its shutdown stops an adopted standalone service.
+20. An owned service survives ordinary owner failure without an acknowledged handoff, or shutdown stops an adopted standalone service.
+21. Lightweight GUI close leaves tray, panel, shortcut or adapter resources resident.
+22. Lightweight close restarts Engine instead of retaining the exact service generation.
+23. A stale GUI-close notification shuts down a newly opened GUI.
+24. Login/background startup creates a GUI after completed lightweight setup.
+25. Background startup bypasses pending setup or offline migration.
+26. The first native quick-panel request reports visible state while the OS window stays hidden. Windows native run `native-18` reproduced this before the explicit initial Show/Focus correction.
+27. Desktop mode changes are saved but the close operation uses stale watcher state.
 
 ## Evidence boundary
 

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -25,7 +24,7 @@ import (
 	"github.com/uniclipboard/unic/internal/releaseinfo"
 )
 
-var desktopLaunchMode = "normal"
+var desktopLaunchBackground bool
 
 func configureNativeRole(dir string, accessory bool) {
 	mygo.App.SetName(desktopAppName)
@@ -91,6 +90,9 @@ func runTray(settings *config.Manager) error {
 	mygo.App.OnQuit(func() { r.close(); _ = owner.Close() })
 	showDesktop = func() { nativeAsync(r.openGUI) }
 	showQuickPanel = func() { nativeAsync(r.openPanel) }
+	if runtime.GOOS == "darwin" {
+		mygo.App.OnActivate(func(bool) { nativeAsync(r.openGUI) })
+	}
 	mygo.App.WhenReady(func() {
 		nativePlatform := quickpanel.NewNative()
 		shortcut := quickpanel.NewShortcut(mygo.GlobalShortcut.Register, mygo.GlobalShortcut.Unregister, showQuickPanel)
@@ -188,10 +190,14 @@ func runTray(settings *config.Manager) error {
 		go apply()
 		go func() { _ = settings.Watch(ctx) }()
 		go notifyPending(ctx, r.socket, func() string { return settings.Current().Desktop.Language })
-		// A directly restarted tray (including updater relaunch) applies the same
-		// saved mode and setup gate as the no-role launcher.
+		// Relaunch preserves the original tray intent. A background tray must
+		// not create GUI before the no-role launcher can deliver its request.
 		go func() {
-			_, err := r.handler(ctx, "startup", json.RawMessage(strconv.Quote(desktopLaunchMode)))
+			command := "startup"
+			if desktopLaunchBackground {
+				command = "background"
+			}
+			_, err := r.handler(ctx, command, nil)
 			if err != nil {
 				logHostFailure()
 			}

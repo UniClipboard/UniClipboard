@@ -60,9 +60,10 @@ type request struct {
 	Payload  json.RawMessage `json:"payload"`
 }
 type response struct {
-	Identity Info            `json:"identity"`
-	Result   json.RawMessage `json:"result,omitempty"`
-	Error    string          `json:"error,omitempty"`
+	Identity  Info            `json:"identity"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	ErrorCode string          `json:"error_code,omitempty"`
 }
 type Owner struct {
 	info     Info
@@ -245,6 +246,9 @@ func Acquire(ctx context.Context, dir string, role Role, handler Handler) (*Owne
 					value, err := handler(ownerCtx, req.Command, req.Payload)
 					if err != nil {
 						reply.Error = err.Error()
+						if errors.Is(err, ErrUnavailable) {
+							reply.ErrorCode = "unavailable"
+						}
 					} else {
 						if deferred, ok := value.(afterReply); ok {
 							value, after = deferred.value, deferred.after
@@ -317,6 +321,9 @@ func Call(ctx context.Context, dir string, role Role, command string, payload, r
 		return errors.New("desktop IPC owner identity mismatch")
 	}
 	if reply.Error != "" {
+		if reply.ErrorCode == "unavailable" {
+			return fmt.Errorf("%w: %s", ErrUnavailable, reply.Error)
+		}
 		return errors.New(reply.Error)
 	}
 	if result != nil && len(reply.Result) != 0 {

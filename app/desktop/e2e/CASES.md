@@ -7,8 +7,9 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
+| [desktop-lightweight-close](#desktop-lightweight-close) | process | Verify the updated lightweight user intent through real role and service processes. |
 | [desktop-native-processes](#desktop-native-processes) | native | Verify independent GUI, quick-panel, tray and service processes through native windows with an isolated directory clipboard. |
-| [desktop-processes](#desktop-processes) | process | Lightweight restart retains a tray and independently recreates GUI and quick-panel processes. |
+| [desktop-processes](#desktop-processes) | process | Normal runtime retains tray and service after GUI close and independently recreates GUI and quick-panel processes. |
 | [event-wakeup](#event-wakeup) | process | Exercise actual service events, content completions and recovery through stopped production renderers. |
 | [first-install-setup](#first-install-setup) | process | Verify setup persistence and migration with real Engine, SQLite and a service process. |
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
@@ -264,6 +265,20 @@ Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS
 acceptance desktopui data-binding
 ```
 
+## desktop-lightweight-close
+
+Lightweight manual launch and GUI-close lifetime
+
+Steps: Keep an independent service running; manually launch and close lightweight UI; repeat with a tray-owned service; verify explicit background intent; race close acknowledgement with concurrent manual reopening; save lightweight mode while an owned normal GUI runs and immediately close it.
+
+Expected: Manual launches show GUI; lightweight close stops all UI while retaining the same unicd PID and generation; an owned service detaches to standalone; explicit lightweight background runs only unicd; normal background retains tray without GUI; concurrent reopening leaves one visible GUI.
+
+Forbidden: Treating saved start_in_background as manual-launch intent, leaving a hidden GUI/tray/panel, stopping the independent service, replacing its generation, or reporting process fixtures as native focus evidence. Failure inventory specified before production changes: Manual launch remains service-only or obeys saved background preference; lightweight close retains UI or stops/replaces unicd; an owned daemon exits on owner EOF; reopening reuses an exited GUI; background mode creates unwanted UI; close acknowledgement races with reopening and loses the latest manual intent; live mode/background saves report an obsolete restart requirement or GUI close consumes stale mode. Background launch note: The --background argument represents explicit login/background intent. Manual launch always has no arguments.
+
+```text
+acceptance startup desktop-lightweight-close
+```
+
 ## desktop-native-processes
 
 Independent native Desktop windows and process lifetimes
@@ -297,7 +312,7 @@ screenshot recreated-gui
 
 Independent Desktop role processes
 
-Steps: Start the production role launcher in an isolated nonvisual process fixture, reopen and close each UI role, then verify durable state and cleanup.
+Steps: Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup.
 
 Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running.
 

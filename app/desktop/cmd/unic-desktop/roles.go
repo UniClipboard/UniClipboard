@@ -59,6 +59,7 @@ type trayRuntime struct {
 	nativeReady             chan struct{}
 	wanted                  bool
 	paused                  bool
+	retiring                bool
 	ctx                     context.Context
 	cancel                  context.CancelFunc
 	dir, socket, executable string
@@ -110,7 +111,15 @@ func (r *trayRuntime) status() roleStatus {
 	}
 	return state
 }
+func (r *trayRuntime) isRetiring() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.retiring || r.ctx.Err() != nil
+}
 func (r *trayRuntime) start(ctx context.Context, entering bool) error {
+	if r.isRetiring() {
+		return desktopprocess.ErrUnavailable
+	}
 	select {
 	case <-r.nativeReady:
 	case <-ctx.Done():
@@ -188,6 +197,14 @@ func (r *trayRuntime) pause(migration bool) error {
 }
 func (r *trayRuntime) openGUI(ctx context.Context) error { return r.openGUIAction(ctx, "") }
 func (r *trayRuntime) openGUIAction(ctx context.Context, action string) error {
+	r.opening.Lock()
+	defer r.opening.Unlock()
+	return r.openGUILocked(ctx, action)
+}
+func (r *trayRuntime) openGUILocked(ctx context.Context, action string) error {
+	if r.isRetiring() {
+		return desktopprocess.ErrUnavailable
+	}
 	info, err := launchDesktopRole(ctx, r.dir, r.socket, desktopprocess.GUI)
 	if err != nil {
 		return err
@@ -206,15 +223,18 @@ func (r *trayRuntime) openPanel(ctx context.Context) error {
 	r.opening.Lock()
 	defer r.opening.Unlock()
 	r.mu.Lock()
-	paused := r.paused
+	paused, retiring := r.paused, r.retiring
 	r.mu.Unlock()
+	if retiring || r.ctx.Err() != nil {
+		return desktopprocess.ErrUnavailable
+	}
 	if paused {
 		return errors.New("desktop integration is paused for migration")
 	}
 	if flow, err := setupflow.Open(r.dir); err != nil {
 		return err
 	} else if flow.Required() {
-		return r.openGUI(ctx)
+		return r.openGUILocked(ctx, "")
 	}
 	var state roleStatus
 	if err := desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "status", nil, &state); err == nil && state.Visible {
@@ -242,7 +262,7 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 	switch command {
 	case "status":
 		return r.status(), nil
-	case "startup":
+	case "startup", "background":
 		flow, err := setupflow.Open(r.dir)
 		if err != nil {
 			return nil, err
@@ -253,12 +273,43 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		if err = r.start(ctx, false); err != nil {
 			return nil, err
 		}
-		var mode string
-		_ = json.Unmarshal(raw, &mode)
-		if mode == "normal" && !r.settings.Current().Desktop.StartInBackground {
-			return nil, r.openGUI(ctx)
+		if command == "background" {
+			return nil, nil
 		}
-		return nil, nil
+		return nil, r.openGUI(ctx)
+	case "gui-closed":
+		r.opening.Lock()
+		defer r.opening.Unlock()
+		if err := r.settings.Reload(); err != nil {
+			return nil, err
+		}
+		if r.settings.Current().Desktop.Mode != "lightweight" {
+			return nil, nil
+		}
+		if _, err := desktopprocess.Probe(ctx, r.dir, desktopprocess.GUI); err == nil {
+			// A later user activation already created another GUI.
+			return nil, nil
+		} else if !errors.Is(err, desktopprocess.ErrUnavailable) {
+			return nil, err
+		}
+		r.runtimeMu.Lock()
+		if r.service != nil {
+			if err := r.service.Detach(ctx); err != nil {
+				r.runtimeMu.Unlock()
+				return nil, err
+			}
+			r.service = nil
+		}
+		r.runtimeMu.Unlock()
+		r.mu.Lock()
+		r.retiring = true
+		r.mu.Unlock()
+		return desktopprocess.ReplyAfter(nil, func() {
+			r.cancel()
+			if r.quit != nil {
+				r.quit()
+			}
+		}), nil
 	case "open-gui":
 		var action string
 		_ = json.Unmarshal(raw, &action)
@@ -343,6 +394,11 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		}
 		return r.clipboard.Matches(in.Mark), nil
 	case "quit":
+		r.opening.Lock()
+		r.mu.Lock()
+		r.retiring = true
+		r.mu.Unlock()
+		r.opening.Unlock()
 		return desktopprocess.ReplyAfter(nil, func() {
 			r.cancel()
 			if r.quit != nil {
@@ -415,4 +471,15 @@ var roleEnvironment = func(_ desktopprocess.Role, env []string) []string { retur
 
 func launchDesktopRole(ctx context.Context, dir, socket string, role desktopprocess.Role, args ...string) (desktopprocess.Info, error) {
 	return desktopprocess.LaunchEnv(ctx, dir, socket, role, roleEnvironment(role, os.Environ()), args...)
+}
+
+// A user close reaches this barrier only after GUI resources and role ownership
+// have been released. A concurrent reopen is admitted by the tray before it
+// decides whether the lightweight session can retire.
+func notifyGUIClosed(dir string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+	defer cancel()
+	if err := desktopprocess.Call(ctx, dir, desktopprocess.Tray, "gui-closed", nil, nil); err != nil && !errors.Is(err, desktopprocess.ErrUnavailable) {
+		logHostFailure()
+	}
 }

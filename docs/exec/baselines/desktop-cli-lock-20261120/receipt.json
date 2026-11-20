@@ -1,0 +1,104 @@
+{
+  "status": "PASS",
+  "formal_desktop_staging": "BLOCKED awaiting newly accepted matching CLI artifact",
+  "current_source_head": "f25ea8c1c3af1edb72911a51d61f746c15baeb3d",
+  "selected_cli": {
+    "cli_version": "2.0.0",
+    "cli_build_number": 2,
+    "cli_manifest_sha256": "ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be",
+    "cli_artifact_run_id": 43419452491
+  },
+  "candidate_source_sha": "8ab86f230351ba2039af3c23b96126e765f053df",
+  "candidate_artifact_id": 14033443321,
+  "artifact_zip_bytes": 307786648,
+  "downloaded_range_bytes": 79632,
+  "downloaded_binary_packages": false,
+  "manifest_digest_matches_lock": true,
+  "gate": "unmodified tools/package/desktop.py locked_cli; development=False",
+  "results": [
+    {
+      "target": "darwin-arm64",
+      "status": "PASS",
+      "gate_error": "locked CLI shared configuration/API mismatch: internal/localconfig/config.go"
+    },
+    {
+      "target": "darwin-amd64",
+      "status": "PASS",
+      "gate_error": "locked CLI shared configuration/API mismatch: internal/localconfig/config.go"
+    },
+    {
+      "target": "linux-arm64",
+      "status": "PASS",
+      "gate_error": "locked CLI shared configuration/API mismatch: internal/localconfig/config.go"
+    },
+    {
+      "target": "linux-amd64",
+      "status": "PASS",
+      "gate_error": "locked CLI shared configuration/API mismatch: internal/localconfig/config.go"
+    },
+    {
+      "target": "windows-amd64",
+      "status": "PASS",
+      "gate_error": "locked CLI shared configuration/API mismatch: internal/localconfig/config.go"
+    },
+    {
+      "target": "windows-arm64",
+      "status": "PASS",
+      "gate_error": "locked CLI shared configuration/API mismatch: internal/localconfig/config.go"
+    }
+  ],
+  "owner_pipe_protocol_source": {
+    "darwin-arm64": {
+      "pinned_source_sha256": "ce7b9b4ad121fb026f898171f2d5745ebe0c1daf1e838b445c1e33c0752906c8",
+      "current_source_sha256": "a367865361a92098ebb335a88db0abf4c01cdc54ec68a1705a81d68b73f65908"
+    },
+    "darwin-amd64": {
+      "pinned_source_sha256": "ce7b9b4ad121fb026f898171f2d5745ebe0c1daf1e838b445c1e33c0752906c8",
+      "current_source_sha256": "a367865361a92098ebb335a88db0abf4c01cdc54ec68a1705a81d68b73f65908"
+    },
+    "linux-arm64": {
+      "pinned_source_sha256": "ce7b9b4ad121fb026f898171f2d5745ebe0c1daf1e838b445c1e33c0752906c8",
+      "current_source_sha256": "a367865361a92098ebb335a88db0abf4c01cdc54ec68a1705a81d68b73f65908"
+    },
+    "linux-amd64": {
+      "pinned_source_sha256": "ce7b9b4ad121fb026f898171f2d5745ebe0c1daf1e838b445c1e33c0752906c8",
+      "current_source_sha256": "a367865361a92098ebb335a88db0abf4c01cdc54ec68a1705a81d68b73f65908"
+    },
+    "windows-amd64": {
+      "pinned_source_sha256": "ce7b9b4ad121fb026f898171f2d5745ebe0c1daf1e838b445c1e33c0752906c8",
+      "current_source_sha256": "a367865361a92098ebb335a88db0abf4c01cdc54ec68a1705a81d68b73f65908"
+    },
+    "windows-arm64": {
+      "pinned_source_sha256": "ce7b9b4ad121fb026f898171f2d5745ebe0c1daf1e838b445c1e33c0752906c8",
+      "current_source_sha256": "a367865361a92098ebb335a88db0abf4c01cdc54ec68a1705a81d68b73f65908"
+    }
+  },
+  "legacy_owner_behavior": "io.Copy then unconditional cancel; no release marker",
+  "test_package_scope": "Current-source test packages build a fresh private CLI pair and do not consume this production lock.",
+  "cleanup": {
+    "downloaded_binaries": 0,
+    "source_worktrees_created": 0,
+    "production_metadata_modified": false
+  },
+  "checked_files_sha256": {
+    "release/products.toml": "baac0d7bd69ea7c3a70ce478249853dfa9c8fd4ff9b67393912f54e8ceaed000",
+    "tools/package/desktop.py": "30e702132f92dd176d9b875714d882346dde0b97a92c09b5a4924ea69fdecab1",
+    "internal/servicelifecycle/lifecycle.go": "a367865361a92098ebb335a88db0abf4c01cdc54ec68a1705a81d68b73f65908"
+  },
+  "production_stage_command": {
+    "argv": [
+      "python3",
+      "tools/package/desktop.py",
+      "stage",
+      "--target",
+      "darwin-arm64",
+      "--cli-manifest",
+      "/tmp/unic-cli-lock-b973/release-manifest.json",
+      "--output",
+      "/tmp/unic-cli-lock-b973/rejected-stage"
+    ],
+    "exit_code": 1,
+    "error": "locked CLI shared configuration/API mismatch: internal/localconfig/config.go",
+    "output_directory_created": false
+  }
+}

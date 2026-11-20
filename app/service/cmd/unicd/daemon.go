@@ -54,7 +54,7 @@ func runDaemon(mode servicelifecycle.Mode) error {
 	}, cancel)
 	switch mode {
 	case servicelifecycle.ModeDesktop:
-		go servicelifecycle.WatchOwner(os.Stdin, cancel)
+		go lifecycle.WatchOwner(os.Stdin)
 	case servicelifecycle.ModeCLITemporary:
 		go lifecycle.WatchInitialOwner(os.Stdin)
 	}

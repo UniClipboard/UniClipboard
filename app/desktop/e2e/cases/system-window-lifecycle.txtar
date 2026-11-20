@@ -1,21 +1,22 @@
 # Case: Real guest close, background capture and second launch
 # Mode: native
 # Environment: disposable-guest
-# Purpose: Verify that closing the native main window preserves capture and second launch reopens the existing owner.
+# Purpose: Verify that closing the native main window preserves tray capture and second launch creates a new GUI process.
 # Steps:
-#   Close the focused owned main window through physical Alt+F4, offer fresh text while hidden, launch the same application identity again, then reopen history and quit at cleanup.
+#   Close the focused owned main window through physical Alt+F4, offer fresh text while the GUI process is absent, launch the same application identity again, then reopen history and quit at cleanup.
 # Expected:
-#   The hidden main window retains its service and captures exact fresh content; second launch exits and preserves the service generation; the original window becomes visible; explicit Quit reaps the owner and service.
+#   The tray retains its service and captures exact fresh content after the GUI exits; second launch exits and preserves the service generation; the new GUI process becomes visible; explicit Quit reaps the owner and service.
 # Forbidden:
 #   Closing unrelated applications, replacing the active service, or treating a process fixture as a native close.
 
 system-board-write 'UNIC-D lifecycle startup baseline'
 start
 system-key Alt+F4
+# Main-window close now means that the GUI process has exited.
 system-window unic hidden
-system-board-write 'UNIC-D capture while main hidden 中文'
+system-board-write 'UNIC-D capture while GUI absent 中文'
 history-count 1
 system-second-launch
 system-window unic visible
-ui-wait listItem 'UNIC-D capture while main hidden 中文'
-screenshot reopened-existing-owner
+ui-wait listItem 'UNIC-D capture while GUI absent 中文'
+screenshot recreated-gui

@@ -101,7 +101,12 @@ func systemClipboardCommands() map[string]func(*desktopScenario, []string) error
 			ctx, cancel := context.WithTimeout(s.ctx, 12*time.Second)
 			defer cancel()
 			second := exec.CommandContext(ctx, s.app.Path)
-			second.Env = s.app.Env
+			for _, entry := range s.app.Env {
+				if !strings.HasPrefix(entry, "MYGO_AUTOMATION=") {
+					second.Env = append(second.Env, entry)
+				}
+			}
+			second.Env = append(second.Env, "MYGO_AUTOMATION=")
 			if b, e := second.CombinedOutput(); e != nil {
 				if w := os.WriteFile(filepath.Join(s.out, "second-launch-failure.log"), b, 0600); w != nil {
 					return errors.Join(e, w)
@@ -115,12 +120,49 @@ func systemClipboardCommands() map[string]func(*desktopScenario, []string) error
 			if after.ID != before.ID {
 				return errors.New("second launch replaced the owned service generation")
 			}
-			s.result.Assertions = append(s.result.Assertions, "second production Desktop launch exited successfully and preserved the owned service generation")
+			var reopened desktopRoleIdentity
+			raw, err := s.roleCommand("gui", "probe")
+			if err != nil {
+				return err
+			}
+			if err = json.Unmarshal(raw, &reopened); err != nil {
+				return err
+			}
+			if reopened.PID == s.app.Process.Pid {
+				return errors.New("second launch retained the closed GUI process")
+			}
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("second production launch recreated independent GUI PID %d and preserved the tray-owned service generation", reopened.PID))
 			return nil
 		},
 		"system-window": func(s *desktopScenario, a []string) error {
 			if !s.systemClipboard || len(a) != 2 || (a[1] != "visible" && a[1] != "hidden") {
 				return errors.New("system-window title visible|hidden requires a guest")
+			}
+			if a[0] == "unic" && a[1] == "hidden" {
+				return s.wait(func() bool {
+					// Main-window close must terminate the GUI OS process.
+					select {
+					case err := <-s.appDone:
+						s.appDone <- err
+						if err != nil {
+							return false
+						}
+					default:
+						return false
+					}
+					if _, err := s.roleCommand("gui", "probe"); err == nil {
+						return false
+					}
+					if _, err := s.roleCommand("tray", "probe"); err != nil {
+						return false
+					}
+					_, err := s.client.Service(s.ctx)
+					return err == nil
+				})
+			}
+			endpoint := filepath.Join(s.home, "automation.sock")
+			if a[0] == "unic · 快捷面板" {
+				endpoint = filepath.Join(s.home, "automation-panel.sock")
 			}
 			return s.wait(func() bool {
 				var out struct {
@@ -130,7 +172,7 @@ func systemClipboardCommands() map[string]func(*desktopScenario, []string) error
 						Visible bool
 					}
 				}
-				if s.call(s.ctx, "windows", nil, &out) != nil {
+				if s.callAt(s.ctx, endpoint, "windows", nil, &out) != nil {
 					return false
 				}
 				found := 0
@@ -140,6 +182,11 @@ func systemClipboardCommands() map[string]func(*desktopScenario, []string) error
 						if w.Visible {
 							s.captureMu.Lock()
 							s.window = w.ID
+							s.automation = endpoint
+							s.capturePaused = false
+							if a[0] == "unic" {
+								s.mainWindow = w.ID
+							}
 							s.captureMu.Unlock()
 						}
 					}
@@ -185,6 +232,11 @@ func systemClipboardCommands() map[string]func(*desktopScenario, []string) error
 				return false
 			}); err != nil {
 				return errors.New("owned native window does not have OS focus; no key sent")
+			}
+			if a[0] == "Alt+F4" {
+				s.captureMu.Lock()
+				s.capturePaused = true
+				s.captureMu.Unlock()
 			}
 			return s.systemInput("key", a[0])
 		},
@@ -310,14 +362,18 @@ func (s *desktopScenario) systemOfflineBacklog() (result error) {
 	if err = s.launchNative(); err != nil {
 		return err
 	}
+	instance, err := s.client.Service(s.ctx)
+	if err != nil {
+		return err
+	}
+	if instance.PID != standalone.Process.Pid {
+		return errors.New("normal Desktop replaced the independently started service")
+	}
 	select {
-	case err = <-done:
+	case exitErr := <-done:
 		reaped = true
-		if err != nil {
-			return err
-		}
-	case <-time.After(8 * time.Second):
-		return errors.New("normal Desktop did not retire the standalone service")
+		return errors.Join(errors.New("independent standalone service exited during Desktop startup"), exitErr)
+	default:
 	}
 	s.captureMu.Unlock()
 	locked = false
@@ -361,7 +417,7 @@ func (s *desktopScenario) systemOfflineBacklog() (result error) {
 	if !retained {
 		return errors.New("reopening lost persisted offline history")
 	}
-	s.result.Assertions = append(s.result.Assertions, "real peer delivered backlog while only standalone service ran; normal Desktop replaced that service, retained history and left the native baseline unchanged")
+	s.result.Assertions = append(s.result.Assertions, "real peer delivered backlog while only standalone service ran; normal Desktop reused that independent service, retained history and left the native baseline unchanged")
 	return systemClipboardCommands()["system-peer-text"](s, []string{"UNIC-D fresh receive after offline backlog 中文"})
 }
 

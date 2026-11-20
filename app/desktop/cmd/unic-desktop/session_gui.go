@@ -3,26 +3,23 @@ package main
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
-	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
-	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupui"
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
-	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
 
 type desktopRuntime struct {
-	screen      *desktopui.Desktop
-	service     *lifecycle.Process
-	cancel      context.CancelFunc
-	adapterDone chan struct{}
+	screen *desktopui.Desktop
+	cancel context.CancelFunc
 }
 
 // desktopSession serializes setup and ordinary runtime ownership on the view
@@ -32,11 +29,12 @@ type desktopSession struct {
 	ctx               context.Context
 	settings          *config.Manager
 	flow              *setupflow.Flow
-	dir, executable   string
+	dir               string
 	setup             *setupui.Screen
 	runtime           *desktopRuntime
 	starting, closing bool
 	message           string
+	pendingAction     string
 	workers           sync.WaitGroup
 }
 
@@ -55,7 +53,15 @@ func (s *desktopSession) view(c *ui.Context) {
 		return
 	}
 	if s.runtime != nil {
-		s.runtime.screen.View(c)
+		if s.message == "" {
+			s.runtime.screen.View(c)
+		} else {
+			k := uikit.For(c.Theme().Dark)
+			ui.Column(c).Fill().Children(func() {
+				k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneError, Title: i18n.Translate(s.settings.Current().Desktop.Language, s.message)})
+				ui.Column(c).Grow(1).MinHeight(0).Children(func() { s.runtime.screen.View(c) })
+			})
+		}
 		return
 	}
 	k := uikit.For(c.Theme().Dark)
@@ -81,76 +87,74 @@ func (s *desktopSession) start() {
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()
-		service, err := lifecycle.Start(s.ctx, s.dir, s.g.c.Path, s.executable, true)
-		mygo.RunOnMain(func() {
-			if s.closing || s.ctx.Err() != nil {
-				if service == nil {
-					s.starting = false
-					mygo.App.Quit()
-					return
-				}
-				s.retireCandidate(service)
-				return
-			}
-			// Persist completion only after readiness and before entering history.
-			// A close during startup must leave first-install intent pending.
-			if err == nil {
-				err = s.flow.Complete()
-			}
-			if err != nil {
-				if service != nil {
-					s.retireCandidate(service)
-					return
-				}
-				s.starting = false
-				s.startFailed()
-				return
-			}
-			s.starting = false
-			s.setup = nil
-			ctx, cancel := context.WithCancel(s.ctx)
-			clipboard := quickpanel.NewClipboard(newDesktopBoard())
-			screen := desktopui.NewDesktop(ctx, s.g.c)
-			r := &desktopRuntime{screen: screen, service: service, cancel: cancel, adapterDone: make(chan struct{})}
-			s.runtime = r
-			screen.SetLoginStatus(func() (bool, string) { s.g.mu.Lock(); defer s.g.mu.Unlock(); return s.g.loginEnabled, s.g.loginError }, func() { s.g.applyLoginSettings(s.settings.Current().Desktop.LaunchAtLogin, true) })
-			screen.SetMigrationOpener(s.migrate)
-			screen.AttachWindow(s.g.win, clipboard)
-			showQuickPanel = screen.OpenQuickPanel
-			screen.SetQuickPanelShortcut(s.settings.Current().Desktop.QuickPanelShortcut)
-			s.g.applyLoginSettings(s.settings.Current().Desktop.LaunchAtLogin, false)
-			go func() { defer close(r.adapterDone); _ = clipboardintegration.RunRemote(ctx, s.g.c, clipboard, nil) }()
-			go notifyPending(ctx, s.g.c.Path, func() string { return s.settings.Current().Desktop.Language })
-			go func() {
-				select {
-				case <-ctx.Done():
-					return
-				case <-service.Done():
-				}
-				if ctx.Err() == nil {
-					mygo.App.Quit()
-				}
-			}()
-			s.g.win.SetMinimumSize(600, 480)
-			s.g.win.SetContentSize(desktopWindowWidth, desktopWindowHeight)
-			s.g.win.Invalidate()
-		})
-	}()
-}
-func (s *desktopSession) retireCandidate(service *lifecycle.Process) {
-	s.workers.Add(1)
-	go func() {
-		defer s.workers.Done()
-		_ = service.Stop()
+		err := desktopprocess.Call(s.ctx, s.dir, desktopprocess.Tray, "start-runtime", nil, nil)
 		mygo.RunOnMain(func() {
 			s.starting = false
 			if s.closing || s.ctx.Err() != nil {
 				mygo.App.Quit()
 				return
 			}
-			s.startFailed()
+			if err != nil {
+				s.startFailed()
+				return
+			}
+			flow, flowErr := setupflow.Open(s.dir)
+			if flowErr != nil {
+				s.startFailed()
+				return
+			}
+			s.flow = flow
+			s.setup = nil
+			ctx, cancel := context.WithCancel(s.ctx)
+			screen := desktopui.NewDesktop(ctx, s.g.c)
+			r := &desktopRuntime{screen: screen, cancel: cancel}
+			s.runtime = r
+			s.navigate(s.pendingAction)
+			screen.SetMigrationOpener(s.migrate)
+			screen.SetQuickPanelOpener(func(string) {
+				nativeAsync(func(ctx context.Context) error {
+					return desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, "open-quick-panel", nil, nil)
+				})
+			})
+			screen.SetLoginStatus(func() (bool, string) { s.g.mu.Lock(); defer s.g.mu.Unlock(); return s.g.loginEnabled, s.g.loginError }, func() { s.g.applyLoginSettings(s.settings.Current().Desktop.LaunchAtLogin, true) })
+			screen.SetExternalShortcut(func() (string, string) {
+				s.g.mu.Lock()
+				defer s.g.mu.Unlock()
+				return s.g.shortcut.Effective, s.g.shortcut.Error
+			}, func() {
+				nativeAsync(func(ctx context.Context) error {
+					return desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, "retry-shortcut", nil, nil)
+				})
+			})
+			go s.followHost(ctx)
+			s.g.win.SetMinimumSize(600, 480)
+			s.g.win.SetContentSize(desktopWindowWidth, desktopWindowHeight)
+			s.g.win.Invalidate()
 		})
 	}()
+}
+func (s *desktopSession) followHost(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		var state roleStatus
+		probe, cancel := context.WithTimeout(ctx, time.Second)
+		err := desktopprocess.Call(probe, s.dir, desktopprocess.Tray, "status", nil, &state)
+		cancel()
+		if err == nil {
+			s.g.mu.Lock()
+			s.g.loginEnabled = state.LoginEnabled
+			s.g.loginError = state.LoginError
+			s.g.shortcut = state.Shortcut
+			s.g.mu.Unlock()
+			s.g.win.Invalidate()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 func (s *desktopSession) startFailed() {
 	s.message = "无法启动应用。请检查数据目录和后台服务，然后重试。"
@@ -163,18 +167,11 @@ func (s *desktopSession) migrate() {
 	if s.starting || s.runtime == nil {
 		return
 	}
-	r := s.runtime
-	s.runtime = nil
 	s.starting = true
-	s.message = ""
-	showQuickPanel = func() {}
-	r.screen.Close()
-	r.cancel()
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()
-		<-r.adapterDone
-		err := r.service.Stop()
+		err := desktopprocess.Call(s.ctx, s.dir, desktopprocess.Tray, "pause-runtime", nil, nil)
 		mygo.RunOnMain(func() {
 			s.starting = false
 			if s.closing {
@@ -182,19 +179,23 @@ func (s *desktopSession) migrate() {
 				return
 			}
 			if err != nil {
-				s.message = "无法停止当前后台服务。请退出应用后重试迁移。"
+				s.message = "无法停止当前后台服务。请退出独立服务后重试迁移。"
 				s.g.win.Invalidate()
 				return
 			}
-			if err := s.flow.BeginMigration(); err != nil {
-				s.message = "无法保存引导状态。请检查数据目录权限，然后重试。"
+			flow, flowErr := setupflow.Open(s.dir)
+			if flowErr != nil {
+				s.message = "无法读取引导状态。请重试。"
 				s.g.win.Invalidate()
 				return
 			}
+			s.flow = flow
+			s.runtime.screen.Close()
+			s.runtime.cancel()
+			s.runtime = nil
 			s.showSetup(true)
 		})
 	}()
-	s.g.win.Invalidate()
 }
 
 // requestQuit is used by both window close during setup and application quit.
@@ -213,8 +214,15 @@ func (s *desktopSession) requestQuit(e *mygo.QuitEvent) {
 func (s *desktopSession) close() {
 	s.workers.Wait()
 	if r := s.runtime; r != nil {
+		r.screen.Close()
 		r.cancel()
-		<-r.adapterDone
-		_ = r.service.Stop()
+	}
+}
+
+func (s *desktopSession) navigate(action string) {
+	s.pendingAction = action
+	if s.runtime != nil {
+		s.runtime.screen.OpenFromPanel(action)
+		s.pendingAction = ""
 	}
 }

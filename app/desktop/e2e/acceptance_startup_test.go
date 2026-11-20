@@ -197,6 +197,103 @@ func scenarioStartupProcesses(t *testing.T) {
 			t.Fatal("owner failed to exit")
 		}
 	}
+	// The exclusive owner pipe can release one existing generation without
+	// restarting Engine. The same stdin EOF still protects crash shutdown.
+	releaseHome := filepath.Join(base, "released")
+	must(t, os.MkdirAll(releaseHome, 0700))
+	must(t, os.WriteFile(filepath.Join(releaseHome, "config.toml"), []byte("[telemetry]\nenabled=false\n"), 0600))
+	success(releaseHome, "unic", "migrate", "--initialize-empty", "--json")
+	releaseClient := api.NewClient(filepath.Join(releaseHome, "unic.sock"))
+	releaseRead, releaseWrite, err := os.Pipe()
+	must(t, err)
+	t.Cleanup(func() { _ = releaseRead.Close(); _ = releaseWrite.Close() })
+	releaseLog, err := os.Create(filepath.Join(artifacts, "owner-release.log"))
+	must(t, err)
+	releaseChild := &child{cmd: exec.Command(filepath.Join(bin, "unicd"), "--desktop-owned"), done: make(chan struct{})}
+	releaseChild.cmd.Env = envFor(releaseHome)
+	releaseChild.cmd.Stdin = releaseRead
+	releaseChild.cmd.Stdout = releaseLog
+	releaseChild.cmd.Stderr = releaseLog
+	must(t, releaseChild.cmd.Start())
+	_ = releaseRead.Close()
+	go func() { releaseChild.err = releaseChild.cmd.Wait(); _ = releaseLog.Close(); close(releaseChild.done) }()
+	t.Cleanup(func() {
+		_ = releaseChild.cmd.Process.Kill()
+		select {
+		case <-releaseChild.done:
+		case <-time.After(5 * time.Second):
+		}
+	})
+	releasedBefore := instance(releaseClient, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeDesktop })
+	success(releaseHome, "unic", "send", "--to", "all", "--request-id", "release-e2e", "history survives owner release")
+	var releaseSubmission engine.SubmissionResult
+	must(t, json.Unmarshal(success(releaseHome, "unic", "dev", "submission", "release-e2e"), &releaseSubmission))
+	if releaseSubmission.HistoryID == "" {
+		t.Fatal("release submission did not commit history")
+	}
+	_, err = releaseWrite.Write([]byte("unic-desktop-release-standalone-v1\n"))
+	must(t, err)
+	must(t, releaseWrite.Close())
+	releasedAfter := instance(releaseClient, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
+	if releasedAfter.ID != releasedBefore.ID || releasedAfter.PID != releasedBefore.PID || releasedAfter.Directory != releasedBefore.Directory {
+		t.Fatal("owner release replaced the service generation")
+	}
+	releaseHistory := success(releaseHome, "unic", "history", "show", string(releaseSubmission.HistoryID))
+	if !bytes.Contains(releaseHistory, []byte("history survives owner release")) {
+		t.Fatal("owner release lost durable history")
+	}
+	manifest["owner_release_before"] = releasedBefore
+	manifest["owner_release_after"] = releasedAfter
+	checks = append(checks, "exclusive owner release preserves service generation/PID and history after pipe EOF")
+	ctxRelease, cancelRelease := context.WithTimeout(context.Background(), 5*time.Second)
+	must(t, releaseClient.StopService(ctxRelease, releasedAfter.ID))
+	cancelRelease()
+	stopped(releaseClient)
+
+	// Exercise the public owner handle, including repeated Detach and Stop
+	// after acknowledgement. The fixture exits immediately after releasing.
+	var detachedReceipt struct{ Before, After servicelifecycle.Instance }
+	must(t, json.Unmarshal(success(releaseHome, "owner", "--detach"), &detachedReceipt))
+	if detachedReceipt.Before.ID != detachedReceipt.After.ID || detachedReceipt.Before.PID != detachedReceipt.After.PID || detachedReceipt.Before.Directory != detachedReceipt.After.Directory || detachedReceipt.Before.Mode != servicelifecycle.ModeDesktop || detachedReceipt.After.Mode != servicelifecycle.ModeStandalone || detachedReceipt.After.Retiring {
+		t.Fatal("Detach changed identity or failed standalone ownership")
+	}
+	instance(releaseClient, func(v servicelifecycle.Instance) bool {
+		return v.ID == detachedReceipt.Before.ID && v.PID == detachedReceipt.Before.PID && v.Mode == servicelifecycle.ModeStandalone
+	})
+	manifest["process_detach"] = detachedReceipt
+	checks = append(checks, "Process.Detach is one-way, repeatable by query, and Stop after detach never terminates the released generation")
+	ctxRelease, cancelRelease = context.WithTimeout(context.Background(), 5*time.Second)
+	must(t, releaseClient.StopService(ctxRelease, detachedReceipt.After.ID))
+	cancelRelease()
+	stopped(releaseClient)
+
+	for _, badMarker := range []string{"wrong-marker", "unic-desktop-release-standalone-v1", "unic-desktop-release-standalone-v1\nextra"} {
+		read, write, err := os.Pipe()
+		must(t, err)
+		rawOwner := exec.Command(filepath.Join(bin, "unicd"), "--desktop-owned")
+		rawOwner.Env = envFor(releaseHome)
+		rawOwner.Stdin = read
+		must(t, rawOwner.Start())
+		_ = read.Close()
+		ended := make(chan error, 1)
+		go func() { ended <- rawOwner.Wait() }()
+		t.Cleanup(func() { _ = write.Close(); _ = rawOwner.Process.Kill() })
+		original := instance(releaseClient, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeDesktop })
+		_, writeErr := write.Write([]byte(badMarker))
+		must(t, writeErr)
+		must(t, write.Close())
+		select {
+		case err := <-ended:
+			must(t, err)
+		case <-time.After(15 * time.Second):
+			_ = rawOwner.Process.Kill()
+			t.Fatal("invalid release marker kept desktop-owned service alive")
+		}
+		stopped(releaseClient)
+		exited(t, original.PID)
+	}
+	checks = append(checks, "wrong, truncated and extra-byte owner release markers still retire the owned service")
+
 	launch(home, "unicd")
 	old := instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	launch(other, "unicd")
@@ -224,7 +321,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	if out, err := run(home, "unic", "config", "set", "desktop.mode", `"invalid"`); err == nil {
 		t.Fatalf("invalid mode accepted: %s", out)
 	}
-	if out, err := run(home, "unic-desktop", "--mode", "lightweight"); err == nil {
+	if out, err := run(home, "owner", "--lightweight"); err == nil {
 		t.Fatalf("lightweight adopted a GUI-owned service: %s", out)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -240,15 +337,15 @@ func scenarioStartupProcesses(t *testing.T) {
 	instance(b, func(v servicelifecycle.Instance) bool { return v.ID == unrelated.ID })
 	checks = append(checks, "normal owner signal stops owned service without touching another profile")
 
-	success(home, "unic-desktop") // Persisted lightweight mode; no GUI is started.
+	success(home, "owner", "--lightweight") // Legacy service-only primitive fixture; new tray behavior is covered by desktop-processes.
 	light := instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
-	success(home, "unic-desktop")
+	success(home, "owner", "--lightweight")
 	instance(c, func(v servicelifecycle.Instance) bool { return v.ID == light.ID })
 	history := success(home, "unic", "history", "show", string(submission.HistoryID))
 	if !bytes.Contains(history, []byte("persist through mode switch")) {
 		t.Fatal("history was lost across service replacement")
 	}
-	checks = append(checks, "production desktop lightweight launcher exits and leaves one usable standalone service")
+	checks = append(checks, "legacy service-only lifecycle fixture exits and leaves one usable standalone service")
 
 	normal = launch(home, "owner")
 	owned = instance(c, func(v servicelifecycle.Instance) bool {
@@ -264,7 +361,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	owned = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeDesktop })
 	must(t, normal.cmd.Process.Kill())
 	<-normal.done
-	success(home, "unic-desktop", "--mode", "lightweight")
+	success(home, "owner", "--lightweight")
 	instance(c, func(v servicelifecycle.Instance) bool {
 		return v.Mode == servicelifecycle.ModeStandalone && v.ID != owned.ID
 	})
@@ -272,12 +369,12 @@ func scenarioStartupProcesses(t *testing.T) {
 	checks = append(checks, "immediate lightweight restart after owner death waits for service retirement")
 
 	// Standalone operation and configuration validation must not require a desktop.
-	success(home, "unic-desktop", "--mode", "lightweight")
+	success(home, "owner", "--lightweight")
 	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	raw, err := os.ReadFile(filepath.Join(home, "config.toml"))
 	must(t, err)
 	must(t, os.WriteFile(filepath.Join(home, "config.toml"), append(raw, []byte("\n[unexpected]\nkey = true\n")...), 0600))
-	if out, err := run(home, "unic-desktop", "--mode", "lightweight"); err == nil {
+	if out, err := run(home, "owner", "--lightweight"); err == nil {
 		t.Fatalf("invalid config accepted: %s", out)
 	}
 	instance(c, func(v servicelifecycle.Instance) bool { return v.ID == light.ID })
@@ -303,7 +400,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	}
 	stopped(c)
 	exited(t, owned.PID)
-	success(home, "unic-desktop", "--mode", "lightweight")
+	success(home, "owner", "--lightweight")
 	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	checks = append(checks, "normal owner exits when its service terminates")
 	// A lightweight launcher must not adopt or replace a CLI-temporary generation (0021 C18b).
@@ -316,7 +413,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	temporary := instance(c, func(v servicelifecycle.Instance) bool {
 		return v.Mode == servicelifecycle.ModeCLITemporary && v.Leases == 1
 	})
-	refused, err := run(home, "unic-desktop", "--mode", "lightweight")
+	refused, err := run(home, "owner", "--lightweight")
 	if err == nil || !bytes.Contains(refused, []byte("temporary service")) {
 		t.Fatalf("lightweight did not refuse a temporary generation: %v %s", err, refused)
 	}
@@ -329,7 +426,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	}
 	stopped(c)
 	exited(t, temporary.PID)
-	success(home, "unic-desktop", "--mode", "lightweight")
+	success(home, "owner", "--lightweight")
 	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	checks = append(checks, "lightweight launcher refuses a CLI-temporary generation and leaves it with its user")
 	// Missing sibling must be detected before stopping an existing service.

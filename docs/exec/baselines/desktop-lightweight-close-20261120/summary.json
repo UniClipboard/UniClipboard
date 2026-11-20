@@ -1,0 +1,931 @@
+{
+  "scenario_status": {
+    "fresh_owned_quit": "PASS",
+    "background_core_only": "PASS",
+    "lightweight_close_reopen": "PASS",
+    "normal_gui_absent_hotkey": "PASS",
+    "lightweight_owned_detach": "PASS"
+  },
+  "native_menu_clicks": 6,
+  "native_tray": {
+    "business_clicks": 6,
+    "method": "native mouse and PID-bound menu"
+  },
+  "task_root_removed": true,
+  "global_shortcut": {
+    "status": "PASS",
+    "method": "single SendInput chord; never replayed"
+  },
+  "identities": [
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:02.0761459Z",
+      "pid": 11084,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 11084,
+        "started_at": "2026-11-20T08:52:02.168792Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:02.2576496Z",
+      "pid": 10668,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 10668,
+        "started_at": "2026-11-20T08:52:02.4749594Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:05.4964866Z",
+      "pid": 9616,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 9616,
+        "started_at": "2026-11-20T08:52:05.5850346Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:09.4208331Z",
+      "pid": 12012,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 12012,
+        "started_at": "2026-11-20T08:52:09.51606Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:12.1882578Z",
+      "pid": 2244,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 2244,
+        "started_at": "2026-11-20T08:52:12.2650266Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:12.3036702Z",
+      "pid": 9656,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 9656,
+        "started_at": "2026-11-20T08:52:12.3937127Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:15.1740628Z",
+      "pid": 12748,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 12748,
+        "started_at": "2026-11-20T08:52:15.2692391Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:18.4616380Z",
+      "pid": 4180,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 4180,
+        "started_at": "2026-11-20T08:52:18.5381032Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+      "created_utc": "2026-11-20T08:52:18.5770922Z",
+      "pid": 3484,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 3484,
+        "started_at": "2026-11-20T08:52:18.6671743Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+      "created_utc": "2026-11-20T08:52:22.4157324Z",
+      "pid": 11368,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 11368,
+        "started_at": "2026-11-20T08:52:22.5002415Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+      "created_utc": "2026-11-20T08:52:27.5009254Z",
+      "pid": 4488,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 4488,
+        "started_at": "2026-11-20T08:52:27.591916Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+      "created_utc": "2026-11-20T08:52:32.5692253Z",
+      "pid": 7592,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 7592,
+        "started_at": "2026-11-20T08:52:32.6555727Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+      "created_utc": "2026-11-20T08:52:35.8558499Z",
+      "pid": 12904,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 12904,
+        "started_at": "2026-11-20T08:52:35.9352834Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+      "created_utc": "2026-11-20T08:52:35.9756752Z",
+      "pid": 14208,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 14208,
+        "started_at": "2026-11-20T08:52:36.0683958Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\c",
+      "created_utc": "2026-11-20T08:52:41.6953207Z",
+      "pid": 11480,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 11480,
+        "started_at": "2026-11-20T08:52:41.7811355Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\c",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\c",
+      "created_utc": "2026-11-20T08:52:47.3606727Z",
+      "pid": 10272,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 10272,
+        "started_at": "2026-11-20T08:52:47.4528239Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\c",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    },
+    {
+      "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047",
+      "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\c",
+      "created_utc": "2026-11-20T08:52:50.2331141Z",
+      "pid": 12344,
+      "binary": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 12344,
+        "started_at": "2026-11-20T08:52:50.3315799Z",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\c",
+        "binary_path": "C:\\Users\\mark\\AppData\\Local\\Temp\\uc-b973-stage-0852\\bin\\unic-desktop.exe",
+        "binary_sha256": "67bb56b3545bc0fd2be3dd2be6751638c488d3fd0affc96645467c4b7ce93047"
+      }
+    }
+  ],
+  "system_clipboard": "NOT_RUN",
+  "verdict": "PASS",
+  "source_requested": "ce4a0a8cf07fc15b404f20352d08406286261c04",
+  "cross_application_paste": "NOT_RUN",
+  "cleanup": "PASS",
+  "failure": "",
+  "requested_phase": "full",
+  "worktree": "b973f49e-2d6a-498f-bde6-2774391245a4",
+  "branch": "fix/desktop-lightweight-processes",
+  "baseline": "173d362036ae4a746878306915c85bcdf7468751",
+  "windows": {
+    "os": "Windows 11",
+    "arch": "arm64",
+    "emulation": "none; native ARM64 source build",
+    "vm_uuid": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+    "final_state": "suspended",
+    "task_processes": 0,
+    "task_profiles": 0,
+    "stage_removed": true,
+    "system_settings_changed": false
+  },
+  "local_run": ".build/windows-native-b973-v2/outer/guest-artifacts/full-06",
+  "original_receipt_sha256": "c0d8025c57a86fd09120aec30f54061d45f73f45232d534e80a238265ed46ed2",
+  "original_checksums_sha256": "b9545aba8a20d361dd9c0a334ea00b798eed9aa7e9b6e3dc275881086e728066",
+  "rendered_content": "PASS: four search-field trees, idle frames, native foreground crops; inspected",
+  "not_run": [
+    "system clipboard",
+    "cross-application paste insertion",
+    "native login execution/permission prompts",
+    "native x64 execution",
+    "formal installer replacement"
+  ],
+  "packaging": "BLOCKED: accepted CLI lock predates service detach protocol; requires matching accepted artifact",
+  "timeline": [
+    {
+      "name": "observe service",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "binary_sha256": "8E528E8E9C3D6A65CBB8EE6C77DB8815A568534EDBE38D2CFFD35B3BDD959AEE",
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:01.9647394Z",
+      "kind": "service-identity"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:04.1543522Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 1705314,
+        "pid": 10668,
+        "created_utc": "2026-11-20T08:52:02.2576496Z"
+      },
+      "at_utc": "2026-11-20T08:52:04.2852431Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:04.5326291Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "Ctrl+Alt+V first panel with no GUI",
+      "data": {
+        "panel_first_open": true,
+        "target_pid": 12488,
+        "target_created_utc": "2026-11-20T08:52:04.7495995Z",
+        "gui_absent": true,
+        "target_hwnd": 1377250,
+        "input_replayed": false
+      },
+      "at_utc": "2026-11-20T08:52:05.3660068Z",
+      "kind": "native-SendInput"
+    },
+    {
+      "name": "global-shortcut-first-panel",
+      "data": {
+        "native_visibility_checked_separately": true,
+        "search_field": true,
+        "window": 1
+      },
+      "at_utc": "2026-11-20T08:52:06.9814240Z",
+      "kind": "app-scoped-render-readiness"
+    },
+    {
+      "name": "click tray menu \u6253\u5f00\u4e3b\u7a97\u53e3",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1233,
+            "width": 256,
+            "height": 68,
+            "x": 2866
+          },
+          "automation_id": "Item 1",
+          "process_id": 11084,
+          "name": "\u6253\u5f00\u4e3b\u7a97\u53e3",
+          "runtime_id": "1.14156808.20186453.0",
+          "offscreen": false
+        },
+        "menu_hwnd": 14156808,
+        "tray_pid": 11084
+      },
+      "at_utc": "2026-11-20T08:52:09.3823235Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "save mode lightweight",
+      "data": {
+        "sha256": "3176B3AF54039F372758281A31601E9A444F573629211ACE2660EB21028AB95C",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a"
+      },
+      "at_utc": "2026-11-20T08:52:10.3610244Z",
+      "kind": "production-cli-config"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 8520704,
+        "pid": 12012,
+        "created_utc": "2026-11-20T08:52:09.4208331Z"
+      },
+      "at_utc": "2026-11-20T08:52:10.4838785Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:12.1079656Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "WM_CLOSE ended every UI role and preserved S0",
+      "data": {
+        "generation": "bbe4a1065c44de527e689dbabeefa710",
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a"
+      },
+      "at_utc": "2026-11-20T08:52:12.1079656Z",
+      "kind": "native-lightweight-close"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:13.6686179Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "click tray menu \u5feb\u6377\u9762\u677f",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1301,
+            "width": 256,
+            "height": 64,
+            "x": 2866
+          },
+          "automation_id": "Item 2",
+          "process_id": 2244,
+          "name": "\u5feb\u6377\u9762\u677f",
+          "runtime_id": "1.2752962.39715387.1",
+          "offscreen": false
+        },
+        "menu_hwnd": 2752962,
+        "tray_pid": 2244
+      },
+      "at_utc": "2026-11-20T08:52:15.1000718Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "light-first-panel",
+      "data": {
+        "native_visibility_checked_separately": true,
+        "search_field": true,
+        "window": 1
+      },
+      "at_utc": "2026-11-20T08:52:16.1489967Z",
+      "kind": "app-scoped-render-readiness"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 12255974,
+        "pid": 9656,
+        "created_utc": "2026-11-20T08:52:12.3036702Z"
+      },
+      "at_utc": "2026-11-20T08:52:16.5742627Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:18.3828989Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 2884034,
+        "pid": 3484,
+        "created_utc": "2026-11-20T08:52:18.5770922Z"
+      },
+      "at_utc": "2026-11-20T08:52:20.1889206Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:21.7739225Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:22.1541412Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bbe4a1065c44de527e689dbabeefa710",
+          "pid": 5524,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795164716971,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:51:56.9189178Z"
+      },
+      "at_utc": "2026-11-20T08:52:22.1803695Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "stop S0 only after lightweight manual/background preservation",
+      "data": {
+        "generation": "bbe4a1065c44de527e689dbabeefa710",
+        "pid": 5524,
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\a"
+      },
+      "at_utc": "2026-11-20T08:52:22.2163826Z",
+      "kind": "driver-generation-cleanup"
+    },
+    {
+      "name": "observe service",
+      "data": {
+        "instance": {
+          "id": "bebcaa6bb35c824fffae7f5844c2ee0f",
+          "pid": 4684,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+          "mode": "desktop",
+          "started_at_ms": 1795164742602,
+          "leases": 0,
+          "retiring": false
+        },
+        "binary_sha256": "8E528E8E9C3D6A65CBB8EE6C77DB8815A568534EDBE38D2CFFD35B3BDD959AEE",
+        "created_utc": "2026-11-20T08:52:22.5146313Z"
+      },
+      "at_utc": "2026-11-20T08:52:29.6312247Z",
+      "kind": "service-identity"
+    },
+    {
+      "name": "click tray menu \u5feb\u6377\u9762\u677f",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1301,
+            "width": 256,
+            "height": 64,
+            "x": 2866
+          },
+          "automation_id": "Item 2",
+          "process_id": 11368,
+          "name": "\u5feb\u6377\u9762\u677f",
+          "runtime_id": "1.2360312.36046239.1",
+          "offscreen": false
+        },
+        "menu_hwnd": 2360312,
+        "tray_pid": 11368
+      },
+      "at_utc": "2026-11-20T08:52:32.4867537Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "owned-light-panel",
+      "data": {
+        "native_visibility_checked_separately": true,
+        "search_field": true,
+        "window": 1
+      },
+      "at_utc": "2026-11-20T08:52:33.7958871Z",
+      "kind": "app-scoped-render-readiness"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 10224646,
+        "pid": 4488,
+        "created_utc": "2026-11-20T08:52:27.5009254Z"
+      },
+      "at_utc": "2026-11-20T08:52:34.0636560Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bebcaa6bb35c824fffae7f5844c2ee0f",
+          "pid": 4684,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795164742602,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:52:22.5146313Z"
+      },
+      "at_utc": "2026-11-20T08:52:35.7522867Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "lightweight WM_CLOSE retained S1 PID and generation as standalone",
+      "data": {
+        "instance_after": {
+          "id": "bebcaa6bb35c824fffae7f5844c2ee0f",
+          "pid": 4684,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795164742602,
+          "leases": 0,
+          "retiring": false
+        },
+        "instance_before": {
+          "id": "bebcaa6bb35c824fffae7f5844c2ee0f",
+          "pid": 4684,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+          "mode": "desktop",
+          "started_at_ms": 1795164742602,
+          "leases": 0,
+          "retiring": false
+        }
+      },
+      "at_utc": "2026-11-20T08:52:35.7752719Z",
+      "kind": "native-owned-detach"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bebcaa6bb35c824fffae7f5844c2ee0f",
+          "pid": 4684,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795164742602,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:52:22.5146313Z"
+      },
+      "at_utc": "2026-11-20T08:52:37.4916113Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "click tray menu \u9000\u51fa\u6574\u4e2a\u5e94\u7528",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1383,
+            "width": 256,
+            "height": 68,
+            "x": 2866
+          },
+          "automation_id": "Item 3",
+          "process_id": 12904,
+          "name": "\u9000\u51fa\u6574\u4e2a\u5e94\u7528",
+          "runtime_id": "1.2295164.17827187.3",
+          "offscreen": false
+        },
+        "menu_hwnd": 2295164,
+        "tray_pid": 12904
+      },
+      "at_utc": "2026-11-20T08:52:40.0517613Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bebcaa6bb35c824fffae7f5844c2ee0f",
+          "pid": 4684,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795164742602,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:52:22.5146313Z"
+      },
+      "at_utc": "2026-11-20T08:52:41.3002445Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "bebcaa6bb35c824fffae7f5844c2ee0f",
+          "pid": 4684,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795164742602,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T08:52:22.5146313Z"
+      },
+      "at_utc": "2026-11-20T08:52:41.3237505Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "driver stops detached S1 after native Quit preserved it",
+      "data": {
+        "generation": "bebcaa6bb35c824fffae7f5844c2ee0f",
+        "pid": 4684,
+        "profile": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\b"
+      },
+      "at_utc": "2026-11-20T08:52:41.3608382Z",
+      "kind": "driver-generation-cleanup"
+    },
+    {
+      "name": "observe service",
+      "data": {
+        "instance": {
+          "id": "1d065096ddfebc574e8ad5815ce728a2",
+          "pid": 6372,
+          "directory": "C:\\Users\\mark\\AppData\\Local\\Temp\\un-b973-full06\\c",
+          "mode": "desktop",
+          "started_at_ms": 1795164761878,
+          "leases": 0,
+          "retiring": false
+        },
+        "binary_sha256": "8E528E8E9C3D6A65CBB8EE6C77DB8815A568534EDBE38D2CFFD35B3BDD959AEE",
+        "created_utc": "2026-11-20T08:52:41.7969036Z"
+      },
+      "at_utc": "2026-11-20T08:52:48.1470717Z",
+      "kind": "service-identity"
+    },
+    {
+      "name": "click tray menu \u5feb\u6377\u9762\u677f",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1301,
+            "width": 256,
+            "height": 64,
+            "x": 2866
+          },
+          "automation_id": "Item 2",
+          "process_id": 11480,
+          "name": "\u5feb\u6377\u9762\u677f",
+          "runtime_id": "1.2360700.6030647.1",
+          "offscreen": false
+        },
+        "menu_hwnd": 2360700,
+        "tray_pid": 11480
+      },
+      "at_utc": "2026-11-20T08:52:50.1544164Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "fresh-owned-panel",
+      "data": {
+        "native_visibility_checked_separately": true,
+        "search_field": true,
+        "window": 1
+      },
+      "at_utc": "2026-11-20T08:52:51.5984861Z",
+      "kind": "app-scoped-render-readiness"
+    },
+    {
+      "name": "click tray menu \u9000\u51fa\u6574\u4e2a\u5e94\u7528",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1383,
+            "width": 228,
+            "height": 68,
+            "x": 2866
+          },
+          "automation_id": "Item 6",
+          "process_id": 11480,
+          "name": "\u9000\u51fa\u6574\u4e2a\u5e94\u7528",
+          "runtime_id": "1.2883638.19662343.3",
+          "offscreen": false
+        },
+        "menu_hwnd": 2883638,
+        "tray_pid": 11480
+      },
+      "at_utc": "2026-11-20T08:52:55.3644567Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "native menu Quit stopped fresh S2 and all UI roles",
+      "data": {
+        "service_pid": 6372,
+        "generation": "1d065096ddfebc574e8ad5815ce728a2"
+      },
+      "at_utc": "2026-11-20T08:52:57.0136866Z",
+      "kind": "native-owned-cleanup"
+    }
+  ],
+  "red_green": [
+    {
+      "run": "full-02",
+      "source": "f25ea8c1c3af1edb72911a51d61f746c15baeb3d",
+      "result": "FAIL",
+      "reason": "cold panel native HWND remained hidden due to service SW_HIDE policy"
+    },
+    {
+      "run": "full-04",
+      "source": "ce4a0a8cf07fc15b404f20352d08406286261c04",
+      "result": "PASS lifecycle/focus only",
+      "reason": "pre-paint panel crops did not establish rendered content"
+    },
+    {
+      "run": "full-05",
+      "source": "ce4a0a8cf07fc15b404f20352d08406286261c04",
+      "result": "FAIL overall; first panel render PASS",
+      "reason": "later menu capture lost foreground; no business item retried"
+    },
+    {
+      "run": "full-06",
+      "source": "ce4a0a8cf07fc15b404f20352d08406286261c04",
+      "result": "PASS",
+      "reason": "same product; content/idle/DwmFlush and menu foreground waits; six native business clicks"
+    }
+  ]
+}

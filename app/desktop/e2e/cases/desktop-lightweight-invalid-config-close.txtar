@@ -1,0 +1,13 @@
+# Case: Lightweight GUI close preserves the last valid mode after a malformed config edit
+# Mode: process
+# Purpose: Verify that a bad TOML edit cannot strand tray or panel after a lightweight GUI closes.
+# Steps:
+#   Start a real independent service and lightweight GUI; save valid lightweight mode through the production CLI; open the independent panel; write malformed TOML in the private profile; close GUI; restore the private file during cleanup.
+# Expected:
+#   GUI, tray and panel processes and IPC terminate using the last valid lightweight mode; the exact independent service PID and generation remain.
+# Forbidden:
+#   Returning early on configuration reload error, leaving a tray/panel resident, stopping or replacing unicd, touching a personal profile, or presenting process fixtures as native UI evidence.
+# Failure inventory specified before production changes:
+#   The config watcher retains valid lightweight state but the GUI-closed handler returns the reload error before applying that state; GUI exits while tray and panel remain.
+
+acceptance startup desktop-lightweight-invalid-config-close

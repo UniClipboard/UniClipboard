@@ -1,82 +1,60 @@
 # Desktop startup and process lifetime acceptance
 
-## Scope
+## Current behavior
 
-The shared configuration now stores `desktop.mode`, `desktop.launch_at_login`, and
-`desktop.start_in_background`. Normal desktop startup replaces and owns the profile service.
-Lightweight startup leaves only a standalone service. Background startup creates the normal window hidden.
-See [startup architecture](../architecture/headless.md#desktop-startup-settings)
-and the [local service contract](../contracts/local-service-contract.md#service-lifecycle).
+The shared configuration stores `desktop.mode`, `desktop.launch_at_login`, and `desktop.start_in_background`. A manual no-argument launch always opens or activates the independent GUI. Explicit `--background` retains tray/service in normal mode and only unicd in lightweight mode. At login, normal mode uses `desktop.start_in_background`: true omits the GUI, false opens it. Lightweight login always keeps only unicd. The preference never suppresses manual activation. Fresh or pending setup opens the GUI before runtime admission in every entry path.
+
+GUI close releases its renderer and subscriptions. Normal close retains tray/service; lightweight close retires GUI, tray and quick-panel processes and leaves only unicd, without a hotkey or adapter. The quick panel has its own OS process, created on first request and hidden between requests while tray integration runs. The tray alone owns the clipboard adapter, global shortcut, notifications, login registration and owned-service handle. Lightweight close transfers an owned service through the strict owner-pipe release command plus EOF, then confirms the same generation, PID and directory report standalone through the existing service API. It never restarts the service. Explicit application Quit closes all Desktop roles and stops only a tray-owned service; a borrowed standalone service survives Quit.
+
+See the [startup architecture](../architecture/headless.md#desktop-startup-settings), [process design](desktop-process-design.md), and [local service contract](../contracts/local-service-contract.md#service-lifecycle).
 
 ## Repeatable process acceptance
 
 ```sh
+make desktop-e2e CASE=desktop-processes
 make desktop-e2e CASE=startup-lifecycle
 ```
 
-The command builds race-instrumented production `unic`, `unicd`, and `unic-desktop`,
-plus a nonvisual executable using the same production lifecycle package as the GUI.
-It opens no GUI and changes no real login item.
-The file-backed login fixture validates persisted intent, external disable, explicit retry and native failure handling.
-It does not prove macOS, Linux or Windows native registration.
+`desktop-processes` exercises the current launcher and independent role processes with the production service, role IPC, profile storage and lifecycle code. Its build-tagged fixture replaces native rendering and clipboard access. The case must retain role PIDs, creation times, executable/source hashes, activation results, history/settings checks and cleanup status. The canonical report retains the scenario receipt, SHA256SUMS and replay entry. Private binaries, profiles and raw logs are removed after cleanup.
 
-The unified report retains `cases/startup-lifecycle/scenario-receipt.json`. Private binaries, profiles and raw process logs are removed after execution.
-The manifest binds source SHA-256 values, executable SHA-256 values, platform, process identifiers,
-checks, race instrumentation and explicit native acceptance gaps.
-The source files must remain unchanged throughout the process checks.
+`startup-lifecycle` retains regression coverage of the existing service startup primitives. Its `owner` fixture exercises replacement, standalone startup and parent-pipe ownership without a GUI. The legacy `--lightweight` primitive is a fixture operation; it does not describe the current Desktop product mode. File-backed login checks validate saved intent, external disable, explicit retry and failure handling. They do not establish native login registration.
 
-Required checks:
+Required current-role checks include:
 
-- Replace an existing standalone service before normal ownership; Engine submissions work.
-- Save all desktop settings through the production CLI and reject an invalid mode.
-- Reject a stale service-generation shutdown request.
-- Refuse lightweight reuse of a live normal-owned service.
-- Normal owner termination stops its service and preserves another profile's generation.
-- Lightweight production launch exits and repeated launch reuses the same service generation.
-- Persisted history survives normal/lightweight replacement.
-- Abrupt owner death closes the parent pipe; the owned service exits.
-- Service termination ends the normal owner rather than adopting a new generation.
-- Immediate startup after owner death waits for the prior service to retire.
-- Invalid startup configuration and a missing sibling executable leave the existing service untouched.
-- A socket/profile mismatch cannot stop either profile.
-- File-backed login enable/disable, preserved external disable, retry, and failure recovery work across processes.
-- Standalone shutdown works through generation-scoped IPC.
+- Start fresh setup in either mode without premature adapter capture.
+- Save lightweight mode and manually restart. Confirm the GUI opens. Close it and confirm only the same service generation/PID remains.
+- Verify explicit background entry in both modes and login entry with both normal-mode background preferences.
+- Close and reopen the GUI repeatedly without retaining the old GUI PID.
+- In normal mode, close the GUI and create an independent quick-panel PID through the retained tray. In lightweight mode, confirm no hotkey or adapter survives GUI close.
+- Converge concurrent launches on one role owner per profile.
+- Preserve an independent standalone service through Desktop Quit.
+- Stop a tray-owned service through owner-pipe cleanup.
+- Recover missing UI roles and restarted services without duplicate adapter ownership.
+- Preserve history/settings and establish a fresh baseline after service reconnection.
+- Reject profile/binary mismatches and unknown listeners without stopping their owner.
 
-Unix acceptance also checks service process state after owner exit, beyond socket removal.
-Windows process-exit and native behavior require a native host.
+A process fixture does not establish native tray visibility, shortcut delivery, keyboard focus, clipboard formats or paste insertion. Cross-compilation establishes only compilation. Earlier lifecycle results retain their original source identity and do not extend acceptance to the new process topology.
 
-## Additional checks
+## Native acceptance checklist
 
-- Build the native production desktop, CLI and service.
-- Cross-build the production programs for Linux and Windows; cross-builds do not prove native execution.
-- Run `go vet` and the repository-pinned lint tool for the changed packages.
-- Run the existing production headless E2E to cover unchanged clipboard adapter and service behavior.
-- Run `go run ./tools/docscheck` after updating architecture verification markers.
+The following steps are acceptance requirements, not a PASS record. Use an isolated profile and synthetic content. Record the exact OS, architecture, executable hash, source identity, and any emulation layer.
 
-## Native manual acceptance
+1. Start a native package. Complete or cancel first-install setup in both modes. Confirm that capture starts only after explicit entry.
+2. Enable lightweight mode and quit the entire application. Reopen manually. Confirm that the GUI opens. Close it and confirm that GUI, tray and panel retire while the same unicd generation/PID becomes standalone. Confirm no hotkey or adapter remains.
+3. Use normal mode. Open the main window through the native tray. Confirm a distinct GUI PID. Close it. Confirm that PID exits while tray/service remain. Repeat several times.
+4. In normal mode, invoke the global shortcut with an external application focused and no GUI process. Confirm an independent quick-panel PID and the original target. Verify actual paste with synthetic text. Record native permission refusal separately.
+5. Dismiss and reopen the panel. Verify shortcut conflicts, duplicate presses and modifier release. Confirm no second global registration or adapter.
+6. Start an independent `unicd`, then Desktop. Confirm the same service generation. Quit Desktop and confirm the independent service remains.
+7. Restart a tray-owned service and repeat capture/application. Verify fresh-baseline behavior and no synchronization echo.
+8. Crash each UI role separately. Confirm the documented recovery path. Crash tray and confirm its owned service retires; relaunch and verify recovery.
+9. Invoke explicit Quit from tray and the GUI application command. Confirm all owned role processes, shortcut registrations and adapter sessions retire.
+10. On the default profile, enable login startup, log out and log in. Verify both values of the normal-mode login background preference. Verify lightweight login keeps only unicd after setup. Separately verify explicit `--background` in both modes and manual activation with every saved preference. Verify that an external system disable remains effective until explicit retry.
+11. Enter later migration. Verify atomic tray pause, shortcut release, panel closure and exclusive import. Confirm an independent service blocks import without being stopped. Cancel and reopen to verify the pending marker.
 
-The original checks below were not executed in this receipt. The later [D-group native receipt](desktop-native-integration.md) records Fedora second-launch/explicit-quit and offline-service passes, plus a reproducible hidden-window capture failure. Tray interaction, actual login startup and the remaining platform matrix stay open.
-
-1. Install an application bundle on macOS, or the native desktop package on Windows/Linux. Keep sibling `unicd` beside `unic-desktop`.
-2. Use the default profile. Enable login startup in Settings. Confirm both the requested setting and actual system state.
-3. Log out and log in. Confirm that normal mode starts one desktop and one owned service.
-4. Enable background startup. Quit and manually reopen. Confirm no main window appears. Open it through the tray, then repeat through a second normal launch.
-5. Close the main window. Confirm the desktop and service remain running. Choose Quit. Confirm both processes exit.
-6. Force-kill the normal desktop. Confirm its service exits.
-7. Select lightweight mode and quit. Launch again. Confirm only `unicd` remains. Log out/in and confirm the same mode is selected.
-8. Run `unic-desktop --mode normal` to reopen Settings. Confirm the existing lightweight service is replaced.
-9. Disable the login item in system settings. Reopen normally. Confirm the application reports the actual disabled state and does not reenable it.
-10. Use the explicit retry in Settings. Confirm native permission errors remain visible and do not falsely report success.
-
-macOS flat binary archives cannot register a login item because mygo requires an application bundle.
-The native login API cannot persist `UNIC_HOME`/`UNIC_SOCK`; registration with these overrides is rejected.
-A login-setting edit made without a normal desktop session waits for the next normal session.
+macOS flat binaries cannot register a login item. The native API cannot preserve user-selected custom profile/socket overrides. Signing, bundle replacement, login execution and other architectures require their own native evidence.
 
 ## Verification record
 
-Native build and Linux/Windows amd64 cross-builds passed on the development Mac.
-The pinned golangci-lint v2.15.0 was run with Go 1.27.3; using the automatic Go 1.26 toolchain is rejected by this repository's version requirement.
-Ordinary documentation checking passes with existing staleness warnings.
-Both architecture marker update attempts were rejected because source paths remain uncommitted.
-The existing markers were preserved, including paths with unrelated user changes.
-The final process results and source identity are recorded in the manifests above.
+Current results belong to the canonical case receipt generated for the exact tested source. The [updated process receipt](desktop-process-lifecycle.md#windows-coordination) records Windows ARM64 native tray, hotkey, foreground, rendering and close/reopen acceptance. System clipboard, actual paste, login execution and other native platforms remain outside that pass. The earlier service-lifecycle receipt covered primitive process ownership and file-backed login only. A later [D-group receipt](desktop-native-integration.md) records its own platform/source scope; it does not establish this process change.
+
+Run `go run ./tools/docscheck` after architecture updates. Verification markers remain tied to committed source and do not imply native acceptance.

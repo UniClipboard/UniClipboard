@@ -9,6 +9,8 @@
 - Verified remote UniClip main: `f8a0c8fe9b45f0d5fa5b9483f48829ceee2bf282`. Its workflows describe the old mobile repository, not implemented mobile applications in this monorepo.
 - Scope correction from the user: CLI is distributed and managed by npm, requires no FlareRelease registration type, and GitCode implementation is deferred. Mirror findings below describe existing infrastructure only.
 
+For the 2026-11-20 scope correction, current repository-shared organization inventory and exact v1/S3 differences, see [credential reconciliation](0018-release-credential-reconciliation.md). The original dated inventory below already distinguished organization-wide visibility from repository-shared secrets.
+
 ## 1. Available configuration names
 
 GitHub returned HTTP 403 for organization-wide secret and variable enumeration because the current CLI token lacks the required organization scope.

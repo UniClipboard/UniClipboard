@@ -35,14 +35,15 @@ See the [architecture](../architecture/headless.md#desktop-startup-settings), [d
 
 | Check | Result | Evidence and limit |
 |---|---|---|
+| Exact baseline saved-lightweight comparison | EXPECTED FAILURE | Supplemental post-implementation comparison built immutable baseline `173d362036ae4a746878306915c85bcdf7468751`; save lightweight through CLI, keep standalone service, launch twice: both desktop PIDs exit and no graphical owner remains. Programs/source/profile cleaned. This host comparison is not Windows native evidence. |
 | Baseline independent tray entry | FAIL before implementation | Canonical `desktop-processes` run `20261120T033223Z-904afd33`; old binary rejects `--role` |
 | Role IPC spoof rejection | PASS | `.build/desktopprocess-ipc-20261120/`; real-process RED/GREEN, OS peer authentication and race |
 | Service acquisition | PASS | `/tmp/unic-acquire-b973/`; real processes preserve an independent standalone generation, refuse foreign/unknown owners and release owned services |
-| Canonical separated processes | PASS | `.build/desktop-e2e/20261120T040810Z-cd66f6c6/`; nonvisual role host with production IPC, service, storage and directory adapter |
+| Canonical separated processes | PASS | `.build/desktop-e2e/20261120T042241Z-e3d8c1dc/`; nonvisual role host with production IPC, service, storage and directory adapter |
 | Legacy service primitives | PASS | `.build/desktop-e2e/20261120T034257Z-03fce0ca/`; this is not the current lightweight product behavior |
 | Quick-panel focus, permission, cancellation and ordering | PASS | `.build/desktop-e2e/20261120T035124Z-fe372394/`; OS fixtures, not actual native input |
 | macOS native history/search/copy/quit | PASS | `.build/desktop-e2e/20261120T035221Z-656bf1c5/`; real windows, synthetic directory clipboard, recording and cleanup |
-| macOS native independent panel/GUI processes | PASS | `.build/desktop-e2e/20261120T040750Z-1394ed91/`; distinct tray, GUI, panel and service PIDs, real panel Copy, GUI termination/recreation, role endpoint and OS process cleanup |
+| macOS native independent panel/GUI processes | PASS | `.build/desktop-e2e/20261120T042240Z-024eba14/`; distinct tray, GUI, panel and service PIDs, real panel Copy, GUI termination/recreation, role endpoint and OS process cleanup |
 | macOS native setup/migration | PASS | `.build/desktop-e2e/20261120T035346Z-ac653298/`; 1505 synthetic encrypted records, wrong/correct passphrase, import, verification and history entry |
 | Desktop and Engine existing checks | PASS | 197 existing tests with race across five packages, using canonical `TMPDIR=/private/tmp` |
 | Windows amd64/ARM64 and Linux amd64 compilation | PASS | Production Desktop cross-builds; no native execution claim |
@@ -70,3 +71,5 @@ The authorized Parallels VM is `32affa85-5174-4d5b-ab6b-903a06d7fa9b`, Windows 1
 ## Remaining evidence
 
 Native Windows tray clicks, native global-hotkey delivery and actual target insertion are separate acceptance gates. Actual login credential/permission prompts and other-platform native input remain separate from compile/process receipts. No production publication, push, PR or merge is part of this task.
+
+A compact [identity and cleanup receipt](baselines/desktop-processes-20261120/summary.json), [replay script](baselines/desktop-processes-20261120/replay.sh) and [checksums](baselines/desktop-processes-20261120/SHA256SUMS) are retained without programs, source bundles, databases or raw logs.

@@ -148,13 +148,13 @@ migration confirmation and synthetic passphrase pages) and
 directory at the database path). The sized native cases explicitly select the
 platform skin; the older sized runner default would otherwise force macOS.
 
-Native Windows results are pending coordinated VM access. No Snap claim is made.
+Native Windows ARM64 acceptance is complete. The final receipt below supersedes the earlier handover-blocked checkpoint. No Snap claim is made.
 
-## Follow-up close receipt: native handover blocked
+## Historical checkpoint: native handover blocked
 
 Implementation source: `a0a0f5fb48f0117d2ca46447e5b7a6bf3dd5b906`.
-The implementation and acceptance entry are committed locally. Delivery remains
-on hold because the concurrent VM task has not confirmed an exclusive handover.
+At this checkpoint, the implementation and acceptance entry were committed locally.
+Delivery was held because the concurrent VM task had not confirmed an exclusive handover.
 The two coordination requests were sent at 10:02 and 10:33 UTC on 2026-11-20.
 No guest command, application installation, VM start/suspend, personal clipboard
 access or permission grant was performed by this task. The VM was initially
@@ -191,3 +191,107 @@ drag/resize/double-click checks in that VM. Keep the same synthetic data, sizes 
 light/dark conditions. Restore the handover state after checking and remove only
 task-owned guest processes/profiles. No push, PR, merge, release or publication is
 authorized or performed.
+
+
+## Final Windows native receipt (2026-11-20)
+
+The VM owner released exclusive use at 12:22:41 UTC. The received state was
+`suspended`. This task resumed UUID `32affa85-5174-4d5b-ab6b-903a06d7fa9b` and
+verified Windows 11 Pro 10.0.26200.9711, ARM64, console session 1, DPI 192 and a
+3360 x 1624 physical desktop. The guest had no Go, usable Python or FFmpeg tools.
+The host therefore cross-built the canonical `TestDesktopScenarios` package and
+standard Go `test2json`. This was an execution adaptation, not the default guest
+`run.py` path. The real tagged GUI, CLI and service remained unchanged. The
+v1fixture compiler path prefix was mapped to the owned guest source directory;
+fixture bytes and scenario assertions were unchanged. Windows ARM64 has no Go
+race detector. FFmpeg/FFprobe 9.0.2 x64 ran under guest emulation; the application
+and driver ran as native ARM64.
+
+Executed source: `af1de54fb` (full identity is in the JSON receipt). Application
+programs were built at preserved `b5e93fa8`; intervening changes only affected
+acceptance code and documentation. Runtime case/helper hashes were independently
+compared with the executed source before cleanup. The whole portable guest source
+snapshot is not claimed to be immutable: runtime assets were updated explicitly
+between diagnosed attempts. The final report records that distinction.
+
+Final report: `.build/windows-chrome-resume/native-accepted/index.html`.
+All five cases passed with real Go JSON PASS events, no skips, playable continuous
+recordings and per-case cleanup PASS:
+
+| Case | Coverage | Frames / seconds |
+|---|---|---|
+| window-chrome-native | 640/light, both modes, saved preference, two GUI recreations, cleared pending, caption actions, plugin details, caption Close and tray reopen | 74 / 26.32 |
+| window-chrome-native-dark | 600/dark, the same assertions | 73 / 26.08 |
+| window-chrome-native-input | Physical empty-toolbar drag, native edge resize, double-click maximize, caption Close and tray reopen | 18 / 7.72 |
+| window-chrome-setup | First install, migration confirmation, synthetic passphrase fallback, maximize/restore/minimize; no service before consent | 22 / 8.64 |
+| window-chrome-startup-error | Real owned database-path startup failure, fallback controls and maximize/restore/minimize | 12 / 5.52 |
+
+The primary light pair is under `cases/window-chrome-native/`:
+`custom-history-os.png` and `system-history-os.png`. Both use the same synthetic
+history and 640 x 720 client viewport. The dark pair is under
+`cases/window-chrome-native-dark/`, with a 600 x 720 client viewport. Each pair has
+the same DPI and theme. Outer heights differ because native mode adds the system
+title bar. OS PNGs use `System.Drawing.CopyFromScreen` over the exact foreground
+window's DWM bounds. The helper places that full frame inside the work area
+without resizing its client, so the taskbar cannot obscure its bottom edge.
+The inspected PNGs contain the complete real application, frame and rounded
+corners. The mygo recordings remain explicitly identified as content captures.
+
+### Retained failures and corrections
+
+No repeated run erased an earlier artifact. The local behavior RED remains
+separate from these native driver failures. Each correction received at most two
+verification attempts; unrelated later failures retained separate results.
+
+- `native-first`: the Windows Ctrl+, input did not match the existing Cmd+,
+  application binding. The scenarios now enter Settings through the real sidebar.
+  This task did not expand its product scope to keyboard-shortcut changes.
+- `native-retry1`: Parallels cancelled a child test after the launcher returned.
+  The launcher now waits for the child and records its exit code.
+- `native-retry2`: both preference round trips and OS caption states passed,
+  then plugin navigation clicked before the new page had rendered. An explicit
+  accessible-element wait fixed this race. The first pair also exposed taskbar
+  occlusion; the OS helper now uses the work area before capture.
+- `native-final`: physical input was refused by the catalogue's original guard;
+  it now requires an explicit owned-window guest authorization. Setup exposed
+  the host compiler path in v1fixture, fixed by compiler path mapping. Startup
+  failure exposed an immediate click after restore, fixed by a stable maximize
+  element wait.
+- `native-verified`: physical OS checks passed but the close regression lacked
+  its initial role checkpoint. Setup operations passed but recording attempted
+  minimized content, which has no drawable size. A role checkpoint and one lock
+  around minimize, OS verification and restore fixed these driver failures.
+- `native-followup`: the earlier dark case passed before the taskbar correction.
+  It remains separate from the final complete-frame pair.
+
+The initial CPU WMI inventory and later CIM cleanup lookup timed out. A longer
+encoded direct-process-query cleanup script also exceeded 55 seconds; its exact
+blocking phase remains unknown. Short queries independently verified architecture
+and display, then found no task applications or other PowerShell processes.
+A short ownership-checked directory removal passed. Cursor restoration was read
+back independently. These retained infrastructure failures involve no product
+path. No process termination was needed. No personal profile or clipboard was
+read. The first transport failures remain local evidence.
+
+Physical window input is an `owned-window-guest` environment. Ordinary runs and
+CI shards exclude it. Replay only after exclusive VM handover:
+
+```sh
+make desktop-e2e CASE=window-chrome-native
+make desktop-e2e CASE=window-chrome-native-dark
+make desktop-e2e CASE=window-chrome-setup
+make desktop-e2e CASE=window-chrome-startup-error
+python3 app/desktop/e2e/run.py run --case window-chrome-native-input --guest <VM-UUID>
+```
+
+The input case keeps the directory clipboard. It checks exact foreground PID and
+executable before pointer delivery. Physical clicks on system-titlebar buttons, native tray icon clicks, Windows Snap,
+cross-application paste, system clipboard delivery, other Windows DPI settings,
+x64 native execution and user visual approval remain NOT_RUN for this task.
+The tray IPC reopen and independent GUI/tray/service lifetime assertions passed.
+
+No push, PR, merge or release was performed. Guest and host build resources are
+removed after evidence collection. See the compact JSON receipt for the final
+cleanup and restored VM state. PNGs, recordings and first failures remain only
+in local ignored evidence directories. The committed receipt contains hashes
+and verdicts, not databases, programs, source snapshots or large logs.

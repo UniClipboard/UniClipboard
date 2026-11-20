@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,6 +58,7 @@ type desktopScenario struct {
 	idleInhibitor                  *dbus.Conn
 	policyPeer                     *pluginPolicyPeer
 	captureMu                      sync.Mutex // Do not overlap recording and checkpoint captures.
+	capturePaused                  bool       // The GUI process is deliberately absent.
 	ctx                            context.Context
 	cancel                         context.CancelFunc
 	name, root, private, out, home string
@@ -69,6 +71,8 @@ type desktopScenario struct {
 	automation                     string
 	window                         int
 	mainWindow                     int
+	nativeRoleBaseline             map[string]desktopRoleIdentity
+	nativeServiceID                string
 	media                          *desktopRecording
 	result                         desktopResult
 	started                        time.Time
@@ -419,6 +423,9 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			return s.acceptance(a[0], a[1])
 		},
 	}
+	for name, handler := range nativeProcessCommands() {
+		handlers[name] = handler
+	}
 	for name, handler := range builtinPluginCommands() {
 		handlers[name] = handler
 	}
@@ -554,7 +561,7 @@ func (s *desktopScenario) launchNative() error {
 	if os.PathSeparator == '\\' {
 		binary += ".exe"
 	}
-	s.app = exec.Command(binary)
+	s.app = exec.Command(binary, "--role", "gui")
 	for _, env := range os.Environ() {
 		if !strings.HasPrefix(env, "UNIC_") && !strings.HasPrefix(env, "MYGO_AUTOMATION=") {
 			s.app.Env = append(s.app.Env, env)
@@ -682,6 +689,9 @@ func (s *desktopScenario) expect(args []string, absent bool) error {
 	return err
 }
 func (s *desktopScenario) call(ctx context.Context, method string, params any, out any) error {
+	return s.callAt(ctx, s.automation, method, params, out)
+}
+func (s *desktopScenario) callAt(ctx context.Context, endpoint, method string, params any, out any) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -693,7 +703,7 @@ func (s *desktopScenario) call(ctx context.Context, method string, params any, o
 		deadline = 30 * time.Second
 		defer func() { s.result.CaptureSeconds = append(s.result.CaptureSeconds, time.Since(started).Seconds()) }()
 	}
-	connection, err := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "unix", s.automation)
+	connection, err := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "unix", endpoint)
 	if err != nil {
 		return err
 	}
@@ -722,6 +732,9 @@ func (s *desktopScenario) call(ctx context.Context, method string, params any, o
 func (s *desktopScenario) capture() (data []byte, err error) {
 	s.captureMu.Lock()
 	defer s.captureMu.Unlock()
+	if s.capturePaused {
+		return nil, errCapturePaused
+	}
 	var out struct{ PNG string }
 	if err = s.call(s.ctx, "capture", map[string]any{"window": s.window}, &out); err != nil {
 		return nil, err
@@ -840,12 +853,55 @@ func (s *desktopScenario) finish(env *testscript.Env) {
 		env.T().Fatal("Desktop scenario failed: ", s.result.Failure)
 	}
 }
+func (s *desktopScenario) roleCommand(role, command string) ([]byte, error) {
+	if s.app == nil {
+		return nil, errors.New("Desktop has not started")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, s.app.Path, "--role", role, "--command", command)
+	for _, entry := range s.app.Env {
+		if !strings.HasPrefix(entry, "MYGO_AUTOMATION=") {
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	cmd.Env = append(cmd.Env, "MYGO_AUTOMATION=")
+	return cmd.CombinedOutput()
+}
 func (s *desktopScenario) stopApp() error {
 	if s.appDone == nil {
 		return nil
 	}
+	type observedRole struct {
+		role string
+		pid  int
+		wait func(context.Context) error
+	}
+	var observed []observedRole
+	for _, role := range []string{"gui", "quick-panel", "tray"} {
+		raw, err := s.roleCommand(role, "probe")
+		if err != nil {
+			continue
+		}
+		var identity desktopRoleIdentity
+		if err = json.Unmarshal(raw, &identity); err != nil {
+			return err
+		}
+		if identity.PID <= 0 || identity.Role != role || identity.Profile != s.home {
+			return errors.New("cannot bind cleanup to an unverified role identity")
+		}
+		wait, release, err := observeProcessExit(identity.PID)
+		if err != nil {
+			return err
+		}
+		defer release()
+		observed = append(observed, observedRole{role: role, pid: identity.PID, wait: wait})
+	}
 	// App-scoped Quit crosses the actual view shortcut without physical input.
-	_ = s.call(context.Background(), "input", map[string]any{"window": s.mainWindow, "events": []any{map[string]any{"type": "key", "key": "CmdOrCtrl+Q"}}}, nil)
+	_ = s.callAt(context.Background(), filepath.Join(s.home, "automation.sock"), "input", map[string]any{"window": s.mainWindow, "events": []any{map[string]any{"type": "key", "key": "CmdOrCtrl+Q"}}}, nil)
+	// The GUI may already have exited through its window close action. Close the
+	// persistent tray explicitly so its adapter and owned service also retire.
+	_, _ = s.roleCommand("tray", "quit")
 	select {
 	case err := <-s.appDone:
 		if err != nil {
@@ -863,11 +919,20 @@ func (s *desktopScenario) stopApp() error {
 		}
 		return errors.New("owned desktop required a forced stop")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	for {
 		_, err := s.client.Service(ctx)
 		if err != nil {
+			for _, role := range observed {
+				if err = role.wait(ctx); err != nil {
+					return err
+				}
+				if _, err = s.roleCommand(role.role, "probe"); err == nil {
+					return fmt.Errorf("owned %s endpoint remained after process %d exited", role.role, role.pid)
+				}
+				s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("cleanup observed %s PID %d exit and endpoint removal", role.role, role.pid))
+			}
 			return nil
 		}
 		select {
@@ -903,7 +968,12 @@ func (s *desktopScenario) acceptance(group, id string) error {
 		return err
 	}
 	receiptPath := filepath.Join(s.out, "scenario-receipt.json")
-	command := exec.CommandContext(s.ctx, "go", "test", "-json", "-race", pkg, "-run", "^TestDesktopAcceptance$/^"+regexp.QuoteMeta(id)+"$", "-count=1", "-timeout=10m")
+	args := []string{"test", "-json"}
+	if runtime.GOOS != "windows" || runtime.GOARCH != "arm64" {
+		args = append(args, "-race")
+	}
+	args = append(args, pkg, "-run", "^TestDesktopAcceptance$/^"+regexp.QuoteMeta(id)+"$", "-count=1", "-timeout=10m")
+	command := exec.CommandContext(s.ctx, "go", args...)
 	command.Dir = s.root
 	for _, v := range os.Environ() {
 		if !strings.HasPrefix(v, "UNIC_") {

@@ -11,6 +11,7 @@ func TestDesktopAcceptance(t *testing.T) {
 		t.Skip("run make desktop-e2e")
 	}
 	t.Run("startup-lifecycle", scenarioStartupProcesses)
+	t.Run("desktop-processes", scenarioDesktopProcesses)
 	t.Run("first-install-setup", scenarioFirstInstallSetup)
 	t.Run("production-boundary", scenarioProductionBoundary)
 }

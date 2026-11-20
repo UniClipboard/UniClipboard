@@ -30,8 +30,7 @@ import (
 // Desktop uses the approved composition with service-owned data. Run View on
 // the mygo thread; all completions are applied there, never by I/O workers.
 type Desktop struct {
-	d         *viewState
-	quickHost *quickHost
+	d *viewState
 }
 
 func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
@@ -45,9 +44,6 @@ func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
 }
 func (s *Desktop) View(c *ui.Context) { s.d.view(c) }
 func (s *Desktop) Close() {
-	if s.quickHost != nil && s.quickHost.close != nil {
-		s.quickHost.close()
-	}
 	if s.d.live != nil {
 		s.d.live.cancel()
 	}

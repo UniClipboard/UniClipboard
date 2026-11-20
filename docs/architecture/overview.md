@@ -102,10 +102,10 @@ See the [demo acceptance guide](../../app/desktop/UI-DEMO.md) for source mapping
 
 ## Live desktop composition
 
-A fresh Desktop profile opens the first-install setup before starting the normal service or clipboard adapter. The welcome slogan is “让每一次复制更有用”. It offers optional, offline v1 history migration and shows importing, verification, and complete/partial/cancelled/failed results. Setup and history reuse one native window. Setup uses a 640 × 560 content area; after the user chooses entry or skips migration, the same window switches to history and resizes to 1100 × 720. After setup completion, the normal desktop opens the shared history composition directly. It has no recurring unlock gate.
+A fresh Desktop profile opens the first-install setup in the independent GUI process before starting the tray-owned service or clipboard adapter. This gate applies to both normal and lightweight startup. The welcome slogan is “让每一次复制更有用”. It offers optional, offline v1 history migration and shows importing, verification, and complete/partial/cancelled/failed results. Setup and history reuse one native window. Setup uses a 640 × 560 content area; after the user chooses entry or skips migration, the same window switches to history and resizes to 1100 × 720. After setup completion, the normal desktop opens the shared history composition directly. It has no recurring unlock gate.
 `app/desktop/internal/setupflow` owns the profile-scoped `desktop-setup.json` marker and calls the existing v1 importer. `app/desktop/internal/setupui` renders the [setup prototype](../../prototype/setup.html) with existing UI Kit controls. `session_gui.go` serializes setup, runtime startup, and later migration ownership.
 A pre-existing regular, nonempty `unic.db` without the new marker identifies an established v2 profile, including one with empty history. A pending marker takes precedence over database presence, so interrupted imports return to setup. Source selection is saved; imported-record mappings remain owned by the importer. Invalid setup state is an error rather than an implicit completion.
-Settings > Storage > Migrate from v1 stops the Desktop-owned adapter, quick panel and service before showing migration. It does not automatically stop an independently running service during migration. The importer requires exclusive Engine ownership and never applies imported content to the system clipboard.
+Settings > Storage > Migrate from v1 asks the tray to serialize runtime pause, close the quick panel, release shortcut/adapter ownership and stop its owned service before showing migration. Pending setup persists before import. It does not automatically stop an independently running service during migration. The importer requires exclusive Engine ownership and never applies imported content to the system clipboard.
 See the [setup execution receipt](../exec/0026-first-install-setup.md) for acceptance limits.
 Quit uses a window-scoped platform command-Q shortcut, including when no view control has focus.
 `desktopui.NewDesktop` initializes empty service-backed state, without fixture data.
@@ -118,13 +118,13 @@ The history list has no manual refresh button; event updates and periodic reconc
 Selected single-image files use the same image frame and Quick Look as image records, with their filename and actual dimensions. Their stored file kind, type filters and file-copy semantics stay unchanged. Preview reads are limited to 32 MiB and 16 million decoded pixels; unsupported, corrupt, oversized and multi-file payloads retain the file list.
 Refresh preserves loaded page depth. Query changes discard results for obsolete filters.
 `live_devices.go` binds existing pairing, approval, candidate and removal operations.
-`live_settings.go` binds the existing General, Sync and Storage settings; the launcher owns native login registration.
+`live_settings.go` binds the existing General, Sync and Storage settings; the persistent tray owns native login registration.
 
 ### Desktop languages
 
 The shared desktop composition supports Simplified Chinese (`zh-CN`), English (`en`), Japanese (`ja`), Brazilian Portuguese (`pt-BR`) and Russian (`ru`). General settings provides a language selector with native language names. The default is Simplified Chinese; an empty stored language also selects it. Unsupported nonempty language codes fail configuration validation.
 
-`desktop.language` persists through the existing revision-checked configuration API. A successful save updates the main window and quick panel through the normal configuration refresh, without a process restart. The launcher watches the same file to rebuild tray labels. Device notifications use the current configured language. The demo keeps its selection in memory.
+`desktop.language` persists through the existing revision-checked configuration API. A successful save updates the main window and quick panel through the normal configuration refresh, without a process restart. The tray watches the same file to rebuild its labels. Device notifications use the current configured language. The demo keeps its selection in memory.
 
 `app/desktop/internal/i18n/i18n.go` resolves application-owned source strings from embedded `locales.json`. Navigation, settings, device sheets, history controls, quick-panel controls and actions share the catalogues. Source strings are stable catalogue IDs; internal filter values and query syntax remain unchanged. Content, filenames, device names and user tags bypass translation. Service-generated history titles carry an explicit marker so they can be translated without translating user text. Missing catalogue text falls back to the Chinese source. No translation request leaves the device. Standard numeric/ISO timestamps remain unchanged; Today and Yesterday headings are translated.
 
@@ -134,7 +134,7 @@ Run `make desktop-e2e CASE=i18n` for five-language, three-skin, two-theme softwa
 The service lifecycle, exclusive clipboard adapter, tray and normal/lightweight modes remain defined by the [headless architecture](headless.md).
 Global literal text/file-name search, rich-text classification, extension/source/tag/time filters, paged candidates and exact prospective counts use the Engine-owned [search interface](../contracts/history-search-contract.md).
 The main editor keeps word/all-tag semantics; the quick panel keeps phrase/any-tag semantics. Both reject obsolete read generations and use separately cancellable search/count/content reads.
-The normal desktop opens a real-data quick-panel window from Settings or the history menu. Copy/delete call the existing service; automatic OS paste, semantic classifiers, favorites, global tag rename/merge/deletion and standalone empty-tag creation, richer device policies/status and direct history sending remain gaps.
+The GUI, tray menu and global shortcut request the same independent real-data quick-panel process. Copy/delete call the existing service. OS paste follows the [quick-panel system contract](../contracts/desktop-quick-panel-contract.md) and requires separate native acceptance. Semantic classifiers, favorites, global tag rename/merge/deletion and standalone empty-tag creation, richer device policies/status and direct history sending remain gaps.
 The normal UI never falls back to fixture data or simulated effects.
 See the [execution receipt](../exec/desktop-live-data.md) for nonvisual process acceptance and native limits.
 
@@ -184,8 +184,8 @@ The current service application is `app/service/`. Its `unic` and `unicd` progra
 The desktop application is `app/desktop/`, with the `unic-desktop` program and native clipboard integration.
 Shared local protocol, configuration, paths and snapshot conversion live in root `internal/local*` packages.
 `internal/clipboardintegration` contains a UI-independent host state machine; Engine does not import it.
-The normal desktop owns a profile-scoped service through a parent pipe. Lightweight mode leaves a standalone service.
-`app/desktop/internal/lifecycle` owns replacement and login intent; `internal/servicelifecycle` owns generation-scoped stop and owner EOF handling.
+The tray adopts a same-profile standalone service without taking ownership, or creates a desktop-owned service through a parent pipe. Both startup modes retain the tray. GUI close exits the GUI process; quick-panel dismissal hides its separate process. Explicit application Quit closes UI roles, releases tray integration and stops only its owned service.
+`app/desktop/internal/lifecycle` owns service acquisition and login intent; `internal/servicelifecycle` owns generation-scoped stop and owner EOF handling. `app/desktop/internal/desktopprocess` owns profile-scoped role locks and private IPC with OS peer executable checks. The [process design](../exec/desktop-process-design.md) records role lifetimes and failure policy.
 CLI command requirements live in `app/service/cmd/unic/requirements.go`. The CLI acquires a generation-bound usage lease lazily, reuses a running service, or launches the sibling `unicd --cli-temporary`. The last usage release retires a CLI-temporary service.
 `internal/servicelaunch` provides shared launch primitives and the profile transition lock. Desktop and CLI launch policy remain in their respective applications.
 `unic send --to all` or `--to DEVICE` commits and sends to paired devices. Without `--to`, `unic send` creates a temporary code/link transfer. `unic recv` accepts a code, address or link. Device management lives under `unic device`; development commands live under `unic dev`.

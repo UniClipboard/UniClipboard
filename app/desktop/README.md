@@ -1,27 +1,30 @@
 # Desktop application
 
-`unic-desktop` owns the mygo GUI, native clipboard adapter, tray and notifications.
+`unic-desktop` supplies independent tray, GUI and quick-panel OS processes from one executable. The tray owns the only native clipboard adapter, global shortcut, notifications and login registration.
 `unicd` runs separately and owns Engine, history, configuration and networking.
 The UI-free `unic` CLI and `unicd` live in [the service application](../service/README.md).
 See [headless architecture](../../docs/architecture/headless.md) and the [local service contract](../../docs/contracts/local-service-contract.md).
 
 ```text
 unic -----------+-- local socket -- unicd -- Engine / network / history
-unic-desktop --+
-     +-- mygo / clipboard / tray / notifications
+unic-desktop --role tray -- adapter IPC --+
+     +-- clipboard / shortcut / notifications
+unic-desktop --role gui -------- local IPC -- unicd
+unic-desktop --role quick-panel --+
+     +-- target checks / focus / paste; clipboard writes delegate to tray
 ```
 
 | Path | Responsibility |
 |---|---|
-| `cmd/unic-desktop` | GUI and graphical session lifecycle |
+| `cmd/unic-desktop` | Launcher and independent tray, GUI and quick-panel processes |
+| `internal/desktopprocess` | Profile role locks, private activation IPC and OS peer executable verification |
 | `internal/board` | Native clipboard access |
 | `internal/uikit` | Adwaita, macOS glass and Fluent component skins |
 | `internal/desktopui` | Shared desktop renderer and production service binding |
 | `internal/i18n` | Embedded translation catalogue and lookup |
 | `internal/desktopdemo` | Independent preview launcher and synthetic fixtures |
 
-Closing the window hides it and keeps the adapter active. The tray or a second launch shows it again.
-Explicit Quit stops the desktop process and its owned service. Lightweight mode runs only the standalone service.
+Closing the main window exits the GUI process and keeps tray integration active. Tray Open starts or activates the GUI in both startup modes. Explicit application Quit closes UI roles, releases tray integration and stops only a service owned by the tray. An independently started service remains running.
 Pairing requires explicit mutual approval with verified fingerprints. See [identity and trust](../../docs/architecture/identity-and-trust.md).
 
 ## 开发
@@ -162,17 +165,13 @@ See [desktop runtime](../../docs/architecture/desktop-runtime.md).
 ## Independent desktop program
 
 Build `go build -o dist/unic-desktop ./app/desktop/cmd/unic-desktop`.
-Run `unic-desktop` to restart the profile service and attach the GUI. Use `unic-desktop-demo` for the existing isolated UI fixture.
-The desktop program contains the GUI, system clipboard adapter, tray and notifications.
-Closing its window keeps the adapter running. Explicit quit stops desktop integration and the owned service.
+Run `unic-desktop` to start or contact the persistent tray. The launcher reads the saved startup mode. The tray borrows an existing standalone profile service, or starts an owned service when absent. Use `unic-desktop-demo` for the existing isolated UI fixture.
+GUI close releases that process. Tray Open creates or activates the GUI. Explicit application Quit stops tray integration, both UI roles and only the tray-owned service.
 See [headless architecture](../../docs/architecture/headless.md).
 
 ## Startup and runtime modes
 
-Normal mode starts a fresh sibling `unicd` and owns its lifetime.
-If the profile already has a service, the launcher stops that generation before starting its own.
-Desktop process exit also stops its service. Window close only hides the window.
-Lightweight mode starts or reuses a standalone service, then exits the launcher without loading the GUI runtime.
+The tray remains active in both modes. Normal startup opens the GUI unless background startup is enabled. Lightweight startup omits the GUI after setup. Fresh or pending setup opens the GUI in either mode before runtime admission. The quick panel starts as an independent OS process on its first request and remains hidden between requests.
 
 ```toml
 [desktop]
@@ -181,30 +180,22 @@ launch_at_login = false
 start_in_background = false
 ```
 
-The Settings tab edits these values through the shared configuration API.
-`start_in_background` applies to every normal launch, including manual launches.
-The initial window stays hidden; tray Open or a second normal launch shows it.
-Mode and background changes apply on the next launch.
-Use `unic-desktop --mode normal` to reopen settings when the saved mode is lightweight.
-Use `unic-desktop --mode lightweight` for an explicit service-only launch.
-Neither override changes the saved mode.
+Settings edits these values through the shared configuration API. Mode and background changes apply on the next launch. Background startup omits the GUI process. Tray Open always creates or activates it. `unic-desktop --mode normal|lightweight` overrides one launch without changing the saved mode. Running `unicd` alone supplies only the service.
 
-Login registration uses the existing mygo native API.
-A running normal desktop applies changed intent and shows actual OS status and failures.
-External system disable remains effective until the user retries or changes the requested value.
-macOS requires a packaged `.app`; flat binaries cannot register a login item.
-The native API does not preserve custom profile environment overrides, so enabling login startup with `UNIC_HOME` or `UNIC_SOCK` set fails visibly.
-A setting changed while only the service is running waits for the next normal desktop session.
-See [startup architecture](../../docs/architecture/headless.md#desktop-startup-settings).
+One live role lock exists per canonical profile. Private Unix sockets or current-user Windows named pipes carry activation requests. The transport verifies the peer executable and binds the request to the profile and binary build. GUI and quick-panel processes never register a second shortcut or adapter. The service keeps the only Engine and history database.
 
-Repeatable process acceptance without opening a GUI:
+The tray borrows a same-profile standalone service without restarting it. Explicit application Quit never stops that independent service. With no service, the tray starts a sibling `unicd --desktop-owned` and retains its lifetime pipe. Tray exit closes the pipe. A live desktop owner or CLI-temporary service blocks acquisition without being replaced. GUI or panel crashes leave tray integration running; a later request recreates the missing role. Tray recovery after a crash follows the [process design](../../docs/exec/desktop-process-design.md).
+
+Login registration uses mygo's native API from the tray. The stable product identity remains shared across internal roles. Actual OS status and failures stay separate from saved intent. An external system disable remains effective until an explicit retry or intent change. macOS requires an application bundle. Custom user profile/socket overrides remain unsupported for login registration; internal propagation of the default profile does not count as a user override. A change made without a tray waits for its next session.
+
+Repeatable process acceptance uses the canonical entry:
 
 ```sh
+make desktop-e2e CASE=desktop-processes
 make desktop-e2e CASE=startup-lifecycle
 ```
 
-The manifest records source and executable SHA-256 values, process checks and native acceptance gaps.
-See the [acceptance receipt](../../docs/exec/desktop-startup-lifecycle.md).
+The first case covers the current independent roles. The second retains the service-lifecycle primitive regression through a nonvisual owner fixture. The manifest records source and executable SHA-256 values, process checks and cleanup. Neither case proves native tray clicks, login execution, focus restoration or receiving-application paste. See the [startup receipt](../../docs/exec/desktop-startup-lifecycle.md).
 
 ## Desktop end-to-end acceptance
 
@@ -230,7 +221,7 @@ This process acceptance does not start a native app, offscreen renderer or syste
 
 ### Quick-panel system commands
 
-The production host registers Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux by default. Change or disable it in Settings > Quick Panel. A conflicting replacement preserves the previous working registration and offers retry. The tray also opens the panel. Lightweight mode has no graphical shortcut host.
+The production host registers Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux by default. Change or disable it in Settings > Quick Panel. A conflicting replacement preserves the previous working registration and offers retry. The tray also opens the panel. The persistent tray owns this shortcut in both startup modes. The GUI need not be open.
 
 Open the panel from another application to capture its target. Enter applies history and sends paste to that target. Shift+Enter applies the existing plain-text Action first. Command/Ctrl+Enter sends paste and reopens the panel. Command/Ctrl+C copies without input injection. macOS requires Accessibility permission. Wayland keeps Copy but cannot automatically restore arbitrary target focus or inject paste.
 
@@ -251,4 +242,4 @@ Built-in Text, Images, Files and Links tags use the selected interface language.
 
 ## Tray icon style
 
-Open Settings > General > Tray icon to choose Default (the glyph) or Classic cat. The default is the glyph, matching v1. Selection saves to `desktop.tray_icon` and applies immediately. The CLI equivalent is `unic config set desktop.tray_icon '"cat"'` or `unic config set desktop.tray_icon '"glyph"'`. Direct TOML edits also apply while Desktop runs. Invalid values retain the previous valid configuration. Lightweight mode has no tray. See [Desktop configuration](../../docs/architecture/desktop-runtime.md#application-and-tray-icons).
+Open Settings > General > Tray icon to choose Default (the glyph) or Classic cat. The default is the glyph, matching v1. Selection saves to `desktop.tray_icon` and applies immediately. The CLI equivalent is `unic config set desktop.tray_icon '"cat"'` or `unic config set desktop.tray_icon '"glyph"'`. Direct TOML edits also apply while Desktop runs. Invalid values retain the previous valid configuration. The tray remains available in lightweight mode. See [Desktop configuration](../../docs/architecture/desktop-runtime.md#application-and-tray-icons).

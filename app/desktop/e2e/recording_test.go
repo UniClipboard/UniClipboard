@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+var errCapturePaused = errors.New("recording paused while the GUI process is absent")
+
 type capturedFrame struct {
 	File string  `json:"file"`
 	At   float64 `json:"at_seconds"`
@@ -41,15 +43,17 @@ func (r *desktopRecording) run() {
 	defer ticker.Stop()
 	for {
 		data, err := r.s.capture()
-		if err != nil {
+		if err != nil && !errors.Is(err, errCapturePaused) {
 			r.err = err
 			return
 		}
-		name := fmt.Sprintf("%06d.png", len(r.frames))
-		if r.err = os.WriteFile(filepath.Join(dir, name), data, 0600); r.err != nil {
-			return
+		if err == nil {
+			name := fmt.Sprintf("%06d.png", len(r.frames))
+			if r.err = os.WriteFile(filepath.Join(dir, name), data, 0600); r.err != nil {
+				return
+			}
+			r.frames = append(r.frames, capturedFrame{File: name, At: time.Since(r.started).Seconds()})
 		}
-		r.frames = append(r.frames, capturedFrame{File: name, At: time.Since(r.started).Seconds()})
 		select {
 		case <-r.stopRequest:
 			return

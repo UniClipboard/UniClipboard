@@ -28,6 +28,64 @@ type Process struct {
 // Sibling resolves the daemon from the same installation as the desktop.
 func Sibling() (string, error) { return servicelaunch.Sibling() }
 
+// AcquireService borrows a standalone service or starts a tray-owned service.
+// A nil process means that the service remains independently owned. The caller
+// must never stop that generation when the tray or a UI process exits.
+func AcquireService(ctx context.Context, dir, socket, executable string) (*Process, error) {
+	if err := servicelaunch.CheckExecutable(executable); err != nil {
+		return nil, err
+	}
+	startupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	unlock, err := servicelaunch.LockContext(startupCtx, dir)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	c := api.NewClient(socket)
+	for {
+		probe, stopProbe := context.WithTimeout(startupCtx, time.Second)
+		existing, err := c.Service(probe)
+		stopProbe()
+		if err == nil {
+			if existing.Directory != dir {
+				return nil, errors.New("socket belongs to a different state directory")
+			}
+			switch existing.Mode {
+			case servicelifecycle.ModeStandalone:
+				if !existing.Retiring {
+					return nil, nil
+				}
+			case servicelifecycle.ModeDesktop:
+				if !existing.Retiring {
+					return nil, errors.New("a desktop already owns this service; retry after it exits")
+				}
+			case servicelifecycle.ModeCLITemporary:
+				return nil, errors.New("a unic command is using a temporary service; retry after it finishes")
+			default:
+				return nil, errors.New("unrecognized service ownership mode")
+			}
+		} else if !errors.Is(err, api.ErrNoDaemon) {
+			return nil, fmt.Errorf("inspect existing unicd: %w", err)
+		} else {
+			process, startErr := startProcess(startupCtx, dir, socket, executable, true)
+			var exit *exec.ExitError
+			if !errors.As(startErr, &exit) || exit.ExitCode() != servicelifecycle.ExitDirectoryInUse {
+				return process, startErr
+			}
+		}
+		// A retiring generation may have closed its listener before Engine
+		// releases the profile. Never remove its socket or send it a stop request.
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-startupCtx.Done():
+			timer.Stop()
+			return nil, fmt.Errorf("wait for service retirement: %w", startupCtx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
 // Start serializes launcher transitions for one state directory.
 // Normal mode replaces an existing service. Lightweight mode reuses a standalone service.
 // A nil process means that only the standalone service remains.

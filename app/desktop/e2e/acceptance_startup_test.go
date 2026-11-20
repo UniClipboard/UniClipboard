@@ -224,7 +224,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	if out, err := run(home, "unic", "config", "set", "desktop.mode", `"invalid"`); err == nil {
 		t.Fatalf("invalid mode accepted: %s", out)
 	}
-	if out, err := run(home, "unic-desktop", "--mode", "lightweight"); err == nil {
+	if out, err := run(home, "owner", "--lightweight"); err == nil {
 		t.Fatalf("lightweight adopted a GUI-owned service: %s", out)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -240,15 +240,15 @@ func scenarioStartupProcesses(t *testing.T) {
 	instance(b, func(v servicelifecycle.Instance) bool { return v.ID == unrelated.ID })
 	checks = append(checks, "normal owner signal stops owned service without touching another profile")
 
-	success(home, "unic-desktop") // Persisted lightweight mode; no GUI is started.
+	success(home, "owner", "--lightweight") // Legacy service-only primitive fixture; new tray behavior is covered by desktop-processes.
 	light := instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
-	success(home, "unic-desktop")
+	success(home, "owner", "--lightweight")
 	instance(c, func(v servicelifecycle.Instance) bool { return v.ID == light.ID })
 	history := success(home, "unic", "history", "show", string(submission.HistoryID))
 	if !bytes.Contains(history, []byte("persist through mode switch")) {
 		t.Fatal("history was lost across service replacement")
 	}
-	checks = append(checks, "production desktop lightweight launcher exits and leaves one usable standalone service")
+	checks = append(checks, "legacy service-only lifecycle fixture exits and leaves one usable standalone service")
 
 	normal = launch(home, "owner")
 	owned = instance(c, func(v servicelifecycle.Instance) bool {
@@ -264,7 +264,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	owned = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeDesktop })
 	must(t, normal.cmd.Process.Kill())
 	<-normal.done
-	success(home, "unic-desktop", "--mode", "lightweight")
+	success(home, "owner", "--lightweight")
 	instance(c, func(v servicelifecycle.Instance) bool {
 		return v.Mode == servicelifecycle.ModeStandalone && v.ID != owned.ID
 	})
@@ -272,12 +272,12 @@ func scenarioStartupProcesses(t *testing.T) {
 	checks = append(checks, "immediate lightweight restart after owner death waits for service retirement")
 
 	// Standalone operation and configuration validation must not require a desktop.
-	success(home, "unic-desktop", "--mode", "lightweight")
+	success(home, "owner", "--lightweight")
 	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	raw, err := os.ReadFile(filepath.Join(home, "config.toml"))
 	must(t, err)
 	must(t, os.WriteFile(filepath.Join(home, "config.toml"), append(raw, []byte("\n[unexpected]\nkey = true\n")...), 0600))
-	if out, err := run(home, "unic-desktop", "--mode", "lightweight"); err == nil {
+	if out, err := run(home, "owner", "--lightweight"); err == nil {
 		t.Fatalf("invalid config accepted: %s", out)
 	}
 	instance(c, func(v servicelifecycle.Instance) bool { return v.ID == light.ID })
@@ -303,7 +303,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	}
 	stopped(c)
 	exited(t, owned.PID)
-	success(home, "unic-desktop", "--mode", "lightweight")
+	success(home, "owner", "--lightweight")
 	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	checks = append(checks, "normal owner exits when its service terminates")
 	// A lightweight launcher must not adopt or replace a CLI-temporary generation (0021 C18b).
@@ -316,7 +316,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	temporary := instance(c, func(v servicelifecycle.Instance) bool {
 		return v.Mode == servicelifecycle.ModeCLITemporary && v.Leases == 1
 	})
-	refused, err := run(home, "unic-desktop", "--mode", "lightweight")
+	refused, err := run(home, "owner", "--lightweight")
 	if err == nil || !bytes.Contains(refused, []byte("temporary service")) {
 		t.Fatalf("lightweight did not refuse a temporary generation: %v %s", err, refused)
 	}
@@ -329,7 +329,7 @@ func scenarioStartupProcesses(t *testing.T) {
 	}
 	stopped(c)
 	exited(t, temporary.PID)
-	success(home, "unic-desktop", "--mode", "lightweight")
+	success(home, "owner", "--lightweight")
 	light = instance(c, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeStandalone })
 	checks = append(checks, "lightweight launcher refuses a CLI-temporary generation and leaves it with its user")
 	// Missing sibling must be detected before stopping an existing service.

@@ -1,0 +1,228 @@
+package e2e
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// Failure inventory is in docs/exec/desktop-process-failures.md. These commands
+// drive native application windows with app-scoped input and a directory board.
+// IPC activation does not establish tray clicks or global shortcut delivery.
+func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
+	return map[string]func(*desktopScenario, []string) error{
+		"role-checkpoint": func(s *desktopScenario, args []string) error {
+			if len(args) != 1 || filepath.Base(args[0]) != args[0] {
+				return errors.New("role-checkpoint name")
+			}
+			return s.nativeRoleCheckpoint(args[0])
+		},
+		"role-open-panel": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("role-open-panel takes no arguments")
+			}
+			if _, err := s.roleCommand("tray", "open-quick-panel"); err != nil {
+				return err
+			}
+			if err := s.selectNativeRole("quick-panel"); err != nil {
+				return err
+			}
+			return s.nativeRoleCheckpoint("panel-open")
+		},
+		"role-panel-copy": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 || s.automation != filepath.Join(s.home, "automation-panel.sock") {
+				return errors.New("role-panel-copy requires the independent panel window")
+			}
+			// Copy closes the panel. Pause recording before that known window gap.
+			s.captureMu.Lock()
+			s.capturePaused = true
+			s.captureMu.Unlock()
+			if err := s.call(s.ctx, "input", map[string]any{"window": s.window, "events": []any{map[string]any{"type": "key", "key": "CmdOrCtrl+C"}}}, nil); err != nil {
+				return err
+			}
+			s.result.Assertions = append(s.result.Assertions, "app-scoped Copy shortcut was delivered to the independent native panel; exact board bytes are asserted separately")
+			return nil
+		},
+		"role-select-gui": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("role-select-gui takes no arguments")
+			}
+			if _, err := s.roleCommand("gui", "activate"); err != nil {
+				return err
+			}
+			return s.selectNativeRole("gui")
+		},
+		"role-close-gui": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("role-close-gui takes no arguments")
+			}
+			if s.nativeRoleBaseline == nil {
+				return errors.New("role-checkpoint must precede GUI close")
+			}
+			s.captureMu.Lock()
+			s.capturePaused = true
+			s.captureMu.Unlock()
+			if _, err := s.roleCommand("gui", "close"); err != nil {
+				return err
+			}
+			select {
+			case err := <-s.appDone:
+				s.appDone <- err
+				if err != nil {
+					return err
+				}
+			case <-time.After(10 * time.Second):
+				return errors.New("GUI process did not exit after close IPC")
+			}
+			if _, err := s.roleCommand("gui", "probe"); err == nil {
+				return errors.New("GUI role endpoint outlived its closed process")
+			}
+			if err := s.checkNativeBackground(); err != nil {
+				return err
+			}
+			s.result.Assertions = append(s.result.Assertions, "IPC close terminated the native GUI OS process while tray and service retained their identities")
+			return s.nativeRoleCheckpoint("gui-closed")
+		},
+		"role-reopen-gui": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("role-reopen-gui takes no arguments")
+			}
+			old, ok := s.nativeRoleBaseline["gui"]
+			if !ok {
+				return errors.New("GUI baseline identity is missing")
+			}
+			if _, err := s.roleCommand("tray", "open-gui"); err != nil {
+				return err
+			}
+			if err := s.selectNativeRole("gui"); err != nil {
+				return err
+			}
+			raw, err := s.roleCommand("gui", "probe")
+			if err != nil {
+				return err
+			}
+			var current desktopRoleIdentity
+			if err = json.Unmarshal(raw, &current); err != nil {
+				return err
+			}
+			if current.PID == old.PID {
+				return errors.New("tray activation retained the closed GUI process")
+			}
+			if err = s.checkNativeBackground(); err != nil {
+				return err
+			}
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("tray IPC recreated native GUI PID %d after old GUI PID %d exited", current.PID, old.PID))
+			return s.nativeRoleCheckpoint("gui-reopened")
+		},
+	}
+}
+
+func (s *desktopScenario) selectNativeRole(role string) error {
+	endpoint := filepath.Join(s.home, "automation.sock")
+	if role == "quick-panel" {
+		endpoint = filepath.Join(s.home, "automation-panel.sock")
+	}
+	return s.wait(func() bool {
+		var out struct {
+			Windows []struct {
+				ID      int
+				Kind    string
+				Visible bool
+			}
+		}
+		if s.callAt(s.ctx, endpoint, "windows", nil, &out) != nil {
+			return false
+		}
+		for _, window := range out.Windows {
+			if window.Kind == "content" && window.Visible {
+				s.captureMu.Lock()
+				s.automation = endpoint
+				s.window = window.ID
+				s.capturePaused = false
+				if role == "gui" {
+					s.mainWindow = window.ID
+				}
+				s.captureMu.Unlock()
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func (s *desktopScenario) checkNativeBackground() error {
+	raw, err := s.roleCommand("tray", "probe")
+	if err != nil {
+		return err
+	}
+	var tray desktopRoleIdentity
+	if err = json.Unmarshal(raw, &tray); err != nil {
+		return err
+	}
+	if baseline, ok := s.nativeRoleBaseline["tray"]; !ok || tray.PID != baseline.PID || tray.StartedAt != baseline.StartedAt {
+		return errors.New("GUI lifecycle changed the tray identity")
+	}
+	service, err := s.client.Service(s.ctx)
+	if err != nil {
+		return err
+	}
+	if service.ID != s.nativeServiceID {
+		return errors.New("GUI lifecycle changed the service generation")
+	}
+	return nil
+}
+
+func (s *desktopScenario) nativeRoleCheckpoint(name string) error {
+	if s.result.Mode != "native" || s.systemClipboard {
+		return errors.New("native role checkpoint requires isolated native directory-board acceptance")
+	}
+	roles := map[string]desktopRoleIdentity{}
+	for _, role := range []string{"tray", "gui", "quick-panel"} {
+		raw, err := s.roleCommand(role, "probe")
+		if err != nil {
+			if role == "tray" {
+				return err
+			}
+			continue
+		}
+		var identity desktopRoleIdentity
+		if err = json.Unmarshal(raw, &identity); err != nil {
+			return err
+		}
+		if identity.PID <= 0 || identity.Role != role || identity.Profile != s.home {
+			return errors.New("native role identity did not match its profile")
+		}
+		roles[role] = identity
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 3*time.Second)
+	defer cancel()
+	service, err := s.client.Service(ctx)
+	if err != nil {
+		return err
+	}
+	seen := map[int]string{service.PID: "unicd"}
+	for role, identity := range roles {
+		if other, ok := seen[identity.PID]; ok {
+			return fmt.Errorf("native roles %s and %s share PID %d", role, other, identity.PID)
+		}
+		seen[identity.PID] = role
+	}
+	if s.nativeRoleBaseline == nil {
+		s.nativeRoleBaseline = roles
+		s.nativeServiceID = service.ID
+	}
+	receipt := map[string]any{"at": time.Now().UTC(), "roles": roles, "service": service, "selected_automation_endpoint": s.automation, "selected_window_id": s.window, "activation": "private role IPC; not a tray click or global shortcut", "input": "application-scoped automation; not physical input", "clipboard": "directory fixture; not system clipboard", "role_start_time_semantics": "role-acquisition timestamp; not kernel creation time"}
+	raw, err := json.MarshalIndent(receipt, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err = os.WriteFile(filepath.Join(s.out, "roles-"+name+".json"), raw, 0600); err != nil {
+		return err
+	}
+	s.result.Assertions = append(s.result.Assertions, "native role checkpoint "+name+" verified distinct OS PIDs and private profile identity")
+	return nil
+}

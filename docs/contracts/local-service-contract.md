@@ -94,8 +94,7 @@ A service restart invalidates all sessions, handles and application tokens.
 The service does not retain a system clipboard lease across restart.
 On reconnect the adapter reads a fresh baseline, does not broadcast that content, and ignores the receipt IDs returned by the service readiness snapshot. A failed receipt snapshot cannot establish readiness.
 The adapter never replays disconnected backlog into the system clipboard.
-A normal desktop exit stops capture/application and its owned service.
-A standalone lightweight service continues network reception and explicit headless submissions without a desktop.
+GUI close terminates only the GUI process. The tray continues capture/application in both normal and lightweight startup modes. Explicit application Quit releases its adapter and stops only its owned service. An independently started standalone service survives Desktop Quit and continues network reception and explicit headless submissions without a desktop.
 
 ## Export and CLI behavior
 
@@ -130,12 +129,11 @@ A launcher does not stop a service whose reported directory differs from its sel
 ### Lifetime modes
 
 - `unicd` (standalone) ignores stdin. CLI commands borrow it and never stop it.
-- `unicd --desktop-owned` reserves stdin for an anonymous parent-lifetime pipe. EOF or a read failure cancels the service, including after abrupt parent death. CLI commands borrow it and never stop it.
+- `unicd --desktop-owned` reserves stdin for an anonymous tray-lifetime pipe. EOF or a read failure cancels the service, including after abrupt parent death. CLI commands borrow it and never stop it.
 - `unicd --cli-temporary` reserves stdin for the launcher's initial ownership pipe and lives while at least one lease exists.
   Any other argument list exits with code 2.
 
-Normal desktop launch restarts any existing service, including a temporary one, and creates a desktop generation.
-Lightweight launch starts or reuses a standalone generation. It refuses a desktop-owned generation and refuses a temporary generation with a clear error. It never adopts a temporary generation.
+Both Desktop modes use the same tray service-acquisition policy. An existing same-profile standalone generation is borrowed without replacement or an owned-service handle. With no service, the tray starts a desktop-owned generation and retains its lifetime pipe. A live desktop-owned generation and a CLI-temporary generation are refused without stopping them. A retiring generation receives a bounded acquisition retry. GUI and quick-panel processes never own this service pipe. Explicit Desktop Quit never stops a borrowed standalone generation.
 A direct `unicd` start meets the exclusive profile lock. It does not take over active temporary clients.
 
 ### Usage leases
@@ -272,7 +270,7 @@ Exact semantics and errors are in the [history search contract](history-search-c
 
 ### Quick-panel host preference
 
-The shared configuration adds `desktop.quick_panel_shortcut`. It defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Accepted values are `Ctrl+` followed by a backtick, `CmdOrCtrl+Shift+Space`, `Ctrl+Alt+V`, `Cmd+Ctrl+V`, and the empty string (disabled). The existing configuration revision check and TOML hot reload apply. The service persists the preference; only the graphical host registers it. Registration failure does not revert the saved configuration and is shown separately from the effective host registration. No target identity, paste status or OS input command enters service DTOs. See the [Desktop quick-panel contract](desktop-quick-panel-contract.md).
+The shared configuration adds `desktop.quick_panel_shortcut`. It defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Accepted values are `Ctrl+` followed by a backtick, `CmdOrCtrl+Shift+Space`, `Ctrl+Alt+V`, `Cmd+Ctrl+V`, and the empty string (disabled). The existing configuration revision check and TOML hot reload apply. The service persists the preference; only the persistent tray process registers it in both Desktop modes. Registration failure does not revert the saved configuration and is shown separately from the effective host registration. No target identity, paste status or OS input command enters service DTOs. See the [Desktop quick-panel contract](desktop-quick-panel-contract.md).
 
 ## Desktop language configuration
 
@@ -301,7 +299,7 @@ See the [source application contract](source-application-contract.md) for captur
 
 ## Desktop tray icon preference
 
-The configuration API exposes `config.desktop.tray_icon` as `glyph` or `cat`. An omitted TOML key uses `glyph`. Revision-checked saves, `unic config set` and direct file reloads use the same enum validation. Invalid values do not replace the previous valid configuration. The service stores the preference and does not render a tray. A running normal Desktop watches the saved configuration and updates its tray image without requiring restart. `desktop.tray_icon` is not a restart-required key.
+The configuration API exposes `config.desktop.tray_icon` as `glyph` or `cat`. An omitted TOML key uses `glyph`. Revision-checked saves, `unic config set` and direct file reloads use the same enum validation. Invalid values do not replace the previous valid configuration. The service stores the preference and does not render a tray. The persistent tray watches the saved configuration in both Desktop modes and updates its image without requiring restart. `desktop.tray_icon` is not a restart-required key.
 
 ## Explicit CLI migration initialization
 

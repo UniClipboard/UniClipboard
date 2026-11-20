@@ -33,7 +33,7 @@ Cases declaring `Environment: disposable-guest` are opt-in. Ordinary runs and CI
 
 The `system-clipboard` case uses the actual production board. It explicitly initializes its private profile through `unic migrate --initialize-empty` with a private XDG discovery directory. It verifies startup baseline exclusion, real Chinese text capture, exact history application and no echo. The separate `system-clipboard-target` case opens a standalone GNOME Text Editor with private XDG configuration, pastes through physical guest input, reads the exact inserted text through AT-SPI and checks saved document bytes against an exact fixture including GtkSourceView's default trailing newline. KDE Spectacle captures the active guest target window, and AT-SPI rechecks its focus. `target-content.txt` and `target-receipt.json` bind the receiving application's content. Key delivery alone cannot pass the target assertion.
 
-`system-clipboard-formats` checks external HTML/PNG/file offers, exact stored and restored payloads, physical Enter and no echo. KDE's additional text alternative must match an external read. `system-clipboard-receive` uses two approved production services but only one native clipboard. `system-wayland-panel` checks automatic-paste refusal, Copy and Escape. `system-window-lifecycle` requires capture while hidden; `system-second-launch` independently checks reopening without replacing the service. Passing the latter cannot override a hidden-capture failure. `system-managed-cleanup` checks a real received-file URI, excluded tags, native clipboard holders, reclamation and preserved user-owned source files. `system-offline-backlog` replaces a normal owner with a standalone service, receives offline history, then reopens Desktop and tests a fresh delivery. It refreshes restarted peer endpoints with real tickets because test profiles disable rendezvous. `system-linux-ui-light` and `system-linux-ui-dark` retain the actual Linux skin in a narrow native window; semantic Chinese field values do not prove IME input.
+`system-clipboard-formats` checks external HTML/PNG/file offers, exact stored and restored payloads, physical Enter and no echo. KDE's additional text alternative must match an external read. `system-clipboard-receive` uses two approved production services but only one native clipboard. `system-wayland-panel` checks automatic-paste refusal, Copy and Escape. `system-window-lifecycle` requires tray capture after the GUI process exits; `system-second-launch` independently checks GUI process recreation without replacing the service. Passing the latter cannot override a background-capture failure. The recorder pauses while no GUI process exists and resumes with the recreated window; actual frame timestamps retain that gap. `system-managed-cleanup` checks a real received-file URI, excluded tags, native clipboard holders, reclamation and preserved user-owned source files. `system-offline-backlog` replaces a normal owner with a task-owned standalone service, receives offline history, then reopens Desktop, verifies reuse of that service and tests a fresh delivery. The harness releases its standalone service after the assertions. It refreshes restarted peer endpoints with real tickets because test profiles disable rendezvous. `system-linux-ui-light` and `system-linux-ui-dark` retain the actual Linux skin in a narrow native window; semantic Chinese field values do not prove IME input.
 
 For a QEMU VM registered in UTM, run the host-side input adapter after exporting the reviewed source and installing the repository Go toolchain and existing dependencies in an owned guest workspace:
 
@@ -120,3 +120,39 @@ The [Desktop E2E contract](../../../docs/contracts/desktop-e2e-contract.md) defi
 ### Tray style parity
 
 `make desktop-e2e CASE=tray-icon-settings` drives the real settings composition through the software tester, production unicd/CLI processes and the production configuration watcher. It observes generated PNGs at the tray image API boundary and verifies both styles, persistence, immediate delivery, invalid-value rejection, duplicate suppression, repaint and failed-delivery retry. It opens no native window. Its receipt does not establish OS-tray visibility, native menu preservation or actual theme notification delivery.
+
+### Independent Desktop processes
+
+`make desktop-e2e CASE=desktop-processes` executes the production Desktop entry
+with a build-tagged nonvisual host. Tray, GUI, quick panel and unicd run in
+separate OS processes. The case covers first-install setup gating, saved
+lightweight and normal modes, repeated GUI termination and recreation, concurrent
+activation, quick-panel persistence without a GUI, exact adapter writeback,
+history echo suppression, foreign-profile and executable rejection, UI and
+service crashes, tray recovery, and explicit ownership-aware shutdown. It also
+refuses an active CLI-temporary service without replacing it.
+
+Every control command runs through the same Desktop executable and private role
+transport. The receipt records role PIDs, role-acquisition timestamps, launcher
+timestamps, service generations and executable hashes. Role acquisition time is
+not a kernel process creation timestamp. The canonical report binds the frozen
+source and retained receipt through SHA256SUMS. Replay with the same case command.
+Native tray visibility, global shortcut delivery, target focus and actual paste
+insertion remain separate native acceptance requirements.
+
+The older `startup-lifecycle` case now exercises the service lifecycle primitive
+through its nonvisual owner fixture. Its service-only lightweight helper is not
+the product's Desktop lightweight mode. Use `desktop-processes` for the product
+launcher and process-role behavior.
+
+`make desktop-e2e CASE=desktop-native-processes` exercises native GUI and panel
+windows across separate OS processes. It opens the panel through private tray
+IPC, sends app-scoped Copy, checks exact directory-board bytes, closes the GUI
+process, and recreates a new GUI through tray IPC. The receipt records distinct
+role PIDs, service generation and selected automation endpoints. Screenshots and
+continuously sampled window-content recording remain required. Known periods
+without a visible selected window pause capture and retain the real frame-time
+gap. Cleanup observes current GUI, panel and tray process exit as well as private
+endpoint removal. Windows binds process handles before Quit; the observer never
+terminates a process. This case does not exercise a native tray click, global
+shortcut delivery, physical input, OS paste insertion or the system clipboard.

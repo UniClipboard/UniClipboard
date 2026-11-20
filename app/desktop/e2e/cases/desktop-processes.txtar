@@ -1,0 +1,11 @@
+# Case: Independent Desktop role processes
+# Mode: process
+# Purpose: Lightweight restart retains a tray and independently recreates GUI and quick-panel processes.
+# Steps:
+#   Start the production role launcher in an isolated nonvisual process fixture, reopen and close each UI role, then verify durable state and cleanup.
+# Expected:
+#   Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running.
+# Forbidden:
+#   Resident hidden GUI, shared role PID, duplicate owners, foreign-profile activation, lost state, leaked processes, or native acceptance claims.
+
+acceptance startup desktop-processes

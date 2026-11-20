@@ -5,7 +5,7 @@
 # Steps:
 #   Pair an owned peer; quit Desktop; run the same profile as a standalone service; receive text; reopen normal Desktop; then deliver fresh text.
 # Expected:
-#   The standalone service receives history without touching the clipboard; Desktop replaces it, retains history and preserves the existing clipboard baseline; fresh text subsequently applies without echo.
+#   The standalone service receives history without touching the clipboard; Desktop reuses that independent service, retains history and preserves the existing clipboard baseline; fresh text subsequently applies without echo.
 # Forbidden:
 #   Old backlog auto-application, an uninitialized profile, discarded history, parallel clipboard owners or host clipboard access.
 

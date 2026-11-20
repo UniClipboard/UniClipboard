@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
+	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 )
 
@@ -19,6 +20,8 @@ func main() {
 	requested := flag.Bool("requested", false, "requested login state")
 	retry := flag.Bool("retry", false, "retry login registration")
 	fail := flag.Bool("fail", false, "simulate native registration rejection")
+	acquire := flag.Bool("acquire", false, "acquire service without replacing standalone ownership")
+	lightweight := flag.Bool("lightweight", false, "exercise legacy standalone service primitive without a graphical host")
 	flag.Parse()
 	dir, err := paths.Dir()
 	if err != nil {
@@ -50,6 +53,16 @@ func main() {
 		}
 		return
 	}
+	if *lightweight {
+		path, err := paths.Config()
+		if err == nil {
+			_, err = config.Open(path, func(string, ...any) {})
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
 	socket, err := paths.Socket()
 	if err != nil {
 		panic(err)
@@ -60,12 +73,27 @@ func main() {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	process, err := lifecycle.Start(ctx, dir, socket, executable, true)
+	var process *lifecycle.Process
+	if *acquire {
+		process, err = lifecycle.AcquireService(ctx, dir, socket, executable)
+	} else {
+		process, err = lifecycle.Start(ctx, dir, socket, executable, !*lightweight)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	fmt.Println("ready")
+	if *lightweight {
+		return
+	}
+	if *acquire {
+		fmt.Printf("owned=%t\n", process != nil)
+	}
+	if process == nil {
+		<-ctx.Done()
+		return
+	}
 	select {
 	case <-ctx.Done():
 	case <-process.Done():

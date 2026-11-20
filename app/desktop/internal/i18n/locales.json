@@ -3940,5 +3940,23 @@
     "ja": "外部プラグイン",
     "pt-BR": "Plugins externos",
     "ru": "Внешние плагины"
+  },
+  "退出整个应用": {
+    "en": "Quit application",
+    "ja": "アプリケーションを終了",
+    "pt-BR": "Sair do aplicativo",
+    "ru": "Выйти из приложения"
+  },
+  "下次启动时生效。轻量模式保留托盘和同步服务。": {
+    "en": "Applies on next launch. Lightweight mode keeps the tray and sync service.",
+    "ja": "次回の起動時に適用します。軽量モードでもトレイと同期サービスは動作します。",
+    "pt-BR": "Aplica na próxima inicialização. O modo leve mantém a bandeja e o serviço de sincronização.",
+    "ru": "Применяется при следующем запуске. Облегчённый режим сохраняет значок и службу синхронизации."
+  },
+  "下次常规启动时不创建主窗口。": {
+    "en": "Do not create the main window on the next normal launch.",
+    "ja": "次回の通常起動時にメインウィンドウを作成しません。",
+    "pt-BR": "Não criar a janela principal na próxima inicialização normal.",
+    "ru": "Не создавать главное окно при следующем обычном запуске."
   }
 }

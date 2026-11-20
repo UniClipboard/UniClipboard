@@ -9,6 +9,7 @@ paths:
   - internal/servicelifecycle
   - internal/servicelaunch
   - app/desktop/internal/lifecycle
+  - app/desktop/internal/desktopprocess
   - app/desktop/internal/setupflow
   - app/desktop/internal/setupui
   - app/desktop/internal/quickpanel
@@ -31,7 +32,7 @@ All programs expose `--version --json` before configuration and host initializat
 
 The product has three runtime programs and two development distributions.
 `unic` is a command-line client. `unicd` is the Engine owner and local service.
-`unic-desktop` owns mygo, the UI Kit, system clipboard, tray and notifications.
+`unic-desktop` provides three independent OS processes from one executable: tray, GUI and quick panel. The tray owns system integration; the GUI and quick panel own their respective views. `unicd` remains a fourth, UI-free process.
 The headless distribution includes `unic` and `unicd`.
 The desktop distribution includes those same binary files plus `unic-desktop`.
 Both archives expose `uniclip` as an alias of `unic`.
@@ -43,8 +44,11 @@ Neither headless program imports the desktop application or a UI toolkit, direct
 
 ```text
 unic ------------+-- local IPC -- unicd -- Engine / history / plugins / network
-unic-desktop ----+
-      +-- mygo / UI Kit / system clipboard / tray / notifications
+unic-desktop --role tray -- adapter IPC --+
+      +-- clipboard / shortcut / notifications
+unic-desktop --role gui -------- local IPC -- unicd
+unic-desktop --role quick-panel --+
+      +-- target checks / focus / paste; clipboard writes delegate to tray
 ```
 
 The service accepts explicit text, PNG and file-reference submissions without a clipboard observation epoch.
@@ -60,9 +64,7 @@ A missing adapter is normal. Observe and Apply are `unavailable` until an adapte
 Generation expiry releases owned leases and disables clipboard command dispatch.
 The adapter session expires after ten seconds without renewal; the client sends heartbeats every two seconds.
 A local launch key suppresses duplicate startup analytics across ready retries and reconnects. It is not an adapter credential and never enters telemetry.
-Closing the main window leaves the adapter running. Explicit desktop quit stops the adapter.
-In normal mode the desktop owns the service lifetime. Desktop exit also stops that service.
-In lightweight mode only the standalone service remains; it receives and stores content without a desktop.
+Closing the main window terminates the GUI process and leaves the tray adapter running. Explicit application Quit stops the tray adapter and the UI roles. In both startup modes, the tray adopts an existing standalone service without taking ownership, or starts a service through its own lifetime pipe. Quit stops only the service owned by that tray. Lightweight startup keeps the tray and service without creating a GUI after setup.
 
 ## Command surface and temporary transfer
 
@@ -91,8 +93,7 @@ A launcher holds initial ownership through an anonymous stdin pipe until its fir
 There is no idle timeout, durable counter or configuration setting.
 
 Acquisition shares one profile transition lock (`service-transition.lock`) with desktop startup. It covers probing, launch and lease admission. The service serializes last release and new admission with its own internal lock. Commands do not hold the transition lock while business work runs.
-The normal desktop may replace a temporary generation. The affected command reports the interruption and never repeats a write.
-Lightweight desktop startup refuses a temporary generation; it is not promoted.
+Desktop startup refuses a CLI-temporary generation and leaves its clients running. It never promotes or replaces that generation. Retry after the command retires its temporary service.
 
 Commands that start a paired-device send observe only their own Engine operation and report `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted` or `none`. An operation-query error returns a command error without a send report; it does not prove that the local commit failed.
 Pairing approval, `device add` without an argument, and `dev logs level --for` hold a temporary generation for a bounded, announced window.
@@ -124,9 +125,10 @@ credentials, databases or history. See section 12 of the
 ## Invariants
 
 - One state directory has one service, one Engine identity and one history database.
-- A normal desktop launch replaces an existing service for that directory before attaching the adapter.
-- Normal desktop exit, termination or abrupt process death closes its service owner pipe.
-- A lightweight launch leaves only a standalone service and reuses an existing standalone generation.
+- A tray adopts an existing standalone service without stopping or owning it.
+- A tray starts a desktop-owned service only when no service owns the profile. Tray exit or abrupt death closes that service owner pipe.
+- Normal and lightweight modes retain the tray. GUI close terminates only the GUI process.
+- GUI and quick-panel processes never acquire a second clipboard adapter or register a global shortcut.
 - CLI and desktop access the service through shared local DTOs and clients.
 - The CLI does not launch a GUI or silently replace system clipboard reads with history reads.
 - A CLI command stops only a temporary generation whose last lease it released. It never stops a standalone or desktop-owned service.
@@ -144,13 +146,14 @@ credentials, databases or history. See section 12 of the
 | `app/service/cmd/unic` | CLI, streams and explicit export |
 | `app/service/cmd/unicd` | Headless lifecycle and socket server |
 | `app/service/internal/host` | Engine assembly, session ownership, local request handling |
-| `app/desktop/cmd/unic-desktop` | GUI, tray, notifications and adapter startup |
+| `app/desktop/cmd/unic-desktop` | Launcher and independent tray, GUI and quick-panel roles |
+| `app/desktop/internal/desktopprocess` | Profile-scoped role locks, private activation IPC and OS peer executable verification |
 | `app/desktop/internal/board` | Native mygo clipboard access |
 | `app/desktop/internal/quickpanel` | Desktop-only target sessions, adapter-write receipts, native paste and global-shortcut ownership |
 | `app/service/internal/server` | Service-owned HTTP routes and socket listener |
 | `internal/localapi` | Shared protocol DTOs and clients |
 | `internal/localconfig`, `internal/localpaths` | Shared local configuration and state paths |
-| `app/desktop/internal/lifecycle` | Serialized service replacement, parent pipe and saved login intent |
+| `app/desktop/internal/lifecycle` | Serialized service acquisition, parent pipe and saved login intent |
 | `internal/servicelifecycle` | Generation, lifetime mode, usage leases and owner EOF detection |
 | `internal/servicelaunch` | Sibling resolution, transition lock, detached process setup and readiness wait shared by launchers |
 | `app/service/cmd/unic/session.go` | CLI service acquisition, launch, release and lazy request transport |
@@ -173,7 +176,7 @@ See the [local service contract](../contracts/local-service-contract.md),
 
 Native macOS, Windows and Linux clipboard acceptance remains separate from process fixtures.
 The development archive builder does not supply signed platform installers, standalone service-manager registration or store publication. Separate Desktop format construction does not establish those release gates.
-The normal desktop registers login startup through mygo. macOS requires an application bundle.
+The tray registers login startup through mygo. macOS requires an application bundle.
 The flat development binary archives are not macOS application bundles. The production Desktop stager constructs a macOS bundle, but signing/notarization acceptance and a selected public CLI lock remain open.
 A temporary service gives no continuous reception between CLI invocations; run `unicd` or the desktop for that.
 Temporary transfer has no GUI entry. This follow-up remains separate from the archived command-surface and host implementation. The page's reply (`push`) is not supported. The production code service for `uc-web-try` tickets is not verified; links work without it.
@@ -204,38 +207,22 @@ The live binding and acceptance boundary are described in [repository overview](
 
 The shared `config.toml` has a `[desktop]` section. Engine does not consume it.
 `language = "zh-CN"` selects the default desktop language. Supported alternatives are `en`, `ja`, `pt-BR` and `ru`. Language changes apply through normal configuration refresh without a restart. See [desktop languages](overview.md#desktop-languages).
-`mode = "normal"` is the default. `mode = "lightweight"` selects service-only startup.
-`launch_at_login = false` and `start_in_background = false` are the defaults.
-Mode and background changes apply on the next launch. Normal background startup creates its window with `Hidden: true` after setup completion. First-install setup remains visible. Lightweight mode retains service-only startup without a GUI setup gate.
-The tray action and a second normal launch show the window. Closing the window hides it; explicit Quit ends the process and its owned service.
-`unic-desktop --mode normal|lightweight` overrides the mode for that launch without changing the file.
-Use `--mode normal` to reopen settings after selecting lightweight mode.
-`unic-desktop-demo` is the independent layout fixture command and does not manage a service. Production `unic-desktop` has no demo dependency or `--demo` mode.
+`mode = "normal"` is the default. Established normal profiles create a GUI unless `start_in_background = true`. `mode = "lightweight"` keeps the tray and service without creating a GUI. Background startup also omits the GUI process. Fresh or pending setup always creates the GUI in either mode before runtime admission. `launch_at_login = false` and `start_in_background = false` are the defaults. Mode and background changes apply to the next launch.
 
-The launcher resolves `unicd` beside its own executable. Both programs must be installed together.
-A profile-scoped startup file lock serializes replacement and readiness checks.
-Before replacement, the launcher validates the sibling executable and checks the service directory through the private socket.
-It stops only the observed random service generation and waits for socket removal after Engine closes.
-An unknown listener, mismatched directory or failed replacement aborts startup.
-The new service must report the launched PID and ownership mode before startup succeeds.
-If an earlier service is still releasing the directory after its listener closed, the launcher retries
-only the directory-in-use exit code within a 30-second startup deadline. Other startup failures return immediately.
-The normal service watches stdin, which is an exclusive anonymous parent pipe.
-Normal exit closes the pipe and waits for bounded graceful shutdown; a forced desktop kill closes it in the kernel.
-The service cancels its runtime on EOF. Lightweight services do not watch stdin.
-A normal desktop exits when its owned service terminates. It does not silently adopt a different service generation.
-Lightweight startup refuses an existing normal-owned service until the normal desktop exits.
+The tray's Open main window command always starts or activates the GUI, including lightweight mode. Closing the GUI terminates its process and releases its renderer and subscriptions. The quick-panel process starts on its first request and remains hidden between requests. It owns no adapter or global shortcut. Explicit application Quit closes both UI roles, unregisters the shortcut, releases the adapter and stops only a tray-owned service. Running `unicd` alone supplies no tray, shortcut or clipboard adapter.
 
-A running normal desktop watches configuration changes and applies changed login intent through
-`mygo.App.SetOpenAtLogin`. `mygo.App.OpenAtLogin` supplies actual system status separately.
-The profile-local `desktop-login.json` receipt records successfully applied intent.
-Unchanged intent never reverses an external system disable; the user can explicitly retry in Settings.
-A failed operation does not update the receipt and the GUI displays an application error.
-CLI configuration state describes saved intent; native login application errors and actual status are displayed by the desktop.
-When no normal desktop is running, a login-setting change waits for the next normal desktop session.
-The built-in native login API cannot preserve custom `UNIC_HOME` or `UNIC_SOCK` overrides, so enabling registration with either override is rejected.
-The login entry starts the same desktop executable, which reads the saved mode and leaves only `unicd` in lightweight mode.
-See the [startup acceptance receipt](../exec/desktop-startup-lifecycle.md).
+`unic-desktop --mode normal|lightweight` overrides that launch without changing the saved mode. The no-role entry starts or contacts the tray, then requests startup behavior. Internal `--role tray|gui|quick-panel` entries use the same executable. `unic-desktop-demo` remains an independent fixture and manages no service.
+
+The launcher resolves `unicd` beside its executable. A profile transition lock serializes service acquisition. The tray validates the sibling and service directory before acquisition. It adopts an existing standalone generation and returns no owned-service handle. A live desktop-owned or CLI-temporary generation is refused. With no service, the tray starts `unicd --desktop-owned`, verifies PID, directory and ownership mode, and retains the exclusive stdin lifetime pipe. Only directory-in-use exits from a retiring service receive a bounded retry. Unknown listeners and mismatched profiles are never stopped or unlinked.
+
+Role ownership uses live kernel locks and private IPC rather than PID files. Unix endpoints are owner-only sockets in a private per-user runtime directory. Windows endpoints are named pipes restricted to the current user SID. Requests bind the canonical profile, role, executable path and SHA-256. The transport verifies the peer PID and executable through the OS. A different profile, installation or executable build cannot activate an existing role. Runtime state stays profile-scoped; Engine remains the only history owner.
+
+A GUI or quick-panel crash leaves tray integration active. The next request creates the missing UI role. A tray crash releases its native registrations and closes its owned-service pipe. Existing UI clients reconnect after a later desktop launch recreates the tray. Service recovery renews the adapter session and establishes a fresh clipboard baseline; it never applies disconnected backlog. See the [process design](../exec/desktop-process-design.md) for ownership and failure policy. Native focus, tray clicks and receiving-application paste require separate platform evidence.
+
+Migration pauses tray integration and closes the quick panel before offline import. Tray admission serializes pause with panel activation and persists pending setup before import. It stops only its owned service; an independent service blocks migration. Completion requires explicit entry and a ready service. Cancellation keeps the pending setup marker.
+
+The tray watches changed login intent through `mygo.App.SetOpenAtLogin`; `mygo.App.OpenAtLogin` supplies actual OS status separately. Its product name and login identity remain stable across roles. Internal profile propagation does not turn the default profile into a custom login configuration. User-selected custom profiles remain unsupported by the native login API. macOS requires an application bundle. The profile-local `desktop-login.json` records successfully applied intent. Unchanged intent preserves an external system disable; explicit retry can reapply it. A failure retains the prior receipt and remains visible in the GUI. Changes made without a tray wait for the next tray session. The login entry runs the same no-role launcher and reads the saved mode.
+See the [startup acceptance receipt](../exec/desktop-startup-lifecycle.md). Native login execution remains a separate acceptance gate.
 
 The container-based production acceptance job trusts only its checked-out repository path before building. Go VCS stamping remains enabled. The acceptance manifest continues to record source and executable hashes.
 

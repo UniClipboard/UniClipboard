@@ -7,6 +7,8 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
+| [desktop-native-processes](#desktop-native-processes) | native | Verify independent GUI, quick-panel, tray and service processes through native windows with an isolated directory clipboard. |
+| [desktop-processes](#desktop-processes) | process | Lightweight restart retains a tray and independently recreates GUI and quick-panel processes. |
 | [event-wakeup](#event-wakeup) | process | Exercise actual service events, content completions and recovery through stopped production renderers. |
 | [first-install-setup](#first-install-setup) | process | Verify setup persistence and migration with real Engine, SQLite and a service process. |
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
@@ -48,9 +50,9 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [system-linux-ui-light](#system-linux-ui-light) | native | Inspect the real Linux skin, Chinese glyphs, search focus, menu and 600-point layout in light appearance. |
 | [system-managed-cleanup](#system-managed-cleanup) | native | Verify managed received files and native clipboard leases under unified cleanup. |
 | [system-offline-backlog](#system-offline-backlog) | native | Separate persistent offline history from fresh native clipboard delivery. |
-| [system-second-launch](#system-second-launch) | native | Isolate second-launch activation from the separately tested hidden-window capture requirement. |
+| [system-second-launch](#system-second-launch) | native | Isolate second-launch activation from the separately tested capture without GUI requirement. |
 | [system-wayland-panel](#system-wayland-panel) | native | Verify understandable automatic-paste refusal, preserved Copy and physical Escape dismissal on Wayland. |
-| [system-window-lifecycle](#system-window-lifecycle) | native | Verify that closing the native main window preserves capture and second launch reopens the existing owner. |
+| [system-window-lifecycle](#system-window-lifecycle) | native | Verify that closing the native main window preserves tray capture and second launch creates a new GUI process. |
 | [tag-editor](#tag-editor) | view | V1-style inline tag creation, five swatches, removable tinted chips and shared Sheet colors. |
 | [tag-fixed-columns](#tag-fixed-columns) | view | Tag-table fixed-column geometry across skins and themes. |
 | [tag-manager-platforms](#tag-manager-platforms) | view | Tag management and separate entry assignment across all three skins. |
@@ -260,6 +262,49 @@ Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS
 
 ```text
 acceptance desktopui data-binding
+```
+
+## desktop-native-processes
+
+Independent native Desktop windows and process lifetimes
+
+Steps: Record role identities; request the panel through tray IPC; copy real service history through the native panel; close the GUI process; reopen it through tray IPC and inspect the new process and window.
+
+Expected: Every role has a distinct PID; panel Copy writes exact directory-board bytes; GUI close terminates its process; tray and service remain; tray IPC creates a new native GUI process with retained history.
+
+Forbidden: System clipboard access, physical input, native tray-click claims, global shortcut claims, hidden resident GUI, shared role PIDs, missing screenshots or missing continuous sampled-window recording.
+
+```text
+start
+submit native-role-content 'Desktop independent native process copy'
+ui-wait listItem 'Desktop independent native process copy'
+role-checkpoint started
+screenshot main-started
+role-open-panel
+ui-wait button '历史：Desktop independent native process copy'
+screenshot independent-panel
+role-panel-copy
+board-equals 'Desktop independent native process copy'
+role-select-gui
+screenshot panel-copy-applied
+role-close-gui
+role-reopen-gui
+ui-wait listItem 'Desktop independent native process copy'
+screenshot recreated-gui
+```
+
+## desktop-processes
+
+Independent Desktop role processes
+
+Steps: Start the production role launcher in an isolated nonvisual process fixture, reopen and close each UI role, then verify durable state and cleanup.
+
+Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running.
+
+Forbidden: Resident hidden GUI, shared role PID, duplicate owners, foreign-profile activation, lost state, leaked processes, or native acceptance claims.
+
+```text
+acceptance startup desktop-processes
 ```
 
 ## event-wakeup
@@ -1117,7 +1162,7 @@ Environment: disposable guest; explicit GUEST=<VM UUID> required.
 
 Steps: Pair an owned peer; quit Desktop; run the same profile as a standalone service; receive text; reopen normal Desktop; then deliver fresh text.
 
-Expected: The standalone service receives history without touching the clipboard; Desktop replaces it, retains history and preserves the existing clipboard baseline; fresh text subsequently applies without echo.
+Expected: The standalone service receives history without touching the clipboard; Desktop reuses that independent service, retains history and preserves the existing clipboard baseline; fresh text subsequently applies without echo.
 
 Forbidden: Old backlog auto-application, an uninitialized profile, discarded history, parallel clipboard owners or host clipboard access.
 
@@ -1138,27 +1183,28 @@ screenshot reopened-after-offline-backlog
 
 ## system-second-launch
 
-Native second launch reopens the original window
+Native second launch recreates the GUI process
 
 Environment: disposable guest; explicit GUEST=<VM UUID> required.
 
-Steps: Close the focused task main window through physical Alt+F4; launch the same application identity; inspect the original window and service generation.
+Steps: Close the focused task main window through physical Alt+F4; launch the same application identity; inspect the new GUI process and service generation.
 
-Expected: The second process exits successfully; the original service generation and window remain; fresh capture works after reopening; explicit Quit cleans both processes.
+Expected: The second process exits successfully; the service generation remains and a new GUI process opens; fresh capture works after reopening; explicit Quit cleans the GUI, tray and owned service.
 
-Forbidden: Claims that reopening proves capture while hidden, unrelated application activation or duplicate service owners.
+Forbidden: Claims that reopening proves capture while the GUI process is absent, unrelated application activation or duplicate service owners.
 
 ```text
 system-board-write 'UNIC-D second launch baseline'
 start
 system-key Alt+F4
+# Main-window close now means that the GUI process has exited.
 system-window unic hidden
 system-second-launch
 system-window unic visible
 system-board-write 'UNIC-D second launch reopened 中文'
 ui-wait listItem 'UNIC-D second launch reopened 中文'
 history-count 1
-screenshot original-window-reopened
+screenshot recreated-gui
 ```
 
 ## system-wayland-panel
@@ -1208,9 +1254,9 @@ Real guest close, background capture and second launch
 
 Environment: disposable guest; explicit GUEST=<VM UUID> required.
 
-Steps: Close the focused owned main window through physical Alt+F4, offer fresh text while hidden, launch the same application identity again, then reopen history and quit at cleanup.
+Steps: Close the focused owned main window through physical Alt+F4, offer fresh text while the GUI process is absent, launch the same application identity again, then reopen history and quit at cleanup.
 
-Expected: The hidden main window retains its service and captures exact fresh content; second launch exits and preserves the service generation; the original window becomes visible; explicit Quit reaps the owner and service.
+Expected: The tray retains its service and captures exact fresh content after the GUI exits; second launch exits and preserves the service generation; the new GUI process becomes visible; explicit Quit reaps the owner and service.
 
 Forbidden: Closing unrelated applications, replacing the active service, or treating a process fixture as a native close.
 
@@ -1218,13 +1264,14 @@ Forbidden: Closing unrelated applications, replacing the active service, or trea
 system-board-write 'UNIC-D lifecycle startup baseline'
 start
 system-key Alt+F4
+# Main-window close now means that the GUI process has exited.
 system-window unic hidden
-system-board-write 'UNIC-D capture while main hidden 中文'
+system-board-write 'UNIC-D capture while GUI absent 中文'
 history-count 1
 system-second-launch
 system-window unic visible
-ui-wait listItem 'UNIC-D capture while main hidden 中文'
-screenshot reopened-existing-owner
+ui-wait listItem 'UNIC-D capture while GUI absent 中文'
+screenshot recreated-gui
 ```
 
 ## tag-editor

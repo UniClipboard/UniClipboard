@@ -1,0 +1,105 @@
+//go:build desktop_e2e
+
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"sync"
+
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
+	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
+	config "github.com/uniclipboard/unic/internal/localconfig"
+	paths "github.com/uniclipboard/unic/internal/localpaths"
+)
+
+// Only the canonical E2E build can replace native event loops. Role IPC,
+// processes, service ownership, adapter protocol and persistence stay real.
+func init() {
+	if os.Getenv("UNIC_DESKTOP_E2E_PROCESS_FIXTURE") == "1" {
+		runRole = runProcessFixture
+	}
+}
+func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error {
+	ctx, cancel := roleContext()
+	defer cancel()
+	dir, err := paths.Dir()
+	if err != nil {
+		return err
+	}
+	if role == desktopprocess.Tray {
+		r, err := newTrayRuntime(ctx, cancel, settings)
+		if err != nil {
+			return err
+		}
+		close(r.nativeReady)
+		owner, err := desktopprocess.Acquire(ctx, dir, role, r.handler)
+		if errors.Is(err, desktopprocess.ErrRunning) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		defer func() { _ = owner.Close() }()
+		defer r.close()
+		r.mu.Lock()
+		r.state.Shortcut = shortcutStatus{Requested: settings.Current().Desktop.QuickPanelShortcut}
+		r.mu.Unlock()
+		flow, err := setupflow.Open(dir)
+		if err != nil {
+			return err
+		}
+		if !flow.Required() {
+			if err = r.start(ctx, false); err != nil {
+				return err
+			}
+		}
+		go r.supervise()
+		<-ctx.Done()
+		return nil
+	}
+	if role != desktopprocess.GUI && role != desktopprocess.QuickPanel {
+		return errors.New("unknown desktop role")
+	}
+	var mu sync.Mutex
+	visible := role == desktopprocess.GUI
+	handler := func(ctx context.Context, command string, _ json.RawMessage) (any, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		flow, err := setupflow.Open(dir)
+		if err != nil {
+			return nil, err
+		}
+		switch command {
+		case "status":
+			return roleStatus{Ready: !flow.Required(), SetupRequired: flow.Required(), Visible: visible}, nil
+		case "activate":
+			visible = true
+			return nil, nil
+		case "close":
+			visible = false
+			if role == desktopprocess.GUI {
+				return desktopprocess.ReplyAfter(nil, cancel), nil
+			}
+			return nil, nil
+		case "quit":
+			return desktopprocess.ReplyAfter(nil, cancel), nil
+		case "complete-setup":
+			return nil, desktopprocess.Call(ctx, dir, desktopprocess.Tray, "start-runtime", nil, nil)
+		default:
+			return nil, errors.New("unknown fixture role command")
+		}
+	}
+	owner, err := desktopprocess.Acquire(ctx, dir, role, handler)
+	if errors.Is(err, desktopprocess.ErrRunning) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer func() { _ = owner.Close() }()
+	<-ctx.Done()
+	return nil
+}

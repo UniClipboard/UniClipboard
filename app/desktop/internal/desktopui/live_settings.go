@@ -68,13 +68,13 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 			})
 		})
 		group("startup", d.tr("启动与运行模式"), func() {
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("运行模式"), Description: d.tr("下次启动时生效。")}, nil, func() {
+			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("运行模式"), Description: d.tr("下次启动时生效。轻量模式保留托盘和同步服务。")}, nil, func() {
 				if k.Select(c, uikit.SelectProps{Label: d.tr("运行模式"), Value: &cfg.Desktop.Mode, Disabled: l.busy, Items: []uikit.SelectItem{{Value: "normal", Label: d.tr("常规模式")}, {Value: "lightweight", Label: d.tr("轻量模式")}}}).Changed {
 					changed = true
 				}
 			})
 			toggle("startup", d.tr("登录时启动"), d.tr("登录系统后自动启动。"), &cfg.Desktop.LaunchAtLogin)
-			toggle("background", d.tr("后台启动"), d.tr("下次常规启动时隐藏主窗口。"), &cfg.Desktop.StartInBackground)
+			toggle("background", d.tr("后台启动"), d.tr("下次常规启动时不创建主窗口。"), &cfg.Desktop.StartInBackground)
 			if l.loginStatus != nil {
 				enabled, message := l.loginStatus()
 				label := d.tr("系统登录启动已关闭")

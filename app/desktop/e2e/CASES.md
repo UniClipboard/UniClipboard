@@ -1577,10 +1577,12 @@ screenshot custom-history
 [windows] windows-frame custom-history-os custom
 ui-key 'CmdOrCtrl+,'
 ui-wait switch '使用系统边框'
+ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
 config-equals desktop.system_window_frame true
 restart-clear
 ui-wait text '部分设置将在下次启动时生效。'
+ui-reveal text '部分设置将在下次启动时生效。'
 [windows] ui-wait button '最小化'
 screenshot saved-pending
 role-close-gui
@@ -1594,10 +1596,12 @@ screenshot system-history
 ui-key 'CmdOrCtrl+,'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
+ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
 config-equals desktop.system_window_frame false
 restart-clear
 ui-wait text '部分设置将在下次启动时生效。'
+ui-reveal text '部分设置将在下次启动时生效。'
 role-close-gui
 role-reopen-gui
 ui-wait listItem 'Windows chrome synthetic history'
@@ -1645,10 +1649,12 @@ screenshot custom-history
 [windows] windows-frame custom-history-os custom
 ui-key 'CmdOrCtrl+,'
 ui-wait switch '使用系统边框'
+ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
 config-equals desktop.system_window_frame true
 restart-clear
 ui-wait text '部分设置将在下次启动时生效。'
+ui-reveal text '部分设置将在下次启动时生效。'
 [windows] ui-wait button '最小化'
 screenshot saved-pending
 role-close-gui
@@ -1662,10 +1668,12 @@ screenshot system-history
 ui-key 'CmdOrCtrl+,'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
+ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
 config-equals desktop.system_window_frame false
 restart-clear
 ui-wait text '部分设置将在下次启动时生效。'
+ui-reveal text '部分设置将在下次启动时生效。'
 role-close-gui
 role-reopen-gui
 ui-wait listItem 'Windows chrome synthetic history'

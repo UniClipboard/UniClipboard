@@ -402,6 +402,25 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			}
 			return s.call(s.ctx, "act", map[string]any{"window": s.window, "id": node.ID, "action": "setValue", "text": a[2]}, nil)
 		},
+		"ui-reveal": func(s *desktopScenario, a []string) error {
+			if len(a) != 2 {
+				return errors.New("ui-reveal role label")
+			}
+			node, err := s.find(a[0], a[1])
+			if err != nil {
+				return err
+			}
+			if err := s.call(s.ctx, "act", map[string]any{"window": s.window, "id": node.ID, "action": "scrollIntoView"}, nil); err != nil {
+				return err
+			}
+			return s.wait(func() bool {
+				node, err := s.find(a[0], a[1])
+				if err != nil {
+					return false
+				}
+				return node.Bounds.Y >= 0 && (s.windowHeight == 0 || node.Bounds.Y+node.Bounds.Height <= float64(s.windowHeight))
+			})
+		},
 		"ui-click": func(s *desktopScenario, a []string) error {
 			if len(a) != 2 {
 				return errors.New("ui-click role label")

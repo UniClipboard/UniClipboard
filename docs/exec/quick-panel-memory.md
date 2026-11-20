@@ -237,3 +237,7 @@ settle and let the tray recreate it. The shortcut/lifecycle paragraph of the [qu
 contract](../contracts/desktop-quick-panel-contract.md) currently requires it to
 remain hidden between requests. A decision was requested before changing that
 contract. The contract and current role/window lifetimes remain unchanged here.
+
+Further allocation/texture ownership evidence is recorded in the
+[root-cause follow-up](quick-panel-root-cause.md). It does not turn this candidate
+into accepted sustained-memory delivery.

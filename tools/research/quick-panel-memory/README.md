@@ -56,3 +56,28 @@ under ignored output. It removes owned guest processes and private profiles.
 Remove each owned stage after comparison. Retain only compact aggregate receipts,
 source/program identities, frame hashes and SHA256SUMS in project documentation;
 never submit programs, databases, source exports or raw logs.
+
+## Root-cause diagnostics (not production optimization)
+
+Use `prepare.py --attribution` for a task-private copy of the pinned mygo module.
+The shared module cache and product go.mod remain unchanged. The private copy
+records weak Go owners for uploaded D3D11 images and a weak renderer registry.
+GPU counters describe base RGBA texture payload, not driver allocation/residency.
+The build identity hashes all injected files and the patched renderer.
+
+Use `run.py --no-captures --gui-selections --selections 3 --diagnostic-gc
+--diagnostic-release` to exercise three selections in each real GUI/panel, skip
+all raster captures, then run two explicitly diagnostic phases. One GC/profile
+follows the normal performance phases. A subsequent one-time release removes
+only textures whose Go image owners are gone. These interventions are not product
+behavior, a memory acceptance result, or permission to add recurring forced GC.
+Requested flags and observed receipt flags must match. Never launch another guest
+PowerShell during an active native run: a separate console may change foreground
+focus. Host-side builds/analysis may proceed concurrently.
+
+Join counters with `attribute.py <run-output> --output <joined.json>`. Add
+`--assert-no-dead-textures` for a red-capable real-process resource assertion.
+It fails if dead Go image owners still have retained D3D11 textures after the
+diagnostic GC. It also requires both panel renderers to be observed. Heap profile
+binaries remain ignored; retain only compact allocation summaries and hashes.
+A no-capture run establishes memory/resource behavior, not native visual acceptance.

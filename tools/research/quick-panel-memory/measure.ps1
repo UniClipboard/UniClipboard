@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Stage,[Parameter(Mandatory=$true)][string]$RunRoot,[ValidateSet('empty','text','images')][string]$Dataset='images',[ValidateRange(0,3)][int]$SelectionCycles=0)
+param([Parameter(Mandatory=$true)][string]$Stage,[Parameter(Mandatory=$true)][string]$RunRoot,[ValidateSet('empty','text','images')][string]$Dataset='images',[ValidateRange(0,3)][int]$SelectionCycles=0,[switch]$NoCaptures,[switch]$DiagnosticGC,[switch]$DiagnosticRelease,[switch]$GUISelections)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 if(Test-Path $RunRoot){throw 'Fresh RunRoot required'}
 if(@(Get-CimInstance Win32_Process | Where-Object {$_.Name -in @('unic-desktop.exe','unicd.exe')}).Count){throw 'Foreign app/service exists'}
@@ -16,7 +16,7 @@ function Quote-Argument([string]$Value){
     return '"'+[regex]::Replace([regex]::Replace($Value,'(\\*)"','$1$1\"'),'(\\+)$','$1$1')+'"'
 }
 function Invoke-Task([string]$Program,[string[]]$ArgValues){
- $start=New-Object Diagnostics.ProcessStartInfo;$start.FileName=$Program;$start.Arguments=($ArgValues|ForEach-Object{Quote-Argument $_}) -join ' ';$start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+ $start=New-Object Diagnostics.ProcessStartInfo;$start.FileName=$Program;$start.Arguments=($ArgValues|ForEach-Object{Quote-Argument $_}) -join ' ';$start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true;$start.StandardOutputEncoding=[Text.UTF8Encoding]::new();$start.StandardErrorEncoding=[Text.UTF8Encoding]::new()
  $child=New-Object Diagnostics.Process;$child.StartInfo=$start
  if(-not $child.Start()){throw 'launch failed'}
  $stdout=$child.StandardOutput.ReadToEndAsync();$stderr=$child.StandardError.ReadToEndAsync()
@@ -48,7 +48,7 @@ function Focus-Panel {
  if($bound.Count -lt 1){throw 'Missing owned panel HWND'}
  [void][MemoryNative]::SetForegroundWindow([IntPtr]$bound[0].Handle)
 }
-function Capture([string]$RoleName,[int]$ID,[string]$Name){$windows=RPC $RoleName windows @{};if(-not @($windows.windows|Where-Object{$_.ID -eq $ID -and $_.Visible}).Count){throw ('Capture target hidden: '+$RoleName)};$null=RPC $RoleName idle @{window=$ID;timeout=5000};$frame=RPC $RoleName capture @{window=$ID};[IO.File]::WriteAllBytes("$RunRoot\$Name.png",[Convert]::FromBase64String($frame.png));$tree=RPC $RoleName tree @{window=$ID};$tree|ConvertTo-Json -Depth 10|Set-Content "$RunRoot\$Name-tree.json" -Encoding UTF8
+function Capture([string]$RoleName,[int]$ID,[string]$Name){if($NoCaptures){return};$windows=RPC $RoleName windows @{};if(-not @($windows.windows|Where-Object{$_.ID -eq $ID -and $_.Visible}).Count){throw ('Capture target hidden: '+$RoleName)};$null=RPC $RoleName idle @{window=$ID;timeout=5000};$frame=RPC $RoleName capture @{window=$ID};[IO.File]::WriteAllBytes("$RunRoot\$Name.png",[Convert]::FromBase64String($frame.png));$tree=RPC $RoleName tree @{window=$ID};$tree|ConvertTo-Json -Depth 10|Set-Content "$RunRoot\$Name-tree.json" -Encoding UTF8
  if($RoleName -eq 'quick-panel'){
   $windows=RPC $RoleName windows @{}
   foreach($sat in @($windows.windows|Where-Object{$_.Visible -and $_.ID -ne $ID})){$f=RPC $RoleName capture @{window=$sat.ID};[IO.File]::WriteAllBytes("$RunRoot\$Name-satellite.png",[Convert]::FromBase64String($f.png))}
@@ -70,6 +70,25 @@ try{
  $launch.WaitForExit(30000)|Out-Null
  $null=Bind tray;$null=Bind gui;$guiWindow=Ready gui
  Phase 'gui-only' 10;Capture gui $guiWindow 'gui'
+ if($GUISelections -and $Dataset -eq 'images'){
+  $imageItems=@(($history|ConvertFrom-Json).items|Where-Object{$_.kind -eq 'image'})
+  for($selection=1;$selection -le 3;$selection++){
+   $tree=RPC gui tree @{window=$guiWindow}
+   $node=@($tree.nodes|Where-Object{$_.key -eq $imageItems[$selection].id -and $_.role -eq 'listItem'})
+   if($node.Count -ne 1){throw 'Missing exact GUI image row'}
+   $at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();$sw=[Diagnostics.Stopwatch]::StartNew()
+   $null=RPC gui act @{window=$guiWindow;id=$node[0].id;action='press'}
+   do{
+    $events=@(Get-Content "$RunRoot\runtime.latency.jsonl"|ForEach-Object{$_|ConvertFrom-Json}|Where-Object{$_.pid -eq $identities.gui.pid -and $_.unixMillis -ge $at})
+    if($events.Count){break};Start-Sleep -Milliseconds 50
+   }while($sw.Elapsed.TotalSeconds -lt 15)
+   if(-not $events.Count){throw 'GUI original readiness timeout'}
+   if($events[-1].width -ne 2048 -or $events[-1].height -ne 1536){throw 'GUI original dimensions changed'}
+   $timing.Add(@{event='gui-selection';index=$selection;intentToOriginalMillis=$events[-1].unixMillis-$at})
+   Phase "gui-selection-$selection" 5
+  }
+ }
+
  Open-Panel
  Phase 'panel-with-gui' 10;Capture quick-panel $panelWindow 'panel'
  $null=Role gui close;Start-Sleep -Milliseconds 500;if(-not (Role quick-panel status).visible){Open-Panel};Phase 'panel-gui-exited' 10;Capture quick-panel $panelWindow 'panel-alone'
@@ -91,6 +110,16 @@ try{
   }
   if($SelectionCycles){$null=Role quick-panel close;Phase 'selection-final-hidden' 20}
  }
+ if($DiagnosticGC){
+  [IO.File]::WriteAllText("$RunRoot\runtime.gc-request",'one diagnostic GC')
+  Phase 'after-diagnostic-gc' 15
+  if(-not (Test-Path "$RunRoot\runtime.gc-done")){throw 'Diagnostic GC did not complete'}
+ }
+ if($DiagnosticRelease){
+  [IO.File]::WriteAllText("$RunRoot\runtime.release-request",'diagnostic unowned texture release')
+  Phase 'after-diagnostic-release' 15
+  if(-not (Test-Path "$RunRoot\runtime.release-done")){throw 'Diagnostic release did not complete'}
+ }
  $null=Role tray quit
  $verdict='PASS'
 }catch{$verdict='FAIL';$failure=$_.ToString()+" at "+$_.ScriptStackTrace;Write-Output $failure}finally{
@@ -101,7 +130,7 @@ try{
  $left=@(Get-CimInstance Win32_Process|Where-Object{$_.ExecutablePath -and $_.ExecutablePath.StartsWith($bin+'\',[StringComparison]::OrdinalIgnoreCase)})
  $after=[MemoryNative]::GetClipboardSequenceNumber()
  if($left.Count -or $seq -ne $after){$verdict='FAIL';$failure+=' cleanup/clipboard invariant failed'}
- @{driverSHA256=(Get-FileHash $PSCommandPath).Hash;verdict=$verdict;failure=$failure;dataset=$Dataset;selectionCycles=$SelectionCycles;identities=$identities;timing=$timing;clipboardSequenceBefore=$seq;clipboardSequenceAfter=$after;ownedProcessesRemaining=$left.Count;os=(Get-CimInstance Win32_OperatingSystem|Select-Object Caption,BuildNumber,OSArchitecture)}|ConvertTo-Json -Depth 8|Set-Content "$RunRoot\receipt.json" -Encoding UTF8
+ @{driverSHA256=(Get-FileHash $PSCommandPath).Hash;verdict=$verdict;failure=$failure;dataset=$Dataset;selectionCycles=$SelectionCycles;noCaptures=[bool]$NoCaptures;diagnosticGC=[bool]$DiagnosticGC;diagnosticRelease=[bool]$DiagnosticRelease;guiSelections=[bool]$GUISelections;identities=$identities;timing=$timing;clipboardSequenceBefore=$seq;clipboardSequenceAfter=$after;ownedProcessesRemaining=$left.Count;os=(Get-CimInstance Win32_OperatingSystem|Select-Object Caption,BuildNumber,OSArchitecture)}|ConvertTo-Json -Depth 8|Set-Content "$RunRoot\receipt.json" -Encoding UTF8
  foreach($d in @('p','a','l')){Remove-Item "$RunRoot\$d" -Recurse -Force -ErrorAction SilentlyContinue}
 }
 if($verdict -ne 'PASS'){throw $failure}

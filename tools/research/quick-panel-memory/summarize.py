@@ -40,7 +40,7 @@ for directory in sorted(a.input.iterdir()):
    if metricsFile:
     logs=[json.loads(line) for line in metricsFile.read_text(encoding='utf-8-sig').splitlines() if line.strip()]
     selected=[r for r in logs if begin<=r.get('utcMillis',-1)<=end]
-    item['roles'][role]['goMedian']={k:median([r[k] for r in selected]) for k in ['heapAlloc','heapSys','heapInuse','heapReleased','sys','goroutines']}
+    item['roles'][role]['goMedian']={k:median([r[k] for r in selected]) for k in ['heapAlloc','heapSys','heapInuse','heapReleased','sys','goroutines','numGC']}
    cacheFile=directory/f"runtime.{identity['pid']}.cache.jsonl"
    if cacheFile.exists():
     logs=[json.loads(line) for line in cacheFile.read_text(encoding='utf-8-sig').splitlines() if line.strip()]

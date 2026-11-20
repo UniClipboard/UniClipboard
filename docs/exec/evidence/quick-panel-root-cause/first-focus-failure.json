@@ -1,0 +1,151 @@
+{
+  "noCaptures": false,
+  "os": {
+    "Caption": "Microsoft Windows 11 \u4e13\u4e1a\u7248",
+    "BuildNumber": "26200",
+    "OSArchitecture": "ARM 64 \u4f4d\u5904\u7406\u5668"
+  },
+  "timing": [
+    {
+      "millis": 546.5555,
+      "event": "observed-ready",
+      "role": "gui"
+    },
+    {
+      "millis": 484.1492,
+      "event": "observed-ready",
+      "role": "quick-panel"
+    },
+    {
+      "event": "panel-open",
+      "searchObservedMillis": 2107.1554,
+      "at": 1795188159212,
+      "originalReadyMillis": 1309,
+      "originalWidth": 2048,
+      "originalHeight": 1536
+    },
+    {
+      "millis": 266.34700000000004,
+      "event": "observed-ready",
+      "role": "quick-panel"
+    },
+    {
+      "event": "panel-open",
+      "searchObservedMillis": 1949.9447,
+      "at": 1795188205786,
+      "originalReadyMillis": 1832,
+      "originalWidth": 2048,
+      "originalHeight": 1536
+    },
+    {
+      "millis": 223.9386,
+      "event": "observed-ready",
+      "role": "quick-panel"
+    },
+    {
+      "event": "panel-open",
+      "searchObservedMillis": 2323.1238000000003,
+      "at": 1795188224429,
+      "originalReadyMillis": 2193,
+      "originalWidth": 2048,
+      "originalHeight": 1536
+    },
+    {
+      "millis": 195.9813,
+      "event": "observed-ready",
+      "role": "quick-panel"
+    },
+    {
+      "event": "panel-open",
+      "searchObservedMillis": 1545.2749000000001,
+      "at": 1795188243509,
+      "originalReadyMillis": 1394,
+      "originalWidth": 2048,
+      "originalHeight": 1536
+    },
+    {
+      "millis": 216.0146,
+      "event": "observed-ready",
+      "role": "quick-panel"
+    },
+    {
+      "event": "panel-open",
+      "searchObservedMillis": 1290.5855000000001,
+      "at": 1795188261703,
+      "originalReadyMillis": 1249,
+      "originalWidth": 2048,
+      "originalHeight": 1536
+    },
+    {
+      "selection": 1,
+      "intentToOriginalMillis": 243,
+      "observedReadyMillis": 305.7534,
+      "event": "panel-selection"
+    },
+    {
+      "selection": 2,
+      "intentToOriginalMillis": 402,
+      "observedReadyMillis": 488.47520000000003,
+      "event": "panel-selection"
+    }
+  ],
+  "clipboardSequenceBefore": 45,
+  "driverSHA256": "04C438631F96DC3519BB9E184ED4E07B46C6738648154760E3AD8A3178F36CE7",
+  "clipboardSequenceAfter": 45,
+  "identities": {
+    "tray": {
+      "processMachine": 0,
+      "regionsAtBind": {
+        "privateCommitted": 23519232,
+        "mappedCommitted": 10452992,
+        "imageCommitted": 165945344,
+        "reserved": 5583896576
+      },
+      "exe": "C:\\qm510452\\bin\\unic-desktop.exe",
+      "pid": 6936,
+      "sha256": "C199FEC76F8C08BC6CC8DF389654E9D1A9DFD7F5343EDA908434A3AC8E13539A",
+      "nativeMachine": 43620,
+      "start": "2026-11-20T15:22:22.1044869Z"
+    },
+    "gui": {
+      "processMachine": 0,
+      "regionsAtBind": {
+        "privateCommitted": 108003328,
+        "mappedCommitted": 103235584,
+        "imageCommitted": 222613504,
+        "reserved": 5626630144
+      },
+      "exe": "C:\\qm510452\\bin\\unic-desktop.exe",
+      "pid": 11380,
+      "sha256": "C199FEC76F8C08BC6CC8DF389654E9D1A9DFD7F5343EDA908434A3AC8E13539A",
+      "nativeMachine": 43620,
+      "start": "2026-11-20T15:22:22.5035731Z"
+    },
+    "service": {
+      "pid": 9232,
+      "exe": "C:\\qm510452\\bin\\unicd.exe",
+      "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+      "start": "2026-11-20T15:22:02.7450587Z"
+    },
+    "quick-panel": {
+      "processMachine": 0,
+      "regionsAtBind": {
+        "privateCommitted": 118775808,
+        "mappedCommitted": 68423680,
+        "imageCommitted": 214319104,
+        "reserved": 5612453888
+      },
+      "exe": "C:\\qm510452\\bin\\unic-desktop.exe",
+      "pid": 7884,
+      "sha256": "C199FEC76F8C08BC6CC8DF389654E9D1A9DFD7F5343EDA908434A3AC8E13539A",
+      "nativeMachine": 43620,
+      "start": "2026-11-20T15:22:39.5290916Z"
+    }
+  },
+  "diagnosticGC": true,
+  "verdict": "FAIL",
+  "ownedProcessesRemaining": 0,
+  "dataset": "images",
+  "selectionCycles": 3,
+  "failure": "Capture target hidden: quick-panel at \u5728 Capture\u3001C:\\qm510452\\measure.ps1 \u4e2d: \u7b2c 51 \u884c\r\n\u5728 <ScriptBlock>\u3001C:\\qm510452\\measure.ps1 \u4e2d: \u7b2c 90 \u884c\r\n\u5728 <ScriptBlock>\u3001<\u65e0\u6587\u4ef6> \u4e2d: \u7b2c 2 \u884c"
+}

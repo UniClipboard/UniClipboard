@@ -2,7 +2,7 @@
 """Freeze current source and build opt-in isolated role measurements. No VM access."""
 import argparse, hashlib, io, json, os, shutil, struct, subprocess, tarfile
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--stage',type=Path,required=True);p.add_argument('--source');p.add_argument('--projection-fix',action='store_true');p.add_argument('--arch',choices=['arm64','amd64'],default='arm64');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--stage',type=Path,required=True);p.add_argument('--source');p.add_argument('--projection-fix',action='store_true');p.add_argument('--attribution',action='store_true');p.add_argument('--arch',choices=['arm64','amd64'],default='arm64');a=p.parse_args()
 repo=Path(__file__).resolve().parents[3];stage=a.stage.resolve()
 if stage.exists():raise SystemExit('stage must be fresh')
 stage.mkdir(parents=True);src=stage/'source';src.mkdir()
@@ -30,6 +30,23 @@ for rel in ['app/desktop/cmd/unic-desktop','app/service/cmd/unicd']:(src/rel/'me
 probe=(research/'desktop-image-memory/cache_probe.go.txt').read_text().replace('path+".cache.jsonl"','path+"."+strconv.Itoa(os.Getpid())+".cache.jsonl"').replace('"reflect"','"reflect";"strconv"')
 probe=probe.replace('\"elapsedSeconds\":time.Since(start).Seconds(),','\"utcMillis\":time.Now().UnixMilli(),\"elapsedSeconds\":time.Since(start).Seconds(),')
 probe=probe.replace('\"reflect\"','\"reflect\";\"weak\"').replace('var memoryResearchActive *Desktop','var memoryResearchActive weak.Pointer[viewState]').replace('memoryResearchActive=s','memoryResearchActive=weak.Make(s.d)').replace('s:=memoryResearchActive;if s==nil||s.d.live==nil{return};d,l:=s.d,s.d.live','d:=memoryResearchActive.Value();if d==nil||d.live==nil{return};l:=d.live')
+if a.attribution:
+ probe=probe.replace('"weak"','"weak";"runtime";"runtime/pprof"')
+ probe=probe.replace('d:=memoryResearchActive.Value();if d==nil||d.live==nil{return};l:=d.live', 'd:=memoryResearchActive.Value();if d==nil||d.live==nil{return};l:=d.live\n   mygo.MemoryResearchSnapshot("periodic")\n   if _,err:=os.Stat(path+".gc-request");err==nil {\n    os.Remove(path+".gc-request");runtime.GC()\n    mygo.MemoryResearchSnapshot("after-diagnostic-gc")\n    if heap,err:=os.Create(path+".heap-"+strconv.Itoa(os.Getpid())+".pprof");err==nil{pprof.WriteHeapProfile(heap);heap.Close()}\n    os.WriteFile(path+".gc-done",[]byte("one attribution-only GC; not performance evidence"),0600)\n   }')
+ probe=probe.replace('mygo.MemoryResearchSnapshot("periodic")', 'mygo.MemoryResearchSnapshot("periodic")\n if _,err:=os.Stat(path+".release-request");err==nil{os.Remove(path+".release-request");mygo.MemoryResearchReleaseUnowned();os.WriteFile(path+".release-done",[]byte("attribution-only orphan texture release"),0600)}')
+ mygo_module=Path(subprocess.check_output(['go','list','-m','-f','{{.Dir}}','github.com/egoist/mygo'],cwd=repo,text=True).strip())
+ private_module=src/'research-mygo';shutil.copytree(mygo_module,private_module);private_module.chmod(0o700)
+ for file in private_module.rglob('*'):
+  file.chmod(0o700 if file.is_dir() else 0o600)
+ mod=src/'go.mod';mod.write_text(mod.read_text()+'\nreplace github.com/egoist/mygo => ./research-mygo\n')
+ gpu=private_module/'internal/gpu/d3d11/d3d11.go';t=gpu.read_text()
+ t=t.replace('type texture struct {','type texture struct {\n memoryOwner weak.Pointer[scene.Image]')
+ t=t.replace('r.images[img.ID()] = t','r.images[img.ID()] = t\n t.memoryOwner = weak.Make(img)')
+ t=t.replace('func (r *Renderer) Release() {','func (r *Renderer) Release() {\n delete(memoryResearchRenderers,r.hwnd)')
+ t=t.replace('r := &Renderer{hwnd: hwnd, composed: composed, images: map[uint64]*texture{}}','r := &Renderer{hwnd: hwnd, composed: composed, images: map[uint64]*texture{}}\n memoryResearchRegister(r)')
+ gpu.write_text(t)
+ (private_module/'internal/gpu/d3d11/memory_research.go').write_text(Path(__file__).with_name('gpu_probe.go.txt').read_text())
+ (private_module/'memory_research_windows.go').write_text('//go:build windows\npackage mygo\nimport "github.com/egoist/mygo/internal/gpu/d3d11"\nfunc MemoryResearchSnapshot(event string){ d3d11.MemoryResearchSnapshot(event) }\nfunc MemoryResearchReleaseUnowned(){ d3d11.MemoryResearchReleaseUnowned() }\n')
 (src/'app/desktop/internal/desktopui/memory_research.go').write_text(probe)
 for rel,old,new in [('live.go','func (s *Desktop) View(c *ui.Context) { s.d.view(c) }','func (s *Desktop) View(c *ui.Context) { memoryResearchSeen(s); s.d.view(c) }'),('live_quick.go','d := q.d\n','d := q.d\n memoryResearchSeen(&Desktop{d:d})\n')]:
  f=src/'app/desktop/internal/desktopui'/rel;t=f.read_text()
@@ -45,6 +62,6 @@ for name,path,tags in [('unic','./app/service/cmd/unic',[]),('unicd','./app/serv
 for name in ['native.cs','window-state.cs','capture-window.ps1','generate-fixtures.py']:shutil.copy2(research/'windows-desktop-memory'/name,stage/name)
 shutil.copy2(Path(__file__).with_name('measure.ps1'),stage/'measure.ps1')
 subprocess.run(['python3',str(stage/'generate-fixtures.py'),str(stage/'fixtures')],check=True)
-identity={'source_head':commit,'control_projection_fix':a.projection_fix,'dirty':bool(a.projection_fix) if a.source else subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True),'source_sha256':hashes,'arch':a.arch,'race':False,'build_flags':['-trimpath','-buildvcs=false','-ldflags=-s -w','desktop: -tags desktop_e2e -H windowsgui'],'cgo_enabled':False,'instrumented_source_sha256':{str(f.relative_to(src)):hashlib.sha256(f.read_bytes()).hexdigest() for f in [src/'app/desktop/internal/desktopui'/n for n in ['live.go','live_quick.go','process_panel.go']]},'pe_machine':{f.name:hex(struct.unpack_from('<H',f.read_bytes(),struct.unpack_from('<I',f.read_bytes(),0x3c)[0]+4)[0]) for f in bindir.iterdir()},'binary_sha256':{f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in bindir.iterdir()},'go':subprocess.check_output(['go','version'],text=True).strip(),'diagnostic_sha256':{str(f.relative_to(src)):hashlib.sha256(f.read_bytes()).hexdigest() for f in src.rglob('memory_research.go')}}
+identity={'source_head':commit,'control_projection_fix':a.projection_fix,'dirty':bool(a.projection_fix) if a.source else subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True),'source_sha256':hashes,'arch':a.arch,'race':False,'attribution':a.attribution,'build_flags':['-trimpath','-buildvcs=false','-ldflags=-s -w','desktop: -tags desktop_e2e -H windowsgui'],'cgo_enabled':False,'instrumented_source_sha256':{str(f.relative_to(src)):hashlib.sha256(f.read_bytes()).hexdigest() for f in [src/'app/desktop/internal/desktopui'/n for n in ['live.go','live_quick.go','process_panel.go']]},'pe_machine':{f.name:hex(struct.unpack_from('<H',f.read_bytes(),struct.unpack_from('<I',f.read_bytes(),0x3c)[0]+4)[0]) for f in bindir.iterdir()},'binary_sha256':{f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in bindir.iterdir()},'go':subprocess.check_output(['go','version'],text=True).strip(),'diagnostic_sha256':{str(f.relative_to(src)):hashlib.sha256(f.read_bytes()).hexdigest() for f in [*src.rglob('memory_research.go'),*src.rglob('memory_research_windows.go'),*([gpu] if a.attribution else [])]}}
 (stage/'identity.json').write_text(json.dumps(identity,indent=2)+'\n');shutil.rmtree(src)
 print(stage)

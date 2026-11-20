@@ -31,3 +31,23 @@ A known-length original must not turn its reserved capacity into a multi-megabyt
 body read request. The real-service probe counts the largest requested read and
 requires at most64KiB before any product I/O refinement. Keep the existing byte,
 raster, admission, original-byte and cancellation contracts unchanged.
+
+## Root-cause follow-up boundary
+
+The follow-up diagnostic plan was recorded before the private probes in the
+ignored task plan. No production fix follows these probes in this change.
+
+- Weak owner/renderer instrumentation accidentally extends lifetimes.
+- A missing renderer yields a false zero-orphan verdict.
+- A frame counter is mistaken for elapsed time or an actual resource lifetime.
+- Texture payload bytes are mistaken for driver allocation or private commit.
+- Diagnostic GC/release is counted as a normal performance saving.
+- An extra guest console changes foreground focus during a native run.
+- Output directory names override observed flags; a claimed no-capture run
+  actually captures or retains reconstructed pixels.
+- A copied read-only module directory prevents an isolated probe build.
+- A private dependency override or diagnostic listener leaks into production.
+
+Observed first failures and the misnamed capture trace remain in the root-cause
+receipt. The runner now verifies requested/observed flags. The resource assertion
+requires both panel renderers and remains RED before diagnostic orphan release.

@@ -1,0 +1,6071 @@
+{
+  "qp-attribution-arm64-no-capture": {
+    "receipt": {
+      "noCaptures": false,
+      "os": {
+        "Caption": "Microsoft Windows 11 \u4e13\u4e1a\u7248",
+        "BuildNumber": "26200",
+        "OSArchitecture": "ARM 64 \u4f4d\u5904\u7406\u5668"
+      },
+      "timing": [
+        {
+          "millis": 378.7244,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "millis": 340.79290000000003,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1582.6876,
+          "at": 1795188357029,
+          "originalReadyMillis": 1143,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 198.2305,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1440.2568,
+          "at": 1795188402933,
+          "originalReadyMillis": 1371,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 268.3118,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1860.0022000000001,
+          "at": 1795188420835,
+          "originalReadyMillis": 1736,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 280.7271,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1038.7150000000001,
+          "at": 1795188438974,
+          "originalReadyMillis": 937,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 213.39970000000002,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1424.1826,
+          "at": 1795188456254,
+          "originalReadyMillis": 1336,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 319,
+          "observedReadyMillis": 344.2235,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 400,
+          "observedReadyMillis": 472.5042,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 263,
+          "observedReadyMillis": 268.4973,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 45,
+      "driverSHA256": "04C438631F96DC3519BB9E184ED4E07B46C6738648154760E3AD8A3178F36CE7",
+      "clipboardSequenceAfter": 45,
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 24399872,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165945344,
+            "reserved": 5589315584
+          },
+          "exe": "C:\\qm04e9e8\\bin\\unic-desktop.exe",
+          "pid": 12464,
+          "sha256": "C199FEC76F8C08BC6CC8DF389654E9D1A9DFD7F5343EDA908434A3AC8E13539A",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:25:42.2411670Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 120016896,
+            "mappedCommitted": 103235584,
+            "imageCommitted": 222613504,
+            "reserved": 5629034496
+          },
+          "exe": "C:\\qm04e9e8\\bin\\unic-desktop.exe",
+          "pid": 12252,
+          "sha256": "C199FEC76F8C08BC6CC8DF389654E9D1A9DFD7F5343EDA908434A3AC8E13539A",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:25:42.4984902Z"
+        },
+        "service": {
+          "pid": 5196,
+          "exe": "C:\\qm04e9e8\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T15:25:28.9365742Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 119177216,
+            "mappedCommitted": 68423680,
+            "imageCommitted": 214319104,
+            "reserved": 5616050176
+          },
+          "exe": "C:\\qm04e9e8\\bin\\unic-desktop.exe",
+          "pid": 5072,
+          "sha256": "C199FEC76F8C08BC6CC8DF389654E9D1A9DFD7F5343EDA908434A3AC8E13539A",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:25:57.4180699Z"
+        }
+      },
+      "diagnosticGC": true,
+      "verdict": "PASS",
+      "ownedProcessesRemaining": 0,
+      "dataset": "images",
+      "selectionCycles": 3,
+      "failure": null
+    },
+    "phases": {
+      "gui-only": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 99020800,
+            "workingSet": 169979904,
+            "privateCommit": 150441984,
+            "handles": 457,
+            "gdi": 58,
+            "user": 28,
+            "threads": 19,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 52348824,
+            "heapSys": 83099648,
+            "heapInuse": 55025664,
+            "heapReleased": 13369344,
+            "sys": 90228984,
+            "goroutines": 22,
+            "numGC": 11
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 43,
+              "height": 1440,
+              "hwnd": 21431220,
+              "imageRGBABytes": 3637248,
+              "pid": 12252,
+              "swept": 0,
+              "utcMillis": 1795188352659,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 10
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3637248,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "panel-with-gui": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 113844224,
+            "workingSet": 184971264,
+            "privateCommit": 165191680,
+            "handles": 451,
+            "gdi": 58,
+            "user": 28,
+            "threads": 19,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 67128880,
+            "heapSys": 99844096,
+            "heapInuse": 69984256,
+            "heapReleased": 15425536,
+            "sys": 107006200,
+            "goroutines": 21,
+            "numGC": 13
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 3637248,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 53,
+              "height": 1440,
+              "hwnd": 21431220,
+              "imageRGBABytes": 3637248,
+              "pid": 12252,
+              "swept": 0,
+              "utcMillis": 1795188367670,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 10
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3637248,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        },
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 79044608,
+            "workingSet": 131624960,
+            "privateCommit": 130793472,
+            "handles": 444,
+            "gdi": 53,
+            "user": 26,
+            "threads": 18,
+            "visible": 2
+          },
+          "go": {
+            "heapAlloc": 21153512,
+            "heapSys": 104235008,
+            "heapInuse": 23396352,
+            "heapReleased": 42991616,
+            "sys": 111266040,
+            "goroutines": 20,
+            "numGC": 14
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 1,
+              "deadImageRGBABytes": 3145728,
+              "event": "periodic",
+              "frame": 23,
+              "height": 620,
+              "hwnd": 1246454,
+              "imageRGBABytes": 6291456,
+              "pid": 5072,
+              "swept": 0,
+              "utcMillis": 1795188367499,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 1,
+              "deadImageRGBABytes": 12288,
+              "event": "periodic",
+              "frame": 58,
+              "height": 732,
+              "hwnd": 1181030,
+              "imageRGBABytes": 110592,
+              "pid": 5072,
+              "swept": 0,
+              "utcMillis": 1795188367499,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 1
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 6402048,
+            "deadImageCount": 2,
+            "deadImageRGBABytes": 3158016
+          }
+        }
+      },
+      "selection-3": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 136589312.0,
+            "workingSet": 189345792.0,
+            "privateCommit": 188100608.0,
+            "handles": 444.0,
+            "gdi": 53.0,
+            "user": 27.0,
+            "threads": 16.0,
+            "visible": 2.0
+          },
+          "go": {
+            "heapAlloc": null,
+            "heapSys": null,
+            "heapInuse": null,
+            "heapReleased": null,
+            "sys": null,
+            "goroutines": null,
+            "numGC": null
+          },
+          "cache": {
+            "imageObjects": null,
+            "fullImages": null,
+            "releasedImages": null,
+            "imageCPUPixelBytes": null,
+            "details": null,
+            "inflight": null,
+            "wanted": null,
+            "projectedRows": null
+          },
+          "renderers": [],
+          "gpu": {
+            "imageRGBABytes": 0,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "selection-final-hidden": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 140451840.0,
+            "workingSet": 193265664.0,
+            "privateCommit": 191938560.0,
+            "handles": 438.0,
+            "gdi": 53.0,
+            "user": 27.0,
+            "threads": 14.5,
+            "visible": 0.0
+          },
+          "go": {
+            "heapAlloc": 45869264.0,
+            "heapSys": 116621312.0,
+            "heapInuse": 48435200.0,
+            "heapReleased": 20742144.0,
+            "sys": 123848952.0,
+            "goroutines": 19.0,
+            "numGC": 39.0
+          },
+          "cache": {
+            "imageObjects": 12.0,
+            "fullImages": 1.0,
+            "releasedImages": 12.0,
+            "imageCPUPixelBytes": 3244032.0,
+            "details": 18.0,
+            "inflight": 0.0,
+            "wanted": 18.0,
+            "projectedRows": 42.0
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 11,
+              "deadImageRGBABytes": 25755648,
+              "event": "periodic",
+              "frame": 53,
+              "height": 620,
+              "hwnd": 1246454,
+              "imageRGBABytes": 29097984,
+              "pid": 5072,
+              "swept": 0,
+              "utcMillis": 1795188492686,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 8
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 11,
+              "deadImageRGBABytes": 135168,
+              "event": "periodic",
+              "frame": 212,
+              "height": 732,
+              "hwnd": 1181030,
+              "imageRGBABytes": 233472,
+              "pid": 5072,
+              "swept": 120,
+              "utcMillis": 1795188492686,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 11
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 29331456,
+            "deadImageCount": 22,
+            "deadImageRGBABytes": 25890816
+          }
+        }
+      },
+      "after-diagnostic-gc": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 83709952,
+            "workingSet": 137154560,
+            "privateCommit": 135094272,
+            "handles": 439,
+            "gdi": 53,
+            "user": 28,
+            "threads": 14,
+            "visible": 0
+          },
+          "go": {
+            "heapAlloc": 23697656,
+            "heapSys": 116654080,
+            "heapInuse": 26591232,
+            "heapReleased": 77496320,
+            "sys": 123848952,
+            "goroutines": 19,
+            "numGC": 40
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 3244032,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 11,
+              "deadImageRGBABytes": 25755648,
+              "event": "periodic",
+              "frame": 53,
+              "height": 620,
+              "hwnd": 1246454,
+              "imageRGBABytes": 29097984,
+              "pid": 5072,
+              "swept": 0,
+              "utcMillis": 1795188507798,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 8
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 11,
+              "deadImageRGBABytes": 135168,
+              "event": "periodic",
+              "frame": 212,
+              "height": 732,
+              "hwnd": 1181030,
+              "imageRGBABytes": 233472,
+              "pid": 5072,
+              "swept": 120,
+              "utcMillis": 1795188507798,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 11
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 29331456,
+            "deadImageCount": 22,
+            "deadImageRGBABytes": 25890816
+          }
+        }
+      }
+    },
+    "diagnostic_gpu_events": {
+      "gui": [],
+      "quick-panel": [
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 11,
+          "deadImageRGBABytes": 25755648,
+          "event": "after-diagnostic-gc",
+          "frame": 53,
+          "height": 620,
+          "hwnd": 1246454,
+          "imageRGBABytes": 29097984,
+          "images": [
+            {
+              "ageFrames": 22,
+              "height": 768,
+              "id": 81,
+              "lastFrame": 31,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 18,
+              "height": 768,
+              "id": 90,
+              "lastFrame": 35,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 14,
+              "height": 768,
+              "id": 98,
+              "lastFrame": 39,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 11,
+              "height": 768,
+              "id": 115,
+              "lastFrame": 42,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 2,
+              "height": 192,
+              "id": 145,
+              "lastFrame": 51,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 51,
+              "height": 768,
+              "id": 2,
+              "lastFrame": 2,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 26,
+              "height": 768,
+              "id": 73,
+              "lastFrame": 27,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 12,
+              "height": 192,
+              "id": 29,
+              "lastFrame": 41,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 7,
+              "height": 192,
+              "id": 122,
+              "lastFrame": 46,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 5,
+              "height": 768,
+              "id": 138,
+              "lastFrame": 48,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 1,
+              "height": 768,
+              "id": 161,
+              "lastFrame": 52,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 45,
+              "height": 768,
+              "id": 19,
+              "lastFrame": 8,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 17,
+              "height": 192,
+              "id": 32,
+              "lastFrame": 36,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            }
+          ],
+          "pid": 5072,
+          "swept": 0,
+          "utcMillis": 1795188502750,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 11,
+          "deadImageRGBABytes": 135168,
+          "event": "after-diagnostic-gc",
+          "frame": 212,
+          "height": 732,
+          "hwnd": 1181030,
+          "imageRGBABytes": 233472,
+          "images": [
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 34,
+              "lastFrame": 212,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 68,
+              "height": 48,
+              "id": 94,
+              "lastFrame": 144,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 59,
+              "height": 48,
+              "id": 102,
+              "lastFrame": 153,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 36,
+              "height": 48,
+              "id": 124,
+              "lastFrame": 176,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 165,
+              "lastFrame": 212,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 17,
+              "lastFrame": 212,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 28,
+              "lastFrame": 212,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 87,
+              "height": 48,
+              "id": 85,
+              "lastFrame": 125,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 16,
+              "height": 48,
+              "id": 147,
+              "lastFrame": 196,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 170,
+              "lastFrame": 212,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 58,
+              "height": 48,
+              "id": 31,
+              "lastFrame": 154,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 203,
+              "height": 48,
+              "id": 6,
+              "lastFrame": 9,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 11,
+              "lastFrame": 212,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 14,
+              "lastFrame": 212,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 37,
+              "lastFrame": 212,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 107,
+              "height": 48,
+              "id": 77,
+              "lastFrame": 105,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 39,
+              "height": 48,
+              "id": 119,
+              "lastFrame": 173,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 17,
+              "height": 48,
+              "id": 142,
+              "lastFrame": 195,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 126,
+              "height": 48,
+              "id": 23,
+              "lastFrame": 86,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 5072,
+          "swept": 120,
+          "utcMillis": 1795188502750,
+          "warp": false,
+          "width": 760
+        }
+      ]
+    },
+    "unowned_texture_assertion": {
+      "verdict": "FAIL",
+      "violations": [
+        {
+          "run": "images-1",
+          "role": "quick-panel",
+          "gpu": {
+            "imageRGBABytes": 29331456,
+            "deadImageCount": 22,
+            "deadImageRGBABytes": 25890816
+          }
+        }
+      ]
+    },
+    "label_correction": "Invocation omitted --no-captures; receipt=false and thirteen PNGs. This is capture repeat evidence, not no-capture evidence."
+  },
+  "qp-rootcause-arm64": {
+    "receipt": {
+      "noCaptures": true,
+      "diagnosticRelease": true,
+      "timing": [
+        {
+          "millis": 582.5285,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "intentToOriginalMillis": 377,
+          "event": "gui-selection",
+          "index": 1
+        },
+        {
+          "intentToOriginalMillis": 172,
+          "event": "gui-selection",
+          "index": 2
+        },
+        {
+          "intentToOriginalMillis": 148,
+          "event": "gui-selection",
+          "index": 3
+        },
+        {
+          "millis": 154.3616,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1130.6281000000001,
+          "at": 1795188621951,
+          "originalReadyMillis": 888,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 297.3097,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1209.3434,
+          "at": 1795188665895,
+          "originalReadyMillis": 1109,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 302.65540000000004,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1182.0083,
+          "at": 1795188683469,
+          "originalReadyMillis": 1024,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 195.2449,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1313.3006,
+          "at": 1795188700773,
+          "originalReadyMillis": 1196,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 268.91990000000004,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1344.3657,
+          "at": 1795188718763,
+          "originalReadyMillis": 1179,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 386,
+          "observedReadyMillis": 386.8937,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 266,
+          "observedReadyMillis": 305.9475,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 433,
+          "observedReadyMillis": 477.66310000000004,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 45,
+      "driverSHA256": "D3E39B914D6CD5043832CDCCB2AD642063882B2B406D317457F7E0CC2C5F867D",
+      "guiSelections": true,
+      "clipboardSequenceAfter": 45,
+      "os": {
+        "Caption": "Microsoft Windows 11 \u4e13\u4e1a\u7248",
+        "BuildNumber": "26200",
+        "OSArchitecture": "ARM 64 \u4f4d\u5904\u7406\u5668"
+      },
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 23556096,
+            "mappedCommitted": 10452992,
+            "imageCommitted": 165949440,
+            "reserved": 5584121856
+          },
+          "exe": "C:\\qm236f71\\bin\\unic-desktop.exe",
+          "pid": 11360,
+          "sha256": "8C9C75723048AC042F89179591791B598AA4F017A651D02DF3E3A78FD8BF1916",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:29:50.0501431Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 115130368,
+            "mappedCommitted": 103235584,
+            "imageCommitted": 222617600,
+            "reserved": 5627629568
+          },
+          "exe": "C:\\qm236f71\\bin\\unic-desktop.exe",
+          "pid": 12376,
+          "sha256": "8C9C75723048AC042F89179591791B598AA4F017A651D02DF3E3A78FD8BF1916",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:29:50.3369503Z"
+        },
+        "service": {
+          "pid": 10760,
+          "exe": "C:\\qm236f71\\bin\\unicd.exe",
+          "sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+          "start": "2026-11-20T15:29:37.4869583Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 116822016,
+            "mappedCommitted": 68423680,
+            "imageCommitted": 204709888,
+            "reserved": 5635137536
+          },
+          "exe": "C:\\qm236f71\\bin\\unic-desktop.exe",
+          "pid": 9476,
+          "sha256": "8C9C75723048AC042F89179591791B598AA4F017A651D02DF3E3A78FD8BF1916",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:30:22.2048486Z"
+        }
+      },
+      "diagnosticGC": true,
+      "verdict": "PASS",
+      "ownedProcessesRemaining": 0,
+      "dataset": "images",
+      "selectionCycles": 3,
+      "failure": null
+    },
+    "phases": {
+      "gui-only": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 98963456,
+            "workingSet": 169779200,
+            "privateCommit": 150474752,
+            "handles": 453,
+            "gdi": 58,
+            "user": 29,
+            "threads": 18,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 35813952,
+            "heapSys": 78839808,
+            "heapInuse": 38469632,
+            "heapReleased": 8822784,
+            "sys": 86034680,
+            "goroutines": 22,
+            "numGC": 13
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 44,
+              "height": 1440,
+              "hwnd": 1246566,
+              "imageRGBABytes": 3637248,
+              "pid": 12376,
+              "swept": 0,
+              "utcMillis": 1795188600471,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 10
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3637248,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "gui-selection-3": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 118108160.0,
+            "workingSet": 189022208.0,
+            "privateCommit": 169707520.0,
+            "handles": 450.5,
+            "gdi": 58.0,
+            "user": 29.0,
+            "threads": 18.0,
+            "visible": 1.0
+          },
+          "go": {
+            "heapAlloc": 52477184,
+            "heapSys": 91455488,
+            "heapInuse": 54968320,
+            "heapReleased": 12623872,
+            "sys": 98617592,
+            "goroutines": 20,
+            "numGC": 17
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 10,
+              "deadImageRGBABytes": 10076160,
+              "event": "periodic",
+              "frame": 70,
+              "height": 1440,
+              "hwnd": 1246566,
+              "imageRGBABytes": 13959168,
+              "pid": 12376,
+              "swept": 0,
+              "utcMillis": 1795188620519,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": false,
+                  "count": 5
+                },
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 11
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 2
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 13959168,
+            "deadImageCount": 10,
+            "deadImageRGBABytes": 10076160
+          }
+        }
+      },
+      "panel-with-gui": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 118374400,
+            "workingSet": 189304832,
+            "privateCommit": 169881600,
+            "handles": 451,
+            "gdi": 58,
+            "user": 29,
+            "threads": 18,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 53797232,
+            "heapSys": 91422720,
+            "heapInuse": 56745984,
+            "heapReleased": 12394496,
+            "sys": 98617592,
+            "goroutines": 20,
+            "numGC": 17
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 10,
+              "deadImageRGBABytes": 10076160,
+              "event": "periodic",
+              "frame": 78,
+              "height": 1440,
+              "hwnd": 1246566,
+              "imageRGBABytes": 13959168,
+              "pid": 12376,
+              "swept": 0,
+              "utcMillis": 1795188630527,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": false,
+                  "count": 5
+                },
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 11
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 2
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 13959168,
+            "deadImageCount": 10,
+            "deadImageRGBABytes": 10076160
+          }
+        },
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 86437888,
+            "workingSet": 136175616,
+            "privateCommit": 138149888,
+            "handles": 419,
+            "gdi": 53,
+            "user": 24,
+            "threads": 18,
+            "visible": 2
+          },
+          "go": {
+            "heapAlloc": 43858352,
+            "heapSys": 91652096,
+            "heapInuse": 46424064,
+            "heapReleased": 22839296,
+            "sys": 98617592,
+            "goroutines": 20,
+            "numGC": 14
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 1,
+              "deadImageRGBABytes": 3145728,
+              "event": "periodic",
+              "frame": 21,
+              "height": 620,
+              "hwnd": 525676,
+              "imageRGBABytes": 6291456,
+              "pid": 9476,
+              "swept": 0,
+              "utcMillis": 1795188632288,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 1,
+              "deadImageRGBABytes": 12288,
+              "event": "periodic",
+              "frame": 59,
+              "height": 732,
+              "hwnd": 1900998,
+              "imageRGBABytes": 110592,
+              "pid": 9476,
+              "swept": 0,
+              "utcMillis": 1795188632289,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 1
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 6402048,
+            "deadImageCount": 2,
+            "deadImageRGBABytes": 3158016
+          }
+        }
+      },
+      "selection-3": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 127000576,
+            "workingSet": 176889856,
+            "privateCommit": 178642944,
+            "handles": 419,
+            "gdi": 53,
+            "user": 25,
+            "threads": 16,
+            "visible": 2
+          },
+          "go": {
+            "heapAlloc": null,
+            "heapSys": null,
+            "heapInuse": null,
+            "heapReleased": null,
+            "sys": null,
+            "goroutines": null,
+            "numGC": null
+          },
+          "cache": {
+            "imageObjects": null,
+            "fullImages": null,
+            "releasedImages": null,
+            "imageCPUPixelBytes": null,
+            "details": null,
+            "inflight": null,
+            "wanted": null,
+            "projectedRows": null
+          },
+          "renderers": [],
+          "gpu": {
+            "imageRGBABytes": 0,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "selection-final-hidden": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 126980096,
+            "workingSet": 176873472,
+            "privateCommit": 178606080,
+            "handles": 414,
+            "gdi": 53,
+            "user": 25,
+            "threads": 15,
+            "visible": 0
+          },
+          "go": {
+            "heapAlloc": 57079872.0,
+            "heapSys": 129204224.0,
+            "heapInuse": 59428864.0,
+            "heapReleased": 50569216.0,
+            "sys": 136694008.0,
+            "goroutines": 16.0,
+            "numGC": 34.0
+          },
+          "cache": {
+            "imageObjects": 12.0,
+            "fullImages": 1.0,
+            "releasedImages": 12.0,
+            "imageCPUPixelBytes": 0.0,
+            "details": 18.0,
+            "inflight": 0.0,
+            "wanted": 18.0,
+            "projectedRows": 42.0
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 12,
+              "deadImageRGBABytes": 28901376,
+              "event": "periodic",
+              "frame": 53,
+              "height": 620,
+              "hwnd": 525676,
+              "imageRGBABytes": 32440320,
+              "pid": 9476,
+              "swept": 0,
+              "utcMillis": 1795188757404,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 2
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 9
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 12,
+              "deadImageRGBABytes": 147456,
+              "event": "periodic",
+              "frame": 180,
+              "height": 732,
+              "hwnd": 1900998,
+              "imageRGBABytes": 258048,
+              "pid": 9476,
+              "swept": 120,
+              "utcMillis": 1795188757406,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 12
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 9
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 32698368,
+            "deadImageCount": 24,
+            "deadImageRGBABytes": 29048832
+          }
+        }
+      },
+      "after-diagnostic-gc": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 99999744,
+            "workingSet": 150564864,
+            "privateCommit": 151351296,
+            "handles": 414,
+            "gdi": 53,
+            "user": 26,
+            "threads": 14,
+            "visible": 0
+          },
+          "go": {
+            "heapAlloc": 18688992.0,
+            "heapSys": 129171456.0,
+            "heapInuse": 21491712.0,
+            "heapReleased": 77758464.0,
+            "sys": 136694008.0,
+            "goroutines": 16.0,
+            "numGC": 35.0
+          },
+          "cache": {
+            "imageObjects": 12.0,
+            "fullImages": 1.0,
+            "releasedImages": 12.0,
+            "imageCPUPixelBytes": 0.0,
+            "details": 18.0,
+            "inflight": 0.0,
+            "wanted": 18.0,
+            "projectedRows": 42.0
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 13,
+              "deadImageRGBABytes": 29097984,
+              "event": "periodic",
+              "frame": 53,
+              "height": 620,
+              "hwnd": 525676,
+              "imageRGBABytes": 32440320,
+              "pid": 9476,
+              "swept": 0,
+              "utcMillis": 1795188772507,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 4
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 9
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 13,
+              "deadImageRGBABytes": 159744,
+              "event": "periodic",
+              "frame": 180,
+              "height": 732,
+              "hwnd": 1900998,
+              "imageRGBABytes": 258048,
+              "pid": 9476,
+              "swept": 120,
+              "utcMillis": 1795188772507,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 13
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 32698368,
+            "deadImageCount": 26,
+            "deadImageRGBABytes": 29257728
+          }
+        }
+      },
+      "after-diagnostic-release": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 99999744,
+            "workingSet": 150564864,
+            "privateCommit": 151351296,
+            "handles": 414,
+            "gdi": 53,
+            "user": 26,
+            "threads": 14,
+            "visible": 0
+          },
+          "go": {
+            "heapAlloc": 18788816.0,
+            "heapSys": 129171456.0,
+            "heapInuse": 21581824.0,
+            "heapReleased": 77758464.0,
+            "sys": 136694008.0,
+            "goroutines": 16.0,
+            "numGC": 35.0
+          },
+          "cache": {
+            "imageObjects": 12.0,
+            "fullImages": 1.0,
+            "releasedImages": 12.0,
+            "imageCPUPixelBytes": 0.0,
+            "details": 18.0,
+            "inflight": 0.0,
+            "wanted": 18.0,
+            "projectedRows": 42.0
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 53,
+              "height": 620,
+              "hwnd": 525676,
+              "imageRGBABytes": 3342336,
+              "pid": 9476,
+              "swept": 0,
+              "utcMillis": 1795188787525,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 180,
+              "height": 732,
+              "hwnd": 1900998,
+              "imageRGBABytes": 98304,
+              "pid": 9476,
+              "swept": 120,
+              "utcMillis": 1795188787525,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3440640,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      }
+    },
+    "diagnostic_gpu_events": {
+      "gui": [],
+      "quick-panel": [
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 13,
+          "deadImageRGBABytes": 159744,
+          "event": "after-diagnostic-gc",
+          "frame": 180,
+          "height": 732,
+          "hwnd": 1900998,
+          "imageRGBABytes": 258048,
+          "images": [
+            {
+              "ageFrames": 42,
+              "height": 48,
+              "id": 34,
+              "lastFrame": 138,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 167,
+              "height": 48,
+              "id": 6,
+              "lastFrame": 13,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 20,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 95,
+              "height": 48,
+              "id": 26,
+              "lastFrame": 85,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 77,
+              "height": 48,
+              "id": 58,
+              "lastFrame": 103,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 40,
+              "height": 48,
+              "id": 95,
+              "lastFrame": 140,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 14,
+              "height": 48,
+              "id": 101,
+              "lastFrame": 166,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 116,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 43,
+              "height": 48,
+              "id": 83,
+              "lastFrame": 137,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 9,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 17,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 60,
+              "height": 48,
+              "id": 31,
+              "lastFrame": 120,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 86,
+              "height": 48,
+              "id": 49,
+              "lastFrame": 94,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 69,
+              "height": 48,
+              "id": 66,
+              "lastFrame": 111,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 61,
+              "height": 48,
+              "id": 74,
+              "lastFrame": 119,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 122,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 37,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 36,
+              "height": 48,
+              "id": 88,
+              "lastFrame": 144,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 17,
+              "height": 48,
+              "id": 107,
+              "lastFrame": 163,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 112,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 14,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 9476,
+          "swept": 120,
+          "utcMillis": 1795188762460,
+          "warp": false,
+          "width": 760
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 13,
+          "deadImageRGBABytes": 29097984,
+          "event": "after-diagnostic-gc",
+          "frame": 53,
+          "height": 620,
+          "hwnd": 525676,
+          "imageRGBABytes": 32440320,
+          "images": [
+            {
+              "ageFrames": 20,
+              "height": 768,
+              "id": 62,
+              "lastFrame": 33,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 8,
+              "height": 192,
+              "id": 86,
+              "lastFrame": 45,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 5,
+              "height": 768,
+              "id": 103,
+              "lastFrame": 48,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 28,
+              "height": 768,
+              "id": 45,
+              "lastFrame": 25,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 16,
+              "height": 768,
+              "id": 70,
+              "lastFrame": 37,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 10,
+              "height": 192,
+              "id": 32,
+              "lastFrame": 43,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 0,
+              "height": 768,
+              "id": 118,
+              "lastFrame": 53,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 19,
+              "height": 192,
+              "id": 35,
+              "lastFrame": 34,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 14,
+              "height": 192,
+              "id": 29,
+              "lastFrame": 39,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 2,
+              "height": 192,
+              "id": 99,
+              "lastFrame": 51,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 51,
+              "height": 768,
+              "id": 2,
+              "lastFrame": 2,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 44,
+              "height": 768,
+              "id": 22,
+              "lastFrame": 9,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 24,
+              "height": 768,
+              "id": 54,
+              "lastFrame": 29,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 13,
+              "height": 768,
+              "id": 79,
+              "lastFrame": 40,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 9,
+              "height": 768,
+              "id": 91,
+              "lastFrame": 44,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            }
+          ],
+          "pid": 9476,
+          "swept": 0,
+          "utcMillis": 1795188762461,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 13,
+          "deadImageRGBABytes": 29097984,
+          "event": "before-diagnostic-release",
+          "frame": 53,
+          "height": 620,
+          "hwnd": 525676,
+          "imageRGBABytes": 32440320,
+          "images": [
+            {
+              "ageFrames": 51,
+              "height": 768,
+              "id": 2,
+              "lastFrame": 2,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 44,
+              "height": 768,
+              "id": 22,
+              "lastFrame": 9,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 24,
+              "height": 768,
+              "id": 54,
+              "lastFrame": 29,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 13,
+              "height": 768,
+              "id": 79,
+              "lastFrame": 40,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 9,
+              "height": 768,
+              "id": 91,
+              "lastFrame": 44,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 20,
+              "height": 768,
+              "id": 62,
+              "lastFrame": 33,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 8,
+              "height": 192,
+              "id": 86,
+              "lastFrame": 45,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 5,
+              "height": 768,
+              "id": 103,
+              "lastFrame": 48,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 28,
+              "height": 768,
+              "id": 45,
+              "lastFrame": 25,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 16,
+              "height": 768,
+              "id": 70,
+              "lastFrame": 37,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 10,
+              "height": 192,
+              "id": 32,
+              "lastFrame": 43,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 0,
+              "height": 768,
+              "id": 118,
+              "lastFrame": 53,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 19,
+              "height": 192,
+              "id": 35,
+              "lastFrame": 34,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 14,
+              "height": 192,
+              "id": 29,
+              "lastFrame": 39,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 2,
+              "height": 192,
+              "id": 99,
+              "lastFrame": 51,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            }
+          ],
+          "pid": 9476,
+          "swept": 0,
+          "utcMillis": 1795188777515,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 13,
+          "deadImageRGBABytes": 159744,
+          "event": "before-diagnostic-release",
+          "frame": 180,
+          "height": 732,
+          "hwnd": 1900998,
+          "imageRGBABytes": 258048,
+          "images": [
+            {
+              "ageFrames": 167,
+              "height": 48,
+              "id": 6,
+              "lastFrame": 13,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 20,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 95,
+              "height": 48,
+              "id": 26,
+              "lastFrame": 85,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 77,
+              "height": 48,
+              "id": 58,
+              "lastFrame": 103,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 40,
+              "height": 48,
+              "id": 95,
+              "lastFrame": 140,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 14,
+              "height": 48,
+              "id": 101,
+              "lastFrame": 166,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 116,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 43,
+              "height": 48,
+              "id": 83,
+              "lastFrame": 137,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 9,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 17,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 60,
+              "height": 48,
+              "id": 31,
+              "lastFrame": 120,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 86,
+              "height": 48,
+              "id": 49,
+              "lastFrame": 94,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 69,
+              "height": 48,
+              "id": 66,
+              "lastFrame": 111,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 61,
+              "height": 48,
+              "id": 74,
+              "lastFrame": 119,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 122,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 37,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 36,
+              "height": 48,
+              "id": 88,
+              "lastFrame": 144,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 17,
+              "height": 48,
+              "id": 107,
+              "lastFrame": 163,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 112,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 14,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 42,
+              "height": 48,
+              "id": 34,
+              "lastFrame": 138,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 9476,
+          "swept": 120,
+          "utcMillis": 1795188777516,
+          "warp": false,
+          "width": 760
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 0,
+          "deadImageRGBABytes": 0,
+          "event": "after-diagnostic-release",
+          "frame": 53,
+          "height": 620,
+          "hwnd": 525676,
+          "imageRGBABytes": 3342336,
+          "images": [
+            {
+              "ageFrames": 0,
+              "height": 768,
+              "id": 118,
+              "lastFrame": 53,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 19,
+              "height": 192,
+              "id": 35,
+              "lastFrame": 34,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            }
+          ],
+          "pid": 9476,
+          "swept": 0,
+          "utcMillis": 1795188777516,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 0,
+          "deadImageRGBABytes": 0,
+          "event": "after-diagnostic-release",
+          "frame": 180,
+          "height": 732,
+          "hwnd": 1900998,
+          "imageRGBABytes": 98304,
+          "images": [
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 20,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 116,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 9,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 17,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 122,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 37,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 112,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 14,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 9476,
+          "swept": 120,
+          "utcMillis": 1795188777516,
+          "warp": false,
+          "width": 760
+        }
+      ]
+    },
+    "unowned_texture_assertion": {
+      "verdict": "FAIL",
+      "violations": [
+        {
+          "run": "images-1",
+          "role": "quick-panel",
+          "gpu": {
+            "imageRGBABytes": 32698368,
+            "deadImageCount": 26,
+            "deadImageRGBABytes": 29257728
+          }
+        }
+      ]
+    }
+  },
+  "qp-rootcause-amd64": {
+    "receipt": {
+      "noCaptures": true,
+      "diagnosticRelease": true,
+      "timing": [
+        {
+          "millis": 275.1172,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "intentToOriginalMillis": 410,
+          "event": "gui-selection",
+          "index": 1
+        },
+        {
+          "intentToOriginalMillis": 374,
+          "event": "gui-selection",
+          "index": 2
+        },
+        {
+          "intentToOriginalMillis": 372,
+          "event": "gui-selection",
+          "index": 3
+        },
+        {
+          "millis": 375.7993,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 3928.471,
+          "at": 1795188896073,
+          "originalReadyMillis": 3850,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 158.9837,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2503.2935,
+          "at": 1795188944372,
+          "originalReadyMillis": 2052,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 176.9676,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2065.3064,
+          "at": 1795188963360,
+          "originalReadyMillis": 1762,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 105.54090000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2118.0832,
+          "at": 1795188982211,
+          "originalReadyMillis": 1895,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 172.941,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1924.0663000000002,
+          "at": 1795189000771,
+          "originalReadyMillis": 1817,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 407,
+          "observedReadyMillis": 434.2423,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 546,
+          "observedReadyMillis": 595.6399,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 569,
+          "observedReadyMillis": 643.9574,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 45,
+      "driverSHA256": "D3E39B914D6CD5043832CDCCB2AD642063882B2B406D317457F7E0CC2C5F867D",
+      "guiSelections": true,
+      "clipboardSequenceAfter": 45,
+      "os": {
+        "Caption": "Microsoft Windows 11 \u4e13\u4e1a\u7248",
+        "BuildNumber": "26200",
+        "OSArchitecture": "ARM 64 \u4f4d\u5904\u7406\u5668"
+      },
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 46096384,
+            "mappedCommitted": 14811136,
+            "imageCommitted": 171286528,
+            "reserved": 14223998976
+          },
+          "exe": "C:\\qm34242e\\bin\\unic-desktop.exe",
+          "pid": 3608,
+          "sha256": "5383ADD8C162C2CB4354CEE8F4CD32A23C1B40C385D70A55C85D0B0AFF060411",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:34:21.9058811Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 139911168,
+            "mappedCommitted": 109162496,
+            "imageCommitted": 220811264,
+            "reserved": 14256599040
+          },
+          "exe": "C:\\qm34242e\\bin\\unic-desktop.exe",
+          "pid": 12536,
+          "sha256": "5383ADD8C162C2CB4354CEE8F4CD32A23C1B40C385D70A55C85D0B0AFF060411",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:34:22.9242877Z"
+        },
+        "service": {
+          "pid": 12564,
+          "exe": "C:\\qm34242e\\bin\\unicd.exe",
+          "sha256": "575E6A092220E057DBD0548B3484D5BAD5B99332909BA7B24E87B4DB16C2915D",
+          "start": "2026-11-20T15:34:09.0582505Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 141623296,
+            "mappedCommitted": 74104832,
+            "imageCommitted": 211193856,
+            "reserved": 14280085504
+          },
+          "exe": "C:\\qm34242e\\bin\\unic-desktop.exe",
+          "pid": 4772,
+          "sha256": "5383ADD8C162C2CB4354CEE8F4CD32A23C1B40C385D70A55C85D0B0AFF060411",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:34:56.9515401Z"
+        }
+      },
+      "diagnosticGC": true,
+      "verdict": "PASS",
+      "ownedProcessesRemaining": 0,
+      "dataset": "images",
+      "selectionCycles": 3,
+      "failure": null
+    },
+    "phases": {
+      "gui-only": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 123371520,
+            "workingSet": 191348736,
+            "privateCommit": 178704384,
+            "handles": 502,
+            "gdi": 58,
+            "user": 27,
+            "threads": 19,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 51800528,
+            "heapSys": 83099648,
+            "heapInuse": 54845440,
+            "heapReleased": 12812288,
+            "sys": 90228984,
+            "goroutines": 22,
+            "numGC": 12
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 42,
+              "height": 1440,
+              "hwnd": 9241558,
+              "imageRGBABytes": 3637248,
+              "pid": 12536,
+              "swept": 0,
+              "utcMillis": 1795188873140,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 10
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3637248,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "gui-selection-3": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 169533440,
+            "workingSet": 237670400,
+            "privateCommit": 224657408,
+            "handles": 504,
+            "gdi": 58,
+            "user": 28,
+            "threads": 19,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 52284416,
+            "heapSys": 133431296,
+            "heapInuse": 54992896,
+            "heapReleased": 27607040,
+            "sys": 140560632,
+            "goroutines": 20,
+            "numGC": 16
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 12,
+              "deadImageRGBABytes": 10321920,
+              "event": "periodic",
+              "frame": 68,
+              "height": 1440,
+              "hwnd": 9241558,
+              "imageRGBABytes": 13959168,
+              "pid": 12536,
+              "swept": 0,
+              "utcMillis": 1795188893195,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": false,
+                  "count": 6
+                },
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 10
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 13959168,
+            "deadImageCount": 12,
+            "deadImageRGBABytes": 10321920
+          }
+        }
+      },
+      "panel-with-gui": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 169533440,
+            "workingSet": 237699072,
+            "privateCommit": 224653312,
+            "handles": 504,
+            "gdi": 58,
+            "user": 28,
+            "threads": 19,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 54068864,
+            "heapSys": 133431296,
+            "heapInuse": 56762368,
+            "heapReleased": 27607040,
+            "sys": 140560632,
+            "goroutines": 20,
+            "numGC": 16
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 12,
+              "deadImageRGBABytes": 10321920,
+              "event": "periodic",
+              "frame": 78,
+              "height": 1440,
+              "hwnd": 9241558,
+              "imageRGBABytes": 13959168,
+              "pid": 12536,
+              "swept": 0,
+              "utcMillis": 1795188908216,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": false,
+                  "count": 6
+                },
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 10
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 13959168,
+            "deadImageCount": 12,
+            "deadImageRGBABytes": 10321920
+          }
+        },
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 107388928,
+            "workingSet": 157323264,
+            "privateCommit": 163770368,
+            "handles": 487,
+            "gdi": 53,
+            "user": 24,
+            "threads": 19,
+            "visible": 2
+          },
+          "go": {
+            "heapAlloc": 41602272,
+            "heapSys": 108396544,
+            "heapInuse": 44269568,
+            "heapReleased": 39133184,
+            "sys": 115132664,
+            "goroutines": 20,
+            "numGC": 15
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 23,
+              "height": 620,
+              "hwnd": 23987126,
+              "imageRGBABytes": 3145728,
+              "pid": 4772,
+              "swept": 0,
+              "utcMillis": 1795188907211,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 57,
+              "height": 732,
+              "hwnd": 1377526,
+              "imageRGBABytes": 98304,
+              "pid": 4772,
+              "swept": 0,
+              "utcMillis": 1795188907213,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3244032,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "selection-3": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 161546240,
+            "workingSet": 211591168,
+            "privateCommit": 218034176,
+            "handles": 478,
+            "gdi": 53,
+            "user": 25,
+            "threads": 16,
+            "visible": 2
+          },
+          "go": {
+            "heapAlloc": null,
+            "heapSys": null,
+            "heapInuse": null,
+            "heapReleased": null,
+            "sys": null,
+            "goroutines": null,
+            "numGC": null
+          },
+          "cache": {
+            "imageObjects": null,
+            "fullImages": null,
+            "releasedImages": null,
+            "imageCPUPixelBytes": null,
+            "details": null,
+            "inflight": null,
+            "wanted": null,
+            "projectedRows": null
+          },
+          "renderers": [],
+          "gpu": {
+            "imageRGBABytes": 0,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "selection-final-hidden": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 160927744.0,
+            "workingSet": 210976768.0,
+            "privateCommit": 217260032.0,
+            "handles": 465.0,
+            "gdi": 53.0,
+            "user": 25.0,
+            "threads": 14.0,
+            "visible": 0.0
+          },
+          "go": {
+            "heapAlloc": 58098976.0,
+            "heapSys": 146112512.0,
+            "heapInuse": 60854272.0,
+            "heapReleased": 48701440.0,
+            "sys": 153405688.0,
+            "goroutines": 16.0,
+            "numGC": 31.0
+          },
+          "cache": {
+            "imageObjects": 12.0,
+            "fullImages": 1.0,
+            "releasedImages": 12.0,
+            "imageCPUPixelBytes": 0.0,
+            "details": 18.0,
+            "inflight": 0.0,
+            "wanted": 18.0,
+            "projectedRows": 42.0
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 9,
+              "deadImageRGBABytes": 22413312,
+              "event": "periodic",
+              "frame": 54,
+              "height": 620,
+              "hwnd": 23987126,
+              "imageRGBABytes": 26148864,
+              "pid": 4772,
+              "swept": 0,
+              "utcMillis": 1795189037389,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 2
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 7
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 9,
+              "deadImageRGBABytes": 110592,
+              "event": "periodic",
+              "frame": 185,
+              "height": 732,
+              "hwnd": 1377526,
+              "imageRGBABytes": 221184,
+              "pid": 4772,
+              "swept": 124,
+              "utcMillis": 1795189037389,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 9
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 9
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 26370048,
+            "deadImageCount": 18,
+            "deadImageRGBABytes": 22523904
+          }
+        }
+      },
+      "after-diagnostic-gc": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 121556992.0,
+            "workingSet": 172072960.0,
+            "privateCommit": 177594368.0,
+            "handles": 467.0,
+            "gdi": 53.0,
+            "user": 26.0,
+            "threads": 13.0,
+            "visible": 0.0
+          },
+          "go": {
+            "heapAlloc": 18730504,
+            "heapSys": 146112512,
+            "heapInuse": 21626880,
+            "heapReleased": 89292800,
+            "sys": 153405688,
+            "goroutines": 16,
+            "numGC": 32
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 10,
+              "deadImageRGBABytes": 122880,
+              "event": "periodic",
+              "frame": 185,
+              "height": 732,
+              "hwnd": 1377526,
+              "imageRGBABytes": 221184,
+              "pid": 4772,
+              "swept": 124,
+              "utcMillis": 1795189052465,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 10
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 10,
+              "deadImageRGBABytes": 22609920,
+              "event": "periodic",
+              "frame": 54,
+              "height": 620,
+              "hwnd": 23987126,
+              "imageRGBABytes": 26148864,
+              "pid": 4772,
+              "swept": 0,
+              "utcMillis": 1795189052465,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 2
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 7
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 26370048,
+            "deadImageCount": 20,
+            "deadImageRGBABytes": 22732800
+          }
+        }
+      },
+      "after-diagnostic-release": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 121556992.0,
+            "workingSet": 172072960.0,
+            "privateCommit": 177594368.0,
+            "handles": 467.0,
+            "gdi": 53.0,
+            "user": 26.0,
+            "threads": 13.0,
+            "visible": 0.0
+          },
+          "go": {
+            "heapAlloc": 18811840.0,
+            "heapSys": 146112512.0,
+            "heapInuse": 21680128.0,
+            "heapReleased": 89292800.0,
+            "sys": 153405688.0,
+            "goroutines": 16.0,
+            "numGC": 32.0
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 54,
+              "height": 620,
+              "hwnd": 23987126,
+              "imageRGBABytes": 3538944,
+              "pid": 4772,
+              "swept": 0,
+              "utcMillis": 1795189067536,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 2
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 185,
+              "height": 732,
+              "hwnd": 1377526,
+              "imageRGBABytes": 98304,
+              "pid": 4772,
+              "swept": 124,
+              "utcMillis": 1795189067538,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3637248,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      }
+    },
+    "diagnostic_gpu_events": {
+      "gui": [],
+      "quick-panel": [
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 10,
+          "deadImageRGBABytes": 22609920,
+          "event": "after-diagnostic-gc",
+          "frame": 54,
+          "height": 620,
+          "hwnd": 23987126,
+          "imageRGBABytes": 26148864,
+          "images": [
+            {
+              "ageFrames": 17,
+              "height": 192,
+              "id": 19,
+              "lastFrame": 37,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 22,
+              "height": 768,
+              "id": 46,
+              "lastFrame": 32,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 10,
+              "height": 768,
+              "id": 73,
+              "lastFrame": 44,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 7,
+              "height": 192,
+              "id": 28,
+              "lastFrame": 47,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 5,
+              "height": 768,
+              "id": 87,
+              "lastFrame": 49,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 2,
+              "height": 192,
+              "id": 94,
+              "lastFrame": 52,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 1,
+              "height": 768,
+              "id": 99,
+              "lastFrame": 53,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 48,
+              "height": 768,
+              "id": 6,
+              "lastFrame": 6,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 27,
+              "height": 768,
+              "id": 37,
+              "lastFrame": 27,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 18,
+              "height": 768,
+              "id": 55,
+              "lastFrame": 36,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 13,
+              "height": 768,
+              "id": 64,
+              "lastFrame": 41,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 11,
+              "height": 192,
+              "id": 25,
+              "lastFrame": 43,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 6,
+              "height": 192,
+              "id": 80,
+              "lastFrame": 48,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            }
+          ],
+          "pid": 4772,
+          "swept": 0,
+          "utcMillis": 1795189042429,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 10,
+          "deadImageRGBABytes": 122880,
+          "event": "after-diagnostic-gc",
+          "frame": 185,
+          "height": 732,
+          "hwnd": 1377526,
+          "imageRGBABytes": 221184,
+          "images": [
+            {
+              "ageFrames": 58,
+              "height": 48,
+              "id": 68,
+              "lastFrame": 127,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 4,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 15,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 18,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 39,
+              "height": 48,
+              "id": 82,
+              "lastFrame": 146,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 18,
+              "height": 48,
+              "id": 91,
+              "lastFrame": 167,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 21,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 78,
+              "height": 48,
+              "id": 50,
+              "lastFrame": 107,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 40,
+              "height": 48,
+              "id": 77,
+              "lastFrame": 145,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 108,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 57,
+              "height": 48,
+              "id": 27,
+              "lastFrame": 128,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 30,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 17,
+              "height": 48,
+              "id": 96,
+              "lastFrame": 168,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 103,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 96,
+              "height": 48,
+              "id": 10,
+              "lastFrame": 89,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 24,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 88,
+              "height": 48,
+              "id": 41,
+              "lastFrame": 97,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 68,
+              "height": 48,
+              "id": 59,
+              "lastFrame": 117,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 4772,
+          "swept": 124,
+          "utcMillis": 1795189042430,
+          "warp": false,
+          "width": 760
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 10,
+          "deadImageRGBABytes": 122880,
+          "event": "before-diagnostic-release",
+          "frame": 185,
+          "height": 732,
+          "hwnd": 1377526,
+          "imageRGBABytes": 221184,
+          "images": [
+            {
+              "ageFrames": 96,
+              "height": 48,
+              "id": 10,
+              "lastFrame": 89,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 24,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 88,
+              "height": 48,
+              "id": 41,
+              "lastFrame": 97,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 68,
+              "height": 48,
+              "id": 59,
+              "lastFrame": 117,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 58,
+              "height": 48,
+              "id": 68,
+              "lastFrame": 127,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 4,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 15,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 18,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 39,
+              "height": 48,
+              "id": 82,
+              "lastFrame": 146,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 18,
+              "height": 48,
+              "id": 91,
+              "lastFrame": 167,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 21,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 78,
+              "height": 48,
+              "id": 50,
+              "lastFrame": 107,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 40,
+              "height": 48,
+              "id": 77,
+              "lastFrame": 145,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 108,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 57,
+              "height": 48,
+              "id": 27,
+              "lastFrame": 128,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 30,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 17,
+              "height": 48,
+              "id": 96,
+              "lastFrame": 168,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 103,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 4772,
+          "swept": 124,
+          "utcMillis": 1795189062508,
+          "warp": false,
+          "width": 760
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 10,
+          "deadImageRGBABytes": 22609920,
+          "event": "before-diagnostic-release",
+          "frame": 54,
+          "height": 620,
+          "hwnd": 23987126,
+          "imageRGBABytes": 26148864,
+          "images": [
+            {
+              "ageFrames": 22,
+              "height": 768,
+              "id": 46,
+              "lastFrame": 32,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 10,
+              "height": 768,
+              "id": 73,
+              "lastFrame": 44,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 7,
+              "height": 192,
+              "id": 28,
+              "lastFrame": 47,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 5,
+              "height": 768,
+              "id": 87,
+              "lastFrame": 49,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 2,
+              "height": 192,
+              "id": 94,
+              "lastFrame": 52,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 1,
+              "height": 768,
+              "id": 99,
+              "lastFrame": 53,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 48,
+              "height": 768,
+              "id": 6,
+              "lastFrame": 6,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 27,
+              "height": 768,
+              "id": 37,
+              "lastFrame": 27,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 18,
+              "height": 768,
+              "id": 55,
+              "lastFrame": 36,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 13,
+              "height": 768,
+              "id": 64,
+              "lastFrame": 41,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 11,
+              "height": 192,
+              "id": 25,
+              "lastFrame": 43,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 6,
+              "height": 192,
+              "id": 80,
+              "lastFrame": 48,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 17,
+              "height": 192,
+              "id": 19,
+              "lastFrame": 37,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            }
+          ],
+          "pid": 4772,
+          "swept": 0,
+          "utcMillis": 1795189062508,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 0,
+          "deadImageRGBABytes": 0,
+          "event": "after-diagnostic-release",
+          "frame": 54,
+          "height": 620,
+          "hwnd": 23987126,
+          "imageRGBABytes": 3538944,
+          "images": [
+            {
+              "ageFrames": 17,
+              "height": 192,
+              "id": 19,
+              "lastFrame": 37,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 7,
+              "height": 192,
+              "id": 28,
+              "lastFrame": 47,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 1,
+              "height": 768,
+              "id": 99,
+              "lastFrame": 53,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            }
+          ],
+          "pid": 4772,
+          "swept": 0,
+          "utcMillis": 1795189062510,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 0,
+          "deadImageRGBABytes": 0,
+          "event": "after-diagnostic-release",
+          "frame": 185,
+          "height": 732,
+          "hwnd": 1377526,
+          "imageRGBABytes": 98304,
+          "images": [
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 24,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 4,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 15,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 18,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 21,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 108,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 30,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 103,
+              "lastFrame": 185,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 4772,
+          "swept": 124,
+          "utcMillis": 1795189062510,
+          "warp": false,
+          "width": 760
+        }
+      ]
+    },
+    "unowned_texture_assertion": {
+      "verdict": "FAIL",
+      "violations": [
+        {
+          "run": "images-1",
+          "role": "quick-panel",
+          "gpu": {
+            "imageRGBABytes": 26370048,
+            "deadImageCount": 20,
+            "deadImageRGBABytes": 22732800
+          }
+        }
+      ]
+    }
+  },
+  "qp-rootcause-control-amd64": {
+    "receipt": {
+      "noCaptures": true,
+      "diagnosticRelease": true,
+      "timing": [
+        {
+          "millis": 154.6082,
+          "event": "observed-ready",
+          "role": "gui"
+        },
+        {
+          "intentToOriginalMillis": 199,
+          "event": "gui-selection",
+          "index": 1
+        },
+        {
+          "intentToOriginalMillis": 198,
+          "event": "gui-selection",
+          "index": 2
+        },
+        {
+          "intentToOriginalMillis": 230,
+          "event": "gui-selection",
+          "index": 3
+        },
+        {
+          "millis": 195.22160000000002,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 2256.5053000000003,
+          "at": 1795189140001,
+          "originalReadyMillis": 1793,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 95.9965,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1991.0387,
+          "at": 1795189186255,
+          "originalReadyMillis": 1827,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 108.2664,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1819.2313000000001,
+          "at": 1795189204756,
+          "originalReadyMillis": 1639,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 82.59530000000001,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1808.8143,
+          "at": 1795189223156,
+          "originalReadyMillis": 1664,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "millis": 84.5895,
+          "event": "observed-ready",
+          "role": "quick-panel"
+        },
+        {
+          "event": "panel-open",
+          "searchObservedMillis": 1795.1287,
+          "at": 1795189241442,
+          "originalReadyMillis": 1622,
+          "originalWidth": 2048,
+          "originalHeight": 1536
+        },
+        {
+          "selection": 1,
+          "intentToOriginalMillis": 329,
+          "observedReadyMillis": 360.3396,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 2,
+          "intentToOriginalMillis": 470,
+          "observedReadyMillis": 505.3648,
+          "event": "panel-selection"
+        },
+        {
+          "selection": 3,
+          "intentToOriginalMillis": 433,
+          "observedReadyMillis": 442.68330000000003,
+          "event": "panel-selection"
+        }
+      ],
+      "clipboardSequenceBefore": 45,
+      "driverSHA256": "D3E39B914D6CD5043832CDCCB2AD642063882B2B406D317457F7E0CC2C5F867D",
+      "guiSelections": true,
+      "clipboardSequenceAfter": 45,
+      "os": {
+        "Caption": "Microsoft Windows 11 \u4e13\u4e1a\u7248",
+        "BuildNumber": "26200",
+        "OSArchitecture": "ARM 64 \u4f4d\u5904\u7406\u5668"
+      },
+      "identities": {
+        "tray": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 46133248,
+            "mappedCommitted": 14807040,
+            "imageCommitted": 171286528,
+            "reserved": 14223704064
+          },
+          "exe": "C:\\qm962c8d\\bin\\unic-desktop.exe",
+          "pid": 11576,
+          "sha256": "1AEDD0EBDB43DFD6B2D93D9C5C10DBE7933BE5F2E71BFB28EE8CC11521EB1AD6",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:38:28.4227880Z"
+        },
+        "gui": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 135471104,
+            "mappedCommitted": 109162496,
+            "imageCommitted": 220811264,
+            "reserved": 14254215168
+          },
+          "exe": "C:\\qm962c8d\\bin\\unic-desktop.exe",
+          "pid": 12724,
+          "sha256": "1AEDD0EBDB43DFD6B2D93D9C5C10DBE7933BE5F2E71BFB28EE8CC11521EB1AD6",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:38:28.9444772Z"
+        },
+        "service": {
+          "pid": 3740,
+          "exe": "C:\\qm962c8d\\bin\\unicd.exe",
+          "sha256": "575E6A092220E057DBD0548B3484D5BAD5B99332909BA7B24E87B4DB16C2915D",
+          "start": "2026-11-20T15:38:14.4721989Z"
+        },
+        "quick-panel": {
+          "processMachine": 0,
+          "regionsAtBind": {
+            "privateCommitted": 158814208,
+            "mappedCommitted": 74100736,
+            "imageCommitted": 211193856,
+            "reserved": 14262898688
+          },
+          "exe": "C:\\qm962c8d\\bin\\unic-desktop.exe",
+          "pid": 9780,
+          "sha256": "1AEDD0EBDB43DFD6B2D93D9C5C10DBE7933BE5F2E71BFB28EE8CC11521EB1AD6",
+          "nativeMachine": 43620,
+          "start": "2026-11-20T15:39:00.8066889Z"
+        }
+      },
+      "diagnosticGC": true,
+      "verdict": "PASS",
+      "ownedProcessesRemaining": 0,
+      "dataset": "images",
+      "selectionCycles": 3,
+      "failure": null
+    },
+    "phases": {
+      "gui-only": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 123031552,
+            "workingSet": 191012864,
+            "privateCommit": 178503680,
+            "handles": 497,
+            "gdi": 58,
+            "user": 27,
+            "threads": 18,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 52340120,
+            "heapSys": 78839808,
+            "heapInuse": 55386112,
+            "heapReleased": 9478144,
+            "sys": 86034680,
+            "goroutines": 22,
+            "numGC": 14
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 45,
+              "height": 1440,
+              "hwnd": 16908956,
+              "imageRGBABytes": 3637248,
+              "pid": 12724,
+              "swept": 0,
+              "utcMillis": 1795189119153,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 10
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3637248,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "gui-selection-3": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 132689920,
+            "workingSet": 200716288,
+            "privateCommit": 188006400,
+            "handles": 494,
+            "gdi": 58,
+            "user": 27,
+            "threads": 18,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": null,
+            "heapSys": null,
+            "heapInuse": null,
+            "heapReleased": null,
+            "sys": null,
+            "goroutines": null,
+            "numGC": null
+          },
+          "cache": {
+            "imageObjects": null,
+            "fullImages": null,
+            "releasedImages": null,
+            "imageCPUPixelBytes": null,
+            "details": null,
+            "inflight": null,
+            "wanted": null,
+            "projectedRows": null
+          },
+          "renderers": [],
+          "gpu": {
+            "imageRGBABytes": 0,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "panel-with-gui": {
+        "gui": {
+          "memory": {
+            "privateWorkingSet": 132689920,
+            "workingSet": 200728576,
+            "privateCommit": 188002304,
+            "handles": 495,
+            "gdi": 58,
+            "user": 27,
+            "threads": 18,
+            "visible": 1
+          },
+          "go": {
+            "heapAlloc": 53983152,
+            "heapSys": 78872576,
+            "heapInuse": 57114624,
+            "heapReleased": 10313728,
+            "sys": 86034680,
+            "goroutines": 20,
+            "numGC": 20
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 20,
+            "inflight": 0,
+            "wanted": 20,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 10,
+              "deadImageRGBABytes": 10076160,
+              "event": "periodic",
+              "frame": 79,
+              "height": 1440,
+              "hwnd": 16908956,
+              "imageRGBABytes": 13959168,
+              "pid": 12724,
+              "swept": 0,
+              "utcMillis": 1795189149172,
+              "warp": false,
+              "width": 2200,
+              "imageShapes": [
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": false,
+                  "count": 5
+                },
+                {
+                  "width": 128,
+                  "height": 96,
+                  "ownerAlive": true,
+                  "count": 11
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 2
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 13959168,
+            "deadImageCount": 10,
+            "deadImageRGBABytes": 10076160
+          }
+        },
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 110096384,
+            "workingSet": 159854592,
+            "privateCommit": 166391808,
+            "handles": 489,
+            "gdi": 53,
+            "user": 24,
+            "threads": 19,
+            "visible": 2
+          },
+          "go": {
+            "heapAlloc": 42538168,
+            "heapSys": 95780864,
+            "heapInuse": 45039616,
+            "heapReleased": 27025408,
+            "sys": 102549752,
+            "goroutines": 20,
+            "numGC": 16
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 1,
+              "deadImageRGBABytes": 12288,
+              "event": "periodic",
+              "frame": 57,
+              "height": 732,
+              "hwnd": 853150,
+              "imageRGBABytes": 110592,
+              "pid": 9780,
+              "swept": 0,
+              "utcMillis": 1795189151004,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 1
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 1,
+              "deadImageRGBABytes": 3145728,
+              "event": "periodic",
+              "frame": 21,
+              "height": 620,
+              "hwnd": 656748,
+              "imageRGBABytes": 6291456,
+              "pid": 9780,
+              "swept": 0,
+              "utcMillis": 1795189151004,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 1
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 6402048,
+            "deadImageCount": 2,
+            "deadImageRGBABytes": 3158016
+          }
+        }
+      },
+      "selection-3": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 165105664.0,
+            "workingSet": 215027712.0,
+            "privateCommit": 221630464.0,
+            "handles": 480.0,
+            "gdi": 53.0,
+            "user": 25.0,
+            "threads": 16.0,
+            "visible": 2.0
+          },
+          "go": {
+            "heapAlloc": null,
+            "heapSys": null,
+            "heapInuse": null,
+            "heapReleased": null,
+            "sys": null,
+            "goroutines": null,
+            "numGC": null
+          },
+          "cache": {
+            "imageObjects": null,
+            "fullImages": null,
+            "releasedImages": null,
+            "imageCPUPixelBytes": null,
+            "details": null,
+            "inflight": null,
+            "wanted": null,
+            "projectedRows": null
+          },
+          "renderers": [],
+          "gpu": {
+            "imageRGBABytes": 0,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      },
+      "selection-final-hidden": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 164487168,
+            "workingSet": 214413312,
+            "privateCommit": 220864512,
+            "handles": 467,
+            "gdi": 53,
+            "user": 25,
+            "threads": 14,
+            "visible": 0
+          },
+          "go": {
+            "heapAlloc": 57542696,
+            "heapSys": 120815616,
+            "heapInuse": 60096512,
+            "heapReleased": 23281664,
+            "sys": 128502008,
+            "goroutines": 16,
+            "numGC": 44
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 10,
+              "deadImageRGBABytes": 25559040,
+              "event": "periodic",
+              "frame": 52,
+              "height": 620,
+              "hwnd": 656748,
+              "imageRGBABytes": 29294592,
+              "pid": 9780,
+              "swept": 0,
+              "utcMillis": 1795189276175,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 2
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 3
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 8
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 10,
+              "deadImageRGBABytes": 122880,
+              "event": "periodic",
+              "frame": 180,
+              "height": 732,
+              "hwnd": 853150,
+              "imageRGBABytes": 233472,
+              "pid": 9780,
+              "swept": 121,
+              "utcMillis": 1795189276175,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 10
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 9
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 29528064,
+            "deadImageCount": 20,
+            "deadImageRGBABytes": 25681920
+          }
+        }
+      },
+      "after-diagnostic-gc": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 128835584,
+            "workingSet": 179249152,
+            "privateCommit": 185040896,
+            "handles": 467,
+            "gdi": 53,
+            "user": 25,
+            "threads": 13,
+            "visible": 0
+          },
+          "go": {
+            "heapAlloc": 18698752.0,
+            "heapSys": 120815616.0,
+            "heapInuse": 21512192.0,
+            "heapReleased": 60055552.0,
+            "sys": 128502008.0,
+            "goroutines": 16.0,
+            "numGC": 45.0
+          },
+          "cache": {
+            "imageObjects": 12,
+            "fullImages": 1,
+            "releasedImages": 12,
+            "imageCPUPixelBytes": 0,
+            "details": 18,
+            "inflight": 0,
+            "wanted": 18,
+            "projectedRows": 42
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 11,
+              "deadImageRGBABytes": 135168,
+              "event": "periodic",
+              "frame": 180,
+              "height": 732,
+              "hwnd": 853150,
+              "imageRGBABytes": 233472,
+              "pid": 9780,
+              "swept": 121,
+              "utcMillis": 1795189291290,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": false,
+                  "count": 11
+                },
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 11,
+              "deadImageRGBABytes": 25755648,
+              "event": "periodic",
+              "frame": 52,
+              "height": 620,
+              "hwnd": 656748,
+              "imageRGBABytes": 29294592,
+              "pid": 9780,
+              "swept": 0,
+              "utcMillis": 1795189291292,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": false,
+                  "count": 3
+                },
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 2
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": false,
+                  "count": 8
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 29528064,
+            "deadImageCount": 22,
+            "deadImageRGBABytes": 25890816
+          }
+        }
+      },
+      "after-diagnostic-release": {
+        "quick-panel": {
+          "memory": {
+            "privateWorkingSet": 128839680.0,
+            "workingSet": 179253248.0,
+            "privateCommit": 185040896.0,
+            "handles": 467.0,
+            "gdi": 53.0,
+            "user": 25.0,
+            "threads": 13.0,
+            "visible": 0.0
+          },
+          "go": {
+            "heapAlloc": 18768072.0,
+            "heapSys": 120815616.0,
+            "heapInuse": 21598208.0,
+            "heapReleased": 60055552.0,
+            "sys": 128502008.0,
+            "goroutines": 16.0,
+            "numGC": 45.0
+          },
+          "cache": {
+            "imageObjects": 12.0,
+            "fullImages": 1.0,
+            "releasedImages": 12.0,
+            "imageCPUPixelBytes": 0.0,
+            "details": 18.0,
+            "inflight": 0.0,
+            "wanted": 18.0,
+            "projectedRows": 42.0
+          },
+          "renderers": [
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 52,
+              "height": 620,
+              "hwnd": 656748,
+              "imageRGBABytes": 3538944,
+              "pid": 9780,
+              "swept": 0,
+              "utcMillis": 1795189311322,
+              "warp": false,
+              "width": 800,
+              "imageShapes": [
+                {
+                  "width": 256,
+                  "height": 192,
+                  "ownerAlive": true,
+                  "count": 2
+                },
+                {
+                  "width": 1024,
+                  "height": 768,
+                  "ownerAlive": true,
+                  "count": 1
+                }
+              ]
+            },
+            {
+              "blurredCount": 0,
+              "canvasCount": 0,
+              "deadImageCount": 0,
+              "deadImageRGBABytes": 0,
+              "event": "periodic",
+              "frame": 180,
+              "height": 732,
+              "hwnd": 853150,
+              "imageRGBABytes": 98304,
+              "pid": 9780,
+              "swept": 121,
+              "utcMillis": 1795189311323,
+              "warp": false,
+              "width": 760,
+              "imageShapes": [
+                {
+                  "width": 64,
+                  "height": 48,
+                  "ownerAlive": true,
+                  "count": 8
+                }
+              ]
+            }
+          ],
+          "gpu": {
+            "imageRGBABytes": 3637248,
+            "deadImageCount": 0,
+            "deadImageRGBABytes": 0
+          }
+        }
+      }
+    },
+    "diagnostic_gpu_events": {
+      "gui": [],
+      "quick-panel": [
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 11,
+          "deadImageRGBABytes": 25755648,
+          "event": "after-diagnostic-gc",
+          "frame": 52,
+          "height": 620,
+          "hwnd": 656748,
+          "imageRGBABytes": 29294592,
+          "images": [
+            {
+              "ageFrames": 19,
+              "height": 768,
+              "id": 63,
+              "lastFrame": 33,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 11,
+              "height": 768,
+              "id": 81,
+              "lastFrame": 41,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 7,
+              "height": 192,
+              "id": 88,
+              "lastFrame": 45,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 3,
+              "height": 192,
+              "id": 102,
+              "lastFrame": 49,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 50,
+              "height": 768,
+              "id": 2,
+              "lastFrame": 2,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 15,
+              "height": 768,
+              "id": 72,
+              "lastFrame": 37,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 13,
+              "height": 192,
+              "id": 29,
+              "lastFrame": 39,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 8,
+              "height": 192,
+              "id": 35,
+              "lastFrame": 44,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 6,
+              "height": 768,
+              "id": 95,
+              "lastFrame": 46,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 1,
+              "height": 768,
+              "id": 107,
+              "lastFrame": 51,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 45,
+              "height": 768,
+              "id": 22,
+              "lastFrame": 7,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 18,
+              "height": 192,
+              "id": 32,
+              "lastFrame": 34,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 27,
+              "height": 768,
+              "id": 45,
+              "lastFrame": 25,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 23,
+              "height": 768,
+              "id": 54,
+              "lastFrame": 29,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            }
+          ],
+          "pid": 9780,
+          "swept": 0,
+          "utcMillis": 1795189286244,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 11,
+          "deadImageRGBABytes": 135168,
+          "event": "after-diagnostic-gc",
+          "frame": 180,
+          "height": 732,
+          "hwnd": 853150,
+          "imageRGBABytes": 233472,
+          "images": [
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 9,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 94,
+              "height": 48,
+              "id": 26,
+              "lastFrame": 86,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 34,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 57,
+              "height": 48,
+              "id": 76,
+              "lastFrame": 123,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 16,
+              "height": 48,
+              "id": 104,
+              "lastFrame": 164,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 111,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 14,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 56,
+              "height": 48,
+              "id": 31,
+              "lastFrame": 124,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 39,
+              "height": 48,
+              "id": 90,
+              "lastFrame": 141,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 18,
+              "height": 48,
+              "id": 99,
+              "lastFrame": 162,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 171,
+              "height": 48,
+              "id": 6,
+              "lastFrame": 9,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 17,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 20,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 37,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 85,
+              "height": 48,
+              "id": 49,
+              "lastFrame": 95,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 66,
+              "height": 48,
+              "id": 67,
+              "lastFrame": 114,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 75,
+              "height": 48,
+              "id": 58,
+              "lastFrame": 105,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 40,
+              "height": 48,
+              "id": 85,
+              "lastFrame": 140,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 116,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 9780,
+          "swept": 121,
+          "utcMillis": 1795189286244,
+          "warp": false,
+          "width": 760
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 11,
+          "deadImageRGBABytes": 25755648,
+          "event": "before-diagnostic-release",
+          "frame": 52,
+          "height": 620,
+          "hwnd": 656748,
+          "imageRGBABytes": 29294592,
+          "images": [
+            {
+              "ageFrames": 45,
+              "height": 768,
+              "id": 22,
+              "lastFrame": 7,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 18,
+              "height": 192,
+              "id": 32,
+              "lastFrame": 34,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 27,
+              "height": 768,
+              "id": 45,
+              "lastFrame": 25,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 23,
+              "height": 768,
+              "id": 54,
+              "lastFrame": 29,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 19,
+              "height": 768,
+              "id": 63,
+              "lastFrame": 33,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 11,
+              "height": 768,
+              "id": 81,
+              "lastFrame": 41,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 7,
+              "height": 192,
+              "id": 88,
+              "lastFrame": 45,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 3,
+              "height": 192,
+              "id": 102,
+              "lastFrame": 49,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 50,
+              "height": 768,
+              "id": 2,
+              "lastFrame": 2,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 15,
+              "height": 768,
+              "id": 72,
+              "lastFrame": 37,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 13,
+              "height": 192,
+              "id": 29,
+              "lastFrame": 39,
+              "ownerAlive": false,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 8,
+              "height": 192,
+              "id": 35,
+              "lastFrame": 44,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 6,
+              "height": 768,
+              "id": 95,
+              "lastFrame": 46,
+              "ownerAlive": false,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 1,
+              "height": 768,
+              "id": 107,
+              "lastFrame": 51,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            }
+          ],
+          "pid": 9780,
+          "swept": 0,
+          "utcMillis": 1795189301308,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 11,
+          "deadImageRGBABytes": 135168,
+          "event": "before-diagnostic-release",
+          "frame": 180,
+          "height": 732,
+          "hwnd": 853150,
+          "imageRGBABytes": 233472,
+          "images": [
+            {
+              "ageFrames": 171,
+              "height": 48,
+              "id": 6,
+              "lastFrame": 9,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 17,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 20,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 37,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 85,
+              "height": 48,
+              "id": 49,
+              "lastFrame": 95,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 66,
+              "height": 48,
+              "id": 67,
+              "lastFrame": 114,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 75,
+              "height": 48,
+              "id": 58,
+              "lastFrame": 105,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 40,
+              "height": 48,
+              "id": 85,
+              "lastFrame": 140,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 116,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 9,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 94,
+              "height": 48,
+              "id": 26,
+              "lastFrame": 86,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 34,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 57,
+              "height": 48,
+              "id": 76,
+              "lastFrame": 123,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 16,
+              "height": 48,
+              "id": 104,
+              "lastFrame": 164,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 111,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 14,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 56,
+              "height": 48,
+              "id": 31,
+              "lastFrame": 124,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 39,
+              "height": 48,
+              "id": 90,
+              "lastFrame": 141,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 18,
+              "height": 48,
+              "id": 99,
+              "lastFrame": 162,
+              "ownerAlive": false,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 9780,
+          "swept": 121,
+          "utcMillis": 1795189301308,
+          "warp": false,
+          "width": 760
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 0,
+          "deadImageRGBABytes": 0,
+          "event": "after-diagnostic-release",
+          "frame": 52,
+          "height": 620,
+          "hwnd": 656748,
+          "imageRGBABytes": 3538944,
+          "images": [
+            {
+              "ageFrames": 8,
+              "height": 192,
+              "id": 35,
+              "lastFrame": 44,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            },
+            {
+              "ageFrames": 1,
+              "height": 768,
+              "id": 107,
+              "lastFrame": 51,
+              "ownerAlive": true,
+              "rgbaBytes": 3145728,
+              "width": 1024
+            },
+            {
+              "ageFrames": 18,
+              "height": 192,
+              "id": 32,
+              "lastFrame": 34,
+              "ownerAlive": true,
+              "rgbaBytes": 196608,
+              "width": 256
+            }
+          ],
+          "pid": 9780,
+          "swept": 0,
+          "utcMillis": 1795189301310,
+          "warp": false,
+          "width": 800
+        },
+        {
+          "blurredCount": 0,
+          "canvasCount": 0,
+          "deadImageCount": 0,
+          "deadImageRGBABytes": 0,
+          "event": "after-diagnostic-release",
+          "frame": 180,
+          "height": 732,
+          "hwnd": 853150,
+          "imageRGBABytes": 98304,
+          "images": [
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 34,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 111,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 14,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 17,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 20,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 37,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 116,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            },
+            {
+              "ageFrames": 0,
+              "height": 48,
+              "id": 9,
+              "lastFrame": 180,
+              "ownerAlive": true,
+              "rgbaBytes": 12288,
+              "width": 64
+            }
+          ],
+          "pid": 9780,
+          "swept": 121,
+          "utcMillis": 1795189301312,
+          "warp": false,
+          "width": 760
+        }
+      ]
+    },
+    "unowned_texture_assertion": {
+      "verdict": "FAIL",
+      "violations": [
+        {
+          "run": "images-1",
+          "role": "quick-panel",
+          "gpu": {
+            "imageRGBABytes": 29528064,
+            "deadImageCount": 22,
+            "deadImageRGBABytes": 25890816
+          }
+        }
+      ]
+    }
+  }
+}

@@ -280,9 +280,9 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 	case "gui-closed":
 		r.opening.Lock()
 		defer r.opening.Unlock()
-		if err := r.settings.Reload(); err != nil {
-			return nil, err
-		}
+		// Reload imports an immediate save. A malformed or missing file keeps
+		// the manager's last valid configuration, including its close policy.
+		_ = r.settings.Reload()
 		if r.settings.Current().Desktop.Mode != "lightweight" {
 			return nil, nil
 		}

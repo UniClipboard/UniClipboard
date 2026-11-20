@@ -2,13 +2,13 @@
 # Mode: process
 # Purpose: Verify the updated lightweight user intent through real role and service processes.
 # Steps:
-#   Keep an independent service running; manually launch and close lightweight UI; repeat with a tray-owned service; verify explicit background intent; race close acknowledgement with concurrent manual reopening; save lightweight mode while an owned normal GUI runs and immediately close it.
+#   Keep an independent service running; verify manual close, owned-service detachment, background intent, concurrent reopening and live settings; then run four cold-service background/manual launch races, including observation-triggered manual launches.
 # Expected:
 #   Manual launches show GUI; lightweight close stops all UI while retaining the same unicd PID and generation; an owned service detaches to standalone; explicit lightweight background runs only unicd; normal background retains tray without GUI; concurrent reopening leaves one visible GUI.
 # Forbidden:
 #   Treating saved start_in_background as manual-launch intent, leaving a hidden GUI/tray/panel, stopping the independent service, replacing its generation, or reporting process fixtures as native focus evidence.
 # Failure inventory specified before production changes:
-#   Manual launch remains service-only or obeys saved background preference; lightweight close retains UI or stops/replaces unicd; an owned daemon exits on owner EOF; reopening reuses an exited GUI; background mode creates unwanted UI; close acknowledgement races with reopening and loses the latest manual intent; live mode/background saves report an obsolete restart requirement or GUI close consumes stale mode.
+#   Manual launch remains service-only or obeys saved background preference; lightweight close retains UI or stops/replaces unicd; an owned daemon exits on owner EOF; reopening reuses an exited GUI; background mode creates unwanted UI; close acknowledgement races with reopening and loses the latest manual intent; live mode/background saves report an obsolete restart requirement or GUI close consumes stale mode; cold background AcquireService releases its launch lock before Detach and a concurrent manual tray rejects that transient desktop-owned service.
 # Background launch note:
 #   The --background argument represents explicit login/background intent. Manual launch always has no arguments.
 

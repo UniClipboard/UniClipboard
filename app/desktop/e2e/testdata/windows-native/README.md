@@ -56,8 +56,12 @@ It also records a bounded class/AutomationId/control-type skeleton below Explore
 taskbar/overflow roots without collecting unrelated element names.
 It does not collect unrelated window text. The default exact icon tooltip is
 `跨设备剪贴板同步`. If the icon is hidden, inspect with `-OpenOverflow`; the
-script requires one visible `SystemTray.OverflowButton`. It does not guess other
-localized buttons or coordinates. If this guest exposes another UIA structure,
+script uses the observed `显示隐藏的图标` button with class
+`SystemTray.NormalButton` and the `TopLevelWindowForOverflowXamlIsland` root.
+It waits for stable bounds and cross-checks the task icon against
+`Shell_NotifyIconGetRect`, the exact tooltip and the visible notification root.
+It does not treat the fold button rectangle as the task icon. It does not guess
+other localized buttons or coordinates. If this guest exposes another UIA structure,
 stop and inspect that structure before updating the driver. Do not bypass guards.
 
 Run records candidates both before and after launching its tray. It chooses one

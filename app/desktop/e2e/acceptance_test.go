@@ -13,6 +13,7 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("startup-lifecycle", scenarioStartupProcesses)
 	t.Run("desktop-processes", scenarioDesktopProcesses)
 	t.Run("desktop-lightweight-close", scenarioLightweightClose)
+	t.Run("desktop-lightweight-invalid-config-close", scenarioLightweightClose)
 	t.Run("first-install-setup", scenarioFirstInstallSetup)
 	t.Run("production-boundary", scenarioProductionBoundary)
 }

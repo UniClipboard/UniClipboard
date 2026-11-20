@@ -32,6 +32,8 @@ Specified before the process-role implementation. The acceptance entry is
 25. Background startup bypasses pending setup or offline migration.
 26. The first native quick-panel request reports visible state while the OS window stays hidden. Windows native run `native-18` reproduced this before the explicit initial Show/Focus correction.
 27. Desktop mode changes are saved but the close operation uses stale watcher state.
+28. A malformed external TOML edit strands a lightweight tray instead of closing under the last valid saved mode.
+29. A cold background/manual launch loses activation while ownership is transient. Four real-process attempts did not reproduce this hypothesis; this is not proof that all scheduler interleavings were exercised.
 
 ## Evidence boundary
 

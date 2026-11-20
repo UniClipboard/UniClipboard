@@ -8,6 +8,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
 | [desktop-lightweight-close](#desktop-lightweight-close) | process | Verify the updated lightweight user intent through real role and service processes. |
+| [desktop-lightweight-invalid-config-close](#desktop-lightweight-invalid-config-close) | process | Verify that a bad TOML edit cannot strand tray or panel after a lightweight GUI closes. |
 | [desktop-native-processes](#desktop-native-processes) | native | Verify independent GUI, quick-panel, tray and service processes through native windows with an isolated directory clipboard. |
 | [desktop-processes](#desktop-processes) | process | Normal runtime retains tray and service after GUI close and independently recreates GUI and quick-panel processes. |
 | [event-wakeup](#event-wakeup) | process | Exercise actual service events, content completions and recovery through stopped production renderers. |
@@ -269,14 +270,28 @@ acceptance desktopui data-binding
 
 Lightweight manual launch and GUI-close lifetime
 
-Steps: Keep an independent service running; manually launch and close lightweight UI; repeat with a tray-owned service; verify explicit background intent; race close acknowledgement with concurrent manual reopening; save lightweight mode while an owned normal GUI runs and immediately close it.
+Steps: Keep an independent service running; verify manual close, owned-service detachment, background intent, concurrent reopening and live settings; then run four cold-service background/manual launch races, including observation-triggered manual launches.
 
 Expected: Manual launches show GUI; lightweight close stops all UI while retaining the same unicd PID and generation; an owned service detaches to standalone; explicit lightweight background runs only unicd; normal background retains tray without GUI; concurrent reopening leaves one visible GUI.
 
-Forbidden: Treating saved start_in_background as manual-launch intent, leaving a hidden GUI/tray/panel, stopping the independent service, replacing its generation, or reporting process fixtures as native focus evidence. Failure inventory specified before production changes: Manual launch remains service-only or obeys saved background preference; lightweight close retains UI or stops/replaces unicd; an owned daemon exits on owner EOF; reopening reuses an exited GUI; background mode creates unwanted UI; close acknowledgement races with reopening and loses the latest manual intent; live mode/background saves report an obsolete restart requirement or GUI close consumes stale mode. Background launch note: The --background argument represents explicit login/background intent. Manual launch always has no arguments.
+Forbidden: Treating saved start_in_background as manual-launch intent, leaving a hidden GUI/tray/panel, stopping the independent service, replacing its generation, or reporting process fixtures as native focus evidence. Failure inventory specified before production changes: Manual launch remains service-only or obeys saved background preference; lightweight close retains UI or stops/replaces unicd; an owned daemon exits on owner EOF; reopening reuses an exited GUI; background mode creates unwanted UI; close acknowledgement races with reopening and loses the latest manual intent; live mode/background saves report an obsolete restart requirement or GUI close consumes stale mode; cold background AcquireService releases its launch lock before Detach and a concurrent manual tray rejects that transient desktop-owned service. Background launch note: The --background argument represents explicit login/background intent. Manual launch always has no arguments.
 
 ```text
 acceptance startup desktop-lightweight-close
+```
+
+## desktop-lightweight-invalid-config-close
+
+Lightweight GUI close preserves the last valid mode after a malformed config edit
+
+Steps: Start a real independent service and lightweight GUI; save valid lightweight mode through the production CLI; open the independent panel; write malformed TOML in the private profile; close GUI; restore the private file during cleanup.
+
+Expected: GUI, tray and panel processes and IPC terminate using the last valid lightweight mode; the exact independent service PID and generation remain.
+
+Forbidden: Returning early on configuration reload error, leaving a tray/panel resident, stopping or replacing unicd, touching a personal profile, or presenting process fixtures as native UI evidence. Failure inventory specified before production changes: The config watcher retains valid lightweight state but the GUI-closed handler returns the reload error before applying that state; GUI exits while tray and panel remain.
+
+```text
+acceptance startup desktop-lightweight-invalid-config-close
 ```
 
 ## desktop-native-processes

@@ -40,13 +40,15 @@ the original HEAD alone does not identify their changes.
 
 | Check | Result | Evidence and boundary |
 |---|---|---|
-| Lightweight close, owned handoff, concurrent reopen, background entry and immediate saved-mode close | PASS | `20261120T064124Z-82d85f24`, nine real-process checks, same service PID/generation and cleanup |
-| Normal background/GUI/panel/crash/adapter regressions | PASS | `20261120T064124Z-6d4d767d`, thirteen real-process checks; nonvisual host |
+| Lightweight close, owned handoff, concurrent reopen, background entry and immediate saved-mode close | PASS | `20261120T065405Z-682d0b58`, exact clean implementation `213912f70`, nine real-process checks, same service PID/generation and cleanup |
+| Invalid external TOML close policy | PASS | `20261120T071633Z-84d36e1f` RED, then `20261120T072300Z-e0eebbab` GREEN; last valid lightweight policy closes every UI process and preserves the same service |
+| Cold background/manual overlap hypothesis | NOT_REPRODUCED | `20261120T070957Z-3929c022`, four real-process rounds completed; two observed transient desktop ownership. No unproven product change was made |
+| Normal background/GUI/panel/crash/adapter regressions | PASS | `20261120T065405Z-b513c45f`, exact clean implementation `213912f70`, thirteen real-process checks; nonvisual host |
 | Strict service ownership release | PASS | `20261120T062722Z-bb037bfc`, marker/EOF RED then GREEN, malformed frames, same PID/history and idempotent release |
 | Authenticated retiring-error classification | PASS | `.build/desktopprocess-retiring-20261120/`, real-role RED/GREEN, typed retry signal without text matching |
 | Native event-loop panel Copy and GUI recreation | PASS | `20261120T064152Z-86917464`; app-scoped windows and directory clipboard, not OS foreground or physical input |
 | Private macOS application-bundle entry matrix | PASS | `.build/macos-bundle-background-green-20261120/`; normal background native-path RED/GREEN plus manual/light/setup checks; OS visibility/focus NOT_RUN |
-| Existing Desktop/Engine checks | PASS | 206 existing tests with race across eight changed/dependency packages; module verification and fixed lint passed |
+| Existing Desktop/Engine checks | PASS | 782 existing tests with race across 82 packages; module verification and fixed lint passed |
 | Updated Windows native close semantics | NOT_RUN | Awaiting serial VM handoff. Earlier `native-18` reproduced a hidden initial quick-panel HWND despite a visible model; the corrected initial explicit Show/Focus still needs Windows replay |
 
 See the [private-bundle receipt](macos-private-bundle-launch.md). These results

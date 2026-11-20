@@ -621,8 +621,13 @@ func scenarioLightweightClose(t *testing.T) {
 	}
 	observers := []observed{}
 	var daemon *child
+	var raceLaunchers []*child
+	var raceCancels []context.CancelFunc
 	cleanupPassed := true
 	defer func() {
+		for _, cancel := range raceCancels {
+			cancel()
+		}
 		_, _ = run("unic-desktop", "--role", "tray", "--command", "quit")
 		for _, role := range []string{"gui", "quick-panel"} {
 			_, _ = run("unic-desktop", "--role", role, "--command", "quit")
@@ -650,6 +655,14 @@ func scenarioLightweightClose(t *testing.T) {
 			case <-daemon.done:
 			case <-time.After(12 * time.Second):
 				t.Error("task-owned independent daemon cleanup timed out")
+				cleanupPassed = false
+			}
+		}
+		for _, launcher := range raceLaunchers {
+			select {
+			case <-launcher.done:
+			case <-time.After(5 * time.Second):
+				t.Error("task-owned cold-start launcher cleanup timed out")
 				cleanupPassed = false
 			}
 		}
@@ -743,6 +756,47 @@ func scenarioLightweightClose(t *testing.T) {
 	}
 	sameService()
 	checks = append(checks, "no-argument manual lightweight launch shows GUI despite saved start_in_background and reuses independent service")
+	if strings.HasSuffix(t.Name(), "/desktop-lightweight-invalid-config-close") {
+		success("unic", "config", "set", "desktop.mode", `"lightweight"`)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		lastValid, err := c.Config(ctx)
+		cancel()
+		must(t, err)
+		if lastValid.Config.Desktop.Mode != "lightweight" {
+			t.Fatal("production CLI did not establish valid lightweight mode")
+		}
+		command("tray", "open-quick-panel", nil)
+		waitRole("quick-panel")
+		configPath := filepath.Join(profile, "config.toml")
+		validRaw, err := os.ReadFile(configPath)
+		must(t, err)
+		defer func() {
+			if err := os.WriteFile(configPath, validRaw, 0600); err != nil {
+				t.Error(err)
+			} else {
+				receipt["private_config_restored_for_cleanup"] = true
+			}
+		}()
+		invalidRaw := append(append([]byte{}, validRaw...), []byte("\n[desktop\nmode='lightweight'\n")...)
+		must(t, os.WriteFile(configPath, invalidRaw, 0600))
+		receipt["last_valid_mode"] = "lightweight"
+		receipt["task_config_edit"] = "malformed TOML written after a valid production CLI save; no personal profile"
+		command("gui", "close", nil)
+		for _, observer := range observers {
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			err := observer.wait(ctx)
+			cancel()
+			if err != nil {
+				t.Fatalf("malformed TOML stranded %s PID %d after lightweight GUI close: %v", observer.role, observer.pid, err)
+			}
+			if _, err := probe(observer.role); err == nil {
+				t.Fatalf("malformed TOML retained %s IPC after lightweight GUI close", observer.role)
+			}
+		}
+		sameService()
+		checks = append(checks, "malformed TOML does not override the last valid lightweight close policy: every UI process and endpoint exits while the independent service identity remains")
+		return
+	}
 	command("tray", "open-quick-panel", nil)
 	panel := waitRole("quick-panel")
 	if gui.PID == tray.PID || gui.PID == panel.PID || tray.PID == panel.PID || service.PID == gui.PID || service.PID == tray.PID || service.PID == panel.PID {
@@ -989,4 +1043,136 @@ func scenarioLightweightClose(t *testing.T) {
 	}
 	receipt["live_mode_owned_service_after_close"] = liveDetached
 	checks = append(checks, "production CLI mode/background save reports no restart requirement and immediate GUI close uses the new lightweight mode, ending UI while detaching the same owned service")
+
+	// A background launcher must not expose its short desktop-owned acquisition
+	// as a foreign owner to a concurrent manual tray. No production hook widens
+	// this window; two rounds additionally trigger from actual service state.
+	coldRaces := []map[string]any{}
+	receipt["cold_background_manual_race"] = "NOT_RUN"
+	startRaceLauncher := func(round int, name string, args ...string) *child {
+		t.Helper()
+		path := filepath.Join(private, fmt.Sprintf("cold-%02d-%s.log", round, name))
+		output, err := os.Create(path)
+		must(t, err)
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		raceCancels = append(raceCancels, cancel)
+		process := &child{cmd: exec.CommandContext(ctx, filepath.Join(bin, "unic-desktop"+suffix), args...), done: make(chan struct{}), log: path}
+		process.cmd.Env = env
+		process.cmd.Stdout, process.cmd.Stderr = output, output
+		must(t, process.cmd.Start())
+		go func() { process.err = process.cmd.Wait(); _ = output.Close(); close(process.done) }()
+		raceLaunchers = append(raceLaunchers, process)
+		return process
+	}
+	for round := 1; round <= 4; round++ {
+		serviceWait, serviceRelease, err := observeProcessExit(service.PID)
+		must(t, err)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = c.StopService(ctx, service.ID)
+		cancel()
+		if err != nil {
+			serviceRelease()
+			must(t, err)
+		}
+		ctx, cancel = context.WithTimeout(context.Background(), 12*time.Second)
+		err = serviceWait(ctx)
+		cancel()
+		serviceRelease()
+		must(t, err)
+		for _, role := range []string{"gui", "tray", "quick-panel"} {
+			if _, err := probe(role); err == nil {
+				t.Fatalf("cold race %d began with an existing %s role", round, role)
+			}
+		}
+		record := map[string]any{"round": round, "background_start_at": time.Now().UTC(), "trigger": "near-simultaneous launches", "transient_desktop_seen": false}
+		background := startRaceLauncher(round, "background", "--background")
+		record["background_launcher_pid"] = background.cmd.Process.Pid
+		var firstService servicelifecycle.Instance
+		if round >= 3 {
+			record["trigger"] = "first observed actual service state, then manual launch"
+			deadline := time.Now().Add(20 * time.Second)
+			for time.Now().Before(deadline) {
+				ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+				candidate, err := c.Service(ctx)
+				cancel()
+				if err == nil {
+					firstService = candidate
+					record["first_service_observed_at"] = time.Now().UTC()
+					record["first_service"] = candidate
+					record["transient_desktop_seen"] = candidate.Mode == servicelifecycle.ModeDesktop
+					break
+				}
+				select {
+				case <-background.done:
+					deadline = time.Now()
+				default:
+				}
+				time.Sleep(2 * time.Millisecond)
+			}
+		}
+		record["manual_start_at"] = time.Now().UTC()
+		manual := startRaceLauncher(round, "manual")
+		record["manual_launcher_pid"] = manual.cmd.Process.Pid
+		<-background.done
+		<-manual.done
+		backgroundOutput, readErr := os.ReadFile(background.log)
+		must(t, readErr)
+		manualOutput, readErr := os.ReadFile(manual.log)
+		must(t, readErr)
+		record["background_output"] = string(backgroundOutput)
+		record["manual_output"] = string(manualOutput)
+		record["background_success"] = background.err == nil
+		record["manual_success"] = manual.err == nil
+		record["launchers_finished_at"] = time.Now().UTC()
+		coldRaces = append(coldRaces, record)
+		receipt["cold_background_manual_rounds"] = coldRaces
+		if background.err != nil || manual.err != nil {
+			receipt["cold_background_manual_race"] = "FAILED_DIFFERENT_REASON"
+			if bytes.Contains(backgroundOutput, []byte("a desktop already owns this service")) || bytes.Contains(manualOutput, []byte("a desktop already owns this service")) {
+				receipt["cold_background_manual_race"] = "REPRODUCED"
+			}
+			t.Fatalf("cold background/manual launch race round %d: background=%v (%s); manual=%v (%s)", round, background.err, backgroundOutput, manual.err, manualOutput)
+		}
+		observerStart := len(observers)
+		concurrentColdGUI := waitRole("gui")
+		concurrentColdTray := waitRole("tray")
+		command("gui", "status", &status)
+		if status["visible"] != true {
+			t.Fatalf("cold race %d lost manual visible GUI intent", round)
+		}
+		ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+		service, err = c.Service(ctx)
+		cancel()
+		must(t, err)
+		record["settled_service"] = service
+		if firstService.PID != 0 && (service.ID != firstService.ID || service.PID != firstService.PID) {
+			t.Fatalf("cold race %d replaced the observed service generation", round)
+		}
+		if concurrentColdGUI.PID == concurrentColdTray.PID || service.PID == concurrentColdGUI.PID || service.PID == concurrentColdTray.PID {
+			t.Fatalf("cold race %d shared role OS processes", round)
+		}
+		command("gui", "close", nil)
+		for _, observer := range observers[observerStart:] {
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			err := observer.wait(ctx)
+			cancel()
+			must(t, err)
+		}
+		for _, role := range []string{"gui", "tray", "quick-panel"} {
+			if _, err := probe(role); err == nil {
+				t.Fatalf("cold race %d lightweight close retained %s IPC", round, role)
+			}
+		}
+		sameService()
+		ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+		afterClose, err := c.Service(ctx)
+		cancel()
+		must(t, err)
+		if afterClose.Mode != servicelifecycle.ModeStandalone {
+			t.Fatalf("cold race %d did not preserve standalone core after UI close", round)
+		}
+		record["service_after_lightweight_close"] = afterClose
+	}
+	receipt["cold_background_manual_race"] = "NOT_REPRODUCED"
+	checks = append(checks, "four real cold-service background/manual races completed without reproduction; both launchers succeeded, manual GUI stayed visible and lightweight close retained the same standalone core")
 }

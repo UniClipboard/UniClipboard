@@ -63,6 +63,25 @@ production view/content path and a real separate service through the canonical
 runner. Native Windows cost, native pixels and software-view correctness are
 separate evidence.
 
+## Bounded-input CPU refinement
+
+The first native cohort at e540ad3aa was stopped after its first combined ARM64
+run exceeded the prespecified CPU investigation threshold:5.016 group CPU seconds
+by45s versus3.609 in the matched baseline. Streaming-only used7.062 seconds.
+All five completed exploratory runs, native pixel hashes and interruption/cleanup
+recovery are preserved in [unbuffered-native](desktop-image-memory/unbuffered-native/measurements.json).
+They are not a completed3-repetition final performance matrix.
+
+A test-first real-service PNG resource check observed482 small body-read requests.
+The first total-call assertion was too strict because IPC can return short reads;
+its failed result is retained. A64 KiB standard bufio.Reader over the same shared
+limiter separates codec request sizes from socket reads. Header replay, decode and
+tail drain all consume that same buffer, preserving byte accounting. The corrected
+resource assertion counts requests smaller than64 KiB rather than assuming every
+read fills its buffer. The full canonical race case passed in
+20261120T063709Z-39a67bd9, retaining total reads and largest request separately.
+No whole-input thumbnail buffer or new configuration is introduced.
+
 ## Native measurements
 
 PENDING explicit VM handoff and matched non-race measurements. Previous research

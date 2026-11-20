@@ -89,3 +89,24 @@ image response after the held request. This distinguishes an upgrade from an
 uncached detail: the existing detailBusy flag is false for cached thumbnails.
 The initial implementation must go red on this scenario before changing the
 reservation condition. No additional unit test is introduced.
+
+## Native CPU investigation: bounded stream read granularity
+
+The first ARM64 combined image run consumed5.016 group CPU seconds by45s versus
+3.609 in its baseline, exceeding the prespecified20% investigation threshold.
+The unbuffered streaming-only run consumed7.062 seconds. The initial cohort is
+an exploratory failure, not final performance acceptance. Preserve its aggregates
+and stop further unbuffered runs. Do not remove its negative result.
+
+Before changing product reads, extend the real-service PNG resource acceptance
+with a body-read call count. The first count assertion required at most128 total input reads for a3 MiB PNG.
+The unbuffered code made482 calls. The buffered control made387 calls because IPC
+legally returned short chunks, so that assertion was too strict and was retained
+as a failed harness assumption. Correct the resource assertion to at most64
+codec-sized requests smaller than64 KiB; retain total calls and the64 KiB maximum
+request separately. This checks coarse bounded requests without assuming full reads. First run the current streaming code and require this assertion
+to go red. Then test a single existing-library change: a64 KiB bufio.Reader over
+the shared bounded input reader, reused by header replay, decode and tail drain.
+This preserves strict consumed-byte accounting and streaming memory bounds.
+Repeat the full matched matrix for the final source; never relabel the first
+cohort's CPU or memory deltas as final optimized results.

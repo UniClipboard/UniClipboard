@@ -65,7 +65,8 @@ original requests precede queued neighbors. Keep canceled jobs in the four-job v
 bound until they finish; cancel a pending neighbor if selection needs a job. Text
 and directory metadata remain independent. Single-file candidates conservatively
 share the image slot because response headers supply their MIME/name. Neighbor
-input streams through the existing decoder, replaying only inspected headers under
+input uses one 64 KiB buffer over the shared byte limiter and streams through
+the existing decoder, replaying only inspected headers under
 the 32 MiB encoded limit. Validate dimensions before full decode and consume the
 bounded remainder to detect trailing overflow. Check cancellation on reads and
 codec phase boundaries. A codec/resize call already running is bounded by the pixel

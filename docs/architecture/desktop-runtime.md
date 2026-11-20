@@ -39,7 +39,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 6c598898a0b8944abf953c1e5d72494e0a32346e
+verified: e540ad3aa6e378ae93174a49146e62f11a3c2abc
 ---
 # Desktop configuration and received files
 
@@ -87,7 +87,9 @@ four-job bound and cancels one pending neighbor when selection needs that job.
 Text and directory metadata do not take the image slot. Single-file candidates
 also take it because their image MIME/name can be known only after response open.
 
-Neighbor thumbnails stream the existing 32 MiB-bounded input through the existing
+Neighbor thumbnails use one 64 KiB input buffer over the shared byte limiter.
+This separates codec read sizes from local-socket reads and permits short reads.
+They stream the existing 32 MiB-bounded input through the existing
 image codec and EXIF handling. Only inspected dimension-header bytes are replayed;
 ordinary encoded images are not first copied into a whole-input buffer. The header
 replay buffer uses the same encoded-input budget. Full decoding starts only after

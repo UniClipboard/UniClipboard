@@ -1,0 +1,28 @@
+{
+  "implementation_sha": "e540ad3aa",
+  "cross_builds": {
+    "arm64": {
+      "sha256": "5b0061541502b998a52fd2dc02eba483d310412bf0cc0697c6570bb4581b1279",
+      "GOOS": "windows",
+      "GOARCH": "arm64",
+      "CGO_ENABLED": "0",
+      "trimpath": true,
+      "ldflags": "-s -w -H windowsgui",
+      "executed": false
+    },
+    "amd64": {
+      "sha256": "9b7dbe796c7bdcfec271771695c3e14e10b62979594415e9758dc88e423a9f0e",
+      "GOOS": "windows",
+      "GOARCH": "amd64",
+      "CGO_ENABLED": "0",
+      "trimpath": true,
+      "ldflags": "-s -w -H windowsgui",
+      "executed": false
+    }
+  },
+  "lint": {
+    "version": "2.15.0",
+    "scope": "./app/desktop/internal/desktopui",
+    "issues": 0
+  }
+}

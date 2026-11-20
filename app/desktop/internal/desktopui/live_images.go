@@ -1,6 +1,7 @@
 package desktopui
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"image"
@@ -77,17 +78,20 @@ func readPreviewImage(ctx context.Context, r io.Reader, edge int) (*historyImage
 		// the existing encoded-input budget. The extra overflow byte is only
 		// enabled after DecodeConfig has finished retaining the header.
 		limited := &io.LimitedReader{R: r, N: limit}
+		// Keep codec-sized reads from becoming separate local-socket reads.
+		// The shared limit stays beneath this buffer, including replay/drain.
+		buffered := bufio.NewReaderSize(limited, 64<<10)
 		var header bytes.Buffer
-		cfg, _, err = image.DecodeConfig(io.TeeReader(limited, &header))
+		cfg, _, err = image.DecodeConfig(io.TeeReader(buffered, &header))
 		if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
 			return nil, "图片无法预览。"
 		}
 		limited.N++
-		decoded, err := imaging.Decode(io.MultiReader(bytes.NewReader(header.Bytes()), limited), imaging.AutoOrientation(true))
+		decoded, err := imaging.Decode(io.MultiReader(bytes.NewReader(header.Bytes()), buffered), imaging.AutoOrientation(true))
 		if err != nil {
 			return nil, "图片无法预览。"
 		}
-		if _, err := io.Copy(io.Discard, limited); err != nil {
+		if _, err := io.Copy(io.Discard, buffered); err != nil {
 			return nil, "读取内容失败。"
 		}
 		if limited.N <= 0 {

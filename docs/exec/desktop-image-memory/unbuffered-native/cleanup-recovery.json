@@ -1,0 +1,6 @@
+{
+  "initial_cleanup": "failed: next task executable was spawned while cancellation cleanup enumerated existing processes",
+  "recovery": "PASS: task sampler identity checked, task processes stopped, guest root removed, VM suspended",
+  "guest_root": "C:\\uim-db66",
+  "native_cohort": "exploratory, interrupted for CPU investigation;5 accepted runs, not a3-repetition final matrix"
+}

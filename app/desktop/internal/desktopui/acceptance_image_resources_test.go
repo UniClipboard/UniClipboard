@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -25,14 +26,22 @@ import (
 // The wrapper observes real service request ownership, including unread responses.
 type previewResponse struct {
 	io.ReadCloser
-	ctx     context.Context
-	release <-chan struct{}
-	closed  func()
-	once    sync.Once
-	maxRead *atomic.Int64
+	ctx            context.Context
+	release        <-chan struct{}
+	closed         func()
+	once           sync.Once
+	maxRead        *atomic.Int64
+	readCalls      *atomic.Int64
+	smallReadCalls *atomic.Int64
 }
 
 func (b *previewResponse) Read(p []byte) (int, error) {
+	if b.readCalls != nil {
+		b.readCalls.Add(1)
+	}
+	if b.smallReadCalls != nil && len(p) < 64<<10 {
+		b.smallReadCalls.Add(1)
+	}
 	if b.release != nil {
 		select {
 		case <-b.release:
@@ -295,7 +304,7 @@ func imageResourceAcceptance(t *testing.T, ctx context.Context, socket string, i
 		if item.ID == "" {
 			t.Fatal("missing stream fixture")
 		}
-		var maxRead atomic.Int64
+		var maxRead, readCalls, smallReadCalls atomic.Int64
 		var inject func() io.ReadCloser
 		client.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
 			return browsingTransport(func(r *http.Request) (*http.Response, error) {
@@ -308,7 +317,7 @@ func imageResourceAcceptance(t *testing.T, ctx context.Context, socket string, i
 						_ = response.Body.Close()
 						response.Body = inject()
 					}
-					response.Body = &previewResponse{ReadCloser: response.Body, ctx: r.Context(), closed: func() {}, maxRead: &maxRead}
+					response.Body = &previewResponse{ReadCloser: response.Body, ctx: r.Context(), closed: func() {}, maxRead: &maxRead, readCalls: &readCalls, smallReadCalls: &smallReadCalls}
 				}
 				return response, nil
 			})
@@ -321,6 +330,13 @@ func imageResourceAcceptance(t *testing.T, ctx context.Context, socket string, i
 			t.Errorf("thumbnail input buffered as a whole: largest read=%d, want<=65536", n)
 		}
 		receipt["stream_largest_read_bytes"] = maxRead.Load()
+		receipt["stream_input_read_calls"] = readCalls.Load()
+		receipt["stream_small_read_requests"] = smallReadCalls.Load()
+		// IPC may legally return short reads. Bound small codec-sized requests,
+		// not the total number of reads needed to receive the response.
+		if smallReadCalls.Load() > 64 {
+			t.Errorf("codec-sized IPC read requests: got%d, want<=64", smallReadCalls.Load())
+		}
 		// Repeated JPEG APP2 segments delay the dimension header past the existing byte limit.
 		app := make([]byte, 65537)
 		app[0] = 0xff

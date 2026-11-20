@@ -36,6 +36,11 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			if action != "capture" && action != "maximized" && action != "restored" && action != "minimized" {
 				return errors.New("physical input requires explicit owned-VM replay outside the isolated catalogue")
 			}
+			if action != "minimized" {
+				if err := s.call(s.ctx, "idle", map[string]any{"window": s.window, "timeout": 2000}, nil); err != nil {
+					return err
+				}
+			}
 			cmd := exec.CommandContext(s.ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(s.root, "app", "desktop", "e2e", "windows_chrome.ps1"), "-OwnedProcessId", fmt.Sprint(owner.PID), "-OwnedBinary", owner.BinaryPath, "-Mode", args[1], "-OutputBase", filepath.Join(s.out, args[0]), "-Action", action)
 			output, err := cmd.CombinedOutput()
 			if err != nil {

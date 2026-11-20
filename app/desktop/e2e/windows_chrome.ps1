@@ -15,6 +15,7 @@ public static class ChromeOS {
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left,Top,Right,Bottom; }
  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X,Y; }
  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
+ [DllImport("dwmapi.dll")] public static extern int DwmFlush();
  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h,int attribute,out RECT r,int size);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
@@ -88,7 +89,7 @@ if ($Action -eq 'maximized') {
 } elseif ($Action -ne 'capture') { throw 'Unknown owned-window action' }
 FocusOwned
 if ([ChromeOS]::IsIconic($hwnd)) { throw 'Cannot capture a minimized window' }
-Start-Sleep -Milliseconds 200
+if ([ChromeOS]::DwmFlush() -ne 0) { throw 'DWM did not flush the owned window frame' }
 $rect = Rect
 $origin = New-Object ChromeOS+POINT
 [void][ChromeOS]::ClientToScreen($hwnd,[ref]$origin)

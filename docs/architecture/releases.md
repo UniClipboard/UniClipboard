@@ -29,7 +29,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 19f410995f6db869b8595f59ca47df71b6348fd4
+verified: d6c635ae361fc28dcc524305dc987356d9f62ce0
 ---
 # Product builds and CLI releases
 

@@ -3,7 +3,7 @@
   "status": "PASS",
   "acceptance_scope": "Aggregate of named canonical software-view/process receipts; native OS UI not accepted",
   "planning_head": "35b1d56b52e4c5fdb210455fcbac00cd9831d8bf",
-  "implementation_commit": "pending local commit",
+  "implementation_commit": "d6c635ae361fc28dcc524305dc987356d9f62ce0",
   "official_boardui_source": "ec5c5eb3e29c2441be63b9422cd54f411ef23466",
   "runtime_input_fingerprint": "610accdc820b300f0719dbc89bfe2747f47565e6734864f8c622bc630ced5e01",
   "totals": {
@@ -368,7 +368,8 @@
       "darwin/arm64",
       "linux/amd64",
       "windows/amd64"
-    ]
+    ],
+    "docscheck": "PASS with 4 stale-page warnings: headless, identity-and-trust, observability, real-machine-testing; only the three inspected changed architecture pages were bumped"
   },
   "not_run": [
     "native macOS/Linux/Windows GUI",
@@ -397,8 +398,22 @@
       ".build/boardui-migration/unic-desktop-linux",
       ".build/boardui-migration/unic-desktop-linux-final",
       ".build/boardui-migration/unic-desktop-windows.exe",
-      ".build/boardui-migration/reduce"
+      ".build/boardui-migration/reduce",
+      ".build/boardui-migration/final-windows.exe",
+      ".build/boardui-migration/final-linux"
     ],
     "retained": "Ignored small receipts, source audit, first failures and screenshot evidence; no production profiles or clipboard touched"
+  },
+  "final_crossbuilds": {
+    "windows/amd64": {
+      "status": "PASS",
+      "sha256": "fcb0b6f44493014d7e6553b0601426d649a0ee2fe089340e030357e6b0da22dc",
+      "cgo_enabled": false
+    },
+    "linux/amd64": {
+      "status": "PASS",
+      "sha256": "d723b42f0ed0102b69d1364a766ebdb70f5c064d5e2e9d5b5d69febcd2fc4c63",
+      "cgo_enabled": false
+    }
   }
 }

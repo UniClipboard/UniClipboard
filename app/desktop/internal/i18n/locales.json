@@ -3940,5 +3940,35 @@
     "ja": "外部プラグイン",
     "pt-BR": "Plugins externos",
     "ru": "Внешние плагины"
+  },
+  "窗口": {
+    "en": "Window",
+    "ja": "ウィンドウ",
+    "pt-BR": "Janela",
+    "ru": "Окно"
+  },
+  "使用系统边框": {
+    "en": "Use system window frame",
+    "ja": "システムのウィンドウ枠を使用",
+    "pt-BR": "Usar moldura do sistema",
+    "ru": "Использовать системную рамку окна"
+  },
+  "最小化": {
+    "en": "Minimize",
+    "ja": "最小化",
+    "pt-BR": "Minimizar",
+    "ru": "Свернуть"
+  },
+  "最大化": {
+    "en": "Maximize",
+    "ja": "最大化",
+    "pt-BR": "Maximizar",
+    "ru": "Развернуть"
+  },
+  "还原": {
+    "en": "Restore",
+    "ja": "元に戻す",
+    "pt-BR": "Restaurar",
+    "ru": "Восстановить"
   }
 }

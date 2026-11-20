@@ -299,6 +299,16 @@ The adapter supports explicit leased `tree-paths` and `tree-references` calls. O
 Clipboard content and history preserve optional source application identity and cached PNG icons.
 See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.
 
+## Desktop main-window frame preference
+
+`config.desktop.system_window_frame` is a boolean with default `false`. The
+revision-checked configuration API, CLI and TOML reload persist the same field.
+The service adds `desktop.system_window_frame` to `restart_required` when the
+saved value differs from its startup value. Returning to the startup value clears
+that entry. Desktop captures the value at main-window creation. Linux and macOS
+expose the preference; Windows retains custom caption buttons regardless of the
+stored value. This field never adds a graphical dependency to the service.
+
 ## Desktop tray icon preference
 
 The configuration API exposes `config.desktop.tray_icon` as `glyph` or `cat`. An omitted TOML key uses `glyph`. Revision-checked saves, `unic config set` and direct file reloads use the same enum validation. Invalid values do not replace the previous valid configuration. The service stores the preference and does not render a tray. A running normal Desktop watches the saved configuration and updates its tray image without requiring restart. `desktop.tray_icon` is not a restart-required key.

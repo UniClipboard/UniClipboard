@@ -106,6 +106,9 @@ func (m *Manager) State() State {
 	if m.cur.Desktop.StartInBackground != m.started.Desktop.StartInBackground {
 		s.RestartRequired = append(s.RestartRequired, "desktop.start_in_background")
 	}
+	if m.cur.Desktop.SystemWindowFrame != m.started.Desktop.SystemWindowFrame {
+		s.RestartRequired = append(s.RestartRequired, "desktop.system_window_frame")
+	}
 	if m.cur.Inbox != m.started.Inbox {
 		s.RestartRequired = append(s.RestartRequired, "inbox")
 	}

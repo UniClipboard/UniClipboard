@@ -15,6 +15,7 @@ const (
 	IconChevronDown  IconName = "chevronDown"
 	IconChevronRight IconName = "chevronRight"
 	IconCopy         IconName = "copy"
+	IconMaximize     IconName = "maximize"
 	IconDelete       IconName = "delete"
 	IconDesktop      IconName = "desktop"
 	IconDevices      IconName = "devices"

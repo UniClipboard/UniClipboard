@@ -48,6 +48,7 @@
 | [temporary-transfer](#temporary-transfer) | 两个没有配对的 unic 之间做临时传输 |
 | [transfer-code](#transfer-code) | 用 6 位码完成临时传输，并拒绝配对码 |
 | [warm-send](#warm-send) | 借用已运行服务发送时，完成规则与冷启动相同，且不停止该服务 |
+| [window-chrome-settings](#window-chrome-settings) | 主窗口系统边框配置保存和重启 |
 
 ## builtin-content-tags
 
@@ -2733,6 +2734,54 @@ u alpha send --to all --json warm offline text
 stdout '"phase":"committed"'
 ! stdout '"outcome":"success"'
 ! service-gone alpha
+```
+
+</details>
+
+## window-chrome-settings
+
+**主窗口系统边框配置保存和重启**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/window-chrome-settings' -v`
+
+**目的**
+
+验证默认关闭、保存即持久化以及需要重开窗口。
+
+
+**流程**
+
+启动服务，开启配置，重启服务，再关闭配置。
+
+
+**期望**
+
+布尔值持久化，变更产生待重启状态。
+
+
+**不应**
+
+丢失其他配置，或在重启后保留旧状态。
+
+
+<details><summary>脚本 testdata/window-chrome-settings.txtar</summary>
+
+```
+node-start alpha
+u alpha config --json
+stdout '"system_window_frame": ?false'
+u alpha config set desktop.system_window_frame true
+u alpha config --json
+stdout '"system_window_frame": ?true'
+stdout 'desktop.system_window_frame'
+node-stop alpha
+node-start alpha
+u alpha config --json
+stdout '"system_window_frame": ?true'
+! stdout '"desktop.system_window_frame"'
+u alpha config set desktop.system_window_frame false
+u alpha config --json
+stdout '"system_window_frame": ?false'
 ```
 
 </details>

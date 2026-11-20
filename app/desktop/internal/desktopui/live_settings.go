@@ -99,6 +99,11 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k uikit.Kit) {
 				}
 			})
 		})
+		if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+			group("window", d.tr("窗口"), func() {
+				toggle("system-window-frame", d.tr("使用系统边框"), d.tr("下次启动时生效。"), &cfg.Desktop.SystemWindowFrame)
+			})
+		}
 		group("privacy", d.tr("隐私与诊断"), func() {
 			toggle("telemetry", d.tr("发送使用数据与诊断"), d.tr("关闭后停止遥测上传。"), &cfg.Telemetry.Enabled)
 		})

@@ -23,6 +23,30 @@ Use repeated `--format` arguments to construct multiple native formats. `--lifec
 `python3 e2e/packaging/channels.py` executes the real renderer with synthetic artifact bytes. It verifies twelve-channel coverage and rejection of conflicting inputs; it does not validate native packages.
 `python3 e2e/packaging/windows-build.py` cross-compiles actual amd64/arm64 PE payloads and constructs NSIS/ZIP packages. It does not execute Windows programs or accept their installer lifecycle.
 
+## One device-test package
+
+Dispatch the registered entry against the reviewed branch (use `v2` after merge):
+
+```sh
+gh workflow run build-cli.yml --repo UniClipboard/UniClipboard --ref v2 \
+  --field test_target=windows-arm64 --field test_format=setup.exe
+```
+
+Supported targets are `darwin-arm64`, `darwin-amd64`, `windows-arm64`, `windows-amd64`, `linux-arm64` and `linux-amd64`. The target contains both OS and architecture. `test_format=default` selects DMG/setup EXE/DEB. Explicit formats use the existing target-compatible constructor. Leave `distribution`, `desktop_only`, `native_gui` and `sandbox_run_id` unset. The repository still defaults to v1; use the explicit `--ref v2` command rather than changing the default branch or relying on the default-branch dispatch form.
+
+Download `desktop-test-<target>` from the completed Actions run. Read `TESTING.md` and verify `SHA256SUMS`. The bundle is unsigned/test-only and expires after seven days. Automatic updates are disabled. The existing application installation identity is retained; use an isolated test account/machine or installation path and explicit `UNIC_HOME`.
+
+Local native construction and verification use the same controller:
+
+```sh
+python3 tools/package/desktop_test.py plan --target darwin-arm64
+python3 tools/package/desktop_test.py build --target darwin-arm64 --format app.tar.gz --output dist/test-package
+python3 tools/package/desktop_test.py verify --directory dist/test-package
+python3 e2e/packaging/test_package.py
+```
+
+The archive-content E2E runs on macOS/Linux. It invokes real CLI/npm/Desktop/package processes, checks packaged CLI bytes against the exact manifest, verifies source/metadata preservation and rejects corrupt/extra bundle files. It keeps a small report/checksum receipt and removes temporary candidate bytes. It does not launch a GUI or accept installation.
+
 `python3 e2e/packaging/signing_policy.py` drives production-mode catalogue and page controllers with synthetic six-target records and real temporary raw Ed25519 signatures. It accepts unsigned Windows without relaxing macOS or updater gates.
 
 `windows-lifecycle.ps1 -IsolatedVMRoot C:\ProgramData\UniClipboard-Acceptance-<task>` permits the canonical runner in an explicitly authorized VM under SYSTEM only. It refuses existing installations and roots. Use task-owned inputs and receipts. This is native process acceptance, not an interactive desktop session.

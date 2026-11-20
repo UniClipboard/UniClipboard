@@ -19,6 +19,7 @@ paths:
   - e2e/release
   - .github/workflows/build-cli.yml
   - .github/workflows/build-desktop.yml
+  - .github/workflows/build-desktop-test.yml
   - .github/workflows/package-acceptance.yml
   - .github/workflows/pr-checks.yml
   - .github/workflows/release-desktop.yml
@@ -44,6 +45,18 @@ CLI assembly uses the existing npm main/platform-package model. `@uniclipboard/c
 The declared CLI matrix covers macOS arm64/amd64, Linux arm64/amd64 and Windows arm64/amd64. The Windows arm64 target passed native hosted executable acceptance in distribution run 43408274394. Each target runs its own executable identity acceptance. Linux amd64 also runs production headless and packaged release/upgrade process acceptance. Remote native acceptance passed for all five targets in run 42777109814. The [remote verification receipt](../exec/0018-cli-remote-verification.md) records exact source, artifacts and the observed headless retry.
 
 ## Desktop staging and package definitions
+
+### Single-target device-test packages
+
+The registered `Build CLI` dispatch accepts `test_target` and `test_format`. Select one of the six native OS/architecture targets; `none` preserves the normal CLI path. `default` selects macOS DMG, Windows setup EXE or Linux DEB. Explicit formats use the existing Desktop format constructor. Target/format mismatches and combinations with distribution, desktop-only, sandbox or native-window requests fail before the native runner starts.
+
+`build-desktop-test.yml` runs one selected native package job, not the six-target release matrix. `tools/package/desktop_test.py` builds the current checkout's CLI, runs native executable/alias smoke, assembles a single-target npm candidate in scratch space, then locks that exact manifest into a development Desktop stage. The existing stager checks native identity and private CLI/service configuration IPC. Only the selected format and its input/hash receipts enter the downloadable `desktop-test-<target>` artifact, retained for seven days.
+
+Checked-in versions, CLI release locks and updater keys remain unchanged. Temporary metadata disables automatic updates, and child build processes do not receive production signing or ingestion configuration. The downloadable file uses a `test-<source>-` prefix; its manifest preserves actual unsigned/not-notarized states. The workflow has read-only repository permissions and no release credentials. It does not publish npm, create a GitHub Release, upload R2 objects or change a channel. These packages retain the existing installation identity; `--development` does not make an installation parallel-safe. `TESTING.md` instructs testers to use an isolated machine/account or installation path and an explicit test `UNIC_HOME`.
+
+The bundle contains one native package, `test-package.json`, `artifacts.json`, exact CLI/stage manifests, `TESTING.md` and a complete `SHA256SUMS`. `desktop_test.py verify` rejects modified bytes, symlinks and extra/missing files. Native version/IPC acceptance is separate from installation and GUI acceptance. See the [single-target receipt and replay](../exec/0018-single-target-test-package.md).
+
+### Production staging
 
 `go run ./tools/package -product desktop -target <os>-<arch> -cli-manifest <file> -output <directory>` delegates production staging to `tools/package/desktop.py`.
 The metadata must lock the exact CLI manifest digest, version and build. The stager checks the selected npm package SHA-256/SHA-512, native acceptance fields and both executable hashes before building Desktop.

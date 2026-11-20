@@ -5,6 +5,16 @@ on:
     branches: [main, v2]
   workflow_dispatch:
     inputs:
+      test_target:
+        type: choice
+        default: none
+        description: Build only this Desktop test target with a fresh matching CLI (no publication)
+        options: [none, darwin-arm64, darwin-amd64, windows-amd64, windows-arm64, linux-amd64, linux-arm64]
+      test_format:
+        type: choice
+        default: default
+        description: Test package format; default selects DMG, setup EXE or DEB for the target
+        options: [default, dmg, app.tar.gz, setup.exe, portable.zip, deb, rpm, archlinux, AppImage, AppImage.tar.gz, update.tar.gz]
       native_gui:
         type: boolean
         default: false
@@ -40,7 +50,7 @@ permissions:
   actions: read
 jobs:
   prepare:
-    if: ${{ !inputs.desktop_only && !inputs.sandbox_run_id && !inputs.native_gui }}
+    if: ${{ !inputs.desktop_only && !inputs.sandbox_run_id && !inputs.native_gui && (!inputs.test_target || inputs.test_target == 'none') }}
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
@@ -147,7 +157,7 @@ jobs:
           if-no-files-found: error
 
   desktop:
-    if: github.event_name == 'workflow_dispatch' && inputs.desktop_only
+    if: github.event_name == 'workflow_dispatch' && inputs.desktop_only && (!inputs.test_target || inputs.test_target == 'none')
     uses: ./.github/workflows/build-desktop.yml
     with:
       source_sha: ${{ github.sha }}
@@ -155,14 +165,23 @@ jobs:
     secrets: inherit
 
   sandboxes:
-    if: github.event_name == 'workflow_dispatch' && inputs.sandbox_run_id != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.sandbox_run_id != '' && (!inputs.test_target || inputs.test_target == 'none')
     uses: ./.github/workflows/sandbox-acceptance.yml
     with:
       source_sha: ${{ github.sha }}
       candidate_run_id: ${{ inputs.sandbox_run_id }}
 
   native-gui:
-    if: github.event_name == 'workflow_dispatch' && inputs.native_gui
+    if: github.event_name == 'workflow_dispatch' && inputs.native_gui && (!inputs.test_target || inputs.test_target == 'none')
     uses: ./.github/workflows/native-desktop-acceptance.yml
     with:
       source_sha: ${{ github.sha }}
+
+  test-package:
+    if: github.event_name == 'workflow_dispatch' && inputs.test_target != '' && inputs.test_target != 'none'
+    uses: ./.github/workflows/build-desktop-test.yml
+    with:
+      source_sha: ${{ github.sha }}
+      target: ${{ inputs.test_target }}
+      format: ${{ inputs.test_format }}
+      conflicting_options: ${{ inputs.desktop_only || inputs.native_gui || inputs.sandbox_run_id != '' || inputs.distribution }}

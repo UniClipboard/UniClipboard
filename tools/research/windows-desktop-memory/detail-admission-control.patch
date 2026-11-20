@@ -1,0 +1,11 @@
+--- a/app/desktop/internal/desktopui/live_details.go
++++ b/app/desktop/internal/desktopui/live_details.go
+@@ -5,7 +5,7 @@
+ 	"time"
+ )
+ 
+-const detailReadLimit = 4
++const detailReadLimit = 1
+ 
+ type detailRead struct {
+ 	cancel   context.CancelFunc

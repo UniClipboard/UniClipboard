@@ -1,0 +1,86 @@
+[
+  {
+    "file": "image-00.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "cbb47fda04799618197423bef5a41da9bab6b1861a5285c77a52bf276f818970",
+    "size": 9957517
+  },
+  {
+    "file": "image-01.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "33b3c223c1bc61786f0b09a705a8938dc5b75215b41fdaf43b776da315fa3780",
+    "size": 9957628
+  },
+  {
+    "file": "image-02.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "2bb24a8bcb45d530f9a340c76d2bf3d4f69142aef2f2db7177fbcf4117a54c36",
+    "size": 9957946
+  },
+  {
+    "file": "image-03.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "86dadc4d6db3c5d5c1d8f46d0aec2cca866c895237e89e9b570a8bb4e264cdb0",
+    "size": 9957192
+  },
+  {
+    "file": "image-04.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "04b018c5992525902684a78ec0f0ec46707e54aa6b6abbb2af3e2cf46b5df5de",
+    "size": 9957987
+  },
+  {
+    "file": "image-05.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "e874326fc5c48085166ce79be93797b3b4faa786d58fa3695514f80ae71f0023",
+    "size": 9958125
+  },
+  {
+    "file": "image-06.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "c1cd2884f051f6a175782c4eeaa6079631b28e71aa46a876b3dba504cffd3df6",
+    "size": 9958092
+  },
+  {
+    "file": "image-07.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "eb1df1711984d4fd4a11683725c9be638461259917f0f21726bece3a4111aa44",
+    "size": 9957384
+  },
+  {
+    "file": "image-08.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "92d943620646401e3a335c9326e193e13f28f23d687851621398ee7fb31877c6",
+    "size": 9957586
+  },
+  {
+    "file": "image-09.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "4d21ae0052f94ad46fbfaa1d637243d405ee3518bd7a085a3636ac45b4a93177",
+    "size": 9958114
+  },
+  {
+    "file": "image-10.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "c0518d7997b3c3f8fdfd352aa0ddea5de180c7e8c46394d40b2d48e88c772f03",
+    "size": 9958253
+  },
+  {
+    "file": "image-11.png",
+    "width": 2048,
+    "height": 1536,
+    "sha256": "60488cf76b761215c7c7335420252b6e80919acee525d14db1928807aabc48dd",
+    "size": 9957636
+  }
+]

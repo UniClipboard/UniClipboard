@@ -1,0 +1,39 @@
+{
+  "run_id": "20261120T040323Z-19beca2d",
+  "status": "PASS",
+  "source_head": "173d362036ae4a746878306915c85bcdf7468751",
+  "worktree_dirty": true,
+  "snapshot_unchanged": true,
+  "private_cleanup": "PASS",
+  "host_os": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "platform": [
+    "darwin",
+    "arm64"
+  ],
+  "race_detector": true,
+  "binary_sha256": {},
+  "desktop_build_tags": [],
+  "source_files_sha256": {
+    "app/desktop/internal/desktopui/acceptance_images_test.go": "502f2d4c1c2d01ec27fb9fd75c90fea552fe8c1b61d48f5aa5414a9d5ac109d8",
+    "app/desktop/internal/desktopui/live.go": "2a162b05b8b4941286ecf95ad2ce9c39f5af943bdce209774e4a058fd928d994",
+    "app/desktop/internal/desktopui/live_images.go": "47c8de17784c24adc0c1a488c75bdad289b7e5bc726b452689d336bf2bf75536"
+  },
+  "scenario": {
+    "cached_details": 9,
+    "checks": [
+      "eight real PNG entries prefetch bounded thumbnails",
+      "selection upgrades to original dimensions; previous selection returns to thumbnail; original bytes unchanged",
+      "quick-panel selected image retains original resolution",
+      "JPEG EXIF orientation and original dimensions preserved",
+      "displayed image releases CPU pixels on a later view frame",
+      "image bodies consumed serially across both live windows"
+    ],
+    "native_ui": false,
+    "passed": true,
+    "peak_image_body_readers": 1,
+    "renderer": true,
+    "thumbnail_rgba_bytes": 1835008,
+    "unicd_sha256": "7b1b096c28070688a6ebebeb2f0e8f41f61b9dd14f6213e98a5438f1929282c1"
+  },
+  "canonical_manifest_sha256": "5965f5e2fb5f98fffd5c77b5ad02ef7437dd8f6e64ee61e5ac722a3ae43cc482"
+}

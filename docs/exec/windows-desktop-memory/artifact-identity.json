@@ -1,0 +1,39 @@
+{
+  "repository": "https://github.com/UniClipboard/UniClipboard.git",
+  "branch": "research/windows-desktop-memory",
+  "base_sha": "173d362036ae4a746878306915c85bcdf7468751",
+  "worktree": "/Users/mark/.lody/repos/github---uniclipboard---uniclipboard/worktrees/db66da62-294f-48f3-9acb-4270bcf48f6a",
+  "workflow_run": 44665561906,
+  "artifact_id": 14596984031,
+  "artifact_name": "desktop-test-windows-amd64",
+  "artifact_zip_sha256": "b89fdb48baf35b85bc962d283f1b98010291390221bfc2f38b7060dce5b8a293",
+  "installer": {
+    "container_signed": false,
+    "file": "test-173d362036ae-uniclipboard-2.0.0-build.1-windows-amd64-setup.exe",
+    "format": "setup.exe",
+    "notarized": false,
+    "payload_signed": false,
+    "sha256": "6355d636bbddbab5dfb0a1028d82567954ab3ecc5f3cb784f865c5e47145c149",
+    "signature": "",
+    "signed": false,
+    "size": 80546387
+  },
+  "payload_sha256": {
+    "unicd.exe": "0061b58316e9af9082eb134b7b22bc0077bfde4d5fe147ef272f0868775abede",
+    "unic-desktop.exe": "3ca463d17b6e9829d2e912e450610be239fef94b7fee44fae13aba2be313b6f0",
+    "unic.exe": "1436072960effa2ef99334cb2dfec631858206209eccbe9f10a9bf861bf14e00"
+  },
+  "cli_source_sha": "173d362036ae4a746878306915c85bcdf7468751",
+  "cli_build_number": 2,
+  "desktop_build_number": 1,
+  "compiler_identity": "go1.27.3",
+  "payload_machine": "PE32+ x86-64",
+  "exact_package_history_baseline": "ESTABLISHED: OS capture reviewed, synthetic image history; busy clipboard and x64-on-ARM64 limitations apply",
+  "diagnostic_base_sha": "173d362036ae4a746878306915c85bcdf7468751",
+  "diagnostic_changes": [
+    "desktop_e2e: existing private testboard and native automation plugin",
+    "aggregate runtime/metrics sampler",
+    "aggregate view-thread cache ownership and CPU-pixel-length sampler"
+  ],
+  "production_optimization_applied": false
+}

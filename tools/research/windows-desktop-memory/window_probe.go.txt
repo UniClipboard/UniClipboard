@@ -1,0 +1,15 @@
+package main
+
+import("os";"fmt";"github.com/egoist/mygo";"github.com/egoist/mygo/ui";"github.com/uniclipboard/unic/app/desktop/internal/uikit")
+func main(){
+ mode:=os.Getenv("UNIC_MEMORY_WINDOW_MODE")
+ if mode=="process"{select{}}
+ mygo.App.SetName("unic memory window probe")
+ mygo.App.SetPath(mygo.PathUserData,os.Getenv("UNIC_HOME"))
+ theme:=os.Getenv("UNIC_MEMORY_THEME");if theme==""{theme="light"};mygo.Theme.SetSource(mygo.ThemeSource(theme))
+ mygo.App.WhenReady(func(){mygo.NewWindow(mygo.WindowOptions{Title:"Synthetic memory window",Width:1100,Height:720,UseContentSize:true,Content:ui.View(func(c *ui.Context){
+  if mode=="blank"{return}
+  k:=uikit.For(theme=="dark");if mode=="kit"{k.UiRoot(c,func(){});return};k.UiRoot(c,func(){ui.Column(c).Fill().Padding(16).Children(func(){for i:=0;i<50;i++{k.Text(c,fmt.Sprintf("Synthetic history item %02d — 中文示例",i),uikit.TextProps{})}})})
+ })})})
+ if err:=mygo.App.Run();err!=nil{panic(err)}
+}

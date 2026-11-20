@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "completed_at_utc": "2026-11-20T05:33:50.644950+00:00",
+  "vm": {
+    "uuid": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+    "name": "Windows 11",
+    "initial_state": "suspended",
+    "final_state": "suspended",
+    "verified_with": "prlctl list -a -o uuid,name,status"
+  },
+  "other_vm": {
+    "name": "macOS",
+    "initial_state": "stopped",
+    "final_state": "stopped"
+  },
+  "guest": {
+    "task_directory": "C:\\unic-memory-db66",
+    "directory_removed": true,
+    "task_processes_remaining_before_remove": 0,
+    "other_application_processes_at_cleanup": 0,
+    "clipboard_sequence_before": 25,
+    "clipboard_sequence_after": 25,
+    "clipboard_content_read_or_written": false,
+    "permissions_or_passwords_changed": false
+  },
+  "host": {
+    "task_stage_removed": true,
+    "task_scratch_removed": true,
+    "replay_stage_removed": true,
+    "detached_control_worktree_removed": true,
+    "task_private_readonly_module_copy_made_writable_for_cleanup": true,
+    "retained_installers_binaries_databases_screenshots_raw_logs_or_source_exports": false,
+    "shared_module_cache_source_edited": false
+  },
+  "repository": {
+    "branch": "research/windows-desktop-memory",
+    "sha": "173d362036ae4a746878306915c85bcdf7468751",
+    "production_files_changed": false,
+    "committed": false,
+    "pushed": false,
+    "pr_created": false
+  },
+  "validation": {
+    "portable_replay": "PASS; empty ARM64 actual process baseline, output hashes verified",
+    "canonical_image_previews_e2e": [
+      "PASS streaming surrogate with race detector",
+      "PASS admission surrogate with race detector"
+    ],
+    "aggregate_consistency": "PASS 18 principal runs, exact payload, 6 auxiliary window modes, 4 equal native selected-image crops",
+    "docscheck": "PASS with 7 pre-existing freshness warnings",
+    "unit_tests_added_after_code": false
+  }
+}

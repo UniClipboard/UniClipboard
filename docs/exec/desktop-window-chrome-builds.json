@@ -15,5 +15,9 @@
     }
   ],
   "native_os_acceptance": "NOT_RUN",
-  "temporary_program_cleanup": "PASS"
+  "temporary_program_cleanup": "PASS",
+  "pr_integration": {
+    "source": "4fbcd2329",
+    "windows_amd64_sha256": "0296ce8a59d5dd1a37395c6ef62dbd42c768c027ce2b7d129b52404de1f50f03"
+  }
 }

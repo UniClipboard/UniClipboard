@@ -50,3 +50,21 @@ TMPDIR=/private/tmp make desktop-e2e CASE=window-chrome
 TMPDIR=/private/tmp make desktop-e2e CASE=i18n
 TMPDIR=/private/tmp UNIC_E2E=1 go test ./e2e/cli -run '^TestCLI$/^window-chrome-settings$' -count=1 -v
 ```
+
+## PR integration
+
+Merged `origin/v2` at `fdf768d37`, including independent Desktop roles, into the
+window-chrome branch. The GUI does not recreate the tray or apply the old hidden
+startup policy. Close delegates to the new GUI-only shutdown handler. Upstream
+mode/background restart semantics and all translations are preserved.
+
+The merged source `4fbcd2329` passed the canonical `window-chrome` case, the real
+CLI/service settings scenario, scoped pinned lint, and Windows amd64 build. The
+architecture verification marker now names this committed implementation. Initial
+reports above retain their original pre-integration source identities.
+
+The canonical `desktop-processes` E2E passed after integration, including GUI
+close/reopen, independent Quick Panel, concurrent activation and role recovery.
+Report: `.build/desktop-e2e/20261120T092836Z-5f2fab51/index.html`.
+Documentation checking after the marker update passed with six warnings on other
+architecture pages.

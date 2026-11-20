@@ -5,7 +5,7 @@
 Worktree: `b973f49e-2d6a-498f-bde6-2774391245a4`.
 Branch: `fix/desktop-lightweight-processes`.
 Baseline: `173d362036ae4a746878306915c85bcdf7468751`, fetched from `origin/v2` on 2026-11-20.
-The implementation is a local working-tree change. Acceptance manifests bind the exact source-file and executable SHA-256 values; baseline HEAD alone does not identify the modified source.
+Implementation commit: `51ee83471`. The change is committed locally and has not been pushed. Acceptance manifests bind the exact source-file and executable SHA-256 values; the baseline HEAD alone does not identify the modified source.
 
 The user's Windows x64 comparison artifact is `desktop-test-windows-amd64`, artifact `14596984031`, from [Build CLI run 44665561906](https://github.com/UniClipboard/UniClipboard/actions/runs/44665561906). The GitHub API reports the same baseline SHA above. An ARM64 Windows host must distinguish this x64 emulated artifact from a native ARM64 build.
 
@@ -47,7 +47,7 @@ See the [architecture](../architecture/headless.md#desktop-startup-settings), [d
 | Desktop and Engine existing checks | PASS | 197 existing tests with race across five packages, using canonical `TMPDIR=/private/tmp` |
 | Windows amd64/ARM64 and Linux amd64 compilation | PASS | Production Desktop cross-builds; no native execution claim |
 | Fixed lint | PASS | golangci-lint v2.15.0 with Go 1.27.3; changed packages |
-| Documentation check | PASS with warnings | Seven stale verification warnings. `-bump` refuses uncommitted source; existing markers remain unchanged |
+| Documentation check | PASS with warnings | The four updated architecture pages now verify implementation commit `51ee83471`. Three unrelated stale verification warnings remain. The initial pre-commit `-bump` refusal was resolved by the local implementation commit |
 
 The first macOS native history run `20261120T035013Z-7a95cf83` passed business assertions but failed cleanup. Its close callback prevented application shutdown. The same native case passed after adding a quit-in-progress guard. The failure report remains local evidence; it is not counted as a pass.
 

@@ -1,0 +1,17 @@
+package d3d11
+
+import("encoding/json";"os";"time")
+// Task-only diagnostic source in a private mygo copy. Never installed upstream.
+func (r *Renderer) memoryResearchSample(event string){
+ path:=os.Getenv("UNIC_MEMORY_RESEARCH");if path==""{return}
+ bytes,large,stale:=0,0,0
+ for _,t:=range r.images{bytes+=t.w*t.h*4;if t.w*t.h>=1000000{large++};if t.lastFrame!=r.frame{stale++}}
+ buffers:=2;if r.resizing{buffers=3}
+ f,e:=os.OpenFile(path+".gpu.jsonl",os.O_CREATE|os.O_WRONLY|os.O_APPEND,0600);if e!=nil{return};defer f.Close()
+ json.NewEncoder(f).Encode(map[string]any{"unixMillis":time.Now().UnixMilli(),"hwnd":r.hwnd,"event":event,"frame":r.frame,"imageTextures":len(r.images),"largeTextures":large,"unusedThisFrame":stale,"imageRGBAAreaBytesEstimate":bytes,"maskAtlasBytesEstimate":r.mask.w*r.mask.h,"colorAtlasBytesEstimate":r.color.w*r.color.h*4,"swapchainBytesEstimate":r.bw*r.bh*4*buffers,"renderWidth":r.w,"renderHeight":r.h,"aggressiveSweep":os.Getenv("UNIC_MEMORY_GPU_SWEEP")=="1"})
+}
+func (r *Renderer) memoryResearchSweep(){
+ if os.Getenv("UNIC_MEMORY_GPU_SWEEP")!="1"{return}
+ // Diagnostic lower bound only: later partial redraws must reconstruct images.
+ for id,t:=range r.images{if t.lastFrame!=r.frame{freeTexture(t);delete(r.images,id)}}
+}

@@ -297,4 +297,28 @@ func scenarioImagePreviews(t *testing.T) {
 		t.Fatalf("image reads overlap: peak=%d", peak.Load())
 	}
 	checks = append(checks, "image bodies consumed serially across both live windows")
+	quick.live.d.live.cancel()
+	desktop.Close()
+	wait("original preview readers closed", func() bool { return active.Load() == 0 })
+	items := make([]api.HistoryItem, 0, 8)
+	for _, it := range l.items {
+		if it.Kind == "image" {
+			items = append(items, it)
+		}
+	}
+	imageResourceAcceptance(t, ctx, filepath.Join(home, "unic.sock"), items, receipt, func(start bool) {
+		t.Helper()
+		if !start {
+			_ = proc.Process.Kill()
+			_ = proc.Wait()
+			return
+		}
+		replacement := exec.CommandContext(ctx, exe)
+		replacement.Env = proc.Env
+		proc = replacement
+		if err := proc.Start(); err != nil {
+			t.Fatal(err)
+		}
+		wait("restarted image service", func() bool { _, err := client.Status(ctx); return err == nil })
+	})
 }

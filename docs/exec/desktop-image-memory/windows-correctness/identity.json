@@ -1,0 +1,32 @@
+{
+  "source_sha": "ea91a8f6693860dd3af2859222ca1f3c4b4ffe03",
+  "go": "go version go1.27.3 darwin/arm64",
+  "race_detector": false,
+  "race_reason": "Go1.27 Windows ARM64 race detector is unsupported",
+  "native_ui": false,
+  "scope": "existing canonical real-service image scenario on Windows, software views, private profiles; no physical input or clipboard",
+  "test_adapter": [
+    "use task-prebuilt unicd instead of invoking host go build -race",
+    "use task TEMP instead of /tmp",
+    "explicit private unic migrate --initialize-empty before service start",
+    "disable automatic sync in synthetic profile"
+  ],
+  "source_sha256": {
+    "app/desktop/internal/desktopui/live_image_requests.go": "c49c56b104f0dfcc48f44a54f3d23e0648949581bfb1c450a1a304a66057ae78",
+    "app/desktop/internal/desktopui/live_wake.go": "f6b13cd66ca10d35462ab328c966aef3696c55b4d70282af4c3608dbae6d1f85",
+    "app/desktop/internal/desktopui/live.go": "ef79eb39c4d36f9ac2ceea076b1e5386cf33818cb62dcf2ea3894bddbe4c8456",
+    "app/desktop/internal/desktopui/live_devices.go": "d942f9ab14784b211f3c32a5e7d1287ea86265cbbdbd540e4b9616a427695a87",
+    "app/desktop/internal/desktopui/live_browsing.go": "95fbb2acae151f4f6ca32064d30df6657000474e4a9aece22a69d0e1ff6f70be",
+    "app/desktop/internal/desktopui/live_quick.go": "86236d10d855e22407b8a55ca1dc9811ae0676eae7747a84f04c673e4a4c91ac",
+    "app/desktop/internal/desktopui/live_search.go": "40f75b639363c868257043e7820da97f5fe3e5a40e61fcfe160ab145687824ad",
+    "app/desktop/internal/desktopui/live_images.go": "ccc6a919b33978e3bd05837c5d3291747c6db17c416ba89f31bbe22c12e061b2",
+    "app/desktop/internal/desktopui/live_settings.go": "5d45090df1eea7dfe5a98471dbbada4a1d1bdc205ebca7560dd9b7a3361f5819",
+    "app/desktop/internal/desktopui/live_details.go": "3416b402ec10cc5ebb4155e757bf9ace74be037e4ff662ec763f96aa950c4b0d"
+  },
+  "adapted_acceptance_sha256": "326146026ab5907b921504bca9df3cabd80893f5e70a5a94dcae65eeb6863a20",
+  "program_sha256": {
+    "image-acceptance.exe": "c5628edee32d0f7800ccb56106ff713e2f9690cf52dc5ef40601a950a0386156",
+    "unicd.exe": "e520a7c67048f90d6e8c13ba1919f1f16afe0064e248dbcee437afdb083c4a69",
+    "unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56"
+  }
+}

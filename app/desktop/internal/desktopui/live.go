@@ -821,6 +821,27 @@ func newRequestID() string {
 func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem, edge int) entry {
 	id := it.ID
 	v := projectHistory(it)
+	fileCount := 0
+	if it.Kind == "files" {
+		for _, p := range it.Parts {
+			if p.Kind == "file" {
+				fileCount++
+			}
+		}
+	}
+	// Single-file MIME/name may only become known after the response opens.
+	// Admit those possible image previews conservatively, without gating text.
+	if it.Kind == "image" || (it.Kind == "files" && fileCount == 1) {
+		if err := imageRequests.acquire(ctx, edge == 0); err != nil {
+			v.contentError = "读取内容失败。"
+			return v
+		}
+		defer imageRequests.release()
+		if ctx.Err() != nil {
+			v.contentError = "读取内容失败。"
+			return v
+		}
+	}
 	switch it.Kind {
 	case "directory", "directory_reference":
 		var names []string
@@ -900,12 +921,6 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 		return v
 	case "files":
 		var names []string
-		fileCount := 0
-		for _, p := range it.Parts {
-			if p.Kind == "file" {
-				fileCount++
-			}
-		}
 		for i, p := range it.Parts {
 			if p.Kind != "file" {
 				continue

@@ -1,0 +1,11 @@
+--- a/internal/gpu/d3d11/d3d11.go
++++ b/internal/gpu/d3d11/d3d11.go
+@@ -1817,6 +1817,8 @@
+ 		r.sweep()
+ 		r.cost.readPeriod()
+ 	}
++	r.memoryResearchSweep()
++	r.memoryResearchSample("present")
+ 	return nil
+ }
+ 

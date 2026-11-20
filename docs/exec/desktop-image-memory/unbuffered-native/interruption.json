@@ -1,0 +1,8 @@
+{
+  "reason": "Prespecified CPU investigation threshold exceeded in first combined image run; stop this exploratory cohort and investigate streaming read granularity before repeating final matrix.",
+  "baseline_group_cpu_seconds_at45": 3.609375,
+  "combined_group_cpu_seconds_at45": 5.015625,
+  "increase_fraction": 0.3896103896103895,
+  "final_performance_acceptance": false,
+  "partial_following_run": "excluded unless completed and summarized"
+}

@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "base_sha": "173d362036ae4a746878306915c85bcdf7468751",
+  "implementation_sha": "e540ad3aa6e378ae93174a49146e62f11a3c2abc",
+  "origin": "https://github.com/UniClipboard/UniClipboard.git",
+  "go": "go version go1.27.3 darwin/arm64",
+  "race": false,
+  "patch_sha256": {
+    "streaming.patch": "edc14da254fee71c71e7a34d03065708c621f91034766ff5ecd8505c6ba17954",
+    "admission.patch": "ed4cc87e988087bb44e3da6df727ebecbf15aeb011c6cfdc7400bb3388cbeb5d"
+  },
+  "variants": {
+    "baseline": {
+      "product_sha256": {
+        "app/desktop/internal/desktopui/live.go": "2a162b05b8b4941286ecf95ad2ce9c39f5af943bdce209774e4a058fd928d994",
+        "app/desktop/internal/desktopui/live_details.go": "59e740d867cb5d2652f6e19b58df3643537b4535303955ff01706245c78d5c38",
+        "app/desktop/internal/desktopui/live_images.go": "84e9b6320676ddf52ce8dbb07e797df804a4b3aa5283941cbfc22b113f4bb278"
+      },
+      "binaries": {
+        "arm64": {
+          "unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+          "unic-desktop.exe": "ee5c1a7bec21adcc3aeecfef48d9c66bcaed135c8d25ef64afc0eee15c4fe186",
+          "unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56"
+        },
+        "amd64": {
+          "unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+          "unic-desktop.exe": "abbac290961a459cb922de5911d3902aa667bdba4cfe1008e8a172300617dea3",
+          "unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542"
+        }
+      }
+    },
+    "admission": {
+      "product_sha256": {
+        "app/desktop/internal/desktopui/live.go": "ef79eb39c4d36f9ac2ceea076b1e5386cf33818cb62dcf2ea3894bddbe4c8456",
+        "app/desktop/internal/desktopui/live_details.go": "3416b402ec10cc5ebb4155e757bf9ace74be037e4ff662ec763f96aa950c4b0d",
+        "app/desktop/internal/desktopui/live_images.go": "530b5d08a52aa92dcec9a5ea559f8f342ab7e9f50e1c049761d970f0fc56a3a4",
+        "app/desktop/internal/desktopui/live_image_requests.go": "c49c56b104f0dfcc48f44a54f3d23e0648949581bfb1c450a1a304a66057ae78"
+      },
+      "binaries": {
+        "arm64": {
+          "unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+          "unic-desktop.exe": "a381caddac110faeed92328f6c98307740d6a0514dc89268f66a7f7e1507ce2b",
+          "unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56"
+        },
+        "amd64": {
+          "unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+          "unic-desktop.exe": "43aff5b7cc420ce58b130aad0beed57039892c37677071754d9c4d7b2e816725",
+          "unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542"
+        }
+      }
+    },
+    "streaming": {
+      "product_sha256": {
+        "app/desktop/internal/desktopui/live.go": "2a162b05b8b4941286ecf95ad2ce9c39f5af943bdce209774e4a058fd928d994",
+        "app/desktop/internal/desktopui/live_details.go": "59e740d867cb5d2652f6e19b58df3643537b4535303955ff01706245c78d5c38",
+        "app/desktop/internal/desktopui/live_images.go": "60b8e74cfcaef5f4b3c6eb46faf7b668ce0fd87ebecf6f95c93c4077f8bf2171"
+      },
+      "binaries": {
+        "arm64": {
+          "unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+          "unic-desktop.exe": "66da5cad749bc4c4212e8d8fa185f23a9159929b77e5664e1428d1114ad6bbd2",
+          "unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56"
+        },
+        "amd64": {
+          "unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+          "unic-desktop.exe": "f0804cf3293401b7b8127328554dcbdc4875414c27bb64d1aecc2e0853bde9f7",
+          "unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542"
+        }
+      }
+    },
+    "combined": {
+      "product_sha256": {
+        "app/desktop/internal/desktopui/live.go": "ef79eb39c4d36f9ac2ceea076b1e5386cf33818cb62dcf2ea3894bddbe4c8456",
+        "app/desktop/internal/desktopui/live_details.go": "3416b402ec10cc5ebb4155e757bf9ace74be037e4ff662ec763f96aa950c4b0d",
+        "app/desktop/internal/desktopui/live_images.go": "874ca44f850f6c8bf28e6b214846102e7a979453e9b6a8b71c7429362f0a1101",
+        "app/desktop/internal/desktopui/live_image_requests.go": "c49c56b104f0dfcc48f44a54f3d23e0648949581bfb1c450a1a304a66057ae78"
+      },
+      "binaries": {
+        "arm64": {
+          "unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+          "unic-desktop.exe": "d182a22c80bb0b3d4dea2f5f61431e1cc8551360b2445eb6bd5892f71f816df7",
+          "unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56"
+        },
+        "amd64": {
+          "unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+          "unic-desktop.exe": "af55f7d8c6d948c6f4bc6e6797f2f94653751a4b0ec6add7d15a216a5b584475",
+          "unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542"
+        }
+      }
+    }
+  },
+  "stage_sha256": {
+    "admission-amd64/unic-desktop.exe": "43aff5b7cc420ce58b130aad0beed57039892c37677071754d9c4d7b2e816725",
+    "admission-amd64/unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542",
+    "admission-amd64/unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+    "admission-arm64/unic-desktop.exe": "a381caddac110faeed92328f6c98307740d6a0514dc89268f66a7f7e1507ce2b",
+    "admission-arm64/unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56",
+    "admission-arm64/unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+    "baseline-amd64/unic-desktop.exe": "abbac290961a459cb922de5911d3902aa667bdba4cfe1008e8a172300617dea3",
+    "baseline-amd64/unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542",
+    "baseline-amd64/unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+    "baseline-arm64/unic-desktop.exe": "ee5c1a7bec21adcc3aeecfef48d9c66bcaed135c8d25ef64afc0eee15c4fe186",
+    "baseline-arm64/unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56",
+    "baseline-arm64/unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+    "combined-amd64/unic-desktop.exe": "af55f7d8c6d948c6f4bc6e6797f2f94653751a4b0ec6add7d15a216a5b584475",
+    "combined-amd64/unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542",
+    "combined-amd64/unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+    "combined-arm64/unic-desktop.exe": "d182a22c80bb0b3d4dea2f5f61431e1cc8551360b2445eb6bd5892f71f816df7",
+    "combined-arm64/unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56",
+    "combined-arm64/unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6",
+    "mygo-automation.exe": "ab94cd727a37cdaef142c69259291c36e84853cb82d2d0816ed7befa11a48cc4",
+    "scripts/README.md": "c1baa0695493bb2f69151ff90064c7f8ee1361fb7f82f14c44ca81fd256fab2d",
+    "scripts/cache_probe.go.txt": "f7e4bebeb2b954639171ecba071ba33933ce4383ab9c9f18ccdf5f6f1b0dead7",
+    "scripts/capture-window.ps1": "8959f4902d275924848e11b8b53577619649c3b11b045a7fc863bf0df07b2205",
+    "scripts/detail-admission-control.patch": "0f17a059f6415ab99ff78ddc1e3eea6f21f4aaf1702d1cd11632c089e4dee130",
+    "scripts/diagnostic_init.go.txt": "f3c785eb39fb30e9e641af78a95026fce537db0f1653a23e8bad2f48dfd5dd4c",
+    "scripts/explore.ps1": "1fb7350bffea8322442c21a0ffbe942836fa3ef0cfa479a397f1857c743defc9",
+    "scripts/fixtures/image-00.png": "cbb47fda04799618197423bef5a41da9bab6b1861a5285c77a52bf276f818970",
+    "scripts/fixtures/image-01.png": "33b3c223c1bc61786f0b09a705a8938dc5b75215b41fdaf43b776da315fa3780",
+    "scripts/fixtures/image-02.png": "2bb24a8bcb45d530f9a340c76d2bf3d4f69142aef2f2db7177fbcf4117a54c36",
+    "scripts/fixtures/image-03.png": "86dadc4d6db3c5d5c1d8f46d0aec2cca866c895237e89e9b570a8bb4e264cdb0",
+    "scripts/fixtures/image-04.png": "04b018c5992525902684a78ec0f0ec46707e54aa6b6abbb2af3e2cf46b5df5de",
+    "scripts/fixtures/image-05.png": "e874326fc5c48085166ce79be93797b3b4faa786d58fa3695514f80ae71f0023",
+    "scripts/fixtures/image-06.png": "c1cd2884f051f6a175782c4eeaa6079631b28e71aa46a876b3dba504cffd3df6",
+    "scripts/fixtures/image-07.png": "eb1df1711984d4fd4a11683725c9be638461259917f0f21726bece3a4111aa44",
+    "scripts/fixtures/image-08.png": "92d943620646401e3a335c9326e193e13f28f23d687851621398ee7fb31877c6",
+    "scripts/fixtures/image-09.png": "4d21ae0052f94ad46fbfaa1d637243d405ee3518bd7a085a3636ac45b4a93177",
+    "scripts/fixtures/image-10.png": "c0518d7997b3c3f8fdfd352aa0ddea5de180c7e8c46394d40b2d48e88c772f03",
+    "scripts/fixtures/image-11.png": "60488cf76b761215c7c7335420252b6e80919acee525d14db1928807aabc48dd",
+    "scripts/fixtures/manifest.json": "25a09b7bd5e44856869c778b5dc7ebc9dc9812d2cb072a28e3123132fa814375",
+    "scripts/generate-fixtures.py": "75560e66b1251ee4cc5989a8036574e4bf15be24648a5eed7d1f3b1ed5851461",
+    "scripts/gpu-present-probe.patch": "fc6eada2cdb11d8564923feb3bb1452bfbe30e4d445cfd9ba5d3afc31b7d1243",
+    "scripts/gpu_probe.go.txt": "0df9f736f2a60b45761b710d33bac7d40e5243d9cd1e537c642e9999e0c750e3",
+    "scripts/measure-window.ps1": "493c5c062a5507f2fdf5dc46287a721bc7794228967329d6651b6ce86843117e",
+    "scripts/measure.ps1": "8d2c54e5167244c6570ed27f648086e6c638f78f4d8d8bdb8cc2f54ffb3c0ba5",
+    "scripts/native.cs": "e871e77447ebe8a9f65adb286b2ed2ab4841b9445ca64ab0ff3c3e9170c16b0d",
+    "scripts/replay.py": "49eb4036e274683289831aaab36b8805391e6342d8ff569069829d36ad54a0e4",
+    "scripts/service_probe.go.txt": "cb1aa05b6f99a857b6e31ca127e20eb679d531059e7e062c22b7788f429f20e8",
+    "scripts/stream-neighbor-input.patch": "58613943482e66a9e633c19d7afce99036cad363f7f6d695177323c6191a87cb",
+    "scripts/summarize-gpu.py": "4f5af6e33511f4beb35db0b1807c5186012bc813c8ef856e86a1baefef3feece",
+    "scripts/summarize.py": "363aa3bc7515094217f0cd5eb1719ba45680cfaeef8a1df7925b51d8e9945c33",
+    "scripts/window-state.cs": "fc6bf3bc80bbdf7b80e68409869278aeda65dc544f2cd61f8a19f6ba6b683fbb",
+    "scripts/window_probe.go.txt": "d94a6550e5f7af6115a2b4f0fa76b10e44277d06fa0f1489e1458bab11461ded",
+    "service-probe.exe": "597ae8b0fbe9f396b4622c8445c3a70bc42af6ceb4b6938b6bee330a3f355745",
+    "streaming-amd64/unic-desktop.exe": "f0804cf3293401b7b8127328554dcbdc4875414c27bb64d1aecc2e0853bde9f7",
+    "streaming-amd64/unic.exe": "dfb7250f442d9c9e9c665e4267765e2207d10fc803cd5dfa34124b698bbad542",
+    "streaming-amd64/unicd.exe": "b74ef2c7159e57dc80fdb6fbbd0a251f16a621cce864728409bc5a0a98d6cc49",
+    "streaming-arm64/unic-desktop.exe": "66da5cad749bc4c4212e8d8fa185f23a9159929b77e5664e1428d1114ad6bbd2",
+    "streaming-arm64/unic.exe": "5621d9e2b2f94c9acb42f358756001a287aa21368dbb7d67907aaf4f134e3a56",
+    "streaming-arm64/unicd.exe": "51129426211766242aff973714080dec9d7ed4ef6475f9cc7e16e34169ff9ac6"
+  },
+  "diagnostic_source_sha256": {
+    "cache_probe.go.txt": "f7e4bebeb2b954639171ecba071ba33933ce4383ab9c9f18ccdf5f6f1b0dead7",
+    "diagnostic_init.go.txt": "f3c785eb39fb30e9e641af78a95026fce537db0f1653a23e8bad2f48dfd5dd4c",
+    "view_hook": "s.d.view(c); memoryResearchSeen(s)"
+  }
+}

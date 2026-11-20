@@ -1,0 +1,17 @@
+package main
+
+import("context";"fmt";"os";"time";api "github.com/uniclipboard/unic/internal/localapi";paths "github.com/uniclipboard/unic/internal/localpaths")
+func main(){
+ socket,err:=paths.Socket();if err!=nil{panic(err)};client:=api.NewClient(socket)
+ deadline:=time.Now().Add(60*time.Second)
+ for {
+  ctx,cancel:=context.WithTimeout(context.Background(),time.Second)
+  info,err:=client.Service(ctx);cancel()
+  if err==nil {
+   if len(os.Args)>1&&os.Args[1]=="stop"{ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel();if err=client.StopService(ctx,info.ID);err!=nil{panic(err)}}
+   fmt.Println("ready");return
+  }
+  if time.Now().After(deadline){fmt.Fprintln(os.Stderr,"private service did not become ready within 60 seconds");os.Exit(1)}
+  time.Sleep(100*time.Millisecond)
+ }
+}

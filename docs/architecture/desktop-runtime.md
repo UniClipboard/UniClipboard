@@ -39,7 +39,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: fc932b40297c5f3e4ba196b2013f1da779dc6804
+verified: ea91a8f6693860dd3af2859222ca1f3c4b4ffe03
 ---
 # Desktop configuration and received files
 
@@ -77,6 +77,27 @@ Direct installations with a configured production update key use mygo's native u
 ## Incremental history browsing
 
 Desktop loads history in 50-entry cursor pages as the list or grid approaches its loaded end. It retains a 500-entry sliding window, bounded cursor checkpoints and one selected detail outside that window. Scrolling toward an evicted newer page reloads it automatically. Stable item keys retain surviving scroll anchors.
+
+Image preview admission occurs before `HistoryContent` can open or materialize a
+response. One process-wide slot covers the main window and Quick Panel through
+response close and decode completion. Selected originals take priority over queued
+neighbors. Cancelling a queued request removes it without opening a response; a
+cancellation racing admission returns the transferred slot. Each view retains its
+four-job bound and cancels one pending neighbor when selection needs that job.
+Text and directory metadata do not take the image slot. Single-file candidates
+also take it because their image MIME/name can be known only after response open.
+
+Neighbor thumbnails use one 64 KiB input buffer over the shared byte limiter.
+This separates codec read sizes from local-socket reads and permits short reads.
+They stream the existing 32 MiB-bounded input through the existing
+image codec and EXIF handling. Only inspected dimension-header bytes are replayed;
+ordinary encoded images are not first copied into a whole-input buffer. The header
+replay buffer uses the same encoded-input budget. Full decoding starts only after
+the existing 16-million-pixel dimension check. A bounded remainder read detects
+trailing input beyond the byte limit. Context checks cover reads and codec/resize
+phase boundaries; a running codec/resize call is not preempted. Selected originals
+retain their encoded reconstruction bytes and full dimensions. See the
+[implementation receipt](../exec/desktop-image-memory.md).
 
 Service events trigger metadata revision checks. A 30-second bounded recovery probe detects missed notifications. An unchanged revision does not reload search results. Stream failure renews cursors, while query changes cancel stale generations. Selection, detail state and filters survive background reconciliation; selected deletion closes its detail and preview. See the [search contract](../contracts/history-search-contract.md#incremental-desktop-browsing) and [execution receipt](../exec/desktop-incremental-browsing.md).
 

@@ -1,0 +1,24 @@
+[
+  {
+    "attempt": "desktop-image-memory-windows-correctness",
+    "type": "RuntimeError",
+    "reason": "fixture adapter matched both initial/restart Start calls; no guest use",
+    "cleanup": {
+      "guest_task_removed": false,
+      "host_stage_removed": true,
+      "vm_resuspended": false,
+      "system_clipboard_used": false
+    }
+  },
+  {
+    "attempt": "desktop-image-memory-windows-correctness-2",
+    "type": "CalledProcessError",
+    "reason": "Parallels exec transport did not complete; no test process or fixture dirs observed; task transport terminated and owned resources cleaned",
+    "cleanup": {
+      "guest_task_removed": true,
+      "host_stage_removed": true,
+      "vm_resuspended": true,
+      "system_clipboard_used": false
+    }
+  }
+]

@@ -1,0 +1,46 @@
+{
+  "source_sha": "ea91a8f6693860dd3af2859222ca1f3c4b4ffe03",
+  "native_runs_passed": 30,
+  "native_image_crop_checks": 36,
+  "all_native_crops_equal_within_architecture": true,
+  "final_canonical_cases": [
+    "image-previews",
+    "incremental-browsing",
+    "data-binding"
+  ],
+  "canonical_race_and_cleanup": "PASS",
+  "native_and_canonical_product_hashes_match": true,
+  "windows_real_service_correctness": "PASS; no race on Windows ARM64",
+  "native_clipboard_sequence_before_values": [
+    30
+  ],
+  "native_clipboard_sequence_after_values": [
+    30
+  ],
+  "windows_correctness_clipboard_sequence": [
+    30,
+    30
+  ],
+  "system_clipboard_content_accessed": false,
+  "vm_uuid": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+  "vm_restored_to": "suspended",
+  "vm_released_utc": "2026-11-20T07:57:17Z",
+  "vm_ownership_after_release": "available to the other native acceptance session; no further VM action by this task",
+  "guest_task_directories_removed": [
+    "C:\\uim-db66",
+    "C:\\uimc-db66"
+  ],
+  "host_native_stages_removed": true,
+  "host_tool_scratch_removed": true,
+  "production_installer_executed": false,
+  "push_pr_merge_release": false,
+  "raw_task_acceptance_outputs_removed": true,
+  "retained_binaries_databases_raw_captures_source_exports_or_large_logs": false,
+  "docscheck": "PASS with6 unrelated freshness warnings",
+  "lint": "PASS pinned2.15.0;0 issues",
+  "catalogue_check": "PASS",
+  "research_csv_normalized_to_lf": "numeric baseline unchanged; historical SHA256SUMS refreshed",
+  "worktree": "/Users/mark/.lody/repos/github---uniclipboard---uniclipboard/worktrees/db66da62-294f-48f3-9acb-4270bcf48f6a",
+  "branch": "fix/desktop-image-memory",
+  "origin": "https://github.com/UniClipboard/UniClipboard.git"
+}

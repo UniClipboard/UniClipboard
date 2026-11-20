@@ -1,0 +1,38 @@
+{
+  "run_id": "20261120T042910Z-cfe5213e",
+  "status": "PASS",
+  "source_head": "173d362036ae4a746878306915c85bcdf7468751",
+  "worktree_dirty": true,
+  "snapshot_unchanged": true,
+  "private_cleanup": "PASS",
+  "host_os": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "platform": [
+    "darwin",
+    "arm64"
+  ],
+  "race_detector": true,
+  "binary_sha256": {},
+  "desktop_build_tags": [],
+  "source_files_sha256": {
+    "app/desktop/internal/desktopui/live_details.go": "b69d5b846ec1b0d2346ead0595e3c1fd5e060daac900cbee0484c7c2a4fb7ce5",
+    "app/desktop/internal/desktopui/live_images.go": "84e9b6320676ddf52ce8dbb07e797df804a4b3aa5283941cbfc22b113f4bb278"
+  },
+  "scenario": {
+    "cached_details": 9,
+    "checks": [
+      "eight real PNG entries prefetch bounded thumbnails",
+      "selection upgrades to original dimensions; previous selection returns to thumbnail; original bytes unchanged",
+      "quick-panel selected image retains original resolution",
+      "JPEG EXIF orientation and original dimensions preserved",
+      "displayed image releases CPU pixels on a later view frame",
+      "image bodies consumed serially across both live windows"
+    ],
+    "native_ui": false,
+    "passed": true,
+    "peak_image_body_readers": 1,
+    "renderer": true,
+    "thumbnail_rgba_bytes": 1835008,
+    "unicd_sha256": "6c70e56722d22077b3304d176d0fe99505b5a9a4bd019a5e075f46af0e037b97"
+  },
+  "canonical_manifest_sha256": "b0a7bd58170722621fdd929ef12e15bcf4f48b0cabd65db25e03c975a7be1d31"
+}

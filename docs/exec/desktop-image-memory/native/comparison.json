@@ -1,0 +1,2968 @@
+{
+  "schema": 1,
+  "units": "memory bytes, CPU seconds, latency milliseconds; positive reduction means less memory",
+  "rows": [
+    {
+      "architecture": "amd64",
+      "dataset": "images",
+      "variant": "baseline",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 353675264.0,
+              "min": 351256576.0,
+              "max": 357130240.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 247918592.0,
+              "min": 242862080.0,
+              "max": 250830848.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 349073408.0,
+              "min": 344549376.0,
+              "max": 351719424.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 189251584.0,
+              "min": 185831424.0,
+              "max": 201379840.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 133992448.0,
+              "min": 131772416.0,
+              "max": 145313792.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 204165120.0,
+              "min": 201973760.0,
+              "max": 214953984.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 167817216.0,
+              "min": 149856256.0,
+              "max": 167825408.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 116142080.0,
+              "min": 97546240.0,
+              "max": 116813824.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 147099648.0,
+              "min": 129593344.0,
+              "max": 147529728.0
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 284196864.0,
+              "min": 283516928.0,
+              "max": 287832064.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 178294784.0,
+              "min": 176197632.0,
+              "max": 181014528.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 279683072.0,
+              "min": 278020096.0,
+              "max": 282302464.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 118796288.0,
+              "min": 116731904.0,
+              "max": 134705152.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 63836160.0,
+              "min": 63049728.0,
+              "max": 78934016.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 134227968.0,
+              "min": 133457920.0,
+              "max": 148676608.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 166813696.0,
+              "min": 149491712.0,
+              "max": 169039872.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 115253248.0,
+              "min": 97259520.0,
+              "max": 117184512.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 146241536.0,
+              "min": 129337344.0,
+              "max": 148088832.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 285286400.0,
+              "min": 284327936.0,
+              "max": 288727040.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 179105792.0,
+              "min": 177330176.0,
+              "max": 181944320.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 280555520.0,
+              "min": 279230464.0,
+              "max": 283271168.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 119713792.0,
+              "min": 117571584.0,
+              "max": 135692288.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 64741376.0,
+              "min": 63860736.0,
+              "max": 79953920.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 135155712.0,
+              "min": 134307840.0,
+              "max": 149725184.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 166756352.0,
+              "min": 149590016.0,
+              "max": 169013248.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 115245056.0,
+              "min": 97376256.0,
+              "max": 117202944.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 146247680.0,
+              "min": 129505280.0,
+              "max": 148115456.0
+            }
+          }
+        },
+        "selection-settled": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 346767360.0,
+              "min": 345903104.0,
+              "max": 349700096.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 240652288.0,
+              "min": 238491648.0,
+              "max": 242421760.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 342233088.0,
+              "min": 340541440.0,
+              "max": 343846912.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 180686848.0,
+              "min": 179146752.0,
+              "max": 193929216.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 125386752.0,
+              "min": 125206528.0,
+              "max": 138067968.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 195964928.0,
+              "min": 195706880.0,
+              "max": 207908864.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 166756352.0,
+              "min": 152838144.0,
+              "max": 169041920.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 115265536.0,
+              "min": 100423680.0,
+              "max": 117227520.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 146268160.0,
+              "min": 132632576.0,
+              "max": 148152320.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 4.796875,
+        "min": 4.796875,
+        "max": 5.859375
+      },
+      "ui_observed_selection_ms": {
+        "n": 3,
+        "median": 187,
+        "min": 167,
+        "max": 260
+      },
+      "command_to_observed_selection_ms": {
+        "n": 3,
+        "median": 263.1205,
+        "min": 258.5905,
+        "max": 326.7466
+      },
+      "native_process_start_to_first_original_ms": {
+        "n": 3,
+        "median": 829.64501953125,
+        "min": 825.3359375,
+        "max": 1508.057861328125
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 357822464,
+        "min": 353751040,
+        "max": 359927808
+      }
+    },
+    {
+      "architecture": "amd64",
+      "dataset": "images",
+      "variant": "combined",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 262721536.0,
+              "min": 257337344.0,
+              "max": 277745664.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 151232512.0,
+              "min": 149460992.0,
+              "max": 170385408.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 257652736.0,
+              "min": 252121088.0,
+              "max": 271933440.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 166170624.0,
+              "min": 165523456.0,
+              "max": 181080064.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 110934016.0,
+              "min": 107278336.0,
+              "max": 125894656.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 182370304.0,
+              "min": 181151744.0,
+              "max": 195530752.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 96673792.0,
+              "min": 91817984.0,
+              "max": 96702464.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 42369024.0,
+              "min": 40312832.0,
+              "max": 44490752.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 75468800.0,
+              "min": 70983680.0,
+              "max": 76402688.0
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 208965632.0,
+              "min": 197832704.0,
+              "max": 227864576.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 103059456.0,
+              "min": 87451648.0,
+              "max": 120944640.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 204095488.0,
+              "min": 193554432.0,
+              "max": 222627840.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 118415360.0,
+              "min": 117202944.0,
+              "max": 131379200.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 62914560.0,
+              "min": 61839360.0,
+              "max": 76476416.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 134993920.0,
+              "min": 133238784.0,
+              "max": 146214912.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 91758592.0,
+              "min": 79413248.0,
+              "max": 96489472.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 40140800.0,
+              "min": 25602048.0,
+              "max": 44468224.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 70852608.0,
+              "min": 58550272.0,
+              "max": 76412928.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 199544832.0,
+              "min": 196562944.0,
+              "max": 212500480.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 90685440.0,
+              "min": 89071616.0,
+              "max": 105615360.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 195268608.0,
+              "min": 191778816.0,
+              "max": 207351808.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 119541760.0,
+              "min": 118251520.0,
+              "max": 132378624.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 63950848.0,
+              "min": 62910464.0,
+              "max": 77443072.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 136138752.0,
+              "min": 134324224.0,
+              "max": 147185664.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 80003072.0,
+              "min": 78311424.0,
+              "max": 80130048.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 26734592.0,
+              "min": 26161152.0,
+              "max": 28178432.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 59129856.0,
+              "min": 57454592.0,
+              "max": 60172288.0
+            }
+          }
+        },
+        "selection-settled": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 261443584.0,
+              "min": 252968960.0,
+              "max": 276295680.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 155504640.0,
+              "min": 142798848.0,
+              "max": 169201664.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 256729088.0,
+              "min": 248858624.0,
+              "max": 271007744.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 163663872.0,
+              "min": 153419776.0,
+              "max": 177102848.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 109305856.0,
+              "min": 97122304.0,
+              "max": 122023936.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 179810304.0,
+              "min": 170213376.0,
+              "max": 191832064.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 99192832.0,
+              "min": 97771520.0,
+              "max": 99549184.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 46190592.0,
+              "min": 45676544.0,
+              "max": 47177728.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 78647296.0,
+              "min": 76910592.0,
+              "max": 79175680.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 5.0,
+        "min": 4.234375,
+        "max": 5.6875
+      },
+      "ui_observed_selection_ms": {
+        "n": 3,
+        "median": 202,
+        "min": 201,
+        "max": 387
+      },
+      "command_to_observed_selection_ms": {
+        "n": 3,
+        "median": 284.7824,
+        "min": 261.6889,
+        "max": 442.09000000000003
+      },
+      "native_process_start_to_first_original_ms": {
+        "n": 3,
+        "median": 867.31689453125,
+        "min": 615.341064453125,
+        "max": 1339.97998046875
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 273506304,
+        "min": 272113664,
+        "max": 314785792
+      }
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "empty",
+      "variant": "baseline",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 131616768.0,
+              "min": 129150976.0,
+              "max": 131833856.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 32739328.0,
+              "min": 30130176.0,
+              "max": 33312768.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 134074368.0,
+              "min": 125530112.0,
+              "max": 134660096.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 69574656.0,
+              "min": 69251072.0,
+              "max": 69824512.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 19128320.0,
+              "min": 18927616.0,
+              "max": 19546112.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 89153536.0,
+              "min": 89010176.0,
+              "max": 89595904.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62259200.0,
+              "min": 59326464.0,
+              "max": 62365696.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 13766656.0,
+              "min": 11001856.0,
+              "max": 13811712.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45064192.0,
+              "min": 36376576.0,
+              "max": 45064192.0
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 130043904.0,
+              "min": 127361024.0,
+              "max": 130347008.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 31801344.0,
+              "min": 28688384.0,
+              "max": 31879168.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 133304320.0,
+              "min": 124215296.0,
+              "max": 133337088.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 67764224.0,
+              "min": 67399680.0,
+              "max": 67948544.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 17514496.0,
+              "min": 17457152.0,
+              "max": 17739776.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 87687168.0,
+              "min": 87576576.0,
+              "max": 87916544.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62582784.0,
+              "min": 59412480.0,
+              "max": 62644224.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14139392.0,
+              "min": 11231232.0,
+              "max": 14286848.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45420544.0,
+              "min": 36638720.0,
+              "max": 45617152.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 131461120.0,
+              "min": 128233472.0,
+              "max": 131715072.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 33230848.0,
+              "min": 29556736.0,
+              "max": 33335296.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 134742016.0,
+              "min": 125104128.0,
+              "max": 134948864.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 68849664.0,
+              "min": 68497408.0,
+              "max": 69226496.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 18706432.0,
+              "min": 18608128.0,
+              "max": 18784256.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 88850432.0,
+              "min": 88793088.0,
+              "max": 89104384.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62898176.0,
+              "min": 59006976.0,
+              "max": 62963712.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14565376.0,
+              "min": 10850304.0,
+              "max": 14622720.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45858816.0,
+              "min": 36253696.0,
+              "max": 45948928.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 1.25,
+        "min": 1.1875,
+        "max": 1.5
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 131764224,
+        "min": 129433600,
+        "max": 132132864
+      }
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "empty",
+      "variant": "combined",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 131137536.0,
+              "min": 130797568.0,
+              "max": 132456448.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 32538624.0,
+              "min": 32053248.0,
+              "max": 33206272.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 133873664.0,
+              "min": 133226496.0,
+              "max": 134631424.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 69373952.0,
+              "min": 69312512.0,
+              "max": 69910528.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 19152896.0,
+              "min": 19030016.0,
+              "max": 19324928.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 89255936.0,
+              "min": 89118720.0,
+              "max": 89554944.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 61820928.0,
+              "min": 61423616.0,
+              "max": 62545920.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 13385728.0,
+              "min": 13023232.0,
+              "max": 13881344.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 44617728.0,
+              "min": 44107776.0,
+              "max": 45076480.0
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 129957888.0,
+              "min": 129769472.0,
+              "max": 130736128.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 31641600.0,
+              "min": 31465472.0,
+              "max": 31756288.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 133111808.0,
+              "min": 132841472.0,
+              "max": 133271552.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 67891200.0,
+              "min": 67432448.0,
+              "max": 68014080.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 17592320.0,
+              "min": 17571840.0,
+              "max": 17657856.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 87773184.0,
+              "min": 87756800.0,
+              "max": 87961600.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62337024.0,
+              "min": 62066688.0,
+              "max": 62722048.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14069760.0,
+              "min": 13873152.0,
+              "max": 14098432.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45309952.0,
+              "min": 45068288.0,
+              "max": 45355008.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 131477504.0,
+              "min": 131293184.0,
+              "max": 132251648.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 33300480.0,
+              "min": 32858112.0,
+              "max": 33335296.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 134770688.0,
+              "min": 134270976.0,
+              "max": 134875136.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 69099520.0,
+              "min": 68722688.0,
+              "max": 69263360.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 18837504.0,
+              "min": 18800640.0,
+              "max": 18874368.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 89022464.0,
+              "min": 89010176.0,
+              "max": 89206784.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62754816.0,
+              "min": 62193664.0,
+              "max": 62988288.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14460928.0,
+              "min": 14057472.0,
+              "max": 14462976.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45668352.0,
+              "min": 45260800.0,
+              "max": 45748224.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 1.40625,
+        "min": 1.359375,
+        "max": 1.515625
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 131248128,
+        "min": 131018752,
+        "max": 132481024
+      }
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "images",
+      "variant": "admission",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 245207040.0,
+              "min": 243548160.0,
+              "max": 245374976.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 146366464.0,
+              "min": 145108992.0,
+              "max": 147486720.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 246509568.0,
+              "min": 244221952.0,
+              "max": 247869440.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 168407040.0,
+              "min": 163934208.0,
+              "max": 168972288.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 118429696.0,
+              "min": 113786880.0,
+              "max": 118550528.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 189337600.0,
+              "min": 184401920.0,
+              "max": 189526016.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 76967936.0,
+              "min": 76234752.0,
+              "max": 79613952.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 29052928.0,
+              "min": 27815936.0,
+              "max": 31322112.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 58531840.0,
+              "min": 54693888.0,
+              "max": 62107648.0
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 176029696.0,
+              "min": 162058240.0,
+              "max": 179765248.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 78315520.0,
+              "min": 63496192.0,
+              "max": 81637376.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 175181824.0,
+              "min": 165113856.0,
+              "max": 183132160.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 99475456.0,
+              "min": 98684928.0,
+              "max": 99536896.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 49242112.0,
+              "min": 48869376.0,
+              "max": 49545216.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 120119296.0,
+              "min": 120090624.0,
+              "max": 120246272.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 77344768.0,
+              "min": 62582784.0,
+              "max": 80244736.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 29446144.0,
+              "min": 14254080.0,
+              "max": 32108544.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 55091200.0,
+              "min": 44994560.0,
+              "max": 62902272.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 162899968.0,
+              "min": 160235520.0,
+              "max": 163414016.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 64444416.0,
+              "min": 62576640.0,
+              "max": 65351680.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 166078464.0,
+              "min": 159475712.0,
+              "max": 166866944.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 100216832.0,
+              "min": 99803136.0,
+              "max": 100425728.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 50186240.0,
+              "min": 49965056.0,
+              "max": 50216960.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 121063424.0,
+              "min": 120934400.0,
+              "max": 121198592.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62439424.0,
+              "min": 60432384.0,
+              "max": 63197184.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14241792.0,
+              "min": 12611584.0,
+              "max": 15134720.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45006848.0,
+              "min": 38277120.0,
+              "max": 45932544.0
+            }
+          }
+        },
+        "selection-settled": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 243851264.0,
+              "min": 242221056.0,
+              "max": 244133888.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 145174528.0,
+              "min": 143900672.0,
+              "max": 145891328.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 246886400.0,
+              "min": 240844800.0,
+              "max": 247562240.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 161443840.0,
+              "min": 160948224.0,
+              "max": 161804288.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 110993408.0,
+              "min": 110759936.0,
+              "max": 111308800.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 181940224.0,
+              "min": 181633024.0,
+              "max": 182587392.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 82407424.0,
+              "min": 80416768.0,
+              "max": 83185664.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 34181120.0,
+              "min": 32591872.0,
+              "max": 35131392.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 64946176.0,
+              "min": 58257408.0,
+              "max": 65929216.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 3.625,
+        "min": 3.21875,
+        "max": 4.015625
+      },
+      "ui_observed_selection_ms": {
+        "n": 3,
+        "median": 161,
+        "min": 129,
+        "max": 195
+      },
+      "command_to_observed_selection_ms": {
+        "n": 3,
+        "median": 201.5412,
+        "min": 177.15120000000002,
+        "max": 305.8584
+      },
+      "native_process_start_to_first_original_ms": {
+        "n": 3,
+        "median": 621.531005859375,
+        "min": 420.35693359375,
+        "max": 1762.072998046875
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 264482816,
+        "min": 255447040,
+        "max": 271396864
+      }
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "images",
+      "variant": "baseline",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 319733760.0,
+              "min": 319696896,
+              "max": 320503808.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 221753344.0,
+              "min": 221220864,
+              "max": 221896704.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 323260416.0,
+              "min": 322768896,
+              "max": 323284992.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 169082880.0,
+              "min": 167915520,
+              "max": 169422848.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 118870016.0,
+              "min": 117641216,
+              "max": 119468032.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 189661184.0,
+              "min": 188551168,
+              "max": 190164992.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 151420928.0,
+              "min": 150310912.0,
+              "max": 151781376
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 102883328.0,
+              "min": 102428672.0,
+              "max": 103579648
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 133623808.0,
+              "min": 133095424.0,
+              "max": 134217728
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 251146240.0,
+              "min": 250339328.0,
+              "max": 252706816.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 152788992.0,
+              "min": 152477696.0,
+              "max": 154439680.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 254427136.0,
+              "min": 253939712.0,
+              "max": 256077824.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 99672064.0,
+              "min": 99622912.0,
+              "max": 100904960.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 49631232.0,
+              "min": 49610752.0,
+              "max": 50786304.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 120487936.0,
+              "min": 120422400.0,
+              "max": 121774080.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 151523328.0,
+              "min": 150667264.0,
+              "max": 151801856.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 103178240.0,
+              "min": 102846464.0,
+              "max": 103653376.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 133939200.0,
+              "min": 133517312.0,
+              "max": 134303744.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 252391424.0,
+              "min": 251602944.0,
+              "max": 253507584.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 154062848.0,
+              "min": 153491456.0,
+              "max": 155248640.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 255705088.0,
+              "min": 254967808.0,
+              "max": 256903168.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 100638720.0,
+              "min": 100358144.0,
+              "max": 101697536.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 50601984.0,
+              "min": 50292736.0,
+              "max": 51546112.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 121487360.0,
+              "min": 121096192.0,
+              "max": 122550272.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 151752704.0,
+              "min": 151244800.0,
+              "max": 151810048.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 103460864.0,
+              "min": 103198720.0,
+              "max": 103702528.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 134217728.0,
+              "min": 133871616.0,
+              "max": 134352896.0
+            }
+          }
+        },
+        "selection-settled": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 312344576.0,
+              "min": 310075392.0,
+              "max": 313069568.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 213753856.0,
+              "min": 211873792.0,
+              "max": 214478848.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 315527168.0,
+              "min": 313479168.0,
+              "max": 316215296.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 160272384.0,
+              "min": 158175232.0,
+              "max": 160931840.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 110018560.0,
+              "min": 108007424.0,
+              "max": 110608384.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 181141504.0,
+              "min": 178937856.0,
+              "max": 181592064.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 152072192.0,
+              "min": 151900160.0,
+              "max": 152137728.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 103866368.0,
+              "min": 103735296.0,
+              "max": 103870464.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 134541312.0,
+              "min": 134385664.0,
+              "max": 134623232.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 4.390625,
+        "min": 3.25,
+        "max": 6.21875
+      },
+      "ui_observed_selection_ms": {
+        "n": 3,
+        "median": 178,
+        "min": 141,
+        "max": 218
+      },
+      "command_to_observed_selection_ms": {
+        "n": 3,
+        "median": 265.6744,
+        "min": 204.042,
+        "max": 309.7342
+      },
+      "native_process_start_to_first_original_ms": {
+        "n": 3,
+        "median": 1497.256103515625,
+        "min": 455.8740234375,
+        "max": 2084.805908203125
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 320126976,
+        "min": 319700992,
+        "max": 324780032
+      }
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "images",
+      "variant": "combined",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 228442112.0,
+              "min": 221667328.0,
+              "max": 229404672.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 130338816.0,
+              "min": 123138048.0,
+              "max": 130912256.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 231858176.0,
+              "min": 224698368.0,
+              "max": 232669184.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 148545536.0,
+              "min": 146444288.0,
+              "max": 150700032.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 98607104.0,
+              "min": 96096256.0,
+              "max": 100696064.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 169472000.0,
+              "min": 166944768.0,
+              "max": 171626496.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 78704640.0,
+              "min": 75223040.0,
+              "max": 79896576.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 30216192.0,
+              "min": 27041792.0,
+              "max": 31731712.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 61042688.0,
+              "min": 57753600.0,
+              "max": 62386176.0
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 180011008.0,
+              "min": 175214592.0,
+              "max": 180047872.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 81559552.0,
+              "min": 76910592.0,
+              "max": 82030592.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 183394304.0,
+              "min": 178552832.0,
+              "max": 183615488.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 99315712.0,
+              "min": 99250176.0,
+              "max": 100921344.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 49401856.0,
+              "min": 49143808.0,
+              "max": 51060736.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 120328192.0,
+              "min": 120057856.0,
+              "max": 122060800.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 79126528.0,
+              "min": 75972608.0,
+              "max": 80760832.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 30498816.0,
+              "min": 27840512.0,
+              "max": 32628736.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 61333504.0,
+              "min": 58568704.0,
+              "max": 63287296.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 164513792.0,
+              "min": 163520512.0,
+              "max": 167501824.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 66516992.0,
+              "min": 65030144.0,
+              "max": 69140480.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 168105984.0,
+              "min": 166684672.0,
+              "max": 171036672.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 100487168.0,
+              "min": 100186112.0,
+              "max": 101801984.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 50302976.0,
+              "min": 50296832.0,
+              "max": 51933184.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 121227264.0,
+              "min": 121212928.0,
+              "max": 122970112.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 64327680.0,
+              "min": 63033344.0,
+              "max": 65699840.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 16220160.0,
+              "min": 14727168.0,
+              "max": 17207296.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 46878720.0,
+              "min": 45471744.0,
+              "max": 48066560.0
+            }
+          }
+        },
+        "selection-settled": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 229228544.0,
+              "min": 211935232.0,
+              "max": 231686144.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 130580480.0,
+              "min": 113864704.0,
+              "max": 133111808.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 232357888.0,
+              "min": 215586816.0,
+              "max": 235077632.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 146239488.0,
+              "min": 127602688.0,
+              "max": 149176320.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 95891456.0,
+              "min": 77656064.0,
+              "max": 99082240.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 166924288.0,
+              "min": 148719616.0,
+              "max": 170184704.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 82989056.0,
+              "min": 82509824.0,
+              "max": 84332544.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 34689024.0,
+              "min": 34029568.0,
+              "max": 36208640.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 65433600.0,
+              "min": 64892928.0,
+              "max": 66867200.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 3.03125,
+        "min": 2.9375,
+        "max": 4.65625
+      },
+      "ui_observed_selection_ms": {
+        "n": 3,
+        "median": 233,
+        "min": 154,
+        "max": 265
+      },
+      "command_to_observed_selection_ms": {
+        "n": 3,
+        "median": 308.7579,
+        "min": 235.9247,
+        "max": 319.3422
+      },
+      "native_process_start_to_first_original_ms": {
+        "n": 3,
+        "median": 804.246826171875,
+        "min": 436.974853515625,
+        "max": 1429.9970703125
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 241545216,
+        "min": 241311744,
+        "max": 266919936
+      }
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "images",
+      "variant": "streaming",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 299208704.0,
+              "min": 281968640.0,
+              "max": 300761088
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 200632320.0,
+              "min": 183812096.0,
+              "max": 201867264
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 301932544.0,
+              "min": 285216768.0,
+              "max": 303489024
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 148856832,
+              "min": 147591168.0,
+              "max": 149577728.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 98574336,
+              "min": 97374208.0,
+              "max": 99663872.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 169517056,
+              "min": 168071168.0,
+              "max": 170467328.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 151613440.0,
+              "min": 132390912.0,
+              "max": 151904256
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 103254016.0,
+              "min": 84148224.0,
+              "max": 103292928
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 133857280.0,
+              "min": 114749440.0,
+              "max": 133971968
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 251600896.0,
+              "min": 232693760.0,
+              "max": 251879424.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 152629248.0,
+              "min": 134713344.0,
+              "max": 153485312.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 254345216.0,
+              "min": 236212224.0,
+              "max": 254898176.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 100327424.0,
+              "min": 99463168.0,
+              "max": 100343808.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 50171904.0,
+              "min": 49315840.0,
+              "max": 50556928.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 120946688.0,
+              "min": 120344576.0,
+              "max": 121446400.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 151552000.0,
+              "min": 132349952.0,
+              "max": 152137728.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 103313408.0,
+              "min": 84156416.0,
+              "max": 103313408.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 133951488.0,
+              "min": 114765824.0,
+              "max": 134000640.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 252645376.0,
+              "min": 233840640.0,
+              "max": 252981248.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 153686016.0,
+              "min": 135872512.0,
+              "max": 154603520.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 255406080.0,
+              "min": 237367296.0,
+              "max": 256069632.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 101433344.0,
+              "min": 100507648.0,
+              "max": 101490688.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 51261440.0,
+              "min": 50348032.0,
+              "max": 51699712.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 122089472.0,
+              "min": 121380864.0,
+              "max": 122589184.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 151547904.0,
+              "min": 132349952.0,
+              "max": 152137728.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 103337984.0,
+              "min": 84172800.0,
+              "max": 103342080.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 133980160.0,
+              "min": 114778112.0,
+              "max": 134025216.0
+            }
+          }
+        },
+        "selection-settled": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 299978752.0,
+              "min": 290418688.0,
+              "max": 304021504.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 201248768.0,
+              "min": 192417792.0,
+              "max": 204853248.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 302878720.0,
+              "min": 294002688.0,
+              "max": 306655232.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 148430848.0,
+              "min": 146186240.0,
+              "max": 151883776.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 97882112.0,
+              "min": 96256000.0,
+              "max": 101507072.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 168873984.0,
+              "min": 167194624.0,
+              "max": 172625920.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 151547904.0,
+              "min": 144232448.0,
+              "max": 152137728.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 103346176.0,
+              "min": 96161792.0,
+              "max": 103366656.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 134004736.0,
+              "min": 126808064.0,
+              "max": 134029312.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 3.171875,
+        "min": 3.09375,
+        "max": 6.46875
+      },
+      "ui_observed_selection_ms": {
+        "n": 3,
+        "median": 209,
+        "min": 156,
+        "max": 214
+      },
+      "command_to_observed_selection_ms": {
+        "n": 3,
+        "median": 250.65650000000002,
+        "min": 229.4051,
+        "max": 291.0701
+      },
+      "native_process_start_to_first_original_ms": {
+        "n": 3,
+        "median": 961.776123046875,
+        "min": 468.739013671875,
+        "max": 2071.18212890625
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 308465664,
+        "min": 299331584,
+        "max": 313888768
+      }
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "text",
+      "variant": "baseline",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 147398656.0,
+              "min": 147148800.0,
+              "max": 148930560.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 48619520.0,
+              "min": 48254976.0,
+              "max": 49836032.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 149929984.0,
+              "min": 149553152.0,
+              "max": 151044096.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 84492288.0,
+              "min": 84328448.0,
+              "max": 84537344.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 34207744.0,
+              "min": 34164736.0,
+              "max": 34320384.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 104937472.0,
+              "min": 104779776.0,
+              "max": 104955904.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 63070208.0,
+              "min": 62603264.0,
+              "max": 64438272.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14415872.0,
+              "min": 13934592.0,
+              "max": 15687680.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 44996608.0,
+              "min": 44597248.0,
+              "max": 46280704.0
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 145162240.0,
+              "min": 145080320.0,
+              "max": 145477632.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 46878720.0,
+              "min": 46819328.0,
+              "max": 47185920.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 148269056.0,
+              "min": 148254720.0,
+              "max": 148666368.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 82173952.0,
+              "min": 82165760.0,
+              "max": 82182144.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 32243712.0,
+              "min": 32055296.0,
+              "max": 32348160.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 103065600.0,
+              "min": 102756352.0,
+              "max": 103067648.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62996480.0,
+              "min": 62898176.0,
+              "max": 63291392.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14823424.0,
+              "min": 14471168.0,
+              "max": 14946304.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45498368.0,
+              "min": 45203456.0,
+              "max": 45600768.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 146493440.0,
+              "min": 146165760.0,
+              "max": 146554880.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 48230400.0,
+              "min": 47923200.0,
+              "max": 48414720.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 149704704.0,
+              "min": 149303296.0,
+              "max": 149925888.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 83165184.0,
+              "min": 83152896.0,
+              "max": 83255296.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 33316864.0,
+              "min": 33046528.0,
+              "max": 33337344.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 104079360.0,
+              "min": 103751680.0,
+              "max": 104153088.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 63299584.0,
+              "min": 63012864.0,
+              "max": 63328256.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14893056.0,
+              "min": 14876672.0,
+              "max": 15097856.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45625344.0,
+              "min": 45551616.0,
+              "max": 45772800.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 1.328125,
+        "min": 1.125,
+        "max": 1.734375
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 147599360,
+        "min": 147197952,
+        "max": 148942848
+      }
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "text",
+      "variant": "combined",
+      "run_count": 3,
+      "phases": {
+        "visible": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 147517440.0,
+              "min": 147288064.0,
+              "max": 147550208.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 48404480.0,
+              "min": 48336896.0,
+              "max": 48455680.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 149520384.0,
+              "min": 149504000.0,
+              "max": 149680128.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 84525056.0,
+              "min": 84312064.0,
+              "max": 84807680.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 34209792.0,
+              "min": 34168832.0,
+              "max": 34312192.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 104730624.0,
+              "min": 104656896.0,
+              "max": 104759296.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62976000.0,
+              "min": 62709760.0,
+              "max": 63023104.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14245888.0,
+              "min": 14024704.0,
+              "max": 14254080.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 44847104.0,
+              "min": 44761088.0,
+              "max": 44965888.0
+            }
+          }
+        },
+        "hidden": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 145293312.0,
+              "min": 145072128.0,
+              "max": 145326080.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 46628864.0,
+              "min": 46563328.0,
+              "max": 46866432.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 147988480.0,
+              "min": 147894272.0,
+              "max": 148062208.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 82456576.0,
+              "min": 82145280.0,
+              "max": 82464768.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 32219136.0,
+              "min": 32149504.0,
+              "max": 32358400.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 102735872.0,
+              "min": 102670336.0,
+              "max": 102985728.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 62836736.0,
+              "min": 62607360.0,
+              "max": 63180800.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14479360.0,
+              "min": 14204928.0,
+              "max": 14647296.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45223936.0,
+              "min": 45002752.0,
+              "max": 45326336.0
+            }
+          }
+        },
+        "reopened": {
+          "group": {
+            "privateBytes": {
+              "n": 3,
+              "median": 146403328.0,
+              "min": 146128896.0,
+              "max": 146894848.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 48029696.0,
+              "min": 47812608.0,
+              "max": 48201728.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 149286912.0,
+              "min": 149241856.0,
+              "max": 149504000.0
+            }
+          },
+          "desktop": {
+            "privateBytes": {
+              "n": 3,
+              "median": 83505152.0,
+              "min": 83185664.0,
+              "max": 83591168.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 33275904.0,
+              "min": 33271808.0,
+              "max": 33435648.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 103809024.0,
+              "min": 103804928.0,
+              "max": 104112128.0
+            }
+          },
+          "service": {
+            "privateBytes": {
+              "n": 3,
+              "median": 63217664.0,
+              "min": 62623744.0,
+              "max": 63303680.0
+            },
+            "privateWorkingSet": {
+              "n": 3,
+              "median": 14757888.0,
+              "min": 14376960.0,
+              "max": 14925824.0
+            },
+            "workingSet": {
+              "n": 3,
+              "median": 45436928.0,
+              "min": 45174784.0,
+              "max": 45694976.0
+            }
+          }
+        }
+      },
+      "group_cpu_seconds_at_visible_end": {
+        "n": 3,
+        "median": 1.484375,
+        "min": 1.234375,
+        "max": 1.765625
+      },
+      "full_visible_sampled_peak_private_commit": {
+        "n": 3,
+        "median": 147558400,
+        "min": 147292160,
+        "max": 147615744
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "architecture": "arm64",
+      "dataset": "images",
+      "variant": "admission",
+      "baseline_runs": 3,
+      "variant_runs": 3,
+      "phases": {
+        "visible": {
+          "privateBytes": {
+            "baseline": 319733760.0,
+            "variant": 245207040.0,
+            "reduction": 74526720.0,
+            "reduction_fraction": 0.23308993082244428
+          },
+          "privateWorkingSet": {
+            "baseline": 221753344.0,
+            "variant": 146366464.0,
+            "reduction": 75386880.0,
+            "reduction_fraction": 0.33995825560132253
+          }
+        },
+        "hidden": {
+          "privateBytes": {
+            "baseline": 251146240.0,
+            "variant": 176029696.0,
+            "reduction": 75116544.0,
+            "reduction_fraction": 0.29909483813096305
+          },
+          "privateWorkingSet": {
+            "baseline": 152788992.0,
+            "variant": 78315520.0,
+            "reduction": 74473472.0,
+            "reduction_fraction": 0.48742694761674976
+          }
+        },
+        "reopened": {
+          "privateBytes": {
+            "baseline": 252391424.0,
+            "variant": 162899968.0,
+            "reduction": 89491456.0,
+            "reduction_fraction": 0.3545740761778023
+          },
+          "privateWorkingSet": {
+            "baseline": 154062848.0,
+            "variant": 64444416.0,
+            "reduction": 89618432.0,
+            "reduction_fraction": 0.5817004758992902
+          }
+        },
+        "selection-settled": {
+          "privateBytes": {
+            "baseline": 312344576.0,
+            "variant": 243851264.0,
+            "reduction": 68493312.0,
+            "reduction_fraction": 0.21928766261015525
+          },
+          "privateWorkingSet": {
+            "baseline": 213753856.0,
+            "variant": 145174528.0,
+            "reduction": 68579328.0,
+            "reduction_fraction": 0.3208331736481049
+          }
+        }
+      },
+      "cpu_increase_fraction": -0.17437722419928825,
+      "selection_increase_ms": -17,
+      "three_repetitions_complete": true,
+      "cpu_investigation_threshold_exceeded": false,
+      "selection_investigation_threshold_exceeded": false
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "images",
+      "variant": "streaming",
+      "baseline_runs": 3,
+      "variant_runs": 3,
+      "phases": {
+        "visible": {
+          "privateBytes": {
+            "baseline": 319733760.0,
+            "variant": 299208704.0,
+            "reduction": 20525056.0,
+            "reduction_fraction": 0.06419420958237253
+          },
+          "privateWorkingSet": {
+            "baseline": 221753344.0,
+            "variant": 200632320.0,
+            "reduction": 21121024.0,
+            "reduction_fraction": 0.09524557158425534
+          }
+        },
+        "hidden": {
+          "privateBytes": {
+            "baseline": 251146240.0,
+            "variant": 251600896.0,
+            "reduction": -454656.0,
+            "reduction_fraction": -0.0018103237380738808
+          },
+          "privateWorkingSet": {
+            "baseline": 152788992.0,
+            "variant": 152629248.0,
+            "reduction": 159744.0,
+            "reduction_fraction": 0.001045520347434454
+          }
+        },
+        "reopened": {
+          "privateBytes": {
+            "baseline": 252391424.0,
+            "variant": 252645376.0,
+            "reduction": -253952.0,
+            "reduction_fraction": -0.0010061831577922395
+          },
+          "privateWorkingSet": {
+            "baseline": 154062848.0,
+            "variant": 153686016.0,
+            "reduction": 376832.0,
+            "reduction_fraction": 0.0024459628319995746
+          }
+        },
+        "selection-settled": {
+          "privateBytes": {
+            "baseline": 312344576.0,
+            "variant": 299978752.0,
+            "reduction": 12365824.0,
+            "reduction_fraction": 0.039590327318506084
+          },
+          "privateWorkingSet": {
+            "baseline": 213753856.0,
+            "variant": 201248768.0,
+            "reduction": 12505088.0,
+            "reduction_fraction": 0.05850228030506266
+          }
+        }
+      },
+      "cpu_increase_fraction": -0.2775800711743772,
+      "selection_increase_ms": 31,
+      "three_repetitions_complete": true,
+      "cpu_investigation_threshold_exceeded": false,
+      "selection_investigation_threshold_exceeded": false
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "images",
+      "variant": "combined",
+      "baseline_runs": 3,
+      "variant_runs": 3,
+      "phases": {
+        "visible": {
+          "privateBytes": {
+            "baseline": 319733760.0,
+            "variant": 228442112.0,
+            "reduction": 91291648.0,
+            "reduction_fraction": 0.2855239559313349
+          },
+          "privateWorkingSet": {
+            "baseline": 221753344.0,
+            "variant": 130338816.0,
+            "reduction": 91414528.0,
+            "reduction_fraction": 0.4122351724265317
+          }
+        },
+        "hidden": {
+          "privateBytes": {
+            "baseline": 251146240.0,
+            "variant": 180011008.0,
+            "reduction": 71135232.0,
+            "reduction_fraction": 0.28324227350566744
+          },
+          "privateWorkingSet": {
+            "baseline": 152788992.0,
+            "variant": 81559552.0,
+            "reduction": 71229440.0,
+            "reduction_fraction": 0.4661948420996193
+          }
+        },
+        "reopened": {
+          "privateBytes": {
+            "baseline": 252391424.0,
+            "variant": 164513792.0,
+            "reduction": 87877632.0,
+            "reduction_fraction": 0.3481799444976387
+          },
+          "privateWorkingSet": {
+            "baseline": 154062848.0,
+            "variant": 66516992.0,
+            "reduction": 87545856.0,
+            "reduction_fraction": 0.5682476803232924
+          }
+        },
+        "selection-settled": {
+          "privateBytes": {
+            "baseline": 312344576.0,
+            "variant": 229228544.0,
+            "reduction": 83116032.0,
+            "reduction_fraction": 0.26610365086026017
+          },
+          "privateWorkingSet": {
+            "baseline": 213753856.0,
+            "variant": 130580480.0,
+            "reduction": 83173376.0,
+            "reduction_fraction": 0.38910818993599816
+          }
+        }
+      },
+      "cpu_increase_fraction": -0.3096085409252669,
+      "selection_increase_ms": 55,
+      "three_repetitions_complete": true,
+      "cpu_investigation_threshold_exceeded": false,
+      "selection_investigation_threshold_exceeded": false
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "empty",
+      "variant": "combined",
+      "baseline_runs": 3,
+      "variant_runs": 3,
+      "phases": {
+        "visible": {
+          "privateBytes": {
+            "baseline": 131616768.0,
+            "variant": 131137536.0,
+            "reduction": 479232.0,
+            "reduction_fraction": 0.003641116609093455
+          },
+          "privateWorkingSet": {
+            "baseline": 32739328.0,
+            "variant": 32538624.0,
+            "reduction": 200704.0,
+            "reduction_fraction": 0.00613036406855999
+          }
+        },
+        "hidden": {
+          "privateBytes": {
+            "baseline": 130043904.0,
+            "variant": 129957888.0,
+            "reduction": 86016.0,
+            "reduction_fraction": 0.0006614381555324578
+          },
+          "privateWorkingSet": {
+            "baseline": 31801344.0,
+            "variant": 31641600.0,
+            "reduction": 159744.0,
+            "reduction_fraction": 0.005023183925811438
+          }
+        },
+        "reopened": {
+          "privateBytes": {
+            "baseline": 131461120.0,
+            "variant": 131477504.0,
+            "reduction": -16384.0,
+            "reduction_fraction": -0.00012463000467362518
+          },
+          "privateWorkingSet": {
+            "baseline": 33230848.0,
+            "variant": 33300480.0,
+            "reduction": -69632.0,
+            "reduction_fraction": -0.0020954024405275486
+          }
+        }
+      },
+      "cpu_increase_fraction": 0.125,
+      "three_repetitions_complete": true,
+      "cpu_investigation_threshold_exceeded": false,
+      "selection_investigation_threshold_exceeded": false
+    },
+    {
+      "architecture": "arm64",
+      "dataset": "text",
+      "variant": "combined",
+      "baseline_runs": 3,
+      "variant_runs": 3,
+      "phases": {
+        "visible": {
+          "privateBytes": {
+            "baseline": 147398656.0,
+            "variant": 147517440.0,
+            "reduction": -118784.0,
+            "reduction_fraction": -0.0008058689490357361
+          },
+          "privateWorkingSet": {
+            "baseline": 48619520.0,
+            "variant": 48404480.0,
+            "reduction": 215040.0,
+            "reduction_fraction": 0.0044229149115417015
+          }
+        },
+        "hidden": {
+          "privateBytes": {
+            "baseline": 145162240.0,
+            "variant": 145293312.0,
+            "reduction": -131072.0,
+            "reduction_fraction": -0.0009029345372460496
+          },
+          "privateWorkingSet": {
+            "baseline": 46878720.0,
+            "variant": 46628864.0,
+            "reduction": 249856.0,
+            "reduction_fraction": 0.005329838357361293
+          }
+        },
+        "reopened": {
+          "privateBytes": {
+            "baseline": 146493440.0,
+            "variant": 146403328.0,
+            "reduction": 90112.0,
+            "reduction_fraction": 0.0006151265203411156
+          },
+          "privateWorkingSet": {
+            "baseline": 48230400.0,
+            "variant": 48029696.0,
+            "reduction": 200704.0,
+            "reduction_fraction": 0.0041613588110403395
+          }
+        }
+      },
+      "cpu_increase_fraction": 0.11764705882352941,
+      "three_repetitions_complete": true,
+      "cpu_investigation_threshold_exceeded": false,
+      "selection_investigation_threshold_exceeded": false
+    },
+    {
+      "architecture": "amd64",
+      "dataset": "images",
+      "variant": "combined",
+      "baseline_runs": 3,
+      "variant_runs": 3,
+      "phases": {
+        "visible": {
+          "privateBytes": {
+            "baseline": 353675264.0,
+            "variant": 262721536.0,
+            "reduction": 90953728.0,
+            "reduction_fraction": 0.25716734320441476
+          },
+          "privateWorkingSet": {
+            "baseline": 247918592.0,
+            "variant": 151232512.0,
+            "reduction": 96686080.0,
+            "reduction_fraction": 0.3899912435772465
+          }
+        },
+        "hidden": {
+          "privateBytes": {
+            "baseline": 284196864.0,
+            "variant": 208965632.0,
+            "reduction": 75231232.0,
+            "reduction_fraction": 0.26471520811714516
+          },
+          "privateWorkingSet": {
+            "baseline": 178294784.0,
+            "variant": 103059456.0,
+            "reduction": 75235328.0,
+            "reduction_fraction": 0.4219715591904248
+          }
+        },
+        "reopened": {
+          "privateBytes": {
+            "baseline": 285286400.0,
+            "variant": 199544832.0,
+            "reduction": 85741568.0,
+            "reduction_fraction": 0.3005455850681981
+          },
+          "privateWorkingSet": {
+            "baseline": 179105792.0,
+            "variant": 90685440.0,
+            "reduction": 88420352.0,
+            "reduction_fraction": 0.4936766757381023
+          }
+        },
+        "selection-settled": {
+          "privateBytes": {
+            "baseline": 346767360.0,
+            "variant": 261443584.0,
+            "reduction": 85323776.0,
+            "reduction_fraction": 0.24605480746515473
+          },
+          "privateWorkingSet": {
+            "baseline": 240652288.0,
+            "variant": 155504640.0,
+            "reduction": 85147648.0,
+            "reduction_fraction": 0.3538202304563171
+          }
+        }
+      },
+      "cpu_increase_fraction": 0.04234527687296417,
+      "selection_increase_ms": 15,
+      "three_repetitions_complete": true,
+      "cpu_investigation_threshold_exceeded": false,
+      "selection_investigation_threshold_exceeded": false
+    }
+  ],
+  "native_pixel_comparisons": {
+    "arm64/selected-native.png": {
+      "captures": 12,
+      "unique_crop_hashes": [
+        "3378da708e0b61c736e495d577fa9f3ac08bf2ac913b6f9f12272dddcbfcedc8"
+      ],
+      "equal": true
+    },
+    "arm64/selected-after-native.png": {
+      "captures": 12,
+      "unique_crop_hashes": [
+        "09237662f4b0b8ac1a8a2e8918d0a4d163be1ffc15ca7ac43a10593d3e1d535a"
+      ],
+      "equal": true
+    },
+    "amd64/selected-native.png": {
+      "captures": 6,
+      "unique_crop_hashes": [
+        "3378da708e0b61c736e495d577fa9f3ac08bf2ac913b6f9f12272dddcbfcedc8"
+      ],
+      "equal": true
+    },
+    "amd64/selected-after-native.png": {
+      "captures": 6,
+      "unique_crop_hashes": [
+        "09237662f4b0b8ac1a8a2e8918d0a4d163be1ffc15ca7ac43a10593d3e1d535a"
+      ],
+      "equal": true
+    }
+  }
+}

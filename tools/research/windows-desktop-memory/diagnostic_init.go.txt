@@ -1,0 +1,29 @@
+package main
+
+import (
+ "encoding/json"
+ "os"
+ "path/filepath"
+ "runtime"
+ "runtime/metrics"
+ "time"
+)
+
+// Research-only aggregate counters. No heap dumps, payloads or listener.
+func init() {
+ path := os.Getenv("UNIC_MEMORY_RESEARCH")
+ if path == "" { return }
+ go func() {
+  f, err := os.OpenFile(path+"."+filepath.Base(os.Args[0])+".jsonl", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+  if err != nil { return }; defer f.Close()
+  names:=[]string{"/memory/classes/heap/objects:bytes","/memory/classes/heap/free:bytes","/memory/classes/heap/released:bytes","/memory/classes/heap/unused:bytes","/memory/classes/heap/stacks:bytes","/memory/classes/total:bytes","/gc/cycles/total:gc-cycles"}
+  samples:=make([]metrics.Sample,len(names));for i,n:=range names{samples[i].Name=n}
+  start := time.Now()
+  for {
+   metrics.Read(samples)
+   values:=make([]uint64,len(samples));for i,s:=range samples{if s.Value.Kind()==metrics.KindUint64{values[i]=s.Value.Uint64()}}
+   _ = json.NewEncoder(f).Encode(map[string]any{"pid":os.Getpid(),"elapsedSeconds":time.Since(start).Seconds(),"heapAlloc":values[0],"heapInuse":values[0]+values[3],"heapSys":values[0]+values[1]+values[2]+values[3],"heapIdle":values[1]+values[2],"heapReleased":values[2],"stackInuse":values[4],"sys":values[5],"numGC":values[6],"goroutines":runtime.NumGoroutine()})
+   time.Sleep(5*time.Second)
+  }
+ }()
+}

@@ -1649,6 +1649,7 @@ Forbidden: Personal profiles, broad process termination, clipboard access, or cl
 start 640 560 light native
 submit chrome-input 'Windows chrome input synthetic history'
 ui-wait listItem 'Windows chrome input synthetic history'
+role-checkpoint initial
 ui-click button '切换侧栏'
 ui-click listItem '设置…'
 ui-wait switch '使用系统边框'

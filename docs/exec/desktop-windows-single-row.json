@@ -1,0 +1,98 @@
+{
+  "status": "IMPLEMENTED_NATIVE_ACCEPTANCE_BLOCKED",
+  "base_commit": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+  "source_commit": "a0a0f5fb48f0117d2ca46447e5b7a6bf3dd5b906",
+  "branch": "fix/windows-single-row-chrome",
+  "worktree": "308f87b7-f239-4f4f-9986-2f49eec7ce14",
+  "local_reports": [
+    {
+      "path": ".build/desktop-e2e/20261120T105500Z-2daac5c2",
+      "status": "PASS",
+      "source_head": "a0a0f5fb48f0117d2ca46447e5b7a6bf3dd5b906",
+      "source_manifest_sha256": "9761911d48d2697a6709ceacbb74c32f618837c52604726a2958740f45c5c7e5",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "checksums": "PASS"
+    },
+    {
+      "path": ".build/desktop-e2e/20261120T100641Z-c69fd001",
+      "status": "PASS",
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "source_manifest_sha256": "25cf0ea0bc13dfd3f486808f908cf8ac805f8fa1a0e99c7b7e39e3e3f583931c",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "checksums": "PASS"
+    },
+    {
+      "path": ".build/desktop-e2e/20261120T100711Z-607aaf17",
+      "status": "PASS",
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "source_manifest_sha256": "22238423b29a47bf3fe4a3994073392a1a62ee6d041ee3eeee2756f574a56ae2",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "checksums": "PASS"
+    },
+    {
+      "path": ".build/desktop-e2e/20261120T101516Z-41f3849f",
+      "status": "PASS",
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "source_manifest_sha256": "4cc5d1ac25cca87b1f3639c7323f4dac86ef9f880a66d36b71ca441b657382a9",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "checksums": "PASS"
+    }
+  ],
+  "cli_config": "PASS",
+  "scoped_vet": "PASS",
+  "pinned_lint": "PASS (2.15.0)",
+  "cross_builds": [
+    "windows/amd64",
+    "windows/arm64",
+    "darwin/arm64",
+    "linux/amd64"
+  ],
+  "programs": [
+    {
+      "name": "unic-desktop-amd64-final.exe",
+      "sha256": "29be232ce213a36954b63a162e851407085a5f1b8751e85ce2f830c653e2da98",
+      "pe_machine": "0x8664",
+      "build_tags": [
+        "desktop_e2e"
+      ],
+      "buildvcs": false,
+      "executed": false
+    },
+    {
+      "name": "unic-desktop-arm64-final.exe",
+      "sha256": "a1e6ad4a6a1daeab15df27610e0c39d7e9a3ba3c70f29d14d3ae09de2f35cfce",
+      "pe_machine": "0xaa64",
+      "build_tags": [
+        "desktop_e2e"
+      ],
+      "buildvcs": false,
+      "executed": false
+    }
+  ],
+  "native": {
+    "status": "NOT_RUN",
+    "reason": "Exclusive VM handover has not been confirmed by the concurrent memory task.",
+    "vm_uuid": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+    "initial_observed_state": "running",
+    "vm_mutations": false,
+    "os_frame_screenshots": [],
+    "physical_drag_resize_double_click": "NOT_RUN",
+    "snap": "NOT_RUN"
+  },
+  "cleanup": {
+    "canonical_private_directories": "PASS",
+    "guest_resources_created": false,
+    "parent_worktree_modified": false,
+    "push_pr_merge_release": false,
+    "local_build_source_cleanup": "PASS",
+    "removed_task_paths": [
+      ".build/windows-chrome/bin",
+      ".build/windows-chrome/native-source",
+      ".build/windows-chrome/e2e.test.exe"
+    ]
+  }
+}

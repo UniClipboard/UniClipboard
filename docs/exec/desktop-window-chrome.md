@@ -149,3 +149,45 @@ directory at the database path). The sized native cases explicitly select the
 platform skin; the older sized runner default would otherwise force macOS.
 
 Native Windows results are pending coordinated VM access. No Snap claim is made.
+
+## Follow-up close receipt: native handover blocked
+
+Implementation source: `a0a0f5fb48f0117d2ca46447e5b7a6bf3dd5b906`.
+The implementation and acceptance entry are committed locally. Delivery remains
+on hold because the concurrent VM task has not confirmed an exclusive handover.
+The two coordination requests were sent at 10:02 and 10:33 UTC on 2026-11-20.
+No guest command, application installation, VM start/suspend, personal clipboard
+access or permission grant was performed by this task. The VM was initially
+observed running; this task did not change its state.
+
+The final committed-source software replay passed at
+`.build/desktop-e2e/20261120T105500Z-2daac5c2/index.html`. The report includes
+complete history/general checkpoints, setup fallback pages, geometry, assertions,
+source-file digests and verified SHA256SUMS. Its private cleanup passed.
+An exploratory assertion incorrectly expected the macOS-only setup branding row
+on Windows (`20261120T105402Z-7ef91029`). The exact `Skin == MacOS` condition
+identified the bad expectation. It was removed without renderer changes. The
+following replay passed. The original behavior RED and this invalid-assertion
+report are retained separately.
+
+The compact [machine-readable receipt](desktop-windows-single-row.json) records
+source identity, exact Windows x64/ARM64 PE hashes, local verdicts and cleanup.
+These Windows programs were cross-built with `desktop_e2e` and `buildvcs=false`;
+they were not executed. Native mode screenshots, OS button interaction, physical
+drag/resize/double-click, current guest architecture and Snap remain NOT_RUN.
+No software-view image substitutes for the missing OS-frame images.
+
+Replay the four native cases after the VM handover:
+
+```sh
+make desktop-e2e CASE=window-chrome-native
+make desktop-e2e CASE=window-chrome-native-dark
+make desktop-e2e CASE=window-chrome-setup
+make desktop-e2e CASE=window-chrome-startup-error
+```
+
+Use the existing owned-window PowerShell helper for explicitly authorized physical
+drag/resize/double-click checks in that VM. Keep the same synthetic data, sizes and
+light/dark conditions. Restore the handover state after checking and remove only
+task-owned guest processes/profiles. No push, PR, merge, release or publication is
+authorized or performed.

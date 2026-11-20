@@ -1619,7 +1619,6 @@ ui-absent text '部分设置将在下次启动时生效。'
 [windows] windows-frame maximized-os custom maximized
 [windows] ui-click button '还原'
 [windows] windows-frame restored-os custom restored
-[windows] ui-click button '最小化'
 [windows] windows-frame minimized-restored-os custom minimized
 
 [windows] ui-click button '切换设置侧栏'
@@ -1721,7 +1720,6 @@ ui-absent text '部分设置将在下次启动时生效。'
 [windows] windows-frame maximized-os custom maximized
 [windows] ui-click button '还原'
 [windows] windows-frame restored-os custom restored
-[windows] ui-click button '最小化'
 [windows] windows-frame minimized-restored-os custom minimized
 
 [windows] ui-click button '切换设置侧栏'
@@ -1764,7 +1762,6 @@ screenshot setup-passphrase
 [windows] windows-frame setup-maximized-os custom maximized
 [windows] ui-click button '还原'
 [windows] ui-wait button '最大化'
-[windows] ui-click button '最小化'
 [windows] windows-frame setup-minimized-os custom minimized
 ```
 
@@ -1787,7 +1784,6 @@ screenshot startup-error
 [windows] windows-frame startup-error-maximized-os custom maximized
 [windows] ui-click button '还原'
 [windows] ui-wait button '最大化'
-[windows] ui-click button '最小化'
 [windows] windows-frame startup-error-minimized-os custom minimized
 ```
 

@@ -48,6 +48,17 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			defer cancelCapture()
 			cmd := exec.CommandContext(captureCtx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(s.root, "app", "desktop", "e2e", "windows_chrome.ps1"), "-OwnedProcessId", fmt.Sprint(owner.PID), "-OwnedBinary", owner.BinaryPath, "-Mode", args[1], "-OutputBase", filepath.Join(s.out, args[0]), "-Action", action)
 			s.captureMu.Lock()
+			if action == "minimized" {
+				node, findErr := s.find("button", "最小化")
+				if findErr != nil {
+					s.captureMu.Unlock()
+					return findErr
+				}
+				if inputErr := s.call(s.ctx, "input", map[string]any{"window": s.window, "events": []any{map[string]any{"type": "click", "x": node.Bounds.X + node.Bounds.Width/2, "y": node.Bounds.Y + node.Bounds.Height/2}}}, nil); inputErr != nil {
+					s.captureMu.Unlock()
+					return inputErr
+				}
+			}
 			output, err := cmd.CombinedOutput()
 			s.captureMu.Unlock()
 			if err != nil {

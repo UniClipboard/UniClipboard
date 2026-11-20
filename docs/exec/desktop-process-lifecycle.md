@@ -5,7 +5,7 @@
 Worktree: `b973f49e-2d6a-498f-bde6-2774391245a4`.
 Branch: `fix/desktop-lightweight-processes`.
 Baseline: `173d362036ae4a746878306915c85bcdf7468751`, fetched from `origin/v2` on 2026-11-20.
-Implementation commit: `51ee83471`. The change is committed locally and has not been pushed. Acceptance manifests bind the exact source-file and executable SHA-256 values; the baseline HEAD alone does not identify the modified source.
+Original process implementation: `51ee83471`. Updated activation/close semantics: `213912f70`; last-valid-configuration close correction: `f25ea8c1c3af1edb72911a51d61f746c15baeb3d`. These changes are committed locally and have not been pushed. Acceptance manifests bind the exact source-file and executable SHA-256 values; the baseline HEAD alone does not identify the modified source.
 
 The user's Windows x64 comparison artifact is `desktop-test-windows-amd64`, artifact `14596984031`, from [Build CLI run 44665561906](https://github.com/UniClipboard/UniClipboard/actions/runs/44665561906). The GitHub API reports the same baseline SHA above. An ARM64 Windows host must distinguish this x64 emulated artifact from a native ARM64 build.
 

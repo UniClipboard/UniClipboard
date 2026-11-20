@@ -58,3 +58,11 @@ including when the server wraps the sentinel. A different error with identical
 human-readable text must not become retryable. Identity verification must still
 precede any remote error-code mapping. Retrying business commands is a caller
 policy; this transport does not replay a command.
+
+## First native Windows window
+
+A UI role must not inherit the service's `STARTF_USESHOWWINDOW/SW_HIDE` policy.
+Windows Full01 and Full02 reproduced a registered global shortcut and a live
+panel process whose first native window never became visible. A plain explicit
+Show still consumes the hidden startup policy; it is not evidence of visibility.
+Use a console-free process creation flag without overriding native ShowWindow.

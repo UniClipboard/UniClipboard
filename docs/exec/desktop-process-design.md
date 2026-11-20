@@ -32,6 +32,11 @@ Lightweight close transfers an owned service to standalone lifetime through its 
 
 GUI close notification occurs after its view and role endpoint have closed. Tray serializes GUI launch and close admission. A close notification cannot shut down a newly opened GUI. Explicit application Quit remains a separate action: close all UI roles, shortcut and adapter, then stop only a still-owned service. After lightweight handoff the service is independently owned. Running unicd alone never creates graphical integration.
 
+Windows UI roles suppress console creation without setting the service-only
+`STARTF_USESHOWWINDOW/SW_HIDE` policy. Each UI role owns its native first display.
+The daemon keeps its separate service launch policy. Full01/Full02 reproduced
+that applying the service policy to a cold panel suppresses its first ShowWindow.
+
 ## IPC and failures
 
 Keep one live role lock and private endpoint per canonical profile. Verify OS peer executable identity and the profile, rather than trusting a PID file. GUI and panel delegate clipboard writes to the tray's single tracked adapter. Foreground targets stay ephemeral and profile-private.

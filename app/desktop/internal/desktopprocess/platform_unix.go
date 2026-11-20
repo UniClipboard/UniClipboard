@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/uniclipboard/unic/internal/servicelaunch"
 )
 
 func samePath(a, b string) bool { return a == b }
@@ -88,3 +91,5 @@ func dial(ctx context.Context, root string, role Role) (net.Conn, error) {
 	var d net.Dialer
 	return d.DialContext(ctx, "unix", endpoint(root, role))
 }
+
+func configureRoleProcess(cmd *exec.Cmd) { servicelaunch.ConfigureProcess(cmd) }

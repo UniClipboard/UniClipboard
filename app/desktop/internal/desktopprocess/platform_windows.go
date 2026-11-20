@@ -7,8 +7,10 @@ import (
 	"errors"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	winio "github.com/tailscale/go-winio"
 	"golang.org/x/sys/windows"
@@ -81,4 +83,10 @@ func listen(root string, role Role) (net.Listener, error) {
 }
 func dial(ctx context.Context, root string, role Role) (net.Conn, error) {
 	return winio.DialPipeContext(ctx, endpoint(root, role))
+}
+
+// UI roles own their first ShowWindow call. STARTF_USESHOWWINDOW/SW_HIDE
+// would override that call, leaving a cold quick-panel window invisible.
+func configureRoleProcess(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | windows.CREATE_NO_WINDOW}
 }

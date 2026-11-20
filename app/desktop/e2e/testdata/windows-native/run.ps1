@@ -381,8 +381,8 @@ function Invoke-GUIAbsentHotkey([string]$TaskProfile,$Tray){
     [UnicNativeB973]::Hotkey()
     $script:GlobalShortcutStatus='INJECTED_NOT_YET_OBSERVED'
     Event 'native-SendInput' 'Ctrl+Alt+V first panel with no GUI' @{target_pid=$target.pid;target_created_utc=$target.created_utc;target_hwnd=$target.hwnd;gui_absent=$true;panel_first_open=$true;input_replayed=$false}
-    Wait-Until {try{$status=Role $TaskProfile 'quick-panel' 'status';return $status.visible}catch{return $false}} 'native global shortcut panel role'
     $panel=Bind-Role $TaskProfile 'quick-panel'
+    Save-JSON 'first-hotkey-role-ready.json' @{role=(Role $TaskProfile 'quick-panel' 'status');windows=[UnicNativeB973]::OwnedWindows([int]$panel.pid);foreground_pid=[UnicNativeB973]::Owner([UnicNativeB973]::GetForegroundWindow())}
     # native18 returned role.visible=true while its Win32 window stayed hidden.
     # Both actual visibility and foreground ownership remain mandatory here.
     $panelWindow=Find-Window $panel 'unic · 快捷面板' $true

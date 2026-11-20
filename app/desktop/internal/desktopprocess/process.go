@@ -359,7 +359,7 @@ func LaunchEnv(ctx context.Context, dir, socket string, role Role, environment [
 		return Info{}, err
 	}
 	cmd := exec.Command(program, append([]string{"--role", string(role)}, args...)...)
-	servicelaunch.ConfigureProcess(cmd)
+	configureRoleProcess(cmd)
 	env := make([]string, 0, len(environment)+2)
 	for _, entry := range environment {
 		if !strings.HasPrefix(entry, "UNIC_HOME=") && !strings.HasPrefix(entry, "UNIC_SOCK=") {

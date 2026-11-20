@@ -406,7 +406,7 @@ Bounded history image previews
 
 Steps: Submit synthetic PNG and JPEG-file history, prefetch both production views, switch selection and reread stored bytes, release shown CPU pixels and count concurrent image-body readers.
 
-Expected: Neighbor thumbnails are bounded; selected images keep original dimensions; old selections downgrade; original bytes, EXIF orientation, shown-pixel lifecycle and serial image reads remain correct; shown CPU pixels release on a later frame; image-body consumption is serial.
+Expected: Neighbor thumbnails are bounded; selected images keep original dimensions; old selections downgrade; original bytes, EXIF orientation, shown-pixel lifecycle and serial image reads remain correct; shown CPU pixels release on a later frame; image-body consumption and response ownership are serial; selected work wins queued neighbors; cancellation and shutdown return slots; thumbnail input streams through bounded reads; malformed streams are rejected.
 
 Forbidden: Full rasters for every neighbor, changed clipboard payloads, stale selection tiers, skipped assertions or missing receipt.
 

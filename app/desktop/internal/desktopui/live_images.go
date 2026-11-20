@@ -14,10 +14,6 @@ import (
 
 const thumbnailMemoryBudget = 32 << 20
 
-// Content requests may run concurrently, but only one image owns encoded and
-// full-resolution decode scratch space at a time, across all desktop windows.
-var imageDecodeGate = make(chan struct{}, 1)
-
 // One shared owner follows an image through cache, projections and selection.
 // An edge of zero denotes the original-resolution selected preview.
 type historyImage struct {
@@ -67,41 +63,63 @@ func imageDimensions(v entry) (float32, float32) {
 // Preserve the original payload and oriented dimensions. Only neighbors are
 // re-encoded into a bounded thumbnail; the selected image uses mygo's decoder.
 func readPreviewImage(ctx context.Context, r io.Reader, edge int) (*historyImage, string) {
-	select {
-	case <-ctx.Done():
-		return nil, "读取内容失败。"
-	case imageDecodeGate <- struct{}{}:
-	}
-	defer func() { <-imageDecodeGate }()
 	if ctx.Err() != nil {
 		return nil, "读取内容失败。"
 	}
+	r = previewContextReader{ctx: ctx, reader: r}
 	const limit = 32 << 20
-	raw, err := io.ReadAll(io.LimitReader(r, limit+1))
-	if err != nil {
-		return nil, "读取内容失败。"
-	}
-	if len(raw) > limit {
-		return nil, "内容超过预览大小限制。"
-	}
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
-		return nil, "图片无法预览。"
-	}
+	var raw []byte
+	var err error
+	var cfg image.Config
 	p := &historyImage{edge: edge}
 	if edge > 0 {
-		decoded, err := imaging.Decode(bytes.NewReader(raw), imaging.AutoOrientation(true))
+		// Do not let a hostile dimension header grow its replay buffer past
+		// the existing encoded-input budget. The extra overflow byte is only
+		// enabled after DecodeConfig has finished retaining the header.
+		limited := &io.LimitedReader{R: r, N: limit}
+		var header bytes.Buffer
+		cfg, _, err = image.DecodeConfig(io.TeeReader(limited, &header))
+		if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
+			return nil, "图片无法预览。"
+		}
+		limited.N++
+		decoded, err := imaging.Decode(io.MultiReader(bytes.NewReader(header.Bytes()), limited), imaging.AutoOrientation(true))
 		if err != nil {
 			return nil, "图片无法预览。"
 		}
+		if _, err := io.Copy(io.Discard, limited); err != nil {
+			return nil, "读取内容失败。"
+		}
+		if limited.N <= 0 {
+			return nil, "内容超过预览大小限制。"
+		}
+		header = bytes.Buffer{}
+		if ctx.Err() != nil {
+			return nil, "读取内容失败。"
+		}
 		p.width, p.height = decoded.Bounds().Dx(), decoded.Bounds().Dy()
 		thumb := imaging.Fit(decoded, edge, edge, imaging.Lanczos)
+		if ctx.Err() != nil {
+			return nil, "读取内容失败。"
+		}
 		var encoded bytes.Buffer
 		encoder := png.Encoder{CompressionLevel: png.BestSpeed}
 		if err := encoder.Encode(&encoded, thumb); err != nil {
 			return nil, "图片无法预览。"
 		}
 		raw = encoded.Bytes()
+	} else {
+		raw, err = io.ReadAll(io.LimitReader(r, limit+1))
+		if err != nil {
+			return nil, "读取内容失败。"
+		}
+		if len(raw) > limit {
+			return nil, "内容超过预览大小限制。"
+		}
+		cfg, _, err = image.DecodeConfig(bytes.NewReader(raw))
+		if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width) > 16_000_000/int64(cfg.Height) {
+			return nil, "图片无法预览。"
+		}
 	}
 	p.bitmap, err = ui.DecodeBitmap(raw)
 	if err != nil {
@@ -114,4 +132,18 @@ func readPreviewImage(ctx context.Context, r io.Reader, edge int) (*historyImage
 		return nil, "读取内容失败。"
 	}
 	return p, ""
+}
+
+// Codec reads observe cancellation even when their source is already buffered.
+// Full decode/resize calls remain bounded by the existing pixel limit.
+type previewContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r previewContextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }

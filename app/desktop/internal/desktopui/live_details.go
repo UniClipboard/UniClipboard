@@ -120,6 +120,24 @@ func (l *liveState) loadDetail(d *viewState) {
 	if l.detailReads == nil {
 		l.detailReads = map[string]*detailRead{}
 	}
+	// Reserve the next per-view job for selection instead of leaving it behind
+	// four neighbors waiting for the process-wide request slot. Cancelled jobs
+	// keep their slot until completion, so the four-job bound remains intact.
+	if l.detailBusy && l.detailReads[d.selected] == nil && len(l.detailReads) >= detailReadLimit {
+		cancelling := false
+		for _, read := range l.detailReads {
+			cancelling = cancelling || read.obsolete
+		}
+		if !cancelling {
+			for _, read := range l.detailReads {
+				if read.edge > 0 {
+					read.obsolete = true
+					read.cancel()
+					break
+				}
+			}
+		}
+	}
 	order := append([]string{d.selected}, l.detailWindow...)
 	for _, id := range order {
 		if len(l.detailReads) >= detailReadLimit {

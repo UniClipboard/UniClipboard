@@ -1,0 +1,26 @@
+{
+  "assertions": [
+    "official_v1_installed",
+    "v2_replaces_actual_v1_programs",
+    "v1_data_preserved_after_replacement",
+    "synthetic_v1_history_imported_and_reopened",
+    "uninstall_preserves_v1_and_migrated_v2_data"
+  ],
+  "cleanup_registration_removed": true,
+  "cleanup_root_removed": true,
+  "gui": "not_run",
+  "scope": "actual official v1 NSIS replacement; synthetic frozen encrypted v3 history; SYSTEM session 0; WebView2 bootstrap excluded",
+  "status": "passed",
+  "target": "windows-arm64",
+  "v1_binary_sha256": "191a402e9ce2303986b6f147c3eaafdbe63711d9a830dfcf1ad3e521476a0477",
+  "v1_installer_sha256": "24686225324422aa86f007e61c3b457ec1b686a369e027e39883d49b2f7fc45a",
+  "v1_version": "1.6.2",
+  "v2_identity": {
+    "build_number": "1",
+    "product": "desktop",
+    "program": "unic-desktop",
+    "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+    "version": "2.0.0"
+  },
+  "v2_installer_sha256": "ad17d9539529197958aa016c11b6dc2936ca061ac8149b2872e105f871a21496"
+}

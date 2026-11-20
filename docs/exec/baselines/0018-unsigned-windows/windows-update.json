@@ -1,0 +1,49 @@
+{
+  "archive_sha256": "3093ec223e07403fa994a4849046c1af936c368655c0c5a173155d0ccdeb2a53",
+  "checks": [
+    "winget update ownership preserved",
+    "Scoop update ownership preserved",
+    "portable archive update ownership preserved",
+    "valid signed archive accepted",
+    "wrong product rejected",
+    "wrong build rejected",
+    "duplicate updater rejected",
+    "wrong format rejected",
+    "HTTP public host rejected",
+    "wrong SHA256 rejected",
+    "wrong signature rejected",
+    "wrong size rejected",
+    "invalid channel rejected",
+    "signed identity mismatch rejected",
+    "duplicate identity rejected",
+    "missing identity rejected",
+    "mygo installed numbered build",
+    "obsolete owned file removed",
+    "user data preserved",
+    "private downloads removed after success and failure"
+  ],
+  "prebuilt_fixture": {
+    "binaries_sha256": {
+      "probe.exe": "9abdf74f127d47b8709ec33ee2b750635ca78bb22bab42c265a1c3803fb8b15d",
+      "sign.exe": "3b315faf7c05b72738bf40f52dde978a2a33c2c119f1d5f886b99fdfa80ef4b2"
+    },
+    "source_files": {
+      "app/desktop/e2e/updateprobe/main.go": "c0370c6fcdb5c262976687a88bd1c25001312998ee0187d5a90eba1e566d795b",
+      "app/desktop/internal/appupdates/source.go": "4a90760cd227ef524626d0e1cc663057c7659808d5b85ec654e8c6c6f00ca426",
+      "e2e/packaging/updates.py": "0353e7083ba2e52bebbaf59931ac00fa7dff226e1de340160aee7da0600140c8",
+      "tools/release/update-sign/main.go": "df9061f47b1ae7e500a7414a8554204e1b830da0f5c77d9b367d9eb237849b1a"
+    },
+    "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+    "target": "windows-arm64"
+  },
+  "scope": "signed fixture HTTP and actual mygo install; no GUI or public mutation",
+  "source_files": {
+    "app/desktop/e2e/updateprobe/main.go": "c0370c6fcdb5c262976687a88bd1c25001312998ee0187d5a90eba1e566d795b",
+    "app/desktop/internal/appupdates/source.go": "4a90760cd227ef524626d0e1cc663057c7659808d5b85ec654e8c6c6f00ca426",
+    "e2e/packaging/updates.py": "0353e7083ba2e52bebbaf59931ac00fa7dff226e1de340160aee7da0600140c8",
+    "tools/release/update-sign/main.go": "df9061f47b1ae7e500a7414a8554204e1b830da0f5c77d9b367d9eb237849b1a"
+  },
+  "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+  "status": "passed",
+  "target": "windows-arm64"
+}

@@ -7,7 +7,7 @@ Status: delivery implementation prepared; production activation blocked by the p
 - Desktop: `2.0.0 (1)`, six native targets.
 - CLI: `2.0.0 (2)`, canonical run `43419452491`.
 - Locked CLI manifest SHA-256: `ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be`.
-- Complete native construction candidate: run `43421800442`, source `09488aaaa20aaf297d7be5c89271cba5f40786c4`. This run includes all 22 artifacts, real Windows installer lifecycle and macOS signing/notarization. Windows production signing and raw updater-key provisioning still block public delivery.
+- Complete native construction candidate: run `43421800442`, source `09488aaaa20aaf297d7be5c89271cba5f40786c4`. This run includes all 22 artifacts, real Windows installer lifecycle and macOS signing/notarization. Raw updater-key provisioning still blocks public delivery; Windows Authenticode is optional under the accepted unsigned policy.
 
 Native-window run `43432479654`, source `cb1749765fb824c05babd9ad490aa8b6d929a6bb`, passed the canonical history/search/copy case on all six targets. All downloaded artifact checksums and cleanup receipts verified. Its synthetic directory clipboard does not establish real OS integration.
 
@@ -17,7 +17,7 @@ A later source change requires its own accepted candidate. Publication and promo
 
 ## Prerequisites
 
-1. Configure production Windows executable and installer signing. The discovered `signpath-test` environment is test signing only. Do not mark it as a production certificate. The currently locked CLI candidate has unsigned Windows files. After production signing is available, construct a new CLI build, accept and lock its immutable manifest, then construct a new Desktop candidate. Never re-sign an accepted artifact in place.
+1. Record Windows payloads and installers as unsigned when production Authenticode is unavailable. This accepted policy applies to alpha and stable. Keep false signature fields and the unsigned release-page warning. The discovered `signpath-test` environment is test signing only. Never mark it as a production certificate or re-sign accepted artifacts in place. macOS Developer ID/notarization and raw Ed25519 updater signatures remain required.
 2. Provision one durable raw Ed25519 updater key. Keep the private key in `UNIC_UPDATE_PRIVATE_KEY` and put the corresponding base64 public key in `products.desktop.update_public_key`. Use `go run ./tools/release/update-sign -keygen <private-directory>` to generate a protected directory. Upload the private key through GitHub's secret interface. Never commit it or substitute Minisign/Tauri key encodings.
 3. Configure `R2_RELEASE_ACCESS_KEY_ID`, `R2_RELEASE_SECRET_ACCESS_KEY`, `FLARE_RELEASE_ACCESS_CLIENT_ID` and `FLARE_RELEASE_ACCESS_CLIENT_SECRET` in the release environment. Configure `R2_RELEASE_ENDPOINT` and `FLARE_RELEASE_ADMIN_URL` as GitHub variables. Limit object credentials to the release bucket. The Access application must accept the service identity.
 4. Deploy and verify the matching public FlareRelease Worker through its own reviewed deployment. On 2026-11-13, `https://release.uniclipboard.app/contract` and `/v1/desktop/stable.json` returned HTTP 404. Admin code availability does not establish public route availability. Do not work around this by writing D1 directly.
@@ -26,11 +26,11 @@ A later source change requires its own accepted candidate. Publication and promo
 
 ## Nonpublishing construction and acceptance
 
-Run from the approved isolated branch:
+After authorizing and pushing the reviewed isolated branch, run the nonpublishing construction entries:
 
 ```sh
 gh workflow run build-cli.yml --repo UniClipboard/UniClipboard \
-  --ref feat/v2-package-release --field distribution=true --field desktop_only=true
+  --ref feat/release-unsigned-windows --field distribution=true --field desktop_only=true
 ```
 
 This registered entry calls the reusable Desktop workflow. It does not publish packages. The dedicated Desktop workflow cannot be dispatched directly until GitHub registers it on the default branch.
@@ -39,7 +39,7 @@ After a complete successful Desktop run, select its run ID:
 
 ```sh
 gh workflow run build-cli.yml --repo UniClipboard/UniClipboard \
-  --ref feat/v2-package-release --field sandbox_run_id=<accepted-run-id>
+  --ref feat/release-unsigned-windows --field sandbox_run_id=<accepted-run-id>
 ```
 
 The sandbox jobs execute Nix, Flatpak and strict Snap on both Linux architectures. They use exact pre-publication binary inputs. They do not submit to a Store.
@@ -48,7 +48,7 @@ Run the six-target source-frozen native-window case separately:
 
 ```sh
 gh workflow run build-cli.yml --repo UniClipboard/UniClipboard \
-  --ref feat/v2-package-release --field native_gui=true
+  --ref feat/release-unsigned-windows --field native_gui=true
 ```
 
 This case uses a synthetic directory clipboard. It does not establish package-specific real-OS clipboard, file/network permission or cross-application paste behavior.
@@ -69,7 +69,7 @@ Each process fixture emits a report and SHA256SUMS. The canonical native-window 
 ## Public delivery after separate authorization
 
 1. Review `release/desktop-notes.json`. Accept the final candidate run, source SHA, CLI lock and update public key.
-2. Run `Release CLI` with `candidate_run_id=<final-locked-cli-run-id>` to preserve the locked bytes. The current run `43419452491` is acceptance evidence; it does not meet the production Windows-signing prerequisite. Select the intended npm channel. Do not rebuild the candidate at a later source SHA.
+2. Run `Release CLI` with `candidate_run_id=<final-locked-cli-run-id>` to preserve the locked bytes. The historical run `43419452491` is acceptance evidence; select a new compatible source candidate when shared configuration/API has changed. Select the intended npm channel. Do not rebuild the candidate at a later source SHA.
 3. Run `Release Desktop` with `operation=publish` and the accepted Desktop run ID. It validates the complete 22-artifact catalogue, both deployed contracts, all signatures and locked CLI npm availability before writes. It conditionally creates immutable objects, reads every object back, registers six updater archives and stores the immutable publication receipt. It does not change a Desktop channel. The workflow first stages/verifies the GitHub draft and downloads every attachment for hash verification. After origin availability passes, alpha publishes a prerelease page without selecting GitHub latest. Stable keeps the page in draft.
 4. Read the current `desktop/alpha` or `desktop/stable` channel revision through the admin API. Review the selected build and availability receipt.
 5. Run `Release Desktop` with `operation=promote`, the same candidate run ID, the intended channel and that exact revision. It uses the API's compare-and-swap operation and checks the public numbered identity and updater hashes. A concurrent change fails. Stable fails if lifecycle/native-GUI evidence is incomplete. After verified stable promotion, the workflow publishes the GitHub page as stable/latest. Page staging is verified before channel mutation. Omitted comparison/contributor input is restored from `release-page.json`.
@@ -95,6 +95,6 @@ Use `--development` only for a local preview of unaccepted inputs. The page stat
 
 The inspected repository default branch is still `v1`. Register the new workflow on the eventual default branch through the reviewed v2 rollout before using GitHub manual dispatch. Local preview and process acceptance do not require workflow registration. This migration does not modify v1 or change the default branch.
 
-After production prerequisites and explicit remote-write authorization, run `Release Desktop` with `operation=github-draft`, the accepted candidate run ID and optional `previous_tag`. This stages a draft only. It does not upload to R2, change a channel or publish the page. Production signing remains required even for remote staging. Use `publish` and `promote` as described above to complete delivery.
+After production prerequisites and explicit remote-write authorization, run `Release Desktop` with `operation=github-draft`, the accepted candidate run ID and optional `previous_tag`. This stages a draft only. It does not upload to R2, change a channel or publish the page. macOS production signing/notarization and raw updater signing remain required even for remote staging. Windows Authenticode may remain unsigned. Use `publish` and `promote` as described above to complete delivery.
 
 Replay nonpublishing process acceptance with `python3 e2e/packaging/github_release.py`. It uses the actual `gh` executable against an isolated HTTP service and emits `.cache/github-release-e2e/report.json`, a page preview and checksums. It does not prove live GitHub creation, production-token permissions or publication.

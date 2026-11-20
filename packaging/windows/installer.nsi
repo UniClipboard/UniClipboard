@@ -36,7 +36,8 @@ Function .onInit
   ${If} $R0 != ""
     ${VersionCompare} "$R0" "@VERSION@.@BUILD@" $R1
     ${If} $R1 == 1
-      MessageBox MB_ICONSTOP "A newer UniClipboard version is installed."
+      MessageBox MB_ICONSTOP "A newer UniClipboard version is installed." /SD IDOK
+      SetErrorLevel 2
       Abort
     ${EndIf}
   ${EndIf}
@@ -51,7 +52,7 @@ Section
     ${If} ${FileExists} "$INSTDIR\${NAME}"
     System::Call 'kernel32::CreateFileW(w "$INSTDIR\${NAME}", i 0x40000000, i 0, p 0, i 3, i 0, p 0) p.r0'
     ${If} $0 == -1
-      MessageBox MB_ICONSTOP "Quit UniClipboard and stop its service before changing this installation."
+      MessageBox MB_ICONSTOP "Quit UniClipboard and stop its service before changing this installation." /SD IDOK
       SetErrorLevel 2
       Abort
     ${EndIf}

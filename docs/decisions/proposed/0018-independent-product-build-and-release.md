@@ -173,7 +173,7 @@ Release and promotion share the product publication serialization and expected-p
 | Android | Native build outputs, binding identity, device/allowed automated acceptance receipt | Signed APK for direct distribution; signed AAB for Play distribution |
 | iOS | Simulator verification output plus separately identified device archive/export | Distribution-signed device payload and App Store Connect/TestFlight receipts; IPA only where the distribution method allows it |
 | CLI | UI-free `unic`/`unicd` pair and production headless E2E receipt | npm main package and exact-version platform packages with registry integrity and build provenance |
-| Desktop | Native GUI, bundled CLI identity, packaging/integration acceptance receipt | Signed Windows installer, signed/notarized macOS package, and declared Linux package/archive formats |
+| Desktop | Native GUI, bundled CLI identity, packaging/integration acceptance receipt | Windows installer with explicit Authenticode state (unsigned accepted), signed/notarized macOS package, and declared Linux package/archive formats |
 
 The implementation selects and checks in required target matrices before enabling public releases.
 CLI target candidates are Windows/macOS/Linux, each with amd64/arm64.

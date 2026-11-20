@@ -1,0 +1,24 @@
+{
+  "checks": [
+    "unsigned Windows payload and setup accepted without signed claims",
+    "alpha page declares unsigned Windows",
+    "stable page declares unsigned Windows",
+    "macOS signature rejected",
+    "macOS notarization rejected",
+    "missing updater signature rejected",
+    "damaged updater signature rejected",
+    "missing updater key rejected",
+    "CLI mismatch rejected",
+    "source mismatch rejected",
+    "changed artifact rejected"
+  ],
+  "scope": "production controller subprocesses; synthetic catalogue; temporary Ed25519 key; no remote writes or native signing proof",
+  "source_files": {
+    "e2e/packaging/signing_policy.py": "5b551f3f38d7de9731e667f196f672152bd4583f176c740b4be0129b99c791f7",
+    "tools/package/desktop.py": "30e702132f92dd176d9b875714d882346dde0b97a92c09b5a4924ea69fdecab1",
+    "tools/release/desktop_release.py": "165179df9e7f35c31ee60cb84897c97cdadd82f18b71395b29c24d6470225ed1",
+    "tools/release/github_desktop.py": "188892af9fe96187dcdf04693d6a904bbe3a86dd7bbfa67ebb558f2ba7648bf9"
+  },
+  "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+  "status": "passed"
+}

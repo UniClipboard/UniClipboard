@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real signed HTTP downloads and mygo installation in disposable directories."""
+
 import argparse
 import copy
 import hashlib
@@ -9,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -18,6 +20,11 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser()
 p.add_argument("--output", default=str(ROOT / ".cache/update-e2e"))
+p.add_argument(
+    "--prebuilt",
+    type=Path,
+    help="Task fixture directory with cross-built signer/probe, fixture keys and input.json",
+)
 a = p.parse_args()
 out = Path(a.output).resolve()
 out.mkdir(parents=True, exist_ok=True)
@@ -42,9 +49,12 @@ def run(args, env=None, passed=True):
     return r.stdout
 
 
-report["source_sha"] = run(["git", "rev-parse", "HEAD"]).strip()
+prebuilt = json.loads((a.prebuilt / "input.json").read_text()) if a.prebuilt else None
+report["source_sha"] = (
+    prebuilt["source_sha"] if prebuilt else run(["git", "rev-parse", "HEAD"]).strip()
+)
 report["source_files"] = {
-    str(f.relative_to(ROOT)): hashlib.sha256(f.read_bytes()).hexdigest()
+    f.relative_to(ROOT).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest()
     for d in [
         "app/desktop/internal/appupdates",
         "app/desktop/e2e/updateprobe",
@@ -55,12 +65,29 @@ report["source_files"] = {
 report["source_files"]["e2e/packaging/updates.py"] = hashlib.sha256(
     Path(__file__).read_bytes()
 ).hexdigest()
+if prebuilt:
+    if prebuilt["source_files"] != report["source_files"]:
+        raise ValueError("prebuilt updater fixture source mismatch")
+    suffix = ".exe" if os.name == "nt" else ""
+    if set(prebuilt["binaries_sha256"]) != {"sign" + suffix, "probe" + suffix}:
+        raise ValueError("incomplete prebuilt updater fixture")
+    for name, expected in prebuilt["binaries_sha256"].items():
+        if (
+            Path(name).name != name
+            or hashlib.sha256((a.prebuilt / name).read_bytes()).hexdigest() != expected
+        ):
+            raise ValueError("prebuilt updater fixture binary mismatch")
+    report["prebuilt_fixture"] = prebuilt
 try:
     with tempfile.TemporaryDirectory(prefix="unic-update-e2e-") as temporary:
         temp = Path(temporary)
         signer = temp / ("sign.exe" if os.name == "nt" else "sign")
-        run(["go", "build", "-o", signer, "./tools/release/update-sign"])
-        run([signer, "-keygen", temp / "keys"])
+        if prebuilt:
+            shutil.copyfile(a.prebuilt / signer.name, signer)
+            shutil.copytree(a.prebuilt / "keys", temp / "keys")
+        else:
+            run(["go", "build", "-o", signer, "./tools/release/update-sign"])
+            run([signer, "-keygen", temp / "keys"])
         key = (temp / "keys/public.key").read_text().strip()
         env = dict(
             os.environ,
@@ -89,17 +116,22 @@ try:
         payload.mkdir(parents=True)
         probe = payload / ("probe.exe" if os.name == "nt" else "probe")
         linker = f"-X github.com/egoist/mygo.production=1 -X github.com/egoist/mygo.packageUpdateKey={key} -X github.com/egoist/mygo.packageUpdateFeed=https://invalid.example/update.json"
-        run(
-            [
-                "go",
-                "build",
-                "-ldflags",
-                linker,
-                "-o",
-                probe,
-                "./app/desktop/e2e/updateprobe",
-            ]
-        )
+        if prebuilt:
+            if prebuilt["target"] != target:
+                raise ValueError("prebuilt updater fixture target mismatch")
+            shutil.copyfile(a.prebuilt / probe.name, probe)
+        else:
+            run(
+                [
+                    "go",
+                    "build",
+                    "-ldflags",
+                    linker,
+                    "-o",
+                    probe,
+                    "./app/desktop/e2e/updateprobe",
+                ]
+            )
         for marker, content, expected in [
             ("update-owner", "winget", "winget"),
             ("install.json", "{}", "Scoop"),

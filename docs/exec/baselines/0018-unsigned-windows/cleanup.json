@@ -1,0 +1,18 @@
+{
+  "host_clipboard_access": "NOT_RUN",
+  "host_private_tool_cache_paths_removed": true,
+  "host_task_candidates_keys_databases_binaries_removed": true,
+  "machine_execution_policy_changed": false,
+  "other_parallels_macos_vm_state": "stopped",
+  "personal_profile_access": "NOT_RUN",
+  "removed_failed_task_roots": [
+    "cb606084-v1"
+  ],
+  "removed_task_shortcuts": [],
+  "status": "passed",
+  "task_input_removed": true,
+  "task_process_count": 0,
+  "task_registration_removed": true,
+  "user_execution_policy_changed": false,
+  "vm_final_state": "suspended"
+}

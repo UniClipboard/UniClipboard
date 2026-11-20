@@ -46,7 +46,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: afcce7e17fbc97a07840e4d79b63bf87efefa52f
+verified: 474fd01364c8fe9b42b8ec84b4898ac79afe74ba
 ---
 # Clipboard pipeline and local history
 
@@ -79,6 +79,8 @@ The existing `builtin.text` email/URL hints and text Actions remain independent.
 Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes the six built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
 
 The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. `builtin:code` is currently preserved by migration; `builtin.classify` does not produce it for new content. The importer also preserves palette and hexadecimal colors from the v1 presentation layout through host configuration. Every CLI and Desktop migration automatically fills safe missing tags and colors while preserving target edits, existing color overrides and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252).
+
+Windows drive-letter source databases use absolute SQLite file URIs with an empty authority. Source databases remain read-only and query-only.
 
 Offline CLI and Desktop imports share the profile initialization receipt and
 service transition lock. Pending imports bind to one source identity; partial,

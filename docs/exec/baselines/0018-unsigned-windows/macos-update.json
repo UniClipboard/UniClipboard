@@ -1,0 +1,35 @@
+{
+  "archive_sha256": "6b57846c8e5182e9d4cdd9f7c1c9568ee69b62b7ace1e362e8867320d514c021",
+  "checks": [
+    "winget update ownership preserved",
+    "Scoop update ownership preserved",
+    "portable archive update ownership preserved",
+    "valid signed archive accepted",
+    "wrong product rejected",
+    "wrong build rejected",
+    "duplicate updater rejected",
+    "wrong format rejected",
+    "HTTP public host rejected",
+    "wrong SHA256 rejected",
+    "wrong signature rejected",
+    "wrong size rejected",
+    "invalid channel rejected",
+    "signed identity mismatch rejected",
+    "duplicate identity rejected",
+    "missing identity rejected",
+    "mygo installed numbered build",
+    "obsolete owned file removed",
+    "user data preserved",
+    "private downloads removed after success and failure"
+  ],
+  "scope": "signed fixture HTTP and actual mygo install; no GUI or public mutation",
+  "source_files": {
+    "app/desktop/e2e/updateprobe/main.go": "c0370c6fcdb5c262976687a88bd1c25001312998ee0187d5a90eba1e566d795b",
+    "app/desktop/internal/appupdates/source.go": "4a90760cd227ef524626d0e1cc663057c7659808d5b85ec654e8c6c6f00ca426",
+    "e2e/packaging/updates.py": "6fda8862ac2e1d10afaf4497959c1bd27dab6fdbd2dc1302d0202aa47fc84fbe",
+    "tools/release/update-sign/main.go": "df9061f47b1ae7e500a7414a8554204e1b830da0f5c77d9b367d9eb237849b1a"
+  },
+  "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+  "status": "passed",
+  "target": "darwin-arm64"
+}

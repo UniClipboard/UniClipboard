@@ -1,0 +1,18 @@
+{
+  "actionlint": "passed",
+  "docscheck": {
+    "status": "passed",
+    "verified_pages": [
+      "docs/architecture/releases.md",
+      "docs/architecture/pipeline.md"
+    ],
+    "warnings": 5
+  },
+  "git_diff_check": "passed",
+  "gofmt": "passed",
+  "implementation_commit": "474fd01364c8fe9b42b8ec84b4898ac79afe74ba",
+  "ruff": "passed",
+  "test_mechanism": "production-process end-to-end runners and native Windows installer lifecycle",
+  "unit_tests_added": false,
+  "unit_tests_run": false
+}

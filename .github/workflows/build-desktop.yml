@@ -135,7 +135,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           choco install nsis --yes --no-progress --version=3.11
           'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Construct Windows packages (unsigned construction evidence)
+      - name: Construct Windows packages (unsigned Authenticode; separate updater signature)
         env:
           UNIC_UPDATE_PRIVATE_KEY: ${{ inputs.distribution && secrets.UNIC_UPDATE_PRIVATE_KEY || '' }}
         if: matrix.goos == 'windows'

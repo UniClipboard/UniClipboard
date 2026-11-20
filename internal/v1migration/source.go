@@ -83,7 +83,11 @@ func Open(ctx context.Context, root, service string, password []byte, secrets Se
 	if err != nil {
 		return nil, err
 	}
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(s.database)}
+	databasePath := filepath.ToSlash(s.database)
+	if runtime.GOOS == "windows" && !strings.HasPrefix(databasePath, "/") {
+		databasePath = "/" + databasePath
+	}
+	u := url.URL{Scheme: "file", Path: databasePath}
 	db, err := sql.Open("sqlite", u.String()+"?mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		s.close()

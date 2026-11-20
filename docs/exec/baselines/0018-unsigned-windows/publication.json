@@ -1,0 +1,21 @@
+{
+  "checks": [
+    "complete target/format catalogue assembled",
+    "development candidate rejected before production writes",
+    "legacy service contract rejected before writes",
+    "all 22 packages, catalogue and publication receipt uploaded and read back",
+    "retry preserves exact immutable bytes without overwrite",
+    "existing conflicting object rejected before mutation",
+    "revision-bound promotion and public numbered identity read-back",
+    "stale revision rejected",
+    "racing conditional writer cannot overwrite an object"
+  ],
+  "scope": "real boto3 conditional writes and release HTTP process fixture; no production credentials or mutations",
+  "source_files": {
+    "e2e/packaging/publication.py": "13cecf15788889e955518c8cd2da38cae6636fa630674c21da399585aa91157b",
+    "tools/release/desktop_release.py": "165179df9e7f35c31ee60cb84897c97cdadd82f18b71395b29c24d6470225ed1",
+    "tools/release/requirements.txt": "d9349c09a0e7c5bc1249a8a58b16748f62795bbcae9a16383900087e4dcb6b16"
+  },
+  "source_sha": "1e90f041d1f90e3c62a41a4bb86b5503ebe00c20",
+  "status": "passed"
+}

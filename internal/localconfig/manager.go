@@ -100,9 +100,6 @@ func (m *Manager) State() State {
 	if m.cur.Telemetry.Endpoint != m.started.Telemetry.Endpoint {
 		s.RestartRequired = append(s.RestartRequired, "telemetry.endpoint")
 	}
-	if m.cur.Desktop.SystemWindowFrame != m.started.Desktop.SystemWindowFrame {
-		s.RestartRequired = append(s.RestartRequired, "desktop.system_window_frame")
-	}
 	if m.cur.Inbox != m.started.Inbox {
 		s.RestartRequired = append(s.RestartRequired, "inbox")
 	}

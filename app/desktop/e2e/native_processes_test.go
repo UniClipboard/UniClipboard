@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -15,6 +17,34 @@ import (
 // IPC activation does not establish tray clicks or global shortcut delivery.
 func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 	return map[string]func(*desktopScenario, []string) error{
+		"windows-frame": func(s *desktopScenario, args []string) error {
+			if runtime.GOOS != "windows" || len(args) < 2 || len(args) > 3 || filepath.Base(args[0]) != args[0] {
+				return errors.New("windows-frame name custom|system [action] requires Windows")
+			}
+			raw, err := s.roleCommand("gui", "probe")
+			if err != nil {
+				return err
+			}
+			var owner desktopRoleIdentity
+			if err := json.Unmarshal(raw, &owner); err != nil {
+				return err
+			}
+			action := "capture"
+			if len(args) == 3 {
+				action = args[2]
+			}
+			if action != "capture" && action != "maximized" && action != "restored" && action != "minimized" {
+				return errors.New("physical input requires explicit owned-VM replay outside the isolated catalogue")
+			}
+			cmd := exec.CommandContext(s.ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(s.root, "app", "desktop", "e2e", "windows_chrome.ps1"), "-OwnedProcessId", fmt.Sprint(owner.PID), "-OwnedBinary", owner.BinaryPath, "-Mode", args[1], "-OutputBase", filepath.Join(s.out, args[0]), "-Action", action)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("owned Windows frame: %w: %s", err, output)
+			}
+			s.result.Screenshots = append(s.result.Screenshots, args[0]+".png")
+			s.result.Assertions = append(s.result.Assertions, "OS frame geometry and exact-window capture: "+args[0]+"; action="+action)
+			return nil
+		},
 		"role-checkpoint": func(s *desktopScenario, args []string) error {
 			if len(args) != 1 || filepath.Base(args[0]) != args[0] {
 				return errors.New("role-checkpoint name")
@@ -57,26 +87,44 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			return s.selectNativeRole("gui")
 		},
 		"role-close-gui": func(s *desktopScenario, args []string) error {
-			if len(args) != 0 {
-				return errors.New("role-close-gui takes no arguments")
+			if len(args) > 1 || (len(args) == 1 && args[0] != "caption") {
+				return errors.New("role-close-gui [caption]")
 			}
 			if s.nativeRoleBaseline == nil {
 				return errors.New("role-checkpoint must precede GUI close")
 			}
+			raw, err := s.roleCommand("gui", "probe")
+			if err != nil {
+				return err
+			}
+			var current desktopRoleIdentity
+			if err = json.Unmarshal(raw, &current); err != nil {
+				return err
+			}
+			wait, release, err := observeProcessExit(current.PID)
+			if err != nil {
+				return err
+			}
+			defer release()
 			s.captureMu.Lock()
 			s.capturePaused = true
 			s.captureMu.Unlock()
-			if _, err := s.roleCommand("gui", "close"); err != nil {
-				return err
-			}
-			select {
-			case err := <-s.appDone:
-				s.appDone <- err
+			if len(args) == 1 {
+				node, err := s.find("button", "关闭")
 				if err != nil {
 					return err
 				}
-			case <-time.After(10 * time.Second):
-				return errors.New("GUI process did not exit after close IPC")
+				err = s.call(s.ctx, "input", map[string]any{"window": s.window, "events": []any{map[string]any{"type": "click", "x": node.Bounds.X + node.Bounds.Width/2, "y": node.Bounds.Y + node.Bounds.Height/2}}}, nil)
+				if err != nil {
+					return err
+				}
+			} else if _, err := s.roleCommand("gui", "close"); err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+			defer cancel()
+			if err := wait(ctx); err != nil {
+				return err
 			}
 			if _, err := s.roleCommand("gui", "probe"); err == nil {
 				return errors.New("GUI role endpoint outlived its closed process")
@@ -84,7 +132,7 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			if err := s.checkNativeBackground(); err != nil {
 				return err
 			}
-			s.result.Assertions = append(s.result.Assertions, "IPC close terminated the native GUI OS process while tray and service retained their identities")
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("GUI PID %d exited after close %v; tray and service retained identities", current.PID, args))
 			return s.nativeRoleCheckpoint("gui-closed")
 		},
 		"role-reopen-gui": func(s *desktopScenario, args []string) error {

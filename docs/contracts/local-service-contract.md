@@ -314,11 +314,14 @@ See the [source application contract](source-application-contract.md) for captur
 
 `config.desktop.system_window_frame` is a boolean with default `false`. The
 revision-checked configuration API, CLI and TOML reload persist the same field.
-The service adds `desktop.system_window_frame` to `restart_required` when the
-saved value differs from its startup value. Returning to the startup value clears
-that entry. Desktop captures the value at main-window creation. Linux and macOS
-expose the preference; Windows retains custom caption buttons regardless of the
-stored value. This field never adds a graphical dependency to the service.
+It is a GUI creation preference, not a service restart requirement. The service
+never adds this key to `restart_required`. Desktop captures the saved value when
+creating its main window and compares subsequent saves with that window baseline.
+Close and reopen GUI to apply a change without restarting tray or service.
+Windows, Linux and macOS expose the same preference. A true value uses the normal
+native title bar and buttons. Windows false uses custom controls within the
+existing application toolbar, with a minimal fallback only on pages without that
+toolbar. This field never adds a graphical dependency to the service.
 
 ## Desktop tray icon preference
 

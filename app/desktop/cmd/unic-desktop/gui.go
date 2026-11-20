@@ -199,28 +199,38 @@ func runGUI(settings *config.Manager) error {
 		if runtime.GOOS == "darwin" {
 			_ = mygo.App.Dock.SetIcon(appicons.PNG)
 		}
+		session.windowFrame = settings.Current().Desktop.SystemWindowFrame
 		view := session.view
-		if runtime.GOOS == "windows" {
-			view = func(c *ui.Context) {
-				windowchrome.View(c, windowchrome.Actions{
-					Minimize: func() { g.win.Minimize() },
-					ToggleMaximize: func() {
-						if g.win.IsMaximized() {
-							g.win.Unmaximize()
-						} else {
-							g.win.Maximize()
-						}
-						g.win.Invalidate()
-					},
-					IsMaximized: func() bool { return g.win != nil && g.win.IsMaximized() },
-					Close:       func() { g.win.Close() },
-				}, settings.Current().Desktop.Language, func() { session.view(c) })
+		if runtime.GOOS == "windows" && !session.windowFrame {
+			actions := windowchrome.Actions{
+				Minimize: func() { g.win.Minimize() },
+				ToggleMaximize: func() {
+					if g.win.IsMaximized() {
+						g.win.Unmaximize()
+					} else {
+						g.win.Maximize()
+					}
+					g.win.Invalidate()
+				},
+				IsMaximized: func() bool { return g.win != nil && g.win.IsMaximized() },
+				Close:       func() { g.win.Close() },
 			}
-		} else if runtime.GOOS == "linux" && !settings.Current().Desktop.SystemWindowFrame {
+			session.windowControls = func(c *ui.Context) {
+				windowchrome.Controls(c, actions, settings.Current().Desktop.Language)
+			}
+			view = func(c *ui.Context) {
+				if session.setup == nil && session.runtime != nil {
+					session.view(c)
+					return
+				}
+				windowchrome.View(c, actions, settings.Current().Desktop.Language, func() { session.view(c) })
+			}
+		} else if runtime.GOOS == "linux" && !session.windowFrame {
 			view = func(c *ui.Context) { windowchrome.NativeView(c, func() { session.view(c) }) }
 		}
+
 		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
-		windowchrome.Configure(&opts, runtime.GOOS, settings.Current().Desktop.SystemWindowFrame)
+		windowchrome.Configure(&opts, runtime.GOOS, session.windowFrame)
 		if runtime.GOOS == "darwin" && !settings.Current().Desktop.SystemWindowFrame {
 			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
 			opts.Vibrancy = mygo.VibrancySidebar

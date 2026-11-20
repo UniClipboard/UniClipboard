@@ -230,6 +230,13 @@ func (s *desktopScenario) spawnPeer() (*pluginPolicyPeer, string, error) {
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[telemetry]\nenabled=false\n"), 0600); err != nil {
 		return nil, "", err
 	}
+	if s.systemClipboard {
+		initialize := exec.CommandContext(s.ctx, filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic"), "migrate", "--initialize-empty", "--json")
+		initialize.Env = append(os.Environ(), "UNIC_HOME="+home, "XDG_DATA_HOME="+filepath.Join(s.private, "peer-discovery"), "UC_PROFILE=")
+		if output, err := initialize.CombinedOutput(); err != nil {
+			return nil, "", fmt.Errorf("initialize native peer profile: %w (%s)", err, output)
+		}
+	}
 	binary := filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unicd")
 	if os.PathSeparator == '\\' {
 		binary += ".exe"

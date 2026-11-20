@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/godbus/dbus/v5"
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
@@ -43,16 +44,23 @@ type desktopResult struct {
 	Steps            []map[string]any `json:"steps"`
 	Screenshots      []string         `json:"screenshots"`
 	Recording        string           `json:"recording,omitempty"`
+	RecordingEncoder string           `json:"recording_encoder,omitempty"`
 	Frames           int              `json:"frames,omitempty"`
 	Duration         float64          `json:"duration_seconds,omitempty"`
 	Cleanup          string           `json:"cleanup"`
 }
 type desktopScenario struct {
+	systemClipboard                bool
+	clipboardOwners                []*exec.Cmd
+	pasteTarget                    *exec.Cmd
+	pasteTargetDone                chan error
+	idleInhibitor                  *dbus.Conn
 	policyPeer                     *pluginPolicyPeer
 	captureMu                      sync.Mutex // Do not overlap recording and checkpoint captures.
 	ctx                            context.Context
 	cancel                         context.CancelFunc
 	name, root, private, out, home string
+	workdir                        string
 	windowWidth, windowHeight      int
 	windowTheme                    string
 	app                            *exec.Cmd
@@ -60,6 +68,7 @@ type desktopScenario struct {
 	client                         *api.Client
 	automation                     string
 	window                         int
+	mainWindow                     int
 	media                          *desktopRecording
 	result                         desktopResult
 	started                        time.Time
@@ -117,8 +126,34 @@ func setupDesktopScenario(env *testscript.Env) error {
 		return err
 	}
 	s := &desktopScenario{ctx: ctx, cancel: cancel, name: name, root: root, private: private, out: out, started: time.Now(), result: desktopResult{Status: "FAIL", Mode: mode, Cleanup: "NOT_RUN"}}
+	s.workdir = env.WorkDir
+	s.systemClipboard = strings.Contains(string(data), "# Environment: disposable-guest\n")
 	env.Values["desktop"] = s
 	env.Defer(func() { s.finish(env) })
+	if mode == "native" && os.Getenv("DBUS_SESSION_BUS_ADDRESS") != "" {
+		conn, err := dbus.ConnectSessionBus()
+		if err == nil {
+			object := conn.Object("org.freedesktop.ScreenSaver", "/ScreenSaver")
+			var locked bool
+			probe := object.CallWithContext(ctx, "org.freedesktop.ScreenSaver.GetActive", 0).Store(&locked)
+			if probe == nil && locked {
+				_ = conn.Close()
+				return errors.New("native session is locked; no unlock is attempted")
+			}
+			var cookie uint32
+			if probe == nil && object.CallWithContext(ctx, "org.freedesktop.ScreenSaver.Inhibit", 0, "unic Desktop E2E", "Native acceptance in progress").Store(&cookie) == nil {
+				s.idleInhibitor = conn
+				s.result.Assertions = append(s.result.Assertions, "temporary idle inhibition held only for this native case")
+			} else {
+				_ = conn.Close()
+			}
+		}
+	}
+	if s.systemClipboard && s.idleInhibitor == nil {
+		s.result.Failure = "guest acceptance requires an unlocked session with temporary idle inhibition"
+		cancel()
+		return errors.New(s.result.Failure)
+	}
 	return nil
 }
 func desktopState(ts *testscript.TestScript) *desktopScenario {
@@ -279,6 +314,31 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 		},
 		"ui-wait":   func(s *desktopScenario, a []string) error { return s.expect(a, false) },
 		"ui-absent": func(s *desktopScenario, a []string) error { return s.expect(a, true) },
+		"ui-disabled": func(s *desktopScenario, a []string) error {
+			if len(a) != 2 {
+				return errors.New("ui-disabled role label")
+			}
+			stable := time.Time{}
+			err := s.wait(func() bool {
+				node, err := s.find(a[0], a[1])
+				if err == nil {
+					for _, state := range node.States {
+						if state == "disabled" {
+							if stable.IsZero() {
+								stable = time.Now()
+							}
+							return time.Since(stable) >= 350*time.Millisecond
+						}
+					}
+				}
+				stable = time.Time{}
+				return false
+			})
+			if err == nil {
+				s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("%s %q is disabled", a[0], a[1]))
+			}
+			return err
+		},
 		"ui-enabled": func(s *desktopScenario, a []string) error {
 			if len(a) != 2 {
 				return errors.New("ui-enabled role label")
@@ -362,6 +422,9 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 	for name, handler := range builtinPluginCommands() {
 		handlers[name] = handler
 	}
+	for name, handler := range systemClipboardCommands() {
+		handlers[name] = handler
+	}
 	result := map[string]func(*testscript.TestScript, bool, []string){}
 	for name, handler := range handlers {
 		result[name] = func(ts *testscript.TestScript, neg bool, args []string) {
@@ -419,6 +482,14 @@ func (s *desktopScenario) startNative(migration string) error {
 		return err
 	}
 	if migration == "" {
+		if s.systemClipboard {
+			initialize := exec.CommandContext(s.ctx, filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic"), "migrate", "--initialize-empty", "--json")
+			initialize.Env = append(os.Environ(), "UNIC_HOME="+s.home, "XDG_DATA_HOME="+filepath.Join(s.private, "discovery"), "UC_PROFILE=")
+			if output, err := initialize.CombinedOutput(); err != nil {
+				return fmt.Errorf("initialize task guest profile: %w (%s)", err, output)
+			}
+			s.result.Assertions = append(s.result.Assertions, "task guest profile explicitly initialized through production CLI")
+		}
 		flow, err := setupflow.Open(s.home)
 		if err != nil {
 			return err
@@ -490,9 +561,15 @@ func (s *desktopScenario) launchNative() error {
 		}
 	}
 	if s.windowWidth > 0 {
-		s.app.Env = append(s.app.Env, fmt.Sprintf("UNIC_DESKTOP_E2E_WINDOW=%dx%d", s.windowWidth, s.windowHeight), "UNIC_DESKTOP_E2E_THEME="+s.windowTheme, "UNIC_UI_SKIN=macos")
+		s.app.Env = append(s.app.Env, fmt.Sprintf("UNIC_DESKTOP_E2E_WINDOW=%dx%d", s.windowWidth, s.windowHeight), "UNIC_DESKTOP_E2E_THEME="+s.windowTheme)
+		if !s.systemClipboard {
+			s.app.Env = append(s.app.Env, "UNIC_UI_SKIN=macos")
+		}
 	}
 	s.app.Env = append(s.app.Env, "UNIC_HOME="+s.home, "UNIC_DESKTOP_E2E_PROFILE="+s.home, "MYGO_AUTOMATION="+s.automation, "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+	if s.systemClipboard {
+		s.app.Env = append(s.app.Env, "UNIC_DESKTOP_E2E_GUEST="+os.Getenv("UNIC_DESKTOP_E2E_GUEST"))
+	}
 	log, err := os.OpenFile(filepath.Join(s.private, "desktop.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
@@ -520,6 +597,7 @@ func (s *desktopScenario) launchNative() error {
 		for _, w := range result.Windows {
 			if w.Visible && w.Kind == "content" {
 				s.window = w.ID
+				s.mainWindow = w.ID
 				return true
 			}
 		}
@@ -698,7 +776,11 @@ func (s *desktopScenario) finish(env *testscript.Env) {
 	if s.media != nil {
 		if err := s.media.stop(); err != nil {
 			failed = true
-			s.result.Failure = err.Error()
+			if s.result.Failure != "" {
+				s.result.Failure += "\nrecording: " + err.Error()
+			} else {
+				s.result.Failure = err.Error()
+			}
 		}
 	}
 	if s.result.Mode == "native" && (s.window == 0 || len(s.result.Screenshots) == 0 || s.result.Recording == "" || len(s.result.Assertions) == 0) {
@@ -709,8 +791,29 @@ func (s *desktopScenario) finish(env *testscript.Env) {
 	}
 	s.cancel()
 	cleanupErr := s.stopApp()
+	if s.pasteTarget != nil && s.pasteTarget.Process != nil {
+		if err := s.pasteTarget.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			cleanupErr = errors.Join(cleanupErr, err)
+		}
+		select {
+		case err := <-s.pasteTargetDone:
+			var exit *exec.ExitError
+			if err != nil && !errors.As(err, &exit) {
+				cleanupErr = errors.Join(cleanupErr, err)
+			}
+		case <-time.After(5 * time.Second):
+			cleanupErr = errors.Join(cleanupErr, errors.New("owned paste target did not exit"))
+		}
+	}
+	for _, owner := range s.clipboardOwners {
+		_ = owner.Process.Kill()
+		_ = owner.Wait()
+	}
 	if s.policyPeer != nil {
 		cleanupErr = errors.Join(cleanupErr, s.policyPeer.stop())
+	}
+	if s.idleInhibitor != nil {
+		cleanupErr = errors.Join(cleanupErr, s.idleInhibitor.Close())
 	}
 	if cleanupErr != nil {
 		failed = true
@@ -742,7 +845,7 @@ func (s *desktopScenario) stopApp() error {
 		return nil
 	}
 	// App-scoped Quit crosses the actual view shortcut without physical input.
-	_ = s.call(context.Background(), "input", map[string]any{"window": s.window, "events": []any{map[string]any{"type": "key", "key": "CmdOrCtrl+Q"}}}, nil)
+	_ = s.call(context.Background(), "input", map[string]any{"window": s.mainWindow, "events": []any{map[string]any{"type": "key", "key": "CmdOrCtrl+Q"}}}, nil)
 	select {
 	case err := <-s.appDone:
 		if err != nil {

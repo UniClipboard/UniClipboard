@@ -4,9 +4,14 @@ package main
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/egoist/mygo"
 	_ "github.com/egoist/mygo/plugins/automation"
@@ -34,5 +39,20 @@ func init() {
 	}
 	sum := sha256.Sum256([]byte(profile))
 	desktopAppName = fmt.Sprintf("unic E2E %x", sum[:6])
-	newDesktopBoard = func() clipboardintegration.Board { return testboard.Dir(filepath.Join(profile, "board")) }
+	if os.Getenv("UNIC_DESKTOP_E2E_GUEST") == "" {
+		newDesktopBoard = func() clipboardintegration.Board { return testboard.Dir(filepath.Join(profile, "board")) }
+	} else {
+		if runtime.GOOS != "linux" || os.Getenv("WAYLAND_DISPLAY") == "" {
+			panic("real E2E clipboard requires a Linux Wayland guest")
+		}
+		virtualization, err := exec.Command("systemd-detect-virt", "--vm").Output()
+		if err != nil || (strings.TrimSpace(string(virtualization)) != "qemu" && strings.TrimSpace(string(virtualization)) != "kvm") {
+			panic("real E2E clipboard requires a verified QEMU/KVM guest")
+		}
+		err = exec.Command("pgrep", "-u", strconv.Itoa(os.Getuid()), "-x", "spice-vdagent").Run()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+			panic("real E2E clipboard requires stopped guest clipboard sharing")
+		}
+	}
 }

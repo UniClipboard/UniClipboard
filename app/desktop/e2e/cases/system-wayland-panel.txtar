@@ -1,0 +1,37 @@
+# Case: Native Wayland quick-panel Copy fallback
+# Mode: native
+# Environment: disposable-guest
+# Purpose: Verify understandable automatic-paste refusal, preserved Copy and physical Escape dismissal on Wayland.
+# Steps:
+#   Open the production panel from settings, attempt Enter, copy through Ctrl+C, reopen and dismiss through Escape.
+# Expected:
+#   The panel reports unsupported automatic paste; Enter leaves the clipboard unchanged; Copy applies exact bytes; Escape hides the panel without changing the clipboard.
+# Forbidden:
+#   Synthetic target capture authority, automatic paste claims, portal approval claims or host clipboard access.
+
+system-board-write 'UNIC-D panel baseline'
+start
+submit panel 'UNIC-D panel copy 中文'
+ui-wait listItem 'UNIC-D panel copy 中文'
+ui-click listItem 设置…
+ui-wait listItem 快捷面板
+ui-click listItem 快捷面板
+ui-wait button 打开快捷面板
+ui-click button 打开快捷面板
+system-window 'unic · 快捷面板' visible
+ui-wait alert 当前桌面会话不支持自动粘贴。请使用复制。
+screenshot wayland-copy-fallback
+system-key Enter
+system-board-equals 'UNIC-D panel baseline'
+system-key Ctrl+C
+system-board-equals 'UNIC-D panel copy 中文'
+system-window 'unic · 快捷面板' hidden
+system-window unic visible
+ui-click button 打开快捷面板
+system-window 'unic · 快捷面板' visible
+system-key Escape
+system-window 'unic · 快捷面板' hidden
+system-board-equals 'UNIC-D panel copy 中文'
+system-window unic visible
+history-count 1
+screenshot panel-dismissed

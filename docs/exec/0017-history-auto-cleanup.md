@@ -147,6 +147,8 @@ The restart, SIGKILL, clipboard-holder, quota, and symlink scenarios provide bou
 
 ## 8. Manual native acceptance
 
+The later [D-group native receipt](desktop-native-integration.md) records Fedora storage-control persistence and real received-file/tag/native-holder cleanup. It also records the control-state correction. Other platforms, custom receive destinations and the remaining native matrix stay open.
+
 1. Start the matching daemon and desktop client. Open Settings from the footer button.
 2. Change retention, count, and excluded tags. Verify saved values survive reopening the page.
 3. Verify cleanup-dependent controls disable when cleanup is off. Verify the cache-quota control remains enabled.

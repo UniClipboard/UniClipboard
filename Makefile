@@ -102,7 +102,7 @@ transfer-e2e:
 # Canonical Desktop acceptance: catalogue, real processes, native window evidence.
 .PHONY: desktop-e2e desktop-e2e-list desktop-e2e-doctor
 desktop-e2e:
-	python3 app/desktop/e2e/run.py run $(if $(CASE),--case "$(CASE)") $(if $(SHARD),--shard "$(SHARD)")
+	python3 app/desktop/e2e/run.py run $(if $(CASE),--case "$(CASE)") $(if $(SHARD),--shard "$(SHARD)") $(if $(GUEST),--guest "$(GUEST)") $(if $(CONTROL),--control-dir "$(CONTROL)")
 desktop-e2e-list:
 	python3 app/desktop/e2e/run.py list
 desktop-e2e-doctor:

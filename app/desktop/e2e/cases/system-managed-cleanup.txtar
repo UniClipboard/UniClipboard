@@ -1,0 +1,22 @@
+# Case: Native clipboard holder and excluded-tag cleanup
+# Mode: native
+# Environment: disposable-guest
+# Purpose: Verify managed received files and native clipboard leases under unified cleanup.
+# Steps:
+#   Pair an owned production peer; receive a synthetic user file onto the real clipboard; enable count cleanup with an excluded tag; remove the exclusion; replace the clipboard.
+# Expected:
+#   Exclusion protects history and file; removing it deletes eligible history but preserves the held native file; replacing the clipboard reclaims only the managed file and preserves the original source.
+# Forbidden:
+#   Directory fixtures, deleting a user-owned source, treating history deletion as holder release, or claims of two graphical endpoints.
+
+system-board-write 'UNIC-D managed cleanup baseline'
+start
+ui-click listItem 设置…
+ui-wait listItem 同步
+ui-click listItem 同步
+ui-enabled switch 启用同步
+ui-click switch 启用同步
+config-equals sync.enabled true
+connect-policy-peer
+system-file-cleanup
+screenshot native-holder-released

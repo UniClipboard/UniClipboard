@@ -1,0 +1,22 @@
+# Case: Physical paste into a real target application
+# Mode: native
+# Environment: disposable-guest
+# Purpose: Prove actual cross-application insertion independently from clipboard application.
+# Steps:
+#   Apply a synthetic history item through physical Enter; start an isolated GNOME Text Editor; paste, read inserted text and save through physical guest keys.
+# Expected:
+#   The owned editor has OS focus, its accessible text matches exactly, and its saved document matches the fixture including GtkSourceView's default trailing newline.
+# Forbidden:
+#   Host clipboard access, personal editor state, keys sent without verified focus, or treating dispatch alone as insertion.
+
+start
+submit target 'UNIC-D native target 中文'
+ui-wait listItem 'UNIC-D native target 中文'
+ui-click listItem 'UNIC-D native target 中文'
+system-key Enter
+system-board-equals 'UNIC-D native target 中文'
+screenshot applied-before-target
+system-paste-target 'UNIC-D native target 中文' expected-target.txt
+
+-- expected-target.txt --
+UNIC-D native target 中文

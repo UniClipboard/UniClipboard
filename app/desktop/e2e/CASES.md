@@ -1575,7 +1575,8 @@ role-checkpoint initial
 [windows] ui-wait button '最小化'
 screenshot custom-history
 [windows] windows-frame custom-history-os custom
-ui-key 'CmdOrCtrl+,'
+ui-click button '切换侧栏'
+ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
@@ -1593,7 +1594,8 @@ ui-wait listItem 'Windows chrome synthetic history'
 [windows] ui-absent button '关闭'
 screenshot system-history
 [windows] windows-frame system-history-os system
-ui-key 'CmdOrCtrl+,'
+ui-click button '切换侧栏'
+ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 ui-reveal switch '使用系统边框'
@@ -1608,7 +1610,8 @@ ui-wait listItem 'Windows chrome synthetic history'
 [windows] ui-wait button '最小化'
 screenshot custom-reopened
 [windows] windows-frame custom-reopened-os custom
-ui-key 'CmdOrCtrl+,'
+ui-click button '切换侧栏'
+ui-click listItem '设置…'
 ui-absent text '部分设置将在下次启动时生效。'
 
 [windows] ui-click button '最大化'
@@ -1620,6 +1623,7 @@ ui-absent text '部分设置将在下次启动时生效。'
 
 [windows] ui-click button '切换设置侧栏'
 [windows] ui-click listItem '插件'
+[windows] ui-wait button '内容分类'
 [windows] ui-click button '内容分类'
 [windows] ui-wait button '返回插件列表'
 [windows] ui-wait button '关闭'
@@ -1647,7 +1651,8 @@ role-checkpoint initial
 [windows] ui-wait button '最小化'
 screenshot custom-history
 [windows] windows-frame custom-history-os custom
-ui-key 'CmdOrCtrl+,'
+ui-click button '切换侧栏'
+ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
@@ -1665,7 +1670,8 @@ ui-wait listItem 'Windows chrome synthetic history'
 [windows] ui-absent button '关闭'
 screenshot system-history
 [windows] windows-frame system-history-os system
-ui-key 'CmdOrCtrl+,'
+ui-click button '切换侧栏'
+ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 ui-reveal switch '使用系统边框'
@@ -1680,7 +1686,8 @@ ui-wait listItem 'Windows chrome synthetic history'
 [windows] ui-wait button '最小化'
 screenshot custom-reopened
 [windows] windows-frame custom-reopened-os custom
-ui-key 'CmdOrCtrl+,'
+ui-click button '切换侧栏'
+ui-click listItem '设置…'
 ui-absent text '部分设置将在下次启动时生效。'
 
 [windows] ui-click button '最大化'
@@ -1692,6 +1699,7 @@ ui-absent text '部分设置将在下次启动时生效。'
 
 [windows] ui-click button '切换设置侧栏'
 [windows] ui-click listItem '插件'
+[windows] ui-wait button '内容分类'
 [windows] ui-click button '内容分类'
 [windows] ui-wait button '返回插件列表'
 [windows] ui-wait button '关闭'

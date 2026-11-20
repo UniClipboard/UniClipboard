@@ -1,0 +1,10 @@
+{
+  "gui_launch": "NOT_RUN",
+  "installer_execution": "NOT_RUN",
+  "local_downloads_candidates_profiles_and_task_caches_removed": true,
+  "local_vm_launch": "NOT_RUN",
+  "public_release_registry_or_channel_mutation": false,
+  "remote_test_artifact_retention_days": 7,
+  "retained": "small redacted JSON receipts and SHA256SUMS only",
+  "status": "passed"
+}

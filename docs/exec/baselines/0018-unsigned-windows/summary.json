@@ -59,6 +59,7 @@
     ]
   },
   "branch": "feat/release-unsigned-windows",
+  "credential_audit_correction": "See schema-2 credentials-and-routes.json: existing Cloudflare and repository-shared organization Access credentials are configured; S3 wiring/current external validity are separate.",
   "desktop": {
     "cli_lock": {
       "binaries_sha256": {

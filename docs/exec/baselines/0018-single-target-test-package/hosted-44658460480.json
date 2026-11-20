@@ -1,0 +1,97 @@
+{
+  "artifacts": [],
+  "conclusion": "failure",
+  "created_at": "2026-11-20T02:06:52Z",
+  "event": "workflow_dispatch",
+  "expected_error": "format does not match target",
+  "head_branch": "feat/desktop-test-package",
+  "head_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+  "html_url": "https://github.com/UniClipboard/UniClipboard/actions/runs/44658460480",
+  "id": 44658460480,
+  "jobs": [
+    {
+      "completed_at": "2026-11-20T02:07:29Z",
+      "conclusion": "failure",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "test-package / select",
+      "runner_name": "GitHub Actions 1000069078",
+      "started_at": "2026-11-20T02:07:22Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:53Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "desktop",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:54Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:53Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "prepare",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:54Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:53Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "native-gui",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:54Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:53Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "targets",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:54Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:54Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "assemble",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:54Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:53Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "sandboxes",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:07:03Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:07:29Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "test-package / Test package (${{ needs.select.outputs.target }})",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:07:30Z",
+      "status": "completed"
+    }
+  ],
+  "native_job_count": 0,
+  "normal_build_paths_skipped": true,
+  "observed_error": "format does not match target",
+  "run_attempt": 1,
+  "status": "completed",
+  "validation_status": "passed_expected_rejection"
+}

@@ -1,0 +1,155 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:5f03a8ced28fd96c51bc7bce151438b84662401cde231bf3457fa6fe03524b70",
+      "expired": false,
+      "id": 14594363565,
+      "name": "desktop-test-windows-arm64",
+      "size_in_bytes": 74100574
+    }
+  ],
+  "conclusion": "success",
+  "created_at": "2026-11-20T02:06:22Z",
+  "download_readback": {
+    "build_controller_sha256": "7c7623c5e00b588f8eec73014d45fdb3af65a5edf4536f0bb418f3a90aac1b23",
+    "cli_binaries_sha256": {
+      "unic.exe": "780afa6651b3c8ee57dd88e580b22684046af98b7defbed58940ff470a6bce60",
+      "unicd.exe": "c75af88f1ded30f39c4d4fd141898f487f27a786f2e36aff6424a443146d92a4"
+    },
+    "files": {
+      "SHA256SUMS": "574b67e35a0ec17cab3eac7c720d2653cee5f32175fbcae946dec568cb55787b",
+      "TESTING.md": "1f373947848d28b0eec9eae7d30337cb7b61c1f1a415072cedf228397f758f1f",
+      "artifacts.json": "45a47e9f6c7155075804d6ba591b77aef3b01408ef9a60bb98c6b02d82fa8d2b",
+      "cli-manifest.json": "baa2786171421f04db3c50c800ff0f692003769c2237f397c9586270c3884eee",
+      "stage-manifest.json": "c7bb74acd6495effd446be6f485094d35ac9682c854eabfe71b9aada58bc2723",
+      "test-ca1d79d6961c-uniclipboard-2.0.0-build.1-windows-arm64-setup.exe": "ff4f6b4921e2ead28f1308b12542004c623e88619f58721eb721620d34e2728e",
+      "test-package.json": "898db4e16126fe5f7a6d4767f0360377af92ae7657f359ac4557b1fc0f41c6fb"
+    },
+    "native_acceptance": {
+      "native_identity": true,
+      "package_lifecycle": false,
+      "shared_configuration_api": true,
+      "signing": false
+    },
+    "stage_manifest_sha256": "c7bb74acd6495effd446be6f485094d35ac9682c854eabfe71b9aada58bc2723",
+    "status": "passed"
+  },
+  "event": "workflow_dispatch",
+  "head_branch": "feat/desktop-test-package",
+  "head_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+  "html_url": "https://github.com/UniClipboard/UniClipboard/actions/runs/44658401848",
+  "id": 44658401848,
+  "jobs": [
+    {
+      "completed_at": "2026-11-20T02:06:47Z",
+      "conclusion": "success",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "test-package / select",
+      "runner_name": "GitHub Actions 1000069074",
+      "started_at": "2026-11-20T02:06:34Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "desktop",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:23Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "sandboxes",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:24Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "native-gui",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:24Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [],
+      "name": "targets",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:24Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "assemble",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:24Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:06:23Z",
+      "conclusion": "skipped",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "name": "prepare",
+      "runner_name": null,
+      "started_at": "2026-11-20T02:06:30Z",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-11-20T02:13:36Z",
+      "conclusion": "success",
+      "labels": [
+        "windows-11-arm"
+      ],
+      "name": "test-package / Test package (windows-arm64)",
+      "runner_name": "GitHub Actions 1000069077",
+      "started_at": "2026-11-20T02:06:50Z",
+      "status": "completed"
+    }
+  ],
+  "native_job_count": 1,
+  "native_job_seconds": 406.0,
+  "normal_build_paths_skipped": true,
+  "package_receipt": {
+    "artifact": {
+      "container_signed": false,
+      "file": "test-ca1d79d6961c-uniclipboard-2.0.0-build.1-windows-arm64-setup.exe",
+      "format": "setup.exe",
+      "notarized": false,
+      "payload_signed": false,
+      "sha256": "ff4f6b4921e2ead28f1308b12542004c623e88619f58721eb721620d34e2728e",
+      "signature": "",
+      "signed": false,
+      "size": 74121937
+    },
+    "cli_manifest_sha256": "baa2786171421f04db3c50c800ff0f692003769c2237f397c9586270c3884eee",
+    "format": "setup.exe",
+    "gui": "not_run",
+    "installation": "not_run",
+    "publication": "not_requested",
+    "purpose": "device-testing",
+    "schema": 1,
+    "source_clean": true,
+    "source_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+    "status": "passed",
+    "target": "windows-arm64",
+    "workflow_run_attempt": "1",
+    "workflow_run_id": "44658401848"
+  },
+  "run_attempt": 1,
+  "status": "completed"
+}

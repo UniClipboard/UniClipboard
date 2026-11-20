@@ -23,6 +23,10 @@ Partial external failures are recorded per package and may be retried with the s
 
 ## Publication authority
 
+Single-target device-test construction is a separate, nonpublishing operation. It builds a fresh native CLI from the selected source and locks its exact accepted manifest into a development Desktop stage. It may select only one declared target and a compatible format. Test dispatch rejects distribution and other construction-mode flags. It never edits checked-in release metadata or satisfies a complete product candidate matrix.
+
+Test packages explicitly preserve unsigned/not-notarized states, have disabled automatic updates, and retain the existing installation identity. Their downloadable bundle has one `test-<source>-` package plus exact input manifests, a test-purpose receipt and full SHA-256 inventory. The test workflow has no publication credentials or write/OIDC permissions. A successful test package is not release, installer-lifecycle, GUI or public-availability evidence. Existing production signing, source, CLI-lock and complete-catalogue gates remain unchanged.
+
 Public publication requires a clean source SHA and required native/process acceptance.
 CLI release and promotion use npm OIDC trusted publishing. Workflow identities must be authorized per package, with dist-tag management enabled for promotion.
 Local orchestration acceptance uses only a loopback npm registry fixture; fixture acceptance cannot establish npm OIDC/provenance or public availability.

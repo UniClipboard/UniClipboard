@@ -1,0 +1,42 @@
+{
+  "artifact": {
+    "container_signed": false,
+    "file": "test-ca1d79d6961c-uniclipboard-2.0.0-build.1-darwin-arm64.app.tar.gz",
+    "format": "app.tar.gz",
+    "notarized": false,
+    "payload_signed": false,
+    "sha256": "0002e72f75b992809c8e302d6d0d6f74eefd7563b78db8ee812f29ca64afd69f",
+    "signature": "",
+    "signed": false,
+    "size": 78264916
+  },
+  "checks": [
+    "darwin-arm64 selects exactly its native runner/default format",
+    "darwin-amd64 selects exactly its native runner/default format",
+    "windows-arm64 selects exactly its native runner/default format",
+    "windows-amd64 selects exactly its native runner/default format",
+    "linux-arm64 selects exactly its native runner/default format",
+    "linux-amd64 selects exactly its native runner/default format",
+    "invalid target, mismatched format and unsafe format rejected",
+    "wrong-host build rejected before output",
+    "one target/format built from exact source",
+    "development provenance and disabled updater",
+    "native identity and shared API accepted",
+    "exact local CLI manifest locked",
+    "checked-in release metadata untouched",
+    "one explicitly unsigned test package",
+    "unic archive bytes match immutable CLI lock",
+    "unicd archive bytes match immutable CLI lock",
+    "complete downloadable checksum inventory verified",
+    "existing output refused",
+    "tampered and extra downloadable files rejected",
+    "temporary build workspace removed"
+  ],
+  "scope": "real native CLI/Desktop/archive processes; no GUI, installation or public publication",
+  "source_files": {
+    "e2e/packaging/test_package.py": "9f9c3b3fb59bd187f644288c6e22bcf01dd697f82f3ee56837e9999082738bb8",
+    "tools/package/desktop_test.py": "dd6c4714c521c620082cbf3b10ce8d0b55dde52b90877b35a7970d1fb2f40a13"
+  },
+  "source_sha": "ca1d79d6961c4b2f4c84a4ce252db113559a824e",
+  "status": "passed"
+}

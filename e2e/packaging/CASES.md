@@ -1,5 +1,7 @@
 # Package lifecycle failure inventory
 
+For one-target construction failures and replay, read [single-target test package acceptance](../../docs/exec/0018-single-target-test-package.md). Run `python3 e2e/packaging/test_package.py` on macOS/Linux before changing that controller.
+
 Write these expectations before implementing production packaging.
 
 1. Missing CLI manifest, wrong lock digest, wrong CLI version/build, duplicate target, unsafe archive member, changed binary or missing acceptance: reject staging before building Desktop.

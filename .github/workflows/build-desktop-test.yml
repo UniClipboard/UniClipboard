@@ -1,0 +1,111 @@
+name: Build Desktop test package
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: true
+      target:
+        type: string
+        required: true
+      format:
+        type: string
+        default: default
+      conflicting_options:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      runner: ${{ steps.select.outputs.runner }}
+      target: ${{ steps.select.outputs.target }}
+      format: ${{ steps.select.outputs.format }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - id: select
+        env:
+          TARGET: ${{ inputs.target }}
+          FORMAT: ${{ inputs.format }}
+          CONFLICTING_OPTIONS: ${{ inputs.conflicting_options }}
+        run: |
+          if [ "$CONFLICTING_OPTIONS" = true ]; then
+            echo '::error::A test target cannot be combined with distribution, desktop_only, native_gui or sandbox_run_id.'
+            exit 1
+          fi
+          python3 tools/package/desktop_test.py plan --target "$TARGET" --format "$FORMAT" > "$RUNNER_TEMP/test-plan.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          plan = json.loads((Path(os.environ['RUNNER_TEMP']) / 'test-plan.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              for name in ['runner', 'target', 'format']:
+                  stream.write(f'{name}={plan[name]}\n')
+          PY
+  package:
+    name: Test package (${{ needs.select.outputs.target }})
+    needs: select
+    runs-on: ${{ needs.select.outputs.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.4'
+          package-manager-cache: false
+      - name: Install NSIS only for setup EXE
+        if: needs.select.outputs.format == 'setup.exe'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          choco install nsis --yes --no-progress --version=3.11
+          'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build one test package with a fresh native CLI lock
+        env:
+          TARGET: ${{ needs.select.outputs.target }}
+          FORMAT: ${{ needs.select.outputs.format }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: python tools/package/desktop_test.py build --target "$TARGET" --format "$FORMAT" --source-sha "$SOURCE_SHA" --output dist/test-package
+      - name: Verify complete downloadable inventory
+        run: python tools/package/desktop_test.py verify --directory dist/test-package
+      - name: Summarize test artifact
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          receipt = json.loads(Path('dist/test-package/test-package.json').read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write('# Desktop device-test package\n\n')
+              stream.write(f"Target: `{receipt['target']}`. Format: `{receipt['format']}`.\n\n")
+              stream.write(f"Source: `{receipt['source_sha']}`.\n\n")
+              stream.write(f"SHA-256: `{receipt['artifact']['sha256']}`.\n\n")
+              stream.write('Download the desktop-test artifact below. Read TESTING.md and verify SHA256SUMS before installation.\n\n')
+              stream.write('Unsigned, test-only; automatic updates disabled. Existing installation identity is retained. No public release or channel changed.\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-test-${{ needs.select.outputs.target }}
+          path: dist/test-package/
+          retention-days: 7
+          if-no-files-found: warn

@@ -1,0 +1,10 @@
+{
+  "authenticated": false,
+  "bounded_response": true,
+  "bytes_read": 2877,
+  "expected_github_asset_digest": "sha256:07e5161104b7ae76508dbfb4df8d02198e874b06d1a945fe287af8eb840baf17",
+  "http_status": 200,
+  "matches_github_asset": true,
+  "sha256": "07e5161104b7ae76508dbfb4df8d02198e874b06d1a945fe287af8eb840baf17",
+  "url": "https://release.uniclipboard.app/artifacts/v1.6.2/SHA256SUMS.txt?source=origin"
+}

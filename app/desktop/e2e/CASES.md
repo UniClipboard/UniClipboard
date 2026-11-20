@@ -68,6 +68,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 | [window-chrome-native-dark](#window-chrome-native-dark) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
+| [window-chrome-native-input](#window-chrome-native-input) | native | Verify physical input on the owned main window without clipboard access. |
 | [window-chrome-native](#window-chrome-native) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
 | [window-chrome-setup](#window-chrome-setup) | native | Keep Windows caption actions available before the ordinary application toolbar exists. |
 | [window-chrome-startup-error](#window-chrome-startup-error) | native | Keep Windows custom controls available when real service startup fails. |
@@ -1631,6 +1632,31 @@ ui-absent text '部分设置将在下次启动时生效。'
 [windows] role-close-gui caption
 [windows] role-reopen-gui
 [windows] ui-wait listItem 'Windows chrome synthetic history'
+```
+
+## window-chrome-native-input
+
+Native Windows toolbar drag and resize
+
+Steps: Open General through the existing sidebar, drag empty toolbar space, resize the native edge and double-click empty toolbar space.
+
+Expected: OS geometry changes, IsZoomed confirms maximize, caption close leaves tray/service alive, and tray command reopens history.
+
+Forbidden: Personal profiles, broad process termination, clipboard access, or claiming Windows Snap acceptance.
+
+```text
+[!windows] skip 'Windows physical window input only'
+start 640 560 light native
+submit chrome-input 'Windows chrome input synthetic history'
+ui-wait listItem 'Windows chrome input synthetic history'
+ui-click button '切换侧栏'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+windows-frame physical-drag-resize-os custom drag-resize
+role-close-gui caption
+role-reopen-gui
+ui-wait listItem 'Windows chrome input synthetic history'
+windows-frame reopened-history-os custom
 ```
 
 ## window-chrome-native

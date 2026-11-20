@@ -1,0 +1,19 @@
+# Case: Native Windows toolbar drag and resize
+# Mode: native
+# Purpose: Verify physical input on the owned main window without clipboard access.
+# Steps: Open General through the existing sidebar, drag empty toolbar space, resize the native edge and double-click empty toolbar space.
+# Expected: OS geometry changes, IsZoomed confirms maximize, caption close leaves tray/service alive, and tray command reopens history.
+# Forbidden: Personal profiles, broad process termination, clipboard access, or claiming Windows Snap acceptance.
+
+[!windows] skip 'Windows physical window input only'
+start 640 560 light native
+submit chrome-input 'Windows chrome input synthetic history'
+ui-wait listItem 'Windows chrome input synthetic history'
+ui-click button '切换侧栏'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+windows-frame physical-drag-resize-os custom drag-resize
+role-close-gui caption
+role-reopen-gui
+ui-wait listItem 'Windows chrome input synthetic history'
+windows-frame reopened-history-os custom

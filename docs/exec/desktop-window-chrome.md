@@ -142,4 +142,10 @@ replay of `windows_chrome.ps1 -Action drag-resize`, with the current owned PID a
 exact binary from its role receipt. The helper refuses a mismatched executable
 or unavailable foreground target. It never reads or writes a clipboard.
 
+Additional canonical fallback cases are `window-chrome-setup` (welcome,
+migration confirmation and synthetic passphrase pages) and
+`window-chrome-startup-error` (a real service startup failure caused by an owned
+directory at the database path). The sized native cases explicitly select the
+platform skin; the older sized runner default would otherwise force macOS.
+
 Native Windows results are pending coordinated VM access. No Snap claim is made.

@@ -69,6 +69,8 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 | [window-chrome-native-dark](#window-chrome-native-dark) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
 | [window-chrome-native](#window-chrome-native) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
+| [window-chrome-setup](#window-chrome-setup) | native | Keep Windows caption actions available before the ordinary application toolbar exists. |
+| [window-chrome-startup-error](#window-chrome-startup-error) | native | Keep Windows custom controls available when real service startup fails. |
 | [window-chrome](#window-chrome) | view | Select native title bars on all platforms and put Windows custom controls in the application toolbar. |
 
 ## builtin-plugin-policy
@@ -1566,7 +1568,7 @@ Expected: The same boolean persists; the service has no host-only restart entry;
 Forbidden: Service restart, second caption row, system clipboard access, physical-input claims, or using window-content screenshots as proof of OS decorations.
 
 ```text
-start 600 720 dark
+start 600 720 dark native
 submit chrome-native 'Windows chrome synthetic history'
 ui-wait listItem 'Windows chrome synthetic history'
 role-checkpoint initial
@@ -1634,7 +1636,7 @@ Expected: The same boolean persists; the service has no host-only restart entry;
 Forbidden: Service restart, second caption row, system clipboard access, physical-input claims, or using window-content screenshots as proof of OS decorations.
 
 ```text
-start 640 720 light
+start 640 720 light native
 submit chrome-native 'Windows chrome synthetic history'
 ui-wait listItem 'Windows chrome synthetic history'
 role-checkpoint initial
@@ -1689,6 +1691,59 @@ ui-absent text '部分设置将在下次启动时生效。'
 [windows] role-close-gui caption
 [windows] role-reopen-gui
 [windows] ui-wait listItem 'Windows chrome synthetic history'
+```
+
+## window-chrome-setup
+
+Native setup and migration fallback controls
+
+Steps: Open isolated first-install setup, enter migration confirmation and the synthetic passphrase fallback, and exercise caption actions.
+
+Expected: Each setup page has one minimal fallback band; the existing migration controls remain usable; the service remains absent before consent.
+
+Forbidden: Personal profiles, real credential access, clipboard changes, an extra normal-page caption row, or native-frame claims from content captures.
+
+```text
+start-setup complete
+ui-wait text '欢迎使用 UniClipboard'
+service-absent
+screenshot setup-welcome
+[windows] windows-frame setup-welcome-os custom
+ui-click button '开始使用'
+ui-wait button '开始迁移'
+screenshot setup-confirmation
+[windows] windows-frame setup-confirmation-os custom
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+screenshot setup-passphrase
+[windows] windows-frame setup-passphrase-os custom
+[windows] ui-click button '最大化'
+[windows] windows-frame setup-maximized-os custom maximized
+[windows] ui-click button '还原'
+[windows] ui-click button '最小化'
+[windows] windows-frame setup-minimized-os custom minimized
+```
+
+## window-chrome-startup-error
+
+Native startup-error window controls
+
+Steps: Create an owned directory at the database path, launch a completed private profile, and inspect the resulting retry page and its fallback controls.
+
+Expected: A real startup failure leaves a visible retry page with one draggable fallback band and functioning caption actions.
+
+Forbidden: Personal data, a fake success screen, missing controls, system clipboard access, or OS frame claims based on content capture.
+
+```text
+start-error
+ui-wait button '重试' 60
+screenshot startup-error
+[windows] windows-frame startup-error-os custom
+[windows] ui-click button '最大化'
+[windows] windows-frame startup-error-maximized-os custom maximized
+[windows] ui-click button '还原'
+[windows] ui-click button '最小化'
+[windows] windows-frame startup-error-minimized-os custom minimized
 ```
 
 ## window-chrome

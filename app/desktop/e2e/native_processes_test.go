@@ -268,7 +268,7 @@ func (s *desktopScenario) nativeRoleCheckpoint(name string) error {
 	if err != nil {
 		return err
 	}
-	if err = os.WriteFile(filepath.Join(s.out, "roles-"+name+".json"), raw, 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(s.out, fmt.Sprintf("roles-%02d-%s.json", len(s.result.Steps), name)), raw, 0600); err != nil {
 		return err
 	}
 	s.result.Assertions = append(s.result.Assertions, "native role checkpoint "+name+" verified distinct OS PIDs and private profile identity")

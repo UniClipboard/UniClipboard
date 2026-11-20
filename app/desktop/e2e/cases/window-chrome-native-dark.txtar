@@ -5,7 +5,7 @@
 # Expected: The same boolean persists; the service has no host-only restart entry; a new GUI clears pending; Windows shows exactly one set of caption buttons for its mode.
 # Forbidden: Service restart, second caption row, system clipboard access, physical-input claims, or using window-content screenshots as proof of OS decorations.
 
-start 600 720 dark
+start 600 720 dark native
 submit chrome-native 'Windows chrome synthetic history'
 ui-wait listItem 'Windows chrome synthetic history'
 role-checkpoint initial

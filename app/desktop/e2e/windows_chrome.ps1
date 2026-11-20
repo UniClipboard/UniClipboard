@@ -20,6 +20,7 @@ public static class ChromeOS {
  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
  [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int n);
@@ -65,7 +66,7 @@ if ($Action -eq 'maximized') {
  $scale = [ChromeOS]::GetDpiForWindow($hwnd)/96.0
  # General settings has no interactive controls in the center of its toolbar.
  $x = $origin.X + [int](250*$scale); $y = $origin.Y + [int](24*$scale)
- Pointer $x $y; Down
+ Pointer $x $y; Down; Start-Sleep -Milliseconds 60
  try { Pointer ($x+44) ($y+35); Start-Sleep -Milliseconds 200 } finally { Up }
  $moved = Rect
  if ($moved.Left -eq $before.Left -and $moved.Top -eq $before.Top) { throw 'Empty toolbar drag did not move the OS window' }
@@ -95,7 +96,10 @@ $topInset = ($origin.Y-$rect.Top)*96.0/$dpi
 if ($Mode -eq 'system' -and $topInset -lt 23) { throw "Native title bar absent: top inset $topInset" }
 if ($Mode -eq 'custom' -and $topInset -gt 20) { throw "Unexpected native title row in custom mode: top inset $topInset" }
 $checks += "OS client/top-frame geometry confirms $Mode decoration"
-$bitmap = New-Object Drawing.Bitmap(($rect.Right-$rect.Left),($rect.Bottom-$rect.Top))
+$screenLeft = [ChromeOS]::GetSystemMetrics(76); $screenTop = [ChromeOS]::GetSystemMetrics(77)
+$screenRight = $screenLeft+[ChromeOS]::GetSystemMetrics(78); $screenBottom = $screenTop+[ChromeOS]::GetSystemMetrics(79)
+if ($rect.Left -lt $screenLeft -or $rect.Top -lt $screenTop -or $rect.Right -gt $screenRight -or $rect.Bottom -gt $screenBottom) { throw 'Full owned window is outside the desktop; refusing a partial OS screenshot' }
+$bitmap = [Drawing.Bitmap]::new(($rect.Right-$rect.Left),($rect.Bottom-$rect.Top))
 $graphics = [Drawing.Graphics]::FromImage($bitmap)
 try {
  $graphics.CopyFromScreen($rect.Left,$rect.Top,0,0,$bitmap.Size)

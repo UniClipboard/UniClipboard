@@ -1,5 +1,6 @@
 # Case: Native Windows toolbar drag and resize
 # Mode: native
+# Environment: owned-window-guest
 # Purpose: Verify physical input on the owned main window without clipboard access.
 # Steps: Open General through the existing sidebar, drag empty toolbar space, resize the native edge and double-click empty toolbar space.
 # Expected: OS geometry changes, IsZoomed confirms maximize, caption close leaves tray/service alive, and tray command reopens history.

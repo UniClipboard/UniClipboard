@@ -1637,6 +1637,8 @@ ui-absent text '部分设置将在下次启动时生效。'
 
 Native Windows toolbar drag and resize
 
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
 Steps: Open General through the existing sidebar, drag empty toolbar space, resize the native edge and double-click empty toolbar space.
 
 Expected: OS geometry changes, IsZoomed confirms maximize, caption close leaves tray/service alive, and tray command reopens history.

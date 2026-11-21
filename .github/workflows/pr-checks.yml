@@ -99,7 +99,7 @@ jobs:
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           fi
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1 fonts-noto-cjk
       - name: Execute the canonical Desktop suite
         run: xvfb-run -a -s '-screen 0 1600x1000x24' make desktop-e2e SHARD=${{ matrix.shard }}/3
       - uses: actions/upload-artifact@v4

@@ -66,10 +66,10 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [tag-manager](#tag-manager) | view | Tag management, assignment, rename, merge, deletion and protected built-in tags. |
 | [token-search](#token-search) | view | Composite search prefixes, counts, completion, literal input, caret handling and Escape. |
 | [toolbar-alignment](#toolbar-alignment) | view | Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-theme control pixel contrast. |
-| [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
-| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
-| [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
-| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep unified production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep unified production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep unified production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep unified production history controls within the toolbar at 600x480. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 | [window-chrome-native-dark](#window-chrome-native-dark) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
@@ -1484,7 +1484,7 @@ acceptance desktopui toolbar-alignment
 
 Native toolbar bounds at 1100 points in dark mode
 
-Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -1495,18 +1495,18 @@ start 1100 720 dark
 submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot collapsed
-ui-click button '搜索历史'
+screenshot idle
+ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot expanded
+screenshot query
 ui-set comboBox '搜索历史' ''
 ui-key Escape
 ui-key Escape
-ui-click radio '网格'
+ui-click toggleButton '网格'
 ui-toolbar-contained
 screenshot grid
 ui-click menuButton '更多操作'
@@ -1518,7 +1518,7 @@ ui-key Escape
 
 Native toolbar bounds at 600 points in dark mode
 
-Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -1529,18 +1529,18 @@ start 600 480 dark
 submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot collapsed
-ui-click button '搜索历史'
+screenshot idle
+ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot expanded
+screenshot query
 ui-set comboBox '搜索历史' ''
 ui-key Escape
 ui-key Escape
-ui-click radio '网格'
+ui-click toggleButton '网格'
 ui-toolbar-contained
 screenshot grid
 ui-click menuButton '更多操作'
@@ -1552,7 +1552,7 @@ ui-key Escape
 
 Native toolbar bounds at 1100 points in light mode
 
-Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -1563,18 +1563,18 @@ start 1100 720 light
 submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot collapsed
-ui-click button '搜索历史'
+screenshot idle
+ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot expanded
+screenshot query
 ui-set comboBox '搜索历史' ''
 ui-key Escape
 ui-key Escape
-ui-click radio '网格'
+ui-click toggleButton '网格'
 ui-toolbar-contained
 screenshot grid
 ui-click menuButton '更多操作'
@@ -1586,7 +1586,7 @@ ui-key Escape
 
 Native toolbar bounds at 600 points in light mode
 
-Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -1597,18 +1597,18 @@ start 600 480 light
 submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot collapsed
-ui-click button '搜索历史'
+screenshot idle
+ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot expanded
+screenshot query
 ui-set comboBox '搜索历史' ''
 ui-key Escape
 ui-key Escape
-ui-click radio '网格'
+ui-click toggleButton '网格'
 ui-toolbar-contained
 screenshot grid
 ui-click menuButton '更多操作'

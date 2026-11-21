@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -48,8 +49,18 @@ func scenarioSidebarNavigation(t *testing.T) {
 					t.Error("builtin content types should stay out of the sidebar by default")
 				}
 				toggle, ok := tt.AccessByRole(ui.RoleButton, "切换侧栏")
-				if !ok || toggle.Bounds.W != 28 || toggle.Bounds.H != 28 || toggle.Bounds.X+toggle.Bounds.W != 238 {
-					t.Errorf("sidebar toggle is oversized or misaligned with navigation right edge: %+v", toggle.Bounds)
+				if !ok || toggle.Bounds.W != 28 || toggle.Bounds.H != 28 {
+					t.Errorf("sidebar toggle must retain its 28-DIP hit target: %+v", toggle.Bounds)
+				}
+				if runtime.GOOS == "darwin" {
+					if toggle.Bounds.X+toggle.Bounds.W != 238 {
+						t.Errorf("macOS toggle is misaligned with navigation right edge: %+v", toggle.Bounds)
+					}
+				} else {
+					bar, found := tt.AccessByRole(ui.RoleToolbar, "全部")
+					if !found || toggle.Bounds.X != bar.Bounds.X+16 || toggle.Bounds.Y < bar.Bounds.Y || toggle.Bounds.Y+toggle.Bounds.H > bar.Bounds.Y+bar.Bounds.H {
+						t.Errorf("host toolbar toggle is outside its leading inset: toggle=%+v toolbar=%+v", toggle.Bounds, bar.Bounds)
+					}
 				}
 				action, ok := tt.AccessByRole(ui.RoleButton, "管理标签")
 				if !ok || action.Bounds.W != 24 || action.Bounds.H != 24 {

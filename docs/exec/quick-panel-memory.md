@@ -241,3 +241,24 @@ contract. The contract and current role/window lifetimes remain unchanged here.
 Further allocation/texture ownership evidence is recorded in the
 [root-cause follow-up](quick-panel-root-cause.md). It does not turn this candidate
 into accepted sustained-memory delivery.
+
+## PR integration validation (2026-11-21)
+
+Integrated origin/v2 `57eaf75fd4e2b936379a7c45d5dc59af51fb81e7` (including
+Windows single-row chrome PR #2281) in merge commit `2f8d33b913998fcf91dfe4d145cecc12bbcdb489`.
+The only manual merge conflict was the architecture page's verified marker.
+Both sets of architecture content were preserved.
+
+Fresh canonical host race E2E passed on this merged source:
+
+- image-previews: `20261121T033510Z-336c6f73`.
+- quick-panel-contract: `20261121T033523Z-197481af`.
+- desktop-native-processes: `20261121T033523Z-a77d1405`, with recording, both
+  satellite renders, retained query and exact directory-board copies.
+
+Pinned lint 2.15.0 reported zero issues. Catalogue/Python syntax checks passed.
+The read-only PR context audit found no CONTEXT.md and no missing required
+business documentation. Architecture verification markers were refreshed.
+The earlier Windows program/performance hashes still identify their original
+frozen sources. The non-race Windows performance matrix was not rerun for this
+merged head. Sustained-memory acceptance remains HOLD.

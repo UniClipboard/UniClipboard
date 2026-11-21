@@ -383,3 +383,13 @@ across service restarts. Review cleanup policy before importing old real history
 ## Plugin configuration
 
 The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.
+
+## Sync backend selection
+
+`GET /v1/sync-backends` returns an array of `{id, implementation_id, transport_kind, pairing, external_channels}` for assembled sync backends. The current runtime has one instance per implementation. `pairing` describes device-pairing support and never applies to external channels. This projection contains no address, ticket, credential or process-private state. It does not attest to current network health.
+
+`POST /v1/code` and `POST /v1/pairing-ticket` accept an empty body or `{ "backend_id": "instance.id" }`. An empty selection uses Tailcat. Unknown selections and unsupported transports fail explicitly and never fall back. Backend selection does not grant trust. The existing fingerprint and complete device/binding revision approval still applies.
+
+CLI exposes `unic device backends` and `unic device addr --backend INSTANCE`. Desktop exposes the same backend selection in the invitation task. Standard backend policies use `plugins.instances."INSTANCE".sync` through the existing revision-checked configuration route. Enablement changes require service restart. Global sync and policies apply to the assembled running backend set while restart is pending. A zero-backend service retains local content, history and Actions.
+
+The single-instance external-process acceptance and remaining contract decision are recorded in the [workflow receipt](../exec/sync-plugin-workflow.md).

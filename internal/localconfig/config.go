@@ -174,15 +174,15 @@ func (c Config) ProcessorSettings(id string) (onError string, cfg map[string]any
 // A disabled external instance can retain its host settings across restarts.
 func dormantExternalPlugin(id string, in Instance) bool {
 	return !strings.HasPrefix(id, "builtin.") && strings.Contains(id, ".") &&
-		in.Enabled != nil && !*in.Enabled && in.Sync == (BackendSync{})
+		in.Enabled != nil && !*in.Enabled
 }
 
 // ExternalPlugins returns configured external IDs. The order key can also
 // include built-ins to position them explicitly.
 func (c Config) ExternalPlugins() []string {
-	out := slices.Clone(c.Plugins.Lua)
+	out := slices.DeleteFunc(slices.Clone(c.Plugins.Lua), func(id string) bool { return !c.PluginEnabled(id) })
 	for _, id := range c.Plugins.Order {
-		if !strings.HasPrefix(id, "builtin.") && !slices.Contains(out, id) {
+		if !strings.HasPrefix(id, "builtin.") && c.PluginEnabled(id) && !slices.Contains(out, id) {
 			out = append(out, id)
 		}
 	}
@@ -267,11 +267,21 @@ func (c Config) Settings() engine.Settings {
 	}
 }
 
-// backendPolicies is the complete policy of every backend this build ships.
+// BackendPolicy returns the configured standard policy for one runtime instance.
+func (c Config) BackendPolicy(id string) engine.BackendSyncPolicy {
+	return c.Plugins.Instances[id].Sync.policy()
+}
+
+// backendPolicies supplies explicit policies; Engine validates backend membership.
 func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
-	out := map[engine.PluginID]engine.BackendSyncPolicy{engine.BackendTailcat: engine.DefaultBackendPolicy()}
-	if in, ok := c.Plugins.Instances[string(engine.BackendTailcat)]; ok {
-		out[engine.BackendTailcat] = in.Sync.policy()
+	out := map[engine.PluginID]engine.BackendSyncPolicy{}
+	if c.PluginEnabled(string(engine.BackendTailcat)) {
+		out[engine.BackendTailcat] = c.Plugins.Instances[string(engine.BackendTailcat)].Sync.policy()
+	}
+	for _, id := range c.ExternalPlugins() {
+		if in := c.Plugins.Instances[id]; c.PluginEnabled(id) && in.Sync != (BackendSync{}) {
+			out[engine.PluginID(id)] = in.Sync.policy()
+		}
 	}
 	return out
 }
@@ -335,6 +345,9 @@ func (c Config) Validate() error {
 		lua[id] = true
 	}
 	for id, in := range c.Plugins.Instances {
+		if slices.Contains(c.Plugins.Lua, id) && (in.Enabled != nil || in.Sync != (BackendSync{})) {
+			return fmt.Errorf("plugins.instances.%q: Lua list membership controls enablement; Lua plugins have no sync policy", id)
+		}
 		if !validOnError(in.OnError) {
 			return fmt.Errorf(`plugins.instances.%q.on_error: must be "continue" or "block_sync"`, id)
 		}
@@ -343,8 +356,8 @@ func (c Config) Validate() error {
 		}
 		switch {
 		case lua[id]:
-			if in.Enabled != nil || in.Sync != (BackendSync{}) {
-				return fmt.Errorf("plugins.instances.%q: list membership enables external plugins; only on_error and config apply", id)
+			if in.Sync != (BackendSync{}) && in.OnError != "" {
+				return fmt.Errorf("plugins.instances.%q: a sync backend is not a processor", id)
 			}
 			continue
 		}
@@ -352,9 +365,6 @@ func (c Config) Validate() error {
 		case string(engine.BackendTailcat):
 			if in.OnError != "" {
 				return fmt.Errorf("plugins.instances.%q: a sync backend is not a processor", id)
-			}
-			if in.Enabled != nil {
-				return fmt.Errorf("plugins.instances.%q: this plugin cannot be switched off yet", id)
 			}
 		case builtintext.ID, builtinclassify.ID:
 			if in.Sync != (BackendSync{}) {

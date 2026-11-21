@@ -72,6 +72,7 @@ type Node struct {
 
 	luaDir          string
 	pluginMu        sync.Mutex
+	backends        []api.SyncBackendInfo
 	runningPlugins  map[string]luascripts.Script
 	pluginRevisions map[string]string
 	lua             map[string]luascripts.Script // as running, by plugin ID
@@ -127,7 +128,9 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		// History remembers files by path; they are never copied.
 		ResolveFileRef: resolveDesktopFile,
 	}
-	opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
+	if c.PluginEnabled(string(engine.BackendTailcat)) {
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
+	}
 	if c.PluginEnabled(builtinclassify.ID) {
 		onError, _ := c.ProcessorSettings(builtinclassify.ID)
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtinclassify.New(), OnError: onError})
@@ -171,6 +174,18 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 				}
 			}
 			opts.Plugins = append(opts.Plugins, engine.PluginInstance{Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events})
+		}
+	}
+	for _, in := range opts.Plugins {
+		var spec plugin.Spec
+		if in.Process != nil {
+			spec = in.Process.Spec
+		} else if in.Plugin != nil {
+			spec = in.Plugin.Spec()
+		}
+		if !in.Disabled && slices.Contains(spec.Capabilities, plugin.CapSyncBackend) {
+			n.backends = append(n.backends, api.SyncBackendInfo{ID: spec.ID, ImplementationID: spec.ID, TransportKind: spec.TransportKind,
+				Pairing: spec.TransportKind == plugin.TransportPeerSessions && !spec.ExternalChannels, ExternalChannels: spec.ExternalChannels})
 		}
 	}
 	e, err := engine.New(ctx, opts)
@@ -281,6 +296,19 @@ func (n *Node) pushSettings(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		// Assembly changes apply after restart. Policies still target the running
+		// instances, including a backend whose disable is pending restart.
+		policies := make(map[engine.PluginID]engine.BackendSyncPolicy)
+		configured := n.cfg.Current()
+		for id := range st.Settings.Value.BackendPolicies {
+			policies[id] = configured.BackendPolicy(string(id))
+		}
+		for id := range configured.Settings().BackendPolicies {
+			if s, ok := n.runningPlugins[string(id)]; ok && !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend) {
+				return errors.New("standard sync settings require a sync backend")
+			}
+		}
+		want.BackendPolicies = policies
 		if reflect.DeepEqual(st.Settings.Value, want) {
 			return nil
 		}
@@ -548,7 +576,14 @@ func (n *Node) Code(ctx context.Context) (api.Code, bool, error) {
 }
 
 func (n *Node) NewCode(ctx context.Context) (api.Code, error) {
-	c, err := n.e.CreatePairingCode(ctx)
+	return n.NewCodeVia(ctx, string(engine.BackendTailcat))
+}
+
+func (n *Node) NewCodeVia(ctx context.Context, backend string) (api.Code, error) {
+	if backend == "" {
+		backend = string(engine.BackendTailcat)
+	}
+	c, err := n.e.CreatePairingCodeVia(ctx, engine.PluginID(backend))
 	if err != nil {
 		return api.Code{}, apiErr(err, true)
 	}
@@ -582,7 +617,14 @@ func (n *Node) Pending(ctx context.Context) ([]api.PendingPeer, error) {
 
 // ExportTicket is an explicit request for a secret pairing ticket.
 func (n *Node) ExportTicket(ctx context.Context) (string, error) {
-	t, err := n.e.ExportPairingTicket(ctx)
+	return n.ExportTicketVia(ctx, string(engine.BackendTailcat))
+}
+
+func (n *Node) ExportTicketVia(ctx context.Context, backend string) (string, error) {
+	if backend == "" {
+		backend = string(engine.BackendTailcat)
+	}
+	t, err := n.e.ExportPairingTicketVia(ctx, engine.PluginID(backend))
 	if err != nil {
 		return "", apiErr(err, false)
 	}

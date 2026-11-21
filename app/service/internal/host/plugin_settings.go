@@ -39,7 +39,7 @@ func (n *Node) Plugins(context.Context) ([]api.PluginInfo, error) {
 			source = "local"
 		}
 		out = append(out, api.PluginInfo{ID: id, Version: s.Manifest.Version, Kind: s.Manifest.Kind, Source: source,
-			Configured: wanted, RunningVersion: running.Manifest.Version, HasSettings: s.Schema != nil, Restart: restart})
+			Capabilities: slices.Clone(s.Manifest.Capabilities), TransportKind: s.Manifest.TransportKind, ExternalChannels: s.Manifest.ExternalChannels, Configured: wanted, RunningVersion: running.Manifest.Version, HasSettings: s.Schema != nil, Restart: restart})
 	}
 	slices.SortFunc(out, func(a, b api.PluginInfo) int {
 		if a.ID < b.ID {

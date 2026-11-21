@@ -8,14 +8,17 @@ import (
 )
 
 type PluginInfo struct {
-	ID             string `json:"id"`
-	Version        string `json:"version"`
-	Kind           string `json:"kind"`
-	Source         string `json:"source"`
-	Configured     bool   `json:"configured_enabled"`
-	RunningVersion string `json:"running_version,omitempty"`
-	HasSettings    bool   `json:"has_settings"`
-	Restart        bool   `json:"restart_required"`
+	Capabilities     []string `json:"capabilities"`
+	TransportKind    string   `json:"transport_kind,omitempty"`
+	ExternalChannels bool     `json:"external_channels,omitempty"`
+	ID               string   `json:"id"`
+	Version          string   `json:"version"`
+	Kind             string   `json:"kind"`
+	Source           string   `json:"source"`
+	Configured       bool     `json:"configured_enabled"`
+	RunningVersion   string   `json:"running_version,omitempty"`
+	HasSettings      bool     `json:"has_settings"`
+	Restart          bool     `json:"restart_required"`
 }
 
 type PluginSettings struct {

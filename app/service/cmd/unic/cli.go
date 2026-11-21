@@ -69,7 +69,14 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		printPending(st.Pending)
 
 	case "device addr":
-		ticket, err := c.ExportTicket(short)
+		backend := ""
+		if len(args) != 0 {
+			if len(args) != 2 || args[0] != "--backend" || args[1] == "" {
+				return errors.New("usage: unic device addr [--backend INSTANCE]")
+			}
+			backend = args[1]
+		}
+		ticket, err := c.ExportTicketVia(short, backend)
 		if err != nil {
 			return err
 		}
@@ -131,6 +138,16 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 			fmt.Printf("# restart unicd to apply: %s\n", strings.Join(st.RestartRequired, ", "))
 		}
 		return toml.NewEncoder(os.Stdout).Encode(st.Config)
+
+	case "device backends":
+		if len(args) != 0 {
+			return errors.New("usage: unic device backends")
+		}
+		backends, err := c.SyncBackends(short)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(backends)
 
 	case "device list":
 		st, err := c.Status(short)

@@ -119,6 +119,8 @@ type liveState struct {
 	details                                    map[string]entry
 	config                                     config.State
 	actions                                    []api.Action
+	syncBackends                               []api.SyncBackendInfo
+	pairingBackend                             string
 	externalPlugins                            []api.PluginInfo
 	pending                                    map[string]api.PendingPeer
 	join                                       *api.PairResult
@@ -385,6 +387,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			var saved config.State
 			var actions []api.Action
 			var externalPlugins []api.PluginInfo
+			var syncBackends []api.SyncBackendInfo
 			var tags []string
 			var candidates []api.Candidate
 			historyChanged := more || previous
@@ -428,6 +431,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				saved, err = l.client.Config(ctx)
 				actions, _ = l.client.Actions(ctx)
 				externalPlugins, _ = l.client.Plugins(ctx)
+				syncBackends, _ = l.client.SyncBackends(ctx)
 			}
 			if err == nil {
 				tags, err = l.client.HistoryTags(ctx)
@@ -539,6 +543,17 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				l.config = saved
 				l.actions = actions
 				l.externalPlugins = externalPlugins
+				l.syncBackends = syncBackends
+				if l.pairingBackend == "" {
+					for _, b := range syncBackends {
+						if b.Pairing {
+							l.pairingBackend = b.ID
+							if b.ID == "builtin.tailcat" {
+								break
+							}
+						}
+					}
+				}
 				d.projectLiveConfig()
 				d.projectTags(tags)
 				previousName := ""
@@ -782,13 +797,14 @@ func (d *viewState) projectLiveConfig() {
 	d.options["telemetry"] = c.Telemetry.Enabled
 }
 func (d *viewState) newLiveCode() {
-	if d.live.busy {
+	if d.live.busy || d.live.pairingBackend == "" {
 		return
 	}
 	d.live.codeAttempted = true
 	client := d.live.client
+	backend := d.live.pairingBackend
 	d.mutate(func(ctx context.Context) error {
-		code, err := client.NewCode(ctx)
+		code, err := client.NewCodeVia(ctx, backend)
 		if err == nil {
 			select {
 			case d.live.results <- func() { d.live.code = code; d.inviteCode = code.Code }:
@@ -802,13 +818,14 @@ func (d *viewState) newLiveCode() {
 }
 
 func (d *viewState) newLiveTicket() {
-	if d.live.busy {
+	if d.live.busy || d.live.pairingBackend == "" {
 		return
 	}
 	d.live.ticketAttempted = true
 	client := d.live.client
+	backend := d.live.pairingBackend
 	d.mutate(func(ctx context.Context) error {
-		ticket, err := client.ExportTicket(ctx)
+		ticket, err := client.ExportTicketVia(ctx, backend)
 		if err == nil {
 			select {
 			case d.live.results <- func() { d.live.ticket = ticket }:

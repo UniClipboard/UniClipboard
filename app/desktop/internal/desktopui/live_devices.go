@@ -103,6 +103,22 @@ func (d *viewState) liveDeviceTaskView(c *ui.Context, k uikit.Kit) {
 	switch d.deviceTask {
 	case "invite":
 		if k.TaskPanel(c, uikit.TaskPanelProps{Title: d.tr("邀请设备"), Description: d.tr("在另一台设备输入配对码。双方核对指纹后批准。"), BackLabel: d.tr("返回设备列表")}, func() {
+			var items []uikit.SelectItem
+			for _, b := range l.syncBackends {
+				if b.Pairing {
+					items = append(items, uikit.SelectItem{Value: b.ID, Label: b.ID})
+				}
+			}
+			if len(items) == 0 {
+				k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr("没有可配对的同步后端。请在插件设置中启用支持设备配对的后端并重启。")})
+			} else {
+				selected := l.pairingBackend
+				if k.Select(c.Key("pairing-backend"), uikit.SelectProps{Label: d.tr("同步后端"), Value: &selected, Items: items, Disabled: l.busy}).Changed {
+					d.cancelLiveInvitation()
+					l.pairingBackend = selected
+					l.codeAttempted, l.ticketAttempted = false, false
+				}
+			}
 			mode := d.inviteMode
 			if k.SegmentedControl(c, uikit.SegmentedControlProps{Label: d.tr("邀请方式"), Value: &mode, Items: []uikit.SegmentedItem{{Value: "code", Label: d.tr("配对码")}, {Value: "ticket", Label: d.tr("完整票据")}}}).Changed {
 				d.inviteMode = mode

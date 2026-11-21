@@ -120,7 +120,21 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 
 	// A fresh pairing code, replacing the previous one.
 	mux.HandleFunc("POST /v1/code", func(w http.ResponseWriter, r *http.Request) {
-		c, err := b.NewCode(r.Context())
+		backend, err := pairingBackendID(r)
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		var c api.Code
+		if via, ok := b.(interface {
+			NewCodeVia(context.Context, string) (api.Code, error)
+		}); ok {
+			c, err = via.NewCodeVia(r.Context(), backend)
+		} else if backend == "" {
+			c, err = b.NewCode(r.Context())
+		} else {
+			err = &api.Error{Reason: "unsupported", Message: "backend selection unavailable"}
+		}
 		if err != nil {
 			fail(w, 502, err)
 			return
@@ -200,6 +214,22 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 		reply(w, 200, map[string]bool{"ok": true})
 	})
 
+	mux.HandleFunc("GET /v1/sync-backends", func(w http.ResponseWriter, r *http.Request) {
+		via, ok := b.(interface {
+			SyncBackends(context.Context) ([]api.SyncBackendInfo, error)
+		})
+		if !ok {
+			fail(w, 400, &api.Error{Reason: "unsupported", Message: "backend listing unavailable"})
+			return
+		}
+		out, err := via.SyncBackends(r.Context())
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, out)
+	})
+
 	mux.HandleFunc("GET /v1/pending", func(w http.ResponseWriter, r *http.Request) {
 		ps, err := b.Pending(r.Context())
 		if err != nil {
@@ -234,7 +264,21 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 	})
 
 	mux.HandleFunc("POST /v1/pairing-ticket", func(w http.ResponseWriter, r *http.Request) {
-		ticket, err := b.ExportTicket(r.Context())
+		backend, err := pairingBackendID(r)
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		var ticket string
+		if via, ok := b.(interface {
+			ExportTicketVia(context.Context, string) (string, error)
+		}); ok {
+			ticket, err = via.ExportTicketVia(r.Context(), backend)
+		} else if backend == "" {
+			ticket, err = b.ExportTicket(r.Context())
+		} else {
+			err = &api.Error{Reason: "unsupported", Message: "backend selection unavailable"}
+		}
 		if err != nil {
 			fail(w, 503, err)
 			return
@@ -596,4 +640,21 @@ func boundedContent(next http.Handler, max int) http.Handler {
 		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(8 * time.Second))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// An empty body keeps the default pairing experience. Unknown keys never select a fallback.
+func pairingBackendID(r *http.Request) (string, error) {
+	var body struct {
+		Backend string `json:"backend_id"`
+	}
+	dec := json.NewDecoder(io.LimitReader(r.Body, 4096))
+	dec.DisallowUnknownFields()
+	err := dec.Decode(&body)
+	if err == io.EOF {
+		return "", nil
+	}
+	if err != nil || dec.Decode(new(any)) != io.EOF {
+		return "", &api.Error{Reason: "invalid_argument", Message: "invalid backend selection"}
+	}
+	return body.Backend, nil
 }

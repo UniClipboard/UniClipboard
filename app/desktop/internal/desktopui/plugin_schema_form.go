@@ -67,6 +67,14 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k uikit.Kit, item api.Pl
 	if item.Restart || p.form != nil && p.form.state.Restart {
 		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr("需要重启")})
 	}
+	if slices.Contains(item.Capabilities, "sync_backend") {
+		d.syncPluginPolicy(c, k, item.ID, cfg)
+		if item.ExternalChannels {
+			k.Text(c, d.tr("此后端使用外部渠道。请在插件设置中配置授权。无需设备指纹或设备配对码。"), footnote)
+		} else if item.TransportKind == "object_store" {
+			k.Text(c, d.tr("对象存储设备协议尚未实现。此类型暂不可用。"), footnote)
+		}
+	}
 	if !item.HasSettings {
 		return
 	}

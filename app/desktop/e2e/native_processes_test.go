@@ -1,10 +1,13 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -150,6 +153,120 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 				return err
 			}
 			s.result.Assertions = append(s.result.Assertions, "app-scoped Copy shortcut was delivered to the independent native panel; exact board bytes are asserted separately")
+			return nil
+		},
+		"role-panel-preview": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("role-panel-preview takes no arguments")
+			}
+			var preview int
+			if err := s.wait(func() bool {
+				var out struct {
+					Windows []struct {
+						ID      int
+						Visible bool
+					}
+				}
+				if s.call(s.ctx, "windows", nil, &out) != nil {
+					return false
+				}
+				preview = 0
+				for _, window := range out.Windows {
+					if window.Visible && window.ID != s.window {
+						if preview != 0 {
+							return false
+						}
+						preview = window.ID
+					}
+				}
+				return preview != 0
+			}); err != nil {
+				return fmt.Errorf("native satellite did not appear: %w", err)
+			}
+			s.captureMu.Lock()
+			defer s.captureMu.Unlock()
+			var frame struct{ PNG string }
+			if err := s.call(s.ctx, "capture", map[string]any{"window": preview}, &frame); err != nil {
+				return err
+			}
+			data, err := base64.StdEncoding.DecodeString(frame.PNG)
+			if err != nil {
+				return err
+			}
+			config, err := png.DecodeConfig(bytes.NewReader(data))
+			if err != nil || config.Width < 100 || config.Height < 100 {
+				return errors.New("invalid native satellite frame")
+			}
+			file := fmt.Sprintf("%02d-satellite.png", len(s.result.Screenshots)+1)
+			if err = os.WriteFile(filepath.Join(s.out, file), data, 0600); err != nil {
+				return err
+			}
+			s.result.Screenshots = append(s.result.Screenshots, file)
+			s.result.Assertions = append(s.result.Assertions, "native satellite rendered before Copy")
+			return nil
+		},
+		"role-panel-query": func(s *desktopScenario, args []string) error {
+			if len(args) != 1 {
+				return errors.New("role-panel-query expects query")
+			}
+			var tree struct {
+				Nodes []struct{ Role, Value string }
+			}
+			if err := s.call(s.ctx, "tree", map[string]any{"window": s.window}, &tree); err != nil {
+				return err
+			}
+			for _, node := range tree.Nodes {
+				if node.Role == "textField" && node.Value == args[0] {
+					s.result.Assertions = append(s.result.Assertions, "panel search survives hide/reopen")
+					return nil
+				}
+			}
+			return errors.New("panel search was lost during hide/reopen")
+		},
+		"role-panel-hidden": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("role-panel-hidden takes no arguments")
+			}
+			raw, err := s.roleCommand("quick-panel", "probe")
+			if err != nil {
+				return err
+			}
+			var before desktopRoleIdentity
+			if err = json.Unmarshal(raw, &before); err != nil {
+				return err
+			}
+			endpoint := filepath.Join(s.home, "automation-panel.sock")
+			if err = s.wait(func() bool {
+				var out struct {
+					Windows []struct {
+						Kind    string
+						Visible bool
+					}
+				}
+				if s.callAt(s.ctx, endpoint, "windows", nil, &out) != nil || len(out.Windows) == 0 {
+					return false
+				}
+				for _, window := range out.Windows {
+					if window.Visible {
+						return false
+					}
+				}
+				return true
+			}); err != nil {
+				return fmt.Errorf("panel windows did not hide: %w", err)
+			}
+			raw, err = s.roleCommand("quick-panel", "probe")
+			if err != nil {
+				return err
+			}
+			var after desktopRoleIdentity
+			if err = json.Unmarshal(raw, &after); err != nil {
+				return err
+			}
+			if after.PID != before.PID || after.StartedAt != before.StartedAt {
+				return errors.New("hiding replaced the panel process")
+			}
+			s.result.Assertions = append(s.result.Assertions, "panel windows hide while preserving the role PID")
 			return nil
 		},
 		"role-select-gui": func(s *desktopScenario, args []string) error {

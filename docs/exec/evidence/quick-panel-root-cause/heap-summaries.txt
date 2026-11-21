@@ -1,0 +1,630 @@
+qp-attribution-arm64-no-capture runtime.heap-5072.pprof SHA256=ae0c402177fa31fb0455dc7f09000c39f6302288e8fd28a828e103b2e1b85985
+File: C:\qm04e9e8\bin\unic-desktop.exe
+Build ID: C:\qm04e9e8\bin\unic-desktop.exe2026-11-20 23:21:20.2806297 +0800 +08
+Type: inuse_space
+Time: 2026-11-20 23:28:22 CST
+Showing nodes accounting for 24706.56kB, 100% of 24706.56kB total
+      flat  flat%   sum%        cum   cum%
+10324.16kB 41.79% 41.79% 10324.16kB 41.79%  bytes.growSlice
+ 3079.63kB 12.46% 54.25%  3079.63kB 12.46%  github.com/egoist/mygo/ui.halve
+ 2061.85kB  8.35% 62.60%  2061.85kB  8.35%  reflect.mapassign_faststr0
+ 1818.45kB  7.36% 69.96%  1818.45kB  7.36%  slices.Grow[go.shape.[]uint8,go.shape.uint8] (inline)
+ 1184.27kB  4.79% 74.75%  1184.27kB  4.79%  github.com/egoist/mygo/internal/scene.(*Atlas).Grow
+ 1026.25kB  4.15% 78.90%  1026.25kB  4.15%  github.com/egoist/mygo/ui.(*engine).lookState
+  561.50kB  2.27% 81.18%   561.50kB  2.27%  reflect.compiledTypelinks
+  548.84kB  2.22% 83.40%   548.84kB  2.22%  github.com/egoist/mygo/ui.(*context).alloc
+     514kB  2.08% 85.48%      514kB  2.08%  github.com/egoist/mygo/ui.(*spanCache).update
+  513.31kB  2.08% 87.56%   513.31kB  2.08%  github.com/egoist/mygo/internal/gpu.(*Builder).planCull
+     513kB  2.08% 89.63%      513kB  2.08%  runtime.mallocgc
+  512.75kB  2.08% 91.71%   512.75kB  2.08%  github.com/egoist/mygo/internal/text.(*System).paragraph
+  512.34kB  2.07% 93.78%  1024.42kB  4.15%  github.com/egoist/mygo/internal/shader.(*compileState).parseBlock
+  512.10kB  2.07% 95.85%   512.10kB  2.07%  encoding/json/v2.makeStructFields
+  512.08kB  2.07% 97.93%   512.08kB  2.07%  github.com/egoist/mygo/internal/shader.(*compileState).parseBlock.func1
+  512.01kB  2.07%   100%   512.01kB  2.07%  sync.OnceValue[go.shape.*uint8] (inline)
+         0     0%   100%   596.16kB  2.41%  bufio.(*Writer).Flush
+         0     0%   100%   596.16kB  2.41%  bufio.(*Writer).Write
+         0     0%   100%     9728kB 39.37%  bytes.(*Buffer).Grow (inline)
+         0     0%   100%   596.16kB  2.41%  bytes.(*Buffer).Write
+         0     0%   100% 10324.16kB 41.79%  bytes.(*Buffer).grow
+         0     0%   100%   596.16kB  2.41%  compress/flate.(*Writer).Write (inline)
+         0     0%   100%   596.16kB  2.41%  compress/flate.(*compressor).deflateFast
+         0     0%   100%   596.16kB  2.41%  compress/flate.(*compressor).write
+         0     0%   100%   596.16kB  2.41%  compress/flate.(*compressor).writeStoredBlock
+         0     0%   100%   596.16kB  2.41%  compress/flate.(*huffmanBitWriter).write (inline)
+         0     0%   100%   596.16kB  2.41%  compress/flate.(*huffmanBitWriter).writeBytes
+         0     0%   100%   596.16kB  2.41%  compress/zlib.(*Writer).Write
+         0     0%   100%   512.01kB  2.07%  crypto/internal/fips140/ecdsa.init
+         0     0%   100%  1818.45kB  7.36%  encoding/base64.(*Encoding).AppendEncode
+         0     0%   100%   512.10kB  2.07%  encoding/json.(*Decoder).Decode
+         0     0%   100%  1818.45kB  7.36%  encoding/json.(*Encoder).Encode
+         0     0%   100%  2623.35kB 10.62%  encoding/json.Unmarshal (inline)
+         0     0%   100%  1818.45kB  7.36%  encoding/json/jsontext.(*encoderState).AppendRaw
+         0     0%   100%  1818.45kB  7.36%  encoding/json/v2.MarshalEncode
+         0     0%   100%  3135.45kB 12.69%  encoding/json/v2.Unmarshal
+         0     0%   100%   561.50kB  2.27%  encoding/json/v2.implements
+         0     0%   100%   561.50kB  2.27%  encoding/json/v2.lookupArshaler
+         0     0%   100%  1818.45kB  7.36%  encoding/json/v2.makeBytesArshaler.func1
+         0     0%   100%  1818.45kB  7.36%  encoding/json/v2.makeBytesArshaler.func1.1
+         0     0%   100%  1818.45kB  7.36%  encoding/json/v2.makeInterfaceArshaler.func1
+         0     0%   100%   561.50kB  2.27%  encoding/json/v2.makeMapArshaler.func1
+         0     0%   100%  2623.35kB 10.62%  encoding/json/v2.makeMapArshaler.func3
+         0     0%   100%   561.50kB  2.27%  encoding/json/v2.makeMethodArshaler
+         0     0%   100%   512.10kB  2.07%  encoding/json/v2.makeStructArshaler.func1
+         0     0%   100%  1818.45kB  7.36%  encoding/json/v2.makeStructArshaler.func2
+         0     0%   100%   512.10kB  2.07%  encoding/json/v2.makeStructArshaler.func3
+         0     0%   100%  1818.45kB  7.36%  encoding/json/v2.marshalEncode
+         0     0%   100%  1818.45kB  7.36%  encoding/json/v2.marshalValueAny
+         0     0%   100%  3135.45kB 12.69%  encoding/json/v2.unmarshalDecode
+         0     0%   100%  7379.07kB 29.87%  github.com/egoist/mygo.(*Application).Run
+         0     0%   100%  2601.85kB 10.53%  github.com/egoist/mygo.(*Window).attachContent.func12.1
+         0     0%   100%  3079.63kB 12.46%  github.com/egoist/mygo.(*Window).captureContent.func1
+         0     0%   100%  5681.48kB 23.00%  github.com/egoist/mygo.(*mainLoop).drain
+         0     0%   100%  4299.43kB 17.40%  github.com/egoist/mygo.(*windowHandler).SurfaceEvent
+         0     0%   100%  5681.48kB 23.00%  github.com/egoist/mygo.appHandler.Dispatch
+         0     0%   100%  3079.63kB 12.46%  github.com/egoist/mygo.onMain.func1
+         0     0%   100%   513.31kB  2.08%  github.com/egoist/mygo/internal/gpu.(*Builder).Build
+         0     0%   100%   513.31kB  2.08%  github.com/egoist/mygo/internal/gpu/d3d11.(*Renderer).Render
+         0     0%   100%   513.31kB  2.08%  github.com/egoist/mygo/internal/gpu/d3d11.(*Renderer).buildScene
+         0     0%   100%   513.31kB  2.08%  github.com/egoist/mygo/internal/gpu/d3d11.(*Renderer).drawFrame
+         0     0%   100%  3079.63kB 12.46%  github.com/egoist/mygo/internal/raster.(*drawer).draw
+         0     0%   100%  3079.63kB 12.46%  github.com/egoist/mygo/internal/raster.Render
+         0     0%   100%  3079.63kB 12.46%  github.com/egoist/mygo/internal/raster.restorePixels
+         0     0%   100%  3079.63kB 12.46%  github.com/egoist/mygo/internal/scene.(*Image).Pixels (inline)
+         0     0%   100%  1024.42kB  4.15%  github.com/egoist/mygo/internal/shader.(*compileState).parse
+         0     0%   100%  1024.42kB  4.15%  github.com/egoist/mygo/internal/shader.(*compileState).parseDecl
+         0     0%   100%  1024.42kB  4.15%  github.com/egoist/mygo/internal/shader.(*compileState).parseFunc
+         0     0%   100%  1024.42kB  4.15%  github.com/egoist/mygo/internal/shader.Compile
+         0     0%   100%  1024.42kB  4.15%  github.com/egoist/mygo/internal/shader.CompileFragment
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/internal/text.(*System).LayoutFrom
+         0     0%   100%  1184.27kB  4.79%  github.com/egoist/mygo/internal/text.(*System).MakeRoom
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/internal/text.(*System).layout
+         0     0%   100%  1184.27kB  4.79%  github.com/egoist/mygo/internal/text.(*System).makeRoom
+         0     0%   100%  7379.07kB 29.87%  github.com/egoist/mygo/internal/windows.(*Backend).Run
+         0     0%   100%  5681.48kB 23.00%  github.com/egoist/mygo/internal/windows.(*Backend).appMessage
+         0     0%   100%  2601.85kB 10.53%  github.com/egoist/mygo/internal/windows.(*surface).FrameNow
+         0     0%   100%  2601.85kB 10.53%  github.com/egoist/mygo/internal/windows.(*surface).drawNow (inline)
+         0     0%   100%  4299.43kB 17.40%  github.com/egoist/mygo/internal/windows.(*surface).message
+         0     0%   100%  4299.43kB 17.40%  github.com/egoist/mygo/internal/windows.(*surface).send
+         0     0%   100%  7379.07kB 29.87%  github.com/egoist/mygo/internal/windows.wndProc
+         0     0%   100%  1818.45kB  7.36%  github.com/egoist/mygo/plugins/automation.serveConn
+         0     0%   100%  1024.42kB  4.15%  github.com/egoist/mygo/plugins/glass.init
+         0     0%   100%  3079.63kB 12.46%  github.com/egoist/mygo/ui.(*Bitmap).levelPix.func1
+         0     0%   100%  1575.09kB  6.38%  github.com/egoist/mygo/ui.(*context).newElement
+         0     0%   100%      514kB  2.08%  github.com/egoist/mygo/ui.(*engine).beginLayout
+         0     0%   100%  4299.43kB 17.40%  github.com/egoist/mygo/ui.(*engine).event
+         0     0%   100%  4299.43kB 17.40%  github.com/egoist/mygo/ui.(*engine).runFrame
+         0     0%   100%  4299.43kB 17.40%  github.com/egoist/mygo/ui.(*engine).surfaceFrame
+         0     0%   100%  1575.09kB  6.38%  github.com/egoist/mygo/ui.(*node).Children
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/ui.(*node).textLayout
+         0     0%   100%      514kB  2.08%  github.com/egoist/mygo/ui.(*node).textSpans
+         0     0%   100%  3079.63kB 12.46%  github.com/egoist/mygo/ui.(*windowHost).capture
+         0     0%   100%  4299.43kB 17.40%  github.com/egoist/mygo/ui.(*windowHost).event
+         0     0%   100%   513.31kB  2.08%  github.com/egoist/mygo/ui.(*windowHost).present
+         0     0%   100%   513.31kB  2.08%  github.com/egoist/mygo/ui.(*windowHost).render
+         0     0%   100%  2601.85kB 10.53%  github.com/egoist/mygo/ui.(*windowHost).waitDisplay.func1
+         0     0%   100%  1026.25kB  4.15%  github.com/egoist/mygo/ui.ButtonBase
+         0     0%   100%  1575.09kB  6.38%  github.com/egoist/mygo/ui.Element.Children
+         0     0%   100%   548.84kB  2.22%  github.com/egoist/mygo/ui.Text
+         0     0%   100%  1575.09kB  6.38%  github.com/egoist/mygo/ui.View.func1
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/ui.boxLayout
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/ui.computeBox
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/ui.contentHeight
+         0     0%   100%  1026.25kB  4.15%  github.com/egoist/mygo/ui.coreButtonBase
+         0     0%   100%  1026.25kB  4.15%  github.com/egoist/mygo/ui.coreRow
+         0     0%   100%   548.84kB  2.22%  github.com/egoist/mygo/ui.coreText (inline)
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/ui.flexLayout
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/ui.heightAt
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/ui.layoutBox
+         0     0%   100%  1026.75kB  4.16%  github.com/egoist/mygo/ui.layoutTree
+         0     0%   100%   512.75kB  2.08%  github.com/egoist/mygo/ui.naturalHeight
+         0     0%   100%      514kB  2.08%  github.com/egoist/mygo/ui.sameLayout
+         0     0%   100%  1024.42kB  4.15%  github.com/egoist/mygo/ui/shader.Compile
+         0     0%   100%  1024.42kB  4.15%  github.com/egoist/mygo/ui/shader.MustCompile
+         0     0%   100%   512.10kB  2.07%  github.com/uniclipboard/unic/app/desktop/internal/desktopprocess.Acquire.func2.1
+         0     0%   100% 10324.16kB 41.79%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*liveState).loadDetail.func2
+         0     0%   100%  1575.09kB  6.38%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel
+         0     0%   100%  1575.09kB  6.38%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1
+         0     0%   100%  1575.09kB  6.38%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1.2
+         0     0%   100%  1575.09kB  6.38%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1.2.1
+         0     0%   100%  1575.09kB  6.38%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).resultRow
+         0     0%   100%   548.84kB  2.22%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).resultRow.func1
+         0     0%   100% 10324.16kB 41.79%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.loadSearchEntry
+         0     0%   100% 10324.16kB 41.79%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.readPreviewImage
+         0     0%   100%  2623.35kB 10.62%  github.com/uniclipboard/unic/app/desktop/internal/i18n.init
+         0     0%   100%  2623.35kB 10.62%  github.com/uniclipboard/unic/app/desktop/internal/i18n.init.func1 (inline)
+         0     0%   100%   596.16kB  2.41%  image/png.(*Encoder).Encode
+         0     0%   100%   596.16kB  2.41%  image/png.(*encoder).Write
+         0     0%   100%   596.16kB  2.41%  image/png.(*encoder).writeChunk
+         0     0%   100%   596.16kB  2.41%  image/png.(*encoder).writeIDATs
+         0     0%   100%   596.16kB  2.41%  image/png.(*encoder).writeImage
+         0     0%   100%  7379.07kB 29.87%  main.main
+         0     0%   100%  7379.07kB 29.87%  main.runDesktop
+         0     0%   100%  7379.07kB 29.87%  main.runNativeRole
+         0     0%   100%  7379.07kB 29.87%  main.runPanel
+         0     0%   100%   561.50kB  2.27%  reflect.(*rtype).ptrTo
+         0     0%   100%   561.50kB  2.27%  reflect.PointerTo (inline)
+         0     0%   100%  2061.85kB  8.35%  reflect.Value.SetMapIndex
+         0     0%   100%  2061.85kB  8.35%  reflect.mapassign_faststr
+         0     0%   100%   561.50kB  2.27%  reflect.typesByString
+         0     0%   100%      513kB  2.08%  runtime.allocm
+         0     0%   100%  7379.07kB 29.87%  runtime.callbackWrap
+         0     0%   100%  7379.07kB 29.87%  runtime.cgocall
+         0     0%   100%  7379.07kB 29.87%  runtime.cgocallback
+         0     0%   100%  7379.07kB 29.87%  runtime.cgocallbackg
+         0     0%   100%  7379.07kB 29.87%  runtime.cgocallbackg1
+         0     0%   100%  4159.78kB 16.84%  runtime.doInit (inline)
+         0     0%   100%  4159.78kB 16.84%  runtime.doInit1
+         0     0%   100% 11538.85kB 46.70%  runtime.main
+         0     0%   100%      513kB  2.08%  runtime.mstart
+         0     0%   100%      513kB  2.08%  runtime.mstart0
+         0     0%   100%      513kB  2.08%  runtime.mstart1
+         0     0%   100%      513kB  2.08%  runtime.newm
+         0     0%   100%      513kB  2.08%  runtime.newobject
+         0     0%   100%      513kB  2.08%  runtime.resetspinning
+         0     0%   100%      513kB  2.08%  runtime.schedule
+         0     0%   100%      513kB  2.08%  runtime.startm
+         0     0%   100%  7379.07kB 29.87%  runtime.systemstack_switch
+         0     0%   100%      513kB  2.08%  runtime.wakep
+         0     0%   100%  1073.60kB  4.35%  sync.(*Once).Do (partial-inline)
+         0     0%   100%  1073.60kB  4.35%  sync.(*Once).doSlow
+         0     0%   100%  7379.07kB 29.87%  syscall.(*LazyProc).Call
+         0     0%   100%  7379.07kB 29.87%  syscall.(*Proc).Call
+         0     0%   100%  7379.07kB 29.87%  syscall.SyscallN
+         0     0%   100%  7379.07kB 29.87%  syscall.syscalln
+
+
+qp-rootcause-arm64 runtime.heap-9476.pprof SHA256=77d2e8edda3bda39b76b3fef8e356280b802af9dfdb611bc9ffa8192b8ef6693
+File: C:\qm236f71\bin\unic-desktop.exe
+Build ID: C:\qm236f71\bin\unic-desktop.exe2026-11-20 23:28:50.5572215 +0800 +08
+Type: inuse_space
+Time: 2026-11-20 23:32:42 CST
+Showing nodes accounting for 21255.11kB, 100% of 21255.11kB total
+      flat  flat%   sum%        cum   cum%
+13304.96kB 62.60% 62.60% 13304.96kB 62.60%  bytes.growSlice
+ 1184.27kB  5.57% 68.17%  1184.27kB  5.57%  github.com/egoist/mygo/internal/scene.(*Atlas).Grow
+ 1032.02kB  4.86% 73.02%  1032.02kB  4.86%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.qpMarkedSpans
+  548.84kB  2.58% 75.61%   548.84kB  2.58%  github.com/egoist/mygo/ui.(*context).alloc
+  544.67kB  2.56% 78.17%   544.67kB  2.56%  github.com/egoist/mygo/internal/scene.NewAtlas (inline)
+  528.17kB  2.48% 80.65%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*shapeScratch).glyphRoom (inline)
+  525.43kB  2.47% 83.13%   525.43kB  2.47%  golang.org/x/net/html.map.init.1
+  513.12kB  2.41% 85.54%   513.12kB  2.41%  github.com/egoist/mygo/ui.(*engine).lookState
+     513kB  2.41% 87.95%      513kB  2.41%  runtime.mallocgc
+  512.28kB  2.41% 90.36%   512.28kB  2.41%  github.com/egoist/mygo/internal/text.EncodeSpans
+  512.22kB  2.41% 92.77%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.(*compileState).parseExpr
+  512.10kB  2.41% 95.18%   512.10kB  2.41%  vendor/golang.org/x/net/dns/dnsmessage.init
+  512.02kB  2.41% 97.59%   512.02kB  2.41%  regexp.makeOnePass.func1
+  512.01kB  2.41%   100%   512.01kB  2.41%  encoding/json/v2.makeString
+         0     0%   100%  3576.96kB 16.83%  bufio.(*Writer).Flush
+         0     0%   100%  3576.96kB 16.83%  bufio.(*Writer).Write
+         0     0%   100%     9728kB 45.77%  bytes.(*Buffer).Grow (inline)
+         0     0%   100%  3576.96kB 16.83%  bytes.(*Buffer).Write
+         0     0%   100% 13304.96kB 62.60%  bytes.(*Buffer).grow
+         0     0%   100%  3576.96kB 16.83%  compress/flate.(*Writer).Write (inline)
+         0     0%   100%  3576.96kB 16.83%  compress/flate.(*compressor).deflateFast
+         0     0%   100%  3576.96kB 16.83%  compress/flate.(*compressor).write
+         0     0%   100%  3576.96kB 16.83%  compress/flate.(*compressor).writeStoredBlock
+         0     0%   100%  3576.96kB 16.83%  compress/flate.(*huffmanBitWriter).write (inline)
+         0     0%   100%  3576.96kB 16.83%  compress/flate.(*huffmanBitWriter).writeBytes
+         0     0%   100%  3576.96kB 16.83%  compress/zlib.(*Writer).Write
+         0     0%   100%   512.01kB  2.41%  encoding/json.Unmarshal (inline)
+         0     0%   100%   512.01kB  2.41%  encoding/json/v2.Unmarshal
+         0     0%   100%   512.01kB  2.41%  encoding/json/v2.makeMapArshaler.func3
+         0     0%   100%   512.01kB  2.41%  encoding/json/v2.makeStringArshaler.func2
+         0     0%   100%   512.01kB  2.41%  encoding/json/v2.unmarshalDecode
+         0     0%   100%  4863.38kB 22.88%  github.com/egoist/mygo.(*Application).Run
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo.(*Window).attachContent
+         0     0%   100%  2102.42kB  9.89%  github.com/egoist/mygo.(*Window).attachContent.func12.1
+         0     0%   100%  2647.08kB 12.45%  github.com/egoist/mygo.(*mainLoop).drain
+         0     0%   100%  4318.71kB 20.32%  github.com/egoist/mygo.(*windowHandler).SurfaceEvent
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo.NewWindow
+         0     0%   100%  2647.08kB 12.45%  github.com/egoist/mygo.appHandler.Dispatch
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo.createWindow
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo.createWindow.func1
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo.newWindow
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo.onMain
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo.onMain.func1
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.(*compileState).assign
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.(*compileState).parse
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.(*compileState).parseBlock
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.(*compileState).parseDecl
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.(*compileState).parseFunc
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.(*compileState).parseStmt
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.Compile
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/internal/shader.CompileFragment
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*System).LayoutFrom
+         0     0%   100%  1184.27kB  5.57%  github.com/egoist/mygo/internal/text.(*System).MakeRoom
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*System).breakLines
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*System).layout
+         0     0%   100%  1184.27kB  5.57%  github.com/egoist/mygo/internal/text.(*System).makeRoom
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*System).paragraph
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*dwrite).run
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*dwrite).shape
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*dwrite).shapeText
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/internal/text.(*dwrite).wrapWhole
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo/internal/text.Shared (inline)
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo/internal/text.newSystem
+         0     0%   100%  4863.38kB 22.88%  github.com/egoist/mygo/internal/windows.(*Backend).Run
+         0     0%   100%  2647.08kB 12.45%  github.com/egoist/mygo/internal/windows.(*Backend).appMessage
+         0     0%   100%  2102.42kB  9.89%  github.com/egoist/mygo/internal/windows.(*surface).FrameNow
+         0     0%   100%  2102.42kB  9.89%  github.com/egoist/mygo/internal/windows.(*surface).drawNow (inline)
+         0     0%   100%  4318.71kB 20.32%  github.com/egoist/mygo/internal/windows.(*surface).message
+         0     0%   100%  4318.71kB 20.32%  github.com/egoist/mygo/internal/windows.(*surface).send
+         0     0%   100%  4863.38kB 22.88%  github.com/egoist/mygo/internal/windows.wndProc
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/plugins/glass.init
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo/ui.(*Content).AttachContent
+         0     0%   100%  1061.97kB  5.00%  github.com/egoist/mygo/ui.(*context).newElement
+         0     0%   100%   512.28kB  2.41%  github.com/egoist/mygo/ui.(*engine).beginLayout
+         0     0%   100%  4318.71kB 20.32%  github.com/egoist/mygo/ui.(*engine).event
+         0     0%   100%  4318.71kB 20.32%  github.com/egoist/mygo/ui.(*engine).runFrame
+         0     0%   100%  4318.71kB 20.32%  github.com/egoist/mygo/ui.(*engine).surfaceFrame
+         0     0%   100%  2093.99kB  9.85%  github.com/egoist/mygo/ui.(*node).Children
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/ui.(*node).textLayout
+         0     0%   100%   512.28kB  2.41%  github.com/egoist/mygo/ui.(*node).textSpans
+         0     0%   100%   512.28kB  2.41%  github.com/egoist/mygo/ui.(*spanCache).update
+         0     0%   100%  4318.71kB 20.32%  github.com/egoist/mygo/ui.(*windowHost).event
+         0     0%   100%  2102.42kB  9.89%  github.com/egoist/mygo/ui.(*windowHost).waitDisplay.func1
+         0     0%   100%  2093.99kB  9.85%  github.com/egoist/mygo/ui.Element.Children
+         0     0%   100%  1061.97kB  5.00%  github.com/egoist/mygo/ui.Row
+         0     0%   100%  2093.99kB  9.85%  github.com/egoist/mygo/ui.View.func1
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/ui.boxLayout
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/ui.computeBox
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/ui.contentHeight
+         0     0%   100%  1061.97kB  5.00%  github.com/egoist/mygo/ui.coreRow
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/ui.flexLayout
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/ui.layoutBox
+         0     0%   100%  1040.45kB  4.90%  github.com/egoist/mygo/ui.layoutTree
+         0     0%   100%   528.17kB  2.48%  github.com/egoist/mygo/ui.naturalHeight
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo/ui.newRuntime
+         0     0%   100%   512.28kB  2.41%  github.com/egoist/mygo/ui.sameLayout
+         0     0%   100%   544.67kB  2.56%  github.com/egoist/mygo/ui.textSystem (inline)
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/ui/shader.Compile
+         0     0%   100%   512.22kB  2.41%  github.com/egoist/mygo/ui/shader.MustCompile
+         0     0%   100%   512.02kB  2.41%  github.com/posthog/posthog-go.init
+         0     0%   100%   544.67kB  2.56%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*ProcessPanel).Open
+         0     0%   100% 13304.96kB 62.60%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*liveState).loadDetail.func2
+         0     0%   100%  2093.99kB  9.85%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel
+         0     0%   100%  2093.99kB  9.85%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1
+         0     0%   100%  2093.99kB  9.85%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1.2
+         0     0%   100%  2093.99kB  9.85%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1.2.1
+         0     0%   100%  2093.99kB  9.85%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).resultRow
+         0     0%   100%  2093.99kB  9.85%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).resultRow.func1
+         0     0%   100% 13304.96kB 62.60%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.loadSearchEntry
+         0     0%   100%   544.67kB  2.56%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.openQuickWindow
+         0     0%   100% 13304.96kB 62.60%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.readPreviewImage
+         0     0%   100%   512.01kB  2.41%  github.com/uniclipboard/unic/app/desktop/internal/i18n.init
+         0     0%   100%   512.01kB  2.41%  github.com/uniclipboard/unic/app/desktop/internal/i18n.init.func1 (inline)
+         0     0%   100%   525.43kB  2.47%  golang.org/x/net/html.init
+         0     0%   100%  3576.96kB 16.83%  image/png.(*Encoder).Encode
+         0     0%   100%  3576.96kB 16.83%  image/png.(*encoder).Write
+         0     0%   100%  3576.96kB 16.83%  image/png.(*encoder).writeChunk
+         0     0%   100%  3576.96kB 16.83%  image/png.(*encoder).writeIDATs
+         0     0%   100%  3576.96kB 16.83%  image/png.(*encoder).writeImage
+         0     0%   100%  4863.38kB 22.88%  main.main
+         0     0%   100%  4863.38kB 22.88%  main.runDesktop
+         0     0%   100%  4863.38kB 22.88%  main.runNativeRole
+         0     0%   100%  4863.38kB 22.88%  main.runPanel
+         0     0%   100%   544.67kB  2.56%  main.runPanel.func1.2
+         0     0%   100%   512.02kB  2.41%  regexp.Compile (inline)
+         0     0%   100%   512.02kB  2.41%  regexp.MustCompile
+         0     0%   100%   512.02kB  2.41%  regexp.compile
+         0     0%   100%   512.02kB  2.41%  regexp.compileOnePass
+         0     0%   100%   512.02kB  2.41%  regexp.makeOnePass
+         0     0%   100%      513kB  2.41%  runtime.allocm
+         0     0%   100%  4863.38kB 22.88%  runtime.callbackWrap
+         0     0%   100%  4863.38kB 22.88%  runtime.cgocall
+         0     0%   100%  4863.38kB 22.88%  runtime.cgocallback
+         0     0%   100%  4863.38kB 22.88%  runtime.cgocallbackg
+         0     0%   100%  4863.38kB 22.88%  runtime.cgocallbackg1
+         0     0%   100%  2573.78kB 12.11%  runtime.doInit (inline)
+         0     0%   100%  2573.78kB 12.11%  runtime.doInit1
+         0     0%   100%  7437.15kB 34.99%  runtime.main
+         0     0%   100%      513kB  2.41%  runtime.mstart
+         0     0%   100%      513kB  2.41%  runtime.mstart0
+         0     0%   100%      513kB  2.41%  runtime.mstart1
+         0     0%   100%      513kB  2.41%  runtime.newm
+         0     0%   100%      513kB  2.41%  runtime.newobject
+         0     0%   100%      513kB  2.41%  runtime.resetspinning
+         0     0%   100%      513kB  2.41%  runtime.schedule
+         0     0%   100%      513kB  2.41%  runtime.startm
+         0     0%   100%  4863.38kB 22.88%  runtime.systemstack_switch
+         0     0%   100%      513kB  2.41%  runtime.wakep
+         0     0%   100%   544.67kB  2.56%  sync.(*Once).Do
+         0     0%   100%   544.67kB  2.56%  sync.(*Once).doSlow
+         0     0%   100%   544.67kB  2.56%  sync.OnceValue[go.shape.*uint8].func1
+         0     0%   100%   544.67kB  2.56%  sync.OnceValue[go.shape.*uint8].func1.1
+         0     0%   100%  4863.38kB 22.88%  syscall.(*LazyProc).Call
+         0     0%   100%  4863.38kB 22.88%  syscall.(*Proc).Call
+         0     0%   100%  4863.38kB 22.88%  syscall.SyscallN
+         0     0%   100%  4863.38kB 22.88%  syscall.syscalln
+
+
+qp-rootcause-amd64 runtime.heap-4772.pprof SHA256=454c5556c26665982c53ebccd3f5b74f920e106e0284775bf354b4e46e4c3f97
+File: C:\qm34242e\bin\unic-desktop.exe
+Build ID: C:\qm34242e\bin\unic-desktop.exe2026-11-20 23:29:03.0521105 +0800 +08
+Type: inuse_space
+Time: 2026-11-20 23:37:22 CST
+Showing nodes accounting for 19210.47kB, 100% of 19210.47kB total
+      flat  flat%   sum%        cum   cum%
+10324.16kB 53.74% 53.74% 10324.16kB 53.74%  bytes.growSlice
+ 1184.27kB  6.16% 59.91%  1184.27kB  6.16%  github.com/egoist/mygo/internal/scene.(*Atlas).Grow
+ 1032.02kB  5.37% 65.28%  1032.02kB  5.37%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.qpMarkedSpans
+ 1026.25kB  5.34% 70.62%  1026.25kB  5.34%  github.com/egoist/mygo/ui.(*engine).lookState
+  516.64kB  2.69% 73.31%   516.64kB  2.69%  regexp.onePassCopy
+  514.63kB  2.68% 75.99%   514.63kB  2.68%  github.com/egoist/mygo/internal/text.(*System).paragraph
+     514kB  2.68% 78.67%      514kB  2.68%  bufio.NewReaderSize (inline)
+     513kB  2.67% 81.34%      513kB  2.67%  runtime.mallocgc
+  512.88kB  2.67% 84.01%   512.88kB  2.67%  unicode.map.init.1
+  512.28kB  2.67% 86.67%   512.28kB  2.67%  internal/stringslite.Clone (inline)
+  512.11kB  2.67% 89.34%   512.11kB  2.67%  github.com/egoist/mygo/internal/shader.(*compileState).assign
+  512.11kB  2.67% 92.00%   512.11kB  2.67%  github.com/egoist/mygo/ui.(*node).heldText (inline)
+  512.10kB  2.67% 94.67%   512.10kB  2.67%  github.com/egoist/mygo/internal/shaderir/interp.(*compiler).binary
+  512.02kB  2.67% 97.33%   512.02kB  2.67%  regexp.mergeRuneSets.func2 (inline)
+  512.01kB  2.67%   100%   512.01kB  2.67%  github.com/klauspost/cpuid/v2.valAsString
+         0     0%   100%   596.16kB  3.10%  bufio.(*Writer).Flush
+         0     0%   100%   596.16kB  3.10%  bufio.(*Writer).Write
+         0     0%   100%     9728kB 50.64%  bytes.(*Buffer).Grow (inline)
+         0     0%   100%   596.16kB  3.10%  bytes.(*Buffer).Write
+         0     0%   100% 10324.16kB 53.74%  bytes.(*Buffer).grow
+         0     0%   100%   596.16kB  3.10%  compress/flate.(*Writer).Write (inline)
+         0     0%   100%   596.16kB  3.10%  compress/flate.(*compressor).deflateFast
+         0     0%   100%   596.16kB  3.10%  compress/flate.(*compressor).write
+         0     0%   100%   596.16kB  3.10%  compress/flate.(*compressor).writeStoredBlock
+         0     0%   100%   596.16kB  3.10%  compress/flate.(*huffmanBitWriter).write (inline)
+         0     0%   100%   596.16kB  3.10%  compress/flate.(*huffmanBitWriter).writeBytes
+         0     0%   100%   596.16kB  3.10%  compress/zlib.(*Writer).Write
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo.(*Application).Run
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo.(*windowHandler).SurfaceEvent
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/internal/shader.(*compileState).parse
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/internal/shader.(*compileState).parseBlock
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/internal/shader.(*compileState).parseDecl
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/internal/shader.(*compileState).parseFunc
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/internal/shader.(*compileState).parseStmt
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/internal/shader.Compile
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/internal/shader.CompileFragment
+         0     0%   100%   512.10kB  2.67%  github.com/egoist/mygo/internal/shaderir/interp.(*compiler).assign
+         0     0%   100%   512.10kB  2.67%  github.com/egoist/mygo/internal/shaderir/interp.(*compiler).block
+         0     0%   100%   512.10kB  2.67%  github.com/egoist/mygo/internal/shaderir/interp.(*compiler).builtin
+         0     0%   100%   512.10kB  2.67%  github.com/egoist/mygo/internal/shaderir/interp.(*compiler).define (inline)
+         0     0%   100%   512.10kB  2.67%  github.com/egoist/mygo/internal/shaderir/interp.(*compiler).expr
+         0     0%   100%   512.10kB  2.67%  github.com/egoist/mygo/internal/shaderir/interp.(*compiler).stmt
+         0     0%   100%   512.10kB  2.67%  github.com/egoist/mygo/internal/shaderir/interp.New
+         0     0%   100%  1026.91kB  5.35%  github.com/egoist/mygo/internal/text.(*System).LayoutFrom
+         0     0%   100%  1184.27kB  6.16%  github.com/egoist/mygo/internal/text.(*System).MakeRoom
+         0     0%   100%   514.63kB  2.68%  github.com/egoist/mygo/internal/text.(*System).layout
+         0     0%   100%  1184.27kB  6.16%  github.com/egoist/mygo/internal/text.(*System).makeRoom
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo/internal/windows.(*Backend).Run
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo/internal/windows.(*surface).message
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo/internal/windows.(*surface).send
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo/internal/windows.wndProc
+         0     0%   100%  1024.21kB  5.33%  github.com/egoist/mygo/plugins/glass.init
+         0     0%   100%  1026.25kB  5.34%  github.com/egoist/mygo/ui.(*context).newElement
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo/ui.(*engine).event
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo/ui.(*engine).runFrame
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo/ui.(*engine).surfaceFrame
+         0     0%   100%  2058.27kB 10.71%  github.com/egoist/mygo/ui.(*node).Children
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/ui.(*node).leafWidths
+         0     0%   100%  1026.91kB  5.35%  github.com/egoist/mygo/ui.(*node).textLayout
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/ui.(*node).textWidths
+         0     0%   100%  4781.56kB 24.89%  github.com/egoist/mygo/ui.(*windowHost).event
+         0     0%   100%   513.12kB  2.67%  github.com/egoist/mygo/ui.ButtonBase
+         0     0%   100%  2058.27kB 10.71%  github.com/egoist/mygo/ui.Element.Children
+         0     0%   100%   513.12kB  2.67%  github.com/egoist/mygo/ui.Text
+         0     0%   100%  2058.27kB 10.71%  github.com/egoist/mygo/ui.View.func1
+         0     0%   100%  1539.02kB  8.01%  github.com/egoist/mygo/ui.boxLayout
+         0     0%   100%  1539.02kB  8.01%  github.com/egoist/mygo/ui.computeBox
+         0     0%   100%  1026.91kB  5.35%  github.com/egoist/mygo/ui.contentHeight
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/ui.contentWidth
+         0     0%   100%   513.12kB  2.67%  github.com/egoist/mygo/ui.coreButtonBase
+         0     0%   100%   513.12kB  2.67%  github.com/egoist/mygo/ui.coreRow
+         0     0%   100%   513.12kB  2.67%  github.com/egoist/mygo/ui.coreText (inline)
+         0     0%   100%  1539.02kB  8.01%  github.com/egoist/mygo/ui.flexLayout
+         0     0%   100%   512.28kB  2.67%  github.com/egoist/mygo/ui.heightAt
+         0     0%   100%  1539.02kB  8.01%  github.com/egoist/mygo/ui.layoutBox
+         0     0%   100%  1539.02kB  8.01%  github.com/egoist/mygo/ui.layoutTree
+         0     0%   100%   512.11kB  2.67%  github.com/egoist/mygo/ui.measureIntrinsic
+         0     0%   100%  1026.91kB  5.35%  github.com/egoist/mygo/ui.naturalHeight
+         0     0%   100%  1024.21kB  5.33%  github.com/egoist/mygo/ui/shader.Compile
+         0     0%   100%  1024.21kB  5.33%  github.com/egoist/mygo/ui/shader.MustCompile
+         0     0%   100%   512.01kB  2.67%  github.com/klauspost/cpuid/v2.Detect
+         0     0%   100%   512.01kB  2.67%  github.com/klauspost/cpuid/v2.addInfo
+         0     0%   100%   512.01kB  2.67%  github.com/klauspost/cpuid/v2.init.0
+         0     0%   100%   512.01kB  2.67%  github.com/klauspost/cpuid/v2.support
+         0     0%   100%   512.01kB  2.67%  github.com/klauspost/cpuid/v2.vendorID
+         0     0%   100%   512.02kB  2.67%  github.com/posthog/posthog-go.init
+         0     0%   100% 10324.16kB 53.74%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*liveState).loadDetail.func2
+         0     0%   100%  2058.27kB 10.71%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel
+         0     0%   100%  2058.27kB 10.71%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1
+         0     0%   100%  2058.27kB 10.71%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1.2
+         0     0%   100%  2058.27kB 10.71%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1.2.1
+         0     0%   100%  2058.27kB 10.71%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).resultRow
+         0     0%   100%  1545.15kB  8.04%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).resultRow.func1
+         0     0%   100% 10324.16kB 53.74%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.loadSearchEntry
+         0     0%   100%   513.12kB  2.67%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.qpKeycap
+         0     0%   100%   513.12kB  2.67%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.qpKeycap.func1
+         0     0%   100% 10324.16kB 53.74%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.readPreviewImage
+         0     0%   100%   516.64kB  2.69%  github.com/uniclipboard/unic/internal/observability.init
+         0     0%   100%   596.16kB  3.10%  image/png.(*Encoder).Encode
+         0     0%   100%   596.16kB  3.10%  image/png.(*encoder).Write
+         0     0%   100%   596.16kB  3.10%  image/png.(*encoder).writeChunk
+         0     0%   100%   596.16kB  3.10%  image/png.(*encoder).writeIDATs
+         0     0%   100%   596.16kB  3.10%  image/png.(*encoder).writeImage
+         0     0%   100%  4781.56kB 24.89%  main.main
+         0     0%   100%  4781.56kB 24.89%  main.runDesktop
+         0     0%   100%  4781.56kB 24.89%  main.runNativeRole
+         0     0%   100%  4781.56kB 24.89%  main.runPanel
+         0     0%   100%      514kB  2.68%  net/http.(*Transport).dialConn
+         0     0%   100%      514kB  2.68%  net/http.(*Transport).dialConnFor
+         0     0%   100%      514kB  2.68%  net/http.(*Transport).startDialConnForLocked.func1
+         0     0%   100%  1028.65kB  5.35%  regexp.Compile (inline)
+         0     0%   100%  1028.65kB  5.35%  regexp.MustCompile
+         0     0%   100%  1028.65kB  5.35%  regexp.compile
+         0     0%   100%  1028.65kB  5.35%  regexp.compileOnePass
+         0     0%   100%   512.02kB  2.67%  regexp.makeOnePass
+         0     0%   100%   512.02kB  2.67%  regexp.makeOnePass.func1
+         0     0%   100%   512.02kB  2.67%  regexp.mergeRuneSets
+         0     0%   100%      513kB  2.67%  runtime.allocm
+         0     0%   100%  4781.56kB 24.89%  runtime.callbackWrap
+         0     0%   100%  4781.56kB 24.89%  runtime.cgocall
+         0     0%   100%  4781.56kB 24.89%  runtime.cgocallback
+         0     0%   100%  4781.56kB 24.89%  runtime.cgocallbackg
+         0     0%   100%  4781.56kB 24.89%  runtime.cgocallbackg1
+         0     0%   100%  3077.75kB 16.02%  runtime.doInit (inline)
+         0     0%   100%  3077.75kB 16.02%  runtime.doInit1
+         0     0%   100%  7859.31kB 40.91%  runtime.main
+         0     0%   100%      513kB  2.67%  runtime.mstart
+         0     0%   100%      513kB  2.67%  runtime.mstart0
+         0     0%   100%      513kB  2.67%  runtime.mstart1
+         0     0%   100%      513kB  2.67%  runtime.newm
+         0     0%   100%      513kB  2.67%  runtime.newobject
+         0     0%   100%      513kB  2.67%  runtime.resetspinning
+         0     0%   100%      513kB  2.67%  runtime.schedule
+         0     0%   100%      513kB  2.67%  runtime.startm
+         0     0%   100%  4781.56kB 24.89%  runtime.systemstack_switch
+         0     0%   100%      513kB  2.67%  runtime.wakep
+         0     0%   100%   512.28kB  2.67%  strings.Clone (inline)
+         0     0%   100%  4781.56kB 24.89%  syscall.(*LazyProc).Call
+         0     0%   100%  4781.56kB 24.89%  syscall.(*Proc).Call
+         0     0%   100%  4781.56kB 24.89%  syscall.SyscallN
+         0     0%   100%  4781.56kB 24.89%  syscall.syscalln
+         0     0%   100%   512.88kB  2.67%  unicode.init
+
+
+qp-rootcause-control-amd64 runtime.heap-9780.pprof SHA256=dbe0e7dd7abad74a82816dc9d66bd7eb674b99185601a7363a3097972d0a217f
+File: C:\qm962c8d\bin\unic-desktop.exe
+Build ID: C:\qm962c8d\bin\unic-desktop.exe2026-11-20 23:30:03.0133696 +0800 +08
+Type: inuse_space
+Time: 2026-11-20 23:41:26 CST
+Showing nodes accounting for 19976.30kB, 100% of 19976.30kB total
+      flat  flat%   sum%        cum   cum%
+    9728kB 48.70% 48.70%     9728kB 48.70%  io.ReadAll
+ 1788.48kB  8.95% 57.65%  1788.48kB  8.95%  bytes.growSlice
+ 1538.23kB  7.70% 65.35%  1538.23kB  7.70%  runtime.mallocgc
+ 1184.27kB  5.93% 71.28%  1184.27kB  5.93%  github.com/egoist/mygo/internal/scene.(*Atlas).Grow
+ 1024.28kB  5.13% 76.41%  1024.28kB  5.13%  reflect.mapassign_faststr0
+  548.84kB  2.75% 79.15%   548.84kB  2.75%  github.com/egoist/mygo/ui.(*context).alloc
+  532.26kB  2.66% 81.82%   532.26kB  2.66%  github.com/egoist/mygo/ui.(*Painter).textForeground
+  532.26kB  2.66% 84.48%   532.26kB  2.66%  github.com/uniclipboard/unic/app/desktop/internal/uikit.map.init.2
+  532.26kB  2.66% 87.15%   532.26kB  2.66%  regexp/syntax.(*compiler).inst (inline)
+  514.38kB  2.57% 89.72%  1026.60kB  5.14%  github.com/egoist/mygo/ui.flexLayout
+     514kB  2.57% 92.30%      514kB  2.57%  github.com/egoist/mygo/ui.(*spanCache).update
+  513.69kB  2.57% 94.87%   513.69kB  2.57%  golang.org/x/net/html.map.init.0
+  513.12kB  2.57% 97.44%   513.12kB  2.57%  github.com/egoist/mygo/ui.(*engine).lookState
+  512.22kB  2.56%   100%   512.22kB  2.56%  github.com/egoist/mygo/internal/text.(*System).layout
+         0     0%   100%  1788.48kB  8.95%  bufio.(*Writer).Flush
+         0     0%   100%  1788.48kB  8.95%  bufio.(*Writer).Write
+         0     0%   100%  1788.48kB  8.95%  bytes.(*Buffer).Write
+         0     0%   100%  1788.48kB  8.95%  bytes.(*Buffer).grow
+         0     0%   100%  1788.48kB  8.95%  compress/flate.(*Writer).Write (inline)
+         0     0%   100%  1788.48kB  8.95%  compress/flate.(*compressor).deflateFast
+         0     0%   100%  1788.48kB  8.95%  compress/flate.(*compressor).write
+         0     0%   100%  1788.48kB  8.95%  compress/flate.(*compressor).writeStoredBlock
+         0     0%   100%  1788.48kB  8.95%  compress/flate.(*huffmanBitWriter).write (inline)
+         0     0%   100%  1788.48kB  8.95%  compress/flate.(*huffmanBitWriter).writeBytes
+         0     0%   100%  1788.48kB  8.95%  compress/zlib.(*Writer).Write
+         0     0%   100%  1024.28kB  5.13%  encoding/json.Unmarshal (inline)
+         0     0%   100%  1024.28kB  5.13%  encoding/json/v2.Unmarshal
+         0     0%   100%  1024.28kB  5.13%  encoding/json/v2.makeMapArshaler.func3
+         0     0%   100%  1024.28kB  5.13%  encoding/json/v2.unmarshalDecode
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo.(*Application).Run
+         0     0%   100%  2622.61kB 13.13%  github.com/egoist/mygo.(*Window).attachContent.func12.1
+         0     0%   100%  2622.61kB 13.13%  github.com/egoist/mygo.(*mainLoop).drain
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo.(*windowHandler).SurfaceEvent
+         0     0%   100%  2622.61kB 13.13%  github.com/egoist/mygo.appHandler.Dispatch
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/internal/text.(*System).Layout (inline)
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/internal/text.(*System).LayoutFrom
+         0     0%   100%  1184.27kB  5.93%  github.com/egoist/mygo/internal/text.(*System).MakeRoom
+         0     0%   100%  1184.27kB  5.93%  github.com/egoist/mygo/internal/text.(*System).makeRoom
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo/internal/windows.(*Backend).Run
+         0     0%   100%  2622.61kB 13.13%  github.com/egoist/mygo/internal/windows.(*Backend).appMessage
+         0     0%   100%  2622.61kB 13.13%  github.com/egoist/mygo/internal/windows.(*surface).FrameNow
+         0     0%   100%  2622.61kB 13.13%  github.com/egoist/mygo/internal/windows.(*surface).drawNow (inline)
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo/internal/windows.(*surface).message
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo/internal/windows.(*surface).send
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo/internal/windows.wndProc
+         0     0%   100%   532.26kB  2.66%  github.com/egoist/mygo/ui.(*Painter).element
+         0     0%   100%   532.26kB  2.66%  github.com/egoist/mygo/ui.(*Painter).textLayout
+         0     0%   100%  1061.97kB  5.32%  github.com/egoist/mygo/ui.(*context).newElement
+         0     0%   100%      514kB  2.57%  github.com/egoist/mygo/ui.(*engine).beginLayout
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo/ui.(*engine).event
+         0     0%   100%   532.26kB  2.66%  github.com/egoist/mygo/ui.(*engine).paint
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo/ui.(*engine).runFrame
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo/ui.(*engine).surfaceFrame
+         0     0%   100%  1061.97kB  5.32%  github.com/egoist/mygo/ui.(*node).Children
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/ui.(*node).leafWidths
+         0     0%   100%      514kB  2.57%  github.com/egoist/mygo/ui.(*node).textSpans
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/ui.(*node).textWidths
+         0     0%   100%  4319.10kB 21.62%  github.com/egoist/mygo/ui.(*windowHost).event
+         0     0%   100%  2622.61kB 13.13%  github.com/egoist/mygo/ui.(*windowHost).waitDisplay.func1
+         0     0%   100%   548.84kB  2.75%  github.com/egoist/mygo/ui.ButtonBase
+         0     0%   100%  1061.97kB  5.32%  github.com/egoist/mygo/ui.Element.Children
+         0     0%   100%   513.12kB  2.57%  github.com/egoist/mygo/ui.Row
+         0     0%   100%  1061.97kB  5.32%  github.com/egoist/mygo/ui.View.func1
+         0     0%   100%  1026.60kB  5.14%  github.com/egoist/mygo/ui.boxLayout
+         0     0%   100%  1026.60kB  5.14%  github.com/egoist/mygo/ui.computeBox
+         0     0%   100%   514.38kB  2.57%  github.com/egoist/mygo/ui.contentHeight
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/ui.contentWidth
+         0     0%   100%   548.84kB  2.75%  github.com/egoist/mygo/ui.coreButtonBase
+         0     0%   100%  1061.97kB  5.32%  github.com/egoist/mygo/ui.coreRow
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/ui.fitWidth
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/ui.intrinsic
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/ui.layoutAbsolute
+         0     0%   100%  1026.60kB  5.14%  github.com/egoist/mygo/ui.layoutBox
+         0     0%   100%  1540.60kB  7.71%  github.com/egoist/mygo/ui.layoutTree
+         0     0%   100%   512.22kB  2.56%  github.com/egoist/mygo/ui.measureIntrinsic
+         0     0%   100%   514.38kB  2.57%  github.com/egoist/mygo/ui.naturalHeight
+         0     0%   100%      514kB  2.57%  github.com/egoist/mygo/ui.sameLayout
+         0     0%   100% 11516.48kB 57.65%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*liveState).loadDetail.func2
+         0     0%   100%  1061.97kB  5.32%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel
+         0     0%   100%  1061.97kB  5.32%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1
+         0     0%   100%  1061.97kB  5.32%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1.2
+         0     0%   100%  1061.97kB  5.32%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).panel.func1.2.1
+         0     0%   100%  1061.97kB  5.32%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).resultRow
+         0     0%   100%   513.12kB  2.57%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.(*quickPanelState).resultRow.func1
+         0     0%   100% 11516.48kB 57.65%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.loadSearchEntry
+         0     0%   100% 11516.48kB 57.65%  github.com/uniclipboard/unic/app/desktop/internal/desktopui.readPreviewImage
+         0     0%   100%  1024.28kB  5.13%  github.com/uniclipboard/unic/app/desktop/internal/i18n.init
+         0     0%   100%  1024.28kB  5.13%  github.com/uniclipboard/unic/app/desktop/internal/i18n.init.func1 (inline)
+         0     0%   100%   532.26kB  2.66%  github.com/uniclipboard/unic/app/desktop/internal/uikit.init
+         0     0%   100%   513.69kB  2.57%  golang.org/x/net/html.init
+         0     0%   100%  1788.48kB  8.95%  image/png.(*Encoder).Encode
+         0     0%   100%  1788.48kB  8.95%  image/png.(*encoder).Write
+         0     0%   100%  1788.48kB  8.95%  image/png.(*encoder).writeChunk
+         0     0%   100%  1788.48kB  8.95%  image/png.(*encoder).writeIDATs
+         0     0%   100%  1788.48kB  8.95%  image/png.(*encoder).writeImage
+         0     0%   100%  4319.10kB 21.62%  main.main
+         0     0%   100%  4319.10kB 21.62%  main.runDesktop
+         0     0%   100%  4319.10kB 21.62%  main.runNativeRole
+         0     0%   100%  4319.10kB 21.62%  main.runPanel
+         0     0%   100%  1024.28kB  5.13%  reflect.Value.SetMapIndex
+         0     0%   100%  1024.28kB  5.13%  reflect.mapassign_faststr
+         0     0%   100%   532.26kB  2.66%  regexp/syntax.(*compiler).compile
+         0     0%   100%   532.26kB  2.66%  regexp/syntax.(*compiler).quest
+         0     0%   100%     1026kB  5.14%  runtime.allocm
+         0     0%   100%  4319.10kB 21.62%  runtime.callbackWrap
+         0     0%   100%  4319.10kB 21.62%  runtime.cgocall
+         0     0%   100%  4319.10kB 21.62%  runtime.cgocallback
+         0     0%   100%  4319.10kB 21.62%  runtime.cgocallbackg
+         0     0%   100%  4319.10kB 21.62%  runtime.cgocallbackg1
+         0     0%   100%  2070.23kB 10.36%  runtime.doInit (inline)
+         0     0%   100%  2070.23kB 10.36%  runtime.doInit1
+         0     0%   100%  6389.33kB 31.98%  runtime.main
+         0     0%   100%   512.23kB  2.56%  runtime.malg
+         0     0%   100%      513kB  2.57%  runtime.mcall
+         0     0%   100%      513kB  2.57%  runtime.mstart
+         0     0%   100%      513kB  2.57%  runtime.mstart0
+         0     0%   100%      513kB  2.57%  runtime.mstart1
+         0     0%   100%     1026kB  5.14%  runtime.newm
+         0     0%   100%  1538.23kB  7.70%  runtime.newobject
+         0     0%   100%   512.23kB  2.56%  runtime.newproc.func1
+         0     0%   100%   512.23kB  2.56%  runtime.newproc1
+         0     0%   100%      513kB  2.57%  runtime.park_m
+         0     0%   100%     1026kB  5.14%  runtime.resetspinning
+         0     0%   100%     1026kB  5.14%  runtime.schedule
+         0     0%   100%     1026kB  5.14%  runtime.startm
+         0     0%   100%   512.23kB  2.56%  runtime.systemstack
+         0     0%   100%  4319.10kB 21.62%  runtime.systemstack_switch
+         0     0%   100%     1026kB  5.14%  runtime.wakep
+         0     0%   100%  4319.10kB 21.62%  syscall.(*LazyProc).Call
+         0     0%   100%  4319.10kB 21.62%  syscall.(*Proc).Call
+         0     0%   100%  4319.10kB 21.62%  syscall.SyscallN
+         0     0%   100%  4319.10kB 21.62%  syscall.syscalln

@@ -1,0 +1,43 @@
+//go:build windows
+
+package d3d11
+
+import (
+ "encoding/json"
+ "os"
+ "strconv"
+ "time"
+ "weak"
+)
+
+// Research-only weak registry. It must not extend renderer/image lifetimes.
+var memoryResearchRenderers = map[uintptr]weak.Pointer[Renderer]{}
+func memoryResearchRegister(r *Renderer) { memoryResearchRenderers[r.hwnd] = weak.Make(r) }
+func MemoryResearchSnapshot(event string) {
+ path:=os.Getenv("UNIC_MEMORY_RESEARCH");if path=="" {return}
+ f,err:=os.OpenFile(path+".gpu-"+strconv.Itoa(os.Getpid())+".jsonl",os.O_CREATE|os.O_WRONLY|os.O_APPEND,0600);if err!=nil{return};defer f.Close()
+ for handle,ref:=range memoryResearchRenderers {
+  r:=ref.Value();if r==nil{delete(memoryResearchRenderers,handle);continue}
+  images:=[]map[string]any{};bytes,dead,deadBytes:=0,0,0
+  for id,t:=range r.images {
+   b:=t.w*t.h*4;alive:=t.memoryOwner.Value()!=nil;bytes+=b
+   if !alive{dead++;deadBytes+=b}
+   images=append(images,map[string]any{"id":id,"width":t.w,"height":t.h,"rgbaBytes":b,"lastFrame":t.lastFrame,"ageFrames":r.frame-t.lastFrame,"ownerAlive":alive})
+  }
+  json.NewEncoder(f).Encode(map[string]any{"event":event,"utcMillis":time.Now().UnixMilli(),"pid":os.Getpid(),"hwnd":handle,"frame":r.frame,"swept":r.swept,"width":r.w,"height":r.h,"warp":r.warp,"images":images,"imageRGBABytes":bytes,"deadImageCount":dead,"deadImageRGBABytes":deadBytes,"canvasCount":len(r.canvases),"blurredCount":len(r.blurred)})
+ }
+}
+
+// Attribution only: release textures whose Go image owner is already gone.
+// This is not an application memory policy or a performance measurement.
+func MemoryResearchReleaseUnowned() {
+ MemoryResearchSnapshot("before-diagnostic-release")
+ for _,ref:=range memoryResearchRenderers {
+  if r:=ref.Value();r!=nil {
+   for id,t:=range r.images {
+    if t.memoryOwner.Value()==nil {freeTexture(t);delete(r.images,id)}
+   }
+  }
+ }
+ MemoryResearchSnapshot("after-diagnostic-release")
+}

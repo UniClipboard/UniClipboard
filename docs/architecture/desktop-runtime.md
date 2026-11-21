@@ -42,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 15d005c84b88fd8cc738fdec00f677010ef0756e
+verified: 71de9ca6e0efa6c5ebccc9e0caf07aa1c5869632
 ---
 # Desktop configuration and received files
 
@@ -377,7 +377,7 @@ macOS uses Accessibility-gated CoreGraphics input and NSRunningApplication ident
 
 ## Desktop acceptance entry
 
-`make desktop-e2e` is the canonical local and CI acceptance entry. Declarative testscript cases live under `app/desktop/e2e/cases`; the generated catalogue is checked during ordinary Go tests. The runner owns source snapshots, binary assembly, private profiles, per-case results and one HTML report. It retains screenshots and continuously sampled window-content recordings for native cases, with source/program/evidence hashes. All 25 former Desktop acceptance entries are migrated into package-local scenario registries. The generated catalogue identifies each case's mode and environment. PR CI runs the ordinary isolated cases in three disjoint round-robin shards on independent hosted runners. Each job keeps the thirty-minute budget and normal evidence/cleanup requirements; full acceptance requires all shards to pass. View cases retain decodable software-rendered checkpoints. The runner verifies Go JSON events and rejects skipped subcases. Registry/catalogue mismatches fail preflight. Original test entries and standalone scripts are removed.
+`make desktop-e2e` is the canonical local and CI acceptance entry. Declarative testscript cases live under `app/desktop/e2e/cases`; the generated catalogue is checked during ordinary Go tests. The runner owns source snapshots, binary assembly, private profiles, per-case results and one HTML report. It retains screenshots and continuously sampled window-content recordings for native cases, with source/program/evidence hashes. All 25 former Desktop acceptance entries are migrated into package-local scenario registries. The generated catalogue identifies each case's mode and environment. PR CI runs the ordinary isolated cases in six disjoint duration-balanced shards on independent hosted runners. A timing report compares measured cases and shards and provides a candidate timing baseline after a successful run. Each job keeps the thirty-minute budget and normal evidence/cleanup requirements; full acceptance requires all shards to pass. View cases retain decodable software-rendered checkpoints. The runner verifies Go JSON events and rejects skipped subcases. Registry/catalogue mismatches fail preflight. Original test entries and standalone scripts are removed.
 
 The `desktop_e2e` build tag imports mygo's opt-in automation plugin, assigns a unique application name and normally supplies the existing directory clipboard through the host Board seam. Untagged builds use the original system board and do not import automation. Ordinary native cases execute real desktop view actions against a production service and check directory-clipboard bytes. Those cases do not establish global key delivery, OS focus policy, system clipboard or cross-application paste.
 

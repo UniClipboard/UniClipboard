@@ -11,6 +11,8 @@ import (
 
 	"github.com/disintegration/imaging"
 	"github.com/egoist/mygo/ui"
+
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 const thumbnailMemoryBudget = 32 << 20
@@ -67,6 +69,10 @@ func readPreviewImage(ctx context.Context, r io.Reader, edge int) (*historyImage
 	if ctx.Err() != nil {
 		return nil, "读取内容失败。"
 	}
+	var sizeHint int64
+	if content, ok := r.(api.HistoryContent); ok {
+		sizeHint = content.Size
+	}
 	r = previewContextReader{ctx: ctx, reader: r}
 	const limit = 32 << 20
 	var raw []byte
@@ -113,7 +119,18 @@ func readPreviewImage(ctx context.Context, r io.Reader, edge int) (*historyImage
 		}
 		raw = encoded.Bytes()
 	} else {
-		raw, err = io.ReadAll(io.LimitReader(r, limit+1))
+		if sizeHint > 0 && sizeHint <= limit {
+			// Reserve the known input once, with bounded socket read requests.
+			// Keep the actual byte limit independent of this optional hint.
+			var encoded bytes.Buffer
+			encoded.Grow(int(sizeHint))
+			// Expose only Write so CopyBuffer keeps its fixed read buffer instead
+			// of delegating to Buffer.ReadFrom's whole-capacity read requests.
+			_, err = io.CopyBuffer(struct{ io.Writer }{&encoded}, io.LimitReader(r, limit+1), make([]byte, 64<<10))
+			raw = encoded.Bytes()
+		} else {
+			raw, err = io.ReadAll(io.LimitReader(r, limit+1))
+		}
 		if err != nil {
 			return nil, "读取内容失败。"
 		}

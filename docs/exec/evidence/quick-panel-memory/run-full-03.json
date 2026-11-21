@@ -1,0 +1,2029 @@
+{
+  "scenario_status": {
+    "fresh_owned_quit": "PASS",
+    "background_core_only": "PASS",
+    "lightweight_close_reopen": "PASS",
+    "normal_gui_absent_hotkey": "PASS",
+    "lightweight_owned_detach": "PASS"
+  },
+  "native_menu_clicks": 6,
+  "native_tray": {
+    "business_clicks": 6,
+    "method": "native mouse and PID-bound menu"
+  },
+  "task_root_removed": true,
+  "prior_panel_regression": {
+    "run": "native18",
+    "new_native_verification": "PASS",
+    "status": "RED",
+    "observation": "role.visible=true but owned Win32 panel HWND hidden"
+  },
+  "global_shortcut": {
+    "status": "PASS",
+    "method": "single SendInput chord; never replayed"
+  },
+  "identities": [
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:21.8751586Z",
+      "pid": 13424,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 13424,
+        "started_at": "2026-11-20T12:16:22.0814956Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:22.2058823Z",
+      "pid": 11184,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 11184,
+        "started_at": "2026-11-20T12:16:22.3311318Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:25.7811887Z",
+      "pid": 7900,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 7900,
+        "started_at": "2026-11-20T12:16:25.852855Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:27.9564939Z",
+      "pid": 11976,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 11976,
+        "started_at": "2026-11-20T12:16:28.0273264Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:29.9785685Z",
+      "pid": 13100,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 13100,
+        "started_at": "2026-11-20T12:16:30.0486752Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:30.0909378Z",
+      "pid": 5404,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 5404,
+        "started_at": "2026-11-20T12:16:30.1606865Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:31.9184760Z",
+      "pid": 7364,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 7364,
+        "started_at": "2026-11-20T12:16:31.9974007Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:33.5676653Z",
+      "pid": 6304,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 6304,
+        "started_at": "2026-11-20T12:16:33.6769157Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\a",
+      "created_utc": "2026-11-20T12:16:33.7550317Z",
+      "pid": 6656,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 6656,
+        "started_at": "2026-11-20T12:16:33.8496825Z",
+        "profile": "C:\\qnf\\a",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\b",
+      "created_utc": "2026-11-20T12:16:36.4118181Z",
+      "pid": 8052,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 8052,
+        "started_at": "2026-11-20T12:16:36.486179Z",
+        "profile": "C:\\qnf\\b",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\b",
+      "created_utc": "2026-11-20T12:16:41.8337672Z",
+      "pid": 5832,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 5832,
+        "started_at": "2026-11-20T12:16:41.9113953Z",
+        "profile": "C:\\qnf\\b",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\b",
+      "created_utc": "2026-11-20T12:16:45.2835862Z",
+      "pid": 10020,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 10020,
+        "started_at": "2026-11-20T12:16:45.3792528Z",
+        "profile": "C:\\qnf\\b",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\b",
+      "created_utc": "2026-11-20T12:16:46.6714429Z",
+      "pid": 4016,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 4016,
+        "started_at": "2026-11-20T12:16:46.9142101Z",
+        "profile": "C:\\qnf\\b",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\b",
+      "created_utc": "2026-11-20T12:16:46.9706906Z",
+      "pid": 2204,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 2204,
+        "started_at": "2026-11-20T12:16:47.0457386Z",
+        "profile": "C:\\qnf\\b",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\c",
+      "created_utc": "2026-11-20T12:16:52.6924895Z",
+      "pid": 3776,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "tray",
+      "ipc": {
+        "role": "tray",
+        "pid": 3776,
+        "started_at": "2026-11-20T12:16:52.793157Z",
+        "profile": "C:\\qnf\\c",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\c",
+      "created_utc": "2026-11-20T12:16:58.7815045Z",
+      "pid": 13012,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "gui",
+      "ipc": {
+        "role": "gui",
+        "pid": 13012,
+        "started_at": "2026-11-20T12:16:58.85636Z",
+        "profile": "C:\\qnf\\c",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    },
+    {
+      "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f",
+      "profile": "C:\\qnf\\c",
+      "created_utc": "2026-11-20T12:17:01.6143135Z",
+      "pid": 11936,
+      "binary": "C:\\qpnative\\bin\\unic-desktop.exe",
+      "role": "quick-panel",
+      "ipc": {
+        "role": "quick-panel",
+        "pid": 11936,
+        "started_at": "2026-11-20T12:17:01.6913305Z",
+        "profile": "C:\\qnf\\c",
+        "binary_path": "C:\\qpnative\\bin\\unic-desktop.exe",
+        "binary_sha256": "133136c75c3408f7c74966b28285998334d48f9c264e40f0b51b07038038ee1f"
+      }
+    }
+  ],
+  "system_clipboard": "NOT_RUN",
+  "verdict": "PASS",
+  "source_requested": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+  "cross_application_paste": "NOT_RUN",
+  "events": [
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:16.0838527Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "observe service",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "binary_sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:21.7575758Z",
+      "kind": "service-identity"
+    },
+    {
+      "name": "tray probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:23.1203672Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:23.6027768Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "shortcut requested/effective",
+      "data": {
+        "effective": "Ctrl+Alt+V",
+        "error": "",
+        "requested": "Ctrl+Alt+V"
+      },
+      "at_utc": "2026-11-20T12:16:23.6083314Z",
+      "kind": "registration-receipt"
+    },
+    {
+      "name": "gui probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:23.7331302Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:23.8744802Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui",
+      "data": {
+        "hwnd": 8717282,
+        "pid": 11184,
+        "foreground_hwnd": 8717282
+      },
+      "at_utc": "2026-11-20T12:16:23.8787475Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "initial-manual-gui",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 8717282,
+        "pid": 11184
+      },
+      "at_utc": "2026-11-20T12:16:24.0120488Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:24.0485576Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:24.1627414Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 8717282,
+        "pid": 11184,
+        "created_utc": "2026-11-20T12:16:22.2058823Z"
+      },
+      "at_utc": "2026-11-20T12:16:24.1846897Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:24.4871067Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:25.6626940Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "Ctrl+Alt+V first panel with no GUI",
+      "data": {
+        "panel_first_open": true,
+        "target_pid": 4584,
+        "target_created_utc": "2026-11-20T12:16:24.6848514Z",
+        "gui_absent": true,
+        "target_hwnd": 9634708,
+        "input_replayed": false
+      },
+      "at_utc": "2026-11-20T12:16:25.6821378Z",
+      "kind": "native-SendInput"
+    },
+    {
+      "name": "quick-panel probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:26.1495079Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:26.3045002Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:26.4501592Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel",
+      "data": {
+        "hwnd": 10028466,
+        "pid": 7900,
+        "foreground_hwnd": 10028466
+      },
+      "at_utc": "2026-11-20T12:16:26.4529888Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "global-shortcut-first-panel",
+      "data": {
+        "native_visibility_checked_separately": true,
+        "search_field": true,
+        "window": 1
+      },
+      "at_utc": "2026-11-20T12:16:26.7640572Z",
+      "kind": "app-scoped-render-readiness"
+    },
+    {
+      "name": "global-shortcut-first-panel",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 10028466,
+        "pid": 7900
+      },
+      "at_utc": "2026-11-20T12:16:26.7994272Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "Escape dismiss panel",
+      "data": {
+        "window": 1,
+        "endpoint": "automation-panel.sock"
+      },
+      "at_utc": "2026-11-20T12:16:26.8740911Z",
+      "kind": "app-scoped-automation"
+    },
+    {
+      "name": "quick-panel status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:26.9857393Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:27.1155720Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "right click PID-bound Shell notification icon",
+      "data": {
+        "uia_exact_candidates": 1,
+        "icon": {
+          "ProcessId": 13424,
+          "IconId": 3015896799,
+          "Hwnd": 21234608,
+          "HResult": 0,
+          "Left": 2823,
+          "Top": 1414,
+          "Right": 2903,
+          "Bottom": 1494,
+          "IdentifierSize": 40
+        },
+        "root_class": "TopLevelWindowForOverflowXamlIsland"
+      },
+      "at_utc": "2026-11-20T12:16:27.7081249Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "normal-tray-reopen-menu",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 16253880,
+        "pid": 13424
+      },
+      "at_utc": "2026-11-20T12:16:27.9224451Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "click tray menu \u6253\u5f00\u4e3b\u7a97\u53e3",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1233,
+            "width": 256,
+            "height": 68,
+            "x": 2866
+          },
+          "automation_id": "Item 1",
+          "process_id": 13424,
+          "name": "\u6253\u5f00\u4e3b\u7a97\u53e3",
+          "runtime_id": "1.16253880.65208485.0",
+          "offscreen": false
+        },
+        "menu_hwnd": 16253880,
+        "tray_pid": 13424
+      },
+      "at_utc": "2026-11-20T12:16:27.9306455Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "gui probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:28.3534810Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:28.4792522Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui",
+      "data": {
+        "hwnd": 23855234,
+        "pid": 11976,
+        "foreground_hwnd": 23855234
+      },
+      "at_utc": "2026-11-20T12:16:28.5161955Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "normal-tray-reopened-gui",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 23855234,
+        "pid": 11976
+      },
+      "at_utc": "2026-11-20T12:16:28.6497840Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "save mode lightweight",
+      "data": {
+        "sha256": "3176B3AF54039F372758281A31601E9A444F573629211ACE2660EB21028AB95C",
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:28.8290583Z",
+      "kind": "production-cli-config"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:28.9853681Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 23855234,
+        "pid": 11976,
+        "created_utc": "2026-11-20T12:16:27.9564939Z"
+      },
+      "at_utc": "2026-11-20T12:16:29.0067482Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:29.8983385Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "WM_CLOSE ended every UI role and preserved S0",
+      "data": {
+        "generation": "c155b39ebdb79a51b6aaa205aba52dde",
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:29.8983385Z",
+      "kind": "native-lightweight-close"
+    },
+    {
+      "name": "tray probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:30.5058376Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:30.6609580Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "shortcut requested/effective",
+      "data": {
+        "effective": "Ctrl+Alt+V",
+        "error": "",
+        "requested": "Ctrl+Alt+V"
+      },
+      "at_utc": "2026-11-20T12:16:30.6609580Z",
+      "kind": "registration-receipt"
+    },
+    {
+      "name": "gui probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:30.7597562Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:30.9535052Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui",
+      "data": {
+        "hwnd": 11470104,
+        "pid": 5404,
+        "foreground_hwnd": 11470104
+      },
+      "at_utc": "2026-11-20T12:16:30.9561247Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "light-manual-reopen-one",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 11470104,
+        "pid": 5404
+      },
+      "at_utc": "2026-11-20T12:16:31.0620710Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:31.1103965Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:31.2084702Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "right click PID-bound Shell notification icon",
+      "data": {
+        "uia_exact_candidates": 1,
+        "icon": {
+          "ProcessId": 13100,
+          "IconId": 3015896799,
+          "Hwnd": 21300144,
+          "HResult": 0,
+          "Left": 2823,
+          "Top": 1414,
+          "Right": 2903,
+          "Bottom": 1494,
+          "IdentifierSize": 40
+        },
+        "root_class": "TopLevelWindowForOverflowXamlIsland"
+      },
+      "at_utc": "2026-11-20T12:16:31.6479235Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "light-first-panel-menu",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 6030784,
+        "pid": 13100
+      },
+      "at_utc": "2026-11-20T12:16:31.8453747Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "click tray menu \u5feb\u6377\u9762\u677f",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1301,
+            "width": 256,
+            "height": 64,
+            "x": 2866
+          },
+          "automation_id": "Item 2",
+          "process_id": 13100,
+          "name": "\u5feb\u6377\u9762\u677f",
+          "runtime_id": "1.6030784.48628713.1",
+          "offscreen": false
+        },
+        "menu_hwnd": 6030784,
+        "tray_pid": 13100
+      },
+      "at_utc": "2026-11-20T12:16:31.8652001Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "quick-panel probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:32.1958966Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:32.3156412Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel",
+      "data": {
+        "hwnd": 16384952,
+        "pid": 7364,
+        "foreground_hwnd": 16384952
+      },
+      "at_utc": "2026-11-20T12:16:32.3163924Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "light-first-panel",
+      "data": {
+        "native_visibility_checked_separately": true,
+        "search_field": true,
+        "window": 1
+      },
+      "at_utc": "2026-11-20T12:16:32.4454350Z",
+      "kind": "app-scoped-render-readiness"
+    },
+    {
+      "name": "light-first-panel",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 16384952,
+        "pid": 7364
+      },
+      "at_utc": "2026-11-20T12:16:32.4829905Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:32.5705980Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 11470104,
+        "pid": 5404,
+        "created_utc": "2026-11-20T12:16:30.0909378Z"
+      },
+      "at_utc": "2026-11-20T12:16:32.5718555Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:33.2835343Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "tray probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:34.2426381Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:34.3760590Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "shortcut requested/effective",
+      "data": {
+        "effective": "Ctrl+Alt+V",
+        "error": "",
+        "requested": "Ctrl+Alt+V"
+      },
+      "at_utc": "2026-11-20T12:16:34.3760590Z",
+      "kind": "registration-receipt"
+    },
+    {
+      "name": "gui probe",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:34.4886798Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:34.8164027Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui",
+      "data": {
+        "hwnd": 10944650,
+        "pid": 6656,
+        "foreground_hwnd": 10944650
+      },
+      "at_utc": "2026-11-20T12:16:34.8195144Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "light-manual-reopen-two",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 10944650,
+        "pid": 6656
+      },
+      "at_utc": "2026-11-20T12:16:34.9324524Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:35.0421524Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 10944650,
+        "pid": 6656,
+        "created_utc": "2026-11-20T12:16:33.7550317Z"
+      },
+      "at_utc": "2026-11-20T12:16:35.0483105Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:35.7885271Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:36.1358407Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "lightweight starts only core",
+      "data": {
+        "profile": "C:\\qnf\\a",
+        "gui": false,
+        "arguments": [
+          "--background"
+        ],
+        "tray": false,
+        "quick_panel": false
+      },
+      "at_utc": "2026-11-20T12:16:36.1358407Z",
+      "kind": "manual-background-launch"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "c155b39ebdb79a51b6aaa205aba52dde",
+          "pid": 8268,
+          "directory": "C:\\qnf\\a",
+          "mode": "standalone",
+          "started_at_ms": 1795176976529,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:16.4743703Z"
+      },
+      "at_utc": "2026-11-20T12:16:36.1641578Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "stop S0 only after lightweight manual/background preservation",
+      "data": {
+        "generation": "c155b39ebdb79a51b6aaa205aba52dde",
+        "pid": 8268,
+        "profile": "C:\\qnf\\a"
+      },
+      "at_utc": "2026-11-20T12:16:36.2062578Z",
+      "kind": "driver-generation-cleanup"
+    },
+    {
+      "name": "tray probe",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:42.3755185Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:42.5119124Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "shortcut requested/effective",
+      "data": {
+        "effective": "Ctrl+Alt+V",
+        "error": "",
+        "requested": "Ctrl+Alt+V"
+      },
+      "at_utc": "2026-11-20T12:16:42.5119124Z",
+      "kind": "registration-receipt"
+    },
+    {
+      "name": "observe service",
+      "data": {
+        "instance": {
+          "id": "9f9bdeea7ece37444262c6b85da5bdda",
+          "pid": 9452,
+          "directory": "C:\\qnf\\b",
+          "mode": "desktop",
+          "started_at_ms": 1795176996604,
+          "leases": 0,
+          "retiring": false
+        },
+        "binary_sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+        "created_utc": "2026-11-20T12:16:36.5019990Z"
+      },
+      "at_utc": "2026-11-20T12:16:42.7956633Z",
+      "kind": "service-identity"
+    },
+    {
+      "name": "gui probe",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:42.9296126Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:43.0687945Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui",
+      "data": {
+        "hwnd": 6227392,
+        "pid": 5832,
+        "foreground_hwnd": 6227392
+      },
+      "at_utc": "2026-11-20T12:16:43.0728052Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "owned-light-manual-gui",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 6227392,
+        "pid": 5832
+      },
+      "at_utc": "2026-11-20T12:16:43.1669811Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:43.2695792Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "overflow observed closed; open from confirmed closed state",
+      "data": {
+        "attempt": 1
+      },
+      "at_utc": "2026-11-20T12:16:43.6079881Z",
+      "kind": "native-observation"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2870
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:43.7025292Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "overflow observed closed; open from confirmed closed state",
+      "data": {
+        "attempt": 2
+      },
+      "at_utc": "2026-11-20T12:16:44.1703806Z",
+      "kind": "native-observation"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 85,
+          "height": 96,
+          "x": 2860
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:44.2287137Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "right click PID-bound Shell notification icon",
+      "data": {
+        "uia_exact_candidates": 1,
+        "icon": {
+          "ProcessId": 8052,
+          "IconId": 3015896799,
+          "Hwnd": 21431216,
+          "HResult": 0,
+          "Left": 2823,
+          "Top": 1414,
+          "Right": 2903,
+          "Bottom": 1494,
+          "IdentifierSize": 40
+        },
+        "root_class": "TopLevelWindowForOverflowXamlIsland"
+      },
+      "at_utc": "2026-11-20T12:16:44.9469560Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "owned-light-panel-menu",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 11011066,
+        "pid": 8052
+      },
+      "at_utc": "2026-11-20T12:16:45.1934518Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "click tray menu \u5feb\u6377\u9762\u677f",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1301,
+            "width": 256,
+            "height": 64,
+            "x": 2866
+          },
+          "automation_id": "Item 2",
+          "process_id": 8052,
+          "name": "\u5feb\u6377\u9762\u677f",
+          "runtime_id": "1.11011066.38732839.1",
+          "offscreen": false
+        },
+        "menu_hwnd": 11011066,
+        "tray_pid": 8052
+      },
+      "at_utc": "2026-11-20T12:16:45.2145335Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "quick-panel probe",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:45.5855385Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel status",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:45.7222942Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel",
+      "data": {
+        "hwnd": 7800206,
+        "pid": 10020,
+        "foreground_hwnd": 7800206
+      },
+      "at_utc": "2026-11-20T12:16:45.7239368Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "owned-light-panel",
+      "data": {
+        "native_visibility_checked_separately": true,
+        "search_field": true,
+        "window": 1
+      },
+      "at_utc": "2026-11-20T12:16:45.8767412Z",
+      "kind": "app-scoped-render-readiness"
+    },
+    {
+      "name": "owned-light-panel",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 7800206,
+        "pid": 10020
+      },
+      "at_utc": "2026-11-20T12:16:45.9015177Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:46.0193073Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "close GUI",
+      "data": {
+        "hwnd": 6227392,
+        "pid": 5832,
+        "created_utc": "2026-11-20T12:16:41.8337672Z"
+      },
+      "at_utc": "2026-11-20T12:16:46.0227336Z",
+      "kind": "native-WM_CLOSE"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "9f9bdeea7ece37444262c6b85da5bdda",
+          "pid": 9452,
+          "directory": "C:\\qnf\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795176996604,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:36.5019990Z"
+      },
+      "at_utc": "2026-11-20T12:16:46.5768960Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "lightweight WM_CLOSE retained S1 PID and generation as standalone",
+      "data": {
+        "instance_after": {
+          "id": "9f9bdeea7ece37444262c6b85da5bdda",
+          "pid": 9452,
+          "directory": "C:\\qnf\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795176996604,
+          "leases": 0,
+          "retiring": false
+        },
+        "instance_before": {
+          "id": "9f9bdeea7ece37444262c6b85da5bdda",
+          "pid": 9452,
+          "directory": "C:\\qnf\\b",
+          "mode": "desktop",
+          "started_at_ms": 1795176996604,
+          "leases": 0,
+          "retiring": false
+        }
+      },
+      "at_utc": "2026-11-20T12:16:46.6023612Z",
+      "kind": "native-owned-detach"
+    },
+    {
+      "name": "tray probe",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:47.4608510Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:47.6382939Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "shortcut requested/effective",
+      "data": {
+        "effective": "Ctrl+Alt+V",
+        "error": "",
+        "requested": "Ctrl+Alt+V"
+      },
+      "at_utc": "2026-11-20T12:16:47.6382939Z",
+      "kind": "registration-receipt"
+    },
+    {
+      "name": "gui probe",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:47.8702353Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:48.0088735Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui",
+      "data": {
+        "hwnd": 9503712,
+        "pid": 2204,
+        "foreground_hwnd": 9503712
+      },
+      "at_utc": "2026-11-20T12:16:48.0107309Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "detached-service-manual-gui",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 9503712,
+        "pid": 2204
+      },
+      "at_utc": "2026-11-20T12:16:48.1934794Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "9f9bdeea7ece37444262c6b85da5bdda",
+          "pid": 9452,
+          "directory": "C:\\qnf\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795176996604,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:36.5019990Z"
+      },
+      "at_utc": "2026-11-20T12:16:48.3701740Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:48.7422271Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "overflow observed closed; open from confirmed closed state",
+      "data": {
+        "attempt": 1
+      },
+      "at_utc": "2026-11-20T12:16:49.0197877Z",
+      "kind": "native-observation"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:49.5309972Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "overflow observed closed; open from confirmed closed state",
+      "data": {
+        "attempt": 2
+      },
+      "at_utc": "2026-11-20T12:16:49.9639846Z",
+      "kind": "native-observation"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 89,
+          "height": 96,
+          "x": 2858
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:16:50.1800730Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "right click PID-bound Shell notification icon",
+      "data": {
+        "uia_exact_candidates": 0,
+        "icon": {
+          "ProcessId": 4016,
+          "IconId": 3015896799,
+          "Hwnd": 21496752,
+          "HResult": 0,
+          "Left": 2823,
+          "Top": 1414,
+          "Right": 2903,
+          "Bottom": 1494,
+          "IdentifierSize": 40
+        },
+        "root_class": "TopLevelWindowForOverflowXamlIsland"
+      },
+      "at_utc": "2026-11-20T12:16:50.9805416Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "detached-light-native-quit-menu",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 23855538,
+        "pid": 4016
+      },
+      "at_utc": "2026-11-20T12:16:51.1930519Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "click tray menu \u9000\u51fa\u6574\u4e2a\u5e94\u7528",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1383,
+            "width": 256,
+            "height": 68,
+            "x": 2866
+          },
+          "automation_id": "Item 3",
+          "process_id": 4016,
+          "name": "\u9000\u51fa\u6574\u4e2a\u5e94\u7528",
+          "runtime_id": "1.23855538.69076325.3",
+          "offscreen": false
+        },
+        "menu_hwnd": 23855538,
+        "tray_pid": 4016
+      },
+      "at_utc": "2026-11-20T12:16:51.2306074Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "9f9bdeea7ece37444262c6b85da5bdda",
+          "pid": 9452,
+          "directory": "C:\\qnf\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795176996604,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:36.5019990Z"
+      },
+      "at_utc": "2026-11-20T12:16:51.8273870Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "same generation and OS process",
+      "data": {
+        "instance": {
+          "id": "9f9bdeea7ece37444262c6b85da5bdda",
+          "pid": 9452,
+          "directory": "C:\\qnf\\b",
+          "mode": "standalone",
+          "started_at_ms": 1795176996604,
+          "leases": 0,
+          "retiring": false
+        },
+        "created_utc": "2026-11-20T12:16:36.5019990Z"
+      },
+      "at_utc": "2026-11-20T12:16:51.8614994Z",
+      "kind": "service-continuity"
+    },
+    {
+      "name": "driver stops detached S1 after native Quit preserved it",
+      "data": {
+        "generation": "9f9bdeea7ece37444262c6b85da5bdda",
+        "pid": 9452,
+        "profile": "C:\\qnf\\b"
+      },
+      "at_utc": "2026-11-20T12:16:52.3227945Z",
+      "kind": "driver-generation-cleanup"
+    },
+    {
+      "name": "tray probe",
+      "data": {
+        "profile": "C:\\qnf\\c"
+      },
+      "at_utc": "2026-11-20T12:16:59.6018098Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "tray status",
+      "data": {
+        "profile": "C:\\qnf\\c"
+      },
+      "at_utc": "2026-11-20T12:17:00.1537666Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "shortcut requested/effective",
+      "data": {
+        "effective": "Ctrl+Alt+V",
+        "error": "",
+        "requested": "Ctrl+Alt+V"
+      },
+      "at_utc": "2026-11-20T12:17:00.1587926Z",
+      "kind": "registration-receipt"
+    },
+    {
+      "name": "observe service",
+      "data": {
+        "instance": {
+          "id": "ef94be7830c8df53058a36485544c649",
+          "pid": 5752,
+          "directory": "C:\\qnf\\c",
+          "mode": "desktop",
+          "started_at_ms": 1795177013091,
+          "leases": 0,
+          "retiring": false
+        },
+        "binary_sha256": "AE13E16067B6AF7D70E6FB0E7315C745EC26EC1F40F2F11D18BAA5F872694EB7",
+        "created_utc": "2026-11-20T12:16:52.8997996Z"
+      },
+      "at_utc": "2026-11-20T12:17:00.2933627Z",
+      "kind": "service-identity"
+    },
+    {
+      "name": "gui probe",
+      "data": {
+        "profile": "C:\\qnf\\c"
+      },
+      "at_utc": "2026-11-20T12:17:00.4050501Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui status",
+      "data": {
+        "profile": "C:\\qnf\\c"
+      },
+      "at_utc": "2026-11-20T12:17:00.5292677Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "gui",
+      "data": {
+        "hwnd": 16319888,
+        "pid": 13012,
+        "foreground_hwnd": 16319888
+      },
+      "at_utc": "2026-11-20T12:17:00.5319660Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "fresh-owned-gui",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 16319888,
+        "pid": 13012
+      },
+      "at_utc": "2026-11-20T12:17:00.7281218Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 85,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:17:00.8537836Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "right click PID-bound Shell notification icon",
+      "data": {
+        "uia_exact_candidates": 1,
+        "icon": {
+          "ProcessId": 3776,
+          "IconId": 3015896799,
+          "Hwnd": 14222288,
+          "HResult": 0,
+          "Left": 2823,
+          "Top": 1414,
+          "Right": 2903,
+          "Bottom": 1494,
+          "IdentifierSize": 40
+        },
+        "root_class": "TopLevelWindowForOverflowXamlIsland"
+      },
+      "at_utc": "2026-11-20T12:17:01.3479202Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "fresh-owned-panel-menu",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 3080246,
+        "pid": 3776
+      },
+      "at_utc": "2026-11-20T12:17:01.5390075Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "click tray menu \u5feb\u6377\u9762\u677f",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1301,
+            "width": 256,
+            "height": 64,
+            "x": 2866
+          },
+          "automation_id": "Item 2",
+          "process_id": 3776,
+          "name": "\u5feb\u6377\u9762\u677f",
+          "runtime_id": "1.3080246.35522119.1",
+          "offscreen": false
+        },
+        "menu_hwnd": 3080246,
+        "tray_pid": 3776
+      },
+      "at_utc": "2026-11-20T12:17:01.5638493Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "quick-panel probe",
+      "data": {
+        "profile": "C:\\qnf\\c"
+      },
+      "at_utc": "2026-11-20T12:17:01.9155396Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel status",
+      "data": {
+        "profile": "C:\\qnf\\c"
+      },
+      "at_utc": "2026-11-20T12:17:02.0866323Z",
+      "kind": "role-ipc"
+    },
+    {
+      "name": "quick-panel",
+      "data": {
+        "hwnd": 8782806,
+        "pid": 11936,
+        "foreground_hwnd": 8782806
+      },
+      "at_utc": "2026-11-20T12:17:02.0904217Z",
+      "kind": "native-foreground-observation"
+    },
+    {
+      "name": "fresh-owned-panel",
+      "data": {
+        "native_visibility_checked_separately": true,
+        "search_field": true,
+        "window": 1
+      },
+      "at_utc": "2026-11-20T12:17:02.3381702Z",
+      "kind": "app-scoped-render-readiness"
+    },
+    {
+      "name": "fresh-owned-panel",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 8782806,
+        "pid": 11936
+      },
+      "at_utc": "2026-11-20T12:17:02.3871509Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:17:02.5237128Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "overflow observed closed; open from confirmed closed state",
+      "data": {
+        "attempt": 1
+      },
+      "at_utc": "2026-11-20T12:17:02.7599361Z",
+      "kind": "native-observation"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 115,
+          "height": 96,
+          "x": 2845
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:17:02.8315040Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "overflow observed closed; open from confirmed closed state",
+      "data": {
+        "attempt": 2
+      },
+      "at_utc": "2026-11-20T12:17:03.5054974Z",
+      "kind": "native-observation"
+    },
+    {
+      "name": "show notification overflow",
+      "data": {
+        "class": "SystemTray.NormalButton",
+        "hwnd": 0,
+        "rect": {
+          "y": 1528,
+          "width": 64,
+          "height": 96,
+          "x": 2871
+        },
+        "automation_id": "SystemTrayIcon",
+        "process_id": 6252,
+        "name": "\u663e\u793a\u9690\u85cf\u7684\u56fe\u6807",
+        "runtime_id": "42.66058.4.93",
+        "offscreen": false
+      },
+      "at_utc": "2026-11-20T12:17:03.5953543Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "right click PID-bound Shell notification icon",
+      "data": {
+        "uia_exact_candidates": 1,
+        "icon": {
+          "ProcessId": 3776,
+          "IconId": 3015896799,
+          "Hwnd": 14222288,
+          "HResult": 0,
+          "Left": 2823,
+          "Top": 1414,
+          "Right": 2903,
+          "Bottom": 1494,
+          "IdentifierSize": 40
+        },
+        "root_class": "TopLevelWindowForOverflowXamlIsland"
+      },
+      "at_utc": "2026-11-20T12:17:04.0786874Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "fresh-owned-native-quit-menu",
+      "data": {
+        "dpi": 192,
+        "method": "CopyFromScreen cropped to verified foreground owned window/menu",
+        "hwnd": 1836012,
+        "pid": 3776
+      },
+      "at_utc": "2026-11-20T12:17:04.2865020Z",
+      "kind": "native-capture"
+    },
+    {
+      "name": "click tray menu \u9000\u51fa\u6574\u4e2a\u5e94\u7528",
+      "data": {
+        "item": {
+          "class": "",
+          "hwnd": 0,
+          "rect": {
+            "y": 1383,
+            "width": 228,
+            "height": 68,
+            "x": 2866
+          },
+          "automation_id": "Item 6",
+          "process_id": 3776,
+          "name": "\u9000\u51fa\u6574\u4e2a\u5e94\u7528",
+          "runtime_id": "1.1836012.71893309.3",
+          "offscreen": false
+        },
+        "menu_hwnd": 1836012,
+        "tray_pid": 3776
+      },
+      "at_utc": "2026-11-20T12:17:04.2958003Z",
+      "kind": "native-mouse"
+    },
+    {
+      "name": "native menu Quit stopped fresh S2 and all UI roles",
+      "data": {
+        "service_pid": 5752,
+        "generation": "ef94be7830c8df53058a36485544c649"
+      },
+      "at_utc": "2026-11-20T12:17:04.8117603Z",
+      "kind": "native-owned-cleanup"
+    }
+  ],
+  "cleanup": "PASS",
+  "failure": "",
+  "requested_phase": "full"
+}

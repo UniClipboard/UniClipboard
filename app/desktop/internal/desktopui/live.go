@@ -42,6 +42,21 @@ func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
 	return &Desktop{d: d}
 }
 func (s *Desktop) View(c *ui.Context) { s.d.view(c) }
+
+// SetWindowToolbar binds host controls and the frame value used by this GUI.
+// Call on the view thread before the first frame. A nil slot uses native controls.
+func (s *Desktop) SetWindowToolbar(systemFrame bool, trailing func(*ui.Context)) {
+	s.d.windowFrame = &systemFrame
+	s.d.toolbarTrailing = trailing
+}
+
+func (d *viewState) trailingToolbar(c *ui.Context) func() {
+	if d.toolbarTrailing == nil {
+		return nil
+	}
+	return func() { d.toolbarTrailing(c) }
+}
+
 func (s *Desktop) Close() {
 	if s.d.live != nil {
 		s.d.live.cancel()

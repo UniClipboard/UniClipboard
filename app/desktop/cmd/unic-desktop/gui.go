@@ -199,24 +199,33 @@ func runGUI(settings *config.Manager) error {
 		if runtime.GOOS == "darwin" {
 			_ = mygo.App.Dock.SetIcon(appicons.PNG)
 		}
+		session.windowFrame = settings.Current().Desktop.SystemWindowFrame
 		view := session.view
-		if runtime.GOOS == "windows" {
-			view = func(c *ui.Context) {
-				windowchrome.View(c, windowchrome.Actions{
-					Minimize: func() { g.win.Minimize() },
-					ToggleMaximize: func() {
-						if g.win.IsMaximized() {
-							g.win.Unmaximize()
-						} else {
-							g.win.Maximize()
-						}
-						g.win.Invalidate()
-					},
-					IsMaximized: func() bool { return g.win != nil && g.win.IsMaximized() },
-					Close:       func() { g.win.Close() },
-				}, settings.Current().Desktop.Language, func() { session.view(c) })
+		if runtime.GOOS == "windows" && !session.windowFrame {
+			actions := windowchrome.Actions{
+				Minimize: func() { g.win.Minimize() },
+				ToggleMaximize: func() {
+					if g.win.IsMaximized() {
+						g.win.Unmaximize()
+					} else {
+						g.win.Maximize()
+					}
+					g.win.Invalidate()
+				},
+				IsMaximized: func() bool { return g.win != nil && g.win.IsMaximized() },
+				Close:       func() { g.win.Close() },
 			}
-		} else if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && !settings.Current().Desktop.SystemWindowFrame {
+			session.windowControls = func(c *ui.Context) {
+				windowchrome.Controls(c, actions, settings.Current().Desktop.Language)
+			}
+			view = func(c *ui.Context) {
+				if session.setup == nil && session.runtime != nil {
+					session.view(c)
+					return
+				}
+				windowchrome.View(c, actions, settings.Current().Desktop.Language, func() { session.view(c) })
+			}
+		} else if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && !session.windowFrame {
 			view = func(c *ui.Context) {
 				if runtime.GOOS == "darwin" && session.runtime != nil && session.message == "" {
 					// Normal macOS pages own the window top, as the v1 SplitView did.
@@ -227,8 +236,9 @@ func runGUI(settings *config.Manager) error {
 				windowchrome.NativeView(c, func() { session.view(c) })
 			}
 		}
+
 		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
-		windowchrome.Configure(&opts, runtime.GOOS, settings.Current().Desktop.SystemWindowFrame)
+		windowchrome.Configure(&opts, runtime.GOOS, session.windowFrame)
 		if flow.Required() {
 			opts.Width, opts.Height = 640, 560
 		}

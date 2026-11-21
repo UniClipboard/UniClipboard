@@ -76,11 +76,12 @@ The history toolbar exposes the Actions menu for records accepted by the current
 ## Main-window decoration
 
 `desktop.system_window_frame` is a persisted boolean, defaulting to `false`.
-Settings > General exposes it on Linux and macOS. Its value is captured when the
-main window is created; an existing window is not recreated on configuration
-reload. Quit and reopen Desktop to apply it. The service reports
-`desktop.system_window_frame` as restart-required when it differs from its startup
-configuration. The UI-free service only stores this host preference.
+Settings > General exposes the same switch on Windows, Linux and macOS. The host
+captures its value when creating each GUI window. Saving a change leaves the
+existing window intact. Close and reopen the main window to apply it. The GUI
+compares saved intent with its own captured value for the pending notice. The
+UI-free service stores the preference and never adds this host-only key to
+`restart_required`; an older service generation does not keep a recreated GUI pending.
 
 With the preference off, the host uses mygo's hidden native title bar, retaining
 resize edges, rounded corners and shadows. macOS keeps its real system traffic
@@ -94,14 +95,25 @@ lights use a (14,18)-DIP native inset; no replacement buttons are drawn.
 Setup and startup keep a separate draggable safe-area wrapper until normal
 runtime content takes ownership of the window top. Linux
 reserves GTK's reported caption-control area above the application content. With
-the preference on, Linux/macOS use the normal native title bar.
+the preference on, all three platforms use the normal native title bar and buttons.
 
-Windows always uses a hidden title bar with native caption buttons disabled.
-`internal/windowchrome` draws Minimize, Maximize/Restore and Close above every main
-window page, including setup and startup errors. Only the empty caption region
-drags the window. Maximize/Restore reads the actual window state. Close invokes
-the existing window-close lifecycle. This preference does not change Quick Panel
-or its satellite windows. See the [acceptance receipt](../exec/desktop-window-chrome.md).
+Windows custom mode disables native caption buttons. The existing SplitView
+provides a trailing toolbar slot. The host supplies Minimize, Maximize/Restore
+and Close after the existing history commands. Search, history commands and
+caption buttons share one 52-DIP band. Settings and plugin details use the same
+slot. Ordinary pages have no separate `unic` caption row. Search shrinks to the
+available width while caption and command hit targets retain their sizes.
+
+Setup, offline migration, loading and startup-error pages have no SplitView;
+these pages use a single minimal draggable fallback band with the same controls.
+Only empty toolbar regions drag. Interactive children retain input. mygo owns
+native hit testing, edge resize and double-click maximize. Maximize/Restore reads
+the OS window state; the maximize element uses mygo's native maximize-button
+marker. Windows 11 Snap behavior requires separate native acceptance. Close
+invokes the existing GUI-close lifecycle and does not recreate a tray. System
+mode draws no custom caption controls or fallback band. Quick Panel and its
+satellite windows retain their independent decoration. See the
+[acceptance receipt](../exec/desktop-window-chrome.md).
 
 ## Native application updates
 
@@ -112,8 +124,9 @@ Direct installations with a configured production update key use mygo's native u
 Desktop loads history in 50-entry cursor pages as the list or grid approaches its loaded end. It retains a 500-entry sliding window, bounded cursor checkpoints and one selected detail outside that window. Scrolling toward an evicted newer page reloads it automatically. Stable item keys retain surviving scroll anchors.
 
 Image preview admission occurs before `HistoryContent` can open or materialize a
-response. One process-wide slot covers the main window and Quick Panel through
-response close and decode completion. Selected originals take priority over queued
+response. Each UI process owns one slot through response close and decode completion.
+The independent GUI and Quick Panel reuse this implementation but have separate
+queues; this is not service-wide admission. Selected originals take priority over queued
 neighbors. Cancelling a queued request removes it without opening a response; a
 cancellation racing admission returns the transferred slot. Each view retains its
 four-job bound and cancels one pending neighbor when selection needs that job.
@@ -129,8 +142,17 @@ replay buffer uses the same encoded-input budget. Full decoding starts only afte
 the existing 16-million-pixel dimension check. A bounded remainder read detects
 trailing input beyond the byte limit. Context checks cover reads and codec/resize
 phase boundaries; a running codec/resize call is not preempted. Selected originals
-retain their encoded reconstruction bytes and full dimensions. See the
-[implementation receipt](../exec/desktop-image-memory.md).
+retain their encoded reconstruction bytes and full dimensions. For a selected
+original, a valid local response length up to 32 MiB reserves its encoded buffer
+once, and a fixed 64 KiB copy buffer bounds individual read requests. Unknown or over-limit
+lengths keep the bounded fallback. The actual byte limiter and raster check stay
+authoritative when a hint is inaccurate. Neighbor thumbnails keep their streaming
+path. See the [image implementation receipt](../exec/desktop-image-memory.md) and
+[independent quick-panel receipt](../exec/quick-panel-memory.md).
+
+Quick-panel reopening invalidates its cleared row projection even when the
+service reuses an unchanged query/revision. It preserves the service cache and
+reconstructs the real result list and satellite instead of an empty panel.
 
 Service events trigger metadata revision checks. A 30-second bounded recovery probe detects missed notifications. An unchanged revision does not reload search results. Stream failure renews cursors, while query changes cancel stale generations. Selection, detail state and filters survive background reconciliation; selected deletion closes its detail and preview. See the [search contract](../contracts/history-search-contract.md#incremental-desktop-browsing) and [execution receipt](../exec/desktop-incremental-browsing.md).
 

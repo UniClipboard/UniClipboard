@@ -1,0 +1,23 @@
+{
+  "verdict": "PASS",
+  "vm": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+  "initial_state": "suspended",
+  "final_state": "suspended",
+  "guest_check": "NO_TASK_PROCESSES_OR_GUEST_ROOTS",
+  "removed_owned_stages": [
+    "/Users/mark/.cache/unic-qp-attribution-arm64",
+    "/Users/mark/.cache/unic-qp-attribution2-arm64",
+    "/Users/mark/.cache/unic-qp-attribution-amd64",
+    "/Users/mark/.cache/unic-qp-orphan-arm64",
+    "/Users/mark/.cache/unic-qp-orphan-amd64",
+    "/Users/mark/.cache/unic-qp-rootcause-arm64",
+    "/Users/mark/.cache/unic-qp-rootcause-amd64",
+    "/Users/mark/.cache/unic-qp-rootcause-control-amd64"
+  ],
+  "shared_module_cache_modified": false,
+  "product_go_mod_or_source_modified": false,
+  "clipboard_sharing_or_system_permissions_modified": false,
+  "source_or_program_exports_submitted": false,
+  "raw_heap_profiles": "ignored .build only; compact summaries and profile hashes retained",
+  "vm_state_output_sha256": "dbcae1f09bc807fdb3e8c743c8d6ec7801127491d60f0265d882e84979194164"
+}

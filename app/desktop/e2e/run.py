@@ -49,7 +49,7 @@ def cases(base=HERE):
             raise ValueError(f'{path.name}: all catalogue fields are required')
         spec = {name.lower(): ' '.join(fields[name]) for name in FIELDS}
         spec['environment'] = ' '.join(fields.get('Environment', ['isolated']))
-        if spec['environment'] not in ('isolated', 'disposable-guest'):
+        if spec['environment'] not in ('isolated', 'disposable-guest', 'owned-window-guest'):
             raise ValueError(f'{path.name}: invalid Environment')
         if spec['mode'] not in ('native', 'process', 'view'):
             raise ValueError(f'{path.name}: invalid Mode')
@@ -196,7 +196,7 @@ def run(specs, selected, output, guest=None, control=None):
         manifest['guest'] = guest
     for s in specs:
         reason = 'not selected' if s['id'] not in selected else 'not executed'
-        if s['id'] not in selected and s['environment'] == 'disposable-guest':
+        if s['id'] not in selected and s['environment'] != 'isolated':
             reason = 'requires explicit disposable-guest authorization'
         manifest['cases'][s['id']] = {'status': 'NOT_RUN', 'reason': reason}
     private = None
@@ -344,7 +344,7 @@ def main():
     selection.add_argument('--case', default='')
     selection.add_argument('--shard', help='one-based index/count over the sorted complete catalogue')
     parser.add_argument('--out')
-    parser.add_argument('--guest', help='explicitly authorize real clipboard tests in this disposable VM UUID')
+    parser.add_argument('--guest', help='explicitly authorize selected guest acceptance in this VM UUID')
     parser.add_argument('--control-dir', type=Path, help='owned guest directory for physical-input requests')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--update', action='store_true')
@@ -397,6 +397,14 @@ def main():
         control_stat = args.control_dir.stat()
         if control_stat.st_uid != os.getuid() or control_stat.st_mode & 0o077:
             raise ValueError('control directory must be owned by the current user with mode 0700')
+    if any(s['environment'] == 'owned-window-guest' and s['id'] in selected for s in specs):
+        if not args.guest:
+            raise ValueError('physical window input requires GUEST=<exclusively owned VM UUID>')
+        uuid.UUID(args.guest)
+        if sys.platform != 'win32':
+            raise ValueError('physical chrome acceptance requires a Windows guest')
+        guest = dict(id=args.guest, input='exact owned foreground window', system_clipboard='NOT_RUN',
+                     lease='caller must verify exclusive VM handover before invoking the runner')
     if args.action == 'doctor':
         doctor(any(s['mode'] == 'native' and s['id'] in selected for s in specs))
         print('READY: basic prerequisites found; native startup is verified by the case')

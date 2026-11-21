@@ -25,6 +25,8 @@ type desktopRuntime struct {
 // desktopSession serializes setup and ordinary runtime ownership on the view
 // thread. Only the startup/shutdown worker touches a service in transition.
 type desktopSession struct {
+	windowFrame       bool
+	windowControls    func(*ui.Context)
 	g                 *gui
 	ctx               context.Context
 	settings          *config.Manager
@@ -107,6 +109,7 @@ func (s *desktopSession) start() {
 			s.setup = nil
 			ctx, cancel := context.WithCancel(s.ctx)
 			screen := desktopui.NewDesktop(ctx, s.g.c)
+			screen.SetWindowToolbar(s.windowFrame, s.windowControls)
 			r := &desktopRuntime{screen: screen, cancel: cancel}
 			s.runtime = r
 			s.navigate(s.pendingAction)

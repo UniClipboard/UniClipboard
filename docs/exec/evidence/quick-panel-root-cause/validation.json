@@ -1,0 +1,17 @@
+{
+  "product_commit": "d17f8da3fcf6d4f8f188d3336130090097e48d0c",
+  "product_sources_unchanged": true,
+  "native_traces": {
+    "capture_first": "FAIL: panel hidden at final selection; cleanup PASS",
+    "capture_repeat": "PASS; directory label corrected; receipt noCaptures=false",
+    "arm64_no_capture": "PASS",
+    "x64_candidate_no_capture": "PASS",
+    "x64_control_no_capture": "PASS"
+  },
+  "orphan_resource_assertion": "RED: dead owners retain textures after GC; zero after diagnostic release",
+  "race_product_tests": "NOT RERUN: product source unchanged from prior accepted correctness traces",
+  "production_fix": "NOT IMPLEMENTED; sustained-memory delivery remains HOLD",
+  "python_syntax": "PASS",
+  "docscheck": "PASS; five preexisting stale-page warnings",
+  "diff_check": "PASS"
+}

@@ -65,6 +65,7 @@ type desktopScenario struct {
 	workdir                        string
 	windowWidth, windowHeight      int
 	windowTheme                    string
+	windowSkin                     string
 	app                            *exec.Cmd
 	appDone                        chan error
 	client                         *api.Client
@@ -175,8 +176,8 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 	handlers := map[string]func(*desktopScenario, []string) error{
 		"start": func(s *desktopScenario, a []string) error {
 			if len(a) != 0 {
-				if len(a) != 3 {
-					return errors.New("start [width height light|dark]")
+				if len(a) != 3 && len(a) != 4 {
+					return errors.New("start [width height light|dark [skin]]")
 				}
 				var err error
 				s.windowWidth, err = strconv.Atoi(a[0])
@@ -191,8 +192,28 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 					return errors.New("invalid window theme")
 				}
 				s.windowTheme = a[2]
+				s.windowSkin = "macos"
+				if len(a) == 4 {
+					skin := a[3]
+					if skin == "native" {
+						skin = runtime.GOOS
+						if skin == "darwin" {
+							skin = "macos"
+						}
+					}
+					if skin != "windows" && skin != "macos" && skin != "linux" {
+						return errors.New("invalid window skin")
+					}
+					s.windowSkin = skin
+				}
 			}
 			return s.start()
+		},
+		"start-error": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("start-error takes no arguments")
+			}
+			return s.startNative("startup-error")
 		},
 		"start-setup": func(s *desktopScenario, a []string) error {
 			if len(a) != 1 || (a[0] != "complete" && a[0] != "partial") {
@@ -381,6 +402,25 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			}
 			return s.call(s.ctx, "act", map[string]any{"window": s.window, "id": node.ID, "action": "setValue", "text": a[2]}, nil)
 		},
+		"ui-reveal": func(s *desktopScenario, a []string) error {
+			if len(a) != 2 {
+				return errors.New("ui-reveal role label")
+			}
+			node, err := s.find(a[0], a[1])
+			if err != nil {
+				return err
+			}
+			if err := s.call(s.ctx, "act", map[string]any{"window": s.window, "id": node.ID, "action": "scrollIntoView"}, nil); err != nil {
+				return err
+			}
+			return s.wait(func() bool {
+				node, err := s.find(a[0], a[1])
+				if err != nil {
+					return false
+				}
+				return node.Bounds.Y >= 0 && (s.windowHeight == 0 || node.Bounds.Y+node.Bounds.Height <= float64(s.windowHeight))
+			})
+		},
 		"ui-click": func(s *desktopScenario, a []string) error {
 			if len(a) != 2 {
 				return errors.New("ui-click role label")
@@ -488,7 +528,7 @@ func (s *desktopScenario) startNative(migration string) error {
 	if err := os.WriteFile(filepath.Join(s.home, "config.toml"), []byte(config), 0600); err != nil {
 		return err
 	}
-	if migration == "" {
+	if migration == "" || migration == "startup-error" {
 		if s.systemClipboard {
 			initialize := exec.CommandContext(s.ctx, filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic"), "migrate", "--initialize-empty", "--json")
 			initialize.Env = append(os.Environ(), "UNIC_HOME="+s.home, "XDG_DATA_HOME="+filepath.Join(s.private, "discovery"), "UC_PROFILE=")
@@ -539,6 +579,12 @@ func (s *desktopScenario) startNative(migration string) error {
 		s.result.Assertions = append(s.result.Assertions, "isolated encrypted v1 fixture with 1505 records; synthetic system credentials unavailable")
 	}
 
+	if migration == "startup-error" {
+		if err := os.Mkdir(filepath.Join(s.home, "unic.db"), 0700); err != nil {
+			return err
+		}
+		s.result.Assertions = append(s.result.Assertions, "owned database-path directory forces a real service startup failure without personal data")
+	}
 	if err := s.launchNative(); err != nil {
 		return err
 	}
@@ -761,7 +807,7 @@ func (s *desktopScenario) screenshot(name string) error {
 		if err != nil {
 			return err
 		}
-		metadata, err := json.MarshalIndent(map[string]any{"content_width": s.windowWidth, "content_height": s.windowHeight, "theme": s.windowTheme, "skin": "macos", "pixel_width": config.Width, "pixel_height": config.Height, "capture_scale": float64(config.Width) / float64(s.windowWidth)}, "", "  ")
+		metadata, err := json.MarshalIndent(map[string]any{"content_width": s.windowWidth, "content_height": s.windowHeight, "theme": s.windowTheme, "skin": s.windowSkin, "pixel_width": config.Width, "pixel_height": config.Height, "capture_scale": float64(config.Width) / float64(s.windowWidth)}, "", "  ")
 		if err != nil {
 			return err
 		}

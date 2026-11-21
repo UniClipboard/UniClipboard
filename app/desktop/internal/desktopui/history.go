@@ -102,7 +102,7 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 			d.inspector = false
 		})
 	}
-	k.SplitView(c, desktopkit.SplitViewProps{
+	k.SplitView(c, desktopkit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c),
 		Title: d.tr("全部"), Subtitle: fmt.Sprint(len(items)),
 		Sidebar: func() { d.sidebar(c, k) }, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact,
 		SidebarToggleLabel: d.tr("切换侧栏"), DetailOpen: &d.detailOpen, BackLabel: d.tr("返回历史"),

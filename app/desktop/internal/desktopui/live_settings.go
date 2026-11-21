@@ -99,11 +99,9 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				}
 			})
 		})
-		if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
-			group("window", d.tr("窗口"), func() {
-				toggle("system-window-frame", d.tr("使用系统边框"), d.tr("下次启动时生效。"), &cfg.Desktop.SystemWindowFrame)
-			})
-		}
+		group("window", d.tr("窗口"), func() {
+			toggle("system-window-frame", d.tr("使用系统边框"), d.tr("关闭并重新打开主窗口后生效。"), &cfg.Desktop.SystemWindowFrame)
+		})
 		group("privacy", d.tr("隐私与诊断"), func() {
 			toggle("telemetry", d.tr("发送使用数据与诊断"), d.tr("关闭后停止遥测上传。"), &cfg.Telemetry.Enabled)
 		})
@@ -195,7 +193,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 	default:
 		k.ContentUnavailable(c, desktopkit.ContentUnavailableProps{Title: d.tr("此设置暂不可用"), Description: d.tr("当前版本尚不支持此设置。")}, nil)
 	}
-	if len(l.config.RestartRequired) > 0 {
+	if len(l.config.RestartRequired) > 0 || (d.windowFrame != nil && *d.windowFrame != cfg.Desktop.SystemWindowFrame) {
 		k.Text(c, d.tr("部分设置将在下次启动时生效。"), footnote)
 	}
 	if changed {

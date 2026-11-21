@@ -95,7 +95,9 @@ type deviceCandidate struct {
 }
 
 type viewState struct {
-	pluginSettings builtinPluginSettings
+	toolbarTrailing func(*ui.Context)
+	windowFrame     *bool
+	pluginSettings  builtinPluginSettings
 
 	reference                                                              string
 	previewImage                                                           ui.ImageSource

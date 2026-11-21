@@ -1,0 +1,16 @@
+# Case: Native startup-error window controls
+# Mode: native
+# Purpose: Keep Windows custom controls available when real service startup fails.
+# Steps: Create an owned directory at the database path, launch a completed private profile, and inspect the resulting retry page and its fallback controls.
+# Expected: A real startup failure leaves a visible retry page with one draggable fallback band and functioning caption actions.
+# Forbidden: Personal data, a fake success screen, missing controls, system clipboard access, or OS frame claims based on content capture.
+
+start-error
+ui-wait button '重试' 60
+screenshot startup-error
+[windows] windows-frame startup-error-os custom
+[windows] ui-click button '最大化'
+[windows] windows-frame startup-error-maximized-os custom maximized
+[windows] ui-click button '还原'
+[windows] ui-wait button '最大化'
+[windows] windows-frame startup-error-minimized-os custom minimized

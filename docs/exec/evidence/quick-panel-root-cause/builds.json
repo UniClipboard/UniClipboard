@@ -1,0 +1,186 @@
+{
+  "qp-attribution-arm64-no-capture": {
+    "source_head": "d17f8da3fcf6d4f8f188d3336130090097e48d0c",
+    "control_projection_fix": false,
+    "dirty": " M tools/research/quick-panel-memory/measure.ps1\n M tools/research/quick-panel-memory/prepare.py\n M tools/research/quick-panel-memory/run.py\n?? tools/research/quick-panel-memory/gpu_probe.go.txt\n",
+    "arch": "arm64",
+    "race": false,
+    "attribution": true,
+    "build_flags": [
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags=-s -w",
+      "desktop: -tags desktop_e2e -H windowsgui"
+    ],
+    "cgo_enabled": false,
+    "instrumented_source_sha256": {
+      "app/desktop/internal/desktopui/live.go": "d831fc460681f416952caa1ac7fb386252ababb94fe70288887399521bc01d17",
+      "app/desktop/internal/desktopui/live_quick.go": "f5088b072ebd8fc44b758e4def321f228fee3ff9d9deb422fdbfbb5d7e49e98b",
+      "app/desktop/internal/desktopui/process_panel.go": "155fea3e4ad183befc63686427b7b1f2f63f326c3afa24bc52eaf205856f043a"
+    },
+    "pe_machine": {
+      "helper.exe": "0xaa64",
+      "unicd.exe": "0xaa64",
+      "unic-desktop.exe": "0xaa64",
+      "unic.exe": "0xaa64"
+    },
+    "binary_sha256": {
+      "helper.exe": "906dd5ad54225f2d462cc272d220dc267c4cb845210b28e5161f7eb1a22957ae",
+      "unicd.exe": "ae13e16067b6af7d70e6fb0e7315c745ec26ec1f40f2f11d18baa5f872694eb7",
+      "unic-desktop.exe": "c199fec76f8c08bc6cc8df389654e9d1a9dfd7f5343eda908434a3ac8e13539a",
+      "unic.exe": "cf1cf2ffdc8ca2a8c93fcfe3bafbfc1f0d9301fbe96b15838d6b4c682f8a3b20"
+    },
+    "go": "go version go1.27.3 darwin/arm64",
+    "diagnostic_sha256": {
+      "research-mygo/internal/gpu/d3d11/memory_research.go": "bc9cf1bed8ea7c5e27703774c400d5d41d97537d5b8a64d3a752cf2c5eac357f",
+      "app/service/cmd/unicd/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+      "app/desktop/internal/desktopui/memory_research.go": "c7dc4da9e6fa7859e0a07d5ff5a337362c35c40c83d04c3fa78bf2dadbad688e",
+      "app/desktop/cmd/unic-desktop/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+      "research-mygo/memory_research_windows.go": "836d662e2be00c9c32aa09edb99ab01864bd606343fed65d631b64cd5e84a310",
+      "research-mygo/internal/gpu/d3d11/d3d11.go": "efd56f4a14f16f3253880edc596fe4ea19ac74392f3212b4909d4f90519720f1"
+    },
+    "source_manifest_sha256": "847ae67b978ef61ddccb58c9010aaaafe3f8c4e6e932c18b36e62d7421c2a8c4",
+    "product_source_sha256": {
+      "app/desktop/internal/desktopui/live_images.go": "ea76a1f3cb6dd3e07eb0cad68e6c4adc3810f33dec3ead2312372c64608a5da2",
+      "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3"
+    }
+  },
+  "qp-rootcause-arm64": {
+    "source_head": "d17f8da3fcf6d4f8f188d3336130090097e48d0c",
+    "control_projection_fix": false,
+    "dirty": " M tools/research/quick-panel-memory/measure.ps1\n M tools/research/quick-panel-memory/prepare.py\n M tools/research/quick-panel-memory/run.py\n?? tools/research/quick-panel-memory/gpu_probe.go.txt\n",
+    "arch": "arm64",
+    "race": false,
+    "attribution": true,
+    "build_flags": [
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags=-s -w",
+      "desktop: -tags desktop_e2e -H windowsgui"
+    ],
+    "cgo_enabled": false,
+    "instrumented_source_sha256": {
+      "app/desktop/internal/desktopui/live.go": "d831fc460681f416952caa1ac7fb386252ababb94fe70288887399521bc01d17",
+      "app/desktop/internal/desktopui/live_quick.go": "f5088b072ebd8fc44b758e4def321f228fee3ff9d9deb422fdbfbb5d7e49e98b",
+      "app/desktop/internal/desktopui/process_panel.go": "155fea3e4ad183befc63686427b7b1f2f63f326c3afa24bc52eaf205856f043a"
+    },
+    "pe_machine": {
+      "helper.exe": "0xaa64",
+      "unicd.exe": "0xaa64",
+      "unic-desktop.exe": "0xaa64",
+      "unic.exe": "0xaa64"
+    },
+    "binary_sha256": {
+      "helper.exe": "906dd5ad54225f2d462cc272d220dc267c4cb845210b28e5161f7eb1a22957ae",
+      "unicd.exe": "ae13e16067b6af7d70e6fb0e7315c745ec26ec1f40f2f11d18baa5f872694eb7",
+      "unic-desktop.exe": "8c9c75723048ac042f89179591791b598aa4f017a651d02df3e3a78fd8bf1916",
+      "unic.exe": "cf1cf2ffdc8ca2a8c93fcfe3bafbfc1f0d9301fbe96b15838d6b4c682f8a3b20"
+    },
+    "go": "go version go1.27.3 darwin/arm64",
+    "diagnostic_sha256": {
+      "research-mygo/internal/gpu/d3d11/memory_research.go": "58a419c030338a5d8835442bcb98eb6eb8c72a398772379331d1fe1c9b2cdc21",
+      "app/service/cmd/unicd/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+      "app/desktop/internal/desktopui/memory_research.go": "4aac5742d68364a97944502ad9e5294f3728717de4527063bb6ca846607b276c",
+      "app/desktop/cmd/unic-desktop/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+      "research-mygo/memory_research_windows.go": "e1c9e1f12e0c79f0fd1117cbd975426585ebf6bacc45bbf64d165ec7dabd144b",
+      "research-mygo/internal/gpu/d3d11/d3d11.go": "efd56f4a14f16f3253880edc596fe4ea19ac74392f3212b4909d4f90519720f1"
+    },
+    "source_manifest_sha256": "c99badd702e354af0b5ea5fdd64066a300b1f20386f94a202858742cb8235657",
+    "product_source_sha256": {
+      "app/desktop/internal/desktopui/live_images.go": "ea76a1f3cb6dd3e07eb0cad68e6c4adc3810f33dec3ead2312372c64608a5da2",
+      "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3"
+    }
+  },
+  "qp-rootcause-amd64": {
+    "source_head": "d17f8da3fcf6d4f8f188d3336130090097e48d0c",
+    "control_projection_fix": false,
+    "dirty": " M tools/research/quick-panel-memory/measure.ps1\n M tools/research/quick-panel-memory/prepare.py\n M tools/research/quick-panel-memory/run.py\n?? tools/research/quick-panel-memory/gpu_probe.go.txt\n",
+    "arch": "amd64",
+    "race": false,
+    "attribution": true,
+    "build_flags": [
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags=-s -w",
+      "desktop: -tags desktop_e2e -H windowsgui"
+    ],
+    "cgo_enabled": false,
+    "instrumented_source_sha256": {
+      "app/desktop/internal/desktopui/live.go": "d831fc460681f416952caa1ac7fb386252ababb94fe70288887399521bc01d17",
+      "app/desktop/internal/desktopui/live_quick.go": "f5088b072ebd8fc44b758e4def321f228fee3ff9d9deb422fdbfbb5d7e49e98b",
+      "app/desktop/internal/desktopui/process_panel.go": "155fea3e4ad183befc63686427b7b1f2f63f326c3afa24bc52eaf205856f043a"
+    },
+    "pe_machine": {
+      "helper.exe": "0x8664",
+      "unicd.exe": "0x8664",
+      "unic-desktop.exe": "0x8664",
+      "unic.exe": "0x8664"
+    },
+    "binary_sha256": {
+      "helper.exe": "7d9144b99feebcea47bf75a608f58500122ac2f7860a06fd5a49630b2308298d",
+      "unicd.exe": "575e6a092220e057dbd0548b3484d5bad5b99332909ba7b24e87b4db16c2915d",
+      "unic-desktop.exe": "5383add8c162c2cb4354cee8f4cd32a23c1b40c385d70a55c85d0b0aff060411",
+      "unic.exe": "9f1d5082dd4b07b6f58d0113357a1b4d069976396cf3edbb087b51f0ca3a87f6"
+    },
+    "go": "go version go1.27.3 darwin/arm64",
+    "diagnostic_sha256": {
+      "research-mygo/internal/gpu/d3d11/memory_research.go": "58a419c030338a5d8835442bcb98eb6eb8c72a398772379331d1fe1c9b2cdc21",
+      "app/service/cmd/unicd/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+      "app/desktop/internal/desktopui/memory_research.go": "4aac5742d68364a97944502ad9e5294f3728717de4527063bb6ca846607b276c",
+      "app/desktop/cmd/unic-desktop/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+      "research-mygo/memory_research_windows.go": "e1c9e1f12e0c79f0fd1117cbd975426585ebf6bacc45bbf64d165ec7dabd144b",
+      "research-mygo/internal/gpu/d3d11/d3d11.go": "efd56f4a14f16f3253880edc596fe4ea19ac74392f3212b4909d4f90519720f1"
+    },
+    "source_manifest_sha256": "c99badd702e354af0b5ea5fdd64066a300b1f20386f94a202858742cb8235657",
+    "product_source_sha256": {
+      "app/desktop/internal/desktopui/live_images.go": "ea76a1f3cb6dd3e07eb0cad68e6c4adc3810f33dec3ead2312372c64608a5da2",
+      "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3"
+    }
+  },
+  "qp-rootcause-control-amd64": {
+    "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+    "control_projection_fix": true,
+    "dirty": true,
+    "arch": "amd64",
+    "race": false,
+    "attribution": true,
+    "build_flags": [
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags=-s -w",
+      "desktop: -tags desktop_e2e -H windowsgui"
+    ],
+    "cgo_enabled": false,
+    "instrumented_source_sha256": {
+      "app/desktop/internal/desktopui/live.go": "d831fc460681f416952caa1ac7fb386252ababb94fe70288887399521bc01d17",
+      "app/desktop/internal/desktopui/live_quick.go": "f5088b072ebd8fc44b758e4def321f228fee3ff9d9deb422fdbfbb5d7e49e98b",
+      "app/desktop/internal/desktopui/process_panel.go": "155fea3e4ad183befc63686427b7b1f2f63f326c3afa24bc52eaf205856f043a"
+    },
+    "pe_machine": {
+      "helper.exe": "0x8664",
+      "unicd.exe": "0x8664",
+      "unic-desktop.exe": "0x8664",
+      "unic.exe": "0x8664"
+    },
+    "binary_sha256": {
+      "helper.exe": "7d9144b99feebcea47bf75a608f58500122ac2f7860a06fd5a49630b2308298d",
+      "unicd.exe": "575e6a092220e057dbd0548b3484d5bad5b99332909ba7b24e87b4db16c2915d",
+      "unic-desktop.exe": "1aedd0ebdb43dfd6b2d93d9c5c10dbe7933be5f2e71bfb28ee8cc11521eb1ad6",
+      "unic.exe": "9f1d5082dd4b07b6f58d0113357a1b4d069976396cf3edbb087b51f0ca3a87f6"
+    },
+    "go": "go version go1.27.3 darwin/arm64",
+    "diagnostic_sha256": {
+      "research-mygo/internal/gpu/d3d11/memory_research.go": "58a419c030338a5d8835442bcb98eb6eb8c72a398772379331d1fe1c9b2cdc21",
+      "app/service/cmd/unicd/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+      "app/desktop/internal/desktopui/memory_research.go": "4aac5742d68364a97944502ad9e5294f3728717de4527063bb6ca846607b276c",
+      "app/desktop/cmd/unic-desktop/memory_research.go": "145e12dc1b4729ef8db0073a6b1c4de204e5429b9f3264c5b945324338bca3ab",
+      "research-mygo/memory_research_windows.go": "e1c9e1f12e0c79f0fd1117cbd975426585ebf6bacc45bbf64d165ec7dabd144b",
+      "research-mygo/internal/gpu/d3d11/d3d11.go": "efd56f4a14f16f3253880edc596fe4ea19ac74392f3212b4909d4f90519720f1"
+    },
+    "source_manifest_sha256": "f777c6912a68b7a3d3e44c0eeb697e7702d1779f3b22729af9658ea356ec2343",
+    "product_source_sha256": {
+      "app/desktop/internal/desktopui/quick_panel_model.go": "64dc1b5a3f7124ae41df8a27ffcc0a08c677cd26c686170cc4898122c3f182e3",
+      "app/desktop/internal/desktopui/live_images.go": "ccc6a919b33978e3bd05837c5d3291747c6db17c416ba89f31bbe22c12e061b2"
+    }
+  }
+}

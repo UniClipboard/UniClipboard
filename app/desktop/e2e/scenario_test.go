@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -339,6 +340,19 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 		},
 		"ui-wait":   func(s *desktopScenario, a []string) error { return s.expect(a, false) },
 		"ui-absent": func(s *desktopScenario, a []string) error { return s.expect(a, true) },
+		"ui-invalid": func(s *desktopScenario, a []string) error {
+			if len(a) != 2 {
+				return errors.New("ui-invalid role label")
+			}
+			err := s.wait(func() bool {
+				node, err := s.find(a[0], a[1])
+				return err == nil && slices.Contains(node.States, "invalid")
+			})
+			if err == nil {
+				s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("%s %q is invalid", a[0], a[1]))
+			}
+			return err
+		},
 		"ui-disabled": func(s *desktopScenario, a []string) error {
 			if len(a) != 2 {
 				return errors.New("ui-disabled role label")

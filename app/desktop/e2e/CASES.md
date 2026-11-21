@@ -219,7 +219,8 @@ ui-enabled textField '自动文件传输阈值（MB）'
 ui-click textField '自动文件传输阈值（MB）'
 ui-set textField '自动文件传输阈值（MB）' '-1'
 ui-key Enter
-ui-wait alert '请输入 0 到 4096 之间的整数。'
+ui-wait text '请输入 0 到 4096 之间的整数。'
+ui-invalid textField '自动文件传输阈值（MB）'
 config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 0
 ui-enabled textField '自动文件传输阈值（MB）'
 ui-click textField '自动文件传输阈值（MB）'
@@ -640,8 +641,8 @@ ui-wait listItem 管理设备…
 ui-click listItem 管理设备…
 ui-wait button 邀请设备
 ui-click button 邀请设备
-ui-wait button 跨网或命令行配对？改用完整票据 →
-ui-click button 跨网或命令行配对？改用完整票据 →
+ui-wait button '跨网或命令行配对？改用完整票据 →'
+ui-click button '跨网或命令行配对？改用完整票据 →'
 ui-wait button 复制票据
 ui-enabled button 复制票据
 ui-wait text 添加设备

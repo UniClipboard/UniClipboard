@@ -421,6 +421,11 @@ def stage(args):
             },
         )
         (resources / "LICENSE").write_bytes((ROOT / "LICENSE").read_bytes())
+        notices = resources / "licenses"
+        notices.mkdir()
+        for name in ("BOARDUI-MIT.txt", "Inter-OFL.txt", "REMIX-LICENSE.txt"):
+            shutil.copyfile(ROOT / "app/desktop/boardui/assets" / name, notices / name)
+
         icon_name = {
             "darwin": "icon.icns", "windows": "icon.ico", "linux": "icon.png"
         }[os_name]

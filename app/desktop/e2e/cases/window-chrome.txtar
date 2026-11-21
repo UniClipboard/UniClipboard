@@ -1,7 +1,7 @@
 # Case: Main-window decoration and shared-toolbar caption actions
 # Mode: view
 # Purpose: Select native title bars on all platforms and put Windows custom controls in the application toolbar.
-# Steps: Exercise complete history/settings/plugin views at 600/640/1100 widths in light/dark themes and scaled rendering; check geometry and dispatch caption actions.
+# Steps: On macOS also exercise the integrated native traffic-light band; on every host exercise complete history/settings/plugin views at 600/640/1100 widths in light/dark themes and scaled rendering; check geometry and dispatch caption actions.
 # Expected: The preference defaults off; either native or custom controls are shown; custom controls share the history toolbar and preserve search and commands.
 # Forbidden: A second caption row on ordinary pages, overlap, lost resize edges, duplicate buttons, or claims of native OS interaction.
 

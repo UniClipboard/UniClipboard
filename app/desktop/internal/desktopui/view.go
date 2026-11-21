@@ -11,7 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
@@ -29,7 +29,7 @@ type entry struct {
 	backendSync                         []api.HistoryBackendSync
 	createdAt                           int64
 	id, title, text, source, date, size string
-	kind                                uikit.ContentKind
+	kind                                desktopkit.ContentKind
 	tags                                []string
 	pinned                              bool
 	folder                              *folderInfo
@@ -75,7 +75,7 @@ type devicePath struct {
 // content-type policy remain separate from the Engine-backed fields.
 type device struct {
 	id, name, platform string
-	icon               uikit.IconName
+	icon               desktopkit.IconName
 	online             bool
 	latency            int
 	link, lastSeen     string
@@ -87,13 +87,13 @@ type device struct {
 
 type pendingDevice struct {
 	id, name, platform, via, fingerprint string
-	icon                                 uikit.IconName
+	icon                                 desktopkit.IconName
 }
 
 type deviceCandidate struct {
 	id, name, introducer string
 	backendID            string
-	icon                 uikit.IconName
+	icon                 desktopkit.IconName
 }
 
 type viewState struct {
@@ -101,37 +101,38 @@ type viewState struct {
 	windowFrame     *bool
 	pluginSettings  builtinPluginSettings
 
-	reference                                                              string
-	previewImage                                                           ui.ImageSource
-	language                                                               string
-	quickShortcutStatus                                                    func() (string, string)
-	retryQuickShortcut                                                     func()
-	live                                                                   *liveState
-	tagEditor                                                              tagEditorState
-	openQuickPanel                                                         func()
-	quick                                                                  *quickPanelState
-	tags                                                                   []historyTag
-	tagManager                                                             tagManagerState
-	search                                                                 historySearchState
-	page, theme, query, kind, source, tag, timeRange, layout               string
-	nav, settings                                                          uikit.NavState
-	list                                                                   uikit.ListState
-	deviceList                                                             uikit.SourceState
-	entries                                                                []entry
-	devices                                                                []device
-	selected                                                               string
-	confirmEntries                                                         []string
-	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook bool
-	compact                                                                bool
-	gridSize                                                               float64
-	deviceTask, fieldError, notice, confirm, confirmID                     string
-	deviceName                                                             string
-	pending                                                                []pendingDevice
-	candidates                                                             []deviceCandidate
-	inviteCode, inviteMode, connectInput, renameValue, deviceNote          string
-	renaming, deviceDetailOpen                                             bool
-	options                                                                map[string]bool
-	choices                                                                map[string]string
+	reference                                                             string
+	previewImage                                                          ui.ImageSource
+	language                                                              string
+	quickShortcutStatus                                                   func() (string, string)
+	retryQuickShortcut                                                    func()
+	live                                                                  *liveState
+	tagEditor                                                             tagEditorState
+	openQuickPanel                                                        func()
+	quick                                                                 *quickPanelState
+	tags                                                                  []historyTag
+	tagManager                                                            tagManagerState
+	search                                                                historySearchState
+	page, theme, query, kind, source, tag, timeRange, layout              string
+	nav, settings                                                         desktopkit.NavState
+	list                                                                  desktopkit.ListState
+	deviceList                                                            desktopkit.SourceState
+	entries                                                               []entry
+	devices                                                               []device
+	selected                                                              string
+	confirmEntries                                                        []string
+	drawerSwitchDir                                                       int
+	sidebarHidden, detailOpen, inspector, tagsOpen, quickLook, filterOpen bool
+	compact                                                               bool
+	gridSize                                                              float64
+	deviceTask, fieldError, notice, confirm, confirmID                    string
+	deviceName                                                            string
+	pending                                                               []pendingDevice
+	candidates                                                            []deviceCandidate
+	inviteCode, inviteMode, connectInput, renameValue, deviceNote         string
+	renaming, deviceDetailOpen                                            bool
+	options                                                               map[string]bool
+	choices                                                               map[string]string
 }
 
 func (d *viewState) view(c *ui.Context) {
@@ -143,7 +144,7 @@ func (d *viewState) view(c *ui.Context) {
 	if d.theme != "system" {
 		dark = d.theme == "dark"
 	}
-	k := uikit.For(dark)
+	k := desktopkit.For(dark)
 	k.Apply(c)
 	k.UiRoot(c, func() {
 		w, _ := c.Size()
@@ -154,19 +155,25 @@ func (d *viewState) view(c *ui.Context) {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.devicesOpen && !d.tagsOpen && !d.tagEditor.open && d.confirm == "" {
+		if !d.tagsOpen && !d.tagEditor.open && d.deviceTask == "" && d.confirm == "" {
 			if d.page == "history" {
 				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
 				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
 				c.OnShortcut(0, ui.KeyT, d.openTagEditor)
 			}
-			if d.page == "settings" {
+			if d.page == "settings" && (!d.compact || d.sidebarHidden) {
+				// A narrow sidebar drawer owns Escape before page navigation.
+				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
+			}
+			if d.page == "devices" && !d.renaming {
 				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
 			}
 		}
 		switch d.page {
 		case "history":
 			d.history(c, k)
+		case "devices":
+			d.devicesPage(c, k)
 		case "settings":
 			d.settingsPage(c, k)
 		case "quick-panel":
@@ -175,7 +182,7 @@ func (d *viewState) view(c *ui.Context) {
 			d.page = "history"
 			d.history(c, k)
 		}
-		d.deviceSheet(c.Key("devices"), k)
+		d.deviceTaskSheet(c.Key("devices"), k)
 		d.tagSheet(c.Key("tags"), k)
 		d.confirmDialog(c.Key("confirm"), k)
 	})
@@ -206,7 +213,7 @@ func (d *viewState) sourceName(id string) string {
 	return d.tr("已移除设备")
 }
 
-func kindName(kind uikit.ContentKind) string {
+func kindName(kind desktopkit.ContentKind) string {
 	return []string{"文本", "代码", "链接", "图片", "文件", "文件夹"}[kind]
 }
 
@@ -275,7 +282,7 @@ func (d *viewState) requestDelete(ids []string) {
 	d.confirmEntries = slices.Clone(ids)
 }
 
-func (d *viewState) confirmDialog(c *ui.Context, k uikit.Kit) {
+func (d *viewState) confirmDialog(c *ui.Context, k desktopkit.Kit) {
 	if d.confirm == "" {
 		return
 	}
@@ -287,7 +294,7 @@ func (d *viewState) confirmDialog(c *ui.Context, k uikit.Kit) {
 	if strings.HasPrefix(d.confirmID, "device:") {
 		desc = "撤销此设备的全部同步路径。对方需要重新配对并重新批准。已同步到对方的内容无法撤回。"
 	}
-	r := k.AlertDialog(c, uikit.AlertDialogProps{Open: &open, Title: d.confirm, Description: d.tr(desc), ConfirmLabel: d.tr("移除"), CancelLabel: d.tr("取消"), Destructive: true}, nil)
+	r := k.AlertDialog(c, desktopkit.AlertDialogProps{Open: &open, Title: d.confirm, Description: d.tr(desc), ConfirmLabel: d.tr("移除"), CancelLabel: d.tr("取消"), Destructive: true}, nil)
 	if r.Confirmed && d.live != nil {
 		if strings.HasPrefix(d.confirmID, "device:") {
 			id := strings.TrimPrefix(d.confirmID, "device:")
@@ -312,7 +319,7 @@ func (d *viewState) confirmDialog(c *ui.Context, k uikit.Kit) {
 	}
 }
 
-func (d *viewState) quickPanel(c *ui.Context, _ uikit.Kit) {
+func (d *viewState) quickPanel(c *ui.Context, _ desktopkit.Kit) {
 	if d.quick == nil {
 		return
 	}

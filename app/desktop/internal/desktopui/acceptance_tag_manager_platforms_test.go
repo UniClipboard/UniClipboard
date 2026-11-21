@@ -11,10 +11,10 @@ import (
 )
 
 func scenarioTagManagerPlatforms(t *testing.T) {
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"dark", "light"} {
 			t.Run(skin+"/"+theme, func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", skin)
+
 				d := newDemo("history", theme)
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 				proof.Capture(t, tt)
@@ -22,24 +22,25 @@ func scenarioTagManagerPlatforms(t *testing.T) {
 					t.Fatal(err)
 				}
 				tt.Advance(350 * time.Millisecond)
-				table, ok := tt.AccessByRole(ui.RoleTable, "标签")
+				list, ok := tt.AccessByRole(ui.RoleList, "标签")
 				if !ok {
-					t.Fatal("management table missing")
+					t.Fatal("management list missing")
 				}
-				// Links is the last row. Taller skins clip it until the table scrolls.
-				r := table.Bounds
+				// Links is the last row. Scroll the real list before accessing its menu.
+				r := list.Bounds
 				tt.Scroll(r.X+r.W/2, r.Y+r.H/2, 0, r.H)
-				if err := tt.RightClick("#链接"); err != nil {
+				if err := boarduiTableClick(tt, "标签", "#链接", 0, true); err != nil {
 					t.Fatal(err)
 				}
-				if !slices.Equal(tt.Menu(), []string{"显示条目"}) {
+				if !slices.Equal(boarduiMenuItems(tt), []string{"显示条目"}) {
 					t.Fatal("builtin operations are not protected")
 				}
-				tt.CloseMenu()
+				tt.Key(0, ui.KeyEscape)
 				if err := tt.Click("完成"); err != nil {
 					t.Fatal(err)
 				}
-				tt.Advance(250 * time.Millisecond)
+				// Source Sheet exit retains the modal scope for 300ms.
+				tt.Advance(350 * time.Millisecond)
 				if err := tt.Click("添加标签"); err != nil {
 					t.Fatal(err)
 				}

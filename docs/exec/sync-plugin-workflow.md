@@ -97,3 +97,9 @@ One earlier full race run failed `TestSubmitDeliversEverything`: the built-in Ta
 ## Evidence
 
 The final small receipt is `.cache/sync-plugin-workflow/instances/receipt.json`. It records implementation/documentation SHAs, exact per-layer verdicts, command replays, program hashes, canonical Desktop report paths, retained first failures, and cleanup. `SHA256SUMS` binds retained evidence. Only source, reference fixtures and English documentation are committed. No database, ticket, credential, binary, source snapshot or large log is committed. Native screenshots remain in ignored canonical output directories. No push, PR, deployment, VM or personal clipboard is involved.
+
+## Integration with the BoardUI v2 branch
+
+Merged `origin/v2` at `e7f76740499ac6c0dc1be46f3269ebce6a9638a3` into the workflow branch. Conflict resolution retains the native `desktopkit` presentation, runtime instance configuration/status, Tailcat disable control, local pairing selectors, pending-path disclosure and per-backend history results. The external workflow case uses the current device dialog and returns to history after approval closes that dialog.
+
+The merged source passed the real CLI singleton/multiple-instance matrix, canonical native `external-sync-workflow`, `go test -race ./...`, pinned golangci-lint v2.15.0 and formatting. The native report is `.build/desktop-e2e/20261121T132901Z-801cd416/index.html`. Merge evidence is retained under `.cache/merge-v2/`. These passing merge checks do not explain or close the earlier Tailcat failure described under Validation hold. Native OS clipboard/paste and user visual approval remain separate.

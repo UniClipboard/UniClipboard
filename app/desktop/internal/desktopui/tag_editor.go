@@ -12,7 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -20,10 +20,10 @@ type tagEditorState struct {
 	open         bool
 	owner, query string
 	highlight    int
-	color        uikit.TagColor
+	color        desktopkit.TagColor
 }
 
-var tagPalette = []uikit.TagColor{"orange", "blue", "green", "purple", "gray"}
+var tagPalette = []desktopkit.TagColor{"orange", "blue", "green", "purple", "gray"}
 
 func (d *viewState) openTagEditor() {
 	if d.current() == nil || d.live != nil && d.live.busy {
@@ -33,7 +33,7 @@ func (d *viewState) openTagEditor() {
 }
 
 // The shared registry owns names, counts and colors. The editor owns only one intent.
-func (d *viewState) tagSuggestions(v *entry) []uikit.SearchSuggestion {
+func (d *viewState) tagSuggestions(v *entry) []desktopkit.SearchSuggestion {
 	name := strings.TrimSpace(d.tagEditor.query)
 	needle := strings.ToLower(name)
 	exists := false
@@ -71,24 +71,24 @@ func (d *viewState) tagSuggestions(v *entry) []uikit.SearchSuggestion {
 		}
 		return byUse(a, b)
 	})
-	var out []uikit.SearchSuggestion
+	var out []desktopkit.SearchSuggestion
 	if name != "" && !exists && !strings.HasPrefix(name, "builtin:") && utf8.RuneCountInString(name) <= 64 {
-		out = append(out, uikit.SearchSuggestion{ID: name, Label: fmt.Sprintf(d.tr("新建 #%s"), name), Create: true})
+		out = append(out, desktopkit.SearchSuggestion{ID: name, Label: fmt.Sprintf(d.tr("新建 #%s"), name), Create: true})
 	}
 	for _, tag := range candidates[:min(limit, len(candidates))] {
-		out = append(out, uikit.SearchSuggestion{ID: tag.id, Label: "#" + d.tagLabel(tag.id), Swatch: tag.color, Detail: fmt.Sprintf(d.tr("%d 项"), d.tagCount(tag.id))})
+		out = append(out, desktopkit.SearchSuggestion{ID: tag.id, Label: "#" + d.tagLabel(tag.id), Swatch: tag.color, Detail: fmt.Sprintf(d.tr("%d 项"), d.tagCount(tag.id))})
 	}
 	return out
 }
 
-func (d *viewState) detailTags(c *ui.Context, k uikit.Kit, v *entry) {
+func (d *viewState) detailTags(c *ui.Context, k desktopkit.Kit, v *entry) {
 	if d.tagEditor.open && d.tagEditor.owner != v.id {
 		d.tagEditor = tagEditorState{}
 	}
 	busy := d.live != nil && d.live.busy
 	ui.Row(c).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
 		for _, id := range v.tags {
-			props := uikit.TagProps{Color: d.tagColor(id)}
+			props := desktopkit.TagProps{Color: d.tagColor(id)}
 			if tag := d.tagByID(id); !busy && tag != nil && !tag.builtin {
 				props.RemoveLabel = fmt.Sprintf(d.tr("移除 #%s"), d.tagLabel(id))
 			}
@@ -99,7 +99,7 @@ func (d *viewState) detailTags(c *ui.Context, k uikit.Kit, v *entry) {
 			}
 		}
 		if !d.tagEditor.open {
-			if k.Button(c.Key("add"), d.tr("添加标签"), uikit.ButtonProps{Variant: uikit.Subtle, Icon: uikit.IconAdd, Size: uikit.SizeSmall, Disabled: busy}).Clicked() {
+			if k.Button(c.Key("add"), d.tr("添加标签"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconAdd, Size: desktopkit.SizeSmall, Disabled: busy}).Clicked() {
 				d.openTagEditor()
 			}
 			return
@@ -112,12 +112,12 @@ func (d *viewState) detailTags(c *ui.Context, k uikit.Kit, v *entry) {
 			editor.highlight = -1
 		}
 		picked := -1
-		result := k.ComboField(c.Key("editor"), uikit.ComboFieldProps{
+		result := k.ComboField(c.Key("editor"), desktopkit.ComboFieldProps{
 			Label: d.tr("标签名"), Prefix: "#", Value: &editor.query, Highlighted: &editor.highlight,
 			Suggestions: suggestions, MaxLength: 64, AutoFocus: true,
 			Footer:      d.tr("↑↓ 选择 · ↩ 添加 · ⇥ 颜色 · esc 关闭"),
-			CreateColor: &uikit.ComboFieldCreateColor{Label: d.tr("颜色"), Colors: tagPalette, Value: &editor.color},
-			OnKey: func(key uikit.SearchFieldKey) bool {
+			CreateColor: &desktopkit.ComboFieldCreateColor{Label: d.tr("颜色"), Colors: tagPalette, Value: &editor.color},
+			OnKey: func(key desktopkit.SearchFieldKey) bool {
 				switch key.Key {
 				case ui.KeyDown, ui.KeyUp:
 					if len(suggestions) > 0 {
@@ -150,9 +150,7 @@ func (d *viewState) detailTags(c *ui.Context, k uikit.Kit, v *entry) {
 				return false
 			},
 		})
-		if k.Skin == uikit.MacOS {
-			result.Element.Width(170)
-		}
+
 		if result.Edited {
 			editor.highlight = 0
 		}
@@ -167,7 +165,7 @@ func (d *viewState) detailTags(c *ui.Context, k uikit.Kit, v *entry) {
 	})
 }
 
-func (d *viewState) pickTag(v *entry, s uikit.SearchSuggestion, color uikit.TagColor) {
+func (d *viewState) pickTag(v *entry, s desktopkit.SearchSuggestion, color desktopkit.TagColor) {
 	if d.selected != v.id || d.live != nil && d.live.busy || slices.Contains(v.tags, s.ID) {
 		return
 	}

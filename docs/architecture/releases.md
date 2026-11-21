@@ -6,6 +6,7 @@ paths:
   - packaging
   - e2e/packaging
   - app/desktop/internal/appicons
+  - app/desktop/boardui/assets
   - app/desktop/internal/appupdates
   - app/desktop/e2e/updateprobe
   - internal/localconfig
@@ -28,7 +29,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 19f410995f6db869b8595f59ca47df71b6348fd4
+verified: d6c635ae361fc28dcc524305dc987356d9f62ce0
 ---
 # Product builds and CLI releases
 
@@ -65,6 +66,8 @@ It copies accepted CLI/service files unchanged. It rejects moving source, change
 Use isolated homes for all construction candidates. Version-`dev` executables use the separate development identity and default data directory.
 
 Desktop packaging reuses the original v1 artwork from `app/desktop/internal/appicons`. macOS declares `CFBundleIconFile` and ships the original ICNS. Windows executables embed the original ICO through checked-in architecture-specific resources; the NSIS installer uses the same ICO. Regenerate executable resources with `tools/package/windows-icons.sh`. Linux package definitions, source AUR recipes and AppImage use the staged 512-pixel PNG. The staged icon is covered by the existing manifest digest checks. Native icon-cache refresh and visual acceptance remain separate checks.
+
+Every Desktop stage also retains the root AGPL license and `licenses/BOARDUI-MIT.txt`, `licenses/Inter-OFL.txt` and `licenses/REMIX-LICENSE.txt`. macOS stores them in the application Resources directory; Linux and Windows store them with the private payload. The normal immutable stage file manifest hashes these notice bytes, and the format constructors preserve them. A local unsigned macOS application-archive replay verifies the actual archive and native identity/private-service smoke. It does not install or open a GUI.
 
 The format constructor supplies DEB, RPM, pacman packages, NSIS setup EXE, portable ZIP, macOS DMG/application archive and AppImage/update archive entrypoints.
 Only tested construction/lifecycle states count as acceptance; see the [package delivery receipt](../exec/0018-v2-package-channel-receipt.md).

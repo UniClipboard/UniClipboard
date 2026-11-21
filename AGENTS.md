@@ -1,6 +1,6 @@
 # Agent Instructions
 
-unic：跨设备剪贴板同步。Go 核心（网络层 tailcat，存储 SQLite），桌面界面统一采用 mygo + 自定义 UI Kit，界面原型待定；后续纳入 Android、iOS。项目概览见 [README.md](README.md)。
+unic synchronizes clipboard content across devices. The Go core uses tailcat and SQLite. Desktop uses native mygo with one BoardUI presentation across Windows, macOS and Linux. Native host integration remains OS-owned. See [README.md](README.md).
 
 ## 仓库结构
 
@@ -44,7 +44,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0009](docs/decisions/proposed/0009-external-channels.md) | 外部渠道：无 unic 身份证明的第三方对端 | 草案；不是设备、不写 `devices` 表、无指纹；目标为组；与设备混排展示；默认自动写剪贴板并标 `external:` 来源；移除仅本地生效，后端声明 `remote_revocation`；接入形态待定（首个对象微信输入法）；数据模型与接收路径已实现（`engine/channels.go`），桌面 `/v1/channels` |
 | [0010](docs/decisions/proposed/0010-plugin-settings-schema.md) | 插件设置 Schema 与表单生成 | JSON Schema 子集 + UI 提示；Go 配置定义生成静态 schema，各 shell 生成原生表单；The service API, manifest, RPC digest, installer and mygo form are implemented. |
 | [0011](docs/decisions/proposed/0011-v1-history-migration.md) | v1 本机历史迁移 | `unic migrate` 子命令（无独立程序），随 `unic` 覆盖三平台；只读解锁旧数据，离线导入文本/图片/文件/标签；支持新目录与追加合并、幂等续跑和重开校验；验收见执行计划 |
-| [0013](docs/decisions/proposed/0013-mygo-uikit.md) | 桌面 UI Kit：移植到 mygo | 统一 Kit API，Adwaita / macOS glass / Fluent 三皮肤；token 从 default.json 生成；59 个公共组件与 GUI 已接入，交互和视觉分别验证；各平台原生验收边界见执行记录 |
+| [0013](docs/decisions/proposed/0013-mygo-uikit.md) | Native BoardUI Desktop presentation | One source-bound BoardUI visual system; public controls in `app/desktop/boardui`, application compositions in `internal/desktopkit`; the former three-skin solution is superseded. Production and native acceptance limits are recorded separately. |
 | [0014](docs/decisions/proposed/0014-client-observability-otlp.md) | 客户端可观测性：OTLP 与动态日志等级 | Logs, metrics and sampled traces are implemented; process acceptance and remaining limits are recorded;本机/远程等级独立，有界非阻塞、秘密白名单；current upload defaults are defined in the [observability architecture](docs/architecture/observability.md) |
 | [0015](docs/decisions/proposed/0015-headless-cli-and-desktop-integration.md) | 纯 CLI、无头服务与独立桌面集成 | Runtime implemented; UI-free CLI/service, exclusive desktop adapter and separate distributions; native acceptance pending. See [execution receipt](docs/exec/0015-headless-cli-and-desktop-integration.md) |
 | [0016](docs/decisions/proposed/0016-sync-and-file-settings.md) | Sync and file settings | Sync and quota CLI/TOML implemented; 100 MB default file limit; custom received files remain user-managed; separate file cleanup superseded by 0017 |
@@ -54,9 +54,11 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0023](docs/decisions/proposed/0023-cli-lifecycle-acceptance-followup.md) | CLI lifecycle acceptance follow-up | Draft: other-platform process runs (C36), file release barrier after send deadline, C03 race investigation |
 | [0024](docs/decisions/proposed/0024-directory-copy-and-send.md) | Directory copy and explicit send | Implemented; local and macOS/Linux CLI acceptance recorded; native clipboard/paste acceptance pending. One-shot directory transfer; automatic sync defaults off; explicit send prepares snapshots; mixed selections follow directory policy. |
 | [0025](docs/decisions/proposed/0025-desktop-package-identity-and-replacement.md) | Desktop package identity and replacement | Accepted; same-channel v2 replaces v1, alpha/stable share installation identity, development stays isolated, bundled CLI files are private, package managers own updates; runtime and construction implemented, production activation and real v1 replacement acceptance pending. |
-| [0026](docs/decisions/proposed/0026-first-install-setup.md) | Desktop first-install setup | Implemented with existing UI Kit and prototype/setup.html. Software-view and macOS native complete/partial recordings passed; actual credential prompts and remaining native scenarios/platforms are pending. Slogan: “让每一次复制更有用”. |
+| [0026](docs/decisions/proposed/0026-first-install-setup.md) | Desktop first-install setup | Implemented with the shared native Desktop composition and prototype/setup.html; presentation now uses BoardUI. Software-view and macOS native complete/partial recordings passed; actual credential prompts and remaining native scenarios/platforms are pending. Slogan: “让每一次复制更有用”. |
 
 ### 接口契约（`docs/contracts/`）
+
+- [Native BoardUI component contract](docs/contracts/boardui-native-contract.md): production presentation ownership, source identity, caller-owned state, native primitives and acceptance boundaries.
 
 - [Directory content contract](docs/contracts/directory-contract.md): deferred directory references, explicit snapshots, portable manifests, file-policy grouping, resource bounds, receive ownership and platform acceptance limits.
 
@@ -100,7 +102,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 - When a user asks to see an image in a Lody conversation, use `lody_upload_images` to display it inline. Report it as sent after the upload succeeds. Delivery passes when the user can see the image without clicking. Record visual acceptance only when the user explicitly approves the content.
 
-- Desktop uses mygo and the existing UI Kit demo composition. Fresh profiles show first-install setup and optional offline v1 migration. Completed setup and established v2 profiles open history directly; recurring passphrase-unlock flows remain removed. See [live desktop composition](docs/architecture/overview.md#live-desktop-composition).
+- Desktop uses mygo with the public native BoardUI controls and application-only `desktopkit` composition. Main GUI, setup, Quick Panel and demos use the same visual scheme. The old three-skin Kit and skin selector are removed. Native OS chrome, modifiers, tray/system menus and clipboard integration remain host responsibilities. Fresh profiles show first-install setup and optional offline v1 migration. Completed setup and established v2 profiles open history directly; recurring passphrase-unlock flows remain removed. See [live desktop composition](docs/architecture/overview.md#live-desktop-composition).
 - 核心不得依赖 `app/*`；宿主专属代码留在对应应用，公开 Engine 的传递依赖边界由 `engine/boundary_test.go` 检查。
 - 设备地址与配对票据都是秘密：不要写进日志、事件或错误信息。
 - 通过配对码进来的设备永远需要用户批准；不要为了方便绕过。

@@ -3,24 +3,24 @@ package desktopui
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 )
 
-var categories = []uikit.SidebarNavItem{
-	{ID: "general", Label: "通用", Icon: uikit.IconSettings},
-	{ID: "appearance", Label: "外观", Icon: uikit.IconSun},
-	{ID: "shortcuts", Label: "快捷键", Icon: uikit.IconEdit},
-	{ID: "quickPanel", Label: "快捷面板", Icon: uikit.IconList},
-	{ID: "sync", Label: "同步", Icon: uikit.IconRetry},
-	{ID: "plugins", Label: "插件", Icon: uikit.IconPackage},
-	{ID: "security", Label: "安全", Icon: uikit.IconShield},
-	{ID: "network", Label: "网络", Icon: uikit.IconGlobe},
-	{ID: "storage", Label: "存储", Icon: uikit.IconPackage},
-	{ID: "about", Label: "关于", Icon: uikit.IconInfo},
+var categories = []desktopkit.SidebarNavItem{
+	{ID: "general", Label: "通用", Icon: desktopkit.IconSettings},
+	{ID: "appearance", Label: "外观", Icon: desktopkit.IconSun},
+	{ID: "shortcuts", Label: "快捷键", Icon: desktopkit.IconEdit},
+	{ID: "quickPanel", Label: "快捷面板", Icon: desktopkit.IconList},
+	{ID: "sync", Label: "同步", Icon: desktopkit.IconRetry},
+	{ID: "plugins", Label: "插件", Icon: desktopkit.IconPackage},
+	{ID: "security", Label: "安全", Icon: desktopkit.IconShield},
+	{ID: "network", Label: "网络", Icon: desktopkit.IconGlobe},
+	{ID: "storage", Label: "存储", Icon: desktopkit.IconPackage},
+	{ID: "about", Label: "关于", Icon: desktopkit.IconInfo},
 }
 
-func (d *viewState) settingsPage(c *ui.Context, k uikit.Kit) {
-	items := append([]uikit.SidebarNavItem(nil), categories...)
+func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
+	items := append([]desktopkit.SidebarNavItem(nil), categories...)
 	for i := range items {
 		items[i].Label = d.tr(items[i].Label)
 	}
@@ -34,13 +34,13 @@ func (d *viewState) settingsPage(c *ui.Context, k uikit.Kit) {
 	if d.live != nil && d.settings.Value == "plugins" && d.pluginSettings.id != "" {
 		titleLeading = func() {
 			label := d.tr("返回插件列表")
-			if k.Button(c.Key("back-to-plugins"), "", uikit.ButtonProps{Variant: uikit.Subtle, Icon: uikit.IconBack, Label: label, Tooltip: label, Disabled: d.live.busy || d.live.loading}).Clicked() {
+			if k.Button(c.Key("back-to-plugins"), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconBack, Label: label, Tooltip: label, Disabled: d.live.busy || d.live.loading}).Clicked() {
 				d.pluginSettings = builtinPluginSettings{}
 			}
 		}
 	}
-	k.SplitView(c, uikit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
-		k.SidebarNav(c, &d.settings, uikit.SidebarNavProps{Label: d.tr("设置"), Sections: []uikit.SidebarNavSection{{ID: "categories", Items: items}}, Footer: []uikit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: uikit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
+	k.SplitView(c, desktopkit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
+		k.SidebarNav(c, &d.settings, desktopkit.SidebarNavProps{Label: d.tr("设置"), Sections: []desktopkit.SidebarNavSection{{ID: "categories", Items: items}}, Footer: []desktopkit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: desktopkit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
 		if d.settings.Changed() {
 			if d.settings.Value == "back" {
 				d.page, d.settings.Value = "history", "general"
@@ -50,47 +50,47 @@ func (d *viewState) settingsPage(c *ui.Context, k uikit.Kit) {
 			}
 		}
 	}}, func() {
-		k.Pane(c, uikit.PaneProps{Kind: uikit.PaneMain, Label: title}, func() {
-			k.SettingsContent(c.Key(d.settings.Value), uikit.SettingsContentProps{Label: title}, func() { d.settingsContent(c, k) })
+		k.Pane(c, desktopkit.PaneProps{Kind: desktopkit.PaneMain, Label: title}, func() {
+			k.SettingsContent(c.Key(d.settings.Value), desktopkit.SettingsContentProps{Label: title}, func() { d.settingsContent(c, k) })
 		})
 	})
 }
 
-func (d *viewState) switchRow(c *ui.Context, k uikit.Kit, id, label, description string) {
-	k.SettingsRow(c.Key(id), uikit.SettingsRowProps{Label: label, Description: description}, nil, func() {
+func (d *viewState) switchRow(c *ui.Context, k desktopkit.Kit, id, label, description string) {
+	k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: label, Description: description}, nil, func() {
 		on := d.options[id]
-		k.Switch(c, &on, uikit.SwitchProps{Label: label})
+		k.Switch(c, &on, desktopkit.SwitchProps{Label: label})
 		d.options[id] = on
 	})
 }
 
-func (d *viewState) selectRow(c *ui.Context, k uikit.Kit, id, label, description string, values ...string) bool {
+func (d *viewState) selectRow(c *ui.Context, k desktopkit.Kit, id, label, description string, values ...string) bool {
 	changed := false
-	k.SettingsRow(c.Key(id), uikit.SettingsRowProps{Label: label, Description: description}, nil, func() {
+	k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: label, Description: description}, nil, func() {
 		value := d.choices[id]
-		items := make([]uikit.SelectItem, len(values))
+		items := make([]desktopkit.SelectItem, len(values))
 		for i, v := range values {
-			items[i] = uikit.SelectItem{Value: v, Label: d.tr(v)}
+			items[i] = desktopkit.SelectItem{Value: v, Label: d.tr(v)}
 		}
-		r := k.Select(c, uikit.SelectProps{Label: label, Value: &value, Items: items})
+		r := k.Select(c, desktopkit.SelectProps{Label: label, Value: &value, Items: items})
 		d.choices[id], changed = value, r.Changed
 	})
 	return changed
 }
 
-func (d *viewState) settingsContent(c *ui.Context, k uikit.Kit) {
+func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 	if d.live != nil {
 		d.liveSettingsContent(c, k)
 		return
 	}
 	group := func(id, title string, body func()) {
-		k.SettingsGroup(c.Key(id), uikit.SettingsGroupProps{Title: title}, body)
+		k.SettingsGroup(c.Key(id), desktopkit.SettingsGroupProps{Title: title}, body)
 	}
 	switch d.settings.Value {
 	case "general":
 		group("device", d.tr("设备"), func() {
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("设备名称"), Description: d.tr("其他设备将显示此名称")}, nil, func() {
-				if k.TextField(c, uikit.TextFieldProps{Label: d.tr("设备名称"), Value: &d.deviceName}).Edited {
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("设备名称"), Description: d.tr("其他设备将显示此名称")}, nil, func() {
+				if k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("设备名称"), Value: &d.deviceName}).Edited {
 					d.devices[0].name = d.deviceName
 				}
 			})
@@ -98,12 +98,12 @@ func (d *viewState) settingsContent(c *ui.Context, k uikit.Kit) {
 		group("startup", d.tr("启动与托盘"), func() {
 			d.switchRow(c, k, "startup", d.tr("登录时启动"), d.tr("登录系统后自动启动 UniClipboard"))
 			d.switchRow(c, k, "tray", d.tr("显示托盘图标"), d.tr("在托盘或菜单栏中显示同步状态"))
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("托盘图标"), Description: d.tr("更改后立即生效。")}, nil, func() {
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("托盘图标"), Description: d.tr("更改后立即生效。")}, nil, func() {
 				value := d.choices["trayIcon"]
 				if value == "" {
 					value = "glyph"
 				}
-				k.Select(c, uikit.SelectProps{Label: d.tr("托盘图标"), Value: &value, Items: []uikit.SelectItem{{Value: "glyph", Label: d.tr("默认")}, {Value: "cat", Label: d.tr("经典猫头")}}})
+				k.Select(c, desktopkit.SelectProps{Label: d.tr("托盘图标"), Value: &value, Items: []desktopkit.SelectItem{{Value: "glyph", Label: d.tr("默认")}, {Value: "cat", Label: d.tr("经典猫头")}}})
 				d.choices["trayIcon"] = value
 			})
 		})
@@ -113,7 +113,7 @@ func (d *viewState) settingsContent(c *ui.Context, k uikit.Kit) {
 		group("sound", d.tr("声音"), func() { d.switchRow(c, k, "sound", d.tr("交互声音"), d.tr("完成操作时播放提示音")) })
 		group("privacy", d.tr("隐私与诊断"), func() {
 			d.switchRow(c, k, "telemetry", d.tr("发送匿名使用数据"), d.tr("帮助改进产品体验"))
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("诊断信息"), Description: d.tr("本次演示没有采集诊断日志")}, nil, func() { k.Text(c, d.tr("未采集"), uikit.TextProps{Tone: uikit.ToneSecondary}) })
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("诊断信息"), Description: d.tr("本次演示没有采集诊断日志")}, nil, func() { k.Text(c, d.tr("未采集"), desktopkit.TextProps{Tone: desktopkit.ToneSecondary}) })
 		})
 	case "appearance":
 		group("theme", d.tr("外观"), func() {
@@ -129,7 +129,7 @@ func (d *viewState) settingsContent(c *ui.Context, k uikit.Kit) {
 		})
 		group("window", d.tr("窗口快捷键"), func() {
 			for _, v := range []struct{ name, value string }{{d.tr("复制所选内容"), "Enter"}, {d.tr("置顶或取消置顶"), "⌘P"}, {d.tr("打开设置"), "⌘,"}, {d.tr("切换侧栏"), "⌃⌘S"}} {
-				k.SettingsRow(c.Key(v.name), uikit.SettingsRowProps{Label: v.name}, nil, func() { k.Text(c, v.value, uikit.TextProps{Role: uikit.RoleCallout}) })
+				k.SettingsRow(c.Key(v.name), desktopkit.SettingsRowProps{Label: v.name}, nil, func() { k.Text(c, v.value, desktopkit.TextProps{Role: desktopkit.RoleCallout}) })
 			}
 		})
 	case "quickPanel":
@@ -137,8 +137,8 @@ func (d *viewState) settingsContent(c *ui.Context, k uikit.Kit) {
 			d.switchRow(c, k, "quickPanel", d.tr("启用快捷面板"), d.tr("用全局快捷键打开剪贴板历史"))
 			d.switchRow(c, k, "preview", d.tr("显示内容预览"), d.tr("在所选条目旁显示详情"))
 			d.switchRow(c, k, "hover", d.tr("显示快捷键提示"), d.tr("悬停时显示数字键提示"))
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("预览快捷面板")}, nil, func() {
-				if k.Button(c, d.tr("打开预览"), uikit.ButtonProps{}).Clicked() {
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("预览快捷面板")}, nil, func() {
+				if k.Button(c, d.tr("打开预览"), desktopkit.ButtonProps{}).Clicked() {
 					if d.openQuickPanel != nil {
 						d.openQuickPanel()
 					} else {
@@ -166,19 +166,19 @@ func (d *viewState) settingsContent(c *ui.Context, k uikit.Kit) {
 			d.selectRow(c, k, "proxy", d.tr("代理模式"), d.tr("控制出站连接使用的代理"), "系统代理", "直接连接", "手动代理")
 		})
 		group("status", d.tr("网络状态"), func() {
-			k.FactList(c, uikit.FactListProps{Label: d.tr("网络状态"), Facts: []uikit.Fact{{ID: "lan", Label: d.tr("局域网"), Value: d.tr("可用")}, {ID: "relay", Label: d.tr("中继"), Value: d.tr("已就绪")}}})
+			k.FactList(c, desktopkit.FactListProps{Label: d.tr("网络状态"), Facts: []desktopkit.Fact{{ID: "lan", Label: d.tr("局域网"), Value: d.tr("可用")}, {ID: "relay", Label: d.tr("中继"), Value: d.tr("已就绪")}}})
 		})
 	case "storage":
 		group("usage", d.tr("存储空间"), func() {
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("本机历史"), Description: d.tr("22 条历史 · 13.1 MB")}, nil, func() { k.Text(c, d.tr("演示数据"), uikit.TextProps{Tone: uikit.ToneSecondary}) })
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("本机历史"), Description: d.tr("22 条历史 · 13.1 MB")}, nil, func() { k.Text(c, d.tr("演示数据"), desktopkit.TextProps{Tone: desktopkit.ToneSecondary}) })
 			d.selectRow(c, k, "retention", d.tr("历史保留时间"), d.tr("到期后清理本机历史"), "7 天", "30 天", "90 天", "永久")
 			d.switchRow(c, k, "history", d.tr("保存本机历史"), d.tr("在本机保留复制过的内容"))
 		})
 	case "about":
-		k.EntityHeader(c, uikit.EntityHeaderProps{Icon: uikit.IconCopy, Title: "UniClipboard", Description: d.tr("跨设备剪贴板同步 · 原生界面演示")}, nil)
+		k.EntityHeader(c, desktopkit.EntityHeaderProps{Icon: desktopkit.IconCopy, Title: "UniClipboard", Description: d.tr("跨设备剪贴板同步 · 原生界面演示")}, nil)
 		group("version", d.tr("版本"), func() {
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("界面参考"), Description: "main · " + d.reference[:9]}, nil, nil)
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("界面组件"), Description: "mygo + UI Kit · Adwaita / macOS glass / Fluent"}, nil, nil)
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("界面参考"), Description: "main · " + d.reference[:9]}, nil, nil)
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("界面组件"), Description: "mygo + BoardUI"}, nil, nil)
 		})
 	}
 }

@@ -25,7 +25,7 @@ import (
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/windowchrome"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -225,16 +225,20 @@ func runGUI(settings *config.Manager) error {
 				}
 				windowchrome.View(c, actions, settings.Current().Desktop.Language, func() { session.view(c) })
 			}
-		} else if runtime.GOOS == "linux" && !session.windowFrame {
-			view = func(c *ui.Context) { windowchrome.NativeView(c, func() { session.view(c) }) }
+		} else if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && !session.windowFrame {
+			view = func(c *ui.Context) {
+				if runtime.GOOS == "darwin" && session.runtime != nil && session.message == "" {
+					// Normal macOS pages own the window top, as the v1 SplitView did.
+					session.view(c)
+					return
+				}
+				// Setup and startup still need their own draggable safe-area row.
+				windowchrome.NativeView(c, func() { session.view(c) })
+			}
 		}
 
 		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
 		windowchrome.Configure(&opts, runtime.GOOS, session.windowFrame)
-		if runtime.GOOS == "darwin" && !settings.Current().Desktop.SystemWindowFrame {
-			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
-			opts.Vibrancy = mygo.VibrancySidebar
-		}
 		if flow.Required() {
 			opts.Width, opts.Height = 640, 560
 		}
@@ -467,12 +471,12 @@ type snapshot struct {
 }
 
 func (g *gui) view(c *ui.Context) {
-	k := uikit.For(c.Theme().Dark)
+	k := desktopkit.For(c.Theme().Dark)
 	k.Apply(c)
 	k.UiRoot(c, func() { g.content(c, k) })
 }
 
-func (g *gui) content(c *ui.Context, k uikit.Kit) {
+func (g *gui) content(c *ui.Context, k desktopkit.Kit) {
 	if g.win != nil {
 		c.OnShortcut(ui.Cmd, ui.KeyW, g.win.Close)
 	}
@@ -493,13 +497,13 @@ func (g *gui) content(c *ui.Context, k uikit.Kit) {
 		g.showing = false
 		g.mu.Unlock()
 		ui.Column(c).Fill().Padding(40).Gap(10).Center().Children(func() {
-			k.ContentUnavailable(c, uikit.ContentUnavailableProps{
-				Icon: uikit.IconDevices, Title: "后台节点未运行",
+			k.ContentUnavailable(c, desktopkit.ContentUnavailableProps{
+				Icon: desktopkit.IconDevices, Title: "后台节点未运行",
 				Description: "unic 的同步由 unicd 负责。启动 unicd 后,此窗口会自动重新连接。",
 			}, func() {
 				ui.Row(c).Gap(8).Center().Children(func() {
 					ui.Spinner(c)
-					k.Text(c, "每 2 秒重试连接", uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+					k.Text(c, "每 2 秒重试连接", desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
 				})
 			})
 		})
@@ -516,14 +520,14 @@ func (g *gui) content(c *ui.Context, k uikit.Kit) {
 	ui.Column(c).Fill().Children(func() {
 		ui.Column(c).Grow(1).MinHeight(0).Padding(16, 0, 12).Gap(14).Children(func() {
 			// This device.
-			k.Surface(c, uikit.RegionSidebar).MarginX(20).Padding(14).Radius(16).Children(func() {
+			k.Surface(c, desktopkit.RegionSidebar).MarginX(20).Padding(14).Radius(16).Children(func() {
 				ui.Column(c).Gap(2).Grow(1).Children(func() {
-					k.Text(c, s.st.Name, uikit.TextProps{}).FontSize(15).Bold()
+					k.Text(c, s.st.Name, desktopkit.TextProps{}).FontSize(15).Bold()
 					sub := "同步中 · 尚未配对设备"
 					if len(s.st.Peers) > 0 {
 						sub = fmt.Sprintf("同步中 · %d/%d 台设备在线", online, len(s.st.Peers))
 					}
-					k.Text(c, sub, uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+					k.Text(c, sub, desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
 				})
 			})
 
@@ -532,7 +536,7 @@ func (g *gui) content(c *ui.Context, k uikit.Kit) {
 				devices = fmt.Sprintf("设备 (%d)", n)
 			}
 			ui.Box(c).PaddingX(20).Children(func() {
-				kitSegments(k, c.Key("tabs"), &g.tab, "历史", devices, "动态", "添加设备").FillWidth()
+				kitSegments(k, c.Key("tabs"), &g.tab, "历史", devices, "动态", "添加设备")
 			})
 
 			switch g.tab {
@@ -571,33 +575,33 @@ func (g *gui) content(c *ui.Context, k uikit.Kit) {
 		}
 		ui.Divider(c)
 		ui.Row(c).Padding(8, 16).Gap(8).Children(func() {
-			k.Text(c, "daemon 运行中", uikit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
+			k.Text(c, "daemon 运行中", desktopkit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
 			ui.Spacer(c)
-			if k.Button(c.Key("settings"), "设置", uikit.ButtonProps{}).Clicked() {
+			if k.Button(c.Key("settings"), "设置", desktopkit.ButtonProps{}).Clicked() {
 				g.tab = tabSettings
 				g.loadCleanupSettings()
 			}
-			k.Text(c, "ID "+s.st.ID, uikit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
+			k.Text(c, "ID "+s.st.ID, desktopkit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
 		})
 	})
 	g.removeDialog(c, k, s)
 }
 
 // kitSegments bridges the GUI's tab indexes to the Kit's stable string values.
-func kitSegments(k uikit.Kit, c *ui.Context, selected *int, labels ...string) ui.Element {
+func kitSegments(k desktopkit.Kit, c *ui.Context, selected *int, labels ...string) ui.Element {
 	value := strconv.Itoa(*selected)
-	items := make([]uikit.SegmentedItem, len(labels))
+	items := make([]desktopkit.SegmentedItem, len(labels))
 	for i, label := range labels {
-		items[i] = uikit.SegmentedItem{Value: strconv.Itoa(i), Label: label}
+		items[i] = desktopkit.SegmentedItem{Value: strconv.Itoa(i), Label: label}
 	}
-	r := k.SegmentedControl(c, uikit.SegmentedControlProps{Items: items, Value: &value})
+	r := k.SegmentedControl(c, desktopkit.SegmentedControlProps{Items: items, Value: &value})
 	if r.Changed {
 		*selected, _ = strconv.Atoi(value)
 	}
 	return r.Element
 }
 
-func (g *gui) removeDialog(c *ui.Context, k uikit.Kit, s snapshot) {
+func (g *gui) removeDialog(c *ui.Context, k desktopkit.Kit, s snapshot) {
 	if g.confirmRemove == "" {
 		return
 	}
@@ -606,7 +610,7 @@ func (g *gui) removeDialog(c *ui.Context, k uikit.Kit, s snapshot) {
 			continue
 		}
 		open := true
-		r := k.AlertDialog(c.Key("remove-device"), uikit.AlertDialogProps{
+		r := k.AlertDialog(c.Key("remove-device"), desktopkit.AlertDialogProps{
 			Open: &open, Title: "移除 " + p.Name + "?",
 			Description:  "之后不再同步,需要重新配对。",
 			ConfirmLabel: "移除", CancelLabel: "取消", Destructive: true,
@@ -623,12 +627,12 @@ func (g *gui) removeDialog(c *ui.Context, k uikit.Kit, s snapshot) {
 }
 
 func label(c *ui.Context, s string) {
-	k := uikit.For(c.Theme().Dark)
-	k.Text(c, s, uikit.TextProps{}).FontSize(12).Bold().TextColor(c.Theme().TextMuted)
+	k := desktopkit.For(c.Theme().Dark)
+	k.Text(c, s, desktopkit.TextProps{}).FontSize(12).Bold().TextColor(c.Theme().TextMuted)
 }
 
 func (g *gui) devicesTab(c *ui.Context, s snapshot) {
-	k := uikit.For(c.Theme().Dark)
+	k := desktopkit.For(c.Theme().Dark)
 	t := c.Theme()
 	// Devices waiting for a decision come first: they need the user.
 	if len(s.st.Pending) > 0 {
@@ -643,15 +647,15 @@ func (g *gui) devicesTab(c *ui.Context, s snapshot) {
 	if clip == "" {
 		clip = "还没有内容。复制文本、图片或文件,会自动发送到已配对设备。"
 	}
-	k.Text(c, clip, uikit.TextProps{}).Padding(10, 12).Radius(10).Border(1, t.Border).FillWidth()
+	k.Text(c, clip, desktopkit.TextProps{}).Padding(10, 12).Radius(10).Border(1, t.Border).FillWidth()
 
-	k.SettingsGroup(c, uikit.SettingsGroupProps{Title: "已配对设备"}, func() {
+	k.SettingsGroup(c, desktopkit.SettingsGroupProps{Title: "已配对设备"}, func() {
 		if len(s.st.Peers) == 0 {
-			k.ContentUnavailable(c, uikit.ContentUnavailableProps{
-				Icon: uikit.IconDevices, Title: "还没有配对的设备",
+			k.ContentUnavailable(c, desktopkit.ContentUnavailableProps{
+				Icon: desktopkit.IconDevices, Title: "还没有配对的设备",
 				Description: "在另一台电脑上运行 unic,用 6 位配对码或完整地址配对。",
 			}, func() {
-				if k.Button(c.Key("go-add"), "添加设备", uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
+				if k.Button(c.Key("go-add"), "添加设备", desktopkit.ButtonProps{Variant: desktopkit.Primary}).Clicked() {
 					g.tab = tabAdd
 				}
 			})
@@ -664,10 +668,10 @@ func (g *gui) devicesTab(c *ui.Context, s snapshot) {
 			} else if p.LastSeen > 0 {
 				state = "离线 · " + ago(time.Unix(p.LastSeen, 0)) + "在线"
 			}
-			k.SettingsRow(c.Key("peer-"+p.ID), uikit.SettingsRowProps{
+			k.SettingsRow(c.Key("peer-"+p.ID), desktopkit.SettingsRowProps{
 				Label: p.Name, Description: state,
 			}, nil, func() {
-				if k.Button(c.Key("rm-"+p.ID), "移除…", uikit.ButtonProps{}).Clicked() {
+				if k.Button(c.Key("rm-"+p.ID), "移除…", desktopkit.ButtonProps{}).Clicked() {
 					g.confirmRemove = p.ID
 				}
 			})
@@ -676,7 +680,7 @@ func (g *gui) devicesTab(c *ui.Context, s snapshot) {
 }
 
 func (g *gui) pendingCard(c *ui.Context, p api.PendingPeer) {
-	k := uikit.For(c.Theme().Dark)
+	k := desktopkit.For(c.Theme().Dark)
 	t := c.Theme()
 	color := t.Warning
 	if p.ByCode {
@@ -691,45 +695,45 @@ func (g *gui) pendingCard(c *ui.Context, p api.PendingPeer) {
 		case p.Via != "":
 			from = "由 " + p.Via + " 介绍"
 		}
-		k.Text(c, p.Name+" 请求加入", uikit.TextProps{}).Bold()
-		k.Text(c, from+" · "+ago(time.Unix(p.Time, 0)), uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
-		k.Text(c, "确认对方屏幕上显示相同的指纹:", uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
-		k.Text(c, p.Fingerprint, uikit.TextProps{}).Font("monospace").FontSize(15).Bold().LetterSpacing(1.5).
+		k.Text(c, p.Name+" 请求加入", desktopkit.TextProps{}).Bold()
+		k.Text(c, from+" · "+ago(time.Unix(p.Time, 0)), desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+		k.Text(c, "确认对方屏幕上显示相同的指纹:", desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+		k.Text(c, p.Fingerprint, desktopkit.TextProps{}).Font("monospace").FontSize(15).Bold().LetterSpacing(1.5).
 			Padding(2, 8).Radius(5).Background(t.Background).AlignSelf(ui.Start)
 		ui.Row(c).Gap(8).Children(func() {
 			approve := "批准"
 			if p.ByCode {
 				approve = "指纹一致,批准"
 			}
-			if k.Button(c.Key("ok-"+p.ID), approve, uikit.ButtonProps{Variant: uikit.Primary}).Clicked() {
+			if k.Button(c.Key("ok-"+p.ID), approve, desktopkit.ButtonProps{Variant: desktopkit.Primary}).Clicked() {
 				g.decide(p, true)
 			}
-			if k.Button(c.Key("no-"+p.ID), "拒绝", uikit.ButtonProps{}).Clicked() {
+			if k.Button(c.Key("no-"+p.ID), "拒绝", desktopkit.ButtonProps{}).Clicked() {
 				g.decide(p, false)
 			}
 			if p.Via == "" && !p.ByCode {
-				k.Text(c, "不认识的设备请拒绝", uikit.TextProps{}).FontSize(11).TextColor(t.Warning)
+				k.Text(c, "不认识的设备请拒绝", desktopkit.TextProps{}).FontSize(11).TextColor(t.Warning)
 			}
 		})
 	})
 }
 
 func (g *gui) activityTab(c *ui.Context, s snapshot) {
-	k := uikit.For(c.Theme().Dark)
+	k := desktopkit.For(c.Theme().Dark)
 	t := c.Theme()
 	if len(s.logs) == 0 {
-		k.Text(c, "暂无动态。设备连接、剪贴板收发都会记录在这里(仅本次打开期间)。", uikit.TextProps{}).
+		k.Text(c, "暂无动态。设备连接、剪贴板收发都会记录在这里(仅本次打开期间)。", desktopkit.TextProps{}).
 			TextColor(t.TextMuted).Padding(20)
 		return
 	}
 	for i, l := range s.logs {
-		k.Text(c.Key(i), l, uikit.TextProps{}).FontSize(12).FontFeatures("tnum").Padding(3, 0)
+		k.Text(c.Key(i), l, desktopkit.TextProps{}).FontSize(12).FontFeatures("tnum").Padding(3, 0)
 	}
 }
 
 func (g *gui) addTab(c *ui.Context, s snapshot) {
-	k := uikit.For(c.Theme().Dark)
-	kitSegments(k, c.Key("add-mode"), &g.addMode, "让设备加入本机", "加入其他设备").FillWidth()
+	k := desktopkit.For(c.Theme().Dark)
+	kitSegments(k, c.Key("add-mode"), &g.addMode, "让设备加入本机", "加入其他设备")
 	if g.addMode == addShow {
 		g.showPane(c, s)
 	} else {
@@ -738,12 +742,12 @@ func (g *gui) addTab(c *ui.Context, s snapshot) {
 }
 
 func (g *gui) showPane(c *ui.Context, s snapshot) {
-	k := uikit.For(c.Theme().Dark)
+	k := desktopkit.For(c.Theme().Dark)
 	t := c.Theme()
 	ui.Column(c).Gap(10).Padding(20, 22).Radius(12).Border(1, t.Border).AlignItems(ui.Center).Children(func() {
-		k.Text(c, "在另一台电脑的 unic 里输入这个配对码", uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+		k.Text(c, "在另一台电脑的 unic 里输入这个配对码", desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
 		mono := func(s string) ui.Element {
-			return k.Text(c, s, uikit.TextProps{}).Font("monospace").FontSize(44).Bold().LetterSpacing(3).FontFeatures("tnum")
+			return k.Text(c, s, desktopkit.TextProps{}).Font("monospace").FontSize(44).Bold().LetterSpacing(3).FontFeatures("tnum")
 		}
 		switch {
 		case s.codeErr != "":
@@ -752,31 +756,31 @@ func (g *gui) showPane(c *ui.Context, s snapshot) {
 			if s.codeErr == "rate-limited" {
 				msg = "获取配对码太频繁,请稍等一分钟"
 			}
-			k.Text(c, msg, uikit.TextProps{}).FontSize(12).TextColor(t.Danger)
-			if k.Button(c.Key("code-retry"), "重试", uikit.ButtonProps{}).Clicked() {
+			k.Text(c, msg, desktopkit.TextProps{}).FontSize(12).TextColor(t.Danger)
+			if k.Button(c.Key("code-retry"), "重试", desktopkit.ButtonProps{}).Clicked() {
 				g.fetchCode(true)
 			}
 		case !s.hasCode || s.codeBusy:
 			mono("––– –––").TextColor(t.TextMuted)
 			ui.Row(c).Gap(6).Children(func() {
 				ui.Spinner(c)
-				k.Text(c, "正在获取配对码…", uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+				k.Text(c, "正在获取配对码…", desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
 			})
 		default:
 			left := time.Until(s.code.Expires())
 			mono(s.code.Display())
 			progress := max(0, left.Seconds()/3)
-			k.ProgressBar(c, uikit.ProgressBarProps{Label: "配对码有效期", Value: &progress}).FillWidth()
+			k.ProgressBar(c, desktopkit.ProgressBarProps{Label: "配对码有效期", Value: &progress}).FillWidth()
 			ui.Row(c).FillWidth().Children(func() {
-				k.Text(c, countdown(left)+" 后过期", uikit.TextProps{}).FontSize(11).FontFeatures("tnum").TextColor(t.TextMuted)
+				k.Text(c, countdown(left)+" 后过期", desktopkit.TextProps{}).FontSize(11).FontFeatures("tnum").TextColor(t.TextMuted)
 				ui.Spacer(c)
-				k.Text(c, "仅可使用一次", uikit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
+				k.Text(c, "仅可使用一次", desktopkit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
 			})
 			ui.Row(c).Gap(8).Children(func() {
-				if k.Button(c.Key("code-copy"), "复制", uikit.ButtonProps{}).Clicked() {
+				if k.Button(c.Key("code-copy"), "复制", desktopkit.ButtonProps{}).Clicked() {
 					mygo.Clipboard.WriteText(strings.ReplaceAll(s.code.Code, "-", ""))
 				}
-				if k.Button(c.Key("code-new"), "换一个", uikit.ButtonProps{}).Clicked() {
+				if k.Button(c.Key("code-new"), "换一个", desktopkit.ButtonProps{}).Clicked() {
 					g.fetchCode(true)
 				}
 			})
@@ -786,7 +790,7 @@ func (g *gui) showPane(c *ui.Context, s snapshot) {
 	if s.codeErr != "" {
 		note = "使用下方的完整地址仍然可以配对,不需要配对码服务。"
 	}
-	k.Text(c, note, uikit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
+	k.Text(c, note, desktopkit.TextProps{}).FontSize(11).TextColor(t.TextMuted)
 
 	for _, p := range s.st.Pending {
 		if p.ByCode {
@@ -804,36 +808,36 @@ func (g *gui) showPane(c *ui.Context, s snapshot) {
 					shown = addr
 				}
 			}
-			k.Text(c, shown, uikit.TextProps{}).Font("monospace").FontSize(11).TextColor(t.TextMuted).
+			k.Text(c, shown, desktopkit.TextProps{}).Font("monospace").FontSize(11).TextColor(t.TextMuted).
 				Padding(6, 8).Radius(6).Background(t.Surface).FillWidth()
 			ui.Row(c).Gap(8).Children(func() {
-				if k.Button(c.Key("addr-generate"), "生成票据", uikit.ButtonProps{Disabled: s.ticketBusy}).Clicked() {
+				if k.Button(c.Key("addr-generate"), "生成票据", desktopkit.ButtonProps{Disabled: s.ticketBusy}).Clicked() {
 					g.fetchTicket()
 				}
 				show := "显示"
 				if g.revealAddr {
 					show = "隐藏"
 				}
-				if k.Button(c.Key("addr-reveal"), show, uikit.ButtonProps{Disabled: addr == ""}).Clicked() {
+				if k.Button(c.Key("addr-reveal"), show, desktopkit.ButtonProps{Disabled: addr == ""}).Clicked() {
 					g.revealAddr = !g.revealAddr
 				}
-				if k.Button(c.Key("addr-copy"), "复制", uikit.ButtonProps{Disabled: addr == ""}).Clicked() {
+				if k.Button(c.Key("addr-copy"), "复制", desktopkit.ButtonProps{Disabled: addr == ""}).Clicked() {
 					mygo.Clipboard.WriteText(addr)
 				}
 			})
-			k.Text(c, "票据等同密码,5 分钟有效且仅能使用一次。只分享给你自己的设备。", uikit.TextProps{}).
+			k.Text(c, "票据等同密码,5 分钟有效且仅能使用一次。只分享给你自己的设备。", desktopkit.TextProps{}).
 				FontSize(11).TextColor(t.Warning)
 		})
 	})
 }
 
 func (g *gui) joinPane(c *ui.Context, s snapshot) {
-	k := uikit.For(c.Theme().Dark)
+	k := desktopkit.For(c.Theme().Dark)
 	t := c.Theme()
 	kitSegments(k, c.Key("join-mode"), &g.joinMode, "6 位数字", "完整地址")
 
 	if g.joinMode == joinCode {
-		k.Text(c, "输入另一台设备「添加设备」页上显示的 6 位配对码。", uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+		k.Text(c, "输入另一台设备「添加设备」页上显示的 6 位配对码。", desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
 		ui.Row(c).Gap(8).Children(func() {
 			g.codeInput = strings.ReplaceAll(formatCode(g.codeInput), " ", "")
 			submit := func() {
@@ -844,7 +848,7 @@ func (g *gui) joinPane(c *ui.Context, s snapshot) {
 					})
 				}
 			}
-			field := k.CodeField(c.Key("code-input"), uikit.CodeFieldProps{
+			field := k.CodeField(c.Key("code-input"), desktopkit.CodeFieldProps{
 				Label: "6 位配对码", Length: 6, Value: &g.codeInput, Disabled: s.joinBusy,
 			})
 			field.Element.Grow(1)
@@ -852,13 +856,13 @@ func (g *gui) joinPane(c *ui.Context, s snapshot) {
 				submit()
 			}
 			ready := len(g.codeInput) == 6
-			if k.Button(c.Key("join"), "配对", uikit.ButtonProps{Variant: uikit.Primary, Disabled: !ready || s.joinBusy}).Clicked() {
+			if k.Button(c.Key("join"), "配对", desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: !ready || s.joinBusy}).Clicked() {
 				submit()
 			}
 		})
 	} else {
-		k.Text(c, "粘贴另一台设备的完整地址(unic device addr 的输出)。", uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
-		field := k.TextField(c.Key("addr-input"), uikit.TextFieldProps{
+		k.Text(c, "粘贴另一台设备的完整地址(unic device addr 的输出)。", desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+		field := k.TextField(c.Key("addr-input"), desktopkit.TextFieldProps{
 			Label: "完整地址", Value: &g.addrInput, Placeholder: "tc…", Disabled: s.joinBusy,
 		})
 		field.Element.FillWidth()
@@ -866,7 +870,7 @@ func (g *gui) joinPane(c *ui.Context, s snapshot) {
 		ui.Row(c).Gap(8).Children(func() {
 			ui.Spacer(c)
 			addr := strings.TrimSpace(g.addrInput)
-			if k.Button(c.Key("pair"), "配对", uikit.ButtonProps{Variant: uikit.Primary, Disabled: addr == "" || s.joinBusy}).Clicked() {
+			if k.Button(c.Key("pair"), "配对", desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: addr == "" || s.joinBusy}).Clicked() {
 				g.startJoin("正在连接…最长约 45 秒", func(ctx context.Context) (api.PairResult, error) {
 					return g.c.Pair(ctx, addr)
 				})
@@ -878,20 +882,20 @@ func (g *gui) joinPane(c *ui.Context, s snapshot) {
 	case s.joinBusy:
 		ui.Row(c).Gap(6).Children(func() {
 			ui.Spinner(c)
-			k.Text(c, s.joinMsg, uikit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
+			k.Text(c, s.joinMsg, desktopkit.TextProps{}).FontSize(12).TextColor(t.TextMuted)
 		})
 	case s.joinErr != "":
-		k.Text(c, s.joinErr, uikit.TextProps{}).FontSize(12).TextColor(t.Danger)
+		k.Text(c, s.joinErr, desktopkit.TextProps{}).FontSize(12).TextColor(t.Danger)
 	case s.joinWait != nil:
 		ui.Column(c).Gap(6).Padding(12).Radius(10).
 			Background(t.Accent.Alpha(0.1)).Border(1, t.Accent.Alpha(0.45)).Children(func() {
-			k.Text(c, "等待 "+s.joinWait.Name+" 批准", uikit.TextProps{}).Bold()
-			k.Text(c, "在 "+s.joinWait.Name+" 上核对下面的指纹,一致后批准。批准后自动开始同步。", uikit.TextProps{}).
+			k.Text(c, "等待 "+s.joinWait.Name+" 批准", desktopkit.TextProps{}).Bold()
+			k.Text(c, "在 "+s.joinWait.Name+" 上核对下面的指纹,一致后批准。批准后自动开始同步。", desktopkit.TextProps{}).
 				FontSize(12).TextColor(t.TextMuted)
-			k.Text(c, s.joinWait.Fingerprint, uikit.TextProps{}).Font("monospace").FontSize(15).Bold().LetterSpacing(1.5)
+			k.Text(c, s.joinWait.Fingerprint, desktopkit.TextProps{}).Font("monospace").FontSize(15).Bold().LetterSpacing(1.5)
 		})
 	case s.joinDone != "":
-		k.Text(c, "✓ 已连接 "+s.joinDone+",开始同步", uikit.TextProps{}).FontSize(12).TextColor(t.Success)
+		k.Text(c, "✓ 已连接 "+s.joinDone+",开始同步", desktopkit.TextProps{}).FontSize(12).TextColor(t.Success)
 	}
 }
 

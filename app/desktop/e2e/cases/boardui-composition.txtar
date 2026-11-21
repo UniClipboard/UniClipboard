@@ -1,0 +1,8 @@
+# Case: BoardUI application composition interactions
+# Mode: view
+# Purpose: Retain the existing complete input, control, navigation, layout and overlay interaction coverage in one BoardUI design system and both color schemes.
+# Steps: Execute all migrated widget-view scenarios through real mygo event, layout, focus and rendering; retain the final exercised PNG for every view, including failures.
+# Expected: Every retained scenario and applicable light/dark subcase passes without old OS-skin selection or missing evidence.
+# Forbidden: New isolated unit tests, deleted interaction assertions, hidden skips, legacy token maps, or software-view screenshots reported as native OS proof.
+
+acceptance desktopkit boardui-composition

@@ -48,8 +48,8 @@ ui-wait listItem 管理设备…
 ui-click listItem 管理设备…
 ui-wait button 邀请设备
 ui-click button 邀请设备
-ui-wait radio 完整票据
-ui-click radio 完整票据
+ui-wait button '跨网或命令行配对？改用完整票据 →'
+ui-click button '跨网或命令行配对？改用完整票据 →'
 ui-wait button 复制票据
 ui-enabled button 复制票据
 screenshot external-invitation
@@ -59,8 +59,9 @@ ui-wait text 核对并批准
 screenshot external-approval
 ui-click button 接受
 assert-paired
-ui-wait button 完成
-ui-click button 完成
+ui-absent dialog 添加设备
+ui-wait button 返回历史
+ui-click button 返回历史
 external-roundtrip
 ui-wait listItem external-desktop-to-peer
 ui-click listItem external-desktop-to-peer

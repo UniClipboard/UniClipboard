@@ -1,5 +1,11 @@
 # 0013 桌面 UI Kit 迁移到 mygo —— 执行交接
 
+Historical receipt. The three-skin implementation described here was retired by
+[the native BoardUI production migration](boardui-production-migration.md).
+The measurements and acceptance limits below describe the original source,
+not the current Desktop presentation.
+
+
 状态：实现与自动化验收已完成；Windows/Linux 原生宿主验收待补充。分支 `v2`，**不要 commit**，除非用户要求。
 
 2026-11-09 方向确认：桌面界面（含 macOS）统一使用 mygo + 自定义 UI Kit，SwiftUI 客户端路线已取消。界面原型待定；已完成的组件迁移与现有 GUI 验证不代表最终页面设计已确认。

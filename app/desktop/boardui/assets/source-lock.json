@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "boardui": {
+    "source": "ec5c5eb3e29c2441be63b9422cd54f411ef23466",
+    "url": "https://github.com/BoardUI/boardui",
+    "license": "MIT",
+    "files": {
+      "styles/theme.css": "3c7fcc7710b0f44be0d86bc8e822e88f737d0269d207e9e2f4d2e73fd6da8f34",
+      "styles/typography.css": "dfd4e9b446998d063efe96a47fc31fd2492639bf641d0da1b60645fe4dcc32a1",
+      "styles/globals.css": "61eb0d742c68f3fe7914626d1a31f97a9e242f084191098bbc27379b5d683183",
+      "components/base/buttons/button.tsx": "b147c988c73dd8c226ab6ede3d7019eac9a7125191bbd646fcdd25bea803ca41",
+      "components/base/buttons/link-button.tsx": "a0ea455383b9fb834b086c92e37d553dac84455b9c471b754993da678f9bce3c",
+      "components/base/switch/switch.tsx": "21d65c0a1c307d05b37444d2e3d664f97841df69d6fd19c8cfcccc6e288d4953",
+      "components/base/checkbox/checkbox.tsx": "592651a10aaf0e186a08862391fa99fa7d45ee75e8bfd0bc134408bb1c076f5e",
+      "components/base/checkbox/checkbox-glyph.tsx": "e71bdc6f0dd28e792be233950df90f7f8ee68252a63e3f2da46d19f84bdf7584",
+      "components/base/slider/slider.tsx": "df422bd73cd043e0dbed496ec427cc04c9c454cbfc99c559271baa74b354ce6f",
+      "components/base/segmented-control/segmented-control.tsx": "629b165aadfb42fcd2ed7a77e338f1b1aeb2e906533fcd78be5f11e729447878",
+      "components/base/input/input.tsx": "5b354fef767b5bb5159546cc8bc2547db64ee62a66d9f701edcd508d4450d5df",
+      "components/base/input/hint-text.tsx": "0426d70de74274486166cf3fd2279b8c70ce184012d613f87c44dbaa484ba8c3",
+      "components/base/input/label.tsx": "a053bec8ad9f79f15ad8d7f031eac740588781d4e1b34d1cb1b3c5d44a4b2199",
+      "components/base/select/select.tsx": "c56abf0ad7b554a363a6e2b46045489b6a94c18718324cbf06e64edf0540b116",
+      "components/base/dropdown/menu-styles.ts": "98673114fe832b05991f61a84728873a5d3985fd382e66523958321572ab63db",
+      "components/foundations/icons/chevrons.tsx": "00d6cc454b23560e56f8134a4d0e87e5a99affa6b8b60174165a19dc1e4435d5",
+      "components/application/settings/settings-modal.tsx": "cbb66140687f4f85872e555ad40c9692f23983fabc4f8585513ca21c8c1fc8c4",
+      "LICENSE": "7a28c78354f8f88d8773f72bf37fb9c037817f8abd2fa5a63694d6c946a5ce80"
+    }
+  },
+  "notices": {
+    "BOARDUI-MIT.txt": "7a28c78354f8f88d8773f72bf37fb9c037817f8abd2fa5a63694d6c946a5ce80",
+    "Inter-OFL.txt": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a",
+    "REMIX-LICENSE.txt": "6f2f21c5f8db34635d31848e9ff831d5dc421bb83ffc9d37f82651364047ae58"
+  },
+  "font": {
+    "family": "BoardUI Inter",
+    "source": "https://github.com/rsms/inter/blob/v4.1/docs/font-files/InterVariable.ttf",
+    "version": "4.1",
+    "sha256": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
+    "license": "SIL OFL 1.1"
+  },
+  "icons": {
+    "package": "@remixicon/react",
+    "version": "4.9.0",
+    "license": "Remix Icon License 1.0",
+    "package_sha256": "6fb6c465b78ba9d68640aaca14b9e5fc13721d94c083f10df8a47dbda1859c9d",
+    "glyphs": {
+      "chevron-down": "173d0a431faf24aa1a748abafe532c41b4fb34f82b78e6c462779f4d1cf8f192",
+      "settings": "b9e6e0fd5d5933eb820121e3e8420f91f08b8f2055ab22e8e80fb0f09d828a52",
+      "close": "8a5e421ffdc331dbb05970443aeab0382f565adf0d02d76e1317957b97b8ad6a",
+      "check": "e06d16b74ad25b58d59f90e690913a1dfb543d84c455d24d45fd2ff143318915",
+      "eye": "e47b30d3ec677fad7e80950735060d49a473facf3b2dfe598d90e06c4d9223a3",
+      "user": "f0d047a201cee8b923c97862cc189df025f0c43d011ada8e524f106552ee456a"
+    }
+  },
+  "compiler": {
+    "node": "v22.23.4",
+    "tailwind": "4.1.18",
+    "vite": "7.3.0",
+    "react": "19.2.4",
+    "reactAria": "1.17.0",
+    "lock_sha256": "a2b76d8a2a20270e1748a3ac2d39df0a3aa265f95e0ead25c05bbab588073c0d",
+    "browser": {
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "platform": "MacIntel"
+    },
+    "colorConversion": "Canvas2D sRGB 8-bit; CSS color-space conversion by the reference browser"
+  },
+  "fixture": {
+    "width": 800,
+    "height": 760,
+    "dialogWidth": 480,
+    "padding": 24,
+    "fieldGap": 16,
+    "sectionGap": 24,
+    "bodyScroll": true,
+    "footerGap": 12,
+    "files": {
+      "fixture.tsx": "afd03499b5eef61d8830c579189acd3cab6709be6468a2040f69ad90ccd71884",
+      "fixture.css": "cf8597f118a08ea0c7e34c7c95eb8a396c3dabf98ebc2d01ca65ed1529067116",
+      "capture.mjs": "26a301b1bdb003e09a75c23e74a354722ac3dbb52dc9b399013e33f56c8af696",
+      "capture.py": "d7d2775fe62ae12167b2deb6ce56b36be28919c21dc0a8aafdcefaeeac175766",
+      "generate.mjs": "7be8336b9abcaed5b58a7d34b35949de998f31f9e05d2a1f7360b7ab4de023e6"
+    },
+    "sourceScope": "bounded composition; actual official Button/Input/Select; Dialog shell derived from settings-modal"
+  },
+  "generated": {
+    "tokens": 111,
+    "typeStyles": 52,
+    "geometries": 7,
+    "iconCount": 6,
+    "sourceMetrics": {
+      "button-label-padding-medium": 4,
+      "button-label-padding-small": 2,
+      "button-label-padding-xs": 2,
+      "input-inner-start": 4,
+      "input-field-gap": 4,
+      "input-hint-padding-top": 1,
+      "color-ms": 150,
+      "button-secondary-border": 1,
+      "select-popup-width": 266,
+      "select-popup-radius": 16,
+      "select-popup-padding": 8,
+      "select-popup-gap": 4,
+      "select-popup-row-padding": 8,
+      "select-popup-row-radius": 10,
+      "select-popup-max-height": 240,
+      "popover-ms": 150,
+      "select-chevron-ms": 200,
+      "popover-ease-x1": 0,
+      "popover-ease-y1": 0,
+      "popover-ease-x2": 0.2,
+      "popover-ease-y2": 1,
+      "select-chevron-ease-x1": 0.4,
+      "select-chevron-ease-y1": 0,
+      "select-chevron-ease-x2": 0.2,
+      "select-chevron-ease-y2": 1,
+      "select-popup-row-padding-sm-y": 6,
+      "select-popup-row-padding-sm-x": 8,
+      "dialog-padding": 24,
+      "dialog-radius": 24,
+      "dialog-backdrop-opacity": 0.7,
+      "dialog-header-body-gap": 24,
+      "press-scale": 0.98,
+      "press-ms": 220,
+      "return-ms": 420,
+      "dialog-ms": 300,
+      "select-popup-offset": 4
+    },
+    "timingEvidence": {
+      "popover": {
+        "function": "cubic-bezier(0, 0, 0.2, 1)",
+        "duration": "0.15s",
+        "property": "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events"
+      },
+      "selectChevron": {
+        "function": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "duration": "0.2s",
+        "property": "transform, translate, scale, rotate"
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# Case: BoardUI native settings composition
+# Mode: view
+# Purpose: Exercise the independent BoardUI Go package through a complete settings form with real input, selection and dialog scopes.
+# Steps: Open the settings dialog, edit synthetic English/CJK/emoji text, validate empty input, choose Role by keyboard, dismiss nested overlays, traverse focus and save retained caller state across themes and scales.
+# Expected: The complete operation chain passes with accessible field states, bounded overlays, restored focus and exercised software-rendered PNG checkpoints.
+# Forbidden: Product UI replacement, system clipboard access, skipped states, static-image interaction substitutes, or software-view evidence labeled as native-window acceptance.
+
+acceptance boardui boardui-settings

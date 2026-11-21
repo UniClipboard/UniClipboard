@@ -14,7 +14,7 @@ import (
 // Failure inventory: see docs/exec/0026-first-install-setup.md. This exercises
 // the actual renderer with semantic controls, without native windows or secrets.
 func scenarioSetupPages(t *testing.T) {
-	eachGUISkin(t, func(t *testing.T, dark bool) {
+	eachGUITheme(t, func(t *testing.T, dark bool) {
 		for _, stage := range []string{"welcome", "welcome-detecting", "welcome-none", "welcome-error", "confirm", "invalid", "password", "conflict", "credentials", "import", "verify", "stopping", "complete", "complete-retry", "partial", "cancelled", "failed"} {
 			t.Run(stage, func(t *testing.T) {
 				fields := setupui.Fields{}

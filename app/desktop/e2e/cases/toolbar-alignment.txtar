@@ -1,8 +1,8 @@
 # Case: Toolbar alignment
 # Mode: view
-# Purpose: Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-capsule pixel contrast.
-# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
-# Expected: A 52-point band contains layout, search and command controls with vertical insets; expanded search stays within 600, 800, 1100 and 1440-point windows; light capsule top and bottom edges remain visible against white.
+# Purpose: Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-theme control pixel contrast.
+# Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
+# Expected: A 52-point band contains layout, search and command controls with vertical insets; expanded search stays within 600, 800, 1100 and 1440-point windows; each light-theme BoardUI control remains visibly distinct from the toolbar background.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
 acceptance desktopui toolbar-alignment

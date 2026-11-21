@@ -11,11 +11,11 @@ ui-wait listItem 管理设备…
 ui-click listItem 管理设备…
 ui-wait button 邀请设备
 ui-click button 邀请设备
-ui-wait radio 完整票据
-ui-click radio 完整票据
+ui-wait button '跨网或命令行配对？改用完整票据 →'
+ui-click button '跨网或命令行配对？改用完整票据 →'
 ui-wait button 复制票据
 ui-enabled button 复制票据
-ui-wait text 邀请设备
+ui-wait heading 添加设备
 screenshot invitation-shown
 peer-pair-desktop
 ui-wait text '核对并批准'
@@ -23,11 +23,11 @@ screenshot approval-inside-task
 ui-click button 接受
 assert-paired
 ui-absent text '核对并批准'
-ui-absent text '邀请设备'
+ui-absent dialog 添加设备
 ui-wait text 本机
 screenshot paired-device-listed
 observe 2
-ui-wait button 完成
-ui-click button 完成
-ui-absent dialog 管理设备
+ui-wait button 返回历史
+ui-click button 返回历史
+ui-absent dialog 添加设备
 stop-policy-peer

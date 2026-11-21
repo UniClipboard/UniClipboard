@@ -23,7 +23,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
@@ -269,7 +269,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 	}
 	checks = append(checks, "tag color persists through real service, refresh and desktop reopen")
 	// The same creation intent used by ComboField reaches both real APIs.
-	d.pickTag(d.current(), uikit.SearchSuggestion{ID: "palette-created", Create: true}, "blue")
+	d.pickTag(d.current(), desktopkit.SearchSuggestion{ID: "palette-created", Create: true}, "blue")
 	spin("create colored tag", func() bool {
 		return !d.live.busy && d.current() != nil && slices.Contains(d.current().tags, "palette-created") && d.tagColor("palette-created") == "blue"
 	})
@@ -430,7 +430,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 			return d.live.detailKey == previewID && !d.live.detailBusy && d.current() != nil && d.current().text == sample.name
 		})
 		v := d.current()
-		if (v.image != nil) != sample.preview || v.kind != uikit.KindFile {
+		if (v.image != nil) != sample.preview || v.kind != desktopkit.KindFile {
 			t.Fatalf("%s: image preview=%v, want %v; kind=%v", sample.name, v.image != nil, sample.preview, v.kind)
 		}
 		if sample.preview {
@@ -454,7 +454,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 			if d.live.appliedSerial != serial {
 				t.Fatal("unchanged preview probe reloaded history")
 			}
-			if d.current().image == nil || d.current().kind != uikit.KindFile {
+			if d.current().image == nil || d.current().kind != desktopkit.KindFile {
 				t.Fatal("reconciliation discarded file image or changed file kind")
 			}
 		}
@@ -627,11 +627,11 @@ func scenarioDesktopLiveData(t *testing.T) {
 	}
 	checks = append(checks, "revision-checked deletion updates history")
 
-	// Failure cases for the processor failure policy: the platform menu does
+	// Failure cases for the processor failure policy: the BoardUI menu does
 	// not open, a choice does not persist, inheritance is flattened into an
 	// explicit "continue", the trigger shows a stale value, or another plugin
 	// instance is changed.
-	t.Setenv("UNIC_UI_SKIN", "macos")
+
 	d.page, d.settings.Value, d.pluginSettings = "settings", "plugins", builtinPluginSettings{id: "builtin.text"}
 	var tt *ui.Tester
 	for _, step := range []struct{ choice, want, shown string }{
@@ -646,7 +646,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 		// motion behavior has its own dedicated acceptance case.
 		tt = ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true, TextScale: 1}})
 		// Rendering can start a background refresh. Wait until the actual trigger
-		// is enabled before opening the platform menu.
+		// is enabled before opening the BoardUI menu.
 		spin("failure policy trigger enabled", func() bool {
 			tt.Frame()
 			trigger, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时")
@@ -658,12 +658,13 @@ func scenarioDesktopLiveData(t *testing.T) {
 		}
 		x, y := trigger.Bounds.X+trigger.Bounds.W/2, trigger.Bounds.Y+trigger.Bounds.H/2
 		tt.Press(x, y)
-		if items := tt.Menu(); len(items) != 3 || !slices.Contains(items, step.choice) {
+		tt.Release(x, y)
+		if items := boarduiMenuItems(tt); len(items) != 3 || !slices.Contains(items, step.choice) {
 			t.Fatalf("failure policy menu items for %q = %v (trigger=%+v busy=%v loading=%v)", step.choice, items, trigger, d.live.busy, d.live.loading)
 		}
-		// The native menu is already open from pointer-down. Choose from that
+		// The BoardUI popup is already open after the pointer click. Choose from that
 		// menu rather than closing and reopening against a refreshed layout.
-		if err := tt.ChooseMenuItem(step.choice); err != nil {
+		if err := boarduiChooseMenu(tt, step.choice); err != nil {
 			t.Fatal(err)
 		}
 		tt.CancelPress()
@@ -686,7 +687,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 		}
 	}
 	d.page, d.pluginSettings = "history", builtinPluginSettings{}
-	checks = append(checks, "processor failure policy dropdown chooses inherit/continue/block through the system menu and persists each choice")
+	checks = append(checks, "processor failure policy dropdown chooses inherit/continue/block through the BoardUI menu and persists each choice")
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
 	spin("disconnect", func() bool { return !d.live.connected })

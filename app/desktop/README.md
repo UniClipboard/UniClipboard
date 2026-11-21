@@ -19,7 +19,8 @@ unic-desktop --role quick-panel --+
 | `cmd/unic-desktop` | Launcher and independent tray, GUI and quick-panel processes |
 | `internal/desktopprocess` | Profile role locks, private activation IPC and OS peer executable verification |
 | `internal/board` | Native clipboard access |
-| `internal/uikit` | Adwaita, macOS glass and Fluent component skins |
+| `boardui` | Public native BoardUI controls and source-bound resources |
+| `internal/desktopkit` | Application-only compositions using the shared BoardUI presentation |
 | `internal/desktopui` | Shared desktop renderer and production service binding |
 | `internal/i18n` | Embedded translation catalogue and lookup |
 | `internal/desktopdemo` | Independent preview launcher and synthetic fixtures |
@@ -43,7 +44,7 @@ Run the command again after changing code.
 ### Native layout demo
 
 Build `unic-desktop-demo` with `go build -o .build/unic-desktop-demo ./app/desktop/cmd/unic-desktop-demo`, then run it to open the restored layouts with local fixtures.
-Use `UNIC_UI_SKIN=linux|macos|windows` to select a skin.
+The demo uses the same BoardUI content presentation on every OS. There is no platform-skin selector.
 Use `--theme light|dark|system` to select a color mode.
 Use `--page history|devices|settings|quick-panel` to choose the initial page.
 The demo does not require `unicd`. All changes remain in memory.
@@ -61,9 +62,9 @@ UNIC_HOME=/tmp/unicA ./unicd        # 用 UNIC_HOME 在同一台机器上跑第�
 
 国内网络下载依赖慢时:`GOPROXY=https://goproxy.cn,direct go mod download`。
 
-界面默认跟随操作系统皮肤和亮暗模式。可用 `UNIC_UI_SKIN=linux|macos|windows .build/unic-desktop` 在本机预览其他皮肤。组件移植与近似范围见 [0013](../../docs/decisions/proposed/0013-mygo-uikit.md)。
+The interface uses one native BoardUI presentation. Color mode can follow the system or select light/dark. Native title bars, caption actions, keyboard modifiers, tray menus and clipboard integration remain host-owned. See the [presentation architecture](../../docs/architecture/overview.md#native-boardui-presentation) and [component contract](../../docs/contracts/boardui-native-contract.md).
 
-GUI 测试可以导出三皮肤、亮暗主题的截图，包含空历史聚焦态和窄窗口：
+GUI software-view scenarios export BoardUI light/dark checkpoints, including keyboard focus, empty history and narrow windows. These are not native-platform acceptance:
 
 ```sh
 make desktop-e2e CASE=gui-navigation
@@ -243,3 +244,7 @@ Built-in Text, Images, Files and Links tags use the selected interface language.
 ## Tray icon style
 
 Open Settings > General > Tray icon to choose Default (the glyph) or Classic cat. The default is the glyph, matching v1. Selection saves to `desktop.tray_icon` and applies immediately. The CLI equivalent is `unic config set desktop.tray_icon '"cat"'` or `unic config set desktop.tray_icon '"glyph"'`. Direct TOML edits also apply while Desktop runs. Invalid values retain the previous valid configuration. The tray is available while a lightweight GUI session is open; closing GUI leaves only unicd. See [Desktop configuration](../../docs/architecture/desktop-runtime.md#application-and-tray-icons).
+
+### Independent BoardUI native demo
+
+The separate `boardui-demo` entry exercises reusable native controls with synthetic form data. Production Desktop consumes the same public BoardUI controls through application-only composition. This independent demo does not connect to the service. See the [presentation architecture](../../docs/architecture/overview.md#native-boardui-presentation) and [component contract](../../docs/contracts/boardui-native-contract.md).

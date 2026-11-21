@@ -36,10 +36,10 @@ func scenarioTagFixedColumns(t *testing.T) {
 			}
 		}
 	}()
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"dark", "light"} {
 			t.Run(skin+"/"+theme, func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", skin)
+
 				d := newDemo("history", theme)
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 				proof.Capture(t, tt)
@@ -47,44 +47,32 @@ func scenarioTagFixedColumns(t *testing.T) {
 					t.Fatal(err)
 				}
 				tt.Advance(350 * time.Millisecond)
-				for _, name := range []string{"名称", "条目", "侧边栏"} {
-					for _, action := range []string{"shrink", "grow", "reorder"} {
-						before, ok := tt.AccessByRole(ui.RoleColumnHeader, name)
-						if !ok {
-							t.Fatal("missing heading")
-						}
-						x, y := before.Bounds.X+before.Bounds.W-2, before.Bounds.Y+before.Bounds.H/2
-						dx := float32(-80)
-						if action == "grow" {
-							dx = 300
-						}
-						if action == "reorder" {
-							x = before.Bounds.X + before.Bounds.W/2
-							dx = 200
-							if name != "名称" {
-								dx = -200
-							}
-						}
-						tt.Press(x, y)
-						tt.Move(x+dx, y)
-						tt.Release(x+dx, y)
-						after, _ := tt.AccessByRole(ui.RoleColumnHeader, name)
-						results = append(results, measurement{skin, theme, name, action, before.Bounds, after.Bounds})
-						if before.Bounds != after.Bounds {
-							t.Fatalf("fixed column %s changed during %s: %+v -> %+v", name, action, before.Bounds, after.Bounds)
-						}
+				list, ok := tt.AccessByRole(ui.RoleList, "标签")
+				if !ok {
+					t.Fatal("missing tag list")
+				}
+				// Grouped rows keep uniform alignment and width inside the list viewport.
+				var workBefore ui.Rect
+				for _, a := range tt.AccessAll() {
+					if a.Role == ui.RoleListItem && a.Name == "#工作" && a.Bounds.X >= list.Bounds.X-.1 {
+						workBefore = a.Bounds
+						break
 					}
 				}
+				if workBefore.W <= 0 || workBefore.H != 40 {
+					t.Fatalf("unexpected grouped tag row bounds: %+v", workBefore)
+				}
+				results = append(results, measurement{skin, theme, "row", "initial", workBefore, workBefore})
 				if err := tt.Click("在侧边栏显示 #工作"); err != nil {
 					t.Fatal(err)
 				}
 				if d.tagByID("工作").sidebar {
 					t.Fatal("switch stopped working")
 				}
-				if err := tt.RightClick("#工作"); err != nil {
+				if err := boarduiTableClick(tt, "标签", "#工作", 0, true); err != nil {
 					t.Fatal(err)
 				}
-				if err := tt.ChooseMenuItem("显示条目"); err != nil {
+				if err := boarduiChooseMenu(tt, "显示条目"); err != nil {
 					t.Fatal(err)
 				}
 				if d.tagsOpen || d.tag != "工作" {

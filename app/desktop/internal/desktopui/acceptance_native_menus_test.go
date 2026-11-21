@@ -12,12 +12,11 @@ import (
 	proof "github.com/uniclipboard/unic/app/desktop/internal/e2eproof"
 )
 
-// Failure cases: a painted dropdown bypasses the system menu backend; opening
-// waits for release; cancelling changes the filter; a native choice loses its
-// value or command on the return frame. Exercise the complete history view.
-// The tester records the platform menu request; it does not render NSMenu.
-func scenarioNativeMenus(t *testing.T) {
-	t.Setenv("UNIC_UI_SKIN", "macos")
+// Failure cases: opening a popup performs an action; cancellation changes a
+// filter; the view delegates to a legacy system menu; a choice loses its value
+// or command. Exercise real in-window options in the complete history view.
+func scenarioBoardUIMenus(t *testing.T) {
+
 	type receipt struct {
 		Theme, Trigger, Choice string
 		Items                  []string
@@ -34,7 +33,7 @@ func scenarioNativeMenus(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if err := os.WriteFile(filepath.Join(dir, "native-menus.json"), append(b, '\n'), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "boardui-menus.json"), append(b, '\n'), 0644); err != nil {
 				t.Error(err)
 			}
 		}
@@ -47,7 +46,7 @@ func scenarioNativeMenus(t *testing.T) {
 		}{
 			{"内容类型", "代码", func(d *viewState) string { return d.kind }, "代码"},
 			{"来源设备", "Linux 工作站", func(d *viewState) string { return d.source }, "linux"},
-			{"标签筛选", "#设计", func(d *viewState) string { return d.tag }, "设计"},
+			{"标签筛选", "设计", func(d *viewState) string { return d.tag }, "设计"},
 			{"时间范围", "今天", func(d *viewState) string { return d.timeRange }, "today"},
 			{"发送到设备", "工作电脑", func(d *viewState) string { return d.notice }, "演示：已发送到工作电脑"},
 			{"更多操作", "管理标签", func(d *viewState) string {
@@ -62,39 +61,68 @@ func scenarioNativeMenus(t *testing.T) {
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 				proof.Capture(t, tt)
 				before := tc.value(d)
-				// Mouse-down must enter native menu tracking immediately.
-				info, ok := tt.AccessByRole(ui.RolePopUpButton, tc.trigger)
-				if !ok {
-					info, ok = tt.AccessByRole(ui.RoleMenuButton, tc.trigger)
+				filter := slices.Contains([]string{"内容类型", "来源设备", "标签筛选", "时间范围"}, tc.trigger)
+				trigger := tc.trigger
+				if filter {
+					trigger = "筛选条件"
 				}
-				if !ok {
-					t.Fatal("menu trigger missing")
+				open := func() {
+					t.Helper()
+					role := ui.RoleMenuButton
+					if filter {
+						role = ui.RoleButton
+					}
+					info, ok := tt.AccessByRole(role, trigger)
+					if !ok {
+						t.Fatal("popup trigger missing", trigger)
+					}
+					tt.ClickAt(info.Bounds.X+info.Bounds.W/2, info.Bounds.Y+info.Bounds.H/2)
 				}
-				x, y := info.Bounds.X+info.Bounds.W/2, info.Bounds.Y+info.Bounds.H/2
-				tt.Press(x, y)
-				items := tt.Menu()
+				// Read and operate the actual chip buttons in the unified filter
+				// popover, or the actual entries in an action menu.
+				open()
+				items := boarduiMenuItems(tt)
+				if filter {
+					if !d.filterOpen {
+						t.Fatal("unified filter popover did not open")
+					}
+					for _, node := range tt.AccessAll() {
+						if node.Role == ui.RoleButton && !node.Offscreen {
+							items = append(items, node.Name)
+						}
+					}
+				}
 				if !slices.Contains(items, tc.choice) {
-					t.Fatalf("system menu did not open on press: %v", items)
+					t.Fatalf("BoardUI popup choice missing: %v", items)
 				}
-				if _, ok := tt.AccessByRole(ui.RoleMenu, ""); ok {
-					t.Fatal("menu is still painted in the view")
+				tt.Key(0, ui.KeyEscape)
+				if tc.value(d) != before || d.filterOpen || boarduiMenuItems(tt) != nil {
+					t.Fatal("cancellation failed or changed application state")
 				}
-				tt.CloseMenu()
-				tt.Release(x, y)
-				if tc.value(d) != before {
-					t.Fatal("cancellation changed application state")
-				}
-				if err := tt.Click(tc.trigger); err != nil {
-					t.Fatal(err)
-				}
-				if err := tt.ChooseMenuItem(tc.choice); err != nil {
+				open()
+				if filter {
+					chip, ok := tt.AccessByRole(ui.RoleButton, tc.choice)
+					if !ok || chip.Disabled || chip.Offscreen {
+						t.Fatal("visible enabled filter chip missing", tc.choice)
+					}
+					tt.ClickAt(chip.Bounds.X+chip.Bounds.W/2, chip.Bounds.Y+chip.Bounds.H/2)
+				} else if err := boarduiChooseMenu(tt, tc.choice); err != nil {
 					t.Fatal(err)
 				}
 				if got := tc.value(d); got != tc.want {
 					t.Fatalf("choice returned %q, want %q", got, tc.want)
 				}
-				if tt.Menu() != nil {
-					t.Fatal("system menu did not close")
+				if filter {
+					// Chips apply immediately and keep the popover open for more choices.
+					if !d.filterOpen {
+						t.Fatal("filter chip unexpectedly dismissed the popover")
+					}
+					tt.Key(0, ui.KeyEscape)
+					if d.filterOpen || tc.value(d) != tc.want {
+						t.Fatal("filter dismissal lost the selected value")
+					}
+				} else if boarduiMenuItems(tt) != nil {
+					t.Fatal("BoardUI menu did not close")
 				}
 				results = append(results, receipt{theme, tc.trigger, tc.choice, items})
 			})

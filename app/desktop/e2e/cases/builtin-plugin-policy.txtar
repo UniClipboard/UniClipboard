@@ -50,7 +50,8 @@ ui-enabled textField '自动文件传输阈值（MB）'
 ui-click textField '自动文件传输阈值（MB）'
 ui-set textField '自动文件传输阈值（MB）' '-1'
 ui-key Enter
-ui-wait alert '请输入 0 到 4096 之间的整数。'
+ui-wait text '请输入 0 到 4096 之间的整数。'
+ui-invalid textField '自动文件传输阈值（MB）'
 config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 0
 ui-enabled textField '自动文件传输阈值（MB）'
 ui-click textField '自动文件传输阈值（MB）'

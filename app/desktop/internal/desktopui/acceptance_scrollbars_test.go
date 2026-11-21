@@ -43,11 +43,11 @@ func scenarioUnifiedScrollbars(t *testing.T) {
 			}
 		}
 	}()
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"dark", "light"} {
 			for _, area := range []string{"history", "grid", "detail", "preview"} {
 				t.Run(skin+"/"+theme+"/"+area, func(t *testing.T) {
-					t.Setenv("UNIC_UI_SKIN", skin)
+
 					d := newDemo("history", theme)
 					if area == "grid" {
 						d.layout = "grid"

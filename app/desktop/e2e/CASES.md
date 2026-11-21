@@ -4,6 +4,12 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 
 | Case | Mode | Purpose |
 |---|---|---|
+| [boardui-composition](#boardui-composition) | view | Retain the existing complete input, control, navigation, layout and overlay interaction coverage in one BoardUI design system and both color schemes. |
+| [boardui-menus](#boardui-menus) | view | Retain filter/action menu cancellation, visible choices and selected-value dispatch using real in-window BoardUI popups. |
+| [boardui-production-migration](#boardui-production-migration) | view | Verify complete production history/settings/return and quick-panel compositions use source-bound BoardUI resources with no legacy UI Kit dependency or appearance branch. |
+| [boardui-settings](#boardui-settings) | view | Exercise the independent BoardUI Go package through a complete settings form with real input, selection and dialog scopes. |
+| [boardui-states](#boardui-states) | view | Exercise fixed-source BoardUI component variants and narrow reduced-motion behavior through the public native API. |
+| [boardui-surfaces](#boardui-surfaces) | view | Retain full-view hover feedback, pointer-exit reset, visible actions and send-popup cancellation in the unified BoardUI design system. |
 | [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
@@ -22,9 +28,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [idle-event-wakeup](#idle-event-wakeup) | native | Verify native service event and content completion delivery. |
 | [image-previews](#image-previews) | process | Exercise thumbnail ownership, original selection, original bytes, EXIF orientation, shown-pixel lifecycle and serial image reads through real service content reads. |
 | [incremental-browsing](#incremental-browsing) | process | Multi-page production browsing, idle request timeline, coalescing, selection and cancellation. |
-| [interaction-motion](#interaction-motion) | view | Button press/release, cancellation, selection reversal and Reduce Motion. |
-| [liquid-glass](#liquid-glass) | view | Glass hover feedback, pointer-exit reset and system-menu delegation and continuous light action-bar outlines. |
-| [native-menus](#native-menus) | view | System-menu requests, cancellation and selected-value dispatch in the software view. |
+| [interaction-motion](#interaction-motion) | view | Fixed-source 0.98 button press/release, cancellation, selection reversal, in-window popups and Reduce Motion. |
 | [pairing-inline-approval](#pairing-inline-approval) | native | Approve an incoming device from the invitation page of the real Desktop. |
 | [production-boundary](#production-boundary) | process | Build independent production and demo commands and verify their dependency and embedded catalogue boundaries. |
 | [quick-panel-contract](#quick-panel-contract) | process | Target session, clipboard application, cancellation and paste-request ordering with OS fixtures. |
@@ -37,11 +41,12 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |
 | [setup-later-migration](#setup-later-migration) | native | Resume a later migration after cancelling and reopening the real Desktop. |
 | [setup-onboarding](#setup-onboarding) | native | Record the real welcome, migration confirmation, passphrase fallback, import, verification and history entry. |
-| [setup-pages](#setup-pages) | view | Exercise the production UI Kit setup renderer across three skins and two themes. |
+| [setup-pages](#setup-pages) | view | Exercise the production BoardUI setup renderer in light and dark. |
 | [setup-partial](#setup-partial) | native | Record an honest partial result and entry into usable migrated history. |
 | [sheet-exit-stability](#sheet-exit-stability) | view | Sheet exit frames and input stability after dismissal. |
 | [sheet-motion](#sheet-motion) | view | Real Sheet entry and dismissal by Done, Escape and backdrop, live resize/reversal, and inline tag confirmation or cancellation, including Reduce Motion. |
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
+| [sidebar-navigation](#sidebar-navigation) | view | Distinguish hover from selection and keep scrollbar/footer space in the real history sidebar. |
 | [source-application](#source-application) | view | Show the captured application's cached icon and name immediately after device and time. |
 | [startup-lifecycle](#startup-lifecycle) | process | Ownership, background intent, lightweight launch and process cleanup. |
 | [storage-cleanup-settings](#storage-cleanup-settings) | native | Keep cleanup rules inactive when cleanup is off while preserving the independent cache quota. |
@@ -57,15 +62,15 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [system-wayland-panel](#system-wayland-panel) | native | Verify understandable automatic-paste refusal, preserved Copy and physical Escape dismissal on Wayland. |
 | [system-window-lifecycle](#system-window-lifecycle) | native | Verify that closing the native main window preserves tray capture and second launch creates a new GUI process. |
 | [tag-editor](#tag-editor) | view | V1-style inline tag creation, five swatches, removable tinted chips and shared Sheet colors. |
-| [tag-fixed-columns](#tag-fixed-columns) | view | Tag-table fixed-column geometry across skins and themes. |
-| [tag-manager-platforms](#tag-manager-platforms) | view | Tag management and separate entry assignment across all three skins. |
+| [tag-fixed-columns](#tag-fixed-columns) | view | Tag-table fixed-column geometry in both BoardUI themes. |
+| [tag-manager-platforms](#tag-manager-platforms) | view | Tag management and separate entry assignment in the single BoardUI design system. |
 | [tag-manager](#tag-manager) | view | Tag management, assignment, rename, merge, deletion and protected built-in tags. |
 | [token-search](#token-search) | view | Composite search prefixes, counts, completion, literal input, caret handling and Escape. |
-| [toolbar-alignment](#toolbar-alignment) | view | Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-capsule pixel contrast. |
-| [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
-| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
-| [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep macOS-skin production history controls within the toolbar at 1100x720. |
-| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
+| [toolbar-alignment](#toolbar-alignment) | view | Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-theme control pixel contrast. |
+| [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep unified production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep unified production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep unified production history controls within the toolbar at 1100x720. |
+| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep unified production history controls within the toolbar at 600x480. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 | [window-chrome-native-dark](#window-chrome-native-dark) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
@@ -74,6 +79,90 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [window-chrome-setup](#window-chrome-setup) | native | Keep Windows caption actions available before the ordinary application toolbar exists. |
 | [window-chrome-startup-error](#window-chrome-startup-error) | native | Keep Windows custom controls available when real service startup fails. |
 | [window-chrome](#window-chrome) | view | Select native title bars on all platforms and put Windows custom controls in the application toolbar. |
+
+## boardui-composition
+
+BoardUI application composition interactions
+
+Steps: Execute all migrated widget-view scenarios through real mygo event, layout, focus and rendering; retain the final exercised PNG for every view, including failures.
+
+Expected: Every retained scenario and applicable light/dark subcase passes without old OS-skin selection or missing evidence.
+
+Forbidden: New isolated unit tests, deleted interaction assertions, hidden skips, legacy token maps, or software-view screenshots reported as native OS proof.
+
+```text
+acceptance desktopkit boardui-composition
+```
+
+## boardui-menus
+
+BoardUI production popup dispatch
+
+Steps: Open the unified filter popover and action menus, inspect accessible choices, cancel without mutation, reopen and choose each filter dimension or command in both themes.
+
+Expected: Chip choices apply immediately and survive popover dismissal; action menus dispatch and close; cancellation changes no value; legacy system menus stay absent.
+
+Forbidden: Direct command invocation behind the view, lost cancellation or persistence checks, dropped options, or software views labeled native OS acceptance.
+
+```text
+acceptance desktopui boardui-menus
+```
+
+## boardui-production-migration
+
+Production Desktop uses one BoardUI design system
+
+Steps: Inspect actual production source; ignore hostile old platform-skin overrides; operate history to settings, edit synthetic Unicode data, return to history and inspect the quick panel in both themes and scales.
+
+Expected: The old Kit directory and imports are absent, source-derived BoardUI font/theme resources apply consistently, navigation and caller state survive and all exercised views produce PNG and structured receipts.
+
+Forbidden: Renaming legacy skins as BoardUI, product profile or clipboard access, skipped legacy dependencies, static image interaction, or software views labeled as native platform acceptance.
+
+```text
+acceptance desktopui boardui-production-migration
+```
+
+## boardui-settings
+
+BoardUI native settings composition
+
+Steps: Open the settings dialog, edit synthetic English/CJK/emoji text, validate empty input, choose Role by keyboard, dismiss nested overlays, traverse focus and save retained caller state across themes and scales.
+
+Expected: The complete operation chain passes with accessible field states, bounded overlays, restored focus and exercised software-rendered PNG checkpoints.
+
+Forbidden: Product UI replacement, system clipboard access, skipped states, static-image interaction substitutes, or software-view evidence labeled as native-window acceptance.
+
+```text
+acceptance boardui boardui-settings
+```
+
+## boardui-states
+
+BoardUI component states and narrow layout
+
+Steps: Drive the registered state matrix, inspect accessible values and geometry, and capture exercised states including the narrow-window select.
+
+Expected: Required variant and state assertions pass and each exercised view emits screenshots with explicit source and renderer scope.
+
+Forbidden: Unsupported states silently counted as delivered, altered reference source, lost focus, unbounded popup geometry, or software-view images reported as OS accessibility proof.
+
+```text
+acceptance boardui boardui-states
+```
+
+## boardui-surfaces
+
+BoardUI production surface interaction
+
+Steps: Exercise view-switch, search and secondary-action surfaces in both themes at 2x, sample real surface pixels, open the in-window send popup and cancel it.
+
+Expected: Hover feedback resets, action geometry remains visible, actual popup items appear and cancellation performs no action.
+
+Forbidden: Requiring removed OS-glass rims, legacy system-menu delegation, dropped functional assertions, or software raster checks labeled native GPU evidence.
+
+```text
+acceptance desktopui boardui-surfaces
+```
 
 ## builtin-plugin-policy
 
@@ -131,7 +220,8 @@ ui-enabled textField '自动文件传输阈值（MB）'
 ui-click textField '自动文件传输阈值（MB）'
 ui-set textField '自动文件传输阈值（MB）' '-1'
 ui-key Enter
-ui-wait alert '请输入 0 到 4096 之间的整数。'
+ui-wait text '请输入 0 到 4096 之间的整数。'
+ui-invalid textField '自动文件传输阈值（MB）'
 config-equals plugins.instances.builtin.tailcat.sync.auto_file_max_bytes 0
 ui-enabled textField '自动文件传输阈值（MB）'
 ui-click textField '自动文件传输阈值（MB）'
@@ -423,8 +513,8 @@ ui-wait listItem 管理设备…
 ui-click listItem 管理设备…
 ui-wait button 邀请设备
 ui-click button 邀请设备
-ui-wait radio 完整票据
-ui-click radio 完整票据
+ui-wait button '跨网或命令行配对？改用完整票据 →'
+ui-click button '跨网或命令行配对？改用完整票据 →'
 ui-wait button 复制票据
 ui-enabled button 复制票据
 screenshot external-invitation
@@ -434,8 +524,9 @@ ui-wait text 核对并批准
 screenshot external-approval
 ui-click button 接受
 assert-paired
-ui-wait button 完成
-ui-click button 完成
+ui-absent dialog 添加设备
+ui-wait button 返回历史
+ui-click button 返回历史
 external-roundtrip
 ui-wait listItem external-desktop-to-peer
 ui-click listItem external-desktop-to-peer
@@ -462,7 +553,7 @@ acceptance startup first-install-setup
 
 Gui approval reconnect
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Explicit approval information stays visible and the view recovers after reconnection.
 
@@ -476,9 +567,9 @@ acceptance gui gui-approval-reconnect
 
 Gui empty layout
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
-Expected: Empty state fills the body and focused controls remain visible across skins and themes.
+Expected: Empty state fills the body and focused controls remain visible in both BoardUI themes.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
@@ -490,9 +581,9 @@ acceptance gui gui-empty-layout
 
 Gui navigation
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
-Expected: All three skins and both themes retain navigation, normalized pairing input and safe dismissal.
+Expected: BoardUI and both themes retain navigation, normalized pairing input and safe dismissal.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
@@ -536,7 +627,7 @@ screenshot restored
 
 Desktop languages
 
-Steps: Select each language through settings, navigate to history, filter files, verify switches have one visible row caption and retain accessible names and mouse/keyboard behavior, and render quick-panel actions across three skins and both themes.
+Steps: Select each language through settings, navigate to history, filter files, verify switches have one visible row caption and retain accessible names and mouse/keyboard behavior, and render quick-panel actions in BoardUI and both themes.
 
 Expected: Navigation and actions use the selected language; content and filter identities remain unchanged; catalogues and format arguments are complete.
 
@@ -600,7 +691,7 @@ acceptance desktopui incremental-browsing
 
 Interaction motion
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI interaction subcases.
 
 Expected: Geometry and rendered selection feedback follow the complete interaction sequence.
 
@@ -608,34 +699,6 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui interaction-motion
-```
-
-## liquid-glass
-
-Liquid glass
-
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
-
-Expected: Light and dark view rasters show reactive rims and reset without stale hover feedback; the light action bar and send button retain visible top/bottom outlines.
-
-Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
-
-```text
-acceptance desktopui liquid-glass
-```
-
-## native-menus
-
-Native menus
-
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
-
-Expected: Menu requests and returned commands match each exercised filter and action.
-
-Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
-
-```text
-acceptance desktopui native-menus
 ```
 
 ## pairing-inline-approval
@@ -655,11 +718,11 @@ ui-wait listItem 管理设备…
 ui-click listItem 管理设备…
 ui-wait button 邀请设备
 ui-click button 邀请设备
-ui-wait radio 完整票据
-ui-click radio 完整票据
+ui-wait button '跨网或命令行配对？改用完整票据 →'
+ui-click button '跨网或命令行配对？改用完整票据 →'
 ui-wait button 复制票据
 ui-enabled button 复制票据
-ui-wait text 邀请设备
+ui-wait heading 添加设备
 screenshot invitation-shown
 peer-pair-desktop
 ui-wait text '核对并批准'
@@ -667,13 +730,13 @@ screenshot approval-inside-task
 ui-click button 接受
 assert-paired
 ui-absent text '核对并批准'
-ui-absent text '邀请设备'
+ui-absent dialog 添加设备
 ui-wait text 本机
 screenshot paired-device-listed
 observe 2
-ui-wait button 完成
-ui-click button 完成
-ui-absent dialog 管理设备
+ui-wait button 返回历史
+ui-click button 返回历史
+ui-absent dialog 添加设备
 stop-policy-peer
 ```
 
@@ -695,7 +758,7 @@ acceptance startup production-boundary
 
 Quick-panel system ordering
 
-Steps: Execute the registered production-process suite and validate its receipt.
+Steps: Delay the initial clipboard baseline; wait for real adapter command readiness; execute the registered production-process suite and validate its receipt.
 
 Expected: The suite runs, passes its assertions and emits a successful receipt.
 
@@ -709,7 +772,7 @@ acceptance quickpanel quick-panel-contract
 
 Quick panel screenshots
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Six composite PNGs retain source identity, image hashes and view rectangles.
 
@@ -723,7 +786,7 @@ acceptance desktopui quick-panel-screenshots
 
 Quick panel
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: All original panel scenarios retain their selected entries and expected simulated effects.
 
@@ -737,7 +800,7 @@ acceptance desktopui quick-panel
 
 Search badge delete
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Backspace and remove actions reset only the selected condition dimension.
 
@@ -765,7 +828,7 @@ acceptance desktopui search-contract
 
 Search disclosure reduced motion
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Disclosure reaches its expected geometry without spatial transition.
 
@@ -779,7 +842,7 @@ acceptance desktopui search-disclosure-reduced-motion
 
 Search disclosure
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Search width changes without moving the command capsule or losing input behavior.
 
@@ -793,7 +856,7 @@ acceptance desktopui search-disclosure
 
 Send device menu
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Only valid device choices produce the expected send command.
 
@@ -970,7 +1033,7 @@ screenshot history
 
 Sheet exit stability
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Light and dark exit rasters preserve stable content and release dismissed input.
 
@@ -984,7 +1047,7 @@ acceptance desktopui sheet-exit-stability
 
 Sheet motion
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Real Sheets preserve entry geometry, centered resizing and completed exits; inline tags use no Sheet, Enter attaches, and Escape/click-away cancel without mutation across all theme/motion combinations.
 
@@ -998,7 +1061,7 @@ acceptance desktopui sheet-motion
 
 Sidebar collapse
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Animated content geometry remains continuous and preserves sidebar state.
 
@@ -1008,11 +1071,25 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 acceptance desktopui sidebar-collapse
 ```
 
+## sidebar-navigation
+
+Sidebar navigation paint, selection and scrollbar clearance
+
+Steps: Hover a tag; select tag/all; scroll overflowing devices; inspect state, pixels and bounds in both schemes at 1x/2x.
+
+Expected: Hover does not change the filter; one selected row; different state paint; 12-DIP gutter; footer stays reachable.
+
+Forbidden: Fake state, a scrollbar over counts, hidden native controls, or native OS acceptance claims.
+
+```text
+acceptance desktopui sidebar-navigation
+```
+
 ## source-application
 
 Source application in history detail
 
-Steps: Project service history metadata, render the complete history view across skins and themes, and switch records.
+Steps: Project service history metadata, render the complete history view in both BoardUI themes, and switch records.
 
 Expected: Cached icons render; absent or malformed icons use a generic icon; absent names use the identifier; long names remain bounded.
 
@@ -1401,7 +1478,7 @@ screenshot recreated-gui
 
 V1 inline tag editor and colors
 
-Steps: Open production history composition on three skins and two themes; create, recolor, attach, remove, cancel and use keyboard navigation.
+Steps: Open production history composition in BoardUI and both themes; create, recolor, attach, remove, cancel and use keyboard navigation.
 
 Expected: Inline ComboField and palette preserve focus, names, associations and shared color state; rendered checkpoints are retained.
 
@@ -1415,7 +1492,7 @@ acceptance desktopui tag-editor
 
 Tag fixed columns
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Complete management sheets preserve column alignment and row geometry.
 
@@ -1427,9 +1504,9 @@ acceptance desktopui tag-fixed-columns
 
 ## tag-manager-platforms
 
-Tag manager platforms
+BoardUI tag management and assignment
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Built-in operations remain protected and assignment updates the shared registry in both themes.
 
@@ -1443,7 +1520,7 @@ acceptance desktopui tag-manager-platforms
 
 Tag manager
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: All original management operations preserve their history and shared tag-registry invariants.
 
@@ -1457,9 +1534,9 @@ acceptance desktopui tag-manager
 
 Token search
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
-Expected: Fourteen scenarios across three skins and both themes preserve the complete search contract.
+Expected: Fourteen scenarios in BoardUI and both themes preserve the complete search contract.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
@@ -1471,9 +1548,9 @@ acceptance desktopui token-search
 
 Toolbar alignment
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
-Expected: A 52-point band contains layout, search and command controls with vertical insets; expanded search stays within 600, 800, 1100 and 1440-point windows; light capsule top and bottom edges remain visible against white.
+Expected: A 52-point band contains layout, search and command controls with vertical insets; expanded search stays within 600, 800, 1100 and 1440-point windows; each light-theme BoardUI control remains visibly distinct from the toolbar background.
 
 Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 
@@ -1485,7 +1562,7 @@ acceptance desktopui toolbar-alignment
 
 Native toolbar bounds at 1100 points in dark mode
 
-Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -1496,18 +1573,18 @@ start 1100 720 dark
 submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot collapsed
-ui-click button '搜索历史'
+screenshot idle
+ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot expanded
+screenshot query
 ui-set comboBox '搜索历史' ''
 ui-key Escape
 ui-key Escape
-ui-click radio '网格'
+ui-click toggleButton '网格'
 ui-toolbar-contained
 screenshot grid
 ui-click menuButton '更多操作'
@@ -1519,7 +1596,7 @@ ui-key Escape
 
 Native toolbar bounds at 600 points in dark mode
 
-Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -1530,18 +1607,18 @@ start 600 480 dark
 submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot collapsed
-ui-click button '搜索历史'
+screenshot idle
+ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot expanded
+screenshot query
 ui-set comboBox '搜索历史' ''
 ui-key Escape
 ui-key Escape
-ui-click radio '网格'
+ui-click toggleButton '网格'
 ui-toolbar-contained
 screenshot grid
 ui-click menuButton '更多操作'
@@ -1553,7 +1630,7 @@ ui-key Escape
 
 Native toolbar bounds at 1100 points in light mode
 
-Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -1564,18 +1641,18 @@ start 1100 720 light
 submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot collapsed
-ui-click button '搜索历史'
+screenshot idle
+ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot expanded
+screenshot query
 ui-set comboBox '搜索历史' ''
 ui-key Escape
 ui-key Escape
-ui-click radio '网格'
+ui-click toggleButton '网格'
 ui-toolbar-contained
 screenshot grid
 ui-click menuButton '更多操作'
@@ -1587,7 +1664,7 @@ ui-key Escape
 
 Native toolbar bounds at 600 points in light mode
 
-Steps: Start an isolated production desktop with the macOS skin; inspect collapsed and expanded search, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
 
 Expected: Every toolbar control remains inside the band; search and menus remain usable.
 
@@ -1598,18 +1675,18 @@ start 600 480 light
 submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot collapsed
-ui-click button '搜索历史'
+screenshot idle
+ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
-screenshot expanded
+screenshot query
 ui-set comboBox '搜索历史' ''
 ui-key Escape
 ui-key Escape
-ui-click radio '网格'
+ui-click toggleButton '网格'
 ui-toolbar-contained
 screenshot grid
 ui-click menuButton '更多操作'
@@ -1635,7 +1712,7 @@ acceptance desktopui tray-icon-settings
 
 Unified scrollbars
 
-Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 
 Expected: Three skins and both themes preserve edge indicators and independent nested scroll ownership.
 
@@ -1891,7 +1968,7 @@ screenshot startup-error
 
 Main-window decoration and shared-toolbar caption actions
 
-Steps: Exercise complete history/settings/plugin views at 600/640/1100 widths in light/dark themes and scaled rendering; check geometry and dispatch caption actions.
+Steps: On macOS also exercise the integrated native traffic-light band; on every host exercise complete history/settings/plugin views at 600/640/1100 widths in light/dark themes and scaled rendering; check geometry and dispatch caption actions.
 
 Expected: The preference defaults off; either native or custom controls are shown; custom controls share the history toolbar and preserve search and commands.
 

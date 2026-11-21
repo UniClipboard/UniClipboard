@@ -1,0 +1,295 @@
+{
+  "status": "PASS",
+  "baseline_unic": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+  "boardui_source": "ec5c5eb3e29c2441be63b9422cd54f411ef23466",
+  "mygo": "v0.8.4-0.20261108082913-9233663736ca",
+  "font_sha256": {
+    "app/desktop/boardui/assets/Inter.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf"
+  },
+  "host": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "run_id": "20261120T132140Z-9cad7c83",
+  "artifact_directory": ".build/boardui-e2e/replay-final-02",
+  "replay_manifest_sha256": "7c1f197572397aee5e51b9f32e4845378814dc631cb9ab13ffb9e4762b6eb49c",
+  "artifact_checksums_sha256": "05d3b7c00202abaa0b2ebc0c3d423801f9edc2a71b3deb21dbff3c66c33e7bde",
+  "asset_lock_verified": true,
+  "source_unchanged": true,
+  "canonical_cases": {
+    "reference-prepare": "PASS",
+    "reference-capture": "PASS",
+    "boardui-settings": "PASS",
+    "boardui-states": "PASS",
+    "visual-compare": "PASS"
+  },
+  "visual": {
+    "scenes": 13,
+    "status": "PASS",
+    "max_control_rect_delta_dip": 0.5,
+    "max_empty_control_interior_channel_error": 2,
+    "unmasked_rgb_metrics": [
+      {
+        "scene": "light-1x-dialog",
+        "unmasked_mean_absolute_rgb_error": [
+          1.1689901315789473,
+          1.1390115131578948,
+          1.09021875
+        ],
+        "unmasked_rms_rgb_error": [
+          6.151063237145951,
+          5.822819080091162,
+          5.567734970108439
+        ]
+      },
+      {
+        "scene": "light-1x-select",
+        "unmasked_mean_absolute_rgb_error": [
+          1.410796052631579,
+          1.3814950657894738,
+          1.332700657894737
+        ],
+        "unmasked_rms_rgb_error": [
+          8.422551377731471,
+          8.187511450373671,
+          8.008080622918197
+        ]
+      },
+      {
+        "scene": "light-1x-invalid",
+        "unmasked_mean_absolute_rgb_error": [
+          1.118248355263158,
+          1.1299736842105264,
+          1.0860871710526316
+        ],
+        "unmasked_rms_rgb_error": [
+          6.061275513888406,
+          5.778673928196767,
+          5.576420488138095
+        ]
+      },
+      {
+        "scene": "light-2x-dialog",
+        "unmasked_mean_absolute_rgb_error": [
+          1.1788881578947368,
+          1.1624691611842106,
+          1.1308396381578947
+        ],
+        "unmasked_rms_rgb_error": [
+          8.482308843844843,
+          8.277414901444647,
+          8.105862583567786
+        ]
+      },
+      {
+        "scene": "light-2x-select",
+        "unmasked_mean_absolute_rgb_error": [
+          1.3763268914473685,
+          1.359908717105263,
+          1.3282796052631578
+        ],
+        "unmasked_rms_rgb_error": [
+          10.352202660195712,
+          10.185006677451755,
+          10.04607805118626
+        ]
+      },
+      {
+        "scene": "light-2x-invalid",
+        "unmasked_mean_absolute_rgb_error": [
+          1.1331739309210527,
+          1.1565592105263158,
+          1.1238404605263157
+        ],
+        "unmasked_rms_rgb_error": [
+          8.232590557423842,
+          8.320584809912544,
+          8.174369342324633
+        ]
+      },
+      {
+        "scene": "dark-1x-dialog",
+        "unmasked_mean_absolute_rgb_error": [
+          0.6097236842105264,
+          0.6072713815789473,
+          0.6144309210526315
+        ],
+        "unmasked_rms_rgb_error": [
+          5.8468395646483104,
+          5.774322556529216,
+          6.043960937645897
+        ]
+      },
+      {
+        "scene": "dark-1x-select",
+        "unmasked_mean_absolute_rgb_error": [
+          0.938735197368421,
+          0.9362796052631579,
+          0.9434407894736843
+        ],
+        "unmasked_rms_rgb_error": [
+          7.745489880365354,
+          7.690961672467782,
+          7.89541797500297
+        ]
+      },
+      {
+        "scene": "dark-1x-invalid",
+        "unmasked_mean_absolute_rgb_error": [
+          0.6133207236842105,
+          0.5786990131578947,
+          0.5799819078947368
+        ],
+        "unmasked_rms_rgb_error": [
+          5.841623135333463,
+          5.714446000454048,
+          6.056342505132424
+        ]
+      },
+      {
+        "scene": "dark-2x-dialog",
+        "unmasked_mean_absolute_rgb_error": [
+          0.5446809210526316,
+          0.5252528782894736,
+          0.49754111842105264
+        ],
+        "unmasked_rms_rgb_error": [
+          7.73273724685815,
+          7.462014249596701,
+          7.287177477741658
+        ]
+      },
+      {
+        "scene": "dark-2x-select",
+        "unmasked_mean_absolute_rgb_error": [
+          0.7646106085526316,
+          0.7451990131578947,
+          0.7174864309210527
+        ],
+        "unmasked_rms_rgb_error": [
+          9.077409717948177,
+          8.848045474403104,
+          8.701097296386486
+        ]
+      },
+      {
+        "scene": "dark-2x-invalid",
+        "unmasked_mean_absolute_rgb_error": [
+          0.5523721217105263,
+          0.49934251644736843,
+          0.47450246710526317
+        ],
+        "unmasked_rms_rgb_error": [
+          7.915615422470155,
+          7.282262805097053,
+          7.180394600009258
+        ]
+      },
+      {
+        "scene": "narrow-1x-dialog",
+        "unmasked_mean_absolute_rgb_error": [
+          2.566929012345679,
+          2.4968016975308642,
+          2.3833641975308644
+        ],
+        "unmasked_rms_rgb_error": [
+          15.550134720150009,
+          15.251121062821563,
+          15.02606480276157
+        ]
+      }
+    ],
+    "scope": "same-host Chromium versus mygo software renderer; no OS compositor acceptance; raster metrics are unmasked and descriptive"
+  },
+  "no_race_software_baseline": {
+    "arch": "arm64",
+    "first_frame_ms": 3.346916,
+    "forced_gc": false,
+    "go": "go1.27.3",
+    "go_heap_alloc_bytes": 3334216,
+    "go_heap_inuse_bytes": 4554752,
+    "os": "darwin",
+    "pid": 70435,
+    "popup_cycles": 100,
+    "popup_cycles_ms": 360.350375,
+    "process_rss_kib": 51936,
+    "scope": "software-view E2E process; first ready frame includes tester creation and explicit en-US/scale setup, excludes font registration; cumulative process RSS; no native window"
+  },
+  "race_resources": [
+    {
+      "name": "boardui-settings",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "app/desktop/e2e/run.py",
+        "run",
+        "--case",
+        "boardui-settings",
+        "--out",
+        "/Users/mark/.lody/repos/github---uniclipboard---uniclipboard/worktrees/5aef43a7-6c77-47a0-b192-5fdea22d4c7f/.build/boardui-e2e/replay-final-02/boardui-settings"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "elapsed_seconds": 97.3873220840469,
+      "process_resource_scope": "sampled software-view Go E2E test process; race-enabled canonical run; excludes build, reference browser and production roles",
+      "process_resource_status": "MEASURED",
+      "sample_count": 612,
+      "peak_sampled_rss_bytes": 195182592,
+      "max_sampled_cpu_seconds": 114.38
+    },
+    {
+      "name": "boardui-states",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "app/desktop/e2e/run.py",
+        "run",
+        "--case",
+        "boardui-states",
+        "--out",
+        "/Users/mark/.lody/repos/github---uniclipboard---uniclipboard/worktrees/5aef43a7-6c77-47a0-b192-5fdea22d4c7f/.build/boardui-e2e/replay-final-02/boardui-states"
+      ],
+      "status": "PASS",
+      "returncode": 0,
+      "elapsed_seconds": 155.9249554160051,
+      "process_resource_scope": "sampled software-view Go E2E test process; race-enabled canonical run; excludes build, reference browser and production roles",
+      "process_resource_status": "MEASURED",
+      "sample_count": 906,
+      "peak_sampled_rss_bytes": 210960384,
+      "max_sampled_cpu_seconds": 127.08
+    }
+  ],
+  "other_checks": {
+    "gui-navigation": "PASS",
+    "production-boundary": "PASS",
+    "public_engine_dependency_boundary": "PASS",
+    "standalone_demo_build": "PASS",
+    "existing_desktop_build": "PASS",
+    "scoped_golangci_lint_v2.15.0": "PASS",
+    "git_diff_check": "PASS",
+    "edge_software_probe_320_360_800_width_640_height_1x_2x": "PASS",
+    "docscheck": "PASS; five pre-existing stale-page warnings remain outside this change"
+  },
+  "cleanup": {
+    "owned_reference_server": "PASS",
+    "browser_task_space": {
+      "task_space_id": 71,
+      "capture_exit_code": 0,
+      "cleanup_exit_code": 0,
+      "cleanup": "PASS"
+    },
+    "owned_dependency_caches": "removed after final replay; reference re-preparation requires network or approved cache"
+  },
+  "not_run": [
+    "native OS window",
+    "OS keyboard and IME",
+    "platform accessibility bridge",
+    "Windows memory",
+    "system clipboard",
+    "user visual approval",
+    "frame-by-frame animation raster comparison"
+  ],
+  "unsupported": [
+    "Select typeahead, rich renderers, sections and async options",
+    "Input adornments/tooltips",
+    "full multi-page Settings Modal",
+    "pinned CJK fallback fonts and complete long-text overflow matrix"
+  ],
+  "licensing": "Root AGPL-3.0 remains unchanged. BoardUI MIT, Inter OFL and Remix Icon notices are retained separately.",
+  "implementation_commit": "8d4f5e31159c1bd0f3520ef27070fa8e905c043f"
+}

@@ -38,7 +38,7 @@
 | 0010 | [插件设置 Schema](proposed/0010-plugin-settings-schema.md) | proposed | plugins |
 | 0011 | [v1 历史迁移](proposed/0011-v1-history-migration.md) | proposed | — |
 | 0012 | [设备介绍](archive/0012-device-introductions.md) | archive | [identity-and-trust](../architecture/identity-and-trust.md) |
-| 0013 | [桌面 UI Kit](proposed/0013-mygo-uikit.md) | proposed | desktop-ui |
+| 0013 | [One native BoardUI presentation](proposed/0013-mygo-uikit.md) | proposed (accepted; former three-skin choice superseded; production/native acceptance tracked separately) | [overview](../architecture/overview.md#native-boardui-presentation), [native BoardUI contract](../contracts/boardui-native-contract.md) |
 | 0014 | [OTLP 可观测性](proposed/0014-client-observability-otlp.md) | proposed（logs + metrics 已接入工作区，验收见[执行计划](../exec/0014-client-observability-otlp.md)；traces 后续） | observability |
 | 0015 | [纯 CLI 与桌面集成](proposed/0015-headless-cli-and-desktop-integration.md) | proposed (runtime implemented; native acceptance pending) | [headless](../architecture/headless.md) |
 | 0016 | [Sync and file settings](proposed/0016-sync-and-file-settings.md) | proposed (sync/quota implemented; separate file cleanup superseded by 0017) | [desktop-runtime](../architecture/desktop-runtime.md), pipeline |

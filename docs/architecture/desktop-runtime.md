@@ -13,7 +13,8 @@ paths:
   - app/desktop/internal/windowchrome
   - app/desktop/e2e
   - app/desktop/internal/desktopui
-  - app/desktop/internal/uikit/split.go
+  - app/desktop/internal/desktopkit
+  - app/desktop/boardui
   - app/desktop/internal/i18n
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
@@ -41,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 10f2a121b5a645b961c57d01f031551a9b063c07
+verified: 15d005c84b88fd8cc738fdec00f677010ef0756e
 ---
 # Desktop configuration and received files
 
@@ -83,14 +84,23 @@ UI-free service stores the preference and never adds this host-only key to
 `restart_required`; an older service generation does not keep a recreated GUI pending.
 
 With the preference off, the host uses mygo's hidden native title bar, retaining
-resize edges, rounded corners and shadows. macOS keeps its traffic lights. Linux
+resize edges, rounded corners and shadows. macOS keeps its real system traffic
+lights over the application-owned window top. History and Settings use one
+52-DIP top band, following the shipped v1 SplitView structure. There is no separate
+application-name row. The full-height sidebar reserves the native control band;
+its persistent toggle remains outside the hidden/inert sidebar. The content
+heading leads its toolbar, and view/search/actions trail. Collapsed/overlay
+layouts continuously clear the native control area reported by mygo. Traffic
+lights use a (14,18)-DIP native inset; no replacement buttons are drawn.
+Setup and startup keep a separate draggable safe-area wrapper until normal
+runtime content takes ownership of the window top. Linux
 reserves GTK's reported caption-control area above the application content. With
 the preference on, all three platforms use the normal native title bar and buttons.
 
 Windows custom mode disables native caption buttons. The existing SplitView
 provides a trailing toolbar slot. The host supplies Minimize, Maximize/Restore
 and Close after the existing history commands. Search, history commands and
-caption buttons share one 48-point band. Settings and plugin details use the same
+caption buttons share one 52-DIP band. Settings and plugin details use the same
 slot. Ordinary pages have no separate `unic` caption row. Search shrinks to the
 available width while caption and command hit targets retain their sizes.
 
@@ -412,3 +422,9 @@ Plugins separates installed program identity from configured runtime instances. 
 Device invitation and connection tasks select a running peer-sessions instance. External-channel and unsupported object-store types do not enter device pairing. Pending approval shows the exact local instance paths beside the checked fingerprint. A trusted device can have multiple paths; device detail exposes their independent revision-checked sync switches and removal. History detail shows each backend's disposition/state/error, so one successful path does not hide another failure.
 
 `make desktop-e2e CASE=external-sync-workflow` drives the real mygo composition, production service and real external Go fixture processes. It seeds only the verified fixture installation; installation itself is covered by the real CLI GitHub-fixture workflow. It creates/enables a runtime instance through UI, restarts, changes policy, approves a cross-instance pair and checks exact bidirectional text plus per-instance results. Its recording is native application content, not OS clipboard, cross-application paste or user visual approval. See the [workflow receipt](../exec/sync-plugin-workflow.md).
+
+## Unified content presentation and component acceptance
+
+Main GUI, first-install setup, Quick Panel and demos use the same native BoardUI content resources through the public `boardui` controls and application-only `desktopkit` compositions. The former skin engine, platform token snapshots and selector are removed. System/light/dark remain scheme choices. OS frame policy, modifiers, tray/system menus, file and credential prompts, updater, clipboard ownership and focus/paste dispatch remain native host integration.
+
+The independent `boardui-demo` uses synthetic local form state and creates no product service/GUI/panel/tray role. Production pages use their existing live binding and runtime configuration. Canonical `boardui-settings`/`boardui-states` cases and the real-React replay cover the named component scenes. Production composition/migration/menu/surface cases cover their own shared-renderer scenarios. These results do not imply native OS keyboard/IME, platform accessibility, compositor or Windows memory acceptance. See the [native BoardUI contract](../contracts/boardui-native-contract.md) and [production migration receipt](../exec/boardui-production-migration.md).

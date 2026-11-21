@@ -1,0 +1,8 @@
+# Case: BoardUI component states and narrow layout
+# Mode: view
+# Purpose: Exercise fixed-source BoardUI component variants and narrow reduced-motion behavior through the public native API.
+# Steps: Drive the registered state matrix, inspect accessible values and geometry, and capture exercised states including the narrow-window select.
+# Expected: Required variant and state assertions pass and each exercised view emits screenshots with explicit source and renderer scope.
+# Forbidden: Unsupported states silently counted as delivered, altered reference source, lost focus, unbounded popup geometry, or software-view images reported as OS accessibility proof.
+
+acceptance boardui boardui-states

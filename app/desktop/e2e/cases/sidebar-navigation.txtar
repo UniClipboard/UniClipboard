@@ -1,0 +1,8 @@
+# Case: Sidebar navigation paint, selection and scrollbar clearance
+# Mode: view
+# Purpose: Distinguish hover from selection and keep scrollbar/footer space in the real history sidebar.
+# Steps: Hover a tag; select tag/all; scroll overflowing devices; inspect state, pixels and bounds in both schemes at 1x/2x.
+# Expected: Hover does not change the filter; one selected row; different state paint; 12-DIP gutter; footer stays reachable.
+# Forbidden: Fake state, a scrollbar over counts, hidden native controls, or native OS acceptance claims.
+
+acceptance desktopui sidebar-navigation

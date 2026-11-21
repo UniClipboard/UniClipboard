@@ -1,0 +1,222 @@
+{
+  "schema": 1,
+  "package": {
+    "name": "@remixicon/react",
+    "version": "4.9.0",
+    "license": "Remix Icon License 1.0",
+    "integrity": "sha512-5/jLDD4DtKxH2B4QVXTobvV1C2uL8ab9D5yAYNtFt+w80O0Ys1xFOrspqROL3fjrZi+7ElFUWE37hBfaAl6U+Q==",
+    "source": "https://registry.npmjs.org/@remixicon/react/-/react-4.9.0.tgz",
+    "entry_sha256": "ca9ff52dadc557e9ccc0a510ea7cd48f7a7f3cd703eda6ec84b61ee675164b12",
+    "esm_sha256": "6fb6c465b78ba9d68640aaca14b9e5fc13721d94c083f10df8a47dbda1859c9d"
+  },
+  "compiler": {
+    "generator_sha256": "676fb856260f59cc71df3c7ff35a312e0305946e956a1393d774c7b3962dc187",
+    "node": "v22.23.4",
+    "react": "19.2.4",
+    "lock_sha256": "a2b76d8a2a20270e1748a3ac2d39df0a3aa265f95e0ead25c05bbab588073c0d"
+  },
+  "license": {
+    "path": "licenses/remix.txt",
+    "sha256": "6f2f21c5f8db34635d31848e9ff831d5dc421bb83ffc9d37f82651364047ae58",
+    "source": "https://github.com/Remix-Design/RemixIcon/blob/v4.9.0/License"
+  },
+  "glyphs": {
+    "arrowRight": {
+      "export": "RiArrowRightLine",
+      "sha256": "8b7dc8ca60dc859af5b0f95f5a7cb7065d7b0f815210f45b142fa73c2cbb4892"
+    },
+    "arrowUpCircle": {
+      "export": "RiArrowUpCircleLine",
+      "sha256": "6c7b45b52307c1cf3380610146db03e037f612139f3e55c1ff65fc3956c3c79c"
+    },
+    "box": {
+      "export": "RiArchiveLine",
+      "sha256": "ff8c7bad646fab09ee5e3f91c2d91214c455f893c14f906ee9a274c63477e7dc"
+    },
+    "chain": {
+      "export": "RiLink",
+      "sha256": "b93406e3c428b4205da96c93731de962cf9706841cb246c85716aa9b875e9b7c"
+    },
+    "check": {
+      "export": "RiCheckLine",
+      "sha256": "e06d16b74ad25b58d59f90e690913a1dfb543d84c455d24d45fd2ff143318915"
+    },
+    "checkCircle": {
+      "export": "RiCheckboxCircleLine",
+      "sha256": "cdec411113c2221c75107c7d5b0697d8a99d7339d3803b2fa59054f17ef23189"
+    },
+    "chevronDown": {
+      "export": "RiArrowDownSLine",
+      "sha256": "dd94ff2e91d8ea63cdf50e60ed15291be207763395634139b867264b332b1616"
+    },
+    "chevronLeft": {
+      "export": "RiArrowLeftSLine",
+      "sha256": "914c47e86038c614d8bc98d0786abb6ba5c3c68e511ed07eb2dec7761e3b2bd5"
+    },
+    "chevronRight": {
+      "export": "RiArrowRightSLine",
+      "sha256": "4765bc27927faafe8e026495c1ed53a90e702fb76af1105af80686a3e5f522d5"
+    },
+    "chevronUp": {
+      "export": "RiArrowUpSLine",
+      "sha256": "38e3c45ad8e08222241a211b4b098f967ef44aecf7091f4c7a35be0649b55bf2"
+    },
+    "close": {
+      "export": "RiCloseLine",
+      "sha256": "8a5e421ffdc331dbb05970443aeab0382f565adf0d02d76e1317957b97b8ad6a"
+    },
+    "codeBrackets": {
+      "export": "RiCodeLine",
+      "sha256": "7affb75c188bff84f17911ea7a22f38991b0f7e1d7b5574c10fe76aeeeb2a2a4"
+    },
+    "copy": {
+      "export": "RiFileCopyLine",
+      "sha256": "cfd97104d2a9791a880c27bf172bd7a72a60b74eb83ee5483870ce3ee139da42"
+    },
+    "desktop": {
+      "export": "RiComputerLine",
+      "sha256": "668908d99d9a75a12d945ca425f1b955dbfa61d708854372344be51d85899965"
+    },
+    "devices": {
+      "export": "RiDeviceLine",
+      "sha256": "54904882fe2c4c086a8c0cbbcf005bb523cc91a9eaa02d25b997db01c51573c8"
+    },
+    "doc": {
+      "export": "RiFileLine",
+      "sha256": "47ee83f16b971b035a25f6d89ea3aa8647413fc7fd17cbd1cac8fa0bf86ed67c"
+    },
+    "download": {
+      "export": "RiDownloadLine",
+      "sha256": "7d4bc4a048e443cc5a4b80adeac612c2b3ee8719387bdaf7e7a39a218f047680"
+    },
+    "filter": {
+      "export": "RiFilter3Line",
+      "sha256": "44833e3d78052361d65de49419bb9ad1df5aceb47a6f02587eeb3df01f1916b6"
+    },
+    "folder": {
+      "export": "RiFolderLine",
+      "sha256": "49696993b70344bb6b44b72f948fc25cd63a8f76e06943c735808b543d1d7f16"
+    },
+    "gear": {
+      "export": "RiSettings6Line",
+      "sha256": "b9e6e0fd5d5933eb820121e3e8420f91f08b8f2055ab22e8e80fb0f09d828a52"
+    },
+    "globe": {
+      "export": "RiGlobalLine",
+      "sha256": "2a1d4dba1c88254b82bf9a7128cb8e1b164a640dd90dc47c3c274ee1216d636e"
+    },
+    "grid": {
+      "export": "RiGridLine",
+      "sha256": "9f4b9b33b28ad0068532c0ffc5262b1e74a44b2141e3fa01e58724bcaae2a9ff"
+    },
+    "history": {
+      "export": "RiHistoryLine",
+      "sha256": "8ca132733f37fbb0df867a53119042bbb6506aacc7f07c0334fd6d39b4e9d58d"
+    },
+    "info": {
+      "export": "RiInformationLine",
+      "sha256": "60d6299dcee8402fe090532a07dae248876c3cb5755665d0cc25a3826c10f53e"
+    },
+    "list": {
+      "export": "RiListUnordered",
+      "sha256": "ea1be6b950c4d2a70e12d00c8ac0bbb6d505b355daa6a5d0c39de7fb4309c7d4"
+    },
+    "lock": {
+      "export": "RiLockLine",
+      "sha256": "ee13d4d57350073f1ee3b74768f871e95ddb41d05753026fa460367aadef4367"
+    },
+    "lockOpen": {
+      "export": "RiLockUnlockLine",
+      "sha256": "ba514250d8c7b3d759106b21d74a0a70bdb8f138eba42c0a86726a3a111dc573"
+    },
+    "maximize": {
+      "export": "RiCheckboxBlankLine",
+      "sha256": "08e853963911ce8ebd3858c12a9e8d56ba86ee51173246f313ebe9f7074d1594"
+    },
+    "merge": {
+      "export": "RiGitMergeLine",
+      "sha256": "c570bfd4975e73402100e2fae358a1edaef8ad908c14a90e1a2b543970a80265"
+    },
+    "message": {
+      "export": "RiChat1Line",
+      "sha256": "0a698ef2d4b7cfb767718d5a21c04bb824313bc3651e7937311e02b2e622e8b3"
+    },
+    "minus": {
+      "export": "RiSubtractLine",
+      "sha256": "b1bdc400cfdb42bf8b46a3a693c27f40cd34814cf5cb2df2681d4c2bffb6f6c1"
+    },
+    "moon": {
+      "export": "RiMoonLine",
+      "sha256": "6ba71b8ac7a38f2d61e44bb3e84f67523a37f6adf82913b8f4eb21500a8668c9"
+    },
+    "more": {
+      "export": "RiMoreLine",
+      "sha256": "db77e0011f4b732c56e2e3d07220f47b63f071749fb7747398076c96d84784ee"
+    },
+    "pencil": {
+      "export": "RiPencilLine",
+      "sha256": "0b1e1e85e6eb1c74df9ef07dabc1ac3cadfcfc4853abdc3ac02b46e55e4a0c96"
+    },
+    "phone": {
+      "export": "RiSmartphoneLine",
+      "sha256": "7d3c7218c9ea7db696371511583d3c17d0566e72e7f446f0283c656120c6a011"
+    },
+    "picture": {
+      "export": "RiImageLine",
+      "sha256": "b0b9e186266de23a4095fba2cafd4de94024a79a10f7923385a3bae5fec7a85f"
+    },
+    "pin": {
+      "export": "RiPushpinLine",
+      "sha256": "bc2b1f1a431f1e6550150a2e75a18da081bc3b090d460a9a773e2f1ca31b1ad1"
+    },
+    "plus": {
+      "export": "RiAddLine",
+      "sha256": "53dd9b7cf3a913dc5d933490b9e00c8deba6215ffc13cd39ee1ce4b6431843bd"
+    },
+    "retry": {
+      "export": "RiRestartLine",
+      "sha256": "e284301151820fed134bc0b489d8cd246c223847538b878fd2b2dfae5c379bbf"
+    },
+    "search": {
+      "export": "RiSearchLine",
+      "sha256": "eab31005d53929823c3c865e6c116a264fbee5af8ff08e135e7db650fde89453"
+    },
+    "shield": {
+      "export": "RiShieldLine",
+      "sha256": "534018a936194f37656b1be1f80ab125c4f6be1f6390b0f46662a74a8389a014"
+    },
+    "sidebar": {
+      "export": "RiSideBarLine",
+      "sha256": "471a77c0e16cbbe510b1dd119d41160b5c0941ab605ca6bc91d341bb1620fce6"
+    },
+    "spinner": {
+      "export": "RiLoader4Line",
+      "sha256": "3f387363a9082164a368fe51cfb8714521c5748f63057faf0dd1b819daddbeab"
+    },
+    "sun": {
+      "export": "RiSunLine",
+      "sha256": "4fcb08d03f0c2b169d0b8bafb7f6e89d9b9543338cb154835a7ea109335111b5"
+    },
+    "tag": {
+      "export": "RiPriceTag3Line",
+      "sha256": "41ea6a57d2a35f474e00baf22b45d2904361be9251040f2ca2729d6e4121e829"
+    },
+    "textLines": {
+      "export": "RiText",
+      "sha256": "dd9f8f0f74e9e81b91a7e8b8e1926d0afda85e8bbb52dfae370d5bb2807ca919"
+    },
+    "trash": {
+      "export": "RiDeleteBinLine",
+      "sha256": "6df6e6428f4cd25ff386d8a26cb7121543d2db8da35474ff8871f2d246720000"
+    },
+    "warning": {
+      "export": "RiErrorWarningLine",
+      "sha256": "30d251a1224abef75892348d601e1342969badbef664e8264b2e8391eb678bd2"
+    },
+    "xCircle": {
+      "export": "RiCloseCircleLine",
+      "sha256": "cd71cca8d301caf2e6f8f8000e3a084703d4c64087891ec9c681bbfcfcdd563d"
+    }
+  },
+  "cacheBound": 49
+}

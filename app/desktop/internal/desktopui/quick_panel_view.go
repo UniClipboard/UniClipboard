@@ -3,6 +3,7 @@ package desktopui
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 )
 
 type qpPalette struct{ background, foreground, muted, quiet, border, primary, white ui.Color }
@@ -20,19 +21,13 @@ func (p *quickPanelState) palette(c *ui.Context) qpPalette {
 	if p.theme != "system" {
 		dark = p.theme == "dark"
 	}
-	// The default GPUI preset in apps/quick-panel/assets/themes.json.
-	a := qpPalette{background: ui.RGB(250, 250, 251), foreground: ui.RGBA(0, 0, 6, .8), muted: ui.RGBA(0, 0, 6, .08), quiet: ui.RGBA(0, 0, 6, .55), border: ui.RGBA(0, 0, 6, .09), primary: ui.RGB(53, 132, 228), white: ui.RGB(255, 255, 255)}
-	if dark {
-		a.background = ui.RGB(34, 34, 38)
-		a.foreground = ui.RGB(255, 255, 255)
-		a.muted = ui.RGBA(255, 255, 255, .1)
-		a.quiet = ui.RGBA(255, 255, 255, .6)
-		a.border = ui.RGBA(255, 255, 255, .09)
-	}
+	k := desktopkit.For(dark)
+	a := qpPalette{background: k.Color("background-primary-default"), foreground: k.Color("text-primary"), muted: k.Color("background-tertiary-default"), quiet: k.Color("text-secondary"), border: k.Color("separator-border"), primary: k.Color("accent-500"), white: k.Color("text-white")}
+
 	return a
 }
 func (p *quickPanelState) commandLabel() string {
-	if uikit.DefaultSkin() == uikit.MacOS {
+	if runtime.GOOS == "darwin" {
 		return "⌘"
 	}
 	return "Ctrl+"
@@ -50,7 +45,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 	}
 	p.tick(c)
 	a := p.palette(c)
-	k := uikit.For(p.theme == "dark" || (p.theme == "system" && c.Theme().Dark))
+	k := desktopkit.For(p.theme == "dark" || (p.theme == "system" && c.Theme().Dark))
 	k.Apply(c)
 	root := ui.Column(c).Fill().Background(a.background).TextColor(a.foreground).Radius(12).Border(1, a.border).Clip()
 	root.Children(func() {
@@ -109,7 +104,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 			p.live.d.live.prefetchDetails(p.live.d, p.live.d.entries, first, last)
 		}
 		if p.message != "" {
-			tone := ui.RGB(224, 27, 36)
+			tone := k.Color("text-error-primary")
 			if p.message == "已复制" || p.message == "已发送粘贴指令" {
 				tone = a.quiet
 			}
@@ -142,7 +137,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 }
 func (p *quickPanelState) searchRow(c *ui.Context, a qpPalette) {
 	ui.Row(c).Height(48).Shrink(0).PaddingX(14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(a.border).Children(func() {
-		uikit.For(false).Icon(c, uikit.IconSearch, 16).TextColor(a.foreground)
+		desktopkit.For(false).Icon(c, desktopkit.IconSearch, 16).TextColor(a.foreground)
 		for i, f := range p.chips {
 			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + p.filterLabel(f)).Height(24).PaddingX(8).Radius(6).Background(a.muted)
 			b.Children(func() { ui.Text(c, p.filterLabel(f)).FontSize(12.5).TextColor(a.primary) })
@@ -201,7 +196,7 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 		return true
 	})
 	command := ui.Cmd
-	if uikit.DefaultSkin() != uikit.MacOS {
+	if runtime.GOOS != "darwin" {
 		command = ui.Ctrl
 	}
 	bind(0, ui.KeyEscape, p.escape)
@@ -361,9 +356,9 @@ func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) 
 	q := strings.ToLower(strings.TrimSpace(query))
 	lower := []rune(strings.ToLower(text))
 	queryRunes := []rune(q)
-	tint := ui.RGBA(53, 132, 228, .22)
+	tint := ink.Alpha(.22)
 	if selected {
-		tint = ui.RGBA(255, 255, 255, .3)
+		tint = ink.Alpha(.3)
 	}
 	end := 0
 	spans := []ui.Span{}
@@ -399,7 +394,7 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 	ink, quiet := a.foreground, a.quiet
 	if selected {
 		ink = a.white
-		quiet = ui.RGBA(255, 255, 255, .78)
+		quiet = a.white.Alpha(.78)
 	}
 	b := ui.ButtonBase(c).Label(p.tr("历史：")+e.title).FillWidth().Height(30).Shrink(0).Padding(0, 10, 0, 6).Radius(7).Row().Gap(8).AlignItems(ui.Center).TextColor(ink)
 	if selected {
@@ -412,8 +407,8 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 			if e.kind == "图片" {
 				ui.Image(c, p.quickImage(c, e)).Size(24, 16).Radius(3).Fit(ui.Cover)
 			} else {
-				icons := map[string]uikit.IconName{"文本": uikit.IconList, "代码": uikit.IconPackage, "链接": uikit.IconGlobe, "文件": uikit.IconFile, "富文本": uikit.IconList}
-				uikit.For(false).Icon(c, icons[e.kind], 14).TextColor(quiet)
+				icons := map[string]desktopkit.IconName{"文本": desktopkit.IconList, "代码": desktopkit.IconPackage, "链接": desktopkit.IconGlobe, "文件": desktopkit.IconFile, "富文本": desktopkit.IconList}
+				desktopkit.For(false).Icon(c, icons[e.kind], 14).TextColor(quiet)
 			}
 		})
 		text := ui.RichText(c, qpMarkedSpans(e, p.query, selected, ink, quiet)...).FontSize(13).Grow(1).MinWidth(0).MaxLines(1)
@@ -434,10 +429,10 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 			ui.Text(c, p.tr(label)).FontSize(10.5).TextColor(quiet).Background(a.muted).Radius(4).Padding(1, 5)
 		}
 		if e.favorite {
-			ui.Text(c, "★").FontSize(12).TextColor(ui.RGB(251, 191, 36))
+			ui.Text(c, "★").FontSize(12).TextColor(desktopkit.For(c.Theme().Dark).Color("status-yellow-text"))
 		}
 		if e.source != "本机" && e.source != p.tr("本机") {
-			uikit.For(false).Icon(c, uikit.IconDownload, 12).TextColor(quiet)
+			desktopkit.For(false).Icon(c, desktopkit.IconDownload, 12).TextColor(quiet)
 		}
 		ui.Text(c, e.age).FontSize(11).TextColor(quiet).Shrink(0)
 		if i < 9 {
@@ -555,7 +550,7 @@ func (p *quickPanelState) emptyView(c *ui.Context, a qpPalette) {
 func (p *quickPanelState) satellite(c *ui.Context) {
 	p.satelliteInvalidate = c.Invalidate
 	a := p.palette(c)
-	k := uikit.For(p.theme == "dark" || (p.theme == "system" && c.Theme().Dark))
+	k := desktopkit.For(p.theme == "dark" || (p.theme == "system" && c.Theme().Dark))
 	k.Apply(c)
 	ui.Column(c).Fill().Radius(12).Border(1, a.border).Background(a.background).TextColor(a.foreground).Clip().Children(func() {
 		e := p.active()
@@ -624,7 +619,7 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 					ui.Text(c, e.text).FontSize(12).TextColor(a.quiet).Selectable()
 				case "文件":
 					for _, file := range strings.Split(e.text, "\n") {
-						ui.Row(c).Gap(8).Children(func() { k.Icon(c, uikit.IconFile, 24); ui.Text(c, file).FontSize(13) })
+						ui.Row(c).Gap(8).Children(func() { k.Icon(c, desktopkit.IconFile, 24); ui.Text(c, file).FontSize(13) })
 					}
 				default:
 					text := ui.Text(c, e.text).FontSize(14).FillWidth().Selectable()

@@ -10,12 +10,14 @@ import (
 )
 
 // Configure preserves native resize edges while selecting the title-bar policy.
-// Windows always draws its own controls; the saved preference is for Linux/macOS.
+// Application controls are the default; the saved native-frame preference is
+// supported on Linux/macOS. Hidden chrome retains native resizing and shadows.
 func Configure(opts *mygo.WindowOptions, platform string, system bool) {
 	opts.TitleBarStyle = mygo.TitleBarHidden
-	opts.HideWindowButtons = platform == "windows"
+	opts.HideWindowButtons = true
 	if system && platform != "windows" {
 		opts.TitleBarStyle = mygo.TitleBarDefault
+		opts.HideWindowButtons = false
 	}
 }
 
@@ -25,21 +27,7 @@ type Actions struct {
 	IsMaximized                     func() bool
 }
 
-// NativeView reserves host caption controls when the native title bar is hidden.
-func NativeView(c *ui.Context, body func()) {
-	k := desktopkit.For(c.Theme().Dark)
-	bar := c.TitleBar()
-	k.UiRoot(c, func() {
-		ui.Column(c).Fill().Gap(0).AlignItems(ui.Stretch).Children(func() {
-			ui.Row(c.Key("native-caption")).Height(max(bar.Height, 38)).Padding(0, bar.Right, 0, bar.Left).DragWindow().Children(func() {
-				k.Text(c, "unic", desktopkit.TextProps{})
-			})
-			ui.Column(c.Key("window-body")).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(body)
-		})
-	})
-}
-
-// View draws Windows controls above every main-window page, including setup.
+// View draws application controls above every main-window page, including setup.
 func View(c *ui.Context, actions Actions, language string, body func()) {
 	k := desktopkit.For(c.Theme().Dark)
 	tr := func(s string) string { return i18n.Translate(language, s) }

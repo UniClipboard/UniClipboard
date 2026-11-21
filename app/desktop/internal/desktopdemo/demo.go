@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"runtime"
 	"slices"
 
 	"github.com/egoist/mygo"
@@ -51,14 +50,25 @@ func Run(args []string) error {
 	screen := desktopui.NewPreview(fixtures.Desktop(*page, *theme))
 	mygo.App.SetName("unic UI Demo")
 	mygo.App.WhenReady(func() {
-		opts := mygo.WindowOptions{Title: "unic · " + i18n.Translate("zh-CN", "界面演示"), Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View)}
-		if runtime.GOOS == "darwin" {
-			opts.TitleBarStyle = mygo.TitleBarHidden
-			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
-			opts.Content = ui.View(func(c *ui.Context) { windowchrome.NativeView(c, func() { screen.View(c) }) })
-
+		var win *mygo.Window
+		view := func(c *ui.Context) {
+			windowchrome.View(c, windowchrome.Actions{
+				Minimize: func() { win.Minimize() },
+				ToggleMaximize: func() {
+					if win.IsMaximized() {
+						win.Unmaximize()
+					} else {
+						win.Maximize()
+					}
+					win.Invalidate()
+				},
+				IsMaximized: func() bool { return win != nil && win.IsMaximized() },
+				Close:       func() { win.Close() },
+			}, "zh-CN", func() { screen.View(c) })
 		}
-		mygo.NewWindow(opts)
+		opts := mygo.WindowOptions{Title: "unic · " + i18n.Translate("zh-CN", "界面演示"), Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
+		windowchrome.Configure(&opts, "", false)
+		win = mygo.NewWindow(opts)
 		var quick *desktopui.QuickPreview
 		screen.SetQuickPanelOpener(func(theme string) {
 			if quick == nil {

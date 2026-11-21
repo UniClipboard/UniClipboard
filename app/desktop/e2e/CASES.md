@@ -71,7 +71,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
-| [window-chrome](#window-chrome) | view | Select native title bars on Linux/macOS and custom caption actions on Windows. |
+| [window-chrome](#window-chrome) | view | Use application caption controls by default across platforms; retain opt-in native title bars on Linux/macOS. |
 
 ## boardui-composition
 
@@ -1619,7 +1619,7 @@ Main-window decoration and caption actions
 
 Steps: Check platform options and click minimize, maximize, restore and close in light/dark views.
 
-Expected: Native decoration defaults off; Windows always has custom actions; restore and close dispatch correctly.
+Expected: Native decoration and buttons default off; all platforms retain custom actions; restore and close dispatch correctly.
 
 Forbidden: Losing resize edges, duplicate native Windows buttons, or claims of native OS interaction.
 

@@ -24,7 +24,7 @@ func scenarioWindowChrome(t *testing.T) {
 			if !wantNative && opts.TitleBarStyle != mygo.TitleBarHidden {
 				t.Fatal("custom title bar missing", platform)
 			}
-			if opts.HideWindowButtons != (platform == "windows") {
+			if opts.HideWindowButtons != !wantNative {
 				t.Fatal("incorrect native buttons", platform)
 			}
 			if opts.Frameless {

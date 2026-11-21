@@ -200,7 +200,7 @@ func runGUI(settings *config.Manager) error {
 			_ = mygo.App.Dock.SetIcon(appicons.PNG)
 		}
 		view := session.view
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "windows" || !settings.Current().Desktop.SystemWindowFrame {
 			view = func(c *ui.Context) {
 				windowchrome.View(c, windowchrome.Actions{
 					Minimize: func() { g.win.Minimize() },
@@ -216,15 +216,9 @@ func runGUI(settings *config.Manager) error {
 					Close:       func() { g.win.Close() },
 				}, settings.Current().Desktop.Language, func() { session.view(c) })
 			}
-		} else if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && !settings.Current().Desktop.SystemWindowFrame {
-			view = func(c *ui.Context) { windowchrome.NativeView(c, func() { session.view(c) }) }
 		}
 		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
 		windowchrome.Configure(&opts, runtime.GOOS, settings.Current().Desktop.SystemWindowFrame)
-		if runtime.GOOS == "darwin" && !settings.Current().Desktop.SystemWindowFrame {
-			opts.TrafficLightPosition = &mygo.Point{X: 19, Y: 19}
-
-		}
 		if flow.Required() {
 			opts.Width, opts.Height = 640, 560
 		}

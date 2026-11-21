@@ -82,14 +82,15 @@ reload. Quit and reopen Desktop to apply it. The service reports
 `desktop.system_window_frame` as restart-required when it differs from its startup
 configuration. The UI-free service only stores this host preference.
 
-With the preference off, the host uses mygo's hidden native title bar, retaining
-resize edges, rounded corners and shadows. macOS keeps its traffic lights. Linux
-reserves GTK's reported caption-control area above the application content. With
-the preference on, Linux/macOS use the normal native title bar.
+With the preference off, the host uses mygo's hidden title bar with native
+caption buttons disabled on every platform. There are no traffic lights or GTK
+caption reservations. The native resize edges, rounded corners and shadows remain;
+`Frameless` is deliberately not used because it loses Windows top resize edges.
+With the preference on, Linux/macOS use the normal native title bar.
 
-Windows always uses a hidden title bar with native caption buttons disabled.
-`internal/windowchrome` draws Minimize, Maximize/Restore and Close above every main
-window page, including setup and startup errors. Only the empty caption region
+Windows always uses this custom-caption policy. `internal/windowchrome` draws
+Minimize, Maximize/Restore and Close above every main-window page, including setup
+and startup errors. The standalone desktop preview uses the same policy. Only the empty caption region
 drags the window. Maximize/Restore reads the actual window state. Close invokes
 the existing window-close lifecycle. This preference does not change Quick Panel
 or its satellite windows. See the [acceptance receipt](../exec/desktop-window-chrome.md).

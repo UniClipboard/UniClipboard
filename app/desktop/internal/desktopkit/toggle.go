@@ -82,7 +82,7 @@ func (k Kit) compactSlider(c *ui.Context, value *float64, p SliderProps, step fl
 		}
 		ui.Box(c.Key("track")).Absolute().Left(0).Right(0).Top(12).Height(4).Radius(2).
 			Background(trackCol).AccessHidden(true)
-		ui.Box(c.Key("fill")).Absolute().Left(0).Top(12).WidthPercent(frac*100).Height(4).Radius(2).
+		ui.Box(c.Key("fill")).Absolute().Left(0).Top(12).WidthPercent(frac * 100).Height(4).Radius(2).
 			Background(k.Color("accent-500")).AccessHidden(true)
 		thumb := ui.Box(c.Key("thumb")).Absolute().LeftPercent(frac*100).Top(7).Translate(-7, 0).
 			Size(14, 14).Radius(7).

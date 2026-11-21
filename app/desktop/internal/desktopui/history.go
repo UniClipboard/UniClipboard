@@ -135,7 +135,7 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 					Ease:     ui.CubicBezier(.32, .72, 0, 1),
 				})
 				if sliderP > 0.01 {
-					sliderHost.Width(124 * sliderP).Margin(0, 6*sliderP, 0, 0).Opacity(sliderP)
+					sliderHost.Width(124*sliderP).Margin(0, 6*sliderP, 0, 0).Opacity(sliderP)
 					sliderHost.Children(func() {
 						ui.Row(c.Key("card-size-group")).Width(124).Gap(7).PaddingX(4).Height(30).AlignItems(ui.Center).Shrink(0).Children(func() {
 							k.Icon(c.Key("small"), desktopkit.IconGrid, 13).TextColor(k.Color("text-tertiary"))
@@ -598,151 +598,151 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 		}
 		detailScroll.Children(func() {
 			ui.Column(c).Padding(4, 24, 88).Gap(16).Children(func() {
-			// Main-toolbar actions own pin/delete on every platform.
-			k.DetailHeader(c, desktopkit.DetailHeaderProps{}, func() {
-				k.KindBadge(c, desktopkit.KindBadgeProps{Kind: v.kind, Label: d.tr(kindName(v.kind)), Variant: desktopkit.KindPill})
-				ui.Row(c.Key("provenance")).Grow(1).MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
-					stamp := k.Text(c.Key("device-time"), d.sourceName(v.source)+" · "+d.displayDate(v.date), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary, Truncate: true}).MinWidth(0)
-					if v.sourceAppName == "" {
-						stamp.Grow(1)
-					} else {
-						stamp.Shrink(0).MaxWidthPercent(65)
-					}
-					d.sourceApplication(c.Key("source-application"), k, *v)
+				// Main-toolbar actions own pin/delete on every platform.
+				k.DetailHeader(c, desktopkit.DetailHeaderProps{}, func() {
+					k.KindBadge(c, desktopkit.KindBadgeProps{Kind: v.kind, Label: d.tr(kindName(v.kind)), Variant: desktopkit.KindPill})
+					ui.Row(c.Key("provenance")).Grow(1).MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+						stamp := k.Text(c.Key("device-time"), d.sourceName(v.source)+" · "+d.displayDate(v.date), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary, Truncate: true}).MinWidth(0)
+						if v.sourceAppName == "" {
+							stamp.Grow(1)
+						} else {
+							stamp.Shrink(0).MaxWidthPercent(65)
+						}
+						d.sourceApplication(c.Key("source-application"), k, *v)
+					})
 				})
-			})
-			kind := desktopkit.PreviewPlain
-			if v.kind == desktopkit.KindCode {
-				kind = desktopkit.PreviewCode
-			}
-			if v.kind == desktopkit.KindImage {
-				kind = desktopkit.PreviewImage
-			}
-			if v.kind == desktopkit.KindFile || v.kind == desktopkit.KindFolder {
-				kind = desktopkit.PreviewFile
-			}
-			if v.image != nil {
-				kind = desktopkit.PreviewImage
-			}
-			if v.kind == desktopkit.KindLink && v.rich == nil && v.image == nil && (d.live == nil || (!d.live.detailBusy && v.contentError == "")) {
-				host, _ := urlHostAndPath(v.text)
-				ui.Column(c.Key("link-preview")).Padding(14, 16).Radius(12).Gap(10).
-					Background(k.SubtleCardSurface()).Border(1, border).Shrink(0).Children(func() {
-					if host != "" {
-						bg, fg := k.TagTint("blue")
-						ui.Row(c.Key("host")).Gap(6).AlignItems(ui.Center).Children(func() {
-							ui.Box(c.Key("ico")).Size(18, 18).Radius(5).Background(bg).Center().Shrink(0).Children(func() {
-								k.Icon(c, desktopkit.IconLink, 11).TextColor(fg)
+				kind := desktopkit.PreviewPlain
+				if v.kind == desktopkit.KindCode {
+					kind = desktopkit.PreviewCode
+				}
+				if v.kind == desktopkit.KindImage {
+					kind = desktopkit.PreviewImage
+				}
+				if v.kind == desktopkit.KindFile || v.kind == desktopkit.KindFolder {
+					kind = desktopkit.PreviewFile
+				}
+				if v.image != nil {
+					kind = desktopkit.PreviewImage
+				}
+				if v.kind == desktopkit.KindLink && v.rich == nil && v.image == nil && (d.live == nil || (!d.live.detailBusy && v.contentError == "")) {
+					host, _ := urlHostAndPath(v.text)
+					ui.Column(c.Key("link-preview")).Padding(14, 16).Radius(12).Gap(10).
+						Background(k.SubtleCardSurface()).Border(1, border).Shrink(0).Children(func() {
+						if host != "" {
+							bg, fg := k.TagTint("blue")
+							ui.Row(c.Key("host")).Gap(6).AlignItems(ui.Center).Children(func() {
+								ui.Box(c.Key("ico")).Size(18, 18).Radius(5).Background(bg).Center().Shrink(0).Children(func() {
+									k.Icon(c, desktopkit.IconLink, 11).TextColor(fg)
+								})
+								ui.Text(c.Key("h"), host).FontSize(12).FontWeight(600).TextColor(fg).SingleLine()
 							})
-							ui.Text(c.Key("h"), host).FontSize(12).FontWeight(600).TextColor(fg).SingleLine()
+						}
+						if title := d.entryTitle(*v); title != "" && title != strings.TrimSpace(v.text) {
+							ui.Text(c.Key("t"), title).FontSize(15).FontWeight(600).TextColor(k.Color("text-primary"))
+						}
+						ui.Box(c.Key("url-box")).Padding(9, 11).Radius(8).
+							Background(k.DrawerInnerSurface()).Border(1, border).Children(func() {
+							ui.Text(c, strings.TrimSpace(v.text)).Font("monospace").FontSize(11.5).TextColor(k.Color("accent-500"))
+						})
+					})
+				} else {
+					p := desktopkit.PreviewFrameProps{Kind: kind}
+					if kind == desktopkit.PreviewImage {
+						if v.kind == desktopkit.KindFile {
+							p.Caption = v.text
+						}
+						p.BottomStart = func() {
+							if k.Button(c, d.tr("快速查看"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall}).Clicked() {
+								d.quickLook = true
+							}
+						}
+					}
+					k.PreviewFrame(c, p, func() {
+						if d.live != nil && (d.live.detailBusy || v.contentError != "") {
+							label := d.tr(v.contentError)
+							if d.live.detailBusy {
+								label = d.tr("正在读取内容…")
+							}
+							k.Text(c, label, secondary)
+							return
+						}
+
+						if v.rich != nil {
+							richtext.EditorBase(c, v.rich, richtext.EditorOptions{Label: d.tr("富文本预览"), ReadOnly: true}).FillWidth().Height(240)
+							return
+						}
+						if kind == desktopkit.PreviewImage {
+							ui.Image(c, d.entryImage(c, *v)).FillWidth().Height(220)
+							return
+						}
+						if v.kind == desktopkit.KindFolder {
+							d.folderPreview(c, k, v, secondary)
+							return
+						}
+						if v.kind == desktopkit.KindFile {
+							for i, name := range strings.Split(v.text, "\n") {
+								k.SettingsRow(c.Key(i), desktopkit.SettingsRowProps{Label: name, Description: d.tr("已接收")}, nil, func() { k.Icon(c, desktopkit.IconFile, 18) })
+							}
+							return
+						}
+						e := k.Text(c, v.text, desktopkit.TextProps{}).Padding(24).FillWidth()
+						if v.kind == desktopkit.KindCode {
+							e.Font("monospace").TextColor(ui.RGBA(235, 235, 240, 1))
+						}
+					})
+				}
+				// 3-column compact facts strip matching the D1-b drawer.
+				sizeVal := v.size
+				if sizeVal == "" {
+					sizeVal = fmt.Sprintf("%d", len([]rune(v.text)))
+				}
+				ui.Row(c.Key("facts")).Gap(8).AlignItems(ui.Stretch).Children(func() {
+					factCard := func(key, label, value string) {
+						ui.Column(c.Key(key)).Grow(1).Basis(0).MinWidth(0).Padding(8, 10).Radius(9).Gap(2).
+							Background(k.SubtleCardSurface()).Border(1, border).Children(func() {
+							ui.Text(c.Key("k"), label).FontSize(10.5).TextColor(k.Color("text-tertiary")).SingleLine()
+							ui.Text(c.Key("v"), value).FontSize(12).FontWeight(600).TextColor(k.Color("text-primary")).SingleLine()
 						})
 					}
-					if title := d.entryTitle(*v); title != "" && title != strings.TrimSpace(v.text) {
-						ui.Text(c.Key("t"), title).FontSize(15).FontWeight(600).TextColor(k.Color("text-primary"))
-					}
-					ui.Box(c.Key("url-box")).Padding(9, 11).Radius(8).
-						Background(k.DrawerInnerSurface()).Border(1, border).Children(func() {
-						ui.Text(c, strings.TrimSpace(v.text)).Font("monospace").FontSize(11.5).TextColor(k.Color("accent-500"))
-					})
+					factCard("kind", d.tr("内容类型"), d.tr(kindName(v.kind)))
+					factCard("spec", d.tr("规格"), sizeVal)
+					factCard("dev", d.tr("来源设备"), d.sourceName(v.source))
 				})
-			} else {
-				p := desktopkit.PreviewFrameProps{Kind: kind}
 				if kind == desktopkit.PreviewImage {
-					if v.kind == desktopkit.KindFile {
-						p.Caption = v.text
-					}
-					p.BottomStart = func() {
-						if k.Button(c, d.tr("快速查看"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall}).Clicked() {
-							d.quickLook = true
+					facts := []desktopkit.Fact{{ID: "size", Label: d.tr("尺寸"), Value: "1600 × 1000"}, {ID: "format", Label: d.tr("格式"), Value: "PNG · 286 KB"}}
+					if d.live != nil {
+						facts = nil
+						if v.image != nil {
+							w, h := imageDimensions(*v)
+							facts = []desktopkit.Fact{{ID: "size", Label: d.tr("尺寸"), Value: fmt.Sprintf("%.0f × %.0f", w, h)}, {ID: "bytes", Label: d.tr("大小"), Value: v.size}}
 						}
+					}
+					if len(facts) > 0 {
+						k.FactList(c, desktopkit.FactListProps{Label: d.tr("图片信息"), Facts: facts})
 					}
 				}
-				k.PreviewFrame(c, p, func() {
-					if d.live != nil && (d.live.detailBusy || v.contentError != "") {
-						label := d.tr(v.contentError)
-						if d.live.detailBusy {
-							label = d.tr("正在读取内容…")
+				d.detailTags(c.Key("detail-tags"), k, v)
+				ui.Column(c).Gap(6).Children(func() {
+					if d.live != nil {
+						k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(v.syncState)), secondary)
+						return
+					}
+					rows := []desktopkit.InsetListRow{}
+					for _, peer := range d.devices {
+						if peer.id == "local" {
+							continue
 						}
-						k.Text(c, label, secondary)
-						return
+						rows = append(rows, desktopkit.InsetListRow{ID: peer.id, Title: peer.name, Status: func() { k.Icon(c, desktopkit.IconInfo, 16).TextColor(k.Color("text-secondary")) }})
 					}
-
-					if v.rich != nil {
-						richtext.EditorBase(c, v.rich, richtext.EditorOptions{Label: d.tr("富文本预览"), ReadOnly: true}).FillWidth().Height(240)
-						return
-					}
-					if kind == desktopkit.PreviewImage {
-						ui.Image(c, d.entryImage(c, *v)).FillWidth().Height(220)
-						return
-					}
-					if v.kind == desktopkit.KindFolder {
-						d.folderPreview(c, k, v, secondary)
-						return
-					}
-					if v.kind == desktopkit.KindFile {
-						for i, name := range strings.Split(v.text, "\n") {
-							k.SettingsRow(c.Key(i), desktopkit.SettingsRowProps{Label: name, Description: d.tr("已接收")}, nil, func() { k.Icon(c, desktopkit.IconFile, 18) })
-						}
-						return
-					}
-					e := k.Text(c, v.text, desktopkit.TextProps{}).Padding(24).FillWidth()
-					if v.kind == desktopkit.KindCode {
-						e.Font("monospace").TextColor(ui.RGBA(235, 235, 240, 1))
-					}
-				})
-			}
-			// 3-column compact facts strip matching the D1-b drawer.
-			sizeVal := v.size
-			if sizeVal == "" {
-				sizeVal = fmt.Sprintf("%d", len([]rune(v.text)))
-			}
-			ui.Row(c.Key("facts")).Gap(8).AlignItems(ui.Stretch).Children(func() {
-				factCard := func(key, label, value string) {
-					ui.Column(c.Key(key)).Grow(1).Basis(0).MinWidth(0).Padding(8, 10).Radius(9).Gap(2).
-						Background(k.SubtleCardSurface()).Border(1, border).Children(func() {
-						ui.Text(c.Key("k"), label).FontSize(10.5).TextColor(k.Color("text-tertiary")).SingleLine()
-						ui.Text(c.Key("v"), value).FontSize(12).FontWeight(600).TextColor(k.Color("text-primary")).SingleLine()
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						k.Text(c, d.tr("送达"), desktopkit.TextProps{Emphasized: true})
+						k.Text(c, fmt.Sprintf(d.tr("0/%d 台设备"), len(rows)), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary})
 					})
-				}
-				factCard("kind", d.tr("内容类型"), d.tr(kindName(v.kind)))
-				factCard("spec", d.tr("规格"), sizeVal)
-				factCard("dev", d.tr("来源设备"), d.sourceName(v.source))
-			})
-			if kind == desktopkit.PreviewImage {
-				facts := []desktopkit.Fact{{ID: "size", Label: d.tr("尺寸"), Value: "1600 × 1000"}, {ID: "format", Label: d.tr("格式"), Value: "PNG · 286 KB"}}
-				if d.live != nil {
-					facts = nil
-					if v.image != nil {
-						w, h := imageDimensions(*v)
-						facts = []desktopkit.Fact{{ID: "size", Label: d.tr("尺寸"), Value: fmt.Sprintf("%.0f × %.0f", w, h)}, {ID: "bytes", Label: d.tr("大小"), Value: v.size}}
-					}
-				}
-				if len(facts) > 0 {
-					k.FactList(c, desktopkit.FactListProps{Label: d.tr("图片信息"), Facts: facts})
-				}
-			}
-			d.detailTags(c.Key("detail-tags"), k, v)
-			ui.Column(c).Gap(6).Children(func() {
-				if d.live != nil {
-					k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(v.syncState)), secondary)
-					return
-				}
-				rows := []desktopkit.InsetListRow{}
-				for _, peer := range d.devices {
-					if peer.id == "local" {
-						continue
-					}
-					rows = append(rows, desktopkit.InsetListRow{ID: peer.id, Title: peer.name, Status: func() { k.Icon(c, desktopkit.IconInfo, 16).TextColor(k.Color("text-secondary")) }})
-				}
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					k.Text(c, d.tr("送达"), desktopkit.TextProps{Emphasized: true})
-					k.Text(c, fmt.Sprintf(d.tr("0/%d 台设备"), len(rows)), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary})
+					k.InsetList(c, desktopkit.InsetListProps{Label: d.tr("送达情况"), Rows: rows})
+					k.Text(c, d.tr("本地加密存储 · 设备之间端到端加密"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary})
 				})
-				k.InsetList(c, desktopkit.InsetListProps{Label: d.tr("送达情况"), Rows: rows})
-				k.Text(c, d.tr("本地加密存储 · 设备之间端到端加密"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary})
 			})
 		})
-	})
 	})
 	status := ""
 	if d.notice != "" {

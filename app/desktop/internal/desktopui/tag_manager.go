@@ -426,7 +426,7 @@ func (d *viewState) tagSheet(c *ui.Context, k desktopkit.Kit) {
 					row.Children(func() {
 						// Leading swatch: clickable color picker for custom tags, static dot for built-in types.
 						if !t.builtin && (d.live == nil || !d.live.busy) {
-							sw := ui.ButtonBase(c.Key("swatch")).Label(d.tr("修改颜色") + " #" + d.tagLabel(id)).
+							sw := ui.ButtonBase(c.Key("swatch")).Label(d.tr("修改颜色")+" #"+d.tagLabel(id)).
 								Size(22, 22).Radius(11).Justify(ui.Center).AlignItems(ui.Center).Shrink(0)
 							if sw.Hovered() || m.colorPop == id {
 								sw.Border(1.5, k.Color("border-button-hover"))

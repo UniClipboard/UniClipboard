@@ -99,38 +99,38 @@ type viewState struct {
 	windowFrame     *bool
 	pluginSettings  builtinPluginSettings
 
-	reference                                                              string
-	previewImage                                                           ui.ImageSource
-	language                                                               string
-	quickShortcutStatus                                                    func() (string, string)
-	retryQuickShortcut                                                     func()
-	live                                                                   *liveState
-	tagEditor                                                              tagEditorState
-	openQuickPanel                                                         func()
-	quick                                                                  *quickPanelState
-	tags                                                                   []historyTag
-	tagManager                                                             tagManagerState
-	search                                                                 historySearchState
-	page, theme, query, kind, source, tag, timeRange, layout               string
-	nav, settings                                                          desktopkit.NavState
-	list                                                                   desktopkit.ListState
-	deviceList                                                             desktopkit.SourceState
-	entries                                                                []entry
-	devices                                                                []device
-	selected                                                               string
-	confirmEntries                                                         []string
-	drawerSwitchDir                                                                     int
-	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook, filterOpen bool
-	compact                                                                bool
-	gridSize                                                               float64
-	deviceTask, fieldError, notice, confirm, confirmID                     string
-	deviceName                                                             string
-	pending                                                                []pendingDevice
-	candidates                                                             []deviceCandidate
-	inviteCode, inviteMode, connectInput, renameValue, deviceNote          string
-	renaming, deviceDetailOpen                                             bool
-	options                                                                map[string]bool
-	choices                                                                map[string]string
+	reference                                                             string
+	previewImage                                                          ui.ImageSource
+	language                                                              string
+	quickShortcutStatus                                                   func() (string, string)
+	retryQuickShortcut                                                    func()
+	live                                                                  *liveState
+	tagEditor                                                             tagEditorState
+	openQuickPanel                                                        func()
+	quick                                                                 *quickPanelState
+	tags                                                                  []historyTag
+	tagManager                                                            tagManagerState
+	search                                                                historySearchState
+	page, theme, query, kind, source, tag, timeRange, layout              string
+	nav, settings                                                         desktopkit.NavState
+	list                                                                  desktopkit.ListState
+	deviceList                                                            desktopkit.SourceState
+	entries                                                               []entry
+	devices                                                               []device
+	selected                                                              string
+	confirmEntries                                                        []string
+	drawerSwitchDir                                                       int
+	sidebarHidden, detailOpen, inspector, tagsOpen, quickLook, filterOpen bool
+	compact                                                               bool
+	gridSize                                                              float64
+	deviceTask, fieldError, notice, confirm, confirmID                    string
+	deviceName                                                            string
+	pending                                                               []pendingDevice
+	candidates                                                            []deviceCandidate
+	inviteCode, inviteMode, connectInput, renameValue, deviceNote         string
+	renaming, deviceDetailOpen                                            bool
+	options                                                               map[string]bool
+	choices                                                               map[string]string
 }
 
 func (d *viewState) view(c *ui.Context) {

@@ -850,15 +850,6 @@ func (d *viewState) addPeer(id, name, platform string, icon desktopkit.IconName,
 	d.deviceList.Value, d.deviceDetailOpen = id, true
 }
 
-// fingerprintLines splits the 8 groups of a fingerprint into two lines of 4.
-func fingerprintLines(fp string) []string {
-	g := strings.Fields(fp)
-	if len(g) <= 4 {
-		return []string{fp}
-	}
-	return []string{strings.Join(g[:4], " "), strings.Join(g[4:], " ")}
-}
-
 func (d *viewState) deviceTaskView(c *ui.Context, k desktopkit.Kit) {
 	switch d.deviceTask {
 	case "invite":

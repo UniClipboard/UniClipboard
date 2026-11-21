@@ -1,6 +1,7 @@
 package desktopkit
 
 import (
+	"runtime"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -100,6 +101,12 @@ type SplitViewResult struct {
 // SplitView is the adaptive window layout: a sidebar beside the content whose toolbar band
 func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewResult {
 	t := k.layTok()
+	caption := c.TitleBar()
+	integratedCaption := runtime.GOOS == "darwin" && caption.Left > 0
+	headerHeight := float32(52)
+	if integratedCaption {
+		headerHeight = max(headerHeight, caption.Height)
+	}
 	hidden := p.SidebarHidden != nil && *p.SidebarHidden
 	overlay := p.SidebarOverlay && p.Sidebar != nil
 	w, _ := c.Size()
@@ -173,12 +180,18 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				body.Padding(8)
 			}
 
-			body.Children(p.Sidebar)
+			body.Children(func() {
+				if integratedCaption {
+					// Reserve only the sidebar's top band. The content toolbar starts at y=0.
+					ui.Row(c.Key("split-sidebar-caption")).Height(headerHeight - 8).Shrink(0).DragWindow()
+				}
+				p.Sidebar()
+			})
 		})
 	}
 
 	toolbar := func() {
-		h := float32(52)
+		h := headerHeight
 		{
 		}
 
@@ -189,6 +202,10 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			bar.Padding(0, 8).Background(t.Header).InsetShadow(0, -1, 0, 0, t.Border)
 		}
 
+		if integratedCaption {
+			// As the sidebar moves, controls must continue clearing the real traffic lights.
+			bar.Padding(0, 8, 0, max(8, caption.Left+48-curW))
+		}
 		bar.DragWindow()
 		bar.Children(func() {
 			if detail {
@@ -197,7 +214,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 					*p.DetailOpen = false
 				}
 			}
-			{
+			if !integratedCaption {
 				toggle()
 			}
 			if p.TitleLeading != nil {
@@ -212,9 +229,14 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 					}
 				})
 			}
-			{
-
-				// Centred heading between the leading controls and the trailing ones.
+			if integratedCaption {
+				// v1's macOS top band: title/count lead; view/search/actions trail.
+				heading()
+				ui.Box(c.Key("split-spacer")).Grow(1).MinWidth(0)
+				if p.ToolbarLeading != nil {
+					p.ToolbarLeading()
+				}
+			} else {
 				if p.ToolbarLeading != nil {
 					p.ToolbarLeading()
 				}
@@ -274,6 +296,11 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 					res.SidebarToggled = true
 				}
 			})
+		}
+		if integratedCaption && p.Sidebar != nil {
+			// Keep one toggle outside the inert/animated sidebar, as in v1's mac-split-chrome.
+			ui.Row(c.Key("split-native-toggle")).Absolute().Left(max(caption.Left+8, curW-44)).
+				Top((headerHeight - 36) / 2).Height(36).ZIndex(4).Children(toggle)
 		}
 	})
 	return res

@@ -54,7 +54,6 @@ func Run(args []string) error {
 		opts := mygo.WindowOptions{Title: "unic · " + i18n.Translate("zh-CN", "界面演示"), Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View)}
 		if runtime.GOOS == "darwin" {
 			windowchrome.Configure(&opts, runtime.GOOS, false)
-			opts.Content = ui.View(func(c *ui.Context) { windowchrome.NativeView(c, func() { screen.View(c) }) })
 
 		}
 		mygo.NewWindow(opts)

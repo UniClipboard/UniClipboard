@@ -149,3 +149,7 @@ pass caught the runtime import grouping; the format correction passed pinned
 lint with zero issues. No other runtime change followed native capture. Native
 dragging/resizing, Windows/Linux execution and user visual approval remain
 NOT_RUN. The live owned preview stays open for inspection.
+
+The later [v1 unified-top correction](macos-titlebar-v1-reference.md) supersedes
+the centered 32-DIP title row described above. Normal History/Settings now own the
+window top; that fallback row is only for setup/startup.

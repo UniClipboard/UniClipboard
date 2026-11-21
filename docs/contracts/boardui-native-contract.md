@@ -43,7 +43,7 @@ Unknown variants/resource names and nil mandatory pointers are programmer errors
 
 ## Native host boundary
 
-Native title bars, traffic lights/GTK caption reservations, Windows caption actions, drag and resize regions, actual maximize state and close lifecycle remain host responsibilities. On macOS, keep real system traffic lights and paint the application title bar behind them; do not draw replacement caption buttons. Linux/macOS system-frame preference and restart semantics remain unchanged. Platform modifiers, tray/system menus, OS file/credential prompts, updater, notifications, shortcuts and clipboard/focus/paste integration remain native.
+Native title bars, traffic lights/GTK caption reservations, Windows caption actions, drag and resize regions, actual maximize state and close lifecycle remain host responsibilities. On macOS, keep real system traffic lights over the application-owned top band. Normal History/Settings SplitViews own this band without a separate application-name row, reserve native button bounds and keep the sidebar toggle outside inert navigation. Setup/startup retain a fallback safe-area row. Do not draw replacement caption buttons. Linux/macOS system-frame preference and restart semantics remain unchanged. Platform modifiers, tray/system menus, OS file/credential prompts, updater, notifications, shortcuts and clipboard/focus/paste integration remain native.
 
 In-content Select, action and context menus use the shared BoardUI presentation. This does not replace the tray's OS menu or move native integration into the public control package. The separate GUI/Quick Panel/tray/service process roles and exclusive tray clipboard adapter remain intact.
 

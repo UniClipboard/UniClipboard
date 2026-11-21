@@ -42,7 +42,7 @@ Run one demo process at a time. Other initial states:
 
 Pages are `history`, `devices`, `settings` and `quick-panel`. Color modes are `system`, `light` and `dark`. There is one BoardUI presentation on all three OS targets. Old skin environment overrides are not a supported selection path. Setup and unlock preview routes are rejected; production first-install setup remains a separate live flow.
 
-The default main demo client area is 1100×720 DIP. On macOS the native host keeps the real system traffic lights at (14,9) DIP. The application draws a compact centered title bar with a 32-DIP minimum height; the native title-bar presentation stays hidden. There are no custom replacement window buttons. Windows/Linux native frame behavior remains a host concern. The reusable `boardui-demo` provides a separate, bounded synthetic settings form for component/reference comparison; it does not demonstrate every product page.
+The default main demo client area is 1100×720 DIP. On macOS the native host keeps real traffic lights at (14,18) DIP. History and Settings reach the window top with one 52-DIP toolbar/traffic-light band. The sidebar clears the lights; its toggle stays outside the animated sidebar. When collapsed, the toolbar controls clear the native safe area. There is no separate application-name title row or replacement window button. Windows/Linux native frame behavior remains a host concern. The reusable `boardui-demo` provides a separate, bounded synthetic settings form for component/reference comparison; it does not demonstrate every product page.
 
 ## Ordered interaction checks
 

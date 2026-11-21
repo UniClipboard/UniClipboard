@@ -19,7 +19,7 @@ func Configure(opts *mygo.WindowOptions, platform string, system bool) {
 	if system && platform != "windows" {
 		opts.TitleBarStyle = mygo.TitleBarDefault
 	} else if platform == "darwin" {
-		opts.TrafficLightPosition = &mygo.Point{X: 14, Y: 9}
+		opts.TrafficLightPosition = &mygo.Point{X: 14, Y: 18}
 	}
 }
 

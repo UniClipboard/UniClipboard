@@ -217,7 +217,15 @@ func runGUI(settings *config.Manager) error {
 				}, settings.Current().Desktop.Language, func() { session.view(c) })
 			}
 		} else if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && !settings.Current().Desktop.SystemWindowFrame {
-			view = func(c *ui.Context) { windowchrome.NativeView(c, func() { session.view(c) }) }
+			view = func(c *ui.Context) {
+				if runtime.GOOS == "darwin" && session.runtime != nil && session.message == "" {
+					// Normal macOS pages own the window top, as the v1 SplitView did.
+					session.view(c)
+					return
+				}
+				// Setup and startup still need their own draggable safe-area row.
+				windowchrome.NativeView(c, func() { session.view(c) })
+			}
 		}
 		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
 		windowchrome.Configure(&opts, runtime.GOOS, settings.Current().Desktop.SystemWindowFrame)

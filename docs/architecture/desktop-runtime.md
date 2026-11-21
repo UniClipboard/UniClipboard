@@ -84,9 +84,15 @@ configuration. The UI-free service only stores this host preference.
 
 With the preference off, the host uses mygo's hidden native title bar, retaining
 resize edges, rounded corners and shadows. macOS keeps its real system traffic
-lights over a self-drawn application title bar. The bar has a 32-DIP minimum
-height, centered title and a draggable empty area. The traffic lights use a
-(14,9)-DIP native inset; no replacement caption buttons are drawn. Linux
+lights over the application-owned window top. History and Settings use one
+52-DIP top band, following the shipped v1 SplitView structure. There is no separate
+application-name row. The full-height sidebar reserves the native control band;
+its persistent toggle remains outside the hidden/inert sidebar. The content
+heading leads its toolbar, and view/search/actions trail. Collapsed/overlay
+layouts continuously clear the native control area reported by mygo. Traffic
+lights use a (14,18)-DIP native inset; no replacement buttons are drawn.
+Setup and startup keep a separate draggable safe-area wrapper until normal
+runtime content takes ownership of the window top. Linux
 reserves GTK's reported caption-control area above the application content. With
 the preference on, Linux/macOS use the normal native title bar.
 

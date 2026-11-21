@@ -156,7 +156,8 @@ func (d *viewState) view(c *ui.Context) {
 				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
 				c.OnShortcut(0, ui.KeyT, d.openTagEditor)
 			}
-			if d.page == "settings" {
+			if d.page == "settings" && (!d.compact || d.sidebarHidden) {
+				// A narrow sidebar drawer owns Escape before page navigation.
 				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
 			}
 		}

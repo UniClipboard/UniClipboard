@@ -212,7 +212,8 @@ def run(specs, selected, output, guest=None, control=None, shard=None):
                     native_os_focus='NOT_RUN', system_clipboard='NOT_RUN', cross_application_paste='NOT_RUN',
                     runner_sha256=digest(Path(__file__)))
     if shard:
-        manifest['shard'] = shard
+        index, count, include_guests = shard
+        manifest['shard'] = f'{index}/{count}'
     if guest:
         manifest['guest'] = guest
     for s in specs:
@@ -244,9 +245,10 @@ def run(specs, selected, output, guest=None, control=None, shard=None):
         wanted = [s for s in specs if s['id'] in selected]
         if len(wanted) != len(selected):
             raise RuntimeError('case selection changed while taking the snapshot')
-        if shard and selected != select_shard([s for s in specs if guest or s['environment'] == 'isolated'],
-                                              *map(int, shard.split('/')), snapshot / 'app/desktop/e2e'):
-            raise RuntimeError('shard assignment changed while taking the snapshot')
+        if shard:
+            eligible = [s for s in specs if include_guests or s['environment'] == 'isolated']
+            if selected != select_shard(eligible, index, count, snapshot / 'app/desktop/e2e'):
+                raise RuntimeError('shard assignment changed while taking the snapshot')
         manifest['go'] = subprocess.check_output(['go', 'version'], text=True).strip()
         manifest['host_os'] = platform.platform()
         manifest['platform'] = subprocess.check_output(['go', 'env', 'GOOS', 'GOARCH'], text=True).splitlines()
@@ -377,6 +379,7 @@ def main():
     specs = cases()
     eligible = [s for s in specs if args.guest or s['environment'] == 'isolated']
     selected = [args.case] if args.case else [s['id'] for s in (specs if args.action in ('list', 'catalog') else eligible)]
+    shard = None
     if args.shard:
         match = re.fullmatch(r'([1-9][0-9]*)/([1-9][0-9]*)', args.shard)
         if not match:
@@ -385,6 +388,7 @@ def main():
         if not 1 <= index <= count <= len(eligible):
             raise ValueError('shard requires 1 <= index <= count <= eligible catalogue size')
         selected = select_shard(eligible, index, count)
+        shard = (index, count, bool(args.guest))
     if not set(selected).issubset({s['id'] for s in specs}):
         raise ValueError('unknown Desktop case')
     if args.action == 'catalog':
@@ -435,7 +439,7 @@ def main():
         doctor(any(s['mode'] == 'native' and s['id'] in selected for s in specs))
         print('READY: basic prerequisites found; native startup is verified by the case')
         return 0
-    return run(specs, selected, args.out, guest, args.control_dir, args.shard)
+    return run(specs, selected, args.out, guest, args.control_dir, shard)
 
 
 if __name__ == '__main__':

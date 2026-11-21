@@ -155,6 +155,12 @@
     "pt-BR": "Modo leve",
     "ru": "Облегчённый режим"
   },
+  "关闭并重新打开主窗口后生效。": {
+    "en": "Applies after closing and reopening the main window.",
+    "ja": "メインウィンドウを閉じて開き直すと適用されます。",
+    "pt-BR": "Aplica após fechar e reabrir a janela principal.",
+    "ru": "Применяется после закрытия и повторного открытия главного окна."
+  },
   "下次启动时生效。": {
     "en": "Applies on next launch.",
     "ja": "次回の起動時に適用します。",

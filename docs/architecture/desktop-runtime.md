@@ -41,7 +41,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 4fbcd23290da7224e67bb062a0663d4072591f27
+verified: 7ee6e6a60685abbf2812a9efc304b54e29701cb4
 ---
 # Desktop configuration and received files
 
@@ -75,23 +75,35 @@ The history toolbar exposes the Actions menu for records accepted by the current
 ## Main-window decoration
 
 `desktop.system_window_frame` is a persisted boolean, defaulting to `false`.
-Settings > General exposes it on Linux and macOS. Its value is captured when the
-main window is created; an existing window is not recreated on configuration
-reload. Quit and reopen Desktop to apply it. The service reports
-`desktop.system_window_frame` as restart-required when it differs from its startup
-configuration. The UI-free service only stores this host preference.
+Settings > General exposes the same switch on Windows, Linux and macOS. The host
+captures its value when creating each GUI window. Saving a change leaves the
+existing window intact. Close and reopen the main window to apply it. The GUI
+compares saved intent with its own captured value for the pending notice. The
+UI-free service stores the preference and never adds this host-only key to
+`restart_required`; an older service generation does not keep a recreated GUI pending.
 
 With the preference off, the host uses mygo's hidden native title bar, retaining
 resize edges, rounded corners and shadows. macOS keeps its traffic lights. Linux
 reserves GTK's reported caption-control area above the application content. With
-the preference on, Linux/macOS use the normal native title bar.
+the preference on, all three platforms use the normal native title bar and buttons.
 
-Windows always uses a hidden title bar with native caption buttons disabled.
-The existing UI Kit draws Minimize, Maximize/Restore and Close above every main
-window page, including setup and startup errors. Only the empty caption region
-drags the window. Maximize/Restore reads the actual window state. Close invokes
-the existing window-close lifecycle. This preference does not change Quick Panel
-or its satellite windows. See the [acceptance receipt](../exec/desktop-window-chrome.md).
+Windows custom mode disables native caption buttons. The existing SplitView
+provides a trailing toolbar slot. The host supplies Minimize, Maximize/Restore
+and Close after the existing history commands. Search, history commands and
+caption buttons share one 48-point band. Settings and plugin details use the same
+slot. Ordinary pages have no separate `unic` caption row. Search shrinks to the
+available width while caption and command hit targets retain their sizes.
+
+Setup, offline migration, loading and startup-error pages have no SplitView;
+these pages use a single minimal draggable fallback band with the same controls.
+Only empty toolbar regions drag. Interactive children retain input. mygo owns
+native hit testing, edge resize and double-click maximize. Maximize/Restore reads
+the OS window state; the maximize element uses mygo's native maximize-button
+marker. Windows 11 Snap behavior requires separate native acceptance. Close
+invokes the existing GUI-close lifecycle and does not recreate a tray. System
+mode draws no custom caption controls or fallback band. Quick Panel and its
+satellite windows retain their independent decoration. See the
+[acceptance receipt](../exec/desktop-window-chrome.md).
 
 ## Native application updates
 

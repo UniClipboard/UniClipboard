@@ -1,7 +1,7 @@
-# Case: Tag manager platforms
+# Case: BoardUI tag management and assignment
 # Mode: view
-# Purpose: Tag management and separate entry assignment across all three skins.
-# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Purpose: Tag management and separate entry assignment in the single BoardUI design system.
+# Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 # Expected: Built-in operations remain protected and assignment updates the shared registry in both themes.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 

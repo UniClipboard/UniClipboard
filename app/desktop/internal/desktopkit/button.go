@@ -1,0 +1,56 @@
+package desktopkit
+
+import (
+	"github.com/egoist/mygo/ui"
+
+	"github.com/uniclipboard/unic/app/desktop/boardui"
+)
+
+type ButtonProps struct {
+	Variant        ButtonVariant
+	Size           ControlSize
+	Icon           IconName
+	Label, Tooltip string
+	Disabled, Busy bool
+}
+
+func (k Kit) Button(c *ui.Context, label string, p ButtonProps) ui.Element {
+	return k.dressButton(c, ui.ButtonBase(c), label, p, false)
+}
+
+// dressButton retains toggle/menu behavior while reusing the public Button paint.
+func (k Kit) dressButton(c *ui.Context, e ui.Element, label string, p ButtonProps, on bool) ui.Element {
+	size := "medium"
+	if p.Size == SizeSmall {
+		size = "small"
+	}
+	variant := "secondary"
+	switch p.Variant {
+	case Primary:
+		variant = "primary"
+	case Destructive:
+		variant = "danger"
+	case Subtle:
+		variant = "ghost"
+	}
+	if on {
+		variant = "primary"
+	}
+	bp := boardui.ButtonProps{Variant: variant, Size: size, Label: p.Label, Disabled: p.Disabled, Busy: p.Busy, IconOnly: label == ""}
+	if p.Icon != "" {
+		bp.Leading = func(size float32) { k.Icon(c.Key("host-icon"), p.Icon, size).AccessHidden(true) }
+	}
+	if p.Variant == Link {
+		e = k.native().DressLinkButton(c, e, label, bp)
+	} else {
+		e = k.native().DressButton(c, e, label, bp)
+	}
+	tip := p.Tooltip
+	if tip == "" && label == "" {
+		tip = p.Label
+	}
+	if tip != "" {
+		e.Tooltip(tip)
+	}
+	return e
+}

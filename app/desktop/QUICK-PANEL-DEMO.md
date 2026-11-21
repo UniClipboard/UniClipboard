@@ -1,12 +1,12 @@
-# GPUI quick panel fixture acceptance
+# Native BoardUI Quick Panel fixture acceptance
 
 ## Reference identity
 
-The port uses the repository's cached `origin/main` at `885546c7cf6f6f0d2076104efd1d90d9f73d9744` (2026-11-08).
+The interaction/window composition has historical lineage in the repository's cached `origin/main` at `885546c7cf6f6f0d2076104efd1d90d9f73d9744` (2026-11-08).
 Local `main` is older: `20c5ddcaf52e3504964b348908d34d3ccf09307e` (2026-10-26).
 A live remote-head check failed because the Lody GitHub credential helper could not acquire credentials.
 The cached reference is immutable; this work does not assert that it is the current remote head.
-The existing desktop fixture keeps its separate reference.
+The main Desktop composition keeps its separate historical reference. Current presentation uses the same native BoardUI resources as main/setup/settings on every OS; GPUI theme values are not a second production palette.
 
 | GPUI source at the reference | mygo fixture |
 | --- | --- |
@@ -15,7 +15,7 @@ The existing desktop fixture keeps its separate reference.
 | `crates/quick-panel-core/src/state/{keys,search,suggest,menu,preview,session}.rs` | `quick_panel_model.go`: fixture state, delayed search/preview, focus zones, actions and simulated effects |
 | `crates/quick-panel-core/src/{actions,selection,grid,empty_page}.rs` | `quick_panel_model.go`, `quick_panel_view.go`: enabled action traversal, bounded selection, image paging and relaxation proposals |
 | `apps/quick-panel/src/ui/{view,image_preview}.rs` | `quick_panel_view.go`, `quick_panel_image.go`: typed preview and image fit/actual-size/pan |
-| `apps/quick-panel/assets/themes.json` | `quick_panel_view.go`: default light/dark GPUI colors and fixed geometry |
+| `apps/quick-panel/assets/themes.json` | Historical geometry/color lineage only; current `quick_panel_view.go` palette uses native BoardUI semantic resources |
 
 These reference paths belong to the other branch. Inspect them with `git show 885546c7:<path>`.
 See the [architecture](../../docs/architecture/overview.md#gpui-quick-panel-fixture) for the implementation boundary.
@@ -24,7 +24,7 @@ See the [architecture](../../docs/architecture/overview.md#gpui-quick-panel-fixt
 
 ```sh
 go build -o .build/unic-desktop-demo ./app/desktop/cmd/unic-desktop-demo
-UNIC_UI_SKIN=macos .build/unic-desktop-demo --page quick-panel --theme dark
+.build/unic-desktop-demo --page quick-panel --theme dark
 ```
 
 Use `--theme light` for the light preset.
@@ -52,7 +52,7 @@ Closing the panel hides both windows. On macOS, reactivate the demo from the Doc
 12. Hover an image preview. Toggle actual size and fit. Double-click to toggle zoom. Drag while at actual size. Confirm bounded pan and reset when the image changes.
 13. Press Escape with suggestions, with filters, and with an empty search. Confirm suggestion dismissal, filter reset, then panel hide.
 14. Move the parent near each display edge. Confirm satellite flipping and clamping. Click satellite actions. Confirm that the history input retains keyboard focus. Activate another application. Confirm that both windows hide.
-15. Repeat with light and dark themes. Record native evidence against the manifest and source hashes.
+15. Repeat with light and dark schemes. Record actual native host evidence against the manifest and source hashes; a software-view run is not that evidence.
 
 On Windows and Linux, use Ctrl where macOS uses Command.
 The sample has no global activation shortcut. Launch it explicitly for each session.
@@ -77,7 +77,7 @@ They are not native window-manager, OS focus, screenshot-comparison or automatic
 The fake backend implements local substring matching, fixed relative-time fixtures and fixture-catalog suggestions.
 It does not port the daemon's search index, arbitrary natural-language date grammar, arbitrary pinyin transliteration, live reconnection or service timing.
 The rich-text fixture uses mygo's existing HTML parser and read-only rich-text editor. It does not test GPUI's full HTML compatibility.
-The existing Kit supplies icon glyphs. GPUI font rasterization, exact icon paths and native window shadows can differ.
+The unified application composition uses source-bound BoardUI colors/type and the finite 49-glyph Remix set. It does not retain platform icon strokes or a separate GPUI palette. The historical GPUI images are not the current pixel baseline. Native font rasterization, window shadows and display behavior still require platform evidence.
 The satellite uses mygo's maintained nonfocusable Flyout for parent ownership, edge flipping and placement.
 It does not use GPUI's native window implementation. Multi-monitor placement and native focus require the manual checks above.
 Global hotkeys, modifier double taps, real target capture, clipboard restore, OS paste, automatic reopening and persisted settings are outside this fixture.
@@ -109,3 +109,7 @@ Full selected content is separately cancellable. Real images replace fixture ima
 Copy and Delete call the service. Production global activation, target capture and native paste dispatch now use the [Desktop system contract](../../docs/contracts/desktop-quick-panel-contract.md). Native acceptance remains separate; Wayland paste, favorites and semantic classifications remain unavailable. The isolated fixture still simulates host effects.
 The production window does not install the standalone fixture's Dock-reactivation behavior.
 See the [search contract](../../docs/contracts/history-search-contract.md) and [process receipt](../../docs/exec/desktop-search-implementation.md).
+
+## Current presentation ownership
+
+`app/desktop/boardui` owns reusable controls and source-generated resources. `internal/desktopkit` owns application-only composition, and `internal/desktopui` owns the Quick Panel state/renderer. The parent-owned frameless window, Flyout, physical keyboard modifiers and production focus/paste dispatch remain native host responsibilities. There is no platform-skin switch. See the [presentation architecture](../../docs/architecture/overview.md#native-boardui-presentation) and [component contract](../../docs/contracts/boardui-native-contract.md). Native OS keyboard/IME, accessibility bridges, display-edge behavior, compositor output and Windows resource acceptance remain separate from these fixture scenarios.

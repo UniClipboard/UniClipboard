@@ -19,7 +19,7 @@ import (
 // including real Kit controls and the UI event/layout engine. No native window
 // is opened. Geometry checks do not establish visual/native acceptance.
 func scenarioSidebarCollapse(t *testing.T) {
-	t.Setenv("UNIC_UI_SKIN", "macos")
+
 	d := newDemo("history", "dark")
 	tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: true})
 	proof.Capture(t, tt)
@@ -62,11 +62,21 @@ func scenarioSidebarCollapse(t *testing.T) {
 	}()
 	click := func() {
 		t.Helper()
-		if err := tt.Click("切换侧栏"); err != nil {
-			t.Fatal(err)
+		// The shared toolbar follows the animated content edge. Track the
+		// actual pointer target after Press; a stale-coordinate Release outside
+		// the moving button correctly cancels, rather than reversing state.
+		target, ok := tt.AccessByRole(ui.RoleButton, "切换侧栏")
+		if !ok {
+			t.Fatal("sidebar toggle missing")
 		}
+		tt.Press(target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2)
+		target, ok = tt.AccessByRole(ui.RoleButton, "切换侧栏")
+		if !ok {
+			t.Fatal("pressed sidebar toggle missing")
+		}
+		tt.Release(target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2)
 	}
-	if s := read("open", 0); s.ContentX != 236 {
+	if s := read("open", 0); s.ContentX != 250 {
 		t.Fatalf("initial sidebar width: %v", s)
 	}
 	click()
@@ -88,7 +98,7 @@ func scenarioSidebarCollapse(t *testing.T) {
 	}
 	click()
 	tt.Advance(280 * time.Millisecond)
-	if s := read("reopened", 280); math.Abs(float64(s.ContentX-236)) > .5 {
+	if s := read("reopened", 280); math.Abs(float64(s.ContentX-250)) > .5 {
 		t.Errorf("sidebar did not reopen: %v", s)
 	}
 	click()
@@ -96,7 +106,7 @@ func scenarioSidebarCollapse(t *testing.T) {
 	read("reverse-start", 80)
 	click()
 	tt.Advance(280 * time.Millisecond)
-	if s := read("reversed-open", 280); math.Abs(float64(s.ContentX-236)) > .5 {
+	if s := read("reversed-open", 280); math.Abs(float64(s.ContentX-250)) > .5 {
 		t.Errorf("reverse animation lost its target: %v", s)
 	}
 }

@@ -18,7 +18,7 @@ import (
 // insets; expanded search pushes commands outside compact windows; menu hit
 // targets lose alignment. Drive the complete history view at supported sizes.
 func scenarioToolbarAlignment(t *testing.T) {
-	t.Setenv("UNIC_UI_SKIN", "macos")
+
 	results := map[string]map[string]ui.Rect{}
 	rimResults := map[string]map[string]float64{}
 	defer func() {
@@ -27,7 +27,7 @@ func scenarioToolbarAlignment(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			b, err := json.MarshalIndent(map[string]any{"geometry": results, "rim_contrast": rimResults}, "", "  ")
+			b, err := json.MarshalIndent(map[string]any{"geometry": results, "visible_control_pixels": rimResults}, "", "  ")
 			if err != nil {
 				t.Error(err)
 				return
@@ -71,52 +71,40 @@ func scenarioToolbarAlignment(t *testing.T) {
 						}
 						results[name]["toolbar"] = bar.Bounds
 						if theme == "light" {
-							layout, ok := tt.AccessByRole(ui.RoleRadioGroup, "显示方式")
-							if !ok {
-								t.Fatal("layout control missing")
+							// Retain a pixel visibility assertion for every command, but
+							// sample the actual BoardUI controls. A removed glass capsule
+							// outline is not part of the unified source reference.
+							frames := map[string]ui.Rect{}
+							for _, target := range []struct {
+								role ui.Role
+								name string
+							}{
+								{ui.RoleGroup, "显示方式"}, {ui.RoleSearch, ""},
+								{ui.RoleMenuButton, "发送到设备"}, {ui.RoleMenuButton, "更多操作"},
+							} {
+								info, ok := tt.AccessByRole(target.role, target.name)
+								if !ok {
+									t.Fatalf("toolbar control missing: %v %q", target.role, target.name)
+								}
+								frames[string(target.role)+":"+target.name] = info.Bounds
 							}
-							search, ok := tt.AccessByRole(ui.RoleSearch, "")
-							if !ok {
-								t.Fatal("search missing")
-							}
-							send, _ := tt.AccessByRole(ui.RoleMenuButton, "发送到设备")
-							more, _ := tt.AccessByRole(ui.RoleMenuButton, "更多操作")
-							frames := map[string]ui.Rect{"layout": layout.Bounds, "search": search.Bounds, "commands": {X: send.Bounds.X, Y: layout.Bounds.Y, W: more.Bounds.X + more.Bounds.W - send.Bounds.X, H: layout.Bounds.H}}
 							rimResults[name] = map[string]float64{}
 							im := tt.Image()
 							for label, frame := range frames {
-								for _, bottom := range []bool{false, true} {
-
-									visible, count := 0, 0
-									for x := frame.X + frame.W*.3; x < frame.X+frame.W*.7; x += 1 {
-										// Follow the capsule arc, and sample beyond the focus halo.
-										radius := frame.H / 2
-										dx := max(float32(0), max(frame.X+radius-x, x-(frame.X+frame.W-radius)))
-										arc := radius - float32(math.Sqrt(float64(radius*radius-dx*dx)))
-										edge, outside := frame.Y+arc, frame.Y+arc-7
-										if bottom {
-											edge, outside = frame.Y+frame.H-arc, frame.Y+frame.H-arc+7
-										}
-										bg := im.RGBAAt(int(x*scale), int(outside*scale))
-										contrast := 0
-										for dy := -int(scale); dy < 2*int(scale); dy++ {
-											px := im.RGBAAt(int(x*scale), int(edge*scale)+dy)
-											delta := int(bg.R) + int(bg.G) + int(bg.B) - int(px.R) - int(px.G) - int(px.B)
-											if delta > contrast {
-												contrast = delta
-											}
-										}
-										if contrast >= 36 {
+								background := im.RGBAAt(int((frame.X+frame.W/2)*scale), int((frame.Y-5)*scale))
+								visible := 0
+								for y := int(frame.Y * scale); y < int((frame.Y+frame.H)*scale); y++ {
+									for x := int(frame.X * scale); x < int((frame.X+frame.W)*scale); x++ {
+										ink := im.RGBAAt(x, y)
+										delta := absBoardUIChannel(int(ink.R)-int(background.R)) + absBoardUIChannel(int(ink.G)-int(background.G)) + absBoardUIChannel(int(ink.B)-int(background.B))
+										if delta >= 36 {
 											visible++
 										}
-										count++
 									}
-									ratio := float64(visible) / float64(count)
-									edge := fmt.Sprintf("%s/bottom%t", label, bottom)
-									rimResults[name][edge] = ratio
-									if ratio < .8 {
-										t.Errorf("light capsule rim is lost against the background: %s visible=%.2f, want >=0.80", edge, ratio)
-									}
+								}
+								rimResults[name][label] = float64(visible)
+								if visible < 12 {
+									t.Errorf("light BoardUI control is not visible: %s pixels=%d", label, visible)
 								}
 							}
 						}

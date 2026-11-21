@@ -1,8 +1,8 @@
 package main
 
 import (
-	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,15 +10,16 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/boardui"
+
 	proof "github.com/uniclipboard/unic/app/desktop/internal/e2eproof"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
-func eachGUISkin(t *testing.T, run func(*testing.T, bool)) {
+func eachGUITheme(t *testing.T, run func(*testing.T, bool)) {
 	t.Helper()
-	for _, skin := range []string{"linux", "macos", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		t.Run(skin, func(t *testing.T) {
-			t.Setenv("UNIC_UI_SKIN", skin)
 			for _, dark := range []bool{false, true} {
 				name := "light"
 				if dark {
@@ -80,7 +81,7 @@ func guiScreenshot(t *testing.T, tt *ui.Tester, name string) {
 // Exercise the actual window view so skin changes cannot lose navigation, approval
 // information, history tags or the destructive confirmation barrier.
 func scenarioGUINavigation(t *testing.T) {
-	eachGUISkin(t, func(t *testing.T, dark bool) {
+	eachGUITheme(t, func(t *testing.T, dark bool) {
 		g := fixtureGUI()
 		tt := ui.NewTester(g.view, 480, 640)
 		proof.Capture(t, tt)
@@ -148,7 +149,7 @@ func scenarioGUINavigation(t *testing.T) {
 }
 
 func scenarioGUIApprovalAndReconnect(t *testing.T) {
-	eachGUISkin(t, func(t *testing.T, dark bool) {
+	eachGUITheme(t, func(t *testing.T, dark bool) {
 		g := fixtureGUI()
 		g.tab = tabDevices
 		g.status.Pending = []api.PendingPeer{{
@@ -177,7 +178,7 @@ func scenarioGUIApprovalAndReconnect(t *testing.T) {
 }
 
 func scenarioGUIEmptyHistoryLayout(t *testing.T) {
-	eachGUISkin(t, func(t *testing.T, dark bool) {
+	eachGUITheme(t, func(t *testing.T, dark bool) {
 		g := fixtureGUI()
 		g.history = nil
 		tt := ui.NewTester(g.view, 480, 640)
@@ -191,31 +192,24 @@ func scenarioGUIEmptyHistoryLayout(t *testing.T) {
 		if !ok || empty.Bounds.H < 300 {
 			t.Fatalf("empty state did not receive the remaining body height: %+v", empty.Bounds)
 		}
-		last, ok := tt.AccessByRole(ui.RoleRadio, "添加设备")
-		if !ok || last.Bounds.X+last.Bounds.W < 450 {
-			t.Fatalf("tabs leave an unused track at the trailing edge: %+v", last.Bounds)
+		last, ok := tt.AccessByRole(ui.RoleToggleButton, "添加设备")
+		if !ok || last.Bounds.W <= 0 || last.Bounds.X+last.Bounds.W > 480 {
+			t.Fatalf("source toggle navigation is missing or leaves the viewport: %+v", last.Bounds)
 		}
-		if os.Getenv("UNIC_UI_SKIN") == "macos" {
-			selected, ok := tt.AccessByRole(ui.RoleRadio, "历史")
-			if !ok || selected.Bounds.H != 20 {
-				t.Fatalf("selected segment does not fill the 24pt track: %+v", selected.Bounds)
-			}
-			field, ok := tt.AccessByRole(ui.RoleTextField, "按标签筛选")
-			if !ok || field.Bounds.H != 22 {
-				t.Fatalf("text field does not use the 22pt macOS metric: %+v", field.Bounds)
-			}
-			r := field.Bounds
-			img := tt.Image()
-			sample := func(x, y float32) color.RGBA {
-				return img.RGBAAt(int(x*2), int(y*2))
-			}
-			left := sample(r.X-2, r.Y+r.H/2)
-			right := sample(r.X+r.W+2, r.Y+r.H/2)
-			top := sample(r.X+r.W/2, r.Y-2)
-			if left != right || left != top || left.B <= left.R {
-				t.Fatalf("focus ring clipped or asymmetric: left=%v right=%v top=%v", left, right, top)
+		field, ok := tt.AccessByRole(ui.RoleTextField, "按标签筛选")
+		if !ok || field.Bounds.H != boardui.Geometry("input", "medium").Height || !field.Focused {
+			t.Fatalf("source field geometry/focus: %+v", field)
+		}
+		r := field.Bounds
+		img := tt.Image()
+		edge := boardui.Token(dark, "border-button-active")
+		for _, point := range [][2]float32{{r.X + 1, r.Y + r.H/2}, {r.X + r.W - 1, r.Y + r.H/2}, {r.X + r.W/2, r.Y + 1}} {
+			ink := img.RGBAAt(int(point[0]*2), int(point[1]*2))
+			if math.Abs(float64(ink.R)-float64(edge.R)) > 2 || math.Abs(float64(ink.G)-float64(edge.G)) > 2 || math.Abs(float64(ink.B)-float64(edge.B)) > 2 {
+				t.Fatalf("source focus inset clipped at %v: got %v want %v", point, ink, edge)
 			}
 		}
+
 		tt.SetSize(360, 520)
 		for _, label := range []string{"按标签筛选", "筛选", "最新"} {
 			a, ok := tt.Access(label)

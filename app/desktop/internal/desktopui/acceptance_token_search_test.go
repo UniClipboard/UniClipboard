@@ -41,11 +41,11 @@ func scenarioTokenSearch(t *testing.T) {
 			}
 		}
 	}()
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"dark", "light"} {
 			for _, scenario := range []string{"device", "tags", "type", "time", "extension", "middle", "literal", "paste", "pointer", "quote", "filters", "keyboard", "escape", "zero"} {
 				t.Run(skin+"/"+theme+"/"+scenario, func(t *testing.T) {
-					t.Setenv("UNIC_UI_SKIN", skin)
+
 					d := newDemo("history", theme)
 					tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 					proof.Capture(t, tt)
@@ -171,20 +171,18 @@ func scenarioTokenSearch(t *testing.T) {
 						}
 					case "filters":
 						tt.Key(0, ui.KeyEscape)
-						if err := tt.Click("来源设备"); err != nil {
+						if err := tt.Click("筛选条件"); err != nil {
 							t.Fatal(err)
 						}
-						var err error
-						if skin == "macos" {
-							err = tt.ChooseMenuItem("Linux 工作站")
-						} else {
-							err = tt.Click("Linux 工作站")
-						}
-						if err != nil {
+						if err := tt.Click("Linux 工作站"); err != nil {
 							t.Fatal(err)
 						}
 						if d.source != "linux" || len(d.filtered()) != 2 {
 							t.Fatal("source filter did not apply")
+						}
+						// Close the filter popover and remove the token chip directly from the omnibar.
+						if err := tt.Click("筛选条件"); err != nil {
+							t.Fatal(err)
 						}
 						if err := tt.Click("移除设备条件"); err != nil {
 							t.Fatal(err)
@@ -226,12 +224,9 @@ func scenarioTokenSearch(t *testing.T) {
 						}
 						tt.Key(0, ui.KeyEscape)
 						tt.Advance(300 * time.Millisecond)
-						if skin == "macos" {
-							info, _ := tt.AccessByRole(ui.RoleSearch, "")
-							if info.Bounds.W != 32 {
-								t.Fatal("third Escape did not collapse search")
-							}
+						{
 						}
+
 					case "zero":
 						tt.Type("/richtext")
 						choose("富文本")

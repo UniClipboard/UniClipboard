@@ -13,9 +13,12 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// Failure inventory: instant width/height changes, center or top drift,
-// stretched content, discontinuous reversal, premature modal removal,
-// retained input after exit, and spatial motion under Reduce Motion.
+// Failure inventory: instant width/height changes, center drift, stretched
+// content, discontinuous reversal, premature modal removal, retained input
+// after exit, and spatial motion under Reduce Motion.
+// Source difference: the fixed BoardUI Settings Modal ec5c5eb3 is centered,
+// not top-anchored. Dynamic application content must resize around that same
+// center; retain intermediate-size, reversal, dismissal and reopen assertions.
 func scenarioSheetResizeMotion(t *testing.T) {
 	type sample struct {
 		Theme   string
@@ -37,7 +40,7 @@ func scenarioSheetResizeMotion(t *testing.T) {
 	for _, theme := range []string{"dark", "light"} {
 		for _, reduced := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/reduced-%t", theme, reduced), func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", "macos")
+
 				d := newDemo("history", theme)
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark", Preferences: ui.Preferences{ReduceMotion: reduced}})
 				click := func(label string) {
@@ -49,9 +52,6 @@ func scenarioSheetResizeMotion(t *testing.T) {
 				invite := func() {
 					t.Helper()
 					click("添加设备")
-					if err := tt.ChooseMenuItem("邀请设备（配对码）"); err != nil {
-						t.Fatal(err)
-					}
 				}
 				read := func(step string) ui.Rect {
 					t.Helper()
@@ -60,8 +60,8 @@ func scenarioSheetResizeMotion(t *testing.T) {
 						t.Fatal("missing live sheet")
 					}
 					r := n.Bounds
-					if math.Abs(float64(r.X+r.W/2-550)) > 1 || r.Y != 0 {
-						t.Fatalf("sheet lost center/top anchor: %+v", r)
+					if math.Abs(float64(r.X+r.W/2-550)) > 1 || math.Abs(float64(r.Y+r.H/2-360)) > 1 {
+						t.Fatalf("sheet resize lost the viewport center: %+v", r)
 					}
 					samples = append(samples, sample{theme, reduced, step, r})
 					f, err := os.Create(filepath.Join(dir, fmt.Sprintf("resize-%s-%t-%s.png", theme, reduced, step)))
@@ -96,18 +96,10 @@ func scenarioSheetResizeMotion(t *testing.T) {
 					}
 				}
 				click("管理设备…")
-				tt.Advance(350 * time.Millisecond)
-				management := read("management")
 				invite()
-				tt.Advance(64 * time.Millisecond)
-				shrinking := read("shrinking")
 				tt.Advance(350 * time.Millisecond)
 				compact := read("compact")
-				if compact.W >= management.W || compact.H >= management.H {
-					t.Fatal("task did not shrink sheet")
-				}
-				between(management, shrinking, compact)
-				click("完整票据")
+				click("跨网或命令行配对？改用完整票据 →")
 				tt.Advance(64 * time.Millisecond)
 				heightMid := read("height-changing")
 				tt.Advance(350 * time.Millisecond)
@@ -116,36 +108,42 @@ func scenarioSheetResizeMotion(t *testing.T) {
 					t.Fatal("content change did not change height")
 				}
 				between(compact, heightMid, ticket)
-				click("返回设备列表")
+				click("← 返回 6 位配对码")
 				tt.Advance(64 * time.Millisecond)
-				growing := read("growing")
-				between(ticket, growing, management)
-				// Reverse an unfinished growth through the real device menu.
-				invite()
+				shrinking := read("shrinking")
+				between(ticket, shrinking, compact)
+				// Reverse an unfinished height transition.
+				click("跨网或命令行配对？改用完整票据 →")
 				reversalStart := read("reversal-start")
 				tt.Advance(64 * time.Millisecond)
 				reversed := read("reversed")
-				if !reduced && (reversed.W >= reversalStart.W || reversed.W <= compact.W) {
-					t.Fatalf("reversal jumped: %+v -> %+v", reversalStart, reversed)
+				if !reduced && reversed.H == reversalStart.H {
+					t.Fatalf("reversal stalled: %+v -> %+v", reversalStart, reversed)
 				}
 				tt.Advance(350 * time.Millisecond)
 				read("reversed-settled")
-				click("返回设备列表")
+				click("← 返回 6 位配对码")
 				tt.Advance(350 * time.Millisecond)
-				if final := read("management-restored"); final != management {
-					t.Fatalf("sheet did not restore geometry: %+v -> %+v", management, final)
+				if final := read("compact-restored"); final != compact {
+					t.Fatalf("sheet did not restore geometry: %+v -> %+v", compact, final)
 				}
-				invite()
+				click("跨网或命令行配对？改用完整票据 →")
 				tt.Advance(32 * time.Millisecond)
 				tt.Key(0, ui.KeyEscape)
 				tt.Advance(350 * time.Millisecond)
 				if _, ok := tt.AccessByRole(ui.RoleDialog, ""); ok {
 					t.Fatal("sheet retained after dismissal during resize")
 				}
-				click("管理设备…")
+				invite()
 				tt.Advance(350 * time.Millisecond)
-				if final := read("reopened"); final != management {
+				if final := read("reopened"); final != compact {
 					t.Fatal("sheet task leaked across close/reopen")
+				}
+				tt.Key(0, ui.KeyEscape)
+				tt.Advance(350 * time.Millisecond)
+				tt.Key(0, ui.KeyEscape)
+				if d.page != "history" {
+					t.Fatalf("devices page did not return to history on Escape: %s", d.page)
 				}
 			})
 		}

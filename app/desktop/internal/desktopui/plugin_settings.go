@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
 
@@ -22,20 +22,20 @@ type builtinPluginSettings struct {
 
 type builtinPluginEntry struct {
 	id, name, description string
-	icon                  uikit.IconName
+	icon                  desktopkit.IconName
 	capabilities, events  []string
 	actions               []string
 }
 
 var builtinPluginEntries = []builtinPluginEntry{
-	{id: "builtin.tailcat", name: "Tailcat 同步", description: "设备间同步。支持文本、图片、文件与文件夹。", icon: uikit.IconRetry, capabilities: []string{"同步后端"}},
-	{id: "builtin.text", name: "文本工具", description: "标注邮箱和链接，提供大写、小写、去除首尾空白和纯文本动作。", icon: uikit.IconEdit,
+	{id: "builtin.tailcat", name: "Tailcat 同步", description: "设备间同步。支持文本、图片、文件与文件夹。", icon: desktopkit.IconRetry, capabilities: []string{"同步后端"}},
+	{id: "builtin.text", name: "文本工具", description: "标注邮箱和链接，提供大写、小写、去除首尾空白和纯文本动作。", icon: desktopkit.IconEdit,
 		capabilities: []string{"自动标注", "动作"}, events: []string{"clipboard.captured", "clipboard.received"}, actions: []string{"转大写", "转小写", "去除首尾空白", "纯文本"}},
-	{id: "builtin.classify", name: "内容分类", description: "按文本、图片、文件、文件夹和链接添加类型标签。", icon: uikit.IconList,
+	{id: "builtin.classify", name: "内容分类", description: "按文本、图片、文件、文件夹和链接添加类型标签。", icon: desktopkit.IconList,
 		capabilities: []string{"自动标注"}, events: []string{"clipboard.captured", "clipboard.received"}},
 }
 
-func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
+func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	l := d.live
 	cfg := l.config.Config
 	// Instances is a map in an otherwise value-copied Config. Never mutate the
@@ -45,10 +45,10 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 		cfg.Plugins.Instances = map[string]config.Instance{}
 	}
 	if l.config.ApplyError != "" {
-		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneError, Title: d.tr("设置已保存，但未能生效。请重试或重新启动桌面端。")})
+		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr("设置已保存，但未能生效。请重试或重新启动桌面端。")})
 	}
 	if l.config.Error != "" {
-		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr("配置文件无效。当前保留上一份有效设置。")})
+		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("配置文件无效。当前保留上一份有效设置。")})
 	}
 	pending := false
 	for _, key := range l.config.RestartRequired {
@@ -57,17 +57,17 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 		}
 	}
 	if pending {
-		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
+		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
 	}
 	p := &d.pluginSettings
-	status := func(id string) (string, uikit.StatusTone) {
+	status := func(id string) (string, desktopkit.StatusTone) {
 		switch {
 		case pending && id != "builtin.tailcat":
-			return d.tr("需要重启"), uikit.StatusWarning
+			return d.tr("需要重启"), desktopkit.StatusWarning
 		case cfg.PluginEnabled(id):
-			return d.tr("已启用"), uikit.StatusPositive
+			return d.tr("已启用"), desktopkit.StatusPositive
 		}
-		return d.tr("已停用"), uikit.StatusNeutral
+		return d.tr("已停用"), desktopkit.StatusNeutral
 	}
 	if p.id == "" {
 		d.builtinPluginList(c, k, &cfg)
@@ -91,36 +91,36 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 	}
 	name := d.tr(entry.name)
 	text, tone := status(entry.id)
-	k.EntityHeader(c.Key("plugin-header"), uikit.EntityHeaderProps{Icon: entry.icon, Title: name, Badge: d.tr("内置"), Status: uikit.EntityStatus{Text: text, Tone: tone}, Description: d.tr(entry.description)}, nil)
+	k.EntityHeader(c.Key("plugin-header"), desktopkit.EntityHeaderProps{Icon: entry.icon, Title: name, Badge: d.tr("内置"), Status: desktopkit.EntityStatus{Text: text, Tone: tone}, Description: d.tr(entry.description)}, nil)
 	if len(entry.actions) > 0 {
 		if p.tab == "" {
 			p.tab = "overview"
 		}
-		k.SegmentedControl(c.Key("plugin-tabs"), uikit.SegmentedControlProps{Label: d.tr("插件详情"), Value: &p.tab, Items: []uikit.SegmentedItem{{Value: "overview", Label: d.tr("概览")}, {Value: "actions", Label: d.tr("动作")}}})
+		k.SegmentedControl(c.Key("plugin-tabs"), desktopkit.SegmentedControlProps{Label: d.tr("插件详情"), Value: &p.tab, Items: []desktopkit.SegmentedItem{{Value: "overview", Label: d.tr("概览")}, {Value: "actions", Label: d.tr("动作")}}})
 	} else {
 		p.tab = "overview"
 	}
 	if p.tab == "actions" {
-		k.SettingsGroup(c.Key("plugin-actions"), uikit.SettingsGroupProps{Title: d.tr("动作")}, func() {
+		k.SettingsGroup(c.Key("plugin-actions"), desktopkit.SettingsGroupProps{Title: d.tr("动作")}, func() {
 			for _, a := range entry.actions {
-				k.SettingsRow(c.Key(a), uikit.SettingsRowProps{Label: d.tr(a), Description: d.tr("接受：文本")}, nil, nil)
+				k.SettingsRow(c.Key(a), desktopkit.SettingsRowProps{Label: d.tr(a), Description: d.tr("接受：文本")}, nil, nil)
 			}
 		})
 		k.Text(c, d.tr("动作显示在历史条目的“动作”菜单中。结果是新的历史条目。"), footnote)
 		return
 	}
-	facts := []uikit.Fact{{ID: "caps", Label: d.tr("能力"), Value: d.join(entry.capabilities)}}
+	facts := []desktopkit.Fact{{ID: "caps", Label: d.tr("能力"), Value: d.join(entry.capabilities)}}
 	events := "—"
 	if len(entry.events) > 0 {
 		events = strings.Join(entry.events, ", ")
 	}
-	facts = append(facts, uikit.Fact{ID: "events", Label: d.tr("订阅事件"), Value: events, Monospace: true}, uikit.Fact{ID: "state", Label: d.tr("运行状态"), Value: text})
-	k.FactList(c.Key("plugin-facts"), uikit.FactListProps{Label: d.tr("插件信息"), Facts: facts})
+	facts = append(facts, desktopkit.Fact{ID: "events", Label: d.tr("订阅事件"), Value: events, Monospace: true}, desktopkit.Fact{ID: "state", Label: d.tr("运行状态"), Value: text})
+	k.FactList(c.Key("plugin-facts"), desktopkit.FactListProps{Label: d.tr("插件信息"), Facts: facts})
 	changed := false
 	instance := cfg.Plugins.Instances[p.id]
 	toggle := func(id, label, desc string, on *bool) {
-		k.SettingsRow(c.Key(id), uikit.SettingsRowProps{Label: d.tr(label), Description: d.tr(desc)}, nil, func() {
-			if k.Switch(c, on, uikit.SwitchProps{Label: d.tr(label), Disabled: l.busy || l.loading}).Changed() {
+		k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: d.tr(label), Description: d.tr(desc)}, nil, func() {
+			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.busy || l.loading}).Changed() {
 				changed = true
 			}
 		})
@@ -131,8 +131,8 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 			p.threshold = strconv.FormatFloat(float64(instance.Sync.AutoFileMaxBytes)/(1<<20), 'f', -1, 64)
 			p.thresholdError = ""
 		}
-		k.SettingsGroup(c.Key("plugin-detail-"+p.id), uikit.SettingsGroupProps{Title: name}, func() {
-			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("内置同步后端"), Description: d.tr("随应用升级，不能单独停用或卸载。")}, nil, nil)
+		k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("内置同步后端"), Description: d.tr("随应用升级，不能单独停用或卸载。")}, nil, nil)
 			k.Text(c, d.tr("以下策略保存后立即生效，仍受全局同步设置限制。"), footnote)
 			on := func(v *bool) bool { return v == nil || *v }
 			text, images, files := on(instance.Sync.Text), on(instance.Sync.Images), on(instance.Sync.Files)
@@ -144,8 +144,8 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 				instance.Sync.Images = &images
 				instance.Sync.Files = &files
 			}
-			k.SettingsRow(c.Key("threshold"), uikit.SettingsRowProps{Label: d.tr("自动文件传输阈值（MB）"), Description: d.tr("0 表示不增加限制。按整次选择的文件总大小计算。主动发送不受此阈值限制。") + " " + d.tr("输入后按回车保存。")}, nil, func() {
-				field := k.TextField(c, uikit.TextFieldProps{Label: d.tr("自动文件传输阈值（MB）"), Value: &p.threshold, Disabled: l.busy || l.loading, Error: d.tr(p.thresholdError)})
+			k.SettingsRow(c.Key("threshold"), desktopkit.SettingsRowProps{Label: d.tr("自动文件传输阈值（MB）"), Description: d.tr("0 表示不增加限制。按整次选择的文件总大小计算。主动发送不受此阈值限制。") + " " + d.tr("输入后按回车保存。")}, nil, func() {
+				field := k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("自动文件传输阈值（MB）"), Value: &p.threshold, Disabled: l.busy || l.loading, Error: d.tr(p.thresholdError)})
 				if field.Submitted && !l.busy {
 					value, err := strconv.ParseInt(strings.TrimSpace(p.threshold), 10, 64)
 					if err != nil || value < 0 || value > 4096 {
@@ -159,7 +159,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 			})
 		})
 	} else {
-		k.SettingsGroup(c.Key("plugin-detail-"+p.id), uikit.SettingsGroupProps{Title: name}, func() {
+		k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
 			enabled := cfg.PluginEnabled(p.id)
 			label := "启用文本工具"
 			if p.id == "builtin.classify" {
@@ -178,13 +178,13 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k uikit.Kit) {
 			if policy == "" {
 				policy = "inherit"
 			}
-			k.SettingsRow(c.Key("failure"), uikit.SettingsRowProps{Label: d.tr("处理失败时"), Description: d.tr("重启后生效。")}, nil, func() {
-				items := []uikit.SelectItem{
+			k.SettingsRow(c.Key("failure"), desktopkit.SettingsRowProps{Label: d.tr("处理失败时"), Description: d.tr("重启后生效。")}, nil, func() {
+				items := []desktopkit.SelectItem{
 					{Value: "inherit", Label: fmt.Sprintf(d.tr("跟随全局（%s）"), global)},
 					{Value: "continue", Label: d.tr("继续处理")},
 					{Value: "block_sync", Label: d.tr("禁止同步此条目")},
 				}
-				if k.Select(c, uikit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.busy || l.loading}).Changed {
+				if k.Select(c, desktopkit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.busy || l.loading}).Changed {
 					instance.OnError = policy
 					if policy == "inherit" {
 						instance.OnError = ""
@@ -208,15 +208,15 @@ func (d *viewState) join(items []string) string {
 	return strings.Join(out, " · ")
 }
 
-func (d *viewState) builtinPluginList(c *ui.Context, k uikit.Kit, cfg *config.Config) {
+func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *config.Config) {
 	l := d.live
 	p := &d.pluginSettings
-	search := k.SearchField(c.Key("plugin-search"), uikit.SearchFieldProps{Label: d.tr("搜索插件"), Placeholder: d.tr("搜索插件名称或 ID"), Value: &p.query})
+	search := k.SearchField(c.Key("plugin-search"), desktopkit.SearchFieldProps{Label: d.tr("搜索插件"), Placeholder: d.tr("搜索插件名称或 ID"), Value: &p.query})
 	if search.Escaped {
 		p.query = ""
 	}
 	query := strings.ToLower(strings.TrimSpace(p.query))
-	k.SettingsGroup(c.Key("builtin-plugin-list"), uikit.SettingsGroupProps{Title: d.tr("内置插件")}, func() {
+	k.SettingsGroup(c.Key("builtin-plugin-list"), desktopkit.SettingsGroupProps{Title: d.tr("内置插件")}, func() {
 		shown := 0
 		for _, entry := range builtinPluginEntries {
 			if query != "" && !strings.Contains(strings.ToLower(d.tr(entry.name)+" "+entry.id), query) {
@@ -225,18 +225,18 @@ func (d *viewState) builtinPluginList(c *ui.Context, k uikit.Kit, cfg *config.Co
 			shown++
 			labelExtra := func() {
 				for _, cap := range entry.capabilities {
-					k.Tag(c.Key("cap-"+entry.id+cap), d.tr(cap), uikit.TagProps{Color: "blue"})
+					k.Tag(c.Key("cap-"+entry.id+cap), d.tr(cap), desktopkit.TagProps{Color: "blue"})
 				}
 			}
-			k.SettingsRow(c.Key(entry.id), uikit.SettingsRowProps{Label: d.tr(entry.name), Description: entry.id + " · " + d.tr(entry.description)}, labelExtra, func() {
+			k.SettingsRow(c.Key(entry.id), desktopkit.SettingsRowProps{Label: d.tr(entry.name), Description: entry.id + " · " + d.tr(entry.description)}, labelExtra, func() {
 				on := cfg.PluginEnabled(entry.id)
-				if k.Switch(c.Key("enable-"+entry.id), &on, uikit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: entry.id == "builtin.tailcat" || l.busy || l.loading}).Changed() {
+				if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: entry.id == "builtin.tailcat" || l.busy || l.loading}).Changed() {
 					instance := cfg.Plugins.Instances[entry.id]
 					instance.Enabled = &on
 					cfg.Plugins.Instances[entry.id] = instance
 					d.saveLiveConfig(*cfg)
 				}
-				if k.Button(c.Key("open-"+entry.id), "", uikit.ButtonProps{Variant: uikit.Subtle, Icon: uikit.IconChevronRight, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.busy || l.loading}).Clicked() {
+				if k.Button(c.Key("open-"+entry.id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconChevronRight, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.busy || l.loading}).Clicked() {
 					*p = builtinPluginSettings{id: entry.id}
 				}
 			})
@@ -246,13 +246,13 @@ func (d *viewState) builtinPluginList(c *ui.Context, k uikit.Kit, cfg *config.Co
 		}
 	})
 	if len(l.externalPlugins) != 0 {
-		k.SettingsGroup(c.Key("external-plugins"), uikit.SettingsGroupProps{Title: d.tr("外部插件")}, func() {
+		k.SettingsGroup(c.Key("external-plugins"), desktopkit.SettingsGroupProps{Title: d.tr("外部插件")}, func() {
 			for _, item := range l.externalPlugins {
 				if query != "" && !strings.Contains(strings.ToLower(item.ID), query) {
 					continue
 				}
-				k.SettingsRow(c.Key(item.ID), uikit.SettingsRowProps{Label: item.ID, Description: item.Version}, nil, func() {
-					if k.Button(c.Key(item.ID), d.tr("打开"), uikit.ButtonProps{Variant: uikit.Subtle, Disabled: l.busy}).Clicked() {
+				k.SettingsRow(c.Key(item.ID), desktopkit.SettingsRowProps{Label: item.ID, Description: item.Version}, nil, func() {
+					if k.Button(c.Key(item.ID), d.tr("打开"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: l.busy}).Clicked() {
 						*p = builtinPluginSettings{id: item.ID}
 					}
 				})

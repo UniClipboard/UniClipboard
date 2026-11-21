@@ -2,6 +2,7 @@ package desktopui
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,17 +14,23 @@ import (
 	proof "github.com/uniclipboard/unic/app/desktop/internal/e2eproof"
 )
 
-// Failure cases: no intermediate entry position, instant removal on close,
-// a retained invisible modal after exit, motion under Reduce Motion, or an
-// inline tag editor that opens a Sheet or mutates tags after cancellation.
+// Failure cases: entry/rest center drift, missing or nonuniform intermediate
+// scale, instant removal on close, retained invisible modal after exit, motion
+// under Reduce Motion, or inline tag edits that open a Sheet/mutate on cancel.
+// Source difference: fixed BoardUI Settings Modal ec5c5eb3 centers its panel
+// and enters from scale .85 with opacity/blur over 300ms. The superseded macOS
+// top-anchor/negative-Y slide is not this source's geometry. Preserve the live
+// exit, cancellation, pixel-difference and inline-tag behavior assertions.
 func scenarioSheetMotion(t *testing.T) {
 	t.Run("resize", scenarioSheetResizeMotion)
 	type receipt struct {
-		Theme, Sheet, Close string
-		Presentation        string
-		EnterY, RestY       float32
-		ExitPixels          int
-		ReducedMotion       bool
+		Theme, Sheet, Close      string
+		Presentation             string
+		EnterY, RestY            float32
+		EnterBounds, RestBounds  ui.Rect
+		EntryScaleX, EntryScaleY float32
+		ExitPixels               int
+		ReducedMotion            bool
 	}
 	var results []receipt
 	defer func() {
@@ -48,19 +55,18 @@ func scenarioSheetMotion(t *testing.T) {
 			mode = "reduced"
 		}
 		for _, theme := range []string{"dark", "light"} {
-			for _, sheet := range []string{"管理", "管理设备", "添加标签"} {
+			for _, sheet := range []string{"管理标签", "添加设备", "添加标签"} {
 				for _, closeBy := range []string{"done", "escape", "backdrop"} {
 					t.Run(mode+"/"+theme+"/"+sheet+"/"+closeBy, func(t *testing.T) {
-						t.Setenv("UNIC_UI_SKIN", "macos")
+
 						d := newDemo("history", theme)
 						tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark", Preferences: ui.Preferences{ReduceMotion: reduced}})
 						proof.Capture(t, tt)
 						label := sheet
-						if sheet == "管理设备" {
-							label = "管理设备…"
-						}
-						if sheet == "管理" {
-							label = "管理标签"
+						if sheet == "添加设备" {
+							if err := tt.Click("管理设备…"); err != nil {
+								t.Fatal(err)
+							}
 						}
 						if err := tt.Click(label); err != nil {
 							t.Fatal(err)
@@ -109,24 +115,44 @@ func scenarioSheetMotion(t *testing.T) {
 						if !ok {
 							t.Fatal("missing sheet")
 						}
-						r := receipt{Theme: theme, Sheet: sheet, Close: closeBy, Presentation: "sheet", ReducedMotion: reduced, EnterY: entering.Bounds.Y}
+						r := receipt{Theme: theme, Sheet: sheet, Close: closeBy, Presentation: "sheet", ReducedMotion: reduced, EnterY: entering.Bounds.Y, EnterBounds: entering.Bounds}
 						results = append(results, r)
 						at := len(results) - 1
-						if reduced && entering.Bounds.Y != 0 {
-							t.Fatalf("sheet moved under Reduce Motion: %+v", entering.Bounds)
-						}
-						if !reduced && (entering.Bounds.Y >= 0 || entering.Bounds.Y <= -entering.Bounds.H) {
-							t.Fatalf("no intermediate sheet entry: %+v", entering.Bounds)
-						}
 						tt.Advance(350 * time.Millisecond)
-						resting, _ := tt.AccessByRole(ui.RoleDialog, sheet)
-						results[at].RestY = resting.Bounds.Y
-						if resting.Bounds.Y != 0 {
-							t.Fatalf("sheet did not settle at top: %+v", resting.Bounds)
+						resting, ok := tt.AccessByRole(ui.RoleDialog, sheet)
+						if !ok {
+							t.Fatal("sheet disappeared before reaching its resting state")
+						}
+						results[at].RestY, results[at].RestBounds = resting.Bounds.Y, resting.Bounds
+						centered := func(phase string, bounds ui.Rect) {
+							t.Helper()
+							if math.Abs(float64(bounds.X+bounds.W/2-550)) > 1 || math.Abs(float64(bounds.Y+bounds.H/2-360)) > 1 {
+								t.Fatalf("sheet %s drifted from the viewport center: %+v", phase, bounds)
+							}
+						}
+						centered("entry", entering.Bounds)
+						centered("rest", resting.Bounds)
+						if resting.Bounds.W <= 0 || resting.Bounds.H <= 0 {
+							t.Fatalf("sheet has empty resting geometry: %+v", resting.Bounds)
+						}
+						xScale, yScale := entering.Bounds.W/resting.Bounds.W, entering.Bounds.H/resting.Bounds.H
+						results[at].EntryScaleX, results[at].EntryScaleY = xScale, yScale
+						if reduced {
+							for _, pair := range [][2]float32{{entering.Bounds.X, resting.Bounds.X}, {entering.Bounds.Y, resting.Bounds.Y}, {entering.Bounds.W, resting.Bounds.W}, {entering.Bounds.H, resting.Bounds.H}} {
+								if math.Abs(float64(pair[0]-pair[1])) > .5 {
+									t.Fatalf("sheet animated geometry under Reduce Motion: entry=%+v rest=%+v", entering.Bounds, resting.Bounds)
+								}
+							}
+						} else if xScale <= .85 || xScale >= 1 || yScale <= .85 || yScale >= 1 || math.Abs(float64(xScale-yScale)) > .01 {
+							t.Fatalf("sheet did not enter through source-centered uniform scale .85 to 1: entry=%+v rest=%+v scale=(%g,%g)", entering.Bounds, resting.Bounds, xScale, yScale)
 						}
 						switch closeBy {
 						case "done":
-							if err := tt.Click("完成"); err != nil {
+							closeBtn := "完成"
+							if sheet == "添加设备" {
+								closeBtn = "关闭"
+							}
+							if err := tt.Click(closeBtn); err != nil {
 								t.Fatal(err)
 							}
 						case "escape":
@@ -135,6 +161,13 @@ func scenarioSheetMotion(t *testing.T) {
 							tt.ClickAt(20, 650)
 						}
 						tt.Advance(60 * time.Millisecond)
+						_, liveDuringExit := tt.AccessByRole(ui.RoleDialog, sheet)
+						if !reduced && !liveDuringExit {
+							t.Fatal("sheet removed its live modal tree before the source exit completed")
+						}
+						if reduced && liveDuringExit {
+							t.Fatal("sheet retained an animated exit under Reduce Motion")
+						}
 						im := tt.Image()
 						scale := im.Bounds().Dx() / 1100
 						samples := make([][4]uint8, 0)
@@ -163,7 +196,11 @@ func scenarioSheetMotion(t *testing.T) {
 						if _, ok := tt.AccessByRole(ui.RoleDialog, sheet); ok {
 							t.Fatal("sheet retained after exit")
 						}
-						if err := tt.Click("管理标签"); err != nil {
+						afterBtn := "管理标签"
+						if sheet == "添加设备" {
+							afterBtn = "返回历史"
+						}
+						if err := tt.Click(afterBtn); err != nil {
 							t.Fatalf("modal blocked input after exit: %v", err)
 						}
 					})

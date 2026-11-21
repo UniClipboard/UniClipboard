@@ -13,6 +13,10 @@ EC2 Ubuntu archive entries and the runner's existing file-backed mirror list use
 the official HTTPS archive. APT retains package
 signature verification, three retries and thirty-second connection/data timeouts.
 This bootstrap policy preserves the full Desktop catalogue and job budget.
+Install `fonts-noto-cjk` with the display dependencies so the system font fallback
+can render the Chinese fixture labels absent from the pinned Inter font. Pixel
+alignment checks require real label glyphs; accessibility labels alone do not
+establish rendered text.
 
 Cases live in `app/desktop/e2e/cases/*.txtar` and use the existing testscript dependency. Each case declares Case, Mode, Purpose, Steps, Expected and Forbidden. Mode is native, process or view. The generated CASES.md must match these declarations. Native scripts use semantic accessibility selection and app-scoped input through the pinned mygo automation plugin. All previous Desktop acceptance functions are scenarios in package-local `TestDesktopAcceptance` registries. The `acceptance` command dispatches them through one controlled interface. Preflight requires exact registry/catalogue correspondence. Original test entries, switches and standalone scripts are removed. See the [migration map](../../app/desktop/e2e/MIGRATION.md).
 

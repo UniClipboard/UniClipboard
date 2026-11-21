@@ -1,7 +1,7 @@
 # Case: Search disclosure reduced motion
 # Mode: view
 # Purpose: Toolbar search disclosure with Reduce Motion enabled.
-# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 # Expected: Disclosure reaches its expected geometry without spatial transition.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 

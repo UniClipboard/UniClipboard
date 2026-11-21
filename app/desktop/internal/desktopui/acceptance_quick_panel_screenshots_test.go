@@ -32,7 +32,7 @@ func scenarioQuickPanelScreenshots(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("UNIC_UI_SKIN", "macos")
+
 	head := os.Getenv("UNIC_DESKTOP_E2E_SOURCE_HEAD")
 	type screenshot struct {
 		File, Theme, Scenario, SHA256 string

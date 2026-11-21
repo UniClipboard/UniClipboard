@@ -44,7 +44,7 @@ func (l *liveState) scheduleWake(d *viewState) {
 			due = l.pageRetry
 		}
 	}
-	if d.devicesOpen && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && l.code.ExpiresAtMs > 0 {
+	if d.page == "devices" && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && l.code.ExpiresAtMs > 0 {
 		expires := time.UnixMilli(l.code.ExpiresAtMs)
 		if due.IsZero() || expires.Before(due) {
 			due = expires

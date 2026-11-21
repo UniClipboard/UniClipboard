@@ -63,14 +63,14 @@ func scenarioI18n(t *testing.T) {
 			}
 		}
 	}
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"light", "dark"} {
 			for _, language := range []struct{ code, general, history, native string }{
 				{"zh-CN", "通用", "资料库", "简体中文"}, {"en", "General", "Library", "English"},
 				{"ja", "一般", "ライブラリ", "日本語"}, {"pt-BR", "Geral", "Biblioteca", "Português (Brasil)"}, {"ru", "Общие", "Библиотека", "Русский"},
 			} {
 				t.Run(skin+"/"+theme+"/"+language.code, func(t *testing.T) {
-					t.Setenv("UNIC_UI_SKIN", skin)
+
 					d := newDemo("settings", theme)
 					tt := ui.NewTesterWith(d.view, 1100, 760, ui.TesterOptions{Dark: theme == "dark"})
 					proof.Capture(t, tt)
@@ -82,11 +82,8 @@ func scenarioI18n(t *testing.T) {
 					x, y := target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2
 					tt.Press(x, y)
 					tt.Release(x, y)
-					if skin == "macos" {
-						if err := tt.ChooseMenuItem(language.native); err != nil {
-							t.Fatal(err)
-						}
-					} else {
+
+					{
 						if err := tt.Click(language.native); err != nil {
 							t.Fatal(err)
 						}

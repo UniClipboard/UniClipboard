@@ -1,7 +1,7 @@
 # Case: Gui approval reconnect
 # Mode: view
 # Purpose: Legacy GUI fingerprint approval and recovery after service disconnection.
-# Steps: Execute the registered scenario and all its theme, skin and interaction subcases.
+# Steps: Execute the registered scenario and all its BoardUI scheme and interaction subcases.
 # Expected: Explicit approval information stays visible and the view recovers after reconnection.
 # Forbidden: Skipped subcases, lost assertions, or software-view images labeled as native evidence.
 

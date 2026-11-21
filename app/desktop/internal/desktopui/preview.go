@@ -6,26 +6,31 @@ import (
 
 	"github.com/egoist/mygo"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui/preview"
-	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 )
 
 // NewPreview renders caller-supplied data without starting a service or loading fixtures.
 func NewPreview(data preview.Desktop) *Desktop {
 	d := &viewState{
 		page: data.Page, theme: data.Theme, layout: data.Layout, selected: data.Selected,
-		nav: uikit.NavState{Value: "all"}, settings: uikit.NavState{Value: "general"},
-		deviceList: uikit.SourceState{Value: "local"}, gridSize: .4,
+		nav: desktopkit.NavState{Value: "all"}, settings: desktopkit.NavState{Value: "general"},
+		deviceList: desktopkit.SourceState{Value: "local"}, gridSize: .4,
 		deviceName: data.DeviceName, options: maps.Clone(data.Options), choices: maps.Clone(data.Choices),
 		inviteCode: data.InviteCode, inviteMode: data.InviteMode,
 		reference: data.Reference, previewImage: data.Image,
 		quick: newPreviewQuick(data.Quick),
 	}
-	if d.page == "devices" {
-		d.page, d.devicesOpen = "history", true
+	if len(data.Devices) > 1 {
+		for _, v := range data.Devices {
+			if v.ID != "local" {
+				d.deviceList.Value = v.ID
+				break
+			}
+		}
 	}
 	for _, e := range data.Entries {
-		d.entries = append(d.entries, entry{id: e.ID, title: e.Title, text: e.Text, source: e.Source, date: e.Date, size: e.Size, kind: e.Kind, tags: slices.Clone(e.Tags), pinned: e.Pinned})
+		d.entries = append(d.entries, entry{id: e.ID, title: e.Title, text: e.Text, source: e.Source, date: e.Date, size: e.Size, sourceAppName: e.SourceAppName, sourceAppID: e.SourceAppID, sourceAppIcon: e.SourceAppIcon, kind: e.Kind, tags: slices.Clone(e.Tags), pinned: e.Pinned})
 	}
 	for _, v := range data.Devices {
 		item := device{id: v.ID, name: v.Name, platform: v.Platform, icon: v.Icon, online: v.Online, latency: v.Latency, link: v.Link, lastSeen: v.LastSeen, fingerprint: v.Fingerprint, direction: v.Direction, text: v.Text, image: v.Image, file: v.File}

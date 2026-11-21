@@ -13,10 +13,10 @@ import (
 // Failure inventory is specified before implementation in the tag-color-parity plan.
 // Exercise the complete history view, shared registry, Kit popover and Sheet menu.
 func scenarioTagEditor(t *testing.T) {
-	for _, skin := range []string{"macos", "linux", "windows"} {
+	for _, skin := range []string{"boardui"} {
 		for _, theme := range []string{"light", "dark"} {
 			t.Run(skin+"/"+theme, func(t *testing.T) {
-				t.Setenv("UNIC_UI_SKIN", skin)
+
 				d := newDemo("history", theme)
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 				proof.Capture(t, tt)
@@ -104,17 +104,18 @@ func scenarioTagEditor(t *testing.T) {
 				}
 				mustClick("管理标签")
 				tt.Advance(350 * time.Millisecond)
-				if err := tt.RightClick("#旅行"); err != nil {
+				if err := boarduiTableClick(tt, "标签", "#旅行", 0, true); err != nil {
 					t.Fatal(err)
 				}
-				if err := tt.ChooseMenuItem("绿色"); err != nil {
+				if err := boarduiChooseMenu(tt, "绿色"); err != nil {
 					t.Fatal(err)
 				}
 				if d.tagColor("旅行") != "green" {
 					t.Fatal("Sheet color did not reach shared registry")
 				}
 				mustClick("完成")
-				tt.Advance(250 * time.Millisecond)
+				// Wait through the fixed source 300ms modal exit.
+				tt.Advance(350 * time.Millisecond)
 				mustClick("添加标签")
 				tt.Type("截图标签")
 				mustClick("blue")

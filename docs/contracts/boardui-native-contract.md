@@ -68,3 +68,13 @@ The caller may clear BusyLabel and Open in the same completion update. A prior
 busy frame must not reopen a completed confirmation. The retained complete-view
 scenario exercises busy Escape, idle Escape and same-update completion closure.
 This UI state contract does not change service cancellation or Engine ownership.
+
+## Application sidebar feedback
+
+Application SidebarNav remains single-select. Pointer hover must not change the
+filter or selection. Its selected paint uses the fixed official NavItem's
+accent-500 to accent-600 gradient and white ink; its neutral hover paint remains
+distinct. A stable 12-DIP scrollbar lane separates the overlay indicator/hit
+target from row content. Footer actions stay fixed outside the scroll viewport. Application rows are 36 DIP with composite body-medium labels, 20-DIP icons and 8-DIP icon/label gaps. Effective outer padding and section separation are 12 DIP. Section commands are quiet 24-DIP buttons; More is a 24-DIP secondary row aligned with navigation labels.
+This is an application composition, not a claim that the full official dashboard
+sidebar (team/user/announcement/badges) has been ported.

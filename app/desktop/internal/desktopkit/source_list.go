@@ -85,7 +85,7 @@ func (k Kit) SourceList(c *ui.Context, st *SourceState, p SourceListProps) ui.El
 			order = append(order, it.ID)
 		}
 	}
-	lk := k.navLook()
+	lk := k.sourceListLook()
 	shell := ui.Column(c).Gap(8).Padding(8, 8, 10)
 	shell.Children(func() {
 		if p.Header != nil {
@@ -160,7 +160,7 @@ func (k Kit) sourceSection(c *ui.Context, st *SourceState, s SourceListSection, 
 
 func (k Kit) sourceRow(c *ui.Context, st *SourceState, it SourceListItem) {
 	selected := st.Value == it.ID
-	lk := k.navLook()
+	lk := k.sourceListLook()
 	radius := lk.radius
 	row := ui.Row(c.Key(it.ID)).AlignItems(ui.Center).Gap(10).Padding(6, lk.padX).MinHeight(44).Shrink(0).
 		Radius(radius).Label(it.Title).Role(ui.RoleListItem)
@@ -207,4 +207,9 @@ func (k Kit) sourceRow(c *ui.Context, st *SourceState, it SourceListItem) {
 		st.pick(it.ID)
 		st.activated = true
 	}
+}
+
+// SourceList keeps its management-row geometry independent of SidebarNav.
+func (k Kit) sourceListLook() navLook {
+	return navLook{h: 38, radius: 6, padX: 10, gap: 10, icon: 16, heading: 12}
 }

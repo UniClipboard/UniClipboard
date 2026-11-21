@@ -38,7 +38,7 @@ func (k Kit) SidebarNavCompact(c *ui.Context, st *NavState, p SidebarNavProps) u
 
 // navRailButton 是 40x36 的图标按钮，选中时带底色与 3x16 强调条。
 func (k Kit) navRailButton(c *ui.Context, st *NavState, label string, icon IconName, current bool, onClick func()) ui.Element {
-	b := ui.Row(c).Size(40, 36).Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Radius(k.navLook().radius).
+	b := ui.Row(c).Size(40, 36).Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Radius(6).
 		Label(label).Role(ui.RoleListItem)
 	b.AccessSelected(current)
 	if current {

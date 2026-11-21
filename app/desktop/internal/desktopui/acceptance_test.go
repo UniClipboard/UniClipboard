@@ -32,6 +32,7 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("sheet-exit-stability", scenarioSheetExitStability)
 	t.Run("sheet-motion", scenarioSheetMotion)
 	t.Run("sidebar-collapse", scenarioSidebarCollapse)
+	t.Run("sidebar-navigation", scenarioSidebarNavigation)
 	t.Run("tag-fixed-columns", scenarioTagFixedColumns)
 	t.Run("tag-editor", scenarioTagEditor)
 	t.Run("tag-manager", scenarioTagManager)

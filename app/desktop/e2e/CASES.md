@@ -45,6 +45,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [sheet-exit-stability](#sheet-exit-stability) | view | Sheet exit frames and input stability after dismissal. |
 | [sheet-motion](#sheet-motion) | view | Real Sheet entry and dismissal by Done, Escape and backdrop, live resize/reversal, and inline tag confirmation or cancellation, including Reduce Motion. |
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
+| [sidebar-navigation](#sidebar-navigation) | view | Distinguish hover from selection and keep scrollbar/footer space in the real history sidebar. |
 | [source-application](#source-application) | view | Show the captured application's cached icon and name immediately after device and time. |
 | [startup-lifecycle](#startup-lifecycle) | process | Ownership, background intent, lightweight launch and process cleanup. |
 | [storage-cleanup-settings](#storage-cleanup-settings) | native | Keep cleanup rules inactive when cleanup is off while preserving the independent cache quota. |
@@ -974,6 +975,20 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui sidebar-collapse
+```
+
+## sidebar-navigation
+
+Sidebar navigation paint, selection and scrollbar clearance
+
+Steps: Hover a tag; select tag/all; scroll overflowing devices; inspect state, pixels and bounds in both schemes at 1x/2x.
+
+Expected: Hover does not change the filter; one selected row; different state paint; 12-DIP gutter; footer stays reachable.
+
+Forbidden: Fake state, a scrollbar over counts, hidden native controls, or native OS acceptance claims.
+
+```text
+acceptance desktopui sidebar-navigation
 ```
 
 ## source-application

@@ -369,9 +369,9 @@ func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element 
 		row.Background(k.Color("accent-500").Alpha(bgAlpha)).
 			Border(1.25, k.Color("accent-500").Alpha(borderAlpha))
 	} else if hovered {
-		row.Background(hoverFill).Border(1, ui.Transparent)
+		row.Background(hoverFill).Border(1.25, ui.Transparent)
 	} else {
-		row.Border(1, ui.Transparent)
+		row.Border(1.25, ui.Transparent)
 	}
 
 	badgeRing := k.surfaceSolid()
@@ -415,43 +415,25 @@ func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element 
 			})
 		}
 
-		// Main 2.5-line stack: Title + Time/QuickCopy, optional Excerpt, Meta + User Tags.
+		// Main 2.5-line stack: Title + Time (fixed 20-DIP top row so hover never shifts layout),
+		// optional Excerpt, Meta + User Tags.
 		ui.Column(c.Key("col")).Gap(2.5).Grow(1).MinWidth(0).Shrink(1).Children(func() {
-			ui.Row(c.Key("top")).AlignItems(ui.Center).Gap(6).MinWidth(0).Children(func() {
+			ui.Row(c.Key("top")).Height(20).AlignItems(ui.Center).Gap(6).MinWidth(0).Children(func() {
 				ui.Box(c.Key("title-wrap")).Grow(1).MinWidth(0).Shrink(1).Children(func() {
 					k.rowTitleWeighted(c, it.Title, it.Monospace, it.Highlight, k.Color("text-primary"), 13, 600)
 				})
+				trail := ui.Row(c.Key("trail")).Gap(4).AlignItems(ui.Center).Shrink(0)
 				if hovered && it.OnCopy != nil {
-					lbl := it.CopyLabel
-					if lbl == "" {
-						lbl = "Copy"
-					}
-					btn := ui.ButtonBase(c.Key("quick-copy")).Height(20).PaddingX(6.5).Radius(5.5).Gap(3.5).
-						AlignItems(ui.Center).Shrink(0).TabStop(false).Label(lbl).
-						Background(k.Color("background-primary-default")).
-						Border(1, k.Color("border-button-default"))
-					ink := k.Color("text-secondary")
-					if btn.Hovered() {
-						btn.Background(k.Color("accent-500")).Border(1, k.Color("accent-500"))
-						ink = k.Color("text-white")
-					}
-					btn.Children(func() {
-						k.Icon(c, IconCopy, 10.5).TextColor(ink)
-						ui.Text(c, lbl).FontSize(10.5).FontWeight(500).TextColor(ink).SingleLine()
-					})
-					if btn.Clicked() {
-						it.OnCopy()
-					}
-				} else {
-					ui.Row(c.Key("trail")).Gap(4).AlignItems(ui.Center).Shrink(0).Children(func() {
-						if it.Pinned {
-							k.Icon(c.Key("pin"), IconPin, 11).TextColor(k.Color("status-orange-text"))
-						}
-						if it.Time != "" {
-							ui.Text(c.Key("time"), it.Time).FontSize(11).TextColor(k.Color("text-tertiary")).SingleLine()
-						}
-					})
+					trail.Opacity(0)
 				}
+				trail.Children(func() {
+					if it.Pinned {
+						k.Icon(c.Key("pin"), IconPin, 11).TextColor(k.Color("status-orange-text"))
+					}
+					if it.Time != "" {
+						ui.Text(c.Key("time"), it.Time).FontSize(11).TextColor(k.Color("text-tertiary")).SingleLine()
+					}
+				})
 			})
 
 			if it.Excerpt != "" {
@@ -495,6 +477,30 @@ func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element 
 				})
 			}
 		})
+		// Float quick-copy over the top-right slot so hovering causes zero vertical or horizontal jitter.
+		if hovered && it.OnCopy != nil {
+			lbl := it.CopyLabel
+			if lbl == "" {
+				lbl = "Copy"
+			}
+			btn := ui.ButtonBase(c.Key("quick-copy")).Absolute().Top(9).Right(11).ZIndex(2).
+				Height(20).PaddingX(6.5).Radius(5.5).Gap(3.5).
+				AlignItems(ui.Center).Shrink(0).TabStop(false).Label(lbl).
+				Background(k.CardSurface()).
+				Border(1, k.Color("border-button-default"))
+			ink := k.Color("text-secondary")
+			if btn.Hovered() {
+				btn.Background(k.Color("accent-500")).Border(1, k.Color("accent-500"))
+				ink = k.Color("text-white")
+			}
+			btn.Children(func() {
+				k.Icon(c, IconCopy, 10.5).TextColor(ink)
+				ui.Text(c, lbl).FontSize(10.5).FontWeight(500).TextColor(ink).SingleLine()
+			})
+			if btn.Clicked() {
+				it.OnCopy()
+			}
+		}
 	})
 	return row
 }

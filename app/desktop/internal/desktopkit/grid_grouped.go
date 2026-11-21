@@ -207,6 +207,7 @@ func (k Kit) GroupedGrid(c *ui.Context, st *ListState, p GroupedGridProps) ui.El
 				if h := g.hover; h != "" && !st.sel.Has(h) {
 					st.sel.Clear()
 					st.sel.Add(h)
+					st.prevSel = st.selKey()
 				}
 				ids := st.Selection()
 				if len(ids) == 0 {

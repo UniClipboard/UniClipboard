@@ -24,6 +24,12 @@ func (k Kit) workspaceCanvas() ui.Color {
 	return k.Color("background-primary-default")
 }
 
+// WorkspaceSurface returns the unified primary workspace background for toolbars,
+// list/grid browsing panes, detail panes and overview canvases.
+func (k Kit) WorkspaceSurface() ui.Color {
+	return k.workspaceCanvas()
+}
+
 // CardSurface returns the elevated card surface (grid cards, preview frames, inset lists).
 func (k Kit) CardSurface() ui.Color {
 	return k.Color("background-primary-default")

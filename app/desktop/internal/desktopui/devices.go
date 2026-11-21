@@ -227,7 +227,7 @@ func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
 		}
 	}
 
-	ui.Column(c.Key("devices-page")).Grow(1).MinHeight(0).AlignSelf(ui.Stretch).Background(k.Color("background-full")).Children(func() {
+	ui.Column(c.Key("devices-page")).Grow(1).MinHeight(0).AlignSelf(ui.Stretch).Background(k.WorkspaceSurface()).Children(func() {
 		// Unified 52-DIP top band aligned with macOS traffic lights.
 		padLeft := float32(16)
 		if integratedCaption {
@@ -235,7 +235,7 @@ func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
 		}
 		bar := ui.Row(c.Key("devices-toolbar")).Height(headerHeight).Padding(0, 18, 0, padLeft).Gap(10).
 			AlignItems(ui.Center).Shrink(0).Role(ui.RoleToolbar).Label(d.tr("设备管理")).
-			Background(k.Color("background-secondary-default")).
+			Background(k.WorkspaceSurface()).
 			InsetShadow(0, -1, 0, 0, k.Color("separator-border")).DragWindow()
 		bar.Children(func() {
 			if singlePane && d.deviceDetailOpen {

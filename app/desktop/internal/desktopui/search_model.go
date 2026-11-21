@@ -456,7 +456,12 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		suggestions = append(suggestions, desktopkit.SearchSuggestion{ID: candidate.dimension + ":" + candidate.value, Label: d.searchCandidateLabel(candidate), Kind: candidate.kind, Group: group, Detail: detail, Selected: selected, Muted: n == 0 && (d.live == nil || detail != "")})
 	}
 	if d.live != nil {
-		d.live.requestCounts(prospective)
+		if d.filterOpen && len(prospective) == 0 {
+			prospective = d.filterPopoverProspectiveQueries()
+		}
+		if len(prospective) > 0 {
+			d.live.requestCounts(prospective)
+		}
 	}
 	feedback := ""
 	if w, ok := s.active(); ok {
@@ -541,10 +546,97 @@ func (d *viewState) activeFilterCount() int {
 	return n
 }
 
+func (d *viewState) filterPopoverKinds() []string {
+	if d.live != nil {
+		return []string{"文本", "富文本", "图片", "文件", "文件夹"}
+	}
+	return []string{"文本", "代码", "链接", "图片", "文件", "文件夹"}
+}
+
+func (d *viewState) filterPopoverSources() [][2]string {
+	out := make([][2]string, 0, len(d.devices))
+	seen := make(map[string]bool, len(d.devices))
+	for _, dev := range d.devices {
+		out = append(out, [2]string{dev.id, d.sourceName(dev.id)})
+		seen[dev.id] = true
+	}
+	if d.live != nil {
+		for _, cand := range d.live.catalogue["source"] {
+			if cand.Value == "" || seen[cand.Value] {
+				continue
+			}
+			label := cand.Label
+			if label == "" {
+				label = d.sourceName(cand.Value)
+			}
+			out = append(out, [2]string{cand.Value, label})
+			seen[cand.Value] = true
+		}
+	}
+	return out
+}
+
+func (d *viewState) filterPopoverTags() []historyTag {
+	var custom []historyTag
+	for _, tag := range d.tags {
+		if !tag.builtin {
+			custom = append(custom, tag)
+		}
+	}
+	return custom
+}
+
+func filterPopoverTimes() [][2]string {
+	return [][2]string{{"today", "今天"}, {"yesterday", "昨天"}, {"last_7d", "最近 7 天"}, {"last_30d", "最近 30 天"}}
+}
+
+func (d *viewState) filterPopoverTrialQuery(dim, val string) engine.HistorySearchQuery {
+	trial := *d
+	switch dim {
+	case "type":
+		trial.kind = val
+	case "source":
+		trial.source = val
+	case "tag":
+		tags := selectedSearchTags(d.tag)
+		if !slices.Contains(tags, val) {
+			tags = append(slices.Clone(tags), val)
+		}
+		trial.tag = strings.Join(tags, "\x1f")
+	case "time":
+		trial.timeRange = val
+	}
+	return trial.historySearchQuery()
+}
+
+func (d *viewState) filterPopoverProspectiveQueries() []engine.HistorySearchQuery {
+	var queries []engine.HistorySearchQuery
+	for _, k := range d.filterPopoverKinds() {
+		queries = append(queries, d.filterPopoverTrialQuery("type", k))
+	}
+	for _, src := range d.filterPopoverSources() {
+		queries = append(queries, d.filterPopoverTrialQuery("source", src[0]))
+	}
+	for _, tag := range d.filterPopoverTags() {
+		queries = append(queries, d.filterPopoverTrialQuery("tag", tag.id))
+	}
+	for _, tm := range filterPopoverTimes() {
+		queries = append(queries, d.filterPopoverTrialQuery("time", tm[0]))
+	}
+	return queries
+}
+
 // filterPopover renders the U1 integrated chip-based filter popover anchored to the
 // unified omnibar's trailing filter button.
 func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 	countFor := func(dim, val string) (int, bool) {
+		if d.live != nil {
+			q := d.filterPopoverTrialQuery(dim, val)
+			if cnt, ok := d.live.counts[searchQueryKey(q)]; ok {
+				return int(cnt), true
+			}
+			return 0, false
+		}
 		trial := *d
 		switch dim {
 		case "type":
@@ -559,13 +651,6 @@ func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 			trial.tag = strings.Join(tags, "\x1f")
 		case "time":
 			trial.timeRange = val
-		}
-		if d.live != nil {
-			q := trial.historySearchQuery()
-			if cnt, ok := d.live.counts[searchQueryKey(q)]; ok {
-				return int(cnt), true
-			}
-			return 0, false
 		}
 		return len(trial.filtered()), true
 	}
@@ -637,7 +722,7 @@ func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 		})
 
 		section("type", d.tr("内容类型"), func() {
-			for _, v := range []string{"文本", "代码", "链接", "图片", "文件", "文件夹"} {
+			for _, v := range d.filterPopoverKinds() {
 				val := v
 				active := d.kind == val
 				cnt, ok := countFor("type", val)
@@ -652,11 +737,10 @@ func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 			}
 		})
 
-		if len(d.devices) > 0 {
+		if sources := d.filterPopoverSources(); len(sources) > 0 {
 			section("source", d.tr("来源设备"), func() {
-				for _, dev := range d.devices {
-					id := dev.id
-					label := d.sourceName(id)
+				for _, src := range sources {
+					id, label := src[0], src[1]
 					active := d.source == id
 					cnt, ok := countFor("source", id)
 					renderChip(id, label, active, cnt, ok, nil, func() {
@@ -674,13 +758,7 @@ func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 			})
 		}
 
-		var customTags []historyTag
-		for _, tag := range d.tags {
-			if !tag.builtin {
-				customTags = append(customTags, tag)
-			}
-		}
-		if len(customTags) > 0 {
+		if customTags := d.filterPopoverTags(); len(customTags) > 0 {
 			section("tag", d.tr("标签"), func() {
 				selectedTags := selectedSearchTags(d.tag)
 				for _, tag := range customTags {
@@ -697,7 +775,7 @@ func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 		}
 
 		section("time", d.tr("时间范围"), func() {
-			for _, item := range [][2]string{{"today", "今天"}, {"yesterday", "昨天"}, {"last_7d", "最近 7 天"}, {"last_30d", "最近 30 天"}} {
+			for _, item := range filterPopoverTimes() {
 				val, lbl := item[0], item[1]
 				active := d.timeRange == val
 				cnt, ok := countFor("time", val)

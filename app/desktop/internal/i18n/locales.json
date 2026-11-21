@@ -2447,6 +2447,18 @@
     "pt-BR": "A fixação está indisponível.",
     "ru": "Закрепление недоступно."
   },
+  "置顶": {
+    "en": "Pin",
+    "ja": "固定",
+    "pt-BR": "Fixar",
+    "ru": "Закрепить"
+  },
+  "取消置顶": {
+    "en": "Unpin",
+    "ja": "固定を解除",
+    "pt-BR": "Desafixar",
+    "ru": "Открепить"
+  },
   "发送历史到设备暂不可用。": {
     "en": "Sending history to devices is unavailable.",
     "ja": "履歴のデバイスへの送信は利用できません。",

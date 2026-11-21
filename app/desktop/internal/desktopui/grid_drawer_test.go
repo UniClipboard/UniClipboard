@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/uniclipboard/unic/engine"
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 func TestGridA1AndGlobalDrawerD1a(t *testing.T) {
@@ -231,6 +233,194 @@ func TestListL1UnifiedSearchU1AndMotionV3(t *testing.T) {
 			}
 			if _, ok := tt.AccessByRole(ui.RoleSlider, "卡片大小"); ok {
 				t.Fatal("card size slider remained visible in list mode")
+			}
+		})
+	}
+}
+
+func TestOtherPagesDarkAudit(t *testing.T) {
+	snapDir := os.Getenv("UNIC_GRID_SNAP_DIR")
+	saveSnap := func(tt *ui.Tester, name string) {
+		if snapDir == "" {
+			return
+		}
+		if err := os.MkdirAll(snapDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Create(filepath.Join(snapDir, name+".png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := png.Encode(f, tt.Image()); err != nil {
+			_ = f.Close()
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, page := range []string{"devices", "settings", "quick-panel"} {
+		t.Run(page, func(t *testing.T) {
+			d := newDemo(page, "dark")
+			w, h := 1180, 760
+			if page == "quick-panel" {
+				w, h = 420, 420
+			}
+			tt := ui.NewTesterWith(d.view, w, h, ui.TesterOptions{Dark: true})
+			if page != "quick-panel" {
+				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+			}
+			if snapDir != "" {
+				tt.SetScale(2)
+			}
+			tt.Frame()
+			saveSnap(tt, page+"-dark")
+		})
+	}
+}
+
+func TestLiveProductionParityHelpers(t *testing.T) {
+	// 1. projectHistory formats TotalBytes with humanBytes for readable cards and facts.
+	small := projectHistory(api.HistoryItem{ID: "a", Kind: "text", TotalBytes: 42})
+	if small.size != "42 B" {
+		t.Fatalf("small size=%q, want 42 B", small.size)
+	}
+	large := projectHistory(api.HistoryItem{ID: "b", Kind: "image", TotalBytes: 286 * 1024})
+	if large.size != "286.0 KB" {
+		t.Fatalf("large size=%q, want 286.0 KB", large.size)
+	}
+
+	// 2. entryBodyText falls back to search preview before detail text is prefetched.
+	e := entry{title: "Title", preview: "Title\nSecond line preview"}
+	if got := entryBodyText(e); got != e.preview {
+		t.Fatalf("entryBodyText=%q, want preview fallback", got)
+	}
+	if got := listRowExcerpt(e, e.title); got != "Second line preview" {
+		t.Fatalf("listRowExcerpt=%q, want Second line preview", got)
+	}
+
+	// 3. Live filter popover exposes only Engine-supported types, includes catalogue sources,
+	//    and generates prospective count queries.
+	d := newDemo("history", "light")
+	d.live = &liveState{
+		catalogue: map[string][]engine.HistorySearchCandidate{
+			"source": {
+				{Value: "local", Label: "本机"},
+				{Value: "external", Label: "外部来源"},
+			},
+		},
+	}
+	kinds := d.filterPopoverKinds()
+	for _, k := range kinds {
+		if k == "代码" || k == "链接" {
+			t.Fatalf("live filter popover must not expose unsupported kind %q", k)
+		}
+	}
+	foundRich := false
+	for _, k := range kinds {
+		if k == "富文本" {
+			foundRich = true
+		}
+	}
+	if !foundRich {
+		t.Fatalf("live filter popover missing 富文本: %v", kinds)
+	}
+	foundExternal := false
+	for _, src := range d.filterPopoverSources() {
+		if src[0] == "external" {
+			foundExternal = true
+		}
+	}
+	if !foundExternal {
+		t.Fatalf("live filter popover missing catalogue source external: %v", d.filterPopoverSources())
+	}
+	if qs := d.filterPopoverProspectiveQueries(); len(qs) == 0 {
+		t.Fatal("expected prospective queries for live filter popover")
+	}
+}
+
+func TestListL1HoverHasZeroLayoutJitter(t *testing.T) {
+	d := newDemo("history", "dark")
+	d.layout = "list"
+	tt := ui.NewTesterWith(d.view, 1180, 760, ui.TesterOptions{Dark: true})
+	tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+
+	labels := []string{"周一产品讨论", "HTTP 服务示例", "UniClipboard", "桌面布局.png", "设计交付 · 3 个文件"}
+	baseline := make(map[string]ui.Rect, len(labels))
+	for _, lbl := range labels {
+		a, ok := tt.AccessByRole(ui.RoleListItem, lbl)
+		if !ok {
+			t.Fatalf("missing list row %q", lbl)
+		}
+		baseline[lbl] = a.Bounds
+	}
+
+	// Hover each row in sequence and assert every row keeps exact baseline bounds (0px jitter).
+	for _, target := range labels {
+		b := baseline[target]
+		tt.Move(b.X+b.W/2, b.Y+b.H/2)
+		for _, lbl := range labels {
+			a, ok := tt.AccessByRole(ui.RoleListItem, lbl)
+			if !ok {
+				t.Fatalf("missing list row %q while hovering %q", lbl, target)
+			}
+			if a.Bounds != baseline[lbl] {
+				t.Fatalf("row %q jittered while hovering %q: got %+v want %+v", lbl, target, a.Bounds, baseline[lbl])
+			}
+		}
+	}
+}
+
+func TestHistoryItemContextMenu(t *testing.T) {
+	d := newDemo("history", "light")
+	// Entry 0 ("note") is pinned; entry 1 ("code") is unpinned.
+	pinnedMenu := d.historyItemMenu([]string{"note"})
+	if len(pinnedMenu) != 5 {
+		t.Fatalf("menu entries=%d, want 5", len(pinnedMenu))
+	}
+	if pinnedMenu[0].ID != "copy" || pinnedMenu[1].ID != "pin" || pinnedMenu[1].Label != "取消置顶" || pinnedMenu[2].ID != "send" || !pinnedMenu[3].Separator || pinnedMenu[4].ID != "delete" || !pinnedMenu[4].Destructive {
+		t.Fatalf("unexpected pinned item menu: %+v", pinnedMenu)
+	}
+	if len(pinnedMenu[2].Children) < 2 || pinnedMenu[2].Children[0].ID != "send:all" {
+		t.Fatalf("expected send submenu targets, got %+v", pinnedMenu[2].Children)
+	}
+
+	unpinnedMenu := d.historyItemMenu([]string{"code"})
+	if unpinnedMenu[1].Label != "置顶" {
+		t.Fatalf("unpinned label=%q, want 置顶", unpinnedMenu[1].Label)
+	}
+
+	// Verify right-click context menu works in both list and grid layouts.
+	for _, layout := range []string{"list", "grid"} {
+		t.Run(layout, func(t *testing.T) {
+			d := newDemo("history", "light")
+			d.layout = layout
+			tt := ui.NewTesterWith(d.view, 1180, 760, ui.TesterOptions{})
+			target, ok := tt.AccessByRole(ui.RoleListItem, "HTTP 服务示例")
+			if !ok {
+				t.Fatal("missing HTTP 服务示例 item")
+			}
+			tt.RightClickAt(target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2)
+			if err := tt.Click("置顶"); err != nil {
+				t.Fatalf("click pin from context menu: %v", err)
+			}
+			if !d.entries[1].pinned {
+				t.Fatal("context menu pin did not pin HTTP 服务示例")
+			}
+			tt.RightClickAt(target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2)
+			if err := tt.Click("复制"); err != nil {
+				t.Fatalf("click copy from context menu: %v", err)
+			}
+			if d.notice == "" {
+				t.Fatal("context menu copy did not trigger copy notice")
+			}
+			tt.RightClickAt(target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2)
+			if err := tt.Click("删除"); err != nil {
+				t.Fatalf("click delete from context menu: %v", err)
+			}
+			if d.confirm == "" {
+				t.Fatal("context menu delete did not open confirmation dialog")
 			}
 		})
 	}

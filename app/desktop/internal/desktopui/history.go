@@ -236,19 +236,27 @@ type layoutSwitchState struct {
 	dir         float32
 }
 
+func entryBodyText(v entry) string {
+	if v.text != "" {
+		return v.text
+	}
+	return v.preview
+}
+
 func listRowExcerpt(v entry, title string) string {
+	body := entryBodyText(v)
 	switch v.kind {
 	case desktopkit.KindImage:
 		return ""
 	case desktopkit.KindLink:
-		raw := strings.TrimSpace(v.text)
+		raw := strings.TrimSpace(body)
 		if raw == "" || raw == strings.TrimSpace(title) {
 			return ""
 		}
 		return raw
 	case desktopkit.KindFile, desktopkit.KindFolder:
 		var parts []string
-		for _, line := range strings.Split(v.text, "\n") {
+		for _, line := range strings.Split(body, "\n") {
 			s := strings.TrimSpace(line)
 			if s != "" && s != strings.TrimSpace(title) {
 				parts = append(parts, s)
@@ -260,7 +268,7 @@ func listRowExcerpt(v entry, title string) string {
 		return strings.Join(parts, ", ")
 	case desktopkit.KindCode:
 		var parts []string
-		for _, line := range strings.Split(v.text, "\n") {
+		for _, line := range strings.Split(body, "\n") {
 			s := strings.TrimSpace(line)
 			if s != "" {
 				parts = append(parts, s)
@@ -272,7 +280,7 @@ func listRowExcerpt(v entry, title string) string {
 		}
 		return joined
 	default:
-		text := strings.TrimSpace(v.text)
+		text := strings.TrimSpace(body)
 		tt := strings.TrimSpace(title)
 		if text == "" || text == tt {
 			return ""
@@ -382,7 +390,7 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 				Subtitle:      d.sourceName(v.source) + " · " + d.displayDate(v.date),
 				Kind:          v.kind,
 				KindLabel:     d.tr(kindName(v.kind)),
-				Text:          v.text,
+				Text:          entryBodyText(v),
 				Time:          shortTime,
 				Meta:          meta,
 				SourceAppName: v.sourceAppName,
@@ -409,7 +417,7 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 			}
 			cards = append(cards, card)
 		}
-		k.GroupedGrid(c.Key("grid"), &d.list, desktopkit.GroupedGridProps{Label: d.tr("历史网格"), Groups: groups, Items: cards, Size: float32(d.gridSize)}).Grow(1).MinHeight(0)
+		k.GroupedGrid(c.Key("grid"), &d.list, desktopkit.GroupedGridProps{Label: d.tr("历史网格"), Groups: groups, Items: cards, Size: float32(d.gridSize), Menu: d.historyItemMenu}).Grow(1).MinHeight(0)
 	} else {
 		rows := make([]desktopkit.ItemListItem, 0, len(items))
 		for _, v := range items {
@@ -457,7 +465,7 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 			}
 			rows = append(rows, row)
 		}
-		k.GroupedList(c.Key("list"), &d.list, desktopkit.GroupedListProps{Label: d.tr("历史条目"), Groups: groups, Items: rows}).Grow(1).MinHeight(0)
+		k.GroupedList(c.Key("list"), &d.list, desktopkit.GroupedListProps{Label: d.tr("历史条目"), Groups: groups, Items: rows, Menu: d.historyItemMenu}).Grow(1).MinHeight(0)
 	}
 	if d.live != nil {
 		first, last := d.list.VisibleRange()
@@ -478,11 +486,55 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 		d.useEntry()
 		d.detailOpen, d.inspector = true, true
 	}
+	if cmd, ids, ok := d.list.MenuChosen(); ok && len(ids) > 0 {
+		d.selected = ids[0]
+		switch {
+		case cmd == "copy":
+			d.useEntry()
+		case cmd == "pin":
+			d.togglePin()
+		case strings.HasPrefix(cmd, "send:"):
+			d.sendTo(strings.TrimPrefix(cmd, "send:"))
+		case cmd == "delete":
+			d.requestDelete(ids)
+		}
+	}
 	if d.live != nil {
 		d.live.loadDetail(d)
 	}
 	if ids, ok := d.list.DeleteRequested(); ok && len(ids) > 0 {
 		d.requestDelete(ids)
+	}
+}
+
+func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
+	allPinned := len(ids) > 0
+	for _, id := range ids {
+		idx := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == id })
+		if idx < 0 || !d.entries[idx].pinned {
+			allPinned = false
+			break
+		}
+	}
+	pinLabel := d.tr("置顶")
+	if allPinned {
+		pinLabel = d.tr("取消置顶")
+	}
+	rawSend := d.sendMenuItems()
+	sendChildren := make([]desktopkit.MenuEntry, len(rawSend))
+	for i, it := range rawSend {
+		if !it.Separator {
+			it.ID = "send:" + it.ID
+		}
+		sendChildren[i] = it
+	}
+	sendDisabled := len(ids) != 1 || len(sendChildren) == 0 || sendChildren[0].Disabled
+	return []desktopkit.MenuEntry{
+		{ID: "copy", Label: d.tr("复制"), Icon: desktopkit.IconCopy, Disabled: len(ids) != 1},
+		{ID: "pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: len(ids) == 0 || d.live != nil},
+		{ID: "send", Label: d.tr("发送到"), Icon: desktopkit.IconSend, Disabled: sendDisabled, Children: sendChildren},
+		desktopkit.MenuSeparator("sep"),
+		{ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: len(ids) == 0},
 	}
 }
 

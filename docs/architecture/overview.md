@@ -15,7 +15,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: c8b7aad1d84e4cb5166a253559e62b43842c3fe0
+verified: d6c635ae361fc28dcc524305dc987356d9f62ce0
 ---
 # 仓库布局与依赖边界
 
@@ -78,7 +78,7 @@ The composition follows local `main` commit `8dd3796f8bbb6b1e1e07ee352a4e65e4341
 `app/desktop/internal/desktopdemo` owns preview startup and fixture builders. `app/desktop/internal/desktopui` owns shared page composition and production service binding. The independent `unic-desktop-demo` command supplies explicit preview records from `desktopui/preview`; `unic-desktop` imports neither the demo launcher nor fixture builders.
 The public native `boardui` package supplies shared controls and source-generated semantic resources. `internal/desktopkit` supplies application-only compositions over those controls and mature mygo behavior primitives. Main GUI, setup, Quick Panel, preview and component demo use one BoardUI content presentation on Windows, macOS and Linux. The former three-skin package, token snapshots and skin selector are removed. Color mode still supports system/light/dark. See [native BoardUI presentation](#native-boardui-presentation).
 
-The main demo keeps its 1100×720 default window and shared history/device/settings model. `internal/windowchrome` hides native title bars/buttons by default and supplies shared application caption actions. Native resize edges and host window actions remain available. Content controls no longer select platform glass surfaces, stroke widths, typography or system-menu styling. In-content Select/action/context menus use the BoardUI presentation; tray/system menus remain native.
+The main demo keeps its 1100×720 default window and shared history/device/settings model. Native window decoration and reserved caption areas belong to `internal/windowchrome` and the OS host. On macOS, the application paints a compact centered title bar while the OS retains real traffic lights; native title-bar presentation is hidden by default. Content controls no longer select platform glass surfaces, stroke widths, typography or system-menu styling. In-content Select/action/context menus use the BoardUI presentation; tray/system menus remain native.
 
 The history toolbar retains command hit targets, search disclosure and list/grid switching. The search model in `desktopui/search_model.go` handles @ devices, # tags, / types, on: time and ext: extensions; candidates, counts, badges, keyboard completion, literal fallback and caret-preserving edits share the existing filter state. Escape closes candidates, clears search, then collapses empty disclosure. Badge removal resets its dimension; Backspace in an empty query removes the last badge while preserving other dimensions. Native modifiers remain host-specific.
 

@@ -118,3 +118,34 @@ an automatically selected Go 1.26.11 toolchain (download EOF); the diagnosed
 invocation explicitly used the existing Go 1.27.3 toolchain and passed. No source
 change bypassed lint. Build hashes are retained in the ignored `builds.json`;
 scratch build executables were removed, while the user's running preview remains.
+
+## macOS correction (2026-11-21)
+
+The preceding borderless follow-up misinterpreted the user's request. It is
+superseded: macOS must retain real system traffic lights, hide only the native
+title-bar presentation and draw its own title bar. Restore Linux's original
+native caption policy and keep Windows's existing custom controls. Do not draw
+replacement traffic lights.
+
+Failure inventory before this correction: hidden native traffic lights; custom
+Windows controls on macOS; native title text/background still visible; traffic
+lights overlapping content; a 52-DIP reservation caused by the previous 19-DIP
+vertical inset; preview differing from production; changing other OS behavior.
+
+Extend the existing E2E policy checks first. Fix the macOS native control inset
+at (14,9) DIP inside a 32-DIP application title bar. Preserve native resize edges,
+window lifecycle and Linux/macOS's explicit system-frame preference. Keep the
+first red artifact, run one diagnosed green replay, and inspect the owned native
+macOS preview before delivering.
+
+Correction results: the initial `window-chrome` policy E2E failed on hidden macOS
+buttons (`.build/boardui-macos-titlebar/red`); the corrected replay passed. The
+owned native preview now displays the real traffic lights over the compact
+self-drawn title bar, with a centered application name. Its AX tree contains
+native close/minimize buttons and no application replacement caption actions.
+The actual window capture and binary-bound receipt remain in the ignored
+`boardui-macos-titlebar` directory. The macOS production build passed. Lint's first
+pass caught the runtime import grouping; the format correction passed pinned
+lint with zero issues. No other runtime change followed native capture. Native
+dragging/resizing, Windows/Linux execution and user visual approval remain
+NOT_RUN. The live owned preview stays open for inspection.

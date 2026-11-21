@@ -13,7 +13,7 @@ import (
 
 func scenarioWindowChrome(t *testing.T) {
 
-	for _, platform := range []string{"linux", "darwin", "windows"} {
+	for _, platform := range []string{"darwin", "linux", "windows"} {
 		for _, system := range []bool{false, true} {
 			opts := mygo.WindowOptions{}
 			windowchrome.Configure(&opts, platform, system)
@@ -24,8 +24,13 @@ func scenarioWindowChrome(t *testing.T) {
 			if !wantNative && opts.TitleBarStyle != mygo.TitleBarHidden {
 				t.Fatal("custom title bar missing", platform)
 			}
-			if opts.HideWindowButtons != !wantNative {
+			if opts.HideWindowButtons != (platform == "windows") {
 				t.Fatal("incorrect native buttons", platform)
+			}
+			if platform == "darwin" && !system {
+				if opts.TrafficLightPosition == nil || *opts.TrafficLightPosition != (mygo.Point{X: 14, Y: 9}) {
+					t.Fatal("native traffic lights must fit the application title bar")
+				}
 			}
 			if opts.Frameless {
 				t.Fatal("resize edges must remain available")

@@ -19,7 +19,7 @@ The standalone demo uses 22 fabricated history entries and four devices. Operati
 | `internal/desktopui/settings.go` | Settings navigation and product setting pages |
 | `internal/desktopui/tag_manager.go`, `tag_editor.go` | Shared tag registry, assignment, colors, table and application actions |
 | `internal/desktopui/search_model.go` | Token/filter semantics, candidate matching, counts and caret-preserving edits |
-| `internal/windowchrome` | Hidden system chrome, shared application caption controls and OS window actions |
+| `internal/windowchrome` | Native frame policy, reserved caption area and OS window actions |
 | `internal/desktopui/quick_panel_*.go` | Quick Panel model, content, image previews and native parent/satellite host |
 
 ## Build and open
@@ -42,7 +42,7 @@ Run one demo process at a time. Other initial states:
 
 Pages are `history`, `devices`, `settings` and `quick-panel`. Color modes are `system`, `light` and `dark`. There is one BoardUI presentation on all three OS targets. Old skin environment overrides are not a supported selection path. Setup and unlock preview routes are rejected; production first-install setup remains a separate live flow.
 
-The default main demo client area is 1100×720 DIP. Native title bars and native caption buttons are hidden on all three platforms. The shared application caption contains Minimize, Maximize/Restore and Close. Native resize edges remain enabled. The reusable `boardui-demo` provides a separate, bounded synthetic settings form for component/reference comparison; it does not demonstrate every product page.
+The default main demo client area is 1100×720 DIP. On macOS the native host keeps the real system traffic lights at (14,9) DIP. The application draws a compact centered title bar with a 32-DIP minimum height; the native title-bar presentation stays hidden. There are no custom replacement window buttons. Windows/Linux native frame behavior remains a host concern. The reusable `boardui-demo` provides a separate, bounded synthetic settings form for component/reference comparison; it does not demonstrate every product page.
 
 ## Ordered interaction checks
 

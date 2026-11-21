@@ -1,8 +1,8 @@
 # Case: Main-window decoration and caption actions
 # Mode: view
-# Purpose: Use application caption controls by default across platforms; retain opt-in native title bars on Linux/macOS.
+# Purpose: Keep macOS system traffic lights over a self-drawn title bar; preserve the existing Linux and Windows caption policies.
 # Steps: Check platform options and click minimize, maximize, restore and close in light/dark views.
-# Expected: Native decoration and buttons default off; all platforms retain custom actions; restore and close dispatch correctly.
+# Expected: macOS native title text/background stay hidden while system traffic lights remain; custom Windows actions dispatch correctly.
 # Forbidden: Losing resize edges, duplicate native Windows buttons, or claims of native OS interaction.
 
 acceptance desktopui window-chrome

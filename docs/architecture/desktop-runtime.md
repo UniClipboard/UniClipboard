@@ -42,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: c8b7aad1d84e4cb5166a253559e62b43842c3fe0
+verified: d6c635ae361fc28dcc524305dc987356d9f62ce0
 ---
 # Desktop configuration and received files
 
@@ -82,15 +82,17 @@ reload. Quit and reopen Desktop to apply it. The service reports
 `desktop.system_window_frame` as restart-required when it differs from its startup
 configuration. The UI-free service only stores this host preference.
 
-With the preference off, the host uses mygo's hidden title bar with native
-caption buttons disabled on every platform. There are no traffic lights or GTK
-caption reservations. The native resize edges, rounded corners and shadows remain;
-`Frameless` is deliberately not used because it loses Windows top resize edges.
-With the preference on, Linux/macOS use the normal native title bar.
+With the preference off, the host uses mygo's hidden native title bar, retaining
+resize edges, rounded corners and shadows. macOS keeps its real system traffic
+lights over a self-drawn application title bar. The bar has a 32-DIP minimum
+height, centered title and a draggable empty area. The traffic lights use a
+(14,9)-DIP native inset; no replacement caption buttons are drawn. Linux
+reserves GTK's reported caption-control area above the application content. With
+the preference on, Linux/macOS use the normal native title bar.
 
-Windows always uses this custom-caption policy. `internal/windowchrome` draws
-Minimize, Maximize/Restore and Close above every main-window page, including setup
-and startup errors. The standalone desktop preview uses the same policy. Only the empty caption region
+Windows always uses a hidden title bar with native caption buttons disabled.
+`internal/windowchrome` draws Minimize, Maximize/Restore and Close above every main
+window page, including setup and startup errors. Only the empty caption region
 drags the window. Maximize/Restore reads the actual window state. Close invokes
 the existing window-close lifecycle. This preference does not change Quick Panel
 or its satellite windows. See the [acceptance receipt](../exec/desktop-window-chrome.md).

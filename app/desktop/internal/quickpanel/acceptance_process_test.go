@@ -20,7 +20,6 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
-	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -192,9 +191,11 @@ func scenarioQuickPanelProcess(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	wait("adapter", func() bool {
-		out, e := client.Capabilities(ctx)
-		return e == nil && out.Host.Apply == engine.AbilityAvailable
+	// Capability publication precedes baseline initialization and ready admission.
+	// A successful real adapter read proves that commands can now be accepted.
+	wait("adapter command readiness", func() bool {
+		_, e := client.Clipboard(ctx)
+		return e == nil
 	})
 	native.onPaste = func() {
 		got, e := fileBoard.Read()
@@ -541,11 +542,13 @@ func (f *fixturePlatform) Paste(quickpanel.Target) error {
 }
 func (f *fixturePlatform) OwnsForeground() bool { return f.active }
 
-// fixtureBoard delays one real adapter write; all content still crosses unicd IPC.
+// fixtureBoard delays the initial baseline and one real adapter write.
+// All content still crosses production unicd IPC.
 type fixtureBoard struct {
-	base testboard.Dir
-	mu   sync.Mutex
-	next *blockedWrite
+	baseline sync.Once // Delay baseline completion to exercise command admission.
+	base     testboard.Dir
+	mu       sync.Mutex
+	next     *blockedWrite
 }
 type blockedWrite struct {
 	started, gate, done chan struct{}
@@ -560,7 +563,10 @@ func (b *fixtureBoard) arm() *blockedWrite {
 	b.mu.Unlock()
 	return block
 }
-func (b *fixtureBoard) Read() (clip.Snapshot, error) { return b.base.Read() }
+func (b *fixtureBoard) Read() (clip.Snapshot, error) {
+	b.baseline.Do(func() { time.Sleep(200 * time.Millisecond) })
+	return b.base.Read()
+}
 func (b *fixtureBoard) Write(s clip.Snapshot) error {
 	b.mu.Lock()
 	block := b.next

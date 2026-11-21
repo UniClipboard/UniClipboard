@@ -645,7 +645,7 @@ ui-wait button '跨网或命令行配对？改用完整票据 →'
 ui-click button '跨网或命令行配对？改用完整票据 →'
 ui-wait button 复制票据
 ui-enabled button 复制票据
-ui-wait text 添加设备
+ui-wait heading 添加设备
 screenshot invitation-shown
 peer-pair-desktop
 ui-wait text '核对并批准'
@@ -681,7 +681,7 @@ acceptance startup production-boundary
 
 Quick-panel system ordering
 
-Steps: Execute the registered production-process suite and validate its receipt.
+Steps: Delay the initial clipboard baseline; wait for real adapter command readiness; execute the registered production-process suite and validate its receipt.
 
 Expected: The suite runs, passes its assertions and emits a successful receipt.
 

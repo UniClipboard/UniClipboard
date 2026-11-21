@@ -15,7 +15,7 @@ ui-wait button '跨网或命令行配对？改用完整票据 →'
 ui-click button '跨网或命令行配对？改用完整票据 →'
 ui-wait button 复制票据
 ui-enabled button 复制票据
-ui-wait text 添加设备
+ui-wait heading 添加设备
 screenshot invitation-shown
 peer-pair-desktop
 ui-wait text '核对并批准'

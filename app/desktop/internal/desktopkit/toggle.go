@@ -51,6 +51,9 @@ func (k Kit) Checkbox(c *ui.Context, checked *bool, p CheckboxProps) ui.Element 
 type SliderProps struct {
 	Label          string
 	Min, Max, Step float64
+	HideTooltip    bool
+	// Compact draws a refined thin toolbar slider (4px track, 14px thumb, no tooltip bubble).
+	Compact bool
 }
 
 func (k Kit) Slider(c *ui.Context, value *float64, p SliderProps) ui.Element {
@@ -58,5 +61,38 @@ func (k Kit) Slider(c *ui.Context, value *float64, p SliderProps) ui.Element {
 	if step <= 0 {
 		step = (p.Max - p.Min) / 100
 	}
-	return k.native().Slider(c, value, boardui.SliderProps{Label: p.Label, HideLabel: true, Min: p.Min, Max: p.Max, Step: step})
+	if p.Compact {
+		return k.compactSlider(c, value, p, step)
+	}
+	return k.native().Slider(c, value, boardui.SliderProps{Label: p.Label, HideLabel: true, HideTooltip: p.HideTooltip, Min: p.Min, Max: p.Max, Step: step})
+}
+
+func (k Kit) compactSlider(c *ui.Context, value *float64, p SliderProps, step float64) ui.Element {
+	slider := ui.SliderBase(c.Key("slider"), value, p.Min, p.Max).
+		Label(p.Label).Step(step).FocusRing(false).Height(28).Width(74).Padding(0)
+	frac := float32(0)
+	if p.Max > p.Min {
+		frac = min(max(float32((*value-p.Min)/(p.Max-p.Min)), 0), 1)
+	}
+	dragging := slider.Pressed()
+	slider.Children(func() {
+		trackCol := k.Color("background-tertiary-default")
+		if slider.Hovered() {
+			trackCol = k.Color("background-tertiary-hover")
+		}
+		ui.Box(c.Key("track")).Absolute().Left(0).Right(0).Top(12).Height(4).Radius(2).
+			Background(trackCol).AccessHidden(true)
+		ui.Box(c.Key("fill")).Absolute().Left(0).Top(12).WidthPercent(frac*100).Height(4).Radius(2).
+			Background(k.Color("accent-500")).AccessHidden(true)
+		thumb := ui.Box(c.Key("thumb")).Absolute().LeftPercent(frac*100).Top(7).Translate(-7, 0).
+			Size(14, 14).Radius(7).
+			Background(k.Color("control-indicator-background")).
+			Border(1.5, k.Color("accent-500")).
+			Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, .16)).
+			AccessHidden(true)
+		if dragging {
+			thumb.Shadow(0, 2, 6, 0, k.Color("accent-500").Alpha(.32))
+		}
+	})
+	return slider
 }

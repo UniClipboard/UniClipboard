@@ -57,25 +57,23 @@ func scenarioSheetExitStability(t *testing.T) {
 					t.Fatal(err)
 				}
 				tt.Advance(350 * time.Millisecond)
-				if err := tt.Click("#设计"); err != nil {
+				if err := boarduiTableClick(tt, "标签", "#设计", 0, false); err != nil {
 					t.Fatal(err)
 				}
-				rest, ok := tt.AccessByRole(ui.RoleDialog, "管理")
+				rest, ok := tt.AccessByRole(ui.RoleDialog, "管理标签")
 				if !ok {
 					t.Fatal("resting sheet missing")
 				}
 				read := func(ms int) sample {
-					dialog, ok := tt.AccessByRole(ui.RoleDialog, "管理")
+					dialog, ok := tt.AccessByRole(ui.RoleDialog, "管理标签")
 					if !ok {
 						t.Fatal("live sheet removed before exit completed")
 					}
-					r := sample{Theme: theme, Close: closeBy, Milliseconds: ms, Y: dialog.Bounds.Y, Panel: dialog.Bounds, Scale: dialog.Bounds.W / rest.Bounds.W, Selection: slices.Clone(d.tagManager.table.Selection())}
-					for _, name := range []string{"名称", "条目", "侧边栏"} {
-						col, ok := tt.AccessByRole(ui.RoleColumnHeader, name)
-						if !ok {
-							t.Fatal("table column removed during exit")
-						}
-						r.Widths = append(r.Widths, col.Bounds.W/r.Scale)
+					r := sample{Theme: theme, Close: closeBy, Milliseconds: ms, Y: dialog.Bounds.Y, Panel: dialog.Bounds, Scale: dialog.Bounds.W / rest.Bounds.W, Selection: slices.Clone(d.tagManager.selected)}
+					if list, ok := tt.AccessByRole(ui.RoleList, "标签"); ok {
+						r.Widths = append(r.Widths, list.Bounds.W/r.Scale)
+					} else {
+						t.Fatal("tag list removed during exit")
 					}
 					im := tt.Image()
 					scale := float32(im.Bounds().Dx()) / 1100
@@ -101,7 +99,7 @@ func scenarioSheetExitStability(t *testing.T) {
 					tt.Advance(16 * time.Millisecond)
 					after := read(ms)
 					if len(before.Widths) != len(after.Widths) {
-						t.Fatal("column count changed")
+						t.Fatal("list width count changed")
 					}
 					for i, w := range before.Widths {
 						if math.Abs(float64(w-after.Widths[i])) > .5 {
@@ -120,10 +118,10 @@ func scenarioSheetExitStability(t *testing.T) {
 					t.Fatal("source fade produced no raster change at panel gutter")
 				}
 				tt.Advance(350 * time.Millisecond)
-				if _, ok := tt.AccessByRole(ui.RoleDialog, "管理"); ok {
+				if _, ok := tt.AccessByRole(ui.RoleDialog, "管理标签"); ok {
 					t.Fatal("sheet still present after exit")
 				}
-				if len(d.tagManager.table.Selection()) != 0 {
+				if len(d.tagManager.selected) != 0 {
 					t.Fatal("selection not cleaned after exit")
 				}
 			})

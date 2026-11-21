@@ -34,7 +34,7 @@ func (k Kit) Pane(c *ui.Context, p PaneProps, body func()) ui.Element {
 	}
 	e := ui.Column(c).Role(ui.RoleRegion).Label(p.Label).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 	single := p.DetailOpen != nil && w < SinglePaneWidth
-	list, detail := float32(470), float32(340)
+	list, detail := float32(356), float32(340)
 	listMin, detailMin := float32(300), float32(300)
 	{
 	}
@@ -48,7 +48,7 @@ func (k Kit) Pane(c *ui.Context, p PaneProps, body func()) ui.Element {
 		}
 		{
 
-			e.Background(t.View).InsetShadow(-1, 0, 0, 0, t.Border).Padding(12, 0, 0)
+			e.Background(t.View).InsetShadow(-1, 0, 0, 0, t.Border).Padding(6, 0, 0)
 		}
 
 	case PaneDetail:
@@ -59,12 +59,12 @@ func (k Kit) Pane(c *ui.Context, p PaneProps, body func()) ui.Element {
 		}
 		e.Background(t.Detail)
 		{
-			e.Padding(12, 0, 0)
+			e.Padding(8, 0, 0)
 		}
 	default:
 		e.Grow(1)
 		{
-			e.Padding(12, 0, 0)
+			e.Padding(6, 0, 0)
 		}
 	}
 	return e.Children(func() {

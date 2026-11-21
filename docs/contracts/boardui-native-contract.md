@@ -72,9 +72,18 @@ This UI state contract does not change service cancellation or Engine ownership.
 ## Application sidebar feedback
 
 Application SidebarNav remains single-select. Pointer hover must not change the
-filter or selection. Its selected paint uses the fixed official NavItem's
-accent-500 to accent-600 gradient and white ink; its neutral hover paint remains
-distinct. A stable 12-DIP scrollbar lane separates the overlay indicator/hit
-target from row content. Footer actions stay fixed outside the scroll viewport. Application rows are 36 DIP with composite body-medium labels, 20-DIP icons and 8-DIP icon/label gaps. Effective outer padding and section separation are 12 DIP. Section commands are quiet 24-DIP buttons; More is a 24-DIP secondary row aligned with navigation labels.
+filter or selection. Selected rows use an elevated neutral surface (white with a
+hairline border in light mode, raised neutral tint with hairline border in dark
+mode) paired with primary ink and an accent leading icon, keeping tag swatches
+legible and remaining distinct from the neutral hover wash. A symmetric 12-DIP
+leading margin and 12-DIP trailing scrollbar lane keep the 4-DIP translucent
+overlay indicator clear of row content and align the 28-DIP quiet chrome toggle
+with the navigation grid. Footer actions stay fixed outside the scroll viewport.
+Application rows are 30 DIP with 13-DIP `body-2` typography, 16-DIP icons (8-DIP
+circular swatches for tags), 8-DIP icon/label gaps, 2-DIP intra-section gaps and
+14-DIP section separation. Built-in content tags stay off the sidebar by default
+while remaining opt-in from the tag manager; sidebar tag rows omit redundant `#`
+prefixes. Section commands are quiet 24-DIP buttons aligned visually with row
+counts; More is a 26-DIP secondary row aligned with navigation labels.
 This is an application composition, not a claim that the full official dashboard
 sidebar (team/user/announcement/badges) has been ported.

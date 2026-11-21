@@ -14,8 +14,10 @@ type SheetVariant int
 const (
 	// SheetManagement keeps the master-detail width (device browsing); the zero value.
 	SheetManagement SheetVariant = iota
-	// SheetTask is the compact surface of a focused task.
+	// SheetTask is the compact surface of a focused task (576 DIP).
 	SheetTask
+	// SheetCompact is a tight authentication/pairing dialog (440 DIP).
+	SheetCompact
 )
 
 type SheetProps struct {
@@ -68,7 +70,6 @@ func (k Kit) Sheet(c *ui.Context, p SheetProps, body func()) (done bool) {
 	// Keep DialogBase's original live tree through the last exit frame. Its scope
 	// owns keyboard isolation and restores the opener when that tree is removed.
 	visible := true
-	task := p.Variant == SheetTask
 	w, h := c.Size()
 	panel := ui.DialogBase(c, &visible, func(backdrop, panel ui.Element) {
 		if !visible {
@@ -77,8 +78,11 @@ func (k Kit) Sheet(c *ui.Context, p SheetProps, body func()) (done bool) {
 		}
 		backdrop.Background(k.scrim()).Opacity(scrimProgress)
 		width := float32(760)
-		if task {
+		switch p.Variant {
+		case SheetTask:
 			width = 576
+		case SheetCompact:
+			width = 440
 		}
 		panel.Label(p.Title).TabStop(false).FocusRing(false).Column().TextColor(k.Color("text-primary")).
 			Width(width).MaxWidth(w - 32).MaxHeight(h - 32).Padding(boardui.Number("dialog-padding")).Gap(boardui.Number("dialog-header-body-gap")).

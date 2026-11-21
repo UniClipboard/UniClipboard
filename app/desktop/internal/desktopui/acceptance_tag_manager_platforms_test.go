@@ -22,12 +22,12 @@ func scenarioTagManagerPlatforms(t *testing.T) {
 					t.Fatal(err)
 				}
 				tt.Advance(350 * time.Millisecond)
-				table, ok := tt.AccessByRole(ui.RoleTable, "标签")
+				list, ok := tt.AccessByRole(ui.RoleList, "标签")
 				if !ok {
-					t.Fatal("management table missing")
+					t.Fatal("management list missing")
 				}
-				// Links is the last row. Scroll the real table before accessing its menu.
-				r := table.Bounds
+				// Links is the last row. Scroll the real list before accessing its menu.
+				r := list.Bounds
 				tt.Scroll(r.X+r.W/2, r.Y+r.H/2, 0, r.H)
 				if err := boarduiTableClick(tt, "标签", "#链接", 0, true); err != nil {
 					t.Fatal(err)

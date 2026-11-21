@@ -75,8 +75,13 @@ func (k Kit) SwatchColor(color TagColor) ui.Color {
 	if col, ok := parseCustomColor(string(color)); ok {
 		return col
 	}
-	if color == "" || color == "gray" {
+	switch color {
+	case "", "gray":
 		return k.Color("text-tertiary")
+	case "blue":
+		return k.Color("accent-500")
+	case "green", "lime":
+		return k.Color("notification-success-foreground")
 	}
 	_, ink := k.TagTint(color)
 	return ink

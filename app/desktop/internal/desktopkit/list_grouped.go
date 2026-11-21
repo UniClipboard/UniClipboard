@@ -112,10 +112,11 @@ func (k Kit) GroupedList(c *ui.Context, st *ListState, p GroupedListProps) ui.El
 	}
 	st.vpCommands(p.Viewport)
 
+	cardMode := len(p.Items) > 0 && p.Items[0].CardRow
 	shell := ui.Column(c)
 	shell.Children(func() {
 		list := k.runList(c, st, listRun{
-			label: p.Label, ids: ids, multi: true, menu: p.Menu,
+			label: p.Label, ids: ids, multi: true, cardMode: cardMode, menu: p.Menu,
 			header: func(i int) bool { return i >= 0 && i < len(kinds) && kinds[i] == glHeader },
 			text: func(i int) string {
 				if it := itemAt[i]; it >= 0 {
@@ -133,11 +134,20 @@ func (k Kit) GroupedList(c *ui.Context, st *ListState, p GroupedListProps) ui.El
 			row: func(r ui.ListRow, i int) {
 				switch kinds[i] {
 				case glHeader:
-					k.groupHeader(r.Context, p.Groups[groupAt[i]])
+					if cardMode {
+						k.cardGroupHeader(r.Context, p.Groups[groupAt[i]])
+					} else {
+						k.groupHeader(r.Context, p.Groups[groupAt[i]])
+					}
 				case glHole:
 					ui.Box(r.Context).Height(lk.rowH)
 				default:
-					k.GroupedListRow(r, p.Items[itemAt[i]], st.sel.Len() > 1)
+					item := p.Items[itemAt[i]]
+					if item.CardRow {
+						k.l1ListRow(r.Context, r, item)
+					} else {
+						k.GroupedListRow(r, item, st.sel.Len() > 1)
+					}
 				}
 			},
 		})
@@ -192,6 +202,22 @@ func (k Kit) groupHeader(c *ui.Context, g ListGroup) {
 			col := k.Color("text-secondary")
 
 			ui.Text(c, g.Trailing).FontSize(lk.metaSize).TextColor(col).SingleLine()
+		}
+	})
+}
+
+// cardGroupHeader renders the quieter sticky day header aligned with L1 floating card rows.
+func (k Kit) cardGroupHeader(c *ui.Context, g ListGroup) {
+	h := ui.Row(c).AlignItems(ui.Center).Gap(7).Height(30).Padding(0, 14).Background(k.surfaceSolid())
+	h.Role(ui.RoleNone)
+	h.Children(func() {
+		ui.Text(c, g.Title).FontSize(12).FontWeight(600).TextColor(k.Color("text-primary")).SingleLine()
+		if g.Detail != "" {
+			ui.Text(c, g.Detail).FontSize(11).TextColor(k.Color("text-tertiary")).SingleLine()
+		}
+		ui.Spacer(c)
+		if g.Trailing != "" {
+			ui.Text(c, g.Trailing).FontSize(11).TextColor(k.Color("text-tertiary")).SingleLine()
 		}
 	})
 }

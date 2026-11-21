@@ -30,7 +30,7 @@ func (k Kit) InsetList(c *ui.Context, p InsetListProps) InsetListResult {
 	res := InsetListResult{}
 	rad := float32(12)
 
-	box := ui.Column(c).Label(p.Label).Role(ui.RoleList).Radius(rad).Clip().Background(k.surfaceSolid()).
+	box := ui.Column(c).Label(p.Label).Role(ui.RoleList).Radius(rad).Clip().Background(k.CardSurface()).
 		Border(1, k.Color("separator-border"))
 
 	box.Children(func() {

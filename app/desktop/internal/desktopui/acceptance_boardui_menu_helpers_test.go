@@ -81,44 +81,61 @@ func boarduiChooseMenu(tt *ui.Tester, path ...string) error {
 	return nil
 }
 
-// boarduiTableCell scopes a duplicate visible tag label to its real table cell.
-// Scroll only that table when a virtual row is outside its viewport. Never send
-// an event to the background sidebar merely because its text is identical.
-func boarduiTableCell(tt *ui.Tester, tableName, label string) (ui.Rect, error) {
+// boarduiTableCell scopes a duplicate visible tag label to its real container
+// (table cell or grouped-list row). Scroll only that container when a row is
+// outside its viewport. Never send an event to the background sidebar merely
+// because its text is identical.
+func boarduiTableCell(tt *ui.Tester, containerName, label string) (ui.Rect, error) {
 	for attempt := 0; attempt < 4; attempt++ {
-		table, ok := tt.AccessByRole(ui.RoleTable, tableName)
+		container, ok := tt.AccessByRole(ui.RoleTable, containerName)
+		isList := false
 		if !ok {
-			return ui.Rect{}, fmt.Errorf("table %q missing", tableName)
+			container, ok = tt.AccessByRole(ui.RoleList, containerName)
+			isList = ok
+		}
+		if !ok {
+			return ui.Rect{}, fmt.Errorf("container %q missing", containerName)
 		}
 		within := func(r ui.Rect) bool {
-			return r.X >= table.Bounds.X-.1 && r.X+r.W <= table.Bounds.X+table.Bounds.W+.1 && r.Y >= table.Bounds.Y-.1 && r.Y+r.H <= table.Bounds.Y+table.Bounds.H+.1 && r.W > 0 && r.H > 0
+			return r.X >= container.Bounds.X-.1 && r.X+r.W <= container.Bounds.X+container.Bounds.W+.1 && r.Y >= container.Bounds.Y-.1 && r.Y+r.H <= container.Bounds.Y+container.Bounds.H+.1 && r.W > 0 && r.H > 0
 		}
 		all := tt.AccessAll()
-		for _, cell := range all {
-			if (cell.Role == ui.RoleCell || cell.Role == ui.RoleRowHeader) && !cell.Offscreen && within(cell.Bounds) && (cell.Name == label || strings.HasPrefix(cell.Name, label+" ")) {
-				return cell.Bounds, nil
+		if isList {
+			for _, item := range all {
+				if item.Role == ui.RoleListItem && !item.Offscreen && within(item.Bounds) && item.Name == label {
+					// Return the label region on the left half of the row so clicks
+					// land on the row body rather than the swatch or trailing switch.
+					r := item.Bounds
+					return ui.Rect{X: r.X + 44, Y: r.Y, W: max(20, r.W*0.35), H: r.H}, nil
+				}
 			}
-		}
-		for _, text := range all {
-			if text.Role != ui.RoleText || text.Name != label || text.Offscreen || !within(text.Bounds) {
-				continue
-			}
-			x, y := text.Bounds.X+text.Bounds.W/2, text.Bounds.Y+text.Bounds.H/2
+		} else {
 			for _, cell := range all {
-				if cell.Role != ui.RoleCell && cell.Role != ui.RoleRowHeader {
+				if (cell.Role == ui.RoleCell || cell.Role == ui.RoleRowHeader) && !cell.Offscreen && within(cell.Bounds) && (cell.Name == label || strings.HasPrefix(cell.Name, label+" ")) {
+					return cell.Bounds, nil
+				}
+			}
+			for _, text := range all {
+				if text.Role != ui.RoleText || text.Name != label || text.Offscreen || !within(text.Bounds) {
 					continue
 				}
-				r := cell.Bounds
-				if !cell.Offscreen && within(r) && x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
-					return r, nil
+				x, y := text.Bounds.X+text.Bounds.W/2, text.Bounds.Y+text.Bounds.H/2
+				for _, cell := range all {
+					if cell.Role != ui.RoleCell && cell.Role != ui.RoleRowHeader {
+						continue
+					}
+					r := cell.Bounds
+					if !cell.Offscreen && within(r) && x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
+						return r, nil
+					}
 				}
 			}
 		}
 		if attempt < 3 {
-			tt.Scroll(table.Bounds.X+table.Bounds.W/2, table.Bounds.Y+table.Bounds.H/2, 0, table.Bounds.H)
+			tt.Scroll(container.Bounds.X+container.Bounds.W/2, container.Bounds.Y+container.Bounds.H/2, 0, container.Bounds.H)
 		}
 	}
-	return ui.Rect{}, fmt.Errorf("visible table cell %q in %q missing", label, tableName)
+	return ui.Rect{}, fmt.Errorf("visible row %q in %q missing", label, containerName)
 }
 
 func boarduiTableClick(tt *ui.Tester, tableName, label string, mods ui.Modifiers, secondary bool) error {

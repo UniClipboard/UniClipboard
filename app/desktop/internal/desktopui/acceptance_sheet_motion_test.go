@@ -55,7 +55,7 @@ func scenarioSheetMotion(t *testing.T) {
 			mode = "reduced"
 		}
 		for _, theme := range []string{"dark", "light"} {
-			for _, sheet := range []string{"管理", "管理设备", "添加标签"} {
+			for _, sheet := range []string{"管理标签", "添加设备", "添加标签"} {
 				for _, closeBy := range []string{"done", "escape", "backdrop"} {
 					t.Run(mode+"/"+theme+"/"+sheet+"/"+closeBy, func(t *testing.T) {
 
@@ -63,11 +63,10 @@ func scenarioSheetMotion(t *testing.T) {
 						tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark", Preferences: ui.Preferences{ReduceMotion: reduced}})
 						proof.Capture(t, tt)
 						label := sheet
-						if sheet == "管理设备" {
-							label = "管理设备…"
-						}
-						if sheet == "管理" {
-							label = "管理标签"
+						if sheet == "添加设备" {
+							if err := tt.Click("管理设备…"); err != nil {
+								t.Fatal(err)
+							}
 						}
 						if err := tt.Click(label); err != nil {
 							t.Fatal(err)
@@ -149,7 +148,11 @@ func scenarioSheetMotion(t *testing.T) {
 						}
 						switch closeBy {
 						case "done":
-							if err := tt.Click("完成"); err != nil {
+							closeBtn := "完成"
+							if sheet == "添加设备" {
+								closeBtn = "关闭"
+							}
+							if err := tt.Click(closeBtn); err != nil {
 								t.Fatal(err)
 							}
 						case "escape":
@@ -193,7 +196,11 @@ func scenarioSheetMotion(t *testing.T) {
 						if _, ok := tt.AccessByRole(ui.RoleDialog, sheet); ok {
 							t.Fatal("sheet retained after exit")
 						}
-						if err := tt.Click("管理标签"); err != nil {
+						afterBtn := "管理标签"
+						if sheet == "添加设备" {
+							afterBtn = "返回历史"
+						}
+						if err := tt.Click(afterBtn); err != nil {
 							t.Fatalf("modal blocked input after exit: %v", err)
 						}
 					})

@@ -117,7 +117,8 @@ type viewState struct {
 	devices                                                                []device
 	selected                                                               string
 	confirmEntries                                                         []string
-	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook bool
+	drawerSwitchDir                                                                     int
+	sidebarHidden, detailOpen, inspector, devicesOpen, tagsOpen, quickLook, filterOpen bool
 	compact                                                                bool
 	gridSize                                                               float64
 	deviceTask, fieldError, notice, confirm, confirmID                     string
@@ -150,7 +151,7 @@ func (d *viewState) view(c *ui.Context) {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.devicesOpen && !d.tagsOpen && !d.tagEditor.open && d.confirm == "" {
+		if !d.tagsOpen && !d.tagEditor.open && d.deviceTask == "" && d.confirm == "" {
 			if d.page == "history" {
 				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
 				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
@@ -160,10 +161,15 @@ func (d *viewState) view(c *ui.Context) {
 				// A narrow sidebar drawer owns Escape before page navigation.
 				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
 			}
+			if d.page == "devices" && !d.renaming {
+				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
+			}
 		}
 		switch d.page {
 		case "history":
 			d.history(c, k)
+		case "devices":
+			d.devicesPage(c, k)
 		case "settings":
 			d.settingsPage(c, k)
 		case "quick-panel":
@@ -172,7 +178,7 @@ func (d *viewState) view(c *ui.Context) {
 			d.page = "history"
 			d.history(c, k)
 		}
-		d.deviceSheet(c.Key("devices"), k)
+		d.deviceTaskSheet(c.Key("devices"), k)
 		d.tagSheet(c.Key("tags"), k)
 		d.confirmDialog(c.Key("confirm"), k)
 	})

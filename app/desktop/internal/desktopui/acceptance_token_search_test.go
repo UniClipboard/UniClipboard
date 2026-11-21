@@ -171,19 +171,18 @@ func scenarioTokenSearch(t *testing.T) {
 						}
 					case "filters":
 						tt.Key(0, ui.KeyEscape)
-						if err := tt.Click("来源设备"); err != nil {
+						if err := tt.Click("筛选条件"); err != nil {
 							t.Fatal(err)
 						}
-						var err error
-
-						{
-							err = tt.Click("Linux 工作站")
-						}
-						if err != nil {
+						if err := tt.Click("Linux 工作站"); err != nil {
 							t.Fatal(err)
 						}
 						if d.source != "linux" || len(d.filtered()) != 2 {
 							t.Fatal("source filter did not apply")
+						}
+						// Close the filter popover and remove the token chip directly from the omnibar.
+						if err := tt.Click("筛选条件"); err != nil {
+							t.Fatal(err)
 						}
 						if err := tt.Click("移除设备条件"); err != nil {
 							t.Fatal(err)

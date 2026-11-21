@@ -10,6 +10,8 @@ import (
 
 type Entry struct {
 	ID, Title, Text, Source, Date, Size string
+	SourceAppName, SourceAppID          string
+	SourceAppIcon                       ui.ImageSource
 	Kind                                desktopkit.ContentKind
 	Tags                                []string
 	Pinned                              bool

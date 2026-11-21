@@ -5,16 +5,16 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	proof "github.com/uniclipboard/unic/app/desktop/internal/e2eproof"
 )
 
-// Failure cases: an always-expanded search field; an instantaneous width jump;
-// a moved title/command group; lost input focus; an empty field that cannot
-// collapse. Drive the complete existing toolbar without a native replacement.
+// Verifies the U1 centered unified search + filter omnibar: always visible in
+// the toolbar without moving the trailing command group, Cmd+F focuses the
+// input, clear retains focus, Escape closes suggestions then clears the query,
+// and the integrated filter funnel button toggles the chip popover.
 func scenarioSearchDisclosure(t *testing.T) {
 
 	d := newDemo("history", "dark")
@@ -41,20 +41,19 @@ func scenarioSearchDisclosure(t *testing.T) {
 			}
 		}
 	}()
-	if w := read(); w != 32 {
-		t.Errorf("initial search width=%v, want icon width 32", w)
+	initialW := read()
+	if initialW < 180 || initialW > 460 {
+		t.Errorf("initial unified omnibar width=%v, want within [180, 460]", initialW)
 	}
 	pin, _ := tt.AccessByRole(ui.RoleButton, "切换置顶")
 	if err := tt.Click("搜索历史"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Advance(40 * time.Millisecond)
-	if w := read(); w <= 32 || w >= 460 {
-		t.Errorf("no intermediate expansion width: %v", w)
+	if d.search.open {
+		t.Error("clicking empty unified search box must not open legacy suggestion panel")
 	}
-	tt.Advance(300 * time.Millisecond)
-	if w := read(); w != 460 {
-		t.Errorf("expanded search width=%v", w)
+	if w := read(); w != initialW {
+		t.Errorf("focusing unified omnibar shifted width: got %v want %v", w, initialW)
 	}
 	after, _ := tt.AccessByRole(ui.RoleButton, "切换置顶")
 	if after.Bounds != pin.Bounds {
@@ -64,12 +63,14 @@ func scenarioSearchDisclosure(t *testing.T) {
 	if d.query != "HTTP 服务示例" || len(d.filtered()) != 1 {
 		t.Errorf("search input/results: %q %d", d.query, len(d.filtered()))
 	}
+	if d.search.open {
+		t.Error("plain text search must not open legacy suggestion panel")
+	}
 	if err := tt.Click("全部项目"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Advance(300 * time.Millisecond)
-	if w := read(); w != 460 {
-		t.Error("nonempty search collapsed on focus loss")
+	if w := read(); w != initialW {
+		t.Error("unified omnibar width changed on focus loss")
 	}
 	tt.Key(ui.Cmd, ui.KeyF)
 	if err := tt.Click("清除搜索"); err != nil {
@@ -83,41 +84,31 @@ func scenarioSearchDisclosure(t *testing.T) {
 		t.Error("clear did not retain input focus")
 	}
 	tt.Key(0, ui.KeyEscape)
-	if d.query != "HTTP 服务示例" {
-		t.Error("first Escape must preserve text while closing suggestions")
-	}
-	tt.Key(0, ui.KeyEscape)
 	if d.query != "" {
-		t.Error("second Escape did not clear the query")
+		t.Error("Escape on plain text query without popup did not clear the query")
 	}
-	tt.Key(0, ui.KeyEscape)
-	tt.Advance(40 * time.Millisecond)
-	if w := read(); w <= 32 || w >= 460 {
-		t.Errorf("no intermediate collapse width: %v", w)
-	}
-	tt.Advance(300 * time.Millisecond)
-	if w := read(); w != 32 {
-		t.Errorf("search did not collapse: %v", w)
-	}
-	tt.Key(ui.Cmd, ui.KeyF)
-	tt.Advance(300 * time.Millisecond)
-	if w := read(); w != 460 {
-		t.Error("Cmd+F did not expand search")
-	}
-	tt.Key(0, ui.KeyEscape)
-	tt.Key(0, ui.KeyEscape)
-	tt.Advance(40 * time.Millisecond)
-	tt.Key(ui.Cmd, ui.KeyF)
-	tt.Advance(320 * time.Millisecond)
-	if w := read(); w != 460 {
-		t.Error("search did not settle after reversing a collapse")
-	}
-	if err := tt.Click("全部项目"); err != nil {
+	// Integrated filter popover opens via the trailing funnel button.
+	if err := tt.Click("筛选条件"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Advance(300 * time.Millisecond)
-	if w := read(); w != 32 {
-		t.Error("empty search did not collapse on focus loss")
+	if !d.filterOpen {
+		t.Error("filter funnel button did not open filter popover")
+	}
+	chip, ok := tt.AccessByRole(ui.RoleButton, "代码")
+	if !ok {
+		t.Fatal("filter chip button 代码 missing in popover")
+	}
+	tt.ClickAt(chip.Bounds.X+chip.Bounds.W/2, chip.Bounds.Y+chip.Bounds.H/2)
+	if d.kind != "代码" {
+		t.Errorf("filter chip did not apply kind=代码, got %q", d.kind)
+	}
+	// Cmd+F closes the filter popover and focuses the input.
+	tt.Key(ui.Cmd, ui.KeyF)
+	if d.filterOpen {
+		t.Error("Cmd+F did not dismiss open filter popover")
+	}
+	if active, _ := tt.TextInputActive(); !active {
+		t.Error("Cmd+F did not focus unified omnibar input")
 	}
 }
 
@@ -130,13 +121,13 @@ func scenarioSearchDisclosureReducedMotion(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, ok := tt.AccessByRole(ui.RoleSearch, "")
-	if !ok || info.Bounds.W != 460 {
-		t.Fatalf("Reduce Motion expansion: %+v", info.Bounds)
+	if !ok || info.Bounds.W < 180 {
+		t.Fatalf("Reduce Motion unified omnibar: %+v", info.Bounds)
 	}
+	tt.Type("HTTP")
 	tt.Key(0, ui.KeyEscape)
 	tt.Key(0, ui.KeyEscape)
-	info, _ = tt.AccessByRole(ui.RoleSearch, "")
-	if info.Bounds.W != 32 {
-		t.Fatalf("Reduce Motion collapse: %+v", info.Bounds)
+	if d.query != "" {
+		t.Fatalf("Reduce Motion Escape did not clear query: %q", d.query)
 	}
 }

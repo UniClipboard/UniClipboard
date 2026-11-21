@@ -21,11 +21,16 @@ func NewPreview(data preview.Desktop) *Desktop {
 		reference: data.Reference, previewImage: data.Image,
 		quick: newPreviewQuick(data.Quick),
 	}
-	if d.page == "devices" {
-		d.page, d.devicesOpen = "history", true
+	if len(data.Devices) > 1 {
+		for _, v := range data.Devices {
+			if v.ID != "local" {
+				d.deviceList.Value = v.ID
+				break
+			}
+		}
 	}
 	for _, e := range data.Entries {
-		d.entries = append(d.entries, entry{id: e.ID, title: e.Title, text: e.Text, source: e.Source, date: e.Date, size: e.Size, kind: e.Kind, tags: slices.Clone(e.Tags), pinned: e.Pinned})
+		d.entries = append(d.entries, entry{id: e.ID, title: e.Title, text: e.Text, source: e.Source, date: e.Date, size: e.Size, sourceAppName: e.SourceAppName, sourceAppID: e.SourceAppID, sourceAppIcon: e.SourceAppIcon, kind: e.Kind, tags: slices.Clone(e.Tags), pinned: e.Pinned})
 	}
 	for _, v := range data.Devices {
 		item := device{id: v.ID, name: v.Name, platform: v.Platform, icon: v.Icon, online: v.Online, latency: v.Latency, link: v.Link, lastSeen: v.LastSeen, fingerprint: v.Fingerprint, direction: v.Direction, text: v.Text, image: v.Image, file: v.File}

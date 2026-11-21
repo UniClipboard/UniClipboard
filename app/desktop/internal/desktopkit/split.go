@@ -25,14 +25,12 @@ type layTokens struct {
 }
 
 func (k Kit) layTok() layTokens {
-	{
-	}
-
+	canvas := k.workspaceCanvas()
 	return layTokens{
-		Window: k.Color("background-full"), View: k.Color("background-primary-default"), Card: k.Color("background-primary-default"),
+		Window: canvas, View: canvas, Card: k.CardSurface(),
 		CardStroke: k.Color("separator-border"), Border: k.Color("separator-border"), Shade: k.Color("background-tertiary-default"),
 		Hover: k.Color("background-secondary-hover"), Fg: k.Color("text-primary"), Fg2: k.Color("text-secondary"), Fg3: k.Color("text-tertiary"),
-		Accent: k.Color("accent-500"), Code: k.Color("accent-950"), Header: k.Color("background-secondary-default"), Detail: k.Color("background-full"),
+		Accent: k.Color("accent-500"), Code: k.Color("accent-950"), Header: k.Color("background-secondary-default"), Detail: canvas,
 	}
 }
 
@@ -80,7 +78,10 @@ type SplitViewProps struct {
 	// SidebarToggleHint is a display-only shortcut hint appended to its tooltip.
 	SidebarToggleLabel, SidebarToggleHint string
 	Search                                func()
-	// ToolbarLeading holds controls just before the search field, e.g. the list / grid switch.
+	// SearchCentered places Search in the centered omnibar slot of the 52-DIP toolbar
+	// between the leading heading and trailing controls (U1 unified search+filter bar).
+	SearchCentered bool
+	// ToolbarLeading holds controls just before the trailing commands, e.g. the list / grid switch.
 	ToolbarLeading func()
 	// Toolbar holds controls at the trailing end of the toolbar band, after the search field.
 	Toolbar func()
@@ -89,6 +90,26 @@ type SplitViewProps struct {
 	// same pointer to the Panes. Nil disables the adaptive behaviour.
 	DetailOpen *bool
 	BackLabel  string
+	// Drawer renders a full-height global inspector drawer anchored to the trailing window
+	// edge (covering the titlebar region cleanly without reflowing the body).
+	// Set DrawerInset > 0 (e.g. 8) for a floating inset full-height card (D1-b).
+	Drawer       func()
+	DrawerOpen   bool
+	DrawerLabel  string
+	DrawerWidth  float32
+	DrawerInset  float32
+	DrawerRadius float32
+}
+
+// TitleBarHeight returns the exact height of the SplitView's top band so a full-height
+// global drawer can align its own top bar seam with the main window toolbar.
+func (k Kit) TitleBarHeight(c *ui.Context) float32 {
+	caption := c.TitleBar()
+	h := float32(52)
+	if runtime.GOOS == "darwin" && caption.Left > 0 {
+		h = max(h, caption.Height)
+	}
+	return h
 }
 
 // SplitViewResult is the element plus the toolbar interactions of the frame.
@@ -96,6 +117,11 @@ type SplitViewResult struct {
 	ui.Element
 	// SidebarToggled is true on the frame the toggle was activated (the pointer is already flipped).
 	SidebarToggled bool
+}
+
+type drawerPresentation struct {
+	initialized bool
+	present     bool
 }
 
 // SplitView is the adaptive window layout: a sidebar beside the content whose toolbar band
@@ -129,6 +155,41 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 	motion := ui.Animation{Duration: 280 * time.Millisecond, Ease: ui.EaseOut}
 
 	curW := root.AnimateTo("sidebar", target, motion)
+
+	// M5 Layered Depth Slide state for the global trailing drawer (with exit retention).
+	drawerState := ui.Local(root, "split-drawer-presentation", func() drawerPresentation { return drawerPresentation{} })
+	drawerOpen := p.Drawer != nil && p.DrawerOpen
+	if !drawerState.initialized {
+		initial := float32(0)
+		if drawerOpen {
+			initial = 1
+			drawerState.present = true
+		}
+		root.Jump("drawer-visibility", initial)
+		drawerState.initialized = true
+	}
+	drawerTarget := float32(0)
+	if drawerOpen {
+		drawerState.present = true
+		drawerTarget = 1
+	}
+	drawerDur := 280 * time.Millisecond
+	if !drawerOpen {
+		drawerDur = 210 * time.Millisecond
+	}
+	if c.Preferences().ReduceMotion {
+		drawerDur = 0
+		root.Jump("drawer-visibility", drawerTarget)
+	}
+	drawerProgress := root.AnimateTo("drawer-visibility", drawerTarget, ui.Animation{
+		Duration: drawerDur,
+		Ease:     ui.CubicBezier(.32, .72, 0, 1),
+	})
+	if drawerState.present && !drawerOpen && drawerProgress <= 0.001 {
+		drawerState.present = false
+		c.Invalidate()
+	}
+
 	var res SplitViewResult
 	res.Element = root
 
@@ -140,9 +201,18 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 		if p.SidebarToggleHint != "" {
 			tip += " (" + p.SidebarToggleHint + ")"
 		}
-		b := k.Button(c.Key("split-toggle"), "", ButtonProps{
-			Variant: Subtle, Icon: IconSidebar, Label: p.SidebarToggleLabel, Tooltip: tip,
-		})
+		b := ui.ButtonBase(c.Key("split-toggle")).Label(p.SidebarToggleLabel).Tooltip(tip).
+			Size(28, 28).Radius(7).Justify(ui.Center).AlignItems(ui.Center).
+			FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+		iconColor := k.Color("foreground-icon-secondary")
+		if b.Pressed() {
+			b.Background(k.Color("background-tertiary-default"))
+			iconColor = k.Color("foreground-icon-primary")
+		} else if b.Hovered() {
+			b.Background(k.Color("background-secondary-hover"))
+			iconColor = k.Color("foreground-icon-primary")
+		}
+		b.Children(func() { k.Icon(c, IconSidebar, 16).TextColor(iconColor).AccessHidden(true) })
 		if b.Clicked() {
 			*p.SidebarHidden = !*p.SidebarHidden
 			res.SidebarToggled = true
@@ -175,15 +245,16 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			// Only the outer viewport changes width. Padding belongs to this
 			// fixed-width inner body: padding on the viewport would impose a
 			body := ui.Column(c.Key("split-sidebar-body")).Width(sidebarW).MinWidth(sidebarW).Grow(1).MinHeight(0).AccessHidden(hidden)
-			{
-
-				body.Padding(8)
+			if integratedCaption {
+				body.Padding(0, 0, 8, 8)
+			} else {
+				body.Padding(8, 0, 8, 8)
 			}
 
 			body.Children(func() {
 				if integratedCaption {
 					// Reserve only the sidebar's top band. The content toolbar starts at y=0.
-					ui.Row(c.Key("split-sidebar-caption")).Height(headerHeight - 8).Shrink(0).DragWindow()
+					ui.Row(c.Key("split-sidebar-caption")).Height(headerHeight).Shrink(0).DragWindow()
 				}
 				p.Sidebar()
 			})
@@ -192,19 +263,13 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 
 	toolbar := func() {
 		h := headerHeight
-		{
-		}
-
-		bar := ui.Row(c.Key("split-toolbar")).Height(h).Gap(6).AlignItems(ui.Center).Role(ui.RoleToolbar).
+		bar := ui.Row(c.Key("split-toolbar")).Height(h).Gap(8).AlignItems(ui.Center).Role(ui.RoleToolbar).
 			Label(p.Title)
-		{
-
-			bar.Padding(0, 8).Background(t.Header).InsetShadow(0, -1, 0, 0, t.Border)
-		}
+		bar.Padding(0, 16).Background(t.View).InsetShadow(0, -1, 0, 0, t.Border)
 
 		if integratedCaption {
 			// As the sidebar moves, controls must continue clearing the real traffic lights.
-			bar.Padding(0, 8, 0, max(8, caption.Left+48-curW))
+			bar.Padding(0, 16, 0, max(16, caption.Left+48-curW))
 		}
 		bar.DragWindow()
 		bar.Children(func() {
@@ -221,7 +286,11 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				p.TitleLeading()
 			}
 			heading := func() {
-				ui.Row(c.Key("split-heading")).Gap(8).AlignItems(ui.Baseline).MinWidth(0).Children(func() {
+				h := ui.Row(c.Key("split-heading")).Gap(7).AlignItems(ui.Baseline).MinWidth(0)
+				if p.SearchCentered {
+					h.MinWidth(68)
+				}
+				h.Children(func() {
 					k.Text(c.Key("t"), p.Title, TextProps{Role: RoleHeadline, Emphasized: true, Truncate: true})
 
 					if p.Subtitle != "" {
@@ -229,34 +298,78 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 					}
 				})
 			}
-			if integratedCaption {
-				// v1's macOS top band: title/count lead; view/search/actions trail.
-				heading()
-				ui.Box(c.Key("split-spacer")).Grow(1).MinWidth(0)
+			trailingControls := func() {
 				if p.ToolbarLeading != nil {
 					p.ToolbarLeading()
 				}
+				if p.Search != nil {
+					ui.Row(c.Key("split-search")).Shrink(1).MinWidth(32).Children(p.Search)
+				}
+				if p.Toolbar != nil {
+					ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+				}
+			}
+			if p.SearchCentered && p.Search != nil {
+				heading()
+				if !drawerOpen {
+					ui.Box(c.Key("split-sp-l")).Grow(1).MinWidth(6)
+					sc := ui.Row(c.Key("split-search")).Grow(3).MinWidth(110).MaxWidth(456).Shrink(1).AlignItems(ui.Center)
+					if drawerProgress > 0 {
+						sc.Opacity(max(0, 1-drawerProgress*1.4))
+					}
+					sc.Children(p.Search)
+					ui.Box(c.Key("split-sp-r")).Grow(1).MinWidth(6)
+					trail := ui.Row(c.Key("split-trailing")).Gap(6).AlignItems(ui.Center).Shrink(0)
+					if drawerProgress > 0 {
+						trail.Opacity(max(0, 1-drawerProgress*1.4))
+					}
+					trail.Children(func() {
+						if p.ToolbarLeading != nil {
+							p.ToolbarLeading()
+						}
+						if p.Toolbar != nil {
+							ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+						}
+					})
+				} else {
+					ui.Box(c.Key("split-spacer")).Grow(1).MinWidth(0)
+				}
+			} else if integratedCaption {
+				// macOS top band: title/count lead; view/search/actions trail.
+				heading()
+				ui.Box(c.Key("split-spacer")).Grow(1).MinWidth(0)
+				if !drawerOpen {
+					trail := ui.Row(c.Key("split-trailing")).Gap(8).AlignItems(ui.Center).Shrink(1).MinWidth(0)
+					if drawerProgress > 0 {
+						trail.Opacity(max(0, 1-drawerProgress*1.4))
+					}
+					trail.Children(trailingControls)
+				}
+			} else if drawerOpen {
+				heading()
+				ui.Box(c.Key("split-spacer")).Grow(1).MinWidth(0)
 			} else {
 				if p.ToolbarLeading != nil {
 					p.ToolbarLeading()
 				}
 				ui.Row(c.Key("split-center")).Grow(1).MinWidth(0).Justify(ui.Center).Children(heading)
-			}
-
-			if p.Search != nil {
-				ui.Row(c.Key("split-search")).Shrink(1).MinWidth(32).Children(p.Search)
-			}
-
-			if p.Toolbar != nil {
-				ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+				if p.Search != nil {
+					ui.Row(c.Key("split-search")).Shrink(1).MinWidth(32).Children(p.Search)
+				}
+				if p.Toolbar != nil {
+					ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+				}
 			}
 		})
 	}
 
 	panes := func() {
 		content := k.Surface(c.Key("split-content"), RegionContent).Grow(1).MinWidth(0).MinHeight(0).Clip().AlignItems(ui.Stretch)
-
-		// only the leading top corner is round
+		// M5 depth recede: gently scale & dim the main canvas as the floating card enters.
+		if drawerProgress > 0 {
+			sc := float32(1) - 0.012*drawerProgress
+			content.Scale(sc, sc).Opacity(float32(1) - 0.16*drawerProgress)
+		}
 
 		content.Children(func() {
 			{
@@ -299,8 +412,56 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 		}
 		if integratedCaption && p.Sidebar != nil {
 			// Keep one toggle outside the inert/animated sidebar, as in v1's mac-split-chrome.
-			ui.Row(c.Key("split-native-toggle")).Absolute().Left(max(caption.Left+8, curW-44)).
-				Top((headerHeight - 36) / 2).Height(36).ZIndex(4).Children(toggle)
+			ui.Row(c.Key("split-native-toggle")).Absolute().Left(max(caption.Left+8, curW-40)).
+				Top((headerHeight - 28) / 2).Height(28).ZIndex(4).Children(toggle)
+		}
+		if p.Drawer != nil && drawerState.present {
+			dw := p.DrawerWidth
+			if dw <= 0 {
+				dw = 436
+			}
+			if w > 0 {
+				dw = min(dw, max(320, w*0.54))
+			}
+			label := p.DrawerLabel
+			if label == "" {
+				label = "Detail"
+			}
+			inset := p.DrawerInset
+			drawer := ui.Column(c.Key("split-drawer")).Absolute().
+				Top(inset).Right(inset).Bottom(inset).Width(dw).ZIndex(5).
+				Background(k.Color("background-primary-default")).Clip().
+				Role(ui.RoleRegion).Label(label).AlignItems(ui.Stretch)
+			if inset > 0 {
+				rad := p.DrawerRadius
+				if rad <= 0 {
+					rad = 12
+				}
+				shadowAlpha := float32(.16)
+				if k.Dark {
+					shadowAlpha = .58
+				}
+				drawer.Radius(rad).
+					Border(1, k.Color("border-button-default")).
+					Shadow(0, 18, 48, 0, ui.RGBA(0, 0, 0, shadowAlpha*drawerProgress))
+			} else {
+				shadowAlpha := float32(.12)
+				if k.Dark {
+					shadowAlpha = .45
+				}
+				drawer.InsetShadow(1, 0, 0, 0, t.Border).
+					Shadow(-12, 0, 32, 0, ui.RGBA(0, 0, 0, shadowAlpha*drawerProgress))
+			}
+			// M5 Layered Depth Slide transform: +120px slide + 0.98->1 scale + opacity fade.
+			tx := 120 * (1 - drawerProgress)
+			sc := float32(0.98) + 0.02*drawerProgress
+			drawer.Translate(tx, 0).Scale(sc, sc).Opacity(drawerProgress)
+			if !drawerOpen {
+				// Non-interactive and hidden from assistive tree while sliding out,
+				// allowing immediate re-selection of any grid card mid-exit.
+				drawer.PassThrough().AccessHidden(true)
+			}
+			drawer.Children(p.Drawer)
 		}
 	})
 	return res

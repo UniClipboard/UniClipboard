@@ -207,7 +207,7 @@ func (s *historySearchState) refresh(d *viewState) {
 	if typed {
 		s.options = d.searchCandidates(w.dimension, w.partial)
 	} else {
-		s.options = d.searchCandidates("", s.buffer)
+		s.options = nil
 	}
 	d.query = s.buffer
 	if s.open && typed && (w.partial == "" || len(s.options) > 0) {
@@ -294,11 +294,12 @@ func (s *historySearchState) change(d *viewState, start, end int) {
 		s.start, s.end = 0, 0
 	}
 	s.last = s.buffer
-	s.open = true
 	s.refresh(d)
 	if w, ok := s.active(); ok && (w.partial == "" || len(s.options) > 0) {
+		s.open = true
 		s.highlight = 0
 	} else {
+		s.open = false
 		s.highlight = -1
 	}
 }
@@ -465,16 +466,40 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 			feedback = d.tr("没有匹配的") + searchLabels[w.dimension] + d.tr("条件，按原文字搜索。")
 		}
 	}
-	res := k.TokenSearchField(c, desktopkit.TokenSearchFieldProps{Toolbar: true, Label: d.tr("搜索历史"), Value: &s.buffer, Placeholder: d.tr("搜索，或输入 # @ / on:"), ShortcutHint: "⌘F", Tokens: s.tokens(d), Suggestions: suggestions, Open: &s.open, Highlighted: &s.highlight, Feedback: feedback, ClearLabel: d.tr("清除搜索"), SuggestionsFooter: d.tr("↑↓ 选择 · Enter 或 Tab 转为筛选条件 · 输入框为空时退格删除最后一个条件"), OnKey: func(key desktopkit.SearchFieldKey) bool { return s.key(d, key) }, OnSelectionChange: func(start, end int) {
-		if !restore && !s.restore && (s.start != start || s.end != end) {
-			s.start, s.end = start, end
-			s.refresh(d)
-			if _, ok := s.active(); ok {
-				s.highlight = 0
+	filterCount := d.activeFilterCount()
+	res := k.TokenSearchField(c, desktopkit.TokenSearchFieldProps{
+		Toolbar:           true,
+		Unified:           true,
+		Label:             d.tr("搜索历史"),
+		Value:             &s.buffer,
+		Placeholder:       d.tr("搜索或筛选…"),
+		ShortcutHint:      "⌘F",
+		Tokens:            s.tokens(d),
+		Suggestions:       suggestions,
+		Open:              &s.open,
+		Highlighted:       &s.highlight,
+		Feedback:          feedback,
+		ClearLabel:        d.tr("清除搜索"),
+		SuggestionsFooter: d.tr("↑↓ 选择 · Enter 或 Tab 转为筛选条件 · 输入框为空时退格删除最后一个条件"),
+		FilterOpen:        &d.filterOpen,
+		FilterCount:       filterCount,
+		FilterLabel:       d.tr("筛选条件"),
+		FilterPanel:       func() { d.filterPopover(c.Key("filter-popover"), k) },
+		OnKey:             func(key desktopkit.SearchFieldKey) bool { return s.key(d, key) },
+		OnSelectionChange: func(start, end int) {
+			if !restore && !s.restore && (s.start != start || s.end != end) {
+				s.start, s.end = start, end
+				s.refresh(d)
+				if _, ok := s.active(); ok {
+					s.open = true
+					s.highlight = 0
+				} else {
+					s.open = false
+				}
+				c.Invalidate()
 			}
-			c.Invalidate()
-		}
-	}})
+		},
+	})
 	if restore {
 		res.Input.SetTextSelection(s.start, s.end).Focus()
 	}
@@ -493,8 +518,200 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 	}
 	if res.Cleared {
 		s.clear(d)
+		d.filterOpen = false
 		c.Invalidate()
 	}
+}
+
+func (d *viewState) activeFilterCount() int {
+	n := 0
+	if d.kind != "" && d.kind != "all" {
+		n++
+	}
+	if d.source != "" && d.source != "all" {
+		n++
+	}
+	n += len(selectedSearchTags(d.tag))
+	if d.timeRange != "" && d.timeRange != "all" {
+		n++
+	}
+	if d.search.extension != "" {
+		n++
+	}
+	return n
+}
+
+// filterPopover renders the U1 integrated chip-based filter popover anchored to the
+// unified omnibar's trailing filter button.
+func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
+	countFor := func(dim, val string) (int, bool) {
+		trial := *d
+		switch dim {
+		case "type":
+			trial.kind = val
+		case "source":
+			trial.source = val
+		case "tag":
+			tags := selectedSearchTags(d.tag)
+			if !slices.Contains(tags, val) {
+				tags = append(slices.Clone(tags), val)
+			}
+			trial.tag = strings.Join(tags, "\x1f")
+		case "time":
+			trial.timeRange = val
+		}
+		if d.live != nil {
+			q := trial.historySearchQuery()
+			if cnt, ok := d.live.counts[searchQueryKey(q)]; ok {
+				return int(cnt), true
+			}
+			return 0, false
+		}
+		return len(trial.filtered()), true
+	}
+
+	renderChip := func(key, label string, active bool, cnt int, hasCnt bool, swatch *desktopkit.TagColor, onClick func()) {
+		btn := ui.ButtonBase(c.Key(key)).Height(26).PaddingX(9).Radius(7).Gap(5).AlignItems(ui.Center).
+			Label(label).KeepFocus()
+		fg := k.Color("text-primary")
+		cntFg := k.Color("text-tertiary")
+		if active {
+			bgAlpha := float32(.11)
+			borderAlpha := float32(.48)
+			if k.Dark {
+				bgAlpha = .20
+				borderAlpha = .62
+			}
+			btn.Background(k.Color("accent-500").Alpha(bgAlpha)).Border(1, k.Color("accent-500").Alpha(borderAlpha))
+			fg = k.Color("accent-500")
+			cntFg = k.Color("accent-500").Alpha(.78)
+		} else if btn.Hovered() {
+			btn.Background(k.Color("background-tertiary-default")).Border(1, k.Color("border-button-hover"))
+		} else {
+			btn.Background(k.SubtleCardSurface()).Border(1, k.Color("separator-border"))
+		}
+		btn.Children(func() {
+			if swatch != nil {
+				ui.Box(c.Key("dot")).Size(6, 6).Radius(3).Background(k.SwatchColor(*swatch)).Shrink(0).AccessHidden(true)
+			}
+			w := 500
+			if active {
+				w = 600
+			}
+			ui.Text(c.Key("l"), label).FontSize(12).FontWeight(w).TextColor(fg).SingleLine()
+			if hasCnt {
+				ui.Text(c.Key("c"), fmt.Sprint(cnt)).FontSize(10.5).TextColor(cntFg).SingleLine().AccessHidden(true)
+			}
+		})
+		if btn.Clicked() {
+			onClick()
+			c.Invalidate()
+		}
+	}
+
+	section := func(key, title string, body func()) {
+		ui.Column(c.Key(key)).Gap(6).Children(func() {
+			ui.Text(c.Key("h"), title).FontSize(11).FontWeight(600).TextColor(k.Color("text-tertiary")).SingleLine()
+			ui.Row(c.Key("chips")).Gap(6).Wrap().Children(body)
+		})
+	}
+
+	ui.Column(c).Padding(12, 14).Gap(12).Children(func() {
+		ui.Row(c.Key("head")).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c.Key("t"), d.tr("筛选条件")).FontSize(12.5).FontWeight(600).TextColor(k.Color("text-primary")).Grow(1)
+			if d.activeFilterCount() > 0 {
+				clr := ui.ButtonBase(c.Key("clear-all")).Height(22).PaddingX(7).Radius(5).Center().
+					Label(d.tr("清除全部")).KeepFocus()
+				if clr.Hovered() {
+					clr.Background(k.Color("background-secondary-hover"))
+				}
+				clr.Children(func() {
+					ui.Text(c, d.tr("清除全部")).FontSize(11.5).FontWeight(500).TextColor(k.Color("accent-500")).SingleLine()
+				})
+				if clr.Clicked() {
+					d.search.clear(d)
+					d.filterOpen = false
+					c.Invalidate()
+				}
+			}
+		})
+
+		section("type", d.tr("内容类型"), func() {
+			for _, v := range []string{"文本", "代码", "链接", "图片", "文件", "文件夹"} {
+				val := v
+				active := d.kind == val
+				cnt, ok := countFor("type", val)
+				renderChip(val, d.tr(val), active, cnt, ok, nil, func() {
+					if d.kind == val {
+						d.kind = ""
+					} else {
+						d.kind = val
+					}
+					d.search.refresh(d)
+				})
+			}
+		})
+
+		if len(d.devices) > 0 {
+			section("source", d.tr("来源设备"), func() {
+				for _, dev := range d.devices {
+					id := dev.id
+					label := d.sourceName(id)
+					active := d.source == id
+					cnt, ok := countFor("source", id)
+					renderChip(id, label, active, cnt, ok, nil, func() {
+						if d.source == id {
+							d.source = ""
+						} else {
+							d.source = id
+						}
+						if strings.HasPrefix(d.nav.Value, "device:") {
+							d.nav.Value = "all"
+						}
+						d.search.refresh(d)
+					})
+				}
+			})
+		}
+
+		var customTags []historyTag
+		for _, tag := range d.tags {
+			if !tag.builtin {
+				customTags = append(customTags, tag)
+			}
+		}
+		if len(customTags) > 0 {
+			section("tag", d.tr("标签"), func() {
+				selectedTags := selectedSearchTags(d.tag)
+				for _, tag := range customTags {
+					id := tag.id
+					col := tag.color
+					active := slices.Contains(selectedTags, id)
+					cnt, ok := countFor("tag", id)
+					renderChip(id, d.tagLabel(id), active, cnt, ok, &col, func() {
+						d.setSearchCondition("tag", id)
+						d.search.refresh(d)
+					})
+				}
+			})
+		}
+
+		section("time", d.tr("时间范围"), func() {
+			for _, item := range [][2]string{{"today", "今天"}, {"yesterday", "昨天"}, {"last_7d", "最近 7 天"}, {"last_30d", "最近 30 天"}} {
+				val, lbl := item[0], item[1]
+				active := d.timeRange == val
+				cnt, ok := countFor("time", val)
+				renderChip(val, d.tr(lbl), active, cnt, ok, nil, func() {
+					if d.timeRange == val {
+						d.timeRange = ""
+					} else {
+						d.timeRange = val
+					}
+					d.search.refresh(d)
+				})
+			}
+		})
+	})
 }
 
 func (d *viewState) matchesSearch(e entry) bool {

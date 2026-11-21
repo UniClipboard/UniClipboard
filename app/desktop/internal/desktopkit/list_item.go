@@ -14,6 +14,22 @@ type ItemListItem struct {
 	Trailing func()
 	// Highlight 是标题里要标出的搜索词（系统查找高亮）。
 	Highlight []string
+
+	// CardRow enables the L1 + S-A modern floating-selection list row layout.
+	CardRow       bool
+	Excerpt       string
+	ExcerptKind   ContentKind
+	Time          string
+	Meta          string
+	SourceAppName string
+	SourceAppIcon ui.ImageSource
+	Kind          ContentKind
+	KindLabel     string
+	Pinned        bool
+	Tags          []GridTag
+	Image         ui.ImageSource
+	OnCopy        func()
+	CopyLabel     string
 }
 
 type ItemListProps struct {
@@ -48,13 +64,14 @@ func (k Kit) ItemList(c *ui.Context, st *ListState, p ItemListProps) ui.Element 
 
 // listRun 描述一次列表构建。
 type listRun struct {
-	label  string
-	ids    []string // 行 -> 条目 id；"" 表示分组头/占位
-	header func(int) bool
-	multi  bool
-	menu   func(ids []string) []MenuEntry
-	text   func(i int) string
-	row    func(r ui.ListRow, i int)
+	label    string
+	ids      []string // 行 -> 条目 id；"" 表示分组头/占位
+	header   func(int) bool
+	multi    bool
+	cardMode bool
+	menu     func(ids []string) []MenuEntry
+	text     func(i int) string
+	row      func(r ui.ListRow, i int)
 	// loaded 是真实行的区间 [lo,hi)；hi>lo 时，键盘选到区间外的占位行会被撤销并转成 MoveRequest。
 	loaded [2]int
 	// abs 把行号映射为窗口化列表的绝对条目序号（nil 则不报告 VisibleRange）。
@@ -80,7 +97,12 @@ func (k Kit) runList(c *ui.Context, st *ListState, r listRun) ui.Element {
 			}
 		}
 	}
-	restore := k.withListTheme(c)
+	var restore func()
+	if r.cardMode {
+		restore = k.withCardListTheme(c)
+	} else {
+		restore = k.withListTheme(c)
+	}
 	e := scrollingIndicator(c, ui.List(c, &st.list, len(r.ids))).Rows(func(lr ui.ListRow) { r.row(lr, lr.Index) })
 	restore()
 	e.Label(r.label)

@@ -209,10 +209,10 @@ drained:
 	}
 	l.loadDetail(d)
 	// Pairing codes are created only while the invitation page is visible.
-	if d.devicesOpen && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && ((l.code.Code == "" && !l.codeAttempted) || (l.code.Code != "" && time.Now().UnixMilli() >= l.code.ExpiresAtMs)) {
+	if d.page == "devices" && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && ((l.code.Code == "" && !l.codeAttempted) || (l.code.Code != "" && time.Now().UnixMilli() >= l.code.ExpiresAtMs)) {
 		d.newLiveCode()
 	}
-	if d.devicesOpen && d.deviceTask == "invite" && d.inviteMode == "ticket" && !l.busy && l.ticket == "" && !l.ticketAttempted {
+	if d.page == "devices" && d.deviceTask == "invite" && d.inviteMode == "ticket" && !l.busy && l.ticket == "" && !l.ticketAttempted {
 		d.newLiveTicket()
 	}
 	l.scheduleWake(d)

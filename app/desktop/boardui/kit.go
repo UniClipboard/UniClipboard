@@ -33,6 +33,8 @@ func (k Kit) Theme() *ui.Theme {
 	t.Warning = Token(k.Dark, "status-yellow-text")
 	t.Radius = Geometry("input", "medium").Radius
 	t.Selection = t.Accent.Alpha(.25)
+	t.Scrollbar = Token(k.Dark, "text-secondary").Alpha(.35)
+	t.ScrollbarWidth = 4
 	return t
 }
 

@@ -52,9 +52,6 @@ func scenarioSheetResizeMotion(t *testing.T) {
 				invite := func() {
 					t.Helper()
 					click("添加设备")
-					if err := boarduiChooseMenu(tt, "邀请设备（配对码）"); err != nil {
-						t.Fatal(err)
-					}
 				}
 				read := func(step string) ui.Rect {
 					t.Helper()
@@ -99,18 +96,10 @@ func scenarioSheetResizeMotion(t *testing.T) {
 					}
 				}
 				click("管理设备…")
-				tt.Advance(350 * time.Millisecond)
-				management := read("management")
 				invite()
-				tt.Advance(64 * time.Millisecond)
-				shrinking := read("shrinking")
 				tt.Advance(350 * time.Millisecond)
 				compact := read("compact")
-				if compact.W >= management.W || compact.H >= management.H {
-					t.Fatal("task did not shrink sheet")
-				}
-				between(management, shrinking, compact)
-				click("完整票据")
+				click("跨网或命令行配对？改用完整票据 →")
 				tt.Advance(64 * time.Millisecond)
 				heightMid := read("height-changing")
 				tt.Advance(350 * time.Millisecond)
@@ -119,36 +108,42 @@ func scenarioSheetResizeMotion(t *testing.T) {
 					t.Fatal("content change did not change height")
 				}
 				between(compact, heightMid, ticket)
-				click("返回设备列表")
+				click("← 返回 6 位配对码")
 				tt.Advance(64 * time.Millisecond)
-				growing := read("growing")
-				between(ticket, growing, management)
-				// Reverse an unfinished growth through the real device menu.
-				invite()
+				shrinking := read("shrinking")
+				between(ticket, shrinking, compact)
+				// Reverse an unfinished height transition.
+				click("跨网或命令行配对？改用完整票据 →")
 				reversalStart := read("reversal-start")
 				tt.Advance(64 * time.Millisecond)
 				reversed := read("reversed")
-				if !reduced && (reversed.W >= reversalStart.W || reversed.W <= compact.W) {
-					t.Fatalf("reversal jumped: %+v -> %+v", reversalStart, reversed)
+				if !reduced && reversed.H == reversalStart.H {
+					t.Fatalf("reversal stalled: %+v -> %+v", reversalStart, reversed)
 				}
 				tt.Advance(350 * time.Millisecond)
 				read("reversed-settled")
-				click("返回设备列表")
+				click("← 返回 6 位配对码")
 				tt.Advance(350 * time.Millisecond)
-				if final := read("management-restored"); final != management {
-					t.Fatalf("sheet did not restore geometry: %+v -> %+v", management, final)
+				if final := read("compact-restored"); final != compact {
+					t.Fatalf("sheet did not restore geometry: %+v -> %+v", compact, final)
 				}
-				invite()
+				click("跨网或命令行配对？改用完整票据 →")
 				tt.Advance(32 * time.Millisecond)
 				tt.Key(0, ui.KeyEscape)
 				tt.Advance(350 * time.Millisecond)
 				if _, ok := tt.AccessByRole(ui.RoleDialog, ""); ok {
 					t.Fatal("sheet retained after dismissal during resize")
 				}
-				click("管理设备…")
+				invite()
 				tt.Advance(350 * time.Millisecond)
-				if final := read("reopened"); final != management {
+				if final := read("reopened"); final != compact {
 					t.Fatal("sheet task leaked across close/reopen")
+				}
+				tt.Key(0, ui.KeyEscape)
+				tt.Advance(350 * time.Millisecond)
+				tt.Key(0, ui.KeyEscape)
+				if d.page != "history" {
+					t.Fatalf("devices page did not return to history on Escape: %s", d.page)
 				}
 			})
 		}

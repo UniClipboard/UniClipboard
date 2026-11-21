@@ -4000,5 +4000,221 @@
     "ja": "元に戻す",
     "pt-BR": "Restaurar",
     "ru": "Восстановить"
+  },
+  "我的标签": {
+    "en": "My Tags",
+    "ja": "マイタグ",
+    "pt-BR": "Minhas etiquetas",
+    "ru": "Мои теги"
+  },
+  "系统类型": {
+    "en": "System Types",
+    "ja": "システムタイプ",
+    "pt-BR": "Tipos do sistema",
+    "ru": "Системные типы"
+  },
+  "创建": {
+    "en": "Create",
+    "ja": "作成",
+    "pt-BR": "Criar",
+    "ru": "Создать"
+  },
+  "修改颜色": {
+    "en": "Change color",
+    "ja": "色を変更",
+    "pt-BR": "Alterar cor",
+    "ru": "Изменить цвет"
+  },
+  "取消选择": {
+    "en": "Clear",
+    "ja": "選択解除",
+    "pt-BR": "Limpar",
+    "ru": "Снять выбор"
+  },
+  "点击色点改色 · 悬停或右键编辑": {
+    "en": "Click dot to recolor · Hover or right-click to edit",
+    "ja": "ドットで色変更 · ホバーまたは右クリックで編集",
+    "pt-BR": "Clique na cor para alterar · Passe o mouse ou clique com o botão direito",
+    "ru": "Нажмите на точку для цвета · Наведите или ПКМ для правки"
+  },
+  "自动分类 · 可按需固定到侧边栏": {
+    "en": "Auto-classified · Optional in sidebar",
+    "ja": "自動分類 · サイドバーに固定可能",
+    "pt-BR": "Classificação automática · Opcional na barra lateral",
+    "ru": "Автоклассификация · Можно закрепить в панели"
+  },
+  "设备管理": {
+    "en": "Devices",
+    "ja": "デバイス管理",
+    "pt-BR": "Dispositivos",
+    "ru": "Устройства"
+  },
+  "我的设备": {
+    "en": "My Devices",
+    "ja": "マイデバイス",
+    "pt-BR": "Meus dispositivos",
+    "ru": "Мои устройства"
+  },
+  "点击任意卡片在右侧调整策略": {
+    "en": "Select a device to edit sync policy",
+    "ja": "カードを選択して同期ポリシーを編集",
+    "pt-BR": "Selecione um dispositivo para ajustar a sincronização",
+    "ru": "Выберите устройство для настройки синхронизации"
+  },
+  "核对指纹": {
+    "en": "Verify fingerprint",
+    "ja": "フィンガープリントを確認",
+    "pt-BR": "Verificar impressão digital",
+    "ru": "Проверить отпечаток"
+  },
+  "恢复同步": {
+    "en": "Resume sync",
+    "ja": "同期を再開",
+    "pt-BR": "Retomar sincronização",
+    "ru": "Возобновить синхронизацию"
+  },
+  "双向": {
+    "en": "Both",
+    "ja": "双方向",
+    "pt-BR": "Ambos",
+    "ru": "Оба"
+  },
+  "仅发": {
+    "en": "Send",
+    "ja": "送信のみ",
+    "pt-BR": "Enviar",
+    "ru": "Отправка"
+  },
+  "仅收": {
+    "en": "Receive",
+    "ja": "受信のみ",
+    "pt-BR": "Receber",
+    "ru": "Приём"
+  },
+  "暂停": {
+    "en": "Pause",
+    "ja": "一時停止",
+    "pt-BR": "Pausar",
+    "ru": "Пауза"
+  },
+  "%d 台在线 · 共 %d 台": {
+    "en": "%d online · %d total",
+    "ja": "%d 台オンライン · 計 %d 台",
+    "pt-BR": "%d online · %d no total",
+    "ru": "%d в сети · всего %d"
+  },
+  "请求加入同步网络": {
+    "en": "wants to join your sync network",
+    "ja": "同期ネットワークへの参加をリクエスト",
+    "pt-BR": "deseja entrar na sua rede de sincronização",
+    "ru": "запрашивает подключение к сети синхронизации"
+  },
+  "当前本机 · 端到端加密": {
+    "en": "This device · End-to-end encrypted",
+    "ja": "このデバイス · エンドツーエンド暗号化",
+    "pt-BR": "Este dispositivo · Criptografia ponta a ponta",
+    "ru": "Это устройство · Сквозное шифрование"
+  },
+  "出示配对码": {
+    "en": "Show Code",
+    "ja": "コードを表示",
+    "pt-BR": "Mostrar código",
+    "ru": "Показать код"
+  },
+  "输入配对码": {
+    "en": "Enter Code",
+    "ja": "コードを入力",
+    "pt-BR": "Inserir código",
+    "ru": "Ввести код"
+  },
+  "刷新": {
+    "en": "Refresh",
+    "ja": "更新",
+    "pt-BR": "Atualizar",
+    "ru": "Обновить"
+  },
+  "跨网或命令行配对？改用完整票据 →": {
+    "en": "Cross-network or CLI pairing? Use full ticket →",
+    "ja": "ネットワーク越え・CLI 接続には完全チケットを使用 →",
+    "pt-BR": "Pareamento remoto ou CLI? Usar tíquete completo →",
+    "ru": "Удалённое или CLI-подключение? Полный тикет →"
+  },
+  "← 返回 6 位配对码": {
+    "en": "← Back to 6-digit code",
+    "ja": "← 6 桁コードに戻る",
+    "pt-BR": "← Voltar ao código de 6 dígitos",
+    "ru": "← Вернуться к 6-значному коду"
+  },
+  "配对全程端到端加密": {
+    "en": "End-to-end encrypted pairing",
+    "ja": "ペアリングはエンドツーエンドで暗号化されます",
+    "pt-BR": "Pareamento criptografado de ponta a ponta",
+    "ru": "Сквозное шифрование при сопряжении"
+  },
+  "返回": {
+    "en": "Back",
+    "ja": "戻る",
+    "pt-BR": "Voltar",
+    "ru": "Назад"
+  },
+  "300 秒内有效 · 仅限一次": {
+    "en": "Valid for 300s · Single use",
+    "ja": "300 秒有効 · 1 回限り",
+    "pt-BR": "Válido por 300s · Uso único",
+    "ru": "Действует 300 с · Одноразовый"
+  },
+  "在另一台设备的 UniClipboard 中输入下方一次性配对码，随后核对指纹即可完成关联。": {
+    "en": "Enter this one-time code on the other device, then verify fingerprints to finish pairing.",
+    "ja": "別のデバイスの UniClipboard にこのワンタイムコードを入力し、フィンガープリントを確認して関連付けます。",
+    "pt-BR": "Digite este código único no outro dispositivo e confirme as impressões digitais para concluir.",
+    "ru": "Введите этот одноразовый код на другом устройстве и сверьте отпечатки для завершения."
+  },
+  "配对码已复制（演示，未写入剪贴板）": {
+    "en": "Code copied (preview, clipboard unchanged)",
+    "ja": "コードをコピーしました（プレビュー、クリップボード未変更）",
+    "pt-BR": "Código copiado (prévia, área de transferência inalterada)",
+    "ru": "Код скопирован (демо, буфер не изменён)"
+  },
+  "上一条": {
+    "en": "Previous item",
+    "ja": "前の項目",
+    "pt-BR": "Item anterior",
+    "ru": "Предыдущая запись"
+  },
+  "下一条": {
+    "en": "Next item",
+    "ja": "次の項目",
+    "pt-BR": "Próximo item",
+    "ru": "Следующая запись"
+  },
+  "关闭详情": {
+    "en": "Close details",
+    "ja": "詳細を閉じる",
+    "pt-BR": "Fechar detalhes",
+    "ru": "Закрыть сведения"
+  },
+  "规格": {
+    "en": "Size & format",
+    "ja": "サイズ・形式",
+    "pt-BR": "Tamanho e formato",
+    "ru": "Размер и формат"
+  },
+  "搜索或筛选…": {
+    "en": "Search or filter…",
+    "ja": "検索または絞り込み…",
+    "pt-BR": "Pesquisar ou filtrar…",
+    "ru": "Поиск или фильтр…"
+  },
+  "筛选条件": {
+    "en": "Filters",
+    "ja": "絞り込み条件",
+    "pt-BR": "Filtros",
+    "ru": "Фильтры"
+  },
+  "清除全部": {
+    "en": "Clear all",
+    "ja": "すべてクリア",
+    "pt-BR": "Limpar tudo",
+    "ru": "Сбросить все"
   }
 }

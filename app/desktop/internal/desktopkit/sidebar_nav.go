@@ -93,23 +93,20 @@ type navLook struct {
 }
 
 func (k Kit) navLook() navLook {
-	{
-	}
-
-	return navLook{h: 36, radius: 10, padX: 8, gap: 8, icon: 20, heading: 12}
+	return navLook{h: 30, radius: 8, padX: 8, gap: 8, icon: 16, heading: 11}
 }
 
 func (k Kit) navSelectedFill() ui.Color {
-	{
+	if k.Dark {
+		return k.Color("text-primary").Alpha(.11)
 	}
-
-	return k.Color("background-tertiary-default")
+	return k.Color("background-primary-default")
 }
 
 func (k Kit) navHoverFill() ui.Color {
-	{
+	if k.Dark {
+		return k.Color("text-primary").Alpha(.045)
 	}
-
 	return k.Color("background-secondary-hover")
 }
 
@@ -138,48 +135,53 @@ func (k Kit) SidebarNavEntry(c *ui.Context, st *NavState, item SidebarNavItem) u
 	row := ui.Row(c.Key(item.ID)).AlignItems(ui.Center).Gap(lk.gap).Padding(0, lk.padX).Height(lk.h).Shrink(0).
 		Radius(lk.radius).Label(item.Label).Role(ui.RoleListItem)
 	row.AccessSelected(selected)
+	hovered := row.Hovered()
 	fg := k.Color("text-primary")
+	iconColor := k.Color("foreground-icon-secondary")
 	mute := k.Color("text-secondary")
+	labelStyle := "body-2-regular"
+	countStyle := "caption-1-regular"
 	if selected {
-		// The fixed official NavItem uses an accent gradient and white ink.
-		// A neutral selected fill is identical to its hover token in both schemes.
-		row.Gradient(k.Color("accent-500"), k.Color("accent-600"), 180)
-		fg, mute = k.Color("text-white"), k.Color("text-white")
-	} else if row.Hovered() {
-		row.Background(k.navHoverFill())
-	}
-	showPill := false
-	row.DrawOver(func(p *ui.Painter, rc ui.Rect) {
-		if showPill {
-			p.Fill(ui.Rect{X: rc.X, Y: rc.Y + rc.H/2 - 8, W: 3, H: 16}, k.Color("accent-500"), 1.5)
+		// Elevated neutral selection keeps colored tag swatches legible while
+		// giving leading navigation icons a restrained brand accent.
+		row.Background(k.navSelectedFill())
+		if k.Dark {
+			row.Border(1, k.Color("text-primary").Alpha(.08))
+		} else {
+			row.Border(1, k.Color("separator-border")).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, .04))
 		}
-	})
+		labelStyle = "body-2-medium"
+		countStyle = "caption-1-medium"
+		if k.Dark {
+			iconColor = k.Color("accent-400")
+		} else {
+			iconColor = k.Color("accent-600")
+		}
+	} else if hovered {
+		row.Background(k.navHoverFill())
+		iconColor = k.Color("foreground-icon-primary")
+	}
 	row.Children(func() {
 		switch {
 		case item.Status != nil:
 			box := ui.Row(c).Size(lk.icon, lk.icon).Justify(ui.Center).AlignItems(ui.Center).Shrink(0)
 			box.Children(func() {
-				ui.Box(c).Size(8, 8).Radius(4).Background(k.navStatusColor(*item.Status))
+				ui.Box(c).Size(7, 7).Radius(3.5).Background(k.navStatusColor(*item.Status))
 			})
 		case item.Swatch != "":
 			box := ui.Row(c).Size(lk.icon, lk.icon).Justify(ui.Center).AlignItems(ui.Center).Shrink(0)
 			box.Children(func() {
-				ui.Box(c).Size(10, 10).Radius(3).Background(k.SwatchColor(item.Swatch))
-
+				ui.Box(c).Size(8, 8).Radius(4).Background(k.SwatchColor(item.Swatch))
 			})
 		case item.Icon != "":
-			ic := k.Icon(c, item.Icon, lk.icon)
-
-			{
-				ic.TextColor(fg)
-			}
+			k.Icon(c, item.Icon, lk.icon).TextColor(iconColor)
 		}
-		k.native().Text(c, item.Label, "body-medium").TextColor(fg).SingleLine().Grow(1).MinWidth(0)
+		k.native().Text(c, item.Label, labelStyle).TextColor(fg).SingleLine().Grow(1).MinWidth(0)
 		if item.Count != "" {
-			k.native().Text(c, item.Count, "caption-1-medium").TextColor(mute).SingleLine().Shrink(0)
+			k.native().Text(c, item.Count, countStyle).TextColor(mute).SingleLine().Shrink(0)
 		}
 		if item.ShortcutHint != "" {
-			k.native().Text(c, item.ShortcutHint, "caption-1-medium").TextColor(mute).SingleLine().Shrink(0)
+			k.native().Text(c, item.ShortcutHint, countStyle).TextColor(mute).SingleLine().Shrink(0)
 		}
 	})
 	if row.Clicked() {
@@ -218,21 +220,22 @@ func (k Kit) SidebarNav(c *ui.Context, st *NavState, p SidebarNavProps) ui.Eleme
 		return k.SidebarNavCompact(c, st, p)
 	}
 	lk := k.navLook()
-	// SplitView contributes 8 DIP; this inner inset produces one effective 12-DIP margin.
-	nav := ui.Column(c).Label(p.Label).Role(ui.RoleList).Focusable().MinHeight(0).Gap(0).Padding(4)
+	// SplitView contributes 8 DIP on the leading edge; 4 DIP here yields a
+	// symmetric 12-DIP margin against the 12-DIP trailing scrollbar lane.
+	nav := ui.Column(c).Label(p.Label).Role(ui.RoleList).Focusable().MinHeight(0).Gap(0).Padding(4, 0, 4, 4)
 
 	nav.Children(func() {
 		// The native overlay indicator and its hit target need a content-free lane.
 		// Keep it stable while idle so rows do not shift when scrolling starts.
-		body := k.Scroll(c).Grow(1).MinHeight(0).Gap(12).Padding(0, 12, 0, 0)
+		body := k.Scroll(c).Grow(1).MinHeight(0).Gap(14).Padding(0, 12, 0, 0)
 		body.Children(func() {
 			for _, s := range p.Sections {
 				k.navSection(c, st, s, lk)
 			}
 		})
 		if len(p.Footer) > 0 {
-			foot := ui.Column(c).Gap(4).Shrink(0).Padding(12, 0, 0).
-				InsetShadow(0, 1, 0, 0, k.Color("separator-border"))
+			ui.Box(c).Height(1).Shrink(0).Background(k.Color("separator-border")).Margin(6, 12, 6, 0)
+			foot := ui.Column(c).Gap(2).Shrink(0).Padding(0, 12, 0, 0)
 			foot.Children(func() {
 				for _, it := range p.Footer {
 					k.SidebarNavEntry(c, st, it)
@@ -267,15 +270,17 @@ func (k Kit) navKeys(nav ui.Element, st *NavState, order []string) {
 }
 
 func (k Kit) navSection(c *ui.Context, st *NavState, s SidebarNavSection, lk navLook) {
-	sec := ui.Column(c.Key(s.ID)).Gap(4).Shrink(0)
+	sec := ui.Column(c.Key(s.ID)).Gap(2).Shrink(0)
 
 	sec.Children(func() {
 		collapsed := s.Collapse != nil && s.Collapse.Collapsed
 		if s.Title != "" || s.Action != nil || s.Collapse != nil {
-			head := ui.Row(c).AlignItems(ui.Center).Height(28).Padding(0, lk.padX).Gap(4)
+			// Inset the trailing edge by 4 DIP less so the centered 14-DIP glyph
+			// inside a 24-DIP action button aligns visually with row counts.
+			head := ui.Row(c).AlignItems(ui.Center).Height(24).Padding(0, lk.padX-4, 0, lk.padX).Gap(4)
 
 			head.Children(func() {
-				k.native().Text(c, s.Title, "caption-1-semibold").TextColor(k.Color("text-secondary")).SingleLine().Grow(1)
+				k.native().Text(c, s.Title, "caption-2-semibold").TextColor(k.Color("text-secondary")).SingleLine().Grow(1)
 				if s.Collapse != nil {
 					ic := IconChevronDown
 					if collapsed {
@@ -314,8 +319,8 @@ func (k Kit) navSection(c *ui.Context, st *NavState, s SidebarNavSection, lk nav
 			})
 		}
 		if s.More != nil {
-			more := ui.ButtonBase(c.Key("more")).Label(s.More.Label).Height(24).Shrink(0).Justify(ui.Start).AlignItems(ui.Center).
-				Padding(0, lk.padX, 0, lk.padX+lk.icon+lk.gap).Radius(6).
+			more := ui.ButtonBase(c.Key("more")).Label(s.More.Label).Height(26).Shrink(0).Justify(ui.Start).AlignItems(ui.Center).
+				Padding(0, lk.padX, 0, lk.padX+lk.icon+lk.gap).Radius(lk.radius).
 				FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
 			if more.Hovered() {
 				more.Background(k.navHoverFill())
@@ -334,9 +339,11 @@ func (k Kit) navSection(c *ui.Context, st *NavState, s SidebarNavSection, lk nav
 func (k Kit) navSectionAction(c *ui.Context, label string, icon IconName) ui.Element {
 	b := ui.ButtonBase(c).Label(label).Size(24, 24).Radius(6).Justify(ui.Center).AlignItems(ui.Center).
 		FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+	iconColor := k.Color("foreground-icon-secondary")
 	if b.Hovered() {
 		b.Background(k.navHoverFill())
+		iconColor = k.Color("foreground-icon-primary")
 	}
-	b.Children(func() { k.Icon(c, icon, 16).TextColor(k.Color("foreground-icon-secondary")).AccessHidden(true) })
+	b.Children(func() { k.Icon(c, icon, 14).TextColor(iconColor).AccessHidden(true) })
 	return b
 }

@@ -38,11 +38,18 @@ func scenarioSidebarNavigation(t *testing.T) {
 					}
 					return a.Bounds
 				}
-				all, work := row("全部项目"), row("#工作")
-				// Overall layout: one 12-DIP outer inset, source 36-DIP rows,
+				all, work := row("全部项目"), row("工作")
+				// Overall layout: symmetric 12-DIP outer inset, compact 30-DIP rows,
 				// quiet inline section actions, grouped spacing and aligned More text.
-				if all.X != 12 || all.H != 36 || work.X != all.X || work.H != all.H {
-					t.Errorf("sidebar has stacked padding or inconsistent row density: all=%+v tag=%+v", all, work)
+				if all.X != 12 || all.H != 30 || work.X != all.X || work.H != all.H || all.X+all.W != 238 {
+					t.Errorf("sidebar has asymmetric padding or inconsistent row density: all=%+v tag=%+v", all, work)
+				}
+				if _, ok := tt.AccessByRole(ui.RoleListItem, "文本"); ok {
+					t.Error("builtin content types should stay out of the sidebar by default")
+				}
+				toggle, ok := tt.AccessByRole(ui.RoleButton, "切换侧栏")
+				if !ok || toggle.Bounds.W != 28 || toggle.Bounds.H != 28 || toggle.Bounds.X+toggle.Bounds.W != 238 {
+					t.Errorf("sidebar toggle is oversized or misaligned with navigation right edge: %+v", toggle.Bounds)
 				}
 				action, ok := tt.AccessByRole(ui.RoleButton, "管理标签")
 				if !ok || action.Bounds.W != 24 || action.Bounds.H != 24 {
@@ -57,7 +64,7 @@ func scenarioSidebarNavigation(t *testing.T) {
 					if a.Role != ui.RoleText || a.Bounds.X >= 250 {
 						continue
 					}
-					if a.Name == "#工作" {
+					if a.Name == "工作" {
 						tagLabel = a.Bounds
 					}
 				}
@@ -142,7 +149,7 @@ func scenarioSidebarNavigation(t *testing.T) {
 					t.Fatalf("tag selection failed: nav=%s tag=%s results=%d", d.nav.Value, d.tag, len(d.filtered()))
 				}
 				a, _ := tt.AccessByRole(ui.RoleListItem, "全部项目")
-				b, _ := tt.AccessByRole(ui.RoleListItem, "#工作")
+				b, _ := tt.AccessByRole(ui.RoleListItem, "工作")
 				if a.Selected || !b.Selected {
 					t.Fatalf("sidebar is not single selection: all=%v work=%v", a.Selected, b.Selected)
 				}

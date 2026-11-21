@@ -24,6 +24,8 @@ type ListState struct {
 	// 本帧事件。
 	changed    bool
 	prevSel    string
+	clicked    string
+	clickedB   bool
 	activated  string
 	activatedB bool
 	deleted    []string
@@ -93,6 +95,9 @@ func (s *ListState) Select(ids ...string) {
 // Changed 报告本帧选中集合是否变化（点击、键盘）。
 func (s *ListState) Changed() bool { return s.changed }
 
+// Clicked 返回本帧被主点击的条目 id（即使该条目本已选中）。
+func (s *ListState) Clicked() (string, bool) { return s.clicked, s.clickedB }
+
 // Activated 返回本帧被激活（Enter 或双击）的条目 id。
 func (s *ListState) Activated() (string, bool) { return s.activated, s.activatedB }
 
@@ -142,8 +147,8 @@ func sortStrings(a []string) {
 
 // begin 在一帧开始时清空事件。
 func (s *ListState) begin() {
-	s.changed, s.activatedB, s.deletedB, s.menuB = false, false, false, false
-	s.activated, s.deleted, s.menuPick, s.menuIDs = "", nil, "", nil
+	s.changed, s.clickedB, s.activatedB, s.deletedB, s.menuB = false, false, false, false, false
+	s.clicked, s.activated, s.deleted, s.menuPick, s.menuIDs = "", "", nil, "", nil
 	s.nav, s.move = NavNone, NavNone
 	s.endReached = false
 	if !s.started {
@@ -238,10 +243,7 @@ func (k Kit) rowColors(selected, active bool) (title, meta ui.Color) {
 
 // surfaceSolid 是需要不透明时（粘性分组头）用的内容底色。
 func (k Kit) surfaceSolid() ui.Color {
-	{
-	}
-
-	return k.Color("background-primary-default")
+	return k.workspaceCanvas()
 }
 
 func (k Kit) withListTheme(c *ui.Context) (restore func()) {
@@ -257,6 +259,21 @@ func (k Kit) withListTheme(c *ui.Context) (restore func()) {
 
 	t.SurfaceHover = k.listHoverFill()
 	t.Radius = lk.radius
+	t.Focus = k.Color("border-focus-ring")
+	c.SetTheme(&t)
+	return func() { c.SetTheme(old) }
+}
+
+// withCardListTheme suppresses mygo's flat edge-to-edge row selection fill so L1 + S-A
+// rows paint their own inset rounded selection surface and soft accent border.
+func (k Kit) withCardListTheme(c *ui.Context) (restore func()) {
+	old := c.Theme()
+	t := *old
+	t.Accent = ui.Transparent
+	t.InactiveAccent = ui.Transparent
+	t.AccentText = k.Color("text-primary")
+	t.SurfaceHover = ui.Transparent
+	t.Radius = 10
 	t.Focus = k.Color("border-focus-ring")
 	c.SetTheme(&t)
 	return func() { c.SetTheme(old) }
@@ -298,9 +315,16 @@ func highlightRuns(title string, terms []string) (runs []string, hit []bool) {
 
 // rowTitle 画标题（可高亮命中词，可等宽），一行省略。
 func (k Kit) rowTitle(c *ui.Context, title string, mono bool, terms []string, col ui.Color, size float32) {
+	k.rowTitleWeighted(c, title, mono, terms, col, size, 0)
+}
+
+func (k Kit) rowTitleWeighted(c *ui.Context, title string, mono bool, terms []string, col ui.Color, size float32, weight int) {
 	runs, hit := highlightRuns(title, terms)
 	if len(runs) == 1 && !hit[0] {
 		e := ui.Text(c, title).FontSize(size).TextColor(col).SingleLine()
+		if weight > 0 {
+			e.FontWeight(weight)
+		}
 		if mono {
 			e.Font("monospace")
 		}
@@ -310,6 +334,9 @@ func (k Kit) rowTitle(c *ui.Context, title string, mono bool, terms []string, co
 	row.Children(func() {
 		for i, r := range runs {
 			t := ui.Text(c.Key(i), r).FontSize(size).TextColor(col).SingleLine()
+			if weight > 0 {
+				t.FontWeight(weight)
+			}
 			if mono {
 				t.Font("monospace")
 			}
@@ -318,6 +345,158 @@ func (k Kit) rowTitle(c *ui.Context, title string, mono bool, terms []string, co
 			}
 		}
 	})
+}
+
+// l1ListRow renders the L1 + S-A floating-selection card row: rounded 10-DIP inset row
+// with soft blue tint + accent border when selected, 28x28 Source App icon with 13x13
+// bottom-right kind corner badge (or 32x32 image thumbnail), 2.5-line rich text hierarchy,
+// user colored tag pills, and hover quick copy.
+func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element {
+	selected := r.Selected()
+	row := ui.Row(c).AlignItems(ui.Start).Gap(10).Padding(9, 11).Margin(0, 6, 3, 8).Radius(10).Grow(1)
+	hovered := row.Hovered()
+	hoverFill := k.Color("background-secondary-default")
+	if k.Dark {
+		hoverFill = k.Color("background-primary-default")
+	}
+	if selected {
+		bgAlpha := float32(.09)
+		borderAlpha := float32(.48)
+		if k.Dark {
+			bgAlpha = .15
+			borderAlpha = .62
+		}
+		row.Background(k.Color("accent-500").Alpha(bgAlpha)).
+			Border(1.25, k.Color("accent-500").Alpha(borderAlpha))
+	} else if hovered {
+		row.Background(hoverFill).Border(1, ui.Transparent)
+	} else {
+		row.Border(1, ui.Transparent)
+	}
+
+	badgeRing := k.surfaceSolid()
+	if selected {
+		alpha := float32(.09)
+		if k.Dark {
+			alpha = .15
+		}
+		badgeRing = k.Color("accent-500").Alpha(alpha).Over(badgeRing)
+	} else if hovered {
+		badgeRing = hoverFill
+	}
+
+	row.Children(func() {
+		// Leading provenance / media tile.
+		if it.Kind == KindImage && it.Image != nil {
+			ui.Image(c.Key("thumb"), it.Image).Size(34, 34).Radius(7).Fit(ui.Cover).
+				Border(1, k.Color("separator-border")).Shrink(0).AccessHidden(true)
+		} else if it.SourceAppName != "" {
+			bg, fg := k.gridKindTint(it.Kind)
+			ui.Box(c.Key("app-tile")).Size(28, 28).Margin(2, 0, 0, 0).Shrink(0).AccessHidden(true).Children(func() {
+				if it.SourceAppIcon != nil {
+					ui.Image(c.Key("app-icon"), it.SourceAppIcon).Size(28, 28).Radius(7).Fit(ui.Contain)
+				} else {
+					ui.Box(c.Key("app-fallback")).Size(28, 28).Radius(7).
+						Background(k.Color("background-secondary-default")).
+						Border(1, k.Color("separator-border")).Center().Children(func() {
+						k.Icon(c, IconPackage, 14).TextColor(k.Color("text-secondary"))
+					})
+				}
+				ui.Box(c.Key("kind-corner")).Absolute().Bottom(-2).Right(-2).Size(14, 14).Radius(4.5).
+					Background(bg).Border(1.5, badgeRing).Center().Children(func() {
+					k.Icon(c, kindIcon(it.Kind), 8.5).TextColor(fg)
+				})
+			})
+		} else {
+			bg, fg := k.gridKindTint(it.Kind)
+			ui.Box(c.Key("kind-tile")).Size(28, 28).Margin(2, 0, 0, 0).Radius(7).
+				Background(bg).Center().Shrink(0).AccessHidden(true).Children(func() {
+				k.Icon(c, kindIcon(it.Kind), 14).TextColor(fg)
+			})
+		}
+
+		// Main 2.5-line stack: Title + Time/QuickCopy, optional Excerpt, Meta + User Tags.
+		ui.Column(c.Key("col")).Gap(2.5).Grow(1).MinWidth(0).Shrink(1).Children(func() {
+			ui.Row(c.Key("top")).AlignItems(ui.Center).Gap(6).MinWidth(0).Children(func() {
+				ui.Box(c.Key("title-wrap")).Grow(1).MinWidth(0).Shrink(1).Children(func() {
+					k.rowTitleWeighted(c, it.Title, it.Monospace, it.Highlight, k.Color("text-primary"), 13, 600)
+				})
+				if hovered && it.OnCopy != nil {
+					lbl := it.CopyLabel
+					if lbl == "" {
+						lbl = "Copy"
+					}
+					btn := ui.ButtonBase(c.Key("quick-copy")).Height(20).PaddingX(6.5).Radius(5.5).Gap(3.5).
+						AlignItems(ui.Center).Shrink(0).TabStop(false).Label(lbl).
+						Background(k.Color("background-primary-default")).
+						Border(1, k.Color("border-button-default"))
+					ink := k.Color("text-secondary")
+					if btn.Hovered() {
+						btn.Background(k.Color("accent-500")).Border(1, k.Color("accent-500"))
+						ink = k.Color("text-white")
+					}
+					btn.Children(func() {
+						k.Icon(c, IconCopy, 10.5).TextColor(ink)
+						ui.Text(c, lbl).FontSize(10.5).FontWeight(500).TextColor(ink).SingleLine()
+					})
+					if btn.Clicked() {
+						it.OnCopy()
+					}
+				} else {
+					ui.Row(c.Key("trail")).Gap(4).AlignItems(ui.Center).Shrink(0).Children(func() {
+						if it.Pinned {
+							k.Icon(c.Key("pin"), IconPin, 11).TextColor(k.Color("status-orange-text"))
+						}
+						if it.Time != "" {
+							ui.Text(c.Key("time"), it.Time).FontSize(11).TextColor(k.Color("text-tertiary")).SingleLine()
+						}
+					})
+				}
+			})
+
+			if it.Excerpt != "" {
+				ex := ui.Text(c.Key("excerpt"), it.Excerpt).FontSize(11.8).TextColor(k.Color("text-secondary")).SingleLine()
+				switch it.ExcerptKind {
+				case KindCode:
+					ex.Font("monospace")
+				case KindLink:
+					ex.Font("monospace").TextColor(k.Color("accent-500"))
+				}
+			}
+
+			meta := it.Meta
+			if meta == "" {
+				meta = it.Subtitle
+			}
+			if meta != "" || len(it.Tags) > 0 {
+				ui.Row(c.Key("bot")).AlignItems(ui.Center).Gap(6).MinWidth(0).Margin(1, 0, 0, 0).Children(func() {
+					if meta != "" {
+						ui.Text(c.Key("meta"), meta).FontSize(10.8).TextColor(k.Color("text-tertiary")).SingleLine().Grow(1).MinWidth(0)
+					} else {
+						ui.Spacer(c)
+					}
+					if len(it.Tags) > 0 {
+						ui.Row(c.Key("tags")).Gap(4).AlignItems(ui.Center).Shrink(0).Children(func() {
+							limit := min(2, len(it.Tags))
+							tagBg := k.Color("background-tertiary-default")
+							if k.Dark {
+								tagBg = k.Color("text-primary").Alpha(.08)
+							}
+							for idx := 0; idx < limit; idx++ {
+								tag := it.Tags[idx]
+								ui.Row(c.Key(idx)).Height(17).PaddingX(5.5).Radius(8.5).Gap(3.5).AlignItems(ui.Center).
+									Background(tagBg).Children(func() {
+									ui.Box(c.Key("dot")).Size(5, 5).Radius(2.5).Background(k.SwatchColor(tag.Color)).Shrink(0).AccessHidden(true)
+									ui.Text(c.Key("lbl"), tag.Label).FontSize(10).FontWeight(500).TextColor(k.Color("text-secondary")).SingleLine()
+								})
+							}
+						})
+					}
+				})
+			}
+		})
+	})
+	return row
 }
 
 type listRowSpec struct {
@@ -411,6 +590,20 @@ func menuFromEntries(m *ui.Menu, items []MenuEntry, chosen *string) {
 			*chosen = e.ID
 		}
 	}
+}
+
+// AttachContextMenu binds a native popover context menu built from MenuEntry items to e.
+func (k Kit) AttachContextMenu(e ui.Element, items func() []MenuEntry, onChosen func(string)) {
+	if items == nil || onChosen == nil {
+		return
+	}
+	e.ContextMenu(func(m *ui.Menu) {
+		var chosen string
+		menuFromEntries(m, items(), &chosen)
+		if chosen != "" {
+			onChosen(chosen)
+		}
+	})
 }
 
 // listContextMenu 给列表元素挂上选区右键菜单：右键未选中的行会先选中它（mygo 行为）。

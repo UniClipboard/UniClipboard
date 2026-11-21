@@ -39,7 +39,7 @@ func (d *viewState) settingsPage(c *ui.Context, k uikit.Kit) {
 			}
 		}
 	}
-	k.SplitView(c, uikit.SplitViewProps{Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
+	k.SplitView(c, uikit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
 		k.SidebarNav(c, &d.settings, uikit.SidebarNavProps{Label: d.tr("设置"), Sections: []uikit.SidebarNavSection{{ID: "categories", Items: items}}, Footer: []uikit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: uikit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
 		if d.settings.Changed() {
 			if d.settings.Value == "back" {

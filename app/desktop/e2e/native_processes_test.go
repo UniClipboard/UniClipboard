@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -18,6 +20,109 @@ import (
 // IPC activation does not establish tray clicks or global shortcut delivery.
 func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 	return map[string]func(*desktopScenario, []string) error{
+		"windows-frame": func(s *desktopScenario, args []string) error {
+			if runtime.GOOS != "windows" || len(args) < 2 || len(args) > 3 || filepath.Base(args[0]) != args[0] {
+				return errors.New("windows-frame name custom|system [action] requires Windows")
+			}
+			raw, err := s.roleCommand("gui", "probe")
+			if err != nil {
+				return err
+			}
+			var owner desktopRoleIdentity
+			if err := json.Unmarshal(raw, &owner); err != nil {
+				return err
+			}
+			action := "capture"
+			if len(args) == 3 {
+				action = args[2]
+			}
+			if action == "drag-resize" && os.Getenv("UNIC_DESKTOP_E2E_GUEST") == "" {
+				return errors.New("physical input requires an explicitly authorized disposable guest")
+			}
+			if action != "capture" && action != "maximized" && action != "restored" && action != "minimized" && action != "drag-resize" {
+				return errors.New("unknown owned-window action")
+			}
+			if action != "minimized" {
+				if err := s.call(s.ctx, "idle", map[string]any{"window": s.window, "timeout": 2000}, nil); err != nil {
+					return err
+				}
+			}
+			captureCtx, cancelCapture := context.WithTimeout(s.ctx, 30*time.Second)
+			defer cancelCapture()
+			cmd := exec.CommandContext(captureCtx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(s.root, "app", "desktop", "e2e", "windows_chrome.ps1"), "-OwnedProcessId", fmt.Sprint(owner.PID), "-OwnedBinary", owner.BinaryPath, "-Mode", args[1], "-OutputBase", filepath.Join(s.out, args[0]), "-Action", action)
+			s.captureMu.Lock()
+			if action == "minimized" {
+				node, findErr := s.find("button", "最小化")
+				if findErr != nil {
+					s.captureMu.Unlock()
+					return findErr
+				}
+				if inputErr := s.call(s.ctx, "input", map[string]any{"window": s.window, "events": []any{map[string]any{"type": "click", "x": node.Bounds.X + node.Bounds.Width/2, "y": node.Bounds.Y + node.Bounds.Height/2}}}, nil); inputErr != nil {
+					s.captureMu.Unlock()
+					return inputErr
+				}
+			}
+			output, err := cmd.CombinedOutput()
+			s.captureMu.Unlock()
+			if err != nil {
+				return fmt.Errorf("owned Windows frame: %w: %s", err, output)
+			}
+			nodes, err := s.tree()
+			if err != nil {
+				return err
+			}
+			var toolbar *desktopNode
+			captions := map[string]desktopNode{}
+			for i := range nodes {
+				n := nodes[i]
+				if n.Role == "toolbar" && (n.Label == "全部" || n.Label == "通用" || n.Label == "插件") {
+					toolbar = &nodes[i]
+				}
+				if n.Role == "button" && (n.Label == "最小化" || n.Label == "最大化" || n.Label == "还原" || n.Label == "关闭") {
+					captions[n.Label] = n
+				}
+			}
+			if args[1] == "system" && len(captions) != 0 {
+				return errors.New("system mode contains duplicate custom caption controls")
+			}
+			if args[1] == "custom" {
+				if len(captions) != 3 {
+					return fmt.Errorf("custom caption controls=%d, want 3", len(captions))
+				}
+				if toolbar != nil {
+					b := toolbar.Bounds
+					if b.Y != 0 || b.Height != 48 {
+						return fmt.Errorf("extra native application caption row: %+v", b)
+					}
+					for label, n := range captions {
+						r := n.Bounds
+						if r.X < b.X || r.X+r.Width > b.X+b.Width+.1 || r.Y < b.Y || r.Y+r.Height > b.Y+b.Height+.1 {
+							return fmt.Errorf("native caption %s outside shared toolbar: %+v", label, r)
+						}
+					}
+					first := captions["最小化"].Bounds.X
+					for _, n := range nodes {
+						if n.Role != "search" && n.Label != "发送到设备" && n.Label != "切换置顶" && n.Label != "更多操作" {
+							continue
+						}
+						r := n.Bounds
+						if r.Y < b.Y+b.Height && (r.Width <= 0 || r.X+r.Width > first+.1) {
+							return fmt.Errorf("native history command overlaps caption: %s %+v", n.Label, r)
+						}
+					}
+				}
+			}
+			treeData, err := json.MarshalIndent(nodes, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(s.out, args[0]+"-tree.json"), treeData, 0600); err != nil {
+				return err
+			}
+			s.result.Screenshots = append(s.result.Screenshots, args[0]+".png")
+			s.result.Assertions = append(s.result.Assertions, "OS frame geometry and exact-window capture: "+args[0]+"; action="+action)
+			return nil
+		},
 		"role-checkpoint": func(s *desktopScenario, args []string) error {
 			if len(args) != 1 || filepath.Base(args[0]) != args[0] {
 				return errors.New("role-checkpoint name")
@@ -174,26 +279,44 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			return s.selectNativeRole("gui")
 		},
 		"role-close-gui": func(s *desktopScenario, args []string) error {
-			if len(args) != 0 {
-				return errors.New("role-close-gui takes no arguments")
+			if len(args) > 1 || (len(args) == 1 && args[0] != "caption") {
+				return errors.New("role-close-gui [caption]")
 			}
 			if s.nativeRoleBaseline == nil {
 				return errors.New("role-checkpoint must precede GUI close")
 			}
+			raw, err := s.roleCommand("gui", "probe")
+			if err != nil {
+				return err
+			}
+			var current desktopRoleIdentity
+			if err = json.Unmarshal(raw, &current); err != nil {
+				return err
+			}
+			wait, release, err := observeProcessExit(current.PID)
+			if err != nil {
+				return err
+			}
+			defer release()
 			s.captureMu.Lock()
 			s.capturePaused = true
 			s.captureMu.Unlock()
-			if _, err := s.roleCommand("gui", "close"); err != nil {
-				return err
-			}
-			select {
-			case err := <-s.appDone:
-				s.appDone <- err
+			if len(args) == 1 {
+				node, err := s.find("button", "关闭")
 				if err != nil {
 					return err
 				}
-			case <-time.After(10 * time.Second):
-				return errors.New("GUI process did not exit after close IPC")
+				err = s.call(s.ctx, "input", map[string]any{"window": s.window, "events": []any{map[string]any{"type": "click", "x": node.Bounds.X + node.Bounds.Width/2, "y": node.Bounds.Y + node.Bounds.Height/2}}}, nil)
+				if err != nil {
+					return err
+				}
+			} else if _, err := s.roleCommand("gui", "close"); err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+			defer cancel()
+			if err := wait(ctx); err != nil {
+				return err
 			}
 			if _, err := s.roleCommand("gui", "probe"); err == nil {
 				return errors.New("GUI role endpoint outlived its closed process")
@@ -201,7 +324,7 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			if err := s.checkNativeBackground(); err != nil {
 				return err
 			}
-			s.result.Assertions = append(s.result.Assertions, "IPC close terminated the native GUI OS process while tray and service retained their identities")
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("GUI PID %d exited after close %v; tray and service retained identities", current.PID, args))
 			return s.nativeRoleCheckpoint("gui-closed")
 		},
 		"role-reopen-gui": func(s *desktopScenario, args []string) error {
@@ -337,7 +460,7 @@ func (s *desktopScenario) nativeRoleCheckpoint(name string) error {
 	if err != nil {
 		return err
 	}
-	if err = os.WriteFile(filepath.Join(s.out, "roles-"+name+".json"), raw, 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(s.out, fmt.Sprintf("roles-%02d-%s.json", len(s.result.Steps), name)), raw, 0600); err != nil {
 		return err
 	}
 	s.result.Assertions = append(s.result.Assertions, "native role checkpoint "+name+" verified distinct OS PIDs and private profile identity")

@@ -407,7 +407,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # mode = "normal"  # "normal" or "lightweight"
 # launch_at_login = false
 # start_in_background = false
-# system_window_frame = false  # Linux/macOS native title bar; reopen Desktop to apply
+# system_window_frame = false  # native title bar on all platforms; close and reopen GUI to apply
 # tray_icon = "glyph"  # "glyph" or "cat"; applies immediately
 # quick_panel_shortcut = "Ctrl+Alt+V"
 # macOS default: "Cmd+Ctrl+V"

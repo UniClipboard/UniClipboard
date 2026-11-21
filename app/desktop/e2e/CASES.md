@@ -67,7 +67,12 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep macOS-skin production history controls within the toolbar at 600x480. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
-| [window-chrome](#window-chrome) | view | Select native title bars on Linux/macOS and custom caption actions on Windows. |
+| [window-chrome-native-dark](#window-chrome-native-dark) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
+| [window-chrome-native-input](#window-chrome-native-input) | native | Verify physical input on the owned main window without clipboard access. |
+| [window-chrome-native](#window-chrome-native) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
+| [window-chrome-setup](#window-chrome-setup) | native | Keep Windows caption actions available before the ordinary application toolbar exists. |
+| [window-chrome-startup-error](#window-chrome-startup-error) | native | Keep Windows custom controls available when real service startup fails. |
+| [window-chrome](#window-chrome) | view | Select native title bars on all platforms and put Windows custom controls in the application toolbar. |
 
 ## builtin-plugin-policy
 
@@ -1564,15 +1569,257 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 acceptance desktopui unified-scrollbars
 ```
 
+## window-chrome-native-dark
+
+Native dark main-window frame persistence and GUI recreation
+
+Steps: Save the frame preference through General settings, retain the existing window, close GUI, reopen through tray, and repeat in the opposite direction with the same service and history.
+
+Expected: The same boolean persists; the service has no host-only restart entry; a new GUI clears pending; Windows shows exactly one set of caption buttons for its mode.
+
+Forbidden: Service restart, second caption row, system clipboard access, physical-input claims, or using window-content screenshots as proof of OS decorations.
+
+```text
+start 600 720 dark native
+submit chrome-native 'Windows chrome synthetic history'
+ui-wait listItem 'Windows chrome synthetic history'
+role-checkpoint initial
+[windows] ui-wait button '最小化'
+screenshot custom-history
+[windows] windows-frame custom-history-os custom
+ui-click button '切换侧栏'
+ui-wait listItem '设置…'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+ui-reveal switch '使用系统边框'
+ui-click switch '使用系统边框'
+config-equals desktop.system_window_frame true
+restart-clear
+ui-wait text '部分设置将在下次启动时生效。'
+ui-reveal text '部分设置将在下次启动时生效。'
+[windows] ui-wait button '最小化'
+screenshot saved-pending
+role-close-gui
+role-reopen-gui
+ui-wait listItem 'Windows chrome synthetic history'
+[windows] ui-absent button '最小化'
+[windows] ui-absent button '最大化'
+[windows] ui-absent button '关闭'
+screenshot system-history
+[windows] windows-frame system-history-os system
+ui-click button '切换侧栏'
+ui-wait listItem '设置…'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+ui-absent text '部分设置将在下次启动时生效。'
+ui-reveal switch '使用系统边框'
+ui-click switch '使用系统边框'
+config-equals desktop.system_window_frame false
+restart-clear
+ui-wait text '部分设置将在下次启动时生效。'
+ui-reveal text '部分设置将在下次启动时生效。'
+role-close-gui
+role-reopen-gui
+ui-wait listItem 'Windows chrome synthetic history'
+[windows] ui-wait button '最小化'
+screenshot custom-reopened
+[windows] windows-frame custom-reopened-os custom
+ui-click button '切换侧栏'
+ui-wait listItem '设置…'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+ui-absent text '部分设置将在下次启动时生效。'
+
+[windows] ui-click button '最大化'
+[windows] windows-frame maximized-os custom maximized
+[windows] ui-click button '还原'
+[windows] windows-frame restored-os custom restored
+[windows] windows-frame minimized-restored-os custom minimized
+
+[windows] ui-click button '切换设置侧栏'
+[windows] ui-wait listItem '插件'
+[windows] ui-click listItem '插件'
+[windows] ui-wait button '内容分类'
+[windows] ui-click button '内容分类'
+[windows] ui-wait button '返回插件列表'
+[windows] ui-wait button '关闭'
+[windows] windows-frame plugin-detail-os custom
+[windows] role-close-gui caption
+[windows] role-reopen-gui
+[windows] ui-wait listItem 'Windows chrome synthetic history'
+```
+
+## window-chrome-native-input
+
+Native Windows toolbar drag and resize
+
+Environment: disposable guest; explicit GUEST=<VM UUID> required.
+
+Steps: Open General through the existing sidebar, drag empty toolbar space, resize the native edge and double-click empty toolbar space.
+
+Expected: OS geometry changes, IsZoomed confirms maximize, caption close leaves tray/service alive, and tray command reopens history.
+
+Forbidden: Personal profiles, broad process termination, clipboard access, or claiming Windows Snap acceptance.
+
+```text
+[!windows] skip 'Windows physical window input only'
+start 640 560 light native
+submit chrome-input 'Windows chrome input synthetic history'
+ui-wait listItem 'Windows chrome input synthetic history'
+role-checkpoint initial
+ui-click button '切换侧栏'
+ui-wait listItem '设置…'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+windows-frame physical-drag-resize-os custom drag-resize
+role-close-gui caption
+role-reopen-gui
+ui-wait listItem 'Windows chrome input synthetic history'
+windows-frame reopened-history-os custom
+```
+
+## window-chrome-native
+
+Native main-window frame persistence and GUI recreation
+
+Steps: Save the frame preference through General settings, retain the existing window, close GUI, reopen through tray, and repeat in the opposite direction with the same service and history.
+
+Expected: The same boolean persists; the service has no host-only restart entry; a new GUI clears pending; Windows shows exactly one set of caption buttons for its mode.
+
+Forbidden: Service restart, second caption row, system clipboard access, physical-input claims, or using window-content screenshots as proof of OS decorations.
+
+```text
+start 640 720 light native
+submit chrome-native 'Windows chrome synthetic history'
+ui-wait listItem 'Windows chrome synthetic history'
+role-checkpoint initial
+[windows] ui-wait button '最小化'
+screenshot custom-history
+[windows] windows-frame custom-history-os custom
+ui-click button '切换侧栏'
+ui-wait listItem '设置…'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+ui-reveal switch '使用系统边框'
+ui-click switch '使用系统边框'
+config-equals desktop.system_window_frame true
+restart-clear
+ui-wait text '部分设置将在下次启动时生效。'
+ui-reveal text '部分设置将在下次启动时生效。'
+[windows] ui-wait button '最小化'
+screenshot saved-pending
+role-close-gui
+role-reopen-gui
+ui-wait listItem 'Windows chrome synthetic history'
+[windows] ui-absent button '最小化'
+[windows] ui-absent button '最大化'
+[windows] ui-absent button '关闭'
+screenshot system-history
+[windows] windows-frame system-history-os system
+ui-click button '切换侧栏'
+ui-wait listItem '设置…'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+ui-absent text '部分设置将在下次启动时生效。'
+ui-reveal switch '使用系统边框'
+ui-click switch '使用系统边框'
+config-equals desktop.system_window_frame false
+restart-clear
+ui-wait text '部分设置将在下次启动时生效。'
+ui-reveal text '部分设置将在下次启动时生效。'
+role-close-gui
+role-reopen-gui
+ui-wait listItem 'Windows chrome synthetic history'
+[windows] ui-wait button '最小化'
+screenshot custom-reopened
+[windows] windows-frame custom-reopened-os custom
+ui-click button '切换侧栏'
+ui-wait listItem '设置…'
+ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
+ui-absent text '部分设置将在下次启动时生效。'
+
+[windows] ui-click button '最大化'
+[windows] windows-frame maximized-os custom maximized
+[windows] ui-click button '还原'
+[windows] windows-frame restored-os custom restored
+[windows] windows-frame minimized-restored-os custom minimized
+
+[windows] ui-click button '切换设置侧栏'
+[windows] ui-wait listItem '插件'
+[windows] ui-click listItem '插件'
+[windows] ui-wait button '内容分类'
+[windows] ui-click button '内容分类'
+[windows] ui-wait button '返回插件列表'
+[windows] ui-wait button '关闭'
+[windows] windows-frame plugin-detail-os custom
+[windows] role-close-gui caption
+[windows] role-reopen-gui
+[windows] ui-wait listItem 'Windows chrome synthetic history'
+```
+
+## window-chrome-setup
+
+Native setup and migration fallback controls
+
+Steps: Open isolated first-install setup, enter migration confirmation and the synthetic passphrase fallback, and exercise caption actions.
+
+Expected: Each setup page has one minimal fallback band; the existing migration controls remain usable; the service remains absent before consent.
+
+Forbidden: Personal profiles, real credential access, clipboard changes, an extra normal-page caption row, or native-frame claims from content captures.
+
+```text
+start-setup complete
+ui-wait text '欢迎使用 UniClipboard'
+service-absent
+screenshot setup-welcome
+[windows] windows-frame setup-welcome-os custom
+ui-click button '开始使用'
+ui-wait button '开始迁移'
+screenshot setup-confirmation
+[windows] windows-frame setup-confirmation-os custom
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+screenshot setup-passphrase
+[windows] windows-frame setup-passphrase-os custom
+[windows] ui-click button '最大化'
+[windows] windows-frame setup-maximized-os custom maximized
+[windows] ui-click button '还原'
+[windows] ui-wait button '最大化'
+[windows] windows-frame setup-minimized-os custom minimized
+```
+
+## window-chrome-startup-error
+
+Native startup-error window controls
+
+Steps: Create an owned directory at the database path, launch a completed private profile, and inspect the resulting retry page and its fallback controls.
+
+Expected: A real startup failure leaves a visible retry page with one draggable fallback band and functioning caption actions.
+
+Forbidden: Personal data, a fake success screen, missing controls, system clipboard access, or OS frame claims based on content capture.
+
+```text
+start-error
+ui-wait button '重试' 60
+screenshot startup-error
+[windows] windows-frame startup-error-os custom
+[windows] ui-click button '最大化'
+[windows] windows-frame startup-error-maximized-os custom maximized
+[windows] ui-click button '还原'
+[windows] ui-wait button '最大化'
+[windows] windows-frame startup-error-minimized-os custom minimized
+```
+
 ## window-chrome
 
-Main-window decoration and caption actions
+Main-window decoration and shared-toolbar caption actions
 
-Steps: Check platform options and click minimize, maximize, restore and close in light/dark views.
+Steps: Exercise complete history/settings/plugin views at 600/640/1100 widths in light/dark themes and scaled rendering; check geometry and dispatch caption actions.
 
-Expected: Native decoration defaults off; Windows always has custom actions; restore and close dispatch correctly.
+Expected: The preference defaults off; either native or custom controls are shown; custom controls share the history toolbar and preserve search and commands.
 
-Forbidden: Losing resize edges, duplicate native Windows buttons, or claims of native OS interaction.
+Forbidden: A second caption row on ordinary pages, overlap, lost resize edges, duplicate buttons, or claims of native OS interaction.
 
 ```text
 acceptance desktopui window-chrome

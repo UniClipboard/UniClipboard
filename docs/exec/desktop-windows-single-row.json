@@ -1,0 +1,294 @@
+{
+  "status": "IMPLEMENTED_NATIVE_WINDOWS_ARM64_PASS",
+  "base_commit": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+  "source_commit": "1f1c581a6ca4a3cbf107c120b0d51bddd5638ebe",
+  "branch": "fix/windows-single-row-chrome",
+  "worktree": "308f87b7-f239-4f4f-9986-2f49eec7ce14",
+  "local_reports": [
+    {
+      "path": ".build/desktop-e2e/20261120T105500Z-2daac5c2",
+      "status": "PASS",
+      "source_head": "a0a0f5fb48f0117d2ca46447e5b7a6bf3dd5b906",
+      "source_manifest_sha256": "9761911d48d2697a6709ceacbb74c32f618837c52604726a2958740f45c5c7e5",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "checksums": "PASS"
+    },
+    {
+      "path": ".build/desktop-e2e/20261120T100641Z-c69fd001",
+      "status": "PASS",
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "source_manifest_sha256": "25cf0ea0bc13dfd3f486808f908cf8ac805f8fa1a0e99c7b7e39e3e3f583931c",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "checksums": "PASS"
+    },
+    {
+      "path": ".build/desktop-e2e/20261120T100711Z-607aaf17",
+      "status": "PASS",
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "source_manifest_sha256": "22238423b29a47bf3fe4a3994073392a1a62ee6d041ee3eeee2756f574a56ae2",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "checksums": "PASS"
+    },
+    {
+      "path": ".build/desktop-e2e/20261120T101516Z-41f3849f",
+      "status": "PASS",
+      "source_head": "ccf947c9f9a8e8b759203632e0b33e6f44d6b2a0",
+      "source_manifest_sha256": "4cc5d1ac25cca87b1f3639c7323f4dac86ef9f880a66d36b71ca441b657382a9",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "checksums": "PASS"
+    }
+  ],
+  "cli_config": "PASS",
+  "scoped_vet": "PASS",
+  "pinned_lint": "PASS (2.15.0)",
+  "cross_builds": [
+    "windows/amd64",
+    "windows/arm64",
+    "darwin/arm64",
+    "linux/amd64"
+  ],
+  "programs": [
+    {
+      "name": "unic-desktop-amd64-final.exe",
+      "sha256": "29be232ce213a36954b63a162e851407085a5f1b8751e85ce2f830c653e2da98",
+      "pe_machine": "0x8664",
+      "build_tags": [
+        "desktop_e2e"
+      ],
+      "buildvcs": false,
+      "executed": false
+    },
+    {
+      "name": "unic-desktop-arm64-final.exe",
+      "sha256": "a1e6ad4a6a1daeab15df27610e0c39d7e9a3ba3c70f29d14d3ae09de2f35cfce",
+      "pe_machine": "0xaa64",
+      "build_tags": [
+        "desktop_e2e"
+      ],
+      "buildvcs": false,
+      "executed": true
+    }
+  ],
+  "native": {
+    "status": "PASS",
+    "vm_uuid": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+    "handover_at": "2026-11-20T12:22:41.442Z",
+    "received_state": "suspended",
+    "restored_state": "suspended",
+    "os": "Windows 11 Pro 10.0.26200.9711",
+    "architecture": "ARM64",
+    "dpi": 192,
+    "screen": [
+      3360,
+      1624
+    ],
+    "executed_source": "af1de54fbd453035a87885a4c6de1a94a4501f74",
+    "program_source": "b5e93fa8ab4bdcc91e67f6a717be85d96813869a",
+    "runner_mode": "host-cross-built canonical TestDesktopScenarios; standard Go test2json; real Windows processes; default guest run.py not executed",
+    "race_detector": false,
+    "runtime_assets_match_source": "PASS",
+    "whole_guest_source_snapshot_unchanged": "NOT_CLAIMED",
+    "report": ".build/windows-chrome-resume/native-accepted/index.html",
+    "sha256sums": ".build/windows-chrome-resume/native-accepted/SHA256SUMS",
+    "sha256sums_sha256": "be501a8aa3a873e3d589b06688f0485b53a735ef5bf0712d400fcdfd7fdd85af",
+    "cases": [
+      {
+        "case": "window-chrome-native",
+        "status": "PASS",
+        "cleanup": "PASS",
+        "frames": 74,
+        "duration_seconds": 26.32,
+        "result_sha256": "fa067b29d21a36dada94a3a07a7cf4b44fe485c19309162f66b2f5e49b030e2e",
+        "recording_sha256": "cdcfbfcec77fe3e869de921af1168ff7d7070be433b08e52e63a9b38a212f3a6"
+      },
+      {
+        "case": "window-chrome-native-dark",
+        "status": "PASS",
+        "cleanup": "PASS",
+        "frames": 73,
+        "duration_seconds": 26.08,
+        "result_sha256": "7a6cd9433bfd70fa9e314e50e5900da3cccdd61e73aef53392522942433e0714",
+        "recording_sha256": "74b29921a430d6a7fadc5e5cabd7b65b322fd5c3b54de0c086f645a17486fd8c"
+      },
+      {
+        "case": "window-chrome-native-input",
+        "status": "PASS",
+        "cleanup": "PASS",
+        "frames": 18,
+        "duration_seconds": 7.72,
+        "result_sha256": "54135ce16744ba79a778bf6753fdf2aca25d1cc4b5189702cc789fec100a8d7d",
+        "recording_sha256": "7f4b03b18cdec38550b8a921bb68e94d8f90e1a00150d3a70590dc70ec23b1c8"
+      },
+      {
+        "case": "window-chrome-setup",
+        "status": "PASS",
+        "cleanup": "PASS",
+        "frames": 22,
+        "duration_seconds": 8.64,
+        "result_sha256": "cd41426f2868de966fdf1e58e87f80bdabb19c255c0996984c34cdcd24105e0a",
+        "recording_sha256": "d28ce1ace68a8a2acf6f97d7b676ca5f455a09dc622ffc578ded45055f6ce58d"
+      },
+      {
+        "case": "window-chrome-startup-error",
+        "status": "PASS",
+        "cleanup": "PASS",
+        "frames": 12,
+        "duration_seconds": 5.52,
+        "result_sha256": "2cb724b1ccff79e8b171e2d0f267c1b648367e9f827347e33d3e0d5836238cf8",
+        "recording_sha256": "af010955c8de186608f8631715b0d5ede0a5d8ceeb679ee40730d108bef1be95"
+      }
+    ],
+    "os_frame_screenshots": [
+      {
+        "path": ".build/windows-chrome-resume/native-accepted/cases/window-chrome-native/custom-history-os.png",
+        "sha256": "e01020ffc5a770cc612e13c2b0aaee3578a46eb2510c9a5a1ac05757e548dde9"
+      },
+      {
+        "path": ".build/windows-chrome-resume/native-accepted/cases/window-chrome-native/system-history-os.png",
+        "sha256": "25abac2f91377740e38c6d8e05c7ef959fdc50ecaf2a8021a67f2c6cc81fb2e9"
+      },
+      {
+        "path": ".build/windows-chrome-resume/native-accepted/cases/window-chrome-native-dark/custom-history-os.png",
+        "sha256": "109f245230c4097b71977479b7731672f29d5ec36610bd320c98ca107adaf21e"
+      },
+      {
+        "path": ".build/windows-chrome-resume/native-accepted/cases/window-chrome-native-dark/system-history-os.png",
+        "sha256": "bde362b4908083bde458fab7a5fa980c47b116b1177bd8dbe49908ccc0c2975b"
+      }
+    ],
+    "physical_drag_resize_double_click": "PASS",
+    "app_scoped_caption_actions_with_OS_state": "PASS",
+    "system_titlebar_physical_button_clicks": "NOT_RUN",
+    "native_tray_icon_click": "NOT_RUN",
+    "tray_IPC_reopen_and_independent_processes": "PASS",
+    "snap": "NOT_RUN",
+    "other_dpi": "NOT_RUN",
+    "windows_x64_execution": "NOT_RUN",
+    "system_clipboard_and_cross_app_paste": "NOT_RUN",
+    "user_visual_approval": "NOT_RUN",
+    "first_failures_retained": [
+      "native-first",
+      "native-retry1",
+      "native-retry2",
+      "native-final",
+      "native-verified",
+      "native-followup"
+    ],
+    "recording_tools": {
+      "ffmpeg": "ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+      "ffprobe": "ffprobe version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers"
+    },
+    "runtime_assets": [
+      {
+        "path": "app/desktop/e2e/windows_chrome.ps1",
+        "sha256": "7b3655e72d0cdb7a456fe701d685f2591f2b0a8232e4bf54c1a2a30c5bbd4854"
+      },
+      {
+        "path": "app/desktop/e2e/cases/window-chrome-native-dark.txtar",
+        "sha256": "5e8d0ba7244856dce35265a02bd72c172a2c516e72ae7e6e8d13630bec0dd697"
+      },
+      {
+        "path": "app/desktop/e2e/cases/window-chrome-native-input.txtar",
+        "sha256": "3609e188a1667075e1f7f94fa150297102a0790aed610b93716a77c23ce4c5e4"
+      },
+      {
+        "path": "app/desktop/e2e/cases/window-chrome-native.txtar",
+        "sha256": "de48ffef2ea8065f8a633b31eb16ef68187a75499f919a92c45be6f9e98ba1e3"
+      },
+      {
+        "path": "app/desktop/e2e/cases/window-chrome-setup.txtar",
+        "sha256": "d14adb770cb2564630b2bfb7e020f1dfd7eeac2eab2b976fdcc82f8574560996"
+      },
+      {
+        "path": "app/desktop/e2e/cases/window-chrome-startup-error.txtar",
+        "sha256": "26b441ddd64888cf3265da9339915dee13624b613243b2cb39c2d5e34c64ef65"
+      },
+      {
+        "path": "app/desktop/e2e/cases/window-chrome.txtar",
+        "sha256": "54d72f290d5b152b9437348886eea2db7847dab4a8ec08ca34c085101d0fd0e5"
+      }
+    ],
+    "programs": [
+      {
+        "name": "unic-desktop.exe",
+        "sha256": "a1e6ad4a6a1daeab15df27610e0c39d7e9a3ba3c70f29d14d3ae09de2f35cfce"
+      },
+      {
+        "name": "unic.exe",
+        "sha256": "371b60b548daf3e2e5a8be7beb70c7ab0da832406bfc9d4a8095f62faf2c9a94"
+      },
+      {
+        "name": "unicd.exe",
+        "sha256": "e8f542e525f927530217c72134480fdef241bfc924e2a6577197dce513a3aae3"
+      },
+      {
+        "name": "desktop-e2e.test.exe",
+        "sha256": "ce60216992915a0e36279069e5a96d3dba6837694ce1607a9554104addb0e0e8"
+      },
+      {
+        "name": "ffmpeg.exe",
+        "sha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec"
+      },
+      {
+        "name": "ffprobe.exe",
+        "sha256": "f0d36ecbbdd3bcfac3efa078c96c7271c2e68b3810595552ac3b7f17e9a65c52"
+      },
+      {
+        "name": "mygo-automation.exe",
+        "sha256": "601f9cd3dac18614b45da5584bae49c3778fddfe1b65d90fd8117e70c34f20df"
+      },
+      {
+        "name": "test2json.exe",
+        "sha256": "e6e01dd98f79580394aa337f13933c6a9ebbe29be73fa6a1bf4fa1f73d090f2d"
+      }
+    ]
+  },
+  "cleanup": {
+    "canonical_private_directories": "PASS",
+    "guest_resources_created": true,
+    "parent_worktree_modified": false,
+    "push_pr_merge_release": false,
+    "local_build_source_cleanup": "PASS",
+    "removed_task_paths": [
+      ".build/windows-chrome/bin",
+      ".build/windows-chrome/native-source",
+      ".build/windows-chrome/e2e.test.exe"
+    ],
+    "guest_cleanup": {
+      "status": "PASS",
+      "task_directory_removed": true,
+      "owned_remaining": 0,
+      "other_powershell_count": 0,
+      "processes_terminated": 0,
+      "cursor_restored": {
+        "X": 1335,
+        "Y": 1623
+      }
+    },
+    "vm_restored": {
+      "status": "PASS",
+      "vm_uuid": "32affa85-5174-4d5b-ab6b-903a06d7fa9b",
+      "received_state": "suspended",
+      "final_state": "suspended",
+      "raw_status": "VM {32affa85-5174-4d5b-ab6b-903a06d7fa9b} exist suspended"
+    },
+    "host_cleanup": {
+      "status": "PASS",
+      "removed_owned_build_paths": [
+        "source",
+        "bin",
+        "tools",
+        "downloads",
+        "source.zip",
+        "desktop-e2e.test.exe"
+      ],
+      "retained": "local ignored OS PNGs, continuous videos, failure artifacts and small provenance/cleanup receipts",
+      "personal_data": "none"
+    }
+  },
+  "preserved_initial_delivery": "b5e93fa8ab4bdcc91e67f6a717be85d96813869a"
+}

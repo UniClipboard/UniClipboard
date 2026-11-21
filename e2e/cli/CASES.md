@@ -2756,7 +2756,7 @@ stdout '"phase":"committed"'
 
 **期望**
 
-布尔值持久化，变更产生待重启状态。
+布尔值持久化，服务不报告窗口的待重启状态。
 
 
 **不应**
@@ -2773,7 +2773,7 @@ stdout '"system_window_frame": ?false'
 u alpha config set desktop.system_window_frame true
 u alpha config --json
 stdout '"system_window_frame": ?true'
-stdout 'desktop.system_window_frame'
+! stdout '"desktop.system_window_frame"'
 node-stop alpha
 node-start alpha
 u alpha config --json

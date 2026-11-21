@@ -120,6 +120,8 @@ type SplitViewProps struct {
 	ToolbarLeading func()
 	// Toolbar holds controls at the trailing end of the toolbar band, after the search field.
 	Toolbar func()
+	// ToolbarTrailing holds host-supplied controls after application commands.
+	ToolbarTrailing func()
 	// DetailOpen is the explicit detail navigation: below SinglePaneWidth the list and the
 	// detail share one pane and a back button (labelled BackLabel) closes the detail. Pass the
 	// same pointer to the Panes. Nil disables the adaptive behaviour.
@@ -301,7 +303,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				heading()
 				ui.Row(c.Key("split-center")).Grow(1).MinWidth(0).Justify(ui.Center).Children(func() {
 					if p.Search != nil {
-						ui.Row(c.Key("split-search")).Grow(1).MaxWidth(460).Children(p.Search)
+						ui.Row(c.Key("split-search")).Grow(1).MinWidth(0).MaxWidth(460).Children(p.Search)
 					}
 				})
 				if p.ToolbarLeading != nil {
@@ -326,6 +328,9 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			}
 			if p.Toolbar != nil {
 				ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+			}
+			if p.ToolbarTrailing != nil {
+				ui.Row(c.Key("split-trailing")).Shrink(0).AlignItems(ui.Center).Children(p.ToolbarTrailing)
 			}
 		})
 	}

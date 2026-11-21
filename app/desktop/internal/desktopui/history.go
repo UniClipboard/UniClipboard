@@ -95,7 +95,7 @@ func (d *viewState) history(c *ui.Context, k uikit.Kit) {
 			d.selectEntry(items[0].id)
 		}
 	}
-	k.SplitView(c, uikit.SplitViewProps{
+	k.SplitView(c, uikit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c),
 		Title: d.tr("全部"), Subtitle: fmt.Sprint(len(items)),
 		Sidebar: func() { d.sidebar(c, k) }, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact,
 		SidebarToggleLabel: d.tr("切换侧栏"), DetailOpen: &d.detailOpen, BackLabel: d.tr("返回历史"),

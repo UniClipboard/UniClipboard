@@ -1,0 +1,25 @@
+# Case: Native setup and migration fallback controls
+# Mode: native
+# Purpose: Keep Windows caption actions available before the ordinary application toolbar exists.
+# Steps: Open isolated first-install setup, enter migration confirmation and the synthetic passphrase fallback, and exercise caption actions.
+# Expected: Each setup page has one minimal fallback band; the existing migration controls remain usable; the service remains absent before consent.
+# Forbidden: Personal profiles, real credential access, clipboard changes, an extra normal-page caption row, or native-frame claims from content captures.
+
+start-setup complete
+ui-wait text '欢迎使用 UniClipboard'
+service-absent
+screenshot setup-welcome
+[windows] windows-frame setup-welcome-os custom
+ui-click button '开始使用'
+ui-wait button '开始迁移'
+screenshot setup-confirmation
+[windows] windows-frame setup-confirmation-os custom
+ui-click button '开始迁移'
+ui-wait textField 'v1 口令'
+screenshot setup-passphrase
+[windows] windows-frame setup-passphrase-os custom
+[windows] ui-click button '最大化'
+[windows] windows-frame setup-maximized-os custom maximized
+[windows] ui-click button '还原'
+[windows] ui-wait button '最大化'
+[windows] windows-frame setup-minimized-os custom minimized

@@ -1577,6 +1577,7 @@ role-checkpoint initial
 screenshot custom-history
 [windows] windows-frame custom-history-os custom
 ui-click button '切换侧栏'
+ui-wait listItem '设置…'
 ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 ui-reveal switch '使用系统边框'
@@ -1596,6 +1597,7 @@ ui-wait listItem 'Windows chrome synthetic history'
 screenshot system-history
 [windows] windows-frame system-history-os system
 ui-click button '切换侧栏'
+ui-wait listItem '设置…'
 ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
@@ -1612,7 +1614,9 @@ ui-wait listItem 'Windows chrome synthetic history'
 screenshot custom-reopened
 [windows] windows-frame custom-reopened-os custom
 ui-click button '切换侧栏'
+ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 
 [windows] ui-click button '最大化'
@@ -1622,6 +1626,7 @@ ui-absent text '部分设置将在下次启动时生效。'
 [windows] windows-frame minimized-restored-os custom minimized
 
 [windows] ui-click button '切换设置侧栏'
+[windows] ui-wait listItem '插件'
 [windows] ui-click listItem '插件'
 [windows] ui-wait button '内容分类'
 [windows] ui-click button '内容分类'
@@ -1652,6 +1657,7 @@ submit chrome-input 'Windows chrome input synthetic history'
 ui-wait listItem 'Windows chrome input synthetic history'
 role-checkpoint initial
 ui-click button '切换侧栏'
+ui-wait listItem '设置…'
 ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 windows-frame physical-drag-resize-os custom drag-resize
@@ -1680,6 +1686,7 @@ role-checkpoint initial
 screenshot custom-history
 [windows] windows-frame custom-history-os custom
 ui-click button '切换侧栏'
+ui-wait listItem '设置…'
 ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 ui-reveal switch '使用系统边框'
@@ -1699,6 +1706,7 @@ ui-wait listItem 'Windows chrome synthetic history'
 screenshot system-history
 [windows] windows-frame system-history-os system
 ui-click button '切换侧栏'
+ui-wait listItem '设置…'
 ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
@@ -1715,7 +1723,9 @@ ui-wait listItem 'Windows chrome synthetic history'
 screenshot custom-reopened
 [windows] windows-frame custom-reopened-os custom
 ui-click button '切换侧栏'
+ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 
 [windows] ui-click button '最大化'
@@ -1725,6 +1735,7 @@ ui-absent text '部分设置将在下次启动时生效。'
 [windows] windows-frame minimized-restored-os custom minimized
 
 [windows] ui-click button '切换设置侧栏'
+[windows] ui-wait listItem '插件'
 [windows] ui-click listItem '插件'
 [windows] ui-wait button '内容分类'
 [windows] ui-click button '内容分类'

@@ -12,6 +12,7 @@ submit chrome-input 'Windows chrome input synthetic history'
 ui-wait listItem 'Windows chrome input synthetic history'
 role-checkpoint initial
 ui-click button '切换侧栏'
+ui-wait listItem '设置…'
 ui-click listItem '设置…'
 ui-wait switch '使用系统边框'
 windows-frame physical-drag-resize-os custom drag-resize

@@ -295,3 +295,26 @@ removed after evidence collection. See the compact JSON receipt for the final
 cleanup and restored VM state. PNGs, recordings and first failures remain only
 in local ignored evidence directories. The committed receipt contains hashes
 and verdicts, not databases, programs, source snapshots or large logs.
+
+
+## PR 2281 CI navigation race
+
+The first PR checks run `44762086384` failed only in Desktop shard 3/3, job
+`136376960537`, artifact `14644081151`. The `window-chrome-native` case accepted
+the sidebar toggle at 12660 ms, then looked up Settings at 12666 ms and found no
+element. The retained failure tree subsequently contains that element. This is
+an asynchronous rendered-tree transition, not a missing Settings entry. The
+original source merge was `9abfdb91e056da2238dc704962f70254c3c56fb6` for PR head
+`ddbbb7ca33a9c2b16dff125289dd94343c3d2fc1`. Original evidence checksums passed.
+
+The light, dark and physical-input scenarios now wait for the Settings item
+after opening the sidebar. They also wait for the actual General switch before
+the final pending-notice absence assertion. Windows plugin navigation waits for
+its sidebar item before clicking it. Existing persistence, frame, lifecycle and
+OS assertions remain unchanged. No product code or global driver policy changes.
+
+The original hosted report remains under
+`.build/ci-2281-first/artifact/20261120T152038Z-0224b4a4/`. Verification uses the
+canonical `window-chrome-native` case and all hosted PR Desktop shards. Keep the
+first failure and allow at most two verification attempts after this repair;
+investigate a recurrent failure before any replay.

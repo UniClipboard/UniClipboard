@@ -4,6 +4,7 @@ import "context"
 
 // SyncBackendInfo identifies a running configured transport without addresses.
 type SyncBackendInfo struct {
+	State            string `json:"state"`
 	ID               string `json:"id"`
 	ImplementationID string `json:"implementation_id"`
 	TransportKind    string `json:"transport_kind"`
@@ -25,4 +26,13 @@ func (c *Client) ExportTicketVia(ctx context.Context, backend string) (string, e
 	}
 	err := c.do(ctx, "POST", "/v1/pairing-ticket", map[string]string{"backend_id": backend}, &out)
 	return out.Ticket, err
+}
+
+func (c *Client) PairVia(ctx context.Context, addr, backend string) (out PairResult, err error) {
+	err = c.do(ctx, "POST", "/v1/peers", map[string]string{"addr": addr, "backend_id": backend}, &out)
+	return
+}
+func (c *Client) JoinVia(ctx context.Context, code, backend string) (out PairResult, err error) {
+	err = c.do(ctx, "POST", "/v1/join", map[string]string{"code": code, "backend_id": backend}, &out)
+	return
 }

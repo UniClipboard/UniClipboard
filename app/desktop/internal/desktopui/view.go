@@ -13,6 +13,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/uikit"
 	"github.com/uniclipboard/unic/engine"
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 type entry struct {
@@ -25,6 +26,7 @@ type entry struct {
 	sourceAppName, sourceAppID          string
 	sourceAppIcon                       ui.ImageSource
 	contentError, syncState             string
+	backendSync                         []api.HistoryBackendSync
 	createdAt                           int64
 	id, title, text, source, date, size string
 	kind                                uikit.ContentKind

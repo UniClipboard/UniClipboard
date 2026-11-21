@@ -5,12 +5,17 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	_ "embed"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -23,9 +28,11 @@ import (
 // handshake, pairing, send and receive are exercised together; only the
 // transport is simplified (length-prefixed frames, no encryption).
 type Peer struct {
-	host plugin.PeerHost
-	ctx  context.Context
-	stop context.CancelFunc
+	traceMu     sync.Mutex
+	traceEvents []map[string]any
+	host        plugin.PeerHost
+	ctx         context.Context
+	stop        context.CancelFunc
 
 	mu        sync.Mutex
 	self      string
@@ -38,11 +45,12 @@ type Peer struct {
 }
 
 type tcpSess struct {
-	nc    net.Conn
-	conn  string
-	token string
-	init  string // device ID of the side that dialed
-	wmu   sync.Mutex
+	nc            net.Conn
+	conn          string
+	token         string
+	trustRevision rpc.U64
+	init          string // device ID of the side that dialed
+	wmu           sync.Mutex
 }
 
 type tcpMsg struct {
@@ -58,18 +66,52 @@ type tcpMsg struct {
 	Intro bool            `json:"intro,omitempty"`
 }
 
+//go:embed settings.schema.json
+var settingsSchema []byte
+
 func (p *Peer) Spec() plugin.Spec {
-	return plugin.Spec{ID: "e2e.tcp", Version: "1.0.0", APIVersion: 1, Capabilities: []string{plugin.CapSyncBackend}, TransportKind: plugin.TransportPeerSessions}
+	digest := sha256.Sum256(settingsSchema)
+	return plugin.Spec{ID: "e2e.tcp", SettingsSHA256: hex.EncodeToString(digest[:]), Version: "1.0.0", APIVersion: 1, Capabilities: []string{plugin.CapSyncBackend}, TransportKind: plugin.TransportPeerSessions}
 }
 func (p *Peer) SetPeerHost(h plugin.PeerHost) { p.host = h }
-func (p *Peer) Init(context.Context, plugin.Host, plugin.Config) error {
+func (p *Peer) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
+	for key := range cfg {
+		if key != "marker" && key != "credential" {
+			return plugin.ErrInvalidConfig
+		}
+	}
+	marker := "loopback"
+	if v, ok := cfg["marker"]; ok {
+		var valid bool
+		marker, valid = v.(string)
+		if !valid {
+			return plugin.ErrInvalidConfig
+		}
+	}
+	if err := os.WriteFile("marker", []byte(marker), 0600); err != nil {
+		return err
+	}
 	p.peers, p.conns, p.dialing = map[string]rpc.StatePeer{}, map[string]*tcpSess{}, map[string]bool{}
 	p.ctx, p.stop = context.WithCancel(context.Background())
 	return nil
 }
 func (p *Peer) Start(context.Context) error {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	address := "127.0.0.1:0"
+	if saved, err := os.ReadFile("endpoint"); err == nil {
+		address = string(saved)
+		host, port, err := net.SplitHostPort(address)
+		if err != nil || host != "127.0.0.1" || port == "0" {
+			return plugin.ErrInvalidConfig
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	ln, err := net.Listen("tcp", address)
 	if err != nil {
+		return err
+	}
+	if err := os.WriteFile("endpoint", []byte(ln.Addr().String()), 0600); err != nil {
+		_ = ln.Close()
 		return err
 	}
 	p.mu.Lock()
@@ -127,13 +169,14 @@ func (p *Peer) Bind(_ context.Context, b rpc.Bind) error {
 func (p *Peer) ApplyState(_ context.Context, s rpc.SyncState) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.trace("apply-state", fmt.Sprintf("peers=%d revision=%d sync=%v", len(s.Peers), s.Revision, s.SyncEnabled), nil)
 	p.introduce = s.Introduce
 	p.peers = map[string]rpc.StatePeer{}
 	for _, pe := range s.Peers {
 		p.peers[pe.ID] = pe
 	}
 	for id, c := range p.conns {
-		if _, ok := p.peers[id]; !ok {
+		if peer, ok := p.peers[id]; !ok || peer.TrustRevision != c.trustRevision {
 			_ = c.nc.Close()
 		}
 	}
@@ -291,6 +334,7 @@ func (p *Peer) handshake(nc net.Conn, outgoing bool, attempt *string) (peerID st
 	if err != nil {
 		return "", false, err
 	}
+	p.trace("check-peer", fmt.Sprintf("%s revision=%d", dec.Decision, dec.TrustRevision), nil)
 	local := dec.Decision == "allow"
 	if err = sendMsg(nc, tcpMsg{Allow: local}); err != nil {
 		return dec.PeerID, false, err
@@ -302,7 +346,7 @@ func (p *Peer) handshake(nc net.Conn, outgoing bool, attempt *string) (peerID st
 	if !local || !m.Allow {
 		return dec.PeerID, m.Allow, nil
 	}
-	s := &tcpSess{nc: nc, conn: conn, token: *dec.SessionToken, init: dec.PeerID}
+	s := &tcpSess{nc: nc, conn: conn, token: *dec.SessionToken, trustRevision: dec.TrustRevision, init: dec.PeerID}
 	p.mu.Lock()
 	if outgoing {
 		s.init = p.self
@@ -326,6 +370,7 @@ func (p *Peer) handshake(nc net.Conn, outgoing bool, attempt *string) (peerID st
 		p.mu.Unlock()
 		return dec.PeerID, true, err
 	}
+	p.trace("connected", "", nil)
 	ok = true
 	_ = nc.SetDeadline(time.Time{})
 	go p.serve(dec.PeerID, s)
@@ -367,14 +412,23 @@ func (p *Peer) serve(peer string, s *tcpSess) {
 			bodies[i] = plugin.ReceiveBody{Size: uint64(len(b)), R: bytes.NewReader(b)}
 		}
 		g, err := p.host.ReceiveOpen(p.ctx, rpc.ReceiveOpen{ConnectionID: s.conn, SessionToken: s.token, Clip: *m.Clip})
+		p.trace("receive-open", g.Decision, err)
 		if err != nil || g.Decision != rpc.DecisionAccept {
 			continue
 		}
-		_, _ = p.host.Receive(p.ctx, *g.ReceiveID, bodies)
+		_, err = p.host.Receive(p.ctx, *g.ReceiveID, bodies)
+		p.trace("receive-complete", "", err)
 	}
 }
 
 func (p *Peer) Send(ctx context.Context, s rpc.Send, h plugin.SendHost) error {
+	if _, err := os.Stat("crash-send"); err == nil {
+		_ = os.Remove("crash-send")
+		os.Exit(3)
+	}
+	if _, err := os.Stat("fail-send"); err == nil {
+		return rpc.NewError(rpc.CodeUnavailable)
+	}
 	p.mu.Lock()
 	sess := p.conns[s.PeerID]
 	p.mu.Unlock()
@@ -385,6 +439,7 @@ func (p *Peer) Send(ctx context.Context, s rpc.Send, h plugin.SendHost) error {
 		return rpc.NewError(rpc.CodeConflict)
 	}
 	g, err := h.Authorize(ctx)
+	p.trace("authorize-send", "", err)
 	if err != nil {
 		return err
 	}
@@ -412,3 +467,24 @@ func (p *Peer) Send(ctx context.Context, s rpc.Send, h plugin.SendHost) error {
 
 // New returns a loopback-only, unencrypted peer backend for process acceptance.
 func New() plugin.Plugin { return &Peer{} }
+
+// trace retains bounded, secret-free fixture diagnostics in its private directory.
+func (p *Peer) trace(stage, decision string, err error) {
+	code := ""
+	if err != nil {
+		var rpcErr *rpc.Error
+		if errors.As(err, &rpcErr) {
+			code = rpcErr.Code
+		} else {
+			code = "internal"
+		}
+	}
+	p.traceMu.Lock()
+	defer p.traceMu.Unlock()
+	p.traceEvents = append(p.traceEvents, map[string]any{"stage": stage, "decision": decision, "error": code, "at_ms": time.Now().UnixMilli()})
+	if len(p.traceEvents) > 64 {
+		p.traceEvents = p.traceEvents[len(p.traceEvents)-64:]
+	}
+	raw, _ := json.Marshal(p.traceEvents)
+	_ = os.WriteFile("fixture-trace.json", raw, 0600)
+}

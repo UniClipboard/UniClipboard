@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -139,6 +140,25 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		}
 		return toml.NewEncoder(os.Stdout).Encode(st.Config)
 
+	case "device path":
+		if len(args) != 3 {
+			return errors.New("usage: unic device path pause|resume|remove BINDING_ID REVISION")
+		}
+		revision, err := strconv.ParseInt(args[2], 10, 64)
+		if err != nil || revision <= 0 {
+			return errors.New("positive binding revision required")
+		}
+		switch args[0] {
+		case "pause", "resume":
+			out, err := c.SetBindingSync(short, args[1], api.BindingEdit{Revision: revision, Enabled: args[0] == "resume"})
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(os.Stdout).Encode(out)
+		case "remove":
+			return c.RemoveBinding(short, args[1], revision)
+		}
+		return errors.New("unknown binding action")
 	case "device backends":
 		if len(args) != 0 {
 			return errors.New("usage: unic device backends")
@@ -150,17 +170,37 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		return json.NewEncoder(os.Stdout).Encode(backends)
 
 	case "device list":
+		if len(args) > 1 || len(args) == 1 && args[0] != "--json" {
+			return errors.New("usage: unic device list [--json]")
+		}
 		st, err := c.Status(short)
 		if err != nil {
 			return err
+		}
+		if len(args) == 1 {
+			return json.NewEncoder(os.Stdout).Encode(st)
 		}
 		printPeers(st.Peers)
 		printPending(st.Pending)
 
 	case "device add":
+		backend := ""
+		var positional []string
+		for i := 0; i < len(args); i++ {
+			if args[i] == "--backend" {
+				i++
+				if i >= len(args) || args[i] == "" || backend != "" {
+					return errors.New("usage: unic device add [CODE|TICKET] [--backend INSTANCE]")
+				}
+				backend = args[i]
+			} else {
+				positional = append(positional, args[i])
+			}
+		}
+		args = positional
 		switch digits := strings.ReplaceAll(strings.ReplaceAll(strings.Join(args, ""), "-", ""), " ", ""); {
 		case len(args) == 0:
-			code, err := c.NewCode(short)
+			code, err := c.NewCodeVia(short, backend)
 			if err != nil {
 				return err
 			}
@@ -169,7 +209,7 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 			return holdInvitation(ctx, c, code)
 
 		case isSixDigits(digits):
-			p, err := c.Join(short, digits)
+			p, err := c.JoinVia(short, digits, backend)
 			if err != nil {
 				return err
 			}
@@ -181,7 +221,7 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 			return awaitPairing(ctx, c, p)
 
 		case len(args) == 1:
-			p, err := c.Pair(short, strings.TrimSpace(args[0]))
+			p, err := c.PairVia(short, strings.TrimSpace(args[0]), backend)
 			if err != nil {
 				return err
 			}

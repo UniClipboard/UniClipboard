@@ -404,3 +404,11 @@ pending for CLI initialization, including custom sources outside default
 discovery. Only a verified complete import publishes completion. Desktop
 welcome/skip and history navigation do not publish CLI completion. See the
 [initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
+
+## External sync instances
+
+Plugins separates installed program identity from configured runtime instances. Create an instance with its own ID, edit its Schema values, enable it and restart. A new instance starts disabled and never copies another instance's credentials. The detail shows local runtime state; standard content policies save through the existing revision-checked configuration route. Go settings changes take effect after restart and invalidate that instance's old authorizations before its new process starts.
+
+Device invitation and connection tasks select a running peer-sessions instance. External-channel and unsupported object-store types do not enter device pairing. Pending approval shows the exact local instance paths beside the checked fingerprint. A trusted device can have multiple paths; device detail exposes their independent revision-checked sync switches and removal. History detail shows each backend's disposition/state/error, so one successful path does not hide another failure.
+
+`make desktop-e2e CASE=external-sync-workflow` drives the real mygo composition, production service and real external Go fixture processes. It seeds only the verified fixture installation; installation itself is covered by the real CLI GitHub-fixture workflow. It creates/enables a runtime instance through UI, restarts, changes policy, approves a cross-instance pair and checks exact bidirectional text plus per-instance results. Its recording is native application content, not OS clipboard, cross-application paste or user visual approval. See the [workflow receipt](../exec/sync-plugin-workflow.md).

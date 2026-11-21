@@ -72,7 +72,6 @@ type Node struct {
 
 	luaDir          string
 	pluginMu        sync.Mutex
-	backends        []api.SyncBackendInfo
 	runningPlugins  map[string]luascripts.Script
 	pluginRevisions map[string]string
 	lua             map[string]luascripts.Script // as running, by plugin ID
@@ -144,7 +143,13 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if o.LuaDir != "" {
 		var specs []engine.LuaPluginSpec
 		var lerr error
-		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, c.ExternalPlugins(), c.ProcessorSettings); lerr != nil {
+		var implementations []string
+		for _, id := range c.ExternalPlugins() {
+			if impl := c.PluginImplementation(id); !slices.Contains(implementations, impl) {
+				implementations = append(implementations, impl)
+			}
+		}
+		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, implementations, c.ProcessorSettings); lerr != nil {
 			return nil, lerr
 		}
 		opts.LuaPlugins = specs
@@ -152,6 +157,15 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 			return slices.Contains(c.Plugins.Order, id)
 		})
 		opts.PluginOrder = append(opts.PluginOrder, c.Plugins.Order...)
+		installed := loaded
+		loaded = make(map[string]luascripts.Script)
+		for _, id := range c.ExternalPlugins() {
+			s := installed[c.PluginImplementation(id)]
+			if id != s.Manifest.ID && (s.Manifest.Kind != "go" || !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend)) {
+				return nil, errors.New("distinct instances require an external Go sync backend")
+			}
+			loaded[id] = s.ForInstance(id)
+		}
 		n.runningPlugins = loaded
 		n.lua = make(map[string]luascripts.Script)
 		for _, id := range c.ExternalPlugins() {
@@ -173,19 +187,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 					return nil, err
 				}
 			}
-			opts.Plugins = append(opts.Plugins, engine.PluginInstance{Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events})
-		}
-	}
-	for _, in := range opts.Plugins {
-		var spec plugin.Spec
-		if in.Process != nil {
-			spec = in.Process.Spec
-		} else if in.Plugin != nil {
-			spec = in.Plugin.Spec()
-		}
-		if !in.Disabled && slices.Contains(spec.Capabilities, plugin.CapSyncBackend) {
-			n.backends = append(n.backends, api.SyncBackendInfo{ID: spec.ID, ImplementationID: spec.ID, TransportKind: spec.TransportKind,
-				Pairing: spec.TransportKind == plugin.TransportPeerSessions && !spec.ExternalChannels, ExternalChannels: spec.ExternalChannels})
+			opts.Plugins = append(opts.Plugins, engine.PluginInstance{ID: engine.PluginID(id), Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events})
 		}
 	}
 	e, err := engine.New(ctx, opts)
@@ -360,17 +362,7 @@ func deviceConnected(d engine.Device) bool {
 	return false
 }
 
-func devicePeer(d engine.Device) bool {
-	if d.Trust != engine.DeviceTrustTrusted {
-		return false
-	}
-	for _, b := range d.Bindings {
-		if b.State == engine.BindingAuthorized {
-			return true
-		}
-	}
-	return false
-}
+func devicePeer(d engine.Device) bool { return d.Trust == engine.DeviceTrustTrusted }
 
 func devicePending(d engine.Device) bool {
 	if d.Trust == engine.DeviceTrustPending {
@@ -391,7 +383,7 @@ func apiPeer(d engine.Device) api.PeerStatus {
 			last = b.LastActiveMs
 		}
 	}
-	return api.PeerStatus{ID: d.ID, Name: d.DisplayName(), Connected: deviceConnected(d), LastSeen: last / 1000}
+	return api.PeerStatus{Bindings: slices.Clone(d.Bindings), ID: d.ID, Name: d.DisplayName(), Connected: deviceConnected(d), LastSeen: last / 1000}
 }
 
 func apiChannel(c engine.Channel) api.PeerStatus {
@@ -443,7 +435,7 @@ func apiPending(d engine.Device) api.PendingPeer {
 	for _, b := range d.Bindings {
 		byTicket = byTicket || b.Ticket
 	}
-	out := api.PendingPeer{ID: d.ID, Name: d.DisplayName(), ByCode: byTicket, Fingerprint: d.Fingerprint, Time: d.UpdatedMs / 1000, Revision: d.Revision, Bindings: []api.BindingApproval{}}
+	out := api.PendingPeer{Paths: slices.Clone(d.Bindings), ID: d.ID, Name: d.DisplayName(), ByCode: byTicket, Fingerprint: d.Fingerprint, Time: d.UpdatedMs / 1000, Revision: d.Revision, Bindings: []api.BindingApproval{}}
 	for _, b := range d.Bindings {
 		if b.State == engine.BindingPending {
 			out.Bindings = append(out.Bindings, api.BindingApproval{ID: b.ID, Revision: b.Revision})
@@ -552,7 +544,10 @@ func ctxError(err error) error {
 }
 
 func (n *Node) Pair(ctx context.Context, addr string) (api.PairResult, error) {
-	id, err := n.e.JoinByTicket(ctx, engine.JoinTicketRequest{RequestID: engine.RequestID("pair-" + randID()), Ticket: addr})
+	return n.PairVia(ctx, addr, "")
+}
+func (n *Node) PairVia(ctx context.Context, addr, backend string) (api.PairResult, error) {
+	id, err := n.e.JoinByTicket(ctx, engine.JoinTicketRequest{BackendID: engine.PluginID(backend), RequestID: engine.RequestID("pair-" + randID()), Ticket: addr})
 	if err != nil {
 		return api.PairResult{}, apiErr(err, false)
 	}
@@ -560,7 +555,10 @@ func (n *Node) Pair(ctx context.Context, addr string) (api.PairResult, error) {
 }
 
 func (n *Node) Join(ctx context.Context, code string) (api.PairResult, error) {
-	id, err := n.e.JoinByCode(ctx, engine.JoinRequest{RequestID: engine.RequestID("join-" + randID()), Code: code})
+	return n.JoinVia(ctx, code, "")
+}
+func (n *Node) JoinVia(ctx context.Context, code, backend string) (api.PairResult, error) {
+	id, err := n.e.JoinByCode(ctx, engine.JoinRequest{BackendID: engine.PluginID(backend), RequestID: engine.RequestID("join-" + randID()), Code: code})
 	if err != nil {
 		return api.PairResult{}, apiErr(err, true)
 	}

@@ -387,3 +387,9 @@ importer preserves v1 code membership under this identifier. `builtin.classify`
 does not currently generate code membership for new content. The
 [history contract](history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252)
 defines migration and automatic recovery.
+
+## Runtime instances of installed Go sync backends
+
+Installation identity (`Spec.ID`) is separate from configured runtime identity (`PluginInstance.ID`). `unic plugin instance add IMPLEMENTATION INSTANCE` creates a disabled alias. The installed implementation must be a Go `sync_backend`; Lua and processor/observer aliases are rejected. An alias cannot shadow an installed implementation or a built-in ID. Configure through `unic plugin settings show|save INSTANCE`, enable through `unic plugin enable INSTANCE`, then restart. `plugins.order` contains runtime IDs and determines processing/start order, not serial network dispatch.
+
+Desktop Plugins exposes the same creation, Schema, enablement and standard sync-policy paths. Instances remain independently visible after disabling. `GET /v1/plugins` reports `implementation_id` separately from `id`; running and configured versions retain their existing restart semantics. Standard policy and global sync updates apply to the running instance set while assembly changes wait for restart. Program identity and settings isolation follow the [assembly contract](backend-migration-contract.md#implementation-and-instance-identity).

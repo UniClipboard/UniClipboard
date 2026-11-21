@@ -23,6 +23,42 @@ func (d *viewState) liveDeviceDetail(c *ui.Context, k uikit.Kit, v *device) {
 			k.SettingsRow(c, uikit.SettingsRowProps{Label: d.tr("最近活动")}, nil, func() { k.Text(c, d.tr(v.lastSeen), secondary) })
 		}
 	})
+	if peer, ok := d.live.peers[v.id]; ok && peer.Kind != "external" {
+		k.SettingsGroup(c.Key("device-bindings"), uikit.SettingsGroupProps{Title: d.tr("同步关联")}, func() {
+			if len(peer.Bindings) == 0 {
+				k.Text(c, d.tr("没有已批准关联。请重新配对所需同步实例。"), footnote)
+			}
+			for _, path := range peer.Bindings {
+				path := path
+				state := d.tr("待批准")
+				if path.State == "authorized" {
+					state = d.tr("已批准")
+				}
+				connection := d.tr("未连接")
+				if path.Connection == "connected" {
+					connection = d.tr("已连接")
+				}
+				implementation := ""
+				for _, backend := range d.live.syncBackends {
+					if backend.ID == path.InstanceID {
+						implementation = backend.ImplementationID + " · "
+					}
+				}
+				k.SettingsRow(c.Key(path.ID), uikit.SettingsRowProps{Label: path.InstanceID, Description: implementation + state + " · " + connection}, nil, func() {
+					on := path.SyncEnabled
+					if k.Switch(c.Key("sync"), &on, uikit.SwitchProps{Label: d.tr("同步") + " " + path.InstanceID, Disabled: d.live.busy || path.State != "authorized"}).Changed() {
+						d.mutate(func(ctx context.Context) error {
+							_, err := d.live.client.SetBindingSync(ctx, path.ID, api.BindingEdit{Revision: path.Revision, Enabled: on})
+							return err
+						}, "关联设置已保存")
+					}
+					if k.Button(c.Key("remove"), d.tr("移除关联"), uikit.ButtonProps{Variant: uikit.Destructive, Disabled: d.live.busy}).Clicked() {
+						d.mutate(func(ctx context.Context) error { return d.live.client.RemoveBinding(ctx, path.ID, path.Revision) }, "关联已移除")
+					}
+				})
+			}
+		})
+	}
 	if d.live.message != "" {
 		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr(d.live.message)})
 	}
@@ -59,6 +95,7 @@ func (d *viewState) approveLive(id string, accept bool) {
 }
 func (d *viewState) pairLive(input string, backend string) {
 	client := d.live.client
+	localBackend := d.live.pairingBackend
 	d.mutate(func(ctx context.Context) error {
 		var result api.PairResult
 		var err error
@@ -66,9 +103,9 @@ func (d *viewState) pairLive(input string, backend string) {
 		case backend != "":
 			result, err = client.PairCandidate(ctx, input, backend)
 		case connectKind(input) == "配对码":
-			result, err = client.Join(ctx, input)
+			result, err = client.JoinVia(ctx, input, localBackend)
 		default:
-			result, err = client.Pair(ctx, input)
+			result, err = client.PairVia(ctx, input, localBackend)
 		}
 		if err == nil {
 			select {
@@ -103,22 +140,7 @@ func (d *viewState) liveDeviceTaskView(c *ui.Context, k uikit.Kit) {
 	switch d.deviceTask {
 	case "invite":
 		if k.TaskPanel(c, uikit.TaskPanelProps{Title: d.tr("邀请设备"), Description: d.tr("在另一台设备输入配对码。双方核对指纹后批准。"), BackLabel: d.tr("返回设备列表")}, func() {
-			var items []uikit.SelectItem
-			for _, b := range l.syncBackends {
-				if b.Pairing {
-					items = append(items, uikit.SelectItem{Value: b.ID, Label: b.ID})
-				}
-			}
-			if len(items) == 0 {
-				k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr("没有可配对的同步后端。请在插件设置中启用支持设备配对的后端并重启。")})
-			} else {
-				selected := l.pairingBackend
-				if k.Select(c.Key("pairing-backend"), uikit.SelectProps{Label: d.tr("同步后端"), Value: &selected, Items: items, Disabled: l.busy}).Changed {
-					d.cancelLiveInvitation()
-					l.pairingBackend = selected
-					l.codeAttempted, l.ticketAttempted = false, false
-				}
-			}
+			d.pairingBackendSelector(c, k, true)
 			mode := d.inviteMode
 			if k.SegmentedControl(c, uikit.SegmentedControlProps{Label: d.tr("邀请方式"), Value: &mode, Items: []uikit.SegmentedItem{{Value: "code", Label: d.tr("配对码")}, {Value: "ticket", Label: d.tr("完整票据")}}}).Changed {
 				d.inviteMode = mode
@@ -146,6 +168,7 @@ func (d *viewState) liveDeviceTaskView(c *ui.Context, k uikit.Kit) {
 	case "connect":
 		kind := connectKind(d.connectInput)
 		if k.TaskPanel(c, uikit.TaskPanelProps{Title: d.tr("连接设备"), Description: d.tr("输入对方提供的配对码或完整票据。"), BackLabel: d.tr("返回设备列表")}, func() {
+			d.pairingBackendSelector(c, k, false)
 			k.FormField(c, uikit.FormFieldProps{Label: d.tr("配对码或票据"), Value: &d.connectInput, Placeholder: d.tr("482-913 或 unic-pair:…"), Hint: d.tr("支持 6 位配对码或完整票据。")})
 		}, func() {
 			if k.Button(c.Key("go"), d.tr("连接"), uikit.ButtonProps{Variant: uikit.Primary, Disabled: kind == "" || l.busy}).Clicked() {
@@ -178,6 +201,11 @@ func (d *viewState) approvalTask(c *ui.Context, k uikit.Kit, p pendingDevice) {
 	l := d.live
 	if k.TaskPanel(c, uikit.TaskPanelProps{Title: d.tr("核对并批准"), Description: d.tr("对方屏幕上显示相同的指纹时，才接受。"), BackLabel: d.tr("返回设备列表")}, func() {
 		k.Text(c, p.name, uikit.TextProps{Emphasized: true})
+		for _, path := range l.pending[p.id].Paths {
+			if path.State == "pending" {
+				k.Text(c, d.tr("同步实例：")+path.InstanceID, secondary)
+			}
+		}
 		for _, line := range fingerprintLines(p.fingerprint) {
 			k.Text(c, line, uikit.TextProps{Monospace: true, Emphasized: true})
 		}
@@ -193,5 +221,27 @@ func (d *viewState) approvalTask(c *ui.Context, k uikit.Kit, p pendingDevice) {
 		}
 	}) {
 		d.setDeviceTask("")
+	}
+}
+
+func (d *viewState) pairingBackendSelector(c *ui.Context, k uikit.Kit, invitation bool) {
+	l := d.live
+	var items []uikit.SelectItem
+	for _, b := range l.syncBackends {
+		if b.Pairing && b.State == "running" {
+			items = append(items, uikit.SelectItem{Value: b.ID, Label: b.ID})
+		}
+	}
+	if len(items) == 0 {
+		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr("没有可配对的同步后端。请在插件设置中启用支持设备配对的后端并重启。")})
+	} else {
+		selected := l.pairingBackend
+		if k.Select(c.Key("pairing-backend"), uikit.SelectProps{Label: d.tr("同步后端"), Value: &selected, Items: items, Disabled: l.busy}).Changed {
+			if invitation {
+				d.cancelLiveInvitation()
+			}
+			l.pairingBackend = selected
+			l.codeAttempted, l.ticketAttempted = false, false
+		}
 	}
 }

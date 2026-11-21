@@ -243,3 +243,11 @@ All bundled programs use the same portable resolver. `UNIC_SOCK` remains an expl
 Released executables default to the user configuration directory's `unic/`. Version-`dev` executables default to `unic-development/`.
 The raw Desktop development entry uses `UniClipboard Development` for single-instance identity; production staging selects `UniClipboard`.
 These paths are separate from v1 data. Program replacement never imports v1 history or credentials automatically.
+
+## Configured external sync instances
+
+`unic plugin instance add IMPLEMENTATION INSTANCE` creates a disabled instance of an installed Go sync backend. `unic plugin settings show|save INSTANCE` addresses its separate Schema settings. Enable with `unic plugin enable INSTANCE`, then restart the service. TOML records the implementation reference under `plugins.instances."INSTANCE".implementation`; policies stay under that instance's `.sync`. No plugin is installed or executed merely because a ticket names it.
+
+`unic device backends` lists implementation identity, runtime identity, transport kind, pairing support and local runtime state. `unic device addr --backend INSTANCE` and `unic device add [CODE|TICKET] --backend INSTANCE` choose local instances explicitly. The receiving instance may have another ID but must use the ticket's implementation. No compatible selection means an explicit error, never Tailcat fallback.
+
+`unic device list --json` includes sanitized binding IDs, revisions and sync state. `unic device path pause|resume|remove BINDING_ID REVISION` operates on one path; device removal still revokes every path. Zero configured backends preserve local history and Actions. The [workflow receipt](../exec/sync-plugin-workflow.md) records real CLI/service/child-process acceptance and the boundary to unsupported production transports.

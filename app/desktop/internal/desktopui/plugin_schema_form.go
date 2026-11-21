@@ -44,7 +44,23 @@ func (f *pluginSettingsForm) load(state api.PluginSettings) error {
 func (d *viewState) externalPluginDetail(c *ui.Context, k uikit.Kit, item api.PluginInfo, cfg config.Config) {
 	l := d.live
 	p := &d.pluginSettings
-	k.EntityHeader(c.Key("external-plugin-header"), uikit.EntityHeaderProps{Icon: uikit.IconEdit, Title: item.ID, Description: item.Version}, nil)
+	k.EntityHeader(c.Key("external-plugin-header"), uikit.EntityHeaderProps{Icon: uikit.IconEdit, Title: item.ID, Description: item.ImplementationID + " · " + item.Version}, nil)
+	state := d.tr("未运行")
+	for _, backend := range l.syncBackends {
+		if backend.ID == item.ID {
+			switch backend.State {
+			case "running":
+				state = d.tr("运行中")
+			case "restarting":
+				state = d.tr("正在重启")
+			case "unavailable":
+				state = d.tr("不可用")
+			case "suspended":
+				state = d.tr("已暂停")
+			}
+		}
+	}
+	k.Text(c, d.tr("运行状态：")+state, secondary)
 	on := item.Configured
 	k.SettingsRow(c.Key("external-plugin-enabled"), uikit.SettingsRowProps{Label: d.tr("启用")}, nil, func() {
 		if !k.Switch(c, &on, uikit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy || l.loading}).Changed() {
@@ -66,6 +82,15 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k uikit.Kit, item api.Pl
 	})
 	if item.Restart || p.form != nil && p.form.state.Restart {
 		k.InlineNotice(c, uikit.NoticeProps{Tone: uikit.ToneWarning, Title: d.tr("需要重启")})
+	}
+	if item.Kind == "go" && slices.Contains(item.Capabilities, "sync_backend") {
+		k.SettingsGroup(c.Key("create-instance"), uikit.SettingsGroupProps{Title: d.tr("新增同步实例")}, func() {
+			k.FormField(c, uikit.FormFieldProps{Label: d.tr("实例 ID"), Value: &p.instanceName, Placeholder: "example.work", Hint: d.tr("新实例使用独立设置和私有数据。配置并启用后重启生效。")})
+			if k.Button(c.Key("create-instance"), d.tr("创建实例"), uikit.ButtonProps{Disabled: l.busy || strings.TrimSpace(p.instanceName) == ""}).Clicked() {
+				in := api.PluginInstanceCreate{ID: strings.TrimSpace(p.instanceName), ImplementationID: item.ImplementationID, Revision: l.config.Revision}
+				d.mutate(func(ctx context.Context) error { _, err := l.client.CreatePluginInstance(ctx, in); return err }, "实例已创建。请配置并启用。")
+			}
+		})
 	}
 	if slices.Contains(item.Capabilities, "sync_backend") {
 		d.syncPluginPolicy(c, k, item.ID, cfg)

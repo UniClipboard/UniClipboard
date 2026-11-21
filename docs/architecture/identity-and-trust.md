@@ -6,6 +6,11 @@ paths:
   - engine/candidates.go
   - engine/tailcat_host.go
   - engine/peerproc.go
+  - engine/plugins.go
+  - engine/backend_status.go
+  - internal/store/backend_instances.go
+  - app/service/internal/host/bindings.go
+  - internal/localapi/bindings.go
   - internal/identity
   - internal/rendezvous
   - internal/store/devices.go
@@ -109,8 +114,14 @@ A handshake that revives a revoked device records it as pending and queues a coa
 
 The host explicitly assembles enabled backends. Setting `plugins.instances."builtin.tailcat".enabled=false` takes effect after service restart and leaves local history and Actions available. It does not select another backend implicitly.
 
-`GET /v1/sync-backends` lists assembled backend IDs, implementation IDs, transport kinds, external-channel classification and device-pairing support. This is an assembly/capability projection, not current network health. It contains no addresses or credentials. `unic device backends` exposes the same projection. `POST /v1/code` and `POST /v1/pairing-ticket` accept an optional `backend_id`; `unic device addr --backend ID` exports a ticket for that selection. Omission retains the default Tailcat behavior; an unsupported selection fails without fallback.
+`GET /v1/sync-backends` lists assembled backend IDs, implementation IDs, transport kinds, external-channel classification and device-pairing support. This reports assembly, capability and local process/lifecycle availability, not remote network health. It contains no addresses or credentials. `unic device backends` exposes the same projection. `POST /v1/code` and `POST /v1/pairing-ticket` accept an optional `backend_id`; `unic device addr --backend ID` exports a ticket for that selection. Omission retains the default Tailcat behavior; an unsupported selection fails without fallback.
 
 Desktop's invitation task selects only device-pairing backends. Plugins exposes Engine-owned text, image, file and automatic-file-threshold policies for installed Go sync backends. Schema settings keep their existing secret redaction and restart behavior. Lua plugins cannot acquire sync capability through configuration. A disabled backend stays assembled until the reported restart boundary; policy and global-sync changes still apply to the running backend set.
 
-Implementation IDs and runtime instance IDs remain identical in this checkpoint. Different local/remote instance selection and multiple instances of one implementation require resolving the conflicting public contract clauses documented in the [workflow receipt](../exec/sync-plugin-workflow.md). Non-P2P configuration disclosure does not establish a third-party login or object-store protocol. The isolated external-process fixture verifies the single-instance CLI/service path; the full native Desktop flow and multi-backend failure matrix remain unverified.
+Implementation IDs and runtime instance IDs are distinct. The user-approved contract resolution is implemented: each external Go sync alias has independent configuration, process, data, policies and bindings; incoming pairing requests select a compatible local alias. See the [workflow receipt](../exec/sync-plugin-workflow.md). Non-P2P configuration disclosure does not establish a third-party login or object-store protocol. Real CLI/service/Go child-process acceptance covers two instances of one implementation, cross-instance pairing, per-path approval/CAS, deduplication, partial failure, child restart and configuration-context revocation. The canonical native Desktop case covers instance creation, enablement/restart, policy, pairing approval and bidirectional text. OS clipboard and user visual approval remain separate.
+
+### Runtime instance enforcement
+
+`engine/plugins.go` preserves handshake `Spec.ID` while using `PluginInstance.ID` for backend runtime authority and private directories. `engine/backend_status.go` projects local availability. `internal/store/backend_instances.go` atomically fixes implementation ownership and invalidates old instance authorizations when a changed Go configuration loads. The receiver selects a local instance through `JoinRequest.BackendID`; the ticket `be` names its implementation. Issuer redemption still checks the actual issuing instance. Protocol version remains 1.
+
+`app/service/internal/host/plugin_settings.go` resolves immutable installations separately from per-instance Schema settings. Desktop exposes these in Plugins, selects a running compatible instance in invite/connect tasks, and displays per-instance history outcomes. `app/service/internal/host/bindings.go` maps per-path pause/remove to the existing Engine CAS/barrier operations. Device details use the same service routes and show one device with multiple paths.

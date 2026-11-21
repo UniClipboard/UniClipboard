@@ -1,14 +1,18 @@
 package host
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"slices"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/uniclipboard/unic/app/service/internal/luascripts"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/plugin"
 )
 
@@ -20,7 +24,15 @@ func (n *Node) Plugins(context.Context) ([]api.PluginInfo, error) {
 		return out, nil
 	}
 	found, _ := luascripts.Scan(n.luaDir)
-	enabled := n.cfg.Current().ExternalPlugins()
+	cfg := n.cfg.Current()
+	enabled := cfg.ExternalPlugins()
+	for id, in := range cfg.Plugins.Instances {
+		if in.Implementation != "" {
+			if s, err := luascripts.ResolveInstance(found, in.Implementation, id); err == nil {
+				found[id] = s
+			}
+		}
+	}
 	for id, s := range n.runningPlugins {
 		if _, ok := found[id]; !ok {
 			found[id] = s
@@ -38,7 +50,7 @@ func (n *Node) Plugins(context.Context) ([]api.PluginInfo, error) {
 		if source == "" {
 			source = "local"
 		}
-		out = append(out, api.PluginInfo{ID: id, Version: s.Manifest.Version, Kind: s.Manifest.Kind, Source: source,
+		out = append(out, api.PluginInfo{ID: id, ImplementationID: s.Manifest.ID, Version: s.Manifest.Version, Kind: s.Manifest.Kind, Source: source,
 			Capabilities: slices.Clone(s.Manifest.Capabilities), TransportKind: s.Manifest.TransportKind, ExternalChannels: s.Manifest.ExternalChannels, Configured: wanted, RunningVersion: running.Manifest.Version, HasSettings: s.Schema != nil, Restart: restart})
 	}
 	slices.SortFunc(out, func(a, b api.PluginInfo) int {
@@ -69,8 +81,8 @@ func (n *Node) pluginSettings(ctx context.Context, id string, edit *api.PluginSe
 		return out, &api.Error{Status: 404, Reason: "not_found", Message: "plugin settings not found"}
 	}
 	found, _ := luascripts.Scan(n.luaDir)
-	s, ok := found[id]
-	if !ok || s.Schema == nil {
+	s, err := luascripts.ResolveInstance(found, n.cfg.Current().PluginImplementation(id), id)
+	if err != nil || s.Schema == nil {
 		return out, &api.Error{Status: 404, Reason: "not_found", Message: "plugin settings not found"}
 	}
 	revision, values, err := s.ReadSettings(n.luaDir)
@@ -112,4 +124,30 @@ func (n *Node) pluginSettings(ctx context.Context, id string, edit *api.PluginSe
 	out.Restart = active && !canReload && (!running.Same(s) || revision != n.pluginRevisions[id]) ||
 		!active && slices.Contains(n.cfg.Current().ExternalPlugins(), id)
 	return out, err
+}
+
+func (n *Node) CreatePluginInstance(ctx context.Context, in api.PluginInstanceCreate) (configState api.PluginInfo, err error) {
+	n.pluginMu.Lock()
+	defer n.pluginMu.Unlock()
+	found, _ := luascripts.Scan(n.luaDir)
+	s, err := luascripts.ResolveInstance(found, in.ImplementationID, in.ID)
+	if err != nil {
+		return configState, &api.Error{Reason: "invalid_argument", Message: err.Error()}
+	}
+	cfg, err := n.cfg.Current().AddBackendInstance(in.ImplementationID, in.ID)
+	if err != nil {
+		return configState, &api.Error{Reason: "invalid_argument", Message: err.Error()}
+	}
+	var raw bytes.Buffer
+	if err = toml.NewEncoder(&raw).Encode(cfg); err != nil {
+		return configState, err
+	}
+	if _, err = n.cfg.Replace(in.Revision, raw.Bytes()); err != nil {
+		if errors.Is(err, config.ErrConflict) {
+			return configState, &api.Error{Status: 409, Reason: "conflict", Message: "configuration changed; read it again"}
+		}
+		return configState, err
+	}
+	n.hub.emit(api.Event{Kind: "config"})
+	return api.PluginInfo{ID: in.ID, ImplementationID: in.ImplementationID, Kind: s.Manifest.Kind, Version: s.Manifest.Version, Configured: false, Restart: false, Capabilities: s.Manifest.Capabilities, TransportKind: s.Manifest.TransportKind, ExternalChannels: s.Manifest.ExternalChannels, HasSettings: s.Schema != nil}, nil
 }

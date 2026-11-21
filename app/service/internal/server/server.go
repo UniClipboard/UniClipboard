@@ -28,6 +28,7 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 	headlessRoutes(mux, b)
 	transferRoutes(mux, b)
 	searchRoutes(mux, b)
+	bindingRoutes(mux, b)
 	pluginRoutes(mux, b)
 
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
@@ -89,15 +90,28 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 
 	mux.HandleFunc("POST /v1/peers", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Addr string `json:"addr"`
+			Addr    string `json:"addr"`
+			Backend string `json:"backend_id"`
 		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&body); err != nil || body.Addr == "" {
+		dec := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil || dec.Decode(new(any)) != io.EOF || body.Addr == "" {
 			fail(w, 400, errors.New(`body must be {"addr": "..."}`))
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
-		res, err := b.Pair(ctx, body.Addr)
+		var res api.PairResult
+		var err error
+		if via, ok := b.(interface {
+			PairVia(context.Context, string, string) (api.PairResult, error)
+		}); ok {
+			res, err = via.PairVia(ctx, body.Addr, body.Backend)
+		} else if body.Backend == "" {
+			res, err = b.Pair(ctx, body.Addr)
+		} else {
+			err = &api.Error{Reason: "unsupported", Message: "backend selection unavailable"}
+		}
 		if err != nil {
 			fail(w, 502, err)
 			return
@@ -153,15 +167,28 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 	// Pair with the device showing a code.
 	mux.HandleFunc("POST /v1/join", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Code string `json:"code"`
+			Code    string `json:"code"`
+			Backend string `json:"backend_id"`
 		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil {
-			fail(w, 400, errors.New(`body must be {"code": "NNN NNN"}`))
+		dec := json.NewDecoder(io.LimitReader(r.Body, 4<<10))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil || dec.Decode(new(any)) != io.EOF {
+			fail(w, 400, errors.New(`body must contain a pairing code and optional backend_id`))
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
-		res, err := b.Join(ctx, body.Code)
+		var res api.PairResult
+		var err error
+		if via, ok := b.(interface {
+			JoinVia(context.Context, string, string) (api.PairResult, error)
+		}); ok {
+			res, err = via.JoinVia(ctx, body.Code, body.Backend)
+		} else if body.Backend == "" {
+			res, err = b.Join(ctx, body.Code)
+		} else {
+			err = &api.Error{Reason: "unsupported", Message: "backend selection unavailable"}
+		}
 		if err != nil {
 			fail(w, 502, err)
 			return

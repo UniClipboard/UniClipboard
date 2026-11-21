@@ -16,6 +16,7 @@ import (
 // Keep draft text separate from the authoritative service snapshot.
 type builtinPluginSettings struct {
 	id, revision, threshold, thresholdError string
+	instanceName                            string
 	tab, query                              string
 	form                                    *pluginSettingsForm
 }
@@ -222,7 +223,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k uikit.Kit, cfg *config.Co
 					continue
 				}
 				k.SettingsRow(c.Key(item.ID), uikit.SettingsRowProps{Label: item.ID, Description: item.Version}, nil, func() {
-					if k.Button(c.Key(item.ID), d.tr("打开"), uikit.ButtonProps{Variant: uikit.Subtle, Disabled: l.busy}).Clicked() {
+					if k.Button(c.Key(item.ID), "", uikit.ButtonProps{Variant: uikit.Subtle, Icon: uikit.IconChevronRight, Label: item.ID, Tooltip: item.ID, Disabled: l.busy}).Clicked() {
 						*p = builtinPluginSettings{id: item.ID}
 					}
 				})

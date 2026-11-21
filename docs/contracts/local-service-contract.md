@@ -386,10 +386,20 @@ The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PU
 
 ## Sync backend selection
 
-`GET /v1/sync-backends` returns an array of `{id, implementation_id, transport_kind, pairing, external_channels}` for assembled sync backends. The current runtime has one instance per implementation. `pairing` describes device-pairing support and never applies to external channels. This projection contains no address, ticket, credential or process-private state. It does not attest to current network health.
+`GET /v1/sync-backends` returns an array of `{id, implementation_id, transport_kind, pairing, external_channels, state}` for assembled sync backends. One installed Go sync implementation can have multiple runtime instances. `pairing` describes device-pairing support and never applies to external channels. This projection contains no address, ticket, credential or process-private state. `state` reports local process availability and does not attest to current remote connectivity.
 
 `POST /v1/code` and `POST /v1/pairing-ticket` accept an empty body or `{ "backend_id": "instance.id" }`. An empty selection uses Tailcat. Unknown selections and unsupported transports fail explicitly and never fall back. Backend selection does not grant trust. The existing fingerprint and complete device/binding revision approval still applies.
 
 CLI exposes `unic device backends` and `unic device addr --backend INSTANCE`. Desktop exposes the same backend selection in the invitation task. Standard backend policies use `plugins.instances."INSTANCE".sync` through the existing revision-checked configuration route. Enablement changes require service restart. Global sync and policies apply to the assembled running backend set while restart is pending. A zero-backend service retains local content, history and Actions.
 
 The single-instance external-process acceptance and remaining contract decision are recorded in the [workflow receipt](../exec/sync-plugin-workflow.md).
+
+### Instance creation and local pairing selection
+
+`POST /v1/plugin-instances` accepts `{id, implementation_id, revision}` using the current configuration revision. It creates a disabled alias and returns its plugin projection. Conflicts return HTTP 409. Schema/settings routes address that alias. Installation is unchanged. CLI equivalent: `unic plugin instance add IMPLEMENTATION INSTANCE`, then configure, enable and restart.
+
+`POST /v1/peers` accepts `{addr, backend_id?}`; `POST /v1/join` accepts `{code, backend_id?}`. `backend_id` selects the receiver's local instance, which can differ from the issuer's instance. Unknown fields, trailing JSON, unavailable selections and implementation mismatch are rejected without fallback. `unic device add [CODE|TICKET] --backend INSTANCE` uses these same routes. A missing local selection only permits an exact singleton match with the ticket implementation descriptor.
+
+`GET /v1/status` retains one row per trusted device and includes its sanitized `bindings`. Pending approval includes `paths` plus the existing exact pending binding revision set. No address, credential or RPC token is included. Trusted devices remain listed after their last path is removed. Channels retain their separate kind and never gain fingerprints or device bindings.
+
+`PATCH /v1/bindings/{id}` requires both `revision` and `enabled`. `DELETE /v1/bindings/{id}?revision=N` removes only that path. Both use Engine CAS and revocation barriers; stale revisions return HTTP 409. `unic device list --json` exposes the current path revisions; `unic device path pause|resume|remove BINDING_ID REVISION` submits them. Desktop device details expose the same per-path switch and removal operation. Whole-device removal still revokes every path.

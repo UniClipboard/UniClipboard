@@ -181,7 +181,7 @@ func (e *Engine) newTicket(ctx context.Context, backend PluginID, purpose string
 	if len(addr) == 0 || len(addr) > rendezvous.MaxAccess {
 		return rendezvous.Ticket{}, newErr(CodeInternal, "the backend gave an unusable address")
 	}
-	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Backend: string(backend), Device: e.ident.Public(),
+	return rendezvous.Ticket{Transport: rendezvous.TransportPeerSessions, Backend: pp.implementation, Device: e.ident.Public(),
 		Access: []byte(addr), Token: rendezvous.NewToken()}, nil
 }
 
@@ -213,6 +213,9 @@ func (e *Engine) CreatePairingCodeVia(ctx context.Context, backend PluginID) (Pa
 		return PairingCode{}, gerr
 	}
 	defer release()
+	if backend == "" {
+		backend = BackendTailcat
+	}
 	t, nerr := e.newTicket(ctx, backend, rpc.AddressPairingCode)
 	if nerr != nil {
 		return PairingCode{}, nerr
@@ -229,7 +232,7 @@ func (e *Engine) CreatePairingCodeVia(ctx context.Context, backend PluginID) (Pa
 	if e.tix != nil {
 		oldCode = e.tix.code
 	}
-	e.tix = &liveTicket{backend: PluginID(t.Backend), tok: t.Token, expires: c.Expires, code: c.Code, text: t.Text()}
+	e.tix = &liveTicket{backend: backend, tok: t.Token, expires: c.Expires, code: c.Code, text: t.Text()}
 	e.code.clear()
 	e.code.active, e.code.expires = true, c.Expires
 	gen := e.code.gen
@@ -344,13 +347,13 @@ func (e *Engine) JoinByCode(ctx context.Context, req JoinRequest) (OperationID, 
 	if !ok {
 		return "", newErr(CodeIncomplete, "enter all 6 digits of the code")
 	}
-	return e.startPairing(req.RequestID, "join\x00"+code, PhaseResolving, func(ctx context.Context, op OperationID) (peerbackend.Standing, bool, error) {
+	return e.startPairing(req.RequestID, "join\x00"+string(req.BackendID)+"\x00"+code, PhaseResolving, func(ctx context.Context, op OperationID) (peerbackend.Standing, bool, error) {
 		t, err := e.rv().Resolve(ctx, code)
 		if err != nil {
 			return peerbackend.Standing{}, false, err
 		}
 		e.updateOp(op, func(o *Operation) { o.Phase = PhaseConnecting })
-		return e.joinTicket(ctx, t)
+		return e.joinTicket(ctx, t, req.BackendID)
 	})
 }
 
@@ -369,32 +372,34 @@ func (e *Engine) JoinByTicket(ctx context.Context, req JoinTicketRequest) (Opera
 	if !ok {
 		return "", newErr(CodeInvalidArgument, "that is not a valid pairing ticket")
 	}
-	return e.startPairing(req.RequestID, "ticket\x00"+t.Encode(), PhaseConnecting, func(ctx context.Context, _ OperationID) (peerbackend.Standing, bool, error) {
-		return e.joinTicket(ctx, t)
+	return e.startPairing(req.RequestID, "ticket\x00"+string(req.BackendID)+"\x00"+t.Encode(), PhaseConnecting, func(ctx context.Context, _ OperationID) (peerbackend.Standing, bool, error) {
+		return e.joinTicket(ctx, t, req.BackendID)
 	})
 }
 
 // joinTicket connects to the issuer of t, which must be the very device the
-// ticket names. Only the tailcat backend handles peer sessions today; a ticket
-// for another transport has no compatible backend and is refused, never
-// handed to tailcat.
-func (e *Engine) joinTicket(ctx context.Context, t rendezvous.Ticket) (peerbackend.Standing, bool, error) {
+// ticket names. The caller selects a local instance of its implementation.
+// An unsupported transport or implementation never falls back to Tailcat.
+func (e *Engine) joinTicket(ctx context.Context, t rendezvous.Ticket, backend PluginID) (peerbackend.Standing, bool, error) {
 	if t.Transport != rendezvous.TransportPeerSessions {
 		return peerbackend.Standing{}, false, newErr(CodeUnsupported, "no installed sync backend can use this ticket")
 	}
 	if string(t.Device) == string(e.ident.Public()) {
 		return peerbackend.Standing{}, false, peerbackend.ErrSelf
 	}
-	return e.joinVia(ctx, t)
+	return e.joinVia(ctx, t, backend)
 }
 
 // joinVia dials a ticket through the out-of-process backend that issued it.
 // The Engine owns the attempt: it fixes the address, the peer that must answer
 // and the token, so the backend can only carry bytes. Trust is not granted
 // here; the handshake leaves the device pending until a person approves it.
-func (e *Engine) joinVia(ctx context.Context, t rendezvous.Ticket) (peerbackend.Standing, bool, error) {
-	pp, pair := e.pairingBackend(PluginID(t.Backend))
-	if pp == nil || !utf8.Valid(t.Access) {
+func (e *Engine) joinVia(ctx context.Context, t rendezvous.Ticket, backend PluginID) (peerbackend.Standing, bool, error) {
+	if backend == "" {
+		backend = PluginID(t.Backend)
+	}
+	pp, pair := e.pairingBackend(backend)
+	if pp == nil || pp.implementation != t.Backend || !utf8.Valid(t.Access) {
 		return peerbackend.Standing{}, false, newErr(CodeUnsupported, "no installed sync backend can use this ticket")
 	}
 	return e.dialPeer(ctx, pp, pair, string(t.Access), identity.DeviceID(t.Device), t.Token)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -146,8 +147,9 @@ type Plugins struct {
 }
 
 type Instance struct {
-	Enabled *bool       `toml:"enabled" json:"enabled,omitempty"` // omitted: on
-	Sync    BackendSync `toml:"sync" json:"sync"`
+	Implementation string      `toml:"implementation" json:"implementation,omitempty"`
+	Enabled        *bool       `toml:"enabled" json:"enabled,omitempty"` // omitted: on
+	Sync           BackendSync `toml:"sync" json:"sync"`
 	// OnError overrides [plugins] on_error for this plugin.
 	OnError string `toml:"on_error" json:"on_error,omitempty"`
 	// Config is the plugin's own settings (Lua plugins). They live here, not
@@ -155,6 +157,16 @@ type Instance struct {
 	// replaces what the user chose.
 	Config map[string]any `toml:"config" json:"config,omitempty"`
 }
+
+// PluginImplementation resolves a local instance to its installed program.
+func (c Config) PluginImplementation(id string) string {
+	if impl := c.Plugins.Instances[id].Implementation; impl != "" {
+		return impl
+	}
+	return id
+}
+
+var instanceID = regexp.MustCompile(`^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$`)
 
 // ProcessorSettings is what the host passes a processor plugin: the effective
 // on_error policy and its own config.
@@ -196,7 +208,7 @@ func (c Config) processorSettingsKey() map[string]Instance {
 	ids := append([]string{builtinclassify.ID, builtintext.ID}, c.ExternalPlugins()...)
 	for _, id := range ids {
 		oe, cfg := c.ProcessorSettings(id)
-		out[id] = Instance{OnError: oe, Config: cfg}
+		out[id] = Instance{Implementation: c.Plugins.Instances[id].Implementation, OnError: oe, Config: cfg}
 	}
 	return out
 }
@@ -345,6 +357,9 @@ func (c Config) Validate() error {
 		lua[id] = true
 	}
 	for id, in := range c.Plugins.Instances {
+		if in.Implementation != "" && (len(id) > 128 || !instanceID.MatchString(id) || len(in.Implementation) > 128 || !instanceID.MatchString(in.Implementation) || strings.HasPrefix(id, "builtin.") || strings.HasPrefix(in.Implementation, "builtin.") || slices.Contains(c.Plugins.Lua, id)) {
+			return errors.New("invalid external backend instance identity")
+		}
 		if slices.Contains(c.Plugins.Lua, id) && (in.Enabled != nil || in.Sync != (BackendSync{})) {
 			return fmt.Errorf("plugins.instances.%q: Lua list membership controls enablement; Lua plugins have no sync policy", id)
 		}
@@ -547,4 +562,23 @@ func WriteTemplate(path string) error {
 
 func (c Config) Observability() observability.Config {
 	return observability.Config{Logging: c.Logging, Telemetry: c.Telemetry}
+}
+
+// AddBackendInstance adds an explicit enabled runtime instance without copying credentials.
+func (c Config) AddBackendInstance(implementation, id string) (Config, error) {
+	if len(id) > 128 || !instanceID.MatchString(id) || strings.HasPrefix(id, "builtin.") || len(implementation) > 128 || !instanceID.MatchString(implementation) || strings.HasPrefix(implementation, "builtin.") || id == implementation {
+		return c, errors.New("invalid backend instance identity")
+	}
+	if _, ok := c.Plugins.Instances[id]; ok || slices.Contains(c.ExternalPlugins(), id) {
+		return c, errors.New("backend instance ID already exists")
+	}
+	instances := make(map[string]Instance, len(c.Plugins.Instances)+1)
+	for key, value := range c.Plugins.Instances {
+		instances[key] = value
+	}
+	off := false
+	instances[id] = Instance{Implementation: implementation, Enabled: &off}
+	c.Plugins.Instances = instances
+	c.Plugins.Order = append(slices.Clone(c.Plugins.Order), id)
+	return c, c.Validate()
 }

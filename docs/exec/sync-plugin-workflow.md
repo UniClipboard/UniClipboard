@@ -1,85 +1,99 @@
 # External sync plugin workflow
 
-## Scope and baseline
+## Scope and identity
 
 Worktree: `7d156c15-73dc-4c64-a305-83836e301bd7`.
 Branch: `feat/sync-plugin-workflow`.
 Base: `origin/v2` at `894790a3a4dc512ab622b0cf9120895251955173`.
-`origin/HEAD` points to `origin/main`; this task does not use that base.
+`origin/HEAD` points to `origin/main`; this task never used it as its base.
 
-This is an implementation checkpoint, not completion of the full multi-instance workflow.
-No push, PR, deployment, VM or personal clipboard is involved.
+The user approved the implementation/instance identity resolution after the first single-instance checkpoint (`1c7256c`, documented by `79a3958`). Installation and handshake `Spec.ID` identify the program. `PluginInstance.ID`, `backend.bind.backend_id`, policies, directories, settings, operations and bindings identify the local runtime instance. The receiver explicitly selects a compatible local instance. RPC frames, identity proofs, peer metadata and ticket envelopes use version 1. No compatibility branches or new object-store/login protocol are introduced.
 
-## Failure inventory specified before implementation
+## Delivered flow
 
-The task-local plan was written before production changes. Its failure inventory covers: unsupported or misclassified plugins; disabled Tailcat fallback; shared instance settings/processes/directories; wrong-instance tickets; new bindings inheriting device trust; expired or changed proofs and approvals; duplicate device rows; policy/global-disable bypass; explicit-send privilege bypass; cross-backend result corruption and duplicate application; uncertain replay after restart; surviving child processes or resources; secret disclosure; and non-P2P backends forced into device pairing.
+1. Install a Go sync implementation through the existing GitHub installer.
+2. Create a disabled runtime instance. It has independent settings and private data.
+3. Configure Schema values and secrets. Public responses omit secrets and report presence booleans.
+4. Enable the instance, set its standard policy and restart. The service reports restart requirements and local runtime availability.
+5. Select a local peer-sessions instance when exporting or joining a pairing code/ticket. Remote instance IDs may differ. Unknown, unavailable, incompatible and wrongly addressed issuer instances fail without fallback.
+6. Compare the fingerprint and approve each side's exact device/binding revision set. A trusted device still needs approval for a new path.
+7. Send and receive content. History retains separate backend outcomes. Two same-view deliveries commit/apply once; one backend failure or child crash does not erase another backend's success.
+8. Pause, resume or remove one path using CAS. Whole-device removal revokes every path. Restart does not replay uncertain content.
 
-The first failure is retained. Each identified failure permits at most two diagnostic reruns of ten minutes each. Changed scenarios and new failures receive separate evidence identities. No send is repeated until it happens to arrive.
+Tailcat can be disabled. Zero backends preserve capture, history and local Actions. Standard policies apply per running instance; global sync disables content work across all of them. Assembly and Go settings changes require restart. On a changed Go configuration, Engine atomically revokes that instance's old device bindings and external channels before starting its new process. Device trust and other instances remain intact. Because Schema does not identify account-context fields, this conservative invalidation applies to every Go backend configuration change. Program identity is sticky; reassigning an instance to another implementation is rejected.
 
-## Implemented checkpoint
+## CLI and Desktop
 
-- `builtin.tailcat` can be disabled. The service assembles no implicit replacement. Local capture, history and text Actions remain usable. Enablement changes require restart and the configuration reports that boundary.
-- Installed Go backends can receive standard text/image/file/automatic-file-threshold policies through the existing TOML and Engine policy path. Lua list entries still cannot declare a sync policy. The Engine remains the policy authority.
-- `unic config set` parses quoted instance IDs with the existing TOML parser. It validates the complete result before saving.
-- `GET /v1/sync-backends` projects assembled backend IDs, implementation IDs, transport kinds, external-channel classification and device-pairing support without addresses or tickets. It is an assembly/capability projection, not a promise of current network health.
-- `POST /v1/code` and `POST /v1/pairing-ticket` accept optional `backend_id`. Omission retains the default Tailcat behavior. Unknown or unavailable selections do not fall back.
-- `unic device backends` prints that projection. `unic device addr --backend ID` exports a ticket for the selected backend.
-- Desktop Plugins exposes the same standard policy controls for installed Go sync backends. Tailcat enablement is available on its list and detail. The invitation task selects only device-pairing backends. External channels disclose their plugin-owned configuration path. Object-store device protocols remain unsupported.
-- Existing Engine approval, identity and per-backend history results are reused. This checkpoint changes no trust or cryptographic protocol.
+```sh
+unic plugin install https://github.com/OWNER/REPO
+unic plugin instance add IMPLEMENTATION INSTANCE
+unic plugin settings show INSTANCE
+unic plugin settings save INSTANCE settings.json
+unic plugin enable INSTANCE
+# Restart unicd after assembly or Go settings changes.
+unic device backends
+unic device addr --backend INSTANCE
+unic device add CODE_OR_TICKET --backend LOCAL_INSTANCE
+unic device list
+unic device approve DEVICE_ID 'FINGERPRINT_SHOWN_BY_OTHER_DEVICE'
+unic config set 'plugins.instances."INSTANCE".sync.text' false
+unic device list --json
+unic device path pause BINDING_ID REVISION
+unic device path resume BINDING_ID CURRENT_REVISION
+unic device path remove BINDING_ID CURRENT_REVISION
+```
 
-## Reproduction and replay
+Desktop: Settings > Plugins > installed Go backend > create instance; open the new instance to configure/enable it, then restart. Invite and Connect select a running compatible instance. Approval names the local paths. Device details show per-path controls. History detail shows per-instance results. The installed implementation is not duplicated on disk for each runtime instance.
+
+## Capability boundaries
+
+- `peer_sessions`: codes/tickets, Engine identity proof, device trust, per-instance approval and content transfer are implemented.
+- External-channel profile: implementation aliases, independent group targets and receives work through the existing SDK/RPC profile. They create no device/fingerprint and expose no device-pairing capability. Its evidence is a real child-process SDK E2E, not third-party login acceptance.
+- Object-store device/member protocols, WebDAV/S3 object formats and third-party account/login flows remain unimplemented. Configuration disclosure is not a claim that those transports work. No protocol was invented for this task.
+- Native acceptance uses private profiles and a directory clipboard. OS clipboard, physical input, cross-application paste, other-platform native acceptance and user visual approval are separate.
+
+## Failure inventory and retry discipline
+
+Before implementation, the task-local plan listed: plugin/capability misclassification; Tailcat fallback; missing programs; shared instance processes/data/settings/locks; wrong-instance tickets; trust inherited by a new binding; expired or changed proofs/approvals; duplicate device rows; per-instance/global policy bypass; explicit-send privilege escalation; cross-backend result corruption/deduplication; uncertain replay; surviving processes/resources; secret disclosure; and non-P2P backends forced through device pairing.
+
+Retain the first failure. Allow at most two bounded diagnostic reruns for one identified failure; compare recurring failures and do not resend content until it happens to pass. Changed cases and distinct causes retain separate identities. Relevant unexplained failures block delivery.
+
+Observed and resolved:
+
+- The initial local-mode test exposed the Tailcat-disable configuration rejection.
+- The original fixture used an obsolete SDK entry point; the first join harness used `address` rather than `addr`; a file fixture omitted its required name; the Schema fixture initially omitted its profile-version key; and the instance-settings harness initially asserted markers without saving its settings. These harness defects were corrected explicitly.
+- `unic config set` split dots inside quoted instance IDs. It now uses the existing TOML parser.
+- A harness expected a failed CLI exit for policy filtering. The existing contract correctly preserves successful local commit and reports a filtered network disposition.
+- The shared loopback fixture retained stale-authority sockets. It now compares each session's verified revision with the new state. Comparing against the previous peer snapshot was also wrong: the first authorized snapshot could close an already fresh session. Session-owned authority fixes that race.
+- Service readiness preceded the directory adapter's baseline/ready boundary. A deterministic two-second fixture delay reproduced the first-clipboard timeout: transport diagnostics showed successful receive, history contained the remote entry, and Received stayed available. Existing startup semantics intentionally ignore receipts before adapter readiness. The workflow now requires a successful production clipboard read before sending. That response is possible only after baseline/ready and command handling complete. The same delayed scenario then passed without resending content.
+- The final matrix exposed an RPC handler scheduling race: an admitted image completed with `permission_denied` because its child part handler ran before its parent published receive state. The proxy now waits on the already admitted grant until the parent publishes its state. It still checks the actual parent ID and receive ID, consumes grants once, and retains cancellation and expiry bounds. The first failed matrix and its secret-free diagnostics remain retained.
+- Native failure artifacts preserve the ambiguous external Open button, a null-versus-default enabled assertion, and a harness navigation error. External list buttons now have unique accessible names; native assertions respect omitted-enabled semantics and navigate back to history before device management.
+- macOS temporary-directory aliases triggered existing cache confinement. Verification uses `TMPDIR=/private/tmp`.
+- The preinstalled lint binary could not read this repository's configuration. Verification uses pinned golangci-lint v2.15.0 with Go 1.27.3.
+- The first earlier headless checkpoint detected source mutation while formatting was still running. Its failure manifest was retained; the immutable-source rerun passed.
+
+## Reproduction
 
 ```sh
 TMPDIR=/private/tmp UNIC_E2E=1 UNIC_E2E_ARTIFACTS=/absolute/new/evidence \
-  go test ./e2e/cli -run '^TestSyncPluginWorkflow$' -count=1 -v
-TMPDIR=/private/tmp UNIC_E2E=1 \
-  go test ./e2e/cli -run '^TestCLI/sync-local-only$' -count=1 -v
-make desktop-e2e CASE=data-binding
+  go test ./e2e/cli -run '^TestSyncPluginWorkflow|^TestCLI/sync-local-only$' -count=1 -timeout=5m -v
+TMPDIR=/private/tmp UNIC_E2E_ARTIFACTS=/absolute/new/channel-evidence \
+  go test -race ./engine -run '^TestExternalChannelInstanceWorkflow$' -count=1 -v
+make desktop-e2e CASE=external-sync-workflow
+make headless-e2e
+TMPDIR=/private/tmp go test -race ./...
 ```
 
-The workflow builds the existing loopback TCP fixture as a real external Go SDK process and installs a pinned release archive through the isolated GitHub installation fixture. Both real services disable Tailcat. Both sides compare the same synthetic fingerprint and explicitly approve their own pending requests. Assertions cover independent history results, bidirectional text/PNG/files with exact bytes, per-instance policy, global disable, revocation, restart and process exit. The test does not replace failed sends with retries.
+The real CLI workflow builds and installs one pinned loopback SDK executable through an isolated GitHub fixture. Both services disable Tailcat. The multi-instance case configures two instances per side, uses different local IDs, checks distinct runtime markers and secret redaction, tests code/ticket expiry/cancellation/wrong issuer routing, compares fingerprints, rejects stale approvals, sends exact text/PNG/files both ways, checks deduplication/partial failure/child crash, exercises binding CAS, invalidates changed configuration authorization, revokes/restarts/disables and checks child exit. No content resend loop is used.
 
-The shared reference fixture lives in `plugins/examples/loopback`. Existing Engine process acceptance uses the same implementation. It is loopback-only, unencrypted and bounded to small synthetic payloads. It is not a production network protocol or WebDAV/S3 implementation.
+The canonical native case seeds only a digest-verified fixture installation, then drives instance creation, enablement/restart, policy, inline pairing approval and results through the production UI. Real installation remains a separately established CLI layer. The loopback fixture is unencrypted, loopback-only and intended only for synthetic acceptance. It is not a production network transport.
 
-## Failures observed during development
+## Validation hold
 
-1. The first local-only run failed during startup because configuration rejected Tailcat disablement. The repaired run passed capture, Action, restart and unavailable pairing assertions.
-2. The first external fixture build used an obsolete SDK entry-point name. The fixture now uses `plugin.Serve`.
-3. The first join request used `address` instead of the existing `addr` field. This test-harness error was corrected without changing the service route.
-4. The policy step exposed the CLI dotted-key parser defect. The TOML parser now preserves the quoted backend ID.
-5. A test expected a nonzero CLI exit for a policy-filtered commit. The existing CLI correctly reports successful local commit and a filtered network disposition. Assertions now inspect the disposition.
-6. A file API fixture omitted its required name. The fixture now supplies name and size and verifies received bytes.
-7. The first broad race run used the macOS temporary-directory alias. Existing cache-root confinement rejected that alias. A bounded rerun with `TMPDIR=/private/tmp` passed the affected service host tests. Two obsolete rejection assertions were identified; the Tailcat assertion was removed, while the Lua restriction remains enforced.
-8. The preinstalled golangci-lint was incompatible with the repository configuration. The pinned repository version (`v2.15.0`) was built with the already installed Go 1.27.3 toolchain. Pinned lint then passed.
-9. The first production headless acceptance rejected source mutation while import formatting was still changing. Its failure manifest is preserved. Rerun only after code changes stop; this failure does not establish a product behavior defect.
+The external-plugin CLI matrix passed twice after the admitted-receive scheduling fix, followed by a separate artifact-producing run. The final canonical native Desktop case, production headless acceptance, full race suite, pinned lint and formatting passed.
 
-## Pending contract decision
+One earlier full race run failed `TestSubmitDeliversEverything`: the built-in Tailcat target completed with `unavailable: the transfer failed`. The test did not retain the underlying transport cause. The first log is retained. The exact original base (`894790a3a4dc512ab622b0cf9120895251955173`) passed 100 isolated runs of that test and two full Engine race suites. These comparisons do not establish that the failure is unrelated. Its cause and relevance remain unresolved. Delivery is held under the repository's failure rule, despite the passing final run. Do not report overall acceptance complete or push this branch until this failure is explained or established as unrelated.
 
-The device contract section 1 requires implementation identity and instance identity to be distinct. Section 3 requires a locally selected compatible instance; remote and local instance IDs need not match. The sync-backend contract section 1 instead says `backend.bind.backend_id` equals handshake `Spec.ID`. The Engine contract section 5 currently specifies joining on the ticket's exact instance ID. Live code follows that restriction: `engine/plugins.go` keys directories and runtime backends by `Spec.ID`, and `engine/pairing.go:joinVia` looks up `t.Backend` directly.
+## Evidence
 
-Proposed resolution: keep handshake `Spec.ID` as the implementation identity; pass the local runtime instance ID in `backend.bind.backend_id`; add an explicit assembly instance ID and local pairing selection; persist settings and private data per instance. Keep RPC framing and cryptographic protocol version 1. No implementation of this conflicting public-contract change is included while approval is pending.
-
-## Remaining acceptance
-
-NOT RUN / not implemented in this checkpoint: two independent instances of one implementation; different sender/receiver instance IDs; binding-level CLI/GUI pause/remove controls and full path projection; full non-Tailcat canonical native Desktop flow; ticket expiry and stale-revision process matrix; dual-backend partial failure and duplicate-application matrix; crash/restart and in-flight revocation barriers; production third-party channel login and object-store protocols. The data-binding Desktop case only verifies the existing production binding and is not evidence for those missing scenarios. Native visual approval remains separate.
-
-## Validation results
-
-Implementation commit: `1c7256c08fa52dae67d91a1069a5b2606c68de36`.
-
-| Layer | Result | Evidence / limit |
-|---|---|---|
-| Real external CLI/service/RPC workflow | PASS | `.cache/sync-plugin-workflow/external-workflow-final.json`; Tailcat disabled on both sides; exact text/PNG/file checks; unknown backend rejection; policy/global pause; revocation; restart; external disable and zero-backend mode; child exit |
-| Zero-backend capture/history/Action/restart | PASS | `TestCLI/sync-local-only` |
-| Full race suite | PASS | `TMPDIR=/private/tmp go test -race ./...`; ordinary opt-in E2E entries remain skipped |
-| Affected packages after final policy correction | PASS | Host, localconfig, desktopui and Engine race tests |
-| Production untagged headless acceptance | PASS | `.cache/sync-plugin-workflow/headless-final.json`; source unchanged; production program hashes; separate migration opt-ins NOT RUN |
-| Canonical Desktop data binding | PASS | `.build/desktop-e2e/20261121T101422Z-1d1aca79/index.html`; production process/software-view binding; not external-backend native interaction |
-| Pinned lint / formatter | PASS | golangci-lint v2.15.0; `0 issues`; empty formatter diff |
-| Production Desktop build | PASS | Local macOS arm64 build; no native interaction claim |
-| Full native external-backend Desktop workflow | NOT RUN | Pending remaining implementation |
-| Multi-instance and dual-backend matrix | NOT RUN | Pending contract decision and implementation |
-
-The small close receipt is `.cache/sync-plugin-workflow/receipt.json`. `SHA256SUMS` binds retained evidence; `source-sha256.json` contains per-file hashes without source snapshots. The source fixture and replay commands are committed. Test profiles and loopback services are removed. Backend child PIDs observed before shutdown are checked for exit. Headless binary artifacts are removed after preserving their hashes. No DB, ticket, credential, binary, source snapshot or large log is committed.
-
-Full workflow delivery remains incomplete. It requires the explicit contract decision and the remaining implementation/acceptance above.
+The final small receipt is `.cache/sync-plugin-workflow/instances/receipt.json`. It records implementation/documentation SHAs, exact per-layer verdicts, command replays, program hashes, canonical Desktop report paths, retained first failures, and cleanup. `SHA256SUMS` binds retained evidence. Only source, reference fixtures and English documentation are committed. No database, ticket, credential, binary, source snapshot or large log is committed. Native screenshots remain in ignored canonical output directories. No push, PR, deployment, VM or personal clipboard is involved.

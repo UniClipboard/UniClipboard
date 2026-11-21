@@ -122,6 +122,7 @@ type liveState struct {
 	syncBackends                               []api.SyncBackendInfo
 	pairingBackend                             string
 	externalPlugins                            []api.PluginInfo
+	peers                                      map[string]api.PeerStatus
 	pending                                    map[string]api.PendingPeer
 	join                                       *api.PairResult
 	codeAttempted, ticketAttempted             bool
@@ -546,7 +547,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				l.syncBackends = syncBackends
 				if l.pairingBackend == "" {
 					for _, b := range syncBackends {
-						if b.Pairing {
+						if b.Pairing && b.State == "running" {
 							l.pairingBackend = b.ID
 							if b.ID == "builtin.tailcat" {
 								break
@@ -564,7 +565,9 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				if d.deviceName == "" || d.deviceName == previousName {
 					d.deviceName = status.Name
 				}
+				l.peers = make(map[string]api.PeerStatus)
 				for _, p := range status.Peers {
+					l.peers[p.ID] = p
 					if p.Kind == "external" {
 						continue
 					}
@@ -629,7 +632,7 @@ func projectHistory(it api.HistoryItem) entry {
 	if it.Origin == "external" || it.Origin == "migration" {
 		source = it.Origin
 	}
-	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: fmt.Sprintf("%d B", it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState}
+	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: fmt.Sprintf("%d B", it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState, backendSync: slices.Clone(it.Backends)}
 	if app := it.SourceApplication; app != nil {
 		v.sourceAppName, v.sourceAppID = strings.TrimSpace(app.Name), app.Identifier
 		if v.sourceAppName == "" {

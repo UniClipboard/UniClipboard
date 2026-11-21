@@ -97,9 +97,9 @@ acceptance desktopkit boardui-composition
 
 BoardUI production popup dispatch
 
-Steps: Open each history filter and action popup, inspect accessible options, cancel without mutation, reopen and choose the requested item in both themes.
+Steps: Open the unified filter popover and action menus, inspect accessible choices, cancel without mutation, reopen and choose each filter dimension or command in both themes.
 
-Expected: Popup content and returned commands match each exercised filter/action; legacy system menus stay absent.
+Expected: Chip choices apply immediately and survive popover dismissal; action menus dispatch and close; cancellation changes no value; legacy system menus stay absent.
 
 Forbidden: Direct command invocation behind the view, lost cancellation or persistence checks, dropped options, or software views labeled native OS acceptance.
 
@@ -1890,7 +1890,7 @@ screenshot startup-error
 
 Main-window decoration and shared-toolbar caption actions
 
-Steps: Exercise complete history/settings/plugin views at 600/640/1100 widths in light/dark themes and scaled rendering; check geometry and dispatch caption actions.
+Steps: On macOS also exercise the integrated native traffic-light band; on every host exercise complete history/settings/plugin views at 600/640/1100 widths in light/dark themes and scaled rendering; check geometry and dispatch caption actions.
 
 Expected: The preference defaults off; either native or custom controls are shown; custom controls share the history toolbar and preserve search and commands.
 

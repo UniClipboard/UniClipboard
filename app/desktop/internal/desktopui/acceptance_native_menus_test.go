@@ -46,7 +46,7 @@ func scenarioBoardUIMenus(t *testing.T) {
 		}{
 			{"内容类型", "代码", func(d *viewState) string { return d.kind }, "代码"},
 			{"来源设备", "Linux 工作站", func(d *viewState) string { return d.source }, "linux"},
-			{"标签筛选", "#设计", func(d *viewState) string { return d.tag }, "设计"},
+			{"标签筛选", "设计", func(d *viewState) string { return d.tag }, "设计"},
 			{"时间范围", "今天", func(d *viewState) string { return d.timeRange }, "today"},
 			{"发送到设备", "工作电脑", func(d *viewState) string { return d.notice }, "演示：已发送到工作电脑"},
 			{"更多操作", "管理标签", func(d *viewState) string {
@@ -61,38 +61,67 @@ func scenarioBoardUIMenus(t *testing.T) {
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 				proof.Capture(t, tt)
 				before := tc.value(d)
-				// A complete pointer click opens the real in-window popup.
-				info, ok := tt.AccessByRole(ui.RolePopUpButton, tc.trigger)
-				if !ok {
-					info, ok = tt.AccessByRole(ui.RoleMenuButton, tc.trigger)
+				filter := slices.Contains([]string{"内容类型", "来源设备", "标签筛选", "时间范围"}, tc.trigger)
+				trigger := tc.trigger
+				if filter {
+					trigger = "筛选条件"
 				}
-				if !ok {
-					t.Fatal("menu trigger missing")
+				open := func() {
+					t.Helper()
+					role := ui.RoleMenuButton
+					if filter {
+						role = ui.RoleButton
+					}
+					info, ok := tt.AccessByRole(role, trigger)
+					if !ok {
+						t.Fatal("popup trigger missing", trigger)
+					}
+					tt.ClickAt(info.Bounds.X+info.Bounds.W/2, info.Bounds.Y+info.Bounds.H/2)
 				}
-				x, y := info.Bounds.X+info.Bounds.W/2, info.Bounds.Y+info.Bounds.H/2
-				tt.Press(x, y)
-				tt.Release(x, y)
+				// Read and operate the actual chip buttons in the unified filter
+				// popover, or the actual entries in an action menu.
+				open()
 				items := boarduiMenuItems(tt)
-				if !slices.Contains(items, tc.choice) {
-					t.Fatalf("BoardUI popup did not open: %v", items)
+				if filter {
+					if !d.filterOpen {
+						t.Fatal("unified filter popover did not open")
+					}
+					for _, node := range tt.AccessAll() {
+						if node.Role == ui.RoleButton && !node.Offscreen {
+							items = append(items, node.Name)
+						}
+					}
 				}
-				if len(boarduiMenuItems(tt)) == 0 {
-					t.Fatal("in-window popup has no accessible menu/listbox items")
+				if !slices.Contains(items, tc.choice) {
+					t.Fatalf("BoardUI popup choice missing: %v", items)
 				}
 				tt.Key(0, ui.KeyEscape)
-				if tc.value(d) != before {
-					t.Fatal("cancellation changed application state")
+				if tc.value(d) != before || d.filterOpen || boarduiMenuItems(tt) != nil {
+					t.Fatal("cancellation failed or changed application state")
 				}
-				if err := tt.Click(tc.trigger); err != nil {
-					t.Fatal(err)
-				}
-				if err := boarduiChooseMenu(tt, tc.choice); err != nil {
+				open()
+				if filter {
+					chip, ok := tt.AccessByRole(ui.RoleButton, tc.choice)
+					if !ok || chip.Disabled || chip.Offscreen {
+						t.Fatal("visible enabled filter chip missing", tc.choice)
+					}
+					tt.ClickAt(chip.Bounds.X+chip.Bounds.W/2, chip.Bounds.Y+chip.Bounds.H/2)
+				} else if err := boarduiChooseMenu(tt, tc.choice); err != nil {
 					t.Fatal(err)
 				}
 				if got := tc.value(d); got != tc.want {
 					t.Fatalf("choice returned %q, want %q", got, tc.want)
 				}
-				if boarduiMenuItems(tt) != nil {
+				if filter {
+					// Chips apply immediately and keep the popover open for more choices.
+					if !d.filterOpen {
+						t.Fatal("filter chip unexpectedly dismissed the popover")
+					}
+					tt.Key(0, ui.KeyEscape)
+					if d.filterOpen || tc.value(d) != tc.want {
+						t.Fatal("filter dismissal lost the selected value")
+					}
+				} else if boarduiMenuItems(tt) != nil {
 					t.Fatal("BoardUI menu did not close")
 				}
 				results = append(results, receipt{theme, tc.trigger, tc.choice, items})

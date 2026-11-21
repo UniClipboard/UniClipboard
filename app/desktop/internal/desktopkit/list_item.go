@@ -57,7 +57,9 @@ func (k Kit) ItemList(c *ui.Context, st *ListState, p ItemListProps) ui.Element 
 				on := r.Selected()
 				sp.check = &on
 			}
-			k.listRow(r.Context, r, sp)
+			if k.listRow(r.Context, r, sp).Hovered() {
+				st.hoverID = it.ID
+			}
 		},
 	})
 }
@@ -124,6 +126,6 @@ func (k Kit) runList(c *ui.Context, st *ListState, r listRun) ui.Element {
 	}
 	st.settle(e, k)
 	st.visible(len(r.ids), r.loaded, r.abs)
-	st.listContextMenu(e, r.menu)
+	k.listContextMenu(c, e, st, r.menu, st.hoverID)
 	return e
 }

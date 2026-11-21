@@ -33,6 +33,9 @@ type ListState struct {
 	menuPick   string
 	menuIDs    []string
 	menuB      bool
+	hoverID    string
+	menuOpen   bool
+	menuTarget []string
 	endReached bool
 	endWas     bool
 	first      int // 可见区间（绝对序号，含 viewport.Offset）
@@ -149,6 +152,7 @@ func sortStrings(a []string) {
 func (s *ListState) begin() {
 	s.changed, s.clickedB, s.activatedB, s.deletedB, s.menuB = false, false, false, false, false
 	s.clicked, s.activated, s.deleted, s.menuPick, s.menuIDs = "", "", nil, "", nil
+	s.hoverID = ""
 	s.nav, s.move = NavNone, NavNone
 	s.endReached = false
 	if !s.started {
@@ -612,19 +616,42 @@ func (k Kit) AttachContextMenu(e ui.Element, items func() []MenuEntry, onChosen 
 	})
 }
 
-// listContextMenu 给列表元素挂上选区右键菜单：右键未选中的行会先选中它（mygo 行为）。
-func (s *ListState) listContextMenu(e ui.Element, items func(ids []string) []MenuEntry) {
+// listContextMenu binds the shared BoardUI popover context menu (matching ActionDockMenu
+// and toolbar Menu) to a list, grid, or table element. Right-clicking an unselected item
+// highlights that item without triggering an unintended detail-drawer open.
+func (k Kit) listContextMenu(c *ui.Context, e ui.Element, s *ListState, items func(ids []string) []MenuEntry, hoverID string) {
 	if items == nil {
 		return
 	}
-	e.ContextMenu(func(m *ui.Menu) {
-		ids := s.Selection()
+	wasOpen := s.menuOpen
+	m := ui.ContextMenuBase(c.Key("ctxmenu"), e, &s.menuOpen)
+	if !wasOpen && s.menuOpen {
+		if hoverID != "" && !s.sel.Has(hoverID) {
+			s.sel.Clear()
+			s.sel.Add(hoverID)
+			if row, ok := s.rowOf[hoverID]; ok {
+				s.cur = row
+			}
+			s.prevSel = s.selKey()
+		}
+		s.menuTarget = s.Selection()
+		if len(s.menuTarget) == 0 {
+			s.menuOpen = false
+		}
+	}
+	if !s.menuOpen {
+		s.menuTarget = nil
+	}
+	m.Popup(func(panel ui.Element) {
+		ids := s.menuTarget
+		if len(ids) == 0 {
+			ids = s.Selection()
+		}
 		if len(ids) == 0 {
 			return
 		}
-		var chosen string
-		menuFromEntries(m, items(ids), &chosen)
-		if chosen != "" {
+		k.popupSurface(panel)
+		if chosen := k.MenuEntries(c, m, items(ids)); chosen != "" {
 			s.menuPick, s.menuIDs, s.menuB = chosen, ids, true
 		}
 	})

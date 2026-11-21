@@ -28,11 +28,13 @@ func (k Kit) fgTone() (ui.Color, ui.Color, ui.Color) {
 	return k.Color("text-primary"), k.Color("text-secondary"), k.Color("text-tertiary")
 }
 func (k Kit) dangerText() ui.Color            { return k.Color("text-error-primary") }
-func (k Kit) hoverFill() ui.Color             { return k.Color("background-secondary-hover") }
+func (k Kit) hoverFill() ui.Color             { return k.Color("dropdown-item-hover-background") }
 func (k Kit) dividerColor() ui.Color          { return k.Color("separator-border") }
 func (k Kit) swatchColor(t TagColor) ui.Color { return k.SwatchColor(t) }
 func (k Kit) popupSurface(panel ui.Element) ui.Element {
-	panel.Padding(boardui.Number("select-popup-padding")).Radius(boardui.Number("select-popup-radius")).Background(k.Color("background-primary-default")).MinWidth(240).TextColor(k.Color("text-primary"))
+	panel.Padding(boardui.Number("select-popup-padding")).Radius(boardui.Number("select-popup-radius")).
+		Background(k.Color("background-primary-default")).Border(1, k.Color("separator-border")).
+		MinWidth(200).TextColor(k.Color("text-primary"))
 	panel.AttachedOrigin().Transition(ui.ElementTransition{Duration: time.Duration(boardui.Number("popover-ms")) * time.Millisecond, Ease: ui.CubicBezier(0, 0, .2, 1), Colors: true, Enter: &ui.Motion{Scale: .95, Opacity: 0}})
 	return k.shadowed(panel, "dropdown")
 }

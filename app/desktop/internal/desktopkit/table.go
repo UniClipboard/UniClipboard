@@ -146,7 +146,7 @@ func (k Kit) Table(c *ui.Context, st *ListState, p TableProps) ui.Element {
 	e.Label(p.Label)
 	k.tableSelectAll(e, st)
 	st.settle(e, k)
-	st.listContextMenu(e, p.Menu)
+	k.listContextMenu(c, e, st, p.Menu, st.hoverID)
 	return e
 }
 

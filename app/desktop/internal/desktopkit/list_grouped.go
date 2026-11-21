@@ -143,10 +143,14 @@ func (k Kit) GroupedList(c *ui.Context, st *ListState, p GroupedListProps) ui.El
 					ui.Box(r.Context).Height(lk.rowH)
 				default:
 					item := p.Items[itemAt[i]]
+					var el ui.Element
 					if item.CardRow {
-						k.l1ListRow(r.Context, r, item)
+						el = k.l1ListRow(r.Context, r, item)
 					} else {
-						k.GroupedListRow(r, item, st.sel.Len() > 1)
+						el = k.GroupedListRow(r, item, st.sel.Len() > 1)
+					}
+					if el.Hovered() {
+						st.hoverID = item.ID
 					}
 				}
 			},

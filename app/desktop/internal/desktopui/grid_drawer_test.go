@@ -391,17 +391,36 @@ func TestHistoryItemContextMenu(t *testing.T) {
 		t.Fatalf("unpinned label=%q, want 置顶", unpinnedMenu[1].Label)
 	}
 
-	// Verify right-click context menu works in both list and grid layouts.
+	// Verify in-window BoardUI right-click context menu works in both list and grid layouts.
+	snapDir := os.Getenv("UNIC_GRID_SNAP_DIR")
 	for _, layout := range []string{"list", "grid"} {
 		t.Run(layout, func(t *testing.T) {
-			d := newDemo("history", "light")
+			d := newDemo("history", "dark")
 			d.layout = layout
-			tt := ui.NewTesterWith(d.view, 1180, 760, ui.TesterOptions{})
+			tt := ui.NewTesterWith(d.view, 1180, 760, ui.TesterOptions{Dark: true})
+			tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+			if snapDir != "" {
+				tt.SetScale(2)
+			}
 			target, ok := tt.AccessByRole(ui.RoleListItem, "HTTP 服务示例")
 			if !ok {
 				t.Fatal("missing HTTP 服务示例 item")
 			}
 			tt.RightClickAt(target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2)
+			tt.Advance(200 * time.Millisecond)
+			for _, lbl := range []string{"复制", "置顶", "发送到", "删除"} {
+				if !tt.HasText(lbl) {
+					t.Fatalf("BoardUI context menu missing %q", lbl)
+				}
+			}
+			if snapDir != "" {
+				if err := os.MkdirAll(snapDir, 0755); err == nil {
+					if f, err := os.Create(filepath.Join(snapDir, "ctxmenu-"+layout+"-dark.png")); err == nil {
+						_ = png.Encode(f, tt.Image())
+						_ = f.Close()
+					}
+				}
+			}
 			if err := tt.Click("置顶"); err != nil {
 				t.Fatalf("click pin from context menu: %v", err)
 			}

@@ -202,24 +202,7 @@ func (k Kit) GroupedGrid(c *ui.Context, st *ListState, p GroupedGridProps) ui.El
 		k.gridKeys(e, st, p, cols)
 		st.gridSettle(e)
 		st.visibleGrid(len(rows), [2]int{loLoaded, hiLoaded}, rows, off)
-		if p.Menu != nil {
-			e.ContextMenu(func(m *ui.Menu) {
-				if h := g.hover; h != "" && !st.sel.Has(h) {
-					st.sel.Clear()
-					st.sel.Add(h)
-					st.prevSel = st.selKey()
-				}
-				ids := st.Selection()
-				if len(ids) == 0 {
-					return
-				}
-				var chosen string
-				menuFromEntries(m, p.Menu(ids), &chosen)
-				if chosen != "" {
-					st.menuPick, st.menuIDs, st.menuB = chosen, ids, true
-				}
-			})
-		}
+		k.listContextMenu(c, e, st, p.Menu, g.hover)
 		if p.Footer != nil {
 			k.GroupedListFooter(c, p.Footer)
 		}

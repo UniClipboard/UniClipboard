@@ -37,6 +37,7 @@ import (
 )
 
 type desktopResult struct {
+	ElapsedMillis    int64            `json:"elapsed_ms"`
 	RecordingStarted float64          `json:"recording_started_seconds,omitempty"`
 	CaptureSeconds   []float64        `json:"capture_seconds,omitempty"`
 	Status           string           `json:"status"`
@@ -899,6 +900,7 @@ func (s *desktopScenario) finish(env *testscript.Env) {
 	if !failed {
 		s.result.Status = "PASS"
 	}
+	s.result.ElapsedMillis = time.Since(s.started).Milliseconds()
 	data, err := json.MarshalIndent(s.result, "", "  ")
 	if err == nil {
 		err = os.WriteFile(filepath.Join(s.out, "result.json"), data, 0600)

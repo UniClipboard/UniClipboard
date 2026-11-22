@@ -95,6 +95,9 @@ func (k Kit) InlineNotice(c *ui.Context, p NoticeProps) NoticeResult {
 		iconColor = k.Color([...]string{ToneInfo: "notification-information-foreground", ToneSuccess: "notification-success-foreground",
 			ToneWarning: "status-yellow-text", ToneError: "text-error-primary"}[p.Tone])
 		textColor = k.Color("text-secondary")
+		if p.Tone == ToneInfo {
+			textColor = k.Color("text-primary")
+		}
 	}
 
 	var res NoticeResult

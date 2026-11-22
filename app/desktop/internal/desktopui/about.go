@@ -362,13 +362,13 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 	ui.Column(c.Key("about-footer")).Gap(8).AlignItems(ui.Center).Padding(4, 0, 8).MinWidth(0).Children(func() {
 		ui.Row(c.Key("links")).Wrap().Justify(ui.Center).AlignItems(ui.Center).GapX(20).GapY(6).Children(func() {
 			if k.Button(c.Key("privacy"), d.tr("隐私政策"), desktopkit.ButtonProps{Variant: desktopkit.Link, Size: desktopkit.SizeSmall}).Clicked() {
-				d.openExternalURL(privacyPolicyURL)
+				_ = d.openExternalURL(privacyPolicyURL)
 			}
 			if k.Button(c.Key("terms"), d.tr("使用条款"), desktopkit.ButtonProps{Variant: desktopkit.Link, Size: desktopkit.SizeSmall}).Clicked() {
-				d.openExternalURL(termsOfServiceURL)
+				_ = d.openExternalURL(termsOfServiceURL)
 			}
 			if k.Button(c.Key("maintainers"), d.tr("关于与维护者"), desktopkit.ButtonProps{Variant: desktopkit.Link, Size: desktopkit.SizeSmall}).Clicked() {
-				d.openExternalURL(aboutMaintainersURL)
+				_ = d.openExternalURL(aboutMaintainersURL)
 			}
 		})
 		k.Text(c.Key("copyright"), d.tr("© 2025 UniClipboard. All rights reserved."), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary})
@@ -409,10 +409,10 @@ func (d *viewState) aboutSponsorsSection(c *ui.Context, k desktopkit.Kit) {
 
 		ui.Row(c.Key("actions")).Wrap().Justify(ui.Center).Gap(8).Padding(2, 0, 0).Children(func() {
 			if k.Button(c.Key("become-sponsor"), d.tr("成为赞助者 →"), desktopkit.ButtonProps{Variant: desktopkit.Standard, Size: desktopkit.SizeSmall}).Clicked() {
-				d.openExternalURL(sponsorChannelURL)
+				_ = d.openExternalURL(sponsorChannelURL)
 			}
 			if k.Button(c.Key("github-star"), d.tr("去 GitHub 点 Star →"), desktopkit.ButtonProps{Variant: desktopkit.Standard, Size: desktopkit.SizeSmall}).Clicked() {
-				d.openExternalURL(githubRepositoryURL)
+				_ = d.openExternalURL(githubRepositoryURL)
 			}
 		})
 	})
@@ -480,7 +480,7 @@ func (d *viewState) aboutSponsorCard(c *ui.Context, k desktopkit.Kit, sp Sponsor
 	})
 
 	if clickable && card.Clicked() {
-		d.openExternalURL(sp.URL)
+		_ = d.openExternalURL(sp.URL)
 	}
 }
 
@@ -531,7 +531,7 @@ func (d *viewState) aboutDialogs(c *ui.Context, k desktopkit.Kit) {
 			}
 		})
 		if r.Cancelled {
-			d.openExternalURL(releaseDownloadURL)
+			_ = d.openExternalURL(releaseDownloadURL)
 		}
 		if !d.about.manualUpdateOpen {
 			d.about.copiedCommand = false

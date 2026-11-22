@@ -97,16 +97,16 @@ The release operator reviews the linked evidence before dispatch. The controller
 ```sh
 jq -n --slurpfile darwin darwin.json --slurpfile linux linux.json --slurpfile windows windows.json \
   '{darwin: $darwin[0], linux: $linux[0], windows: $windows[0]}' > stable-acceptance.json
-gh workflow run release-desktop.yml --ref v2 \
+gh workflow run release-desktop.yml --ref main \
   -f operation=promote -f channel=stable -f candidate_run_id=<run-id> \
   -f expected_revision=<revision> -F stable_acceptance=@stable-acceptance.json
 ```
 
 ## Default branch cutover
 
-Use `v2` as the next default branch. It contains the three independent release workflows and `pr-checks.yml` runs on pushes to `v2`. Retain `v1` for existing maintenance PRs and the older delivery source. Before changing the default, review the remaining v1 workflows and open PRs. Confirm which legacy jobs still need a manual entry point because GitHub requires dispatchable workflows to exist on the default branch.
+The v2 development line continues on `main`. The three independent release workflows are registered on the default branch. `pr-checks.yml`, `build-cli.yml` and `check-expo.yml` run on pushes to `main`. The `v1` branch retains the legacy source and existing maintenance PRs. GitHub requires workflows to exist on the default branch for manual dispatch.
 
-Apply the cutover with `gh repo edit UniClipboard/UniClipboard --default-branch v2`. Verify the default branch and that GitHub lists `release-cli.yml`, `release-desktop.yml` and `promote.yml`. Run the read-only Desktop preflight as the first dispatch. If the cutover needs to be reverted, set the default branch back to `v1`.
+Run the read-only Desktop preflight with `gh workflow run release-desktop.yml --ref main -f operation=preflight`. After a cutover rollback, select the intended default branch explicitly and verify workflow registration before dispatching a release.
 
 ## GitHub page preview and draft
 

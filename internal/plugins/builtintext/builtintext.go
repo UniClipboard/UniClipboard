@@ -1,7 +1,7 @@
 // Package builtintext is the plugin that ships inside the unic binary. It is
 // an ordinary plugin: it implements plugin.Processor and plugin.Actor and gets
-// no powers the others would not. It tags text that holds an email address or
-// a link, and offers a few text actions.
+// no powers the others would not. It tags text that holds an email address
+// and offers a few text actions.
 package builtintext
 
 import (
@@ -19,10 +19,7 @@ const ID = "builtin.text"
 // scanLimit bounds how much text is looked at; tags are hints, not guarantees.
 const scanLimit = 64 << 10
 
-var (
-	emailRe = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}`)
-	urlRe   = regexp.MustCompile(`(?i)https?://[^\s<>"]+`)
-)
+var emailRe = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}`)
 
 type Plugin struct{}
 
@@ -50,7 +47,7 @@ func (*Plugin) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
 func (*Plugin) Start(context.Context) error { return nil }
 func (*Plugin) Close(context.Context) error { return nil }
 
-// Process tags text that contains an email address ("email") or a web link ("url").
+// Process tags text that contains an email address.
 func (*Plugin) Process(_ context.Context, c plugin.ProcessContext) error {
 	it := c.Item()
 	if it.Type != "text" || it.Text == "" {
@@ -61,12 +58,7 @@ func (*Plugin) Process(_ context.Context, c plugin.ProcessContext) error {
 		text = text[:scanLimit]
 	}
 	if emailRe.MatchString(text) {
-		if err := c.AddTag("email"); err != nil {
-			return err
-		}
-	}
-	if urlRe.MatchString(text) {
-		return c.AddTag("url")
+		return c.AddTag(plugin.TagEmail)
 	}
 	return nil
 }

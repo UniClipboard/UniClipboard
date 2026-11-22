@@ -32,9 +32,9 @@ func (c *actCtx) SetText(s string) error { c.out = s; return nil }
 
 func TestTags(t *testing.T) {
 	for text, want := range map[string][]string{
-		"write to me@example.com":           {"email"},
-		"see https://example.com/a?b=1 now": {"url"},
-		"me@example.com and http://x.org/":  {"email", "url"},
+		"write to me@example.com":           {plugin.TagEmail},
+		"see https://example.com/a?b=1 now": nil,
+		"me@example.com and http://x.org/":  {plugin.TagEmail},
 		"nothing here, at 5 o'clock":        nil,
 		"a@b":                               nil,
 	} {

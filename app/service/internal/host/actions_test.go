@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 func TestBuiltinTextTagsCopiesAndRunsActions(t *testing.T) {
@@ -13,7 +14,7 @@ func TestBuiltinTextTagsCopiesAndRunsActions(t *testing.T) {
 	h.board.user(text("mail me@example.com"))
 	eventually(t, "recorded", func() bool { return len(historyIDs(t, h)) == 1 })
 	src := historyIDs(t, h)[0]
-	if !slices.Contains(src.Tags, "email") {
+	if !slices.Contains(src.Tags, plugin.TagEmail) {
 		t.Fatalf("tags = %v", src.Tags)
 	}
 

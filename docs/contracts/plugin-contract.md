@@ -403,7 +403,7 @@ Processor `Item.Type` additionally accepts `directory_reference` and `directory`
 
 ## Built-in content classification
 
-`builtin.classify` is an ordinary processor assembled by the service before `builtin.text`. It supports the existing enabled and on_error settings and accepts no plugin configuration. Capture, explicit commit, Action results and received content use the same processor path.
+`builtin.classify` is an ordinary processor assembled by the service before `builtin.text`. Capture, explicit commit, Action results and received content use the same processor path.
 
 | Item type | Stable tag ID |
 |---|---|
@@ -413,7 +413,29 @@ Processor `Item.Type` additionally accepts `directory_reference` and `directory`
 | `directory`, `directory_reference` | `builtin:folder` |
 | Text containing an HTTP(S) URL in the first 64 KiB | `builtin:link`, in addition to `builtin:text` |
 
-The processor performs no network access and does not change content. It does not backfill existing history. Hosts translate the six built-in labels at display time and retain these IDs in persisted tags, filters and settings. User-defined tag labels remain literal. Existing `builtin.text` email/url hints and Actions remain independent.
+Four built-in regular expressions are enabled by default. They match the entire plain-text value after trimming surrounding whitespace. The entire value must fit within 64 KiB.
+
+| Full-text match | Stable tag ID |
+|---|---|
+| `#` followed by six or eight hexadecimal digits | `builtin:color` |
+| Lowercase `v` followed by three decimal version components and an optional dot-separated prerelease suffix | `builtin:version` |
+| Hexadecimal UUID in 8-4-4-4-12 form | `builtin:uuid` |
+| Four decimal IPv4 octets from 0 to 255 with no leading zeros | `builtin:ipv4` |
+
+List any of these four IDs in `disabled_default_tags` to disable their default rules. The list rejects unknown and duplicate IDs. The omitted or empty list enables all four. This setting is independent of custom rules.
+
+The service accepts up to 16 custom rules under `plugins.instances."builtin.classify".rules`. Each rule requires a nonempty Go regular expression of up to 1024 bytes and a nonblank tag of up to 64 UTF-8 bytes. Invalid rules reject the configuration before it is saved. The service compiles rules at startup. Each matching rule adds its tag to new text, based on the first 64 KiB. Repeated tags collapse to one membership through the Engine. The processor follows the existing per-instance error policy and stops running when the classifier is disabled.
+
+```toml
+[plugins.instances."builtin.classify"]
+disabled_default_tags = ["builtin:color"]
+
+[[plugins.instances."builtin.classify".rules]]
+pattern = '\bUNI-[0-9]+\b'
+tag = "Issue"
+```
+
+Rule and enablement changes apply after service restart. The processor performs no network access, changes no content and leaves existing history intact. Hosts translate built-in labels at display time and retain stable IDs in persisted tags, filters and settings. User-defined tag labels remain literal. The independent `builtin.text` processor emits `builtin:email` for email addresses and offers the text Actions. `builtin:link` is the built-in tag for URLs. Existing literal `url` or `email` tags retain their stored names.
 
 ## Source application metadata
 
@@ -421,8 +443,8 @@ Clipboard content and history preserve optional source application identity and 
 See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.
 
 The reserved `plugin.TagCode` identifier is `builtin:code`. The offline v1
-importer preserves v1 code membership under this identifier. `builtin.classify`
-does not currently generate code membership for new content. The
+importer preserves v1 code membership under this identifier. Custom rules can
+target it. The
 [history contract](history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252)
 defines migration and automatic recovery.
 

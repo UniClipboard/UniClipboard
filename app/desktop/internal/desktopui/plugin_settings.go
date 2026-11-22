@@ -37,6 +37,7 @@ type builtinPluginSettings struct {
 	rollbackOpen                            bool
 	rollbackID, rollbackName, rollbackVer   string
 	form                                    *pluginSettingsForm
+	classification                          classificationSettings
 }
 
 type builtinPluginEntry struct {
@@ -278,6 +279,9 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	if changed {
 		cfg.Plugins.Instances[p.id] = instance
 		d.saveLiveConfig(cfg)
+	}
+	if p.id == "builtin.classify" {
+		d.classificationRules(c, k, cfg, instance)
 	}
 }
 

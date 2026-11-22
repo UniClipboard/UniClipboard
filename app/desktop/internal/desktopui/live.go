@@ -1025,6 +1025,9 @@ func (d *viewState) deleteLiveEntries(ids []string) {
 	}, "已删除")
 }
 func (d *viewState) saveLiveConfig(cfg config.Config) {
+	d.saveLiveConfigThen(cfg, nil)
+}
+func (d *viewState) saveLiveConfigThen(cfg config.Config, after func()) {
 	revision := d.live.config.Revision
 	client := d.live.client
 	d.mutate(func(ctx context.Context) error {
@@ -1038,7 +1041,13 @@ func (d *viewState) saveLiveConfig(cfg config.Config) {
 			// Waiting for a later history refresh can expose the old switch
 			// value and revision to a second user intent.
 			select {
-			case d.live.results <- func() { d.live.config = state; d.projectLiveConfig() }:
+			case d.live.results <- func() {
+				d.live.config = state
+				d.projectLiveConfig()
+				if after != nil && state.ApplyError == "" {
+					after()
+				}
+			}:
 				d.live.wake()
 			case <-ctx.Done():
 				return ctx.Err()

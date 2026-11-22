@@ -120,6 +120,49 @@ func (s *desktopSession) start() {
 				})
 			})
 			screen.SetLoginStatus(func() (bool, string) { s.g.mu.Lock(); defer s.g.mu.Unlock(); return s.g.loginEnabled, s.g.loginError }, func() { s.g.applyLoginSettings(s.settings.Current().Desktop.LaunchAtLogin, true) })
+			screen.SetUpdater(
+				func() desktopui.UpdateStatus {
+					s.g.mu.Lock()
+					defer s.g.mu.Unlock()
+					return s.g.updates
+				},
+				func() {
+					nativeAsync(func(ctx context.Context) error {
+						return desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, "check-updates", nil, nil)
+					})
+				},
+				func(autoCheck, autoDownload *bool) {
+					// Apply optimistically so the UI responds immediately, then reconcile with tray reply.
+					s.g.mu.Lock()
+					if autoCheck != nil {
+						s.g.updates.AutoCheckUpdate = *autoCheck
+					}
+					if autoDownload != nil {
+						s.g.updates.AutoDownloadUpdate = *autoDownload
+					}
+					s.g.mu.Unlock()
+					req := updatePrefsRequest{AutoCheckUpdate: autoCheck, AutoDownloadUpdate: autoDownload}
+					nativeAsync(func(ctx context.Context) error {
+						var st updateStatus
+						err := desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, "set-update-prefs", req, &st)
+						if err == nil {
+							s.g.mu.Lock()
+							s.g.updates = desktopui.UpdateStatus{
+								Supported:          st.Supported,
+								Owner:              st.Owner,
+								AutoCheckUpdate:    st.AutoCheckUpdate,
+								AutoDownloadUpdate: st.AutoDownloadUpdate,
+								AvailableVersion:   st.AvailableVersion,
+							}
+							s.g.mu.Unlock()
+							if s.g.win != nil {
+								s.g.win.Invalidate()
+							}
+						}
+						return err
+					})
+				},
+			)
 			screen.SetExternalShortcut(func() (string, string) {
 				s.g.mu.Lock()
 				defer s.g.mu.Unlock()
@@ -149,6 +192,13 @@ func (s *desktopSession) followHost(ctx context.Context) {
 			s.g.loginEnabled = state.LoginEnabled
 			s.g.loginError = state.LoginError
 			s.g.shortcut = state.Shortcut
+			s.g.updates = desktopui.UpdateStatus{
+				Supported:          state.Updates.Supported,
+				Owner:              state.Updates.Owner,
+				AutoCheckUpdate:    state.Updates.AutoCheckUpdate,
+				AutoDownloadUpdate: state.Updates.AutoDownloadUpdate,
+				AvailableVersion:   state.Updates.AvailableVersion,
+			}
 			s.g.mu.Unlock()
 			s.g.win.Invalidate()
 		}

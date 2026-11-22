@@ -42,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 1bba08c23671101e1dea5eb484eb5b539923bfbf
+verified: 708bb8c06f48ccf5f58ffe987fdfd5a725d45f95
 ---
 # Desktop configuration and received files
 
@@ -117,7 +117,7 @@ satellite windows retain their independent decoration. See the
 
 ## Native application updates
 
-Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences use the same v2 user-data directory as the Desktop profile. Package-manager installations and portable archives retain external update ownership. AppImage self-update remains unsupported. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
+Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences (`AutomaticChecks` and `AutomaticDownloads`) remain owned by the tray process in the same v2 user-data directory as the Desktop profile, and are exposed to the Settings → About view over Desktop role IPC (`status`, `check-updates`, and `set-update-prefs`). Switching the About channel selector to `alpha` requires explicit confirmation before persisting `desktop.update_channel` and triggering a check. Package-manager installations and portable archives retain external update ownership and route About's update check to package-manager or release-page instructions. AppImage self-update remains unsupported. The About view also lazily loads the public sponsor feed (`GET https://www.uniclipboard.app/api/v1/sponsors`) on demand and hides the sponsors section when empty or offline. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
 
 ## Incremental history browsing
 

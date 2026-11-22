@@ -26,6 +26,7 @@ import (
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
 	"github.com/uniclipboard/unic/app/desktop/internal/windowchrome"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -91,6 +92,7 @@ type gui struct {
 	loginEnabled                bool
 	loginError                  string
 	shortcut                    shortcutStatus
+	updates                     desktopui.UpdateStatus
 }
 
 // The E2E build overrides both initial and post-startup window dimensions.

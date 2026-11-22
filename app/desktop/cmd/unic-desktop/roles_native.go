@@ -80,10 +80,34 @@ func runTray(settings *config.Manager) error {
 	if err != nil {
 		return err
 	}
-	if appupdates.PublicKey != "" && appupdates.Owner(program) == "direct" {
+	updateOwner := appupdates.Owner(program)
+	updatesSupported := appupdates.PublicKey != "" && updateOwner == "direct"
+	r.mu.Lock()
+	r.state.Updates = updateStatus{Supported: updatesSupported, Owner: updateOwner}
+	r.mu.Unlock()
+	if updatesSupported {
 		mygo.Updater.SetSource(&desktopUpdateSource{runtime: r, Source: &appupdates.Source{Base: appupdates.FeedBase, Target: runtime.GOOS + "-" + runtime.GOARCH, Key: appupdates.PublicKey, Channel: func() string { return settings.Current().Desktop.UpdateChannel }}})
 		mygo.Use(native.Plugin)
 		checkDesktopUpdates = updater.CheckForUpdates
+		readUpdateStatus := func() updateStatus {
+			return updateStatus{
+				Supported:          true,
+				Owner:              updateOwner,
+				AutoCheckUpdate:    updater.AutomaticChecks(),
+				AutoDownloadUpdate: updater.AutomaticDownloads(),
+				AvailableVersion:   updater.AvailableVersion(),
+			}
+		}
+		r.checkUpdates = updater.CheckForUpdates
+		r.updatePrefs = func(req updatePrefsRequest) updateStatus {
+			if req.AutoCheckUpdate != nil {
+				updater.SetAutomaticChecks(*req.AutoCheckUpdate)
+			}
+			if req.AutoDownloadUpdate != nil {
+				updater.SetAutomaticDownloads(*req.AutoDownloadUpdate)
+			}
+			return readUpdateStatus()
+		}
 	}
 	mygo.App.OnWindowAllClosed(func() {})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancel() })
@@ -164,9 +188,29 @@ func runTray(settings *config.Manager) error {
 				return false, ""
 			}
 		}
+		var stopUpdateChange func()
+		if updatesSupported {
+			syncUpdates := func() {
+				st := updateStatus{
+					Supported:          true,
+					Owner:              updateOwner,
+					AutoCheckUpdate:    updater.AutomaticChecks(),
+					AutoDownloadUpdate: updater.AutomaticDownloads(),
+					AvailableVersion:   updater.AvailableVersion(),
+				}
+				r.mu.Lock()
+				r.state.Updates = st
+				r.mu.Unlock()
+			}
+			syncUpdates()
+			stopUpdateChange = updater.OnChange(syncUpdates)
+		}
 		close(r.nativeReady)
 		updateTray := setupTray(ctx, settings.Current().Desktop)
 		mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+			if stopUpdateChange != nil {
+				stopUpdateChange()
+			}
 			shortcut.Close()
 			if closer, ok := nativePlatform.(interface{ Close() }); ok {
 				closer.Close()

@@ -20,6 +20,24 @@ func NewPreview(data preview.Desktop) *Desktop {
 		inviteCode: data.InviteCode, inviteMode: data.InviteMode,
 		reference: data.Reference, previewImage: data.Image,
 		quick: newPreviewQuick(data.Quick),
+		about: aboutState{
+			version:        "2.0.0",
+			buildNumber:    "1",
+			sponsorsLoaded: true,
+			sponsors:       demoSponsors(),
+		},
+	}
+	if d.options == nil {
+		d.options = map[string]bool{}
+	}
+	if _, ok := d.options["autoCheckUpdate"]; !ok {
+		d.options["autoCheckUpdate"] = true
+	}
+	if d.choices == nil {
+		d.choices = map[string]string{}
+	}
+	if d.choices["updateChannel"] == "" {
+		d.choices["updateChannel"] = "stable"
 	}
 	if len(data.Devices) > 1 {
 		for _, v := range data.Devices {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/plugin"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
@@ -311,14 +312,7 @@ func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
 		d.togglePin()
 	}
 	if d.live != nil && v != nil && !d.live.busy {
-		kind := d.live.items[v.id].Kind
-		var actions []desktopkit.MenuEntry
-		for _, action := range d.live.actions {
-			if slices.Contains(action.Accepts, kind) {
-				actions = append(actions, desktopkit.MenuEntry{ID: action.Key, Label: d.tr(action.Title)})
-			}
-		}
-		if len(actions) > 0 {
+		if actions := d.historyActionsFor(v.id, plugin.ActionPlacementHistoryToolbar, ""); len(actions) > 0 {
 			button, key := k.Menu(c.Key("history-actions"), desktopkit.MenuProps{Label: d.tr("动作"), Icon: desktopkit.IconEdit, IconOnly: true, Variant: desktopkit.Subtle, Items: actions})
 			fit(button)
 			if key != "" {
@@ -495,6 +489,10 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 			d.togglePin()
 		case strings.HasPrefix(cmd, "send:"):
 			d.sendTo(strings.TrimPrefix(cmd, "send:"))
+		case strings.HasPrefix(cmd, "action:"):
+			if len(ids) == 1 {
+				d.runHistoryAction(ids[0], strings.TrimPrefix(cmd, "action:"))
+			}
 		case cmd == "delete":
 			d.requestDelete(ids)
 		}
@@ -505,6 +503,37 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 	if ids, ok := d.list.DeleteRequested(); ok && len(ids) > 0 {
 		d.requestDelete(ids)
 	}
+}
+
+func (d *viewState) actionPluginLabel(pluginID string) string {
+	for _, entry := range builtinPluginEntries {
+		if entry.id == pluginID {
+			return d.tr(entry.name)
+		}
+	}
+	return pluginID
+}
+
+func (d *viewState) historyActionsFor(id, placement, idPrefix string) []desktopkit.MenuEntry {
+	if d.live == nil {
+		return nil
+	}
+	item, ok := d.live.items[id]
+	if !ok {
+		return nil
+	}
+	var actions []desktopkit.MenuEntry
+	for _, action := range d.live.actions {
+		if slices.Contains(action.Accepts, item.Kind) && slices.Contains(action.Placements, placement) {
+			actions = append(actions, desktopkit.MenuEntry{
+				ID:       idPrefix + action.Key,
+				Label:    d.tr(action.Title),
+				Subtitle: d.actionPluginLabel(action.PluginID),
+				Disabled: d.live.busy,
+			})
+		}
+	}
+	return actions
 }
 
 func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
@@ -529,13 +558,27 @@ func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
 		sendChildren[i] = it
 	}
 	sendDisabled := len(ids) != 1 || len(sendChildren) == 0 || sendChildren[0].Disabled
-	return []desktopkit.MenuEntry{
+	entries := []desktopkit.MenuEntry{
 		{ID: "copy", Label: d.tr("复制"), Icon: desktopkit.IconCopy, Disabled: len(ids) != 1},
 		{ID: "pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: len(ids) == 0 || d.live != nil},
 		{ID: "send", Label: d.tr("发送到"), Icon: desktopkit.IconSend, Disabled: sendDisabled, Children: sendChildren},
-		desktopkit.MenuSeparator("sep"),
-		{ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: len(ids) == 0},
 	}
+	if len(ids) == 1 {
+		if actionChildren := d.historyActionsFor(ids[0], plugin.ActionPlacementHistoryItemMenu, "action:"); len(actionChildren) > 0 {
+			entries = append(entries, desktopkit.MenuEntry{
+				ID:       "actions",
+				Label:    d.tr("动作"),
+				Icon:     desktopkit.IconEdit,
+				Disabled: d.live != nil && d.live.busy,
+				Children: actionChildren,
+			})
+		}
+	}
+	entries = append(entries,
+		desktopkit.MenuSeparator("sep"),
+		desktopkit.MenuEntry{ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: len(ids) == 0},
+	)
+	return entries
 }
 
 // sourceApplication shows the stored origin application's identity, independent

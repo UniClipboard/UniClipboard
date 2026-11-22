@@ -123,5 +123,25 @@ func scenarioCompositionContextMenu(t *testing.T) {
 		if got != "copy" {
 			t.Fatalf("chosen = %q", got)
 		}
+
+		// Selecting an item inside a deferred submenu must propagate back to ContextMenu.
+		got = ""
+		if err := tt.RightClick("Row"); err != nil {
+			t.Fatal(err)
+		}
+		sub, ok := tt.AccessByRole(ui.RoleMenuItem, "Merge into")
+		if !ok {
+			t.Fatal("missing Merge into submenu item")
+		}
+		tt.Move(sub.Bounds.X+sub.Bounds.W/2, sub.Bounds.Y+sub.Bounds.H/2)
+		if !tt.HasText("Tag A") {
+			t.Fatalf("submenu did not open: %v", tt.Texts())
+		}
+		if err := tt.Click("Tag A"); err != nil {
+			t.Fatal(err)
+		}
+		if got != "tagA" {
+			t.Fatalf("submenu chosen = %q, want tagA", got)
+		}
 	})
 }

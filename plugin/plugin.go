@@ -65,13 +65,34 @@ type Spec struct {
 	RemoteRevocation bool
 }
 
+// Action placements declare where a host may expose a user-invoked action.
+// Hosts render the placements they support and ignore unsupported ones.
+const (
+	ActionPlacementHistoryItemMenu = "history.item_menu"
+	ActionPlacementHistoryToolbar  = "history.toolbar"
+	ActionPlacementQuickPanel      = "quick_panel"
+)
+
+// Action post-actions declare bounded host follow-up behavior after an action
+// commits its new history item. ActionPostNone is mutually exclusive with the
+// other values.
+const (
+	ActionPostCopy    = "copy"
+	ActionPostNotify  = "notify"
+	ActionPostPresent = "present"
+	ActionPostSelect  = "select"
+	ActionPostNone    = "none"
+)
+
 // ActionSpec declares one user-invoked action. Its key outside the plugin is
 // Spec.ID + "/" + ID.
 type ActionSpec struct {
-	ID        string
-	Title     string
-	Accepts   []string // text, image, files
-	TimeoutMS int64    `json:"timeout_ms,omitempty" toml:"timeout_ms"` // zero: 10s; maximum: 300000
+	ID          string   `json:"id" toml:"id"`
+	Title       string   `json:"title" toml:"title"`
+	Accepts     []string `json:"accepts" toml:"accepts"`                 // text, image, files
+	Placements  []string `json:"placements" toml:"placements"`           // required non-empty unique subset of ActionPlacement*
+	PostActions []string `json:"post_actions" toml:"post_actions"`       // required non-empty unique subset of ActionPost* ("none" exclusive)
+	TimeoutMS   int64    `json:"timeout_ms,omitempty" toml:"timeout_ms"` // zero: 10s; maximum: 300000
 }
 
 // Config holds plugin-specific settings as JSON values.

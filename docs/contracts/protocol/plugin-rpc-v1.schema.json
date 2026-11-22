@@ -81,6 +81,34 @@
                 "maxItems": 3,
                 "uniqueItems": true
               },
+              "placements": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "history.item_menu",
+                    "history.toolbar",
+                    "quick_panel"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 3,
+                "uniqueItems": true
+              },
+              "post_actions": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "copy",
+                    "notify",
+                    "present",
+                    "select",
+                    "none"
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 4,
+                "uniqueItems": true
+              },
               "timeout_ms": {
                 "type": "integer",
                 "minimum": 0,
@@ -90,7 +118,9 @@
             "required": [
               "id",
               "title",
-              "accepts"
+              "accepts",
+              "placements",
+              "post_actions"
             ],
             "additionalProperties": false
           }

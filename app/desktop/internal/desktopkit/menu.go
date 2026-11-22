@@ -5,7 +5,9 @@ import "github.com/egoist/mygo/ui"
 type MenuEntry struct {
 	ID    string // stable id; returned when the entry is chosen
 	Label string
-	Icon  IconName
+	// Subtitle is optional secondary caption text shown below Label in smaller muted type.
+	Subtitle string
+	Icon     IconName
 	// Shortcut is a display-only hint.
 	Shortcut    string
 	Destructive bool
@@ -67,7 +69,7 @@ func (k Kit) Menu(c *ui.Context, p MenuProps) (trigger ui.Element, chosen string
 	k.menuTrigger(c, trigger, p)
 	m.Popup(func(panel ui.Element) {
 		k.popupSurface(panel)
-		chosen = k.MenuEntries(c, m, p.Items)
+		k.menuEntriesInto(c, m, p.Items, &chosen)
 	})
 	return trigger, chosen
 }
@@ -83,12 +85,19 @@ func (k Kit) ContextMenu(c *ui.Context, p ContextMenuProps, body func()) (chosen
 	m := ui.ContextMenuBase(c, area, open)
 	m.Popup(func(panel ui.Element) {
 		k.popupSurface(panel)
-		chosen = k.MenuEntries(c, m, p.Items)
+		k.menuEntriesInto(c, m, p.Items, &chosen)
 	})
 	return chosen
 }
 
 func (k Kit) MenuEntries(c *ui.Context, m ui.MenuParts, items []MenuEntry) (chosen string) {
+	k.menuEntriesInto(c, m, items, &chosen)
+	return chosen
+}
+
+// menuEntriesInto writes the chosen entry ID into out, including selections
+// from deferred submenu panels executed after the root panel returns.
+func (k Kit) menuEntriesInto(c *ui.Context, m ui.MenuParts, items []MenuEntry, out *string) {
 	prim, _, tert := k.fgTone()
 	gutter := false
 	anyChecked := false
@@ -116,7 +125,7 @@ func (k Kit) MenuEntries(c *ui.Context, m ui.MenuParts, items []MenuEntry) (chos
 		default:
 			item = m.Item()
 		}
-		k.menuRowStyle(item)
+		k.menuRowStyle(item, e.Subtitle != "")
 		col, hi := prim, k.hoverFill()
 		switch {
 		case e.Disabled:
@@ -144,7 +153,14 @@ func (k Kit) MenuEntries(c *ui.Context, m ui.MenuParts, items []MenuEntry) (chos
 					}
 				})
 			}
-			ui.Text(c, e.Label).Grow(1).FontSize(k.menuFont())
+			if e.Subtitle != "" {
+				ui.Column(c).Grow(1).Gap(1).Children(func() {
+					ui.Text(c, e.Label).FontSize(k.menuFont()).SingleLine()
+					ui.Text(c, e.Subtitle).FontSize(11).TextColor(tert).SingleLine()
+				})
+			} else {
+				ui.Text(c, e.Label).Grow(1).FontSize(k.menuFont())
+			}
 			if e.Count != "" {
 				ui.Text(c, e.Count).FontSize(k.menuFont() - 1).Opacity(.6)
 			}
@@ -156,19 +172,17 @@ func (k Kit) MenuEntries(c *ui.Context, m ui.MenuParts, items []MenuEntry) (chos
 			}
 		})
 		if len(e.Children) > 0 {
+			children := e.Children
 			m.Submenu(item, func(panel ui.Element) {
 				k.popupSurface(panel)
-				if id := k.MenuEntries(c, m, e.Children); id != "" {
-					chosen = id
-				}
+				k.menuEntriesInto(c, m, children, out)
 			})
 			continue
 		}
 		if item.Clicked() && !e.Disabled {
-			chosen = e.ID
+			*out = e.ID
 		}
 	}
-	return chosen
 }
 
 func (k Kit) menuFont() float32 {
@@ -178,9 +192,10 @@ func (k Kit) menuFont() float32 {
 	return 14
 }
 
-func (k Kit) menuRowStyle(item ui.Element) {
-	{
-
+func (k Kit) menuRowStyle(item ui.Element, hasSubtitle bool) {
+	if hasSubtitle {
+		item.MinHeight(42).Padding(6, 12).Radius(6).Gap(10)
+	} else {
 		item.Height(32).Padding(0, 12).Radius(6).Gap(10)
 	}
 

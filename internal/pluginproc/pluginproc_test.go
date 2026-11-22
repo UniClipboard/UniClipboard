@@ -25,9 +25,9 @@ func helperSpec() plugin.Spec {
 	return plugin.Spec{ID: "example.helper", Version: "1.0.0", APIVersion: 1,
 		Capabilities: []string{plugin.CapProcessor, plugin.CapAction, plugin.CapObserver},
 		Actions: []plugin.ActionSpec{
-			{ID: "upper", Title: "Upper", Accepts: []string{"text"}},
-			{ID: "big", Title: "Big", Accepts: []string{"text"}},
-			{ID: "none", Title: "None", Accepts: []string{"text"}},
+			{ID: "upper", Title: "Upper", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
+			{ID: "big", Title: "Big", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
+			{ID: "none", Title: "None", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostNone}},
 		}}
 }
 

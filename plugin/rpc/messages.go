@@ -54,10 +54,12 @@ func Negotiate(a, b Limits) Limits {
 
 // ActionSpec is the wire form of a declared action.
 type ActionSpec struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Accepts   []string `json:"accepts"`
-	TimeoutMS int64    `json:"timeout_ms,omitempty"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Accepts     []string `json:"accepts"`
+	Placements  []string `json:"placements"`
+	PostActions []string `json:"post_actions"`
+	TimeoutMS   int64    `json:"timeout_ms,omitempty"`
 }
 
 // Spec is the wire form of a plugin description.
@@ -86,7 +88,7 @@ func (s Spec) Equal(o Spec) bool {
 	}
 	for i, a := range s.Actions {
 		b := o.Actions[i]
-		if a.ID != b.ID || a.Title != b.Title || a.TimeoutMS != b.TimeoutMS || !slices.Equal(a.Accepts, b.Accepts) {
+		if a.ID != b.ID || a.Title != b.Title || a.TimeoutMS != b.TimeoutMS || !slices.Equal(a.Accepts, b.Accepts) || !slices.Equal(a.Placements, b.Placements) || !slices.Equal(a.PostActions, b.PostActions) {
 			return false
 		}
 	}

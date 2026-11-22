@@ -642,6 +642,8 @@ func (k Kit) listContextMenu(c *ui.Context, e ui.Element, s *ListState, items fu
 	if !s.menuOpen {
 		s.menuTarget = nil
 	}
+	var chosen string
+	var chosenIDs []string
 	m.Popup(func(panel ui.Element) {
 		ids := s.menuTarget
 		if len(ids) == 0 {
@@ -650,11 +652,13 @@ func (k Kit) listContextMenu(c *ui.Context, e ui.Element, s *ListState, items fu
 		if len(ids) == 0 {
 			return
 		}
+		chosenIDs = ids
 		k.popupSurface(panel)
-		if chosen := k.MenuEntries(c, m, items(ids)); chosen != "" {
-			s.menuPick, s.menuIDs, s.menuB = chosen, ids, true
-		}
+		k.menuEntriesInto(c, m, items(ids), &chosen)
 	})
+	if chosen != "" {
+		s.menuPick, s.menuIDs, s.menuB = chosen, chosenIDs, true
+	}
 }
 
 // scrubPlaceholders 撤销落在占位行（窗口外）的选择，并把它转成翻页请求。

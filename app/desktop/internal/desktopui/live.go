@@ -24,6 +24,7 @@ import (
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
+	"github.com/uniclipboard/unic/plugin"
 	"github.com/uniclipboard/unic/sourceapp"
 )
 
@@ -96,6 +97,8 @@ type liveState struct {
 
 	ctx                                          context.Context
 	cancel                                       context.CancelFunc
+	actionCancel                                 context.CancelFunc
+	pendingSelectID                              string
 	client                                       *api.Client
 	jobs                                         chan func(context.Context) func()
 	results                                      chan func()
@@ -548,6 +551,14 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						}
 					}
 					l.cursor = page.NextCursor
+					if l.pendingSelectID != "" {
+						if slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == l.pendingSelectID }) {
+							d.selectEntry(l.pendingSelectID)
+							d.detailOpen, d.inspector = true, true
+							d.list.ScrollTo(l.pendingSelectID)
+						}
+						l.pendingSelectID = ""
+					}
 				}
 				l.connected = true
 				l.config = saved
@@ -1284,17 +1295,195 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 	return v
 }
 
+func (d *viewState) findLiveAction(key string) (api.Action, bool) {
+	if d.live == nil {
+		return api.Action{}, false
+	}
+	for _, a := range d.live.actions {
+		if a.Key == key {
+			return a, true
+		}
+	}
+	return api.Action{}, false
+}
+
 func (d *viewState) runHistoryAction(id, key string) {
-	client := d.live.client
-	request := api.ActionInput{RequestID: "desktop-" + newRequestID(), Apply: true, CancelOnContext: true}
-	d.mutateWithin(func(ctx context.Context) error {
-		result, err := client.ExecuteAction(ctx, id, key, request)
-		if err != nil {
-			return err
+	l := d.live
+	if l == nil || l.busy {
+		return
+	}
+	act, ok := d.findLiveAction(key)
+	if !ok {
+		act = api.Action{Key: key, Title: key, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}}
+	}
+	wantCopy := slices.Contains(act.PostActions, plugin.ActionPostCopy)
+	wantNotify := slices.Contains(act.PostActions, plugin.ActionPostNotify)
+	wantPresent := slices.Contains(act.PostActions, plugin.ActionPostPresent)
+	wantSelect := slices.Contains(act.PostActions, plugin.ActionPostSelect)
+
+	title := d.tr(act.Title)
+	pluginLabel := d.actionPluginLabel(act.PluginID)
+	client := l.client
+	selected := d.selected
+	request := api.ActionInput{
+		RequestID:       "desktop-" + newRequestID(),
+		Apply:           wantCopy,
+		CancelOnContext: true,
+	}
+
+	l.invalidateSearch()
+	l.busy = true
+	l.message = ""
+	d.notice = "正在处理…"
+	d.actionToast = actionToastState{
+		visible: true,
+		running: true,
+		title:   title,
+		message: fmt.Sprintf(d.tr("正在执行「%s」…"), title),
+		tone:    desktopkit.ToneInfo,
+	}
+	actionCtx, actionCancel := context.WithCancel(l.ctx)
+	l.actionCancel = actionCancel
+
+	const presentMaxBytes = 64 << 10
+	queued := l.enqueueWithin(func(ctx context.Context) func() {
+		callCtx, stopCancel := context.WithCancel(ctx)
+		stopLink := context.AfterFunc(actionCtx, stopCancel)
+		defer func() {
+			stopLink()
+			stopCancel()
+		}()
+
+		result, err := client.ExecuteAction(callCtx, id, key, request)
+		var resultText string
+		var truncated bool
+		if err == nil && wantPresent && result.Item.ID != "" {
+			if rc, cerr := client.HistoryContent(callCtx, result.Item.ID, 0); cerr == nil {
+				raw, rerr := io.ReadAll(io.LimitReader(rc, presentMaxBytes+1))
+				_ = rc.Close()
+				if rerr == nil {
+					if len(raw) > presentMaxBytes {
+						raw = raw[:presentMaxBytes]
+						truncated = true
+					}
+					resultText = strings.ToValidUTF8(string(raw), "")
+				}
+			}
 		}
-		if !result.Applied {
-			return &api.Error{Reason: "action_apply_failed", Message: "action saved to history"}
+
+		return func() {
+			cancelledByUser := actionCtx.Err() != nil && l.ctx.Err() == nil
+			actionCancel()
+			l.actionCancel = nil
+			l.busy = false
+			l.nextRefresh = time.Time{}
+
+			if err != nil {
+				if cancelledByUser {
+					l.message = ""
+					d.notice = ""
+					if wantNotify {
+						d.actionToast = actionToastState{
+							visible:   true,
+							title:     title,
+							message:   fmt.Sprintf(d.tr("已取消「%s」"), title),
+							tone:      desktopkit.ToneWarning,
+							expiresAt: time.Now().Add(3 * time.Second),
+						}
+					} else {
+						d.actionToast = actionToastState{}
+					}
+					return
+				}
+				l.message = liveErrorMessage(err)
+				d.notice = "操作失败"
+				d.actionToast = actionToastState{
+					visible:   true,
+					title:     title,
+					message:   fmt.Sprintf(d.tr("「%s」执行失败"), title),
+					tone:      desktopkit.ToneError,
+					expiresAt: time.Now().Add(4 * time.Second),
+				}
+				return
+			}
+
+			applyFailed := wantCopy && !result.Applied
+			if wantSelect && result.Item.ID != "" {
+				d.focusHistoryItem(result.Item.ID)
+			}
+
+			if wantPresent {
+				d.actionToast = actionToastState{}
+				if applyFailed {
+					l.message = ""
+					d.notice = ""
+				} else if wantCopy {
+					l.message = ""
+					d.notice = "已复制"
+				} else {
+					l.message = ""
+					d.notice = ""
+				}
+				d.actionResult = actionResultState{
+					open:        true,
+					title:       title,
+					plugin:      pluginLabel,
+					historyID:   result.Item.ID,
+					text:        resultText,
+					url:         validHTTPURL(resultText),
+					copied:      wantCopy && result.Applied,
+					applyFailed: applyFailed,
+					truncated:   truncated,
+				}
+				if d.selected != selected && !wantSelect {
+					d.notice = ""
+				}
+				return
+			}
+
+			if applyFailed {
+				l.message = liveErrorMessage(&api.Error{Reason: "action_apply_failed", Message: "action saved to history"})
+				d.notice = "操作失败"
+				d.actionToast = actionToastState{
+					visible:   true,
+					title:     title,
+					message:   d.tr("已保存到历史，但未能写入剪贴板。"),
+					tone:      desktopkit.ToneWarning,
+					expiresAt: time.Now().Add(4 * time.Second),
+				}
+				return
+			}
+
+			l.message = ""
+			if wantCopy {
+				d.notice = "已复制"
+			} else {
+				d.notice = ""
+			}
+			if d.selected != selected && !wantSelect {
+				d.notice = ""
+			}
+			if wantNotify {
+				msg := fmt.Sprintf(d.tr("已完成「%s」"), title)
+				if wantCopy {
+					msg = fmt.Sprintf(d.tr("已完成「%s」· 已复制"), title)
+				}
+				d.actionToast = actionToastState{
+					visible:   true,
+					title:     title,
+					message:   msg,
+					tone:      desktopkit.ToneSuccess,
+					expiresAt: time.Now().Add(4 * time.Second),
+				}
+			} else {
+				d.actionToast = actionToastState{}
+			}
 		}
-		return nil
-	}, "已复制", 5*time.Minute+30*time.Second)
+	}, 5*time.Minute+30*time.Second)
+	if !queued {
+		actionCancel()
+		l.actionCancel = nil
+		l.busy = false
+		d.actionToast = actionToastState{}
+	}
 }

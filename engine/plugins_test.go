@@ -19,7 +19,9 @@ func TestBuiltinPluginTagsAndRunsActions(t *testing.T) {
 		t.Fatalf("%v %v", it.Tags, err)
 	}
 	list, err := n.e.ListActions(bg)
-	if err != nil || len(list) != 4 || list[0].Key != "builtin.text/lower" {
+	wantPlacements := []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}
+	wantPostActions := []string{plugin.ActionPostCopy, plugin.ActionPostNotify}
+	if err != nil || len(list) != 4 || list[0].Key != "builtin.text/lower" || !slices.Equal(list[0].Placements, wantPlacements) || !slices.Equal(list[0].PostActions, wantPostActions) {
 		t.Fatalf("%+v %v", list, err)
 	}
 	a, err := n.e.RunAction(bg, RunActionRequest{RequestID: "a", Key: "builtin.text/upper", HistoryID: r.HistoryID})
@@ -54,19 +56,42 @@ type fakeProcessor struct{ fakePlugin }
 
 func (fakeProcessor) Process(context.Context, plugin.ProcessContext) error { return nil }
 
+type fakeActor struct{ fakePlugin }
+
+func (fakeActor) Run(context.Context, plugin.ActionContext) error { return nil }
+
 func TestPluginsAreValidatedAndUnwoundOnFailure(t *testing.T) {
 	good := func(id string, closed *[]string) PluginInstance {
 		return PluginInstance{Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: id, Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapProcessor}}, closed: closed}}}
 	}
+	badAction := func(closed *[]string, placements, postActions []string) PluginInstance {
+		return PluginInstance{Plugin: fakeActor{fakePlugin{spec: plugin.Spec{
+			ID: "x.act", Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapAction},
+			Actions: []plugin.ActionSpec{{ID: "do", Title: "Do", Accepts: []string{"text"}, Placements: placements, PostActions: postActions}},
+		}, closed: closed}}}
+	}
+	okPlaces := []string{plugin.ActionPlacementHistoryItemMenu}
+	okPosts := []string{plugin.ActionPostCopy}
 	var closed []string
 	bad := map[string]PluginInstance{
-		"reserved":   good("builtin.tailcat", &closed),
-		"bad id":     good("Fake", &closed),
-		"api":        {Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 2, Capabilities: []string{plugin.CapProcessor}}, closed: &closed}}},
-		"no impl":    {Plugin: fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapProcessor}}, closed: &closed}},
-		"capability": {Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 1, Capabilities: []string{"observer"}}, closed: &closed}}},
-		"init":       {Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapProcessor}}, initErr: errors.New("secret body"), closed: &closed}}},
-		"event":      {Plugin: good("x.y", &closed).Plugin, Events: []string{"clipboard.pasted"}},
+		"reserved":              good("builtin.tailcat", &closed),
+		"bad id":                good("Fake", &closed),
+		"api":                   {Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 2, Capabilities: []string{plugin.CapProcessor}}, closed: &closed}}},
+		"no impl":               {Plugin: fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapProcessor}}, closed: &closed}},
+		"capability":            {Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 1, Capabilities: []string{"observer"}}, closed: &closed}}},
+		"init":                  {Plugin: fakeProcessor{fakePlugin{spec: plugin.Spec{ID: "x.y", Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapProcessor}}, initErr: errors.New("secret body"), closed: &closed}}},
+		"event":                 {Plugin: good("x.y", &closed).Plugin, Events: []string{"clipboard.pasted"}},
+		"missing placements":    badAction(&closed, nil, okPosts),
+		"empty placements":      badAction(&closed, []string{}, okPosts),
+		"unknown placement":     badAction(&closed, []string{"history.unknown"}, okPosts),
+		"repeated placement":    badAction(&closed, []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryItemMenu}, okPosts),
+		"too many placements":   badAction(&closed, []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar, plugin.ActionPlacementQuickPanel, plugin.ActionPlacementQuickPanel}, okPosts),
+		"missing post actions":  badAction(&closed, okPlaces, nil),
+		"empty post actions":    badAction(&closed, okPlaces, []string{}),
+		"unknown post action":   badAction(&closed, okPlaces, []string{"open_url"}),
+		"repeated post action":  badAction(&closed, okPlaces, []string{plugin.ActionPostCopy, plugin.ActionPostCopy}),
+		"none with other post":  badAction(&closed, okPlaces, []string{plugin.ActionPostNone, plugin.ActionPostCopy}),
+		"too many post actions": badAction(&closed, okPlaces, []string{plugin.ActionPostCopy, plugin.ActionPostNotify, plugin.ActionPostPresent, plugin.ActionPostSelect, plugin.ActionPostNone}),
 	}
 	for name, in := range bad {
 		closed = nil

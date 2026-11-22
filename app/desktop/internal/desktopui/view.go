@@ -165,6 +165,9 @@ type viewState struct {
 	retryQuickShortcut                                                    func()
 	live                                                                  *liveState
 	tagEditor                                                             tagEditorState
+	actionResult                                                          actionResultState
+	actionToast                                                           actionToastState
+	openURL                                                               func(string) error
 	openQuickPanel                                                        func()
 	quick                                                                 *quickPanelState
 	tags                                                                  []historyTag
@@ -215,7 +218,7 @@ func (d *viewState) view(c *ui.Context) {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.tagsOpen && !d.tagEditor.open && d.deviceTask == "" && d.confirm == "" {
+		if !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" {
 			if d.page == "history" {
 				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
 				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
@@ -244,7 +247,9 @@ func (d *viewState) view(c *ui.Context) {
 		}
 		d.deviceTaskSheet(c.Key("devices"), k)
 		d.tagSheet(c.Key("tags"), k)
+		d.actionResultDialog(c.Key("action-result"), k)
 		d.confirmDialog(c.Key("confirm"), k)
+		d.actionToastOverlay(c.Key("action-toast"), k)
 	})
 }
 

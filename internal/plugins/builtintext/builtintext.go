@@ -33,10 +33,10 @@ func (*Plugin) Spec() plugin.Spec {
 		ID: ID, Version: "1.0.0", APIVersion: 1,
 		Capabilities: []string{plugin.CapProcessor, plugin.CapAction},
 		Actions: []plugin.ActionSpec{
-			{ID: "upper", Title: "转大写", Accepts: []string{"text"}},
-			{ID: "lower", Title: "转小写", Accepts: []string{"text"}},
-			{ID: "trim", Title: "去除首尾空白", Accepts: []string{"text"}},
-			{ID: "plain", Title: "纯文本", Accepts: []string{"text"}},
+			{ID: "upper", Title: "转大写", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
+			{ID: "lower", Title: "转小写", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
+			{ID: "trim", Title: "去除首尾空白", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
+			{ID: "plain", Title: "纯文本", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
 		},
 	}
 }

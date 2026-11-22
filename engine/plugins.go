@@ -330,6 +330,10 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 			return invalidPlugin(s.ID, "action timeout is outside 0..300000ms")
 		case len(a.Accepts) == 0 || len(a.Accepts) > 3:
 			return invalidPlugin(s.ID, "invalid action input types")
+		case len(a.Placements) == 0 || len(a.Placements) > 3:
+			return invalidPlugin(s.ID, "invalid action placements")
+		case len(a.PostActions) == 0 || len(a.PostActions) > 4:
+			return invalidPlugin(s.ID, "invalid action post actions")
 		}
 		seenKinds := map[string]bool{}
 		for _, kind := range a.Accepts {
@@ -337,6 +341,33 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 				return invalidPlugin(s.ID, "invalid or repeated action input type")
 			}
 			seenKinds[kind] = true
+		}
+		seenPlacements := map[string]bool{}
+		for _, placement := range a.Placements {
+			switch placement {
+			case plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar, plugin.ActionPlacementQuickPanel:
+			default:
+				return invalidPlugin(s.ID, "invalid action placement")
+			}
+			if seenPlacements[placement] {
+				return invalidPlugin(s.ID, "repeated action placement")
+			}
+			seenPlacements[placement] = true
+		}
+		seenPost := map[string]bool{}
+		for _, post := range a.PostActions {
+			switch post {
+			case plugin.ActionPostCopy, plugin.ActionPostNotify, plugin.ActionPostPresent, plugin.ActionPostSelect, plugin.ActionPostNone:
+			default:
+				return invalidPlugin(s.ID, "invalid action post action")
+			}
+			if seenPost[post] {
+				return invalidPlugin(s.ID, "repeated action post action")
+			}
+			seenPost[post] = true
+		}
+		if seenPost[plugin.ActionPostNone] && len(a.PostActions) != 1 {
+			return invalidPlugin(s.ID, "post action none cannot be combined with other post actions")
 		}
 		ids[a.ID] = true
 	}
@@ -388,7 +419,7 @@ func (e *Engine) registerPlugin(in PluginInstance, spec plugin.Spec) {
 	if a, ok := in.Plugin.(plugin.Actor); ok {
 		ap := newActionPlugin(PluginID(spec.ID))
 		for _, as := range spec.Actions {
-			e.actions = append(e.actions, &pipelineAction{plugin: ap, id: as.ID, title: as.Title, accepts: slices.Clone(as.Accepts), timeout: time.Duration(as.TimeoutMS) * time.Millisecond,
+			e.actions = append(e.actions, &pipelineAction{plugin: ap, id: as.ID, title: as.Title, accepts: slices.Clone(as.Accepts), placements: slices.Clone(as.Placements), postActions: slices.Clone(as.PostActions), timeout: time.Duration(as.TimeoutMS) * time.Millisecond,
 				run: func(ctx context.Context, c *actionContext) error { return a.Run(ctx, actionView{c, as.ID}) }})
 		}
 	}

@@ -1,9 +1,14 @@
 package desktopui
 
 import (
+	"context"
 	"image/png"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +16,7 @@ import (
 
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 func TestGridA1AndGlobalDrawerD1a(t *testing.T) {
@@ -441,6 +447,177 @@ func TestHistoryItemContextMenu(t *testing.T) {
 			}
 			if d.confirm == "" {
 				t.Fatal("context menu delete did not open confirmation dialog")
+			}
+		})
+	}
+}
+
+func TestHistoryItemContextMenuPluginActions(t *testing.T) {
+	dir, err := os.MkdirTemp("", "unic-ctx-action-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	socket := filepath.Join(dir, "s")
+	ln, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := make(chan string, 4)
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/history/") && strings.Contains(r.URL.Path, "/actions/") {
+			called <- r.URL.Path
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"applied":true}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})}
+	defer func() { _ = srv.Close() }()
+	go func() { _ = srv.Serve(ln) }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	live := &liveState{
+		ctx:         ctx,
+		client:      api.NewClient(socket),
+		jobs:        make(chan func(context.Context) func(), 4),
+		results:     make(chan func(), 4),
+		details:     map[string]entry{},
+		detailReads: map[string]*detailRead{},
+		items: map[string]api.HistoryItem{
+			"note":  {ID: "note", Kind: "text"},
+			"code":  {ID: "code", Kind: "text"},
+			"photo": {ID: "photo", Kind: "image"},
+			"dir":   {ID: "dir", Kind: "directory"},
+		},
+		actions: []api.Action{
+			{Key: "builtin.text/upper", PluginID: "builtin.text", Title: "转大写", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
+			{Key: "example.toolbar/only", PluginID: "example.toolbar", Title: "仅工具栏", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
+			{Key: "example.qp/only", PluginID: "example.qp", Title: "仅快捷面板", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementQuickPanel}, PostActions: []string{plugin.ActionPostCopy}},
+			{Key: "unic.wenshushu/share", PluginID: "unic.wenshushu", Title: "临时分享", Accepts: []string{"text", "image", "files"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostPresent}},
+		},
+	}
+	go live.work()
+
+	d := newDemo("history", "light")
+	d.live = live
+
+	// 1. Single text item: only text + history.item_menu actions appear inside the "动作" submenu.
+	textMenu := d.historyItemMenu([]string{"note"})
+	if len(textMenu) != 6 || textMenu[3].ID != "actions" || textMenu[3].Label != "动作" {
+		t.Fatalf("expected actions submenu at index 3, got %+v", textMenu)
+	}
+	var gotIDs []string
+	for _, ch := range textMenu[3].Children {
+		gotIDs = append(gotIDs, ch.ID)
+	}
+	wantIDs := []string{"action:builtin.text/upper", "action:unic.wenshushu/share"}
+	if !slices.Equal(gotIDs, wantIDs) {
+		t.Fatalf("text submenu actions = %v, want %v", gotIDs, wantIDs)
+	}
+	if textMenu[3].Children[0].Subtitle != "文本工具" || textMenu[3].Children[1].Subtitle != "unic.wenshushu" {
+		t.Fatalf("unexpected plugin subtitles: %+v", textMenu[3].Children)
+	}
+
+	// 2. Toolbar filtering respects history.toolbar placement.
+	toolbarEntries := d.historyActionsFor("note", plugin.ActionPlacementHistoryToolbar, "")
+	var toolbarIDs []string
+	for _, it := range toolbarEntries {
+		toolbarIDs = append(toolbarIDs, it.ID)
+	}
+	wantToolbar := []string{"builtin.text/upper", "example.toolbar/only"}
+	if !slices.Equal(toolbarIDs, wantToolbar) {
+		t.Fatalf("toolbar actions = %v, want %v", toolbarIDs, wantToolbar)
+	}
+
+	// 3. Single image item: shows image-accepting item_menu action only.
+	imgMenu := d.historyItemMenu([]string{"photo"})
+	if len(imgMenu) != 6 || imgMenu[3].ID != "actions" || len(imgMenu[3].Children) != 1 || imgMenu[3].Children[0].ID != "action:unic.wenshushu/share" {
+		t.Fatalf("unexpected image menu: %+v", imgMenu)
+	}
+
+	// 4. Directory item with no matching actions: hides "动作" submenu.
+	dirMenu := d.historyItemMenu([]string{"dir"})
+	if len(dirMenu) != 5 {
+		t.Fatalf("expected actions submenu hidden for unmatched kind, got %+v", dirMenu)
+	}
+
+	// 5. Multi-selection: hides "动作" submenu.
+	multiMenu := d.historyItemMenu([]string{"note", "code"})
+	if len(multiMenu) != 5 {
+		t.Fatalf("expected actions submenu hidden for multi-selection, got %+v", multiMenu)
+	}
+
+	// 6. Busy state disables the submenu and its children.
+	live.busy = true
+	busyMenu := d.historyItemMenu([]string{"note"})
+	if len(busyMenu) != 6 || !busyMenu[3].Disabled || !busyMenu[3].Children[0].Disabled {
+		t.Fatalf("expected busy actions submenu disabled, got %+v", busyMenu)
+	}
+	live.busy = false
+
+	// 7. End-to-end BoardUI right-click -> submenu -> click executes the action on the item.
+	snapDir := os.Getenv("UNIC_GRID_SNAP_DIR")
+	for _, layout := range []string{"list", "grid"} {
+		t.Run(layout, func(t *testing.T) {
+			d := newDemo("history", "dark")
+			d.layout = layout
+			live.key = d.liveQueryKey()
+			live.nextRefresh = time.Now().Add(time.Hour)
+			live.catalogueKey = `["","",0]`
+			live.message = ""
+			live.readError = ""
+			d.live = live
+			tt := ui.NewTesterWith(d.view, 1180, 760, ui.TesterOptions{Dark: true})
+			tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+			if snapDir != "" {
+				tt.SetScale(2)
+			}
+			target, ok := tt.AccessByRole(ui.RoleListItem, "HTTP 服务示例")
+			if !ok {
+				t.Fatal("missing HTTP 服务示例 item")
+			}
+			tt.RightClickAt(target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2)
+			tt.Advance(200 * time.Millisecond)
+			sub, ok := tt.AccessByRole(ui.RoleMenuItem, "动作")
+			if !ok {
+				t.Fatalf("context menu missing 动作 submenu item for %s layout", layout)
+			}
+			tt.Move(sub.Bounds.X+sub.Bounds.W/2, sub.Bounds.Y+sub.Bounds.H/2)
+			tt.Advance(200 * time.Millisecond)
+			if !tt.HasText("转大写") || !tt.HasText("文本工具") || !tt.HasText("临时分享") || !tt.HasText("unic.wenshushu") || tt.HasText("仅工具栏") || tt.HasText("仅快捷面板") {
+				t.Fatalf("unexpected submenu items for %s layout: %v", layout, tt.Texts())
+			}
+			if snapDir != "" {
+				if err := os.MkdirAll(snapDir, 0755); err == nil {
+					if f, err := os.Create(filepath.Join(snapDir, "ctxmenu-actions-"+layout+"-dark.png")); err == nil {
+						_ = png.Encode(f, tt.Image())
+						_ = f.Close()
+					}
+				}
+			}
+			if err := tt.Click("转大写"); err != nil {
+				t.Fatalf("click action in submenu: %v", err)
+			}
+			select {
+			case path := <-called:
+				if path != "/v1/history/code/actions/builtin.text/upper" {
+					t.Fatalf("unexpected action path: %s", path)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("action endpoint was not called")
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for live.busy && time.Now().Before(deadline) {
+				select {
+				case apply := <-live.results:
+					apply()
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			if live.busy || d.notice != "已复制" {
+				t.Fatalf("action did not complete cleanly: busy=%v notice=%q msg=%q", live.busy, d.notice, live.message)
 			}
 		})
 	}

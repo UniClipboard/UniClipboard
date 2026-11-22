@@ -133,7 +133,7 @@ func (n *Node) Actions(ctx context.Context) ([]api.Action, error) {
 	}
 	out := make([]api.Action, 0, len(list))
 	for _, a := range list {
-		out = append(out, api.Action{Key: a.Key, PluginID: string(a.PluginID), Title: a.Title, Accepts: a.Accepts})
+		out = append(out, api.Action{Key: a.Key, PluginID: string(a.PluginID), Title: a.Title, Accepts: a.Accepts, Placements: a.Placements, PostActions: a.PostActions})
 	}
 	return out, nil
 }

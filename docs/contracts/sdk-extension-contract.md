@@ -52,6 +52,8 @@ type ActionSpec struct {
     ID string
     Title string
     Accepts []string
+    Placements []string // required non-empty unique subset of {history.item_menu, history.toolbar, quick_panel}
+    PostActions []string // required non-empty unique subset of {copy, notify, present, select, none} ("none" exclusive)
 }
 type ActionInfo struct {
     Key string // pluginID/actionID
@@ -59,6 +61,8 @@ type ActionInfo struct {
     ID string
     Title string
     Accepts []string
+    Placements []string
+    PostActions []string
 }
 type RunActionRequest struct {
     CancelOnContext bool

@@ -133,9 +133,12 @@ rooted at the Action, not at the short-lived child call. Source readers close on
 Action completion, cancellation and session shutdown. Mid-stream source failure
 closes the session; it cannot produce a successful Action result.
 
-Handshake Action declarations include optional integer `timeout_ms` in
-0..300000. Zero means 10 seconds. The selected Action deadline also bounds the
-Engine and proxy. General RPC maximum request duration remains 300000ms.
+Handshake Action declarations require non-empty unique `placements` from
+`{history.item_menu, history.toolbar, quick_panel}`, non-empty unique
+`post_actions` from `{copy, notify, present, select, none}` (`none` exclusive),
+and include optional integer `timeout_ms` in 0..300000. Zero means 10 seconds.
+The selected Action deadline also bounds the Engine and proxy. General RPC
+maximum request duration remains 300000ms.
 
 ### Early release of an Action source part
 

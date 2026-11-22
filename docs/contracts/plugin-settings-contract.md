@@ -2,6 +2,8 @@
 
 The service implements manifest discovery, Schema validation, revision-checked settings, write-only fields, and Lua replacement. Desktop renders the portable profile with mygo and the UI Kit. The built-in management pages expose host policy. See the [desktop architecture](../architecture/desktop-runtime.md#external-plugin-settings).
 
+The selected target for runtime discovery, activation results, secret operations and generic management steps is defined in the [sync integration contract](sync-integration-contract.md). That extension is not implemented; the existing schema subset below remains unchanged.
+
 ## 1. 格式与支持范围
 
 根必须有：

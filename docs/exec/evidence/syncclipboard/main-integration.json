@@ -1,0 +1,55 @@
+{
+  "base_commit": "e2cb68d46a9df999b03436bf9fbeac62a55683e5",
+  "marketplace": {
+    "passed": true,
+    "plugin_ref": "5e8101d6b0158099dc89a82bd95078b6c9a9ea9a",
+    "host_commit": "0f30294ece99178ce39e761b475487077c540a78",
+    "registry_commit": "540dfbb754c388d35734a636b8c429fccafea007",
+    "daemon_sha256": "9d53ce2cc3e7ed35724fa6a7b9b7564e526e5af58529aa829f3cde47b002bb4f",
+    "platform": "Darwin arm64",
+    "checks": [
+      "loaded catalog through the service",
+      "preserved prior marketplace entry",
+      "installed immutable prebuilt artifact with build disabled",
+      "installation defaulted to disabled",
+      "restarted daemon and completed plugin handshake",
+      "registered a channel and verified an outbound SyncClipboard publication"
+    ]
+  },
+  "rpc_process": {
+    "assertions": [
+      "installation",
+      "credentials",
+      "outbound text",
+      "inbound history",
+      "image stage and download SHA-256",
+      "invalid and unsupported documents",
+      "channel isolation",
+      "pause",
+      "removal",
+      "global disable",
+      "shutdown"
+    ],
+    "goarch": "arm64",
+    "goos": "darwin",
+    "passed": true,
+    "program_sha256": {
+      "plugin": "e550de966c005017d7637786ac2872066d641f9081b7cc8528d5aa544f03e77f",
+      "unic": "e0c81fa881890cb6369a20f8b91d17eee287ed6d3d084d0d68adaa2845e46141",
+      "unicd": "5faf59a60d64d10412ebca7d395ccd929057f3231cc66e6176a4b0fdc82ab88a"
+    },
+    "host_commit": "50eeab9e52708841f471c2e5510a4f626a1e9d78"
+  },
+  "other_cases": {
+    "TestCatalog": "passed",
+    "TestSyncPluginWorkflow": "passed"
+  },
+  "first_rpc_attempt": {
+    "result": "failed",
+    "cause": "the checkout declared a published artifact for the same platform as the synthetic artifact"
+  },
+  "retry": {
+    "limit": 1,
+    "result": "passed"
+  }
+}

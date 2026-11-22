@@ -125,6 +125,15 @@ func (r remoteReceiver) ResolveChannel(ctx context.Context, remoteContext []byte
 	return out.ID, err
 }
 
+func (r remoteReceiver) AuthorizeChannel(ctx context.Context, channelID, mime string) (bool, error) {
+	var result rpc.AuthorizeChannelResult
+	_, err := r.s.conn.Call(ctx, rpc.CallOptions{
+		Method: rpc.MethodAuthorizeChannel, Timeout: 5 * time.Second,
+		Params: rpc.AuthorizeChannel{ChannelID: channelID, MIME: mime},
+	}, &result)
+	return result.Allowed, err
+}
+
 var recvMu sync.Mutex // one inbound delivery at a time keeps stream use simple
 
 func (r remoteReceiver) Receive(ctx context.Context, channelID string, rv Received) error {

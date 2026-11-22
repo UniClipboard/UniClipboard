@@ -235,12 +235,12 @@ func runGUI(settings *config.Manager) error {
 			}
 		} else if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && !session.windowFrame {
 			view = func(c *ui.Context) {
-				if runtime.GOOS == "darwin" && session.runtime != nil && session.message == "" {
-					// Normal macOS pages own the window top, as the v1 SplitView did.
+				if runtime.GOOS == "darwin" && (session.setup != nil || (session.runtime != nil && session.message == "")) {
+					// Normal macOS pages and setup own the window top, as the v1 SplitView did.
 					session.view(c)
 					return
 				}
-				// Setup and startup still need their own draggable safe-area row.
+				// Startup and Linux fallback still need their own draggable safe-area row.
 				windowchrome.NativeView(c, func() { session.view(c) })
 			}
 		}

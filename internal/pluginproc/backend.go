@@ -173,6 +173,9 @@ func (p *Proxy) handleBackend(ctx context.Context, c *rpc.Call) (res any, err er
 		return res, err, true
 	case rpc.MethodReceive:
 		return nil, p.receive(ctx, c), true
+	case rpc.MethodAuthorizeChannel:
+		res, err = p.authorizeChannel(ctx, c)
+		return res, err, true
 	case rpc.MethodReceiveOpen:
 		res, err = p.receiveOpen(ctx, c)
 		return res, err, true
@@ -280,6 +283,24 @@ func (p *Proxy) resolveChannel(ctx context.Context, c *rpc.Call) (rpc.ChannelRes
 		return rpc.ChannelResolution{}, rpc.NewError(rpc.CodeUnavailable)
 	}
 	return rpc.ChannelResolution{ID: id}, nil
+}
+
+func (p *Proxy) authorizeChannel(ctx context.Context, c *rpc.Call) (rpc.AuthorizeChannelResult, error) {
+	p.bmu.Lock()
+	authorizer, ok := p.receiver.(plugin.ChannelAuthorizer)
+	p.bmu.Unlock()
+	if !ok {
+		return rpc.AuthorizeChannelResult{}, rpc.NewError(rpc.CodeUnsupported)
+	}
+	var in rpc.AuthorizeChannel
+	if err := rpc.Decode(c.Params, &in); err != nil || !validID(in.ChannelID) || (in.MIME != "" && !validID(in.MIME)) {
+		return rpc.AuthorizeChannelResult{}, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	allowed, err := authorizer.AuthorizeChannel(ctx, in.ChannelID, in.MIME)
+	if err != nil {
+		return rpc.AuthorizeChannelResult{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	return rpc.AuthorizeChannelResult{Allowed: allowed}, nil
 }
 
 func (p *Proxy) receive(ctx context.Context, c *rpc.Call) error {

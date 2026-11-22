@@ -5,8 +5,8 @@ Status: delivery implementation prepared; production activation blocked by the p
 ## Accepted identities
 
 - Desktop: `2.0.0 (1)`, six native targets.
-- CLI: `2.0.0 (2)`, canonical run `43419452491`.
-- Locked CLI manifest SHA-256: `ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be`.
+- CLI: `2.0.0 (2)`, canonical distribution run `45030337326`.
+- Locked CLI manifest SHA-256: `19a091d691c8d1ad5ea7bdfb12be39a2e6a2235756a919b7c9f415c4719dd8ec`.
 - Complete native construction candidate: run `43421800442`, source `09488aaaa20aaf297d7be5c89271cba5f40786c4`. This run includes all 22 artifacts, real Windows installer lifecycle and macOS signing/notarization. Raw updater-key provisioning still blocks public delivery; Windows Authenticode is optional under the accepted unsigned policy.
 
 Native-window run `43432479654`, source `cb1749765fb824c05babd9ad490aa8b6d929a6bb`, passed the canonical history/search/copy case on all six targets. All downloaded artifact checksums and cleanup receipts verified. Its synthetic directory clipboard does not establish real OS integration.
@@ -69,7 +69,7 @@ Each process fixture emits a report and SHA256SUMS. The canonical native-window 
 ## Public delivery after separate authorization
 
 1. Review `release/desktop-notes.json`. Accept the final candidate run, source SHA, CLI lock and update public key.
-2. Run `Release CLI` with `candidate_run_id=<final-locked-cli-run-id>` to preserve the locked bytes. The historical run `43419452491` is acceptance evidence; select a new compatible source candidate when shared configuration/API has changed. Select the intended npm channel. Do not rebuild the candidate at a later source SHA.
+2. Run `Release CLI` with `candidate_run_id=<final-locked-cli-run-id>` to preserve the locked bytes. The current Desktop lock selects run `45030337326`. Select a new compatible source candidate when shared configuration/API has changed. Select the intended npm channel. Do not rebuild the candidate at a later source SHA.
 3. Run `Release Desktop` with `operation=publish` and the accepted Desktop run ID. It validates the complete 22-artifact catalogue, both deployed contracts, all signatures and locked CLI npm availability before writes. It conditionally creates immutable objects, reads every object back, registers six updater archives and stores the immutable publication receipt. It does not change a Desktop channel. The workflow first stages/verifies the GitHub draft and downloads every attachment for hash verification. After origin availability passes, alpha publishes a prerelease page without selecting GitHub latest. Stable keeps the page in draft.
 4. Read the current `desktop/alpha` or `desktop/stable` channel revision through the admin API. Review the selected build and availability receipt.
 5. Run `Release Desktop` with `operation=promote`, the same candidate run ID, the intended channel and that exact revision. It uses the API's compare-and-swap operation and checks the public numbered identity and updater hashes. A concurrent change fails. Stable fails if lifecycle/native-GUI evidence is incomplete. After verified stable promotion, the workflow publishes the GitHub page as stable/latest. Page staging is verified before channel mutation. Omitted comparison/contributor input is restored from `release-page.json`.
@@ -97,16 +97,16 @@ The release operator reviews the linked evidence before dispatch. The controller
 ```sh
 jq -n --slurpfile darwin darwin.json --slurpfile linux linux.json --slurpfile windows windows.json \
   '{darwin: $darwin[0], linux: $linux[0], windows: $windows[0]}' > stable-acceptance.json
-gh workflow run release-desktop.yml --ref v2 \
+gh workflow run release-desktop.yml --ref main \
   -f operation=promote -f channel=stable -f candidate_run_id=<run-id> \
   -f expected_revision=<revision> -F stable_acceptance=@stable-acceptance.json
 ```
 
 ## Default branch cutover
 
-Use `v2` as the next default branch. It contains the three independent release workflows and `pr-checks.yml` runs on pushes to `v2`. Retain `v1` for existing maintenance PRs and the older delivery source. Before changing the default, review the remaining v1 workflows and open PRs. Confirm which legacy jobs still need a manual entry point because GitHub requires dispatchable workflows to exist on the default branch.
+The v2 development line continues on `main`. The three independent release workflows are registered on the default branch. `pr-checks.yml`, `build-cli.yml` and `check-expo.yml` run on pushes to `main`. The `v1` branch retains the legacy source and existing maintenance PRs. GitHub requires workflows to exist on the default branch for manual dispatch.
 
-Apply the cutover with `gh repo edit UniClipboard/UniClipboard --default-branch v2`. Verify the default branch and that GitHub lists `release-cli.yml`, `release-desktop.yml` and `promote.yml`. Run the read-only Desktop preflight as the first dispatch. If the cutover needs to be reverted, set the default branch back to `v1`.
+Run the read-only Desktop preflight with `gh workflow run release-desktop.yml --ref main -f operation=preflight`. After a cutover rollback, select the intended default branch explicitly and verify workflow registration before dispatching a release.
 
 ## GitHub page preview and draft
 

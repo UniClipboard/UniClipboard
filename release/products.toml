@@ -11,9 +11,9 @@ build_number = 1
 targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
 cli_version = "2.0.0"
 cli_build_number = 2
-cli_manifest_sha256 = "ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac31e6c2be"
+cli_manifest_sha256 = "19a091d691c8d1ad5ea7bdfb12be39a2e6a2235756a919b7c9f415c4719dd8ec"
 
-cli_artifact_run_id = 43419452491
+cli_artifact_run_id = 45030337326
 # Configure the durable raw Ed25519 public key before enabling in-app updates.
 update_public_key = "4/pGKRfV8KGneAnMEci+DnpdrnoFLM5uVhDq0Kp/pvk="
 

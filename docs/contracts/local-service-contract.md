@@ -472,3 +472,13 @@ The single-instance external-process acceptance and remaining contract decision 
 `DELETE /v1/peers/{id}` accepts an optional `?revision=N` query parameter. When present, `N` must be a positive integer (otherwise HTTP 400 `invalid_argument`) and revocation uses Engine `UnpairDevice` CAS, returning HTTP 409 (`conflict`) without unpairing on a stale revision or HTTP 404 (`not_found`) for an unknown peer. When omitted, the route retains whole-device unpairing against the current revision.
 
 `PATCH /v1/bindings/{id}` requires both `revision` and `enabled`. `DELETE /v1/bindings/{id}?revision=N` removes only that path. Both use Engine CAS and revocation barriers; stale revisions return HTTP 409. `unic device list --json` exposes the current path revisions; `unic device path pause|resume|remove BINDING_ID REVISION` submits them. Desktop device details expose the same per-path switch and removal operation. Whole-device removal still revokes every path.
+
+### Local external-channel registration
+
+`POST /v1/channels` accepts `{backend_id,name}` on the owner-only service socket.
+It registers a locally approved channel on the selected external backend
+instance and returns the same peer projection as status. Registration is
+idempotent by instance and registration name until removal.
+`unic device channel-add INSTANCE NAME` uses this route.
+`unic device channel pause|resume|remove ID REVISION` uses the existing
+revision-checked update and removal routes. Channel IDs carry no device trust.

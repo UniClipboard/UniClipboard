@@ -1,0 +1,25 @@
+{
+  "assertions": [
+    "installation",
+    "credentials",
+    "outbound text",
+    "inbound history",
+    "image stage and download SHA-256",
+    "invalid and unsupported documents",
+    "channel isolation",
+    "pause",
+    "removal",
+    "global disable",
+    "shutdown"
+  ],
+  "goarch": "arm64",
+  "goos": "darwin",
+  "passed": true,
+  "program_sha256": {
+    "plugin": "7b721a299412f41986e253ffc16d1268dae548773124678ba922270b5f7036c8",
+    "unic": "e4d19dd4dcffe9b156e89c5dd8eb4a27a26391a47f31a700284b6ecb70a13938",
+    "unicd": "deabf5aa0ed462fdbc3c03f4ee928310bfcaf08a6a5009b905481e78caf9dccc"
+  },
+  "host_commit": "87afcda15ab75234679bb8b8aa0992104f8cfb6c",
+  "plugin_commit": "dad9340b9b0400f0d70c21db9e1b68e1077bb37e"
+}

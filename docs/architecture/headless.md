@@ -22,7 +22,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: e93c850d86a7d499aaecda877c0f6965c65eec44
+verified: 08bf027711fbdda394f3b23b0e989d28b099f32d
 ---
 # Headless service and desktop integration
 
@@ -251,3 +251,11 @@ These paths are separate from v1 data. Program replacement never imports v1 hist
 `unic device backends` lists implementation identity, runtime identity, transport kind, pairing support and local runtime state. `unic device addr --backend INSTANCE` and `unic device add [CODE|TICKET] --backend INSTANCE` choose local instances explicitly. The receiving instance may have another ID but must use the ticket's implementation. No compatible selection means an explicit error, never Tailcat fallback.
 
 `unic device list --json` includes sanitized binding IDs, revisions and sync state. `unic device path pause|resume|remove BINDING_ID REVISION` operates on one path; device removal still revokes every path. Zero configured backends preserve local history and Actions. The [workflow receipt](../exec/sync-plugin-workflow.md) records real CLI/service/child-process acceptance and the boundary to unsupported production transports.
+
+### External-channel registration
+
+`unic device channel-add INSTANCE NAME` explicitly grants one external backend
+instance a named local channel. The service owns channel identity and the
+revision-checked pause, resume, and removal commands. An installed process can
+check current channel authorization with the plugin RPC before serving a
+published representation. See the [local service contract](../contracts/local-service-contract.md#local-external-channel-registration).

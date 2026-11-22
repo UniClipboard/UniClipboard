@@ -38,6 +38,11 @@ Behavior is documented in the [Desktop runtime architecture](../architecture/des
   lint executable could not read the repository configuration; an initial
   versioned invocation also failed to download its automatically selected Go
   toolchain. The passing invocation uses the repository's existing Go 1.27.3.
+- `go run ./tools/docscheck`: PASS with five stale-page warnings. The Desktop
+  runtime, identity and trust, and headless architecture verification markers
+  were refreshed against implementation commit `e93c850d86a7d499aaecda877c0f6965c65eec44`.
+  The remaining warnings concern observability, overview, pipeline, real-machine
+  testing and releases; this checkpoint does not certify those whole pages.
 
 ## Acceptance limits
 

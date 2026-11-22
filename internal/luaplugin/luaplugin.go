@@ -159,6 +159,9 @@ func (b *base) load(ctx context.Context, src string) (*lua.Sandbox, *lua.LTable,
 						}
 					}
 				}
+				if !slices.Equal(as.Accepts, []string{"text"}) {
+					return fail(fmt.Errorf("%w: Lua Actions accept text only", ErrFailed))
+				}
 				ps.Actions = append(ps.Actions, as)
 			}
 		}

@@ -5638,5 +5638,263 @@
     "ja": "テキスト・画像・ファイル・フォルダ・リンクに基本タイプタグを自動付与します。",
     "pt-BR": "Adiciona automaticamente tags básicas para texto, imagens, arquivos, pastas e links.",
     "ru": "Автоматически добавляет базовые теги для текста, изображений, файлов, папок и ссылок."
+  },
+  "版本 %s": {
+    "en": "Version %s",
+    "ja": "バージョン %s",
+    "pt-BR": "Versão %s",
+    "ru": "Версия %s"
+  },
+  "当前已是最新版本。": {
+    "en": "You're already on the latest version.",
+    "ja": "すでに最新バージョンです。",
+    "pt-BR": "Você já está na versão mais recente.",
+    "ru": "У вас уже установлена последняя версия."
+  },
+  "当前开发构建未启用应用内更新。": {
+    "en": "In-app updates are disabled in this development build.",
+    "ja": "この開発ビルドではアプリ内アップデートが無効になっています。",
+    "pt-BR": "As atualizações no aplicativo estão desativadas nesta compilação de desenvolvimento.",
+    "ru": "Встроенные обновления отключены в этой сборке для разработки."
+  },
+  "自动检查更新": {
+    "en": "Auto-check for updates",
+    "ja": "アップデートを自動チェックする",
+    "pt-BR": "Verificar atualizações automaticamente",
+    "ru": "Автоматически проверять обновления"
+  },
+  "应用启动时自动检查是否有新版本": {
+    "en": "Automatically check for new versions when the app starts",
+    "ja": "アプリの起動時に新しいバージョンを自動的にチェックする",
+    "pt-BR": "Verificar automaticamente se há novas versões quando o app iniciar",
+    "ru": "Автоматически проверять наличие новых версий при запуске приложения"
+  },
+  "后台下载更新": {
+    "en": "Download updates in background",
+    "ja": "バックグラウンドでアップデートをダウンロードする",
+    "pt-BR": "Baixar atualizações em segundo plano",
+    "ru": "Загружать обновления в фоне"
+  },
+  "检测到新版本时静默下载安装包，点击安装时无需等待。": {
+    "en": "Pre-fetch the installer when a new version is detected, so installing is instant.",
+    "ja": "新しいバージョンが検出されたときにインストーラーをプリフェッチするため、すぐにインストールできます。",
+    "pt-BR": "Baixa o instalador assim que uma nova versão é detectada, deixando a instalação instantânea.",
+    "ru": "Заранее загружать установщик при обнаружении новой версии, чтобы установка была мгновенной."
+  },
+  "请先开启「自动检查更新」": {
+    "en": "Enable \"Auto-check for updates\" first",
+    "ja": "最初に「アップデートを自動チェックする」を有効にしてください",
+    "pt-BR": "Ative primeiro \"Verificar atualizações automaticamente\"",
+    "ru": "Сначала включите «Автоматически проверять обновления»"
+  },
+  "更新渠道": {
+    "en": "Update Channel",
+    "ja": "アップデート チャネル",
+    "pt-BR": "Canal de atualização",
+    "ru": "Канал обновлений"
+  },
+  "选择接收更新的发布渠道": {
+    "en": "Choose which release channel to receive updates from",
+    "ja": "アップデートを受信するリリース チャネルを選択してください",
+    "pt-BR": "Escolha de qual canal de lançamento receber as atualizações",
+    "ru": "Выберите, из какого канала получать обновления"
+  },
+  "稳定版": {
+    "en": "Stable",
+    "ja": "安定版",
+    "pt-BR": "Estável",
+    "ru": "Стабильный"
+  },
+  "内测版": {
+    "en": "Alpha",
+    "ja": "アルファ",
+    "pt-BR": "Alpha",
+    "ru": "Альфа"
+  },
+  "此安装由 %s 管理更新，应用内自动更新已关闭。": {
+    "en": "Updates for this installation are managed by %s; automatic in-app updates are off.",
+    "ja": "このインストールの更新は %s によって管理されているため、アプリ内自動更新は無効です。",
+    "pt-BR": "As atualizações desta instalação são gerenciadas por %s; as atualizações automáticas no app estão desativadas.",
+    "ru": "Обновления этой установки управляются через %s; автоматические обновления в приложении отключены."
+  },
+  "便携版": {
+    "en": "portable archive",
+    "ja": "ポータブル版",
+    "pt-BR": "versão portátil",
+    "ru": "портативная версия"
+  },
+  "系统包管理器": {
+    "en": "your system package manager",
+    "ja": "システム パッケージ マネージャー",
+    "pt-BR": "gerenciador de pacotes do sistema",
+    "ru": "системный менеджер пакетов"
+  },
+  "赞助者": {
+    "en": "Sponsors",
+    "ja": "スポンサー",
+    "pt-BR": "Patrocinadores",
+    "ru": "Спонсоры"
+  },
+  "感谢以下朋友的赞助支持，让 UniClipboard 持续向前。": {
+    "en": "Thanks to these wonderful people whose sponsorship keeps UniClipboard moving forward.",
+    "ja": "スポンサーシップにより UniClipboard を支えてくださっている皆さまに感謝します。",
+    "pt-BR": "Obrigado a estas pessoas incríveis, cujo patrocínio mantém o UniClipboard avançando.",
+    "ru": "Спасибо этим замечательным людям, чья поддержка помогает UniClipboard развиваться."
+  },
+  "金牌": {
+    "en": "Gold",
+    "ja": "ゴールド",
+    "pt-BR": "Ouro",
+    "ru": "Золотой"
+  },
+  "成为赞助者 →": {
+    "en": "Become a sponsor →",
+    "ja": "スポンサーになる →",
+    "pt-BR": "Seja um patrocinador →",
+    "ru": "Стать спонсором →"
+  },
+  "去 GitHub 点 Star →": {
+    "en": "Star on GitHub →",
+    "ja": "GitHub でスターを付ける →",
+    "pt-BR": "Deixe uma estrela no GitHub →",
+    "ru": "Поставить звезду на GitHub →"
+  },
+  "隐私政策": {
+    "en": "Privacy Policy",
+    "ja": "プライバシー ポリシー",
+    "pt-BR": "Política de Privacidade",
+    "ru": "Политика конфиденциальности"
+  },
+  "使用条款": {
+    "en": "Terms of Service",
+    "ja": "利用規約",
+    "pt-BR": "Termos de Serviço",
+    "ru": "Условия использования"
+  },
+  "关于与维护者": {
+    "en": "About & Maintainers",
+    "ja": "概要とメンテナー",
+    "pt-BR": "Sobre e mantenedores",
+    "ru": "О проекте и мейнтейнерах"
+  },
+  "© 2025 UniClipboard. All rights reserved.": {
+    "en": "© 2025 UniClipboard. All rights reserved.",
+    "ja": "© 2025 UniClipboard. All rights reserved.",
+    "pt-BR": "© 2025 UniClipboard. Todos os direitos reservados.",
+    "ru": "© 2025 UniClipboard. Все права защищены."
+  },
+  "切换到内测版？": {
+    "en": "Switch to Alpha?",
+    "ja": "アルファに切り替えますか？",
+    "pt-BR": "Mudar para o canal Alpha?",
+    "ru": "Перейти на альфа-канал?"
+  },
+  "内测版可能包含未充分验证的功能和回归问题。切换后会立即检查内测版更新。": {
+    "en": "Alpha builds may include features and regressions that have not been fully validated. UniClipboard will check the alpha channel immediately after switching.",
+    "ja": "アルファ ビルドには、完全に検証されていない機能やリグレッションが含まれている場合があります。切り替え直後にアルファ チャネルの更新を確認します。",
+    "pt-BR": "As versões alpha podem trazer recursos e regressões que ainda não foram totalmente validados. O UniClipboard vai verificar o canal alpha logo após a mudança.",
+    "ru": "Альфа-сборки могут содержать не до конца проверенные функции и регрессии. Сразу после переключения UniClipboard проверит альфа-канал."
+  },
+  "继续切换": {
+    "en": "Switch",
+    "ja": "切り替え",
+    "pt-BR": "Mudar",
+    "ru": "Переключить"
+  },
+  "请下载新的便携版": {
+    "en": "Please download the new portable version",
+    "ja": "新しいポータブル版をダウンロードしてください",
+    "pt-BR": "Baixe a nova versão portátil",
+    "ru": "Скачайте новую портативную версию"
+  },
+  "你正在运行便携版，它不会原地自更新——请从发布页下载新的便携版压缩包并替换可执行文件（你的数据目录不受影响）。": {
+    "en": "You're running the portable build. It doesn't update in place — download the new portable archive from the release page and replace the executable (your data folder stays untouched).",
+    "ja": "ポータブル版を実行しているため原地更新はできません。リリース ページから新しいポータブル版アーカイブをダウンロードして実行ファイルを置き換えてください（データ フォルダーは保持されます）。",
+    "pt-BR": "Você está executando a versão portátil, que não atualiza no local — baixe o novo arquivo portátil na página de lançamentos e substitua o executável (sua pasta de dados permanece intacta).",
+    "ru": "Вы используете портативную сборку, которая не обновляется автоматически — скачайте новый архив со страницы релизов и замените исполняемый файл (папка с данными сохранится)."
+  },
+  "请下载新的 AppImage": {
+    "en": "Please download the new AppImage",
+    "ja": "新しい AppImage をダウンロードしてください",
+    "pt-BR": "Baixe o novo AppImage",
+    "ru": "Скачайте новый AppImage"
+  },
+  "当前版本不支持 AppImage 原地自更新——请从发布页下载新的 AppImage 文件（你的数据目录不受影响）。": {
+    "en": "In-place AppImage self-update is not supported in this release — download the new AppImage from the release page (your data folder stays untouched).",
+    "ja": "このリリースでは AppImage の自己更新はサポートされていません。リリース ページから新しい AppImage をダウンロードしてください（データ フォルダーは保持されます）。",
+    "pt-BR": "A autoatualização do AppImage não é suportada nesta versão — baixe o novo AppImage na página de lançamentos (sua pasta de dados permanece intacta).",
+    "ru": "Самообновление AppImage не поддерживается в этой версии — скачайте новый файл AppImage со страницы релизов (папка с данными сохранится)."
+  },
+  "请通过系统包管理器升级": {
+    "en": "Please upgrade via your package manager",
+    "ja": "パッケージ マネージャーから更新してください",
+    "pt-BR": "Atualize pelo seu gerenciador de pacotes",
+    "ru": "Обновите через менеджер пакетов"
+  },
+  "你当前通过 Homebrew 安装了 UniClipboard，请在终端执行以下命令升级：": {
+    "en": "UniClipboard was installed via Homebrew. Run this in a terminal to upgrade:",
+    "ja": "UniClipboard は Homebrew でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O UniClipboard foi instalado via Homebrew. Execute este comando no terminal para atualizar:",
+    "ru": "UniClipboard установлен через Homebrew. Выполните в терминале следующую команду для обновления:"
+  },
+  "你当前通过 Snap 安装了 UniClipboard，请在终端执行以下命令升级：": {
+    "en": "UniClipboard was installed via Snap. Run this in a terminal to upgrade:",
+    "ja": "UniClipboard は Snap でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O UniClipboard foi instalado via Snap. Execute este comando no terminal para atualizar:",
+    "ru": "UniClipboard установлен через Snap. Выполните в терминале следующую команду для обновления:"
+  },
+  "你当前通过 Flatpak 安装了 UniClipboard，请在终端执行以下命令升级：": {
+    "en": "UniClipboard was installed via Flatpak. Run this in a terminal to upgrade:",
+    "ja": "UniClipboard は Flatpak でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O UniClipboard foi instalado via Flatpak. Execute este comando no terminal para atualizar:",
+    "ru": "UniClipboard установлен через Flatpak. Выполните в терминале следующую команду для обновления:"
+  },
+  "你当前通过 Scoop 安装了 UniClipboard，请在终端执行以下命令升级：": {
+    "en": "UniClipboard was installed via Scoop. Run this in a terminal to upgrade:",
+    "ja": "UniClipboard は Scoop でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O UniClipboard foi instalado via Scoop. Execute este comando no terminal para atualizar:",
+    "ru": "UniClipboard установлен через Scoop. Выполните в терминале следующую команду для обновления:"
+  },
+  "你当前通过 winget 安装了 UniClipboard，请在终端执行以下命令升级：": {
+    "en": "UniClipboard was installed via winget. Run this in a terminal to upgrade:",
+    "ja": "UniClipboard は winget でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O UniClipboard foi instalado via winget. Execute este comando no terminal para atualizar:",
+    "ru": "UniClipboard установлен через winget. Выполните в терминале следующую команду для обновления:"
+  },
+  "你当前通过 Chocolatey 安装了 UniClipboard，请在终端执行以下命令升级：": {
+    "en": "UniClipboard was installed via Chocolatey. Run this in a terminal to upgrade:",
+    "ja": "UniClipboard は Chocolatey でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O UniClipboard foi instalado via Chocolatey. Execute este comando no terminal para atualizar:",
+    "ru": "UniClipboard установлен через Chocolatey. Выполните в терминале следующую команду для обновления:"
+  },
+  "你当前通过系统包管理器安装了 UniClipboard，请使用安装时对应的包管理器进行升级。": {
+    "en": "UniClipboard was installed via your system package manager. Use that package manager to upgrade.",
+    "ja": "UniClipboard はシステムのパッケージ マネージャーでインストールされています。対応するパッケージ マネージャーを使用して更新してください。",
+    "pt-BR": "O UniClipboard foi instalado pelo gerenciador de pacotes do sistema. Use esse gerenciador para atualizar.",
+    "ru": "UniClipboard установлен через системный менеджер пакетов. Используйте его для обновления."
+  },
+  "当前版本": {
+    "en": "Current version",
+    "ja": "現在のバージョン",
+    "pt-BR": "Versão atual",
+    "ru": "Текущая версия"
+  },
+  "复制命令": {
+    "en": "Copy command",
+    "ja": "コマンドをコピー",
+    "pt-BR": "Copiar comando",
+    "ru": "Копировать команду"
+  },
+  "打开发布页": {
+    "en": "Open release page",
+    "ja": "リリース ページを開く",
+    "pt-BR": "Abrir página de lançamentos",
+    "ru": "Открыть страницу релизов"
+  },
+  "知道了": {
+    "en": "Got it",
+    "ja": "了解",
+    "pt-BR": "Entendi",
+    "ru": "Понятно"
   }
 }

@@ -185,11 +185,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 			d.openQuickPanel()
 		}
 	case "about":
-		ui.Image(c, appIcon()).Size(64, 64)
-		k.EntityHeader(c, desktopkit.EntityHeaderProps{Icon: desktopkit.IconCopy, Title: "UniClipboard", Description: d.tr("跨设备剪贴板同步")}, nil)
-		group("runtime", d.tr("桌面"), func() {
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("界面组件"), Description: "mygo + UI Kit"}, nil, nil)
-		})
+		d.aboutContent(c, k)
 	default:
 		k.ContentUnavailable(c, desktopkit.ContentUnavailableProps{Title: d.tr("此设置暂不可用"), Description: d.tr("当前版本尚不支持此设置。")}, nil)
 	}

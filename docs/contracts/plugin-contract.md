@@ -286,6 +286,28 @@ release artifacts and end-to-end acceptance. A main-repository entry under
 `plugins/examples/` may link to that repository and a compatible immutable
 revision. Do not maintain a second copy of the implementation there.
 
+### Marketplace catalog
+
+The Desktop marketplace reads a version-1 static JSON catalog from
+`https://raw.githubusercontent.com/UniClipboard/unic-plugins/main/registry.json`.
+`UNIC_PLUGIN_REGISTRY_URL` overrides this URL. An empty value, `off` or `none`
+selects the bundled catalog without network access. Remote URLs require HTTPS;
+HTTP is accepted only for loopback test servers.
+
+The service limits remote catalogs to 512 KiB and 256 entries. It validates
+unique plugin IDs, GitHub repositories, local subpaths, metadata bounds and
+categories (`share`, `text`, `organize`, `sync`). A validated catalog is cached
+at `$UNIC_HOME/plugins/marketplace-cache.json` for 15 minutes. Explicit refresh
+bypasses the cache age. Fetch or validation failure uses a valid cache,
+including an expired cache, then the bundled official catalog. The response
+identifies its source and provides a warning when fallback follows failure.
+
+Marketplace installation reuses the installer below. Catalog recommendations,
+including `build_fallback`, do not grant execution or source-build permission.
+The caller supplies the installation options explicitly. The
+[local service contract](local-service-contract.md#marketplace-and-installation-lifecycle)
+defines the Desktop lifecycle routes and activation state.
+
 Plugin commands:
 
 ```sh

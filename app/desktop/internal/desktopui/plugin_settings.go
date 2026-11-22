@@ -3,12 +3,14 @@ package desktopui
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
 
@@ -18,26 +20,118 @@ type builtinPluginSettings struct {
 	id, revision, threshold, thresholdError string
 	instanceName                            string
 	tab, query                              string
+	view                                    string // "" (list) | "marketplace" | "advanced"
+	marketQuery                             string
+	marketCategory                          string
+	marketSelected                          string
+	marketTechOpen                          bool
+	detailTechOpen                          bool
+	installingID                            string
+	installNotice                           string
+	installError                            string
+	manualOpen                              bool
+	manualRepo, manualRef, manualPath       string
+	manualBuild, manualEnable               bool
+	uninstallOpen                           bool
+	uninstallID, uninstallName              string
+	rollbackOpen                            bool
+	rollbackID, rollbackName, rollbackVer   string
 	form                                    *pluginSettingsForm
 }
 
 type builtinPluginEntry struct {
 	id, name, description string
 	icon                  desktopkit.IconName
+	tone                  string
 	capabilities, events  []string
 	actions               []string
 }
 
 var builtinPluginEntries = []builtinPluginEntry{
-	{id: "builtin.tailcat", name: "Tailcat 同步", description: "设备间同步。支持文本、图片、文件与文件夹。", icon: desktopkit.IconRetry, capabilities: []string{"同步后端"}},
-	{id: "builtin.text", name: "文本工具", description: "标注邮箱和链接，提供大写、小写、去除首尾空白和纯文本动作。", icon: desktopkit.IconEdit,
+	{id: "builtin.tailcat", name: "Tailcat 同步", description: "在已配对设备间点对点同步剪贴板，支持文本、图片、文件与文件夹。", icon: desktopkit.IconRetry, tone: "teal", capabilities: []string{"同步后端"}},
+	{id: "builtin.text", name: "文本工具", description: "提供转大写、转小写、去除首尾空白和纯文本四个常用动作。", icon: desktopkit.IconEdit, tone: "purple",
 		capabilities: []string{"自动标注", "动作"}, events: []string{"clipboard.captured", "clipboard.received"}, actions: []string{"转大写", "转小写", "去除首尾空白", "纯文本"}},
-	{id: "builtin.classify", name: "内容分类", description: "按文本、图片、文件、文件夹和链接添加类型标签。", icon: desktopkit.IconList,
+	{id: "builtin.classify", name: "内容分类", description: "自动为文本、图片、文件、文件夹和链接添加基础类型标签。", icon: desktopkit.IconTag, tone: "accent",
 		capabilities: []string{"自动标注"}, events: []string{"clipboard.captured", "clipboard.received"}},
+}
+
+func (d *viewState) pluginsToolbarActions(c *ui.Context, k desktopkit.Kit) {
+	l := d.live
+	p := &d.pluginSettings
+	if k.Button(c.Key("tb-refresh-marketplace"), d.tr("检查更新"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconRetry, Busy: l.marketplaceLoading, Disabled: l.marketplaceLoading}).Clicked() {
+		d.ensureMarketplaceLoaded(true)
+	}
+	_, cmd := k.Menu(c.Key("tb-plugin-more"), desktopkit.MenuProps{
+		Label:    d.tr("更多"),
+		Icon:     desktopkit.IconMore,
+		IconOnly: true,
+		Variant:  desktopkit.Subtle,
+		Items: []desktopkit.MenuEntry{
+			{ID: "advanced", Label: d.tr("执行顺序与高级设置"), Icon: desktopkit.IconList},
+			{ID: "manual", Label: d.tr("从链接手动安装"), Icon: desktopkit.IconLink},
+		},
+	})
+	switch cmd {
+	case "advanced":
+		p.view = "advanced"
+	case "manual":
+		p.manualOpen = true
+		p.installError = ""
+	}
+}
+
+func pluginIconTile(c *ui.Context, k desktopkit.Kit, icon desktopkit.IconName, tone string, size float32) {
+	radius := float32(10)
+	iconSize := float32(18)
+	if size >= 44 {
+		radius = 12
+		iconSize = 20
+	}
+	bg := deviceInsetBg(k, false)
+	border := deviceCardBorder(k)
+	fg := k.Color("text-primary")
+	switch tone {
+	case "accent":
+		bg, border = deviceAccentSurface(k)
+		fg = k.Color("accent-600")
+		if k.Dark {
+			fg = k.Color("accent-400")
+		}
+	case "purple":
+		bg = k.Color("status-purple-background")
+		fg = k.Color("status-purple-text")
+		border = bg
+	case "teal":
+		bg = k.Color("status-cyan-background")
+		fg = k.Color("status-cyan-text")
+		border = bg
+	}
+	ui.Box(c).Size(size, size).Shrink(0).Radius(radius).Background(bg).Border(1, border).Center().Children(func() {
+		k.Icon(c.Key("ico"), icon, iconSize).TextColor(fg)
+	})
+}
+
+func pluginIconForCategory(category string, caps []string) (desktopkit.IconName, string) {
+	if slices.Contains(caps, "sync_backend") || category == "sync" {
+		return desktopkit.IconGlobe, "teal"
+	}
+	switch category {
+	case "share":
+		return desktopkit.IconSend, "purple"
+	case "text":
+		return desktopkit.IconEdit, "accent"
+	case "organize":
+		return desktopkit.IconTag, "accent"
+	}
+	if slices.Contains(caps, "action") {
+		return desktopkit.IconSend, "purple"
+	}
+	return desktopkit.IconPackage, "accent"
 }
 
 func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	l := d.live
+	d.ensureMarketplaceLoaded(false)
 	cfg := l.config.Config
 	// Instances is a map in an otherwise value-copied Config. Never mutate the
 	// service snapshot or the pointer fields while an asynchronous save is pending.
@@ -61,6 +155,11 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
 	}
 	p := &d.pluginSettings
+	if p.installError != "" {
+		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: p.installError})
+	} else if p.installNotice != "" {
+		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneInfo, Title: p.installNotice})
+	}
 	status := func(id string) (string, desktopkit.StatusTone) {
 		switch {
 		case pending:
@@ -70,9 +169,20 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		}
 		return d.tr("已停用"), desktopkit.StatusNeutral
 	}
+	defer func() {
+		d.pluginManualInstallDialog(c, k)
+		d.pluginConfirmDialogs(c, k)
+	}()
+
 	if p.id == "" {
-		d.builtinPluginList(c, k, &cfg)
-		return
+		switch p.view {
+		case "advanced":
+			d.pluginsAdvancedView(c, k, cfg)
+			return
+		default:
+			d.builtinPluginList(c, k, &cfg)
+			return
+		}
 	}
 	var entry builtinPluginEntry
 	for _, e := range builtinPluginEntries {
@@ -87,7 +197,8 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 				return
 			}
 		}
-		*p = builtinPluginSettings{}
+		p.id = ""
+		p.form = nil
 		return
 	}
 	name := d.tr(entry.name)
@@ -129,42 +240,41 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	if p.id == "builtin.tailcat" {
 		d.syncPluginPolicy(c, k, p.id, cfg)
 		return
-	} else {
-		k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
-			enabled := cfg.PluginEnabled(p.id)
-			label := "启用文本工具"
-			if p.id == "builtin.classify" {
-				label = "启用内容分类"
-			}
-			toggle("enabled", label, "退出并重新启动桌面端后生效。", &enabled)
-			if changed {
-				instance.Enabled = &enabled
-			}
-			// One choice for inheritance and both overrides, as in the prototype.
-			global := d.tr("继续处理")
-			if cfg.Plugins.OnError == "block_sync" {
-				global = d.tr("禁止同步此条目")
-			}
-			policy := instance.OnError
-			if policy == "" {
-				policy = "inherit"
-			}
-			k.SettingsRow(c.Key("failure"), desktopkit.SettingsRowProps{Label: d.tr("处理失败时"), Description: d.tr("重启后生效。")}, nil, func() {
-				items := []desktopkit.SelectItem{
-					{Value: "inherit", Label: fmt.Sprintf(d.tr("跟随全局（%s）"), global)},
-					{Value: "continue", Label: d.tr("继续处理")},
-					{Value: "block_sync", Label: d.tr("禁止同步此条目")},
-				}
-				if k.Select(c, desktopkit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.busy || l.loading}).Changed {
-					instance.OnError = policy
-					if policy == "inherit" {
-						instance.OnError = ""
-					}
-					changed = true
-				}
-			})
-		})
 	}
+	k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
+		enabled := cfg.PluginEnabled(p.id)
+		label := "启用文本工具"
+		if p.id == "builtin.classify" {
+			label = "启用内容分类"
+		}
+		toggle("enabled", label, "退出并重新启动桌面端后生效。", &enabled)
+		if changed {
+			instance.Enabled = &enabled
+		}
+		// One choice for inheritance and both overrides, as in the prototype.
+		global := d.tr("继续处理")
+		if cfg.Plugins.OnError == "block_sync" {
+			global = d.tr("禁止同步此条目")
+		}
+		policy := instance.OnError
+		if policy == "" {
+			policy = "inherit"
+		}
+		k.SettingsRow(c.Key("failure"), desktopkit.SettingsRowProps{Label: d.tr("处理失败时"), Description: d.tr("重启后生效。")}, nil, func() {
+			items := []desktopkit.SelectItem{
+				{Value: "inherit", Label: fmt.Sprintf(d.tr("跟随全局（%s）"), global)},
+				{Value: "continue", Label: d.tr("继续处理")},
+				{Value: "block_sync", Label: d.tr("禁止同步此条目")},
+			}
+			if k.Select(c, desktopkit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.busy || l.loading}).Changed {
+				instance.OnError = policy
+				if policy == "inherit" {
+					instance.OnError = ""
+				}
+				changed = true
+			}
+		})
+	})
 	if changed {
 		cfg.Plugins.Instances[p.id] = instance
 		d.saveLiveConfig(cfg)
@@ -182,55 +292,229 @@ func (d *viewState) join(items []string) string {
 func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *config.Config) {
 	l := d.live
 	p := &d.pluginSettings
-	search := k.SearchField(c.Key("plugin-search"), desktopkit.SearchFieldProps{Label: d.tr("搜索插件"), Placeholder: d.tr("搜索插件名称或 ID"), Value: &p.query})
-	if search.Escaped {
-		p.query = ""
-	}
-	query := strings.ToLower(strings.TrimSpace(p.query))
-	k.SettingsGroup(c.Key("builtin-plugin-list"), desktopkit.SettingsGroupProps{Title: d.tr("内置插件")}, func() {
-		shown := 0
-		for _, entry := range builtinPluginEntries {
-			if query != "" && !strings.Contains(strings.ToLower(d.tr(entry.name)+" "+entry.id), query) {
-				continue
-			}
-			shown++
-			labelExtra := func() {
-				for _, cap := range entry.capabilities {
-					k.Tag(c.Key("cap-"+entry.id+cap), d.tr(cap), desktopkit.TagProps{Color: "blue"})
+
+	// Obsidian-style Marketplace Hero Card (single focused primary CTA; secondary actions live in toolbar).
+	ui.Row(c.Key("plugin-marketplace-hero")).Padding(16, 18).Radius(14).Background(deviceCardBg(k)).Border(1, deviceCardBorder(k)).Gap(14).AlignItems(ui.Center).Children(func() {
+		pluginIconTile(c.Key("hero-ico"), k, desktopkit.IconPackage, "accent", 44)
+		ui.Column(c.Key("hero-body")).Grow(1).MinWidth(0).Gap(3).Children(func() {
+			ui.Row(c.Key("hero-title")).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+				k.Text(c.Key("t"), d.tr("插件市场"), desktopkit.TextProps{Role: desktopkit.RoleTitle, Emphasized: true})
+				if len(l.marketplace.Plugins) > 0 {
+					k.Tag(c.Key("cnt"), fmt.Sprintf(d.tr("%d 款扩展"), len(l.marketplace.Plugins)), desktopkit.TagProps{Color: "blue"})
 				}
+			})
+			k.Text(c.Key("s"), d.tr("浏览官方与社区扩展，一键在线安装剪贴板动作、整理工具与同步方式。"), secondary)
+		})
+		if k.Button(c.Key("open-marketplace"), d.tr("浏览插件市场"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconPackage, Disabled: l.busy}).Clicked() {
+			p.view = "marketplace"
+			p.installError = ""
+			p.installNotice = ""
+			p.marketTechOpen = false
+			if p.marketCategory == "" {
+				p.marketCategory = "all"
 			}
-			k.SettingsRow(c.Key(entry.id), desktopkit.SettingsRowProps{Label: d.tr(entry.name), Description: entry.id + " · " + d.tr(entry.description)}, labelExtra, func() {
-				on := cfg.PluginEnabled(entry.id)
-				if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: l.busy || l.loading}).Changed() {
-					instance := cfg.Plugins.Instances[entry.id]
-					instance.Enabled = &on
-					cfg.Plugins.Instances[entry.id] = instance
-					d.saveLiveConfig(*cfg)
+			if p.marketSelected == "" && len(l.marketplace.Plugins) > 0 {
+				p.marketSelected = l.marketplace.Plugins[0].ID
+			}
+		}
+	})
+
+	// Installed third-party plugins (or highlighted official recommendation card when none installed).
+	ui.Column(c.Key("installed-section")).Gap(8).MinWidth(0).Children(func() {
+		ui.Row(c.Key("installed-head")).Justify(ui.SpaceBetween).AlignItems(ui.Center).Padding(0, 2).Children(func() {
+			title := fmt.Sprintf(d.tr("已安装插件（%d）"), len(l.externalPlugins))
+			if len(l.externalPlugins) == 0 {
+				title = d.tr("官方推荐扩展")
+			}
+			k.Text(c.Key("ht"), title, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Emphasized: true})
+			if len(l.externalPlugins) >= 2 {
+				ui.Box(c.Key("mini-search")).Width(220).Children(func() {
+					search := k.SearchField(c.Key("plugin-search"), desktopkit.SearchFieldProps{Label: d.tr("搜索插件"), Placeholder: d.tr("搜索插件名称或 ID"), Value: &p.query})
+					if search.Escaped {
+						p.query = ""
+					}
+				})
+			} else {
+				p.query = ""
+			}
+		})
+
+		query := strings.ToLower(strings.TrimSpace(p.query))
+		if len(l.externalPlugins) == 0 {
+			if len(l.marketplace.Plugins) > 0 {
+				pick := l.marketplace.Plugins[0]
+				accentBg, accentEdge := deviceAccentSurface(k)
+				icon, tone := pluginIconForCategory(pick.Category, pick.Capabilities)
+				ui.Column(c.Key("pick-card-"+pick.ID)).Padding(14, 16).Radius(13).Background(accentBg).Border(1, accentEdge).Gap(10).Children(func() {
+					ui.Row(c.Key("top")).Gap(12).AlignItems(ui.Center).Children(func() {
+						pluginIconTile(c.Key("ico"), k, icon, tone, 36)
+						ui.Column(c.Key("meta")).Grow(1).MinWidth(0).Gap(2).Children(func() {
+							ui.Row(c.Key("name")).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
+								k.Text(c.Key("n"), pick.Name, desktopkit.TextProps{Emphasized: true})
+								if pick.Official {
+									k.Tag(c.Key("off"), d.tr("官方"), desktopkit.TagProps{Color: "blue"})
+								}
+								if pick.ZeroConfig {
+									k.Tag(c.Key("zero"), d.tr("免配置"), desktopkit.TagProps{Color: "gray"})
+								}
+							})
+							k.Text(c.Key("auth"), pick.Author+" · v"+pick.Version, footnote)
+						})
+					})
+					k.Text(c.Key("desc"), pick.Summary, secondary)
+					ui.Box(c.Key("div")).Height(1).FillWidth().Background(deviceCardBorder(k))
+					ui.Row(c.Key("foot")).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+						k.Text(c.Key("cat"), d.categoryLabel(pick.Category), footnote)
+						ui.Row(c.Key("btns")).Gap(8).AlignItems(ui.Center).Children(func() {
+							if k.Button(c.Key("pick-view-"+pick.ID), d.tr("查看详情"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked() {
+								p.view = "marketplace"
+								p.marketSelected = pick.ID
+								p.marketTechOpen = false
+							}
+							installing := p.installingID == pick.ID
+							btnLabel := d.tr("立即安装")
+							if installing {
+								btnLabel = d.tr("正在安装…")
+							}
+							if k.Button(c.Key("quick-install-"+pick.ID), btnLabel, desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconDownload, Busy: installing, Disabled: l.busy || p.installingID != ""}).Clicked() {
+								d.installMarketplacePlugin(api.PluginInstallRequest{
+									Repository: pick.Repository,
+									Ref:        pick.Ref,
+									Path:       pick.Path,
+									Build:      pick.BuildFallback,
+								}, pick.Name, pick.ID)
+							}
+						})
+					})
+				})
+			} else {
+				k.SettingsGroup(c.Key("external-empty-group"), desktopkit.SettingsGroupProps{}, func() {
+					k.SettingsRow(c.Key("external-empty"), desktopkit.SettingsRowProps{
+						Label:       d.tr("尚未安装第三方插件"),
+						Description: d.tr("打开插件市场即可一键在线安装扩展。"),
+					}, nil, nil)
+				})
+			}
+		} else {
+			k.SettingsGroup(c.Key("external-plugins"), desktopkit.SettingsGroupProps{}, func() {
+				shown := 0
+				for _, item := range l.externalPlugins {
+					cat, hasCat := d.marketplaceEntry(item.ID)
+					displayName := item.ID
+					summary := "v" + item.Version
+					meta := "v" + item.Version
+					icon, tone := pluginIconForCategory("", item.Capabilities)
+					if hasCat {
+						displayName = cat.Name
+						summary = cat.Summary
+						meta = "v" + item.Version + " · " + cat.Author
+						if cat.ZeroConfig {
+							meta += " · " + d.tr("免配置")
+						}
+						icon, tone = pluginIconForCategory(cat.Category, item.Capabilities)
+					} else if item.ImplementationID != "" && item.ImplementationID != item.ID {
+						summary = item.ImplementationID + " · v" + item.Version
+					}
+					if query != "" && !strings.Contains(strings.ToLower(displayName+" "+item.ID+" "+summary), query) {
+						continue
+					}
+					shown++
+					canUpdate := hasCat && cat.Version != "" && cat.Version != item.Version && item.Source != "local"
+					isConfigurable := item.HasSettings || slices.Contains(item.Capabilities, "sync_backend")
+					ui.Row(c.Key(item.ID)).Padding(12, 14).Gap(12).AlignItems(ui.Center).Children(func() {
+						pluginIconTile(c.Key("ico"), k, icon, tone, 36)
+						ui.Column(c.Key("meta")).Grow(1).MinWidth(0).Gap(2).Children(func() {
+							ui.Row(c.Key("top")).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
+								k.Text(c.Key("n"), displayName, desktopkit.TextProps{Emphasized: true})
+								if hasCat && cat.Official {
+									k.Tag(c.Key("off"), d.tr("官方"), desktopkit.TagProps{Color: "blue"})
+								}
+								if canUpdate {
+									k.Tag(c.Key("upd"), d.tr("可更新"), desktopkit.TagProps{Color: "green"})
+								}
+							})
+							k.Text(c.Key("s"), summary, secondary)
+							k.Text(c.Key("m"), meta, footnote)
+						})
+						ui.Row(c.Key("ctrl")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+							if canUpdate {
+								updating := p.installingID == item.ID
+								if k.Button(c.Key("update-"+item.ID), d.tr("更新"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: updating, Disabled: l.busy || p.installingID != ""}).Clicked() {
+									d.installMarketplacePlugin(api.PluginInstallRequest{
+										Repository: cat.Repository,
+										Ref:        cat.Ref,
+										Path:       cat.Path,
+										Build:      cat.BuildFallback,
+										Replace:    true,
+									}, displayName, item.ID)
+								}
+							}
+							detailIcon := desktopkit.IconChevronRight
+							if isConfigurable {
+								detailIcon = desktopkit.IconSettings
+							}
+							if k.Button(c.Key("open-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: detailIcon, Label: item.ID, Tooltip: displayName, Disabled: l.busy}).Clicked() {
+								p.id = item.ID
+								p.view = ""
+								p.detailTechOpen = false
+								p.form = nil
+							}
+							if item.Source != "local" {
+								if k.Button(c.Key("uninstall-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconDelete, Label: d.tr("卸载") + displayName, Tooltip: d.tr("卸载"), Disabled: l.busy}).Clicked() {
+									p.uninstallOpen = true
+									p.uninstallID = item.ID
+									p.uninstallName = displayName
+								}
+							}
+							on := item.Configured
+							if k.Switch(c.Key("enable-"+item.ID), &on, desktopkit.SwitchProps{Label: d.tr("启用") + displayName, Disabled: l.busy || l.loading}).Changed() {
+								d.setExternalPluginEnabled(*cfg, item.ID, on)
+							}
+						})
+					})
 				}
-				if k.Button(c.Key("open-"+entry.id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconChevronRight, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.busy || l.loading}).Clicked() {
-					*p = builtinPluginSettings{id: entry.id}
+				if shown == 0 {
+					ui.Box(c.Key("empty")).Padding(16).Children(func() {
+						k.Text(c, d.tr("无匹配"), footnote)
+					})
 				}
 			})
 		}
-		if shown == 0 {
-			k.Text(c, d.tr("无匹配"), footnote)
-		}
 	})
-	if len(l.externalPlugins) != 0 {
-		k.SettingsGroup(c.Key("external-plugins"), desktopkit.SettingsGroupProps{Title: d.tr("外部插件")}, func() {
-			for _, item := range l.externalPlugins {
-				if query != "" && !strings.Contains(strings.ToLower(item.ID), query) {
-					continue
-				}
-				k.SettingsRow(c.Key(item.ID), desktopkit.SettingsRowProps{Label: item.ID, Description: item.Version}, nil, func() {
-					if k.Button(c.Key(item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconChevronRight, Label: item.ID, Tooltip: item.ID, Disabled: l.busy}).Clicked() {
-						*p = builtinPluginSettings{id: item.ID}
+
+	// Built-in features (with colored icon tiles matching prototype/plugins.html).
+	k.SettingsGroup(c.Key("builtin-plugin-list"), desktopkit.SettingsGroupProps{Title: d.tr("内置功能")}, func() {
+		for _, entry := range builtinPluginEntries {
+			ui.Row(c.Key(entry.id)).Padding(12, 14).Gap(12).AlignItems(ui.Center).Children(func() {
+				pluginIconTile(c.Key("ico"), k, entry.icon, entry.tone, 36)
+				ui.Column(c.Key("meta")).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Row(c.Key("top")).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
+						k.Text(c.Key("n"), d.tr(entry.name), desktopkit.TextProps{Emphasized: true})
+						k.Tag(c.Key("b"), d.tr("内置"), desktopkit.TagProps{Color: "gray"})
+					})
+					k.Text(c.Key("s"), d.tr(entry.description), secondary)
+				})
+				ui.Row(c.Key("ctrl")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+					icon := desktopkit.IconChevronRight
+					if entry.id == "builtin.tailcat" {
+						icon = desktopkit.IconSettings
+					}
+					if k.Button(c.Key("open-"+entry.id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: icon, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.busy || l.loading}).Clicked() {
+						p.id = entry.id
+						p.view = ""
+						p.form = nil
+					}
+					on := cfg.PluginEnabled(entry.id)
+					if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: l.busy || l.loading}).Changed() {
+						instance := cfg.Plugins.Instances[entry.id]
+						instance.Enabled = &on
+						cfg.Plugins.Instances[entry.id] = instance
+						d.saveLiveConfig(*cfg)
 					}
 				})
-			}
-		})
-	}
-
+			})
+		}
+	})
 }
 
 func (d *viewState) syncPluginPolicy(c *ui.Context, k desktopkit.Kit, id string, cfg config.Config) {

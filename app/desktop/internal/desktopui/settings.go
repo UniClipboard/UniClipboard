@@ -42,15 +42,34 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 		}
 	}
 	var titleLeading func()
-	if d.live != nil && d.settings.Value == "plugins" && d.pluginSettings.id != "" {
-		titleLeading = func() {
-			label := d.tr("返回插件列表")
-			if k.Button(c.Key("back-to-plugins"), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconBack, Label: label, Tooltip: label, Disabled: d.live.busy || d.live.loading}).Clicked() {
-				d.pluginSettings = builtinPluginSettings{}
+	var toolbar func()
+	if d.live != nil && d.settings.Value == "plugins" {
+		if d.pluginSettings.id != "" || d.pluginSettings.view != "" {
+			if d.pluginSettings.view == "marketplace" && d.pluginSettings.id == "" {
+				title = d.tr("插件市场")
+				toolbar = func() {
+					if k.Button(c.Key("market-refresh-tb"), d.tr("刷新目录"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconRetry, Busy: d.live.marketplaceLoading, Disabled: d.live.marketplaceLoading}).Clicked() {
+						d.ensureMarketplaceLoaded(true)
+					}
+				}
+			} else if d.pluginSettings.view == "advanced" && d.pluginSettings.id == "" {
+				title = d.tr("执行顺序与高级设置")
+			}
+			titleLeading = func() {
+				label := d.tr("返回插件列表")
+				if k.Button(c.Key("back-to-plugins"), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconBack, Label: label, Tooltip: label, Disabled: d.live.busy || d.live.loading}).Clicked() {
+					d.pluginSettings.id = ""
+					d.pluginSettings.view = ""
+					d.pluginSettings.form = nil
+				}
+			}
+		} else {
+			toolbar = func() {
+				d.pluginsToolbarActions(c, k)
 			}
 		}
 	}
-	k.SplitView(c, desktopkit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
+	k.SplitView(c, desktopkit.SplitViewProps{Toolbar: toolbar, ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
 		k.SidebarNav(c, &d.settings, desktopkit.SidebarNavProps{Label: d.tr("设置"), Sections: []desktopkit.SidebarNavSection{{ID: "categories", Items: items}}, Footer: []desktopkit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: desktopkit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
 		if d.settings.Changed() {
 			if d.settings.Value == "back" {
@@ -62,6 +81,10 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 		}
 	}}, func() {
 		k.Pane(c, desktopkit.PaneProps{Kind: desktopkit.PaneMain, Label: title}, func() {
+			if d.live != nil && d.settings.Value == "plugins" && d.pluginSettings.view == "marketplace" && d.pluginSettings.id == "" {
+				d.pluginsMarketplaceWorkspace(c, k)
+				return
+			}
 			k.SettingsContent(c.Key(d.settings.Value), desktopkit.SettingsContentProps{Label: title}, func() { d.settingsContent(c, k) })
 		})
 	})

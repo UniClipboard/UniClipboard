@@ -42,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 708bb8c06f48ccf5f58ffe987fdfd5a725d45f95
+verified: 18a4f93db24178acf9cf5871c102611acb46dfa9
 ---
 # Desktop configuration and received files
 
@@ -446,3 +446,23 @@ Desktop Action jobs use a five-minute plus thirty-second worker budget for
 execution, response and clipboard application. Other queued jobs and mutations
 retain their fifteen-second budget. The Engine independently enforces each
 Action declaration's execution deadline.
+
+## Online plugin marketplace
+
+Settings > Plugins opens with an Obsidian-style Plugin Marketplace card above
+the installed third-party plugins and built-in features. `GET /v1/plugins/marketplace`
+reads a static JSON registry (`UNIC_PLUGIN_REGISTRY_URL`, defaulting to the
+official `registry.json` and accepting `off` for offline bundled mode), caches
+validated entries locally under `$UNIC_HOME/plugins/marketplace-cache.json`,
+and falls back to the cached or bundled official catalog (including zero-config
+`unic.wenshushu`) when offline.
+
+One-click install and update call `POST /v1/plugins/install`, reusing the
+existing GitHub commit-locked, SHA-256-verified installer (`luascripts.Install`)
+with a three-minute Desktop worker budget. Uninstall (`DELETE /v1/plugins/{id}`)
+and rollback (`POST /v1/plugins/{id}/rollback`) update the immutable
+installation lock and mark restart required while preserving history and local
+configuration. Zero-config plugins omit empty settings sections and display
+their declared Actions, usage steps and privacy boundary. Execution order
+(`plugins.order`), global `plugins.on_error` policy and manual URL install stay
+under the overflow menu.

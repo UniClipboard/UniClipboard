@@ -125,6 +125,10 @@ type liveState struct {
 	syncBackends                               []api.SyncBackendInfo
 	pairingBackend                             string
 	externalPlugins                            []api.PluginInfo
+	marketplace                                api.PluginMarketplace
+	marketplaceLoaded                          bool
+	marketplaceLoading                         bool
+	marketplaceError                           string
 	peers                                      map[string]api.PeerStatus
 	pending                                    map[string]api.PendingPeer
 	taskKnownPending                           map[string]int64

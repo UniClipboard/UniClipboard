@@ -384,6 +384,38 @@ across service restarts. Review cleanup policy before importing old real history
 
 The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.
 
+### Marketplace and installation lifecycle
+
+| Method and path | Request | Result |
+|---|---|---|
+| `GET /v1/plugins/marketplace` | Optional `refresh=1` or `refresh=true` | `{version,source,updated_at?,warning?,plugins}` |
+| `POST /v1/plugins/install` | `{repository,ref?,path?,build?,replace?,enable?}` | Installed `PluginInfo` |
+| `DELETE /v1/plugins/{id}` | None | `{ok:true}` |
+| `POST /v1/plugins/{id}/rollback` | None | Selected `PluginInfo` |
+
+The install request is limited to 8192 bytes. Unknown fields, trailing JSON and
+an empty repository are rejected. Boolean options default false. Installation
+uses the existing commit-locked GitHub installer. `enable=true` also updates
+the plugin configuration; a service restart activates the installed version.
+Uninstall disables the plugin and removes its installation lock entry. Running
+code stops and old files are cleaned up after restart. Rollback selects the
+retained previous version and also requires restart. History and local plugin
+configuration remain intact.
+
+`PluginInfo` includes optional `repository`, `commit`, `has_previous`,
+`previous_version`, `events` and `actions`. Each action exposes
+`{id,key,title,accepts?,placements?,post_actions?,timeout_ms?}`. The existing
+`configured_enabled`, `running_version` and `restart_required` fields remain
+the source of activation state.
+
+Marketplace `source` is `remote`, `cache` or `bundled`. A network or registry
+validation failure returns a usable fallback catalog with an optional warning.
+Each catalog entry includes `id`, `name`, `author`, `category`, `version`,
+`summary` and `repository`. Optional fields are `official`, `description`,
+`highlights`, `how_to`, `privacy`, `zero_config`, `ref`, `path`,
+`build_fallback` and `capabilities`. Catalog metadata never bypasses installer
+validation. See the [plugin contract](plugin-contract.md#marketplace-catalog).
+
 Action `cancel_on_context` defaults false. CLI and Desktop opt in for explicit
 user Actions. CLI permits up to five minutes plus five seconds of transport
 margin for Action requests; other non-streaming requests keep their 60-second

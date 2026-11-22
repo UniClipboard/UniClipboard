@@ -73,6 +73,8 @@ type Script struct {
 	BinarySHA256    string
 	SourceKind      string
 	Repository      string
+	HasPrevious     bool
+	PreviousVersion string
 }
 
 // Same reports whether two versions of a script may replace each other

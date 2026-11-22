@@ -5105,17 +5105,545 @@
     "pt-BR": "“%s” concluído · Copiado",
     "ru": "«%s» выполнено · Скопировано"
   },
-  "版本 %s": {
-    "en": "Version %s",
-    "ja": "バージョン %s",
-    "pt-BR": "Versão %s",
-    "ru": "Версия %s"
+  "%d 款扩展": {
+    "en": "%d extensions",
+    "ja": "%d 件の拡張機能",
+    "pt-BR": "%d extensões",
+    "ru": "%d расширений"
+  },
+  "上移": {
+    "en": "Move up",
+    "ja": "上へ移動",
+    "pt-BR": "Mover para cima",
+    "ru": "Вверх"
+  },
+  "下移": {
+    "en": "Move down",
+    "ja": "下へ移動",
+    "pt-BR": "Mover para baixo",
+    "ru": "Вниз"
+  },
+  "从市场安装的插件都会在本地进行完整性校验。": {
+    "en": "Plugins installed from the marketplace are verified locally for integrity.",
+    "ja": "マーケットプレイスからインストールされるプラグインはローカルで整合性を検証します。",
+    "pt-BR": "Os plugins instalados pela loja têm sua integridade verificada localmente.",
+    "ru": "Целостность плагинов из каталога проверяется локально."
+  },
+  "从链接手动安装": {
+    "en": "Install manually from URL",
+    "ja": "URL から手動インストール",
+    "pt-BR": "Instalar manualmente por URL",
+    "ru": "Установить вручную по ссылке"
+  },
+  "仓库链接": {
+    "en": "Repository URL",
+    "ja": "リポジトリ URL",
+    "pt-BR": "URL do repositório",
+    "ru": "URL репозитория"
+  },
+  "停用": {
+    "en": "Disable",
+    "ja": "無効化",
+    "pt-BR": "Desativar",
+    "ru": "Отключить"
+  },
+  "免配置": {
+    "en": "Zero config",
+    "ja": "設定不要",
+    "pt-BR": "Sem configuração",
+    "ru": "Без настройки"
+  },
+  "内置功能": {
+    "en": "Built-in features",
+    "ja": "組み込み機能",
+    "pt-BR": "Recursos integrados",
+    "ru": "Встроенные функции"
+  },
+  "决定是否允许该条剪贴板继续同步到其他设备。重启后生效。": {
+    "en": "Choose whether the clipboard item may still sync to other devices. Takes effect after restart.",
+    "ja": "他のデバイスへの同期を続行するかを決めます。再起動後に有効になります。",
+    "pt-BR": "Define se o item ainda pode ser sincronizado com outros dispositivos. Entra em vigor após reiniciar.",
+    "ru": "Определяет, можно ли продолжить синхронизацию элемента на другие устройства. Вступит в силу после перезапуска."
+  },
+  "分享与导出": {
+    "en": "Share & Export",
+    "ja": "共有とエクスポート",
+    "pt-BR": "Compartilhar e exportar",
+    "ru": "Обмен и экспорт"
+  },
+  "刷新目录": {
+    "en": "Refresh catalog",
+    "ja": "カタログを更新",
+    "pt-BR": "Atualizar catálogo",
+    "ru": "Обновить каталог"
+  },
+  "卸载": {
+    "en": "Uninstall",
+    "ja": "アンインストール",
+    "pt-BR": "Desinstalar",
+    "ru": "Удалить"
+  },
+  "卸载「%s」？": {
+    "en": "Uninstall \"%s\"?",
+    "ja": "「%s」をアンインストールしますか？",
+    "pt-BR": "Desinstalar \"%s\"?",
+    "ru": "Удалить «%s»?"
+  },
+  "卸载失败：": {
+    "en": "Uninstall failed: ",
+    "ja": "アンインストールに失敗しました: ",
+    "pt-BR": "Falha ao desinstalar: ",
+    "ru": "Ошибка удаления: "
+  },
+  "卸载插件": {
+    "en": "Uninstall plugin",
+    "ja": "プラグインをアンインストール",
+    "pt-BR": "Desinstalar plugin",
+    "ru": "Удалить плагин"
+  },
+  "可更新": {
+    "en": "Update available",
+    "ja": "更新あり",
+    "pt-BR": "Atualização disponível",
+    "ru": "Доступно обновление"
+  },
+  "同步扩展": {
+    "en": "Sync extensions",
+    "ja": "同期拡張",
+    "pt-BR": "Extensões de sincronização",
+    "ru": "Синхронизация"
+  },
+  "回滚": {
+    "en": "Roll back",
+    "ja": "ロールバック",
+    "pt-BR": "Reverter",
+    "ru": "Откатить"
+  },
+  "回滚「%s」？": {
+    "en": "Roll back \"%s\"?",
+    "ja": "「%s」をロールバックしますか？",
+    "pt-BR": "Reverter \"%s\"?",
+    "ru": "Откатить «%s»?"
+  },
+  "回滚失败：": {
+    "en": "Rollback failed: ",
+    "ja": "ロールバックに失敗しました: ",
+    "pt-BR": "Falha ao reverter: ",
+    "ru": "Ошибка отката: "
+  },
+  "回滚至上一版本": {
+    "en": "Roll back to previous version",
+    "ja": "前のバージョンに戻す",
+    "pt-BR": "Reverter para a versão anterior",
+    "ru": "Откатить к предыдущей версии"
+  },
+  "在线插件目录（%d）": {
+    "en": "Online plugin catalog (%d)",
+    "ja": "オンラインプラグイン一覧（%d）",
+    "pt-BR": "Catálogo online de plugins (%d)",
+    "ru": "Онлайн-каталог плагинов (%d)"
+  },
+  "处理先后顺序": {
+    "en": "Processing order",
+    "ja": "処理の実行順序",
+    "pt-BR": "Ordem de processamento",
+    "ru": "Порядок обработки"
+  },
+  "如何使用": {
+    "en": "How to use",
+    "ja": "使い方",
+    "pt-BR": "Como usar",
+    "ru": "Как использовать"
+  },
+  "子目录（可选）": {
+    "en": "Subdirectory (optional)",
+    "ja": "サブディレクトリ（任意）",
+    "pt-BR": "Subdiretório (opcional)",
+    "ru": "Подкаталог (необязательно)"
+  },
+  "安装": {
+    "en": "Install",
+    "ja": "インストール",
+    "pt-BR": "Instalar",
+    "ru": "Установить"
+  },
+  "安装后自动启用": {
+    "en": "Enable automatically after install",
+    "ja": "インストール後に自動で有効化",
+    "pt-BR": "Ativar automaticamente após instalar",
+    "ru": "Включить после установки"
+  },
+  "安装失败：": {
+    "en": "Installation failed: ",
+    "ja": "インストールに失敗しました: ",
+    "pt-BR": "Falha na instalação: ",
+    "ru": "Ошибка установки: "
+  },
+  "安装版本": {
+    "en": "Installed version",
+    "ja": "インストール済みバージョン",
+    "pt-BR": "Versão instalada",
+    "ru": "Установленная версия"
+  },
+  "官方": {
+    "en": "Official",
+    "ja": "公式",
+    "pt-BR": "Oficial",
+    "ru": "Официальный"
+  },
+  "官方推荐": {
+    "en": "Official picks",
+    "ja": "公式おすすめ",
+    "pt-BR": "Recomendados oficiais",
+    "ru": "Официальные"
+  },
+  "将切换回上一安装版本 v%s，重启桌面端后生效。": {
+    "en": "Switches back to previous installed version v%s after restarting Desktop.",
+    "ja": "前のインストール済みバージョン v%s に戻します。デスクトップの再起動後に有効になります。",
+    "pt-BR": "Retorna à versão instalada anterior v%s após reiniciar o aplicativo.",
+    "ru": "Переключит обратно на предыдущую установленную версию v%s после перезапуска."
+  },
+  "尚未安装第三方插件": {
+    "en": "No third-party plugins installed",
+    "ja": "サードパーティ製プラグインは未インストールです",
+    "pt-BR": "Nenhum plugin de terceiros instalado",
+    "ru": "Сторонние плагины не установлены"
+  },
+  "尝试更换关键词或切换分类。": {
+    "en": "Try another search term or category.",
+    "ja": "別のキーワードやカテゴリをお試しください。",
+    "pt-BR": "Tente outro termo de busca ou categoria.",
+    "ru": "Попробуйте другой запрос или категорию."
+  },
+  "已加密保存": {
+    "en": "Saved encrypted",
+    "ja": "暗号化して保存済み",
+    "pt-BR": "Salvo com criptografia",
+    "ru": "Сохранено в зашифрованном виде"
+  },
+  "已回滚「%s」，请重启桌面端生效。": {
+    "en": "Rolled back \"%s\". Restart Desktop to apply.",
+    "ja": "「%s」をロールバックしました。再起動すると反映されます。",
+    "pt-BR": "\"%s\" revertido. Reinicie o aplicativo para aplicar.",
+    "ru": "«%s» откачен. Перезапустите приложение для применения."
+  },
+  "已安装": {
+    "en": "Installed",
+    "ja": "インストール済み",
+    "pt-BR": "Instalado",
+    "ru": "Установлен"
+  },
+  "已安装「%s」，点击「启用」后重启生效。": {
+    "en": "Installed \"%s\". Click Enable and restart to use it.",
+    "ja": "「%s」をインストールしました。「有効」にして再起動すると使えます。",
+    "pt-BR": "\"%s\" instalado. Clique em Ativar e reinicie para usar.",
+    "ru": "«%s» установлен. Нажмите «Включить» и перезапустите приложение."
+  },
+  "已安装并启用「%s」，请重启桌面端生效。": {
+    "en": "Installed and enabled \"%s\". Restart Desktop to apply.",
+    "ja": "「%s」をインストールして有効化しました。再起動すると反映されます。",
+    "pt-BR": "\"%s\" instalado e ativado. Reinicie o aplicativo para aplicar.",
+    "ru": "«%s» установлен и включён. Перезапустите приложение."
+  },
+  "已安装插件": {
+    "en": "Installed plugins",
+    "ja": "インストール済みプラグイン",
+    "pt-BR": "Plugins instalados",
+    "ru": "Установленные плагины"
+  },
+  "已更新「%s」，请重启桌面端生效。": {
+    "en": "Updated \"%s\". Restart Desktop to apply.",
+    "ja": "「%s」を更新しました。再起動すると反映されます。",
+    "pt-BR": "\"%s\" atualizado. Reinicie o aplicativo para aplicar.",
+    "ru": "«%s» обновлён. Перезапустите приложение для применения."
+  },
+  "已标记卸载「%s」，重启后清理程序文件。": {
+    "en": "Marked \"%s\" for uninstall. Program files will be cleaned up after restart.",
+    "ja": "「%s」をアンインストール対象にしました。再起動後にファイルが削除されます。",
+    "pt-BR": "\"%s\" marcado para desinstalação. Os arquivos serão removidos após reiniciar.",
+    "ru": "«%s» отмечен для удаления. Файлы будут удалены после перезапуска."
+  },
+  "开发者：从链接手动安装": {
+    "en": "Developer: install manually from URL",
+    "ja": "開発者向け: URL から手動インストール",
+    "pt-BR": "Desenvolvedor: instalar manualmente por URL",
+    "ru": "Для разработчиков: установить по ссылке"
+  },
+  "开源仓库": {
+    "en": "Repository",
+    "ja": "リポジトリ",
+    "pt-BR": "Repositório",
+    "ru": "Репозиторий"
+  },
+  "异常处理": {
+    "en": "Error handling",
+    "ja": "エラー処理",
+    "pt-BR": "Tratamento de erros",
+    "ru": "Обработка ошибок"
+  },
+  "当前没有已启用插件": {
+    "en": "No enabled plugins",
+    "ja": "有効なプラグインはありません",
+    "pt-BR": "Nenhum plugin ativado",
+    "ru": "Нет включённых плагинов"
+  },
+  "当插件运行出错时": {
+    "en": "When a plugin fails",
+    "ja": "プラグイン実行エラー時",
+    "pt-BR": "Quando um plugin falhar",
+    "ru": "При сбое плагина"
+  },
+  "打开插件市场即可一键在线安装扩展。": {
+    "en": "Open the Plugin Marketplace to install extensions in one click.",
+    "ja": "プラグインマーケットプレイスからワンクリックで拡張機能をインストールできます。",
+    "pt-BR": "Abra a loja de plugins para instalar extensões com um clique.",
+    "ru": "Откройте каталог плагинов, чтобы установить расширения в один клик."
+  },
+  "执行顺序与高级设置": {
+    "en": "Execution order & advanced",
+    "ja": "実行順序と詳細設定",
+    "pt-BR": "Ordem de execução e avançado",
+    "ru": "Порядок выполнения и дополнительно"
+  },
+  "接受：": {
+    "en": "Accepts: ",
+    "ja": "対象: ",
+    "pt-BR": "Aceita: ",
+    "ru": "Принимает: "
+  },
+  "推荐优先使用插件市场。手动安装适用于测试未上架插件，请确保来源可信。": {
+    "en": "Use the Plugin Marketplace whenever possible. Manual install is for testing unlisted plugins from trusted sources.",
+    "ja": "通常はプラグインマーケットプレイスの利用をおすすめします。手動インストールは信頼できる未掲載プラグインのテスト用です。",
+    "pt-BR": "Prefira a loja de plugins. A instalação manual serve para testar plugins não listados de fontes confiáveis.",
+    "ru": "Рекомендуется использовать каталог плагинов. Ручная установка предназначена для проверки сторонних плагинов из надёжных источников."
+  },
+  "插件分类": {
+    "en": "Plugin categories",
+    "ja": "プラグインカテゴリ",
+    "pt-BR": "Categorias de plugins",
+    "ru": "Категории плагинов"
+  },
+  "插件市场": {
+    "en": "Plugin Marketplace",
+    "ja": "プラグインマーケットプレイス",
+    "pt-BR": "Loja de plugins",
+    "ru": "Каталог плагинов"
+  },
+  "插件标识": {
+    "en": "Plugin ID",
+    "ja": "プラグイン ID",
+    "pt-BR": "ID do plugin",
+    "ru": "ID плагина"
+  },
+  "搜索插件名称、功能或作者": {
+    "en": "Search by name, feature, or author",
+    "ja": "名前、機能、または作者で検索",
+    "pt-BR": "Buscar por nome, recurso ou autor",
+    "ru": "Поиск по названию, функции или автору"
+  },
+  "搜索插件市场": {
+    "en": "Search Plugin Marketplace",
+    "ja": "プラグインマーケットプレイスを検索",
+    "pt-BR": "Pesquisar na loja de plugins",
+    "ru": "Поиск в каталоге плагинов"
+  },
+  "文本效率": {
+    "en": "Text tools",
+    "ja": "テキスト効率化",
+    "pt-BR": "Ferramentas de texto",
+    "ru": "Работа с текстом"
+  },
+  "无匹配插件": {
+    "en": "No matching plugins",
+    "ja": "一致するプラグインがありません",
+    "pt-BR": "Nenhum plugin correspondente",
+    "ru": "Подходящие плагины не найдены"
+  },
+  "无预编译产物时从源码构建": {
+    "en": "Build from source if no prebuilt binary exists",
+    "ja": "ビルド済みバイナリがない場合はソースからビルド",
+    "pt-BR": "Compilar do código-fonte se não houver binário pronto",
+    "ru": "Собрать из исходников, если нет готовой сборки"
+  },
+  "智能整理": {
+    "en": "Smart organize",
+    "ja": "自動整理",
+    "pt-BR": "Organização inteligente",
+    "ru": "Умная сортировка"
+  },
+  "未能加载插件市场目录。": {
+    "en": "Could not load the plugin marketplace catalog.",
+    "ja": "プラグインマーケットプレイスのカタログを読み込めませんでした。",
+    "pt-BR": "Não foi possível carregar o catálogo da loja de plugins.",
+    "ru": "Не удалось загрузить каталог плагинов."
+  },
+  "更多": {
+    "en": "More",
+    "ja": "その他",
+    "pt-BR": "Mais",
+    "ru": "Ещё"
+  },
+  "更新": {
+    "en": "Update",
+    "ja": "更新",
+    "pt-BR": "Atualizar",
+    "ru": "Обновить"
+  },
+  "更新至 v%s": {
+    "en": "Update to v%s",
+    "ja": "v%s に更新",
+    "pt-BR": "Atualizar para v%s",
+    "ru": "Обновить до v%s"
+  },
+  "来源信息": {
+    "en": "Source information",
+    "ja": "ソース情報",
+    "pt-BR": "Informações de origem",
+    "ru": "Сведения об источнике"
+  },
+  "查看": {
+    "en": "View",
+    "ja": "表示",
+    "pt-BR": "Ver",
+    "ru": "Открыть"
   },
   "检查更新": {
     "en": "Check for updates",
     "ja": "更新を確認",
     "pt-BR": "Verificar atualizações",
     "ru": "Проверить обновления"
+  },
+  "正在安装…": {
+    "en": "Installing…",
+    "ja": "インストール中…",
+    "pt-BR": "Instalando…",
+    "ru": "Установка…"
+  },
+  "浏览官方与社区扩展，一键在线安装剪贴板动作、整理工具与同步方式。": {
+    "en": "Browse official and community extensions to install clipboard actions, organizers, and sync backends in one click.",
+    "ja": "公式およびコミュニティ拡張機能を探して、アクション・整理ツール・同期方式をワンクリックでインストールできます。",
+    "pt-BR": "Explore extensões oficiais e da comunidade para instalar ações, organizadores e sincronização com um clique.",
+    "ru": "Просматривайте официальные и сторонние расширения для установки действий, сортировки и синхронизации в один клик."
+  },
+  "浏览插件市场": {
+    "en": "Browse Marketplace",
+    "ja": "マーケットプレイスを開く",
+    "pt-BR": "Explorar loja",
+    "ru": "Открыть каталог"
+  },
+  "版本 Ref（可选）": {
+    "en": "Version / Ref (optional)",
+    "ja": "バージョン Ref（任意）",
+    "pt-BR": "Versão / Ref (opcional)",
+    "ru": "Версия / Ref (необязательно)"
+  },
+  "留空使用默认分支": {
+    "en": "Leave empty for default branch",
+    "ja": "空欄でデフォルトブランチを使用",
+    "pt-BR": "Deixe em branco para a branch padrão",
+    "ru": "Оставьте пустым для ветки по умолчанию"
+  },
+  "确认回滚": {
+    "en": "Roll back",
+    "ja": "ロールバックする",
+    "pt-BR": "Confirmar reversão",
+    "ru": "Подтвердить откат"
+  },
+  "立即安装": {
+    "en": "Install now",
+    "ja": "今すぐインストール",
+    "pt-BR": "Instalar agora",
+    "ru": "Установить"
+  },
+  "运行版本": {
+    "en": "Running version",
+    "ja": "実行中バージョン",
+    "pt-BR": "Versão em execução",
+    "ru": "Запущенная версия"
+  },
+  "选项": {
+    "en": "Options",
+    "ja": "オプション",
+    "pt-BR": "Opções",
+    "ru": "Параметры"
+  },
+  "重启时将停止并移除该插件程序。已保存的剪贴板历史不会被删除，随时可以在插件市场重新安装。": {
+    "en": "Stops and removes the plugin binary on restart. Your clipboard history is kept and you can reinstall anytime from the Marketplace.",
+    "ja": "再起動時にプラグインを停止して削除します。クリップボード履歴は保持され、いつでも再インストールできます。",
+    "pt-BR": "Interrompe e remove o plugin ao reiniciar. Seu histórico é preservado e você pode reinstalar quando quiser pela loja.",
+    "ru": "Остановит и удалит плагин при перезапуске. История буфера обмена сохранится, а плагин можно установить снова в любой момент."
+  },
+  "重启时移除程序文件，保留剪贴板历史与本地配置。": {
+    "en": "Removes program files on restart while preserving clipboard history and local config.",
+    "ja": "再起動時にプログラムを削除します。履歴とローカル設定は保持されます。",
+    "pt-BR": "Remove os arquivos do programa ao reiniciar, mantendo o histórico e a configuração local.",
+    "ru": "Удалит файлы плагина при перезапуске, сохранив историю и локальные настройки."
+  },
+  "隐私与安全": {
+    "en": "Privacy & Security",
+    "ja": "プライバシーとセキュリティ",
+    "pt-BR": "Privacidade e segurança",
+    "ru": "Конфиденциальность и безопасность"
+  },
+  "顺序仅影响同一阶段多个插件的先后；同步始终在本地保存之后执行。": {
+    "en": "Order applies only within the same stage; sync always runs after local commit.",
+    "ja": "順序は同一ステージ内でのみ有効です。同期は常にローカル保存の後に実行されます。",
+    "pt-BR": "A ordem se aplica apenas dentro da mesma etapa; a sincronização sempre ocorre após o salvamento local.",
+    "ru": "Порядок влияет только внутри одного этапа; синхронизация всегда выполняется после локального сохранения."
+  },
+  "官方推荐扩展": {
+    "en": "Featured official extensions",
+    "ja": "公式おすすめの拡張機能",
+    "pt-BR": "Extensões oficiais em destaque",
+    "ru": "Рекомендуемые официальные расширения"
+  },
+  "已安装插件（%d）": {
+    "en": "Installed plugins (%d)",
+    "ja": "インストール済みプラグイン（%d）",
+    "pt-BR": "Plugins instalados (%d)",
+    "ru": "Установленные плагины (%d)"
+  },
+  "查看来源与技术信息": {
+    "en": "Source & technical details",
+    "ja": "ソースと技術情報を表示",
+    "pt-BR": "Origem e detalhes técnicos",
+    "ru": "Источник и технические сведения"
+  },
+  "查看详情": {
+    "en": "View details",
+    "ja": "詳細を見る",
+    "pt-BR": "Ver detalhes",
+    "ru": "Подробнее"
+  },
+  "简介": {
+    "en": "Overview",
+    "ja": "概要",
+    "pt-BR": "Resumo",
+    "ru": "Описание"
+  },
+  "在已配对设备间点对点同步剪贴板，支持文本、图片、文件与文件夹。": {
+    "en": "Peer-to-peer clipboard sync across paired devices for text, images, files and folders.",
+    "ja": "ペアリング済みデバイス間でテキスト・画像・ファイル・フォルダを P2P 同期します。",
+    "pt-BR": "Sincronização ponto a ponto entre dispositivos pareados para texto, imagens, arquivos e pastas.",
+    "ru": "Прямая синхронизация текста, изображений, файлов и папок между связанными устройствами."
+  },
+  "提供转大写、转小写、去除首尾空白和纯文本四个常用动作。": {
+    "en": "Provides uppercase, lowercase, trim whitespace and plain-text clipboard actions.",
+    "ja": "大文字変換・小文字変換・前後空白除去・プレーンテキストの 4 つのアクションを提供します。",
+    "pt-BR": "Oferece ações de maiúsculas, minúsculas, remover espaços e texto simples.",
+    "ru": "Добавляет действия для верхнего/нижнего регистра, обрезки пробелов и простого текста."
+  },
+  "自动为文本、图片、文件、文件夹和链接添加基础类型标签。": {
+    "en": "Automatically adds basic content-type tags for text, images, files, folders and links.",
+    "ja": "テキスト・画像・ファイル・フォルダ・リンクに基本タイプタグを自動付与します。",
+    "pt-BR": "Adiciona automaticamente tags básicas para texto, imagens, arquivos, pastas e links.",
+    "ru": "Автоматически добавляет базовые теги для текста, изображений, файлов, папок и ссылок."
+  },
+  "版本 %s": {
+    "en": "Version %s",
+    "ja": "バージョン %s",
+    "pt-BR": "Versão %s",
+    "ru": "Версия %s"
   },
   "当前已是最新版本。": {
     "en": "You're already on the latest version.",
@@ -5128,12 +5656,6 @@
     "ja": "この開発ビルドではアプリ内アップデートが無効になっています。",
     "pt-BR": "As atualizações no aplicativo estão desativadas nesta compilação de desenvolvimento.",
     "ru": "Встроенные обновления отключены в этой сборке для разработки."
-  },
-  "更新": {
-    "en": "Updates",
-    "ja": "アップデート",
-    "pt-BR": "Atualizações",
-    "ru": "Обновления"
   },
   "自动检查更新": {
     "en": "Auto-check for updates",

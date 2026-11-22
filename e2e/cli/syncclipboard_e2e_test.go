@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -20,6 +21,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/BurntSushi/toml"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
@@ -63,9 +66,25 @@ func TestSyncClipboardExternalProcess(t *testing.T) {
 	binary := readFile(binaryPath)
 	schema := readFile(filepath.Join(pluginDir, "settings.schema.json"))
 	asset := pluginArchive(t, map[string][]byte{"syncclipboard": binary})
-	manifest := readFile(filepath.Join(pluginDir, "spec.toml"))
-	manifest = fmt.Appendf(manifest, "\n[[artifacts]]\ngoos=%q\ngoarch=%q\nrelease=\"v0.1.0\"\nasset=\"plugin.tar.gz\"\nexecutable=\"syncclipboard\"\nsha256=\"%x\"\n", runtime.GOOS, runtime.GOARCH, sha256.Sum256(asset))
-	source := pluginArchive(t, map[string][]byte{"repo/spec.toml": manifest, "repo/settings.schema.json": schema})
+	var manifest map[string]any
+	if _, err := toml.Decode(string(readFile(filepath.Join(pluginDir, "spec.toml"))), &manifest); err != nil {
+		t.Fatalf("parse plugin manifest: %v", err)
+	}
+	// This fixture serves the executable built above, including when the
+	// checkout already declares published artifacts for the same platform.
+	manifest["artifacts"] = []map[string]string{{
+		"goos":       runtime.GOOS,
+		"goarch":     runtime.GOARCH,
+		"release":    "v0.1.0",
+		"asset":      "plugin.tar.gz",
+		"executable": "syncclipboard",
+		"sha256":     fmt.Sprintf("%x", sha256.Sum256(asset)),
+	}}
+	var encodedManifest bytes.Buffer
+	if err := toml.NewEncoder(&encodedManifest).Encode(manifest); err != nil {
+		t.Fatalf("encode plugin manifest: %v", err)
+	}
+	source := pluginArchive(t, map[string][]byte{"repo/spec.toml": encodedManifest.Bytes(), "repo/settings.schema.json": schema})
 	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(r.URL.Path, "/commits/"):

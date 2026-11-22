@@ -17,6 +17,8 @@ import (
 // Failure cases: a checkbox task replaces the management table; context menus
 // bypass the in-window menu; builtin tags expose destructive operations; edits
 // drift from search/sidebar data; tag deletion removes clipboard history.
+// Default content types can lose distinct colors or disappear from the sidebar
+// on initial render or a tag-registry refresh.
 func scenarioTagManager(t *testing.T) {
 	type receipt struct {
 		Theme, Scenario string
@@ -48,6 +50,21 @@ func scenarioTagManager(t *testing.T) {
 				d := newDemo("history", theme)
 				tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: theme == "dark"})
 				proof.Capture(t, tt)
+				if scenario == "builtin" {
+					for _, want := range []struct{ id, name, color string }{
+						{"builtin:text", "文本", "blue"},
+						{"builtin:image", "图片", "green"},
+						{"builtin:files", "文件", "orange"},
+					} {
+						tag := d.tagByID(want.id)
+						if tag == nil || string(tag.color) != want.color || !tag.sidebar {
+							t.Fatalf("default content tag %s: %+v", want.id, tag)
+						}
+						if _, ok := tt.AccessByRole(ui.RoleListItem, want.name); !ok {
+							t.Fatalf("default content tag %s missing from sidebar", want.id)
+						}
+					}
+				}
 				if err := tt.Click("管理标签"); err != nil {
 					t.Fatal(err)
 				}

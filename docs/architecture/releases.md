@@ -30,7 +30,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: a612b32030d8caad5551987a750f299a115b9086
+verified: b3a0d480acebe34f2ddf08152634ff736e22393f
 ---
 # Product builds and CLI releases
 
@@ -145,8 +145,11 @@ to own DEB and RPM upgrades.
 Run **Prepare legacy Desktop alpha** after numbered alpha publication. It
 downloads the exact assets, checks them against the release catalogue, and
 uses the pinned v1 signer and v1 verification path. The output includes the
-legacy offer and the per-file signature verification receipt. The workflow
-does not activate the offer. Before activation, verify the old installed
+legacy offer and the per-file signature verification receipt. Its native
+jobs verify the existing and candidate archives with the old key, replace a
+disposable v1 installation, and check explicit history migration. The jobs
+record Windows installer relaunch and verify the old executable paths on
+macOS and Linux. The workflow does not activate the offer. Before activation, verify the old installed
 package, upgrade, relaunch, unchanged source data, and explicit history import
 for each of the six targets against the exact asset hashes. Write the
 accepted offer to the FlareRelease control object after acceptance. Remove

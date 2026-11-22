@@ -3,6 +3,8 @@ param(
   [Parameter(Mandatory=$true)][string]$Newer,
   [Parameter(Mandatory=$true)][string]$Receipt,
   [Parameter(Mandatory=$true)][string]$Target,
+  [string]$Version = '2.0.0',
+  [int]$BuildNumber = 1,
   [string]$IsolatedVMRoot
 )
 $ErrorActionPreference = 'Stop'
@@ -31,7 +33,7 @@ function Install-Package([string]$File) {
 try {
   Install-Package $Installer
   $value = (& (Join-Path $install 'unic-desktop.exe') --version --json | ConvertFrom-Json)
-  if ($value.version -ne '2.0.0' -or $value.build_number -ne '1') { throw 'Wrong installed Desktop identity.' }
+  if ($value.version -ne $Version -or $value.build_number -ne [string]$BuildNumber) { throw 'Wrong installed Desktop identity.' }
   $installedHashes = @{}
   $signatureStates = @{}
   foreach ($name in @('unic-desktop.exe', 'unic.exe', 'unicd.exe')) {
@@ -54,7 +56,7 @@ try {
   $checks += 'temporary_service_shutdown'
   Install-Package $Newer
   $value = (& (Join-Path $install 'unic-desktop.exe') --version --json | ConvertFrom-Json)
-  if ($value.build_number -ne '2') { throw 'Upgrade did not select the later build.' }
+  if ($value.version -ne $Version -or $value.build_number -ne [string]($BuildNumber + 1)) { throw 'Upgrade did not select the later build.' }
   $checks += 'upgrade'
   $process = Start-Process -FilePath $Installer -ArgumentList "/S /D=$install" -PassThru
   if (-not $process.WaitForExit(15000)) {
@@ -63,7 +65,7 @@ try {
   }
   if ($process.ExitCode -eq 0) { throw 'Downgrade was not rejected.' }
   $value = (& (Join-Path $install 'unic-desktop.exe') --version --json | ConvertFrom-Json)
-  if ($value.build_number -ne '2') { throw 'Failed downgrade changed installed files.' }
+  if ($value.version -ne $Version -or $value.build_number -ne [string]($BuildNumber + 1)) { throw 'Failed downgrade changed installed files.' }
   $checks += 'downgrade_rejection_preserves_installation'
   if ((Get-Content (Join-Path $install 'update-owner') -Raw).Trim() -ne 'winget') { throw 'Update ownership was lost.' }
   if ($env:PATH -ne $oldPath -or [Environment]::GetEnvironmentVariable('Path', 'User') -ne $oldUserPath -or [Environment]::GetEnvironmentVariable('Path', 'Machine') -ne $oldMachinePath) { throw 'Desktop modified public CLI ownership.' }

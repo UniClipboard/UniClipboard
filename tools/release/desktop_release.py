@@ -130,7 +130,7 @@ def acquire(args):
         return subprocess.check_output(["gh", *map(str, argv)], text=True).strip()
 
     run = json.loads(gh("api", f"repos/{repo}/actions/runs/{args.run_id}"))
-    workflow = json.loads(gh("api", f"repos/{repo}/actions/workflows/build-cli.yml"))
+    workflow = json.loads(gh("api", f"repos/{repo}/actions/workflows/build-desktop.yml"))
     if (
         run.get("conclusion") != "success"
         or run.get("workflow_id") != workflow["id"]

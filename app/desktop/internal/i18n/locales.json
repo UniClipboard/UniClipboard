@@ -5020,5 +5020,89 @@
     "ja": "0 は追加制限なし。ファイルごとに判定し、1 つでも超過すると自動送信全体がスキップされます。手動送信は対象外です。",
     "pt-BR": "0 não adiciona limite extra. Verificado por arquivo; se qualquer arquivo exceder, o envio automático inteiro é ignorado. Envios manuais ignoram este limite.",
     "ru": "0 — без дополнительного лимита. Проверяется каждый файл; при превышении пропускается вся автоотправка. Ручная отправка не ограничивается."
+  },
+  "已自动复制到剪贴板": {
+    "en": "Automatically copied to clipboard",
+    "ja": "クリップボードに自動コピーしました",
+    "pt-BR": "Copiado automaticamente para a área de transferência",
+    "ru": "Автоматически скопировано в буфер обмена"
+  },
+  "已保存到历史，但未能写入剪贴板。": {
+    "en": "Saved to history, but could not copy to clipboard.",
+    "ja": "履歴に保存しましたが、クリップボードにコピーできませんでした。",
+    "pt-BR": "Salvo no histórico, mas não foi possível copiar para a área de transferência.",
+    "ru": "Сохранено в истории, но не удалось скопировать в буфер обмена."
+  },
+  "结果已保存到历史。": {
+    "en": "Result saved to history.",
+    "ja": "結果を履歴に保存しました。",
+    "pt-BR": "Resultado salvo no histórico.",
+    "ru": "Результат сохранён в истории."
+  },
+  "内容较长，仅展示前段，完整内容已保存到历史。": {
+    "en": "Only the beginning is shown. The full content is saved to history.",
+    "ja": "内容が長いため、先頭のみ表示しています。全文は履歴に保存されています。",
+    "pt-BR": "Apenas o início é exibido. O conteúdo completo está salvo no histórico.",
+    "ru": "Показано только начало. Полное содержимое сохранено в истории."
+  },
+  "查看条目": {
+    "en": "View item",
+    "ja": "項目を表示",
+    "pt-BR": "Ver item",
+    "ru": "Просмотреть запись"
+  },
+  "再次复制": {
+    "en": "Copy again",
+    "ja": "もう一度コピー",
+    "pt-BR": "Copiar novamente",
+    "ru": "Скопировать ещё раз"
+  },
+  "打开链接": {
+    "en": "Open link",
+    "ja": "リンクを開く",
+    "pt-BR": "Abrir link",
+    "ru": "Открыть ссылку"
+  },
+  "无法打开链接。": {
+    "en": "Could not open the link.",
+    "ja": "リンクを開けませんでした。",
+    "pt-BR": "Não foi possível abrir o link.",
+    "ru": "Не удалось открыть ссылку."
+  },
+  "关闭提示": {
+    "en": "Dismiss notification",
+    "ja": "通知を閉じる",
+    "pt-BR": "Dispensar notificação",
+    "ru": "Закрыть уведомление"
+  },
+  "正在执行「%s」…": {
+    "en": "Running “%s”…",
+    "ja": "「%s」を実行中…",
+    "pt-BR": "Executando “%s”…",
+    "ru": "Выполняется «%s»…"
+  },
+  "已取消「%s」": {
+    "en": "Cancelled “%s”",
+    "ja": "「%s」をキャンセルしました",
+    "pt-BR": "“%s” cancelado",
+    "ru": "«%s» отменено"
+  },
+  "「%s」执行失败": {
+    "en": "“%s” failed",
+    "ja": "「%s」の実行に失敗しました",
+    "pt-BR": "Falha ao executar “%s”",
+    "ru": "Не удалось выполнить «%s»"
+  },
+  "已完成「%s」": {
+    "en": "Completed “%s”",
+    "ja": "「%s」が完了しました",
+    "pt-BR": "“%s” concluído",
+    "ru": "«%s» выполнено"
+  },
+  "已完成「%s」· 已复制": {
+    "en": "Completed “%s” · Copied",
+    "ja": "「%s」が完了しました · コピー済み",
+    "pt-BR": "“%s” concluído · Copiado",
+    "ru": "«%s» выполнено · Скопировано"
   }
 }

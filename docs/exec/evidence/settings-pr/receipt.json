@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "date": "2026-11-22",
+  "source_head_before_commit": "c307f39f2caa58f891f9bf06cdc4b2f96032e618",
+  "cases": {
+    "settings-diagnostics": {
+      "run_id": "20261122T090303Z-1b5f92bb",
+      "replay": "make desktop-e2e CASE=settings-diagnostics",
+      "report": ".build/desktop-e2e/20261122T090303Z-1b5f92bb/index.html",
+      "manifest_sha256": "01614482bbd3ca85dc9039efd345e705a3aeee041b8a8eb8b2f17c8201243475",
+      "status": "PASS",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "source_manifest_sha256": "8bae31877b65b146dff8f642d6f6deab8d5994190b37c5ac194e2956f1d0ec40",
+      "binary_sha256": {},
+      "post_run_formatted_files": [
+        "app/desktop/internal/desktopui/live_settings.go",
+        "app/desktop/internal/desktopui/settings_appearance.go"
+      ]
+    },
+    "settings-storage": {
+      "run_id": "20261122T090342Z-476c063b",
+      "replay": "make desktop-e2e CASE=settings-storage",
+      "report": ".build/desktop-e2e/20261122T090342Z-476c063b/index.html",
+      "manifest_sha256": "2f9270481a636b20fdc8983bef4cfb6e6131f63f5bf52ebb8e89cb0dab38cc35",
+      "status": "PASS",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "source_manifest_sha256": "8bae31877b65b146dff8f642d6f6deab8d5994190b37c5ac194e2956f1d0ec40",
+      "binary_sha256": {},
+      "post_run_formatted_files": [
+        "app/desktop/internal/desktopui/live_settings.go",
+        "app/desktop/internal/desktopui/settings_appearance.go"
+      ]
+    },
+    "settings-appearance": {
+      "run_id": "20261122T090423Z-a74066ff",
+      "replay": "make desktop-e2e CASE=settings-appearance",
+      "report": ".build/desktop-e2e/20261122T090423Z-a74066ff/index.html",
+      "manifest_sha256": "c98f1f8b2537ad42b07fb3174453ab00c391aec362154302ede65e72fc26dc8e",
+      "status": "PASS",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "source_manifest_sha256": "8bae31877b65b146dff8f642d6f6deab8d5994190b37c5ac194e2956f1d0ec40",
+      "binary_sha256": {},
+      "post_run_formatted_files": [
+        "app/desktop/internal/desktopui/live_settings.go",
+        "app/desktop/internal/desktopui/settings_appearance.go"
+      ]
+    },
+    "settings-backup": {
+      "run_id": "20261122T090458Z-e0ae64c5",
+      "replay": "make desktop-e2e CASE=settings-backup",
+      "report": ".build/desktop-e2e/20261122T090458Z-e0ae64c5/index.html",
+      "manifest_sha256": "f88784b8cbc085de0b07b61aad7bf649a470d91186ad7eb3b3168fcec5706190",
+      "status": "PASS",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "source_manifest_sha256": "8bae31877b65b146dff8f642d6f6deab8d5994190b37c5ac194e2956f1d0ec40",
+      "binary_sha256": {},
+      "post_run_formatted_files": [
+        "app/desktop/internal/desktopui/live_settings.go",
+        "app/desktop/internal/desktopui/settings_appearance.go"
+      ]
+    },
+    "settings-shortcuts": {
+      "run_id": "20261122T090529Z-627495d1",
+      "replay": "make desktop-e2e CASE=settings-shortcuts",
+      "report": ".build/desktop-e2e/20261122T090529Z-627495d1/index.html",
+      "manifest_sha256": "948920151b92e8a2266a1087873a86143410365caca0aa5be58b913881af9f7c",
+      "status": "PASS",
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "source_manifest_sha256": "8bae31877b65b146dff8f642d6f6deab8d5994190b37c5ac194e2956f1d0ec40",
+      "binary_sha256": {},
+      "post_run_formatted_files": [
+        "app/desktop/internal/desktopui/live_settings.go",
+        "app/desktop/internal/desktopui/settings_appearance.go"
+      ]
+    }
+  },
+  "post_run_change": "gofmt only on the two recorded files; no runtime behavior edits",
+  "formatted_source_sha256": {
+    "app/desktop/internal/desktopui/live_settings.go": "64da91fb2dfb3f8ca3346c55f53eb4c5a0baed57131e41d1ff03edc1204a2d9a",
+    "app/desktop/internal/desktopui/settings_appearance.go": "436f42bdc0bd359bb87948344bfaa023f73bc08718325e9bab51231309b98992"
+  },
+  "native_gui_this_turn": "NOT_RUN",
+  "historical_visual_receipt": "../settings-visual/receipt.json"
+}

@@ -170,8 +170,62 @@ The [Desktop source application receipt](../exec/desktop-source-application.md) 
 
 ## Settings
 
+Settings organizes active categories into three grouped sidebar sections:
+General & Experience (`general`, `appearance`, `quickPanel`), Sync & Data
+(`sync`, `storage`, `plugins`), and Diagnostics & System (`diagnostics`,
+`about`), removing unimplemented placeholder categories from the navigation.
+
+Settings > Appearance exposes `desktop.color_mode` as `system`, `light` or
+`dark` (default `system`) via visual theme cards, alongside `desktop.tray_icon`
+and `desktop.system_window_frame`. The revision-checked configuration path
+persists these host-only preferences. Each native Desktop role sets mygo's
+shared theme source before startup and watches subsequent configuration changes.
+Main GUI, setup and Quick Panel therefore consume the same saved scheme. The
+[appearance receipt](../exec/desktop-settings-appearance.md) proves configuration
+and production binding behavior; native appearance remains separate acceptance.
+
+Settings > Diagnostics & Privacy exposes persistent local/upload log levels,
+per-signal telemetry switches with inline runtime/dropped status pills,
+effective diagnostic state and bounded fifteen-minute debug overrides with live
+countdown badges. Overrides use existing diagnostic operations without editing
+the saved configuration. The view schedules status refreshes while this page is
+open. Native Desktop callbacks select an archive destination and run the private
+sibling CLI against the current profile. Export safety follows the offline log
+archive contract. Opening the logs directory remains host-owned. See the
+[diagnostic receipt](../exec/desktop-settings-diagnostics.md).
+
+Settings > Storage & Backup shows aggregate default-cache stored/reserved bytes
+and file/held counts through the existing service operation, paired with a
+quota meter, cache quota control, receive directory indicator, history
+retention tag-pill exclusions and local data directory/migration actions. Cache
+values exclude the database, logs, user-managed receive directories and other
+user files. An explicit refresh failure marks any retained sample as previous
+data. The profile-directory opener remains host-owned. Full disk inventory,
+manual cache maintenance, clear-all history and explicit search-index
+maintenance are not supplied by these reads. See the
+[storage receipt](../exec/desktop-settings-storage.md).
+
+Storage also exports and imports a bounded portable-preference backup. It uses
+an explicit typed allowlist rather than copying the profile or serializing the
+full configuration. Import validates before preview, requires confirmation and
+saves against the preview's original revision. Local identities, credentials,
+plugin settings, paths, login registration, shortcut bindings and the separate
+mygo updater preferences remain excluded. Exports refuse existing destinations.
+See the [backup receipt](../exec/desktop-settings-backup.md) for the format,
+allowlist and unexecuted native-file-panel boundaries.
+
+Quick Panel settings passively display the current application's Accessibility
+permission status and provide explicit refresh and System Settings actions.
+macOS uses the existing mygo permissionflow library. Other platforms expose an
+unsupported state for this specific permission switch. Reading never requests
+permission; opening settings never counts as a grant or paste readiness. Reads
+and actions use independent bounded workers with generation/cancellation checks.
+The actual paste owner retains its existing permission checks. See the
+[permission settings receipt](../exec/desktop-settings-shortcuts.md).
+
 | Key | Default | Effect |
 |---|---|---|
+| `desktop.color_mode` | `"system"` | Select the shared system/light/dark scheme for native Desktop roles; apply saved changes without a restart. |
 | `desktop.mode` | `"normal"` | Manual activation always opens the GUI. Normal GUI close keeps tray/service; lightweight GUI close leaves only unicd. Explicit background entry omits the GUI after setup. Lightweight login is service-only; normal login uses its background preference. |
 | `desktop.launch_at_login` | `false` | The running tray applies login registration; actual OS status is displayed separately. |
 | `desktop.tray_icon` | `"glyph"` | Immediately select `glyph` or `cat`; no restart required. |

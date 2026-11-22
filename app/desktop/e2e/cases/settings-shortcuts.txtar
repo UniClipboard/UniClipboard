@@ -1,0 +1,8 @@
+# Case: Passive shortcut permission status and explicit System Settings guidance
+# Mode: process
+# Purpose: Exercise the production Desktop binding against a private service with controlled permission-host callbacks.
+# Steps: Read denied/granted/unsupported/error states; explicitly request settings guidance without granting permission; overlap an outstanding read with opening settings; replace callbacks and cancel a late completion.
+# Expected: Reads never request permission or open settings; opening settings never grants permission; operations do not block each other; stale or cancelled results do not replace current state.
+# Forbidden: Native permission calls, GUI, renderer, browser, system settings launch, system clipboard, public-contract changes or arbitrary shortcut registration.
+
+acceptance desktopui settings-shortcuts

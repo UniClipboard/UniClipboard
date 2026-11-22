@@ -1,0 +1,43 @@
+# Case: Native settings screenshots for the parallel settings delivery
+# Mode: native
+# Purpose: Capture the actual settings composition for diagnostics, storage, appearance, permission guidance and portable backup.
+# Steps:
+#   Start an isolated production desktop, visit each implemented settings section, reveal its controls and retain native window captures.
+# Expected:
+#   Settings controls render in the live composition; the real service supplies diagnostic and cache values; screenshots and a continuous recording are retained.
+# Forbidden:
+#   Personal profiles, system clipboard access, telemetry uploads, permission requests, file dialogs, invented pixels or claims of completed update/paste acceptance.
+
+start
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 通用
+screenshot general
+ui-wait listItem 诊断与隐私
+ui-click listItem 诊断与隐私
+ui-wait popUpButton 本机日志等级
+ui-click button 刷新诊断状态
+ui-enabled button 刷新诊断状态
+screenshot diagnostics-levels
+ui-reveal button 打开日志目录
+screenshot diagnostics-signals-export
+ui-click listItem 存储与备份
+ui-wait button 刷新缓存用量
+ui-click button 刷新缓存用量
+ui-enabled button 刷新缓存用量
+screenshot storage-usage
+ui-reveal button 导入配置
+screenshot backup-controls
+ui-click listItem 外观
+ui-wait button 深色
+screenshot appearance
+ui-click button 深色
+config-equals desktop.color_mode '"dark"'
+observe 1
+screenshot appearance-dark
+ui-click button 跟随系统
+config-equals desktop.color_mode '"system"'
+ui-click listItem 快捷面板
+ui-wait button 刷新权限状态
+ui-enabled button 刷新权限状态
+screenshot shortcut-permissions

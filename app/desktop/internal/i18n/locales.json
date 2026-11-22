@@ -5896,5 +5896,1091 @@
     "ja": "了解",
     "pt-BR": "Entendi",
     "ru": "Понятно"
+  },
+  "上传匿名使用事件": {
+    "en": "Upload anonymous usage events",
+    "ja": "匿名の利用イベントを送信",
+    "pt-BR": "Enviar eventos anônimos de uso",
+    "ru": "Отправлять анонимные события использования"
+  },
+  "上传性能指标": {
+    "en": "Upload performance metrics",
+    "ja": "性能メトリクスを送信",
+    "pt-BR": "Enviar métricas de desempenho",
+    "ru": "Отправлять показатели производительности"
+  },
+  "上传日志等级": {
+    "en": "Upload log level",
+    "ja": "送信ログレベル",
+    "pt-BR": "Nível dos logs enviados",
+    "ru": "Уровень отправляемых журналов"
+  },
+  "上传有效日志等级": {
+    "en": "Effective upload log level",
+    "ja": "有効な送信ログレベル",
+    "pt-BR": "Nível efetivo dos logs enviados",
+    "ru": "Действующий уровень отправляемых журналов"
+  },
+  "上传诊断日志": {
+    "en": "Upload diagnostic logs",
+    "ja": "診断ログを送信",
+    "pt-BR": "Enviar logs de diagnóstico",
+    "ru": "Отправлять диагностические журналы"
+  },
+  "上传采样追踪": {
+    "en": "Upload sampled traces",
+    "ja": "サンプリングしたトレースを送信",
+    "pt-BR": "Enviar rastreamentos amostrados",
+    "ru": "Отправлять выборочные трассировки"
+  },
+  "下方显示上次成功读取的用量。": {
+    "en": "The last successfully read usage is shown below.",
+    "ja": "前回正常に取得した使用量を表示しています。",
+    "pt-BR": "O último uso lido com sucesso é mostrado abaixo.",
+    "ru": "Ниже показаны последние успешно полученные данные."
+  },
+  "临时开启上传调试日志（15 分钟）": {
+    "en": "Enable upload debug logs for 15 minutes",
+    "ja": "送信デバッグログを15分間有効にする",
+    "pt-BR": "Ativar logs de depuração enviados por 15 minutos",
+    "ru": "Включить отправку отладочных журналов на 15 минут"
+  },
+  "临时开启本机调试日志（15 分钟）": {
+    "en": "Enable local debug logs for 15 minutes",
+    "ja": "ローカルデバッグログを15分間有効にする",
+    "pt-BR": "Ativar logs locais de depuração por 15 minutos",
+    "ru": "Включить локальные отладочные журналы на 15 минут"
+  },
+  "临时覆盖到期时间：": {
+    "en": "Temporary override expires at: ",
+    "ja": "一時設定の終了時刻：",
+    "pt-BR": "A configuração temporária expira às: ",
+    "ru": "Временная настройка действует до: "
+  },
+  "仅导出本机保留的日志和校验清单，不包含配置、凭据或剪贴板历史。": {
+    "en": "Export only retained local logs and checksums. Configuration, credentials and clipboard history are excluded.",
+    "ja": "保存されたローカルログとチェックサムのみを書き出します。設定、認証情報、クリップボード履歴は含みません。",
+    "pt-BR": "Exporte apenas logs locais e somas de verificação. Configurações, credenciais e histórico ficam de fora.",
+    "ru": "Экспортируются только локальные журналы и контрольные суммы. Настройки, учётные данные и история буфера не включаются."
+  },
+  "仅统计应用管理的接收文件缓存。不包含数据库、日志、自定义接收目录或其他用户文件。": {
+    "en": "Only received-file cache managed by the app is counted. Database, logs, custom receive folders and other user files are excluded.",
+    "ja": "アプリが管理する受信ファイルのキャッシュのみを集計します。データベース、ログ、カスタム受信フォルダー、その他のファイルは含みません。",
+    "pt-BR": "Conta apenas o cache de arquivos recebidos gerenciado pelo aplicativo. Banco de dados, logs, pastas personalizadas e outros arquivos ficam de fora.",
+    "ru": "Учитывается только кэш полученных файлов приложения. База данных, журналы, пользовательские папки приёма и другие файлы не включаются."
+  },
+  "传输预留空间": {
+    "en": "Space reserved for transfers",
+    "ja": "転送用の予約領域",
+    "pt-BR": "Espaço reservado para transferências",
+    "ru": "Место, зарезервированное для передачи"
+  },
+  "使用中的缓存文件数": {
+    "en": "Cache files in use",
+    "ja": "使用中のキャッシュファイル数",
+    "pt-BR": "Arquivos em cache em uso",
+    "ru": "Используемые файлы кэша"
+  },
+  "使用事件": {
+    "en": "Usage events",
+    "ja": "利用イベント",
+    "pt-BR": "Eventos de uso",
+    "ru": "События использования"
+  },
+  "使用已保存设置": {
+    "en": "Using saved settings",
+    "ja": "保存済み設定を使用",
+    "pt-BR": "Usando configurações salvas",
+    "ru": "Используются сохранённые настройки"
+  },
+  "刷新缓存用量": {
+    "en": "Refresh cache usage",
+    "ja": "キャッシュ使用量を更新",
+    "pt-BR": "Atualizar uso do cache",
+    "ru": "Обновить данные кэша"
+  },
+  "刷新诊断状态": {
+    "en": "Refresh diagnostic status",
+    "ja": "診断状態を更新",
+    "pt-BR": "Atualizar estado do diagnóstico",
+    "ru": "Обновить состояние диагностики"
+  },
+  "在系统文件管理器中查看当前配置的数据目录。": {
+    "en": "View the current data folder in the system file manager.",
+    "ja": "現在のデータフォルダーをシステムのファイルマネージャーで表示します。",
+    "pt-BR": "Abra a pasta de dados atual no gerenciador de arquivos.",
+    "ru": "Открыть текущую папку данных в файловом менеджере."
+  },
+  "导出诊断日志": {
+    "en": "Export diagnostic logs",
+    "ja": "診断ログを書き出す",
+    "pt-BR": "Exportar logs de diagnóstico",
+    "ru": "Экспорт диагностических журналов"
+  },
+  "已取消导出。": {
+    "en": "Export canceled.",
+    "ja": "書き出しをキャンセルしました。",
+    "pt-BR": "Exportação cancelada.",
+    "ru": "Экспорт отменён."
+  },
+  "已存储文件大小": {
+    "en": "Stored file size",
+    "ja": "保存済みファイルのサイズ",
+    "pt-BR": "Tamanho dos arquivos armazenados",
+    "ru": "Размер сохранённых файлов"
+  },
+  "已请求打开日志目录。": {
+    "en": "Requested to open the logs folder.",
+    "ja": "ログフォルダーを開くよう要求しました。",
+    "pt-BR": "Solicitada a abertura da pasta de logs.",
+    "ru": "Запрошено открытие папки журналов."
+  },
+  "当前使用自定义接收目录。该目录由用户管理，不计入默认缓存用量。": {
+    "en": "A custom receive folder is active. It is user-managed and excluded from default cache usage.",
+    "ja": "カスタム受信フォルダーを使用中です。ユーザーが管理するため、標準キャッシュの集計には含みません。",
+    "pt-BR": "Uma pasta personalizada está ativa. Ela é gerenciada pelo usuário e não entra no uso do cache padrão.",
+    "ru": "Используется пользовательская папка приёма. Она не учитывается в размере стандартного кэша."
+  },
+  "当前宿主不支持此操作。": {
+    "en": "This host does not support this action.",
+    "ja": "このホストはこの操作をサポートしていません。",
+    "pt-BR": "Este ambiente não oferece suporte a esta ação.",
+    "ru": "Эта среда не поддерживает данное действие."
+  },
+  "当前遥测上传": {
+    "en": "Current telemetry upload",
+    "ja": "現在のテレメトリー送信",
+    "pt-BR": "Envio atual de telemetria",
+    "ru": "Текущая отправка телеметрии"
+  },
+  "总开关关闭后停止上传，并保留各信号的选择。": {
+    "en": "Turning off the main switch stops uploads and preserves each signal preference.",
+    "ja": "全体のスイッチをオフにすると送信を停止し、各信号の設定は保持します。",
+    "pt-BR": "Desativar o controle principal interrompe os envios e preserva as preferências de cada sinal.",
+    "ru": "Общий переключатель останавливает отправку, сохраняя настройки отдельных сигналов."
+  },
+  "恢复上传日志等级": {
+    "en": "Reset upload log level",
+    "ja": "送信ログレベルを戻す",
+    "pt-BR": "Restaurar nível dos logs enviados",
+    "ru": "Сбросить уровень отправляемых журналов"
+  },
+  "恢复本机日志等级": {
+    "en": "Reset local log level",
+    "ja": "ローカルログレベルを戻す",
+    "pt-BR": "Restaurar nível dos logs locais",
+    "ru": "Сбросить уровень локальных журналов"
+  },
+  "打开数据目录": {
+    "en": "Open data folder",
+    "ja": "データフォルダーを開く",
+    "pt-BR": "Abrir pasta de dados",
+    "ru": "Открыть папку данных"
+  },
+  "打开日志目录": {
+    "en": "Open logs folder",
+    "ja": "ログフォルダーを開く",
+    "pt-BR": "Abrir pasta de logs",
+    "ru": "Открыть папку журналов"
+  },
+  "指标": {
+    "en": "Metrics",
+    "ja": "メトリクス",
+    "pt-BR": "Métricas",
+    "ru": "Показатели"
+  },
+  "数据目录": {
+    "en": "Data folder",
+    "ja": "データフォルダー",
+    "pt-BR": "Pasta de dados",
+    "ru": "Папка данных"
+  },
+  "无法刷新缓存用量。请重试。": {
+    "en": "Cannot refresh cache usage. Try again.",
+    "ja": "キャッシュ使用量を更新できません。再試行してください。",
+    "pt-BR": "Não foi possível atualizar o uso do cache. Tente novamente.",
+    "ru": "Не удалось обновить данные кэша. Повторите попытку."
+  },
+  "无法打开数据目录。请重试。": {
+    "en": "Cannot open the data folder. Try again.",
+    "ja": "データフォルダーを開けません。再試行してください。",
+    "pt-BR": "Não foi possível abrir a pasta de dados. Tente novamente.",
+    "ru": "Не удалось открыть папку данных. Повторите попытку."
+  },
+  "日志": {
+    "en": "Logs",
+    "ja": "ログ",
+    "pt-BR": "Logs",
+    "ru": "Журналы"
+  },
+  "日志已导出：": {
+    "en": "Logs exported to: ",
+    "ja": "ログの書き出し先：",
+    "pt-BR": "Logs exportados para: ",
+    "ru": "Журналы экспортированы в: "
+  },
+  "未启用": {
+    "en": "Disabled",
+    "ja": "無効",
+    "pt-BR": "Desativado",
+    "ru": "Отключено"
+  },
+  "本机日志等级": {
+    "en": "Local log level",
+    "ja": "ローカルログレベル",
+    "pt-BR": "Nível dos logs locais",
+    "ru": "Уровень локальных журналов"
+  },
+  "本机有效日志等级": {
+    "en": "Effective local log level",
+    "ja": "有効なローカルログレベル",
+    "pt-BR": "Nível efetivo dos logs locais",
+    "ru": "Действующий уровень локальных журналов"
+  },
+  "正在读取缓存用量…": {
+    "en": "Reading cache usage…",
+    "ja": "キャッシュ使用量を取得中…",
+    "pt-BR": "Lendo uso do cache…",
+    "ru": "Чтение данных кэша…"
+  },
+  "浅色": {
+    "en": "Light",
+    "ja": "ライト",
+    "pt-BR": "Claro",
+    "ru": "Светлая"
+  },
+  "深色": {
+    "en": "Dark",
+    "ja": "ダーク",
+    "pt-BR": "Escuro",
+    "ru": "Тёмная"
+  },
+  "状态与丢弃记录数": {
+    "en": "State and dropped record count",
+    "ja": "状態と破棄レコード数",
+    "pt-BR": "Estado e registros descartados",
+    "ru": "Состояние и число отброшенных записей"
+  },
+  "缓存文件数": {
+    "en": "Cache file count",
+    "ja": "キャッシュファイル数",
+    "pt-BR": "Quantidade de arquivos em cache",
+    "ru": "Число файлов кэша"
+  },
+  "缓存用量": {
+    "en": "Cache usage",
+    "ja": "キャッシュ使用量",
+    "pt-BR": "Uso do cache",
+    "ru": "Использование кэша"
+  },
+  "诊断操作失败，请重试。": {
+    "en": "Diagnostic action failed. Try again.",
+    "ja": "診断操作に失敗しました。再試行してください。",
+    "pt-BR": "A ação de diagnóstico falhou. Tente novamente.",
+    "ru": "Действие диагностики не выполнено. Повторите попытку."
+  },
+  "诊断文件": {
+    "en": "Diagnostic files",
+    "ja": "診断ファイル",
+    "pt-BR": "Arquivos de diagnóstico",
+    "ru": "Диагностические файлы"
+  },
+  "诊断日志": {
+    "en": "Diagnostic logs",
+    "ja": "診断ログ",
+    "pt-BR": "Logs de diagnóstico",
+    "ru": "Диагностические журналы"
+  },
+  "诊断状态不可用。": {
+    "en": "Diagnostic status is unavailable.",
+    "ja": "診断状態を取得できません。",
+    "pt-BR": "O estado do diagnóstico está indisponível.",
+    "ru": "Состояние диагностики недоступно."
+  },
+  "诊断请求未启动，请重试。": {
+    "en": "Diagnostic request did not start. Try again.",
+    "ja": "診断要求を開始できません。再試行してください。",
+    "pt-BR": "A solicitação de diagnóstico não iniciou. Tente novamente.",
+    "ru": "Запрос диагностики не запущен. Повторите попытку."
+  },
+  "跟随系统": {
+    "en": "Follow system",
+    "ja": "システムに従う",
+    "pt-BR": "Seguir o sistema",
+    "ru": "Как в системе"
+  },
+  "追踪": {
+    "en": "Traces",
+    "ja": "トレース",
+    "pt-BR": "Rastreamentos",
+    "ru": "Трассировки"
+  },
+  "遥测信号": {
+    "en": "Telemetry signals",
+    "ja": "テレメトリー信号",
+    "pt-BR": "Sinais de telemetria",
+    "ru": "Сигналы телеметрии"
+  },
+  "仅备份可移动设置。不包含设备身份、凭据、插件设置、本机路径、登录注册、快捷键绑定或更新器偏好。": {
+    "en": "Back up portable preferences only. Device identity, credentials, plugin settings, local paths, login registration, shortcut bindings and updater preferences are excluded.",
+    "ja": "移動可能な設定のみをバックアップします。デバイスID、認証情報、プラグイン設定、ローカルパス、ログイン登録、ショートカット割り当て、更新機能の設定は含みません。",
+    "pt-BR": "Faça backup apenas de preferências portáveis. Identidade, credenciais, plugins, caminhos locais, início de sessão, atalhos e preferências do atualizador ficam de fora.",
+    "ru": "Сохраняются только переносимые настройки. Идентификаторы, учётные данные, настройки плагинов, локальные пути, автозапуск, сочетания клавиш и настройки обновления не включаются."
+  },
+  "仅显示当前应用的系统权限。此状态不代表自动粘贴可用。": {
+    "en": "Shows only this application's system permission. This status does not mean automatic paste is available.",
+    "ja": "このアプリのシステム権限のみを表示します。この状態は自動貼り付けが利用可能であることを示しません。",
+    "pt-BR": "Mostra apenas a permissão de sistema deste aplicativo. Este estado não indica que a colagem automática está disponível.",
+    "ru": "Показывает только системное разрешение этого приложения. Это состояние не означает доступность автоматической вставки."
+  },
+  "内容总大小上限": {
+    "en": "Total content size limit",
+    "ja": "コンテンツの合計サイズ上限",
+    "pt-BR": "Limite do tamanho total do conteúdo",
+    "ru": "Общий предел размера содержимого"
+  },
+  "刷新权限状态": {
+    "en": "Refresh permission status",
+    "ja": "権限の状態を更新",
+    "pt-BR": "Atualizar estado da permissão",
+    "ru": "Обновить состояние разрешения"
+  },
+  "历史存储预算": {
+    "en": "History storage budget",
+    "ja": "履歴ストレージの上限",
+    "pt-BR": "Limite de armazenamento do histórico",
+    "ru": "Лимит хранения истории"
+  },
+  "取消导入": {
+    "en": "Cancel import",
+    "ja": "読み込みをキャンセル",
+    "pt-BR": "Cancelar importação",
+    "ru": "Отменить импорт"
+  },
+  "备份与当前可移动设置相同。": {
+    "en": "The backup matches the current portable preferences.",
+    "ja": "バックアップは現在の移動可能な設定と同じです。",
+    "pt-BR": "O backup corresponde às preferências portáveis atuais.",
+    "ru": "Резервная копия совпадает с текущими переносимыми настройками."
+  },
+  "导入将替换预览中的设置。部分设置需要重启。": {
+    "en": "Import replaces the preferences shown in the preview. Some settings require a restart.",
+    "ja": "プレビューの設定を置き換えます。一部の設定には再起動が必要です。",
+    "pt-BR": "A importação substitui as preferências da prévia. Algumas exigem reinicialização.",
+    "ru": "Импорт заменит настройки из предпросмотра. Для некоторых потребуется перезапуск."
+  },
+  "导入配置": {
+    "en": "Import preferences",
+    "ja": "設定を読み込む",
+    "pt-BR": "Importar preferências",
+    "ru": "Импорт настроек"
+  },
+  "导入配置？": {
+    "en": "Import preferences?",
+    "ja": "設定を読み込みますか？",
+    "pt-BR": "Importar preferências?",
+    "ru": "Импортировать настройки?"
+  },
+  "导入预览": {
+    "en": "Import preview",
+    "ja": "読み込みのプレビュー",
+    "pt-BR": "Prévia da importação",
+    "ru": "Предпросмотр импорта"
+  },
+  "导出配置": {
+    "en": "Export preferences",
+    "ja": "設定を書き出す",
+    "pt-BR": "Exportar preferências",
+    "ru": "Экспорт настроек"
+  },
+  "已取消导入。": {
+    "en": "Import canceled.",
+    "ja": "読み込みをキャンセルしました。",
+    "pt-BR": "Importação cancelada.",
+    "ru": "Импорт отменён."
+  },
+  "已授权": {
+    "en": "Granted",
+    "ja": "許可済み",
+    "pt-BR": "Concedida",
+    "ru": "Разрешено"
+  },
+  "已请求打开系统设置。请完成授权后刷新状态。": {
+    "en": "Requested System Settings. Refresh after granting permission.",
+    "ja": "システム設定を開くよう要求しました。許可した後に状態を更新してください。",
+    "pt-BR": "A abertura das configurações do sistema foi solicitada. Atualize após conceder a permissão.",
+    "ru": "Запрошено открытие системных настроек. Обновите состояние после предоставления разрешения."
+  },
+  "应用导入": {
+    "en": "Apply import",
+    "ja": "読み込みを適用",
+    "pt-BR": "Aplicar importação",
+    "ru": "Применить импорт"
+  },
+  "开启": {
+    "en": "On",
+    "ja": "オン",
+    "pt-BR": "Ativado",
+    "ru": "Включено"
+  },
+  "当前配置无效。请先修复配置。": {
+    "en": "The current configuration is invalid. Repair it first.",
+    "ja": "現在の設定は無効です。先に修正してください。",
+    "pt-BR": "A configuração atual é inválida. Corrija-a primeiro.",
+    "ru": "Текущая конфигурация недействительна. Сначала исправьте её."
+  },
+  "打开系统设置": {
+    "en": "Open System Settings",
+    "ja": "システム設定を開く",
+    "pt-BR": "Abrir configurações do sistema",
+    "ru": "Открыть системные настройки"
+  },
+  "无法导入此配置备份。请检查格式、版本和设置值。": {
+    "en": "Cannot import this backup. Check its format, version and preference values.",
+    "ja": "このバックアップを読み込めません。形式、バージョン、設定値を確認してください。",
+    "pt-BR": "Não foi possível importar este backup. Verifique o formato, a versão e os valores.",
+    "ru": "Не удалось импортировать копию. Проверьте формат, версию и значения настроек."
+  },
+  "无法导出当前设置。": {
+    "en": "Cannot export the current preferences.",
+    "ja": "現在の設定を書き出せません。",
+    "pt-BR": "Não foi possível exportar as preferências atuais.",
+    "ru": "Не удалось экспортировать текущие настройки."
+  },
+  "无法打开系统设置，请重试。": {
+    "en": "Cannot open System Settings. Try again.",
+    "ja": "システム設定を開けません。再試行してください。",
+    "pt-BR": "Não foi possível abrir as configurações do sistema. Tente novamente.",
+    "ru": "Не удалось открыть системные настройки. Повторите попытку."
+  },
+  "未授权": {
+    "en": "Not granted",
+    "ja": "未許可",
+    "pt-BR": "Não concedida",
+    "ru": "Не разрешено"
+  },
+  "权限状态读取失败，请重试。": {
+    "en": "Cannot read permission status. Try again.",
+    "ja": "権限の状態を読み取れません。再試行してください。",
+    "pt-BR": "Não foi possível ler o estado da permissão. Tente novamente.",
+    "ru": "Не удалось прочитать состояние разрешения. Повторите попытку."
+  },
+  "正在读取权限状态…": {
+    "en": "Reading permission status…",
+    "ja": "権限の状態を読み込み中…",
+    "pt-BR": "Lendo o estado da permissão…",
+    "ru": "Чтение состояния разрешения…"
+  },
+  "此平台没有此权限开关": {
+    "en": "This platform has no such permission switch",
+    "ja": "このプラットフォームにはこの権限の設定がありません",
+    "pt-BR": "Esta plataforma não tem essa opção de permissão",
+    "ru": "На этой платформе нет такого переключателя разрешения"
+  },
+  "状态未知": {
+    "en": "Unknown",
+    "ja": "不明",
+    "pt-BR": "Desconhecido",
+    "ru": "Неизвестно"
+  },
+  "确认导入": {
+    "en": "Confirm import",
+    "ja": "読み込みを確認",
+    "pt-BR": "Confirmar importação",
+    "ru": "Подтвердить импорт"
+  },
+  "设置已更改。请重新选择备份并检查预览。": {
+    "en": "Preferences changed. Select the backup again and review the preview.",
+    "ja": "設定が変更されました。バックアップを選び直してプレビューを確認してください。",
+    "pt-BR": "As preferências mudaram. Selecione o backup novamente e revise a prévia.",
+    "ru": "Настройки изменились. Выберите копию снова и проверьте предпросмотр."
+  },
+  "辅助功能权限状态": {
+    "en": "Accessibility permission status",
+    "ja": "アクセシビリティ権限の状態",
+    "pt-BR": "Estado da permissão de acessibilidade",
+    "ru": "Состояние разрешения универсального доступа"
+  },
+  "配置备份": {
+    "en": "Preference backup",
+    "ja": "設定のバックアップ",
+    "pt-BR": "Backup de preferências",
+    "ru": "Резервная копия настроек"
+  },
+  "配置已导入。请检查需要重启的设置。": {
+    "en": "Preferences imported. Check settings that require a restart.",
+    "ja": "設定を読み込みました。再起動が必要な設定を確認してください。",
+    "pt-BR": "Preferências importadas. Verifique as que exigem reinicialização.",
+    "ru": "Настройки импортированы. Проверьте, какие из них требуют перезапуска."
+  },
+  "配置已导出：": {
+    "en": "Preferences exported to: ",
+    "ja": "設定の書き出し先：",
+    "pt-BR": "Preferências exportadas para: ",
+    "ru": "Настройки экспортированы в: "
+  },
+  "配置文件操作失败。请重试。": {
+    "en": "Preference file action failed. Try again.",
+    "ja": "設定ファイルの操作に失敗しました。再試行してください。",
+    "pt-BR": "A operação no arquivo de preferências falhou. Tente novamente.",
+    "ru": "Не удалось выполнить действие с файлом настроек. Повторите попытку."
+  },
+  "%d 项变更": {
+    "en": "%d changes",
+    "ja": "%d 件の変更",
+    "pt-BR": "%d alterações",
+    "ru": "Изменений: %d"
+  },
+  "✓ 包含（26 项白名单偏好）": {
+    "en": "✓ Included (26 allowlisted preferences)",
+    "ja": "✓ 対象（許可リストの26項目）",
+    "pt-BR": "✓ Incluído (26 preferências permitidas)",
+    "ru": "✓ Включено (26 переносимых параметров)"
+  },
+  "✕ 明确排除（保留本机原值）": {
+    "en": "✕ Excluded (local values preserved)",
+    "ja": "✕ 除外（ローカル設定を保持）",
+    "pt-BR": "✕ Excluído (valores locais preservados)",
+    "ru": "✕ Исключено (локальные значения сохраняются)"
+  },
+  "丢弃": {
+    "en": "dropped",
+    "ja": "破棄",
+    "pt-BR": "descartados",
+    "ru": "отброшено"
+  },
+  "临时调试": {
+    "en": "Temp debug",
+    "ja": "一時デバッグ",
+    "pt-BR": "Depuração temp.",
+    "ru": "Врем. отладка"
+  },
+  "临时调试 15m": {
+    "en": "Debug 15m",
+    "ja": "一時デバッグ 15分",
+    "pt-BR": "Depurar 15m",
+    "ru": "Отладка 15м"
+  },
+  "临时调试覆盖仅在服务内存中生效 15 分钟，不改写配置文件，到期后自动恢复已保存等级。": {
+    "en": "Temporary debug overrides stay in service memory for 15 minutes without modifying the config file, then revert automatically.",
+    "ja": "一時デバッグの上書きは設定ファイルを変更せずサービスメモリ上で15分間のみ有効になり、期限後に自動で元のレベルに戻ります。",
+    "pt-BR": "Substituições temporárias de depuração permanecem em memória por 15 minutos sem alterar o arquivo de configuração e revertem automaticamente.",
+    "ru": "Временное переопределение отладки действует в памяти службы 15 минут без изменения файла конфигурации и автоматически сбрасывается."
+  },
+  "仅 26 项可移动偏好": {
+    "en": "26 portable preferences only",
+    "ja": "ポータブル設定26項目のみ",
+    "pt-BR": "Apenas 26 preferências portáteis",
+    "ru": "Только 26 переносимых параметров"
+  },
+  "仅导出本机保留的脱敏日志与校验清单（.tar.gz），不含配置、凭据或剪贴板历史。": {
+    "en": "Exports only sanitized local logs and a checksum manifest (.tar.gz). Excludes config, credentials, and clipboard history.",
+    "ja": "ローカルに保持されているサニタイズ済みログとチェックサム一覧（.tar.gz）のみを書き出します。設定・認証情報・クリップボード履歴は含まれません。",
+    "pt-BR": "Exporta apenas logs locais sanitizados e manifesto de soma de verificação (.tar.gz). Não inclui configurações, credenciais ou histórico.",
+    "ru": "Экспортирует только очищенные локальные журналы и манифест контрольных сумм (.tar.gz) без настроек, учетных данных и истории буфера."
+  },
+  "仅控制常规模式的登录启动；手动点击应用图标始终打开主窗口。": {
+    "en": "Applies only to login startup in Normal mode. Manually clicking the app icon always opens the main window.",
+    "ja": "通常モードのログイン時起動のみを制御します。アプリアイコンを手動でクリックした場合は常にメインウィンドウが開きます。",
+    "pt-BR": "Controla apenas a inicialização no login no modo Normal. Clicar manualmente no ícone sempre abre a janela principal.",
+    "ru": "Управляет только автозапуском в обычном режиме. Ручной запуск по значку всегда открывает главное окно."
+  },
+  "仅显示当前应用的系统授权状态，读取不会弹出授权框；此状态不代表目标应用一定支持自动粘贴。": {
+    "en": "Shows only this app’s OS permission status without prompting. This status does not guarantee automatic paste works in every target app.",
+    "ja": "現在のアプリのOS権限状態のみを表示し、許可ダイアログは出しません。自動ペーストの動作を保証するものではありません。",
+    "pt-BR": "Mostra apenas o status de permissão do sistema para este app sem solicitar acesso; isso não garante colagem automática.",
+    "ru": "Показывает только статус системного разрешения этого приложения без запроса доступа и не гарантирует работу автовставки."
+  },
+  "仅统计应用管理的接收文件缓存账本；不包含 SQLite 数据库、日志、自定义接收目录或其他用户文件。": {
+    "en": "Counts only the app-managed received file cache ledger. Excludes SQLite databases, logs, custom receive folders, and other user files.",
+    "ja": "アプリ管理の受信ファイルキャッシュ台帳のみを集計します。SQLite データベース、ログ、カスタム受信フォルダ、その他のユーザーファイルは含まれません。",
+    "pt-BR": "Contabiliza apenas o cache de arquivos recebidos gerenciado pelo app. Exclui bancos SQLite, logs, pastas personalizadas e outros arquivos do usuário.",
+    "ru": "Учитывается только управляемый приложением кэш принятых файлов; базы SQLite, журналы, пользовательские папки и другие файлы не включены."
+  },
+  "仅限制应用管理的文件缓存上限。": {
+    "en": "Limits only the app-managed file cache.",
+    "ja": "アプリ管理のファイルキャッシュ上限のみを制限します。",
+    "pt-BR": "Limita apenas o cache de arquivos gerenciado pelo app.",
+    "ru": "Ограничивает только управляемый приложением кэш файлов."
+  },
+  "传输预留": {
+    "en": "reserved",
+    "ja": "転送予約",
+    "pt-BR": "reservado",
+    "ru": "резерв"
+  },
+  "使用中文件数": {
+    "en": "In-use files",
+    "ja": "使用中のファイル",
+    "pt-BR": "Arquivos em uso",
+    "ru": "Файлов в работе"
+  },
+  "保留 ": {
+    "en": "Keep ",
+    "ja": "保持 ",
+    "pt-BR": "Manter ",
+    "ru": "Сохранять "
+  },
+  "允许在设备之间发送和接收文件。": {
+    "en": "Allow sending and receiving files across devices.",
+    "ja": "デバイス間でのファイル送受信を許可します。",
+    "pt-BR": "Permite enviar e receber arquivos entre dispositivos.",
+    "ru": "Разрешить отправку и получение файлов между устройствами."
+  },
+  "其他已配对设备将看到此名称，按回车保存。": {
+    "en": "Shown to other paired devices. Press Enter to save.",
+    "ja": "他のペアリング済みデバイスに表示されます。Enter で保存します。",
+    "pt-BR": "Visível para outros dispositivos pareados. Pressione Enter para salvar.",
+    "ru": "Отображается на других сопряженных устройствах. Нажмите Enter для сохранения."
+  },
+  "再次应用本机历史条目后发送一次。": {
+    "en": "Send once when reusing an item from local history.",
+    "ja": "ローカル履歴を再利用した際に一度送信します。",
+    "pt-BR": "Envia uma vez ao reutilizar um item do histórico local.",
+    "ru": "Отправлять один раз при повторном применении записи из локальной истории."
+  },
+  "剩余": {
+    "en": "left",
+    "ja": "残り",
+    "pt-BR": "restante",
+    "ru": "осталось"
+  },
+  "双向限制单个文件的最大传输大小。": {
+    "en": "Bounds the maximum transfer size per file in both directions.",
+    "ja": "送受信両方向で1ファイルあたりの最大転送サイズを制限します。",
+    "pt-BR": "Limita o tamanho máximo de transferência por arquivo em ambas as direções.",
+    "ru": "Ограничивает максимальный размер одного файла при отправке и получении."
+  },
+  "同步与数据": {
+    "en": "Sync & Data",
+    "ja": "同期とデータ",
+    "pt-BR": "Sincronização e dados",
+    "ru": "Синхронизация и данные"
+  },
+  "同步应用到主窗口、首次引导与快捷面板，无需重启。": {
+    "en": "Applies immediately to the main window, setup, and Quick Panel without restarting.",
+    "ja": "再起動なしでメインウィンドウ、初期設定、クイックパネルに即時反映されます。",
+    "pt-BR": "Aplicado imediatamente à janela principal, configuração inicial e Painel Rápido sem reiniciar.",
+    "ru": "Сразу применяется к главному окну, мастеру настройки и быстрой панели без перезапуска."
+  },
+  "命中以下任一标签的历史将不会被自动清理。": {
+    "en": "History items matching any selected tag are excluded from automatic cleanup.",
+    "ja": "選択したタグのいずれかに一致する履歴は自動クリーンアップから除外されます。",
+    "pt-BR": "Itens do histórico com qualquer tag selecionada não serão limpos automaticamente.",
+    "ru": "Записи с любым из выбранных тегов не удаляются при автоочистке."
+  },
+  "在常规模式运行时生效。切换后由托盘进程原子替换注册。": {
+    "en": "Active in Normal mode. The tray process replaces the global registration atomically.",
+    "ja": "通常モード実行中に有効です。変更時はトレイプロセスが登録を安全に置き換えます。",
+    "pt-BR": "Ativo no modo Normal. O processo da bandeja substitui o registro global atomicamente.",
+    "ru": "Работает в обычном режиме. Процесс трея атомарно обновляет глобальную регистрацию."
+  },
+  "在系统文件管理器中打开当前配置档案的日志目录。": {
+    "en": "Open this profile’s local logs folder in the system file manager.",
+    "ja": "このプロファイルのログフォルダをシステムのファイルマネージャで開きます。",
+    "pt-BR": "Abre a pasta de logs deste perfil no gerenciador de arquivos do sistema.",
+    "ru": "Открыть папку журналов текущего профиля в системном файловом менеджере."
+  },
+  "复制内容后自动发送给已授权设备。": {
+    "en": "Automatically send new copies to authorized devices.",
+    "ja": "コピーした内容を承認済みデバイスへ自動送信します。",
+    "pt-BR": "Envia novas cópias automaticamente para dispositivos autorizados.",
+    "ru": "Автоматически отправлять скопированное на авторизованные устройства."
+  },
+  "始终使用低眩光深色": {
+    "en": "Always use low-glare dark",
+    "ja": "常にダーク外観を使用",
+    "pt-BR": "Sempre usar tema escuro",
+    "ru": "Всегда использовать темную тему"
+  },
+  "始终使用明亮界面": {
+    "en": "Always use light appearance",
+    "ja": "常にライト外観を使用",
+    "pt-BR": "Sempre usar tema claro",
+    "ru": "Всегда использовать светлую тему"
+  },
+  "存储与备份": {
+    "en": "Storage & Backup",
+    "ja": "ストレージとバックアップ",
+    "pt-BR": "Armazenamento e backup",
+    "ru": "Хранилище и резерв"
+  },
+  "定期清理过期历史记录及应用管理的关联文件。": {
+    "en": "Periodically remove expired history and app-managed associated files.",
+    "ja": "期限切れの履歴とアプリ管理の関連ファイルを定期的に削除します。",
+    "pt-BR": "Remove periodicamente o histórico expirado e arquivos associados gerenciados pelo app.",
+    "ru": "Периодически удалять устаревшую историю и управляемые файлы."
+  },
+  "实时生效 · 同步全角色": {
+    "en": "Live across all windows",
+    "ja": "即時反映・全画面同期",
+    "pt-BR": "Imediato em todas as janelas",
+    "ru": "Сразу во всех окнах"
+  },
+  "已关闭": {
+    "en": "Off",
+    "ja": "オフ",
+    "pt-BR": "Desativado",
+    "ru": "Отключено"
+  },
+  "已存储": {
+    "en": "stored",
+    "ja": "保存済み",
+    "pt-BR": "armazenado",
+    "ru": "занято"
+  },
+  "已存储文件": {
+    "en": "Stored files",
+    "ja": "保存済みファイル",
+    "pt-BR": "Arquivos armazenados",
+    "ru": "Сохранено"
+  },
+  "已注册：": {
+    "en": "Registered: ",
+    "ja": "登録済み: ",
+    "pt-BR": "Registrado: ",
+    "ru": "Зарегистрировано: "
+  },
+  "常规与体验": {
+    "en": "General & Experience",
+    "ja": "一般と操作性",
+    "pt-BR": "Geral e experiência",
+    "ru": "Общее и интерфейс"
+  },
+  "常规模式关闭主窗口后保留托盘与同步服务；轻量模式仅保留后台同步服务。": {
+    "en": "Normal keeps the tray and sync service after closing the window; Lightweight keeps only the background sync service.",
+    "ja": "通常モードではメインウィンドウを閉じてもトレイと同期サービスを維持し、軽量モードではバックグラウンド同期サービスのみを維持します。",
+    "pt-BR": "O modo Normal mantém a bandeja e a sincronização ao fechar a janela; o modo Leve mantém apenas o serviço de sincronização.",
+    "ru": "В обычном режиме после закрытия окна остаются трей и служба синхронизации; в облегченном — только фоновая служба."
+  },
+  "应用管理": {
+    "en": "App-managed",
+    "ja": "アプリ管理",
+    "pt-BR": "Gerenciado pelo app",
+    "ru": "Управляется приложением"
+  },
+  "应用管理的默认缓存目录": {
+    "en": "App-managed default cache folder",
+    "ja": "アプリ管理のデフォルトキャッシュフォルダ",
+    "pt-BR": "Pasta de cache padrão gerenciada pelo app",
+    "ru": "Папка кэша по умолчанию"
+  },
+  "当前上传：已启用": {
+    "en": "Upload: Active",
+    "ja": "アップロード: 有効",
+    "pt-BR": "Envio: Ativo",
+    "ru": "Отправка: включена"
+  },
+  "当前上传：未启用": {
+    "en": "Upload: Off",
+    "ja": "アップロード: 停止中",
+    "pt-BR": "Envio: Desativado",
+    "ru": "Отправка: отключена"
+  },
+  "当前使用自定义接收目录。该目录由用户管理，不计入上方默认缓存用量。": {
+    "en": "Using a custom receive directory. It is user-managed and excluded from the default cache usage above.",
+    "ja": "カスタム受信ディレクトリを使用中です。ユーザー管理のため上記のデフォルトキャッシュ使用量には含まれません。",
+    "pt-BR": "Usando um diretório de recebimento personalizado. Ele é gerenciado pelo usuário e não entra na contagem acima.",
+    "ru": "Используется пользовательская папка приема. Она не учитывается в статистике кэша выше."
+  },
+  "当前平台无需 macOS 辅助功能权限开关。": {
+    "en": "This platform does not use the macOS Accessibility permission switch.",
+    "ja": "このプラットフォームでは macOS アクセシビリティ権限スイッチは不要です。",
+    "pt-BR": "Esta plataforma não utiliza a permissão de Acessibilidade do macOS.",
+    "ru": "На этой платформе переключатель прав универсального доступа macOS не требуется."
+  },
+  "当前注册状态": {
+    "en": "Registration status",
+    "ja": "現在の登録状態",
+    "pt-BR": "Status do registro",
+    "ru": "Статус регистрации"
+  },
+  "总开关关闭后立即停止遥测上传，并保留下方各信号的选择。": {
+    "en": "Turning this off stops all telemetry uploads immediately while preserving each signal choice below.",
+    "ja": "オフにするとすべてのテレメトリ送信を即座に停止し、下の各シグナル設定はそのまま保持されます。",
+    "pt-BR": "Desativar interrompe imediatamente todos os envios de telemetria, preservando as opções abaixo.",
+    "ru": "Отключение немедленно останавливает отправку телеметрии, сохраняя настройки отдельных сигналов ниже."
+  },
+  "总开关已关闭：以下 4 项信号当前均暂停上传，但你的偏好开关已被保留。": {
+    "en": "Master switch is off: all 4 signals below are paused, while your individual selections remain preserved.",
+    "ja": "メインスイッチがオフのため以下の4項目は送信停止中ですが、個別の選択状態は保持されています。",
+    "pt-BR": "Chave principal desativada: os 4 sinais abaixo estão pausados, mas suas preferências foram preservadas.",
+    "ru": "Общий переключатель выключен: отправка всех 4 сигналов приостановлена, но ваши настройки сохранены."
+  },
+  "恢复默认": {
+    "en": "Reset",
+    "ja": "元に戻す",
+    "pt-BR": "Restaurar",
+    "ru": "Сбросить"
+  },
+  "托盘与窗口": {
+    "en": "Tray & Window",
+    "ja": "トレイとウィンドウ",
+    "pt-BR": "Bandeja e janela",
+    "ru": "Трей и окно"
+  },
+  "按记录创建时间计算。": {
+    "en": "Calculated from item creation time.",
+    "ja": "レコードの作成日時を基準に計算されます。",
+    "pt-BR": "Calculado a partir da data de criação do item.",
+    "ru": "Рассчитывается от времени создания записи."
+  },
+  "授权完成后请手动点击刷新，以读取系统最新状态。": {
+    "en": "After granting access in System Settings, click Refresh to read the latest OS status.",
+    "ja": "システム設定で許可したあと、「更新」をクリックして最新の状態を読み込んでください。",
+    "pt-BR": "Após conceder permissão nas Configurações do Sistema, clique em Atualizar para verificar novamente.",
+    "ru": "После выдачи доступа в системных настройках нажмите «Обновить» для повторной проверки."
+  },
+  "排错与系统": {
+    "en": "Diagnostics & System",
+    "ja": "診断とシステム",
+    "pt-BR": "Diagnóstico e sistema",
+    "ru": "Диагностика и система"
+  },
+  "接收文件缓存": {
+    "en": "Received file cache",
+    "ja": "受信ファイルキャッシュ",
+    "pt-BR": "Cache de arquivos recebidos",
+    "ru": "Кэш принятых файлов"
+  },
+  "控制所有同步后端的发送与接收。": {
+    "en": "Controls sending and receiving across all sync backends.",
+    "ja": "すべての同期バックエンドの送受信を制御します。",
+    "pt-BR": "Controla envio e recebimento em todos os backends de sincronização.",
+    "ru": "Управляет отправкой и получением во всех бэкендах синхронизации."
+  },
+  "无法读取服务当前有效日志等级，临时调试操作暂不可用。": {
+    "en": "Cannot read effective log levels from the service; temporary debug overrides are unavailable.",
+    "ja": "サービスから現在の有効ログレベルを読み取れないため、一時デバッグ操作は利用できません。",
+    "pt-BR": "Não foi possível ler os níveis efetivos do serviço; a depuração temporária está indisponível.",
+    "ru": "Не удалось прочитать активные уровни журнала службы; временная отладка недоступна."
+  },
+  "显示系统全局快捷键实际注册结果。": {
+    "en": "Shows the actual OS global shortcut registration state.",
+    "ja": "OSへのグローバルショートカット登録結果を表示します。",
+    "pt-BR": "Mostra o resultado real do registro de atalho global no sistema.",
+    "ru": "Показывает фактический статус регистрации глобального сочетания клавиш."
+  },
+  "更改后立即生效，无需重启。": {
+    "en": "Takes effect immediately without restarting.",
+    "ja": "変更後すぐに反映されます（再起動不要）。",
+    "pt-BR": "Entra em vigor imediatamente, sem reiniciar.",
+    "ru": "Применяется сразу без перезапуска."
+  },
+  "有效：": {
+    "en": "Effective: ",
+    "ja": "有効: ",
+    "pt-BR": "Efetivo: ",
+    "ru": "Активно: "
+  },
+  "本机数据与迁移": {
+    "en": "Local data & migration",
+    "ja": "ローカルデータと移行",
+    "pt-BR": "Dados locais e migração",
+    "ru": "Локальные данные и миграция"
+  },
+  "本机日志目录": {
+    "en": "Local logs folder",
+    "ja": "ローカルログフォルダ",
+    "pt-BR": "Pasta de logs local",
+    "ru": "Папка локальных журналов"
+  },
+  "查看备份包含与排除范围": {
+    "en": "View included and excluded fields",
+    "ja": "バックアップの対象と除外範囲を表示",
+    "pt-BR": "Ver escopo incluído e excluído",
+    "ru": "Показать включенные и исключенные параметры"
+  },
+  "注册冲突": {
+    "en": "Conflict",
+    "ja": "登録競合",
+    "pt-BR": "Conflito",
+    "ru": "Конфликт"
+  },
+  "注册冲突 · 仍为 ": {
+    "en": "Conflict · still ",
+    "ja": "競合 · 現在 ",
+    "pt-BR": "Conflito · ainda ",
+    "ru": "Конфликт · активно "
+  },
+  "清理时保留标签": {
+    "en": "Protected tags",
+    "ja": "クリーンアップ除外タグ",
+    "pt-BR": "Tags protegidas",
+    "ru": "Защищенные теги"
+  },
+  "状态不可用": {
+    "en": "Unavailable",
+    "ja": "取得不可",
+    "pt-BR": "Indisponível",
+    "ru": "Недоступно"
+  },
+  "生成可跨设备迁移的 JSON 偏好文件（绝不覆盖已有目标文件）。": {
+    "en": "Create a portable JSON preferences file across devices (never overwrites an existing file).",
+    "ja": "デバイス間で移行可能な JSON 設定ファイルを作成します（既存ファイルは上書きしません）。",
+    "pt-BR": "Gera um arquivo JSON portátil de preferências (nunca sobrescreve um arquivo existente).",
+    "ru": "Создать переносимый JSON-файл настроек (существующий файл не перезаписывается)."
+  },
+  "用户管理": {
+    "en": "User-managed",
+    "ja": "ユーザー管理",
+    "pt-BR": "Gerenciado pelo usuário",
+    "ru": "Управляется пользователем"
+  },
+  "界面语言、颜色模式、托盘图标、更新渠道、系统边框、运行模式、后台启动、日志等级、遥测开关、同步开关、历史保留与缓存配额、单文件/总大小上限。": {
+    "en": "Language, color mode, tray icon, update channel, window frame, run mode, background launch, log levels, telemetry toggles, sync toggles, history retention, cache quota, and transfer limits.",
+    "ja": "言語、カラーモード、トレイアイコン、更新チャネル、システム枠、動作モード、バックグラウンド起動、ログレベル、テレメトリ、同期、履歴保持、キャッシュ上限、転送上限。",
+    "pt-BR": "Idioma, modo de cor, ícone da bandeja, canal de atualização, moldura da janela, modo de execução, início em segundo plano, níveis de log, telemetria, sincronização, retenção, cota e limites.",
+    "ru": "Язык, цветовая схема, значок трея, канал обновлений, рамка окна, режим работы, фоновый запуск, уровни журналов, телеметрия, синхронизация, хранение истории, квота кэша и лимиты."
+  },
+  "登录操作系统后自动启动 UniClipboard。": {
+    "en": "Automatically start UniClipboard when you sign in.",
+    "ja": "OSログイン時に UniClipboard を自動起動します。",
+    "pt-BR": "Inicia o UniClipboard automaticamente ao entrar no sistema.",
+    "ru": "Автоматически запускать UniClipboard при входе в систему."
+  },
+  "立即打开快捷面板查看当前外观与键盘交互。": {
+    "en": "Open Quick Panel now to inspect its current appearance and keyboard flow.",
+    "ja": "今すぐクイックパネルを開いて外観とキーボード操作を確認します。",
+    "pt-BR": "Abre o Painel Rápido agora para visualizar sua aparência e atalhos.",
+    "ru": "Открыть быструю панель сейчас для проверки вида и управления с клавиатуры."
+  },
+  "系统权限": {
+    "en": "System permissions",
+    "ja": "システム権限",
+    "pt-BR": "Permissões do sistema",
+    "ru": "Системные разрешения"
+  },
+  "系统登录注册状态与配置不一致，可重新应用。": {
+    "en": "OS login startup state differs from your saved preference. You can re-apply it.",
+    "ja": "OSのログイン起動状態が保存された設定と一致していません。再適用できます。",
+    "pt-BR": "O status de inicialização do sistema difere da configuração salva. Você pode reaplicá-lo.",
+    "ru": "Состояние автозапуска в ОС отличается от сохраненной настройки. Его можно применить повторно."
+  },
+  "自动匹配操作系统外观": {
+    "en": "Match OS appearance",
+    "ja": "OSの外観に自動追従",
+    "pt-BR": "Seguir aparência do sistema",
+    "ru": "Как в системе"
+  },
+  "设备名称与身份密钥、配对凭据、插件配置与私有目录、数据/接收路径、系统登录注册、全局快捷键绑定、更新器独立偏好。": {
+    "en": "Device name & identity keys, pairing credentials, plugin configs & private directories, data/inbox paths, OS login registration, global shortcut bindings, and updater preferences.",
+    "ja": "デバイス名・識別鍵、ペアリング資格情報、プラグイン設定と専用ディレクトリ、データ/受信パス、ログイン起動登録、グローバルショートカット、アップデータ設定。",
+    "pt-BR": "Nome e chaves de identidade do dispositivo, credenciais de pareamento, configurações/diretórios de plugins, caminhos locais, registro de login, atalhos globais e preferências do atualizador.",
+    "ru": "Имя и ключи устройства, учетные данные сопряжения, настройки и папки плагинов, локальные пути, регистрация автозапуска, глобальные клавиши и настройки обновлятора."
+  },
+  "诊断与隐私": {
+    "en": "Diagnostics & Privacy",
+    "ja": "診断とプライバシー",
+    "pt-BR": "Diagnóstico e privacidade",
+    "ru": "Диагностика и приватность"
+  },
+  "诊断状态不可用": {
+    "en": "Diagnostics unavailable",
+    "ja": "診断状態を取得できません",
+    "pt-BR": "Diagnóstico indisponível",
+    "ru": "Диагностика недоступна"
+  },
+  "语言与设备": {
+    "en": "Language & Device",
+    "ja": "言語とデバイス",
+    "pt-BR": "Idioma e dispositivo",
+    "ru": "Язык и устройство"
+  },
+  "读取后严格校验并展示逐项对比预览，二次确认后按原修订版本写入。": {
+    "en": "Validates strictly and previews every change before saving against the original config revision.",
+    "ja": "厳密に検証したうえで各項目の差分をプレビューし、確認後に元のリビジョンへ安全に保存します。",
+    "pt-BR": "Valida rigorosamente e mostra a comparação item por item antes de salvar na revisão original.",
+    "ru": "Строго проверяет файл и показывает сравнение каждого параметра перед сохранением по исходной ревизии."
+  },
+  "辅助功能权限（macOS）": {
+    "en": "Accessibility permission (macOS)",
+    "ja": "アクセシビリティ権限（macOS）",
+    "pt-BR": "Permissão de Acessibilidade (macOS)",
+    "ru": "Универсальный доступ (macOS)"
+  },
+  "迁移前会停止当前同步和剪贴板捕获，旧数据会保留。": {
+    "en": "Pauses sync and clipboard capture before migrating. Existing v1 data stays untouched.",
+    "ja": "移行前に現在の同期とクリップボード取得を停止します。旧データはそのまま保持されます。",
+    "pt-BR": "Interrompe a sincronização e a captura antes de migrar. Os dados antigos são preservados.",
+    "ru": "Перед миграцией синхронизация и захват буфера приостанавливаются; старые данные сохраняются."
+  },
+  "配额": {
+    "en": "Quota",
+    "ja": "上限",
+    "pt-BR": "Cota",
+    "ru": "Квота"
+  },
+  "隐私与遥测": {
+    "en": "Privacy & Telemetry",
+    "ja": "プライバシーとテレメトリ",
+    "pt-BR": "Privacidade e telemetria",
+    "ru": "Приватность и телеметрия"
+  },
+  "需重开窗口": {
+    "en": "Reopen window",
+    "ja": "ウィンドウ再起動が必要",
+    "pt-BR": "Reabrir janela",
+    "ru": "Переоткрыть окно"
+  },
+  "预览阶段尚未写入任何配置。确认后仅替换上方列出的可移动设置。": {
+    "en": "Nothing has been written yet. Confirming replaces only the portable settings listed above.",
+    "ja": "プレビュー段階では設定は書き込まれていません。確定すると上記のポータブル設定のみが置き換わります。",
+    "pt-BR": "Nenhuma configuração foi gravada ainda. Confirmar substituirá apenas os itens portáteis listados acima.",
+    "ru": "Настройки еще не изменены. После подтверждения будут заменены только перечисленные выше параметры."
+  },
+  "性能指标": {
+    "en": "Performance metrics",
+    "ja": "パフォーマンス指標",
+    "pt-BR": "Métricas de desempenho",
+    "ru": "Метрики производительности"
+  },
+  "采样追踪": {
+    "en": "Sampled traces",
+    "ja": "サンプリングトレース",
+    "pt-BR": "Rastreamento amostrado",
+    "ru": "Выборочная трассировка"
+  },
+  "匿名使用事件": {
+    "en": "Anonymous analytics",
+    "ja": "匿名利用イベント",
+    "pt-BR": "Eventos anônimos de uso",
+    "ru": "Анонимная аналитика"
+  },
+  "上传达到设定等级的脱敏运行日志": {
+    "en": "Upload sanitized runtime logs at or above the configured level.",
+    "ja": "設定レベル以上のサニタイズ済み実行ログを送信します。",
+    "pt-BR": "Envia logs de execução sanitizados a partir do nível configurado.",
+    "ru": "Отправлять очищенные журналы работы не ниже заданного уровня."
+  },
+  "同步耗时、传输成功率与连接恢复指标": {
+    "en": "Sync latency, transfer success rates, and connection recovery metrics.",
+    "ja": "同期レイテンシ、転送成功率、接続回復の指標。",
+    "pt-BR": "Latência de sincronização, taxa de sucesso de transferência e recuperação de conexão.",
+    "ru": "Задержки синхронизации, успешность передачи и восстановление соединений."
+  },
+  "低频采样的流水线与同步调用链": {
+    "en": "Low-rate sampled pipeline and sync call traces.",
+    "ja": "低頻度サンプリングによるパイプラインと同期のトレース。",
+    "pt-BR": "Rastreios amostrados de baixa frequência do pipeline e sincronização.",
+    "ru": "Выборочная трассировка конвейера и синхронизации."
+  },
+  "使用独立随机档案标识，不含剪贴板内容": {
+    "en": "Uses an independent random profile ID with no clipboard content.",
+    "ja": "独立したランダム識別子を使用し、クリップボード内容は含みません。",
+    "pt-BR": "Usa um identificador de perfil aleatório independente, sem conteúdo da área de transferência.",
+    "ru": "Использует независимый случайный идентификатор профиля без содержимого буфера."
+  },
+  "写入本机日志目录的持久化日志级别，独立于上传日志等级。": {
+    "en": "Persisted level written to the local logs folder, independent of upload level.",
+    "ja": "ローカルログディレクトリへ書き込む永続レベル（アップロードレベルとは独立）。",
+    "pt-BR": "Nível persistente gravado na pasta local de logs, independente do nível de envio.",
+    "ru": "Сохраняемый уровень записи в локальные журналы, независимый от уровня отправки."
+  },
+  "随遥测上传的日志级别，受上方遥测总开关与日志开关控制。": {
+    "en": "Log level included in telemetry uploads, controlled by the telemetry switches above.",
+    "ja": "テレメトリ送信に含まれるログレベル（上のスイッチで制御）。",
+    "pt-BR": "Nível de log incluído nos envios de telemetria, controlado pelas chaves acima.",
+    "ru": "Уровень журналов для отправки в телеметрию (управляется переключателями выше)."
   }
 }

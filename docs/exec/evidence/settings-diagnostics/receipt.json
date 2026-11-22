@@ -1,0 +1,61 @@
+{
+  "run_id": "20261122T072325Z-2a160e6c",
+  "status": "PASS",
+  "source_head": "fcf5611662039c1db79fc6537c4f79aff2a5b436",
+  "worktree_dirty": true,
+  "runner_sha256": "1fa9946b71159a38e1851551edd36caef8e91a0f4d3ae0274a976a409fd5f4c3",
+  "snapshot_unchanged": true,
+  "private_cleanup": "PASS",
+  "host_os": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "go": "go version go1.27.3 darwin/arm64",
+  "race_detector": true,
+  "elapsed_ms": 29184,
+  "command": "make desktop-e2e CASE=settings-diagnostics",
+  "report": ".build/desktop-e2e/20261122T072325Z-2a160e6c/index.html",
+  "scenario": {
+    "archive_members": [
+      "logs/segment-999999.jsonl",
+      "logs/segment-1795332227017284000.jsonl",
+      "manifest.json"
+    ],
+    "archive_sha256": "73352fef56149e206d97212106c0547243f6d4f6591aa09ce9cc53134f0526c8",
+    "checks": [
+      "explicit production migration initialization with private source discovery",
+      "read actual effective diagnostic state",
+      "persistent local and remote settings apply",
+      "bounded local override and reset preserve remote/saved levels",
+      "stale revision cannot overwrite external edit",
+      "diagnostic preferences survive service restart",
+      "production CLI export is bounded, allowlisted and refuses overwrite"
+    ],
+    "go": "go1.27.3",
+    "native_ui": false,
+    "passed": true,
+    "renderer": false,
+    "system_clipboard": false,
+    "unic_sha256": "3c8a553c638b670d09d34e1b82c80c8b470957931f44bfda463559b28e88587c",
+    "unicd_sha256": "322011d8ccafe80f1c08b920ded7270fc0085d974756d4375a3ebf25b0948f1e"
+  },
+  "retained_failure_report": ".build/desktop-e2e/20261122T072117Z-1fb9a719/index.html",
+  "failure_cause": "Fixture omitted explicit CLI migration initialization; corrected with isolated production CLI initialize-empty.",
+  "native_dialogs": "NOT_RUN",
+  "native_folder_open": "NOT_RUN",
+  "visual_acceptance": "NOT_RUN",
+  "report_file_sha256": {
+    "manifest.json": "84a3b20bb10730755c25b4a3b76cf9e60ad8713f5a62c021e537d275bafc71c6",
+    "cases/settings-diagnostics/scenario-receipt.json": "70965cc395b221baf11a31be3b4c30a3d484e781bfefff7cbeec96c6ad94b7c4",
+    "cases/settings-diagnostics/result.json": "4c191ed3b1f7d6ae44166402f07665eaf16d6e05c52757ba9dc4e6882977be48"
+  },
+  "diagnostic_source_sha256": {
+    "app/desktop/cmd/unic-desktop/diagnostics_actions.go": "0cd3f14fea529be3ffbe78c32beff3427d7eea7394516671527c942c00a44f83",
+    "app/desktop/e2e/cases/settings-diagnostics.txtar": "59d07cc7466d274f08804a8b671061a260c6374a546bbee3ace82074b04d8071",
+    "app/desktop/internal/desktopui/acceptance_settings_diagnostics_test.go": "6877625c530589b248b80b46b64762074158b0e6e2fd72203b9f0fecda39552b",
+    "app/desktop/internal/desktopui/settings_diagnostics.go": "7b77aa0cf97d68d30ea900a2cf9a402c43bdc225e08e3ded8a1e533a26d88965",
+    "app/service/cmd/unic/diagnostics.go": "ea78c738595a5663d7c866f7154e91fba278d99a41dfd4389e0784e699cafc36",
+    "app/service/internal/server/diagnostics.go": "36b4798d29ef253099a5715562e15404b7d18089196b2043f20281678caa84d2",
+    "docs/exec/desktop-settings-diagnostics.md": "36268d38420fe3aab2c0ffaaf63d384eb595ea1579beaf825ffed5e28ee1b46b",
+    "engine/diagnostics.go": "450a29746e6c8b2374b85e1195e516f1fe1097e7220d3d130421c827c85b54bf",
+    "internal/localapi/diagnostics.go": "829c0f1927161e13a106a1ac2388205715265b16cea79a8d2216fbd2cf022018",
+    "tools/research/windows-desktop-memory/diagnostic_init.go.txt": "f3c785eb39fb30e9e641af78a95026fce537db0f1653a23e8bad2f48dfd5dd4c"
+  }
+}

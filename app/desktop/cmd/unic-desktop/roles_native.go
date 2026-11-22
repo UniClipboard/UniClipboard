@@ -26,10 +26,11 @@ import (
 
 var desktopLaunchBackground bool
 
-func configureNativeRole(dir string, accessory bool) {
+func configureNativeRole(dir string, accessory bool, colorMode string) {
 	mygo.App.SetName(desktopAppName)
 	mygo.App.SetVersion(releaseinfo.Version + "-build." + releaseinfo.BuildNumber)
 	mygo.App.SetPath(mygo.PathUserData, dir)
+	mygo.Theme.SetSource(mygo.ThemeSource(colorMode))
 	if accessory && runtime.GOOS == "darwin" {
 		mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
 	}
@@ -75,7 +76,7 @@ func runTray(settings *config.Manager) error {
 	}
 	defer func() { _ = owner.Close() }()
 	defer r.close()
-	configureNativeRole(r.dir, true)
+	configureNativeRole(r.dir, true, settings.Current().Desktop.ColorMode)
 	program, err := os.Executable()
 	if err != nil {
 		return err
@@ -227,7 +228,10 @@ func runTray(settings *config.Manager) error {
 		}
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {
-				mygo.RunOnMain(func() { updateTray(current.Desktop) })
+				mygo.RunOnMain(func() {
+					mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
+					updateTray(current.Desktop)
+				})
 				go apply()
 			}
 		}
@@ -353,7 +357,7 @@ func runPanel(settings *config.Manager) error {
 		return err
 	}
 	defer func() { _ = owner.Close() }()
-	configureNativeRole(dir, true)
+	configureNativeRole(dir, true, settings.Current().Desktop.ColorMode)
 	c, err := client()
 	if err != nil {
 		return err
@@ -372,6 +376,12 @@ func runPanel(settings *config.Manager) error {
 			})
 		})
 		close(ready)
+		settings.OnChange = func(_, current config.Config, err error) {
+			if err == nil {
+				mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
+			}
+		}
+		go func() { _ = settings.Watch(ctx) }()
 		go func() { <-ctx.Done(); mygo.App.Quit() }()
 	})
 	return mygo.App.Run()

@@ -14,7 +14,7 @@ role-checkpoint initial
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
-ui-wait switch '使用系统边框'
+ui-wait switch '登录时启动'
 windows-frame physical-drag-resize-os custom drag-resize
 role-close-gui caption
 role-reopen-gui

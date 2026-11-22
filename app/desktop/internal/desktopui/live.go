@@ -1065,6 +1065,7 @@ func (d *viewState) saveLiveConfigThen(cfg config.Config, after func()) {
 }
 func (d *viewState) projectLiveConfig() {
 	c := d.live.config.Config
+	d.theme = c.Desktop.ColorMode
 	d.options["startup"] = c.Desktop.LaunchAtLogin
 	d.options["sync"] = c.Sync.Enabled
 	d.options["autoSync"] = c.Sync.Automatic

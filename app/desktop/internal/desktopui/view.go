@@ -158,6 +158,10 @@ type viewState struct {
 	windowFrame     *bool
 	pluginSettings  builtinPluginSettings
 	about           aboutState
+	storage         storageSettingsState
+	diagnostics     diagnosticsState
+	backup          backupSettingsState
+	shortcuts       shortcutSettingsState
 
 	reference                                                             string
 	previewImage                                                          ui.ImageSource
@@ -219,7 +223,7 @@ func (d *viewState) view(c *ui.Context) {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen {
+		if !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen && !d.backup.confirmOpen {
 			if d.page == "history" {
 				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
 				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)

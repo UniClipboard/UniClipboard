@@ -170,7 +170,7 @@ func scenarioTrayIconSettings(t *testing.T) {
 	desktop := NewDesktop(ctx, client)
 	defer desktop.Close()
 	d := desktop.d
-	d.page, d.settings.Value = "settings", "general"
+	d.page, d.settings.Value = "settings", "appearance"
 	wait("settings", func() bool { d.live.poll(d); return d.live.loaded })
 	checks := []string{"omitted desktop.tray_icon defaults to glyph"}
 	// Establish that the real directory watcher is ready before mutating preferences.
@@ -201,16 +201,13 @@ func scenarioTrayIconSettings(t *testing.T) {
 		t.Helper()
 		wait("selector idle", func() bool { d.live.poll(d); view.Advance(20 * time.Millisecond); return !d.live.busy })
 		view.Advance(500 * time.Millisecond) // Keep consecutive choices distinct from a double click.
-		target, ok := view.AccessByRole(ui.RolePopUpButton, "托盘图标")
+		target, ok := view.AccessByRole(ui.RoleToggleButton, label)
 		if !ok {
-			t.Fatal("tray style selector missing")
+			t.Fatalf("tray style option %q missing", label)
 		}
 		x, y := target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2
 		view.Press(x, y)
 		view.Release(x, y)
-		if err := boarduiChooseMenu(view, label); err != nil {
-			t.Fatal(err)
-		}
 		wait("saved and applied "+value, func() bool {
 			d.live.poll(d)
 			view.Advance(20 * time.Millisecond)

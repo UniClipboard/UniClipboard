@@ -327,6 +327,17 @@ toolbar. This field never adds a graphical dependency to the service.
 
 The configuration API exposes `config.desktop.tray_icon` as `glyph` or `cat`. An omitted TOML key uses `glyph`. Revision-checked saves, `unic config set` and direct file reloads use the same enum validation. Invalid values do not replace the previous valid configuration. The service stores the preference and does not render a tray. The tray watches saved configuration while Desktop integration is active and updates its image without requiring restart. Lightweight GUI close removes the tray. `desktop.tray_icon` is not a restart-required key.
 
+## Desktop color mode preference
+
+`config.desktop.color_mode` accepts `system`, `light` or `dark`. An omitted TOML
+key uses `system`; other values, including the empty string, reject the complete
+configuration. The existing revision-checked save API, CLI and file watcher use
+the same validation. Invalid saves preserve the previous valid state. The field
+is host-owned, does not change Engine settings and is not restart-required.
+Desktop applies the saved value to mygo's shared theme source in each native
+role, including startup/setup before the normal history view exists. The
+service stores the value without importing or initializing a graphical host.
+
 ## Explicit CLI migration initialization
 
 The CLI requires explicit initialization for each resolved data directory before any

@@ -177,7 +177,7 @@ func runGUI(settings *config.Manager) error {
 	if _, err = launchDesktopRole(context.Background(), dir, socket, desktopprocess.Tray, "--background"); err != nil {
 		return err
 	}
-	configureNativeRole(dir, false)
+	configureNativeRole(dir, false, settings.Current().Desktop.ColorMode)
 	defer session.close()
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
 		session.requestQuit(e)
@@ -263,6 +263,7 @@ func runGUI(settings *config.Manager) error {
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {
 				mygo.RunOnMain(func() {
+					mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
 					if session.setup != nil {
 						session.setup.SetLanguage(current.Desktop.Language)
 					}

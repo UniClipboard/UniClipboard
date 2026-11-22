@@ -439,6 +439,13 @@ cancellation revokes upload readers when the opt-in flag is true.
 
 `POST /v1/code` and `POST /v1/pairing-ticket` accept an empty body or `{ "backend_id": "instance.id" }`. An empty selection uses Tailcat. Unknown selections and unsupported transports fail explicitly and never fall back. Backend selection does not grant trust. The existing fingerprint and complete device/binding revision approval still applies.
 
+Pair an installed external-channel backend through `POST /v1/channels/pair`.
+Send `{backend_id, code}` for a new pairing or `{backend_id, resume: true}`
+to resume an existing provider pairing. The response is the external peer
+projection. The pairing code and group context are private. The CLI command
+`unic channel pair INSTANCE` reads the code from standard input.
+`unic channel pair INSTANCE --resume` requests explicit recovery without a code.
+
 CLI exposes `unic device backends` and `unic device addr --backend INSTANCE`. Desktop exposes the same backend selection in the invitation task. Standard backend policies use `plugins.instances."INSTANCE".sync` through the existing revision-checked configuration route. Enablement changes require service restart. Global sync and policies apply to the assembled running backend set while restart is pending. A zero-backend service retains local content, history and Actions.
 
 The single-instance external-process acceptance and remaining contract decision are recorded in the [workflow receipt](../exec/sync-plugin-workflow.md).

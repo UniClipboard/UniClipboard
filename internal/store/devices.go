@@ -536,7 +536,15 @@ func (s *Store) AddChannel(id, instanceID string, remoteContext []byte, reported
 	if err != nil {
 		return Channel{}, err
 	}
-	return scanChannel(s.db.QueryRow(`SELECT `+channelCols+` FROM channels WHERE instance_id=? AND remote_context=?`, instanceID, remoteContext))
+	return s.ChannelByContext(instanceID, remoteContext)
+}
+
+func (s *Store) ChannelByContext(instanceID string, remoteContext []byte) (Channel, error) {
+	c, err := scanChannel(s.db.QueryRow(`SELECT `+channelCols+` FROM channels WHERE instance_id=? AND remote_context=?`, instanceID, remoteContext))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Channel{}, ErrChannelNotFound
+	}
+	return c, err
 }
 
 func (s *Store) Channel(id string) (Channel, error) {

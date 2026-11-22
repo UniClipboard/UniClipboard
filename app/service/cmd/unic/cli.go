@@ -69,6 +69,9 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		printPeers(st.Peers)
 		printPending(st.Pending)
 
+	case "channel pair":
+		return runChannelPair(short, c, args)
+
 	case "device addr":
 		backend := ""
 		if len(args) != 0 {

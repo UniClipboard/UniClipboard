@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/uniclipboard/unic/internal/releaseinfo"
@@ -30,10 +32,17 @@ func client() (*api.Client, error) {
 	return api.NewClient(s), nil
 }
 func main() {
-	if releaseinfo.Print(os.Stdout, "unic-desktop", "desktop", os.Args[1:]) {
+	args := os.Args[1:]
+	if filepath.Base(os.Args[0]) == "gui-go" {
+		// The old macOS updater may pass restart flags to its original executable path.
+		args = slices.DeleteFunc(slices.Clone(args), func(arg string) bool {
+			return arg == "--resident-restart" || arg == "--background-restart"
+		})
+	}
+	if releaseinfo.Print(os.Stdout, "unic-desktop", "desktop", args) {
 		return
 	}
-	err := runDesktop(os.Args[1:])
+	err := runDesktop(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "unic-desktop:", err)
 		os.Exit(1)

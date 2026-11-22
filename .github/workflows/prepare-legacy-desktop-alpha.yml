@@ -1,0 +1,43 @@
+name: Prepare legacy Desktop alpha
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: Published numbered Desktop alpha build to sign for 1.6.2-alpha.2
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  sign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: 0a72be0fc1532824b72d8d3828462c205ad348f5
+          path: v1-source
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: v1-source/apps/gui-go/go.mod
+          cache-dependency-path: v1-source/apps/gui-go/go.sum
+      - name: Sign exact published assets and check with the embedded v1 public key
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          python3 tools/release/legacy_desktop_alpha.py --build "$BUILD_NUMBER" --legacy-source v1-source --output dist/legacy-alpha
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-legacy-alpha
+          path: |
+            dist/legacy-alpha/desktop-legacy-alpha.json
+            dist/legacy-alpha/v1-signature-verification.json
+            dist/legacy-alpha/release-manifest.json
+          if-no-files-found: error

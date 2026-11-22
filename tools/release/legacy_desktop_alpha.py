@@ -65,10 +65,9 @@ def prepare(version, build, admin, legacy_source, output):
         or registered.get("buildNumber") != build
         or registered.get("tagName") != tag
         or registered.get("status") != "ready"
-        or not registered.get("prerelease")
         or not re.fullmatch(r"[a-f0-9]{64}", registration_digest or "")
     ):
-        raise ValueError("unexpected numbered Desktop alpha registration")
+        raise ValueError("unexpected numbered Desktop registration")
     release = json.loads(
         subprocess.check_output(
             [
@@ -119,6 +118,7 @@ def prepare(version, build, admin, legacy_source, output):
         or catalogue["product"] != "desktop"
         or catalogue["development"]
         or not catalogue["source_clean"]
+        or catalogue["source_sha"] != registered.get("source")
     ):
         raise ValueError("unexpected GitHub release catalogue")
     records = {record["file"]: record for record in catalogue["artifacts"]}

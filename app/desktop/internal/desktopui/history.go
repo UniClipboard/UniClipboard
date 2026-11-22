@@ -108,9 +108,15 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 		c.OnWindowShortcut(0, ui.KeyEscape, func() {
 			d.inspector = false
 		})
+	} else if len(items) == 0 && (d.hasActiveSearchOrFilter() || d.isSearchUnavailableState()) && !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.filterOpen {
+		c.OnWindowShortcut(0, ui.KeyEscape, d.clearAllHistoryFilters)
+	}
+	subtitle := fmt.Sprint(len(items))
+	if d.isSearchUnavailableState() {
+		subtitle = "—"
 	}
 	k.SplitView(c, desktopkit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c),
-		Title: d.tr("全部"), Subtitle: fmt.Sprint(len(items)),
+		Title: d.historyHeadingTitle(), Subtitle: subtitle,
 		Sidebar: func() { d.sidebar(c, k) }, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact,
 		SidebarToggleLabel: d.tr("切换侧栏"), DetailOpen: &d.detailOpen, BackLabel: d.tr("返回历史"),
 		DrawerOpen:     gridDrawerOpen,
@@ -127,7 +133,7 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 		},
 		ToolbarLeading: func() {
 			ui.Row(c.Key("layout-controls")).AlignItems(ui.Center).Shrink(0).Children(func() {
-				showSlider := d.layout == "grid" && !d.compact
+				showSlider := d.layout == "grid" && !d.compact && len(items) > 0
 				sliderHost := ui.Row(c.Key("card-size-reveal")).Height(30).AlignItems(ui.Center).Clip().Shrink(0).AccessHidden(!showSlider)
 				sliderDur := 220 * time.Millisecond
 				if c.Preferences().ReduceMotion {
@@ -191,13 +197,14 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 			stage.Translate(28*st.dir*(1-v3P), 0).Opacity(0.55 + 0.45*v3P)
 		}
 		stage.Children(func() {
+			empty := len(items) == 0
 			pane := desktopkit.PaneList
-			if d.layout == "grid" {
+			if d.layout == "grid" || empty {
 				pane = desktopkit.PaneMain
 			}
 			k.Pane(c.Key("browse"), desktopkit.PaneProps{Kind: pane, Label: d.tr("历史列表"), DetailOpen: &d.detailOpen}, func() {
 				if d.live != nil {
-					if d.live.readError != "" {
+					if d.live.readError != "" && !(empty && d.isSearchUnavailableState()) {
 						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr(d.live.readError)})
 					}
 					if d.live.message != "" {
@@ -206,21 +213,19 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 					if d.live.foregroundLoading {
 						k.Text(c, d.tr("正在读取历史…"), secondary)
 					}
-					if d.unsupportedSearch() {
+					if d.unsupportedSearch() && !empty {
 						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("此搜索条件暂不可用"), Text: d.tr("请选择类型、设备、标签或时间筛选。")})
 					}
 				}
-				if len(items) == 0 {
-					k.ContentUnavailable(c, desktopkit.ContentUnavailableProps{Icon: desktopkit.IconSearch, Title: d.tr("没有匹配的历史"), Description: d.tr("修改搜索词或清除筛选。")}, func() {
-						if k.Button(c, d.tr("清除筛选"), desktopkit.ButtonProps{}).Clicked() {
-							d.query, d.kind, d.source, d.tag, d.timeRange, d.nav.Value = "", "", "", "", "", "all"
-						}
-					})
+				if empty {
+					if d.live == nil || !d.live.foregroundLoading || d.live.loaded {
+						d.historyEmptyState(c, k)
+					}
 				} else {
 					d.historyList(c, k, items)
 				}
 			})
-			if d.layout == "list" || (d.compact && d.detailOpen) {
+			if !empty && (d.layout == "list" || (d.compact && d.detailOpen)) {
 				k.Pane(c.Key("detail"), desktopkit.PaneProps{Kind: desktopkit.PaneDetail, Label: d.tr("历史详情"), DetailOpen: &d.detailOpen}, func() { d.detail(c, k) })
 			}
 		})
@@ -304,30 +309,47 @@ func listRowExcerpt(v entry, title string) string {
 }
 
 func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
-	fit := func(e ui.Element) ui.Element {
-
-		return e
-	}
 	v := d.current()
-	b, command := k.Menu(c.Key("send"), desktopkit.MenuProps{Label: d.tr("发送到设备"), Icon: desktopkit.IconSend, IconOnly: true, Variant: desktopkit.Subtle, Items: d.sendMenuItems()})
-	fit(b)
+	_, command := k.ToolbarIconMenu(c.Key("send"), desktopkit.ToolbarIconMenuProps{
+		Label:    d.tr("发送到设备"),
+		Icon:     desktopkit.IconSend,
+		Disabled: v == nil,
+		Items:    d.sendMenuItems(),
+	})
 	if command != "" {
 		d.sendTo(command)
 	}
-	if fit(k.Button(c.Key("pin"), "", desktopkit.ButtonProps{Icon: desktopkit.IconPin, Label: d.tr("切换收藏"), Variant: desktopkit.Subtle, Disabled: v == nil || d.live != nil && d.live.busy})).Clicked() {
+	if k.ToolbarIconButton(c.Key("pin"), desktopkit.ToolbarIconButtonProps{
+		Icon:        desktopkit.IconPin,
+		Label:       d.tr("切换收藏"),
+		Active:      v != nil && v.pinned,
+		ActiveColor: k.Color("status-orange-text"),
+		Disabled:    v == nil || d.live != nil && d.live.busy,
+	}).Clicked() {
 		d.togglePin()
 	}
 	if d.live != nil && v != nil && !d.live.busy {
 		if actions := d.historyActionsFor(v.id, plugin.ActionPlacementHistoryToolbar, ""); len(actions) > 0 {
-			button, key := k.Menu(c.Key("history-actions"), desktopkit.MenuProps{Label: d.tr("动作"), Icon: desktopkit.IconEdit, IconOnly: true, Variant: desktopkit.Subtle, Items: actions})
-			fit(button)
+			_, key := k.ToolbarIconMenu(c.Key("history-actions"), desktopkit.ToolbarIconMenuProps{
+				Label: d.tr("动作"),
+				Icon:  desktopkit.IconEdit,
+				Items: actions,
+			})
 			if key != "" {
 				d.runHistoryAction(v.id, key)
 			}
 		}
 	}
-	b, command = k.Menu(c.Key("more"), desktopkit.MenuProps{Label: d.tr("更多操作"), Icon: desktopkit.IconMore, IconOnly: true, Variant: desktopkit.Subtle, Items: []desktopkit.MenuEntry{{ID: "tags", Label: d.tr("管理标签"), Icon: desktopkit.IconTag}, {ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: v == nil}, desktopkit.MenuSeparator("sep"), {ID: "quick-panel", Label: d.tr("查看快捷面板")}}})
-	fit(b)
+	_, command = k.ToolbarIconMenu(c.Key("more"), desktopkit.ToolbarIconMenuProps{
+		Label: d.tr("更多操作"),
+		Icon:  desktopkit.IconMore,
+		Items: []desktopkit.MenuEntry{
+			{ID: "tags", Label: d.tr("管理标签"), Icon: desktopkit.IconTag},
+			{ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: v == nil},
+			desktopkit.MenuSeparator("sep"),
+			{ID: "quick-panel", Label: d.tr("查看快捷面板")},
+		},
+	})
 	switch command {
 	case "tags":
 		d.tagsOpen = true
@@ -1258,8 +1280,13 @@ func syncStateLabel(s string) string {
 }
 
 func (d *viewState) historyCountLabel() string {
-	if d.live != nil && d.live.cursor != "" {
-		return fmt.Sprintf("%d+", len(d.entries))
+	if d.live != nil {
+		if count, ok := d.live.counts[searchQueryKey(allHistoryQuery())]; ok {
+			return fmt.Sprint(count)
+		}
+		if d.live.cursor != "" {
+			return fmt.Sprintf("%d+", len(d.entries))
+		}
 	}
 	return fmt.Sprint(len(d.entries))
 }

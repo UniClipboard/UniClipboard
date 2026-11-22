@@ -638,7 +638,7 @@ screenshot tag-manager
 ui-click button '完成'
 ui-enabled button '切换收藏'
 ui-click button '切换收藏'
-ui-wait text '没有匹配的历史'
+ui-wait text '还没有收藏的内容'
 screenshot favorite-removed
 ui-click listItem '全部项目'
 ui-wait listItem '收藏验证：保留这条记录'

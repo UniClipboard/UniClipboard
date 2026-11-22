@@ -122,12 +122,13 @@ const (
 	MethodNotify          = "host.notify"
 
 	// External-channel sync backend profile (sync-backend-contract §6a).
-	MethodSubmit       = "backend.submit"        // Engine→plugin
-	MethodLeaveChannel = "backend.leave_channel" // Engine→plugin
-	MethodRegister     = "backend.register"      // plugin→Engine
-	MethodReport       = "backend.report"        // plugin→Engine
-	MethodReceive      = "backend.receive"       // plugin→Engine
-	MethodStream       = "stream.open"
+	MethodSubmit           = "backend.submit"            // Engine→plugin
+	MethodLeaveChannel     = "backend.leave_channel"     // Engine→plugin
+	MethodRegister         = "backend.register"          // plugin→Engine
+	MethodReport           = "backend.report"            // plugin→Engine
+	MethodReceive          = "backend.receive"           // plugin→Engine
+	MethodAuthorizeChannel = "backend.authorize_channel" // plugin→Engine
+	MethodStream           = "stream.open"
 )
 
 const (
@@ -254,6 +255,15 @@ type SubmitResult struct {
 
 type LeaveChannel struct {
 	ChannelID string `json:"channel_id"`
+}
+
+type AuthorizeChannel struct {
+	ChannelID string `json:"channel_id"`
+	MIME      string `json:"mime"`
+}
+
+type AuthorizeChannelResult struct {
+	Allowed bool `json:"allowed"`
 }
 
 type Register struct {

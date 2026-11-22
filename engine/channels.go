@@ -312,6 +312,24 @@ func (e *Engine) channelAllowed(backend PluginID, id string) (bool, error) {
 	return c.Enabled && PluginID(c.InstanceID) == backend, nil
 }
 
+func (b *pluginBackend) AuthorizeChannel(ctx context.Context, channelID, mime string) (bool, error) {
+	e := b.e
+	release, gateErr := e.historyGate(ctx, false, false)
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
+	allowed, err := e.channelAllowed(b.id, channelID)
+	if err != nil || !allowed {
+		return false, err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	policy := e.policyLocked(b.id)
+	return e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled &&
+		(mime == "" || allowsAny([]receivePart{{mime: mime}}, policy)), nil
+}
+
 // Receive implements plugin.Receiver for an external-channel backend. The
 // content goes through the same admission, received pipeline, history and
 // dedup as content from a device, tagged with the channel instead.

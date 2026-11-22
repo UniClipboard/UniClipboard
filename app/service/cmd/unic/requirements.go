@@ -61,6 +61,8 @@ var catalog = []leaf{
 	{Name: "device path", Requirement: reqService, Completion: doneResponse},
 	{Name: "device backends", Requirement: reqService, Completion: doneResponse},
 	{Name: "device list", Requirement: reqService, Completion: doneResponse},
+	{Name: "device channel-add", Requirement: reqService, Completion: doneResponse},
+	{Name: "device channel", Requirement: reqService, Completion: doneResponse},
 	{Name: "device remove", Requirement: reqService, Completion: doneResponse},
 	{Name: "device approve", Requirement: reqService, Completion: doneResponse},
 	{Name: "device reject", Requirement: reqService, Completion: doneResponse},
@@ -94,7 +96,7 @@ var firstWord = map[string]string{"s": "send", "r": "recv", "h": "history", "-h"
 
 // groupUsage is printed when a group has no valid subcommand.
 var groupUsage = map[string]string{
-	"device": "usage: unic device add [CODE|ADDRESS] | addr | list | remove ID | approve ID FINGERPRINT | reject ID | suggestions | suggest-pair ID BACKEND | suggest-ignore ID | suggest-restore ID",
+	"device": "usage: unic device add [CODE|ADDRESS] | addr | list | remove ID | channel-add INSTANCE NAME | channel pause|resume|remove ID REVISION | approve ID FINGERPRINT | reject ID | suggestions | suggest-pair ID BACKEND | suggest-ignore ID | suggest-restore ID",
 	"dev":    "usage: unic dev submission ID | capabilities | watch | logs level|export|help | diagnostics telemetry | cache [--json] | copy [TEXT] | paste",
 }
 

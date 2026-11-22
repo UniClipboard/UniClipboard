@@ -289,6 +289,12 @@ type Receiver interface {
 	Receive(ctx context.Context, channelID string, r Received) error
 }
 
+// ChannelAuthorizer lets an external-channel backend check current pull
+// permission before returning a previously published representation.
+type ChannelAuthorizer interface {
+	AuthorizeChannel(context.Context, string, string) (bool, error)
+}
+
 // ReceiverAware is implemented by external-channel backends; the engine hands
 // over the Receiver after Init and before Start.
 type ReceiverAware interface {

@@ -174,9 +174,9 @@ func TestSyncClipboardExternalProcess(t *testing.T) {
 		if err != nil {
 			return 0, ""
 		}
-		defer resp.Body.Close()
 		result, err := io.ReadAll(resp.Body)
-		if err != nil {
+		closeErr := resp.Body.Close()
+		if err != nil || closeErr != nil {
 			return 0, ""
 		}
 		return resp.StatusCode, string(result)

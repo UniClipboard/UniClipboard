@@ -15,7 +15,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: aa8ed52c9d762a1f39d6e945f42ad1e8ab27a806
+verified: 2e97611609838ada943646be1354dc8819c7adbe
 ---
 # 仓库布局与依赖边界
 

@@ -38,7 +38,7 @@ type detection struct {
 }
 
 func New(flow *setupflow.Flow, language string, migrationOnly bool, enter func()) *Screen {
-	s := &Screen{flow: flow, model: Model{Stage: "welcome", Language: language}, enter: enter, results: make(chan completion, 1), progress: make(chan v1migration.Progress, 1), detections: make(chan detection, 1)}
+	s := &Screen{flow: flow, model: Model{Stage: "welcome", Language: language, MigrationOnly: migrationOnly}, enter: enter, results: make(chan completion, 1), progress: make(chan v1migration.Progress, 1), detections: make(chan detection, 1)}
 	if source := flow.State().Source; source != "" {
 		s.model.Source, s.model.Stage = source, "confirm"
 	} else if migrationOnly {

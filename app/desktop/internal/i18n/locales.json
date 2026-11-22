@@ -7060,5 +7060,749 @@
     "ja": "テレメトリ送信に含まれるログレベル（上のスイッチで制御）。",
     "pt-BR": "Nível de log incluído nos envios de telemetria, controlado pelas chaves acima.",
     "ru": "Уровень журналов для отправки в телеметрию (управляется переключателями выше)."
+  },
+  "核心能力预览": {
+    "en": "Core feature preview",
+    "ja": "主な機能プレビュー",
+    "pt-BR": "Prévia dos recursos principais",
+    "ru": "Предпросмотр основных возможностей"
+  },
+  "流水线标签": {
+    "en": "Pipeline & Tags",
+    "ja": "パイプラインとタグ",
+    "pt-BR": "Pipeline e tags",
+    "ru": "Конвейер и теги"
+  },
+  "插件与动作": {
+    "en": "Plugins & Actions",
+    "ja": "プラグインとアクション",
+    "pt-BR": "Plugins e ações",
+    "ru": "Плагины и действия"
+  },
+  "跨端直连": {
+    "en": "Direct Sync",
+    "ja": "ダイレクト同期",
+    "pt-BR": "Sincronização direta",
+    "ru": "Прямая синхронизация"
+  },
+  "#代码": {
+    "en": "#Code",
+    "ja": "#コード",
+    "pt-BR": "#Código",
+    "ru": "#Код"
+  },
+  "#颜色": {
+    "en": "#Color",
+    "ja": "#カラー",
+    "pt-BR": "#Cor",
+    "ru": "#Цвет"
+  },
+  "VS Code · 刚刚复制": {
+    "en": "VS Code · Just copied",
+    "ja": "VS Code · たった今コピー",
+    "pt-BR": "VS Code · Copiado agora",
+    "ru": "VS Code · Только что скопировано"
+  },
+  "Capture → Processing 流水线": {
+    "en": "Capture → Processing pipeline",
+    "ja": "Capture → Processing パイプライン",
+    "pt-BR": "Pipeline Capture → Processing",
+    "ru": "Конвейер Capture → Processing"
+  },
+  "已归类": {
+    "en": "Classified",
+    "ja": "分類済み",
+    "pt-BR": "Classificado",
+    "ru": "Классифицировано"
+  },
+  "12.4 MB · 目录快照": {
+    "en": "12.4 MB · Folder snapshot",
+    "ja": "12.4 MB · フォルダスナップショット",
+    "pt-BR": "12,4 MB · Instantâneo de pasta",
+    "ru": "12,4 МБ · Снимок папки"
+  },
+  "对当前条目执行动作 · Actions": {
+    "en": "Run action on this entry · Actions",
+    "ja": "この項目でアクションを実行 · Actions",
+    "pt-BR": "Executar ação neste item · Actions",
+    "ru": "Действия для этой записи · Actions"
+  },
+  "临时分享": {
+    "en": "Temporary Share",
+    "ja": "一時共有",
+    "pt-BR": "Compartilhamento temporário",
+    "ru": "Временный обмен"
+  },
+  "生成取件链接 · 阅后过期": {
+    "en": "Create expiring pickup link",
+    "ja": "期限付き共有リンクを作成",
+    "pt-BR": "Gerar link temporário com validade",
+    "ru": "Создать временную ссылку для скачивания"
+  },
+  "链接已生成": {
+    "en": "Link ready",
+    "ja": "リンク生成済み",
+    "pt-BR": "Link pronto",
+    "ru": "Ссылка готова"
+  },
+  "文本清洗 / JSON 格式化": {
+    "en": "Text cleanup / Format JSON",
+    "ja": "テキスト整形 / JSON フォーマット",
+    "pt-BR": "Limpeza de texto / Formatar JSON",
+    "ru": "Очистка текста / Форматирование JSON"
+  },
+  "自定义 Lua 处理脚本": {
+    "en": "Custom Lua processor script",
+    "ja": "カスタム Lua 処理スクリプト",
+    "pt-BR": "Script personalizado em Lua",
+    "ru": "Пользовательский Lua-скрипт"
+  },
+  "插件市场 · 沙箱运行": {
+    "en": "Plugin marketplace · Sandboxed",
+    "ja": "プラグイン市場 · サンドボックス実行",
+    "pt-BR": "Loja de plugins · Em sandbox",
+    "ru": "Каталог плагинов · В песочнице"
+  },
+  "MacBook Pro（本机）": {
+    "en": "MacBook Pro (This device)",
+    "ja": "MacBook Pro（このデバイス）",
+    "pt-BR": "MacBook Pro (Este dispositivo)",
+    "ru": "MacBook Pro (Это устройство)"
+  },
+  "设备身份已就绪 · 仅本地存储": {
+    "en": "Device identity ready · Local storage only",
+    "ja": "デバイスID準備完了 · ローカル保存のみ",
+    "pt-BR": "Identidade pronta · Somente armazenamento local",
+    "ru": "Идентификатор готов · Только локальное хранение"
+  },
+  "直连": {
+    "en": "Direct",
+    "ja": "直接接続",
+    "pt-BR": "Direto",
+    "ru": "Прямое"
+  },
+  "Tailcat 端到端加密 · 免云账号": {
+    "en": "Tailcat E2E encrypted · No cloud account",
+    "ja": "Tailcat E2E暗号化 · クラウドアカウント不要",
+    "pt-BR": "Tailcat E2E criptografado · Sem conta na nuvem",
+    "ru": "Tailcat E2E-шифрование · Без облачного аккаунта"
+  },
+  "Windows 台式机": {
+    "en": "Windows Desktop",
+    "ja": "Windows デスクトップ",
+    "pt-BR": "Desktop Windows",
+    "ru": "Компьютер Windows"
+  },
+  "指纹已信任": {
+    "en": "Fingerprint trusted",
+    "ja": "フィンガープリント信頼済み",
+    "pt-BR": "Impressão digital confiável",
+    "ru": "Отпечаток подтверждён"
+  },
+  "已同步最新条目": {
+    "en": "Latest entry synced",
+    "ja": "最新項目を同期済み",
+    "pt-BR": "Último item sincronizado",
+    "ru": "Последняя запись синхронизирована"
+  },
+  "仅检查默认目录结构，不会读取剪贴板或请求系统凭据。": {
+    "en": "Checks default folder structure only, without reading clipboard or requesting system credentials.",
+    "ja": "既定フォルダの構造のみを確認し、クリップボード読取やシステム資格情報の要求は行いません。",
+    "pt-BR": "Verifica apenas a estrutura padrão da pasta, sem ler a área de transferência nem pedir credenciais.",
+    "ru": "Проверяется только структура каталога по умолчанию, без чтения буфера и запроса системных учётных данных."
+  },
+  "可导入": {
+    "en": "Ready to import",
+    "ja": "インポート可能",
+    "pt-BR": "Pronto para importar",
+    "ru": "Готово к импорту"
+  },
+  "点击「开始使用」后可确认导入旧历史，或选择暂不迁移。": {
+    "en": "Click Get Started to review importing your old history or skip for now.",
+    "ja": "「始める」を押すと旧履歴のインポート確認またはスキップを選択できます。",
+    "pt-BR": "Clique em Começar para revisar a importação do histórico antigo ou pular por enquanto.",
+    "ru": "Нажмите «Начать», чтобы подтвердить импорт старой истории или пропустить его."
+  },
+  "逐条写入历史": {
+    "en": "Write records one by one",
+    "ja": "履歴を1件ずつ書き込み",
+    "pt-BR": "Gravar registros um por um",
+    "ru": "Запись элементов по одному"
+  },
+  "共 %d 条": {
+    "en": "%d total",
+    "ja": "全 %d 件",
+    "pt-BR": "%d no total",
+    "ru": "Всего %d"
+  },
+  "确认目录与范围": {
+    "en": "Confirm source & scope",
+    "ja": "保存先と範囲を確認",
+    "pt-BR": "Confirmar pasta e escopo",
+    "ru": "Источник и объём"
+  },
+  "等待确认": {
+    "en": "Pending confirmation",
+    "ja": "確認待ち",
+    "pt-BR": "Aguardando confirmação",
+    "ru": "Ожидает подтверждения"
+  },
+  "系统凭据或口令": {
+    "en": "System credentials or passphrase",
+    "ja": "システム資格情報またはパスフレーズ",
+    "pt-BR": "Credenciais do sistema ou senha",
+    "ru": "Системные учётные данные или пароль"
+  },
+  "导入历史": {
+    "en": "Import history",
+    "ja": "履歴をインポート",
+    "pt-BR": "Importar histórico",
+    "ru": "Импорт истории"
+  },
+  "重开校验": {
+    "en": "Reopen & verify",
+    "ja": "再オープン検証",
+    "pt-BR": "Reabrir e verificar",
+    "ru": "Повторная проверка"
+  },
+  "重开库校验": {
+    "en": "Reopen database to verify",
+    "ja": "DBを再オープンして検証",
+    "pt-BR": "Reabrir banco para verificar",
+    "ru": "Проверка после повторного открытия"
+  },
+  "目录不受支持": {
+    "en": "Unsupported folder",
+    "ja": "非対応のフォルダ",
+    "pt-BR": "Pasta não suportada",
+    "ru": "Неподдерживаемая папка"
+  },
+  "目标目录被占用": {
+    "en": "Target folder in use",
+    "ja": "移行先フォルダが使用中",
+    "pt-BR": "Pasta de destino em uso",
+    "ru": "Целевая папка занята"
+  },
+  "已确认": {
+    "en": "Confirmed",
+    "ja": "確認済み",
+    "pt-BR": "Confirmado",
+    "ru": "Подтверждено"
+  },
+  "等待系统授权…": {
+    "en": "Waiting for system approval…",
+    "ja": "システム許可を待機中…",
+    "pt-BR": "Aguardando autorização do sistema…",
+    "ru": "Ожидание разрешения системы…"
+  },
+  "等待输入 v1 口令": {
+    "en": "Waiting for v1 passphrase",
+    "ja": "v1 パスフレーズ入力待ち",
+    "pt-BR": "Aguardando senha do v1",
+    "ru": "Ожидание пароля v1"
+  },
+  "已解锁": {
+    "en": "Unlocked",
+    "ja": "ロック解除済み",
+    "pt-BR": "Desbloqueado",
+    "ru": "Разблокировано"
+  },
+  "%d / %d 条": {
+    "en": "%d / %d items",
+    "ja": "%d / %d 件",
+    "pt-BR": "%d / %d itens",
+    "ru": "%d / %d записей"
+  },
+  "正在导入…": {
+    "en": "Importing…",
+    "ja": "インポート中…",
+    "pt-BR": "Importando…",
+    "ru": "Импорт…"
+  },
+  "已全部处理": {
+    "en": "All processed",
+    "ja": "すべて処理済み",
+    "pt-BR": "Tudo processado",
+    "ru": "Все обработаны"
+  },
+  "正在校验…": {
+    "en": "Verifying…",
+    "ja": "検証中…",
+    "pt-BR": "Verificando…",
+    "ru": "Проверка…"
+  },
+  "已处理": {
+    "en": "Processed",
+    "ja": "処理済み",
+    "pt-BR": "Processado",
+    "ru": "Обработано"
+  },
+  "正在安全停止…": {
+    "en": "Stopping safely…",
+    "ja": "安全に停止中…",
+    "pt-BR": "Parando com segurança…",
+    "ru": "Безопасная остановка…"
+  },
+  "已保留 %d 条": {
+    "en": "%d kept",
+    "ja": "%d 件保持",
+    "pt-BR": "%d mantidos",
+    "ru": "Сохранено %d"
+  },
+  "校验通过": {
+    "en": "Verified",
+    "ja": "検証完了",
+    "pt-BR": "Verificado",
+    "ru": "Проверено"
+  },
+  "部分记录失败": {
+    "en": "Some records failed",
+    "ja": "一部レコード失敗",
+    "pt-BR": "Alguns registros falharam",
+    "ru": "Часть записей не удалось импортировать"
+  },
+  "存在异常项": {
+    "en": "Issues found",
+    "ja": "例外項目あり",
+    "pt-BR": "Itens com problemas",
+    "ru": "Обнаружены проблемы"
+  },
+  "已停止 · 留存 %d 条": {
+    "en": "Stopped · %d kept",
+    "ja": "停止済み · %d 件保持",
+    "pt-BR": "Interrompido · %d mantidos",
+    "ru": "Остановлено · сохранено %d"
+  },
+  "尚未校验": {
+    "en": "Not verified yet",
+    "ja": "未検証",
+    "pt-BR": "Ainda não verificado",
+    "ru": "Ещё не проверено"
+  },
+  "读取异常中断": {
+    "en": "Interrupted by read error",
+    "ja": "読取エラーで中断",
+    "pt-BR": "Interrompido por erro de leitura",
+    "ru": "Прервано ошибкой чтения"
+  },
+  "未完成": {
+    "en": "Incomplete",
+    "ja": "未完了",
+    "pt-BR": "Incompleto",
+    "ru": "Не завершено"
+  },
+  "从 v1 迁移历史": {
+    "en": "Migrate v1 History",
+    "ja": "v1 履歴を移行",
+    "pt-BR": "Migrar histórico do v1",
+    "ru": "Миграция истории v1"
+  },
+  "只读 v1 源目录，不修改也不删除旧数据。": {
+    "en": "Reads v1 data strictly read-only; never modifies or deletes old files.",
+    "ja": "v1 データは読み取り専用で開き、変更も削除もしません。",
+    "pt-BR": "Lê a pasta do v1 em modo somente leitura, sem alterar ou excluir dados antigos.",
+    "ru": "Каталог v1 открывается только для чтения; старые данные не изменяются и не удаляются."
+  },
+  "迁移期间离线独占，不捕获剪贴板与同步。": {
+    "en": "Runs offline with exclusive access; clipboard capture and sync stay paused.",
+    "ja": "移行中はオフライン排他実行となり、クリップボード取得や同期は行いません。",
+    "pt-BR": "Executa offline com acesso exclusivo, sem capturar a área de transferência nem sincronizar.",
+    "ru": "Выполняется офлайн в монопольном режиме без захвата буфера и синхронизации."
+  },
+  "跳过后随时可在设置 › 存储中再次迁移。": {
+    "en": "You can always migrate later from Settings › Storage.",
+    "ja": "スキップ後も「設定 › ストレージ」からいつでも移行できます。",
+    "pt-BR": "Se pular, você pode migrar depois em Configurações › Armazenamento.",
+    "ru": "После пропуска миграцию можно запустить позже в Настройки › Хранилище."
+  },
+  "确认导入范围与目录": {
+    "en": "Confirm import scope & folder",
+    "ja": "インポート範囲とフォルダを確認",
+    "pt-BR": "Confirmar escopo e pasta",
+    "ru": "Подтвердите папку и объём импорта"
+  },
+  "无法获取目录独占权": {
+    "en": "Cannot acquire exclusive folder lock",
+    "ja": "フォルダの排他ロックを取得できません",
+    "pt-BR": "Não foi possível obter acesso exclusivo à pasta",
+    "ru": "Не удалось получить монопольный доступ к папке"
+  },
+  "需要释放目标数据目录后才能继续。": {
+    "en": "Stop any service using the target data folder before continuing.",
+    "ja": "移行先データフォルダの使用が解放されてから続行してください。",
+    "pt-BR": "Libere a pasta de dados de destino antes de continuar.",
+    "ru": "Освободите целевой каталог данных перед продолжением."
+  },
+  "目录被占用": {
+    "en": "Folder busy",
+    "ja": "フォルダ使用中",
+    "pt-BR": "Pasta ocupada",
+    "ru": "Папка занята"
+  },
+  "解锁 v1 加密数据": {
+    "en": "Unlock encrypted v1 data",
+    "ja": "暗号化された v1 データをロック解除",
+    "pt-BR": "Desbloquear dados criptografados do v1",
+    "ru": "Разблокировка зашифрованных данных v1"
+  },
+  "只读获取解密密钥，不会修改系统凭据。": {
+    "en": "Reads decryption key read-only without modifying system credentials.",
+    "ja": "復号鍵を読み取り専用で取得し、システム資格情報は変更しません。",
+    "pt-BR": "Lê a chave de descriptografia sem modificar as credenciais do sistema.",
+    "ru": "Ключ расшифровки читается без изменения системных учётных данных."
+  },
+  "等待授权": {
+    "en": "Awaiting approval",
+    "ja": "許可待ち",
+    "pt-BR": "Aguardando permissão",
+    "ru": "Ожидание разрешения"
+  },
+  "在当前流程内完成口令兜底解锁。": {
+    "en": "Complete passphrase unlock within this flow.",
+    "ja": "このフロー内でパスフレーズによる解除を行います。",
+    "pt-BR": "Conclua o desbloqueio por senha neste fluxo.",
+    "ru": "Завершите разблокировку с помощью пароля в этом окне."
+  },
+  "需口令": {
+    "en": "Passphrase required",
+    "ja": "パスフレーズ必要",
+    "pt-BR": "Senha necessária",
+    "ru": "Требуется пароль"
+  },
+  "正在迁移 v1 历史": {
+    "en": "Migrating v1 history",
+    "ja": "v1 履歴を移行中",
+    "pt-BR": "Migrando histórico do v1",
+    "ru": "Миграция истории v1"
+  },
+  "导入与校验分阶段进行，完成后才会呈现结果。": {
+    "en": "Importing and verification run in separate phases before showing results.",
+    "ja": "インポートと検証は別フェーズで行われ、完了後に結果を表示します。",
+    "pt-BR": "A importação e a verificação ocorrem em fases separadas antes do resultado.",
+    "ru": "Импорт и проверка выполняются раздельно до показа итогового результата."
+  },
+  "导入阶段": {
+    "en": "Importing",
+    "ja": "インポート中",
+    "pt-BR": "Importando",
+    "ru": "Импорт"
+  },
+  "校验阶段": {
+    "en": "Verifying",
+    "ja": "検証中",
+    "pt-BR": "Verificando",
+    "ru": "Проверка"
+  },
+  "正在安全停止迁移": {
+    "en": "Stopping migration safely",
+    "ja": "移行を安全に停止中",
+    "pt-BR": "Parando a migração com segurança",
+    "ru": "Безопасная остановка миграции"
+  },
+  "等待当前操作落盘并释放存储锁。": {
+    "en": "Waiting for the current write to finish and release the storage lock.",
+    "ja": "現在の書き込み完了とストレージロックの解放を待っています。",
+    "pt-BR": "Aguardando a gravação atual terminar e liberar o bloqueio de armazenamento.",
+    "ru": "Ожидание завершения текущей записи и освобождения блокировки хранилища."
+  },
+  "正在停止": {
+    "en": "Stopping",
+    "ja": "停止中",
+    "pt-BR": "Parando",
+    "ru": "Остановка"
+  },
+  "迁移结果": {
+    "en": "Migration result",
+    "ja": "移行結果",
+    "pt-BR": "Resultado da migração",
+    "ru": "Результат миграции"
+  },
+  "已校验完成": {
+    "en": "Verified",
+    "ja": "検証完了",
+    "pt-BR": "Verificado",
+    "ru": "Проверено"
+  },
+  "部分记录或附件未能完整恢复，已导入部分不受影响。": {
+    "en": "Some records or attachments could not be restored; imported records remain intact.",
+    "ja": "一部のレコードや添付を復元できませんでしたが、インポート済みデータは正常です。",
+    "pt-BR": "Alguns registros ou anexos não puderam ser restaurados; os importados seguem intactos.",
+    "ru": "Некоторые записи или вложения не восстановились; импортированные данные не затронуты."
+  },
+  "部分完成": {
+    "en": "Partial",
+    "ja": "一部完了",
+    "pt-BR": "Parcial",
+    "ru": "Частично"
+  },
+  "迁移已安全停止并释放存储锁。": {
+    "en": "Migration stopped safely and released the storage lock.",
+    "ja": "移行は安全に停止し、ストレージロックを解放しました。",
+    "pt-BR": "A migração foi interrompida com segurança e liberou o armazenamento.",
+    "ru": "Миграция безопасно остановлена, блокировка хранилища снята."
+  },
+  "已停止": {
+    "en": "Stopped",
+    "ja": "停止済み",
+    "pt-BR": "Interrompido",
+    "ru": "Остановлено"
+  },
+  "导入过程因源数据异常中止，已提交记录未回滚。": {
+    "en": "Import stopped due to a source error; committed records were not rolled back.",
+    "ja": "ソースデータのエラーにより中断されましたが、コミット済みレコードはロールバックされません。",
+    "pt-BR": "A importação parou por erro na origem; registros gravados não foram revertidos.",
+    "ru": "Импорт прерван из-за ошибки источника; сохранённые записи не откатываются."
+  },
+  "不受支持": {
+    "en": "Unsupported",
+    "ja": "非対応",
+    "pt-BR": "Não suportado",
+    "ru": "Не поддерживается"
+  },
+  "结构有效": {
+    "en": "Valid layout",
+    "ja": "有効な構造",
+    "pt-BR": "Estrutura válida",
+    "ru": "Корректная структура"
+  },
+  "将会导入": {
+    "en": "Will import",
+    "ja": "インポート対象",
+    "pt-BR": "Será importado",
+    "ru": "Будет импортировано"
+  },
+  "历史与偏好": {
+    "en": "History & preferences",
+    "ja": "履歴と設定",
+    "pt-BR": "Histórico e preferências",
+    "ru": "История и настройки"
+  },
+  "只读 v1 数据，不修改也不删除旧文件": {
+    "en": "Read-only access to v1; old files are never modified or deleted",
+    "ja": "v1 データは読み取り専用で、旧ファイルは変更・削除されません",
+    "pt-BR": "Leitura segura do v1; arquivos antigos não são alterados nem excluídos",
+    "ru": "Только чтение v1; старые файлы не изменяются и не удаляются"
+  },
+  "需重新建立": {
+    "en": "Set up anew",
+    "ja": "再設定が必要",
+    "pt-BR": "Configurar novamente",
+    "ru": "Настраивается заново"
+  },
+  "其他设备需升级到 v2 后重新配对": {
+    "en": "Other devices must upgrade to v2 and pair again",
+    "ja": "他のデバイスは v2 へ更新後に再ペアリングが必要です",
+    "pt-BR": "Outros dispositivos precisam atualizar para o v2 e parear novamente",
+    "ru": "Другие устройства нужно обновить до v2 и подключить заново"
+  },
+  "开始前，请先退出 UniClipboard v1。": {
+    "en": "Please quit UniClipboard v1 before starting.",
+    "ja": "開始前に UniClipboard v1 を終了してください。",
+    "pt-BR": "Feche o UniClipboard v1 antes de começar.",
+    "ru": "Пожалуйста, закройте UniClipboard v1 перед началом."
+  },
+  "应用不会自动退出旧版进程；若 v1 仍在运行并回收文件，可能导致个别附件缺失。": {
+    "en": "The app will not quit v1 automatically; if v1 is still running, some attachments may be missing.",
+    "ja": "アプリは v1 を自動終了しません。起動したままだと一部添付が欠落する可能性があります。",
+    "pt-BR": "O app não encerra o v1 automaticamente; se ele continuar aberto, alguns anexos podem faltar.",
+    "ru": "Приложение не закрывает v1 автоматически; при работающем v1 часть вложений может отсутствовать."
+  },
+  "另一个 unic 服务正在使用目标数据目录": {
+    "en": "Another unic service is using the target data folder",
+    "ja": "別の unic サービスが移行先データフォルダを使用中です",
+    "pt-BR": "Outro serviço unic está usando a pasta de dados de destino",
+    "ru": "Другая служба unic использует целевую папку данных"
+  },
+  "离线迁移需要独占目标目录锁。请先手动停止正在运行的独立 unic 服务，然后重试。应用不会自动终止独立服务。": {
+    "en": "Offline migration requires exclusive access to the target folder. Stop the standalone unic service manually and retry. The app will not terminate it automatically.",
+    "ja": "オフライン移行には移行先フォルダの排他ロックが必要です。独立した unic サービスを手動で停止してから再試行してください。",
+    "pt-BR": "A migração offline exige acesso exclusivo à pasta de destino. Pare manualmente o serviço unic independente e tente novamente.",
+    "ru": "Для офлайн-миграции требуется монопольный доступ к папке. Остановите отдельную службу unic вручную и повторите попытку."
+  },
+  "安全边界": {
+    "en": "Safety check",
+    "ja": "安全保護",
+    "pt-BR": "Proteção de segurança",
+    "ru": "Защита данных"
+  },
+  "本次预检在读取系统凭据前已中止，没有读取凭据，也没有导入任何记录。": {
+    "en": "Preflight stopped before accessing system credentials; no credentials were read and no records were written.",
+    "ja": "システム資格情報の読み取り前に停止したため、資格情報の参照もデータ書き込みも行っていません。",
+    "pt-BR": "A verificação parou antes de ler credenciais do sistema e nenhum dado foi gravado.",
+    "ru": "Проверка остановилась до запроса системных учётных данных; ничего не прочитано и не записано."
+  },
+  "正在解锁源目录": {
+    "en": "Unlocking source folder",
+    "ja": "ロック解除中のソースフォルダ",
+    "pt-BR": "Desbloqueando pasta de origem",
+    "ru": "Разблокировка исходной папки"
+  },
+  "输入 v1 口令以继续": {
+    "en": "Enter v1 passphrase to continue",
+    "ja": "続行するには v1 パスフレーズを入力",
+    "pt-BR": "Digite a senha do v1 para continuar",
+    "ru": "Введите пароль v1 для продолжения"
+  },
+  "重试系统凭据": {
+    "en": "Retry system credentials",
+    "ja": "システム資格情報を再試行",
+    "pt-BR": "Tentar credenciais do sistema",
+    "ru": "Повторить системные учётные данные"
+  },
+  "口令仅在内存中用于本次解密，绝不进入命令参数、环境变量、磁盘或日志。": {
+    "en": "Used in memory for this unlock only; never passed in arguments, environment variables, disk, or logs.",
+    "ja": "この解除のメモリ内のみで使用され、引数・環境変数・ディスク・ログには一切保存されません。",
+    "pt-BR": "Usada apenas na memória para este desbloqueio; nunca salva em disco, logs ou argumentos.",
+    "ru": "Используется только в памяти для текущей разблокировки и никогда не сохраняется на диск или в логи."
+  },
+  "已安全提交（中断不丢失）": {
+    "en": "Safely committed (kept on stop)",
+    "ja": "安全にコミット済み（中断時も保持）",
+    "pt-BR": "Gravados com segurança (mantidos se parar)",
+    "ru": "Безопасно сохранено (не теряется при остановке)"
+  },
+  "运行边界": {
+    "en": "Execution mode",
+    "ja": "実行モード",
+    "pt-BR": "Modo de execução",
+    "ru": "Режим выполнения"
+  },
+  "离线独占 · 不写剪贴板": {
+    "en": "Offline exclusive · No clipboard writes",
+    "ja": "オフライン排他 · クリップボード非書込",
+    "pt-BR": "Offline exclusivo · Sem alterar área de transferência",
+    "ru": "Офлайн монопольно · Без записи в буфер"
+  },
+  "不会自动应用导入内容到系统剪贴板": {
+    "en": "Imported entries are not copied to the system clipboard automatically",
+    "ja": "インポート内容はシステムクリップボードに自動適用されません",
+    "pt-BR": "Itens importados não são aplicados automaticamente à área de transferência",
+    "ru": "Импортированные записи не копируются в системный буфер автоматически"
+  },
+  "标签及关联": {
+    "en": "Tags & links",
+    "ja": "タグと関連付け",
+    "pt-BR": "Tags e associações",
+    "ru": "Теги и связи"
+  },
+  "兼容的设置": {
+    "en": "Compatible settings",
+    "ja": "互換性のある設定",
+    "pt-BR": "Configurações compatíveis",
+    "ru": "Совместимые настройки"
+  },
+  "设备信任": {
+    "en": "Device trust",
+    "ja": "デバイス信頼",
+    "pt-BR": "Confiança de dispositivos",
+    "ru": "Доверие устройств"
+  },
+  "不兼容设置": {
+    "en": "Incompatible settings",
+    "ja": "非互換の設定",
+    "pt-BR": "Configurações incompatíveis",
+    "ru": "Несовместимые настройки"
+  },
+  "旧版同步配置": {
+    "en": "Legacy sync settings",
+    "ja": "旧同期設定",
+    "pt-BR": "Configurações antigas de sincronização",
+    "ru": "Старые настройки синхронизации"
+  },
+  "自动识别代码、色值、图片与文件，支持 #标签 @设备 令牌检索": {
+    "en": "Auto-classifies code, colors, images and files with #tag @device token search",
+    "ja": "コード・色・画像・ファイルを自動分類し、#タグ @デバイス 検索に対応",
+    "pt-BR": "Classifica código, cores, imagens e arquivos com busca por #tag e @dispositivo",
+    "ru": "Автоклассификация кода, цветов, изображений и файлов с поиском по #тегу и @устройству"
+  },
+  "通过内置动作与 Go / Lua 插件，把一次复制直接变成工作流": {
+    "en": "Turn every copy into a workflow with built-in Actions and Go / Lua plugins",
+    "ja": "内蔵アクションと Go / Lua プラグインでコピーをそのままワークフローに",
+    "pt-BR": "Transforme cada cópia em fluxo de trabalho com Ações e plugins Go / Lua",
+    "ru": "Превращайте каждое копирование в рабочий процесс с помощью действий и плагинов Go / Lua"
+  },
+  "Tailcat 点对点端到端加密同步，无需云账号即可跨设备流转": {
+    "en": "Tailcat peer-to-peer E2E encrypted sync across devices with no cloud account",
+    "ja": "Tailcat P2P エンドツーエンド暗号化でクラウドアカウント不要のデバイス間同期",
+    "pt-BR": "Sincronização P2P criptografada via Tailcat entre dispositivos, sem conta na nuvem",
+    "ru": "Сквозная P2P-синхронизация Tailcat между устройствами без облачного аккаунта"
+  },
+  "导入完成后即可在 v2 历史中直接使用旧记录。": {
+    "en": "Once imported, your old records are immediately available in v2 history.",
+    "ja": "インポート完了後、旧履歴はそのまま v2 履歴で利用できます。",
+    "pt-BR": "Após importar, seus registros antigos ficam prontos no histórico do v2.",
+    "ru": "После импорта старые записи сразу доступны в истории v2."
+  },
+  "桌面托管的后台服务已安全暂停，确认源目录即可独占导入。": {
+    "en": "The desktop-managed background service is paused; confirm the source folder to begin.",
+    "ja": "デスクトップ管理のバックグラウンドサービスは一時停止済みです。フォルダを確認して開始してください。",
+    "pt-BR": "O serviço em segundo plano foi pausado; confirme a pasta de origem para importar.",
+    "ru": "Фоновая служба приостановлена; подтвердите исходную папку для импорта."
+  },
+  "导入与校验均已结束，你可以进入应用开始使用。": {
+    "en": "Import and verification are finished. You are ready to enter the app.",
+    "ja": "インポートと検証が完了しました。アプリを使い始められます。",
+    "pt-BR": "Importação e verificação concluídas. Você já pode entrar no aplicativo.",
+    "ru": "Импорт и проверка завершены. Можно переходить к приложению."
+  },
+  "重复迁移复用持久映射，不会产生重复记录。": {
+    "en": "Retries reuse persistent mappings and never create duplicate records.",
+    "ja": "再実行時は永続マッピングを再利用し、重複レコードは作成しません。",
+    "pt-BR": "Novas tentativas reutilizam mapeamentos persistentes sem duplicar registros.",
+    "ru": "Повторный запуск использует сохранённые сопоставления и не создаёт дубликатов."
+  },
+  "按条写入本地历史库，不估算剩余时间；导入 100% 后将自动进入校验阶段。": {
+    "en": "Writes records one by one without ETA estimates; verification starts automatically after 100%.",
+    "ja": "残り時間を推測せず1件ずつ書き込みます。100%後に自動で検証フェーズへ進みます。",
+    "pt-BR": "Grava item por item sem estimativa de tempo; a verificação inicia automaticamente após 100%.",
+    "ru": "Записи сохраняются по одной без оценки оставшегося времени; после 100% начнётся проверка."
+  },
+  "关闭并重新打开目标库，通过公开接口逐条比对内容摘要、标签、收藏与兼容设置。": {
+    "en": "Reopens the target database and verifies content digests, tags, favorites, and compatible settings.",
+    "ja": "移行先DBを再オープンし、内容ダイジェスト・タグ・お気に入り・互換設定を照合しています。",
+    "pt-BR": "Reabre o banco de destino e verifica resumos de conteúdo, tags, favoritos e configurações compatíveis.",
+    "ru": "Повторно открывает базу и проверяет хеши содержимого, теги, избранное и совместимые настройки."
+  },
+  "正在等待当前记录落盘并释放存储锁。所有已提交的记录都会完整保留。": {
+    "en": "Waiting for the current record to commit and release the storage lock. Committed records are preserved.",
+    "ja": "現在のレコードの保存完了とロック解放を待機中です。コミット済みレコードはすべて保持されます。",
+    "pt-BR": "Aguardando a gravação do item atual e liberação do bloqueio. Registros gravados são preservados.",
+    "ru": "Ожидание записи текущего элемента и снятия блокировки. Сохранённые записи останутся в истории."
+  },
+  "已提交的记录不会回滚，仍可在历史中使用。重试会跳过它们。": {
+    "en": "Committed records are not rolled back and remain usable in history. Retries will skip them.",
+    "ja": "コミット済みレコードはロールバックされず履歴に残ります。再試行時はスキップされます。",
+    "pt-BR": "Registros gravados não são revertidos e seguem no histórico; novas tentativas os ignoram.",
+    "ru": "Сохранённые записи не откатываются и остаются в истории; повтор пропустит их."
+  },
+  "所有支持的历史记录、标签、收藏与兼容设置都已导入并通过校验。": {
+    "en": "All supported history records, tags, favorites, and compatible settings were imported and verified.",
+    "ja": "対応する履歴レコード・タグ・お気に入り・互換設定がすべてインポートされ検証されました。",
+    "pt-BR": "Todos os registros, tags, favoritos e configurações compatíveis foram importados e verificados.",
+    "ru": "Все поддерживаемые записи истории, теги, избранное и совместимые настройки импортированы и проверены."
+  },
+  "没有新的记录需要导入。此前导入的记录均安然保留在历史中。": {
+    "en": "No new records needed importing. Previously imported records remain intact in history.",
+    "ja": "新しくインポートするレコードはありませんでした。以前のレコードは履歴に保持されています。",
+    "pt-BR": "Nenhum novo registro precisou ser importado. Os registros anteriores permanecem no histórico.",
+    "ru": "Новых записей для импорта не найдено. Ранее импортированные записи сохранены в истории."
+  },
+  "已提交的记录已保留并可在历史中使用。继续迁移时会自动跳过它们。": {
+    "en": "Committed records were kept and can be used in history. Resuming will skip them automatically.",
+    "ja": "コミット済みレコードは保持され履歴で利用できます。再開時は自動でスキップされます。",
+    "pt-BR": "Os registros gravados foram mantidos no histórico. Continuar a migração os pulará automaticamente.",
+    "ru": "Сохранённые записи доступны в истории. При продолжении миграции они будут автоматически пропущены."
+  },
+  "首次安装引导": {
+    "en": "First-install setup",
+    "ja": "初回セットアップ",
+    "pt-BR": "Configuração inicial",
+    "ru": "Первая настройка"
+  },
+  "设置 › 存储补迁移": {
+    "en": "Settings › Storage migration",
+    "ja": "設定 › ストレージからの移行",
+    "pt-BR": "Configurações › Migração de armazenamento",
+    "ru": "Настройки › Миграция из хранилища"
   }
 }

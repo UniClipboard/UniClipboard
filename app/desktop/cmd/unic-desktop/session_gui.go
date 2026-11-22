@@ -43,7 +43,7 @@ type desktopSession struct {
 func (s *desktopSession) showSetup(migrationOnly bool) {
 	s.setup = setupui.New(s.flow, s.settings.Current().Desktop.Language, migrationOnly, s.start)
 	s.g.win.SetMinimumSize(600, 480)
-	s.g.win.SetContentSize(640, 560)
+	s.g.win.SetContentSize(780, 540)
 	s.g.win.Show()
 	s.g.win.Focus()
 	s.g.win.Invalidate()

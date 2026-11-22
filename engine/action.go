@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"errors"
+	"github.com/uniclipboard/unic/plugin"
+	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -23,15 +25,16 @@ type ActionInfo struct {
 	PluginID PluginID `json:"plugin_id"`
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
-	Accepts  []string `json:"accepts"` // "text" in this version
+	Accepts  []string `json:"accepts"` // text, image, files
 }
 
 // RunActionRequest names an action and the history item to run it on. The
 // RequestID is idempotent like CommitContent's: a retry never runs it twice.
 type RunActionRequest struct {
-	RequestID RequestID
-	Key       string
-	HistoryID HistoryID
+	CancelOnContext bool // opt in to cancel admitted work when the caller context ends
+	RequestID       RequestID
+	Key             string
+	HistoryID       HistoryID
 }
 
 // ActionResult is the commit of the new item. HistoryID is always set on
@@ -58,6 +61,7 @@ type pipelineAction struct {
 	id      string
 	title   string
 	accepts []string
+	timeout time.Duration
 	run     func(context.Context, *actionContext) error
 }
 
@@ -81,6 +85,23 @@ type actionContext struct {
 	item   pipelineItem
 	text   *string
 	fault  *Error
+	parts  []plugin.ActionPart
+	open   func(context.Context, int) (io.ReadCloser, error)
+}
+
+func (c *actionContext) Parts() []plugin.ActionPart {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.parts)
+}
+func (c *actionContext) OpenPart(ctx context.Context, index int) (io.ReadCloser, error) {
+	c.mu.Lock()
+	active, open := c.active, c.open
+	c.mu.Unlock()
+	if !active || open == nil {
+		return nil, newErr(CodeResourceExpired, "the action has ended")
+	}
+	return open(ctx, index)
 }
 
 func (c *actionContext) Key() string { return c.key }
@@ -139,7 +160,7 @@ func (e *Engine) ListActions(ctx context.Context) ([]ActionInfo, error) {
 	return out, nil
 }
 
-// RunAction runs one action on a stored text item and commits the result as a
+// RunAction runs one action on a stored content item and commits the result as a
 // new item (origin "action"). Nothing is written to the system clipboard, the
 // source is unchanged and a failed run leaves nothing behind. The captured
 // processors still annotate the new item.
@@ -162,6 +183,9 @@ func (e *Engine) RunAction(ctx context.Context, req RunActionRequest) (ActionRes
 	if err != nil {
 		return ActionResult{}, err
 	}
+	if req.CancelOnContext && entry.cancel != nil {
+		context.AfterFunc(ctx, entry.cancel)
+	}
 	select {
 	case <-entry.done:
 		r := entry.result(req.RequestID)
@@ -182,11 +206,15 @@ func (r *actionRun) produce(ctx context.Context, e *Engine) (*contentObj, *Error
 		return nil, lerr
 	}
 	item := describePipelineItem(e.newID(), src, pipelineOrigin{kind: "explicit"}) // the user chose this item
-	e.cs.unref(src)
-	if item.Type != "text" || !slices.Contains(r.act.accepts, "text") {
+	defer e.cs.unref(src)
+	if !slices.Contains(r.act.accepts, item.Type) {
 		return nil, newErr(CodeUnsupported, "this action does not accept this item")
 	}
-	callCtx, cancel := context.WithTimeout(ctx, actionTimeout)
+	timeout := r.act.timeout
+	if timeout == 0 {
+		timeout = actionTimeout
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	select {
 	case r.act.plugin.gate <- struct{}{}:
@@ -197,8 +225,56 @@ func (r *actionRun) produce(ctx context.Context, e *Engine) (*contentObj, *Error
 		}
 		return nil, newErr(CodeTimeout, "the action's plugin is busy")
 	}
+	handle, herr := e.RetainContent(callCtx, src.id)
+	if herr != nil {
+		return nil, newErr(CodeResourceExpired, "source unavailable")
+	}
+	defer e.ReleaseContent(context.WithoutCancel(callCtx), handle.LeaseID)
 	ac := &actionContext{active: true, key: r.act.key(), item: item}
+	for _, p := range handle.Content.Parts {
+		ac.parts = append(ac.parts, plugin.ActionPart{MIME: p.MIME, File: p.Kind == PartFile, Name: p.Name, Size: p.Size})
+	}
+	sourceCtx, stopSource := context.WithCancel(callCtx)
+	defer stopSource()
+	opened := map[int]bool{}
+	liveReaders := 0
+	ac.open = func(readerCtx context.Context, index int) (io.ReadCloser, error) {
+		ac.mu.Lock()
+		defer ac.mu.Unlock()
+		if !ac.active || sourceCtx.Err() != nil {
+			return nil, newErr(CodeResourceExpired, "the action has ended")
+		}
+		if index < 0 || index >= len(handle.Content.Parts) || opened[index] {
+			return nil, newErr(CodeInvalidArgument, "invalid or reopened action part")
+		}
+		if liveReaders >= 4 {
+			return nil, newErr(CodeLimitExceeded, "too many open action parts")
+		}
+		opened[index] = true
+		merged, stop := context.WithCancel(sourceCtx)
+		stopReader := context.AfterFunc(readerCtx, stop)
+		rc, err := e.ReadContent(merged, handle.LeaseID, handle.Content.Parts[index].ID)
+		if err != nil {
+			stopReader()
+			stop()
+			return nil, err
+		}
+		liveReaders++
+		reader := &actionReader{Reader: rc}
+		reader.close = func() error {
+			stopReader()
+			stop()
+			err := rc.Close()
+			ac.mu.Lock()
+			liveReaders--
+			ac.mu.Unlock()
+			return err
+		}
+		context.AfterFunc(merged, func() { _ = reader.Close() })
+		return reader, nil
+	}
 	err := invokeAction(callCtx, r.act, ac)
+	stopSource()
 	ac.mu.Lock()
 	ac.active = false
 	text, fault := ac.text, ac.fault
@@ -243,3 +319,13 @@ func invokeAction(ctx context.Context, a *pipelineAction, c *actionContext) (err
 	}()
 	return a.run(ctx, c)
 }
+
+// actionReader revokes a reader with its invocation context.
+type actionReader struct {
+	io.Reader
+	close func() error
+	once  sync.Once
+	err   error
+}
+
+func (r *actionReader) Close() error { r.once.Do(func() { r.err = r.close() }); return r.err }

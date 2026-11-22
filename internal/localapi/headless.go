@@ -22,8 +22,9 @@ type SubmitInput struct {
 	DeviceIDs []string `json:"device_ids,omitempty"`
 }
 type ActionInput struct {
-	RequestID string `json:"request_id"`
-	Apply     bool   `json:"apply"`
+	CancelOnContext bool   `json:"cancel_on_context,omitempty"`
+	RequestID       string `json:"request_id"`
+	Apply           bool   `json:"apply"`
 }
 type ActionOutput struct {
 	Item       HistoryItem             `json:"item"`

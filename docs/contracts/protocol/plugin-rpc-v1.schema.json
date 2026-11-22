@@ -80,6 +80,11 @@
                 "minItems": 1,
                 "maxItems": 3,
                 "uniqueItems": true
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 300000
               }
             },
             "required": [
@@ -254,7 +259,8 @@
             "action_text",
             "sync_part",
             "receive_part",
-            "sync_state"
+            "sync_state",
+            "action_part"
           ]
         }
       },
@@ -468,6 +474,13 @@
         },
         "item": {
           "$ref": "#/$defs/item"
+        },
+        "parts": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/action_part"
+          }
         }
       },
       "required": [
@@ -548,7 +561,8 @@
             "backend.report",
             "backend.receive",
             "sync_host.identity_hello",
-            "sync_host.identity_prove"
+            "sync_host.identity_prove",
+            "action.open_part"
           ]
         },
         "timeout_ms": {
@@ -865,7 +879,8 @@
         "purpose": {
           "enum": [
             "export",
-            "pairing_code"
+            "pairing_code",
+            "action_part"
           ]
         }
       },
@@ -1787,6 +1802,46 @@
         "identifier",
         "attribution"
       ]
+    },
+    "action_part": {
+      "type": "object",
+      "properties": {
+        "mime": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "file": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "size": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "mime",
+        "file",
+        "name",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "open_action_part": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        }
+      },
+      "required": [
+        "index"
+      ],
+      "additionalProperties": false
     }
   }
 }

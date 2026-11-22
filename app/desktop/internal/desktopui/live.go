@@ -1017,7 +1017,7 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 
 func (d *viewState) runHistoryAction(id, key string) {
 	client := d.live.client
-	request := api.ActionInput{RequestID: "desktop-" + newRequestID(), Apply: true}
+	request := api.ActionInput{RequestID: "desktop-" + newRequestID(), Apply: true, CancelOnContext: true}
 	d.mutate(func(ctx context.Context) error {
 		result, err := client.ExecuteAction(ctx, id, key, request)
 		if err != nil {

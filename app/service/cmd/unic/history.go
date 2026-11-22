@@ -531,7 +531,7 @@ func (h *hist) action(ctx context.Context, args []string) error {
 	}
 	_, _ = fmt.Fprintf(h.io.err, "request_id=%s\n", *request)
 	connectOpportunity(ctx, h.c)
-	out, err := h.c.ExecuteAction(ctx, it.ID, pos[1], api.ActionInput{RequestID: *request, Apply: *apply})
+	out, err := h.c.ExecuteAction(ctx, it.ID, pos[1], api.ActionInput{RequestID: *request, Apply: *apply, CancelOnContext: true})
 	if err != nil {
 		return err
 	}

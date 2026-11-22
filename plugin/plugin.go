@@ -68,9 +68,10 @@ type Spec struct {
 // ActionSpec declares one user-invoked action. Its key outside the plugin is
 // Spec.ID + "/" + ID.
 type ActionSpec struct {
-	ID      string
-	Title   string
-	Accepts []string // "text" in this version
+	ID        string
+	Title     string
+	Accepts   []string // text, image, files
+	TimeoutMS int64    `json:"timeout_ms,omitempty" toml:"timeout_ms"` // zero: 10s; maximum: 300000
 }
 
 // Config holds plugin-specific settings as JSON values.
@@ -166,6 +167,22 @@ type ActionContext interface {
 	Item() Item
 	// SetText supplies the result. Call it exactly once.
 	SetText(string) error
+}
+
+// ActionPart describes source bytes without exposing a host path.
+type ActionPart struct {
+	MIME string `json:"mime"`
+	File bool   `json:"file"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+// ActionSource is available to Go Actors for the active invocation only.
+// Open each part at most once and close the reader. At most four may be open.
+// Readers are revoked when the Action ends or its context is cancelled.
+type ActionSource interface {
+	Parts() []ActionPart
+	OpenPart(context.Context, int) (io.ReadCloser, error)
 }
 
 // SyncState is how a target fares during one send.

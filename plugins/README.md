@@ -1,5 +1,12 @@
 # Go 插件 SDK 使用说明
 
+## Independent repositories
+
+Use `unic-plugin-<slug>` for independent plugin repositories. Keep implementation
+and releases in the independent repository. Main-repository examples may contain
+documentation references. See the [repository convention](../docs/contracts/plugin-contract.md#independent-repository-naming)
+and the planned [Wenshushu Action](examples/wenshushu/README.md).
+
 Go 插件是独立程序：宿主（Engine）启动它，通过标准输入/输出上的二进制帧 RPC 通信。插件不被编译进宿主，也不使用 Go 动态库。契约见 [插件契约](../docs/contracts/plugin-contract.md) 与 [RPC 核心协议](../docs/contracts/plugin-rpc-contract.md)；可编译示例见 [`examples/emailtag`](examples/emailtag)。
 
 ## 写一个插件

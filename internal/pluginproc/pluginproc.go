@@ -234,7 +234,7 @@ func (p *Proxy) Spec() plugin.Spec { return p.spec.Expected }
 func wireSpec(s plugin.Spec) rpc.Spec {
 	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, SettingsSHA256: s.SettingsSHA256, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind, ExternalChannels: s.ExternalChannels, RemoteRevocation: s.RemoteRevocation}
 	for _, a := range s.Actions {
-		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts)})
+		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts), TimeoutMS: a.TimeoutMS})
 	}
 	return out
 }
@@ -549,6 +549,8 @@ func (p *Proxy) handle(s *session, ctx context.Context, c *rpc.Call) (any, error
 		}
 		p.notify(n.Message)
 		return nil, nil
+	case rpc.MethodOpenActionPart:
+		return p.openActionPart(s, ctx, c)
 	case rpc.MethodStream:
 		return p.openActionStream(s, c)
 	}
@@ -579,13 +581,17 @@ func (p *Proxy) notify(msg string) {
 // collector buffers an action's text stream outside the connection so credit
 // keeps flowing while the response is still in transit.
 type collector struct {
-	mu     sync.Mutex
-	opened bool
-	id     uint64
-	size   uint64
-	done   chan struct{}
-	buf    bytes.Buffer
-	err    error
+	source    plugin.ActionSource
+	ctx       context.Context
+	readParts map[int]bool
+	liveParts int
+	mu        sync.Mutex
+	opened    bool
+	id        uint64
+	size      uint64
+	done      chan struct{}
+	buf       bytes.Buffer
+	err       error
 }
 
 func (p *Proxy) openActionStream(s *session, c *rpc.Call) (any, error) {
@@ -758,16 +764,34 @@ func (p *Proxy) run(ctx context.Context, ac plugin.ActionContext) error {
 
 	item := ac.Item()
 	gen := p.gen.Add(1)
-	col := &collector{done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	col := &collector{done: make(chan struct{}), ctx: ctx, readParts: map[int]bool{}}
+	col.source, _ = ac.(plugin.ActionSource)
+	timeout := p.opts.ActionTimeout
+	for _, a := range p.spec.Expected.Actions {
+		if a.ID == ac.Action() && a.TimeoutMS > 0 {
+			timeout = time.Duration(a.TimeoutMS) * time.Millisecond
+		}
+	}
 	var res rpc.ActionResult
-	id, err := s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodRunAction, Timeout: p.callTimeout(ctx, p.opts.ActionTimeout),
+	id, err := s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodRunAction, Timeout: p.callTimeout(ctx, timeout),
 		Build: func(id uint64) (any, error) {
 			s.actions.Store(id, col)
 			d, err := p.sendText(s, id, item.Text)
 			if err != nil {
 				return nil, err
 			}
-			return rpc.ActionRun{ActionID: ac.Action(), Generation: rpc.U64(gen), Item: wireItem(item, d)}, nil
+			in := rpc.ActionRun{ActionID: ac.Action(), Generation: rpc.U64(gen), Item: wireItem(item, d)}
+			if col.source != nil {
+				for _, part := range col.source.Parts() {
+					if part.Size < 0 {
+						return nil, rpc.NewError(rpc.CodeInvalidArgument)
+					}
+					in.Parts = append(in.Parts, rpc.ActionPart{MIME: part.MIME, File: part.File, Name: part.Name, Size: rpc.U64(part.Size)})
+				}
+			}
+			return in, nil
 		}}, &res)
 	defer s.actions.Delete(id)
 	if err != nil {

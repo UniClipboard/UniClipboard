@@ -198,3 +198,15 @@ Native extraction uses the current platform APIs and returns unknown when identi
 The [source application contract](../contracts/source-application-contract.md) specifies inference limits, icon bounds, and acceptance.
 
 The built-in peer-session body reader bounds each blocked network body read or write with the 30-second body I/O inactivity budget. The bound resets for the next I/O call and does not cap total transfer duration or idle peer lifetime. A failed or aborted receive ends its session instead of draining an unfinished rejected body. This releases unpublished receive staging when a cancelled sender leaves a stalled stream. See the [backend body-lifetime contract](../contracts/sync-backend-contract.md#built-in-peer-session-body-lifetime).
+
+## Go Action content sharing
+
+Go Actions accept text, image and file history items through an invocation-owned
+`ActionSource`. Source parts are streamed to external processes through the
+existing binary RPC transport. The Engine retains source content and revokes
+readers when the invocation ends. Providers remain independent plugins.
+Results remain new text history items; failed uploads create no success item.
+
+Action declarations may select a deadline up to five minutes. The ordinary
+default remains ten seconds. Explicit caller cancellation is opt-in and does
+not change RequestID deduplication. See the [Action contract](../contracts/clipboard-action-contract.md#go-action-source-content).

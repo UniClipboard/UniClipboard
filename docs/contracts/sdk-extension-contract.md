@@ -48,6 +48,7 @@ type BackendSubmissionResult struct {
     Error *Error
 }
 type ActionSpec struct {
+    TimeoutMS int64 // zero: 10s, maximum: 300000ms
     ID string
     Title string
     Accepts []string
@@ -60,6 +61,7 @@ type ActionInfo struct {
     Accepts []string
 }
 type RunActionRequest struct {
+    CancelOnContext bool
     RequestID RequestID
     Key string
     HistoryID HistoryID
@@ -286,3 +288,8 @@ P1 加提交/状态 DTO，P2 加历史 DTO，P3 加 Action DTO 与 ListActions/R
 ## Directory SDK extension
 
 `DirectorySource.ReadDirectory` returns an operation-local `DirectoryListing` with bounded entries and a verification callback. Import a zero-size directory source through `FileInput.Source`; Engine assigns its private reference MIME. `MimeDirectory` identifies the structured manifest. `HistoryDirectory` and `HistoryDirectoryReference` distinguish immutable snapshots and deferred sources. The [directory contract](directory-contract.md) defines these representations and their resource bounds. `CommitRequest.CancelOnContext` opts into explicit cancellation; the default preserves admitted work across caller timeouts.
+
+Go Actors receive `plugin.ActionSource` alongside `ActionContext`. Its
+`Parts() []plugin.ActionPart` metadata and `OpenPart(context.Context, int)` reader
+are scoped to the selected source and active invocation. See the
+[Action contract](clipboard-action-contract.md#go-action-source-content).

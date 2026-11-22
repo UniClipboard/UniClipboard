@@ -270,6 +270,19 @@ Go 与 Lua 的正则方言不同，示例只展示接口对应关系；Go 版 Ac
 
 ## 8. 从 GitHub 仓库安装
 
+### Independent repository naming
+
+Independently distributed plugin repositories use `unic-plugin-<slug>`.
+Use a short lowercase slug that identifies the plugin, such as
+`unic-plugin-wenshushu`. The repository name is a distribution convention;
+it does not replace the manifest plugin ID or the Action key.
+The installer continues to accept existing repository names.
+
+The independent repository owns its implementation, manifest, dependency lock,
+release artifacts and end-to-end acceptance. A main-repository entry under
+`plugins/examples/` may link to that repository and a compatible immutable
+revision. Do not maintain a second copy of the implementation there.
+
 Plugin commands:
 
 ```sh
@@ -387,3 +400,14 @@ importer preserves v1 code membership under this identifier. `builtin.classify`
 does not currently generate code membership for new content. The
 [history contract](history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252)
 defines migration and automatic recovery.
+
+## Go Action content and deadlines
+
+Go Action input declarations accept a unique, non-empty subset of text, image
+and files. Results remain text. `ActionSource.Parts` and `OpenPart` expose only
+the selected source content during the invocation. `ActionSpec.TimeoutMS` and
+manifest `actions.timeout_ms` select 0..300000 milliseconds; zero retains the
+10-second default. Manifest and process handshake declarations must match.
+Lua keeps its existing text-only Action and execution budgets.
+See the [Action contract](clipboard-action-contract.md#go-action-source-content)
+for ownership, cancellation and failure semantics.

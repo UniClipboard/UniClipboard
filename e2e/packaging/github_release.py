@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the actual GitHub CLI and page controller against an isolated HTTP service."""
+
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -174,6 +175,12 @@ try:
                     return self.send(
                         200, state["assets"][int(path.rsplit("/", 1)[1])]["data"]
                     )
+                if path.endswith("/releases"):
+                    return self.send(200, [self.current()] if state["release"] else [])
+                if "/releases/tags/" in path and (
+                    not state["release"] or state["release"]["draft"]
+                ):
+                    return self.send(404, {"message": "Not Found"})
                 if "/releases/tags/" in path or path.endswith("/releases/1"):
                     return (
                         self.send(200, self.current())

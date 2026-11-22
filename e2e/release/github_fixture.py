@@ -35,14 +35,29 @@ if args[0] == "api":
             missing()
         print(json.dumps({"object": state["tag"]}))
     elif "/releases/tags/" in args[1]:
-        if not state.get("release"):
+        if not state.get("finalized"):
             missing()
-        print(json.dumps({"id": 1}))
+        print(json.dumps({"id": 1, "tag_name": state["release_tag"], "draft": False}))
+    elif "/releases?per_page=100&page=" in args[1]:
+        releases = (
+            [
+                {
+                    "id": 1,
+                    "tag_name": state["release_tag"],
+                    "draft": not state.get("finalized"),
+                }
+            ]
+            if state.get("release")
+            else []
+        )
+        print(json.dumps(releases))
     else:
         raise AssertionError(args)
 elif args[:2] == ["release", "create"]:
     assert "--verify-tag" in args and "tag" in state
+    assert not state.get("release"), "duplicate draft create rejected"
     state["release"] = True
+    state["release_tag"] = args[2]
 elif args[:2] == ["release", "upload"]:
     source = Path(args[3])
     (root / "assets").mkdir(exist_ok=True)

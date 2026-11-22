@@ -236,7 +236,7 @@ func TestContentProcessE2E(t *testing.T) {
 
 	t.Run("early-close-and-cancel-preserve-process", func(t *testing.T) {
 		var files []engine.FileInput
-		for i := 0; i < 6; i++ {
+		for i := 0; i < 16; i++ {
 			files = append(files, engine.FileInput{Name: fmt.Sprintf("part-%d", i), Reader: bytes.NewReader(blob), Size: int64(len(blob))})
 		}
 		h, err := e.ImportContent(ctx, engine.ContentInput{Files: files})
@@ -244,7 +244,7 @@ func TestContentProcessE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer func() { _ = e.ReleaseContent(ctx, h.LeaseID) }()
-		src, err := e.CommitContent(ctx, engine.CommitRequest{RequestID: "six-parts", LeaseID: h.LeaseID})
+		src, err := e.CommitContent(ctx, engine.CommitRequest{RequestID: "sixteen-parts", LeaseID: h.LeaseID})
 		if err != nil {
 			t.Fatal(err)
 		}

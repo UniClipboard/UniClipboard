@@ -61,11 +61,13 @@ func (r *actionSourceReader) Read(b []byte) (int, error) {
 }
 func (r *actionSourceReader) Close() error {
 	r.once.Do(func() {
-		r.err = r.ReadCloser.Close()
+		// The close response is a writer barrier. Keep receive credit valid until
+		// all already-authorized DATA precedes that response on the wire.
 		if !r.complete.Load() {
-			if err := r.release(); r.err == nil {
-				r.err = err
-			}
+			r.err = r.release()
+		}
+		if err := r.ReadCloser.Close(); r.err == nil {
+			r.err = err
 		}
 		r.done()
 	})

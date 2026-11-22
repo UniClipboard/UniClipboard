@@ -77,7 +77,7 @@ nested `action.close_part` RPC before its implementation; protocol version stays
 - Source-open/read failures and short EOF latch invocation failure even when an
   Actor swallows errors. Genuine source failure cannot commit a success item.
 - Early part close releases its host reader and slot before acknowledging the
-  close RPC. Six partially read large parts complete in one Action. Process
+  close RPC. Sixteen partially read large parts complete in one Action. Process
   identity remains stable across early close and cancellation of a blocked stream.
 - Both descriptor-returning source methods share connection-level serialization
   through `Expect`. A two-method framed-protocol E2E preserves ordered

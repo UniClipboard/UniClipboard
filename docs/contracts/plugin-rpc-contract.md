@@ -144,6 +144,8 @@ root. The host validates that this Action already opened the indexed part.
 It cancels only that part, closes its source reader, and releases its live-part
 and stream slots before responding. Repeating a release for the same opened
 part is idempotent. An unopened index or another root cannot release the part.
+The SDK retains receive credit until the close response, which follows every
+already-written DATA frame for the part. It then releases the local stream.
 Normal full reads continue to use END and need no additional close RPC.
 Invocation cancellation and completion still revoke every remaining part.
 A deliberately released or cancelled part does not terminate the connection.

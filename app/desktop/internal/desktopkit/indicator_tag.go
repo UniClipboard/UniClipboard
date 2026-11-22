@@ -90,9 +90,9 @@ func (k Kit) InlineNotice(c *ui.Context, p NoticeProps) NoticeResult {
 	var textColor ui.Color
 	{
 
-		bg = k.Color([...]string{ToneInfo: "accent-50", ToneSuccess: "notification-success-background",
+		bg = k.Color([...]string{ToneInfo: "notification-information-background", ToneSuccess: "notification-success-background",
 			ToneWarning: "status-yellow-background", ToneError: "background-tertiary-error"}[p.Tone])
-		iconColor = k.Color([...]string{ToneInfo: "accent-600", ToneSuccess: "notification-success-foreground",
+		iconColor = k.Color([...]string{ToneInfo: "notification-information-foreground", ToneSuccess: "notification-success-foreground",
 			ToneWarning: "status-yellow-text", ToneError: "text-error-primary"}[p.Tone])
 		textColor = k.Color("text-secondary")
 	}

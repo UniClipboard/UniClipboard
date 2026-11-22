@@ -39,6 +39,8 @@ The caller owns validation, persistence, requests, cancellation and stale-result
 
 New control implementation is not automatic visual acceptance. Each added state set requires its own actual-React/native comparison and behavior evidence. Application search, code/combobox fields, lists/tables, settings/status/tag views, menus, sheets and previews are explicit `desktopkit`/`desktopui` compositions, not claims that all similarly named official catalogue APIs have been ported.
 
+Informational inline notices pair the active scheme's notification information background and icon tokens with the scheme's text colors.
+
 Unknown variants/resource names and nil mandatory pointers are programmer errors. Fail visibly rather than selecting an approximate fallback skin or missing token. Icon-only actions require a nonempty accessible name. Glyphs are decorative; the action or field supplies its semantic name.
 
 ## Native host boundary

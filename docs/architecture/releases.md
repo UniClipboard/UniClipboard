@@ -24,12 +24,13 @@ paths:
   - .github/workflows/package-acceptance.yml
   - .github/workflows/pr-checks.yml
   - .github/workflows/release-desktop.yml
+  - .github/workflows/prepare-legacy-desktop-alpha.yml
   - .github/workflows/native-desktop-acceptance.yml
   - app/desktop/e2e/run.py
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 5828cdbfffc895deae5955275066046389bd1fdd
+verified: 56808e76cf40ee3211ee0c4cad7c42e60421630e
 ---
 # Product builds and CLI releases
 
@@ -125,6 +126,31 @@ The existing delivery workflow supports `github-draft`, `publish` and `promote`.
 `e2e/packaging/github_release.py` drives the real GitHub CLI and release subprocess against disposable loopback HTTP endpoints. Its report and checksums establish process/transport behavior only. It does not create a real draft or public GitHub Release.
 
 `sandbox-acceptance.yml` runs actual Nix, Flatpak and strict Snap construction/execution on both Linux architectures. The harness overrides source acquisition with the exact verified pre-publication DEB; generated runtime/build steps remain unchanged. Missing runtimes, namespace failures or confinement failures fail the job. Nix sets only the Desktop ELF interpreter and supplies GTK libraries through the existing wrapper; it does not add RUNPATH to the prebuilt Go binary. The locked private CLI pair remains unchanged. The process harness verifies real private CLI/service IPC and bounded shutdown inside each environment. These nonvisual process checks do not establish clipboard, file/network, refresh or sandbox GUI acceptance.
+
+## Desktop alpha upgrade from 1.6.2-alpha.2
+
+FlareRelease can offer the selected 2.0 alpha build to Desktop
+`1.6.2-alpha.2` through the legacy update route. The offer uses separate
+Minisign signatures and six exact GitHub prerelease assets. The numbered native
+feed continues to use raw Ed25519 signatures.
+
+The signed macOS bundle retains the old `Contents/MacOS/gui-go` launch path
+and accepts the old restart flags through that path. The Windows installer
+accepts the old updater's passive invocation for an existing
+`1.6.2-alpha.2` installation. It waits for the old files to become writable
+before replacement and relaunches without passing the old flags. On Linux, the
+legacy updater replaces an AppImage in place. The package manager continues
+to own DEB and RPM upgrades.
+
+Run **Prepare legacy Desktop alpha** after numbered alpha publication. It
+downloads the exact assets, checks them against the release catalogue, and
+uses the pinned v1 signer and v1 verification path. The output includes the
+legacy offer and the per-file signature verification receipt. The workflow
+does not activate the offer. Before activation, verify the old installed
+package, upgrade, relaunch, unchanged source data, and explicit history import
+for each of the six targets against the exact asset hashes. Write the
+accepted offer to the FlareRelease control object after acceptance. Remove
+the object to stop further offers.
 
 ## v1 upgrade notice and migration
 

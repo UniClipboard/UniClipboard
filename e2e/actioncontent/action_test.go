@@ -25,7 +25,16 @@ import (
 type actor struct{}
 
 func (actor) Spec() plugin.Spec {
-	return plugin.Spec{ID: "example.content", Version: "1.0.0", APIVersion: 1, Capabilities: []string{plugin.CapAction}, Actions: []plugin.ActionSpec{{ID: "hash", Title: "Hash content", Accepts: []string{"text", "image", "files"}, TimeoutMS: 60000}, {ID: "wait", Title: "Wait", Accepts: []string{"text"}, TimeoutMS: 75}, {ID: "waitcancel", Title: "Wait cancel", Accepts: []string{"text"}, TimeoutMS: 3000}, {ID: "close", Title: "Close parts", Accepts: []string{"files"}, TimeoutMS: 3000}, {ID: "blocked", Title: "Blocked source", Accepts: []string{"files"}, TimeoutMS: 3000}, {ID: "pid", Title: "Process identity", Accepts: []string{"files"}, TimeoutMS: 3000}}}
+	p := []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}
+	post := []string{plugin.ActionPostCopy, plugin.ActionPostPresent}
+	return plugin.Spec{ID: "example.content", Version: "1.0.0", APIVersion: 1, Capabilities: []string{plugin.CapAction}, Actions: []plugin.ActionSpec{
+		{ID: "hash", Title: "Hash content", Accepts: []string{"text", "image", "files"}, Placements: p, PostActions: post, TimeoutMS: 60000},
+		{ID: "wait", Title: "Wait", Accepts: []string{"text"}, Placements: p, PostActions: post, TimeoutMS: 75},
+		{ID: "waitcancel", Title: "Wait cancel", Accepts: []string{"text"}, Placements: p, PostActions: post, TimeoutMS: 3000},
+		{ID: "close", Title: "Close parts", Accepts: []string{"files"}, Placements: p, PostActions: post, TimeoutMS: 3000},
+		{ID: "blocked", Title: "Blocked source", Accepts: []string{"files"}, Placements: p, PostActions: post, TimeoutMS: 3000},
+		{ID: "pid", Title: "Process identity", Accepts: []string{"files"}, Placements: p, PostActions: post, TimeoutMS: 3000},
+	}}
 }
 func (actor) Init(context.Context, plugin.Host, plugin.Config) error { return nil }
 func (actor) Start(context.Context) error                            { return nil }

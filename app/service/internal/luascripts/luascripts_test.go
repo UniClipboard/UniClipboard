@@ -49,3 +49,29 @@ func TestSpecsTakeSettingsFromTheHost(t *testing.T) {
 		t.Fatalf("%+v %v", specs, err)
 	}
 }
+
+func TestManifestDecodesActionPlacements(t *testing.T) {
+	root := mkPlugin(t, `
+[[actions]]
+id = "share"
+title = "Share"
+accepts = ["text", "image"]
+placements = ["history.item_menu", "history.toolbar"]
+post_actions = ["copy", "present"]
+timeout_ms = 60000
+`)
+	found, errs := Scan(root)
+	if len(errs) != 0 || len(found) != 1 {
+		t.Fatalf("found=%+v errs=%+v", found, errs)
+	}
+	spec := found["t.p"].Manifest.PluginSpec()
+	if len(spec.Actions) != 1 || spec.Actions[0].ID != "share" ||
+		len(spec.Actions[0].Placements) != 2 ||
+		spec.Actions[0].Placements[0] != "history.item_menu" ||
+		spec.Actions[0].Placements[1] != "history.toolbar" ||
+		len(spec.Actions[0].PostActions) != 2 ||
+		spec.Actions[0].PostActions[0] != "copy" ||
+		spec.Actions[0].PostActions[1] != "present" {
+		t.Fatalf("unexpected actions: %+v", spec.Actions)
+	}
+}

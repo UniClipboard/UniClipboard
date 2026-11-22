@@ -6,6 +6,23 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/boardui"
 )
 
+// DialogProps configures a general BoardUI modal dialog.
+type DialogProps struct {
+	Open               *bool
+	Title, Description string
+	Width              float32
+}
+
+// Dialog shows a BoardUI modal dialog with native focus trapping and Escape dismissal.
+func (k Kit) Dialog(c *ui.Context, p DialogProps, body func()) ui.Element {
+	return k.native().Dialog(c, boardui.DialogProps{
+		Open:        p.Open,
+		Title:       p.Title,
+		Description: p.Description,
+		Width:       p.Width,
+	}, body)
+}
+
 // AlertSuppression adds an application-owned suppression choice.
 type AlertSuppression struct {
 	Label   string

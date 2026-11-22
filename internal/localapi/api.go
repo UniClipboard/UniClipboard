@@ -186,12 +186,14 @@ type HistoryItem struct {
 	Backends          []HistoryBackendSync   `json:"backends"`
 }
 
-// Action is something a plugin can do to a text record when asked.
+// Action is something a plugin can do to a history record when asked.
 type Action struct {
-	Key      string   `json:"key"` // e.g. "builtin.text/upper"
-	PluginID string   `json:"plugin_id"`
-	Title    string   `json:"title"`
-	Accepts  []string `json:"accepts"`
+	Key         string   `json:"key"` // e.g. "builtin.text/upper"
+	PluginID    string   `json:"plugin_id"`
+	Title       string   `json:"title"`
+	Accepts     []string `json:"accepts"`
+	Placements  []string `json:"placements"`
+	PostActions []string `json:"post_actions"`
 }
 
 // HistoryQuery is GET /v1/history. Fields combine with AND.

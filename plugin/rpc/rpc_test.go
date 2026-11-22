@@ -440,4 +440,19 @@ func TestHandshake(t *testing.T) {
 	if _, herr, _ := run(other); herr == nil {
 		t.Fatal("capability mismatch accepted")
 	}
+
+	actA := Spec{
+		ID: "example.act", Version: "1.0.0", APIVersion: 1, Capabilities: []string{"action"},
+		Actions: []ActionSpec{{ID: "do", Title: "Do", Accepts: []string{"text"}, Placements: []string{"history.item_menu"}, PostActions: []string{"copy"}}},
+	}
+	actB := actA
+	actB.Actions = []ActionSpec{{ID: "do", Title: "Do", Accepts: []string{"text"}, Placements: []string{"history.toolbar"}, PostActions: []string{"copy"}}}
+	if actA.Equal(actB) {
+		t.Fatal("Spec.Equal ignored differing action placements")
+	}
+	actC := actA
+	actC.Actions = []ActionSpec{{ID: "do", Title: "Do", Accepts: []string{"text"}, Placements: []string{"history.item_menu"}, PostActions: []string{"present"}}}
+	if actA.Equal(actC) {
+		t.Fatal("Spec.Equal ignored differing action post_actions")
+	}
 }

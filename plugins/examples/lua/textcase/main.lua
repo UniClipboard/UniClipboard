@@ -5,7 +5,7 @@ return {
   version = "1.0.0",
   api_version = 1,
   capabilities = { "action" },
-  actions = { { id = "title", title = "Title Case", accepts = { "text" } } },
+  actions = { { id = "title", title = "Title Case", accepts = { "text" }, placements = { "history.item_menu", "history.toolbar" }, post_actions = { "copy", "notify" } } },
   run_action = function(ctx)
     local out = ctx.item.text:lower():gsub("(%a)([%w']*)", function(a, b) return a:upper() .. b end)
     ctx:set_text(out)

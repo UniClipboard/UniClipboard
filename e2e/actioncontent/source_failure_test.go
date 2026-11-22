@@ -38,7 +38,7 @@ func (*badRead) Close() error             { return nil }
 type swallowingActor struct{}
 
 func (swallowingActor) Spec() plugin.Spec {
-	return plugin.Spec{ID: "example.swallow", Version: "1.0.0", APIVersion: 1, Capabilities: []string{plugin.CapAction}, Actions: []plugin.ActionSpec{{ID: "swallow", Title: "Swallow source error", Accepts: []string{"files"}}}}
+	return plugin.Spec{ID: "example.swallow", Version: "1.0.0", APIVersion: 1, Capabilities: []string{plugin.CapAction}, Actions: []plugin.ActionSpec{{ID: "swallow", Title: "Swallow source error", Accepts: []string{"files"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostPresent}}}}
 }
 func (swallowingActor) Init(context.Context, plugin.Host, plugin.Config) error { return nil }
 func (swallowingActor) Start(context.Context) error                            { return nil }

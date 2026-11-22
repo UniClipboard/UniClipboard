@@ -23,11 +23,13 @@ import (
 
 // ActionInfo describes one action a plugin offers.
 type ActionInfo struct {
-	Key      string   `json:"key"` // plugin ID + "/" + action ID
-	PluginID PluginID `json:"plugin_id"`
-	ID       string   `json:"id"`
-	Title    string   `json:"title"`
-	Accepts  []string `json:"accepts"` // text, image, files
+	Key         string   `json:"key"` // plugin ID + "/" + action ID
+	PluginID    PluginID `json:"plugin_id"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Accepts     []string `json:"accepts"`      // text, image, files
+	Placements  []string `json:"placements"`   // history.item_menu, history.toolbar, quick_panel
+	PostActions []string `json:"post_actions"` // copy, notify, present, select, none
 }
 
 // RunActionRequest names an action and the history item to run it on. The
@@ -59,18 +61,28 @@ func newActionPlugin(id PluginID) *actionPlugin {
 }
 
 type pipelineAction struct {
-	plugin  *actionPlugin
-	id      string
-	title   string
-	accepts []string
-	timeout time.Duration
-	run     func(context.Context, *actionContext) error
+	plugin      *actionPlugin
+	id          string
+	title       string
+	accepts     []string
+	placements  []string
+	postActions []string
+	timeout     time.Duration
+	run         func(context.Context, *actionContext) error
 }
 
 func (a *pipelineAction) key() string { return string(a.plugin.id) + "/" + a.id }
 
 func (a *pipelineAction) info() ActionInfo {
-	return ActionInfo{Key: a.key(), PluginID: a.plugin.id, ID: a.id, Title: a.title, Accepts: slices.Clone(a.accepts)}
+	return ActionInfo{
+		Key:         a.key(),
+		PluginID:    a.plugin.id,
+		ID:          a.id,
+		Title:       a.title,
+		Accepts:     slices.Clone(a.accepts),
+		Placements:  slices.Clone(a.placements),
+		PostActions: slices.Clone(a.postActions),
+	}
 }
 
 // actionRun is the part of a submission that produces its content: the work

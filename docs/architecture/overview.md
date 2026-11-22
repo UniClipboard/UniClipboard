@@ -15,7 +15,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 241db5c3608e59c2437a8dc774e19912dbd9f1f7
+verified: 0b1d141ca1d16a7dcd4a05b9f1d7c0d6ae76785a
 ---
 # 仓库布局与依赖边界
 
@@ -118,7 +118,7 @@ The shared desktop composition supports Simplified Chinese (`zh-CN`), English (`
 
 `desktop.language` persists through the existing revision-checked configuration API. A successful save updates the main window and quick panel through the normal configuration refresh, without a process restart. The tray watches the same file to rebuild its labels. Device notifications use the current configured language. The demo keeps its selection in memory.
 
-`app/desktop/internal/i18n/i18n.go` resolves application-owned source strings from embedded `locales.json`. Navigation, settings, device sheets, history controls, quick-panel controls and actions share the catalogues. Source strings are stable catalogue IDs; internal filter values and query syntax remain unchanged. Content, filenames, device names and user tags bypass translation. Service-generated history titles carry an explicit marker so they can be translated without translating user text. Missing catalogue text falls back to the Chinese source. No translation request leaves the device. Standard numeric/ISO timestamps remain unchanged; Today and Yesterday headings are translated.
+`app/desktop/internal/i18n/i18n.go` resolves application-owned source strings from embedded `locales.json`. Navigation, settings, device sheets, history controls, quick-panel controls and actions share the catalogues. Action result dialogs and progress, cancellation, failure and completion notifications use the same catalogues, including clipboard-copy outcomes and link controls. Source strings are stable catalogue IDs; internal filter values and query syntax remain unchanged. Content, filenames, device names and user tags bypass translation. Service-generated history titles carry an explicit marker so they can be translated without translating user text. Missing catalogue text falls back to the Chinese source. No translation request leaves the device. Standard numeric/ISO timestamps remain unchanged; Today and Yesterday headings are translated.
 
 The translation package depends only on the standard library. Production UI, tray/notifications and isolated previews share it. The catalogue is embedded from `app/desktop/internal/i18n/locales.json` into each executable that imports it. No demo package owns production translations.
 

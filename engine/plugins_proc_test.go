@@ -23,7 +23,11 @@ type procHelper struct{}
 func procHelperSpec() plugin.Spec {
 	return plugin.Spec{ID: "example.helper", Version: "1.0.0", APIVersion: 1,
 		Capabilities: []string{plugin.CapProcessor, plugin.CapAction},
-		Actions:      []plugin.ActionSpec{{ID: "upper", Title: "Upper", Accepts: []string{"text"}}}}
+		Actions: []plugin.ActionSpec{{
+			ID: "upper", Title: "Upper", Accepts: []string{"text"},
+			Placements:  []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar},
+			PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify},
+		}}}
 }
 
 func (procHelper) Spec() plugin.Spec                                      { return procHelperSpec() }

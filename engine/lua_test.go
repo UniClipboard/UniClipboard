@@ -15,7 +15,7 @@ local tag
 return {
   id = "lua.tagger", version = "1.0.0", api_version = 1,
   capabilities = {"processor", "action"},
-  actions = {{id = "shout", title = "Shout", accepts = {"text"}}},
+  actions = {{id = "shout", title = "Shout", accepts = {"text"}, placements = {"history.item_menu", "history.toolbar"}, post_actions = {"copy", "notify"}}},
   init = function(host, config)
     for k in pairs(config) do if k ~= "tag" then error("unknown key") end end
     tag = config.tag or "lua"
@@ -41,6 +41,12 @@ func TestLuaPluginProcessesAndActs(t *testing.T) {
 	if err != nil || !slices.Equal(it.Tags, []string{"mail"}) {
 		t.Fatalf("%v %v", it.Tags, err)
 	}
+	list, err := n.e.ListActions(bg)
+	if err != nil || len(list) != 1 ||
+		!slices.Equal(list[0].Placements, []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}) ||
+		!slices.Equal(list[0].PostActions, []string{plugin.ActionPostCopy, plugin.ActionPostNotify}) {
+		t.Fatalf("lua actions = %+v %v", list, err)
+	}
 	a, err := n.e.RunAction(bg, RunActionRequest{RequestID: "a", Key: "lua.tagger/shout", HistoryID: r.HistoryID})
 	if err != nil || historyText(t, n.e, a.HistoryID) != "ME@EXAMPLE.COM!" {
 		t.Fatalf("%v", err)
@@ -57,6 +63,20 @@ func TestLuaPluginRejectsBadDeclarations(t *testing.T) {
 		"strict":       func(s *LuaPluginSpec) { s.Config = plugin.Config{"bogus": 1} },
 		"os access":    func(s *LuaPluginSpec) { s.Source = strings.Replace(luaTagger, "local tag", "local tag = os.time()", 1) },
 		"loop at load": func(s *LuaPluginSpec) { s.Source = "while true do end" },
+		"missing placements": func(s *LuaPluginSpec) {
+			s.Source = strings.Replace(luaTagger, `, placements = {"history.item_menu", "history.toolbar"}`, "", 1)
+		},
+		"unknown placement": func(s *LuaPluginSpec) { s.Source = strings.Replace(luaTagger, `"history.toolbar"`, `"unknown"`, 1) },
+		"dup placement": func(s *LuaPluginSpec) {
+			s.Source = strings.Replace(luaTagger, `"history.toolbar"`, `"history.item_menu"`, 1)
+		},
+		"non-string place": func(s *LuaPluginSpec) { s.Source = strings.Replace(luaTagger, `"history.toolbar"`, `123`, 1) },
+		"missing post_actions": func(s *LuaPluginSpec) {
+			s.Source = strings.Replace(luaTagger, `, post_actions = {"copy", "notify"}`, "", 1)
+		},
+		"unknown post_action": func(s *LuaPluginSpec) { s.Source = strings.Replace(luaTagger, `"notify"`, `"open_url"`, 1) },
+		"none with copy":      func(s *LuaPluginSpec) { s.Source = strings.Replace(luaTagger, `"notify"`, `"none"`, 1) },
+		"non-string post":     func(s *LuaPluginSpec) { s.Source = strings.Replace(luaTagger, `"notify"`, `123`, 1) },
 	} {
 		s := luaSpec(luaTagger)
 		mut(&s)

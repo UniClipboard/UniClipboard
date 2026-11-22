@@ -1,6 +1,7 @@
 package setupui
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -101,6 +102,32 @@ func TestMigrationScopeAndResponsiveLayouts(t *testing.T) {
 			if picked != 1 {
 				t.Fatalf("pick count = %d, want 1", picked)
 			}
+		}
+	}
+}
+
+func TestMacIntegratedCaptionClearance(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS-integrated traffic-light band applies on darwin only")
+	}
+	for _, size := range [][2]int{{780, 540}, {640, 560}} {
+		fields := Fields{}
+		confirm := ui.NewTesterWith(func(c *ui.Context) {
+			Render(c, Model{Stage: "confirm", Source: "/synthetic/v1", Found: true}, &fields, Actions{Start: func() {}, Enter: func() {}, Pick: func() {}})
+		}, size[0], size[1], ui.TesterOptions{})
+		confirm.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+		confirm.Frame()
+
+		checkLabel := "从 v1 迁移历史"
+		if size[0] < int(compactBreakpoint) {
+			checkLabel = "确认目录与范围"
+		}
+		node, ok := confirm.AccessByRole(ui.RoleText, checkLabel)
+		if !ok {
+			t.Fatalf("size=%v missing %q", size, checkLabel)
+		}
+		if node.Bounds.Y < 42 {
+			t.Fatalf("size=%v %q overlaps macOS traffic-light band: %+v", size, checkLabel, node.Bounds)
 		}
 	}
 }

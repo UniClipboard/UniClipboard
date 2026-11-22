@@ -85,6 +85,7 @@ packages = {}
 blobs = {}
 uploads = []
 tag_writes = []
+delayed_versions = {}
 fail_tag = None
 
 
@@ -115,7 +116,16 @@ class Registry(BaseHTTPRequestHandler):
             name = key[len("-/package/") : -len("/dist-tags")]
             self.send(packages.get(name, {}).get("dist-tags", {}))
         elif key in packages:
-            self.send(packages[key])
+            entry = packages[key]
+            if self.headers.get("User-Agent", "").startswith("Python-urllib/"):
+                versions = entry["versions"].copy()
+                for version in entry["versions"]:
+                    slot = (key, version)
+                    if delayed_versions.get(slot, 0):
+                        delayed_versions[slot] -= 1
+                        del versions[version]
+                entry = dict(entry, versions=versions)
+            self.send(entry)
         else:
             self.send({"error": "not found"}, 404)
 
@@ -329,9 +339,15 @@ try:
             )
         packages.clear()
         packages.update(untouched)
+        delayed_slot = (blocked_name, manifest["npm_version"])
+        delayed_versions[delayed_slot] = 2
         check(
             "alpha publication available",
             distribute("publish", first, "alpha")["status"] == "available",
+        )
+        check(
+            "publication waits for the npm registry to index an accepted package",
+            delayed_versions[delayed_slot] == 0,
         )
         check(
             "platform package publishes before main",

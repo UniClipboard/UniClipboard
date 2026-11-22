@@ -3,6 +3,7 @@ package rpcstreams
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -11,7 +12,7 @@ import (
 	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
-// Two independent descriptor-bearing methods share one connection and replay watermark.
+// Independent root parameters and source responses share one replay ledger.
 func TestSourceDescriptorRegistrationE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -28,16 +29,57 @@ func TestSourceDescriptorRegistrationE2E(t *testing.T) {
 		}
 		if in.Index == 0 {
 			close(allocated)
-			time.Sleep(20 * time.Millisecond)
+			// A separate root carries a descriptor in its parameters while
+			// the source descriptor response is still pending.
+			_, err := c.Conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodApplyState, Timeout: time.Second, Build: func(id uint64) (any, error) {
+				stream, desc, err := c.Conn.NewSend(c.Conn.Context(), id, rpc.PurposeSyncState, 8)
+				if err != nil {
+					return nil, err
+				}
+				go func() { _, _ = io.WriteString(stream, "12345678"); _ = stream.Close() }()
+				return desc, nil
+			}}, nil)
+			if err != nil {
+				return nil, err
+			}
 		}
 		go func() { _, _ = io.WriteString(stream, "12345678"); _ = stream.Close() }()
 		return desc, nil
 	}})
 	defer func() { _ = host.Close() }()
 	peer := rpc.NewConn(b, rpc.Options{Role: rpc.RolePlugin, Limits: rpc.DefaultLimits, Handler: func(ctx context.Context, c *rpc.Call) (any, error) {
+		if c.Method == rpc.MethodApplyState {
+			var desc rpc.StreamDesc
+			if err := json.Unmarshal(c.Params, &desc); err != nil {
+				return nil, err
+			}
+			r, err := c.Conn.Expect(ctx, c.ID, desc, 8)
+			if err != nil {
+				return nil, err
+			}
+			_, err = io.Copy(io.Discard, r)
+			if closeErr := r.Close(); err == nil {
+				err = closeErr
+			}
+			if err != nil {
+				return nil, err
+			}
+			var replay *rpc.Error
+			if _, err = c.Conn.Expect(ctx, c.ID, desc, 8); !errors.As(err, &replay) || replay.Code != rpc.CodeInvalidState {
+				return nil, errors.New("retired stream ID replay accepted")
+			}
+			return rpc.Empty{}, nil
+		}
+
 		done := make(chan error, 2)
 		open := func(method string, index int) {
-			r, err := c.Conn.CallStream(ctx, rpc.CallOptions{Method: method, Parent: c.ID, Params: rpc.OpenActionPart{Index: index}, Timeout: time.Second}, rpc.PurposeActionPart, 8)
+			var desc rpc.StreamDesc
+			_, err := c.Conn.Call(ctx, rpc.CallOptions{Method: method, Parent: c.ID, Params: rpc.OpenActionPart{Index: index}, Timeout: time.Second}, &desc)
+			if err != nil {
+				done <- err
+				return
+			}
+			r, err := c.Conn.Expect(ctx, c.ID, desc, 8)
 			if err != nil {
 				done <- err
 				return

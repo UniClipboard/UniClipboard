@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"sync"
@@ -23,7 +24,24 @@ func (a *actionCtx) OpenPart(ctx context.Context, index int) (io.ReadCloser, err
 	}
 	merged, cancel := context.WithCancel(a.ctx)
 	stop := context.AfterFunc(ctx, cancel)
-	reader, err := a.call.Conn.CallStream(merged, rpc.CallOptions{Method: rpc.MethodOpenActionPart, Parent: a.call.ID, Timeout: 30 * time.Second, Params: rpc.OpenActionPart{Index: index}}, rpc.PurposeActionPart, uint64(a.parts[index].Size))
+	var desc rpc.StreamDesc
+	_, err := a.call.Conn.Call(merged, rpc.CallOptions{Method: rpc.MethodOpenActionPart, Parent: a.call.ID, Timeout: 30 * time.Second, Params: rpc.OpenActionPart{Index: index}}, &desc)
+	if err != nil {
+		stop()
+		cancel()
+		return nil, err
+	}
+	if desc.Purpose != rpc.PurposeActionPart || uint64(desc.Size) != uint64(a.parts[index].Size) {
+		stop()
+		cancel()
+		return nil, ErrInvalidArgument
+	}
+	var reader io.ReadCloser
+	if desc.Size == 0 && desc.StreamID == 0 {
+		reader = io.NopCloser(bytes.NewReader(nil))
+	} else {
+		reader, err = a.call.Conn.Expect(merged, a.call.ID, desc, uint64(a.parts[index].Size))
+	}
 	if err != nil {
 		stop()
 		cancel()

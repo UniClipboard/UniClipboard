@@ -148,7 +148,22 @@ func (h remoteSendHost) OpenPart(ctx context.Context, grantID string, index int)
 	if index < 0 || index >= len(h.in.Clip.Parts) {
 		return nil, rpc.NewError(rpc.CodeInvalidArgument)
 	}
-	return h.conn.CallStream(ctx, rpc.CallOptions{Method: rpc.MethodOpenSendPart, Parent: h.root, Timeout: 30 * time.Second, Params: rpc.OpenSendPart{GrantID: grantID, Index: index}}, rpc.PurposeSyncPart, uint64(h.in.Clip.Parts[index].Size))
+	var d rpc.StreamDesc
+	_, err := h.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodOpenSendPart, Parent: h.root, Timeout: 30 * time.Second,
+		Params: rpc.OpenSendPart{GrantID: grantID, Index: index}}, &d)
+	if err != nil {
+		return nil, err
+	}
+	if d.Purpose != rpc.PurposeSyncPart || uint64(d.Size) != uint64(h.in.Clip.Parts[index].Size) {
+		return nil, rpc.NewError(rpc.CodeInternal)
+	}
+	if d.Size == 0 {
+		if d.StreamID != 0 {
+			return nil, rpc.NewError(rpc.CodeInternal)
+		}
+		return io.NopCloser(bytes.NewReader(nil)), nil // empty parts have no stream
+	}
+	return h.conn.Expect(ctx, h.root, d, uint64(h.in.Clip.Parts[index].Size))
 }
 
 func (s *server) send(ctx context.Context, c *rpc.Call) (any, error) {

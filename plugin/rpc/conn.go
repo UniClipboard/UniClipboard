@@ -67,24 +67,24 @@ type Conn struct {
 
 	wmu sync.Mutex
 	// reqMu orders request IDs on the wire: the peer requires them to rise.
-	reqMu       sync.Mutex
-	streamCalls chan struct{}
+	reqMu sync.Mutex
 
-	mu         sync.Mutex
-	changed    chan struct{}
-	nextReq    uint64
-	nextStream uint64
-	lastPeer   uint64
-	pending    map[uint64]*pendingCall
-	handlers   map[uint64]*inflight
-	recv       map[uint64]*RecvStream
-	send       map[uint64]*SendStream
-	maxStream  [2]uint64 // highest stream ID seen per parity
-	budgetUsed int
-	drained    int
-	err        error
-	done       chan struct{}
-	readerDone chan struct{}
+	mu                  sync.Mutex
+	changed             chan struct{}
+	nextReq             uint64
+	nextStream          uint64
+	lastPeer            uint64
+	pending             map[uint64]*pendingCall
+	handlers            map[uint64]*inflight
+	recv                map[uint64]*RecvStream
+	send                map[uint64]*SendStream
+	maxStream           [2]uint64 // highest stream ID seen per parity
+	acceptedPeerStreams []streamIDRange
+	budgetUsed          int
+	drained             int
+	err                 error
+	done                chan struct{}
+	readerDone          chan struct{}
 }
 
 // NewConn starts the reader for an already-handshaken connection.
@@ -98,7 +98,7 @@ func NewConn(rwc io.ReadWriteCloser, opts Options) *Conn {
 		changed: make(chan struct{}), pending: map[uint64]*pendingCall{}, handlers: map[uint64]*inflight{},
 		recv: map[uint64]*RecvStream{}, send: map[uint64]*SendStream{},
 		done: make(chan struct{}), readerDone: make(chan struct{}),
-		nextReq: 1, nextStream: 1, streamCalls: make(chan struct{}, 1),
+		nextReq: 1, nextStream: 1,
 	}
 	if opts.Role == RolePlugin {
 		c.nextReq, c.nextStream = 2, 2

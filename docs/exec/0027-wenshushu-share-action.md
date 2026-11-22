@@ -79,9 +79,9 @@ nested `action.close_part` RPC before its implementation; protocol version stays
 - Early part close releases its host reader and slot before acknowledging the
   close RPC. Sixteen partially read large parts complete in one Action. Process
   identity remains stable across early close and cancellation of a blocked stream.
-- Both descriptor-returning source methods share connection-level serialization
-  through `Expect`. A two-method framed-protocol E2E preserves ordered
-  registration without changing stream-ID replay checks.
+- All descriptor paths use bounded out-of-order registration in `Expect`.
+  A framed-protocol E2E overlaps independent root parameters with two source
+  responses and verifies that a retired ID replay is rejected.
 - Cancellation waits for an explicit process admission marker and asserts the
   cached `cancelled` error. The 75ms declared deadline asserts `timeout`.
   RPC timeout errors retain that code even when the wire budget expires before

@@ -151,6 +151,11 @@ Invocation cancellation and completion still revoke every remaining part.
 A deliberately released or cancelled part does not terminate the connection.
 A genuine incomplete-source failure retains session termination semantics.
 
-Descriptor-returning source calls serialize request-through-registration at the
-connection level, across both `action.open_part` and `sync_host.open_send_part`.
-The existing monotonic stream-ID replay checks remain in effect.
+Descriptors can register out of arrival order, including descriptors carried
+in independent root parameters and concurrent source-call responses. Allocation
+still uses increasing direction-specific IDs. `Conn.Expect` keeps a coalescing
+ledger of registered ID ranges, so active and retired stream IDs cannot replay.
+The ledger uses at most `MaxStreams + MaxRequests + 1` ranges from the negotiated
+quotas; excessive sparse IDs return `resource_exhausted` before credit is granted.
+Sequential streams occupy one range. No per-Actor or per-method ordering gate
+is required.

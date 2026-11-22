@@ -76,6 +76,9 @@ type Backend struct {
 	recv    plugin.PeerReceiver
 
 	life sync.Mutex // serializes bringing the network up and down
+	// A connected callback publishes the send target before it returns.
+	// Keep session election/registration atomic with respect to send lookup.
+	publication sync.RWMutex
 
 	mu         sync.Mutex
 	bound      bool
@@ -636,6 +639,8 @@ func (b *Backend) dialerOf(s *session) string {
 // establish makes s the session of its peer, unless a better one exists, and
 // reports the connection to the Engine. It reports false when s was dropped.
 func (b *Backend) establish(r *runState, s *session) bool {
+	b.publication.Lock()
+	defer b.publication.Unlock()
 	epoch := b.epoch()
 	b.mu.Lock()
 	old := b.sessions[s.peerID]
@@ -778,9 +783,11 @@ func (s *session) sendIntroductions() error {
 // Send writes one clip to the connection s names. The Engine authorizes it
 // last, immediately before the first byte, and hands out each part once.
 func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (failure error) {
+	b.publication.RLock()
 	b.mu.Lock()
 	sess := b.sessions[m.PeerID]
 	b.mu.Unlock()
+	b.publication.RUnlock()
 	if sess == nil || sess.isDone() {
 		return rpc.NewError(rpc.CodeNotFound)
 	}

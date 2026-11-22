@@ -96,6 +96,17 @@ One earlier full race run failed `TestSubmitDeliversEverything`: the built-in Ta
 
 ## Evidence
 
+The 2026-11-22 [readiness-race investigation](tailcat-connected-publication.md)
+reproduced the same public failure with a controlled two-Engine transfer. The
+underlying response in that reproduction was `not_found`: Engine had accepted
+`connected` before the backend registered its session. The affected production
+file was identical in the original base and pre-fix PR source. A publication
+lock fixes this demonstrated pre-existing race. The original and controlled
+cases each passed 20 times after the fix, followed by a full race suite and
+production headless acceptance. The original historical log has no underlying
+response code, so these results do not uniquely attribute that historical
+invocation. The draft and merge hold remain in force.
+
 The final small receipt is `.cache/sync-plugin-workflow/instances/receipt.json`. It records implementation/documentation SHAs, exact per-layer verdicts, command replays, program hashes, canonical Desktop report paths, retained first failures, and cleanup. `SHA256SUMS` binds retained evidence. Only source, reference fixtures and English documentation are committed. No database, ticket, credential, binary, source snapshot or large log is committed. Native screenshots remain in ignored canonical output directories. No push, PR, deployment, VM or personal clipboard is involved.
 
 ## Integration with the BoardUI v2 branch

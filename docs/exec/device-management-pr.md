@@ -59,6 +59,12 @@ remain evidence for their pre-merge source; they are not a new post-merge run.
 
 ## Acceptance limits
 
+A subsequent [Tailcat readiness investigation](tailcat-connected-publication.md)
+adds a controlled regression, a publication-race fix, and fresh full race and
+production headless verification. The limits below describe the original
+device-management preparation checkpoint; the later investigation retains the
+merge hold because the historical failure has no underlying response code.
+
 The earlier unexplained Tailcat failure and the merge hold remain recorded in
 the [sync workflow checkpoint](sync-plugin-workflow.md#validation-hold).
 The user authorized a draft PR while retaining that hold.

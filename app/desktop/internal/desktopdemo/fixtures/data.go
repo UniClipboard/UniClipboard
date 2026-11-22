@@ -41,17 +41,58 @@ func Desktop(page, theme string) preview.Desktop {
 	for i, title := range older {
 		d.Entries = append(d.Entries, preview.Entry{ID: fmt.Sprintf("older-%d", i), Title: title, Text: title, Source: "local", Date: fmt.Sprintf("昨天 %02d:20", 15-i), Kind: desktopkit.KindText})
 	}
-	d.Devices = []preview.Device{
-		{ID: "local", Name: "MacBook Pro", Platform: "macOS 15.6", Icon: desktopkit.IconDesktop, Online: true},
-		{ID: "windows", Name: "工作电脑", Platform: "Windows 11", Icon: desktopkit.IconDesktop, Online: true, Latency: 15, Link: "局域网", LastSeen: "刚刚", Direction: "both", Text: true, Image: true, File: true,
-			Fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E", Paths: []preview.DevicePath{{Name: "tailcat · 默认", State: "已连接", LastSync: "1 分钟前"}}},
-		{ID: "linux", Name: "Linux 工作站", Platform: "Fedora 43", Icon: desktopkit.IconDesktop, LastSeen: "昨天 18:02", Direction: "both", Text: true,
-			Fingerprint: "E310 4B6A 92CF 7D05 18A3 CC42 6F9B 20D7", Paths: []preview.DevicePath{{Name: "tailcat · 默认", State: "不可达", LastSync: "昨天 18:02", Failed: true}}},
-		{ID: "phone", Name: "我的手机", Platform: "Android 16", Icon: desktopkit.IconPhone, Online: true, Latency: 180, Link: "加密中继", LastSeen: "刚刚", Direction: "recv", Text: true, Image: true,
-			Fingerprint: "5D08 AA13 7E42 9B6C F1D4 30E7 82A5 C619", Paths: []preview.DevicePath{{Name: "tailcat · 默认", State: "已连接（经中继）", LastSync: "12 分钟前"}, {Name: "tailcat · 工作仓库", State: "对方未批准", LastSync: "—", Failed: true}}},
+	d.SyncChannels = []preview.SyncChannel{
+		{ID: "builtin.tailcat", ImplementationID: "builtin.tailcat", TransportKind: "peer_sessions", State: "running", Pairing: true, Policy: "文本 · 图片 · 文件 ≤100 MB"},
+		{ID: "e2e.work", ImplementationID: "acme.lan-sync", TransportKind: "peer_sessions", State: "running", Pairing: true, Policy: "文本 · 图片"},
+		{ID: "wx.bridge", ImplementationID: "community.wechat-ime", TransportKind: "external", State: "running", ExternalChannels: true, Policy: "文本 · 图片"},
+		{ID: "e2e.backup", ImplementationID: "acme.lan-sync", TransportKind: "peer_sessions", State: "disabled", Pairing: true, Policy: "已停用"},
 	}
-	d.Pending = []preview.PendingDevice{{ID: "p1", Name: "新电脑", Platform: "Windows 11", Via: "配对码 482-913", Icon: desktopkit.IconDesktop, Fingerprint: "4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D"}}
-	d.Candidates = []preview.DeviceCandidate{{ID: "c1", Name: "Alice 的平板", Introducer: "工作电脑 介绍", Icon: desktopkit.IconPhone}}
+	d.Devices = []preview.Device{
+		{ID: "local", Name: "MacBook Pro", DeviceID: "m7x4q9k2p8n3v5w1r6y0t2h8c4", Icon: desktopkit.IconDesktop, Online: true},
+		{
+			ID: "windows", Name: "工作电脑", UserName: "工作电脑", ReportedName: "DESKTOP-8K2F1", Icon: desktopkit.IconDesktop, Online: true, LastSeen: "2 分钟前",
+			Fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
+			Bindings: []preview.DeviceBinding{
+				{ID: "b1", InstanceID: "builtin.tailcat", ImplementationID: "builtin.tailcat", State: "authorized", SyncEnabled: true, Connection: "connected", LastActive: "2 分钟前"},
+				{ID: "b2", InstanceID: "e2e.work", ImplementationID: "acme.lan-sync", State: "pending", SyncEnabled: true, Connection: "disconnected"},
+			},
+		},
+		{
+			ID: "linux", Name: "Linux 工作站", ReportedName: "Linux 工作站", Icon: desktopkit.IconDesktop, Online: true, LastSeen: "18 分钟前",
+			Fingerprint: "E310 4B6A 92CF 7D05 18A3 CC42 6F9B 20D7",
+			Bindings: []preview.DeviceBinding{
+				{ID: "b3", InstanceID: "builtin.tailcat", ImplementationID: "builtin.tailcat", State: "authorized", SyncEnabled: true, Connection: "connected", LastActive: "18 分钟前"},
+				{ID: "b4", InstanceID: "e2e.work", ImplementationID: "acme.lan-sync", State: "authorized", SyncEnabled: true, Connection: "disconnected", LastActive: "昨天 18:02", LastError: "unreachable"},
+			},
+		},
+		{
+			ID: "phone", Name: "我的手机", UserName: "我的手机", ReportedName: "Pixel 9 Pro", Icon: desktopkit.IconPhone, Online: false, LastSeen: "3 小时前",
+			Fingerprint: "5D08 AA13 7E42 9B6C F1D4 30E7 82A5 C619",
+			Bindings: []preview.DeviceBinding{
+				{ID: "b5", InstanceID: "builtin.tailcat", ImplementationID: "builtin.tailcat", State: "authorized", SyncEnabled: false, Connection: "disconnected", LastActive: "3 小时前"},
+			},
+		},
+		{
+			ID: "spare", Name: "备机 Mac mini", UserName: "备机 Mac mini", ReportedName: "Mac-mini.local", Icon: desktopkit.IconDesktop, Online: false, LastSeen: "5 天前",
+			Fingerprint: "1C77 90AE 5B24 E6F1 03D9 A78B 4C52 8E10",
+		},
+	}
+	d.Channels = []preview.ExternalChannel{
+		{ID: "ch-wx", Name: "微信输入法 · 个人组", BackendID: "wx.bridge", Enabled: true, AutoApply: true, RemoteRevocation: false, LastSeen: "刚刚"},
+	}
+	d.Pending = []preview.PendingDevice{
+		{
+			ID: "windows", Name: "工作电脑", Via: "通过完整票据", Icon: desktopkit.IconDesktop,
+			Fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
+			Paths:       []preview.PendingPath{{ID: "b2", InstanceID: "e2e.work", State: "pending"}},
+		},
+		{
+			ID: "p1", Name: "新电脑", Via: "配对码 482-913", ByCode: true, Icon: desktopkit.IconDesktop,
+			Fingerprint: "4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D",
+			Paths:       []preview.PendingPath{{ID: "bp1", InstanceID: "builtin.tailcat", State: "pending"}},
+		},
+	}
+	d.Candidates = []preview.DeviceCandidate{{ID: "c1", Name: "书房 iMac", Introducer: "工作电脑", BackendID: "builtin.tailcat", Icon: desktopkit.IconDesktop}}
 	d.InviteCode, d.InviteMode = "482-913", "code"
 	classify(&d)
 	d.Image = Image()

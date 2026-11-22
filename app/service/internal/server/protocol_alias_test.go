@@ -13,6 +13,7 @@ type AdapterReply = api.AdapterReply
 type DesktopCommand = api.DesktopCommand
 type DesktopResult = api.DesktopResult
 type PeerStatus = api.PeerStatus
+type PeerRename = api.PeerRename
 type ChannelUpdate = api.ChannelUpdate
 type Candidate = api.Candidate
 type PendingPeer = api.PendingPeer

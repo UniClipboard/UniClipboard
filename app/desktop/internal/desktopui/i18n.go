@@ -85,30 +85,33 @@ func (d *viewState) displayDate(value string) string {
 	}
 	return value
 }
-func (d *viewState) policyText(v device) string {
-	if d.currentLanguage() == "" || d.currentLanguage() == "zh-CN" {
-		return policySummary(v)
+
+func (d *viewState) displayRelativeTime(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
 	}
-	if v.direction == "pause" {
-		return d.tr("同步已暂停。信任和路径保留，不传输任何内容。")
+	if value == "刚刚" {
+		return d.tr("刚刚")
 	}
-	var kinds []string
-	for _, item := range []struct {
-		on   bool
-		name string
-	}{{v.text, "文字"}, {v.image, "图片"}, {v.file, "文件"}} {
-		if item.on {
-			kinds = append(kinds, d.tr(item.name))
+	for _, prefix := range []string{"今天 ", "昨天 "} {
+		if strings.HasPrefix(value, prefix) {
+			return d.tr(strings.TrimSpace(prefix)) + " " + strings.TrimPrefix(value, prefix)
 		}
 	}
-	if len(kinds) == 0 {
-		return d.tr("未选择任何内容类型，不会同步。")
+	if strings.HasSuffix(value, " 分钟前") {
+		n := strings.TrimSuffix(value, " 分钟前")
+		return strings.Replace(d.tr("%s 分钟前"), "%s", n, 1)
 	}
-	way := map[string]string{"send": "仅发送到此设备", "recv": "仅从此设备接收"}[v.direction]
-	if way == "" {
-		way = "双向同步"
+	if strings.HasSuffix(value, " 小时前") {
+		n := strings.TrimSuffix(value, " 小时前")
+		return strings.Replace(d.tr("%s 小时前"), "%s", n, 1)
 	}
-	return strings.Join(kinds, ", ") + ": " + d.tr(way)
+	if strings.HasSuffix(value, " 天前") {
+		n := strings.TrimSuffix(value, " 天前")
+		return strings.Replace(d.tr("%s 天前"), "%s", n, 1)
+	}
+	return value
 }
 
 func (d *viewState) entryTitle(v entry) string {

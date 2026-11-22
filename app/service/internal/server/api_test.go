@@ -186,3 +186,77 @@ func TestTicketRequiresExplicitExport(t *testing.T) {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
 }
+
+type statusFake struct {
+	fake
+	status Status
+}
+
+func (f *statusFake) Status(context.Context) (Status, error) { return f.status, f.err }
+
+func TestStatusSerializesPeerProjectionFields(t *testing.T) {
+	f := &statusFake{
+		status: Status{
+			ID:   "self-1",
+			Name: "Self",
+			Peers: []PeerStatus{
+				{
+					ID:           "dev-1",
+					Name:         "Custom Name",
+					UserName:     "Custom Name",
+					ReportedName: "Reported Host",
+					Fingerprint:  "AAAA BBBB CCCC DDDD",
+					Connected:    true,
+					Revision:     7,
+				},
+				{
+					ID:           "ch-1",
+					Name:         "WeType",
+					UserName:     "My WeType",
+					ReportedName: "WeType",
+					Kind:         "external",
+					BackendID:    "test.wx",
+					Revision:     4,
+					LastError:    "remove_failed",
+				},
+			},
+		},
+	}
+	h := Handler(f, config.Static(config.Default()))
+	rec := do(t, h, "GET", "/v1/status", "")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d %s", rec.Code, rec.Body)
+	}
+	var got Status
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Peers) != 2 {
+		t.Fatalf("peers = %+v", got.Peers)
+	}
+	dev := got.Peers[0]
+	if dev.Fingerprint != "AAAA BBBB CCCC DDDD" || dev.UserName != "Custom Name" || dev.ReportedName != "Reported Host" || dev.Revision != 7 {
+		t.Fatalf("device peer = %+v", dev)
+	}
+	ch := got.Peers[1]
+	if ch.UserName != "My WeType" || ch.ReportedName != "WeType" || ch.LastError != "remove_failed" || ch.Revision != 4 {
+		t.Fatalf("channel peer = %+v", ch)
+	}
+
+	// Ensure PairResult's own Fingerprint field still round-trips cleanly despite embedded PeerStatus.Fingerprint.
+	rawPair, err := json.Marshal(PairResult{
+		PeerStatus:  PeerStatus{ID: "dev-1", Name: "Peer"},
+		Awaiting:    true,
+		Fingerprint: "1111 2222 3333 4444",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decodedPair PairResult
+	if err := json.Unmarshal(rawPair, &decodedPair); err != nil {
+		t.Fatal(err)
+	}
+	if decodedPair.Fingerprint != "1111 2222 3333 4444" || !decodedPair.Awaiting {
+		t.Fatalf("pair result round-trip = %+v (%s)", decodedPair, rawPair)
+	}
+}

@@ -383,12 +383,34 @@ func apiPeer(d engine.Device) api.PeerStatus {
 			last = b.LastActiveMs
 		}
 	}
-	return api.PeerStatus{Bindings: slices.Clone(d.Bindings), ID: d.ID, Name: d.DisplayName(), Connected: deviceConnected(d), LastSeen: last / 1000}
+	return api.PeerStatus{
+		Bindings:     slices.Clone(d.Bindings),
+		ID:           d.ID,
+		Name:         d.DisplayName(),
+		UserName:     d.Name,
+		ReportedName: d.ReportedName,
+		Fingerprint:  d.Fingerprint,
+		Connected:    deviceConnected(d),
+		LastSeen:     last / 1000,
+		Revision:     d.Revision,
+	}
 }
 
 func apiChannel(c engine.Channel) api.PeerStatus {
-	return api.PeerStatus{ID: c.ID, Name: c.DisplayName(), LastSeen: c.LastActiveMs / 1000, Kind: "external", BackendID: string(c.BackendID),
-		Enabled: c.Enabled, AutoApply: c.AutoApply, RemoteRevocation: c.RemoteRevocation, Revision: c.Revision}
+	return api.PeerStatus{
+		ID:               c.ID,
+		Name:             c.DisplayName(),
+		UserName:         c.Name,
+		ReportedName:     c.ReportedName,
+		LastSeen:         c.LastActiveMs / 1000,
+		Kind:             "external",
+		BackendID:        string(c.BackendID),
+		Enabled:          c.Enabled,
+		AutoApply:        c.AutoApply,
+		RemoteRevocation: c.RemoteRevocation,
+		Revision:         c.Revision,
+		LastError:        c.LastError,
+	}
 }
 
 func (n *Node) channelName(ctx context.Context, id string) string {
@@ -673,12 +695,24 @@ func (n *Node) IgnoreCandidate(ctx context.Context, id string, ignored bool) err
 
 func (n *Node) Reject(ctx context.Context, id string) error { return n.Unpair(ctx, id) }
 
+func (n *Node) RenamePeer(ctx context.Context, id string, in api.PeerRename) (api.PeerStatus, error) {
+	d, err := n.e.RenameDevice(ctx, engine.RenameDeviceRequest{ID: id, ExpectedRevision: in.Revision, Name: in.Name})
+	if err != nil {
+		return api.PeerStatus{}, apiErr(err, false)
+	}
+	return apiPeer(d), nil
+}
+
 func (n *Node) Unpair(ctx context.Context, id string) error {
 	d, err := n.e.GetDevice(ctx, id)
 	if err != nil {
 		return apiErr(err, false)
 	}
 	return apiErr0(n.e.UnpairDevice(ctx, engine.UnpairDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision}))
+}
+
+func (n *Node) UnpairAt(ctx context.Context, id string, revision int64) error {
+	return apiErr0(n.e.UnpairDevice(ctx, engine.UnpairDeviceRequest{ID: id, ExpectedRevision: revision}))
 }
 
 func (n *Node) Clipboard(ctx context.Context) (api.ClipboardView, error) {

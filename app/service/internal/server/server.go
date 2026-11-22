@@ -322,8 +322,52 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 		reply(w, 200, map[string]bool{"ok": true})
 	})
 
+	mux.HandleFunc("PATCH /v1/peers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Revision int64   `json:"revision"`
+			Name     *string `json:"name"`
+		}
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&in); err != nil || dec.Decode(new(any)) != io.EOF || in.Revision <= 0 || in.Name == nil {
+			fail(w, 400, &api.Error{Reason: "invalid_argument", Message: "revision and name are required"})
+			return
+		}
+		via, ok := b.(interface {
+			RenamePeer(context.Context, string, api.PeerRename) (api.PeerStatus, error)
+		})
+		if !ok {
+			fail(w, 501, &api.Error{Reason: "unsupported", Message: "peer rename unavailable"})
+			return
+		}
+		peer, err := via.RenamePeer(r.Context(), r.PathValue("id"), api.PeerRename{Revision: in.Revision, Name: *in.Name})
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		reply(w, 200, peer)
+	})
+
 	mux.HandleFunc("DELETE /v1/peers/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if err := b.Unpair(r.Context(), r.PathValue("id")); err != nil {
+		var err error
+		if raw := r.URL.Query().Get("revision"); raw != "" {
+			rev, perr := strconv.ParseInt(raw, 10, 64)
+			if perr != nil || rev <= 0 {
+				fail(w, 400, &api.Error{Reason: "invalid_argument", Message: "revision must be a positive integer"})
+				return
+			}
+			via, ok := b.(interface {
+				UnpairAt(context.Context, string, int64) error
+			})
+			if !ok {
+				fail(w, 501, &api.Error{Reason: "unsupported", Message: "revision-checked unpair unavailable"})
+				return
+			}
+			err = via.UnpairAt(r.Context(), r.PathValue("id"), rev)
+		} else {
+			err = b.Unpair(r.Context(), r.PathValue("id"))
+		}
+		if err != nil {
 			fail(w, 500, err)
 			return
 		}

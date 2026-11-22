@@ -66,28 +66,85 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%.1f %cB", f, u[i])
 }
 
-type devicePath struct {
-	name, state, lastSync string
-	failed                bool
+type syncChannel struct {
+	id               string
+	implementationID string
+	transportKind    string
+	state            string // running, restarting, unavailable, suspended, disabled
+	pairing          bool
+	externalChannels bool
+	restart          bool
+	policy           string
 }
 
-// device holds shared display state. Preview-only latency, link, direction and
-// content-type policy remain separate from the Engine-backed fields.
+type deviceBinding struct {
+	id               string
+	instanceID       string
+	implementationID string
+	state            string // authorized, pending
+	syncEnabled      bool
+	connection       string // connected, disconnected
+	revision         int64
+	lastActive       string
+	lastError        string
+}
+
+// device holds unified live and preview display state backed by Engine device/binding facts.
 type device struct {
-	id, name, platform string
-	icon               desktopkit.IconName
-	online             bool
-	latency            int
-	link, lastSeen     string
-	fingerprint        string
-	direction          string // both, send, recv, pause
-	text, image, file  bool
-	paths              []devicePath
+	id           string
+	name         string
+	userName     string
+	reportedName string
+	deviceID     string
+	icon         desktopkit.IconName
+	online       bool
+	lastSeen     string
+	fingerprint  string
+	revision     int64
+	bindings     []deviceBinding
+}
+
+func (v device) displayName() string {
+	if s := strings.TrimSpace(v.name); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(v.userName); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(v.reportedName); s != "" {
+		return s
+	}
+	return "未命名设备"
+}
+
+type externalChannel struct {
+	id               string
+	name             string
+	backendID        string
+	enabled          bool
+	autoApply        bool
+	remoteRevocation bool
+	revision         int64
+	lastSeen         string
+	lastError        string
+}
+
+type pendingPath struct {
+	id         string
+	instanceID string
+	state      string
+	revision   int64
 }
 
 type pendingDevice struct {
-	id, name, platform, via, fingerprint string
-	icon                                 desktopkit.IconName
+	id          string
+	name        string
+	via         string
+	byCode      bool
+	fingerprint string
+	revision    int64
+	icon        desktopkit.IconName
+	paths       []pendingPath
 }
 
 type deviceCandidate struct {
@@ -118,19 +175,22 @@ type viewState struct {
 	list                                                                  desktopkit.ListState
 	deviceList                                                            desktopkit.SourceState
 	entries                                                               []entry
+	syncChannels                                                          []syncChannel
 	devices                                                               []device
+	channels                                                              []externalChannel
 	selected                                                              string
 	confirmEntries                                                        []string
 	drawerSwitchDir                                                       int
 	sidebarHidden, detailOpen, inspector, tagsOpen, quickLook, filterOpen bool
 	compact                                                               bool
 	gridSize                                                              float64
-	deviceTask, fieldError, notice, confirm, confirmID                    string
+	deviceTask, deviceTaskForID, pairingChannelID                         string
+	fieldError, notice, confirm, confirmDesc, confirmLabel, confirmID     string
 	deviceName                                                            string
 	pending                                                               []pendingDevice
 	candidates                                                            []deviceCandidate
 	inviteCode, inviteMode, connectInput, renameValue, deviceNote         string
-	renaming, deviceDetailOpen                                            bool
+	renaming, deviceDetailOpen, restartPending                            bool
 	options                                                               map[string]bool
 	choices                                                               map[string]string
 }
@@ -287,34 +347,89 @@ func (d *viewState) confirmDialog(c *ui.Context, k desktopkit.Kit) {
 		return
 	}
 	open := true
-	desc := "此操作只修改本次演示中的假数据。"
-	if d.live != nil {
-		desc = "删除历史记录及应用管理的内容。此操作无法撤销。"
-	}
-	if strings.HasPrefix(d.confirmID, "device:") {
-		desc = "撤销此设备的全部同步路径。对方需要重新配对并重新批准。已同步到对方的内容无法撤回。"
-	}
-	r := k.AlertDialog(c, desktopkit.AlertDialogProps{Open: &open, Title: d.confirm, Description: d.tr(desc), ConfirmLabel: d.tr("移除"), CancelLabel: d.tr("取消"), Destructive: true}, nil)
-	if r.Confirmed && d.live != nil {
+	desc := d.confirmDesc
+	if desc == "" {
+		desc = d.tr("此操作只修改本次演示中的假数据。")
+		if d.live != nil {
+			desc = d.tr("删除历史记录及应用管理的内容。此操作无法撤销。")
+		}
 		if strings.HasPrefix(d.confirmID, "device:") {
+			desc = d.tr("将撤销此设备的信任并移除全部同步路径。对方需要重新配对并批准。已同步到对方的内容无法撤回。")
+		}
+	}
+	confirmLabel := d.confirmLabel
+	if confirmLabel == "" {
+		confirmLabel = d.tr("移除")
+	}
+	r := k.AlertDialog(c, desktopkit.AlertDialogProps{Open: &open, Title: d.confirm, Description: desc, ConfirmLabel: confirmLabel, CancelLabel: d.tr("取消"), Destructive: true}, nil)
+	if r.Confirmed && d.live != nil {
+		switch {
+		case strings.HasPrefix(d.confirmID, "device:"):
 			id := strings.TrimPrefix(d.confirmID, "device:")
 			client := d.live.client
-			d.mutate(func(ctx context.Context) error { return client.Unpair(ctx, id) }, "设备已移除")
-		} else {
+			rev := int64(0)
+			if peer, ok := d.live.peers[id]; ok {
+				rev = peer.Revision
+			} else if dev := d.deviceByID(id); dev != nil {
+				rev = dev.revision
+			}
+			d.mutate(func(ctx context.Context) error {
+				if rev > 0 {
+					return client.UnpairAt(ctx, id, rev)
+				}
+				return client.Unpair(ctx, id)
+			}, "设备已移除")
+		case strings.HasPrefix(d.confirmID, "binding:"):
+			rest := strings.TrimPrefix(d.confirmID, "binding:")
+			devID, bindID, _ := strings.Cut(rest, ":")
+			var rev int64
+			if dev := d.deviceByID(devID); dev != nil {
+				for _, b := range dev.bindings {
+					if b.id == bindID {
+						rev = b.revision
+						break
+					}
+				}
+			}
+			client := d.live.client
+			d.mutate(func(ctx context.Context) error { return client.RemoveBinding(ctx, bindID, rev) }, "同步路径已移除")
+		case strings.HasPrefix(d.confirmID, "channel:"):
+			id := strings.TrimPrefix(d.confirmID, "channel:")
+			var rev int64
+			if ch := d.channelByID(id); ch != nil {
+				rev = ch.revision
+			}
+			client := d.live.client
+			d.mutate(func(ctx context.Context) error { return client.RemoveChannel(ctx, id, rev) }, "外部渠道已移除")
+		default:
 			d.deleteLiveEntries(d.confirmEntries)
 		}
 	} else if r.Confirmed {
-		if strings.HasPrefix(d.confirmID, "device:") {
+		switch {
+		case strings.HasPrefix(d.confirmID, "device:"):
 			id := strings.TrimPrefix(d.confirmID, "device:")
 			d.devices = slices.DeleteFunc(d.devices, func(v device) bool { return v.id == id })
+			d.pending = slices.DeleteFunc(d.pending, func(p pendingDevice) bool { return p.id == id })
 			d.deviceList.Value, d.deviceDetailOpen = "local", false
-		} else {
+			d.ensureDeviceSelection()
+		case strings.HasPrefix(d.confirmID, "binding:"):
+			rest := strings.TrimPrefix(d.confirmID, "binding:")
+			devID, bindID, _ := strings.Cut(rest, ":")
+			if dev := d.deviceByID(devID); dev != nil {
+				dev.bindings = slices.DeleteFunc(dev.bindings, func(b deviceBinding) bool { return b.id == bindID })
+			}
+		case strings.HasPrefix(d.confirmID, "channel:"):
+			id := strings.TrimPrefix(d.confirmID, "channel:")
+			d.channels = slices.DeleteFunc(d.channels, func(ch externalChannel) bool { return ch.id == id })
+			d.deviceDetailOpen = false
+			d.ensureDeviceSelection()
+		default:
 			d.entries = slices.DeleteFunc(d.entries, func(v entry) bool { return slices.Contains(d.confirmEntries, v.id) })
 			d.selected = ""
 		}
 	}
 	if !open {
-		d.confirm, d.confirmID = "", ""
+		d.confirm, d.confirmDesc, d.confirmLabel, d.confirmID = "", "", "", ""
 		d.confirmEntries = nil
 	}
 }

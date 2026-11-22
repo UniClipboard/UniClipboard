@@ -402,4 +402,15 @@ The single-instance external-process acceptance and remaining contract decision 
 
 `GET /v1/status` retains one row per trusted device and includes its sanitized `bindings`. Pending approval includes `paths` plus the existing exact pending binding revision set. No address, credential or RPC token is included. Trusted devices remain listed after their last path is removed. Channels retain their separate kind and never gain fingerprints or device bindings.
 
+`PeerStatus` entries in `GET /v1/status` also project:
+- `fingerprint`: device identity fingerprint (devices only; omitted for external channels).
+- `user_name`: optional user-assigned custom name (omitted when unset; `name` remains the effective display name, falling back to `reported_name`).
+- `reported_name`: peer-reported name (omitted when unset).
+- `revision`: current Engine CAS revision (populated for both devices and external channels).
+- `last_error`: stable, redacted error class for external channels (omitted when empty; raw backend text is never exposed).
+
+`PATCH /v1/peers/{id}` accepts a JSON body of at most 4096 bytes containing a positive `revision` and required `name` string (`""` clears the custom name and reverts `name` to `reported_name`), rejecting unknown fields and trailing JSON. It delegates to Engine `RenameDevice` with CAS and returns the updated `PeerStatus`. Missing or invalid fields, names exceeding 64 bytes, control characters or leading/trailing whitespace return HTTP 400 (`invalid_argument`); unknown peers return HTTP 404 (`not_found`); stale revisions return HTTP 409 (`conflict`).
+
+`DELETE /v1/peers/{id}` accepts an optional `?revision=N` query parameter. When present, `N` must be a positive integer (otherwise HTTP 400 `invalid_argument`) and revocation uses Engine `UnpairDevice` CAS, returning HTTP 409 (`conflict`) without unpairing on a stale revision or HTTP 404 (`not_found`) for an unknown peer. When omitted, the route retains whole-device unpairing against the current revision.
+
 `PATCH /v1/bindings/{id}` requires both `revision` and `enabled`. `DELETE /v1/bindings/{id}?revision=N` removes only that path. Both use Engine CAS and revocation barriers; stale revisions return HTTP 409. `unic device list --json` exposes the current path revisions; `unic device path pause|resume|remove BINDING_ID REVISION` submits them. Desktop device details expose the same per-path switch and removal operation. Whole-device removal still revokes every path.

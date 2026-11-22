@@ -9,8 +9,9 @@ import (
 	"os"
 	"strings"
 
-	api "github.com/uniclipboard/unic/internal/localapi"
 	"golang.org/x/term"
+
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 func runChannelPair(ctx context.Context, c *api.Client, args []string) error {

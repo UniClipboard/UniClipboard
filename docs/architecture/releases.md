@@ -24,18 +24,19 @@ paths:
   - .github/workflows/package-acceptance.yml
   - .github/workflows/pr-checks.yml
   - .github/workflows/release-desktop.yml
+  - .github/workflows/prepare-legacy-desktop-alpha.yml
   - .github/workflows/native-desktop-acceptance.yml
   - app/desktop/e2e/run.py
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 8117c793097da648ac0b665e4e6af10f45fad695
+verified: 462034d82480eef1e7c2f6cca3c9dc104b41d612
 ---
 # Product builds and CLI releases
 
 ## Current implementation
 
-`release/products.toml` owns product versions and build numbers. CLI and Desktop have separate build and delivery controllers. Public delivery is a separate accepted operation. Desktop selects `2.0.0 (1)` for the first v2 candidate. Android and iOS records reserve independent metadata. These records do not establish release support.
+`release/products.toml` owns product versions and build numbers. CLI and Desktop have separate build and delivery controllers. Public delivery is a separate accepted operation. Desktop selects `2.0.0 (2)` for the v1 alpha upgrade candidate. Android and iOS records reserve independent metadata. These records do not establish release support.
 
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 
@@ -127,6 +128,34 @@ The existing delivery workflow supports `github-draft`, `publish` and `promote`.
 
 `sandbox-acceptance.yml` runs actual Nix, Flatpak and strict Snap construction/execution on both Linux architectures. The harness overrides source acquisition with the exact verified pre-publication DEB; generated runtime/build steps remain unchanged. Missing runtimes, namespace failures or confinement failures fail the job. Nix sets only the Desktop ELF interpreter and supplies GTK libraries through the existing wrapper; it does not add RUNPATH to the prebuilt Go binary. The locked private CLI pair remains unchanged. The process harness verifies real private CLI/service IPC and bounded shutdown inside each environment. These nonvisual process checks do not establish clipboard, file/network, refresh or sandbox GUI acceptance.
 
+## Desktop alpha upgrade from 1.6.2-alpha.2
+
+FlareRelease can offer the selected 2.0 alpha build to Desktop
+`1.6.2-alpha.2` through the legacy update route. The offer uses separate
+Minisign signatures and six exact GitHub prerelease assets. The numbered native
+feed continues to use raw Ed25519 signatures.
+
+The signed macOS bundle retains the old `Contents/MacOS/gui-go` launch path
+and accepts the old restart flags through that path. The Windows installer
+accepts the old updater's passive invocation for an existing
+`1.6.2-alpha.2` installation. It waits for the old files to become writable
+before replacement and relaunches without passing the old flags. On Linux, the
+legacy updater replaces an AppImage in place. The package manager continues
+to own DEB and RPM upgrades.
+
+Run **Prepare legacy Desktop alpha** after numbered alpha publication. It
+downloads the exact assets, checks them against the release catalogue, and
+uses the pinned v1 signer and v1 verification path. The output includes the
+legacy offer and the per-file signature verification receipt. Its native
+jobs verify the existing and candidate archives with the old key, replace a
+disposable v1 installation, and check explicit history migration. The jobs
+record Windows installer relaunch and verify the old executable paths on
+macOS and Linux. The workflow does not activate the offer. Before activation, verify the old installed
+package, upgrade, relaunch, unchanged source data, and explicit history import
+for each of the six targets against the exact asset hashes. Write the
+accepted offer to the FlareRelease control object after acceptance. Remove
+the object to stop further offers.
+
 ## v1 upgrade notice and migration
 
 The CLI checks known v1 paths only when stderr is a terminal and `--json` is absent. It performs directory stat calls; it does not open credentials or a database. A default v1 directory or the active `UC_PROFILE` directory triggers the warning. Missing paths and regular files remain silent. Custom and portable profiles outside these locations require explicit `--source` selection.
@@ -196,7 +225,7 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-The selected next CLI version is `2.0.0 (2)`, encoded as `2.0.0-build.2` on npm. Alpha selects the `alpha` dist-tag. Desktop selects `2.0.0 (1)`; Android and iOS retain independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Historical remote five-target build and package assembly acceptance passed. The six-target CLI matrix has native hosted acceptance. CLI build 2 is selected to include the current shared configuration/API; the execution receipt records its final accepted lock. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
+The selected next CLI version is `2.0.0 (2)`, encoded as `2.0.0-build.2` on npm. Alpha selects the `alpha` dist-tag. Desktop selects `2.0.0 (2)`; Android and iOS retain independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Historical remote five-target build and package assembly acceptance passed. The six-target CLI matrix has native hosted acceptance. CLI build 2 is selected to include the current shared configuration/API; the execution receipt records its final accepted lock. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
 
 Desktop staging checks the locked private service configuration/API in addition to executable hashes. macOS signing/notarization, native Windows installer lifecycle, and two-architecture Nix/Flatpak/strict Snap process/IPC acceptance have passed as recorded in the execution receipt. Production delivery requires the durable raw updater key and the numbered public routes. R2/FlareRelease transport and the locked CLI npm availability gate are implemented but have not performed production delivery. Native sandbox GUI, package refresh and real-OS clipboard/file/network acceptance remain open. Android and iOS share an Expo UI shell under `app/expo`; it has no Engine integration and does not establish native release support. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
 

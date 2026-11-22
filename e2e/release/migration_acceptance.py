@@ -1,5 +1,6 @@
 """Installed CLI processes, terminal detection and frozen Rust migration data."""
 
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -27,7 +28,7 @@ def frozen_source(root, source):
     )
     payload.mkdir(parents=True)
     dbpath = payload / "profile.sqlite"
-    with sqlite3.connect(dbpath) as db:
+    with closing(sqlite3.connect(dbpath)) as db, db:
         db.executescript("""
     CREATE TABLE clipboard_entry(entry_id TEXT PRIMARY KEY,event_id TEXT,created_at_ms INTEGER,active_time_ms INTEGER,content_category TEXT,deleted_at_ms INTEGER);
     CREATE TABLE clipboard_snapshot_representation(id TEXT PRIMARY KEY,event_id TEXT,mime_type TEXT,format_id TEXT,inline_data BLOB,blob_id TEXT,size_bytes INTEGER);

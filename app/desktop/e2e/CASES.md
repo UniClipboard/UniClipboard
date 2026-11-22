@@ -1010,6 +1010,7 @@ ui-click listItem 设置…
 ui-wait listItem 存储与备份
 ui-click listItem 存储与备份
 ui-wait button '从 v1 迁移'
+ui-reveal button '从 v1 迁移'
 screenshot settings
 ui-click button '从 v1 迁移'
 ui-wait button '开始迁移'
@@ -1255,7 +1256,7 @@ ui-click listItem 存储与备份
 config-equals history.auto_cleanup false
 ui-disabled popUpButton 历史保留时间
 ui-disabled popUpButton 最大历史条目数
-ui-disabled checkBox '保留 #文本'
+ui-disabled button '保留 #文本'
 ui-enabled popUpButton 单设备缓存配额
 screenshot cleanup-off
 ui-enabled switch 自动清理历史
@@ -1263,7 +1264,7 @@ ui-click switch 自动清理历史
 config-equals history.auto_cleanup true
 ui-enabled popUpButton 历史保留时间
 ui-enabled popUpButton 最大历史条目数
-ui-enabled checkBox '保留 #文本'
+ui-enabled button '保留 #文本'
 ui-enabled switch 自动清理历史
 ui-click switch 自动清理历史
 config-equals history.auto_cleanup false
@@ -1275,7 +1276,7 @@ ui-click listItem 存储与备份
 config-equals history.auto_cleanup false
 ui-disabled popUpButton 历史保留时间
 ui-disabled popUpButton 最大历史条目数
-ui-disabled checkBox '保留 #文本'
+ui-disabled button '保留 #文本'
 ui-enabled popUpButton 单设备缓存配额
 screenshot persisted-after-restart
 ```

@@ -15,7 +15,7 @@ make desktop-e2e CASE=history-search-copy
 make desktop-e2e SHARD=1/3
 ```
 
-`SHARD=index/count` selects one disjoint round-robin partition of the sorted catalogue. Run every shard for complete coverage. Do not combine `CASE` and `SHARD`. PR CI runs three shards on separate hosted runners, preserves the thirty-minute limit for each job and uploads distinct reports. Preview a selection with `python3 app/desktop/e2e/run.py list --shard 1/3`.
+`SHARD=index/count` selects one disjoint partition of eligible cases using the checked-in [timing baseline](timings.json). Preview an exact selection with `python3 app/desktop/e2e/run.py list --shard 1/6`. Run every shard for complete coverage. Do not combine `CASE` and `SHARD`. PR CI runs six shards on separate hosted runners, preserves the thirty-minute limit for each job and uploads distinct reports.
 
 [CASES.md](CASES.md) is generated from `cases/*.txtar`. Each case states its purpose, actions, expected result, forbidden result and evidence mode. Developers do not set individual `UNIC_*` switches or assemble receipt paths. All 25 prior Desktop acceptance entries are migrated. Original test files, switches and standalone entries are removed. See the [migration map](MIGRATION.md). UI Kit component checks remain outside the Desktop E2E catalogue.
 
@@ -88,6 +88,13 @@ Recording requires an available H.264 encoder. The recorder uses `libx264`, or `
    ```
 
 7. Inspect the report and run `make desktop-e2e` before considering the change accepted. The ordinary Go test command checks catalogue freshness, but skips the explicit acceptance run.
+
+### Runtime budget
+
+- Give each case one independently reproducible scenario. Split expensive combinations into independently runnable groups when the scenarios allow it. Preserve all assertions and required evidence, including screenshots, native recordings and cleanup checks. Measure the groups together and account for repeated setup and cleanup when comparing the split with the original case.
+- Check new and changed cases against their measured durations in hosted PR CI. Use the per-case timeline in the existing report. Flag cases that reach two minutes. At three minutes, review opportunities to split the scenario or remove duplicated setup. If the scenario must run as one case, record the reason and measured duration in the PR. If runner variance may explain a single slow measurement, retain the first report and repeat the measurement within a stated limit before deciding.
+- Aim for 10–12 minutes of elapsed wall-clock time for the complete Desktop E2E checks in PR CI. When balancing shards by duration, use a conservative estimate from comparable cases for each new case. The CI timing job reports the slowest measured case and shard. Compare hosted job elapsed times when checking the 10–12 minute target, since the timing job reports runner time.
+- Refresh `timings.json` from a successful hosted run when cases change or the timing report shows imbalance. Download `desktop-e2e-timing-baseline`, review its source SHA and per-case durations, then commit its `timings.json` in the next change. The initial baseline uses the last timed step in each verified case report. Later baselines use elapsed time through case cleanup.
 
 ### Native commands
 

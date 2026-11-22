@@ -13,3 +13,5 @@
 - Quick-panel system interaction follows the [Desktop contract](../../docs/contracts/desktop-quick-panel-contract.md). Keep OS target identity and synthetic input in the Desktop host; service and Engine must not own them.
 
 - Use `make desktop-e2e` as the canonical Desktop acceptance entry. Add declarative cases and regenerate the [catalogue](e2e/CASES.md); follow the [evidence contract](../../docs/contracts/desktop-e2e-contract.md). Native-window recordings do not establish OS focus or cross-application paste.
+
+- Follow the [Desktop E2E runtime rules](e2e/README.md#runtime-budget) when adding or changing cases or CI shard assignments. Measure affected cases in hosted PR CI and review any case that reaches the review threshold.

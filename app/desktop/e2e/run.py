@@ -91,6 +91,24 @@ def catalogue(specs):
     return text
 
 
+def select_shard(specs, index, count, base=HERE):
+    weights = json.loads((base / 'timings.json').read_text(encoding='utf-8'))['case_ms']
+    if any(type(ms) is not int or ms <= 0 for ms in weights.values()):
+        raise ValueError('historical case durations must be positive integer milliseconds')
+    estimates = {mode: 180_000 for mode in ('native', 'process', 'view')}
+    for spec in specs:
+        mode = spec['mode']
+        estimates[mode] = max(estimates[mode], weights.get(spec['id'], 0))
+    durations = {spec['id']: weights.get(spec['id'], estimates[spec['mode']]) for spec in specs}
+    shards = [[] for _ in range(count)]
+    loads = [0] * count
+    for case_id in sorted(durations, key=lambda case_id: (-durations[case_id], case_id)):
+        lightest = min(range(count), key=loads.__getitem__)
+        shards[lightest].append(case_id)
+        loads[lightest] += durations[case_id]
+    return sorted(shards[index - 1])
+
+
 def doctor(native):
     for name in ('go', 'python3') + (('ffmpeg', 'ffprobe') if native else ()):
         if not shutil.which(name):
@@ -183,7 +201,8 @@ def report(out, manifest, specs):
     (out / 'index.html').write_text('\n'.join(body), encoding="utf-8")
 
 
-def run(specs, selected, output, guest=None, control=None):
+def run(specs, selected, output, guest=None, control=None, shard=None):
+    started = time.monotonic()
     run_id = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
     out = Path(output).resolve() if output else ROOT / '.build/desktop-e2e' / run_id
     if out.exists():
@@ -192,6 +211,9 @@ def run(specs, selected, output, guest=None, control=None):
     manifest = dict(version=1, run_id=run_id, status='RUNNING', cases={},
                     native_os_focus='NOT_RUN', system_clipboard='NOT_RUN', cross_application_paste='NOT_RUN',
                     runner_sha256=digest(Path(__file__)))
+    if shard:
+        index, count, include_guests = shard
+        manifest['shard'] = f'{index}/{count}'
     if guest:
         manifest['guest'] = guest
     for s in specs:
@@ -223,6 +245,10 @@ def run(specs, selected, output, guest=None, control=None):
         wanted = [s for s in specs if s['id'] in selected]
         if len(wanted) != len(selected):
             raise RuntimeError('case selection changed while taking the snapshot')
+        if shard:
+            eligible = [s for s in specs if include_guests or s['environment'] == 'isolated']
+            if selected != select_shard(eligible, index, count, snapshot / 'app/desktop/e2e'):
+                raise RuntimeError('shard assignment changed while taking the snapshot')
         manifest['go'] = subprocess.check_output(['go', 'version'], text=True).strip()
         manifest['host_os'] = platform.platform()
         manifest['platform'] = subprocess.check_output(['go', 'env', 'GOOS', 'GOARCH'], text=True).splitlines()
@@ -316,6 +342,7 @@ def run(specs, selected, output, guest=None, control=None):
             except OSError:
                 manifest['private_cleanup'] = 'FAIL'
                 manifest['status'] = 'FAIL'
+        manifest['elapsed_ms'] = round((time.monotonic() - started) * 1000)
         write_json(out / 'manifest.json', dict(manifest, status='FINALIZING'))
         try:
             report(out, manifest, specs)
@@ -342,7 +369,7 @@ def main():
     parser.add_argument('action', choices=('run', 'list', 'doctor', 'catalog'), nargs='?', default='run')
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument('--case', default='')
-    selection.add_argument('--shard', help='one-based index/count over the sorted complete catalogue')
+    selection.add_argument('--shard', help='one-based index/count over the eligible catalogue, balanced by duration')
     parser.add_argument('--out')
     parser.add_argument('--guest', help='explicitly authorize selected guest acceptance in this VM UUID')
     parser.add_argument('--control-dir', type=Path, help='owned guest directory for physical-input requests')
@@ -350,15 +377,18 @@ def main():
     parser.add_argument('--update', action='store_true')
     args = parser.parse_args()
     specs = cases()
-    selected = [args.case] if args.case else [s['id'] for s in specs if args.action in ('list', 'catalog') or args.guest or s['environment'] == 'isolated']
+    eligible = [s for s in specs if args.guest or s['environment'] == 'isolated']
+    selected = [args.case] if args.case else [s['id'] for s in (specs if args.action in ('list', 'catalog') else eligible)]
+    shard = None
     if args.shard:
         match = re.fullmatch(r'([1-9][0-9]*)/([1-9][0-9]*)', args.shard)
         if not match:
             raise ValueError('shard must be index/count, for example 1/3')
         index, count = map(int, match.groups())
-        if not 1 <= index <= count <= len(selected):
-            raise ValueError('shard requires 1 <= index <= count <= catalogue size')
-        selected = selected[index - 1::count]
+        if not 1 <= index <= count <= len(eligible):
+            raise ValueError('shard requires 1 <= index <= count <= eligible catalogue size')
+        selected = select_shard(eligible, index, count)
+        shard = (index, count, bool(args.guest))
     if not set(selected).issubset({s['id'] for s in specs}):
         raise ValueError('unknown Desktop case')
     if args.action == 'catalog':
@@ -409,7 +439,7 @@ def main():
         doctor(any(s['mode'] == 'native' and s['id'] in selected for s in specs))
         print('READY: basic prerequisites found; native startup is verified by the case')
         return 0
-    return run(specs, selected, args.out, guest, args.control_dir)
+    return run(specs, selected, args.out, guest, args.control_dir, shard)
 
 
 if __name__ == '__main__':

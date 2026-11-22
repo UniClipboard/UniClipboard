@@ -55,6 +55,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0024](docs/decisions/proposed/0024-directory-copy-and-send.md) | Directory copy and explicit send | Implemented; local and macOS/Linux CLI acceptance recorded; native clipboard/paste acceptance pending. One-shot directory transfer; automatic sync defaults off; explicit send prepares snapshots; mixed selections follow directory policy. |
 | [0025](docs/decisions/proposed/0025-desktop-package-identity-and-replacement.md) | Desktop package identity and replacement | Accepted; same-channel v2 replaces v1, alpha/stable share installation identity, development stays isolated, bundled CLI files are private, package managers own updates; runtime and construction implemented, production activation and real v1 replacement acceptance pending. |
 | [0026](docs/decisions/proposed/0026-first-install-setup.md) | Desktop first-install setup | Implemented with the shared native Desktop composition and prototype/setup.html; presentation now uses BoardUI. Software-view and macOS native complete/partial recordings passed; actual credential prompts and remaining native scenarios/platforms are pending. Slogan: “让每一次复制更有用”. |
+| [0027](docs/decisions/proposed/0027-wenshushu-share-action.md) | Wenshushu temporary-share Action | Host and independent plugin implemented; process/live provider E2E passed. Repository: `UniClipboard/unic-plugin-wenshushu`; plugin ID: `unic.wenshushu`. Native UI and packaged releases pending. |
 
 ### 接口契约（`docs/contracts/`）
 

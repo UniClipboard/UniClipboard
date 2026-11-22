@@ -10,7 +10,7 @@
 
 插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。sync_backend 还可声明 `ExternalChannels`（对端是没有 unic 身份的外部渠道，见 0009）与 `RemoteRevocation`（须同时声明 ExternalChannels，并实现 `ChannelLeaver`）；其他插件声明这两项被拒绝。外部渠道后端实现 `ReceiverAware`，Engine 在 Init 之后、Start 之前交给它 `Receiver`，收到的内容经 `Receive(channelID, Received)` 进入 Engine；被拒（渠道停用、策略、空间、重复）时返回错误，后端丢弃且不得重试。当前只支持进程内 Go 实例，外部进程后端待 RPC 业务层。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat` 保留给发行版内置同步插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
 
-processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Accepts ⊆ {text, image, files}，首版仅 text 可用（来源与结果都是文本）。首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
+processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Go `Accepts` is a non-empty unique subset of `{text, image, files}`; results remain text. Lua Actions accept text only.首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
 
 **Go 插件区分 builtin 与 external 两种装配方式**。builtin 由宿主显式创建进程内实例，随宿主构建和升级，不走安装器或 RPC；默认同步后端 `builtin.tailcat` 位于 `internal/plugins/tailcat/`，与 `builtin.text` 保持独立 ID、配置和生命周期。两种方式执行相同的能力校验、实例授权和业务契约，builtin 不因内置而绕过设备审批。
 
@@ -270,6 +270,19 @@ Go 与 Lua 的正则方言不同，示例只展示接口对应关系；Go 版 Ac
 
 ## 8. 从 GitHub 仓库安装
 
+### Independent repository naming
+
+Independently distributed plugin repositories use `unic-plugin-<slug>`.
+Use a short lowercase slug that identifies the plugin, such as
+`unic-plugin-wenshushu`. The repository name is a distribution convention;
+it does not replace the manifest plugin ID or the Action key.
+The installer continues to accept existing repository names.
+
+The independent repository owns its implementation, manifest, dependency lock,
+release artifacts and end-to-end acceptance. A main-repository entry under
+`plugins/examples/` may link to that repository and a compatible immutable
+revision. Do not maintain a second copy of the implementation there.
+
 Plugin commands:
 
 ```sh
@@ -387,6 +400,22 @@ importer preserves v1 code membership under this identifier. `builtin.classify`
 does not currently generate code membership for new content. The
 [history contract](history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252)
 defines migration and automatic recovery.
+
+## Go Action content and deadlines
+
+Go Action input declarations accept a unique, non-empty subset of text, image
+and files. Results remain text. `ActionSource.Parts` and `OpenPart` expose only
+the selected source content during the invocation. `ActionSpec.TimeoutMS` and
+manifest `actions.timeout_ms` select 0..300000 milliseconds; zero retains the
+10-second default. Manifest and process handshake declarations must match.
+Lua keeps its existing text-only Action and execution budgets.
+See the [Action contract](clipboard-action-contract.md#go-action-source-content)
+for ownership, cancellation and failure semantics.
+
+GitHub source archives may include global PAX metadata before the repository
+root. The extractor ignores that metadata for root selection and filesystem
+creation. Every materialized entry still passes root and local-path validation;
+metadata-only source archives are rejected.
 
 ## Runtime instances of installed Go sync backends
 

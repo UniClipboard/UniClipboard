@@ -42,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: e0174bbb62fdc171ee47173c6c911e316b24f7d9
+verified: cf82c9efc64a64f4cd43c6783c43cd236c1c1e3b
 ---
 # Desktop configuration and received files
 
@@ -432,3 +432,17 @@ Device invitation and connection tasks select a running peer-sessions channel (h
 Main GUI, first-install setup, Quick Panel and demos use the same native BoardUI content resources through the public `boardui` controls and application-only `desktopkit` compositions. The former skin engine, platform token snapshots and selector are removed. System/light/dark remain scheme choices. OS frame policy, modifiers, tray/system menus, file and credential prompts, updater, clipboard ownership and focus/paste dispatch remain native host integration.
 
 The independent `boardui-demo` uses synthetic local form state and creates no product service/GUI/panel/tray role. Production pages use their existing live binding and runtime configuration. Canonical `boardui-settings`/`boardui-states` cases and the real-React replay cover the named component scenes. Production composition/migration/menu/surface cases cover their own shared-renderer scenarios. These results do not imply native OS keyboard/IME, platform accessibility, compositor or Windows memory acceptance. See the [native BoardUI contract](../contracts/boardui-native-contract.md) and [production migration receipt](../exec/boardui-production-migration.md).
+
+## External share Actions
+
+History Action menus filter declarations by the selected item type. Go plugins
+may declare text, image and file inputs. Their result remains a new text history
+item and uses the existing explicit apply path. Desktop opts into cancelling
+admitted Action work with the caller context. CLI allows the five-minute Action
+budget plus transport margin. Provider upload behavior remains outside the
+Desktop composition. See the [Action contract](../contracts/clipboard-action-contract.md).
+
+Desktop Action jobs use a five-minute plus thirty-second worker budget for
+execution, response and clipboard application. Other queued jobs and mutations
+retain their fifteen-second budget. The Engine independently enforces each
+Action declaration's execution deadline.

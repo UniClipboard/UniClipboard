@@ -139,9 +139,7 @@ func (l *liveState) work() {
 		case <-l.ctx.Done():
 			return
 		case job := <-l.jobs:
-			ctx, cancel := context.WithTimeout(l.ctx, 15*time.Second)
-			apply := job(ctx)
-			cancel()
+			apply := job(l.ctx)
 			select {
 			case <-l.ctx.Done():
 				return
@@ -178,11 +176,19 @@ func (l *liveState) follow() {
 	}
 }
 func (l *liveState) enqueue(job func(context.Context) func()) bool {
+	return l.enqueueWithin(job, 15*time.Second)
+}
+func (l *liveState) enqueueWithin(job func(context.Context) func(), budget time.Duration) bool {
+	wrapped := func(parent context.Context) func() {
+		ctx, cancel := context.WithTimeout(parent, budget)
+		defer cancel()
+		return job(ctx)
+	}
 	if l.ctx.Err() != nil {
 		return false
 	}
 	select {
-	case l.jobs <- job:
+	case l.jobs <- wrapped:
 		return true
 	default:
 		l.message = "操作正在处理中，请稍后重试。"
@@ -919,6 +925,9 @@ func shortText(s string, n int) string {
 
 // mutate queues one user intent. Writes are never automatically replayed.
 func (d *viewState) mutate(work func(context.Context) error, success string) {
+	d.mutateWithin(work, success, 15*time.Second)
+}
+func (d *viewState) mutateWithin(work func(context.Context) error, success string, budget time.Duration) {
 	l := d.live
 	if l.busy {
 		return
@@ -928,7 +937,7 @@ func (d *viewState) mutate(work func(context.Context) error, success string) {
 	l.busy = true
 	l.message = ""
 	d.notice = "正在处理…"
-	if !l.enqueue(func(ctx context.Context) func() {
+	if !l.enqueueWithin(func(ctx context.Context) func() {
 		err := work(ctx)
 		return func() {
 			l.busy = false
@@ -944,7 +953,7 @@ func (d *viewState) mutate(work func(context.Context) error, success string) {
 				d.notice = ""
 			}
 		}
-	}) {
+	}, budget) {
 		l.busy = false
 	}
 }
@@ -1277,8 +1286,8 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 
 func (d *viewState) runHistoryAction(id, key string) {
 	client := d.live.client
-	request := api.ActionInput{RequestID: "desktop-" + newRequestID(), Apply: true}
-	d.mutate(func(ctx context.Context) error {
+	request := api.ActionInput{RequestID: "desktop-" + newRequestID(), Apply: true, CancelOnContext: true}
+	d.mutateWithin(func(ctx context.Context) error {
 		result, err := client.ExecuteAction(ctx, id, key, request)
 		if err != nil {
 			return err
@@ -1287,5 +1296,5 @@ func (d *viewState) runHistoryAction(id, key string) {
 			return &api.Error{Reason: "action_apply_failed", Message: "action saved to history"}
 		}
 		return nil
-	}, "已复制")
+	}, "已复制", 5*time.Minute+30*time.Second)
 }

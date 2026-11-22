@@ -507,6 +507,16 @@ Directory selection references, preparation, manifests, file-policy grouping, bo
 Clipboard content and history preserve optional source application identity and cached PNG icons.
 See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.
 
+## Go Action input streams
+
+Go Actions may accept text, image and file history items and return a new text
+item. The Engine retains source content while the invocation is active and
+revokes readers when it ends. `ActionSpec.TimeoutMS` selects a deadline up to
+300000ms; zero preserves 10 seconds. `RunActionRequest.CancelOnContext` opts into
+cancelling admitted Action work when its caller context ends. The default keeps
+admitted work running. See the [Action contract](clipboard-action-contract.md#go-action-source-content)
+for indexed source access, idempotency and external-effect boundaries.
+
 ## Configured sync backend instances
 
 `PluginInstance.ID` is the local runtime instance ID. Empty uses the implementation ID as the singleton convenience. A distinct ID is supported for external Go `sync_backend` instances. `PluginProcess.Spec.ID` remains the implementation identity verified by the process handshake. Lua and ordinary processor/observer instances cannot acquire this capability or use runtime aliases.

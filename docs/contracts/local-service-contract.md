@@ -17,7 +17,7 @@ Protocol version remains 1.
 | `GET /v1/received` | None | Engine `ReceivedContent[]` |
 | `GET /v1/received/{receipt_id}/content?part=N` | Zero-based part, default 0 | Content stream |
 | `DELETE /v1/received/{receipt_id}` | None | Dismiss transient record |
-| `POST /v1/history/{id}/actions/{key}` | `{request_id,apply}` | `{item,submission,applied,apply_error?}` |
+| `POST /v1/history/{id}/actions/{key}` | `{request_id,apply,cancel_on_context?}` | `{item,submission,applied,apply_error?}` |
 
 A snapshot has `Parts` with `Format` and base64 `Data`, and `Files` with absolute `Path`, `Name` and `Size`.
 File paths refer to same-user local files. Engine imports stable references, checks changes on reads, and owns no source file.
@@ -383,6 +383,12 @@ across service restarts. Review cleanup policy before importing old real history
 ## Plugin configuration
 
 The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.
+
+Action `cancel_on_context` defaults false. CLI and Desktop opt in for explicit
+user Actions. CLI permits up to five minutes plus five seconds of transport
+margin for Action requests; other non-streaming requests keep their 60-second
+budget. The Engine Action deadline remains at most five minutes. Request
+cancellation revokes upload readers when the opt-in flag is true.
 
 ## Sync backend selection
 

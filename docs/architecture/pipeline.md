@@ -14,6 +14,7 @@ paths:
   - internal/wire/wire.go
   - plugin/rpc/
   - plugin/serve.go
+  - plugin/serve_action_content.go
   - plugin/serve_backend.go
   - internal/pluginproc/
   - app/service/internal/host/history.go
@@ -46,7 +47,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 8bbc04226f011acf58c005af520f25564163501d
+verified: 241db5c3608e59c2437a8dc774e19912dbd9f1f7
 ---
 # Clipboard pipeline and local history
 
@@ -65,7 +66,7 @@ The stage chain is Capture/Receive → Processing → Commit → Sync → Use �
 - **Receive**: Admission checks part sizes, policy, deduplication and storage before body delivery. Processing sees only accepted parts. An empty filtered result is dropped without successful deduplication. Received content is never forwarded. Reserve a Received slot before writing history and successful deduplication. The final publication rechecks lifecycle, sync policy and source authorization. Failure removes the new history and deduplication record.
 - **Temporary receive**: `AdmitTransfer` reserves the shared receive path under backend `unic.transfer` and pseudo-channel `transfer`. It creates no stored device or channel. Ephemeral receipts bypass device/channel authorization, but still require active lifecycle, enabled sync, receive policy and storage admission. They use origin `external`, run received processors and do not request automatic clipboard application.
 - **Use**: `BeginApply` and `BeginApplyHistory` apply content without a new commit. History tickets freeze the stored origin classification for `history_applied`; the event requires successful application with `UserRestore=true`. Desktop can call `SyncRestoredHistory` after explicit restore when `sync.on_restore` is enabled. Action-result application remains local. See [desktop runtime](desktop-runtime.md).
-- **Actions**: User-triggered `ListActions`/`RunAction` operate on text history. A plugin action must produce one nonempty UTF-8 text result. The new `action` record forces persistence and passes captured processors and normal sync decisions. The source remains unchanged. Action execution shares the processor instance gate and has a 10-second budget. Request IDs share the submission namespace. Plugin failures return opaque errors. The host applies the new history item. `builtin.text` provides upper/lower/trim/plain and email/URL tagging. Service routes are `GET /v1/actions` and `POST /v1/history/{id}/actions/{key}`.
+- **Actions**: User-triggered `ListActions`/`RunAction` support text, image and file history for Go plugins; Lua Actions remain text-only. A plugin action must produce one nonempty UTF-8 text result. The new `action` record forces persistence and passes captured processors and normal sync decisions. The source remains unchanged. Action execution shares the processor instance gate. Go declarations can select deadlines up to five minutes; zero keeps the ten-second default. Lua retains its VM budget. Request IDs share the submission namespace. Plugin failures return opaque errors. The host applies the new history item. `builtin.text` provides upper/lower/trim/plain and email/URL tagging. Service routes are `GET /v1/actions` and `POST /v1/history/{id}/actions/{key}`.
 - **History**: SQLite records and private blobs belong to Engine. Host-managed files remain external references. Stable IDs, pagination, edits, leases, expiry and apply follow the [history contract](../contracts/history-contract.md). Cleanup defaults to enabled, 180 days, unlimited eligible records and no excluded tags. The startup history byte budget is 4 GiB. Live history settings affect existing records. Tag exclusions protect records and managed files. Explicit item expiry is independent. The service exposes `/v1/history*` and `unic history`.
 - **Notifications**: Observers receive content-free events and cannot mutate content. Each observer has a 64-entry queue that drops the newest event when full and a 200 ms callback budget. Delivery is lossy. Successful capacity eviction emits `clipboard.deleted` once per deleted history ID.
 
@@ -199,3 +200,15 @@ Native extraction uses the current platform APIs and returns unknown when identi
 The [source application contract](../contracts/source-application-contract.md) specifies inference limits, icon bounds, and acceptance.
 
 The built-in peer-session body reader bounds each blocked network body read or write with the 30-second body I/O inactivity budget. The bound resets for the next I/O call and does not cap total transfer duration or idle peer lifetime. A failed or aborted receive ends its session instead of draining an unfinished rejected body. This releases unpublished receive staging when a cancelled sender leaves a stalled stream. See the [backend body-lifetime contract](../contracts/sync-backend-contract.md#built-in-peer-session-body-lifetime).
+
+## Go Action content sharing
+
+Go Actions accept text, image and file history items through an invocation-owned
+`ActionSource`. Source parts are streamed to external processes through the
+existing binary RPC transport. The Engine retains source content and revokes
+readers when the invocation ends. Providers remain independent plugins.
+Results remain new text history items; failed uploads create no success item.
+
+Action declarations may select a deadline up to five minutes. The ordinary
+default remains ten seconds. Explicit caller cancellation is opt-in and does
+not change RequestID deduplication. See the [Action contract](../contracts/clipboard-action-contract.md#go-action-source-content).

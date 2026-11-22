@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"slices"
 	"strings"
@@ -325,8 +326,17 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 			return invalidPlugin(s.ID, "invalid or repeated action ID")
 		case a.Title == "" || len(a.Title) > 64 || !utf8.ValidString(a.Title) || strings.ContainsFunc(a.Title, func(r rune) bool { return r < 0x20 || r == 0x7f }):
 			return invalidPlugin(s.ID, "invalid action title")
-		case !slices.Equal(a.Accepts, []string{"text"}):
-			return invalidPlugin(s.ID, "this version only accepts text")
+		case a.TimeoutMS < 0 || a.TimeoutMS > 300000:
+			return invalidPlugin(s.ID, "action timeout is outside 0..300000ms")
+		case len(a.Accepts) == 0 || len(a.Accepts) > 3:
+			return invalidPlugin(s.ID, "invalid action input types")
+		}
+		seenKinds := map[string]bool{}
+		for _, kind := range a.Accepts {
+			if (kind != "text" && kind != "image" && kind != "files") || seenKinds[kind] {
+				return invalidPlugin(s.ID, "invalid or repeated action input type")
+			}
+			seenKinds[kind] = true
 		}
 		ids[a.ID] = true
 	}
@@ -378,7 +388,7 @@ func (e *Engine) registerPlugin(in PluginInstance, spec plugin.Spec) {
 	if a, ok := in.Plugin.(plugin.Actor); ok {
 		ap := newActionPlugin(PluginID(spec.ID))
 		for _, as := range spec.Actions {
-			e.actions = append(e.actions, &pipelineAction{plugin: ap, id: as.ID, title: as.Title, accepts: slices.Clone(as.Accepts),
+			e.actions = append(e.actions, &pipelineAction{plugin: ap, id: as.ID, title: as.Title, accepts: slices.Clone(as.Accepts), timeout: time.Duration(as.TimeoutMS) * time.Millisecond,
 				run: func(ctx context.Context, c *actionContext) error { return a.Run(ctx, actionView{c, as.ID}) }})
 		}
 	}
@@ -448,6 +458,11 @@ func (v processView) SetExpire(d time.Duration) error { return v.c.SetExpire(d) 
 type actionView struct {
 	c  *actionContext
 	id string
+}
+
+func (v actionView) Parts() []plugin.ActionPart { return v.c.Parts() }
+func (v actionView) OpenPart(ctx context.Context, index int) (io.ReadCloser, error) {
+	return v.c.OpenPart(ctx, index)
 }
 
 func (v actionView) Action() string         { return v.id }

@@ -152,10 +152,11 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          python e2e/packaging/windows-upgrade-fixture.py --target "$env:TARGET"
+          $identity = Get-Content dist/stage/manifest.json -Raw | ConvertFrom-Json
+          python e2e/packaging/windows-upgrade-fixture.py --target "$env:TARGET" --build-number $identity.build_number
           $first = (Get-ChildItem dist/packages/setup/*.exe).FullName
           $newer = (Get-ChildItem dist/windows-upgrade-fixture/packages/*.exe).FullName
-          ./e2e/packaging/windows-lifecycle.ps1 -Installer $first -Newer $newer -Receipt dist/lifecycle -Target "$env:TARGET"
+          ./e2e/packaging/windows-lifecycle.ps1 -Installer $first -Newer $newer -Receipt dist/lifecycle -Target "$env:TARGET" -Version $identity.version -BuildNumber $identity.build_number
           python tools/package/desktop.py accept --packages dist/packages/setup --receipt dist/lifecycle/report.json
       - name: Remove temporary signing keychain
         if: always() && matrix.goos == 'darwin' && inputs.distribution

@@ -132,7 +132,8 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	if c.PluginEnabled(builtinclassify.ID) {
 		onError, _ := c.ProcessorSettings(builtinclassify.ID)
-		classifier, err := builtinclassify.New(c.Plugins.Instances[builtinclassify.ID].Rules)
+		settings := c.Plugins.Instances[builtinclassify.ID]
+		classifier, err := builtinclassify.New(settings.Rules, settings.DisabledDefaultTags)
 		if err != nil {
 			return nil, err
 		}

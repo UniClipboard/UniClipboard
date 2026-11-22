@@ -157,8 +157,9 @@ type Instance struct {
 	// in the plugin directory, so installing or upgrading a plugin never
 	// replaces what the user chose.
 	Config map[string]any `toml:"config" json:"config,omitempty"`
-	// Rules are supported only by the built-in content classifier.
-	Rules []builtinclassify.Rule `toml:"rules,omitempty" json:"rules,omitempty"`
+	// These settings belong to the built-in content classifier.
+	Rules               []builtinclassify.Rule `toml:"rules,omitempty" json:"rules,omitempty"`
+	DisabledDefaultTags []string               `toml:"disabled_default_tags,omitempty" json:"disabled_default_tags,omitempty"`
 }
 
 // PluginImplementation resolves a local instance to its installed program.
@@ -215,7 +216,13 @@ func (c Config) processorSettingsKey() map[string]Instance {
 		if len(in.Rules) == 0 {
 			in.Rules = nil
 		}
-		out[id] = Instance{Implementation: in.Implementation, OnError: oe, Config: cfg, Rules: in.Rules}
+		out[id] = Instance{
+			Implementation:      in.Implementation,
+			OnError:             oe,
+			Config:              cfg,
+			Rules:               in.Rules,
+			DisabledDefaultTags: slices.Sorted(slices.Values(in.DisabledDefaultTags)),
+		}
 	}
 	return out
 }
@@ -378,12 +385,12 @@ func (c Config) Validate() error {
 		if !validOnError(in.OnError) {
 			return fmt.Errorf(`plugins.instances.%q.on_error: must be "continue" or "block_sync"`, id)
 		}
-		if len(in.Rules) != 0 {
+		if len(in.Rules) != 0 || len(in.DisabledDefaultTags) != 0 {
 			if id != builtinclassify.ID {
 				return fmt.Errorf("plugins.instances.%q: this plugin takes no classification rules", id)
 			}
-			if _, err := builtinclassify.New(in.Rules); err != nil {
-				return fmt.Errorf("plugins.instances.%q.rules: %w", id, err)
+			if _, err := builtinclassify.New(in.Rules, in.DisabledDefaultTags); err != nil {
+				return fmt.Errorf("plugins.instances.%q: %w", id, err)
 			}
 		}
 		if in.Config != nil && !lua[id] && !dormantExternalPlugin(id, in) {
@@ -532,6 +539,8 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # Link text also receives builtin:text. It never changes content.
 # [plugins.instances."builtin.classify"]
 # enabled = true
+# Full-text rules are enabled by default. List individual tag IDs to disable.
+# disabled_default_tags = ["builtin:color"]
 #
 # Each matching rule adds a tag to new text after a service restart.
 # [[plugins.instances."builtin.classify".rules]]

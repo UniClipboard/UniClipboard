@@ -581,6 +581,36 @@
     "pt-BR": "Endereços de e-mail",
     "ru": "Адреса электронной почты"
   },
+  "默认正则规则": {
+    "en": "Default regular expression rules",
+    "ja": "既定の正規表現ルール",
+    "pt-BR": "Regras padrão de expressão regular",
+    "ru": "Правила регулярных выражений по умолчанию"
+  },
+  "匹配整段文本。重启服务后生效。": {
+    "en": "Matches the entire text. Restart the service to apply changes.",
+    "ja": "テキスト全体に一致します。変更はサービスの再起動後に適用されます。",
+    "pt-BR": "Corresponde ao texto inteiro. Reinicie o serviço para aplicar as alterações.",
+    "ru": "Проверяется весь текст. Перезапустите службу, чтобы применить изменения."
+  },
+  "版本号": {
+    "en": "Version number",
+    "ja": "バージョン番号",
+    "pt-BR": "Número de versão",
+    "ru": "Номер версии"
+  },
+  "UUID": {
+    "en": "UUID",
+    "ja": "UUID",
+    "pt-BR": "UUID",
+    "ru": "UUID"
+  },
+  "IPv4 地址": {
+    "en": "IPv4 address",
+    "ja": "IPv4 アドレス",
+    "pt-BR": "Endereço IPv4",
+    "ru": "Адрес IPv4"
+  },
   "正则规则": {
     "en": "Regular expression rules",
     "ja": "正規表現ルール",

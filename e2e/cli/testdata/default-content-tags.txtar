@@ -1,0 +1,99 @@
+# 用例: Default full-text classification
+# 目的: Verify four built-in regular expressions and their independent switches through a real service.
+# 流程:
+#   1. Copy representative values and nonmatching text with the default configuration.
+#   2. Disable the color rule and reject an unknown default tag.
+#   3. Check behavior before and after restarting the service.
+# 期望:
+#   - Color, version, UUID and IPv4 values receive stable built-in tag IDs.
+#   - Disabling the color rule leaves the other defaults and custom rules active.
+# 不应:
+#   - Match a value embedded in ordinary text or an out-of-range IPv4 address.
+#   - Apply a saved switch before restart or remove a tag from existing history.
+
+node-start alpha
+board-set alpha text color.txt
+until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
+board-set alpha text version.txt
+until alpha '"tags":\["builtin:text","builtin:version"\]' h list -n 1 --json
+board-set alpha text uuid.txt
+until alpha '"tags":\["builtin:text","builtin:uuid"\]' h list -n 1 --json
+board-set alpha text ipv4.txt
+until alpha '"tags":\["builtin:ipv4","builtin:text"\]' h list -n 1 --json
+
+board-set alpha text log.txt
+until alpha '"total_bytes":24' h list -n 1 --json
+stdout '"tags":\["builtin:text"\]'
+board-set alpha text invalid-ipv4.txt
+until alpha '"total_bytes":12' h list -n 1 --json
+stdout '"tags":\["builtin:text"\]'
+
+u alpha config apply $WORK/disabled.toml
+u alpha config --json
+stdout 'plugins.settings'
+cp alpha/config.toml saved.toml
+! u alpha config apply $WORK/invalid.toml
+stderr 'unknown default classification tag'
+cmp alpha/config.toml saved.toml
+board-set alpha text color-before-restart.txt
+until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
+
+node-stop alpha
+node-start alpha
+u alpha config --json
+! stdout 'plugins.settings'
+board-set alpha text color-after-restart.txt
+until alpha '"tags":\["builtin:text","custom-color"\]' h list -n 1 --json
+board-set alpha text version-after-restart.txt
+until alpha '"tags":\["builtin:text","builtin:version"\]' h list -n 1 --json
+u alpha h list --tag builtin:color --json
+stdout '"builtin:color"'
+
+u alpha config apply $WORK/alpha-defaults.toml
+node-stop alpha
+node-start alpha
+board-set alpha text color-reenabled.txt
+until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- alpha-defaults.toml --
+device_name = "alpha"
+
+[telemetry]
+enabled = false
+-- disabled.toml --
+device_name = "alpha"
+
+[plugins.instances."builtin.classify"]
+disabled_default_tags = ["builtin:color"]
+
+[[plugins.instances."builtin.classify".rules]]
+pattern = '^#[0-9A-Fa-f]{6}'
+tag = "custom-color"
+
+[telemetry]
+enabled = false
+-- invalid.toml --
+[plugins.instances."builtin.classify"]
+disabled_default_tags = ["builtin:link"]
+-- color.txt --
+  #3B82F680
+-- version.txt --
+v2.3.1-rc.1
+-- uuid.txt --
+550E8400-E29B-41D4-A716-446655440000
+-- ipv4.txt --
+192.168.255.10
+-- log.txt --
+Copied #3B82F6 at noon.
+-- invalid-ipv4.txt --
+256.0.0.255
+-- color-before-restart.txt --
+#12AB34
+-- color-after-restart.txt --
+#C0FFEE
+-- version-after-restart.txt --
+v2.4.0
+-- color-reenabled.txt --
+#FFAA00

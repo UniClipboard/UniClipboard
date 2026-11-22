@@ -413,9 +413,23 @@ Processor `Item.Type` additionally accepts `directory_reference` and `directory`
 | `directory`, `directory_reference` | `builtin:folder` |
 | Text containing an HTTP(S) URL in the first 64 KiB | `builtin:link`, in addition to `builtin:text` |
 
-The service accepts up to 16 rules under `plugins.instances."builtin.classify".rules`. Each rule requires a nonempty Go regular expression of up to 1024 bytes and a nonblank tag of up to 64 UTF-8 bytes. Invalid rules reject the configuration before it is saved. The service compiles rules at startup. Each matching rule adds its tag to new text, based on the first 64 KiB. Repeated tags collapse to one membership through the Engine. The processor follows the existing per-instance error policy and stops running when the classifier is disabled.
+Four built-in regular expressions are enabled by default. They match the entire plain-text value after trimming surrounding whitespace. The entire value must fit within 64 KiB.
+
+| Full-text match | Stable tag ID |
+|---|---|
+| `#` followed by six or eight hexadecimal digits | `builtin:color` |
+| Lowercase `v` followed by three decimal version components and an optional dot-separated prerelease suffix | `builtin:version` |
+| Hexadecimal UUID in 8-4-4-4-12 form | `builtin:uuid` |
+| Four decimal IPv4 octets from 0 to 255 with no leading zeros | `builtin:ipv4` |
+
+List any of these four IDs in `disabled_default_tags` to disable their default rules. The list rejects unknown and duplicate IDs. The omitted or empty list enables all four. This setting is independent of custom rules.
+
+The service accepts up to 16 custom rules under `plugins.instances."builtin.classify".rules`. Each rule requires a nonempty Go regular expression of up to 1024 bytes and a nonblank tag of up to 64 UTF-8 bytes. Invalid rules reject the configuration before it is saved. The service compiles rules at startup. Each matching rule adds its tag to new text, based on the first 64 KiB. Repeated tags collapse to one membership through the Engine. The processor follows the existing per-instance error policy and stops running when the classifier is disabled.
 
 ```toml
+[plugins.instances."builtin.classify"]
+disabled_default_tags = ["builtin:color"]
+
 [[plugins.instances."builtin.classify".rules]]
 pattern = '\bUNI-[0-9]+\b'
 tag = "Issue"

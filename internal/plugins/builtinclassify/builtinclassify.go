@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -30,15 +31,46 @@ type compiledRule struct {
 	tag     string
 }
 
-type Plugin struct {
-	rules []compiledRule
+var defaultRules = [...]compiledRule{
+	{tag: plugin.TagColor, pattern: regexp.MustCompile(`(?i)^#[0-9a-f]{6}([0-9a-f]{2})?$`)},
+	{tag: plugin.TagVersion, pattern: regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)},
+	{tag: plugin.TagUUID, pattern: regexp.MustCompile(`(?i)^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$`)},
+	{tag: plugin.TagIPv4, pattern: regexp.MustCompile(`^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$`)},
 }
 
-func New(rules []Rule) (*Plugin, error) {
+// DefaultTags returns the tag IDs of the individually switchable rules.
+func DefaultTags() []string {
+	tags := make([]string, 0, len(defaultRules))
+	for _, rule := range defaultRules {
+		tags = append(tags, rule.tag)
+	}
+	return tags
+}
+
+type Plugin struct {
+	defaults []compiledRule
+	rules    []compiledRule
+}
+
+func New(rules []Rule, disabledDefaultTags []string) (*Plugin, error) {
 	if len(rules) > MaxRules {
 		return nil, fmt.Errorf("at most %d classification rules are allowed", MaxRules)
 	}
 	p := &Plugin{rules: make([]compiledRule, 0, len(rules))}
+	defaultTags := DefaultTags()
+	for i, tag := range disabledDefaultTags {
+		if !slices.Contains(defaultTags, tag) {
+			return nil, fmt.Errorf("unknown default classification tag at position %d", i+1)
+		}
+		if slices.Contains(disabledDefaultTags[:i], tag) {
+			return nil, fmt.Errorf("duplicate default classification tag at position %d", i+1)
+		}
+	}
+	for _, rule := range defaultRules {
+		if !slices.Contains(disabledDefaultTags, rule.tag) {
+			p.defaults = append(p.defaults, rule)
+		}
+	}
 	for i, rule := range rules {
 		if strings.TrimSpace(rule.Tag) == "" || len(rule.Tag) > 64 || !utf8.ValidString(rule.Tag) {
 			return nil, fmt.Errorf("classification rule %d: tag must contain 1 to 64 UTF-8 bytes", i+1)
@@ -84,24 +116,31 @@ func (p *Plugin) Process(ctx context.Context, c plugin.ProcessContext) error {
 	if err := c.AddTag(tag); err != nil {
 		return err
 	}
-	if item.Type == "text" {
-		text := item.Text
-		if len(text) > scanLimit {
-			text = text[:scanLimit]
+	if item.Type != "text" {
+		return nil
+	}
+	text := item.Text
+	if len(text) > scanLimit {
+		text = text[:scanLimit]
+	} else if err := addMatchingTags(ctx, c, strings.TrimSpace(text), p.defaults); err != nil {
+		return err
+	}
+	if linkPattern.MatchString(text) {
+		if err := c.AddTag(plugin.TagLink); err != nil {
+			return err
 		}
-		if linkPattern.MatchString(text) {
-			if err := c.AddTag(plugin.TagLink); err != nil {
-				return err
-			}
+	}
+	return addMatchingTags(ctx, c, text, p.rules)
+}
+
+func addMatchingTags(ctx context.Context, c plugin.ProcessContext, text string, rules []compiledRule) error {
+	for _, rule := range rules {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		for _, rule := range p.rules {
-			if err := ctx.Err(); err != nil {
+		if rule.pattern.MatchString(text) {
+			if err := c.AddTag(rule.tag); err != nil {
 				return err
-			}
-			if rule.pattern.MatchString(text) {
-				if err := c.AddTag(rule.tag); err != nil {
-					return err
-				}
 			}
 		}
 	}

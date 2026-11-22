@@ -27,6 +27,32 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 		*form = classificationSettings{saved: instance.Rules}
 	}
 	busy := d.live.busy || d.live.loading
+	defaults := c.Key("default-classification-rules")
+	k.SettingsGroup(defaults, desktopkit.SettingsGroupProps{
+		Title:  d.tr("默认正则规则"),
+		Footer: d.tr("匹配整段文本。重启服务后生效。"),
+	}, func() {
+		for _, tag := range builtinclassify.DefaultTags() {
+			label := d.tagLabel(tag)
+			enabled := !slices.Contains(instance.DisabledDefaultTags, tag)
+			row := defaults.Key(tag)
+			k.SettingsRow(row, desktopkit.SettingsRowProps{Label: label}, nil, func() {
+				if !k.Switch(row, &enabled, desktopkit.SwitchProps{Label: label, Disabled: busy}).Changed() {
+					return
+				}
+				disabled := slices.Clone(instance.DisabledDefaultTags)
+				if enabled {
+					disabled = slices.DeleteFunc(disabled, func(id string) bool { return id == tag })
+				} else {
+					disabled = append(disabled, tag)
+				}
+				instance.DisabledDefaultTags = disabled
+				cfg.Plugins.Instances[builtinclassify.ID] = instance
+				d.saveLiveConfig(cfg)
+				busy = d.live.busy
+			})
+		}
+	})
 	save := func(rules []builtinclassify.Rule) {
 		instance.Rules = rules
 		cfg.Plugins.Instances[builtinclassify.ID] = instance
@@ -83,7 +109,7 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 					} else {
 						rules[form.index] = rule
 					}
-					_, err := builtinclassify.New(rules)
+					_, err := builtinclassify.New(rules, instance.DisabledDefaultTags)
 					form.invalid = err != nil
 					if !form.invalid {
 						save(rules)

@@ -92,7 +92,11 @@ func scenarioI18n(t *testing.T) {
 					if d.currentLanguage() != language.code {
 						t.Fatalf("selection not applied: %s", d.currentLanguage())
 					}
-					for id, source := range map[string]string{"builtin:text": "文本", "builtin:image": "图片", "builtin:files": "文件", "builtin:folder": "文件夹", "builtin:link": "链接", "builtin:email": "邮箱地址"} {
+					for id, source := range map[string]string{
+						"builtin:text": "文本", "builtin:image": "图片", "builtin:files": "文件", "builtin:folder": "文件夹",
+						"builtin:link": "链接", "builtin:email": "邮箱地址", "builtin:color": "颜色", "builtin:version": "版本号",
+						"builtin:uuid": "UUID", "builtin:ipv4": "IPv4 地址",
+					} {
 						if tag := d.tagByID(id); tag == nil || !tag.builtin || d.tagLabel(id) != d.tr(source) {
 							t.Fatalf("builtin label/identity mismatch: %s", id)
 						}

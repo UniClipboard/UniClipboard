@@ -12,6 +12,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 // The model follows main's composite-search model and token-range controller.
@@ -149,6 +150,9 @@ func (d *viewState) searchValues() []searchCandidate {
 	return out
 }
 func (d *viewState) searchCandidates(dim, partial string) []searchCandidate {
+	if d.live != nil && dim == "tag" && partial == plugin.TagFavorite {
+		return nil
+	}
 	needle := strings.ToLower(partial)
 	var out []searchCandidate
 	rank := func(c searchCandidate) int {
@@ -459,9 +463,7 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		if d.filterOpen && len(prospective) == 0 {
 			prospective = d.filterPopoverProspectiveQueries()
 		}
-		if len(prospective) > 0 {
-			d.live.requestCounts(prospective)
-		}
+		d.live.requestCounts(append([]engine.HistorySearchQuery{favoriteHistoryQuery()}, prospective...))
 	}
 	feedback := ""
 	if w, ok := s.active(); ok {

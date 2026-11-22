@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/uniclipboard/unic/internal/store"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 func normalizeSearch(q HistorySearchQuery) (HistorySearchQuery, *Error) {
@@ -256,7 +257,7 @@ func (e *Engine) ListHistorySearchCandidates(ctx context.Context, req HistorySea
 		after = cp.SearchAfter
 	}
 	now := historyNow().UnixMilli()
-	vs, rev, serr := e.st.SearchCandidates(ctx, req.Field, prefix, after, limit+1, now)
+	vs, rev, serr := e.st.SearchCandidates(ctx, req.Field, prefix, after, plugin.TagFavorite, limit+1, now)
 	if serr != nil {
 		return HistorySearchCandidatesPage{}, searchError(ctx, serr)
 	}

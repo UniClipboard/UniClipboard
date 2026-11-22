@@ -216,7 +216,7 @@ func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 			d.selectRow(c, k, "shortcut", d.tr("打开快捷面板"), d.tr("演示快捷键不会注册到系统"), "⌘⇧V", "⌃⌥V", "Ctrl+Shift+V")
 		})
 		group("window", d.tr("窗口快捷键"), func() {
-			for _, v := range []struct{ name, value string }{{d.tr("复制所选内容"), "Enter"}, {d.tr("置顶或取消置顶"), "⌘P"}, {d.tr("打开设置"), "⌘,"}, {d.tr("切换侧栏"), "⌃⌘S"}} {
+			for _, v := range []struct{ name, value string }{{d.tr("复制所选内容"), "Enter"}, {d.tr("收藏或取消收藏"), "⌘P"}, {d.tr("打开设置"), "⌘,"}, {d.tr("切换侧栏"), "⌃⌘S"}} {
 				k.SettingsRow(c.Key(v.name), desktopkit.SettingsRowProps{Label: v.name}, nil, func() { k.Text(c, v.value, desktopkit.TextProps{Role: desktopkit.RoleCallout}) })
 			}
 		})

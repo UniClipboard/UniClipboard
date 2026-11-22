@@ -37,14 +37,14 @@ Projection failure or budget exhaustion preserves the history record and records
 
 ## Catalogue and counts
 
-Catalogue pages contain actual persisted tag names, historical source IDs with current/tombstoned device display names, and observed extensions. Unknown source names fall back to the source ID. Prefix filtering is Unicode-lowercase substring matching. Catalogue cursors bind field/prefix/instance and stable canonical keys.
+Catalogue pages contain persisted tag names other than the reserved `favorite` tag, historical source IDs with current/tombstoned device display names, and observed extensions. Unknown source names fall back to the source ID. Prefix filtering is Unicode-lowercase substring matching. Catalogue cursors bind field/prefix/instance and stable canonical keys.
 CountHistorySearches accepts complete prospective queries and returns exact distinct-item counts in request order. The UI owns toggles, replacement and independent relaxation proposals. It counts only bounded candidate pages. Selected candidate removal must not be confused with addition.
 
 ## Desktop
 
 The main editor sends parsed literal words and TagMatch=all. The quick panel sends its literal phrase and TagMatch=any. Both preserve current keyboard/caret/chip interactions. Punctuation-only quick-panel text now remains literal.
 Each editor owns a generation and cancels stale requests. Hits, counts and selected-content reads have separate cancellation. Stale read work never queues ahead of restore/delete writes. Count labels stay absent while unknown.
-Unsupported code/link classifications, persistent favorites and arbitrary pinyin remain unavailable. They do not become similarly named user tags. Existing fixed type/time aliases remain UI-owned.
+The main Desktop Favorites scope and an explicit unquoted `#favorite` search term both add the reserved `favorite` tag to the existing AND filters. The Favorites sidebar count covers all favorites in the local history. Ordinary Desktop tag displays, management and suggestions omit the reserved tag. Unsupported code/link classifications and arbitrary pinyin remain unavailable. Existing fixed type/time aliases remain UI-owned.
 
 The process fixture additionally requires a small ordinary submission to finish within one second while a 32-query count batch runs over its synthetic corpus. Record actual count/write latency and database/WAL bytes; this is not a production-scale latency guarantee.
 

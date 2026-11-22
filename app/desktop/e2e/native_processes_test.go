@@ -102,7 +102,7 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 					}
 					first := captions["最小化"].Bounds.X
 					for _, n := range nodes {
-						if n.Role != "search" && n.Label != "发送到设备" && n.Label != "切换置顶" && n.Label != "更多操作" {
+						if n.Role != "search" && n.Label != "发送到设备" && n.Label != "切换收藏" && n.Label != "更多操作" {
 							continue
 						}
 						r := n.Bounds

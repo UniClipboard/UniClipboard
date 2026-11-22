@@ -303,7 +303,7 @@ func (d *viewState) liveQuery() api.HistoryQuery {
 	return q
 }
 func (d *viewState) unsupportedSearch() bool {
-	return d.kind == "代码" || d.kind == "链接" || d.nav.Value == "pinned"
+	return d.kind == "代码" || d.kind == "链接"
 }
 func (l *liveState) loadHistory(d *viewState, more bool) {
 	if l.loading {
@@ -324,6 +324,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 		}
 	}()
 	q := engine.HistorySearchRequest{Query: d.historySearchQuery(), Limit: 50}
+	favoritesOnly := slices.Contains(q.Query.Tags, plugin.TagFavorite) && q.Query.TagMatch != "any"
 	previous := l.previousPage
 	l.previousPage = false
 	target := min(historyWindowLimit, max(50, len(d.entries)))
@@ -424,7 +425,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					if e != nil && api.ReasonOf(e) != "not_found" {
 						err = e
 					}
-					if e != nil {
+					if e != nil || favoritesOnly && !slices.Contains(current.Tags, plugin.TagFavorite) {
 						selectedEntry = nil
 					} else {
 						selectedItem = current
@@ -717,7 +718,7 @@ func projectHistory(it api.HistoryItem) entry {
 	if it.Origin == "external" || it.Origin == "migration" {
 		source = it.Origin
 	}
-	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: humanBytes(it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState, backendSync: slices.Clone(it.Backends)}
+	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: humanBytes(it.TotalBytes), kind: kind, tags: withFavoriteTag(it.Tags, false), pinned: slices.Contains(it.Tags, plugin.TagFavorite), createdAt: it.CreatedAt, syncState: it.SyncState, backendSync: slices.Clone(it.Backends)}
 	if app := it.SourceApplication; app != nil {
 		v.sourceAppName, v.sourceAppID = strings.TrimSpace(app.Name), app.Identifier
 		if v.sourceAppName == "" {
@@ -998,7 +999,7 @@ func (d *viewState) setEntryTags(id string, tags []string) {
 	if !ok {
 		return
 	}
-	tags = slices.Clone(tags)
+	tags = withFavoriteTag(tags, slices.Contains(it.Tags, plugin.TagFavorite))
 	client := d.live.client
 	d.mutate(func(ctx context.Context) error {
 		_, err := client.UpdateHistory(ctx, id, api.HistoryUpdate{Revision: it.Revision, Tags: &tags})

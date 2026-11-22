@@ -8,4 +8,6 @@ const (
 	TagFolder = "builtin:folder"
 	TagLink   = "builtin:link"
 	TagCode   = "builtin:code"
+	// TagFavorite marks a locally saved favorite and is omitted from tag catalogues.
+	TagFavorite = "favorite"
 )

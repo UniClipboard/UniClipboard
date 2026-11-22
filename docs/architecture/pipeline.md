@@ -80,6 +80,8 @@ Existing history is not backfilled. Disabling `plugins.instances."builtin.classi
 The existing `builtin.text` email/URL hints and text Actions remain independent.
 Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes the six built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
 
+The reserved `favorite` tag is local history metadata. Desktop writes it through the existing revision-checked tag update from the history and Quick Panel actions. The Favorites sidebar uses the existing Engine tag search and exact count. The tag is omitted from tag catalogues and ordinary tag displays. See the [history contract](../contracts/history-contract.md#favorites).
+
 The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. `builtin:code` is currently preserved by migration; `builtin.classify` does not produce it for new content. The importer also preserves palette and hexadecimal colors from the v1 presentation layout through host configuration. Every CLI and Desktop migration automatically fills safe missing tags and colors while preserving target edits, existing color overrides and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252).
 
 Windows drive-letter source databases use absolute SQLite file URIs with an empty authority. Source databases remain read-only and query-only.

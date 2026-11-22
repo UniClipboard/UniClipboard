@@ -52,6 +52,10 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 
 ## 3. 基础查询与分页
 
+### Favorites
+
+The reserved history tag `favorite` identifies a local favorite. The Desktop search spelling is `#favorite`. Item metadata and explicit tag filters use the stored value `favorite`. The history tag list and search tag catalogue omit this value, including when an imported tag definition uses the same name. The tag uses the existing revision-checked update and visibility rules. Favoriting preserves the history order and other tags. Desktop retains the favorite when it edits ordinary tags. The normal history retention rules still apply.
+
 `ListHistoryRequest{Limit int, Cursor string, Filter HistoryFilter}`；Limit=0 使用 50，合法范围 1..200。`HistoryFilter{Kinds []HistoryKind, Tags []string, OriginKinds []HistoryOriginKind, DeviceID DeviceID, CreatedFromMs int64, CreatedBeforeMs int64}`：各字段之间 AND，同字段 Kinds/OriginKinds 内 OR，Tags 为全部匹配，时间为 `[from, before)`，0 表示不设该边界。DeviceID 只匹配 remote_device 来源；OriginKinds 可含 external。未知枚举、非法时间区间或超出标签限制返回 invalid_argument；重复筛选项规范化去重。
 
 The metadata-list API does not search content or return total counts. Explicit content search, file-name matching, bounded previews, candidate catalogues and batch counts use the separate [history search contract](history-search-contract.md). Hosts must not download all content to implement search.

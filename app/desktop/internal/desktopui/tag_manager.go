@@ -219,6 +219,10 @@ func (d *viewState) submitTagEdit() {
 		m.editing, m.error = "", ""
 		return
 	}
+	if name == plugin.TagFavorite {
+		m.error = "已存在同名标签"
+		return
+	}
 	for _, tag := range d.tags {
 		if tag.id != m.editing && strings.EqualFold(d.tagLabel(tag.id), name) {
 			m.error = "已存在同名标签"

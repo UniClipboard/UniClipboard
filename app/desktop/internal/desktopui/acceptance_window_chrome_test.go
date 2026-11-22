@@ -180,7 +180,7 @@ func scenarioWindowChrome(t *testing.T) {
 						if !system && title == "全部" {
 							caption, _ := tt.AccessByRole(ui.RoleButton, "最小化")
 							for _, node := range tt.AccessAll() {
-								if node.Role != ui.RoleSearch && node.Name != "切换置顶" && node.Name != "更多操作" && node.Name != "发送到设备" {
+								if node.Role != ui.RoleSearch && node.Name != "切换收藏" && node.Name != "更多操作" && node.Name != "发送到设备" {
 									continue
 								}
 								r := node.Bounds

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -563,6 +564,98 @@ func scenarioHistorySearchProcess(t *testing.T) {
 		t.Fatal("cursor survived instance change", e)
 	}
 	checks = append(checks, "deletion removes search hits; missing projection repairs on reopen; old-instance cursors expire")
+	favoriteID := submit("favorite-record", "favorite acceptance marker", "text/plain")
+	unmarkedID := submit("unmarked-record", "favorite acceptance unmarked", "text/plain")
+	favoriteDesktop := NewDesktop(ctx, client)
+	defer favoriteDesktop.Close()
+	favoriteView := favoriteDesktop.d
+	spin := func(label string, ready func() bool) {
+		t.Helper()
+		wait(label, func() bool { favoriteView.live.poll(favoriteView); return ready() })
+	}
+	spin("production history", func() bool { return favoriteView.live.loaded && !favoriteView.live.loading })
+	favoriteView.selectEntry(favoriteID)
+	favoriteView.togglePin()
+	spin("favorite saved", func() bool {
+		return !favoriteView.live.busy && !favoriteView.live.loading && favoriteView.current() != nil && favoriteView.current().pinned
+	})
+	favoriteIndex := slices.IndexFunc(favoriteView.entries, func(e entry) bool { return e.id == favoriteID })
+	unmarkedIndex := slices.IndexFunc(favoriteView.entries, func(e entry) bool { return e.id == unmarkedID })
+	if unmarkedIndex < 0 || favoriteIndex <= unmarkedIndex {
+		t.Fatal("favoriting changed chronological history order")
+	}
+	favorite, err := client.GetHistory(ctx, favoriteID)
+	if err != nil || !slices.Contains(favorite.Tags, "favorite") {
+		t.Fatal("favorite must persist as the reserved history tag", err)
+	}
+	favoriteView.setEntryTags(favoriteID, []string{"acceptance-visible"})
+	spin("ordinary tag edit preserves favorite", func() bool {
+		entry := favoriteView.current()
+		return !favoriteView.live.busy && !favoriteView.live.loading && entry != nil && entry.pinned && slices.Contains(entry.tags, "acceptance-visible")
+	})
+	if slices.Contains(favoriteView.current().tags, "favorite") || favoriteView.tagByID("favorite") != nil {
+		t.Fatal("favorite appears as an ordinary desktop tag")
+	}
+	names, err := client.HistoryTags(ctx)
+	if err != nil || slices.Contains(names, "favorite") || !slices.Contains(names, "acceptance-visible") {
+		t.Fatal("reserved tag leaked into the history tag list", names, err)
+	}
+	choices, err := client.ListHistorySearchCandidates(ctx, engine.HistorySearchCandidatesRequest{Field: "tag", Prefix: "favorite"})
+	if err != nil || len(choices.Candidates) != 0 {
+		t.Fatal("reserved tag leaked into search suggestions", choices, err)
+	}
+	requireIDs(engine.HistorySearchQuery{Tags: []string{"favorite"}}, favoriteID)
+	favoriteCounts, err := client.CountHistorySearches(ctx, engine.HistorySearchCountsRequest{
+		Queries: []engine.HistorySearchQuery{{Tags: []string{"favorite"}}},
+	})
+	if err != nil || !slices.Equal(favoriteCounts.Counts, []uint64{1}) {
+		t.Fatal("global favorite count is incorrect", favoriteCounts, err)
+	}
+	favoriteView.query = "#favorite acceptance"
+	spin("explicit favorite token", func() bool {
+		items := favoriteView.filtered()
+		return !favoriteView.live.loading && len(items) == 1 && items[0].id == favoriteID
+	})
+	favoriteDesktop.Close()
+	stop()
+	start()
+	wait("favorite service restart", func() bool { _, e := client.Status(ctx); return e == nil })
+	reopened := NewDesktop(ctx, client)
+	defer reopened.Close()
+	favoriteView = reopened.d
+	favoriteView.nav.Value = "pinned"
+	favoriteView.query = "favorite acceptance"
+	spin("favorite filter after restart", func() bool {
+		items := favoriteView.filtered()
+		return favoriteView.live.loaded && !favoriteView.live.loading && len(items) == 1 && items[0].id == favoriteID && items[0].pinned
+	})
+	favoriteView.selectEntry(favoriteID)
+	favoriteView.togglePin()
+	spin("removed favorite disappears from scope", func() bool {
+		return !favoriteView.live.busy && !favoriteView.live.loading && len(favoriteView.filtered()) == 0 && favoriteView.current() == nil
+	})
+	favorite, err = client.GetHistory(ctx, favoriteID)
+	if err != nil || slices.Contains(favorite.Tags, "favorite") || !slices.Contains(favorite.Tags, "acceptance-visible") {
+		t.Fatal("removing a favorite changed ordinary tag membership", err)
+	}
+	requireIDs(engine.HistorySearchQuery{Tags: []string{"favorite"}})
+	favoriteQuick := newLiveQuick(ctx, client, "light", nil)
+	defer favoriteQuick.live.d.live.cancel()
+	favoriteQuick.query = "favorite acceptance marker"
+	wait("quick panel record", func() bool {
+		favoriteQuick.live.poll(favoriteQuick)
+		return favoriteQuick.active() != nil && favoriteQuick.active().id == favoriteID
+	})
+	if !slices.ContainsFunc(favoriteQuick.actions(), func(a qpAction) bool { return a.id == "favorite" && a.enabled }) {
+		t.Fatal("quick panel favorite action is unavailable")
+	}
+	favoriteQuick.runAction("favorite")
+	wait("quick panel favorite", func() bool {
+		favoriteQuick.live.poll(favoriteQuick)
+		return favoriteQuick.active() != nil && favoriteQuick.active().favorite
+	})
+	requireIDs(engine.HistorySearchQuery{Tags: []string{"favorite"}}, favoriteID)
+	checks = append(checks, "history and Quick Panel favorites use a hidden history tag, survive restart, combine with text filters, and preserve order and user tags")
 	stop()
 	for _, secret := range []string{"rollback-specific-needle", "hidden-script-secret", "writer-specific-needle", "alpha.txt"} {
 		if strings.Contains(logs.String(), secret) {

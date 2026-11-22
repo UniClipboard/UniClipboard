@@ -325,7 +325,7 @@ func (s *Store) CountHistorySearches(ctx context.Context, filters []SearchFilter
 	}
 	return
 }
-func (s *Store) SearchCandidates(ctx context.Context, field, prefix, after string, limit int, now int64) (out []SearchCandidate, rev uint64, err error) {
+func (s *Store) SearchCandidates(ctx context.Context, field, prefix, after, excludedTag string, limit int, now int64) (out []SearchCandidate, rev uint64, err error) {
 	tx, e := s.search.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if e != nil {
 		return nil, 0, e
@@ -338,7 +338,8 @@ func (s *Store) SearchCandidates(ctx context.Context, field, prefix, after strin
 	var args []any
 	switch field {
 	case "tag":
-		query = `SELECT name,name,name,'','' FROM (SELECT name FROM history_labels UNION SELECT tag AS name FROM clip_tags) ORDER BY CAST(name AS BLOB)`
+		query = `SELECT name,name,name,'','' FROM (SELECT name FROM history_labels UNION SELECT tag AS name FROM clip_tags) WHERE name<>? ORDER BY CAST(name AS BLOB)`
+		args = []any{excludedTag}
 	case "extension":
 		if _, err = checkSearchReady(ctx, tx, SearchRead{NowMs: now, Filter: SearchFilter{Terms: []string{"ready"}}}); err != nil {
 			return

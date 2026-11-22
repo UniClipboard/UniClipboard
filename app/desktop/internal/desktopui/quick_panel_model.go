@@ -471,12 +471,24 @@ func (p *quickPanelState) restore(paste, plain, keep bool) {
 	p.update()
 }
 func (p *quickPanelState) actions() []qpAction {
-	if p.live != nil {
-		available := p.active() != nil && !p.live.d.live.busy && (p.live.system == nil || !p.live.system.Busy)
-		canPaste := available && p.live.system != nil && p.live.system.CanPaste
-		return []qpAction{{"paste", "粘贴到原应用", "Enter", canPaste}, {"plain", "纯文本粘贴", "Shift+Enter", canPaste && p.active() != nil && (p.active().kind == "文本" || p.active().kind == "富文本")}, {"copy", "复制到剪贴板", p.commandLabel() + "C", available}, {"delete", "删除", "", available}, {"main", "打开主窗口", "", true}, {"settings", "设置…", "", true}}
-	}
 	e := p.active()
+	if p.live != nil {
+		available := e != nil && !p.live.d.live.busy && (p.live.system == nil || !p.live.system.Busy)
+		canPaste := available && p.live.system != nil && p.live.system.CanPaste
+		favorite := "收藏"
+		if e != nil && e.favorite {
+			favorite = "取消收藏"
+		}
+		return []qpAction{
+			{"paste", "粘贴到原应用", "Enter", canPaste},
+			{"plain", "纯文本粘贴", "Shift+Enter", canPaste && (e.kind == "文本" || e.kind == "富文本")},
+			{"copy", "复制到剪贴板", p.commandLabel() + "C", available},
+			{"favorite", favorite, "", available},
+			{"delete", "删除", "", available},
+			{"main", "打开主窗口", "", true},
+			{"settings", "设置…", "", true},
+		}
+	}
 	if e == nil {
 		return nil
 	}

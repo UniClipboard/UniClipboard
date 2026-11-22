@@ -66,7 +66,7 @@ func scenarioSidebarNavigation(t *testing.T) {
 				if !ok || action.Bounds.W != 24 || action.Bounds.H != 24 {
 					t.Errorf("section action is oversized: %+v", action.Bounds)
 				}
-				pinned := row("已置顶")
+				pinned := row("已收藏")
 				if action.Bounds.Y < pinned.Y+pinned.H+12 {
 					t.Errorf("sidebar sections run together: pinned=%+v action=%+v", pinned, action.Bounds)
 				}

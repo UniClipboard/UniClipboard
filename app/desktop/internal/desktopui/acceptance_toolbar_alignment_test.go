@@ -60,7 +60,7 @@ func scenarioToolbarAlignment(t *testing.T) {
 							tt.Advance(350 * time.Millisecond)
 						}
 						proof.Capture(t, tt)
-						pin, ok := tt.AccessByRole(ui.RoleButton, "切换置顶")
+						pin, ok := tt.AccessByRole(ui.RoleButton, "切换收藏")
 						if !ok {
 							t.Fatal("pin missing")
 						}
@@ -128,7 +128,7 @@ func scenarioToolbarAlignment(t *testing.T) {
 							t.Errorf("toolbar height=%v, want 52", bar.Bounds.H)
 						}
 						for _, a := range tt.AccessAll() {
-							if a.Name != "切换置顶" && a.Name != "发送到设备" && a.Name != "更多操作" && a.Name != "显示方式" && a.Role != ui.RoleSearch {
+							if a.Name != "切换收藏" && a.Name != "发送到设备" && a.Name != "更多操作" && a.Name != "显示方式" && a.Role != ui.RoleSearch {
 								continue
 							}
 							results[name][string(a.Role)+":"+a.Name] = a.Bounds

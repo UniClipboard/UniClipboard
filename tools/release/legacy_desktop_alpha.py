@@ -53,10 +53,21 @@ def prepare(build, legacy_source, output):
     ):
         raise ValueError("numbered alpha is not the requested release")
     tag = f"desktop/v{version}-build.{build}"
-    release = json.loads(subprocess.check_output(
-        ["gh", "release", "view", tag, "--repo", REPOSITORY,
-         "--json", "isDraft,isPrerelease,tagName"], text=True
-    ))
+    release = json.loads(
+        subprocess.check_output(
+            [
+                "gh",
+                "release",
+                "view",
+                tag,
+                "--repo",
+                REPOSITORY,
+                "--json",
+                "isDraft,isPrerelease,tagName",
+            ],
+            text=True,
+        )
+    )
     if release != {"isDraft": False, "isPrerelease": True, "tagName": tag}:
         raise ValueError("expected an exact published GitHub prerelease")
     output.mkdir(parents=True, exist_ok=False)
@@ -67,8 +78,18 @@ def prepare(build, legacy_source, output):
         for platform, suffix in TARGETS.items()
     }
     subprocess.run(
-        ["gh", "release", "download", tag, "--repo", REPOSITORY,
-         "--dir", output, "--pattern", "release-manifest.json"]
+        [
+            "gh",
+            "release",
+            "download",
+            tag,
+            "--repo",
+            REPOSITORY,
+            "--dir",
+            output,
+            "--pattern",
+            "release-manifest.json",
+        ]
         + [arg for name in filenames.values() for arg in ("--pattern", name)],
         check=True,
     )
@@ -87,20 +108,29 @@ def prepare(build, legacy_source, output):
         record = records[name]
         if path.stat().st_size != record["size"] or digest(path) != record["sha256"]:
             raise ValueError(f"release payload does not match catalogue: {name}")
-        if "-darwin-" in name and not (record["payload_signed"] and record["notarized"]):
+        if "-darwin-" in name and not (
+            record["payload_signed"] and record["notarized"]
+        ):
             raise ValueError(f"macOS payload requires signing and notarization: {name}")
         # The pinned legacy signer expects the historical capitalized prefix.
         path.rename(assets / ("UniClipboard" + name.removeprefix("uniclipboard")))
     verification = output / "v1-signature-verification.json"
     subprocess.run(
-        ["go", "run", "./cmd/updater-sign", "--artifacts-dir", assets,
-         "--evidence", verification],
+        [
+            "go",
+            "run",
+            "./cmd/updater-sign",
+            "--artifacts-dir",
+            assets,
+            "--evidence",
+            verification,
+        ],
         cwd=legacy_source / "apps/gui-go",
         check=True,
     )
     signed = {
-        item["filename"]: item for item in
-        json.loads(verification.read_text())["artifacts"]
+        item["filename"]: item
+        for item in json.loads(verification.read_text())["artifacts"]
     }
     signatures = {}
     for platform, name in filenames.items():

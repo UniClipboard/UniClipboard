@@ -510,15 +510,49 @@ func TestPairByTicketNeedsApprovalOnBothSides(t *testing.T) {
 	approve(t, b, a)
 	eventually(t, "connected", func() bool { return connected(a, b) })
 
-	// Unpair drops the connection on both ends and removes the device.
+	// Unpair drops both connections and revokes every authorization. A fresh
+	// handshake may list the device again, but only as pending.
 	d, _ := a.e.GetDevice(bg, da.ID)
 	if err := a.e.UnpairDevice(bg, UnpairDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision}); err != nil {
 		t.Fatal(err)
 	}
-	if ds, _ := a.e.ListDevices(bg); len(ds) != 0 {
-		t.Fatalf("devices after unpair: %+v", ds)
+	assertUnpaired := func() {
+		t.Helper()
+		ds, err := a.e.ListDevices(bg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, got := range ds {
+			if got.ID != d.ID || got.Trust != DeviceTrustPending || got.Revision <= d.Revision {
+				t.Fatalf("device retained authorization after unpair: %+v", got)
+			}
+			for _, binding := range got.Bindings {
+				if binding.State != BindingPending {
+					t.Fatalf("binding retained authorization after unpair: %+v", binding)
+				}
+			}
+		}
 	}
+	assertUnpaired()
+	// Force a fresh handshake to cover the same pending return that can race
+	// the revocation barrier during a background reconnect.
 	eventually(t, "b sees a leave", func() bool { return !linked(b, a) && !linked(a, b) })
+	rejoinTicket, err := b.e.ExportPairingTicket(bg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejoin, err := a.e.JoinByTicket(bg, JoinTicketRequest{RequestID: "after-unpair", Ticket: rejoinTicket.Ticket})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitOp(t, a.e, rejoin, PhaseSucceeded)
+	if _, ok := listedDevice(a, b); !ok {
+		t.Fatal("fresh handshake did not register a pending binding")
+	}
+	assertUnpaired()
+	if linked(a, b) || linked(b, a) {
+		t.Fatal("fresh handshake restored a connection without approval")
+	}
 }
 
 func TestTicketIsUsedUpByTheFirstDevice(t *testing.T) {

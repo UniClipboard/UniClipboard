@@ -63,6 +63,7 @@ type Artifact struct {
 
 // Script is one installed plugin: manifest plus entry source.
 type Script struct {
+	InstanceID      string
 	Dir             string
 	Manifest        Manifest
 	Source          string
@@ -267,4 +268,33 @@ func Specs(root string, enabled []string, settings func(id string) (onError stri
 			Capabilities: m.Capabilities, Source: s.Source, Config: cfg, Events: m.Events, OnError: onError})
 	}
 	return specs, loaded, nil
+}
+
+// ForInstance preserves immutable program identity and chooses separate settings.
+func (s Script) ForInstance(id string) Script { s.InstanceID = id; return s }
+func (s Script) settingsID() string {
+	if s.InstanceID != "" {
+		return s.InstanceID
+	}
+	return s.Manifest.ID
+}
+
+// ResolveInstance only assigns installed Go sync implementations to runtime aliases.
+func ResolveInstance(found map[string]Script, implementation, id string) (Script, error) {
+	s, ok := found[implementation]
+	if !ok {
+		return Script{}, errors.New("plugin implementation is not installed")
+	}
+	if !ValidID(id) || !ValidID(implementation) {
+		return Script{}, errors.New("invalid backend instance identity")
+	}
+	if id != implementation {
+		if _, exists := found[id]; exists {
+			return Script{}, errors.New("instance ID conflicts with an installed implementation")
+		}
+	}
+	if id != implementation && (s.Manifest.Kind != "go" || !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend)) {
+		return Script{}, errors.New("distinct instances require an external Go sync backend")
+	}
+	return s.ForInstance(id), nil
 }

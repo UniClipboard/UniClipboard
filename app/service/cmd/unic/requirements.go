@@ -58,6 +58,8 @@ var catalog = []leaf{
 
 	{Name: "device add", Requirement: reqService, Completion: doneSession},
 	{Name: "device addr", Requirement: reqService, Completion: doneResponse},
+	{Name: "device path", Requirement: reqService, Completion: doneResponse},
+	{Name: "device backends", Requirement: reqService, Completion: doneResponse},
 	{Name: "device list", Requirement: reqService, Completion: doneResponse},
 	{Name: "device remove", Requirement: reqService, Completion: doneResponse},
 	{Name: "device approve", Requirement: reqService, Completion: doneResponse},

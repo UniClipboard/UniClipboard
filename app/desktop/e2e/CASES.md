@@ -18,6 +18,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [desktop-native-processes](#desktop-native-processes) | native | Verify independent GUI, quick-panel, tray and service processes through native windows with an isolated directory clipboard. |
 | [desktop-processes](#desktop-processes) | process | Normal runtime retains tray and service after GUI close and independently recreates GUI and quick-panel processes. |
 | [event-wakeup](#event-wakeup) | process | Exercise actual service events, content completions and recovery through stopped production renderers. |
+| [external-sync-workflow](#external-sync-workflow) | native | Configure a runtime instance and pair through an external Go backend with Tailcat disabled. |
 | [first-install-setup](#first-install-setup) | process | Verify setup persistence and migration with real Engine, SQLite and a service process. |
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
@@ -456,6 +457,82 @@ Forbidden: Manual polling to deliver completions, future 200 ms frame requests, 
 
 ```text
 acceptance desktopui event-wakeup
+```
+
+## external-sync-workflow
+
+External Go backend instance through the production Desktop
+
+Steps: Seed a digest-verified loopback fixture installation, create and enable an instance through Plugins, restart, approve cross-instance pairing in the invitation, and verify sync policy and exact bidirectional content.
+
+Expected: Implementation and instance identities stay separate; the visible instance policy affects real transfers; both sides explicitly approve; per-backend results remain inspectable.
+
+Forbidden: Tailcat fallback, shared identity stores, personal clipboard use, production transport claims for the loopback fixture, or approval inferred from device trust.
+
+```text
+start-external
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 插件
+ui-click listItem 插件
+ui-wait button e2e.tcp
+ui-click button e2e.tcp
+ui-wait textField '实例 ID'
+ui-set textField '实例 ID' e2e.desktop
+ui-enabled button 创建实例
+ui-click button 创建实例
+config-equals plugins.instances.e2e.desktop.implementation '"e2e.tcp"'
+ui-wait button 返回插件列表
+ui-click button 返回插件列表
+ui-wait button e2e.desktop
+ui-click button e2e.desktop
+ui-wait switch 启用
+ui-click switch 启用
+config-equals plugins.instances.e2e.desktop.enabled null
+ui-wait switch 同步文本
+ui-click switch 同步文本
+config-equals plugins.instances.e2e.desktop.sync.text false
+screenshot instance-configured
+restart-desktop
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 同步
+ui-click listItem 同步
+ui-wait switch 启用同步
+ui-click switch 启用同步
+config-equals sync.enabled true
+external-policy-check
+ui-click listItem 插件
+ui-wait button e2e.desktop
+ui-click button e2e.desktop
+ui-wait switch 同步文本
+ui-click switch 同步文本
+config-equals plugins.instances.e2e.desktop.sync.text true
+ui-click listItem 返回历史
+ui-wait listItem 管理设备…
+ui-click listItem 管理设备…
+ui-wait button 邀请设备
+ui-click button 邀请设备
+ui-wait button '跨网或命令行配对？改用完整票据 →'
+ui-click button '跨网或命令行配对？改用完整票据 →'
+ui-wait button 复制票据
+ui-enabled button 复制票据
+screenshot external-invitation
+start-pairing-peer
+peer-pair-desktop
+ui-wait text 核对并批准
+screenshot external-approval
+ui-click button 接受
+assert-paired
+ui-absent dialog 添加设备
+ui-wait button 返回历史
+ui-click button 返回历史
+external-roundtrip
+ui-wait listItem external-desktop-to-peer
+ui-click listItem external-desktop-to-peer
+ui-wait text '~e2e.desktop.*'
+screenshot external-result
+stop-policy-peer
 ```
 
 ## first-install-setup

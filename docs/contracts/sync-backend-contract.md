@@ -1,6 +1,6 @@
 # 同步后端业务 RPC 契约 v1 · P2P profile
 
-> **统一设备身份修订边界（2026-11-08）**：统一身份与关联授权以[设备契约](device-contract.md)为准。下文 wire_version=2、自报 hello、ID 指纹、全量 peers/rejected 及对应 Schema 是待修订的 P2P 业务草案，不能直接实现为新架构的完整认证；“不增加密码学身份声明”的原约束取消。必须补齐可由 Engine 验证的持钥证明、上下文、防重放与关联修订；插件不能用自报 ID 或布尔结论授信。无旧协议兼容要求。具体业务 DTO/Schema/向量待版本化同步更新，本机 RPC 帧规则继续有效。
+> Current boundary: Engine verifies the version-1 device identity protocol and owns trust plus per-instance binding authorization. `Spec.ID` is implementation identity; `backend_id` is local runtime identity. The active peer-sessions DTOs and machine-readable Schema follow that split. Self-reported IDs never grant trust. Object-store device/member protocols remain unimplemented. RPC framing, peer metadata and pairing tickets use version 1 without compatibility branches.
 
 - 状态：peer_sessions 的业务方法与 DTO 已实现，经真实子进程配对、发送、介绍的端到端测试验证；对象存储（WebDAV）DTO 未做，也不是本文强制接口。密钥/Network 方案见[迁移契约](backend-migration-contract.md)；多后端公共边界以[0007](../decisions/proposed/0007-multiple-sync-backends.md) 为准。
 - 日期：2026-11-07。
@@ -17,7 +17,7 @@ builtin `builtin.tailcat`（`internal/plugins/tailcat/`，由宿主显式装配�
 
 外部后端启动顺序为 HELLO/ACK → plugin.init → backend.bind → 初始 backend.apply_state → plugin.start；builtin 对应 Init → Bind → 初始 ApplyState → Start。Bind 只配置本次实例绑定，不联网；初始快照可以在 Start 前安装。Start 后持有常驻端点与长连接，不能为每个 Send 启进程或重连。后台断网/重连不依附某次 Process 或 Send 调用 context。
 
-`binding_id` 为 Engine 每次后端会话生成的随机 256 位 token，区别于握手 nonce；Bind 包含 backend_id、transport_kind=peer_sessions、self_id、self_name、wire_version=2。后端 ID 与握手 Spec.ID 一致；每个实例只见自身快照与 token，不能借另一个后端的成功授权传输。所有 session/send/receive token 至少 256 位随机、只在本次 binding 内有效，不进入 State、普通事件、错误或日志。它们限制 RPC 代理的可用范围，不是对恶意本机 Go 程序的权限沙箱。
+`binding_id` 为 Engine 每次后端会话生成的随机 256 位 token，区别于握手 nonce；Bind 包含 backend_id、transport_kind=peer_sessions、self_id、self_name、wire_version=1。`backend_id` is the configured local runtime instance ID. Handshake `Spec.ID` remains the immutable plugin implementation ID. They can differ. 每个实例只见自身快照与 token，不能借另一个后端的成功授权传输。所有 session/send/receive token 至少 256 位随机、只在本次 binding 内有效，不进入 State、普通事件、错误或日志。它们限制 RPC 代理的可用范围，不是对恶意本机 Go 程序的权限沙箱。
 
 | 方法 | 方向 | 结果/作用 |
 |---|---|---|
@@ -81,7 +81,7 @@ introduce 仅限已 connected、仍批准的会话，每次最多 64 个候选�
 
 Engine commit 后为每个目标创建独立 backend.send：backend_id、mode（automatic/explicit）、dispatch_id、operation_id、peer_id、connection_id、session_token、content_handle 和 clip 元数据。content_handle 是 Engine 签发的只读短期 token，绑定该根调用/目标与最终发送视图，不是 ContentID、租约或文件路径；不能保留给下次 Send。
 
-clip 包含 wire_id/origin/at_ms/hash 和按原 wire 顺序排列的 parts。part.index 从 0 连续，每项含 kind/mime/name/size；内存表示映射 wire fmt，文件映射 file。mime/name 的组合遵循 wire v2，不改对端字段。origin/at_ms 来自发送构造，不用于接收方授信或历史时间；wire_id/origin 承载共用 TransferID/SourceDeviceID，其认证与有界跨后端去重遵循 0007，不能仅凭远端声称建立去重授权；hash 沿用当前 clip.Snapshot.Hash 算法（文件仅按名称/大小），不能宣称文件内容完整性校验。
+clip 包含 wire_id/origin/at_ms/hash 和按原 wire 顺序排列的 parts。part.index 从 0 连续，每项含 kind/mime/name/size；内存表示映射 wire fmt，文件映射 file。mime/name 的组合遵循 wire v1，不改对端字段。origin/at_ms 来自发送构造，不用于接收方授信或历史时间；wire_id/origin 承载共用 TransferID/SourceDeviceID，其认证与有界跨后端去重遵循 0007，不能仅凭远端声称建立去重授权；hash 沿用当前 clip.Snapshot.Hash 算法（文件仅按名称/大小），不能宣称文件内容完整性校验。
 
 每个目标实际占用 writer、准备输出 wire header 之前，后端反向调用 authorize_send。Engine 检查根调用、dispatch/handle/session/peer 的绑定，当前仍批准且 running/active、全局授权、本后端类型策略、automatic 模式下的逐文件阈值及该发送视图大小限制、引用源文件的版本。所有引用文件须在此阶段打开/校验并保留读取句柄，资源不足为 resource_exhausted；不能一边写 header 一边才发现尚未校验的文件引用已经变化。
 
@@ -107,7 +107,7 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 
 每个 part 恰好一次、大小等于准入声明，按顺序推进；用 End 释放活跃流槽以容纳大于 32 个 part。Engine 只写自身私有暂存资源，不要求后端先在其目录保存文件。保留完整准入内容以按原算法验证 wire hash，再按交付时策略过滤；不能先丢掉某些内存格式却声称已验证原始全内容 hash。
 
-全部流结束后 Engine 再检查信任/生命周期/交付策略，运行 received 处理器并 commit；成功才建立 Received/可选 History，根结果 outcome=committed。Received 槽位须在持久事务前预留，去重成功记录与可选历史同事务提交（含 persist=false），不能先存历史再发现无法发布 Received。处理期间策略变化、Stop/撤销与提交的竞争、占位及资源释放遵循[流水线状态转换](pipeline-contract.md#7-状态转换与资源交接)。此回应是本机 RPC 的交付结果，不能转成 wire v2 不存在的远端 ACK。策略变化导致过滤后为空，或处理后的提交屏障发现输入选择已不合新策略时为 discarded，不重跑 received；存储/校验/处理不可恢复错误返回稳定 error，清理半成品并发脱敏 receive.failed。
+全部流结束后 Engine 再检查信任/生命周期/交付策略，运行 received 处理器并 commit；成功才建立 Received/可选 History，根结果 outcome=committed。Received 槽位须在持久事务前预留，去重成功记录与可选历史同事务提交（含 persist=false），不能先存历史再发现无法发布 Received。处理期间策略变化、Stop/撤销与提交的竞争、占位及资源释放遵循[流水线状态转换](pipeline-contract.md#7-状态转换与资源交接)。此回应是本机 RPC 的交付结果，不能转成 wire v1 不存在的远端 ACK。策略变化导致过滤后为空，或处理后的提交屏障发现输入选择已不合新策略时为 discarded，不重跑 received；存储/校验/处理不可恢复错误返回稳定 error，清理半成品并发脱敏 receive.failed。
 
 网络中断、取消、重复 part、短读、hash 不符或撤销授权均清理暂存与预留，不能形成可应用条目。若后端仍可按声明精确 drain 剩余字节，策略/存储丢弃可保持网络连接；RPC 故障、超限或无法确定剩余边界时关闭对应设备连接。父进程退出或 binding 更换不恢复半成品，不承诺对端重发。
 
@@ -115,7 +115,7 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 
 实现状态（§5 RPC 层）：DTO 在 `plugin/rpc/receive.go`，SDK 侧 `plugin.PeerHost`（`ReceiveOpen`/`Receive`），Engine 侧 `plugin.PeerReceiver`/`ReceiveParts`，宿主实现在 `internal/pluginproc/receive.go`。`receive_open` 只凭头部决定 accept/discard；接受后的 receive_id 单次有效、10 秒过期、每个绑定最多 32 个未用（第 33 个不询问 Engine，直接 discard）。`sync_host.receive` 是根调用，`sync_host.receive_part` 是它的子调用，part 按序到达且大小必须等于头部声明；空 part 同样不建流（`stream_id=0, size=0`）。头部超出硬限制为 invalid_argument（不可 drain）。`CallOptions.Sent` 在请求帧写出后回调，part 声明由此开始。连接层：子请求的父请求已在途中结束时，对端回复 cancelled，而不是视为协议错误断开连接（拒绝根调用与 part 声明的竞态）。真实子进程测试覆盖顺序交付（含超窗口与空 part）、丢弃/discarded、id 单次使用、大小不符与处理器的授权/顺序检查。
 
-实现状态（Engine 侧装配，`engine/peer*.go`，进程外 peer_sessions 后端）：状态快照由 Engine 数据构造（`TrustRevision` = 设备修订 + 关联修订，因此改名也会结束会话），apply_state 之后 `pruneSessions` 结束失去授权的会话；握手由 Engine 持钥完成（并发 ≤ 8、TTL 60 秒、nonce 记忆 10 分钟、attempt ≤ 16 且单连接一次性），授权复用 `recordPeer`，经配对码进入的设备仍为待批准；peer_event 按序号/令牌/信任修订/网络代次检查，双向同时连接按较小设备 ID 发起的连接胜出；发送按对端各一个在途 + 一个排队（新视图取代排队者）；接收由 Engine 生成 receive_id 并在 10 秒后释放预留，按后端实例检查对端授权（`allowedPeerOn`）。配对：票据带 `be`（后端实例 ID），出码方由调用者指定实例（`CreatePairingCodeVia`/`ExportPairingTicketVia`，默认 tailcat）；进程外后端经 `backend.pairing_address` 提供 `acc`，入码方按 `be` 找实例（找不到返回 unsupported，不回退），由 Engine 创建 attempt（地址、预期 peer、令牌）后调用 `backend.connect`；出码方的配对证明只对签发它的实例有效。介绍：`SyncState.Introduce`（设置 `sync.introductions`，默认开）为真时后端把已知对端列表告诉已连接会话，接收方后端调用 `sync_host.introduce`；Engine 校验会话后经 `ReplaceVouches` 存为候选（仅建议，不授信；规则见 [身份与信任](../architecture/identity-and-trust.md)）。进程内回环测试见 `engine/peerflow_test.go`，真实双子进程互通尚无。
+实现状态（Engine 侧装配，`engine/peer*.go`，进程外 peer_sessions 后端）：状态快照由 Engine 数据构造（`TrustRevision` = 设备修订 + 关联修订，因此改名也会结束会话），apply_state 之后 `pruneSessions` 结束失去授权的会话；握手由 Engine 持钥完成（并发 ≤ 8、TTL 60 秒、nonce 记忆 10 分钟、attempt ≤ 16 且单连接一次性），授权复用 `recordPeer`，经配对码进入的设备仍为待批准；peer_event 按序号/令牌/信任修订/网络代次检查，双向同时连接按较小设备 ID 发起的连接胜出；发送按对端各一个在途 + 一个排队（新视图取代排队者）；接收由 Engine 生成 receive_id 并在 10 秒后释放预留，按后端实例检查对端授权（`allowedPeerOn`）。配对：票据带 `be`（后端实例 ID），出码方由调用者指定实例（`CreatePairingCodeVia`/`ExportPairingTicketVia`，默认 tailcat）；进程外后端经 `backend.pairing_address` 提供 `acc`，the receiver selects a local instance whose implementation matches `be` (unsupported selections fail without fallback)，由 Engine 创建 attempt（地址、预期 peer、令牌）后调用 `backend.connect`；出码方的配对证明只对签发它的实例有效。介绍：`SyncState.Introduce`（设置 `sync.introductions`，默认开）为真时后端把已知对端列表告诉已连接会话，接收方后端调用 `sync_host.introduce`；Engine 校验会话后经 `ReplaceVouches` 存为候选（仅建议，不授信；规则见 [身份与信任](../architecture/identity-and-trust.md)）。进程内回环测试见 `engine/peerflow_test.go`，Real dual-child CLI/service acceptance is recorded in [the sync plugin workflow receipt](../exec/sync-plugin-workflow.md).
 
 ## 6a. 外部渠道 profile（0009，进程外 RPC 子集已实现）
 
@@ -171,3 +171,7 @@ See the [source application contract](source-application-contract.md) for captur
 The built-in session reader applies the 30-second body I/O inactivity budget to each blocked underlying body read or write while consuming a declared clip body. It refreshes the corresponding deadline for the next I/O call and clears it outside the body. This is an inactivity bound, not a 30-second total transfer limit. Waiting for a new clip on an idle authenticated connection has no body deadline.
 
 A receive error or aborted batch ends that session instead of draining an unfinished rejected body. The ordinary receive failure path closes file readers and removes unpublished staging; it never publishes a partial directory. Fresh authenticated session recovery remains available. Valid complete batches may still drain intentionally skipped parts under the same blocked-read bound. This prevents a cancelled or disconnected sender from retaining receive staging indefinitely when transport EOF is delayed.
+
+### Concurrent receive handlers
+
+The RPC reader accepts a receive root before its child requests, but their handlers run concurrently. An admitted child waits for its granted receive root to publish state, bounded by the grant expiry and call cancellation. The proxy then checks both the actual parent ID and receive ID. Handler scheduling cannot turn a valid admitted part into a permission failure. Unknown grants, mismatched parents, duplicate consumption and out-of-order parts remain rejected.

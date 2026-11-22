@@ -16,6 +16,7 @@ import (
 // Keep draft text separate from the authoritative service snapshot.
 type builtinPluginSettings struct {
 	id, revision, threshold, thresholdError string
+	instanceName                            string
 	tab, query                              string
 	form                                    *pluginSettingsForm
 }
@@ -62,7 +63,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	p := &d.pluginSettings
 	status := func(id string) (string, desktopkit.StatusTone) {
 		switch {
-		case pending && id != "builtin.tailcat":
+		case pending:
 			return d.tr("需要重启"), desktopkit.StatusWarning
 		case cfg.PluginEnabled(id):
 			return d.tr("已启用"), desktopkit.StatusPositive
@@ -126,38 +127,8 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		})
 	}
 	if p.id == "builtin.tailcat" {
-		if p.revision != l.config.Revision {
-			p.revision = l.config.Revision
-			p.threshold = strconv.FormatFloat(float64(instance.Sync.AutoFileMaxBytes)/(1<<20), 'f', -1, 64)
-			p.thresholdError = ""
-		}
-		k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("内置同步后端"), Description: d.tr("随应用升级，不能单独停用或卸载。")}, nil, nil)
-			k.Text(c, d.tr("以下策略保存后立即生效，仍受全局同步设置限制。"), footnote)
-			on := func(v *bool) bool { return v == nil || *v }
-			text, images, files := on(instance.Sync.Text), on(instance.Sync.Images), on(instance.Sync.Files)
-			toggle("text", "同步文本", "允许此后端发送和接收文本。", &text)
-			toggle("images", "同步图片", "允许此后端发送和接收图片。", &images)
-			toggle("files", "同步文件与文件夹", "文件夹作为完整内容传输。自动同步目录仍由全局同步设置控制。", &files)
-			if changed {
-				instance.Sync.Text = &text
-				instance.Sync.Images = &images
-				instance.Sync.Files = &files
-			}
-			k.SettingsRow(c.Key("threshold"), desktopkit.SettingsRowProps{Label: d.tr("自动文件传输阈值（MB）"), Description: d.tr("0 表示不增加限制。按整次选择的文件总大小计算。主动发送不受此阈值限制。") + " " + d.tr("输入后按回车保存。")}, nil, func() {
-				field := k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("自动文件传输阈值（MB）"), Value: &p.threshold, Disabled: l.busy || l.loading, Error: d.tr(p.thresholdError)})
-				if field.Submitted && !l.busy {
-					value, err := strconv.ParseInt(strings.TrimSpace(p.threshold), 10, 64)
-					if err != nil || value < 0 || value > 4096 {
-						p.thresholdError = "请输入 0 到 4096 之间的整数。"
-					} else {
-						p.thresholdError = ""
-						instance.Sync.AutoFileMaxBytes = config.Size(value * (1 << 20))
-						changed = true
-					}
-				}
-			})
-		})
+		d.syncPluginPolicy(c, k, p.id, cfg)
+		return
 	} else {
 		k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
 			enabled := cfg.PluginEnabled(p.id)
@@ -230,7 +201,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 			}
 			k.SettingsRow(c.Key(entry.id), desktopkit.SettingsRowProps{Label: d.tr(entry.name), Description: entry.id + " · " + d.tr(entry.description)}, labelExtra, func() {
 				on := cfg.PluginEnabled(entry.id)
-				if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: entry.id == "builtin.tailcat" || l.busy || l.loading}).Changed() {
+				if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: l.busy || l.loading}).Changed() {
 					instance := cfg.Plugins.Instances[entry.id]
 					instance.Enabled = &on
 					cfg.Plugins.Instances[entry.id] = instance
@@ -252,7 +223,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 					continue
 				}
 				k.SettingsRow(c.Key(item.ID), desktopkit.SettingsRowProps{Label: item.ID, Description: item.Version}, nil, func() {
-					if k.Button(c.Key(item.ID), d.tr("打开"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: l.busy}).Clicked() {
+					if k.Button(c.Key(item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconChevronRight, Label: item.ID, Tooltip: item.ID, Disabled: l.busy}).Clicked() {
 						*p = builtinPluginSettings{id: item.ID}
 					}
 				})
@@ -260,4 +231,62 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 		})
 	}
 
+}
+
+func (d *viewState) syncPluginPolicy(c *ui.Context, k desktopkit.Kit, id string, cfg config.Config) {
+	l := d.live
+	p := &d.pluginSettings
+	instance := cfg.Plugins.Instances[id]
+	changed := false
+	toggle := func(key, label, desc string, on *bool) {
+		k.SettingsRow(c.Key(key), desktopkit.SettingsRowProps{Label: d.tr(label), Description: d.tr(desc)}, nil, func() {
+			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.busy || l.loading}).Changed() {
+				changed = true
+			}
+		})
+	}
+	name := d.tr("同步策略")
+
+	if p.revision != l.config.Revision {
+		p.revision = l.config.Revision
+		p.threshold = strconv.FormatFloat(float64(instance.Sync.AutoFileMaxBytes)/(1<<20), 'f', -1, 64)
+		p.thresholdError = ""
+	}
+	k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
+		if id == "builtin.tailcat" {
+			enabled := cfg.PluginEnabled(id)
+			toggle("enabled", "启用", "退出并重新启动桌面端后生效。", &enabled)
+			if changed {
+				instance.Enabled = &enabled
+			}
+		}
+		k.Text(c, d.tr("以下策略保存后立即生效，仍受全局同步设置限制。"), footnote)
+		on := func(v *bool) bool { return v == nil || *v }
+		text, images, files := on(instance.Sync.Text), on(instance.Sync.Images), on(instance.Sync.Files)
+		toggle("text", "同步文本", "允许此后端发送和接收文本。", &text)
+		toggle("images", "同步图片", "允许此后端发送和接收图片。", &images)
+		toggle("files", "同步文件与文件夹", "文件夹作为完整内容传输。自动同步目录仍由全局同步设置控制。", &files)
+		if changed {
+			instance.Sync.Text = &text
+			instance.Sync.Images = &images
+			instance.Sync.Files = &files
+		}
+		k.SettingsRow(c.Key("threshold"), desktopkit.SettingsRowProps{Label: d.tr("自动文件传输阈值（MB）"), Description: d.tr("0 表示不增加限制。逐个文件检查。任一文件超限时跳过整次自动发送。主动发送不受此阈值限制。") + " " + d.tr("输入后按回车保存。")}, nil, func() {
+			field := k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("自动文件传输阈值（MB）"), Value: &p.threshold, Disabled: l.busy || l.loading, Error: d.tr(p.thresholdError)})
+			if field.Submitted && !l.busy {
+				value, err := strconv.ParseInt(strings.TrimSpace(p.threshold), 10, 64)
+				if err != nil || value < 0 || value > 4096 {
+					p.thresholdError = "请输入 0 到 4096 之间的整数。"
+				} else {
+					p.thresholdError = ""
+					instance.Sync.AutoFileMaxBytes = config.Size(value * (1 << 20))
+					changed = true
+				}
+			}
+		})
+	})
+	if changed {
+		cfg.Plugins.Instances[id] = instance
+		d.saveLiveConfig(cfg)
+	}
 }

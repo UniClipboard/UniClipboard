@@ -725,6 +725,13 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 				ui.Column(c).Gap(6).Children(func() {
 					if d.live != nil {
 						k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(v.syncState)), secondary)
+						for _, backend := range v.backendSync {
+							text := backend.BackendID + " · " + d.tr(syncStateLabel(backend.State)) + " · " + d.tr(backend.Disposition)
+							if backend.ErrorCode != "" {
+								text += " · " + backend.ErrorCode
+							}
+							k.Text(c, text, secondary)
+						}
 						return
 					}
 					rows := []desktopkit.InsetListRow{}

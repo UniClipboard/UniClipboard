@@ -16,22 +16,34 @@ type Entry struct {
 	Tags                                []string
 	Pinned                              bool
 }
-type DevicePath struct {
-	Name, State, LastSync string
-	Failed                bool
+type SyncChannel struct {
+	ID, ImplementationID, TransportKind, State, Policy string
+	Pairing, ExternalChannels, Restart                 bool
+}
+type DeviceBinding struct {
+	ID, InstanceID, ImplementationID, State string
+	SyncEnabled                             bool
+	Connection, LastActive, LastError       string
 }
 type Device struct {
-	ID, Name, Platform                     string
-	Icon                                   desktopkit.IconName
-	Online                                 bool
-	Latency                                int
-	Link, LastSeen, Fingerprint, Direction string
-	Text, Image, File                      bool
-	Paths                                  []DevicePath
+	ID, Name, UserName, ReportedName, DeviceID string
+	Icon                                       desktopkit.IconName
+	Online                                     bool
+	LastSeen, Fingerprint                      string
+	Bindings                                   []DeviceBinding
+}
+type ExternalChannel struct {
+	ID, Name, BackendID, LastSeen, LastError string
+	Enabled, AutoApply, RemoteRevocation     bool
+}
+type PendingPath struct {
+	ID, InstanceID, State string
 }
 type PendingDevice struct {
-	ID, Name, Platform, Via, Fingerprint string
-	Icon                                 desktopkit.IconName
+	ID, Name, Via, Fingerprint string
+	ByCode                     bool
+	Icon                       desktopkit.IconName
+	Paths                      []PendingPath
 }
 type DeviceCandidate struct {
 	ID, Name, Introducer, BackendID string
@@ -48,7 +60,9 @@ type Desktop struct {
 	Options                                   map[string]bool
 	Choices                                   map[string]string
 	Entries                                   []Entry
+	SyncChannels                              []SyncChannel
 	Devices                                   []Device
+	Channels                                  []ExternalChannel
 	Pending                                   []PendingDevice
 	Candidates                                []DeviceCandidate
 	Tags                                      []Tag

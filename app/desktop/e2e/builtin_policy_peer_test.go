@@ -227,7 +227,14 @@ func (s *desktopScenario) spawnPeer() (*pluginPolicyPeer, string, error) {
 	if err := os.MkdirAll(home, 0700); err != nil {
 		return nil, "", err
 	}
-	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[telemetry]\nenabled=false\n"), 0600); err != nil {
+	config := "[telemetry]\nenabled=false\n"
+	if s.externalBackend {
+		config += "[plugins]\norder=['e2e.peer']\n[plugins.instances.\"builtin.tailcat\"]\nenabled=false\n[plugins.instances.\"e2e.peer\"]\nimplementation='e2e.tcp'\n"
+		if err := s.seedExternalPlugin(home); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0600); err != nil {
 		return nil, "", err
 	}
 	if s.systemClipboard {
@@ -262,7 +269,15 @@ func (s *desktopScenario) spawnPeer() (*pluginPolicyPeer, string, error) {
 	s.policyPeer = p
 	go func() { err := cmd.Wait(); _ = log.Close(); p.done <- err }()
 	var ticket string
-	if err = s.wait(func() bool { var e error; ticket, e = p.client.ExportTicket(s.ctx); return e == nil }); err != nil {
+	if err = s.wait(func() bool {
+		var e error
+		if s.externalBackend {
+			ticket, e = p.client.ExportTicketVia(s.ctx, "e2e.peer")
+		} else {
+			ticket, e = p.client.ExportTicket(s.ctx)
+		}
+		return e == nil
+	}); err != nil {
 		return nil, "", err
 	}
 	return p, ticket, nil

@@ -792,3 +792,19 @@ func (p *Proxy) run(ctx context.Context, ac plugin.ActionContext) error {
 	}
 	return ac.SetText(col.buf.String())
 }
+
+// RuntimeStatus exposes only the local process lifecycle, never process-private state.
+func (p *Proxy) RuntimeStatus() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch p.state {
+	case stRunning:
+		return "running"
+	case stRestarting:
+		return "restarting"
+	case stUnavailable:
+		return "unavailable"
+	default:
+		return "stopped"
+	}
+}

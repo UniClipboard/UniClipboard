@@ -23,7 +23,7 @@ type savedSettings struct {
 }
 
 func (s Script) ReadSettings(root string) (string, []byte, error) {
-	path := filepath.Join(filepath.Dir(root), "settings", s.Manifest.ID+".json")
+	path := filepath.Join(filepath.Dir(root), "settings", s.settingsID()+".json")
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
 		return schemaDigest(s.Schema), s.InitialSettings, nil
 	}
@@ -223,7 +223,7 @@ func (s Script) WriteSettings(root string, values []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
-	if err := atomicWrite(dir, s.Manifest.ID+".json", data); err != nil {
+	if err := atomicWrite(dir, s.settingsID()+".json", data); err != nil {
 		return "", err
 	}
 	return schemaDigest(s.Schema) + "." + revision, nil

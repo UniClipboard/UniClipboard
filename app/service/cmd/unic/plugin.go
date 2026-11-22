@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	api "github.com/uniclipboard/unic/internal/localapi"
 
 	"github.com/uniclipboard/unic/app/service/internal/luascripts"
@@ -23,6 +26,7 @@ import (
 const pluginUsage = `usage: unic plugin <command>
 
   install <url> [--ref REF] [--path DIR] [--build] [--replace] [--enable]
+  instance add <implementation> <id>  create a disabled instance with independent settings
   list                show installed and configured plugins
   enable <id>         enable at the next service restart
   disable <id>        disable at the next service restart
@@ -86,6 +90,31 @@ func pluginCmd(args []string, root, cfgPath string, out io.Writer) error {
 		return errors.New(strings.TrimRight(pluginUsage, "\n"))
 	}
 	switch args[0] {
+	case "instance":
+		if len(args) != 4 || args[1] != "add" {
+			return errors.New("usage: unic plugin instance add IMPLEMENTATION ID")
+		}
+		found, _ := luascripts.Scan(root)
+		if _, err := luascripts.ResolveInstance(found, args[2], args[3]); err != nil {
+			return err
+		}
+		m, err := config.Open(cfgPath, func(string, ...any) {})
+		if err != nil {
+			return err
+		}
+		next, err := m.Current().AddBackendInstance(args[2], args[3])
+		if err != nil {
+			return err
+		}
+		var raw bytes.Buffer
+		if err := toml.NewEncoder(&raw).Encode(next); err != nil {
+			return err
+		}
+		if _, err := m.Replace(m.State().Revision, raw.Bytes()); err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(out, args[3], "created; configure it, then enable it and restart unicd")
+		return err
 	case "list", "ls":
 		return pluginList(root, cfgPath, out)
 	case "enable", "disable":
@@ -117,6 +146,13 @@ func pluginList(root, cfgPath string, out io.Writer) error {
 		return fmt.Errorf("config.toml: %w", err)
 	}
 	found, bad := luascripts.Scan(root)
+	for id, in := range cfg.Plugins.Instances {
+		if in.Implementation != "" {
+			if s, err := luascripts.ResolveInstance(found, in.Implementation, id); err == nil {
+				found[id] = s
+			}
+		}
+	}
 	enabled := map[string]bool{}
 	for _, id := range cfg.ExternalPlugins() {
 		enabled[id] = true
@@ -164,6 +200,14 @@ func pluginSet(on bool, id, root, cfgPath string, out io.Writer) error {
 		return errors.New("invalid external plugin ID")
 	}
 	found, bad := luascripts.Scan(root)
+	cfg, err := loadConfig(cfgPath)
+	if err != nil {
+		return err
+	}
+	implementation := cfg.PluginImplementation(id)
+	if s, err := luascripts.ResolveInstance(found, implementation, id); err == nil {
+		found[id] = s
+	}
 	if on {
 		if _, ok := found[id]; !ok {
 			for _, err := range bad {
@@ -184,7 +228,6 @@ func pluginSet(on bool, id, root, cfgPath string, out io.Writer) error {
 		}
 	}
 	var changed bool
-	var err error
 	switch {
 	case !on:
 		changed, err = config.DisableExternalPlugin(cfgPath, id)
@@ -253,7 +296,7 @@ func pluginInstall(ctx context.Context, args []string, root, cfg string, out io.
 
 func printRunningPlugins(out io.Writer, plugins []api.PluginInfo) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(w, "ID\tVERSION\tSOURCE\tCONFIGURED\tRUNNING\tRESTART"); err != nil {
+	if _, err := fmt.Fprintln(w, "ID\tIMPLEMENTATION\tVERSION\tSOURCE\tCONFIGURED\tRUNNING\tRESTART"); err != nil {
 		return err
 	}
 	for _, p := range plugins {
@@ -261,7 +304,7 @@ func printRunningPlugins(out io.Writer, plugins []api.PluginInfo) error {
 		if running == "" {
 			running = "-"
 		}
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s\t%t\n", p.ID, p.Version, p.Source, p.Configured, running, p.Restart); err != nil {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\t%s\t%t\n", p.ID, p.ImplementationID, p.Version, p.Source, p.Configured, running, p.Restart); err != nil {
 			return err
 		}
 	}

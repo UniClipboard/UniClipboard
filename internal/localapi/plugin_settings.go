@@ -8,14 +8,18 @@ import (
 )
 
 type PluginInfo struct {
-	ID             string `json:"id"`
-	Version        string `json:"version"`
-	Kind           string `json:"kind"`
-	Source         string `json:"source"`
-	Configured     bool   `json:"configured_enabled"`
-	RunningVersion string `json:"running_version,omitempty"`
-	HasSettings    bool   `json:"has_settings"`
-	Restart        bool   `json:"restart_required"`
+	ImplementationID string   `json:"implementation_id"`
+	Capabilities     []string `json:"capabilities"`
+	TransportKind    string   `json:"transport_kind,omitempty"`
+	ExternalChannels bool     `json:"external_channels,omitempty"`
+	ID               string   `json:"id"`
+	Version          string   `json:"version"`
+	Kind             string   `json:"kind"`
+	Source           string   `json:"source"`
+	Configured       bool     `json:"configured_enabled"`
+	RunningVersion   string   `json:"running_version,omitempty"`
+	HasSettings      bool     `json:"has_settings"`
+	Restart          bool     `json:"restart_required"`
 }
 
 type PluginSettings struct {
@@ -43,5 +47,16 @@ func (c *Client) PluginSettings(ctx context.Context, id string) (out PluginSetti
 
 func (c *Client) SavePluginSettings(ctx context.Context, id string, in PluginSettingsEdit) (out PluginSettings, err error) {
 	err = c.do(ctx, http.MethodPut, "/v1/plugins/"+url.PathEscape(id)+"/settings", in, &out)
+	return
+}
+
+type PluginInstanceCreate struct {
+	ID               string `json:"id"`
+	ImplementationID string `json:"implementation_id"`
+	Revision         string `json:"revision"`
+}
+
+func (c *Client) CreatePluginInstance(ctx context.Context, in PluginInstanceCreate) (out PluginInfo, err error) {
+	err = c.do(ctx, "POST", "/v1/plugin-instances", in, &out)
 	return
 }

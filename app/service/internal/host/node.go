@@ -127,7 +127,9 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		// History remembers files by path; they are never copied.
 		ResolveFileRef: resolveDesktopFile,
 	}
-	opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
+	if c.PluginEnabled(string(engine.BackendTailcat)) {
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
+	}
 	if c.PluginEnabled(builtinclassify.ID) {
 		onError, _ := c.ProcessorSettings(builtinclassify.ID)
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtinclassify.New(), OnError: onError})
@@ -141,7 +143,13 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if o.LuaDir != "" {
 		var specs []engine.LuaPluginSpec
 		var lerr error
-		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, c.ExternalPlugins(), c.ProcessorSettings); lerr != nil {
+		var implementations []string
+		for _, id := range c.ExternalPlugins() {
+			if impl := c.PluginImplementation(id); !slices.Contains(implementations, impl) {
+				implementations = append(implementations, impl)
+			}
+		}
+		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, implementations, c.ProcessorSettings); lerr != nil {
 			return nil, lerr
 		}
 		opts.LuaPlugins = specs
@@ -149,6 +157,15 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 			return slices.Contains(c.Plugins.Order, id)
 		})
 		opts.PluginOrder = append(opts.PluginOrder, c.Plugins.Order...)
+		installed := loaded
+		loaded = make(map[string]luascripts.Script)
+		for _, id := range c.ExternalPlugins() {
+			s := installed[c.PluginImplementation(id)]
+			if id != s.Manifest.ID && (s.Manifest.Kind != "go" || !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend)) {
+				return nil, errors.New("distinct instances require an external Go sync backend")
+			}
+			loaded[id] = s.ForInstance(id)
+		}
 		n.runningPlugins = loaded
 		n.lua = make(map[string]luascripts.Script)
 		for _, id := range c.ExternalPlugins() {
@@ -170,7 +187,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 					return nil, err
 				}
 			}
-			opts.Plugins = append(opts.Plugins, engine.PluginInstance{Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events})
+			opts.Plugins = append(opts.Plugins, engine.PluginInstance{ID: engine.PluginID(id), Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events})
 		}
 	}
 	e, err := engine.New(ctx, opts)
@@ -281,6 +298,19 @@ func (n *Node) pushSettings(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		// Assembly changes apply after restart. Policies still target the running
+		// instances, including a backend whose disable is pending restart.
+		policies := make(map[engine.PluginID]engine.BackendSyncPolicy)
+		configured := n.cfg.Current()
+		for id := range st.Settings.Value.BackendPolicies {
+			policies[id] = configured.BackendPolicy(string(id))
+		}
+		for id := range configured.Settings().BackendPolicies {
+			if s, ok := n.runningPlugins[string(id)]; ok && !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend) {
+				return errors.New("standard sync settings require a sync backend")
+			}
+		}
+		want.BackendPolicies = policies
 		if reflect.DeepEqual(st.Settings.Value, want) {
 			return nil
 		}
@@ -332,17 +362,7 @@ func deviceConnected(d engine.Device) bool {
 	return false
 }
 
-func devicePeer(d engine.Device) bool {
-	if d.Trust != engine.DeviceTrustTrusted {
-		return false
-	}
-	for _, b := range d.Bindings {
-		if b.State == engine.BindingAuthorized {
-			return true
-		}
-	}
-	return false
-}
+func devicePeer(d engine.Device) bool { return d.Trust == engine.DeviceTrustTrusted }
 
 func devicePending(d engine.Device) bool {
 	if d.Trust == engine.DeviceTrustPending {
@@ -363,12 +383,34 @@ func apiPeer(d engine.Device) api.PeerStatus {
 			last = b.LastActiveMs
 		}
 	}
-	return api.PeerStatus{ID: d.ID, Name: d.DisplayName(), Connected: deviceConnected(d), LastSeen: last / 1000}
+	return api.PeerStatus{
+		Bindings:     slices.Clone(d.Bindings),
+		ID:           d.ID,
+		Name:         d.DisplayName(),
+		UserName:     d.Name,
+		ReportedName: d.ReportedName,
+		Fingerprint:  d.Fingerprint,
+		Connected:    deviceConnected(d),
+		LastSeen:     last / 1000,
+		Revision:     d.Revision,
+	}
 }
 
 func apiChannel(c engine.Channel) api.PeerStatus {
-	return api.PeerStatus{ID: c.ID, Name: c.DisplayName(), LastSeen: c.LastActiveMs / 1000, Kind: "external", BackendID: string(c.BackendID),
-		Enabled: c.Enabled, AutoApply: c.AutoApply, RemoteRevocation: c.RemoteRevocation, Revision: c.Revision}
+	return api.PeerStatus{
+		ID:               c.ID,
+		Name:             c.DisplayName(),
+		UserName:         c.Name,
+		ReportedName:     c.ReportedName,
+		LastSeen:         c.LastActiveMs / 1000,
+		Kind:             "external",
+		BackendID:        string(c.BackendID),
+		Enabled:          c.Enabled,
+		AutoApply:        c.AutoApply,
+		RemoteRevocation: c.RemoteRevocation,
+		Revision:         c.Revision,
+		LastError:        c.LastError,
+	}
 }
 
 func (n *Node) channelName(ctx context.Context, id string) string {
@@ -415,7 +457,7 @@ func apiPending(d engine.Device) api.PendingPeer {
 	for _, b := range d.Bindings {
 		byTicket = byTicket || b.Ticket
 	}
-	out := api.PendingPeer{ID: d.ID, Name: d.DisplayName(), ByCode: byTicket, Fingerprint: d.Fingerprint, Time: d.UpdatedMs / 1000, Revision: d.Revision, Bindings: []api.BindingApproval{}}
+	out := api.PendingPeer{Paths: slices.Clone(d.Bindings), ID: d.ID, Name: d.DisplayName(), ByCode: byTicket, Fingerprint: d.Fingerprint, Time: d.UpdatedMs / 1000, Revision: d.Revision, Bindings: []api.BindingApproval{}}
 	for _, b := range d.Bindings {
 		if b.State == engine.BindingPending {
 			out.Bindings = append(out.Bindings, api.BindingApproval{ID: b.ID, Revision: b.Revision})
@@ -524,7 +566,10 @@ func ctxError(err error) error {
 }
 
 func (n *Node) Pair(ctx context.Context, addr string) (api.PairResult, error) {
-	id, err := n.e.JoinByTicket(ctx, engine.JoinTicketRequest{RequestID: engine.RequestID("pair-" + randID()), Ticket: addr})
+	return n.PairVia(ctx, addr, "")
+}
+func (n *Node) PairVia(ctx context.Context, addr, backend string) (api.PairResult, error) {
+	id, err := n.e.JoinByTicket(ctx, engine.JoinTicketRequest{BackendID: engine.PluginID(backend), RequestID: engine.RequestID("pair-" + randID()), Ticket: addr})
 	if err != nil {
 		return api.PairResult{}, apiErr(err, false)
 	}
@@ -532,7 +577,10 @@ func (n *Node) Pair(ctx context.Context, addr string) (api.PairResult, error) {
 }
 
 func (n *Node) Join(ctx context.Context, code string) (api.PairResult, error) {
-	id, err := n.e.JoinByCode(ctx, engine.JoinRequest{RequestID: engine.RequestID("join-" + randID()), Code: code})
+	return n.JoinVia(ctx, code, "")
+}
+func (n *Node) JoinVia(ctx context.Context, code, backend string) (api.PairResult, error) {
+	id, err := n.e.JoinByCode(ctx, engine.JoinRequest{BackendID: engine.PluginID(backend), RequestID: engine.RequestID("join-" + randID()), Code: code})
 	if err != nil {
 		return api.PairResult{}, apiErr(err, true)
 	}
@@ -548,7 +596,14 @@ func (n *Node) Code(ctx context.Context) (api.Code, bool, error) {
 }
 
 func (n *Node) NewCode(ctx context.Context) (api.Code, error) {
-	c, err := n.e.CreatePairingCode(ctx)
+	return n.NewCodeVia(ctx, string(engine.BackendTailcat))
+}
+
+func (n *Node) NewCodeVia(ctx context.Context, backend string) (api.Code, error) {
+	if backend == "" {
+		backend = string(engine.BackendTailcat)
+	}
+	c, err := n.e.CreatePairingCodeVia(ctx, engine.PluginID(backend))
 	if err != nil {
 		return api.Code{}, apiErr(err, true)
 	}
@@ -582,7 +637,14 @@ func (n *Node) Pending(ctx context.Context) ([]api.PendingPeer, error) {
 
 // ExportTicket is an explicit request for a secret pairing ticket.
 func (n *Node) ExportTicket(ctx context.Context) (string, error) {
-	t, err := n.e.ExportPairingTicket(ctx)
+	return n.ExportTicketVia(ctx, string(engine.BackendTailcat))
+}
+
+func (n *Node) ExportTicketVia(ctx context.Context, backend string) (string, error) {
+	if backend == "" {
+		backend = string(engine.BackendTailcat)
+	}
+	t, err := n.e.ExportPairingTicketVia(ctx, engine.PluginID(backend))
 	if err != nil {
 		return "", apiErr(err, false)
 	}
@@ -633,12 +695,24 @@ func (n *Node) IgnoreCandidate(ctx context.Context, id string, ignored bool) err
 
 func (n *Node) Reject(ctx context.Context, id string) error { return n.Unpair(ctx, id) }
 
+func (n *Node) RenamePeer(ctx context.Context, id string, in api.PeerRename) (api.PeerStatus, error) {
+	d, err := n.e.RenameDevice(ctx, engine.RenameDeviceRequest{ID: id, ExpectedRevision: in.Revision, Name: in.Name})
+	if err != nil {
+		return api.PeerStatus{}, apiErr(err, false)
+	}
+	return apiPeer(d), nil
+}
+
 func (n *Node) Unpair(ctx context.Context, id string) error {
 	d, err := n.e.GetDevice(ctx, id)
 	if err != nil {
 		return apiErr(err, false)
 	}
 	return apiErr0(n.e.UnpairDevice(ctx, engine.UnpairDeviceRequest{ID: d.ID, ExpectedRevision: d.Revision}))
+}
+
+func (n *Node) UnpairAt(ctx context.Context, id string, revision int64) error {
+	return apiErr0(n.e.UnpairDevice(ctx, engine.UnpairDeviceRequest{ID: id, ExpectedRevision: revision}))
 }
 
 func (n *Node) Clipboard(ctx context.Context) (api.ClipboardView, error) {

@@ -26,12 +26,20 @@ $legacy = Join-Path $Root 'v1-data'
 $profile = Join-Path $Root 'v2-data'
 $checks = @()
 function Stop-LaunchedDesktop {
-  foreach ($process in (Get-Process -Name unic-desktop,unicd -ErrorAction SilentlyContinue)) {
-    if ($process.Path -and (Split-Path $process.Path) -eq $install) {
-      Stop-Process -InputObject $process -ErrorAction SilentlyContinue
-      $null = $process.WaitForExit(10000)
+  $deadline = [DateTime]::UtcNow.AddSeconds(15)
+  $quiet = 0
+  do {
+    $running = @(Get-Process -Name unic-desktop,unicd -ErrorAction SilentlyContinue |
+      Where-Object { $_.Path -and (Split-Path $_.Path) -eq $install })
+    if ($running.Count -eq 0) {
+      $quiet++
+    } else {
+      $quiet = 0
+      $running | Stop-Process -ErrorAction SilentlyContinue
     }
-  }
+    Start-Sleep -Milliseconds 100
+  } while ($quiet -lt 3 -and [DateTime]::UtcNow -lt $deadline)
+  if ($quiet -lt 3) { throw 'The task-owned Desktop processes did not stop.' }
 }
 $oldHome = $env:UNIC_HOME
 $oldPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -99,8 +107,9 @@ try {
   if ($migration.status -ne 'complete' -or $migration.imported -ne 1 -or $migration.verified -ne 1) { throw 'Migration did not reopen and verify synthetic history.' }
   $checks += 'synthetic_v1_history_imported_and_reopened'
   $profileBefore = Snapshot $profile
-  $p = Start-Process (Join-Path $install 'uninstall.exe') -ArgumentList '/S' -PassThru
-  if (-not $p.WaitForExit(30000) -or $p.ExitCode -ne 0) { throw 'Uninstall failed.' }
+  if ($LegacyUpdater) { Stop-LaunchedDesktop }
+  $p = Start-Process (Join-Path $install 'uninstall.exe') -ArgumentList '/S' -Wait -PassThru
+  if ($p.ExitCode -ne 0) { throw 'Uninstall failed.' }
   $deadline = [DateTime]::UtcNow.AddSeconds(15)
   while (((Test-Path $key) -or (Test-Path (Join-Path $install 'uninstall.exe'))) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 50 }
   if ((Test-Path $key) -or (Test-Path (Join-Path $install 'unic-desktop.exe'))) { throw 'Program registration remains after uninstall.' }

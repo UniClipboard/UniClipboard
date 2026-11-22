@@ -165,6 +165,7 @@ func scenarioTrayIconSettings(t *testing.T) {
 	if err := icon.SetStyle(manager.Current().Desktop.TrayIcon); err != nil {
 		t.Fatal(err)
 	}
+	deliveredStyle := manager.Current().Desktop.TrayIcon
 	glyphHash := images[0]
 	desktop := NewDesktop(ctx, client)
 	defer desktop.Close()
@@ -189,6 +190,7 @@ func scenarioTrayIconSettings(t *testing.T) {
 			if err := icon.SetStyle(cfg.Desktop.TrayIcon); err != nil {
 				t.Fatal(err)
 			}
+			deliveredStyle = cfg.Desktop.TrayIcon
 		}
 	}
 	drain()
@@ -213,7 +215,8 @@ func scenarioTrayIconSettings(t *testing.T) {
 			d.live.poll(d)
 			view.Advance(20 * time.Millisecond)
 			drain()
-			return !d.live.busy && d.live.config.Config.Desktop.TrayIcon == value && manager.Current().Desktop.TrayIcon == value
+			// Current can change before OnChange enqueues the image delivery.
+			return !d.live.busy && d.live.config.Config.Desktop.TrayIcon == value && manager.Current().Desktop.TrayIcon == value && deliveredStyle == value
 		})
 		state, err := client.Config(ctx)
 		if err != nil || state.Config.Desktop.TrayIcon != value {

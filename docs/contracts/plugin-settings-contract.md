@@ -126,3 +126,7 @@ For a running Lua instance, the service validates the candidate and completes it
 Go 和 Swift 读取同一份 Go 生成 schema 与 `validation-cases.json`：校验默认值、false/0、类型、枚举、边界、嵌套未知键、列表、Unicode 长度与秘密错误。另测重复键、深度/大小、生成器不支持的类型、schema 不支持关键字和数值精度。
 
 macOS 设置的 Plugins 页提供“Preview plugin settings…”。保存只作用于该预览会话；Cancel 丢弃草稿，Restore defaults 重新填默认值并移除可选凭据。该预览不向 daemon、TOML 或真实插件实例写入。The production Desktop form and the historical experiment are separate entry points.
+
+## Runtime instance ownership
+
+Settings routes use the local runtime instance ID. The immutable Schema and executable still come from the selected installed implementation. Each instance stores an independent private settings file under `plugins/settings/`; instance creation does not copy another instance's credentials. Read responses omit write-only fields and report presence booleans. Saving a Go backend's settings requires restart. When the new configuration loads, Engine atomically invalidates that instance's old device bindings and external channels before starting its new process. Other instances retain their settings and authorizations.

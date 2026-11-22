@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "starting_head": "f9dad9a0ab4a0b0e2d5b0d55c71227a9f2527883",
+  "original_ci_run": 44967512014,
+  "original_failed_jobs": {
+    "3": 137039852341,
+    "4": 137039852444
+  },
+  "failures": [
+    "tray readiness stopped before watcher/image delivery",
+    "keyboard expected phone after preview added spare device"
+  ],
+  "source_sha256": {
+    "app/desktop/internal/desktopui/acceptance_token_search_test.go": "788d1890d0ac170a61cb9ff01b2cdc9389feee3f5a8849e53db8b6ee58c1989e",
+    "app/desktop/internal/desktopui/acceptance_tray_icon_test.go": "f188771e17100265365225bcee9ec7972f02510bd1b4e3c04e25ae5e38c0e91f"
+  },
+  "local_reports": {
+    "token_baseline": {
+      "report": ".build/desktop-e2e/20261122T005229Z-be62d951/index.html",
+      "result_sha256": "0b0ef17f1a090c4afd7e0a33ae68c3c03c98053527eb1c584dad88ba96690752",
+      "status": "FAIL",
+      "elapsed_ms": 46580,
+      "cleanup": "PASS",
+      "assertion_count": 26
+    },
+    "tray_baseline": {
+      "report": ".build/desktop-e2e/20261122T005228Z-9291dbb1/index.html",
+      "result_sha256": "055a247532d0d5f6cd30b3a381041b2222d4b2a02eca7e66ec8428ac849b05e5",
+      "status": "PASS",
+      "elapsed_ms": 28312,
+      "cleanup": "PASS",
+      "assertion_count": 1
+    },
+    "tray_delayed_before": {
+      "report": ".build/desktop-e2e/20261122T005423Z-07cf0cdc/index.html",
+      "result_sha256": "b5242aef3c4a74873f209608e590ff82eb26033490803df48af84d8ec6dac778",
+      "status": "FAIL",
+      "elapsed_ms": 26730,
+      "cleanup": "PASS",
+      "assertion_count": 0
+    },
+    "tray_delayed_after": {
+      "report": ".build/desktop-e2e/20261122T005514Z-fb132944/index.html",
+      "result_sha256": "f9ab3f97eea968623d12146ff7c9f4f82ed14a49d41e32c7e47727e9d2b7e60d",
+      "status": "PASS",
+      "elapsed_ms": 31053,
+      "cleanup": "PASS",
+      "assertion_count": 1
+    },
+    "token_after": {
+      "report": ".build/desktop-e2e/20261122T005515Z-51086ed5/index.html",
+      "result_sha256": "53cfc0bbc0517432b0c7c7279d1a2020c07041774c83e6990e515fbdfb696f70",
+      "status": "PASS",
+      "elapsed_ms": 53042,
+      "cleanup": "PASS",
+      "assertion_count": 29
+    },
+    "tray_final": {
+      "report": ".build/desktop-e2e/20261122T005642Z-f3b0ddce/index.html",
+      "result_sha256": "56426deb05146b2d93a3c72b3acf4f45870c2c75df2845031cefa3dcdbaff4b0",
+      "status": "PASS",
+      "elapsed_ms": 27400,
+      "cleanup": "PASS",
+      "assertion_count": 1
+    }
+  },
+  "lint": "PASS: v2.15.0, zero issues",
+  "production_changes": false,
+  "temporary_scheduling_probe_removed": true,
+  "hosted_verification": "check pushed-head PR CI",
+  "historical_tailcat_merge_hold": "unchanged"
+}

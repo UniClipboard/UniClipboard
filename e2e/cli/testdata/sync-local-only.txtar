@@ -1,0 +1,31 @@
+# 用例: Local mode without tailcat
+# 目的: Verify explicit backend disable preserves local history and Actions.
+# 流程:
+#   1. Start a daemon with tailcat disabled.
+#   2. Capture text and run the built-in text Action.
+#   3. Restart and verify that no backend is silently restored.
+# 期望:
+#   - Local history and text Actions remain available.
+#   - Pairing reports an unavailable backend.
+# 不应:
+#   - Start tailcat or silently fall back to it.
+
+node-start alpha
+board-set alpha text hello.txt
+until alpha 'local_system' h list --json
+u alpha h action @1 builtin.text/upper --apply
+! u alpha device addr
+node-stop alpha
+node-start alpha
+u alpha config --json
+stdout '"enabled":false'
+! u alpha device addr
+
+-- alpha/config.toml --
+device_name = "alpha"
+[telemetry]
+enabled = false
+[plugins.instances."builtin.tailcat"]
+enabled = false
+-- hello.txt --
+hello local mode

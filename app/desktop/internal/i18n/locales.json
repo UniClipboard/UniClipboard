@@ -4235,6 +4235,876 @@
     "pt-BR": "Limpar tudo",
     "ru": "Сбросить все"
   },
+  "运行中": {
+    "en": "Running",
+    "ja": "実行中",
+    "pt-BR": "Em execução",
+    "ru": "Работает"
+  },
+  "正在重启": {
+    "en": "Restarting",
+    "ja": "再起動中",
+    "pt-BR": "Reiniciando",
+    "ru": "Перезапуск"
+  },
+  "不可用": {
+    "en": "Unavailable",
+    "ja": "利用不可",
+    "pt-BR": "Indisponível",
+    "ru": "Недоступно"
+  },
+  "未运行": {
+    "en": "Not running",
+    "ja": "停止中",
+    "pt-BR": "Não está em execução",
+    "ru": "Не запущено"
+  },
+  "运行状态：": {
+    "en": "Status: ",
+    "ja": "実行状態：",
+    "pt-BR": "Status: ",
+    "ru": "Состояние: "
+  },
+  "对端不可达，正在等待重连": {
+    "en": "Peer unreachable, waiting to reconnect",
+    "ja": "接続先に到達できません。再接続を待機しています",
+    "pt-BR": "Par inacessível, aguardando reconexão",
+    "ru": "Узел недоступен, ожидание переподключения"
+  },
+  "授权已失效，请重新配对": {
+    "en": "Authorization expired; pair again",
+    "ja": "認可の有効期限が切れました。再度ペアリングしてください",
+    "pt-BR": "Autorização expirada; pareie novamente",
+    "ru": "Авторизация истекла; выполните сопряжение снова"
+  },
+  "对应同步渠道未运行": {
+    "en": "Sync channel is not running",
+    "ja": "対応する同期チャネルが稼働していません",
+    "pt-BR": "O canal de sincronização não está em execução",
+    "ru": "Соответствующий канал синхронизации не запущен"
+  },
+  "连接超时": {
+    "en": "Connection timed out",
+    "ja": "接続がタイムアウトしました",
+    "pt-BR": "Tempo limite de conexão esgotado",
+    "ru": "Время ожидания подключения истекло"
+  },
+  "退出远端群组失败，渠道仍保留在本地，可稍后重试移除。": {
+    "en": "Failed to leave the remote group. The channel remains saved locally; you can try removing it again later.",
+    "ja": "リモートグループからの退出に失敗しました。チャネルはローカルに残っているため、後でもう一度削除を試せます。",
+    "pt-BR": "Falha ao sair do grupo remoto. O canal permanece salvo localmente; tente remover novamente mais tarde.",
+    "ru": "Не удалось выйти из удалённой группы. Канал сохранён локально; попробуйте удалить его позже."
+  },
+  "无路径": {
+    "en": "No paths",
+    "ja": "パスなし",
+    "pt-BR": "Sem caminhos",
+    "ru": "Нет путей"
+  },
+  "在线 · %d/%d": {
+    "en": "Online · %d/%d",
+    "ja": "オンライン · %d/%d",
+    "pt-BR": "Online · %d/%d",
+    "ru": "В сети · %d/%d"
+  },
+  "已信任 · 无同步路径": {
+    "en": "Trusted · No sync paths",
+    "ja": "信頼済み · 同期パスなし",
+    "pt-BR": "Confiável · Sem caminhos de sincronização",
+    "ru": "Доверенное · Нет путей синхронизации"
+  },
+  "%d 条路径 · %d 条待批准": {
+    "en": "%d paths · %d pending",
+    "ja": "%d 件のパス · %d 件承認待ち",
+    "pt-BR": "%d caminhos · %d pendentes",
+    "ru": "%d путей · %d ожидают"
+  },
+  "%d 条同步路径": {
+    "en": "%d sync paths",
+    "ja": "%d 件の同期パス",
+    "pt-BR": "%d caminhos de sincronização",
+    "ru": "%d путей синхронизации"
+  },
+  "点击右侧添加同步路径": {
+    "en": "Add a sync path on the right",
+    "ja": "右側から同期パスを追加",
+    "pt-BR": "Adicione um caminho de sincronização à direita",
+    "ru": "Добавьте путь синхронизации справа"
+  },
+  "%s(暂停)": {
+    "en": "%s (Paused)",
+    "ja": "%s（一時停止）",
+    "pt-BR": "%s (Pausado)",
+    "ru": "%s (пауза)"
+  },
+  "仅本地模式": {
+    "en": "Local only",
+    "ja": "ローカルのみ",
+    "pt-BR": "Somente local",
+    "ru": "Только локально"
+  },
+  "同步渠道": {
+    "en": "Sync channels",
+    "ja": "同期チャネル",
+    "pt-BR": "Canais de sincronização",
+    "ru": "Каналы синхронизации"
+  },
+  "同步渠道：": {
+    "en": "Sync channel: ",
+    "ja": "同期チャネル：",
+    "pt-BR": "Canal de sincronização: ",
+    "ru": "Канал синхронизации: "
+  },
+  "当前没有运行中的同步渠道（仅本地历史模式）": {
+    "en": "No sync channels running (local history only)",
+    "ja": "稼働中の同期チャネルがありません（ローカル履歴のみ）",
+    "pt-BR": "Nenhum canal de sincronização ativo (somente histórico local)",
+    "ru": "Нет активных каналов синхронизации (только локальная история)"
+  },
+  "前往插件设置": {
+    "en": "Open plugin settings",
+    "ja": "プラグイン設定へ",
+    "pt-BR": "Ir para plugins",
+    "ru": "Открыть настройки плагинов"
+  },
+  "同步渠道配置已更改，请退出并重新启动桌面端以生效。": {
+    "en": "Sync channel configuration changed. Quit and reopen Desktop to apply.",
+    "ja": "同期チャネルの設定が変更されました。反映するにはデスクトップ版を再起動してください。",
+    "pt-BR": "A configuração dos canais mudou. Feche e reabra o Desktop para aplicar.",
+    "ru": "Конфигурация каналов изменена. Закройте и снова откройте приложение для применения."
+  },
+  "第三方": {
+    "en": "Third-party",
+    "ja": "サードパーティ",
+    "pt-BR": "Terceiros",
+    "ru": "Сторонний"
+  },
+  "需重启": {
+    "en": "Restart required",
+    "ja": "再起動が必要",
+    "pt-BR": "Requer reinício",
+    "ru": "Нужен перезапуск"
+  },
+  "管理同步渠道": {
+    "en": "Manage channels",
+    "ja": "同期チャネルを管理",
+    "pt-BR": "Gerenciar canais",
+    "ru": "Управление каналами"
+  },
+  "同步渠道设置已保存，请退出并重新启动桌面端以生效。": {
+    "en": "Sync channel settings saved. Quit and reopen Desktop to apply.",
+    "ja": "同期チャネルの設定を保存しました。反映するにはデスクトップ版を再起動してください。",
+    "pt-BR": "Configurações dos canais salvas. Feche e reabra o Desktop para aplicar.",
+    "ru": "Настройки каналов сохранены. Закройте и снова откройте приложение для применения."
+  },
+  "所有同步渠道与设备路径当前不传输剪贴板内容，本机历史与配对管理不受影响。": {
+    "en": "No clipboard content is transferred across sync channels or device paths. Local history and pairing remain available.",
+    "ja": "すべての同期チャネルとデバイスパスでクリップボードは転送されません。ローカル履歴とペアリング管理は利用できます。",
+    "pt-BR": "Nenhum conteúdo é transferido nos canais ou dispositivos. O histórico local e o pareamento continuam disponíveis.",
+    "ru": "Передача содержимого по всем каналам и путям приостановлена. Локальная история и сопряжение доступны."
+  },
+  "开启同步": {
+    "en": "Enable sync",
+    "ja": "同期を有効にする",
+    "pt-BR": "Ativar sincronização",
+    "ru": "Включить синхронизацию"
+  },
+  "待批准请求 (%d)": {
+    "en": "Pending requests (%d)",
+    "ja": "承認待ちリクエスト (%d)",
+    "pt-BR": "Solicitações pendentes (%d)",
+    "ru": "Запросы на подтверждение (%d)"
+  },
+  "需核对双端指纹后方生效": {
+    "en": "Verify matching fingerprints on both devices",
+    "ja": "両端末でフィンガープリントを確認すると有効になります",
+    "pt-BR": "Verifique as impressões digitais em ambos os dispositivos",
+    "ru": "Подтвердите совпадение отпечатков на обоих устройствах"
+  },
+  "请求新增同步路径": {
+    "en": "requested a new sync path",
+    "ja": "が新しい同期パスをリクエストしています",
+    "pt-BR": "solicitou um novo caminho de sincronização",
+    "ru": "запрашивает новый путь синхронизации"
+  },
+  "通过配对码": {
+    "en": "Via pairing code",
+    "ja": "ペアリングコード経由",
+    "pt-BR": "Via código de pareamento",
+    "ru": "По коду сопряжения"
+  },
+  "点击卡片在右侧管理同步路径与安全信息": {
+    "en": "Select a card to manage sync paths and security on the right",
+    "ja": "カードを選択して右側で同期パスとセキュリティを管理",
+    "pt-BR": "Selecione um cartão para gerenciar caminhos e segurança à direita",
+    "ru": "Выберите карточку для управления путями и безопасностью справа"
+  },
+  "当前设备": {
+    "en": "This device",
+    "ja": "このデバイス",
+    "pt-BR": "Este dispositivo",
+    "ru": "Это устройство"
+  },
+  "%d 个同步渠道运行中": {
+    "en": "%d sync channels running",
+    "ja": "%d 件の同期チャネルが稼働中",
+    "pt-BR": "%d canais de sincronização ativos",
+    "ru": "Активных каналов: %d"
+  },
+  "仅本地模式 · 未运行同步渠道": {
+    "en": "Local only · No running sync channels",
+    "ja": "ローカルのみ · 稼働中の同期チャネルなし",
+    "pt-BR": "Somente local · Nenhum canal ativo",
+    "ru": "Только локально · Нет активных каналов"
+  },
+  "端到端加密": {
+    "en": "End-to-end encrypted",
+    "ja": "エンドツーエンド暗号化",
+    "pt-BR": "Criptografia de ponta a ponta",
+    "ru": "Сквозное шифрование"
+  },
+  "尚无同步": {
+    "en": "No activity yet",
+    "ja": "まだ同期なし",
+    "pt-BR": "Sem atividade",
+    "ru": "Нет активности"
+  },
+  "通过一次性配对码或完整票据关联另一台设备，即可跨设备同步剪贴板。": {
+    "en": "Pair another device with a one-time code or full ticket to sync clipboards across devices.",
+    "ja": "使い捨てペアリングコードまたは完全なチケットで別デバイスと接続し、クリップボードを同期します。",
+    "pt-BR": "Pareie outro dispositivo com um código único ou bilhete completo para sincronizar a área de transferência.",
+    "ru": "Подключите другое устройство по одноразовому коду или полному билету для синхронизации буфера обмена."
+  },
+  "尚未启用可配对的同步渠道": {
+    "en": "No pairable sync channel enabled",
+    "ja": "ペアリング可能な同期チャネルが無効です",
+    "pt-BR": "Nenhum canal pareável ativado",
+    "ru": "Нет активных каналов с поддержкой сопряжения"
+  },
+  "请在「设置 → 插件」中启用 Tailcat 或外部同步渠道并重启后，再添加设备。": {
+    "en": "Enable Tailcat or an external sync channel in Settings > Plugins and restart before adding devices.",
+    "ja": "「設定 → プラグイン」で Tailcat または外部同期チャネルを有効にし、再起動してからデバイスを追加してください。",
+    "pt-BR": "Ative o Tailcat ou um canal externo em Configurações > Plugins e reinicie antes de adicionar dispositivos.",
+    "ru": "Включите Tailcat или внешний канал в «Настройки → Плагины» и перезапустите приложение перед добавлением устройств."
+  },
+  "外部渠道 (%d)": {
+    "en": "External channels (%d)",
+    "ja": "外部チャネル (%d)",
+    "pt-BR": "Canais externos (%d)",
+    "ru": "Внешние каналы (%d)"
+  },
+  "第三方对端 · 无设备指纹": {
+    "en": "Third-party peer · No device fingerprint",
+    "ja": "サードパーティ接続先 · フィンガープリントなし",
+    "pt-BR": "Par de terceiros · Sem impressão digital",
+    "ru": "Сторонний узел · Без отпечатка устройства"
+  },
+  "外部渠道": {
+    "en": "External channel",
+    "ja": "外部チャネル",
+    "pt-BR": "Canal externo",
+    "ru": "Внешний канал"
+  },
+  "仅保存到历史": {
+    "en": "History only",
+    "ja": "履歴のみに保存",
+    "pt-BR": "Somente histórico",
+    "ru": "Только в историю"
+  },
+  "自动写入剪贴板": {
+    "en": "Auto-apply to clipboard",
+    "ja": "クリップボードへ自動適用",
+    "pt-BR": "Aplicar à área de transferência",
+    "ru": "Автозапись в буфер"
+  },
+  "可能认识 (%d)": {
+    "en": "Suggested devices (%d)",
+    "ja": "見つかったデバイス (%d)",
+    "pt-BR": "Sugestões (%d)",
+    "ru": "Возможные устройства (%d)"
+  },
+  "由已信任设备介绍 · 仍需双方批准": {
+    "en": "Introduced by a trusted device · Both sides must approve",
+    "ja": "信頼済みデバイスからの紹介 · 双方向の承認が必要",
+    "pt-BR": "Apresentado por um dispositivo confiável · Requer aprovação mútua",
+    "ru": "Представлено доверенным устройством · Требуется обоюдное подтверждение"
+  },
+  "由 %s 介绍": {
+    "en": "Introduced by %s",
+    "ja": "%s による紹介",
+    "pt-BR": "Apresentado por %s",
+    "ru": "Представлено: %s"
+  },
+  "本机名称": {
+    "en": "This device name",
+    "ja": "このデバイスの名前",
+    "pt-BR": "Nome deste dispositivo",
+    "ru": "Имя этого устройства"
+  },
+  "其他设备在配对与列表中将看到此自报名。": {
+    "en": "Other devices see this self-reported name when pairing and in device lists.",
+    "ja": "ペアリング時や一覧で、他のデバイスにこの名前が表示されます。",
+    "pt-BR": "Outros dispositivos verão este nome durante o pareamento e nas listas.",
+    "ru": "Другие устройства увидят это имя при сопряжении и в списке устройств."
+  },
+  "本机设备 ID": {
+    "en": "Local device ID",
+    "ja": "ローカルデバイス ID",
+    "pt-BR": "ID do dispositivo local",
+    "ru": "ID этого устройства"
+  },
+  "配对安全指纹由双方公钥共同派生，请在具体远端设备详情中核对。": {
+    "en": "Pairing fingerprints are derived from both devices' keys; verify them on each remote device.",
+    "ja": "ペアリング用フィンガープリントは双方の公開鍵から生成されます。各リモートデバイスの詳細で確認してください。",
+    "pt-BR": "As impressões digitais derivam das chaves de ambos os dispositivos; verifique-as em cada dispositivo remoto.",
+    "ru": "Отпечатки формируются из ключей обоих устройств; проверяйте их на карточке каждого удалённого устройства."
+  },
+  "同步渠道运行概览": {
+    "en": "Sync channel status",
+    "ja": "同期チャネルの稼働状況",
+    "pt-BR": "Resumo dos canais de sincronização",
+    "ru": "Обзор каналов синхронизации"
+  },
+  "对方自报：": {
+    "en": "Reported name: ",
+    "ja": "相手申告名：",
+    "pt-BR": "Nome informado: ",
+    "ru": "Имя от устройства: "
+  },
+  "最近活动 ": {
+    "en": "Last active ",
+    "ja": "最終アクティビティ ",
+    "pt-BR": "Última atividade ",
+    "ru": "Последняя активность: "
+  },
+  "只修改本机显示的名称；留空则恢复使用对方自报名。": {
+    "en": "Changes only the name shown on this device. Leave empty to restore the reported name.",
+    "ja": "このデバイス上の表示名のみ変更します。空欄にすると相手の申告名に戻ります。",
+    "pt-BR": "Altera apenas o nome exibido aqui. Deixe vazio para restaurar o nome informado.",
+    "ru": "Меняет имя только на этом устройстве. Оставьте пустым, чтобы вернуть исходное имя."
+  },
+  "只修改本机显示的名称；留空则恢复使用对方自报名（%s）。": {
+    "en": "Changes only the name shown on this device. Leave empty to restore the reported name (%s).",
+    "ja": "このデバイス上の表示名のみ変更します。空欄にすると相手の申告名（%s）に戻ります。",
+    "pt-BR": "Altera apenas o nome exibido aqui. Deixe vazio para restaurar o nome informado (%s).",
+    "ru": "Меняет имя только на этом устройстве. Оставьте пустым, чтобы вернуть исходное имя (%s)."
+  },
+  "设备备注名": {
+    "en": "Device nickname",
+    "ja": "デバイスの表示名",
+    "pt-BR": "Apelido do dispositivo",
+    "ru": "Псевдоним устройства"
+  },
+  "待批准新同步路径：": {
+    "en": "Pending sync path: ",
+    "ja": "承認待ちの新規同期パス：",
+    "pt-BR": "Novo caminho pendente: ",
+    "ru": "Ожидающий путь синхронизации: "
+  },
+  "此设备已受信任，但新增同步路径仍需核对指纹并显式批准。": {
+    "en": "This device is already trusted, but adding a sync path still requires verifying the fingerprint and approving.",
+    "ja": "このデバイスは信頼済みですが、同期パスを追加するにはフィンガープリント確認と明示的な承認が必要です。",
+    "pt-BR": "Este dispositivo já é confiável, mas adicionar um caminho ainda exige confirmar a impressão digital.",
+    "ru": "Это устройство уже доверенное, но добавление пути требует проверки отпечатка и подтверждения."
+  },
+  "同步路径 (%d)": {
+    "en": "Sync paths (%d)",
+    "ja": "同期パス (%d)",
+    "pt-BR": "Caminhos de sincronização (%d)",
+    "ru": "Пути синхронизации (%d)"
+  },
+  "所有运行中的可配对同步渠道均已关联": {
+    "en": "All running pairable sync channels are already bound",
+    "ja": "稼働中のペアリング可能な同期チャネルはすべて関連付け済みです",
+    "pt-BR": "Todos os canais pareáveis em execução já estão vinculados",
+    "ru": "Все активные каналы с сопряжением уже связаны"
+  },
+  "添加路径": {
+    "en": "Add path",
+    "ja": "パスを追加",
+    "pt-BR": "Adicionar caminho",
+    "ru": "Добавить путь"
+  },
+  "暂无已授权同步路径": {
+    "en": "No authorized sync paths",
+    "ja": "承認済みの同期パスはありません",
+    "pt-BR": "Nenhum caminho autorizado",
+    "ru": "Нет одобренных путей синхронизации"
+  },
+  "设备信任仍然保留，但目前不会同步任何内容。通过同步渠道重新关联即可恢复。": {
+    "en": "Device trust is kept, but nothing will sync until you add a sync path.",
+    "ja": "デバイスの信頼は保持されていますが、同期パスを追加するまで内容は同期されません。",
+    "pt-BR": "A confiança é mantida, mas nada será sincronizado até adicionar um caminho.",
+    "ru": "Доверие сохранено, но синхронизация не идёт, пока не добавлен путь."
+  },
+  "添加同步路径": {
+    "en": "Add sync path",
+    "ja": "同期パスを追加",
+    "pt-BR": "Adicionar caminho de sincronização",
+    "ru": "Добавить путь синхронизации"
+  },
+  "查看同步渠道策略…": {
+    "en": "View channel policy…",
+    "ja": "同期チャネルのポリシーを表示…",
+    "pt-BR": "Ver política do canal…",
+    "ru": "Политика канала…"
+  },
+  "移除此路径": {
+    "en": "Remove this path",
+    "ja": "このパスを削除",
+    "pt-BR": "Remover este caminho",
+    "ru": "Удалить этот путь"
+  },
+  "移除 %s 路径？": {
+    "en": "Remove %s path?",
+    "ja": "%s のパスを削除しますか？",
+    "pt-BR": "Remover o caminho %s?",
+    "ru": "Удалить путь %s?"
+  },
+  "仅移除与「%s」通过 %s 的同步路径。设备信任与其他同步路径将保留，日后可重新配对添加。": {
+    "en": "Removes only the %s sync path for \"%s\". Device trust and other paths remain, and you can pair it again later.",
+    "ja": "「%s」の %s 経由の同期パスのみを削除します。デバイスの信頼と他のパスは維持されます。",
+    "pt-BR": "Remove apenas o caminho %s de \"%s\". A confiança e outros caminhos permanecem.",
+    "ru": "Удалит только путь %s для «%s». Доверие и остальные пути сохранятся."
+  },
+  "移除路径": {
+    "en": "Remove path",
+    "ja": "パスを削除",
+    "pt-BR": "Remover caminho",
+    "ru": "Удалить путь"
+  },
+  "单路径开关控制是否经该同步渠道收发内容；文本/图片/文件策略请在插件设置中按同步渠道调整。": {
+    "en": "Path switches pause or resume transfers on that channel. Adjust text, image, and file policies per channel in plugin settings.",
+    "ja": "パスのスイッチはそのチャネルでの送受信を制御します。テキスト・画像・ファイルのポリシーはプラグイン設定でチャネルごとに調整してください。",
+    "pt-BR": "Os interruptores pausam ou retomam cada caminho. Ajuste políticas de texto, imagem e arquivo por canal nas configurações de plugins.",
+    "ru": "Переключатель приостанавливает передачу по пути. Политики текста, изображений и файлов настраиваются в плагинах."
+  },
+  "安全核对（设备指纹）": {
+    "en": "Security verification (fingerprint)",
+    "ja": "セキュリティ確認（フィンガープリント）",
+    "pt-BR": "Verificação de segurança (impressão digital)",
+    "ru": "Проверка безопасности (отпечаток)"
+  },
+  "暂停全部路径": {
+    "en": "Pause all paths",
+    "ja": "すべてのパスを一時停止",
+    "pt-BR": "Pausar todos os caminhos",
+    "ru": "Приостановить все пути"
+  },
+  "恢复全部路径": {
+    "en": "Resume all paths",
+    "ja": "すべてのパスを再開",
+    "pt-BR": "Retomar todos os caminhos",
+    "ru": "Возобновить все пути"
+  },
+  "移除「%s」？": {
+    "en": "Remove \"%s\"?",
+    "ja": "「%s」を削除しますか？",
+    "pt-BR": "Remover \"%s\"?",
+    "ru": "Удалить «%s»?"
+  },
+  "将撤销此设备的信任并移除全部同步路径。对方需要重新配对并批准。已同步到对方的内容无法撤回。": {
+    "en": "Revokes trust and removes all sync paths for this device. It will need to pair and be approved again. Already synced content cannot be recalled.",
+    "ja": "このデバイスの信頼を取り消し、すべての同期パスを削除します。再接続には再ペアリングと承認が必要です。",
+    "pt-BR": "Revoga a confiança e remove todos os caminhos deste dispositivo. Será necessário parear novamente.",
+    "ru": "Отзовёт доверие и удалит все пути этого устройства. Потребуется повторное сопряжение."
+  },
+  "所属同步渠道：": {
+    "en": "Sync channel: ",
+    "ja": "所属同期チャネル：",
+    "pt-BR": "Canal de sincronização: ",
+    "ru": "Канал синхронизации: "
+  },
+  "渠道名称": {
+    "en": "Channel name",
+    "ja": "チャネル名",
+    "pt-BR": "Nome do canal",
+    "ru": "Название канала"
+  },
+  "外部渠道无法提供 UniClipboard 设备身份证明，因此没有设备指纹，也不共享设备级信任。": {
+    "en": "External channels do not provide UniClipboard device identity proof, so they have no fingerprint and do not share device-level trust.",
+    "ja": "外部チャネルは UniClipboard のデバイス身元証明を提供しないため、フィンガープリントやデバイスレベルの信頼を共有しません。",
+    "pt-BR": "Canais externos não fornecem prova de identidade UniClipboard; não possuem impressão digital nem confiança de dispositivo.",
+    "ru": "Внешние каналы не подтверждают личность устройства UniClipboard, не имеют отпечатка и не разделяют доверие устройств."
+  },
+  "渠道控制": {
+    "en": "Channel controls",
+    "ja": "チャネル設定",
+    "pt-BR": "Controles do canal",
+    "ru": "Управление каналом"
+  },
+  "启用此渠道同步": {
+    "en": "Enable sync on this channel",
+    "ja": "このチャネルの同期を有効にする",
+    "pt-BR": "Ativar sincronização neste canal",
+    "ru": "Включить синхронизацию канала"
+  },
+  "关闭后停止经此外部渠道收发内容": {
+    "en": "Stop sending and receiving content through this external channel",
+    "ja": "オフにすると、この外部チャネル経由の送受信を停止します",
+    "pt-BR": "Interrompe envio e recebimento por este canal externo",
+    "ru": "Остановить передачу содержимого через этот внешний канал"
+  },
+  "收到时自动写入剪贴板": {
+    "en": "Auto-apply received items to clipboard",
+    "ja": "受信時にクリップボードへ自動書き込み",
+    "pt-BR": "Aplicar itens recebidos à área de transferência",
+    "ru": "Автоматически записывать в буфер обмена"
+  },
+  "开启后来自此渠道的内容会自动应用到系统剪贴板": {
+    "en": "Automatically apply content received from this channel to the system clipboard",
+    "ja": "オンにすると、このチャネルから受信した内容をシステムクリップボードに自動適用します",
+    "pt-BR": "Aplica automaticamente o conteúdo recebido deste canal à área de transferência",
+    "ru": "Автоматически помещать полученное содержимое в системный буфер обмена"
+  },
+  "移除渠道": {
+    "en": "Remove channel",
+    "ja": "チャネルを削除",
+    "pt-BR": "Remover canal",
+    "ru": "Удалить канал"
+  },
+  "移除外部渠道「%s」？": {
+    "en": "Remove external channel \"%s\"?",
+    "ja": "外部チャネル「%s」を削除しますか？",
+    "pt-BR": "Remover o canal externo \"%s\"?",
+    "ru": "Удалить внешний канал «%s»?"
+  },
+  "将停用并尝试退出远端群组，退出成功后清除本机记录；若退出失败将保留并标示异常。": {
+    "en": "Disables the channel and attempts to leave the remote group before clearing the local record. If leaving fails, the channel remains flagged with an error.",
+    "ja": "チャネルを無効化してリモートグループから退出を試み、成功後にローカル記録を削除します。失敗した場合はエラー表示のまま残ります。",
+    "pt-BR": "Desativa e tenta sair do grupo remoto antes de apagar o registro local. Em caso de falha, o canal permanece sinalizado.",
+    "ru": "Отключит канал и попытается выйти из удалённой группы перед удалением локальной записи. При ошибке канал останется с пометкой."
+  },
+  "此操作仅从本机移除该外部渠道记录，不影响第三方远端群组状态。": {
+    "en": "Removes only the local record of this external channel without changing the third-party remote group.",
+    "ja": "この外部チャネルのローカル記録のみを削除し、サードパーティのリモートグループには影響しません。",
+    "pt-BR": "Remove apenas o registro local deste canal externo, sem afetar o grupo remoto de terceiros.",
+    "ru": "Удаляет только локальную запись канала, не затрагивая стороннюю удалённую группу."
+  },
+  "新设备请求加入": {
+    "en": "New device requesting to join",
+    "ja": "新しいデバイスが参加をリクエストしています",
+    "pt-BR": "Novo dispositivo solicitando entrada",
+    "ru": "Новое устройство запрашивает подключение"
+  },
+  "本次将授权的同步路径": {
+    "en": "Sync paths to authorize",
+    "ja": "今回承認する同期パス",
+    "pt-BR": "Caminhos a autorizar",
+    "ru": "Одобряемые пути синхронизации"
+  },
+  "批准后立即允许通过此同步渠道收发内容": {
+    "en": "Allows syncing over this channel immediately after approval",
+    "ja": "承認後すぐにこの同期チャネルで送受信できるようになります",
+    "pt-BR": "Permite sincronizar por este canal logo após a aprovação",
+    "ru": "Разрешит обмен через этот канал сразу после подтверждения"
+  },
+  "待批准": {
+    "en": "Pending",
+    "ja": "承認待ち",
+    "pt-BR": "Pendente",
+    "ru": "Ожидает"
+  },
+  "仅当对方屏幕上显示完全相同的 8 组指纹时，才点击接受。": {
+    "en": "Accept only when all 8 fingerprint groups match the other device's screen.",
+    "ja": "相手の画面にまったく同じ 8 組のフィンガープリントが表示されている場合のみ承認してください。",
+    "pt-BR": "Aceite apenas quando os 8 grupos da impressão digital coincidirem na outra tela.",
+    "ru": "Принимайте только при полном совпадении всех 8 групп отпечатка на другом экране."
+  },
+  "请先在「设置 → 插件」中启用支持设备配对的同步渠道并重启桌面端。": {
+    "en": "Enable a pairable sync channel in Settings > Plugins and restart Desktop first.",
+    "ja": "先に「設定 → プラグイン」でペアリング対応の同期チャネルを有効にして再起動してください。",
+    "pt-BR": "Primeiro ative um canal pareável em Configurações > Plugins e reinicie o Desktop.",
+    "ru": "Сначала включите канал с поддержкой сопряжения в «Настройки → Плагины» и перезапустите приложение."
+  },
+  "当前存在待重启生效的插件变更。": {
+    "en": "Pending plugin changes require a restart.",
+    "ja": "再起動待ちのプラグイン変更があります。",
+    "pt-BR": "Há alterações de plugin aguardando reinicialização.",
+    "ru": "Есть изменения плагинов, ожидающие перезапуска."
+  },
+  "没有正在运行的可配对同步渠道": {
+    "en": "No running pairable sync channel",
+    "ja": "稼働中のペアリング可能な同期チャネルがありません",
+    "pt-BR": "Nenhum canal pareável em execução",
+    "ru": "Нет активных каналов для сопряжения"
+  },
+  "为「%s」添加同步路径": {
+    "en": "Add sync path for \"%s\"",
+    "ja": "「%s」に同期パスを追加",
+    "pt-BR": "Adicionar caminho para \"%s\"",
+    "ru": "Добавить путь для «%s»"
+  },
+  "远端同步渠道名可以不同，但需使用相同的传输插件。": {
+    "en": "The remote channel name may differ, but both sides must use the same transport plugin.",
+    "ja": "相手側の同期チャネル名は異なっても構いませんが、同じ転送プラグインが必要です。",
+    "pt-BR": "O nome do canal remoto pode ser diferente, mas ambos precisam usar o mesmo plugin de transporte.",
+    "ru": "Имя удалённого канала может отличаться, но транспортный плагин должен совпадать."
+  },
+  "在「%s」上输入下方配对码或票据，核对指纹后将为其新增此同步路径。": {
+    "en": "Enter the code or ticket below on \"%s\" and verify fingerprints to add this sync path.",
+    "ja": "「%s」で下のコードまたはチケットを入力し、フィンガープリントを確認すると同期パスが追加されます。",
+    "pt-BR": "Digite o código ou bilhete abaixo em \"%s\" e confirme a impressão digital para adicionar o caminho.",
+    "ru": "Введите код или билет ниже на «%s» и сверьте отпечаток, чтобы добавить путь."
+  },
+  "通过 %s · 端到端加密": {
+    "en": "Via %s · End-to-end encrypted",
+    "ja": "%s 経由 · エンドツーエンド暗号化",
+    "pt-BR": "Via %s · Criptografia de ponta a ponta",
+    "ru": "Через %s · Сквозное шифрование"
+  },
+  "请求新增同步路径，核对指纹一致后才接受。": {
+    "en": "requested a new sync path. Accept only if the fingerprints match.",
+    "ja": "新しい同期パスをリクエストしています。フィンガープリントが一致する場合のみ承認してください。",
+    "pt-BR": "solicitou um novo caminho. Aceite apenas se as impressões digitais coincidirem.",
+    "ru": "запрашивает новый путь синхронизации. Принимайте только при совпадении отпечатков."
+  },
+  "%s 分钟前": {
+    "en": "%s min ago",
+    "ja": "%s 分前",
+    "pt-BR": "há %s min",
+    "ru": "%s мин назад"
+  },
+  "%s 小时前": {
+    "en": "%s hr ago",
+    "ja": "%s 時間前",
+    "pt-BR": "há %s h",
+    "ru": "%s ч назад"
+  },
+  "%s 天前": {
+    "en": "%s days ago",
+    "ja": "%s 日前",
+    "pt-BR": "há %s dias",
+    "ru": "%s дн. назад"
+  },
+  "配对码或票据格式无效，请检查后重试。": {
+    "en": "Invalid pairing code or ticket format. Check and try again.",
+    "ja": "ペアリングコードまたはチケットの形式が無効です。確認して再試行してください。",
+    "pt-BR": "Formato de código ou bilhete inválido. Verifique e tente novamente.",
+    "ru": "Неверный формат кода или билета. Проверьте и повторите."
+  },
+  "请输入完整的 6 位配对码或完整票据。": {
+    "en": "Enter a complete 6-digit pairing code or full ticket.",
+    "ja": "6 桁のペアリングコードまたは完全なチケットを入力してください。",
+    "pt-BR": "Digite um código completo de 6 dígitos ou o bilhete completo.",
+    "ru": "Введите полный 6-значный код или полный билет."
+  },
+  "配对码或票据已过期，请让对方刷新后重试。": {
+    "en": "The pairing code or ticket has expired. Ask the other device to refresh and try again.",
+    "ja": "ペアリングコードまたはチケットの有効期限が切れました。相手側で更新してから再試行してください。",
+    "pt-BR": "O código ou bilhete expirou. Peça para atualizar no outro dispositivo e tente novamente.",
+    "ru": "Срок действия кода или билета истёк. Обновите его на другом устройстве и повторите."
+  },
+  "尝试次数过多，请稍后再试。": {
+    "en": "Too many attempts. Try again later.",
+    "ja": "試行回数が多すぎます。しばらくしてから再試行してください。",
+    "pt-BR": "Muitas tentativas. Tente novamente mais tarde.",
+    "ru": "Слишком много попыток. Повторите позже."
+  },
+  "当前选择的本地同步渠道与该票据不兼容，请切换为对应的同步渠道。": {
+    "en": "The selected local sync channel is incompatible with this ticket. Switch to the matching channel.",
+    "ja": "選択中のローカル同期チャネルはこのチケットと互換性がありません。対応するチャネルに切り替えてください。",
+    "pt-BR": "O canal local selecionado é incompatível com este bilhete. Troque para o canal correspondente.",
+    "ru": "Выбранный локальный канал несовместим с этим билетом. Выберите подходящий канал."
+  },
+  "对应同步渠道当前不可用，请检查插件运行状态。": {
+    "en": "The selected sync channel is currently unavailable. Check its plugin status.",
+    "ja": "対応する同期チャネルは現在利用できません。プラグインの稼働状態を確認してください。",
+    "pt-BR": "O canal selecionado está indisponível. Verifique o status do plugin.",
+    "ru": "Выбранный канал сейчас недоступен. Проверьте состояние плагина."
+  },
+  "设备身份校验不匹配，请核对指纹或重新配对。": {
+    "en": "Device identity mismatch. Verify the fingerprint or pair again.",
+    "ja": "デバイス身元の検証が一致しません。フィンガープリントを確認するか再ペアリングしてください。",
+    "pt-BR": "Incompatibilidade de identidade do dispositivo. Verifique a impressão digital ou pareie novamente.",
+    "ru": "Несовпадение идентификатора устройства. Сверьте отпечаток или повторите сопряжение."
+  },
+  "连接超时，请确认双方网络可达后重试。": {
+    "en": "Connection timed out. Check network connectivity on both devices and try again.",
+    "ja": "接続がタイムアウトしました。双方のネットワークを確認して再試行してください。",
+    "pt-BR": "Tempo limite esgotado. Verifique a rede em ambos os dispositivos e tente novamente.",
+    "ru": "Превышено время ожидания. Проверьте сеть на обоих устройствах и повторите."
+  },
+  "已复制本机设备 ID": {
+    "en": "Local device ID copied",
+    "ja": "ローカルデバイス ID をコピーしました",
+    "pt-BR": "ID do dispositivo local copiado",
+    "ru": "ID устройства скопирован"
+  },
+  "已复制本机设备 ID（演示，未写入剪贴板）": {
+    "en": "Local device ID copied (preview, clipboard unchanged)",
+    "ja": "ローカルデバイス ID をコピーしました（デモ、クリップボード未変更）",
+    "pt-BR": "ID copiado (demonstração, área de transferência inalterada)",
+    "ru": "ID скопирован (демо, буфер обмена не изменён)"
+  },
+  "已复制设备指纹": {
+    "en": "Device fingerprint copied",
+    "ja": "デバイスフィンガープリントをコピーしました",
+    "pt-BR": "Impressão digital copiada",
+    "ru": "Отпечаток устройства скопирован"
+  },
+  "已复制设备指纹（演示，未写入剪贴板）": {
+    "en": "Device fingerprint copied (preview, clipboard unchanged)",
+    "ja": "フィンガープリントをコピーしました（デモ、クリップボード未変更）",
+    "pt-BR": "Impressão digital copiada (demonstração, área de transferência inalterada)",
+    "ru": "Отпечаток скопирован (демо, буфер обмена не изменён)"
+  },
+  "已复制配对码": {
+    "en": "Pairing code copied",
+    "ja": "ペアリングコードをコピーしました",
+    "pt-BR": "Código de pareamento copiado",
+    "ru": "Код сопряжения скопирован"
+  },
+  "已复制配对码（演示，未写入剪贴板）": {
+    "en": "Pairing code copied (preview, clipboard unchanged)",
+    "ja": "ペアリングコードをコピーしました（デモ、クリップボード未変更）",
+    "pt-BR": "Código copiado (demonstração, área de transferência inalterada)",
+    "ru": "Код скопирован (демо, буфер обмена не изменён)"
+  },
+  "已复制完整票据": {
+    "en": "Full ticket copied",
+    "ja": "完全なチケットをコピーしました",
+    "pt-BR": "Bilhete completo copiado",
+    "ru": "Полный билет скопирован"
+  },
+  "已复制完整票据（演示，未写入剪贴板）": {
+    "en": "Full ticket copied (preview, clipboard unchanged)",
+    "ja": "チケットをコピーしました（デモ、クリップボード未変更）",
+    "pt-BR": "Bilhete copiado (demonstração, área de transferência inalterada)",
+    "ru": "Билет скопирован (демо, буфер обмена не изменён)"
+  },
+  "新增同步实例": {
+    "en": "New sync instance",
+    "ja": "同期インスタンスを追加",
+    "pt-BR": "Nova instância de sincronização",
+    "ru": "Новый экземпляр синхронизации"
+  },
+  "实例 ID": {
+    "en": "Instance ID",
+    "ja": "インスタンス ID",
+    "pt-BR": "ID da instância",
+    "ru": "ID экземпляра"
+  },
+  "新实例使用独立设置和私有数据。配置并启用后重启生效。": {
+    "en": "Each instance keeps separate settings and private data. Configure, enable, and restart to activate.",
+    "ja": "新しいインスタンスは独立した設定と専用データを使用します。設定して有効化し、再起動後に反映されます。",
+    "pt-BR": "Cada instância usa configurações e dados privados próprios. Configure, ative e reinicie para aplicar.",
+    "ru": "Новый экземпляр использует отдельные настройки и данные. Настройте, включите и перезапустите приложение."
+  },
+  "创建实例": {
+    "en": "Create instance",
+    "ja": "インスタンスを作成",
+    "pt-BR": "Criar instância",
+    "ru": "Создать экземпляр"
+  },
+  "此后端使用外部渠道。请在插件设置中配置授权。无需设备指纹或设备配对码。": {
+    "en": "This backend uses external channels. Configure authorization in plugin settings; no device fingerprint or pairing code is required.",
+    "ja": "このバックエンドは外部チャネルを使用します。プラグイン設定で認可を構成してください。フィンガープリントやペアリングコードは不要です。",
+    "pt-BR": "Este backend usa canais externos. Configure a autorização nas configurações do plugin; não requer impressão digital nem código.",
+    "ru": "Этот бэкенд использует внешние каналы. Настройте авторизацию в параметрах плагина; отпечаток и код сопряжения не требуются."
+  },
+  "对象存储设备协议尚未实现。此类型暂不可用。": {
+    "en": "The object-store device protocol is not implemented yet. This transport type is unavailable.",
+    "ja": "オブジェクトストレージのデバイスプロトコルはまだ実装されていません。この種別は現在利用できません。",
+    "pt-BR": "O protocolo de dispositivos de armazenamento de objetos ainda não foi implementado.",
+    "ru": "Протокол устройств для объектного хранилища пока не реализован."
+  },
+  "同步策略": {
+    "en": "Sync policy",
+    "ja": "同期ポリシー",
+    "pt-BR": "Política de sincronização",
+    "ru": "Политика синхронизации"
+  },
+  "0 表示不增加限制。逐个文件检查。任一文件超限时跳过整次自动发送。主动发送不受此阈值限制。": {
+    "en": "0 adds no extra limit. Checked per file; if any file exceeds it, the entire automatic send is skipped. Explicit sends ignore this threshold.",
+    "ja": "0 は追加制限なし。ファイルごとに判定し、1 つでも超過すると自動送信全体がスキップされます。手動送信は対象外です。",
+    "pt-BR": "0 não adiciona limite extra. Verificado por arquivo; se qualquer arquivo exceder, o envio automático inteiro é ignorado. Envios manuais ignoram este limite.",
+    "ru": "0 — без дополнительного лимита. Проверяется каждый файл; при превышении пропускается вся автоотправка. Ручная отправка не ограничивается."
+  },
+  "已自动复制到剪贴板": {
+    "en": "Automatically copied to clipboard",
+    "ja": "クリップボードに自動コピーしました",
+    "pt-BR": "Copiado automaticamente para a área de transferência",
+    "ru": "Автоматически скопировано в буфер обмена"
+  },
+  "已保存到历史，但未能写入剪贴板。": {
+    "en": "Saved to history, but could not copy to clipboard.",
+    "ja": "履歴に保存しましたが、クリップボードにコピーできませんでした。",
+    "pt-BR": "Salvo no histórico, mas não foi possível copiar para a área de transferência.",
+    "ru": "Сохранено в истории, но не удалось скопировать в буфер обмена."
+  },
+  "结果已保存到历史。": {
+    "en": "Result saved to history.",
+    "ja": "結果を履歴に保存しました。",
+    "pt-BR": "Resultado salvo no histórico.",
+    "ru": "Результат сохранён в истории."
+  },
+  "内容较长，仅展示前段，完整内容已保存到历史。": {
+    "en": "Only the beginning is shown. The full content is saved to history.",
+    "ja": "内容が長いため、先頭のみ表示しています。全文は履歴に保存されています。",
+    "pt-BR": "Apenas o início é exibido. O conteúdo completo está salvo no histórico.",
+    "ru": "Показано только начало. Полное содержимое сохранено в истории."
+  },
+  "查看条目": {
+    "en": "View item",
+    "ja": "項目を表示",
+    "pt-BR": "Ver item",
+    "ru": "Просмотреть запись"
+  },
+  "再次复制": {
+    "en": "Copy again",
+    "ja": "もう一度コピー",
+    "pt-BR": "Copiar novamente",
+    "ru": "Скопировать ещё раз"
+  },
+  "打开链接": {
+    "en": "Open link",
+    "ja": "リンクを開く",
+    "pt-BR": "Abrir link",
+    "ru": "Открыть ссылку"
+  },
+  "无法打开链接。": {
+    "en": "Could not open the link.",
+    "ja": "リンクを開けませんでした。",
+    "pt-BR": "Não foi possível abrir o link.",
+    "ru": "Не удалось открыть ссылку."
+  },
+  "关闭提示": {
+    "en": "Dismiss notification",
+    "ja": "通知を閉じる",
+    "pt-BR": "Dispensar notificação",
+    "ru": "Закрыть уведомление"
+  },
+  "正在执行「%s」…": {
+    "en": "Running “%s”…",
+    "ja": "「%s」を実行中…",
+    "pt-BR": "Executando “%s”…",
+    "ru": "Выполняется «%s»…"
+  },
+  "已取消「%s」": {
+    "en": "Cancelled “%s”",
+    "ja": "「%s」をキャンセルしました",
+    "pt-BR": "“%s” cancelado",
+    "ru": "«%s» отменено"
+  },
+  "「%s」执行失败": {
+    "en": "“%s” failed",
+    "ja": "「%s」の実行に失敗しました",
+    "pt-BR": "Falha ao executar “%s”",
+    "ru": "Не удалось выполнить «%s»"
+  },
+  "已完成「%s」": {
+    "en": "Completed “%s”",
+    "ja": "「%s」が完了しました",
+    "pt-BR": "“%s” concluído",
+    "ru": "«%s» выполнено"
+  },
+  "已完成「%s」· 已复制": {
+    "en": "Completed “%s” · Copied",
+    "ja": "「%s」が完了しました · コピー済み",
+    "pt-BR": "“%s” concluído · Copiado",
+    "ru": "«%s» выполнено · Скопировано"
+  },
   "版本 %s": {
     "en": "Version %s",
     "ja": "バージョン %s",

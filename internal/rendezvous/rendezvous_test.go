@@ -124,7 +124,7 @@ func TestTextFormRoundTripsAndRejectsOthers(t *testing.T) {
 		}
 	}
 	if _, ok := rendezvous.ParseTicket(old); ok {
-		t.Error("a v1 ticket must not parse")
+		t.Error("the removed ticket shape must not parse")
 	}
 	big := want
 	big.Access = bytes.Repeat([]byte{1}, rendezvous.MaxAccess+1)

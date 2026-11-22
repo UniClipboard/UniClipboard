@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
+	"github.com/uniclipboard/unic/plugin"
 	"github.com/uniclipboard/unic/sourceapp"
 )
 
@@ -95,6 +97,8 @@ type liveState struct {
 
 	ctx                                          context.Context
 	cancel                                       context.CancelFunc
+	actionCancel                                 context.CancelFunc
+	pendingSelectID                              string
 	client                                       *api.Client
 	jobs                                         chan func(context.Context) func()
 	results                                      chan func()
@@ -118,8 +122,12 @@ type liveState struct {
 	details                                    map[string]entry
 	config                                     config.State
 	actions                                    []api.Action
+	syncBackends                               []api.SyncBackendInfo
+	pairingBackend                             string
 	externalPlugins                            []api.PluginInfo
+	peers                                      map[string]api.PeerStatus
 	pending                                    map[string]api.PendingPeer
+	taskKnownPending                           map[string]int64
 	join                                       *api.PairResult
 	codeAttempted, ticketAttempted             bool
 	code                                       api.Code
@@ -134,9 +142,7 @@ func (l *liveState) work() {
 		case <-l.ctx.Done():
 			return
 		case job := <-l.jobs:
-			ctx, cancel := context.WithTimeout(l.ctx, 15*time.Second)
-			apply := job(ctx)
-			cancel()
+			apply := job(l.ctx)
 			select {
 			case <-l.ctx.Done():
 				return
@@ -173,11 +179,19 @@ func (l *liveState) follow() {
 	}
 }
 func (l *liveState) enqueue(job func(context.Context) func()) bool {
+	return l.enqueueWithin(job, 15*time.Second)
+}
+func (l *liveState) enqueueWithin(job func(context.Context) func(), budget time.Duration) bool {
+	wrapped := func(parent context.Context) func() {
+		ctx, cancel := context.WithTimeout(parent, budget)
+		defer cancel()
+		return job(ctx)
+	}
 	if l.ctx.Err() != nil {
 		return false
 	}
 	select {
-	case l.jobs <- job:
+	case l.jobs <- wrapped:
 		return true
 	default:
 		l.message = "操作正在处理中，请稍后重试。"
@@ -222,12 +236,14 @@ drained:
 		l.loadHistory(d, false)
 	}
 	l.loadDetail(d)
-	// Pairing codes are created only while the invitation page is visible.
-	if d.page == "devices" && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && ((l.code.Code == "" && !l.codeAttempted) || (l.code.Code != "" && time.Now().UnixMilli() >= l.code.ExpiresAtMs)) {
-		d.newLiveCode()
-	}
-	if d.page == "devices" && d.deviceTask == "invite" && d.inviteMode == "ticket" && !l.busy && l.ticket == "" && !l.ticketAttempted {
-		d.newLiveTicket()
+	// Pairing codes are created only while the invitation page is visible and no inline approval has taken over.
+	if d.page == "devices" && d.deviceTask == "invite" && d.matchingInlinePending() == nil && l.pairingBackend != "" {
+		if d.inviteMode != "ticket" && !l.busy && ((l.code.Code == "" && !l.codeAttempted) || (l.code.Code != "" && time.Now().UnixMilli() >= l.code.ExpiresAtMs)) {
+			d.newLiveCode()
+		}
+		if d.inviteMode == "ticket" && !l.busy && l.ticket == "" && !l.ticketAttempted {
+			d.newLiveTicket()
+		}
 	}
 	l.scheduleWake(d)
 }
@@ -384,6 +400,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			var saved config.State
 			var actions []api.Action
 			var externalPlugins []api.PluginInfo
+			var syncBackends []api.SyncBackendInfo
 			var tags []string
 			var candidates []api.Candidate
 			historyChanged := more || previous
@@ -427,6 +444,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				saved, err = l.client.Config(ctx)
 				actions, _ = l.client.Actions(ctx)
 				externalPlugins, _ = l.client.Plugins(ctx)
+				syncBackends, _ = l.client.SyncBackends(ctx)
 			}
 			if err == nil {
 				tags, err = l.client.HistoryTags(ctx)
@@ -533,32 +551,109 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						}
 					}
 					l.cursor = page.NextCursor
+					if l.pendingSelectID != "" {
+						if slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == l.pendingSelectID }) {
+							d.selectEntry(l.pendingSelectID)
+							d.detailOpen, d.inspector = true, true
+							d.list.ScrollTo(l.pendingSelectID)
+						}
+						l.pendingSelectID = ""
+					}
 				}
 				l.connected = true
 				l.config = saved
 				l.actions = actions
 				l.externalPlugins = externalPlugins
+				l.syncBackends = syncBackends
+				d.projectLiveSyncChannels()
 				d.projectLiveConfig()
 				d.projectTags(tags)
 				previousName := ""
 				if len(d.devices) > 0 {
 					previousName = d.devices[0].name
 				}
-				d.devices = []device{{id: "local", name: status.Name, platform: "本机", icon: desktopkit.IconDesktop, online: true}}
+				d.devices = []device{{id: "local", name: status.Name, deviceID: status.ID, icon: desktopkit.IconDesktop, online: true}}
 				if d.deviceName == "" || d.deviceName == previousName {
 					d.deviceName = status.Name
 				}
+				implByID := map[string]string{}
+				for _, b := range syncBackends {
+					implByID[b.ID] = b.ImplementationID
+				}
+				for _, pl := range externalPlugins {
+					if _, ok := implByID[pl.ID]; !ok {
+						implByID[pl.ID] = pl.ImplementationID
+					}
+				}
+				l.peers = make(map[string]api.PeerStatus, len(status.Peers))
+				d.channels = nil
 				for _, p := range status.Peers {
+					l.peers[p.ID] = p
 					if p.Kind == "external" {
+						d.channels = append(d.channels, externalChannel{
+							id:               p.ID,
+							name:             p.Name,
+							backendID:        p.BackendID,
+							enabled:          p.Enabled,
+							autoApply:        p.AutoApply,
+							remoteRevocation: p.RemoteRevocation,
+							revision:         p.Revision,
+							lastSeen:         formatSeen(p.LastSeen),
+							lastError:        p.LastError,
+						})
 						continue
 					}
-					d.devices = append(d.devices, device{id: p.ID, name: p.Name, online: p.Connected, latency: -1, lastSeen: formatSeen(p.LastSeen), platform: "未提供", link: "在线", icon: desktopkit.IconDesktop})
+					bindings := make([]deviceBinding, 0, len(p.Bindings))
+					for _, b := range p.Bindings {
+						impl := implByID[b.InstanceID]
+						if impl == "" {
+							impl = b.InstanceID
+						}
+						bindings = append(bindings, deviceBinding{
+							id:               b.ID,
+							instanceID:       b.InstanceID,
+							implementationID: impl,
+							state:            b.State,
+							syncEnabled:      b.SyncEnabled,
+							connection:       string(b.Connection),
+							revision:         b.Revision,
+							lastActive:       formatLastActiveMs(b.LastActiveMs),
+							lastError:        b.LastError,
+						})
+					}
+					d.devices = append(d.devices, device{
+						id:           p.ID,
+						name:         p.Name,
+						userName:     p.UserName,
+						reportedName: p.ReportedName,
+						icon:         desktopkit.IconDesktop,
+						online:       p.Connected,
+						lastSeen:     formatSeen(p.LastSeen),
+						fingerprint:  p.Fingerprint,
+						revision:     p.Revision,
+						bindings:     bindings,
+					})
 				}
 				d.pending = nil
 				l.pending = map[string]api.PendingPeer{}
 				for _, p := range status.Pending {
 					l.pending[p.ID] = p
-					d.pending = append(d.pending, pendingDevice{id: p.ID, name: p.Name, fingerprint: p.Fingerprint, via: p.Via, platform: "未提供", icon: desktopkit.IconDesktop})
+					paths := make([]pendingPath, 0, len(p.Paths))
+					for _, path := range p.Paths {
+						if path.State == "pending" {
+							paths = append(paths, pendingPath{id: path.ID, instanceID: path.InstanceID, state: path.State, revision: path.Revision})
+						}
+					}
+					d.pending = append(d.pending, pendingDevice{
+						id:          p.ID,
+						name:        p.Name,
+						via:         p.Via,
+						byCode:      p.ByCode,
+						fingerprint: p.Fingerprint,
+						revision:    p.Revision,
+						icon:        desktopkit.IconDesktop,
+						paths:       paths,
+					})
 				}
 				d.candidates = nil
 				for _, c := range candidates {
@@ -566,10 +661,15 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						d.candidates = append(d.candidates, deviceCandidate{id: c.ID, name: c.Name, introducer: strings.Join(c.IntroducedBy, "、"), backendID: c.BackendID, icon: desktopkit.IconDesktop})
 					}
 				}
-				if l.join != nil && slices.ContainsFunc(status.Peers, func(p api.PeerStatus) bool { return p.ID == l.join.ID }) {
-					d.deviceTask = ""
-					d.deviceList.Value = l.join.ID
-					l.join = nil
+				if l.join != nil {
+					inPeers := slices.ContainsFunc(status.Peers, func(p api.PeerStatus) bool { return p.ID == l.join.ID })
+					inPending := slices.ContainsFunc(status.Pending, func(p api.PendingPeer) bool { return p.ID == l.join.ID })
+					if inPeers && !inPending && (d.deviceTaskForID == "" || d.deviceHasAuthorizedBackend(l.join.ID, l.pairingBackend)) {
+						d.deviceTask = ""
+						d.deviceTaskForID = ""
+						d.deviceList.Value = l.join.ID
+						l.join = nil
+					}
 				}
 				if d.selected == "" && len(d.entries) > 0 {
 					d.selectEntry(d.entries[0].id)
@@ -613,7 +713,7 @@ func projectHistory(it api.HistoryItem) entry {
 	if it.Origin == "external" || it.Origin == "migration" {
 		source = it.Origin
 	}
-	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: humanBytes(it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState}
+	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: humanBytes(it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState, backendSync: slices.Clone(it.Backends)}
 	if app := it.SourceApplication; app != nil {
 		v.sourceAppName, v.sourceAppID = strings.TrimSpace(app.Name), app.Identifier
 		if v.sourceAppName == "" {
@@ -637,11 +737,195 @@ func formatDate(ms int64) string {
 	}
 	return t.Format("2006-01-02 15:04")
 }
-func formatSeen(ms int64) string {
-	if ms == 0 {
-		return "未提供"
+func formatSeen(sec int64) string {
+	if sec <= 0 {
+		return ""
 	}
-	return time.UnixMilli(ms).Format("2006-01-02 15:04")
+	return formatRelativeAt(time.Unix(sec, 0), time.Now())
+}
+
+func formatLastActiveMs(ms int64) string {
+	if ms <= 0 {
+		return ""
+	}
+	return formatRelativeAt(time.UnixMilli(ms), time.Now())
+}
+
+func formatRelativeAt(t, now time.Time) string {
+	t = t.In(now.Location())
+	diff := now.Sub(t)
+	if diff < time.Minute && diff > -time.Minute {
+		return "刚刚"
+	}
+	if diff >= time.Minute && diff < time.Hour {
+		return fmt.Sprintf("%d 分钟前", int(diff/time.Minute))
+	}
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if !t.Before(day) && !t.After(now.Add(time.Minute)) {
+		return "今天 " + t.Format("15:04")
+	}
+	if !t.Before(day.AddDate(0, 0, -1)) && t.Before(day) {
+		return "昨天 " + t.Format("15:04")
+	}
+	return t.Format("2006-01-02 15:04")
+}
+
+func liveErrorMessage(err error) string {
+	switch api.ReasonOf(err) {
+	case "config_apply_failed":
+		return "设置已保存，但未能生效。请检查设置后重试。"
+	case "action_apply_failed":
+		return "动作结果已保存到历史记录。未能复制到剪贴板。"
+	case "conflict":
+		return "数据已变化。请刷新后重试。"
+	case "invalid":
+		return "配对码或票据格式无效，请检查后重试。"
+	case "incomplete":
+		return "请输入完整的 6 位配对码或完整票据。"
+	case "expired":
+		return "配对码或票据已过期，请让对方刷新后重试。"
+	case "rate-limited":
+		return "尝试次数过多，请稍后再试。"
+	case "unsupported":
+		return "当前选择的本地同步渠道与该票据不兼容，请切换为对应的同步渠道。"
+	case "unavailable":
+		return "对应同步渠道当前不可用，请检查插件运行状态。"
+	case "identity_mismatch":
+		return "设备身份校验不匹配，请核对指纹或重新配对。"
+	case "timeout":
+		return "连接超时，请确认双方网络可达后重试。"
+	}
+	return "操作未能确认完成。请刷新数据后检查结果。"
+}
+
+func (d *viewState) projectLiveSyncChannels() {
+	l := d.live
+	cfg := l.config.Config
+	pluginByID := map[string]api.PluginInfo{}
+	for _, pl := range l.externalPlugins {
+		pluginByID[pl.ID] = pl
+	}
+	seen := map[string]bool{}
+	channels := make([]syncChannel, 0, len(l.syncBackends)+len(l.externalPlugins)+1)
+	for _, b := range l.syncBackends {
+		seen[b.ID] = true
+		restart := false
+		if pl, ok := pluginByID[b.ID]; ok {
+			restart = pl.Restart
+		} else if b.ID == "builtin.tailcat" && !cfg.PluginEnabled("builtin.tailcat") {
+			restart = true
+		}
+		channels = append(channels, syncChannel{
+			id:               b.ID,
+			implementationID: b.ImplementationID,
+			transportKind:    b.TransportKind,
+			state:            b.State,
+			pairing:          b.Pairing,
+			externalChannels: b.ExternalChannels,
+			restart:          restart,
+			policy:           syncPolicyLabel(cfg.Plugins.Instances[b.ID].Sync),
+		})
+	}
+	if !seen["builtin.tailcat"] {
+		seen["builtin.tailcat"] = true
+		channels = append(channels, syncChannel{
+			id:               "builtin.tailcat",
+			implementationID: "builtin.tailcat",
+			transportKind:    "peer_sessions",
+			state:            "disabled",
+			pairing:          true,
+			restart:          cfg.PluginEnabled("builtin.tailcat"),
+			policy:           syncPolicyLabel(cfg.Plugins.Instances["builtin.tailcat"].Sync),
+		})
+	}
+	for _, pl := range l.externalPlugins {
+		if seen[pl.ID] || !slices.Contains(pl.Capabilities, "sync_backend") {
+			continue
+		}
+		seen[pl.ID] = true
+		channels = append(channels, syncChannel{
+			id:               pl.ID,
+			implementationID: pl.ImplementationID,
+			transportKind:    pl.TransportKind,
+			state:            "disabled",
+			pairing:          pl.TransportKind == "peer_sessions" && !pl.ExternalChannels,
+			externalChannels: pl.ExternalChannels,
+			restart:          pl.Restart || pl.Configured,
+			policy:           syncPolicyLabel(cfg.Plugins.Instances[pl.ID].Sync),
+		})
+	}
+	d.syncChannels = channels
+	restartPending := false
+	for _, key := range l.config.RestartRequired {
+		if key == "plugins" || strings.HasPrefix(key, "plugins.") {
+			restartPending = true
+			break
+		}
+	}
+	if !restartPending {
+		for _, ch := range channels {
+			if ch.restart {
+				restartPending = true
+				break
+			}
+		}
+	}
+	d.restartPending = restartPending
+
+	// Keep l.pairingBackend pinned to a currently running pairing channel.
+	stillValid := false
+	for _, b := range l.syncBackends {
+		if b.ID == l.pairingBackend && b.Pairing && b.State == "running" {
+			stillValid = true
+			break
+		}
+	}
+	if !stillValid {
+		l.pairingBackend = ""
+		for _, b := range l.syncBackends {
+			if b.Pairing && b.State == "running" {
+				l.pairingBackend = b.ID
+				if b.ID == "builtin.tailcat" {
+					break
+				}
+			}
+		}
+	}
+}
+
+func syncPolicyLabel(syncCfg config.BackendSync) string {
+	on := func(v *bool) bool { return v == nil || *v }
+	var parts []string
+	if on(syncCfg.Text) {
+		parts = append(parts, "文本")
+	}
+	if on(syncCfg.Images) {
+		parts = append(parts, "图片")
+	}
+	if on(syncCfg.Files) {
+		if syncCfg.AutoFileMaxBytes > 0 {
+			parts = append(parts, fmt.Sprintf("文件 ≤%d MB", int64(syncCfg.AutoFileMaxBytes)/(1<<20)))
+		} else {
+			parts = append(parts, "文件")
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func (d *viewState) deviceHasAuthorizedBackend(deviceID, backendID string) bool {
+	if backendID == "" {
+		return true
+	}
+	dev := d.deviceByID(deviceID)
+	if dev == nil {
+		return false
+	}
+	for _, b := range dev.bindings {
+		if b.state == "authorized" && b.instanceID == backendID {
+			return true
+		}
+	}
+	return false
 }
 func shortText(s string, n int) string {
 	if utf8.RuneCountInString(s) > n {
@@ -652,6 +936,9 @@ func shortText(s string, n int) string {
 
 // mutate queues one user intent. Writes are never automatically replayed.
 func (d *viewState) mutate(work func(context.Context) error, success string) {
+	d.mutateWithin(work, success, 15*time.Second)
+}
+func (d *viewState) mutateWithin(work func(context.Context) error, success string, budget time.Duration) {
 	l := d.live
 	if l.busy {
 		return
@@ -661,22 +948,13 @@ func (d *viewState) mutate(work func(context.Context) error, success string) {
 	l.busy = true
 	l.message = ""
 	d.notice = "正在处理…"
-	if !l.enqueue(func(ctx context.Context) func() {
+	if !l.enqueueWithin(func(ctx context.Context) func() {
 		err := work(ctx)
 		return func() {
 			l.busy = false
 			l.nextRefresh = time.Time{}
 			if err != nil {
-				l.message = "操作未能确认完成。请刷新数据后检查结果。"
-				if api.ReasonOf(err) == "config_apply_failed" {
-					l.message = "设置已保存，但未能生效。请检查设置后重试。"
-				}
-				if api.ReasonOf(err) == "action_apply_failed" {
-					l.message = "动作结果已保存到历史记录。未能复制到剪贴板。"
-				}
-				if api.ReasonOf(err) == "conflict" {
-					l.message = "数据已变化。请刷新后重试。"
-				}
+				l.message = liveErrorMessage(err)
 				d.notice = "操作失败"
 			} else {
 				l.message = ""
@@ -686,7 +964,7 @@ func (d *viewState) mutate(work func(context.Context) error, success string) {
 				d.notice = ""
 			}
 		}
-	}) {
+	}, budget) {
 		l.busy = false
 	}
 }
@@ -790,13 +1068,14 @@ func (d *viewState) projectLiveConfig() {
 	d.options["telemetry"] = c.Telemetry.Enabled
 }
 func (d *viewState) newLiveCode() {
-	if d.live.busy {
+	if d.live.busy || d.live.pairingBackend == "" {
 		return
 	}
 	d.live.codeAttempted = true
 	client := d.live.client
+	backend := d.live.pairingBackend
 	d.mutate(func(ctx context.Context) error {
-		code, err := client.NewCode(ctx)
+		code, err := client.NewCodeVia(ctx, backend)
 		if err == nil {
 			select {
 			case d.live.results <- func() { d.live.code = code; d.inviteCode = code.Code }:
@@ -810,13 +1089,14 @@ func (d *viewState) newLiveCode() {
 }
 
 func (d *viewState) newLiveTicket() {
-	if d.live.busy {
+	if d.live.busy || d.live.pairingBackend == "" {
 		return
 	}
 	d.live.ticketAttempted = true
 	client := d.live.client
+	backend := d.live.pairingBackend
 	d.mutate(func(ctx context.Context) error {
-		ticket, err := client.ExportTicket(ctx)
+		ticket, err := client.ExportTicketVia(ctx, backend)
 		if err == nil {
 			select {
 			case d.live.results <- func() { d.live.ticket = ticket }:
@@ -1024,17 +1304,195 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 	return v
 }
 
+func (d *viewState) findLiveAction(key string) (api.Action, bool) {
+	if d.live == nil {
+		return api.Action{}, false
+	}
+	for _, a := range d.live.actions {
+		if a.Key == key {
+			return a, true
+		}
+	}
+	return api.Action{}, false
+}
+
 func (d *viewState) runHistoryAction(id, key string) {
-	client := d.live.client
-	request := api.ActionInput{RequestID: "desktop-" + newRequestID(), Apply: true}
-	d.mutate(func(ctx context.Context) error {
-		result, err := client.ExecuteAction(ctx, id, key, request)
-		if err != nil {
-			return err
+	l := d.live
+	if l == nil || l.busy {
+		return
+	}
+	act, ok := d.findLiveAction(key)
+	if !ok {
+		act = api.Action{Key: key, Title: key, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}}
+	}
+	wantCopy := slices.Contains(act.PostActions, plugin.ActionPostCopy)
+	wantNotify := slices.Contains(act.PostActions, plugin.ActionPostNotify)
+	wantPresent := slices.Contains(act.PostActions, plugin.ActionPostPresent)
+	wantSelect := slices.Contains(act.PostActions, plugin.ActionPostSelect)
+
+	title := d.tr(act.Title)
+	pluginLabel := d.actionPluginLabel(act.PluginID)
+	client := l.client
+	selected := d.selected
+	request := api.ActionInput{
+		RequestID:       "desktop-" + newRequestID(),
+		Apply:           wantCopy,
+		CancelOnContext: true,
+	}
+
+	l.invalidateSearch()
+	l.busy = true
+	l.message = ""
+	d.notice = "正在处理…"
+	d.actionToast = actionToastState{
+		visible: true,
+		running: true,
+		title:   title,
+		message: fmt.Sprintf(d.tr("正在执行「%s」…"), title),
+		tone:    desktopkit.ToneInfo,
+	}
+	actionCtx, actionCancel := context.WithCancel(l.ctx)
+	l.actionCancel = actionCancel
+
+	const presentMaxBytes = 64 << 10
+	queued := l.enqueueWithin(func(ctx context.Context) func() {
+		callCtx, stopCancel := context.WithCancel(ctx)
+		stopLink := context.AfterFunc(actionCtx, stopCancel)
+		defer func() {
+			stopLink()
+			stopCancel()
+		}()
+
+		result, err := client.ExecuteAction(callCtx, id, key, request)
+		var resultText string
+		var truncated bool
+		if err == nil && wantPresent && result.Item.ID != "" {
+			if rc, cerr := client.HistoryContent(callCtx, result.Item.ID, 0); cerr == nil {
+				raw, rerr := io.ReadAll(io.LimitReader(rc, presentMaxBytes+1))
+				_ = rc.Close()
+				if rerr == nil {
+					if len(raw) > presentMaxBytes {
+						raw = raw[:presentMaxBytes]
+						truncated = true
+					}
+					resultText = strings.ToValidUTF8(string(raw), "")
+				}
+			}
 		}
-		if !result.Applied {
-			return &api.Error{Reason: "action_apply_failed", Message: "action saved to history"}
+
+		return func() {
+			cancelledByUser := actionCtx.Err() != nil && l.ctx.Err() == nil
+			actionCancel()
+			l.actionCancel = nil
+			l.busy = false
+			l.nextRefresh = time.Time{}
+
+			if err != nil {
+				if cancelledByUser {
+					l.message = ""
+					d.notice = ""
+					if wantNotify {
+						d.actionToast = actionToastState{
+							visible:   true,
+							title:     title,
+							message:   fmt.Sprintf(d.tr("已取消「%s」"), title),
+							tone:      desktopkit.ToneWarning,
+							expiresAt: time.Now().Add(3 * time.Second),
+						}
+					} else {
+						d.actionToast = actionToastState{}
+					}
+					return
+				}
+				l.message = liveErrorMessage(err)
+				d.notice = "操作失败"
+				d.actionToast = actionToastState{
+					visible:   true,
+					title:     title,
+					message:   fmt.Sprintf(d.tr("「%s」执行失败"), title),
+					tone:      desktopkit.ToneError,
+					expiresAt: time.Now().Add(4 * time.Second),
+				}
+				return
+			}
+
+			applyFailed := wantCopy && !result.Applied
+			if wantSelect && result.Item.ID != "" {
+				d.focusHistoryItem(result.Item.ID)
+			}
+
+			if wantPresent {
+				d.actionToast = actionToastState{}
+				if applyFailed {
+					l.message = ""
+					d.notice = ""
+				} else if wantCopy {
+					l.message = ""
+					d.notice = "已复制"
+				} else {
+					l.message = ""
+					d.notice = ""
+				}
+				d.actionResult = actionResultState{
+					open:        true,
+					title:       title,
+					plugin:      pluginLabel,
+					historyID:   result.Item.ID,
+					text:        resultText,
+					url:         validHTTPURL(resultText),
+					copied:      wantCopy && result.Applied,
+					applyFailed: applyFailed,
+					truncated:   truncated,
+				}
+				if d.selected != selected && !wantSelect {
+					d.notice = ""
+				}
+				return
+			}
+
+			if applyFailed {
+				l.message = liveErrorMessage(&api.Error{Reason: "action_apply_failed", Message: "action saved to history"})
+				d.notice = "操作失败"
+				d.actionToast = actionToastState{
+					visible:   true,
+					title:     title,
+					message:   d.tr("已保存到历史，但未能写入剪贴板。"),
+					tone:      desktopkit.ToneWarning,
+					expiresAt: time.Now().Add(4 * time.Second),
+				}
+				return
+			}
+
+			l.message = ""
+			if wantCopy {
+				d.notice = "已复制"
+			} else {
+				d.notice = ""
+			}
+			if d.selected != selected && !wantSelect {
+				d.notice = ""
+			}
+			if wantNotify {
+				msg := fmt.Sprintf(d.tr("已完成「%s」"), title)
+				if wantCopy {
+					msg = fmt.Sprintf(d.tr("已完成「%s」· 已复制"), title)
+				}
+				d.actionToast = actionToastState{
+					visible:   true,
+					title:     title,
+					message:   msg,
+					tone:      desktopkit.ToneSuccess,
+					expiresAt: time.Now().Add(4 * time.Second),
+				}
+			} else {
+				d.actionToast = actionToastState{}
+			}
 		}
-		return nil
-	}, "已复制")
+	}, 5*time.Minute+30*time.Second)
+	if !queued {
+		actionCancel()
+		l.actionCancel = nil
+		l.busy = false
+		d.actionToast = actionToastState{}
+	}
 }

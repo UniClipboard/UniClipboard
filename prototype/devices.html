@@ -1,270 +1,2348 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
-<title>unic · 管理设备（原型）</title>
+<title>UniClipboard · 设备管理重设计原型（BoardUI v2）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{--bg:#e9e9ee;--sheet:#fff;--side:#f4f4f7;--line:#e2e2e8;--text:#1d1d22;--sub:#6b6b76;--acc:#2f6bff;--acc-t:#eaf0ff;--ok:#1fa35c;--warn:#d9a400;--slow:#e8761a;--bad:#d93b3b;--r:10px}
-@media(prefers-color-scheme:dark){:root{--bg:#141418;--sheet:#1e1e24;--side:#25252c;--line:#34343d;--text:#f0f0f4;--sub:#9a9aa6;--acc-t:#222f52}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,"PingFang SC",system-ui,sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}
-button{font:inherit;color:inherit;cursor:pointer}
-.note{position:fixed;top:8px;left:12px;font-size:12px;color:var(--sub)}
-.note label{margin-left:10px}
-.sheet{width:min(920px,100%);height:600px;background:var(--sheet);border-radius:14px;box-shadow:0 20px 60px #0004;display:flex;flex-direction:column;overflow:hidden}
-.top{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600}
-.btn{border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:6px 12px}
-.btn:hover{background:var(--side)}
-.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
-.btn.pri:disabled{opacity:.4;cursor:not-allowed}
-.btn.danger{color:var(--bad)}
-.banner{background:#fff4d6;color:#7a5b00;padding:8px 16px;font-size:13px;border-bottom:1px solid var(--line)}
-.body{flex:1;display:flex;min-height:0}
-.side{width:290px;background:var(--side);border-right:1px solid var(--line);overflow:auto;padding:8px}
-.sec{font-size:11px;color:var(--sub);padding:10px 8px 4px;text-transform:uppercase;letter-spacing:.04em;display:flex;justify-content:space-between}
-.badge{background:var(--bad);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}
-.row{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;cursor:pointer}
-.row:hover{background:#0000000a}
-.row.sel{background:var(--acc-t)}
-.row.dim{opacity:.55}
-.ic{width:32px;height:32px;border-radius:8px;background:var(--line);display:grid;place-items:center;font-size:17px;flex:none}
-.row .t{flex:1;min-width:0}
-.row .t b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row .t span{font-size:12px;color:var(--sub)}
-.dot{width:9px;height:9px;border-radius:50%;flex:none;background:#aaa}
-.ok{background:var(--ok)}.warn{background:var(--warn)}.slow{background:var(--slow)}.bad{background:var(--bad)}.pend{background:var(--acc)}
-.detail{flex:1;overflow:auto;padding:18px 22px}
-.head{display:flex;gap:14px;align-items:center;margin-bottom:14px}
-.head .ic{width:52px;height:52px;font-size:28px;border-radius:12px}
-.head h2{margin:0;font-size:18px;display:flex;align-items:center;gap:8px}
-.tag{font-size:11px;background:var(--line);border-radius:5px;padding:1px 6px;color:var(--sub);font-weight:400}
-.sub{color:var(--sub);font-size:12px}
-.card{border:1px solid var(--line);border-radius:var(--r);margin-bottom:14px}
-.card h3{margin:0;padding:10px 14px 0;font-size:12px;color:var(--sub);font-weight:600}
-.item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line)}
-.card h3+.item{border-top:0}
-.item small{display:block;color:var(--sub);font-size:12px}
-.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:12px 14px}
-.stat div b{display:block;font-size:20px;font-weight:600}
-.stat div span{font-size:12px;color:var(--sub)}
-.spark{display:flex;align-items:flex-end;gap:3px;height:30px}
-.spark i{width:6px;background:var(--acc);border-radius:2px;opacity:.7}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.seg button{border:0;background:none;padding:6px 12px;border-right:1px solid var(--line)}
-.seg button:last-child{border:0}
-.seg button.on{background:var(--acc);color:#fff}
-.sw{width:38px;height:22px;border-radius:11px;background:var(--line);position:relative;border:0;flex:none}
-.sw::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s}
-.sw.on{background:var(--ok)}.sw.on::after{left:18px}
-.sw:disabled{opacity:.4}
-.summary{background:var(--acc-t);border-radius:8px;padding:8px 12px;margin:0 14px 12px;font-size:13px}
-.fp{font:600 15px ui-monospace,Menlo,monospace;letter-spacing:.04em;word-break:break-all}
-.foot{display:flex;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--line);position:relative}
-.menu{position:absolute;bottom:50px;left:16px;background:var(--sheet);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px #0003;min-width:220px;padding:4px;z-index:5}
-.menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px}
-.menu button:hover{background:var(--side)}
-.task{max-width:480px;margin:0 auto;padding:30px 10px;text-align:center}
-.task .ic{margin:0 auto 10px;width:56px;height:56px;font-size:30px}
-.code{font:700 40px ui-monospace,Menlo,monospace;letter-spacing:.12em;margin:14px 0 4px}
-input[type=text]{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--sheet);color:var(--text);font:inherit}
-.err{color:var(--bad);font-size:13px;min-height:20px;margin:6px 0;text-align:left}
-.hint{color:var(--sub);font-size:12px;text-align:left;margin:6px 0}
-.actions{display:flex;gap:8px;justify-content:center;margin-top:14px}
-.empty{text-align:center;color:var(--sub);padding:80px 20px}
-.modal{position:fixed;inset:0;background:#0006;display:grid;place-items:center;z-index:9}
-.modal>div{background:var(--sheet);border-radius:12px;padding:20px;width:400px}
-.modal ul{padding-left:18px;color:var(--sub);font-size:13px}
-.hidden{display:none}
+:root {
+  /* Refined 3-Tier BoardUI Light Surface Hierarchy */
+  --bg-canvas-outer: #e7e7eb;
+  --bg-toolbar: #ffffff;
+  --bg-canvas: #f5f5f7;          /* L1: calm neutral overview canvas so cards float cleanly */
+  --bg-inspector: #ffffff;       /* L1.5: crisp pure-white detail/inspection pane */
+  --bg-card: #ffffff;            /* L2: elevated cards on canvas */
+  --bg-card-hover: #fafafa;
+  --bg-inspector-card: #f7f7f9;  /* L2 (subtle): recessed cards inside white inspector */
+  --bg-inspector-card-hover: #f0f0f3;
+  --bg-inset: #f2f2f5;           /* L2.5: icon tiles & chips inside white cards */
+  --bg-inset-on-subtle: #ffffff; /* L2.5: fp cells / inputs inside subtle inspector cards */
+  --bg-sheet: #ffffff;           /* L3: modal & popover surface */
+  --bg-full: #ffffff;
+  --bg-primary: #ffffff;
+  --bg-primary-hover: #f5f5f7;
+  --bg-secondary: #f5f5f7;
+  --bg-secondary-hover: #ebebee;
+  --bg-tertiary: #ebebee;
+
+  --sep: #e6e6e9;
+  --card-border: #e5e5e8;
+  --border-btn: #dfdfE4;
+  --border-hover: #c8c8cf;
+  --border-active: #a1a1aa;
+  --text-primary: #0a0a0a;
+  --text-secondary: #6b6b70;
+  --text-tertiary: #9a9aa0;
+  --icon-primary: #141416;
+  --icon-secondary: #6b6b70;
+  --icon-tertiary: #9a9aa0;
+
+  --accent-50: #f2f7ff;
+  --accent-100: #dbeafe;
+  --accent-200: #c2dcff;
+  --accent-400: #3392ff;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+  --accent-700: #1447e6;
+
+  /* Status Pills */
+  --success-bg: #eaf9d0;
+  --success-fg: #365900;
+  --success-dot: #5ea500;
+  --warn-pill-bg: #fef3c7;
+  --warn-pill-fg: #92400e;
+  --info-bg: #e0edff;
+  --info-fg: #155dfc;
+  --err-bg: #ffe4e6;
+  --err-fg: #d91445;
+
+  /* Soft Banners (never harsh pill yellow) */
+  --warn-bg: #fffbeb;
+  --warn-fg: #92400e;
+  --warn-border: #fde68a;
+  --err-border: #fecdd3;
+  --destructive: #c41022;
+  --destructive-bg-hover: #fff1f2;
+
+  --seg-bg: #f1f1f4;
+  --seg-sel: #ffffff;
+  --sw-off: #dcdce0;
+  --sw-on-start: #2273ff;
+  --sw-on-end: #144be9;
+  --shadow-window: 0 24px 64px rgba(0, 0, 0, .13), 0 0 0 1px rgba(0, 0, 0, .06);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .035);
+  --shadow-popover: 0 10px 28px rgba(0, 0, 0, .12), 0 0 0 1px var(--sep);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .04);
+  --scrim: rgba(0, 0, 0, .34);
+}
+
+[data-theme="dark"] {
+  /* Refined 3-Tier BoardUI Dark Surface Hierarchy (aligned with desktopkit/surface.go) */
+  --bg-canvas-outer: #09090b;
+  --bg-toolbar: #1d1d20;         /* L0: WorkspaceSurface */
+  --bg-canvas: #141416;          /* L1: deepest overview canvas so cards elevate cleanly */
+  --bg-inspector: #1b1b1e;       /* L1.5: slightly stepped WorkspaceSurface for detail pane */
+  --bg-card: #222226;            /* L2: elevated card surface with visible subtle border */
+  --bg-card-hover: #29292e;
+  --bg-inspector-card: #242428;  /* L2: CardSurface inside inspector */
+  --bg-inspector-card-hover: #2c2c31;
+  --bg-inset: #19191c;           /* L2.5: gentle recessed tiles/chips */
+  --bg-inset-on-subtle: #1b1b1f; /* L2.5: fp cells / inputs inside inspector cards */
+  --bg-sheet: #202024;           /* L3: elevated modal / popover */
+  --bg-full: #18181b;
+  --bg-primary: #26262a;
+  --bg-primary-hover: #2f2f35;
+  --bg-secondary: #1b1b1e;
+  --bg-secondary-hover: #27272c;
+  --bg-tertiary: #2c2c31;
+
+  --sep: #2c2c31;
+  --card-border: rgba(255, 255, 255, .085);
+  --border-btn: rgba(255, 255, 255, .12);
+  --border-hover: rgba(255, 255, 255, .22);
+  --border-active: rgba(255, 255, 255, .32);
+  --text-primary: #f5f5f7;
+  --text-secondary: #9c9ca4;
+  --text-tertiary: #6c6c74;
+  --icon-primary: #f5f5f7;
+  --icon-secondary: #9c9ca4;
+  --icon-tertiary: #63636a;
+
+  --accent-50: rgba(43, 127, 255, .12);
+  --accent-100: rgba(43, 127, 255, .20);
+  --accent-200: rgba(51, 146, 255, .34);
+  --accent-400: #4da0ff;
+  --accent-500: #2b7fff;
+  --accent-600: #4da0ff;
+  --accent-700: #8ec5ff;
+
+  /* Status Pills */
+  --success-bg: rgba(74, 140, 20, .28);
+  --success-fg: #b8ee62;
+  --success-dot: #a3e635;
+  --warn-pill-bg: rgba(245, 158, 11, .20);
+  --warn-pill-fg: #fcd34d;
+  --info-bg: rgba(43, 127, 255, .20);
+  --info-fg: #8ec5ff;
+  --err-bg: rgba(236, 0, 63, .22);
+  --err-fg: #fda4af;
+
+  /* Soft Banners */
+  --warn-bg: rgba(245, 158, 11, .11);
+  --warn-fg: #fcd34d;
+  --warn-border: rgba(245, 158, 11, .28);
+  --err-border: rgba(255, 100, 103, .30);
+  --destructive: #ff7376;
+  --destructive-bg-hover: rgba(220, 38, 38, .18);
+
+  --seg-bg: #141417;
+  --seg-sel: #2a2a2f;
+  --sw-off: #3a3a40;
+  --shadow-window: 0 28px 80px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 255, 255, .09);
+  --shadow-card: none;
+  --shadow-popover: 0 14px 36px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .11);
+  --shadow-xs: none;
+  --scrim: rgba(0, 0, 0, .60);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--bg-canvas-outer);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 18px 22px;
+  gap: 12px;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+/* ---- Prototype Control Bar (outside app frame) ---- */
+.proto-bar {
+  width: 100%;
+  max-width: 1180px;
+  background: var(--bg-toolbar);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  box-shadow: var(--shadow-xs);
+  font-size: 12px;
+}
+.proto-tag {
+  font-weight: 600;
+  color: var(--accent-600);
+  background: var(--accent-50);
+  border: 1px solid var(--accent-200);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: .01em;
+}
+.proto-group { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.proto-pills { display: inline-flex; background: var(--bg-secondary); padding: 2px; border-radius: 8px; border: 1px solid var(--sep); gap: 2px; }
+.proto-pills button {
+  border: 0; background: transparent; padding: 3px 9px; border-radius: 6px;
+  font-size: 12px; color: var(--text-secondary); transition: .15s;
+}
+.proto-pills button.active {
+  background: var(--bg-primary); color: var(--text-primary); font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+}
+.proto-check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; color: var(--text-primary); }
+.proto-spacer { flex: 1; }
+
+/* ---- Desktop Window Frame ---- */
+.window-stage {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+.app-window {
+  width: 1120px;
+  max-width: 100%;
+  height: min(760px, calc(100vh - 90px));
+  min-height: 540px;
+  background: var(--bg-canvas);
+  border-radius: 14px;
+  box-shadow: var(--shadow-window);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  transition: width .22s cubic-bezier(.32, .72, 0, 1);
+}
+.app-window.compact { width: 880px; }
+.app-window.narrow { width: 660px; }
+
+/* ---- Top 52 DIP Toolbar ---- */
+.toolbar {
+  height: 52px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 0 16px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--sep);
+  user-select: none;
+}
+.traffic-lights {
+  display: flex; align-items: center; gap: 7px; margin-right: 6px; flex: none;
+}
+.tl { width: 12px; height: 12px; border-radius: 50%; }
+.tl.r { background: #ff5f57; }
+.tl.y { background: #febc2e; }
+.tl.g { background: #28c840; }
+.tb-back {
+  height: 28px; padding: 0 8px; border-radius: 7px; border: 0; background: transparent;
+  display: inline-flex; align-items: center; gap: 4px; color: var(--text-primary);
+  font-size: 13px; transition: background .12s;
+}
+.tb-back:hover { background: var(--bg-secondary-hover); }
+.tb-sep { width: 1px; height: 16px; background: var(--sep); flex: none; }
+.tb-title { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+.tb-spacer { flex: 1; }
+
+/* ---- Status Pill ---- */
+.pill {
+  height: 22px; padding: 0 8px; border-radius: 11px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 500; white-space: nowrap; flex: none;
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.pill.pos { background: var(--success-bg); color: var(--success-fg); }
+.pill.pos .dot { background: var(--success-dot); }
+.pill.warn { background: var(--warn-pill-bg); color: var(--warn-pill-fg); }
+.pill.warn .dot { background: var(--warn-pill-fg); }
+.pill.info { background: var(--info-bg); color: var(--info-fg); }
+.pill.info .dot { background: var(--accent-500); }
+.pill.err { background: var(--err-bg); color: var(--err-fg); }
+.pill.err .dot { background: var(--err-fg); }
+.pill.neu { background: var(--bg-tertiary); color: var(--text-secondary); }
+.pill.neu .dot { background: var(--text-tertiary); }
+
+/* ---- BoardUI Buttons ---- */
+.btn {
+  height: 30px; padding: 0 11px; border-radius: 8px;
+  border: 1px solid var(--border-btn);
+  background: var(--bg-primary); color: var(--text-primary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  font-size: 12.5px; font-weight: 500; white-space: nowrap;
+  transition: transform .08s, background .12s, border-color .12s, opacity .12s;
+  box-shadow: var(--shadow-xs);
+}
+.btn:hover:not(:disabled) { background: var(--bg-primary-hover); border-color: var(--border-hover); }
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+.btn.xs { height: 24px; padding: 0 8px; font-size: 11.5px; border-radius: 6px; }
+.btn.pri { background: var(--accent-500); border-color: var(--accent-500); color: #fff; box-shadow: none; }
+.btn.pri:hover:not(:disabled) { background: var(--accent-600); border-color: var(--accent-600); }
+.btn.subtle { background: transparent; border-color: transparent; box-shadow: none; color: var(--text-secondary); }
+.btn.subtle:hover:not(:disabled) { background: var(--bg-secondary-hover); color: var(--text-primary); }
+.btn.link { background: transparent; border-color: transparent; box-shadow: none; color: var(--accent-600); padding: 0 4px; height: auto; font-weight: 500; }
+.btn.link:hover:not(:disabled) { text-decoration: underline; background: transparent; }
+.btn.danger { color: var(--destructive); border-color: var(--border-btn); background: var(--bg-primary); }
+.btn.danger:hover:not(:disabled) { background: var(--destructive-bg-hover); border-color: var(--err-border); }
+.btn.danger-solid { background: #dc2626; border-color: #dc2626; color: #fff; box-shadow: none; }
+.btn.danger-solid:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; }
+.btn.icon-only { width: 26px; height: 26px; padding: 0; border-radius: 7px; }
+.btn.full { width: 100%; height: 34px; font-size: 13px; }
+
+/* ---- Body Split ---- */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.canvas {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 22px 28px;
+  background: var(--bg-canvas);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.inspector {
+  width: 380px;
+  flex: none;
+  background: var(--bg-inspector);
+  border-left: 1px solid var(--sep);
+  overflow-y: auto;
+  padding: 18px 18px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.app-window.narrow .inspector { width: 100%; border-left: 0; }
+
+/* ---- Sync Backends Status Strip ---- */
+.backend-strip {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.backend-strip.zero {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+}
+.backend-strip-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.strip-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  margin-right: 2px;
+}
+.backend-strip.zero .strip-label { color: var(--warn-fg); }
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.be-chip {
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: border-color .12s, background .12s;
+}
+.be-chip:hover { border-color: var(--border-hover); background: var(--bg-secondary-hover); }
+.be-chip .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.be-chip.running .dot { background: var(--success-dot); }
+.be-chip.restarting .dot, .be-chip.pending_restart .dot { background: #eab308; }
+.be-chip.unavailable .dot { background: var(--err-fg); }
+.be-chip.disabled { opacity: .68; color: var(--text-secondary); }
+.be-chip.disabled .dot { background: var(--text-tertiary); }
+.be-chip .meta { font-size: 11px; color: var(--text-secondary); font-weight: 400; }
+.strip-restart {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--sep);
+  font-size: 12px;
+  color: var(--warn-fg);
+}
+.strip-zero-text { font-size: 12.5px; color: var(--warn-fg); font-weight: 500; flex: 1; }
+
+/* ---- Inline Notice Banners ---- */
+.notice {
+  border-radius: 11px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  border: 1px solid transparent;
+}
+.notice.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg); }
+.notice.info { background: var(--accent-50); border-color: var(--accent-200); color: var(--text-primary); }
+.notice.err { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.notice-body { flex: 1; min-width: 0; }
+.notice-title { font-weight: 600; }
+.notice-sub { font-size: 12px; opacity: .88; margin-top: 1px; }
+
+/* ---- Section Headings ---- */
+.sec { display: flex; flex-direction: column; gap: 9px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sec-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.sec-hint { font-size: 11.5px; color: var(--text-tertiary); }
+
+/* ---- Pending Approval Banners ---- */
+.pending-card {
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--accent-50);
+  border: 1.5px solid var(--accent-200);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  cursor: pointer;
+  transition: border-color .12s;
+}
+.pending-card:hover { border-color: var(--accent-400); }
+.pending-card.selected { border-color: var(--accent-500); }
+.pending-meta { flex: 1; min-width: 0; }
+.pending-meta .name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pending-meta .sub { font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* ---- Device Icon Tile ---- */
+.icon-tile {
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-inset); border: 1px solid var(--card-border); color: var(--icon-primary);
+}
+.inspector .icon-tile { background: var(--bg-inset-on-subtle); }
+.icon-tile.lg { width: 42px; height: 42px; border-radius: 11px; }
+.icon-tile.accent { background: var(--accent-50); border-color: var(--accent-400); color: var(--accent-500); }
+
+/* ---- Device Card Grid ---- */
+.dev-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+.app-window.compact .dev-grid,
+.app-window.narrow .dev-grid { grid-template-columns: 1fr; }
+
+.dev-card {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card);
+  border-radius: 13px;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  cursor: pointer;
+  transition: border-color .12s, background .12s, box-shadow .12s, opacity .12s;
+}
+.dev-card:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+.dev-card.selected { border: 1.5px solid var(--accent-500); padding: 12.5px 13.5px; }
+.dev-card.dim { opacity: .76; }
+.dev-card.dim.selected { opacity: 1; }
+.dev-card-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dev-card-info { flex: 1; min-width: 0; }
+.dev-card-name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-card-sub { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.dev-card-div { height: 1px; background: var(--sep); }
+.dev-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; }
+.dev-card-paths { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dev-card-time { color: var(--text-tertiary); flex: none; }
+
+/* ---- Grouped List Box (Channels / Candidates / Inspector Groups) ---- */
+.group-box {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card);
+  border-radius: 12px;
+  overflow: visible;
+}
+.inspector .group-box {
+  background: var(--bg-inspector-card);
+  box-shadow: none;
+}
+.list-row {
+  padding: 10px 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background .1s;
+}
+.list-row:first-child { border-radius: 11px 11px 0 0; }
+.list-row:last-child { border-radius: 0 0 11px 11px; }
+.list-row:only-child { border-radius: 11px; }
+.list-row + .list-row { border-top: 1px solid var(--sep); }
+.list-row:hover { background: var(--bg-card-hover); }
+.inspector .list-row:hover { background: var(--bg-inspector-card-hover); }
+.list-row.selected { background: var(--accent-50); }
+.list-row-meta { flex: 1; min-width: 0; }
+.list-row-title { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.list-row-sub { font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tag-badge {
+  font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+  background: var(--info-bg); color: var(--info-fg); flex: none;
+}
+.tag-badge.neu { background: var(--bg-tertiary); color: var(--text-secondary); }
+.tag-badge.warn { background: var(--warn-pill-bg); color: var(--warn-pill-fg); }
+
+/* ---- Inspector Components ---- */
+.hero-card {
+  background: var(--bg-inspector-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 13px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hero-card.accent { background: var(--accent-50); border-color: var(--accent-200); }
+.hero-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hero-name-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.hero-name { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-sub { font-size: 11.5px; color: var(--text-secondary); }
+
+.rename-box {
+  background: var(--bg-inspector-card);
+  border: 1px solid var(--accent-400);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.rename-box label { font-size: 11.5px; font-weight: 600; color: var(--text-secondary); }
+.rename-row { display: flex; gap: 6px; }
+.text-input {
+  width: 100%; height: 32px; padding: 0 10px;
+  border-radius: 8px; border: 1px solid var(--border-btn);
+  background: var(--bg-inset-on-subtle); color: var(--text-primary);
+  font-size: 13px; outline: none; transition: border-color .12s, box-shadow .12s;
+}
+.text-input:focus { border-color: var(--accent-500); box-shadow: 0 0 0 3px rgba(43, 127, 255, .18); }
+.text-input.error { border-color: var(--err-fg); }
+.field-hint { font-size: 11.5px; color: var(--text-secondary); }
+.field-err { font-size: 11.5px; color: var(--err-fg); font-weight: 500; }
+
+/* ---- Path Row in Inspector ---- */
+.path-row {
+  padding: 11px 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+}
+.path-row + .path-row { border-top: 1px solid var(--sep); }
+.path-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.path-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.path-sub { font-size: 11.5px; color: var(--text-secondary); }
+.path-err { font-size: 11.5px; color: var(--err-fg); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+.path-warn { font-size: 11.5px; color: var(--warn-fg); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+.path-actions { display: flex; align-items: center; gap: 6px; flex: none; position: relative; }
+
+/* ---- BoardUI Switch ---- */
+.switch {
+  width: 34px; height: 20px; border-radius: 10px; border: 0; padding: 2px;
+  background: var(--sw-off); position: relative; flex: none;
+  transition: background .16s ease;
+}
+.switch::after {
+  content: ""; display: block; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+  transform: translateX(0); transition: transform .16s cubic-bezier(.32, .72, 0, 1);
+}
+.switch.on { background: linear-gradient(180deg, var(--sw-on-start), var(--sw-on-end)); }
+.switch.on::after { transform: translateX(14px); }
+.switch:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---- Popover Menu ---- */
+.popover {
+  position: absolute; top: 30px; right: 0; z-index: 30;
+  min-width: 176px; padding: 4px;
+  background: var(--bg-sheet); border-radius: 10px;
+  box-shadow: var(--shadow-popover);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.popover button {
+  width: 100%; border: 0; background: transparent; text-align: left;
+  padding: 7px 10px; border-radius: 7px; font-size: 12.5px;
+  display: flex; align-items: center; gap: 7px; color: var(--text-primary);
+}
+.popover button:hover { background: var(--bg-secondary-hover); }
+.popover button.danger { color: var(--destructive); }
+.popover button.danger:hover { background: var(--destructive-bg-hover); }
+
+/* ---- Fingerprint 8-cell Grid ---- */
+.fp-box {
+  background: var(--bg-inspector-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fp-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.fp-cell {
+  height: 30px; border-radius: 7px;
+  background: var(--bg-inset-on-subtle); border: 1px solid var(--card-border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px; font-weight: 600; letter-spacing: .04em;
+}
+.mono-id {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px; background: var(--bg-inspector-card); border: 1px solid var(--card-border);
+  padding: 7px 10px; border-radius: 8px; word-break: break-all; color: var(--text-primary);
+}
+
+/* ---- Inline Pending Path Card (inside Trusted Device Inspector) ---- */
+.inline-approve {
+  background: var(--accent-50);
+  border: 1.5px solid var(--accent-200);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.inline-approve-head { display: flex; align-items: flex-start; gap: 8px; }
+.inline-approve-head .title { font-weight: 600; font-size: 13px; }
+.inline-approve-head .sub { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+
+/* ---- Empty State Card ---- */
+.empty-card {
+  padding: 22px 18px; border-radius: 12px; text-align: center;
+  background: var(--bg-card); border: 1px solid var(--card-border);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.inspector .empty-card { background: var(--bg-inspector-card); }
+.empty-card .t { font-weight: 600; font-size: 13.5px; }
+.empty-card .d { font-size: 12px; color: var(--text-secondary); max-width: 300px; }
+
+/* ---- Modal / Sheet (440 DIP SheetCompact & AlertDialog) ---- */
+.scrim {
+  position: absolute; inset: 0; z-index: 40;
+  background: var(--scrim);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  animation: fadeIn .18s ease-out;
+}
+.sheet {
+  width: 440px; max-width: 100%; max-height: calc(100% - 24px);
+  background: var(--bg-sheet); border-radius: 16px;
+  padding: 18px 20px 20px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .30), 0 0 0 1px var(--card-border);
+  display: flex; flex-direction: column; gap: 14px;
+  overflow-y: auto;
+  animation: popIn .2s cubic-bezier(.32, .72, 0, 1);
+}
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sheet-title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.seg {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+  background: var(--seg-bg); border: 1px solid var(--sep);
+  padding: 3px; border-radius: 10px;
+}
+.seg button {
+  height: 30px; border: 0; border-radius: 7px; background: transparent;
+  font-size: 12.5px; font-weight: 500; color: var(--text-secondary); transition: .15s;
+}
+.seg button.active {
+  background: var(--seg-sel); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+}
+.code-boxes {
+  background: var(--bg-inset); border: 1px solid var(--card-border);
+  border-radius: 14px; padding: 15px 10px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.code-tile {
+  width: 44px; height: 52px; border-radius: 10px;
+  background: var(--bg-card); border: 1px solid var(--border-btn);
+  box-shadow: var(--shadow-xs);
+  display: flex; align-items: center; justify-content: center;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 22px; font-weight: 700;
+}
+.code-dash { color: var(--text-tertiary); font-weight: 700; padding: 0 2px; }
+.select-field {
+  display: flex; flex-direction: column; gap: 5px;
+}
+.select-field label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.select-input {
+  height: 34px; border-radius: 8px; padding: 0 10px;
+  border: 1px solid var(--border-btn); background: var(--bg-inset-on-subtle);
+  color: var(--text-primary); font-size: 13px; outline: none;
+}
+.select-input:focus { border-color: var(--accent-500); }
+.ticket-box {
+  background: var(--bg-inset); border: 1px solid var(--card-border);
+  border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.ticket-text {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px; word-break: break-all; color: var(--text-primary);
+}
+.sheet-sep { height: 1px; background: var(--sep); }
+.sheet-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-tertiary); }
+
+/* ---- Toast ---- */
+.toast-wrap {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 60; pointer-events: none;
+}
+.toast {
+  background: #18181b; color: #fafafa; padding: 8px 14px; border-radius: 10px;
+  font-size: 12.5px; font-weight: 500; box-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+  display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  animation: fadeIn .15s ease-out;
+}
+[data-theme="dark"] .toast { background: #fafafa; color: #0a0a0a; }
+
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.row-end { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.row-gap { display: flex; align-items: center; gap: 8px; }
+.col-gap { display: flex; flex-direction: column; gap: 10px; }
+.footnote { font-size: 11.5px; color: var(--text-secondary); }
+.grow { flex: 1; min-width: 0; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
 </style>
 </head>
 <body>
-<div class="note">原型 · 全部假数据 ·
-  <label><input type="checkbox" id="gs" checked> 全局同步开启</label>
-  <label><input type="checkbox" id="emp"> 清空设备（空状态）</label>
+
+<!-- Prototype Controls (Outside Application Window) -->
+<div class="proto-bar" id="protoBar">
+  <span class="proto-tag">BoardUI v2 交互原型</span>
+
+  <div class="proto-group">
+    <span>场景</span>
+    <div class="proto-pills" id="presetPills">
+      <button data-preset="multi" class="active">多渠道（完整）</button>
+      <button data-preset="single">仅 Tailcat</button>
+      <button data-preset="zero">零渠道（仅本地）</button>
+      <button data-preset="empty">空设备</button>
+    </div>
+  </div>
+
+  <div class="proto-group">
+    <span>宽度</span>
+    <div class="proto-pills" id="widthPills">
+      <button data-width="wide" class="active">宽屏 1120</button>
+      <button data-width="compact">紧凑 880</button>
+      <button data-width="narrow">单栏 660</button>
+    </div>
+  </div>
+
+  <div class="proto-group">
+    <span>外观</span>
+    <div class="proto-pills" id="themePills">
+      <button data-theme="light" class="active">浅色</button>
+      <button data-theme="dark">深色</button>
+    </div>
+  </div>
+
+  <label class="proto-check"><input type="checkbox" id="chkGlobalSync" checked> 全局同步</label>
+  <label class="proto-check"><input type="checkbox" id="chkRestart"> 待重启提醒</label>
+
+  <span class="proto-spacer"></span>
+  <button class="btn xs" id="btnReset">重置数据</button>
 </div>
-<div class="sheet" id="app"></div>
-<div id="modal"></div>
+
+<!-- Simulated Desktop Window -->
+<div class="window-stage">
+  <div class="app-window" id="appWindow"></div>
+</div>
 
 <script>
-const ICON={desktop:"🖥️",laptop:"💻",phone:"📱"};
-const mk=()=>({
-  devices:[
-    {id:"local",name:"MacBook Pro",plat:"macOS 15",icon:"laptop",local:true,online:true,fp:"—",paths:[]},
-    {id:"d1",name:"办公室台式机",plat:"Windows 11",icon:"desktop",online:true,ms:15,link:"局域网",dir:"both",t:1,i:1,f:1,seen:"刚刚",fp:"8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
-      paths:[{n:"tailcat · 默认",s:"已连接",sync:"1 分钟前"}],hist:[14,15,13,16,15,18,14,15,15,15]},
-    {id:"d2",name:"家里 iMac",plat:"macOS 14",icon:"desktop",online:true,ms:180,link:"中继",dir:"send",t:1,i:1,f:0,seen:"刚刚",fp:"1C77 90AE 5B24 E6F1 03D9 A78B 4C52 8E10",
-      paths:[{n:"tailcat · 默认",s:"已连接（经中继）",sync:"12 分钟前"},{n:"tailcat · 工作仓库",s:"对方未批准",err:true,sync:"—"}],hist:[160,175,190,170,185,200,180,175,182,180]},
-    {id:"d3",name:"旧笔记本",plat:"Ubuntu 24.04",icon:"laptop",online:false,dir:"both",t:1,i:0,f:0,seen:"3 小时前",fp:"E310 4B6A 92CF 7D05 18A3 CC42 6F9B 20D7",
-      paths:[{n:"tailcat · 默认",s:"不可达",err:true,sync:"3 小时前"}],hist:[]},
-    {id:"d4",name:"iPhone 15",plat:"iOS 19",icon:"phone",online:true,ms:62,link:"直连打洞",dir:"recv",t:1,i:1,f:0,seen:"刚刚",fp:"5D08 AA13 7E42 9B6C F1D4 30E7 82A5 C619",
-      paths:[{n:"tailcat · 默认",s:"已连接",sync:"5 分钟前"}],hist:[60,65,58,70,62,61,64,60,63,62]}
-  ],
-  pending:[{id:"p1",name:"新电脑",plat:"Windows 11",icon:"desktop",via:"配对码 482-913",fp:"4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D"}],
-  cands:[{id:"c1",name:"Alice 的平板",by:"办公室台式机 介绍",icon:"phone"}],
-  sel:"d1",task:null,menu:false,gs:true
-});
-let S=mk();
-const $=s=>document.querySelector(s);
-const dev=id=>S.devices.find(d=>d.id===id);
-const tone=d=>!d.online?"":d.ms<50?"ok":d.ms<200?"warn":"slow";
-const stText=d=>d.local?"本机":d.online?`在线 · ${d.ms} ms`:`离线 · ${d.seen}`;
+// ---- Crisp Inline Icons ----
+const IC = {
+  back: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`,
+  add: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  desktop: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`,
+  laptop: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10H4V6z"/><path d="M2 18h20"/></svg>`,
+  phone: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>`,
+  chat: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.7-.3-3.9-.9L3 21l1.4-5.1A8.5 8.5 0 1 1 21 12z"/></svg>`,
+  edit: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
+  copy: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  retry: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>`,
+  shield: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  close: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  more: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>`,
+  trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>`,
+  arrowRight: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>`,
+  settings: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 .99-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51.99H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  alert: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg>`,
+  plug: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8Z"/></svg>`,
+  devices: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="2"/><path d="M6 18h6M9 14v4"/><rect x="15" y="10" width="7" height="11" rx="1.5"/></svg>`
+};
 
-function summary(d){
-  if(d.dir==="pause")return "同步已暂停。信任和路径保留，不传输任何内容。";
-  const k=[d.t&&"文字",d.i&&"图片",d.f&&"文件"].filter(Boolean);
-  if(!k.length)return "未选择任何内容类型，不会同步。";
-  const w={both:"双向同步",send:"仅发送到此设备",recv:"仅从此设备接收"}[d.dir];
-  return `${k.join("、")}：${w}。`;
-}
-const sw=(on,k,dis)=>`<button class="sw ${on?"on":""}" data-act="tog" data-k="${k}" ${dis?"disabled":""}></button>`;
+// ---- Helper Functions ----
+const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+const randCode = () => `${100 + Math.floor(Math.random()*900)}-${100 + Math.floor(Math.random()*900)}`;
+const randFp = () => Array.from({length:8}, () => Math.floor(Math.random()*0x10000).toString(16).toUpperCase().padStart(4,"0")).join(" ");
+const connectKind = s => {
+  s = (s || "").trim();
+  if (/^\d{3}-?\d{3}$/.test(s)) return "6 位配对码";
+  if (/^unic-pair:\S+$/.test(s)) return "完整票据";
+  return "";
+};
 
-function row(d,extra=""){
-  return `<div class="row ${S.sel===d.id&&!S.task?"sel":""} ${!d.online&&!d.local?"dim":""}" data-act="sel" data-id="${d.id}">
-   <div class="ic">${ICON[d.icon]}</div><div class="t"><b>${d.name}</b><span>${stText(d)}</span></div>
-   <span class="dot ${tone(d)}"></span></div>`;
+function backendDisplayName(id) {
+  if (id === "builtin.tailcat") return "Tailcat 同步";
+  return id;
 }
-function side(){
-  let h="";
-  if(S.pending.length)h+=`<div class="sec">待批准 <span class="badge">${S.pending.length}</span></div>`+S.pending.map(p=>`
-   <div class="row" data-act="approve" data-id="${p.id}"><div class="ic">${ICON[p.icon]}</div>
-   <div class="t"><b>${p.name}</b><span>请求加入 · ${p.via}</span></div><span class="dot pend"></span></div>`).join("");
-  const loc=S.devices.filter(d=>d.local),peers=S.devices.filter(d=>!d.local).sort((a,b)=>b.online-a.online);
-  h+=`<div class="sec">本机</div>`+loc.map(row).join("");
-  h+=`<div class="sec">已关联设备</div>`+(peers.map(row).join("")||`<div class="sub" style="padding:8px">暂无</div>`);
-  if(S.cands.length)h+=`<div class="sec">可能认识的设备</div>`+S.cands.map(c=>`
-   <div class="row"><div class="ic">${ICON[c.icon]}</div><div class="t"><b>${c.name}</b><span>${c.by}</span></div>
-   <button class="btn" data-act="cand" data-id="${c.id}" data-v="join">连接</button>
-   <button class="btn" data-act="cand" data-id="${c.id}" data-v="ign">忽略</button></div>`).join("");
-  return h;
+
+function backendStateLabel(st) {
+  return { running: "运行中", restarting: "正在重启", unavailable: "不可用", disabled: "已停用" }[st] || st;
 }
-function detail(){
-  const d=dev(S.sel);
-  if(!d)return `<div class="empty"><div style="font-size:44px">🔗</div><h3>还没有关联设备</h3><p>邀请或连接另一台设备，开始同步剪贴板。</p><button class="btn pri" data-act="task" data-v="invite">邀请设备</button></div>`;
-  const head=`<div class="head"><div class="ic">${ICON[d.icon]}</div><div><h2>${d.name} ${d.local?'<span class="tag">本机</span>':""}
-   ${d.local?"":'<button class="btn" data-act="rename" style="font-size:12px;padding:2px 8px">重命名</button>'}</h2>
-   <div class="sub">${d.plat} · ${d.local?"这台设备":d.online?"在线":"离线"}</div></div></div>`;
-  if(d.local)return head+`<div class="card"><h3>说明</h3><div class="item"><div>本机无需配置同步策略。<small>可在其他设备上控制它与本机之间的同步。</small></div></div></div>`;
-  const spark=d.hist.length?`<div class="spark">${d.hist.map(v=>`<i style="height:${Math.min(30,6+v/8)}px"></i>`).join("")}</div>`:"";
-  const conn=`<div class="card"><h3>连接状态</h3><div class="stat">
-   <div><b>${d.online?d.ms+" ms":"—"}</b><span>延迟 ${d.online?"":"（离线）"}</span></div>
-   <div><b>${d.online?d.link:"—"}</b><span>连接方式</span></div>
-   <div><b>${d.seen}</b><span>最近活动</span></div></div>
-   ${d.online?`<div class="item"><span class="sub">最近 10 次延迟</span>${spark}</div>`:`<div class="item"><span class="sub">设备离线，恢复后自动重连并补发。</span></div>`}</div>`;
-  const off=d.dir==="pause";
-  const pol=`<div class="card"><h3>同步策略</h3>
-   <div class="item"><div>同步方向<small>控制内容在本机与此设备间的流向</small></div>
-    <div class="seg">${[["both","双向"],["send","仅发送"],["recv","仅接收"],["pause","暂停"]].map(([k,l])=>`<button class="${d.dir===k?"on":""}" data-act="dir" data-k="${k}">${l}</button>`).join("")}</div></div>
-   <div class="item"><div>文字</div>${sw(d.t,"t",off)}</div>
-   <div class="item"><div>图片</div>${sw(d.i,"i",off)}</div>
-   <div class="item"><div>文件<small>受全局 100 MB 上限限制（只读）</small></div>${sw(d.f,"f",off)}</div>
-   <div class="item" style="padding:0;border:0"></div><div class="summary">${summary(d)}</div></div>`;
-  const paths=`<div class="card"><h3>路径</h3>${d.paths.map(p=>`<div class="item"><div>${p.n}<small>${p.s} · 最近同步 ${p.sync}</small></div>
-   <span class="dot ${p.err?"bad":"ok"}"></span></div>`).join("")}</div>`;
-  const sec=`<div class="card"><h3>安全</h3><div class="item"><div><div class="fp">${d.fp}</div><small>与对方屏幕上的指纹比对</small></div>
-   <button class="btn" data-act="copy">复制</button></div></div>`;
-  const danger=`<div class="card"><h3>危险操作</h3><div class="item"><div>移除此设备<small>撤销全部路径，需重新配对</small></div>
-   <button class="btn danger" data-act="rm">移除…</button></div></div>`;
-  return head+conn+pol+paths+sec+danger;
+
+function errorLabel(code) {
+  return {
+    unreachable: "对端不可达，正在等待重连",
+    auth_expired: "授权已失效，请重新配对",
+    backend_stopped: "对应同步渠道未运行",
+    timeout: "连接超时"
+  }[code] || code;
 }
-function taskView(){
-  const t=S.task;
-  const back=`<button class="btn" data-act="task" data-v="">返回设备列表</button>`;
-  if(t.k==="invite"){
-    return `<div class="task"><div class="ic">➕</div><h2>邀请设备</h2>
-    ${t.mode==="ticket"?`<div class="sub">在另一台设备上粘贴完整票据</div><div class="fp" style="margin:14px 0;text-align:left;background:var(--side);padding:12px;border-radius:8px">unic-pair:AQ7xK2…（已隐藏，点复制）</div>
-      <div class="sub">${fmt(t.left)} 后失效 · 仅可使用一次</div>`
-     :`<div class="sub">在另一台设备上输入配对码</div><div class="code">${t.code}</div><div class="sub">${fmt(t.left)} 后失效 · 仅可使用一次</div>`}
-    <p class="hint">对方加入后，你仍需核对指纹并批准。重新生成会让旧码立即失效。</p>
-    <div class="actions"><button class="btn" data-act="regen">重新生成</button>
-    <button class="btn" data-act="mode">${t.mode==="ticket"?"改用配对码":"改用完整票据"}</button>
-    ${t.mode==="ticket"?'<button class="btn" data-act="copy">复制票据</button>':""}
-    <button class="btn pri" data-act="simreq">模拟对方加入</button></div>
-    <div class="actions">${back}</div></div>`;
+
+// ---- Scenario Fixtures ----
+function buildPreset(name) {
+  const baseBackends = [
+    { id: "builtin.tailcat", impl: "builtin.tailcat", kind: "peer_sessions", pairing: true, external: false, state: "running", policy: "文本 · 图片 · 文件 ≤100 MB" },
+    { id: "e2e.work", impl: "acme.lan-sync", kind: "peer_sessions", pairing: true, external: false, state: "running", policy: "文本 · 图片" },
+    { id: "wx.bridge", impl: "community.wechat-ime", kind: "external", pairing: false, external: true, state: "running", policy: "文本 · 图片" },
+    { id: "e2e.backup", impl: "acme.lan-sync", kind: "peer_sessions", pairing: true, external: false, state: "disabled", policy: "已停用" }
+  ];
+
+  const baseDevices = [
+    {
+      id: "d-win",
+      userName: "办公室台式机",
+      reportedName: "DESKTOP-8K2F1",
+      icon: "desktop",
+      fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
+      lastSeen: "2 分钟前",
+      bindings: [
+        { id: "b1", instanceId: "builtin.tailcat", impl: "builtin.tailcat", state: "authorized", syncEnabled: true, connection: "connected", lastActive: "2 分钟前", lastError: "" },
+        { id: "b2", instanceId: "e2e.work", impl: "acme.lan-sync", state: "pending", syncEnabled: true, connection: "disconnected", lastActive: "", lastError: "" }
+      ]
+    },
+    {
+      id: "d-linux",
+      userName: "",
+      reportedName: "Fedora 工作站",
+      icon: "laptop",
+      fingerprint: "1C77 90AE 5B24 E6F1 03D9 A78B 4C52 8E10",
+      lastSeen: "18 分钟前",
+      bindings: [
+        { id: "b3", instanceId: "builtin.tailcat", impl: "builtin.tailcat", state: "authorized", syncEnabled: true, connection: "connected", lastActive: "18 分钟前", lastError: "" },
+        { id: "b4", instanceId: "e2e.work", impl: "acme.lan-sync", state: "authorized", syncEnabled: true, connection: "disconnected", lastActive: "昨天 18:02", lastError: "unreachable" }
+      ]
+    },
+    {
+      id: "d-phone",
+      userName: "我的手机",
+      reportedName: "Pixel 9 Pro",
+      icon: "phone",
+      fingerprint: "5D08 AA13 7E42 9B6C F1D4 30E7 82A5 C619",
+      lastSeen: "3 小时前",
+      bindings: [
+        { id: "b5", instanceId: "builtin.tailcat", impl: "builtin.tailcat", state: "authorized", syncEnabled: false, connection: "disconnected", lastActive: "3 小时前", lastError: "" }
+      ]
+    },
+    {
+      id: "d-spare",
+      userName: "备机 Mac mini",
+      reportedName: "Mac-mini.local",
+      icon: "desktop",
+      fingerprint: "E310 4B6A 92CF 7D05 18A3 CC42 6F9B 20D7",
+      lastSeen: "5 天前",
+      bindings: []
+    }
+  ];
+
+  const baseChannels = [
+    { id: "ch-wx", name: "微信输入法 · 个人组", backendId: "wx.bridge", enabled: true, autoApply: true, remoteRevocation: false, lastSeen: "刚刚" }
+  ];
+
+  const basePending = [
+    {
+      id: "d-win",
+      isExistingDevice: true,
+      name: "办公室台式机",
+      via: "通过完整票据",
+      icon: "desktop",
+      fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
+      paths: [{ id: "b2", instanceId: "e2e.work", state: "pending" }]
+    },
+    {
+      id: "p-new-1",
+      isExistingDevice: false,
+      name: "新笔记本 ThinkPad",
+      via: "通过配对码",
+      icon: "laptop",
+      fingerprint: "4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D",
+      paths: [{ id: "bp1", instanceId: "builtin.tailcat", state: "pending" }]
+    }
+  ];
+
+  const baseCandidates = [
+    { id: "c1", name: "书房 iMac", introducer: "办公室台式机", backendId: "builtin.tailcat", icon: "desktop" }
+  ];
+
+  let backends = structuredClone(baseBackends);
+  let devices = structuredClone(baseDevices);
+  let channels = structuredClone(baseChannels);
+  let pending = structuredClone(basePending);
+  let candidates = structuredClone(baseCandidates);
+
+  if (name === "single") {
+    backends = [structuredClone(baseBackends[0])];
+    devices = [
+      { ...structuredClone(baseDevices[0]), bindings: [structuredClone(baseDevices[0].bindings[0])] },
+      structuredClone(baseDevices[2])
+    ];
+    channels = [];
+    pending = [structuredClone(basePending[1])];
+  } else if (name === "zero") {
+    backends = backends.map(b => ({ ...b, state: "disabled" }));
+    devices = [
+      { ...structuredClone(baseDevices[0]), bindings: [{ ...structuredClone(baseDevices[0].bindings[0]), connection: "disconnected" }] }
+    ];
+    channels = [];
+    pending = [];
+    candidates = [];
+  } else if (name === "empty") {
+    backends = [structuredClone(baseBackends[0]), structuredClone(baseBackends[1])];
+    devices = [];
+    channels = [];
+    pending = [];
+    candidates = [];
   }
-  if(t.k==="connect"){
-    const kind=/^\d{3}-?\d{3}$/.test(t.v.trim())?"配对码":/^unic-pair:/.test(t.v.trim())?"完整票据":"";
-    return `<div class="task"><div class="ic">🔗</div><h2>连接设备</h2><div class="sub">输入对方提供的配对码或完整票据</div>
-    <div style="margin-top:14px"><input type="text" id="cin" placeholder="482-913 或 unic-pair:…" value="${t.v}"></div>
-    <div class="hint">${kind?`识别为：${kind}`:"支持 6 位配对码（NNN-NNN）或 unic-pair: 开头的完整票据"}</div>
-    <div class="err">${t.err||""}</div>
-    <div class="actions"><button class="btn pri" data-act="go" ${kind?"":"disabled"}>连接</button>${back}</div></div>`;
-  }
-  if(t.k==="wait")return `<div class="task"><div class="ic">⏳</div><h2>等待对方批准</h2><div class="sub">请在对方设备上核对下方指纹并批准。</div>
-    <div class="fp" style="margin:16px 0">4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D</div>
-    <div class="actions"><button class="btn pri" data-act="simok">模拟对方批准</button><button class="btn" data-act="simfail">模拟失败</button>${back}</div></div>`;
-  if(t.k==="phone")return `<div class="task"><div class="ic">📱</div><h2>连接手机</h2>
-    <div style="text-align:left" class="card"><div class="item"><div>1. 安装 UniClipboard<small>打开手机端应用</small></div>✓</div>
-    <div class="item"><div>2. 连接同一局域网<small>手机与电脑使用同一网络</small></div>✓</div>
-    <div class="item"><div>3. 在手机上输入配对码<small>点「邀请设备」获取</small></div><button class="btn pri" data-act="task" data-v="invite">获取配对码</button></div></div>
-    <div class="actions">${back}</div></div>`;
-  if(t.k==="approve"){
-    const p=S.pending.find(x=>x.id===t.id);
-    return `<div class="task"><div class="ic">${ICON[p.icon]}</div><h2>${p.name} 请求加入</h2>
-    <div class="sub">名称由对方自报，未经验证 · ${p.plat} · 来路：${p.via}</div>
-    <div class="fp" style="margin:16px 0;background:var(--side);padding:14px;border-radius:8px">${p.fp}</div>
-    <label style="display:flex;gap:8px;justify-content:center"><input type="checkbox" id="ck" ${t.ck?"checked":""}> 我已在对方设备上核对，指纹完全一致</label>
-    <p class="hint" style="text-align:center">拒绝等同于移除：对方再次拨入会重新出现在待批准里。</p>
-    <div class="actions"><button class="btn pri" data-act="ok" ${t.ck?"":"disabled"}>批准</button><button class="btn danger" data-act="deny">拒绝</button>${back}</div></div>`;
-  }
-}
-const fmt=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
-const newCode=()=>String(Math.floor(Math.random()*900+100))+"-"+String(Math.floor(Math.random()*900+100));
 
-function render(){
-  const empty=!S.devices.some(d=>!d.local)&&!S.pending.length;
-  $("#app").innerHTML=`<div class="top"><span>管理设备</span><button class="btn pri" data-act="done">完成</button></div>
-  ${S.gs?"":'<div class="banner">全局同步已关闭，设备策略暂不生效。设备管理与配对仍可使用。</div>'}
-  <div class="body"><div class="side">${side()}</div><div class="detail">${S.task?taskView():detail()}</div></div>
-  <div class="foot"><div>
-    ${S.task?"":`<button class="btn" data-act="menu">＋ 添加设备</button>`}
-    ${S.menu?`<div class="menu"><button data-act="task" data-v="invite">邀请设备（配对码）</button>
-      <button data-act="task" data-v="connect">连接设备（配对码或地址）</button>
-      <button data-act="task" data-v="phone">连接手机</button></div>`:""}</div>
-    <button class="btn danger" data-act="rm" ${S.task||!S.sel||S.sel==="local"||!dev(S.sel)?"disabled":""}>移除设备…</button></div>`;
-  const ci=$("#cin");if(ci){ci.focus();ci.setSelectionRange(ci.value.length,ci.value.length);
-    ci.oninput=e=>{S.task.v=e.target.value;S.task.err="";render()}}
-  const ck=$("#ck");if(ck)ck.onchange=e=>{S.task.ck=e.target.checked;render()};
+  return {
+    preset: name,
+    globalSync: true,
+    restartRequired: false,
+    local: { id: "local", name: "MacBook Pro (本机)", deviceId: "m7x4q9k2p8n3v5w1r6y0t2h8c4", icon: "laptop" },
+    backends,
+    devices,
+    channels,
+    pending,
+    candidates,
+    selected: devices.length ? devices[0].id : "local",
+    narrowDetailOpen: false,
+    renaming: false,
+    renameDraft: "",
+    openMenuBindingId: null,
+    // Pairing modal state
+    task: null, // null | "invite" | "connect" | "wait" | "inline-approve"
+    taskForDeviceId: null,
+    inviteMode: "code", // "code" | "ticket"
+    pairingBackend: "",
+    inviteCode: randCode(),
+    inviteSeconds: 294,
+    connectInput: "",
+    connectError: "",
+    waitFingerprint: "",
+    inlinePending: null,
+    // Confirmation dialog
+    confirm: null,
+    // Toast
+    toast: null
+  };
 }
-function modal(html){$("#modal").innerHTML=html?`<div class="modal"><div>${html}</div></div>`:""}
 
-document.addEventListener("click",e=>{
-  const b=e.target.closest("[data-act]");
-  if(!b){if(S.menu){S.menu=false;render()}return}
-  const a=b.dataset.act,id=b.dataset.id,v=b.dataset.v,k=b.dataset.k;
-  if(a!=="menu")S.menu=false;
-  const d=dev(S.sel);
-  switch(a){
-    case"sel":S.sel=id;S.task=null;break;
-    case"menu":S.menu=!S.menu;break;
-    case"dir":d.dir=k;break;
-    case"tog":d[k]=d[k]?0:1;break;
-    case"task":S.task=v?(v==="invite"?{k:"invite",code:newCode(),left:300,mode:"code"}:v==="connect"?{k:"connect",v:"",err:""}:{k:v}):null;break;
-    case"regen":S.task.code=newCode();S.task.left=300;break;
-    case"mode":S.task.mode=S.task.mode==="ticket"?"code":"ticket";S.task.left=300;break;
-    case"copy":b.textContent="已复制";return;
-    case"simreq":S.pending.push({id:"p"+Date.now(),name:"新电脑",plat:"Windows 11",icon:"desktop",via:"配对码 "+S.task.code,fp:"4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D"});S.task=null;break;
-    case"approve":S.task={k:"approve",id,ck:false};break;
-    case"ok":{const p=S.pending.find(x=>x.id===S.task.id);S.pending=S.pending.filter(x=>x!==p);
-      S.devices.push({id:p.id,name:p.name,plat:p.plat,icon:p.icon,online:true,ms:22,link:"局域网",dir:"both",t:1,i:1,f:1,seen:"刚刚",fp:p.fp,paths:[{n:"tailcat · 默认",s:"已连接",sync:"—"}],hist:[22,21,23,22,22,24,21,22,23,22]});
-      S.sel=p.id;S.task=null;break}
-    case"deny":S.pending=S.pending.filter(x=>x.id!==S.task.id);S.task=null;break;
-    case"go":if(/^\d{3}-?\d{3}$/.test(S.task.v.trim())&&S.task.v.replace(/\D/g,"")==="000000"){S.task.err="配对码无效或已过期。";break}S.task={k:"wait"};break;
-    case"simok":S.devices.push({id:"j"+Date.now(),name:"对方设备",plat:"macOS 15",icon:"laptop",online:true,ms:35,link:"直连打洞",dir:"both",t:1,i:1,f:1,seen:"刚刚",fp:"4A8C 2E91 7B30 D6F5 08B1 E49A 53C2 7F6D",paths:[{n:"tailcat · 默认",s:"已连接",sync:"—"}],hist:[35,36,34,35,37,35,36,35,34,35]});S.sel=S.devices[S.devices.length-1].id;S.task=null;break;
-    case"simfail":S.task={k:"connect",v:"",err:"对方拒绝了请求，或网络不通。请检查后重试。"};break;
-    case"cand":S.cands=S.cands.filter(c=>c.id!==id);if(v==="join")S.task={k:"wait"};break;
-    case"rename":{const n=prompt("设备名称",d.name);if(n)d.name=n;break}
-    case"rm":modal(`<h3 style="margin-top:0">移除「${d.name}」？</h3><ul><li>撤销此设备的全部同步路径</li><li>对方需要重新配对并重新批准</li><li>已同步到对方的内容无法撤回</li></ul>
-      <div class="actions" style="justify-content:flex-end"><button class="btn" id="mc">取消</button><button class="btn pri" style="background:var(--bad);border-color:var(--bad)" id="mo">移除</button></div>`);
-      $("#mc").onclick=()=>modal("");
-      $("#mo").onclick=()=>{S.devices=S.devices.filter(x=>x!==d);S.sel=(S.devices.find(x=>!x.local)||S.devices[0]||{}).id;modal("");render()};return;
-    case"done":b.textContent="（原型：关闭 sheet）";return;
+let S = buildPreset("multi");
+let viewportMode = "wide";
+let toastTimer = null;
+
+function showToast(msg) {
+  S.toast = msg;
+  clearTimeout(toastTimer);
+  render();
+  toastTimer = setTimeout(() => { S.toast = null; render(); }, 2800);
+}
+
+// Live countdown for invite code
+setInterval(() => {
+  if (S.task === "invite" && S.inviteMode === "code" && S.inviteSeconds > 0) {
+    S.inviteSeconds--;
+    const el = document.getElementById("countdownLabel");
+    if (el) el.textContent = `${S.inviteSeconds} 秒内有效 · 仅可使用一次`;
+  }
+}, 1000);
+
+// ---- Derived Helpers ----
+function runningPairingBackends() {
+  return S.backends.filter(b => b.pairing && b.state === "running");
+}
+function runningBackends() {
+  return S.backends.filter(b => b.state === "running");
+}
+function deviceDisplayName(d) {
+  return (d.userName || "").trim() || d.reportedName || "未命名设备";
+}
+function authorizedBindings(d) {
+  return d.bindings.filter(b => b.state === "authorized");
+}
+function pendingBindings(d) {
+  return d.bindings.filter(b => b.state === "pending");
+}
+function deviceAggregateStatus(d) {
+  const auth = authorizedBindings(d);
+  if (auth.length === 0) return { text: "无路径", tone: "neu", online: false };
+  const enabled = auth.filter(b => b.syncEnabled);
+  if (enabled.length === 0) return { text: "已暂停", tone: "neu", online: false };
+  const connected = enabled.filter(b => b.connection === "connected");
+  if (connected.length > 0) {
+    if (auth.length > 1 && connected.length < auth.length) {
+      return { text: `在线 · ${connected.length}/${auth.length}`, tone: "pos", online: true };
+    }
+    return { text: "在线", tone: "pos", online: true };
+  }
+  return { text: "离线", tone: "neu", online: false };
+}
+function deviceSubtitle(d) {
+  const auth = authorizedBindings(d).length;
+  const pend = pendingBindings(d).length;
+  if (auth === 0 && pend === 0) return "已信任 · 无同步路径";
+  if (pend > 0) return `${auth + pend} 条路径 · ${pend} 条待批准`;
+  if (auth === 1) return backendDisplayName(authorizedBindings(d)[0].instanceId);
+  return `${auth} 条同步路径`;
+}
+function deviceFootPaths(d) {
+  const auth = authorizedBindings(d);
+  if (auth.length === 0) return "点击右侧添加同步路径";
+  return auth.map(b => {
+    const n = backendDisplayName(b.instanceId);
+    return b.syncEnabled ? n : `${n}(暂停)`;
+  }).join(" · ");
+}
+function unboundRunningBackends(d) {
+  const bound = new Set(d.bindings.map(b => b.instanceId));
+  return runningPairingBackends().filter(b => !bound.has(b.id));
+}
+
+function ensureSelection() {
+  if (S.selected === "local") return;
+  if (S.selected.startsWith("pending:")) {
+    const pid = S.selected.slice(8);
+    if (S.pending.some(p => !p.isExistingDevice && p.id === pid)) return;
+  } else if (S.selected.startsWith("ch:")) {
+    const cid = S.selected.slice(3);
+    if (S.channels.some(c => c.id === cid)) return;
+  } else if (S.selected.startsWith("cand:")) {
+    const cid = S.selected.slice(5);
+    if (S.candidates.some(c => c.id === cid)) return;
+  } else if (S.devices.some(d => d.id === S.selected)) {
+    return;
+  }
+  const newPend = S.pending.find(p => !p.isExistingDevice);
+  if (newPend) { S.selected = "pending:" + newPend.id; return; }
+  if (S.devices.length) { S.selected = S.devices[0].id; return; }
+  S.selected = "local";
+}
+
+function sortedDevices() {
+  return [...S.devices].sort((a, b) => {
+    const score = d => {
+      if (pendingBindings(d).length > 0) return 0;
+      const st = deviceAggregateStatus(d);
+      if (st.online) return 1;
+      if (authorizedBindings(d).length > 0) return 2;
+      return 3;
+    };
+    return score(a) - score(b);
+  });
+}
+
+function openPairingSheet(forDeviceId = null, preferredBackend = "") {
+  const avail = runningPairingBackends();
+  S.taskForDeviceId = forDeviceId;
+  S.inviteMode = "code";
+  S.inviteCode = randCode();
+  S.inviteSeconds = 300;
+  S.connectInput = "";
+  S.connectError = "";
+  S.inlinePending = null;
+  S.openMenuBindingId = null;
+  if (avail.length === 0) {
+    S.pairingBackend = "";
+    S.task = "invite";
+  } else {
+    S.pairingBackend = (preferredBackend && avail.some(b => b.id === preferredBackend))
+      ? preferredBackend : avail[0].id;
+    S.task = "invite";
   }
   render();
+}
+
+function jumpToPluginSettings(targetId) {
+  S.openMenuBindingId = null;
+  S.task = null;
+  const dest = targetId ? `设置 → 插件 → ${backendDisplayName(targetId)}` : `设置 → 插件（同步渠道管理）`;
+  showToast(`已快捷跳转至：${dest}`);
+}
+
+// ---- Renderers ----
+function renderPill(text, tone) {
+  return `<span class="pill ${tone}"><span class="dot"></span>${esc(text)}</span>`;
+}
+
+function renderFingerprintGrid(fp) {
+  const cells = fp.trim().split(/\s+/).map(g => `<div class="fp-cell">${esc(g)}</div>`).join("");
+  return `<div class="fp-grid">${cells}</div>`;
+}
+
+function renderBackendStrip() {
+  const run = runningBackends();
+  if (run.length === 0) {
+    return `
+      <div class="backend-strip zero">
+        <div class="backend-strip-top">
+          <span class="strip-label">${IC.alert} 同步渠道</span>
+          <span class="strip-zero-text">当前没有运行中的同步渠道（仅本地历史模式）</span>
+          <button class="btn sm pri" data-act="jump-plugin" data-id="">前往插件设置启用 ${IC.arrowRight}</button>
+        </div>
+        ${S.restartRequired ? `<div class="strip-restart">${IC.alert} <span>同步渠道配置已更改，请退出并重新启动桌面端以生效。</span></div>` : ""}
+      </div>
+    `;
+  }
+  const chips = S.backends.map(b => {
+    const stClass = S.restartRequired && b.id !== "builtin.tailcat" && b.state === "disabled" ? "pending_restart" : b.state;
+    const roleTag = b.external ? "第三方" : (b.state !== "running" ? backendStateLabel(b.state) : "");
+    return `
+      <button class="be-chip ${stClass}" data-act="jump-plugin" data-id="${esc(b.id)}" title="${esc(b.impl)} · ${esc(b.policy)} · 点击在插件设置中管理">
+        <span class="dot"></span>
+        <span>${esc(backendDisplayName(b.id))}</span>
+        ${roleTag ? `<span class="meta">· ${esc(roleTag)}</span>` : ""}
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <div class="backend-strip">
+      <div class="backend-strip-top">
+        <span class="strip-label">${IC.plug} 同步渠道</span>
+        <div class="chip-list">${chips}</div>
+        <button class="btn xs subtle" data-act="jump-plugin" data-id="">管理同步渠道 ${IC.arrowRight}</button>
+      </div>
+      ${S.restartRequired ? `<div class="strip-restart">${IC.alert} <span>同步渠道设置已保存，请退出并重新启动桌面端以生效。</span></div>` : ""}
+    </div>
+  `;
+}
+
+function renderCanvas() {
+  const ordered = sortedDevices();
+  const runCount = runningBackends().length;
+  const runPairCount = runningPairingBackends().length;
+
+  const globalSyncBanner = !S.globalSync ? `
+    <div class="notice warn">
+      ${IC.alert}
+      <div class="notice-body">
+        <div class="notice-title">全局同步已关闭</div>
+        <div class="notice-sub">所有同步渠道与设备路径当前不传输剪贴板内容，本机历史与配对管理不受影响。</div>
+      </div>
+      <button class="btn sm" data-act="enable-global-sync">开启同步</button>
+    </div>
+  ` : "";
+
+  const pendingHtml = S.pending.length ? `
+    <div class="sec">
+      <div class="sec-head">
+        <span class="sec-title">待批准请求 (${S.pending.length})</span>
+        <span class="sec-hint">需核对双端指纹后方生效</span>
+      </div>
+      ${S.pending.map(p => {
+        const selId = p.isExistingDevice ? p.id : ("pending:" + p.id);
+        const isSel = S.selected === selId;
+        const pathNames = p.paths.map(x => backendDisplayName(x.instanceId)).join("、");
+        const title = p.isExistingDevice
+          ? `${p.name} 请求新增同步路径`
+          : `${p.name} 请求加入同步网络`;
+        return `
+          <div class="pending-card ${isSel ? "selected" : ""}" data-act="select" data-id="${esc(selId)}">
+            <div class="icon-tile accent">${IC[p.icon] || IC.desktop}</div>
+            <div class="pending-meta">
+              <div class="name">${esc(title)}</div>
+              <div class="sub">
+                <span class="tag-badge">${esc(pathNames)}</span>
+                <span>${esc(p.via)}</span>
+              </div>
+            </div>
+            <button class="btn sm pri" data-act="select" data-id="${esc(selId)}">核对指纹</button>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  ` : "";
+
+  const localFoot = runCount > 0
+    ? `${runCount} 个同步渠道运行中 · ${runningBackends().map(b => backendDisplayName(b.id)).slice(0, 2).join("、")}`
+    : "仅本地模式 · 未运行同步渠道";
+
+  const localCard = `
+    <div class="dev-card ${S.selected === "local" ? "selected" : ""}" data-act="select" data-id="local">
+      <div class="dev-card-top">
+        <div class="icon-tile">${IC[S.local.icon]}</div>
+        <div class="dev-card-info">
+          <div class="dev-card-name">${esc(S.local.name)}</div>
+          <div class="dev-card-sub">当前设备</div>
+        </div>
+        ${renderPill("本机", "pos")}
+      </div>
+      <div class="dev-card-div"></div>
+      <div class="dev-card-foot">
+        <span class="dev-card-paths">${esc(localFoot)}</span>
+        <span class="dev-card-time">端到端加密</span>
+      </div>
+    </div>
+  `;
+
+  const peerCards = ordered.map(d => {
+    const st = deviceAggregateStatus(d);
+    const dim = !st.online;
+    return `
+      <div class="dev-card ${S.selected === d.id ? "selected" : ""} ${dim ? "dim" : ""}" data-act="select" data-id="${esc(d.id)}">
+        <div class="dev-card-top">
+          <div class="icon-tile">${IC[d.icon] || IC.desktop}</div>
+          <div class="dev-card-info">
+            <div class="dev-card-name">${esc(deviceDisplayName(d))}</div>
+            <div class="dev-card-sub">${esc(deviceSubtitle(d))}</div>
+          </div>
+          ${renderPill(st.text, st.tone)}
+        </div>
+        <div class="dev-card-div"></div>
+        <div class="dev-card-foot">
+          <span class="dev-card-paths">${esc(deviceFootPaths(d))}</span>
+          <span class="dev-card-time">${esc(d.lastSeen || "尚无同步")}</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const emptyPeers = ordered.length === 0 ? (
+    runPairCount > 0 ? `
+      <div class="empty-card">
+        <div style="color:var(--icon-tertiary)">${IC.devices}</div>
+        <div class="t">还没有关联设备</div>
+        <div class="d">通过一次性配对码或完整票据关联另一台设备，即可跨设备同步剪贴板。</div>
+        <button class="btn sm pri" data-act="open-pair">${IC.add} 添加设备</button>
+      </div>
+    ` : `
+      <div class="empty-card">
+        <div style="color:var(--icon-tertiary)">${IC.devices}</div>
+        <div class="t">尚未启用可配对的同步渠道</div>
+        <div class="d">请在「设置 → 插件」中启用 Tailcat 或外部同步渠道并重启后，再添加设备。</div>
+        <button class="btn sm pri" data-act="jump-plugin" data-id="">前往插件设置 ${IC.arrowRight}</button>
+      </div>
+    `
+  ) : "";
+
+  const channelsHtml = S.channels.length ? `
+    <div class="sec">
+      <div class="sec-head">
+        <span class="sec-title">外部渠道 (${S.channels.length})</span>
+        <span class="sec-hint">第三方对端 · 无设备指纹</span>
+      </div>
+      <div class="group-box">
+        ${S.channels.map(ch => `
+          <div class="list-row ${S.selected === "ch:" + ch.id ? "selected" : ""}" data-act="select" data-id="ch:${esc(ch.id)}">
+            <div class="icon-tile">${IC.chat}</div>
+            <div class="list-row-meta">
+              <div class="list-row-title">
+                <span>${esc(ch.name)}</span>
+                <span class="tag-badge neu">外部渠道</span>
+              </div>
+              <div class="list-row-sub">${esc(ch.backendId)} · ${ch.autoApply ? "自动写入剪贴板" : "仅保存到历史"}</div>
+            </div>
+            ${renderPill(ch.enabled ? "已启用" : "已停用", ch.enabled ? "pos" : "neu")}
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  ` : "";
+
+  const candidatesHtml = S.candidates.length ? `
+    <div class="sec">
+      <div class="sec-head">
+        <span class="sec-title">可能认识 (${S.candidates.length})</span>
+        <span class="sec-hint">由已信任设备介绍 · 仍需双方批准</span>
+      </div>
+      <div class="group-box">
+        ${S.candidates.map(cd => `
+          <div class="list-row ${S.selected === "cand:" + cd.id ? "selected" : ""}" data-act="select" data-id="cand:${esc(cd.id)}">
+            <div class="icon-tile accent">${IC[cd.icon] || IC.desktop}</div>
+            <div class="list-row-meta">
+              <div class="list-row-title">${esc(cd.name)}</div>
+              <div class="list-row-sub">由 ${esc(cd.introducer)} 介绍 · ${esc(backendDisplayName(cd.backendId))}</div>
+            </div>
+            <button class="btn xs" data-act="ignore-cand" data-id="${esc(cd.id)}">忽略</button>
+            <button class="btn xs pri" data-act="pair-cand" data-id="${esc(cd.id)}">连接</button>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  ` : "";
+
+  return `
+    <div class="canvas">
+      ${renderBackendStrip()}
+      ${globalSyncBanner}
+      ${pendingHtml}
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-title">我的设备</span>
+          <span class="sec-hint">点击卡片在右侧管理同步路径与安全信息</span>
+        </div>
+        <div class="dev-grid">
+          ${localCard}
+          ${peerCards}
+        </div>
+        ${emptyPeers}
+      </div>
+      ${channelsHtml}
+      ${candidatesHtml}
+    </div>
+  `;
+}
+
+function renderInspector() {
+  // 1. Local device
+  if (S.selected === "local") {
+    return `
+      <div class="inspector">
+        <div class="hero-card">
+          <div class="icon-tile lg">${IC[S.local.icon]}</div>
+          <div class="hero-meta">
+            <div class="hero-name-row">
+              <span class="hero-name">${esc(S.local.name)}</span>
+              <button class="btn subtle icon-only" data-act="start-rename" title="重命名本机">${IC.edit}</button>
+            </div>
+            <div class="hero-sub">当前设备</div>
+            <div style="margin-top:2px">${renderPill("本机", "pos")}</div>
+          </div>
+        </div>
+        ${S.renaming ? `
+          <div class="rename-box">
+            <label>本机名称</label>
+            <div class="rename-row">
+              <input class="text-input" id="renameInput" value="${esc(S.renameDraft)}" autofocus>
+              <button class="btn sm pri" data-act="commit-rename">保存</button>
+              <button class="btn sm" data-act="cancel-rename">取消</button>
+            </div>
+            <div class="field-hint">其他设备在配对与列表中将看到此自报名。</div>
+          </div>
+        ` : ""}
+        <div class="sec">
+          <div class="sec-head">
+            <span class="sec-title">本机设备 ID</span>
+            <button class="btn xs subtle" data-act="copy-text" data-val="${esc(S.local.deviceId)}" data-msg="已复制本机设备 ID">${IC.copy} 复制</button>
+          </div>
+          <div class="mono-id">${esc(S.local.deviceId)}</div>
+          <div class="footnote">配对安全指纹由双方公钥共同派生，请在具体远端设备详情中核对。</div>
+        </div>
+        <div class="sec">
+          <div class="sec-head">
+            <span class="sec-title">同步渠道运行概览</span>
+            <button class="btn xs link" data-act="jump-plugin" data-id="">前往插件设置 →</button>
+          </div>
+          <div class="group-box">
+            ${S.backends.map(b => `
+              <div class="list-row" data-act="jump-plugin" data-id="${esc(b.id)}">
+                <div class="list-row-meta">
+                  <div class="list-row-title">${esc(backendDisplayName(b.id))}</div>
+                  <div class="list-row-sub">${esc(b.impl)} · ${esc(b.policy)}</div>
+                </div>
+                ${renderPill(backendStateLabel(b.state), b.state === "running" ? "pos" : (b.state === "unavailable" ? "err" : "neu"))}
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 2. Pending NEW device
+  if (S.selected.startsWith("pending:")) {
+    const pid = S.selected.slice(8);
+    const p = S.pending.find(x => !x.isExistingDevice && x.id === pid);
+    if (!p) return `<div class="inspector"></div>`;
+    return `
+      <div class="inspector">
+        <div class="hero-card accent">
+          <div class="icon-tile lg accent">${IC[p.icon] || IC.desktop}</div>
+          <div class="hero-meta">
+            <div class="hero-name">${esc(p.name)}</div>
+            <div class="hero-sub">${esc(p.via)}</div>
+            <div style="margin-top:2px">${renderPill("新设备请求加入", "info")}</div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sec-title">本次将授权的同步路径</div>
+          <div class="group-box">
+            ${p.paths.map(path => `
+              <div class="path-row">
+                <div class="path-info">
+                  <div class="path-title">${esc(backendDisplayName(path.instanceId))}</div>
+                  <div class="path-sub">批准后立即允许通过此同步渠道收发内容</div>
+                </div>
+                ${renderPill("待批准", "info")}
+              </div>
+            `).join("")}
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sec-title">安全核对（设备指纹）</div>
+          <div class="fp-box">
+            ${renderFingerprintGrid(p.fingerprint)}
+            <div class="footnote">仅当对方屏幕上显示完全相同的 8 组指纹时，才点击接受。</div>
+          </div>
+        </div>
+        <div class="row-gap">
+          <button class="btn full pri" data-act="approve-pending" data-id="${esc(p.id)}">确认指纹一致并接受</button>
+          <button class="btn danger" style="height:34px" data-act="reject-pending" data-id="${esc(p.id)}">拒绝</button>
+        </div>
+        <div class="footnote">名称由对方自报，未经验证。拒绝后，对方若再次连接将重新出现在待批准列表中。</div>
+      </div>
+    `;
+  }
+
+  // 3. External Channel
+  if (S.selected.startsWith("ch:")) {
+    const cid = S.selected.slice(3);
+    const ch = S.channels.find(x => x.id === cid);
+    if (!ch) return `<div class="inspector"></div>`;
+    return `
+      <div class="inspector">
+        <div class="hero-card">
+          <div class="icon-tile lg">${IC.chat}</div>
+          <div class="hero-meta">
+            <div class="hero-name-row">
+              <span class="hero-name">${esc(ch.name)}</span>
+              <button class="btn subtle icon-only" data-act="start-rename" title="重命名渠道">${IC.edit}</button>
+            </div>
+            <div class="hero-sub">所属同步渠道：${esc(ch.backendId)}</div>
+            <div style="margin-top:2px" class="row-gap">
+              <span class="tag-badge neu">外部渠道</span>
+              ${renderPill(ch.enabled ? "已启用" : "已停用", ch.enabled ? "pos" : "neu")}
+            </div>
+          </div>
+        </div>
+        ${S.renaming ? `
+          <div class="rename-box">
+            <label>渠道名称</label>
+            <div class="rename-row">
+              <input class="text-input" id="renameInput" value="${esc(S.renameDraft)}" autofocus>
+              <button class="btn sm pri" data-act="commit-rename">保存</button>
+              <button class="btn sm" data-act="cancel-rename">取消</button>
+            </div>
+          </div>
+        ` : ""}
+        <div class="notice info">
+          <div class="notice-body">
+            <div class="notice-sub">外部渠道无法提供 UniClipboard 设备身份证明，因此没有设备指纹，也不共享设备级信任。</div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sec-title">渠道控制</div>
+          <div class="group-box">
+            <div class="path-row">
+              <div class="path-info">
+                <div class="path-title">启用此渠道同步</div>
+                <div class="path-sub">关闭后停止经此外部渠道收发内容</div>
+              </div>
+              <button class="switch ${ch.enabled ? "on" : ""}" data-act="toggle-ch-enabled" data-id="${esc(ch.id)}"></button>
+            </div>
+            <div class="path-row">
+              <div class="path-info">
+                <div class="path-title">收到时自动写入剪贴板</div>
+                <div class="path-sub">开启后来自此渠道的内容会自动应用到系统剪贴板</div>
+              </div>
+              <button class="switch ${ch.autoApply ? "on" : ""}" data-act="toggle-ch-auto" data-id="${esc(ch.id)}" ${!ch.enabled ? "disabled" : ""}></button>
+            </div>
+          </div>
+        </div>
+        <div class="row-end" style="margin-top:4px">
+          <button class="btn sm danger" data-act="ask-remove-ch" data-id="${esc(ch.id)}">${IC.trash} 移除渠道</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // 4. Discovery Candidate
+  if (S.selected.startsWith("cand:")) {
+    const cid = S.selected.slice(5);
+    const cd = S.candidates.find(x => x.id === cid);
+    if (!cd) return `<div class="inspector"></div>`;
+    return `
+      <div class="inspector">
+        <div class="hero-card">
+          <div class="icon-tile lg accent">${IC[cd.icon] || IC.desktop}</div>
+          <div class="hero-meta">
+            <div class="hero-name">${esc(cd.name)}</div>
+            <div class="hero-sub">由 ${esc(cd.introducer)} 介绍 · ${esc(backendDisplayName(cd.backendId))}</div>
+          </div>
+        </div>
+        <div class="footnote">介绍信息仅为发现建议，设备名称未经验证。发起连接后仍需双方核对指纹并各自批准。</div>
+        <div class="row-gap">
+          <button class="btn full pri" data-act="pair-cand" data-id="${esc(cd.id)}">发起连接</button>
+          <button class="btn" style="height:34px" data-act="ignore-cand" data-id="${esc(cd.id)}">忽略</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // 5. Trusted Device
+  const d = S.devices.find(x => x.id === S.selected);
+  if (!d) return `<div class="inspector"></div>`;
+  const st = deviceAggregateStatus(d);
+  const auth = authorizedBindings(d);
+  const pendEntry = S.pending.find(p => p.isExistingDevice && p.id === d.id);
+  const unbound = unboundRunningBackends(d);
+  const allPaused = auth.length > 0 && auth.every(b => !b.syncEnabled);
+  const showBatchPause = auth.length >= 2; // Strictly follows User Decision #2!
+
+  return `
+    <div class="inspector">
+      <div class="hero-card">
+        <div class="icon-tile lg">${IC[d.icon] || IC.desktop}</div>
+        <div class="hero-meta">
+          <div class="hero-name-row">
+            <span class="hero-name">${esc(deviceDisplayName(d))}</span>
+            <button class="btn subtle icon-only" data-act="start-rename" title="重命名设备">${IC.edit}</button>
+          </div>
+          ${d.userName && d.reportedName && d.userName !== d.reportedName ? `<div class="hero-sub">对方自报：${esc(d.reportedName)}</div>` : ""}
+          <div class="row-gap" style="margin-top:2px">
+            ${renderPill(st.text, st.tone)}
+            ${d.lastSeen ? `<span class="footnote">最近活动 ${esc(d.lastSeen)}</span>` : ""}
+          </div>
+        </div>
+      </div>
+
+      ${S.renaming ? `
+        <div class="rename-box">
+          <label>设备备注名</label>
+          <div class="rename-row">
+            <input class="text-input" id="renameInput" value="${esc(S.renameDraft)}" placeholder="${esc(d.reportedName)}" autofocus>
+            <button class="btn sm pri" data-act="commit-rename">保存</button>
+            <button class="btn sm" data-act="cancel-rename">取消</button>
+          </div>
+          <div class="field-hint">只修改本机显示的名称；留空则恢复使用对方自报名（${esc(d.reportedName)}）。</div>
+        </div>
+      ` : ""}
+
+      ${pendEntry ? `
+        <div class="inline-approve">
+          <div class="inline-approve-head">
+            <span style="color:var(--accent-500);margin-top:1px">${IC.shield}</span>
+            <div class="grow">
+              <div class="title">待批准新同步路径：${esc(pendEntry.paths.map(x => backendDisplayName(x.instanceId)).join("、"))}</div>
+              <div class="sub">此设备已受信任，但新增同步路径仍需核对指纹并显式批准。</div>
+            </div>
+          </div>
+          ${renderFingerprintGrid(pendEntry.fingerprint)}
+          <div class="row-end">
+            <button class="btn sm danger" data-act="reject-pending" data-id="${esc(pendEntry.id)}">拒绝</button>
+            <button class="btn sm pri" data-act="approve-pending" data-id="${esc(pendEntry.id)}">确认指纹一致并批准</button>
+          </div>
+        </div>
+      ` : ""}
+
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-title">同步路径 (${auth.length})</span>
+          <button class="btn xs subtle" data-act="open-add-path" data-id="${esc(d.id)}" ${unbound.length === 0 ? `disabled title="所有运行中的可配对同步渠道均已关联"` : ""}>
+            ${IC.add} 添加路径
+          </button>
+        </div>
+
+        ${auth.length === 0 ? `
+          <div class="empty-card" style="padding:16px 14px">
+            <div class="t" style="font-size:13px">暂无已授权同步路径</div>
+            <div class="d">设备信任仍然保留，但目前不会同步任何内容。通过同步渠道重新关联即可恢复。</div>
+            <button class="btn sm pri" data-act="open-add-path" data-id="${esc(d.id)}">${IC.add} 添加同步路径</button>
+          </div>
+        ` : `
+          <div class="group-box">
+            ${auth.map(b => {
+              const be = S.backends.find(x => x.id === b.instanceId);
+              const beStopped = be && be.state !== "running";
+              const connText = !b.syncEnabled ? "已暂停" : (b.connection === "connected" ? "已连接" : "未连接");
+              const menuOpen = S.openMenuBindingId === b.id;
+              return `
+                <div class="path-row">
+                  <div class="path-info">
+                    <div class="path-title">
+                      <span>${esc(backendDisplayName(b.instanceId))}</span>
+                      ${beStopped ? `<span class="tag-badge warn">${esc(backendStateLabel(be.state))}</span>` : ""}
+                    </div>
+                    <div class="path-sub">${esc(b.impl)} · ${esc(connText)}${b.lastActive ? ` · ${esc(b.lastActive)}` : ""}</div>
+                    ${b.lastError && b.syncEnabled && !beStopped ? `<div class="path-err">${IC.alert} ${esc(errorLabel(b.lastError))}</div>` : ""}
+                    ${beStopped ? `<div class="path-warn">${IC.alert} 对应同步渠道未运行，<button class="btn link" style="font-size:11.5px" data-act="jump-plugin" data-id="${esc(b.instanceId)}">前往插件设置</button></div>` : ""}
+                  </div>
+                  <div class="path-actions">
+                    <button class="switch ${b.syncEnabled ? "on" : ""}" data-act="toggle-binding" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}" title="${b.syncEnabled ? "暂停此路径同步" : "恢复此路径同步"}"></button>
+                    <button class="btn subtle icon-only" data-act="toggle-menu" data-bid="${esc(b.id)}" title="更多操作">${IC.more}</button>
+                    ${menuOpen ? `
+                      <div class="popover">
+                        <button data-act="jump-plugin" data-id="${esc(b.instanceId)}">${IC.settings} 查看同步渠道策略…</button>
+                        <button class="danger" data-act="ask-remove-binding" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}">${IC.trash} 移除此路径</button>
+                      </div>
+                    ` : ""}
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+          <div class="footnote">单路径开关控制是否经该同步渠道收发内容；文本/图片/文件策略请在插件设置中按同步渠道调整。</div>
+        `}
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-title">安全核对（设备指纹）</span>
+          <button class="btn xs subtle" data-act="copy-text" data-val="${esc(d.fingerprint)}" data-msg="已复制设备指纹">${IC.copy} 复制</button>
+        </div>
+        <div class="fp-box">
+          ${renderFingerprintGrid(d.fingerprint)}
+        </div>
+      </div>
+
+      <div class="row-gap" style="margin-top:4px">
+        ${showBatchPause ? `
+          <button class="btn sm grow" data-act="toggle-all-bindings" data-dev="${esc(d.id)}">
+            ${allPaused ? "恢复全部路径" : "暂停全部路径"}
+          </button>
+        ` : `<span class="grow"></span>`}
+        <button class="btn sm danger" data-act="ask-remove-device" data-id="${esc(d.id)}">${IC.trash} 移除设备</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTaskSheet() {
+  if (!S.task) return "";
+  const avail = runningPairingBackends();
+  const targetDev = S.taskForDeviceId ? S.devices.find(d => d.id === S.taskForDeviceId) : null;
+  const title = targetDev ? `为「${deviceDisplayName(targetDev)}」添加同步路径` : "添加设备";
+
+  let body = "";
+
+  // Case 0: Zero running pairing backends
+  if (avail.length === 0) {
+    body = `
+      <div class="empty-card" style="background:transparent;border:0;padding:18px 8px">
+        <div class="icon-tile lg" style="margin-bottom:4px">${IC.plug}</div>
+        <div class="t">没有正在运行的可配对同步渠道</div>
+        <div class="d">
+          请先在「设置 → 插件」中启用支持设备配对的同步渠道（如 Tailcat 或外部同步插件）并重启桌面端。
+          ${S.restartRequired ? "<br><strong>当前存在待重启生效的插件变更。</strong>" : ""}
+        </div>
+        <button class="btn pri" style="margin-top:6px" data-act="jump-plugin" data-id="">前往插件设置 ${IC.arrowRight}</button>
+      </div>
+    `;
+  } else if (S.task === "inline-approve" && S.inlinePending) {
+    const p = S.inlinePending;
+    body = `
+      <div class="notice info">
+        <span style="color:var(--accent-500)">${IC.shield}</span>
+        <div class="notice-body">
+          <div class="notice-title">${p.isExistingDevice ? `「${esc(p.name)}」请求新增同步路径` : "核对指纹并批准"}</div>
+          <div class="notice-sub">${esc(p.name)} · 仅在对方屏幕上显示相同指纹时才接受。</div>
+        </div>
+      </div>
+      <div class="row-gap" style="flex-wrap:wrap">
+        <span class="footnote">同步渠道：</span>
+        ${p.paths.map(x => `<span class="tag-badge">${esc(backendDisplayName(x.instanceId))}</span>`).join("")}
+      </div>
+      ${renderFingerprintGrid(p.fingerprint)}
+      <div class="footnote">名称由对方自报，未经验证。</div>
+      <div class="row-end">
+        <button class="btn sm danger" data-act="reject-inline">拒绝</button>
+        <button class="btn sm pri" data-act="accept-inline">确认指纹一致并接受</button>
+      </div>
+    `;
+  } else {
+    const showSelector = avail.length >= 2 || !!targetDev;
+    const selectorHtml = showSelector ? `
+      <div class="select-field">
+        <label>${S.task === "connect" ? "接入到本地同步渠道" : "使用同步渠道"}</label>
+        <select class="select-input" id="pairingBackendSelect">
+          ${avail.map(b => `<option value="${esc(b.id)}" ${b.id === S.pairingBackend ? "selected" : ""}>${esc(backendDisplayName(b.id))} (${esc(b.impl)})</option>`).join("")}
+        </select>
+        ${S.task === "connect" ? `<div class="field-hint">远端同步渠道名可以不同，但需使用相同的传输插件。</div>` : ""}
+      </div>
+    ` : "";
+
+    const tabsHtml = (S.task === "invite" || S.task === "connect") ? `
+      <div class="seg">
+        <button class="${S.task === "invite" ? "active" : ""}" data-act="task-tab" data-tab="invite">出示配对码</button>
+        <button class="${S.task === "connect" ? "active" : ""}" data-act="task-tab" data-tab="connect">输入配对码</button>
+      </div>
+    ` : "";
+
+    if (S.task === "invite") {
+      const digits = S.inviteCode.replace("-", "").split("");
+      const fakeTicket = `unic-pair:v1:${S.pairingBackend}:AQ7xK2m9pR4vN8qL3fZ1yB6cH0wE5tJ…`;
+      body = `
+        ${tabsHtml}
+        ${selectorHtml}
+        <div class="footnote" style="font-size:12.5px">
+          ${targetDev
+            ? `在「${esc(deviceDisplayName(targetDev))}」上输入下方配对码或票据，核对指纹后将为其新增此同步路径。`
+            : "在另一台设备的 UniClipboard 中输入下方一次性配对码，随后核对指纹即可完成关联。"}
+        </div>
+        ${S.inviteMode === "code" ? `
+          <div class="code-boxes">
+            ${digits.slice(0,3).map(d => `<div class="code-tile">${d}</div>`).join("")}
+            <span class="code-dash">-</span>
+            ${digits.slice(3,6).map(d => `<div class="code-tile">${d}</div>`).join("")}
+          </div>
+          <div class="row-between">
+            <span class="row-gap footnote">
+              <span style="width:7px;height:7px;border-radius:50%;background:var(--accent-500);display:inline-block"></span>
+              <span id="countdownLabel">${S.inviteSeconds} 秒内有效 · 仅可使用一次</span>
+            </span>
+            <div class="row-gap" style="gap:4px">
+              <button class="btn xs subtle" data-act="copy-text" data-val="${esc(S.inviteCode)}" data-msg="已复制配对码">${IC.copy} 复制</button>
+              <button class="btn xs subtle" data-act="regen-code">${IC.retry} 刷新</button>
+            </div>
+          </div>
+        ` : `
+          <div class="ticket-box">
+            <div class="ticket-text">${esc(fakeTicket)}</div>
+            <div class="row-between">
+              <span class="footnote">300 秒内有效 · 单次使用</span>
+              <button class="btn xs" data-act="copy-text" data-val="${esc(fakeTicket)}" data-msg="已复制完整票据">${IC.copy} 复制票据</button>
+            </div>
+          </div>
+        `}
+        <div style="text-align:center">
+          <button class="btn link" style="font-size:12px" data-act="toggle-invite-mode">
+            ${S.inviteMode === "code" ? "跨网或命令行配对？改用完整票据 →" : "← 返回 6 位配对码"}
+          </button>
+        </div>
+        <div class="sheet-sep"></div>
+        <div class="sheet-foot">
+          <span>${avail.length === 1 ? `通过 ${esc(backendDisplayName(S.pairingBackend))} · ` : ""}端到端加密</span>
+          <button class="btn xs" data-act="sim-incoming">模拟对方接入</button>
+        </div>
+      `;
+    } else if (S.task === "connect") {
+      const kind = connectKind(S.connectInput);
+      body = `
+        ${tabsHtml}
+        ${selectorHtml}
+        <div class="col-gap" style="gap:6px">
+          <label style="font-size:12px;font-weight:600;color:var(--text-secondary)">配对码或完整票据</label>
+          <input class="text-input ${S.connectError ? "error" : ""}" id="connectInput" value="${esc(S.connectInput)}" placeholder="482-913 或 unic-pair:…" autofocus>
+          ${S.connectError
+            ? `<div class="field-err" id="connectHint">${esc(S.connectError)}</div>`
+            : `<div class="field-hint" id="connectHint">${kind ? `已识别为：${kind}` : "支持 6 位配对码或完整票据（演示：000000 模拟过期，999999 模拟渠道不兼容）"}</div>`}
+        </div>
+        <button class="btn full pri" id="btnConnectSubmit" data-act="submit-connect" ${!kind ? "disabled" : ""}>连接设备</button>
+        ${avail.length === 1 ? `<div class="sheet-foot"><span>通过 ${esc(backendDisplayName(S.pairingBackend))} · 端到端加密</span></div>` : ""}
+      `;
+    } else if (S.task === "wait") {
+      body = `
+        <div class="notice info">
+          <span style="color:var(--accent-500)">${IC.shield}</span>
+          <div class="notice-body">
+            <div class="notice-title">等待双方批准</div>
+            <div class="notice-sub">请在另一台设备上核对下方指纹，并在本机收到请求后点击接受。</div>
+          </div>
+        </div>
+        ${renderFingerprintGrid(S.waitFingerprint)}
+        <div class="sheet-sep"></div>
+        <div class="row-between">
+          <button class="btn sm subtle" data-act="task-tab" data-tab="connect">${IC.back} 返回</button>
+          <div class="row-gap">
+            <button class="btn xs" data-act="sim-wait-fail">模拟对方拒绝</button>
+            <button class="btn xs pri" data-act="sim-wait-approve">模拟对端握手到达</button>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  return `
+    <div class="scrim" data-act="close-scrim">
+      <div class="sheet" onclick="event.stopPropagation()">
+        <div class="sheet-head">
+          <span class="sheet-title">${esc(title)}</span>
+          <button class="btn subtle icon-only" data-act="close-task" title="关闭">${IC.close}</button>
+        </div>
+        ${body}
+      </div>
+    </div>
+  `;
+}
+
+function renderConfirmDialog() {
+  if (!S.confirm) return "";
+  return `
+    <div class="scrim" data-act="close-confirm">
+      <div class="sheet" style="width:390px" onclick="event.stopPropagation()">
+        <div class="sheet-head">
+          <span class="sheet-title">${esc(S.confirm.title)}</span>
+        </div>
+        <div class="footnote" style="font-size:13px;line-height:1.55">${esc(S.confirm.desc)}</div>
+        <div class="row-end" style="margin-top:4px">
+          <button class="btn sm" data-act="close-confirm">取消</button>
+          <button class="btn sm danger-solid" data-act="do-confirm">${esc(S.confirm.confirmLabel || "移除")}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  ensureSelection();
+  const win = document.getElementById("appWindow");
+  win.className = "app-window" + (viewportMode === "compact" ? " compact" : viewportMode === "narrow" ? " narrow" : "");
+
+  const onlinePeers = S.devices.filter(d => deviceAggregateStatus(d).online).length;
+  const totalDevices = S.devices.length + 1; // + local
+  const summaryPill = !S.globalSync
+    ? renderPill("全局同步已关闭", "warn")
+    : runningBackends().length === 0
+      ? renderPill("仅本地模式", "neu")
+      : renderPill(`${onlinePeers} 台在线 · 共 ${totalDevices} 台`, "pos");
+
+  const isNarrow = viewportMode === "narrow";
+  const showCanvas = !isNarrow || !S.narrowDetailOpen;
+  const showInspector = !isNarrow || S.narrowDetailOpen;
+
+  win.innerHTML = `
+    <div class="toolbar">
+      <div class="traffic-lights"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span></div>
+      ${isNarrow && S.narrowDetailOpen
+        ? `<button class="tb-back" data-act="narrow-back">${IC.back} 设备</button>`
+        : `<button class="tb-back" data-act="back-history">${IC.back} 返回历史</button>`}
+      <span class="tb-sep"></span>
+      <span class="tb-title">设备管理</span>
+      ${summaryPill}
+      <span class="tb-spacer"></span>
+      <button class="btn sm pri" data-act="open-pair">${IC.add} 添加设备</button>
+    </div>
+    <div class="body">
+      ${showCanvas ? renderCanvas() : ""}
+      ${showInspector ? renderInspector() : ""}
+    </div>
+    ${renderTaskSheet()}
+    ${renderConfirmDialog()}
+    ${S.toast ? `<div class="toast-wrap"><div class="toast">${esc(S.toast)}</div></div>` : ""}
+  `;
+
+  // Bind input events directly for smooth typing without losing focus
+  const connectEl = document.getElementById("connectInput");
+  if (connectEl) {
+    connectEl.addEventListener("input", e => {
+      S.connectInput = e.target.value;
+      S.connectError = "";
+      const kind = connectKind(S.connectInput);
+      const btn = document.getElementById("btnConnectSubmit");
+      if (btn) btn.disabled = !kind;
+      const hint = document.getElementById("connectHint");
+      if (hint) {
+        hint.className = "field-hint";
+        hint.textContent = kind ? `已识别为：${kind}` : "支持 6 位配对码或完整票据（演示：000000 模拟过期，999999 模拟渠道不兼容）";
+      }
+      connectEl.classList.remove("error");
+    });
+    connectEl.addEventListener("keydown", e => {
+      if (e.key === "Enter" && connectKind(S.connectInput)) handleConnectSubmit();
+    });
+  }
+  const renameEl = document.getElementById("renameInput");
+  if (renameEl) {
+    renameEl.addEventListener("input", e => { S.renameDraft = e.target.value; });
+    renameEl.addEventListener("keydown", e => {
+      if (e.key === "Enter") commitRename();
+      if (e.key === "Escape") { S.renaming = false; render(); }
+    });
+  }
+  const selectEl = document.getElementById("pairingBackendSelect");
+  if (selectEl) {
+    selectEl.addEventListener("change", e => {
+      S.pairingBackend = e.target.value;
+      S.inviteCode = randCode();
+      S.inviteSeconds = 300;
+      render();
+    });
+  }
+}
+
+// ---- Actions ----
+function commitRename() {
+  const val = S.renameDraft.trim();
+  if (S.selected === "local") {
+    if (val) S.local.name = val;
+    showToast("本机名称已保存");
+  } else if (S.selected.startsWith("ch:")) {
+    const ch = S.channels.find(c => c.id === S.selected.slice(3));
+    if (ch && val) { ch.name = val; showToast("渠道名称已保存"); }
+  } else {
+    const d = S.devices.find(x => x.id === S.selected);
+    if (d) {
+      d.userName = val; // Empty string clears custom name and reverts to reportedName
+      showToast(val ? "设备名称已保存" : "已恢复为对方自报名");
+    }
+  }
+  S.renaming = false;
+  render();
+}
+
+function handleConnectSubmit() {
+  const raw = S.connectInput.trim().replace("-", "");
+  if (raw === "000000") {
+    S.connectError = "配对码或票据已过期，请让对方刷新后重试。";
+    render();
+    return;
+  }
+  if (raw === "999999") {
+    S.connectError = "当前选择的本地同步渠道与该票据不兼容，请切换为对应的同步渠道。";
+    render();
+    return;
+  }
+  S.connectError = "";
+  S.waitFingerprint = randFp();
+  S.task = "wait";
+  render();
+}
+
+function approvePendingById(pid) {
+  const idx = S.pending.findIndex(p => p.id === pid);
+  if (idx < 0) return;
+  const p = S.pending[idx];
+  S.pending.splice(idx, 1);
+
+  if (p.isExistingDevice) {
+    const d = S.devices.find(x => x.id === p.id);
+    if (d) {
+      p.paths.forEach(pp => {
+        const existing = d.bindings.find(b => b.id === pp.id || b.instanceId === pp.instanceId);
+        if (existing) {
+          existing.state = "authorized";
+          existing.connection = "connected";
+          existing.lastActive = "刚刚";
+        } else {
+          const be = S.backends.find(x => x.id === pp.instanceId);
+          d.bindings.push({
+            id: "b-" + Date.now(),
+            instanceId: pp.instanceId,
+            impl: be ? be.impl : pp.instanceId,
+            state: "authorized",
+            syncEnabled: true,
+            connection: "connected",
+            lastActive: "刚刚",
+            lastError: ""
+          });
+        }
+      });
+      d.lastSeen = "刚刚";
+      S.selected = d.id;
+    }
+    showToast(`已批准新同步路径`);
+  } else {
+    const newId = "d-" + Date.now();
+    const newBindings = p.paths.map((pp, i) => {
+      const be = S.backends.find(x => x.id === pp.instanceId);
+      return {
+        id: "b-" + Date.now() + "-" + i,
+        instanceId: pp.instanceId,
+        impl: be ? be.impl : pp.instanceId,
+        state: "authorized",
+        syncEnabled: true,
+        connection: "connected",
+        lastActive: "刚刚",
+        lastError: ""
+      };
+    });
+    S.devices.push({
+      id: newId,
+      userName: "",
+      reportedName: p.name,
+      icon: p.icon || "desktop",
+      fingerprint: p.fingerprint,
+      lastSeen: "刚刚",
+      bindings: newBindings
+    });
+    S.selected = newId;
+    showToast(`已批准设备「${p.name}」`);
+  }
+  render();
+}
+
+function rejectPendingById(pid) {
+  const idx = S.pending.findIndex(p => p.id === pid);
+  if (idx < 0) return;
+  const p = S.pending[idx];
+  S.pending.splice(idx, 1);
+  if (p.isExistingDevice) {
+    const d = S.devices.find(x => x.id === p.id);
+    if (d) d.bindings = d.bindings.filter(b => b.state !== "pending");
+  }
+  showToast("已拒绝请求");
+  render();
+}
+
+// ---- Delegated Click Handling ----
+document.getElementById("appWindow").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) {
+    if (S.openMenuBindingId) { S.openMenuBindingId = null; render(); }
+    return;
+  }
+  const act = btn.dataset.act;
+  if (act !== "toggle-menu" && S.openMenuBindingId) {
+    S.openMenuBindingId = null;
+  }
+
+  switch (act) {
+    case "back-history":
+      showToast("返回历史记录主视图");
+      break;
+    case "narrow-back":
+      S.narrowDetailOpen = false; S.renaming = false; render();
+      break;
+    case "jump-plugin":
+      jumpToPluginSettings(btn.dataset.id);
+      break;
+    case "enable-global-sync":
+      S.globalSync = true;
+      document.getElementById("chkGlobalSync").checked = true;
+      showToast("已开启全局同步");
+      break;
+    case "select":
+      S.selected = btn.dataset.id;
+      S.renaming = false;
+      S.narrowDetailOpen = true;
+      render();
+      break;
+    case "start-rename":
+      S.renaming = true;
+      if (S.selected === "local") S.renameDraft = S.local.name;
+      else if (S.selected.startsWith("ch:")) {
+        const ch = S.channels.find(c => c.id === S.selected.slice(3));
+        S.renameDraft = ch ? ch.name : "";
+      } else {
+        const d = S.devices.find(x => x.id === S.selected);
+        S.renameDraft = d ? (d.userName || d.reportedName) : "";
+      }
+      render();
+      break;
+    case "commit-rename":
+      commitRename();
+      break;
+    case "cancel-rename":
+      S.renaming = false; render();
+      break;
+    case "copy-text":
+      if (navigator.clipboard) navigator.clipboard.writeText(btn.dataset.val).catch(() => {});
+      showToast(btn.dataset.msg || "已复制");
+      break;
+    case "open-pair":
+      openPairingSheet(null, "");
+      break;
+    case "open-add-path": {
+      const d = S.devices.find(x => x.id === btn.dataset.id);
+      const unbound = d ? unboundRunningBackends(d) : [];
+      openPairingSheet(d ? d.id : null, unbound[0] ? unbound[0].id : "");
+      break;
+    }
+    case "toggle-binding": {
+      const d = S.devices.find(x => x.id === btn.dataset.dev);
+      const b = d && d.bindings.find(x => x.id === btn.dataset.bid);
+      if (b) {
+        b.syncEnabled = !b.syncEnabled;
+        showToast(b.syncEnabled ? `已恢复 ${backendDisplayName(b.instanceId)} 同步` : `已暂停 ${backendDisplayName(b.instanceId)} 同步`);
+      }
+      break;
+    }
+    case "toggle-all-bindings": {
+      const d = S.devices.find(x => x.id === btn.dataset.dev);
+      if (d) {
+        const auth = authorizedBindings(d);
+        const shouldEnable = auth.every(b => !b.syncEnabled);
+        auth.forEach(b => { b.syncEnabled = shouldEnable; });
+        showToast(shouldEnable ? "已恢复此设备的全部路径" : "已暂停此设备的全部路径");
+      }
+      break;
+    }
+    case "toggle-menu":
+      e.stopPropagation();
+      S.openMenuBindingId = (S.openMenuBindingId === btn.dataset.bid) ? null : btn.dataset.bid;
+      render();
+      break;
+    case "ask-remove-binding": {
+      const d = S.devices.find(x => x.id === btn.dataset.dev);
+      const b = d && d.bindings.find(x => x.id === btn.dataset.bid);
+      if (d && b) {
+        S.confirm = {
+          title: `移除 ${backendDisplayName(b.instanceId)} 路径？`,
+          desc: `仅移除与「${deviceDisplayName(d)}」通过 ${backendDisplayName(b.instanceId)} 的同步路径。设备信任与其他同步路径将保留，日后可重新配对添加。`,
+          confirmLabel: "移除路径",
+          onConfirm: () => {
+            d.bindings = d.bindings.filter(x => x.id !== b.id);
+            showToast("同步路径已移除");
+          }
+        };
+        render();
+      }
+      break;
+    }
+    case "ask-remove-device": {
+      const d = S.devices.find(x => x.id === btn.dataset.id);
+      if (d) {
+        S.confirm = {
+          title: `移除「${deviceDisplayName(d)}」？`,
+          desc: "将撤销此设备的信任并移除全部同步路径。对方需要重新配对并批准。已同步到对方的内容无法撤回。",
+          confirmLabel: "移除设备",
+          onConfirm: () => {
+            S.devices = S.devices.filter(x => x.id !== d.id);
+            S.pending = S.pending.filter(p => p.id !== d.id);
+            S.narrowDetailOpen = false;
+            showToast("设备已移除");
+          }
+        };
+        render();
+      }
+      break;
+    }
+    case "toggle-ch-enabled": {
+      const ch = S.channels.find(c => c.id === btn.dataset.id);
+      if (ch) { ch.enabled = !ch.enabled; showToast(ch.enabled ? "已启用外部渠道" : "已停用外部渠道"); }
+      break;
+    }
+    case "toggle-ch-auto": {
+      const ch = S.channels.find(c => c.id === btn.dataset.id);
+      if (ch) { ch.autoApply = !ch.autoApply; showToast("渠道设置已保存"); }
+      break;
+    }
+    case "ask-remove-ch": {
+      const ch = S.channels.find(c => c.id === btn.dataset.id);
+      if (ch) {
+        S.confirm = {
+          title: `移除外部渠道「${ch.name}」？`,
+          desc: ch.remoteRevocation
+            ? "将停用并尝试退出远端群组，退出成功后清除本机记录；若退出失败将保留并标示异常。"
+            : "此操作仅从本机移除该外部渠道记录，不影响第三方远端群组状态。",
+          confirmLabel: "移除渠道",
+          onConfirm: () => {
+            S.channels = S.channels.filter(x => x.id !== ch.id);
+            S.narrowDetailOpen = false;
+            showToast("外部渠道已移除");
+          }
+        };
+        render();
+      }
+      break;
+    }
+    case "approve-pending":
+      approvePendingById(btn.dataset.id);
+      break;
+    case "reject-pending":
+      rejectPendingById(btn.dataset.id);
+      break;
+    case "ignore-cand":
+      S.candidates = S.candidates.filter(c => c.id !== btn.dataset.id);
+      showToast("已忽略此发现建议");
+      break;
+    case "pair-cand": {
+      const cd = S.candidates.find(c => c.id === btn.dataset.id);
+      if (cd) {
+        S.candidates = S.candidates.filter(c => c.id !== cd.id);
+        S.pairingBackend = cd.backendId;
+        S.waitFingerprint = randFp();
+        S.taskForDeviceId = null;
+        S.task = "wait";
+        showToast(`已向「${cd.name}」发起连接`);
+      }
+      break;
+    }
+    case "close-task":
+    case "close-scrim":
+      S.task = null; S.inlinePending = null; render();
+      break;
+    case "task-tab":
+      S.task = btn.dataset.tab;
+      S.connectError = "";
+      if (S.task === "invite") { S.inviteCode = randCode(); S.inviteSeconds = 300; }
+      render();
+      break;
+    case "regen-code":
+      S.inviteCode = randCode(); S.inviteSeconds = 300;
+      showToast("已刷新配对码");
+      break;
+    case "toggle-invite-mode":
+      S.inviteMode = S.inviteMode === "code" ? "ticket" : "code";
+      render();
+      break;
+    case "submit-connect":
+      handleConnectSubmit();
+      break;
+    case "sim-incoming": {
+      const target = S.taskForDeviceId ? S.devices.find(d => d.id === S.taskForDeviceId) : null;
+      S.inlinePending = {
+        id: target ? target.id : ("p-in-" + Date.now()),
+        isExistingDevice: !!target,
+        name: target ? deviceDisplayName(target) : "工作室 Mac Studio",
+        icon: target ? target.icon : "desktop",
+        fingerprint: target ? target.fingerprint : randFp(),
+        paths: [{ id: "bp-" + Date.now(), instanceId: S.pairingBackend, state: "pending" }]
+      };
+      S.task = "inline-approve";
+      render();
+      break;
+    }
+    case "sim-wait-fail":
+      S.task = "connect";
+      S.connectError = "对方拒绝了请求或连接超时，请检查后重试。";
+      render();
+      break;
+    case "sim-wait-approve":
+      S.inlinePending = {
+        id: "p-join-" + Date.now(),
+        isExistingDevice: false,
+        name: "对端设备",
+        icon: "desktop",
+        fingerprint: S.waitFingerprint,
+        paths: [{ id: "bp-j-" + Date.now(), instanceId: S.pairingBackend || "builtin.tailcat", state: "pending" }]
+      };
+      S.task = "inline-approve";
+      render();
+      break;
+    case "accept-inline": {
+      const p = S.inlinePending;
+      if (p) {
+        S.pending.push(p);
+        S.inlinePending = null;
+        S.task = null;
+        approvePendingById(p.id);
+      }
+      break;
+    }
+    case "reject-inline":
+      S.inlinePending = null;
+      S.task = null;
+      showToast("已拒绝配对请求");
+      break;
+    case "close-confirm":
+      S.confirm = null; render();
+      break;
+    case "do-confirm": {
+      const fn = S.confirm && S.confirm.onConfirm;
+      S.confirm = null;
+      if (fn) fn();
+      render();
+      break;
+    }
+  }
 });
-$("#gs").onchange=e=>{S.gs=e.target.checked;render()};
-$("#emp").onchange=e=>{if(e.target.checked){S.devices=S.devices.filter(d=>d.local);S.pending=[];S.cands=[];S.sel="local"}else{const g=S.gs;S=mk();S.gs=g}render()};
-setInterval(()=>{if(S.task&&S.task.k==="invite"){S.task.left=Math.max(0,S.task.left-1);const el=document.querySelector(".task .sub:nth-of-type(2)");render()}},1000);
+
+// ---- Keyboard Escape Layering ----
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (S.openMenuBindingId) { S.openMenuBindingId = null; render(); return; }
+  if (S.confirm) { S.confirm = null; render(); return; }
+  if (S.task) { S.task = null; S.inlinePending = null; render(); return; }
+  if (S.renaming) { S.renaming = false; render(); return; }
+  if (viewportMode === "narrow" && S.narrowDetailOpen) { S.narrowDetailOpen = false; render(); return; }
+});
+
+// ---- Prototype Control Bar Bindings ----
+document.getElementById("presetPills").addEventListener("click", e => {
+  const b = e.target.closest("button[data-preset]");
+  if (!b) return;
+  document.querySelectorAll("#presetPills button").forEach(x => x.classList.toggle("active", x === b));
+  S = buildPreset(b.dataset.preset);
+  S.globalSync = document.getElementById("chkGlobalSync").checked;
+  S.restartRequired = document.getElementById("chkRestart").checked;
+  render();
+});
+
+document.getElementById("widthPills").addEventListener("click", e => {
+  const b = e.target.closest("button[data-width]");
+  if (!b) return;
+  document.querySelectorAll("#widthPills button").forEach(x => x.classList.toggle("active", x === b));
+  viewportMode = b.dataset.width;
+  if (viewportMode !== "narrow") S.narrowDetailOpen = false;
+  render();
+});
+
+document.getElementById("themePills").addEventListener("click", e => {
+  const b = e.target.closest("button[data-theme]");
+  if (!b) return;
+  document.querySelectorAll("#themePills button").forEach(x => x.classList.toggle("active", x === b));
+  document.documentElement.setAttribute("data-theme", b.dataset.theme);
+});
+
+document.getElementById("chkGlobalSync").addEventListener("change", e => {
+  S.globalSync = e.target.checked; render();
+});
+document.getElementById("chkRestart").addEventListener("change", e => {
+  S.restartRequired = e.target.checked; render();
+});
+document.getElementById("btnReset").addEventListener("click", () => {
+  S = buildPreset(S.preset);
+  document.getElementById("chkGlobalSync").checked = true;
+  document.getElementById("chkRestart").checked = false;
+  render();
+});
+
 render();
 </script>
 </body>

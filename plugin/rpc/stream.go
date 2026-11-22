@@ -86,13 +86,17 @@ func (c *Conn) Expect(ctx context.Context, root uint64, d StreamDesc, maxSize ui
 		c.mu.Unlock()
 		return nil, NewError(CodeUnavailable)
 	}
-	if c.recv[id] != nil || c.send[id] != nil || id <= c.maxStream[id&1] {
+	if c.recv[id] != nil || c.send[id] != nil {
 		c.mu.Unlock()
 		return nil, NewError(CodeInvalidState)
 	}
 	if c.activeStreamsLocked() >= c.lim.MaxStreams {
 		c.mu.Unlock()
 		return nil, NewError(CodeExhausted)
+	}
+	if err := c.acceptPeerStreamIDLocked(id); err != nil {
+		c.mu.Unlock()
+		return nil, err
 	}
 	c.noteStreamLocked(id)
 	s := &RecvStream{c: c, ctx: ctx, id: id, root: root, size: uint64(d.Size)}

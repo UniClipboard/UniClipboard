@@ -125,7 +125,7 @@ func extractTarGzip(body io.Reader, dest string, stripRoot bool) error {
 		h, err := r.Next()
 		if errors.Is(err, io.EOF) {
 			_, err := io.Copy(io.Discard, limited)
-			if err != nil || limited.N == 0 || count == 0 {
+			if err != nil || limited.N == 0 || count == 0 || (stripRoot && archiveRoot == "") {
 				return errors.New("invalid or oversized plugin archive")
 			}
 			return nil
@@ -133,13 +133,18 @@ func extractTarGzip(body io.Reader, dest string, stripRoot bool) error {
 		if err != nil || count >= 10000 || h.Size < 0 || h.Size > archiveLimit || len(h.Name) > 1024 {
 			return errors.New("invalid or oversized plugin archive")
 		}
+		// GitHub codeload emits a global PAX metadata entry before its source
+		// directory. It is not a filesystem entry and must not select the root.
+		if h.Typeflag == tar.TypeXGlobalHeader {
+			continue
+		}
 		name := strings.TrimSuffix(h.Name, "/")
 		if !localPath(name) {
 			return errors.New("unsafe plugin archive path")
 		}
 		if stripRoot {
 			first, rest, hasRest := strings.Cut(name, "/")
-			if count == 0 {
+			if archiveRoot == "" {
 				archiveRoot = first
 			}
 			if first != archiveRoot {

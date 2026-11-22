@@ -117,3 +117,48 @@ process_text 仅 text/plain；action_text 仅在 plugin.run_action 中由插件�
 Directory selection references, preparation, manifests, file-policy grouping, bounds, and acceptance follow the [directory content contract](directory-contract.md). The 0024 execution receipt distinguishes specified behavior from verified implementation.
 
 Processor `Item.Type` accepts `directory` and `directory_reference` in addition to existing content types. Directory manifests travel as file-policy-governed representations with existing member streams; no new transport method or protocol version is required.
+
+## Action source streams
+
+`plugin.run_action` adds optional `parts`, an ordered array of at most 4096
+`{mime,file,name,size}` descriptors. Size uses the existing uint64 string encoding.
+Names are display names. No host path or file-reference token is transmitted.
+
+A Go Actor calls nested `action.open_part` with `{index}` under its live Action
+root. The host authorizes that index against the selected source, permits one
+open per index and at most four concurrent source streams, then returns a
+`StreamDesc` with purpose `action_part`. Zero-size parts use stream ID and size
+zero, with no frames. Non-empty parts use existing credit-based binary streams
+rooted at the Action, not at the short-lived child call. Source readers close on
+Action completion, cancellation and session shutdown. Mid-stream source failure
+closes the session; it cannot produce a successful Action result.
+
+Handshake Action declarations require non-empty unique `placements` from
+`{history.item_menu, history.toolbar, quick_panel}`, non-empty unique
+`post_actions` from `{copy, notify, present, select, none}` (`none` exclusive),
+and include optional integer `timeout_ms` in 0..300000. Zero means 10 seconds.
+The selected Action deadline also bounds the Engine and proxy. General RPC
+maximum request duration remains 300000ms.
+
+### Early release of an Action source part
+
+Nested `action.close_part` accepts `{index}` under the live `plugin.run_action`
+root. The host validates that this Action already opened the indexed part.
+It cancels only that part, closes its source reader, and releases its live-part
+and stream slots before responding. Repeating a release for the same opened
+part is idempotent. An unopened index or another root cannot release the part.
+The SDK retains receive credit until the close response, which follows every
+already-written DATA frame for the part. It then releases the local stream.
+Normal full reads continue to use END and need no additional close RPC.
+Invocation cancellation and completion still revoke every remaining part.
+A deliberately released or cancelled part does not terminate the connection.
+A genuine incomplete-source failure retains session termination semantics.
+
+Descriptors can register out of arrival order, including descriptors carried
+in independent root parameters and concurrent source-call responses. Allocation
+still uses increasing direction-specific IDs. `Conn.Expect` keeps a coalescing
+ledger of registered ID ranges, so active and retired stream IDs cannot replay.
+The ledger uses at most `MaxStreams + MaxRequests + 1` ranges from the negotiated
+quotas; excessive sparse IDs return `resource_exhausted` before credit is granted.
+Sequential streams occupy one range. No per-Actor or per-method ordering gate
+is required.

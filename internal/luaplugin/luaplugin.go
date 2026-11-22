@@ -159,6 +159,27 @@ func (b *base) load(ctx context.Context, src string) (*lua.Sandbox, *lua.LTable,
 						}
 					}
 				}
+				if pl, ok := e.RawGetString("placements").(*lua.LTable); ok {
+					for j := 1; j <= pl.Len(); j++ {
+						s, ok := pl.RawGetInt(j).(lua.LString)
+						if !ok {
+							return fail(fmt.Errorf("%w: bad action placement", ErrFailed))
+						}
+						as.Placements = append(as.Placements, string(s))
+					}
+				}
+				if pa, ok := e.RawGetString("post_actions").(*lua.LTable); ok {
+					for j := 1; j <= pa.Len(); j++ {
+						s, ok := pa.RawGetInt(j).(lua.LString)
+						if !ok {
+							return fail(fmt.Errorf("%w: bad action post_action", ErrFailed))
+						}
+						as.PostActions = append(as.PostActions, string(s))
+					}
+				}
+				if !slices.Equal(as.Accepts, []string{"text"}) {
+					return fail(fmt.Errorf("%w: Lua Actions accept text only", ErrFailed))
+				}
 				ps.Actions = append(ps.Actions, as)
 			}
 		}
@@ -280,7 +301,7 @@ func (b *base) Reload(ctx context.Context, src string, cfg plugin.Config, commit
 		}
 	}()
 	if !slices.EqualFunc(ps.Actions, b.pspec.Actions, func(a, c plugin.ActionSpec) bool {
-		return a.ID == c.ID && a.Title == c.Title && slices.Equal(a.Accepts, c.Accepts)
+		return a.ID == c.ID && a.Title == c.Title && slices.Equal(a.Accepts, c.Accepts) && slices.Equal(a.Placements, c.Placements) && slices.Equal(a.PostActions, c.PostActions)
 	}) {
 		return fmt.Errorf("%w: actions cannot change on reload", ErrFailed)
 	}

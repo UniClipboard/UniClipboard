@@ -54,9 +54,12 @@ func Negotiate(a, b Limits) Limits {
 
 // ActionSpec is the wire form of a declared action.
 type ActionSpec struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Accepts []string `json:"accepts"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Accepts     []string `json:"accepts"`
+	Placements  []string `json:"placements"`
+	PostActions []string `json:"post_actions"`
+	TimeoutMS   int64    `json:"timeout_ms,omitempty"`
 }
 
 // Spec is the wire form of a plugin description.
@@ -85,7 +88,7 @@ func (s Spec) Equal(o Spec) bool {
 	}
 	for i, a := range s.Actions {
 		b := o.Actions[i]
-		if a.ID != b.ID || a.Title != b.Title || !slices.Equal(a.Accepts, b.Accepts) {
+		if a.ID != b.ID || a.Title != b.Title || a.TimeoutMS != b.TimeoutMS || !slices.Equal(a.Accepts, b.Accepts) || !slices.Equal(a.Placements, b.Placements) || !slices.Equal(a.PostActions, b.PostActions) {
 			return false
 		}
 	}
@@ -108,13 +111,15 @@ type HelloAck struct {
 
 // Method names.
 const (
-	MethodInit      = "plugin.init"
-	MethodStart     = "plugin.start"
-	MethodClose     = "plugin.close"
-	MethodProcess   = "plugin.process"
-	MethodRunAction = "plugin.run_action"
-	MethodOnEvent   = "plugin.on_event"
-	MethodNotify    = "host.notify"
+	MethodInit            = "plugin.init"
+	MethodStart           = "plugin.start"
+	MethodClose           = "plugin.close"
+	MethodProcess         = "plugin.process"
+	MethodRunAction       = "plugin.run_action"
+	MethodOpenActionPart  = "action.open_part"
+	MethodCloseActionPart = "action.close_part"
+	MethodOnEvent         = "plugin.on_event"
+	MethodNotify          = "host.notify"
 
 	// External-channel sync backend profile (sync-backend-contract §6a).
 	MethodSubmit       = "backend.submit"        // Engine→plugin
@@ -213,6 +218,7 @@ func (b ErrorBody) err() *Error {
 const (
 	PurposeProcessText = "process_text"
 	PurposeActionText  = "action_text"
+	PurposeActionPart  = "action_part"
 	// Sync backends only.
 	PurposeSyncPart    = "sync_part"    // Engine→plugin, content to send
 	PurposeReceivePart = "receive_part" // plugin→Engine, content that arrived
@@ -349,9 +355,20 @@ type Patch struct {
 }
 
 type ActionRun struct {
-	ActionID   string `json:"action_id"`
-	Generation U64    `json:"generation"`
-	Item       Item   `json:"item"`
+	ActionID   string       `json:"action_id"`
+	Generation U64          `json:"generation"`
+	Item       Item         `json:"item"`
+	Parts      []ActionPart `json:"parts,omitempty"`
+}
+
+type ActionPart struct {
+	MIME string `json:"mime"`
+	File bool   `json:"file"`
+	Name string `json:"name"`
+	Size U64    `json:"size"`
+}
+type OpenActionPart struct {
+	Index int `json:"index"`
 }
 
 type ActionResult struct {
@@ -451,6 +468,14 @@ var actionIDRe = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 func (r ActionRun) Validate() error {
 	if len(r.ActionID) > 64 || !actionIDRe.MatchString(r.ActionID) {
 		return protoErr("bad action id")
+	}
+	if len(r.Parts) > 4096 {
+		return protoErr("too many action parts")
+	}
+	for _, p := range r.Parts {
+		if p.Size > U64(1<<63-1) || len(p.MIME) > 256 || !utf8.ValidString(p.MIME) || len(p.Name) > 4096 || !utf8.ValidString(p.Name) {
+			return protoErr("bad action part")
+		}
 	}
 	return r.Item.Validate()
 }

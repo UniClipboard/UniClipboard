@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","x-unic-settings-version":1,"type":"object","additionalProperties":false,"properties":{"marker":{"type":"string","default":"loopback"},"credential":{"type":"string","writeOnly":true}}}

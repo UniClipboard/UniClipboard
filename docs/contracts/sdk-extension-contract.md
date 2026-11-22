@@ -48,9 +48,12 @@ type BackendSubmissionResult struct {
     Error *Error
 }
 type ActionSpec struct {
+    TimeoutMS int64 // zero: 10s, maximum: 300000ms
     ID string
     Title string
     Accepts []string
+    Placements []string // required non-empty unique subset of {history.item_menu, history.toolbar, quick_panel}
+    PostActions []string // required non-empty unique subset of {copy, notify, present, select, none} ("none" exclusive)
 }
 type ActionInfo struct {
     Key string // pluginID/actionID
@@ -58,8 +61,11 @@ type ActionInfo struct {
     ID string
     Title string
     Accepts []string
+    Placements []string
+    PostActions []string
 }
 type RunActionRequest struct {
+    CancelOnContext bool
     RequestID RequestID
     Key string
     HistoryID HistoryID
@@ -78,7 +84,7 @@ type ActionResult struct {
 
 SubmissionPhase 为 processing/committed/failed；SyncDisposition 与 BackendDisposition 的不同取值及聚合遵循提交契约和 0007。BackendResults 按 BackendID 排序且不重复。processing/failed 时 SyncDisposition 为空，OperationID/HistoryID 为空；failed 必有 Error。committed 时 Error=nil；仅同步 failed 有 SyncError，只有 queued 有 OperationID。HistoryID 仅成功持久化时非空，不能以其空值判断是否 committed。
 
-ActionInfo/ActionSpec 的字段限制见[插件契约 §1](plugin-contract.md#1-标识能力与入口)；Accepts 取值 text/image/files，首版仅 text 可用。RunAction 失败返回 engine.Error，不创建条目；成功的 ActionResult 只在已 commit 后返回，故无 failed 阶段，Phase 恒为 committed。语义见[Action 契约](clipboard-action-contract.md)。
+ActionInfo/ActionSpec 的字段限制见[插件契约 §1](plugin-contract.md#1-标识能力与入口)；Go `Accepts` supports text/image/files and results remain text. Lua Actions accept text only.RunAction 失败返回 engine.Error，不创建条目；成功的 ActionResult 只在已 commit 后返回，故无 failed 阶段，Phase 恒为 committed。语义见[Action 契约](clipboard-action-contract.md)。
 
 BackendIDs=nil 表示全部启用后端；非 nil 空切片非法，JSON 适配须保留“省略/null”和 `[]` 的区别，不能用 omitempty 丢掉显式空数组校验。非空选择规范化排序参与幂等比较，重复项拒绝。
 
@@ -286,3 +292,8 @@ P1 加提交/状态 DTO，P2 加历史 DTO，P3 加 Action DTO 与 ListActions/R
 ## Directory SDK extension
 
 `DirectorySource.ReadDirectory` returns an operation-local `DirectoryListing` with bounded entries and a verification callback. Import a zero-size directory source through `FileInput.Source`; Engine assigns its private reference MIME. `MimeDirectory` identifies the structured manifest. `HistoryDirectory` and `HistoryDirectoryReference` distinguish immutable snapshots and deferred sources. The [directory contract](directory-contract.md) defines these representations and their resource bounds. `CommitRequest.CancelOnContext` opts into explicit cancellation; the default preserves admitted work across caller timeouts.
+
+Go Actors receive `plugin.ActionSource` alongside `ActionContext`. Its
+`Parts() []plugin.ActionPart` metadata and `OpenPart(context.Context, int)` reader
+are scoped to the selected source and active invocation. See the
+[Action contract](clipboard-action-contract.md#go-action-source-content).

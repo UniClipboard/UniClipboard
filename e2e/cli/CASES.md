@@ -44,6 +44,7 @@
 | [send-slow-peer-timeout](#send-slow-peer-timeout) | 对端冻结时大文件发送在截止时间内以 timeout 结束，不重放 |
 | [send-to-device](#send-to-device) | send --to 只发给指定的已配对设备 |
 | [service-replaced-mid-submit](#service-replaced-mid-submit) | 提交途中服务被杀并重启，命令报告中断，不重放也不回滚 |
+| [sync-local-only](#sync-local-only) | Local mode without tailcat |
 | [sync-settings](#sync-settings) | CLI settings and TOML policy |
 | [temporary-transfer](#temporary-transfer) | 两个没有配对的 unic 之间做临时传输 |
 | [transfer-code](#transfer-code) | 用 6 位码完成临时传输，并拒绝配对码 |
@@ -2454,6 +2455,49 @@ node-start alpha
 
 u alpha history list
 stdout -count=1 'files'
+```
+
+</details>
+
+## sync-local-only
+
+**Local mode without tailcat**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/sync-local-only' -v`
+
+**目的**
+
+Verify explicit backend disable preserves local history and Actions.
+
+
+**流程**
+
+1. Start a daemon with tailcat disabled.
+2. Capture text and run the built-in text Action.
+3. Restart and verify that no backend is silently restored.
+
+**期望**
+
+- Local history and text Actions remain available.
+- Pairing reports an unavailable backend.
+
+**不应**
+
+- Start tailcat or silently fall back to it.
+
+<details><summary>脚本 testdata/sync-local-only.txtar</summary>
+
+```
+node-start alpha
+board-set alpha text hello.txt
+until alpha 'local_system' h list --json
+u alpha h action @1 builtin.text/upper --apply
+! u alpha device addr
+node-stop alpha
+node-start alpha
+u alpha config --json
+stdout '"enabled":false'
+! u alpha device addr
 ```
 
 </details>

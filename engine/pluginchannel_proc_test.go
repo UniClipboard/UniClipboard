@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -253,6 +254,61 @@ func TestTwoChannelBackendInstancesAreIsolated(t *testing.T) {
 	for _, id := range []string{"example.wx", "example.wy"} {
 		if _, err := os.Stat(filepath.Join(n.dir, "plugin-data", id)); err != nil {
 			t.Fatalf("%s: %v", id, err)
+		}
+	}
+}
+
+// TestExternalChannelInstanceWorkflow is an SDK/RPC end-to-end boundary test.
+// Failure inventory: aliases must not become devices, pairing must be absent,
+// and independent channel targets/receives must retain their instance owner.
+func TestExternalChannelInstanceWorkflow(t *testing.T) {
+	first, second := chanInstance(), chanInstance()
+	first.ID, second.ID = "example.channel_one", "example.channel_two"
+	n := newContentNode(t, func(o *Options) { o.Plugins = []PluginInstance{first, second} })
+	start(t, n)
+	backends, err := n.e.ListSyncBackends(bg)
+	if err != nil || len(backends) != 2 {
+		t.Fatalf("backend projection: %v", err)
+	}
+	for _, b := range backends {
+		if b.ImplementationID != "example.wx" || b.Pairing || !b.ExternalChannels || b.State != "running" {
+			t.Fatalf("channel capability projection: %+v", b)
+		}
+		if _, err := n.e.ExportPairingTicketVia(bg, b.ID); code(err) != CodeUnsupported {
+			t.Fatal("channel was offered device pairing")
+		}
+	}
+	a, b := addCh(t, n, string(first.ID)), addCh(t, n, string(second.ID))
+	result := commitText(t, n.e, "channel-aliases", "echo fixture")
+	operation := waitSend(t, n.e, result.OperationID)
+	if len(operation.Targets) != 2 {
+		t.Fatal("channels were not separate group targets")
+	}
+	for _, target := range operation.Targets {
+		if target.TargetKind != TargetGroup || target.State != TargetSent {
+			t.Fatalf("channel target: %+v", target)
+		}
+	}
+	received := waitReceived(t, n.e, 2)
+	for _, r := range received {
+		if r.PeerID != "" || r.ChannelID != a.ID && r.ChannelID != b.ID {
+			t.Fatal("channel receive became a device")
+		}
+	}
+	devices, err := n.e.ListDevices(bg)
+	if err != nil || len(devices) != 0 {
+		t.Fatal("channel created device identity records")
+	}
+	if dest := os.Getenv("UNIC_E2E_ARTIFACTS"); dest != "" {
+		if err := os.MkdirAll(dest, 0700); err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.MarshalIndent(map[string]any{"passed": true, "layer": "Engine SDK and real external Go RPC child processes; no third-party login or Desktop claim", "backends": backends, "targets": operation.Targets, "device_count": len(devices)}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dest, "external-channel-instance-workflow.json"), data, 0600); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

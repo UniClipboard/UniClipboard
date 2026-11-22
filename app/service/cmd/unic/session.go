@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -93,7 +94,11 @@ func (t acquiring) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.URL.Path == "/v1/events" || req.URL.Path == "/v1/service/leases" || req.URL.Path == "/v1/receive" {
 		return t.base.RoundTrip(req)
 	}
-	ctx, cancel := context.WithTimeout(req.Context(), requestTimeout)
+	timeout := requestTimeout
+	if req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/v1/history/") && strings.Contains(req.URL.Path, "/actions/") {
+		timeout = 5*time.Minute + 5*time.Second
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	resp, err := t.base.RoundTrip(req.WithContext(ctx))
 	if err != nil {
 		cancel()

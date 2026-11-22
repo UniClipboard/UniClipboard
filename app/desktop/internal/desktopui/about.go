@@ -27,7 +27,6 @@ type aboutState struct {
 	updateRead           func() UpdateStatus
 	updateCheck          func()
 	updateSetPrefs       func(autoCheck, autoDownload *bool)
-	openExternal         func(string) error
 	copyText             func(string) error
 	fetchSponsors        func(context.Context) ([]Sponsor, error)
 	fetchAvatar          func(context.Context, string) ([]byte, error)
@@ -51,20 +50,9 @@ func (s *Desktop) SetUpdater(read func() UpdateStatus, check func(), setPrefs fu
 	s.d.about.updateSetPrefs = setPrefs
 }
 
-// SetOpenExternal overrides how external links are opened (defaults to mygo.Shell.OpenExternal).
+// SetOpenExternal overrides how external links are opened.
 func (s *Desktop) SetOpenExternal(open func(string) error) {
-	s.d.about.openExternal = open
-}
-
-func (d *viewState) openExternalURL(raw string) {
-	if !allowedExternalURL(raw) {
-		return
-	}
-	open := d.about.openExternal
-	if open == nil {
-		open = mygo.Shell.OpenExternal
-	}
-	_ = open(raw)
+	s.d.openURL = open
 }
 
 func (d *viewState) copyAboutText(text string) {

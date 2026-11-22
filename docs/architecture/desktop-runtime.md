@@ -42,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 67f9402b1c34f8b3733ac18fed233217d101fc65
+verified: 1bba08c23671101e1dea5eb484eb5b539923bfbf
 ---
 # Desktop configuration and received files
 
@@ -71,7 +71,7 @@ The three built-in plugins have no plugin-specific Schema fields. See the [execu
 
 Settings > Plugins lists external plugins discovered by the service. An external plugin detail page shows enablement, pending restart and any form defined by its manifest. The mygo renderer uses the same portable Schema as the service. Password fields show presence and allow replacement or clearing. Save checks the last revision. The service hot-replaces running Lua settings and reports a restart for Go settings. Install and uninstall are CLI operations.
 
-The history toolbar exposes the Actions menu for records accepted by the currently running plugins. Desktop requests a new Action result and applies it through the active clipboard adapter. A clipboard failure leaves the committed result in history. See the [settings contract](../contracts/plugin-settings-contract.md) and [Action contract](../contracts/clipboard-action-contract.md).
+The history toolbar (`history.toolbar`) and the history list/grid right-click context menu "动作" submenu (`history.item_menu`) expose matching plugin Actions filtered by both declared `Accepts` and `Placements`, displaying each Action's plugin provenance subtitle. When a single item has no matching Actions (or multiple items are selected), the context menu hides the "动作" submenu. Desktop honors each Action's declared `PostActions`: `copy` requests clipboard application through the active adapter, `notify` shows a window-level status toast (with running cancellation), `present` opens a BoardUI result dialog with copy, view-item and explicit `http(s)://` open-link controls, `select` focuses the new history item, and `none` commits silently to history. A clipboard failure leaves the committed result in history. See the [settings contract](../contracts/plugin-settings-contract.md) and [Action contract](../contracts/clipboard-action-contract.md).
 
 ## Main-window decoration
 
@@ -415,8 +415,34 @@ discovery. Only a verified complete import publishes completion. Desktop
 welcome/skip and history navigation do not publish CLI completion. See the
 [initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
 
+## External sync instances
+
+Plugins separates installed program identity from configured runtime instances. Create an instance with its own ID, edit its Schema values, enable it and restart. A new instance starts disabled and never copies another instance's credentials. The detail shows local runtime state; standard content policies save through the existing revision-checked configuration route. Go settings changes take effect after restart and invalidate that instance's old authorizations before its new process starts.
+
+Device management uses one unified BoardUI presentation for live and preview data with user-facing "sync channel" terminology. The left canvas opens with a runtime sync-channel status strip that surfaces running, restarting, unavailable, and disabled channels plus pending-restart notices and jumps directly to Settings > Plugins (or a specific plugin detail). A global-sync-off warning banner offers one-click re-enablement. Pending banners distinguish brand-new device join requests from new-path requests on already-trusted devices, and external channels (`kind == "external"`) appear in their own section without device fingerprints.
+
+The right 380-DIP inspector manages the selected item: the local device displays inline rename (`config.DeviceName`), the local `DeviceID` (never a fabricated pairing fingerprint), and a clickable channel status overview; a trusted device supports revision-checked inline rename (`PATCH /v1/peers/{id}`, clearing to revert to `reported_name`), a top inline pending-path approval card whose rejection removes only the pending binding via `DELETE /v1/bindings/{id}` without unpairing the device, per-path sync switches (`PATCH /v1/bindings/{id}`) and overflow actions (channel policy jump and confirmed path removal), an 8-cell fingerprint grid, a batch pause/resume button shown only when two or more authorized paths exist, and confirmed device removal (`DELETE /v1/peers/{id}?revision=N`); external channels expose name/enable/auto-apply controls (`PATCH /v1/channels/{id}`) and revocation-aware confirmed removal (`DELETE /v1/channels/{id}?revision=N`).
+
+Device invitation and connection tasks select a running peer-sessions channel (hiding the selector when only one channel is running, and replacing the form with plugin-settings guidance when zero are running). External-channel and unsupported object-store types do not enter device pairing. Opening the pairing sheet snapshots existing pending revisions so inline approval switches only for matching new or updated requests. History detail shows each backend's disposition/state/error, so one successful path does not hide another failure.
+
+`make desktop-e2e CASE=external-sync-workflow` drives the real mygo composition, production service and real external Go fixture processes. It seeds only the verified fixture installation; installation itself is covered by the real CLI GitHub-fixture workflow. It creates/enables a runtime instance through UI, restarts, changes policy, approves a cross-instance pair and checks exact bidirectional text plus per-instance results. Its recording is native application content, not OS clipboard, cross-application paste or user visual approval. See the [workflow receipt](../exec/sync-plugin-workflow.md).
+
 ## Unified content presentation and component acceptance
 
 Main GUI, first-install setup, Quick Panel and demos use the same native BoardUI content resources through the public `boardui` controls and application-only `desktopkit` compositions. The former skin engine, platform token snapshots and selector are removed. System/light/dark remain scheme choices. OS frame policy, modifiers, tray/system menus, file and credential prompts, updater, clipboard ownership and focus/paste dispatch remain native host integration.
 
 The independent `boardui-demo` uses synthetic local form state and creates no product service/GUI/panel/tray role. Production pages use their existing live binding and runtime configuration. Canonical `boardui-settings`/`boardui-states` cases and the real-React replay cover the named component scenes. Production composition/migration/menu/surface cases cover their own shared-renderer scenarios. These results do not imply native OS keyboard/IME, platform accessibility, compositor or Windows memory acceptance. See the [native BoardUI contract](../contracts/boardui-native-contract.md) and [production migration receipt](../exec/boardui-production-migration.md).
+
+## External share Actions
+
+History Action menus filter declarations by the selected item type. Go plugins
+may declare text, image and file inputs. Their result remains a new text history
+item and uses the existing explicit apply path. Desktop opts into cancelling
+admitted Action work with the caller context. CLI allows the five-minute Action
+budget plus transport margin. Provider upload behavior remains outside the
+Desktop composition. See the [Action contract](../contracts/clipboard-action-contract.md).
+
+Desktop Action jobs use a five-minute plus thirty-second worker budget for
+execution, response and clipboard application. Other queued jobs and mutations
+retain their fifteen-second budget. The Engine independently enforces each
+Action declaration's execution deadline.

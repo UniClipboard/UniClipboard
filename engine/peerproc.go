@@ -21,10 +21,11 @@ import (
 // A push returns only once the backend confirmed the state or its process was
 // reclaimed, so callers that revoke something may rely on it as the barrier.
 type peerProcBackend struct {
-	e         *Engine
-	id        PluginID
-	pb        plugin.PeerBackend
-	bindingID string
+	e              *Engine
+	implementation string
+	id             PluginID
+	pb             plugin.PeerBackend
+	bindingID      string
 
 	pm   sync.Mutex // serializes pushes and guards the rest
 	rev  uint64

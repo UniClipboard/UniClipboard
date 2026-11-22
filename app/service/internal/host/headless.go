@@ -93,7 +93,7 @@ func (n *Node) ExecuteAction(ctx context.Context, id, key string, in api.ActionI
 			return out, apiErr(adapterError(engine.CodeUnavailable), false)
 		}
 	}
-	r, e := n.e.RunAction(ctx, engine.RunActionRequest{RequestID: engine.RequestID(in.RequestID), Key: key, HistoryID: engine.HistoryID(id)})
+	r, e := n.e.RunAction(ctx, engine.RunActionRequest{RequestID: engine.RequestID(in.RequestID), Key: key, HistoryID: engine.HistoryID(id), CancelOnContext: in.CancelOnContext})
 	if e != nil {
 		return out, apiErr(e, false)
 	}

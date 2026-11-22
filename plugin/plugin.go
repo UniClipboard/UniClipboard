@@ -65,12 +65,34 @@ type Spec struct {
 	RemoteRevocation bool
 }
 
+// Action placements declare where a host may expose a user-invoked action.
+// Hosts render the placements they support and ignore unsupported ones.
+const (
+	ActionPlacementHistoryItemMenu = "history.item_menu"
+	ActionPlacementHistoryToolbar  = "history.toolbar"
+	ActionPlacementQuickPanel      = "quick_panel"
+)
+
+// Action post-actions declare bounded host follow-up behavior after an action
+// commits its new history item. ActionPostNone is mutually exclusive with the
+// other values.
+const (
+	ActionPostCopy    = "copy"
+	ActionPostNotify  = "notify"
+	ActionPostPresent = "present"
+	ActionPostSelect  = "select"
+	ActionPostNone    = "none"
+)
+
 // ActionSpec declares one user-invoked action. Its key outside the plugin is
 // Spec.ID + "/" + ID.
 type ActionSpec struct {
-	ID      string
-	Title   string
-	Accepts []string // "text" in this version
+	ID          string   `json:"id" toml:"id"`
+	Title       string   `json:"title" toml:"title"`
+	Accepts     []string `json:"accepts" toml:"accepts"`                 // text, image, files
+	Placements  []string `json:"placements" toml:"placements"`           // required non-empty unique subset of ActionPlacement*
+	PostActions []string `json:"post_actions" toml:"post_actions"`       // required non-empty unique subset of ActionPost* ("none" exclusive)
+	TimeoutMS   int64    `json:"timeout_ms,omitempty" toml:"timeout_ms"` // zero: 10s; maximum: 300000
 }
 
 // Config holds plugin-specific settings as JSON values.
@@ -166,6 +188,22 @@ type ActionContext interface {
 	Item() Item
 	// SetText supplies the result. Call it exactly once.
 	SetText(string) error
+}
+
+// ActionPart describes source bytes without exposing a host path.
+type ActionPart struct {
+	MIME string `json:"mime"`
+	File bool   `json:"file"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+// ActionSource is available to Go Actors for the active invocation only.
+// Open each part at most once and close the reader. At most four may be open.
+// Readers are revoked when the Action ends or its context is cancelled.
+type ActionSource interface {
+	Parts() []ActionPart
+	OpenPart(context.Context, int) (io.ReadCloser, error)
 }
 
 // SyncState is how a target fares during one send.

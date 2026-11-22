@@ -17,7 +17,7 @@ Protocol version remains 1.
 | `GET /v1/received` | None | Engine `ReceivedContent[]` |
 | `GET /v1/received/{receipt_id}/content?part=N` | Zero-based part, default 0 | Content stream |
 | `DELETE /v1/received/{receipt_id}` | None | Dismiss transient record |
-| `POST /v1/history/{id}/actions/{key}` | `{request_id,apply}` | `{item,submission,applied,apply_error?}` |
+| `POST /v1/history/{id}/actions/{key}` | `{request_id,apply,cancel_on_context?}` | `{item,submission,applied,apply_error?}` |
 
 A snapshot has `Parts` with `Format` and base64 `Data`, and `Files` with absolute `Path`, `Name` and `Size`.
 File paths refer to same-user local files. Engine imports stable references, checks changes on reads, and owns no source file.
@@ -383,3 +383,40 @@ across service restarts. Review cleanup policy before importing old real history
 ## Plugin configuration
 
 The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.
+
+Action `cancel_on_context` defaults false. CLI and Desktop opt in for explicit
+user Actions. CLI permits up to five minutes plus five seconds of transport
+margin for Action requests; other non-streaming requests keep their 60-second
+budget. The Engine Action deadline remains at most five minutes. Request
+cancellation revokes upload readers when the opt-in flag is true.
+
+## Sync backend selection
+
+`GET /v1/sync-backends` returns an array of `{id, implementation_id, transport_kind, pairing, external_channels, state}` for assembled sync backends. One installed Go sync implementation can have multiple runtime instances. `pairing` describes device-pairing support and never applies to external channels. This projection contains no address, ticket, credential or process-private state. `state` reports local process availability and does not attest to current remote connectivity.
+
+`POST /v1/code` and `POST /v1/pairing-ticket` accept an empty body or `{ "backend_id": "instance.id" }`. An empty selection uses Tailcat. Unknown selections and unsupported transports fail explicitly and never fall back. Backend selection does not grant trust. The existing fingerprint and complete device/binding revision approval still applies.
+
+CLI exposes `unic device backends` and `unic device addr --backend INSTANCE`. Desktop exposes the same backend selection in the invitation task. Standard backend policies use `plugins.instances."INSTANCE".sync` through the existing revision-checked configuration route. Enablement changes require service restart. Global sync and policies apply to the assembled running backend set while restart is pending. A zero-backend service retains local content, history and Actions.
+
+The single-instance external-process acceptance and remaining contract decision are recorded in the [workflow receipt](../exec/sync-plugin-workflow.md).
+
+### Instance creation and local pairing selection
+
+`POST /v1/plugin-instances` accepts `{id, implementation_id, revision}` using the current configuration revision. It creates a disabled alias and returns its plugin projection. Conflicts return HTTP 409. Schema/settings routes address that alias. Installation is unchanged. CLI equivalent: `unic plugin instance add IMPLEMENTATION INSTANCE`, then configure, enable and restart.
+
+`POST /v1/peers` accepts `{addr, backend_id?}`; `POST /v1/join` accepts `{code, backend_id?}`. `backend_id` selects the receiver's local instance, which can differ from the issuer's instance. Unknown fields, trailing JSON, unavailable selections and implementation mismatch are rejected without fallback. `unic device add [CODE|TICKET] --backend INSTANCE` uses these same routes. A missing local selection only permits an exact singleton match with the ticket implementation descriptor.
+
+`GET /v1/status` retains one row per trusted device and includes its sanitized `bindings`. Pending approval includes `paths` plus the existing exact pending binding revision set. No address, credential or RPC token is included. Trusted devices remain listed after their last path is removed. Channels retain their separate kind and never gain fingerprints or device bindings.
+
+`PeerStatus` entries in `GET /v1/status` also project:
+- `fingerprint`: device identity fingerprint (devices only; omitted for external channels).
+- `user_name`: optional user-assigned custom name (omitted when unset; `name` remains the effective display name, falling back to `reported_name`).
+- `reported_name`: peer-reported name (omitted when unset).
+- `revision`: current Engine CAS revision (populated for both devices and external channels).
+- `last_error`: stable, redacted error class for external channels (omitted when empty; raw backend text is never exposed).
+
+`PATCH /v1/peers/{id}` accepts a JSON body of at most 4096 bytes containing a positive `revision` and required `name` string (`""` clears the custom name and reverts `name` to `reported_name`), rejecting unknown fields and trailing JSON. It delegates to Engine `RenameDevice` with CAS and returns the updated `PeerStatus`. Missing or invalid fields, names exceeding 64 bytes, control characters or leading/trailing whitespace return HTTP 400 (`invalid_argument`); unknown peers return HTTP 404 (`not_found`); stale revisions return HTTP 409 (`conflict`).
+
+`DELETE /v1/peers/{id}` accepts an optional `?revision=N` query parameter. When present, `N` must be a positive integer (otherwise HTTP 400 `invalid_argument`) and revocation uses Engine `UnpairDevice` CAS, returning HTTP 409 (`conflict`) without unpairing on a stale revision or HTTP 404 (`not_found`) for an unknown peer. When omitted, the route retains whole-device unpairing against the current revision.
+
+`PATCH /v1/bindings/{id}` requires both `revision` and `enabled`. `DELETE /v1/bindings/{id}?revision=N` removes only that path. Both use Engine CAS and revocation barriers; stale revisions return HTTP 409. `unic device list --json` exposes the current path revisions; `unic device path pause|resume|remove BINDING_ID REVISION` submits them. Desktop device details expose the same per-path switch and removal operation. Whole-device removal still revokes every path.

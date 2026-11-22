@@ -80,6 +80,11 @@ func waitSend(t *testing.T, e *Engine, id OperationID) Operation {
 
 func TestSubmitDeliversEverything(t *testing.T) {
 	n, l := senderNode(t, nil)
+	assertSubmitDeliversEverything(t, n, l)
+}
+
+func assertSubmitDeliversEverything(t *testing.T, n node, l *remote) {
+	t.Helper()
 	img := pngBytes(t)
 	ref := filepath.Join(t.TempDir(), "ref.bin")
 	refData := strings.Repeat("r", 100_000)

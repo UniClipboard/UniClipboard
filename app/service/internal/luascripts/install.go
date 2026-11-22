@@ -311,7 +311,12 @@ func Prune(root string, running map[string]Script) error {
 		pin := lock[id]
 		for _, version := range versions {
 			commit := version.Name()
-			keep := commit == pin.Commit || commit == running[id].Commit || pin.Previous != nil && commit == pin.Previous.Commit
+			keep := commit == pin.Commit || pin.Previous != nil && commit == pin.Previous.Commit
+			for _, s := range running {
+				if s.Manifest.ID == id && s.Commit == commit {
+					keep = true
+				}
+			}
 			if keep || !version.IsDir() || !commitPattern.MatchString(commit) {
 				continue
 			}

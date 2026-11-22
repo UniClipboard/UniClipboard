@@ -61,7 +61,17 @@ func daemonTestRoutes(ctx context.Context, mux *http.ServeMux, n *host.Node, soc
 	}
 	if d := os.Getenv("UNIC_MOCK_CLIPBOARD_DIR"); d != "" {
 		directoryTestRoutes(mux, n)
-		go func() { _ = clipboardintegration.RunRemote(ctx, api.NewClient(sock), testboard.Dir(d), nil) }()
+		go func() {
+			// A bounded fixture delay reproduces the service-ready/adapter-ready boundary.
+			if delay, err := time.ParseDuration(os.Getenv("UNIC_E2E_ADAPTER_DELAY")); err == nil && delay > 0 && delay <= 2*time.Second {
+				select {
+				case <-time.After(delay):
+				case <-ctx.Done():
+					return
+				}
+			}
+			_ = clipboardintegration.RunRemote(ctx, api.NewClient(sock), testboard.Dir(d), nil)
+		}()
 	}
 }
 

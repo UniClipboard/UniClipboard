@@ -61,7 +61,7 @@ func ServeIO(ctx context.Context, p Plugin, r io.Reader, w io.Writer) error {
 func wireSpec(s Spec) rpc.Spec {
 	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, SettingsSHA256: s.SettingsSHA256, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind, ExternalChannels: s.ExternalChannels, RemoteRevocation: s.RemoteRevocation}
 	for _, a := range s.Actions {
-		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts)})
+		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts), Placements: slices.Clone(a.Placements), PostActions: slices.Clone(a.PostActions), TimeoutMS: a.TimeoutMS})
 	}
 	return out
 }
@@ -341,7 +341,9 @@ func (s *server) runAction(ctx context.Context, c *rpc.Call) (any, error) {
 	}
 	defer s.leave()
 
-	ac := &actionCtx{id: in.ActionID, item: publicItem(in.Item, text)}
+	actionCtxLife, cancelAction := context.WithCancel(ctx)
+	defer cancelAction()
+	ac := &actionCtx{id: in.ActionID, item: publicItem(in.Item, text), parts: in.Parts, call: c, ctx: actionCtxLife}
 	if err := safely(func() error { return act.Run(ctx, ac) }); err != nil {
 		return nil, err
 	}
@@ -480,10 +482,13 @@ func (p *procCtx) patch(gen rpc.U64) rpc.Patch {
 }
 
 type actionCtx struct {
-	id   string
-	item Item
-	text string
-	set  bool
+	parts []rpc.ActionPart
+	call  *rpc.Call
+	ctx   context.Context
+	id    string
+	item  Item
+	text  string
+	set   bool
 }
 
 func (a *actionCtx) Action() string { return a.id }

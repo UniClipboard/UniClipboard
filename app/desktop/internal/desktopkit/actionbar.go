@@ -145,7 +145,7 @@ func (k Kit) ActionDockMenu(c *ui.Context, p MenuProps) (trigger ui.Element, cho
 	})
 	m.Popup(func(panel ui.Element) {
 		k.popupSurface(panel)
-		chosen = k.MenuEntries(c, m, p.Items)
+		k.menuEntriesInto(c, m, p.Items, &chosen)
 	})
 	return trigger, chosen
 }

@@ -120,10 +120,6 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 		})
 	})
 
-	if item.Restart || p.form != nil && p.form.state.Restart {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("需要重启")})
-	}
-
 	isSyncBackend := slices.Contains(item.Capabilities, "sync_backend")
 	if len(item.Actions) > 0 {
 		k.SettingsGroup(c.Key("external-plugin-actions"), desktopkit.SettingsGroupProps{Title: d.tr("动作")}, func() {

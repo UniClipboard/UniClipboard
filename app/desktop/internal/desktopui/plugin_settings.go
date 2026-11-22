@@ -152,10 +152,12 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 			pending = true
 		}
 	}
-	if pending {
+	p := &d.pluginSettings
+	external, externalSelected := d.installedExternalPlugin(p.id)
+	externalPending := externalSelected && (external.Restart || p.form != nil && p.form.state.Restart)
+	if pending || externalPending {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
 	}
-	p := &d.pluginSettings
 	if p.installError != "" {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: p.installError})
 	} else if p.installNotice != "" {
@@ -192,11 +194,9 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		}
 	}
 	if entry.id == "" {
-		for _, item := range l.externalPlugins {
-			if item.ID == p.id {
-				d.externalPluginDetail(c, k, item, cfg)
-				return
-			}
+		if externalSelected {
+			d.externalPluginDetail(c, k, external, cfg)
+			return
 		}
 		p.id = ""
 		p.form = nil

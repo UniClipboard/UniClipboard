@@ -1,100 +1,47 @@
-name: Release CLI
-on:
-  workflow_dispatch:
-    inputs:
-      candidate_run_id:
-        type: string
-        default: ''
-        description: Publish exact files from an already accepted canonical CLI build
-      channel:
-        type: choice
-        options: [alpha, stable]
-        required: true
+name: Read-only npm OIDC diagnostic
+on: workflow_dispatch
 permissions:
-  contents: write
-  actions: read
+  contents: read
   id-token: write
-concurrency:
-  group: release-cli
-  cancel-in-progress: false
 jobs:
-  resolve:
+  diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      staged: ${{ steps.resume.outputs.staged }}
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - name: Recover an already staged immutable candidate
-        id: resume
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+      - name: Check GitHub claims and npm exchange status
         run: |
-          if [ -n "$CANDIDATE_RUN" ]; then
-            python3 tools/release/cli_candidate.py --run-id "$CANDIDATE_RUN" --output dist/npm --require-macos-signing
-            echo "staged=true" >> "$GITHUB_OUTPUT"
-          else
-            python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/upload-artifact@v4
-        if: steps.resume.outputs.staged == 'true'
-        with:
-          name: cli-npm-resumed
-          path: dist/npm/
-          if-no-files-found: error
-  build:
-    needs: resolve
-    if: needs.resolve.outputs.staged != 'true'
-    uses: ./.github/workflows/build-cli.yml
-    with:
-      source_sha: ${{ github.sha }}
-      distribution: true
-    secrets:
-      POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-  publish:
-    needs: [resolve, build]
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22.23.4'
-      - run: npm install --global npm@11.21.2
-      - name: Isolate npm configuration for OIDC
-        run: |
-          echo "registry=https://registry.npmjs.org/" > "$RUNNER_TEMP/unic-npmrc"
-          echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/unic-npmrc" >> "$GITHUB_ENV"
-          echo "NODE_AUTH_TOKEN=" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.resolve.outputs.staged == 'true' && 'cli-npm-resumed' || 'cli-npm-candidate' }}
-          path: dist/npm
-      - name: Stage durable immutable build record
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 tools/release/release.py record --manifest dist/npm/release-manifest.json
-      - name: Publish and read back exact npm packages
-        env:
-          CHANNEL: ${{ inputs.channel }}
-        run: python3 tools/release/release.py publish --manifest dist/npm/release-manifest.json --channel "$CHANNEL" --receipt dist/publication.json
-      - name: Finalize build record
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 tools/release/release.py record --manifest dist/npm/release-manifest.json --finish --receipt dist/publication.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: cli-publication-receipt
-          path: dist/publication.json
-          if-no-files-found: warn
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import re
+          from urllib.error import HTTPError
+          from urllib.parse import quote
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+
+          opener = build_opener(NoRedirect())
+          url = os.environ['ACTIONS_ID_TOKEN_REQUEST_URL'] + '&audience=npm%3Aregistry.npmjs.org'
+          headers = {'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']}
+          with opener.open(Request(url, headers=headers), timeout=20) as response:
+              token = json.load(response)['value']
+          payload = token.split('.')[1]
+          identity = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
+          print(json.dumps({k: identity.get(k) for k in ('iss','aud','repository','workflow_ref','job_workflow_ref','ref','runner_environment')}))
+
+          for suffix in ('', '-darwin-x64', '-darwin-arm64', '-linux-x64', '-linux-arm64', '-win32-x64', '-win32-arm64'):
+              name = '@uniclipboard/cli' + suffix
+              endpoint = 'https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/' + quote(name, safe='@')
+              request = Request(endpoint, method='POST', headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              try:
+                  with opener.open(request, timeout=20) as response:
+                      print(name, response.status, 'token received' if json.load(response).get('token') else 'token missing')
+              except HTTPError as error:
+                  body = json.loads(error.read(4096))
+                  reason = str(body.get('message') or body.get('error') or '')[:250]
+                  reason = re.sub(r'[A-Za-z0-9_.=-]{40,}', '[redacted]', reason)
+                  print(name, error.code, reason)
+          PY

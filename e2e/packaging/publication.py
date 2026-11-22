@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise real release subprocesses and boto3 against disposable HTTP/S3 services."""
+
 import argparse
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -86,6 +87,8 @@ try:
         revision = 0
         contract = "product-version-build-v1"
         inject = None
+        npm_tag = "alpha"
+        npm_packages = {}
 
         class Server(BaseHTTPRequestHandler):
             def log_message(self, *args):
@@ -114,9 +117,25 @@ try:
                     return self.send(
                         200, {"buildIdentity": contract, "products": ["desktop"]}
                     )
-                if path == "/api/channels/desktop/alpha":
+                if path[1:] in npm_packages:
+                    item = npm_packages[path[1:]]
+                    return self.send(
+                        200,
+                        {
+                            "versions": {
+                                item["version"]: {
+                                    "dist": {"integrity": item["integrity"]}
+                                }
+                            },
+                            "dist-tags": {npm_tag: item["version"]},
+                        },
+                    )
+                if path in (
+                    "/api/channels/desktop/alpha",
+                    "/api/channels/desktop/stable",
+                ):
                     return self.send(200, {"data": {"internalRevision": revision}})
-                if path == "/v1/desktop/alpha.json":
+                if path in ("/v1/desktop/alpha.json", "/v1/desktop/stable.json"):
                     m = registrations[-1]
                     return self.send(
                         200,
@@ -170,8 +189,14 @@ try:
                     if not registrations:
                         registrations.append(data)
                     return self.send(201, {"data": {"id": "desktop/2.0.0/build.1"}})
-                if path == "/api/channels/desktop/alpha/promote":
-                    if data["expectedRevisions"]["desktop/alpha"] != revision:
+                if path in (
+                    "/api/channels/desktop/alpha/promote",
+                    "/api/channels/desktop/stable/promote",
+                ):
+                    channel = path.removeprefix("/api/channels/").removesuffix(
+                        "/promote"
+                    )
+                    if data["expectedRevisions"][channel] != revision:
                         return self.send(409, {})
                     revision += 1
                     return self.send(200, {"data": {"internalRevision": revision}})
@@ -190,7 +215,7 @@ try:
         )
         tool = ROOT / "tools/release/desktop_release.py"
 
-        def run(args, passed=True):
+        def run(args, passed=True, error=None):
             r = subprocess.run(
                 [sys.executable, str(tool), *map(str, args)],
                 cwd=ROOT,
@@ -200,6 +225,8 @@ try:
                 timeout=90,
             )
             if (r.returncode == 0) != passed:
+                raise RuntimeError(r.stderr[-3000:])
+            if error and error not in r.stderr:
                 raise RuntimeError(r.stderr[-3000:])
 
         catalogue = temp / "catalogue"
@@ -303,6 +330,94 @@ try:
         run(promote, passed=False)
         assert revision == 1
         report["checks"].append("stale revision rejected")
+        cli_path = temp / "cli.json"
+        cli = {
+            "schema": 1,
+            "product": "cli",
+            "version": "2.0.0",
+            "build_number": 1,
+            "npm_version": "2.0.0-build.1",
+            "targets": release.TARGETS,
+            "packages": [
+                {
+                    "name": name,
+                    "version": "2.0.0-build.1",
+                    "integrity": "sha512-fixture",
+                }
+                for name in [
+                    *(release.package.cli.package_name(t) for t in release.TARGETS),
+                    "@uniclipboard/cli",
+                ]
+            ],
+        }
+        release.save(cli_path, cli)
+        npm_packages.update((a["name"], a) for a in cli["packages"])
+        catalogue_json = release.package.cli.read_json(manifest)
+        catalogue_json["cli_manifest_sha256"] = release.package.sha(cli_path)
+        release.save(manifest, catalogue_json)
+        availability = release.package.cli.read_json(publication)
+        availability["manifest_sha256"] = release.package.sha(manifest)
+        release.save(publication, availability)
+        acceptance_path = temp / "acceptance.json"
+        acceptance = {
+            platform: {
+                "manifest_sha256": availability["manifest_sha256"],
+                "evidence": "https://example.com/native-acceptance/" + platform,
+                "artifacts": [
+                    {
+                        "file": a["file"],
+                        "sha256": a["sha256"],
+                        "package_lifecycle": "passed",
+                        "native_gui": "passed",
+                    }
+                    for a in catalogue_json["artifacts"]
+                    if a["target"].split("-")[0] == platform
+                ],
+            }
+            for platform in release.FORMATS
+        }
+        stable = promote.copy()
+        stable[stable.index("--channel") + 1] = "stable"
+        stable[stable.index("--expected-revision") + 1] = "1"
+        run(
+            stable,
+            passed=False,
+            error="stable requires three native acceptance receipts",
+        )
+        stable += [
+            "--cli-manifest",
+            cli_path,
+            "--registry",
+            base,
+            "--acceptance",
+            acceptance_path,
+        ]
+        release.save(
+            acceptance_path, {k: v for k, v in acceptance.items() if k != "linux"}
+        )
+        run(stable, passed=False, error="stable requires one receipt each")
+        release.save(acceptance_path, acceptance)
+        run(
+            stable,
+            passed=False,
+            error="npm latest does not select the locked CLI package",
+        )
+        npm_tag = "latest"
+        acceptance["linux"]["artifacts"][0]["sha256"] = "0" * 64
+        release.save(acceptance_path, acceptance)
+        run(stable, passed=False, error="invalid stable acceptance artifact")
+        assert revision == 1
+        acceptance["linux"]["artifacts"][0]["sha256"] = next(
+            a["sha256"]
+            for a in catalogue_json["artifacts"]
+            if a["file"] == acceptance["linux"]["artifacts"][0]["file"]
+        )
+        release.save(acceptance_path, acceptance)
+        run(stable)
+        assert revision == 2
+        report["checks"].append(
+            "stable requires exact receipts for all platforms and latest on all locked CLI packages"
+        )
         objects.clear()
         writes.clear()
         registrations.clear()

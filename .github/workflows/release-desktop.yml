@@ -4,11 +4,11 @@ on:
     inputs:
       operation:
         type: choice
-        options: [github-draft, publish, promote]
+        options: [preflight, github-draft, publish, promote]
         required: true
       candidate_run_id:
         type: string
-        required: true
+        description: Required for github-draft, publish and promote
       channel:
         type: choice
         options: [alpha, stable]
@@ -20,6 +20,9 @@ on:
       expected_revision:
         type: string
         default: '0'
+      stable_acceptance:
+        type: string
+        description: JSON with darwin, linux and windows receipts for stable promotion
 permissions:
   contents: read
   actions: read
@@ -27,7 +30,33 @@ concurrency:
   group: release-desktop
   cancel-in-progress: false
 jobs:
+  preflight:
+    if: inputs.operation == 'preflight'
+    runs-on: ubuntu-24.04
+    environment: Production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: pip install -r tools/release/requirements.txt
+      - name: Verify authenticated R2 read-back and both FlareRelease contracts
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+          R2_ENDPOINT: ${{ vars.R2_RELEASE_ENDPOINT }}
+          RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+        run: python3 tools/release/desktop_release.py preflight --endpoint "$R2_ENDPOINT" --admin "$RELEASE_ADMIN"
   deliver:
+    if: inputs.operation != 'preflight'
     permissions:
       contents: write
       actions: read
@@ -84,6 +113,8 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
           R2_ENDPOINT: ${{ vars.R2_RELEASE_ENDPOINT }}
@@ -98,6 +129,7 @@ jobs:
           RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
           CHANNEL: ${{ inputs.channel }}
           EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
         run: |
           python3 - <<'PY'
           import json, urllib.request
@@ -110,7 +142,12 @@ jobs:
               raise ValueError('publication receipt exceeds limit')
           open('dist/publication.json', 'wb').write(data)
           PY
-          python3 tools/release/desktop_release.py promote --manifest dist/catalogue/release-manifest.json --publication dist/publication.json --admin "$RELEASE_ADMIN" --channel "$CHANNEL" --expected-revision "$EXPECTED_REVISION" --receipt dist/promotion.json
+          args=()
+          if [[ "$CHANNEL" == stable ]]; then
+            printf '%s\n' "$STABLE_ACCEPTANCE" > dist/stable-acceptance.json
+            args+=(--acceptance dist/stable-acceptance.json --cli-manifest dist/cli-input/release-manifest.json)
+          fi
+          python3 tools/release/desktop_release.py promote --manifest dist/catalogue/release-manifest.json --publication dist/publication.json --admin "$RELEASE_ADMIN" --channel "$CHANNEL" --expected-revision "$EXPECTED_REVISION" --receipt dist/promotion.json "${args[@]}"
       - name: Publish alpha page only after origin availability
         if: inputs.operation == 'publish' && inputs.channel == 'alpha'
         env:
@@ -132,6 +169,7 @@ jobs:
           path: |
             dist/publication.json
             dist/promotion.json
+            dist/stable-acceptance.json
             dist/github-page/github-receipt.json
             dist/github-page/release-notes.md
             dist/github-page/SHA256SUMS.txt

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Immutable Desktop catalogue, conditional R2 delivery and FlareRelease API promotion."""
+
 import argparse
 from datetime import datetime
 import hashlib
@@ -10,6 +11,7 @@ import re
 import shutil
 import sys
 import subprocess
+from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
@@ -266,7 +268,7 @@ def assemble(args):
     print(manifest)
 
 
-def request(base, path, body=None, access=False):
+def request(base, path, body=None, access=False, token=None):
     headers = {
         "Accept": "application/json",
         "Cache-Control": "no-cache",
@@ -280,6 +282,8 @@ def request(base, path, body=None, access=False):
             if not os.environ.get(env):
                 raise ValueError("Cloudflare Access service credentials are required")
             headers[header] = os.environ[env]
+    if token:
+        headers["Authorization"] = "Bearer " + token
     data = None if body is None else json.dumps(body).encode()
     if data is not None:
         headers["Content-Type"] = "application/json"
@@ -317,9 +321,29 @@ def storage(endpoint, fixture):
     import boto3
     from botocore.config import Config
 
+    endpoint = safe_base(endpoint, fixture)
+    key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+    secret = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    if bool(key_id) != bool(secret):
+        raise ValueError("configure both R2 S3 credentials")
+    if not key_id and not fixture:
+        account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+        token = os.environ.get("CLOUDFLARE_API_TOKEN")
+        if (
+            not token
+            or not re.fullmatch(r"[a-f0-9]{32}", account)
+            or endpoint != f"https://{account}.r2.cloudflarestorage.com"
+        ):
+            raise ValueError(
+                "R2 token reuse requires the configured account's default S3 endpoint"
+            )
+        key_id = cloudflare_token_id(account, token)
+        secret = hashlib.sha256(token.encode()).hexdigest()
     return boto3.client(
         "s3",
-        endpoint_url=safe_base(endpoint, fixture),
+        endpoint_url=endpoint,
+        aws_access_key_id=key_id,
+        aws_secret_access_key=secret,
         region_name="auto",
         config=Config(
             signature_version="s3v4",
@@ -329,6 +353,97 @@ def storage(endpoint, fixture):
             response_checksum_validation="when_required",
         ),
     )
+
+
+def cloudflare_token_id(account, token):
+    for path in (f"/accounts/{account}/tokens/verify", "/user/tokens/verify"):
+        try:
+            response = request(
+                "https://api.cloudflare.com/client/v4", path, token=token
+            )
+        except HTTPError as error:
+            if error.code not in (400, 401, 403, 404):
+                raise
+            continue
+        result = response.get("result") or {}
+        key_id = result.get("id", "")
+        if (
+            response.get("success") is True
+            and result.get("status") == "active"
+            and re.fullmatch(r"[a-f0-9]{32}", key_id)
+        ):
+            return key_id
+    raise ValueError("Cloudflare token verification did not return an active token ID")
+
+
+def preflight(args):
+    client = storage(args.endpoint, False)
+    result = client.get_object(
+        Bucket=args.bucket, Key="artifacts/v1.6.2/SHA256SUMS.txt"
+    )
+    with result["Body"] as stream:
+        data = stream.read(2878)
+    if len(data) != 2877 or hashlib.sha256(data).hexdigest() != (
+        "07e5161104b7ae76508dbfb4df8d02198e874b06d1a945fe287af8eb840baf17"
+    ):
+        raise ValueError("R2 read-back of the known release object failed")
+    print("R2 authenticated read-back passed", flush=True)
+    check_contract(safe_base(args.admin), safe_base(args.public))
+    print("FlareRelease admin and public numbered contracts passed")
+
+
+def verify_cli(desktop, path, registry, stable=False):
+    if not path or package.sha(path) != desktop["cli_manifest_sha256"]:
+        raise ValueError("exact locked CLI manifest is required for Desktop delivery")
+    cli = package.cli.validate_manifest(path)
+    if set(cli["targets"]) != set(TARGETS):
+        raise ValueError("locked CLI manifest must cover all Desktop targets")
+    for item in cli["packages"]:
+        data = package.cli.registry_get(registry, item["name"])
+        remote = data.get("versions", {}).get(item["version"], {})
+        if remote.get("dist", {}).get("integrity") != item["integrity"]:
+            raise ValueError(
+                "locked CLI npm integrity is not verified: " + item["name"]
+            )
+        if stable and data.get("dist-tags", {}).get("latest") != item["version"]:
+            raise ValueError(
+                "npm latest does not select the locked CLI package: " + item["name"]
+            )
+
+
+def verify_stable_acceptance(manifest, desktop, path):
+    if not path:
+        raise ValueError("stable requires three native acceptance receipts")
+    receipts = package.cli.read_json(path)
+    if not isinstance(receipts, dict) or set(receipts) != set(FORMATS):
+        raise ValueError(
+            "stable requires one receipt each for darwin, linux and windows"
+        )
+    digest = package.sha(manifest)
+    for platform, receipt in receipts.items():
+        if receipt.get("manifest_sha256") != digest:
+            raise ValueError("stable acceptance catalogue digest mismatch: " + platform)
+        safe_base(receipt.get("evidence", ""))
+        expected = {
+            a["file"]: a["sha256"]
+            for a in desktop["artifacts"]
+            if a["target"].startswith(platform + "-")
+        }
+        for artifact in receipt["artifacts"]:
+            expected_digest = expected.pop(artifact["file"], None)
+            if (
+                expected_digest is None
+                or expected_digest != artifact.get("sha256")
+                or artifact.get("package_lifecycle") != "passed"
+                or artifact.get("native_gui") != "passed"
+            ):
+                raise ValueError(
+                    "invalid stable acceptance artifact: " + artifact["file"]
+                )
+        if expected:
+            raise ValueError(
+                "stable acceptance does not cover every artifact: " + platform
+            )
 
 
 def matches(client, bucket, key, path):
@@ -404,25 +519,7 @@ def publish(args):
     if date.tzinfo is None:
         raise ValueError("published-at must include a timezone")
     if not args.fixture:
-        if (
-            not args.cli_manifest
-            or package.sha(args.cli_manifest) != m["cli_manifest_sha256"]
-        ):
-            raise ValueError(
-                "exact locked CLI manifest is required before Desktop publication"
-            )
-        cli_manifest = package.cli.validate_manifest(args.cli_manifest)
-        for item in cli_manifest["packages"]:
-            remote = (
-                package.cli.registry_get("https://registry.npmjs.org", item["name"])
-                .get("versions", {})
-                .get(item["version"])
-            )
-            if (
-                not remote
-                or remote.get("dist", {}).get("integrity") != item["integrity"]
-            ):
-                raise ValueError("locked CLI npm availability is not verified")
+        verify_cli(m, args.cli_manifest, "https://registry.npmjs.org")
     body = registration(m, public, notes, published_at)
     check_contract(admin, public)
     client = storage(args.endpoint, args.fixture)
@@ -519,16 +616,14 @@ def promote(args):
     ):
         raise ValueError("matching publication read-back receipt is required")
     if args.channel == "stable":
-        for a in m["artifacts"]:
-            if (
-                not a["acceptance"].get("package_lifecycle")
-                or a["acceptance"].get("native_gui") != "passed"
-            ):
-                raise ValueError(
-                    "stable requires package lifecycle and native GUI acceptance"
-                )
-    admin, public = safe_base(args.admin, args.fixture), safe_base(
-        args.public, args.fixture
+        verify_stable_acceptance(manifest, m, args.acceptance)
+        registry, fixture_registry = package.cli.registry_url(args.registry)
+        if fixture_registry != args.fixture:
+            raise ValueError("a fixture must use an isolated npm registry")
+        verify_cli(m, args.cli_manifest, registry, stable=True)
+    admin, public = (
+        safe_base(args.admin, args.fixture),
+        safe_base(args.public, args.fixture),
     )
     check_contract(admin, public)
     channel_id = "desktop/" + args.channel
@@ -583,6 +678,11 @@ def main():
     s.add_argument("--output", required=True)
     s.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
     s.add_argument("--development", action="store_true")
+    s = sub.add_parser("preflight")
+    s.add_argument("--endpoint", required=True)
+    s.add_argument("--bucket", default="uniclipboard-releases")
+    s.add_argument("--admin", required=True)
+    s.add_argument("--public", default="https://release.uniclipboard.app")
     for name in ("publish", "promote"):
         s = sub.add_parser(name)
         s.add_argument("--manifest", required=True)
@@ -602,6 +702,9 @@ def main():
             s.add_argument("--published-at", default="")
         else:
             s.add_argument("--publication", required=True)
+            s.add_argument("--acceptance")
+            s.add_argument("--cli-manifest")
+            s.add_argument("--registry", default="https://registry.npmjs.org")
             s.add_argument("--channel", choices=["alpha", "stable"], required=True)
             s.add_argument("--expected-revision", type=int, required=True)
     args = p.parse_args()
@@ -616,6 +719,7 @@ def main():
         {
             "acquire": acquire,
             "assemble": assemble,
+            "preflight": preflight,
             "publish": publish,
             "promote": promote,
         }[args.command](args)

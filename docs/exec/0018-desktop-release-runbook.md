@@ -19,8 +19,8 @@ A later source change requires its own accepted candidate. Publication and promo
 
 1. Record Windows payloads and installers as unsigned when production Authenticode is unavailable. This accepted policy applies to alpha and stable. Keep false signature fields and the unsigned release-page warning. The discovered `signpath-test` environment is test signing only. Never mark it as a production certificate or re-sign accepted artifacts in place. macOS Developer ID/notarization and raw Ed25519 updater signatures remain required.
 2. Check approved durable custody for an existing compatible raw Ed25519 updater key before generating anything. Configure one matching durable pair; do not rotate or replace an existing key implicitly. Keep the private key in `UNIC_UPDATE_PRIVATE_KEY` and put the corresponding base64 public key in `products.desktop.update_public_key`. Use `go run ./tools/release/update-sign -keygen <private-directory>` to generate a protected directory. Upload the private key through GitHub's secret interface. Never commit it or substitute Minisign/Tauri key encodings.
-3. Reuse the existing organization-shared `FLARE_RELEASE_ACCESS_CLIENT_ID` / `FLARE_RELEASE_ACCESS_CLIENT_SECRET`; their repository-shared metadata and historical registration success are confirmed. The current S3 controller references `R2_RELEASE_ACCESS_KEY_ID` / `R2_RELEASE_SECRET_ACCESS_KEY` and `R2_RELEASE_ENDPOINT`, which are not configured in the inspected effective Actions scopes. Existing repository `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` already support the historical Wrangler route. First assess the documented in-runner S3 reuse bridge, preserving atomic create-only/full-byte read-back, before provisioning a separate pair. The known admin base is `https://release-admin.uniclipboard.app`; `FLARE_RELEASE_ADMIN_URL` is currently unwired. See [the corrected three-state credential audit](0018-release-credential-reconciliation.md). Do not infer absence from organization-wide enumeration failure or add duplicate Access secrets.
-4. Verify the existing deployment's authenticated numbered contract and public route behavior read-only. Only a confirmed incompatibility justifies proposing a separately reviewed Worker deployment. On 2026-11-13, public contract/feed requests returned 404; the later unauthenticated requests returned 403. Neither observation proves missing deployment or missing Access credentials. Admin source availability and v1 `ready` registration do not establish current numbered-v2 compatibility. Do not work around verification by writing D1 directly.
+3. Set `FLARE_RELEASE_ADMIN_URL` and `R2_RELEASE_ENDPOINT` in the Production environment. Reuse the organization-shared `FLARE_RELEASE_ACCESS_CLIENT_ID` and `FLARE_RELEASE_ACCESS_CLIENT_SECRET`. The controller uses a complete `R2_RELEASE_ACCESS_KEY_ID` / `R2_RELEASE_SECRET_ACCESS_KEY` pair when configured. Otherwise it uses the existing repository `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` to derive S3 credentials in process memory. Token reuse requires the default-jurisdiction S3 endpoint for the configured account.
+4. Run `Release Desktop` with `operation=preflight`. It performs a read-only authenticated R2 GET and checks both FlareRelease contracts. A successful read establishes read access. The create-only upload and full-byte verification still run during publication.
 5. Publish the exact locked CLI npm candidate through the existing CLI release gates. Configure trusted npm publishing and verify every selected platform package. Matching product version strings are insufficient.
 6. Complete native installer, sandbox, update-window and real-OS integration acceptance. The current native-window case uses a directory clipboard. Stable promotion requires the additional package-specific evidence recorded in the package-channel plan.
 
@@ -77,6 +77,37 @@ Each process fixture emits a report and SHA256SUMS. The canonical native-window 
 
 The current FlareRelease registration limit is 512 MiB across registered artifacts. The six updater archives must fit that limit. All 22 formats remain in the immutable object catalogue. [R2 conditional operations](https://developers.cloudflare.com/r2/api/s3/conditional-operations/) provide create-only object semantics; the controller also checks complete bytes on retries and read-back.
 
+## Stable acceptance input
+
+After alpha publication, assign a native verifier to each of macOS, Linux and Windows. Test the exact published artifacts on both architectures. Record package lifecycle and native GUI results with a link to the platform evidence. Use the release catalogue for each filename and digest. Keep a receipt outside the immutable catalogue. A release operator supplies the three receipts together in the `stable_acceptance` workflow input.
+
+The input is a JSON object with exactly three top-level keys, `darwin`, `linux` and `windows`. Each value has these fields.
+
+| Field | Required value |
+| --- | --- |
+| `manifest_sha256` | SHA-256 of the published Desktop catalogue |
+| `evidence` | HTTPS URL of the platform's retained acceptance evidence |
+| `artifacts` | One entry for every catalogue artifact for this platform |
+| `artifacts[].file` | Exact catalogue filename |
+| `artifacts[].sha256` | Exact catalogue artifact SHA-256 |
+| `artifacts[].package_lifecycle`, `artifacts[].native_gui` | `passed` after both checks pass for this artifact |
+
+The release operator reviews the linked evidence before dispatch. The controller checks results, digests, uniqueness and completeness. It records the submitted receipts in the Actions delivery artifact. Promote the locked CLI set to npm `latest` before Desktop stable promotion. The Desktop controller reads back `latest` and integrity for all seven packages before mutating the Desktop channel.
+
+```sh
+jq -n --slurpfile darwin darwin.json --slurpfile linux linux.json --slurpfile windows windows.json \
+  '{darwin: $darwin[0], linux: $linux[0], windows: $windows[0]}' > stable-acceptance.json
+gh workflow run release-desktop.yml --ref v2 \
+  -f operation=promote -f channel=stable -f candidate_run_id=<run-id> \
+  -f expected_revision=<revision> -F stable_acceptance=@stable-acceptance.json
+```
+
+## Default branch cutover
+
+Use `v2` as the next default branch. It contains the three independent release workflows and `pr-checks.yml` runs on pushes to `v2`. Retain `v1` for existing maintenance PRs and the older delivery source. Before changing the default, review the remaining v1 workflows and open PRs. Confirm which legacy jobs still need a manual entry point because GitHub requires dispatchable workflows to exist on the default branch.
+
+Apply the cutover with `gh repo edit UniClipboard/UniClipboard --default-branch v2`. Verify the default branch and that GitHub lists `release-cli.yml`, `release-desktop.yml` and `promote.yml`. Run the read-only Desktop preflight as the first dispatch. If the cutover needs to be reverted, set the default branch back to `v1`.
+
 ## GitHub page preview and draft
 
 The v1 reference is [v1.6.2](https://github.com/UniClipboard/UniClipboard/releases/tag/v1.6.2), with source template/workflow at `c6483d73c7a0234be68571fdb5fa3d38a17c4871`. v2 keeps the page structure and independent product identities. It does not reuse v1 mobile links or legacy signature assertions.
@@ -93,7 +124,7 @@ python3 tools/release/github_desktop.py preview \
 
 Use `--development` only for a local preview of unaccepted inputs. The page states that limitation. Inspect `release-notes.md`, `release-page.json` and `SHA256SUMS.txt`. The separate CLI links point to the locked CLI Release; Desktop assets remain private product payloads. Do not copy CLI files into this page under a second identity.
 
-The inspected repository default branch is still `v1`. Register the new workflow on the eventual default branch through the reviewed v2 rollout before using GitHub manual dispatch. Local preview and process acceptance do not require workflow registration. This migration does not modify v1 or change the default branch.
+Follow the default branch cutover above before dispatching the dedicated release workflows.
 
 After production prerequisites and explicit remote-write authorization, run `Release Desktop` with `operation=github-draft`, the accepted candidate run ID and optional `previous_tag`. This stages a draft only. It does not upload to R2, change a channel or publish the page. macOS production signing/notarization and raw updater signing remain required even for remote staging. Windows Authenticode may remain unsigned. Use `publish` and `promote` as described above to complete delivery.
 

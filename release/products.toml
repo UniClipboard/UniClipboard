@@ -15,7 +15,7 @@ cli_manifest_sha256 = "ae2bd7d0cb96675d052544a4365b11319f0868bf01aea6afc01a4fac3
 
 cli_artifact_run_id = 43419452491
 # Configure the durable raw Ed25519 public key before enabling in-app updates.
-update_public_key = ""
+update_public_key = "4/pGKRfV8KGneAnMEci+DnpdrnoFLM5uVhDq0Kp/pvk="
 
 [products.android]
 version = "0.1.0"

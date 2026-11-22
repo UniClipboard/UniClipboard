@@ -3,7 +3,7 @@ name: PR checks
 on:
   pull_request:
   push:
-    branches: [main, master]
+    branches: [v2]
   merge_group:
   workflow_dispatch:
 

@@ -45,8 +45,15 @@ func scenarioSidebarNavigation(t *testing.T) {
 				if all.X != 12 || all.H != 30 || work.X != all.X || work.H != all.H || all.X+all.W != 238 {
 					t.Errorf("sidebar has asymmetric padding or inconsistent row density: all=%+v tag=%+v", all, work)
 				}
-				if _, ok := tt.AccessByRole(ui.RoleListItem, "文本"); ok {
-					t.Error("builtin content types should stay out of the sidebar by default")
+				for _, label := range []string{"文本", "图片", "文件"} {
+					if _, ok := tt.AccessByRole(ui.RoleListItem, label); !ok {
+						t.Errorf("default content tag missing from the sidebar: %s", label)
+					}
+				}
+				for _, label := range []string{"文件夹", "代码", "链接"} {
+					if _, ok := tt.AccessByRole(ui.RoleListItem, label); ok {
+						t.Errorf("optional content tag visible by default: %s", label)
+					}
 				}
 				toggle, ok := tt.AccessByRole(ui.RoleButton, "切换侧栏")
 				if !ok || toggle.Bounds.W != 28 || toggle.Bounds.H != 28 {

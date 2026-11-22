@@ -191,11 +191,12 @@ func scenarioTokenSearch(t *testing.T) {
 							t.Fatal("chip and filter control drifted")
 						}
 					case "keyboard":
+						lastSource := d.devices[len(d.devices)-1].id
 						tt.Type("@")
 						tt.Key(0, ui.KeyUp)
 						tt.Key(0, ui.KeyTab)
-						if d.source != "phone" {
-							t.Fatal("Up did not wrap to the last candidate")
+						if d.source != lastSource {
+							t.Fatalf("Up did not wrap to the last candidate: source=%q want=%q", d.source, lastSource)
 						}
 						if err := tt.Click("清除搜索"); err != nil {
 							t.Fatal(err)

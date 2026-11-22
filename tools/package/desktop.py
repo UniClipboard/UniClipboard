@@ -28,6 +28,11 @@ spec = importlib.util.spec_from_file_location(
 cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)
 APP_ID = "app.uniclipboard.desktop"
+LINUX_ICONS = {
+    "icon.png": "512x512/apps/uniclipboard.png",
+    "icon-linux-48.png": "48x48/apps/uniclipboard.png",
+    "icon-linux.svg": "scalable/apps/uniclipboard.svg",
+}
 TARGETS = {
     os + "-" + arch
     for os in ["darwin", "linux", "windows"]
@@ -426,12 +431,15 @@ def stage(args):
         for name in ("BOARDUI-MIT.txt", "Inter-OFL.txt", "REMIX-LICENSE.txt"):
             shutil.copyfile(ROOT / "app/desktop/boardui/assets" / name, notices / name)
 
-        icon_name = {
-            "darwin": "icon.icns", "windows": "icon.ico", "linux": "icon.png"
+        icon_names = {
+            "darwin": ("icon.icns",),
+            "windows": ("icon.ico",),
+            "linux": LINUX_ICONS,
         }[os_name]
-        shutil.copyfile(
-            ROOT / "app/desktop/internal/appicons" / icon_name, resources / icon_name
-        )
+        for name in icon_names:
+            shutil.copyfile(
+                ROOT / "app/desktop/internal/appicons" / name, resources / name
+            )
         if os_name == "darwin":
             info = {
                 "CFBundleIconFile": "icon.icns",
@@ -692,10 +700,10 @@ def package(args):
                     "src": str(ROOT / "packaging/linux/uniclipboard.desktop"),
                     "dst": "/usr/share/applications/" + APP_ID + ".desktop",
                 },
-                {
-                    "src": str(payload / "icon.png"),
-                    "dst": "/usr/share/icons/hicolor/512x512/apps/uniclipboard.png",
-                },
+            ]
+            contents += [
+                {"src": str(payload / name), "dst": "/usr/share/icons/hicolor/" + path}
+                for name, path in LINUX_ICONS.items()
             ]
             dependencies = {
                 "deb": ["libgtk-3-0 | libgtk-3-0t64", "libayatana-appindicator3-1"],

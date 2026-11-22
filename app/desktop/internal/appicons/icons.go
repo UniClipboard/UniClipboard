@@ -1,12 +1,22 @@
-// Package appicons owns the original v1 Desktop artwork.
+// Package appicons owns the Desktop application and tray artwork.
 package appicons
 
 import _ "embed"
 
-// PNG is the shared application image.
+// PNG is the Linux window icon and the image used in About.
 //
 //go:embed icon.png
 var PNG []byte
+
+// MacPNG is the Dock icon for the unbundled development binary.
+//
+//go:embed icon-macos.png
+var MacPNG []byte
+
+// WindowsPNG is the image mygo uses for the DPI-aware window icons.
+//
+//go:embed icon-windows.png
+var WindowsPNG []byte
 
 // TrayPNG is the original black-on-transparent cat template.
 //

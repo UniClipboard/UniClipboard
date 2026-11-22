@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -199,7 +201,11 @@ func runGUI(settings *config.Manager) error {
 	})
 	mygo.App.WhenReady(func() {
 		if runtime.GOOS == "darwin" {
-			_ = mygo.App.Dock.SetIcon(appicons.PNG)
+			// Let Launch Services supply the icon for a packaged app.
+			program, _ := os.Executable()
+			if _, err := os.Stat(filepath.Join(filepath.Dir(program), "..", "Resources", "icon.icns")); err != nil || program == "" {
+				_ = mygo.App.Dock.SetIcon(appicons.MacPNG)
+			}
 		}
 		session.windowFrame = settings.Current().Desktop.SystemWindowFrame
 		view := session.view
@@ -245,7 +251,12 @@ func runGUI(settings *config.Manager) error {
 			opts.Width, opts.Height = 640, 560
 		}
 		g.win = mygo.NewWindow(opts)
-		_ = g.win.SetIcon(appicons.PNG)
+		switch runtime.GOOS {
+		case "windows":
+			_ = g.win.SetIcon(appicons.WindowsPNG)
+		case "linux":
+			_ = g.win.SetIcon(appicons.PNG)
+		}
 		g.win.OnClose(func(e *mygo.CloseEvent) {
 			if quitting {
 				return

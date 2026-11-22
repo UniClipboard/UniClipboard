@@ -35,6 +35,7 @@ func builtinTags() []historyTag {
 		{id: plugin.TagFolder, name: "文件夹", color: "gray", builtin: true, sidebar: false},
 		{id: plugin.TagCode, name: "代码", color: "purple", builtin: true, sidebar: false},
 		{id: plugin.TagLink, name: "链接", color: "blue", builtin: true, sidebar: false},
+		{id: plugin.TagEmail, name: "邮箱地址", color: "gray", builtin: true, sidebar: false},
 	}
 }
 func (d *viewState) projectTags(ids []string) {

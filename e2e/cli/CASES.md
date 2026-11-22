@@ -15,6 +15,7 @@
 | [cold-start-send](#cold-start-send) | 冷启动 CLI 发送文本，等待本次发送完成后才停止临时服务 |
 | [content-formats](#content-formats) | HTML、PNG 和文件原样同步 |
 | [crash-and-suspend-recovery](#crash-and-suspend-recovery) | 对端崩溃或挂起后自动恢复 |
+| [custom-content-tags](#custom-content-tags) | Custom content tagging rules |
 | [data-dir-single-instance](#data-dir-single-instance) | 同一数据目录只允许一个 unicd，日志不泄露秘密 |
 | [directory-auto-responsive](#directory-auto-responsive) | Slow automatic directory preparation does not block a newer copy |
 | [directory-cli-export](#directory-cli-export) | Directory CLI export preserves trees and protects user outputs |
@@ -652,6 +653,91 @@ node-stop beta STOP
 sleep 5s
 node-stop beta CONT
 retry-copy alpha beta after-suspend
+```
+
+</details>
+
+## custom-content-tags
+
+**Custom content tagging rules**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/custom-content-tags' -v`
+
+**目的**
+
+Verify regular expressions, local Lua, and stable built-in tag IDs through real services.
+
+
+**流程**
+
+1. Apply rules to one peer and verify the pending restart.
+2. Reject an invalid regular expression and verify the saved rules survive.
+3. Restart and send matching and nonmatching text between peers.
+
+**期望**
+
+- All matching rules contribute tags. Lua can add a label on receipt.
+- Links and email addresses use canonical built-in IDs.
+
+**不应**
+
+- Apply rules before restart or modify the clipboard content.
+- Save an invalid regex or create a second URL tag.
+
+<details><summary>脚本 testdata/custom-content-tags.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config apply $WORK/rules.toml
+u beta config --json
+stdout 'plugins.settings'
+cp beta/config.toml saved.toml
+! u beta config apply $WORK/invalid.toml
+stderr 'invalid regular expression'
+cmp beta/config.toml saved.toml
+u beta config --json
+stdout 'release-note'
+
+board-set alpha text before.txt
+board-wait beta text before.txt
+until beta 'builtin:link' h list -n 1 --json
+! stdout '"release-note"'
+! stdout '"url"'
+
+node-stop beta
+node-start beta
+until alpha 'online' device list
+until beta 'online' device list
+u beta config --json
+! stdout 'plugins.settings'
+u beta h list -n 1 --json
+! stdout '"issue"'
+board-set alpha text matching.txt
+board-wait beta text matching.txt
+until beta '"issue"' h list -n 1 --json
+u beta h list -n 1 --json
+stdout '"builtin:link"'
+stdout '"builtin:email"'
+stdout '"issue"'
+stdout '"release-note"'
+stdout '"from-lua"'
+! stdout '"url"'
+u alpha h list -n 1 --json
+! stdout '"issue"'
+! stdout '"release-note"'
+! stdout '"from-lua"'
+
+board-set alpha text plain.txt
+board-wait beta text plain.txt
+until beta '"total_bytes":25' h list -n 1 --json
+! stdout '"issue"'
+! stdout '"release-note"'
+! stdout '"from-lua"'
+
+board-set beta text local.txt
+until beta '"tags":\["builtin:text","issue"\]' h list -n 1 --json
 ```
 
 </details>

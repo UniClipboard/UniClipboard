@@ -281,7 +281,7 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 				return e
 			}
 			enabled := a[0] == "enabled"
-			if slices.Contains(it.Tags, "builtin:text") != enabled || slices.Contains(it.Tags, "email") != enabled {
+			if slices.Contains(it.Tags, "builtin:text") != enabled || slices.Contains(it.Tags, "builtin:email") != enabled {
 				return fmt.Errorf("processor tags do not match %s: %v", a[0], it.Tags)
 			}
 			actions, e := s.client.Actions(s.ctx)

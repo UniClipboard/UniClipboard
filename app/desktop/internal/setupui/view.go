@@ -268,9 +268,10 @@ func actionButton(c *ui.Context, k desktopkit.Kit, key, label string, variant de
 		Busy:     busy,
 	})
 	if variant != desktopkit.Link {
-		if size == desktopkit.SizeLarge {
+		switch size {
+		case desktopkit.SizeLarge:
 			b.MinWidth(148).Height(38).Radius(9).Justify(ui.Center)
-		} else if size == desktopkit.SizeMedium {
+		case desktopkit.SizeMedium:
 			b.MinWidth(92).Justify(ui.Center)
 		}
 	}

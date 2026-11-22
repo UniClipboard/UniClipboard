@@ -41,49 +41,127 @@ func (f *pluginSettingsForm) load(state api.PluginSettings) error {
 	return nil
 }
 
+func (d *viewState) externalPluginStatus(item api.PluginInfo) (string, desktopkit.StatusTone) {
+	l := d.live
+	if l != nil && slices.Contains(item.Capabilities, "sync_backend") {
+		for _, backend := range l.syncBackends {
+			if backend.ID == item.ID {
+				switch backend.State {
+				case "running":
+					return d.tr("运行中"), desktopkit.StatusPositive
+				case "restarting":
+					return d.tr("正在重启"), desktopkit.StatusWarning
+				case "unavailable":
+					return d.tr("不可用"), desktopkit.StatusCritical
+				case "suspended":
+					return d.tr("已暂停"), desktopkit.StatusWarning
+				}
+			}
+		}
+	}
+	if item.RunningVersion != "" {
+		if item.Restart {
+			return d.tr("需要重启"), desktopkit.StatusWarning
+		}
+		return d.tr("运行中"), desktopkit.StatusPositive
+	}
+	if item.Restart && item.Configured {
+		return d.tr("需要重启"), desktopkit.StatusWarning
+	}
+	return d.tr("已停用"), desktopkit.StatusNeutral
+}
+
 func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item api.PluginInfo, cfg config.Config) {
 	l := d.live
 	p := &d.pluginSettings
-	k.EntityHeader(c.Key("external-plugin-header"), desktopkit.EntityHeaderProps{Icon: desktopkit.IconEdit, Title: item.ID, Description: item.ImplementationID + " · " + item.Version}, nil)
-	state := d.tr("未运行")
-	for _, backend := range l.syncBackends {
-		if backend.ID == item.ID {
-			switch backend.State {
-			case "running":
-				state = d.tr("运行中")
-			case "restarting":
-				state = d.tr("正在重启")
-			case "unavailable":
-				state = d.tr("不可用")
-			case "suspended":
-				state = d.tr("已暂停")
-			}
+	cat, hasCat := d.marketplaceEntry(item.ID)
+	title := item.ID
+	desc := item.ImplementationID + " · v" + item.Version
+	badge := d.tr("已安装")
+	if hasCat {
+		title = cat.Name
+		desc = cat.Summary
+		if cat.Official {
+			badge = d.tr("官方")
 		}
 	}
-	k.Text(c, d.tr("运行状态：")+state, secondary)
-	on := item.Configured
-	k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{Label: d.tr("启用")}, nil, func() {
-		if !k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy || l.loading}).Changed() {
-			return
-		}
-		cfg.Plugins.Lua = slices.DeleteFunc(slices.Clone(cfg.Plugins.Lua), func(id string) bool { return id == item.ID })
-		cfg.Plugins.Order = slices.DeleteFunc(slices.Clone(cfg.Plugins.Order), func(id string) bool { return id == item.ID })
-		if in, known := cfg.Plugins.Instances[item.ID]; known {
-			in.Enabled = nil
-			if !on {
-				in.Enabled = &on
-			}
-			cfg.Plugins.Instances[item.ID] = in
-		}
-		if on {
-			cfg.Plugins.Order = append(cfg.Plugins.Order, item.ID)
-		}
-		d.saveLiveConfig(cfg)
+	stateText, stateTone := d.externalPluginStatus(item)
+	statusColor := desktopkit.TagColor("gray")
+	switch stateTone {
+	case desktopkit.StatusPositive:
+		statusColor = "green"
+	case desktopkit.StatusWarning, desktopkit.StatusCritical:
+		statusColor = "orange"
+	}
+	icon, tone := pluginIconForCategory(cat.Category, item.Capabilities)
+	ui.Row(c.Key("external-plugin-header")).Gap(12).AlignItems(ui.Start).Children(func() {
+		pluginIconTile(c.Key("ico"), k, icon, tone, 46)
+		ui.Column(c.Key("meta")).Grow(1).MinWidth(0).Gap(4).Children(func() {
+			ui.Row(c.Key("top")).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+				k.Text(c.Key("title"), title, desktopkit.TextProps{Role: desktopkit.RoleTitle, Emphasized: true})
+				if badge != "" {
+					k.Tag(c.Key("badge"), badge, desktopkit.TagProps{Color: "blue"})
+				}
+				k.Tag(c.Key("status"), stateText, desktopkit.TagProps{Color: statusColor})
+			})
+			k.Text(c.Key("desc"), desc, secondary)
+		})
 	})
+
+	k.SettingsGroup(c.Key("external-plugin-control"), desktopkit.SettingsGroupProps{}, func() {
+		on := item.Configured
+		k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{
+			Label:       d.tr("启用"),
+			Description: d.tr("退出并重新启动桌面端后生效。"),
+		}, nil, func() {
+			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy || l.loading}).Changed() {
+				d.setExternalPluginEnabled(cfg, item.ID, on)
+			}
+		})
+	})
+
 	if item.Restart || p.form != nil && p.form.state.Restart {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("需要重启")})
 	}
-	if item.Kind == "go" && slices.Contains(item.Capabilities, "sync_backend") {
+
+	isSyncBackend := slices.Contains(item.Capabilities, "sync_backend")
+	if len(item.Actions) > 0 {
+		k.SettingsGroup(c.Key("external-plugin-actions"), desktopkit.SettingsGroupProps{Title: d.tr("动作")}, func() {
+			for _, a := range item.Actions {
+				accepts := make([]string, 0, len(a.Accepts))
+				for _, t := range a.Accepts {
+					switch t {
+					case "text":
+						accepts = append(accepts, d.tr("文本"))
+					case "image":
+						accepts = append(accepts, d.tr("图片"))
+					case "files":
+						accepts = append(accepts, d.tr("文件"))
+					default:
+						accepts = append(accepts, t)
+					}
+				}
+				k.SettingsRow(c.Key("act-"+a.ID), desktopkit.SettingsRowProps{
+					Label:       a.Title,
+					Description: d.tr("接受：") + strings.Join(accepts, " · "),
+				}, nil, nil)
+			}
+		})
+	}
+
+	if hasCat && !item.HasSettings && !isSyncBackend {
+		if len(cat.HowTo) > 0 {
+			ui.Column(c.Key("external-howto")).Gap(6).Children(func() {
+				k.Text(c.Key("h"), d.tr("如何使用"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Emphasized: true})
+				pluginHowToCard(c.Key("card"), k, cat.HowTo)
+			})
+		}
+		if cat.Privacy != "" {
+			k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneInfo, Title: d.tr("隐私与安全"), Text: cat.Privacy})
+		}
+	}
+
+	if item.Kind == "go" && isSyncBackend {
 		k.SettingsGroup(c.Key("create-instance"), desktopkit.SettingsGroupProps{Title: d.tr("新增同步实例")}, func() {
 			k.FormField(c, desktopkit.FormFieldProps{Label: d.tr("实例 ID"), Value: &p.instanceName, Placeholder: "example.work", Hint: d.tr("新实例使用独立设置和私有数据。配置并启用后重启生效。")})
 			if k.Button(c.Key("create-instance"), d.tr("创建实例"), desktopkit.ButtonProps{Disabled: l.busy || strings.TrimSpace(p.instanceName) == ""}).Clicked() {
@@ -92,7 +170,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			}
 		})
 	}
-	if slices.Contains(item.Capabilities, "sync_backend") {
+	if isSyncBackend {
 		d.syncPluginPolicy(c, k, item.ID, cfg)
 		if item.ExternalChannels {
 			k.Text(c, d.tr("此后端使用外部渠道。请在插件设置中配置授权。无需设备指纹或设备配对码。"), footnote)
@@ -100,40 +178,99 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			k.Text(c, d.tr("对象存储设备协议尚未实现。此类型暂不可用。"), footnote)
 		}
 	}
-	if !item.HasSettings {
-		return
-	}
-	if p.form == nil {
-		p.form = &pluginSettingsForm{}
-		d.refreshPluginForm(item.ID, p.form, nil)
-	}
-	f := p.form
-	if f.message != "" {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr(f.message)})
-	}
-	if !f.ready {
-		if k.Button(c.Key("load-plugin-settings"), d.tr("重试"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
-			d.refreshPluginForm(item.ID, f, nil)
+
+	if item.HasSettings {
+		if p.form == nil {
+			p.form = &pluginSettingsForm{}
+			d.refreshPluginForm(item.ID, p.form, nil)
 		}
-		return
-	}
-	valid := true
-	k.SettingsGroup(c.Key("schema-settings"), desktopkit.SettingsGroupProps{Title: d.tr("插件设置")}, func() {
-		valid = d.pluginFormObject(c, k, f, &f.schema, f.values, "")
-	})
-	ui.Row(c).Gap(8).Children(func() {
-		if k.Button(c.Key("reload-plugin-settings"), d.tr("重新加载"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
-			d.refreshPluginForm(item.ID, f, nil)
+		f := p.form
+		if f.message != "" {
+			k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr(f.message)})
 		}
-		if k.Button(c.Key("save-plugin-settings"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: !valid || l.busy}).Clicked() {
-			raw, err := json.Marshal(f.values)
-			if err != nil || len(raw) > settings.MaxConfigBytes {
-				f.message = "插件设置超过大小限制。"
-				return
+		if !f.ready {
+			if k.Button(c.Key("load-plugin-settings"), d.tr("重试"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+				d.refreshPluginForm(item.ID, f, nil)
 			}
-			d.refreshPluginForm(item.ID, f, &api.PluginSettingsEdit{Revision: f.state.Revision, Values: raw})
+		} else {
+			valid := true
+			k.SettingsGroup(c.Key("schema-settings"), desktopkit.SettingsGroupProps{Title: d.tr("插件设置")}, func() {
+				valid = d.pluginFormObject(c, k, f, &f.schema, f.values, "")
+			})
+			ui.Row(c).Gap(8).Children(func() {
+				if k.Button(c.Key("reload-plugin-settings"), d.tr("重新加载"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+					d.refreshPluginForm(item.ID, f, nil)
+				}
+				if k.Button(c.Key("save-plugin-settings"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: !valid || l.busy}).Clicked() {
+					raw, err := json.Marshal(f.values)
+					if err != nil || len(raw) > settings.MaxConfigBytes {
+						f.message = "插件设置超过大小限制。"
+						return
+					}
+					d.refreshPluginForm(item.ID, f, &api.PluginSettingsEdit{Revision: f.state.Revision, Values: raw})
+				}
+			})
+		}
+	}
+
+	// Collapsible source & technical info (kept out of sight until expanded).
+	techIcon := desktopkit.IconChevronRight
+	if p.detailTechOpen {
+		techIcon = desktopkit.IconChevronDown
+	}
+	ui.Row(c.Key("detail-tech-row")).AlignItems(ui.Center).Children(func() {
+		if k.Button(c.Key("detail-toggle-tech"), d.tr("查看来源与技术信息"), desktopkit.ButtonProps{Variant: desktopkit.Link, Icon: techIcon}).Clicked() {
+			p.detailTechOpen = !p.detailTechOpen
 		}
 	})
+	if p.detailTechOpen {
+		runningVer := d.tr("未运行")
+		if item.RunningVersion != "" {
+			runningVer = "v" + item.RunningVersion
+		}
+		facts := []desktopkit.Fact{
+			{ID: "id", Label: d.tr("插件标识"), Value: item.ID, Monospace: true},
+			{ID: "ver", Label: d.tr("安装版本"), Value: "v" + item.Version, Monospace: true},
+			{ID: "run", Label: d.tr("运行版本"), Value: runningVer, Monospace: true},
+		}
+		if item.Repository != "" {
+			facts = append(facts, desktopkit.Fact{ID: "repo", Label: d.tr("开源仓库"), Value: item.Repository, Monospace: true})
+		}
+		if len(item.Commit) >= 12 {
+			facts = append(facts, desktopkit.Fact{ID: "commit", Label: "Commit", Value: item.Commit[:12], Monospace: true})
+		}
+		k.FactList(c.Key("external-plugin-facts"), desktopkit.FactListProps{Label: d.tr("来源信息"), Facts: facts})
+	}
+
+	if item.HasPrevious || item.Source != "local" {
+		k.SettingsGroup(c.Key("external-plugin-manage"), desktopkit.SettingsGroupProps{Title: d.tr("管理")}, func() {
+			if item.HasPrevious {
+				k.SettingsRow(c.Key("rollback-row"), desktopkit.SettingsRowProps{
+					Label:       d.tr("回滚至上一版本"),
+					Description: "v" + item.PreviousVersion,
+				}, nil, func() {
+					if k.Button(c.Key("rollback-btn"), d.tr("回滚"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+						p.rollbackOpen = true
+						p.rollbackID = item.ID
+						p.rollbackName = title
+						p.rollbackVer = item.PreviousVersion
+					}
+				})
+			}
+			if item.Source != "local" {
+				k.SettingsRow(c.Key("uninstall-row"), desktopkit.SettingsRowProps{
+					Label:       d.tr("卸载插件"),
+					Description: d.tr("重启时移除程序文件，保留剪贴板历史与本地配置。"),
+				}, nil, func() {
+					if k.Button(c.Key("uninstall-btn"), d.tr("卸载"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Icon: desktopkit.IconDelete, Disabled: l.busy}).Clicked() {
+						p.uninstallOpen = true
+						p.uninstallID = item.ID
+						p.uninstallName = title
+					}
+				})
+			}
+		})
+	}
 }
 
 func (d *viewState) refreshPluginForm(id string, f *pluginSettingsForm, edit *api.PluginSettingsEdit) {
@@ -225,22 +362,26 @@ func (d *viewState) pluginFormObject(c *ui.Context, k desktopkit.Kit, f *pluginS
 					valid = valid && ok
 					return
 				}
-				if !required {
-					if k.Switch(c.Key("present"), &present, desktopkit.SwitchProps{Label: label}).Changed() {
-						if present {
-							value = initialFieldValue(field)
-						} else {
-							delete(values, key)
+				if !required && !present {
+					ui.Row(c.Key("unset")).Gap(8).AlignItems(ui.Center).Children(func() {
+						k.Text(c, d.tr("未设置"), footnote)
+						if k.Button(c.Key("set"), d.tr("设置"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked() {
+							values[key] = initialFieldValue(field)
 						}
-					}
-					if !present {
-						return
-					}
-				} else if !present {
+					})
+					return
+				}
+				if !present {
 					value = initialFieldValue(field)
 				}
 				updated, ok := d.pluginFormField(c, k, f, field, value, path, label)
 				values[key] = updated
+				if !required {
+					if k.Button(c.Key("unset-btn"), d.tr("移除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked() {
+						delete(values, key)
+						ok = true
+					}
+				}
 				valid = valid && ok
 			})
 		}
@@ -277,7 +418,7 @@ func (d *viewState) pluginSecretField(c *ui.Context, k desktopkit.Kit, f *plugin
 	text, _ := value.(string)
 	placeholder := d.tr("未设置")
 	if saved && !edited {
-		placeholder = d.tr("已设置")
+		placeholder = d.tr("已加密保存")
 	}
 	if k.TextField(c.Key("password"), desktopkit.TextFieldProps{Label: label, Value: &text, Placeholder: placeholder, Password: true}).Edited {
 		values[key], edited, value = text, true, text

@@ -273,6 +273,10 @@ func readInstalled(dir, id string, pin installedPlugin) (Script, error) {
 		s.BinarySHA256 = pin.Digest
 	}
 	s.Commit, s.SourceKind, s.Repository = pin.Commit, pin.Source, pin.Repository
+	if pin.Previous != nil {
+		s.HasPrevious = true
+		s.PreviousVersion = pin.Previous.Version
+	}
 	return s, nil
 }
 

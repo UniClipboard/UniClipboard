@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 
@@ -19,9 +20,13 @@ import (
 func (n *Node) Plugins(context.Context) ([]api.PluginInfo, error) {
 	n.pluginMu.Lock()
 	defer n.pluginMu.Unlock()
+	return n.pluginsLocked(), nil
+}
+
+func (n *Node) pluginsLocked() []api.PluginInfo {
 	out := []api.PluginInfo{}
 	if n.luaDir == "" {
-		return out, nil
+		return out
 	}
 	found, _ := luascripts.Scan(n.luaDir)
 	cfg := n.cfg.Current()
@@ -50,8 +55,38 @@ func (n *Node) Plugins(context.Context) ([]api.PluginInfo, error) {
 		if source == "" {
 			source = "local"
 		}
-		out = append(out, api.PluginInfo{ID: id, ImplementationID: s.Manifest.ID, Version: s.Manifest.Version, Kind: s.Manifest.Kind, Source: source,
-			Capabilities: slices.Clone(s.Manifest.Capabilities), TransportKind: s.Manifest.TransportKind, ExternalChannels: s.Manifest.ExternalChannels, Configured: wanted, RunningVersion: running.Manifest.Version, HasSettings: s.Schema != nil, Restart: restart})
+		var actions []api.PluginActionInfo
+		for _, a := range s.Manifest.Actions {
+			actions = append(actions, api.PluginActionInfo{
+				ID:          a.ID,
+				Key:         id + "/" + a.ID,
+				Title:       a.Title,
+				Accepts:     slices.Clone(a.Accepts),
+				Placements:  slices.Clone(a.Placements),
+				PostActions: slices.Clone(a.PostActions),
+				TimeoutMS:   a.TimeoutMS,
+			})
+		}
+		out = append(out, api.PluginInfo{
+			ID:               id,
+			ImplementationID: s.Manifest.ID,
+			Version:          s.Manifest.Version,
+			Kind:             s.Manifest.Kind,
+			Source:           source,
+			Repository:       s.Repository,
+			Commit:           s.Commit,
+			HasPrevious:      s.HasPrevious,
+			PreviousVersion:  s.PreviousVersion,
+			Events:           slices.Clone(s.Manifest.Events),
+			Actions:          actions,
+			Capabilities:     slices.Clone(s.Manifest.Capabilities),
+			TransportKind:    s.Manifest.TransportKind,
+			ExternalChannels: s.Manifest.ExternalChannels,
+			Configured:       wanted,
+			RunningVersion:   running.Manifest.Version,
+			HasSettings:      s.Schema != nil,
+			Restart:          restart,
+		})
 	}
 	slices.SortFunc(out, func(a, b api.PluginInfo) int {
 		if a.ID < b.ID {
@@ -62,7 +97,115 @@ func (n *Node) Plugins(context.Context) ([]api.PluginInfo, error) {
 		}
 		return 0
 	})
-	return out, nil
+	return out
+}
+
+func (n *Node) PluginMarketplace(ctx context.Context, refresh bool) (api.PluginMarketplace, error) {
+	return luascripts.FetchMarketplace(ctx, n.luaDir, refresh), nil
+}
+
+func (n *Node) InstallPlugin(ctx context.Context, in api.PluginInstallRequest) (api.PluginInfo, error) {
+	if n.luaDir == "" {
+		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "unsupported", Message: "plugin installation unavailable"}
+	}
+	repo := strings.TrimSpace(in.Repository)
+	if repo == "" {
+		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "invalid_argument", Message: "repository URL is required"}
+	}
+	id, err := luascripts.Install(ctx, n.luaDir, luascripts.InstallOptions{
+		Repository: repo,
+		Ref:        strings.TrimSpace(in.Ref),
+		Path:       strings.TrimSpace(in.Path),
+		Build:      in.Build,
+		Replace:    in.Replace,
+	})
+	if err != nil {
+		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "install_failed", Message: err.Error()}
+	}
+	n.pluginMu.Lock()
+	defer n.pluginMu.Unlock()
+	if in.Enable {
+		if err := n.setPluginEnabledLocked(id, true); err != nil {
+			return api.PluginInfo{}, err
+		}
+	}
+	n.hub.emit(api.Event{Kind: "config"})
+	for _, item := range n.pluginsLocked() {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return api.PluginInfo{ID: id, ImplementationID: id}, nil
+}
+
+func (n *Node) UninstallPlugin(_ context.Context, id string) error {
+	if n.luaDir == "" || !luascripts.ValidID(id) {
+		return &api.Error{Status: 400, Reason: "invalid_argument", Message: "invalid plugin id"}
+	}
+	n.pluginMu.Lock()
+	defer n.pluginMu.Unlock()
+	err := luascripts.Uninstall(n.luaDir, id, func() error {
+		return n.setPluginEnabledLocked(id, false)
+	})
+	if err != nil {
+		return &api.Error{Status: 400, Reason: "invalid_argument", Message: err.Error()}
+	}
+	n.hub.emit(api.Event{Kind: "config"})
+	return nil
+}
+
+func (n *Node) RollbackPlugin(_ context.Context, id string) (api.PluginInfo, error) {
+	if n.luaDir == "" || !luascripts.ValidID(id) {
+		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "invalid_argument", Message: "invalid plugin id"}
+	}
+	n.pluginMu.Lock()
+	defer n.pluginMu.Unlock()
+	if err := luascripts.Rollback(n.luaDir, id); err != nil {
+		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "invalid_argument", Message: err.Error()}
+	}
+	n.hub.emit(api.Event{Kind: "config"})
+	for _, item := range n.pluginsLocked() {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return api.PluginInfo{ID: id, ImplementationID: id}, nil
+}
+
+func (n *Node) setPluginEnabledLocked(id string, on bool) error {
+	st := n.cfg.State()
+	cfg := st.Config
+	cfg.Plugins.Lua = slices.DeleteFunc(slices.Clone(cfg.Plugins.Lua), func(x string) bool { return x == id })
+	cfg.Plugins.Order = slices.DeleteFunc(slices.Clone(cfg.Plugins.Order), func(x string) bool { return x == id })
+	if cfg.Plugins.Instances != nil {
+		nextInstances := make(map[string]config.Instance, len(cfg.Plugins.Instances))
+		for k, v := range cfg.Plugins.Instances {
+			nextInstances[k] = v
+		}
+		if in, known := nextInstances[id]; known {
+			in.Enabled = nil
+			if !on {
+				disabled := false
+				in.Enabled = &disabled
+			}
+			nextInstances[id] = in
+		}
+		cfg.Plugins.Instances = nextInstances
+	}
+	if on {
+		cfg.Plugins.Order = append(cfg.Plugins.Order, id)
+	}
+	var raw bytes.Buffer
+	if err := toml.NewEncoder(&raw).Encode(cfg); err != nil {
+		return err
+	}
+	if _, err := n.cfg.Replace(st.Revision, raw.Bytes()); err != nil {
+		if errors.Is(err, config.ErrConflict) {
+			return &api.Error{Status: 409, Reason: "conflict", Message: "configuration changed; retry"}
+		}
+		return err
+	}
+	return nil
 }
 
 func (n *Node) PluginSettings(ctx context.Context, id string) (api.PluginSettings, error) {

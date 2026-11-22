@@ -1,298 +1,235 @@
-// Package setupui renders the first-install prototype with the shared UI Kit.
+// Package setupui renders the BoardUI v2 first-install setup and offline v1 migration flow.
 package setupui
 
 import (
-	"fmt"
+	"sync"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/appicons"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
 	"github.com/uniclipboard/unic/internal/v1migration"
 )
 
 type Model struct {
-	Stage, Source, Error, Language           string
-	Detecting, Found, PendingStart, Entering bool
-	Progress                                 v1migration.Progress
-	Report                                   v1migration.Report
+	Stage, Source, Error, Language                          string
+	Detecting, Found, PendingStart, Entering, MigrationOnly bool
+	Progress                                                v1migration.Progress
+	Report                                                  v1migration.Report
 }
+
 type Fields struct{ Passphrase string }
+
 type Actions struct{ Begin, Redetect, Pick, Start, Unlock, Stop, Enter func() }
 
-// Render is shared by the live flow and software-view acceptance.
+var brandLogoSVG = sync.OnceValue(func() *ui.SVG {
+	return ui.MustParseSVG(appicons.LogoSVG)
+})
+
+const compactBreakpoint float32 = 700
+
+// Render is shared by the live Desktop setup flow and software-view acceptance.
 func Render(c *ui.Context, m Model, fields *Fields, a Actions) {
 	k := desktopkit.For(c.Theme().Dark)
 	tr := func(s string) string { return i18n.Translate(m.Language, s) }
-	k.UiRoot(c, func() {
+	w, _ := c.Size()
+	compact := w > 0 && w < compactBreakpoint
 
-		text := func(key, value string, p desktopkit.TextProps) { k.Text(c.Key(key), tr(value), p) }
-		size := desktopkit.SizeMedium
-		if m.Stage == "welcome" || m.Stage == "complete" {
-			size = desktopkit.SizeLarge
-		}
-		button := func(key, label string, variant desktopkit.ButtonVariant, disabled bool, action func()) {
-			if k.Button(c.Key(key), tr(label), desktopkit.ButtonProps{Size: size, Variant: variant, Disabled: disabled || action == nil || m.Entering}).Clicked() && action != nil {
-				action()
-			}
-		}
-		notice := func(key, title string, tone desktopkit.NoticeTone) {
-			k.InlineNotice(c.Key(key), desktopkit.NoticeProps{Title: tr(title), Tone: tone})
-		}
-		secondary := desktopkit.TextProps{Tone: desktopkit.ToneSecondary, Role: desktopkit.RoleCaption}
+	k.UiRoot(c, func() {
 		if m.Stage == "welcome" {
-			ui.Column(c.Key("welcome")).Grow(1).FillWidth().Padding(24, 36).Gap(12).Center().Children(func() {
-				ui.Box(c.Key("logo")).Size(76, 76).Radius(20).Background(c.Theme().Accent).Center().Children(func() { k.Icon(c, desktopkit.IconCopy, 40).TextColor(ui.RGB(255, 255, 255)) })
-				k.Text(c.Key("heading"), tr("欢迎使用 UniClipboard"), desktopkit.TextProps{Role: desktopkit.RoleTitle}).FontSize(26).Margin(10, 0, 0)
-				text("slogan", "让每一次复制更有用", desktopkit.TextProps{Tone: desktopkit.ToneSecondary})
-				ui.Box(c).Margin(20, 0, 0).Children(func() { button("begin", "开始使用", desktopkit.Primary, m.PendingStart, a.Begin) })
-				ui.Row(c.Key("detection")).Height(34).Gap(6).Center().Children(func() {
-					switch {
-					case m.Detecting:
-						ui.Spinner(c)
-						text("detecting", "正在检查这台电脑上的 v1 数据…", secondary)
-					case m.Error != "":
-						text("detection-error", m.Error, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneCritical})
-						button("redetect", "重试", desktopkit.Link, false, a.Redetect)
-					case m.Found:
-						k.Icon(c, desktopkit.IconPackage, 14).TextColor(c.Theme().Success)
-						text("detected", "发现 UniClipboard v1 的数据", secondary)
-					}
-				})
-				if m.Error != "" {
-					button("manual", "手动选择目录", desktopkit.Link, false, a.Pick)
-				}
-			})
-			if m.Entering {
-				notice("starting", "正在启动应用…", desktopkit.ToneInfo)
-			}
+			renderWelcome(c, k, m, a, tr, compact)
 			return
 		}
-		result := m.Stage == "complete" || m.Stage == "partial" || m.Stage == "cancelled" || m.Stage == "failed"
-		k.Scroll(c.Key("body-scroll")).Grow(1).MinHeight(0).FillWidth().Children(func() {
-			ui.Column(c.Key("body")).FillWidth().Padding(12, 36, 20).Gap(14).Children(func() {
-				if result {
-					renderResult(c, k, m, tr)
-					return
-				}
-				k.EntityHeader(c.Key("header"), desktopkit.EntityHeaderProps{Icon: desktopkit.IconPackage, Title: tr("从 UniClipboard v1 导入历史"), Description: tr("导入后可在历史中直接使用。")}, nil)
-				switch m.Stage {
-				case "confirm", "invalid":
-					panel(c.Key("source"), k, func() {
-						ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-							k.Icon(c, desktopkit.IconFolder, 22)
-							ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-								text("source-label", "v1 数据目录", secondary)
-								k.Text(c.Key("path"), m.Source, desktopkit.TextProps{Monospace: true, Truncate: true}).FillWidth()
-							})
-							button("pick", "选择其他目录", desktopkit.Standard, false, a.Pick)
-						})
-					})
-					if m.Error != "" {
-						notice("invalid", m.Error, desktopkit.ToneError)
-					}
-					ui.Row(c.Key("scope")).Gap(12).Children(func() {
-						scope(c.Key("included"), k, tr, "会导入", []string{"文本与 HTML", "图片", "文件", "标签及其关联"}, true)
-						scope(c.Key("excluded"), k, tr, "不会导入", []string{"设置", "收藏", "设备身份", "设备信任关系"}, false)
-					})
-					notice("pairing", "其他设备需要升级到 v2，然后重新配对。", desktopkit.ToneInfo)
-					notice("preserve", "迁移只读取 v1 数据，不修改也不删除旧数据。", desktopkit.ToneInfo)
-					notice("quit-v1", "开始前，请先退出 UniClipboard v1。应用不会自动退出 v1。", desktopkit.ToneWarning)
-				case "conflict":
-					notice("conflict", "另一个 unic 服务正在使用数据目录。请先停止该服务，然后重试。应用不会自动停止它。", desktopkit.ToneError)
-					text("no-credential", "没有读取凭据，也没有导入任何记录。", secondary)
-				default:
-					phase := 0
-					if m.Stage == "import" {
-						phase = 1
-					}
-					if m.Stage == "verify" {
-						phase = 2
-					}
-					if m.Stage == "stopping" {
-						phase = 1
-						if m.Progress.Stage == "verify" {
-							phase = 2
-						}
-					}
-					steps(c.Key("steps"), k, tr, phase)
-					panel(c.Key("progress-panel"), k, func() {
-						switch m.Stage {
-						case "password":
-							text("password-heading", "输入 v1 口令", desktopkit.TextProps{Role: desktopkit.RoleHeadline})
-							text("password-hint", "系统凭据无法解锁 v1 数据。请输入旧版口令。口令只用于本次解锁，不会保存。", secondary)
-							field := k.FormField(c.Key("passphrase"), desktopkit.FormFieldProps{Label: tr("v1 口令"), Value: &fields.Passphrase, Password: true, RevealShow: tr("显示口令"), RevealHide: tr("隐藏口令"), Error: tr(m.Error), AutoFocus: true})
-							field.Element.FillWidth()
-							if field.Submitted && fields.Passphrase != "" && a.Unlock != nil {
-								a.Unlock()
-							}
-						case "credentials":
-							ui.Row(c).Gap(8).Children(func() {
-								ui.Spinner(c)
-								text("credentials", "正在读取系统凭据", desktopkit.TextProps{Role: desktopkit.RoleHeadline})
-							})
-							text("credential-hint", "系统可能请求访问 UniClipboard 凭据。请在系统窗口中允许访问。", secondary)
-						default:
-							title, hint := "正在导入记录", "按条写入历史。已写入的记录在中断后保留。"
-							if m.Stage == "verify" {
-								title, hint = "正在校验导入的内容", "重新打开历史库，逐条比对内容。"
-							}
-							if m.Stage == "stopping" {
-								title, hint = "正在安全停止", "正在等待当前操作结束。已提交的记录会保留。"
-							}
-							ui.Row(c).Gap(8).Children(func() { ui.Spinner(c); text("phase", title, desktopkit.TextProps{Role: desktopkit.RoleHeadline}) })
-							text("phase-hint", hint, secondary)
-							var percent *float64
-							if m.Progress.Total > 0 {
-								value := float64(m.Progress.Processed) * 100 / float64(m.Progress.Total)
-								percent = &value
-							}
-							k.ProgressBar(c.Key("progress"), desktopkit.ProgressBarProps{Label: tr(title), Value: percent}).FillWidth().Margin(10, 0, 2)
-							count := "已处理 %d / %d 条"
-							if m.Progress.Stage == "verify" {
-								count = "已校验 %d / %d 条"
-							}
-							k.Text(c.Key("count"), fmt.Sprintf(tr(count), m.Progress.Processed, m.Progress.Total), secondary)
-						}
-					})
-				}
-			})
-		})
-		if m.Entering {
-			notice("starting", "正在启动应用…", desktopkit.ToneInfo)
-		}
-		if m.Error != "" && result {
-			notice("result-error", m.Error, desktopkit.ToneError)
-		}
-		ui.Divider(c)
-		ui.Row(c.Key("actions")).Padding(14, 20).Gap(8).AlignItems(ui.Center).Children(func() {
-			switch m.Stage {
-			case "confirm", "invalid", "password", "conflict":
-				button("skip", "暂不迁移", desktopkit.Subtle, false, a.Enter)
-				ui.Spacer(c)
-				switch m.Stage {
-				case "password":
-					button("unlock", "解锁并继续", desktopkit.Primary, fields.Passphrase == "", a.Unlock)
-				case "conflict":
-					button("retry", "重试", desktopkit.Primary, false, a.Start)
-				default:
-					button("start", "开始迁移", desktopkit.Primary, m.Stage == "invalid" || m.Detecting, a.Start)
-				}
-			case "credentials", "import", "verify", "stopping":
-				text("offline", "迁移期间不会捕获剪贴板，也不会同步", secondary)
-				ui.Spacer(c)
-				label := "停止迁移"
-				if m.Stage == "stopping" {
-					label = "正在停止…"
-				}
-				button("stop", label, desktopkit.Standard, m.Stage == "stopping", a.Stop)
-			case "complete":
-				ui.Spacer(c)
-				button("enter", "开始使用", desktopkit.Primary, false, a.Enter)
-			case "partial":
-				button("retry", "重试迁移", desktopkit.Standard, false, a.Start)
-				ui.Spacer(c)
-				button("enter", "进入应用", desktopkit.Primary, false, a.Enter)
-			case "cancelled":
-				button("enter", "进入应用", desktopkit.Standard, false, a.Enter)
-				ui.Spacer(c)
-				button("retry", "继续迁移", desktopkit.Primary, false, a.Start)
-			case "failed":
-				button("pick", "选择其他目录", desktopkit.Standard, false, a.Pick)
-				button("enter", "不再迁移，进入应用", desktopkit.Standard, false, a.Enter)
-				ui.Spacer(c)
-				button("retry", "重试", desktopkit.Primary, false, a.Start)
-			}
-		})
-		if m.Stage == "confirm" || m.Stage == "password" || m.Stage == "invalid" {
-			k.Text(c.Key("later"), tr("之后可在设置 › 存储 › 从 v1 迁移中导入"), secondary).Padding(0, 20, 10)
-		}
+		renderMigration(c, k, m, fields, a, tr, compact)
 	})
 }
 
-func panel(c *ui.Context, k desktopkit.Kit, body func()) {
-	ui.Column(c).FillWidth().Padding(16).Gap(10).Radius(12).Border(1, c.Theme().Border).Children(body)
+type setupColors struct {
+	workspace   ui.Color
+	sidebar     ui.Color
+	card        ui.Color
+	cardSubtle  ui.Color
+	inset       ui.Color
+	sep         ui.Color
+	cardBorder  ui.Color
+	accentSoft  ui.Color
+	accentEdge  ui.Color
+	accentInk   ui.Color
+	okBg        ui.Color
+	okFg        ui.Color
+	okDot       ui.Color
+	okEdge      ui.Color
+	warnBg      ui.Color
+	warnPillBg  ui.Color
+	warnFg      ui.Color
+	warnEdge    ui.Color
+	errBg       ui.Color
+	errFg       ui.Color
+	errEdge     ui.Color
+	shadowCard  ui.Color
+	shadowFloat ui.Color
 }
-func scope(c *ui.Context, k desktopkit.Kit, tr func(string) string, title string, items []string, included bool) {
-	ui.Column(c).Grow(1).MinWidth(0).Padding(12).Gap(6).Radius(10).Border(1, c.Theme().Border).Children(func() {
-		k.Text(c, tr(title), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
-		for _, item := range items {
-			ui.Row(c.Key(item)).Gap(7).AlignItems(ui.Center).Children(func() {
-				icon := desktopkit.IconRemove
-				color := c.Theme().TextMuted
-				if included {
-					icon = desktopkit.IconAdd
-					color = c.Theme().Success
-				}
-				k.Icon(c, icon, 13).TextColor(color)
-				k.Text(c, tr(item), desktopkit.TextProps{})
-			})
+
+func paletteFor(k desktopkit.Kit) setupColors {
+	if k.Dark {
+		return setupColors{
+			workspace:   k.WorkspaceSurface(),
+			sidebar:     k.Color("background-secondary-default"),
+			card:        k.CardSurface(),
+			cardSubtle:  k.Color("background-secondary-default").MixOklab(k.CardSurface(), .45),
+			inset:       k.Color("background-full").MixOklab(k.Color("background-secondary-default"), .5),
+			sep:         k.Color("separator-border"),
+			cardBorder:  k.Color("border-button-default").Alpha(.65),
+			accentSoft:  k.Color("accent-500").Alpha(.16),
+			accentEdge:  k.Color("accent-400").Alpha(.38),
+			accentInk:   k.Color("status-blue-text"),
+			okBg:        k.Color("notification-success-background"),
+			okFg:        k.Color("notification-success-foreground"),
+			okDot:       k.Color("status-lime-text"),
+			okEdge:      k.Color("status-lime-text").Alpha(.36),
+			warnBg:      k.Color("status-yellow-background"),
+			warnPillBg:  k.Color("status-yellow-background"),
+			warnFg:      k.Color("status-yellow-text"),
+			warnEdge:    k.Color("status-yellow-text").Alpha(.35),
+			errBg:       k.Color("background-tertiary-error"),
+			errFg:       k.Color("notification-error-foreground"),
+			errEdge:     k.Color("border-error-default").Alpha(.42),
+			shadowCard:  ui.RGBA(0, 0, 0, .28),
+			shadowFloat: ui.RGBA(0, 0, 0, .46),
 		}
-	})
-}
-func steps(c *ui.Context, k desktopkit.Kit, tr func(string) string, current int) {
-	ui.Row(c).FillWidth().Gap(10).Children(func() {
-		for i, label := range []string{"解锁旧数据", "导入记录", "校验内容"} {
-			ui.Row(c.Key(label)).Gap(6).AlignItems(ui.Center).Children(func() {
-				color, bg := c.Theme().TextMuted, c.Theme().Surface
-				if i == current {
-					color, bg = ui.RGB(255, 255, 255), c.Theme().Accent
-				}
-				if i < current {
-					color = c.Theme().Success
-				}
-				ui.Box(c).Size(22, 22).Radius(11).Background(bg).Center().Children(func() {
-					k.Text(c, fmt.Sprint(i+1), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(color)
-				})
-				k.Text(c, tr(label), desktopkit.TextProps{Role: desktopkit.RoleCaption})
-			})
-			if i < 2 {
-				ui.Box(c).Grow(1).Height(2).Background(c.Theme().Border).MarginY(10)
-			}
-		}
-	})
-}
-func renderResult(c *ui.Context, k desktopkit.Kit, m Model, tr func(string) string) {
-	title, lead, icon, color := "迁移未完成", "已提交的记录不会回滚。重试会跳过它们。", desktopkit.IconDismiss, c.Theme().Danger
-	switch m.Stage {
-	case "complete":
-		title, lead, icon, color = "迁移完成", "所有记录都已导入并通过校验。", desktopkit.IconShield, c.Theme().Success
-		if m.Report.Imported == 0 && m.Report.Skipped > 0 {
-			lead = "没有新的记录需要导入。此前导入的记录仍在历史中。"
-		}
-	case "partial":
-		title, lead, icon, color = "部分数据未能导入", "已导入的记录可以正常使用。问题记录可在重试时再次处理。", desktopkit.IconInfo, c.Theme().Warning
-	case "cancelled":
-		title, lead, icon, color = "迁移已停止", "已提交的记录已保留。继续迁移时会跳过它们。", desktopkit.IconRemove, c.Theme().TextMuted
 	}
-	ui.Column(c.Key("result")).FillWidth().Gap(12).Padding(18, 0).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(64, 64).Radius(32).Background(color.Alpha(.12)).Center().Children(func() { k.Icon(c, icon, 30).TextColor(color) })
-		k.Text(c.Key("title"), tr(title), desktopkit.TextProps{Role: desktopkit.RoleTitle}).FontSize(20)
-		k.Text(c.Key("lead"), tr(lead), desktopkit.TextProps{Tone: desktopkit.ToneSecondary}).FillWidth()
-		stats := []struct {
-			label string
-			count int
-		}{{"本次新导入", m.Report.Imported}, {"此前已导入", m.Report.Skipped}, {"已校验", m.Report.Verified}}
-		for _, v := range []struct {
-			label string
-			count int
-		}{{"失败记录", m.Report.Failed}, {"缺失内容", m.Report.MissingParts}, {"校验失败", m.Report.VerificationFailed}, {"颜色导入失败", m.Report.ColorFailures}, {"待补回颜色", m.Report.ColorsMissing}} {
-			if v.count > 0 {
-				stats = append(stats, v)
-			}
+	return setupColors{
+		workspace:   k.WorkspaceSurface(),
+		sidebar:     k.Color("background-secondary-default"),
+		card:        k.CardSurface(),
+		cardSubtle:  k.Color("background-secondary-default"),
+		inset:       k.Color("background-tertiary-default").MixOklab(k.CardSurface(), .45),
+		sep:         k.Color("separator-border"),
+		cardBorder:  k.Color("border-button-default"),
+		accentSoft:  k.Color("accent-50"),
+		accentEdge:  k.Color("accent-200"),
+		accentInk:   k.Color("accent-600"),
+		okBg:        k.Color("notification-success-background"),
+		okFg:        k.Color("state-success-text"),
+		okDot:       k.Color("notification-success-foreground"),
+		okEdge:      k.Color("state-success-base"),
+		warnBg:      k.Color("status-yellow-background").MixOklab(k.CardSurface(), .72),
+		warnPillBg:  k.Color("status-yellow-background").MixOklab(k.CardSurface(), .35),
+		warnFg:      k.Color("status-yellow-text"),
+		warnEdge:    k.Color("status-yellow-background"),
+		errBg:       k.Color("notification-error-background").MixOklab(k.CardSurface(), .35),
+		errFg:       k.Color("text-destructive"),
+		errEdge:     k.Color("notification-error-background"),
+		shadowCard:  ui.RGBA(0, 0, 0, .04),
+		shadowFloat: ui.RGBA(0, 0, 0, .09),
+	}
+}
+
+func brandLogo(c *ui.Context, k desktopkit.Kit, size, radius float32, elevated bool) ui.Element {
+	rim := ui.RGBA(0, 0, 0, .08)
+	if k.Dark {
+		rim = ui.RGBA(255, 255, 255, .18)
+	}
+	box := ui.Box(c).Size(size, size).Radius(radius).Clip().Shrink(0).Background(ui.RGB(0, 0, 0)).Border(1, rim)
+	if elevated {
+		shadow := ui.RGBA(0, 0, 0, .14)
+		if k.Dark {
+			shadow = ui.RGBA(0, 0, 0, .48)
 		}
-		for offset := 0; offset < len(stats); offset += 3 {
-			ui.Row(c.Key(fmt.Sprint(offset))).FillWidth().Gap(10).Children(func() {
-				for _, stat := range stats[offset:min(offset+3, len(stats))] {
-					ui.Column(c.Key(stat.label)).Grow(1).MinWidth(0).Padding(12, 10).Gap(4).Radius(10).Background(c.Theme().Surface).AlignItems(ui.Center).Children(func() {
-						k.Text(c, fmt.Sprint(stat.count), desktopkit.TextProps{Role: desktopkit.RoleTitle}).FontSize(21)
-						k.Text(c, tr(stat.label), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
-					})
-				}
-			})
-		}
-		if m.Report.MissingParts > 0 {
-			k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneInfo, Title: tr("缺失内容是记录中丢失的图片或文件附件。它与失败记录分开计数。")})
-		}
+		box.Draw(func(pt *ui.Painter, rc ui.Rect) {
+			pt.Shadow(rc, radius, 0, 6, 16, 0, shadow)
+		})
+	}
+	box.Children(func() {
+		ui.Image(c, brandLogoSVG()).Size(size, size).Fit(ui.Contain).AccessHidden(true)
 	})
+	return box
+}
+
+type pillTone int
+
+const (
+	pillNeutral pillTone = iota
+	pillPositive
+	pillInfo
+	pillWarning
+	pillError
+)
+
+func statusPill(c *ui.Context, k desktopkit.Kit, p setupColors, tone pillTone, label string, dot bool) ui.Element {
+	bg, fg, dotCol := k.Color("background-tertiary-default"), k.Color("text-secondary"), k.Color("text-tertiary")
+	switch tone {
+	case pillPositive:
+		bg, fg, dotCol = p.okBg, p.okFg, p.okDot
+	case pillInfo:
+		bg, fg, dotCol = p.accentSoft, p.accentInk, k.Color("accent-500")
+	case pillWarning:
+		bg, fg, dotCol = p.warnPillBg, p.warnFg, p.warnFg
+	case pillError:
+		bg, fg, dotCol = p.errBg, p.errFg, p.errFg
+	}
+	return ui.Row(c).Height(22).PaddingX(8).Radius(11).Gap(5).AlignItems(ui.Center).Shrink(0).Background(bg).Children(func() {
+		if dot {
+			ui.Box(c).Size(6, 6).Radius(3).Background(dotCol).Shrink(0).AccessHidden(true)
+		}
+		k.Text(c, label, desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: true}).FontSize(11).TextColor(fg).NoWrap()
+	})
+}
+
+func tagChip(c *ui.Context, k desktopkit.Kit, color desktopkit.TagColor, label string) ui.Element {
+	bg, ink := k.TagTint(color)
+	dot := k.SwatchColor(color)
+	if k.Dark && (color == "" || color == "gray") {
+		bg = ui.RGBA(255, 255, 255, .10)
+		ink = ui.RGB(185, 185, 194)
+		dot = ui.RGB(160, 160, 170)
+	}
+	return ui.Row(c).Height(20).PaddingX(7).Radius(10).Gap(4).AlignItems(ui.Center).Shrink(0).Background(bg).Children(func() {
+		ui.Box(c).Size(5, 5).Radius(2.5).Background(dot).Shrink(0).AccessHidden(true)
+		k.Text(c, label, desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: true}).FontSize(10.5).TextColor(ink).NoWrap()
+	})
+}
+
+func semanticBanner(c *ui.Context, k desktopkit.Kit, p setupColors, tone desktopkit.NoticeTone, icon desktopkit.IconName, title, body string) ui.Element {
+	bg, border, fg := p.cardSubtle, p.cardBorder, k.Color("text-secondary")
+	titleCol := k.Color("text-primary")
+	switch tone {
+	case desktopkit.ToneWarning:
+		bg, border, fg, titleCol = p.warnBg, p.warnEdge, p.warnFg, p.warnFg
+	case desktopkit.ToneError:
+		bg, border, fg, titleCol = p.errBg, p.errEdge, p.errFg, p.errFg
+	case desktopkit.ToneInfo:
+		bg, border, fg, titleCol = p.accentSoft, p.accentEdge, p.accentInk, p.accentInk
+	}
+	return ui.Row(c).FillWidth().Padding(10, 12).Radius(10).Gap(9).AlignItems(ui.Start).Background(bg).Border(1, border).Children(func() {
+		k.Icon(c, icon, 15).TextColor(titleCol).Margin(1, 0, 0)
+		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+			if title != "" {
+				k.Text(c, title, desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: true}).FontSize(12).TextColor(titleCol)
+			}
+			if body != "" {
+				k.Text(c, body, desktopkit.TextProps{Role: desktopkit.RoleCaption}).FontSize(11.8).TextColor(fg)
+			}
+		})
+	})
+}
+
+func iconTile(c *ui.Context, k desktopkit.Kit, size, radius float32, bg, fg ui.Color, icon desktopkit.IconName, iconSize float32) ui.Element {
+	return ui.Box(c).Size(size, size).Radius(radius).Background(bg).Center().Shrink(0).Children(func() {
+		k.Icon(c, icon, iconSize).TextColor(fg)
+	})
+}
+
+func actionButton(c *ui.Context, k desktopkit.Kit, key, label string, variant desktopkit.ButtonVariant, size desktopkit.ControlSize, icon desktopkit.IconName, disabled, busy bool, action func()) {
+	b := k.Button(c.Key(key), label, desktopkit.ButtonProps{
+		Variant:  variant,
+		Size:     size,
+		Icon:     icon,
+		Disabled: disabled || action == nil,
+		Busy:     busy,
+	})
+	if b.Clicked() && action != nil && !disabled && !busy {
+		action()
+	}
 }

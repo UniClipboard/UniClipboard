@@ -1,694 +1,2314 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>unic · 首次安装引导原型（0026）</title>
+<title>UniClipboard · 首次安装引导与 v1 迁移重设计原型（BoardUI v2）</title>
 <!--
-  Interactive prototype for decision 0026 (desktop first-install setup and v1 migration).
-  Open directly in a browser. The toolbar jumps to any state; the simulation controls
-  choose detection and migration outcomes for the clickable flow.
+  BoardUI v2 Redesign Prototype for Decision 0026 (First-Install Setup & Offline v1 Migration).
+  Open directly in any modern browser — zero external dependencies.
+
+  UX / Architecture Redesign Highlights (aligned with settings.html / devices.html / plugins.html):
+    1. Unified BoardUI v2 visual language (3-tier neutral surfaces, hairline borders, #2b7fff/#155dfc accent,
+       BoardUI Dialog scale/blur motion, 0.98 button press, authentic macOS top-band traffic lights).
+    2. Editorial Split-Hero Cover Page: pairs UniClipboard's official v2 pixel-cat logo (unic-logo.svg) with an interactive
+       "Living Clipboard" mini-card showcase embodying "让每一次复制更有用", plus a non-intrusive
+       v1 Detection Status Card that prepares users before clicking "开始使用" (zero ambush).
+    3. BoardUI SplitView Migration Workspace (220px Left Journey Rail + Right Focused Pane):
+       - Eliminates 7 stacked competing boxes by anchoring live 4-stage progress and persistent safety
+         guarantees ("只读不删 v1", "离线独占不捕获") in the calm left rail.
+       - Right workspace focuses cleanly on one task per stage: source + scope comparison + single amber
+         pre-flight reminder, in-place credential/passphrase recovery, transparent 2-phase import/verify
+         progress with committed-safety summary, and structured terminal result breakdown.
+    4. Supports both recommended 760×540 SplitView and responsive 640×560 compact mode, First-Install vs
+       Settings › Storage later-migration entry, realistic "starting runtime" transition, and smooth
+       single-window expansion into BoardUI v2 History.
 -->
 <style>
-  :root{
-    --bg:#e9ebef; --win:#ffffff; --surface:#f5f6f8; --surface-2:#eceef2; --border:#e1e4e9;
-    --text:#1b1d22; --muted:#6b7280; --faint:#9aa1ad;
-    --accent:#3b6cf6; --accent-soft:#e8eefe; --ok:#1f9d55; --ok-soft:#e3f5ea;
-    --warn:#c27c0e; --warn-soft:#fdf3e1; --danger:#d93f3f; --danger-soft:#fdeaea;
-    --shadow:0 20px 50px -12px rgba(20,24,40,.28),0 0 0 .5px rgba(0,0,0,.12);
-  }
-  [data-theme=dark]{
-    --bg:#121317; --win:#1d1f24; --surface:#25282e; --surface-2:#2d3037; --border:#33363d;
-    --text:#eceef2; --muted:#9aa1ad; --faint:#6b7280;
-    --accent:#6b8fff; --accent-soft:#273256; --ok:#3ecf7c; --ok-soft:#1d3a2a;
-    --warn:#f0b347; --warn-soft:#3d3220; --danger:#ff6b6b; --danger-soft:#432526;
-    --shadow:0 20px 50px -12px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.1);
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);
-    font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
-    -webkit-font-smoothing:antialiased;transition:background .2s}
-  button{font:inherit;color:inherit;cursor:pointer}
-  svg{display:block}
-  /* ---------- 控制条 ---------- */
-  .toolbar{position:sticky;top:0;z-index:10;display:flex;flex-direction:column;gap:8px;
-    padding:10px 24px;background:color-mix(in srgb,var(--win) 88%,transparent);backdrop-filter:blur(12px);
-    border-bottom:1px solid var(--border)}
-  .toolbar .line{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-  .toolbar b{font-size:14px}
-  .grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
-  .lbl{color:var(--muted);font-size:12px;margin-right:4px}
-  .chip{border:1px solid var(--border);background:var(--win);padding:3px 9px;border-radius:999px;font-size:11.5px}
-  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
-  .sel{border:1px solid var(--border);background:var(--win);color:var(--text);border-radius:6px;padding:3px 6px;font:inherit;font-size:12px}
-  .stage{display:flex;gap:32px;justify-content:center;align-items:flex-start;padding:36px 24px 60px;flex-wrap:wrap}
-  /* ---------- 窗口 ---------- */
-  .window{width:640px;height:560px;background:var(--win);border-radius:12px;box-shadow:var(--shadow);
-    display:flex;flex-direction:column;overflow:hidden;position:relative;flex:none}
-  .titlebar{height:38px;display:flex;align-items:center;padding:0 14px;gap:8px;flex:none}
-  .lights{display:flex;gap:8px}.lights i{width:12px;height:12px;border-radius:50%;display:block}
-  .lights i:nth-child(1){background:#ff5f57;cursor:pointer}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
-  .titlebar .t{flex:1;text-align:center;font-weight:600;font-size:13px;margin-right:52px;color:var(--muted)}
-  .page{flex:1;display:flex;flex-direction:column;min-height:0}
-  .body{flex:1;overflow:auto;padding:8px 36px 16px}
-  .actions{flex:none;display:flex;gap:8px;align-items:center;padding:14px 20px;border-top:1px solid var(--border)}
-  .actions .sp{flex:1}
-  .actions .hint{font-size:11.5px;color:var(--muted)}
-  /* 按钮/输入 */
-  .btn{border:1px solid var(--border);background:var(--win);padding:6px 14px;border-radius:7px;font-size:13px;white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
-  .btn:hover{background:var(--surface)}
-  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-  .btn.primary:hover{filter:brightness(1.07)}
-  .btn.lg{padding:9px 28px;font-size:14px;border-radius:9px}
-  .btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
-  .btn.ghost:hover{background:var(--surface-2);color:var(--text)}
-  .btn:disabled{opacity:.45;cursor:default;filter:none}
-  .link{border:0;background:none;padding:0;color:var(--accent);font-size:inherit}
-  .link:hover{text-decoration:underline}
-  .input{width:100%;border:1px solid var(--border);background:var(--win);color:var(--text);border-radius:7px;padding:7px 10px;font:inherit;font-size:13px;outline:none}
-  .input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-  .input.bad{border-color:var(--danger)}
-  .spin{width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;flex:none}
-  .btn.primary .spin{border-color:rgba(255,255,255,.35);border-top-color:#fff}
-  @keyframes sp{to{transform:rotate(360deg)}}
-  /* 欢迎 */
-  .welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px}
-  .logo{width:76px;height:76px;border-radius:20px;background:linear-gradient(145deg,var(--accent),#7b5cf6);display:grid;place-items:center;color:#fff;
-    box-shadow:0 10px 24px -8px color-mix(in srgb,var(--accent) 70%,transparent)}
-  .logo svg{width:40px;height:40px}
-  .welcome h1{margin:22px 0 6px;font-size:26px;font-weight:700;letter-spacing:.01em}
-  .welcome .slogan{font-size:15px;color:var(--muted);margin:0 0 34px}
-  .detect{height:40px;margin-top:22px;font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;justify-content:center}
-  .detect.err{color:var(--danger)}
-  .detect svg{width:14px;height:14px}
-  /* 迁移 */
-  .phead{display:flex;gap:12px;align-items:center;margin:6px 0 16px}
-  .pic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;flex:none;background:var(--accent-soft);color:var(--accent)}
-  .pic svg{width:22px;height:22px}
-  .phead h2{margin:0;font-size:17px}
-  .phead p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
-  .src{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:center;position:relative}
-  .src.bad{border-color:color-mix(in srgb,var(--danger) 55%,transparent);background:var(--danger-soft)}
-  .src .ic{width:30px;height:30px;border-radius:8px;background:var(--surface);display:grid;place-items:center;flex:none;color:var(--muted)}
-  .src .ic svg{width:17px;height:17px}
-  .src .m{flex:1;min-width:0}
-  .src .k{font-size:11.5px;color:var(--muted)}
-  .src code{display:block;font:12px ui-monospace,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .picker{position:absolute;right:10px;top:46px;z-index:5;background:var(--win);border:1px solid var(--border);border-radius:8px;
-    box-shadow:0 8px 24px rgba(0,0,0,.15);padding:4px;min-width:280px}
-  .picker .h{font-size:11px;color:var(--faint);padding:4px 10px}
-  .picker button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:5px;font:12px ui-monospace,Menlo,monospace}
-  .picker button:hover{background:var(--surface)}
-  .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
-  .box{border:1px solid var(--border);border-radius:10px;padding:10px 12px}
-  .box h4{margin:0 0 6px;font-size:11.5px;color:var(--muted);font-weight:600}
-  .box ul{margin:0;padding:0;list-style:none}
-  .box li{display:flex;gap:7px;align-items:center;padding:2px 0}
-  .box li svg{width:13px;height:13px;flex:none}
-  .box.yes li svg{color:var(--ok)} .box.no li svg{color:var(--faint)} .box.no li{color:var(--muted)}
-  .notes{margin-top:14px;display:flex;flex-direction:column;gap:6px}
-  .note{font-size:12px;display:flex;gap:7px;align-items:flex-start;color:var(--muted)}
-  .note svg{width:14px;height:14px;flex:none;margin-top:2px}
-  .note.warn{color:var(--warn);background:var(--warn-soft);padding:8px 10px;border-radius:8px}
-  .note.err{color:var(--danger);background:var(--danger-soft);padding:8px 10px;border-radius:8px}
-  .note.info{background:var(--surface);padding:8px 10px;border-radius:8px}
-  .note b{color:var(--text);font-weight:600}
-  .note.warn b,.note.err b{color:inherit}
-  /* 步骤 */
-  .steps{display:flex;align-items:center;gap:0;margin:4px 0 22px}
-  .step{display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--faint)}
-  .step i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700;
-    background:var(--surface-2);color:var(--muted)}
-  .step i svg{width:12px;height:12px}
-  .step.cur{color:var(--text);font-weight:600}.step.cur i{background:var(--accent);color:#fff}
-  .step.done{color:var(--muted)}.step.done i{background:var(--ok-soft);color:var(--ok)}
-  .steps .bar{flex:1;height:2px;background:var(--surface-2);margin:0 10px;border-radius:1px}
-  .steps .bar.done{background:var(--ok)}
-  .panel{border:1px solid var(--border);border-radius:12px;padding:18px}
-  .panel .ttl{display:flex;gap:8px;align-items:center;font-weight:600;font-size:14px}
-  .panel .ttl svg{width:16px;height:16px;flex:none}
-  .btn svg{width:12px;height:12px;flex:none}
-  .panel .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
-  .track{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin:16px 0 8px}
-  .track span{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .2s linear}
-  .track.verify span{background:var(--ok)}
-  .track.stop span{background:var(--faint)}
-  .counts{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-  .counts b{color:var(--text);font-weight:600}
-  .pass{margin-top:14px}
-  .pass label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-  /* 结果 */
-  .result{flex:1;display:flex;flex-direction:column;align-items:center;padding:30px 40px 0;text-align:center}
-  .ring{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;flex:none}
-  .ring svg{width:30px;height:30px}
-  .ring.ok{background:var(--ok-soft);color:var(--ok)}
-  .ring.warn{background:var(--warn-soft);color:var(--warn)}
-  .ring.stop{background:var(--surface-2);color:var(--muted)}
-  .ring.err{background:var(--danger-soft);color:var(--danger)}
-  .result h2{margin:16px 0 4px;font-size:20px}
-  .result p.lead{margin:0;color:var(--muted);font-size:13px;max-width:440px}
-  .stats{display:grid;gap:10px;margin-top:22px;width:100%;max-width:500px}
-  .stat{background:var(--surface);border-radius:10px;padding:12px 10px;text-align:center}
-  .stat b{display:block;font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
-  .stat span{font-size:11.5px;color:var(--muted)}
-  .stat.bad b{color:var(--danger)} .stat.warn b{color:var(--warn)} .stat.ok b{color:var(--ok)}
-  .result .note{text-align:left;margin-top:16px;max-width:500px;width:100%}
-  /* 历史占位 */
-  .hist{flex:1;display:flex;flex-direction:column}
-  .hist .search{margin:4px 20px 10px;background:var(--surface);border-radius:8px;padding:7px 10px;color:var(--faint);font-size:12.5px}
-  .hist .row{display:flex;gap:10px;padding:9px 20px;align-items:center;border-top:1px solid var(--border)}
-  .hist .row .kd{width:28px;height:28px;border-radius:7px;background:var(--surface);flex:none}
-  .hist .row .ln{height:9px;border-radius:4px;background:var(--surface-2)}
-  .hist .empty{flex:1;display:grid;place-items:center;color:var(--muted);text-align:center;font-size:12.5px}
-  .tag{font-size:10.5px;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:0 5px;margin-left:6px}
-  /* 关闭遮罩 */
-  .overlay{position:absolute;inset:0;background:color-mix(in srgb,var(--win) 70%,transparent);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:8}
-  .dialog{width:360px;background:var(--win);border-radius:12px;box-shadow:var(--shadow);padding:18px}
-  .dialog h3{margin:0 0 6px;font-size:14px}
-  .dialog p{margin:0;color:var(--muted);font-size:12.5px}
-  .dialog .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
-  /* 规格说明 */
-  .spec{width:340px;flex:none;background:var(--win);border-radius:12px;box-shadow:var(--shadow);padding:16px 18px;font-size:12.5px}
-  .spec h3{margin:0 0 2px;font-size:13px}
-  .spec .key{font:11px ui-monospace,Menlo,monospace;color:var(--faint)}
-  .spec ul{margin:10px 0 0;padding-left:17px;color:var(--muted)}
-  .spec li{margin:4px 0}
-  .spec li b{color:var(--text);font-weight:600}
-  .spec .flow{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);color:var(--muted)}
-  .spec .flow code{font-size:11px;background:var(--surface);padding:1px 5px;border-radius:4px}
+:root {
+  /* BoardUI v2 Light Surface Hierarchy (aligned with prototype/settings.html & desktopkit) */
+  --bg-canvas-outer: #e7e7eb;
+  --bg-sidebar: #f6f6f8;
+  --bg-nav-active: #ffffff;
+  --bg-nav-hover: #ededf0;
+  --bg-workspace: #ffffff;
+  --bg-canvas: #f5f5f7;
+  --bg-card: #ffffff;
+  --bg-card-subtle: #f7f7f9;
+  --bg-inset: #f2f2f5;
+  --bg-sheet: #ffffff;
+  --bg-tertiary: #ececef;
+  --bg-primary-hover: #f5f5f7;
+  --bg-secondary-hover: #ebebee;
+
+  --sep: #ececef;
+  --border-sidebar: #e5e5e8;
+  --card-border: #e4e4e8;
+  --border-btn: #dcdce2;
+  --border-hover: #c5c5cd;
+
+  --text-primary: #111114;
+  --text-secondary: #686870;
+  --text-tertiary: #96969e;
+
+  --accent-50: #f0f6ff;
+  --accent-100: #dbeafe;
+  --accent-200: #bfd8ff;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+
+  /* BoardUI semantic status tokens */
+  --ok-bg: #eaf9d0;
+  --ok-fg: #2f5700;
+  --ok-dot: #5ea500;
+  --ok-border: #c5e88e;
+
+  --warn-bg: #fffbeb;
+  --warn-pill-bg: #fef3c7;
+  --warn-fg: #92400e;
+  --warn-border: #fde68a;
+  --warn-dot: #d97706;
+
+  --info-bg: #eff6ff;
+  --info-fg: #1d4ed8;
+  --info-border: #bfdbfe;
+
+  --err-bg: #fff1f2;
+  --err-fg: #be123c;
+  --err-border: #fecdd3;
+  --danger: #d92d20;
+
+  --tag-blue-bg: #e0edff; --tag-blue-fg: #155dfc; --tag-blue-dot: #2b7fff;
+  --tag-orange-bg: #ffedd5; --tag-orange-fg: #c2410c; --tag-orange-dot: #f97316;
+  --tag-lime-bg: #ecfccb; --tag-lime-fg: #3f6212; --tag-lime-dot: #65a30d;
+  --tag-purple-bg: #f3e8ff; --tag-purple-fg: #7e22ce; --tag-purple-dot: #a855f7;
+  --tag-gray-bg: #f1f1f4; --tag-gray-fg: #52525b; --tag-gray-dot: #71717a;
+
+  --shadow-window: 0 24px 64px rgba(0, 0, 0, .13), 0 0 0 1px rgba(0, 0, 0, .07);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .035);
+  --shadow-float: 0 10px 28px rgba(0, 0, 0, .08), 0 1px 3px rgba(0, 0, 0, .05);
+  --shadow-popover: 0 12px 32px rgba(0, 0, 0, .12), 0 0 0 1px var(--card-border);
+  --shadow-modal: 0 24px 56px rgba(0, 0, 0, .20), 0 0 0 1px rgba(0, 0, 0, .08);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .04);
+  --scrim: rgba(0, 0, 0, .30);
+}
+
+[data-theme="dark"] {
+  --bg-canvas-outer: #09090b;
+  --bg-sidebar: #161618;
+  --bg-nav-active: rgba(255, 255, 255, .09);
+  --bg-nav-hover: rgba(255, 255, 255, .05);
+  --bg-workspace: #1d1d20;
+  --bg-canvas: #151518;
+  --bg-card: #242428;
+  --bg-card-subtle: #1f1f23;
+  --bg-inset: #19191c;
+  --bg-sheet: #232328;
+  --bg-tertiary: #2d2d33;
+  --bg-primary-hover: #2c2c32;
+  --bg-secondary-hover: rgba(255, 255, 255, .08);
+
+  --sep: rgba(255, 255, 255, .075);
+  --border-sidebar: rgba(255, 255, 255, .08);
+  --card-border: rgba(255, 255, 255, .095);
+  --border-btn: rgba(255, 255, 255, .14);
+  --border-hover: rgba(255, 255, 255, .24);
+
+  --text-primary: #f4f4f6;
+  --text-secondary: #9c9ca6;
+  --text-tertiary: #6e6e78;
+
+  --accent-50: rgba(43, 127, 255, .14);
+  --accent-100: rgba(43, 127, 255, .22);
+  --accent-200: rgba(77, 160, 255, .36);
+  --accent-500: #4da0ff;
+  --accent-600: #3b8eff;
+
+  --ok-bg: rgba(94, 165, 0, .20);
+  --ok-fg: #a3e635;
+  --ok-dot: #84cc16;
+  --ok-border: rgba(132, 204, 22, .32);
+
+  --warn-bg: rgba(217, 119, 6, .13);
+  --warn-pill-bg: rgba(245, 158, 11, .20);
+  --warn-fg: #fbbf24;
+  --warn-border: rgba(245, 158, 11, .30);
+  --warn-dot: #f59e0b;
+
+  --info-bg: rgba(43, 127, 255, .14);
+  --info-fg: #7cb8ff;
+  --info-border: rgba(77, 160, 255, .30);
+
+  --err-bg: rgba(244, 63, 94, .15);
+  --err-fg: #fda4af;
+  --err-border: rgba(244, 63, 94, .30);
+  --danger: #f87171;
+
+  --tag-blue-bg: rgba(43, 127, 255, .20); --tag-blue-fg: #7cb8ff; --tag-blue-dot: #4da0ff;
+  --tag-orange-bg: rgba(249, 115, 22, .20); --tag-orange-fg: #fdba74; --tag-orange-dot: #fb923c;
+  --tag-lime-bg: rgba(132, 204, 22, .20); --tag-lime-fg: #bef264; --tag-lime-dot: #a3e635;
+  --tag-purple-bg: rgba(168, 85, 247, .22); --tag-purple-fg: #d8b4fe; --tag-purple-dot: #c084fc;
+  --tag-gray-bg: rgba(255, 255, 255, .09); --tag-gray-fg: #a1a1aa; --tag-gray-dot: #a1a1aa;
+
+  --shadow-window: 0 28px 72px rgba(0, 0, 0, .62), 0 0 0 1px rgba(255, 255, 255, .09);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .24);
+  --shadow-float: 0 12px 32px rgba(0, 0, 0, .42), 0 0 0 1px rgba(255, 255, 255, .07);
+  --shadow-popover: 0 14px 36px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .12);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, .66), 0 0 0 1px rgba(255, 255, 255, .12);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .25);
+  --scrim: rgba(0, 0, 0, .54);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-canvas-outer);
+  color: var(--text-primary);
+  font: 13px/1.48 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background .18s ease, color .18s ease;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+svg { display: block; flex: none; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+/* ---------------- Top Review Toolbar (matching settings.html) ---------------- */
+.proto-bar {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in srgb, var(--bg-workspace) 90%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-sidebar);
+  padding: 9px 20px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.proto-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.proto-title { font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 7px; margin-right: 4px; }
+.proto-badge {
+  font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-50); color: var(--accent-600); border: 1px solid var(--accent-200);
+}
+.proto-grp { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.proto-lbl { font-size: 11.5px; color: var(--text-secondary); margin-right: 3px; }
+.chip {
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.chip:hover { border-color: var(--border-hover); background: var(--bg-card-subtle); }
+.chip.on { background: var(--accent-500); border-color: var(--accent-500); color: #fff; font-weight: 500; }
+.sel {
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-radius: 7px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+
+/* ---------------- Stage & Window ---------------- */
+.stage {
+  display: flex; gap: 26px; justify-content: center; align-items: flex-start;
+  padding: 28px 24px 60px; flex-wrap: wrap;
+}
+.win-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.win-caption {
+  font-size: 11.5px; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 8px;
+}
+.win-caption code {
+  font-size: 11px; padding: 1px 6px; border-radius: 5px;
+  background: var(--bg-card); border: 1px solid var(--card-border);
+}
+
+.app-window {
+  width: 780px; height: 540px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg-workspace);
+  border-radius: 14px;
+  box-shadow: var(--shadow-window);
+  display: flex; flex-direction: column;
+  overflow: hidden; position: relative; flex: none;
+  transition: width .34s cubic-bezier(.32, .72, 0, 1), height .34s cubic-bezier(.32, .72, 0, 1), background .18s ease;
+}
+.app-window.compact-size { width: 640px; height: 560px; }
+.app-window.expanded { width: 960px; height: 610px; }
+
+/* Floating macOS traffic lights (unified BoardUI top band, no separate title row) */
+.lights-float {
+  position: absolute; top: 15px; left: 16px; z-index: 12;
+  display: flex; gap: 7px; align-items: center;
+}
+.lights-float i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights-float i:nth-child(1) { background: #ff5f57; cursor: pointer; }
+.lights-float i:nth-child(1):hover { filter: brightness(.92); }
+.lights-float i:nth-child(2) { background: #febc2e; }
+.lights-float i:nth-child(3) { background: #28c840; }
+
+/* ---------------- BoardUI Controls ---------------- */
+.btn {
+  height: 32px; padding: 0 13px; border-radius: 8px;
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card); color: var(--text-primary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+  box-shadow: var(--shadow-xs);
+  transition: transform .08s ease, background .12s, border-color .12s, opacity .12s;
+}
+.btn:hover:not(:disabled) { background: var(--bg-primary-hover); border-color: var(--border-hover); }
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+.btn.lg { height: 38px; padding: 0 22px; font-size: 13.5px; font-weight: 600; border-radius: 9px; }
+.btn.pri {
+  background: var(--accent-500); border-color: var(--accent-500); color: #fff; box-shadow: none;
+}
+.btn.pri:hover:not(:disabled) { background: var(--accent-600); border-color: var(--accent-600); }
+.btn.subtle { background: transparent; border-color: transparent; box-shadow: none; color: var(--text-secondary); }
+.btn.subtle:hover:not(:disabled) { background: var(--bg-secondary-hover); color: var(--text-primary); }
+.btn.link {
+  background: transparent; border-color: transparent; box-shadow: none;
+  color: var(--accent-600); padding: 0 2px; height: auto; font-size: inherit; font-weight: 500;
+}
+.btn.link:hover:not(:disabled) { text-decoration: underline; background: transparent; }
+
+.pill {
+  height: 22px; padding: 0 8px; border-radius: 11px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 500; white-space: nowrap; flex: none;
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.pill.pos { background: var(--ok-bg); color: var(--ok-fg); }
+.pill.pos .dot { background: var(--ok-dot); }
+.pill.warn { background: var(--warn-pill-bg); color: var(--warn-fg); }
+.pill.warn .dot { background: var(--warn-dot); }
+.pill.info { background: var(--info-bg); color: var(--info-fg); }
+.pill.info .dot { background: var(--accent-500); }
+.pill.err { background: var(--err-bg); color: var(--err-fg); }
+.pill.err .dot { background: var(--danger); }
+.pill.neu { background: var(--bg-tertiary); color: var(--text-secondary); }
+.pill.neu .dot { background: var(--text-tertiary); }
+
+.spin {
+  width: 13px; height: 13px; border-radius: 50%; flex: none;
+  border: 2px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-top-color: currentColor;
+  animation: sp .72s linear infinite;
+}
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* ---------------- PAGE 1: WELCOME (Interactive BoardUI Product Stage) ---------------- */
+.welcome-split {
+  flex: 1; display: grid; grid-template-columns: 392px 1fr; min-height: 0;
+}
+.app-window.compact-size .welcome-split {
+  grid-template-columns: 1fr; grid-template-rows: 266px 1fr;
+}
+
+/* Left living product showcase canvas */
+.welcome-visual {
+  background: linear-gradient(155deg, var(--bg-sidebar) 0%, var(--bg-canvas) 100%);
+  border-right: 1px solid var(--border-sidebar);
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 46px 24px 18px;
+}
+[data-theme="dark"] .welcome-visual {
+  background: linear-gradient(155deg, #17181e 0%, #111216 100%);
+}
+.app-window.compact-size .welcome-visual {
+  border-right: 0; border-bottom: 1px solid var(--border-sidebar);
+  padding: 36px 24px 12px;
+}
+.welcome-visual::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--accent-500) 13%, transparent), transparent 64%),
+    radial-gradient(color-mix(in srgb, var(--border-hover) 55%, transparent) 1px, transparent 1px);
+  background-size: 100% 100%, 22px 22px;
+}
+
+.stage-brand-bar {
+  position: absolute; top: 11px; right: 16px; z-index: 3;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px 3px 4px; border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-card) 82%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--card-border);
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+}
+.stage-brand-bar .s-ic {
+  width: 18px; height: 18px; border-radius: 5px; overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.12);
+}
+
+.scene-viewport {
+  position: relative; z-index: 2;
+  flex: 1; display: flex; flex-direction: column; justify-content: center;
+  min-height: 0;
+}
+.scene-card-anim {
+  display: flex; flex-direction: column; gap: 10px;
+  animation: sceneIn .28s cubic-bezier(.32, .72, 0, 1);
+}
+@keyframes sceneIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Scene 0: Omnibar + Stacked Semantic Pipeline Card */
+.omni-mock {
+  display: flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 9px;
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  box-shadow: var(--shadow-card);
+  font-size: 11px; color: var(--text-tertiary);
+}
+.app-window.compact-size .omni-mock { display: none; }
+.tok {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; border-radius: 5px;
+  font-size: 10.5px; font-weight: 500; white-space: nowrap;
+}
+.tok.purple { background: var(--tag-purple-bg); color: var(--tag-purple-fg); }
+.tok.blue   { background: var(--tag-blue-bg); color: var(--tag-blue-fg); }
+.tok.gray   { background: var(--tag-gray-bg); color: var(--tag-gray-fg); }
+.kbd-cap {
+  margin-left: auto; font-size: 10px; font-weight: 600;
+  padding: 1px 5px; border-radius: 4px;
+  background: var(--bg-inset); border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+}
+
+.pipe-stack { position: relative; padding-bottom: 14px; }
+.app-window.compact-size .pipe-stack { padding-bottom: 0; }
+.pipe-back {
+  position: absolute; left: 12px; right: 12px; bottom: 0;
+  height: 44px; border-radius: 11px;
+  background: color-mix(in srgb, var(--bg-card) 86%, var(--bg-canvas));
+  border: 1px solid var(--card-border);
+  padding: 0 12px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding-bottom: 6px;
+  font-size: 10.5px; color: var(--text-tertiary);
+  opacity: .88;
+}
+.app-window.compact-size .pipe-back { display: none; }
+
+.pipe-front {
+  position: relative; z-index: 2;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-200);
+  border-radius: 12px;
+  padding: 12px 13px;
+  box-shadow: var(--shadow-float);
+  display: flex; flex-direction: column; gap: 9px;
+}
+.app-window.compact-size .pipe-front { padding: 10px 12px; gap: 7px; }
+.pf-head { display: flex; align-items: center; gap: 7px; }
+.src-app-dot {
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
+  display: grid; place-items: center;
+  background: var(--accent-50); color: var(--accent-600);
+}
+.pf-meta { flex: 1; min-width: 0; }
+.pf-src { font-size: 11.5px; font-weight: 600; color: var(--text-primary); line-height: 1.2; }
+.pf-tm  { font-size: 10px; color: var(--text-tertiary); }
+
+.code-swatch-box {
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.code-line { font-size: 11.2px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-kw { color: var(--tag-purple-fg); font-weight: 600; }
+.code-str { color: var(--accent-600); }
+.color-chip {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 3px 7px 3px 4px; border-radius: 6px;
+  background: var(--bg-card); border: 1px solid var(--card-border);
+  font-size: 10.5px; font-weight: 600; color: var(--text-primary);
+}
+.color-swatch {
+  width: 12px; height: 12px; border-radius: 3px;
+  background: #2b7fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12);
+}
+
+.pf-tags { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.mini-tag {
+  font-size: 10.5px; font-weight: 500; padding: 2px 7px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.mini-tag i { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.mini-tag.purple { background: var(--tag-purple-bg); color: var(--tag-purple-fg); }
+.mini-tag.purple i { background: var(--tag-purple-dot); }
+.mini-tag.blue   { background: var(--tag-blue-bg); color: var(--tag-blue-fg); }
+.mini-tag.blue i   { background: var(--tag-blue-dot); }
+.mini-tag.lime   { background: var(--tag-lime-bg); color: var(--tag-lime-fg); }
+.mini-tag.lime i   { background: var(--tag-lime-dot); }
+.mini-tag.orange { background: var(--tag-orange-bg); color: var(--tag-orange-fg); }
+.mini-tag.orange i { background: var(--tag-orange-dot); }
+.mini-tag.gray   { background: var(--tag-gray-bg); color: var(--tag-gray-fg); }
+.mini-tag.gray i   { background: var(--tag-gray-dot); }
+
+/* Scene 1: Actions & Plugin Ecosystem */
+.act-entry {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 11px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow-card);
+  display: flex; align-items: center; gap: 9px;
+}
+.act-entry-ic {
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  background: var(--tag-orange-bg); color: var(--tag-orange-fg);
+  display: grid; place-items: center;
+}
+.act-menu {
+  background: var(--bg-sheet);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: var(--shadow-float);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.act-menu-h {
+  font-size: 10px; font-weight: 600; color: var(--text-tertiary);
+  padding: 3px 8px 4px; letter-spacing: .02em;
+  display: flex; justify-content: space-between;
+}
+.app-window.compact-size .act-menu-h { display: none; }
+.act-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border-radius: 8px;
+  font-size: 11.8px; color: var(--text-primary);
+}
+.app-window.compact-size .act-row { padding: 5px 8px; }
+.app-window.compact-size .act-row.hide-compact { display: none; }
+.act-row.active {
+  background: var(--accent-50);
+  border: 1px solid var(--accent-200);
+}
+.act-row .ar-ic {
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
+  display: grid; place-items: center;
+  background: var(--bg-inset); color: var(--text-secondary);
+}
+.act-row.active .ar-ic { background: var(--accent-500); color: #fff; }
+.act-row .ar-main { flex: 1; min-width: 0; }
+.act-row .ar-name { font-weight: 600; font-size: 11.5px; line-height: 1.25; }
+.act-row .ar-id   { font-size: 10px; color: var(--text-tertiary); }
+
+/* Scene 2: Tailcat P2P Multi-Device Sync */
+.sync-hub {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow-float);
+  display: flex; align-items: center; gap: 10px;
+}
+.sync-hub .hub-av { width: 32px; height: 32px; border-radius: 9px; overflow: hidden; flex: none; }
+.sync-bridge {
+  position: relative; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+}
+.app-window.compact-size .sync-bridge { height: 28px; }
+.sync-bridge svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sync-pill {
+  position: relative; z-index: 2;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent-200);
+  color: var(--accent-600);
+  font-size: 10.5px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px;
+  box-shadow: var(--shadow-card);
+}
+.sync-pulse-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent-500);
+  animation: syncBlink 1.6s ease-in-out infinite;
+}
+@keyframes syncBlink { 0%, 100% { opacity: .35; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.1); } }
+
+.peer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.peer-card {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 9px 10px;
+  box-shadow: var(--shadow-card);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.app-window.compact-size .peer-card { padding: 7px 9px; gap: 2px; }
+.peer-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.peer-name { font-size: 11.5px; font-weight: 600; color: var(--text-primary); }
+.peer-dot  { width: 6px; height: 6px; border-radius: 50%; background: var(--ok-dot); flex: none; }
+.peer-sub  { font-size: 10.5px; color: var(--text-tertiary); display: flex; align-items: center; justify-content: space-between; }
+
+/* Bottom Segmented Switcher inside Left Stage */
+.stage-controls {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  margin-top: 10px;
+}
+.app-window.compact-size .stage-controls { margin-top: 8px; gap: 0; }
+.scene-seg {
+  display: inline-flex; padding: 3px; border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-tertiary) 80%, transparent);
+  border: 1px solid var(--sep);
+  gap: 2px;
+}
+.scene-seg button {
+  position: relative; border: 0; background: transparent;
+  padding: 4px 10px; border-radius: 6px;
+  font-size: 11.2px; font-weight: 500; color: var(--text-secondary);
+  transition: background .15s, color .15s;
+  overflow: hidden;
+}
+.scene-seg button:hover { color: var(--text-primary); }
+.scene-seg button.on {
+  background: var(--bg-card); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .07);
+}
+.scene-seg button.on::after {
+  content: ""; position: absolute; left: 6px; right: 6px; bottom: 1px; height: 2px;
+  border-radius: 2px; background: var(--accent-500);
+  transform-origin: left;
+  animation: segProg 5.2s linear infinite;
+}
+.welcome-visual.paused .scene-seg button.on::after { animation: none; opacity: .55; }
+@keyframes segProg { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.scene-caption {
+  font-size: 11.2px; color: var(--text-secondary);
+  text-align: center; line-height: 1.4; min-height: 16px;
+}
+.app-window.compact-size .scene-caption { display: none; }
+
+/* Right action column on Welcome */
+.welcome-action {
+  padding: 44px 38px 32px;
+  display: flex; flex-direction: column; justify-content: center;
+  position: relative;
+}
+.app-window.compact-size .welcome-action {
+  padding: 16px 40px 20px; align-items: center; text-align: center;
+}
+.welcome-brand-row {
+  display: inline-flex; align-items: center; gap: 11px;
+  margin-bottom: 14px;
+}
+.welcome-logo {
+  width: 44px; height: 44px; border-radius: 11px; overflow: hidden; flex: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .14), 0 0 0 1px rgba(0, 0, 0, .08);
+}
+[data-theme="dark"] .welcome-logo {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .48), 0 0 0 1px rgba(255, 255, 255, .18);
+}
+.app-window.compact-size .welcome-brand-row { margin-bottom: 8px; }
+.app-window.compact-size .welcome-logo { width: 34px; height: 34px; border-radius: 9px; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--text-tertiary);
+  letter-spacing: .01em;
+}
+.welcome-action h1 {
+  margin: 0 0 6px; font-size: 24px; font-weight: 700;
+  letter-spacing: -.022em; line-height: 1.25;
+}
+.welcome-action .slogan {
+  margin: 0 0 24px; font-size: 14.5px; color: var(--text-secondary);
+}
+.app-window.compact-size .welcome-action .slogan { margin-bottom: 14px; }
+
+.detect-card {
+  width: 100%; border-radius: 10px;
+  padding: 11px 13px; margin-bottom: 20px;
+  border: 1px solid var(--card-border);
+  background: var(--bg-card-subtle);
+  display: flex; align-items: flex-start; gap: 10px;
+  text-align: left;
+  transition: background .15s, border-color .15s;
+}
+.app-window.compact-size .detect-card { max-width: 440px; margin-bottom: 16px; padding: 9px 12px; }
+.detect-card.found { background: var(--bg-card-subtle); border-color: var(--ok-border); }
+.detect-card.err   { background: var(--err-bg); border-color: var(--err-border); }
+.detect-card .dc-ic {
+  width: 28px; height: 28px; border-radius: 7px; flex: none;
+  display: grid; place-items: center;
+  background: var(--bg-card); border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+}
+.detect-card.found .dc-ic { background: var(--ok-bg); border-color: transparent; color: var(--ok-fg); }
+.detect-card.err .dc-ic   { background: var(--bg-card); border-color: var(--err-border); color: var(--err-fg); }
+.detect-card .dc-body { flex: 1; min-width: 0; }
+.detect-card .dc-ttl { font-size: 12.5px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
+.detect-card.err .dc-ttl { color: var(--err-fg); }
+.detect-card .dc-sub { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; line-height: 1.45; }
+.detect-card .dc-acts { display: flex; gap: 10px; margin-top: 6px; align-items: center; }
+
+.welcome-cta-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.app-window.compact-size .welcome-cta-row { justify-content: center; }
+
+/* ---------------- PAGE 2 & 3: BOARDUI SPLITVIEW MIGRATION ---------------- */
+.mig-split {
+  flex: 1; display: flex; min-height: 0;
+}
+.app-window.compact-size .mig-split { flex-direction: column; }
+
+/* Left Journey Sidebar (matching settings.html sidebar) */
+.j-rail {
+  width: 224px; flex: none;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-sidebar);
+  padding: 46px 14px 14px;
+  display: flex; flex-direction: column;
+  user-select: none;
+}
+.app-window.compact-size .j-rail {
+  width: 100%; border-right: 0; border-bottom: 1px solid var(--border-sidebar);
+  padding: 42px 20px 10px; flex-direction: row; align-items: center; gap: 14px;
+}
+
+.j-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 2px 4px 14px;
+  border-bottom: 1px solid var(--sep);
+  margin-bottom: 12px;
+}
+.app-window.compact-size .j-head { display: none; }
+.j-head .j-app {
+  width: 28px; height: 28px; border-radius: 7px; overflow: hidden; flex: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .08);
+}
+[data-theme="dark"] .j-head .j-app,
+[data-theme="dark"] .sync-hub .hub-av {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .18);
+}
+.j-head .j-t { font-size: 13px; font-weight: 700; line-height: 1.25; }
+.j-head .j-s { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
+
+.j-steps {
+  display: flex; flex-direction: column; gap: 3px; flex: 1;
+}
+.app-window.compact-size .j-steps {
+  flex-direction: row; gap: 6px; align-items: center; justify-content: space-between;
+}
+.j-step {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 8px 9px; border-radius: 9px;
+  transition: background .12s;
+}
+.app-window.compact-size .j-step { padding: 4px 6px; align-items: center; gap: 6px; }
+.j-step.cur {
+  background: var(--bg-nav-active);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 0 0 1px var(--card-border);
+}
+.j-num {
+  width: 20px; height: 20px; border-radius: 50%; flex: none;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 600;
+  background: var(--bg-tertiary); color: var(--text-tertiary);
+  margin-top: 1px;
+}
+.app-window.compact-size .j-num { margin-top: 0; width: 18px; height: 18px; font-size: 10.5px; }
+.j-step.cur .j-num  { background: var(--accent-500); color: #fff; }
+.j-step.done .j-num { background: var(--ok-bg); color: var(--ok-fg); }
+.j-step.warn .j-num { background: var(--warn-pill-bg); color: var(--warn-fg); }
+.j-step.err .j-num  { background: var(--err-bg); color: var(--err-fg); }
+
+.j-info { flex: 1; min-width: 0; }
+.j-name { font-size: 12.5px; font-weight: 500; color: var(--text-secondary); line-height: 1.3; }
+.app-window.compact-size .j-name { font-size: 11.5px; white-space: nowrap; }
+.j-step.cur .j-name  { color: var(--text-primary); font-weight: 600; }
+.j-step.done .j-name { color: var(--text-primary); }
+.j-meta {
+  font-size: 11px; color: var(--text-tertiary); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.app-window.compact-size .j-meta { display: none; }
+
+/* Persistent trust footer in left rail */
+.j-trust {
+  border-top: 1px solid var(--sep);
+  padding-top: 11px; margin-top: 10px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.app-window.compact-size .j-trust { display: none; }
+.j-trust-row {
+  display: flex; align-items: flex-start; gap: 7px;
+  font-size: 11px; color: var(--text-tertiary); line-height: 1.4;
+}
+.j-trust-row svg { width: 13px; height: 13px; margin-top: 1px; color: var(--text-tertiary); }
+
+/* Right Focused Workspace */
+.m-pane {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-workspace);
+}
+.m-head {
+  padding: 20px 28px 14px; flex: none;
+  border-bottom: 1px solid var(--sep);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.app-window.compact-size .m-head { padding: 14px 22px 12px; }
+.m-head h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.015em; }
+.m-head p  { margin: 3px 0 0; font-size: 12.2px; color: var(--text-secondary); }
+
+.m-scroll {
+  flex: 1; overflow-y: auto; padding: 18px 28px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.app-window.compact-size .m-scroll { padding: 14px 22px 16px; gap: 12px; }
+.m-scroll::-webkit-scrollbar { width: 7px; }
+.m-scroll::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+
+.m-foot {
+  flex: none; padding: 12px 24px;
+  border-top: 1px solid var(--sep);
+  background: color-mix(in srgb, var(--bg-sidebar) 42%, var(--bg-workspace));
+  display: flex; align-items: center; gap: 8px;
+}
+.m-foot .sp { flex: 1; }
+.m-foot .hint { font-size: 11.5px; color: var(--text-tertiary); }
+.compact-only { display: none; }
+.app-window.compact-size .compact-only { display: inline; }
+
+/* ---------------- BoardUI Grouped Cards & Form Elements ---------------- */
+.b-card {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  overflow: visible;
+}
+.b-card.bad { border-color: var(--err-border); }
+
+.src-row {
+  padding: 11px 14px;
+  display: flex; align-items: center; gap: 11px;
+  position: relative;
+}
+.src-ic {
+  width: 34px; height: 34px; border-radius: 8px; flex: none;
+  background: var(--bg-inset); color: var(--text-secondary);
+  display: grid; place-items: center;
+}
+.b-card.bad .src-ic { background: var(--err-bg); color: var(--err-fg); }
+.src-main { flex: 1; min-width: 0; }
+.src-top { display: flex; align-items: center; gap: 7px; }
+.src-lbl { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.src-path {
+  font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.src-err-strip {
+  padding: 8px 14px;
+  border-top: 1px solid var(--err-border);
+  background: var(--err-bg); color: var(--err-fg);
+  border-radius: 0 0 11px 11px;
+  font-size: 12px; display: flex; align-items: center; gap: 7px;
+}
+
+/* Directory Popover (BoardUI Popover) */
+.popover {
+  position: absolute; right: 12px; top: 50px; z-index: 25;
+  min-width: 312px; padding: 5px;
+  background: var(--bg-sheet);
+  border-radius: 10px; box-shadow: var(--shadow-popover);
+}
+.popover-h {
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  padding: 5px 9px 4px;
+}
+.popover button {
+  width: 100%; border: 0; background: transparent;
+  padding: 7px 9px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  text-align: left; font-size: 12px;
+}
+.popover button:hover { background: var(--bg-inset); }
+.popover .p-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popover .p-tag {
+  font-size: 10.5px; padding: 1px 6px; border-radius: 4px; flex: none;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+}
+
+/* Unified 2-Column Scope Card */
+.scope-card {
+  display: grid; grid-template-columns: 1fr 1fr;
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.scope-col { padding: 13px 15px; display: flex; flex-direction: column; gap: 9px; }
+.scope-col.excluded {
+  background: var(--bg-card-subtle);
+  border-left: 1px solid var(--sep);
+}
+.scope-h {
+  font-size: 11.5px; font-weight: 600; color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.scope-list {
+  margin: 0; padding: 0; list-style: none;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px;
+}
+.scope-list li {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.2px; color: var(--text-primary);
+}
+.scope-col.excluded .scope-list li { color: var(--text-secondary); }
+.scope-note {
+  margin-top: auto; padding-top: 7px;
+  border-top: 1px solid var(--sep);
+  font-size: 11.2px; color: var(--text-tertiary);
+  display: flex; align-items: center; gap: 6px;
+}
+
+/* Soft Semantic Banners (BoardUI InlineNotice) */
+.notice {
+  border-radius: 10px; padding: 10px 13px;
+  display: flex; align-items: flex-start; gap: 9px;
+  font-size: 12px; line-height: 1.48;
+  border: 1px solid var(--card-border);
+  background: var(--bg-card-subtle);
+  color: var(--text-secondary);
+}
+.notice svg { width: 15px; height: 15px; margin-top: 1px; }
+.notice b { color: var(--text-primary); font-weight: 600; }
+.notice.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg); }
+.notice.warn b { color: var(--warn-fg); }
+.notice.err  { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.notice.err b { color: var(--err-fg); }
+.notice.info { background: var(--info-bg); border-color: var(--info-border); color: var(--info-fg); }
+.notice.info b { color: var(--info-fg); }
+
+/* ---------------- Active Stage Cards (Unlock / Progress / Conflict) ---------------- */
+.focus-card {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.focus-top { display: flex; align-items: flex-start; gap: 13px; }
+.focus-ic {
+  width: 42px; height: 42px; border-radius: 11px; flex: none;
+  display: grid; place-items: center;
+  background: var(--accent-50); color: var(--accent-600);
+}
+.focus-ic.ok   { background: var(--ok-bg); color: var(--ok-fg); }
+.focus-ic.warn { background: var(--warn-pill-bg); color: var(--warn-fg); }
+.focus-ic.err  { background: var(--err-bg); color: var(--err-fg); }
+.focus-ic.neu  { background: var(--bg-tertiary); color: var(--text-secondary); }
+.focus-ic.pulse { position: relative; }
+.focus-ic.pulse::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 14px;
+  border: 2px solid var(--accent-200); opacity: .7;
+  animation: pulseRing 1.8s ease-out infinite;
+}
+@keyframes pulseRing {
+  0% { transform: scale(.94); opacity: .8; }
+  100% { transform: scale(1.14); opacity: 0; }
+}
+
+.focus-ttl { font-size: 14.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.focus-sub { font-size: 12.2px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5; }
+
+/* BoardUI Form Input */
+.field-lbl {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; font-weight: 500; color: var(--text-primary); margin-bottom: 6px;
+}
+.input-wrap { position: relative; display: flex; align-items: center; }
+.input {
+  width: 100%; height: 36px; padding: 0 60px 0 11px;
+  border: 1px solid var(--border-btn); border-radius: 8px;
+  background: var(--bg-workspace); color: var(--text-primary);
+  font-size: 13px; outline: none;
+  transition: border-color .14s, box-shadow .14s;
+}
+.input:focus { border-color: var(--accent-500); box-shadow: 0 0 0 3px var(--accent-50); }
+.input.bad { border-color: var(--danger); box-shadow: 0 0 0 3px var(--err-bg); }
+.reveal-btn {
+  position: absolute; right: 6px; height: 24px; padding: 0 8px;
+  border-radius: 6px; border: 0; background: var(--bg-inset); color: var(--text-secondary);
+  font-size: 11.5px; font-weight: 500;
+}
+.reveal-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.field-help { font-size: 11.5px; color: var(--text-tertiary); margin-top: 6px; }
+.field-err  { font-size: 11.8px; color: var(--err-fg); margin-top: 6px; display: flex; align-items: center; gap: 5px; }
+
+/* Two-Phase Progress Bar + Safety Tiles */
+.phase-track {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border-radius: 9px;
+  background: var(--bg-card-subtle); border: 1px solid var(--sep);
+  font-size: 12px;
+}
+.phase-chip { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-weight: 500; }
+.phase-chip.cur  { color: var(--text-primary); font-weight: 600; }
+.phase-chip.done { color: var(--ok-fg); }
+.phase-arrow { color: var(--text-tertiary); font-size: 11px; }
+
+.bar-track {
+  height: 7px; border-radius: 999px;
+  background: var(--bg-tertiary); overflow: hidden;
+}
+.bar-fill {
+  height: 100%; border-radius: 999px;
+  background: var(--accent-500);
+  transition: width .16s linear, background .2s;
+}
+.bar-track.verify .bar-fill { background: var(--ok-dot); }
+.bar-track.stop .bar-fill   { background: var(--text-tertiary); }
+
+.bar-meta {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12.2px; color: var(--text-secondary);
+}
+.bar-meta b { color: var(--text-primary); font-weight: 600; }
+
+.mini-metrics {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.m-tile {
+  padding: 10px 12px; border-radius: 10px;
+  background: var(--bg-card-subtle); border: 1px solid var(--sep);
+}
+.m-tile .k { font-size: 11px; color: var(--text-tertiary); }
+.m-tile .v { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-top: 2px; }
+
+/* ---------------- PAGE 3: RESULT SUMMARY ---------------- */
+.res-hero {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 16px 18px; border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+.res-hero.ok   { border-color: var(--ok-border); background: color-mix(in srgb, var(--ok-bg) 28%, var(--bg-card)); }
+.res-hero.warn { border-color: var(--warn-border); background: color-mix(in srgb, var(--warn-bg) 70%, var(--bg-card)); }
+.res-hero.err  { border-color: var(--err-border); background: color-mix(in srgb, var(--err-bg) 55%, var(--bg-card)); }
+.res-hero h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.res-hero p  { margin: 3px 0 0; font-size: 12.5px; color: var(--text-secondary); line-height: 1.48; }
+
+.stat-grid {
+  display: grid; gap: 10px;
+}
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-card);
+}
+.stat-card .n { font-size: 22px; font-weight: 700; line-height: 1.2; color: var(--text-primary); }
+.stat-card .l { font-size: 11.5px; color: var(--text-secondary); margin-top: 3px; }
+.stat-card.ok   { border-color: var(--ok-border); }
+.stat-card.ok .n { color: var(--ok-fg); }
+.stat-card.warn { border-color: var(--warn-border); background: var(--warn-bg); }
+.stat-card.warn .n { color: var(--warn-fg); }
+.stat-card.bad  { border-color: var(--err-border); background: var(--err-bg); }
+.stat-card.bad .n { color: var(--err-fg); }
+
+.issue-strip {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.issue-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 11px; border-radius: 9px;
+  font-size: 12px; font-weight: 500;
+  border: 1px solid var(--card-border); background: var(--bg-card);
+}
+.issue-chip.bad  { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.issue-chip.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg); }
+.issue-chip b { font-size: 13.5px; font-weight: 700; }
+
+/* ---------------- HISTORY HANDOFF (Expanded Single Window) ---------------- */
+.hist-wrap { flex: 1; display: flex; min-height: 0; }
+.hist-sb {
+  width: 210px; flex: none;
+  background: var(--bg-sidebar); border-right: 1px solid var(--border-sidebar);
+  padding: 46px 12px 12px; display: flex; flex-direction: column; gap: 3px;
+}
+.hist-nav {
+  height: 30px; padding: 0 10px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; color: var(--text-secondary);
+}
+.hist-nav.on {
+  background: var(--bg-nav-active); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 0 0 1px var(--card-border);
+}
+.hist-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.hist-tb {
+  height: 52px; padding: 0 18px; border-bottom: 1px solid var(--sep);
+  display: flex; align-items: center; gap: 10px;
+}
+.hist-omni {
+  flex: 1; max-width: 440px; height: 32px; margin: 0 auto;
+  background: var(--bg-inset); border: 1px solid var(--card-border); border-radius: 8px;
+  padding: 0 11px; display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text-tertiary);
+}
+.hist-body { flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; }
+.hist-row {
+  background: var(--bg-card); border: 1px solid var(--card-border); border-radius: 10px;
+  padding: 10px 13px; display: flex; align-items: center; gap: 11px;
+  box-shadow: var(--shadow-card);
+}
+.hist-row:first-child { border-color: var(--accent-200); background: color-mix(in srgb, var(--accent-50) 45%, var(--bg-card)); }
+.hist-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 8px; color: var(--text-secondary); padding: 28px;
+}
+
+/* ---------------- BoardUI AlertDialog Modal (0013 / boardui-native-contract) ---------------- */
+.scrim {
+  position: absolute; inset: 0; z-index: 30;
+  background: var(--scrim); backdrop-filter: blur(2px);
+  display: grid; place-items: center;
+  animation: fadeIn .22s ease-out;
+}
+.modal {
+  width: 380px; max-width: calc(100% - 32px);
+  background: var(--bg-sheet);
+  border-radius: 14px; box-shadow: var(--shadow-modal);
+  padding: 20px 22px 18px;
+  animation: modalIn .28s cubic-bezier(.32, .72, 0, 1);
+}
+.modal h3 { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+.modal p  { margin: 0; font-size: 12.8px; color: var(--text-secondary); line-height: 1.55; }
+.modal-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(.88); filter: blur(4px); }
+  to   { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+
+/* ---------------- Right UX Spec Inspector ---------------- */
+.spec {
+  width: 344px; flex: none;
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px; font-size: 12.2px;
+}
+.spec-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.spec h3 { margin: 0; font-size: 13.5px; font-weight: 700; }
+.spec .key {
+  font-size: 10.5px; padding: 2px 7px; border-radius: 5px;
+  background: var(--bg-inset); color: var(--text-secondary);
+}
+.spec .sec-lbl {
+  margin: 12px 0 5px; font-size: 11px; font-weight: 700; color: var(--accent-600);
+  letter-spacing: .02em;
+}
+.spec p { margin: 0; color: var(--text-primary); line-height: 1.55; }
+.spec ul { margin: 0; padding-left: 16px; color: var(--text-secondary); }
+.spec li { margin: 4px 0; line-height: 1.48; }
+.spec li b { color: var(--text-primary); font-weight: 600; }
+.spec .foot {
+  margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--sep);
+  font-size: 11.5px; color: var(--text-tertiary); line-height: 1.52;
+}
+
+[data-motion="reduced"] *, [data-motion="reduced"] *::after {
+  animation: none !important; transition: none !important;
+}
 </style>
 </head>
 <body>
-<div class="toolbar">
-  <div class="line">
-    <b>首次安装引导 · 0026</b>
-    <div class="grp"><span class="lbl">主题</span>
+
+<div class="proto-bar">
+  <div class="proto-row">
+    <div class="proto-title">UniClipboard · 首次安装与迁移重设计 <span class="proto-badge">BoardUI v2</span></div>
+    <div class="proto-grp"><span class="proto-lbl">主题</span>
       <button class="chip on" data-theme-btn="light">浅色</button>
       <button class="chip" data-theme-btn="dark">深色</button>
     </div>
-    <div class="grp"><span class="lbl">模拟 · 检测</span>
+    <div class="proto-grp"><span class="proto-lbl">窗口尺寸</span>
+      <button class="chip on" data-size-btn="split">780 × 540（推荐）</button>
+      <button class="chip" data-size-btn="compact">640 × 560（现行）</button>
+    </div>
+    <div class="proto-grp"><span class="proto-lbl">入口</span>
+      <button class="chip on" data-entry-btn="first">首次安装</button>
+      <button class="chip" data-entry-btn="settings">设置 › 补迁移</button>
+    </div>
+    <div class="proto-grp"><span class="proto-lbl">检测</span>
       <select class="sel" id="simDetect">
         <option value="found">发现 v1 数据</option>
         <option value="none">未发现</option>
         <option value="error">检测出错</option>
       </select>
     </div>
-    <div class="grp"><span class="lbl">凭据</span>
+    <div class="proto-grp"><span class="proto-lbl">凭据</span>
       <select class="sel" id="simCred">
-        <option value="ok">系统凭据可解锁</option>
-        <option value="pass">需要输入口令（v1pass）</option>
+        <option value="ok">系统凭据解锁</option>
+        <option value="pass">需输入口令（v1pass）</option>
         <option value="deny">系统拒绝访问</option>
       </select>
     </div>
-    <div class="grp"><span class="lbl">结果</span>
+    <div class="proto-grp"><span class="proto-lbl">结果</span>
       <select class="sel" id="simResult">
-        <option value="complete">完整</option>
-        <option value="partial">部分</option>
+        <option value="complete">完整迁移</option>
+        <option value="partial">部分（含缺失与颜色）</option>
         <option value="failed">失败</option>
-        <option value="conflict">目标被占用</option>
+        <option value="conflict">目标目录被占用</option>
       </select>
     </div>
+    <button class="chip" id="motionBtn">减弱动效</button>
     <button class="chip" id="restart">从头演示</button>
   </div>
-  <div class="line">
-    <div class="grp" id="jumps"><span class="lbl">跳转</span></div>
+  <div class="proto-row">
+    <div class="proto-grp" id="jumps"><span class="proto-lbl">状态跳转</span></div>
   </div>
 </div>
 
 <div class="stage">
-  <div class="window" id="win">
-    <div class="titlebar">
-      <div class="lights" title="点击红灯模拟关闭窗口"><i id="closeBtn"></i><i></i><i></i></div>
-      <div class="t" id="wtitle">UniClipboard</div>
+  <div class="win-col">
+    <div class="app-window" id="win">
+      <div class="lights-float" title="迁移进行中点击红灯可模拟安全关闭">
+        <i id="closeBtn"></i><i></i><i></i>
+      </div>
+      <div id="root" style="flex:1;display:flex;flex-direction:column;min-height:0"></div>
     </div>
-    <div class="page" id="page"></div>
+    <div class="win-caption">
+      <span id="sizeLabel">当前引导窗口：<code>760 × 540</code></span>
+      <span>·</span>
+      <span>显式进入历史后单窗切换至 <code>1100 × 720</code></span>
+    </div>
   </div>
   <aside class="spec" id="spec"></aside>
 </div>
 
 <script>
-/* ---------- 图标 ---------- */
+/* ---------------- Clean BoardUI / Remix-style Icons ---------------- */
 const I = {
-  clip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>',
-  box:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg>',
-  folder:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
-  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>',
-  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
-  minus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h12"/></svg>',
-  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg>',
-  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
-  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>',
-  key:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg>',
-  devices:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="11" rx="1"/></svg>',
-  stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>',
-  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
-  server:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>',
+  // Exact official UniClipboard v2 pixel-cat logo from app/desktop/internal/appicons/unic-logo.svg
+  catMark: `<svg viewBox="0 0 1254 1254" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="UniClipboard">
+    <rect width="1254" height="1254" fill="#000"/>
+    <path fill="#fff" fill-rule="evenodd" d="M313 274H425V336H482V397H537V460H717V397H772V336H829V274H941V590H1006V663H941V725H1067V785H941V843H1006V909H941V874H878V952H376V874H313V909H247V843H313V785H186V725H313V663H247V590H313ZM392 460H457V523H392ZM797 460H862V523H797ZM454 634H521V742H454ZM733 634H801V742H733ZM565 779H689V829H653V875H601V829H565Z"/>
+  </svg>`,
+  code: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
+  image: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>`,
+  file: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  folder: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`,
+  check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>`,
+  minus: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h12"/></svg>`,
+  x: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>`,
+  warn: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>`,
+  info: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>`,
+  shield: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>`,
+  key: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg>`,
+  lock: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`,
+  devices: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="11" rx="1"/></svg>`,
+  server: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>`,
+  stop: `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`,
+  arrowRight: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg>`,
+  search: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
+  download: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  chevronDown: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`,
+  share: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>`,
+  sparkles: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>`,
+  terminal: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
 };
 
-/* ---------- 状态 ---------- */
+/* ---------------- State Machine ---------------- */
 const TOTAL = 1204;
 const DEFAULT_SRC = '~/Library/Application Support/app.uniclipboard.desktop';
 const SOURCES = [
-  {path: DEFAULT_SRC, ok: true, label: '默认位置'},
-  {path: '/Volumes/USB/UniClipboard-Portable/data', ok: true, label: '便携版'},
-  {path: '~/Downloads', ok: false, label: '不是 v1 数据目录'},
+  { path: DEFAULT_SRC, ok: true, label: '默认位置' },
+  { path: '/Volumes/USB/UniClipboard-Portable/data', ok: true, label: '便携版目录' },
+  { path: '~/Downloads', ok: false, label: '不受支持的目录' },
 ];
+
 const S = {
   key: 'w-detecting',
+  entryMode: 'first',      // 'first' | 'settings'
+  sizeMode: 'split',       // 'split' (780x540) | 'compact' (640x560)
+  sceneIdx: 0,             // 0: pipeline | 1: actions | 2: tailcat sync
+  sceneManual: false,
+  sceneHover: false,
+  sceneTimer: null,
   src: SOURCES[0],
   picker: false,
-  pendingStart: false,     // 用户在检测完成前点了“开始使用”
-  committed: 0,            // 历史上已提交（跨次运行保留，对应持久映射）
-  runPrior: 0,             // 本次运行开始时已存在的记录
-  processed: 0, verified: 0,
-  passErr: false, pass: '',
-  closing: false,          // 关闭窗口触发的安全停止
+  pendingStart: false,
+  entering: false,         // Simulates session_gui.go start-runtime IPC
+  committed: 0,
+  runPrior: 0,
+  processed: 0,
+  verified: 0,
+  pass: '',
+  passErr: false,
+  revealPass: false,
+  closing: false,
   closeAsk: false,
   timer: null,
 };
+
 const $ = s => document.querySelector(s);
-const sim = id => $('#'+id).value;
+const sim = id => $('#' + id).value;
 const fmt = n => n.toLocaleString('zh-CN');
+const esc = s => String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
-function clearTimer(){ if(S.timer){ clearInterval(S.timer); clearTimeout(S.timer); S.timer = null; } }
-function go(key){ clearTimer(); S.key = key; S.picker = false; render(); enter(key); }
+function clearTimer() {
+  if (S.timer) { clearInterval(S.timer); clearTimeout(S.timer); S.timer = null; }
+}
+function go(key) {
+  clearTimer();
+  S.key = key;
+  S.picker = false;
+  S.entering = false;
+  render();
+  enter(key);
+}
 
-/* 进入状态时启动的模拟 */
-function enter(key){
-  if(key === 'w-detecting'){
+function enter(key) {
+  if (key === 'w-detecting') {
     S.timer = setTimeout(() => {
       const d = sim('simDetect');
       const next = d === 'found' ? 'w-found' : d === 'none' ? 'w-none' : 'w-error';
-      if(S.pendingStart){ S.pendingStart = false; return startFrom(next); }
+      if (S.pendingStart) { S.pendingStart = false; return startFrom(next); }
       go(next);
-    }, 1400);
+    }, 1450);
   }
-  if(key === 'm-cred-system'){
+  if (key === 'm-cred-system') {
     S.timer = setTimeout(() => {
       const c = sim('simCred');
-      if(c === 'ok') return beginImport();
-      S.passErr = false; S.pass = '';
+      if (c === 'ok') return beginImport();
+      S.passErr = false; S.pass = ''; S.revealPass = false;
       go(c === 'pass' ? 'm-cred-pass' : 'm-cred-denied');
-    }, 1600);
+    }, 1500);
   }
-  if(key === 'm-import'){
+  if (key === 'm-import') {
     const failAt = Math.round(TOTAL * .41);
     S.timer = setInterval(() => {
-      S.processed = Math.min(TOTAL, S.processed + 23);
-      if(sim('simResult') === 'failed' && S.processed >= failAt){
-        S.processed = failAt; S.committed = Math.max(S.committed, failAt); return go('r-failed');
+      S.processed = Math.min(TOTAL, S.processed + 27);
+      if (sim('simResult') === 'failed' && S.processed >= failAt) {
+        S.processed = failAt; S.committed = Math.max(S.committed, failAt);
+        return go('r-failed');
       }
       S.committed = Math.max(S.committed, S.processed);
-      if(S.processed >= TOTAL){ S.verified = 0; return go('m-verify'); }
-      update();
-    }, 60);
+      if (S.processed >= TOTAL) { S.verified = 0; return go('m-verify'); }
+      updateLiveNumbers();
+    }, 65);
   }
-  if(key === 'm-verify'){
+  if (key === 'm-verify') {
     S.timer = setInterval(() => {
-      S.verified = Math.min(TOTAL, S.verified + 41);
-      if(S.verified >= TOTAL){
+      S.verified = Math.min(TOTAL, S.verified + 44);
+      if (S.verified >= TOTAL) {
         const r = sim('simResult');
-        if(r === 'partial') return go('r-partial');
+        if (r === 'partial') return go('r-partial');
         return go(S.runPrior >= TOTAL ? 'r-complete-retry' : 'r-complete');
       }
-      update();
-    }, 60);
+      updateLiveNumbers();
+    }, 65);
   }
-  if(key === 'm-stopping'){
-    S.timer = setTimeout(() => go(S.closing ? 'closed' : 'r-cancelled'), 1500);
+  if (key === 'm-stopping') {
+    S.timer = setTimeout(() => go(S.closing ? 'closed' : 'r-cancelled'), 1350);
   }
 }
 
-function startFrom(k){
-  if(k === 'w-found') return go('m-confirm');
-  go('history-empty');
+function startFrom(k) {
+  if (k === 'w-found') return go('m-confirm');
+  enterApp(false);
 }
-function startMigration(){
-  if(sim('simResult') === 'conflict') return go('m-conflict');
+function enterApp(withCommitted) {
+  if (S.entering) return;
+  clearTimer();
+  S.entering = true;
+  render();
+  S.timer = setTimeout(() => {
+    S.entering = false;
+    go(withCommitted && S.committed ? 'history' : 'history-empty');
+  }, 520);
+}
+function startMigration() {
+  if (sim('simResult') === 'conflict') return go('m-conflict');
   go('m-cred-system');
 }
-function beginImport(){
+function beginImport() {
   S.runPrior = S.committed;
-  S.processed = S.committed;   // 已提交的记录由持久映射跳过
+  S.processed = S.committed;
   go('m-import');
 }
-function stopMigration(){ go('m-stopping'); }
 
-/* ---------- 渲染片段 ---------- */
-const btn = (label, act, cls='') => `<button class="btn ${cls}" data-act="${act}">${label}</button>`;
+/* ---------------- Page 1: Interactive UniClipboard Product Showcase Cover ---------------- */
+const SCENES = [
+  {
+    id: 'pipeline',
+    label: '流水线标签',
+    caption: '自动识别代码、色值、图片与文件，支持 #标签 @设备 令牌检索',
+    render: () => `<div class="scene-card-anim">
+      <div class="omni-mock">
+        ${I.search}
+        <span class="tok purple">#代码</span>
+        <span class="tok blue">#颜色</span>
+        <span class="tok gray">@MacBook</span>
+        <span class="kbd-cap mono">⌘⇧V</span>
+      </div>
+      <div class="pipe-stack">
+        <div class="pipe-back">
+          <span>boardui-preview@2x.png · 1440×900</span>
+          <span class="mini-tag lime"><i></i>图片</span>
+        </div>
+        <div class="pipe-front">
+          <div class="pf-head">
+            <div class="src-app-dot">${I.code}</div>
+            <div class="pf-meta">
+              <div class="pf-src">VS Code · 刚刚复制</div>
+              <div class="pf-tm">Capture → Processing 流水线</div>
+            </div>
+            <span class="pill pos" style="height:20px;font-size:10.5px"><i class="dot"></i>已归类</span>
+          </div>
+          <div class="code-swatch-box">
+            <div class="code-line mono"><span class="code-kw">const</span> accent = <span class="code-str">"#2B7FFF"</span>;</div>
+            <span class="color-chip mono"><i class="color-swatch"></i>#2B7FFF</span>
+          </div>
+          <div class="pf-tags">
+            <span class="mini-tag purple"><i></i>代码</span>
+            <span class="mini-tag blue"><i></i>颜色</span>
+            <span class="mini-tag gray"><i></i>文本</span>
+          </div>
+        </div>
+      </div>
+    </div>`,
+  },
+  {
+    id: 'actions',
+    label: '插件与动作',
+    caption: '通过内置 Action 与 Go / Lua 插件，把一次复制直接变成工作流',
+    render: () => `<div class="scene-card-anim">
+      <div class="act-entry">
+        <div class="act-entry-ic">${I.file}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">release-assets-v2.zip</div>
+          <div style="font-size:10.5px;color:var(--text-tertiary)">12.4 MB · 目录快照</div>
+        </div>
+        <span class="mini-tag orange"><i></i>文件</span>
+      </div>
+      <div class="act-menu">
+        <div class="act-menu-h"><span>对当前条目执行动作 · Actions</span><span class="mono">⌘K</span></div>
+        <div class="act-row active">
+          <div class="ar-ic">${I.share}</div>
+          <div class="ar-main">
+            <div class="ar-name">临时分享</div>
+            <div class="ar-id">生成取件链接 · 阅后过期</div>
+          </div>
+          <span class="pill pos" style="height:20px;font-size:10.5px"><i class="dot"></i>链接已生成</span>
+        </div>
+        <div class="act-row">
+          <div class="ar-ic">${I.sparkles}</div>
+          <div class="ar-main">
+            <div class="ar-name">文本清洗 / JSON 格式化</div>
+            <div class="ar-id mono">builtin.text</div>
+          </div>
+        </div>
+        <div class="act-row hide-compact">
+          <div class="ar-ic">${I.terminal}</div>
+          <div class="ar-main">
+            <div class="ar-name">自定义 Lua 处理脚本</div>
+            <div class="ar-id">插件市场 · 沙箱运行</div>
+          </div>
+        </div>
+      </div>
+    </div>`,
+  },
+  {
+    id: 'sync',
+    label: '跨端直连',
+    caption: 'Tailcat 点对点端到端加密同步，无需云账号即可跨设备流转',
+    render: () => `<div class="scene-card-anim">
+      <div class="sync-hub">
+        <div class="hub-av">${I.catMark}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600">MacBook Pro（本机）</div>
+          <div style="font-size:10.5px;color:var(--text-tertiary)">设备身份已就绪 · 仅本地存储</div>
+        </div>
+        <span class="pill pos" style="height:20px;font-size:10.5px"><i class="dot"></i>直连</span>
+      </div>
+      <div class="sync-bridge">
+        <svg viewBox="0 0 320 42" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M160 0 V18 M160 18 Q160 26 84 26 L84 42 M160 18 Q160 26 236 26 L236 42"
+            fill="none" stroke="var(--accent-200)" stroke-width="1.5" stroke-dasharray="4 3"/>
+        </svg>
+        <span class="sync-pill"><i class="sync-pulse-dot"></i>Tailcat 端到端加密 · 免云账号</span>
+      </div>
+      <div class="peer-grid">
+        <div class="peer-card">
+          <div class="peer-top"><span class="peer-name">Windows 台式机</span><i class="peer-dot"></i></div>
+          <div class="peer-sub"><span>指纹已信任</span><span class="mono">4 ms</span></div>
+        </div>
+        <div class="peer-card">
+          <div class="peer-top"><span class="peer-name">iPhone</span><i class="peer-dot"></i></div>
+          <div class="peer-sub"><span>已同步最新条目</span><span>刚刚</span></div>
+        </div>
+      </div>
+    </div>`,
+  },
+];
 
-function srcCard(){
-  const bad = !S.src.ok;
-  return `<div class="src ${bad?'bad':''}">
-    <div class="ic">${I.folder}</div>
-    <div class="m"><div class="k">v1 数据目录 · ${S.src.label}</div><code title="${S.src.path}">${S.src.path}</code></div>
-    <button class="btn" data-act="pick">选择其他目录…</button>
-    ${S.picker ? `<div class="picker"><div class="h">模拟目录选择器</div>
-      ${SOURCES.map((s,i)=>`<button data-src="${i}">${s.path}</button>`).join('')}</div>` : ''}
+function syncSceneTimer() {
+  if (S.sceneTimer) { clearInterval(S.sceneTimer); S.sceneTimer = null; }
+  const reduced = document.documentElement.dataset.motion === 'reduced';
+  if (!S.key.startsWith('w-') || S.sceneManual || S.sceneHover || reduced) return;
+  S.sceneTimer = setInterval(() => {
+    S.sceneIdx = (S.sceneIdx + 1) % SCENES.length;
+    updateShowcaseOnly();
+  }, 5200);
+}
+
+function updateShowcaseOnly() {
+  const vp = $('#sceneViewport');
+  const cap = $('#sceneCaption');
+  if (!vp) return;
+  const sc = SCENES[S.sceneIdx];
+  vp.innerHTML = sc.render();
+  if (cap) cap.textContent = sc.caption;
+  document.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('on', +b.dataset.scene === S.sceneIdx));
+}
+
+function renderWelcome(detectState) {
+  let detectCard = '';
+  if (detectState === 'detecting') {
+    detectCard = `<div class="detect-card">
+      <div class="dc-ic"><span class="spin"></span></div>
+      <div class="dc-body">
+        <div class="dc-ttl">正在检查这台电脑上的 v1 数据…</div>
+        <div class="dc-sub">仅检查默认目录结构，不会读取剪贴板或请求系统凭据。</div>
+      </div>
+    </div>`;
+  } else if (detectState === 'found') {
+    detectCard = `<div class="detect-card found">
+      <div class="dc-ic">${I.check}</div>
+      <div class="dc-body">
+        <div class="dc-ttl">发现 UniClipboard v1 的数据 <span class="pill pos"><i class="dot"></i>可导入</span></div>
+        <div class="dc-sub">点击「开始使用」后可确认导入旧历史，或选择暂不迁移。</div>
+      </div>
+    </div>`;
+  } else if (detectState === 'error') {
+    detectCard = `<div class="detect-card err">
+      <div class="dc-ic">${I.warn}</div>
+      <div class="dc-body">
+        <div class="dc-ttl">无法检查默认 v1 数据目录</div>
+        <div class="dc-sub">可重试检查、手动选择旧目录，或直接开始全新使用。</div>
+        <div class="dc-acts">
+          <button class="btn link" data-act="redetect">重试检查</button>
+          <span style="color:var(--text-tertiary)">·</span>
+          <button class="btn link" data-act="manual">手动选择目录</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const busy = S.pendingStart || S.entering;
+  const ctaLabel = S.entering
+    ? `<span class="spin"></span>正在启动应用…`
+    : S.pendingStart
+      ? `<span class="spin"></span>开始使用`
+      : `开始使用 ${I.arrowRight}`;
+  const sc = SCENES[S.sceneIdx];
+  const paused = S.sceneManual || S.sceneHover || document.documentElement.dataset.motion === 'reduced';
+
+  return `<div class="welcome-split">
+    <div class="welcome-visual ${paused ? 'paused' : ''}" id="welcomeVisual">
+      <div class="stage-brand-bar"><span class="s-ic">${I.catMark}</span><span>UniClipboard v2</span></div>
+      <div class="scene-viewport" id="sceneViewport">${sc.render()}</div>
+      <div class="stage-controls">
+        <div class="scene-seg" role="tablist" aria-label="核心能力预览">
+          ${SCENES.map((x, i) => `<button role="tab" aria-selected="${i === S.sceneIdx}" data-scene="${i}" class="${i === S.sceneIdx ? 'on' : ''}">${x.label}</button>`).join('')}
+        </div>
+        <div class="scene-caption" id="sceneCaption">${sc.caption}</div>
+      </div>
+    </div>
+
+    <div class="welcome-action">
+      <div class="welcome-brand-row">
+        <div class="welcome-logo">${I.catMark}</div>
+        <span class="eyebrow">UniClipboard v2</span>
+      </div>
+      <h1>欢迎使用 UniClipboard</h1>
+      <p class="slogan">让每一次复制更有用</p>
+      ${detectCard}
+      <div class="welcome-cta-row">
+        <button class="btn pri lg" data-act="begin" ${busy ? 'disabled' : ''}>${ctaLabel}</button>
+      </div>
+    </div>
   </div>`;
 }
 
-function steps(cur){
-  const names = ['解锁旧数据','导入','校验'];
-  let h = '<div class="steps">';
-  names.forEach((n,i) => {
-    const st = i < cur ? 'done' : i === cur ? 'cur' : '';
-    h += `<div class="step ${st}"><i>${i < cur ? I.check : i+1}</i>${n}</div>`;
-    if(i < names.length-1) h += `<div class="bar ${i < cur ? 'done':''}"></div>`;
-  });
-  return h + '</div>';
+/* ---------------- Page 2 & 3: SplitView Migration Shell ---------------- */
+function stepMetaFor(key) {
+  // Returns array of 4 step descriptors: { state: ''|'cur'|'done'|'warn'|'err', meta: string }
+  const d = [
+    { state: '', meta: S.src.label },
+    { state: '', meta: '系统凭据或口令' },
+    { state: '', meta: `共 ${fmt(TOTAL)} 条` },
+    { state: '', meta: '重开库校验' },
+  ];
+  switch (key) {
+    case 'm-confirm':
+      d[0] = { state: 'cur', meta: S.src.label };
+      break;
+    case 'm-invalid':
+      d[0] = { state: 'err', meta: '目录不受支持' };
+      break;
+    case 'm-conflict':
+      d[0] = { state: 'err', meta: '目标目录被占用' };
+      break;
+    case 'm-cred-system':
+      d[0] = { state: 'done', meta: S.src.label };
+      d[1] = { state: 'cur', meta: '等待系统授权…' };
+      break;
+    case 'm-cred-pass':
+    case 'm-cred-denied':
+      d[0] = { state: 'done', meta: S.src.label };
+      d[1] = { state: 'warn', meta: '等待输入 v1 口令' };
+      break;
+    case 'm-import':
+      d[0] = { state: 'done', meta: '已确认' };
+      d[1] = { state: 'done', meta: '已解锁' };
+      d[2] = { state: 'cur', meta: `${fmt(S.processed)} / ${fmt(TOTAL)} 条` };
+      break;
+    case 'm-verify':
+      d[0] = { state: 'done', meta: '已确认' };
+      d[1] = { state: 'done', meta: '已解锁' };
+      d[2] = { state: 'done', meta: '已全部处理' };
+      d[3] = { state: 'cur', meta: `${fmt(S.verified)} / ${fmt(TOTAL)} 条` };
+      break;
+    case 'm-stopping':
+      d[0] = { state: 'done', meta: '已确认' };
+      d[1] = { state: 'done', meta: '已解锁' };
+      if (S.verified > 0) {
+        d[2] = { state: 'done', meta: '已处理' };
+        d[3] = { state: 'warn', meta: '正在安全停止…' };
+      } else {
+        d[2] = { state: 'warn', meta: '正在安全停止…' };
+      }
+      break;
+    case 'r-complete':
+    case 'r-complete-retry':
+      d[0] = { state: 'done', meta: '已确认' };
+      d[1] = { state: 'done', meta: '已解锁' };
+      d[2] = { state: 'done', meta: `已保留 ${fmt(S.committed)} 条` };
+      d[3] = { state: 'done', meta: '校验通过' };
+      break;
+    case 'r-partial':
+      d[0] = { state: 'done', meta: '已确认' };
+      d[1] = { state: 'done', meta: '已解锁' };
+      d[2] = { state: 'warn', meta: '部分记录失败' };
+      d[3] = { state: 'warn', meta: '存在异常项' };
+      break;
+    case 'r-cancelled':
+      d[0] = { state: 'done', meta: '已确认' };
+      d[1] = { state: 'done', meta: '已解锁' };
+      d[2] = { state: 'warn', meta: `已停止 · 留存 ${fmt(S.committed)} 条` };
+      d[3] = { state: '', meta: '尚未校验' };
+      break;
+    case 'r-failed':
+      d[0] = { state: 'done', meta: '已确认' };
+      d[1] = { state: 'done', meta: '已解锁' };
+      d[2] = { state: 'err', meta: '读取异常中断' };
+      d[3] = { state: '', meta: '未完成' };
+      break;
+  }
+  return d;
 }
 
-function migHead(sub){
-  return `<div class="phead"><div class="pic">${I.box}</div>
-    <div><h2>从 UniClipboard v1 导入历史</h2><p>${sub}</p></div></div>`;
-}
+function migShell(headTitle, headSub, headPill, bodyHtml, footHtml) {
+  const names = ['确认目录与范围', '解锁旧数据', '导入历史', '重开校验'];
+  const metas = stepMetaFor(S.key);
+  const entryTag = S.entryMode === 'settings' ? '设置 › 存储补迁移' : '首次安装引导';
 
-function confirmBody(extra=''){
-  return `${migHead('在这台电脑上发现了 v1 的数据。导入后可在历史中直接使用。')}
-    ${srcCard()}
-    ${extra}
-    <div class="cols">
-      <div class="box yes"><h4>会导入</h4><ul>
-        <li>${I.check}文本与 HTML</li><li>${I.check}图片</li><li>${I.check}文件</li><li>${I.check}标签及其关联</li></ul></div>
-      <div class="box no"><h4>不会导入</h4><ul>
-        <li>${I.minus}设置</li><li>${I.minus}收藏</li><li>${I.minus}设备身份</li><li>${I.minus}设备信任关系</li></ul></div>
+  const rail = `<aside class="j-rail">
+    <div class="j-head">
+      <div class="j-app">${I.catMark}</div>
+      <div><div class="j-t">从 v1 迁移历史</div><div class="j-s">${entryTag}</div></div>
     </div>
-    <div class="notes">
-      <div class="note info">${I.devices}<span>其他设备需要升级到 v2，然后重新配对。</span></div>
-      <div class="note info">${I.shield}<span>迁移只读取 v1 数据，<b>不修改也不删除</b>旧数据。</span></div>
-      <div class="note warn">${I.warn}<span><b>开始前，请先退出 UniClipboard v1。</b>应用不会自动退出 v1。</span></div>
-    </div>`;
+    <div class="j-steps">
+      ${names.map((n, i) => {
+        const m = metas[i];
+        const badge = m.state === 'done' ? I.check : (i + 1);
+        return `<div class="j-step ${m.state}">
+          <div class="j-num">${badge}</div>
+          <div class="j-info">
+            <div class="j-name">${n}</div>
+            <div class="j-meta" id="jmeta-${i}">${m.meta}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="j-trust">
+      <div class="j-trust-row">${I.shield}<span>只读 v1 源目录，不修改也不删除旧数据。</span></div>
+      <div class="j-trust-row">${I.lock}<span>迁移期间离线独占，不捕获剪贴板与同步。</span></div>
+      <div class="j-trust-row">${I.info}<span>跳过后随时可在 设置 › 存储 中再次迁移。</span></div>
+    </div>
+  </aside>`;
+
+  return `<div class="mig-split">
+    ${rail}
+    <section class="m-pane">
+      <header class="m-head">
+        <div><h2>${headTitle}</h2><p>${headSub}</p></div>
+        ${headPill || ''}
+      </header>
+      <div class="m-scroll">${bodyHtml}</div>
+      <footer class="m-foot">${footHtml}</footer>
+    </section>
+  </div>`;
 }
 
-function laterHint(){ return `<span class="hint">之后可在 设置 › 数据 › 从 v1 迁移 中导入</span>`; }
+function srcCard(invalid = false) {
+  return `<div class="b-card ${invalid ? 'bad' : ''}">
+    <div class="src-row">
+      <div class="src-ic">${I.folder}</div>
+      <div class="src-main">
+        <div class="src-top">
+          <span class="src-lbl">v1 数据目录 · ${S.src.label}</span>
+          ${invalid
+            ? `<span class="pill err"><i class="dot"></i>不受支持</span>`
+            : `<span class="pill pos"><i class="dot"></i>结构有效</span>`}
+        </div>
+        <div class="src-path mono" title="${esc(S.src.path)}">${esc(S.src.path)}</div>
+      </div>
+      <button class="btn sm" data-act="pick">更改目录 ${I.chevronDown}</button>
+      ${S.picker ? `<div class="popover">
+        <div class="popover-h">选择本机或便携版 v1 数据目录（模拟）</div>
+        ${SOURCES.map((s, i) => `<button data-src="${i}">
+          <span class="p-path mono">${esc(s.path)}</span>
+          <span class="p-tag">${s.label}</span>
+        </button>`).join('')}
+      </div>` : ''}
+    </div>
+    ${invalid ? `<div class="src-err-strip">${I.warn}<span>这个目录不是受支持的 v1 数据目录（未找到有效的密钥与库结构），请选择其他目录。</span></div>` : ''}
+  </div>`;
+}
 
-/* ---------- 页面 ---------- */
+function scopeCard() {
+  return `<div class="scope-card">
+    <div class="scope-col">
+      <div class="scope-h"><span>将会导入</span><span class="pill pos"><i class="dot"></i>历史与偏好</span></div>
+      <ul class="scope-list">
+        <li><span style="color:var(--ok-dot)">${I.check}</span>文本与 HTML</li>
+        <li><span style="color:var(--ok-dot)">${I.check}</span>图片</li>
+        <li><span style="color:var(--ok-dot)">${I.check}</span>文件</li>
+        <li><span style="color:var(--ok-dot)">${I.check}</span>标签及关联</li>
+        <li><span style="color:var(--ok-dot)">${I.check}</span>收藏</li>
+        <li><span style="color:var(--ok-dot)">${I.check}</span>兼容的设置</li>
+      </ul>
+      <div class="scope-note">${I.shield}<span>只读 v1 数据，不修改也不删除旧文件</span></div>
+    </div>
+    <div class="scope-col excluded">
+      <div class="scope-h"><span>不会导入</span><span class="pill neu">需重新建立</span></div>
+      <ul class="scope-list">
+        <li><span style="color:var(--text-tertiary)">${I.minus}</span>设备身份</li>
+        <li><span style="color:var(--text-tertiary)">${I.minus}</span>设备信任</li>
+        <li><span style="color:var(--text-tertiary)">${I.minus}</span>不兼容设置</li>
+        <li><span style="color:var(--text-tertiary)">${I.minus}</span>旧版同步配置</li>
+      </ul>
+      <div class="scope-note">${I.devices}<span>其他设备需升级到 v2 后重新配对</span></div>
+    </div>
+  </div>`;
+}
+
+function confirmPage(invalid = false) {
+  const sub = S.entryMode === 'settings'
+    ? '桌面托管的后台服务已安全暂停，确认源目录即可独占导入。'
+    : '导入完成后即可在 v2 历史中直接使用旧记录。';
+  const body = `
+    ${srcCard(invalid)}
+    ${scopeCard()}
+    <div class="notice warn">${I.warn}<div><b>开始前，请先退出 UniClipboard v1。</b>应用不会自动退出旧版进程；若 v1 仍在运行并回收文件，可能导致个别附件缺失。</div></div>
+  `;
+  const skipBtn = S.entering
+    ? `<button class="btn subtle" disabled><span class="spin"></span>正在启动应用…</button>`
+    : `<button class="btn subtle" data-act="skip">暂不迁移</button>`;
+  const foot = `${skipBtn}<span class="hint compact-only">之后可在 设置 › 存储 › 从 v1 迁移 中导入</span><span class="sp"></span>
+    <button class="btn pri" data-act="start" ${invalid || S.entering ? 'disabled' : ''}>开始迁移</button>`;
+  return migShell('确认导入范围与目录', sub, '', body, foot);
+}
+
+function conflictPage() {
+  const body = `<div class="focus-card">
+    <div class="focus-top">
+      <div class="focus-ic err">${I.server}</div>
+      <div>
+        <div class="focus-ttl">另一个 unic 服务正在使用目标数据目录</div>
+        <div class="focus-sub">离线迁移需要独占目标目录锁（<code>unic.lock</code>）。请先手动停止正在运行的独立 unic 服务，然后重试。应用不会自动终止独立服务。</div>
+      </div>
+    </div>
+    <div class="notice">${I.shield}<span><b>安全边界：</b>本次预检在读取系统凭据前已中止，尚未请求任何凭据，也没有写入任何数据。</span></div>
+  </div>`;
+  const foot = `<button class="btn subtle" data-act="skip" ${S.entering ? 'disabled' : ''}>暂不迁移</button>
+    <span class="sp"></span>
+    <button class="btn pri" data-act="start" ${S.entering ? 'disabled' : ''}>重试</button>`;
+  return migShell('无法获取目录独占权', '需要释放目标数据目录后才能继续。', `<span class="pill err"><i class="dot"></i>目录被占用</span>`, body, foot);
+}
+
+function credSystemPage() {
+  const body = `<div class="focus-card">
+    <div class="focus-top">
+      <div class="focus-ic pulse">${I.key}</div>
+      <div>
+        <div class="focus-ttl">正在读取系统凭据</div>
+        <div class="focus-sub">操作系统可能弹出钥匙串 / 凭据管理器授权窗口，请求只读访问 UniClipboard v1 项目。请在系统窗口中点击「允许」。</div>
+      </div>
+    </div>
+    <div class="m-tile">
+      <div class="k">正在解锁源目录</div>
+      <div class="v mono" style="font-size:11.8px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(S.src.path)}</div>
+    </div>
+  </div>`;
+  const foot = `<span class="hint">仅在你点击「开始迁移」后请求系统凭据</span><span class="sp"></span>
+    <button class="btn" data-act="stop">${I.stop} 停止迁移</button>`;
+  return migShell('解锁 v1 加密数据', '只读获取解密密钥，不会修改系统凭据。', `<span class="pill info"><i class="dot"></i>等待授权</span>`, body, foot);
+}
+
+function credPassPage(denied) {
+  const noticeText = denied
+    ? '系统拒绝了凭据访问请求，你可输入 v1 口令继续解锁，或重新尝试系统凭据。'
+    : '系统凭据无法解锁当前目录中的 v1 数据，请输入旧版口令。';
+  const body = `<div class="focus-card">
+    <div class="focus-top">
+      <div class="focus-ic warn">${I.key}</div>
+      <div>
+        <div class="focus-ttl">输入 v1 口令以继续</div>
+        <div class="focus-sub">${noticeText}</div>
+      </div>
+    </div>
+    <div>
+      <div class="field-lbl">
+        <label for="pw">v1 口令</label>
+        <button class="btn link" style="font-size:11.5px" data-act="start">重试系统凭据</button>
+      </div>
+      <div class="input-wrap">
+        <input id="pw" class="input ${S.passErr ? 'bad' : ''}" type="${S.revealPass ? 'text' : 'password'}" autocomplete="off" placeholder="原型测试口令：v1pass" value="${esc(S.pass)}">
+        <button class="reveal-btn" type="button" data-act="toggle-pass">${S.revealPass ? '隐藏' : '显示'}</button>
+      </div>
+      ${S.passErr
+        ? `<div class="field-err">${I.warn}<span>无法解锁旧数据，请核对 v1 口令后重试。</span></div>`
+        : `<div class="field-help">口令仅在内存中用于本次解密，绝不进入命令参数、环境变量、磁盘或日志。</div>`}
+    </div>
+  </div>`;
+  const foot = `<button class="btn subtle" data-act="skip" ${S.entering ? 'disabled' : ''}>暂不迁移</button>
+    <span class="hint compact-only">之后可在 设置 › 存储 中迁移</span>
+    <span class="sp"></span>
+    <button class="btn pri" data-act="unlock" ${!S.pass || S.entering ? 'disabled' : ''}>解锁并继续</button>`;
+  return migShell('解锁 v1 加密数据', '在当前流程内完成口令兜底解锁。', `<span class="pill warn"><i class="dot"></i>需口令</span>`, body, foot);
+}
+
+function progressPage(mode) {
+  const isVerify = mode === 'verify' || (mode === 'stop' && S.verified > 0);
+  const done = isVerify ? S.verified : S.processed;
+  const pct = Math.round(done / TOTAL * 100);
+  const pill = mode === 'stop'
+    ? `<span class="pill neu"><i class="dot"></i>正在停止</span>`
+    : isVerify
+      ? `<span class="pill pos"><i class="dot"></i>校验阶段</span>`
+      : `<span class="pill info"><i class="dot"></i>导入阶段</span>`;
+
+  const title = mode === 'stop'
+    ? '正在等待当前操作安全结束…'
+    : isVerify ? '正在重开历史库并逐条校验' : '正在将 v1 记录写入新历史库';
+  const sub = mode === 'stop'
+    ? '正在等待当前记录落盘并释放存储锁。所有已提交的记录都会完整保留。'
+    : isVerify
+      ? '关闭并重新打开目标库，通过公开接口逐条比对内容摘要、标签、收藏与兼容设置。'
+      : (S.runPrior ? `已通过持久映射自动跳过此前导入的 ${fmt(S.runPrior)} 条记录。` : '按条写入本地历史库，不估算剩余时间；导入 100% 后将自动进入校验阶段。');
+
+  const body = `<div class="focus-card">
+    <div class="phase-track">
+      <span class="phase-chip ${isVerify ? 'done' : 'cur'}">${isVerify ? I.check : '<span class="spin"></span>'} 1. 导入记录</span>
+      <span class="phase-arrow">→</span>
+      <span class="phase-chip ${isVerify ? (mode === 'stop' ? '' : 'cur') : ''}">${isVerify && mode !== 'stop' ? '<span class="spin"></span>' : ''} 2. 重开校验</span>
+    </div>
+    <div class="focus-top">
+      <div class="focus-ic ${mode === 'stop' ? 'neu' : isVerify ? 'ok' : ''}">${mode === 'stop' ? I.stop : isVerify ? I.shield : I.download}</div>
+      <div>
+        <div class="focus-ttl">${title}</div>
+        <div class="focus-sub">${sub}</div>
+      </div>
+    </div>
+    <div>
+      <div class="bar-track ${mode === 'stop' ? 'stop' : isVerify ? 'verify' : ''}">
+        <div class="bar-fill" id="bar" style="width:${pct}%"></div>
+      </div>
+      <div class="bar-meta mono" style="margin-top:8px">
+        <span id="cnt">${isVerify ? '已校验' : '已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条</span>
+        <span id="pct">${pct}%</span>
+      </div>
+    </div>
+    <div class="mini-metrics">
+      <div class="m-tile">
+        <div class="k">已安全提交（中断不丢失）</div>
+        <div class="v mono" id="safeCommitted">${fmt(S.committed)} 条</div>
+      </div>
+      <div class="m-tile">
+        <div class="k">运行边界</div>
+        <div class="v">${S.runPrior ? `跳过已导入 ${fmt(S.runPrior)} 条` : '离线独占 · 不写剪贴板'}</div>
+      </div>
+    </div>
+  </div>`;
+
+  const foot = mode === 'stop'
+    ? `<span class="hint">等待释放目录锁后呈现最终状态</span><span class="sp"></span><button class="btn" disabled><span class="spin"></span>正在停止…</button>`
+    : `<span class="hint">请保持应用打开；点击红灯关闭也会走安全停止路径</span><span class="sp"></span><button class="btn" data-act="stop">${I.stop} 停止迁移</button>`;
+
+  return migShell(mode === 'stop' ? '正在安全停止迁移' : '正在迁移 v1 历史', '导入与校验分阶段进行，完成后才会呈现结果。', pill, body, foot);
+}
+
+function resultPage(cfg) {
+  const enterLabel = S.entering ? `<span class="spin"></span>正在启动应用…` : cfg.primaryEnterLabel;
+  const statsCols = Math.min(cfg.primaryStats.length, 3);
+  const body = `
+    <div class="res-hero ${cfg.tone}">
+      <div class="focus-ic ${cfg.tone === 'stop' ? 'neu' : cfg.tone}">${cfg.icon}</div>
+      <div>
+        <h3>${cfg.title}</h3>
+        <p>${cfg.lead}</p>
+      </div>
+    </div>
+    <div class="stat-grid" style="grid-template-columns:repeat(${statsCols},1fr)">
+      ${cfg.primaryStats.map(([cls, num, lbl]) => `
+        <div class="stat-card ${cls}">
+          <div class="n mono">${fmt(num)}</div>
+          <div class="l">${lbl}</div>
+        </div>`).join('')}
+    </div>
+    ${cfg.issues && cfg.issues.length ? `
+      <div class="issue-strip">
+        ${cfg.issues.map(([cls, num, lbl]) => `
+          <div class="issue-chip ${cls}"><b class="mono">${fmt(num)}</b><span>${lbl}</span></div>`).join('')}
+      </div>` : ''}
+    ${cfg.note || ''}
+  `;
+  return migShell(cfg.headTitle, cfg.headSub, cfg.pill, body, cfg.foot(enterLabel));
+}
+
+function historyView(n) {
+  const rows = [
+    { kind: '文本', tag: 'blue', txt: 'UniClipboard v2 桌面端首次引导与离线迁移设计笔记', tm: '刚刚', v1: true },
+    { kind: '图片', tag: 'lime', txt: 'boardui-settings-reference@2x.png · 1440 × 900', tm: '12 分钟前', v1: true },
+    { kind: '文件', tag: 'orange', txt: 'design-tokens-archive.zip · 4.2 MB', tm: '昨天 21:14', v1: true },
+    { kind: '代码', tag: 'purple', txt: 'make desktop-e2e CASE=first-install-setup', tm: '昨天 18:02', v1: true },
+    { kind: '文本', tag: 'blue', txt: 'https://uniclipboard.app/docs/quick-start', tm: '3 天前', v1: true },
+  ];
+  return `<div class="hist-wrap">
+    <aside class="hist-sb">
+      <div class="hist-nav on"><span>全部历史</span><span class="mono">${fmt(n)}</span></div>
+      <div class="hist-nav"><span>文本</span><span class="mono">${n ? fmt(Math.round(n * .68)) : 0}</span></div>
+      <div class="hist-nav"><span>图片</span><span class="mono">${n ? fmt(Math.round(n * .21)) : 0}</span></div>
+      <div class="hist-nav"><span>文件</span><span class="mono">${n ? fmt(n - Math.round(n * .68) - Math.round(n * .21)) : 0}</span></div>
+      <div style="flex:1"></div>
+      <div class="hist-nav" style="border-top:1px solid var(--sep);border-radius:0;padding-top:8px;height:auto"><span>设置 › 存储</span></div>
+    </aside>
+    <section class="hist-main">
+      <div class="hist-tb">
+        <div class="hist-omni">${I.search}<span>搜索历史（支持 #标签 @设备 /类型）</span></div>
+        <button class="btn sm" data-act="reset">重新演示引导</button>
+      </div>
+      ${n ? `<div class="hist-body">
+        ${rows.map(r => `<div class="hist-row">
+          <span class="mini-tag ${r.tag}">${r.kind}</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.txt}</span>
+          <span class="pill neu" style="height:20px;font-size:10.5px">v1</span>
+          <span class="mono" style="font-size:11px;color:var(--text-tertiary)">${r.tm}</span>
+        </div>`).join('')}
+      </div>` : `<div class="hist-empty">
+        <div style="width:44px;height:44px;border-radius:12px;overflow:hidden;opacity:.9">${I.catMark}</div>
+        <div style="font-weight:600;color:var(--text-primary)">还没有历史记录</div>
+        <div style="font-size:12px;color:var(--text-tertiary)">复制任意文本、图片或文件后，它们会自动出现在这里</div>
+      </div>`}
+      <footer class="m-foot">
+        <span class="hint">原型确认：已持久化 <code>desktop-setup.json</code> 完成标记并扩展至主窗口${n ? ` · 已呈现 ${fmt(n)} 条迁移记录（未自动写入系统剪贴板）` : ''}</span>
+      </footer>
+    </section>
+  </div>`;
+}
+
+function closedView() {
+  return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px">
+    <div class="focus-ic neu" style="width:52px;height:52px;border-radius:14px;margin-bottom:14px">${I.check}</div>
+    <h2 style="margin:0 0 6px;font-size:17px">进程已安全退出</h2>
+    <p style="margin:0 0 22px;max-width:420px;font-size:12.8px;color:var(--text-secondary);line-height:1.55">
+      关闭窗口与「停止迁移」走同一条安全取消路径，释放迁移存储锁后退出。<br>
+      已提交 <b class="mono">${fmt(S.committed)}</b> 条记录；设置尚未标记完成，下次启动将恢复到迁移确认页且不自动续跑。
+    </p>
+    <button class="btn pri" data-act="relaunch">模拟重新启动</button>
+  </div>`;
+}
+
+/* ---------------- Pages Registry ---------------- */
 const PAGES = {
-  'w-detecting': () => welcome(`<span class="spin"></span>正在检查这台电脑上的 v1 数据…`, false, S.pendingStart),
-  'w-found':     () => welcome(`<span style="color:var(--ok)">${I.check}</span>发现 UniClipboard v1 的数据`),
-  'w-none':      () => welcome(''),
-  'w-error':     () => welcome(`${I.warn}无法检查 v1 数据。<button class="link" data-act="redetect">重试</button>
-                     <span style="color:var(--muted)">或</span><button class="link" data-act="manual">手动选择目录</button>`, true),
+  'w-detecting': () => renderWelcome('detecting'),
+  'w-found':     () => renderWelcome('found'),
+  'w-none':      () => renderWelcome('none'),
+  'w-error':     () => renderWelcome('error'),
+  'm-confirm':   () => confirmPage(false),
+  'm-invalid':   () => confirmPage(true),
+  'm-conflict':  () => conflictPage(),
+  'm-cred-system': () => credSystemPage(),
+  'm-cred-pass':   () => credPassPage(false),
+  'm-cred-denied': () => credPassPage(true),
+  'm-import':    () => progressPage('import'),
+  'm-verify':    () => progressPage('verify'),
+  'm-stopping':  () => progressPage('stop'),
 
-  'm-confirm': () => page(confirmBody(),
-      btn('暂不迁移','skip','ghost') + laterHint() + '<span class="sp"></span>' + btn('开始迁移','start','primary')),
-  'm-invalid': () => page(confirmBody(`<div class="notes"><div class="note err">${I.warn}<span>这个目录不是受支持的 v1 数据目录。请选择其他目录。</span></div></div>`),
-      btn('暂不迁移','skip','ghost') + laterHint() + '<span class="sp"></span>' + '<button class="btn primary" disabled>开始迁移</button>'),
+  'r-complete': () => resultPage({
+    tone: 'ok', icon: I.shield,
+    headTitle: '迁移结果', headSub: '导入与校验均已结束，你可以进入应用开始使用。',
+    pill: `<span class="pill pos"><i class="dot"></i>已校验完成</span>`,
+    title: '迁移完成', lead: '所有支持的历史记录、标签、收藏与兼容设置都已导入并通过校验。',
+    primaryStats: [['ok', S.committed - S.runPrior, '本次新导入'], ['', TOTAL, '已校验']].concat(S.runPrior ? [['', S.runPrior, '此前已导入']] : []),
+    primaryEnterLabel: '开始使用',
+    foot: lbl => `<span class="hint">不会自动应用导入内容到系统剪贴板</span><span class="sp"></span><button class="btn pri lg" data-act="enter" ${S.entering ? 'disabled' : ''}>${lbl}</button>`,
+  }),
 
-  'm-cred-system': () => page(migHead('正在准备迁移。') + steps(0) + `
-      <div class="panel"><div class="ttl"><span class="spin"></span>正在读取系统凭据</div>
-      <div class="sub">系统可能弹出窗口，请求访问钥匙串中的 UniClipboard 项目。请在系统窗口中允许访问。</div></div>`,
-      '<span class="sp"></span>' + btn('停止迁移','stop')),
+  'r-complete-retry': () => resultPage({
+    tone: 'ok', icon: I.shield,
+    headTitle: '迁移结果', headSub: '重复迁移复用持久映射，不会产生重复记录。',
+    pill: `<span class="pill pos"><i class="dot"></i>已校验完成</span>`,
+    title: '迁移完成', lead: '没有新的记录需要导入。此前导入的记录均安然保留在历史中。',
+    primaryStats: [['', 0, '本次新导入'], ['', S.runPrior, '此前已导入'], ['ok', TOTAL, '已校验']],
+    primaryEnterLabel: '开始使用',
+    foot: lbl => `<span class="sp"></span><button class="btn pri lg" data-act="enter" ${S.entering ? 'disabled' : ''}>${lbl}</button>`,
+  }),
 
-  'm-cred-pass':   () => passPage(false),
-  'm-cred-denied': () => passPage(true),
+  'r-partial': () => resultPage({
+    tone: 'warn', icon: I.warn,
+    headTitle: '迁移结果', headSub: '部分记录或附件未能完整恢复，已导入部分不受影响。',
+    pill: `<span class="pill warn"><i class="dot"></i>部分完成</span>`,
+    title: '部分数据未能导入', lead: '已导入的记录可以正常使用。问题记录可在修复或退出 v1 后重试处理。',
+    primaryStats: [['', TOTAL - 18, '本次新导入'], ['', TOTAL - 24, '已校验']],
+    issues: [['bad', 18, '失败记录'], ['warn', 9, '缺失内容'], ['bad', 6, '校验失败'], ['warn', 2, '待补回颜色']],
+    note: `<div class="notice">${I.info}<span><b>缺失内容</b>指记录中丢失的图片或文件附件，与<b>失败记录</b>分开计数；这些记录仍保留其余可用内容。</span></div>`,
+    primaryEnterLabel: '进入应用',
+    foot: lbl => `<button class="btn" data-act="retry" ${S.entering ? 'disabled' : ''}>重试迁移</button><span class="sp"></span><button class="btn pri" data-act="enter" ${S.entering ? 'disabled' : ''}>${lbl}</button>`,
+  }),
 
-  'm-conflict': () => page(migHead('无法开始迁移。') + `
-      <div class="panel"><div class="ttl" style="color:var(--danger)">${I.server}另一个 unic 服务正在使用数据目录</div>
-      <div class="sub">迁移需要独占数据目录。请先停止该服务，然后重试。应用不会自动停止它。</div></div>
-      <div class="notes"><div class="note info">${I.shield}<span>没有读取凭据，也没有写入任何数据。</span></div></div>`,
-      btn('暂不迁移','skip','ghost') + '<span class="sp"></span>' + btn('重试','start','primary')),
+  'r-cancelled': () => resultPage({
+    tone: 'stop', icon: I.stop,
+    headTitle: '迁移结果', headSub: '迁移已安全停止并释放存储锁。',
+    pill: `<span class="pill neu"><i class="dot"></i>已停止</span>`,
+    title: '迁移已停止', lead: `已提交的 ${fmt(S.committed)} 条记录已保留并可在历史中使用。继续迁移时会自动跳过它们。`,
+    primaryStats: [['', S.committed - S.runPrior, '本次已提交'], ['', TOTAL - S.committed, '尚未导入']],
+    primaryEnterLabel: '进入应用',
+    foot: lbl => `<button class="btn" data-act="enter" ${S.entering ? 'disabled' : ''}>${lbl}</button><span class="sp"></span><button class="btn pri" data-act="retry" ${S.entering ? 'disabled' : ''}>继续迁移</button>`,
+  }),
 
-  'm-import': () => page(migHead('请保持应用打开。') + steps(1) + progressPanel('import'),
-      '<span class="hint">导入期间不会捕获剪贴板，也不会同步</span><span class="sp"></span>' + btn(`${I.stop}停止迁移`,'stop')),
-  'm-verify': () => page(migHead('请保持应用打开。') + steps(2) + progressPanel('verify'),
-      '<span class="hint">导入期间不会捕获剪贴板，也不会同步</span><span class="sp"></span>' + btn(`${I.stop}停止迁移`,'stop')),
-  'm-stopping': () => page(migHead('正在停止。') + steps(S.verified ? 2 : 1) + progressPanel('stop'),
-      '<span class="sp"></span><button class="btn" disabled><span class="spin"></span>正在停止…</button>'),
+  'r-failed': () => resultPage({
+    tone: 'err', icon: I.x,
+    headTitle: '迁移结果', headSub: '导入过程因源数据异常中止，已提交记录未回滚。',
+    pill: `<span class="pill err"><i class="dot"></i>未完成</span>`,
+    title: '迁移未完成', lead: '读取 v1 数据时出错：部分数据文件损坏或格式不受支持。',
+    primaryStats: [['', S.committed, '已提交并保留'], ['', TOTAL - S.committed, '尚未导入']],
+    note: `<div class="notice">${I.info}<span>已提交的记录<b>不会回滚</b>，仍可在历史中使用；重试会跳过它们。若问题持续，请确认 v1 已退出或选择其他目录。</span></div>`,
+    primaryEnterLabel: '不再迁移，进入应用',
+    foot: lbl => `<button class="btn" data-act="pick-fail" ${S.entering ? 'disabled' : ''}>选择其他目录</button>
+      <button class="btn subtle" data-act="enter" ${S.entering ? 'disabled' : ''}>${lbl}</button>
+      <span class="sp"></span>
+      <button class="btn pri" data-act="retry" ${S.entering ? 'disabled' : ''}>重试</button>`,
+  }),
 
-  'r-complete': () => resultPage('ok', I.check, '迁移完成', '所有记录都已导入并通过校验。',
-      [['ok', S.committed - S.runPrior, '本次新导入'], ['', TOTAL, '已校验']].concat(S.runPrior ? [['', S.runPrior, '此前已导入']] : []),
-      '', '<span class="sp"></span>' + btn('开始使用','enter','primary lg')),
-  'r-complete-retry': () => resultPage('ok', I.check, '迁移完成', '没有新的记录需要导入。此前导入的记录仍在历史中。',
-      [['', 0, '本次新导入'], ['', S.runPrior, '此前已导入'], ['ok', TOTAL, '已校验']],
-      '', '<span class="sp"></span>' + btn('开始使用','enter','primary lg')),
-  'r-partial': () => resultPage('warn', I.warn, '部分数据未能导入', '已导入的记录可以正常使用。问题记录可在重试时再次处理。',
-      [['', TOTAL - 18, '已导入记录'], ['bad', 18, '失败记录'], ['warn', 9, '缺失内容'], ['bad', 6, '校验失败']],
-      `<div class="note info">${I.info}<span><b>缺失内容</b>是记录中丢失的图片或文件附件，不计为失败记录。这些记录仍保留其余可用内容。</span></div>`,
-      btn('重试迁移','retry') + '<span class="sp"></span>' + btn('进入应用','enter','primary')),
-  'r-cancelled': () => resultPage('stop', I.stop, '迁移已停止', `已提交的 ${fmt(S.committed)} 条记录已保留，可以在历史中使用。继续迁移时会跳过它们。`,
-      [['', S.committed - S.runPrior, '本次已提交'], ['', TOTAL - S.committed, '尚未导入']],
-      '', btn('进入应用','enter') + '<span class="sp"></span>' + btn('继续迁移','retry','primary')),
-  'r-failed': () => resultPage('err', I.x, '迁移未完成', '读取 v1 数据时出错：部分数据文件已损坏，或格式不受支持。',
-      [['', S.committed, '已提交并保留'], ['', TOTAL - S.committed, '尚未导入']],
-      `<div class="note info">${I.info}<span>已提交的记录<b>不会回滚</b>，仍可在历史中使用。重试会跳过它们。若问题持续，请确认 v1 已退出，或选择其他目录。</span></div>`,
-      btn('不再迁移，进入应用','enter') + '<span class="sp"></span>' + btn('重试','retry','primary')),
-
-  'history-empty': () => history(0),
-  'history':       () => history(S.committed),
-  'closed': () => `<div class="welcome"><div class="ring stop">${I.check}</div>
-      <h1 style="font-size:18px">进程已退出</h1>
-      <p class="slogan" style="font-size:13px;margin-bottom:20px">原型模拟：关闭窗口走同一条安全停止路径，释放迁移资源后退出。<br>已提交 ${fmt(S.committed)} 条。设置未标记完成，下次启动回到迁移页。</p>
-      ${btn('模拟重新启动','relaunch','primary')}</div>`,
+  'history-empty': () => historyView(0),
+  'history':       () => historyView(S.committed),
+  'closed':        () => closedView(),
 };
 
-function welcome(detectHtml, err=false, waiting=false){
-  return `<div class="welcome">
-    <div class="logo">${I.clip}</div>
-    <h1>欢迎使用 UniClipboard</h1>
-    <p class="slogan">让每一次复制更有用</p>
-    ${waiting ? `<button class="btn primary lg" disabled><span class="spin"></span>开始使用</button>` : btn('开始使用','begin','primary lg')}
-    <div class="detect ${err?'err':''}">${detectHtml}</div>
-  </div>`;
-}
-
-function page(body, actions){
-  return `<div class="body">${body}</div><div class="actions">${actions}</div>`;
-}
-
-function passPage(denied){
-  const lead = denied ? '系统拒绝了凭据访问。' : '系统凭据无法解锁 v1 数据。';
-  return page(migHead('正在准备迁移。') + steps(0) + `
-    <div class="panel"><div class="ttl">${I.key}输入 v1 口令</div>
-    <div class="sub">${lead}请输入 v1 中设置的口令。口令只用于本次解锁，不会保存。</div>
-    <div class="pass"><label for="pw">v1 口令</label>
-      <input id="pw" class="input ${S.passErr?'bad':''}" type="password" autocomplete="off" placeholder="原型口令：v1pass" value="${S.pass}">
-      ${S.passErr ? `<div class="note" style="color:var(--danger);margin-top:6px">${I.warn}口令不正确。请重试。</div>` : ''}
-    </div></div>`,
-    btn('暂不迁移','skip','ghost') + laterHint() + '<span class="sp"></span>' + btn('解锁并继续','unlock','primary'));
-}
-
-function progressPanel(mode){
-  const verify = mode === 'verify' || (mode === 'stop' && S.verified > 0);
-  const done = verify ? S.verified : S.processed;
-  const pct = Math.round(done / TOTAL * 100);
-  const title = mode === 'stop' ? `<span class="spin"></span>正在安全停止`
-              : verify ? `<span class="spin"></span>正在校验导入的内容` : `<span class="spin"></span>正在导入记录`;
-  const sub = mode === 'stop' ? '正在等待当前记录写完。已提交的记录会保留。'
-            : verify ? '重新打开历史库，逐条比对内容。' : (S.runPrior ? `跳过此前已导入的 ${fmt(S.runPrior)} 条记录。` : '按条写入历史。已写入的记录在中断后保留。');
-  return `<div class="panel"><div class="ttl">${title}</div><div class="sub">${sub}</div>
-    <div class="track ${mode==='stop'?'stop':verify?'verify':''}"><span id="bar" style="width:${pct}%"></span></div>
-    <div class="counts"><span id="cnt">${verify?'已校验':'已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条</span><span id="pct">${pct}%</span></div></div>`;
-}
-
-function resultPage(tone, icon, title, lead, stats, note, actions){
-  const cols = Math.min(stats.length, 4);
-  return `<div class="result"><div class="ring ${tone}">${icon}</div><h2>${title}</h2><p class="lead">${lead}</p>
-    <div class="stats" style="grid-template-columns:repeat(${cols},1fr)">
-      ${stats.map(([c,n,l]) => `<div class="stat ${c}"><b>${fmt(n)}</b><span>${l}</span></div>`).join('')}
-    </div>${note}</div>
-    <div class="actions">${actions}</div>`;
-}
-
-function history(n){
-  const rows = n ? Array.from({length:8}, (_,i) => `<div class="row"><div class="kd"></div><div style="flex:1">
-      <div class="ln" style="width:${40+((i*37)%50)}%"></div><div class="ln" style="width:22%;margin-top:6px;opacity:.6"></div></div>
-      <span class="tag">v1</span></div>`).join('') : '';
-  return `<div class="hist"><div class="search">搜索历史</div>
-    ${n ? rows : `<div class="empty"><div>还没有历史记录<br><span style="color:var(--faint)">复制任意内容后会出现在这里</span></div></div>`}
-    <div class="actions"><span class="hint">原型：已进入历史，设置标记为完成${n?` · ${fmt(n)} 条来自 v1`:''}。</span><span class="sp"></span>${btn('重置原型','reset')}</div></div>`;
-}
-
-/* ---------- 规格说明 ---------- */
+/* ---------------- UX & Contract Spec Notes ---------------- */
 const SPEC = {
-  'w-detecting': ['欢迎 · 检测中', [
-    '后台检测默认 v1 目录。<b>不读取剪贴板，不请求系统凭据，不开始迁移。</b>',
-    '检测期间可点“开始使用”；按钮进入等待态，检测结束后自动分流。',
-    '文案严格使用决策中的标题、标语与按钮文本。']],
-  'w-found': ['欢迎 · 发现 v1', [
-    '“开始使用”进入迁移确认页。',
-    '发现源不等于同意迁移；此处不显示任何导入动作。']],
-  'w-none': ['欢迎 · 未发现', [
-    '“开始使用”直接进入历史，<b>没有额外完成页</b>。',
-    '此时持久化 setup 完成标记。']],
-  'w-error': ['欢迎 · 检测出错', [
-    '检测错误与“未发现”<b>明确区分</b>：显示错误行。',
-    '用户可重试检测、手动选择目录，或直接“开始使用”跳过迁移。']],
-  'm-confirm': ['迁移 · 确认', [
-    '在请求凭据或写入目标之前，说明导入范围与不导入的内容。',
-    '不承诺导入设置、收藏、设备身份与信任；说明设备需升级并重新配对。',
-    '说明 v1 数据被保留；<b>警告放在开始按钮之前</b>：请先退出 v1，应用不会自动退出。',
-    '可选择其他目录（自定义或便携版）。',
-    '“暂不迁移”进入历史并完成 setup；提示之后的设置入口。']],
-  'm-invalid': ['迁移 · 无效目录', [
-    '不受支持或无效的源被拒绝，“开始迁移”不可用。',
-    '不创建任何成功结果；用户可重新选择或暂不迁移。']],
-  'm-cred-system': ['迁移 · 读取系统凭据', [
-    '只有点击“开始迁移”后才触发系统凭据弹窗。',
-    '三步进度从“解锁旧数据”开始。',
-    '此阶段也可停止。']],
-  'm-cred-pass': ['迁移 · 输入口令', [
-    '系统凭据无法解锁时，在当前流程内请求旧口令。',
-    '口令不进入命令参数、环境变量、持久化、日志或报告。',
-    '口令错误允许重试或暂不迁移。']],
-  'm-cred-denied': ['迁移 · 凭据被拒绝', [
-    '系统拒绝访问时同样回落到口令输入。',
-    '用户仍可“暂不迁移”。']],
-  'm-conflict': ['迁移 · 目标被占用', [
-    '迁移需要独占目标目录。已有服务占用时报告冲突。',
-    '<b>不自动终止</b>独立运行的服务；用户停止后重试。']],
-  'm-import': ['迁移 · 导入中', [
-    '显示当前阶段与 已处理 / 总数，<b>不显示剩余时间估计</b>。',
-    '导入与校验分开展示；导入 100% 不等于完成。',
-    '迁移期间不捕获剪贴板、不启动同步。',
-    '点击红灯关闭窗口会走同一条安全停止路径。']],
-  'm-verify': ['迁移 · 校验中', [
-    '重新打开目标后校验内容；进度条换为校验色，计数改为“已校验”。',
-    '校验未结束前不显示“迁移完成”。']],
-  'm-stopping': ['迁移 · 正在停止', [
-    '等待安全取消完成后才显示终态。',
-    '按钮全部禁用，避免重复操作。已提交记录保留。']],
-  'r-complete': ['结果 · 完成', [
-    '“迁移完成”只用于完整且通过校验的结果。',
-    '显示导入数与校验数；“开始使用”直接打开历史。',
-    '不再弹完成对话框，不自动写入系统剪贴板。']],
-  'r-complete-retry': ['结果 · 重试无新增', [
-    '区分“本次新导入”与“此前已导入”。',
-    '0 条新记录<b>不表现为空历史</b>。']],
-  'r-partial': ['结果 · 部分', [
-    '分别显示已导入、失败记录、缺失内容、校验失败；为 0 的项不显示。',
-    '缺失内容不是失败记录；记录可以保留其余可用内容。',
-    '操作：进入应用或重试迁移。']],
-  'r-cancelled': ['结果 · 已停止', [
-    '说明已提交记录保留。',
-    '操作：继续迁移（复用持久映射跳过已成功项）或进入应用。']],
-  'r-failed': ['结果 · 失败', [
-    '显示安全、可操作的原因；不含路径、正文或秘密。',
-    '<b>不暗示已提交记录被回滚。</b>',
-    '操作：重试，或不再迁移直接进入应用。']],
-  'history-empty': ['历史（无迁移）', [
-    '跳过路径或无 v1 源时进入历史，持久化 setup 完成。',
-    '之后启动直接打开历史。']],
-  'history': ['历史（迁移后）', [
-    '进入应用即打开历史，导入的记录可直接使用。',
-    '之后启动直接打开历史；已初始化的 v2 安装同样绕过 setup。']],
-  'closed': ['关闭窗口', [
-    '关闭或退出与“停止迁移”使用同一条安全取消路径。',
-    '未完成的流程不标记 setup 完成；重启后恢复到迁移页，<b>不自动继续导入</b>。']],
+  'w-detecting': ['封面 · 后台检测中',
+    '左侧舞台重构为可切换的 UniClipboard v2 实景能力工作台：1) Capture→Processing 语义标签流水线与 #/@/ Omnibar；2) 临时分享 / 文本处理 / Lua 插件动作菜单；3) Tailcat 免账号端到端直连拓扑。右侧保持 0026 极简行动区。',
+    ['严格保留 0026 文案：<b>欢迎使用 UniClipboard</b> / <b>让每一次复制更有用</b> / <b>开始使用</b>。',
+     '后台仅查目录结构，<b>不读剪贴板、不弹系统凭据、不自动导入</b>。',
+     '检测期间点击「开始使用」进入等待态，检测完立即分流。']],
+  'w-found': ['封面 · 发现 v1 数据',
+    '状态卡提前说明“下一步可选择导入或跳过”，消除旧版点「开始使用」被突然拉进迁移表单的割裂感。',
+    ['发现源不等于同意迁移；封面页不出现导入或凭据请求动作。',
+     '点击「开始使用」保存目录并切入 BoardUI SplitView 迁移工作区。']],
+  'w-none': ['封面 · 未发现 v1',
+    '无多余状态框，保持封面极致清爽；点击「开始使用」经短暂启动过渡后直接单窗展开进入历史。',
+    ['不插入额外“设置完成”中间页，进入历史即持久化完成标记。']],
+  'w-error': ['封面 · 检测出错',
+    '使用 BoardUI 柔和红提示卡，与“未发现”形成明确视觉区分，内联提供重试与手动选目录。',
+    ['仍保留「开始使用」主按钮，允许用户直接跳过迁移进入历史。']],
+  'm-confirm': ['迁移 · 范围与目录确认',
+    '重设计核心：将 7 个平权矩形框收束为「左侧旅程导航与常驻承诺 + 右侧 3 块聚焦内容（源目录 / 双栏对比 / 单条琥珀警示）」，大幅降低认知负荷。',
+    ['明确列出「将会导入」包含历史内容、标签及关联、<b>收藏</b>与<b>兼容的设置</b>（注：收藏与兼容设置迁移当前版本后端尚未实现，流程先行标识）。',
+     '「不会导入」聚焦设备身份、设备信任、不兼容设置与旧版同步配置，并提示其他设备升级 v2 后重新配对。',
+     '只读不删 v1、离线不捕获、设置页补迁移入口常驻左侧栏，不与退出 v1 警示争抢注意力。',
+     '「暂不迁移」直接进入历史并完成 setup。']],
+  'm-invalid': ['迁移 · 无效目录',
+    '错误提示直接附着在源目录卡片底部（内联归属），不额外堆叠悬浮框，禁用「开始迁移」。',
+    ['拒绝无效目录，不产生误导性成功状态；允许重新选择或暂不迁移。']],
+  'm-conflict': ['迁移 · 目标目录被占用',
+    '独占预检失败清晰呈现于右侧单卡，同时左侧步骤 1 标红定位问题所在。',
+    ['在触发任何系统凭据之前预检 <code>unic.lock</code>。',
+     '<b>绝不自动终止</b>独立运行的 <code>unicd</code> 服务。']],
+  'm-cred-system': ['迁移 · 读取系统凭据',
+    '左侧步骤 1 自动打勾、步骤 2 高亮，右侧柔和脉冲引导用户关注系统钥匙串授权弹窗。',
+    ['仅在点击「开始迁移」后触发凭据读取，此时即可安全停止。']],
+  'm-cred-pass': ['迁移 · 口令兜底解锁',
+    '原地切换为 BoardUI 表单卡片，新增「重试系统凭据」快捷出口与密码明文显隐切换（对齐 <code>setupui/view.go</code>）。',
+    ['口令仅内存使用并在结束时清零，不入参、不落盘、不写日志。']],
+  'm-cred-denied': ['迁移 · 凭据访问被拒',
+    '系统拒绝后平滑回落至口令输入，若用户误点拒绝也可直接点「重试系统凭据」恢复。',
+    ['始终保留「暂不迁移」出口。']],
+  'm-import': ['迁移 · 逐条导入中',
+    '顶部内置「1. 导入记录 → 2. 重开校验」两阶段条，下方补充“已安全提交”安心指标卡，既透明又不伪造剩余时间。',
+    ['仅展示阶段与 <code>已处理 / 总数</code>，不伪造 ETA。',
+     '点击红灯关窗弹出 BoardUI AlertDialog 并走同一安全取消路径。']],
+  'm-verify': ['迁移 · 重开校验中',
+    '左侧步骤 3 切绿勾、步骤 4 激活，进度条切为 BoardUI 语义绿，视觉上强区分“导入完成”与“校验完成”。',
+    ['关闭并重开目标库经公开接口逐条校验字节摘要。']],
+  'm-stopping': ['迁移 · 正在安全停止',
+    '进度条退为中性灰，按钮锁定为「正在停止…」，等待当前记录落盘与锁释放。',
+    ['已提交记录全部保留，绝不提前展示终态。']],
+  'r-complete': ['结果 · 迁移完成',
+    '左侧 4 步全部亮绿勾，右侧以精炼摘要卡呈现本次新导入与校验计数，底部主按钮引导进入历史。',
+    ['“迁移完成”仅用于完整且通过校验的结果。',
+     '不自动写入系统剪贴板，用户点击后才进入历史。']],
+  'r-complete-retry': ['结果 · 重试无新增',
+    '明确并列展示「本次新导入 0」「此前已导入 1,204」「已校验 1,204」，消除空历史误解。',
+    ['复用持久映射实现幂等重试。']],
+  'r-partial': ['结果 · 部分数据未能导入',
+    '将正向计数（已导入/已校验）与异常明细（失败记录 / 缺失内容 / 校验失败 / 待补回颜色）分层展示，一眼看清问题构成。',
+    ['仅非零异常项显示；明确解释缺失内容≠失败记录。',
+     '提供「重试迁移」与「进入应用」双出口。']],
+  'r-cancelled': ['结果 · 迁移已停止',
+    '清晰展示本次已提交与尚未导入数量，主按钮聚焦「继续迁移」，次按钮允许直接「进入应用」。',
+    ['断点续迁复用持久映射自动跳过已提交记录。']],
+  'r-failed': ['结果 · 迁移未完成',
+    '安全展示错误类别，明确不回滚已提交记录，并在底部同步最新代码的「选择其他目录」出口。',
+    ['不暴露路径、剪贴板正文或凭据秘密。']],
+  'history-empty': ['历史 · 全新开始',
+    '演示单窗口从引导尺寸平滑扩展到 BoardUI v2 历史主界面。',
+    ['已持久化 setup 完成标记，此后重启直达历史。']],
+  'history': ['历史 · 迁移后就绪',
+    '单窗口平滑扩展进入历史，旧版 v1 记录带标签立即可检索使用。',
+    ['不自动写入系统剪贴板；已初始化老 v2 安装始终绕过引导。']],
+  'closed': ['关闭窗口 · 安全退出',
+    '模拟迁移中点击红灯并确认「停止并退出」后的安全退出与重启恢复。',
+    ['未完成流程不标记 setup 完成；重启回到迁移确认页且不自动续跑。']],
 };
 
 const JUMPS = [
-  ['w-detecting','欢迎·检测中'],['w-found','欢迎·发现'],['w-none','欢迎·未发现'],['w-error','欢迎·出错'],
-  ['m-confirm','确认'],['m-invalid','无效目录'],['m-cred-system','系统凭据'],['m-cred-pass','输入口令'],['m-cred-denied','凭据被拒'],
-  ['m-conflict','目标被占用'],['m-import','导入中'],['m-verify','校验中'],['m-stopping','停止中'],
+  ['w-detecting','封面·检测中'],['w-found','封面·发现v1'],['w-none','封面·未发现'],['w-error','封面·出错'],
+  ['m-confirm','确认'],['m-invalid','无效目录'],['m-conflict','目录占用'],
+  ['m-cred-system','系统凭据'],['m-cred-pass','输入口令'],['m-cred-denied','凭据被拒'],
+  ['m-import','导入中'],['m-verify','校验中'],['m-stopping','停止中'],
   ['r-complete','完成'],['r-complete-retry','重试无新增'],['r-partial','部分'],['r-cancelled','已停止'],['r-failed','失败'],
-  ['history','历史'],['closed','关闭窗口'],
+  ['history','历史(已迁)'],['closed','关窗退出'],
 ];
 
-/* ---------- 渲染 ---------- */
-function render(){
-  const k = S.key;
-  $('#page').innerHTML = PAGES[k]() + (S.closeAsk ? closeDialog() : '');
-  $('#wtitle').textContent = k.startsWith('history') ? 'UniClipboard · 历史' : k.startsWith('w-') || k === 'closed' ? 'UniClipboard' : 'UniClipboard · 从 v1 迁移';
-  const [t, items] = SPEC[k];
-  $('#spec').innerHTML = `<h3>${t}</h3><div class="key">${k}</div><ul>${items.map(i=>`<li>${i}</li>`).join('')}</ul>
-    <div class="flow">三个逻辑页：<b>欢迎</b> → <b>迁移</b>（确认、凭据、进度共用一页）→ <b>结果</b>。<br>
-    “模拟”下拉框决定点击流程中的检测、凭据与结果分支。红灯可模拟关闭窗口。</div>`;
-  document.querySelectorAll('#jumps .chip').forEach(c => c.classList.toggle('on', c.dataset.jump === k));
-  const pw = $('#pw'); if(pw){ pw.focus(); pw.oninput = e => S.pass = e.target.value; pw.onkeydown = e => { if(e.key==='Enter') act('unlock'); }; }
+function closeModal() {
+  return `<div class="scrim"><div class="modal" role="dialog" aria-modal="true">
+    <h3>正在迁移历史记录</h3>
+    <p>关闭窗口会先安全停止当前迁移并释放存储锁，然后退出应用。已提交的记录会完整保留，下次启动可从断点继续。</p>
+    <div class="modal-acts">
+      <button class="btn" data-act="close-cancel">继续迁移</button>
+      <button class="btn pri" data-act="close-confirm">停止并退出</button>
+    </div>
+  </div></div>`;
 }
-function update(){
+
+function render() {
+  const k = S.key;
+  const isHist = k.startsWith('history');
+  const win = $('#win');
+  win.classList.toggle('expanded', isHist);
+  win.classList.toggle('compact-size', !isHist && S.sizeMode === 'compact');
+
+  $('#sizeLabel').innerHTML = isHist
+    ? `当前主窗口：<code>1100 × 720 (扩展示意)</code>`
+    : S.sizeMode === 'compact'
+      ? `当前引导窗口：<code>640 × 560（现行紧凑适配）</code>`
+      : `当前引导窗口：<code>780 × 540（推荐 BoardUI 分栏）</code>`;
+
+  $('#root').innerHTML = PAGES[k]() + (S.closeAsk ? closeModal() : '');
+
+  const wv = $('#welcomeVisual');
+  if (wv) {
+    wv.onmouseenter = () => { S.sceneHover = true; wv.classList.add('paused'); syncSceneTimer(); };
+    wv.onmouseleave = () => { S.sceneHover = false; if (!S.sceneManual && document.documentElement.dataset.motion !== 'reduced') wv.classList.remove('paused'); syncSceneTimer(); };
+  }
+  syncSceneTimer();
+
+  const [title, uxNote, items] = SPEC[k];
+  $('#spec').innerHTML = `
+    <div class="spec-head"><h3>${title}</h3><span class="key mono">${k}</span></div>
+    <div class="sec-lbl">UI / UX 重设计要点</div>
+    <p>${uxNote}</p>
+    <div class="sec-lbl">0026 / 0011 契约与行为核对</div>
+    <ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>
+    <div class="foot">
+      可在顶部切换 <b>780 × 540</b>（推荐分栏）与 <b>640 × 560</b>（现行尺寸响应式适配），或点击封面左栏底部分段器手动预览 3 个 UniClipboard v2 核心能力场景。
+    </div>`;
+
+  document.querySelectorAll('#jumps .chip').forEach(c => c.classList.toggle('on', c.dataset.jump === k));
+
+  const pw = $('#pw');
+  if (pw) {
+    pw.focus();
+    pw.setSelectionRange(pw.value.length, pw.value.length);
+    pw.oninput = e => {
+      S.pass = e.target.value;
+      const ub = document.querySelector('[data-act="unlock"]');
+      if (ub) ub.disabled = !S.pass;
+    };
+    pw.onkeydown = e => { if (e.key === 'Enter' && S.pass) act('unlock'); };
+  }
+}
+
+function updateLiveNumbers() {
   const verify = S.key === 'm-verify';
   const done = verify ? S.verified : S.processed;
   const pct = Math.round(done / TOTAL * 100);
-  const bar = $('#bar'); if(!bar) return;
+  const bar = $('#bar'); if (!bar) return;
   bar.style.width = pct + '%';
-  $('#cnt').innerHTML = `${verify?'已校验':'已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条`;
+  $('#cnt').innerHTML = `${verify ? '已校验' : '已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条`;
   $('#pct').textContent = pct + '%';
-}
-function closeDialog(){
-  return `<div class="overlay"><div class="dialog"><h3>迁移正在进行</h3>
-    <p>关闭窗口会先安全停止迁移，然后退出。已提交的记录会保留，下次启动可以继续。</p>
-    <div class="acts">${btn('继续迁移','close-cancel')}${btn('停止并退出','close-confirm','primary')}</div></div></div>`;
+  const sc = $('#safeCommitted'); if (sc) sc.textContent = `${fmt(S.committed)} 条`;
+  const jm = $(verify ? '#jmeta-3' : '#jmeta-2');
+  if (jm) jm.textContent = `${fmt(done)} / ${fmt(TOTAL)} 条`;
 }
 
-/* ---------- 交互 ---------- */
-function act(a){
-  switch(a){
-    case 'begin': {
-      if(S.key === 'w-detecting'){ S.pendingStart = true; return render(); }
+function act(a) {
+  switch (a) {
+    case 'begin':
+      if (S.key === 'w-detecting') { S.pendingStart = true; return render(); }
       return startFrom(S.key);
-    }
     case 'redetect': return go('w-detecting');
     case 'manual': S.src = SOURCES[1]; return go('m-confirm');
     case 'pick': S.picker = !S.picker; return render();
-    case 'skip': return go('history-empty');
+    case 'pick-fail': S.src = SOURCES[1]; return go('m-confirm');
+    case 'skip': return enterApp(false);
     case 'start': return startMigration();
-    case 'stop': return stopMigration();
-    case 'unlock': {
-      if(!S.pass) return;
-      if(S.pass !== 'v1pass'){ S.passErr = true; S.pass = ''; return render(); }
+    case 'stop': return go('m-stopping');
+    case 'toggle-pass': S.revealPass = !S.revealPass; return render();
+    case 'unlock':
+      if (!S.pass) return;
+      if (S.pass !== 'v1pass') { S.passErr = true; S.pass = ''; return render(); }
       S.passErr = false; S.pass = ''; return beginImport();
-    }
     case 'retry': return startMigration();
-    case 'enter': return go(S.committed ? 'history' : 'history-empty');
-    case 'reset': S.committed = 0; S.runPrior = 0; S.processed = 0; S.verified = 0; S.src = SOURCES[0]; S.closing = false; return go('w-detecting');
-    case 'relaunch': S.closing = false; S.processed = S.committed; return go('m-confirm');
+    case 'enter': return enterApp(true);
+    case 'reset':
+      S.committed = 0; S.runPrior = 0; S.processed = 0; S.verified = 0;
+      S.src = SOURCES[0]; S.closing = false; S.passErr = false; S.pass = '';
+      S.sceneIdx = 0; S.sceneManual = false;
+      return go(S.entryMode === 'settings' ? 'm-confirm' : 'w-detecting');
+    case 'relaunch':
+      S.closing = false; S.processed = S.committed;
+      return go('m-confirm');
     case 'close-cancel': S.closeAsk = false; return render();
     case 'close-confirm': S.closeAsk = false; S.closing = true; return go('m-stopping');
   }
 }
+
 document.addEventListener('click', e => {
+  const sc = e.target.closest('[data-scene]');
+  if (sc) {
+    S.sceneIdx = +sc.dataset.scene;
+    S.sceneManual = true;
+    const wv = $('#welcomeVisual');
+    if (wv) wv.classList.add('paused');
+    syncSceneTimer();
+    updateShowcaseOnly();
+    return;
+  }
   const s = e.target.closest('[data-src]');
-  if(s){ S.src = SOURCES[+s.dataset.src]; return go(S.src.ok ? 'm-confirm' : 'm-invalid'); }
-  const b = e.target.closest('[data-act]'); if(b && !b.disabled) return act(b.dataset.act);
-  if(S.picker && !e.target.closest('.picker')){ S.picker = false; render(); }
+  if (s) { S.src = SOURCES[+s.dataset.src]; return go(S.src.ok ? 'm-confirm' : 'm-invalid'); }
+  const b = e.target.closest('[data-act]');
+  if (b && !b.disabled) return act(b.dataset.act);
+  if (S.picker && !e.target.closest('.popover')) { S.picker = false; render(); }
 });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (S.closeAsk) { S.closeAsk = false; render(); }
+    else if (S.picker) { S.picker = false; render(); }
+  }
+});
+
 $('#closeBtn').onclick = () => {
-  if(['m-import','m-verify','m-cred-system'].includes(S.key)){ S.closeAsk = true; render(); }
+  if (['m-import', 'm-verify', 'm-cred-system'].includes(S.key)) { S.closeAsk = true; render(); }
 };
 document.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => {
   document.documentElement.dataset.theme = b.dataset.themeBtn;
   document.querySelectorAll('[data-theme-btn]').forEach(x => x.classList.toggle('on', x === b));
 });
+document.querySelectorAll('[data-size-btn]').forEach(b => b.onclick = () => {
+  S.sizeMode = b.dataset.sizeBtn;
+  document.querySelectorAll('[data-size-btn]').forEach(x => x.classList.toggle('on', x === b));
+  render();
+});
+document.querySelectorAll('[data-entry-btn]').forEach(b => b.onclick = () => {
+  S.entryMode = b.dataset.entryBtn;
+  document.querySelectorAll('[data-entry-btn]').forEach(x => x.classList.toggle('on', x === b));
+  act('reset');
+});
+$('#motionBtn').onclick = e => {
+  const reduced = document.documentElement.dataset.motion === 'reduced';
+  document.documentElement.dataset.motion = reduced ? '' : 'reduced';
+  e.target.classList.toggle('on', !reduced);
+  const wv = $('#welcomeVisual');
+  if (wv) wv.classList.toggle('paused', !reduced || S.sceneManual || S.sceneHover);
+  syncSceneTimer();
+};
 $('#restart').onclick = () => act('reset');
 
-/* 跳转：为静态状态预填合理数据 */
 const PRESET = {
-  'm-import':        () => { S.runPrior = 0; S.processed = 380; S.committed = 380; S.verified = 0; },
-  'm-verify':        () => { S.runPrior = 0; S.processed = TOTAL; S.committed = TOTAL; S.verified = 520; },
-  'm-stopping':      () => { S.runPrior = 0; S.processed = 312; S.committed = 312; S.verified = 0; S.closing = false; },
-  'r-complete':      () => { S.runPrior = 0; S.committed = TOTAL; },
-  'r-complete-retry':() => { S.runPrior = TOTAL; S.committed = TOTAL; },
-  'r-partial':       () => { S.runPrior = 0; S.committed = TOTAL - 18; },
-  'r-cancelled':     () => { S.runPrior = 0; S.committed = 312; },
-  'r-failed':        () => { S.runPrior = 0; S.committed = 494; },
-  'history':         () => { if(!S.committed) S.committed = TOTAL; },
-  'closed':          () => { S.committed = 312; },
-  'm-invalid':       () => { S.src = SOURCES[2]; },
-  'm-confirm':       () => { S.src = SOURCES[0]; },
-  'm-cred-pass':     () => { S.passErr = false; S.pass = ''; },
-  'm-cred-denied':   () => { S.passErr = false; S.pass = ''; },
+  'm-import':         () => { S.runPrior = 0; S.processed = 396; S.committed = 396; S.verified = 0; },
+  'm-verify':         () => { S.runPrior = 0; S.processed = TOTAL; S.committed = TOTAL; S.verified = 560; },
+  'm-stopping':       () => { S.runPrior = 0; S.processed = 312; S.committed = 312; S.verified = 0; S.closing = false; },
+  'r-complete':       () => { S.runPrior = 0; S.committed = TOTAL; },
+  'r-complete-retry': () => { S.runPrior = TOTAL; S.committed = TOTAL; },
+  'r-partial':        () => { S.runPrior = 0; S.committed = TOTAL - 18; },
+  'r-cancelled':      () => { S.runPrior = 0; S.committed = 312; },
+  'r-failed':         () => { S.runPrior = 0; S.committed = 494; },
+  'history':          () => { if (!S.committed) S.committed = TOTAL; },
+  'closed':           () => { S.committed = 312; },
+  'm-invalid':        () => { S.src = SOURCES[2]; },
+  'm-confirm':        () => { S.src = SOURCES[0]; },
+  'm-cred-pass':      () => { S.passErr = false; S.pass = ''; S.revealPass = false; },
+  'm-cred-denied':    () => { S.passErr = false; S.pass = ''; S.revealPass = false; },
 };
+
 const jumps = $('#jumps');
-JUMPS.forEach(([k,l]) => {
+JUMPS.forEach(([k, l]) => {
   const c = document.createElement('button');
   c.className = 'chip'; c.dataset.jump = k; c.textContent = l;
   c.onclick = () => {
-    clearTimer(); S.pendingStart = false; S.closeAsk = false;
-    (PRESET[k] || (()=>{}))();
+    clearTimer(); S.pendingStart = false; S.closeAsk = false; S.entering = false;
+    (PRESET[k] || (() => {}))();
     S.key = k; S.picker = false; render();
-    // 跳转到进行中的状态时继续运行模拟，便于观察过渡
-    if(['w-detecting','m-cred-system','m-import','m-verify','m-stopping'].includes(k)) enter(k);
+    if (['w-detecting', 'm-cred-system', 'm-import', 'm-verify', 'm-stopping'].includes(k)) enter(k);
   };
   jumps.appendChild(c);
 });
 
-// 支持 #状态 直接打开某个状态，例如 setup.html#r-partial
-const initial = location.hash.slice(1);
-const chip = initial && jumps.querySelector(`[data-jump="${initial}"]`);
-chip ? chip.click() : go('w-detecting');
+go('w-detecting');
 </script>
 </body>
 </html>

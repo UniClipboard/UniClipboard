@@ -27,3 +27,8 @@ var TrayPNG []byte
 //
 //go:embed tray-glyph.svg
 var TrayGlyphSVG []byte
+
+// LogoSVG is the canonical black-field, white pixel-cat vector logo.
+//
+//go:embed unic-logo.svg
+var LogoSVG []byte

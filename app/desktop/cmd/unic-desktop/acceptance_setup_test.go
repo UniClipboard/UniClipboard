@@ -50,7 +50,7 @@ func scenarioSetupPages(t *testing.T) {
 					fields.Passphrase = "synthetic-password"
 				}
 				actions := setupui.Actions{Begin: action, Redetect: action, Pick: action, Start: action, Unlock: action, Stop: action, Enter: action}
-				view := ui.NewTesterWith(func(c *ui.Context) { setupui.Render(c, model, &fields, actions) }, 640, 560, ui.TesterOptions{Dark: dark})
+				view := ui.NewTesterWith(func(c *ui.Context) { setupui.Render(c, model, &fields, actions) }, 780, 540, ui.TesterOptions{Dark: dark})
 				proof.Capture(t, view)
 				expected := map[string]string{"welcome": "开始使用", "confirm": "开始迁移", "invalid": "暂不迁移", "password": "解锁并继续", "conflict": "重试", "credentials": "停止迁移", "import": "停止迁移", "verify": "停止迁移", "complete": "开始使用", "partial": "进入应用", "cancelled": "继续迁移", "failed": "重试"}[stage]
 				if strings.HasPrefix(stage, "welcome-") {

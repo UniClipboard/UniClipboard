@@ -30,13 +30,13 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 56808e76cf40ee3211ee0c4cad7c42e60421630e
+verified: a612b32030d8caad5551987a750f299a115b9086
 ---
 # Product builds and CLI releases
 
 ## Current implementation
 
-`release/products.toml` owns product versions and build numbers. CLI and Desktop have separate build and delivery controllers. Public delivery is a separate accepted operation. Desktop selects `2.0.0 (2)` for the first v2 candidate. Android and iOS records reserve independent metadata. These records do not establish release support.
+`release/products.toml` owns product versions and build numbers. CLI and Desktop have separate build and delivery controllers. Public delivery is a separate accepted operation. Desktop selects `2.0.0 (2)` for the v1 alpha upgrade candidate. Android and iOS records reserve independent metadata. These records do not establish release support.
 
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 

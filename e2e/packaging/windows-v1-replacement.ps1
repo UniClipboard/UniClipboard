@@ -5,7 +5,8 @@ param(
   [Parameter(Mandatory=$true)][string]$Fixture,
   [Parameter(Mandatory=$true)][string]$FixtureMetadata,
   [Parameter(Mandatory=$true)][string]$Root,
-  [Parameter(Mandatory=$true)][string]$Receipt
+  [Parameter(Mandatory=$true)][string]$Receipt,
+  [switch]$LegacyUpdater
 )
 $ErrorActionPreference = 'Stop'
 if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18') { throw 'Use only the isolated SYSTEM account in an explicitly authorized VM.' }
@@ -44,7 +45,17 @@ try {
   $checks += 'official_v1_installed'
   Copy-Item $Fixture $legacy -Recurse
   $before = Snapshot $legacy
-  Install $Installer ''
+  if ($LegacyUpdater) {
+    if ($v1Version -ne '1.6.2-alpha.2') { throw 'The legacy updater origin must be 1.6.2-alpha.2.' }
+    # The old updater launches with these arguments and then exits. The isolated
+    # harness exercises the installer invocation without launching a desktop GUI.
+    $p = Start-Process -FilePath $Installer -ArgumentList '/P /UPDATE /ARGS' -PassThru
+    if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'Legacy updater installer timed out.' }
+    if ($p.ExitCode -ne 0) { throw "Legacy updater installer failed: $($p.ExitCode)" }
+    $checks += 'legacy_updater_passive_arguments_accepted'
+  } else {
+    Install $Installer ''
+  }
   if ((Get-ItemProperty $key).InstallLocation.Trim('"') -ne $install) { throw 'v2 did not replace the v1 installation location.' }
   foreach ($name in @('UniClipboard.exe','uniclipd.exe','uniclip-quick-panel.exe')) {
     if (Test-Path (Join-Path $install $name)) { throw 'A retired v1 executable remains.' }

@@ -441,6 +441,8 @@ def stage(args):
                 ROOT / "app/desktop/internal/appicons" / name, resources / name
             )
         if os_name == "darwin":
+            # The 1.6.2-alpha.2 updater relaunches the original executable path.
+            (payload / "gui-go").symlink_to("unic-desktop")
             info = {
                 "CFBundleIconFile": "icon.icns",
                 "CFBundleIdentifier": APP_ID,

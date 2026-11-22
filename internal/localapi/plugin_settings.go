@@ -17,25 +17,34 @@ type PluginActionInfo struct {
 	TimeoutMS   int64    `json:"timeout_ms,omitempty"`
 }
 
+// PluginText is one language's display text declared by the plugin manifest.
+type PluginText struct {
+	Name    string `json:"name,omitempty"`
+	Summary string `json:"summary,omitempty"`
+}
+
 type PluginInfo struct {
-	ImplementationID string             `json:"implementation_id"`
-	Capabilities     []string           `json:"capabilities"`
-	TransportKind    string             `json:"transport_kind,omitempty"`
-	ExternalChannels bool               `json:"external_channels,omitempty"`
-	ID               string             `json:"id"`
-	Version          string             `json:"version"`
-	Kind             string             `json:"kind"`
-	Source           string             `json:"source"`
-	Repository       string             `json:"repository,omitempty"`
-	Commit           string             `json:"commit,omitempty"`
-	HasPrevious      bool               `json:"has_previous,omitempty"`
-	PreviousVersion  string             `json:"previous_version,omitempty"`
-	Events           []string           `json:"events,omitempty"`
-	Actions          []PluginActionInfo `json:"actions,omitempty"`
-	Configured       bool               `json:"configured_enabled"`
-	RunningVersion   string             `json:"running_version,omitempty"`
-	HasSettings      bool               `json:"has_settings"`
-	Restart          bool               `json:"restart_required"`
+	ImplementationID string                `json:"implementation_id"`
+	Name             string                `json:"name,omitempty"`
+	Summary          string                `json:"summary,omitempty"`
+	I18N             map[string]PluginText `json:"i18n,omitempty"`
+	Capabilities     []string              `json:"capabilities"`
+	TransportKind    string                `json:"transport_kind,omitempty"`
+	ExternalChannels bool                  `json:"external_channels,omitempty"`
+	ID               string                `json:"id"`
+	Version          string                `json:"version"`
+	Kind             string                `json:"kind"`
+	Source           string                `json:"source"`
+	Repository       string                `json:"repository,omitempty"`
+	Commit           string                `json:"commit,omitempty"`
+	HasPrevious      bool                  `json:"has_previous,omitempty"`
+	PreviousVersion  string                `json:"previous_version,omitempty"`
+	Events           []string              `json:"events,omitempty"`
+	Actions          []PluginActionInfo    `json:"actions,omitempty"`
+	Configured       bool                  `json:"configured_enabled"`
+	RunningVersion   string                `json:"running_version,omitempty"`
+	HasSettings      bool                  `json:"has_settings"`
+	Restart          bool                  `json:"restart_required"`
 }
 
 type PluginSettings struct {

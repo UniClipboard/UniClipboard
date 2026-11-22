@@ -366,6 +366,18 @@ tag = "email"
 
 An artifact specifies a gzip tar archive. Each GOOS/GOARCH may appear once. A declared minimum macOS version is checked on macOS. Other minimum OS and library requirements are treated as unverified and the artifact is skipped.Release/asset 指向同仓库发布资产，不猜文件名；摘要固定内容。清单是所选 commit 中的数据，不能用 Release 名称代替 commit 锁定。清单与启动握手 Spec 必须一致。
 
+### 展示文本与多语言
+
+清单可选声明 `name`（≤64 字符）、`summary`（≤200 字符）和 `[i18n.<语言>]` 表，表内只有 `name`、`summary`。语言键为 `en`、`ja`、`pt-BR` 这类标签，最多 16 种；非法标签、未知键、超长、控制字符或非法 UTF-8 拒绝整个清单。这些字段是纯文本，不属于插件身份，也不进入握手 Spec；修改它们不需要重启。宿主按“完整标签、主语言子标签、默认文本”逐字段回退（忽略大小写）。桌面标题优先级为清单本地化文本、市场条目、插件 ID。Action 标题仍是单语言文本。
+
+```toml
+name = "微信输入法"
+summary = "把剪贴板内容发送到微信输入法。"
+[i18n.en]
+name = "WeChat IME"
+summary = "Send clipboard content to WeChat IME."
+```
+
 ### 安装选择与 --build
 
 1. 规范 GitHub HTTPS URL，允许末尾 .git。分支、tag、commit 用 --ref；子目录用 --path，不解析 tree/blob 网页 URL。默认解析默认分支 HEAD，所有 ref 锁到完整 commit；获取该 commit 清单。首版仅公共仓库，不处理子模块。

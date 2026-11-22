@@ -70,6 +70,9 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 		out = append(out, api.PluginInfo{
 			ID:               id,
 			ImplementationID: s.Manifest.ID,
+			Name:             s.Manifest.Name,
+			Summary:          s.Manifest.Summary,
+			I18N:             pluginTexts(s.Manifest.I18N),
 			Version:          s.Manifest.Version,
 			Kind:             s.Manifest.Kind,
 			Source:           source,
@@ -292,5 +295,16 @@ func (n *Node) CreatePluginInstance(ctx context.Context, in api.PluginInstanceCr
 		return configState, err
 	}
 	n.hub.emit(api.Event{Kind: "config"})
-	return api.PluginInfo{ID: in.ID, ImplementationID: in.ImplementationID, Kind: s.Manifest.Kind, Version: s.Manifest.Version, Configured: false, Restart: false, Capabilities: s.Manifest.Capabilities, TransportKind: s.Manifest.TransportKind, ExternalChannels: s.Manifest.ExternalChannels, HasSettings: s.Schema != nil}, nil
+	return api.PluginInfo{ID: in.ID, ImplementationID: in.ImplementationID, Name: s.Manifest.Name, Summary: s.Manifest.Summary, I18N: pluginTexts(s.Manifest.I18N), Kind: s.Manifest.Kind, Version: s.Manifest.Version, Configured: false, Restart: false, Capabilities: s.Manifest.Capabilities, TransportKind: s.Manifest.TransportKind, ExternalChannels: s.Manifest.ExternalChannels, HasSettings: s.Schema != nil}, nil
+}
+
+func pluginTexts(in map[string]luascripts.Text) map[string]api.PluginText {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]api.PluginText, len(in))
+	for tag, text := range in {
+		out[tag] = api.PluginText{Name: text.Name, Summary: text.Summary}
+	}
+	return out
 }

@@ -3,6 +3,7 @@ package luascripts
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +74,41 @@ timeout_ms = 60000
 		spec.Actions[0].PostActions[0] != "copy" ||
 		spec.Actions[0].PostActions[1] != "present" {
 		t.Fatalf("unexpected actions: %+v", spec.Actions)
+	}
+}
+
+func TestManifestDisplayText(t *testing.T) {
+	root := mkPlugin(t, `name = "Demo"
+summary = "Default summary"
+[i18n.en]
+name = "Demo EN"
+[i18n.pt-BR]
+summary = "Resumo"
+`)
+	found, errs := Scan(root)
+	if len(errs) != 0 || len(found) != 1 {
+		t.Fatalf("found=%+v errs=%+v", found, errs)
+	}
+	m := found["t.p"].Manifest
+	if m.Name != "Demo" || m.Summary != "Default summary" || m.I18N["en"].Name != "Demo EN" || m.I18N["pt-BR"].Summary != "Resumo" {
+		t.Fatalf("manifest=%+v", m)
+	}
+	// Display text never changes the handshake Spec.
+	if got := m.PluginSpec(); got.ID != "t.p" {
+		t.Fatalf("spec=%+v", got)
+	}
+}
+
+func TestManifestRejectsInvalidDisplayText(t *testing.T) {
+	for name, extra := range map[string]string{
+		"bad tag":      "[i18n.\"not a tag\"]\nname = \"x\"\n",
+		"long name":    "name = \"" + strings.Repeat("n", 65) + "\"\n",
+		"control":      "name = \"a\\u0007b\"\n",
+		"unknown key":  "[i18n.en]\ndescription = \"x\"\n",
+		"long summary": "summary = \"" + strings.Repeat("s", 201) + "\"\n",
+	} {
+		if _, errs := Scan(mkPlugin(t, extra)); len(errs) != 1 {
+			t.Errorf("%s: manifest accepted", name)
+		}
 	}
 }

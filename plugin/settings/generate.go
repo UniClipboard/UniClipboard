@@ -184,10 +184,15 @@ func applyTags(s *Schema, tags reflect.StructTag) error {
 			return fail("invalid_schema", "")
 		}
 	}
+	if text, ok := tags.Lookup("i18n"); ok {
+		if err := json.Unmarshal([]byte(text), &s.UI.I18N); err != nil {
+			return fail("invalid_schema", "")
+		}
+	}
 	if text, ok := tags.Lookup("default"); ok {
 		s.Default = json.RawMessage(text)
 	}
-	if s.UI.Widget == "" && s.UI.Group == "" && s.UI.Order == 0 && len(s.UI.OptionLabels) == 0 {
+	if s.UI.Widget == "" && s.UI.Group == "" && s.UI.Order == 0 && len(s.UI.OptionLabels) == 0 && len(s.UI.I18N) == 0 {
 		s.UI = nil
 	}
 	return nil

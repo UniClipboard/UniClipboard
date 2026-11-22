@@ -395,6 +395,8 @@ across service restarts. Review cleanup policy before importing old real history
 
 The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.
 
+`PluginInfo` also carries the optional manifest display text: `name`, `summary` and `i18n` (`{language: {name?, summary?}}`). The service does not know the UI language; the client resolves it as described in the [plugin contract](plugin-contract.md#展示文本与多语言).
+
 ### Marketplace and installation lifecycle
 
 | Method and path | Request | Result |

@@ -625,6 +625,10 @@ func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg con
 				return d.tr(b.name)
 			}
 		}
+		if item, ok := d.installedExternalPlugin(id); ok {
+			name, _ := d.pluginDisplay(item)
+			return name
+		}
 		if cat, ok := d.marketplaceEntry(id); ok {
 			return cat.Name
 		}

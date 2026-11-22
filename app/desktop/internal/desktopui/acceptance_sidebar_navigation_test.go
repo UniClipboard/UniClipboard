@@ -50,7 +50,7 @@ func scenarioSidebarNavigation(t *testing.T) {
 						t.Errorf("default content tag missing from the sidebar: %s", label)
 					}
 				}
-				for _, label := range []string{"文件夹", "代码", "链接"} {
+				for _, label := range []string{"文件夹", "代码", "链接", "邮箱地址", "颜色", "版本号", "UUID", "IPv4 地址"} {
 					if _, ok := tt.AccessByRole(ui.RoleListItem, label); ok {
 						t.Errorf("optional content tag visible by default: %s", label)
 					}
@@ -86,7 +86,7 @@ func scenarioSidebarNavigation(t *testing.T) {
 						tagLabel = a.Bounds
 					}
 				}
-				more, ok := tt.AccessByRole(ui.RoleButton, "全部标签 · 10")
+				more, ok := tt.AccessByRole(ui.RoleButton, fmt.Sprintf("全部标签 · %d", len(d.tags)))
 				if !ok || more.Bounds.Y+more.Bounds.H > 900 {
 					t.Fatal("More must be visible for text alignment capture")
 				}

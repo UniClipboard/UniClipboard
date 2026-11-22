@@ -42,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 23d34c6d3f660309cca2fe0d7583c48e6d4fb6f9
+verified: 7d16bcf8b12928aef0e9437b36f6f444092260e7
 ---
 # Desktop configuration and received files
 
@@ -64,6 +64,8 @@ Settings > Plugins lists Tailcat sync, text tools and content classification. Pl
 Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes` backend policies. They apply immediately. The file permission covers files and entire directory snapshots, including empty trees. The automatic threshold uses the selected files' total byte count; explicit sends bypass only that threshold. Global synchronization permissions and automatic-directory intent remain on Settings > Sync. Tailcat stays assembled and cannot be independently disabled or uninstalled.
 
 Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after restarting the service. Quitting and reopening Desktop restarts a tray-owned service. An independently started service requires a separate restart by its owner. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
+
+Content classification provides an independent switch for each default regular expression. Users can add, edit and delete custom rules that pair a pattern with a target tag. The form validates the draft before saving it through the same revision-checked configuration API. A valid save that changes the active rules appears in the service restart notice. See [classifier settings](../contracts/plugin-contract.md#built-in-content-classification).
 
 The three built-in plugins have no plugin-specific Schema fields. See the [execution receipt](../exec/desktop-builtin-plugin-settings.md) for built-in management evidence.
 

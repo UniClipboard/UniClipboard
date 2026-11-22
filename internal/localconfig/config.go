@@ -157,6 +157,9 @@ type Instance struct {
 	// in the plugin directory, so installing or upgrading a plugin never
 	// replaces what the user chose.
 	Config map[string]any `toml:"config" json:"config,omitempty"`
+	// These settings belong to the built-in content classifier.
+	Rules               []builtinclassify.Rule `toml:"rules,omitempty" json:"rules,omitempty"`
+	DisabledDefaultTags []string               `toml:"disabled_default_tags,omitempty" json:"disabled_default_tags,omitempty"`
 }
 
 // PluginImplementation resolves a local instance to its installed program.
@@ -209,7 +212,17 @@ func (c Config) processorSettingsKey() map[string]Instance {
 	ids := append([]string{builtinclassify.ID, builtintext.ID}, c.ExternalPlugins()...)
 	for _, id := range ids {
 		oe, cfg := c.ProcessorSettings(id)
-		out[id] = Instance{Implementation: c.Plugins.Instances[id].Implementation, OnError: oe, Config: cfg}
+		in := c.Plugins.Instances[id]
+		if len(in.Rules) == 0 {
+			in.Rules = nil
+		}
+		out[id] = Instance{
+			Implementation:      in.Implementation,
+			OnError:             oe,
+			Config:              cfg,
+			Rules:               in.Rules,
+			DisabledDefaultTags: slices.Sorted(slices.Values(in.DisabledDefaultTags)),
+		}
 	}
 	return out
 }
@@ -372,6 +385,14 @@ func (c Config) Validate() error {
 		if !validOnError(in.OnError) {
 			return fmt.Errorf(`plugins.instances.%q.on_error: must be "continue" or "block_sync"`, id)
 		}
+		if len(in.Rules) != 0 || len(in.DisabledDefaultTags) != 0 {
+			if id != builtinclassify.ID {
+				return fmt.Errorf("plugins.instances.%q: this plugin takes no classification rules", id)
+			}
+			if _, err := builtinclassify.New(in.Rules, in.DisabledDefaultTags); err != nil {
+				return fmt.Errorf("plugins.instances.%q: %w", id, err)
+			}
+		}
 		if in.Config != nil && !lua[id] && !dormantExternalPlugin(id, in) {
 			return fmt.Errorf("plugins.instances.%q: this plugin takes no config", id)
 		}
@@ -514,13 +535,20 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # rest of that copy); sending by hand ignores it. 0 = no extra limit.
 # auto_file_max_bytes = "100MB"
 
-# builtin.classify adds stable builtin:text/image/files/link tags to new content.
+# builtin.classify adds stable builtin:text/image/files/folder/link tags to new content.
 # Link text also receives builtin:text. It never changes content.
 # [plugins.instances."builtin.classify"]
 # enabled = true
+# Full-text rules are enabled by default. List individual tag IDs to disable.
+# disabled_default_tags = ["builtin:color"]
+#
+# Each matching rule adds a tag to new text after a service restart.
+# [[plugins.instances."builtin.classify".rules]]
+# pattern = '\bUNI-[0-9]+\b'
+# tag = "Issue"
 
-# builtin.text tags copied text that holds an email address ("email") or a
-# link ("url"), and offers the text actions in the history window. It only
+# builtin.text tags text that holds an email address ("builtin:email")
+# and offers the text actions in the history window. It only
 # adds tags; it never changes what you copied. Needs a restart of unicd.
 # [plugins.instances."builtin.text"]
 # enabled = true

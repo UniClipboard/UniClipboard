@@ -1,0 +1,121 @@
+# 用例: Custom content tagging rules
+# 目的: Verify regular expressions, local Lua, and stable built-in tag IDs through real services.
+# 流程:
+#   1. Apply rules to one peer and verify the pending restart.
+#   2. Reject an invalid regular expression and verify the saved rules survive.
+#   3. Restart and send matching and nonmatching text between peers.
+# 期望:
+#   - All matching rules contribute tags. Lua can add a label on receipt.
+#   - Links and email addresses use canonical built-in IDs.
+# 不应:
+#   - Apply rules before restart or modify the clipboard content.
+#   - Save an invalid regex or create a second URL tag.
+
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config apply $WORK/rules.toml
+u beta config --json
+stdout 'plugins.settings'
+cp beta/config.toml saved.toml
+! u beta config apply $WORK/invalid.toml
+stderr 'invalid regular expression'
+cmp beta/config.toml saved.toml
+u beta config --json
+stdout 'release-note'
+
+board-set alpha text before.txt
+board-wait beta text before.txt
+until beta 'builtin:link' h list -n 1 --json
+! stdout '"release-note"'
+! stdout '"url"'
+
+node-stop beta
+node-start beta
+until alpha 'online' device list
+until beta 'online' device list
+u beta config --json
+! stdout 'plugins.settings'
+u beta h list -n 1 --json
+! stdout '"issue"'
+board-set alpha text matching.txt
+board-wait beta text matching.txt
+until beta '"issue"' h list -n 1 --json
+u beta h list -n 1 --json
+stdout '"builtin:link"'
+stdout '"builtin:email"'
+stdout '"issue"'
+stdout '"release-note"'
+stdout '"from-lua"'
+! stdout '"url"'
+u alpha h list -n 1 --json
+! stdout '"issue"'
+! stdout '"release-note"'
+! stdout '"from-lua"'
+
+board-set alpha text plain.txt
+board-wait beta text plain.txt
+until beta '"total_bytes":25' h list -n 1 --json
+! stdout '"issue"'
+! stdout '"release-note"'
+! stdout '"from-lua"'
+
+board-set beta text local.txt
+until beta '"tags":\["builtin:text","issue"\]' h list -n 1 --json
+
+-- alpha/config.toml --
+device_name = "alpha"
+-- beta/config.toml --
+device_name = "beta"
+
+[plugins]
+lua = ["local.content-tags"]
+-- beta/plugins/lua/local.content-tags/spec.toml --
+manifest_version = 1
+kind = "lua"
+entry = "main.lua"
+id = "local.content-tags"
+version = "1.0.0"
+api_version = 1
+capabilities = ["processor"]
+events = ["clipboard.received"]
+-- beta/plugins/lua/local.content-tags/main.lua --
+return {
+  id = "local.content-tags",
+  version = "1.0.0",
+  api_version = 1,
+  capabilities = {"processor"},
+  process = function(ctx)
+    if ctx.item.type == "text" and ctx.item.text:find("release", 1, true) then
+      ctx:add_tag("from-lua")
+    end
+  end,
+}
+-- rules.toml --
+device_name = "beta"
+
+[plugins]
+lua = ["local.content-tags"]
+
+[[plugins.instances."builtin.classify".rules]]
+pattern = '\bUNI-[0-9]+\b'
+tag = "issue"
+
+[[plugins.instances."builtin.classify".rules]]
+pattern = '(?i)release'
+tag = "release-note"
+
+[telemetry]
+enabled = false
+-- invalid.toml --
+[[plugins.instances."builtin.classify".rules]]
+pattern = '('
+tag = "invalid"
+-- before.txt --
+UNI-11 https://example.com/first
+-- matching.txt --
+release UNI-21 https://example.com/second maintainer@example.com
+-- local.txt --
+UNI-34
+-- plain.txt --
+Ordinary clipboard text.

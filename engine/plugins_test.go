@@ -15,7 +15,7 @@ func TestBuiltinPluginTagsAndRunsActions(t *testing.T) {
 	start(t, n)
 	r := commitText(t, n.e, "m", "mail me@example.com or see https://example.com")
 	it, err := n.e.GetItem(bg, r.HistoryID)
-	if err != nil || !slices.Equal(it.Tags, []string{"email", "url"}) {
+	if err != nil || !slices.Equal(it.Tags, []string{plugin.TagEmail}) {
 		t.Fatalf("%v %v", it.Tags, err)
 	}
 	list, err := n.e.ListActions(bg)
@@ -33,7 +33,7 @@ func TestBuiltinPluginTagsAndRunsActions(t *testing.T) {
 	}
 	// the result is annotated like any other new item
 	got, _ := n.e.GetItem(bg, a.HistoryID)
-	if !slices.Equal(got.Tags, []string{"email", "url"}) || got.Origin.Kind != OriginKindAction || got.Origin.PluginID != builtintext.ID {
+	if !slices.Equal(got.Tags, []string{plugin.TagEmail}) || got.Origin.Kind != OriginKindAction || got.Origin.PluginID != builtintext.ID {
 		t.Fatalf("%+v", got)
 	}
 }

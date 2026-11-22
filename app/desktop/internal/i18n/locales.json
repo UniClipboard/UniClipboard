@@ -575,6 +575,102 @@
     "pt-BR": "Links",
     "ru": "Ссылки"
   },
+  "邮箱地址": {
+    "en": "Email addresses",
+    "ja": "メールアドレス",
+    "pt-BR": "Endereços de e-mail",
+    "ru": "Адреса электронной почты"
+  },
+  "默认正则规则": {
+    "en": "Default regular expression rules",
+    "ja": "既定の正規表現ルール",
+    "pt-BR": "Regras padrão de expressão regular",
+    "ru": "Правила регулярных выражений по умолчанию"
+  },
+  "匹配整段文本。重启服务后生效。": {
+    "en": "Matches the entire text. Restart the service to apply changes.",
+    "ja": "テキスト全体に一致します。変更はサービスの再起動後に適用されます。",
+    "pt-BR": "Corresponde ao texto inteiro. Reinicie o serviço para aplicar as alterações.",
+    "ru": "Проверяется весь текст. Перезапустите службу, чтобы применить изменения."
+  },
+  "版本号": {
+    "en": "Version number",
+    "ja": "バージョン番号",
+    "pt-BR": "Número de versão",
+    "ru": "Номер версии"
+  },
+  "UUID": {
+    "en": "UUID",
+    "ja": "UUID",
+    "pt-BR": "UUID",
+    "ru": "UUID"
+  },
+  "IPv4 地址": {
+    "en": "IPv4 address",
+    "ja": "IPv4 アドレス",
+    "pt-BR": "Endereço IPv4",
+    "ru": "Адрес IPv4"
+  },
+  "正则规则": {
+    "en": "Regular expression rules",
+    "ja": "正規表現ルール",
+    "pt-BR": "Regras de expressão regular",
+    "ru": "Правила регулярных выражений"
+  },
+  "每条匹配的规则都会给新文本添加标签。重启服务后生效。": {
+    "en": "Each matching rule tags new text. Restart the service to apply changes.",
+    "ja": "一致したルールごとに新しいテキストにタグを追加します。変更はサービスの再起動後に適用されます。",
+    "pt-BR": "Cada regra correspondente adiciona uma etiqueta ao novo texto. Reinicie o serviço para aplicar as alterações.",
+    "ru": "Каждое совпавшее правило добавляет тег к новому тексту. Перезапустите службу, чтобы применить изменения."
+  },
+  "编辑规则 %s": {
+    "en": "Edit rule for %s",
+    "ja": "%s のルールを編集",
+    "pt-BR": "Editar regra de %s",
+    "ru": "Изменить правило для %s"
+  },
+  "删除规则 %s": {
+    "en": "Delete rule for %s",
+    "ja": "%s のルールを削除",
+    "pt-BR": "Excluir regra de %s",
+    "ru": "Удалить правило для %s"
+  },
+  "添加规则": {
+    "en": "Add rule",
+    "ja": "ルールを追加",
+    "pt-BR": "Adicionar regra",
+    "ru": "Добавить правило"
+  },
+  "正则表达式": {
+    "en": "Regular expression",
+    "ja": "正規表現",
+    "pt-BR": "Expressão regular",
+    "ru": "Регулярное выражение"
+  },
+  "目标标签": {
+    "en": "Tag to apply",
+    "ja": "追加するタグ",
+    "pt-BR": "Etiqueta a aplicar",
+    "ru": "Добавляемый тег"
+  },
+  "请输入有效的 Go 正则表达式和标签。表达式最多 1024 字节，标签最多 64 字节。": {
+    "en": "Enter a valid Go regular expression and tag. Use up to 1024 bytes for the expression and 64 for the tag.",
+    "ja": "有効な Go の正規表現とタグを入力してください。正規表現は最大 1024 バイト、タグは最大 64 バイトです。",
+    "pt-BR": "Insira uma expressão regular Go válida e uma etiqueta. Use até 1024 bytes para a expressão e 64 para a etiqueta.",
+    "ru": "Введите допустимое регулярное выражение Go и тег. Выражение может занимать до 1024 байт, тег — до 64 байт."
+  },
+  "保存规则": {
+    "en": "Save rule",
+    "ja": "ルールを保存",
+    "pt-BR": "Salvar regra",
+    "ru": "Сохранить правило"
+  },
+  "Lua 规则使用本地插件。脚本通过 ctx:add_tag 添加标签。": {
+    "en": "Use a local plugin for Lua rules. Call ctx:add_tag in the script to add a tag.",
+    "ja": "Lua ルールにはローカルプラグインを使用します。スクリプトで ctx:add_tag を呼び出すとタグが追加されます。",
+    "pt-BR": "Use um plugin local para regras Lua. Chame ctx:add_tag no script para adicionar uma etiqueta.",
+    "ru": "Используйте локальный плагин для правил Lua. Вызовите ctx:add_tag в скрипте, чтобы добавить тег."
+  },
   "代码": {
     "en": "Code",
     "ja": "コード",

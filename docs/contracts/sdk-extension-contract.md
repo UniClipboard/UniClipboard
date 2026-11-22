@@ -80,7 +80,7 @@ type ActionResult struct {
 
 SubmissionPhase 为 processing/committed/failed；SyncDisposition 与 BackendDisposition 的不同取值及聚合遵循提交契约和 0007。BackendResults 按 BackendID 排序且不重复。processing/failed 时 SyncDisposition 为空，OperationID/HistoryID 为空；failed 必有 Error。committed 时 Error=nil；仅同步 failed 有 SyncError，只有 queued 有 OperationID。HistoryID 仅成功持久化时非空，不能以其空值判断是否 committed。
 
-ActionInfo/ActionSpec 的字段限制见[插件契约 §1](plugin-contract.md#1-标识能力与入口)；Accepts 取值 text/image/files，首版仅 text 可用。RunAction 失败返回 engine.Error，不创建条目；成功的 ActionResult 只在已 commit 后返回，故无 failed 阶段，Phase 恒为 committed。语义见[Action 契约](clipboard-action-contract.md)。
+ActionInfo/ActionSpec 的字段限制见[插件契约 §1](plugin-contract.md#1-标识能力与入口)；Go `Accepts` supports text/image/files and results remain text. Lua Actions accept text only.RunAction 失败返回 engine.Error，不创建条目；成功的 ActionResult 只在已 commit 后返回，故无 failed 阶段，Phase 恒为 committed。语义见[Action 契约](clipboard-action-contract.md)。
 
 BackendIDs=nil 表示全部启用后端；非 nil 空切片非法，JSON 适配须保留“省略/null”和 `[]` 的区别，不能用 omitempty 丢掉显式空数组校验。非空选择规范化排序参与幂等比较，重复项拒绝。
 

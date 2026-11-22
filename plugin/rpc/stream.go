@@ -1,8 +1,10 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"time"
 )
 
 // RecvStream receives a binary stream. Credit is granted as the reader
@@ -359,4 +361,34 @@ func (c *Conn) onEnd(f Frame) error {
 	s.ended = true
 	c.broadcastLocked()
 	return nil
+}
+
+// CallStream serializes every descriptor-returning source call through Expect.
+// The gate belongs to the connection, not to one Actor or one callback.
+func (c *Conn) CallStream(ctx context.Context, o CallOptions, purpose string, size uint64) (io.ReadCloser, error) {
+	timeout := o.Timeout
+	if timeout <= 0 || timeout > MaxTimeoutMs*time.Millisecond {
+		timeout = MaxTimeoutMs * time.Millisecond
+	}
+	wait, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	select {
+	case c.streamCalls <- struct{}{}:
+		defer func() { <-c.streamCalls }()
+	case <-wait.Done():
+		return nil, wait.Err()
+	case <-c.Done():
+		return nil, NewError(CodeUnavailable)
+	}
+	var d StreamDesc
+	if _, err := c.Call(wait, o, &d); err != nil {
+		return nil, err
+	}
+	if d.Purpose != purpose || uint64(d.Size) != size {
+		return nil, NewError(CodeInvalidState)
+	}
+	if size == 0 && d.StreamID == 0 {
+		return io.NopCloser(bytes.NewReader(nil)), nil
+	}
+	return c.Expect(ctx, o.Parent, d, size)
 }

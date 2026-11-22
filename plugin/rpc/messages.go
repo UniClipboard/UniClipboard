@@ -109,14 +109,15 @@ type HelloAck struct {
 
 // Method names.
 const (
-	MethodInit           = "plugin.init"
-	MethodStart          = "plugin.start"
-	MethodClose          = "plugin.close"
-	MethodProcess        = "plugin.process"
-	MethodRunAction      = "plugin.run_action"
-	MethodOpenActionPart = "action.open_part"
-	MethodOnEvent        = "plugin.on_event"
-	MethodNotify         = "host.notify"
+	MethodInit            = "plugin.init"
+	MethodStart           = "plugin.start"
+	MethodClose           = "plugin.close"
+	MethodProcess         = "plugin.process"
+	MethodRunAction       = "plugin.run_action"
+	MethodOpenActionPart  = "action.open_part"
+	MethodCloseActionPart = "action.close_part"
+	MethodOnEvent         = "plugin.on_event"
+	MethodNotify          = "host.notify"
 
 	// External-channel sync backend profile (sync-backend-contract §6a).
 	MethodSubmit       = "backend.submit"        // Engine→plugin

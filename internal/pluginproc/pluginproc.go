@@ -549,6 +549,8 @@ func (p *Proxy) handle(s *session, ctx context.Context, c *rpc.Call) (any, error
 		}
 		p.notify(n.Message)
 		return nil, nil
+	case rpc.MethodCloseActionPart:
+		return p.closeActionPart(s, ctx, c)
 	case rpc.MethodOpenActionPart:
 		return p.openActionPart(s, ctx, c)
 	case rpc.MethodStream:
@@ -581,17 +583,18 @@ func (p *Proxy) notify(msg string) {
 // collector buffers an action's text stream outside the connection so credit
 // keeps flowing while the response is still in transit.
 type collector struct {
-	source    plugin.ActionSource
-	ctx       context.Context
-	readParts map[int]bool
-	liveParts int
-	mu        sync.Mutex
-	opened    bool
-	id        uint64
-	size      uint64
-	done      chan struct{}
-	buf       bytes.Buffer
-	err       error
+	source        plugin.ActionSource
+	ctx           context.Context
+	readParts     map[int]bool
+	liveParts     int
+	partTransfers map[int]*actionPartTransfer
+	mu            sync.Mutex
+	opened        bool
+	id            uint64
+	size          uint64
+	done          chan struct{}
+	buf           bytes.Buffer
+	err           error
 }
 
 func (p *Proxy) openActionStream(s *session, c *rpc.Call) (any, error) {
@@ -766,7 +769,7 @@ func (p *Proxy) run(ctx context.Context, ac plugin.ActionContext) error {
 	gen := p.gen.Add(1)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	col := &collector{done: make(chan struct{}), ctx: ctx, readParts: map[int]bool{}}
+	col := &collector{done: make(chan struct{}), ctx: ctx, readParts: map[int]bool{}, partTransfers: map[int]*actionPartTransfer{}}
 	col.source, _ = ac.(plugin.ActionSource)
 	timeout := p.opts.ActionTimeout
 	for _, a := range p.spec.Expected.Actions {

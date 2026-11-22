@@ -67,7 +67,8 @@ type Conn struct {
 
 	wmu sync.Mutex
 	// reqMu orders request IDs on the wire: the peer requires them to rise.
-	reqMu sync.Mutex
+	reqMu       sync.Mutex
+	streamCalls chan struct{}
 
 	mu         sync.Mutex
 	changed    chan struct{}
@@ -97,7 +98,7 @@ func NewConn(rwc io.ReadWriteCloser, opts Options) *Conn {
 		changed: make(chan struct{}), pending: map[uint64]*pendingCall{}, handlers: map[uint64]*inflight{},
 		recv: map[uint64]*RecvStream{}, send: map[uint64]*SendStream{},
 		done: make(chan struct{}), readerDone: make(chan struct{}),
-		nextReq: 1, nextStream: 1,
+		nextReq: 1, nextStream: 1, streamCalls: make(chan struct{}, 1),
 	}
 	if opts.Role == RolePlugin {
 		c.nextReq, c.nextStream = 2, 2

@@ -31,7 +31,7 @@ func (e *Engine) RunAction(ctx context.Context, req RunActionRequest) (ActionRes
 
 **来源校验**：HistoryID 必须是仍存在、未过期的历史条目，类型匹配 Accepts；不存在为 not_found，类型不匹配为 unsupported。来源条目在整个过程中保持不变，包括标签和过期。
 
-**执行**：读取来源文本，调用对应插件的 `Run`（Go 经 `plugin.run_action`，Lua 经 `plugin:run_action`）。同一插件实例的 action 与处理器共用串行门；Go uses the declared timeout (10 seconds by default, at most 5 minutes). Lua 沿用[Lua 运行时契约](lua-runtime-contract.md)预算。ActionContext 提供只读 Item 快照（含 Text）、`SetText`、`Host.Notify`，没有标签/策略方法。必须恰好调用一次 SetText：未调用、重复调用、非 UTF-8、空串或超出表示/用户限制，均为失败（invalid_argument 或 limit_exceeded）。
+**Execution**: Read the selected source and invoke the plugin through `Run`（Go 经 `plugin.run_action`，Lua 经 `plugin:run_action`）。同一插件实例的 action 与处理器共用串行门；Go uses the declared timeout (10 seconds by default, at most 5 minutes). Lua 沿用[Lua 运行时契约](lua-runtime-contract.md)预算。ActionContext 提供只读 Item 快照（含 Text）、`SetText`、`Host.Notify`，没有标签/策略方法。必须恰好调用一次 SetText：未调用、重复调用、非 UTF-8、空串或超出表示/用户限制，均为失败（invalid_argument 或 limit_exceeded）。
 
 **结果落地**：成功时 Engine 以返回文本建立**新条目**，来源类型 `action`（PluginID 为该插件），经与显式提交相同的流水线 commit：
 - captured 处理器照常运行（它们只标注，不会形成循环）。
@@ -55,7 +55,7 @@ RequestID 与 CommitContent 同一幂等命名空间：同键同参返回原结�
 
 ## 6. 待实现的契约测试
 
-- Spec 声明校验：键唯一、ID/Title 限制、非 text 的 Accepts 被拒；ListActions 排序与插件启停。
+- Spec validation covers unique keys, ID/Title bounds, non-empty unique Go inputs from text/image/files, and text-only Lua input. Reject unsupported types and duplicates. Verify ListActions ordering and plugin lifecycle.
 - 来源校验：不存在/过期/非文本；来源条目不变。
 - 恰好一次 SetText；空串、非法 UTF-8、超限、未调用、重复调用都不留条目。
 - 超时、panic、取消不留条目；Stop/挂起取消在途调用；Lua 预算超限为失败。
@@ -97,3 +97,14 @@ Only the plugin owns provider-specific upload behavior. A share Action returns
 the confirmed public download URL through exactly one `SetText` call. Failed
 uploads never create a success history item. A provider effect may survive local
 cancellation or a later local commit failure.
+
+Source-open failures and non-cancellation source-read failures are latched in
+invocation state, including premature EOF. An Actor cannot turn them into success
+by swallowing the error or returning text. The Engine checks that state before
+importing a result. Deliberate early part release and invocation cancellation are
+cleanup paths, not incomplete-source failures.
+
+Closing an unread or partially read Go source reader uses nested
+`action.close_part`; the response confirms that its host reader and live-part
+slot are released. Full reads still finish with END. See the
+[RPC release contract](plugin-rpc-contract.md#early-release-of-an-action-source-part).

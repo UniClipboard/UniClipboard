@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/uniclipboard/unic/internal/v1migration/v1fixture"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/uniclipboard/unic/internal/v1migration/v1fixture"
 )
 
 func TestGitHubPluginInstallation(t *testing.T) {

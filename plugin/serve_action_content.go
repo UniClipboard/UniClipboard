@@ -1,11 +1,13 @@
 package plugin
 
 import (
-	"bytes"
 	"context"
-	"github.com/uniclipboard/unic/plugin/rpc"
 	"io"
+	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 func (a *actionCtx) Parts() []ActionPart {
@@ -21,35 +23,51 @@ func (a *actionCtx) OpenPart(ctx context.Context, index int) (io.ReadCloser, err
 	}
 	merged, cancel := context.WithCancel(a.ctx)
 	stop := context.AfterFunc(ctx, cancel)
-	var d rpc.StreamDesc
-	_, err := a.call.Conn.Call(merged, rpc.CallOptions{Method: rpc.MethodOpenActionPart, Parent: a.call.ID, Timeout: 30 * time.Second, Params: rpc.OpenActionPart{Index: index}}, &d)
+	reader, err := a.call.Conn.CallStream(merged, rpc.CallOptions{Method: rpc.MethodOpenActionPart, Parent: a.call.ID, Timeout: 30 * time.Second, Params: rpc.OpenActionPart{Index: index}}, rpc.PurposeActionPart, uint64(a.parts[index].Size))
 	if err != nil {
 		stop()
 		cancel()
 		return nil, err
 	}
-	if d.Purpose != rpc.PurposeActionPart || uint64(d.Size) != uint64(a.parts[index].Size) {
-		stop()
-		cancel()
-		return nil, ErrInvalidArgument
+	out := &actionSourceReader{ReadCloser: reader, done: func() { stop(); cancel() }}
+	out.complete.Store(a.parts[index].Size == 0)
+	out.release = func() error {
+		if a.ctx.Err() != nil {
+			return nil
+		} // Invocation-wide revocation already owns cleanup.
+		closeCtx, stop := context.WithTimeout(a.ctx, 5*time.Second)
+		defer stop()
+		_, err := a.call.Conn.Call(closeCtx, rpc.CallOptions{Method: rpc.MethodCloseActionPart, Parent: a.call.ID, Timeout: 5 * time.Second, Params: rpc.OpenActionPart{Index: index}}, nil)
+		return err
 	}
-	var reader io.ReadCloser
-	if d.Size == 0 && d.StreamID == 0 {
-		reader = io.NopCloser(bytes.NewReader(nil))
-	} else {
-		reader, err = a.call.Conn.Expect(merged, a.call.ID, d, uint64(a.parts[index].Size))
-	}
-	if err != nil {
-		stop()
-		cancel()
-		return nil, err
-	}
-	return &actionSourceReader{ReadCloser: reader, done: func() { stop(); cancel() }}, nil
+	return out, nil
 }
 
 type actionSourceReader struct {
 	io.ReadCloser
-	done func()
+	done     func()
+	release  func() error
+	complete atomic.Bool
+	once     sync.Once
+	err      error
 }
 
-func (r *actionSourceReader) Close() error { err := r.ReadCloser.Close(); r.done(); return err }
+func (r *actionSourceReader) Read(b []byte) (int, error) {
+	n, err := r.ReadCloser.Read(b)
+	if err == io.EOF {
+		r.complete.Store(true)
+	}
+	return n, err
+}
+func (r *actionSourceReader) Close() error {
+	r.once.Do(func() {
+		r.err = r.ReadCloser.Close()
+		if !r.complete.Load() {
+			if err := r.release(); r.err == nil {
+				r.err = err
+			}
+		}
+		r.done()
+	})
+	return r.err
+}

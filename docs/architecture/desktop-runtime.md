@@ -441,3 +441,8 @@ item and uses the existing explicit apply path. Desktop opts into cancelling
 admitted Action work with the caller context. CLI allows the five-minute Action
 budget plus transport margin. Provider upload behavior remains outside the
 Desktop composition. See the [Action contract](../contracts/clipboard-action-contract.md).
+
+Desktop Action jobs use a five-minute plus thirty-second worker budget for
+execution, response and clipboard application. Other queued jobs and mutations
+retain their fifteen-second budget. The Engine independently enforces each
+Action declaration's execution deadline.

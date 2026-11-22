@@ -3,13 +3,15 @@ package engine
 import (
 	"context"
 	"errors"
-	"github.com/uniclipboard/unic/plugin"
 	"io"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/rpc"
 
 	"github.com/uniclipboard/unic/internal/wire"
 )
@@ -229,7 +231,7 @@ func (r *actionRun) produce(ctx context.Context, e *Engine) (*contentObj, *Error
 	if herr != nil {
 		return nil, newErr(CodeResourceExpired, "source unavailable")
 	}
-	defer e.ReleaseContent(context.WithoutCancel(callCtx), handle.LeaseID)
+	defer func() { _ = e.ReleaseContent(context.WithoutCancel(callCtx), handle.LeaseID) }()
 	ac := &actionContext{active: true, key: r.act.key(), item: item}
 	for _, p := range handle.Content.Parts {
 		ac.parts = append(ac.parts, plugin.ActionPart{MIME: p.MIME, File: p.Kind == PartFile, Name: p.Name, Size: p.Size})
@@ -257,10 +259,23 @@ func (r *actionRun) produce(ctx context.Context, e *Engine) (*contentObj, *Error
 		if err != nil {
 			stopReader()
 			stop()
+			if ac.fault == nil {
+				ac.fault = sourceErr(callCtx, err)
+			}
 			return nil, err
 		}
 		liveReaders++
-		reader := &actionReader{Reader: rc}
+		reader := &actionReader{Reader: rc, ctx: merged, remaining: handle.Content.Parts[index].Size}
+		reader.record = func(err error) {
+			if merged.Err() != nil {
+				return
+			}
+			ac.mu.Lock()
+			defer ac.mu.Unlock()
+			if ac.fault == nil {
+				ac.fault = sourceErr(callCtx, err)
+			}
+		}
 		reader.close = func() error {
 			stopReader()
 			stop()
@@ -279,12 +294,16 @@ func (r *actionRun) produce(ctx context.Context, e *Engine) (*contentObj, *Error
 	ac.active = false
 	text, fault := ac.text, ac.fault
 	ac.mu.Unlock()
+	var remoteError *rpc.Error
+	timedOut := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &remoteError) && remoteError.Code == rpc.CodeTimeout)
 	switch {
 	case ctx.Err() != nil:
 		return nil, ctxErr(ctx.Err())
 	case fault != nil:
 		return nil, fault
 	case callCtx.Err() != nil:
+		return nil, newErr(CodeTimeout, "the action took too long")
+	case timedOut:
 		return nil, newErr(CodeTimeout, "the action took too long")
 	case err != nil:
 		return nil, newErr(CodeInternal, "the action failed") // its message may carry content
@@ -323,9 +342,34 @@ func invokeAction(ctx context.Context, a *pipelineAction, c *actionContext) (err
 // actionReader revokes a reader with its invocation context.
 type actionReader struct {
 	io.Reader
-	close func() error
-	once  sync.Once
-	err   error
+	readMu    sync.Mutex
+	ctx       context.Context
+	remaining int64
+	record    func(error)
+	close     func() error
+	once      sync.Once
+	err       error
+}
+
+func (r *actionReader) Read(b []byte) (int, error) {
+	r.readMu.Lock()
+	defer r.readMu.Unlock()
+	n, err := r.Reader.Read(b)
+	if err != nil && r.ctx.Err() != nil {
+		return n, r.ctx.Err()
+	}
+	r.remaining -= int64(n)
+	switch {
+	case r.remaining < 0:
+		r.record(newErr(CodeSourceChanged, "source size changed"))
+	case err == io.EOF && r.remaining != 0:
+		r.record(io.ErrUnexpectedEOF)
+	case err != nil && err != io.EOF:
+		failure := sourceErr(r.ctx, err)
+		r.record(failure)
+		return n, failure
+	}
+	return n, err
 }
 
 func (r *actionReader) Close() error { r.once.Do(func() { r.err = r.close() }); return r.err }

@@ -63,3 +63,41 @@ E2E. No unresolved failure remains in the changed paths.
 All upload probes used synthetic content. Telemetry and sync were disabled in
 the installed-process profile. Real user clipboard history was not uploaded.
 Private logs, archives, source fixtures and share URLs are excluded from Git.
+
+## PR review follow-up
+
+All supplied findings were checked against current code and reproduced where
+behavior was affected. No finding was dismissed. The user approved the new
+nested `action.close_part` RPC before its implementation; protocol version stays 1.
+
+- Desktop Action jobs receive 330 seconds; ordinary mutations retain 15 seconds.
+  A local-socket Desktop-worker E2E completes a 16-second Action and observes
+  the actual request budget and the separate ordinary-mutation budget.
+- Go input requirements consistently allow text/image/files; Lua remains text-only.
+- Source-open/read failures and short EOF latch invocation failure even when an
+  Actor swallows errors. Genuine source failure cannot commit a success item.
+- Early part close releases its host reader and slot before acknowledging the
+  close RPC. Six partially read large parts complete in one Action. Process
+  identity remains stable across early close and cancellation of a blocked stream.
+- Both descriptor-returning source methods share connection-level serialization
+  through `Expect`. A two-method framed-protocol E2E preserves ordered
+  registration without changing stream-ID replay checks.
+- Cancellation waits for an explicit process admission marker and asserts the
+  cached `cancelled` error. The 75ms declared deadline asserts `timeout`.
+  RPC timeout errors retain that code even when the wire budget expires before
+  the Engine timer.
+- E2E error checks, intentional cleanup discards and project import groups are explicit.
+
+Validation: full race suite passed; Action-source and framed-protocol E2E passed
+three consecutive runs; pinned golangci-lint 2.15.0 reported zero issues and its
+format diff was empty. First failure artifacts remain in ignored
+`.cache/review-fixes/`. Native GUI and system clipboard interaction were not run.
+
+Replay:
+
+```sh
+TMPDIR=/private/tmp UNIC_ACTION_RECEIPTS="$PWD/.cache/review-replay" \
+  go test -race ./e2e/actioncontent ./e2e/rpcstreams -count=3 -v
+TMPDIR=/private/tmp go test -race ./app/desktop/internal/desktopui \
+  -run '^TestActionWorkerBudgetE2E$' -count=1 -v
+```

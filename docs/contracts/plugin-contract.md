@@ -10,7 +10,7 @@
 
 插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。sync_backend 还可声明 `ExternalChannels`（对端是没有 unic 身份的外部渠道，见 0009）与 `RemoteRevocation`（须同时声明 ExternalChannels，并实现 `ChannelLeaver`）；其他插件声明这两项被拒绝。外部渠道后端实现 `ReceiverAware`，Engine 在 Init 之后、Start 之前交给它 `Receiver`，收到的内容经 `Receive(channelID, Received)` 进入 Engine；被拒（渠道停用、策略、空间、重复）时返回错误，后端丢弃且不得重试。当前只支持进程内 Go 实例，外部进程后端待 RPC 业务层。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat` 保留给发行版内置同步插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
 
-processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Accepts ⊆ {text, image, files}，首版仅 text 可用（来源与结果都是文本）。首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
+processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Go `Accepts` is a non-empty unique subset of `{text, image, files}`; results remain text. Lua Actions accept text only.首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
 
 **Go 插件区分 builtin 与 external 两种装配方式**。builtin 由宿主显式创建进程内实例，随宿主构建和升级，不走安装器或 RPC；默认同步后端 `builtin.tailcat` 位于 `internal/plugins/tailcat/`，与 `builtin.text` 保持独立 ID、配置和生命周期。两种方式执行相同的能力校验、实例授权和业务契约，builtin 不因内置而绕过设备审批。
 

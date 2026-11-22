@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "e2e/release"))
 from migration_acceptance import frozen_source  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "tools/release"))
-from legacy_desktop_alpha import OLD_SOURCE, REPOSITORY, TARGETS, digest  # noqa: E402
+from legacy_desktop_alpha import SOURCE_COMMITS, REPOSITORY, TARGETS, digest  # noqa: E402
 
 OLD_ASSETS = {
     "darwin-aarch64": "UniClipboard_aarch64-apple-darwin.app.tar.gz",
@@ -55,7 +55,7 @@ def native_acceptance(args, report):
     commit = subprocess.check_output(
         ["git", "-C", source, "rev-parse", "HEAD"], text=True
     ).strip()
-    if commit != OLD_SOURCE:
+    if commit != SOURCE_COMMITS[args.source_version]:
         raise ValueError("unexpected legacy verifier source")
     module = source / "apps/gui-go"
     offer = json.loads((args.offer / "desktop-legacy-alpha.json").read_text())
@@ -67,9 +67,10 @@ def native_acceptance(args, report):
         work = Path(temporary).resolve()
         assets = work / "assets"
         assets.mkdir()
-        old_name = OLD_ASSETS[args.target]
-        download("v1.6.2-alpha.2", assets, old_name)
-        download("v1.6.2-alpha.2", assets, old_name + ".sig")
+        old_name = OLD_ASSETS[args.target].replace("1.6.2-alpha.2", args.source_version)
+        tag = "v" + args.source_version
+        download(tag, assets, old_name)
+        download(tag, assets, old_name + ".sig")
         download(f"desktop/v{version}-build.{build}", work, filename)
         archive = work / filename
         if digest(archive) != record["sha256"]:
@@ -123,6 +124,8 @@ def native_acceptance(args, report):
                 args.output / "windows",
                 "-Target",
                 "windows-arm64" if args.target.endswith("aarch64") else "windows-amd64",
+                "-LegacySourceVersion",
+                args.source_version,
                 "-LegacyUpdater",
             )
             result = json.loads(
@@ -236,6 +239,7 @@ def native_acceptance(args, report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", choices=sorted(OLD_ASSETS), required=True)
+    parser.add_argument("--source-version", choices=SOURCE_COMMITS, required=True)
     parser.add_argument("--legacy-source", type=Path, required=True)
     parser.add_argument("--offer", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -245,6 +249,7 @@ def main():
     report = {
         "status": "failed",
         "target": args.target,
+        "source_version": args.source_version,
         "checks": [],
         "scope": "actual v1 payload, v1 signature and installer, exact installed v2 process identity and migration; graphical interaction not run",
     }

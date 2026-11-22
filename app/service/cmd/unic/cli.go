@@ -309,6 +309,38 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 			fmt.Println("ok")
 		}
 
+	case "device channel-add":
+		if len(args) != 2 {
+			return errors.New("usage: unic device channel-add INSTANCE NAME")
+		}
+		channel, err := c.AddChannel(short, api.ChannelAdd{BackendID: args[0], Name: args[1]})
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(channel)
+
+	case "device channel":
+		if len(args) != 3 {
+			return errors.New("usage: unic device channel pause|resume|remove ID REVISION")
+		}
+		revision, err := strconv.ParseInt(args[2], 10, 64)
+		if err != nil || revision <= 0 {
+			return errors.New("invalid channel revision")
+		}
+		switch args[0] {
+		case "pause", "resume":
+			enabled := args[0] == "resume"
+			channel, err := c.UpdateChannel(short, args[1], api.ChannelUpdate{Revision: revision, Enabled: &enabled})
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(os.Stdout).Encode(channel)
+		case "remove":
+			return c.RemoveChannel(short, args[1], revision)
+		default:
+			return errors.New("expected pause, resume, or remove")
+		}
+
 	case "device remove":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: unic device remove <id>")

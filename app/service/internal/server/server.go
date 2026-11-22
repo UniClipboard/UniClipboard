@@ -374,6 +374,29 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 		reply(w, 200, map[string]bool{"ok": true})
 	})
 
+	mux.HandleFunc("POST /v1/channels", func(w http.ResponseWriter, r *http.Request) {
+		var in api.ChannelAdd
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&in); err != nil || dec.Decode(new(any)) != io.EOF || in.BackendID == "" || strings.TrimSpace(in.Name) == "" {
+			fail(w, 400, errors.New("backend_id and name are required"))
+			return
+		}
+		backend, ok := b.(interface {
+			AddChannel(context.Context, api.ChannelAdd) (api.PeerStatus, error)
+		})
+		if !ok {
+			fail(w, 501, errors.New("channel registration unavailable"))
+			return
+		}
+		channel, err := backend.AddChannel(r.Context(), in)
+		if err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, channel)
+	})
+
 	mux.HandleFunc("PATCH /v1/channels/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var u api.ChannelUpdate
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&u); err != nil || u.Revision == 0 {

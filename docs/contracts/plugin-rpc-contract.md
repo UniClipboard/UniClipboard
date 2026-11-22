@@ -66,6 +66,7 @@ Process/OnEvent 同实例串行，协议读写与 Host 反向调用使用独立�
 | backend.submit | Engine→插件 | Start 后，sync_backend 且 Spec.external_channels；父调用携带 `sync_part` 流 |
 | backend.leave_channel | Engine→插件 | 同上且 Spec.remote_revocation；成功返回后 Engine 才删除渠道记录 |
 | backend.register / backend.report | 插件→Engine | 有效的 backend.submit 期间或之后，针对该 transfer 已登记且仍未终态的目标 |
+| backend.authorize_channel | Plugin→Engine | External channels only. Check live channel ownership, enablement, runtime, global sync and optional representation policy. |
 | backend.receive | 插件→Engine | Start 后，external_channels；根请求携带 `receive_part` 流 |
 | stream.open | 内容发送方→接收方 | 有效父调用，purpose 与调用方向/能力匹配，配额可预留 |
 

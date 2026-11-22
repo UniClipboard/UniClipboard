@@ -46,6 +46,12 @@ type PeerStatus struct {
 	LastError        string `json:"last_error,omitempty"`
 }
 
+// ChannelAdd registers a named, locally authorized target for an external backend.
+type ChannelAdd struct {
+	BackendID string `json:"backend_id"`
+	Name      string `json:"name"`
+}
+
 // ChannelUpdate is the body of PATCH /v1/channels/{id}. Revision is required.
 type ChannelUpdate struct {
 	Revision  int64   `json:"revision"`
@@ -485,6 +491,11 @@ func (c *Client) Reject(ctx context.Context, id string) error {
 
 func (c *Client) Unpair(ctx context.Context, id string) error {
 	return c.do(ctx, "DELETE", "/v1/peers/"+id, nil, nil)
+}
+
+func (c *Client) AddChannel(ctx context.Context, in ChannelAdd) (p PeerStatus, err error) {
+	err = c.do(ctx, "POST", "/v1/channels", in, &p)
+	return
 }
 
 func (c *Client) UpdateChannel(ctx context.Context, id string, u ChannelUpdate) (p PeerStatus, err error) {

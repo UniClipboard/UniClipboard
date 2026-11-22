@@ -590,6 +590,7 @@
             "backend.register",
             "backend.report",
             "backend.receive",
+            "backend.authorize_channel",
             "sync_host.identity_hello",
             "sync_host.identity_prove",
             "action.open_part",

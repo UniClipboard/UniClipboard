@@ -46,6 +46,18 @@ type roleStatus struct {
 	Shortcut      shortcutStatus `json:"shortcut"`
 	LoginEnabled  bool           `json:"login_enabled"`
 	LoginError    string         `json:"login_error"`
+	Updates       updateStatus   `json:"updates"`
+}
+type updateStatus struct {
+	Supported          bool   `json:"supported"`
+	Owner              string `json:"owner"`
+	AutoCheckUpdate    bool   `json:"auto_check_update"`
+	AutoDownloadUpdate bool   `json:"auto_download_update"`
+	AvailableVersion   string `json:"available_version,omitempty"`
+}
+type updatePrefsRequest struct {
+	AutoCheckUpdate    *bool `json:"auto_check_update,omitempty"`
+	AutoDownloadUpdate *bool `json:"auto_download_update,omitempty"`
 }
 type shortcutStatus struct {
 	Requested string `json:"requested"`
@@ -74,6 +86,8 @@ type trayRuntime struct {
 	capture                 func() panelActivation
 	shortcut                func(bool) shortcutStatus
 	login                   func(bool) (bool, string)
+	checkUpdates            func()
+	updatePrefs             func(updatePrefsRequest) updateStatus
 	quit                    func()
 	opening                 sync.Mutex
 }
@@ -380,6 +394,39 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 			r.mu.Unlock()
 		}
 		return nil, nil
+	case "check-updates":
+		select {
+		case <-r.nativeReady:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		// Reload config so a just-saved update_channel is seen before checking.
+		_ = r.settings.Reload()
+		if r.checkUpdates != nil {
+			r.checkUpdates()
+		}
+		return nil, nil
+	case "set-update-prefs":
+		select {
+		case <-r.nativeReady:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		var in updatePrefsRequest
+		if err := json.Unmarshal(raw, &in); err != nil {
+			return nil, err
+		}
+		if r.updatePrefs != nil {
+			st := r.updatePrefs(in)
+			r.mu.Lock()
+			r.state.Updates = st
+			r.mu.Unlock()
+			return st, nil
+		}
+		r.mu.Lock()
+		st := r.state.Updates
+		r.mu.Unlock()
+		return st, nil
 	case "clipboard-apply":
 		var in clipboardRequest
 		if err := json.Unmarshal(raw, &in); err != nil {

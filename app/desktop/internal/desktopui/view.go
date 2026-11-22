@@ -98,6 +98,7 @@ type viewState struct {
 	toolbarTrailing func(*ui.Context)
 	windowFrame     *bool
 	pluginSettings  builtinPluginSettings
+	about           aboutState
 
 	reference                                                             string
 	previewImage                                                          ui.ImageSource
@@ -153,7 +154,7 @@ func (d *viewState) view(c *ui.Context) {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.tagsOpen && !d.tagEditor.open && d.deviceTask == "" && d.confirm == "" {
+		if !d.tagsOpen && !d.tagEditor.open && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen {
 			if d.page == "history" {
 				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
 				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
@@ -183,6 +184,7 @@ func (d *viewState) view(c *ui.Context) {
 		d.deviceTaskSheet(c.Key("devices"), k)
 		d.tagSheet(c.Key("tags"), k)
 		d.confirmDialog(c.Key("confirm"), k)
+		d.aboutDialogs(c.Key("about"), k)
 	})
 }
 

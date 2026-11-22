@@ -175,10 +175,6 @@ func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 			d.switchRow(c, k, "history", d.tr("保存本机历史"), d.tr("在本机保留复制过的内容"))
 		})
 	case "about":
-		k.EntityHeader(c, desktopkit.EntityHeaderProps{Icon: desktopkit.IconCopy, Title: "UniClipboard", Description: d.tr("跨设备剪贴板同步 · 原生界面演示")}, nil)
-		group("version", d.tr("版本"), func() {
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("界面参考"), Description: "main · " + d.reference[:9]}, nil, nil)
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("界面组件"), Description: "mygo + BoardUI"}, nil, nil)
-		})
+		d.aboutContent(c, k)
 	}
 }

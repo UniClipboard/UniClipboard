@@ -4,6 +4,7 @@
 import argparse
 import base64
 import hashlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -12,10 +13,11 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import tomllib
 from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -342,8 +344,11 @@ def registry_url(value):
 
 
 def registry_get(registry, name):
+    request = Request(
+        registry + "/" + quote(name, safe="@"), headers={"Cache-Control": "no-cache"}
+    )
     try:
-        with urlopen(registry + "/" + quote(name, safe="@"), timeout=30) as response:
+        with urlopen(request, timeout=30) as response:
             data = response.read(16 * 1024 * 1024 + 1)
             if len(data) > 16 * 1024 * 1024:
                 raise ValueError("registry response too large")
@@ -352,6 +357,18 @@ def registry_get(registry, name):
         if error.code == 404:
             return {"versions": {}, "dist-tags": {}}
         raise
+
+
+def registry_readback(registry, name, select, error):
+    deadline = time.monotonic() + 240
+    while True:
+        observed = select(registry_get(registry, name))
+        if observed:
+            return observed
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError(error + ": " + name)
+        time.sleep(min(2, remaining))
 
 
 def validate_manifest(path):
@@ -503,16 +520,16 @@ def distribute(args):
                 if not fixture:
                     command.append("--provenance")
                 run(command)
-            remote = (
-                registry_get(registry, package["name"])
-                .get("versions", {})
-                .get(package["version"])
+            remote = registry_readback(
+                registry,
+                package["name"],
+                lambda data: data.get("versions", {}).get(package["version"]),
+                "package read-back timed out",
             )
-            if (
-                not remote
-                or remote.get("dist", {}).get("integrity") != package["integrity"]
-            ):
-                raise ValueError("package read-back failed: " + package["name"])
+            if remote.get("dist", {}).get("integrity") != package["integrity"]:
+                raise ValueError(
+                    "package read-back integrity conflict: " + package["name"]
+                )
             run(
                 [
                     "npm",
@@ -524,11 +541,12 @@ def distribute(args):
                     registry,
                 ]
             )
-            if (
-                registry_get(registry, package["name"]).get("dist-tags", {}).get(tag)
-                != package["version"]
-            ):
-                raise ValueError("channel read-back failed: " + package["name"])
+            registry_readback(
+                registry,
+                package["name"],
+                lambda data: data.get("dist-tags", {}).get(tag) == package["version"],
+                "channel read-back timed out",
+            )
             item["status"] = "available"
             save(args.receipt, receipt)
         receipt["status"] = "available"
@@ -641,6 +659,26 @@ def matrix(args):
     )
 
 
+def find_github_release(repository, tag, read=None):
+    """Find drafts and published releases by their exact tag."""
+    if read is None:
+
+        def read(endpoint):
+            return json.loads(run(["gh", "api", endpoint]))
+
+    matching = None
+    for page in itertools.count(1):
+        endpoint = f"repos/{repository}/releases?per_page=100&page={page}"
+        releases = read(endpoint)
+        for release in releases:
+            if release["tag_name"] == tag:
+                if matching is not None:
+                    raise ValueError("multiple releases for tag: " + tag)
+                matching = release
+        if len(releases) < 100:
+            return matching
+
+
 def github_record(args):
     manifest = validate_manifest(args.manifest)
     if not manifest["source_clean"]:
@@ -649,13 +687,7 @@ def github_record(args):
     repository = args.repository
     if repository != "UniClipboard/UniClipboard":
         raise ValueError("unexpected release repository")
-    endpoint = "repos/" + repository + "/releases/tags/" + quote(tag, safe="")
-    result = subprocess.run(
-        ["gh", "api", endpoint], cwd=ROOT, text=True, capture_output=True
-    )
-    if result.returncode:
-        if "HTTP 404" not in result.stderr:
-            raise ValueError("cannot query GitHub build record: " + result.stderr)
+    if find_github_release(repository, tag) is None:
         if args.finish:
             raise ValueError("staged build record missing")
         ref_endpoint = "repos/" + repository + "/git/ref/tags/" + quote(tag, safe="")
@@ -759,15 +791,7 @@ def resume(args):
     record = metadata(args.metadata)
     tag = f"cli/v{record['version']}-build.{record['build_number']}"
     repository = "UniClipboard/UniClipboard"
-    result = subprocess.run(
-        ["gh", "api", "repos/" + repository + "/releases/tags/" + quote(tag, safe="")],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    if result.returncode:
-        if "HTTP 404" not in result.stderr:
-            raise ValueError("cannot query staged candidate: " + result.stderr)
+    if find_github_release(repository, tag) is None:
         staged = False
     else:
         output = Path(args.output).resolve()

@@ -22,6 +22,30 @@ import (
 // These commands observe the production process; all setting writes happen via UI.
 func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 	return map[string]func(*desktopScenario, []string) error{
+		"start-external": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("start-external takes no arguments")
+			}
+			s.externalBackend = true
+			return s.start()
+		},
+		"external-roundtrip": func(s *desktopScenario, a []string) error {
+			if len(a) != 0 {
+				return errors.New("external-roundtrip takes no arguments")
+			}
+			return s.externalRoundtrip()
+		},
+		"external-policy-check": func(s *desktopScenario, a []string) error {
+			result, err := s.client.Submit(s.ctx, api.SubmitInput{RequestID: "external-filtered", Snapshot: clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("external-filtered")}}}})
+			if err != nil {
+				return err
+			}
+			if string(result.SyncDisposition) != "policy_filtered" {
+				return fmt.Errorf("external policy disposition: %s", result.SyncDisposition)
+			}
+			s.result.Assertions = append(s.result.Assertions, "external instance text policy enforced by production Engine")
+			return nil
+		},
 		"plugin-back-in-toolbar": func(s *desktopScenario, a []string) error {
 			if len(a) != 0 {
 				return errors.New("plugin-back-in-toolbar takes no arguments")
@@ -67,11 +91,22 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 			if len(a) != 0 || s.policyPeer == nil {
 				return errors.New("peer-pair-desktop requires an owned peer")
 			}
-			ticket, err := s.client.ExportTicket(s.ctx)
+			var ticket string
+			var err error
+			if s.externalBackend {
+				ticket, err = s.client.ExportTicketVia(s.ctx, "e2e.desktop")
+			} else {
+				ticket, err = s.client.ExportTicket(s.ctx)
+			}
 			if err != nil {
 				return err
 			}
-			if _, err = s.policyPeer.client.Pair(s.ctx, ticket); err != nil {
+			if s.externalBackend {
+				_, err = s.policyPeer.client.PairVia(s.ctx, ticket, "e2e.peer")
+			} else {
+				_, err = s.policyPeer.client.Pair(s.ctx, ticket)
+			}
+			if err != nil {
 				return err
 			}
 			var pending []api.PendingPeer
@@ -83,6 +118,12 @@ func builtinPluginCommands() map[string]func(*desktopScenario, []string) error {
 				return err
 			}
 			req := pending[0]
+			if s.externalBackend {
+				other, e := s.client.Pending(s.ctx)
+				if e != nil || len(other) != 1 || other[0].Fingerprint != req.Fingerprint {
+					return errors.New("both fixture fingerprints must match before approval")
+				}
+			}
 			if _, err = s.policyPeer.client.Approve(s.ctx, req.ID, api.Approval{Fingerprint: req.Fingerprint, Revision: req.Revision, Bindings: req.Bindings}); err != nil {
 				return err
 			}

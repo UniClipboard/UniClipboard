@@ -15,7 +15,7 @@ const (
 	MaxStateBytes    = 64 << 20
 	MaxStatePeers    = 4096
 	MaxStateRejected = 4096
-	WireVersion      = 2
+	WireVersion      = 1
 )
 
 // Bind configures one backend session. It never connects.

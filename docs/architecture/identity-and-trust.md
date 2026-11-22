@@ -6,6 +6,12 @@ paths:
   - engine/candidates.go
   - engine/tailcat_host.go
   - engine/peerproc.go
+  - engine/plugins.go
+  - engine/backend_status.go
+  - internal/store/backend_instances.go
+  - app/service/internal/host/bindings.go
+  - internal/localapi/bindings.go
+  - internal/localapi/peers.go
   - internal/identity
   - internal/rendezvous
   - internal/store/devices.go
@@ -14,13 +20,18 @@ paths:
   - internal/localapi/api.go
   - app/service/internal/server
   - app/service/cmd/unic/cli.go
+  - app/service/internal/host/sync_backends.go
+  - internal/localapi/sync_backends.go
+  - internal/localconfig
+  - app/desktop/internal/desktopui/plugin_settings.go
+  - app/desktop/internal/desktopui/plugin_schema_form.go
   - app/desktop/cmd/unic-desktop/gui.go
   - app/desktop/internal/desktopui/live.go
   - app/desktop/internal/desktopui/live_devices.go
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: 7a21f4dbfa33d9772ff8ac07abdd6784f824e6ab
+verified: 8bbc04226f011acf58c005af520f25564163501d
 ---
 # 设备身份、信任与配对
 
@@ -36,7 +47,7 @@ Engine 统一管理“对端是谁、是否被信任、经哪条后端路径可�
 - **指纹**：`identity.Fingerprint(a, b)`，两端公钥按字节排序，对 `"unic/fingerprint/v1\x00"‖a‖b` 做 SHA-256 取前 16 字节，显示为 8 组 4 位大写十六进制，双方各自计算；比对时忽略空白与大小写。DeviceID 为 `SHA-256("unic/device-id/v1\x00"‖公钥)` 前 16 字节的小写 base32（26 字符）。
 - **Pairing code**: `CreatePairingCode` registers a ticket through rendezvous `/v1/web-pairings` and returns a one-use `NNN-NNN` code valid for at most 300 seconds. `rendezvous_url` selects the endpoint; `app/service/internal/host/node.go` applies `UNIC_RENDEZVOUS_URL` only when the saved setting is empty. Only one ticket is active; a new ticket replaces and consumes the previous code. `JoinByCode` resolves a `unic-pair` ticket containing the issuer public key, backend descriptor and 128-bit token. It connects through the issuing backend instance and requires the expected DeviceID. The token is not sent; PairProof uses `HMAC(token, transcript)`. Successful `pairUsedBy` verification consumes the ticket and records its `ticket` provenance without granting trust. An unsupported backend returns `unsupported` without a tailcat fallback.
 - **Ticket kinds in rendezvous**: the same code service holds `unic-pair` tickets (device pairing) and `uc-web-try` tickets (temporary transfer with the browser page, 0022). `unic recv` refuses a `unic-pair` code with `pairing_code`; `unic device add` refuses a `uc-web-try` code as not a unic pairing code. A temporary transfer peer has no device identity: it is never written to `devices`, has no fingerprint and gains no trust. Its address, token, code and link are secrets and follow the pairing ticket rules.
-- **完整票据**：`ExportPairingTicket` / `JoinByTicket`，文本形式 `unic-pair:…`，不经 rendezvous。桌面入口：`unic device add|addr|list|remove|approve|reject|suggestions|suggest-*`；HTTP `/v1/code`、`/v1/join`、`/v1/pairing-ticket`、`/v1/peers`、`/v1/pending[/{id}/approve|reject]`、`/v1/candidates[/{id}/pair|ignore]`。
+- **完整票据**：`ExportPairingTicket` / `JoinByTicket`，文本形式 `unic-pair:…`，不经 rendezvous。桌面入口：`unic device add|addr|list|remove|approve|reject|suggestions|suggest-*`；HTTP `/v1/code`、`/v1/join`、`/v1/pairing-ticket`、`/v1/peers`（含 `PATCH /v1/peers/{id}` 改名与 `DELETE /v1/peers/{id}[?revision=N]` 解绑）、`/v1/pending[/{id}/approve|reject]`、`/v1/candidates[/{id}/pair|ignore]`。
 - **介绍**：全局 `sync.introductions`（默认开）经同步状态下发给后端；Engine 只把设备 `trusted`、关联 `authorized` 且有地址（≤8192 字节）的设备作为 peers 交给后端；`builtin.tailcat` 的 `internal/session` 读取 `SyncState.Introduce`，在认证会话建立、状态变化及每 24 小时把当前担保列表分批发送（每批 ≤64）；接收方使用本机会话 ID/token 调用 `PeerAuthority.Introduce`（外部后端对应 `sync_host.introduce`）。消息与内容共用串行写锁，发送失败关闭会话；关闭介绍开关后停止发送与接收。收到的 `Introduce` 须来自已连接、令牌与信任修订都匹配的会话；ID 须合法、非自身、非介绍方、有地址，名称非法则丢弃名称（仅格式校验）；每次 `introduce` 调用最多 64 个候选；已有设备记录的 ID 跳过。候选保留 7 天（未被重复担保即过期），每介绍方最多 128、总计最多 256。`PairCandidate` 发起一次普通拨号（无 token），之后对方不在线则在 24 小时内按 1→15 分钟退避重试；`IgnoreCandidate` 可忽略/恢复。介绍方被 Unpair 时丢它的担保（`RemoveBinding` 不丢），已建立的设备不受影响。
 
 ## 不变量
@@ -99,3 +110,19 @@ The event contains no device identity, fingerprint, binding context or pairing m
 ## Backend callback state refresh
 
 A handshake that revives a revoked device records it as pending and queues a coalesced state refresh. It never waits for `ApplyState` from a backend callback. A single Engine-owned refresh worker drains these requests; Engine stop prevents new work and drains the worker before closing the store. Explicit unpairing, rejection and other revocations retain the synchronous state barrier. The pending handshake grants no session token or trust.
+
+## External backend host workflow
+
+The host explicitly assembles enabled backends. Setting `plugins.instances."builtin.tailcat".enabled=false` takes effect after service restart and leaves local history and Actions available. It does not select another backend implicitly.
+
+`GET /v1/sync-backends` lists assembled backend IDs, implementation IDs, transport kinds, external-channel classification and device-pairing support. This reports assembly, capability and local process/lifecycle availability, not remote network health. It contains no addresses or credentials. `unic device backends` exposes the same projection. `POST /v1/code` and `POST /v1/pairing-ticket` accept an optional `backend_id`; `unic device addr --backend ID` exports a ticket for that selection. Omission retains the default Tailcat behavior; an unsupported selection fails without fallback.
+
+Desktop's invitation task selects only device-pairing backends. Plugins exposes Engine-owned text, image, file and automatic-file-threshold policies for installed Go sync backends. Schema settings keep their existing secret redaction and restart behavior. Lua plugins cannot acquire sync capability through configuration. A disabled backend stays assembled until the reported restart boundary; policy and global-sync changes still apply to the running backend set.
+
+Implementation IDs and runtime instance IDs are distinct. The user-approved contract resolution is implemented: each external Go sync alias has independent configuration, process, data, policies and bindings; incoming pairing requests select a compatible local alias. See the [workflow receipt](../exec/sync-plugin-workflow.md). Non-P2P configuration disclosure does not establish a third-party login or object-store protocol. Real CLI/service/Go child-process acceptance covers two instances of one implementation, cross-instance pairing, per-path approval/CAS, deduplication, partial failure, child restart and configuration-context revocation. The canonical native Desktop case covers instance creation, enablement/restart, policy, pairing approval and bidirectional text. OS clipboard and user visual approval remain separate.
+
+### Runtime instance enforcement
+
+`engine/plugins.go` preserves handshake `Spec.ID` while using `PluginInstance.ID` for backend runtime authority and private directories. `engine/backend_status.go` projects local availability. `internal/store/backend_instances.go` atomically fixes implementation ownership and invalidates old instance authorizations when a changed Go configuration loads. The receiver selects a local instance through `JoinRequest.BackendID`; the ticket `be` names its implementation. Issuer redemption still checks the actual issuing instance. Protocol version remains 1.
+
+`app/service/internal/host/plugin_settings.go` resolves immutable installations separately from per-instance Schema settings. Desktop exposes these in Plugins, selects a running compatible instance in invite/connect tasks, and displays per-instance history outcomes. `app/service/internal/host/bindings.go` maps per-path pause/remove to the existing Engine CAS/barrier operations. Device details use the same service routes and show one device with multiple paths.

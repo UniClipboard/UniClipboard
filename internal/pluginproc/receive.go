@@ -97,6 +97,8 @@ func nilOnErr[T any](v T, err error) (any, error) {
 type recvGrant struct {
 	sizes    []uint64
 	deadline time.Time
+	claimed  bool
+	ready    chan struct{} // closes after the root publishes its receive state
 }
 
 type recvPart struct {
@@ -164,7 +166,7 @@ func (p *Proxy) receiveOpen(ctx context.Context, c *rpc.Call) (any, error) {
 		return nil, err
 	}
 	if g.ReceiveID != nil {
-		rg := &recvGrant{deadline: time.Now().Add(rpc.ReceiveOpenTTLMs * time.Millisecond)}
+		rg := &recvGrant{deadline: time.Now().Add(rpc.ReceiveOpenTTLMs * time.Millisecond), ready: make(chan struct{})}
 		for _, part := range in.Clip.Parts {
 			rg.sizes = append(rg.sizes, uint64(part.Size))
 		}
@@ -188,7 +190,24 @@ func (p *Proxy) receiveRoot(ctx context.Context, c *rpc.Call) (any, error) {
 	}
 	p.bmu.Lock()
 	g := p.rgrants[in.ReceiveID]
-	delete(p.rgrants, in.ReceiveID) // single use, whatever happens next
+	// Claim the grant before publishing the root. Children may arrive first.
+	if g != nil && g.claimed {
+		g = nil
+	}
+	if g != nil {
+		g.claimed = true
+	}
+	defer func() {
+		p.bmu.Lock()
+		defer p.bmu.Unlock()
+		if g != nil {
+			delete(p.rgrants, in.ReceiveID)
+		}
+		if g != nil && g.ready != nil {
+			close(g.ready)
+			g.ready = nil
+		}
+	}()
 	p.bmu.Unlock()
 	if g == nil {
 		return nil, rpc.NewError(rpc.CodePermission)
@@ -202,6 +221,11 @@ func (p *Proxy) receiveRoot(ctx context.Context, c *rpc.Call) (any, error) {
 		p.recvs = map[uint64]*activeRecv{}
 	}
 	p.recvs[c.ID] = a
+	delete(p.rgrants, in.ReceiveID)
+	if g.ready != nil {
+		close(g.ready)
+		g.ready = nil
+	}
 	p.bmu.Unlock()
 	defer func() {
 		p.bmu.Lock()
@@ -234,7 +258,28 @@ func (p *Proxy) receivePart(ctx context.Context, c *rpc.Call) (any, error) {
 	}
 	p.bmu.Lock()
 	a := p.recvs[c.Parent]
+	g := p.rgrants[in.ReceiveID]
+	var ready <-chan struct{}
+	if a == nil && g != nil {
+		ready = g.ready
+	}
 	p.bmu.Unlock()
+	// The RPC reader accepts parent and child in order, but starts their
+	// handlers concurrently. Wait only for this admitted receive grant.
+	if ready != nil {
+		timer := time.NewTimer(time.Until(g.deadline))
+		defer timer.Stop()
+		select {
+		case <-ready:
+		case <-timer.C:
+			return nil, rpc.NewError("resource_expired")
+		case <-ctx.Done():
+			return nil, rpc.NewError(rpc.CodeCancelled)
+		}
+		p.bmu.Lock()
+		a = p.recvs[c.Parent]
+		p.bmu.Unlock()
+	}
 	if a == nil || !eqSecret(a.id, in.ReceiveID) {
 		return nil, rpc.NewError(rpc.CodePermission)
 	}

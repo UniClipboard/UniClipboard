@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -106,7 +105,8 @@ func (m *Manager) State() State {
 	if m.cur.History.MaxBytes != m.started.History.MaxBytes {
 		s.RestartRequired = append(s.RestartRequired, "history")
 	}
-	if m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) ||
+	if m.cur.PluginEnabled("builtin.tailcat") != m.started.PluginEnabled("builtin.tailcat") ||
+		m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) ||
 		m.cur.PluginEnabled(builtinclassify.ID) != m.started.PluginEnabled(builtinclassify.ID) {
 		s.RestartRequired = append(s.RestartRequired, "plugins")
 	}
@@ -242,19 +242,29 @@ func Set(c Config, key, value string) ([]byte, error) {
 	if _, err := toml.Decode("value = "+value, &input); err != nil {
 		return nil, errors.New("value must use TOML syntax; quote strings")
 	}
-	parts := strings.Split(key, ".")
+	// Let the TOML parser handle quoted instance IDs containing dots.
+	var probe map[string]any
+	md, err := toml.Decode(key+" = true", &probe)
+	if err != nil || len(md.Keys()) != 1 {
+		return nil, errors.New("unknown configuration key")
+	}
+	parts := []string(md.Keys()[len(md.Keys())-1])
+	if len(parts) == 0 {
+		return nil, errors.New("unknown configuration key")
+	}
 	m := fields
 	for _, k := range parts[:len(parts)-1] {
 		next, ok := m[k].(map[string]any)
 		if !ok {
-			return nil, errors.New("unknown configuration key")
+			if _, exists := m[k]; exists {
+				return nil, errors.New("unknown configuration key")
+			}
+			next = map[string]any{}
+			m[k] = next
 		}
 		m = next
 	}
 	k := parts[len(parts)-1]
-	if _, ok := m[k]; !ok {
-		return nil, errors.New("unknown configuration key")
-	}
 	m[k] = input.Value
 	buf.Reset()
 	if err := toml.NewEncoder(&buf).Encode(fields); err != nil {

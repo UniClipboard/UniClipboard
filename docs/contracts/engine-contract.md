@@ -202,7 +202,7 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 - 入码方保留主动配对信任语义；出码方必须形成待批准请求。未批准和仅被介绍的设备不得接收内容。批准操作要求指纹一致；不一致报 conflict，宿主必须重新展示，而非自动重试。
 - Approve 的提交点是信任持久化成功；不会等待联网。Reject 等价于 Unpair：留下墓碑并丢弃其担保；该设备再次连接会以新的 pending 请求出现。
 - Unpair 对未配对 ID 幂等成功；持久化移除信任并使旧会话/重连代次失效后返回，旧会话不得继续接收、发送新内容，网络资源随后关闭。已完整接收的本地资源保留；未来直接连接仍须重新审批。
-- `CreatePairingCodeVia` / `ExportPairingTicketVia` 针对指定 peer_sessions 后端实例签发配对码/完整票据（票据携带该实例 ID `be`，入码方只在同一实例上连接）；无 Via 的方法使用默认 tailcat。
+- `CreatePairingCodeVia` / `ExportPairingTicketVia` issue a code/ticket for a selected peer-sessions instance. Ticket `be` identifies the implementation. The receiver selects a compatible local instance through `JoinRequest.BackendID` or `JoinTicketRequest.BackendID`. Methods without `Via` select the default Tailcat instance.
 - 设备介绍（[身份与信任](../architecture/identity-and-trust.md)）：`ListCandidates` 返回已配对设备推荐的候选（`Candidate{DeviceID, BackendID, Name, Introducers, LastSeenMs, Ignored, Requested, RequestedUntilMs}`，名称未经验证，不含地址与指纹）。`PairCandidate` 返回 pairing 类 OperationID，立即尝试一次并在 24 小时内退避重试，仍须对方批准、双方核对指纹；`IgnoreCandidate` 隐藏/恢复。候选变化发 `ObjectRef{Type:"candidate"}` 与 `EventDevices`。设置 `sync.introductions`（默认开）关闭时不接受介绍也不发送介绍。介绍只是建议，不授信。
 - 身份不一致、协议版本不兼容均失败，不覆盖原有 Peer 身份；失败可能已产生对方待审批项，不能声称跨设备事务回滚。
 
@@ -516,3 +516,13 @@ revokes readers when it ends. `ActionSpec.TimeoutMS` selects a deadline up to
 cancelling admitted Action work when its caller context ends. The default keeps
 admitted work running. See the [Action contract](clipboard-action-contract.md#go-action-source-content)
 for indexed source access, idempotency and external-effect boundaries.
+
+## Configured sync backend instances
+
+`PluginInstance.ID` is the local runtime instance ID. Empty uses the implementation ID as the singleton convenience. A distinct ID is supported for external Go `sync_backend` instances. `PluginProcess.Spec.ID` remains the implementation identity verified by the process handshake. Lua and ordinary processor/observer instances cannot acquire this capability or use runtime aliases.
+
+Engine keys standard policies, private directories, locks, authority, operations, receive provenance and restart selection by runtime instance ID. Program identity is sticky for the lifetime of that instance. Reassigning an existing instance to another implementation returns `conflict`; create another instance instead. Engine atomically records private configuration identity before starting a backend. A changed Go backend configuration revokes that instance's old device bindings and external channels on the next service start. Device trust and other instances remain intact. This conservative rule also applies to non-secret settings because the portable Schema does not classify transport/account context. No private configuration value or digest is projected publicly.
+
+`ListSyncBackends(ctx)` returns assembled instance IDs, implementation IDs, transport kinds, device-pairing support, external-channel classification and local runtime state (`running`, `restarting`, `unavailable`, `suspended`, `stopped`). Runtime state does not imply remote connectivity. Disabled instances are not assembled. No transport address, credential, process token or absolute path appears in this projection.
+
+`JoinRequest.BackendID` and `JoinTicketRequest.BackendID` select a local compatible instance and participate in request idempotency. The selected implementation must match the ticket descriptor. Omission uses only an exact singleton ID match; no alias guessing or Tailcat fallback occurs. The issuer checks its own issuing instance when redeeming PairProof. RPC frames, identity proofs, peer metadata and ticket envelopes use protocol version 1. No previous ticket-shape compatibility is provided.

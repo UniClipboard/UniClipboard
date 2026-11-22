@@ -182,7 +182,7 @@
         "binding_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "self_id": "device-a",
         "self_name": "local",
-        "wire_version": 2,
+        "wire_version": 1,
         "backend_id": "builtin.tailcat",
         "transport_kind": "peer_sessions"
       }
@@ -529,7 +529,7 @@
         "direction": "incoming",
         "attempt_id": null,
         "hello": {
-          "wire_version": 2,
+          "wire_version": 1,
           "name": "peer",
           "address": "fixture-private-address"
         },
@@ -544,7 +544,7 @@
         "direction": "incoming",
         "attempt_id": null,
         "hello": {
-          "wire_version": 2,
+          "wire_version": 1,
           "name": "peer",
           "address": "fixture-private-address"
         },
@@ -822,7 +822,7 @@
         "binding_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "self_id": "device-a",
         "self_name": "local",
-        "wire_version": 2,
+        "wire_version": 1,
         "backend_id": "builtin.tailcat",
         "transport_kind": "object_store"
       },
@@ -895,7 +895,7 @@
         "direction": "incoming",
         "attempt_id": null,
         "hello": {
-          "wire_version": 2,
+          "wire_version": 1,
           "name": "peer",
           "address": "fixture-private-address",
           "peer_id": "q5opsuq3efr3sxg3vlqcgetwvu"
@@ -912,7 +912,7 @@
         "direction": "incoming",
         "attempt_id": null,
         "hello": {
-          "wire_version": 2,
+          "wire_version": 1,
           "name": "peer",
           "address": "fixture-private-address"
         },
@@ -928,7 +928,7 @@
         "direction": "incoming",
         "attempt_id": null,
         "hello": {
-          "wire_version": 2,
+          "wire_version": 1,
           "name": "peer",
           "address": "fixture-private-address"
         },

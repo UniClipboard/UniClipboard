@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "pre_fix_head": "93a570df7b44172918be46d9de7a7d237743dfc3",
+  "original_base": "894790a3a4dc512ab622b0cf9120895251955173",
+  "preexisting_session_git_blob": "ecfbf13b6c40addc77d751055d18bdd1f7d32b9d",
+  "controlled_cause": "connected event publication precedes local session registration",
+  "controlled_backend_error": "not_found",
+  "historical_attribution": "unconfirmed: original log lacks underlying response code",
+  "merge_hold": true,
+  "before_fix": {
+    "isolated_original": {
+      "passed": 20,
+      "failed": 0
+    },
+    "engine_suite": "PASS",
+    "initial_barrier": "FAIL",
+    "bounded_barrier": {
+      "passed": 0,
+      "failed": 3
+    }
+  },
+  "after_fix": {
+    "original": {
+      "passed": 20,
+      "failed": 0
+    },
+    "bounded_barrier": {
+      "passed": 20,
+      "failed": 0
+    },
+    "full_race_suite": "PASS",
+    "production_headless": "PASS",
+    "pinned_lint": "PASS: zero issues",
+    "docscheck": "PASS: four stale-page warnings after pipeline and identity verification refresh"
+  },
+  "source_sha256": {
+    "internal/session/engine.go": "4a6a288da9096e1ea81cef0be4c6ea024277202538b02be1acaa1ed90b9ae0c4",
+    "engine/send_test.go": "c72d1d57de90f1e93fe923476a7d29fc21ebff61b6ec42fb82439e6270b4d3c0",
+    "engine/tailcat_transfer_e2e_test.go": "73fddc3eecea9efaab38b15aa1e2983fd9c24946225da7e35ff26d7271cb6e93"
+  },
+  "local_evidence_sha256": {
+    ".cache/tailcat-transfer-investigation/isolated-20.log": "c960a62be545d5a11ed73c1b0512a31c20a6e5736f12ffe82d65b49fd6971c6b",
+    ".cache/tailcat-transfer-investigation/engine-suite-01.jsonl": "429a3aefe8ead067458c0842e60afec6b91acf380699fdb7befc94661df3fd71",
+    ".cache/tailcat-transfer-investigation/barrier-before-fix.log": "47c02192c60c88e041b9cfa86882462a13c9c18df4269c597f07f8c29b039c58",
+    ".cache/tailcat-transfer-investigation/barrier-before-fix/connected-publication.json": "6dbbd5dadcfab88ec17aff1f167823a4dc2117082149218dd17ee27a133cd0bc",
+    ".cache/tailcat-transfer-investigation/barrier-bounded-before-fix.log": "6ef606a3bc8977df03f33439d309ad6a2cd8dfabf75e8bf3610c26676d035aad",
+    ".cache/tailcat-transfer-investigation/barrier-after-fix.log": "ddf5a15b3ddfedf08f3c7e56005d15db3e018e787e0ecc53b535b66921220b4a",
+    ".cache/tailcat-transfer-investigation/barrier-after-fix/connected-publication.json": "7400893de926df5bb5694fca8305c5ca91f2800a362977472389df6b6db8c990",
+    ".cache/tailcat-transfer-investigation/full-race-after-fix.log": "52bdeb4a3527a7750afbd25386876bfaaecc76b1c6adb05c09e5d46ead70a962",
+    ".cache/tailcat-transfer-investigation/production-after-fix/manifest.json": "bf0bdeecae7bb77bbd2b0dd05fd09ac433d08a51ae737e703c7714ad4607ff01",
+    ".cache/tailcat-transfer-investigation/lint-after-fix.log": "59e76bcf0251f3312c0e1682fee9822182247d36198d2da1d43d50a737b3e848",
+    ".cache/sync-plugin-workflow/instances/race-first-failure.log": "4f17ca8fd114972762502f322a035d9b3f1bf0161f5522e76b52c1dcdc2862de"
+  },
+  "replay": "TMPDIR=/private/tmp UNIC_E2E_ARTIFACTS=\"$PWD/.cache/tailcat-readiness-replay\" go test -race ./engine -run '^(TestTailcatConnectedPublicationDeliversEverything|TestSubmitDeliversEverything)$' -count=20 -timeout=2m -v",
+  "not_run": [
+    "native applications",
+    "real Tailcat routing/DERP in controlled test",
+    "system clipboard",
+    "cross-application paste",
+    "release/merge/deployment"
+  ],
+  "implementation_commit": "8bbc04226"
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/uniclipboard/unic/internal/pluginproc"
+	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/plugin"
 	"github.com/uniclipboard/unic/plugin/rpc"
 )
@@ -23,6 +25,9 @@ import (
 // Set either Plugin (runs inside the host process, e.g. built-ins) or Process
 // (a Go plugin run as a child process over the plugin RPC protocol).
 type PluginInstance struct {
+	// ID is the local runtime instance. Empty uses the implementation ID.
+	// Distinct IDs are supported for external Go sync backends only.
+	ID      PluginID
 	Plugin  plugin.Plugin
 	Process *PluginProcess
 	Config  plugin.Config
@@ -56,6 +61,19 @@ type PluginProcess struct {
 	Options pluginproc.Options
 }
 
+func (in PluginInstance) instanceID() string {
+	if in.ID != "" {
+		return string(in.ID)
+	}
+	if in.Plugin != nil {
+		return in.Plugin.Spec().ID
+	}
+	if in.Process != nil {
+		return in.Process.Spec.ID
+	}
+	return ""
+}
+
 var (
 	pluginIDRe = regexp.MustCompile(`^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$`)
 	actionIDRe = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
@@ -69,6 +87,7 @@ func invalidPlugin(id, why string) *Error {
 // processor and actions. On failure everything already started is closed.
 func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *Error) {
 	seen := map[string]bool{}
+	e.pluginInstances = make(map[PluginID]plugin.Plugin)
 	backends, unsupported := 0, false
 	var pending []syncBackend // installed only when the whole list loads
 	var peers []*peerProcBackend
@@ -83,6 +102,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 		}
 	}()
 	for _, in := range list {
+		id := in.instanceID()
 		if in.Process != nil {
 			if in.Plugin != nil {
 				return newErr(CodeInvalidArgument, "set Plugin or Process, not both")
@@ -93,7 +113,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				if dir != "" {
 					return invalidPlugin(pp.Spec.ID, "the engine owns a backend's directory")
 				}
-				if dir, err = e.backendDir(pp.Spec.ID); err != nil {
+				if dir, err = e.backendDir(id); err != nil {
 					return err
 				}
 			}
@@ -112,14 +132,32 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 		if verr := validateSpec(spec, in); verr != nil {
 			return verr
 		}
-		if seen[spec.ID] {
+		if id != spec.ID && (in.Process == nil || !slices.Contains(spec.Capabilities, plugin.CapSyncBackend) || in.Builtin) {
+			return invalidPlugin(id, "distinct instances require an external Go sync backend")
+		}
+		if len(id) > 128 || !pluginIDRe.MatchString(id) || strings.HasPrefix(id, "builtin.") && id != spec.ID {
+			return invalidPlugin(id, "invalid instance ID")
+		}
+		if seen[id] {
 			return invalidPlugin(spec.ID, "listed twice")
 		}
-		seen[spec.ID] = true
+		seen[id] = true
 		if in.Disabled {
 			continue
 		}
+		e.pluginInstances[PluginID(id)] = in.Plugin
 		if slices.Contains(spec.Capabilities, plugin.CapSyncBackend) {
+			config, err := json.Marshal(in.Config)
+			if err != nil {
+				return invalidPlugin(id, "configuration must contain JSON values")
+			}
+			digest := sha256.Sum256(config)
+			if err := e.st.BindBackendInstance(id, spec.ID, hex.EncodeToString(digest[:])); err != nil {
+				if errors.Is(err, store.ErrDeviceConflict) {
+					return newErr(CodeConflict, "backend implementation changed; create a new instance")
+				}
+				return newErr(CodeUnavailable, "cannot bind backend configuration")
+			}
 			if backends++; backends > e.res.MaxSyncBackends {
 				return newErr(CodeLimitExceeded, "too many sync backends are enabled")
 			}
@@ -133,11 +171,11 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 			if _, leaves := in.Plugin.(plugin.ChannelLeaver); spec.RemoteRevocation && !leaves {
 				return invalidPlugin(spec.ID, "remote revocation needs LeaveChannel")
 			}
-			if slices.ContainsFunc(e.syncBackends, func(b syncBackend) bool { return string(b.ID()) == spec.ID }) {
+			if slices.ContainsFunc(e.syncBackends, func(b syncBackend) bool { return string(b.ID()) == id }) {
 				return invalidPlugin(spec.ID, "a sync backend with this ID already exists")
 			}
 			if in.Process == nil { // process backends took theirs above
-				dir, derr := e.backendDir(spec.ID)
+				dir, derr := e.backendDir(id)
 				if derr != nil {
 					return derr
 				}
@@ -145,7 +183,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 					da.SetDir(dir)
 				}
 			}
-			host := &pluginHost{e: e, id: PluginID(spec.ID)}
+			host := &pluginHost{e: e, id: PluginID(id)}
 			if ierr := in.Plugin.Init(ctx, host, in.Config); ierr != nil {
 				var re *rpc.Error // a stable code is safe to show; free text is not
 				if in.Builtin && errors.As(ierr, &re) {
@@ -153,14 +191,14 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				}
 				return invalidPlugin(spec.ID, "Init failed")
 			}
-			pb := &pluginBackend{e: e, id: PluginID(spec.ID), kind: TransportKind(spec.TransportKind), sb: sb, spec: spec}
+			pb := &pluginBackend{e: e, id: PluginID(id), kind: TransportKind(spec.TransportKind), sb: sb, spec: spec}
 			if ra, ok := in.Plugin.(plugin.ReceiverAware); ok && spec.ExternalChannels {
 				ra.SetReceiver(pb)
 			}
 			started = append(started, in.Plugin)
 			var pp *peerProcBackend
 			if isPeer {
-				pp = &peerProcBackend{e: e, id: PluginID(spec.ID), pb: peerAware, bindingID: randHex(32)}
+				pp = &peerProcBackend{e: e, id: PluginID(id), implementation: spec.ID, pb: peerAware, bindingID: randHex(32)}
 				if aa, ok := in.Plugin.(plugin.PeerAuthorityAware); ok {
 					aa.SetPeerAuthority(pp)
 				}
@@ -373,11 +411,11 @@ func (e *Engine) RestartPlugin(ctx context.Context, id PluginID) error {
 		return gerr
 	}
 	defer release()
-	i := slices.IndexFunc(e.plugins, func(p plugin.Plugin) bool { return p.Spec().ID == string(id) })
-	if i < 0 {
+	p, exists := e.pluginInstances[id]
+	if !exists {
 		return newErr(CodeNotFound, "no such plugin")
 	}
-	r, ok := e.plugins[i].(interface{ Restart(context.Context) error })
+	r, ok := p.(interface{ Restart(context.Context) error })
 	if !ok {
 		return newErr(CodeUnsupported, "this plugin runs inside the host and cannot be restarted")
 	}

@@ -25,19 +25,25 @@ import (
 
 // PeerStatus is a paired device and whether it is connected right now.
 type PeerStatus struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Connected bool   `json:"connected"`
-	LastSeen  int64  `json:"last_seen,omitempty"`
+	Bindings     []engine.DeviceBinding `json:"bindings,omitempty"`
+	ID           string                 `json:"id"`
+	Name         string                 `json:"name"`
+	UserName     string                 `json:"user_name,omitempty"`
+	ReportedName string                 `json:"reported_name,omitempty"`
+	Fingerprint  string                 `json:"fingerprint,omitempty"`
+	Connected    bool                   `json:"connected"`
+	LastSeen     int64                  `json:"last_seen,omitempty"`
 	// Kind is "device" (omitted) or "external": a channel of a backend whose
-	// peers cannot prove an identity. Channels have no fingerprint; the other
-	// fields below are set for them only.
+	// peers cannot prove an identity. Channels have no fingerprint; the
+	// channel-specific fields below are set for them only, while Revision is
+	// populated for both devices and channels.
 	Kind             string `json:"kind,omitempty"`
 	BackendID        string `json:"backend_id,omitempty"`
 	Enabled          bool   `json:"enabled,omitempty"` // Connected is false for channels; Enabled says whether they sync
 	AutoApply        bool   `json:"auto_apply,omitempty"`
 	RemoteRevocation bool   `json:"remote_revocation,omitempty"` // removal also leaves the remote group; otherwise it is local only
 	Revision         int64  `json:"revision,omitempty"`
+	LastError        string `json:"last_error,omitempty"`
 }
 
 // ChannelUpdate is the body of PATCH /v1/channels/{id}. Revision is required.
@@ -64,9 +70,10 @@ type Candidate struct {
 
 // PendingPeer is a device waiting for the user's approval.
 type PendingPeer struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Via  string `json:"via,omitempty"` // who introduced it; empty if it connected to us directly
+	Paths []engine.DeviceBinding `json:"paths"`
+	ID    string                 `json:"id"`
+	Name  string                 `json:"name"`
+	Via   string                 `json:"via,omitempty"` // who introduced it; empty if it connected to us directly
 	// ByCode is true when it connected with the pairing code this device showed.
 	ByCode bool `json:"by_code,omitempty"`
 	// Fingerprint is shown on both devices so the user can check that the

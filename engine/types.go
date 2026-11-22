@@ -202,12 +202,14 @@ type SensitiveTicket struct {
 
 // JoinRequest pairs with the device showing Code.
 type JoinRequest struct {
+	BackendID PluginID
 	RequestID RequestID
 	Code      string
 }
 
 // JoinTicketRequest pairs with the device that issued Ticket.
 type JoinTicketRequest struct {
+	BackendID PluginID
 	RequestID RequestID
 	Ticket    string
 }

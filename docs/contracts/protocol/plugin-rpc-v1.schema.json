@@ -703,7 +703,7 @@
           "maxLength": 256
         },
         "wire_version": {
-          "const": 2
+          "const": 1
         },
         "backend_id": {
           "$ref": "#/$defs/id"

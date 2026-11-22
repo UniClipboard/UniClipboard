@@ -53,6 +53,7 @@ type desktopResult struct {
 	Cleanup          string           `json:"cleanup"`
 }
 type desktopScenario struct {
+	externalBackend                bool
 	systemClipboard                bool
 	clipboardOwners                []*exec.Cmd
 	pasteTarget                    *exec.Cmd
@@ -540,6 +541,12 @@ func (s *desktopScenario) startNative(migration string) error {
 		return err
 	}
 	config := "[history]\nauto_cleanup=false\n[telemetry]\nenabled=false\n[sync]\nenabled=false\n[desktop]\nmode='normal'\nlaunch_at_login=false\nstart_in_background=false\nquick_panel_shortcut=''\n"
+	if s.externalBackend {
+		config += "[plugins.instances.\"builtin.tailcat\"]\nenabled=false\n"
+		if err := s.seedExternalPlugin(s.home); err != nil {
+			return err
+		}
+	}
 	if err := os.WriteFile(filepath.Join(s.home, "config.toml"), []byte(config), 0600); err != nil {
 		return err
 	}

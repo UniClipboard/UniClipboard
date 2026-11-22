@@ -56,7 +56,6 @@ func TestParseRejects(t *testing.T) {
 		"old sync key":        "[sync]\ntext = false",
 		"other plugin":        "[plugins.instances.\"example.webdav\".sync]\ntext = false",
 		"bad threshold":       "[plugins.instances.\"builtin.tailcat\".sync]\nauto_file_max_bytes = \"3GiB\"",
-		"tailcat off":         "[plugins.instances.\"builtin.tailcat\"]\nenabled = false",
 		"text sync":           "[plugins.instances.\"builtin.text\".sync]\ntext = false",
 		"negative history":    "[history]\nmax_items = -1",
 		"history size":        "[history]\nmax_bytes = \"9GiB\"",

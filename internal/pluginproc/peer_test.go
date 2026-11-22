@@ -67,7 +67,7 @@ func peerExeSpec(t *testing.T) Spec {
 }
 
 func testBind() rpc.Bind {
-	return rpc.Bind{BindingID: testBinding, SelfID: "selfselfselfselfselfselfse", SelfName: "me", WireVersion: 2, BackendID: "example.peer", TransportKind: "peer_sessions"}
+	return rpc.Bind{BindingID: testBinding, SelfID: "selfselfselfselfselfselfse", SelfName: "me", WireVersion: rpc.WireVersion, BackendID: "example.peer", TransportKind: "peer_sessions"}
 }
 
 func testState(rev uint64, names ...string) rpc.SyncState {

@@ -100,11 +100,12 @@ type Engine struct {
 	ticket        *applyTicket
 	lastApply     applyDone
 
-	processors  []*pipelineProcessor // private adapters, fixed before Start
-	actions     []*pipelineAction    // likewise
-	observers   []*pipelineObserver  // likewise
-	plugins     []plugin.Plugin      // started in New, closed with the engine
-	submissions map[RequestID]*submissionEntry
+	processors      []*pipelineProcessor // private adapters, fixed before Start
+	actions         []*pipelineAction    // likewise
+	observers       []*pipelineObserver  // likewise
+	pluginInstances map[PluginID]plugin.Plugin
+	plugins         []plugin.Plugin // started in New, closed with the engine
+	submissions     map[RequestID]*submissionEntry
 }
 
 // New validates opts, takes the data directory, opens the database and the
@@ -131,15 +132,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 	}
 	opts.Plugins = append(slices.Clone(opts.Plugins), luaIn...)
 	if len(opts.PluginOrder) != 0 {
-		position := func(in PluginInstance) int {
-			if in.Plugin != nil {
-				return slices.Index(opts.PluginOrder, in.Plugin.Spec().ID)
-			}
-			if in.Process != nil {
-				return slices.Index(opts.PluginOrder, in.Process.Spec.ID)
-			}
-			return -1
-		}
+		position := func(in PluginInstance) int { return slices.Index(opts.PluginOrder, in.instanceID()) }
 		slices.SortStableFunc(opts.Plugins, func(a, b PluginInstance) int { return position(a) - position(b) })
 	}
 
@@ -156,7 +149,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 			sp = in.Process.Spec
 		}
 		if !in.Disabled && slices.Contains(sp.Capabilities, plugin.CapSyncBackend) {
-			backendIDs = append(backendIDs, PluginID(sp.ID))
+			backendIDs = append(backendIDs, PluginID(in.instanceID()))
 		}
 	}
 	pol, perr := normalizePolicies(opts.Settings, backendIDs)

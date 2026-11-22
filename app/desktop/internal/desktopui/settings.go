@@ -19,6 +19,17 @@ var categories = []desktopkit.SidebarNavItem{
 	{ID: "about", Label: "关于", Icon: desktopkit.IconInfo},
 }
 
+func (d *viewState) openPluginSettings(instanceID string) {
+	if d.deviceTask != "" {
+		d.setDeviceTask("")
+	}
+	d.page = "settings"
+	d.settings.Value = "plugins"
+	d.renaming = false
+	d.deviceDetailOpen = false
+	d.pluginSettings = builtinPluginSettings{id: instanceID}
+}
+
 func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 	items := append([]desktopkit.SidebarNavItem(nil), categories...)
 	for i := range items {
@@ -156,6 +167,26 @@ func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 		group("file", d.tr("文件同步"), func() {
 			d.selectRow(c, k, "fileLimit", d.tr("自动同步文件上限"), d.tr("超过上限的文件需要手动发送"), "10 MB", "50 MB", "100 MB", "无限制")
 			d.switchRow(c, k, "saveFiles", d.tr("自动保存接收的文件"), d.tr("将收到的文件保存到下载目录"))
+		})
+	case "plugins":
+		group("sync-channels", d.tr("同步渠道"), func() {
+			for i := range d.syncChannels {
+				ch := &d.syncChannels[i]
+				desc := ch.implementationID
+				if ch.policy != "" {
+					desc += " · " + ch.policy
+				}
+				k.SettingsRow(c.Key("demo-ch-"+ch.id), desktopkit.SettingsRowProps{Label: d.channelDisplayName(ch.id), Description: desc}, nil, func() {
+					on := ch.state == "running"
+					if k.Switch(c.Key("en-"+ch.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.channelDisplayName(ch.id)}).Changed() {
+						if on {
+							ch.state = "running"
+						} else {
+							ch.state = "disabled"
+						}
+					}
+				})
+			}
 		})
 	case "security":
 		k.Text(c, d.tr("设备配对需要双方核对指纹。"), secondary)

@@ -1007,8 +1007,8 @@ ui-click button '暂不迁移'
 history-count 0
 ui-wait listItem 设置…
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 ui-wait button '从 v1 迁移'
 screenshot settings
 ui-click button '从 v1 迁移'
@@ -1250,8 +1250,8 @@ start
 submit text 'UNIC-D cleanup settings synthetic'
 ui-wait listItem 'UNIC-D cleanup settings synthetic'
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 config-equals history.auto_cleanup false
 ui-disabled popUpButton 历史保留时间
 ui-disabled popUpButton 最大历史条目数
@@ -1270,8 +1270,8 @@ config-equals history.auto_cleanup false
 restart-desktop
 ui-wait listItem 设置…
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 config-equals history.auto_cleanup false
 ui-disabled popUpButton 历史保留时间
 ui-disabled popUpButton 最大历史条目数

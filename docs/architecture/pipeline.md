@@ -14,6 +14,7 @@ paths:
   - internal/wire/wire.go
   - plugin/rpc/
   - plugin/serve.go
+  - plugin/serve_action_content.go
   - plugin/serve_backend.go
   - internal/pluginproc/
   - app/service/internal/host/history.go
@@ -46,7 +47,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: cf82c9efc64a64f4cd43c6783c43cd236c1c1e3b
+verified: e2e319eb4c0eaf16eee396f36545cdc952c97a3e
 ---
 # Clipboard pipeline and local history
 

@@ -1,6 +1,7 @@
 """Verify and replace an installed v1 archive with an exact signed alpha archive."""
 
 import argparse
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -96,7 +97,7 @@ def native_acceptance(args, report):
 
         legacy_profile = work / "legacy"
         fixture, database = frozen_source(ROOT, legacy_profile)
-        with sqlite3.connect(database) as data:
+        with closing(sqlite3.connect(database)) as data, data:
             data.execute("DELETE FROM clipboard_entry WHERE entry_id = 'entry-bad'")
 
         if args.target.startswith("windows"):

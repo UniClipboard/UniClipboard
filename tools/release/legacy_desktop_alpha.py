@@ -27,7 +27,11 @@ def digest(path):
 
 
 def public_json(path):
-    with urllib.request.urlopen(PUBLIC + path, timeout=30) as response:
+    request = urllib.request.Request(
+        PUBLIC + path,
+        headers={"User-Agent": "UniClipboard-Release", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
 
 

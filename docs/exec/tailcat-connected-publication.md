@@ -97,6 +97,8 @@ historical attribution limit.
   `.cache/tailcat-transfer-investigation/production-after-fix/manifest.json`.
   Separately gated migration suites were not run.
 - Pinned golangci-lint v2.15.0 with Go 1.27.3: PASS, zero issues.
+- Documentation checks: PASS with four stale-page warnings. Pipeline and
+  identity verification markers reference implementation commit `8bbc04226`.
 
 No native application, browser, VM, real clipboard or cross-application paste
 was used. No release, merge or deployment is authorized by this result.

@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/uniclipboard/unic/internal/v1migration/v1fixture"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -116,6 +118,30 @@ sha256 = "%x"
 	defer server.Close()
 	t.Setenv("UNIC_E2E_GITHUB", server.URL)
 	n := &node{home: filepath.Join(work, "home"), sock: filepath.Join(work, "node.sock")}
+	// Use a synthetic source and the production migration path. Never probe or
+	// import the developer's default history when preparing this isolated profile.
+	sourceDir, dbpath, fixture, err := v1fixture.Build(filepath.Join(work, "synthetic-source"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", dbpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO clipboard_snapshot_representation VALUES('rep-bad','event-bad','text/plain','text/plain',?,NULL,9)`, []byte(fixture.Repaired))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	initialize := exec.Command(filepath.Join(binDir, "unic"), "migrate", "--source", sourceDir, "--target", n.home, "--passphrase-stdin", "--json")
+	initialize.Env = n.env()
+	initialize.Stdin = strings.NewReader(fixture.Passphrase + "\n")
+	if out, err := initialize.CombinedOutput(); err != nil {
+		t.Fatalf("initialize synthetic plugin profile: %v\n%s", err, out)
+	}
+
 	install := []string{"plugin", "install", "https://github.com/Example/Repo.git", "--path", "plugins/demo"}
 	run := func(ok bool, args ...string) string {
 		t.Helper()
@@ -173,7 +199,7 @@ sha256 = "%x"
 		if err := os.MkdirAll(dest, 0700); err != nil {
 			t.Fatal(err)
 		}
-		receipt, err := json.MarshalIndent(map[string]any{"passed": true, "github_requests": requests.Load(),
+		receipt, err := json.MarshalIndent(map[string]any{"passed": true, "global_pax_metadata": true, "github_requests": requests.Load(),
 			"prebuilt_commit": good, "source_commit": source, "corrupt_commit": bad, "rollback_from": upgrade, "rate_limited_commit": rateLimited, "goos": runtime.GOOS, "goarch": runtime.GOARCH}, "", "  ")
 		if err != nil {
 			t.Fatal(err)
@@ -189,6 +215,10 @@ func pluginArchive(t *testing.T, files map[string][]byte) []byte {
 	var buf bytes.Buffer
 	zip := gzip.NewWriter(&buf)
 	tarball := tar.NewWriter(zip)
+	// Match the real GitHub codeload archive: metadata precedes the source root.
+	if err := tarball.WriteHeader(&tar.Header{Typeflag: tar.TypeXGlobalHeader, Name: "pax_global_header", PAXRecords: map[string]string{"comment": "synthetic GitHub source metadata"}}); err != nil {
+		t.Fatal(err)
+	}
 	for name, data := range files {
 		if err := tarball.WriteHeader(&tar.Header{Name: name, Mode: 0600, Size: int64(len(data))}); err != nil {
 			t.Fatal(err)

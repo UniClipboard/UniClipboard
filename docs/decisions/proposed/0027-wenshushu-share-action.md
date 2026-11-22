@@ -147,3 +147,5 @@ language headers, missing file admission and incorrect per-file batch scope.
 Fixes were followed by successful download/hash validation. The host's macOS
 symlinked temporary directory and long Unix-socket paths required canonical,
 short test paths; production file-cache rules were unchanged.
+
+The [host execution receipt](../../exec/0027-wenshushu-share-action.md) records source installation, installed-process acceptance and the global PAX regression fix.

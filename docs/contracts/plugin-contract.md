@@ -411,3 +411,8 @@ manifest `actions.timeout_ms` select 0..300000 milliseconds; zero retains the
 Lua keeps its existing text-only Action and execution budgets.
 See the [Action contract](clipboard-action-contract.md#go-action-source-content)
 for ownership, cancellation and failure semantics.
+
+GitHub source archives may include global PAX metadata before the repository
+root. The extractor ignores that metadata for root selection and filesystem
+creation. Every materialized entry still passes root and local-path validation;
+metadata-only source archives are rejected.

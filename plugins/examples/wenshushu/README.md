@@ -1,23 +1,27 @@
 # Wenshushu Action plugin
 
-The independent repository is [UniClipboard/unic-plugin-wenshushu](https://github.com/UniClipboard/unic-plugin-wenshushu).
-Its initial design revision is
-[`d79ce8aa9f4ecac07e7802c144ebf70216fd50e0`](https://github.com/UniClipboard/unic-plugin-wenshushu/tree/d79ce8aa9f4ecac07e7802c144ebf70216fd50e0).
-This revision contains preparation documents, not an executable plugin.
-This directory is a documentation entry, not an installable plugin or a copy
-of its implementation.
+The independent implementation is
+[UniClipboard/unic-plugin-wenshushu](https://github.com/UniClipboard/unic-plugin-wenshushu).
+Implemented revision:
+[`fc968e8efd8e4ac204194c21c2c08e34e9c26e7e`](https://github.com/UniClipboard/unic-plugin-wenshushu/tree/fc968e8efd8e4ac204194c21c2c08e34e9c26e7e).
+This directory references that repository; it does not duplicate its code.
 
-The plugin will expose `unic.wenshushu/share` with the title
-“通过文叔叔临时分享”. The approved input scope is text, images and files.
-It will upload content only when the user invokes the Action and will return
-a public download URL as a new text history item.
+The plugin exposes `unic.wenshushu/share`, titled “通过文叔叔临时分享”.
+It accepts text, images and files, creates one temporary provider share, and
+returns a public download URL as a new text history item. It uploads only when
+the user explicitly invokes the Action. Directories are excluded.
 
-The [Action contract](../../../docs/contracts/clipboard-action-contract.md)
-now defines text, image and file inputs, source readers and bounded Go upload
-execution. Use a host revision that includes these extensions. Current [installation rules](../../../docs/contracts/plugin-contract.md#8-从-github-仓库安装)
-already support independently distributed Go process plugins.
+Use a host that implements the current
+[Action source contract](../../../docs/contracts/clipboard-action-contract.md#go-action-source-content).
+The plugin pins host SDK revision `549ef96c8ab5dae7f5791d03a05a9726087de286`.
+The generic host changes are on `feat/wenshushu-action-source` and are not yet
+merged into the host default branch.
 
-Continue provider-specific development in the independent repository.
-When implementation is accepted, replace the preparation revision with an
-immutable compatible release revision and add a verified installation command here.
-Do not add a placeholder install command or vendor another implementation.
+```sh
+unic plugin install https://github.com/UniClipboard/unic-plugin-wenshushu --ref fc968e8efd8e4ac204194c21c2c08e34e9c26e7e --build
+unic plugin enable unic.wenshushu
+```
+
+Restart the service after enabling the plugin. See the independent
+[acceptance receipt](https://github.com/UniClipboard/unic-plugin-wenshushu/blob/fc968e8efd8e4ac204194c21c2c08e34e9c26e7e/ACCEPTANCE.md)
+for process/live-provider evidence and remaining native/release boundaries.

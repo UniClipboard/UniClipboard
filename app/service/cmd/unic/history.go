@@ -34,7 +34,7 @@ const historyUsage = `usage: unic history <command>   (alias: unic h)
   tag <ref> [--add a,b] [--remove c] [--set a,b]
   expire <ref> <duration|never>   e.g. 24h, 7d, never
   export <ref> --output DIR  write user-owned copies without overwriting files
-  action <ref> [key] [--apply] [--request-id KEY]         run a plugin action on a text entry (no key: list them)
+  action <ref> [key] [--apply] [--request-id KEY]         run a plugin action on a history entry (no key: list them)
 
 <ref> is an entry id or @N, the Nth newest (@1 is the latest).
 `

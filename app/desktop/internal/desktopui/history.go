@@ -204,7 +204,7 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 			}
 			k.Pane(c.Key("browse"), desktopkit.PaneProps{Kind: pane, Label: d.tr("历史列表"), DetailOpen: &d.detailOpen}, func() {
 				if d.live != nil {
-					if d.live.readError != "" && !(empty && d.isSearchUnavailableState()) {
+					if d.live.readError != "" && (!empty || !d.isSearchUnavailableState()) {
 						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr(d.live.readError)})
 					}
 					if d.live.message != "" {

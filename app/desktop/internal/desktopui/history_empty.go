@@ -919,7 +919,7 @@ func (d *viewState) renderEmptySearchNoResults(c *ui.Context, k desktopkit.Kit, 
 			})
 			for _, rel := range relaxations {
 				r := rel
-				ui.Box(c.Key("sep-"+r.id)).FillWidth().Height(1).Background(p.sep).Shrink(0)
+				ui.Box(c.Key("sep-" + r.id)).FillWidth().Height(1).Background(p.sep).Shrink(0)
 				row := ui.ButtonBase(c.Key("rel-"+r.id)).FillWidth().Padding(9, 14).Gap(10).
 					AlignItems(ui.Center).Label(r.label).Role(ui.RoleButton).
 					FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(-2)

@@ -1,4 +1,4 @@
 {
-  "en": "UniClipboard 2.0.0 introduces the v2 Engine, independent CLI and Desktop packages, and numbered immutable builds. All paired devices must use v2. Import v1 history explicitly with unic migrate.",
-  "zh": "UniClipboard 2.0.0 引入 v2 Engine、独立的 CLI 与桌面安装包，以及不可变的构建编号。所有配对设备必须使用 v2。请使用 unic migrate 显式导入 v1 历史。"
+  "en": "This Desktop alpha adds the macOS launch path and Windows installer support needed for an upgrade from 1.6.2-alpha.2. The old update feed requires separate native acceptance before it can offer the upgrade. You can import 1.x clipboard history during initial setup. Reconfigure settings and pair your devices again in 2.0.",
+  "zh": "本次桌面内测增加从 1.6.2-alpha.2 升级所需的 macOS 启动入口和 Windows 安装支持。旧更新源须通过原生验收后才提供升级。可在首次设置时导入 1.x 剪贴板历史。请在 2.0 中重新配置设置并配对设备。"
 }
